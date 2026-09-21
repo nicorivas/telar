@@ -1,13 +1,17 @@
----
-titulo: Hallazgos conocidos
----
-
 # Hallazgos conocidos
 
 Los dejó la revisión que acompañó a la construcción del esqueleto: una prueba de humo con
-comandos reales y dos lecturas del árbol, una por portabilidad y otra por coherencia. Los dos
-**bloqueantes** ya están arreglados y se marcan como tales. El resto está sin tocar y ordenado
-por gravedad; cada uno dice dónde vive y qué se propuso hacer.
+comandos reales y dos lecturas del árbol, una por portabilidad y otra por coherencia.
+
+**Los 37 están arreglados** (20-sep-2026): dos bloqueantes, quince serios y veinte menores. Cada
+uno queda escrito con su síntoma y dónde vivía, porque la lista también es la memoria de por qué
+el código es como es. Tres se cerraron comprobando que ya no ocurrían; el resto, con código y
+pruebas.
+
+Arreglarlos destapó dos cosas que no estaban en la lista: el estado se mudaba solo a un tab ajeno
+cuando el multiplexor reciclaba los ids —la reconciliación va ahora atada a una huella de la
+sesión—, y unas pruebas de tmux que sí existían se perdieron al sobrescribir el archivo sin
+mirarlo (se recuperaron del commit).
 
 ## [bloqueante] La configuración del proveedor de estado que documenta contratos.md no tiene camino de ejecución, y declararla rompe `telar doctor` — **arreglado**
 **Dónde:** docs/contratos.md:97-101 y :165-169 · src/telar/ordenes/_comun.py:290-296 · src/telar/proveedores/estado.py:867-890
