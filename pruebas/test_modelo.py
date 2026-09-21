@@ -26,8 +26,13 @@ class Piezas(Prueba):
         self.assertIs(h.atencion, m.Atencion.NINGUNA)
         self.assertIsNone(h.prioridad)
 
-    def test_un_hilo_con_carpeta_esta_vinculado(self):
-        self.assertTrue(m.Hilo(id="3", nombre="faro", ruta=Path("proyectos/faro")).vinculado)
+    def test_vinculado_es_lo_que_alguien_decidio_no_donde_quedo_la_shell(self):
+        # el `cwd` del panel llega como `ruta`: es útil, pero nadie lo eligió
+        suelto = m.Hilo(id="3", nombre="faro", ruta=Path("/casa"))
+        self.assertFalse(suelto.vinculado)
+        # el vínculo lo pone el estado, y solo entonces el hilo está vinculado
+        atado = m.Hilo(id="3", nombre="faro", ruta=Path("proyectos/faro"), vinculo=Path("proyectos/faro"))
+        self.assertTrue(atado.vinculado)
 
     def test_una_ficha_sin_nada_se_sabe_vacia(self):
         self.assertTrue(m.Ficha().vacia)

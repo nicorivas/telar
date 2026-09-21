@@ -72,6 +72,20 @@ def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
     return cuerpo
 
 
+def _local(cuando) -> str | None:
+    """La hora de un ítem, en la hora de esta máquina y sin zona.
+
+    Un proveedor de calendario entrega datetimes CON zona; escribirlos tal cual mezclaba
+    en la misma lista «09:00» de aquí con «09:00» de otro huso, y `hoy` ordena y muestra
+    esas cadenas. Traducir primero es lo único que hace comparable una agenda.
+    """
+    if cuando is None:
+        return None
+    if getattr(cuando, "tzinfo", None) is not None:
+        cuando = cuando.astimezone().replace(tzinfo=None)
+    return cuando.isoformat(timespec="minutes")
+
+
 def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], list[str]]:
     """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca."""
     _comun.asegurar_proveedores(ctx.config)
@@ -90,7 +104,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
                 "hilo": destino.nombre if destino else "",
                 "ruta": _comun.ruta_relativa(destino.ruta, tel.raiz) if destino else "",
                 "proveedor": item.proveedor,
-                "cuando": item.cuando.isoformat(timespec="minutes") if item.cuando else None,
+                "cuando": _local(item.cuando),
                 "url": item.url,
             }
         )

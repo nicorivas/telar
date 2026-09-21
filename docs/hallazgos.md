@@ -23,28 +23,28 @@ Con TELAR_CONFIG, TELAR_ESTADO, TELAR_RAIZ, TELAR_MULTIPLEXOR y TELAR_SESION apu
 
 **Arreglo propuesto:** Que `instalar` sin banderas imprima la ruta y el diff y pida sí/no, con `--si` para saltarlo (y `--json` implicando `--si`). Rechazar o avisar fuerte cuando el ejecutable a escribir no esté en una ruta estable (venv temporal, /tmp): `shutil.which('telar')` fuera del PATH permanente es señal de prueba, no de instalación. Y documentar `--seco` y `--ajustes RUTA` en el README, que hoy solo viven en el docstring.
 
-## [serio] UnicodeEncodeError con traceback si la salida no es UTF-8
+## [serio] UnicodeEncodeError con traceback si la salida no es UTF-8 — **arreglado**
 **Dónde:** src/telar/ordenes/doctor.py:58, src/telar/ordenes/pendientes.py:146 y :152, src/telar/ordenes/_comun.py:121-126 (SIMBOLO)
 
 Toda la CLI imprime ·, ✓, ✗, ☐, ▣, ●, ○ y «». Si stdout no codifica UTF-8, el print revienta con un stack trace de Python en vez de un error legible. Verificado: `PYTHONIOENCODING=ascii telar --raiz ejemplo pendientes --repo` → «UnicodeEncodeError: 'ascii' codec can't encode character '\xb7' in position 14»; con latin-1 → «can't encode character '▣'»; `telar doctor` cae igual en doctor.py:58. En Linux/macOS con LC_ALL=C Python coacciona a UTF-8 y se salva, pero cualquier wrapper que fije PYTHONIOENCODING, una consola cp1252 o un entorno que fuerce la codificación mata todas las órdenes que dibujan.
 
 **Arreglo propuesto:** En cli.py:main(), antes de despachar: sys.stdout.reconfigure(errors='replace') (y stderr), o un juego de símbolos ASCII de reserva elegido según sys.stdout.encoding.
 
-## [serio] El driver de zellij no declara ni verifica versión mínima del multiplexor
+## [serio] El driver de zellij no declara ni verifica versión mínima del multiplexor — **arreglado**
 **Dónde:** README.md:31, src/telar/mux/zellij.py:65 (VERSION_PROBADA), src/telar/ordenes/doctor.py:104-118 (_multiplexor)
 
 README.md:31 solo pide «a terminal multiplexer (tmux or zellij)», sin piso de versión. zellij.py habla por acciones recientes de la CLI —current-tab-info, go-to-tab-by-id, close-tab-by-id, write-chars -p— y «0.45» vive únicamente en una constante interna que jamás se comprueba. doctor solo hace shutil.which(): en una máquina con un zellij de distro (0.39-0.42) marca ✓ multiplexor y después cada orden falla con el error crudo de la CLI, sin decir que el problema es la versión. Esta máquina tiene zellij 0.45.1 y tmux 3.7c, ambos muy por delante de lo que trae cualquier distro estable, así que el desarrollo no ve el problema. (El camino tmux sí es seguro: todos los formatos que usa —#{window_id}, #{pane_current_command}…— existen desde tmux 1.8.)
 
 **Arreglo propuesto:** Correr `zellij --version` / `tmux -V` en doctor y comparar contra un piso declarado; escribir ese piso en README.md:31 junto a «Python 3.11+».
 
-## [serio] «pip install telar» y la sección «Try it» del README no se componen: ejemplo/ y docs/ no viajan en la distribución
+## [serio] «pip install telar» y la sección «Try it» del README no se componen: ejemplo/ y docs/ no viajan en la distribución — **arreglado**
 **Dónde:** README.md:26 vs :38-43, y pyproject.toml:35-40
 
 El sdist y el wheel (verificado construyéndolos) contienen solo src/telar, LICENSE, NOTICE, README y metadatos. Quien siga el README —`pip install telar`, y tres líneas más abajo `telar --raiz ejemplo perfil`— no tiene carpeta ejemplo/: la orden falla o cae a la convención mínima sin explicar por qué. Además, ese README es el long_description de PyPI, donde los ~10 links relativos a docs/*.md (líneas 20, 68, 69, 86-92) apuntan a pypi.org y dan 404. Y varios mensajes de error de la propia CLI mandan a docs/perfil.md y docs/contratos.md, que un usuario de pip no tiene en ninguna parte.
 
 **Arreglo propuesto:** O empaquetar ejemplo/ y docs/ como package data, o que la sección «Try it» diga explícitamente «desde un clon» y que los links del README sean absolutos a github.com/nicorivas/telar.
 
-## [serio] La extensión de VS Code es impublicable tal como está: publisher TODO y URL de repo contradictoria
+## [serio] La extensión de VS Code es impublicable tal como está: publisher TODO y URL de repo contradictoria — **arreglado**
 **Dónde:** vscode/package.json:6, :15, :19, :21
 
 `publisher: "TODO-publisher"` y repository.url / bugs.url / homepage apuntando a github.com/TODO-publisher/telar. `vsce publish` publicaría bajo un publisher inexistente, y la ficha del Marketplace enlazaría a un repo que no existe. Además contradice pyproject.toml:31-32, que sí declara el repo real (github.com/nicorivas/telar). Está avisado en vscode/README.md:108-110, pero el archivo sigue mintiendo, y cualquiera que clone y corra `npm run package` produce un .vsix con metadatos falsos.
@@ -58,49 +58,49 @@ base.py:21-23 dice «Quien escriba un multiplexor nuevo hereda de `MultiplexorBa
 
 **Arreglo propuesto:** Hacer que `Zellij` herede de `MultiplexorBase` e implemente los primitivos (`tabs`, `panes`, `crear_tab`, `escribir_pane`…), dejando que los derivados salgan gratis; `paneles()` y `reemplazar()` quedan como extras propios de zellij. Mientras tanto, `agente/base.py:249-268` puede borrar la rama de diccionarios crudos.
 
-## [serio] zellij no tiene la guardia de salto de línea que sí tiene tmux: `escribir` sin enviar puede enviar
+## [serio] zellij no tiene la guardia de salto de línea que sí tiene tmux: `escribir` sin enviar puede enviar — **arreglado**
 **Dónde:** src/telar/mux/zellij.py:384-403 frente a src/telar/mux/tmux.py:421-433
 
 tmux.py:424-428 rechaza un texto con `\n` o `\r` cuando `enviar=False` («el salto ES el ↩»). `Zellij.escribir` no comprueba nada: manda el texto tal cual con `write-chars`, y un salto en la entrada de un agente es un Enter. Verificado: la misma llamada levanta ErrorDeMux en tmux y pasa en silencio en zellij. Lo usa `telar pendiente <ref>` (ordenes/pendiente.py:78), cuya promesa escrita en contratos.md:358-360 es «telar **escribe** la frase en la entrada del agente y no la manda. Apretar Enter es de la persona», y que devuelve `"enviado": false` en el JSON aunque la frase se haya ejecutado. `--texto` es texto libre del usuario, y el `titulo` de un proveedor `comando` tampoco está saneado.
 
 **Arreglo propuesto:** Mover la guardia a `MultiplexorBase.escribir` (o a un helper de `mux/base.py`) para que rija en las dos implementaciones, en vez de vivir dentro de `Tmux.escribir_pane`.
 
-## [serio] `telar hoy` ordena y muestra la agenda por reloj de pared ajeno cuando el proveedor trae zona
+## [serio] `telar hoy` ordena y muestra la agenda por reloj de pared ajeno cuando el proveedor trae zona — **arreglado**
 **Dónde:** src/telar/ordenes/pendientes.py:92 · src/telar/ordenes/hoy.py:61 y :97
 
 `de_proveedores` emite `cuando` con `item.cuando.isoformat(timespec="minutes")`, y los eventos de calendario son datetimes con zona (calendario.py:78-81 lo declara explícito). Después `hoy.py:61` ordena la agenda comparando esas cadenas y `hoy.py:97` saca la hora cortando `[11:16]`. Con un proveedor de tipo `comando`, verificado: una reunión a las 09:00+02:00 (04:00 en Santiago) se imprime «09:00» y después de otra de las 08:00 locales. Además el valor sale como `'2026-09-18T09:00+02:00'`, contra contratos.md:231-232, que promete «ISO de la máquina, **sin zona**». El mismo campo mezcla naive (tareas, `datetime.combine(vence, time.min)`) y aware (calendario).
 
 **Arreglo propuesto:** Normalizar en `de_proveedores`: `item.cuando.astimezone().replace(tzinfo=None).isoformat(timespec="seconds")`, y ordenar por el datetime, no por la cadena. `calendario.DeICS` ya convierte a local; el que no lo hace es `_hora` (calendario.py:603-610) en la rama `comando`.
 
-## [serio] `ruta` y `ficha.documento` salen relativas cuando la raíz es relativa, contra el contrato
+## [serio] `ruta` y `ficha.documento` salen relativas cuando la raíz es relativa, contra el contrato — **arreglado**
 **Dónde:** docs/contratos.md:228 · src/telar/cli.py:154-158 · src/telar/config.py:120-123 y :205-206
 
 contratos.md:228 promete «`ruta` es absoluta (sirve para `cd`)». Ni `--raiz` ni `TELAR_RAIZ` ni la clave `raiz` del TOML resuelven la ruta: solo `expanduser()`. Verificado con el comando que el propio README.md:40-42 le propone al usuario: `telar --raiz ejemplo hilos --json` devuelve `ruta: "ejemplo/proyectos/faro"` y `ficha.documento: "ejemplo/proyectos/faro/README.md"`. La extensión de VS Code ya se topó con esto y lo documenta como límite propio en vscode/src/cli.ts:184-197 en vez de tratarlo como un fallo de telar.
 
 **Arreglo propuesto:** Resolver la raíz una sola vez al construir la Config (`Path(...).expanduser().resolve()`) en `cli.py:158`, `config._ruta` y `config._entorno`. El valor por defecto ya es absoluto (`Path.cwd()`), así que la única incoherencia es la raíz dada a mano.
 
-## [serio] `relativa` puede venir absoluta cuando la carpeta del hilo cae fuera de la raíz
+## [serio] `relativa` puede venir absoluta cuando la carpeta del hilo cae fuera de la raíz — **arreglado**
 **Dónde:** src/telar/ordenes/_comun.py:137-143 · docs/contratos.md:228-229 · vscode/src/cli.ts:190-198
 
 `ruta_relativa` devuelve `str(ruta)` cuando `relative_to` falla, es decir cuando la carpeta no cuelga de la raíz. Eso pasa en el caso más común de todos: un tab abierto en cualquier directorio fuera del repositorio de trabajo. Verificado con zellij sobre una sesión real: `"relativa": "/private/tmp/telarprueba"`. contratos.md:228-229 dice que `relativa` es «relativa a la raíz del repositorio» y que se usa «Vacío, no `null`, cuando no hay». `vscode/src/cli.ts:192` hace `path.join(raiz, h.relativa)` confiando en esa promesa.
 
 **Arreglo propuesto:** Devolver cadena vacía cuando la ruta cae fuera de la raíz, y dejar el camino absoluto solo en `ruta`; si el fallback existe para mostrar algo, que sea el propio `ruta` en la vista de terminal, no el campo `relativa` del contrato.
 
-## [serio] `vinculado` dice `true` para un hilo que nadie vinculó
+## [serio] `vinculado` dice `true` para un hilo que nadie vinculó — **arreglado**
 **Dónde:** src/telar/modelo.py:102-103 y :118-120 · src/telar/mux/base.py:306-324 · src/telar/estado.py:278
 
 `Hilo.ruta` está documentada como «carpeta del repositorio de trabajo asociada; None si el hilo no está vinculado», y `vinculado` es simplemente `ruta is not None`. Pero el multiplexor rellena `ruta` con el `cwd` del panel (base.py:313-324 y zellij.py:291-292), y `vestir` (estado.py:278) hace `ruta=ruta or hilo.ruta`, así que el cwd sobrevive cuando no hay vínculo. Verificado con zellij: un tab recién creado con cwd `/private/tmp/telarprueba` sale con `"vinculado": true` y `"arquetipo": ""`. La consecuencia visible es `telar hilo ver`, que imprime la carpeta como si fuera el vínculo, y la vista de la extensión, que decide con ese campo. El campo mezcla dos preguntas distintas: «¿el usuario decidió una carpeta?» y «¿el panel tiene un cwd?».
 
 **Arreglo propuesto:** Separar los dos datos en el modelo (`ruta` = el vínculo decidido, `cwd` = lo que dice el panel), o calcular `vinculado` contra `est.vinculos()` en vez de contra `ruta`. Hoy no hay forma de distinguirlos desde el JSON.
 
-## [serio] La plantilla que escribe `telar init` sugiere un nombre de proveedor que hace fallar a `telar doctor`
+## [serio] La plantilla que escribe `telar init` sugiere un nombre de proveedor que hace fallar a `telar doctor` — **arreglado**
 **Dónde:** src/telar/ordenes/init.py:54-57 · src/telar/ordenes/_comun.py:266-278 · docs/configuracion.md:78-79
 
 `asegurar_proveedores` importa `telar.proveedores.<nombre de la sección>`, así que el nombre de la sección tiene que ser el nombre del módulo. Eso no está escrito en ninguna parte: docs/configuracion.md:78-79 presenta `proveedores.<n>` como un nombre libre. La plantilla que `telar init` deja en la configuración del usuario trae comentado `# [proveedores.agenda]`; verificado: al descomentarla, `telar doctor` sale con 1 y dice «declarados y no registrados: agenda», con un arreglo equivocado («instala el paquete que los registra»).
 
 **Arreglo propuesto:** Cambiar el ejemplo de la plantilla a `[proveedores.calendario]` (que sí existe) y documentar en configuracion.md que el nombre de la sección es el del proveedor, no una etiqueta libre. Si se quiere permitir varias instancias, hace falta una clave `proveedor = "calendario"` separada del nombre de sección.
 
-## [serio] `desinstalar` (y un segundo `instalar`) pisan el respaldo con la versión ya modificada
+## [serio] `desinstalar` (y un segundo `instalar`) pisan el respaldo con la versión ya modificada — **arreglado**
 **Dónde:** src/telar/agente/claude_code.py:254-268 (_escribir), líneas 260-261
 
 `_escribir` siempre copia el archivo ACTUAL a `<nombre>.telar.bak` antes de reescribirlo, sin mirar si ya hay un respaldo. Comprobado: tras `instalar`, el .bak tenía el settings.json original (3894 B); tras `desinstalar`, el mismo .bak pasó a tener la versión CON los ganchos de telar (5848 B). El único respaldo del estado previo a telar queda destruido por la propia orden que deshace telar. Lo mismo pasa con dos `instalar` seguidos. La red de seguridad se come a sí misma justo en el escenario en que hace falta. Se agrega que el respaldo se escribe con la umask por defecto: el settings.json era -rw------- (0600) y el .telar.bak salió -rw-r--r-- (0644), o sea que una configuración privada termina copiada legible por todos.
@@ -114,7 +114,7 @@ El estado —vínculo, prioridad, atención, archivado— se guarda con el NOMBR
 
 **Arreglo propuesto:** Dos piezas. Primero, dejar de contar como vivo lo que no lo está: que la cabecera de `hilos` y el conteo de `doctor` usen `tel.vivo(h)` y no `partir()`, y que el fantasma se muestre en su propia sección. Segundo, poder reconciliar: si un tab vivo no tiene entrada de estado pero su cwd coincide con el vínculo de un hilo no vivo, ofrecer adoptarlo (`telar hilo adoptar`, o que `renombrar` acepte un nombre ocupado por un hilo muerto y lo fusione). Lo de fondo, si vale el cambio: guardar el estado bajo una llave estable —el id del multiplexor más la ruta— y dejar el nombre como etiqueta.
 
-## [serio] `telar ficha` imprime dicts crudos de Python en las secciones de tipo lista y tabla
+## [serio] `telar ficha` imprime dicts crudos de Python en las secciones de tipo lista y tabla — **arreglado**
 **Dónde:** src/telar/ordenes/ficha.py:123-131 (_dibujar), llamada desde la línea 111
 
 La ficha de faro muestra literalmente: «· {'texto': 'El electricista confirma si el motor viejo sirve de repuesto', 'cuando': None, 'ori» y «· {'que': 'Empezó', 'cuando': '2026-03-02', 'origen': 'campos'}». `_dibujar` aplica `str(v)` a cada elemento, y el proveedor de estado entrega las secciones `lista` y `tabla` como listas de diccionarios, no de strings. Le pasa a ESPERANDO y a HITOS, que son justamente las dos secciones que contestan «quién me tiene frenado» y «cuándo entrego». Ocurre con el perfil de ejemplo que trae el propio repo, en la vista principal de la herramienta: es lo primero que va a ver quien pruebe telar.

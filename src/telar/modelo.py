@@ -99,8 +99,11 @@ class Hilo:
 
     id: str
     nombre: str
-    #: carpeta del repositorio de trabajo asociada; None si el hilo no está vinculado.
+    #: carpeta del hilo: la que el usuario vinculó o, si no vinculó ninguna, el `cwd`
+    #: de su panel principal. Sirve para trabajar; no dice que alguien haya decidido nada.
     ruta: Path | None = None
+    #: la carpeta que el usuario VINCULÓ (estado), y solo esa. None si nadie vinculó nada.
+    vinculo: Path | None = None
     #: el arquetipo del perfil que le calzó, si alguno.
     arquetipo: str = ""
     activo: bool = False
@@ -117,7 +120,14 @@ class Hilo:
 
     @property
     def vinculado(self) -> bool:
-        return self.ruta is not None
+        """¿Alguien vinculó este hilo a una carpeta?
+
+        No es «tiene ruta»: un tab abierto en cualquier parte trae el `cwd` de su panel,
+        y eso no es una decisión de nadie. Antes decía `true` para cualquier tab, que es
+        justo lo contrario de lo que la palabra promete.
+        """
+        return self.vinculo is not None
+
 
 
 @dataclass(frozen=True, slots=True)

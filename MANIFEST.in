@@ -1,0 +1,10 @@
+# El sdist lleva el proyecto entero: el ejemplo y las pruebas son parte de lo que se
+# revisa antes de instalar algo que va a hablar con tu terminal.
+include LICENSE NOTICE README.md
+recursive-include docs *.md
+recursive-include ejemplo *
+recursive-include pruebas *.py
+recursive-include vscode *.json *.md *.ts *.svg
+prune vscode/node_modules
+prune vscode/out
+global-exclude __pycache__/* *.pyc

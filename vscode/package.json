@@ -3,7 +3,7 @@
   "displayName": "telar",
   "description": "Your work threads in the sidebar: status, priority, today's time, each thread's document, and the day. Everything is read from the telar CLI.",
   "version": "0.1.0",
-  "publisher": "TODO-publisher",
+  "publisher": "nicorivas",
   "license": "MIT",
   "icon": "media/telar.png",
   "galleryBanner": {
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/TODO-publisher/telar.git",
+    "url": "https://github.com/nicorivas/telar.git",
     "directory": "vscode"
   },
   "bugs": {
-    "url": "https://github.com/TODO-publisher/telar/issues"
+    "url": "https://github.com/nicorivas/telar/issues"
   },
-  "homepage": "https://github.com/TODO-publisher/telar#readme",
+  "homepage": "https://github.com/nicorivas/telar#readme",
   "engines": {
     "vscode": "^1.90.0"
   },

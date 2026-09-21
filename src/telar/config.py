@@ -121,9 +121,15 @@ def ruta_config() -> Path:
 
 
 def _ruta(valor: object, contexto: str) -> Path:
+    """Una ruta de la configuración, siempre absoluta.
+
+    El contrato promete que `ruta` sirve para `cd`, y una raíz relativa («.», «ejemplo»)
+    dependía del directorio desde donde se corriera la orden: la misma sesión daba
+    respuestas distintas según dónde estuviera la shell.
+    """
     if not isinstance(valor, str) or not valor.strip():
         raise ErrorDeConfig(f"{contexto}: se esperaba una ruta, llegó {valor!r}")
-    return Path(valor).expanduser()
+    return Path(valor).expanduser().absolute()
 
 
 def _numero(valor: object, contexto: str) -> float:
@@ -215,7 +221,7 @@ def _entorno(cfg: Config) -> Config:
     if v := os.environ.get("TELAR_SESION"):
         cambios["sesion"] = v
     if v := os.environ.get("TELAR_RAIZ"):
-        cambios["raiz"] = Path(v).expanduser()
+        cambios["raiz"] = Path(v).expanduser().absolute()
     if v := os.environ.get("TELAR_ESTADO"):
         cambios["estado"] = Path(v).expanduser()
     if v := os.environ.get("TELAR_PERFIL"):

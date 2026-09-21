@@ -157,6 +157,22 @@ class MultiplexorBase(ABC):
     def tejer(self) -> None:
         """Levanta la sesión si no está; si está, no toca nada."""
 
+    #: la versión con la que se probó esta implementación; "" si no se declara.
+    version_minima: str = ""
+
+    def version(self) -> str:
+        """La versión instalada del multiplexor, tal como él la dice. "" si no se sabe."""
+        return ""
+
+    def huella(self) -> str:
+        """Algo que identifique a ESTA encarnación de la sesión, o "" si no se sabe.
+
+        Los ids de tab son estables mientras la sesión vive y se reciclan cuando el
+        programa arranca de nuevo: el `@0` de hoy no es el `@0` de ayer. Quien guarde
+        algo indexado por id necesita saber cuándo dejó de valer, y para eso está esto.
+        """
+        return ""
+
     # ── tabs ─────────────────────────────────────────────────────────────────────
 
     @abstractmethod

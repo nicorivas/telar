@@ -153,6 +153,10 @@ class Tmux(MultiplexorBase):
     una barra con lo que había hace un rato.
     """
 
+    #: probado contra esta versión; `move-pane` y los formatos que usamos son viejos,
+    #: pero `-t` con `=nombre:` y `#{pane_current_command}` piden un tmux moderno.
+    version_minima = "3.0"
+
     nombre = "tmux"
 
     def __init__(self, config: Config) -> None:
@@ -303,6 +307,18 @@ class Tmux(MultiplexorBase):
         if not self.disponible():
             return False
         return self._ok("has-session", "-t", f"={self.sesion}")
+
+    def version(self) -> str:
+        # «tmux 3.7c» → «3.7c»; con -V no hace falta servidor ni sesión
+        salida = self._tmux("-V", tolerante=True).strip()
+        return salida.split(" ", 1)[1] if " " in salida else salida
+
+    def huella(self) -> str:
+        salida = self._tmux(
+            "display-message", "-p", "-t", self._objetivo_sesion,
+            "#{session_id}:#{session_created}", tolerante=True,
+        ).strip()
+        return salida
 
     def tejer(self) -> None:
         if not self.disponible():

@@ -136,12 +136,31 @@ def duracion(segundos: float) -> str:
 
 
 def ruta_relativa(ruta: Path | None, raiz: Path) -> str:
+    """La carpeta del hilo vista desde la raíz. Siempre relativa: es lo que promete el contrato.
+
+    Un tab abierto fuera de la raíz —el caso más común, una shell en cualquier parte— no
+    tiene una relativa «hacia abajo»; antes se devolvía la absoluta, y quien la pegaba
+    detrás de la raíz terminaba con una ruta inventada. Ahora sale con `../`, que es
+    relativa de verdad, y si ni eso se puede (otro volumen), queda vacía: no saber dónde
+    está es mejor que decir que está en otro lado.
+    """
     if ruta is None:
         return ""
     try:
-        return Path(ruta).resolve().relative_to(Path(raiz).resolve()).as_posix()
+        aqui, base = Path(ruta).resolve(), Path(raiz).resolve()
+    except OSError:
+        return ""
+    try:
+        return aqui.relative_to(base).as_posix()
+    except ValueError:
+        pass
+    try:
+        import os.path
+
+        relativa = os.path.relpath(aqui, base)
     except (ValueError, OSError):
-        return str(ruta)
+        return ""
+    return Path(relativa).as_posix()
 
 
 # ── el telar armado ─────────────────────────────────────────────────────────────
@@ -208,7 +227,11 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
 
     # antes de leer nada: si un tab cambió de nombre en el multiplexor, el estado lo sigue
     if crudos:
-        for viejo, nuevo in est.reconciliar(crudos):
+        try:
+            huella = mux.huella() if mux is not None else ""
+        except ErrorDeMux:
+            huella = ""
+        for viejo, nuevo in est.reconciliar(crudos, huella):
             aviso = aviso or f"«{viejo}» ahora se llama «{nuevo}»: moví su vínculo y su estado"
 
     vivos = frozenset(h.nombre for h in crudos)

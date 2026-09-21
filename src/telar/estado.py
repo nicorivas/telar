@@ -285,6 +285,7 @@ def vestir(
                 id=hilo.id,
                 nombre=nombre,
                 ruta=ruta or hilo.ruta,
+                vinculo=ruta,
                 arquetipo=hilo.arquetipo,
                 activo=hilo.activo,
                 archivado=nombre in archivados,
@@ -754,10 +755,17 @@ class Estado:
     # ── renombrar y olvidar ────────────────────────────────────────────────────
 
     def ids(self) -> dict[str, str]:
-        """id del multiplexor → nombre que tenía la última vez que se lo vio."""
-        return {k: str(v) for k, v in self._leer("ids", {}).items() if isinstance(v, str)}
+        """id del multiplexor → nombre que tenía la última vez que se lo vio.
 
-    def reconciliar(self, hilos: Iterable[Hilo]) -> list[tuple[str, str]]:
+        `_huella` no es un id: identifica la encarnación de la sesión (ver `reconciliar`).
+        """
+        return {
+            k: str(v)
+            for k, v in self._leer("ids", {}).items()
+            if isinstance(v, str) and k != "_huella"
+        }
+
+    def reconciliar(self, hilos: Iterable[Hilo], huella: str = "") -> list[tuple[str, str]]:
         """Sigue los renombres del multiplexor para que el estado no se quede huérfano.
 
         El estado se guarda por NOMBRE, que es lo único que sobrevive a cerrar la sesión;
@@ -770,15 +778,25 @@ class Estado:
         vistos = {h.id: h.nombre for h in hilos if h.id and h.nombre and h.id != h.nombre}
         if not vistos:
             return []
-        antes = self.ids()
+        guardado = self._leer("ids", {})
+        antes = {k: str(v) for k, v in guardado.items() if isinstance(v, str) and k != "_huella"}
+        anterior = guardado.get("_huella", "")
+        if huella and anterior and huella != anterior:
+            # otra encarnación de la sesión: los ids se reciclaron y no dicen nada.
+            # Sin esto, el @0 de la sesión de hoy se leía como el @0 de la de ayer y el
+            # estado se mudaba a un tab que no tenía nada que ver.
+            antes = {}
         cambios: list[tuple[str, str]] = []
         for ident, nombre in vistos.items():
             viejo = antes.get(ident)
             if viejo and viejo != nombre and self.conoce(viejo):
                 self.renombrar(viejo, nombre, fusionar=True)
                 cambios.append((viejo, nombre))
-        if cambios or antes != {**antes, **vistos}:
-            self._escribir("ids", {**antes, **vistos})
+        nuevo = {**antes, **vistos}
+        if huella:
+            nuevo["_huella"] = huella
+        if nuevo != guardado:
+            self._escribir("ids", nuevo)
         return cambios
 
     def conoce(self, hilo: str) -> bool:

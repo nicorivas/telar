@@ -53,8 +53,12 @@ foco_maximo = {foco_maximo:g}
 
 # Ningún proveedor existe hasta que aparece aquí, y sin ninguno telar no sale de la
 # máquina. Cada uno declara en su documentación qué toca del mundo.
-# [proveedores.agenda]
+#
+# El nombre de la sección ES el módulo que lo trae (telar.proveedores.<nombre>): hoy
+# vienen `calendario` y `tareas`. Un nombre inventado hace fallar a `telar doctor`.
+# [proveedores.calendario]
 # activo = true
+# ics = "https://ejemplo/calendario.ics"
 """
 
 PLANTILLA_PERFIL = """\

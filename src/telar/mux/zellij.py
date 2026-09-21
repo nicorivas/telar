@@ -142,6 +142,10 @@ class Zellij(MultiplexorBase):
     con `-s`, para que funcione igual desde adentro de zellij que desde afuera.
     """
 
+    #: `current-tab-info`, `go-to-tab-by-id` y `close-tab-by-id` son de 0.45; con menos,
+    #: telar apunta al tab equivocado en cuanto hay dos terminales enganchados.
+    version_minima = VERSION_PROBADA
+
     nombre = "zellij"
 
     def __init__(self, sesion: str, *, binario: str = "zellij", espera: float = ESPERA) -> None:
@@ -199,6 +203,23 @@ class Zellij(MultiplexorBase):
             # sin ninguna sesión, `list-sessions` sale con código 1 y lo dice por stderr.
             return False
         return self.sesion in _sesiones_vivas(salida)
+
+    def version(self) -> str:
+        # «zellij 0.45.1» → «0.45.1»
+        rc, salida, _ = self._correr(["--version"])
+        salida = salida.strip()
+        if rc != 0 or not salida:
+            return ""
+        return salida.split(" ", 1)[1] if " " in salida else salida
+
+    def huella(self) -> str:
+        rc, salida, _ = self._correr(["list-sessions", "--no-formatting"])
+        if rc != 0:
+            return ""
+        for linea in salida.splitlines():
+            if linea.split(" ")[:1] == [self.sesion]:
+                return linea.strip()
+        return ""
 
     def tejer(self) -> None:
         """Levanta la sesión en segundo plano si no está. Si está, no toca nada."""
@@ -394,6 +415,12 @@ class Zellij(MultiplexorBase):
 
         Con `enviar=True` se manda después un ↩ (el byte 13) al mismo panel.
         """
+        if not enviar and ("\n" in texto or "\r" in texto):
+            # la misma guardia que tmux: escribir sin enviar no manda ↩ a escondidas
+            raise ErrorDeMux(
+                "escribir sin enviar no admite saltos de línea: el salto ES el ↩. "
+                "Pide `enviar=True` si eso es lo que quieres."
+            )
         tid, ps = self._tab(hilo)
         destino = panel or _id_de_panel(_principal(ps))
         if not destino:

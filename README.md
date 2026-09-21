@@ -29,19 +29,31 @@ telar --version
 ```
 
 Python 3.11+. Standard library only, except PyYAML for reading the profile. A
-terminal multiplexer (tmux or zellij) does the actual work of holding tabs.
+terminal multiplexer (tmux 3.0+ or zellij 0.45+) does the actual work of holding tabs.
 
 ## Try it
 
-The repo ships an invented workspace so you can look at a real profile without
-using anyone's data:
+Two ways in. **From a clone**, an invented workspace ships with the repo, so you can
+look at a real profile without using anyone's data:
 
 ```sh
-telar --raiz ejemplo perfil        # what the example workspace declares
+git clone https://github.com/nicorivas/telar && cd telar
+telar --raiz ejemplo perfil              # what the example workspace declares
 telar --raiz ejemplo pendientes --repo   # what those invented projects still owe
+```
+
+**From an install**, start in your own repository — `init` writes a profile you can edit
+and a config file, and touches nothing else:
+
+```sh
+cd ~/work/your-repo
+telar init                         # profile + config, both yours to edit
 telar doctor                       # what is missing on this machine, and how to fix it
 telar --help
 ```
+
+(`pip install telar` ships the package, not the example; the example travels with the
+source distribution and the clone.)
 
 ## A day of it
 

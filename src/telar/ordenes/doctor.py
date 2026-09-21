@@ -45,6 +45,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _perfil(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
+    revisiones += _version_mux(ctx)
     revisiones += _ficha(ctx)
     revisiones += _proveedores(ctx)
     revisiones += _ganchos(ctx, abiertos)
@@ -299,6 +300,40 @@ def _huerfanos(nombres: list[str], singular: str, plural: str) -> list[dict]:
             " estado; si ya no sirve, `telar hilo olvidar --hilo <nombre>`",
         )
     ]
+
+
+def _partes(v: str) -> tuple[int, ...]:
+    """«3.7c» → (3, 7). Lo que no sea número se ignora: las letras de tmux no ordenan."""
+    import re as _re
+
+    return tuple(int(p) for p in _re.findall(r"\d+", v)[:3])
+
+
+def _version_mux(ctx) -> list[dict]:
+    """La versión instalada contra la que el backend declara necesitar.
+
+    telar habla por acciones que no existían en cualquier versión (`current-tab-info` en
+    zellij, `#{pane_current_command}` en tmux). Cuando falta una, el error que sale es
+    del programa y no dice que el problema es la edad.
+    """
+    try:
+        mux = obtener_mux(ctx.config)
+    except ErrorDeMux:
+        return []
+    minima = getattr(mux, "version_minima", "")
+    try:
+        instalada = mux.version()
+    except ErrorDeMux:
+        instalada = ""
+    nombre = ctx.config.multiplexor
+    if not instalada:
+        return [_r("versión", AVISO, f"no pude preguntarle su versión a {nombre}")]
+    if minima and _partes(instalada) < _partes(minima):
+        return [
+            _r("versión", AVISO, f"{nombre} {instalada}; telar se probó con {minima} o más",
+               f"actualiza {nombre}: telar usa acciones que las versiones viejas no traen")
+        ]
+    return [_r("versión", OK, f"{nombre} {instalada}")]
 
 
 def _ficha(ctx) -> list[dict]:

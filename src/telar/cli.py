@@ -160,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
         if "raiz" in opciones:
             from dataclasses import replace
 
-            config = replace(config, raiz=Path(opciones["raiz"]).expanduser())
+            # absoluta siempre: el contrato promete rutas que sirven para `cd`
+            config = replace(config, raiz=Path(opciones["raiz"]).expanduser().absolute())
     except ErrorDeConfig as e:
         return _error(str(e))
 
