@@ -116,3 +116,17 @@ configuración a medias es peor que ninguna, porque se nota tres días después.
 Lo que es del **repositorio** y no de la máquina: qué carpetas son proyectos, qué
 se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en su
 [`telar-perfil.yaml`](perfil.md), y viaja con él.
+
+## `[ficha]` — quién arma la ficha de un documento
+
+```toml
+[ficha]
+proveedor = "documento"          # documento (por defecto) · comando
+cascada.resumen = ["estado", "campo:Etapa"]
+maximo = 6                       # cuántos pendientes se leen; 0 = todos
+```
+
+`documento` lee el markdown con lo que declara el perfil; `comando` corre un programa
+que imprime el JSON de la ficha (ver `docs/contratos.md`). Es tabla aparte de
+`[proveedores.*]`, que son los que traen ítems del día: si declaras `[proveedores.estado]`,
+telar te dirá que no conoce ese proveedor, porque ahí no vive.

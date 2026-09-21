@@ -45,6 +45,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _perfil(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
+    revisiones += _ficha(ctx)
     revisiones += _proveedores(ctx)
     revisiones += _ganchos(ctx, abiertos)
 
@@ -298,6 +299,24 @@ def _huerfanos(nombres: list[str], singular: str, plural: str) -> list[dict]:
             " estado; si ya no sirve, `telar hilo olvidar --hilo <nombre>`",
         )
     ]
+
+
+def _ficha(ctx) -> list[dict]:
+    """Quién arma la ficha: `[ficha]`, que es tabla aparte de `[proveedores.*]`."""
+    from telar.proveedores import estado as prov_estado
+
+    cfg = ctx.config.ficha
+    if cfg.nombre not in prov_estado.REGISTRO:
+        conocidos = ", ".join(sorted(prov_estado.REGISTRO))
+        return [
+            _r("ficha", FALLA, f"proveedor desconocido: {cfg.nombre}",
+               f"en [ficha], `proveedor` tiene que ser uno de: {conocidos}")
+        ]
+    try:
+        prov_estado.obtener(cfg)
+    except Exception as e:  # noqa: BLE001 - el proveedor se queja como quiera
+        return [_r("ficha", FALLA, f"{cfg.nombre}: {e}", "revisa la sección [ficha] de la configuración")]
+    return [_r("ficha", OK, f"la arma el proveedor {cfg.nombre}")]
 
 
 def _proveedores(ctx) -> list[dict]:

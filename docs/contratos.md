@@ -95,10 +95,15 @@ Así se lee igual un README que pone el estado en un párrafo, otro que lo pone 
 fila (`| Etapa | Descubrimiento |`) y otro que no lo pone en ninguna parte:
 
 ```toml
-[proveedores.estado]
+[ficha]
 cascada.resumen = ["estado", "situacion", "campo:Etapa", "campo:Fase"]
 cascada.pendientes = ["pendientes", "proximos_pasos"]
 ```
+
+`[ficha]` es su propia sección, no una fila de `[proveedores.*]`: aquellos traen ítems
+del día (agenda, tareas) y este responde por un documento. `proveedor` elige cuál —
+`documento` por defecto, `comando` para salir afuera — y el resto de las claves son sus
+opciones.
 
 Los campos singulares (`titulo`, `resumen`) se quedan con el primer origen que dé
 algo; los plurales (`campos`, `pendientes`, `esperando`, `hitos`) suman todos sus
@@ -163,7 +168,8 @@ todo lo que telar no sabe leer: un gestor de tareas, una base de datos, un docum
 que no es markdown.
 
 ```toml
-[proveedores.estado-externo]
+[ficha]
+proveedor = "comando"
 comando = ["scripts/estado.py", "{documento}"]
 tiempo = 10
 ```

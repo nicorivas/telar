@@ -83,6 +83,9 @@ class Config:
     perfil: Path | None = None
     #: proveedores encendidos, por nombre.
     proveedores: dict[str, Proveedor] = field(default_factory=dict)
+    #: quién arma la ficha de un documento. Tabla aparte de `proveedores`, que son los
+    #: que traen ítems del día: comparten la palabra «proveedor» y nada más.
+    ficha: Proveedor = field(default_factory=lambda: Proveedor(nombre="documento"))
     intervalos: Intervalos = field(default_factory=Intervalos)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
@@ -171,6 +174,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             campos[clave] = _numero(valor, f"intervalos.{clave}")
         cambios["intervalos"] = Intervalos(**campos)
 
+    if "ficha" in datos:
+        tabla = _tabla(datos["ficha"], "ficha")
+        nombre = tabla.get("proveedor", "documento")
+        if not isinstance(nombre, str) or not nombre.strip():
+            raise ErrorDeConfig(f"ficha.proveedor: se esperaba un nombre, llegó {nombre!r}")
+        opciones = {k: v for k, v in tabla.items() if k != "proveedor"}
+        cambios["ficha"] = Proveedor(nombre=nombre, activo=True, opciones=opciones)
+
     if "proveedores" in datos:
         tabla = _tabla(datos["proveedores"], "proveedores")
         proveedores: dict[str, Proveedor] = {}
@@ -185,6 +196,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
+        "ficha",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

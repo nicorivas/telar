@@ -48,11 +48,12 @@ def juntar(ctx, tel: _comun.Telar, *, repo: bool = False, hechos: bool = False) 
                 _fila(pendiente, ref=f"{hilo.nombre}:{i}", hilo=hilo.nombre, ruta=relativa)
             )
 
+    fuente = _comun.fuente_ficha(ctx.config)
     if repo:
         for relativa, (arquetipo, documento) in sorted(tel.unidades.items()):
             if relativa in vistos:
                 continue
-            ficha = _comun.leer_ficha(documento, arquetipo)
+            ficha = _comun.leer_ficha(documento, arquetipo, fuente)
             for i, pendiente in enumerate(ficha.pendientes, 1):
                 if pendiente.hecho and not hechos:
                     continue

@@ -279,20 +279,39 @@ def asegurar_proveedores(config) -> None:
             continue
 
 
-def leer_ficha(documento: Path, arquetipo: Arquetipo) -> Ficha:
-    """La ficha de un documento, por el proveedor de estado si lo hay.
+def fuente_ficha(config=None):
+    """El proveedor que arma las fichas, según `[ficha]`. None si no se pudo construir.
 
-    `telar.lectura` cumple lo que el perfil declaró; el proveedor `documento` de
-    `telar.proveedores.estado` decide además qué significa cada sección (el
-    resumen, las esperas, los hitos). Si ese proveedor no está o se cae, se lee lo
-    declarado y el telar sigue: un proveedor nunca apaga nada.
+    Sin configuración, el de siempre: `documento`, con sus opciones por defecto.
     """
     try:
         from telar.proveedores import estado as prov_estado
     except ImportError:  # pragma: no cover - mientras el proveedor no exista
+        return None
+    cfg = getattr(config, "ficha", None)
+    if cfg is None:
+        return prov_estado.Documento()
+    try:
+        return prov_estado.obtener(cfg)
+    except Exception:  # noqa: BLE001 - una configuración rota no apaga la ficha
+        return prov_estado.Documento()
+
+
+def leer_ficha(documento: Path, arquetipo: Arquetipo, fuente=None) -> Ficha:
+    """La ficha de un documento, por el proveedor de estado que declare `[ficha]`.
+
+    `telar.lectura` cumple lo que el perfil declaró; el proveedor decide además qué
+    significa cada sección (el resumen, las esperas, los hitos). `fuente` es el
+    proveedor ya construido —`fuente_ficha(config)`— para no rehacerlo por documento.
+    Si no está o se cae, se lee lo declarado y el telar sigue: un proveedor nunca
+    apaga nada.
+    """
+    if fuente is None:
+        fuente = fuente_ficha()
+    if fuente is None:
         return lectura.leer(documento, arquetipo)
     try:
-        return prov_estado.leer(documento, arquetipo).a_ficha()
+        return fuente.leer(documento, arquetipo).a_ficha()
     except Exception:  # noqa: BLE001 - un proveedor ajeno no tiene por qué ser prolijo
         return lectura.leer(documento, arquetipo)
 
@@ -307,7 +326,8 @@ def _con_ficha(hilo: Hilo, ctx, unidades: dict[str, tuple[Arquetipo, Path]]) -> 
             hilo,
             ficha=Ficha(nota=f"«{relativa}» no es ninguna unidad que declare el perfil"),
         )
-    return replace(hilo, arquetipo=arquetipo.nombre, ficha=leer_ficha(documento, arquetipo))
+    fuente = fuente_ficha(ctx.config)
+    return replace(hilo, arquetipo=arquetipo.nombre, ficha=leer_ficha(documento, arquetipo, fuente))
 
 
 # ── encontrar un hilo ───────────────────────────────────────────────────────────
