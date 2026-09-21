@@ -449,3 +449,45 @@ alcanza hoy, relativos a la raíz.
 En `escrito` solo aparece lo que se escribió de verdad: lo que ya estaba y no se
 pisó sale en `avisos`. `tejer` devuelve
 `{"sesion": …, "multiplexor": …, "ya_estaba": bool, "hilos": n}`.
+
+## `telar agente --json`
+
+Cuatro formas, una por orden. Todas son de una línea, como el resto.
+
+`aviso` — lo que el gancho le cuenta a telar, y qué hizo telar con eso:
+
+```json
+{"aplicado": true, "hilo": "faro", "atencion": "trabajando", "sesion": "0f3a…"}
+```
+
+Cuando el aviso no se pudo aplicar, la línea es `{"aplicado": false, "problema": "…"}` y
+nada más. Un gancho nunca falla por esto: devuelve 0 igual, porque del otro lado hay un
+agente esperando y un semáforo que miente un rato es el problema menor.
+
+`instalar`, `desinstalar` y `--seco` — qué archivo se tocó y con qué:
+
+```json
+{
+  "ruta": "/casa/.claude/settings.json",
+  "ganchos": ["SessionStart", "UserPromptSubmit", "Notification", "PostToolUse", "Stop", "SessionEnd"],
+  "reemplazados": [], "escrito": true,
+  "respaldo": "/casa/.claude/settings.json.telar.bak",
+  "comando": ["/usr/local/bin/telar", "agente", "aviso", "claude-code"]
+}
+```
+
+Con `--seco`, `escrito` es `false` y no se tocó nada. `--json` implica `--si`: del otro
+lado no hay a quién preguntarle.
+
+`ver` — cómo está el agente en este hilo:
+
+```json
+{
+  "agente": "claude-code", "hilo": "faro", "atencion": "espera",
+  "ganchos": ["SessionStart", "Stop"], "ajustes": "/casa/.claude/settings.json",
+  "conversaciones": [{"id": "0f3a…", "cuando": "2026-09-18T09:12", "titulo": "…"}]
+}
+```
+
+`ganchos` son los que están puestos **hoy** en la configuración del agente, no los que
+telar instalaría.

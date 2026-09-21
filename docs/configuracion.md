@@ -28,7 +28,8 @@ sesion = "telar"
 # Por defecto, la carpeta donde se corrió telar.
 raiz = "~/trabajo"
 
-# Dónde escribir el estado derivado (caché de fichas, semáforo, tiempo por hilo).
+# Dónde escribir el estado: vínculos, prioridades, archivo, semáforo, sesiones y el
+# registro de foco. Las fichas NO se guardan: se leen del documento cada vez.
 # Nunca dentro de `raiz`: el repositorio de trabajo no se ensucia con caché.
 # Por defecto, $XDG_STATE_HOME/telar o ~/.local/state/telar.
 estado = "~/.local/state/telar"

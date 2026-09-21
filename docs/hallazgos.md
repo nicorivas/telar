@@ -128,140 +128,140 @@ tmux es el valor por defecto de `multiplexor` en config.py y la propia cabecera 
 
 **Arreglo propuesto:** Escribir pruebas/test_mux_tmux.py con dos capas: unitarias sobre las funciones puras (_linea, _tamano, _banderas, _tab, _pane_desde con campos de más y de menos), y de integración contra un tmux real levantando una sesión con nombre propio y `skipUnless(shutil.which('tmux'))`, que crean tabs, renombran, mueven un panel entre tabs y cierran la sesión en tearDown. El CI ya tiene tmux instalado para recibirlas.
 
-## [menor] doctor trunca con slice negativo en terminales de menos de 20 columnas
+## [menor] doctor trunca con slice negativo en terminales de menos de 20 columnas — **arreglado**
 **Dónde:** src/telar/ordenes/doctor.py:58
 
 `r['dice'][:ancho - 20]` con ancho = get_terminal_size().columns. Con COLUMNS=20 exacto el slice es [:0] y la columna de valor sale VACÍA; con menos de 20 el índice es negativo y Python recorta por el FINAL, borrando silenciosamente los últimos caracteres. Verificado con COLUMNS=10: doctor imprime «✓ raíz» y «✓ multiplexor» sin ningún valor al lado, y «sin archivo; todo por defecto (se buscaría en /Users/…/co» cortado a media palabra. Un pane angosto (que es justo el caso de uso: telar vive en una barra lateral) da un diagnóstico ilegible.
 
 **Arreglo propuesto:** `r['dice'][:max(ancho - 20, 20)]`, igual que ya hace pendientes.py:151 con `resto = max(ancho - 34 - len(cola), 20)`.
 
-## [menor] package-lock.json ignorado y la extensión nunca se compila en CI
+## [menor] package-lock.json ignorado y la extensión nunca se compila en CI — **arreglado**
 **Dónde:** vscode/.gitignore:4, .github/workflows/ci.yml (sin job de node)
 
 El lockfile está en .gitignore, así que en otra máquina `npm install` resuelve typescript ^5.5.0, @vscode/vsce ^3.2.0 y ovsx ^0.10.0 a lo que sea más nuevo ese día: la compilación de la extensión no es reproducible. Y el workflow solo corre Python en ubuntu; ningún paso hace `npm ci && npm run compile`, de modo que un TypeScript roto se sube sin que nadie se entere. (Hoy compila: lo verifiqué copiando vscode/ fuera del repo, tsc sale 0.)
 
 **Arreglo propuesto:** Quitar package-lock.json del .gitignore y commitearlo; agregar un job `vscode` al ci.yml con `npm ci` + `npm run compile`.
 
-## [menor] CI nunca se dispara en la rama que el repo tiene de verdad
+## [menor] CI nunca se dispara en la rama que el repo tiene de verdad — **arreglado**
 **Dónde:** .github/workflows/ci.yml:5
 
 `on.push.branches: [main]`, pero la única rama del repo es `master` (y todavía sin ningún commit: `git log` responde «your current branch 'master' does not have any commits yet»). Al hacer el primer push a master, el CI de push no corre nunca y el repo aparenta estar verde sin haberse probado jamás en Linux.
 
 **Arreglo propuesto:** Renombrar la rama a main antes del primer push (`git branch -m master main`), o agregar master a la lista.
 
-## [menor] El proveedor de estado por comando corre el programa del usuario sin cerrarle stdin
+## [menor] El proveedor de estado por comando corre el programa del usuario sin cerrarle stdin — **arreglado**
 **Dónde:** src/telar/proveedores/estado.py:777-783
 
 Comando.leer() llama subprocess.run(...) sin `stdin=subprocess.DEVNULL` y sin `env=`. Los otros tres caminos que corren programas de afuera sí lo pasan (proveedores/tareas.py:586, proveedores/calendario.py:576). Un comando de estado que lea stdin se queda con la entrada de la terminal del usuario y solo muere al vencer el timeout, colgando la lectura de la ficha; y a diferencia de los otros dos no recibe ninguna variable marcadora en el entorno. Es una inconsistencia entre cuatro sitios que deberían ser idénticos.
 
 **Arreglo propuesto:** Agregar `stdin=subprocess.DEVNULL` (y decidir si va `env=` como en tareas.py:585) en estado.py:777.
 
-## [menor] _atajo() abrevia el hogar por prefijo de texto, no por componente de ruta
+## [menor] _atajo() abrevia el hogar por prefijo de texto, no por componente de ruta — **arreglado**
 **Dónde:** src/telar/ordenes/init.py:204-208 (usado en :120-121)
 
 `return "~" + texto[len(hogar):] if texto.startswith(hogar) else texto`. En una máquina donde otra ruta empiece con el string del hogar, el config.toml que escribe `telar init` sale corrupto. Verificado con Path.home() = /Users/nico: '/Users/nicolas/trabajo' → '~las/trabajo' y '/Users/nico2/repo' → '~2/repo'. Path('~las/trabajo').expanduser() no expande nada, así que raiz o estado quedan como una ruta relativa literal y doctor después dice «la raíz no existe». Pasa en cualquier caja multiusuario (/home/nico y /home/nico2) o con un usuario cuyo nombre sea prefijo de otro directorio hermano.
 
 **Arreglo propuesto:** Usar `ruta.relative_to(Path.home())` dentro de try/ValueError, en vez de comparar strings.
 
-## [menor] El instalador de ganchos congela una ruta absoluta de telar y doctor no detecta cuando muere
+## [menor] El instalador de ganchos congela una ruta absoluta de telar y doctor no detecta cuando muere — **arreglado**
 **Dónde:** src/telar/agente/base.py:372-383 (ejecutable_telar), src/telar/ordenes/doctor.py:264-320 (_ganchos)
 
 `shutil.which("telar")` escribe la ruta absoluta del binario dentro del settings.json del usuario: si telar se instaló en un venv (que es justo lo que recomienda README.md:27, `pip install -e .`), los seis ganchos quedan apuntando a ese venv. Rehacerlo, moverlo o reinstalar con pipx deja los seis ganchos apuntando a un ejecutable muerto, y como Claude Code se los traga en silencio la atención simplemente deja de actualizarse. doctor solo mira si hay huellas («nunca se anotó un cambio de foco»), nunca resuelve el comando anotado, así que da un diagnóstico que manda a arreglar lo que ya estaba puesto. La decisión de escribir la ruta absoluta está razonada en el docstring y es correcta; lo que falta es el chequeo.
 
 **Arreglo propuesto:** En doctor._ganchos, leer los ganchos instalados del settings.json y verificar que el ejecutable que nombran todavía exista; si no, decir «los ganchos apuntan a X, que ya no está: telar agente instalar».
 
-## [menor] pyproject usa la forma de licencia que setuptools deja de soportar en febrero de 2027
+## [menor] pyproject usa la forma de licencia que setuptools deja de soportar en febrero de 2027 — **arreglado**
 **Dónde:** pyproject.toml:10 y :19
 
 `python -m build` avisa dos veces: «WARNING `project.license` as a TOML table is deprecated […] By 2027-Feb-18, you need to update your project and remove deprecated calls or your builds will no longer be supported» y «License classifiers are deprecated» por el clasificador `License :: OSI Approved :: MIT License`. Faltan cinco meses. En una máquina con setuptools reciente hoy solo avisa; después de esa fecha el build del paquete falla, y `requires = ["setuptools>=68"]` no fija techo que lo evite.
 
 **Arreglo propuesto:** `license = "MIT"` (expresión SPDX) más `license-files = ["LICENSE", "NOTICE"]`, borrar el clasificador, y subir el piso a `setuptools>=77`.
 
-## [menor] El README de la extensión enlaza fuera del .vsix
+## [menor] El README de la extensión enlaza fuera del .vsix — **arreglado**
 **Dónde:** vscode/README.md:33 y :36
 
 La línea 33 dice `[telar](../README.md)` y la 36 remite a `docs/perfil.md`. El .vscodeignore empaqueta solo la carpeta vscode/, así que en la ficha del Marketplace —que es donde ese README se lee— los dos apuntan a nada. Es el único documento que ve alguien que instala la extensión sin clonar el repo, y su primer requisito («telar on your PATH») lleva a un link muerto.
 
 **Arreglo propuesto:** Cambiarlos por URLs absolutas al repo, igual que habrá que hacer con el publisher.
 
-## [menor] El `id` del hilo está mal descrito en tres documentos, y uno apoya en eso una decisión de diseño
+## [menor] El `id` del hilo está mal descrito en tres documentos, y uno apoya en eso una decisión de diseño — **arreglado**
 **Dónde:** src/telar/modelo.py:96-97 · docs/contratos.md:252-253 · docs/estado.md:35-36
 
 Los tres dicen «el índice del tab en tmux, el nombre en zellij». El código dice lo contrario y lo argumenta largo: tmux.py:16-19 usa `window_id` («`@3`», estable), zellij.py:18-21 usa el TAB_ID numérico y explícitamente **no** el nombre. Verificado en vivo: tmux devuelve `"@3"`, zellij devuelve `"0"`. contratos.md se contradice consigo mismo en cuatro líneas: el ejemplo de :243 muestra `"id": "@3"` y el texto de :252 dice que es el índice. Y docs/estado.md:35-36 usa esa afirmación falsa («el `id` es posicional en tmux») como la razón de indexar el estado por nombre: la justificación del diseño se apoya en un hecho que dejó de ser cierto.
 
 **Arreglo propuesto:** Corregir las tres frases. Si la razón de indexar por nombre sigue siendo válida (renombrar es del usuario, el id no se lee), reescribir el argumento de estado.md sobre esa base y no sobre la estabilidad del id.
 
-## [menor] `telar agente --json` produce cuatro formas que docs/contratos.md no documenta
+## [menor] `telar agente --json` produce cuatro formas que docs/contratos.md no documenta — **arreglado**
 **Dónde:** src/telar/ordenes/agente.py:141-148, :249-255, :282-293 y :330 · docs/contratos.md:213-218 · src/telar/cli.py:66-67
 
 cli.py:66-67 y contratos.md:215-218 afirman que «lo que imprime con `--json` es un contrato: está escrito en docs/contratos.md», y la página tiene una sección «Orden por orden» que cubre hilos, ficha, hilo, pendientes, pendiente, hoy, atencion, tiempo, doctor, config, perfil, init y tejer. Falta `agente`, que es la orden con más consumidores automáticos (la corren los ganchos del agente) y que emite cuatro objetos distintos según el verbo: aviso (`aplicado/evento/hilo/atencion/conversacion/conversaciones`), instalar/desinstalar (`ruta/ganchos/reemplazados/escrito/respaldo`), ver (`agente/hilo/atencion/ganchos/ajustes/conversaciones`) y retomar/nuevo (`hilo/comando`).
 
 **Arreglo propuesto:** Agregar la entrada «`telar agente <verbo> --json`» a docs/contratos.md con las cuatro formas, o quitar de cli.py:66 la promesa de que están todas escritas.
 
-## [menor] `Estado.foto()` existe para evitar lecturas partidas y el único camino que dibuja no la usa
+## [menor] `Estado.foto()` existe para evitar lecturas partidas y el único camino que dibuja no la usa — **arreglado**
 **Dónde:** src/telar/ordenes/_comun.py:209-230 · src/telar/estado.py:699-717 · docs/estado.md:216-218
 
 docs/estado.md:216-218 presenta `Estado.foto(tope=…)` como «el puente: lee todo de una vez y bajo candado… para que nadie dibuje media lista de antes y media de después», y el ejemplo de estado.md:222-228 la usa. `_comun.tejer` —por donde pasan hilos, hoy, ficha, pendientes, pendiente y accion, es decir todo lo que dibuja— llama en cambio a `est.vinculos()`, `est.prioridades()`, `est.archivados()`, `est.atenciones()`, `est.sesiones()` y lee `foco.log` por separado, sin candado, exactamente el patrón que `foto()` fue escrita para evitar. De paso, `foto()` acota el tiempo con `desde` y `hasta` y `_comun.tejer` solo con `desde`.
 
 **Arreglo propuesto:** En `_comun.tejer`, reemplazar las seis lecturas por `est.foto(tope=config.intervalos.foco_maximo)` y pasarlo a `vestir(**foto)`, que es justo la firma que `foto()` devuelve.
 
-## [menor] configuracion.md dice que el estado guarda una caché de fichas; estado.md dice lo contrario y el código tampoco la tiene
+## [menor] configuracion.md dice que el estado guarda una caché de fichas; estado.md dice lo contrario y el código tampoco la tiene — **arreglado**
 **Dónde:** docs/configuracion.md:31 · docs/estado.md:231-233 · src/telar/estado.py:78-87 · src/telar/config.py:80-81
 
 configuracion.md:31 describe `estado` como «el estado derivado (caché de fichas, semáforo, tiempo por hilo)», y config.py:80-81 repite «(caché, semáforo, tiempo)». docs/estado.md:231-233, en cambio, es explícito: «Lo que el estado no guarda: **La ficha.** Se lee del documento, que es la fuente. Guardarla sería tener dos verdades y una desactualizada». `ARCHIVOS` (estado.py:79-87) confirma a estado.md: vinculos, prioridades, archivados, atencion, sesiones, paneles, y nada de fichas.
 
 **Arreglo propuesto:** Quitar «caché de fichas» de configuracion.md:31 y «caché» de config.py:80; estado.md tiene razón.
 
-## [menor] `viva: true` con `aviso` no vacío, contra lo que promete el contrato
+## [menor] `viva: true` con `aviso` no vacío, contra lo que promete el contrato — **arreglado**
 **Dónde:** src/telar/ordenes/_comun.py:201-206 · docs/contratos.md:303-305
 
 contratos.md:303-305 dice «con `aviso` no vacío, `viva` es `false` y los hilos son los que telar recuerda». En `_comun.tejer` la asignación `viva = mux.viva()` ocurre antes de `mux.hilos()`, dentro del mismo `try`: si la sesión está viva pero listarla falla, queda `viva=True` y `aviso` lleno. Verificado con un multiplexor de prueba. Es exactamente el caso que `doctor.py:124-127` sí contempla («viva, pero no pude listarla»).
 
 **Arreglo propuesto:** Poner `viva = False` en el `except`, o separar las dos llamadas en dos `try` y decidir explícitamente qué informa cada una.
 
-## [menor] docs/agentes.md lista siete momentos de Claude Code y dice que instala seis ganchos
+## [menor] docs/agentes.md lista siete momentos de Claude Code y dice que instala seis ganchos — **arreglado**
 **Dónde:** docs/agentes.md:156-168 · src/telar/agente/claude_code.py:65-73 y :76-84
 
 La tabla «Traduce así» tiene siete filas (SessionStart, UserPromptSubmit, Notification, PostToolUse, SubagentStop, Stop, SessionEnd) y la frase siguiente dice «Los seis ganchos que instala». Las dos cosas son ciertas por separado —`EVENTOS` traduce siete momentos, `GANCHOS` instala seis— pero el texto no dice que `SubagentStop` se entiende y no se engancha, así que un lector cuenta siete y encuentra seis en su settings.json.
 
 **Arreglo propuesto:** Marcar en la tabla la fila que no se instala, o instalar también `SubagentStop` si la omisión no es deliberada.
 
-## [menor] La implementación de referencia del multiplexor es la única sin pruebas
+## [menor] La implementación de referencia del multiplexor es la única sin pruebas — **arreglado**
 **Dónde:** pruebas/ (existe test_mux_zellij.py, no hay test_mux_tmux.py ni prueba de mux/base.py) · .github/workflows/ci.yml
 
 tmux.py (535 líneas, «la implementación de referencia») y mux/base.py (366 líneas, el contrato y todos los derivados: `buscar_tab`, `pane_de`, `pane_activo`, `hilo_de`, `hilos`, `escribir`) no tienen ningún archivo de pruebas; la única implementación con suite es la que no cumple la interfaz. El comentario de ci.yml lo admite («El multiplexor no lo usan las pruebas de hoy») y sin embargo instala tmux en CI. Ninguna de las divergencias de este informe entre tmux y zellij la habría cazado la suite: los 407 casos pasan.
 
 **Arreglo propuesto:** Escribir una prueba de contrato compartida —una tabla de casos que se corra contra ambas implementaciones con el proceso simulado— en vez de una suite por multiplexor. Es lo que habría hecho visible la falta de `disponible()` y de la guardia de salto de línea.
 
-## [menor] `alcance` se declara obligatorio en el contrato de proveedores y ninguna orden lo muestra
+## [menor] `alcance` se declara obligatorio en el contrato de proveedores y ninguna orden lo muestra — **arreglado**
 **Dónde:** src/telar/proveedores/__init__.py:10-12 y :41 · src/telar/ordenes/config.py:53-57 · src/telar/ordenes/doctor.py:236-259
 
 El contrato de proveedores dice que cada uno «declara en `alcance` qué toca del mundo, **para que se pueda leer antes de encenderlo**», y las tres implementaciones lo rellenan con cuidado (calendario.py:487, :496, :564; tareas.py:495, :574). Ninguna orden lo imprime: `telar config` muestra nombre, activo y opciones; `telar doctor` muestra solo la cuenta de activos. La única garantía de privacidad que telar le ofrece al usuario por escrito no tiene superficie por donde leerse.
 
 **Arreglo propuesto:** Incluir `alcance` en el JSON y en la vista de `telar config`, y en la revisión de proveedores de `telar doctor`: es barato y es justo lo que la promesa del módulo requiere.
 
-## [menor] Las salidas de texto truncan rutas y frases al ancho del terminal sin decirlo
+## [menor] Las salidas de texto truncan rutas y frases al ancho del terminal sin decirlo — **arreglado**
 **Dónde:** src/telar/ordenes/doctor.py:58, ficha.py:97 y 118, hilos.py:_linea
 
 `telar doctor` en un terminal de 80 columnas imprime «✓ config  /private/tmp/un/directorio/bastante/largo/de/tra…/ba» — la ruta cortada a la mitad de un segmento, sin elipsis, sin ninguna señal de que falta algo. Con COLUMNS=200 se ve entera. En una orden cuyo trabajo es decirte dónde están las cosas para que las arregles, una ruta cortada en seco es peor que ninguna: se copia y no funciona. Lo mismo en ESTADO de `telar ficha` y en la línea de estado de `telar hilos`, donde la frase se corta a media palabra.
 
 **Arreglo propuesto:** Un helper único `recortar(texto, ancho)` que ponga «…» cuando corta, y que en `doctor` las rutas no se recorten nunca —que pasen a la línea siguiente indentadas, como ya hace con el `→ arreglo`.
 
-## [menor] Concordancia de número en los mensajes contados
+## [menor] Concordancia de número en los mensajes contados — **arreglado**
 **Dónde:** src/telar/ordenes/doctor.py:233 y 296, ordenes/perfil.py
 
 «1 hilos vinculados», «1 hilos con atención anotada», «(1 documentos)» en `telar perfil`. En un proyecto donde la prosa está cuidada hasta en los mensajes de error, el plural forzado canta.
 
 **Arreglo propuesto:** Un helper `plural(n, 'hilo', 'hilos')` en _comun, usado en los tres sitios.
 
-## [menor] `--sin-ficha` vacía `arquetipo` en el contrato de `hilo` sin que el contrato lo diga
+## [menor] `--sin-ficha` vacía `arquetipo` en el contrato de `hilo` sin que el contrato lo diga — **arreglado**
 **Dónde:** src/telar/ordenes/_comun.py:439 y alrededores (json_hilo)
 
 `telar hilos --json` devuelve arquetipo="proyecto"; `telar hilos --json --sin-ficha` devuelve arquetipo="" para los mismos hilos. docs/contratos.md advierte que con --sin-ficha «`ficha` puede ser null», pero no que `arquetipo` se vacíe. Un consumidor que use --sin-ficha por velocidad (la barra de estado, la extensión de VS Code) pierde la clasificación sin enterarse.
 
 **Arreglo propuesto:** O calcular el arquetipo sin leer el documento —sale de casar la ruta contra los globs del perfil, que no cuesta nada— o decirlo en docs/contratos.md junto a la nota de `ficha`.
 
-## [menor] El repositorio no tiene ningún commit y la rama no es la que el CI escucha
+## [menor] El repositorio no tiene ningún commit y la rama no es la que el CI escucha — **arreglado**
 **Dónde:** .git y .github/workflows/ci.yml:4
 
 `git log` responde «your current branch 'master' does not have any commits yet»: los 12 archivos de primer nivel están sin seguir. El workflow dispara `on: push: branches: [main]`. Tal como está, el primer push no corre CI. Además, pyproject declara Homepage en github.com/nicorivas/telar, que todavía no existe.

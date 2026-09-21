@@ -780,6 +780,9 @@ class Comando:
                 text=True,
                 timeout=self.tiempo,
                 cwd=str(carpeta) if carpeta.is_dir() else None,
+                # sin stdin: un programa que pregunte algo se cuelga esperando para siempre,
+                # y del otro lado no hay nadie. Igual que los otros caminos que salen afuera.
+                stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError as e:
             raise ErrorDeProveedor(f"no se pudo correr {linea[0]!r}: {e.strerror or e}") from e

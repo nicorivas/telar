@@ -214,7 +214,8 @@ class Ficha(Orden):
         codigo, salida, error = self.correr("ficha", "faro")
         self.assertEqual(codigo, 0, error)
         self.assertIn("· Entrega — 2026-06-30", salida)
-        self.assertIn("· El elect", salida)
+        # y lo que corta lo dice: «…» al final, no un corte mudo
+        self.assertIn("· El elec…", salida)
 
     def test_un_hilo_que_no_existe_se_dice(self):
         codigo, _, error = self.correr("ficha", "inventado")

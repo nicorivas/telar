@@ -25,6 +25,16 @@ ENTORNO = {
 }
 
 
+def _alcance(pr) -> str:
+    """Qué promete tocar ese proveedor. Se lee antes de encenderlo, que es para lo que está."""
+    try:
+        from telar.proveedores import REGISTRO
+
+        return REGISTRO[pr.nombre](pr).alcance
+    except Exception:  # noqa: BLE001 - un proveedor ajeno no tiene por qué ser prolijo
+        return ""
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("config", AYUDA)
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
@@ -54,7 +64,7 @@ def main(argv: list[str], ctx) -> int:
             "foco_maximo": cfg.intervalos.foco_maximo,
         },
         "proveedores": {
-            nombre: {"activo": pr.activo, "opciones": pr.opciones}
+            nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": pr.opciones}
             for nombre, pr in cfg.proveedores.items()
         },
         "entorno": pisadas,

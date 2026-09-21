@@ -142,7 +142,7 @@ _MINIMO = 8
 
 
 def _recortar(texto: str, tope: int) -> str:
-    return texto[: max(tope, _MINIMO)]
+    return _comun.recortar(texto, tope, minimo=_MINIMO)
 
 
 def _vinieta(valor, ancho: int) -> str:

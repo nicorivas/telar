@@ -388,6 +388,10 @@ def ejecutable_telar() -> list[str]:
     return [sys.executable, "-m", "telar.cli"]
 
 
+#: por aquí se reconoce un gancho de telar dentro de la configuración de otro programa.
+MARCA_AVISO = "agente aviso"
+
+
 def comando_aviso(agente: str, *, ejecutable: Sequence[str] | None = None) -> list[str]:
     """El comando que un gancho tiene que correr para avisarle a telar.
 
@@ -516,6 +520,15 @@ class AgenteBase(ABC):
     @abstractmethod
     def nuevo(self, ruta: Path | None = None) -> list[str]:
         """El comando que abre una conversación nueva, sin correrlo."""
+
+    def comandos_instalados(self) -> tuple[str, ...]:
+        """Los comandos de telar que hoy están puestos en la configuración del agente.
+
+        Sirve para comprobar que siguen apuntando a un telar que existe: la ruta se
+        escribe absoluta a propósito, y un venv rehecho la deja muerta en silencio.
+        Quien no sepa mirar su configuración devuelve vacío y no pasa nada.
+        """
+        return ()
 
     def ganchos(self) -> tuple[Gancho, ...]:
         """Qué eventos nativos hay que enganchar para que telar se entere de todo."""

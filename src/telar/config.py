@@ -77,7 +77,8 @@ class Config:
     sesion: str = "telar"
     #: raíz del repositorio de trabajo: de ahí sale el perfil y ahí viven los hilos.
     raiz: Path = field(default_factory=Path.cwd)
-    #: dónde escribir el estado derivado (caché, semáforo, tiempo). Nunca en `raiz`.
+    #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
+    #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
     #: el `telar-perfil.yaml`; por defecto, el de la raíz.
     perfil: Path | None = None

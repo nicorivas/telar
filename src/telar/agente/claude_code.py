@@ -40,7 +40,7 @@ from datetime import datetime
 from pathlib import Path
 
 from telar.agente import Conversacion, ErrorDeAgente, registrar
-from telar.agente.base import AgenteBase, Aviso, Evento, Gancho, Instalacion, comando_aviso
+from telar.agente.base import MARCA_AVISO, AgenteBase, Aviso, Evento, Gancho, Instalacion, comando_aviso
 
 __all__ = [
     "ClaudeCode",
@@ -169,6 +169,20 @@ class ClaudeCode(AgenteBase):
             cuando=datetime.now(),
             datos={"nativo": nativo, "transcripcion": str(crudo.get("transcript_path") or "")},
         )
+
+    def comandos_instalados(self) -> tuple[str, ...]:
+        datos = _leer_ajustes(self.ruta_ajustes())
+        hooks = datos.get("hooks") if isinstance(datos, dict) else None
+        if not isinstance(hooks, dict):
+            return ()
+        vistos: list[str] = []
+        for grupos in hooks.values():
+            for grupo in grupos if isinstance(grupos, list) else []:
+                for gancho in (grupo or {}).get("hooks", []) if isinstance(grupo, dict) else []:
+                    comando = gancho.get("command", "") if isinstance(gancho, dict) else ""
+                    if MARCA_AVISO in comando and comando not in vistos:
+                        vistos.append(comando)
+        return tuple(vistos)
 
     def ganchos(self) -> tuple[Gancho, ...]:
         return GANCHOS

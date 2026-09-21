@@ -135,6 +135,24 @@ def duracion(segundos: float) -> str:
     return f"{minutos // 60}h{minutos % 60:02d}" if minutos >= 60 else f"{minutos}m"
 
 
+def recortar(texto: str, ancho: int, *, minimo: int = 12) -> str:
+    """Corta a `ancho` y lo DICE con «…». Nunca deja el ancho en negativo.
+
+    Cortar en silencio es mentir por omisión: quien ve «/private/tmp/…/sc» sabe que
+    falta algo, quien ve «/private/tmp/claude-501/-Users» cree que eso es la ruta. Y un
+    terminal angosto no debería vaciar la columna: por eso el mínimo.
+    """
+    tope = max(int(ancho), minimo)
+    if len(texto) <= tope:
+        return texto
+    return texto[: max(tope - 1, 1)] + "…"
+
+
+def plural(n: int, singular: str, plural_: str = "") -> str:
+    """«1 hilo», «2 hilos». La prosa cuidada también cuenta cuando la escribe una máquina."""
+    return f"{n} {singular if n == 1 else (plural_ or singular + 's')}"
+
+
 def ruta_relativa(ruta: Path | None, raiz: Path) -> str:
     """La carpeta del hilo vista desde la raíz. Siempre relativa: es lo que promete el contrato.
 
@@ -235,28 +253,18 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
             aviso = aviso or f"«{viejo}» ahora se llama «{nuevo}»: moví su vínculo y su estado"
 
     vivos = frozenset(h.nombre for h in crudos)
-    vinculos = est.vinculos()
-    archivados = est.archivados()
+    # una sola lectura y bajo candado: si no, se dibuja media lista de antes y media de
+    # después mientras otra sesión escribe. Para eso existe `Estado.foto`.
+    foto = est.foto(tope=config.intervalos.foco_maximo)
+    vinculos = foto["vinculos"]
+    archivados = foto["archivados"]
 
     if todos:
-        conocidos = sorted((set(vinculos) | archivados) - vivos)
+        conocidos = sorted((set(vinculos) | set(archivados)) - vivos)
         # sin multiplexor, el id es el nombre: es la única llave que hay
         crudos += [Hilo(id=nombre, nombre=nombre) for nombre in conocidos]
 
-    marcas = mod_estado.marcas_desde(_lineas_foco(est))
-    hilos = mod_estado.vestir(
-        crudos,
-        raiz=config.raiz,
-        vinculos=vinculos,
-        prioridades=est.prioridades(),
-        archivados=archivados,
-        atenciones={h: a for h, (a, _) in est.atenciones().items()},
-        sesiones=est.sesiones(),
-        tiempos=mod_estado.tiempo_por_hilo(
-            marcas, config.intervalos.foco_maximo, desde=datetime.now().date()
-        ),
-        vistos=mod_estado.ultimo_foco(marcas),
-    )
+    hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
     if con_ficha:
@@ -267,7 +275,9 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         hilos=hilos,
         vivos=vivos,
         sesion=config.sesion,
-        viva=viva,
+        # con un aviso de por medio no se declara viva: el contrato dice que entonces
+        # los hilos son los que telar recuerda, y eso es justo lo que se está dibujando
+        viva=viva and not aviso,
         raiz=config.raiz,
         mux=mux,
         aviso=aviso,

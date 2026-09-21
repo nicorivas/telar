@@ -163,7 +163,9 @@ Es el único que viene de fábrica. Traduce así:
 | `Stop` | `termina` |
 | `SessionEnd` | `cierra` |
 
-Los seis ganchos que instala apuntan al **mismo** comando —`telar agente aviso
+Son siete momentos y **seis** ganchos: `SubagentStop` se entiende si llega, pero no se
+engancha —un subagente que termina no cambia en qué está la conversación—, así que en tu
+`settings.json` vas a contar seis. Los seis apuntan al **mismo** comando —`telar agente aviso
 claude-code`— y cuál fue viene en el JSON que Claude Code le manda por la entrada
 estándar (`hook_event_name`). Una sola línea que mantener.
 

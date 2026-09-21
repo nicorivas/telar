@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -46,6 +47,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
     revisiones += _version_mux(ctx)
+    revisiones += _ganchos_vivos(ctx)
     revisiones += _ficha(ctx)
     revisiones += _proveedores(ctx)
     revisiones += _ganchos(ctx, abiertos)
@@ -58,12 +60,12 @@ def main(argv: list[str], ctx) -> int:
 
     ancho = shutil.get_terminal_size((100, 24)).columns
     for r in revisiones:
-        print(f"  {MARCA[r['estado']]} {r['nombre']:<14} {r['dice'][:ancho - 20]}")
+        print(f"  {MARCA[r['estado']]} {r['nombre']:<14} {_comun.recortar(r['dice'], ancho - 20)}")
         if r["arreglo"] and r["estado"] != OK:
             print(_comun.tenue(f"      → {r['arreglo']}"))
     print()
     if fallas:
-        print(_comun.fuerte(f"{len(fallas)} falla(s)"))
+        print(_comun.fuerte(_comun.plural(len(fallas), "falla")))
     else:
         print(_comun.fuerte("sin fallas"))
     return 1 if fallas else 0
@@ -276,7 +278,7 @@ def _vinculos(ctx, abiertos: frozenset[str] | None = None) -> list[dict]:
     elif huerfanos:
         salida = [_r("vínculos", OK, f"{con_tab} con tab abierto, de {len(vinculos)} vinculados")]
     else:
-        salida = [_r("vínculos", OK, f"{len(vinculos)} hilos vinculados")]
+        salida = [_r("vínculos", OK, f"{_comun.plural(len(vinculos), 'hilo')} vinculados")]
     return salida + _huerfanos(huerfanos, "vínculo", "vínculos")
 
 
@@ -376,8 +378,48 @@ def _proveedores(ctx) -> list[dict]:
                 "instala el paquete que los registra, o quítalos de la configuración",
             )
         ]
-    activos = [p.nombre for p in declarados if p.activo]
-    return [_r("proveedores", OK, f"{len(activos)} activos: {', '.join(activos) or '—'}")]
+    activos = [p for p in declarados if p.activo]
+    if not activos:
+        return [_r("proveedores", OK, "ninguno activo")]
+    # el alcance es lo que cada proveedor promete tocar: se lee aquí, antes de confiar
+    lineas = []
+    for pr in activos:
+        try:
+            alcance = REGISTRO[pr.nombre](pr).alcance  # type: ignore[operator]
+        except Exception:  # noqa: BLE001 - un proveedor roto se reporta, no revienta doctor
+            alcance = "no supo decir qué toca"
+        lineas.append(_r("proveedor", OK, f"{pr.nombre}: {alcance}"))
+    return lineas
+
+
+def _ganchos_vivos(ctx) -> list[dict]:
+    """El comando anotado en los ganchos del agente, ¿todavía existe?
+
+    `instalar` escribe la ruta absoluta de telar, que es lo correcto —el PATH de un
+    gancho no es el de tu shell—, pero un venv rehecho o un `pipx reinstall` la dejan
+    apuntando a un ejecutable muerto. El agente se traga el error en silencio y la
+    atención simplemente deja de moverse; sin esto, doctor manda a instalar lo que ya
+    estaba instalado.
+    """
+    from telar.agente import INCLUIDOS, obtener as obtener_agente
+
+    salida: list[dict] = []
+    for nombre in INCLUIDOS:
+        try:
+            agente = obtener_agente(nombre, ctx.config)
+            instalados = agente.comandos_instalados()
+        except Exception:  # noqa: BLE001 - un agente ajeno no tiene por qué ser prolijo
+            continue
+        for comando in sorted({c for c in instalados if c}):
+            programa = shlex.split(comando)[0] if comando else ""
+            if programa and not (Path(programa).exists() or shutil.which(programa)):
+                salida.append(
+                    _r("ganchos", FALLA, f"{nombre}: apuntan a «{programa}», que ya no está",
+                       "vuelve a instalarlos con `telar agente instalar` desde el telar que uses hoy")
+                )
+            elif programa:
+                salida.append(_r("ganchos", OK, f"{nombre}: llaman a «{programa}»"))
+    return salida
 
 
 def _ganchos(ctx, abiertos: frozenset[str] | None = None) -> list[dict]:
