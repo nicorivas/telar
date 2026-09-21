@@ -206,6 +206,11 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         except ErrorDeMux as e:
             aviso = str(e)
 
+    # antes de leer nada: si un tab cambió de nombre en el multiplexor, el estado lo sigue
+    if crudos:
+        for viejo, nuevo in est.reconciliar(crudos):
+            aviso = aviso or f"«{viejo}» ahora se llama «{nuevo}»: moví su vínculo y su estado"
+
     vivos = frozenset(h.nombre for h in crudos)
     vinculos = est.vinculos()
     archivados = est.archivados()

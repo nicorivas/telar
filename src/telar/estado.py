@@ -91,6 +91,7 @@ ARCHIVOS = {
     "atencion": "atencion.json",
     "sesiones": "sesiones.json",
     "paneles": "paneles.json",
+    "ids": "ids.json",
 }
 
 #: El registro de cambios de foco, que no es JSON sino un log que solo crece.
@@ -751,6 +752,44 @@ class Estado:
             }
 
     # ── renombrar y olvidar ────────────────────────────────────────────────────
+
+    def ids(self) -> dict[str, str]:
+        """id del multiplexor → nombre que tenía la última vez que se lo vio."""
+        return {k: str(v) for k, v in self._leer("ids", {}).items() if isinstance(v, str)}
+
+    def reconciliar(self, hilos: Iterable[Hilo]) -> list[tuple[str, str]]:
+        """Sigue los renombres del multiplexor para que el estado no se quede huérfano.
+
+        El estado se guarda por NOMBRE, que es lo único que sobrevive a cerrar la sesión;
+        pero el nombre lo cambia cualquiera con dos teclas (`prefix ,` en tmux), y entonces
+        el vínculo, la prioridad y la atención se quedaban colgando del nombre viejo, que
+        además aparecía como un hilo fantasma. El id del multiplexor (`@3` en tmux, el id
+        del tab en zellij) sí es estable mientras la sesión vive: recordarlo permite ver el
+        renombre y mover el estado detrás. Devuelve los cambios que hizo.
+        """
+        vistos = {h.id: h.nombre for h in hilos if h.id and h.nombre and h.id != h.nombre}
+        if not vistos:
+            return []
+        antes = self.ids()
+        cambios: list[tuple[str, str]] = []
+        for ident, nombre in vistos.items():
+            viejo = antes.get(ident)
+            if viejo and viejo != nombre and self.conoce(viejo):
+                self.renombrar(viejo, nombre, fusionar=True)
+                cambios.append((viejo, nombre))
+        if cambios or antes != {**antes, **vistos}:
+            self._escribir("ids", {**antes, **vistos})
+        return cambios
+
+    def conoce(self, hilo: str) -> bool:
+        """¿El estado guarda algo de este hilo? (vínculo, prioridad, archivo o atención)"""
+        return (
+            hilo in self.vinculos()
+            or hilo in self.prioridades()
+            or hilo in self.archivados()
+            or hilo in self.atenciones()
+            or bool(self.sesiones().get(hilo))
+        )
 
     def renombrar(self, viejo: str, nuevo: str, *, fusionar: bool = False) -> None:
         """Mueve todo lo que sabe de `viejo` a `nuevo`.
