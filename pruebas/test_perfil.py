@@ -17,7 +17,12 @@ class Minimo(Prueba):
         self.addCleanup(tmp.cleanup)
         perf = p.cargar(Path(tmp.name))
         self.assertTrue(perf.minimo)
-        self.assertEqual([a.nombre for a in perf.arquetipos], ["proyecto"])
+        # tres formas, para que un repositorio sirva sin declarar nada: carpetas en la
+        # raíz, carpetas un nivel adentro (proyectos/…) y el README de la raíz
+        self.assertEqual(
+            [a.nombre for a in perf.arquetipos], ["proyecto", "proyecto anidado", "repositorio"]
+        )
+        self.assertEqual([a.ruta for a in perf.arquetipos], ["*/", "*/*/", "README.md"])
 
     def test_la_convencion_minima_es_primer_encabezado_parrafo_y_casillas(self):
         arq = p.PERFIL_MINIMO.arquetipo("proyecto")

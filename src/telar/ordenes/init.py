@@ -66,32 +66,112 @@ PLANTILLA_PERFIL = """\
 #
 # telar no sabe qué es un proyecto aquí: lo dice este archivo, viaja con el
 # repositorio, y cualquier telar que lo abra teje lo mismo. Esquema: docs/perfil.md
+#
+# Lo de abajo sale de mirar {mirado}: cambia las rutas y los encabezados por los
+# que de verdad usa este repositorio, que es para lo que existe el archivo.
 
 version: 1
 nombre: {nombre}
 
 arquetipos:
+{arquetipos}
+# Lo que este repositorio ofrece hacer sobre un hilo. `comando` es una lista de
+# palabras, nunca una línea de shell.
+acciones: []
+"""
 
-  proyecto:
-    descripcion: Una carpeta con un README que dice cómo va.
-    ruta: "*/"
-    documento: README.md
+PLANTILLA_ARQUETIPO = """
+  {nombre}:
+    descripcion: {descripcion}
+    ruta: "{ruta}"
+    documento: {documento}
     secciones:
       titulo:
         tipo: linea
         encabezado: '^#\\s+(.+)$'
       estado:
         tipo: parrafo
-        encabezado: '^##\\s+Estado'
+        encabezado: '{encabezado_estado}'
       pendientes:
         tipo: casillas
-        encabezado: '^##\\s+Pendientes'
+        encabezado: '{encabezado_pendientes}'
         maximo: 6
-
-# Lo que este repositorio ofrece hacer sobre un hilo. `comando` es una lista de
-# palabras, nunca una línea de shell.
-acciones: []
 """
+
+#: Dónde suele guardar la gente sus unidades de trabajo. Se prueban contra el repositorio
+#: y solo se escriben las que encuentran algo: un perfil que no calza con nada es peor que
+#: no tener perfil, porque parece configurado.
+CANDIDATOS = (
+    ("proyecto", "*/", "Una carpeta de la raíz con un README que dice cómo va."),
+    ("proyecto", "proyectos/*/", "Un proyecto, en proyectos/."),
+    ("proyecto", "projects/*/", "Un proyecto, en projects/."),
+    ("cliente", "clientes/*/", "Un cliente, en clientes/."),
+    ("cliente", "clients/*/", "Un cliente, en clients/."),
+)
+
+
+def _encabezados(documentos) -> tuple[str, str]:
+    """Con qué encabezado titula ESTE repositorio su estado y sus pendientes.
+
+    Se miran los documentos encontrados y se elige el que más aparece; si no aparece
+    ninguno, se deja el castellano, que es el del ejemplo, y el usuario lo cambia.
+    """
+    import re as _re
+
+    def mas_usado(palabras, defecto):
+        cuenta: dict[str, int] = {}
+        for doc in documentos[:20]:
+            try:
+                texto = doc.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            for linea in texto.splitlines():
+                m = _re.match(r"^#{2,3}\s+(.+?)\s*$", linea)
+                if m and m.group(1).split()[0].lower() in palabras:
+                    clave = m.group(1).split()[0]
+                    cuenta[clave] = cuenta.get(clave, 0) + 1
+        if not cuenta:
+            return defecto
+        return max(cuenta.items(), key=lambda par: par[1])[0]
+
+    estado = mas_usado({"estado", "status", "state"}, "Estado")
+    pendientes = mas_usado({"pendientes", "tareas", "todo", "to-do", "próximos", "next"}, "Pendientes")
+    return rf"^#{{2,3}}\s+{estado}", rf"^#{{2,3}}\s+{pendientes}"
+
+
+def _arquetipos_del_repo(raiz: Path) -> tuple[str, str]:
+    """Los arquetipos que calzan con lo que hay, y qué se miró para proponerlos."""
+    from telar.perfil import Arquetipo
+
+    bloques: list[str] = []
+    mirados: list[str] = []
+    vistos: set[str] = set()
+    for nombre, ruta, descripcion in CANDIDATOS:
+        arq = Arquetipo(nombre=nombre, ruta=ruta, documento="README.md")
+        documentos = arq.documentos(raiz)
+        if not documentos:
+            continue
+        clave = nombre if nombre not in vistos else f"{nombre}-{ruta.strip('*/').strip('/') or 'raiz'}"
+        vistos.add(clave)
+        estado, pendientes = _encabezados(documentos)
+        bloques.append(
+            PLANTILLA_ARQUETIPO.format(
+                nombre=clave, descripcion=descripcion, ruta=ruta, documento="README.md",
+                encabezado_estado=estado, encabezado_pendientes=pendientes,
+            )
+        )
+        mirados.append(f"{len(documentos)} en {ruta}")
+    if not bloques:
+        estado, pendientes = "^#{2,3}\\s+Estado", "^#{2,3}\\s+Pendientes"
+        bloques.append(
+            PLANTILLA_ARQUETIPO.format(
+                nombre="proyecto", descripcion="Una carpeta con un README que dice cómo va.",
+                ruta="*/", documento="README.md",
+                encabezado_estado=estado, encabezado_pendientes=pendientes,
+            )
+        )
+        mirados.append("ningún README donde se suele mirar")
+    return "".join(bloques), " · ".join(mirados)
 
 
 def main(argv: list[str], ctx) -> int:
@@ -151,9 +231,14 @@ def main(argv: list[str], ctx) -> int:
         if ruta_perfil.exists() and not o.forzar:
             avisos.append(f"ya había un perfil en {ruta_perfil}; --forzar lo reescribe")
         else:
+            _arq, _mirado = _arquetipos_del_repo(Path(cfg.raiz))
             try:
                 ruta_perfil.write_text(
-                    PLANTILLA_PERFIL.format(nombre=Path(cfg.raiz).name or "trabajo"),
+                    PLANTILLA_PERFIL.format(
+                        nombre=Path(cfg.raiz).name or "trabajo",
+                        arquetipos=_arq,
+                        mirado=_mirado,
+                    ),
                     encoding="utf-8",
                 )
             except OSError as e:

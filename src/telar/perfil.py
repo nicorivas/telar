@@ -184,18 +184,51 @@ class Perfil:
 #: La convención cuando el repositorio no declara nada: una carpeta con README, y
 #: dentro, lo primero de cada forma. Con esto telar sirve sin configurar nada.
 PERFIL_MINIMO = Perfil(
-    nombre="mínimo",
+    nombre="de casa",
     arquetipos=(
+        # Las tres formas en que la gente guarda proyectos, sin pedirle que declare nada:
+        # carpetas en la raíz, carpetas un nivel adentro (proyectos/, projects/, clients/)
+        # y el README de la raíz, que en un repo de un solo proyecto es todo lo que hay.
         Arquetipo(
             nombre="proyecto",
             ruta="*/",
             documento="README.md",
-            descripcion="Una carpeta con README, leída por convención.",
-            secciones=(
-                Seccion(nombre="titulo", tipo="linea", encabezado=r"^#\s+(.+)$"),
-                Seccion(nombre="estado", tipo="parrafo"),
-                Seccion(nombre="pendientes", tipo="casillas", maximo=6),
-            ),
+            descripcion="Una carpeta de la raíz con README.",
+        secciones=(
+            Seccion(nombre="titulo", tipo="linea", encabezado=r"^#\s+(.+)$"),
+            # sin anclar a propósito: sin perfil no se sabe cómo titula este repositorio sus
+            # secciones, y el primer párrafo y la primera lista de casillas los cumple casi
+            # cualquier README. Anclarlas es justo lo que se gana al escribir un perfil.
+            Seccion(nombre="estado", tipo="parrafo"),
+            Seccion(nombre="pendientes", tipo="casillas", maximo=6),
+        ),
+        ),
+        Arquetipo(
+            nombre="proyecto anidado",
+            ruta="*/*/",
+            documento="README.md",
+            descripcion="Una carpeta un nivel más adentro (proyectos/…, projects/…).",
+        secciones=(
+            Seccion(nombre="titulo", tipo="linea", encabezado=r"^#\s+(.+)$"),
+            # sin anclar a propósito: sin perfil no se sabe cómo titula este repositorio sus
+            # secciones, y el primer párrafo y la primera lista de casillas los cumple casi
+            # cualquier README. Anclarlas es justo lo que se gana al escribir un perfil.
+            Seccion(nombre="estado", tipo="parrafo"),
+            Seccion(nombre="pendientes", tipo="casillas", maximo=6),
+        ),
+        ),
+        Arquetipo(
+            nombre="repositorio",
+            ruta="README.md",
+            descripcion="El README de la raíz: en un repo de un solo proyecto, es la unidad.",
+        secciones=(
+            Seccion(nombre="titulo", tipo="linea", encabezado=r"^#\s+(.+)$"),
+            # sin anclar a propósito: sin perfil no se sabe cómo titula este repositorio sus
+            # secciones, y el primer párrafo y la primera lista de casillas los cumple casi
+            # cualquier README. Anclarlas es justo lo que se gana al escribir un perfil.
+            Seccion(nombre="estado", tipo="parrafo"),
+            Seccion(nombre="pendientes", tipo="casillas", maximo=6),
+        ),
         ),
     ),
 )

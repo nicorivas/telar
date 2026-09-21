@@ -137,22 +137,30 @@ Marcadores que telar reemplaza en cada palabra: `{ruta}` (la carpeta del hilo),
 
 ## Sin perfil: la convención mínima
 
-Un repositorio sin `telar-perfil.yaml` no queda fuera. Rige esto, que casi cualquier
-README cumple:
+Un repositorio sin `telar-perfil.yaml` no queda fuera: rige el **perfil de casa**, que
+cubre las tres formas en que la gente guarda su trabajo, sin pedirle que declare nada.
 
 ```yaml
 arquetipos:
-  proyecto:
-    ruta: "*/"
-    documento: README.md
-    secciones:
-      titulo:     { tipo: linea, encabezado: '^#\s+(.+)$' }
-      estado:     { tipo: parrafo }        # sin anclar: el primer párrafo
-      pendientes: { tipo: casillas, maximo: 6 }   # sin anclar: la primera lista de casillas
+  proyecto:           { ruta: "*/",        documento: README.md }   # carpetas de la raíz
+  proyecto anidado:   { ruta: "*/*/",      documento: README.md }   # proyectos/…, projects/…
+  repositorio:        { ruta: "README.md" }                         # un repo, un proyecto
 ```
 
-Es el `telar.perfil.PERFIL_MINIMO`. Sirve para probar telar en cualquier carpeta el
-primer día; el perfil se escribe cuando la convención ya no alcanza.
+Los tres leen lo mismo, y sin anclar, porque sin perfil no se sabe cómo titula este
+repositorio sus secciones:
+
+```yaml
+    secciones:
+      titulo:     { tipo: linea, encabezado: '^#\s+(.+)$' }
+      estado:     { tipo: parrafo }                # el primer párrafo
+      pendientes: { tipo: casillas, maximo: 6 }    # la primera lista de casillas
+```
+
+Es el `telar.perfil.PERFIL_MINIMO`. Sirve para el primer día en cualquier carpeta; el
+perfil propio se escribe cuando eso ya no alcanza —y `telar init --perfil` lo propone
+mirando el repositorio: qué rutas tienen README y con qué encabezados titula sus
+secciones.
 
 ## Errores
 

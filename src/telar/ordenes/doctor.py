@@ -172,11 +172,21 @@ def _perfil(ctx) -> list[dict]:
     perfil = ctx.perfil
     raiz = ctx.config.raiz
     if perfil.minimo:
+        cuantas = len(lectura.indice(perfil, raiz))
+        if cuantas:
+            return [
+                _r(
+                    "perfil",
+                    OK,
+                    f"sin {NOMBRE_ARCHIVO}: rige el de casa, y alcanza {_comun.plural(cuantas, 'unidad', 'unidades')}",
+                    "telar init --perfil escribe uno a la medida de este repositorio",
+                )
+            ]
         return [
             _r(
                 "perfil",
                 AVISO,
-                f"no hay {NOMBRE_ARCHIVO} en {raiz}: rige la convención mínima",
+                f"sin {NOMBRE_ARCHIVO}, y el de casa no alcanza ningún README bajo {raiz}",
                 "telar init --perfil, o escríbelo a mano (docs/perfil.md)",
             )
         ]
