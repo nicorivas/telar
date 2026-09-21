@@ -30,10 +30,10 @@ than as another program.
 
 ## Requirements
 
-* [telar](../README.md) on your `PATH` (`telar --version` should answer).
+* [telar](https://github.com/nicorivas/telar) on your `PATH` (`telar --version` should answer).
 * A multiplexer telar can talk to: **tmux** or **zellij**.
 * A working repository. telar does not decide what a project is — your repository declares
-  it in `telar-perfil.yaml` (see `docs/perfil.md`). Without one, telar falls back to a
+  it in `telar-perfil.yaml` (see [docs/perfil.md](https://github.com/nicorivas/telar/blob/main/docs/perfil.md)). Without one, telar falls back to a
   minimal convention and the views still work, with less to show.
 
 ## Install
