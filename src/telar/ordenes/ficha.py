@@ -33,10 +33,7 @@ def main(argv: list[str], ctx) -> int:
     else:
         hilo = _comun.hilo_actual(tel)
         if hilo is None:
-            return _comun.queja(
-                "no sé en qué hilo estoy. Dime cuál: telar ficha <hilo>"
-                + (f"\n{tel.aviso}" if tel.aviso else "")
-            )
+            return _comun.sin_hilo("ficha", tel)
 
     acciones = [
         {

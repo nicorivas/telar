@@ -52,7 +52,7 @@ def main(argv: list[str], ctx) -> int:
         else:
             hilo = _comun.hilo_actual(tel)
         if hilo is None:
-            return _comun.queja("no sé en qué hilo estoy; dime cuál con --hilo")
+            return _comun.sin_hilo("accion", tel)
         if hilo.ruta is None:
             return _comun.queja(
                 f"«{hilo.nombre}» no está vinculado, y «{accion.nombre}» corre en la carpeta del hilo"

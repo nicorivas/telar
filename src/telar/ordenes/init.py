@@ -276,7 +276,9 @@ def detectar_multiplexor() -> str:
         return "zellij"
     if os.environ.get("TMUX"):
         return "tmux"
-    for nombre in MULTIPLEXORES:
+    # con los dos instalados gana tmux: es la implementación de referencia, la que
+    # sabe mover paneles entre hilos y la única a la que se le puede apuntar un cliente
+    for nombre in ("tmux", *MULTIPLEXORES):
         if shutil.which(nombre):
             return nombre
     return ""

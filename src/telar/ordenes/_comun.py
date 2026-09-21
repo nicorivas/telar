@@ -370,6 +370,20 @@ def _con_ficha(hilo: Hilo, ctx, unidades: dict[str, tuple[Arquetipo, Path]]) -> 
 
 # ── encontrar un hilo ───────────────────────────────────────────────────────────
 
+def sin_hilo(orden: str, tel=None) -> int:
+    """La queja de «no sé en qué hilo estoy», con los nombres que hay a mano.
+
+    Decir «usa --hilo» sin decir cuáles existen deja al recién llegado adivinando: los
+    nombres los pone el multiplexor y el primero suele ser «Tab #1».
+    """
+    nombres = [h.nombre for h in getattr(tel, "hilos", ())][:8] if tel is not None else []
+    pista = f"\n  los hay: {', '.join(nombres)}" if nombres else ""
+    return queja(
+        f"no sé en qué hilo estoy. Dime cuál: telar {orden} --hilo <hilo>"
+        f"{pista}\n  (dentro de la sesión no hace falta: el hilo se sabe solo)"
+    )
+
+
 def hilo_actual(tel: Telar) -> Hilo | None:
     """El hilo desde donde se está corriendo esto.
 

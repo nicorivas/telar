@@ -50,6 +50,12 @@ def main(argv: list[str], ctx) -> int:
     llaman.sort(key=lambda h: (LLAMAN.index(h.atencion), h.nombre))
 
     filas = orden_pendientes.juntar(ctx, tel)
+    # sin ningún hilo vinculado, la pantalla que debería mostrar el día salía vacía
+    # teniendo los documentos delante: se cae al repositorio y se dice que es eso
+    del_repo = False
+    if not filas:
+        filas = orden_pendientes.juntar(ctx, tel, repo=True)
+        del_repo = bool(filas)
     filas.sort(key=lambda f: (not f["en_curso"], f["hilo"] or "~", f["ref"]))
 
     agenda: list[dict] | None = None
@@ -106,7 +112,10 @@ def main(argv: list[str], ctx) -> int:
         print(f"  {simbolo} {hilo.nombre[:22]:<22} {_comun.tenue(hilo.atencion.value)}")
 
     print()
-    print(_comun.fuerte("PENDIENTES"))
+    print(
+        _comun.fuerte("PENDIENTES")
+        + (_comun.tenue("  ·  del repositorio: ningún hilo vinculado todavía") if del_repo else "")
+    )
     if not filas:
         print(_comun.tenue("  nada que los documentos declaren pendiente"))
     for fila in filas[: o.limite]:

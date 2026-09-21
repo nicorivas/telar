@@ -76,10 +76,7 @@ def main(argv: list[str], ctx) -> int:
     else:
         hilo = _comun.hilo_actual(tel)
         if hilo is None:
-            return _comun.queja(
-                "no sé en qué hilo estoy; dime cuál con --hilo"
-                + (f"\n{tel.aviso}" if tel.aviso else "")
-            )
+            return _comun.sin_hilo("hilo", tel)
 
     est = tel.estado
     salida = 0
