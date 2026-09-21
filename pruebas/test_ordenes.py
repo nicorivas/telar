@@ -16,10 +16,12 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 from comun import EJEMPLO, Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import cli
+from telar.ordenes import tejer
 
 
 class Orden(Prueba):
@@ -388,6 +390,44 @@ class Uso(Orden):
         codigo, salida, _ = self.correr("hilos", "--help")
         self.assertEqual(codigo, 0)
         self.assertIn("telar hilos", salida)
+
+
+class ElOrdenEnQueSeAbren(Prueba):
+    """`tejer` abre ocho de las que haya: cuáles ocho lo decide el perfil, no el abecedario."""
+
+    @staticmethod
+    def _perfil(*nombres):
+        return SimpleNamespace(arquetipos=[SimpleNamespace(nombre=n) for n in nombres])
+
+    @staticmethod
+    def _unidades(pares):
+        return {ruta: (SimpleNamespace(nombre=arq), Path(ruta) / "README.md") for ruta, arq in pares}
+
+    def test_manda_el_orden_en_que_el_perfil_declara_los_arquetipos(self):
+        # El caso real: por ruta, «conocimiento/» gana siempre y no se abre un proyecto vivo.
+        unidades = self._unidades([
+            ("conocimiento/benchmarks", "area"),
+            ("conocimiento/ia", "area"),
+            ("operacion/proyectos/astillero", "proyecto"),
+            ("operacion/proyectos/canteras", "proyecto"),
+        ])
+        self.assertEqual(
+            tejer._primeras(self._perfil("proyecto", "area"), unidades),
+            ["operacion/proyectos/astillero", "operacion/proyectos/canteras",
+             "conocimiento/benchmarks", "conocimiento/ia"],
+        )
+
+    def test_dentro_de_un_arquetipo_sigue_mandando_la_ruta(self):
+        unidades = self._unidades([("b", "uno"), ("a", "uno"), ("c", "uno")])
+        self.assertEqual(tejer._primeras(self._perfil("uno"), unidades), ["a", "b", "c"])
+
+    def test_un_arquetipo_que_el_perfil_no_declara_va_al_final(self):
+        unidades = self._unidades([("z", "forastero"), ("a", "uno")])
+        self.assertEqual(tejer._primeras(self._perfil("uno"), unidades), ["a", "z"])
+
+    def test_nunca_abre_mas_que_el_tope(self):
+        unidades = self._unidades([(f"p{i:02d}", "uno") for i in range(30)])
+        self.assertEqual(len(tejer._primeras(self._perfil("uno"), unidades)), tejer.TOPE)
 
 
 if __name__ == "__main__":

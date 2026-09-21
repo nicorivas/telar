@@ -72,6 +72,14 @@ varias: proyectos, notas, clientes.
 La ruta tiene que ser relativa y no salir de la raíz: un `..` o un `/` inicial es
 un error. telar solo lee dentro del repositorio que lo invitó.
 
+**El orden en que se declaran importa dos veces.** Cuando dos rutas calzan con dos
+arquetipos, gana el primero que se declaró —por eso «proyecto cerrado» va antes que
+«área de conocimiento» si `conocimiento/proyectos/` calza con los dos—. Y cuando
+`telar tejer` tiene que elegir cuáles ocho unidades abre de las que haya, abre las del
+primer arquetipo antes que las del segundo. Un repositorio con ciento setenta y nueve
+unidades declara así qué es lo que trabaja: el arquetipo de arriba es el que se ve al
+entrar.
+
 ## Secciones
 
 Una sección dice **dónde** está algo (`encabezado`) y **qué forma** tiene (`tipo`).

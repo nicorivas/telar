@@ -43,6 +43,22 @@ def _bautizar(tel, hilos, nombre: str) -> None:
         pass
 
 
+def _primeras(perfil, unidades: dict) -> list[str]:
+    """Cuáles de las unidades se abren, y en qué orden: el que el perfil declaró.
+
+    Un repositorio grande tiene cientos de unidades y caben ocho. Elegirlas por orden
+    alfabético de ruta es elegirlas por la letra de la carpeta que las contiene: en un
+    repositorio real eso abrió cinco áreas de conocimiento y tres proyectos cerrados,
+    y ningún proyecto vivo. El perfil ya dice qué importa más —el arquetipo que se
+    declara primero es el primero que se abre—, así que basta con respetarlo.
+    """
+    orden = {a.nombre: i for i, a in enumerate(perfil.arquetipos)}
+    def clave(relativa: str) -> tuple[int, str]:
+        arquetipo, _ = unidades[relativa]
+        return (orden.get(arquetipo.nombre, len(orden)), relativa)
+    return sorted(unidades, key=clave)[:TOPE]
+
+
 def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
     """Un hilo por unidad del perfil, vinculado. Devuelve los abiertos y los que faltaron.
 
@@ -54,12 +70,13 @@ def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
     unidades = lectura.indice(ctx.perfil, ctx.config.raiz)
     if not unidades:
         return [], 0
+    elegidas = _primeras(ctx.perfil, unidades)
     _bautizar(tel, hilos, Path(ctx.config.raiz).name or "telar")
     puestos = {h.nombre for h in hilos}
     est = mod_estado.abrir(ctx.config)
     vinculados = set(est.vinculos())
     abiertos: list[str] = []
-    for relativa in sorted(unidades)[:TOPE]:
+    for relativa in elegidas:
         nombre = Path(relativa).name or relativa
         if nombre in puestos or relativa in vinculados:
             continue

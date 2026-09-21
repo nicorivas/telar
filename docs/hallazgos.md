@@ -302,3 +302,35 @@ cazó; ninguna prueba lo habría cazado, porque en 3.12 y 3.13 el archivo compil
 
 **Arreglo:** sacar la llamada a una variable antes del `print`. Verificado con un Python 3.11 de
 verdad: las 579 pruebas pasan en 3.11 y en 3.13.
+
+---
+
+# Lo que destapó el primer uso real
+
+Contra un repositorio de verdad —179 unidades, nueve arquetipos— y no contra `ejemplo/`.
+
+## [serio] `tejer` elegía las ocho unidades por orden alfabético de ruta — **arreglado**
+**Dónde:** src/telar/ordenes/tejer.py:62
+
+Con 179 unidades caben ocho, y `sorted(unidades)[:8]` las elegía por la letra de la carpeta
+que las contiene. En el repositorio con el que se probó, eso abrió cinco áreas de conocimiento y tres proyectos cerrados,
+y ni un proyecto vivo: la primera pantalla de telar mostraba lo que menos se trabaja. No es
+un detalle de presentación, es la pantalla con la que alguien decide si esto le sirve.
+
+**Arreglo:** `_primeras()` ordena por el lugar que el arquetipo ocupa en el perfil y recién
+después por ruta. El orden de declaración ya decidía qué arquetipo gana cuando dos calzan con
+la misma carpeta; ahora decide también qué se abre, que es la misma idea —el repositorio dice
+qué es lo que trabaja— aplicada dos veces. Queda escrito en docs/perfil.md.
+
+## [menor] El perfil escrito a mano declaraba secciones que el repositorio casi no usa, y se perdía las que sí — **arreglado**
+**Dónde:** el `telar-perfil.yaml` del repositorio de trabajo, no el código
+
+Escrito desde la plantilla y desde `arquetipos.md`, sin contar contra el árbol. Faltaban
+`Notas` (32 de 37 proyectos, 54 de 73 deals), `Estado PMO` (29) y `Conexiones` (15), y a los
+deals les faltaban `Cronograma`, `Equipo y Dedicación` y las dos anteriores. Al revés,
+`Info General` estaba marcada `requerida` en los deals y solo la traen 58 de 73: 15 avisos
+que no son un problema que nadie vaya a arreglar.
+
+**Arreglo:** contar los encabezados del repositorio antes de declararlos. Los avisos de
+`telar doctor` bajaron de 49 a 35, y los 35 que quedan son desvíos de verdad respecto de la
+plantilla que el propio repositorio publica.
