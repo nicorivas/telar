@@ -78,7 +78,7 @@ class Tab:
     """Un tab del multiplexor, tal como el multiplexor lo ve.
 
     `id` es la llave con la que se le habla: en tmux el identificador de ventana
-    (`@3`), que sobrevive a que se renumeren los tabs; en zellij, el nombre. `posicion`
+    (`@3`) y en zellij el id del tab, los dos estables mientras la sesión viva. `posicion`
     es el lugar en la barra, empezando por donde empiece el programa (tmux respeta su
     `base-index`), y sirve para ordenar y para mostrar, nunca para identificar.
     """

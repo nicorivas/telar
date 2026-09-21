@@ -5,6 +5,7 @@ de cada orden. Esto es la otra mitad: que esas órdenes hagan lo que dicen contr
 instalado, que es lo único que nota un cambio de versión. Nunca toca otra sesión.
 """
 import shutil
+import time
 import unittest
 
 from pruebas import comun  # noqa: F401  (pone src/ en el path)
@@ -78,7 +79,13 @@ class ContraTmuxDeVerdad(unittest.TestCase):
 
     def test_el_comando_que_corre_un_pane_se_ve(self):
         tab = self.mux.crear_tab(nombre="telar-comando", comando=["sleep", "30"])
-        comandos = [p.comando for p in self.mux.panes(tab.id)]
+        # el proceso tarda un parpadeo en reemplazar a la shell: se espera, no se adivina
+        comandos: list[str] = []
+        for _ in range(20):
+            comandos = [p.comando for p in self.mux.panes(tab.id)]
+            if any("sleep" in c for c in comandos):
+                break
+            time.sleep(0.1)
         self.assertTrue(any("sleep" in c for c in comandos), comandos)
         self.mux.cerrar_tab(tab.id)
 

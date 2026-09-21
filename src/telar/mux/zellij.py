@@ -53,11 +53,13 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from telar.config import Config
 from telar.modelo import Hilo
 from telar.mux import ErrorDeMux
+from telar.mux.base import Direccion, MultiplexorBase, NoExiste, Pane, Tab, comprobar_direccion
 
 __all__ = ["Zellij", "NoSoportado", "construir", "VERSION_PROBADA"]
 
@@ -133,7 +135,7 @@ def _sesiones_vivas(salida: str) -> set[str]:
     return nombres
 
 
-class Zellij:
+class Zellij(MultiplexorBase):
     """El multiplexor zellij, visto por telar.
 
     `sesion` es la sesión que telar teje; todas las acciones van dirigidas a ella
@@ -401,6 +403,180 @@ class Zellij:
             self._accion("write-chars", "-p", destino, "--", texto)
         if enviar:
             self._accion("write", "-p", destino, "--", "13")
+
+    # ── el vocabulario común (telar.mux.base) ──────────────────────────────────
+    #
+    # zellij llegó a telar con su propio vocabulario (hilos, crear, escribir) y tmux con
+    # el de la base (tabs, panes). Tener dos hacía que el código de arriba probara uno y
+    # después el otro. Estos son los primitivos que la base pide; los de arriba siguen
+    # existiendo porque son los que usa el resto y porque aquí saben algo que la base no
+    # (esperar a que un tab recién creado aparezca, distinguir el panel principal).
+
+    def disponible(self) -> bool:
+        return shutil.which(self.binario) is not None
+
+    def _hacer_tab(self, tid: int, ps: list[dict], activo: int | None) -> Tab:
+        return Tab(
+            id=str(tid),
+            posicion=int(ps[0].get("tab_position", 0) or 0),
+            nombre=str(ps[0].get("tab_name") or ""),
+            activo=(activo is not None and tid == activo),
+            paneles=len(ps),
+        )
+
+    def _hacer_pane(self, p: dict) -> Pane:
+        cwd = p.get("pane_cwd") or ""
+        return Pane(
+            id=_id_de_panel(p),
+            tab=str(p.get("tab_id", "")),
+            titulo=str(p.get("title") or ""),
+            comando=str(p.get("pane_command") or ""),
+            ruta=Path(cwd) if cwd else None,
+            foco=bool(p.get("is_focused")),
+            flotante=bool(p.get("is_floating")),
+            terminado=bool(p.get("exited")),
+        )
+
+    def tabs(self) -> list[Tab]:
+        try:
+            paneles = self.paneles()
+        except ErrorDeMux:
+            if self.viva():
+                raise
+            return []
+        activo = self._tab_activo()
+        tabs = [self._hacer_tab(tid, ps, activo) for tid, ps in self._por_tab(paneles).items()]
+        tabs.sort(key=lambda t: (t.posicion, int(t.id)))
+        return tabs
+
+    def tab_activo(self) -> Tab | None:
+        return next((t for t in self.tabs() if t.activo), None)
+
+    def ir_a_tab(self, tab: str) -> None:
+        tid, _ = self._tab(tab)
+        self._accion("go-to-tab-by-id", str(tid))
+
+    def crear_tab(
+        self,
+        nombre: str,
+        *,
+        ruta: Path | None = None,
+        comando: Sequence[str] | None = None,
+        foco: bool = True,
+    ) -> Tab:
+        hilo = self.crear(nombre, ruta, list(comando) if comando else None)
+        return next(
+            (t for t in self.tabs() if t.id == hilo.id),
+            Tab(id=hilo.id, posicion=0, nombre=nombre, activo=True, paneles=1),
+        )
+
+    def renombrar_tab(self, tab: str, nombre: str) -> None:
+        self.renombrar(tab, nombre)
+
+    def cerrar_tab(self, tab: str) -> None:
+        self.cerrar(tab)
+
+    def panes(self, tab: str | None = None) -> list[Pane]:
+        paneles = self.paneles()
+        if tab is None:
+            return [self._hacer_pane(p) for p in paneles]
+        tid, ps = self._tab(tab)
+        return [self._hacer_pane(p) for p in ps]
+
+    def enfocar_pane(self, pane: str) -> None:
+        self._accion("focus-pane-id", pane)
+
+    def escribir_pane(self, pane: str, texto: str, *, enviar: bool = False) -> None:
+        if not enviar and ("\n" in texto or "\r" in texto):
+            raise ErrorDeMux(
+                "escribir sin enviar no admite saltos de línea: el salto ES el ↩. "
+                "Pide `enviar=True` si eso es lo que quieres."
+            )
+        if texto:
+            self._accion("write-chars", "-p", pane, "--", texto)
+        if enviar:
+            self._accion("write", "-p", pane, "--", "13")
+
+    def abrir_pane(
+        self,
+        comando: Sequence[str] | None = None,
+        *,
+        junto_a: str | None = None,
+        reemplaza: str | None = None,
+        direccion: Direccion = "derecha",
+        tamano: int | None = None,
+        ruta: Path | None = None,
+        titulo: str = "",
+        foco: bool = True,
+    ) -> Pane:
+        """Abre un panel. `tamano` no existe en zellij: se ignora y se dice por qué.
+
+        zellij parte SIEMPRE el panel con el foco, así que con `junto_a` hay que mover el
+        foco antes. Es un efecto que tmux no tiene, y por eso se deja escrito.
+        """
+        if junto_a and reemplaza:
+            raise ErrorDeMux("abrir_pane: o `junto_a` o `reemplaza`, no los dos")
+        antes = {p.id for p in self.panes()}
+        argumentos = ["new-pane"]
+        if reemplaza:
+            argumentos += ["--in-place", f"--pane-id={reemplaza}", "--close-replaced-pane"]
+        else:
+            if junto_a:
+                self.enfocar_pane(junto_a)
+            hacia = {"derecha": "right", "abajo": "down"}.get(comprobar_direccion(direccion))
+            if hacia is None:
+                raise ErrorDeMux(
+                    f"zellij solo parte hacia derecha o abajo; pediste {direccion}"
+                )
+            argumentos += ["-d", hacia]
+        if ruta is not None:
+            argumentos += [f"--cwd={ruta}"]
+        if titulo:
+            argumentos += [f"--name={titulo}"]
+        if comando:
+            argumentos += ["--", *[str(p) for p in comando]]
+        salida = self._accion(*argumentos, espera=ESPERA_LARGA).strip()
+
+        # Reemplazar un panel TERMINADO no imprime el id (0.45.1): se busca por diferencia.
+        ident = salida if salida.startswith(("terminal_", "plugin_")) else ""
+        for intento in range(6):
+            paneles = self.panes()
+            if ident:
+                hallado = next((p for p in paneles if p.id == ident), None)
+                if hallado:
+                    return hallado
+            else:
+                nuevos = [p for p in paneles if p.id not in antes]
+                if nuevos:
+                    return nuevos[0]
+            if intento:
+                time.sleep(0.2)
+        raise ErrorDeMux("abrí un panel pero zellij no me dijo cuál es")
+
+    def cerrar_pane(self, pane: str) -> None:
+        self._accion("close-pane", "-p", pane)
+
+    def mover_pane(
+        self,
+        pane: str,
+        *,
+        tab: str | None = None,
+        junto_a: str | None = None,
+        direccion: Direccion = "derecha",
+        tamano: int | None = None,
+        nombre: str = "",
+        foco: bool = True,
+    ) -> Pane:
+        """En zellij no se puede desde la CLI: la API de plugins sí, la línea de comandos no.
+
+        Queda dicho aquí y no en un comentario perdido: quien quiera mudar paneles entre
+        tabs con zellij necesita un plugin wasm que lo haga (`break_panes_to_tab_with_index`),
+        y telar no lo trae. Con tmux, `move-pane` lo hace y ya.
+        """
+        raise ErrorDeMux(
+            "zellij no sabe mover paneles entre tabs desde la línea de comandos; "
+            "eso solo lo puede un plugin wasm. Con el multiplexor tmux funciona."
+        )
 
     # ── más allá del protocolo, porque es puro zellij ──────────────────────────
 
