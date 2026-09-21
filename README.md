@@ -126,7 +126,10 @@ Docs are in Spanish, the language this is written in.
   so an outside program can produce them. Today: a thread's state.
 - [`docs/agentes.md`](docs/agentes.md) — the six events an agent reports, and what
   another agent would have to do to integrate.
+- [`docs/publicar.md`](docs/publicar.md) — how a version gets out: what to set up
+  once, and the runbook per release.
 - [`ejemplo/`](ejemplo/) — a small invented workspace.
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed, version by version.
 
 ## License
 

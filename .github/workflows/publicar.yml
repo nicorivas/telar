@@ -1,0 +1,125 @@
+# Publicar una versión. Se dispara con una etiqueta `v0.1.0`, y nada más: mientras no
+# haya etiqueta, nada sale al mundo.
+#
+# No hay ningún token guardado aquí. PyPI usa «trusted publishing»: confía en este
+# repositorio, en este workflow y en este entorno, y emite la credencial al vuelo. Hay
+# que darlo de alta una vez en https://pypi.org/manage/account/publishing/ con:
+#
+#   dueño: nicorivas · repositorio: telar · workflow: publicar.yml · entorno: pypi
+#
+# La extensión sí necesita un secreto (VSCE_PAT, de un Personal Access Token de Azure
+# DevOps con alcance Marketplace › Manage). Sin él, ese trabajo se saltea solo y el
+# paquete .vsix igual queda adjunto a la Release para instalarlo a mano.
+name: publicar
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comprobar:
+    name: La etiqueta dice lo mismo que el código
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cotejar versiones
+        run: |
+          etiqueta="${GITHUB_REF_NAME#v}"
+          codigo=$(python -c "import re,pathlib;print(re.search(r'__version__ = \"(.+?)\"', pathlib.Path('src/telar/__init__.py').read_text()).group(1))")
+          ext=$(python -c "import json,pathlib;print(json.loads(pathlib.Path('vscode/package.json').read_text())['version'])")
+          echo "etiqueta=$etiqueta código=$codigo extensión=$ext"
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && { [ "$etiqueta" != "$codigo" ] || [ "$etiqueta" != "$ext" ]; }; then
+            echo "::error::la etiqueta y las versiones del código no coinciden"
+            exit 1
+          fi
+
+  paquete:
+    name: Construir
+    needs: comprobar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - name: Construir el paquete de Python
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+
+      - name: Construir la extensión
+        working-directory: vscode
+        run: |
+          npm ci
+          npx --yes @vscode/vsce package --no-dependencies --out ../dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  pypi:
+    name: PyPI
+    needs: paquete
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # lo que firma la credencial al vuelo; no hay token guardado
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Dejar solo lo de Python
+        run: rm -f dist/*.vsix
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  marketplace:
+    name: Marketplace
+    needs: paquete
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publicar, si hay con qué
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::sin VSCE_PAT: la extensión queda solo adjunta a la Release"
+            exit 0
+          fi
+          npx --yes @vscode/vsce publish --packagePath dist/*.vsix
+
+  release:
+    name: Adjuntar a la Release
+    needs: paquete
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
