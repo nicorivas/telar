@@ -1,0 +1,29 @@
+telar
+Copyright (c) 2026 Nicolás Rivas
+Licensed under the MIT License (see LICENSE).
+
+────────────────────────────────────────────────────────────────────────────
+
+Acknowledgements
+
+telar grew out of a private system where the project bar was a zellij plugin —
+a fork of cfal/zellij-vertical-tabs:
+
+    zellij-vertical-tabs
+    https://github.com/cfal/zellij-vertical-tabs
+    Copyright (c) cfal
+    MIT License
+
+No code from that project ships in telar: the bar was rewritten as a separate
+view, and telar itself is the engine underneath. The debt is real anyway — the
+idea of tabs as a vertical list of projects, and the first working version of
+it, came from there.
+
+────────────────────────────────────────────────────────────────────────────
+
+Dependencies
+
+PyYAML — MIT License. https://pyyaml.org/
+    Used to read the work repository's telar-perfil.yaml.
+
+Everything else telar uses is in the Python standard library.

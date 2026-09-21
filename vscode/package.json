@@ -1,0 +1,666 @@
+{
+  "name": "telar",
+  "displayName": "telar",
+  "description": "Your work threads in the sidebar: status, priority, today's time, each thread's document, and the day. Everything is read from the telar CLI.",
+  "version": "0.1.0",
+  "publisher": "TODO-publisher",
+  "license": "MIT",
+  "icon": "media/telar.png",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TODO-publisher/telar.git",
+    "directory": "vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/TODO-publisher/telar/issues"
+  },
+  "homepage": "https://github.com/TODO-publisher/telar#readme",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "tmux",
+    "zellij",
+    "terminal",
+    "projects",
+    "tasks"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "telar runs a command-line program and the actions declared by the working repository."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "telar reads local files and talks to a terminal multiplexer."
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "telar",
+          "title": "telar",
+          "icon": "media/telar.svg"
+        }
+      ],
+      "secondarySidebar": [
+        {
+          "id": "telar-hilo",
+          "title": "hilo",
+          "icon": "media/telar.svg"
+        }
+      ]
+    },
+    "views": {
+      "telar": [
+        {
+          "type": "webview",
+          "id": "telar.hilos",
+          "name": "hilos",
+          "contextualTitle": "telar"
+        },
+        {
+          "type": "webview",
+          "id": "telar.tareas",
+          "name": "tareas",
+          "contextualTitle": "telar"
+        }
+      ],
+      "telar-hilo": [
+        {
+          "type": "webview",
+          "id": "telar.ficha",
+          "name": "ficha",
+          "contextualTitle": "telar"
+        },
+        {
+          "id": "telar.carpeta",
+          "name": "carpeta",
+          "contextualTitle": "telar"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "telar.carpeta",
+        "contents": "Este hilo no está vinculado a ninguna carpeta del repositorio.\n[Vincular a una carpeta…](command:telar.vincular)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "telar.prioridadMenu",
+        "label": "Prioridad"
+      }
+    ],
+    "commands": [
+      {
+        "command": "telar.ir",
+        "title": "Ir al hilo",
+        "category": "telar"
+      },
+      {
+        "command": "telar.irNumero",
+        "title": "Ir al hilo N",
+        "category": "telar"
+      },
+      {
+        "command": "telar.hoy",
+        "title": "hoy (abre la vista, o vuelve al terminal)",
+        "category": "telar",
+        "icon": "$(calendar)"
+      },
+      {
+        "command": "telar.ficha",
+        "title": "Ficha del hilo",
+        "category": "telar",
+        "icon": "$(book)"
+      },
+      {
+        "command": "telar.fichaActualizar",
+        "title": "Actualizar la ficha",
+        "category": "telar",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "telar.documento",
+        "title": "Abrir el documento del hilo",
+        "category": "telar",
+        "icon": "$(markdown)"
+      },
+      {
+        "command": "telar.carpeta",
+        "title": "Ver la carpeta en el explorador",
+        "category": "telar"
+      },
+      {
+        "command": "telar.renombrar",
+        "title": "Renombrar el hilo…",
+        "category": "telar"
+      },
+      {
+        "command": "telar.vincular",
+        "title": "Vincular a una carpeta…",
+        "category": "telar"
+      },
+      {
+        "command": "telar.desvincular",
+        "title": "Desvincular de su carpeta",
+        "category": "telar"
+      },
+      {
+        "command": "telar.prioridadAlta",
+        "title": "● alta",
+        "category": "telar"
+      },
+      {
+        "command": "telar.prioridadMedia",
+        "title": "◐ media",
+        "category": "telar"
+      },
+      {
+        "command": "telar.prioridadBaja",
+        "title": "○ baja",
+        "category": "telar"
+      },
+      {
+        "command": "telar.prioridadNinguna",
+        "title": "sin prioridad",
+        "category": "telar"
+      },
+      {
+        "command": "telar.archivar",
+        "title": "Archivar",
+        "category": "telar",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "telar.desarchivar",
+        "title": "Desarchivar",
+        "category": "telar"
+      },
+      {
+        "command": "telar.cerrar",
+        "title": "Cerrar el hilo…",
+        "category": "telar"
+      },
+      {
+        "command": "telar.olvidar",
+        "title": "Que telar lo olvide…",
+        "category": "telar"
+      },
+      {
+        "command": "telar.accion",
+        "title": "Correr una acción del perfil…",
+        "category": "telar",
+        "icon": "$(play)"
+      },
+      {
+        "command": "telar.nuevo",
+        "title": "Hilo nuevo…",
+        "category": "telar",
+        "icon": "$(add)"
+      },
+      {
+        "command": "telar.lanzador",
+        "title": "Ir a un hilo…",
+        "category": "telar",
+        "icon": "$(search)"
+      },
+      {
+        "command": "telar.orden",
+        "title": "Ordenar los hilos…",
+        "category": "telar",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "telar.archivo",
+        "title": "Mostrar u ocultar el archivo",
+        "category": "telar",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "telar.tareas",
+        "title": "Tareas (abre la vista)",
+        "category": "telar",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "telar.tareasActualizar",
+        "title": "Actualizar las tareas",
+        "category": "telar",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "telar.actualizar",
+        "title": "Actualizar",
+        "category": "telar",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "telar.tejer",
+        "title": "Tejer la sesión en un terminal",
+        "category": "telar",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "telar.terminal",
+        "title": "Volver al terminal",
+        "category": "telar"
+      },
+      {
+        "command": "telar.carpetaActualizar",
+        "title": "Actualizar la carpeta",
+        "category": "telar",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "telar.carpetaOcultos",
+        "title": "Mostrar u ocultar los archivos ocultos",
+        "category": "telar",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "telar.carpetaSistema",
+        "title": "Mostrar en el sistema de archivos",
+        "category": "telar",
+        "enablement": "view == telar.carpeta"
+      },
+      {
+        "command": "telar.carpetaExplorador",
+        "title": "Ver en el explorador de VS Code",
+        "category": "telar",
+        "enablement": "view == telar.carpeta"
+      },
+      {
+        "command": "telar.carpetaRuta",
+        "title": "Copiar la ruta",
+        "category": "telar",
+        "enablement": "view == telar.carpeta"
+      },
+      {
+        "command": "telar.carpetaAlLado",
+        "title": "Abrir al lado",
+        "category": "telar",
+        "enablement": "view == telar.carpeta"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "telar.ir",
+          "when": "false"
+        },
+        {
+          "command": "telar.irNumero",
+          "when": "false"
+        },
+        {
+          "command": "telar.prioridadAlta",
+          "when": "false"
+        },
+        {
+          "command": "telar.prioridadMedia",
+          "when": "false"
+        },
+        {
+          "command": "telar.prioridadBaja",
+          "when": "false"
+        },
+        {
+          "command": "telar.prioridadNinguna",
+          "when": "false"
+        },
+        {
+          "command": "telar.carpetaSistema",
+          "when": "false"
+        },
+        {
+          "command": "telar.carpetaExplorador",
+          "when": "false"
+        },
+        {
+          "command": "telar.carpetaRuta",
+          "when": "false"
+        },
+        {
+          "command": "telar.carpetaAlLado",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "telar.hoy",
+          "when": "view == telar.hilos",
+          "group": "navigation@1"
+        },
+        {
+          "command": "telar.lanzador",
+          "when": "view == telar.hilos",
+          "group": "navigation@2"
+        },
+        {
+          "command": "telar.tareas",
+          "when": "view == telar.hilos",
+          "group": "navigation@3"
+        },
+        {
+          "command": "telar.nuevo",
+          "when": "view == telar.hilos",
+          "group": "navigation@4"
+        },
+        {
+          "command": "telar.orden",
+          "when": "view == telar.hilos",
+          "group": "1_vista@1"
+        },
+        {
+          "command": "telar.archivo",
+          "when": "view == telar.hilos",
+          "group": "1_vista@2"
+        },
+        {
+          "command": "telar.actualizar",
+          "when": "view == telar.hilos",
+          "group": "2_otros@1"
+        },
+        {
+          "command": "telar.tejer",
+          "when": "view == telar.hilos",
+          "group": "2_otros@2"
+        },
+        {
+          "command": "telar.fichaActualizar",
+          "when": "view == telar.ficha",
+          "group": "navigation@1"
+        },
+        {
+          "command": "telar.accion",
+          "when": "view == telar.ficha",
+          "group": "navigation@2"
+        },
+        {
+          "command": "telar.carpetaOcultos",
+          "when": "view == telar.carpeta",
+          "group": "navigation@1"
+        },
+        {
+          "command": "telar.carpetaActualizar",
+          "when": "view == telar.carpeta",
+          "group": "navigation@2"
+        },
+        {
+          "command": "telar.tareasActualizar",
+          "when": "view == telar.tareas",
+          "group": "navigation@1"
+        }
+      ],
+      "telar.prioridadMenu": [
+        {
+          "command": "telar.prioridadAlta",
+          "group": "p@1"
+        },
+        {
+          "command": "telar.prioridadMedia",
+          "group": "p@2"
+        },
+        {
+          "command": "telar.prioridadBaja",
+          "group": "p@3"
+        },
+        {
+          "command": "telar.prioridadNinguna",
+          "group": "p@4"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "telar.ir",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "1_ir@1"
+        },
+        {
+          "command": "telar.ficha",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "1_ir@2"
+        },
+        {
+          "command": "telar.documento",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "1_ir@3"
+        },
+        {
+          "command": "telar.carpeta",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "1_ir@4"
+        },
+        {
+          "command": "telar.accion",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "1_ir@5"
+        },
+        {
+          "command": "telar.renombrar",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "2_editar@1"
+        },
+        {
+          "command": "telar.vincular",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "2_editar@2"
+        },
+        {
+          "submenu": "telar.prioridadMenu",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "2_editar@3"
+        },
+        {
+          "command": "telar.archivar",
+          "when": "webviewId == 'telar.hilos' && webviewSection == hilo",
+          "group": "3_estado@1"
+        },
+        {
+          "command": "telar.desarchivar",
+          "when": "webviewId == 'telar.hilos' && webviewSection == archivado",
+          "group": "3_estado@1"
+        },
+        {
+          "command": "telar.cerrar",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "9_peligro@1"
+        },
+        {
+          "command": "telar.olvidar",
+          "when": "webviewId == 'telar.hilos' && webviewSection =~ /^(hilo|archivado)$/",
+          "group": "9_peligro@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "telar.carpetaAlLado",
+          "when": "view == telar.carpeta && viewItem == archivo",
+          "group": "1_abrir@1"
+        },
+        {
+          "command": "telar.carpetaSistema",
+          "when": "view == telar.carpeta",
+          "group": "1_abrir@2"
+        },
+        {
+          "command": "telar.carpetaExplorador",
+          "when": "view == telar.carpeta",
+          "group": "1_abrir@3"
+        },
+        {
+          "command": "telar.carpetaRuta",
+          "when": "view == telar.carpeta",
+          "group": "2_copiar@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "telar.irNumero",
+        "args": 1,
+        "key": "alt+1",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 2,
+        "key": "alt+2",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 3,
+        "key": "alt+3",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 4,
+        "key": "alt+4",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 5,
+        "key": "alt+5",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 6,
+        "key": "alt+6",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 7,
+        "key": "alt+7",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 8,
+        "key": "alt+8",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.irNumero",
+        "args": 9,
+        "key": "alt+9",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.hoy",
+        "key": "alt+h",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.archivo",
+        "key": "alt+a",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.orden",
+        "key": "alt+o",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.tareas",
+        "key": "alt+t",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.ficha",
+        "key": "alt+f",
+        "when": "!editorTextFocus"
+      },
+      {
+        "command": "telar.lanzador",
+        "key": "alt+p",
+        "when": "!editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "telar",
+      "properties": {
+        "telar.cli": {
+          "type": "string",
+          "default": "telar",
+          "markdownDescription": "The `telar` program. Looked up in your `PATH`; use an absolute path if you keep it somewhere else."
+        },
+        "telar.config": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Configuration file to use, passed as `--config`. Empty means telar's own default (`$TELAR_CONFIG`, then `~/.config/telar/config.toml`)."
+        },
+        "telar.raiz": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Root of the working repository, passed as `--raiz`. Empty means the one in the configuration file."
+        },
+        "telar.orden": {
+          "type": "string",
+          "default": "mux",
+          "enum": [
+            "mux",
+            "alfa",
+            "reciente",
+            "prioridad"
+          ],
+          "enumDescriptions": [
+            "As the multiplexer lists them",
+            "Alphabetical",
+            "Last focused first",
+            "Priority: high, medium, low; unset last"
+          ],
+          "description": "How to sort the thread list."
+        },
+        "telar.intervalo": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 250,
+          "markdownDescription": "How often (ms) to run `telar hilos --json --sin-ficha` for the thread list."
+        },
+        "telar.intervaloFicha": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 1000,
+          "markdownDescription": "How often (ms) to re-read each thread's document (`telar hilos --json`, without `--sin-ficha`). This is the only expensive read."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "publish:marketplace": "vsce publish",
+    "publish:openvsx": "ovsx publish"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "ovsx": "^0.10.0",
+    "typescript": "^5.5.0"
+  }
+}

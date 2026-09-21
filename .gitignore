@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Entornos
+.venv/
+venv/
+env/
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Estado derivado: se puede borrar sin perder nada (ver docs/configuracion.md)
+.telar/
+*.local.toml
+
+# Lo que deja el ejemplo al correr sus acciones
+ejemplo/proyectos/*/revision.txt
+
+# Sistema
+.DS_Store

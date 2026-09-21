@@ -1,0 +1,65 @@
+# telar-perfil.yaml — lo que este repositorio declara de sí mismo.
+#
+# Es un workspace inventado, para probar telar sin datos de nadie. Un repositorio
+# de verdad se ve igual: dice qué carpetas son unidades de trabajo, qué archivo es
+# la cara de cada una, qué se lee de ese archivo y qué acciones ofrece.
+#
+# Esquema completo: docs/perfil.md
+
+version: 1
+nombre: taller
+
+arquetipos:
+
+  proyecto:
+    descripcion: Un encargo con carpeta propia y un README que dice cómo va.
+    ruta: "proyectos/*/"
+    documento: README.md
+    secciones:
+      titulo:
+        tipo: linea
+        encabezado: '^#\s+(.+)$'
+      estado:
+        tipo: parrafo
+        encabezado: '^##\s+Estado'
+        requerida: true
+      pendientes:
+        tipo: casillas
+        encabezado: '^##\s+Pendientes'
+        maximo: 6
+      esperando:
+        tipo: lista
+        encabezado: '^##\s+Esperando'
+      ficha:
+        tipo: tabla
+        encabezado: '^##\s+Ficha'
+
+  nota:
+    descripcion: Una nota suelta. No tiene carpeta; el archivo es la unidad.
+    ruta: "notas/*.md"
+    documento: "."
+    secciones:
+      titulo:
+        tipo: linea
+        encabezado: '^#\s+(.+)$'
+      estado:
+        tipo: parrafo
+
+acciones:
+
+  - nombre: revisar
+    descripcion: Repasa el proyecto del hilo y deja la revisión en revision.txt.
+    comando: ["sh", "-c", "date > revision.txt"]
+    tecla: r
+    donde: hilo
+
+  - nombre: contar
+    descripcion: Cuántos proyectos hay en el taller.
+    comando: ["sh", "-c", "ls proyectos | wc -l"]
+    donde: raiz
+
+  - nombre: limpiar
+    descripcion: Borra los archivos derivados del proyecto.
+    comando: ["rm", "-f", "revision.txt"]
+    donde: hilo
+    confirmar: true

@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      # El multiplexor no lo usan las pruebas de hoy, pero las del mux sí lo van
+      # a necesitar, y es mejor que esté desde el principio que descubrirlo tarde.
+      - name: tmux
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tmux
+          tmux -V
+
+      - name: Instalar telar
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Compilar todo
+        run: python -m compileall -q src pruebas
+
+      - name: Pruebas
+        run: python -m unittest discover -s pruebas -v
+
+      - name: La CLI responde
+        run: |
+          telar --version
+          telar --help

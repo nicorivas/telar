@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telar"
+description = "Un telar para hilos de trabajo: multiplexor de terminal, perfiles de repositorio y agentes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Nicolás Rivas" }]
+keywords = ["tmux", "zellij", "terminal", "workspace", "agents"]
+dynamic = ["version"]
+
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Utilities",
+]
+
+# tomllib es de la biblioteca estándar desde 3.11; PyYAML es la única dependencia
+# de terceros, y solo para leer el perfil del repositorio de trabajo.
+dependencies = ["PyYAML>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/nicorivas/telar"
+Source = "https://github.com/nicorivas/telar"
+
+[project.scripts]
+telar = "telar.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { attr = "telar.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
