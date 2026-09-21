@@ -66,6 +66,12 @@ TIEMPO_LIMITE = 5.0
 #: ni en una ruta. Con un tabulador o un espacio, un nombre con espacios rompe el parseo.
 SEP = "\x1f"
 
+#: Cómo escribe ese byte un tmux viejo. Hasta 3.4, tmux pasa lo que imprime por `vis()`
+#: antes de devolverlo, y los caracteres de control salen en octal: el 0x1f se vuelve los
+#: cuatro caracteres `\\037`. Un tmux nuevo devuelve el byte crudo. Los dos se leen igual
+#: si, cuando no vino el byte, se deshace el disfraz.
+SEP_EN_OCTAL = "\\037"
+
 CAMPOS_TAB = (
     "#{window_id}",
     "#{window_index}",
@@ -94,6 +100,18 @@ BANDERAS = {
     "abajo": ("-v",),
     "arriba": ("-v", "-b"),
 }
+
+
+def _descamuflar(salida: str) -> str:
+    """Devuelve el separador a ser un byte cuando el tmux de turno lo disfrazó de octal.
+
+    Se toca solo si el byte de verdad no vino en toda la salida: si vino, este tmux no
+    disfraza nada y un nombre de ventana que traiga los caracteres `\\037` es un nombre,
+    no un separador.
+    """
+    if SEP in salida or SEP_EN_OCTAL not in salida:
+        return salida
+    return salida.replace(SEP_EN_OCTAL, SEP)
 
 
 def _entero(valor: str, campo: str) -> int:
@@ -186,7 +204,7 @@ class Tmux(MultiplexorBase):
             if tolerante:
                 return ""
             raise self._queja(args, hecho.stderr)
-        return hecho.stdout
+        return _descamuflar(hecho.stdout)
 
     def _queja(self, args: Sequence[str], stderr: str) -> ErrorDeMux:
         """Traduce la queja de tmux al error que corresponde, sin perder lo que dijo."""

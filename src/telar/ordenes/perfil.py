@@ -84,7 +84,8 @@ def main(argv: list[str], ctx) -> int:
     for a in perfil.arquetipos:
         documentos = alcance[a.nombre]
         print()
-        print(f"  {_comun.fuerte(a.nombre)}  {_comun.tenue(a.ruta)}  ({_comun.plural(len(documentos), "documento")})")
+        cuantos = _comun.plural(len(documentos), "documento")
+        print(f"  {_comun.fuerte(a.nombre)}  {_comun.tenue(a.ruta)}  ({cuantos})")
         if a.descripcion:
             print(f"    {a.descripcion}")
         for s in a.secciones:

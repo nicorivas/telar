@@ -931,5 +931,44 @@ class ContraUnTmuxDeVerdad(Prueba):
         self.assertEqual(self.mux.activo().id, uno.id)
 
 
+class UnTmuxQueDisfrazaElSeparador(Prueba):
+    """Hasta 3.4, tmux pasa por `vis()` todo lo que imprime: el 0x1f sale como `\\037`.
+
+    Se descubrió en el CI de Linux, donde las veinte pruebas de integración cayeron con
+    «tmux devolvió 1 campos donde iban 5» mientras en macOS —tmux 3.7— pasaban todas.
+    """
+
+    @staticmethod
+    def _con_salida(texto: str):
+        hecho = mock.Mock(returncode=0, stdout=texto, stderr="")
+        return mock.patch.object(t.subprocess, "run", return_value=hecho)
+
+    def test_el_separador_en_octal_se_lee_igual_que_el_byte(self):
+        escapado = fila_tab(nombre="telar-escribir").replace(t.SEP, t.SEP_EN_OCTAL)
+        with self._con_salida(escapado + "\n"):
+            tabs = mux().tabs()
+        self.assertEqual([(x.id, x.nombre, x.paneles) for x in tabs], [("@3", "telar-escribir", 1)])
+
+    def test_tambien_un_panel(self):
+        escapado = fila_pane(comando="claude").replace(t.SEP, t.SEP_EN_OCTAL)
+        with self._con_salida(escapado + "\n"):
+            pane = mux()._pane("%7")
+        self.assertEqual(pane.comando, "claude")
+
+    def test_el_nombre_con_acento_vuelve_entero(self):
+        # `utf8_stravis` deja pasar el UTF-8 válido; solo disfraza los de control.
+        escapado = fila_tab(nombre="reunión").replace(t.SEP, t.SEP_EN_OCTAL)
+        with self._con_salida(escapado + "\n"):
+            self.assertEqual(mux().tabs()[0].nombre, "reunión")
+
+    def test_si_el_byte_de_verdad_vino_no_se_toca_nada(self):
+        # Un tmux nuevo no disfraza: entonces esos cuatro caracteres son un nombre.
+        with self._con_salida(fila_tab(nombre=r"raro\037raro") + "\n"):
+            self.assertEqual(mux().tabs()[0].nombre, r"raro\037raro")
+
+    def test_lo_que_no_trae_separador_pasa_derecho(self):
+        self.assertEqual(t._descamuflar("tmux 3.4\n"), "tmux 3.4\n")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -271,3 +271,34 @@ El contrato de proveedores dice que cada uno «declara en `alcance` qué toca de
 `git log` responde «your current branch 'master' does not have any commits yet»: los 12 archivos de primer nivel están sin seguir. El workflow dispara `on: push: branches: [main]`. Tal como está, el primer push no corre CI. Además, pyproject declara Homepage en github.com/nicorivas/telar, que todavía no existe.
 
 **Arreglo propuesto:** `git branch -m master main` antes del primer commit, y commitear. Ya verifiqué que .gitignore cubre lo derivado: tras mi corrida solo quedaron __pycache__/ y src/telar.egg-info, ambos ignorados.
+
+---
+
+# Lo que destapó el primer CI
+
+Dos fallas que ninguna prueba local podía ver, porque las dos dependen de la máquina: el CI
+corre Linux con tmux 3.4 y con Python 3.11, y el desarrollo es macOS con tmux 3.7 y Python 3.13.
+
+## [bloqueante] Un tmux anterior a 3.5 disfraza el separador de campos y ningún renglón se puede leer — **arreglado**
+**Dónde:** src/telar/mux/tmux.py:67 (`SEP`) y :263 (`_tab`)
+
+Los campos se piden pegados con el byte 0x1f, que no aparece en un nombre de ventana. Hasta 3.4,
+tmux pasa por `vis()` todo lo que imprime, así que ese byte vuelve como los cuatro caracteres
+`\037` y el renglón llega de una pieza: «tmux devolvió 1 campos donde iban 5». Las veintiséis
+pruebas de integración cayeron en el CI mientras las 574 pasaban en macOS. No es un problema de
+pruebas: contra un tmux de Ubuntu estable, `telar hilos` no habría leído un solo tab.
+
+**Arreglo:** `_descamuflar()` deshace el disfraz en la salida de `_tmux`, y solo cuando el byte
+de verdad no vino en toda la salida —si vino, este tmux no disfraza nada y esos cuatro caracteres
+son parte de un nombre—. Cinco pruebas nuevas con la salida escapada, incluida una con acento:
+`utf8_stravis` deja pasar el UTF-8 válido, así que «reunión» vuelve entero.
+
+## [bloqueante] Una f-string anidada con comillas dobles no compila en Python 3.11 — **arreglado**
+**Dónde:** src/telar/ordenes/perfil.py:87
+
+`f"… ({_comun.plural(len(documentos), "documento")})"` es válido desde 3.12 (PEP 701) y un
+`SyntaxError` en 3.11, que es el piso que declara pyproject. El paso «Compilar todo» del CI lo
+cazó; ninguna prueba lo habría cazado, porque en 3.12 y 3.13 el archivo compila.
+
+**Arreglo:** sacar la llamada a una variable antes del `print`. Verificado con un Python 3.11 de
+verdad: las 579 pruebas pasan en 3.11 y en 3.13.
