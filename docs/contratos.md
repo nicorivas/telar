@@ -259,7 +259,7 @@ Las reglas valen para todas:
 }
 ```
 
-`id` es la llave del multiplexor (el índice en tmux, el nombre en zellij) y es lo
+`id` es la llave del multiplexor (`@3` en tmux y el id del tab en zellij, estables mientras la sesión viva) y es lo
 que reciben las órdenes. `nombre` es lo que se muestra **y la llave del estado**:
 el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dice
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión

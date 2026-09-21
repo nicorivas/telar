@@ -32,12 +32,16 @@ se rompe, telar dice cuál es y se borra.
 Todos estos archivos están indexados por el **nombre** del hilo. `paneles.json` es
 la excepción: lo está por el panel del multiplexor.
 
-Podría estarlo por el `id`, y sería más estable de escribir. Pero el `id` es
-posicional en tmux —abrir un tab al principio corre todos los índices— y entonces la
-prioridad que le pusiste al hilo 3 amanece en otro. El nombre, en cambio, es lo que
-pusiste tú y lo que reconoces.
+Podría estarlo por el `id`, que es estable mientras la sesión viva (`@3` en tmux, el
+id del tab en zellij; ninguno es posicional). No lo está porque el id **no sobrevive a
+cerrar la sesión**: al volver a levantarla, los mismos proyectos traen ids nuevos y el
+estado quedaría huérfano entero. El nombre sí sobrevive, es lo que pusiste tú y lo que
+reconoces.
 
-El precio es que renombrar hay que acompañarlo. Eso hace `Estado.renombrar()`: mueve
+El precio es que renombrar hay que acompañarlo, y renombrar es fácil: dos teclas en
+tmux. Por eso `ids.json` recuerda qué nombre tenía cada id la última vez que se lo vio,
+y `Estado.reconciliar()` —que corre al armar la lista de hilos— detecta el renombre y
+mueve el estado detrás, avisando. Lo que mueve es `Estado.renombrar()`: mueve
 las llaves de los cinco archivos de una sola vez, bajo el candado de la carpeta. Lo
 que **no** reescribe es `foco.log`, y es a propósito: es historia, y reescribirla
 para que cuadre un total es peor que un total repartido en dos nombres.

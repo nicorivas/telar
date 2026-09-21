@@ -51,7 +51,7 @@ El sdist y el wheel (verificado construyéndolos) contienen solo src/telar, LICE
 
 **Arreglo propuesto:** Poner el publisher real y github.com/nicorivas/telar en los cuatro campos, o dejar el TODO pero hacer que el script `package` falle si lo encuentra.
 
-## [serio] mux/zellij.py no implementa la interfaz de mux/base.py: le faltan 17 de 27 miembros
+## [serio] mux/zellij.py no implementa la interfaz de mux/base.py: le faltan 17 de 27 miembros — **arreglado**
 **Dónde:** src/telar/mux/zellij.py:136 (class Zellij) frente a src/telar/mux/base.py:128 (MultiplexorBase) y src/telar/mux/tmux.py:148 (class Tmux)
 
 base.py:21-23 dice «Quien escriba un multiplexor nuevo hereda de `MultiplexorBase`» y tmux.py:1 se llama «la implementación de referencia de `telar.mux.base.MultiplexorBase`». `Zellij` no hereda de ella y solo cumple el protocolo estrecho de `telar.mux.Multiplexor`. Verificado: `issubclass(Zellij, MultiplexorBase)` es False y le faltan `tabs, tab_activo, ir_a_tab, crear_tab, renombrar_tab, cerrar_tab, panes, pane_de, pane_activo, enfocar_pane, escribir_pane, abrir_pane, cerrar_pane, mover_pane, buscar_tab, hilo_de, disponible`. Todo el vocabulario de paneles —que base.py:12-19 justifica como imprescindible para reconocer al agente y para escribirle— existe solo en tmux. La divergencia ya obligó a duck-typing en producción: `agente/base.py:249-268` prueba primero `mux.panes()` (objetos `Pane`) y después `mux.paneles()` (diccionarios crudos de zellij), y lo documenta como «las dos formas que hay hoy de listar paneles».
@@ -107,7 +107,7 @@ contratos.md:228 promete «`ruta` es absoluta (sirve para `cd`)». Ni `--raiz` n
 
 **Arreglo propuesto:** No pisar un respaldo existente: si `<nombre>.telar.bak` ya está, escribir `<nombre>.telar.<timestamp>.bak`, o directamente no respaldar en `desinstalar` (que solo quita lo propio y es idempotente). Y crear el respaldo con los permisos del original: `os.chmod(respaldo, ruta.stat().st_mode & 0o777)` justo después de escribirlo, o `shutil.copy2`.
 
-## [serio] Renombrar un tab desde el multiplexor huérfana todo el estado, inventa un hilo fantasma y bloquea la recuperación
+## [serio] Renombrar un tab desde el multiplexor huérfana todo el estado, inventa un hilo fantasma y bloquea la recuperación — **arreglado**
 **Dónde:** src/telar/estado.py (todo el estado va indexado por nombre), src/telar/estado.py:313 (partir), src/telar/ordenes/hilos.py:57
 
 El estado —vínculo, prioridad, atención, archivado— se guarda con el NOMBRE del tab como llave (vinculos.json: {"arboleda": "proyectos/arboleda"}), y el nombre del tab en tmux lo cambia cualquiera con prefix + coma, que es la forma natural de renombrar una ventana. Comprobado con `tmux rename-window arboleda arb2`: (a) la atención anotada se queda colgada del nombre viejo y el tab vivo pierde su símbolo; (b) el vínculo y la prioridad también, así que el tab vivo deja de apuntar a su proyecto; (c) aparece un hilo FANTASMA «arboleda» que no existe en tmux, con la prioridad y el vínculo puestos; (d) `partir()` separa por `archivado`, no por `vivo`, así que el fantasma entra en `vivos` y la cabecera anuncia «4 hilos» con tres ventanas abiertas —lo mismo en `telar doctor`, que reporta vínculos y atenciones de tabs que no existen—; (e) y la salida está cerrada: `telar hilo renombrar arboleda --hilo arb2`, que es lo que uno haría para recuperar el estado, responde «ya hay un hilo llamado «arboleda»», porque el fantasma ocupa el nombre. El único modo de volver es editar los JSON a mano. El README vende «held together across restarts», y basta un renombre para que no.
@@ -121,7 +121,7 @@ La ficha de faro muestra literalmente: «· {'texto': 'El electricista confirma 
 
 **Arreglo propuesto:** En `_dibujar`, tratar el dict con forma conocida: si el elemento es un dict, imprimir su campo de texto (`texto` o `que`) y colgarle la fecha si trae `cuando` —«· El electricista confirma… » / «· Entrega — 2026-06-30»—, y caer a `str(v)` solo para lo que no reconozca. Y agregar una prueba de `telar ficha` en modo texto contra ejemplo/proyectos/faro, que hoy no existe (test_ordenes.py solo ejercita el --json).
 
-## [serio] El multiplexor por defecto, tmux, no tiene ninguna prueba
+## [serio] El multiplexor por defecto, tmux, no tiene ninguna prueba — **arreglado**
 **Dónde:** pruebas/ — hay test_mux_zellij.py (33 pruebas) y no hay test_mux_tmux.py; src/telar/mux/tmux.py son 535 líneas
 
 tmux es el valor por defecto de `multiplexor` en config.py y la propia cabecera de tmux.py se presenta como «la implementación de referencia», pero de los 407 tests ninguno lo toca: `grep -l tmux pruebas/*.py` solo devuelve menciones de paso en test_config, test_agente y un comentario de test_ordenes. Todo lo delicado de ese archivo —el parseo por \x1f con recuento de campos, la traducción de id/índice/nombre a objetivo, `_linea` citando palabra por palabra para que no haya inyección de shell, `mover_pane` con sus tres destinos, `switch-client -c <tty>`— está sin red. El propio ci.yml lo admite en un comentario: «El multiplexor no lo usan las pruebas de hoy, pero las del mux sí lo van a necesitar». Instala tmux en CI y no lo usa. En esta corrida todo lo que probé a mano funcionó, así que no es un bug: es que la parte que puede romperse en silencio al cambiar de versión de tmux es la que nadie vigila.
