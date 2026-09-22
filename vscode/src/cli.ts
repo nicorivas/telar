@@ -132,6 +132,8 @@ export interface JsonPendiente {
 
 export interface JsonFicha {
     documento: string; relativo: string; titulo: string; estado: string;
+    /** el nombre para mostrar, según la `etiqueta` del perfil; vacío si no hay */
+    etiqueta?: string;
     pendientes: JsonPendiente[]; secciones: Record<string, unknown>;
     leida: string | null; nota: string; vacia: boolean;
 }
@@ -254,3 +256,10 @@ export const accion = (nombre: string, hilo: string) =>
     telar(['accion', nombre, '--hilo', hilo, '--si'], 120000);
 
 export const tejer = () => telar(['tejer'], 20000);
+
+/** Cómo se llama un hilo en pantalla: la etiqueta de su ficha, o su nombre. El nombre sigue
+ *  siendo la llave (la del multiplexor y la del estado): esto solo cambia lo que se lee. */
+export function nombreVisible(h: JsonHilo): string {
+    return h.ficha?.etiqueta?.trim() || h.nombre;
+}
+

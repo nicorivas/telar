@@ -107,6 +107,9 @@ class Arquetipo:
     secciones: tuple[Seccion, ...] = ()
     #: descripción libre, para que la interfaz pueda decir qué es esto.
     descripcion: str = ""
+    #: cómo se llama una unidad de este tipo en pantalla: `{titulo}`, `{campo:Clave}`
+    #: (una fila de la tabla de campos o del frontmatter). Vacía: el título del documento.
+    etiqueta: str = ""
 
     @property
     def por_carpeta(self) -> bool:
@@ -296,7 +299,7 @@ def _arquetipo(nombre: str, cuerpo: object) -> Arquetipo:
     contexto = f"arquetipos.{nombre}"
     cuerpo = _mapa(cuerpo, contexto)
 
-    sobra = set(cuerpo) - {"ruta", "documento", "descripcion", "secciones"}
+    sobra = set(cuerpo) - {"ruta", "documento", "descripcion", "secciones", "etiqueta"}
     if sobra:
         raise ErrorDePerfil(f"{contexto}: claves que telar no conoce: {', '.join(sorted(sobra))}")
 
@@ -313,6 +316,7 @@ def _arquetipo(nombre: str, cuerpo: object) -> Arquetipo:
         ruta=ruta,
         documento=documento,
         descripcion=_texto(cuerpo.get("descripcion", ""), f"{contexto}.descripcion", obligatorio=False),
+        etiqueta=_texto(cuerpo.get("etiqueta", ""), f"{contexto}.etiqueta", obligatorio=False),
         secciones=tuple(_seccion(n, c) for n, c in secciones.items()),
     )
 

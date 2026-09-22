@@ -142,7 +142,7 @@ export class PanelHoy {
         for (const x of filas) {
             h.push(`<div class="fila clic" data-accion="ir" data-valor="${esc(x.nombre)}">`
                 + `<span class="at ${x.atencion}">${GLIFO[x.atencion]}</span>`
-                + `<span class="nombre">${esc(x.nombre)}</span>`
+                + `<span class="nombre">${esc(cli.nombreVisible(modelo.hilos.find(y => y.nombre === x.nombre) ?? x))}</span>`
                 + `<span class="dim">${esc(NOMBRE_ATENCION[x.atencion] ?? x.atencion)}${x.visto ? `, hace ${hace(x.visto)}` : ''}</span></div>`);
         }
         return h;

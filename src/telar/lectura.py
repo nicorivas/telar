@@ -353,3 +353,64 @@ def ficha_de(
     if arquetipo is None or documento is None:
         return None, None
     return arquetipo, leer(documento, arquetipo)
+
+
+# ── el nombre en pantalla ──────────────────────────────────────────────────────────
+
+_MARCADOR = re.compile(r"\{([^{}]+)\}")
+_SEPARADORES = "·—–-|:/"
+
+
+def etiqueta(plantilla: str, ficha) -> str:
+    """El nombre para mostrar de una unidad, según la `etiqueta` de su arquetipo.
+
+    `{titulo}` es el título de la ficha y `{campo:Cliente}` una fila de su tabla de
+    campos. Tres reglas, cada una contra un nombre feo que salía:
+
+    - De un campo queda solo el nombre: sin paréntesis y cortado en la primera raya, coma o
+      punto y coma. «Aguas Pacífico (agua desalada; Quintero…)» es «Aguas Pacífico».
+    - Si un valor ya está dentro de otro, no se repite: con el título «AquaChile — Campaña
+      de Ideas», el cliente «AquaChile» sobra.
+    - Un marcador vacío se lleva su separador: sin cliente, «{campo:Cliente} · {titulo}»
+      es solo el título.
+
+    Sin plantilla, el título. Si al final no queda nada, "" (quien dibuja usa el nombre
+    del hilo).
+    """
+    if ficha is None:
+        return ""
+    titulo = (getattr(ficha, "titulo", "") or "").strip()
+    if not plantilla:
+        return titulo
+    campos = (getattr(ficha, "secciones", {}) or {}).get("campos") or {}
+
+    def valor(marcador: str) -> str:
+        marcador = marcador.strip()
+        if marcador == "titulo":
+            return titulo
+        if marcador.startswith("campo:"):
+            crudo = str(campos.get(marcador[len("campo:"):].strip(), "") or "")
+            sin_parentesis = re.sub(r"\s*\([^)]*\)?", "", crudo)
+            # un campo trae a veces su explicación pegada: «AquaChile, Gerencia de…»,
+            # «Antofagasta Minerals — grupo minero». El nombre es lo de antes.
+            return re.split(r"\s+[—–]\s+|;|,", sin_parentesis)[0].strip()
+        return ""
+
+    marcadores = _MARCADOR.findall(plantilla)
+    valores = {m: valor(m) for m in marcadores}
+    for m, v in list(valores.items()):
+        if v and any(v != otro and _plano(v) in _plano(otro) for otro in valores.values() if otro):
+            valores[m] = ""
+    texto = _MARCADOR.sub(lambda mm: valores.get(mm.group(1), ""), plantilla)
+    # los separadores que quedaron huérfanos al vaciarse un marcador
+    sep = re.escape(_SEPARADORES)
+    texto = re.sub(rf"^[\s{sep}]+|[\s{sep}]+$", "", texto)
+    texto = re.sub(rf"\s+([{sep}])(?:\s*[{sep}])+\s+", r" \1 ", texto)
+    return re.sub(r"\s{2,}", " ", texto).strip()
+
+
+def _plano(texto: str) -> str:
+    import unicodedata
+
+    return unicodedata.normalize("NFD", texto).encode("ascii", "ignore").decode().lower()
+

@@ -273,13 +273,17 @@ que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
 {
   "documento": "/casa/trabajo/proyectos/faro/README.md",
   "relativo": "proyectos/faro/README.md",
-  "titulo": "Faro", "estado": "La lámpara nueva llegó y está montada; …",
+  "titulo": "Faro", "etiqueta": "Puerto Norte · Faro",
+  "estado": "La lámpara nueva llegó y está montada; …",
   "pendientes": [ { "texto": "Ajustar el giro", "hecho": false, "en_curso": true, "id": "", "origen": "pendientes" } ],
   "secciones": { "esperando": [ … ], "campos": { … } },
   "leida": "2026-09-18T09:12:44", "nota": "", "vacia": false
 }
 ```
 
+`etiqueta` es el nombre para mostrar, armado con la `etiqueta` del arquetipo
+(docs/perfil.md); vacío si no hay con qué armarlo, y entonces se muestra el nombre del
+hilo. El nombre del hilo sigue siendo la llave: la etiqueta solo cambia lo que se lee.
 `secciones` lleva lo que el perfil declaró y telar no interpreta; su contenido
 depende del repositorio, así que un consumidor lo dibuja o lo ignora, pero no
 supone. `nota` dice en una frase por qué la ficha salió flaca (el documento no

@@ -365,7 +365,10 @@ def _con_ficha(hilo: Hilo, ctx, unidades: dict[str, tuple[Arquetipo, Path]]) -> 
             ficha=Ficha(nota=f"«{relativa}» no es ninguna unidad que declare el perfil"),
         )
     fuente = fuente_ficha(ctx.config)
-    return replace(hilo, arquetipo=arquetipo.nombre, ficha=leer_ficha(documento, arquetipo, fuente))
+    ficha = leer_ficha(documento, arquetipo, fuente)
+    if ficha is not None:
+        ficha = replace(ficha, etiqueta=lectura.etiqueta(arquetipo.etiqueta, ficha))
+    return replace(hilo, arquetipo=arquetipo.nombre, ficha=ficha)
 
 
 # ── encontrar un hilo ───────────────────────────────────────────────────────────
@@ -472,6 +475,7 @@ def json_ficha(ficha: Ficha | None, raiz: Path) -> dict | None:
         "documento": str(ficha.documento) if ficha.documento else "",
         "relativo": ruta_relativa(ficha.documento, raiz),
         "titulo": ficha.titulo,
+        "etiqueta": ficha.etiqueta,
         "estado": ficha.estado,
         "pendientes": [json_pendiente(p) for p in ficha.pendientes],
         "secciones": {k: _valor_json(v) for k, v in ficha.secciones.items()},

@@ -83,6 +83,8 @@ class Ficha:
     leida: datetime | None = None
     #: por qué la ficha salió vacía, si salió vacía (ruta inexistente, sin secciones…).
     nota: str = ""
+    #: el nombre para mostrar, armado con la `etiqueta` del arquetipo. Vacío: no hay.
+    etiqueta: str = ""
 
     @property
     def vacia(self) -> bool:

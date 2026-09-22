@@ -67,6 +67,7 @@ varias: proyectos, notas, clientes.
 | `ruta` | sí | glob relativo a la raíz. **Si termina en `/`**, cada coincidencia es una carpeta y el documento es `documento` adentro. Si no, cada coincidencia es el documento mismo. |
 | `documento` | no (`README.md`) | el archivo que se parsea, dentro de la carpeta |
 | `descripcion` | no | una línea, para que la interfaz pueda decir qué es esto |
+| `etiqueta` | no (el título) | cómo se llama una unidad en pantalla: `{titulo}` y `{campo:Clave}`, una fila de la tabla de campos. Ver abajo. |
 | `secciones` | no | qué se lee del documento |
 
 La ruta tiene que ser relativa y no salir de la raíz: un `..` o un `/` inicial es
@@ -79,6 +80,23 @@ arquetipos, gana el primero que se declaró —por eso «proyecto cerrado» va a
 primer arquetipo antes que las del segundo. Un repositorio con ciento setenta y nueve
 unidades declara así qué es lo que trabaja: el arquetipo de arriba es el que se ve al
 entrar.
+
+### El nombre en pantalla
+
+El nombre de un hilo es la llave con que telar lo recuerda —su carpeta, su conversación,
+si está archivado— y por eso es el de la carpeta: estable y sin espacios. Lo que se
+*lee* en la lista puede ser otra cosa, y lo declara el arquetipo:
+
+```yaml
+proyecto:
+  ruta: "operacion/proyectos/*/"
+  etiqueta: "{campo:Cliente} · {titulo}"    # «Grupo Anasac · Adopción IA»
+```
+
+De un campo queda solo el nombre: sin lo que va entre paréntesis y cortado en la
+primera raya, coma o punto y coma. Si un valor ya está dentro de otro no se repite (con
+el título «AquaChile — Campaña de Ideas», el cliente «AquaChile» sobra), y un marcador
+vacío se lleva su separador. Sin `etiqueta`, se muestra el título del documento.
 
 ## Secciones
 

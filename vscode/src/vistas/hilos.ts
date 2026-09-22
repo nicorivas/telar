@@ -147,7 +147,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="num">${esc(num)}</span>`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? ' '}</span>`
-            + `<span class="nombre">${esc(h.nombre)}</span>${glifo}<span class="der">${esc(der)}</span>`
+            + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${glifo}<span class="der">${esc(der)}</span>`
             + (seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
                 : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab y guarda su conversación para retomarla">⏸</span>`)
@@ -155,7 +155,9 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     }
 
     private tooltip(h: cli.JsonHilo): string {
-        const l: string[] = [`${h.nombre}${h.id !== h.nombre ? ` · ${h.id}` : ''} · ${h.relativa || 'sin carpeta'}`];
+        const visible = cli.nombreVisible(h);
+        const l: string[] = [...(visible !== h.nombre ? [visible] : []),
+            `${h.nombre}${h.id !== h.nombre ? ` · ${h.id}` : ''} · ${h.relativa || 'sin carpeta'}`];
         const datos: string[] = [];
         if (h.arquetipo) datos.push(h.arquetipo);
         if (!h.vivo) datos.push('no vivo');
