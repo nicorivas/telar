@@ -11,6 +11,8 @@ from pathlib import Path
 
 from telar import estado as mod_estado
 from telar import lectura
+from telar.agente import ErrorDeAgente
+from telar.agente import lanzar
 from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
 
@@ -81,8 +83,19 @@ def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
         if nombre in puestos or relativa in vinculados:
             continue
         carpeta = Path(ctx.config.raiz) / relativa
+        carpeta_hilo = carpeta if carpeta.is_dir() else None
+        # el hilo se abre con su agente adentro, si hay uno configurado: una shell vacía
+        # es un tab, no un lugar de trabajo. Un agente mal declarado no impide abrir el
+        # hilo; se abre sin él y `telar doctor` dice por qué.
         try:
-            tel.mux.crear_tab(nombre, ruta=carpeta if carpeta.is_dir() else None, foco=False)
+            lanz = lanzar.para_hilo(ctx.config, nombre, carpeta_hilo)
+        except ErrorDeAgente:
+            lanz = None
+        try:
+            if lanz is None:
+                tel.mux.crear_tab(nombre, ruta=carpeta_hilo, foco=False)
+            else:
+                tel.mux.crear_tab(nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=False)
         except ErrorDeMux:
             continue
         # se vincula solo lo que de verdad quedó abierto: una sesión sin cliente puede

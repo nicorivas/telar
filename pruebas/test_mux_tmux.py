@@ -52,9 +52,10 @@ def fila_pane(
     ruta="/taller",
     activo="1",
     muerto="0",
+    pid="4242",
 ) -> str:
     """Un renglón como el que devuelve `list-panes -F`."""
-    return t.SEP.join([ident, ventana, titulo, comando, ruta, activo, muerto])
+    return t.SEP.join([ident, ventana, titulo, comando, ruta, activo, muerto, pid])
 
 
 def mux(sesion="taller") -> t.Tmux:
@@ -374,7 +375,7 @@ class TmuxFalso(t.Tmux):
     def disponible(self) -> bool:
         return True
 
-    def _tmux(self, *args: str, tolerante: bool = False) -> str:
+    def _tmux(self, *args: str, tolerante: bool = False, entorno=None) -> str:
         self.llamadas.append(list(args))
         return self.respuestas.get(args[0], "")
 

@@ -96,8 +96,11 @@ class Tab:
 class Pane:
     """Un panel dentro de un tab.
 
-    `comando` es el proceso que corre ahí ahora mismo, y es el único campo en el que
-    se puede confiar para reconocer a un agente. `titulo` es lo que el panel dice
+    `comando` es el proceso que el multiplexor ve en primer plano. Sirve para reconocer
+    una shell o un editor, pero no a todos los agentes: Claude Code lanza procesos
+    auxiliares que le tapan el nombre, y tmux lo informa como `bash`. Para saber si un
+    panel está de verdad ocioso sirve `pid`: una shell sin procesos hijos no está haciendo
+    nada. `titulo` es lo que el panel dice
     llamarse: lo pone quien lo abrió o el programa que corre adentro, y es cómodo para
     encontrar las vistas que telar mismo abrió, pero cualquiera lo cambia.
 
@@ -119,6 +122,8 @@ class Pane:
     flotante: bool = False
     #: el programa terminó y el panel quedó en pantalla.
     terminado: bool = False
+    #: el proceso raíz del panel (la shell o lo que se abrió); None si el multiplexor no lo dice.
+    pid: int | None = None
 
     @property
     def vivo(self) -> bool:

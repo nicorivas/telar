@@ -89,6 +89,7 @@ CAMPOS_PANE = (
     "#{pane_current_path}",
     "#{pane_active}",
     "#{pane_dead}",
+    "#{pane_pid}",
 )
 FORMATO_PANE = SEP.join(CAMPOS_PANE)
 
@@ -100,6 +101,16 @@ BANDERAS = {
     "abajo": ("-v",),
     "arriba": ("-v", "-b"),
 }
+
+
+#: Variables que dicen «estás dentro de otro multiplexor». Heredadas en un panel de
+#: tmux, mienten: el proceso las lee y cree estar en un lugar donde no está.
+AJENAS = ("ZELLIJ", "ZELLIJ_PANE_ID", "ZELLIJ_SESSION_NAME", "ZELLIJ_TAB_NAME")
+
+
+def entorno_limpio() -> dict[str, str]:
+    """El entorno de este proceso sin las variables de otro multiplexor."""
+    return {k: v for k, v in os.environ.items() if k not in AJENAS}
 
 
 def _descamuflar(salida: str) -> str:
@@ -184,7 +195,7 @@ class Tmux(MultiplexorBase):
 
     # ── hablarle al programa ─────────────────────────────────────────────────────
 
-    def _tmux(self, *args: str, tolerante: bool = False) -> str:
+    def _tmux(self, *args: str, tolerante: bool = False, entorno: dict | None = None) -> str:
         """Corre `tmux <args>` y devuelve su salida. El error trae qué se pidió y qué dijo."""
         try:
             hecho = subprocess.run(
@@ -192,6 +203,7 @@ class Tmux(MultiplexorBase):
                 capture_output=True,
                 text=True,
                 timeout=TIEMPO_LIMITE,
+                env=entorno,
             )
         except FileNotFoundError as e:
             raise SinPrograma("tmux no está instalado, o no está en el PATH") from e
@@ -296,7 +308,7 @@ class Tmux(MultiplexorBase):
             raise ErrorDeMux(
                 f"tmux devolvió {len(campos)} campos donde iban {len(CAMPOS_PANE)}: {renglon!r}"
             )
-        ident, ventana, titulo, comando, ruta, activo, muerto = campos
+        ident, ventana, titulo, comando, ruta, activo, muerto, pid = campos
         return Pane(
             id=ident,
             tab=ventana,
@@ -306,6 +318,7 @@ class Tmux(MultiplexorBase):
             foco=activo == "1",
             flotante=False,  # tmux no tiene paneles flotantes; sus popups no son paneles.
             terminado=muerto == "1",
+            pid=int(pid) if pid.isdigit() else None,
         )
 
     def _pane(self, pane: str) -> Pane:
@@ -343,7 +356,15 @@ class Tmux(MultiplexorBase):
             raise SinPrograma("tmux no está instalado, o no está en el PATH")
         if self.viva():
             return
-        self._tmux("new-session", "-d", "-s", self.sesion, *_carpeta(self.raiz))
+        # Quien teje suele estar dentro de otro multiplexor, y el servidor de tmux hereda
+        # su entorno entero y se lo pasa a cada panel. Un agente que arranque ahí creería
+        # estar en un panel de Zellij que no es suyo, y los ganchos de ese otro sistema lo
+        # anotarían en el lugar equivocado. Se levanta limpio, y por si el servidor ya
+        # existía de antes, se borran también de su entorno global.
+        self._tmux("new-session", "-d", "-s", self.sesion, *_carpeta(self.raiz),
+                   entorno=entorno_limpio())
+        for variable in AJENAS:
+            self._tmux("set-environment", "-g", "-u", variable, tolerante=True)
 
     # ── tabs ─────────────────────────────────────────────────────────────────────
 

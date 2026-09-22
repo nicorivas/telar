@@ -6,6 +6,7 @@
     telar agente desinstalar         los saca
     telar agente retomar             el comando que vuelve a abrir la conversación de aquí
     telar agente nuevo               el comando que abre una nueva
+    telar agente abrir [--todos]     abrir el agente en este hilo, o en todos los que no lo tengan
 
 `instalar` es lo único que telar escribe fuera de su propio estado, y encima en la
 configuración de otro programa (`~/.claude/settings.json`, para Claude Code). Por eso
@@ -53,6 +54,7 @@ from pathlib import Path
 from telar import agente as mod_agente
 from telar import estado as mod_estado
 from telar.agente import ErrorDeAgente
+from telar.agente import lanzar
 from telar.agente.base import (
     VARIABLE_AGENTE,
     VARIABLE_HILO,
@@ -71,7 +73,7 @@ from telar.ordenes import _comun
 
 AYUDA = "El agente que corre en un hilo: sus ganchos, sus conversaciones."
 
-VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo")
+VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -92,12 +94,16 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--olvidar", action="store_true",
                    help="con aviso: al cerrar, olvidar además la conversación")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
+    p.add_argument("--todos", action="store_true",
+                   help="con abrir: en cada hilo de la sesión que no tenga el agente corriendo")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
 
     if o.verbo == "aviso":
         return _aviso(o, ctx)
+    if o.verbo == "abrir":
+        return _abrir(o, ctx)
 
     try:
         agente = _construir(o.agente, ctx.config)
@@ -455,3 +461,67 @@ def _instalado(agente) -> list[str]:
     except ErrorDeAgente:
         return []
     return list(hecho.reemplazados)
+
+
+def _abrir(o, ctx) -> int:
+    """Pone el agente configurado en hilos que ya existen.
+
+    Solo reemplaza una shell ociosa: si el tab tiene algo corriendo o más de un panel,
+    lo deja como está y lo dice. Lo que la persona dejó a medias no se mata para abrir
+    un agente encima.
+    """
+    nombre = ctx.config.agente.nombre
+    if not nombre:
+        return _comun.queja(
+            "no hay agente configurado: agrega [agente] nombre = \"claude-code\" a la configuración"
+        )
+    try:
+        agente = mod_agente.obtener(nombre, ctx.config)
+    except ErrorDeAgente as e:
+        return _comun.queja(str(e))
+    tel = _comun.tejer(ctx, con_ficha=False)
+    if tel.mux is None or not tel.viva:
+        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
+
+    if o.todos:
+        objetivos = [h for h in tel.hilos if h.nombre in tel.vivos]
+    else:
+        hilo, problema = _hilo(o, ctx)
+        if problema:
+            return _comun.queja(problema)
+        objetivos = [h for h in tel.hilos if h.nombre == hilo]
+        if not objetivos:
+            return _comun.queja(f"«{hilo}» no es un hilo vivo de la sesión")
+
+    resultado = []
+    for h in objetivos:
+        try:
+            panes = tel.mux.panes(h.id)
+        except ErrorDeMux as e:
+            resultado.append({"hilo": h.nombre, "hecho": "error", "detalle": str(e)})
+            continue
+        ocioso = lanzar.panel_ocioso(panes)
+        if ocioso is None:
+            # el nombre del proceso no alcanza para reconocer al agente (ver panel_ocioso),
+            # pero cuando sí coincide, decirlo con su nombre es más claro que «ocupado»
+            if any(agente.corriendo(p.comando or "") for p in panes):
+                resultado.append({"hilo": h.nombre, "hecho": "ya estaba"})
+            else:
+                resultado.append({"hilo": h.nombre, "hecho": "ocupado",
+                                  "detalle": "tiene algo corriendo o más de un panel"})
+            continue
+        try:
+            lanz = lanzar.para_hilo(ctx.config, h.nombre, h.ruta)
+            tel.mux.abrir_pane(lanz.comando, reemplaza=ocioso, ruta=lanz.carpeta, foco=False)
+        except (ErrorDeAgente, ErrorDeMux) as e:
+            resultado.append({"hilo": h.nombre, "hecho": "error", "detalle": str(e)})
+            continue
+        resultado.append({"hilo": h.nombre, "hecho": "retomado" if lanz.retoma else "nuevo",
+                          "conversacion": lanz.retoma})
+
+    if o.json:
+        return _comun.escribir_json({"agente": nombre, "hilos": resultado})
+    for r in resultado:
+        detalle = r.get("detalle") or r.get("conversacion") or ""
+        print(f"  {r['hilo']:<28} {r['hecho']}" + (_comun.tenue(f"  {detalle}") if detalle else ""))
+    return 1 if any(r["hecho"] == "error" for r in resultado) else 0

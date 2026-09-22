@@ -68,6 +68,20 @@ class Proveedor:
 
 
 @dataclass(frozen=True, slots=True)
+class Agente:
+    """Qué agente se abre en cada hilo, y en qué carpeta arranca.
+
+    `nombre` vacío es no abrir ninguno: el hilo queda con una shell. `carpeta` es
+    "hilo" (la carpeta de la unidad), "raiz" (la del repositorio) o una ruta. La ruta
+    existe porque hay agentes cuya memoria cuelga de dónde arrancan: abrirlos en otra
+    carpeta es abrir a otro, que no recuerda nada.
+    """
+
+    nombre: str = ""
+    carpeta: str = "hilo"
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     """La configuración resuelta. Inmutable; para variarla, `dataclasses.replace`."""
 
@@ -88,6 +102,8 @@ class Config:
     #: que traen ítems del día: comparten la palabra «proveedor» y nada más.
     ficha: Proveedor = field(default_factory=lambda: Proveedor(nombre="documento"))
     intervalos: Intervalos = field(default_factory=Intervalos)
+    #: el agente que se abre en cada hilo; sin nombre, ninguno.
+    agente: Agente = field(default_factory=Agente)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -201,9 +217,24 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             proveedores[nombre] = Proveedor(nombre=nombre, activo=activo, opciones=opciones)
         cambios["proveedores"] = proveedores
 
+    if "agente" in datos:
+        tabla = _tabla(datos["agente"], "agente")
+        sobra = set(tabla) - {"nombre", "carpeta"}
+        if sobra:
+            raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
+        nombre = tabla.get("nombre", "")
+        carpeta = tabla.get("carpeta", "hilo")
+        if not isinstance(nombre, str):
+            raise ErrorDeConfig(f"agente.nombre: se esperaba un nombre, llegó {nombre!r}")
+        if not isinstance(carpeta, str) or not carpeta.strip():
+            raise ErrorDeConfig(
+                f"agente.carpeta: se esperaba \"hilo\", \"raiz\" o una ruta, llegó {carpeta!r}"
+            )
+        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip())
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha",
+        "ficha", "agente",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
