@@ -10,6 +10,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import * as acciones from './acciones';
 import { irAHilo, mostrarTerminal } from './acciones';
 import * as cli from './cli';
 import { modelo } from './modelo';
@@ -19,7 +20,7 @@ import { VistaHilos } from './vistas/hilos';
 import { PanelHoy } from './vistas/hoy';
 import { VistaTareas } from './vistas/tareas';
 
-let bitacora: vscode.OutputChannel;
+let bitacora: vscode.LogOutputChannel;
 let vistaHilos: VistaHilos;
 let vistaFicha: VistaFicha;
 let vistaCarpeta: VistaCarpeta;
@@ -212,7 +213,8 @@ async function documento(a: Arg): Promise<void> {
 // ───────────────────────── activación ─────────────────────────
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
-    bitacora = vscode.window.createOutputChannel('telar');
+    bitacora = vscode.window.createOutputChannel('telar', { log: true });
+    acciones.conBitacora(anotar);
     ctx.subscriptions.push(bitacora);
     cli.conBitacora(anotar);
 

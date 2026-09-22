@@ -12,6 +12,7 @@
 // parpadea la lista cada vez que cambia un segundo del tiempo de hoy.
 
 import * as vscode from 'vscode';
+import { anotarDesdeFuera as anotarClic, mostrarTerminal } from '../acciones';
 
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto } from '../estilo';
@@ -71,6 +72,12 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         v.webview.options = { enableScripts: true };
         v.webview.onDidReceiveMessage(m => this.mensaje(m));
         v.onDidDispose(() => { this.vista = undefined; this.listo = false; });
+        // Abrir la barra de telar es ir a trabajar en la sesión: el terminal que la muestra
+        // pasa al frente, como cuando se elige con ⌃P. Solo si lo encuentra: sin terminal
+        // de la sesión, abrir la barra no le quita el foco a nadie.
+        const alFrente = () => { if (v.visible) void mostrarTerminal({ soloSuyo: true }); };
+        v.onDidChangeVisibility(alFrente);
+        alFrente();
         this.pintarMarco();
     }
 
@@ -84,7 +91,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     private mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
         switch (m.tipo) {
             case 'listo': this.listo = true; this.refrescar(true); break;
-            case 'ir': if (m.hilo) void vscode.commands.executeCommand('telar.ir', { hilo: m.hilo }); break;
+            case 'ir': anotarClic(`clic en la lista: «${m.hilo ?? ''}»`); if (m.hilo) void vscode.commands.executeCommand('telar.ir', { hilo: m.hilo }); break;
             case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
