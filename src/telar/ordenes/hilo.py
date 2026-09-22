@@ -9,6 +9,8 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
     telar hilo archivar [--cerrar]         sacarlo de la lista sin perderlo
     telar hilo desarchivar
+    telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
+                                           la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
 
@@ -30,6 +32,8 @@ from pathlib import Path
 
 from telar import lectura
 from telar.modelo import Prioridad
+from telar.agente import ErrorDeAgente
+from telar.agente import lanzar
 from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
 
@@ -44,6 +48,7 @@ VERBOS = (
     "prioridad",
     "archivar",
     "desarchivar",
+    "retomar",
     "olvidar",
 )
 
@@ -119,6 +124,8 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "desarchivar":
         est.desarchivar(hilo.nombre)
         print(f"de vuelta en la lista «{hilo.nombre}»")
+    elif o.verbo == "retomar":
+        salida = _retomar(ctx, tel, hilo)
     elif o.verbo == "olvidar":
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")
@@ -308,3 +315,48 @@ def _sesiones(hilo) -> str:
     if not hilo.sesiones:
         return ""
     return f"; conversación anotada: {hilo.sesiones[0]}"
+
+
+def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
+    """Sacarlo del archivo y reabrirlo tal como estaba: su carpeta, su agente, su conversación.
+
+    Es la otra mitad de archivar con --cerrar. El tab se cerró y la conversación quedó en
+    disco con el id que telar le dio al abrirla; retomar la reabre con `--resume` en vez
+    de pedirle a nadie que busque el id y lo escriba. Si el hilo sigue vivo, solo se va a él.
+    """
+    est = tel.estado
+    est.desarchivar(hilo.nombre)
+    if tel.mux is None or not tel.viva:
+        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
+    try:
+        if hilo.nombre in tel.vivos:
+            tel.mux.ir(hilo.id)
+            print(f"«{hilo.nombre}» ya estaba abierto")
+            return 0
+        relativa = est.vinculos().get(hilo.nombre, "")
+        carpeta = Path(ctx.config.raiz) / relativa if relativa else None
+        if carpeta is not None and not carpeta.is_dir():
+            carpeta = None
+        try:
+            lanz = lanzar.para_hilo(ctx.config, hilo.nombre, carpeta)
+        except ErrorDeAgente as e:
+            print(_comun.tenue(f"  sin agente: {e}"))
+            lanz = None
+        if lanz is None:
+            tel.mux.crear_tab(hilo.nombre, ruta=carpeta, foco=True)
+        else:
+            tel.mux.crear_tab(hilo.nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=True)
+            lanzar.anotar(ctx.config, hilo.nombre, lanz)
+        nuevo = next((h for h in tel.mux.hilos() if h.nombre == hilo.nombre), None)
+        if nuevo is not None:
+            tel.mux.ir(nuevo.id)
+    except (ErrorDeMux, ErrorDeAgente) as e:
+        return _comun.queja(f"no pude retomar «{hilo.nombre}»: {e}")
+    if lanz is not None and lanz.retoma:
+        print(f"retomado «{hilo.nombre}» · conversación {lanz.retoma}")
+    elif lanz is not None:
+        print(f"retomado «{hilo.nombre}» · no había conversación guardada: una nueva")
+    else:
+        print(f"retomado «{hilo.nombre}»")
+    return 0
+

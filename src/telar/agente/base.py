@@ -517,6 +517,16 @@ class AgenteBase(ABC):
     def retomar(self, conversacion: Conversacion) -> list[str]:
         """El comando que vuelve a abrir esa conversación, sin correrlo."""
 
+    def nuevo_con_id(self, mensaje: str = "") -> tuple[list[str], str]:
+        """Una conversación nueva cuyo id se sabe antes de abrirla: (comando, id).
+
+        Es lo que permite archivar un hilo y retomarlo después sin depender de ganchos:
+        quien la abre guarda el id junto al hilo. El agente que no sepa fijar el id
+        devuelve "", y entonces su conversación solo se conoce si un gancho la anota.
+        """
+        palabras = self.nuevo()
+        return ([*palabras, mensaje] if mensaje else palabras), ""
+
     def con_mensaje(self, mensaje: str) -> list[str]:
         """Una conversación nueva que arranca diciendo `mensaje`. Sin correrla.
 

@@ -22,6 +22,7 @@ export class PanelHoy {
     private pantalla: 'dia' | 'config' = 'dia';
     private calendario?: cli.JsonCalendario;
     private agenteConfig?: cli.JsonAgenteConfig;
+    private hilosConfig?: { directorios: string[]; tope: number };
     private avisoConfig = '';
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
@@ -173,6 +174,7 @@ export class PanelHoy {
         const r = await cli.config();
         this.calendario = r.datos?.calendario;
         this.agenteConfig = r.datos?.agente;
+        this.hilosConfig = r.datos?.hilos;
         if (!r.datos) this.avisoConfig = r.error ?? 'telar config no contestó';
         this.renderConfig();
     }
@@ -192,6 +194,32 @@ export class PanelHoy {
         await this.abrirConfig();
         await this.actualizar(true);
         this.renderConfig();
+    }
+
+    private async cambiarDirectorios(): Promise<void> {
+        const actual = (this.hilosConfig?.directorios ?? []).join(', ');
+        const nuevo = await vscode.window.showInputBox({
+            title: 'De qué carpetas salen los hilos',
+            prompt: 'Relativas a la raíz del repositorio, separadas por coma, en el orden en que se abren. Vacío: las unidades del perfil.',
+            placeHolder: 'operacion/proyectos, negocio/pipeline',
+            value: actual, ignoreFocusOut: true,
+        });
+        if (nuevo === undefined || nuevo.trim() === actual) return;
+        const r = await cli.directoriosHilos(nuevo.trim());
+        if (!r.ok) {
+            this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude guardar las carpetas';
+            await this.abrirConfig();
+            return;
+        }
+        await this.abrirConfig();
+        // cada hilo abre un agente: se ofrece, no se hace
+        const si = await vscode.window.showInformationMessage(
+            'Carpetas guardadas. ¿Abrir ahora los hilos que falten? Cada uno arranca su agente.', 'Abrir ahora');
+        if (si === 'Abrir ahora') {
+            const t = await cli.telar(['tejer', '--sumar'], 60000);
+            if (!t.ok) void vscode.window.showWarningMessage(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
+            await modelo.sondear();
+        }
     }
 
     private async cambiarPlantilla(restablecer: boolean): Promise<void> {
@@ -253,6 +281,17 @@ export class PanelHoy {
         ]);
         opcion('ninguno', 'Ninguno', 'desconectar', ['El dashboard no muestra agenda.']);
 
+        const hc = this.hilosConfig;
+        if (hc) {
+            h.push('<h2>Hilos<small>de qué carpetas salen los de la lista</small></h2>');
+            h.push('<div class="fila">' + (hc.directorios.length
+                ? hc.directorios.map(d => `<code>${esc(d)}</code>`).join(' · ')
+                : 'las unidades del perfil, en su orden')
+                + '<span class="der"><a data-accion="directorios">cambiar…</a></span></div>');
+            h.push(`<div class="fila dim">Al tejer la sesión se abren hasta ${hc.tope}, repartidos por turnos: uno de cada carpeta. `
+                + 'Los archivados no se reabren solos: ⏸ en la lista archiva uno y guarda su conversación, ▶ lo retoma.</div>');
+        }
+
         const a = this.agenteConfig;
         if (a) {
             const propia = a.reunion !== a.reunion_por_defecto;
@@ -292,6 +331,7 @@ export class PanelHoy {
             case 'dia': this.pantalla = 'dia'; this.render(); break;
             case 'calendario': await this.elegirCalendario(m.valor ?? ''); break;
             case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
+            case 'directorios': await this.cambiarDirectorios(); break;
         }
     }
 }

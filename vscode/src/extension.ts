@@ -334,9 +334,15 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.prioridadMedia', (a?: Arg) => sobreHilo(a, 'prioridad', '2'));
     orden('telar.prioridadBaja', (a?: Arg) => sobreHilo(a, 'prioridad', '3'));
     orden('telar.prioridadNinguna', (a?: Arg) => sobreHilo(a, 'prioridad', 'ninguna'));
+    // Archivar cierra el tab y deja la conversación guardada junto al hilo (telar la abrió
+    // con un id conocido); retomar la reabre con `--resume`. Por eso archivar ya no pide
+    // confirmación: no se pierde nada.
     orden('telar.archivar', (a?: Arg) => vscode.window.withProgress(
         { location: { viewId: 'telar.hilos' }, title: `archivando ${hiloDe(a) ?? ''}` },
-        () => sobreHilo(a, 'archivar')));
+        () => sobreHilo(a, 'archivar', undefined, ['--cerrar'])));
+    orden('telar.retomar', (a?: Arg) => vscode.window.withProgress(
+        { location: { viewId: 'telar.hilos' }, title: `retomando ${hiloDe(a) ?? ''}` },
+        async () => { if (await sobreHilo(a, 'retomar')) await mostrarTerminal(); }));
     orden('telar.desarchivar', (a?: Arg) => sobreHilo(a, 'desarchivar'));
     orden('telar.olvidar', olvidar);
     orden('telar.cerrar', cerrar);

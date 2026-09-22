@@ -513,6 +513,7 @@ def _abrir(o, ctx) -> int:
         try:
             lanz = lanzar.para_hilo(ctx.config, h.nombre, h.ruta)
             tel.mux.abrir_pane(lanz.comando, reemplaza=ocioso, ruta=lanz.carpeta, foco=False)
+            lanzar.anotar(ctx.config, h.nombre, lanz)
         except (ErrorDeAgente, ErrorDeMux) as e:
             resultado.append({"hilo": h.nombre, "hecho": "error", "detalle": str(e)})
             continue

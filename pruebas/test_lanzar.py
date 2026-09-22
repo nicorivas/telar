@@ -92,6 +92,7 @@ class QueSeRetoma(Prueba):
             archivo_de=lambda c: archivos.get(c.id),
             retomar=lambda c: ["claude", "--resume", c.id],
             nuevo=lambda: ["claude"],
+            nuevo_con_id=lambda mensaje="": (["claude", "--session-id", "id-nuevo"], "id-nuevo"),
         )
 
     def _correr(self, agente):
@@ -116,6 +117,9 @@ class QueSeRetoma(Prueba):
         lanz = self._correr(self._agente(["perdida"], {"perdida": Path("/no/existe.jsonl")}))
         self.assertEqual(lanz.retoma, "")
         self.assertNotIn("--resume", lanz.comando[2])
+        # la nueva nace con un id conocido, que quien la abre anota junto al hilo
+        self.assertEqual(lanz.nueva, "id-nuevo")
+        self.assertIn("--session-id id-nuevo", lanz.comando[2])
 
 
 class CuandoSeReemplaza(Prueba):

@@ -192,7 +192,12 @@ export interface JsonCalendario {
 /** Lo que el dashboard muestra de `[agente]`. */
 export interface JsonAgenteConfig { nombre: string; carpeta: string; reunion: string; reunion_por_defecto: string }
 
-export const config = () => telarJson<{ calendario: JsonCalendario; agente: JsonAgenteConfig }>(['config', '--json'], 20000);
+export const config = () => telarJson<{
+    calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
+}>(['config', '--json'], 20000);
+
+/** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */
+export const directoriosHilos = (carpetas: string) => telar(['config', '--directorios', carpetas], 20000);
 
 /** `telar config --reunion`: qué decirle al agente al preparar una reunión. Vacío: el de fábrica. */
 export const plantillaReunion = (texto: string) => telar(['config', '--reunion', texto], 20000);

@@ -143,13 +143,16 @@ def main(argv: list[str], ctx) -> int:
         else:
             carpeta_hilo = Path(ctx.config.raiz) / proyecto if proyecto else None
             agente = _agente(ctx)
+            palabras, sid = agente.nuevo_con_id(texto)
             lanz = lanzar.Lanzamiento(
-                comando=lanzar.envolver(agente.con_mensaje(texto), nombre),
+                comando=lanzar.envolver(palabras, nombre),
                 carpeta=lanzar.carpeta(ctx.config, carpeta_hilo),
+                nueva=sid,
             )
             tel.mux.crear_tab(nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=True)
             if proyecto:
                 mod_estado.abrir(ctx.config).vincular(nombre, proyecto)
+            lanzar.anotar(ctx.config, nombre, lanz)
             resultado["hecho"] = "abierto"
         hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
         if hilo is not None:

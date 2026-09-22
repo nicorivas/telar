@@ -44,6 +44,7 @@ class Lanzamiento:
     comando: list[str]
     carpeta: Path | None
     retoma: str = ""  # el id de la conversación que retoma, o vacío si es nueva
+    nueva: str = ""   # el id que se le dio a la conversación nueva, para anotarlo al abrirla
 
 
 def carpeta(config, carpeta_hilo: Path | None) -> Path | None:
@@ -74,9 +75,23 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
             continue
         retoma = conversacion.id
         break
+    nueva = ""
     if palabras is None:
-        palabras = agente.nuevo()
-    return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo), retoma=retoma)
+        palabras, nueva = agente.nuevo_con_id()
+    return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
+                       retoma=retoma, nueva=nueva)
+
+
+def anotar(config, hilo: str, lanz: Lanzamiento | None) -> None:
+    """Guarda junto al hilo el id de la conversación que se acaba de abrir en él.
+
+    Se llama después de abrir el tab, no antes: anotar una conversación en un hilo que el
+    multiplexor no llegó a crear dejaría un id apuntando a nada.
+    """
+    if lanz is None or not lanz.nueva or not config.agente.nombre:
+        return
+    agente = mod_agente.obtener(config.agente.nombre, config)
+    agente.anotar(hilo, mod_agente.Conversacion(id=lanz.nueva, hilo=hilo))
 
 
 def envolver(palabras: list[str], hilo: str) -> list[str]:

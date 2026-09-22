@@ -38,6 +38,9 @@ const CSS = `
   .hoy .nombre { color: var(--azul); }
   .cab .dim { font-weight: normal; }
   .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
+  .icono { flex: none; margin-left: 1ch; color: var(--dim); visibility: hidden; cursor: pointer; }
+  .fila:hover .icono { visibility: visible; }
+  .icono:hover { color: var(--fg); }
 `;
 
 const SCRIPT = `
@@ -91,7 +94,15 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     private mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
         switch (m.tipo) {
             case 'listo': this.listo = true; this.refrescar(true); break;
-            case 'ir': anotarClic(`clic en la lista: «${m.hilo ?? ''}»`); if (m.hilo) void vscode.commands.executeCommand('telar.ir', { hilo: m.hilo }); break;
+            case 'ir': {
+                if (!m.hilo) break;
+                // un archivado no tiene tab al que ir: pincharlo es retomarlo
+                const archivado = modelo.archivados.some(x => x.nombre === m.hilo);
+                void vscode.commands.executeCommand(archivado ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
+                break;
+            }
+            case 'archivar': if (m.id) void vscode.commands.executeCommand('telar.archivar', { hilo: m.id }); break;
+            case 'retomar': if (m.id) void vscode.commands.executeCommand('telar.retomar', { hilo: m.id }); break;
             case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
@@ -136,7 +147,11 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="num">${esc(num)}</span>`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? ' '}</span>`
-            + `<span class="nombre">${esc(h.nombre)}</span>${glifo}<span class="der">${esc(der)}</span></div>`;
+            + `<span class="nombre">${esc(h.nombre)}</span>${glifo}<span class="der">${esc(der)}</span>`
+            + (seccion === 'archivado'
+                ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
+                : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab y guarda su conversación para retomarla">⏸</span>`)
+            + '</div>';
     }
 
     private tooltip(h: cli.JsonHilo): string {

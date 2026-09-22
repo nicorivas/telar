@@ -118,13 +118,19 @@ class Arquetipo:
     def documentos(self, raiz: Path) -> list[Path]:
         """Los documentos de este arquetipo bajo `raiz`, ordenados y existentes.
 
-        No lee ninguno: resuelve el glob y filtra lo que no está. Parsear es de
-        otro módulo; esto solo dice dónde mirar.
+        No lee ninguno: resuelve el glob y filtra lo que no está, y lo que vive en una
+        carpeta que empieza con `_` o `.`. Parsear es de otro módulo; esto solo dice
+        dónde mirar.
         """
         raiz = Path(raiz)
         patron = self.ruta.rstrip("/") if self.por_carpeta else self.ruta
         salida: list[Path] = []
         for hallazgo in sorted(raiz.glob(patron)):
+            # `_perdidos/`, `.git/`: lo que empieza con _ o . es de la casa, no una unidad
+            # de trabajo. Y además telar reserva las claves con _ en su estado, así que un
+            # hilo así llamado perdería su conversación al archivarlo.
+            if any(parte.startswith(("_", ".")) for parte in hallazgo.relative_to(raiz).parts):
+                continue
             destino = hallazgo / self.documento if self.por_carpeta else hallazgo
             if destino.is_file():
                 salida.append(destino)

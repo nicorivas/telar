@@ -67,6 +67,20 @@ class Proveedor:
     opciones: dict[str, object] = field(default_factory=dict)
 
 
+@dataclass(frozen=True, slots=True)
+class Hilos:
+    """De qué carpetas salen los hilos que abre `tejer`, y cuántos.
+
+    `directorios` vacío es lo de siempre: las unidades del perfil, en el orden en que el
+    perfil declara sus arquetipos. Con directorios, solo las unidades que viven dentro de
+    alguno, repartidas por turnos en el orden en que se nombran: una de cada carpeta por
+    vuelta. `tope` es cuántas abre `tejer` de una vez; las demás se abren a mano.
+    """
+
+    directorios: tuple[str, ...] = ()
+    tope: int = 8
+
+
 #: lo que flow le decía a Claude al pinchar una reunión, y el punto de partida de telar.
 REUNION_POR_DEFECTO = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 
@@ -113,6 +127,8 @@ class Config:
     intervalos: Intervalos = field(default_factory=Intervalos)
     #: el agente que se abre en cada hilo; sin nombre, ninguno.
     agente: Agente = field(default_factory=Agente)
+    #: de qué carpetas salen los hilos, y cuántos se abren al tejer.
+    hilos: Hilos = field(default_factory=Hilos)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -244,9 +260,25 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raise ErrorDeConfig(f"agente.reunion: se esperaba un texto, llegó {reunion!r}")
         cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(), reunion=reunion.strip())
 
+    if "hilos" in datos:
+        tabla = _tabla(datos["hilos"], "hilos")
+        sobra = set(tabla) - {"directorios", "tope"}
+        if sobra:
+            raise ErrorDeConfig(f"hilos.{sorted(sobra)[0]}: no existe")
+        dirs = tabla.get("directorios", [])
+        if not isinstance(dirs, list) or not all(isinstance(d, str) and d.strip() for d in dirs):
+            raise ErrorDeConfig(f"hilos.directorios: se esperaba una lista de carpetas, llegó {dirs!r}")
+        for d in dirs:
+            if d.startswith("/") or ".." in Path(d).parts:
+                raise ErrorDeConfig(f"hilos.directorios: «{d}» tiene que ser relativa a la raíz y no salir de ella")
+        tope = tabla.get("tope", 8)
+        if not isinstance(tope, int) or isinstance(tope, bool) or tope < 0:
+            raise ErrorDeConfig(f"hilos.tope: se esperaba un número entero, llegó {tope!r}")
+        cambios["hilos"] = Hilos(directorios=tuple(d.strip().strip("/") for d in dirs), tope=tope)
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha", "agente",
+        "ficha", "agente", "hilos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
@@ -389,8 +421,10 @@ def _cadena_toml(valor: str) -> str:
     return json.dumps(valor, ensure_ascii=False)
 
 
-def escribir_clave(tabla: str, clave: str, valor: str | None, ruta: Path | None = None) -> Path:
-    """Pone `clave = "valor"` en `[tabla]`, o la quita si `valor` es None.
+def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = None) -> Path:
+    """Pone `clave = valor` en `[tabla]`, o la quita si `valor` es None.
+
+    `valor` es un texto, un número o una lista de textos.
 
     Toca solo esa línea: el resto del archivo, comentarios incluidos, queda como estaba.
     Si la tabla no existe se agrega al final. Igual que con el calendario, antes de
@@ -400,7 +434,7 @@ def escribir_clave(tabla: str, clave: str, valor: str | None, ruta: Path | None 
     texto = destino.read_text(encoding="utf-8") if destino.exists() else ""
     renglones = texto.splitlines()
     cabeza = f"[{tabla}]"
-    nueva = f"{clave} = {_cadena_toml(valor)}" if valor is not None else None
+    nueva = f"{clave} = {_valor_toml(valor)}" if valor is not None else None
 
     try:
         i = next(n for n, r in enumerate(renglones) if r.strip() == cabeza)
@@ -438,4 +472,13 @@ def escribir_clave(tabla: str, clave: str, valor: str | None, ruta: Path | None 
         os.chmod(temporal, destino.stat().st_mode & 0o777)
     os.replace(temporal, destino)
     return destino
+
+
+def _valor_toml(valor: object) -> str:
+    """Un valor TOML en una línea: texto, entero o lista de textos (JSON sirve para los tres)."""
+    import json
+
+    if isinstance(valor, bool) or not isinstance(valor, (str, int, list, tuple)):
+        raise ErrorDeConfig(f"no sé escribir {valor!r} en la configuración")
+    return json.dumps(list(valor) if isinstance(valor, tuple) else valor, ensure_ascii=False)
 

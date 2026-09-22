@@ -45,7 +45,7 @@ def _bautizar(tel, hilos, nombre: str) -> None:
         pass
 
 
-def _primeras(perfil, unidades: dict) -> list[str]:
+def _primeras(perfil, unidades: dict, tope: int = TOPE) -> list[str]:
     """Cuáles de las unidades se abren, y en qué orden: el que el perfil declaró.
 
     Un repositorio grande tiene cientos de unidades y caben ocho. Elegirlas por orden
@@ -58,10 +58,32 @@ def _primeras(perfil, unidades: dict) -> list[str]:
     def clave(relativa: str) -> tuple[int, str]:
         arquetipo, _ = unidades[relativa]
         return (orden.get(arquetipo.nombre, len(orden)), relativa)
-    return sorted(unidades, key=clave)[:TOPE]
+    return sorted(unidades, key=clave)[:tope]
 
 
-def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
+def _de_directorios(unidades: dict, directorios: tuple[str, ...], tope: int) -> list[str]:
+    """Las unidades que viven dentro de esas carpetas, repartidas por turnos.
+
+    Una de cada carpeta por vuelta, en el orden en que se nombran. Tomar primero todas las
+    de la primera dejaba fuera a la segunda cada vez que la primera tenía más unidades que
+    el tope: con 36 proyectos y un tope de 8, el pipeline no aparecía nunca.
+    """
+    colas: list[list[str]] = []
+    vistas: set[str] = set()
+    for d in directorios:
+        prefijo = d.rstrip("/") + "/"
+        cola = sorted(u for u in unidades if u.startswith(prefijo) and u not in vistas)
+        vistas.update(cola)
+        colas.append(cola)
+    elegidas: list[str] = []
+    while len(elegidas) < tope and any(colas):
+        for cola in colas:
+            if cola and len(elegidas) < tope:
+                elegidas.append(cola.pop(0))
+    return elegidas
+
+
+def _poblar(ctx, tel, hilos, *, bautizar: bool = True) -> tuple[list[str], int]:
     """Un hilo por unidad del perfil, vinculado. Devuelve los abiertos y los que faltaron.
 
     Una sesión recién tejida tiene un tab anónimo en cualquier carpeta, y el recién
@@ -72,15 +94,23 @@ def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
     unidades = lectura.indice(ctx.perfil, ctx.config.raiz)
     if not unidades:
         return [], 0
-    elegidas = _primeras(ctx.perfil, unidades)
-    _bautizar(tel, hilos, Path(ctx.config.raiz).name or "telar")
+    fuente = ctx.config.hilos
+    if fuente.directorios:
+        elegidas = _de_directorios(unidades, fuente.directorios, fuente.tope)
+    else:
+        elegidas = _primeras(ctx.perfil, unidades, fuente.tope)
+    if bautizar:  # solo en una sesión recién levantada: en una viva, el primer tab es de alguien
+        _bautizar(tel, hilos, Path(ctx.config.raiz).name or "telar")
     puestos = {h.nombre for h in hilos}
     est = mod_estado.abrir(ctx.config)
-    vinculados = set(est.vinculos())
+    # las carpetas que ya tienen hilo, abierto o archivado: un hilo archivado se cerró a
+    # propósito, y tejer la sesión otra vez no es pedir que vuelva
+    vinculadas = set(est.vinculos().values())
+    archivados = est.archivados()
     abiertos: list[str] = []
     for relativa in elegidas:
         nombre = Path(relativa).name or relativa
-        if nombre in puestos or relativa in vinculados:
+        if nombre in puestos or relativa in vinculadas or nombre in archivados:
             continue
         carpeta = Path(ctx.config.raiz) / relativa
         carpeta_hilo = carpeta if carpeta.is_dir() else None
@@ -107,8 +137,12 @@ def _poblar(ctx, tel, hilos) -> tuple[list[str], int]:
         except ErrorDeMux:
             continue
         est.vincular(nombre, relativa)
+        try:
+            lanzar.anotar(ctx.config, nombre, lanz)
+        except ErrorDeAgente:
+            pass
         abiertos.append(nombre)
-    return abiertos, max(len(unidades) - TOPE, 0)
+    return abiertos, max(len(unidades) - len(elegidas), 0)
 
 
 def main(argv: list[str], ctx) -> int:
@@ -116,6 +150,10 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     p.add_argument(
         "--vacia", action="store_true", help="no abrir un hilo por unidad del perfil"
+    )
+    p.add_argument(
+        "--sumar", action="store_true",
+        help="con la sesión ya viva, abrir los hilos de [hilos] que falten (sin tocar los abiertos ni los archivados)",
     )
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -139,8 +177,8 @@ def main(argv: list[str], ctx) -> int:
 
     abiertos: list[str] = []
     faltaron = 0
-    if not ya_estaba and not o.vacia:
-        abiertos, faltaron = _poblar(ctx, tel, hilos)
+    if (not ya_estaba or o.sumar) and not o.vacia:
+        abiertos, faltaron = _poblar(ctx, tel, hilos, bautizar=not ya_estaba)
         if abiertos:
             try:
                 hilos = tel.mux.hilos()

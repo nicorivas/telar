@@ -97,9 +97,30 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--reunion", metavar="TEXTO", default=None,
                    help="qué decirle al agente al preparar una reunión ({titulo} {hora} {fecha} {enlace} {proyecto}); "
                         "vacío vuelve al de fábrica")
+    p.add_argument("--directorios", metavar="CARPETAS", default=None,
+                   help="de qué carpetas salen los hilos, separadas por coma, relativas a la raíz; "
+                        "vacío vuelve a las unidades del perfil")
+    p.add_argument("--tope", type=int, default=None, help="cuántos hilos abre tejer de una vez")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+
+    if o.directorios is not None or o.tope is not None:
+        try:
+            if o.directorios is not None:
+                dirs = [d.strip().strip("/") for d in o.directorios.split(",") if d.strip()]
+                faltan = [d for d in dirs if not (ctx.config.raiz / d).is_dir()]
+                if faltan:
+                    return _comun.queja(f"no existe en {ctx.config.raiz}: {', '.join(faltan)}")
+                destino = escribir_clave("hilos", "directorios", dirs or None, ctx.config.origen)
+            if o.tope is not None:
+                destino = escribir_clave("hilos", "tope", o.tope, ctx.config.origen)
+        except ErrorDeConfig as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"hilos": "ok", "archivo": str(destino)})
+        print(f"hilos · {destino}")
+        return 0
 
     if o.reunion is not None:
         valor = o.reunion.strip() or None  # vacío: se borra la clave y rige el de fábrica
@@ -143,6 +164,7 @@ def main(argv: list[str], ctx) -> int:
             "foco_maximo": cfg.intervalos.foco_maximo,
         },
         "calendario": _calendario(cfg),
+        "hilos": {"directorios": list(cfg.hilos.directorios), "tope": cfg.hilos.tope},
         "agente": {
             "nombre": cfg.agente.nombre,
             "carpeta": cfg.agente.carpeta,

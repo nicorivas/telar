@@ -177,6 +177,38 @@ Al salir del agente queda una shell, no se cierra el tab. Y el agente arranca si
 variables de otro multiplexor (`ZELLIJ_*`): si tmux se levantó desde dentro de Zellij,
 los ganchos de Zellij creerían que el agente es uno de sus paneles.
 
+## `[hilos]` — de qué carpetas salen
+
+```toml
+[hilos]
+directorios = ["operacion/proyectos", "negocio/pipeline"]   # relativas a la raíz
+tope = 8                                                     # cuántos abre `tejer` de una vez
+```
+
+Sin `directorios`, `tejer` abre las unidades del perfil en el orden en que el perfil
+declara sus arquetipos. Con directorios, solo las que viven dentro de alguno, repartidas
+por turnos —una de cada carpeta por vuelta— para que la segunda aparezca aunque la
+primera tenga más unidades que el tope. Las carpetas que empiezan con `_` o `.`
+(`_perdidos`) nunca son unidades.
+
+`tejer` solo abre hilos al levantar la sesión. Con la sesión viva, `telar tejer --sumar`
+abre los que falten según `[hilos]`, sin tocar los abiertos ni los archivados. Se cambian
+con `telar config --directorios "a, b"` y `--tope N`, o desde **⚙ configuración**.
+
+### Archivar y retomar
+
+Cada agente que telar abre nace con un id de conversación que telar elige
+(`claude --session-id <uuid>`) y guarda junto al hilo. Por eso:
+
+- `telar hilo archivar --cerrar` (⏸ en la lista) cierra el tab y la conversación queda
+  guardada; tejer la sesión otra vez no lo reabre.
+- `telar hilo retomar` (▶, o pinchar el archivado) reabre el tab en su carpeta con
+  `claude --resume <ese id>`. No hay que buscar el id ni escribirlo.
+
+`/clear` dentro de Claude abre otra conversación con otro id, que telar solo conoce si
+están los ganchos (`telar agente instalar`). Sin ellos, retomar vuelve a la de antes del
+`/clear`.
+
 ## `[ficha]` — quién arma la ficha de un documento
 
 ```toml

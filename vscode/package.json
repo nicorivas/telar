@@ -199,6 +199,11 @@
         "category": "telar"
       },
       {
+        "command": "telar.retomar",
+        "title": "Retomar (reabre el tab con su conversación)",
+        "category": "telar"
+      },
+      {
         "command": "telar.cerrar",
         "title": "Cerrar el hilo…",
         "category": "telar"
@@ -477,6 +482,11 @@
           "command": "telar.archivar",
           "when": "webviewId == 'telar.hilos' && webviewSection == hilo",
           "group": "3_estado@1"
+        },
+        {
+          "command": "telar.retomar",
+          "when": "webviewId == 'telar.hilos' && webviewSection == archivado",
+          "group": "3_estado@0"
         },
         {
           "command": "telar.desarchivar",
