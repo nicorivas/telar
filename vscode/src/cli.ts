@@ -146,6 +146,8 @@ export interface JsonHilo {
 export interface JsonHilos {
     sesion: string; viva: boolean; raiz: string; multiplexor: string;
     aviso: string; orden: string; hilos: JsonHilo[];
+    /** los pids de las terminales que muestran la sesión (vacío si no se sabe) */
+    clientes?: number[];
 }
 
 export interface JsonAccion {

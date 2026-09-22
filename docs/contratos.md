@@ -308,8 +308,15 @@ para guardarla. `hilo` puede ser `""` (nadie lo está trabajando todavía).
 
 ```json
 { "sesion": "telar", "viva": true, "raiz": "/casa/trabajo",
-  "multiplexor": "tmux", "aviso": "", "orden": "mux", "hilos": [ hilo, … ] }
+  "multiplexor": "tmux", "aviso": "", "orden": "mux", "clientes": [ 85579 ],
+  "hilos": [ hilo, … ] }
 ```
+
+`clientes` son los pids de las terminales enganchadas a la sesión: los procesos del
+multiplexor que la están mostrando. Sirven para encontrar desde afuera cuál terminal
+mira la sesión (la extensión de VS Code busca aquel terminal cuya shell es antepasado de
+uno de ellos, y le da el foco). Vacío si la sesión no está viva o el multiplexor no lo
+dice; zellij, hoy, no lo dice.
 
 `aviso` trae, en prosa, por qué no se pudo hablar con el multiplexor (no está
 instalado, no responde); con `aviso` no vacío, `viva` es `false` y los hilos son

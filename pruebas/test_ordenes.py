@@ -83,7 +83,7 @@ class Hilos(Orden):
     def test_el_json_trae_las_claves_del_contrato(self):
         datos = self.json_de("hilos", "--json")
         self.assertEqual(
-            set(datos), {"sesion", "viva", "raiz", "multiplexor", "aviso", "orden", "hilos"}
+            set(datos), {"sesion", "viva", "raiz", "multiplexor", "aviso", "orden", "clientes", "hilos"}
         )
 
     def test_sin_ficha_no_lee_documentos(self):

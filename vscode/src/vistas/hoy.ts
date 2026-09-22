@@ -20,7 +20,7 @@ export class PanelHoy {
 
     /** ⌥H: si «hoy» ya está al frente, devuelve el teclado al terminal. */
     alternar(): void {
-        if (this.panel?.active) { mostrarTerminal(); return; }
+        if (this.panel?.active) { void mostrarTerminal(); return; }
         this.abrir();
     }
 
@@ -143,7 +143,7 @@ export class PanelHoy {
             case 'pendiente': if (m.valor) await llevarPendiente(m.valor, !!m.nuevo); break;
             case 'ir': if (m.valor) await irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
-            case 'volver': mostrarTerminal(); break;
+            case 'volver': void mostrarTerminal(); break;
         }
     }
 }

@@ -20,6 +20,7 @@ from __future__ import annotations
 import shutil
 
 from telar import estado as mod_estado
+from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
 
 AYUDA = "Los hilos de la sesión, con su estado."
@@ -53,6 +54,7 @@ def main(argv: list[str], ctx) -> int:
                 "multiplexor": ctx.config.multiplexor,
                 "aviso": tel.aviso,
                 "orden": o.orden,
+                "clientes": _clientes(tel),
                 "hilos": [_comun.json_hilo(h, tel, con_ficha=not o.sin_ficha) for h in hilos],
             }
         )
@@ -108,3 +110,14 @@ def _linea(hilo, tel: _comun.Telar, ancho: int) -> str:
         estado = hilo.ficha.estado or hilo.ficha.nota
     resto = max(ancho - len(izquierda) - 1, 12)
     return izquierda + _comun.tenue(estado[:resto])
+
+
+def _clientes(tel) -> list[int]:
+    """Los pids de las terminales que muestran la sesión; vacío si no se puede saber."""
+    if tel.mux is None or not tel.viva:
+        return []
+    try:
+        return tel.mux.clientes()
+    except ErrorDeMux:
+        return []
+

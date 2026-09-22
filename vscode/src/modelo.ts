@@ -20,6 +20,8 @@ export class Modelo {
     multiplexor = '';
     raiz = '';
     viva = false;
+    /** los pids de los clientes del multiplexor: qué terminales muestran la sesión */
+    clientes: number[] = [];
     /** por qué no hay multiplexor, si no lo hay: lo dice telar, no lo adivinamos */
     aviso = '';
     /** el error de la última lectura, si la CLI no contestó */
@@ -60,7 +62,7 @@ export class Modelo {
             this.error = '';
             const d = r.datos;
             this.sesion = d.sesion; this.multiplexor = d.multiplexor; this.raiz = d.raiz;
-            this.viva = d.viva; this.aviso = d.aviso;
+            this.viva = d.viva; this.aviso = d.aviso; this.clientes = d.clientes ?? [];
             if (toca) {
                 this.ultimaFicha = Date.now();
                 this.fichas = new Map(d.hilos.map(h => [h.nombre, h.ficha ?? null]));

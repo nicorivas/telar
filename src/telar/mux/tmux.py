@@ -408,6 +408,12 @@ class Tmux(MultiplexorBase):
                 return tty
         return ""
 
+    def clientes(self) -> list[int]:
+        salida = self._tmux(
+            "list-clients", "-t", f"={self.sesion}", "-F", "#{client_pid}", tolerante=True
+        )
+        return [int(r) for r in salida.split() if r.strip().isdigit()]
+
     def crear_tab(
         self,
         nombre: str,

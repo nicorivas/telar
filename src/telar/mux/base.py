@@ -324,6 +324,15 @@ class MultiplexorBase(ABC):
             return None
         return self.pane_de(tab.id)
 
+    def clientes(self) -> list[int]:
+        """Los pids de los clientes enganchados a la sesión: las terminales que la muestran.
+
+        Sirve para encontrar, desde afuera, **cuál** terminal está mirando la sesión: la
+        extensión de VS Code lo usa para darle el foco a la correcta, que no tiene por qué
+        llamarse de ninguna manera en particular. Vacío si el multiplexor no lo sabe decir.
+        """
+        return []
+
     def hilo_de(self, tab: Tab, panes: Sequence[Pane] = ()) -> Hilo:
         """Arma el `Hilo` con lo único que el multiplexor sabe de un tab.
 

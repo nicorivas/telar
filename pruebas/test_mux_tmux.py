@@ -392,6 +392,18 @@ class TmuxFalso(t.Tmux):
         return ordenes[0]
 
 
+class LosClientes(Prueba):
+    """Qué terminales muestran la sesión: la extensión las usa para enfocar la correcta."""
+
+    def test_se_leen_los_pids_de_la_sesion(self):
+        m = TmuxFalso(respuestas={"list-clients": "123\n456\n"})
+        self.assertEqual(m.clientes(), [123, 456])
+        self.assertEqual(m.una("list-clients")[:3], ["list-clients", "-t", "=taller"])
+
+    def test_sin_clientes_es_una_lista_vacia(self):
+        self.assertEqual(TmuxFalso(respuestas={"list-clients": ""}).clientes(), [])
+
+
 class TejerLaSesion(Prueba):
     def test_viva_pregunta_por_la_sesion_exacta(self):
         m = TmuxFalso()

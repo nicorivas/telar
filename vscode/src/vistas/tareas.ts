@@ -50,7 +50,7 @@ export class VistaTareas implements vscode.WebviewViewProvider {
         if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await vscode.env.openExternal(vscode.Uri.parse(m.url)); return; }
         if (m.tipo === 'tecla' && m.k === 'r') { await this.actualizar(true); return; }
         if (m.tipo !== 'accion') return;
-        if (m.accion === 'volver') { mostrarTerminal(); return; }
+        if (m.accion === 'volver') { void mostrarTerminal(); return; }
         if (m.accion === 'pendiente' && m.valor) await llevarPendiente(m.valor, !!m.nuevo);
     }
 }
@@ -65,5 +65,5 @@ export async function llevarPendiente(ref: string, nuevo: boolean): Promise<void
         return;
     }
     await modelo.sondear();
-    mostrarTerminal();
+    void mostrarTerminal();
 }
