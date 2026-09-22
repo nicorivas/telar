@@ -154,4 +154,8 @@ class Item:
     cuando: datetime | None = None
     hilo: str = ""
     url: str = ""
+    #: qué clase de cosa es: "evento" ocupa una hora del día, "tarea" pide hacerse.
+    #: Lo dice el proveedor, porque tener fecha no alcanza: una tarea vence un día y no
+    #: por eso es una reunión. Vacío: quien lo dibuje decide.
+    clase: str = ""
     datos: dict[str, object] = field(default_factory=dict)

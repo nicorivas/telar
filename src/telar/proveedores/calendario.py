@@ -119,6 +119,7 @@ class Evento:
             id=self.id,
             titulo=self.titulo,
             cuando=self.inicio,
+            clase="evento",
             hilo=hilo,
             url=self.enlace,
             datos={
@@ -182,6 +183,9 @@ class _Vevento:
     cancelado: bool = False
     regla: dict[str, str] = field(default_factory=dict)
     excluidas: set[date] = field(default_factory=set)
+    #: si este VEVENT es la excepción de una serie (RECURRENCE-ID), el día de la
+    #: instancia que reemplaza. La serie no debe generar ese día por su cuenta.
+    reemplaza: date | None = None
 
 
 def desplegar(texto: str) -> list[str]:
@@ -340,6 +344,8 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
                     for k, _, v in (p.partition("=") for p in valor.split(";"))
                     if k.strip()
                 }
+            elif nombre == "RECURRENCE-ID":
+                actual.reemplaza = _momento(valor, params, local)[0].date()
             elif nombre == "EXDATE":
                 for trozo in valor.split(","):
                     if trozo.strip():
@@ -392,6 +398,16 @@ def _serie(inicio: date, freq: str, intervalo: int, bydays: list[int], limite: d
             tope -= 1
 
 
+def _hasta(bruto: str) -> date | datetime:
+    """El UNTIL de una regla: una fecha, o un instante si trae hora (`…T045959Z`)."""
+    crudo = bruto.strip()
+    if "T" not in crudo:
+        return datetime.strptime(crudo[:8], "%Y%m%d").date()
+    if crudo.endswith("Z"):
+        return datetime.strptime(crudo[:15], "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc)
+    return datetime.strptime(crudo[:15], "%Y%m%dT%H%M%S").replace(tzinfo=_zona_local())
+
+
 def _ocurre(v: _Vevento, fecha: date) -> bool:
     """¿La serie del evento tiene una ocurrencia que empiece ese día, en su zona?"""
     assert v.inicio is not None
@@ -413,7 +429,17 @@ def _ocurre(v: _Vevento, fecha: date) -> bool:
         intervalo = 1
     if hasta := v.regla.get("UNTIL", ""):
         try:
-            if fecha > datetime.strptime(hasta[:8], "%Y%m%d").date():
+            tope = _hasta(hasta)
+            if isinstance(tope, date) and not isinstance(tope, datetime):
+                if fecha > tope:
+                    return False
+            elif v.inicio is not None:
+                # comparar solo la fecha daba una instancia de más: Google cierra una serie
+                # semanal con UNTIL a las 04:59:59Z, que es la noche del día anterior
+                arranque = datetime.combine(fecha, v.inicio.time(), tzinfo=v.inicio.tzinfo)
+                if arranque > tope:
+                    return False
+            elif fecha > tope.date():
                 return False
         except ValueError:
             pass
@@ -450,6 +476,12 @@ def eventos_del_dia(
     hasta = desde + timedelta(days=1)
     salida: dict[tuple[str, datetime], Evento] = {}
 
+    # una excepción (RECURRENCE-ID) reemplaza a la instancia de su serie: si no, la reunión
+    # que se movió una hora aparece dos veces, en su hora vieja y en la nueva
+    reemplazadas = {
+        (v.uid, v.reemplaza) for v in veventos if v.reemplaza is not None and v.uid
+    }
+
     for v in veventos:
         if v.cancelado or v.inicio is None:
             continue
@@ -459,6 +491,8 @@ def eventos_del_dia(
         for n in range(-atras, 2):
             arranque = dia + timedelta(days=n)
             if not _ocurre(v, arranque):
+                continue
+            if v.reemplaza is None and (v.uid, arranque) in reemplazadas:
                 continue
             inicio = datetime.combine(arranque, v.inicio.time(), tzinfo=v.inicio.tzinfo)
             inicio = inicio.astimezone(local)

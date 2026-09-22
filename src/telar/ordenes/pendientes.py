@@ -105,6 +105,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
                 "ruta": _comun.ruta_relativa(destino.ruta, tel.raiz) if destino else "",
                 "proveedor": item.proveedor,
                 "cuando": _local(item.cuando),
+                "clase": item.clase,
                 "url": item.url,
             }
         )

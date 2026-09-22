@@ -63,6 +63,21 @@ y `telar.proveedores.calendario`. De fábrica no hay ninguno encendido, y el ún
 que sale de red es `calendario` con `url`, que lo dice en su `alcance` antes de
 que nadie lo encienda.
 
+### Las tareas
+
+`[proveedores.tareas]` trae lo que hay que hacer. `markdown` lee las casillas de los
+documentos que se le digan; `comando` corre un programa que imprime el JSON del
+contrato, y es la salida para cualquier gestor de tareas propio:
+
+```toml
+[proveedores.tareas]
+tipo    = "comando"
+comando = ["/casa/bin/mis-tareas"]
+```
+
+El puente son diez líneas y traduce el dialecto de cada uno: telar escribe las fechas
+como `vence:2026-09-30` y la prioridad como `!alta`, y otro gestor usará `due:` y `(P2)`.
+
 ### El calendario: iCal o gws
 
 La agenda del dashboard sale de una de dos fuentes, y se elige sin editar el archivo:

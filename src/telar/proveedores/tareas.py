@@ -107,6 +107,7 @@ class Tarea:
             id=self.id,
             titulo=self.texto,
             cuando=datetime.combine(self.vence, time.min) if self.vence else None,
+            clase="tarea",
             hilo=hilo,
             url=self.enlace,
             datos={

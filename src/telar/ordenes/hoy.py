@@ -63,9 +63,15 @@ def main(argv: list[str], ctx) -> int:
     declarados = [pr.nombre for pr in ctx.config.proveedores_activos()]
     if not o.local and declarados:
         externos, fallas = orden_pendientes.de_proveedores(ctx, tel, hoy)
-        agenda = [e for e in externos if e["cuando"]]
-        agenda.sort(key=lambda e: e["cuando"])
-        filas += [e for e in externos if not e["cuando"]]
+        # la agenda son los eventos, no todo lo que trae fecha: una tarea vence un día y no
+        # por eso ocupa una hora. Antes se repartía por `cuando`, y las tareas con plazo se
+        # iban a la agenda; al día le llegaban solo las que no tenían fecha.
+        def es_evento(e: dict) -> bool:
+            return e.get("clase") == "evento" or (not e.get("clase") and bool(e["cuando"]))
+
+        agenda = [e for e in externos if es_evento(e)]
+        agenda.sort(key=lambda e: e["cuando"] or "")
+        filas += [e for e in externos if not es_evento(e)]
 
     tiempos = {h.nombre: round(h.tiempo, 1) for h in tel.hilos if h.tiempo}
 

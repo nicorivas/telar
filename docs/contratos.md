@@ -296,9 +296,14 @@ existe, falta una sección requerida). Ver [el estado de un hilo](#el-estado-de-
   "ref": "faro:2", "texto": "Ajustar la velocidad de giro",
   "hecho": false, "en_curso": true, "id": "", "origen": "pendientes",
   "hilo": "faro", "ruta": "proyectos/faro",
-  "proveedor": "", "cuando": null, "url": ""
+  "proveedor": "", "clase": "", "cuando": null, "url": ""
 }
 ```
+
+`clase` la pone el proveedor que lo trajo: `"evento"` si ocupa una hora del día y
+`"tarea"` si pide hacerse; vacío en los pendientes que salen de un documento. Es lo que
+separa la agenda del resto: tener fecha no alcanza, porque una tarea vence un día y no
+por eso es una reunión.
 
 `ref` es la llave con que `telar pendiente <ref>` lo agarra: `<hilo>:<n>` si el
 pendiente salió del documento de un hilo, `<ruta>:<n>` si salió de una unidad sin
