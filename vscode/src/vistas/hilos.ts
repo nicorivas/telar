@@ -172,12 +172,12 @@ export class VistaHilos implements vscode.WebviewViewProvider {
                 + '<a data-accion="cmd" data-id="telar.nuevo">abrir uno</a></div>';
         }
         if (!modelo.viva) h.push('<div class="nota">la sesión no está viva; esto es lo que telar recuerda</div>');
-        // «hoy» encabeza la lista como una fila más, no solo como un ícono en la barra del
+        // el dashboard encabeza la lista como una fila más, no solo como un ícono en la barra del
         // título: es el lugar al que se vuelve varias veces al día, y en flow estaba ahí
         // porque era un tab. En telar no es un tab del multiplexor sino un panel de VS Code,
         // así que la fila la pone la vista y no la sesión.
         h.push('<div class="fila hoy" data-accion="cmd" data-id="telar.hoy" title="el día: agenda, tareas y lo que espera">'
-            + '<span class="num"></span><span class="prio"> </span><span class="nombre">hoy</span></div>');
+            + '<span class="num"></span><span class="prio"> </span><span class="nombre">dashboard</span></div>');
         h.push('<div class="sep"></div>');
         for (const x of modelo.enLista) h.push(this.fila(x, 'hilo'));
         const archivados = modelo.archivados;

@@ -120,9 +120,14 @@
       },
       {
         "command": "telar.hoy",
-        "title": "hoy (abre la vista, o vuelve al terminal)",
+        "title": "dashboard (lo abre, o vuelve al terminal)",
         "category": "telar",
         "icon": "$(calendar)"
+      },
+      {
+        "command": "telar.conectarCalendario",
+        "title": "Conectar calendario",
+        "category": "telar"
       },
       {
         "command": "telar.ficha",

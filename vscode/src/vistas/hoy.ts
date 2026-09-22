@@ -18,7 +18,7 @@ export class PanelHoy {
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
 
-    /** ⌥H: si «hoy» ya está al frente, devuelve el teclado al terminal. */
+    /** ⌥H: si el dashboard ya está al frente, devuelve el teclado al terminal. */
     alternar(): void {
         if (this.panel?.active) { void mostrarTerminal(); return; }
         this.abrir();
@@ -26,7 +26,7 @@ export class PanelHoy {
 
     abrir(): void {
         if (this.panel) { this.panel.reveal(vscode.ViewColumn.Active, false); void this.actualizar(); return; }
-        const panel = vscode.window.createWebviewPanel('telar.hoy', 'hoy',
+        const panel = vscode.window.createWebviewPanel('telar.hoy', 'dashboard',
             { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
             { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
         this.panel = panel;
@@ -77,10 +77,11 @@ export class PanelHoy {
         const h = ['<h2>Agenda<small>número o clic: entrar</small></h2>'];
         if (d.error) return [...h, `<div class="fila dim">(${esc(d.error)})</div>`];
         if (d.agenda === null) {
-            const pista = d.declarados.length
-                ? 'todavía no se ha consultado a los proveedores (r)'
-                : 'ningún proveedor declarado: telar no sabe de tu calendario hasta que lo nombres en <code>[proveedores.…]</code>';
-            return [...h, `<div class="fila dim">${pista}</div>`];
+            if (d.declarados.length) {
+                return [...h, '<div class="fila dim">todavía no se consultó el calendario (r)</div>'];
+            }
+            return [...h, '<div class="fila dim">No hay calendario conectado · '
+                + '<a data-accion="conectar" title="pegar la dirección iCal privada de tu calendario">conectar</a></div>'];
         }
         if (!d.agenda.length) return [...h, '<div class="fila dim">nada con hora</div>'];
         const t = ahora.getTime();
@@ -144,6 +145,7 @@ export class PanelHoy {
             case 'ir': if (m.valor) await irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
             case 'volver': void mostrarTerminal(); break;
+            case 'conectar': await vscode.commands.executeCommand('telar.conectarCalendario'); await this.actualizar(true); break;
         }
     }
 }

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from telar.config import MULTIPLEXORES, ruta_config
+from telar.config import MULTIPLEXORES, ErrorDeConfig, escribir_calendario, ruta_config
 from telar.ordenes import _comun
 
 AYUDA = "Mostrar la configuración resuelta y de dónde salió."
@@ -39,9 +39,21 @@ def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("config", AYUDA)
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     p.add_argument("--ruta", action="store_true", help="solo dónde se busca el archivo")
+    p.add_argument("--calendario", metavar="URL_O_ARCHIVO", default="",
+                   help="conectar la agenda: la dirección iCal privada (https:// o webcal://) o un .ics")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+
+    if o.calendario:
+        try:
+            destino = escribir_calendario(o.calendario, ctx.config.origen)
+        except ErrorDeConfig as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"calendario": "conectado", "archivo": str(destino)})
+        print(f"calendario conectado · {destino}")
+        return 0
 
     cfg = ctx.config
     if o.ruta:

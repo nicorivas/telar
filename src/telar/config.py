@@ -284,3 +284,84 @@ def cargar(ruta: Path | None = None) -> Config:
         raise ErrorDeConfig(f"{destino}: no se pudo leer: {e}") from e
 
     return _entorno(desde_dict(datos, origen=destino))
+
+
+# ── escribir el calendario ─────────────────────────────────────────────────────────
+
+_CABEZA_CALENDARIO = "[proveedores.calendario]"
+
+
+def fuente_calendario(valor: str) -> tuple[str, str]:
+    """(`url` o `archivo`, valor normalizado). `webcal://` es https con otro nombre."""
+    valor = valor.strip()
+    if not valor:
+        raise ErrorDeConfig("falta la dirección del calendario")
+    if valor.lower().startswith("webcal://"):
+        valor = "https://" + valor[len("webcal://"):]
+    if valor.lower().startswith(("https://", "http://")):
+        return "url", valor
+    ruta = Path(valor).expanduser()
+    if not ruta.is_file():
+        raise ErrorDeConfig(
+            f"«{valor}» no es una dirección https ni un archivo .ics que exista"
+        )
+    return "archivo", str(ruta)
+
+
+def escribir_calendario(valor: str, ruta: Path | None = None) -> Path:
+    """Deja `[proveedores.calendario]` apuntando a ese calendario iCal, y nada más.
+
+    Se reemplaza la tabla si ya había una (la de verdad, no la que está comentada en el
+    ejemplo) y el resto del archivo queda como estaba, comentarios incluidos. Antes de
+    escribir se comprueba que el resultado se siga leyendo: un archivo que telar no
+    entiende es peor que un calendario sin conectar.
+
+    El archivo queda legible solo por su dueño: una dirección iCal privada es un
+    secreto, porque cualquiera que la tenga ve la agenda.
+    """
+    clave, fuente = fuente_calendario(valor)
+    destino = Path(ruta).expanduser() if ruta is not None else ruta_config()
+    texto = destino.read_text(encoding="utf-8") if destino.exists() else ""
+
+    renglones = texto.splitlines()
+    salida: list[str] = []
+    dentro = False
+    for r in renglones:
+        limpio = r.strip()
+        if limpio == _CABEZA_CALENDARIO:
+            dentro = True
+            continue
+        if dentro and limpio.startswith("["):
+            dentro = False
+        if not dentro:
+            salida.append(r)
+    while salida and not salida[-1].strip():
+        salida.pop()
+
+    bloque = [
+        "",
+        "# La agenda del día, de un calendario iCal (lo escribió `telar config --calendario`).",
+        _CABEZA_CALENDARIO,
+        'tipo = "ics"',
+        f"{clave} = {_cadena_toml(fuente)}",
+    ]
+    nuevo = "\n".join(salida + bloque) + "\n"
+
+    try:
+        desde_dict(tomllib.loads(nuevo), origen=destino)
+    except (tomllib.TOMLDecodeError, ErrorDeConfig) as e:
+        raise ErrorDeConfig(f"no escribí nada: el resultado no se podría leer ({e})") from e
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporal = destino.with_name(destino.name + ".nuevo")
+    temporal.write_text(nuevo, encoding="utf-8")
+    os.chmod(temporal, 0o600)
+    os.replace(temporal, destino)
+    return destino
+
+
+def _cadena_toml(valor: str) -> str:
+    """Una cadena TOML básica. Las secuencias de escape de JSON son válidas en TOML."""
+    import json
+
+    return json.dumps(valor, ensure_ascii=False)

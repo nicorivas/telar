@@ -210,6 +210,27 @@ async function documento(a: Arg): Promise<void> {
     await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
 }
 
+/** Pide la dirección iCal privada y se la pasa a `telar config --calendario`, que valida y
+ *  escribe. La dirección no pasa por ningún otro lado: es un secreto, porque quien la
+ *  tiene ve la agenda, y telar deja el archivo legible solo por su dueño. */
+async function conectarCalendario(): Promise<void> {
+    const valor = await vscode.window.showInputBox({
+        title: 'Conectar calendario',
+        prompt: 'La dirección privada de tu calendario en formato iCal. En Google Calendar: '
+            + 'Configuración › tu calendario › «Dirección secreta en formato iCal».',
+        placeHolder: 'https://calendar.google.com/calendar/ical/…/basic.ics',
+        ignoreFocusOut: true,
+    });
+    if (!valor?.trim()) return;
+    const r = await cli.telar(['config', '--calendario', valor.trim()], 20000);
+    if (!r.ok) {
+        void vscode.window.showWarningMessage(`telar: ${r.err.trim().split('\n').pop() || 'no pude conectar el calendario'}`);
+        return;
+    }
+    anotar('calendario conectado');
+    void vscode.window.showInformationMessage('Calendario conectado.');
+}
+
 // ───────────────────────── activación ─────────────────────────
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
@@ -322,6 +343,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());
+    orden('telar.conectarCalendario', conectarCalendario);
     orden('telar.tareas', async () => {
         await vscode.commands.executeCommand('telar.tareas.focus');
         await vistaTareas.actualizar();
