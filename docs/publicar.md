@@ -55,9 +55,10 @@ Eclipse, firmar el Publisher Agreement y un token `OVSX_PAT`. Vale la pena, pero
 ### 4. Abrir el repositorio
 
 Hoy es privado. `gh repo edit nicorivas/telar --visibility public`. Antes conviene mirar
-dos cosas: que no haya quedado nada personal en el historial (`git log -p | grep -i`
-por rutas de la máquina, nombres de clientes y correos) y que la Homepage de pyproject apunte
-a donde va a estar.
+dos cosas: que no haya quedado nada personal **en el historial**, que también se hace
+público (`git log -p --all | grep -inE` por rutas de la máquina, nombres de clientes y
+correos que no sean el de quien firma), y que la Homepage de pyproject apunte a donde va a
+estar. El árbol limpio no alcanza: lo que se borró en un commit sigue ahí.
 
 ## Cada versión
 
