@@ -90,5 +90,60 @@ class ConectarCalendario(Prueba):
         self.assertEqual(fuente_calendario("webcal://a/b.ics"), ("url", "https://a/b.ics"))
 
 
+class LasTresOpciones(ConectarCalendario):
+    def test_gws_no_guarda_ninguna_direccion(self):
+        self.ruta.write_text(EJEMPLO)
+        escribir_calendario("gws", self.ruta)
+        self.assertEqual(self._leer().proveedores["calendario"].opciones, {"tipo": "gws"})
+
+    def test_ninguno_desconecta(self):
+        self.ruta.write_text(EJEMPLO)
+        escribir_calendario(URL, self.ruta)
+        escribir_calendario("ninguno", self.ruta)
+        self.assertEqual(self._leer().proveedores["calendario"].opciones, {"tipo": "ninguno"})
+        self.assertNotIn("private", self.ruta.read_text().split("[agente]")[-1])
+
+
+class TaparLaDireccion(Prueba):
+    def test_la_clave_no_se_ve(self):
+        from telar.proveedores.calendario import tapar
+        tapada = tapar("https://calendar.google.com/calendar/ical/yo%40x.cl/private-abc123/basic.ics")
+        self.assertEqual(tapada, "https://calendar.google.com/calendar/…")
+        self.assertNotIn("abc123", tapada)
+
+    def test_lo_que_no_es_url(self):
+        from telar.proveedores.calendario import tapar
+        self.assertEqual(tapar("cualquier cosa"), "…")
+
+
+class LeerDeGws(Prueba):
+    SALIDA = """Using account yo@x.cl
+{"items": [
+  {"id": "a", "summary": "Comité", "status": "confirmed",
+   "start": {"dateTime": "2026-09-22T11:00:00-03:00"}, "end": {"dateTime": "2026-09-22T12:00:00-03:00"},
+   "hangoutLink": "https://meet.google.com/x"},
+  {"id": "b", "summary": "Cancelado", "status": "cancelled",
+   "start": {"dateTime": "2026-09-22T09:00:00-03:00"}, "end": {"dateTime": "2026-09-22T10:00:00-03:00"}},
+  {"id": "c", "summary": "Rechazado", "attendees": [{"self": true, "responseStatus": "declined"}],
+   "start": {"dateTime": "2026-09-22T15:00:00-03:00"}, "end": {"dateTime": "2026-09-22T16:00:00-03:00"}},
+  {"id": "d", "summary": "Feriado", "start": {"date": "2026-09-22"}, "end": {"date": "2026-09-23"}}
+]}"""
+
+    def test_se_leen_los_que_ocupan_la_hora(self):
+        from telar.proveedores.calendario import eventos_de_gws
+        eventos = eventos_de_gws(self.SALIDA)
+        self.assertEqual([e.titulo for e in eventos], ["Feriado", "Comité"])
+        comite = eventos[1]
+        self.assertEqual(comite.enlace, "https://meet.google.com/x")
+        self.assertEqual(comite.inicio.isoformat(), "2026-09-22T11:00:00-03:00")
+        self.assertTrue(eventos[0].todo_el_dia)
+
+    def test_sin_json_es_un_error_que_se_dice(self):
+        from telar.proveedores import ErrorDeProveedor
+        from telar.proveedores.calendario import eventos_de_gws
+        with self.assertRaises(ErrorDeProveedor):
+            eventos_de_gws("gws: not authenticated")
+
+
 if __name__ == "__main__":
     unittest.main()

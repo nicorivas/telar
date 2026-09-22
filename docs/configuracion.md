@@ -48,7 +48,7 @@ foco_maximo  = 3600.0   # tope de un intervalo sin cambio de foco, al contar tie
 [proveedores.calendario]
 activo = true
 # Las demás claves son del proveedor; telar se las pasa tal cual y no las mira.
-# Las de `calendario`: tipo (ics | comando | ninguno), y url o archivo.
+# Las de `calendario`: tipo (ics | gws | comando | ninguno), y url o archivo si es ics.
 tipo = "ics"
 archivo = "~/agenda.ics"
 
@@ -62,6 +62,31 @@ Cada proveedor documenta sus propias claves en su módulo: `telar.proveedores.ta
 y `telar.proveedores.calendario`. De fábrica no hay ninguno encendido, y el único
 que sale de red es `calendario` con `url`, que lo dice en su `alcance` antes de
 que nadie lo encienda.
+
+### El calendario: iCal o gws
+
+La agenda del dashboard sale de una de dos fuentes, y se elige sin editar el archivo:
+
+```sh
+telar config --calendario gws                          # Google Workspace, con la CLI gws
+telar config --calendario https://…/private-…/basic.ics  # una dirección iCal (o webcal://, o un .ics)
+telar config --calendario ninguno                      # sin agenda
+```
+
+En VS Code es lo mismo desde el dashboard: **⚙ configuración** dice cuál está en uso,
+si responde, y deja cambiarla.
+
+- **gws** usa la cuenta con la que la CLI `gws` ya está conectada (`gws auth login`).
+  No hay dirección que pegar ni secreto que guardar, sirve aunque el administrador del
+  dominio haya desactivado iCal, y es la misma herramienta que lee el correo.
+- **iCal** es el formato que exporta cualquier calendario. En Google Calendar está en
+  Configuración › tu calendario › «Dirección **secreta** en formato iCal». La dirección
+  *pública* (`…/public/basic.ics`) solo funciona si el calendario está publicado para
+  todo internet; si no, Google responde 404.
+
+Una dirección iCal secreta es una llave: quien la tiene ve la agenda. Por eso
+`--calendario` deja el archivo de configuración legible solo por su dueño, y ni
+`telar config` ni los mensajes de error la muestran entera.
 
 ## Las claves, una por una
 

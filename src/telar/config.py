@@ -292,7 +292,10 @@ _CABEZA_CALENDARIO = "[proveedores.calendario]"
 
 
 def fuente_calendario(valor: str) -> tuple[str, str]:
-    """(`url` o `archivo`, valor normalizado). `webcal://` es https con otro nombre."""
+    """(`url` o `archivo`, valor normalizado). `webcal://` es https con otro nombre.
+
+    `gws` y `ninguno` no son fuentes iCal sino tipos, y los resuelve `escribir_calendario`.
+    """
     valor = valor.strip()
     if not valor:
         raise ErrorDeConfig("falta la dirección del calendario")
@@ -309,7 +312,10 @@ def fuente_calendario(valor: str) -> tuple[str, str]:
 
 
 def escribir_calendario(valor: str, ruta: Path | None = None) -> Path:
-    """Deja `[proveedores.calendario]` apuntando a ese calendario iCal, y nada más.
+    """Deja `[proveedores.calendario]` apuntando a esa fuente, y nada más.
+
+    `valor` es una dirección iCal (https, webcal) o un archivo .ics; o bien `gws`, para
+    leerlo con la CLI de Google Workspace; o `ninguno`, para desconectarlo.
 
     Se reemplaza la tabla si ya había una (la de verdad, no la que está comentada en el
     ejemplo) y el resto del archivo queda como estaba, comentarios incluidos. Antes de
@@ -319,7 +325,12 @@ def escribir_calendario(valor: str, ruta: Path | None = None) -> Path:
     El archivo queda legible solo por su dueño: una dirección iCal privada es un
     secreto, porque cualquiera que la tenga ve la agenda.
     """
-    clave, fuente = fuente_calendario(valor)
+    eleccion = valor.strip().lower()
+    if eleccion in ("gws", "ninguno"):
+        lineas = [f'tipo = "{eleccion}"']
+    else:
+        clave, fuente = fuente_calendario(valor)
+        lineas = ['tipo = "ics"', f"{clave} = {_cadena_toml(fuente)}"]
     destino = Path(ruta).expanduser() if ruta is not None else ruta_config()
     texto = destino.read_text(encoding="utf-8") if destino.exists() else ""
 
@@ -340,10 +351,9 @@ def escribir_calendario(valor: str, ruta: Path | None = None) -> Path:
 
     bloque = [
         "",
-        "# La agenda del día, de un calendario iCal (lo escribió `telar config --calendario`).",
+        "# La agenda del día (lo escribió `telar config --calendario`): ics, gws o ninguno.",
         _CABEZA_CALENDARIO,
-        'tipo = "ics"',
-        f"{clave} = {_cadena_toml(fuente)}",
+        *lineas,
     ]
     nuevo = "\n".join(salida + bloque) + "\n"
 

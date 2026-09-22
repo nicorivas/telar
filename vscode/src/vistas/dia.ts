@@ -169,6 +169,10 @@ export const CSS_DIA = `
   .fila { display: flex; gap: 1ch; align-items: baseline; padding: 0 .5ch; white-space: nowrap; }
   .fila.clic { cursor: pointer; } .fila.clic:hover { background: var(--hover); }
   .fila code { color: var(--verde); }
+  .falla { color: var(--rojo); }
+  .opcion { margin: .7em 0; padding-left: 1ch; border-left: 2px solid transparent; }
+  .opcion.activa { border-left-color: var(--azul); }
+  .opcion .fila.dim { white-space: normal; }
   .tecla { flex: none; width: 3ch; color: var(--dim); }
   .hora { flex: none; color: var(--dim); }
   .pasada, .pasada .que { color: var(--dim); }

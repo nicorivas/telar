@@ -178,6 +178,17 @@ export interface JsonHoy {
     proveedores: { declarados: string[]; fallas: string[] };
 }
 
+/** De dónde sale la agenda, según `telar config --json`. La dirección iCal viene tapada. */
+export interface JsonCalendario {
+    tipo: string; fuente: string; publica: boolean;
+    gws: boolean; gws_cuenta: string; gws_conectado: boolean;
+}
+
+export const config = () => telarJson<{ calendario: JsonCalendario }>(['config', '--json'], 20000);
+
+/** `telar config --calendario gws|ninguno|<dirección>`: elegir de dónde sale la agenda. */
+export const elegirCalendario = (valor: string) => telar(['config', '--calendario', valor], 20000);
+
 /** Lo que devuelve `telar pendiente <ref> --json`: adónde fue y qué se le escribió. */
 export interface JsonPendienteIdo {
     ref: string; texto: string; destino: string; creado?: boolean; enviado?: boolean;

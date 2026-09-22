@@ -5,10 +5,12 @@ y saber cuáles son cambia qué se puede empezar ahora. Este proveedor responde 
 sola pregunta —qué hay hoy— y la responde con cuatro datos: cuándo empieza, cuándo
 termina, cómo se llama y por dónde se entra.
 
-Tres implementaciones:
+Cuatro implementaciones:
 
   * `ics`      un calendario en formato iCalendar, archivo local o URL. Es el
                formato que exportan todos: no hace falta una cuenta ni una API.
+  * `gws`      Google Calendar con la CLI `gws`, con la cuenta que ya tenga conectada.
+               Sin dirección que pegar ni secreto que guardar.
   * `comando`  un programa externo que imprime JSON. Para todo lo demás.
   * `ninguno`  la forma explícita de no tener agenda.
 
@@ -65,6 +67,22 @@ NOMBRE = "calendario"
 #: Tope de lo que se baja de una URL. Una agenda no pesa esto ni de lejos; el tope
 #: está para que un servidor equivocado no se lleve la memoria de la máquina.
 TOPE_DESCARGA = 8 * 1024 * 1024
+
+
+def tapar(url: str) -> str:
+    """Una dirección iCal sin su parte secreta: se ve de dónde es, no cómo entrar.
+
+    Las direcciones privadas de Google llevan la clave en el camino (`private-…`), y
+    quien la tiene ve la agenda entera. Se deja el servidor y el primer tramo, lo justo
+    para reconocerla en un mensaje o en una pantalla.
+    """
+    from urllib.parse import urlsplit
+
+    partes = urlsplit(url)
+    if not partes.scheme or not partes.netloc:
+        return "…"
+    tramo = next((p for p in partes.path.split("/") if p), "")
+    return f"{partes.scheme}://{partes.netloc}/{tramo}/…" if tramo else f"{partes.scheme}://{partes.netloc}/…"
 
 
 def _zona_local() -> timezone:
@@ -493,7 +511,7 @@ class DeICS(_Base):
                     f"proveedores.{cfg.nombre}.url: solo http(s); para un archivo local, usa 'archivo'"
                 )
             self.url = url.strip()
-            self.alcance = f"descarga {self.url} cada vez que se consulta"
+            self.alcance = f"descarga {tapar(self.url)} cada vez que se consulta"
 
         espera = opciones.get("tiempo_maximo", 10)
         if isinstance(espera, bool) or not isinstance(espera, (int, float)) or espera <= 0:
@@ -511,15 +529,15 @@ class DeICS(_Base):
             with urllib.request.urlopen(peticion, timeout=self.tiempo_maximo) as r:  # noqa: S310
                 crudo = r.read(TOPE_DESCARGA + 1)
         except urllib.error.HTTPError as e:
-            raise ErrorDeProveedor(f"{self.url}: el servidor respondió {e.code}") from e
+            raise ErrorDeProveedor(f"{tapar(self.url)}: el servidor respondió {e.code}") from e
         except (urllib.error.URLError, OSError) as e:
-            raise ErrorDeProveedor(f"{self.url}: no se pudo bajar: {e}") from e
+            raise ErrorDeProveedor(f"{tapar(self.url)}: no se pudo bajar: {e}") from e
         if len(crudo) > TOPE_DESCARGA:
-            raise ErrorDeProveedor(f"{self.url}: pesa más de {TOPE_DESCARGA // (1024 * 1024)} MiB")
+            raise ErrorDeProveedor(f"{tapar(self.url)}: pesa más de {TOPE_DESCARGA // (1024 * 1024)} MiB")
         return crudo.decode("utf-8", errors="replace")
 
     def eventos(self, dia: date) -> list[Evento]:
-        origen = str(self.archivo) if self.archivo is not None else self.url
+        origen = str(self.archivo) if self.archivo is not None else tapar(self.url)
         return eventos_del_dia(leer_ics(self._texto()), dia, origen=origen)
 
 
@@ -651,6 +669,101 @@ def _evento_de_json(datos: object, origen: str, indice: int) -> Evento:
 
 # ── ninguno: la forma explícita de no tener agenda ──────────────────────────────
 
+class DeGws(_Base):
+    """Google Calendar a través de `gws`, la CLI de Google Workspace.
+
+    No pide ninguna dirección ni guarda ningún secreto: usa la cuenta con la que `gws` ya
+    está conectado en esta máquina. Es el camino cuando el administrador del dominio
+    desactivó la dirección iCal secreta, y el que sirve para más cosas que la agenda
+    (`gws` también lee el correo).
+
+        [proveedores.calendario]
+        tipo = "gws"
+        calendario = "primary"   # opcional: el id de otro calendario de la cuenta
+
+    Se descartan los eventos cancelados y los que la persona rechazó: no ocupan su hora.
+    """
+
+    tiempo_maximo = 40.0
+
+    def __init__(self, cfg: ConfigProveedor) -> None:
+        self.nombre = cfg.nombre
+        opciones = cfg.opciones
+        self.programa = str(opciones.get("programa") or "gws")
+        self.calendario = str(opciones.get("calendario") or "primary")
+        self.alcance = (
+            f"consulta Google Calendar con `{self.programa}`, con la cuenta que tenga conectada"
+        )
+
+    def eventos(self, dia: date) -> list[Evento]:
+        local = _zona_local()
+        desde = datetime.combine(dia, time.min, tzinfo=local)
+        hasta = desde + timedelta(days=1)
+        params = {
+            "calendarId": self.calendario,
+            "timeMin": desde.isoformat(),
+            "timeMax": hasta.isoformat(),
+            "singleEvents": True,
+            "orderBy": "startTime",
+        }
+        palabras = [self.programa, "calendar", "events", "list",
+                    "--params", json.dumps(params), "--format", "json"]
+        try:
+            r = subprocess.run(palabras, capture_output=True, text=True,
+                               timeout=self.tiempo_maximo, stdin=subprocess.DEVNULL)
+        except FileNotFoundError as e:
+            raise ErrorDeProveedor(f"no está instalado {self.programa!r}") from e
+        except subprocess.TimeoutExpired as e:
+            raise ErrorDeProveedor(f"{self.programa} no respondió en {self.tiempo_maximo:g} s") from e
+        if r.returncode != 0:
+            queja = [x for x in (r.stderr or r.stdout or "").splitlines() if x.strip()]
+            raise ErrorDeProveedor(f"{self.programa} salió con {r.returncode}"
+                                   + (f": {queja[-1].strip()}" if queja else ""))
+        return eventos_de_gws(r.stdout, local)
+
+
+def eventos_de_gws(salida: str, local: timezone | None = None) -> list[Evento]:
+    """La respuesta de `gws calendar events list`, en eventos de telar."""
+    local = local or _zona_local()
+    inicio_json = salida.find("{")
+    if inicio_json < 0:
+        raise ErrorDeProveedor("gws no devolvió JSON")
+    try:
+        datos = json.loads(salida[inicio_json:])
+    except json.JSONDecodeError as e:
+        raise ErrorDeProveedor(f"gws devolvió algo que no es JSON: {e}") from e
+    eventos: list[Evento] = []
+    for e in datos.get("items", []) or []:
+        if e.get("status") == "cancelled":
+            continue
+        yo = next((a for a in e.get("attendees", []) or [] if a.get("self")), {})
+        if yo.get("responseStatus") == "declined":
+            continue
+        ini, fin = e.get("start") or {}, e.get("end") or {}
+        if "dateTime" in ini:
+            comienzo = datetime.fromisoformat(ini["dateTime"])
+            final = datetime.fromisoformat(fin["dateTime"]) if "dateTime" in fin else None
+            todo = False
+        elif "date" in ini:
+            comienzo = datetime.combine(date.fromisoformat(ini["date"]), time.min, tzinfo=local)
+            final, todo = None, True
+        else:
+            continue
+        video = next((p.get("uri", "") for p in ((e.get("conferenceData") or {}).get("entryPoints") or [])
+                      if p.get("entryPointType") == "video"), "")
+        eventos.append(Evento(
+            id=str(e.get("id", "")),
+            titulo=e.get("summary") or "(sin título)",
+            inicio=comienzo,
+            fin=final,
+            enlace=e.get("hangoutLink") or video or e.get("htmlLink", ""),
+            todo_el_dia=todo,
+            lugar=e.get("location", ""),
+            origen="gws",
+        ))
+    return sorted(eventos, key=lambda x: (x.inicio, x.titulo))
+
+
 class Ninguno(_Base):
     """Apagado, pero dicho. Sirve para dejar la sección escrita sin que consulte nada."""
 
@@ -666,6 +779,7 @@ class Ninguno(_Base):
 
 IMPLEMENTACIONES = {
     "ics": DeICS,
+    "gws": DeGws,
     "comando": DeComando,
     "ninguno": Ninguno,
 }

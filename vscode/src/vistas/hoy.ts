@@ -1,4 +1,7 @@
-// «hoy»: el día entero en un panel del área central.
+// El dashboard: el día entero en un panel del área central (por dentro, `telar hoy`).
+//
+// Tiene dos pantallas. La del día, y la de configuración, que dice de dónde sale cada cosa
+// —hoy, la agenda—, si está funcionando, y deja elegir otra fuente sin editar archivos.
 //
 // Tres cosas y en este orden, el mismo de `telar hoy` en la terminal: lo que ya tiene hora,
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
@@ -7,6 +10,7 @@
 import * as vscode from 'vscode';
 
 import { irAHilo, mostrarTerminal } from '../acciones';
+import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, hhmm, marco } from '../estilo';
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, dia, htmlPendientes, olvidarDia } from './dia';
@@ -15,6 +19,9 @@ import { llevarPendiente } from './tareas';
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
+    private pantalla: 'dia' | 'config' = 'dia';
+    private calendario?: cli.JsonCalendario;
+    private avisoConfig = '';
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
 
@@ -56,6 +63,7 @@ export class PanelHoy {
 
     /** Redibuja con lo que hay: la marca «ahora» y los «hace» se mueven solos cada minuto. */
     render(): void {
+        if (this.panel && this.pantalla === 'config') { this.renderConfig(); return; }
         const d = this.datos;
         if (!this.panel || !d) return;
         this.teclas.clear();
@@ -63,7 +71,8 @@ export class PanelHoy {
         const h: string[] = [];
         h.push(`<div class="cab"><b>${esc(d.nombreDia)} ${esc(d.fecha)}</b>`
             + `<span class="dim">${ahora.toTimeString().slice(0, 5)}${d.semana ? ` · semana ${d.semana}` : ''}</span>`
-            + '<span class="der dim"><a data-accion="refrescar" title="volver a preguntar, proveedores incluidos (r)">↻ recargar</a></span></div>');
+            + '<span class="der dim"><a data-accion="refrescar" title="volver a preguntar, proveedores incluidos (r)">↻ recargar</a>'
+            + ' · <a data-accion="config" title="de dónde sale cada cosa">⚙ configuración</a></span></div>');
         h.push(...this.agenda(d, ahora), ...this.hilos(), ...htmlPendientes(d, false), ...this.fallas(d));
         h.push('<div class="pie">⎋ vuelve al terminal · / busca · r recarga · t la vista de tareas · letra: llevar ese pendiente a su hilo</div>');
         for (const [k, f] of [['r', () => this.actualizar(true)],
@@ -76,12 +85,18 @@ export class PanelHoy {
     private agenda(d: Dia, ahora: Date): string[] {
         const h = ['<h2>Agenda<small>número o clic: entrar</small></h2>'];
         if (d.error) return [...h, `<div class="fila dim">(${esc(d.error)})</div>`];
+        const falla = d.fallas.find(f => f.startsWith('calendario'));
+        if (falla) {
+            const motivo = falla.split(': ').pop() ?? falla;
+            return [...h, `<div class="fila falla">El calendario no respondió (${esc(motivo)}) · `
+                + '<a data-accion="config">configurar</a></div>'];
+        }
         if (d.agenda === null) {
             if (d.declarados.length) {
                 return [...h, '<div class="fila dim">todavía no se consultó el calendario (r)</div>'];
             }
             return [...h, '<div class="fila dim">No hay calendario conectado · '
-                + '<a data-accion="conectar" title="pegar la dirección iCal privada de tu calendario">conectar</a></div>'];
+                + '<a data-accion="config" title="elegir de dónde sale la agenda">conectar</a></div>'];
         }
         if (!d.agenda.length) return [...h, '<div class="fila dim">nada con hora</div>'];
         const t = ahora.getTime();
@@ -131,8 +146,84 @@ export class PanelHoy {
 
     /** Un proveedor caído no apaga el telar: se dice cuál se cayó y el resto sigue. */
     private fallas(d: Dia): string[] {
-        if (!d.fallas.length) return [];
-        return ['<h2>Proveedores</h2>', ...d.fallas.map(f => `<div class="fila dim">caído · ${esc(f)}</div>`)];
+        const otras = d.fallas.filter(f => !f.startsWith('calendario'));
+        if (!otras.length) return [];
+        return ['<h2>Proveedores</h2>', ...otras.map(f => `<div class="fila dim">caído · ${esc(f)}</div>`)];
+    }
+
+    private async abrirConfig(): Promise<void> {
+        this.pantalla = 'config';
+        this.avisoConfig = '';
+        this.renderConfig('leyendo la configuración…');
+        const r = await cli.config();
+        this.calendario = r.datos?.calendario;
+        if (!r.datos) this.avisoConfig = r.error ?? 'telar config no contestó';
+        this.renderConfig();
+    }
+
+    private async elegirCalendario(valor: string): Promise<void> {
+        if (valor === 'ics') {
+            await vscode.commands.executeCommand('telar.conectarCalendario');
+        } else {
+            const r = await cli.elegirCalendario(valor);
+            if (!r.ok) {
+                this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude cambiar el calendario';
+                this.renderConfig();
+                return;
+            }
+        }
+        olvidarDia();
+        await this.abrirConfig();
+        await this.actualizar(true);
+        this.renderConfig();
+    }
+
+    /** La pantalla de configuración: de dónde sale la agenda, si funciona, y las otras opciones. */
+    private renderConfig(cargando = ''): void {
+        if (!this.panel) return;
+        this.teclas.clear();
+        const h: string[] = ['<div class="cab"><b>Configuración</b>'
+            + '<span class="der dim"><a data-accion="dia" title="volver al día (⎋)">← volver al dashboard</a></span></div>'];
+        if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
+        if (this.avisoConfig) h.push(`<div class="fila falla">${esc(this.avisoConfig)}</div>`);
+        const c = this.calendario;
+        h.push('<h2>Calendario<small>de dónde sale la agenda</small></h2>');
+        if (!c) { this.pintar(h); return; }
+
+        const falla = this.datos?.fallas.find(f => f.startsWith('calendario'));
+        const estado = c.tipo === 'ninguno' ? 'sin conectar'
+            : falla ? `no responde (${falla.split(': ').pop()})`
+            : this.datos?.agenda ? 'funcionando' : 'todavía sin consultar';
+        const nombre: Record<string, string> = { gws: 'Google Workspace (gws)', ics: 'iCal', comando: 'un comando', ninguno: 'ninguno' };
+        h.push(`<div class="fila">En uso: <b>${esc(nombre[c.tipo] ?? c.tipo)}</b> · `
+            + `<span class="${falla ? 'falla' : 'dim'}">${esc(estado)}</span></div>`);
+
+        const opcion = (tipo: string, titulo: string, boton: string, lineas: string[]) => {
+            const activa = c.tipo === tipo;
+            h.push(`<div class="opcion${activa ? ' activa' : ''}"><div class="fila"><b>${activa ? '●' : '○'} ${titulo}</b>`
+                + (activa && tipo !== 'ics' ? '' : ` <span class="der"><a data-accion="calendario" data-valor="${tipo}">${boton}</a></span>`)
+                + '</div>' + lineas.map(l => `<div class="fila dim">${l}</div>`).join('') + '</div>');
+        };
+        opcion('gws', 'Google Workspace (gws)', 'usar', [
+            'Lee tu calendario con la CLI <code>gws</code>, con la cuenta que ya tenga conectada. '
+                + 'No hay dirección que pegar ni secreto que guardar, y sirve aunque el administrador del dominio haya desactivado iCal.',
+            !c.gws ? 'No está instalado en esta máquina.'
+                : c.gws_conectado ? `Conectado como <b>${esc(c.gws_cuenta || 'una cuenta')}</b>.`
+                : 'Instalado pero sin sesión: corre <code>gws auth login</code> en un terminal.',
+        ]);
+        opcion('ics', 'iCal', c.tipo === 'ics' ? 'cambiar dirección…' : 'usar…', [
+            'Una dirección de calendario en formato .ics. En Google Calendar: Configuración › tu calendario › '
+                + '«Dirección <b>secreta</b> en formato iCal».',
+            ...(c.tipo === 'ics' && c.fuente ? [`Guardada: <code>${esc(c.fuente)}</code> (la parte secreta no se muestra).`] : []),
+            ...(c.tipo === 'ics' && c.publica ? ['<span class="falla">Es la dirección <b>pública</b>: solo funciona si el calendario '
+                + 'está publicado para todo internet. Usa la secreta.</span>'] : []),
+        ]);
+        opcion('ninguno', 'Ninguno', 'desconectar', ['El dashboard no muestra agenda.']);
+        this.pintar(h);
+    }
+
+    private pintar(h: string[]): void {
+        void this.panel?.webview.postMessage({ tipo: 'dia', html: h.join('\n') });
     }
 
     private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string }): Promise<void> {
@@ -145,7 +236,9 @@ export class PanelHoy {
             case 'ir': if (m.valor) await irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
             case 'volver': void mostrarTerminal(); break;
-            case 'conectar': await vscode.commands.executeCommand('telar.conectarCalendario'); await this.actualizar(true); break;
+            case 'config': await this.abrirConfig(); break;
+            case 'dia': this.pantalla = 'dia'; this.render(); break;
+            case 'calendario': await this.elegirCalendario(m.valor ?? ''); break;
         }
     }
 }

@@ -11,6 +11,7 @@ import os
 
 from telar.config import MULTIPLEXORES, ErrorDeConfig, escribir_calendario, ruta_config
 from telar.ordenes import _comun
+from telar.proveedores.calendario import tapar
 
 AYUDA = "Mostrar la configuración resuelta y de dónde salió."
 
@@ -35,12 +36,57 @@ def _alcance(pr) -> str:
         return ""
 
 
+def _sin_secretos(opciones: dict) -> dict:
+    return {k: (tapar(v) if k == "url" and isinstance(v, str) else v) for k, v in opciones.items()}
+
+
+def _calendario(cfg) -> dict:
+    """Qué fuente tiene la agenda, para la pantalla de configuración del dashboard."""
+    import shutil
+
+    pr = cfg.proveedores.get("calendario")
+    opciones = pr.opciones if pr else {}
+    tipo = str(opciones.get("tipo") or "") if pr and pr.activo else ""
+    url = opciones.get("url") if isinstance(opciones.get("url"), str) else ""
+    programa = str(opciones.get("programa") or "gws")
+    instalado = bool(shutil.which(programa))
+    cuenta, conectado = _cuenta_gws(programa) if instalado else ("", False)
+    return {
+        "tipo": tipo or "ninguno",
+        "fuente": tapar(url) if url else str(opciones.get("archivo") or ""),
+        # la pública solo sirve si el calendario está publicado para todo internet
+        "publica": "/public/" in url,
+        "gws": instalado,
+        "gws_cuenta": cuenta,
+        "gws_conectado": conectado,
+    }
+
+
+def _cuenta_gws(programa: str) -> tuple[str, bool]:
+    """Con qué cuenta está conectado `gws`, y si la sesión sirve.
+
+    De `gws auth status` se toman dos datos y ninguno más: esa salida también trae rutas
+    de credenciales e identificadores del cliente OAuth, que no tienen por qué viajar.
+    """
+    import json
+    import subprocess
+
+    try:
+        r = subprocess.run([programa, "auth", "status"], capture_output=True, text=True,
+                           timeout=10, stdin=subprocess.DEVNULL)
+        datos = json.loads(r.stdout[r.stdout.index("{"):])
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return "", False
+    cuenta = datos.get("user") if isinstance(datos.get("user"), str) else ""
+    return cuenta, bool(datos.get("token_valid") or datos.get("has_refresh_token"))
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("config", AYUDA)
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     p.add_argument("--ruta", action="store_true", help="solo dónde se busca el archivo")
     p.add_argument("--calendario", metavar="URL_O_ARCHIVO", default="",
-                   help="conectar la agenda: la dirección iCal privada (https:// o webcal://) o un .ics")
+                   help="conectar la agenda: gws, una dirección iCal privada (https://, webcal://), un .ics, o ninguno")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -52,7 +98,7 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja(str(e))
         if o.json:
             return _comun.escribir_json({"calendario": "conectado", "archivo": str(destino)})
-        print(f"calendario conectado · {destino}")
+        print(f"calendario: {o.calendario if o.calendario.strip().lower() in ('gws', 'ninguno') else 'ics'} · {destino}")
         return 0
 
     cfg = ctx.config
@@ -75,8 +121,9 @@ def main(argv: list[str], ctx) -> int:
             "proveedores": cfg.intervalos.proveedores,
             "foco_maximo": cfg.intervalos.foco_maximo,
         },
+        "calendario": _calendario(cfg),
         "proveedores": {
-            nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": pr.opciones}
+            nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": _sin_secretos(pr.opciones)}
             for nombre, pr in cfg.proveedores.items()
         },
         "entorno": pisadas,
@@ -97,7 +144,7 @@ def main(argv: list[str], ctx) -> int:
     if cfg.proveedores:
         for nombre, pr in cfg.proveedores.items():
             marca = "activo" if pr.activo else "apagado"
-            opciones = ", ".join(f"{k}={v}" for k, v in pr.opciones.items())
+            opciones = ", ".join(f"{k}={v}" for k, v in _sin_secretos(pr.opciones).items())
             print(f"  {'proveedor':<13} {nombre} ({marca}) {_comun.tenue(opciones)}")
     else:
         print(f"  {'proveedores':<13} " + _comun.tenue("ninguno: telar no sale a la red"))
