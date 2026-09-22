@@ -1,0 +1,35 @@
+# ¿El token del Marketplace sigue sirviendo? Esto lo pregunta y no publica nada.
+#
+# Existe porque ese token se rompe de tres maneras y las tres dan el mismo 401 mudo en
+# medio de una publicación: expira, se crea con el alcance de una sola organización en vez
+# de «all accessible organizations», o le falta el permiso Marketplace › Manage. Peor: a
+# partir del 1-dic-2026 Azure DevOps deja de admitir el alcance que el Marketplace exige,
+# así que este camino se rompe solo. Mejor preguntarlo cuando uno quiera que a enterarse
+# al etiquetar una versión.
+name: verificar-pat
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    name: El token del Marketplace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Preguntarle al Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::no hay VSCE_PAT guardado en este repositorio"
+            exit 1
+          fi
+          echo "hay un VSCE_PAT de ${#VSCE_PAT} caracteres; se lo llevo al Marketplace"
+          npx --yes @vscode/vsce verify-pat nicorivas

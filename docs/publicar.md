@@ -52,7 +52,16 @@ Este sí necesita un secreto, porque Microsoft no tiene trusted publishing.
    siempre.
 2. En Azure DevOps (<https://dev.azure.com>), con la misma cuenta Microsoft: User settings ›
    Personal access tokens › New token, organización **All accessible organizations**,
-   alcance **Marketplace › Manage**. Sale una sola vez; copiarlo entonces.
+   alcance **Marketplace › Manage** (que está plegado tras «Show all scopes»). Sale una
+   sola vez; copiarlo entonces.
+
+   **Esto tiene fecha de caducidad más allá del token.** La propia página avisa que desde
+   el **1-dic-2026** Azure DevOps deja de admitir tokens con alcance «all accessible
+   organizations», que es justo el que el Marketplace exige. O sea que este camino se
+   rompe solo en diciembre, haga uno lo que haga con la fecha de expiración. Cuando pase,
+   hay que mirar qué ofrece Microsoft en reemplazo; mientras tanto, subir el `.vsix` a
+   mano desde <https://marketplace.visualstudio.com/manage> no necesita token de ninguna
+   clase y toma un minuto.
 3. En GitHub › Settings › Secrets and variables › Actions, guardarlo como `VSCE_PAT`.
 
 Sin `VSCE_PAT` el workflow no falla: se saltea ese trabajo y deja el `.vsix` adjunto a la
