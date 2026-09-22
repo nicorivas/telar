@@ -23,9 +23,15 @@ says so plainly when you ask for something that isn't written yet.
 ## Install
 
 ```sh
-pip install telar          # once it's published
-pip install -e .           # from a clone
+pip install telar          # the CLI
+pip install -e .           # from a clone, instead
 telar --version
+```
+
+The VS Code extension is a separate install, and optional — the CLI works on its own:
+
+```sh
+code --install-extension nicorivas.telar-hilos
 ```
 
 Python 3.11+. Standard library only, except PyYAML for reading the profile. A

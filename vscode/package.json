@@ -1,6 +1,6 @@
 {
-  "name": "telar",
-  "displayName": "telar",
+  "name": "telar-hilos",
+  "displayName": "telar — threads of work",
   "description": "Your work threads in the sidebar: status, priority, today's time, each thread's document, and the day. Everything is read from the telar CLI.",
   "version": "0.1.0",
   "publisher": "nicorivas",

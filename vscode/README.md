@@ -38,7 +38,14 @@ than as another program.
 
 ## Install
 
-From the Marketplace or Open VSX, search for **telar**.
+From the Marketplace, search for **telar**, or install it by id:
+
+```sh
+code --install-extension nicorivas.telar-hilos
+```
+
+The id says `telar-hilos` because the Marketplace keeps one global namespace for
+extension names and `telar` was already taken. Everywhere you see it, it is telar.
 
 From source, inside this folder:
 

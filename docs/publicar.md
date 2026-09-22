@@ -42,13 +42,21 @@ Este sí necesita un secreto, porque Microsoft no tiene trusted publishing.
 
 1. Crear un publisher en <https://marketplace.visualstudio.com/manage>. Tiene que llamarse
    igual que el campo `publisher` de vscode/package.json (hoy, `nicorivas`).
+
+   **El Marketplace tiene un solo espacio de nombres para todo el catálogo**, y eso
+   sorprende viniendo de PyPI o npm: no basta con que `publisher.name` sea único, tienen
+   que serlo también `name` y `displayName` por separado, contra todas las extensiones de
+   todos los publishers. `telar` estaba tomado en los dos (por `davidbc01.telar`), así que
+   la extensión se llama `telar-hilos` y se muestra como «telar — threads of work». El
+   `displayName` se puede cambiar publicando otra versión; el `name` no, queda para
+   siempre.
 2. En Azure DevOps (<https://dev.azure.com>), con la misma cuenta Microsoft: User settings ›
    Personal access tokens › New token, organización **All accessible organizations**,
    alcance **Marketplace › Manage**. Sale una sola vez; copiarlo entonces.
 3. En GitHub › Settings › Secrets and variables › Actions, guardarlo como `VSCE_PAT`.
 
 Sin `VSCE_PAT` el workflow no falla: se saltea ese trabajo y deja el `.vsix` adjunto a la
-Release, que se instala con `code --install-extension telar-0.1.0.vsix`.
+Release, que se instala con `code --install-extension telar-hilos-0.1.0.vsix`.
 
 Open VSX (el registro que usan VSCodium, Cursor y Gitpod) es un trámite aparte: cuenta con
 Eclipse, firmar el Publisher Agreement y un token `OVSX_PAT`. Vale la pena, pero no bloquea.
