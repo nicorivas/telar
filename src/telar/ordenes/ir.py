@@ -8,6 +8,10 @@ multiplexor), pero lo que pasa por telar no se pierde.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from telar.agente import ErrorDeAgente
+from telar.agente import lanzar
 from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
 
@@ -41,12 +45,22 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(f"{problema or 'ese hilo no está vivo'}{pista}. `--crear` lo abre.")
 
     nombre = hilo.nombre if hilo is not None else o.hilo
-    ruta = hilo.ruta if hilo is not None else None
+    # sin carpeta, el tab nace donde esté parado el servidor del multiplexor, que suele ser
+    # «/»: un hilo en la raíz del disco no sirve para nada. Y nace con su agente, como los
+    # que abre `tejer`: un hilo es un lugar de trabajo, no una shell.
+    ruta = hilo.ruta if hilo is not None and hilo.ruta is not None else None
     try:
-        nuevo = tel.mux.crear(nombre, ruta=ruta)
+        lanz = lanzar.para_hilo(ctx.config, nombre, ruta)
+    except ErrorDeAgente as e:
+        print(_comun.tenue(f"  sin agente: {e}"))
+        lanz = None
+    carpeta = lanz.carpeta if lanz is not None else (ruta or Path(ctx.config.raiz))
+    try:
+        nuevo = tel.mux.crear(nombre, ruta=carpeta, comando=lanz.comando if lanz else None)
     except ErrorDeMux as e:
         return _comun.queja(f"no pude abrirlo: {e}")
     tel.estado.desarchivar(nombre)
     tel.estado.marcar(nombre)
-    print(f"→ «{nuevo.nombre}» (nuevo)")
+    lanzar.anotar(ctx.config, nombre, lanz)
+    print(f"→ «{nuevo.nombre}» (nuevo)" + (f" · {carpeta}" if carpeta else ""))
     return 0

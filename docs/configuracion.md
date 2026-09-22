@@ -182,6 +182,10 @@ ya estaba tejida, `telar agente abrir --todos` lo pone en los hilos que no lo te
 solo reemplaza **shells ociosas**: una shell sin procesos hijos. Lo que la persona dejó
 corriendo no se toca.
 
+Un hilo nuevo (el «+» de la barra, o `telar ir <nombre> --crear`) también nace ahí, con
+su agente adentro. Sin esto nacía donde estuviera parado el servidor del multiplexor, que
+suele ser «/».
+
 `carpeta` decide dónde arranca el agente, no dónde vive el hilo: la ruta del hilo sale
 de su vínculo, así que un agente que arranca en otra parte no se la cambia. Existe
 porque hay agentes cuya memoria y configuración cuelgan de la carpeta donde arrancan
