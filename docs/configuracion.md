@@ -118,6 +118,30 @@ Lo que es del **repositorio** y no de la máquina: qué carpetas son proyectos, 
 se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en su
 [`telar-perfil.yaml`](perfil.md), y viaja con él.
 
+## `[agente]` — qué se abre en cada hilo
+
+```toml
+[agente]
+nombre = "claude-code"   # vacío o ausente: cada hilo es una shell
+carpeta = "hilo"         # hilo (por defecto) · raiz · una ruta
+```
+
+Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando
+la conversación que ese hilo ya tenía si su archivo sigue existiendo. En una sesión que
+ya estaba tejida, `telar agente abrir --todos` lo pone en los hilos que no lo tengan, y
+solo reemplaza **shells ociosas**: una shell sin procesos hijos. Lo que la persona dejó
+corriendo no se toca.
+
+`carpeta` decide dónde arranca el agente, no dónde vive el hilo: la ruta del hilo sale
+de su vínculo, así que un agente que arranca en otra parte no se la cambia. Existe
+porque hay agentes cuya memoria y configuración cuelgan de la carpeta donde arrancan
+(Claude Code lee `CLAUDE.md` y `.claude/` desde ahí), y abrirlos en otra carpeta es
+abrir a otro, que no recuerda nada.
+
+Al salir del agente queda una shell, no se cierra el tab. Y el agente arranca sin las
+variables de otro multiplexor (`ZELLIJ_*`): si tmux se levantó desde dentro de Zellij,
+los ganchos de Zellij creerían que el agente es uno de sus paneles.
+
 ## `[ficha]` — quién arma la ficha de un documento
 
 ```toml
