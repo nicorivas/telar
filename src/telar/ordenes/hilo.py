@@ -354,6 +354,8 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
         return _comun.queja(f"no pude retomar «{hilo.nombre}»: {e}")
     if lanz is not None and lanz.retoma:
         print(f"retomado «{hilo.nombre}» · conversación {lanz.retoma}")
+    elif lanz is not None and lanz.vacia:
+        print(f"retomado «{hilo.nombre}» · su conversación estaba vacía (sin mensajes): se abre de nuevo, con el mismo id")
     elif lanz is not None:
         print(f"retomado «{hilo.nombre}» · no había conversación guardada: una nueva")
     else:

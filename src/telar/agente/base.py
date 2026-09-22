@@ -517,7 +517,7 @@ class AgenteBase(ABC):
     def retomar(self, conversacion: Conversacion) -> list[str]:
         """El comando que vuelve a abrir esa conversación, sin correrlo."""
 
-    def nuevo_con_id(self, mensaje: str = "") -> tuple[list[str], str]:
+    def nuevo_con_id(self, mensaje: str = "", id: str = "") -> tuple[list[str], str]:
         """Una conversación nueva cuyo id se sabe antes de abrirla: (comando, id).
 
         Es lo que permite archivar un hilo y retomarlo después sin depender de ganchos:

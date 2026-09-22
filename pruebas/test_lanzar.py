@@ -92,7 +92,7 @@ class QueSeRetoma(Prueba):
             archivo_de=lambda c: archivos.get(c.id),
             retomar=lambda c: ["claude", "--resume", c.id],
             nuevo=lambda: ["claude"],
-            nuevo_con_id=lambda mensaje="": (["claude", "--session-id", "id-nuevo"], "id-nuevo"),
+            nuevo_con_id=lambda mensaje="", id="": (["claude", "--session-id", id or "id-nuevo"], id or "id-nuevo"),
         )
 
     def _correr(self, agente):
@@ -117,9 +117,15 @@ class QueSeRetoma(Prueba):
         lanz = self._correr(self._agente(["perdida"], {"perdida": Path("/no/existe.jsonl")}))
         self.assertEqual(lanz.retoma, "")
         self.assertNotIn("--resume", lanz.comando[2])
-        # la nueva nace con un id conocido, que quien la abre anota junto al hilo
+        # sin archivo, la conversación estaba vacía: se abre de nuevo con su mismo id
+        self.assertEqual(lanz.nueva, "perdida")
+        self.assertTrue(lanz.vacia)
+        self.assertIn("--session-id perdida", lanz.comando[2])
+
+    def test_sin_ninguna_conversacion_nace_un_id_nuevo(self):
+        lanz = self._correr(self._agente([], {}))
         self.assertEqual(lanz.nueva, "id-nuevo")
-        self.assertIn("--session-id id-nuevo", lanz.comando[2])
+        self.assertFalse(lanz.vacia)
 
 
 class CuandoSeReemplaza(Prueba):

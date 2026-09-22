@@ -45,6 +45,7 @@ class Lanzamiento:
     carpeta: Path | None
     retoma: str = ""  # el id de la conversación que retoma, o vacío si es nueva
     nueva: str = ""   # el id que se le dio a la conversación nueva, para anotarlo al abrirla
+    vacia: bool = False  # el hilo tenía conversación, pero sin mensajes: se abre con su mismo id
 
 
 def carpeta(config, carpeta_hilo: Path | None) -> Path | None:
@@ -65,7 +66,8 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
     agente = mod_agente.obtener(nombre, config)
     palabras: list[str] | None = None
     retoma = ""
-    for conversacion in agente.conversaciones(hilo):
+    conversaciones = agente.conversaciones(hilo)
+    for conversacion in conversaciones:
         archivo = agente.archivo_de(conversacion)
         if archivo is None or not Path(archivo).exists():
             continue
@@ -75,11 +77,15 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
             continue
         retoma = conversacion.id
         break
-    nueva = ""
+    nueva, vacia = "", False
     if palabras is None:
-        palabras, nueva = agente.nuevo_con_id()
+        # Claude escribe la conversación en disco recién con el primer mensaje: si la
+        # principal no tiene archivo, estaba vacía, y se abre con su mismo id
+        principal = conversaciones[0].id if conversaciones else ""
+        palabras, nueva = agente.nuevo_con_id(id=principal)
+        vacia = bool(principal) and nueva == principal
     return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
-                       retoma=retoma, nueva=nueva)
+                       retoma=retoma, nueva=nueva, vacia=vacia)
 
 
 def anotar(config, hilo: str, lanz: Lanzamiento | None) -> None:

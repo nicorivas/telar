@@ -140,7 +140,7 @@ class ClaudeCode(AgenteBase):
         """Una conversación nueva. La carpeta la pone el panel donde se abra, no una bandera."""
         return [self.binario]
 
-    def nuevo_con_id(self, mensaje: str = "") -> tuple[list[str], str]:
+    def nuevo_con_id(self, mensaje: str = "", id: str = "") -> tuple[list[str], str]:
         """Claude Code acepta `--session-id`: el id lo elige telar, y queda guardado desde ya.
 
         Con `--resume` Claude conserva ese mismo id, así que archivar y retomar se puede
@@ -149,7 +149,9 @@ class ClaudeCode(AgenteBase):
         """
         import uuid
 
-        sid = str(uuid.uuid4())
+        # `id` es para abrir con el id que el hilo ya tenía: una conversación sin mensajes
+        # no dejó archivo, y darle otro id le cambiaría la conversación al hilo por nada
+        sid = id or str(uuid.uuid4())
         palabras = [self.binario, "--session-id", sid]
         return ([*palabras, mensaje] if mensaje else palabras), sid
 
