@@ -64,6 +64,12 @@ Este sí necesita un secreto, porque Microsoft no tiene trusted publishing.
    clase y toma un minuto.
 3. En GitHub › Settings › Secrets and variables › Actions, guardarlo como `VSCE_PAT`.
 
+   Después, comprobarlo sin publicar nada: Actions › **verificar-pat** › Run workflow, o
+   `gh workflow run verificar-pat.yml`. Pregunta al Marketplace si el token sirve para el
+   publisher y dice cuántos caracteres tiene. Vale la pena porque `gh secret set` guarda
+   un secreto vacío sin quejarse si no recibe nada por teclado: el primer intento pasó
+   exactamente eso, y solo se habría visto como un 401 al etiquetar.
+
 Sin `VSCE_PAT` el workflow no falla: se saltea ese trabajo y deja el `.vsix` adjunto a la
 Release, que se instala con `code --install-extension telar-hilos-0.1.0.vsix`.
 
