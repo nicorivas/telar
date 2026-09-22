@@ -28,9 +28,10 @@ publisher»:
 | Workflow name | `publicar.yml` |
 | Environment name | `pypi` |
 
-Después, en GitHub › Settings › Environments, crear el entorno `pypi`. Conviene marcarlo
-con «Required reviewers» = uno mismo: así cada publicación pide una confirmación a mano
-antes de salir, que es la última red entre una etiqueta apurada y una versión pública.
+El entorno `pypi` de GitHub ya está creado (Settings › Environments). Se le puede poner
+«Required reviewers» = uno mismo: así cada publicación pide una confirmación a mano antes
+de salir, que es la última red entre una etiqueta apurada y una versión pública. Hoy no lo
+tiene, porque la etiqueta ya es una decisión deliberada.
 
 Para ensayar sin quemar el número de versión, TestPyPI acepta el mismo trámite y se prueba
 con `pypa/gh-action-pypi-publish` apuntado a `https://test.pypi.org/legacy/`.
