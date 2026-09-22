@@ -67,6 +67,10 @@ class Proveedor:
     opciones: dict[str, object] = field(default_factory=dict)
 
 
+#: lo que flow le decía a Claude al pinchar una reunión, y el punto de partida de telar.
+REUNION_POR_DEFECTO = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
+
+
 @dataclass(frozen=True, slots=True)
 class Agente:
     """Qué agente se abre en cada hilo, y en qué carpeta arranca.
@@ -79,6 +83,11 @@ class Agente:
 
     nombre: str = ""
     carpeta: str = "hilo"
+    #: lo que se le dice al agente al pinchar una reunión de la agenda. Marcadores:
+    #: {titulo} {hora} {fecha} {enlace} {proyecto}; si no hay proyecto, la cola
+    #: «· proyecto: …» se quita. La de fábrica es la de flow, y supone una skill
+    #: `/preparar-reunion` instalada en el agente.
+    reunion: str = REUNION_POR_DEFECTO
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +228,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -230,7 +239,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raise ErrorDeConfig(
                 f"agente.carpeta: se esperaba \"hilo\", \"raiz\" o una ruta, llegó {carpeta!r}"
             )
-        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip())
+        reunion = tabla.get("reunion", REUNION_POR_DEFECTO)
+        if not isinstance(reunion, str) or not reunion.strip():
+            raise ErrorDeConfig(f"agente.reunion: se esperaba un texto, llegó {reunion!r}")
+        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(), reunion=reunion.strip())
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
@@ -375,3 +387,55 @@ def _cadena_toml(valor: str) -> str:
     import json
 
     return json.dumps(valor, ensure_ascii=False)
+
+
+def escribir_clave(tabla: str, clave: str, valor: str | None, ruta: Path | None = None) -> Path:
+    """Pone `clave = "valor"` en `[tabla]`, o la quita si `valor` es None.
+
+    Toca solo esa línea: el resto del archivo, comentarios incluidos, queda como estaba.
+    Si la tabla no existe se agrega al final. Igual que con el calendario, antes de
+    escribir se comprueba que el resultado se siga leyendo.
+    """
+    destino = Path(ruta).expanduser() if ruta is not None else ruta_config()
+    texto = destino.read_text(encoding="utf-8") if destino.exists() else ""
+    renglones = texto.splitlines()
+    cabeza = f"[{tabla}]"
+    nueva = f"{clave} = {_cadena_toml(valor)}" if valor is not None else None
+
+    try:
+        i = next(n for n, r in enumerate(renglones) if r.strip() == cabeza)
+    except StopIteration:
+        i = -1
+    if i < 0:
+        if nueva is not None:
+            while renglones and not renglones[-1].strip():
+                renglones.pop()
+            renglones += ["", cabeza, nueva]
+    else:
+        fin = next((n for n in range(i + 1, len(renglones)) if renglones[n].strip().startswith("[")),
+                   len(renglones))
+        donde = next((n for n in range(i + 1, fin)
+                      if renglones[n].split("=", 1)[0].strip() == clave and not renglones[n].lstrip().startswith("#")),
+                     -1)
+        if donde >= 0:
+            if nueva is None:
+                del renglones[donde]
+            else:
+                renglones[donde] = nueva
+        elif nueva is not None:
+            ultimo = max((n for n in range(i, fin) if renglones[n].strip()), default=i)
+            renglones.insert(ultimo + 1, nueva)
+    nuevo = "\n".join(renglones) + "\n"
+
+    try:
+        desde_dict(tomllib.loads(nuevo), origen=destino)
+    except (tomllib.TOMLDecodeError, ErrorDeConfig) as e:
+        raise ErrorDeConfig(f"no escribí nada: el resultado no se podría leer ({e})") from e
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporal = destino.with_name(destino.name + ".nuevo")
+    temporal.write_text(nuevo, encoding="utf-8")
+    if destino.exists():
+        os.chmod(temporal, destino.stat().st_mode & 0o777)
+    os.replace(temporal, destino)
+    return destino
+

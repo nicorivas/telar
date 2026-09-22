@@ -178,13 +178,24 @@ export interface JsonHoy {
     proveedores: { declarados: string[]; fallas: string[] };
 }
 
+/** `telar reunion`: un hilo con el agente preparando esa reunión (o ir a él, si ya existe). */
+export const reunion = (titulo: string, hora: string, enlace = '') =>
+    telarJson<{ hilo: string; proyecto: string; mensaje: string; hecho: string }>(
+        ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), '--json'], 30000);
+
 /** De dónde sale la agenda, según `telar config --json`. La dirección iCal viene tapada. */
 export interface JsonCalendario {
     tipo: string; fuente: string; publica: boolean;
     gws: boolean; gws_cuenta: string; gws_conectado: boolean;
 }
 
-export const config = () => telarJson<{ calendario: JsonCalendario }>(['config', '--json'], 20000);
+/** Lo que el dashboard muestra de `[agente]`. */
+export interface JsonAgenteConfig { nombre: string; carpeta: string; reunion: string; reunion_por_defecto: string }
+
+export const config = () => telarJson<{ calendario: JsonCalendario; agente: JsonAgenteConfig }>(['config', '--json'], 20000);
+
+/** `telar config --reunion`: qué decirle al agente al preparar una reunión. Vacío: el de fábrica. */
+export const plantillaReunion = (texto: string) => telar(['config', '--reunion', texto], 20000);
 
 /** `telar config --calendario gws|ninguno|<dirección>`: elegir de dónde sale la agenda. */
 export const elegirCalendario = (valor: string) => telar(['config', '--calendario', valor], 20000);

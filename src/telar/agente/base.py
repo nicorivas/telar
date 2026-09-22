@@ -517,6 +517,14 @@ class AgenteBase(ABC):
     def retomar(self, conversacion: Conversacion) -> list[str]:
         """El comando que vuelve a abrir esa conversación, sin correrlo."""
 
+    def con_mensaje(self, mensaje: str) -> list[str]:
+        """Una conversación nueva que arranca diciendo `mensaje`. Sin correrla.
+
+        La mayoría de los agentes de línea de comandos aceptan el primer mensaje como
+        argumento; el que no, que lo sobrescriba.
+        """
+        return [*self.nuevo(), mensaje]
+
     @abstractmethod
     def nuevo(self, ruta: Path | None = None) -> list[str]:
         """El comando que abre una conversación nueva, sin correrlo."""

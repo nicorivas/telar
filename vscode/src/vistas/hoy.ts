@@ -21,6 +21,7 @@ export class PanelHoy {
     private datos?: Dia;
     private pantalla: 'dia' | 'config' = 'dia';
     private calendario?: cli.JsonCalendario;
+    private agenteConfig?: cli.JsonAgenteConfig;
     private avisoConfig = '';
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
@@ -83,7 +84,7 @@ export class PanelHoy {
     }
 
     private agenda(d: Dia, ahora: Date): string[] {
-        const h = ['<h2>Agenda<small>número o clic: entrar</small></h2>'];
+        const h = ['<h2>Agenda<small>número o clic: preparar la reunión · entrar: la videollamada</small></h2>'];
         if (d.error) return [...h, `<div class="fila dim">(${esc(d.error)})</div>`];
         const falla = d.fallas.find(f => f.startsWith('calendario'));
         if (falla) {
@@ -114,15 +115,17 @@ export class PanelHoy {
             }
             n += 1;
             const tecla = n <= 9 ? String(n) : '';
-            if (tecla && url) this.teclas.set(tecla, () => vscode.env.openExternal(vscode.Uri.parse(url)));
+            if (tecla) this.teclas.set(tecla, () => this.preparar(e.texto, hhmm(cuando), url));
             let falta = '';
             if (e === proxima) {
                 const min = Math.floor((Date.parse(cuando) - t) / 60000);
                 falta = `<span class="cuando">← ${min <= 0 ? 'ahora' : min < 90 ? `en ${min} min`
                     : `en ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`}</span>`;
             }
-            h.push(`<div class="fila${e === proxima ? ' proxima' : ''}${url ? ' clic' : ''}"${url ? ` data-url="${esc(url)}"` : ''}>`
-                + `<span class="tecla">${tecla && url ? `[${tecla}]` : ''}</span><span class="hora">${esc(hhmm(cuando))}</span>`
+            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url]));
+            h.push(`<div class="fila clic${e === proxima ? ' proxima' : ''}" data-accion="reunion" data-valor="${valor}"`
+                + ` title="preparar esta reunión con el agente${tecla ? ` (${tecla})` : ''}">`
+                + `<span class="tecla">${tecla ? `[${tecla}]` : ''}</span><span class="hora">${esc(hhmm(cuando))}</span>`
                 + `<span class="que">${esc(e.texto)}</span>${hilo}${entrar}${falta}</div>`);
         }
         return h;
@@ -151,12 +154,25 @@ export class PanelHoy {
         return ['<h2>Proveedores</h2>', ...otras.map(f => `<div class="fila dim">caído · ${esc(f)}</div>`)];
     }
 
+    /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
+     *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
+    private async preparar(titulo: string, hora: string, enlace: string): Promise<void> {
+        const r = await cli.reunion(titulo, hora, enlace);
+        if (!r.datos) {
+            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
+            return;
+        }
+        await modelo.sondear();
+        await mostrarTerminal();
+    }
+
     private async abrirConfig(): Promise<void> {
         this.pantalla = 'config';
         this.avisoConfig = '';
         this.renderConfig('leyendo la configuración…');
         const r = await cli.config();
         this.calendario = r.datos?.calendario;
+        this.agenteConfig = r.datos?.agente;
         if (!r.datos) this.avisoConfig = r.error ?? 'telar config no contestó';
         this.renderConfig();
     }
@@ -176,6 +192,23 @@ export class PanelHoy {
         await this.abrirConfig();
         await this.actualizar(true);
         this.renderConfig();
+    }
+
+    private async cambiarPlantilla(restablecer: boolean): Promise<void> {
+        let texto = '';
+        if (!restablecer) {
+            const actual = this.agenteConfig?.reunion ?? '';
+            const nuevo = await vscode.window.showInputBox({
+                title: 'Qué decirle al agente al preparar una reunión',
+                prompt: 'Marcadores: {titulo} {hora} {fecha} {enlace} {proyecto}. Una skill (/nombre …) o una instrucción en prosa.',
+                value: actual, ignoreFocusOut: true,
+            });
+            if (nuevo === undefined || nuevo.trim() === actual) return;
+            texto = nuevo.trim();
+        }
+        const r = await cli.plantillaReunion(texto);
+        if (!r.ok) this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude guardar el mensaje';
+        await this.abrirConfig();
     }
 
     /** La pantalla de configuración: de dónde sale la agenda, si funciona, y las otras opciones. */
@@ -219,6 +252,20 @@ export class PanelHoy {
                 + 'está publicado para todo internet. Usa la secreta.</span>'] : []),
         ]);
         opcion('ninguno', 'Ninguno', 'desconectar', ['El dashboard no muestra agenda.']);
+
+        const a = this.agenteConfig;
+        if (a) {
+            const propia = a.reunion !== a.reunion_por_defecto;
+            h.push('<h2>Reuniones<small>qué se le dice al agente al pinchar una reunión</small></h2>');
+            h.push(`<div class="fila"><code>${esc(a.reunion)}</code>`
+                + '<span class="der"><a data-accion="plantilla" data-valor="cambiar">cambiar…</a>'
+                + (propia ? ' · <a data-accion="plantilla" data-valor="restablecer">volver a la de flow</a>' : '') + '</span></div>');
+            h.push('<div class="fila dim">Se abre un tab «◷ hora reunión» con '
+                + `<b>${esc(a.nombre || 'ningún agente')}</b> y se le escribe esto. Marcadores: `
+                + '<code>{titulo}</code> <code>{hora}</code> <code>{fecha}</code> <code>{enlace}</code> <code>{proyecto}</code>. '
+                + 'El proyecto es la carpeta que comparte palabras con el título; si no hay, la cola «· proyecto:» se quita.</div>');
+            if (!propia) h.push('<div class="fila dim">Es la de flow: supone la skill <code>/preparar-reunion</code> instalada en Claude Code.</div>');
+        }
         this.pintar(h);
     }
 
@@ -236,9 +283,15 @@ export class PanelHoy {
             case 'ir': if (m.valor) await irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
             case 'volver': void mostrarTerminal(); break;
+            case 'reunion': {
+                const [titulo, hora, enlace] = JSON.parse(m.valor ?? '[]') as string[];
+                if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '');
+                break;
+            }
             case 'config': await this.abrirConfig(); break;
             case 'dia': this.pantalla = 'dia'; this.render(); break;
             case 'calendario': await this.elegirCalendario(m.valor ?? ''); break;
+            case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
         }
     }
 }

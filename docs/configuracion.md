@@ -149,7 +149,17 @@ se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en 
 [agente]
 nombre = "claude-code"   # vacío o ausente: cada hilo es una shell
 carpeta = "hilo"         # hilo (por defecto) · raiz · una ruta
+reunion = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 ```
+
+`reunion` es lo que se le dice al agente cuando se pincha una reunión en la agenda del
+dashboard (o con `telar reunion "<título>" HH:MM`): se abre un tab «◷ hora reunión» con
+el agente, y ese es su primer mensaje. Marcadores: `{titulo}`, `{hora}`, `{fecha}`,
+`{enlace}` y `{proyecto}`, que es la carpeta del perfil que comparte palabras con el
+título; si no hay ninguna, la cola «· proyecto: …» se quita. El de fábrica es el de flow
+y supone la skill `/preparar-reunion` instalada; cualquier otra skill o una instrucción
+en prosa sirven igual. Se cambia desde **⚙ configuración** en el dashboard, o con
+`telar config --reunion "…"` (vacío vuelve al de fábrica).
 
 Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando
 la conversación que ese hilo ya tenía si su archivo sigue existiendo. En una sesión que

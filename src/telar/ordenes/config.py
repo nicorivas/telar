@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import os
 
-from telar.config import MULTIPLEXORES, ErrorDeConfig, escribir_calendario, ruta_config
+from telar.config import (
+    MULTIPLEXORES,
+    REUNION_POR_DEFECTO,
+    ErrorDeConfig,
+    escribir_calendario,
+    escribir_clave,
+    ruta_config,
+)
 from telar.ordenes import _comun
 from telar.proveedores.calendario import tapar
 
@@ -87,9 +94,23 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--ruta", action="store_true", help="solo dónde se busca el archivo")
     p.add_argument("--calendario", metavar="URL_O_ARCHIVO", default="",
                    help="conectar la agenda: gws, una dirección iCal privada (https://, webcal://), un .ics, o ninguno")
+    p.add_argument("--reunion", metavar="TEXTO", default=None,
+                   help="qué decirle al agente al preparar una reunión ({titulo} {hora} {fecha} {enlace} {proyecto}); "
+                        "vacío vuelve al de fábrica")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+
+    if o.reunion is not None:
+        valor = o.reunion.strip() or None  # vacío: se borra la clave y rige el de fábrica
+        try:
+            destino = escribir_clave("agente", "reunion", valor, ctx.config.origen)
+        except ErrorDeConfig as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"reunion": valor or REUNION_POR_DEFECTO, "archivo": str(destino)})
+        print(f"reunión: {valor or REUNION_POR_DEFECTO} · {destino}")
+        return 0
 
     if o.calendario:
         try:
@@ -122,6 +143,12 @@ def main(argv: list[str], ctx) -> int:
             "foco_maximo": cfg.intervalos.foco_maximo,
         },
         "calendario": _calendario(cfg),
+        "agente": {
+            "nombre": cfg.agente.nombre,
+            "carpeta": cfg.agente.carpeta,
+            "reunion": cfg.agente.reunion,
+            "reunion_por_defecto": REUNION_POR_DEFECTO,
+        },
         "proveedores": {
             nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": _sin_secretos(pr.opciones)}
             for nombre, pr in cfg.proveedores.items()
