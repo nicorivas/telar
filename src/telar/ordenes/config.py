@@ -11,6 +11,7 @@ import os
 
 from telar.config import (
     MULTIPLEXORES,
+    PROYECTO_POR_DEFECTO,
     REUNION_POR_DEFECTO,
     ErrorDeConfig,
     escribir_calendario,
@@ -97,6 +98,9 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--reunion", metavar="TEXTO", default=None,
                    help="qué decirle al agente al preparar una reunión ({titulo} {hora} {fecha} {enlace} {proyecto}); "
                         "vacío vuelve al de fábrica")
+    p.add_argument("--proyecto", metavar="TEXTO", default=None,
+                   help="qué decirle al agente al abrir un proyecto ({nombre} {ruta} {carpeta} {documento}); "
+                        "vacío vuelve al de fábrica")
     p.add_argument("--directorios", metavar="CARPETAS", default=None,
                    help="de qué carpetas salen los hilos, separadas por coma, relativas a la raíz; "
                         "vacío vuelve a las unidades del perfil")
@@ -131,6 +135,17 @@ def main(argv: list[str], ctx) -> int:
         if o.json:
             return _comun.escribir_json({"reunion": valor or REUNION_POR_DEFECTO, "archivo": str(destino)})
         print(f"reunión: {valor or REUNION_POR_DEFECTO} · {destino}")
+        return 0
+
+    if o.proyecto is not None:
+        valor = o.proyecto.strip() or None
+        try:
+            destino = escribir_clave("agente", "proyecto", valor, ctx.config.origen)
+        except ErrorDeConfig as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"proyecto": valor or PROYECTO_POR_DEFECTO, "archivo": str(destino)})
+        print(f"proyecto: {valor or PROYECTO_POR_DEFECTO} · {destino}")
         return 0
 
     if o.calendario:
@@ -170,6 +185,8 @@ def main(argv: list[str], ctx) -> int:
             "carpeta": cfg.agente.carpeta,
             "reunion": cfg.agente.reunion,
             "reunion_por_defecto": REUNION_POR_DEFECTO,
+            "proyecto": cfg.agente.proyecto,
+            "proyecto_por_defecto": PROYECTO_POR_DEFECTO,
         },
         "proveedores": {
             nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": _sin_secretos(pr.opciones)}

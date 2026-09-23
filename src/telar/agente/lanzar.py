@@ -88,16 +88,33 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
                        retoma=retoma, nueva=nueva, vacia=vacia)
 
 
-def anotar(config, hilo: str, lanz: Lanzamiento | None) -> None:
+def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None) -> None:
     """Guarda junto al hilo el id de la conversación que se acaba de abrir en él.
 
     Se llama después de abrir el tab, no antes: anotar una conversación en un hilo que el
     multiplexor no llegó a crear dejaría un id apuntando a nada.
+
+    Con `mux` se anota además en qué panel quedó corriendo. Eso es lo que después permite
+    mudarla de hilo sin adivinar cuál de las conversaciones de un hilo es la de este panel.
     """
     if lanz is None or not lanz.nueva or not config.agente.nombre:
         return
     agente = mod_agente.obtener(config.agente.nombre, config)
-    agente.anotar(hilo, mod_agente.Conversacion(id=lanz.nueva, hilo=hilo))
+    agente.anotar(hilo, mod_agente.Conversacion(id=lanz.nueva, hilo=hilo), panel=_panel(mux, hilo))
+
+
+def _panel(mux, hilo: str) -> str:
+    """El panel donde acaba de quedar el hilo, si el multiplexor lo sabe decir."""
+    if mux is None:
+        return ""
+    try:
+        tab = next((h for h in mux.hilos() if h.nombre == hilo), None)
+        if tab is None:
+            return ""
+        panes = [p for p in mux.panes(tab.id) if not p.flotante and not p.terminado]
+        return panes[0].id if panes else ""
+    except Exception:  # noqa: BLE001 - anotar el panel es un extra, no puede romper la apertura
+        return ""
 
 
 def envolver(palabras: list[str], hilo: str) -> list[str]:

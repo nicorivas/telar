@@ -152,7 +152,7 @@ def main(argv: list[str], ctx) -> int:
             tel.mux.crear_tab(nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=True)
             if proyecto:
                 mod_estado.abrir(ctx.config).vincular(nombre, proyecto)
-            lanzar.anotar(ctx.config, nombre, lanz)
+            lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
             resultado["hecho"] = "abierto"
         hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
         if hilo is not None:

@@ -402,6 +402,23 @@ una vista que guarde lo anterior sabe entonces que no debe borrarlo. `atencion`
 trae solo los hilos que dijeron algo, ordenados por lo que piden: primero los que
 esperan, después los que terminaron, al final los que trabajan.
 
+### `telar proyectos --json`
+
+```json
+{ "raiz": "/…/trabajo",
+  "proyectos": [
+    { "ruta": "proyectos/faro", "nombre": "Faro", "arquetipo": "proyecto",
+      "modificado": "2026-09-18T12:04:31+00:00", "hilo": "faro", "vivo": true } ] }
+```
+
+Todas las unidades del perfil, tengan hilo o no, ordenadas por `nombre`. `modificado` es
+el archivo más reciente de la carpeta sin contar las ocultas (`null` si no hay ninguno).
+`hilo` es el que está vinculado a esa unidad, o `""`; `vivo`, si ese hilo tiene tab.
+
+`telar proyectos abrir <ruta> --json` devuelve `{ "hilo", "ruta", "mensaje", "hecho" }`:
+`hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
+no hay agente o si el hilo ya estaba).
+
 ### `telar atencion get --json`
 
 Con un hilo:

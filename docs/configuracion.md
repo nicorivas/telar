@@ -165,6 +165,7 @@ se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en 
 nombre = "claude-code"   # vacío o ausente: cada hilo es una shell
 carpeta = "hilo"         # hilo (por defecto) · raiz · una ruta
 reunion = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
+proyecto = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
 ```
 
 `reunion` es lo que se le dice al agente cuando se pincha una reunión en la agenda del
@@ -175,6 +176,14 @@ título; si no hay ninguna, la cola «· proyecto: …» se quita. El de fábric
 y supone la skill `/preparar-reunion` instalada; cualquier otra skill o una instrucción
 en prosa sirven igual. Se cambia desde **⚙ configuración** en el dashboard, o con
 `telar config --reunion "…"` (vacío vuelve al de fábrica).
+
+`proyecto` es lo que se le dice al agente al abrir un proyecto desde la pantalla
+**▤ proyectos** del dashboard (o con `telar proyectos abrir <ruta>`): se abre un tab con
+el nombre de la carpeta, vinculado a ella, y ese es su primer mensaje. Si la unidad ya
+tiene un hilo abierto, se va a él y no se le dice nada. Marcadores: `{nombre}` (el de
+pantalla, según la `etiqueta` del perfil), `{ruta}` (relativa a la raíz), `{carpeta}` y
+`{documento}` (absolutas). El de fábrica no supone ninguna skill; con una, algo como
+`/pm {ruta}`. Se cambia desde **⚙ configuración** o con `telar config --proyecto "…"`.
 
 Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando
 la conversación que ese hilo ya tenía si su archivo sigue existiendo. En una sesión que
@@ -219,8 +228,8 @@ con `telar config --directorios "a, b"` y `--tope N`, o desde **⚙ configuraci�
 Cada agente que telar abre nace con un id de conversación que telar elige
 (`claude --session-id <uuid>`) y guarda junto al hilo. Por eso:
 
-- `telar hilo cerrar` (✕ en la lista) cierra el tab y lo que corra adentro. El hilo sigue
-  en la lista, sin tab.
+- `telar hilo cerrar` (✕ en la lista) cierra el tab y lo que corra adentro, y olvida el
+  hilo: sale de la lista. Lo que se quiere guardar se archiva.
 - `telar hilo archivar --cerrar` (⏸ en la lista) hace lo mismo y además lo manda al
   archivo: tejer la sesión otra vez no lo reabre.
 - `telar hilo retomar` (▶, o pinchar un hilo sin tab) reabre el tab en su carpeta con

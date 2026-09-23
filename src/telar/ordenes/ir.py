@@ -61,6 +61,6 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(f"no pude abrirlo: {e}")
     tel.estado.desarchivar(nombre)
     tel.estado.marcar(nombre)
-    lanzar.anotar(ctx.config, nombre, lanz)
+    lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
     print(f"→ «{nuevo.nombre}» (nuevo)" + (f" · {carpeta}" if carpeta else ""))
     return 0

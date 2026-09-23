@@ -84,6 +84,10 @@ class Hilos:
 #: lo que flow le decía a Claude al pinchar una reunión, y el punto de partida de telar.
 REUNION_POR_DEFECTO = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 
+#: lo que se le dice al agente al abrir un proyecto desde la lista del dashboard. No supone
+#: ninguna skill: cualquier agente sabe leer un archivo.
+PROYECTO_POR_DEFECTO = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
+
 
 @dataclass(frozen=True, slots=True)
 class Agente:
@@ -102,6 +106,9 @@ class Agente:
     #: «· proyecto: …» se quita. La de fábrica es la de flow, y supone una skill
     #: `/preparar-reunion` instalada en el agente.
     reunion: str = REUNION_POR_DEFECTO
+    #: lo que se le dice al abrir un proyecto desde la lista. Marcadores: {nombre} (el de
+    #: pantalla), {ruta} (relativa a la raíz), {carpeta} y {documento} (absolutas).
+    proyecto: str = PROYECTO_POR_DEFECTO
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,7 +251,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -258,7 +265,11 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         reunion = tabla.get("reunion", REUNION_POR_DEFECTO)
         if not isinstance(reunion, str) or not reunion.strip():
             raise ErrorDeConfig(f"agente.reunion: se esperaba un texto, llegó {reunion!r}")
-        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(), reunion=reunion.strip())
+        proyecto = tabla.get("proyecto", PROYECTO_POR_DEFECTO)
+        if not isinstance(proyecto, str) or not proyecto.strip():
+            raise ErrorDeConfig(f"agente.proyecto: se esperaba un texto, llegó {proyecto!r}")
+        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(),
+                                   reunion=reunion.strip(), proyecto=proyecto.strip())
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")

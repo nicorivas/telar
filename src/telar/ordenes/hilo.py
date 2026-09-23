@@ -7,8 +7,10 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo renombrar «Faro»            renombrarlo, y mover con él lo que telar sabía
     telar hilo adoptar [«faro»]            recoger el estado que quedó en otro nombre
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
-    telar hilo cerrar                      cerrar su tab (y lo que corra adentro); sigue en
-                                           la lista, y `retomar` lo vuelve a abrir
+    telar hilo mudar «Anasac»               llevarse este panel (y su conversación) a ese hilo
+    telar hilo cerrar                      cerrar su tab (y lo que corra adentro) y
+                                           olvidarlo: sale de la lista. Para guardarlo
+                                           está `archivar`
     telar hilo archivar [--cerrar]         sacarlo de la lista sin perderlo
     telar hilo desarchivar
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
@@ -33,8 +35,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from telar import lectura
-from telar.modelo import Prioridad
+from telar.modelo import Hilo, Prioridad
 from telar.agente import ErrorDeAgente
+from telar.agente.base import panel_del_entorno
 from telar.agente import lanzar
 from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
@@ -48,6 +51,7 @@ VERBOS = (
     "renombrar",
     "adoptar",
     "prioridad",
+    "mudar",
     "cerrar",
     "archivar",
     "desarchivar",
@@ -117,12 +121,16 @@ def main(argv: list[str], ctx) -> int:
         salida = _adoptar(tel, hilo, o.valor)
     elif o.verbo == "prioridad":
         salida = _prioridad(est, hilo, o.valor)
+    elif o.verbo == "mudar":
+        salida = _mudar(tel, hilo, o.valor or "", ctx)
     elif o.verbo == "cerrar":
-        # cerrar no es archivar: el hilo sigue en la lista, sin tab. Su conversación queda
-        # anotada, así que `retomar` lo abre donde estaba.
+        # cerrar es descartar: el tab se va y telar lo olvida, así que sale de la lista.
+        # Lo que se quiere guardar se archiva. La conversación sigue en disco, donde la
+        # deja el agente; solo se pierde el vínculo que permitía retomarla de un clic.
         salida = _cerrar(tel, hilo)
         if salida == 0:
-            print(f"cerrado «{hilo.nombre}»" + _sesiones(hilo))
+            est.olvidar(hilo.nombre)
+            print(f"cerrado y olvidado «{hilo.nombre}»")
     elif o.verbo == "archivar":
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
@@ -141,10 +149,12 @@ def main(argv: list[str], ctx) -> int:
 
     if o.json:
         tel = _comun.tejer(ctx)
-        actual = tel.por_nombre(o.valor if o.verbo == "renombrar" else hilo.nombre)
-        return _comun.escribir_json(
-            {"hilo": _comun.json_hilo(actual, tel) if actual else None, "codigo": salida}
-        )
+        nombre = o.valor if o.verbo == "renombrar" else hilo.nombre
+        # si telar no lo conoce (un hilo que todavía no abrió, o que ya se olvidó), se
+        # devuelve el que se nombró: en texto se imprime igual, y dos salidas de la misma
+        # orden que no dicen lo mismo son una trampa para quien programa contra el JSON
+        actual = tel.por_nombre(nombre) or Hilo(id=hilo.id or nombre, nombre=nombre)
+        return _comun.escribir_json({"hilo": _comun.json_hilo(actual, tel), "codigo": salida})
     if o.verbo == "ver" and salida == 0:
         _ver(hilo, tel)
     return salida
@@ -355,7 +365,7 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
             tel.mux.crear_tab(hilo.nombre, ruta=carpeta, foco=True)
         else:
             tel.mux.crear_tab(hilo.nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=True)
-            lanzar.anotar(ctx.config, hilo.nombre, lanz)
+            lanzar.anotar(ctx.config, hilo.nombre, lanz, tel.mux)
         nuevo = next((h for h in tel.mux.hilos() if h.nombre == hilo.nombre), None)
         if nuevo is not None:
             tel.mux.ir(nuevo.id)
@@ -371,3 +381,43 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
         print(f"retomado «{hilo.nombre}»")
     return 0
 
+
+def _mudar(tel: _comun.Telar, hilo, destino: str, ctx) -> int:
+    """Lleva el panel donde corre esto a otro hilo, con su conversación.
+
+    Es para cuando una conversación empieza en un lado y resulta ser de otro proyecto:
+    en vez de cerrarla y abrir otra, se muda. El panel conserva lo que corre adentro —el
+    agente no se reinicia— y su conversación deja de figurar en el hilo viejo, porque una
+    conversación vive en un hilo y solo en uno.
+    """
+    if not destino:
+        return _comun.queja("telar hilo mudar «<hilo destino>»")
+    if tel.mux is None or not tel.viva:
+        return _comun.queja(tel.aviso or "la sesión no está viva")
+    panel = panel_del_entorno(ctx.config.multiplexor)
+    if not panel:
+        return _comun.queja(
+            "no sé en qué panel corro: el multiplexor no exportó su id (o exporta $TELAR_PANEL)"
+        )
+    otro, problema = _comun.resolver(tel, destino)
+    if otro is None:
+        return _comun.queja(problema)
+    if otro.nombre == hilo.nombre:
+        print(_comun.tenue(f"  ya estoy en «{hilo.nombre}»"))
+        return 0
+    if otro.nombre not in tel.vivos:
+        return _comun.queja(f"«{otro.nombre}» no tiene tab abierto; `telar hilo retomar` lo abre")
+    try:
+        tel.mux.mover_pane(panel, tab=otro.id)
+    except ErrorDeMux as e:
+        return _comun.queja(f"no pude mudarme: {e}")
+    conversacion = tel.estado.paneles().get(panel, "")
+    if not conversacion:
+        # sin el mapa panel → conversación (lo llenan telar al abrir el hilo y los ganchos),
+        # solo se puede saber cuál es la mía si el hilo tenía una sola
+        sueltas = tel.estado.sesiones().get(hilo.nombre, ())
+        conversacion = sueltas[0] if len(sueltas) == 1 else ""
+    if conversacion:
+        tel.estado.anotar_sesion(otro.nombre, conversacion, panel=panel)
+    print(f"«{hilo.nombre}» → «{otro.nombre}»" + (f" · conversación {conversacion}" if conversacion else ""))
+    return 0

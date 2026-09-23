@@ -138,7 +138,7 @@ def _poblar(ctx, tel, hilos, *, bautizar: bool = True) -> tuple[list[str], int]:
             continue
         est.vincular(nombre, relativa)
         try:
-            lanzar.anotar(ctx.config, nombre, lanz)
+            lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
         except ErrorDeAgente:
             pass
         abiertos.append(nombre)

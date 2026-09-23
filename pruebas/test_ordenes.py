@@ -120,6 +120,15 @@ class UnHilo(Orden):
         self.assertEqual(hilo["prioridad"], 1)
         self.assertTrue(hilo["archivado"])
 
+    def test_cerrar_lo_saca_de_la_lista(self):
+        # cerrar es descartar: lo que se quiere guardar se archiva
+        self.vincular_faro()
+        self.correr("hilo", "prioridad", "1", "--hilo", "faro")
+        codigo, salida, _ = self.correr("hilo", "cerrar", "--hilo", "faro")
+        self.assertEqual(codigo, 0)
+        self.assertIn("olvidado", salida)
+        self.assertEqual(self.json_de("hilos", "--json")["hilos"], [])
+
     def test_prioridad_inventada_se_rechaza(self):
         codigo, _, error = self.correr("hilo", "prioridad", "9", "--hilo", "faro")
         self.assertEqual(codigo, 2)
@@ -432,3 +441,44 @@ class ElOrdenEnQueSeAbren(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Proyectos(Orden):
+    def test_lista_todas_las_unidades_con_nombre_y_fecha(self):
+        datos = self.json_de("proyectos", "--json")
+        faro = next(p for p in datos["proyectos"] if p["ruta"] == "proyectos/faro")
+        self.assertEqual(faro["nombre"], "Faro")
+        self.assertEqual(faro["arquetipo"], "proyecto")
+        self.assertTrue(faro["modificado"])
+        self.assertEqual(faro["hilo"], "")
+        self.assertFalse(faro["vivo"])
+
+    def test_dice_que_hilo_tiene_cada_una(self):
+        self.vincular_faro()
+        datos = self.json_de("proyectos", "--json")
+        faro = next(p for p in datos["proyectos"] if p["ruta"] == "proyectos/faro")
+        self.assertEqual(faro["hilo"], "faro")
+        self.assertFalse(faro["vivo"])  # vinculado, pero sin tab
+
+    def test_abrir_algo_que_el_perfil_no_declara_se_rechaza(self):
+        codigo, _, error = self.correr("proyectos", "abrir", "no/existe")
+        self.assertEqual(codigo, 2)
+
+    def test_abrir_sin_ruta_pregunta_cual(self):
+        codigo, _, error = self.correr("proyectos", "abrir")
+        self.assertEqual(codigo, 2)
+        self.assertIn("¿cuál?", error)
+
+    def test_la_plantilla_llena_sus_marcadores_y_deja_los_ajenos(self):
+        from telar.ordenes.proyectos import mensaje
+
+        self.assertEqual(mensaje("/pm {ruta} {otro}", ruta="a/b"), "/pm a/b {otro}")
+
+    def test_la_plantilla_de_proyecto_se_configura(self):
+        from telar import config as mod_config
+        from telar.config import PROYECTO_POR_DEFECTO, ErrorDeConfig
+
+        self.assertEqual(mod_config.desde_dict({}).agente.proyecto, PROYECTO_POR_DEFECTO)
+        self.assertEqual(mod_config.desde_dict({"agente": {"proyecto": "/pm {ruta}"}}).agente.proyecto, "/pm {ruta}")
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"agente": {"proyecto": "  "}})
