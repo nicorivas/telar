@@ -594,7 +594,7 @@ class LeerConversacion(Orden):
         base = Path(self.tmp.name) / "claude"
         (base / "projects" / "-x").mkdir(parents=True)
         lineas = [
-            {"type": "user", "timestamp": "t1", "message": {"content": "<command-message>x</command-message>\n<command-name>/despertar</command-name>"}},
+            {"type": "user", "timestamp": "t1", "message": {"content": "<command-message>x</command-message>\n<command-name>/revisar</command-name>"}},
             {"type": "assistant", "timestamp": "t2", "message": {"content": [
                 {"type": "thinking", "thinking": ""},
                 {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la", "description": "listar"}},
@@ -608,4 +608,4 @@ class LeerConversacion(Orden):
 
         mensajes = ClaudeCode(mod_config.desde_dict({})).mensajes("abc")
         self.assertEqual([(m["quien"], m["texto"]) for m in mensajes],
-                         [("usuario", "/despertar"), ("herramienta", "Bash · listar"), ("agente", "Listo.")])
+                         [("usuario", "/revisar"), ("herramienta", "Bash · listar"), ("agente", "Listo.")])

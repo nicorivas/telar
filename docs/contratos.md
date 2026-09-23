@@ -464,8 +464,8 @@ devuelve otra forma, la orden sale con 2 y dice por qué.
 ### `telar agente conversacion <id> --json`
 
 ```json
-{ "conversacion": "afe0c1cc-…", "archivo": "/…/afe0c1cc-….jsonl", "hilo": "Kichoro",
-  "mensajes": [ { "quien": "usuario", "hora": "2026-09-23T14:41:02Z", "texto": "/despertar" },
+{ "conversacion": "4f21c0de-…", "archivo": "/…/4f21c0de-….jsonl", "hilo": "faro",
+  "mensajes": [ { "quien": "usuario", "hora": "2026-09-23T14:41:02Z", "texto": "/revisar" },
                 { "quien": "herramienta", "hora": "…", "texto": "Bash · listar la carpeta" },
                 { "quien": "agente", "hora": "…", "texto": "Listo." } ] }
 ```
