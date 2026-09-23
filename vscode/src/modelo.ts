@@ -27,6 +27,8 @@ export class Modelo {
     /** el error de la última lectura, si la CLI no contestó */
     error = '';
     hilos: cli.JsonHilo[] = [];
+    /** las secciones de la configuración; se releen con el ritmo lento */
+    secciones: cli.JsonSeccion[] = [];
 
     readonly cambio = new vscode.EventEmitter<void>();
 
@@ -39,6 +41,9 @@ export class Modelo {
     get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado); }
     get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
+
+    /** La sección a la que pertenece un hilo, si alguna lo reclama. */
+    seccionDe(hilo: string): cli.JsonSeccion | undefined { return this.secciones.find(s => cli.enSeccion(s, hilo)); }
 
     porNombre(nombre: string): cli.JsonHilo | undefined { return this.hilos.find(h => h.nombre === nombre); }
     porId(id: string): cli.JsonHilo | undefined { return this.hilos.find(h => h.id === id); }
@@ -64,12 +69,14 @@ export class Modelo {
             this.sesion = d.sesion; this.multiplexor = d.multiplexor; this.raiz = d.raiz;
             this.viva = d.viva; this.aviso = d.aviso; this.clientes = d.clientes ?? [];
             if (toca) {
+                const c = await cli.config();
+                if (c.datos) this.secciones = c.datos.secciones ?? [];
                 this.ultimaFicha = Date.now();
                 this.fichas = new Map(d.hilos.map(h => [h.nombre, h.ficha ?? null]));
             }
             this.hilos = d.hilos.map(h => cli.conRutasAbsolutas(
                 { ...h, ficha: h.ficha ?? this.fichas.get(h.nombre) ?? null }, d.raiz));
-            this.anunciar(['ok', d.sesion, d.viva, d.aviso, this.hilos]);
+            this.anunciar(['ok', d.sesion, d.viva, d.aviso, this.hilos, this.secciones]);
         } finally {
             this.enCurso = false;
         }

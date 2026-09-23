@@ -4,9 +4,13 @@
 // unidad de trabajo viva, y qué cuenta como proyecto lo declara el perfil del repositorio,
 // no esta extensión.
 //
-//   3 ● faro            ●   49m   ← id del multiplexor · prioridad · nombre · atención · hoy
-//   4 ◐ molino               7m
+//   ● faro            ●   49m   ← prioridad (· si no tiene) · nombre · atención · hoy
+//   ◐ molino               7m
 //   ▸ ARCHIVO 6 hilos         2d  ← plegado; a la derecha, hace cuánto se usó
+//
+// El id del multiplexor no se muestra: para elegir un hilo basta la prioridad y el nombre.
+// Los botones de la fila (⏸ ✕ ▶) flotan sobre el borde derecho al pasar el mouse y no
+// ocupan lugar, porque si lo ocuparan correrían la columna del tiempo según cuántos hay.
 //
 // El HTML entra por mensajes y no recargando la webview: así no se pierde el scroll ni
 // parpadea la lista cada vez que cambia un segundo del tiempo de hoy.
@@ -21,12 +25,11 @@ import { modelo } from '../modelo';
 
 const CSS = `
   #lista { padding: .5em 0 1.5em; user-select: none; }
-  .fila { display: flex; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
+  .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
   .fila:hover { background: var(--hover); }
   .fila.activa { background: var(--sel); }
-  .num { flex: none; width: 3ch; text-align: right; color: var(--dim); }
-  .activa .num { color: var(--fg); }
-  .prio { flex: none; width: 1ch; margin: 0 1ch; }
+  .prio { flex: none; width: 1ch; margin-right: 1ch; }
+  .prio.p0 { color: var(--dim); }
   .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
   .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
@@ -38,8 +41,11 @@ const CSS = `
   .hoy .nombre { color: var(--azul); }
   .cab .dim { font-weight: normal; }
   .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
-  .icono { flex: none; margin-left: 1ch; color: var(--dim); visibility: hidden; cursor: pointer; }
-  .fila:hover .icono { visibility: visible; }
+  .iconos { position: absolute; right: 1.5ch; top: 0; bottom: 0; display: none; padding-left: 1ch;
+           background: linear-gradient(var(--hover), var(--hover)), var(--bg); }
+  .activa .iconos { background: linear-gradient(var(--sel), var(--sel)), var(--bg); }
+  .fila:hover .iconos { display: flex; }
+  .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
   .icono:hover { color: var(--fg); }
 `;
 
@@ -69,6 +75,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     private ultimoHtml = '';
     private ultimoActivo?: string;
     private irAlArchivo = false;
+    /** las secciones plegadas, por clave; abiertas por defecto */
+    private plegadas = new Set<string>();
 
     resolveWebviewView(v: vscode.WebviewView): void {
         this.vista = v;
@@ -105,6 +113,10 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             case 'retomar': if (m.id) void vscode.commands.executeCommand('telar.retomar', { hilo: m.id }); break;
             case 'cerrar': if (m.id) void vscode.commands.executeCommand('telar.cerrar', { hilo: m.id }); break;
             case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
+            case 'seccion':
+                if (m.id) { if (this.plegadas.has(m.id)) this.plegadas.delete(m.id); else this.plegadas.add(m.id); this.refrescar(true); }
+                break;
+            case 'home': if (m.id) void vscode.commands.executeCommand('telar.seccion', m.id); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
     }
@@ -139,22 +151,18 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         const contexto = esc(JSON.stringify({
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
-        // El id es la llave del multiplexor: un índice en tmux, el nombre en zellij. Se muestra
-        // solo cuando dice algo que el nombre no diga ya.
-        const num = h.id !== h.nombre && h.id.length <= 3 ? h.id : '';
         const glifo = GLIFO[h.atencion] ? `<span class="at ${h.atencion}">${GLIFO[h.atencion]}</span>` : '';
         const der = seccion === 'archivado' || !h.vivo ? haceCorto(h.visto) : duracion(h.tiempo);
         const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
-            + `<span class="num">${esc(num)}</span>`
-            + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? ' '}</span>`
+            + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${glifo}<span class="der">${esc(der)}</span>`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
-            + (!h.vivo || seccion === 'archivado'
+            + '<span class="iconos">' + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
                 : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab, guarda su conversación y lo manda al archivo">⏸</span>`
-                  + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro; sigue en la lista y ▶ lo reabre">✕</span>`)
-            + '</div>';
+                  + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro, y lo saca de la lista; para guardarlo, ⏸">✕</span>`)
+            + '</span></div>';
     }
 
     private tooltip(h: cli.JsonHilo): string {
@@ -197,14 +205,32 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // porque era un tab. En telar no es un tab del multiplexor sino un panel de VS Code,
         // así que la fila la pone la vista y no la sesión.
         h.push('<div class="fila hoy" data-accion="cmd" data-id="telar.hoy" title="el día: agenda, tareas y lo que espera">'
-            + '<span class="num"></span><span class="prio"> </span><span class="nombre">dashboard</span></div>');
+            + '<span class="prio"> </span><span class="nombre">dashboard</span></div>');
+        // cada sección es un grupo propio entre el dashboard y la lista general: sus hilos
+        // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo
+        // los que tienen tab primero, los que no después; dentro de cada grupo, el orden elegido
+        const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
+        for (const s of modelo.secciones) {
+            const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre)));
+            const abierta = !this.plegadas.has(s.clave);
+            h.push('<div class="sep"></div>');
+            h.push(`<div class="fila cab" data-accion="seccion" data-id="${esc(s.clave)}" title="abrir o cerrar la sección">`
+                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(s.nombre.toUpperCase())}`
+                + (suyos.length ? ` <span class="dim">${suyos.length}</span>` : '') + '</div>');
+            if (!abierta) continue;
+            if (s.home) {
+                h.push(`<div class="fila hoy" data-accion="home" data-id="${esc(s.clave)}" title="la página de ${esc(s.nombre)}">`
+                    + '<span class="prio"> </span><span class="nombre">home</span></div>');
+            }
+            for (const x of suyos) h.push(this.fila(x, 'hilo'));
+        }
         h.push('<div class="sep"></div>');
-        for (const x of modelo.enLista) h.push(this.fila(x, 'hilo'));
+        for (const x of vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre)))) h.push(this.fila(x, 'hilo'));
         const archivados = modelo.archivados;
         if (archivados.length) {
             h.push('<div class="sep"></div>');
             h.push('<div id="archivo" class="fila cab" data-accion="archivo" title="abrir o cerrar el archivo">'
-                + `<span class="num">${this.archivoAbierto ? '▾' : '▸'}</span><span class="prio"> </span>`
+                + `<span class="prio">${this.archivoAbierto ? '▾' : '▸'}</span>`
                 + `ARCHIVO <span class="dim">${archivados.length} hilo${archivados.length === 1 ? '' : 's'}</span></div>`);
             if (this.archivoAbierto) for (const x of archivados) h.push(this.fila(x, 'archivado'));
         }

@@ -185,6 +185,17 @@ export const reunion = (titulo: string, hora: string, enlace = '') =>
     telarJson<{ hilo: string; proyecto: string; mensaje: string; hecho: string }>(
         ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), '--json'], 30000);
 
+/** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
+export interface JsonProyecto {
+    ruta: string; nombre: string; arquetipo: string; modificado: string | null; hilo: string; vivo: boolean;
+}
+
+export const proyectos = () => telarJson<{ raiz: string; proyectos: JsonProyecto[] }>(['proyectos', '--json'], 30000);
+
+/** `telar proyectos abrir`: un hilo vinculado a esa unidad con el agente cargándola, o ir al que ya hay. */
+export const abrirProyecto = (ruta: string) =>
+    telarJson<{ hilo: string; ruta: string; mensaje: string; hecho: string }>(['proyectos', 'abrir', ruta, '--json'], 30000);
+
 /** De dónde sale la agenda, según `telar config --json`. La dirección iCal viene tapada. */
 export interface JsonCalendario {
     tipo: string; fuente: string; publica: boolean;
@@ -192,17 +203,58 @@ export interface JsonCalendario {
 }
 
 /** Lo que el dashboard muestra de `[agente]`. */
-export interface JsonAgenteConfig { nombre: string; carpeta: string; reunion: string; reunion_por_defecto: string }
+export interface JsonAgenteConfig {
+    nombre: string; carpeta: string; reunion: string; reunion_por_defecto: string;
+    proyecto: string; proyecto_por_defecto: string;
+}
+
+/** Una tecla del dashboard que abre un hilo con el agente haciendo algo (`[atajos.m]`). */
+export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; descripcion: string }
 
 export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
+    atajos?: JsonAtajo[]; secciones?: JsonSeccion[];
 }>(['config', '--json'], 20000);
+
+/** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
+ *  prefijos si terminan en `*`. `home`: si declara una página. */
+export interface JsonSeccion { clave: string; nombre: string; hilos: string[]; home: boolean }
+
+export function enSeccion(s: JsonSeccion, hilo: string): boolean {
+    return s.hilos.some(p => p.endsWith('*') ? hilo.startsWith(p.slice(0, -1)) : hilo === p);
+}
+
+/** La página de una sección, tal como la devuelve su comando `home` (docs/contratos.md). */
+export interface JsonPaginaItem { titulo: string; fecha?: string; texto?: string; conversacion?: string; hilo?: string }
+export interface JsonPagina {
+    titulo: string; subtitulo?: string;
+    bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo }[];
+}
+
+/** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
+export interface JsonLienzo { archivo: string; alto?: number; params?: Record<string, string | number> }
+
+export const seccion = (clave: string) => telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
+
+/** Una conversación del agente, entera, para leerla. */
+export interface JsonConversacion {
+    conversacion: string; archivo: string; hilo: string;
+    mensajes: { quien: 'usuario' | 'agente' | 'herramienta'; hora: string; texto: string }[];
+}
+
+export const conversacion = (id: string) => telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
+
+/** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
+export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
 /** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */
 export const directoriosHilos = (carpetas: string) => telar(['config', '--directorios', carpetas], 20000);
 
 /** `telar config --reunion`: qué decirle al agente al preparar una reunión. Vacío: el de fábrica. */
 export const plantillaReunion = (texto: string) => telar(['config', '--reunion', texto], 20000);
+
+/** `telar config --proyecto`: qué decirle al agente al abrir un proyecto. Vacío: el de fábrica. */
+export const plantillaProyecto = (texto: string) => telar(['config', '--proyecto', texto], 20000);
 
 /** `telar config --calendario gws|ninguno|<dirección>`: elegir de dónde sale la agenda. */
 export const elegirCalendario = (valor: string) => telar(['config', '--calendario', valor], 20000);

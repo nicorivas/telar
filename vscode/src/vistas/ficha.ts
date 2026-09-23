@@ -89,9 +89,11 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         void this.actualizar();
     }
 
-    /** Las imágenes del markdown salen del repositorio de trabajo, y solo de ahí. */
+    /** Las imágenes del markdown salen del repositorio de trabajo, y de la carpeta del
+     *  hilo cuando está fuera de él (un hilo vinculado a otra parte). */
     private raices(): vscode.Uri[] {
-        return modelo.raiz ? [vscode.Uri.file(modelo.raiz)] : [];
+        const r = [modelo.raiz, this.datos?.hilo.ruta].filter((x): x is string => !!x);
+        return [...new Set(r)].map(x => vscode.Uri.file(x));
     }
 
     /** Lo llama el modelo en cada cambio: si cambió el hilo con foco, la ficha lo sigue. */

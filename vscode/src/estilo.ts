@@ -13,8 +13,8 @@ import * as vscode from 'vscode';
 /** Cómo se dibuja cada atención. Las cuatro palabras son las de `telar atencion`. */
 export const GLIFO: Record<string, string> = { trabajando: '●', espera: '○', termino: '✓' };
 
-/** Prioridad 1 alta, 2 media, 3 baja. Sin prioridad, nada. */
-export const PRIORIDAD: Record<number, string> = { 1: '●', 2: '◐', 3: '○' };
+/** Prioridad 1 alta, 2 media, 3 baja; 0 es sin prioridad, que también se ve. */
+export const PRIORIDAD: Record<number, string> = { 0: '·', 1: '●', 2: '◐', 3: '○' };
 
 export const NOMBRE_ATENCION: Record<string, string> = {
     trabajando: 'trabajando', espera: 'te espera', termino: 'terminó',
@@ -87,11 +87,17 @@ export function estiloBase(): string {
 `;
 }
 
+/** Un nonce para el CSP de una vista. Quien necesite marcar scripts propios (un lienzo) lo
+ *  genera antes y se lo pasa a `marco`. */
+export function nuevoNonce(): string {
+    return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 /** El HTML completo de una vista: política de contenido cerrada, estilo, cuerpo y script. */
-export function marco(_webview: vscode.Webview, css: string, cuerpo: string, script: string): string {
-    const nonce = Math.random().toString(36).slice(2);
+export function marco(_webview: vscode.Webview, css: string, cuerpo: string, script: string,
+    nonce = nuevoNonce()): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${_webview.cspSource}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>${estiloBase()}${css}</style></head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>${cuerpo}
 <script nonce="${nonce}">const vscode = acquireVsCodeApi();

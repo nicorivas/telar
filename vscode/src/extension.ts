@@ -89,16 +89,14 @@ async function vincular(a: Arg): Promise<void> {
     });
     const dir = elegido?.[0]?.fsPath;
     if (!dir) return;
+    // fuera de la raíz se vincula por su ruta absoluta; su ficha es solo el README
     const relativa = path.relative(modelo.raiz, dir);
-    if (relativa.startsWith('..')) {
-        void vscode.window.showErrorMessage(`telar: un hilo se vincula dentro de la raíz (${modelo.raiz}).`);
-        return;
-    }
-    if (await sobreHilo(a, 'vincular', relativa || '.')) vistaCarpeta.seguir();
+    const valor = relativa.startsWith('..') || path.isAbsolute(relativa) ? dir : (relativa || '.');
+    if (await sobreHilo(a, 'vincular', valor)) vistaCarpeta.seguir();
 }
 
-/** Cierra el tab y lo que corra adentro. No archiva: el hilo sigue en la lista, y ▶ lo
- *  reabre con su conversación, que quedó guardada. Por eso ya no pregunta. */
+/** Cierra el tab y lo que corra adentro, y telar lo olvida: sale de la lista. No pregunta,
+ *  porque lo que se quiere guardar se archiva (⏸) y la conversación sigue en disco. */
 async function cerrar(a: Arg): Promise<void> {
     if (!hiloDe(a)) return;
     await sobreHilo(a, 'cerrar');
@@ -346,6 +344,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());
+    orden('telar.seccion', (clave?: string) => { if (typeof clave === 'string' && clave) void hoy.abrirSeccion(clave); });
     orden('telar.conectarCalendario', conectarCalendario);
     orden('telar.tareas', async () => {
         await vscode.commands.executeCommand('telar.tareas.focus');
