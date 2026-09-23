@@ -260,7 +260,10 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
     archivados = foto["archivados"]
 
     if todos:
-        conocidos = sorted((set(vinculos) | set(archivados)) - vivos)
+        # un hilo que telar conoce es el que tiene carpeta, el archivado y también el que
+        # tiene una conversación anotada: si no, una conversación traída de otra parte
+        # queda guardada y sin forma de verla ni de retomarla desde la lista
+        conocidos = sorted((set(vinculos) | set(archivados) | set(foto["sesiones"])) - vivos)
         # sin multiplexor, el id es el nombre: es la única llave que hay
         crudos += [Hilo(id=nombre, nombre=nombre) for nombre in conocidos]
 
@@ -354,10 +357,34 @@ def leer_ficha(documento: Path, arquetipo: Arquetipo, fuente=None) -> Ficha:
         return lectura.leer(documento, arquetipo)
 
 
+def ficha_suelta(ruta: Path) -> Ficha | None:
+    """La ficha de una carpeta que el perfil no declara: su README y el título que traiga.
+
+    Sin arquetipo no hay secciones que buscar, así que no hay estado ni pendientes; pero
+    el documento existe y se puede leer, y eso es mejor que decir «sin ficha».
+    """
+    ruta = Path(ruta)
+    documento = ruta if ruta.is_file() else next(
+        (ruta / n for n in ("README.md", "readme.md", "README.markdown", "README") if (ruta / n).is_file()), None)
+    if documento is None:
+        return None
+    try:
+        texto = documento.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    titulo = next((l[2:].strip() for l in texto.splitlines() if l.startswith("# ")), "")
+    return Ficha(documento=documento, titulo=titulo,
+                 nota="fuera del perfil: solo su README, sin estado ni pendientes")
+
+
 def _con_ficha(hilo: Hilo, ctx, unidades: dict[str, tuple[Arquetipo, Path]]) -> Hilo:
     if hilo.ruta is None:
         return hilo
     arquetipo, documento = lectura.ubicar(ctx.perfil, ctx.config.raiz, hilo.ruta, mapa=unidades)
+    if (arquetipo is None or documento is None) and hilo.vinculo is not None:
+        suelta = ficha_suelta(hilo.vinculo)
+        if suelta is not None:
+            return replace(hilo, ficha=suelta)
     if arquetipo is None or documento is None:
         relativa = ruta_relativa(hilo.ruta, ctx.config.raiz)
         return replace(
@@ -414,18 +441,20 @@ def seguro(tel: Telar) -> bool:
 
 
 def hilo_o_nombre(tel: Telar, referencia: str) -> tuple[Hilo | None, str]:
-    """El hilo que nombra `referencia`, o uno recién nombrado con ese nombre.
+    """El hilo que se llama exactamente así, o uno recién nombrado con ese nombre.
 
     Vale para las órdenes que ANOTAN algo: un hilo puede existir antes de que telar
     lo vea —el multiplexor no está levantado, o el hilo se va a abrir en un minuto— y
     negarse a anotarlo por desconocido es perder justo el primer dato. Devuelve
     además el aviso que corresponde decir, si el hilo no estaba.
     """
-    hilo, problema = resolver(tel, referencia)
-    if hilo is not None:
-        return hilo, ""
-    if problema.startswith("«") and "varios" in problema:
-        return None, problema
+    exacto = next((h for h in tel.hilos if h.id == referencia or h.nombre == referencia), None)
+    if exacto is not None:
+        return exacto, ""
+    # a propósito NO se busca por prefijo ni por subcadena: esto lo usan las órdenes que
+    # escriben, y un nombre nuevo que resulta ser parte de otro le cambiaría la carpeta al
+    # hilo equivocado («Gobernanza» calzaba con «santander-gobernanza-ia»). Para navegar
+    # —`ir`, `ficha`— sí vale aproximar: ahí no se anota nada.
     return Hilo(id=referencia, nombre=referencia), f"«{referencia}» no estaba en la lista"
 
 
