@@ -162,7 +162,9 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         const buscable = normalizar([t.ref, t.texto, t.hilo, t.fila.ruta ?? '', t.fila.proveedor ?? ''].join(' '));
         h.push(`<div class="tarea${compacto ? ' compacta' : ''}" data-accion="pendiente" data-valor="${esc(t.ref)}"`
             + ` data-orden="${t.urgencia}" data-ref="${esc(t.ref)}" data-alfa="${esc(normalizar(limpiarMd(t.texto)))}" data-urgente="${t.urgente ? 1 : 0}" data-texto="${esc(buscable)}"`
-            + ` title="${esc(t.texto)}\n\nclic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar">`
+            // el texto entero va en un globo propio (ver `globo` en el script): el `title` nativo
+            // no siempre se muestra dentro de una vista de la barra
+            + ` data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}\n\nclic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar`)}">`
             // en la barra no van letras: es angosta, y un atajo invisible es una trampa
             + `${compacto ? '' : '<span class="tecla"></span>'}<span class="id">${esc(t.ref.slice(0, 12))}</span>`
             + `<span class="pri">${t.enCurso ? '▣' : '☐'}</span>`
@@ -222,6 +224,11 @@ export const CSS_DIA = `
   .at { flex: none; width: 1ch; } .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
   .nombre { min-width: 20ch; }
   .pie { margin-top: 2em; color: var(--dim); }
+  #globo { position: fixed; z-index: 10; pointer-events: none; white-space: pre-wrap; max-width: min(60ch, calc(100vw - 3ch));
+           padding: .4em .8ch; background: var(--vscode-editorHoverWidget-background, #1e1e2e);
+           color: var(--vscode-editorHoverWidget-foreground, var(--fg));
+           border: 1px solid var(--vscode-editorHoverWidget-border, var(--linea));
+           box-shadow: 0 2px 8px rgba(0,0,0,.35); }
   .md-pag p { margin: .4em 0; white-space: normal; } .md-pag ul { margin: .3em 0; padding-left: 2.5ch; }
   .md-pag code, .texto-pag code { color: var(--verde); }
   .lienzo { display: block; width: 100%; border: 0; margin: .4em 0 .8em; background: transparent; }
@@ -313,8 +320,29 @@ function aplicarProyectos() {
   const cuenta = document.getElementById('proyectos-cuenta');
   if (cuenta) cuenta.textContent = partes.length ? n + ' de ' + todas.length : '';
 }
+// el globo: el texto entero de una tarea al detenerse sobre ella, cuando la fila lo corta
+const globo = document.createElement('div'); globo.id = 'globo'; globo.hidden = true; document.body.appendChild(globo);
+let globoEspera = null;
+function esconderGlobo() { clearTimeout(globoEspera); globo.hidden = true; }
+document.addEventListener('mouseover', function (e) {
+  const f = e.target.closest && e.target.closest('[data-completo]');
+  if (!f) return esconderGlobo();
+  if (!globo.hidden && globo.dataset.de === f.dataset.valor) return;
+  esconderGlobo();
+  globoEspera = setTimeout(function () {
+    globo.textContent = f.dataset.completo; globo.dataset.de = f.dataset.valor; globo.hidden = false;
+    const r = f.getBoundingClientRect(), g = globo.getBoundingClientRect();
+    const x = Math.max(4, Math.min(r.left + 12, window.innerWidth - g.width - 4));
+    const abajo = r.bottom + 4 + g.height <= window.innerHeight;
+    globo.style.left = x + 'px';
+    globo.style.top = (abajo ? r.bottom + 4 : Math.max(4, r.top - g.height - 4)) + 'px';
+  }, 350);
+});
+document.addEventListener('mouseleave', esconderGlobo);
+document.addEventListener('scroll', esconderGlobo, true);
 window.addEventListener('message', function (e) {
   if (e.data.tipo !== 'dia') return;
+  esconderGlobo();
   const activo = document.activeElement, id = activo && activo.id;
   const pos = id === 'buscar' || id === 'buscar-p' ? activo.selectionStart : 0;
   raiz.innerHTML = e.data.html;

@@ -6,6 +6,11 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Changed
+
+- Tasks: hovering a row shows its whole text in a tooltip of the view's own (the native
+  `title` does not always show inside a sidebar view).
+
 ## [0.1.1] — 2026-09-23
 
 ### Added
