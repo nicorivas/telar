@@ -56,6 +56,7 @@ para que cuadre un total es peor que un total repartido en dos nombres.
 
 La ruta se guarda **relativa a `raiz`**, para que el estado siga sirviendo si mueves
 el repositorio de trabajo. Una ruta que apunte fuera de la raíz se guarda absoluta.
+Un hilo así no es ninguna unidad del perfil, y su ficha es solo el README de esa carpeta.
 
 Es lo único que conecta un hilo con lo que el perfil sabe leer: de aquí sale la
 carpeta, de la carpeta sale el documento, del documento sale la ficha.

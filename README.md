@@ -72,6 +72,8 @@ telar ficha faro           # what that folder says about itself
 telar pendientes           # what is left to do, across threads
 telar pendiente faro:2     # take that one to the thread where the work lives
 telar hoy                  # the day in one screen
+telar atajo m              # a dashboard shortcut: a new thread with the agent doing it
+telar proyectos            # every unit of work; `abrir <ruta>` opens one with the agent
 ```
 
 Two of them are meant to be called by other programs, not by you:

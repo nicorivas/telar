@@ -130,6 +130,43 @@ class ClaudeCode(AgenteBase):
         except OSError:
             return None
 
+    def mensajes(self, conversacion: Conversacion | str) -> list[dict] | None:
+        """Lee el `.jsonl`: lo que escribió la persona, lo que contestó el agente, y una
+        línea por herramienta. El razonamiento no se guarda legible y se omite, igual que
+        los mensajes que son solo resultados de herramientas."""
+        archivo = self.archivo_de(conversacion)
+        if archivo is None:
+            return None
+        salida: list[dict] = []
+        try:
+            lineas = archivo.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return None
+        for linea in lineas:
+            try:
+                d = json.loads(linea)
+            except ValueError:
+                continue
+            if not isinstance(d, dict) or d.get("isMeta"):
+                continue
+            tipo, m = d.get("type"), d.get("message") or {}
+            contenido = m.get("content") if isinstance(m, dict) else None
+            hora = d.get("timestamp") or ""
+            if tipo == "user" and isinstance(contenido, str):
+                texto = _sin_marcas(contenido)
+                if texto:
+                    salida.append({"quien": "usuario", "hora": hora, "texto": texto})
+            elif tipo == "assistant" and isinstance(contenido, list):
+                for x in contenido:
+                    if not isinstance(x, dict):
+                        continue
+                    if x.get("type") == "text" and str(x.get("text", "")).strip():
+                        salida.append({"quien": "agente", "hora": hora, "texto": x["text"].strip()})
+                    elif x.get("type") == "tool_use":
+                        salida.append({"quien": "herramienta", "hora": hora,
+                                       "texto": _herramienta(x.get("name", ""), x.get("input") or {})})
+        return salida
+
     def retomar(self, conversacion: Conversacion) -> list[str]:
         """Volver a esa conversación. No la corre: la devuelve para que decida quien pueda."""
         if not conversacion.id:
@@ -438,3 +475,26 @@ def construir(config) -> ClaudeCode:
 
 
 registrar(NOMBRE, construir)
+
+
+def _sin_marcas(texto: str) -> str:
+    """Lo que la persona escribió, sin el envoltorio con que Claude Code guarda una skill."""
+    import re
+
+    texto = re.sub(r"<command-message>.*?</command-message>\s*", "", texto, flags=re.S)
+    texto = re.sub(r"<command-name>(.*?)</command-name>", r"\1", texto)
+    texto = re.sub(r"</?command-args>", "", texto)
+    if texto.lstrip().startswith(("<local-command", "<system-reminder", "Caveat:")):
+        return ""
+    return texto.strip()
+
+
+def _herramienta(nombre: str, entrada: Mapping[str, object]) -> str:
+    """Una herramienta en una línea: cuál, y lo que la distingue de otra llamada igual."""
+    for clave in ("description", "command", "file_path", "pattern", "url", "query", "prompt"):
+        valor = entrada.get(clave) if isinstance(entrada, Mapping) else None
+        if isinstance(valor, str) and valor.strip():
+            detalle = " ".join(valor.split())
+            return f"{nombre} · {detalle[:160]}{'…' if len(detalle) > 160 else ''}"
+    return nombre
+

@@ -41,6 +41,8 @@ ORDENES: dict[str, str] = {
     "pendiente": "Llevar un pendiente al hilo donde se trabaja.",
     "hoy": "El día en una pantalla: agenda, quién te espera, qué falta.",
     "reunion": "Preparar una reunión: un hilo con el agente ya trabajando en ella.",
+    "atajo": "Una tecla del dashboard: un hilo con el agente haciendo algo recurrente.",
+    "seccion": "La página de una sección de la lista: corre su `home` y devuelve su JSON.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",
     "atencion": "Qué dice el agente de cada hilo: trabajando, espera, terminó.",
     "agente": "El agente que corre en un hilo: sus ganchos, sus conversaciones.",

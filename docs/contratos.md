@@ -419,6 +419,61 @@ el archivo más reciente de la carpeta sin contar las ocultas (`null` si no hay 
 `hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
 no hay agente o si el hilo ya estaba).
 
+### `telar seccion <clave> --json`
+
+Lo que imprime el comando `home` de una sección, tal cual, después de comprobar su forma:
+
+```json
+{ "titulo": "Diario", "subtitulo": "opcional",
+  "bloques": [
+    { "titulo": "opcional", "texto": "markdown simple, opcional",
+      "items": [ { "titulo": "…", "fecha": "2026-09-23T11:43", "texto": "…",
+                   "conversacion": "id de una conversación del agente", "hilo": "…" } ] } ] }
+```
+
+Un bloque puede traer además un **lienzo**, una página HTML local que se muestra en un
+`<iframe>` al comienzo del bloque, a todo el ancho:
+
+```json
+{ "lienzo": { "archivo": "/ruta/absoluta/dibujo.html", "alto": 240,
+              "params": { "animo": "jugando", "nota": "…" } } }
+```
+
+`archivo` es obligatorio (absoluto, `.html`, tiene que existir); `alto` en píxeles, de 40
+a 2000 (240 si falta); `params` va como query string (`?animo=jugando&nota=…`) y es la
+forma de pasarle datos. El iframe lleva `sandbox="allow-scripts"` sin `allow-same-origin`:
+el lienzo corre sus scripts pero no alcanza el panel ni la extensión. Cada vez que se pide
+la página el iframe se vuelve a crear.
+
+El lienzo entra como `srcdoc` (su contenido, no su ruta): un iframe hacia un recurso local
+del webview queda en blanco. Eso trae tres consecuencias para quien lo escribe:
+
+- tiene que ser **autocontenido**: sus rutas relativas no resuelven, y no hay red;
+- hereda el CSP del panel; telar le pone el nonce del panel a cada `<script>`, así que el
+  script en línea corre, pero un `<script src>` externo o un `eval` no;
+- los params llegan por `location.search` (telar reescribe la URL a `about:srcdoc?…` antes
+  de que corra nada) y también en `window.lienzo.params`. Un bloque puede ser solo un lienzo, o lienzo con título,
+texto e ítems.
+
+Todo es opcional salvo `titulo` en la página y en cada ítem. `texto` admite párrafos,
+`**negrita**`, `*cursiva*`, `` `código` `` y listas con `- `; lo demás se muestra como
+texto, nunca como HTML. Un ítem con `conversacion` se abre como conversación; uno con
+`hilo` y sin conversación lleva a ese hilo. Si el comando falla, tarda más de 30 s o
+devuelve otra forma, la orden sale con 2 y dice por qué.
+
+### `telar agente conversacion <id> --json`
+
+```json
+{ "conversacion": "afe0c1cc-…", "archivo": "/…/afe0c1cc-….jsonl", "hilo": "Kichoro",
+  "mensajes": [ { "quien": "usuario", "hora": "2026-09-23T14:41:02Z", "texto": "/despertar" },
+                { "quien": "herramienta", "hora": "…", "texto": "Bash · listar la carpeta" },
+                { "quien": "agente", "hora": "…", "texto": "Listo." } ] }
+```
+
+`quien` es `usuario`, `agente` o `herramienta`. Una herramienta es una línea (su nombre y
+su `description`, `command` o `file_path`), no su salida. El razonamiento y los resultados
+de herramientas se omiten. `hilo` es el hilo donde telar anotó esa conversación, o `""`.
+
 ### `telar atencion get --json`
 
 Con un hilo:

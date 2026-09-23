@@ -7,6 +7,7 @@
     telar agente retomar             el comando que vuelve a abrir la conversación de aquí
     telar agente nuevo               el comando que abre una nueva
     telar agente abrir [--todos]     abrir el agente en este hilo, o en todos los que no lo tengan
+    telar agente conversacion ID     una conversación entera, para leerla (con --json, el contrato)
 
 `instalar` es lo único que telar escribe fuera de su propio estado, y encima en la
 configuración de otro programa (`~/.claude/settings.json`, para Claude Code). Por eso
@@ -73,7 +74,7 @@ from telar.ordenes import _comun
 
 AYUDA = "El agente que corre en un hilo: sus ganchos, sus conversaciones."
 
-VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir")
+VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -104,6 +105,9 @@ def main(argv: list[str], ctx) -> int:
         return _aviso(o, ctx)
     if o.verbo == "abrir":
         return _abrir(o, ctx)
+    if o.verbo == "conversacion":
+        # aquí la palabra suelta es el id de la conversación, no el nombre del agente
+        return _conversacion(o, ctx)
 
     try:
         agente = _construir(o.agente, ctx.config)
@@ -117,6 +121,34 @@ def main(argv: list[str], ctx) -> int:
     if o.verbo in ("retomar", "nuevo"):
         return _comando(agente, o, ctx)
     return _ver(agente, o, ctx)
+
+
+# ── leer una conversación ───────────────────────────────────────────────────────
+
+
+def _conversacion(o, ctx) -> int:
+    sid = (o.agente or o.sesion).strip()
+    if not sid:
+        return _comun.queja("¿cuál? telar agente conversacion <id>")
+    try:
+        agente = _construir(ctx.config.agente.nombre, ctx.config)
+    except ErrorDeAgente as e:
+        return _comun.queja(str(e))
+    mensajes = agente.mensajes(sid)
+    if mensajes is None:
+        return _comun.queja(f"no encuentro la conversación {sid}")
+    archivo = agente.archivo_de(sid)
+    est = mod_estado.abrir(ctx.config)
+    hilo = est.hilo_de(sid) or ""
+    if o.json:
+        return _comun.escribir_json({"conversacion": sid, "archivo": str(archivo or ""),
+                                     "hilo": hilo, "mensajes": mensajes})
+    for m in mensajes:
+        if m["quien"] == "herramienta":
+            print(_comun.tenue(f"  › {m['texto']}"))
+        else:
+            print(f"\n{m['quien']}:\n{m['texto']}")
+    return 0
 
 
 # ── elegir el agente ────────────────────────────────────────────────────────────

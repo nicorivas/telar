@@ -187,7 +187,17 @@ def main(argv: list[str], ctx) -> int:
             "reunion_por_defecto": REUNION_POR_DEFECTO,
             "proyecto": cfg.agente.proyecto,
             "proyecto_por_defecto": PROYECTO_POR_DEFECTO,
+            "pendiente": cfg.agente.pendiente,
+            "pendiente_nuevo": cfg.agente.pendiente_nuevo,
         },
+        "secciones": [
+            {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
+            for s in cfg.secciones
+        ],
+        "atajos": [
+            {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion}
+            for a in cfg.atajos
+        ],
         "proveedores": {
             nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": _sin_secretos(pr.opciones)}
             for nombre, pr in cfg.proveedores.items()

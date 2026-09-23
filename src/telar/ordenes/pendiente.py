@@ -18,7 +18,10 @@ nada.
 from __future__ import annotations
 
 import datetime as dt
+import re
 
+from telar.agente import ErrorDeAgente
+from telar.agente import lanzar
 from telar.modelo import Hilo
 from telar.mux import ErrorDeMux
 from telar.ordenes import _comun, pendientes as orden_pendientes
@@ -47,7 +50,9 @@ def main(argv: list[str], ctx) -> int:
         )
 
     destino = _destino(tel, fila)
-    texto = o.texto or fila["texto"]
+    agente = ctx.config.agente
+    texto = o.texto or mensaje(agente.pendiente, fila)
+    primero = o.texto or mensaje(agente.pendiente_nuevo, fila)
 
     if o.donde:
         if o.json:
@@ -69,13 +74,19 @@ def main(argv: list[str], ctx) -> int:
     if tel.mux is None:
         return _comun.queja(tel.aviso or "no hay multiplexor con el que hablar")
 
-    hilo, creado, problema = _llevar(tel, destino, fila, nuevo=o.nuevo)
+    hilo, creado, problema = _llevar(ctx, tel, destino, fila, nuevo=o.nuevo, primero=primero)
     if hilo is None:
         return _comun.queja(problema)
 
+    # un hilo recién abierto con su agente ya recibió el mensaje al arrancar: escribirle
+    # ahora lo haría en una terminal donde el agente todavía no está
+    con_agente = creado and bool(agente.nombre)
+    if con_agente:
+        texto = primero
     try:
         tel.mux.ir(hilo.id)
-        tel.mux.escribir(hilo.id, texto, enviar=o.enviar)
+        if not con_agente:
+            tel.mux.escribir(hilo.id, texto, enviar=o.enviar)
     except ErrorDeMux as e:
         return _comun.queja(f"llegué al hilo pero no pude escribirle: {e}")
     tel.estado.marcar(hilo.nombre)
@@ -87,10 +98,10 @@ def main(argv: list[str], ctx) -> int:
                 "texto": texto,
                 "destino": hilo.nombre,
                 "creado": creado,
-                "enviado": o.enviar,
+                "enviado": o.enviar or con_agente,
             }
         )
-    modo = "enviado" if o.enviar else "escrito, sin enviar"
+    modo = "abierto con el agente trabajándolo" if con_agente else "enviado" if o.enviar else "escrito, sin enviar"
     print(f"{fila['ref']} → «{hilo.nombre}»{' (nuevo)' if creado else ''}: {modo}")
     return 0
 
@@ -128,10 +139,23 @@ def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:
     return _comun.enrutar(tel, f"{fila['texto']} {ruta}")
 
 
+def mensaje(plantilla: str, fila: dict) -> str:
+    """La plantilla llena. Un pendiente sin id (los de los documentos) no tiene con qué
+    llenar {id}: para ese, el texto, que es lo único que lo nombra sin ambigüedad."""
+    if "{id}" in plantilla and not fila.get("id"):
+        plantilla = "{texto}"
+    valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", "")}
+    return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
+
+
 def _llevar(
-    tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo: bool
+    ctx, tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo: bool, primero: str = ""
 ) -> tuple[Hilo | None, bool, str]:
-    """El hilo donde escribir: el que ya hay, el que se revive, o uno nuevo."""
+    """El hilo donde escribir: el que ya hay, el que se revive, o uno nuevo.
+
+    Uno nuevo nace con el agente configurado y `primero` como su primer mensaje, en la
+    carpeta que diga `[agente] carpeta`. Sin agente, una shell en la carpeta del pendiente.
+    """
     if destino is not None and tel.vivo(destino) and not nuevo:
         if destino.archivado:
             tel.estado.desarchivar(destino.nombre)
@@ -143,13 +167,27 @@ def _llevar(
         ruta = destino.ruta
     elif fila.get("ruta"):
         ruta = tel.raiz / fila["ruta"]
+    carpeta_hilo = ruta if ruta is not None and ruta.is_dir() else None
+    lanz = None
     try:
-        abierto = tel.mux.crear(nombre, ruta=ruta)
-    except ErrorDeMux as e:
+        if ctx.config.agente.nombre:
+            from telar import agente as mod_agente
+
+            palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(primero)
+            lanz = lanzar.Lanzamiento(
+                comando=lanzar.envolver(palabras, nombre),
+                carpeta=lanzar.carpeta(ctx.config, carpeta_hilo),
+                nueva=sid,
+            )
+        abierto = tel.mux.crear(nombre, ruta=lanz.carpeta if lanz else ruta,
+                                comando=lanz.comando if lanz else None)
+    except (ErrorDeMux, ErrorDeAgente) as e:
         return None, False, f"no pude abrir un hilo: {e}"
     if ruta is not None:
         tel.estado.vincular(abierto.nombre, _comun.ruta_relativa(ruta, tel.raiz))
     tel.estado.desarchivar(abierto.nombre)
+    if lanz is not None:
+        lanzar.anotar(ctx.config, abierto.nombre, lanz)
     return abierto, True, ""
 
 

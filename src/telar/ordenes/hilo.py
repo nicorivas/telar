@@ -104,8 +104,8 @@ def main(argv: list[str], ctx) -> int:
         if arquetipo is None:
             print(
                 _comun.tenue(
-                    "  ojo: el perfil no declara esa ruta como unidad de trabajo,"
-                    " así que no habrá ficha. `telar perfil --documentos` dice cuáles sí."
+                    "  el perfil no declara esa ruta como unidad de trabajo: la ficha será"
+                    " solo su README. `telar perfil --documentos` dice cuáles sí son unidades."
                 )
             )
         else:
@@ -174,16 +174,21 @@ def _ver(hilo, tel: _comun.Telar) -> None:
 
 
 def _ruta_en_raiz(valor: str, raiz: Path) -> tuple[str | None, str]:
-    """La ruta que se vincula, relativa a la raíz. Nadie vincula fuera del repositorio."""
+    """La ruta que se vincula: relativa a la raíz si está adentro, absoluta si no.
+
+    Afuera de la raíz también se puede: hay trabajo que no vive en el repositorio (otro
+    repo, una carpeta suelta). El perfil no sabe leerlo, así que su ficha es solo el
+    README de esa carpeta.
+    """
     camino = Path(valor).expanduser()
     if not camino.is_absolute():
         camino = (Path.cwd() / camino) if valor in (".", "..") or valor.startswith(("./", "../")) else (raiz / camino)
+    if not camino.exists():
+        return None, f"no existe {camino}"
     try:
         relativa = camino.resolve().relative_to(Path(raiz).resolve()).as_posix()
     except ValueError:
-        return None, f"«{valor}» está fuera de la raíz ({raiz}); un hilo se vincula dentro"
-    if not camino.exists():
-        return None, f"no existe {camino}"
+        return camino.resolve().as_posix(), ""
     return relativa or ".", ""
 
 

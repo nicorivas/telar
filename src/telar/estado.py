@@ -441,7 +441,10 @@ class Estado:
         return self.vinculos().get(hilo, "")
 
     def vincular(self, hilo: str, ruta: str) -> None:
-        limpia = str(ruta).strip().strip("/")
+        # una ruta absoluta (fuera de la raíz) conserva su «/» inicial: sin ella se
+        # leería como relativa a la raíz y apuntaría a otra parte
+        crudo = str(ruta).strip()
+        limpia = "/" + crudo.strip("/") if crudo.startswith("/") else crudo.strip("/")
         self._actualizar("vinculos", lambda d: d.__setitem__(hilo, limpia), {})
 
     def desvincular(self, hilo: str) -> None:

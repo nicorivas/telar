@@ -88,6 +88,10 @@ REUNION_POR_DEFECTO = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {pro
 #: ninguna skill: cualquier agente sabe leer un archivo.
 PROYECTO_POR_DEFECTO = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
 
+#: lo que se le escribe (sin enviar) al agente de un hilo que ya está abierto al llevarle un
+#: pendiente, y lo primero que recibe un agente recién abierto para trabajarlo.
+PENDIENTE_POR_DEFECTO = "{texto}"
+
 
 @dataclass(frozen=True, slots=True)
 class Agente:
@@ -109,6 +113,51 @@ class Agente:
     #: lo que se le dice al abrir un proyecto desde la lista. Marcadores: {nombre} (el de
     #: pantalla), {ruta} (relativa a la raíz), {carpeta} y {documento} (absolutas).
     proyecto: str = PROYECTO_POR_DEFECTO
+    #: al llevar un pendiente a un hilo con su agente ya corriendo: se escribe y no se
+    #: envía. Marcadores: {texto} {ref} {id}; con {id} y un pendiente sin id, rige {texto}.
+    pendiente: str = PENDIENTE_POR_DEFECTO
+    #: al llevarlo a un hilo que hay que abrir: es el primer mensaje del agente, y ese sí
+    #: se envía (no hay a quién escribirle hasta que arranca). Mismos marcadores.
+    pendiente_nuevo: str = PENDIENTE_POR_DEFECTO
+
+
+#: teclas que el dashboard ya usa: un atajo no las puede tomar. Las letras de los pendientes
+#: (a b d e f g h i), los números de la agenda, r (recargar), p (proyectos), t (tareas), / (buscar).
+TECLAS_RESERVADAS = frozenset("abdefghi123456789rpt/")
+
+
+@dataclass(frozen=True, slots=True)
+class Atajo:
+    """Una tecla del dashboard que abre un hilo con el agente haciendo algo recurrente.
+
+    En flow eran `m` (el correo con `/correo`), `w` (WhatsApp), `c` (capacity): tareas que no
+    son de ningún proyecto y se hacen varias veces al día. Cada vez es un hilo nuevo, con la
+    hora en el nombre, porque la revisión de las 9 y la de las 15 son dos conversaciones.
+    """
+
+    tecla: str
+    nombre: str
+    mensaje: str
+    descripcion: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Seccion:
+    """Un grupo propio en la lista de hilos, con su página opcional.
+
+    `hilos` dice cuáles le pertenecen: un nombre exacto, o un prefijo si termina en `*`.
+    Esos hilos salen de la lista general y van bajo la cabecera de la sección. `home` es
+    un comando que imprime el JSON de su página (ver docs/contratos.md): telar lo corre
+    cuando se abre y lo dibuja, sin saber de qué trata.
+    """
+
+    clave: str
+    nombre: str
+    hilos: tuple[str, ...] = ()
+    home: tuple[str, ...] = ()
+
+    def contiene(self, hilo: str) -> bool:
+        return any(hilo.startswith(p[:-1]) if p.endswith("*") else hilo == p for p in self.hilos)
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +185,10 @@ class Config:
     agente: Agente = field(default_factory=Agente)
     #: de qué carpetas salen los hilos, y cuántos se abren al tejer.
     hilos: Hilos = field(default_factory=Hilos)
+    #: las teclas del dashboard que abren un hilo con el agente haciendo algo (`[atajos.m]`).
+    atajos: tuple[Atajo, ...] = ()
+    #: grupos propios en la lista de hilos (`[secciones.x]`), en el orden del archivo.
+    secciones: tuple[Seccion, ...] = ()
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -251,7 +304,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto", "pendiente", "pendiente_nuevo"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -268,8 +321,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         proyecto = tabla.get("proyecto", PROYECTO_POR_DEFECTO)
         if not isinstance(proyecto, str) or not proyecto.strip():
             raise ErrorDeConfig(f"agente.proyecto: se esperaba un texto, llegó {proyecto!r}")
+        textos = {}
+        for clave in ("pendiente", "pendiente_nuevo"):
+            valor = tabla.get(clave, PENDIENTE_POR_DEFECTO)
+            if not isinstance(valor, str) or not valor.strip():
+                raise ErrorDeConfig(f"agente.{clave}: se esperaba un texto, llegó {valor!r}")
+            textos[clave] = valor.strip()
         cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(),
-                                   reunion=reunion.strip(), proyecto=proyecto.strip())
+                                   reunion=reunion.strip(), proyecto=proyecto.strip(), **textos)
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")
@@ -287,9 +346,50 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raise ErrorDeConfig(f"hilos.tope: se esperaba un número entero, llegó {tope!r}")
         cambios["hilos"] = Hilos(directorios=tuple(d.strip().strip("/") for d in dirs), tope=tope)
 
+    if "atajos" in datos:
+        tabla = _tabla(datos["atajos"], "atajos")
+        atajos = []
+        for tecla, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"atajos.{tecla}")
+            if len(tecla) != 1:
+                raise ErrorDeConfig(f"atajos.{tecla}: la tecla es un solo carácter")
+            if tecla in TECLAS_RESERVADAS:
+                raise ErrorDeConfig(f"atajos.{tecla}: esa tecla ya la usa el dashboard")
+            sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion"}
+            if sobra:
+                raise ErrorDeConfig(f"atajos.{tecla}.{sorted(sobra)[0]}: no existe")
+            campos = {}
+            for clave in ("nombre", "mensaje", "descripcion"):
+                valor = cuerpo.get(clave, "")
+                if not isinstance(valor, str) or (clave != "descripcion" and not valor.strip()):
+                    raise ErrorDeConfig(f"atajos.{tecla}.{clave}: se esperaba un texto, llegó {valor!r}")
+                campos[clave] = valor.strip()
+            atajos.append(Atajo(tecla=tecla, **campos))
+        cambios["atajos"] = tuple(atajos)
+
+    if "secciones" in datos:
+        tabla = _tabla(datos["secciones"], "secciones")
+        secciones = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"secciones.{clave}")
+            sobra = set(cuerpo) - {"nombre", "hilos", "home"}
+            if sobra:
+                raise ErrorDeConfig(f"secciones.{clave}.{sorted(sobra)[0]}: no existe")
+            nombre = cuerpo.get("nombre", clave)
+            if not isinstance(nombre, str) or not nombre.strip():
+                raise ErrorDeConfig(f"secciones.{clave}.nombre: se esperaba un texto, llegó {nombre!r}")
+            for campo in ("hilos", "home"):
+                valor = cuerpo.get(campo, [])
+                if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
+                    raise ErrorDeConfig(f"secciones.{clave}.{campo}: se esperaba una lista de textos, llegó {valor!r}")
+            secciones.append(Seccion(clave=clave, nombre=nombre.strip(),
+                                     hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
+                                     home=tuple(cuerpo.get("home", []))))
+        cambios["secciones"] = tuple(secciones)
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha", "agente", "hilos",
+        "ficha", "agente", "hilos", "atajos", "secciones",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

@@ -503,6 +503,14 @@ class AgenteBase(ABC):
         """Dónde guarda el agente esa conversación, si la guarda en disco."""
         return None
 
+    def mensajes(self, conversacion: Conversacion | str) -> list[dict] | None:
+        """La conversación entera, para leerla: `[{quien, hora, texto}]`, en orden.
+
+        `quien` es "usuario", "agente" o "herramienta"; una herramienta es una línea que
+        dice cuál y sobre qué, no su salida. None si el agente no sabe leer las suyas.
+        """
+        return None
+
     # ── lo que cada agente sabe de sí mismo ─────────────────────────────────────
 
     @abstractmethod

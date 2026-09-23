@@ -102,10 +102,21 @@ class Hilos(Orden):
 
 
 class UnHilo(Orden):
-    def test_vincular_fuera_de_la_raiz_se_rechaza(self):
-        codigo, _, error = self.correr("hilo", "vincular", "/", "--hilo", "x")
+    def test_vincular_algo_que_no_existe_se_rechaza(self):
+        codigo, _, error = self.correr("hilo", "vincular", "/no/existe/esto", "--hilo", "x")
         self.assertEqual(codigo, 2)
-        self.assertIn("fuera de la raíz", error)
+        self.assertIn("no existe", error)
+
+    def test_fuera_de_la_raiz_se_vincula_y_la_ficha_es_su_readme(self):
+        afuera = Path(self.tmp.name) / "otro-repo"
+        afuera.mkdir()
+        (afuera / "README.md").write_text("# Otro repo\n\nalgo\n", encoding="utf-8")
+        codigo, _, error = self.correr("hilo", "vincular", str(afuera), "--hilo", "otro")
+        self.assertEqual(codigo, 0, error)
+        hilo = next(h for h in self.json_de("hilos", "--json")["hilos"] if h["nombre"] == "otro")
+        self.assertEqual(hilo["ruta"], str(afuera.resolve()))
+        self.assertEqual(hilo["ficha"]["titulo"], "Otro repo")
+        self.assertTrue(hilo["ficha"]["documento"].endswith("README.md"))
 
     def test_vincular_a_algo_que_el_perfil_no_declara_avisa_pero_vincula(self):
         codigo, salida, _ = self.correr("hilo", "vincular", "notas", "--hilo", "n")
@@ -482,3 +493,119 @@ class Proyectos(Orden):
         self.assertEqual(mod_config.desde_dict({"agente": {"proyecto": "/pm {ruta}"}}).agente.proyecto, "/pm {ruta}")
         with self.assertRaises(ErrorDeConfig):
             mod_config.desde_dict({"agente": {"proyecto": "  "}})
+
+
+class MensajeDePendiente(Orden):
+    def test_con_id_usa_la_plantilla(self):
+        from telar.ordenes.pendiente import mensaje
+
+        self.assertEqual(mensaje("/tarea {id}", {"id": "T118", "texto": "algo", "ref": "T118"}), "/tarea T118")
+
+    def test_sin_id_cae_al_texto(self):
+        from telar.ordenes.pendiente import mensaje
+
+        fila = {"id": "", "texto": "revisar el contrato", "ref": "faro:2"}
+        self.assertEqual(mensaje("Veamos {id}", fila), "revisar el contrato")
+        self.assertEqual(mensaje("{ref}: {texto}", fila), "faro:2: revisar el contrato")
+
+
+class Atajos(Orden):
+    def test_se_declaran_por_tecla(self):
+        from telar import config as mod_config
+
+        cfg = mod_config.desde_dict({"atajos": {"m": {"nombre": "⚑ correo", "mensaje": "/correo"}}})
+        self.assertEqual([(a.tecla, a.nombre, a.mensaje) for a in cfg.atajos], [("m", "⚑ correo", "/correo")])
+
+    def test_una_tecla_del_dashboard_se_rechaza(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        for tecla in ("r", "a", "1"):
+            with self.assertRaises(ErrorDeConfig):
+                mod_config.desde_dict({"atajos": {tecla: {"nombre": "x", "mensaje": "y"}}})
+
+    def test_sin_mensaje_es_un_error(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"atajos": {"m": {"nombre": "x"}}})
+
+    def test_un_atajo_que_no_existe_se_dice(self):
+        codigo, _, error = self.correr("atajo", "m")
+        self.assertEqual(codigo, 2)
+        self.assertIn("no hay atajo", error)
+
+
+class Secciones(Orden):
+    def test_se_declaran_y_reclaman_hilos_por_nombre_o_prefijo(self):
+        from telar import config as mod_config
+
+        cfg = mod_config.desde_dict({"secciones": {"diario": {
+            "nombre": "Diario", "hilos": ["notas", "◌ rato*"], "home": ["echo", "{}"]}}})
+        s = cfg.secciones[0]
+        self.assertEqual((s.clave, s.nombre, s.home), ("diario", "Diario", ("echo", "{}")))
+        self.assertTrue(s.contiene("notas"))
+        self.assertTrue(s.contiene("◌ rato 09/23 11:43"))
+        self.assertFalse(s.contiene("notas viejas"))
+
+    def test_una_clave_desconocida_es_un_error(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"secciones": {"x": {"hilo": ["a"]}}})
+
+    def test_el_contrato_de_la_pagina(self):
+        from telar.ordenes.seccion import validar
+
+        self.assertEqual(validar({"titulo": "x", "bloques": [{"texto": "hola", "items": [{"titulo": "a"}]}]}), "")
+        self.assertIn("bloques", validar({"titulo": "x", "bloques": "no"}))
+        self.assertIn("items", validar({"titulo": "x", "bloques": [{"items": ["no"]}]}))
+
+    def test_un_lienzo_es_un_html_que_existe(self):
+        from telar.ordenes.seccion import validar
+
+        html = Path(self.tmp.name) / "l.html"
+        html.write_text("<canvas></canvas>", encoding="utf-8")
+        bien = {"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "alto": 200, "params": {"a": "b"}}}]}
+        self.assertEqual(validar(bien), "")
+        self.assertIn("no existe", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": "/no/hay.html"}}]}))
+        self.assertIn(".html", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(Path(self.tmp.name))}}]}))
+        self.assertIn("alto", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "alto": 5}}]}))
+
+    def test_la_orden_corre_el_home_y_devuelve_su_json(self):
+        import sys
+
+        ruta = Path(self.tmp.name) / "config.toml"
+        codigo = 'import json; print(json.dumps({"titulo": "Diario", "bloques": []}))'
+        ruta.write_text(
+            f'[secciones.diario]\nnombre = "Diario"\nhome = [{json.dumps(sys.executable)}, "-c", {json.dumps(codigo)}]\n',
+            encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+        self.assertEqual(self.json_de("seccion", "diario", "--json")["titulo"], "Diario")
+
+
+class LeerConversacion(Orden):
+    def test_lo_dicho_y_una_linea_por_herramienta(self):
+        from telar.agente.claude_code import ClaudeCode
+
+        base = Path(self.tmp.name) / "claude"
+        (base / "projects" / "-x").mkdir(parents=True)
+        lineas = [
+            {"type": "user", "timestamp": "t1", "message": {"content": "<command-message>x</command-message>\n<command-name>/despertar</command-name>"}},
+            {"type": "assistant", "timestamp": "t2", "message": {"content": [
+                {"type": "thinking", "thinking": ""},
+                {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la", "description": "listar"}},
+                {"type": "text", "text": "Listo."}]}},
+            {"type": "user", "timestamp": "t3", "message": {"content": [{"type": "tool_result", "content": "..."}]}},
+        ]
+        (base / "projects" / "-x" / "abc.jsonl").write_text("\n".join(json.dumps(l) for l in lineas), encoding="utf-8")
+        os.environ["CLAUDE_CONFIG_DIR"] = str(base)
+        self.addCleanup(os.environ.pop, "CLAUDE_CONFIG_DIR", None)
+        from telar import config as mod_config
+
+        mensajes = ClaudeCode(mod_config.desde_dict({})).mensajes("abc")
+        self.assertEqual([(m["quien"], m["texto"]) for m in mensajes],
+                         [("usuario", "/despertar"), ("herramienta", "Bash · listar"), ("agente", "Listo.")])

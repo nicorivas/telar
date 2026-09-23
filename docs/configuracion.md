@@ -166,6 +166,8 @@ nombre = "claude-code"   # vacío o ausente: cada hilo es una shell
 carpeta = "hilo"         # hilo (por defecto) · raiz · una ruta
 reunion = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 proyecto = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
+pendiente = "{texto}"         # se escribe, sin enviar, al agente de un hilo ya abierto
+pendiente_nuevo = "{texto}"   # primer mensaje de un hilo que se abre para el pendiente
 ```
 
 `reunion` es lo que se le dice al agente cuando se pincha una reunión en la agenda del
@@ -184,6 +186,14 @@ tiene un hilo abierto, se va a él y no se le dice nada. Marcadores: `{nombre}` 
 pantalla, según la `etiqueta` del perfil), `{ruta}` (relativa a la raíz), `{carpeta}` y
 `{documento}` (absolutas). El de fábrica no supone ninguna skill; con una, algo como
 `/pm {ruta}`. Se cambia desde **⚙ configuración** o con `telar config --proyecto "…"`.
+
+`pendiente` y `pendiente_nuevo` son lo que se le dice al agente al llevarle un pendiente
+(clic en la lista de tareas, o `telar pendiente <ref>`). Si el proyecto ya tiene su hilo,
+se le **escribe** `pendiente` y no se envía: Enter es de la persona. Si hay que abrir uno,
+el agente nace con `pendiente_nuevo` como primer mensaje, que sí se envía, porque no hay
+a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}` y `{id}` (el id del
+proveedor, como `T84`); un pendiente sin id, como los de los documentos, usa `{texto}`.
+Con la skill de flow: `pendiente = "Veamos {id}"` y `pendiente_nuevo = "/tarea {id}"`.
 
 Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando
 la conversación que ese hilo ya tenía si su archivo sigue existiendo. En una sesión que
@@ -204,6 +214,43 @@ abrir a otro, que no recuerda nada.
 Al salir del agente queda una shell, no se cierra el tab. Y el agente arranca sin las
 variables de otro multiplexor (`ZELLIJ_*`): si tmux se levantó desde dentro de Zellij,
 los ganchos de Zellij creerían que el agente es uno de sus paneles.
+
+## `[atajos]` — teclas del dashboard
+
+```toml
+[atajos.m]
+nombre = "⚑ correo"
+mensaje = "/correo"
+descripcion = "procesar el correo de hoy"   # opcional: sale al pasar el mouse
+```
+
+Cada atajo es una tecla del dashboard (y un enlace en su sección **Atajos**) que abre un
+hilo nuevo con el agente, en `[agente] carpeta`, con `mensaje` como primer prompt. Sirve
+para lo que se hace varias veces al día y no es de ningún proyecto: el correo, un chat,
+cargar las horas. El hilo se llama `nombre` más la fecha y la hora («⚑ correo 09/23
+10:32»), porque la revisión de la mañana y la de la tarde son dos conversaciones.
+
+La tecla es un solo carácter y no puede ser una de las que el dashboard ya usa: las letras
+de los pendientes (`a b d e f g h i`), los números de la agenda, `r`, `p`, `t` y `/`.
+`telar atajo` lista los declarados y `telar atajo m` hace lo mismo que la tecla.
+
+## `[secciones]` — grupos propios en la lista de hilos
+
+```toml
+[secciones.diario]
+nombre = "Diario"
+hilos = ["notas", "◌ rato*"]          # nombre exacto, o prefijo si termina en *
+home = ["/ruta/a/mi-home", "--json"]  # opcional: un comando que imprime su página
+```
+
+Una sección es un grupo con cabecera plegable en la barra de hilos, entre el dashboard y
+la lista general. Los hilos que reclama (los vivos; un archivado sigue en el archivo)
+salen de la lista general y van ahí. Con `home`, la sección tiene además una fila **home**
+que abre su página en el panel del dashboard: telar corre el comando, comprueba que el
+JSON tenga la forma del contrato (`docs/contratos.md`, `telar seccion`) y lo dibuja. Un
+ítem de la página que trae `conversacion` abre esa conversación entera, con la opción de
+retomarla en su hilo. `telar seccion` lista las declaradas y `telar seccion <clave>`
+muestra la página en la terminal.
 
 ## `[hilos]` — de qué carpetas salen
 
