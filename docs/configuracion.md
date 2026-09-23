@@ -219,9 +219,11 @@ con `telar config --directorios "a, b"` y `--tope N`, o desde **⚙ configuraci�
 Cada agente que telar abre nace con un id de conversación que telar elige
 (`claude --session-id <uuid>`) y guarda junto al hilo. Por eso:
 
-- `telar hilo archivar --cerrar` (⏸ en la lista) cierra el tab y la conversación queda
-  guardada; tejer la sesión otra vez no lo reabre.
-- `telar hilo retomar` (▶, o pinchar el archivado) reabre el tab en su carpeta con
+- `telar hilo cerrar` (✕ en la lista) cierra el tab y lo que corra adentro. El hilo sigue
+  en la lista, sin tab.
+- `telar hilo archivar --cerrar` (⏸ en la lista) hace lo mismo y además lo manda al
+  archivo: tejer la sesión otra vez no lo reabre.
+- `telar hilo retomar` (▶, o pinchar un hilo sin tab) reabre el tab en su carpeta con
   `claude --resume <ese id>`. No hay que buscar el id ni escribirlo.
 
 `/clear` dentro de Claude abre otra conversación con otro id, que telar solo conoce si

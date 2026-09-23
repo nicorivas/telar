@@ -97,12 +97,13 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             case 'ir': {
                 if (!m.hilo) break;
                 // un archivado no tiene tab al que ir: pincharlo es retomarlo
-                const archivado = modelo.archivados.some(x => x.nombre === m.hilo);
-                void vscode.commands.executeCommand(archivado ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
+                const sinTab = modelo.hilos.some(x => x.nombre === m.hilo && (!x.vivo || x.archivado));
+                void vscode.commands.executeCommand(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
                 break;
             }
             case 'archivar': if (m.id) void vscode.commands.executeCommand('telar.archivar', { hilo: m.id }); break;
             case 'retomar': if (m.id) void vscode.commands.executeCommand('telar.retomar', { hilo: m.id }); break;
+            case 'cerrar': if (m.id) void vscode.commands.executeCommand('telar.cerrar', { hilo: m.id }); break;
             case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
@@ -148,9 +149,11 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             + `<span class="num">${esc(num)}</span>`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? ' '}</span>`
             + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${glifo}<span class="der">${esc(der)}</span>`
-            + (seccion === 'archivado'
+            // sin tab que cerrar, lo único que cabe es volver a abrirlo
+            + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
-                : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab y guarda su conversación para retomarla">⏸</span>`)
+                : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab, guarda su conversación y lo manda al archivo">⏸</span>`
+                  + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro; sigue en la lista y ▶ lo reabre">✕</span>`)
             + '</div>';
     }
 

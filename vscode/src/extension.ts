@@ -97,14 +97,11 @@ async function vincular(a: Arg): Promise<void> {
     if (await sobreHilo(a, 'vincular', relativa || '.')) vistaCarpeta.seguir();
 }
 
+/** Cierra el tab y lo que corra adentro. No archiva: el hilo sigue en la lista, y ▶ lo
+ *  reabre con su conversación, que quedó guardada. Por eso ya no pregunta. */
 async function cerrar(a: Arg): Promise<void> {
-    const hilo = hiloDe(a);
-    if (!hilo) return;
-    const ok = await vscode.window.showWarningMessage(
-        `¿Cerrar «${hilo}»? Queda archivado en telar, y lo que corra adentro muere.`,
-        { modal: true }, 'Cerrar');
-    if (ok !== 'Cerrar') return;
-    await sobreHilo(a, 'archivar', undefined, ['--cerrar']);
+    if (!hiloDe(a)) return;
+    await sobreHilo(a, 'cerrar');
 }
 
 async function olvidar(a: Arg): Promise<void> {

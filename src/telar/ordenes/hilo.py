@@ -7,6 +7,8 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo renombrar «Faro»            renombrarlo, y mover con él lo que telar sabía
     telar hilo adoptar [«faro»]            recoger el estado que quedó en otro nombre
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
+    telar hilo cerrar                      cerrar su tab (y lo que corra adentro); sigue en
+                                           la lista, y `retomar` lo vuelve a abrir
     telar hilo archivar [--cerrar]         sacarlo de la lista sin perderlo
     telar hilo desarchivar
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
@@ -46,6 +48,7 @@ VERBOS = (
     "renombrar",
     "adoptar",
     "prioridad",
+    "cerrar",
     "archivar",
     "desarchivar",
     "retomar",
@@ -114,6 +117,12 @@ def main(argv: list[str], ctx) -> int:
         salida = _adoptar(tel, hilo, o.valor)
     elif o.verbo == "prioridad":
         salida = _prioridad(est, hilo, o.valor)
+    elif o.verbo == "cerrar":
+        # cerrar no es archivar: el hilo sigue en la lista, sin tab. Su conversación queda
+        # anotada, así que `retomar` lo abre donde estaba.
+        salida = _cerrar(tel, hilo)
+        if salida == 0:
+            print(f"cerrado «{hilo.nombre}»" + _sesiones(hilo))
     elif o.verbo == "archivar":
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))

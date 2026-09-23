@@ -205,7 +205,7 @@
       },
       {
         "command": "telar.cerrar",
-        "title": "Cerrar el hilo…",
+        "title": "Cerrar el hilo (sigue en la lista)",
         "category": "telar"
       },
       {
