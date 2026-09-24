@@ -30,7 +30,7 @@ def resumen(ctx, tel, remoto, *, cuerpos: bool = False) -> dict:
         convs.append({
             "id": grupo[0].id or grupo[0].asunto,
             "asunto": grupo[0].asunto,
-            "participantes": sorted({c.de for c in grupo if c.de} | {c.para.split("@")[0] for c in grupo if c.para}),
+            "participantes": sorted({c.de for c in grupo if c.de} | {u for c in grupo for u in _usuarios(c.para)}),
             "mensajes": len(grupo),
             "ultima": grupo[-1].fecha,
             "estado": "retenido" if "retenido" in estados else "sin sesión" if "sin sesión" in estados
@@ -40,6 +40,13 @@ def resumen(ctx, tel, remoto, *, cuerpos: bool = False) -> dict:
     return {"remoto": remoto.nombre, "usuario": buzon.usuario, "error": buzon.error,
             "sabe_pendientes": buzon.sabe_pendientes, "cartero": bool(buzon.lineas), "archivo_comun": bool(remoto.correo_archivo),
             "hilos": hilos, "conversaciones": convs}
+
+
+def _usuarios(direcciones: str) -> set[str]:
+    """Las personas de un To/Cc: `<ana+pizza@servidor>, otro@servidor` → {ana, otro}."""
+    import re
+
+    return {m.split("+", 1)[0] for m in re.findall(r"([A-Za-z0-9._+-]+)@", direcciones)}
 
 
 def main(argv: list[str], ctx) -> int:

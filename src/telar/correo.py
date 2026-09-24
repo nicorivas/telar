@@ -33,8 +33,9 @@ casillas = sys.argv[1:] or ["~/Maildir"]
 con_cuerpo = os.environ.get("TELAR_CUERPO") == "1"
 salida = {"correos": [], "log": [], "usuario": pwd.getpwuid(os.getuid()).pw_name}
 vistos = set()
-for casilla in casillas:
+for n, casilla in enumerate(casillas):
     base = os.path.expanduser(casilla)
+    propia = n == 0  # la primera es la Maildir del usuario; las otras, copias (la casilla común)
     for sub in ("new", "cur"):
         for ruta in glob.glob(os.path.join(base, sub, "*")):
             try:
@@ -52,11 +53,16 @@ for casilla in casillas:
                 de = pwd.getpwuid(int(uid.group(1))).pw_name if uid else ""
             except KeyError:
                 de = ""
-            c = {"archivo": ruta, "nuevo": sub == "new", "id": mid, "de": de,
-                 "from": str(m.get("From", "")), "para": str(m.get("X-Original-To", "") or m.get("To", "")),
+            # en la propia, X-Original-To dice a qué dirección llegó (con su +extensión); en una
+            # copia de archivo esa cabecera es la del archivo, y el destinatario real está en To/Cc
+            destino = str(m.get("X-Original-To", "") or m.get("To", "")) if propia else \
+                ", ".join(str(x) for x in (m.get("To"), m.get("Cc")) if x)
+            c = {"archivo": ruta, "nuevo": sub == "new", "id": mid, "de": de, "propia": propia,
+                 "from": str(m.get("From", "")), "para": destino,
                  "asunto": str(m.get("Subject", "")), "fecha": str(m.get("Date", "")),
-                 "responde": str(m.get("In-Reply-To", "")).strip(),
-                 "referencias": str(m.get("References", "")).split()}
+                 # los ids van entre <>; GNU mail antepone texto («Your message of…») al de In-Reply-To
+                 "responde": " ".join(re.findall(r"<[^<>\s]+>", str(m.get("In-Reply-To", "")))),
+                 "referencias": re.findall(r"<[^<>\s]+>", str(m.get("References", "")))}
             if con_cuerpo:
                 p = m.get_body(preferencelist=("plain",))
                 c["cuerpo"] = (p.get_content() if p else "")[:20000]
@@ -82,6 +88,8 @@ class Correo:
     referencias: tuple[str, ...] = ()
     nuevo: bool = False
     estado: str = ""  # entregado · retenido · sin sesión · "" (no se sabe)
+    #: llegó a la casilla del propio usuario (no es una copia de la casilla común)
+    propia: bool = True
     cuerpo: str = ""
 
 
@@ -162,13 +170,16 @@ def desde_json(datos: dict) -> Buzon:
     correos = []
     for c in datos.get("correos", []):
         mid = str(c.get("id", ""))
+        propia = bool(c.get("propia", True))
         estado = por_id.get(mid, "")
-        if sabe and not estado and _posterior(str(c.get("fecha", "")), desde):
+        # solo se juzga lo que llegó a la casilla propia: de un correo a otro usuario, su
+        # registro no se puede leer, y no aparecer en el propio no dice nada
+        if propia and sabe and not estado and _posterior(str(c.get("fecha", "")), desde):
             estado = "sin sesión"  # llegó después de que el cartero anota ids, y no lo entregó
         correos.append(Correo(
             archivo=str(c.get("archivo", "")), id=mid, de=str(c.get("de", "")), para=str(c.get("para", "")),
             asunto=str(c.get("asunto", "")), fecha=str(c.get("fecha", "")), responde=str(c.get("responde", "")),
-            referencias=tuple(c.get("referencias") or ()), nuevo=bool(c.get("nuevo")), estado=estado,
+            referencias=tuple(c.get("referencias") or ()), nuevo=bool(c.get("nuevo")), estado=estado, propia=propia,
             cuerpo=str(c.get("cuerpo", ""))))
     return Buzon(usuario=str(datos.get("usuario", "")), correos=tuple(correos), sabe_pendientes=sabe,
                  lineas=tuple(lineas))
@@ -271,14 +282,15 @@ def conversaciones(correos: list[Correo]) -> list[list[Correo]]:
     for c in correos:
         k = clave(c)
         padre.setdefault(k, k)
-        for otro in (*c.referencias, c.responde):
-            if otro:
-                padre.setdefault(otro, otro)
-                unir(otro, k)
-        if not c.id:
-            continue
-        asunto = _por_asunto(c.asunto)
-        if not c.referencias and not c.responde and asunto in padre:
+        respondidos = [*c.referencias, *c.responde.split()]
+        for otro in respondidos:
+            padre.setdefault(otro, otro)
+            unir(otro, k)
+        # sin cabeceras de respuesta (`mail -s "Re: …"` no las pone), el asunto sin «Re:» es
+        # lo único que lo ata a su conversación
+        if c.id and not respondidos:
+            asunto = _por_asunto(c.asunto)
+            padre.setdefault(asunto, asunto)
             unir(asunto, k)
 
     grupos: dict[str, list[Correo]] = {}

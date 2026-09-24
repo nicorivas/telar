@@ -70,6 +70,14 @@ class Registro(Prueba):
         self.assertEqual({x.id: x.estado for x in b.correos}, {"<v@s>": "", "<p@s>": "sin sesión"})
 
 
+    def test_una_copia_de_la_casilla_comun_no_se_juzga(self):
+        f = "Thu, 24 Sep 2026 17:09:23 -0300"
+        datos = {"log": ["2026-09-24T13:17:02 ENTREGADO de=a a=s asunto='x' salida=0 id=<x@s>"],
+                 "correos": [{"id": "<r@s>", "para": "<otro@servidor>", "fecha": f, "propia": False}]}
+        (x,) = c.desde_json(datos).correos
+        self.assertEqual(x.estado, "")  # iba a otro usuario: su registro no se ve desde aquí
+
+
 class Conversaciones(Prueba):
     def test_por_referencias_aunque_falte_un_eslabon(self):
         a = correo(id="<a>", asunto="Pizza", fecha="Thu, 24 Sep 2026 10:00:00 -0300")
@@ -83,6 +91,13 @@ class Conversaciones(Prueba):
     def test_sin_encabezados_por_asunto(self):
         grupos = c.conversaciones([correo(asunto="Prueba"), correo(asunto="Re: Prueba")])
         self.assertEqual(len(grupos), 1)
+
+    def test_con_id_y_sin_cabeceras_de_respuesta_tambien_por_asunto(self):
+        # `mail -s "Re: …"` responde sin In-Reply-To: el asunto es lo que queda
+        grupos = c.conversaciones([correo(id="<o@s>", asunto="Prueba 5: archivo"),
+                                   correo(id="<r@s>", asunto="Re: Prueba 5: archivo"),
+                                   correo(id="<z@s>", asunto="Otra")])
+        self.assertEqual(sorted(len(g) for g in grupos), [1, 2])
 
 
 class Movil(Prueba):

@@ -6,6 +6,14 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Fixed
+
+- `telar correo` with a common archive: the recipient of an archived copy comes from
+  To/Cc (its X-Original-To is the archive's); mail to other users is no longer marked
+  undelivered, since their delivery log can't be read; replies without In-Reply-To
+  (`mail -s "Re: …"`) join their conversation by subject; GNU mail's In-Reply-To text is
+  parsed for the id; participants are people, not `user+thread` addresses.
+
 ## [0.1.2] — 2026-09-24
 
 ### Added
