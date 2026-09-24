@@ -609,3 +609,22 @@ class LeerConversacion(Orden):
         mensajes = ClaudeCode(mod_config.desde_dict({})).mensajes("abc")
         self.assertEqual([(m["quien"], m["texto"]) for m in mensajes],
                          [("usuario", "/revisar"), ("herramienta", "Bash · listar"), ("agente", "Listo.")])
+
+
+class NombreDelHiloDeUnPendiente(Orden):
+    def test_el_codigo_y_el_tema(self):
+        from telar.ordenes.pendiente import _con_nombre
+
+        self.assertEqual(_con_nombre({"ref": "T118", "texto": "Faro 2026: coordinar con el equipo"}),
+                         "T118 Faro 2026")
+
+    def test_sin_dos_puntos_las_primeras_palabras(self):
+        from telar.ordenes.pendiente import _con_nombre
+
+        self.assertEqual(_con_nombre({"ref": "T21", "texto": "Revisar el borrador del informe con el equipo"}),
+                         "T21 Revisar el borrador del…")
+
+    def test_sin_texto_el_codigo(self):
+        from telar.ordenes.pendiente import _con_nombre
+
+        self.assertEqual(_con_nombre({"ref": "T9", "texto": ""}), "T9")

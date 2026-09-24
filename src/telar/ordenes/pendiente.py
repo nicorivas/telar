@@ -192,7 +192,7 @@ def _llevar(
 
 
 def _nombre_libre(tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo: bool) -> str:
-    base = (destino.nombre if destino is not None else "") or _hoja(fila) or fila["ref"]
+    base = (destino.nombre if destino is not None else "") or _hoja(fila) or _con_nombre(fila)
     # revivir un hilo que telar ya conoce es volver a su nombre, no inventar otro
     if not nuevo and (destino is not None or tel.por_nombre(base) is None):
         return base
@@ -203,6 +203,20 @@ def _nombre_libre(tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo:
         if tel.por_nombre(candidato) is None:
             return candidato
     return f"{base} {fila['ref']}"  # pragma: no cover - treinta hilos iguales no pasa
+
+
+def _con_nombre(fila: dict) -> str:
+    """El nombre de un hilo abierto solo para un pendiente: su código y de qué se trata.
+
+    «T118» a secas no dice nada en la lista. Lo que va antes de los dos puntos suele ser el
+    tema («Faro 2026: coordinar…»); si no hay, las primeras palabras.
+    """
+    ref = fila.get("ref", "")
+    texto = " ".join(str(fila.get("texto", "")).replace("*", "").replace("`", "").split())
+    tema = texto.split(":", 1)[0] if ":" in texto[:40] else texto
+    if len(tema) > 28:
+        tema = tema[:28].rsplit(" ", 1)[0] + "…"
+    return f"{ref} {tema}".strip() if tema else ref
 
 
 def _hoja(fila: dict) -> str:

@@ -8,6 +8,8 @@ workflow refuses to run if the two disagree.
 
 ### Changed
 
+- A thread opened just for a task is named after its code and its topic («T118 Faro
+  2026»), not the bare code.
 - Tasks: hovering a row shows its whole text in a tooltip of the view's own (the native
   `title` does not always show inside a sidebar view).
 
