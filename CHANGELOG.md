@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-24
+
 ### Added
 
 - Mail between agents on a remote machine: each remote thread has an address
@@ -119,6 +121,7 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/nicorivas/telar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nicorivas/telar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nicorivas/telar/releases/tag/v0.1.0
