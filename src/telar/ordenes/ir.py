@@ -13,6 +13,7 @@ from pathlib import Path
 from telar.agente import ErrorDeAgente
 from telar.agente import lanzar
 from telar.mux import ErrorDeMux
+from telar import remoto as mod_remoto
 from telar.ordenes import _comun
 
 AYUDA = "Poner el foco en un hilo."
@@ -22,6 +23,7 @@ def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("ir", AYUDA)
     p.add_argument("hilo", help="id o nombre del hilo")
     p.add_argument("--crear", action="store_true", help="si no existe, abrirlo")
+    p.add_argument("--remoto", default="", help="con --crear: abrirlo en esa máquina de [remotos]")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -45,6 +47,20 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(f"{problema or 'ese hilo no está vivo'}{pista}. `--crear` lo abre.")
 
     nombre = hilo.nombre if hilo is not None else o.hilo
+    if o.remoto:
+        remoto = next((r for r in ctx.config.remotos if r.nombre == o.remoto), None)
+        if remoto is None:
+            nombres = ", ".join(r.nombre for r in ctx.config.remotos) or "ninguno declarado"
+            return _comun.queja(f"no hay remoto «{o.remoto}» en la configuración ({nombres})")
+        relativa = tel.estado.vinculos().get(nombre, "")
+        try:
+            sesion = mod_remoto.abrir(ctx, tel, nombre, remoto, relativa=relativa)
+        except (ErrorDeMux, ErrorDeAgente) as e:
+            return _comun.queja(f"no pude abrirlo en {remoto.destino}: {e}")
+        tel.estado.desarchivar(nombre)
+        tel.estado.marcar(nombre)
+        print(f"→ «{nombre}» (nuevo, en {remoto.destino} · sesión {sesion})")
+        return 0
     # sin carpeta, el tab nace donde esté parado el servidor del multiplexor, que suele ser
     # «/»: un hilo en la raíz del disco no sirve para nada. Y nace con su agente, como los
     # que abre `tejer`: un hilo es un lugar de trabajo, no una shell.

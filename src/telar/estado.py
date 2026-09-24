@@ -92,6 +92,7 @@ ARCHIVOS = {
     "sesiones": "sesiones.json",
     "paneles": "paneles.json",
     "ids": "ids.json",
+    "remotos": "remotos.json",
 }
 
 #: El registro de cambios de foco, que no es JSON sino un log que solo crece.
@@ -262,6 +263,7 @@ def vestir(
     sesiones: Mapping[str, Sequence[str]] | None = None,
     tiempos: Mapping[str, float] | None = None,
     vistos: Mapping[str, datetime] | None = None,
+    remotos: Mapping[str, Mapping[str, str]] | None = None,
 ) -> tuple[Hilo, ...]:
     """Le pone a cada hilo del multiplexor lo que el estado sabe de él.
 
@@ -295,6 +297,8 @@ def vestir(
                 tiempo=(tiempos or {}).get(nombre, hilo.tiempo),
                 ficha=hilo.ficha,
                 sesiones=tuple((sesiones or {}).get(nombre, hilo.sesiones)),
+                # la marca del multiplexor manda; el estado es para cuando no hay ventana
+                remoto=hilo.remoto or str(((remotos or {}).get(nombre) or {}).get("remoto", "")),
             )
         )
     return tuple(vestidos)
@@ -446,6 +450,19 @@ class Estado:
         crudo = str(ruta).strip()
         limpia = "/" + crudo.strip("/") if crudo.startswith("/") else crudo.strip("/")
         self._actualizar("vinculos", lambda d: d.__setitem__(hilo, limpia), {})
+
+    # ── hilos remotos ──────────────────────────────────────────────────────────
+
+    def remotos(self) -> dict[str, dict[str, str]]:
+        """hilo → {remoto, sesion}: en qué máquina vive su agente y en qué sesión tmux de allá."""
+        salida = {}
+        for hilo, valor in self._leer("remotos", {}).items():
+            if isinstance(valor, dict) and isinstance(valor.get("remoto"), str):
+                salida[hilo] = {"remoto": valor["remoto"], "sesion": str(valor.get("sesion", ""))}
+        return salida
+
+    def anotar_remoto(self, hilo: str, remoto: str, sesion: str) -> None:
+        self._actualizar("remotos", lambda d: d.__setitem__(hilo, {"remoto": remoto, "sesion": sesion}), {})
 
     def desvincular(self, hilo: str) -> None:
         self._actualizar("vinculos", lambda d: d.pop(hilo, None), {})
@@ -753,6 +770,7 @@ class Estado:
                     marcas, tope, desde=dia or date.today(), hasta=dia or date.today()
                 ),
                 "vistos": ultimo_foco(marcas),
+                "remotos": self.remotos(),
             }
 
     # ── renombrar y olvidar ────────────────────────────────────────────────────
@@ -851,7 +869,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion"):
+            for nombre in ("vinculos", "prioridades", "atencion", "remotos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -863,7 +881,7 @@ class Estado:
         debería cambiar porque se cerró un tab.
         """
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "sesiones"):
+            for nombre in ("vinculos", "prioridades", "atencion", "sesiones", "remotos"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
 

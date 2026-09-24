@@ -254,7 +254,7 @@ Las reglas valen para todas:
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
   "visto": "2026-09-18T09:12:44", "tiempo": 4320.0,
-  "sesiones": ["a1b2c3d4"],
+  "sesiones": ["a1b2c3d4"], "remoto": "",
   "ficha": { … }
 }
 ```
@@ -265,7 +265,9 @@ el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dic
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
 que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
 `tiempo` son los segundos con el foco **en el día en curso**. `ficha` puede ser
-`null` (con `--sin-ficha`) o faltar.
+`null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
+es aquí, un nombre es una máquina de `[remotos]`, y `"?"` es una ventana que corre mosh,
+ssh o et sin que telar la haya armado (se sabe que es remota, no adónde).
 
 ### `ficha`
 

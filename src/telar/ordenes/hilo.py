@@ -40,6 +40,7 @@ from telar.agente import ErrorDeAgente
 from telar.agente.base import panel_del_entorno
 from telar.agente import lanzar
 from telar.mux import ErrorDeMux
+from telar import remoto as mod_remoto
 from telar.ordenes import _comun
 
 AYUDA = "Vincular, renombrar, priorizar, archivar: actuar sobre un hilo."
@@ -127,7 +128,7 @@ def main(argv: list[str], ctx) -> int:
         # cerrar es descartar: el tab se va y telar lo olvida, así que sale de la lista.
         # Lo que se quiere guardar se archiva. La conversación sigue en disco, donde la
         # deja el agente; solo se pierde el vínculo que permitía retomarla de un clic.
-        salida = _cerrar(tel, hilo)
+        salida = _cerrar(ctx, tel, hilo)
         if salida == 0:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
@@ -135,7 +136,7 @@ def main(argv: list[str], ctx) -> int:
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
         if o.cerrar:
-            salida = _cerrar(tel, hilo)
+            salida = _cerrar(ctx, tel, hilo)
         else:
             print(_comun.tenue("  sigue abierto; --cerrar además lo cierra en el multiplexor"))
     elif o.verbo == "desarchivar":
@@ -323,7 +324,10 @@ def _resolver_ruta(ruta: Path | None) -> Path | None:
         return Path(ruta)
 
 
-def _cerrar(tel: _comun.Telar, hilo) -> int:
+def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
+    # un hilo remoto tiene además su sesión en la otra máquina, que sigue viva aunque la
+    # ventana local ya no esté: se termina igual, o el agente quedaría corriendo allá
+    _matar_remoto(ctx, tel, hilo)
     if tel.mux is None or not tel.vivo(hilo):
         print(_comun.tenue("  no está vivo: no hay nada que cerrar"))
         return 0
@@ -333,6 +337,22 @@ def _cerrar(tel: _comun.Telar, hilo) -> int:
         return _comun.queja(f"no pude cerrarlo: {e}")
     print("  cerrado en el multiplexor")
     return 0
+
+
+def _matar_remoto(ctx, tel: _comun.Telar, hilo) -> None:
+    anotado = tel.estado.remotos().get(hilo.nombre)
+    remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
+    if remoto is None or not anotado.get("sesion"):
+        return
+    problema = mod_remoto.matar(remoto, anotado["sesion"])
+    if problema:
+        print(_comun.tenue(f"  la sesión de {remoto.destino} no se pudo terminar: {problema}"))
+    else:
+        print(_comun.tenue(f"  terminada su sesión en {remoto.destino}"))
+
+
+def _remoto_de(ctx, nombre: str):
+    return next((r for r in ctx.config.remotos if r.nombre == nombre), None)
 
 
 def _sesiones(hilo) -> str:
@@ -358,6 +378,16 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
             print(f"«{hilo.nombre}» ya estaba abierto")
             return 0
         relativa = est.vinculos().get(hilo.nombre, "")
+        anotado = est.remotos().get(hilo.nombre)
+        remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
+        if remoto is not None:
+            # un hilo remoto se reabre por su transporte: si la sesión de allá sigue viva,
+            # `-A` se engancha a ella; si no, se crea retomando su conversación
+            mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa,
+                             sesion=anotado.get("sesion", ""),
+                             conversacion=hilo.sesiones[0] if hilo.sesiones else "")
+            print(f"retomado «{hilo.nombre}» en {remoto.destino}")
+            return 0
         carpeta = Path(ctx.config.raiz) / relativa if relativa else None
         if carpeta is not None and not carpeta.is_dir():
             carpeta = None

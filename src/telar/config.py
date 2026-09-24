@@ -160,6 +160,26 @@ class Seccion:
         return any(hilo.startswith(p[:-1]) if p.endswith("*") else hilo == p for p in self.hilos)
 
 
+#: con qué se llega a una máquina remota. mosh sobrevive a que el laptop se duerma.
+TRANSPORTES = ("mosh", "ssh")
+
+
+@dataclass(frozen=True, slots=True)
+class Remoto:
+    """Una máquina donde pueden vivir hilos (`[remotos.<nombre>]`).
+
+    El agente de un hilo remoto corre allá, en una sesión tmux propia; el hilo local es
+    solo la ventana desde donde se lo mira. Ver docs/propuestas/hilos-remotos.md.
+    """
+
+    nombre: str
+    #: lo que va después de mosh/ssh: `usuario@servidor`, o un alias de ~/.ssh/config.
+    destino: str
+    transporte: str = "mosh"
+    #: la carpeta del repositorio EN la otra máquina; ahí se traducen los vínculos.
+    raiz: str = "~"
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """La configuración resuelta. Inmutable; para variarla, `dataclasses.replace`."""
@@ -189,6 +209,8 @@ class Config:
     atajos: tuple[Atajo, ...] = ()
     #: grupos propios en la lista de hilos (`[secciones.x]`), en el orden del archivo.
     secciones: tuple[Seccion, ...] = ()
+    #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
+    remotos: tuple[Remoto, ...] = ()
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -387,9 +409,30 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                                      home=tuple(cuerpo.get("home", []))))
         cambios["secciones"] = tuple(secciones)
 
+    if "remotos" in datos:
+        tabla = _tabla(datos["remotos"], "remotos")
+        remotos = []
+        for nombre, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"remotos.{nombre}")
+            sobra = set(cuerpo) - {"destino", "transporte", "raiz"}
+            if sobra:
+                raise ErrorDeConfig(f"remotos.{nombre}.{sorted(sobra)[0]}: no existe")
+            destino = cuerpo.get("destino", "")
+            if not isinstance(destino, str) or not destino.strip() or destino.strip().startswith("-"):
+                raise ErrorDeConfig(f"remotos.{nombre}.destino: se esperaba usuario@servidor o un alias, llegó {destino!r}")
+            transporte = cuerpo.get("transporte", "mosh")
+            if transporte not in TRANSPORTES:
+                raise ErrorDeConfig(f"remotos.{nombre}.transporte: {' o '.join(TRANSPORTES)}, llegó {transporte!r}")
+            raiz = cuerpo.get("raiz", "~")
+            if not isinstance(raiz, str) or not raiz.strip():
+                raise ErrorDeConfig(f"remotos.{nombre}.raiz: se esperaba una carpeta, llegó {raiz!r}")
+            remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte,
+                                  raiz=raiz.strip().rstrip("/") or "/"))
+        cambios["remotos"] = tuple(remotos)
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha", "agente", "hilos", "atajos", "secciones",
+        "ficha", "agente", "hilos", "atajos", "secciones", "remotos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

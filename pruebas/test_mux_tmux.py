@@ -39,9 +39,9 @@ from telar.mux import tmux as t
 from telar.mux.base import NoExiste, SinPrograma, SinSesion
 
 
-def fila_tab(ident="@3", indice="2", nombre="faro", activo="1", paneles="1") -> str:
+def fila_tab(ident="@3", indice="2", nombre="faro", activo="1", paneles="1", remoto="") -> str:
     """Un renglón como el que devuelve `list-windows -F`, con los campos ya pegados."""
-    return t.SEP.join([ident, indice, nombre, activo, paneles])
+    return t.SEP.join([ident, indice, nombre, activo, paneles, remoto])
 
 
 def fila_pane(
@@ -181,6 +181,13 @@ class LeerLoQueContesta(Prueba):
             mux()._tab(corta)
         self.assertIn("4", str(e.exception))
         self.assertIn(str(len(t.CAMPOS_TAB)), str(e.exception))
+
+    def test_la_marca_remota_se_lee_y_sin_ella_el_tab_es_local(self):
+        self.assertEqual(mux()._tab(fila_tab(remoto="casa")).remoto, "casa")
+        self.assertEqual(mux()._tab(fila_tab()).remoto, "")
+        # un tmux que no devuelve el campo nuevo (o una fila de antes) también se entiende
+        viejo = t.SEP.join(["@3", "2", "faro", "1", "1"])
+        self.assertEqual(mux()._tab(viejo).remoto, "")
 
     def test_sobrando_un_campo_tambien(self):
         larga = fila_tab() + t.SEP + "extra"

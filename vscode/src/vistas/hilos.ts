@@ -34,6 +34,7 @@ const CSS = `
   .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
   .at { flex: none; margin-left: 1ch; }
+  .remoto { flex: none; margin-left: 1ch; color: var(--cian); }
   .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
@@ -152,11 +153,13 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
         const glifo = GLIFO[h.atencion] ? `<span class="at ${h.atencion}">${GLIFO[h.atencion]}</span>` : '';
+        // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
+        const remoto = h.remoto ? `<span class="remoto" title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}">⇄</span>` : '';
         const der = seccion === 'archivado' || !h.vivo ? haceCorto(h.visto) : duracion(h.tiempo);
         const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${glifo}<span class="der">${esc(der)}</span>`
+            + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${remoto}${glifo}<span class="der">${esc(der)}</span>`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             + '<span class="iconos">' + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
@@ -171,6 +174,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             `${h.nombre}${h.id !== h.nombre ? ` · ${h.id}` : ''} · ${h.relativa || 'sin carpeta'}`];
         const datos: string[] = [];
         if (h.arquetipo) datos.push(h.arquetipo);
+        if (h.remoto) datos.push(h.remoto === '?' ? '⇄ en otra máquina' : `⇄ remoto: ${h.remoto}`);
         if (!h.vivo) datos.push('no vivo');
         if (GLIFO[h.atencion]) datos.push(`${GLIFO[h.atencion]} ${NOMBRE_ATENCION[h.atencion] ?? h.atencion}`);
         if (h.prioridad) datos.push(`prioridad ${PRIORIDAD[h.prioridad]} ${['', 'alta', 'media', 'baja'][h.prioridad]}`);

@@ -119,6 +119,9 @@ class Hilo:
     ficha: Ficha | None = None
     #: sesiones de agente asociadas al hilo, en orden (la primera es la principal).
     sesiones: tuple[str, ...] = ()
+    #: dónde vive su agente: "" es aquí; si no, el nombre de un `[remotos]`, o "?" si la
+    #: ventana corre un mosh/ssh que telar no armó (se sabe que es remoto, no adónde).
+    remoto: str = ""
 
     @property
     def vinculado(self) -> bool:

@@ -51,6 +51,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _ficha(ctx)
     revisiones += _proveedores(ctx)
     revisiones += _ganchos(ctx, abiertos)
+    revisiones += _remotos(ctx)
 
     fallas = [r for r in revisiones if r["estado"] == FALLA]
 
@@ -69,6 +70,17 @@ def main(argv: list[str], ctx) -> int:
     else:
         print(_comun.fuerte("sin fallas"))
     return 1 if fallas else 0
+
+
+def _remotos(ctx) -> list[dict]:
+    """Por cada máquina de `[remotos]`: que responda, y que tenga lo que un hilo necesita allá."""
+    from telar import remoto as mod_remoto
+
+    salida = []
+    for r in ctx.config.remotos:
+        for bien, dice in mod_remoto.revisar(r):
+            salida.append(_r(f"remoto {r.nombre}", OK if bien else FALLA, dice))
+    return salida
 
 
 def _r(nombre: str, estado: str, dice: str, arreglo: str = "") -> dict:

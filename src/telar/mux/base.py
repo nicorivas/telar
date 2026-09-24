@@ -73,6 +73,10 @@ def comprobar_direccion(direccion: str) -> Direccion:
     return direccion  # type: ignore[return-value]
 
 
+#: los clientes que delatan una ventana a otra máquina, por el nombre de su proceso.
+CLIENTES_REMOTOS = frozenset({"mosh-client", "mosh", "ssh", "et"})
+
+
 @dataclass(frozen=True, slots=True)
 class Tab:
     """Un tab del multiplexor, tal como el multiplexor lo ve.
@@ -88,6 +92,8 @@ class Tab:
     nombre: str
     #: es el tab que la sesión tiene por actual.
     activo: bool = False
+    #: la marca de hilo remoto que telar dejó en el tab (`@telar_remoto` en tmux), o "".
+    remoto: str = ""
     #: cuántos paneles tiene, si el multiplexor lo dice sin costo.
     paneles: int = 0
 
@@ -212,6 +218,13 @@ class MultiplexorBase(ABC):
     @abstractmethod
     def renombrar_tab(self, tab: str, nombre: str) -> None:
         """Le cambia el nombre a un tab. El nombre puesto a mano manda sobre el automático."""
+
+    def marcar_remoto(self, tab: str, remoto: str) -> None:
+        """Deja en el tab la marca de hilo remoto, para reconocerlo después sin adivinar.
+
+        Por defecto no hay dónde dejarla: un multiplexor que no la sepa guardar reconoce
+        sus hilos remotos solo por el comando del panel (ver `hilo_de`).
+        """
 
     @abstractmethod
     def cerrar_tab(self, tab: str) -> None:
@@ -351,7 +364,14 @@ class MultiplexorBase(ABC):
                 if p.ruta is not None:
                     ruta = p.ruta
                     break
-        return Hilo(id=tab.id, nombre=tab.nombre, ruta=ruta, activo=tab.activo)
+        remoto = tab.remoto
+        if not remoto:
+            # sin marca, un panel que corre mosh o ssh es una ventana a otra máquina que
+            # alguien armó a mano: se sabe que es remoto, no adónde. No se persiste.
+            principal = next((p for p in vivos if p.foco), vivos[0] if vivos else None)
+            if principal is not None and principal.comando in CLIENTES_REMOTOS:
+                remoto = "?"
+        return Hilo(id=tab.id, nombre=tab.nombre, ruta=ruta, activo=tab.activo, remoto=remoto)
 
     def hilos(self) -> list[Hilo]:
         tabs = self.tabs()

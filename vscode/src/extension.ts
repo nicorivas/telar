@@ -63,7 +63,18 @@ async function nuevo(): Promise<void> {
         prompt: 'Nombre del hilo nuevo', placeHolder: 'faro',
     });
     if (!nombre) return;
-    await irAHilo(nombre.trim(), true);
+    // dónde vive su agente: solo se pregunta si la configuración declara otras máquinas
+    const remotos = (await cli.config()).datos?.remotos ?? [];
+    let remoto = '';
+    if (remotos.length) {
+        const elegido = await vscode.window.showQuickPick([
+            { label: '$(device-desktop) Local', description: 'en esta máquina', remoto: '' },
+            ...remotos.map(r => ({ label: `$(remote) Remoto: ${r.nombre}`, description: `${r.destino} (${r.transporte})`, remoto: r.nombre })),
+        ], { placeHolder: `¿Dónde vive el agente de «${nombre.trim()}»?` });
+        if (!elegido) return;
+        remoto = elegido.remoto;
+    }
+    await irAHilo(nombre.trim(), true, remoto);
 }
 
 async function renombrar(a: Arg): Promise<void> {

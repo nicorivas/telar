@@ -78,7 +78,12 @@ CAMPOS_TAB = (
     "#{window_name}",
     "#{window_active}",
     "#{window_panes}",
+    # la marca de hilo remoto: una opción de ventana propia de telar, vacía si no está
+    "#{@telar_remoto}",
 )
+
+#: la opción de ventana donde telar anota que un hilo vive en otra máquina.
+OPCION_REMOTO = "@telar_remoto"
 FORMATO_TAB = SEP.join(CAMPOS_TAB)
 
 CAMPOS_PANE = (
@@ -289,17 +294,21 @@ class Tmux(MultiplexorBase):
 
     def _tab(self, renglon: str) -> Tab:
         campos = renglon.split(SEP)
+        # sin el último campo (la marca remota) también se entiende: es un agregado
+        if len(campos) == len(CAMPOS_TAB) - 1:
+            campos.append("")
         if len(campos) != len(CAMPOS_TAB):
             raise ErrorDeMux(
                 f"tmux devolvió {len(campos)} campos donde iban {len(CAMPOS_TAB)}: {renglon!r}"
             )
-        ident, indice, nombre, activo, paneles = campos
+        ident, indice, nombre, activo, paneles, remoto = campos
         return Tab(
             id=ident,
             posicion=_entero(indice, "el índice del tab"),
             nombre=nombre,
             activo=activo == "1",
             paneles=_entero(paneles, "la cuenta de paneles"),
+            remoto=remoto.strip(),
         )
 
     def _pane_desde(self, renglon: str) -> Pane:
@@ -456,6 +465,9 @@ class Tmux(MultiplexorBase):
         # `rename-window` apaga solo el renombrado automático de esa ventana: el nombre
         # puesto a mano no se lo lleva el primer comando que corra adentro.
         self._tmux("rename-window", "-t", self._objetivo_tab(tab), nombre)
+
+    def marcar_remoto(self, tab: str, remoto: str) -> None:
+        self._tmux("set-option", "-w", "-t", self._objetivo_tab(tab), OPCION_REMOTO, remoto)
 
     def cerrar_tab(self, tab: str) -> None:
         self._tmux("kill-window", "-t", self._objetivo_tab(tab))

@@ -234,6 +234,40 @@ La tecla es un solo carácter y no puede ser una de las que el dashboard ya usa:
 de los pendientes (`a b d e f g h i`), los números de la agenda, `r`, `p`, `t` y `/`.
 `telar atajo` lista los declarados y `telar atajo m` hace lo mismo que la tecla.
 
+## `[remotos]` — máquinas donde pueden vivir hilos
+
+```toml
+[remotos.casa]
+destino = "usuario@servidor"   # lo que va después de mosh/ssh; puede ser un alias de ~/.ssh/config
+transporte = "mosh"            # mosh (por defecto) · ssh
+raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
+```
+
+Un hilo remoto es uno cuyo agente vive en otra máquina, siempre encendida, y sigue
+trabajando con el laptop cerrado; la ventana local solo lo mira. telar la arma así:
+
+```
+mosh usuario@servidor -- tmux new-session -A -s telar-1a2b3c4d bash -lc 'cd ~/repo/…; <agente>; exec bash -l'
+```
+
+Cada hilo remoto tiene su propia sesión tmux allá, con un nombre que telar elige al
+crearla y guarda en su estado (`remotos.json`), así que renombrar el hilo no la pierde.
+`-A` hace que la misma línea cree la sesión o se enganche a la que ya está: si la ventana
+local se cierra sin pasar por telar, la sesión de allá sigue viva y `telar hilo retomar`
+vuelve a ella. La carpeta del hilo se traduce: su vínculo relativo a la raíz local es la
+misma relativa bajo `raiz` de allá.
+
+- Crear: `telar ir <nombre> --crear --remoto casa`, o en VS Code «hilo nuevo», que pregunta
+  dónde si hay algún remoto declarado. La ventana queda con la opción tmux `@telar_remoto`.
+- Cerrar (✕) y archivar con `--cerrar` terminan también la sesión de allá; retomar un
+  archivado la recrea retomando su conversación.
+- `telar doctor` revisa cada remoto: que responda por ssh, que tenga tmux (y mosh-server
+  si el transporte es mosh), y avisa si su tmux muestra barra.
+
+Para que no se vean dos barras ni se coma el prefijo, el tmux de la otra máquina va con
+`set -g status off` y `set -g prefix None` en su `~/.tmux.conf`. La atención y la ficha del
+agente remoto (lo que escriben sus ganchos) todavía no llegan al laptop.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml

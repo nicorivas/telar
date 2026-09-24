@@ -143,6 +143,8 @@ export interface JsonHilo {
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     sesiones: string[]; ficha?: JsonFicha | null;
+    /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
+    remoto?: string;
 }
 
 export interface JsonHilos {
@@ -213,7 +215,7 @@ export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; des
 
 export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
-    atajos?: JsonAtajo[]; secciones?: JsonSeccion[];
+    atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[];
 }>(['config', '--json'], 20000);
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
@@ -291,7 +293,11 @@ export const ficha = (hilo: string) => telarJson<JsonFichaOrden>(['ficha', hilo]
 export const hoy = (local: boolean) =>
     telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : [])], local ? 20000 : 120000);
 
-export const ir = (hilo: string, crear = false) => telar(['ir', hilo, ...(crear ? ['--crear'] : [])], 20000);
+export const ir = (hilo: string, crear = false, remoto = '') =>
+    telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
+
+/** Una máquina de `[remotos]` donde pueden vivir hilos. */
+export interface JsonRemoto { nombre: string; destino: string; transporte: string; raiz: string }
 
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
 export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[] = []) =>

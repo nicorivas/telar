@@ -190,6 +190,10 @@ def main(argv: list[str], ctx) -> int:
             "pendiente": cfg.agente.pendiente,
             "pendiente_nuevo": cfg.agente.pendiente_nuevo,
         },
+        "remotos": [
+            {"nombre": r.nombre, "destino": r.destino, "transporte": r.transporte, "raiz": r.raiz}
+            for r in cfg.remotos
+        ],
         "secciones": [
             {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
             for s in cfg.secciones

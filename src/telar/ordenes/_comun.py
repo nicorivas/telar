@@ -553,6 +553,7 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "visto": _iso(hilo.visto),
         "tiempo": round(hilo.tiempo, 1),
         "sesiones": list(hilo.sesiones),
+        "remoto": hilo.remoto,
     }
     if con_ficha:
         cuerpo["ficha"] = json_ficha(hilo.ficha, tel.raiz)

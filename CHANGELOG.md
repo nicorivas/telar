@@ -6,6 +6,17 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- Remote threads: `[remotos.<name>]` declares a machine (`destino`, `transporte` mosh or
+  ssh, `raiz`). `telar ir <name> --crear --remoto <name>` opens a local window that runs
+  mosh/ssh into a tmux session of its own over there, with the agent in it; the window
+  carries the `@telar_remoto` option. Closing or archiving ends the remote session too;
+  retomar re-attaches (`-A`) or recreates it with `--resume`. Threads are recognised by
+  the mark or, without it, by a mosh/ssh/et process (`remoto: "?"`). `telar doctor`
+  checks each remote. The VS Code list shows `⇄`, and «new thread» asks local or remote
+  when there is any remote.
+
 ### Changed
 
 - A thread opened just for a task is named after its code and its topic («T118 Faro

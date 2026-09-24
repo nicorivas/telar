@@ -74,9 +74,9 @@ function arbolDeProcesos(): Promise<Map<number, number>> {
 }
 
 /** `telar ir`. Con `crear`, lo abre si no está vivo. */
-export async function irAHilo(hilo: string, crear = false): Promise<void> {
-    anotar(`ir: «${hilo}»${crear ? ' (crear)' : ''}`);
-    const r = await cli.ir(hilo, crear);
+export async function irAHilo(hilo: string, crear = false, remoto = ''): Promise<void> {
+    anotar(`ir: «${hilo}»${crear ? ' (crear)' : ''}${remoto ? ` en ${remoto}` : ''}`);
+    const r = await cli.ir(hilo, crear, remoto);
     anotar(`ir: telar ir → ${r.ok ? 'ok' : `error ${r.codigo}: ${r.err.trim()}`}`);
     if (!r.ok) {
         void vscode.window.showWarningMessage(`telar: ${r.err.trim().split('\n').pop() ?? `no pude ir a «${hilo}»`}`);
