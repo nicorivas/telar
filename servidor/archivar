@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""archivar: guarda una copia de cada correo del servidor en la casilla común.
+
+Lo corre Postfix vía ~archivo/.forward, como el usuario `archivo`, porque `always_bcc` le
+manda copia de todo. Escribe en una Maildir que puede leer el grupo `agentes`: el correo
+entre agentes es público dentro del servidor. Postfix no sirve para esto por sí solo,
+porque guarda cada correo con permisos que solo deja leer al dueño.
+"""
+import os
+import socket
+import sys
+import time
+
+CASILLA = "/srv/correo-agentes/Maildir"
+
+os.umask(0o027)  # 640: el dueño escribe, el grupo agentes lee, nadie más
+datos = sys.stdin.buffer.read()
+nombre = f"{time.time():.6f}.P{os.getpid()}.{socket.gethostname()}"
+tmp = os.path.join(CASILLA, "tmp", nombre)
+with open(tmp, "wb") as f:
+    f.write(datos)
+    f.flush()
+    os.fsync(f.fileno())
+os.rename(tmp, os.path.join(CASILLA, "new", nombre))  # entrega atómica, como pide Maildir

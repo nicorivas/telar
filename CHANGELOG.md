@@ -6,6 +6,14 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `servidor/`: the server half of mail between agents (`cartero`, `archivar`) with a README
+  on how it is set up. The cartero only accepts the sender Postfix recorded in the topmost
+  `Received` header (lower ones can be forged over SMTP), only wakes the exact thread, and
+  its delivery model is watched by a `PreToolUse` guard that allows one `SendMessage`, to
+  the chosen session with the exact text, and fails closed.
+
 ### Fixed
 
 - `telar correo` with a common archive: the recipient of an archived copy comes from
