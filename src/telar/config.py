@@ -119,6 +119,9 @@ class Agente:
     #: al llevarlo a un hilo que hay que abrir: es el primer mensaje del agente, y ese sí
     #: se envía (no hay a quién escribirle hasta que arranca). Mismos marcadores.
     pendiente_nuevo: str = PENDIENTE_POR_DEFECTO
+    #: si el agente recibe al empezar unas líneas sobre su hilo y cómo hablar con los otros
+    #: (el gancho SessionStart de `telar agente contexto`).
+    contexto: bool = True
 
 
 #: teclas que el dashboard ya usa: un atajo no las puede tomar. Las letras de los pendientes
@@ -329,7 +332,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto", "pendiente", "pendiente_nuevo"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto", "pendiente", "pendiente_nuevo", "contexto"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -352,8 +355,11 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             if not isinstance(valor, str) or not valor.strip():
                 raise ErrorDeConfig(f"agente.{clave}: se esperaba un texto, llegó {valor!r}")
             textos[clave] = valor.strip()
+        contexto = tabla.get("contexto", True)
+        if not isinstance(contexto, bool):
+            raise ErrorDeConfig(f"agente.contexto: se esperaba true o false, llegó {contexto!r}")
         cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(),
-                                   reunion=reunion.strip(), proyecto=proyecto.strip(), **textos)
+                                   reunion=reunion.strip(), proyecto=proyecto.strip(), contexto=contexto, **textos)
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")

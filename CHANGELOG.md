@@ -8,6 +8,13 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Agents that know each other: `telar agente instalar` adds a second `SessionStart` hook,
+  `telar agente contexto`, that gives the agent five lines on its thread, its mail address
+  (or that it has none) and how to reach other threads; and installs the `/hilos` skill with
+  the long version (finding threads, reading what they are about, writing and replying,
+  the rules). `[agente] contexto = false` turns the lines off; an existing `/hilos` skill
+  that isn't telar's is left alone.
+
 - `servidor/`: the server half of mail between agents (`cartero`, `archivar`) with a README
   on how it is set up. The cartero only accepts the sender Postfix recorded in the topmost
   `Received` header (lower ones can be forged over SMTP), only wakes the exact thread, and

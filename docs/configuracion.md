@@ -168,6 +168,7 @@ reunion = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 proyecto = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
 pendiente = "{texto}"         # se escribe, sin enviar, al agente de un hilo ya abierto
 pendiente_nuevo = "{texto}"   # primer mensaje de un hilo que se abre para el pendiente
+contexto = true               # el agente recibe al empezar unas líneas sobre su hilo y los otros
 ```
 
 `reunion` es lo que se le dice al agente cuando se pincha una reunión en la agenda del

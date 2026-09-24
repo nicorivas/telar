@@ -86,6 +86,9 @@ GANCHOS: tuple[Gancho, ...] = (
 #: Con esto se reconocen los ganchos de telar dentro de un `settings.json` ajeno.
 MARCA = f"agente aviso {NOMBRE}"
 
+#: El gancho que le da al agente, al empezar, unas líneas sobre su hilo y los otros.
+MARCA_CONTEXTO = f"agente contexto {NOMBRE}"
+
 #: El nombre del primer respaldo que se deja antes de tocar la configuración del usuario.
 SUFIJO_RESPALDO = ".telar.bak"
 
@@ -263,6 +266,13 @@ class ClaudeCode(AgenteBase):
         datos = _leer_ajustes(destino)
         palabras = comando_aviso(self.nombre, ejecutable=ejecutable)
         nuevos, puestos, reemplazados = _mezclar(datos, self.ganchos(), shlex.join(palabras))
+        if getattr(getattr(self.config, "agente", None), "contexto", True):
+            # un segundo SessionStart: el aviso no puede imprimir nada (su salida le habla al
+            # agente), y este existe justamente para eso. También corre tras /clear y al retomar.
+            contexto = [*palabras[:-3], "agente", "contexto", self.nombre]
+            nuevos["hooks"]["SessionStart"].append(
+                {"hooks": [{"type": "command", "command": shlex.join(contexto), "timeout": 5}]})
+            puestos.append("SessionStart (contexto)")
         texto = json.dumps(nuevos, ensure_ascii=False, indent=2) + "\n"
         antes = _texto_actual(destino)
         respaldo = None
@@ -395,7 +405,7 @@ def _nuestro(gancho: object) -> bool:
     if not isinstance(gancho, dict):
         return False
     comando = gancho.get("command")
-    return isinstance(comando, str) and MARCA in comando
+    return isinstance(comando, str) and (MARCA in comando or MARCA_CONTEXTO in comando)
 
 
 def _limpiar(entradas: list) -> tuple[list, int]:

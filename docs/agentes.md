@@ -177,6 +177,14 @@ telar agente desinstalar           # saca los de telar, deja los ajenos
 telar agente ver                   # qué hay puesto, y qué sabe telar de este hilo
 ```
 
+Además de los seis, `instalar` pone un **segundo `SessionStart`** que llama a `telar agente
+contexto claude-code`. Su salida entra al contexto del agente al empezar (y tras `/clear` y
+al retomar): cinco líneas sobre quién es, cómo le escriben y cómo escribirles a los otros
+hilos. El aviso no puede hacer eso porque su regla es no imprimir nada. Sin `$TELAR_HILO` no
+dice nada, y se apaga con `[agente] contexto = false`. Y deja la skill **`/hilos`** en
+`~/.claude/skills/hilos/`, lo largo de lo mismo, que el agente abre cuando le hace falta;
+una `/hilos` que no sea de telar no se toca. `desinstalar` quita las dos cosas.
+
 El instalador **se mete en casa ajena y se porta como tal**: mezcla con los ganchos que
 ya estaban y solo reemplaza los suyos (se reconocen por su comando), deja un respaldo
 `settings.json.telar.bak` antes de tocar nada, escribe a un temporal que después
