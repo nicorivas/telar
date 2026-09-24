@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-24
+
 ### Added
 
 - Agents that know each other: `telar agente instalar` adds a second `SessionStart` hook,
@@ -150,7 +152,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/nicorivas/telar/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/nicorivas/telar/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/nicorivas/telar/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/nicorivas/telar/releases/tag/v0.1.0
