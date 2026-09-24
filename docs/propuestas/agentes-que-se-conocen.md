@@ -1,6 +1,6 @@
 # Agentes que se conocen
 
-Propuesta, 24-sep-2026. Estado: por implementar. Continúa [hilos-remotos.md](hilos-remotos.md)
+Propuesta, 24-sep-2026. Estado: **implementada** el mismo día (ver al final qué cambió). Continúa [hilos-remotos.md](hilos-remotos.md)
 y [correo-y-celular.md](correo-y-celular.md). Trae también el traspaso de lo que se montó
 en el servidor, que pasa a vivir en `servidor/`.
 
@@ -130,3 +130,20 @@ un parámetro. Los dos archivos no traen nombres propios.
 - La skill se instala y se desinstala sin tocar otras skills.
 - Directorio: escribir y leer, entradas viejas, otro usuario sin permiso de lectura.
 - `telar correo enviar`: local, por ssh y con `--responde` (las cabeceras quedan puestas).
+
+## Lo que cambió al implementarla
+
+- **El cartero, además, se endureció** (ver `servidor/README.md`): el remitente sale solo de
+  la cabecera `Received` de más arriba (en todas, se podía suplantar a cualquiera por SMTP a
+  `localhost:25`, y se comprobó); solo despierta al hilo exacto, sin caer a nombres
+  parecidos; y un guardia `PreToolUse` que falla cerrado limita al modelo que entrega a un
+  `SendMessage`, a la sesión elegida, con el texto exacto.
+- **El resumen del directorio es el título del documento**, no su estado: el directorio lo
+  lee todo el servidor, y el estado de un proyecto suele traer lo que no se cuenta afuera.
+- **La carpeta del directorio lleva el bit sticky** y el lector comprueba el dueño de cada
+  archivo: nadie borra el de otro ni publica en su nombre.
+- **`telar correo enviar` rechaza saltos de línea** en el asunto y en el id de respuesta
+  (con uno se inyectan cabeceras), y una dirección que no sea `usuario[+hilo]@servidor`.
+- El contexto de inicio son cinco líneas: quién es, su casilla (o que no tiene), cómo
+  encontrar a los otros, cómo escribir, y las reglas.
+

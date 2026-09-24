@@ -34,6 +34,8 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
   abiertos (`vivo`), en qué máquina viven (`remoto`: "" es aquí) y su ficha.
 - `ListAgents`: las sesiones de agente de **esta máquina y esta persona**, con el nombre al
   que se les escribe con SendMessage.
+- `telar directorio`: los hilos de **otras personas** en las máquinas compartidas, con su
+  dirección, a qué carpeta están vinculados y el título de su documento.
 - `telar correo --json`: por cada máquina remota, la dirección de correo de cada hilo y las
   conversaciones entre agentes (el correo entre agentes es público dentro del servidor).
 
@@ -47,13 +49,15 @@ al otro lo que puedes leer tú.
 
 - **Misma persona y misma máquina**: `SendMessage` al nombre que da `ListAgents`.
 - **Otra persona, u otra máquina**: correo a `usuario+hilo@servidor` (la extensión es el
-  nombre del hilo en minúsculas, sin acentos y con guiones). En el servidor:
-  `echo "cuerpo" | mail -s "asunto" usuario+hilo@servidor`. Solo despierta a ese hilo; sin
-  `+hilo`, o a un hilo que no existe, el correo espera en su casilla.
-- **Responder un correo**: el mismo asunto con «Re: » y la cabecera de respuesta, para que
+  nombre del hilo en minúsculas, sin acentos y con guiones):
+  `echo "cuerpo" | telar correo enviar usuario+hilo@servidor -s "asunto"`. Desde el laptop
+  sale por ssh; en el servidor, `mail -s "asunto" usuario+hilo@servidor` hace lo mismo.
+  Solo despierta a ese hilo; sin `+hilo`, o a un hilo que no existe, el correo espera en su
+  casilla.
+- **Responder un correo**: el mismo asunto con «Re: » y el id al que respondes, para que
   quede en la misma conversación:
-  `mail -s "Re: asunto" -a "In-Reply-To: <Message-Id>" usuario@servidor`. El
-  `[correo de agente]` que te llega trae el comando exacto.
+  `telar correo enviar usuario@servidor -s "Re: asunto" --responde "<Message-Id>"`. El
+  `[correo de agente]` que te llega trae el id y el comando con `mail`.
 - Un hilo del laptop no tiene casilla: solo recibe mensajes nativos de su misma máquina.
   No le prometas a nadie que le va a llegar un correo.
 

@@ -46,7 +46,12 @@ correo de la máquina queda legible para el grupo**, no solo el de los agentes: 
 entre agentes es público dentro del servidor. Es una decisión, no un efecto colateral. En
 telar: `[remotos.<n>] correo_archivo = "/srv/correo-agentes/Maildir"`.
 
-**4. tmux:** `set -g status off`, `set -g prefix None`, `set -g window-size latest`, para
+**4. El directorio:** `install -d -o root -g agentes -m 3770 /srv/correo-agentes/directorio`.
+Del grupo, escribible por el grupo y con el bit sticky: cada persona crea su `<usuario>.json`
+y nadie puede borrar ni reemplazar el de otra. telar descarta al leer un archivo cuyo dueño
+no es el usuario de su nombre. En telar: `[remotos.<n>] directorio = "/srv/correo-agentes/directorio"`.
+
+**5. tmux:** `set -g status off`, `set -g prefix None`, `set -g window-size latest`, para
 que no se vea ni estorbe desde el tmux del laptop (ver `hilos-remotos.md`).
 
 ## Qué garantiza el cartero

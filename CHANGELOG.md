@@ -14,6 +14,12 @@ workflow refuses to run if the two disagree.
   the long version (finding threads, reading what they are about, writing and replying,
   the rules). `[agente] contexto = false` turns the lines off; an existing `/hilos` skill
   that isn't telar's is left alone.
+- `telar correo enviar <user+thread@server> -s <subject> [--responde <id>]` (body on stdin),
+  over ssh from the laptop or with `mail` on the server; header injection is rejected.
+- `telar directorio`: each person's remote threads on a shared machine, published by telar
+  into a common folder (`[remotos.<n>] directorio`) when a remote thread is created,
+  renamed, archived or closed; files whose owner isn't the user they are named after are
+  discarded. The summary is the document's title, not its state.
 
 - `servidor/`: the server half of mail between agents (`cartero`, `archivar`) with a README
   on how it is set up. The cartero only accepts the sender Postfix recorded in the topmost

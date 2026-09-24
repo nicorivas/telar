@@ -59,6 +59,9 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja(f"no pude abrirlo en {remoto.destino}: {e}")
         tel.estado.desarchivar(nombre)
         tel.estado.marcar(nombre)
+        from telar import directorio as mod_directorio
+
+        mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
         print(f"→ «{nombre}» (nuevo, en {remoto.destino} · sesión {sesion})")
         return 0
     # sin carpeta, el tab nace donde esté parado el servidor del multiplexor, que suele ser

@@ -5,12 +5,16 @@
     telar correo --json
     telar correo --cuerpos --json    lo mismo, con el texto de cada correo
     telar correo --remoto casa       solo esa máquina
+    echo "cuerpo" | telar correo enviar usuario+hilo@servidor -s "asunto" [--responde "<id>"]
+                                     escribirle a un hilo de otra persona o de otra máquina
 
 Lee por ssh la Maildir del usuario, el registro de su cartero y, si `[remotos.<n>]` declara
 `correo_archivo`, la casilla común. No entrega ni borra nada. Ver docs/propuestas/correo-y-celular.md.
 """
 
 from __future__ import annotations
+
+import shlex
 
 from telar import correo as mod_correo
 from telar.ordenes import _comun
@@ -49,15 +53,74 @@ def _usuarios(direcciones: str) -> set[str]:
     return {m.split("+", 1)[0] for m in re.findall(r"([A-Za-z0-9._+-]+)@", direcciones)}
 
 
+_DIRECCION = r"[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+"
+
+
+def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "", remoto: str = "") -> tuple[str, str]:
+    """Manda un correo entre agentes. Devuelve (por dónde salió, error o "").
+
+    Desde una máquina con cartero, con `mail`; desde otra, por ssh a la máquina de la
+    dirección (su remitente queda verificado como el usuario de ssh). Lo que va en las
+    cabeceras no puede traer saltos de línea: con uno se inyectan cabeceras nuevas.
+    """
+    import re
+    import subprocess
+
+    from telar.ordenes.agente import _cartero_aqui
+
+    if not re.fullmatch(_DIRECCION, direccion):
+        return "", f"«{direccion}» no es una dirección usuario[+hilo]@servidor"
+    if not asunto.strip() or any(c in asunto for c in "\r\n"):
+        return "", "el asunto va en una sola línea, y no vacío"
+    if responde and not re.fullmatch(r"<[^<>\s]+>", responde.strip()):
+        return "", f"«{responde}» no es un Message-Id (<algo@servidor>)"
+    orden = ["mail", "-s", asunto.strip()]
+    if responde:
+        orden += ["-a", f"In-Reply-To: {responde.strip()}", "-a", f"References: {responde.strip()}"]
+    orden.append(direccion)
+    servidor = direccion.rsplit("@", 1)[1].split(".")[0]
+    elegido = next((r for r in ctx.config.remotos if r.nombre == remoto), None) if remoto else next(
+        (r for r in ctx.config.remotos if r.destino.rpartition("@")[2].split(".")[0] == servidor), None)
+    if remoto and elegido is None:
+        return "", f"no hay remoto «{remoto}»"
+    if elegido is None and not _cartero_aqui():
+        return "", f"no sé cómo llegar a {servidor}: ninguna máquina de [remotos] se llama así"
+    comando = orden if elegido is None else ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                                              elegido.destino, shlex.join(orden)]
+    try:
+        r = subprocess.run(comando, input=cuerpo, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return "", str(e)
+    via = "aquí" if elegido is None else elegido.destino
+    return via, "" if r.returncode == 0 else (r.stderr.strip() or f"mail salió con {r.returncode}")[-300:]
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("correo", AYUDA)
     p.epilog = __doc__
+    p.add_argument("verbo", nargs="?", choices=("enviar",), help="enviar: escribirle a un hilo")
+    p.add_argument("direccion", nargs="?", default="", help="con enviar: usuario+hilo@servidor")
+    p.add_argument("-s", "--asunto", default="", help="con enviar: el asunto")
+    p.add_argument("--responde", default="", help="con enviar: el Message-Id al que se responde")
     p.add_argument("--remoto", default="", help="solo esa máquina de [remotos]")
     p.add_argument("--cuerpos", action="store_true", help="con el texto de cada correo")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    if o.verbo == "enviar":
+        import sys
+
+        if not o.direccion:
+            return _comun.queja("¿a quién? telar correo enviar usuario+hilo@servidor -s \"asunto\" (el cuerpo por stdin)")
+        cuerpo = "" if sys.stdin.isatty() else sys.stdin.read()
+        via, problema = enviar(ctx, o.direccion, o.asunto, cuerpo, responde=o.responde, remoto=o.remoto)
+        if problema:
+            return _comun.queja(f"no se envió: {problema}")
+        if o.json:
+            return _comun.escribir_json({"enviado": True, "a": o.direccion, "via": via})
+        print(f"enviado a {o.direccion} (por {via})")
+        return 0
     remotos = [r for r in ctx.config.remotos if not o.remoto or r.nombre == o.remoto]
     if not remotos:
         return _comun.queja("no hay máquinas en [remotos]" if not o.remoto else f"no hay remoto «{o.remoto}»")

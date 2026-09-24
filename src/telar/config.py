@@ -184,6 +184,9 @@ class Remoto:
     #: la casilla (Maildir) común con todos los correos entre agentes, si el servidor la
     #: publica; sin ella, las conversaciones son solo las de la Maildir propia.
     correo_archivo: str = ""
+    #: la carpeta común donde cada persona publica sus hilos de esa máquina (`telar
+    #: directorio`); sin ella, no se publica ni se lee nada.
+    directorio: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -423,7 +426,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         remotos = []
         for nombre, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"remotos.{nombre}")
-            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo"}
+            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo", "directorio"}
             if sobra:
                 raise ErrorDeConfig(f"remotos.{nombre}.{sorted(sobra)[0]}: no existe")
             destino = cuerpo.get("destino", "")
@@ -436,10 +439,13 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             if not isinstance(raiz, str) or not raiz.strip():
                 raise ErrorDeConfig(f"remotos.{nombre}.raiz: se esperaba una carpeta, llegó {raiz!r}")
             archivo = cuerpo.get("correo_archivo", "")
-            if not isinstance(archivo, str):
-                raise ErrorDeConfig(f"remotos.{nombre}.correo_archivo: se esperaba una ruta, llegó {archivo!r}")
+            directorio = cuerpo.get("directorio", "")
+            for clave, valor in (("correo_archivo", archivo), ("directorio", directorio)):
+                if not isinstance(valor, str):
+                    raise ErrorDeConfig(f"remotos.{nombre}.{clave}: se esperaba una ruta, llegó {valor!r}")
             remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte,
-                                  raiz=raiz.strip().rstrip("/") or "/", correo_archivo=archivo.strip()))
+                                  raiz=raiz.strip().rstrip("/") or "/", correo_archivo=archivo.strip(),
+                                  directorio=directorio.strip().rstrip("/")))
         cambios["remotos"] = tuple(remotos)
 
     desconocidas = set(datos) - {

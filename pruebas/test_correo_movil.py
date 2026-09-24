@@ -126,3 +126,49 @@ class NombreEnLaSesionRemota(Prueba):
         self.assertTrue(linea.startswith(f"tmux set-option {r.OPCION_HILO} 'Pizza Ñandú'"))
         # y el comando que viaja por mosh no encadena nada
         self.assertNotIn(";", r.comando(CASA, "telar-1a2b", linea))
+
+
+class Enviar(Prueba):
+    def enviar(self, direccion, asunto="hola", responde=""):
+        from types import SimpleNamespace
+
+        from telar.config import Config
+        from telar.ordenes import correo as orden
+
+        ctx = SimpleNamespace(config=Config(remotos=(CASA,)))
+        return orden.enviar(ctx, direccion, asunto, "cuerpo", responde=responde)
+
+    def test_lo_que_va_en_cabeceras_no_trae_saltos_de_linea(self):
+        self.assertIn("una sola línea", self.enviar("otro@servidor", asunto="hola\nBcc: x@servidor")[1])
+        self.assertIn("Message-Id", self.enviar("otro@servidor", responde="<a@b>\nX: y")[1])
+        self.assertIn("no es una dirección", self.enviar("otro@servidor -f alguien")[1])
+
+    def test_una_maquina_que_no_esta_en_remotos_no_se_adivina(self):
+        from unittest import mock
+
+        from telar.ordenes import agente as orden_agente
+
+        with mock.patch.object(orden_agente, "_cartero_aqui", return_value=False):
+            self.assertIn("no sé cómo llegar", self.enviar("otro@lejos")[1])
+
+
+class Directorio(Prueba):
+    def test_el_lector_descarta_un_archivo_que_no_es_de_su_dueno(self):
+        import getpass
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        from pathlib import Path
+
+        from telar import directorio as d
+
+        yo = getpass.getuser()
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, f"{yo}.json").write_text(json.dumps({"usuario": yo, "hilos": []}), encoding="utf-8")
+            Path(tmp, "otra.json").write_text(json.dumps({"usuario": "otra", "hilos": []}), encoding="utf-8")
+            salida = json.loads(subprocess.run([sys.executable, "-c", d.LEER, tmp], capture_output=True,
+                                               text=True, check=True).stdout)
+        por = {e["usuario"]: e for e in salida}
+        self.assertNotIn("error", por[yo])
+        self.assertIn("se descarta", por["otra"]["error"])  # lo escribí yo con el nombre de otra

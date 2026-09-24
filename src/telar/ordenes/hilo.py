@@ -93,6 +93,8 @@ def main(argv: list[str], ctx) -> int:
 
     est = tel.estado
     salida = 0
+    # si es un hilo remoto, lo que le pase cambia lo que su máquina publica en el directorio
+    remoto_antes = est.remotos().get(hilo.nombre, {}).get("remoto", "")
     if o.verbo == "ver":
         pass
     elif o.verbo == "vincular":
@@ -157,6 +159,10 @@ def main(argv: list[str], ctx) -> int:
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")
 
+    if remoto_antes and salida == 0 and o.verbo in ("renombrar", "cerrar", "archivar", "desarchivar", "retomar", "olvidar"):
+        from telar import directorio as mod_directorio
+
+        mod_directorio.publicar_callado(ctx, tel, remoto_antes)
     if o.json:
         tel = _comun.tejer(ctx)
         nombre = o.valor if o.verbo == "renombrar" else hilo.nombre

@@ -243,6 +243,7 @@ destino = "usuario@servidor"   # lo que va después de mosh/ssh; puede ser un al
 transporte = "mosh"            # mosh (por defecto) · ssh
 raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
 correo_archivo = ""            # opcional: la Maildir común con los correos entre agentes
+directorio = ""                # opcional: la carpeta común donde cada persona publica sus hilos
 ```
 
 Un hilo remoto es uno cuyo agente vive en otra máquina, siempre encendida, y sigue
@@ -288,6 +289,22 @@ en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién ent
 - Retomar un hilo con correos sin entregar le avisa al agente cuántos hay y dónde, **sin
   copiarlos**: ese primer mensaje llega con la voz de la persona, y un correo ajeno no puede
   hablar con esa voz.
+
+- `telar correo enviar usuario+hilo@servidor -s "asunto" [--responde "<id>"]`, con el cuerpo
+  por la entrada estándar, le escribe a un hilo de otra persona u otra máquina: desde el
+  laptop por ssh (el remitente queda verificado como el usuario de ssh), en el servidor con
+  `mail`. Con `--responde` pone `In-Reply-To` y `References`, y así la respuesta queda en la
+  misma conversación.
+
+### El directorio
+
+En el servidor nadie ve las sesiones de los otros. Con `directorio`, cada telar publica ahí
+sus hilos de esa máquina (nombre, dirección, carpeta vinculada y el **título** de su
+documento; no su estado, que suele traer lo que no se cuenta afuera), un archivo por
+persona, al crear, renombrar, archivar o cerrar un hilo remoto. `telar directorio` los lee
+todos, y descarta un archivo cuyo dueño no es el usuario de su nombre. `telar directorio
+publicar` lo hace a mano. La carpeta la monta quien administra el servidor (ver
+`servidor/README.md`).
 
 ### En el celular: `telar movil`
 

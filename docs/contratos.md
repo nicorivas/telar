@@ -494,6 +494,20 @@ el campo `From`. `estado` es `entregado`, `retenido`, `sin sesión` o `""` si el
 anota ids (entonces `sabe_pendientes` es `false` y `pendientes` va vacío). Un `error` no
 vacío dice por qué no se pudo leer esa máquina; las otras siguen.
 
+### `telar directorio --json`
+
+```json
+{ "remotos": [ { "remoto": "casa", "error": "",
+    "personas": [ { "usuario": "ana", "maquina": "casa", "actualizado": "2026-09-24T17:42:00",
+                    "hilos": [ { "nombre": "Faro", "direccion": "ana+faro@casa",
+                                 "vinculo": "proyectos/faro", "resumen": "Faro" } ] },
+                  { "usuario": "otra", "error": "el archivo es de ana: se descarta" } ] } ] }
+```
+
+Una persona con `error` no se pudo leer o no es quien dice ser. `telar directorio publicar
+--json` devuelve `{"publicado": {"casa": ""}}`, con el error de cada máquina o `""`.
+`telar correo enviar … --json` devuelve `{"enviado": true, "a": "…", "via": "usuario@casa"}`.
+
 ### `telar atencion get --json`
 
 Con un hilo:

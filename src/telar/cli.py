@@ -43,6 +43,7 @@ ORDENES: dict[str, str] = {
     "reunion": "Preparar una reunión: un hilo con el agente ya trabajando en ella.",
     "atajo": "Una tecla del dashboard: un hilo con el agente haciendo algo recurrente.",
     "seccion": "La página de una sección de la lista: corre su `home` y devuelve su JSON.",
+    "directorio": "Los hilos remotos de cada persona de una máquina compartida: leerlos y publicar los propios.",
     "correo": "El correo entre agentes de las máquinas remotas: direcciones, pendientes, conversaciones.",
     "movil": "telar en el celular: los hilos de esta máquina, y entrar a uno sin quedar encerrado.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",
