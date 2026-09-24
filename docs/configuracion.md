@@ -241,6 +241,7 @@ de los pendientes (`a b d e f g h i`), los números de la agenda, `r`, `p`, `t` 
 destino = "usuario@servidor"   # lo que va después de mosh/ssh; puede ser un alias de ~/.ssh/config
 transporte = "mosh"            # mosh (por defecto) · ssh
 raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
+correo_archivo = ""            # opcional: la Maildir común con los correos entre agentes
 ```
 
 Un hilo remoto es uno cuyo agente vive en otra máquina, siempre encendida, y sigue
@@ -267,6 +268,41 @@ misma relativa bajo `raiz` de allá.
 Para que no se vean dos barras ni se coma el prefijo, el tmux de la otra máquina va con
 `set -g status off` y `set -g prefix None` en su `~/.tmux.conf`. La atención y la ficha del
 agente remoto (lo que escriben sus ganchos) todavía no llegan al laptop.
+
+### El correo entre agentes
+
+Si la otra máquina entrega correo local entre agentes (ver
+`docs/propuestas/correo-y-celular.md`), cada hilo remoto tiene su dirección:
+`usuario+<nombre del hilo>@servidor`, con el nombre en minúsculas, sin acentos y con guiones
+(«T42 Faro Norte» → `usuario+t42-faro-norte@servidor`). La sesión de allá lleva su nombre
+en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién entregar.
+
+- `telar correo` lee por ssh la Maildir, el registro del cartero y, con `correo_archivo`, la
+  casilla común: la dirección y los correos **sin entregar** de cada hilo, y las
+  conversaciones entre agentes. En VS Code: **✉ N** junto al hilo, la dirección en su ficha
+  y la pantalla **✉ correo** del dashboard (tecla `c`).
+- Sin entregar es lo que llegó con el hilo cerrado o quedó retenido. Para saberlo, el
+  registro del cartero tiene que anotar `id=<Message-Id>` en cada línea; si no lo hace,
+  telar lo dice y no cuenta.
+- Retomar un hilo con correos sin entregar le avisa al agente cuántos hay y dónde, **sin
+  copiarlos**: ese primer mensaje llega con la voz de la persona, y un correo ajeno no puede
+  hablar con esa voz.
+
+### En el celular: `telar movil`
+
+`mosh usuario@servidor -- ~/.local/bin/telar movil` (en la otra máquina, con telar instalado
+allá) abre una lista de sus hilos para pantalla chica: flechas o números eligen, ⏎ o un toque
+entran, `c` el correo, `q` sale. Adentro de un hilo hay una barra arriba, `◀ telar · ✉ 2 ·
+nombre`: tocar «◀ telar» (o F12) vuelve a la lista, tocar «✉ N» abre el correo encima.
+
+El celular no se engancha a la sesión del hilo sino a una **sesión agrupada** con ella
+(`movil-…`): el mismo agente, con barra, mouse y una tabla de teclas propia (`telar-movil`).
+El laptop, enganchado a la sesión original, no ve nada de eso. Al volver, la agrupada se
+cierra. Para tener F12 en Termux, en `~/.termux/termux.properties`:
+
+```
+extra-keys = [['ESC','TAB','CTRL','ALT','UP','DOWN','F12']]
+```
 
 ## `[secciones]` — grupos propios en la lista de hilos
 

@@ -190,6 +190,8 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         if (!hilo.vivo) detalles.push('no vivo');
         if (hilo.archivado) detalles.push('archivado');
         if (hilo.prioridad) detalles.push(`prioridad ${hilo.prioridad}`);
+        const correo = modelo.correoDe(hilo.nombre);
+        if (correo?.direccion) detalles.push(`✉ ${correo.direccion}${correo.pendientes.length ? ` · ${correo.pendientes.length} sin entregar` : ''}`);
         if (hilo.tiempo >= 60) detalles.push(`hoy ${duracion(hilo.tiempo)}`);
         if (hilo.sesiones.length) detalles.push(`${hilo.sesiones.length} conversación(es)`);
         if (f.leida) detalles.push(`leído hace ${hace(f.leida)}`);

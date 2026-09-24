@@ -8,6 +8,16 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Mail between agents on a remote machine: each remote thread has an address
+  (`user+<thread>@server`) and its remote tmux session carries `@telar_hilo`. `telar correo`
+  reads the Maildir, the delivery log and an optional common archive over ssh: undelivered
+  mail per thread and conversations grouped by `References`. VS Code shows ✉ N, the
+  address in the card and a **✉ correo** dashboard screen. Resuming a thread with
+  undelivered mail tells the agent how many and where, without copying them.
+- `telar movil`, for a phone: a small-screen list of the machine's threads; entering one
+  goes through a grouped tmux session with its own status bar, mouse and key table, so
+  «◀ telar» or F12 come back without the laptop seeing any of it.
+
 - Remote threads: `[remotos.<name>]` declares a machine (`destino`, `transporte` mosh or
   ssh, `raiz`). `telar ir <name> --crear --remoto <name>` opens a local window that runs
   mosh/ssh into a tmux session of its own over there, with the agent in it; the window

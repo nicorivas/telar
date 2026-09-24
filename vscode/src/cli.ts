@@ -296,6 +296,20 @@ export const hoy = (local: boolean) =>
 export const ir = (hilo: string, crear = false, remoto = '') =>
     telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
 
+/** Un correo entre agentes, como lo da `telar correo --json`. */
+export interface JsonCorreo { id: string; de: string; para: string; asunto: string; fecha: string; estado: string; nuevo: boolean; cuerpo?: string }
+export interface JsonConversacionCorreo {
+    id: string; asunto: string; participantes: string[]; mensajes: number; ultima: string; estado: string; correos: JsonCorreo[];
+}
+export interface JsonBuzon {
+    remoto: string; usuario: string; error: string; sabe_pendientes: boolean; archivo_comun: boolean; cartero?: boolean;
+    hilos: Record<string, { direccion: string; pendientes: JsonCorreo[] }>;
+    conversaciones: JsonConversacionCorreo[];
+}
+
+export const correo = (cuerpos = false) =>
+    telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);
+
 /** Una máquina de `[remotos]` donde pueden vivir hilos. */
 export interface JsonRemoto { nombre: string; destino: string; transporte: string; raiz: string }
 

@@ -35,6 +35,7 @@ const CSS = `
   .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
   .at { flex: none; margin-left: 1ch; }
   .remoto { flex: none; margin-left: 1ch; color: var(--cian); }
+  .correo { flex: none; margin-left: 1ch; color: var(--amarillo); }
   .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
@@ -155,11 +156,14 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         const glifo = GLIFO[h.atencion] ? `<span class="at ${h.atencion}">${GLIFO[h.atencion]}</span>` : '';
         // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
         const remoto = h.remoto ? `<span class="remoto" title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}">⇄</span>` : '';
+        // ✉ N: correos de otros agentes que llegaron con el hilo cerrado y nadie recibió
+        const pend = modelo.correoDe(h.nombre)?.pendientes.length ?? 0;
+        const correo = pend ? `<span class="correo" title="${pend} correo${pend === 1 ? '' : 's'} sin entregar: retomar el hilo se los avisa">✉ ${pend}</span>` : '';
         const der = seccion === 'archivado' || !h.vivo ? haceCorto(h.visto) : duracion(h.tiempo);
         const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${remoto}${glifo}<span class="der">${esc(der)}</span>`
+            + `<span class="nombre">${esc(cli.nombreVisible(h))}</span>${remoto}${correo}${glifo}<span class="der">${esc(der)}</span>`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             + '<span class="iconos">' + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`

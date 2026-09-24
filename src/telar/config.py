@@ -178,6 +178,9 @@ class Remoto:
     transporte: str = "mosh"
     #: la carpeta del repositorio EN la otra máquina; ahí se traducen los vínculos.
     raiz: str = "~"
+    #: la casilla (Maildir) común con todos los correos entre agentes, si el servidor la
+    #: publica; sin ella, las conversaciones son solo las de la Maildir propia.
+    correo_archivo: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,7 +417,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         remotos = []
         for nombre, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"remotos.{nombre}")
-            sobra = set(cuerpo) - {"destino", "transporte", "raiz"}
+            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo"}
             if sobra:
                 raise ErrorDeConfig(f"remotos.{nombre}.{sorted(sobra)[0]}: no existe")
             destino = cuerpo.get("destino", "")
@@ -426,8 +429,11 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raiz = cuerpo.get("raiz", "~")
             if not isinstance(raiz, str) or not raiz.strip():
                 raise ErrorDeConfig(f"remotos.{nombre}.raiz: se esperaba una carpeta, llegó {raiz!r}")
+            archivo = cuerpo.get("correo_archivo", "")
+            if not isinstance(archivo, str):
+                raise ErrorDeConfig(f"remotos.{nombre}.correo_archivo: se esperaba una ruta, llegó {archivo!r}")
             remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte,
-                                  raiz=raiz.strip().rstrip("/") or "/"))
+                                  raiz=raiz.strip().rstrip("/") or "/", correo_archivo=archivo.strip()))
         cambios["remotos"] = tuple(remotos)
 
     desconocidas = set(datos) - {

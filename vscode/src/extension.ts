@@ -71,9 +71,10 @@ async function nuevo(): Promise<void> {
             { label: '$(device-desktop) Local', description: 'en esta máquina', remoto: '' },
             ...remotos.map(r => ({ label: `$(remote) Remoto: ${r.nombre}`, description: `${r.destino} (${r.transporte})`, remoto: r.nombre })),
         ], { placeHolder: `¿Dónde vive el agente de «${nombre.trim()}»?` });
-        if (!elegido) return;
+        if (!elegido) { anotar('nuevo: se cerró el menú local/remoto, no se crea nada'); return; }
         remoto = elegido.remoto;
     }
+    anotar(`nuevo: ${remotos.length} remoto(s) declarado(s); elegido ${remoto || 'local'}`);
     await irAHilo(nombre.trim(), true, remoto);
 }
 

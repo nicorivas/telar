@@ -62,11 +62,19 @@ def linea(ruta: str, palabras: list[str] | None, hilo: str) -> str:
     La shell del final es para que la sesión remota no muera si el agente termina: se
     vuelve a ella y el hilo sigue ahí.
     """
-    partes = [f"{_cd(ruta)} 2>/dev/null", f"export TELAR_HILO={shlex.quote(hilo)}"]
+    # lo primero: la sesión se anota su propio nombre (`@telar_hilo`). Desde adentro no hace
+    # falta objetivo ni otra conexión; encadenarlo en la línea de tmux no sobrevivía a mosh.
+    partes = [f"tmux set-option {OPCION_HILO} {shlex.quote(hilo)} 2>/dev/null",
+              f"{_cd(ruta)} 2>/dev/null", f"export TELAR_HILO={shlex.quote(hilo)}"]
     if palabras:
         partes.append(shlex.join(palabras))
     partes.append("exec bash -l")
     return "; ".join(partes)
+
+
+#: la opción de sesión tmux, allá, con el nombre del hilo: la leen el cartero (para entregar
+#: el correo de `usuario+hilo@servidor` a esta sesión) y `telar movil` (para mostrar nombres).
+OPCION_HILO = "@telar_hilo"
 
 
 def comando(remoto: Remoto, sesion: str, linea_remota: str) -> list[str]:
@@ -92,6 +100,17 @@ def matar(remoto: Remoto, sesion: str) -> str:
     if r.returncode == 0 or "can't find session" in r.stderr or "no server running" in r.stderr:
         return ""
     return (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+
+
+def nombrar(remoto: Remoto, sesion: str, hilo: str) -> str:
+    """Actualiza `@telar_hilo` en la sesión de allá (al renombrar el hilo). "" si salió bien."""
+    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
+             shlex.join(["tmux", "set-option", "-t", f"={sesion}:", OPCION_HILO, hilo])]
+    try:
+        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"no pude hablar con {remoto.destino}: {e}"
+    return "" if r.returncode == 0 else (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
 
 
 def revisar(remoto: Remoto) -> list[tuple[bool, str]]:
@@ -122,7 +141,7 @@ def revisar(remoto: Remoto) -> list[tuple[bool, str]]:
 
 
 def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: str = "",
-          conversacion: str = "") -> str:
+          conversacion: str = "", aviso: str = "") -> str:
     """Abre (o reabre) la ventana local de un hilo remoto, con su marca y su estado.
 
     Sin `sesion`, es un hilo nuevo: se elige una. Con `conversacion`, el agente la retoma
@@ -139,8 +158,10 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
         agente = mod_agente.obtener(ctx.config.agente.nombre, ctx.config)
         if conversacion:
             palabras = agente.retomar(mod_agente.Conversacion(id=conversacion, hilo=nombre))
+            if aviso:
+                palabras = [*palabras, aviso]  # el primer mensaje al volver (Claude Code lo acepta así)
         else:
-            palabras, sid = agente.nuevo_con_id()
+            palabras, sid = agente.nuevo_con_id(aviso)
             lanz = lanzar.Lanzamiento(comando=[], carpeta=None, nueva=sid)
     ventana = comando(remoto, sesion, linea(ruta_remota(remoto, relativa), palabras, nombre))
     tel.mux.crear_tab(nombre, comando=ventana, foco=True)

@@ -57,7 +57,7 @@ class Comando(Prueba):
 
     def test_la_linea_deja_la_tilde_para_la_shell_de_alla(self):
         l = r.linea("~/repo/el faro", ["claude", "--session-id", "x"], "faro")
-        self.assertTrue(l.startswith("cd ~/'repo/el faro'"))
+        self.assertIn("; cd ~/'repo/el faro' 2>/dev/null;", l)
         self.assertIn("export TELAR_HILO=faro", l)
         self.assertIn("claude --session-id x", l)
         self.assertTrue(l.endswith("exec bash -l"))
