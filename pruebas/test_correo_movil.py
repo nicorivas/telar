@@ -172,3 +172,27 @@ class Directorio(Prueba):
         por = {e["usuario"]: e for e in salida}
         self.assertNotIn("error", por[yo])
         self.assertIn("se descarta", por["otra"]["error"])  # lo escribí yo con el nombre de otra
+
+
+class Bandeja(Prueba):
+    def test_la_bandeja_de_un_hilo_es_solo_la_de_su_persona(self):
+        # en la casilla común también está `otra+pizza@`: no es para el Pizza de `usuario`
+        propio = correo(id="<1>", para="usuario+pizza@servidor")
+        ajeno = correo(id="<2>", para="<otra+pizza@servidor>")
+        por = c.por_hilo([propio, ajeno], ["Pizza"], "usuario")
+        self.assertEqual([x.id for x in por["Pizza"]], ["<1>"])
+
+    def test_los_leidos_se_guardan_por_hilo_y_siguen_al_renombrar(self):
+        import tempfile
+        from pathlib import Path
+
+        from telar import estado as mod_estado
+        from telar.config import Config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            est = mod_estado.abrir(Config(estado=Path(tmp)))
+            est.marcar_leidos("Pizza", ["<1>", "<2>"])
+            est.marcar_leidos("Pizza", ["<2>", "<3>"])
+            self.assertEqual(est.leidos(), {"Pizza": {"<1>", "<2>", "<3>"}})
+            est.renombrar("Pizza", "Pizza 2")
+            self.assertEqual(set(est.leidos()), {"Pizza 2"})

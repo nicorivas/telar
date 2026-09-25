@@ -482,7 +482,8 @@ de herramientas se omiten. `hilo` es el hilo donde telar anotó esa conversació
 { "remotos": [ {
     "remoto": "casa", "usuario": "usuario", "error": "", "sabe_pendientes": true, "cartero": true,
     "archivo_comun": false,
-    "hilos": { "Pizza": { "direccion": "usuario+pizza@servidor", "pendientes": [ correo, … ] } },
+    "hilos": { "Pizza": { "direccion": "usuario+pizza@servidor", "pendientes": [ correo, … ],
+                          "correos": [ correo + "leido", … ], "no_leidos": 1 } },
     "conversaciones": [ { "id": "<…>", "asunto": "…", "participantes": ["otro", "usuario"],
                           "mensajes": 3, "ultima": "Thu, 24 Sep 2026 12:19:03 -0300",
                           "estado": "entregado", "correos": [ correo, … ] } ] } ] }

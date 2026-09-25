@@ -58,7 +58,7 @@ export class Modelo {
     }
 
     /** El correo de un hilo remoto: su dirección y lo que le espera. */
-    correoDe(hilo: string): { direccion: string; pendientes: cli.JsonCorreo[] } | undefined {
+    correoDe(hilo: string): cli.JsonCorreoHilo | undefined {
         for (const b of this.buzones) if (b.hilos[hilo]) return b.hilos[hilo];
         return undefined;
     }

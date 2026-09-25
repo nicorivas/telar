@@ -244,12 +244,23 @@ def pendientes(buzon: Buzon) -> list[Correo]:
     return [c for c in buzon.correos if c.estado in ("sin sesión", "retenido")]
 
 
-def por_hilo(correos: list[Correo], nombres: list[str]) -> dict[str, list[Correo]]:
-    """Reparte correos entre hilos por la extensión de la dirección a la que llegaron."""
+def _usuario_de(direccion_: str) -> str:
+    return direccion_.strip().strip("<>").split("@", 1)[0].split("+", 1)[0]
+
+
+def por_hilo(correos: list[Correo], nombres: list[str], usuario: str = "") -> dict[str, list[Correo]]:
+    """Reparte correos entre hilos por la extensión de la dirección a la que llegaron.
+
+    Con `usuario`, solo los dirigidos a esa persona: en la casilla común, `ana+pizza@` no es
+    para el hilo «Pizza» de otro.
+    """
     ext_a_hilo = {extension(n): n for n in nombres if extension(n)}
     salida: dict[str, list[Correo]] = {}
     for c in correos:
-        hilo = ext_a_hilo.get(extension_de(c.para))
+        destinos = [d for d in re.split(r",\s*", c.para) if d.strip()] or [c.para]
+        if usuario and not any(_usuario_de(d) == usuario for d in destinos):
+            continue
+        hilo = next((ext_a_hilo[extension_de(d)] for d in destinos if extension_de(d) in ext_a_hilo), None)
         if hilo:
             salida.setdefault(hilo, []).append(c)
     return salida

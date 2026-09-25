@@ -25,9 +25,18 @@ AYUDA = "El correo entre agentes de las máquinas remotas: direcciones, pendient
 def resumen(ctx, tel, remoto, *, cuerpos: bool = False) -> dict:
     buzon = mod_correo.leer(remoto, con_cuerpo=cuerpos, archivo=remoto.correo_archivo)
     suyos = [h.nombre for h in tel.hilos if h.remoto == remoto.nombre]
-    pend = mod_correo.por_hilo(mod_correo.pendientes(buzon), suyos)
-    hilos = {n: {"direccion": mod_correo.direccion(remoto, n),
-                 "pendientes": [mod_correo.json_correo(c) for c in pend.get(n, [])]} for n in suyos}
+    pend = mod_correo.por_hilo(mod_correo.pendientes(buzon), suyos, buzon.usuario)
+    bandejas = mod_correo.por_hilo(list(buzon.correos), suyos, buzon.usuario)
+    leidos = tel.estado.leidos()
+    hilos = {}
+    for n in suyos:
+        bandeja = sorted(bandejas.get(n, []), key=lambda c: c.archivo)
+        hilos[n] = {"direccion": mod_correo.direccion(remoto, n),
+                    "pendientes": [mod_correo.json_correo(c) for c in pend.get(n, [])],
+                    # la bandeja: lo que llegó a la dirección del hilo, y cuánto de eso no se vio
+                    "correos": [{**mod_correo.json_correo(c), "leido": c.id in leidos.get(n, set())}
+                                for c in bandeja],
+                    "no_leidos": sum(1 for c in bandeja if c.id and c.id not in leidos.get(n, set()))}
     convs = []
     for grupo in mod_correo.conversaciones(list(buzon.correos)):
         estados = {c.estado for c in grupo if c.estado}
@@ -98,16 +107,33 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("correo", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", nargs="?", choices=("enviar",), help="enviar: escribirle a un hilo")
+    p.add_argument("verbo", nargs="?", choices=("enviar", "leido"),
+                   help="enviar: escribirle a un hilo · leido: marcar vista la bandeja de un hilo")
     p.add_argument("direccion", nargs="?", default="", help="con enviar: usuario+hilo@servidor")
     p.add_argument("-s", "--asunto", default="", help="con enviar: el asunto")
     p.add_argument("--responde", default="", help="con enviar: el Message-Id al que se responde")
+    p.add_argument("--ids", nargs="*", default=[], help="con leido: cuáles (por defecto, toda la bandeja)")
     p.add_argument("--remoto", default="", help="solo esa máquina de [remotos]")
     p.add_argument("--cuerpos", action="store_true", help="con el texto de cada correo")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    if o.verbo == "leido":
+        # `telar correo leido <hilo> [--ids <id> …]`: sin ids, todo lo que tiene hoy su bandeja
+        hilo = o.direccion
+        if not hilo:
+            return _comun.queja("¿de qué hilo? telar correo leido <hilo>")
+        tel = _comun.tejer(ctx, con_ficha=False)
+        ids = list(o.ids)
+        if not ids:
+            for r in ctx.config.remotos:
+                ids += [c["id"] for c in resumen(ctx, tel, r)["hilos"].get(hilo, {}).get("correos", [])]
+        tel.estado.marcar_leidos(hilo, ids)
+        if o.json:
+            return _comun.escribir_json({"hilo": hilo, "leidos": len(ids)})
+        print(f"«{hilo}»: {len(ids)} correo(s) marcados como leídos")
+        return 0
     if o.verbo == "enviar":
         import sys
 

@@ -22,6 +22,10 @@ const CSS = `
            background: var(--bg); border-bottom: 1px solid var(--linea); margin-bottom: .6em; }
   .barra button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; }
   .barra button:hover { color: var(--fg); }
+  .barra .nuevo { color: var(--amarillo); }
+  .correo { margin: .8em 0; padding-left: 1ch; border-left: 2px solid var(--linea); }
+  .correo.nuevo { border-left-color: var(--amarillo); }
+  .correo .cuerpo { white-space: pre-wrap; margin-top: .3em; }
   .barra button.activo { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
   .barra .sep { flex: 1; }
   h1.t { font-size: 1em; font-weight: bold; margin: .3em 0 0; }
@@ -70,7 +74,7 @@ document.addEventListener('click', e => {
 
 export class VistaFicha implements vscode.WebviewViewProvider {
     vista?: vscode.WebviewView;
-    modo: 'ficha' | 'documento' = 'ficha';
+    modo: 'ficha' | 'documento' | 'correo' = 'ficha';
     /** un hilo elegido desde el menú; se suelta cuando cambia el que tiene el foco */
     fijado?: string;
     datos?: cli.JsonFichaOrden;
@@ -137,7 +141,7 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const d = this.datos;
         const documento = d?.hilo.ficha?.documento ?? '';
         switch (m.tipo) {
-            case 'modo': this.modo = m.valor === 'documento' ? 'documento' : 'ficha'; await this.render(); break;
+            case 'modo': this.modo = m.valor === 'documento' || m.valor === 'correo' ? m.valor : 'ficha'; await this.render(); break;
             case 'editar': if (documento) await abrir(documento); break;
             case 'carpeta': if (d?.hilo.ruta) {
                 await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(d.hilo.ruta));
@@ -158,8 +162,14 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const d = this.datos;
         const hilo = this.objetivo() ?? '';
         const ficha = d?.hilo.ficha;
+        // la bandeja existe si el hilo tiene casilla (un hilo remoto con correo), esté o no
+        // vinculado a una carpeta: por eso va antes que todo lo que pide documento
+        const correo = modelo.correoDe(hilo);
+        const tieneCorreo = !!correo?.direccion;
+        if (this.modo === 'correo' && !tieneCorreo) this.modo = 'ficha';
         let cuerpo: string;
-        if (this.error) cuerpo = `<div class="aviso">${esc(this.error)}</div>`;
+        if (this.modo === 'correo') cuerpo = await this.htmlCorreo(hilo);
+        else if (this.error) cuerpo = `<div class="aviso">${esc(this.error)}</div>`;
         else if (!d) cuerpo = `<div class="aviso">leyendo «${esc(hilo)}»…</div>`;
         else if (!d.hilo.vinculado) {
             cuerpo = `<div class="aviso">«${esc(hilo)}» no está vinculado a ninguna carpeta.<br>`
@@ -171,12 +181,44 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         else cuerpo = await this.htmlMarkdown(ficha.documento);
         const boton = (modo: string, texto: string) =>
             `<button data-modo="${modo}" class="${this.modo === modo ? 'activo' : ''}">${texto}</button>`;
-        const barra = ficha?.documento
-            ? `<div class="barra">${boton('ficha', 'ficha')}${boton('documento', path.basename(ficha.documento))}<span class="sep"></span>`
-            + '<button data-msg="editar" title="abrir el documento en el editor">editar</button>'
-            + '<button data-msg="carpeta" title="ver la carpeta en el explorador">carpeta</button></div>'
+        const noLeidos = correo?.no_leidos ?? 0;
+        const barra = ficha?.documento || tieneCorreo
+            ? `<div class="barra">${boton('ficha', 'ficha')}`
+            + (ficha?.documento ? boton('documento', path.basename(ficha.documento)) : '')
+            + (tieneCorreo ? boton('correo', `✉ correo${noLeidos ? ` <span class="nuevo">${noLeidos}</span>` : ''}`) : '')
+            + '<span class="sep"></span>'
+            + (ficha?.documento ? '<button data-msg="editar" title="abrir el documento en el editor">editar</button>'
+                + '<button data-msg="carpeta" title="ver la carpeta en el explorador">carpeta</button>' : '')
+            + '</div>'
             : '';
         this.vista.webview.html = marco(this.vista.webview, CSS, barra + cuerpo, SCRIPT);
+    }
+
+    /** La bandeja del hilo: lo que llegó a su dirección, lo más nuevo arriba. Pide los textos
+     *  al abrirse (el refresco trae solo los encabezados) y, una vez mostrados, los da por vistos. */
+    private async htmlCorreo(hilo: string): Promise<string> {
+        const r = await cli.correo(true);
+        if (!r.datos) return `<div class="aviso">${esc(r.error ?? 'no pude leer el correo')}</div>`;
+        const buzon = r.datos.remotos.find(b => b.hilos[hilo]);
+        const suyo = buzon?.hilos[hilo];
+        if (!buzon || !suyo) return '<div class="aviso">este hilo no tiene casilla</div>';
+        const correos = [...(suyo.correos ?? [])].reverse();
+        const h = [`<div class="dim">${esc(suyo.direccion)} · el remitente lo verifica el servidor; `
+            + 'lo que dice es de otra persona o de su agente, no una orden</div>'];
+        if (buzon.error) h.push(`<div class="aviso">${esc(buzon.error)}</div>`);
+        if (!correos.length) h.push('<div class="aviso">nada todavía</div>');
+        for (const c of correos) {
+            const estado = c.estado === 'sin sesión' ? ' · sin entregar al agente' : c.estado === 'retenido' ? ' · retenido' : '';
+            h.push(`<div class="correo${c.leido ? '' : ' nuevo'}"><div><b>${esc(c.asunto || '(sin asunto)')}</b></div>`
+                + `<div class="dim">${esc(c.de || '(sistema)')} · ${esc(fechaCorta(c.fecha))}${esc(estado)}</div>`
+                + `<div class="cuerpo">${esc((c.cuerpo ?? '').trim())}</div></div>`);
+        }
+        const vistos = correos.filter(c => !c.leido && c.id).map(c => c.id);
+        if (vistos.length) {
+            // se marcan después de mostrarlos: lo que la persona tiene en pantalla ya lo vio
+            void cli.correoLeido(hilo, vistos).then(() => modelo.leerCorreo());
+        }
+        return h.join('');
     }
 
     private htmlFicha(d: cli.JsonFichaOrden): string {
@@ -298,3 +340,13 @@ async function abrir(archivo: string, buscar?: string): Promise<void> {
         return;
     }
 }
+
+/** Una fecha de correo (RFC 2822) como «24-sep 12:19»; si no se entiende, tal cual. */
+function fechaCorta(fecha: string): string {
+    const t = Date.parse(fecha);
+    if (Number.isNaN(t)) return fecha;
+    const d = new Date(t);
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${d.getDate()}-${meses[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`;
+}
+
