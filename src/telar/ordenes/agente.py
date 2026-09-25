@@ -158,7 +158,7 @@ def contexto(ctx) -> str:
     from telar import correo as mod_correo
 
     hilo = os.environ.get(VARIABLE_HILO, "").strip()
-    if not hilo or not ctx.config.agente.contexto:
+    if not hilo or not ctx.config.agente.contexto or _no_interactivo():
         return ""
     vinculo = mod_estado.abrir(ctx.config).vinculos().get(hilo, "")
     cartero = _cartero_aqui()
@@ -240,6 +240,12 @@ def _construir(nombre: str, config):
 # ── aviso: lo que corren los ganchos ────────────────────────────────────────────
 
 
+def _no_interactivo() -> bool:
+    """¿Es un agente sin persona al otro lado? Claude Code lo dice en el entorno de sus
+    ganchos: `CLAUDE_CODE_ENTRYPOINT` es `cli` en una sesión interactiva y `sdk-…` en `-p`."""
+    return os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
+
+
 def _aviso(o, ctx) -> int:
     """Aplica un evento del agente. Silencioso, y siempre 0.
 
@@ -249,6 +255,13 @@ def _aviso(o, ctx) -> int:
     esperando a que telar termine, no.
     """
     salida: dict[str, object] = {"aplicado": False}
+    if _no_interactivo():
+        # un `claude -p` que corre dentro de un hilo (un script, una herramienta) hereda su
+        # $TELAR_HILO, pero no es la conversación del hilo: anotarlo la reemplazaba
+        salida["motivo"] = "agente no interactivo"
+        if o.json:
+            _comun.escribir_json(salida)
+        return 0
     try:
         aviso = _leer(o, ctx)
         panel = o.panel or panel_del_entorno(ctx.config.multiplexor)

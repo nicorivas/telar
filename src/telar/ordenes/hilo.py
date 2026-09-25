@@ -16,6 +16,8 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
                                            la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
+    telar hilo llevar [remoto]             pasar su conversación a otra máquina de [remotos]:
+                                           se cierra aquí y sigue allá, retomada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
 
 `adoptar` es la salida del único agujero que tiene guardar el estado por nombre:
@@ -31,6 +33,8 @@ arriba» le toca al hilo equivocado más seguido de lo que parece.
 """
 
 from __future__ import annotations
+
+import sys
 
 from pathlib import Path
 
@@ -58,6 +62,7 @@ VERBOS = (
     "desarchivar",
     "retomar",
     "olvidar",
+    "llevar",
 )
 
 
@@ -73,6 +78,7 @@ def main(argv: list[str], ctx) -> int:
     )
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--cerrar", action="store_true", help="al archivar, cerrar además el hilo")
+    p.add_argument("--si", action="store_true", help="con llevar: seguir aunque haya trabajo sin subir")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -155,6 +161,8 @@ def main(argv: list[str], ctx) -> int:
         print(f"de vuelta en la lista «{hilo.nombre}»")
     elif o.verbo == "retomar":
         salida = _retomar(ctx, tel, hilo)
+    elif o.verbo == "llevar":
+        salida = _llevar(ctx, tel, hilo, o.valor, o.si)
     elif o.verbo == "olvidar":
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")
@@ -351,6 +359,132 @@ def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
     except ErrorDeMux as e:
         return _comun.queja(f"no pude cerrarlo: {e}")
     print("  cerrado en el multiplexor")
+    return 0
+
+
+def _sin_subir(ruta: Path) -> str:
+    """Lo que el repositorio de esa carpeta tiene y la otra máquina no: sin commitear, sin subir.
+    "" si nada, o si no es un repositorio git."""
+    import subprocess
+
+    def git(*args):
+        r = subprocess.run(["git", "-C", str(ruta), *args], capture_output=True, text=True, timeout=20)
+        return r.stdout.strip() if r.returncode == 0 else None
+
+    raiz = git("rev-parse", "--show-toplevel")
+    if not raiz:
+        return ""
+    # lo de otros repositorios no cuenta: un submódulo con cambios adentro (su puntero no
+    # cambió) o un repo anidado sin rastrear (`?? empresa/`) se sincronizan por su cuenta
+    lineas = (git("status", "--porcelain", "--ignore-submodules=dirty") or "").splitlines()
+    sucios = len([l for l in lineas if l.strip()
+                  and not (l.startswith("?? ") and l.rstrip().endswith("/") and (Path(raiz) / l[3:].strip() / ".git").exists())])
+    adelante = git("rev-list", "--count", "@{u}..HEAD")
+    partes = ([f"{sucios} archivo{'s' if sucios != 1 else ''} sin commitear"] if sucios else []) + (
+        [f"{adelante} commit{'s' if adelante != '1' else ''} sin subir"] if adelante and adelante != "0" else [])
+    return f"{raiz}: {', '.join(partes)}" if partes else ""
+
+
+def _falta_alla(remoto, ruta: str) -> str:
+    """La carpeta como se llamaría allá (`~/Code/x`), si NO existe allá; "" si existe o no se sabe."""
+    import shlex
+    import subprocess
+
+    try:
+        alla = "~/" + Path(ruta).expanduser().resolve().relative_to(Path.home().resolve()).as_posix()
+    except (ValueError, OSError):
+        alla = ruta
+    prueba = f"test -d {alla if alla.startswith('~/') and ' ' not in alla else shlex.quote(alla)}"
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino, prueba],
+                           capture_output=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return alla if r.returncode == 1 else ""
+
+
+def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool) -> int:
+    """Pasar la conversación de un hilo local a otra máquina, y seguirla allá.
+
+    La conversación viaja; los archivos no. Lo que el repositorio de aquí tenga sin commitear
+    o sin subir, el agente de allá no lo va a ver aunque lo recuerde: se dice antes, y hay que
+    confirmar. El agente de aquí se cierra antes de copiar: la misma conversación viva en dos
+    máquinas se bifurca.
+    """
+    from telar import agente as mod_agente
+
+    if hilo.remoto:
+        return _comun.queja(f"«{hilo.nombre}» ya vive en otra máquina ({hilo.remoto})")
+    remotos = ctx.config.remotos
+    remoto = next((r for r in remotos if r.nombre == valor), None) if valor else (remotos[0] if len(remotos) == 1 else None)
+    if remoto is None:
+        nombres = ", ".join(r.nombre for r in remotos) or "ninguna declarada"
+        return _comun.queja(f"¿a qué máquina? telar hilo llevar <remoto> ({nombres})")
+    if not ctx.config.agente.nombre or not hilo.sesiones:
+        return _comun.queja(f"«{hilo.nombre}» no tiene una conversación anotada que llevar")
+    agente = mod_agente.obtener(ctx.config.agente.nombre, ctx.config)
+    # la primera anotada que exista en disco, como al retomar: una anotada puede no tener
+    # archivo (vacía, o de un agente que no era la conversación del hilo)
+    sid, archivo = next(((s, a) for s in hilo.sesiones for a in [agente.archivo_de(s)] if a is not None), ("", None))
+    if archivo is None:
+        return _comun.queja(f"no encuentro en disco ninguna de sus conversaciones ({', '.join(hilo.sesiones)})")
+
+    # lo que la otra máquina no va a tener
+    # la carpeta del agente, la del hilo y la raíz de trabajo: en la raíz está casi todo lo
+    # que se hace, aunque el agente arranque en otra parte y el hilo no esté vinculado
+    carpetas = {lanzar.carpeta(ctx.config, hilo.ruta), Path(ctx.config.raiz)} | ({hilo.ruta} if hilo.ruta else set())
+    carpetas |= {Path(x).expanduser() for x in remoto.repos}  # los que viven en las dos máquinas
+    avisos = sorted({a for c in carpetas if c for a in [_sin_subir(Path(c))] if a})
+    if avisos:
+        print("la conversación viaja, los archivos no. Aquí hay trabajo que allá no va a estar:")
+        for a in avisos:
+            print(f"  · {a}")
+        print(_comun.tenue("  (sincroniza primero, o sigue sabiendo que el agente de allá no lo verá)"))
+        if not si:
+            if not sys.stdin.isatty():
+                return _comun.queja("hay trabajo sin subir; --si para llevarla igual")
+            if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
+                print("no se movió nada")
+                return 1
+
+    relativa = tel.estado.vinculos().get(hilo.nombre, "")
+    carpeta = mod_remoto.carpeta_remota(ctx.config, remoto, relativa)
+    if relativa.startswith("/"):
+        # vinculado fuera de la raíz: allá no hay traducción de esa carpeta. Si no existe en
+        # la misma ruta del hogar, el agente de allá sigue la conversación sin sus archivos.
+        faltante = _falta_alla(remoto, relativa)
+        if faltante:
+            print(f"su carpeta, {faltante}, no existe en {remoto.destino}: el agente de allá recordará "
+                  "la conversación pero no tendrá esos archivos (clónalos allá primero)")
+            if not si:
+                if not sys.stdin.isatty():
+                    return _comun.queja(f"{faltante} no existe en {remoto.destino}; --si para llevarla igual")
+                if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
+                    print("no se movió nada")
+                    return 1
+    # 1. cerrar aquí: desde ahora la conversación sigue solo allá
+    if tel.mux is not None and tel.vivo(hilo):
+        try:
+            tel.mux.cerrar(hilo.id)
+        except ErrorDeMux as e:
+            return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
+    # 2. llevar la conversación
+    destino, problema = mod_remoto.copiar_conversacion(remoto, archivo, sid, carpeta)
+    if problema:
+        return _comun.queja(f"no se llevó la conversación: {problema}. Aquí quedó cerrada; "
+                            f"`telar hilo retomar` la reabre en esta máquina.")
+    # 3. abrirla allá, retomándola
+    try:
+        mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa, conversacion=sid)
+    except (ErrorDeMux, ErrorDeAgente) as e:
+        return _comun.queja(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir "
+                            f"el hilo: {e}. `telar hilo retomar` lo intenta de nuevo.")
+    tel.estado.desarchivar(hilo.nombre)
+    from telar import directorio as mod_directorio
+
+    mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
+    print(f"«{hilo.nombre}» sigue en {remoto.destino}, retomando la conversación {sid[:8]}")
+    print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"))
     return 0
 
 

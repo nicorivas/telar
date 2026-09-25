@@ -6,6 +6,37 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `telar hilo llevar [remote]` (and «Llevar a otra máquina…» in VS Code) moves a local
+  thread to another machine with its conversation: closes the agent here, copies the
+  conversation there and reopens the thread as remote, resuming it. It warns, and asks,
+  when the repository here has work that isn't pushed: the conversation travels, the files
+  don't.
+
+- Each thread with a mailbox has an inbox: `telar correo --json` gives, per thread, the
+  mail that reached its address and how much of it hasn't been seen (`correos`,
+  `no_leidos`), and `telar correo leido <hilo> [--ids …]` marks it seen. «Seen» means seen
+  in telar, kept per thread in the state. VS Code: an ✉ right after the priority when a
+  thread has unread mail, and a **✉ correo** tab in the card that shows the inbox and
+  marks it seen.
+
+### Fixed
+
+- A `claude -p` run from inside a thread (a script, a tool) inherited `$TELAR_HILO` and
+  its hooks recorded it as the thread's conversation, ahead of the real one. telar's hooks
+  now ignore non-interactive agents (`CLAUDE_CODE_ENTRYPOINT=sdk-…`), and `llevar` takes
+  the first recorded conversation that exists on disk.
+- `llevar` also checks the work root and each repository in `[remotos.<n>] repos` (a nested
+  repository isn't seen from the one around it), and no longer counts nested repositories or a submodule's own changes as unpushed
+  work, and says so when the thread's folder (linked outside the root) doesn't exist on
+  the other machine.
+- A remote agent now starts where `[agente] carpeta` says, as it does here, instead of
+  always at the remote root plus the thread's folder.
+- The «close» menu item said the thread stays in the list; it leaves it.
+- A thread's mail only counts what was addressed to its own person: in the common archive,
+  `other+pizza@` is not for your «Pizza».
+
 ## [0.1.3] — 2026-09-24
 
 ### Added

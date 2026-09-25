@@ -105,3 +105,27 @@ class Estado(Prueba):
 
         (h,) = mod_estado.vestir([Hilo(id="faro", nombre="faro")], remotos={"faro": {"remoto": "casa", "sesion": "s"}})
         self.assertEqual(h.remoto, "casa")
+
+
+class Llevar(Prueba):
+    def test_alla_el_agente_arranca_donde_dice_agente_carpeta(self):
+        from telar.config import Agente
+
+        def carpeta(donde):
+            return r.carpeta_remota(Config(agente=Agente(nombre="claude-code", carpeta=donde)), CASA, "proyectos/faro")
+
+        self.assertEqual(carpeta("hilo"), "~/repo/proyectos/faro")
+        self.assertEqual(carpeta("raiz"), "~/repo")
+        self.assertEqual(carpeta("~/notas"), "~/notas")
+        self.assertEqual(carpeta(str(Path.home() / "notas")), "~/notas")  # el hogar de aquí es el de allá
+
+    def test_lo_que_no_esta_subido_se_dice(self):
+        import subprocess
+
+        from telar.ordenes.hilo import _sin_subir
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(_sin_subir(Path(tmp)), "")  # no es un repositorio: nada que decir
+            subprocess.run(["git", "init", "-q", tmp], check=True)
+            (Path(tmp) / "a.txt").write_text("x", encoding="utf-8")
+            self.assertIn("1 archivo sin commitear", _sin_subir(Path(tmp)))

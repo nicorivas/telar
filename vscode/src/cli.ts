@@ -297,15 +297,25 @@ export const ir = (hilo: string, crear = false, remoto = '') =>
     telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
 
 /** Un correo entre agentes, como lo da `telar correo --json`. */
-export interface JsonCorreo { id: string; de: string; para: string; asunto: string; fecha: string; estado: string; nuevo: boolean; cuerpo?: string }
+export interface JsonCorreo {
+    id: string; de: string; para: string; asunto: string; fecha: string; estado: string; nuevo: boolean;
+    cuerpo?: string; leido?: boolean;
+}
 export interface JsonConversacionCorreo {
     id: string; asunto: string; participantes: string[]; mensajes: number; ultima: string; estado: string; correos: JsonCorreo[];
 }
 export interface JsonBuzon {
     remoto: string; usuario: string; error: string; sabe_pendientes: boolean; archivo_comun: boolean; cartero?: boolean;
-    hilos: Record<string, { direccion: string; pendientes: JsonCorreo[] }>;
+    hilos: Record<string, JsonCorreoHilo>;
     conversaciones: JsonConversacionCorreo[];
 }
+
+/** El correo de un hilo con casilla: su dirección, lo sin entregar, su bandeja y cuánto no se vio. */
+export interface JsonCorreoHilo { direccion: string; pendientes: JsonCorreo[]; correos?: JsonCorreo[]; no_leidos?: number }
+
+/** `telar correo leido <hilo>`: marcar vista su bandeja (o esos ids). */
+export const correoLeido = (hilo: string, ids: string[] = []) =>
+    telar(['correo', 'leido', hilo, ...(ids.length ? ['--ids', ...ids] : [])], 40000);
 
 export const correo = (cuerpos = false) =>
     telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);
@@ -315,7 +325,8 @@ export interface JsonRemoto { nombre: string; destino: string; transporte: strin
 
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
 export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[] = []) =>
-    telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], 30000);
+    // llevar copia una conversación por ssh y abre el hilo allá: puede tardar más
+    telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], verbo === 'llevar' ? 120000 : 30000);
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */

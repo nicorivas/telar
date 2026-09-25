@@ -47,6 +47,67 @@ def ruta_remota(remoto: Remoto, relativa: str = "") -> str:
     return str(PurePosixPath(remoto.raiz) / rel)
 
 
+def carpeta_remota(config, remoto: Remoto, relativa: str = "") -> str:
+    """Dónde arranca el agente allá: lo mismo que `[agente] carpeta` dice para aquí.
+
+    «hilo» es la carpeta del hilo traducida a la raíz de allá; «raiz», la raíz de allá; una
+    ruta dentro del hogar de aquí (`~/Life`, `/Users/ana/Life`) es la misma bajo el hogar de
+    allá. Importa porque hay agentes cuya memoria cuelga de dónde arrancan.
+    """
+    from pathlib import Path
+
+    donde = getattr(getattr(config, "agente", None), "carpeta", "hilo") or "hilo"
+    if donde == "hilo":
+        return ruta_remota(remoto, relativa)
+    if donde == "raiz":
+        return remoto.raiz
+    if donde.startswith("~"):
+        return donde
+    try:
+        return "~/" + Path(donde).expanduser().resolve().relative_to(Path.home().resolve()).as_posix()
+    except (ValueError, OSError):
+        return donde
+
+
+#: lo que corre allá para dejar una conversación donde Claude Code la busca: la carpeta de
+#: proyecto que corresponde al directorio donde va a arrancar (la ruta con todo lo que no es
+#: letra o número hecho «-»). `--resume <id>` la encuentra igual desde otra carpeta, pero así
+#: queda donde Claude mismo la habría puesto. No pisa una que ya esté.
+_DEJAR = r"""
+import os, re, sys
+carpeta, sid = sys.argv[1], sys.argv[2]
+base = os.path.abspath(os.path.expanduser(carpeta))
+destino = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", base))
+os.makedirs(destino, exist_ok=True)
+ruta = os.path.join(destino, sid + ".jsonl")
+if os.path.exists(ruta):
+    sys.exit("ya hay una conversación con ese id allá: " + ruta)
+datos = sys.stdin.buffer.read()
+with open(ruta + ".tmp", "wb") as f:
+    f.write(datos)
+os.chmod(ruta + ".tmp", 0o600)
+os.rename(ruta + ".tmp", ruta)
+print(ruta)
+"""
+
+
+def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tuple[str, str]:
+    """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o "")."""
+    try:
+        datos = open(archivo, "rb").read()
+    except OSError as e:
+        return "", f"no pude leer la conversación: {e}"
+    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
+             shlex.join(["python3", "-c", _DEJAR, carpeta, sid])]
+    try:
+        r = subprocess.run(orden, input=datos, capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return "", f"{remoto.destino} no responde: {e}"
+    if r.returncode != 0:
+        return "", (r.stderr.decode(errors="replace").strip() or f"ssh salió con {r.returncode}")[-300:]
+    return r.stdout.decode().strip(), ""
+
+
 def _cd(ruta: str) -> str:
     """`cd` a una ruta remota, con `~` sin citar para que la shell de allá lo expanda."""
     if ruta == "~":
@@ -163,7 +224,7 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
         else:
             palabras, sid = agente.nuevo_con_id(aviso)
             lanz = lanzar.Lanzamiento(comando=[], carpeta=None, nueva=sid)
-    ventana = comando(remoto, sesion, linea(ruta_remota(remoto, relativa), palabras, nombre))
+    ventana = comando(remoto, sesion, linea(carpeta_remota(ctx.config, remoto, relativa), palabras, nombre))
     tel.mux.crear_tab(nombre, comando=ventana, foco=True)
     hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
     if hilo is not None:

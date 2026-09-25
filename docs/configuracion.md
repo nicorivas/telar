@@ -244,6 +244,7 @@ transporte = "mosh"            # mosh (por defecto) · ssh
 raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
 correo_archivo = ""            # opcional: la Maildir común con los correos entre agentes
 directorio = ""                # opcional: la carpeta común donde cada persona publica sus hilos
+repos = ["~/repo", "~/repo/otro"]  # opcional: repositorios que viven en las dos máquinas
 ```
 
 Un hilo remoto es uno cuyo agente vive en otra máquina, siempre encendida, y sigue
@@ -262,6 +263,16 @@ misma relativa bajo `raiz` de allá.
 
 - Crear: `telar ir <nombre> --crear --remoto casa`, o en VS Code «hilo nuevo», que pregunta
   dónde si hay algún remoto declarado. La ventana queda con la opción tmux `@telar_remoto`.
+  Allá el agente arranca donde diga `[agente] carpeta`: «hilo» es la carpeta del hilo
+  traducida a la raíz de allá, «raiz» la raíz de allá, y una ruta del hogar de aquí
+  (`~/notas`) es la misma bajo el hogar de allá.
+- Llevar: `telar hilo llevar [remoto]`, o «Llevar a otra máquina…» en el menú del hilo,
+  pasa un hilo local a la otra máquina con su conversación: cierra el agente de aquí, copia
+  la conversación allá (a la carpeta de proyecto donde Claude Code la busca) y abre el hilo
+  como remoto retomándola. **La conversación viaja, los archivos no**: revisa la raíz, la
+  carpeta del agente, la del hilo y cada uno de `repos` (un repo anidado, como uno de la
+  empresa dentro del repo personal, no se ve desde el de afuera). Si alguno tiene algo sin
+  commitear o sin subir, lo dice y pide confirmar (`--si` para no preguntar). Aquí queda la copia de cómo estaba la conversación al irse.
 - Cerrar (✕) y archivar con `--cerrar` terminan también la sesión de allá; retomar un
   archivado la recrea retomando su conversación.
 - `telar doctor` revisa cada remoto: que responda por ssh, que tenga tmux (y mosh-server
@@ -280,9 +291,12 @@ Si la otra máquina entrega correo local entre agentes (ver
 en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién entregar.
 
 - `telar correo` lee por ssh la Maildir, el registro del cartero y, con `correo_archivo`, la
-  casilla común: la dirección y los correos **sin entregar** de cada hilo, y las
-  conversaciones entre agentes. En VS Code: **✉ N** junto al hilo, la dirección en su ficha
-  y la pantalla **✉ correo** del dashboard (tecla `c`).
+  casilla común: la dirección, la **bandeja** (lo que llegó a esa dirección) y lo **sin
+  entregar** de cada hilo, y las conversaciones entre agentes. En VS Code: un **✉** después
+  de la prioridad cuando el hilo tiene correo que no viste, la pestaña **✉ correo** de su
+  ficha con la bandeja, y la pantalla **✉ correo** del dashboard (tecla `c`) con todas las
+  conversaciones. Ver la bandeja la marca como leída (`telar correo leido <hilo>`): «leído»
+  es que lo viste en telar, no que lo recibió el agente.
 - Sin entregar es lo que llegó con el hilo cerrado o quedó retenido. Para saberlo, el
   registro del cartero tiene que anotar `id=<Message-Id>` en cada línea; si no lo hace,
   telar lo dice y no cuenta.

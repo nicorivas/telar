@@ -194,6 +194,12 @@
         "icon": "$(archive)"
       },
       {
+        "command": "telar.llevar",
+        "title": "Llevar a otra máquina (la conversación sigue allá)…",
+        "category": "telar",
+        "icon": "$(remote)"
+      },
+      {
         "command": "telar.desarchivar",
         "title": "Desarchivar",
         "category": "telar"
@@ -205,7 +211,7 @@
       },
       {
         "command": "telar.cerrar",
-        "title": "Cerrar el hilo (sigue en la lista)",
+        "title": "Cerrar el hilo (sale de la lista)",
         "category": "telar"
       },
       {
@@ -482,6 +488,11 @@
           "command": "telar.archivar",
           "when": "webviewId == 'telar.hilos' && webviewSection == hilo",
           "group": "3_estado@1"
+        },
+        {
+          "command": "telar.llevar",
+          "when": "webviewId == 'telar.hilos' && webviewSection == hilo",
+          "group": "3_estado@2"
         },
         {
           "command": "telar.retomar",

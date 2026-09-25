@@ -42,6 +42,42 @@ function hiloDe(a: Arg): string | undefined {
 }
 
 /** Una orden de `telar hilo …`, con la queja a la vista si falla. */
+/** Pasar la conversación de un hilo a otra máquina: se cierra aquí y sigue allá. Si el
+ *  repositorio tiene trabajo sin subir, telar lo dice y aquí se pregunta antes de seguir. */
+async function llevar(a: Arg): Promise<void> {
+    const hilo = hiloDe(a);
+    if (!hilo) return;
+    if (modelo.porNombre(hilo)?.remoto) {
+        void vscode.window.showInformationMessage(`telar: «${hilo}» ya vive en otra máquina.`);
+        return;
+    }
+    const remotos = (await cli.config()).datos?.remotos ?? [];
+    if (!remotos.length) { void vscode.window.showWarningMessage('telar: no hay máquinas en [remotos].'); return; }
+    let remoto = remotos[0].nombre;
+    if (remotos.length > 1) {
+        const r = await vscode.window.showQuickPick(remotos.map(x => ({ label: x.nombre, description: x.destino, x })),
+            { placeHolder: `¿A qué máquina llevo «${hilo}»?` });
+        if (!r) return;
+        remoto = r.x.nombre;
+    }
+    const intento = await cli.hilo('llevar', hilo, remoto);
+    let r = intento;
+    if (!intento.ok && /sin subir/.test(intento.err)) {
+        const avisos = intento.out.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
+        const si = await vscode.window.showWarningMessage(
+            `La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:`,
+            { modal: true, detail: `${avisos}\n\nSincroniza primero, o llévala sabiendo que el agente de allá no lo verá.` },
+            'Llevar igual');
+        if (si !== 'Llevar igual') return;
+        r = await cli.hilo('llevar', hilo, remoto, ['--si']);
+    }
+    anotar(`hilo llevar ${remoto} --hilo ${hilo} → ${r.ok ? 'ok' : `error ${r.codigo}`} ${r.out.trim()}`);
+    if (!r.ok) { void vscode.window.showErrorMessage(`telar: ${r.err.trim().split('\n').pop() ?? 'no se llevó'}`); return; }
+    modelo.invalidar();
+    await modelo.sondear();
+    await mostrarTerminal();
+}
+
 async function sobreHilo(a: Arg, verbo: string, valor?: string, extra: string[] = []): Promise<boolean> {
     const hilo = hiloDe(a);
     if (!hilo) { void vscode.window.showWarningMessage('telar: no sé sobre qué hilo; abre uno o elígelo en la lista.'); return false; }
@@ -353,6 +389,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.desarchivar', (a?: Arg) => sobreHilo(a, 'desarchivar'));
     orden('telar.olvidar', olvidar);
     orden('telar.cerrar', cerrar);
+    orden('telar.llevar', llevar);
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());

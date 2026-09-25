@@ -187,6 +187,9 @@ class Remoto:
     #: la carpeta común donde cada persona publica sus hilos de esa máquina (`telar
     #: directorio`); sin ella, no se publica ni se lee nada.
     directorio: str = ""
+    #: los repositorios que viven en las dos máquinas (`~/repo/empresa`): antes de llevar un
+    #: hilo allá se revisa que no tengan trabajo sin subir, además de la raíz.
+    repos: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,7 +429,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         remotos = []
         for nombre, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"remotos.{nombre}")
-            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo", "directorio"}
+            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo", "directorio", "repos"}
             if sobra:
                 raise ErrorDeConfig(f"remotos.{nombre}.{sorted(sobra)[0]}: no existe")
             destino = cuerpo.get("destino", "")
@@ -443,7 +446,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             for clave, valor in (("correo_archivo", archivo), ("directorio", directorio)):
                 if not isinstance(valor, str):
                     raise ErrorDeConfig(f"remotos.{nombre}.{clave}: se esperaba una ruta, llegó {valor!r}")
-            remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte,
+            repos = cuerpo.get("repos", [])
+            if not isinstance(repos, list) or not all(isinstance(x, str) and x.strip() for x in repos):
+                raise ErrorDeConfig(f"remotos.{nombre}.repos: se esperaba una lista de carpetas, llegó {repos!r}")
+            remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte, repos=tuple(x.strip() for x in repos),
                                   raiz=raiz.strip().rstrip("/") or "/", correo_archivo=archivo.strip(),
                                   directorio=directorio.strip().rstrip("/")))
         cambios["remotos"] = tuple(remotos)

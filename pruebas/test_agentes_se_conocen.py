@@ -86,3 +86,12 @@ class SkillHilos(ConEstado):
         self.assertEqual(mod_skill.instalar(carpeta_config())[1], "ajena")
         self.assertEqual(mod_skill.desinstalar(carpeta_config())[1], "ajena")
         self.assertEqual(ruta.read_text(encoding="utf-8"), "mía")
+
+
+class NoInteractivos(ConEstado):
+    def test_un_claude_p_dentro_de_un_hilo_no_se_anota_ni_recibe_contexto(self):
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_ENTRYPOINT": "sdk-cli", "TELAR_HILO": "Faro"}):
+            self.assertTrue(orden_agente._no_interactivo())
+            self.assertEqual(orden_agente.contexto(SimpleNamespace(config=self.config)), "")
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_ENTRYPOINT": "cli"}):
+            self.assertFalse(orden_agente._no_interactivo())
