@@ -90,6 +90,9 @@ class Tarea:
     hecha: bool = False
     en_curso: bool = False
     origen: str = ""
+    #: lo último que dejó un agente que la trabajó solo («preparado 2026-09-25»): el estado y
+    #: la fecha. telar no lo interpreta; lo muestra.
+    avance: str = ""
 
     @property
     def activa(self) -> bool:
@@ -117,6 +120,7 @@ class Tarea:
                 "hecha": self.hecha,
                 "en_curso": self.en_curso,
                 "origen": self.origen,
+                "avance": self.avance,
             },
         )
 
@@ -548,7 +552,8 @@ class DeComando(_Base):
 
         [{"id": "T84", "texto": "Medir el alcance", "prioridad": "alta",
           "vence": "2026-06-30", "etiquetas": ["faro"], "enlace": "https://…",
-          "espera": "@quien", "hecha": false, "en_curso": false}]
+          "espera": "@quien", "hecha": false, "en_curso": false,
+          "avance": "preparado 2026-09-25"}]
 
     De todo eso, solo `texto` es obligatorio.
     """
@@ -572,6 +577,12 @@ class DeComando(_Base):
         if isinstance(espera, bool) or not isinstance(espera, (int, float)) or espera <= 0:
             raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.tiempo_maximo: se esperaba un número positivo")
         self.tiempo_maximo = float(espera)
+        detalle = opciones.get("detalle")
+        if detalle is not None and (not isinstance(detalle, list) or not detalle
+                                    or not all(isinstance(x, str) for x in detalle)):
+            raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.detalle: se esperaba una lista de palabras con {{id}}")
+        #: la ficha de una tarea (`telar tarea`): una página con acciones; ver docs/contratos.md
+        self.detalle = tuple(detalle or ())
         self.alcance = f"corre `{' '.join(self.comando)}` y lee su JSON"
 
     def _salida(self, dia: date) -> str:
@@ -656,6 +667,7 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         hecha=bandera("hecha"),
         en_curso=bandera("en_curso"),
         origen=texto_de("origen") or origen,
+        avance=texto_de("avance"),
     )
 
 

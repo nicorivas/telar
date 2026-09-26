@@ -185,6 +185,7 @@ def main(argv: list[str], ctx) -> int:
             "carpeta": cfg.agente.carpeta,
             "reunion": cfg.agente.reunion,
             "reunion_por_defecto": REUNION_POR_DEFECTO,
+            "minuta": cfg.agente.minuta,
             "proyecto": cfg.agente.proyecto,
             "proyecto_por_defecto": PROYECTO_POR_DEFECTO,
             "pendiente": cfg.agente.pendiente,
@@ -194,12 +195,14 @@ def main(argv: list[str], ctx) -> int:
             {"nombre": r.nombre, "destino": r.destino, "transporte": r.transporte, "raiz": r.raiz}
             for r in cfg.remotos
         ],
+        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color} for b in cfg.bloques],
+        "agenda": [{"clave": r.clave, "si": r.si, "antes": r.antes, "despues": r.despues} for r in cfg.agenda],
         "secciones": [
             {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
             for s in cfg.secciones
         ],
         "atajos": [
-            {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion}
+            {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion, "en": a.en}
             for a in cfg.atajos
         ],
         "proveedores": {

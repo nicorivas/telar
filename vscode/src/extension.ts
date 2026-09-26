@@ -331,8 +331,17 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     void modelo.sondear(true).catch(e => anotar(`sondeo: ${e}`)).then(programar);
     ctx.subscriptions.push({ dispose: () => { if (temporizador) clearTimeout(temporizador); } });
 
+    // los hilos que nacen en una máquina remota (un reloj allá, el celular) se traen
+    // solos; cada tres minutos es lo que tarda en aparecer, y un ssh cada tanto es barato
+    let vuelta = 0;
+    const traer = async () => {
+        if (!modelo.hayRemotos) return;
+        const r = await cli.traerRemotos();
+        if (r.datos?.traidos.length) await modelo.sondear();
+    };
     // el día se relee solo mientras se esté mirando
     const cadaMinuto = setInterval(() => {
+        if (vuelta++ % 3 === 0) void traer().catch(e => anotar(`traer remotos: ${e}`));
         if (hoy.panel?.visible) void hoy.actualizar();
         if (vistaTareas.vista?.visible) void vistaTareas.actualizar();
     }, 60 * 1000);
@@ -348,6 +357,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         if (h) return irAHilo(h.nombre);
     });
     orden('telar.tejer', tejer);
+    orden('telar.tarea', (valor: string) => hoy.abrirTarea(valor));
     orden('telar.nuevo', nuevo);
     orden('telar.lanzador', lanzador);
     orden('telar.orden', ordenar);

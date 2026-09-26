@@ -74,14 +74,14 @@ export function estiloBase(): string {
     --hover: color-mix(in srgb, var(--fg) 7%, transparent);
     --azul: var(--vscode-terminal-ansiBlue); --amarillo: var(--vscode-terminal-ansiYellow);
     --verde: var(--vscode-terminal-ansiGreen); --rojo: var(--vscode-terminal-ansiRed);
-    --magenta: var(--vscode-terminal-ansiBrightMagenta); --cian: var(--vscode-terminal-ansiCyan);
+    --magenta: var(--vscode-terminal-ansiBrightMagenta); --cian: var(--vscode-terminal-ansiCyan); --violeta: var(--vscode-terminal-ansiMagenta, var(--magenta));
   }
   html, body { background: var(--bg); }
   body { color: var(--fg); font-family: ${familia}, monospace; font-size: ${tam}px; font-weight: ${peso};
          line-height: ${alto.toFixed(2)}; margin: 0; -webkit-font-smoothing: antialiased; }
   a { color: var(--azul); text-decoration: none; cursor: pointer; } a:hover { text-decoration: underline; }
   .dim { color: var(--dim); }
-  .aviso { color: var(--dim); padding: 1.5em 1.5ch; }
+  .aviso { color: var(--dim); padding: 1lh 2ch; }
   .aviso code { color: var(--verde); }
   [hidden] { display: none !important; }   /* .fila y .tarea son flex: sin esto, hidden no oculta */
 `;

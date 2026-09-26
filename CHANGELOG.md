@@ -6,6 +6,62 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-09-26
+
+### Added
+
+- Day blocks, `[bloques.<clave>]`: a section of the dashboard's today tab filled by a
+  command that prints a page (the section contract, plus `marca` and `destacado` per
+  item). `telar bloque [clave] [--json]` runs one. Fetched with the network rhythm.
+- Each shortcut says where it shows, `[atajos.<k>] en`: `"hoy"` (the general line at the
+  top of today), a block's key (its title) or `"seccion:<clave>"` (that tab's title). The
+  key works from every tab.
+- A block item with `mensaje` is clickable: it opens a new thread with the agent and that
+  first prompt (`telar bloque <clave> --abrir <mensaje> [--nombre …]`), so one mail can be
+  processed on its own.
+- Every agenda event is clickable, past ones too. One that hasn't started opens its
+  preparation (`[agente] reunion`); one that has, its minutes in a «✎» tab
+  (`[agente] minuta`, `/minuta` by default). `[agenda.<clave>]` rules, a regular expression
+  on the title with `antes` and `despues` messages, pick a different skill per kind of event.
+  `telar reunion` says which one applies (`momento`, `regla`) and takes `--antes`/`--despues`.
+
+- Task cards. A provider can declare `detalle`, a command that prints a task as a page
+  with actions (`telar tarea <id> [--accion N] [--texto T]`). Clicking a task in the
+  dashboard or the sidebar opens its card instead of launching an agent: read it and
+  decide, with ⏎ for the main action and numbers for the rest; ⌘-click still takes it to
+  its thread. Actions run a command, take the task to its thread or open a link; the
+  command always comes from the provider, never from the webview.
+- `avance` on a task (what an agent working alone left: prepared, close, question,
+  conflict) shows as a coloured word and puts the task first. A **revisar** tab (`v`)
+  lists them all to review; in a card, ← → moves between them and a decision moves on to
+  the next one.
+- Page blocks can be `destacado` with a `color`, and items can carry an `enlace`.
+
+### Changed
+
+- The dashboard, redrawn: a header with a flowing colour gradient, each section with its
+  own colour, marker and count, rows on aligned grid columns, a pulsing next meeting,
+  shortcuts as key buttons, and short copy (just the time, `-39d`, `hoy`). It adapts to the
+  panel's width (container queries): secondary columns go, the task text never does.
+  Motion is off when the system asks for reduced motion.
+- The dashboard's screens are tabs under a fixed top bar (today, projects, mail, each
+  section with a page, settings): switching is one click, and there is no «back» to find.
+  `p`, `c` and `r` work from every tab.
+- Strict terminal look in the dashboard: one font size and no letter spacing anywhere,
+  horizontal spacing in whole characters and vertical spacing in whole lines, and nothing
+  decorative takes space (outlines and inset shadows instead of borders; keys keep their
+  keycap look and take exactly two cells).
+- One shortcut component across the dashboard: key and name, and on hover both take the
+  colour of their section. Hints that aren't clickable (`1–9 preparar`) use the same look,
+  dimmed. The **Atajos** section and the footer are gone; `t` opens the tasks.
+- The agent-mail tab is called «agentes», so it isn't confused with a mail block.
+- No more key letters on tasks or numbers on agenda rows: rows are clicked. Those keys are
+  free for shortcuts; only `r p t c /` stay reserved. A task shows `+` (new thread) or `→`
+  (goes to its thread, named in the tooltip) instead of the words, and `●` when it's being
+  worked on (the old box glyph is gone).
+- Meeting titles like «Revisión Proyectos Internos» no longer guess a project from the
+  words «proyectos» or «internos».
+
 ## [0.1.4] — 2026-09-25
 
 ### Added

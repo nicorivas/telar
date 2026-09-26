@@ -108,5 +108,39 @@ class LaPlantillaConfigurable(Prueba):
             mod_config.desde_dict({"agente": {"reunion": "  "}})
 
 
+
+class SegunElEvento(Prueba):
+    def test_empezo_compara_con_la_hora_de_hoy(self):
+        import datetime as dt
+
+        ahora = dt.datetime(2026, 9, 25, 12, 30)
+        self.assertTrue(reunion.empezo("", "12:00", ahora))
+        self.assertTrue(reunion.empezo("", "12:30", ahora))
+        self.assertFalse(reunion.empezo("", "15:00", ahora))
+        self.assertFalse(reunion.empezo("2026-09-26", "09:00", ahora))
+        self.assertTrue(reunion.empezo("2026-09-24", "18:00", ahora))
+
+    def test_antes_prepara_despues_minuta(self):
+        cfg = mod_config.desde_dict({})
+        self.assertEqual(reunion.plantilla(cfg, "Comité", False), (REUNION_POR_DEFECTO, "reunion"))
+        self.assertEqual(reunion.plantilla(cfg, "Comité", True)[1], "minuta")
+        self.assertTrue(reunion.plantilla(cfg, "Comité", True)[0].startswith("/minuta"))
+
+    def test_una_regla_que_calza_manda_y_la_que_falta_cae_a_la_general(self):
+        cfg = mod_config.desde_dict({"agenda": {"clase": {"si": "clase|curso", "antes": "/clase {titulo}"}}})
+        self.assertEqual(reunion.plantilla(cfg, "Clase U5 del curso", False), ("/clase {titulo}", "clase"))
+        self.assertEqual(reunion.plantilla(cfg, "Clase U5 del curso", True)[1], "minuta")
+        self.assertEqual(reunion.plantilla(cfg, "Comité", False)[1], "reunion")
+
+    def test_una_regla_mal_escrita_es_un_error(self):
+        for mal in ({"si": ""}, {"si": "(", "antes": "x"}, {"si": "x"}, {"si": "x", "antes": 3},
+                    {"si": "x", "antes": "y", "otra": 1}):
+            with self.assertRaises(ErrorDeConfig, msg=mal):
+                mod_config.desde_dict({"agenda": {"r": mal}})
+
+    def test_la_minuta_va_en_otro_tab(self):
+        self.assertEqual(reunion.nombre_del_tab("Daily", "9:00", reunion.MARCA_DESPUES), "✎ 9:00 Daily")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -78,6 +78,21 @@ comando = ["/casa/bin/mis-tareas"]
 El puente son diez líneas y traduce el dialecto de cada uno: telar escribe las fechas
 como `vence:2026-09-30` y la prioridad como `!alta`, y otro gestor usará `due:` y `(P2)`.
 
+Con `detalle`, un clic en una tarea del dashboard abre su **ficha** en vez de ir al hilo:
+leerla y decidir, sin abrir un agente (⌘-clic sigue llevándola al hilo).
+
+```toml
+[proveedores.tareas]
+tipo    = "comando"
+comando = ["/casa/bin/mis-tareas"]
+detalle = ["/casa/bin/mis-tareas", "--ver", "{id}"]
+```
+
+`detalle` imprime una página (el contrato de `telar seccion`) con `acciones`, los botones
+de la ficha. Ver [contratos](contratos.md#telar-tarea-id---json). Las tareas que traen
+`avance` (lo último que dejó un agente trabajando solo) van primero en la lista, con esa
+palabra en color, y el modo «propuestas» las junta para revisarlas con ← →.
+
 ### El calendario: iCal o gws
 
 La agenda del dashboard sale de una de dos fuentes, y se elige sin editar el archivo:
@@ -165,6 +180,7 @@ se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en 
 nombre = "claude-code"   # vacío o ausente: cada hilo es una shell
 carpeta = "hilo"         # hilo (por defecto) · raiz · una ruta
 reunion = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
+minuta = "/minuta {titulo} ({fecha} {hora}) · proyecto: {proyecto}"
 proyecto = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
 pendiente = "{texto}"         # se escribe, sin enviar, al agente de un hilo ya abierto
 pendiente_nuevo = "{texto}"   # primer mensaje de un hilo que se abre para el pendiente
@@ -179,6 +195,25 @@ título; si no hay ninguna, la cola «· proyecto: …» se quita. El de fábric
 y supone la skill `/preparar-reunion` instalada; cualquier otra skill o una instrucción
 en prosa sirven igual. Se cambia desde **⚙ configuración** en el dashboard, o con
 `telar config --reunion "…"` (vacío vuelve al de fábrica).
+
+`minuta` es lo mismo para una reunión que **ya empezó**: el clic en un evento pasado de la
+agenda abre un tab «✎ hora reunión» con esa plantilla, para procesar lo que se dijo. De
+fábrica supone la skill `/minuta`. Para otros tipos de evento, ver `[agenda]`.
+
+## `[agenda]` — qué abre cada tipo de evento
+
+```toml
+[agenda.clase]
+si = "clase|curso"              # expresión regular sobre el título, sin mayúsculas
+antes = "/preparar-clase {titulo} ({fecha} {hora})"
+despues = "/cerrar-clase {titulo}"   # opcional: sin ella, rige [agente] minuta
+```
+
+Cada evento de la agenda se clica. telar mira si ya empezó y busca, en orden, la primera
+regla cuyo `si` calce con el título: `antes` si no ha empezado, `despues` si ya. Si ninguna
+calza, o la que calza no trae ese momento, rigen las generales, `[agente] reunion` y
+`[agente] minuta`. Mismos marcadores. `telar reunion "<título>" HH:MM --donde` dice qué
+regla rige sin abrir nada; `--antes` y `--despues` fuerzan el momento.
 
 `proyecto` es lo que se le dice al agente al abrir un proyecto desde la pantalla
 **▤ proyectos** del dashboard (o con `telar proyectos abrir <ruta>`): se abre un tab con
@@ -223,17 +258,43 @@ los ganchos de Zellij creerían que el agente es uno de sus paneles.
 nombre = "⚑ correo"
 mensaje = "/correo"
 descripcion = "procesar el correo de hoy"   # opcional: sale al pasar el mouse
+en = "correo"                               # opcional: dónde se muestra; "hoy" si falta
 ```
 
-Cada atajo es una tecla del dashboard (y un enlace en su sección **Atajos**) que abre un
+Cada atajo es una tecla del dashboard (y un enlace, en el lugar que diga `en`) que abre un
 hilo nuevo con el agente, en `[agente] carpeta`, con `mensaje` como primer prompt. Sirve
 para lo que se hace varias veces al día y no es de ningún proyecto: el correo, un chat,
 cargar las horas. El hilo se llama `nombre` más la fecha y la hora («⚑ correo 09/23
 10:32»), porque la revisión de la mañana y la de la tarde son dos conversaciones.
 
-La tecla es un solo carácter y no puede ser una de las que el dashboard ya usa: las letras
-de los pendientes (`a b d e f g h i`), los números de la agenda, `r`, `p`, `t` y `/`.
+La tecla es un solo carácter y no puede ser una de las que el dashboard ya usa: `r`, `p`,
+`t`, `c`, `v` y `/`. Las filas de la agenda y de los pendientes no llevan tecla: se clican.
 `telar atajo` lista los declarados y `telar atajo m` hace lo mismo que la tecla.
+
+`en` dice dónde se ve el atajo; la tecla funciona desde cualquier pestaña:
+
+| `en` | dónde |
+| --- | --- |
+| `"hoy"` | la línea de arriba de **hoy**, con los atajos generales |
+| `"<clave>"` | el título del bloque `[bloques.<clave>]` |
+| `"seccion:<clave>"` | el título de la pestaña de esa sección |
+
+## `[bloques]` — secciones del día que llena un comando
+
+```toml
+[bloques.correo]
+nombre = "correo"
+comando = ["/ruta/a/mi-correo", "--json"]
+color = "rojo"        # azul, amarillo, verde, rojo, magenta, cian o violeta; cian si falta
+```
+
+Cada bloque es una sección más de **hoy**, entre la agenda y los hilos. El comando imprime
+una página con el contrato de `telar seccion` (ver [contratos](contratos.md#telar-bloque-clave---json))
+y el dashboard muestra sus ítems como filas: marca, hora, `texto` y `titulo`. Se pide con el
+ritmo de la red (cada 5 minutos, o con `r`), no en cada refresco. Los atajos con
+`en = "<clave>"` van en su título: el correo y la tecla que lo procesa, juntos.
+Un ítem con `mensaje` se puede clicar: abre un hilo nuevo con el agente para esa fila,
+como un atajo pero para un solo correo.
 
 ## `[remotos]` — máquinas donde pueden vivir hilos
 

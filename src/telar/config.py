@@ -18,6 +18,7 @@ aquí se agrega una clave, allá se escribe.
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -84,6 +85,9 @@ class Hilos:
 #: lo que flow le decía a Claude al pinchar una reunión, y el punto de partida de telar.
 REUNION_POR_DEFECTO = "/preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}"
 
+#: y al pinchar una que ya empezó: procesar lo que se dijo. Supone la skill `/minuta`.
+MINUTA_POR_DEFECTO = "/minuta {titulo} ({fecha} {hora}) · proyecto: {proyecto}"
+
 #: lo que se le dice al agente al abrir un proyecto desde la lista del dashboard. No supone
 #: ninguna skill: cualquier agente sabe leer un archivo.
 PROYECTO_POR_DEFECTO = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y qué sigue."
@@ -110,6 +114,8 @@ class Agente:
     #: «· proyecto: …» se quita. La de fábrica es la de flow, y supone una skill
     #: `/preparar-reunion` instalada en el agente.
     reunion: str = REUNION_POR_DEFECTO
+    #: lo mismo para una reunión que ya empezó (la minuta, no la preparación).
+    minuta: str = MINUTA_POR_DEFECTO
     #: lo que se le dice al abrir un proyecto desde la lista. Marcadores: {nombre} (el de
     #: pantalla), {ruta} (relativa a la raíz), {carpeta} y {documento} (absolutas).
     proyecto: str = PROYECTO_POR_DEFECTO
@@ -124,9 +130,25 @@ class Agente:
     contexto: bool = True
 
 
-#: teclas que el dashboard ya usa: un atajo no las puede tomar. Las letras de los pendientes
-#: (a b d e f g h i), los números de la agenda, r (recargar), p (proyectos), t (tareas), / (buscar).
-TECLAS_RESERVADAS = frozenset("abdefghi123456789rpt/")
+#: teclas que el dashboard ya usa: un atajo no las puede tomar. r (recargar), p (proyectos),
+#: t (tareas), c (agentes), v (revisar), / (buscar). Las filas de la agenda y los pendientes
+#: se clican.
+TECLAS_RESERVADAS = frozenset("rptcv/")
+
+
+@dataclass(frozen=True, slots=True)
+class ReglaAgenda:
+    """Qué se le dice al agente al pinchar un evento de cierto tipo (`[agenda.<clave>]`).
+
+    `si` es una expresión regular que se busca en el título, sin distinguir mayúsculas.
+    `antes` rige mientras el evento no empieza; `despues`, desde que empezó. Una vacía cae
+    a la de `[agente]` (`reunion` o `minuta`). La primera regla que calza gana.
+    """
+
+    clave: str
+    si: str
+    antes: str = ""
+    despues: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +164,23 @@ class Atajo:
     nombre: str
     mensaje: str
     descripcion: str = ""
+    #: dónde se muestra: «hoy» (arriba del día, los generales), la clave de un bloque del
+    #: dashboard (en su título: «correo» → el de procesar el correo) o «seccion:<clave>» (en
+    #: la pestaña de esa sección). La tecla funciona desde cualquier pestaña.
+    en: str = "hoy"
+
+
+@dataclass(frozen=True, slots=True)
+class Bloque:
+    """Una sección del día que llena un comando (`[bloques.<clave>]`): los últimos correos,
+    lo que sea que se quiera ver junto a la agenda. El comando imprime el mismo JSON que una
+    página de sección (docs/contratos.md); telar lo pide con el ritmo de la red."""
+
+    clave: str
+    nombre: str
+    comando: tuple[str, ...]
+    #: el color de la sección: azul, amarillo, verde, rojo, magenta, cian, violeta
+    color: str = "cian"
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +258,10 @@ class Config:
     hilos: Hilos = field(default_factory=Hilos)
     #: las teclas del dashboard que abren un hilo con el agente haciendo algo (`[atajos.m]`).
     atajos: tuple[Atajo, ...] = ()
+    #: secciones del día llenadas por un comando (`[bloques.<clave>]`), en el orden del archivo.
+    bloques: tuple[Bloque, ...] = ()
+    #: qué abre cada tipo de evento de la agenda (`[agenda.<clave>]`), en el orden del archivo.
+    agenda: tuple[ReglaAgenda, ...] = ()
     #: grupos propios en la lista de hilos (`[secciones.x]`), en el orden del archivo.
     secciones: tuple[Seccion, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
@@ -338,7 +381,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "proyecto", "pendiente", "pendiente_nuevo", "contexto"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "minuta", "proyecto", "pendiente", "pendiente_nuevo", "contexto"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -352,6 +395,9 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         reunion = tabla.get("reunion", REUNION_POR_DEFECTO)
         if not isinstance(reunion, str) or not reunion.strip():
             raise ErrorDeConfig(f"agente.reunion: se esperaba un texto, llegó {reunion!r}")
+        minuta = tabla.get("minuta", MINUTA_POR_DEFECTO)
+        if not isinstance(minuta, str) or not minuta.strip():
+            raise ErrorDeConfig(f"agente.minuta: se esperaba un texto, llegó {minuta!r}")
         proyecto = tabla.get("proyecto", PROYECTO_POR_DEFECTO)
         if not isinstance(proyecto, str) or not proyecto.strip():
             raise ErrorDeConfig(f"agente.proyecto: se esperaba un texto, llegó {proyecto!r}")
@@ -365,7 +411,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         if not isinstance(contexto, bool):
             raise ErrorDeConfig(f"agente.contexto: se esperaba true o false, llegó {contexto!r}")
         cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(),
-                                   reunion=reunion.strip(), proyecto=proyecto.strip(), contexto=contexto, **textos)
+                                   reunion=reunion.strip(), minuta=minuta.strip(), proyecto=proyecto.strip(), contexto=contexto, **textos)
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")
@@ -392,10 +438,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                 raise ErrorDeConfig(f"atajos.{tecla}: la tecla es un solo carácter")
             if tecla in TECLAS_RESERVADAS:
                 raise ErrorDeConfig(f"atajos.{tecla}: esa tecla ya la usa el dashboard")
-            sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion"}
+            sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion", "en"}
             if sobra:
                 raise ErrorDeConfig(f"atajos.{tecla}.{sorted(sobra)[0]}: no existe")
             campos = {}
+            en = cuerpo.get("en", "hoy")
+            if not isinstance(en, str) or not en.strip():
+                raise ErrorDeConfig(f"atajos.{tecla}.en: «hoy», la clave de un bloque o «seccion:<clave>», llegó {en!r}")
+            campos["en"] = en.strip()
             for clave in ("nombre", "mensaje", "descripcion"):
                 valor = cuerpo.get(clave, "")
                 if not isinstance(valor, str) or (clave != "descripcion" and not valor.strip()):
@@ -403,6 +453,52 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                 campos[clave] = valor.strip()
             atajos.append(Atajo(tecla=tecla, **campos))
         cambios["atajos"] = tuple(atajos)
+
+    if "bloques" in datos:
+        tabla = _tabla(datos["bloques"], "bloques")
+        bloques = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"bloques.{clave}")
+            sobra = set(cuerpo) - {"nombre", "comando", "color"}
+            if sobra:
+                raise ErrorDeConfig(f"bloques.{clave}.{sorted(sobra)[0]}: no existe")
+            comando = cuerpo.get("comando", [])
+            if not isinstance(comando, list) or not comando or not all(isinstance(x, str) and x for x in comando):
+                raise ErrorDeConfig(f"bloques.{clave}.comando: se esperaba una lista de palabras, llegó {comando!r}")
+            color = cuerpo.get("color", "cian")
+            if color not in ("azul", "amarillo", "verde", "rojo", "magenta", "cian", "violeta"):
+                raise ErrorDeConfig(f"bloques.{clave}.color: azul, amarillo, verde, rojo, magenta, cian o violeta")
+            nombre = cuerpo.get("nombre", clave)
+            if not isinstance(nombre, str) or not nombre.strip():
+                raise ErrorDeConfig(f"bloques.{clave}.nombre: se esperaba un texto")
+            bloques.append(Bloque(clave=clave, nombre=nombre.strip(), comando=tuple(comando), color=color))
+        cambios["bloques"] = tuple(bloques)
+
+    if "agenda" in datos:
+        tabla = _tabla(datos["agenda"], "agenda")
+        reglas = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"agenda.{clave}")
+            sobra = set(cuerpo) - {"si", "antes", "despues"}
+            if sobra:
+                raise ErrorDeConfig(f"agenda.{clave}.{sorted(sobra)[0]}: no existe")
+            si = cuerpo.get("si", "")
+            if not isinstance(si, str) or not si.strip():
+                raise ErrorDeConfig(f"agenda.{clave}.si: se esperaba una expresión para el título")
+            try:
+                re.compile(si)
+            except re.error as e:
+                raise ErrorDeConfig(f"agenda.{clave}.si: no es una expresión regular ({e})") from None
+            textos = {}
+            for campo in ("antes", "despues"):
+                valor = cuerpo.get(campo, "")
+                if not isinstance(valor, str):
+                    raise ErrorDeConfig(f"agenda.{clave}.{campo}: se esperaba un texto")
+                textos[campo] = valor.strip()
+            if not any(textos.values()):
+                raise ErrorDeConfig(f"agenda.{clave}: falta antes o despues")
+            reglas.append(ReglaAgenda(clave=clave, si=si, **textos))
+        cambios["agenda"] = tuple(reglas)
 
     if "secciones" in datos:
         tabla = _tabla(datos["secciones"], "secciones")
@@ -456,7 +552,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha", "agente", "hilos", "atajos", "secciones", "remotos",
+        "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

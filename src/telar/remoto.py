@@ -235,3 +235,60 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
         tel.mux.ir(hilo.id)
     return sesion
 
+
+def sesiones(remoto: Remoto) -> tuple[list[tuple[str, str]], str]:
+    """Las sesiones de hilo que hay allá: (sesión, nombre del hilo), y un error o "".
+
+    Cuenta la que se llama `telar-…` y tiene `@telar_hilo`: la que armó telar desde aquí o
+    la que nació allá (un reloj, el celular) siguiendo la misma convención.
+    """
+    sep = "\x1f"
+    formato = sep.join(["#{session_name}", f"#{{{OPCION_HILO}}}"])
+    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
+             shlex.join(["tmux", "list-sessions", "-F", formato])]
+    try:
+        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return [], f"{remoto.destino} no responde: {e}"
+    if r.returncode != 0:
+        if "no server running" in r.stderr or "no sessions" in r.stderr:
+            return [], ""
+        return [], (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+    salida = []
+    for renglon in r.stdout.splitlines():
+        # algunos tmux devuelven el separador como texto octal (ver telar.mux.tmux.SEP_EN_OCTAL)
+        partes = (renglon if sep in renglon else renglon.replace("\\037", sep)).split(sep)
+        if len(partes) == 2 and partes[0].startswith("telar-") and partes[1].strip():
+            salida.append((partes[0], partes[1].strip()))
+    return salida, ""
+
+
+def nuevas(conocidas: set[str], de_alla: list[tuple[str, str]], nombres: set[str]) -> list[tuple[str, str, str]]:
+    """Las sesiones de allá que telar no conoce, con el nombre que tendrá su hilo aquí.
+
+    Una sesión conocida (anotada en el estado, aunque su hilo esté archivado) no se vuelve a
+    traer: archivar un hilo remoto no es pedir que reaparezca. Si el nombre ya lo usa otro
+    hilo, se le agrega «· 2», «· 3»…  Devuelve (sesión, nombre de allá, nombre de aquí).
+    """
+    salida, usados = [], set(nombres)
+    for sesion, hilo in de_alla:
+        if sesion in conocidas:
+            continue
+        nombre, n = hilo, 2
+        while nombre in usados:
+            nombre, n = f"{hilo} · {n}", n + 1
+        usados.add(nombre)
+        salida.append((sesion, hilo, nombre))
+    return salida
+
+
+def traer(tel, remoto: Remoto, sesion: str, nombre: str) -> None:
+    """Abre aquí la ventana de una sesión que nació allá, sin quitarle el foco a nadie.
+
+    La línea remota no corre: `-A` se engancha a la sesión que ya existe."""
+    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "exec bash -l"), foco=False)
+    hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
+    if hilo is not None:
+        tel.mux.marcar_remoto(hilo.id, remoto.nombre)
+    tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
+

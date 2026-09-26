@@ -16,13 +16,19 @@ import { irAHilo, mostrarTerminal } from '../acciones';
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
-import { CSS_DIA, Dia, SCRIPT_DIA, dia, htmlPendientes, olvidarDia } from './dia';
+import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
 import { llevarPendiente } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' = 'dia';
+    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' = 'dia';
+    /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada */
+    private fichaDesde: 'dia' | 'revisar' = 'dia';
+    /** la ficha abierta: de qué proveedor, su id y su ref (con la que se lleva al hilo) */
+    private ficha?: { proveedor: string; id: string; ref: string; pagina?: cli.JsonPagina; aviso?: string };
+    /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído */
+    private decididas = new Set<string>();
     /** el correo con cuerpos, leído al entrar a la pantalla; y el filtro elegido */
     private buzones?: cli.JsonBuzon[];
     private filtroCorreo: 'todas' | 'mias' | 'sin' = 'todas';
@@ -36,6 +42,9 @@ export class PanelHoy {
     private avisoProyectos = '';
     /** las teclas que declara `[atajos]`; se leen al abrir el panel y al volver de la configuración */
     private atajos: cli.JsonAtajo[] = [];
+    /** los bloques del día declarados, y lo último que mostró cada uno */
+    private bloquesCfg: cli.JsonBloque[] = [];
+    private bloquesDatos = new Map<string, { pagina?: cli.JsonPagina; error: string; hora: number }>();
     private calendario?: cli.JsonCalendario;
     private agenteConfig?: cli.JsonAgenteConfig;
     private hilosConfig?: { directorios: string[]; tope: number };
@@ -78,86 +87,102 @@ export class PanelHoy {
             if (conRed) olvidarDia();
             this.datos = await dia(conRed ? 0 : 45000, conRed);
             this.render();
+            void this.leerBloques(conRed);
         } finally { this.enCurso = false; }
     }
 
     /** Redibuja con lo que hay: la marca «ahora» y los «hace» se mueven solos cada minuto. */
     render(): void {
         if (this.panel && this.pantalla === 'config') { this.renderConfig(); return; }
+        if (this.panel && this.pantalla === 'revisar') { this.renderRevisar(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
-        if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo')) return;
+        if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo' || this.pantalla === 'tarea')) return;
         const d = this.datos;
         if (!this.panel || !d) return;
         this.teclas.clear();
         const ahora = new Date();
         const h: string[] = [];
-        h.push(`<div class="cab"><b>${esc(d.nombreDia)} ${esc(d.fecha)}</b>`
-            + `<span class="dim">${ahora.toTimeString().slice(0, 5)}${d.semana ? ` · semana ${d.semana}` : ''}</span>`
-            + '<span class="der dim">'
-            + (modelo.hayRemotos ? '<a data-accion="correo" title="el correo entre agentes de las máquinas remotas (c)">✉ correo</a> · ' : '')
-            + '<a data-accion="proyectos" title="todos los proyectos: buscar y abrir uno (p)">▤ proyectos</a>'
-            + ' · <a data-accion="refrescar" title="volver a preguntar, proveedores incluidos (r)">↻ recargar</a>'
-            + ' · <a data-accion="config" title="de dónde sale cada cosa">⚙ configuración</a></span></div>');
-        h.push(...this.agenda(d, ahora), ...this.hilos(), ...this.htmlAtajos(), ...htmlPendientes(d, false), ...this.fallas(d));
-        const teclasAtajos = this.atajos.map(a => ` · ${esc(a.tecla)} ${esc(a.nombre)}`).join('');
-        h.push(`<div class="pie">⎋ vuelve al terminal · / busca · r recarga · p proyectos · t la vista de tareas${teclasAtajos} · letra: llevar ese pendiente a su hilo</div>`);
-        for (const a of this.atajos) this.teclas.set(a.tecla, () => this.lanzarAtajo(a.tecla));
-        if (modelo.hayRemotos && !this.teclas.has('c')) this.teclas.set('c', () => this.abrirCorreo());
+        // arriba, lo general: los atajos que no son de ninguna sección, las tareas y el terminal
+        h.push('<div class="generales">' + this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
+            .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+            + atajo('t', 'tareas', 'tareas', '', 'la vista de tareas') + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal') + '</div>');
+        h.push(...this.agenda(d, ahora), ...this.bloques(), ...this.hilos(), ...htmlPendientes(d, false), ...this.fallas(d));
         for (const [k, f] of [['r', () => this.actualizar(true)], ['p', () => this.abrirProyectos()],
             ['t', () => vscode.commands.executeCommand('telar.tareas')]] as const) {
             if (!this.teclas.has(k)) this.teclas.set(k, f);
         }
-        void this.panel.webview.postMessage({ tipo: 'dia', html: h.join('\n') });
+        this.pintar(h);
+    }
+
+    /** La barra de arriba, igual en todas las pestañas y fija al desplazarse: la marca, el
+     *  reloj y las pestañas. Cambiar de pestaña es un clic; no hay que «volver» a ninguna parte. */
+    private nav(): string {
+        const d = this.datos;
+        const ahora = new Date();
+        const activa = this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
+            : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde : this.pantalla;
+        const aRevisar = this.propuestas().length;
+        const pestanas: [string, string, string, string, string][] = [  // clave, acción, valor, nombre, tecla
+            ['dia', 'dia', '', 'hoy', ''],
+            ['revisar', 'revisar', '', aRevisar ? `revisar ${aRevisar}` : 'revisar', 'v'],
+            ['proyectos', 'proyectos', '', 'proyectos', 'p'],
+            ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
+            ...modelo.secciones.filter(x => x.home).map(x =>
+                [`seccion:${x.clave}`, 'seccion', x.clave, x.nombre.toLowerCase(), ''] as [string, string, string, string, string]),
+            ['config', 'config', '', '⚙', ''],
+        ];
+        return '<div class="fijo"><header class="top"><div class="marca-t"><span class="logo">telar</span>'
+            + (d ? `<span class="fecha">${esc(fechaLarga(d.nombreDia, d.fecha))}</span>` : '')
+            + `<span class="reloj">${ahora.toTimeString().slice(0, 5)}</span>${d?.semana ? `<span class="sem">s${d.semana}</span>` : ''}</div>`
+            + atajo('r', 'recargar', 'refrescar', '', 'recargar, proveedores incluidos') + '</header>'
+            + '<nav class="tabs">' + pestanas.map(([clave, accion, valor, nombre, tecla]) =>
+                `<a class="tab${clave === activa ? ' activa' : ''}" data-accion="${accion}"${valor ? ` data-valor="${esc(valor)}"` : ''}>`
+                + `${tecla ? `<kbd>${tecla}</kbd> ` : ''}${esc(nombre)}</a>`).join('') + '</nav>'
+            + '<div class="regla"></div></div>';
     }
 
     private agenda(d: Dia, ahora: Date): string[] {
-        const h = ['<h2>Agenda<small>número o clic: preparar la reunión · entrar: la videollamada</small></h2>'];
-        if (d.error) return [...h, `<div class="fila dim">(${esc(d.error)})</div>`];
-        const falla = d.fallas.find(f => f.startsWith('calendario'));
-        if (falla) {
-            const motivo = falla.split(': ').pop() ?? falla;
-            return [...h, `<div class="fila falla">El calendario no respondió (${esc(motivo)}) · `
-                + '<a data-accion="config">configurar</a></div>'];
-        }
-        if (d.agenda === null) {
-            if (d.declarados.length) {
-                return [...h, '<div class="fila dim">todavía no se consultó el calendario (r)</div>'];
-            }
-            return [...h, '<div class="fila dim">No hay calendario conectado · '
-                + '<a data-accion="config" title="elegir de dónde sale la agenda">conectar</a></div>'];
-        }
-        if (!d.agenda.length) return [...h, '<div class="fila dim">nada con hora</div>'];
         const t = ahora.getTime();
-        const proxima = d.agenda.find(e => Date.parse(e.cuando ?? '') > t);
-        let n = 0;
-        for (const e of d.agenda) {
+        const filas = d.agenda ?? [];
+        const quedan = filas.filter(e => Date.parse(e.cuando ?? '') > t).length;
+        const h = [seccion('agenda', 'azul', d.agenda?.length ? `${quedan}/${filas.length}` : '')];
+        const fin = (x: string) => [...h, x, '</section>'];
+        if (d.error) return fin(`<div class="vacio falla">${esc(d.error)}</div>`);
+        const falla = d.fallas.find(f => f.startsWith('calendario'));
+        if (falla) return fin(`<div class="vacio falla">calendario caído · <a data-accion="config">configurar</a></div>`);
+        if (d.agenda === null) {
+            return fin(d.declarados.length ? '<div class="vacio">sin consultar · <kbd>r</kbd></div>'
+                : '<div class="vacio">sin calendario · <a data-accion="config">conectar</a></div>');
+        }
+        if (!filas.length) return fin('<div class="vacio">nada con hora</div>');
+        const proxima = filas.find(e => Date.parse(e.cuando ?? '') > t);
+        for (const e of filas) {
             const cuando = e.cuando ?? '';
             const url = e.url ?? '';
-            const entrar = url ? `<a class="enlace" data-url="${esc(url)}" title="${esc(url)}">entrar</a>` : '';
-            const hilo = e.hilo ? `<span class="dim">${esc(e.hilo)}</span>` : '';
+            const hilo = e.hilo ? `<span class="hilo-ag">${esc(e.hilo)}</span>` : '';
+            // un clic en cualquier evento abre su hilo; telar decide qué skill según si ya
+            // empezó (preparar o minuta) y las reglas de `[agenda]`
+            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url]));
             if (Date.parse(cuando) <= t) {
-                h.push(`<div class="fila pasada"><span class="tecla"></span><span class="hora">${esc(hhmm(cuando))}</span>`
-                    + `<span class="que">${esc(e.texto)}</span>${hilo}</div>`);
+                h.push(`<div class="ag pasada clic" data-accion="reunion" data-valor="${valor}" title="clic: la minuta">`
+                    + `<span class="hora">${esc(hhmm(cuando))}</span>`
+                    + `<span class="que">${esc(e.texto)}</span><span class="extra">${hilo}</span></div>`);
                 continue;
             }
-            n += 1;
-            const tecla = n <= 9 ? String(n) : '';
-            if (tecla) this.teclas.set(tecla, () => this.preparar(e.texto, hhmm(cuando), url));
+            const esProxima = e === proxima;
             let falta = '';
-            if (e === proxima) {
+            if (esProxima) {
                 const min = Math.floor((Date.parse(cuando) - t) / 60000);
-                falta = `<span class="cuando">← ${min <= 0 ? 'ahora' : min < 90 ? `en ${min} min`
-                    : `en ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`}</span>`;
+                falta = `<span class="falta">${min <= 0 ? 'ahora' : min < 90 ? `${min}m` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`}</span>`;
             }
-            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url]));
-            h.push(`<div class="fila clic${e === proxima ? ' proxima' : ''}" data-accion="reunion" data-valor="${valor}"`
-                + ` title="preparar esta reunión con el agente${tecla ? ` (${tecla})` : ''}">`
-                + `<span class="tecla">${tecla ? `[${tecla}]` : ''}</span><span class="hora">${esc(hhmm(cuando))}</span>`
-                + `<span class="que">${esc(e.texto)}</span>${hilo}${entrar}${falta}</div>`);
+            const entrar = url ? `<a class="enlace" data-url="${esc(url)}" title="${esc(url)}">entrar ↗</a>` : '';
+            h.push(`<div class="ag clic${esProxima ? ' proxima' : ''}" data-accion="reunion" data-valor="${valor}" title="clic: preparar">`
+                + `<span class="hora">${esProxima ? '<i class="punto">●</i>' : ''}${esc(hhmm(cuando))}</span>`
+                + `<span class="que">${esc(e.texto)}</span><span class="extra">${hilo}${falta}${entrar}</span></div>`);
         }
-        return h;
+        return [...h, '</section>'];
     }
 
     private hilos(): string[] {
@@ -165,31 +190,80 @@ export class PanelHoy {
         const filas = modelo.enLista
             .filter(x => x.atencion in orden)
             .sort((a, b) => orden[a.atencion] - orden[b.atencion] || a.nombre.localeCompare(b.nombre));
-        const h = ['<h2>Te esperan<small>clic: ir al hilo</small></h2>'];
-        if (!filas.length) return [...h, '<div class="fila dim">nadie</div>'];
+        const esperan = filas.filter(x => x.atencion === 'espera').length;
+        const h = [seccion('esperan', 'amarillo', filas.length ? `${esperan}/${filas.length}` : '',
+            '<span class="leyenda">○ espera  ✓ listo  ● trabaja</span>')];
+        if (!filas.length) return [...h, '<div class="vacio">nadie</div>', '</section>'];
         for (const x of filas) {
-            h.push(`<div class="fila clic" data-accion="ir" data-valor="${esc(x.nombre)}">`
+            h.push(`<div class="hl clic" data-accion="ir" data-valor="${esc(x.nombre)}" title="${esc(NOMBRE_ATENCION[x.atencion] ?? x.atencion)}">`
                 + `<span class="at ${x.atencion}">${GLIFO[x.atencion]}</span>`
                 + `<span class="nombre">${esc(cli.nombreVisible(modelo.hilos.find(y => y.nombre === x.nombre) ?? x))}</span>`
-                + `<span class="dim">${esc(NOMBRE_ATENCION[x.atencion] ?? x.atencion)}${x.visto ? `, hace ${hace(x.visto)}` : ''}</span></div>`);
+                + `<span class="cuando">${esc(haceCorto(x.visto))}</span></div>`);
         }
-        return h;
+        return [...h, '</section>'];
     }
 
     private async leerAtajos(): Promise<void> {
         const r = await cli.config();
         this.atajos = r.datos?.atajos ?? [];
+        this.bloquesCfg = r.datos?.bloques ?? [];
         this.render();
+        void this.leerBloques();
     }
 
-    /** Los atajos como una fila de enlaces: lo que se hace varias veces al día y no es de
-     *  ningún proyecto. La tecla hace lo mismo que el clic. */
-    private htmlAtajos(): string[] {
-        if (!this.atajos.length) return [];
-        return ['<h2>Atajos<small>tecla o clic: un hilo nuevo con el agente haciéndolo</small></h2>',
-            '<div class="fila">' + this.atajos.map(a =>
-                `<a data-accion="atajo" data-valor="${esc(a.tecla)}" title="${esc(`${a.descripcion ? a.descripcion + '\n' : ''}le dice: ${a.mensaje}`)}">`
-                + `[${esc(a.tecla)}] ${esc(a.nombre)}</a>`).join('<span class="dim"> · </span>') + '</div>'];
+    /** Los bloques del día (`[bloques.<clave>]`): una sección cada uno, con su color, su cuenta
+     *  y en el título los atajos que dicen `en = "<clave>"`. Lo que muestran lo pide
+     *  `leerBloques`, aparte y con el ritmo de la red: un comando lento no frena el día. */
+    private bloques(): string[] {
+        const h: string[] = [];
+        for (const b of this.bloquesCfg) {
+            const leido = this.bloquesDatos.get(b.clave);
+            const suyos = this.atajos.filter(a => a.en === b.clave)
+                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('');
+            h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
+            if (!leido) h.push('<div class="vacio">leyendo…</div>');
+            else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
+            else {
+                const items = (leido.pagina?.bloques ?? []).flatMap(x => x.items ?? []);
+                if (!items.length) h.push('<div class="vacio">nada</div>');
+                items.forEach((x, i) => {
+                    const clic = x.mensaje ? ` data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}"` : '';
+                    h.push(`<div class="cr${x.destacado ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
+                        + ` title="${esc(x.mensaje ? `clic: un hilo para esto (${x.mensaje})` : x.titulo)}"><span class="mk">${esc(x.marca ?? '·')}</span>`
+                        + `<span class="hora">${esc((x.fecha ?? '').slice(11, 16))}</span>`
+                        + `<span class="de">${esc(x.texto ?? '')}</span><span class="que">${esc(x.titulo)}</span></div>`);
+                });
+            }
+            h.push('</section>');
+        }
+        return h;
+    }
+
+    /** Pide lo que muestra cada bloque. Sin `forzar`, solo los que tienen más de 5 minutos. */
+    private async leerBloques(forzar = false): Promise<void> {
+        const ahora = Date.now();
+        await Promise.all(this.bloquesCfg.map(async b => {
+            const antes = this.bloquesDatos.get(b.clave);
+            if (!forzar && antes && ahora - antes.hora < 5 * 60 * 1000) return;
+            const r = await cli.bloque(b.clave);
+            this.bloquesDatos.set(b.clave, { pagina: r.datos, error: r.datos ? '' : (r.error ?? 'no contestó'), hora: Date.now() });
+            if (this.pantalla === 'dia') this.render();
+        }));
+    }
+
+    /** Un clic en una fila de un bloque que trae `mensaje`: un hilo nuevo para esa fila. */
+    private async abrirItem(valor: string): Promise<void> {
+        const corte = valor.lastIndexOf(':');
+        const clave = valor.slice(0, corte);
+        const x = (this.bloquesDatos.get(clave)?.pagina?.bloques ?? []).flatMap(b => b.items ?? [])[Number(valor.slice(corte + 1))];
+        if (!x?.mensaje) return;
+        const r = await cli.abrirItem(clave, x.mensaje, x.nombre || x.titulo);
+        if (!r.datos) {
+            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el hilo'}`);
+            return;
+        }
+        await modelo.sondear();
+        await mostrarTerminal();
     }
 
     private async lanzarAtajo(tecla: string): Promise<void> {
@@ -209,11 +283,11 @@ export class PanelHoy {
         this.pantalla = 'seccion';
         if (this.seccion !== clave) { this.seccion = clave; this.pagina = undefined; }
         const nombre = modelo.secciones.find(s => s.clave === clave)?.nombre ?? clave;
-        if (!this.pagina) this.pintar([`<div class="cab"><b>${esc(nombre)}</b></div>`, '<div class="fila dim">leyendo…</div>']);
+        if (!this.pagina) this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`, '<div class="fila dim">leyendo…</div>']);
         const r = await cli.seccion(clave);
         if (this.pantalla !== 'seccion' || this.seccion !== clave) return;
         if (!r.datos) {
-            this.pintar([`<div class="cab"><b>${esc(nombre)}</b><span class="der dim"><a data-accion="dia">← volver al dashboard</a></span></div>`,
+            this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`,
                 `<div class="fila falla">${esc(r.error ?? 'el home no contestó')}</div>`]);
             return;
         }
@@ -221,27 +295,180 @@ export class PanelHoy {
         this.renderSeccion();
     }
 
-    private renderSeccion(): void {
-        const p = this.pagina;
-        if (!p) return;
-        const h: string[] = [`<div class="cab"><b>${esc(p.titulo)}</b>${p.subtitulo ? `<span class="dim">${esc(p.subtitulo)}</span>` : ''}`
-            + '<span class="der dim"><a data-accion="recargar-seccion" title="volver a pedir la página">↻</a>'
-            + ' · <a data-accion="dia">← volver al dashboard</a></span></div>'];
-        p.bloques.forEach((b, i) => {
+    /** La ficha de una tarea: leerla y decidir sin abrir un agente. La arma el proveedor
+     *  (`telar tarea`): su propuesta arriba, el contexto, la historia y los botones. */
+    async abrirTarea(valor: string): Promise<void> {
+        const [proveedor, id, ref] = JSON.parse(valor) as string[];
+        if (!this.panel) this.abrir();
+        if (this.pantalla === 'revisar' || this.pantalla === 'dia') this.fichaDesde = this.pantalla;
+        this.pantalla = 'tarea';
+        this.ficha = { proveedor, id, ref };
+        this.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(id)}</b></div><div class="fila dim">leyendo…</div></div>`]);
+        const r = await cli.tarea(id, proveedor);
+        if (this.pantalla !== 'tarea' || this.ficha?.id !== id) return;
+        this.ficha.pagina = r.datos;
+        this.ficha.aviso = r.datos ? '' : (r.error ?? 'la ficha no contestó');
+        this.renderTarea();
+    }
+
+    /** La pestaña «revisar»: lo que un agente dejó para decidir, entero y en una lista. Un clic
+     *  abre la ficha; ← → pasa de una a otra y al decidir salta a la siguiente. */
+    private async abrirRevisar(): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'revisar';
+        this.fichaDesde = 'revisar';
+        if (!this.datos) this.datos = await dia();
+        this.renderRevisar();
+    }
+
+    private renderRevisar(): void {
+        const d = this.datos;
+        if (!d) return;
+        this.teclas.clear();
+        const lista = pendientes(d).filter(p => p.avance && p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
+        const h = ['<div id="revisar">', seccion('revisar', 'cian', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'la primera') : '')];
+        if (!lista.length) h.push('<div class="vacio">nada que decidir: lo que un agente proponga aparece aquí</div>');
+        lista.forEach((p, i) => {
+            const [todo] = (p.fila.avance ?? '').split(' ');
+            const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
+            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir">`
+                + `<span class="id">${esc(p.ref)}</span><span class="pri"></span>`
+                + `<span class="desc"><span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>${esc(p.texto)}</span>`
+                + `<span class="meta">${plazo(p.dias)}<span class="destino"></span></span></div>`);
+        });
+        h.push('</section></div>');
+        this.pintar(h);
+    }
+
+    /** Las tareas con propuesta, en el orden del día, sin las ya decididas (salvo la abierta). */
+    private propuestas(): { proveedor: string; id: string; ref: string }[] {
+        if (!this.datos) return [];
+        return pendientes(this.datos)
+            .filter(p => p.avance && p.fila.ficha && (!this.decididas.has(p.fila.id || p.ref) || (p.fila.id || p.ref) === this.ficha?.id))
+            .map(p => ({ proveedor: p.fila.proveedor, id: p.fila.id || p.ref, ref: p.ref }));
+    }
+
+    private async otraPropuesta(paso: number): Promise<boolean> {
+        const lista = this.propuestas();
+        const i = lista.findIndex(p => p.id === this.ficha?.id);
+        const otra = lista[i < 0 ? 0 : i + paso];
+        if (!otra || otra.id === this.ficha?.id) return false;
+        await this.abrirTarea(JSON.stringify([otra.proveedor, otra.id, otra.ref]));
+        return true;
+    }
+
+    private renderTarea(): void {
+        const f = this.ficha;
+        if (!f) return;
+        const p = f.pagina;
+        if (!p) {
+            this.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(f.id)}</b></div>`,
+                `<div class="fila falla">${esc(f.aviso ?? '')}</div></div>`]);
+            return;
+        }
+        const lista = this.propuestas();
+        const i = lista.findIndex(x => x.id === f.id);
+        // «← 1/3 →»: cuál de las propuestas es y cómo pasar a otra (también con las flechas)
+        const donde = i >= 0 && lista.length > 1
+            ? `<span class="pasar"><a data-accion="tarea-anterior" title="la anterior (←)">←</a>`
+              + `<span class="dim">${i + 1}/${lista.length}</span><a data-accion="tarea-siguiente" title="la siguiente (→)">→</a></span>` : '';
+        // ⏎ es la principal; las demás van numeradas en orden, y el número es su tecla
+        this.teclas.clear();
+        let n = 0;
+        const botones = (p.acciones ?? []).map((a, k) => {
+            const tecla = a.principal ? '⏎' : String(++n);
+            if (!a.principal) this.teclas.set(tecla, () => this.accionTarea(k));
+            return `<a class="atajo${a.principal ? ' principal' : ''}" data-accion="accion-tarea" data-valor="${k}"`
+                + ` title="${esc(a.pide ? `${a.nombre}: pide ${a.pide}` : a.nombre)}"><kbd>${tecla}</kbd><span>${esc(a.nombre)}</span></a>`;
+        });
+        // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
+        const color = p.bloques.find(b => b.destacado)?.color;
+        this.pintar([`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
+            `<div class="subcab"><b>${esc(p.titulo)}</b><span class="der">${donde}</span></div>`,
+            p.subtitulo ? `<div class="fila dim">${esc(p.subtitulo)}</div>` : '',
+            botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
+            ...this.htmlBloques(p.bloques), '</div>']);
+    }
+
+    private async accionTarea(k: number): Promise<void> {
+        const f = this.ficha;
+        const a = f?.pagina?.acciones?.[k];
+        if (!f || !a) return;
+        const tipo = a.tipo ?? 'comando';
+        if (tipo === 'hilo') { await llevarPendiente(f.ref, false); return; }
+        if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
+        let texto = '';
+        if (a.pide) {
+            const escrito = await vscode.window.showInputBox({ prompt: `${f.id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            if (escrito === undefined) return;
+            texto = escrito;
+        }
+        if (a.confirmar) {
+            const si = await vscode.window.showWarningMessage(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, { modal: true }, 'Sí');
+            if (si !== 'Sí') return;
+        }
+        const r = await cli.accionTarea(f.id, f.proveedor, k, texto);
+        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+        // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
+        if (r.datos.hilo) {
+            this.decididas.add(f.id);
+            olvidarDia();
+            void this.actualizar(true);
+            await modelo.sondear();
+            await mostrarTerminal();
+            return;
+        }
+        // se decidió sobre la propuesta: la siguiente, si hay; si no, se relee la ficha
+        const eraPropuesta = !!f.pagina?.bloques.some(b => b.destacado);
+        const releida = await cli.tarea(f.id, f.proveedor);
+        const sigueViva = !!releida.datos?.bloques.some(b => b.destacado);
+        olvidarDia();
+        void this.actualizar(true);
+        if (eraPropuesta && !sigueViva) {
+            this.decididas.add(f.id);
+            if (await this.otraPropuesta(1)) return;
+            // era la última: de vuelta a la lista de donde se vino, que ahora dice «nada que decidir»
+            if (this.fichaDesde === 'revisar') { await this.abrirRevisar(); return; }
+        }
+        if (this.pantalla === 'tarea' && this.ficha?.id === f.id) {
+            this.ficha.pagina = releida.datos ?? this.ficha.pagina;
+            this.renderTarea();
+        }
+    }
+
+    /** Los bloques de una página (una sección, la ficha de una tarea), en HTML. */
+    private htmlBloques(bloques: cli.JsonPagina['bloques']): string[] {
+        const h: string[] = [];
+        bloques.forEach((b, i) => {
             if (b.lienzo) h.push(this.htmlLienzo(b.lienzo));
+            if (b.destacado) h.push(`<div class="prop" style="--c: var(--${esc(b.color ?? 'azul')})">`);
             if (b.titulo) h.push(`<h2>${esc(b.titulo)}</h2>`);
-            else if (i > 0) h.push('<div class="sep-pag"></div>');
+            else if (i > 0 && !b.destacado) h.push('<div class="sep-pag"></div>');
             if (b.texto) h.push(`<div class="md-pag">${mdSimple(b.texto)}</div>`);
             for (const x of b.items ?? []) {
                 const clic = x.conversacion ? ` data-accion="conversacion" data-valor="${esc(x.conversacion)}"`
-                    : x.hilo ? ` data-accion="ir" data-valor="${esc(x.hilo)}"` : '';
-                const fecha = x.fecha ? x.fecha.slice(0, 16).replace('T', ' ') : '';
+                    : x.hilo ? ` data-accion="ir" data-valor="${esc(x.hilo)}"`
+                    : x.enlace ? ` data-accion="abrir-enlace" data-valor="${esc(x.enlace)}"` : '';
+                const fecha = x.fecha ? x.fecha.slice(0, 16).replace('T', ' ').replace(' 00:00', '') : '';
                 h.push(`<div class="item-pag${clic ? ' clic' : ''}"${clic}`
-                    + ` title="${esc(x.conversacion ? 'clic: leer la conversación entera' : x.hilo ? `clic: ir a «${x.hilo}»` : '')}">`
+                    + ` title="${esc(x.conversacion ? 'clic: leer la conversación entera' : x.hilo ? `clic: ir a «${x.hilo}»` : x.enlace ? `clic: abrir ${x.enlace}` : '')}">`
                     + `<div class="fila"><b>${esc(x.titulo)}</b><span class="der dim">${esc(fecha)}</span></div>`
                     + (x.texto ? `<div class="texto-pag">${mdSimple(x.texto)}</div>` : '') + '</div>');
             }
+            if (b.destacado) h.push('</div>');
         });
+        return h;
+    }
+
+    private renderSeccion(): void {
+        const p = this.pagina;
+        if (!p) return;
+        const h: string[] = [`<div class="subcab"><b>${esc(p.titulo)}</b>${p.subtitulo ? `<span class="dim">${esc(p.subtitulo)}</span>` : ''}`
+            + '<span class="der">' + this.atajos.filter(a => a.en === `seccion:${this.seccion}`)
+                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+            + '<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>↻</span></a>'
+            + '</span></div>'];
+        h.push(...this.htmlBloques(p.bloques));
         this.pintar(h);
     }
 
@@ -270,12 +497,12 @@ export class PanelHoy {
      *  textos (se piden al entrar, no en el refresco: pueden ser muchos). */
     private async abrirCorreo(): Promise<void> {
         this.pantalla = 'correo';
-        this.pintar(['<div class="cab"><b>Correo entre agentes</b></div>', '<div class="fila dim">leyendo por ssh…</div>']);
+        this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>', '<div class="fila dim">leyendo por ssh…</div>']);
         const r = await cli.correo(true);
         if (this.pantalla !== 'correo') return;
         this.buzones = r.datos?.remotos;
         if (!r.datos) {
-            this.pintar(['<div class="cab"><b>Correo entre agentes</b><span class="der dim"><a data-accion="dia">← volver</a></span></div>',
+            this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>',
                 `<div class="fila falla">${esc(r.error ?? 'no pude leer el correo')}</div>`]);
             return;
         }
@@ -284,8 +511,8 @@ export class PanelHoy {
 
     private renderCorreo(): void {
         const filtros: [string, string][] = [['todas', 'todas'], ['mias', 'mías'], ['sin', 'sin entregar']];
-        const h: string[] = ['<div class="cab"><b>Correo entre agentes</b>'
-            + '<span class="der dim"><a data-accion="correo" title="volver a leer">↻</a> · <a data-accion="dia">← volver al dashboard</a></span></div>',
+        const h: string[] = ['<div class="subcab"><b>Correo entre agentes</b>'
+            + '<span class="der dim"><a data-accion="correo" title="volver a leer">↻</a></span></div>',
             '<div class="titulo-tareas"><span class="modos">' + filtros.map(([k, t]) =>
                 `<button data-accion="filtro-correo" data-valor="${k}" class="${this.filtroCorreo === k ? 'activo' : ''}">${t}</button>`).join('')
             + '</span></div>'];
@@ -314,8 +541,8 @@ export class PanelHoy {
         const remoto = valor.slice(0, corte), i = valor.slice(corte + 1);
         const c = this.buzones?.find(b => b.remoto === remoto)?.conversaciones[Number(i)];
         if (!c) return;
-        const h: string[] = [`<div class="cab"><b>${esc(c.asunto || '(sin asunto)')}</b><span class="dim">${esc(c.participantes.join(', '))}</span>`
-            + '<span class="der dim"><a data-accion="volver-correo">← volver</a></span></div>',
+        const h: string[] = [`<div class="subcab"><b>${esc(c.asunto || '(sin asunto)')}</b><span class="dim">${esc(c.participantes.join(', '))}</span>`
+            + '<span class="der dim"><a data-accion="volver-correo">← correo</a></span></div>',
             '<div class="fila dim">el remitente es el usuario que lo mandó según el servidor (verificado), no el campo From</div>'];
         for (const m of c.correos) {
             h.push(`<div class="msg"><div class="quien">${esc(m.de || '(sistema)')} <span class="dim">→ ${esc(m.para)} · ${esc(fechaCorta(m.fecha))}`
@@ -338,11 +565,11 @@ export class PanelHoy {
         this.charla = r.datos;
         const c = r.datos;
         const hilo = c.hilo && modelo.porNombre(c.hilo);
-        const h: string[] = [`<div class="cab"><b>Conversación</b><span class="dim">${esc(c.conversacion.slice(0, 8))}`
+        const h: string[] = [`<div class="subcab"><b>Conversación</b><span class="dim">${esc(c.conversacion.slice(0, 8))}`
             + `${c.hilo ? ` · ${esc(c.hilo)}` : ''} · ${c.mensajes.length} mensajes</span>`
             + '<span class="der dim">'
             + (hilo ? `<a data-accion="retomar-charla" title="volver a esta conversación en su hilo">▶ retomar</a> · ` : '')
-            + (this.seccion ? '<a data-accion="volver-seccion">← volver</a>' : '<a data-accion="dia">← volver al dashboard</a>')
+            + (this.seccion ? '<a data-accion="volver-seccion">← ' + esc(modelo.secciones.find(x => x.clave === this.seccion)?.nombre ?? 'volver') + '</a>' : '')
             + '</span></div>'];
         for (const m of c.mensajes) {
             const hora = m.hora ? horaLocal(m.hora) : '';
@@ -393,8 +620,8 @@ export class PanelHoy {
         if (!this.panel) return;
         this.teclas.clear();
         const lista = this.proyectos ?? [];
-        const h: string[] = [`<div class="cab"><b>Proyectos</b><span class="dim">${lista.length || ''}</span>`
-            + '<span class="der dim"><a data-accion="dia" title="volver al día">← volver al dashboard</a></span></div>'];
+        const h: string[] = [`<div class="subcab"><b>Proyectos</b><span class="dim">${lista.length || ''}</span>`
+            + '</div>'];
         if (this.avisoProyectos) h.push(`<div class="fila falla">${esc(this.avisoProyectos)}</div>`);
         if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
         h.push('<div class="titulo-tareas">'
@@ -402,7 +629,7 @@ export class PanelHoy {
             + '<span class="modos"><span id="proyectos-cuenta"></span>'
             + '<button data-orden-p="alfa" title="por nombre">a-z</button>'
             + '<button data-orden-p="fecha" title="lo tocado más recientemente primero">recientes</button></span></div>');
-        h.push('<div class="ayuda">clic o ⏎: abrir un hilo con el agente cargando el proyecto · ● ya tiene hilo abierto: se va a él</div>');
+        h.push('<div class="ayuda">⏎ · abrir con el agente   ● · ya abierto</div>');
         h.push('<div id="proyectos">');
         for (const p of lista) {
             const marca = p.vivo ? '●' : p.hilo ? '·' : '';
@@ -523,8 +750,8 @@ export class PanelHoy {
     private renderConfig(cargando = ''): void {
         if (!this.panel) return;
         this.teclas.clear();
-        const h: string[] = ['<div class="cab"><b>Configuración</b>'
-            + '<span class="der dim"><a data-accion="dia" title="volver al día (⎋)">← volver al dashboard</a></span></div>'];
+        const h: string[] = ['<div class="subcab"><b>Configuración</b>'
+            + '</div>'];
         if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
         if (this.avisoConfig) h.push(`<div class="fila falla">${esc(this.avisoConfig)}</div>`);
         const c = this.calendario;
@@ -597,7 +824,7 @@ export class PanelHoy {
     }
 
     private pintar(h: string[]): void {
-        void this.panel?.webview.postMessage({ tipo: 'dia', html: h.join('\n') });
+        void this.panel?.webview.postMessage({ tipo: 'dia', html: this.nav() + h.join('\n') });
     }
 
     private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string }): Promise<void> {
@@ -607,7 +834,17 @@ export class PanelHoy {
             this.render(); void this.actualizar(); return;
         }
         if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await vscode.env.openExternal(vscode.Uri.parse(m.url)); return; }
-        if (m.tipo === 'tecla' && m.k) { await this.teclas.get(m.k)?.(); return; }
+        if (m.tipo === 'tecla' && m.k) {
+            // las de la pestaña primero; p, c y r valen en todas
+            const globales: Record<string, () => Promise<unknown>> = {
+                p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
+                t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
+                ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
+                ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
+            };
+            await (this.teclas.get(m.k) ?? globales[m.k])?.();
+            return;
+        }
         if (m.tipo !== 'accion') return;
         switch (m.accion) {
             case 'pendiente': if (m.valor) await llevarPendiente(m.valor, !!m.nuevo); break;
@@ -621,10 +858,30 @@ export class PanelHoy {
             }
             case 'config': await this.abrirConfig(); break;
             case 'proyectos': await this.abrirProyectos(); break;
+            case 'seccion': if (m.valor) await this.abrirSeccion(m.valor); break;
             case 'proyecto': if (m.valor) await this.abrirProyecto(m.valor); break;
             case 'plantilla-proyecto': await this.cambiarPlantillaProyecto(m.valor === 'restablecer'); break;
             case 'dia': this.pantalla = 'dia'; void this.leerAtajos(); break;
             case 'atajo': if (m.valor) await this.lanzarAtajo(m.valor); break;
+            case 'abrir-item': if (m.valor) await this.abrirItem(m.valor); break;
+            case 'tarea':
+                if (!m.valor) break;
+                // ⌘-clic: como antes, al hilo donde se trabaja; clic: la ficha
+                if (m.nuevo) { const [, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false); }
+                else await this.abrirTarea(m.valor);
+                break;
+            case 'accion-tarea': if (m.valor) await this.accionTarea(Number(m.valor)); break;
+            case 'tarea-principal': {
+                const i = (this.ficha?.pagina?.acciones ?? []).findIndex(a => a.principal);
+                if (i >= 0) await this.accionTarea(i);
+                break;
+            }
+            case 'tarea-siguiente': await this.otraPropuesta(1); break;
+            case 'revisar': await this.abrirRevisar(); break;
+            case 'volver-ficha': if (this.fichaDesde === 'revisar') await this.abrirRevisar(); else { this.pantalla = 'dia'; this.render(); } break;
+            case 'tarea-anterior': await this.otraPropuesta(-1); break;
+            case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
+            case 'tareas': await vscode.commands.executeCommand('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else { this.pantalla = 'dia'; this.render(); } break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
@@ -688,3 +945,19 @@ function fechaCorta(fecha: string): string {
     return `${d.getDate()}-${meses[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`;
 }
 
+/** «viernes», «2026-09-25» → «vie 25 sep». */
+function fechaLarga(nombreDia: string, fecha: string): string {
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const [, m, d] = fecha.split('-').map(Number);
+    return `${nombreDia.slice(0, 3)} ${d || ''} ${meses[(m || 1) - 1]}`.trim();
+}
+
+/** Abre un enlace de una página: una URL en el navegador, una ruta local en el editor. */
+async function abrirEnlace(enlace: string): Promise<void> {
+    if (/^https?:\/\//.test(enlace)) { await vscode.env.openExternal(vscode.Uri.parse(enlace)); return; }
+    if (enlace.startsWith('/') && fs.existsSync(enlace)) {
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(enlace));
+        return;
+    }
+    void vscode.window.showWarningMessage(`telar: no sé abrir ${enlace}`);
+}

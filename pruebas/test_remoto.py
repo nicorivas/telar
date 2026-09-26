@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shlex
 import tempfile
+import unittest
 from pathlib import Path
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
@@ -129,3 +130,25 @@ class Llevar(Prueba):
             subprocess.run(["git", "init", "-q", tmp], check=True)
             (Path(tmp) / "a.txt").write_text("x", encoding="utf-8")
             self.assertIn("1 archivo sin commitear", _sin_subir(Path(tmp)))
+
+
+class SesionesQueNacieronAlla(unittest.TestCase):
+    def test_solo_las_nuevas_y_sin_pisar_nombres(self):
+        from telar import remoto
+
+        de_alla = [("telar-aaaa0001", "Faro"), ("telar-bbbb0002", "▶ pasada 09/26 07:00"),
+                   ("telar-cccc0003", "Faro")]
+        nuevas = remoto.nuevas({"telar-aaaa0001"}, de_alla, {"Faro"})
+        self.assertEqual(nuevas, [("telar-bbbb0002", "▶ pasada 09/26 07:00", "▶ pasada 09/26 07:00"),
+                                  ("telar-cccc0003", "Faro", "Faro · 2")])
+
+    def test_lee_la_lista_de_tmux_con_el_separador_en_octal(self):
+        from unittest import mock
+
+        from telar import remoto
+        from telar.config import Remoto
+
+        salida = "telar-aaaa0001\\037Faro\nmovil-aaaa0001\\037Faro\ntelar-bbbb0002\\037\notra\\037x\n"
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=salida, stderr="")):
+            sesiones, error = remoto.sesiones(Remoto(nombre="s", destino="u@s"))
+        self.assertEqual((sesiones, error), ([("telar-aaaa0001", "Faro")], ""))

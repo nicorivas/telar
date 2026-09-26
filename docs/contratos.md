@@ -463,6 +463,63 @@ texto, nunca como HTML. Un ítem con `conversacion` se abre como conversación; 
 `hilo` y sin conversación lleva a ese hilo. Si el comando falla, tarda más de 30 s o
 devuelve otra forma, la orden sale con 2 y dice por qué.
 
+### `telar bloque <clave> --json`
+
+Lo que imprime el comando de `[bloques.<clave>]`, con el mismo contrato que la página de una
+sección y las mismas reglas (sale con 2 si falla, tarda o viene con otra forma). El dashboard
+toma los ítems de todos sus bloques y usa dos campos más de cada ítem, que en una sección se
+ignoran:
+
+| campo | qué es |
+| --- | --- |
+| `marca` | un carácter al comienzo de la fila (`●` sin procesar, `✓` hecho) |
+| `destacado` | `true` resalta la fila con el color del bloque |
+| `mensaje` | un clic en la fila abre un hilo nuevo con el agente y este primer prompt (`telar bloque <clave> --abrir <mensaje>`) |
+| `nombre` | el nombre de ese hilo; el `titulo` si falta |
+
+`mensaje` llega al agente tal cual: quien escribe el comando decide qué lleva. Si la fila
+muestra algo que escribió otra persona (un asunto de correo), conviene que el mensaje
+lleve solo un identificador y que el agente lea el resto.
+
+`fecha` da la hora de la fila; `texto`, quién o de dónde (la columna que se esconde cuando
+el panel es angosto); `titulo`, qué.
+
+### `telar tarea <id> --json`
+
+La ficha de una tarea: lo que imprime el `detalle` del proveedor (`{id}` reemplazado), con
+el contrato de una página de sección y tres cosas más. Un bloque puede ser `destacado`
+(con `color`: azul, amarillo, verde, rojo, magenta, cian o violeta), un ítem puede traer
+`enlace` (una URL o una ruta absoluta, que se abre con un clic) y la página trae
+`acciones`, hasta nueve:
+
+```json
+{ "titulo": "T203 · Mandar el alcance al cliente", "subtitulo": "activa · P0 · vence 2026-09-22",
+  "bloques": [ { "titulo": "el agente · cerrar (caducó)", "texto": "…", "destacado": true, "color": "cian" } ],
+  "acciones": [
+    { "nombre": "✓ de acuerdo: caducó", "principal": true, "comando": ["todo", "caduco", "T203"] },
+    { "nombre": "no, sigue viva", "pide": "por qué", "comando": ["todo", "responder", "T203", "no: {texto}"] },
+    { "nombre": "trabajar en un hilo", "tipo": "hilo" },
+    { "nombre": "abrir lo preparado", "tipo": "abrir", "enlace": "/ruta/borrador.md" },
+    { "nombre": "descartar", "comando": ["todo", "descarta", "T203"], "confirmar": true } ] }
+```
+
+| campo | qué es |
+| --- | --- |
+| `tipo` | `comando` (de fábrica), `hilo` (llevar la tarea a su hilo) o `abrir` (`enlace`) |
+| `comando` | lista de palabras, sin shell; `{texto}` se reemplaza por lo escrito |
+| `pide` | antes de correr se pide un texto, con esto de ayuda |
+| `confirmar` | antes de correr se pregunta |
+| `principal` | la de ⏎; una como mucho. Las demás van numeradas y el número es su tecla |
+| `mensaje` | después del comando, abre un hilo nuevo con el agente y este primer prompt (`nombre_hilo`: su nombre) |
+
+`telar tarea <id> --accion N [--texto T]` corre la acción `N`. telar vuelve a pedir la ficha
+y toma el comando de ahí, nunca de quien lo pide: desde el dashboard solo se puede correr
+lo que el proveedor ofreció. Las de tipo `hilo` y `abrir` las hace quien dibuja.
+
+La lista de tareas del proveedor `comando` acepta además `avance`: lo último que dejó un
+agente que la trabajó solo, `<estado>[:<cómo>] <fecha>` (`preparado 2026-09-25`,
+`cerrar:caduca 2026-09-25`). telar no lo interpreta: el dashboard lo muestra y ordena por él.
+
 ### `telar agente conversacion <id> --json`
 
 ```json

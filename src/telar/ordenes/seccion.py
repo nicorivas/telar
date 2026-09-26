@@ -39,11 +39,54 @@ def validar(datos: object) -> str:
         items = b.get("items", [])
         if not isinstance(items, list) or not all(isinstance(x, dict) for x in items):
             return f"bloques[{i}].items: se esperaba una lista de objetos"
+        if not isinstance(b.get("destacado", False), bool):
+            return f"bloques[{i}].destacado: se esperaba true o false"
+        if b.get("color", "azul") not in COLORES:
+            return f"bloques[{i}].color: {', '.join(COLORES)}"
+        for j, x in enumerate(items):
+            for campo in ("mensaje", "nombre", "enlace"):
+                if not isinstance(x.get(campo, ""), str):
+                    return f"bloques[{i}].items[{j}].{campo}: se esperaba un texto"
         if "lienzo" in b:
             problema = _lienzo(b["lienzo"])
             if problema:
                 return f"bloques[{i}].lienzo: {problema}"
+    if "acciones" in datos:
+        problema = _acciones(datos["acciones"])
+        if problema:
+            return f"acciones: {problema}"
     return ""
+
+
+COLORES = ("azul", "amarillo", "verde", "rojo", "magenta", "cian", "violeta")
+TIPOS_ACCION = ("comando", "hilo", "abrir")
+
+
+def _acciones(lista: object) -> str:
+    """Los botones de una página: correr un comando, llevar al hilo o abrir un enlace."""
+    if not isinstance(lista, list) or len(lista) > 9:
+        return "se esperaba una lista de hasta 9 acciones"
+    principales = 0
+    for i, a in enumerate(lista):
+        if not isinstance(a, dict) or not isinstance(a.get("nombre"), str) or not a["nombre"].strip():
+            return f"[{i}]: se esperaba un objeto con nombre"
+        tipo = a.get("tipo", "comando")
+        if tipo not in TIPOS_ACCION:
+            return f"[{i}].tipo: {', '.join(TIPOS_ACCION)}"
+        if tipo == "comando":
+            c = a.get("comando")
+            if not isinstance(c, list) or not c or not all(isinstance(x, str) and x for x in c):
+                return f"[{i}].comando: se esperaba una lista de palabras"
+        if tipo == "abrir" and not (isinstance(a.get("enlace"), str) and a["enlace"]):
+            return f"[{i}].enlace: falta"
+        for campo in ("pide", "color", "mensaje", "nombre_hilo"):
+            if not isinstance(a.get(campo, ""), str):
+                return f"[{i}].{campo}: se esperaba un texto"
+        for campo in ("principal", "confirmar"):
+            if not isinstance(a.get(campo, False), bool):
+                return f"[{i}].{campo}: se esperaba true o false"
+        principales += bool(a.get("principal"))
+    return "" if principales <= 1 else "solo una acción puede ser principal"
 
 
 def _lienzo(l: object) -> str:
@@ -62,6 +105,22 @@ def _lienzo(l: object) -> str:
     if not isinstance(params, dict) or not all(isinstance(k, str) and isinstance(v, (str, int, float)) for k, v in params.items()):
         return "params: se esperaba un objeto de textos"
     return ""
+
+
+def correr(comando, que: str) -> tuple[dict | None, str]:
+    """Corre un comando que imprime una página y la valida. (datos, error o "")."""
+    try:
+        r = subprocess.run(list(comando), capture_output=True, text=True, timeout=ESPERA * 2)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, f"{que} no corrió: {e}"
+    if r.returncode != 0:
+        return None, f"{que} salió con {r.returncode}: {r.stderr.strip()[-300:]}"
+    try:
+        datos = json.loads(r.stdout)
+    except ValueError:
+        return None, f"{que} no devolvió JSON"
+    problema = validar(datos)
+    return (None, f"{que} no cumple el contrato: {problema}") if problema else (datos, "")
 
 
 def main(argv: list[str], ctx) -> int:

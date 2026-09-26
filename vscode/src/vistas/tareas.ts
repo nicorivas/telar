@@ -52,6 +52,11 @@ export class VistaTareas implements vscode.WebviewViewProvider {
         if (m.tipo !== 'accion') return;
         if (m.accion === 'volver') { void mostrarTerminal(); return; }
         if (m.accion === 'pendiente' && m.valor) await llevarPendiente(m.valor, !!m.nuevo);
+        // con ficha: el clic la abre en el dashboard para leerla y decidir; ⌘-clic, a su hilo
+        if (m.accion === 'tarea' && m.valor) {
+            if (m.nuevo) { const [, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false); }
+            else await vscode.commands.executeCommand('telar.tarea', m.valor);
+        }
     }
 }
 

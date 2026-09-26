@@ -169,6 +169,10 @@ export interface JsonFila {
     texto: string; hecho: boolean; en_curso: boolean; id: string; origen: string;
     ref: string; hilo: string; ruta: string; proveedor: string;
     cuando: string | null; url: string;
+    /** lo último que dejó un agente que la trabajó solo: «preparado 2026-09-25» */
+    avance?: string;
+    /** su proveedor da ficha (`telar tarea`): un clic la abre en vez de ir al hilo */
+    ficha?: boolean;
 }
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay
@@ -211,11 +215,17 @@ export interface JsonAgenteConfig {
 }
 
 /** Una tecla del dashboard que abre un hilo con el agente haciendo algo (`[atajos.m]`). */
-export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; descripcion: string }
+export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; descripcion: string; en?: string }
+
+/** Una sección del día que llena un comando (`[bloques.<clave>]`). */
+export interface JsonBloque { clave: string; nombre: string; color: string }
+
+/** `telar bloque <clave>`: la página que imprime su comando. */
+export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
 
 export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
-    atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[];
+    atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
 }>(['config', '--json'], 20000);
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
@@ -227,16 +237,40 @@ export function enSeccion(s: JsonSeccion, hilo: string): boolean {
 }
 
 /** La página de una sección, tal como la devuelve su comando `home` (docs/contratos.md). */
-export interface JsonPaginaItem { titulo: string; fecha?: string; texto?: string; conversacion?: string; hilo?: string }
+export interface JsonPaginaItem {
+    titulo: string; fecha?: string; texto?: string; conversacion?: string; hilo?: string;
+    /** un glifo corto antes del título (● sin procesar, ✓ hecho); `destacado` lo resalta */
+    marca?: string; destacado?: boolean;
+    /** con `mensaje`, un clic abre un hilo nuevo con el agente y ese primer prompt; `nombre` es el del hilo */
+    mensaje?: string; nombre?: string;
+    /** un clic lo abre: una URL en el navegador, una ruta en el editor */
+    enlace?: string;
+}
+/** Un botón de una página (la ficha de una tarea): lo corre `telar tarea --accion N`. */
+export interface JsonAccionPagina {
+    nombre: string; tipo?: 'comando' | 'hilo' | 'abrir'; comando?: string[]; enlace?: string;
+    /** pide un texto antes de correr (reemplaza `{texto}`); `confirmar` pregunta primero */
+    pide?: string; principal?: boolean; confirmar?: boolean;
+    /** después del comando, un hilo nuevo con el agente y este mensaje (`nombre_hilo`) */
+    mensaje?: string; nombre_hilo?: string;
+}
 export interface JsonPagina {
     titulo: string; subtitulo?: string;
-    bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo }[];
+    bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo;
+               destacado?: boolean; color?: string }[];
+    acciones?: JsonAccionPagina[];
 }
 
 /** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
 export interface JsonLienzo { archivo: string; alto?: number; params?: Record<string, string | number> }
 
 export const seccion = (clave: string) => telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
+/** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
+export const tarea = (id: string, proveedor: string) =>
+    telarJson<JsonPagina>(['tarea', id, '--proveedor', proveedor, '--json'], 40000);
+export const accionTarea = (id: string, proveedor: string, n: number, texto = '') =>
+    telarJson<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>(
+        ['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
 
 /** Una conversación del agente, entera, para leerla. */
 export interface JsonConversacion {
@@ -247,6 +281,11 @@ export interface JsonConversacion {
 export const conversacion = (id: string) => telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
+/** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). */
+export const traerRemotos = () =>
+    telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[] }>(['remotos', 'traer', '--json'], 60000);
+export const abrirItem = (clave: string, mensaje: string, nombre: string) =>
+    telarJson<{ hilo: string; mensaje: string }>(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
 export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
 /** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */

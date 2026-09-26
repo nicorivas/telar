@@ -96,6 +96,8 @@ export interface Pendiente {
     cuando: string;
     dias: number | null;      // los que faltan; negativo si venció
     enCurso: boolean;
+    /** lo que dejó un agente trabajando solo («cerrar», «preparado»…), o "" */
+    avance: string;
     urgencia: number;
     urgente: boolean;
 }
@@ -115,10 +117,13 @@ export function pendientes(d: Dia): Pendiente[] {
             const cuando = f.cuando ?? '';
             const dias = cuando ? Math.round((Date.parse(cuando.slice(0, 10) + 'T00:00:00') - hoy) / 86400000) : null;
             const enCurso = !!f.en_curso;
+            // lo que un agente dejó listo para decidir va arriba de todo: es lo más rápido de
+            // despachar, y esperando se pudre
+            const avance = (f.avance ?? '').split(' ')[0].split(':')[0];
             return {
-                fila: f, ref: f.ref || f.id, texto: f.texto, hilo: f.hilo ?? '', cuando, dias, enCurso,
-                urgencia: (dias ?? 30) - (enCurso ? 0.5 : 0),
-                urgente: dias !== null ? dias <= 7 : enCurso,
+                fila: f, ref: f.ref || f.id, texto: f.texto, hilo: f.hilo ?? '', cuando, dias, enCurso, avance,
+                urgencia: avance ? -1000 + (dias ?? 0) / 1000 : (dias ?? 30) - (enCurso ? 0.5 : 0),
+                urgente: avance ? true : dias !== null ? dias <= 7 : enCurso,
             };
         })
         .sort((a, b) => a.urgencia - b.urgencia || a.ref.localeCompare(b.ref));
@@ -128,64 +133,95 @@ export function pendientes(d: Dia): Pendiente[] {
 
 /** La lista de pendientes: ancha en «hoy», en una línea en la barra (`compacto`). El modo
  *  (urgentes / todos), la búsqueda y las letras las maneja el webview. */
+/** Abre una sección del dashboard: su color, su nombre, una cuenta y, a la derecha, sus
+ *  atajos y pistas (html de `atajo`/`pista`). Se cierra con `</section>`. El color va en
+ *  `--c`, y lo heredan sus filas y el hover de sus atajos. */
+export function seccion(nombre: string, color: string, cuenta = '', derecha = ''): string {
+    return `<section class="bloque" style="--c: var(--${color})"><h2 class="sec"><span class="marca"></span>`
+        + `${esc(nombre)}${cuenta ? `<span class="cuenta">${esc(cuenta)}</span>` : ''}`
+        + `${derecha ? `<span class="acciones">${derecha}</span>` : ''}</h2>`;
+}
+
+/** Un atajo: la tecla y lo que hace, clicable. El mismo en todas partes: en la cabecera, en
+ *  los títulos de sección, arriba del día y en las pestañas de sección. */
+export function atajo(tecla: string, nombre: string, accion: string, valor = '', titulo = ''): string {
+    return `<a class="atajo" data-accion="${esc(accion)}"${valor ? ` data-valor="${esc(valor)}"` : ''}`
+        + `${titulo ? ` title="${esc(titulo)}"` : ''}><kbd>${esc(tecla)}</kbd><span>${esc(nombre)}</span></a>`;
+}
+
+/** Lo mismo, pero solo dice: una tecla que funciona sin ser un botón (`/`, `1–9`). */
+export function pista(tecla: string, nombre: string): string {
+    return `<span class="atajo pista"><kbd>${esc(tecla)}</kbd><span>${esc(nombre)}</span></span>`;
+}
+
+/** Una fecha relativa en pocas letras: `-39d` vencida, `hoy`, `mañana`, `3d`. */
+export function plazo(dias: number | null): string {
+    if (dias === null) return '<span></span>';  // la celda va igual: sin ella, lo de al lado se corre
+    if (dias < 0) return `<span class="venc">${dias}d</span>`;
+    if (dias === 0) return '<span class="pronto">hoy</span>';
+    if (dias === 1) return '<span class="pronto">mañana</span>';
+    return `<span class="dim">${dias}d</span>`;
+}
+
+/** La lista de pendientes: ancha en «hoy», en una línea en la barra (`compacto`). El modo
+ *  (urgentes / todos), la búsqueda y las letras las maneja el webview. */
 export function htmlPendientes(d: Dia, compacto: boolean): string[] {
     const lista = pendientes(d);
     const urgentes = lista.filter(t => t.urgente).length;
-    const h = [`<div class="titulo-tareas${compacto ? ' estrecho' : ''}">${compacto ? '' : '<h2>Pendientes</h2>'}`
-        + `<span class="modos"><button data-modo-tareas="urgentes" title="vencidos, los próximos 7 días y lo que está en curso">urgentes ${urgentes}</button>`
-        + `<button data-modo-tareas="todos" title="todos, lo más urgente arriba">todos ${lista.length}</button>`
-        + `<input id="buscar" type="text" placeholder="/ buscar${compacto ? '' : ` en los ${lista.length}`}" spellcheck="false" autocomplete="off">`
+    const propuestas = lista.filter(t => t.avance).length;
+    const h = compacto ? [] : [seccion('pendientes', 'verde', `${urgentes}/${lista.length}`)];
+    h.push(`<div class="titulo-tareas${compacto ? ' estrecho' : ''}">`
+        + '<span class="modos">'
+        + (propuestas ? `<button data-modo-tareas="propuestas" title="lo que un agente dejó para que decidas">propuestas ${propuestas}</button>` : '')
+        + `<button data-modo-tareas="urgentes" title="vencidos, próximos 7 días y en curso">urgentes ${urgentes}</button>`
+        + `<button data-modo-tareas="todos" title="todos, lo urgente arriba">todos ${lista.length}</button>`
+        + `<input id="buscar" type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off">`
         + '<span id="tareas-cuenta"></span></span>'
-        + '<span class="modos ordenes"><span class="dim">orden</span>'
-        + '<button data-orden-t="urgencia" title="lo vencido y lo próximo arriba">urgencia</button>'
-        + '<button data-orden-t="codigo" title="por código, de mayor a menor: T130 antes que T81">código</button>'
-        + '<button data-orden-t="alfa" title="por el texto de la tarea">a-z</button></span></div>'];
-    if (!compacto) h.push('<div class="ayuda">letra o clic: llevarlo a su hilo (se escribe, no se envía) · ⌘clic: hilo nuevo · ↩ en la búsqueda: el primero</div>');
-    if (d.error) return [...h, `<div class="fila dim">(${esc(d.error)})</div>`];
-    if (!lista.length) {
-        return [...h, '<div class="fila dim">nada que los documentos declaren pendiente. '
-            + 'La sección la nombra el perfil del repositorio; un proveedor declarado suma las suyas.</div>'];
-    }
+        + '<span class="modos ordenes">'
+        + '<button data-orden-t="urgencia" title="lo vencido arriba">urgencia</button>'
+        + '<button data-orden-t="codigo" title="por código, de mayor a menor">código</button>'
+        + '<button data-orden-t="alfa" title="por el texto">a-z</button></span></div>');
+    const cerrar = compacto ? [] : ['</section>'];
+    if (d.error) return [...h, `<div class="vacio falla">${esc(d.error)}</div>`, ...cerrar];
+    if (!lista.length) return [...h, '<div class="vacio">nada pendiente</div>', ...cerrar];
     h.push('<div id="tareas">');
     for (const t of lista) {
-        let fecha = '';
-        if (t.dias !== null) {
-            fecha = t.dias < 0 ? `<span class="venc">${compacto ? `hace ${-t.dias}d` : `venció hace ${-t.dias} d`}</span>`
-                : t.dias === 0 ? `<span class="pronto">${compacto ? 'hoy' : 'vence hoy'}</span>`
-                    : t.dias === 1 ? `<span class="pronto">${compacto ? 'mañana' : 'vence mañana'}</span>`
-                        : `<span class="dim">${compacto ? `${t.dias}d` : `en ${t.dias} d`}</span>`;
-        }
-        const origen = !compacto && t.fila.proveedor ? `<span class="espera">${esc(t.fila.proveedor)}</span>` : '';
-        const destino = compacto ? '' : (t.hilo ? `<span class="destino">→ ${esc(t.hilo)}</span>`
-            : t.fila.ruta ? `<span class="dim">${esc(t.fila.ruta)}</span>` : '<span class="dim">hilo nuevo</span>');
-        const meta = [fecha, origen, destino].filter(Boolean).join(' · ');
-        const buscable = normalizar([t.ref, t.texto, t.hilo, t.fila.ruta ?? '', t.fila.proveedor ?? ''].join(' '));
-        h.push(`<div class="tarea${compacto ? ' compacta' : ''}" data-accion="pendiente" data-valor="${esc(t.ref)}"`
+        const destino = compacto ? '' : `<span class="destino">${t.hilo ? '→' : '+'}</span>`;
+        const buscable = normalizar([t.ref, t.texto, t.hilo, t.fila.ruta ?? '', t.fila.proveedor ?? '', t.fila.avance ?? ''].join(' '));
+        // lo que dejó un agente: una palabra con color antes del texto (preparado, cerrar, pregunta, choca)
+        const [avanceTodo, avanceFecha] = (t.fila.avance ?? '').split(' ');
+        const avance = t.avance;
+        const marcaAvance = avance ? `<span class="av av-${esc(avance)}">${esc(avanceTodo.replace(':', ' '))}</span>` : '';
+        // con ficha, el clic la abre (leer y decidir, sin agente); ⌘-clic la lleva a su hilo
+        const accion = t.fila.ficha
+            ? `data-accion="tarea" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}"`
+            : `data-accion="pendiente" data-valor="${esc(t.ref)}"`;
+        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}"`
             + ` data-orden="${t.urgencia}" data-ref="${esc(t.ref)}" data-alfa="${esc(normalizar(limpiarMd(t.texto)))}" data-urgente="${t.urgente ? 1 : 0}" data-texto="${esc(buscable)}"`
             // el texto entero va en un globo propio (ver `globo` en el script): el `title` nativo
             // no siempre se muestra dentro de una vista de la barra
-            + ` data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}\n\nclic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar`)}">`
-            // en la barra no van letras: es angosta, y un atajo invisible es una trampa
-            + `${compacto ? '' : '<span class="tecla"></span>'}<span class="id">${esc(t.ref.slice(0, 12))}</span>`
-            + `<span class="pri">${t.enCurso ? '▣' : '☐'}</span>`
-            + `<span class="desc">${esc(limpiarMd(t.texto))}</span><span class="meta">${meta}</span></div>`);
+            + ` data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}${avance ? `\n\nagente, ${avanceFecha}: ${avance}` : ''}\n\n${t.fila.ficha ? `clic: leerla y decidir · ⌘-clic: ${t.hilo ? `llevarla a «${t.hilo}»` : 'un hilo para trabajarla'}` : `clic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar`}`)}">`
+            // sin letras: la fila se clica. `+` abre un hilo nuevo, `→` lo lleva al que ya existe
+            // (el globo dice cuál); `●` en la columna angosta, que ya se trabaja
+            + `<span class="id">${esc(t.ref)}</span><span class="pri">${t.enCurso ? '●' : ''}</span>`
+            + `<span class="desc">${marcaAvance}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}</span></div>`);
     }
-    h.push('<div id="tareas-vacio" class="fila dim" hidden></div><div id="tareas-mas" class="fila clic dim" hidden></div></div>');
-    return h;
+    h.push('<div id="tareas-vacio" class="vacio" hidden></div><div id="tareas-mas" class="vacio clic" hidden></div></div>');
+    return [...h, ...cerrar];
 }
 
 export const CSS_DIA = `
-  body { padding: 1.2em 3ch 3em; }
+  body { padding: 1lh 3ch 3lh; }
   #dia { max-width: 120ch; }
   .cab { display: flex; gap: 1ch; align-items: baseline; }
   .cab .der { margin-left: auto; }
-  h2 { font-size: 1em; font-weight: bold; text-transform: uppercase; margin: 1.4em 0 .2em; }
+  h2 { font-size: 1em; font-weight: bold; text-transform: uppercase; margin: 1lh 0 0; }
   h2 small { font-weight: normal; text-transform: none; color: var(--dim); margin-left: 1ch; }
-  .fila { display: flex; gap: 1ch; align-items: baseline; padding: 0 .5ch; white-space: nowrap; }
+  .fila { display: flex; gap: 1ch; align-items: baseline; padding: 0 1ch; white-space: nowrap; }
   .fila.clic { cursor: pointer; } .fila.clic:hover { background: var(--hover); }
   .fila code { color: var(--verde); }
   .falla { color: var(--rojo); }
-  .opcion { margin: .7em 0; padding-left: 1ch; border-left: 2px solid transparent; }
+  .opcion { margin: 1lh 0; padding-left: 1ch; border-left: 2px solid transparent; }
   .opcion.activa { border-left-color: var(--azul); }
   .opcion .fila.dim { white-space: normal; }
   .tecla { flex: none; width: 3ch; color: var(--dim); }
@@ -195,22 +231,22 @@ export const CSS_DIA = `
   .que { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .cuando { color: var(--amarillo); flex: none; }
   .enlace { flex: none; color: var(--azul); }
-  .titulo-tareas { display: flex; align-items: baseline; gap: 2ch; margin: 1.4em 0 .3em; flex-wrap: wrap; }
+  .titulo-tareas { display: flex; align-items: baseline; gap: 2ch; margin: 1lh 0 0; flex-wrap: wrap; }
   .titulo-tareas h2 { margin: 0; }
-  .titulo-tareas.estrecho { flex-direction: column; align-items: stretch; gap: .2em; margin-top: 0; }
+  .titulo-tareas.estrecho { flex-direction: column; align-items: stretch; gap: 0; margin-top: 0; }
   .estrecho .modos { margin-left: 0; }
-  .modos.ordenes { gap: 1.5ch; }
+  .modos.ordenes { gap: 2ch; }
   .modos { display: flex; gap: 2ch; align-items: baseline; margin-left: auto; }
   .modos button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; white-space: nowrap; }
   .modos button:hover { color: var(--fg); }
   .modos button.activo { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
   #buscar { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
-            width: 28ch; max-width: 100%; padding: 0 .5ch; outline: none; flex: 1 1 12ch; }
+            width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
   #buscar:focus { border-bottom-color: var(--azul); }
   #buscar::placeholder { color: var(--dim); }
-  .ayuda { color: var(--dim); margin: 0 0 .3em .5ch; }
+  .ayuda { color: var(--dim); margin: 0 0 0 1ch; }
   #tareas-cuenta { color: var(--dim); }
-  .tarea { display: flex; gap: 1ch; align-items: baseline; padding: .1em .5ch; cursor: pointer; }
+  .tarea { display: flex; gap: 1ch; align-items: baseline; padding: 0 1ch; cursor: pointer; }
   .tarea.compacta .desc { -webkit-line-clamp: 1; }
   .tarea.compacta .meta { font-size: .95em; }
   .tarea.compacta .id { width: auto; min-width: 4ch; }
@@ -223,25 +259,156 @@ export const CSS_DIA = `
   .destino { color: var(--magenta); }
   .at { flex: none; width: 1ch; } .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
   .nombre { min-width: 20ch; }
-  .pie { margin-top: 2em; color: var(--dim); }
   #globo { position: fixed; z-index: 10; pointer-events: none; white-space: pre-wrap; max-width: min(60ch, calc(100vw - 3ch));
-           padding: .4em .8ch; background: var(--vscode-editorHoverWidget-background, #1e1e2e);
+           padding: 0 1ch; background: var(--vscode-editorHoverWidget-background, #1e1e2e);
            color: var(--vscode-editorHoverWidget-foreground, var(--fg));
            border: 1px solid var(--vscode-editorHoverWidget-border, var(--linea));
            box-shadow: 0 2px 8px rgba(0,0,0,.35); }
-  .md-pag p { margin: .4em 0; white-space: normal; } .md-pag ul { margin: .3em 0; padding-left: 2.5ch; }
+  .md-pag p { margin: 0 0; white-space: normal; } .md-pag ul { margin: 0 0; padding-left: 2ch; }
   .md-pag code, .texto-pag code { color: var(--verde); }
-  .lienzo { display: block; width: 100%; border: 0; margin: .4em 0 .8em; background: transparent; }
-  .sep-pag { border-top: 1px solid var(--linea); margin: 1em 0; }
-  .item-pag { padding: .3em .5ch; margin: .2em 0; border-left: 2px solid var(--linea); }
+  .lienzo { display: block; width: 100%; border: 0; margin: 0 0 1lh; background: transparent; }
+  .sep-pag { border-top: 1px solid var(--linea); margin: 1lh 0; }
+  .item-pag { padding: 0 1ch; margin: 0 0; border-left: 2px solid var(--linea); }
   .item-pag.clic { cursor: pointer; } .item-pag.clic:hover { background: var(--hover); border-left-color: var(--azul); }
   .texto-pag { color: var(--dim); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-  .texto-pag p { margin: .2em 0; }
-  .msg { margin: 1em 0 .4em; } .msg .quien { font-weight: bold; } .msg.usuario .quien { color: var(--azul); }
+  .texto-pag p { margin: 0 0; }
+  .msg { margin: 1lh 0 0; } .msg .quien { font-weight: bold; } .msg.usuario .quien { color: var(--azul); }
   .msg.agente .quien { color: var(--verde); }
   .herr { padding-left: 2ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── el dashboard: terminal con color ─────────────────────────────────
+     Reglas de terminal: un solo tamaño de letra y sin espaciado entre letras; lo
+     horizontal en caracteres enteros (ch) y lo vertical en renglones enteros (lh); nada
+     que decore ocupa lugar (bordes → outline o sombra; teclas en video inverso). */
+  #dia { container-type: inline-size; }
+  #dia, #dia * { font-size: inherit !important; letter-spacing: 0 !important; }
+  small, code, kbd, button, input, b, i { font: inherit; }
+  /* una tecla: marco fino y borde de abajo más grueso, como una tecla de verdad. El marco
+     es outline y sombra (no ocupa lugar) y el relleno es medio carácter por lado: la tecla
+     ocupa exactamente dos celdas y la grilla no se corre. */
+  kbd { padding: 0 .5ch; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent);
+        outline: 1px solid var(--linea); outline-offset: -1px; box-shadow: inset 0 -2px 0 var(--linea); }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 2ch; }
+  .top .marca-t { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
+  .logo { font-weight: bold; color: transparent;
+          background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+          background-size: 480px 100%; -webkit-background-clip: text; background-clip: text; animation: flujo 9s linear infinite; }
+  .fecha { color: var(--fg); } .reloj { color: var(--amarillo); } .sem { color: var(--dim); }
+  .regla { height: 2px; margin: 0;
+           background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+           background-size: 480px 100%; animation: flujo 9s linear infinite; }
+  @keyframes flujo { from { background-position: 0 0; } to { background-position: 480px 0; } }
+
+  .bloque { margin: 1lh 0 0; }
+  h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transform: uppercase; color: var(--c); font-weight: bold; }
+  .sec .marca { width: 1ch; align-self: stretch; background: var(--c); }
+  .sec .cuenta { color: var(--bg); background: var(--c); padding: 0 1ch; }
+  .bloque > .ag, .bloque > .hl, .bloque #tareas, .bloque > .vacio, .bloque > .titulo-tareas {
+      box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+  .vacio { color: var(--dim); padding: 0 2ch; }
+  .clic { cursor: pointer; }
+
+  /* agenda: tecla · hora · qué · lo de al lado */
+  .ag { display: grid; grid-template-columns: 7ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
+  .ag .hora { color: var(--c); }
+  .ag .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag .extra { display: flex; gap: 2ch; align-items: baseline; white-space: nowrap; color: var(--dim); }
+  .ag.pasada { color: var(--dim); } .ag.pasada .hora { color: var(--dim); } .ag.pasada .que { text-decoration: line-through; text-decoration-color: var(--linea); }
+  .ag.clic:hover, .hl.clic:hover, .tarea:hover { background: var(--hover); box-shadow: inset 2px 0 0 var(--c); }
+  .ag.proxima { background: color-mix(in srgb, var(--c) 12%, transparent); box-shadow: inset 2px 0 0 var(--c); }
+  .ag.proxima .que { color: var(--fg); font-weight: bold; }
+  .punto { font-style: normal; color: var(--c); animation: latido 1.6s ease-in-out infinite; }
+  .falta { color: var(--bg); background: var(--amarillo); padding: 0 1ch; font-weight: bold; }
+  .ag .enlace { color: var(--azul); }
+  @keyframes latido { 50% { opacity: .2; } }
+
+  /* esperan: estado · hilo · hace cuánto */
+  .hl { display: grid; grid-template-columns: 1ch minmax(0, 1fr) 4ch; gap: 1ch; align-items: baseline; padding: 0 1ch; }
+  .hl .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .hl .cuando { text-align: right; color: var(--dim); }
+  .hl .at { width: auto; font-weight: bold; } .hl .at.espera { animation: pulso 2.4s ease-in-out infinite; }
+  @keyframes pulso { 50% { opacity: .45; } }
+
+  /* atajos: teclas-botón */
+  /* los atajos se ven como el resto de las teclas (pestañas, pie): tecla y nombre, sin marco */
+
+  /* pendientes: tecla · código · casilla · texto · plazo */
+  .bloque .titulo-tareas { margin: 0; padding: 0 1ch; gap: 0 2ch; }
+  .bloque .titulo-tareas .modos:first-child { margin-left: 0; }
+  .bloque .modos button.activo { color: var(--c); text-decoration-color: var(--c); }
+  .tarea { display: grid; grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
+  .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
+  .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+  .tarea.encurso .pri { color: var(--azul); }
+  .av { font-weight: bold; margin-right: 1ch; }
+  /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
+  #ficha-tarea { --c: var(--verde); }
+  .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
+  .prop h2 { color: var(--c); }
+  /* una acción por fila: la tecla en su columna, el nombre en la otra */
+  .acciones-t { display: grid; grid-template-columns: max-content; margin: 1lh 0; }
+  .acciones-t .atajo { gap: 1ch; }
+  .pasar { display: inline-flex; gap: 1ch; } .pasar a { color: var(--c); cursor: pointer; } .pasar a:hover { text-decoration: none; color: var(--fg); }
+  .acciones-t .atajo.principal span { color: var(--c); font-weight: bold; }
+  .acciones-t .atajo.principal kbd { outline-color: var(--c); box-shadow: inset 0 -2px 0 var(--c); color: var(--c); }
+  .av-preparado { color: var(--verde); } .av-cerrar { color: var(--cian); }
+  .av-pregunta { color: var(--amarillo); } .av-choca { color: var(--rojo); }
+  .tarea .meta { display: grid; grid-template-columns: 5ch 1ch; gap: 2ch; white-space: nowrap; }
+  .tarea .meta > :first-child { text-align: right; }
+  .tarea.compacta .meta { grid-template-columns: 5ch; }
+  .tarea .destino { color: var(--magenta); overflow: hidden; text-overflow: ellipsis; text-align: left; }
+  #tareas-mas { color: var(--c); padding: 0 1ch; }
+
+  /* la barra de arriba: fija, igual en todas las pestañas */
+  .fijo { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 1lh 0 0; margin-top: -1lh; }
+  .top .recargar { color: var(--dim); } .top .recargar:hover { color: var(--fg); text-decoration: none; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0; margin-top: 1lh; }
+  .tab { padding: 0 1ch; color: var(--dim); white-space: nowrap; }
+  .tab:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+  .tab.activa { color: var(--bg); background: var(--t, var(--azul)); font-weight: bold; }
+  .tab.activa kbd { color: var(--bg); background: transparent; outline-color: var(--bg); box-shadow: inset 0 -2px 0 var(--bg); }
+  .tab[data-accion="dia"] { --t: var(--amarillo); } .tab[data-accion="proyectos"] { --t: var(--cian); }
+  .tab[data-accion="correo"] { --t: var(--magenta); } .tab[data-accion="seccion"] { --t: var(--violeta); }
+  .tab[data-accion="config"] { --t: var(--verde); }
+  .fijo::after { content: ""; display: block; height: 1lh; }
+  .subcab { display: flex; gap: 0 2ch; align-items: baseline; flex-wrap: wrap; margin: 0 0 1lh; }
+  .subcab b { color: var(--fg); } .subcab .der { margin-left: auto; }
+
+  /* el atajo: uno solo en todo el dashboard. Tecla y nombre; al pasar el mouse, los dos
+     toman el color de su sección (--c) */
+  .atajo { display: inline-flex; gap: 1ch; align-items: baseline; color: var(--fg); white-space: nowrap; cursor: pointer; }
+  .atajo:hover { color: var(--c, var(--azul)); text-decoration: none; }
+  .atajo:hover kbd { color: var(--c, var(--azul)); outline-color: var(--c, var(--azul)); box-shadow: inset 0 -2px 0 var(--c, var(--azul)); }
+  .atajo.pista { color: var(--dim); cursor: default; }
+  .atajo.pista:hover, .atajo.pista:hover kbd { color: var(--dim); outline-color: var(--linea); box-shadow: inset 0 -2px 0 var(--linea); }
+  .sec .acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0 3ch; text-transform: none; font-weight: normal; }
+  .sec .leyenda { color: var(--dim); }
+  .generales { display: flex; flex-wrap: wrap; gap: 0 3ch; --c: var(--cian); }
+  .top .atajo { color: var(--dim); } .top .atajo:hover { color: var(--c, var(--azul)); }
+  .subcab { --c: var(--violeta); } .subcab .der { display: flex; gap: 0 3ch; }
+
+  /* un bloque del día (el correo): marca · hora · de · qué */
+  .cr { display: grid; grid-template-columns: 1ch 5ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
+        box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); color: var(--dim); }
+  .cr .mk { color: var(--dim); } .cr .hora { color: var(--dim); }
+  .cr .de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cr .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cr.nuevo { color: var(--fg); } .cr.nuevo .mk { color: var(--c); } .cr.nuevo .hora { color: var(--c); }
+  .cr:hover { background: var(--hover); } .cr.clic { cursor: pointer; } .cr.clic:hover .que { color: var(--c); }
+
+  /* angosto: lo secundario se va, lo principal nunca */
+  @container (max-width: 620px) {
+    .ag .extra .hilo-ag { display: none; }
+    .tarea .meta { grid-template-columns: 5ch 1ch; }
+    .tarea:not(.compacta) { grid-template-columns: 5ch minmax(0, 1fr) auto; } .tarea:not(.compacta) .pri { display: none; }
+    .ag { grid-template-columns: 7ch minmax(0, 1fr); } .ag .extra { grid-column: 2; }
+    .ag:not(.proxima) .extra { display: none; }
+    .cr { grid-template-columns: 1ch 5ch minmax(0, 1fr); } .cr .de { display: none; }
+    .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
+  }
+  @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
   #buscar-p { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
-              width: 28ch; max-width: 100%; padding: 0 .5ch; outline: none; flex: 1 1 12ch; }
+              width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
   #buscar-p:focus { border-bottom-color: var(--azul); }
   #buscar-p::placeholder { color: var(--dim); }
   #proyectos-cuenta { color: var(--dim); }
@@ -251,11 +418,10 @@ export const CSS_DIA = `
   .proy.primera { background: var(--hover); }
 `;
 
-/** El mismo script para las dos vistas: filtra, ordena, numera con letras y avisa a la
+/** El mismo script para las dos vistas: filtra, ordena y avisa a la
  *  extensión. El estado (modo y búsqueda) sobrevive a que la vista se esconda. */
 export const SCRIPT_DIA = `
 const raiz = document.getElementById('dia');
-const LETRAS = 'abdefghi';
 let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia' }, vscode.getState() || {});
 // código de mayor a menor, con los números como números (T130 antes que T81): lo más nuevo
 // arriba, como el orden «número descendente» de flow. El texto, sin tildes.
@@ -275,22 +441,21 @@ function aplicar() {
   let lista = todas;
   if (partes.length) lista = todas.filter(function (f) { return partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; }); });
   else if (estado.modo === 'urgentes') lista = todas.filter(function (f) { return f.dataset.urgente === '1'; });
+  else if (estado.modo === 'propuestas') lista = todas.filter(function (f) { return f.dataset.propuesta === '1'; });
   lista.sort(comparar);
-  const limite = partes.length || estado.todas ? lista.length : (estado.modo === 'urgentes' ? 8 : 15);
+  const limite = partes.length || estado.todas || estado.modo === 'propuestas' ? lista.length : (estado.modo === 'urgentes' ? 8 : 15);
   todas.forEach(function (f) { f.hidden = true; });
   const mas = document.getElementById('tareas-mas');
   lista.forEach(function (f, i) {
     c.insertBefore(f, mas);
     f.hidden = i >= limite;
-    const t = f.querySelector('.tecla');
-    if (t) t.textContent = i < LETRAS.length && i < limite ? '[' + LETRAS[i] + ']' : '';
   });
   const resto = lista.length - Math.min(limite, lista.length);
   mas.hidden = resto <= 0;
-  mas.textContent = '… y ' + resto + ' más · clic: mostrarlos';
+  mas.textContent = '+ ' + resto + ' más';
   const vacio = document.getElementById('tareas-vacio');
   vacio.hidden = lista.length > 0;
-  vacio.textContent = partes.length ? 'nada calza con «' + estado.q + '»' : 'nada urgente';
+  vacio.textContent = partes.length ? 'sin resultados' : estado.modo === 'propuestas' ? 'nada que decidir' : 'nada urgente';
   document.querySelectorAll('[data-orden-t]').forEach(function (b) { b.classList.toggle('activo', b.dataset.ordenT === estado.to); });
   document.querySelectorAll('[data-modo-tareas]').forEach(function (b) { b.classList.toggle('activo', !partes.length && b.dataset.modoTareas === estado.modo); });
   const cuenta = document.getElementById('tareas-cuenta');
@@ -315,7 +480,7 @@ function aplicarProyectos() {
     if (!f.hidden) n += 1;
   });
   vacio.hidden = n > 0;
-  vacio.textContent = 'nada calza con «' + estado.pq + '»';
+  vacio.textContent = 'sin resultados';
   document.querySelectorAll('[data-orden-p]').forEach(function (b) { b.classList.toggle('activo', b.dataset.ordenP === estado.po); });
   const cuenta = document.getElementById('proyectos-cuenta');
   if (cuenta) cuenta.textContent = partes.length ? n + ' de ' + todas.length : '';
@@ -382,14 +547,22 @@ document.addEventListener('keydown', function (e) {
   const b = document.getElementById('buscar');
   if (b && document.activeElement === b) {           // escribiendo: las letras son de la búsqueda
     if (e.key === 'Escape') { e.preventDefault(); if (b.value) { b.value = ''; estado.q = ''; guardar(); aplicar(); } else b.blur(); }
-    else if (e.key === 'Enter') { e.preventDefault(); const f = visibles()[0]; if (f) vscode.postMessage({ tipo: 'accion', accion: 'pendiente', valor: f.dataset.valor, nuevo: e.metaKey || e.ctrlKey }); }
+    else if (e.key === 'Enter') { e.preventDefault(); const f = visibles()[0]; if (f) vscode.postMessage({ tipo: 'accion', accion: f.dataset.accion, valor: f.dataset.valor, nuevo: e.metaKey || e.ctrlKey }); }
     return;
+  }
+  // la ficha de una tarea: ⏎ la acción principal, ← → la propuesta anterior o siguiente, ⎋ vuelve a hoy
+  if (document.getElementById('ficha-tarea') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const acc = { Enter: 'tarea-principal', ArrowRight: 'tarea-siguiente', ArrowLeft: 'tarea-anterior', Escape: 'volver-ficha' }[e.key];
+    if (acc) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: acc }); }
+  }
+  // en «revisar», ⏎ abre la primera propuesta
+  if (document.getElementById('revisar') && e.key === 'Enter') {
+    const f = document.querySelector('#revisar .tarea');
+    if (f) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'tarea', valor: f.dataset.valor }); }
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;    // los atajos con modificador son de VS Code
   if (e.key === '/') { e.preventDefault(); if (b) b.focus(); return; }
   if (e.key === 'Escape') return vscode.postMessage({ tipo: 'accion', accion: 'volver' });
-  const i = document.querySelector('.tarea .tecla') ? LETRAS.indexOf(e.key) : -1;
-  if (i >= 0) { const f = visibles()[i]; if (f) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'pendiente', valor: f.dataset.valor }); } }
   if (e.key.length === 1) { e.preventDefault(); vscode.postMessage({ tipo: 'tecla', k: e.key }); }
 });
 vscode.postMessage({ tipo: 'listo' });

@@ -90,6 +90,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
     """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca."""
     _comun.asegurar_proveedores(ctx.config)
     items, fallas = consultar(list(ctx.config.proveedores_activos()), dia)
+    # los proveedores que dan ficha (`detalle`): un clic en su tarea la abre en vez de ir al hilo
+    con_ficha = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("detalle")}
     filas = []
     for item in items:
         destino = _comun.enrutar(tel, f"{item.titulo} {item.id}", hilo=item.hilo)
@@ -107,6 +109,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
                 "cuando": _local(item.cuando),
                 "clase": item.clase,
                 "url": item.url,
+                "avance": str((item.datos or {}).get("avance") or ""),
+                "ficha": item.proveedor in con_ficha,
             }
         )
     return filas, fallas

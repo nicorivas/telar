@@ -520,7 +520,7 @@ class Atajos(Orden):
         from telar import config as mod_config
         from telar.config import ErrorDeConfig
 
-        for tecla in ("r", "a", "1"):
+        for tecla in ("r", "p", "/"):
             with self.assertRaises(ErrorDeConfig):
                 mod_config.desde_dict({"atajos": {tecla: {"nombre": "x", "mensaje": "y"}}})
 
@@ -530,6 +530,18 @@ class Atajos(Orden):
 
         with self.assertRaises(ErrorDeConfig):
             mod_config.desde_dict({"atajos": {"m": {"nombre": "x"}}})
+
+    def test_en_dice_donde_se_muestra(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        cfg = mod_config.desde_dict({"atajos": {
+            "m": {"nombre": "x", "mensaje": "y", "en": "correo"},
+            "s": {"nombre": "x", "mensaje": "y", "en": "seccion:diario"},
+            "n": {"nombre": "x", "mensaje": "y"}}})
+        self.assertEqual({a.tecla: a.en for a in cfg.atajos}, {"m": "correo", "s": "seccion:diario", "n": "hoy"})
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"atajos": {"m": {"nombre": "x", "mensaje": "y", "en": ""}}})
 
     def test_un_atajo_que_no_existe_se_dice(self):
         codigo, _, error = self.correr("atajo", "m")
@@ -587,6 +599,65 @@ class Secciones(Orden):
         self.assertEqual(self.json_de("seccion", "diario", "--json")["titulo"], "Diario")
 
 
+class Bloques(Orden):
+    def test_se_declaran_con_comando_y_color(self):
+        from telar import config as mod_config
+
+        cfg = mod_config.desde_dict({"bloques": {"correo": {"nombre": "correo", "comando": ["x", "--json"], "color": "rojo"}}})
+        self.assertEqual([(b.clave, b.nombre, b.comando, b.color) for b in cfg.bloques],
+                         [("correo", "correo", ("x", "--json"), "rojo")])
+        self.assertEqual(mod_config.desde_dict({"bloques": {"c": {"nombre": "c", "comando": ["x"]}}}).bloques[0].color, "cian")
+
+    def test_lo_mal_declarado_es_un_error(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        for mal in ({"nombre": "c", "comando": []}, {"nombre": "c", "comando": "x"},
+                    {"nombre": "c", "comando": ["x"], "color": "fucsia"}, {"nombre": "", "comando": ["x"]},
+                    {"nombre": "c", "comando": ["x"], "otra": 1}):
+            with self.assertRaises(ErrorDeConfig, msg=mal):
+                mod_config.desde_dict({"bloques": {"c": mal}})
+
+    def _config(self, codigo: str) -> None:
+        import sys
+
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(f'[bloques.correo]\nnombre = "correo"\n'
+                        f'comando = [{json.dumps(sys.executable)}, "-c", {json.dumps(codigo)}]\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+
+    def test_la_orden_corre_el_comando_y_devuelve_su_pagina(self):
+        self._config('import json; print(json.dumps({"titulo": "correo", "bloques": [{"items": '
+                     '[{"titulo": "hola", "marca": "●", "destacado": True}]}]}))')
+        pagina = self.json_de("bloque", "correo", "--json")
+        self.assertEqual(pagina["bloques"][0]["items"][0]["marca"], "●")
+
+    def test_una_pagina_con_otra_forma_sale_con_2(self):
+        self._config('print("[]")')
+        codigo, _, error = self.correr("bloque", "correo", "--json")
+        self.assertEqual(codigo, 2)
+        self.assertIn("correo", error)
+
+    def test_mensaje_y_nombre_de_un_item_son_textos(self):
+        from telar.ordenes.seccion import validar
+
+        bien = {"titulo": "x", "bloques": [{"items": [{"titulo": "a", "mensaje": "/correo 1a", "nombre": "✉ a"}]}]}
+        self.assertEqual(validar(bien), "")
+        self.assertIn("mensaje", validar({"titulo": "x", "bloques": [{"items": [{"titulo": "a", "mensaje": 3}]}]}))
+
+    def test_abrir_un_item_sin_sesion_se_dice_y_no_corre_el_comando(self):
+        self._config('import sys; sys.exit("no me debían correr")')
+        codigo, _, error = self.correr("bloque", "correo", "--abrir", "/correo 1a", "--nombre", "✉ a")
+        self.assertEqual(codigo, 2)
+        self.assertNotIn("no me debían correr", error)
+
+    def test_un_bloque_que_no_existe_se_dice(self):
+        codigo, _, error = self.correr("bloque", "nada")
+        self.assertEqual(codigo, 2)
+        self.assertIn("no hay bloque", error)
+
+
 class LeerConversacion(Orden):
     def test_lo_dicho_y_una_linea_por_herramienta(self):
         from telar.agente.claude_code import ClaudeCode
@@ -628,3 +699,55 @@ class NombreDelHiloDeUnPendiente(Orden):
         from telar.ordenes.pendiente import _con_nombre
 
         self.assertEqual(_con_nombre({"ref": "T9", "texto": ""}), "T9")
+
+
+class FichaDeTarea(Orden):
+    def _config(self, pagina: dict) -> None:
+        import sys
+
+        codigo = f"import json; print(json.dumps({pagina!r}))"
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(
+            '[proveedores.tareas]\ntipo = "comando"\ncomando = ["true"]\n'
+            f'detalle = [{json.dumps(sys.executable)}, "-c", {json.dumps(codigo)}, "{{id}}"]\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+
+    def test_las_acciones_se_validan(self):
+        from telar.ordenes.seccion import validar
+
+        bien = {"titulo": "T1", "bloques": [{"texto": "x", "destacado": True, "color": "cian"}],
+                "acciones": [{"nombre": "hecha", "comando": ["true"], "principal": True},
+                             {"nombre": "hilo", "tipo": "hilo"}, {"nombre": "ver", "tipo": "abrir", "enlace": "https://x"}]}
+        self.assertEqual(validar(bien), "")
+        self.assertIn("principal", validar({**bien, "acciones": [{"nombre": "a", "comando": ["x"], "principal": True}] * 2}))
+        self.assertIn("comando", validar({**bien, "acciones": [{"nombre": "a"}]}))
+        self.assertIn("enlace", validar({**bien, "acciones": [{"nombre": "a", "tipo": "abrir"}]}))
+        self.assertIn("color", validar({"titulo": "x", "bloques": [{"color": "fucsia"}]}))
+
+    def test_la_ficha_y_una_accion_que_pide_texto(self):
+        salida = Path(self.tmp.name) / "salida.txt"
+        import sys
+        escribir = [sys.executable, "-c", f"import sys; open({str(salida)!r}, 'w').write(sys.argv[1])", "dijo: {texto}"]
+        self._config({"titulo": "T1 · algo", "bloques": [], "acciones": [
+            {"nombre": "responder", "pide": "qué", "comando": escribir}, {"nombre": "hilo", "tipo": "hilo"}]})
+        self.assertEqual(self.json_de("tarea", "T1", "--json")["titulo"], "T1 · algo")
+        codigo, _, error = self.correr("tarea", "T1", "--accion", "0")
+        self.assertEqual(codigo, 2)
+        self.assertIn("pide texto", error)
+        self.assertEqual(self.json_de("tarea", "T1", "--accion", "0", "--texto", "sigue viva", "--json")["hecho"], "responder")
+        self.assertEqual(salida.read_text(encoding="utf-8"), "dijo: sigue viva")
+        self.assertEqual(self.json_de("tarea", "T1", "--accion", "1", "--json")["tipo"], "hilo")
+
+    def test_sin_detalle_se_dice(self):
+        codigo, _, error = self.correr("tarea", "T1")
+        self.assertEqual(codigo, 2)
+
+
+class AccionConMensaje(Orden):
+    def test_el_mensaje_se_valida(self):
+        from telar.ordenes.seccion import validar
+
+        a = {"nombre": "hecha y procesar", "comando": ["true"], "mensaje": "/seguir T1", "nombre_hilo": "▶ T1"}
+        self.assertEqual(validar({"titulo": "x", "bloques": [], "acciones": [a]}), "")
+        self.assertIn("mensaje", validar({"titulo": "x", "bloques": [], "acciones": [{**a, "mensaje": 3}]}))

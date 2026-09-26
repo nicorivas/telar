@@ -52,18 +52,29 @@ def main(argv: list[str], ctx) -> int:
     atajo = atajos.get(o.tecla)
     if atajo is None:
         return _comun.queja(f"no hay atajo en «{o.tecla}»: `telar atajo` lista los que hay")
-    if not ctx.config.agente.nombre:
-        return _comun.queja("un atajo abre el agente, y no hay ninguno: [agente] nombre = \"claude-code\"")
+    nombre = f"{atajo.nombre} {dt.datetime.now():%m/%d %H:%M}"
+    problema = abrir(ctx, nombre, atajo.mensaje)
+    if problema:
+        return _comun.queja(problema)
+    if o.json:
+        return _comun.escribir_json({"hilo": nombre, "mensaje": atajo.mensaje})
+    print(f"{nombre} · {atajo.mensaje}")
+    return 0
 
+
+def abrir(ctx, nombre: str, mensaje: str) -> str:
+    """Un hilo nuevo `nombre` con el agente en `[agente] carpeta` y `mensaje` como primer
+    prompt, al frente. "" si se abrió; si no, por qué. Lo usan los atajos y los ítems de un
+    bloque del día."""
+    if not ctx.config.agente.nombre:
+        return "abrir un hilo con el agente pide uno: [agente] nombre = \"claude-code\""
     tel = _comun.tejer(ctx, con_ficha=False)
     if tel.mux is None or not tel.viva:
-        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
-
-    nombre = f"{atajo.nombre} {dt.datetime.now():%m/%d %H:%M}"
+        return tel.aviso or "la sesión no está viva: primero telar tejer"
     try:
         from telar import agente as mod_agente
 
-        palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(atajo.mensaje)
+        palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(mensaje)
         lanz = lanzar.Lanzamiento(
             comando=lanzar.envolver(palabras, nombre),
             carpeta=lanzar.carpeta(ctx.config, None),
@@ -75,9 +86,5 @@ def main(argv: list[str], ctx) -> int:
         if hilo is not None:
             tel.mux.ir(hilo.id)
     except (ErrorDeMux, ErrorDeAgente) as e:
-        return _comun.queja(f"no pude abrir el atajo: {e}")
-
-    if o.json:
-        return _comun.escribir_json({"hilo": nombre, "mensaje": atajo.mensaje})
-    print(f"{nombre} · {atajo.mensaje}")
-    return 0
+        return f"no pude abrir «{nombre}»: {e}"
+    return ""

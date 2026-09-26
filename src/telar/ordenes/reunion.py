@@ -15,10 +15,16 @@ carpeta y su ficha es la del proyecto; si no, la cola «· proyecto:» se quita 
 
 Si el tab de esa reunión ya existe, se va a él en vez de abrir otro: dos Claude
 preparando la misma reunión es trabajo repetido.
+
+Qué se le dice depende del evento. Si ya empezó, es su minuta (`[agente] minuta`, de
+fábrica `/minuta`) en un tab «✎ HH:MM …»; si no, la preparación. Y una regla
+`[agenda.<clave>]` cuyo `si` calce con el título cambia cualquiera de los dos: una clase,
+un taller, lo que tenga su propia skill. `--antes` y `--despues` fuerzan el momento.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import unicodedata
 from pathlib import Path
@@ -32,13 +38,15 @@ from telar.ordenes import _comun
 
 AYUDA = "Preparar una reunión: un hilo con el agente ya trabajando en ella."
 
-#: la marca con que se reconoce el tab de una reunión, igual que en flow.
+#: la marca con que se reconoce el tab de una reunión, igual que en flow; y el de su minuta.
 MARCA = "◷"
+MARCA_DESPUES = "✎"
 
 #: palabras de título de reunión que no dicen de qué proyecto se trata.
 VACIAS = frozenset("""
     reunion coordinacion interna interno semanal sesion daily llamada revision seguimiento
-    equipo taller actividad recordatorio kickoff presentacion cierre inicio proyecto con para
+    equipo taller actividad recordatorio kickoff presentacion cierre inicio proyecto proyectos
+    internos reuniones importante vamos trabajo con para
     sobre entre desde hasta como the and with meeting sync weekly call
 """.split())
 
@@ -87,7 +95,28 @@ def mensaje(plantilla: str, *, titulo: str, hora: str, fecha: str = "", enlace: 
     return texto.strip()
 
 
-def nombre_del_tab(titulo: str, hora: str) -> str:
+def empezo(fecha: str, hora: str, ahora: dt.datetime | None = None) -> bool:
+    """Si el evento de `fecha` (AAAA-MM-DD, "" es hoy) a esa `hora` ya empezó."""
+    ahora = ahora or dt.datetime.now()
+    try:
+        dia = dt.date.fromisoformat(fecha) if fecha else ahora.date()
+        h, m = (int(x) for x in hora.split(":"))
+        return dt.datetime.combine(dia, dt.time(h, m)) <= ahora
+    except ValueError:
+        return False
+
+
+def plantilla(config, titulo: str, despues: bool) -> tuple[str, str]:
+    """Qué decirle al agente por este evento, y de dónde salió (la clave de la regla, o
+    «reunion»/«minuta» si ninguna calzó)."""
+    for regla in config.agenda:
+        texto = regla.despues if despues else regla.antes
+        if texto and re.search(regla.si, titulo, re.IGNORECASE):
+            return texto, regla.clave
+    return (config.agente.minuta, "minuta") if despues else (config.agente.reunion, "reunion")
+
+
+def nombre_del_tab(titulo: str, hora: str, marca: str = MARCA) -> str:
     """«◷ HH:MM» y lo que distingue a la reunión: «Coordinación interna ANASAC» es «ANASAC».
 
     Cortar el título por largo dejaba justo la parte que se repite en todas las reuniones
@@ -100,7 +129,7 @@ def nombre_del_tab(titulo: str, hora: str) -> str:
     corto = " ".join(utiles) or titulo
     if len(corto) > 24:
         corto = corto[:23] + "…"
-    return f"{MARCA} {hora} {corto}"
+    return f"{marca} {hora} {corto}"
 
 
 def main(argv: list[str], ctx) -> int:
@@ -110,6 +139,9 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--fecha", default="", help="AAAA-MM-DD, si no es hoy")
     p.add_argument("--enlace", default="", help="la videollamada, para el mensaje")
     p.add_argument("--donde", action="store_true", help="decir qué haría, sin abrir nada")
+    momento = p.add_mutually_exclusive_group()
+    momento.add_argument("--antes", action="store_true", help="prepararla aunque ya haya empezado")
+    momento.add_argument("--despues", action="store_true", help="su minuta aunque no haya empezado")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -126,10 +158,13 @@ def main(argv: list[str], ctx) -> int:
     tel = _comun.tejer(ctx, con_ficha=False)
     unidades = list(lectura.indice(ctx.perfil, ctx.config.raiz)) if ctx.perfil else []
     proyecto = proyecto_para(titulo, unidades, set(tel.vivos))
-    texto = mensaje(ctx.config.agente.reunion, titulo=titulo, hora=hora, fecha=o.fecha,
+    despues = o.despues or (not o.antes and empezo(o.fecha, hora))
+    molde, regla = plantilla(ctx.config, titulo, despues)
+    texto = mensaje(molde, titulo=titulo, hora=hora, fecha=o.fecha or dt.date.today().isoformat(),
                     enlace=o.enlace, proyecto=proyecto)
-    nombre = nombre_del_tab(titulo, hora)
-    resultado = {"hilo": nombre, "proyecto": proyecto, "mensaje": texto, "hecho": ""}
+    nombre = nombre_del_tab(titulo, hora, MARCA_DESPUES if despues else MARCA)
+    resultado = {"hilo": nombre, "proyecto": proyecto, "mensaje": texto, "hecho": "",
+                 "momento": "despues" if despues else "antes", "regla": regla}
 
     if o.donde:
         resultado["hecho"] = "nada (--donde)"
