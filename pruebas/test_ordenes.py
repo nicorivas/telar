@@ -751,3 +751,16 @@ class AccionConMensaje(Orden):
         a = {"nombre": "hecha y procesar", "comando": ["true"], "mensaje": "/seguir T1", "nombre_hilo": "▶ T1"}
         self.assertEqual(validar({"titulo": "x", "bloques": [], "acciones": [a]}), "")
         self.assertIn("mensaje", validar({"titulo": "x", "bloques": [], "acciones": [{**a, "mensaje": 3}]}))
+
+
+class AreaDeLasFilas(Orden):
+    def test_la_del_proveedor_o_la_primera_carpeta(self):
+        from telar.ordenes.pendientes import con_area
+
+        filas = con_area([{"area": "personal", "ruta": "trabajo/x"}, {"ruta": "trabajo/proyectos/faro"}, {"ruta": ""}])
+        self.assertEqual([f["area"] for f in filas], ["personal", "trabajo", ""])
+
+    def test_el_proveedor_comando_la_lee(self):
+        from telar.proveedores.tareas import _tarea_de_json
+
+        self.assertEqual(_tarea_de_json({"texto": "x", "area": "personal"}, "o", 0).area, "personal")

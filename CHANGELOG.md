@@ -6,6 +6,22 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-09-26
+
+### Added
+
+- A task can carry an `area` (work, personal, whatever the provider uses). When there is
+  more than one, the task lists in today, the review tab and the sidebar get a filter by
+  area, remembered per view.
+
+### Changed
+
+- The sidebar's task list fits its width: the modes are icons with their count (◆
+  proposals, ▲ urgent, ≡ all) and the areas are shortened to three letters, with the full
+  word in the tooltip.
+- The selected mode, order or area is shown by colour only; the underline sat too close
+  to the next line.
+
 ## [0.1.5] — 2026-09-26
 
 ### Added

@@ -519,6 +519,8 @@ lo que el proveedor ofreció. Las de tipo `hilo` y `abrir` las hace quien dibuja
 La lista de tareas del proveedor `comando` acepta además `avance`: lo último que dejó un
 agente que la trabajó solo, `<estado>[:<cómo>] <fecha>` (`preparado 2026-09-25`,
 `cerrar:caduca 2026-09-25`). telar no lo interpreta: el dashboard lo muestra y ordena por él.
+Y `area`: a qué parte de la vida pertenece la tarea (`trabajo`, `personal`, lo que el
+proveedor use). Con más de un área, las listas de tareas ofrecen un filtro por ella.
 
 ### `telar agente conversacion <id> --json`
 

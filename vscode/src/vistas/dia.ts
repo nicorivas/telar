@@ -154,6 +154,20 @@ export function pista(tecla: string, nombre: string): string {
     return `<span class="atajo pista"><kbd>${esc(tecla)}</kbd><span>${esc(nombre)}</span></span>`;
 }
 
+/** El filtro por área de una lista de tareas: «todas» y cada área con su cuenta, la más
+ *  grande primero. Con una sola área no hay nada que filtrar y no se dibuja. El script lo
+ *  aplica a toda `.tarea` con `data-area` de la vista (hoy, revisar, la barra). */
+export function filtroAreas(areas: string[], compacto = false): string {
+    const cuenta = new Map<string, number>();
+    for (const a of areas) if (a) cuenta.set(a, (cuenta.get(a) ?? 0) + 1);
+    if (cuenta.size < 2) return '';
+    return '<div class="titulo-tareas areas-t"><span class="modos"><button data-area-filtro="">todas</button>'
+        + [...cuenta].sort((a, b) => b[1] - a[1])
+            // en la barra, angosta, tres letras (la palabra entera queda en el globo)
+            .map(([a, n]) => `<button data-area-filtro="${esc(a)}" title="${esc(a)}">${esc(compacto ? a.slice(0, 3) : a)} ${n}</button>`).join('')
+        + '</span></div>';
+}
+
 /** Una fecha relativa en pocas letras: `-39d` vencida, `hoy`, `mañana`, `3d`. */
 export function plazo(dias: number | null): string {
     if (dias === null) return '<span></span>';  // la celda va igual: sin ella, lo de al lado se corre
@@ -172,15 +186,18 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
     const h = compacto ? [] : [seccion('pendientes', 'verde', `${urgentes}/${lista.length}`)];
     h.push(`<div class="titulo-tareas${compacto ? ' estrecho' : ''}">`
         + '<span class="modos">'
-        + (propuestas ? `<button data-modo-tareas="propuestas" title="lo que un agente dejó para que decidas">propuestas ${propuestas}</button>` : '')
-        + `<button data-modo-tareas="urgentes" title="vencidos, próximos 7 días y en curso">urgentes ${urgentes}</button>`
-        + `<button data-modo-tareas="todos" title="todos, lo urgente arriba">todos ${lista.length}</button>`
+        // en la barra, angosta, íconos en vez de palabras; la palabra queda en el globo
+        + (propuestas ? `<button data-modo-tareas="propuestas" title="propuestas: lo que un agente dejó para que decidas">${compacto ? '◆' : 'propuestas'} ${propuestas}</button>` : '')
+        + `<button data-modo-tareas="urgentes" title="urgentes: vencidos, próximos 7 días y en curso">${compacto ? '▲' : 'urgentes'} ${urgentes}</button>`
+        + `<button data-modo-tareas="todos" title="todos, lo urgente arriba">${compacto ? '≡' : 'todos'} ${lista.length}</button>`
         + `<input id="buscar" type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off">`
         + '<span id="tareas-cuenta"></span></span>'
         + '<span class="modos ordenes">'
         + '<button data-orden-t="urgencia" title="lo vencido arriba">urgencia</button>'
         + '<button data-orden-t="codigo" title="por código, de mayor a menor">código</button>'
         + '<button data-orden-t="alfa" title="por el texto">a-z</button></span></div>');
+    const areas = filtroAreas(lista.map(t => t.fila.area ?? ''), compacto);
+    if (areas) h.push(areas);
     const cerrar = compacto ? [] : ['</section>'];
     if (d.error) return [...h, `<div class="vacio falla">${esc(d.error)}</div>`, ...cerrar];
     if (!lista.length) return [...h, '<div class="vacio">nada pendiente</div>', ...cerrar];
@@ -196,7 +213,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         const accion = t.fila.ficha
             ? `data-accion="tarea" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}"`
             : `data-accion="pendiente" data-valor="${esc(t.ref)}"`;
-        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}"`
+        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}" data-area="${esc(t.fila.area ?? '')}"`
             + ` data-orden="${t.urgencia}" data-ref="${esc(t.ref)}" data-alfa="${esc(normalizar(limpiarMd(t.texto)))}" data-urgente="${t.urgente ? 1 : 0}" data-texto="${esc(buscable)}"`
             // el texto entero va en un globo propio (ver `globo` en el script): el `title` nativo
             // no siempre se muestra dentro de una vista de la barra
@@ -236,10 +253,12 @@ export const CSS_DIA = `
   .titulo-tareas.estrecho { flex-direction: column; align-items: stretch; gap: 0; margin-top: 0; }
   .estrecho .modos { margin-left: 0; }
   .modos.ordenes { gap: 2ch; }
+  .areas-t .modos { margin-left: 0; flex-wrap: wrap; gap: 0 2ch; }
   .modos { display: flex; gap: 2ch; align-items: baseline; margin-left: auto; }
   .modos button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; white-space: nowrap; }
   .modos button:hover { color: var(--fg); }
-  .modos button.activo { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+  /* el seleccionado va solo en color: un subrayado se pegaba a la línea de abajo */
+  .modos button.activo { color: var(--c, var(--verde)); }
   #buscar { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
             width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
   #buscar:focus { border-bottom-color: var(--azul); }
@@ -335,7 +354,7 @@ export const CSS_DIA = `
   /* pendientes: tecla · código · casilla · texto · plazo */
   .bloque .titulo-tareas { margin: 0; padding: 0 1ch; gap: 0 2ch; }
   .bloque .titulo-tareas .modos:first-child { margin-left: 0; }
-  .bloque .modos button.activo { color: var(--c); text-decoration-color: var(--c); }
+  .bloque .modos button.activo { color: var(--c); }
   .tarea { display: grid; grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
   .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
   .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
@@ -422,7 +441,7 @@ export const CSS_DIA = `
  *  extensión. El estado (modo y búsqueda) sobrevive a que la vista se esconda. */
 export const SCRIPT_DIA = `
 const raiz = document.getElementById('dia');
-let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia' }, vscode.getState() || {});
+let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '' }, vscode.getState() || {});
 // código de mayor a menor, con los números como números (T130 antes que T81): lo más nuevo
 // arriba, como el orden «número descendente» de flow. El texto, sin tildes.
 function comparar(a, b) {
@@ -435,8 +454,11 @@ function norm(t) { return t.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').t
 function filas() { const c = document.getElementById('tareas'); return c ? Array.prototype.slice.call(c.querySelectorAll('.tarea')) : []; }
 function visibles() { return filas().filter(function (f) { return !f.hidden; }); }
 function aplicar() {
+  aplicarArea();   // también en «revisar», que no tiene la lista de hoy
   const c = document.getElementById('tareas'); if (!c) return;
-  const todas = filas();
+  // el área filtra antes que todo lo demás: lo de otra área ni se cuenta
+  const todas = filas().filter(function (f) { return !estado.area || f.dataset.area === estado.area; });
+  filas().forEach(function (f) { if (todas.indexOf(f) < 0) f.hidden = true; });
   const partes = norm(estado.q).split(/\\s+/).filter(Boolean);
   let lista = todas;
   if (partes.length) lista = todas.filter(function (f) { return partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; }); });
@@ -458,8 +480,14 @@ function aplicar() {
   vacio.textContent = partes.length ? 'sin resultados' : estado.modo === 'propuestas' ? 'nada que decidir' : 'nada urgente';
   document.querySelectorAll('[data-orden-t]').forEach(function (b) { b.classList.toggle('activo', b.dataset.ordenT === estado.to); });
   document.querySelectorAll('[data-modo-tareas]').forEach(function (b) { b.classList.toggle('activo', !partes.length && b.dataset.modoTareas === estado.modo); });
+  aplicarArea();
   const cuenta = document.getElementById('tareas-cuenta');
   if (cuenta) cuenta.textContent = partes.length ? lista.length + ' de ' + todas.length : '';
+}
+// el filtro por área fuera de la lista de hoy (la pestaña «revisar») y el botón activo
+function aplicarArea() {
+  document.querySelectorAll('#revisar .tarea').forEach(function (f) { f.hidden = !!estado.area && f.dataset.area !== estado.area; });
+  document.querySelectorAll('[data-area-filtro]').forEach(function (b) { b.classList.toggle('activo', b.dataset.areaFiltro === estado.area); });
 }
 // la pantalla de proyectos: filtrar por todas las palabras, ordenar por nombre o por fecha
 function proyectosVisibles() { const c = document.getElementById('proyectos'); return c ? Array.prototype.slice.call(c.querySelectorAll('.proy')).filter(function (f) { return !f.hidden; }) : []; }
@@ -529,6 +557,8 @@ document.addEventListener('click', function (e) {
   if (ot) { estado.to = ot.dataset.ordenT; guardar(); return aplicar(); }
   const op = e.target.closest('[data-orden-p]');
   if (op) { estado.po = op.dataset.ordenP; guardar(); return aplicarProyectos(); }
+  const ar = e.target.closest('[data-area-filtro]');
+  if (ar) { estado.area = ar.dataset.areaFiltro; guardar(); aplicar(); return aplicarArea(); }
   const m = e.target.closest('[data-modo-tareas]');
   if (m) { estado.modo = m.dataset.modoTareas; estado.q = ''; estado.todas = false; guardar(); const b = document.getElementById('buscar'); if (b) b.value = ''; return aplicar(); }
   if (e.target.closest('#tareas-mas')) { estado.todas = true; guardar(); return aplicar(); }

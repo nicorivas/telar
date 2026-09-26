@@ -16,7 +16,7 @@ import { irAHilo, mostrarTerminal } from '../acciones';
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
-import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
+import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
 import { llevarPendiente } from './tareas';
 
 export class PanelHoy {
@@ -326,12 +326,13 @@ export class PanelHoy {
         if (!d) return;
         this.teclas.clear();
         const lista = pendientes(d).filter(p => p.avance && p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
-        const h = ['<div id="revisar">', seccion('revisar', 'cian', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'la primera') : '')];
+        const h = ['<div id="revisar">', seccion('revisar', 'cian', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'la primera') : ''),
+            filtroAreas(lista.map(p => p.fila.area ?? ''))];
         if (!lista.length) h.push('<div class="vacio">nada que decidir: lo que un agente proponga aparece aquí</div>');
         lista.forEach((p, i) => {
             const [todo] = (p.fila.avance ?? '').split(' ');
             const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
-            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir">`
+            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" data-area="${esc(p.fila.area ?? '')}" title="clic: leerla y decidir">`
                 + `<span class="id">${esc(p.ref)}</span><span class="pri"></span>`
                 + `<span class="desc"><span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>${esc(p.texto)}</span>`
                 + `<span class="meta">${plazo(p.dias)}<span class="destino"></span></span></div>`);

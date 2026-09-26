@@ -93,6 +93,8 @@ class Tarea:
     #: lo último que dejó un agente que la trabajó solo («preparado 2026-09-25»): el estado y
     #: la fecha. telar no lo interpreta; lo muestra.
     avance: str = ""
+    #: a qué parte de la vida pertenece («trabajo», «personal»): el dashboard filtra por aquí
+    area: str = ""
 
     @property
     def activa(self) -> bool:
@@ -121,6 +123,7 @@ class Tarea:
                 "en_curso": self.en_curso,
                 "origen": self.origen,
                 "avance": self.avance,
+                "area": self.area,
             },
         )
 
@@ -553,7 +556,7 @@ class DeComando(_Base):
         [{"id": "T84", "texto": "Medir el alcance", "prioridad": "alta",
           "vence": "2026-06-30", "etiquetas": ["faro"], "enlace": "https://…",
           "espera": "@quien", "hecha": false, "en_curso": false,
-          "avance": "preparado 2026-09-25"}]
+          "avance": "preparado 2026-09-25", "area": "trabajo"}]
 
     De todo eso, solo `texto` es obligatorio.
     """
@@ -668,6 +671,7 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         en_curso=bandera("en_curso"),
         origen=texto_de("origen") or origen,
         avance=texto_de("avance"),
+        area=texto_de("area"),
     )
 
 

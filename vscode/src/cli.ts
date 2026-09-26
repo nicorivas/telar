@@ -173,6 +173,8 @@ export interface JsonFila {
     avance?: string;
     /** su proveedor da ficha (`telar tarea`): un clic la abre en vez de ir al hilo */
     ficha?: boolean;
+    /** a qué parte de la vida pertenece («trabajo», «personal»): las listas filtran por aquí */
+    area?: string;
 }
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay

@@ -86,6 +86,15 @@ def _local(cuando) -> str | None:
     return cuando.isoformat(timespec="minutes")
 
 
+def con_area(filas: list[dict]) -> list[dict]:
+    """El área de cada fila: la que dio el proveedor o, si no dio ninguna, la primera carpeta
+    de su ruta (un pendiente de `trabajo/proyectos/faro/README.md` es de «trabajo»)."""
+    for f in filas:
+        if not f.get("area"):
+            f["area"] = (f.get("ruta") or "").split("/")[0]
+    return filas
+
+
 def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], list[str]]:
     """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca."""
     _comun.asegurar_proveedores(ctx.config)
@@ -111,6 +120,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
                 "url": item.url,
                 "avance": str((item.datos or {}).get("avance") or ""),
                 "ficha": item.proveedor in con_ficha,
+                "area": str((item.datos or {}).get("area") or ""),
             }
         )
     return filas, fallas
@@ -135,6 +145,7 @@ def main(argv: list[str], ctx) -> int:
     if o.proveedores:
         externos, fallas = de_proveedores(ctx, tel, dt.date.today())
         filas += externos
+    con_area(filas)
 
     if o.hilo:
         hilo, problema = _comun.resolver(tel, o.hilo)

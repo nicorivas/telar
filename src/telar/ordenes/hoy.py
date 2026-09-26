@@ -72,6 +72,7 @@ def main(argv: list[str], ctx) -> int:
         agenda = [e for e in externos if es_evento(e)]
         agenda.sort(key=lambda e: e["cuando"] or "")
         filas += [e for e in externos if not es_evento(e)]
+    orden_pendientes.con_area(filas)
 
     tiempos = {h.nombre: round(h.tiempo, 1) for h in tel.hilos if h.tiempo}
 
