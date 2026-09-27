@@ -175,6 +175,10 @@ export interface JsonFila {
     ficha?: boolean;
     /** a qué parte de la vida pertenece («trabajo», «personal»): las listas filtran por aquí */
     area?: string;
+    /** el color de la palabra de `avance` (verde, rojo…) */
+    color?: string;
+    /** si su proveedor tiene pestaña propia (un feed): no es un pendiente, va a esa pestaña */
+    pestana?: string;
 }
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay

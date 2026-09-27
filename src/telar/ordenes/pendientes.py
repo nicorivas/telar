@@ -101,6 +101,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
     items, fallas = consultar(list(ctx.config.proveedores_activos()), dia)
     # los proveedores que dan ficha (`detalle`): un clic en su tarea la abre en vez de ir al hilo
     con_ficha = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("detalle")}
+    # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)
+    pestanas = {p.nombre: str(p.opciones.get("pestana") or "") for p in ctx.config.proveedores_activos()}
     filas = []
     for item in items:
         destino = _comun.enrutar(tel, f"{item.titulo} {item.id}", hilo=item.hilo)
@@ -121,6 +123,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], li
                 "avance": str((item.datos or {}).get("avance") or ""),
                 "ficha": item.proveedor in con_ficha,
                 "area": str((item.datos or {}).get("area") or ""),
+                "color": str((item.datos or {}).get("color") or ""),
+                "pestana": pestanas.get(item.proveedor, ""),
             }
         )
     return filas, fallas

@@ -390,7 +390,9 @@ def _proveedores(ctx) -> list[dict]:
                 "declara uno en [proveedores.<nombre>] si quieres agenda o tareas externas",
             )
         ]
-    sin_registrar = [p.nombre for p in declarados if p.nombre not in REGISTRO]
+    from telar.proveedores import clase
+
+    sin_registrar = [p.nombre for p in declarados if clase(p) not in REGISTRO]
     if sin_registrar:
         return [
             _r(

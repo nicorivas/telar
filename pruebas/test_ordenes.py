@@ -764,3 +764,12 @@ class AreaDeLasFilas(Orden):
         from telar.proveedores.tareas import _tarea_de_json
 
         self.assertEqual(_tarea_de_json({"texto": "x", "area": "personal"}, "o", 0).area, "personal")
+
+
+class ProveedorConClase(Orden):
+    def test_como_elige_la_clase_y_el_nombre_queda_libre(self):
+        from telar.config import Proveedor
+        from telar.proveedores import clase
+
+        self.assertEqual(clase(Proveedor(nombre="lecturas", activo=True, opciones={"como": "tareas"})), "tareas")
+        self.assertEqual(clase(Proveedor(nombre="tareas", activo=True, opciones={})), "tareas")

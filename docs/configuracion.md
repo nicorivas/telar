@@ -88,6 +88,19 @@ comando = ["/casa/bin/mis-tareas"]
 detalle = ["/casa/bin/mis-tareas", "--ver", "{id}"]
 ```
 
+Con `pestana`, lo del proveedor no son pendientes sino otra cosa (un feed de lecturas, una
+cola de revisión): sus ítems no entran a la lista de hoy y tienen su propia pestaña en el
+dashboard, con el nombre que se diga, la misma ficha y la navegación con ← →.
+
+```toml
+[proveedores.lecturas]
+como    = "tareas"          # de qué clase es; sin `como`, la del nombre
+tipo    = "comando"
+comando = ["/casa/bin/lecturas"]
+detalle = ["/casa/bin/lecturas", "--ver", "{id}"]
+pestana = "leer"
+```
+
 `detalle` imprime una página (el contrato de `telar seccion`) con `acciones`, los botones
 de la ficha. Ver [contratos](contratos.md#telar-tarea-id---json). Las tareas que traen
 `avance` (lo último que dejó un agente trabajando solo) van primero en la lista, con esa

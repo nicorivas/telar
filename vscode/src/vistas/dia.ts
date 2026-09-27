@@ -109,10 +109,11 @@ export interface Pendiente {
  *  primero (días negativos), después lo que vence pronto, y lo que no tiene fecha al final,
  *  como si venciera en un mes. Lo que está en curso se adelanta medio día dentro de su
  *  grupo: ya se empezó, y dejarlo a medias cuesta más que no haberlo empezado. */
-export function pendientes(d: Dia): Pendiente[] {
+export function pendientes(d: Dia, pestana = ''): Pendiente[] {
     const hoy = Date.parse(`${d.fecha || new Date().toISOString().slice(0, 10)}T00:00:00`);
+    // lo de un proveedor con pestaña propia (un feed) no es un pendiente: va a su pestaña
     return d.pendientes
-        .filter(f => !f.hecho)
+        .filter(f => !f.hecho && (f.pestana ?? '') === pestana)
         .map(f => {
             const cuando = f.cuando ?? '';
             const dias = cuando ? Math.round((Date.parse(cuando.slice(0, 10) + 'T00:00:00') - hoy) / 86400000) : null;
@@ -126,7 +127,8 @@ export function pendientes(d: Dia): Pendiente[] {
                 urgente: avance ? true : dias !== null ? dias <= 7 : enCurso,
             };
         })
-        .sort((a, b) => a.urgencia - b.urgencia || a.ref.localeCompare(b.ref));
+        // en una pestaña de proveedor (un feed) manda el orden del proveedor, que sabe cuál va primero
+        .sort((a, b) => pestana ? 0 : a.urgencia - b.urgencia || a.ref.localeCompare(b.ref));
 }
 
 // ───────────────────────── el dibujo ─────────────────────────
@@ -208,7 +210,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         // lo que dejó un agente: una palabra con color antes del texto (preparado, cerrar, pregunta, choca)
         const [avanceTodo, avanceFecha] = (t.fila.avance ?? '').split(' ');
         const avance = t.avance;
-        const marcaAvance = avance ? `<span class="av av-${esc(avance)}">${esc(avanceTodo.replace(':', ' '))}</span>` : '';
+        const marcaAvance = avance ? `<span class="av av-${esc(avance)}"${t.fila.color ? ` style="color: var(--${esc(t.fila.color)})"` : ''}>${esc(avanceTodo.replace(':', ' '))}</span>` : '';
         // con ficha, el clic la abre (leer y decidir, sin agente); ⌘-clic la lleva a su hilo
         const accion = t.fila.ficha
             ? `data-accion="tarea" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}"`
@@ -363,6 +365,7 @@ export const CSS_DIA = `
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
   #ficha-tarea { --c: var(--verde); }
   .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
+  .sub-ficha { white-space: normal; overflow-wrap: anywhere; }
   .prop h2 { color: var(--c); }
   /* una acción por fila: la tecla en su columna, el nombre en la otra */
   .acciones-t { display: grid; grid-template-columns: max-content; margin: 1lh 0; }

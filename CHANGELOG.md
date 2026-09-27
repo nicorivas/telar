@@ -6,6 +6,21 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-09-27
+
+### Added
+
+- A provider can declare `pestana`: its items are not tasks but something else (a reading
+  feed, a review queue), stay out of today's list and get their own dashboard tab, with
+  the same cards, ← → navigation and actions. After an action that runs a command, the
+  card moves on to the next item. A task can carry a `color` for its `avance` word.
+- `[proveedores.<nombre>] como = "<clase>"`: two providers of the same kind can live side by
+  side under different names (a second `tareas` provider for a feed).
+
+### Fixed
+
+- A card's long subtitle wraps instead of running off the panel.
+
 ## [0.1.6] — 2026-09-26
 
 ### Added

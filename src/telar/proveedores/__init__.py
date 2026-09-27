@@ -56,13 +56,20 @@ def registrar(nombre: str, fabrica) -> None:
     REGISTRO[nombre] = fabrica
 
 
+def clase(cfg: ConfigProveedor) -> str:
+    """De qué clase es un proveedor: `como` en su tabla, o su nombre. Con `como`, puede haber
+    dos del mismo tipo (`[proveedores.lecturas] como = "tareas"`, junto a `[proveedores.tareas]`)."""
+    como = cfg.opciones.get("como")
+    return como if isinstance(como, str) and como else cfg.nombre
+
+
 def obtener(cfg: ConfigProveedor) -> Fuente:
     """Construye un proveedor declarado en la configuración."""
-    fabrica = REGISTRO.get(cfg.nombre)
+    fabrica = REGISTRO.get(clase(cfg))
     if fabrica is None:
         conocidos = ", ".join(sorted(REGISTRO)) or "ninguno"
         raise ErrorDeProveedor(
-            f"no hay un proveedor llamado {cfg.nombre!r}; registrados: {conocidos}"
+            f"no hay un proveedor llamado {clase(cfg)!r}; registrados: {conocidos}"
         )
     return fabrica(cfg)  # type: ignore[operator]
 

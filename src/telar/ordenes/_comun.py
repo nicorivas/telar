@@ -309,7 +309,8 @@ def asegurar_proveedores(config) -> None:
 
     from telar import proveedores
 
-    for nombre in config.proveedores:
+    for cfg in config.proveedores.values():
+        nombre = proveedores.clase(cfg)
         if nombre in proveedores.REGISTRO:
             continue
         try:

@@ -22,9 +22,12 @@ import { llevarPendiente } from './tareas';
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' = 'dia';
-    /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada */
-    private fichaDesde: 'dia' | 'revisar' = 'dia';
+    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' = 'dia';
+    /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada. `pestana:<n>` es
+     *  la de un proveedor con pestaña propia (un feed) */
+    private fichaDesde = 'dia';
+    /** la pestaña de proveedor abierta (`pestana` del proveedor: «leer») */
+    private pestana = '';
     /** la ficha abierta: de qué proveedor, su id y su ref (con la que se lleva al hilo) */
     private ficha?: { proveedor: string; id: string; ref: string; pagina?: cli.JsonPagina; aviso?: string };
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído */
@@ -95,6 +98,7 @@ export class PanelHoy {
     render(): void {
         if (this.panel && this.pantalla === 'config') { this.renderConfig(); return; }
         if (this.panel && this.pantalla === 'revisar') { this.renderRevisar(); return; }
+        if (this.panel && this.pantalla === 'pestana') { this.renderPestana(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
@@ -122,11 +126,16 @@ export class PanelHoy {
         const d = this.datos;
         const ahora = new Date();
         const activa = this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
-            : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde : this.pantalla;
-        const aRevisar = this.propuestas().length;
+            : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde
+            : this.pantalla === 'pestana' ? `pestana:${this.pestana}` : this.pantalla;
+        // las pestañas de los proveedores que las declaran (un feed), con cuántos ítems tienen
+        const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
+            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(), ''] as [string, string, string, string, string]);
+        const aRevisar = this.propuestas('').length;
         const pestanas: [string, string, string, string, string][] = [  // clave, acción, valor, nombre, tecla
             ['dia', 'dia', '', 'hoy', ''],
             ['revisar', 'revisar', '', aRevisar ? `revisar ${aRevisar}` : 'revisar', 'v'],
+            ...deProveedores,
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
             ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
             ...modelo.secciones.filter(x => x.home).map(x =>
@@ -301,6 +310,7 @@ export class PanelHoy {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
         if (!this.panel) this.abrir();
         if (this.pantalla === 'revisar' || this.pantalla === 'dia') this.fichaDesde = this.pantalla;
+        if (this.pantalla === 'pestana') this.fichaDesde = `pestana:${this.pestana}`;
         this.pantalla = 'tarea';
         this.ficha = { proveedor, id, ref };
         this.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(id)}</b></div><div class="fila dim">leyendo…</div></div>`]);
@@ -341,11 +351,42 @@ export class PanelHoy {
         this.pintar(h);
     }
 
-    /** Las tareas con propuesta, en el orden del día, sin las ya decididas (salvo la abierta). */
-    private propuestas(): { proveedor: string; id: string; ref: string }[] {
+    /** La pestaña de un proveedor que la declara (un feed): sus ítems en una lista, con la
+     *  misma ficha y las mismas flechas que «revisar». */
+    private async abrirPestana(nombre: string): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'pestana';
+        this.pestana = nombre;
+        this.fichaDesde = `pestana:${nombre}`;
+        if (!this.datos) this.datos = await dia();
+        this.renderPestana();
+    }
+
+    private renderPestana(): void {
+        const d = this.datos;
+        if (!d) return;
+        this.teclas.clear();
+        const lista = pendientes(d, this.pestana).filter(p => !this.decididas.has(p.fila.id || p.ref));
+        const h = ['<div id="revisar">', seccion(this.pestana, 'magenta', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'el primero') : '')];
+        if (!lista.length) h.push('<div class="vacio">nada por ahora</div>');
+        for (const p of lista) {
+            const [palabra] = (p.fila.avance ?? '').split(' ');
+            const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
+            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" title="clic: leerlo">`
+                + `<span class="id"></span><span class="pri"></span>`
+                + `<span class="desc">${palabra ? `<span class="av"${p.fila.color ? ` style="color: var(--${esc(p.fila.color)})"` : ''}>${esc(palabra)}</span>` : ''}${esc(p.texto)}</span>`
+                + `<span class="meta">${plazo(p.dias)}<span class="destino"></span></span></div>`);
+        }
+        h.push('</section></div>');
+        this.pintar(h);
+    }
+
+    /** Las tareas con propuesta, en el orden del día, sin las ya decididas (salvo la abierta).
+     *  Si la ficha se abrió desde una pestaña de proveedor, los ítems de esa pestaña. */
+    private propuestas(desde = this.fichaDesde.startsWith('pestana:') ? this.fichaDesde.slice(8) : ''): { proveedor: string; id: string; ref: string }[] {
         if (!this.datos) return [];
-        return pendientes(this.datos)
-            .filter(p => p.avance && p.fila.ficha && (!this.decididas.has(p.fila.id || p.ref) || (p.fila.id || p.ref) === this.ficha?.id))
+        return pendientes(this.datos, desde)
+            .filter(p => (desde || p.avance) && p.fila.ficha && (!this.decididas.has(p.fila.id || p.ref) || (p.fila.id || p.ref) === this.ficha?.id))
             .map(p => ({ proveedor: p.fila.proveedor, id: p.fila.id || p.ref, ref: p.ref }));
     }
 
@@ -386,7 +427,7 @@ export class PanelHoy {
         const color = p.bloques.find(b => b.destacado)?.color;
         this.pintar([`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
             `<div class="subcab"><b>${esc(p.titulo)}</b><span class="der">${donde}</span></div>`,
-            p.subtitulo ? `<div class="fila dim">${esc(p.subtitulo)}</div>` : '',
+            p.subtitulo ? `<div class="sub-ficha dim">${esc(p.subtitulo)}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
             ...this.htmlBloques(p.bloques), '</div>']);
     }
@@ -422,7 +463,8 @@ export class PanelHoy {
         // se decidió sobre la propuesta: la siguiente, si hay; si no, se relee la ficha
         const eraPropuesta = !!f.pagina?.bloques.some(b => b.destacado);
         const releida = await cli.tarea(f.id, f.proveedor);
-        const sigueViva = !!releida.datos?.bloques.some(b => b.destacado);
+        // en un feed, correr una acción es decidir sobre el ítem: pasa al siguiente
+        const sigueViva = !this.fichaDesde.startsWith('pestana:') && !!releida.datos?.bloques.some(b => b.destacado);
         olvidarDia();
         void this.actualizar(true);
         if (eraPropuesta && !sigueViva) {
@@ -430,6 +472,7 @@ export class PanelHoy {
             if (await this.otraPropuesta(1)) return;
             // era la última: de vuelta a la lista de donde se vino, que ahora dice «nada que decidir»
             if (this.fichaDesde === 'revisar') { await this.abrirRevisar(); return; }
+            if (this.fichaDesde.startsWith('pestana:')) { await this.abrirPestana(this.fichaDesde.slice(8)); return; }
         }
         if (this.pantalla === 'tarea' && this.ficha?.id === f.id) {
             this.ficha.pagina = releida.datos ?? this.ficha.pagina;
@@ -879,7 +922,12 @@ export class PanelHoy {
             }
             case 'tarea-siguiente': await this.otraPropuesta(1); break;
             case 'revisar': await this.abrirRevisar(); break;
-            case 'volver-ficha': if (this.fichaDesde === 'revisar') await this.abrirRevisar(); else { this.pantalla = 'dia'; this.render(); } break;
+            case 'pestana': if (m.valor) await this.abrirPestana(m.valor); break;
+            case 'volver-ficha':
+                if (this.fichaDesde === 'revisar') await this.abrirRevisar();
+                else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
+                else { this.pantalla = 'dia'; this.render(); }
+                break;
             case 'tarea-anterior': await this.otraPropuesta(-1); break;
             case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
             case 'tareas': await vscode.commands.executeCommand('telar.tareas'); break;

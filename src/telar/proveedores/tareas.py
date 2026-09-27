@@ -95,6 +95,8 @@ class Tarea:
     avance: str = ""
     #: a qué parte de la vida pertenece («trabajo», «personal»): el dashboard filtra por aquí
     area: str = ""
+    #: el color de la palabra de `avance` (azul, verde, rojo…); vacío, el de fábrica
+    color: str = ""
 
     @property
     def activa(self) -> bool:
@@ -124,6 +126,7 @@ class Tarea:
                 "origen": self.origen,
                 "avance": self.avance,
                 "area": self.area,
+                "color": self.color,
             },
         )
 
@@ -672,6 +675,7 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         origen=texto_de("origen") or origen,
         avance=texto_de("avance"),
         area=texto_de("area"),
+        color=texto_de("color"),
     )
 
 
