@@ -413,6 +413,12 @@ def cascada_por_defecto(arquetipo: Arquetipo) -> dict[str, tuple[str, ...]]:
     entiende (`titulo`, `estado`, `pendientes`), después las demás secciones por su
     tipo. Un `esperando` o un `hitos` valen por su nombre, y esa es la única licencia
     que se toma este módulo: la configuración la puede desarmar entera.
+
+    Las secciones de tipo `lista` son un **respaldo** de pendientes, no un
+    complemento: entran solo cuando el perfil no declara `pendientes`. Un perfil que
+    sí lo declara ya dijo dónde viven sus tareas, y sus otras listas (notas, un
+    cronograma, conexiones) no lo son. Las de tipo `casillas` entran siempre: una
+    casilla es una tarea, la ponga donde la ponga el documento.
     """
     nombres = {s.nombre for s in arquetipo.secciones}
 
@@ -430,8 +436,11 @@ def cascada_por_defecto(arquetipo: Arquetipo) -> dict[str, tuple[str, ...]]:
         "resumen": (("estado",) if "estado" in nombres else ())
         + de_tipo("parrafo", "linea", "texto", salvo=reservadas),
         "campos": de_tipo("tabla", salvo=set()),
-        "pendientes": (("pendientes",) if "pendientes" in nombres else ())
-        + de_tipo("casillas", "lista", salvo=reservadas),
+        "pendientes": (
+            ("pendientes",) + de_tipo("casillas", salvo=reservadas)
+            if "pendientes" in nombres
+            else de_tipo("casillas", "lista", salvo=reservadas)
+        ),
         "esperando": esperando,
         "hitos": hitos,
     }

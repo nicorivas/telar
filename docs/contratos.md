@@ -117,7 +117,7 @@ Sin `cascada` declarada, se arma sola con lo que el arquetipo declaró:
 | `titulo` | la sección `titulo`; si no hay, el nombre de la carpeta (o del archivo) |
 | `resumen` | la sección `estado`; después las demás de tipo `parrafo`, `linea` o `texto` |
 | `campos` | todas las secciones de tipo `tabla`, y después el front matter |
-| `pendientes` | la sección `pendientes`; después las demás de tipo `casillas` y `lista` |
+| `pendientes` | la sección `pendientes` y las demás de tipo `casillas`; sin `pendientes` declarada, las de tipo `casillas` y `lista` |
 | `esperando` | la sección llamada `esperando`, si el perfil la declara |
 | `hitos` | la sección llamada `hitos`, más los `campos` cuyo valor trae fecha |
 
