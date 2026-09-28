@@ -90,7 +90,9 @@ detalle = ["/casa/bin/mis-tareas", "--ver", "{id}"]
 
 Con `pestana`, lo del proveedor no son pendientes sino otra cosa (un feed de lecturas, una
 cola de revisión): sus ítems no entran a la lista de hoy y tienen su propia pestaña en el
-dashboard, con el nombre que se diga, la misma ficha y la navegación con ← →.
+dashboard, con el nombre que se diga, la misma ficha y la navegación con ← →. La pestaña se
+abre directo en el primer ítem (no en una lista); ⎋ vuelve a hoy. La `tecla` no puede ser
+una del dashboard ni la de un atajo (`telar doctor` lo revisa).
 
 ```toml
 [proveedores.lecturas]
@@ -99,6 +101,7 @@ tipo    = "comando"
 comando = ["/casa/bin/lecturas"]
 detalle = ["/casa/bin/lecturas", "--ver", "{id}"]
 pestana = "leer"
+tecla   = "l"               # opcional: abre la pestaña, en el primer ítem
 ```
 
 `detalle` imprime una página (el contrato de `telar seccion`) con `acciones`, los botones

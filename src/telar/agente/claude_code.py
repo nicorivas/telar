@@ -31,6 +31,7 @@ Dos detalles de Claude Code que se pagan si no se saben:
 from __future__ import annotations
 
 import json
+import re
 import os
 import shlex
 import tempfile
@@ -169,6 +170,87 @@ class ClaudeCode(AgenteBase):
                         salida.append({"quien": "herramienta", "hora": hora,
                                        "texto": _herramienta(x.get("name", ""), x.get("input") or {})})
         return salida
+
+    def skills(self, carpeta: Path | None) -> list[dict]:
+        """Las skills que tiene a mano un agente que trabaja en `carpeta`, con su descripción.
+
+        Como las carga Claude Code: las de `.claude/skills/` de la carpeta y de cada una de
+        más arriba hasta el directorio personal; las de subcarpetas, que valen al trabajar
+        en ellas (`alcance`); las del usuario; y las de los plugins habilitados. Si dos se
+        llaman igual, gana la más cercana, como allá.
+        """
+        casa = Path.home()
+        vistas: dict[str, dict] = {}
+
+        def agregar(dir_skills: Path, origen: str, alcance: str = "", prefijo: str = "") -> None:
+            try:
+                archivos = sorted(dir_skills.glob("*/SKILL.md"))
+            except OSError:
+                return
+            for f in archivos:
+                nombre, descripcion = _frontmatter_skill(f)
+                nombre = prefijo + (nombre or f.parent.name)
+                if nombre not in vistas:
+                    vistas[nombre] = {"nombre": nombre, "descripcion": descripcion, "origen": origen,
+                                      "alcance": alcance, "ruta": str(f)}
+
+        if carpeta is not None:
+            carpeta = Path(carpeta).resolve()
+            for d in [carpeta, *carpeta.parents]:
+                agregar(d / ".claude" / "skills", "proyecto" if d == carpeta else f"desde {d.name}")
+                if d == casa or d == d.parent:
+                    break
+            # las de subcarpetas: valen al trabajar ahí (tres niveles bastan, y no se entra
+            # a dependencias ni a carpetas ocultas)
+            for sub in sorted(carpeta.glob("*/.claude/skills")) + sorted(carpeta.glob("*/*/.claude/skills")) \
+                    + sorted(carpeta.glob("*/*/*/.claude/skills")):
+                rel = sub.parent.parent.relative_to(carpeta)
+                if any(p.startswith(".") or p == "node_modules" for p in rel.parts):
+                    continue
+                agregar(sub, "proyecto", alcance=str(rel))
+        agregar(carpeta_config() / "skills", "usuario")
+        try:
+            instalados = json.loads((carpeta_config() / "plugins" / "installed_plugins.json").read_text())
+            habilitados = _leer_ajustes(ruta_ajustes()).get("enabledPlugins") or {}
+        except (OSError, ValueError):
+            instalados, habilitados = {}, {}
+        for clave, versiones in (instalados.get("plugins") or {}).items():
+            if not habilitados.get(clave) or not versiones:
+                continue
+            ruta = Path(versiones[-1].get("installPath", ""))
+            agregar(ruta / "skills", "plugin", prefijo=clave.split("@")[0] + ":")
+        return sorted(vistas.values(), key=lambda x: (x["alcance"] != "", x["origen"] == "plugin", x["nombre"]))
+
+    def usadas(self, conversacion: Conversacion | str) -> dict[str, int]:
+        """Cuántas veces se usó cada skill en una conversación: las que el agente llamó
+        (la herramienta `Skill`) y las que la persona escribió como `/comando`."""
+        archivo = self.archivo_de(conversacion)
+        cuenta: dict[str, int] = {}
+        if archivo is None:
+            return cuenta
+        try:
+            lineas = archivo.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return cuenta
+        for linea in lineas:
+            if '"Skill"' not in linea and "<command-name>" not in linea:
+                continue
+            try:
+                d = json.loads(linea)
+            except ValueError:
+                continue
+            m = d.get("message") or {}
+            contenido = m.get("content") if isinstance(m, dict) else None
+            if isinstance(contenido, list):
+                for x in contenido:
+                    if isinstance(x, dict) and x.get("type") == "tool_use" and x.get("name") == "Skill":
+                        nombre = str((x.get("input") or {}).get("skill", "")).strip().lstrip("/")
+                        if nombre:
+                            cuenta[nombre] = cuenta.get(nombre, 0) + 1
+            elif isinstance(contenido, str):
+                for nombre in re.findall(r"<command-name>/?([^<\s]+)</command-name>", contenido):
+                    cuenta[nombre] = cuenta.get(nombre, 0) + 1
+        return cuenta
 
     def retomar(self, conversacion: Conversacion) -> list[str]:
         """Volver a esa conversación. No la corre: la devuelve para que decida quien pueda."""
@@ -507,4 +589,32 @@ def _herramienta(nombre: str, entrada: Mapping[str, object]) -> str:
             detalle = " ".join(valor.split())
             return f"{nombre} · {detalle[:160]}{'…' if len(detalle) > 160 else ''}"
     return nombre
+
+
+def _frontmatter_skill(ruta: Path) -> tuple[str, str]:
+    """(nombre, descripción) de la cabecera de un SKILL.md. Una descripción puede venir en
+    una línea, entre comillas, o en bloque (`>` o `|`) con las líneas siguientes sangradas."""
+    try:
+        texto = ruta.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "", ""
+    if not texto.startswith("---"):
+        return "", ""
+    cabeza = texto[3:].split("\n---", 1)[0].splitlines()
+    campos: dict[str, str] = {}
+    i = 0
+    while i < len(cabeza):
+        m = re.match(r"^([A-Za-z_-]+):\s*(.*)$", cabeza[i])
+        i += 1
+        if not m:
+            continue
+        clave, valor = m.group(1), m.group(2).strip()
+        if valor in (">", "|", ">-", "|-"):
+            partes = []
+            while i < len(cabeza) and (cabeza[i].startswith((" ", "\t")) or not cabeza[i].strip()):
+                partes.append(cabeza[i].strip())
+                i += 1
+            valor = " ".join(p for p in partes if p)
+        campos[clave] = valor.strip().strip('"').strip("'")
+    return campos.get("name", ""), campos.get("description", "")
 

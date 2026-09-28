@@ -18,6 +18,9 @@ import { modelo } from '../modelo';
 
 const CSS = `
   body { padding: 0 1.5ch 2em; }
+  .skill { padding: .3em 0; cursor: pointer; } .skill:hover b { text-decoration: underline; }
+  .skill.usada b { color: var(--vscode-charts-green, #a6e3a1); }
+  .desc-skill { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .barra { display: flex; gap: 2ch; align-items: baseline; padding: .5em 0 .4em; position: sticky; top: 0;
            background: var(--bg); border-bottom: 1px solid var(--linea); margin-bottom: .6em; }
   .barra button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; }
@@ -74,7 +77,7 @@ document.addEventListener('click', e => {
 
 export class VistaFicha implements vscode.WebviewViewProvider {
     vista?: vscode.WebviewView;
-    modo: 'ficha' | 'documento' | 'correo' = 'ficha';
+    modo: 'ficha' | 'documento' | 'correo' | 'skills' = 'ficha';
     /** un hilo elegido desde el menú; se suelta cuando cambia el que tiene el foco */
     fijado?: string;
     datos?: cli.JsonFichaOrden;
@@ -141,7 +144,8 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const d = this.datos;
         const documento = d?.hilo.ficha?.documento ?? '';
         switch (m.tipo) {
-            case 'modo': this.modo = m.valor === 'documento' || m.valor === 'correo' ? m.valor : 'ficha'; await this.render(); break;
+            case 'modo': this.modo = m.valor === 'documento' || m.valor === 'correo' || m.valor === 'skills' ? m.valor : 'ficha'; await this.render(); break;
+            case 'skill': if (m.valor && fs.existsSync(m.valor)) await abrir(m.valor); break;
             case 'editar': if (documento) await abrir(documento); break;
             case 'carpeta': if (d?.hilo.ruta) {
                 await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(d.hilo.ruta));
@@ -169,6 +173,7 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         if (this.modo === 'correo' && !tieneCorreo) this.modo = 'ficha';
         let cuerpo: string;
         if (this.modo === 'correo') cuerpo = await this.htmlCorreo(hilo);
+        else if (this.modo === 'skills') cuerpo = await this.htmlSkills(hilo);
         else if (this.error) cuerpo = `<div class="aviso">${esc(this.error)}</div>`;
         else if (!d) cuerpo = `<div class="aviso">leyendo «${esc(hilo)}»…</div>`;
         else if (!d.hilo.vinculado) {
@@ -182,16 +187,46 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const boton = (modo: string, texto: string) =>
             `<button data-modo="${modo}" class="${this.modo === modo ? 'activo' : ''}">${texto}</button>`;
         const noLeidos = correo?.no_leidos ?? 0;
-        const barra = ficha?.documento || tieneCorreo
+        // «skills» está siempre: un hilo sin documento igual tiene un agente con skills
+        const barra = hilo
             ? `<div class="barra">${boton('ficha', 'ficha')}`
             + (ficha?.documento ? boton('documento', path.basename(ficha.documento)) : '')
             + (tieneCorreo ? boton('correo', `✉ correo${noLeidos ? ` <span class="nuevo">${noLeidos}</span>` : ''}`) : '')
+            + boton('skills', 'skills')
             + '<span class="sep"></span>'
             + (ficha?.documento ? '<button data-msg="editar" title="abrir el documento en el editor">editar</button>'
                 + '<button data-msg="carpeta" title="ver la carpeta en el explorador">carpeta</button>' : '')
             + '</div>'
             : '';
         this.vista.webview.html = marco(this.vista.webview, CSS, barra + cuerpo, SCRIPT);
+    }
+
+    /** Las skills que tiene a mano el agente del hilo, con su descripción: primero las que
+     *  usó en su conversación (y cuántas veces), después todas, por dónde vienen. Un clic
+     *  abre el SKILL.md. */
+    private async htmlSkills(hilo: string): Promise<string> {
+        const r = await cli.skills(hilo);
+        if (!r.datos) return `<div class="aviso">${esc(r.error ?? 'no pude leer las skills')}</div>`;
+        const todas = r.datos.skills;
+        const fila = (s: cli.JsonSkill) =>
+            `<div class="skill${s.usada ? ' usada' : ''}"${s.ruta ? ` data-msg="skill" data-valor="${esc(s.ruta)}" title="abrir ${esc(s.ruta)}"` : ''}>`
+            + `<div><b>/${esc(s.nombre)}</b>${s.usada ? ` <span class="nuevo">✓ ${s.usada}</span>` : ''}`
+            + `${s.alcance ? ` <span class="dim">· en ${esc(s.alcance)}/</span>` : ''}</div>`
+            + (s.descripcion ? `<div class="dim desc-skill">${esc(s.descripcion)}</div>` : '') + '</div>';
+        const h = [`<div class="dim">${todas.length} skills a mano${r.datos.remoto
+            ? ' · el hilo vive en otra máquina: no sé cuáles usó'
+            : r.datos.conversacion ? '' : ' · sin conversación anotada: no sé cuáles usó'}</div>`];
+        const usadas = todas.filter(s => s.usada).sort((a, b) => b.usada - a.usada);
+        if (usadas.length) h.push('<h3>usadas en esta conversación</h3>', ...usadas.map(fila));
+        const grupos = new Map<string, cli.JsonSkill[]>();
+        for (const s of todas.filter(x => !x.usada)) {
+            const g = s.alcance ? `al trabajar en ${s.alcance}/` : s.origen === 'proyecto' ? 'de esta carpeta'
+                : s.origen.startsWith('desde ') ? `de ${s.origen.slice(6)}/` : s.origen === 'usuario' ? 'tuyas (~/.claude)'
+                : s.origen === 'plugin' ? 'de plugins' : 'otras';
+            grupos.set(g, [...(grupos.get(g) ?? []), s]);
+        }
+        for (const [g, lista] of grupos) h.push(`<h3>${esc(g)}</h3>`, ...lista.map(fila));
+        return h.join('');
     }
 
     /** La bandeja del hilo: lo que llegó a su dirección, lo más nuevo arriba. Pide los textos

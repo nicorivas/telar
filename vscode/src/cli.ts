@@ -229,9 +229,11 @@ export interface JsonBloque { clave: string; nombre: string; color: string }
 /** `telar bloque <clave>`: la página que imprime su comando. */
 export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
 
+export interface JsonPestana { nombre: string; tecla: string }
 export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
     atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
+    pestanas?: JsonPestana[];
 }>(['config', '--json'], 20000);
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
@@ -359,6 +361,16 @@ export interface JsonBuzon {
 export interface JsonCorreoHilo { direccion: string; pendientes: JsonCorreo[]; correos?: JsonCorreo[]; no_leidos?: number }
 
 /** `telar correo leido <hilo>`: marcar vista su bandeja (o esos ids). */
+/** Una skill que el agente de un hilo tiene a mano (`telar agente skills`). */
+export interface JsonSkill {
+    nombre: string; descripcion: string; origen: string; alcance: string; ruta: string;
+    /** cuántas veces se usó en la conversación del hilo */
+    usada: number;
+}
+export const skills = (hilo: string) => telarJson<{
+    hilo: string; conversacion: string; remoto: boolean; skills: JsonSkill[];
+}>(['agente', 'skills', '--hilo', hilo, '--json'], 30000);
+
 export const correoLeido = (hilo: string, ids: string[] = []) =>
     telar(['correo', 'leido', hilo, ...(ids.length ? ['--ids', ...ids] : [])], 40000);
 

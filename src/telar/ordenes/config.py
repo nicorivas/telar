@@ -196,6 +196,9 @@ def main(argv: list[str], ctx) -> int:
             for r in cfg.remotos
         ],
         "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color} for b in cfg.bloques],
+        # las pestañas de proveedor (un feed) y su tecla, para el dashboard
+        "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
+                     for p in cfg.proveedores_activos() if p.opciones.get("pestana")],
         "agenda": [{"clave": r.clave, "si": r.si, "antes": r.antes, "despues": r.despues} for r in cfg.agenda],
         "secciones": [
             {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}

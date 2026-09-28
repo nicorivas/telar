@@ -10,6 +10,8 @@
     telar agente conversacion ID     una conversación entera, para leerla (con --json, el contrato)
     telar agente contexto            las líneas que el agente recibe al empezar: su hilo, su
                                      correo y cómo hablar con los otros (lo corre un gancho)
+    telar agente skills [--hilo H]   las skills que tiene a mano el agente de ese hilo, con su
+                                     descripción, y cuántas veces usó cada una en su conversación
 
 `instalar` es lo único que telar escribe fuera de su propio estado, y encima en la
 configuración de otro programa (`~/.claude/settings.json`, para Claude Code). Por eso
@@ -76,7 +78,7 @@ from telar.ordenes import _comun
 
 AYUDA = "El agente que corre en un hilo: sus ganchos, sus conversaciones."
 
-VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto")
+VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto", "skills")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -119,6 +121,8 @@ def main(argv: list[str], ctx) -> int:
     if o.verbo == "conversacion":
         # aquí la palabra suelta es el id de la conversación, no el nombre del agente
         return _conversacion(o, ctx)
+    if o.verbo == "skills":
+        return _skills(o, ctx)
 
     try:
         agente = _construir(o.agente, ctx.config)
@@ -191,6 +195,44 @@ def contexto(ctx) -> str:
 
 
 # ── leer una conversación ───────────────────────────────────────────────────────
+
+
+def _skills(o, ctx) -> int:
+    """Las skills del agente de un hilo: las de su carpeta (y las de más arriba), las del
+    usuario y las de los plugins; y las que usó en la conversación que tiene anotada."""
+    try:
+        agente = _construir(ctx.config.agente.nombre, ctx.config)
+    except ErrorDeAgente as e:
+        return _comun.queja(str(e))
+    if not hasattr(agente, "skills"):
+        return _comun.queja(f"el agente {ctx.config.agente.nombre} no sabe listar sus skills")
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = None
+    if o.hilo:
+        hilo, aviso = _comun.hilo_o_nombre(tel, o.hilo)
+        if hilo is None:
+            return _comun.queja(aviso)
+    else:
+        hilo = _comun.hilo_actual(tel)
+    carpeta = hilo.ruta if hilo is not None and hilo.ruta else Path(ctx.config.raiz)
+    remoto = bool(hilo is not None and tel.estado.remotos().get(hilo.nombre))
+    conversacion = hilo.sesiones[0] if hilo is not None and hilo.sesiones else ""
+    usadas = agente.usadas(conversacion) if conversacion and not remoto else {}
+    skills = agente.skills(carpeta)
+    for s in skills:
+        s["usada"] = usadas.get(s["nombre"], 0)
+    # lo que se usó y no está en disco (una skill del sistema, una ya borrada) también cuenta
+    for nombre, n in usadas.items():
+        if not any(s["nombre"] == nombre for s in skills):
+            skills.append({"nombre": nombre, "descripcion": "", "origen": "otra", "alcance": "", "ruta": "", "usada": n})
+    datos = {"hilo": hilo.nombre if hilo is not None else "", "carpeta": str(carpeta),
+             "conversacion": conversacion, "remoto": remoto, "skills": skills}
+    if o.json:
+        return _comun.escribir_json(datos)
+    for s in skills:
+        marca = f"✓{s['usada']}" if s["usada"] else "  "
+        print(f"{marca:>3} {s['nombre']}  " + _comun.tenue(f"{s['origen']}{' · en ' + s['alcance'] if s['alcance'] else ''}"))
+    return 0
 
 
 def _conversacion(o, ctx) -> int:

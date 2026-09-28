@@ -582,3 +582,46 @@ class Orden(ConEstado):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class SkillsDelAgente(unittest.TestCase):
+    def test_lee_la_cabecera_en_una_linea_o_en_bloque(self):
+        import tempfile
+        from pathlib import Path
+
+        from telar.agente.claude_code import _frontmatter_skill
+
+        with tempfile.TemporaryDirectory() as t:
+            a = Path(t) / "a.md"
+            a.write_text('---\nname: faro\ndescription: "Encender el faro"\n---\ncuerpo\n', encoding="utf-8")
+            b = Path(t) / "b.md"
+            b.write_text("---\nname: mar\ndescription: >\n  Leer el mar\n  de noche\n---\n", encoding="utf-8")
+            self.assertEqual(_frontmatter_skill(a), ("faro", "Encender el faro"))
+            self.assertEqual(_frontmatter_skill(b), ("mar", "Leer el mar de noche"))
+
+    def test_cuenta_las_usadas_por_herramienta_y_por_comando(self):
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+
+        from telar import config as mod_config
+        from telar.agente.claude_code import ClaudeCode
+
+        with tempfile.TemporaryDirectory() as t:
+            (Path(t) / "projects" / "-x").mkdir(parents=True)
+            lineas = [
+                {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "faro"}}]}},
+                {"type": "user", "message": {"content": "<command-name>/faro</command-name>"}},
+                {"type": "user", "message": {"content": "<command-name>/mar</command-name>"}},
+            ]
+            (Path(t) / "projects" / "-x" / "c1.jsonl").write_text("\n".join(json.dumps(l) for l in lineas), encoding="utf-8")
+            antes = os.environ.get("CLAUDE_CONFIG_DIR")
+            os.environ["CLAUDE_CONFIG_DIR"] = t
+            try:
+                self.assertEqual(ClaudeCode(mod_config.desde_dict({})).usadas("c1"), {"faro": 2, "mar": 1})
+            finally:
+                if antes is None:
+                    os.environ.pop("CLAUDE_CONFIG_DIR")
+                else:
+                    os.environ["CLAUDE_CONFIG_DIR"] = antes

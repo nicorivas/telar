@@ -6,6 +6,24 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-09-27
+
+### Added
+
+- A **skills** tab in the thread card: the skills the thread's agent has at hand (from its
+  folder and the ones above, from subfolders when working there, the user's and enabled
+  plugins'), with their description, and which ones its conversation used and how many
+  times. `telar agente skills [--hilo H] [--json]` gives the same. A click opens the skill.
+
+### Changed
+
+- A provider tab opens straight on its first item instead of a list; ⎋ goes back to today.
+  The provider can give it a key (`tecla`), checked against the dashboard's keys and the
+  shortcuts.
+- Cards are fetched ahead: opening a tab or a card loads the next ones in the list (up to
+  ten, four at a time) and keeps them for five minutes, so → shows the next card at once even
+  when the provider is slow or far away. A card is fetched again after an action on it.
+
 ## [0.1.7] — 2026-09-27
 
 ### Added

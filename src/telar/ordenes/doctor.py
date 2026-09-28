@@ -405,6 +405,15 @@ def _proveedores(ctx) -> list[dict]:
     activos = [p for p in declarados if p.activo]
     if not activos:
         return [_r("proveedores", OK, "ninguno activo")]
+    # la tecla de una pestaña de proveedor no puede ser una del dashboard ni la de un atajo
+    from telar.config import TECLAS_RESERVADAS
+
+    de_atajos = {a.tecla for a in ctx.config.atajos}
+    for p in activos:
+        tecla = str(p.opciones.get("tecla") or "")
+        if tecla and (len(tecla) != 1 or tecla in TECLAS_RESERVADAS or tecla in de_atajos):
+            return [_r("proveedores", FALLA, f"{p.nombre}: la tecla «{tecla}» ya la usa el dashboard o un atajo",
+                       "elige otra en [proveedores.%s] tecla" % p.nombre)]
     # el alcance es lo que cada proveedor promete tocar: se lee aquí, antes de confiar
     lineas = []
     for pr in activos:

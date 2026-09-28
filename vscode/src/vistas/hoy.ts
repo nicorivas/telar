@@ -28,6 +28,11 @@ export class PanelHoy {
     private fichaDesde = 'dia';
     /** la pestaña de proveedor abierta (`pestana` del proveedor: «leer») */
     private pestana = '';
+    /** fichas ya pedidas: una pestaña de proveedor puede estar lejos (el feed se pide por ssh
+     *  a otro continente, ~0,5 s cada una), así que se piden antes de que se abran */
+    private fichas = new Map<string, { pagina: cli.JsonPagina; hora: number }>();
+    /** las pestañas de proveedor declaradas y su tecla (`telar config --json`) */
+    private pestanasCfg: cli.JsonPestana[] = [];
     /** la ficha abierta: de qué proveedor, su id y su ref (con la que se lleva al hilo) */
     private ficha?: { proveedor: string; id: string; ref: string; pagina?: cli.JsonPagina; aviso?: string };
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído */
@@ -130,7 +135,8 @@ export class PanelHoy {
             : this.pantalla === 'pestana' ? `pestana:${this.pestana}` : this.pantalla;
         // las pestañas de los proveedores que las declaran (un feed), con cuántos ítems tienen
         const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
-            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(), ''] as [string, string, string, string, string]);
+            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(),
+                this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as [string, string, string, string, string]);
         const aRevisar = this.propuestas('').length;
         const pestanas: [string, string, string, string, string][] = [  // clave, acción, valor, nombre, tecla
             ['dia', 'dia', '', 'hoy', ''],
@@ -216,6 +222,7 @@ export class PanelHoy {
         const r = await cli.config();
         this.atajos = r.datos?.atajos ?? [];
         this.bloquesCfg = r.datos?.bloques ?? [];
+        this.pestanasCfg = r.datos?.pestanas ?? [];
         this.render();
         void this.leerBloques();
     }
@@ -310,15 +317,39 @@ export class PanelHoy {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
         if (!this.panel) this.abrir();
         if (this.pantalla === 'revisar' || this.pantalla === 'dia') this.fichaDesde = this.pantalla;
-        if (this.pantalla === 'pestana') this.fichaDesde = `pestana:${this.pestana}`;
+        if (this.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
         this.pantalla = 'tarea';
         this.ficha = { proveedor, id, ref };
+        const guardada = this.fichas.get(`${proveedor}:${id}`);
+        if (guardada && Date.now() - guardada.hora < 5 * 60 * 1000) {
+            this.ficha.pagina = guardada.pagina;
+            this.renderTarea();
+            void this.precargar();
+            return;
+        }
         this.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(id)}</b></div><div class="fila dim">leyendo…</div></div>`]);
         const r = await cli.tarea(id, proveedor);
+        if (r.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: r.datos, hora: Date.now() });
         if (this.pantalla !== 'tarea' || this.ficha?.id !== id) return;
         this.ficha.pagina = r.datos;
         this.ficha.aviso = r.datos ? '' : (r.error ?? 'la ficha no contestó');
         this.renderTarea();
+        void this.precargar();
+    }
+
+    /** Pide por adelantado las fichas de la lista que se está recorriendo (hasta 10, cuatro a
+     *  la vez): al apretar → la siguiente ya está. Las que ya se tienen no se vuelven a pedir. */
+    private async precargar(): Promise<void> {
+        const faltan = this.propuestas()
+            .filter(p => { const g = this.fichas.get(`${p.proveedor}:${p.id}`); return !g || Date.now() - g.hora > 5 * 60 * 1000; })
+            .slice(0, 10);
+        const pedir = async () => {
+            for (let p = faltan.shift(); p; p = faltan.shift()) {
+                const r = await cli.tarea(p.id, p.proveedor);
+                if (r.datos) this.fichas.set(`${p.proveedor}:${p.id}`, { pagina: r.datos, hora: Date.now() });
+            }
+        };
+        await Promise.all([pedir(), pedir(), pedir(), pedir()]);
     }
 
     /** La pestaña «revisar»: lo que un agente dejó para decidir, entero y en una lista. Un clic
@@ -359,6 +390,11 @@ export class PanelHoy {
         this.pestana = nombre;
         this.fichaDesde = `pestana:${nombre}`;
         if (!this.datos) this.datos = await dia();
+        void this.precargar();   // todas las de la pestaña, mientras se abre la primera
+        // la pestaña no es una lista: entra directo al primer ítem; la lista queda para cuando
+        // no hay nada (o para el arnés)
+        const primero = pendientes(this.datos, nombre).find(p => p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
+        if (primero) { await this.abrirTarea(JSON.stringify([primero.fila.proveedor, primero.fila.id || primero.ref, primero.ref])); return; }
         this.renderPestana();
     }
 
@@ -462,7 +498,10 @@ export class PanelHoy {
         }
         // se decidió sobre la propuesta: la siguiente, si hay; si no, se relee la ficha
         const eraPropuesta = !!f.pagina?.bloques.some(b => b.destacado);
+        // la acción la cambió: la guardada ya no vale
+        this.fichas.delete(`${f.proveedor}:${f.id}`);
         const releida = await cli.tarea(f.id, f.proveedor);
+        if (releida.datos) this.fichas.set(`${f.proveedor}:${f.id}`, { pagina: releida.datos, hora: Date.now() });
         // en un feed, correr una acción es decidir sobre el ítem: pasa al siguiente
         const sigueViva = !this.fichaDesde.startsWith('pestana:') && !!releida.datos?.bloques.some(b => b.destacado);
         olvidarDia();
@@ -882,6 +921,7 @@ export class PanelHoy {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
                 p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
+                ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
                 ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
@@ -925,8 +965,7 @@ export class PanelHoy {
             case 'pestana': if (m.valor) await this.abrirPestana(m.valor); break;
             case 'volver-ficha':
                 if (this.fichaDesde === 'revisar') await this.abrirRevisar();
-                else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
-                else { this.pantalla = 'dia'; this.render(); }
+                else { this.pantalla = 'dia'; this.render(); }   // de una pestaña de proveedor, a hoy
                 break;
             case 'tarea-anterior': await this.otraPropuesta(-1); break;
             case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
