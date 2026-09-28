@@ -197,14 +197,34 @@ class Cascada(Prueba):
         self.assertEqual(cascada["pendientes"], ("pendientes",))
 
     def test_una_lista_sin_dueno_sirve_de_respaldo_de_pendientes(self):
+        """Sin `pendientes` en el perfil, una lista es lo que hay: de ahí salen las tareas."""
         arquetipo = self.arquetipo(
-            p.Seccion(nombre="pendientes", tipo="casillas", encabezado=r"^##\s+Pendientes"),
             p.Seccion(nombre="proximos", tipo="lista", encabezado=r"^##\s+Próximos"),
         )
-        self.assertEqual(e.cascada_por_defecto(arquetipo)["pendientes"], ("pendientes", "proximos"))
+        self.assertEqual(e.cascada_por_defecto(arquetipo)["pendientes"], ("proximos",))
         estado = e.leer(self.escribir("# X\n\n## Próximos\n\n- Cambiar la correa\n"), arquetipo)
         self.assertEqual([x.texto for x in estado.pendientes], ["Cambiar la correa"])
         self.assertEqual(estado.pendientes[0].origen, "proximos")
+
+    def test_con_pendientes_declarado_las_listas_no_entran(self):
+        """Declarado `pendientes`, las demás listas (notas, cronograma) no son tareas.
+
+        Las casillas sí entran de todos modos: una casilla es una tarea donde esté.
+        """
+        arquetipo = self.arquetipo(
+            p.Seccion(nombre="pendientes", tipo="casillas", encabezado=r"^##\s+Pendientes"),
+            p.Seccion(nombre="notas", tipo="lista", encabezado=r"^##\s+Notas"),
+            p.Seccion(nombre="extra", tipo="casillas", encabezado=r"^##\s+Extra"),
+        )
+        self.assertEqual(e.cascada_por_defecto(arquetipo)["pendientes"], ("pendientes", "extra"))
+        texto = (
+            "# X\n\n## Pendientes\n\n- [ ] Medir el alcance\n\n"
+            "## Notas\n\n- 12-may: se conversó con el cliente\n\n"
+            "## Extra\n\n- [ ] Pedir la boleta\n"
+        )
+        estado = e.leer(self.escribir(texto), arquetipo)
+        self.assertEqual([x.texto for x in estado.pendientes], ["Medir el alcance", "Pedir la boleta"])
+        self.assertNotIn("notas", {x.origen for x in estado.pendientes})
 
     def test_el_resumen_cae_a_una_fila_de_la_tabla_cuando_no_hay_seccion(self):
         arquetipo = self.arquetipo(

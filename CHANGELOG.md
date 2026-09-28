@@ -6,6 +6,14 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Changed
+
+- Sections of type `lista` are now a **fallback** for a thread's pending items, not an addition: they only feed
+  `pendientes` when the profile declares no `pendientes` section. A profile that declares one has said where its
+  tasks live, and its other lists (notes, a schedule, links) are not tasks. `casillas` sections still count
+  everywhere. Before, every note of a deal whose profile listed `notas` as a `lista` showed up among its pending
+  items, and a click on one pasted it into the thread. (Pablo Ferreiro, PR #1)
+
 ### Fixed
 
 - Reopening a remote thread's window no longer opens it several times. When a laptop woke up, the node and the
