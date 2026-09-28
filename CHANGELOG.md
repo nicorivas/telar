@@ -6,6 +6,15 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Changed
+
+- Sections of type `lista` are now a **fallback** for a thread's pending items, not an
+  addition: they only feed `pendientes` when the profile declares no `pendientes` section.
+  A profile that declares one has said where its tasks live, and its other lists (notes,
+  a schedule, links) are not tasks. `casillas` sections still count everywhere. Before,
+  every note of a project whose profile listed `notas` as a `lista` showed up in the
+  tasks panel, and a click on any of them pasted the note into the thread.
+
 ## [0.1.8] — 2026-09-27
 
 ### Added
