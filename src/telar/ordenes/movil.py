@@ -4,7 +4,7 @@ una pantalla chica, y entrar a uno sin quedar encerrado.
     mosh usuario@servidor -- ~/.local/bin/telar movil
 
 Corre en el servidor. Flechas o el número eligen, ⏎ o un toque entran, c el correo,
-r recarga, q sale. Dentro de un hilo: Alt+q, F12 o tocar «◀ telar» en la barra de arriba vuelven
+r recarga, n abre un hilo nuevo, q sale. Dentro de un hilo: Alt+q, F12 o tocar «◀ telar» en la barra de arriba vuelven
 aquí; tocar «✉ N» abre el correo encima. Ver `telar.movil` para cómo se consigue sin tocar
 lo que ve el laptop, y docs/configuracion.md para la tecla F12 en Termux.
 
@@ -66,8 +66,30 @@ def _mostrar(pantalla, texto: str) -> None:
             return
 
 
+def _pedir(pantalla, pregunta: str) -> str:
+    """Una línea de texto al pie de la pantalla. Esc o una línea vacía cancelan."""
+    curses.curs_set(1)
+    alto, ancho = pantalla.getmaxyx()
+    texto = ""
+    while True:
+        pantalla.move(alto - 1, 0)
+        pantalla.clrtoeol()
+        pantalla.addnstr(alto - 1, 0, f"{pregunta}{texto}", ancho - 1)
+        k = pantalla.get_wch()
+        if k in ("\n", "\r", curses.KEY_ENTER):
+            curses.curs_set(0)
+            return texto.strip()
+        if k in ("\x1b",):
+            curses.curs_set(0)
+            return ""
+        if k in (curses.KEY_BACKSPACE, "\x7f", "\b"):
+            texto = texto[:-1]
+        elif isinstance(k, str) and k.isprintable():
+            texto += k
+
+
 def _menu(pantalla) -> tuple[str, object]:
-    """Dibuja la lista hasta que se elige algo: ("entrar", hilo), ("correo", None) o ("salir", None)."""
+    """Dibuja la lista hasta que se elige algo: ("entrar", hilo), ("nuevo", nombre), ("correo", None) o ("salir", None)."""
     curses.curs_set(0)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     elegido = 0
@@ -86,12 +108,20 @@ def _menu(pantalla) -> tuple[str, object]:
             linea = f"{i + 1:>2} {marca} {h.nombre}{correo}"
             pantalla.addnstr(2 + i, 0, linea.ljust(ancho - 1), ancho - 1,
                              curses.A_REVERSE if i == elegido else curses.A_NORMAL)
-        pantalla.addnstr(alto - 1, 0, "⏎ entra · c correo · r recarga · q sale", ancho - 1, curses.A_DIM)
+        pantalla.addnstr(alto - 1, 0, "⏎ entra · n nuevo · c correo · r recarga · q sale", ancho - 1, curses.A_DIM)
         k = pantalla.getch()
         if k in (ord("q"), 27):
             return "salir", None
         if k == ord("c"):
             return "correo", None
+        if k == ord("n"):
+            nombre = _pedir(pantalla, "nombre del hilo nuevo: ")
+            if nombre and nombre in {h.nombre for h in hilos}:
+                pantalla.addnstr(alto - 1, 0, f"ya hay un hilo «{nombre}»".ljust(ancho - 1), ancho - 1)
+                pantalla.getch()
+            elif nombre:
+                return "nuevo", nombre
+            continue
         if k == ord("r"):
             hilos = mod_movil.hilos()
             pend = _pendientes([h.nombre for h in hilos])
@@ -113,6 +143,28 @@ def _menu(pantalla) -> tuple[str, object]:
             i = y - 2
             if 0 <= i < len(hilos) and estado & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED | curses.BUTTON1_RELEASED):
                 return "entrar", (hilos[i], pend.get(hilos[i].nombre, 0))
+
+
+def _abrir_nuevo(ctx, nombre: str):
+    """Abre el hilo con el agente configurado, en la carpeta de `[agente] carpeta` o la raíz."""
+    from pathlib import Path
+
+    from telar.agente import ErrorDeAgente
+    from telar.agente import lanzar
+
+    try:
+        lanz = lanzar.para_hilo(ctx.config, nombre, None)
+    except ErrorDeAgente as e:
+        print(f"sin agente: {e}")
+        lanz = None
+    carpeta = lanz.carpeta if lanz is not None and lanz.carpeta else Path(ctx.config.raiz)
+    try:
+        hilo = mod_movil.crear(nombre, str(Path(carpeta).expanduser()), lanz.comando if lanz else None)
+    except RuntimeError as e:
+        print(f"no pude abrir «{nombre}»: {e}")
+        return None
+    lanzar.anotar(ctx.config, nombre, lanz)
+    return hilo
 
 
 def main(argv: list[str], ctx) -> int:
@@ -146,6 +198,12 @@ def main(argv: list[str], ctx) -> int:
         if accion == "correo":
             curses.wrapper(lambda s: _mostrar(s, _texto_correo()))
             continue
+        if accion == "nuevo":
+            hilo = _abrir_nuevo(ctx, dato)
+            if hilo is None:
+                input("⏎ para volver")
+                continue
+            dato = (hilo, 0)
         hilo, pendientes = dato
         try:
             mod_movil.entrar(hilo, pendientes, correo_cmd)

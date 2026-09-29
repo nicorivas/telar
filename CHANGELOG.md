@@ -6,6 +6,11 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `telar movil`: `n` opens a new thread on the server, with its agent, the same way `telar ir
+  --remoto` does from the laptop, and enters it.
+
 ### Fixed
 
 - `telar movil`: Alt+q returns to the thread list. Tapping «◀ telar» never reached tmux from

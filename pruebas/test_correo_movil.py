@@ -123,6 +123,18 @@ class Movil(Prueba):
         self.assertTrue(all(o[2] == m.TABLA for o in ordenes if o[0] == "bind-key"))
 
 
+class MovilNuevoHilo(Prueba):
+    def test_el_hilo_nuevo_nace_como_los_remotos(self):
+        orden = m.ordenes_nuevo("telar-9f9f9f9f", "Kinross", "/home/n/Life", ["claude", "--session-id", "x"])
+        self.assertEqual(orden[:6], ["new-session", "-d", "-s", "telar-9f9f9f9f", "-c", "/home/n/Life"])
+        linea = orden[-1]
+        # se anota su nombre (lo leen el cartero y la lista), va a su carpeta y abre el agente
+        self.assertIn("@telar_hilo Kinross", linea)
+        self.assertIn("export TELAR_HILO=Kinross", linea)
+        self.assertIn("claude --session-id x", linea)
+        self.assertTrue(linea.endswith("exec bash -l"))
+
+
 class NombreEnLaSesionRemota(Prueba):
     def test_la_sesion_de_alla_se_anota_su_nombre_desde_adentro(self):
         linea = r.linea("~/repo", None, "Pizza Ñandú")

@@ -62,6 +62,26 @@ def hilos() -> list[HiloMovil]:
     return lista
 
 
+def ordenes_nuevo(sesion: str, nombre: str, carpeta: str, palabras: list[str] | None) -> list[str]:
+    """El comando tmux que abre un hilo nuevo en esta máquina, igual que los que abre el laptop
+    en ella (`telar ir --remoto`): la sesión se anota su nombre, va a su carpeta y corre el
+    agente, con una shell al final para que no muera si el agente termina. Puro: se prueba sin tmux."""
+    from telar import remoto as mod_remoto
+
+    return ["new-session", "-d", "-s", sesion, "-c", carpeta,
+            "bash", "-lc", mod_remoto.linea(carpeta, palabras, nombre)]
+
+
+def crear(nombre: str, carpeta: str, palabras: list[str] | None) -> HiloMovil:
+    """Abre un hilo nuevo en esta máquina. El laptop lo adopta como remoto la próxima vez que
+    teja (ver `telar.remoto.nuevas`)."""
+    from telar import remoto as mod_remoto
+
+    sesion = mod_remoto.sesion_nueva()
+    _tmux(*ordenes_nuevo(sesion, nombre, carpeta, palabras))
+    return HiloMovil(sesion=sesion, nombre=nombre)
+
+
 def barra(nombre: str, correos: int = 0) -> str:
     """La línea de arriba en el celular: «◀ telar · ✉ 2 · Pizza», con rangos tocables."""
     correo = f" · #[range=user|correo]✉ {correos}#[norange]" if correos else ""
