@@ -398,15 +398,47 @@ def etiqueta(plantilla: str, ficha) -> str:
 
     marcadores = _MARCADOR.findall(plantilla)
     valores = {m: valor(m) for m in marcadores}
-    for m, v in list(valores.items()):
-        if v and any(v != otro and _plano(v) in _plano(otro) for otro in valores.values() if otro):
-            valores[m] = ""
+    # el cliente (un campo) va donde dice la plantilla, y se saca del título si ya venía ahí:
+    # «Reportes con IA — Faro Sur» con cliente «Faro Sur» es
+    # «Faro Sur · Reportes con IA», no el título solo con el cliente al final
+    campos_puestos = [v for m, v in valores.items() if m.startswith("campo:") and v]
+    if "titulo" in valores and campos_puestos:
+        valores["titulo"] = _sin_menciones(valores["titulo"], campos_puestos)
     texto = _MARCADOR.sub(lambda mm: valores.get(mm.group(1), ""), plantilla)
     # los separadores que quedaron huérfanos al vaciarse un marcador
     sep = re.escape(_SEPARADORES)
     texto = re.sub(rf"^[\s{sep}]+|[\s{sep}]+$", "", texto)
     texto = re.sub(rf"\s+([{sep}])(?:\s*[{sep}])+\s+", r" \1 ", texto)
     return re.sub(r"\s{2,}", " ", texto).strip()
+
+
+def _sin_menciones(titulo: str, nombres: list[str]) -> str:
+    """El título sin el trozo que nombra a alguien que ya va aparte: un tramo entre rayas o
+    puntos medios («… — Banco Faro»), un «X:» al comienzo, o un «para X» o «, X» al final. Se compara sin tildes ni
+    mayúsculas y por palabras enteras: el tramo tiene que ser el nombre o una forma más corta
+    de él («Banco Faro» de «Banco Faro Chile»); un tramo que solo lo contiene («Faro
+    de IA» con el cliente «Faro») es parte del título y se queda. Si el título era solo el
+    cliente, queda vacío: la etiqueta dice el cliente una vez."""
+    def mismo(tramo: str, nombre: str) -> bool:
+        # sin lo que va entre paréntesis: «Faro (vía un tercero)» nombra a Faro
+        pt, pn = _plano(re.sub(r"\s*\([^)]*\)?", "", tramo)).strip(), _plano(nombre).strip()
+        return len(pt) >= 3 and re.search(rf"\b{re.escape(pt)}\b", pn) is not None
+
+    # «Faro: Jornadas…», «Faro, sistema de…» — el cliente antes de dos puntos o coma
+    m = re.match(r"^([^:,]{2,40})[:,]\s+(.+)$", titulo)
+    if m and any(mismo(m.group(1), n) for n in nombres):
+        titulo = m.group(2)
+    tramos = re.split(r"\s+[—–·|]\s+|\s+-\s+", titulo)
+    quedan = [t for t in tramos if not any(mismo(t, n) for n in nombres)]
+    if not quedan:
+        return ""   # el título era solo el cliente: la etiqueta lo dice una vez
+    if len(quedan) < len(tramos):
+        titulo = " — ".join(quedan)
+    # «… para Faro», «Alianza con X», «…, Faro» — el cliente al final, sin raya
+    m = re.match(r"^(.*\S)(?:\s+(?:para|de|en|con)|,)\s+(.+)$", titulo)
+    if m and any(mismo(m.group(2), n) for n in nombres):
+        titulo = m.group(1)
+    return titulo.strip()
 
 
 def _plano(texto: str) -> str:

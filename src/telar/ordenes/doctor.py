@@ -46,6 +46,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _perfil(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
+    revisiones += _gemelos(ctx)
     revisiones += _version_mux(ctx)
     revisiones += _ganchos_vivos(ctx)
     revisiones += _ficha(ctx)
@@ -259,6 +260,27 @@ def _estado(ctx) -> list[dict]:
     except (OSError, mod_estado.ErrorDeEstado) as e:
         return [_r("estado", FALLA, f"no puedo escribir en {est.carpeta}: {e}", "revisa permisos")]
     return [_r("estado", OK, str(est.carpeta))]
+
+
+def gemelos(nombres: list[str]) -> list[str]:
+    """Los nombres que llevan dos o más hilos vivos a la vez."""
+    from collections import Counter
+
+    return sorted(n for n, k in Counter(nombres).items() if k > 1)
+
+
+def _gemelos(ctx) -> list[dict]:
+    """Dos hilos vivos con el mismo nombre comparten todo lo que telar guarda por nombre:
+    conversación, vínculo, prioridad. Lo de uno pisa lo del otro."""
+    try:
+        tel = _comun.tejer(ctx, con_ficha=False)
+    except Exception:  # noqa: BLE001 - sin multiplexor no hay gemelos que buscar
+        return []
+    repetidos = gemelos([h.nombre for h in tel.hilos if tel.vivo(h)])
+    if not repetidos:
+        return [_r("nombres", OK, "ningún par de hilos vivos con el mismo nombre")]
+    return [_r("nombres", AVISO, f"hilos vivos con el mismo nombre: {', '.join(repetidos)}",
+               "renombra uno (telar hilo renombrar): el estado se guarda por nombre y se pisan")]
 
 
 def _vinculos(ctx, abiertos: frozenset[str] | None = None) -> list[dict]:

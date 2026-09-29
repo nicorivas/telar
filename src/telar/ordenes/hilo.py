@@ -16,8 +16,9 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
                                            la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
-    telar hilo llevar [remoto]             pasar su conversación a otra máquina de [remotos]:
-                                           se cierra aquí y sigue allá, retomada
+    telar hilo llevar [remoto] [--sesion ID]   pasar su conversación a otra máquina de [remotos]:
+                                           se cierra aquí y sigue allá, retomada. Con --sesion,
+                                           esa conversación aunque telar no la tenga anotada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
 
 `adoptar` es la salida del único agujero que tiene guardar el estado por nombre:
@@ -79,6 +80,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--cerrar", action="store_true", help="al archivar, cerrar además el hilo")
     p.add_argument("--si", action="store_true", help="con llevar: seguir aunque haya trabajo sin subir")
+    p.add_argument("--sesion", default="",
+                   help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -145,8 +148,14 @@ def main(argv: list[str], ctx) -> int:
         # cerrar es descartar: el tab se va y telar lo olvida, así que sale de la lista.
         # Lo que se quiere guardar se archiva. La conversación sigue en disco, donde la
         # deja el agente; solo se pierde el vínculo que permitía retomarla de un clic.
+        # el estado se guarda por nombre: si otra ventana viva se llama igual, olvidar el
+        # nombre le borraría a esa su conversación, su vínculo y su prioridad (le pasó a un
+        # hilo real: cerrar su duplicado lo dejó sin conversación que llevar)
+        gemelos = [h for h in tel.hilos if h.nombre == hilo.nombre and h.id != hilo.id and tel.vivo(h)]
         salida = _cerrar(ctx, tel, hilo)
-        if salida == 0:
+        if salida == 0 and gemelos:
+            print(f"cerrado; «{hilo.nombre}» sigue vivo en otra ventana y telar no lo olvida")
+        elif salida == 0:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
     elif o.verbo == "archivar":
@@ -162,7 +171,7 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "retomar":
         salida = _retomar(ctx, tel, hilo)
     elif o.verbo == "llevar":
-        salida = _llevar(ctx, tel, hilo, o.valor, o.si)
+        salida = _llevar(ctx, tel, hilo, o.valor, o.si, o.sesion)
     elif o.verbo == "olvidar":
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")
@@ -403,7 +412,7 @@ def _falta_alla(remoto, ruta: str) -> str:
     return alla if r.returncode == 1 else ""
 
 
-def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool) -> int:
+def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = "") -> int:
     """Pasar la conversación de un hilo local a otra máquina, y seguirla allá.
 
     La conversación viaja; los archivos no. Lo que el repositorio de aquí tenga sin commitear
@@ -420,14 +429,17 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool) -> int:
     if remoto is None:
         nombres = ", ".join(r.nombre for r in remotos) or "ninguna declarada"
         return _comun.queja(f"¿a qué máquina? telar hilo llevar <remoto> ({nombres})")
-    if not ctx.config.agente.nombre or not hilo.sesiones:
-        return _comun.queja(f"«{hilo.nombre}» no tiene una conversación anotada que llevar")
+    # con --sesion, esa y no las anotadas: para cuando los ganchos no la dejaron escrita
+    sesiones = (sesion,) if sesion else tuple(hilo.sesiones)
+    if not ctx.config.agente.nombre or not sesiones:
+        return _comun.queja(f"«{hilo.nombre}» no tiene una conversación anotada que llevar"
+                            " (si sabes cuál es: --sesion <id>)")
     agente = mod_agente.obtener(ctx.config.agente.nombre, ctx.config)
     # la primera anotada que exista en disco, como al retomar: una anotada puede no tener
     # archivo (vacía, o de un agente que no era la conversación del hilo)
-    sid, archivo = next(((s, a) for s in hilo.sesiones for a in [agente.archivo_de(s)] if a is not None), ("", None))
+    sid, archivo = next(((s, a) for s in sesiones for a in [agente.archivo_de(s)] if a is not None), ("", None))
     if archivo is None:
-        return _comun.queja(f"no encuentro en disco ninguna de sus conversaciones ({', '.join(hilo.sesiones)})")
+        return _comun.queja(f"no encuentro en disco ninguna de sus conversaciones ({', '.join(sesiones)})")
 
     # lo que la otra máquina no va a tener
     # la carpeta del agente, la del hilo y la raíz de trabajo: en la raíz está casi todo lo

@@ -6,15 +6,28 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-09-29
+
 ### Added
 
 - `telar movil`: `n` opens a new thread on the server, with its agent, the same way `telar ir
   --remoto` does from the laptop, and enters it.
+- `telar hilo llevar --sesion ID`: move a conversation telar has not recorded, as a way out
+  when the hooks missed it.
+
+### Changed
+
+- A thread's label puts the client first: when the title already names the client («Reporting
+  with AI — Acme», «… for Acme», even written slightly differently or with a note in
+  parentheses), it is taken out of the title instead of dropping the client.
 
 ### Fixed
 
 - `telar movil`: Alt+q returns to the thread list. Tapping «◀ telar» never reached tmux from
   Termux over mosh, and F12 is not on a phone keyboard; the bar now shows the key.
+- Closing a thread no longer erases what telar knows under its name when another live
+  window has the same name: closing a duplicate had left the live one without its
+  conversation. `telar doctor` warns about live threads sharing a name.
 
 ## [0.1.8] — 2026-09-27
 

@@ -773,3 +773,15 @@ class ProveedorConClase(Orden):
 
         self.assertEqual(clase(Proveedor(nombre="lecturas", activo=True, opciones={"como": "tareas"})), "tareas")
         self.assertEqual(clase(Proveedor(nombre="tareas", activo=True, opciones={})), "tareas")
+
+
+class HilosGemelos(Orden):
+    def test_doctor_encuentra_los_nombres_repetidos(self):
+        from telar.ordenes.doctor import gemelos
+
+        self.assertEqual(gemelos(["Faro", "T12 algo…", "Faro", "Mar"]), ["Faro"])
+        self.assertEqual(gemelos(["Faro", "Mar"]), [])
+
+    def test_llevar_sin_conversacion_sugiere_sesion(self):
+        codigo, _, error = self.correr("hilo", "llevar", "--hilo", "faro")
+        self.assertNotEqual(codigo, 0)
