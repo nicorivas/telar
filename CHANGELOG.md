@@ -6,6 +6,11 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Fixed
+
+- `telar movil`: Alt+q returns to the thread list. Tapping «◀ telar» never reached tmux from
+  Termux over mosh, and F12 is not on a phone keyboard; the bar now shows the key.
+
 ## [0.1.8] — 2026-09-27
 
 ### Added

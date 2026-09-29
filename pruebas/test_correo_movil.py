@@ -116,6 +116,9 @@ class Movil(Prueba):
         self.assertEqual(opciones["status-position"], "top")
         # las opciones van a la agrupada, nunca a la sesión del hilo, que es la que ve el laptop
         self.assertTrue(all(o[2] == "=movil-1a2b:" for o in ordenes if o[0] == "set-option"))
+        # Alt+q vuelve al menú: el toque no llega por mosh y F12 no está en el celular
+        self.assertIn(["bind-key", "-T", m.TABLA, "M-q", "detach-client"], ordenes)
+        self.assertIn("Alt+q", m.barra("Pizza"))
         # y las teclas, a la tabla propia: ni una en root
         self.assertTrue(all(o[2] == m.TABLA for o in ordenes if o[0] == "bind-key"))
 

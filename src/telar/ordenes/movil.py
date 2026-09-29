@@ -4,7 +4,7 @@ una pantalla chica, y entrar a uno sin quedar encerrado.
     mosh usuario@servidor -- ~/.local/bin/telar movil
 
 Corre en el servidor. Flechas o el número eligen, ⏎ o un toque entran, c el correo,
-r recarga, q sale. Dentro de un hilo: F12, o tocar «◀ telar» en la barra de arriba, vuelve
+r recarga, q sale. Dentro de un hilo: Alt+q, F12 o tocar «◀ telar» en la barra de arriba vuelven
 aquí; tocar «✉ N» abre el correo encima. Ver `telar.movil` para cómo se consigue sin tocar
 lo que ve el laptop, y docs/configuracion.md para la tecla F12 en Termux.
 

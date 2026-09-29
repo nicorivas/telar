@@ -8,8 +8,10 @@ cuando se lo mira desde el tmux del laptop. Si el celular se engancha a esa sesi
 ocupa toda la pantalla y no hay cómo volver. Por eso el celular no se engancha a la sesión
 del hilo sino a una **sesión agrupada** con ella (`movil-1a2b3c4d`): comparte las ventanas
 —el mismo Claude— pero tiene opciones propias. Esa sesión tiene barra arriba, mouse, y su
-**propia tabla de teclas**: F12 o tocar «◀ telar» vuelven al menú, y el laptop, enganchado
-a la sesión original, no ve nada de eso. Al volver, la agrupada se mata; la del hilo sigue.
+**propia tabla de teclas**: Alt+q, F12 o tocar «◀ telar» vuelven al menú, y el laptop,
+enganchado a la sesión original, no ve nada de eso. Alt+q existe porque el toque no siempre
+llega: por mosh, Termux no le pasa el mouse a tmux (probado el 28-sep-2026), y F12 no está en
+el teclado del celular salvo que se configure. Al volver, la agrupada se mata; la del hilo sigue.
 """
 
 from __future__ import annotations
@@ -64,7 +66,7 @@ def barra(nombre: str, correos: int = 0) -> str:
     """La línea de arriba en el celular: «◀ telar · ✉ 2 · Pizza», con rangos tocables."""
     correo = f" · #[range=user|correo]✉ {correos}#[norange]" if correos else ""
     nombre_seguro = nombre.replace("#", "##")  # un # en el nombre no es un formato de tmux
-    return f"#[range=user|volver]#[reverse] ◀ telar #[noreverse]#[norange]{correo} · {nombre_seguro}"
+    return f"#[range=user|volver]#[reverse] ◀ telar (Alt+q) #[noreverse]#[norange]{correo} · {nombre_seguro}"
 
 
 def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo_cmd: str = "") -> list[list[str]]:
@@ -83,6 +85,8 @@ def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo
         ["set-option", "-t", t, "key-table", TABLA],
         # la tabla es global al servidor tmux, pero solo la usan las sesiones que la eligen
         ["bind-key", "-T", TABLA, "F12", "detach-client"],
+        # Alt+q: la vuelta que sí tiene el teclado del celular (Termux la trae en su fila extra)
+        ["bind-key", "-T", TABLA, "M-q", "detach-client"],
         # tocar la barra: «◀ telar» vuelve al menú; «✉ N» abre el correo encima, sin salir
         ["bind-key", "-T", TABLA, "MouseDown1Status",
          "if-shell", "-F", "#{==:#{mouse_status_range},volver}", "detach-client",
