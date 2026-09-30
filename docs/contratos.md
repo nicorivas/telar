@@ -714,3 +714,34 @@ documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 
 `telar espejo publicar --json` dice `{"publicado": true|false, "maquina", "remoto", "error"}` y sale
 con 1 si falló.
 
+## `telar enlace` — la puerta entre dos máquinas
+
+El cliente (`telar enlace <verbo>`, o `telar.enlace.llamar`) corre por ssh, con la llave de la puerta:
+
+```
+ssh -i <llave> -o BatchMode=yes <destino> '<verbo> [argumentos citados]'   < contenido
+```
+
+sshd ignora esa línea como orden y ejecuta el comando forzado `telar enlace servir`, entregándola en
+`SSH_ORIGINAL_COMMAND`; el **contenido** (un archivo, un texto) va por la entrada estándar. `servir`
+imprime una sola línea JSON y sale con 0 si `ok`, con 1 si no. Toda respuesta trae `ok` y `verbo`; un fallo
+trae `error` y nada más. Los verbos y sus topes:
+
+| verbo | argumentos | entrada | respuesta |
+| --- | --- | --- | --- |
+| `ping` | — | ninguna | `maquina`, `telar`, `hora`, `verbos` |
+| `hilos` | — | ninguna | `foto`: la del espejo (ver `telar espejo`) |
+| `archivo` | `<nombre>` | el archivo, hasta 100 MB | `ruta`, `bytes`, `sha256` |
+| `enviar` | `<hilo> [enter]` | el texto, UTF-8, hasta 8000 caracteres | `hilo`, `caracteres`, `enviado` |
+| `notificar` | `[titulo]` (hasta 60) | el texto, hasta 500 caracteres | `titulo`, `caracteres` |
+
+Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
+
+- Un verbo que no está en la tabla —o que `[enlace] verbos` apagó— se rechaza; no hay forma de correr otra cosa.
+- `archivo`: el nombre se reduce a `[A-Za-z0-9._ -]` sin carpetas ni puntos delante, y el archivo nunca pisa a
+  otro (agrega `-1`, `-2`…). Queda con permisos 600 en una carpeta 700.
+- `enviar`: solo a un hilo que existe **y** está vivo; un texto con saltos de línea exige `enter`, porque el
+  salto es un ↩.
+- `notificar`: el texto llega por variables de entorno, nunca dentro de un script.
+- Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
+

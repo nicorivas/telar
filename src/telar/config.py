@@ -232,6 +232,35 @@ class Remoto:
 
 
 @dataclass(frozen=True, slots=True)
+class Enlace:
+    """Una máquina a la que esta puede llamar por la puerta (`[enlaces.<nombre>]`, ver `telar enlace`).
+
+    La puerta es una llave ssh atada a un solo comando (`telar enlace servir`) en la otra máquina:
+    con ella se puede pedir lo que su lista de verbos permita, y nada más.
+    """
+
+    nombre: str
+    #: `usuario@maquina`, casi siempre el nombre de Tailscale de la otra máquina.
+    destino: str
+    #: la llave privada que abre esa puerta (la crea `telar enlace instalar`).
+    llave: str = "~/.ssh/telar_enlace"
+
+
+#: lo que una puerta sabe hacer. Cada verbo se puede apagar con `[enlace] verbos`.
+VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar")
+
+
+@dataclass(frozen=True, slots=True)
+class Puerta:
+    """El lado de esta máquina como destino de llamadas (`[enlace]`)."""
+
+    #: dónde caen los archivos que llegan por la puerta.
+    entrada: str = "~/telar-entrada"
+    #: qué verbos responde. Por defecto todos; quitar uno lo apaga.
+    verbos: tuple[str, ...] = VERBOS_ENLACE
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     """La configuración resuelta. Inmutable; para variarla, `dataclasses.replace`."""
 
@@ -266,6 +295,10 @@ class Config:
     secciones: tuple[Seccion, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
     remotos: tuple[Remoto, ...] = ()
+    #: máquinas a las que esta puede llamar por la puerta (`telar enlace`).
+    enlaces: tuple[Enlace, ...] = ()
+    #: lo que esta máquina responde cuando la llaman.
+    puerta: Puerta = field(default_factory=Puerta)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -550,9 +583,43 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                                   directorio=directorio.strip().rstrip("/")))
         cambios["remotos"] = tuple(remotos)
 
+    if "enlaces" in datos:
+        tabla = _tabla(datos["enlaces"], "enlaces")
+        enlaces = []
+        for nombre, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"enlaces.{nombre}")
+            sobra = set(cuerpo) - {"destino", "llave"}
+            if sobra:
+                raise ErrorDeConfig(f"enlaces.{nombre}.{sorted(sobra)[0]}: no existe")
+            destino = cuerpo.get("destino", "")
+            if not isinstance(destino, str) or not destino.strip() or destino.strip().startswith("-"):
+                raise ErrorDeConfig(f"enlaces.{nombre}.destino: se esperaba usuario@maquina, llegó {destino!r}")
+            llave = cuerpo.get("llave", "~/.ssh/telar_enlace")
+            if not isinstance(llave, str) or not llave.strip() or llave.strip().startswith("-"):
+                raise ErrorDeConfig(f"enlaces.{nombre}.llave: se esperaba la ruta de una llave, llegó {llave!r}")
+            enlaces.append(Enlace(nombre=nombre, destino=destino.strip(), llave=llave.strip()))
+        cambios["enlaces"] = tuple(enlaces)
+
+    if "enlace" in datos:
+        cuerpo = _tabla(datos["enlace"], "enlace")
+        sobra = set(cuerpo) - {"entrada", "verbos"}
+        if sobra:
+            raise ErrorDeConfig(f"enlace.{sorted(sobra)[0]}: no existe")
+        entrada = cuerpo.get("entrada", Puerta.entrada)
+        if not isinstance(entrada, str) or not entrada.strip():
+            raise ErrorDeConfig(f"enlace.entrada: se esperaba una carpeta, llegó {entrada!r}")
+        verbos = cuerpo.get("verbos", list(VERBOS_ENLACE))
+        if not isinstance(verbos, list) or not all(isinstance(v, str) for v in verbos):
+            raise ErrorDeConfig(f"enlace.verbos: se esperaba una lista de verbos, llegó {verbos!r}")
+        raros = [v for v in verbos if v not in VERBOS_ENLACE]
+        if raros:
+            raise ErrorDeConfig(f"enlace.verbos: «{raros[0]}» no existe (hay {', '.join(VERBOS_ENLACE)})")
+        cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos))
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
+        "enlaces", "enlace",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

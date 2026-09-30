@@ -49,6 +49,7 @@ ORDENES: dict[str, str] = {
     "correo": "El correo entre agentes de las máquinas remotas: direcciones, pendientes, conversaciones.",
     "remotos": "Las sesiones de hilo de cada máquina remota, y traer las que nacieron allá.",
     "movil": "telar en el celular: los hilos de esta máquina, y entrar a uno sin quedar encerrado.",
+    "enlace": "La puerta entre dos máquinas: pedirle cosas al laptop desde el servidor.",
     "espejo": "Los hilos de otra máquina, vistos desde esta: publicar los propios, recibir, ver.",
     "web": "telar en el navegador del celular: el día y los hilos, tocables.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",

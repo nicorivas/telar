@@ -435,6 +435,54 @@ documento—; ninguna conversación ni el estado del proyecto. Una foto con meno
 su edad. Es de solo lectura: no se puede entrar a un hilo del laptop desde el servidor, porque su
 agente vive allá (para eso, `telar hilo llevar`). El contrato está en `docs/contratos.md`.
 
+## `[enlaces]` y `[enlace]` — la puerta entre dos máquinas
+
+`telar enlace` deja que una máquina (el servidor) **le pida cosas** a otra (el laptop) sin abrirle un
+shell a nadie. Es una llave ssh atada a un solo comando: en el laptop, `authorized_keys` dice
+`restrict,command="/…/telar enlace servir" ssh-ed25519 AAAA… telar-enlace`, y eso lo impone sshd:
+esa llave no puede abrir terminal, ni túneles, ni correr otra cosa. `servir` cumple cinco verbos:
+
+| verbo | qué hace |
+| --- | --- |
+| `ping` | responde quién es y qué verbos tiene |
+| `hilos` | la foto de sus hilos (la del espejo) |
+| `archivo` | recibe un archivo y lo deja en `entrada`, sin pisar ninguno y sin escapar de la carpeta |
+| `enviar` | escribe un texto en un hilo suyo vivo (con `enter`, y lo manda) |
+| `notificar` | muestra un aviso en pantalla |
+
+En **el servidor** (quien llama), la configuración dice a dónde:
+
+```toml
+[enlaces.laptop]
+destino = "nico@100.107.195.13"   # usuario@máquina; el nombre o la IP de Tailscale
+llave = "~/.ssh/telar_enlace"     # la crea `telar enlace instalar`
+```
+
+En **el laptop** (quien responde), opcional:
+
+```toml
+[enlace]
+entrada = "~/telar-entrada"          # dónde caen los archivos que llegan
+verbos = ["ping", "hilos", "archivo", "enviar", "notificar"]   # quitar uno lo apaga
+```
+
+Montarlo, una vez:
+
+```
+telar enlace instalar --destino nico@100.107.195.13     # servidor: crea la llave y dice qué hacer
+telar enlace autorizar "ssh-ed25519 AAAA… telar-enlace"  # laptop: ata la llave a la puerta
+telar enlace ping                                        # servidor: ¿responde?
+```
+
+El laptop necesita la **Sesión remota** activada (Ajustes → General → Compartir en macOS) y estar en la
+misma red de Tailscale. `telar enlace revocar` en el laptop quita la llave. Cada petición queda en
+`<estado>/enlace.log` del laptop, también las rechazadas. La primera conexión guarda la huella del
+laptop (`StrictHostKeyChecking=accept-new`); después, si cambia, ssh se niega.
+
+Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
+carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos. No puede leer
+archivos, correr comandos ni entrar. Si «enviar» te parece demasiado, quítalo de `verbos`.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml
