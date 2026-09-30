@@ -137,6 +137,22 @@ h2.sec {
 .bloque.viejo > .fila, .bloque.viejo > .arbol { opacity: .55; }
 .bloque.viejo .at { animation: none; }
 
+/* escribirle a un hilo: un prompt y una línea, como en un terminal */
+.compone { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; column-gap: 1ch; padding: 0 1ch 0 3ch; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+.compone .prompt { color: var(--verde); font-weight: 700; }
+.compone .campo {
+  font: inherit; color: var(--fg); background: transparent; border: 0; border-radius: 0; padding: 0; margin: 0;
+  height: var(--lh); width: 100%; min-width: 0; outline: none; caret-color: var(--verde);
+  box-shadow: inset 0 -1px 0 var(--linea);
+}
+.compone .campo:focus { box-shadow: inset 0 -1px 0 var(--verde); }
+.compone .campo::placeholder { color: var(--dim); opacity: 1; }
+.compone .manda { position: relative; height: var(--lh); color: var(--dim); white-space: nowrap; }
+.compone .manda::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
+.compone .manda:active { color: var(--fg); }
+.compone .dijo { grid-column: 2 / 4; color: var(--dim); }
+.compone .dijo.bien { color: var(--verde); } .compone .dijo.mal { color: var(--rojo); overflow-wrap: anywhere; }
+
 /* pendientes: código · casilla · texto · plazo */
 .pe { grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; }
 .pe .id { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

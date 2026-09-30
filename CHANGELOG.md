@@ -12,6 +12,10 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `telar web --escribir`: write to a live thread from the page, on this machine or on the laptop (through
+  `telar enlace`), with a prompt and a `↩ enviar` button in the thread's detail. Off by default; the single
+  writing route, `POST /api/enviar`, requires a custom header, the server's own `Host` and `Origin`, size and rate
+  limits, and logs every send (never the text) to `web.log`.
 - `telar espejo traer`: the server asks the laptop for its photo through the door; `telar web` does it every
   30 s when `[enlaces]` exists, so the mirror stays current with VS Code closed.
 - `telar enlace`: a door from the server to the laptop with a single key. sshd ties the key to one command

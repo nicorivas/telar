@@ -484,6 +484,15 @@ laptop (`StrictHostKeyChecking=accept-new`); después, si cambia, ssh se niega.
 puerta y la guarda como espejo. Sirve aunque VS Code esté cerrado; con el laptop apagado falla rápido y el
 espejo queda con su última foto, atenuada.
 
+**Escribirle a un hilo desde la web.** `telar web --escribir` (por defecto la página solo lee) agrega un campo
+en el detalle de cada hilo vivo —de esta máquina o del laptop, si está en línea— y un botón `↩ enviar`.
+Manda el texto y lo ejecuta ↩; lo que se escribe lo lee el agente del hilo como si lo hubieras tecleado. La
+única ruta que escribe es `POST /api/enviar`, y se defiende: exige el encabezado `X-Telar`, que `Host` y
+`Origin` sean los de este servidor (contra páginas ajenas y DNS rebinding; para llegar por otro nombre,
+`--tambien HOST:PUERTO`), tope de tamaño, un envío cada medio segundo, y anota cada uno en `<estado>/web.log`
+(quién, a qué hilo, cuántos caracteres y cómo salió; el texto no). Quien alcance el puerto puede escribirle a
+tus agentes: por eso solo escucha en Tailscale y la escritura es opt-in.
+
 Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
 carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos. No puede leer
 archivos, correr comandos ni entrar. Si «enviar» te parece demasiado, quítalo de `verbos`.

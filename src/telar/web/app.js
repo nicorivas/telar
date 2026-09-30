@@ -4,7 +4,9 @@
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...hijos) => {
-  const e = Object.assign(document.createElement(tag), props);
+  // las claves con guion (data-*, aria-*) son atributos, no propiedades: Object.assign no las vería
+  const e = Object.assign(document.createElement(tag), Object.fromEntries(Object.entries(props).filter(([k]) => !k.includes('-'))));
+  for (const [k, v] of Object.entries(props)) if (k.includes('-')) e.setAttribute(k, v);
   e.append(...hijos.flat().filter((h) => h != null && h !== false));
   return e;
 };
@@ -40,7 +42,8 @@ const guardado = (clave, valor) => {
   return null;
 };
 const estado = {
-  hoy: null, hilos: null, espejos: [], crudo: '', error: '',
+  hoy: null, hilos: null, espejos: [], yo: { escribir: false, enlaces: [] }, crudo: '', error: '',
+  borradores: new Map(), envios: new Map(), repintar: false,
   abiertos: new Set(), sinVentana: new Set(), masPendientes: false,
   modo: guardado('telar.modo') === 'todos' ? 'todos' : 'urgentes',
 };
@@ -122,6 +125,57 @@ const arbol = (h, origen = '') => arbolDatos([
 ]);
 
 // `origen`: de qué máquina viene el hilo («» = esta). Un hilo del laptop dice de dónde es.
+// ── escribirle a un hilo ───────────────────────────────────
+// Solo si el servidor arrancó con --escribir y el hilo está vivo; los de otra máquina, además, si esa
+// máquina está en línea y hay un enlace para llegar a ella (`telar enlace`).
+function puedeEscribir(h, origen) {
+  if (!estado.yo.escribir || !h.vivo) return false;
+  if (!origen) return true;
+  const e = estado.espejos.find((x) => x.nombre === origen);
+  return !!(e && e.en_linea && estado.yo.enlaces.length);
+}
+
+async function mandar(clave, origen, h, texto) {
+  const dice = (t, ok) => { estado.envios.set(clave, { t, ok }); pintar(true); };
+  dice('enviando…', null);
+  try {
+    const r = await fetch('/api/enviar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
+      body: JSON.stringify({ maquina: origen, hilo: h.nombre, texto, enter: true }),
+    });
+    const cuerpo = await r.json().catch(() => ({}));
+    if (r.ok && cuerpo.ok) {
+      estado.borradores.delete(clave);
+      dice(`enviado ${hhmm(new Date())}`, true);
+      setTimeout(() => cargar(true), 3000);  // el semáforo del hilo suele cambiar enseguida
+    } else {
+      dice(cuerpo.error || `no salió (${r.status})`, false);
+    }
+  } catch (e) {
+    dice('sin conexión con el servidor', false);
+  }
+}
+
+function compone(h, origen, clave) {
+  const campo = el('input', {
+    type: 'text', className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', enterKeyHint: 'send',
+    placeholder: `escribirle a ${h.nombre}`, value: estado.borradores.get(clave) || '', maxLength: 8000,
+    'aria-label': `escribirle a ${h.nombre}`, 'data-clave': clave,
+    oninput: () => estado.borradores.set(clave, campo.value),
+    onblur: () => { if (estado.repintar) { estado.repintar = false; pintar(); } },
+  });
+  const enviar = () => {
+    const texto = campo.value.trim();
+    if (texto) mandar(clave, origen, h, texto);
+  };
+  campo.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); enviar(); } };
+  const dijo = estado.envios.get(clave);
+  return el('div', { className: 'compone' },
+    g('›', 'prompt'), campo,
+    el('button', { type: 'button', className: 'manda', onclick: enviar }, el('kbd', { textContent: '↩' }), ' enviar'),
+    dijo ? el('div', { className: `dijo ${dijo.ok === false ? 'mal' : dijo.ok ? 'bien' : ''}`, textContent: dijo.t }) : null);
+}
+
 function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) {
   const clave = `${origen}:${h.nombre}`;
   const abierto = estado.abiertos.has(clave);
@@ -140,6 +194,7 @@ function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) 
         : (glifoPri ? el('span', { className: `lado ${clasePri}` }, g(glifoPri)) : null),
       sub ? txt('sub una', sub) : null),
     abierto ? arbol(h, origen) : null,
+    abierto && puedeEscribir(h, origen) ? compone(h, origen, clave) : null,
   ];
 }
 
@@ -253,7 +308,12 @@ function seccionEspejo(e) {
 
 const vistaActual = () => (location.hash === '#hilos' ? 'hilos' : 'hoy');
 
-function pintar() {
+function pintar(forzar = false) {
+  // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
+  // `forzar` (tras un envío) repinta igual y le devuelve el foco al mismo campo.
+  const activo = document.activeElement;
+  const clave = activo && activo.classList.contains('campo') ? activo.dataset.clave : '';
+  if (clave && !forzar) { estado.repintar = true; return; }
   const vista = vistaActual();
   for (const a of document.querySelectorAll('#barra a')) {
     a.classList.toggle('activa', a.dataset.vista === vista);
@@ -276,6 +336,10 @@ function pintar() {
   cont.replaceChildren(...(vista === 'hilos' ? pantallaHilos() : pantallaHoy()).filter(Boolean),
     ...(estado.error ? [el('div', { className: 'error', textContent: estado.error })] : []));
   scrollTo(0, y);
+  if (clave) {
+    const nuevo = [...document.querySelectorAll('.campo')].find((c) => c.dataset.clave === clave);
+    if (nuevo) { nuevo.focus({ preventScroll: true }); nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
+  }
 }
 
 // ── datos ──────────────────────────────────────────────────
@@ -291,11 +355,11 @@ async function cargar(fresco = false) {
   aviso.textContent = 'actualizando…';
   aviso.className = '';
   try {
-    const [hoy, hilos, fotos] = await Promise.all([pedir('hoy', fresco), pedir('hilos', fresco), pedir('espejos')]);
+    const [hoy, hilos, fotos, yo] = await Promise.all([pedir('hoy', fresco), pedir('hilos', fresco), pedir('espejos'), pedir('yo')]);
     // la edad de una foto crece sola: para saber si algo cambió se mira lo demás y si sigue en línea
-    const crudo = JSON.stringify([hoy, hilos, (fotos.espejos || []).map((e) => [e.nombre, e.en_linea, e.recibido, e.error])]);
+    const crudo = JSON.stringify([hoy, hilos, yo, (fotos.espejos || []).map((e) => [e.nombre, e.en_linea, e.recibido, e.error])]);
     const cambio = crudo !== estado.crudo || estado.error;
-    Object.assign(estado, { hoy, hilos, espejos: fotos.espejos || [], crudo, error: '' });
+    Object.assign(estado, { hoy, hilos, yo, espejos: fotos.espejos || [], crudo, error: '' });
     aviso.textContent = hhmm(new Date());
     if (cambio) pintar();
   } catch (e) {

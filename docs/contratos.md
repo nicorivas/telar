@@ -745,3 +745,27 @@ Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
 - `notificar`: el texto llega por variables de entorno, nunca dentro de un script.
 - Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
 
+## `POST /api/enviar` — escribirle a un hilo desde `telar web`
+
+Solo existe con `telar web --escribir`; sin eso responde 403. Pide `Content-Type: application/json`, el
+encabezado `X-Telar: 1` y que `Host` (y `Origin`, si viene) sean los de ese servidor.
+
+```json
+{"maquina": "", "hilo": "Kichoro", "texto": "hola", "enter": true}
+```
+
+`maquina` vacío es la máquina del servidor; con un nombre (el `nombre` de un espejo), esa máquina por
+`telar enlace`. `enter` (por defecto `true`) además de escribir el texto lo manda. La respuesta es la de la
+puerta (`{"ok": true, "hilo": …, "caracteres": …, "enviado": …}` o `{"ok": false, "error": …}`):
+
+| código | cuándo |
+| --- | --- |
+| 200 | se escribió |
+| 400 / 413 | cuerpo mal formado / de más de 64 KB |
+| 403 | la página está en solo lectura, o la petición no es de esta página |
+| 404 | ninguna máquina de `[enlaces]` corresponde a `maquina` |
+| 409 | la puerta lo rechazó: el hilo no existe o no está vivo, el texto es vacío o pasa de 8000 caracteres… |
+| 429 | otro envío hace menos de medio segundo |
+
+`GET /api/yo` dice qué puede hacer esa página: `{"escribir": bool, "enlaces": ["laptop"]}`.
+
