@@ -12,6 +12,12 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `telar espejo`: see the laptop's threads from the server. The laptop pushes a photo of its threads
+  (`telar espejo publicar`, once or `--cada N`; the VS Code extension does it every 30 s with the new
+  `telar.espejo` setting) and the server keeps it with the time it arrived (`recibir`, `ver`). `telar web`
+  shows it as a section per machine — green «en línea», or greyed out with «apagado · hace 3 h» — and adds
+  the ones that are waiting to «te esperan». Only names, semaphores and folders travel, no conversation.
+  Read-only. See docs/configuracion.md and docs/contratos.md.
 
 ## [0.1.9] — 2026-09-29
 

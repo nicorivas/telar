@@ -674,3 +674,43 @@ lado no hay a quién preguntarle.
 
 `ganchos` son los que están puestos **hoy** en la configuración del agente, no los que
 telar instalaría.
+
+## `telar espejo` — los hilos de otra máquina
+
+`telar espejo publicar` (en el laptop) arma esta foto y la manda por ssh a `telar espejo recibir
+--de <nombre>` (en el servidor), que la valida, le pone la hora de llegada —la de **ese** reloj, no
+la de la foto— y la guarda en `<estado>/espejos/<nombre>.json` con permisos 600. `<nombre>` es
+`a-z0-9_-`, hasta 32 caracteres; lo que no cabe en eso se rechaza.
+
+La foto (versión 1):
+
+```json
+{
+  "version": 1, "maquina": "macbook-nico", "telar": "0.1.9",
+  "publicado": "2026-09-30T10:20:00-03:00", "sesion": "brinca",
+  "hilos": [
+    {"nombre": "Faro", "atencion": "espera", "vivo": true, "activo": false, "prioridad": 1,
+     "tiempo": 5400.0, "visto": null, "relativa": "proyectos/faro", "arquetipo": "proyecto",
+     "remoto": "", "resumen": "Cliente · Faro"}
+  ]
+}
+```
+
+Los archivados no viajan. No viajan tampoco la ruta absoluta, las sesiones ni el estado del
+proyecto: lo que se lee desde afuera es lo que sirve para mirar. `resumen` es el título del
+documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 2 MB se rechaza.
+
+`telar espejo ver --json` (y `/api/espejos` de `telar web`) lee lo guardado:
+
+```json
+{"vigente": 120.0,
+ "espejos": [{"nombre": "macbook-nico", "en_linea": true, "edad": 12.3, "recibido": 1790000000.1,
+              "publicado": "2026-09-30T10:20:00-03:00", "telar": "0.1.9", "sesion": "brinca",
+              "hilos": []},
+             {"nombre": "roto", "error": "no se pudo leer: …", "en_linea": false, "edad": null, "hilos": []}]}
+```
+
+`en_linea` es `edad < vigente`. Un archivo que no se puede leer aparece con `error`, no se esconde.
+`telar espejo publicar --json` dice `{"publicado": true|false, "maquina", "remoto", "error"}` y sale
+con 1 si falló.
+

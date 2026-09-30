@@ -413,6 +413,28 @@ cierra. Para tener F12 en Termux, en `~/.termux/termux.properties`:
 extra-keys = [['ESC','TAB','CTRL','ALT','UP','DOWN','F12']]
 ```
 
+### Ver los hilos del laptop desde el servidor (`telar espejo`)
+
+Un laptop se apaga y un servidor no. Para ver desde el servidor —y desde `telar web` en el
+celular— qué hilos tiene el laptop y cuáles esperan algo, **el laptop empuja una foto** de sus
+hilos y el servidor la guarda con la hora en que llegó. No hace falta configurar nada más que la
+máquina en `[remotos]` (la misma de los hilos remotos):
+
+```
+telar espejo publicar               # una vez, para probar (en el laptop)
+telar espejo publicar --cada 30     # cada 30 s hasta Ctrl-C (en un terminal, o desde launchd/systemd)
+telar espejo ver                    # en el servidor: qué fotos hay y cuánto hace que llegaron
+```
+
+Con la extensión de VS Code no hace falta dejar nada corriendo: el ajuste `telar.espejo`, con el
+nombre de la máquina de `[remotos]`, la hace publicar cada 30 s mientras VS Code esté abierto.
+
+Solo viajan los hilos —nombre, semáforo, carpeta relativa, prioridad, tiempo y el título de su
+documento—; ninguna conversación ni el estado del proyecto. Una foto con menos de 2 minutos está
+**en línea**; pasado eso el laptop se da por apagado y se sigue mostrando la última, atenuada y con
+su edad. Es de solo lectura: no se puede entrar a un hilo del laptop desde el servidor, porque su
+agente vive allá (para eso, `telar hilo llevar`). El contrato está en `docs/contratos.md`.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml
