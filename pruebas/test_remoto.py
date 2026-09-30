@@ -152,3 +152,48 @@ class SesionesQueNacieronAlla(unittest.TestCase):
         with mock.patch("subprocess.run", return_value=mock.Mock(returncode=0, stdout=salida, stderr="")):
             sesiones, error = remoto.sesiones(Remoto(nombre="s", destino="u@s"))
         self.assertEqual((sesiones, error), ([("telar-aaaa0001", "Faro")], ""))
+
+
+class QueConversacionRetomarAlla(Prueba):
+    """El id anotado aquí al abrir puede no tener archivo allá: un `/resume` dentro de
+    Claude escribe en el archivo de otra conversación, y `--resume <id de aquí>` falla."""
+
+    def _correr(self, hilo, candidatas, anotadas=None, archivos=()):
+        import json
+        import os
+        import subprocess
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp:
+            estado = Path(tmp) / "estado" / "telar"
+            estado.mkdir(parents=True)
+            if anotadas is not None:
+                (estado / "sesiones.json").write_text(json.dumps(anotadas))
+            for sid in archivos:
+                carpeta = Path(tmp) / "claude" / "projects" / "-home-u-Vida"
+                carpeta.mkdir(parents=True, exist_ok=True)
+                (carpeta / f"{sid}.jsonl").write_text("{}\n")
+            entorno = {**os.environ, "XDG_STATE_HOME": str(Path(tmp) / "estado"),
+                       "CLAUDE_CONFIG_DIR": str(Path(tmp) / "claude")}
+            r_ = subprocess.run([sys.executable, "-c", r._CONVERSACION, hilo, *candidatas],
+                                capture_output=True, text=True, env=entorno, check=True)
+            return r_.stdout.strip()
+
+    def test_gana_la_que_anoto_el_telar_de_alla_si_tiene_archivo(self):
+        self.assertEqual(self._correr("Faro", ["aqui"], {"Faro": ["alla"]}, archivos=["aqui", "alla"]), "alla")
+
+    def test_la_de_aqui_sin_archivo_cede_a_la_de_alla(self):
+        self.assertEqual(self._correr("Faro", ["aqui"], {"Faro": ["alla"]}, archivos=["alla"]), "alla")
+
+    def test_sin_estado_alla_sirve_la_de_aqui_si_existe(self):
+        self.assertEqual(self._correr("Faro", ["aqui"], None, archivos=["aqui"]), "aqui")
+
+    def test_ninguna_con_archivo_es_vacio(self):
+        self.assertEqual(self._correr("Faro", ["aqui"], {"Faro": ["alla"]}), "")
+
+    def test_si_la_otra_maquina_no_responde_no_se_sabe(self):
+        from unittest import mock
+
+        with mock.patch("subprocess.run", return_value=mock.Mock(returncode=255, stdout="", stderr="sin ruta")):
+            sid, error = r.conversacion_alla(Remoto(nombre="s", destino="u@s"), "Faro", ["aqui"])
+        self.assertEqual((sid, error), (None, "sin ruta"))

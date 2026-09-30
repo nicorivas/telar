@@ -91,6 +91,45 @@ print(ruta)
 """
 
 
+#: lo que corre allá para saber qué conversación retomar: las que el telar de allá anotó
+#: para el hilo (sus ganchos ven lo que pasa dentro de Claude, este lado no), después las
+#: que se anotaron aquí, y de todas la primera que tenga archivo. Imprime el id, o nada.
+_CONVERSACION = r"""
+import glob, json, os, sys
+hilo, candidatas = sys.argv[1], sys.argv[2:]
+estado = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "telar")
+try:
+    alla = json.load(open(os.path.join(estado, "sesiones.json"))).get(hilo) or []
+    alla = [alla] if isinstance(alla, str) else list(alla)
+except (OSError, ValueError, AttributeError):
+    alla = []
+proyectos = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "projects")
+for sid in dict.fromkeys(alla + candidatas):
+    if sid and glob.glob(os.path.join(proyectos, "*", glob.escape(sid) + ".jsonl")):
+        print(sid)
+        break
+"""
+
+
+def conversacion_alla(remoto: Remoto, hilo: str, candidatas) -> tuple[str | None, str]:
+    """La conversación de un hilo remoto que se puede retomar allá: (id, error o "").
+
+    El id que se anotó aquí al abrir puede no ser el que quedó: si dentro de Claude se
+    hizo `/resume` de otra, Claude escribe en el archivo de esa y el id de aquí nunca
+    llega a tener archivo, y `--resume` falla con «No conversation found». Id "" es que
+    la otra máquina respondió y no hay ninguna; None, que no respondió y no se sabe.
+    """
+    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
+             shlex.join(["python3", "-c", _CONVERSACION, hilo, *candidatas])]
+    try:
+        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, f"{remoto.destino} no responde: {e}"
+    if r.returncode != 0:
+        return None, (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+    return r.stdout.strip(), ""
+
+
 def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tuple[str, str]:
     """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o "")."""
     try:

@@ -563,12 +563,21 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
         remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
         if remoto is not None:
             # un hilo remoto se reabre por su transporte: si la sesión de allá sigue viva,
-            # `-A` se engancha a ella; si no, se crea retomando su conversación
+            # `-A` se engancha a ella; si no, se crea retomando su conversación, la que
+            # allá tenga archivo: la anotada aquí puede no ser la que quedó
+            conversacion, problema = mod_remoto.conversacion_alla(remoto, hilo.nombre, list(hilo.sesiones))
+            if conversacion is None:
+                print(_comun.tenue(f"  no pude preguntar allá qué conversación retomar ({problema}): uso la anotada aquí"))
+                conversacion = hilo.sesiones[0] if hilo.sesiones else ""
+            elif conversacion and conversacion != (hilo.sesiones[0] if hilo.sesiones else ""):
+                est.anotar_sesion(hilo.nombre, conversacion, revivir=False)
+            elif not conversacion and hilo.sesiones:
+                print(_comun.tenue("  allá no hay archivo de ninguna de sus conversaciones: se abre una nueva"))
             mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa,
-                             sesion=anotado.get("sesion", ""),
-                             conversacion=hilo.sesiones[0] if hilo.sesiones else "",
+                             sesion=anotado.get("sesion", ""), conversacion=conversacion,
                              aviso=_aviso_de_correo(remoto, hilo.nombre))
-            print(f"retomado «{hilo.nombre}» en {remoto.destino}")
+            print(f"retomado «{hilo.nombre}» en {remoto.destino}"
+                  + (f" · conversación {conversacion[:8]}" if conversacion else ""))
             return 0
         carpeta = Path(ctx.config.raiz) / relativa if relativa else None
         if carpeta is not None and not carpeta.is_dir():
