@@ -1,0 +1,171 @@
+/* telar en el navegador: un terminal con color, como el dashboard de VS Code.
+   Reglas de terminal: una sola letra, sin espaciado entre letras; lo horizontal en caracteres
+   enteros (ch) y lo vertical en renglones enteros (lh); nada que decore ocupa lugar (los bordes
+   son sombra u outline, las teclas van en video inverso). Los símbolos van cada uno en su celda
+   (.g), así que la grilla no se corre aunque el teléfono los dibuje con otra fuente.
+
+   La grilla vertical es una sola: cada renglón mide exactamente --lh (un número entero de píxeles,
+   para que no se acumulen fracciones), todo bloque mide renglones enteros y empieza en uno, y el
+   texto va arriba de su celda —nada se centra en vertical—. Lo único que puede tener otra altura es
+   la cabecera y la barra de abajo, que no son texto: miden dos renglones justos. */
+
+@font-face { font-family: "JetBrains Mono"; src: url(jetbrains-mono-400.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url(jetbrains-mono-700.woff2) format("woff2"); font-weight: 700; font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  --fs: 14px; --lh: 22px;
+  --bg: #2e3440; --fg: #d8dee9; --dim: #8590a6;
+  --azul: #81a1c1; --amarillo: #ebcb8b; --verde: #a3be8c; --rojo: #bf616a;
+  --magenta: #b48ead; --cian: #88c0d0;
+  --linea: color-mix(in srgb, var(--fg) 16%, transparent);
+  --hover: color-mix(in srgb, var(--fg) 8%, transparent);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Noto Sans Mono", monospace;
+}
+:root[data-tema="claro"] {
+  color-scheme: light;
+  --bg: #eceff4; --fg: #2e3440; --dim: #667085;
+  --azul: #4c6f9a; --amarillo: #9a6f00; --verde: #4f7d3a; --rojo: #b3424d;
+  --magenta: #86608f; --cian: #2f7f94;
+}
+@media (min-width: 600px) { :root { --fs: 16px; --lh: 24px; } }
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { background: var(--bg); }
+body {
+  margin: 0; color: var(--fg); background: var(--bg);
+  font: 400 var(--fs)/var(--lh) var(--mono); font-variant-ligatures: none; font-variant-emoji: text; letter-spacing: 0;
+  -webkit-font-smoothing: antialiased; text-size-adjust: 100%;
+  padding-bottom: calc(3lh + env(safe-area-inset-bottom));  /* un renglón de aire y la barra */
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+b, strong { font-weight: 700; }
+.dim { color: var(--dim); }
+[hidden] { display: none !important; }
+
+/* un símbolo, una celda. Alto fijo y vertical-align: top: aunque la fuente de respaldo tenga otras
+   métricas, no puede estirar el renglón que lo lleva. */
+.g { display: inline-block; width: 1ch; height: var(--lh); line-height: var(--lh); vertical-align: top; text-align: center; overflow: visible; font-style: normal; }
+.g.doble { width: 2ch; }
+
+/* una tecla: marco fino y borde de abajo más grueso. El marco es outline y sombra (no ocupa
+   lugar) y el relleno es medio carácter por lado: ocupa exactamente dos celdas. */
+kbd {
+  font: inherit; padding: 0 .5ch; color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  outline: 1px solid var(--linea); outline-offset: -1px; box-shadow: inset 0 -2px 0 var(--linea);
+}
+
+/* ── arriba: la marca, la fecha y el reloj ───────────────────────── */
+.top {
+  position: sticky; top: 0; z-index: 3; background: var(--bg);
+  height: calc(2lh + env(safe-area-inset-top));
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 0 2ch;
+  padding: calc(.5lh + env(safe-area-inset-top)) 2ch 0;
+}
+.top::after {  /* la regla de colores: va pegada al borde de abajo y no ocupa lugar */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, var(--azul), var(--magenta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+  background-size: 480px 100%; animation: flujo 9s linear infinite;
+}
+.marca-t { display: flex; align-items: flex-start; gap: 0 2ch; min-width: 0; }
+.logo {
+  font-weight: 700; color: transparent;
+  background: linear-gradient(90deg, var(--azul), var(--magenta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+  background-size: 480px 100%; -webkit-background-clip: text; background-clip: text; animation: flujo 9s linear infinite;
+}
+.cursor { margin-left: -1.5ch; color: var(--verde); animation: parpadeo 1.1s steps(1) infinite; }
+@keyframes parpadeo { 50% { opacity: 0; } }
+.fecha { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reloj { color: var(--amarillo); font-variant-numeric: tabular-nums; }
+@keyframes flujo { from { background-position: 0 0; } to { background-position: 480px 0; } }
+
+/* ── el cuerpo ───────────────────────────────────────────────────── */
+main { max-width: 100ch; margin: 0 auto; padding: 0 2ch; }
+.bloque { margin: 1lh 0 0; --c: var(--azul); }
+.bloque.agenda { --c: var(--azul); } .bloque.esperan { --c: var(--amarillo); }
+.bloque.pendientes { --c: var(--verde); } .bloque.hilos { --c: var(--magenta); }
+.bloque.otros { --c: var(--dim); } .bloque.espejo { --c: var(--cian); } .bloque.tiempo { --c: var(--cian); }
+
+h2.sec {
+  display: flex; align-items: flex-start; gap: 1ch; margin: 0;
+  font: inherit; font-weight: 700; text-transform: uppercase; color: var(--c);
+}
+.sec .marca { width: 1ch; align-self: stretch; background: var(--c); }
+.sec .cuenta { color: var(--bg); background: var(--c); padding: 0 1ch; font-weight: 700; }
+.sec .modos { margin-left: auto; display: flex; gap: 2ch; font-weight: 400; text-transform: none; }
+.sec .modos button { color: var(--dim); height: 1lh; }
+.sec .modos button.activo { color: var(--c); }
+
+/* lo que hay bajo cada título lleva a la izquierda una regla del color de la sección */
+.bloque > .fila, .bloque > .vacio, .bloque > .mas, .bloque > .arbol { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+.fila { position: relative; display: grid; align-items: start; column-gap: 1ch; padding: 0 1ch; }
+.fila.clic { cursor: pointer; }
+/* un renglón es poco para un dedo: el área que responde crece 4 px arriba y abajo sin mover nada */
+.fila.clic::after, .mas::after { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
+.fila.clic:active, .fila.clic:hover { background: var(--hover); box-shadow: inset 2px 0 0 var(--c); }
+.vacio { color: var(--dim); padding: 0 2ch; }
+.mas { position: relative; display: block; width: 100%; text-align: left; color: var(--dim); padding: 0 1ch; height: 1lh; }
+.mas:active { background: var(--hover); }
+.una { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.dos { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; overflow-wrap: anywhere; }
+
+/* agenda: hora · qué · lo de al lado */
+.ag { grid-template-columns: 5ch minmax(0, 1fr) auto; }
+.ag .hora { color: var(--c); font-variant-numeric: tabular-nums; }
+.ag.pasada, .ag.pasada .hora { color: var(--dim); }
+.ag.pasada .que { text-decoration: line-through; text-decoration-color: var(--linea); }
+.ag.proxima { background: color-mix(in srgb, var(--c) 12%, transparent); box-shadow: inset 2px 0 0 var(--c); }
+.ag.proxima .que { color: var(--fg); font-weight: 700; }
+.falta { color: var(--bg); background: var(--amarillo); padding: 0 1ch; font-weight: 700; white-space: nowrap; }
+
+/* esperan y hilos: estado · nombre y lo que dice debajo · lo de al lado */
+.hl { grid-template-columns: 1ch minmax(0, 1fr) auto; row-gap: 0; }
+.hl .at { font-weight: 700; grid-row: 1; }
+.hl .nombre { grid-column: 2; grid-row: 1; }
+.hl .sub { grid-column: 2 / 4; grid-row: 2; color: var(--dim); }
+.hl .lado { grid-column: 3; grid-row: 1; color: var(--dim); text-align: right; white-space: nowrap; }
+.at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); animation: pulso 2.4s ease-in-out infinite; }
+.at.termino { color: var(--verde); } .at.ninguna { color: var(--dim); }
+.lado.trabajando { color: var(--azul); } .lado.espera { color: var(--amarillo); } .lado.termino { color: var(--verde); }
+@keyframes pulso { 50% { opacity: .45; } }
+
+/* otra máquina: en línea o apagada (la última foto, atenuada) */
+.sec .estado-esp { margin-left: auto; font-weight: 400; text-transform: none; white-space: nowrap; }
+.estado-esp.en-linea { color: var(--verde); } .estado-esp.apagado { color: var(--dim); }
+.bloque.viejo > .fila, .bloque.viejo > .arbol { opacity: .55; }
+.bloque.viejo .at { animation: none; }
+
+/* pendientes: código · casilla · texto · plazo */
+.pe { grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; }
+.pe .id { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe.encurso .cas { color: var(--azul); }
+.pe .todo { min-width: 0; overflow-wrap: anywhere; }
+.pe.abierto { background: var(--hover); }
+.pe .plazo { text-align: right; color: var(--dim); white-space: nowrap; }
+.venc { color: var(--rojo); } .pronto { color: var(--amarillo); }
+.av { font-weight: 700; margin-right: 1ch; }
+.av-preparado { color: var(--verde); } .av-cerrar { color: var(--cian); } .av-pregunta { color: var(--amarillo); } .av-choca { color: var(--rojo); }
+
+/* el detalle de un hilo, como un árbol */
+.arbol { display: grid; grid-template-columns: 2ch 9ch minmax(0, 1fr); column-gap: 1ch; padding: 0 1ch 0 3ch; color: var(--dim); }
+.arbol .k { color: var(--dim); } .arbol .v { color: var(--fg); overflow-wrap: anywhere; }
+
+.linea-tiempo { padding: 0 2ch; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+.falla { color: var(--rojo); padding: 0 2ch; }
+.error { color: var(--rojo); margin: 1lh 0; padding: 0 2ch; box-shadow: inset 2px 0 0 var(--rojo); overflow-wrap: anywhere; }
+
+/* ── abajo: la barra, como la de tmux ─────────────────────────────── */
+#barra {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: stretch;
+  height: calc(2lh + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--fg) 7%, var(--bg)); box-shadow: inset 0 1px 0 var(--linea);
+}
+#barra > a, #barra > button { display: flex; align-items: center; gap: 1ch; padding: 0 1.5ch; color: var(--dim); }
+#barra > #tema { margin-left: auto; }
+#barra > a.activa { background: var(--fg); color: var(--bg); font-weight: 700; }
+#barra > a.activa kbd { color: var(--bg); background: none; outline-color: color-mix(in srgb, var(--bg) 45%, transparent); box-shadow: none; }
+#barra > a:active, #barra > button:active { background: var(--hover); }
+#barra > a.activa:active { background: var(--fg); }
+#aviso.mal { color: var(--rojo); }

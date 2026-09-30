@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#2e3440">
+  <title>telar</title>
+  <script>
+    // el tema se pone antes de pintar, para que no parpadee: oscuro por defecto, claro si se eligió
+    try { if (localStorage.getItem('telar.tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (e) { /* sin almacenamiento */ }
+  </script>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header class="top">
+    <div class="marca-t"><span class="logo">telar</span><span class="cursor" aria-hidden="true">▊</span><span id="fecha" class="fecha"></span></div>
+    <div class="der"><span id="reloj" class="reloj"></span></div>
+  </header>
+  <main id="vista" aria-live="polite"></main>
+  <footer id="barra">
+    <a href="#hoy" data-vista="hoy"><kbd>1</kbd> hoy</a>
+    <a href="#hilos" data-vista="hilos"><kbd>2</kbd> hilos</a>
+    <button id="tema" type="button" aria-label="cambiar entre tema oscuro y claro"><kbd>t</kbd> <span id="icono-tema" class="g">☾</span></button>
+    <button id="recargar" type="button"><kbd>r</kbd> <span id="aviso">actualizar</span></button>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

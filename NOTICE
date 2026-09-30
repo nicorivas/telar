@@ -27,3 +27,15 @@ PyYAML — MIT License. https://pyyaml.org/
     Used to read the work repository's telar-perfil.yaml.
 
 Everything else telar uses is in the Python standard library.
+
+────────────────────────────────────────────────────────────────────────────
+
+Bundled font
+
+`telar web` ships JetBrains Mono (Latin subset, regular and bold) in
+`src/telar/web/`, so the page looks the same on any phone:
+
+    JetBrains Mono
+    https://github.com/JetBrains/JetBrainsMono
+    Copyright 2020 The JetBrains Mono Project Authors
+    SIL Open Font License 1.1 (see src/telar/web/OFL.txt)

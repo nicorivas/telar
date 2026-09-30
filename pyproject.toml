@@ -40,5 +40,8 @@ package-dir = { "" = "src" }
 [tool.setuptools.dynamic]
 version = { attr = "telar.__version__" }
 
+[tool.setuptools.package-data]
+telar = ["web/*"]
+
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -18,6 +18,13 @@ workflow refuses to run if the two disagree.
   shows it as a section per machine — green «en línea», or greyed out with «apagado · hace 3 h» — and adds
   the ones that are waiting to «te esperan». Only names, semaphores and folders travel, no conversation.
   Read-only. See docs/configuracion.md and docs/contratos.md.
+- `telar web`: telar in the phone's browser over Tailscale, looking like the VS Code dashboard: a terminal
+  with colour (monospace, ANSI palette, sections with a colour bar, keys in inverse video, a tmux-style bottom
+  bar, dark and light). Two screens for now — today (agenda, who is waiting, pending by urgency) and threads,
+  with a tap to open a row's detail as a tree — read from `telar hoy --json` and `telar hilos --json`, so
+  nothing is computed twice. It listens on one interface (Tailscale's, or localhost), only reads, keeps the
+  day fresh in the background and reloads the open page when its files change, so editing the interface and
+  seeing it on the phone takes seconds. Bundles JetBrains Mono (OFL) — see NOTICE.
 
 ## [0.1.9] — 2026-09-29
 
