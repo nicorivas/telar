@@ -96,6 +96,8 @@ def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo
         ["new-session", "-d", "-t", f"={sesion}", "-s", grupo],
         ["set-option", "-t", t, "status", "on"],
         ["set-option", "-t", t, "status-position", "top"],
+        # la barra por defecto de tmux es verde chillón; un gris azulado que no compita con el texto
+        ["set-option", "-t", t, "status-style", "bg=#3b4252,fg=#d8dee9"],
         ["set-option", "-t", t, "status-left-length", "80"],
         ["set-option", "-t", t, "status-left", barra(nombre, correos)],
         ["set-option", "-t", t, "status-right", ""],
@@ -115,6 +117,11 @@ def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo
         # la rueda del mouse sigue desplazando lo que hay en pantalla
         ["bind-key", "-T", TABLA, "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}",
          "send-keys -M", "copy-mode -e; send-keys -M"],
+        # sin mouse (Termux por mosh), deslizar el dedo manda flechas al Claude y recorre su
+        # historial de mensajes. PgUp (fila extra de Termux) o Alt+u entran al historial de tmux;
+        # ahí las flechas y el deslizar sí mueven la pantalla, y bajar hasta el final sale solo.
+        ["bind-key", "-T", TABLA, "PageUp", "copy-mode", "-eu"],
+        ["bind-key", "-T", TABLA, "M-u", "copy-mode", "-eu"],
     ]
     return ordenes
 

@@ -3,19 +3,25 @@ una pantalla chica, y entrar a uno sin quedar encerrado.
 
     mosh usuario@servidor -- ~/.local/bin/telar movil
 
-Corre en el servidor. Flechas o el número eligen, ⏎ o un toque entran, c el correo,
-r recarga, n abre un hilo nuevo, q sale. Dentro de un hilo: Alt+q, F12 o tocar «◀ telar» en la barra de arriba vuelven
+Corre en el servidor. Flechas o el número eligen, ⏎ o un toque entran, h el día (agenda, quién
+te espera, pendientes), c el correo, r recarga, n abre un hilo nuevo, q sale. Dentro de un hilo: Alt+q, F12 o tocar «◀ telar» en la barra de arriba vuelven
 aquí; tocar «✉ N» abre el correo encima. Ver `telar.movil` para cómo se consigue sin tocar
 lo que ve el laptop, y docs/configuracion.md para la tecla F12 en Termux.
 
     telar movil --correo     solo el correo entre agentes, para leer (lo que abre «✉ N»)
+    telar movil --hoy        el día una vez, sin interfaz (para probar)
     telar movil --lista      la lista una vez, sin interfaz (para probar)
 """
 
 from __future__ import annotations
 
 import curses
+import json
 import os
+import shutil
+import subprocess
+import sys
+import textwrap
 
 from telar import correo as mod_correo
 from telar import movil as mod_movil
@@ -88,6 +94,145 @@ def _pedir(pantalla, pregunta: str) -> str:
             texto += k
 
 
+def _datos_hoy() -> dict:
+    """`telar hoy --json`, el contrato documentado: la pantalla no depende de cómo se calcula el día."""
+    r = subprocess.run([sys.executable, "-m", "telar", "hoy", "--json"], capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else "telar hoy falló")
+    return json.loads(r.stdout)
+
+
+_DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+_MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre",
+          "octubre", "noviembre", "diciembre")
+_SIMBOLO = {"espera": "○", "termino": "✓", "trabajando": "●"}
+
+
+def filas_hoy(datos: dict, ancho: int, vivos: set[str]) -> list[tuple[str, int, str | None]]:
+    """El día como renglones de pantalla: (texto, atributo, hilo al que entra un toque o None).
+    Pura: se prueba sin curses. El texto largo se parte en varios renglones, no se corta."""
+    filas: list[tuple[str, int, str | None]] = []
+    ancho = max(ancho - 1, 20)
+
+    def partir(prefijo: str, texto: str, attr: int = 0, hilo: str | None = None) -> None:
+        lineas = textwrap.wrap(texto, max(ancho - len(prefijo), 10)) or [""]
+        for i, l in enumerate(lineas):
+            filas.append(((prefijo if i == 0 else " " * len(prefijo)) + l, attr, hilo))
+
+    def titulo(t: str) -> None:
+        if filas:
+            filas.append(("", 0, None))
+        filas.append((t, curses.A_BOLD, None))
+
+    fecha = (datos.get("fecha") or "").split("-")
+    if len(fecha) == 3:
+        d = _DIAS[__import__("datetime").date.fromisoformat(datos["fecha"]).weekday()]
+        partir("", f"{d} {int(fecha[2])} de {_MESES[int(fecha[1]) - 1]} · semana {datos.get('semana', '')}", curses.A_BOLD)
+
+    titulo("AGENDA")
+    agenda = datos.get("agenda")
+    if agenda is None:
+        filas.append(("  sin agenda declarada", curses.A_DIM, None))
+    elif not agenda:
+        filas.append(("  nada con hora", curses.A_DIM, None))
+    for e in agenda or []:
+        partir(f"  {(e.get('cuando') or '')[11:16]:>5} ", e.get("texto", ""))
+
+    titulo("TE ESPERAN")
+    llaman = datos.get("atencion") or []
+    if not llaman:
+        filas.append(("  nadie", curses.A_DIM, None))
+    for h in llaman:
+        nombre = h.get("nombre", "")
+        entra = nombre if nombre in vivos else None
+        partir(f"  {_SIMBOLO.get(h.get('atencion'), ' ')} ", f"{nombre}  {h.get('atencion', '')}", 0, entra)
+
+    titulo("PENDIENTES")
+    pend = datos.get("pendientes") or []
+    if not pend:
+        filas.append(("  nada pendiente", curses.A_DIM, None))
+    for f in pend[:12]:
+        partir(f"  {'▣' if f.get('en_curso') else '☐'} ", f.get("texto", ""))  # la ref es una ruta larga; el texto ya trae su clave
+    if len(pend) > 12:
+        filas.append((f"  … y {len(pend) - 12} más", curses.A_DIM, None))
+
+    total = (datos.get("tiempo") or {}).get("total")
+    if total:
+        titulo("HOY")
+        minutos = int(total // 60)  # `telar hoy --json` da segundos
+        partir("  ", f"{minutos // 60} h {minutos % 60:02d} min con los hilos abiertos")
+    for falla in (datos.get("proveedores") or {}).get("fallas", []):
+        partir("", f"(proveedor caído · {falla})", curses.A_DIM)
+    return filas
+
+
+def _hoy(pantalla) -> tuple[str, object]:
+    """El día en una pantalla: agenda, quién te espera, pendientes. Un toque (o ⏎) sobre un hilo que espera
+    entra a él. Devuelve como `_menu`: ("entrar", (hilo, correos)) o ("volver", None)."""
+    curses.curs_set(0)
+    curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
+    pantalla.erase()
+    pantalla.addnstr(0, 0, "cargando el día…", 30, curses.A_DIM)
+    pantalla.refresh()
+    hilos = {h.nombre: h for h in mod_movil.hilos()}
+    error = ""
+    try:
+        datos = _datos_hoy()
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired) as e:
+        datos, error = {}, str(e)
+    arriba = 0
+    sel = 0  # índice, dentro de las filas que entran, de la elegida
+    while True:
+        alto, ancho = pantalla.getmaxyx()
+        filas = filas_hoy(datos, ancho, set(hilos))
+        entran = [i for i, f in enumerate(filas) if f[2]]
+        sel = min(sel, max(len(entran) - 1, 0))
+        actual = entran[sel] if entran else -1
+        cuerpo = alto - 1
+        if actual >= 0:  # que la elegida se vea
+            arriba = min(max(arriba, actual - cuerpo + 1), actual)
+        arriba = max(0, min(arriba, max(len(filas) - cuerpo, 0)))
+        pantalla.erase()
+        if error:
+            pantalla.addnstr(0, 0, f"no pude leer el día: {error}", ancho - 1)
+        for y, i in enumerate(range(arriba, min(arriba + cuerpo, len(filas)))):
+            texto, attr, _ = filas[i]
+            pantalla.addnstr(y, 0, texto.ljust(ancho - 1) if i == actual else texto, ancho - 1,
+                             curses.A_REVERSE if i == actual else attr)
+        pantalla.addnstr(alto - 1, 0, "⏎ entra · ↑↓ · r recarga · q vuelve", ancho - 1, curses.A_DIM)
+        k = pantalla.getch()
+        if k in (ord("q"), ord("h"), 27):
+            return "volver", None
+        if k == ord("r"):
+            return "hoy", None
+        if k in (curses.KEY_DOWN, ord("j")):
+            if entran and sel < len(entran) - 1:
+                sel += 1
+            else:
+                arriba += 1
+        elif k in (curses.KEY_UP, ord("k")):
+            if entran and sel > 0 and entran[sel - 1] >= arriba:
+                sel -= 1
+            elif arriba > 0:
+                arriba -= 1
+            elif sel > 0:
+                sel -= 1
+        elif k == curses.KEY_NPAGE:
+            arriba += cuerpo - 1
+        elif k == curses.KEY_PPAGE:
+            arriba -= cuerpo - 1
+        elif k in (10, 13, curses.KEY_ENTER) and actual >= 0:
+            return "entrar", (hilos[filas[actual][2]], 0)
+        elif k == curses.KEY_MOUSE:
+            try:
+                _, _, y, _, estado = curses.getmouse()
+            except curses.error:
+                continue
+            i = arriba + y
+            if 0 <= i < len(filas) and filas[i][2] and estado & (curses.BUTTON1_CLICKED | curses.BUTTON1_PRESSED | curses.BUTTON1_RELEASED):
+                return "entrar", (hilos[filas[i][2]], 0)
+
+
 def _menu(pantalla) -> tuple[str, object]:
     """Dibuja la lista hasta que se elige algo: ("entrar", hilo), ("nuevo", nombre), ("correo", None) o ("salir", None)."""
     curses.curs_set(0)
@@ -108,12 +253,14 @@ def _menu(pantalla) -> tuple[str, object]:
             linea = f"{i + 1:>2} {marca} {h.nombre}{correo}"
             pantalla.addnstr(2 + i, 0, linea.ljust(ancho - 1), ancho - 1,
                              curses.A_REVERSE if i == elegido else curses.A_NORMAL)
-        pantalla.addnstr(alto - 1, 0, "⏎ entra · n nuevo · c correo · r recarga · q sale", ancho - 1, curses.A_DIM)
+        pantalla.addnstr(alto - 1, 0, "⏎ entra · h día · n nuevo · c correo · q sale", ancho - 1, curses.A_DIM)
         k = pantalla.getch()
         if k in (ord("q"), 27):
             return "salir", None
         if k == ord("c"):
             return "correo", None
+        if k == ord("h"):
+            return "hoy", None
         if k == ord("n"):
             nombre = _pedir(pantalla, "nombre del hilo nuevo: ")
             if nombre and nombre in {h.nombre for h in hilos}:
@@ -172,6 +319,7 @@ def main(argv: list[str], ctx) -> int:
     p.epilog = __doc__
     p.add_argument("--correo", action="store_true", help="solo el correo entre agentes")
     p.add_argument("--lista", action="store_true", help="la lista una vez, sin interfaz")
+    p.add_argument("--hoy", action="store_true", help="el día una vez, sin interfaz")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -182,6 +330,11 @@ def main(argv: list[str], ctx) -> int:
             print(f"{'●' if h.clientes else '·'} {h.nombre}" + (f" ✉{pend[h.nombre]}" if pend.get(h.nombre) else "")
                   + _comun.tenue(f"  {h.sesion}"))
         return 0
+    if o.hoy:
+        vivos = {h.nombre for h in mod_movil.hilos()}
+        for texto, _, hilo in filas_hoy(_datos_hoy(), shutil.get_terminal_size((60, 24)).columns, vivos):
+            print(texto + (_comun.tenue("  ⏎") if hilo else ""))
+        return 0
     if o.correo:
         curses.wrapper(lambda s: _mostrar(s, _texto_correo()))
         return 0
@@ -189,19 +342,25 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja("telar movil se abre fuera de tmux: es lo que tmux muestra, no algo que corre adentro")
     # el comando que abre «✉ N» desde la barra: este mismo telar, sin depender del PATH
     import shlex
-    import sys
     correo_cmd = shlex.join([sys.executable, "-m", "telar", "movil", "--correo"])
+    accion, dato = "menu", None
     while True:
-        accion, dato = curses.wrapper(_menu)
+        if accion in ("menu", "volver"):
+            accion, dato = curses.wrapper(_menu)
+        if accion == "hoy":  # el día devuelve otra vez una acción: entrar a un hilo, volver o recargar
+            accion, dato = curses.wrapper(_hoy)
+            continue
         if accion == "salir":
             return 0
         if accion == "correo":
             curses.wrapper(lambda s: _mostrar(s, _texto_correo()))
+            accion = "menu"
             continue
         if accion == "nuevo":
             hilo = _abrir_nuevo(ctx, dato)
             if hilo is None:
                 input("⏎ para volver")
+                accion = "menu"
                 continue
             dato = (hilo, 0)
         hilo, pendientes = dato
@@ -210,3 +369,4 @@ def main(argv: list[str], ctx) -> int:
         except RuntimeError as e:
             print(f"no pude entrar a «{hilo.nombre}»: {e}")
             input("⏎ para volver")
+        accion = "menu"

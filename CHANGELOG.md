@@ -6,6 +6,13 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `telar movil --hoy`: prints the day once (for testing).
+- `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
+  items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
+  that is waiting enters it.
+
 ## [0.1.9] — 2026-09-29
 
 ### Added

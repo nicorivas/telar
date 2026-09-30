@@ -211,3 +211,43 @@ class Bandeja(Prueba):
             self.assertEqual(est.leidos(), {"Pizza": {"<1>", "<2>", "<3>"}})
             est.renombrar("Pizza", "Pizza 2")
             self.assertEqual(set(est.leidos()), {"Pizza 2"})
+
+
+class PantallaHoy(Prueba):
+    """El día en el celular: los renglones salen de `telar hoy --json`, sin curses ni tmux."""
+
+    DATOS = {
+        "fecha": "2026-09-28", "semana": 40,
+        "agenda": [{"cuando": "2026-09-28T09:00:00", "texto": "Coordinación semanal con un nombre bastante largo para partir", "hilo": ""}],
+        "atencion": [{"nombre": "Pizza", "atencion": "espera"}, {"nombre": "Faro", "atencion": "termino"}],
+        "pendientes": [{"ref": "brinca/x:1", "texto": "AGP-11: algo por hacer", "en_curso": False}],
+        "tiempo": {"total": 5700.0, "hilos": {}}, "proveedores": {"declarados": [], "fallas": []},
+    }
+
+    def filas(self, ancho=30, vivos=("Pizza",)):
+        from telar.ordenes import movil as om
+        return om.filas_hoy(self.DATOS, ancho, set(vivos))
+
+    def test_las_secciones_van_en_orden(self):
+        textos = [f[0] for f in self.filas()]
+        orden = [textos.index(t) for t in ("AGENDA", "TE ESPERAN", "PENDIENTES", "HOY")]
+        self.assertEqual(orden, sorted(orden))
+        self.assertTrue(textos[0].startswith("lunes 28 de septiembre"))
+
+    def test_el_texto_largo_se_parte_en_vez_de_cortarse(self):
+        filas = self.filas(ancho=30)
+        self.assertTrue(all(len(f[0]) <= 29 for f in filas))
+        self.assertIn("partir", " ".join(f[0] for f in filas))
+
+    def test_solo_entra_a_un_hilo_que_vive_en_esta_maquina(self):
+        entran = {f[2] for f in self.filas() if f[2]}
+        self.assertEqual(entran, {"Pizza"})  # «Faro» espera, pero no tiene sesión aquí
+
+    def test_sin_datos_no_se_cae(self):
+        from telar.ordenes import movil as om
+        textos = [f[0] for f in om.filas_hoy({}, 40, set())]
+        self.assertIn("  nadie", textos)
+        self.assertIn("  nada pendiente", textos)
+
+    def test_el_tiempo_se_dice_en_horas_y_minutos(self):
+        self.assertIn("1 h 35 min", " ".join(f[0] for f in self.filas(ancho=60)))
