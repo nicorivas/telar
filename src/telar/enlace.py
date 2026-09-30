@@ -27,6 +27,7 @@ docs/contratos.md.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shlex
@@ -249,8 +250,6 @@ def llamar(enlace, verbo: str, args: list[str] | None = None, entrada: bytes | N
         r = subprocess.run(orden, input=entrada if entrada is not None else b"", capture_output=True, timeout=espera)
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"ok": False, "verbo": verbo, "error": f"{enlace.destino} no responde: {e}"}
-    import json
-
     try:
         cuerpo = json.loads(r.stdout.decode("utf-8", "replace"))
         if isinstance(cuerpo, dict) and "ok" in cuerpo:
@@ -260,6 +259,25 @@ def llamar(enlace, verbo: str, args: list[str] | None = None, entrada: bytes | N
     detalle = (r.stderr.decode("utf-8", "replace").strip() or r.stdout.decode("utf-8", "replace").strip()
                or f"ssh salió con {r.returncode}")[-300:]
     return {"ok": False, "verbo": verbo, "error": detalle}
+
+
+def traer_foto(config, enlace) -> str:
+    """Le pide a esa máquina la foto de sus hilos por la puerta y la guarda como espejo. "" si salió bien.
+
+    Es el espejo al revés: en vez de esperar a que el laptop empuje, el servidor pregunta. Sirve aunque
+    VS Code esté cerrado; si el laptop está apagado, falla rápido y el espejo queda con su última foto."""
+    r = llamar(enlace, "hilos", espera=15)
+    if not r.get("ok"):
+        return str(r.get("error", "no salió"))
+    foto = r.get("foto")
+    if not isinstance(foto, dict):
+        return "la puerta no devolvió una foto"
+    nombre = espejo.nombre_valido(str(foto.get("maquina", ""))) or espejo.nombre_valido(enlace.nombre)
+    try:
+        espejo.guardar(config, nombre, json.dumps(foto, ensure_ascii=False))
+    except espejo.ErrorDeEspejo as e:
+        return str(e)
+    return ""
 
 
 # ── autorizar la llave (el laptop) ─────────────────────────

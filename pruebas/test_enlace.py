@@ -333,3 +333,34 @@ class DeExtremoAExtremo(ConPuerta):
             r = m.llamar(enlace, "ping")
         self.assertFalse(r["ok"])
         self.assertIn("Connection timed out", r["error"])
+
+
+class TraerLaFoto(ConPuerta):
+    """El espejo al revés: el servidor le pide la foto al laptop por la puerta y la guarda."""
+
+    def enlace(self):
+        return Enlace(nombre="laptop", destino="nico@mac", llave="/x")
+
+    def test_la_foto_pedida_queda_guardada_con_el_nombre_de_la_maquina(self):
+        from telar import espejo
+
+        foto = {"version": 1, "maquina": "macbook-de-nico", "telar": "0.1.9", "publicado": "", "sesion": "brinca",
+                "hilos": [{"nombre": "Faro", "atencion": "espera", "vivo": True}]}
+        with mock.patch.object(m, "llamar", return_value={"ok": True, "verbo": "hilos", "foto": foto}):
+            self.assertEqual(m.traer_foto(self.ctx.config, self.enlace()), "")
+        [guardada] = espejo.leer_todos(self.ctx.config)
+        self.assertEqual(guardada["nombre"], "macbook-de-nico")
+        self.assertTrue(guardada["en_linea"])
+        self.assertEqual(guardada["hilos"][0]["nombre"], "Faro")
+
+    def test_un_laptop_apagado_no_deja_rastro_ni_levanta_nada(self):
+        from telar import espejo
+
+        with mock.patch.object(m, "llamar", return_value={"ok": False, "error": "no responde"}):
+            self.assertEqual(m.traer_foto(self.ctx.config, self.enlace()), "no responde")
+        self.assertEqual(espejo.leer_todos(self.ctx.config), [])
+
+    def test_una_foto_mala_se_rechaza(self):
+        for respuesta in ({"ok": True, "foto": "no"}, {"ok": True, "foto": {"version": 9, "hilos": []}}):
+            with mock.patch.object(m, "llamar", return_value=respuesta):
+                self.assertNotEqual(m.traer_foto(self.ctx.config, self.enlace()), "")

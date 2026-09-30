@@ -12,6 +12,8 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `telar espejo traer`: the server asks the laptop for its photo through the door; `telar web` does it every
+  30 s when `[enlaces]` exists, so the mirror stays current with VS Code closed.
 - `telar enlace`: a door from the server to the laptop with a single key. sshd ties the key to one command
   (`telar enlace servir`, with `restrict`), and `servir` does five things with size limits — `ping`, `hilos`,
   `archivo` (lands in an input folder, never overwrites or escapes it), `enviar` (types into a live thread) and

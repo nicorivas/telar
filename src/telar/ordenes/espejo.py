@@ -3,6 +3,7 @@
     telar espejo publicar            (en el laptop) empuja una foto de sus hilos al servidor
     telar espejo publicar --cada 30  lo repite cada 30 s hasta Ctrl-C (para un terminal o launchd)
     telar espejo recibir --de laptop (en el servidor) guarda la foto que llega por la entrada estándar
+    telar espejo traer               (en el servidor) le pide la foto al laptop por la puerta (`telar enlace`)
     telar espejo ver                 qué fotos hay, de quién y cuánto hace que llegaron
 
 `publicar` entra por ssh a una máquina de `[remotos]` (`--a`, o la única que haya) y corre allá
@@ -68,7 +69,7 @@ def _edad(seg: float | None) -> str:
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("espejo", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", choices=("publicar", "recibir", "ver"))
+    p.add_argument("verbo", choices=("publicar", "recibir", "traer", "ver"))
     p.add_argument("--a", default="", metavar="REMOTO", help="publicar: la máquina de [remotos] (por defecto, la única)")
     p.add_argument("--nombre", default="", help="publicar: cómo se llama esta máquina allá (por defecto, su hostname)")
     p.add_argument("--cada", type=float, default=0, metavar="SEG", help="publicar: repetir cada tantos segundos")
@@ -87,6 +88,19 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja(str(e))
         return _comun.escribir_json({"ok": True, "maquina": o.de, "hilos": len(limpia["hilos"])}) if o.json else (
             print(f"{o.de}: {len(limpia['hilos'])} hilos") or 0)
+
+    if o.verbo == "traer":
+        from telar import enlace as mod_enlace
+
+        enlaces = [e for e in ctx.config.enlaces if not o.a or e.nombre == o.a]
+        if not enlaces:
+            return _comun.queja("no hay ningún enlace en [enlaces]" + (f" que se llame «{o.a}»" if o.a else ""))
+        salida = {e.nombre: mod_enlace.traer_foto(ctx.config, e) for e in enlaces}
+        if o.json:
+            return _comun.escribir_json({"traido": {k: not v for k, v in salida.items()}, "errores": {k: v for k, v in salida.items() if v}})
+        for nombre, error in salida.items():
+            print(f"{nombre}: {error or 'traído'}")
+        return 1 if any(salida.values()) else 0
 
     if o.verbo == "ver":
         fotos = mod.leer_todos(ctx.config)

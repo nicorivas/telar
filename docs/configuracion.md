@@ -479,6 +479,11 @@ misma red de Tailscale. `telar enlace revocar` en el laptop quita la llave. Cada
 `<estado>/enlace.log` del laptop, también las rechazadas. La primera conexión guarda la huella del
 laptop (`StrictHostKeyChecking=accept-new`); después, si cambia, ssh se niega.
 
+**El espejo por la puerta.** Con `[enlaces]` configurado, el servidor no espera a que el laptop publique:
+`telar espejo traer` (o el hilo de fondo de `telar web`, cada 30 s) le pide la foto de sus hilos por la
+puerta y la guarda como espejo. Sirve aunque VS Code esté cerrado; con el laptop apagado falla rápido y el
+espejo queda con su última foto, atenuada.
+
 Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
 carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos. No puede leer
 archivos, correr comandos ni entrar. Si «enviar» te parece demasiado, quítalo de `verbos`.

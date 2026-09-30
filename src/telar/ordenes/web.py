@@ -83,6 +83,18 @@ def mantener_fresco(pausa: float = RENUEVA) -> None:
         time.sleep(pausa)
 
 
+def mantener_espejos(config, pausa: float = 30.0) -> None:
+    """Cada `pausa` segundos le pide su foto a cada máquina de `[enlaces]`, para que el espejo esté al día
+    aunque su extensión no esté publicando. Un laptop apagado falla rápido y queda con su última foto."""
+    while True:
+        for e in config.enlaces:
+            try:
+                enlace.traer_foto(config, e)
+            except Exception:  # noqa: BLE001 - un intento fallido no puede matar el hilo; el espejo ya se ve apagado
+                pass
+        time.sleep(pausa)
+
+
 def version_de_la_pagina() -> str:
     """Una huella de los archivos de la página: cambia cuando se edita uno."""
     h = hashlib.sha1()
@@ -144,6 +156,8 @@ def main(argv: list[str], ctx) -> int:
     if not CARPETA.is_dir():
         return _comun.queja(f"no encuentro los archivos de la página en {CARPETA}")
     threading.Thread(target=mantener_fresco, daemon=True).start()
+    if ctx.config.enlaces:
+        threading.Thread(target=mantener_espejos, args=(ctx.config,), daemon=True).start()
     servidor = ThreadingHTTPServer((host, o.puerto), manejador(not o.sin_recarga, ctx.config))
     print(f"telar web en http://{host}:{o.puerto}  ·  {'con' if not o.sin_recarga else 'sin'} recarga automática")
     try:
