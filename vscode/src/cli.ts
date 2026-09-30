@@ -296,6 +296,12 @@ export const abrirItem = (clave: string, mensaje: string, nombre: string) =>
     telarJson<{ hilo: string; mensaje: string }>(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
 export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
+/** Empuja al servidor una foto de los hilos de este laptop (`telar espejo publicar`), para verlos
+ *  desde allá y desde la web del celular. `remoto` es una máquina de `[remotos]`; vacío, la única. */
+export const publicarEspejo = (remoto: string) =>
+    telarJson<{ publicado: boolean; maquina: string; remoto: string; error: string }>(
+        ['espejo', 'publicar', ...(remoto ? ['--a', remoto] : [])], 40000);
+
 /** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */
 export const directoriosHilos = (carpetas: string) => telar(['config', '--directorios', carpetas], 20000);
 

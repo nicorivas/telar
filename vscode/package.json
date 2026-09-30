@@ -642,6 +642,11 @@
           "default": "",
           "markdownDescription": "Root of the working repository, passed as `--raiz`. Empty means the one in the configuration file."
         },
+        "telar.espejo": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Name of a `[remotos]` machine to publish this laptop's thread list to every 30 s (`telar espejo publicar`), so the server and its web page can show them. Empty: off."
+        },
         "telar.orden": {
           "type": "string",
           "default": "mux",

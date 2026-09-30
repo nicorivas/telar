@@ -347,6 +347,28 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     }, 60 * 1000);
     ctx.subscriptions.push({ dispose: () => clearInterval(cadaMinuto) });
 
+    // el espejo: cada 30 s el laptop empuja al servidor una foto de sus hilos. Con `telar.espejo`
+    // vacío no hace nada. Si el laptop duerme o no hay red, simplemente no publica: el servidor
+    // ve la foto vieja y la da por apagada. Solo se anota cuando cambia el resultado.
+    let publicando = false;
+    let ultimoEspejo = '';
+    const espejo = async () => {
+        const remoto = vscode.workspace.getConfiguration('telar').get<string>('espejo', '').trim();
+        if (!remoto || publicando) return;
+        publicando = true;
+        try {
+            const r = await cli.publicarEspejo(remoto);
+            const dicho = r.datos?.publicado ? 'publicado' : (r.datos?.error || r.error || 'no publicó');
+            if (dicho !== ultimoEspejo) { anotar(`espejo → ${remoto}: ${dicho}`); ultimoEspejo = dicho; }
+        } finally { publicando = false; }
+    };
+    const cadaTreinta = setInterval(() => void espejo().catch(e => anotar(`espejo: ${e}`)), 30 * 1000);
+    ctx.subscriptions.push({ dispose: () => clearInterval(cadaTreinta) });
+    ctx.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
+        if (e.affectsConfiguration('telar.espejo')) void espejo().catch(x => anotar(`espejo: ${x}`));
+    }));
+    void espejo().catch(e => anotar(`espejo: ${e}`));
+
     const orden = (id: string, f: (...a: any[]) => unknown) =>
         ctx.subscriptions.push(vscode.commands.registerCommand(id,
             (...a) => Promise.resolve(f(...a)).catch(e => anotar(`${id}: ${e}`))));
