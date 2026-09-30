@@ -174,6 +174,22 @@ class Enviar(ConPuerta):
         self.assertEqual(escrito, [])
 
 
+class ElPath(Prueba):
+    """sshd trae `PATH=/usr/bin:/bin:…`: sin tmux, el laptop diría que ningún hilo está vivo."""
+
+    def test_se_agregan_los_lugares_habituales_que_existen_y_no_estaban(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            brew = Path(tmp) / "brew"
+            brew.mkdir()
+            with mock.patch.object(m, "DONDE_VIVEN", (str(brew), str(Path(tmp) / "no-existe"), "/usr/bin")):
+                path = m.completar_path({"PATH": "/usr/bin:/bin"})
+        self.assertEqual(path, f"/usr/bin:/bin:{brew}")  # lo que estaba, en su orden; lo nuevo, al final
+
+    def test_no_repite_ni_pierde_nada(self):
+        self.assertEqual(m.completar_path({"PATH": "/a:/b"}).split(":")[:2], ["/a", "/b"])
+        self.assertEqual(m.completar_path({}).count("/opt/homebrew/bin") <= 1, True)
+
+
 class Notificar(ConPuerta):
     def test_el_texto_va_por_el_entorno_no_dentro_del_script(self):
         llamadas = []

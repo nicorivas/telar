@@ -50,6 +50,7 @@ def _elegir(ctx, nombre: str):
 
 def _servir(ctx) -> int:
     """Lo que sshd ejecuta. La petición viene en SSH_ORIGINAL_COMMAND y el contenido, por la entrada."""
+    os.environ["PATH"] = mod.completar_path()  # sshd trae un PATH sin tmux
     pedido = os.environ.get("SSH_ORIGINAL_COMMAND", "")
     tope = mod.LIMITE.get(mod.verbo_de(pedido), 0)
     entrada = sys.stdin.buffer.read(tope + 1) if tope else b""

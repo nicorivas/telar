@@ -167,6 +167,23 @@ VERBO = {"ping": _ping, "hilos": _hilos, "archivo": _archivo, "enviar": _enviar,
 assert set(VERBO) == set(VERBOS_ENLACE)
 
 
+#: dónde suelen vivir tmux y telar en un Mac o un Linux de escritorio. sshd ejecuta el comando forzado
+#: con un PATH mínimo (`/usr/bin:/bin:…`), donde no están: sin esto, telar creería que no hay ningún
+#: hilo vivo y `enviar` diría que no existe.
+DONDE_VIVEN = ("/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "~/.local/bin")
+
+
+def completar_path(entorno: dict | None = None) -> str:
+    """El PATH con los lugares habituales agregados al final (solo los que existen y no estaban)."""
+    entorno = os.environ if entorno is None else entorno
+    actual = [d for d in entorno.get("PATH", "").split(os.pathsep) if d]
+    for d in DONDE_VIVEN:
+        ruta = os.path.expanduser(d)
+        if ruta not in actual and os.path.isdir(ruta):
+            actual.append(ruta)
+    return os.pathsep.join(actual)
+
+
 def verbo_de(pedido: str) -> str:
     """El verbo de una petición, o "" si no se entiende. Sirve para saber cuánto leer de la entrada."""
     try:
