@@ -8,6 +8,11 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- VS Code: a ✓ on hover in each task row (sidebar and dashboard) marks it done without opening its card. It runs
+  the action the provider declares with `"rol": "hecha"`.
+- A task action's `mensaje` also takes `{texto}`, so an action can open a new session on the task with what was
+  just typed in its card as the first prompt.
+
 - `telar hilo leer [thread] [--ultimos N]`: the last N turns of a thread's conversation (5 by default, 50 at
   most) as readable text — what was asked, what the agent answered, one line per tool call and never its
   output — with per-message and total caps; the pane's scrollback when there is no conversation here.
@@ -63,6 +68,7 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- VS Code: clicking a task while the dashboard is hidden behind another tab now brings it to the front.
 - An `[enlace]` table without `entrada` failed to load (`Puerta.entrada` is a slot, not the default).
 
 ## [0.1.9] — 2026-09-29

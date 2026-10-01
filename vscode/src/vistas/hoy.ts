@@ -17,7 +17,7 @@ import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
-import { llevarPendiente } from './tareas';
+import { llevarPendiente, marcarHecha } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
@@ -958,6 +958,12 @@ export class PanelHoy {
                 else await this.abrirTarea(m.valor);
                 break;
             case 'accion-tarea': if (m.valor) await this.accionTarea(Number(m.valor)); break;
+            case 'hecha':
+                if (!m.valor) break;
+                await marcarHecha(m.valor);
+                void this.actualizar(true);
+                void vscode.commands.executeCommand('telar.tareasActualizar');
+                break;
             case 'tarea-principal': {
                 const i = (this.ficha?.pagina?.acciones ?? []).findIndex(a => a.principal);
                 if (i >= 0) await this.accionTarea(i);

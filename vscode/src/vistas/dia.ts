@@ -222,7 +222,11 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
             + ` data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}${avance ? `\n\nagente, ${avanceFecha}: ${avance}` : ''}\n\n${t.fila.ficha ? `clic: leerla y decidir · ⌘-clic: ${t.hilo ? `llevarla a «${t.hilo}»` : 'un hilo para trabajarla'}` : `clic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar`}`)}">`
             // sin letras: la fila se clica. `+` abre un hilo nuevo, `→` lo lleva al que ya existe
             // (el globo dice cuál); `●` en la columna angosta, que ya se trabaja
-            + `<span class="id">${esc(t.ref)}</span><span class="pri">${t.enCurso ? '●' : ''}</span>`
+            + `<span class="id">${esc(t.ref)}</span>`
+            // con ficha, al pasar el mouse aparece un ✓ que la marca hecha sin abrir nada
+            + (t.fila.ficha
+                ? `<span class="pri marcar" data-accion="hecha" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}" title="marcarla hecha"><i>${t.enCurso ? '●' : ''}</i></span>`
+                : `<span class="pri">${t.enCurso ? '●' : ''}</span>`)
             + `<span class="desc">${marcaAvance}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}</span></div>`);
     }
     h.push('<div id="tareas-vacio" class="vacio" hidden></div><div id="tareas-mas" class="vacio clic" hidden></div></div>');
@@ -361,6 +365,11 @@ export const CSS_DIA = `
   .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
   .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
   .tarea.encurso .pri { color: var(--azul); }
+  .tarea .pri.marcar i { font-style: normal; }
+  .tarea:hover .pri.marcar i { display: none; }
+  .tarea:hover .pri.marcar::after { content: '✓'; color: var(--dim); }
+  .tarea .pri.marcar:hover::after { color: var(--verde); font-weight: bold; }
+  .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }
   .av { font-weight: bold; margin-right: 1ch; }
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
   #ficha-tarea { --c: var(--verde); }
@@ -566,6 +575,8 @@ document.addEventListener('click', function (e) {
   if (m) { estado.modo = m.dataset.modoTareas; estado.q = ''; estado.todas = false; guardar(); const b = document.getElementById('buscar'); if (b) b.value = ''; return aplicar(); }
   if (e.target.closest('#tareas-mas')) { estado.todas = true; guardar(); return aplicar(); }
   const a = e.target.closest('[data-accion]');
+  // el ✓ tacha la fila al tiro: la lista se relee cuando el proveedor termine
+  if (a && a.dataset.accion === 'hecha') { const f = a.closest('.tarea'); if (f) f.classList.add('marcada'); }
   if (a) vscode.postMessage({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey });
 });
 document.addEventListener('keydown', function (e) {

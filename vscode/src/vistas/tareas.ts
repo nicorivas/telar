@@ -52,6 +52,7 @@ export class VistaTareas implements vscode.WebviewViewProvider {
         if (m.tipo !== 'accion') return;
         if (m.accion === 'volver') { void mostrarTerminal(); return; }
         if (m.accion === 'pendiente' && m.valor) await llevarPendiente(m.valor, !!m.nuevo);
+        if (m.accion === 'hecha' && m.valor) { await marcarHecha(m.valor); await this.actualizar(true); return; }
         // con ficha: el clic la abre en el dashboard para leerla y decidir; ⌘-clic, a su hilo
         if (m.accion === 'tarea' && m.valor) {
             if (m.nuevo) { const [, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false); }
@@ -71,4 +72,22 @@ export async function llevarPendiente(ref: string, nuevo: boolean): Promise<void
     }
     await modelo.sondear();
     void mostrarTerminal();
+}
+
+/** El ✓ de la lista: corre la acción que el proveedor declara con `rol: "hecha"`, sin abrir
+ *  la ficha ni preguntar (se deshace reabriéndola). Si el proveedor no declara una, lo dice. */
+export async function marcarHecha(valor: string): Promise<boolean> {
+    const [proveedor, id] = JSON.parse(valor) as string[];
+    const ficha = await cli.tarea(id, proveedor);
+    const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'hecha') ?? -1;
+    if (k < 0) {
+        void vscode.window.showWarningMessage(`telar: ${ficha.error ?? `${id} no se puede marcar hecha desde la lista: ábrela`}`);
+        olvidarDia();
+        return false;
+    }
+    const r = await cli.accionTarea(id, proveedor, k);
+    olvidarDia();
+    if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
+    vscode.window.setStatusBarMessage(`✓ ${id} hecha`, 5000);
+    return true;
 }
