@@ -14,7 +14,8 @@ Un `{texto}` en el comando se reemplaza por lo que se escribió (`--texto`).
 
 Una acción con `mensaje` abre además, después de su comando, un hilo nuevo con el agente y
 ese primer prompt (`nombre_hilo` es su nombre): marcar hecha y procesar las secuelas de
-inmediato, por ejemplo.
+inmediato, por ejemplo. Un `{texto}` en el mensaje también se reemplaza: así una acción puede
+abrir una sesión nueva sobre la tarea con lo que se acaba de escribir como primer prompt.
 """
 
 from __future__ import annotations
@@ -74,7 +75,7 @@ def main(argv: list[str], ctx) -> int:
         # llevar al hilo y abrir un enlace los hace quien dibuja: aquí solo se dice cuál
         resultado = {"tipo": tipo, "enlace": a.get("enlace", ""), "hecho": ""}
         return _comun.escribir_json(resultado) if o.json else (print(resultado) or 0)
-    if a.get("pide") and not o.texto.strip() and any("{texto}" in w for w in a["comando"]):
+    if a.get("pide") and not o.texto.strip() and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
         return _comun.queja(f"«{a['nombre']}» pide texto: --texto")
     palabras = [w.replace("{texto}", o.texto.strip()) for w in a["comando"]]
     try:
@@ -90,7 +91,7 @@ def main(argv: list[str], ctx) -> int:
         from telar.ordenes.atajo import abrir
 
         nombre = " ".join(a.get("nombre_hilo", "").split())[:48] or f"{o.id} {dt.datetime.now():%m/%d %H:%M}"
-        problema = abrir(ctx, nombre, a["mensaje"])
+        problema = abrir(ctx, nombre, a["mensaje"].replace("{texto}", o.texto.strip()))
         if problema:
             return _comun.queja(f"«{a['nombre']}» se hizo, pero no pude abrir el hilo: {problema}")
         salida["hilo"] = nombre
