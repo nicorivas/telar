@@ -315,7 +315,10 @@ export class PanelHoy {
      *  (`telar tarea`): su propuesta arriba, el contexto, la historia y los botones. */
     async abrirTarea(valor: string): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
+        // desde la barra el dashboard puede existir tapado por otra pestaña: se trae al frente,
+        // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         if (!this.panel) this.abrir();
+        else if (!this.panel.visible) this.panel.reveal(undefined, false);
         if (this.pantalla === 'revisar' || this.pantalla === 'dia') this.fichaDesde = this.pantalla;
         if (this.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
         this.pantalla = 'tarea';
