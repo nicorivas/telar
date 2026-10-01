@@ -211,3 +211,73 @@ class UnSoloLector(ConAgente):
         [panel] = m.aplanar({"fuente": "panel", "texto": "$ ls\nfoo"})
         self.assertEqual((panel["quien"], panel["texto"]), ("panel", "$ ls\nfoo"))
         self.assertEqual(m.aplanar({}), [])
+
+
+class LaRutaRemota(ConAgente):
+    """`GET /api/conversacion?maquina=…`: la conversación de un hilo del laptop, por la puerta."""
+
+    def setUp(self):
+        super().setUp()
+        from telar.config import Enlace
+        from telar import espejo
+
+        self.config = mod_config.Config(raiz=self.base, estado=self.base / "estado",
+                                        enlaces=(Enlace(nombre="laptop", destino="nico@mac"),))
+        espejo.guardar(self.config, "macbook", json.dumps({"version": 1, "hilos": [
+            {"nombre": "Kichoro", "atencion": "espera", "vivo": True}]}))
+        web._remotas.clear()
+        self.addCleanup(web._remotas.clear)
+
+    HISTORIA = {"ok": True, "verbo": "leer", "historia": {
+        "hilo": "Kichoro", "fuente": "conversacion", "conversacion": "abc", "total_turnos": 7, "recortado": False,
+        "turnos": [[{"quien": "usuario", "hora": "2026-10-01T10:00:00Z", "texto": "hola"},
+                    {"quien": "herramienta", "hora": "2026-10-01T10:00:01Z", "texto": "Bash · ls"},
+                    {"quien": "agente", "hora": "2026-10-01T10:00:02Z", "texto": "listo"}]]}}
+
+    def pedir(self, consulta, respuesta=None):
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), web.manejador(True, self.config))
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
+        try:
+            with mock.patch.object(web.enlace, "llamar", return_value=respuesta or self.HISTORIA) as llamar:
+                with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/api/conversacion?{consulta}") as r:
+                    return r.status, json.loads(r.read()), llamar
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read()), None
+
+    def test_la_forma_es_la_de_un_hilo_de_aqui(self):
+        codigo, cuerpo, llamar = self.pedir("maquina=macbook&hilo=Kichoro")
+        self.assertEqual(codigo, 200)
+        self.assertEqual([x["texto"] for x in cuerpo["mensajes"]], ["hola", "Bash · ls", "listo"])
+        self.assertEqual((cuerpo["desde"], cuerpo["hasta"], cuerpo["total"]), (0, 3, 3))
+        self.assertEqual(cuerpo["hilo"], {"nombre": "Kichoro", "atencion": "espera", "vivo": True, "en_linea": True})
+        self.assertEqual((cuerpo["turnos"], cuerpo["total_turnos"], cuerpo["remota"]), (1, 7, "macbook"))
+        self.assertEqual(llamar.call_args.args[1:3], ("leer", ["Kichoro", "10"]))
+
+    def test_los_turnos_pedidos_se_acotan(self):
+        _, _, llamar = self.pedir("maquina=macbook&hilo=Kichoro&turnos=500")
+        self.assertEqual(llamar.call_args.args[2], ["Kichoro", "50"])
+
+    def test_lo_que_la_otra_maquina_no_entrega_llega_con_su_motivo(self):
+        for motivo in ("esta puerta no hace «leer»", "no hay un hilo que se pueda leer con el nombre «Kichoro»",
+                       "macbook no responde: timed out"):
+            web._remotas.clear()
+            codigo, cuerpo, _ = self.pedir("maquina=macbook&hilo=Kichoro", {"ok": False, "error": motivo})
+            self.assertEqual((codigo, cuerpo["error"]), (409, motivo))
+
+    def test_el_panel_llega_como_un_solo_mensaje(self):
+        r = {"ok": True, "historia": {"hilo": "K", "fuente": "panel", "texto": "$ ls\\nfoo", "recortado": False}}
+        _, cuerpo, _ = self.pedir("maquina=macbook&hilo=Kichoro", r)
+        self.assertEqual((cuerpo["fuente"], cuerpo["mensajes"][0]["quien"]), ("panel", "panel"))
+
+    def test_una_maquina_sin_enlace_o_un_numero_malo(self):
+        from telar.config import Enlace
+
+        self.config = mod_config.Config(raiz=self.base, estado=self.base / "estado", enlaces=(Enlace("a", "x@a"), Enlace("b", "x@b")))
+        self.assertEqual(self.pedir("maquina=otra&hilo=Kichoro")[0], 404)
+        self.assertEqual(self.pedir("maquina=a&hilo=Kichoro&turnos=abc")[0], 400)
+
+    def test_no_se_guarda_nada_de_lo_conversado_en_el_servidor(self):
+        self.pedir("maquina=macbook&hilo=Kichoro")
+        guardado = [p for p in self.base.rglob("*") if p.is_file() and "hola" in p.read_text(errors="ignore")]
+        self.assertEqual([p for p in guardado if "estado" in str(p)], [])

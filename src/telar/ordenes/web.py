@@ -178,6 +178,8 @@ def _conversacion(consulta: str, config) -> tuple[int, bytes, str]:
     nombre = q.get("hilo", [""])[0]
     if not nombre or config is None:
         return responder(400, {"error": "falta el hilo"})
+    if q.get("maquina", [""])[0]:
+        return _conversacion_remota(q, nombre, config, responder)
     try:
         antes, despues, n = _entero(q, "antes"), _entero(q, "despues"), _entero(q, "n")
     except ValueError as e:
@@ -193,6 +195,54 @@ def _conversacion(consulta: str, config) -> tuple[int, bytes, str]:
         return responder(404, {"error": str(e)})
     cuerpo["hilo"] = {"nombre": h["nombre"], "atencion": h.get("atencion", ""), "vivo": bool(h.get("vivo"))}
     return responder(200, cuerpo)
+
+
+#: lo que devolvió la otra máquina hace un momento, para que dos pantallas abiertas no la llamen dos veces
+_remotas: dict[tuple, tuple[float, tuple[int, dict]]] = {}
+TURNOS_POR_DEFECTO = 10
+
+
+def _conversacion_remota(q: dict, nombre: str, config, responder) -> tuple[int, bytes, str]:
+    """La conversación de un hilo de **otra máquina**, por la puerta (`telar enlace`, verbo `leer`).
+
+    El laptop entrega los últimos N turnos (hasta 50), no mensajes numerados: no hay «anteriores» ni «lo que llegó
+    después» sino «pide más turnos» y «vuelve a pedir». La respuesta tiene la misma forma que la de un hilo de
+    aquí, así que la pantalla es una sola. Lo que el laptop no entrega (verbo apagado, hilo vetado en `no_leer`,
+    máquina apagada) llega como 409 con su motivo. Nada se guarda en este servidor."""
+    maquina = q["maquina"][0]
+    try:
+        turnos = _entero(q, "turnos") or TURNOS_POR_DEFECTO
+    except ValueError as e:
+        return responder(400, {"error": str(e)})
+    turnos = max(1, min(turnos, 50))
+    destino = enlace_para(config, maquina)
+    if destino is None:
+        return responder(404, {"error": f"no sé a qué enlace corresponde «{maquina[:40]}» (ver [enlaces])"})
+    clave = (maquina, nombre, turnos)
+    with _candado:
+        hora, previo = _remotas.get(clave, (0.0, None))
+        if previo is not None and time.monotonic() - hora < 3.0:
+            return responder(*previo)
+    r = enlace.llamar(destino, "leer", [nombre, str(turnos)], espera=30)
+    if not r.get("ok"):
+        resultado = (409, {"error": str(r.get("error", "la otra máquina no respondió"))})
+    else:
+        h = r.get("historia") or {}
+        mensajes = [conversacion.recortado(m) for m in conversacion.aplanar(h)]
+        foto = next((e for e in espejo.leer_todos(config) if e["nombre"] == maquina), {})
+        info = next((x for x in foto.get("hilos", []) if x.get("nombre") == nombre), {})
+        resultado = (200, {
+            "remota": maquina, "fuente": h.get("fuente", "conversacion"), "sesion": h.get("conversacion", ""), "sesiones": [],
+            "turnos": len(h.get("turnos", [])), "turnos_pedidos": turnos, "total_turnos": h.get("total_turnos"),
+            "recortado": bool(h.get("recortado")), "total": len(mensajes), "desde": 0, "hasta": len(mensajes),
+            "mensajes": mensajes,
+            "hilo": {"nombre": nombre, "atencion": info.get("atencion", ""), "vivo": bool(info.get("vivo")),
+                     "en_linea": bool(foto.get("en_linea"))}})
+    with _candado:
+        _remotas[clave] = (time.monotonic(), resultado)
+        if len(_remotas) > 16:
+            _remotas.pop(next(iter(_remotas)))
+    return responder(*resultado)
 
 
 def version_de_la_pagina() -> str:

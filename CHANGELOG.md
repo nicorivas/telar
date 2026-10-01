@@ -8,10 +8,6 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
-- `conversacion.py` is now the only reader of a thread's messages: the web, `telar hilo leer` and the door's
-  `leer` (via `historia.py`, which keeps building the turns) share one rule for which conversation is the
-  thread's (the first of its own with a file), id validation and the cache. `historia.leer` no longer needs the
-  agent to be named in the configuration, like `telar agente conversacion`.
 - `telar hilo leer [thread] [--ultimos N]`: the last N turns of a thread's conversation (5 by default, 50 at
   most) as readable text — what was asked, what the agent answered, one line per tool call and never its
   output — with per-message and total caps; the pane's scrollback when there is no conversation here.
@@ -24,6 +20,14 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `telar web`: read a **laptop** thread's conversation too — `GET /api/conversacion?maquina=…` asks the door's
+  `leer` verb and returns the same shape, so it is the same screen (with «… N turnos anteriores» instead of
+  «anteriores», refreshed every 5 s, and the prompt addressing that machine). Nothing conversed is stored on the
+  server; a vetoed thread, a disabled verb or an off laptop show their reason.
+- `conversacion.py` is now the only reader of a thread's messages: the web, `telar hilo leer` and the door's
+  `leer` (via `historia.py`, which keeps building the turns) share one rule for which conversation is the
+  thread's (the first of its own with a file), id validation and the cache. `historia.leer` no longer needs the
+  agent to be named in the configuration, like `telar agente conversacion`.
 - `telar web`: read a thread's conversation from the page. Open a thread's detail and tap «ver la conversación»: the last
   messages, «… N anteriores» to go back, new ones every 3 s, markdown (code blocks, lists, headings, bold) drawn
   as terminal blocks, tool calls as one dim line each. With `--escribir` a prompt at the bottom answers it. It is

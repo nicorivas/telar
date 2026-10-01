@@ -807,6 +807,14 @@ así que un id suelto nunca abre un archivo. Solo lee, y funciona sin `--escribi
               {"quien": "agente", "hora": "…", "texto": "…", "recortado": 123}]}
 ```
 
+**De otra máquina** (`&maquina=<nombre del espejo>`): el servidor pide el verbo `leer` de la puerta
+(`telar enlace`) y devuelve **la misma forma**, para que la pantalla sea una sola. La otra máquina entrega los
+últimos N turnos (`&turnos=10`, hasta 50), no mensajes numerados: `desde` es siempre 0, no hay `despues`, y se
+pide más turnos o se vuelve a pedir. Trae además `remota`, `fuente` (`conversacion`, o `panel` si no había
+conversación y se leyó la ventana), `turnos`, `total_turnos` y `recortado`. Lo que la otra máquina no entrega
+—el verbo `leer` apagado, un hilo vetado por `[enlace] no_leer`, la máquina apagada— llega como 409 con su
+motivo. Nada de lo conversado se guarda en el servidor: se pide, se muestra y se olvida (unos 3 s de caché).
+
 Los mensajes se numeran por su posición y una conversación solo crece, así que un índice sigue valiendo mientras
 el archivo no se reescriba (si `total` baja, hay que volver a leer). Un mensaje de más de 20 000 caracteres viaja
 recortado, con `recortado` = los que faltan. Errores: 400 (falta el hilo o un número mal escrito) y 404 (no hay

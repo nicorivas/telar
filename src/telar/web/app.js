@@ -156,10 +156,16 @@ async function mandar(clave, origen, h, texto) {
   }
 }
 
-function verConversacion(h) {
+function verConversacion(h, origen = '') {
   return el('div', { className: 'accion' },
-    el('button', { type: 'button', className: 'ir', onclick: () => { location.hash = `#hilos/${encodeURIComponent(h.nombre)}`; } },
+    el('button', { type: 'button', className: 'ir', onclick: () => { location.hash = hashConv(h.nombre, origen); } },
       g('›'), ' ver la conversación'));
+}
+// de este equipo, si el hilo tiene conversaciones anotadas; de otra máquina, si está en línea y hay un enlace para llegar
+function puedeVerConversacion(h, origen) {
+  if (!origen) return !!(h.sesiones && h.sesiones.length);
+  const e = estado.espejos.find((x) => x.nombre === origen);
+  return !!(e && e.en_linea && estado.yo.enlaces.length);
 }
 
 function compone(h, origen, clave) {
@@ -200,7 +206,7 @@ function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) 
         : (glifoPri ? el('span', { className: `lado ${clasePri}` }, g(glifoPri)) : null),
       sub ? txt('sub una', sub) : null),
     abierto ? arbol(h, origen) : null,
-    abierto && !origen && h.sesiones && h.sesiones.length ? verConversacion(h) : null,
+    abierto && puedeVerConversacion(h, origen) ? verConversacion(h, origen) : null,
     abierto && puedeEscribir(h, origen) ? compone(h, origen, clave) : null,
   ];
 }
@@ -383,10 +389,17 @@ async function cargar(fresco = false) {
 // ── la conversación de un hilo ─────────────────────────────
 // Se pide por páginas (`/api/conversacion`): al abrir, los últimos; «… N anteriores» va hacia atrás; cada 3 s se
 // piden los que llegaron después. Los mensajes están numerados por su posición, así que agregar es solo agregar.
-const conv = { nombre: '', sesion: '', sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0,
-               expandidos: new Set(), timer: 0, cargando: false, historia: 0 };
+// `origen` vacío es un hilo de esta máquina (mensajes numerados: «anteriores», «lo que llegó después»); con un nombre
+// es un hilo de otra máquina, que entrega sus últimos N turnos por la puerta: «más turnos» y volver a pedir.
+const conv = { nombre: '', origen: '', sesion: '', sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0,
+               expandidos: new Set(), timer: 0, cargando: false, turnos: 10, totalTurnos: 0, fuente: '', firma: '' };
 
-const nombreConv = () => decodeURIComponent(location.hash.slice('#hilos/'.length));
+const hashConv = (nombre, origen = '') => `#hilos/${encodeURIComponent(nombre)}${origen ? `@${encodeURIComponent(origen)}` : ''}`;
+function refConv() {
+  const r = location.hash.slice('#hilos/'.length);
+  const i = r.lastIndexOf('@');
+  return i < 0 ? { nombre: decodeURIComponent(r), origen: '' } : { nombre: decodeURIComponent(r.slice(0, i)), origen: decodeURIComponent(r.slice(i + 1)) };
+}
 const renglon = () => parseFloat(getComputedStyle(document.body).lineHeight) || 22;
 const alFinal = () => scrollTo(0, document.documentElement.scrollHeight);
 const pegado = () => innerHeight + scrollY >= document.documentElement.scrollHeight - 4 * renglon();
@@ -395,11 +408,11 @@ const claveDia = (iso) => (iso || '').slice(0, 10);
 
 function soltarConversacion() {
   if (conv.timer) { clearInterval(conv.timer); conv.timer = 0; }
-  if (conv.nombre) { conv.nombre = ''; document.body.classList.remove('escribiendo', 'en-conv'); }
+  if (conv.nombre) { conv.nombre = ''; conv.origen = ''; document.body.classList.remove('escribiendo', 'en-conv'); }
 }
 
 async function pedirConv(params) {
-  const q = new URLSearchParams({ hilo: conv.nombre, ...params });
+  const q = new URLSearchParams({ hilo: conv.nombre, ...(conv.origen ? { maquina: conv.origen } : {}), ...params });
   const r = await fetch(`/api/conversacion?${q}`, { cache: 'no-store' });
   const cuerpo = await r.json();
   if (!r.ok) throw new Error(cuerpo.error || `error ${r.status}`);
@@ -468,7 +481,8 @@ function nodoMensaje(m, i) {
   const largo = m.texto.length > 1500 || (m.texto.match(/\n/g) || []).length > 22;
   const abierto = conv.expandidos.has(i);
   const f = new Date(m.hora);
-  const cuerpo = el('div', { className: `cuerpo${largo && !abierto ? ' recogido' : ''}` }, markdown(m.texto));
+  const cuerpo = el('div', { className: `cuerpo${largo && !abierto ? ' recogido' : ''}` },
+    m.quien === 'panel' ? el('div', { className: 'blq codigo' }, celdas(m.texto)) : markdown(m.texto));
   return el('div', { className: `msg ${m.quien}`, 'data-i': String(i) },
     el('div', { className: 'de' }, txt('quien', m.quien), isNaN(f) ? null : txt('cuando', hhmm(f))),
     cuerpo,
@@ -515,11 +529,12 @@ function cabeceraConv() {
   const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo ? 'abierto' : 'sin ventana');
   const sesiones = conv.sesiones.length > 1 ? el('button', { type: 'button', className: 'sesion', onclick: cambiarSesion,
     textContent: `${conv.sesiones.indexOf(conv.sesion) + 1}/${conv.sesiones.length}`, title: 'otra conversación de este hilo' }) : null;
-  $('conv-cab').replaceChildren(
+  $('conv-cab').replaceChildren(...[
     el('button', { type: 'button', className: 'volver', onclick: volver }, g('‹'), ' hilos'),
     txt('nombre una', conv.nombre),
+    conv.origen ? txt('donde', `en ${conv.origen}`) : null,
     el('span', { className: `estado-conv ${h.atencion || ''}` }, g(GLIFO[h.atencion] || '·', `at ${h.atencion || 'ninguna'}`), ` ${dice}`),
-    ...(sesiones ? [sesiones] : []));
+    sesiones].filter(Boolean));
 }
 
 // atrás si se llegó navegando dentro de la página (así se vuelve a donde se estaba); si se abrió directo, a la lista de hilos
@@ -528,8 +543,17 @@ addEventListener('hashchange', () => { navegaciones++; });
 function volver() { if (navegaciones > 0) history.back(); else location.hash = '#hilos'; }
 
 function masAntes() {
+  if (conv.origen) {  // la otra máquina entrega turnos, no mensajes numerados: se piden más
+    if (conv.fuente === 'panel' || conv.turnos >= 50 || conv.totalTurnos <= conv.turnosVistos) return [];
+    return [el('button', { type: 'button', className: 'mas antes', textContent: `… ${conv.totalTurnos - conv.turnosVistos} turnos anteriores`, onclick: masTurnos })];
+  }
   if (conv.desde <= 0) return [];
   return [el('button', { type: 'button', className: 'mas antes', textContent: `… ${conv.desde} anteriores`, onclick: cargarAnteriores })];
+}
+
+async function masTurnos() {
+  conv.turnos = Math.min(50, conv.turnos + 10);
+  await traerRemoto(true);
 }
 function pintarMas() { $('conv-mas').replaceChildren(...masAntes()); }
 
@@ -571,12 +595,48 @@ function pintarNuevos() {
   b.textContent = `↓ ${conv.nuevos} nuevo${conv.nuevos === 1 ? '' : 's'}`;
 }
 
+// un hilo de otra máquina: se piden sus últimos N turnos y, si algo cambió, se redibuja todo
+function dibujarRemoto(r, alPie) {
+  conv.msgs = r.mensajes;
+  conv.total = r.hasta;
+  conv.fuente = r.fuente;
+  conv.totalTurnos = r.total_turnos || 0;
+  conv.turnosVistos = r.turnos || 0;
+  conv.hilo = r.hilo;
+  cabeceraConv();
+  const lista = $('conv-lista');
+  const alto = document.documentElement.scrollHeight;
+  lista.replaceChildren(...nodosDe(r.mensajes, 0, ''));
+  if (!r.mensajes.length) avisoConv('la conversación todavía no tiene mensajes');
+  pintarMas();
+  if (alPie) alFinal(); else scrollTo(0, scrollY + document.documentElement.scrollHeight - alto);
+}
+
+async function traerRemoto(masViejos = false) {
+  if (conv.cargando) return;
+  conv.cargando = true;
+  try {
+    const r = await pedirConv({ turnos: String(conv.turnos) });
+    const firma = JSON.stringify(r.mensajes.map((m) => [m.quien, m.hora, m.texto.length]));
+    if (firma !== conv.firma || masViejos) {
+      const estaba = pegado();
+      conv.firma = firma;
+      dibujarRemoto(r, estaba && !masViejos);
+      if (!estaba && !masViejos) { conv.nuevos += 1; pintarNuevos(); }
+    } else { conv.hilo = r.hilo; cabeceraConv(); }
+  } catch (e) {
+    if ($('conv-lista') && !conv.msgs.length) avisoConv(e.message);
+  }
+  conv.cargando = false;
+}
+
 async function sondear() {
   if (vistaActual() !== 'conversacion' || !conv.nombre) { soltarConversacion(); return; }
   if (document.hidden || conv.cargando) return;
+  if (conv.origen) { traerRemoto(); return; }
   try {
     const r = await pedirConv({ despues: conv.total, sesion: conv.sesion });
-    if (r.total < conv.total) { abrirConversacion(conv.nombre, conv.sesion); return; }  // se reescribió: se vuelve a leer
+    if (r.total < conv.total) { abrirConversacion(conv.nombre, '', conv.sesion); return; }  // se reescribió: se vuelve a leer
     conv.hilo = r.hilo;
     cabeceraConv();
     agregar(r);
@@ -585,14 +645,14 @@ async function sondear() {
 
 function cambiarSesion() {
   const i = (conv.sesiones.indexOf(conv.sesion) + 1) % conv.sesiones.length;
-  abrirConversacion(conv.nombre, conv.sesiones[i]);
+  abrirConversacion(conv.nombre, '', conv.sesiones[i]);
 }
 
 // lo que se ve sin conversación que mostrar (hilo remoto, sin archivo…)
 function avisoConv(texto) { $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: texto })); pintarMas(); }
 
 function dockConv() {
-  const puede = estado.yo.escribir && conv.hilo && conv.hilo.vivo;
+  const puede = estado.yo.escribir && conv.hilo && conv.hilo.vivo && (!conv.origen || (conv.hilo.en_linea && estado.yo.enlaces.length));
   if (!puede) {
     return el('div', { id: 'dock', className: 'dock solo' },
       txt('dim', !estado.yo.escribir ? 'solo lectura · `telar web --escribir` para contestar' : 'sin ventana abierta: no se le puede escribir'));
@@ -610,12 +670,12 @@ function dockConv() {
     dijo.className = 'dijo'; dijo.textContent = 'enviando…';
     try {
       const r = await fetch('/api/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
-        body: JSON.stringify({ maquina: '', hilo: conv.nombre, texto, enter: true }) });
+        body: JSON.stringify({ maquina: conv.origen, hilo: conv.nombre, texto, enter: true }) });
       const cuerpo = await r.json().catch(() => ({}));
       if (r.ok && cuerpo.ok) {
         campo.value = '';
         dijo.className = 'dijo bien'; dijo.textContent = `enviado ${hhmm(new Date())}`;
-        for (const ms of [600, 2000, 5000]) setTimeout(sondear, ms);  // el mensaje aparece en cuanto el agente lo anota
+        for (const ms of conv.origen ? [1500, 4000, 8000] : [600, 2000, 5000]) setTimeout(sondear, ms);  // aparece en cuanto el agente lo anota
       } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
     } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
   };
@@ -626,24 +686,37 @@ function dockConv() {
     dijo);
 }
 
-function armarConv() {
+function armarConv(nombre, origen) {
   soltarConversacion();
-  conv.nombre = nombreConv();
+  conv.nombre = nombre;
+  conv.origen = origen;
   document.body.classList.add('en-conv');
   $('vista').replaceChildren(el('div', { id: 'conv' },
     el('div', { id: 'conv-cab' }), el('div', { id: 'conv-mas' }), el('div', { id: 'conv-lista' }),
     el('button', { type: 'button', id: 'conv-nuevos', hidden: true, onclick: () => { conv.nuevos = 0; pintarNuevos(); alFinal(); } })));
 }
 
-async function abrirConversacion(nombre, sesion = '') {
-  location.hash === `#hilos/${encodeURIComponent(nombre)}` || (location.hash = `#hilos/${encodeURIComponent(nombre)}`);
-  armarConv();
-  Object.assign(conv, { sesion, sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0, expandidos: new Set(), cargando: true });
-  const local = (estado.hilos && estado.hilos.hilos || []).find((h) => h.nombre === nombre);
-  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo } : null;
+async function abrirConversacion(nombre, origen = '', sesion = '') {
+  if (location.hash !== hashConv(nombre, origen)) location.hash = hashConv(nombre, origen);
+  armarConv(nombre, origen);
+  Object.assign(conv, { sesion, sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0, expandidos: new Set(),
+                        cargando: true, turnos: 10, totalTurnos: 0, turnosVistos: 0, fuente: '', firma: '' });
+  const fuente = origen ? ((estado.espejos.find((e) => e.nombre === origen) || {}).hilos || []) : (estado.hilos && estado.hilos.hilos || []);
+  const local = fuente.find((h) => h.nombre === nombre);
+  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo, en_linea: true } : null;
   cabeceraConv();
-  $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: 'leyendo la conversación…' }));
+  $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: origen ? `pidiéndole la conversación a ${origen}…` : 'leyendo la conversación…' }));
   try {
+    if (origen) {  // otra máquina: sus últimos turnos, y se vuelve a pedir cada 5 s
+      const r = await pedirConv({ turnos: String(conv.turnos) });
+      conv.firma = JSON.stringify(r.mensajes.map((m) => [m.quien, m.hora, m.texto.length]));
+      dibujarRemoto(r, true);
+      $('conv').append(dockConv());
+      alFinal();
+      conv.timer = setInterval(sondear, 5000);
+      conv.cargando = false;
+      return;
+    }
     const r = await pedirConv(sesion ? { sesion } : {});
     Object.assign(conv, { sesion: r.sesion, sesiones: r.sesiones, msgs: r.mensajes, desde: r.desde, total: r.hasta, hilo: r.hilo });
     cabeceraConv();
@@ -661,8 +734,9 @@ async function abrirConversacion(nombre, sesion = '') {
 }
 
 function pintarConversacion() {
-  if (conv.nombre !== nombreConv() || !$('conv')) { abrirConversacion(nombreConv()); return; }
-  if (conv.hilo) {  // el semáforo del hilo viene del día; se refresca sin tocar los mensajes
+  const { nombre, origen } = refConv();
+  if (conv.nombre !== nombre || conv.origen !== origen || !$('conv')) { abrirConversacion(nombre, origen); return; }
+  if (conv.hilo && !conv.origen) {  // el semáforo del hilo viene del día; se refresca sin tocar los mensajes
     const h = (estado.hilos && estado.hilos.hilos || []).find((x) => x.nombre === conv.nombre);
     if (h) { conv.hilo = { nombre: h.nombre, atencion: h.atencion, vivo: h.vivo }; cabeceraConv(); }
   }

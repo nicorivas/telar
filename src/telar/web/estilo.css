@@ -264,3 +264,8 @@ body.escribiendo { padding-bottom: calc(2lh + env(safe-area-inset-bottom)); }
 .accion { padding: 0 1ch 0 3ch; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
 .accion .ir { position: relative; height: 1lh; color: var(--azul); }
 .accion .ir::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
+
+/* otra máquina: dónde vive el hilo, junto a su nombre; y el panel, cuando no hay conversación que leer */
+#conv-cab .donde { color: var(--cian); white-space: nowrap; max-width: 11ch; overflow: hidden; text-overflow: ellipsis; }
+#conv-cab .nombre { min-width: 8ch; }
+.msg.panel { --c: var(--cian); }
