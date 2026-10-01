@@ -20,6 +20,10 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `telar web`: read a thread's conversation from the page. Open a thread's detail and tap «ver la conversación»: the last
+  messages, «… N anteriores» to go back, new ones every 3 s, markdown (code blocks, lists, headings, bold) drawn
+  as terminal blocks, tool calls as one dim line each. With `--escribir` a prompt at the bottom answers it. It is
+  served in pages by `GET /api/conversacion`, by thread (never by bare id), read-only.
 - `telar web --escribir`: write to a live thread from the page, on this machine or on the laptop (through
   `telar enlace`), with a prompt and a `↩ enviar` button in the thread's detail. Off by default; the single
   writing route, `POST /api/enviar`, requires a custom header, the server's own `Host` and `Origin`, size and rate

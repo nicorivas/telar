@@ -156,6 +156,12 @@ async function mandar(clave, origen, h, texto) {
   }
 }
 
+function verConversacion(h) {
+  return el('div', { className: 'accion' },
+    el('button', { type: 'button', className: 'ir', onclick: () => { location.hash = `#hilos/${encodeURIComponent(h.nombre)}`; } },
+      g('›'), ' ver la conversación'));
+}
+
 function compone(h, origen, clave) {
   const campo = el('input', {
     type: 'text', className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', enterKeyHint: 'send',
@@ -194,6 +200,7 @@ function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) 
         : (glifoPri ? el('span', { className: `lado ${clasePri}` }, g(glifoPri)) : null),
       sub ? txt('sub una', sub) : null),
     abierto ? arbol(h, origen) : null,
+    abierto && !origen && h.sesiones && h.sesiones.length ? verConversacion(h) : null,
     abierto && puedeEscribir(h, origen) ? compone(h, origen, clave) : null,
   ];
 }
@@ -306,7 +313,7 @@ function seccionEspejo(e) {
     ...(otros.length ? filasSinVentana(`${e.nombre}:otros`, e.nombre, otros) : []));
 }
 
-const vistaActual = () => (location.hash === '#hilos' ? 'hilos' : 'hoy');
+const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : 'hoy');
 
 function pintar(forzar = false) {
   // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
@@ -315,10 +322,12 @@ function pintar(forzar = false) {
   const clave = activo && activo.classList.contains('campo') ? activo.dataset.clave : '';
   if (clave && !forzar) { estado.repintar = true; return; }
   const vista = vistaActual();
+  const pestana = vista === 'conversacion' ? 'hilos' : vista;
   for (const a of document.querySelectorAll('#barra a')) {
-    a.classList.toggle('activa', a.dataset.vista === vista);
-    a.setAttribute('aria-current', a.dataset.vista === vista ? 'page' : 'false');
+    a.classList.toggle('activa', a.dataset.vista === pestana);
+    a.setAttribute('aria-current', a.dataset.vista === pestana ? 'page' : 'false');
   }
+  if (vista !== 'conversacion') soltarConversacion();
   const ahora = new Date();
   $('reloj').textContent = hhmm(ahora);
   const fecha = estado.hoy && estado.hoy.fecha ? new Date(`${estado.hoy.fecha}T12:00`) : ahora;
@@ -326,6 +335,7 @@ function pintar(forzar = false) {
     txt('dim', `· sem ${estado.hoy ? estado.hoy.semana : ''}`.trim()));
 
   const cont = $('vista');
+  if (vista === 'conversacion') { pintarConversacion(); return; }
   const y = scrollY;
   if (!estado.hoy || !estado.hilos) {
     cont.replaceChildren(estado.error
@@ -370,6 +380,294 @@ async function cargar(fresco = false) {
   }
 }
 
+// ── la conversación de un hilo ─────────────────────────────
+// Se pide por páginas (`/api/conversacion`): al abrir, los últimos; «… N anteriores» va hacia atrás; cada 3 s se
+// piden los que llegaron después. Los mensajes están numerados por su posición, así que agregar es solo agregar.
+const conv = { nombre: '', sesion: '', sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0,
+               expandidos: new Set(), timer: 0, cargando: false, historia: 0 };
+
+const nombreConv = () => decodeURIComponent(location.hash.slice('#hilos/'.length));
+const renglon = () => parseFloat(getComputedStyle(document.body).lineHeight) || 22;
+const alFinal = () => scrollTo(0, document.documentElement.scrollHeight);
+const pegado = () => innerHeight + scrollY >= document.documentElement.scrollHeight - 4 * renglon();
+const dia = (iso) => { const f = new Date(iso); return isNaN(f) ? '' : `${DIAS[f.getDay()]} ${f.getDate()} ${MESES[f.getMonth()]}`; };
+const claveDia = (iso) => (iso || '').slice(0, 10);
+
+function soltarConversacion() {
+  if (conv.timer) { clearInterval(conv.timer); conv.timer = 0; }
+  if (conv.nombre) { conv.nombre = ''; document.body.classList.remove('escribiendo', 'en-conv'); }
+}
+
+async function pedirConv(params) {
+  const q = new URLSearchParams({ hilo: conv.nombre, ...params });
+  const r = await fetch(`/api/conversacion?${q}`, { cache: 'no-store' });
+  const cuerpo = await r.json();
+  if (!r.ok) throw new Error(cuerpo.error || `error ${r.status}`);
+  return cuerpo;
+}
+
+// texto con `código`, **negrita** y [enlaces](https://…) → nodos
+function enLinea(texto) {
+  const nodos = [];
+  const re = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?:\/\/[^)\s]+\))/g;
+  let i = 0;
+  for (let m = re.exec(texto); m; m = re.exec(texto)) {
+    if (m.index > i) nodos.push(...celdas(texto.slice(i, m.index)));
+    const t = m[0];
+    if (t[0] === '`') nodos.push(el('code', {}, celdas(t.slice(1, -1))));
+    else if (t[0] === '*') nodos.push(el('b', {}, celdas(t.slice(2, -2))));
+    else { const [, nombre, url] = /\[([^\]]+)\]\(([^)]+)\)/.exec(t); nodos.push(el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, celdas(nombre))); }
+    i = m.index + t.length;
+  }
+  if (i < texto.length) nodos.push(...celdas(texto.slice(i)));
+  return nodos;
+}
+
+// el markdown que escriben los agentes, sin dependencias: cercados de código, títulos, listas, tablas y párrafos
+const ES_LISTA = /^\s*([-*•]|\d+[.)])\s+/;
+const ES_BLOQUE = (l) => /^\s*```/.test(l) || /^\s*#{1,6}\s/.test(l) || ES_LISTA.test(l) || /^\s*\|/.test(l);
+function markdown(texto) {
+  const lineas = String(texto).replace(/\r\n?/g, '\n').split('\n');
+  const bloques = [];
+  let i = 0;
+  while (i < lineas.length) {
+    const l = lineas[i];
+    if (/^\s*```/.test(l)) {
+      const cod = [];
+      for (i++; i < lineas.length && !/^\s*```/.test(lineas[i]); i++) cod.push(lineas[i]);
+      i++;
+      bloques.push(el('div', { className: 'blq codigo' }, celdas(cod.join('\n'))));
+    } else if (!l.trim()) {
+      i++;
+    } else if (/^\s*#{1,6}\s/.test(l)) {
+      bloques.push(el('div', { className: 'blq tit' }, enLinea(l.replace(/^\s*#{1,6}\s+/, ''))));
+      i++;
+    } else if (ES_LISTA.test(l)) {
+      const items = [];
+      for (; i < lineas.length && ES_LISTA.test(lineas[i]); i++) {
+        const m = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/.exec(lineas[i]);
+        items.push(el('div', { className: 'li', style: `--n:${Math.min(2, Math.floor(m[1].length / 2))}` },
+          el('span', { className: 'marca-li' }, /\d/.test(m[2]) ? m[2] : '•'), el('span', { className: 'li-t' }, enLinea(m[3]))));
+      }
+      bloques.push(el('div', { className: 'blq lista' }, items));
+    } else if (/^\s*\|/.test(l)) {
+      const filas = [];
+      for (; i < lineas.length && /^\s*\|/.test(lineas[i]); i++) filas.push(lineas[i]);
+      bloques.push(el('div', { className: 'blq codigo' }, celdas(filas.join('\n'))));
+    } else {
+      const par = [];
+      for (; i < lineas.length && lineas[i].trim() && !ES_BLOQUE(lineas[i]); i++) par.push(lineas[i]);
+      bloques.push(el('div', { className: 'blq parr' }, par.flatMap((x, k) => (k ? [document.createElement('br'), ...enLinea(x)] : enLinea(x)))));
+    }
+  }
+  return bloques;
+}
+
+// un mensaje: quién y a qué hora, y su cuerpo; los largos van recogidos hasta que se toca «ver todo»
+function nodoMensaje(m, i) {
+  const largo = m.texto.length > 1500 || (m.texto.match(/\n/g) || []).length > 22;
+  const abierto = conv.expandidos.has(i);
+  const f = new Date(m.hora);
+  const cuerpo = el('div', { className: `cuerpo${largo && !abierto ? ' recogido' : ''}` }, markdown(m.texto));
+  return el('div', { className: `msg ${m.quien}`, 'data-i': String(i) },
+    el('div', { className: 'de' }, txt('quien', m.quien), isNaN(f) ? null : txt('cuando', hhmm(f))),
+    cuerpo,
+    m.recortado ? el('div', { className: 'nota', textContent: `… se recortó: faltan ${m.recortado} caracteres` }) : null,
+    largo ? el('button', { type: 'button', className: 'mas-msg', textContent: abierto ? '▴ recoger' : '▾ ver todo', onclick: () => {
+      conv.expandidos.has(i) ? conv.expandidos.delete(i) : conv.expandidos.add(i);
+      const antes = $('conv-lista').querySelector(`[data-i="${i}"]`);
+      if (antes) antes.replaceWith(nodoMensaje(m, i));
+    } }) : null);
+}
+
+// las herramientas que usó el agente, una línea cada una; si son muchas seguidas, tres y «… +N»
+function nodoHerramientas(grupo) {
+  const clave = `g${grupo[0].i}`;
+  const abierto = conv.expandidos.has(clave);
+  const visibles = abierto || grupo.length <= 3 ? grupo : grupo.slice(0, 3);
+  return el('div', { className: 'tools', 'data-i': String(grupo[0].i) },
+    visibles.map(({ m }) => el('div', { className: 'tool' }, g('›'), txt('una', m.texto))),
+    grupo.length > 3 ? el('button', { type: 'button', className: 'mas-tools', textContent: abierto ? '  ▴ recoger' : `  … +${grupo.length - 3} más`, onclick: () => {
+      conv.expandidos.has(clave) ? conv.expandidos.delete(clave) : conv.expandidos.add(clave);
+      const antes = $('conv-lista').querySelector(`.tools[data-i="${grupo[0].i}"]`);
+      if (antes) antes.replaceWith(nodoHerramientas(grupo));
+    } }) : null);
+}
+
+// los mensajes [desde, desde+n) como nodos, con la fecha cuando cambia el día y las herramientas en grupo
+function nodosDe(msgs, desde, diaPrevio) {
+  const nodos = [];
+  let previo = diaPrevio;
+  let grupo = [];
+  const cerrar = () => { if (grupo.length) { nodos.push(nodoHerramientas(grupo)); grupo = []; } };
+  msgs.forEach((m, k) => {
+    const d = claveDia(m.hora);
+    if (d && d !== previo) { cerrar(); nodos.push(el('div', { className: 'dia', 'data-dia': d }, `── ${dia(m.hora)} ──`)); previo = d; }
+    if (m.quien === 'herramienta') grupo.push({ m, i: desde + k });
+    else { cerrar(); nodos.push(nodoMensaje(m, desde + k)); }
+  });
+  cerrar();
+  return nodos;
+}
+
+function cabeceraConv() {
+  const h = conv.hilo || {};
+  const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo ? 'abierto' : 'sin ventana');
+  const sesiones = conv.sesiones.length > 1 ? el('button', { type: 'button', className: 'sesion', onclick: cambiarSesion,
+    textContent: `${conv.sesiones.indexOf(conv.sesion) + 1}/${conv.sesiones.length}`, title: 'otra conversación de este hilo' }) : null;
+  $('conv-cab').replaceChildren(
+    el('button', { type: 'button', className: 'volver', onclick: volver }, g('‹'), ' hilos'),
+    txt('nombre una', conv.nombre),
+    el('span', { className: `estado-conv ${h.atencion || ''}` }, g(GLIFO[h.atencion] || '·', `at ${h.atencion || 'ninguna'}`), ` ${dice}`),
+    ...(sesiones ? [sesiones] : []));
+}
+
+// atrás si se llegó navegando dentro de la página (así se vuelve a donde se estaba); si se abrió directo, a la lista de hilos
+let navegaciones = 0;
+addEventListener('hashchange', () => { navegaciones++; });
+function volver() { if (navegaciones > 0) history.back(); else location.hash = '#hilos'; }
+
+function masAntes() {
+  if (conv.desde <= 0) return [];
+  return [el('button', { type: 'button', className: 'mas antes', textContent: `… ${conv.desde} anteriores`, onclick: cargarAnteriores })];
+}
+function pintarMas() { $('conv-mas').replaceChildren(...masAntes()); }
+
+async function cargarAnteriores() {
+  if (conv.cargando || conv.desde <= 0) return;
+  conv.cargando = true;
+  try {
+    const r = await pedirConv({ antes: conv.desde, sesion: conv.sesion });
+    const alto = document.documentElement.scrollHeight;
+    const lista = $('conv-lista');
+    const primerDia = lista.firstElementChild && lista.firstElementChild.dataset.dia;
+    conv.msgs = [...r.mensajes, ...conv.msgs];
+    conv.desde = r.desde;
+    const nodos = nodosDe(r.mensajes, r.desde, '');
+    const ultimo = r.mensajes.length ? claveDia(r.mensajes[r.mensajes.length - 1].hora) : '';
+    if (primerDia && primerDia === ultimo) lista.firstElementChild.remove();  // el mismo día: una sola fecha
+    lista.prepend(...nodos);
+    pintarMas();
+    scrollTo(0, scrollY + document.documentElement.scrollHeight - alto);      // lo que se leía no se mueve
+  } catch (e) { $('conv-mas').replaceChildren(el('div', { className: 'falla', textContent: e.message })); }
+  conv.cargando = false;
+}
+
+function agregar(r) {
+  if (!r.mensajes.length) return;
+  const lista = $('conv-lista');
+  const estabaAlFinal = pegado();
+  const ultimoDia = conv.msgs.length ? claveDia(conv.msgs[conv.msgs.length - 1].hora) : '';
+  conv.msgs.push(...r.mensajes);
+  conv.total = r.hasta;
+  lista.append(...nodosDe(r.mensajes, r.desde, ultimoDia));
+  if (estabaAlFinal) { alFinal(); conv.nuevos = 0; } else conv.nuevos += r.mensajes.length;
+  pintarNuevos();
+}
+function pintarNuevos() {
+  const b = $('conv-nuevos');
+  if (!b) return;
+  b.hidden = !conv.nuevos;
+  b.textContent = `↓ ${conv.nuevos} nuevo${conv.nuevos === 1 ? '' : 's'}`;
+}
+
+async function sondear() {
+  if (vistaActual() !== 'conversacion' || !conv.nombre) { soltarConversacion(); return; }
+  if (document.hidden || conv.cargando) return;
+  try {
+    const r = await pedirConv({ despues: conv.total, sesion: conv.sesion });
+    if (r.total < conv.total) { abrirConversacion(conv.nombre, conv.sesion); return; }  // se reescribió: se vuelve a leer
+    conv.hilo = r.hilo;
+    cabeceraConv();
+    agregar(r);
+  } catch (e) { /* sin red un momento: el próximo intento lo dice si sigue */ }
+}
+
+function cambiarSesion() {
+  const i = (conv.sesiones.indexOf(conv.sesion) + 1) % conv.sesiones.length;
+  abrirConversacion(conv.nombre, conv.sesiones[i]);
+}
+
+// lo que se ve sin conversación que mostrar (hilo remoto, sin archivo…)
+function avisoConv(texto) { $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: texto })); pintarMas(); }
+
+function dockConv() {
+  const puede = estado.yo.escribir && conv.hilo && conv.hilo.vivo;
+  if (!puede) {
+    return el('div', { id: 'dock', className: 'dock solo' },
+      txt('dim', !estado.yo.escribir ? 'solo lectura · `telar web --escribir` para contestar' : 'sin ventana abierta: no se le puede escribir'));
+  }
+  const campo = el('input', {
+    type: 'text', className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', enterKeyHint: 'send', maxLength: 8000,
+    placeholder: `escribirle a ${conv.nombre}`, 'aria-label': `escribirle a ${conv.nombre}`,
+    onfocus: () => document.body.classList.add('escribiendo'),
+    onblur: () => document.body.classList.remove('escribiendo'),
+  });
+  const dijo = el('div', { className: 'dijo', id: 'dock-dijo' });
+  const enviar = async () => {
+    const texto = campo.value.trim();
+    if (!texto) return;
+    dijo.className = 'dijo'; dijo.textContent = 'enviando…';
+    try {
+      const r = await fetch('/api/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
+        body: JSON.stringify({ maquina: '', hilo: conv.nombre, texto, enter: true }) });
+      const cuerpo = await r.json().catch(() => ({}));
+      if (r.ok && cuerpo.ok) {
+        campo.value = '';
+        dijo.className = 'dijo bien'; dijo.textContent = `enviado ${hhmm(new Date())}`;
+        for (const ms of [600, 2000, 5000]) setTimeout(sondear, ms);  // el mensaje aparece en cuanto el agente lo anota
+      } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
+    } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
+  };
+  campo.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); enviar(); } };
+  return el('div', { id: 'dock', className: 'dock' },
+    el('div', { className: 'linea-dock' }, g('›', 'prompt'), campo,
+      el('button', { type: 'button', className: 'manda', onclick: enviar }, el('kbd', { textContent: '↩' }), ' enviar')),
+    dijo);
+}
+
+function armarConv() {
+  soltarConversacion();
+  conv.nombre = nombreConv();
+  document.body.classList.add('en-conv');
+  $('vista').replaceChildren(el('div', { id: 'conv' },
+    el('div', { id: 'conv-cab' }), el('div', { id: 'conv-mas' }), el('div', { id: 'conv-lista' }),
+    el('button', { type: 'button', id: 'conv-nuevos', hidden: true, onclick: () => { conv.nuevos = 0; pintarNuevos(); alFinal(); } })));
+}
+
+async function abrirConversacion(nombre, sesion = '') {
+  location.hash === `#hilos/${encodeURIComponent(nombre)}` || (location.hash = `#hilos/${encodeURIComponent(nombre)}`);
+  armarConv();
+  Object.assign(conv, { sesion, sesiones: [], msgs: [], desde: 0, total: 0, hilo: null, error: '', nuevos: 0, expandidos: new Set(), cargando: true });
+  const local = (estado.hilos && estado.hilos.hilos || []).find((h) => h.nombre === nombre);
+  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo } : null;
+  cabeceraConv();
+  $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: 'leyendo la conversación…' }));
+  try {
+    const r = await pedirConv(sesion ? { sesion } : {});
+    Object.assign(conv, { sesion: r.sesion, sesiones: r.sesiones, msgs: r.mensajes, desde: r.desde, total: r.hasta, hilo: r.hilo });
+    cabeceraConv();
+    $('conv-lista').replaceChildren(...nodosDe(r.mensajes, r.desde, ''));
+    if (!r.mensajes.length) avisoConv('la conversación todavía no tiene mensajes');
+    pintarMas();
+    $('conv').append(dockConv());
+    alFinal();
+    conv.timer = setInterval(sondear, 3000);
+  } catch (e) {
+    avisoConv(e.message);
+    $('conv').append(dockConv());
+  }
+  conv.cargando = false;
+}
+
+function pintarConversacion() {
+  if (conv.nombre !== nombreConv() || !$('conv')) { abrirConversacion(nombreConv()); return; }
+  if (conv.hilo) {  // el semáforo del hilo viene del día; se refresca sin tocar los mensajes
+    const h = (estado.hilos && estado.hilos.hilos || []).find((x) => x.nombre === conv.nombre);
+    if (h) { conv.hilo = { nombre: h.nombre, atencion: h.atencion, vivo: h.vivo }; cabeceraConv(); }
+  }
+}
+
 // ── tema: oscuro por defecto, claro si se elige (la cabecera lo pone antes de pintar) ──
 const tema = () => (document.documentElement.dataset.tema === 'claro' ? 'claro' : 'oscuro');
 function pintarTema() {
@@ -392,7 +690,8 @@ addEventListener('hashchange', () => { scrollTo(0, 0); pintar(); });
 $('recargar').onclick = () => cargar(true);
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || /input|textarea/i.test(e.target.tagName)) return;
-  if (e.key === '1') location.hash = '#hoy';
+  if (e.key === 'Escape' && vistaActual() === 'conversacion') volver();
+  else if (e.key === '1') location.hash = '#hoy';
   else if (e.key === '2') location.hash = '#hilos';
   else if (e.key === 'r') cargar(true);
   else if (e.key === 't') alternarTema();

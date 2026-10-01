@@ -41,6 +41,7 @@ body {
 a { color: inherit; text-decoration: none; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 b, strong { font-weight: 700; }
+code, pre, samp { font: inherit; }  /* el navegador les pone su monospace de 13 px, y esas métricas estiran la línea */
 .dim { color: var(--dim); }
 [hidden] { display: none !important; }
 
@@ -185,3 +186,81 @@ h2.sec {
 #barra > a:active, #barra > button:active { background: var(--hover); }
 #barra > a.activa:active { background: var(--fg); }
 #aviso.mal { color: var(--rojo); }
+
+/* ── la conversación de un hilo ─────────────────────────────────────
+   Cada mensaje es un bloque con una regla del color de quien habla (azul: tú, verde: el agente);
+   las herramientas son una línea tenue. Todo mide renglones enteros: el markdown se dibuja con
+   bloques de un renglón, los cercados de código conservan sus líneas, y lo largo se recoge en
+   un alto de renglones enteros para no cortar ninguna a la mitad. */
+#conv { padding-bottom: 2lh; }  /* el campo de abajo mide dos renglones */
+#conv-cab {
+  position: sticky; top: calc(2lh + env(safe-area-inset-top)); z-index: 2; background: var(--bg);
+  display: flex; align-items: flex-start; gap: 0 2ch; height: 1lh; margin: 0 -2ch; padding: 0 2ch;
+  box-shadow: 0 1px 0 var(--linea);
+}
+#conv-cab .volver { color: var(--azul); white-space: nowrap; height: 1lh; position: relative; }
+#conv-cab .volver::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
+#conv-cab .nombre { flex: 1; min-width: 0; font-weight: 700; }
+#conv-cab .estado-conv { white-space: nowrap; color: var(--dim); }
+#conv-cab .estado-conv.espera { color: var(--amarillo); } #conv-cab .estado-conv.termino { color: var(--verde); }
+#conv-cab .estado-conv.trabajando { color: var(--azul); }
+#conv-cab .sesion { color: var(--dim); height: 1lh; }
+#conv-mas .mas { color: var(--azul); box-shadow: none; }
+
+#conv-lista .dia { margin-top: 1lh; color: var(--dim); text-align: center; white-space: nowrap; overflow: hidden; }
+.msg { margin-top: 1lh; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--c); --c: var(--dim); }
+.msg.usuario { --c: var(--azul); } .msg.agente { --c: var(--verde); }
+.msg .de { display: flex; gap: 2ch; }
+.msg .quien { font-weight: 700; color: var(--c); }
+.msg .cuando { color: var(--dim); font-variant-numeric: tabular-nums; }
+.msg .cuerpo { overflow-wrap: anywhere; }
+.msg .cuerpo.recogido { max-height: 20lh; overflow: hidden; }
+.msg .nota { color: var(--dim); }
+.mas-msg, .mas-tools { display: block; height: 1lh; color: var(--dim); position: relative; text-align: left; }
+.mas-msg::after, .mas-tools::after { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
+.blq + .blq { margin-top: 1lh; }
+.blq.tit { font-weight: 700; color: var(--fg); }
+.blq.parr { white-space: normal; }
+.blq.codigo { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--linea); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.blq.lista .li { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 1ch; padding-left: calc(var(--n, 0) * 2ch); }
+.blq.lista .marca-li { color: var(--dim); }
+.msg code { color: var(--verde); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.msg a { color: var(--azul); text-decoration: underline; text-underline-offset: 2px; }
+.tools { margin-top: 1lh; }
+.tools + .msg, .msg + .tools { margin-top: 1lh; }
+.tool { display: grid; grid-template-columns: 1ch minmax(0, 1fr); column-gap: 1ch; color: var(--dim); padding-left: 1ch; }
+
+#conv-nuevos {
+  position: fixed; right: 2ch; bottom: calc(4lh + env(safe-area-inset-bottom)); z-index: 4; height: 1lh; padding: 0 1ch;
+  color: var(--bg); background: var(--azul); font-weight: 700;
+}
+#conv-nuevos[hidden] { display: none; }
+body.escribiendo #conv-nuevos { bottom: 2lh; }
+
+/* el campo de abajo: fijo sobre la barra, dos renglones (el prompt y lo que pasó con el último envío) */
+.dock {
+  position: fixed; left: 0; right: 0; bottom: calc(2lh + env(safe-area-inset-bottom)); z-index: 3; height: 2lh;
+  padding: 0 2ch; background: color-mix(in srgb, var(--fg) 4%, var(--bg)); box-shadow: inset 0 1px 0 var(--linea);
+  display: block;
+}
+.dock .linea-dock { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; column-gap: 1ch; }
+.dock .prompt { color: var(--verde); font-weight: 700; }
+.dock .campo {
+  font: inherit; color: var(--fg); background: transparent; border: 0; border-radius: 0; padding: 0; margin: 0;
+  height: var(--lh); width: 100%; min-width: 0; outline: none; caret-color: var(--verde);
+}
+.dock .campo::placeholder { color: var(--dim); opacity: 1; }
+.dock .manda { position: relative; height: var(--lh); color: var(--dim); white-space: nowrap; }
+.dock .manda::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
+.dock .dijo { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 1lh; }
+.dock .dijo.bien { color: var(--verde); } .dock .dijo.mal { color: var(--rojo); }
+.dock.solo { display: flex; align-items: flex-start; }
+/* al escribir se esconde la barra de abajo: el teclado ya ocupa mucho */
+body.escribiendo #barra { display: none; }
+body.escribiendo .dock { bottom: env(safe-area-inset-bottom); }
+body.escribiendo { padding-bottom: calc(2lh + env(safe-area-inset-bottom)); }
+
+/* entrar a la conversación desde el detalle de un hilo */
+.accion { padding: 0 1ch 0 3ch; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+.accion .ir { position: relative; height: 1lh; color: var(--azul); }
+.accion .ir::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
