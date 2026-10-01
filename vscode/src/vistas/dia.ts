@@ -222,12 +222,12 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
             + ` data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}${avance ? `\n\nagente, ${avanceFecha}: ${avance}` : ''}\n\n${t.fila.ficha ? `clic: leerla y decidir · ⌘-clic: ${t.hilo ? `llevarla a «${t.hilo}»` : 'un hilo para trabajarla'}` : `clic: ${t.hilo ? `llevarlo a «${t.hilo}»` : 'abrir un hilo donde trabajarlo'}, escrito y sin enviar`}`)}">`
             // sin letras: la fila se clica. `+` abre un hilo nuevo, `→` lo lleva al que ya existe
             // (el globo dice cuál); `●` en la columna angosta, que ya se trabaja
-            + `<span class="id">${esc(t.ref)}</span>`
-            // con ficha, al pasar el mouse aparece un ✓ que la marca hecha sin abrir nada
+            + `<span class="id">${esc(t.ref)}</span><span class="pri">${t.enCurso ? '●' : ''}</span>`
+            // al final, después del plazo: con ficha, al pasar el mouse un ✓ la marca hecha sin abrir nada
+            + `<span class="desc">${marcaAvance}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}`
             + (t.fila.ficha
-                ? `<span class="pri marcar" data-accion="hecha" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}" title="marcarla hecha"><i>${t.enCurso ? '●' : ''}</i></span>`
-                : `<span class="pri">${t.enCurso ? '●' : ''}</span>`)
-            + `<span class="desc">${marcaAvance}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}</span></div>`);
+                ? `<span class="marcar" data-accion="hecha" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}" title="marcarla hecha"></span>`
+                : '<span></span>') + '</span></div>');
     }
     h.push('<div id="tareas-vacio" class="vacio" hidden></div><div id="tareas-mas" class="vacio clic" hidden></div></div>');
     return [...h, ...cerrar];
@@ -365,10 +365,8 @@ export const CSS_DIA = `
   .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
   .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
   .tarea.encurso .pri { color: var(--azul); }
-  .tarea .pri.marcar i { font-style: normal; }
-  .tarea:hover .pri.marcar i { display: none; }
-  .tarea:hover .pri.marcar::after { content: '✓'; color: var(--dim); }
-  .tarea .pri.marcar:hover::after { color: var(--verde); font-weight: bold; }
+  .tarea:hover .marcar::after { content: '✓'; color: var(--dim); }
+  .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
   .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }
   .av { font-weight: bold; margin-right: 1ch; }
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
@@ -384,9 +382,9 @@ export const CSS_DIA = `
   .acciones-t .atajo.principal kbd { outline-color: var(--c); box-shadow: inset 0 -2px 0 var(--c); color: var(--c); }
   .av-preparado { color: var(--verde); } .av-cerrar { color: var(--cian); }
   .av-pregunta { color: var(--amarillo); } .av-choca { color: var(--rojo); }
-  .tarea .meta { display: grid; grid-template-columns: 5ch 1ch; gap: 2ch; white-space: nowrap; }
+  .tarea .meta { display: grid; grid-template-columns: 5ch 1ch 1ch; gap: 2ch; white-space: nowrap; }
   .tarea .meta > :first-child { text-align: right; }
-  .tarea.compacta .meta { grid-template-columns: 5ch; }
+  .tarea.compacta .meta { grid-template-columns: 5ch 1ch; gap: 1ch; }
   .tarea .destino { color: var(--magenta); overflow: hidden; text-overflow: ellipsis; text-align: left; }
   #tareas-mas { color: var(--c); padding: 0 1ch; }
 
@@ -430,7 +428,7 @@ export const CSS_DIA = `
   /* angosto: lo secundario se va, lo principal nunca */
   @container (max-width: 620px) {
     .ag .extra .hilo-ag { display: none; }
-    .tarea .meta { grid-template-columns: 5ch 1ch; }
+    .tarea .meta { grid-template-columns: 5ch 1ch 1ch; }
     .tarea:not(.compacta) { grid-template-columns: 5ch minmax(0, 1fr) auto; } .tarea:not(.compacta) .pri { display: none; }
     .ag { grid-template-columns: 7ch minmax(0, 1fr); } .ag .extra { grid-column: 2; }
     .ag:not(.proxima) .extra { display: none; }
