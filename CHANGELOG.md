@@ -20,6 +20,9 @@ workflow refuses to run if the two disagree.
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
   that is waiting enters it.
+- `servidor/telar-web.service`: `telar web` as a systemd user service that starts at boot (with `loginctl
+  enable-linger`), waits for Tailscale to have an IP before listening (so it never falls back to localhost) and
+  restarts itself if it dies. See servidor/README.md.
 - `telar web`: read a **laptop** thread's conversation too — `GET /api/conversacion?maquina=…` asks the door's
   `leer` verb and returns the same shape, so it is the same screen (with «… N turnos anteriores» instead of
   «anteriores», refreshed every 5 s, and the prompt addressing that machine). Nothing conversed is stored on the

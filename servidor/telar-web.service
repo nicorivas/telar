@@ -1,0 +1,33 @@
+# telar web como servicio de usuario: arranca solo al encender la máquina y se levanta si se cae.
+#
+#   mkdir -p ~/.config/systemd/user && cp telar-web.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-web
+#   loginctl enable-linger "$USER"        # que arranque al encender, sin que nadie inicie sesión
+#
+# Ver cómo va:  systemctl --user status telar-web   ·   journalctl --user -u telar-web -f
+# Quitarlo:     systemctl --user disable --now telar-web
+#
+# `--escribir` permite escribirle a los hilos desde la página; sin él, la página solo lee.
+# Quien alcance el puerto puede escribirle a tus agentes: por eso solo escucha en Tailscale.
+
+[Unit]
+Description=telar web: telar en el navegador del celular, por Tailscale
+Documentation=https://github.com/nicorivas/telar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# un servicio de usuario no hereda tu PATH: telar, tmux y tailscale tienen que estar a la vista
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+# `telar web` escucha en la IP de Tailscale; al encender, esa interfaz tarda unos segundos en existir, y si
+# arrancara antes caería a localhost sin avisar. Se espera hasta un par de minutos a que tenga IP.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; echo "tailscale no tiene IP todavía" >&2; exit 1'
+ExecStart=%h/.local/bin/telar web --escribir
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
