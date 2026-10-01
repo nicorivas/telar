@@ -440,7 +440,7 @@ agente vive allá (para eso, `telar hilo llevar`). El contrato está en `docs/co
 `telar enlace` deja que una máquina (el servidor) **le pida cosas** a otra (el laptop) sin abrirle un
 shell a nadie. Es una llave ssh atada a un solo comando: en el laptop, `authorized_keys` dice
 `restrict,command="/…/telar enlace servir" ssh-ed25519 AAAA… telar-enlace`, y eso lo impone sshd:
-esa llave no puede abrir terminal, ni túneles, ni correr otra cosa. `servir` cumple cinco verbos:
+esa llave no puede abrir terminal, ni túneles, ni correr otra cosa. `servir` cumple seis verbos:
 
 | verbo | qué hace |
 | --- | --- |
@@ -449,6 +449,7 @@ esa llave no puede abrir terminal, ni túneles, ni correr otra cosa. `servir` cu
 | `archivo` | recibe un archivo y lo deja en `entrada`, sin pisar ninguno y sin escapar de la carpeta |
 | `enviar` | escribe un texto en un hilo suyo vivo (con `enter`, y lo manda) |
 | `notificar` | muestra un aviso en pantalla |
+| `leer` | los últimos turnos de un hilo, en texto (**apagado** si no se nombra en `verbos`) |
 
 En **el servidor** (quien llama), la configuración dice a dónde:
 
@@ -463,8 +464,18 @@ En **el laptop** (quien responde), opcional:
 ```toml
 [enlace]
 entrada = "~/telar-entrada"          # dónde caen los archivos que llegan
-verbos = ["ping", "hilos", "archivo", "enviar", "notificar"]   # quitar uno lo apaga
+verbos = ["ping", "hilos", "archivo", "enviar", "notificar"]   # quitar uno lo apaga; "leer" hay que agregarlo
+no_leer = ["personal", "Diario"]    # hilos que `leer` no entrega: por nombre o carpeta (glob)
 ```
+
+**Leer un hilo.** `telar hilo leer [hilo] [--ultimos N]` muestra los últimos N turnos (5 si no se dice, 50 a
+lo más) de la conversación de ese hilo: lo que se le pidió y lo que contestó el agente, con cada herramienta en
+una línea —cuál y sobre qué, sin su salida—. Si el hilo no tiene conversación en esta máquina (uno remoto, uno
+sin agente), lo último de su panel. Todo con tope: 4000 caracteres por mensaje y 60 000 en total. Por la
+puerta es `telar enlace leer <hilo> [--ultimos N]`, y como expone lo conversado viene **apagado**: se prende
+agregando `"leer"` a `verbos`, y `no_leer` deja fuera los hilos que no se deben leer desde la otra máquina
+(un patrón vale contra el nombre del hilo y contra su carpeta, y una carpeta veta también lo de abajo). Un hilo
+vetado responde igual que uno que no existe.
 
 Montarlo, una vez:
 
@@ -494,8 +505,9 @@ Manda el texto y lo ejecuta ↩; lo que se escribe lo lee el agente del hilo com
 tus agentes: por eso solo escucha en Tailscale y la escritura es opt-in.
 
 Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
-carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos. No puede leer
-archivos, correr comandos ni entrar. Si «enviar» te parece demasiado, quítalo de `verbos`.
+carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos y, si lo prendiste, lo
+conversado en los hilos que `no_leer` no vete. No puede leer archivos, correr comandos ni entrar. Si «enviar»
+te parece demasiado, quítalo de `verbos`.
 
 ## `[secciones]` — grupos propios en la lista de hilos
 

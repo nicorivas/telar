@@ -8,6 +8,14 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar hilo leer [thread] [--ultimos N]`: the last N turns of a thread's conversation (5 by default, 50 at
+  most) as readable text — what was asked, what the agent answered, one line per tool call and never its
+  output — with per-message and total caps; the pane's scrollback when there is no conversation here.
+  `--json` is the contract.
+- `telar enlace leer <thread> [--ultimos N]`: the same, as a sixth door verb. **Off by default**: add `"leer"`
+  to `[enlace] verbos`; `[enlace] no_leer` keeps threads out by name or linked folder (glob), and a vetoed
+  thread answers like a missing one.
+
 - `telar movil --hoy`: prints the day once (for testing).
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
@@ -37,6 +45,10 @@ workflow refuses to run if the two disagree.
   nothing is computed twice. It listens on one interface (Tailscale's, or localhost), only reads, keeps the
   day fresh in the background and reloads the open page when its files change, so editing the interface and
   seeing it on the phone takes seconds. Bundles JetBrains Mono (OFL) — see NOTICE.
+
+### Fixed
+
+- An `[enlace]` table without `entrada` failed to load (`Puerta.entrada` is a slot, not the default).
 
 ## [0.1.9] — 2026-09-29
 

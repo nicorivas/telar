@@ -20,6 +20,8 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            se cierra aquí y sigue allá, retomada. Con --sesion,
                                            esa conversación aunque telar no la tenga anotada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
+    telar hilo leer [«Faro»] [--ultimos N] lo último que pasó en ese hilo: lo que se le pidió y
+                                           lo que respondió su agente (5 turnos si no se dice)
 
 `adoptar` es la salida del único agujero que tiene guardar el estado por nombre:
 renombrar un tab desde el multiplexor (`prefix + ,`) deja el vínculo, la prioridad y
@@ -64,6 +66,7 @@ VERBOS = (
     "retomar",
     "olvidar",
     "llevar",
+    "leer",
 )
 
 
@@ -82,10 +85,13 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--si", action="store_true", help="con llevar: seguir aunque haya trabajo sin subir")
     p.add_argument("--sesion", default="",
                    help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
+    p.add_argument("--ultimos", type=int, default=0, metavar="N", help="con leer: cuántos turnos")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    if o.verbo == "leer":
+        return _leer(ctx, o)
 
     tel = _comun.tejer(ctx, con_ficha=o.verbo in ("ver", "vincular"))
     if o.hilo:
@@ -540,6 +546,33 @@ def _sesiones(hilo) -> str:
     if not hilo.sesiones:
         return ""
     return f"; conversación anotada: {hilo.sesiones[0]}"
+
+
+def _leer(ctx, o) -> int:
+    """Lo último de un hilo, sin moverle nada: ni foco, ni atención, ni estado."""
+    from telar import historia
+
+    tel = _comun.tejer(ctx, con_ficha=False)
+    referencia = o.hilo or o.valor
+    if referencia:
+        hilo, problema = _comun.resolver(tel, referencia)
+        if hilo is None:
+            return _comun.queja(problema)
+    else:
+        hilo = _comun.hilo_actual(tel)
+        if hilo is None:
+            return _comun.sin_hilo("hilo", tel)
+    ultimos = o.ultimos or historia.POR_DEFECTO
+    if not 1 <= ultimos <= historia.MAX_TURNOS:
+        return _comun.queja(f"--ultimos va de 1 a {historia.MAX_TURNOS}")
+    try:
+        datos = historia.leer(ctx, tel, hilo, ultimos)
+    except historia.ErrorDeHistoria as e:
+        return _comun.queja(str(e))
+    if o.json:
+        return _comun.escribir_json(datos)
+    print(historia.como_texto(datos))
+    return 0
 
 
 def _retomar(ctx, tel: _comun.Telar, hilo) -> int:

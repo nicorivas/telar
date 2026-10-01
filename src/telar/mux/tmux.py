@@ -509,6 +509,11 @@ class Tmux(MultiplexorBase):
         if enviar:
             self._tmux("send-keys", "-t", objetivo, "Enter")
 
+    def capturar_pane(self, pane: str, lineas: int = 300) -> str | None:
+        # -J junta las líneas que tmux partió por el ancho; -S desde cuántas atrás
+        return self._tmux("capture-pane", "-p", "-J", "-S", f"-{max(1, int(lineas))}",
+                          "-t", self._objetivo_pane(pane))
+
     def abrir_pane(
         self,
         comando: Sequence[str] | None = None,

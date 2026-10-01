@@ -6,6 +6,7 @@
       telar enlace archivo foto.png             manda un archivo a su carpeta de entrada
       telar enlace enviar "Faro" "hola" --enter escribe en un hilo suyo (y lo manda)
       telar enlace notificar "terminó" --titulo telar
+      telar enlace leer "Faro" --ultimos 3       lo último que pasó en un hilo suyo (si lo permite)
       telar enlace instalar                     crea la llave y dice cómo autorizarla en el laptop
 
     En el laptop (quien recibe):
@@ -14,7 +15,7 @@
       telar enlace servir                          lo que sshd ejecuta; no se corre a mano
 
 La seguridad no está en este programa sino en `authorized_keys`: la llave del servidor solo puede
-ejecutar `telar enlace servir`, sin shell ni túneles (`restrict`), y `servir` solo cumple cinco
+ejecutar `telar enlace servir`, sin shell ni túneles (`restrict`), y `servir` solo cumple seis
 verbos con topes. Ver `telar.enlace` y docs/configuracion.md, `[enlaces]` y `[enlace]`.
 """
 
@@ -33,7 +34,7 @@ from telar.ordenes import _comun
 
 AYUDA = "La puerta entre dos máquinas: pedirle cosas al laptop desde el servidor."
 
-LLAMADAS = ("ping", "hilos", "archivo", "enviar", "notificar")
+LLAMADAS = ("ping", "hilos", "archivo", "enviar", "notificar", "leer")
 LOCALES = ("instalar", "autorizar", "revocar", "servir")
 
 
@@ -92,6 +93,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--a", default="", metavar="ENLACE", help="a qué máquina de [enlaces] llamar (por defecto, la única)")
     p.add_argument("--enter", action="store_true", help="enviar: además de escribir, mandarlo (↩)")
     p.add_argument("--titulo", default="telar", help="notificar: el título del aviso")
+    p.add_argument("--ultimos", type=int, default=0, metavar="N", help="leer: cuántos turnos (5 si no se dice)")
     p.add_argument("--llave", default="~/.ssh/telar_enlace", help="instalar: dónde va la llave")
     p.add_argument("--destino", default="", help="instalar: el destino del laptop, para completar el ejemplo")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
@@ -145,6 +147,10 @@ def main(argv: list[str], ctx) -> int:
         if not o.args:
             return _comun.queja('notificar lleva el texto: telar enlace notificar "terminó" --titulo telar')
         args, entrada = [o.titulo], " ".join(o.args).encode("utf-8")
+    elif o.verbo == "leer":
+        if len(o.args) != 1:
+            return _comun.queja('leer lleva el hilo: telar enlace leer "Faro" --ultimos 3')
+        args = [o.args[0], *([str(o.ultimos)] if o.ultimos else [])]
     elif o.args:
         return _comun.queja(f"«{o.verbo}» no lleva argumentos")
     r = mod.llamar(enlace, o.verbo, args, entrada)
@@ -155,6 +161,10 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "hilos":
         for h in r["foto"]["hilos"]:
             print(f"{h.get('atencion', ''):<11}{h['nombre']}")
+    elif o.verbo == "leer":
+        from telar import historia
+
+        print(historia.como_texto(r["historia"]))
     elif o.verbo == "ping":
         print(f"{r['maquina']} responde · telar {r['telar']} · {r['hora']} · verbos: {', '.join(r['verbos'])}")
     else:

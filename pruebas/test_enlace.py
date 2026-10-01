@@ -76,7 +76,7 @@ class Servir(ConPuerta):
     def test_ping_dice_quien_es_y_que_hace(self):
         r = m.servir(self.ctx, "ping")
         self.assertTrue(r["ok"])
-        self.assertEqual(r["verbos"], list(m.VERBOS_ENLACE))
+        self.assertEqual(r["verbos"], list(mod_config.VERBOS_POR_DEFECTO))
 
     def test_lo_que_no_es_un_verbo_no_se_cumple_por_mas_que_se_pida(self):
         for pedido in ("bash", "bash -c 'rm -rf ~'", "cat /etc/passwd", "ping; ls", "ping $(id)", "../ping",
@@ -269,10 +269,11 @@ class Configuracion(Prueba):
         self.assertEqual(c.enlaces, (Enlace(nombre="laptop", destino="nico@mac", llave="~/.ssh/telar_enlace"),))
         self.assertEqual(c.puerta, Puerta(entrada="~/x", verbos=("ping", "archivo")))
 
-    def test_por_defecto_hay_todos_los_verbos_y_ningun_enlace(self):
+    def test_por_defecto_hay_todos_los_verbos_menos_leer_y_ningun_enlace(self):
         c = self.cargar("")
         self.assertEqual(c.enlaces, ())
-        self.assertEqual(c.puerta.verbos, m.VERBOS_ENLACE)
+        self.assertEqual(c.puerta.verbos, mod_config.VERBOS_POR_DEFECTO)
+        self.assertNotIn("leer", c.puerta.verbos)
 
     def test_lo_raro_se_rechaza(self):
         for texto in ('[enlaces.a]\n', '[enlaces.a]\ndestino = "-oProxyCommand=x"\n', '[enlaces.a]\ndestino = "x@y"\nllave = "-i"\n',
@@ -364,3 +365,54 @@ class TraerLaFoto(ConPuerta):
         for respuesta in ({"ok": True, "foto": "no"}, {"ok": True, "foto": {"version": 9, "hilos": []}}):
             with mock.patch.object(m, "llamar", return_value=respuesta):
                 self.assertNotEqual(m.traer_foto(self.ctx.config, self.enlace()), "")
+
+
+class Leer(ConPuerta):
+    """Leer lo último de un hilo: apagado si no se prende, y sin entregar lo vetado."""
+
+    def con_hilos(self):
+        hilos = {n: SimpleNamespace(nombre=n, sesiones=()) for n in ("Faro", "Diario")}
+        estado = SimpleNamespace(vinculos=lambda: {"Faro": "proyectos/faro", "Diario": "vida/diario"})
+        tel = SimpleNamespace(mux=None, aviso="", estado=estado, por_nombre=hilos.get, vivo=lambda h: True)
+        leido = {"hilo": "Faro", "fuente": "conversacion", "conversacion": "abc", "total_turnos": 1,
+                 "turnos": [[{"quien": "usuario", "hora": "", "texto": "hola"}]], "recortado": False}
+        return (mock.patch("telar.ordenes._comun.tejer", return_value=tel),
+                mock.patch("telar.historia.leer", return_value=leido))
+
+    def test_apagado_por_defecto(self):
+        r = m.servir(self.ctx, "leer Faro")
+        self.assertFalse(r["ok"])
+        self.assertIn("no hace «leer»", r["error"])
+
+    def test_prendido_entrega_la_historia(self):
+        ctx = self.contexto(verbos=("leer",))
+        a, b = self.con_hilos()
+        with a, b as leer:
+            r = m.servir(ctx, "leer Faro 3")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["historia"]["turnos"][0][0]["texto"], "hola")
+        self.assertEqual(leer.call_args.args[3], 3)
+
+    def test_lo_vetado_por_carpeta_se_ve_igual_que_lo_que_no_existe(self):
+        ctx = self.contexto(verbos=("leer",), no_leer=("vida",))
+        a, b = self.con_hilos()
+        with a, b as leer:
+            vetado = m.servir(ctx, "leer Diario")
+            fantasma = m.servir(ctx, "leer Fantasma")
+        self.assertFalse(vetado["ok"])
+        self.assertEqual(vetado["error"].replace("Diario", "X"), fantasma["error"].replace("Fantasma", "X"))
+        leer.assert_not_called()
+
+    def test_argumentos_raros(self):
+        ctx = self.contexto(verbos=("leer",))
+        a, b = self.con_hilos()
+        with a, b:
+            for pedido in ("leer", "leer Faro cinco", "leer Faro 0", "leer Faro 51", "leer Faro 2 3"):
+                self.assertFalse(m.servir(ctx, pedido)["ok"], pedido)
+
+    def test_no_leer_en_la_configuracion(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".toml", delete=False) as f:
+            f.write('[enlace]\nverbos = ["ping", "leer"]\nno_leer = ["vida/*", "Diario"]\n')
+        self.addCleanup(os.unlink, f.name)
+        c = mod_config.cargar(Path(f.name))
+        self.assertEqual(c.puerta.no_leer, ("vida/*", "Diario"))

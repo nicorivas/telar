@@ -10,13 +10,15 @@ laptop hay una **puerta con una sola llave**:
 La llave del servidor solo puede ejecutar `telar enlace servir` en el laptop —eso lo impone sshd, no
 esta librería—, y `servir` solo cumple lo que está en `VERBOS_ENLACE` y en `[enlace] verbos`. No hay
 shell, ni ejecución de comandos, ni lectura de archivos: un servidor comprometido puede pedir
-esos cinco verbos y nada más. `restrict` apaga además el terminal, los túneles y el agente ssh.
+esos seis verbos y nada más. `restrict` apaga además el terminal, los túneles y el agente ssh.
 
     ping         ¿estás? — responde quién es y qué verbos tiene
     hilos        la foto de sus hilos (la misma del espejo)
     archivo N    recibe un archivo por la entrada estándar y lo deja en `[enlace] entrada`
     enviar H     escribe el texto de la entrada estándar en el hilo H (con `enter`, y lo manda)
     notificar    muestra un aviso en pantalla con el texto de la entrada estándar
+    leer H [N]   los últimos N turnos del hilo H, en texto (apagado si no se nombra en `verbos`;
+                 `[enlace] no_leer` deja hilos fuera por nombre o carpeta)
 
 Todo lo que llega es dato hostil: los nombres de archivo se limpian y nunca escapan de la carpeta de
 entrada, un archivo nunca pisa a otro, los tamaños tienen tope, y a un hilo solo se le escribe si
@@ -164,7 +166,32 @@ def _notificar(ctx, args, entrada):
     return {"titulo": titulo, "caracteres": len(texto)}
 
 
-VERBO = {"ping": _ping, "hilos": _hilos, "archivo": _archivo, "enviar": _enviar, "notificar": _notificar}
+def _leer(ctx, args, entrada):
+    from telar import historia
+
+    if not args or len(args) > 2:
+        raise ErrorDePuerta("«leer» lleva el hilo y, si quieres, cuántos turnos")
+    try:
+        ultimos = int(args[1]) if len(args) == 2 else historia.POR_DEFECTO
+    except ValueError as e:
+        raise ErrorDePuerta("el número de turnos tiene que ser un entero") from e
+    if not 1 <= ultimos <= historia.MAX_TURNOS:
+        raise ErrorDePuerta(f"se pueden pedir entre 1 y {historia.MAX_TURNOS} turnos")
+    from telar.ordenes import _comun
+
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = tel.por_nombre(args[0])
+    # el mismo mensaje para el que no existe y el vetado: la puerta no confirma qué hilos hay detrás
+    if hilo is None or historia.vetado(ctx.config.puerta.no_leer, hilo.nombre, tel.estado.vinculos().get(hilo.nombre, "")):
+        raise ErrorDePuerta(f"no hay un hilo que se pueda leer con el nombre «{args[0][:80]}»")
+    try:
+        return {"historia": historia.leer(ctx, tel, hilo, ultimos)}
+    except historia.ErrorDeHistoria as e:
+        raise ErrorDePuerta(str(e)) from e
+
+
+VERBO = {"ping": _ping, "hilos": _hilos, "archivo": _archivo, "enviar": _enviar, "notificar": _notificar,
+         "leer": _leer}
 assert set(VERBO) == set(VERBOS_ENLACE)
 
 

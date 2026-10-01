@@ -249,6 +249,13 @@ class MultiplexorBase(ABC):
         en vez de una sorpresa.
         """
 
+    def capturar_pane(self, pane: str, lineas: int = 300) -> str | None:
+        """Lo que muestra un panel y sus últimas `lineas` de scrollback, en texto.
+
+        None si este multiplexor no sabe leerlo: es un respaldo, no un contrato.
+        """
+        return None
+
     @abstractmethod
     def abrir_pane(
         self,

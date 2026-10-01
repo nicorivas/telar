@@ -734,6 +734,7 @@ trae `error` y nada más. Los verbos y sus topes:
 | `archivo` | `<nombre>` | el archivo, hasta 100 MB | `ruta`, `bytes`, `sha256` |
 | `enviar` | `<hilo> [enter]` | el texto, UTF-8, hasta 8000 caracteres | `hilo`, `caracteres`, `enviado` |
 | `notificar` | `[titulo]` (hasta 60) | el texto, hasta 500 caracteres | `titulo`, `caracteres` |
+| `leer` | `<hilo> [N]` (1 a 50, 5 si no se dice) | ninguna | `historia`: la de `telar hilo leer --json` |
 
 Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
 
@@ -743,7 +744,23 @@ Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
 - `enviar`: solo a un hilo que existe **y** está vivo; un texto con saltos de línea exige `enter`, porque el
   salto es un ↩.
 - `notificar`: el texto llega por variables de entorno, nunca dentro de un script.
+- `leer`: apagado si `[enlace] verbos` no lo nombra; solo un hilo por su nombre exacto, y uno que `no_leer`
+  veta responde lo mismo que uno que no existe.
 - Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
+
+## `telar hilo leer --json` — lo último de un hilo
+
+```json
+{"hilo": "Faro", "fuente": "conversacion", "conversacion": "<id>", "total_turnos": 12, "recortado": false,
+ "turnos": [[{"quien": "usuario", "hora": "2026-10-01T12:00:00Z", "texto": "…"},
+             {"quien": "herramienta", "hora": "…", "texto": "Bash · qué hace"},
+             {"quien": "agente", "hora": "…", "texto": "…"}]]}
+```
+
+Un turno empieza con un mensaje de `usuario`. `quien` es `usuario`, `agente` o `herramienta`; una herramienta
+es una línea (cuál y sobre qué), nunca su salida. `recortado` dice si se cortó un texto (más de 4000
+caracteres) o se soltaron turnos viejos para no pasar de 60 000 en total. Sin conversación en esta máquina:
+`{"hilo", "fuente": "panel", "texto", "recortado"}` con lo último del panel.
 
 ## `POST /api/enviar` — escribirle a un hilo desde `telar web`
 

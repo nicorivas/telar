@@ -247,7 +247,9 @@ class Enlace:
 
 
 #: lo que una puerta sabe hacer. Cada verbo se puede apagar con `[enlace] verbos`.
-VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar")
+VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar", "leer")
+#: los que responde sin que se diga: `leer` expone lo conversado y se prende a propósito
+VERBOS_POR_DEFECTO = tuple(v for v in VERBOS_ENLACE if v != "leer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,8 +258,10 @@ class Puerta:
 
     #: dónde caen los archivos que llegan por la puerta.
     entrada: str = "~/telar-entrada"
-    #: qué verbos responde. Por defecto todos; quitar uno lo apaga.
-    verbos: tuple[str, ...] = VERBOS_ENLACE
+    #: qué verbos responde. Por defecto todos menos `leer`; quitar uno lo apaga.
+    verbos: tuple[str, ...] = VERBOS_POR_DEFECTO
+    #: hilos que `leer` no entrega: patrones contra su nombre o su carpeta vinculada.
+    no_leer: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -602,19 +606,23 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "enlace" in datos:
         cuerpo = _tabla(datos["enlace"], "enlace")
-        sobra = set(cuerpo) - {"entrada", "verbos"}
+        sobra = set(cuerpo) - {"entrada", "verbos", "no_leer"}
         if sobra:
             raise ErrorDeConfig(f"enlace.{sorted(sobra)[0]}: no existe")
-        entrada = cuerpo.get("entrada", Puerta.entrada)
+        entrada = cuerpo.get("entrada", Puerta().entrada)
         if not isinstance(entrada, str) or not entrada.strip():
             raise ErrorDeConfig(f"enlace.entrada: se esperaba una carpeta, llegó {entrada!r}")
-        verbos = cuerpo.get("verbos", list(VERBOS_ENLACE))
+        verbos = cuerpo.get("verbos", list(VERBOS_POR_DEFECTO))
         if not isinstance(verbos, list) or not all(isinstance(v, str) for v in verbos):
             raise ErrorDeConfig(f"enlace.verbos: se esperaba una lista de verbos, llegó {verbos!r}")
         raros = [v for v in verbos if v not in VERBOS_ENLACE]
         if raros:
             raise ErrorDeConfig(f"enlace.verbos: «{raros[0]}» no existe (hay {', '.join(VERBOS_ENLACE)})")
-        cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos))
+        no_leer = cuerpo.get("no_leer", [])
+        if not isinstance(no_leer, list) or not all(isinstance(v, str) for v in no_leer):
+            raise ErrorDeConfig(f"enlace.no_leer: se esperaba una lista de patrones, llegó {no_leer!r}")
+        cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos),
+                                   no_leer=tuple(v.strip() for v in no_leer if v.strip()))
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
