@@ -36,7 +36,9 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from telar import enlace, espejo
+from urllib.parse import parse_qs
+
+from telar import conversacion, enlace, espejo
 from telar.ordenes import _comun
 
 AYUDA = "telar en el navegador del celular: el día y los hilos."
@@ -155,6 +157,44 @@ def mantener_espejos(config, pausa: float = 30.0) -> None:
         time.sleep(pausa)
 
 
+def _entero(q: dict, clave: str) -> int | None:
+    valor = q.get(clave, [""])[0]
+    if valor == "":
+        return None
+    if not valor.lstrip("-").isdigit():
+        raise ValueError(f"«{clave}» tiene que ser un número")
+    return int(valor)
+
+
+def _conversacion(consulta: str, config) -> tuple[int, bytes, str]:
+    """`GET /api/conversacion?hilo=…[&sesion=][&antes=][&despues=][&n=]` → (código, cuerpo, tipo).
+
+    La conversación se pide por **hilo**, no por id: de ahí sale la lista de conversaciones permitidas
+    (`hilos --json`), así que un id suelto nunca abre un archivo."""
+    def responder(codigo: int, cuerpo: dict) -> tuple[int, bytes, str]:
+        return codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8"
+
+    q = parse_qs(consulta)
+    nombre = q.get("hilo", [""])[0]
+    if not nombre or config is None:
+        return responder(400, {"error": "falta el hilo"})
+    try:
+        antes, despues, n = _entero(q, "antes"), _entero(q, "despues"), _entero(q, "n")
+    except ValueError as e:
+        return responder(400, {"error": str(e)})
+    hilos = json.loads(datos("hilos")).get("hilos", [])
+    h = next((x for x in hilos if x.get("nombre") == nombre and not x.get("archivado")), None)
+    if h is None:
+        return responder(404, {"error": f"no hay un hilo «{nombre[:60]}»"})
+    try:
+        cuerpo = conversacion.pagina(config, h.get("sesiones") or [], sesion=q.get("sesion", [""])[0], antes=antes,
+                                     despues=despues, n=n or conversacion.POR_PAGINA)
+    except conversacion.ErrorDeConversacion as e:
+        return responder(404, {"error": str(e)})
+    cuerpo["hilo"] = {"nombre": h["nombre"], "atencion": h.get("atencion", ""), "vivo": bool(h.get("vivo"))}
+    return responder(200, cuerpo)
+
+
 def version_de_la_pagina() -> str:
     """Una huella de los archivos de la página: cambia cuando se edita uno."""
     h = hashlib.sha1()
@@ -182,6 +222,8 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
             try:
                 if ruta == "/api/version":
                     return self._enviar(200, json.dumps({"pagina": version_de_la_pagina() if recarga else ""}).encode(), "application/json")
+                if ruta == "/api/conversacion":  # el historial de un hilo de esta máquina, por páginas (solo lee)
+                    return self._enviar(*_conversacion(consulta, config))
                 if ruta == "/api/yo":  # qué puede hacer esta página: la escritura es opt-in y necesita el enlace
                     cuerpo = {"escribir": escribir, "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")

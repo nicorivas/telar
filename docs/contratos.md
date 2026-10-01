@@ -786,3 +786,29 @@ puerta (`{"ok": true, "hilo": …, "caracteres": …, "enviado": …}` o `{"ok":
 
 `GET /api/yo` dice qué puede hacer esa página: `{"escribir": bool, "enlaces": ["laptop"]}`.
 
+## `GET /api/conversacion` — el historial de un hilo, por páginas
+
+`telar web` sirve la conversación de un hilo **de esta máquina** por trozos (una conversación larga pesa decenas
+de MB). Se pide por hilo, no por id: de `telar hilos --json` sale la lista de conversaciones permitidas (`sesiones`),
+así que un id suelto nunca abre un archivo. Solo lee, y funciona sin `--escribir`.
+
+```
+/api/conversacion?hilo=Faro                       los últimos 60 mensajes
+/api/conversacion?hilo=Faro&antes=340&n=60        los 60 anteriores al mensaje 340
+/api/conversacion?hilo=Faro&despues=400           lo que llegó desde el 400 (seguirla en vivo)
+/api/conversacion?hilo=Faro&sesion=<id>           otra conversación del mismo hilo (la primera es la del hilo)
+```
+
+```json
+{"sesion": "0f3a…", "sesiones": ["0f3a…"], "total": 390, "desde": 330, "hasta": 390, "modificada": 1790000000000000000,
+ "hilo": {"nombre": "Faro", "atencion": "espera", "vivo": true},
+ "mensajes": [{"quien": "usuario", "hora": "2026-09-30T10:24:00Z", "texto": "…"},
+              {"quien": "herramienta", "hora": "…", "texto": "Bash · ls -la"},
+              {"quien": "agente", "hora": "…", "texto": "…", "recortado": 123}]}
+```
+
+Los mensajes se numeran por su posición y una conversación solo crece, así que un índice sigue valiendo mientras
+el archivo no se reescriba (si `total` baja, hay que volver a leer). Un mensaje de más de 20 000 caracteres viaja
+recortado, con `recortado` = los que faltan. Errores: 400 (falta el hilo o un número mal escrito) y 404 (no hay
+ese hilo, la conversación no es de él, o no está en disco en esta máquina).
+
