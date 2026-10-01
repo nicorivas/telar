@@ -1,4 +1,4 @@
-"""La conversación de un hilo, por páginas, para leerla desde la web.
+"""La conversación de un hilo: el único lector de sus mensajes, y su entrega por páginas a la web.
 
 `telar agente conversacion` ya sabe leer la conversación entera; una conversación larga pesa
 decenas de MB y 400 mensajes, y un teléfono no necesita todo. Aquí se sirve por trozos:
@@ -13,6 +13,12 @@ cambie (fecha y tamaño); si cambia, se relee entero: 0,2 s para 16 MB.
 
 Solo se leen conversaciones **de un hilo que telar conoce**: quien llama dice el hilo, y de ahí sale
 la lista de conversaciones permitidas. Un id suelto no abre ningún archivo.
+
+Este módulo es el **único** que lee los mensajes de una conversación: la web (`pagina`), `telar hilo leer`
+y el verbo `leer` de la puerta (`telar.historia`, que arma los turnos) pasan por `mensajes_del_hilo`, así que
+comparten la regla de cuál conversación es la del hilo (la primera de las suyas que tenga archivo), la
+validación de ids y el caché. Lo que cambia entre ellos es solo cuánto entregan: la web, todo por páginas y
+hasta 20 000 caracteres por mensaje; la puerta, los últimos turnos con topes más chicos, porque viaja por ssh.
 """
 
 from __future__ import annotations
@@ -37,9 +43,13 @@ class ErrorDeConversacion(LookupError):
 
 
 def _agente(config):
+    from telar.agente import ErrorDeAgente
     from telar.ordenes.agente import _construir
 
-    return _construir(config.agente.nombre, config)
+    try:
+        return _construir(config.agente.nombre, config)
+    except ErrorDeAgente as e:
+        raise ErrorDeConversacion(str(e)) from e
 
 
 def leer(config, sid: str) -> tuple[list[dict], int]:
@@ -69,6 +79,37 @@ def leer(config, sid: str) -> tuple[list[dict], int]:
     return mensajes, st.st_mtime_ns
 
 
+def mensajes_del_hilo(config, sesiones: list[str], sesion: str = "") -> tuple[str, list[dict], int]:
+    """La conversación de un hilo: `(id, mensajes, fecha del archivo)`.
+
+    Con `sesion`, esa (tiene que ser del hilo). Sin ella, la primera de las `sesiones` del hilo que tenga
+    archivo en esta máquina: las anteriores pueden haber vivido en otra. Levanta `ErrorDeConversacion`."""
+    if not sesiones:
+        raise ErrorDeConversacion("este hilo no tiene conversaciones anotadas")
+    if sesion:
+        if sesion not in sesiones:
+            raise ErrorDeConversacion("esa conversación no es de este hilo")
+        mensajes, mtime = leer(config, sesion)
+        return sesion, mensajes, mtime
+    ultimo: ErrorDeConversacion | None = None
+    for sid in sesiones:
+        try:
+            mensajes, mtime = leer(config, sid)
+        except ErrorDeConversacion as e:
+            ultimo = e
+            continue
+        return sid, mensajes, mtime
+    raise ultimo or ErrorDeConversacion("este hilo no tiene conversaciones en esta máquina")
+
+
+def aplanar(historia: dict) -> list[dict]:
+    """Lo que devuelve el verbo `leer` de la puerta (`telar.historia.leer`) como lista de mensajes, la misma
+    forma de la web. Si no había conversación sino el panel, un solo mensaje «panel» con su texto."""
+    if historia.get("fuente") == "panel":
+        return [{"quien": "panel", "hora": "", "texto": str(historia.get("texto", ""))}]
+    return [m for turno in historia.get("turnos", []) for m in turno if isinstance(m, dict)]
+
+
 def _recortado(m: dict) -> dict:
     texto = m.get("texto", "")
     if len(texto) <= MAX_TEXTO:
@@ -77,16 +118,16 @@ def _recortado(m: dict) -> dict:
             "recortado": len(texto) - MAX_TEXTO}
 
 
+def recortado(m: dict) -> dict:
+    """Un mensaje como viaja a la web: con su texto recortado a `MAX_TEXTO` y diciendo cuánto faltó."""
+    return _recortado(m)
+
+
 def pagina(config, sesiones: list[str], *, sesion: str = "", antes: int | None = None,
            despues: int | None = None, n: int = POR_PAGINA) -> dict:
     """Un trozo de la conversación de un hilo. `sesiones` son las de ese hilo (`hilos --json`): la pedida
-    tiene que ser una de ellas; sin pedir ninguna, la primera, que es la que telar considera la del hilo."""
-    if not sesiones:
-        raise ErrorDeConversacion("este hilo no tiene conversaciones anotadas")
-    sid = sesion or sesiones[0]
-    if sid not in sesiones:
-        raise ErrorDeConversacion("esa conversación no es de este hilo")
-    mensajes, mtime = leer(config, sid)
+    tiene que ser una de ellas; sin pedir ninguna, la primera que tenga archivo (ver `mensajes_del_hilo`)."""
+    sid, mensajes, mtime = mensajes_del_hilo(config, sesiones, sesion)
     total = len(mensajes)
     n = max(1, min(int(n), MAXIMO))
     if despues is not None:

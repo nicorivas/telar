@@ -8,6 +8,10 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `conversacion.py` is now the only reader of a thread's messages: the web, `telar hilo leer` and the door's
+  `leer` (via `historia.py`, which keeps building the turns) share one rule for which conversation is the
+  thread's (the first of its own with a file), id validation and the cache. `historia.leer` no longer needs the
+  agent to be named in the configuration, like `telar agente conversacion`.
 - `telar hilo leer [thread] [--ultimos N]`: the last N turns of a thread's conversation (5 by default, 50 at
   most) as readable text — what was asked, what the agent answered, one line per tool call and never its
   output — with per-message and total caps; the pane's scrollback when there is no conversation here.

@@ -5,7 +5,8 @@ lo que hizo y contestó el agente. Las herramientas van en una línea cada una �
 nunca con su salida: la conversación de un día entero pesa megas, y lo que se quiere saber es qué
 se pidió y qué se respondió.
 
-La fuente es la conversación anotada del agente, la primera que tenga archivo. Si no hay ninguna
+La fuente es la conversación anotada del agente, la primera que tenga archivo (la elige y la lee
+`telar.conversacion`, el mismo lector que usa la web). Si no hay ninguna
 (un hilo sin agente, uno remoto cuya conversación vive en la otra máquina), el scrollback del
 panel, si sigue vivo.
 
@@ -68,19 +69,18 @@ def recortar(todos: list[list[dict]], ultimos: int) -> tuple[list[list[dict]], b
 def leer(ctx, tel, hilo, ultimos: int = POR_DEFECTO) -> dict:
     """Lo último de un hilo. Levanta ErrorDeHistoria si no hay conversación ni panel."""
     ultimos = max(1, min(int(ultimos), MAX_TURNOS))
-    nombre_agente = ctx.config.agente.nombre
-    if nombre_agente:
-        from telar import agente as mod_agente
+    # los mensajes los lee `telar.conversacion`, el único lector: la misma conversación que ve la web
+    from telar import conversacion
 
-        agente = mod_agente.obtener(nombre_agente, ctx.config)
-        for sid in hilo.sesiones:
-            mensajes = agente.mensajes(sid)
-            if mensajes is None:
-                continue
-            todos = turnos(mensajes)
-            elegidos, cortado = recortar(todos, ultimos)
-            return {"hilo": hilo.nombre, "fuente": "conversacion", "conversacion": sid,
-                    "total_turnos": len(todos), "turnos": elegidos, "recortado": cortado}
+    try:
+        sid, mensajes, _ = conversacion.mensajes_del_hilo(ctx.config, list(hilo.sesiones))
+    except conversacion.ErrorDeConversacion:
+        pass  # sin conversación aquí: el panel, si sigue vivo
+    else:
+        todos = turnos(mensajes)
+        elegidos, cortado = recortar(todos, ultimos)
+        return {"hilo": hilo.nombre, "fuente": "conversacion", "conversacion": sid,
+                "total_turnos": len(todos), "turnos": elegidos, "recortado": cortado}
     if tel.mux is not None and tel.vivo(hilo):
         panel = tel.mux.pane_de(hilo.id)
         texto = tel.mux.capturar_pane(panel.id, LINEAS_PANEL) if panel is not None else None

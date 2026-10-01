@@ -176,3 +176,38 @@ class LaRuta(ConAgente):
                                  (f"hilo=Faro&sesion={OTRA}", 404), ("hilo=Faro&antes=abc", 400),
                                  (f"sesion={SID}", 400)):
             self.assertEqual(self.pedir(consulta)[0], codigo, consulta)
+
+
+class UnSoloLector(ConAgente):
+    """La web y la CLI/la puerta (`telar.historia`) leen la misma conversación por el mismo camino."""
+
+    def test_sin_pedir_ninguna_es_la_primera_que_tiene_archivo(self):
+        self.contenido[OTRA] = mensajes(4)
+        self.poner(OTRA)
+        del self.archivos[SID]  # la primera de las del hilo vivió en otra máquina
+        p = m.pagina(self.config, [SID, OTRA])
+        self.assertEqual((p["sesion"], p["total"]), (OTRA, 4))
+
+    def test_historia_y_la_web_eligen_la_misma(self):
+        from telar import historia
+
+        self.contenido[OTRA] = mensajes(4)
+        self.poner(OTRA)
+        del self.archivos[SID]
+        hilo = SimpleNamespace(nombre="Faro", id="@1", sesiones=(SID, OTRA))
+        d = historia.leer(SimpleNamespace(config=self.config), SimpleNamespace(mux=None), hilo)
+        self.assertEqual(d["conversacion"], m.pagina(self.config, [SID, OTRA])["sesion"])
+
+    def test_pedir_una_concreta_sigue_exigiendo_que_sea_del_hilo(self):
+        self.contenido[OTRA] = mensajes(2)
+        self.poner(OTRA)
+        with self.assertRaises(m.ErrorDeConversacion):
+            m.mensajes_del_hilo(self.config, [SID], OTRA)
+
+    def test_lo_que_entrega_la_puerta_se_aplana_a_la_forma_de_la_web(self):
+        turnos = [[{"quien": "usuario", "hora": "h", "texto": "a"}, {"quien": "agente", "hora": "h", "texto": "b"}],
+                  [{"quien": "usuario", "hora": "h", "texto": "c"}]]
+        self.assertEqual([x["texto"] for x in m.aplanar({"fuente": "conversacion", "turnos": turnos})], ["a", "b", "c"])
+        [panel] = m.aplanar({"fuente": "panel", "texto": "$ ls\nfoo"})
+        self.assertEqual((panel["quien"], panel["texto"]), ("panel", "$ ls\nfoo"))
+        self.assertEqual(m.aplanar({}), [])

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
+from telar import conversacion
 from telar import historia as h
 
 
@@ -55,11 +57,14 @@ class DeDondeSeLee(Prueba):
         return SimpleNamespace(config=SimpleNamespace(agente=SimpleNamespace(nombre=agente)))
 
     def test_la_primera_conversacion_con_archivo(self):
-        agente = SimpleNamespace(mensajes=lambda sid: None if sid == "sin" else [m("usuario", sid)])
-        hilo = SimpleNamespace(nombre="Faro", id="@1", sesiones=("sin", "con"))
-        with mock.patch("telar.agente.obtener", return_value=agente):
+        agente = SimpleNamespace(archivo_de=lambda sid: None if sid == "sin-archivo" else Path(f"/x/{sid}.jsonl"),
+                                 mensajes=lambda sid: [m("usuario", sid)])
+        hilo = SimpleNamespace(nombre="Faro", id="@1", sesiones=("sin-archivo", "con-archivo"))
+        with mock.patch("telar.conversacion._agente", return_value=agente), \
+                mock.patch.object(Path, "stat", return_value=SimpleNamespace(st_mtime_ns=1, st_size=1)):
+            conversacion._cache.clear()
             d = h.leer(self.ctx(), SimpleNamespace(mux=None), hilo)
-        self.assertEqual((d["fuente"], d["conversacion"]), ("conversacion", "con"))
+        self.assertEqual((d["fuente"], d["conversacion"]), ("conversacion", "con-archivo"))
 
     def test_sin_conversacion_el_panel_sin_relleno(self):
         mux = SimpleNamespace(pane_de=lambda i: SimpleNamespace(id="%1"),
