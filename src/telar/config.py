@@ -274,6 +274,8 @@ class Config:
     sesion: str = "telar"
     #: raíz del repositorio de trabajo: de ahí sale el perfil y ahí viven los hilos.
     raiz: Path = field(default_factory=Path.cwd)
+    #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
+    periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -624,10 +626,20 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos),
                                    no_leer=tuple(v.strip() for v in no_leer if v.strip()))
 
+    if "periodicos" in datos:
+        cuerpo = _tabla(datos["periodicos"], "periodicos")
+        sobra = set(cuerpo) - {"en"}
+        if sobra:
+            raise ErrorDeConfig(f"periodicos.{sorted(sobra)[0]}: no existe")
+        en = cuerpo.get("en", "")
+        if not isinstance(en, str):
+            raise ErrorDeConfig(f"periodicos.en: se esperaba el nombre de un remoto, llegó {en!r}")
+        cambios["periodicos_en"] = en.strip()
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
-        "enlaces", "enlace",
+        "enlaces", "enlace", "periodicos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
