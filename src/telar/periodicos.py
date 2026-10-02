@@ -127,7 +127,7 @@ class Horario:
         for parte in texto.split(","):
             m = re.fullmatch(r"(\*|\d+(?:-\d+)?)(?:/(\d+))?", parte)
             if not m:
-                raise ErrorDePeriodicos(f"no entiendo «{parte}» en el {nombre}")
+                raise ErrorDePeriodicos(f"no entiendo «{parte}» en el campo {nombre}")
             rango, paso = m.group(1), int(m.group(2) or 1)
             if rango == "*":
                 a, b = bajo, alto
@@ -138,7 +138,7 @@ class Horario:
                 if m.group(2):
                     b = alto  # «5/15»: desde 5, cada 15
             if not (bajo <= a <= alto and bajo <= b <= alto and a <= b) or paso < 1:
-                raise ErrorDePeriodicos(f"«{parte}» se sale del {nombre} ({bajo}-{alto})")
+                raise ErrorDePeriodicos(f"«{parte}» está fuera de rango en el campo {nombre} ({bajo}-{alto})")
             salida.update(range(a, b + 1, paso))
         return salida
 

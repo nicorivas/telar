@@ -115,7 +115,9 @@ class Correr(Prueba):
         crear.assert_not_called()
 
 
-class LaOrden(Prueba):
+class _ConArchivo(Prueba):
+    """Un config.toml vacío en una carpeta temporal y `aplicar` que no toca el crontab de verdad."""
+
     def setUp(self):
         super().setUp()
         self.tmp = tempfile.TemporaryDirectory()
@@ -138,6 +140,8 @@ class LaOrden(Prueba):
             codigo = orden.main(list(argv), self.ctx)
         return codigo, salida.getvalue() + err.getvalue()
 
+
+class LaOrden(_ConArchivo):
     def test_crear_cambiar_pausar_borrar(self):
         self.assertEqual(self.orden("nuevo", "eco", "--cuando", "0 9 * * *", "--comando", "echo hola")[0], 0)
         self.assertNotEqual(self.orden("nuevo", "eco", "--cuando", "0 9 * * *", "--comando", "x")[0], 0)
@@ -167,3 +171,33 @@ class LaOrden(Prueba):
             orden.main(["pausar", "eco", "--json"], ctx)
         linea = run.call_args.args[0][-1]
         self.assertIn("telar periodicos pausar eco --json --en aqui", linea)
+
+
+class ElFormulario(_ConArchivo):
+    """Lo que usa el formulario del dashboard: el horario al escribir, las skills, editar todo junto."""
+
+    def test_el_horario_dice_sus_proximas_o_por_que_no(self):
+        codigo, salida = self.orden("horario", "0 9 * * *", "--json", "--n", "2")
+        datos = json.loads(salida)
+        self.assertEqual((codigo, datos["valido"], len(datos["proximas"])), (0, True, 2))
+        codigo, salida = self.orden("horario", "0 25 * * *", "--json")
+        datos = json.loads(salida)
+        self.assertEqual((codigo, datos["valido"]), (0, False))
+        self.assertIn("hora", datos["error"])
+
+    def test_editar_todo_de_una(self):
+        self.orden("nuevo", "x", "--cuando", "0 9 * * *", "--mensaje", "/correo", "--arg=--permission-mode", "--arg", "acceptEdits")
+        self.assertEqual(m.leer(self.ruta).procesos[0].argumentos, ("--permission-mode", "acceptEdits"))
+        codigo, _ = self.orden("editar", "x", "--cuando", "0 10 * * *", "--hilo", "✉", "--max", "2", "--sin-args",
+                               "--descripcion", "", "--activo", "no")
+        p = m.leer(self.ruta).procesos[0]
+        self.assertEqual((codigo, p.cuando, p.hilo, p.max_abiertos, p.argumentos, p.activo), (0, "0 10 * * *", "✉", 2, (), False))
+
+    def test_las_skills_de_una_carpeta(self):
+        ctx = SimpleNamespace(config=mod_config.Config(agente=mod_config.Agente(nombre="claude-code")))
+        falso = SimpleNamespace(skills=lambda carpeta: [{"nombre": "correo", "descripcion": "el correo", "origen": "proyecto", "ruta": "/x"}])
+        from telar.ordenes import periodicos as orden
+
+        with mock.patch("telar.agente.obtener", return_value=falso), redirect_stdout(io.StringIO()) as salida:
+            orden.main(["skills", "--carpeta", "/tmp", "--json"], ctx)
+        self.assertEqual(json.loads(salida.getvalue())["skills"], [{"nombre": "correo", "descripcion": "el correo", "origen": "proyecto"}])

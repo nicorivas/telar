@@ -10,6 +10,11 @@
     telar periodicos correr <nombre>              correrlo ya y esperar (lo que llama cron)
     telar periodicos aplicar                      escribir el bloque de telar en el crontab
     telar periodicos zona America/Santiago        en qué hora se leen los horarios
+    telar periodicos horario "0 9 * * 1-5" [--n 3]   si se entiende, y sus próximas corridas
+    telar periodicos skills [--carpeta ~/trabajo]    las skills que tiene a mano el agente allí
+
+Al editar, `--arg` se repite (con `=` si el valor empieza con guion: `--arg=--permission-mode`),
+`--sin-args` los quita todos, y `--activo si|no` pausa o activa en la misma orden.
 
 Se definen en `periodicos.toml`, al lado de config.toml, en la máquina que los corre; ver
 `telar.periodicos`. Todo cambio hecho por aquí reescribe el crontab al tiro (`aplicar`).
@@ -24,13 +29,15 @@ import shlex
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 
 from telar import periodicos as mod
 from telar.ordenes import _comun
 
 AYUDA = "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos."
 
-VERBOS = ("ver", "log", "nuevo", "editar", "pausar", "activar", "borrar", "ahora", "correr", "aplicar", "zona")
+VERBOS = ("ver", "log", "nuevo", "editar", "pausar", "activar", "borrar", "ahora", "correr", "aplicar", "zona",
+          "horario", "skills")
 
 
 def _analizador():
@@ -47,6 +54,9 @@ def _analizador():
     p.add_argument("--carpeta", default=None, help="dónde corre (por defecto, el hogar)")
     p.add_argument("--descripcion", default=None, help="para qué es, en una línea")
     p.add_argument("--pausado", action="store_true", help="con nuevo: crearlo sin activarlo")
+    p.add_argument("--activo", choices=("si", "no"), default=None, help="con editar: activarlo o pausarlo")
+    p.add_argument("--sin-args", dest="sin_args", action="store_true", help="con editar: quitarle los argumentos")
+    p.add_argument("--n", type=int, default=3, help="con horario: cuántas corridas")
     p.add_argument("--lineas", type=int, default=80, help="con log: cuántas")
     p.add_argument("--en", default=None, metavar="REMOTO", help="hacerlo en esa máquina de [remotos]; «aqui» para esta")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
@@ -118,6 +128,41 @@ def _aqui(ctx, o) -> int:
             print(_comun.tenue("    " + " · ".join(detalle)))
         return 0
 
+    if o.verbo == "horario":
+        # nunca falla: dice si se entiende y, si no, por qué (el formulario lo muestra al escribir)
+        try:
+            h = mod.Horario(o.nombre)
+            tz = mod.zona_info(archivo.zona)
+            proximas, t = [], datetime.now(tz)
+            for _ in range(max(1, min(o.n, 20))):
+                t = h.proxima(t)
+                if t is None:
+                    break
+                proximas.append(t.isoformat(timespec="minutes"))
+            datos = {"valido": True, "cuando": h.texto, "proximas": proximas, "error": ""}
+        except mod.ErrorDePeriodicos as e:
+            datos = {"valido": False, "cuando": o.nombre, "proximas": [], "error": str(e)}
+        if o.json:
+            return _comun.escribir_json(datos)
+        print("\n".join(x.replace("T", " ") for x in datos["proximas"]) if datos["valido"] else datos["error"])
+        return 0 if datos["valido"] else 1
+
+    if o.verbo == "skills":
+        from pathlib import Path
+
+        from telar import agente as mod_agente
+
+        if not ctx.config.agente.nombre:
+            return _comun.queja("no hay agente: [agente] nombre en config.toml")
+        carpeta = Path(o.carpeta or "~").expanduser()
+        skills = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).skills(carpeta)
+        lista = [{"nombre": x["nombre"], "descripcion": x.get("descripcion", ""), "origen": x.get("origen", "")} for x in skills]
+        if o.json:
+            return _comun.escribir_json({"carpeta": str(carpeta), "skills": lista})
+        for x in lista:
+            print(f"/{x['nombre']}  " + _comun.tenue(x["descripcion"][:100]))
+        return 0
+
     if o.verbo == "log":
         _requerir(archivo, o.nombre)
         texto = mod.log(ctx.config, o.nombre, max(1, o.lineas))
@@ -161,8 +206,12 @@ def _aqui(ctx, o) -> int:
         campos = {k: v for k, v in (("cuando", o.cuando), ("comando", o.comando), ("mensaje", o.mensaje),
                                      ("hilo", o.hilo), ("max_abiertos", o.max), ("argumentos", o.arg),
                                      ("carpeta", o.carpeta), ("descripcion", o.descripcion)) if v is not None}
+        if o.sin_args:
+            campos["argumentos"] = ()
+        if o.activo is not None:
+            campos["activo"] = o.activo == "si"
         if not campos:
-            return _comun.queja("¿qué cambio? --cuando, --comando, --mensaje, --hilo, --max, --arg, --carpeta, --descripcion")
+            return _comun.queja("¿qué cambio? --cuando, --comando, --mensaje, --hilo, --max, --arg, --sin-args, --carpeta, --descripcion, --activo")
         mod.cambiar(archivo, o.nombre, **campos)
         hecho = f"{o.nombre}: cambiado ({', '.join(campos)})"
     elif o.verbo in ("pausar", "activar"):
