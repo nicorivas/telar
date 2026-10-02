@@ -688,7 +688,7 @@ La foto (versión 1):
 ```json
 {
   "version": 1, "maquina": "macbook-nico", "telar": "0.1.9",
-  "publicado": "2026-09-30T10:20:00-03:00", "sesion": "brinca",
+  "publicado": "2026-09-30T10:20:00-03:00", "sesion": "faro",
   "hilos": [
     {"nombre": "Faro", "atencion": "espera", "vivo": true, "activo": false, "prioridad": 1,
      "tiempo": 5400.0, "visto": null, "relativa": "proyectos/faro", "arquetipo": "proyecto",
@@ -706,7 +706,7 @@ documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 
 ```json
 {"vigente": 120.0,
  "espejos": [{"nombre": "macbook-nico", "en_linea": true, "edad": 12.3, "recibido": 1790000000.1,
-              "publicado": "2026-09-30T10:20:00-03:00", "telar": "0.1.9", "sesion": "brinca",
+              "publicado": "2026-09-30T10:20:00-03:00", "telar": "0.1.9", "sesion": "faro",
               "hilos": []},
              {"nombre": "roto", "error": "no se pudo leer: …", "en_linea": false, "edad": null, "hilos": []}]}
 ```
@@ -769,7 +769,7 @@ Solo existe con `telar web --escribir`; sin eso responde 403. Pide `Content-Type
 encabezado `X-Telar: 1` y que `Host` (y `Origin`, si viene) sean los de ese servidor.
 
 ```json
-{"maquina": "", "hilo": "Kichoro", "texto": "hola", "enter": true}
+{"maquina": "", "hilo": "Lumbre", "texto": "hola", "enter": true}
 ```
 
 `maquina` vacío es la máquina del servidor; con un nombre (el `nombre` de un espejo), esa máquina por

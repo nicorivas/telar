@@ -345,12 +345,12 @@ class TraerLaFoto(ConPuerta):
     def test_la_foto_pedida_queda_guardada_con_el_nombre_de_la_maquina(self):
         from telar import espejo
 
-        foto = {"version": 1, "maquina": "macbook-de-nico", "telar": "0.1.9", "publicado": "", "sesion": "brinca",
+        foto = {"version": 1, "maquina": "macbook-de-ana", "telar": "0.1.9", "publicado": "", "sesion": "faro",
                 "hilos": [{"nombre": "Faro", "atencion": "espera", "vivo": True}]}
         with mock.patch.object(m, "llamar", return_value={"ok": True, "verbo": "hilos", "foto": foto}):
             self.assertEqual(m.traer_foto(self.ctx.config, self.enlace()), "")
         [guardada] = espejo.leer_todos(self.ctx.config)
-        self.assertEqual(guardada["nombre"], "macbook-de-nico")
+        self.assertEqual(guardada["nombre"], "macbook-de-ana")
         self.assertTrue(guardada["en_linea"])
         self.assertEqual(guardada["hilos"][0]["nombre"], "Faro")
 

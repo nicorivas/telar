@@ -455,7 +455,7 @@ En **el servidor** (quien llama), la configuración dice a dónde:
 
 ```toml
 [enlaces.laptop]
-destino = "nico@100.107.195.13"   # usuario@máquina; el nombre o la IP de Tailscale
+destino = "nico@100.64.0.12"   # usuario@máquina; el nombre o la IP de Tailscale
 llave = "~/.ssh/telar_enlace"     # la crea `telar enlace instalar`
 ```
 
@@ -480,7 +480,7 @@ vetado responde igual que uno que no existe.
 Montarlo, una vez:
 
 ```
-telar enlace instalar --destino nico@100.107.195.13     # servidor: crea la llave y dice qué hacer
+telar enlace instalar --destino nico@100.64.0.12     # servidor: crea la llave y dice qué hacer
 telar enlace autorizar "ssh-ed25519 AAAA… telar-enlace"  # laptop: ata la llave a la puerta
 telar enlace ping                                        # servidor: ¿responde?
 ```

@@ -27,7 +27,7 @@ def hilo(nombre="Faro", **extra):
 
 def foto(*hilos, **extra):
     return {"version": m.VERSION, "maquina": "x", "telar": "0.1.9", "publicado": "2026-09-30T10:00:00-03:00",
-            "sesion": "brinca", "hilos": list(hilos or [hilo()]), **extra}
+            "sesion": "faro", "hilos": list(hilos or [hilo()]), **extra}
 
 
 class ConCarpeta(Prueba):
@@ -41,7 +41,7 @@ class ConCarpeta(Prueba):
 
 class Nombres(Prueba):
     def test_un_hostname_se_vuelve_un_nombre_de_archivo(self):
-        self.assertEqual(m.nombre_valido("MacBook de Nico"), "macbook-de-nico")
+        self.assertEqual(m.nombre_valido("MacBook de Ana"), "macbook-de-ana")
         self.assertEqual(m.nombre_valido("laptop.local"), "laptop-local")
         self.assertEqual(m.nombre_valido("¿¿"), "")
 
@@ -120,7 +120,7 @@ class LaFoto(Prueba):
         cuerpos = {"A": {**hilo("A"), "ruta": "/home/x/secreto", "sesiones": ["uuid"], "archivado": False,
                          "ficha": {"etiqueta": "Cliente · A", "estado": "Estado: confidencial"}},
                    "B": {**hilo("B"), "archivado": True}}
-        tel = SimpleNamespace(sesion="brinca", hilos=[SimpleNamespace(archivado=c["archivado"], nombre=n) for n, c in cuerpos.items()])
+        tel = SimpleNamespace(sesion="faro", hilos=[SimpleNamespace(archivado=c["archivado"], nombre=n) for n, c in cuerpos.items()])
         with mock.patch("telar.ordenes._comun.json_hilo", side_effect=lambda h, t, **k: cuerpos[h.nombre]):
             f = m.foto(tel, maquina="laptop", version_telar="0.1.9")
         self.assertEqual([h["nombre"] for h in f["hilos"]], ["A"])

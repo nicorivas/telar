@@ -201,11 +201,11 @@ class Escritura(Prueba):
 
     def test_un_envio_al_laptop_va_por_el_enlace(self):
         puerto = self.servir()
-        with mock.patch.object(web.enlace, "llamar", return_value={"ok": True, "hilo": "Kichoro"}) as llamar:
-            codigo, _ = self.post(puerto, {"maquina": "macbook-de-nico", "hilo": "Kichoro", "texto": "hola", "enter": True})
+        with mock.patch.object(web.enlace, "llamar", return_value={"ok": True, "hilo": "Lumbre"}) as llamar:
+            codigo, _ = self.post(puerto, {"maquina": "macbook-de-ana", "hilo": "Lumbre", "texto": "hola", "enter": True})
         self.assertEqual(codigo, 200)
         self.assertEqual(llamar.call_args.args[0].nombre, "laptop")  # un solo enlace: es ese
-        self.assertEqual(llamar.call_args.args[1:3], ("enviar", ["Kichoro", "enter"]))
+        self.assertEqual(llamar.call_args.args[1:3], ("enviar", ["Lumbre", "enter"]))
         self.assertEqual(llamar.call_args.args[3], b"hola")
 
     def test_con_varios_enlaces_hay_que_llamarse_igual(self):

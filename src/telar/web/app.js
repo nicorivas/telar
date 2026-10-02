@@ -76,7 +76,7 @@ function pendientes(d) {
     .map((f) => {
       const dias = f.cuando ? Math.round((Date.parse(`${f.cuando.slice(0, 10)}T00:00:00`) - hoy) / 86400000) : null;
       const avance = (f.avance || '').split(' ')[0].split(':')[0];
-      // el código va aparte del texto: «AGP-11: hacer algo» o el id de la tarea
+      // el código va aparte del texto: «FAR-11: hacer algo» o el id de la tarea
       let id = f.id && f.id.length <= 8 ? f.id : '';
       let texto = f.texto || '';
       const m = !id && /^([A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*-\d+)\s*:\s*/.exec(texto);

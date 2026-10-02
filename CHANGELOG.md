@@ -6,13 +6,14 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-10-02
+
 ### Added
 
 - VS Code: a ✓ on hover in each task row (sidebar and dashboard) marks it done without opening its card. It runs
   the action the provider declares with `"rol": "hecha"`.
 - A task action's `mensaje` also takes `{texto}`, so an action can open a new session on the task with what was
   just typed in its card as the first prompt.
-
 - `telar hilo leer [thread] [--ultimos N]`: the last N turns of a thread's conversation (5 by default, 50 at
   most) as readable text — what was asked, what the agent answered, one line per tool call and never its
   output — with per-message and total caps; the pane's scrollback when there is no conversation here.
@@ -20,7 +21,6 @@ workflow refuses to run if the two disagree.
 - `telar enlace leer <thread> [--ultimos N]`: the same, as a sixth door verb. **Off by default**: add `"leer"`
   to `[enlace] verbos`; `[enlace] no_leer` keeps threads out by name or linked folder (glob), and a vetoed
   thread answers like a missing one.
-
 - `telar movil --hoy`: prints the day once (for testing).
 - `telar movil`: `h` shows the day on one phone-sized screen — agenda, who is waiting for you, pending
   items, time — from `telar hoy --json`, with the text wrapped instead of cut. Tapping (or ⏎ on) a thread
@@ -69,6 +69,9 @@ workflow refuses to run if the two disagree.
 ### Fixed
 
 - VS Code: clicking a task while the dashboard is hidden behind another tab now brings it to the front.
+- Resuming a remote thread failed with «No conversation found» when `/resume` inside it had switched to another
+  conversation: `telar hilo retomar` now asks the other machine which of the thread's conversations has a file
+  there, the one its own hooks recorded first.
 - An `[enlace]` table without `entrada` failed to load (`Puerta.entrada` is a slot, not the default).
 
 ## [0.1.9] — 2026-09-29
@@ -378,7 +381,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/nicorivas/telar/compare/v0.1.9...v0.1.10
 [0.1.4]: https://github.com/nicorivas/telar/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/nicorivas/telar/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/nicorivas/telar/compare/v0.1.1...v0.1.2

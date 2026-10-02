@@ -58,7 +58,7 @@ def nombre_de_esta_maquina() -> str:
 
 
 def nombre_valido(texto: str) -> str:
-    """`MacBook de Nico` → `macbook-de-nico`; «» si no queda nada aprovechable."""
+    """`MacBook de Ana` → `macbook-de-ana`; «» si no queda nada aprovechable."""
     limpio = re.sub(r"[^a-z0-9_-]+", "-", texto.lower()).strip("-_")[:32]
     return limpio if NOMBRE.match(limpio) else ""
 

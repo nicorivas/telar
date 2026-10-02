@@ -220,7 +220,7 @@ class PantallaHoy(Prueba):
         "fecha": "2026-09-28", "semana": 40,
         "agenda": [{"cuando": "2026-09-28T09:00:00", "texto": "Coordinación semanal con un nombre bastante largo para partir", "hilo": ""}],
         "atencion": [{"nombre": "Pizza", "atencion": "espera"}, {"nombre": "Faro", "atencion": "termino"}],
-        "pendientes": [{"ref": "brinca/x:1", "texto": "AGP-11: algo por hacer", "en_curso": False}],
+        "pendientes": [{"ref": "faro/x:1", "texto": "FAR-11: algo por hacer", "en_curso": False}],
         "tiempo": {"total": 5700.0, "hilos": {}}, "proveedores": {"declarados": [], "fallas": []},
     }
 
