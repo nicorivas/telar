@@ -282,6 +282,20 @@ export const accionTarea = (id: string, proveedor: string, n: number, texto = ''
     telarJson<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>(
         ['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
 
+/** Los procesos periódicos (`telar periodicos`), de esta máquina o de `[periodicos] en`. */
+export interface JsonPeriodico {
+    nombre: string; cuando: string; tipo: 'comando' | 'mensaje'; comando: string; mensaje: string; hilo: string;
+    max_abiertos: number; argumentos: string[]; carpeta: string; descripcion: string; activo: boolean;
+    proxima: string;
+    ultima: { inicio?: string; fin?: string; codigo?: number; resultado?: string; corriendo?: boolean; hilo?: string };
+}
+export interface JsonPeriodicos { maquina: string; archivo: string; zona: string; procesos: JsonPeriodico[] }
+
+export const periodicos = () => telarJson<JsonPeriodicos>(['periodicos', 'ver'], 30000);
+export const periodicosLog = (nombre: string) => telarJson<{ nombre: string; log: string }>(['periodicos', 'log', nombre, '--lineas', '200'], 30000);
+/** Cambiar uno: `nuevo`, `editar`, `pausar`, `activar`, `borrar`, `ahora`, con sus banderas. */
+export const periodicosOrden = (args: string[]) => telarJson<{ ok: boolean; hecho: string }>(['periodicos', ...args], 60000);
+
 /** Una conversación del agente, entera, para leerla. */
 export interface JsonConversacion {
     conversacion: string; archivo: string; hilo: string;

@@ -371,6 +371,14 @@ export const CSS_DIA = `
   .av { font-weight: bold; margin-right: 1ch; }
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
   #ficha-tarea { --c: var(--verde); }
+  /* la pestaña de procesos periódicos: una fila por proceso, y su ficha con el log */
+  .fila.per { display: grid; grid-template-columns: 2ch 22ch 16ch minmax(0, 1fr) max-content; }
+  .fila.per b, .fila.per .que, .fila.per code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila.per.dim b { color: var(--dim); }
+  #ficha-per .fila { white-space: normal; } #ficha-per .fila .que { overflow-wrap: anywhere; }
+  #ficha-per pre.log { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); max-height: 60vh; overflow: auto;
+    box-shadow: inset 2px 0 0 var(--linea); padding: 0 2ch; margin: 0; }
+  @media (max-width: 90ch) { .fila.per { grid-template-columns: 2ch minmax(0, 1fr) max-content; } .fila.per code, .fila.per .que { display: none; } }
   .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
   .sub-ficha { white-space: normal; overflow-wrap: anywhere; }
   .prop h2 { color: var(--c); }
@@ -596,6 +604,11 @@ document.addEventListener('keydown', function (e) {
   if (document.getElementById('ficha-tarea') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     const acc = { Enter: 'tarea-principal', ArrowRight: 'tarea-siguiente', ArrowLeft: 'tarea-anterior', Escape: 'volver-ficha' }[e.key];
     if (acc) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: acc }); }
+  }
+  // en la ficha de un proceso periódico: ⏎ lo corre ahora, ⎋ vuelve a la lista
+  if (document.getElementById('ficha-per') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === 'Enter') { e.preventDefault(); return vscode.postMessage({ tipo: 'tecla', k: '⏎' }); }
+    if (e.key === 'Escape') { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'periodicos' }); }
   }
   // en «revisar», ⏎ abre la primera propuesta
   if (document.getElementById('revisar') && e.key === 'Enter') {

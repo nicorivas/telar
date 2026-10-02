@@ -22,7 +22,11 @@ import { llevarPendiente, marcarHecha } from './tareas';
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' = 'dia';
+    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' = 'dia';
+    /** la pestaña de los procesos periódicos: la lista leída y el abierto (con su log), si hay uno */
+    private periodicos?: cli.JsonPeriodicos;
+    private periodicosError = '';
+    private periodico?: { nombre: string; log: string };
     /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada. `pestana:<n>` es
      *  la de un proveedor con pestaña propia (un feed) */
     private fichaDesde = 'dia';
@@ -104,6 +108,7 @@ export class PanelHoy {
         if (this.panel && this.pantalla === 'config') { this.renderConfig(); return; }
         if (this.panel && this.pantalla === 'revisar') { this.renderRevisar(); return; }
         if (this.panel && this.pantalla === 'pestana') { this.renderPestana(); return; }
+        if (this.panel && this.pantalla === 'periodicos') { this.renderPeriodicos(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
@@ -143,6 +148,7 @@ export class PanelHoy {
             ['revisar', 'revisar', '', aRevisar ? `revisar ${aRevisar}` : 'revisar', 'v'],
             ...deProveedores,
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
+            ['periodicos', 'periodicos', '', 'periódicos', 'o'],
             ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
             ...modelo.secciones.filter(x => x.home).map(x =>
                 [`seccion:${x.clave}`, 'seccion', x.clave, x.nombre.toLowerCase(), ''] as [string, string, string, string, string]),
@@ -383,6 +389,154 @@ export class PanelHoy {
         });
         h.push('</section></div>');
         this.pintar(h);
+    }
+
+    // ── procesos periódicos ────────────────────────────────────────────────────
+
+    /** La pestaña de los procesos que corren solos: de esta máquina, o de la de `[periodicos] en`. */
+    private async abrirPeriodicos(): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'periodicos';
+        if (!this.periodicos) this.pintar(['<div class="vacio">leyendo los procesos periódicos…</div>']);
+        const r = await cli.periodicos();
+        this.periodicos = r.datos ?? this.periodicos;
+        this.periodicosError = r.datos ? '' : (r.error ?? 'no contestó');
+        if (this.pantalla === 'periodicos') this.renderPeriodicos();
+    }
+
+    private renderPeriodicos(): void {
+        const d = this.periodicos;
+        this.teclas.clear();
+        this.teclas.set('+', () => this.nuevoPeriodico());
+        if (this.periodico) { this.renderPeriodico(); return; }
+        const lista = d?.procesos ?? [];
+        const activos = lista.filter(p => p.activo).length;
+        const h = [seccion(`periódicos${d?.maquina ? ` · ${d.maquina}` : ''}`, 'amarillo', lista.length ? `${activos}/${lista.length}` : '',
+            atajo('+', 'nuevo', 'per-nuevo', '', 'un proceso nuevo: un comando de shell o un prompt para el agente'))];
+        if (this.periodicosError) h.push(`<div class="vacio falla">${esc(this.periodicosError)}</div>`);
+        if (d && !lista.length) h.push(`<div class="vacio">ninguno todavía · <a data-accion="per-nuevo">crear uno</a> · se guardan en ${esc(d.archivo)}</div>`);
+        for (const p of lista) {
+            const [marca, color, dice] = estadoPeriodico(p);
+            const que = p.tipo === 'mensaje' ? `✦ ${p.mensaje}` : p.comando;
+            const cuando = p.activo ? (p.proxima ? `en ${enCuanto(p.proxima)}` : '—') : 'pausado';
+            const ultima = p.ultima.inicio ? `hace ${haceCorto(p.ultima.inicio)}` : 'nunca';
+            h.push(`<div class="fila clic per${p.activo ? '' : ' dim'}" data-accion="per-ver" data-valor="${esc(p.nombre)}" title="${esc(`${p.descripcion ? p.descripcion + '\n' : ''}${dice}\nclic: su ficha y su log`)}">`
+                + `<span style="color: var(--${color})">${marca}</span><b>${esc(p.nombre)}</b>`
+                + `<code class="dim">${esc(p.cuando)}</code><span class="que">${esc(que)}</span>`
+                + `<span class="der dim">${esc(cuando)} · ${esc(ultima)}</span></div>`);
+        }
+        h.push('</section>');
+        if (d) h.push(`<div class="vacio dim">${esc(d.archivo)}${d.zona ? ` · hora de ${esc(d.zona)}` : ''}</div>`);
+        this.pintar(h);
+    }
+
+    private async verPeriodico(nombre: string): Promise<void> {
+        this.periodico = { nombre, log: 'leyendo…' };
+        this.renderPeriodicos();
+        const r = await cli.periodicosLog(nombre);
+        if (this.periodico?.nombre !== nombre) return;
+        this.periodico.log = r.datos ? (r.datos.log || '(todavía no ha corrido)') : (r.error ?? 'no contestó');
+        if (this.pantalla === 'periodicos') this.renderPeriodicos();
+    }
+
+    private renderPeriodico(): void {
+        const actual = this.periodico;
+        const p = this.periodicos?.procesos.find(x => x.nombre === actual?.nombre);
+        if (!actual || !p) { this.periodico = undefined; this.renderPeriodicos(); return; }
+        const [marca, color, dice] = estadoPeriodico(p);
+        const orden = (args: string[]) => esc(JSON.stringify(args));
+        const botones = [
+            `<a class="atajo principal" data-accion="per-orden" data-valor="${orden(['ahora', p.nombre])}"><kbd>⏎</kbd><span>correr ahora</span></a>`,
+            `<a class="atajo" data-accion="per-orden" data-valor="${orden([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? '⏸ pausar' : '▶ activar'}</span></a>`,
+            `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>✎ editar</span></a>`,
+            `<a class="atajo" data-accion="per-orden" data-valor="${orden(['borrar', p.nombre])}"><kbd>3</kbd><span>✕ borrar</span></a>`,
+            `<a class="atajo" data-accion="periodicos"><kbd>⎋</kbd><span>volver</span></a>`,
+        ];
+        this.teclas.set('⏎', () => this.ordenPeriodico(['ahora', p.nombre]));
+        this.teclas.set('1', () => this.ordenPeriodico([p.activo ? 'pausar' : 'activar', p.nombre]));
+        this.teclas.set('2', () => this.editarPeriodico(p.nombre));
+        this.teclas.set('3', () => this.ordenPeriodico(['borrar', p.nombre]));
+        const filas: [string, string][] = [
+            ['cuándo', `${p.cuando}${p.proxima ? ` · la próxima ${p.proxima.slice(5, 16).replace('T', ' ')} (en ${enCuanto(p.proxima)})` : ''}`],
+            p.tipo === 'mensaje' ? ['prompt', p.mensaje] : ['comando', p.comando],
+            ...(p.tipo === 'mensaje' ? [['hilo', `${p.hilo || p.nombre} · hasta ${p.max_abiertos} abierto(s)`] as [string, string]] : []),
+            ...(p.argumentos.length ? [['argumentos', p.argumentos.join(' ')] as [string, string]] : []),
+            ...(p.carpeta ? [['carpeta', p.carpeta] as [string, string]] : []),
+            ['última', p.ultima.inicio ? `${p.ultima.inicio.slice(5, 16).replace('T', ' ')} · ${p.ultima.resultado ?? 'corriendo'}${p.ultima.hilo ? ` · «${p.ultima.hilo}»` : ''}` : 'nunca'],
+        ];
+        this.pintar([`<div id="ficha-per" style="--c: var(--${color})">`,
+            `<div class="subcab"><b>${marca} ${esc(p.nombre)}</b><span class="der dim">${esc(dice)}</span></div>`,
+            p.descripcion ? `<div class="sub-ficha dim">${esc(p.descripcion)}</div>` : '',
+            `<div class="acciones-t">${botones.join('')}</div>`,
+            ...filas.map(([k, v]) => `<div class="fila"><span class="dim" style="min-width: 11ch">${esc(k)}</span><span class="que">${esc(v)}</span></div>`),
+            `<h2 class="sec">log</h2><pre class="log">${esc(actual.log)}</pre></div>`]);
+    }
+
+    /** Corre una orden de `telar periodicos` y relee: la lista cambia (o el log, si se corrió). */
+    private async ordenPeriodico(args: string[]): Promise<void> {
+        if (args[0] === 'borrar') {
+            const si = await vscode.window.showWarningMessage(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, { modal: true }, 'Borrar');
+            if (si !== 'Borrar') return;
+        }
+        const r = await cli.periodicosOrden(args);
+        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no se pudo'}`); return; }
+        vscode.window.setStatusBarMessage(`telar: ${r.datos.hecho}`, 5000);
+        if (args[0] === 'borrar') this.periodico = undefined;
+        await this.abrirPeriodicos();
+        if (this.periodico) {
+            // «ahora» corre suelto: el log se relee en unos segundos, cuando ya escribió algo
+            const nombre = this.periodico.nombre;
+            setTimeout(() => { if (this.periodico?.nombre === nombre) void this.abrirPeriodicos().then(() => this.verPeriodico(nombre)); }, args[0] === 'ahora' ? 4000 : 0);
+        }
+    }
+
+    private async nuevoPeriodico(): Promise<void> {
+        const nombre = await vscode.window.showInputBox({ title: 'Un proceso periódico nuevo (1/4)', prompt: 'su nombre',
+            placeHolder: 'resumen-diario', ignoreFocusOut: true,
+            validateInput: v => /^[a-z0-9][a-z0-9_-]{0,47}$/.test(v) ? undefined : 'minúsculas, números, - y _' });
+        if (!nombre) return;
+        const cuando = await pedirHorario('Un proceso periódico nuevo (2/4)', '');
+        if (!cuando) return;
+        const tipo = await vscode.window.showQuickPick([
+            { label: '✦ un prompt para el agente', description: 'abre un hilo con el agente haciéndolo, que se puede mirar', valor: 'mensaje' },
+            { label: '$ un comando de shell', description: 'corre una línea en bash; su salida queda en el log', valor: 'comando' }],
+            { title: 'Un proceso periódico nuevo (3/4)', placeHolder: '¿qué hace?', ignoreFocusOut: true });
+        if (!tipo) return;
+        const texto = await vscode.window.showInputBox({ title: 'Un proceso periódico nuevo (4/4)', ignoreFocusOut: true,
+            prompt: tipo.valor === 'mensaje' ? 'el prompt (una skill, como /correo, o lo que quieras pedirle)' : 'la línea de shell',
+            placeHolder: tipo.valor === 'mensaje' ? '/correo' : '~/bin/resumen --corto' });
+        if (!texto) return;
+        const args = ['nuevo', nombre, '--cuando', cuando, tipo.valor === 'mensaje' ? '--mensaje' : '--comando', texto];
+        if (tipo.valor === 'mensaje') {
+            const hilo = await vscode.window.showInputBox({ title: 'El nombre de su hilo (opcional)', ignoreFocusOut: true,
+                prompt: 'se le agrega la fecha y la hora; vacío: el nombre del proceso', placeHolder: '✉ correo' });
+            if (hilo) args.push('--hilo', hilo);
+        }
+        this.periodico = { nombre, log: '' };
+        await this.ordenPeriodico(args);
+    }
+
+    private async editarPeriodico(nombre: string): Promise<void> {
+        const p = this.periodicos?.procesos.find(x => x.nombre === nombre);
+        if (!p) return;
+        const campos = [
+            { label: 'cuándo', description: p.cuando, bandera: '--cuando', valor: p.cuando },
+            p.tipo === 'mensaje' ? { label: 'prompt', description: p.mensaje, bandera: '--mensaje', valor: p.mensaje }
+                : { label: 'comando', description: p.comando, bandera: '--comando', valor: p.comando },
+            ...(p.tipo === 'mensaje' ? [{ label: 'hilo', description: p.hilo || '(el nombre del proceso)', bandera: '--hilo', valor: p.hilo },
+                { label: 'abiertos a la vez', description: String(p.max_abiertos), bandera: '--max', valor: String(p.max_abiertos) }] : []),
+            { label: 'carpeta', description: p.carpeta || '(el hogar)', bandera: '--carpeta', valor: p.carpeta },
+            { label: 'descripción', description: p.descripcion || '—', bandera: '--descripcion', valor: p.descripcion },
+            p.tipo === 'mensaje' ? { label: 'cambiar a un comando de shell', description: '', bandera: '--comando', valor: '' }
+                : { label: 'cambiar a un prompt para el agente', description: '', bandera: '--mensaje', valor: '' },
+        ];
+        const campo = await vscode.window.showQuickPick(campos, { title: `Editar «${nombre}»`, placeHolder: '¿qué cambias?' });
+        if (!campo) return;
+        const valor = campo.bandera === '--cuando' ? await pedirHorario(`Editar «${nombre}»`, campo.valor)
+            : await vscode.window.showInputBox({ title: `Editar «${nombre}» · ${campo.label}`, value: campo.valor, ignoreFocusOut: true,
+                validateInput: v => campo.bandera === '--max' && !/^[1-9]\d*$/.test(v) ? 'un número desde 1' : undefined });
+        if (valor === undefined || (valor === '' && ['--cuando', '--comando', '--mensaje', '--max'].includes(campo.bandera))) return;
+        await this.ordenPeriodico(['editar', nombre, campo.bandera, valor]);
     }
 
     /** La pestaña de un proveedor que la declara (un feed): sus ítems en una lista, con la
@@ -924,6 +1078,7 @@ export class PanelHoy {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
                 p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
+                o: () => this.abrirPeriodicos(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
@@ -971,6 +1126,11 @@ export class PanelHoy {
             }
             case 'tarea-siguiente': await this.otraPropuesta(1); break;
             case 'revisar': await this.abrirRevisar(); break;
+            case 'periodicos': this.periodico = undefined; await this.abrirPeriodicos(); break;
+            case 'per-ver': if (m.valor) await this.verPeriodico(m.valor); break;
+            case 'per-nuevo': await this.nuevoPeriodico(); break;
+            case 'per-editar': if (m.valor) await this.editarPeriodico(m.valor); break;
+            case 'per-orden': if (m.valor) await this.ordenPeriodico(JSON.parse(m.valor) as string[]); break;
             case 'pestana': if (m.valor) await this.abrirPestana(m.valor); break;
             case 'volver-ficha':
                 if (this.fichaDesde === 'revisar') await this.abrirRevisar();
@@ -1057,4 +1217,40 @@ async function abrirEnlace(enlace: string): Promise<void> {
         return;
     }
     void vscode.window.showWarningMessage(`telar: no sé abrir ${enlace}`);
+}
+
+/** La marca, el color y la frase del estado de un proceso: pausado, corriendo, falló, bien. */
+function estadoPeriodico(p: cli.JsonPeriodico): [string, string, string] {
+    if (p.ultima.corriendo) return ['◐', 'azul', 'corriendo ahora'];
+    if (!p.activo) return ['⏸', 'dim', 'pausado: no corre hasta que lo actives'];
+    if (p.ultima.codigo !== undefined && p.ultima.codigo !== 0) return ['✗', 'rojo', `la última vez: ${p.ultima.resultado ?? 'falló'}`];
+    if (p.ultima.inicio) return ['●', 'verde', `la última vez: ${p.ultima.resultado ?? 'bien'}`];
+    return ['○', 'dim', 'todavía no ha corrido'];
+}
+
+/** «2 h 10», «35 min», «3 d»: cuánto falta hasta esa hora. */
+function enCuanto(iso: string): string {
+    const min = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000));
+    if (min < 60) return `${min} min`;
+    if (min < 60 * 24) return `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60}` : ''}`;
+    return `${Math.round(min / 1440)} d`;
+}
+
+/** El horario, con ejemplos a mano: cron tiene cinco campos y nadie los recuerda. */
+async function pedirHorario(titulo: string, actual: string): Promise<string | undefined> {
+    const ejemplos = [
+        { label: '0 9 * * *', description: 'todos los días a las 9:00' },
+        { label: '0 9 * * 1-5', description: 'de lunes a viernes a las 9:00' },
+        { label: '0 8-20/2 * * *', description: 'cada 2 horas, de 8:00 a 20:00' },
+        { label: '*/30 * * * *', description: 'cada 30 minutos' },
+        { label: '30 18 * * 5', description: 'los viernes a las 18:30' },
+        { label: '0 9 1 * *', description: 'el día 1 de cada mes a las 9:00' },
+        { label: '✎ escribirlo', description: 'minuto hora día-del-mes mes día-de-la-semana' },
+    ];
+    const elegido = await vscode.window.showQuickPick(actual ? [{ label: actual, description: 'el de ahora' }, ...ejemplos] : ejemplos,
+        { title: titulo, placeHolder: "¿cuándo corre? (cron)", ignoreFocusOut: true });
+    if (!elegido) return undefined;
+    if (!elegido.label.startsWith('✎')) return elegido.label;
+    return vscode.window.showInputBox({ title: titulo, value: actual, prompt: 'minuto hora día-del-mes mes día-de-la-semana', ignoreFocusOut: true,
+        validateInput: v => v.trim().split(/\s+/).length === 5 || v.trim().startsWith('@') ? undefined : 'cinco campos, separados por espacios' });
 }
