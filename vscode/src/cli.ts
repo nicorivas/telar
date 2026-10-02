@@ -293,6 +293,11 @@ export interface JsonPeriodicos { maquina: string; archivo: string; zona: string
 
 export const periodicos = () => telarJson<JsonPeriodicos>(['periodicos', 'ver'], 30000);
 export const periodicosLog = (nombre: string) => telarJson<{ nombre: string; log: string }>(['periodicos', 'log', nombre, '--lineas', '200'], 30000);
+export const periodicosHorario = (cuando: string) =>
+    telarJson<{ valido: boolean; cuando: string; proximas: string[]; error: string }>(['periodicos', 'horario', cuando, '--n', '3'], 30000);
+export interface JsonSkill { nombre: string; descripcion: string; origen: string }
+export const periodicosSkills = (carpeta: string) =>
+    telarJson<{ carpeta: string; skills: JsonSkill[] }>(['periodicos', 'skills', ...(carpeta ? ['--carpeta', carpeta] : [])], 30000);
 /** Cambiar uno: `nuevo`, `editar`, `pausar`, `activar`, `borrar`, `ahora`, con sus banderas. */
 export const periodicosOrden = (args: string[]) => telarJson<{ ok: boolean; hecho: string }>(['periodicos', ...args], 60000);
 

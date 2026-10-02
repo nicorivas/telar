@@ -15,8 +15,11 @@ workflow refuses to run if the two disagree.
   `nuevo`, `editar`, `pausar`, `activar`, `borrar`, `zona`, `ahora` and `log`. With `[periodicos] en` another machine
   sees and changes them over ssh.
 - VS Code: a «periódicos» tab in the dashboard (key `o`): each process with its schedule, next and last run and how
-  it went; its card with the log and run now, pause or resume, edit and delete; `+` creates one, with schedule
-  examples at hand.
+  it went; its card with the log and run now, pause or resume, edit and delete. `+` and edit open a form in the tab:
+  prompt or shell command, a searchable list of the skills available where it runs (picking one makes it the
+  prompt), schedule presets with a live preview of the next runs (or why the expression is wrong), the thread's
+  name, how many may stay open, the agent's arguments, folder and active. Errors stay in the form with what was
+  typed. `telar periodicos horario` and `telar periodicos skills` back it.
 
 ## [0.1.10] — 2026-10-02
 

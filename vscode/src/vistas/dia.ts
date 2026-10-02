@@ -378,6 +378,29 @@ export const CSS_DIA = `
   #ficha-per .fila { white-space: normal; } #ficha-per .fila .que { overflow-wrap: anywhere; }
   #ficha-per pre.log { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); max-height: 60vh; overflow: auto;
     box-shadow: inset 2px 0 0 var(--linea); padding: 0 2ch; margin: 0; }
+  /* el formulario de un periódico: etiqueta a la izquierda, control a la derecha */
+  #form-per .campo { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 2ch; align-items: baseline; margin: .5lh 0; }
+  #form-per .etiqueta { color: var(--dim); text-align: right; }
+  #form-per .control { display: flex; flex-direction: column; gap: .25lh; min-width: 0; }
+  #form-per input:not([type=checkbox]), #form-per textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea);
+    padding: 0 1ch; outline: none; width: 100%; max-width: 80ch; box-sizing: border-box; resize: vertical; }
+  #form-per input:focus, #form-per textarea:focus { border-color: var(--amarillo); }
+  #form-per input:disabled { color: var(--dim); }
+  #form-per input[type=number] { width: 8ch; }
+  #form-per input[type=checkbox] { align-self: flex-start; margin: 0; accent-color: var(--amarillo); }
+  #form-per .ayuda { font-size: .9em; }
+  #form-per .opciones, #form-per .presets { display: flex; flex-wrap: wrap; gap: 0 2ch; }
+  #form-per .opcion-t, #form-per .presets a { cursor: pointer; color: var(--dim); }
+  #form-per .opcion-t.activa { color: var(--amarillo); font-weight: bold; }
+  #form-per .opcion-t:hover, #form-per .presets a:hover { color: var(--fg); }
+  #form-per.tipo-mensaje .solo-comando, #form-per.tipo-comando .solo-mensaje { display: none; }
+  #form-per .skills { max-height: 14lh; overflow: auto; max-width: 80ch; box-shadow: inset 2px 0 0 var(--linea); }
+  #form-per .skill { display: grid; grid-template-columns: 22ch minmax(0, 1fr); gap: 1ch; padding: 0 1ch; cursor: pointer; }
+  #form-per .skill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #form-per .skill:hover { background: var(--hover); } #form-per .skill.activa b { color: var(--amarillo); }
+  #form-per .skill[hidden] { display: none; }
+  #form-per #per-error { margin: .5lh 0 0 14ch; white-space: pre-wrap; }
+  #form-per .fila-botones { grid-auto-flow: column; justify-content: start; gap: 3ch; margin-left: 14ch; }
   @media (max-width: 90ch) { .fila.per { grid-template-columns: 2ch minmax(0, 1fr) max-content; } .fila.per code, .fila.per .que { display: none; } }
   .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
   .sub-ficha { white-space: normal; overflow-wrap: anywhere; }
@@ -552,6 +575,8 @@ document.addEventListener('mouseover', function (e) {
 document.addEventListener('mouseleave', esconderGlobo);
 document.addEventListener('scroll', esconderGlobo, true);
 window.addEventListener('message', function (e) {
+  // un pedazo de la página (el formulario de un periódico): se cambia sin tocar lo escrito
+  if (e.data.tipo === 'parcial') { const el = document.getElementById(e.data.id); if (el) { el.innerHTML = e.data.html; filtrarSkills(); } return; }
   if (e.data.tipo !== 'dia') return;
   esconderGlobo();
   const activo = document.activeElement, id = activo && activo.id;
@@ -563,6 +588,50 @@ window.addEventListener('message', function (e) {
   if (np) { np.value = estado.pq; if (id === 'buscar-p' || id !== 'buscar') { np.focus(); np.setSelectionRange(pos || np.value.length, pos || np.value.length); } }
   aplicar(); aplicarProyectos();
 });
+// ── el formulario de un proceso periódico ──
+let esperaHorario = 0;
+function filtrarSkills() {
+  const f = document.getElementById('per-skill-filtro');
+  if (!f) return;
+  const q = (f.value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().trim();
+  document.querySelectorAll('#per-skills .skill').forEach(function (x) { x.hidden = !!q && x.dataset.texto.indexOf(q) < 0; });
+}
+function formPer() {
+  const v = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+  const form = document.getElementById('form-per');
+  return { nombre: v('per-nombre'), descripcion: v('per-desc'), tipo: form.classList.contains('tipo-comando') ? 'comando' : 'mensaje',
+    mensaje: v('per-mensaje'), comando: v('per-comando'), hilo: v('per-hilo'), max: v('per-max'), args: v('per-args'),
+    cuando: v('per-cuando'), carpeta: v('per-carpeta'), activo: !!(document.getElementById('per-activo') || {}).checked };
+}
+function guardarPer() { vscode.postMessage({ tipo: 'accion', accion: 'per-guardar', valor: JSON.stringify(formPer()) }); }
+document.addEventListener('input', function (e) {
+  if (e.target.id === 'per-cuando') { clearTimeout(esperaHorario); const c = e.target.value; esperaHorario = setTimeout(function () { vscode.postMessage({ tipo: 'per-horario', valor: c }); }, 350); return; }
+  if (e.target.id === 'per-skill-filtro') return filtrarSkills();
+});
+document.addEventListener('change', function (e) {
+  if (e.target.id === 'per-carpeta') vscode.postMessage({ tipo: 'per-skills', valor: e.target.value.trim() });
+});
+document.addEventListener('click', function (e) {
+  // guardar lleva lo escrito: se adelanta al manejador general, que mandaría la acción vacía
+  if (e.target.closest('[data-accion="per-guardar"]')) { e.preventDefault(); e.stopPropagation(); return guardarPer(); }
+  const t = e.target.closest('[data-per-tipo]');
+  if (t) { const f = document.getElementById('form-per'); f.classList.remove('tipo-mensaje', 'tipo-comando'); f.classList.add('tipo-' + t.dataset.perTipo);
+    document.querySelectorAll('[data-per-tipo]').forEach(function (x) { x.classList.toggle('activa', x === t); }); return; }
+  const h = e.target.closest('[data-per-horario]');
+  if (h) { const c = document.getElementById('per-cuando'); c.value = h.dataset.perHorario; vscode.postMessage({ tipo: 'per-horario', valor: c.value }); return; }
+  const sk = e.target.closest('[data-skill]');
+  if (sk) {
+    const m = document.getElementById('per-mensaje');
+    // la skill reemplaza a la que hubiera al principio; lo escrito después se queda
+    const resto = m.value.replace(/^\\/[\\w:.-]+\\s*/, '');
+    m.value = '/' + sk.dataset.skill + ' ' + resto;
+    document.querySelectorAll('#per-skills .skill').forEach(function (x) { x.classList.toggle('activa', x === sk); });
+    const hilo = document.getElementById('per-hilo'), nombre = document.getElementById('per-nombre');
+    if (nombre && !nombre.value && !nombre.disabled) nombre.value = sk.dataset.skill.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+    if (hilo && !hilo.value) hilo.placeholder = sk.dataset.skill;
+    m.focus(); m.setSelectionRange(m.value.length, m.value.length);
+  }
+}, true);
 document.addEventListener('input', function (e) {
   if (e.target.id === 'buscar-p') { estado.pq = e.target.value; guardar(); return aplicarProyectos(); }
   if (e.target.id !== 'buscar') return;
@@ -586,6 +655,14 @@ document.addEventListener('click', function (e) {
   if (a) vscode.postMessage({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey });
 });
 document.addEventListener('keydown', function (e) {
+  // escribiendo en el formulario de un periódico: las letras son del campo, no atajos
+  if (document.getElementById('form-per')) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); return guardarPer(); }
+    const el = document.activeElement;
+    const escribiendo = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+    if (e.key === 'Escape') { e.preventDefault(); if (escribiendo) return el.blur(); return vscode.postMessage({ tipo: 'accion', accion: 'per-cancelar' }); }
+    if (escribiendo) return;
+  }
   const bp = document.getElementById('buscar-p');
   if (bp && document.activeElement === bp) {         // en proyectos: ⏎ abre el primero que calza
     if (e.key === 'Escape') { e.preventDefault(); if (bp.value) { bp.value = ''; estado.pq = ''; guardar(); aplicarProyectos(); } else vscode.postMessage({ tipo: 'accion', accion: 'dia' }); }
