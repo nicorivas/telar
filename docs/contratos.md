@@ -749,6 +749,22 @@ Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
   veta responde lo mismo que uno que no existe.
 - Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
 
+## `telar periodicos --json` — los procesos periódicos
+
+```json
+{"maquina": "servidor", "archivo": "/home/ana/.config/telar/periodicos.toml", "zona": "America/Santiago",
+ "procesos": [{"nombre": "correo", "cuando": "0 9-19/2 * * *", "tipo": "mensaje", "comando": "", "mensaje": "/correo",
+   "hilo": "✉ correo", "max_abiertos": 2, "argumentos": [], "carpeta": "", "descripcion": "", "activo": true,
+   "proxima": "2026-10-02T11:00-03:00",
+   "ultima": {"inicio": "2026-10-02T09:00:01-03:00", "fin": "…", "codigo": 0, "resultado": "abrí «✉ correo 10/02 09:00»",
+              "tipo": "mensaje", "segundos": 0.8, "hilo": "✉ correo 10/02 09:00"}}]}
+```
+
+`proxima` va vacía si está pausado. `ultima` está vacía si nunca corrió, y trae `corriendo: true` mientras
+corre. `codigo` distinto de 0 es que falló (un comando que salió mal, un hilo que no se pudo abrir); un
+`mensaje` saltado por `max_abiertos` es 0 con `resultado` «saltado: …». Las órdenes que cambian algo
+responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
+
 ## `telar hilo leer --json` — lo último de un hilo
 
 ```json

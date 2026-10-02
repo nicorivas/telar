@@ -509,6 +509,46 @@ carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de h
 conversado en los hilos que `no_leer` no vete. No puede leer archivos, correr comandos ni entrar. Si «enviar»
 te parece demasiado, quítalo de `verbos`.
 
+## `periodicos.toml` y `[periodicos]` — lo que corre solo cada cierto tiempo
+
+Los procesos periódicos de una máquina (la que no se apaga, normalmente un servidor) viven en
+`periodicos.toml`, **al lado de `config.toml`** de esa máquina. Cada uno es una tabla con su nombre
+(minúsculas, números, `-` y `_`), un horario cron y **o** un comando de shell **o** un prompt:
+
+```toml
+zona = "America/Santiago"            # la hora en que se leen los horarios (por defecto, la de la máquina)
+
+[resumen]
+cuando = "30 8 * * 1-5"              # minuto hora día-del-mes mes día-de-la-semana (o @daily, @hourly…)
+comando = "~/bin/resumen --corto"    # una línea de bash; su salida va al log
+descripcion = "el resumen de la mañana"
+
+[correo]
+cuando = "0 9-19/2 * * *"
+mensaje = "/correo"                  # abre un hilo con el agente haciendo esto, que se puede mirar
+hilo = "✉ correo"                    # su nombre (se le agrega la fecha y la hora)
+max_abiertos = 2                     # con tantos sin cerrar, esta vez no abre otro
+argumentos = ["--permission-mode", "acceptEdits"]   # para el agente, después del prompt
+carpeta = "~/trabajo"                # dónde corre (por defecto, el hogar)
+activo = false                       # pausado
+```
+
+`telar periodicos` los lista con la próxima y la última corrida; `nuevo`, `editar`, `pausar`,
+`activar`, `borrar` y `zona` los cambian y reescriben el crontab al tiro; `ahora` corre uno ya;
+`log` muestra su salida. En el crontab, telar maneja **solo un bloque entre marcas** (`# >>> telar
+periodicos` … `# <<< telar periodicos`), al final, y no toca lo de afuera. Cada línea llama a
+`telar periodicos correr <nombre>`, que anota la corrida en `<estado>/periodicos/`. Un `mensaje`
+abre una sesión `telar-…` con `@telar_hilo`, como los hilos remotos, así que otra máquina la trae a
+su lista. Cada cambio guarda la versión anterior en `periodicos.toml.anterior`.
+
+En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la orden y la pestaña
+«periódicos» del dashboard (tecla `o`) los ven y los cambian allá, por ssh:
+
+```toml
+[periodicos]
+en = "servidor"                      # el nombre de un [remotos.<nombre>]
+```
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml

@@ -6,6 +6,18 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `telar periodicos`: the processes that run on their own, defined in `periodicos.toml` next to `config.toml` on
+  the machine that runs them — each with a cron schedule and either a shell command or a prompt that opens a
+  thread with the agent (like a remote thread, so other machines pick it up), with `max_abiertos`. `aplicar` writes
+  a marked block in the crontab and never touches lines outside it; `correr` records the last run and a capped log;
+  `nuevo`, `editar`, `pausar`, `activar`, `borrar`, `zona`, `ahora` and `log`. With `[periodicos] en` another machine
+  sees and changes them over ssh.
+- VS Code: a «periódicos» tab in the dashboard (key `o`): each process with its schedule, next and last run and how
+  it went; its card with the log and run now, pause or resume, edit and delete; `+` creates one, with schedule
+  examples at hand.
+
 ## [0.1.10] — 2026-10-02
 
 ### Added
