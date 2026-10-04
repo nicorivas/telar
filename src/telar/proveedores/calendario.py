@@ -164,9 +164,8 @@ class _Base:
 # Se lee a mano y con la biblioteca estándar: un calendario es texto plegado en
 # líneas de 75 octetos, y para la única pregunta que nos importa —qué hay hoy—
 # alcanza con desplegarlo, quedarse con los VEVENT y saber si la regla de repetición
-# cae en la fecha. Lo que NO se entiende, dicho de frente: las instancias
-# modificadas de una serie (RECURRENCE-ID), BYSETPOS, BYMONTHDAY y BYDAY con
-# ordinal (`3TH`), y los husos definidos dentro del propio archivo (VTIMEZONE): un
+# cae en la fecha (con BYDAY ordinal, `1MO`, en las mensuales). Lo que NO se entiende, dicho de frente: las instancias
+# modificadas de una serie (RECURRENCE-ID), BYSETPOS y BYMONTHDAY, y los husos definidos dentro del propio archivo (VTIMEZONE): un
 # TZID se resuelve contra la base de datos del sistema.
 
 @dataclass(slots=True)
@@ -356,10 +355,24 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
     return salida
 
 
-def _serie(inicio: date, freq: str, intervalo: int, bydays: list[int], limite: date, tope: int = 4000):
+def _enesimo(y: int, m: int, n: int, wd: int) -> date | None:
+    """El n-ésimo `wd` (lunes=0) del mes; con n negativo se cuenta desde el final. None si no existe."""
+    if n > 0:
+        primero = date(y, m, 1)
+        d = primero + timedelta(days=(wd - primero.weekday()) % 7 + 7 * (n - 1))
+    else:
+        siguiente = date(y + (m == 12), m % 12 + 1, 1)
+        ultimo = siguiente - timedelta(days=1)
+        d = ultimo - timedelta(days=(ultimo.weekday() - wd) % 7 + 7 * (-n - 1))
+    return d if d.month == m else None
+
+
+def _serie(inicio: date, freq: str, intervalo: int, bydays: list[int], limite: date, tope: int = 4000,
+           ordinales: list[tuple[int, int]] = ()):
     """Las fechas que genera la regla, en orden, hasta `limite` inclusive.
 
-    Con tope de pasos: una regla mal escrita no puede colgar el telar.
+    Con tope de pasos: una regla mal escrita no puede colgar el telar. `ordinales` son los
+    BYDAY con número (`1MO`, `-1FR`) como (n, día de la semana), que solo aplican al mes.
     """
     if freq == "DAILY":
         d = inicio
@@ -381,15 +394,23 @@ def _serie(inicio: date, freq: str, intervalo: int, bydays: list[int], limite: d
         paso_meses = intervalo if freq == "MONTHLY" else intervalo * 12
         y, m = inicio.year, inicio.month
         while tope > 0:
-            try:
-                d = date(y, m, inicio.day)
-            except ValueError:
-                d = None  # el 31 en un mes que no lo tiene: esa vuelta no genera nada
-            if d is not None:
-                if d > limite:
-                    return
-                if d >= inicio:
-                    yield d
+            if ordinales and freq == "MONTHLY":
+                # «el primer lunes de cada mes»: la fecha cambia de un mes a otro, no es el día de inicio
+                for d in sorted(x for x in (_enesimo(y, m, n, wd) for n, wd in ordinales) if x):
+                    if d > limite:
+                        return
+                    if d >= inicio:
+                        yield d
+            else:
+                try:
+                    d = date(y, m, inicio.day)
+                except ValueError:
+                    d = None  # el 31 en un mes que no lo tiene: esa vuelta no genera nada
+                if d is not None:
+                    if d > limite:
+                        return
+                    if d >= inicio:
+                        yield d
             total = (y * 12 + m - 1) + paso_meses
             y, m = divmod(total, 12)
             m += 1
@@ -454,7 +475,13 @@ def _ocurre(v: _Vevento, fecha: date) -> bool:
     bydays = [semana[d[-2:].upper()] for d in v.regla.get("BYDAY", "").split(",")
               if d[-2:].upper() in semana and d[:-2] in ("", "+", "-")]
 
-    for i, d in enumerate(_serie(base, freq, intervalo, bydays, fecha)):
+    ordinales = []
+    for d in v.regla.get("BYDAY", "").split(","):
+        m = re.fullmatch(r"([+-]?\d{1,2})(MO|TU|WE|TH|FR|SA|SU)", d.strip().upper())
+        if m and int(m.group(1)) != 0:
+            ordinales.append((int(m.group(1)), semana[m.group(2)]))
+
+    for i, d in enumerate(_serie(base, freq, intervalo, bydays, fecha, ordinales=ordinales)):
         if cuenta is not None and i >= cuenta:
             return False
         if d == fecha:
