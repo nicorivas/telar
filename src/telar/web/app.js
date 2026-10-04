@@ -146,7 +146,7 @@ async function mandar(clave, origen, h, texto) {
     const cuerpo = await r.json().catch(() => ({}));
     if (r.ok && cuerpo.ok) {
       estado.borradores.delete(clave);
-      dice(`enviado ${hhmm(new Date())}`, true);
+      estado.envios.delete(clave); pintar(true);  // el hilo responde en su lista: no hace falta decir «enviado»
       setTimeout(() => cargar(true), 3000);  // el semáforo del hilo suele cambiar enseguida
     } else {
       dice(cuerpo.error || `no salió (${r.status})`, false);
@@ -408,7 +408,7 @@ const claveDia = (iso) => (iso || '').slice(0, 10);
 
 function soltarConversacion() {
   if (conv.timer) { clearInterval(conv.timer); conv.timer = 0; }
-  if (conv.nombre) { conv.nombre = ''; conv.origen = ''; document.body.classList.remove('escribiendo', 'en-conv'); }
+  if (conv.nombre) { conv.nombre = ''; conv.origen = ''; document.body.classList.remove('escribiendo', 'en-conv'); document.documentElement.style.removeProperty('--dock-h'); }
 }
 
 async function pedirConv(params) {
@@ -578,7 +578,9 @@ async function cargarAnteriores() {
 }
 
 function agregar(r) {
-  if (!r.mensajes.length) return;
+  // dos sondeos en vuelo piden desde el mismo punto (el de cada 3 s y los que se disparan al enviar):
+  // el que llega segundo trae lo que el primero ya puso, y se descarta en vez de duplicarlo
+  if (!r.mensajes.length || r.desde !== conv.total) return;
   const lista = $('conv-lista');
   const estabaAlFinal = pegado();
   const ultimoDia = conv.msgs.length ? claveDia(conv.msgs[conv.msgs.length - 1].hora) : '';
@@ -658,15 +660,23 @@ function puedeConv() {
 function dockConv() {
   const puede = conv.puede = puedeConv();
   if (!puede) {
+    document.documentElement.style.removeProperty('--dock-h');
     return el('div', { id: 'dock', className: 'dock solo' },
       txt('dim', !estado.yo.escribir ? 'solo lectura · `telar web --escribir` para contestar' : 'sin ventana abierta: no se le puede escribir'));
   }
-  const campo = el('input', {
-    type: 'text', className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', enterKeyHint: 'send', maxLength: 8000,
+  // en el celular Enter es salto de línea (se manda con el botón); con teclado, Enter manda y Shift+Enter salta
+  const tactil = matchMedia('(pointer: coarse)').matches;
+  const campo = el('textarea', {
+    rows: 1, className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', enterKeyHint: tactil ? 'enter' : 'send', maxLength: 8000,
+    oninput: () => crece(),
     placeholder: `escribirle a ${conv.nombre}`, 'aria-label': `escribirle a ${conv.nombre}`,
     onfocus: () => document.body.classList.add('escribiendo'),
     onblur: () => document.body.classList.remove('escribiendo'),
   });
+  const crece = () => {  // alto de renglones enteros, hasta el tope que pone el CSS
+    campo.style.height = 'auto';
+    campo.style.height = `${Math.min(campo.scrollHeight, parseFloat(getComputedStyle(campo).maxHeight))}px`;
+  };
   const dijo = el('div', { className: 'dijo', id: 'dock-dijo' });
   const enviar = async () => {
     const texto = campo.value.trim();
@@ -677,17 +687,23 @@ function dockConv() {
         body: JSON.stringify({ maquina: conv.origen, hilo: conv.nombre, texto, enter: true }) });
       const cuerpo = await r.json().catch(() => ({}));
       if (r.ok && cuerpo.ok) {
-        campo.value = '';
-        dijo.className = 'dijo bien'; dijo.textContent = `enviado ${hhmm(new Date())}`;
+        campo.value = ''; crece();
+        dijo.className = 'dijo'; dijo.textContent = '';  // lo enviado aparece en la conversación: no hace falta decirlo
         for (const ms of conv.origen ? [1500, 4000, 8000] : [600, 2000, 5000]) setTimeout(sondear, ms);  // aparece en cuanto el agente lo anota
       } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
     } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
   };
-  campo.onkeydown = (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); enviar(); } };
-  return el('div', { id: 'dock', className: 'dock' },
+  campo.onkeydown = (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    if (e.ctrlKey || e.metaKey || (!tactil && !e.shiftKey)) { e.preventDefault(); enviar(); }
+  };
+  const dock = el('div', { id: 'dock', className: 'dock' },
     el('div', { className: 'linea-dock' }, g('›', 'prompt'), campo,
-      el('button', { type: 'button', className: 'manda', onclick: enviar }, el('kbd', { textContent: '↩' }), ' enviar')),
+      el('button', { type: 'button', className: 'manda', onclick: enviar }, 'enviar')),
     dijo);
+  // lo que mide el cuadro se lo dice al resto de la página: la conversación deja ese espacio abajo
+  new ResizeObserver(() => document.documentElement.style.setProperty('--dock-h', `${dock.offsetHeight}px`)).observe(dock);
+  return dock;
 }
 
 function armarConv(nombre, origen) {

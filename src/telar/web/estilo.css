@@ -192,7 +192,7 @@ h2.sec {
    las herramientas son una línea tenue. Todo mide renglones enteros: el markdown se dibuja con
    bloques de un renglón, los cercados de código conservan sus líneas, y lo largo se recoge en
    un alto de renglones enteros para no cortar ninguna a la mitad. */
-#conv { padding-bottom: 2lh; }  /* el campo de abajo mide dos renglones */
+#conv { padding-bottom: var(--dock-h, 1lh); }  /* el campo de abajo crece con lo que se escribe; app.js anota su alto */
 #conv-cab {
   position: sticky; top: calc(2lh + env(safe-area-inset-top)); z-index: 2; background: var(--bg);
   display: flex; align-items: flex-start; gap: 0 2ch; height: 1lh; margin: 0 -2ch; padding: 0 2ch;
@@ -231,34 +231,36 @@ h2.sec {
 .tool { display: grid; grid-template-columns: 1ch minmax(0, 1fr); column-gap: 1ch; color: var(--dim); padding-left: 1ch; }
 
 #conv-nuevos {
-  position: fixed; right: 2ch; bottom: calc(4lh + env(safe-area-inset-bottom)); z-index: 4; height: 1lh; padding: 0 1ch;
+  position: fixed; right: 2ch; bottom: calc(3lh + var(--dock-h, 1lh) + env(safe-area-inset-bottom)); z-index: 4; height: 1lh; padding: 0 1ch;
   color: var(--bg); background: var(--azul); font-weight: 700;
 }
 #conv-nuevos[hidden] { display: none; }
-body.escribiendo #conv-nuevos { bottom: 2lh; }
+body.escribiendo #conv-nuevos { bottom: calc(1lh + var(--dock-h, 1lh)); }
 
-/* el campo de abajo: fijo sobre la barra, dos renglones (el prompt y lo que pasó con el último envío) */
+/* el campo de abajo: fijo sobre la barra; crece con lo que se escribe (hasta 6 renglones) y un error se ve debajo */
 .dock {
-  position: fixed; left: 0; right: 0; bottom: calc(2lh + env(safe-area-inset-bottom)); z-index: 3; height: 2lh;
+  position: fixed; left: 0; right: 0; bottom: calc(2lh + env(safe-area-inset-bottom)); z-index: 3; min-height: 1lh;
   padding: 0 2ch; background: color-mix(in srgb, var(--fg) 4%, var(--bg)); box-shadow: inset 0 1px 0 var(--linea);
   display: block;
 }
-.dock .linea-dock { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; column-gap: 1ch; }
+.dock .linea-dock { display: grid; grid-template-columns: 2ch minmax(0, 1fr) auto; column-gap: 1ch; align-items: center; }
 .dock .prompt { color: var(--verde); font-weight: 700; }
 .dock .campo {
   font: inherit; color: var(--fg); background: transparent; border: 0; border-radius: 0; padding: 0; margin: 0;
-  height: var(--lh); width: 100%; min-width: 0; outline: none; caret-color: var(--verde);
+  height: var(--lh); max-height: calc(6 * var(--lh)); width: 100%; min-width: 0; outline: none; caret-color: var(--verde);
+  display: block; resize: none; overflow-y: auto; line-height: var(--lh);
 }
 .dock .campo::placeholder { color: var(--dim); opacity: 1; }
-.dock .manda { position: relative; height: var(--lh); color: var(--dim); white-space: nowrap; }
-.dock .manda::after { content: ""; position: absolute; left: -1ch; right: -1ch; top: -4px; bottom: -4px; }
+.dock .manda { height: calc(2 * var(--lh)); padding: 0 2ch; margin-right: -1ch; color: var(--bg); background: var(--verde); font-weight: 700; white-space: nowrap; }
+.dock .manda:active { opacity: .7; }
 .dock .dijo { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 1lh; }
 .dock .dijo.bien { color: var(--verde); } .dock .dijo.mal { color: var(--rojo); }
+.dock .dijo:empty { display: none; }
 .dock.solo { display: flex; align-items: flex-start; }
 /* al escribir se esconde la barra de abajo: el teclado ya ocupa mucho */
 body.escribiendo #barra { display: none; }
 body.escribiendo .dock { bottom: env(safe-area-inset-bottom); }
-body.escribiendo { padding-bottom: calc(2lh + env(safe-area-inset-bottom)); }
+body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset-bottom)); }
 
 /* entrar a la conversación desde el detalle de un hilo */
 .accion { padding: 0 1ch 0 3ch; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
