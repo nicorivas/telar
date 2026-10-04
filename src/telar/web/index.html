@@ -14,6 +14,10 @@
     try { if (localStorage.getItem('telar.tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (e) { /* sin almacenamiento */ }
   </script>
   <link rel="stylesheet" href="estilo.css">
+  <script>
+    // Chrome solo ofrece «Instalar app» si hay un service worker; este no guarda nada (la página se edita en vivo)
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  </script>
 </head>
 <body>
   <header class="top">

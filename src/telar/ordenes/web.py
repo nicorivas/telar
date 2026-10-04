@@ -299,7 +299,11 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
             if self.headers.get("Host", "") not in validos:
                 return "Host que no es de este servidor"
             origen = self.headers.get("Origin")
-            if origen is not None and origen != f"http://{self.headers.get('Host')}":
+            # con `tailscale serve` la página llega por https, y su Origin también: solo se acepta
+            # para un nombre que se declaró con --tambien, no para cualquier Host
+            propio = self.headers.get("Host", "")
+            validos_origen = {f"http://{propio}", *([f"https://{propio}"] if propio in tambien else [])}
+            if origen is not None and origen not in validos_origen:
                 return "Origin que no es de esta página"
             if self.headers.get("X-Telar") != "1":
                 return "falta el encabezado X-Telar"
