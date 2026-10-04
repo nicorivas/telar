@@ -129,7 +129,7 @@ const arbol = (h, origen = '') => arbolDatos([
 // Solo si el servidor arrancó con --escribir y el hilo está vivo; los de otra máquina, además, si esa
 // máquina está en línea y hay un enlace para llegar a ella (`telar enlace`).
 function puedeEscribir(h, origen) {
-  if (!estado.yo.escribir || !h.vivo) return false;
+  if (!estado.yo.escribir || !(h.vivo || h.propio)) return false;
   if (!origen) return true;
   const e = estado.espejos.find((x) => x.nombre === origen);
   return !!(e && e.en_linea && estado.yo.enlaces.length);
@@ -526,7 +526,7 @@ function nodosDe(msgs, desde, diaPrevio) {
 
 function cabeceraConv() {
   const h = conv.hilo || {};
-  const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo ? 'abierto' : 'sin ventana');
+  const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo || h.propio ? 'abierto' : 'sin ventana');
   const sesiones = conv.sesiones.length > 1 ? el('button', { type: 'button', className: 'sesion', onclick: cambiarSesion,
     textContent: `${conv.sesiones.indexOf(conv.sesion) + 1}/${conv.sesiones.length}`, title: 'otra conversación de este hilo' }) : null;
   $('conv-cab').replaceChildren(...[
@@ -651,8 +651,12 @@ function cambiarSesion() {
 // lo que se ve sin conversación que mostrar (hilo remoto, sin archivo…)
 function avisoConv(texto) { $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: texto })); pintarMas(); }
 
+function puedeConv() {
+  return !!(estado.yo.escribir && conv.hilo && (conv.hilo.vivo || conv.hilo.propio) && (!conv.origen || (conv.hilo.en_linea && estado.yo.enlaces.length)));
+}
+
 function dockConv() {
-  const puede = estado.yo.escribir && conv.hilo && conv.hilo.vivo && (!conv.origen || (conv.hilo.en_linea && estado.yo.enlaces.length));
+  const puede = conv.puede = puedeConv();
   if (!puede) {
     return el('div', { id: 'dock', className: 'dock solo' },
       txt('dim', !estado.yo.escribir ? 'solo lectura · `telar web --escribir` para contestar' : 'sin ventana abierta: no se le puede escribir'));
@@ -703,7 +707,7 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
                         cargando: true, turnos: 10, totalTurnos: 0, turnosVistos: 0, fuente: '', firma: '' });
   const fuente = origen ? ((estado.espejos.find((e) => e.nombre === origen) || {}).hilos || []) : (estado.hilos && estado.hilos.hilos || []);
   const local = fuente.find((h) => h.nombre === nombre);
-  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo, en_linea: true } : null;
+  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo, propio: local.propio, en_linea: true } : null;
   cabeceraConv();
   $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: origen ? `pidiéndole la conversación a ${origen}…` : 'leyendo la conversación…' }));
   try {
@@ -738,8 +742,11 @@ function pintarConversacion() {
   if (conv.nombre !== nombre || conv.origen !== origen || !$('conv')) { abrirConversacion(nombre, origen); return; }
   if (conv.hilo && !conv.origen) {  // el semáforo del hilo viene del día; se refresca sin tocar los mensajes
     const h = (estado.hilos && estado.hilos.hilos || []).find((x) => x.nombre === conv.nombre);
-    if (h) { conv.hilo = { nombre: h.nombre, atencion: h.atencion, vivo: h.vivo }; cabeceraConv(); }
+    if (h) { conv.hilo = { nombre: h.nombre, atencion: h.atencion, vivo: h.vivo, propio: h.propio }; cabeceraConv(); }
   }
+  // si la página abrió la conversación antes de saber si puede escribir (recarga directa a ella), el
+  // cuadro quedó de solo lectura: se rehace cuando eso cambia, y solo entonces, para no pisar lo que se escribe
+  if ($('dock') && !conv.cargando && conv.puede !== puedeConv()) $('dock').replaceWith(dockConv());
 }
 
 // ── tema: oscuro por defecto, claro si se elige (la cabecera lo pone antes de pintar) ──
