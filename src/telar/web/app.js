@@ -156,11 +156,6 @@ async function mandar(clave, origen, h, texto) {
   }
 }
 
-function verConversacion(h, origen = '') {
-  return el('div', { className: 'accion' },
-    el('button', { type: 'button', className: 'ir', onclick: () => { location.hash = hashConv(h.nombre, origen); } },
-      g('›'), ' ver la conversación'));
-}
 // de este equipo, si el hilo tiene conversaciones anotadas; de otra máquina, si está en línea y hay un enlace para llegar
 function puedeVerConversacion(h, origen) {
   if (!origen) return !!(h.sesiones && h.sesiones.length);
@@ -194,10 +189,15 @@ function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) 
   const donde = origen && dondeSub ? `en ${origen}` : '';
   const sub = [donde, h.relativa && h.relativa !== '.' ? h.relativa : (h.remoto ? `en ${h.remoto}` : '')].filter(Boolean).join(' · ');
   const [glifoPri, clasePri] = PRIORIDAD[h.prioridad] || [];
+  // con conversación que ver, tocar el hilo entra a ella; sin ella, se despliega lo que se sabe del hilo
+  const conversa = puedeVerConversacion(h, origen);
   return [
     el('div', {
-      className: 'fila hl clic', role: 'button', tabIndex: 0, 'aria-expanded': String(abierto),
-      onclick: () => { estado.abiertos.has(clave) ? estado.abiertos.delete(clave) : estado.abiertos.add(clave); pintar(); },
+      className: 'fila hl clic', role: 'button', tabIndex: 0, ...(conversa ? {} : { 'aria-expanded': String(abierto) }),
+      onclick: () => {
+        if (conversa) { location.hash = hashConv(h.nombre, origen); return; }
+        estado.abiertos.has(clave) ? estado.abiertos.delete(clave) : estado.abiertos.add(clave); pintar();
+      },
     },
       g(GLIFO[h.atencion] || '·', `at ${h.atencion}${h.atencion === 'ninguna' && h.vivo ? ' vivo' : ''}`),
       txt('nombre una', h.nombre),
@@ -205,9 +205,8 @@ function filaHilo(h, { lado = 'atencion', origen = '', dondeSub = false } = {}) 
         ? txt(`lado ${h.atencion}`, NOMBRE_ATENCION[h.atencion])
         : (glifoPri ? el('span', { className: `lado ${clasePri}` }, g(glifoPri)) : null),
       sub ? txt('sub una', sub) : null),
-    abierto ? arbol(h, origen) : null,
-    abierto && puedeVerConversacion(h, origen) ? verConversacion(h, origen) : null,
-    abierto && puedeEscribir(h, origen) ? compone(h, origen, clave) : null,
+    abierto && !conversa ? arbol(h, origen) : null,
+    abierto && !conversa && puedeEscribir(h, origen) ? compone(h, origen, clave) : null,
   ];
 }
 
