@@ -6,6 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#2e3440">
   <title>telar</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <script>
     // el tema se pone antes de pintar, para que no parpadee: oscuro por defecto, claro si se eligió
     try { if (localStorage.getItem('telar.tema') === 'claro') document.documentElement.dataset.tema = 'claro'; } catch (e) { /* sin almacenamiento */ }
