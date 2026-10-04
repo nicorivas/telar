@@ -193,7 +193,8 @@ def _conversacion(consulta: str, config) -> tuple[int, bytes, str]:
                                      despues=despues, n=n or conversacion.POR_PAGINA)
     except conversacion.ErrorDeConversacion as e:
         return responder(404, {"error": str(e)})
-    cuerpo["hilo"] = {"nombre": h["nombre"], "atencion": h.get("atencion", ""), "vivo": bool(h.get("vivo"))}
+    cuerpo["hilo"] = {"nombre": h["nombre"], "atencion": h.get("atencion", ""), "vivo": bool(h.get("vivo")),
+                       "propio": bool(h.get("propio"))}
     return responder(200, cuerpo)
 
 

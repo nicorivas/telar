@@ -62,6 +62,33 @@ def hilos() -> list[HiloMovil]:
     return lista
 
 
+def propios() -> dict[str, str]:
+    """nombre del hilo → sesión tmux, de los hilos que viven en una sesión propia de esta máquina.
+
+    Son los que abre el celular (`telar movil`) y los periódicos: no son ventanas de la sesión
+    del telar, así que el multiplexor no los ve, pero están vivos y se les puede escribir. Si dos
+    sesiones se llaman igual, gana la que tiene a alguien mirando.
+    """
+    salida: dict[str, HiloMovil] = {}
+    for h in hilos():
+        if h.nombre not in salida or h.clientes > salida[h.nombre].clientes:
+            salida[h.nombre] = h
+    return {nombre: h.sesion for nombre, h in salida.items()}
+
+
+def escribir(sesion: str, texto: str, enviar: bool = False) -> None:
+    """Le escribe a la sesión propia de un hilo, como `Multiplexor.escribir` a un tab.
+
+    `-l` manda el texto tal cual (la palabra «Enter» adentro no se vuelve un ↩). `=sesion:` es el
+    nombre exacto: sin el `=`, tmux aceptaría un prefijo y podría escribirle a otro hilo.
+    """
+    objetivo = f"={sesion}:"
+    if texto:
+        _tmux("send-keys", "-t", objetivo, "-l", "--", texto)
+    if enviar:
+        _tmux("send-keys", "-t", objetivo, "Enter")
+
+
 def ordenes_nuevo(sesion: str, nombre: str, carpeta: str, palabras: list[str] | None) -> list[str]:
     """El comando tmux que abre un hilo nuevo en esta máquina, igual que los que abre el laptop
     en ella (`telar ir --remoto`): la sesión se anota su nombre, va a su carpeta y corre el

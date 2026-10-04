@@ -249,7 +249,7 @@ Las reglas valen para todas:
 
 ```json
 {
-  "id": "@3", "nombre": "faro", "vivo": true, "activo": false,
+  "id": "@3", "nombre": "faro", "vivo": true, "propio": false, "activo": false,
   "archivado": false, "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
@@ -263,7 +263,10 @@ Las reglas valen para todas:
 que reciben las órdenes. `nombre` es lo que se muestra **y la llave del estado**:
 el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dice
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
-que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
+que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer. `propio` es `true`
+para un hilo que no es tab del multiplexor pero vive en una sesión tmux propia de esta máquina (los
+que abre el celular con `telar movil` y los periódicos): `vivo` sigue siendo `false` —`ir`, `cerrar`
+y el resto operan sobre tabs—, pero se le puede escribir con `enviar`.
 `tiempo` son los segundos con el foco **en el día en curso**. `ficha` puede ser
 `null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
 es aquí, un nombre es una máquina de `[remotos]`, y `"?"` es una ventana que corre mosh,
@@ -742,7 +745,7 @@ Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
 - Un verbo que no está en la tabla —o que `[enlace] verbos` apagó— se rechaza; no hay forma de correr otra cosa.
 - `archivo`: el nombre se reduce a `[A-Za-z0-9._ -]` sin carpetas ni puntos delante, y el archivo nunca pisa a
   otro (agrega `-1`, `-2`…). Queda con permisos 600 en una carpeta 700.
-- `enviar`: solo a un hilo que existe **y** está vivo; un texto con saltos de línea exige `enter`, porque el
+- `enviar`: solo a un hilo que existe **y** está vivo (con tab, o `propio`); un texto con saltos de línea exige `enter`, porque el
   salto es un ↩.
 - `notificar`: el texto llega por variables de entorno, nunca dentro de un script.
 - `leer`: apagado si `[enlace] verbos` no lo nombra; solo un hilo por su nombre exacto, y uno que `no_leer`

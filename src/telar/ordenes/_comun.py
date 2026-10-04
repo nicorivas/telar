@@ -26,6 +26,7 @@ from pathlib import Path
 
 from telar import estado as mod_estado
 from telar import lectura
+from telar import movil as mod_movil
 from telar import salida as mod_salida
 from telar.modelo import Atencion, Ficha, Hilo, Item, Pendiente, Prioridad
 from telar.mux import ErrorDeMux, Multiplexor
@@ -193,6 +194,9 @@ class Telar:
     sesion: str = ""
     viva: bool = False
     raiz: Path = field(default_factory=Path.cwd)
+    #: hilos que viven en una sesión tmux propia (celular, periódicos): nombre → sesión. Están
+    #: vivos y se les puede escribir, pero no son tabs del multiplexor: `vivo` no los cuenta.
+    propios: dict[str, str] = field(default_factory=dict)
     #: multiplexor construido, o None si no se pudo (y entonces `aviso` dice por qué)
     mux: Multiplexor | None = None
     aviso: str = ""
@@ -205,6 +209,10 @@ class Telar:
 
     def vivo(self, hilo: Hilo) -> bool:
         return hilo.nombre in self.vivos
+
+    def propio(self, hilo: Hilo) -> bool:
+        """¿Vive en una sesión propia y no en un tab? Un hilo con tab (`vivo`) no cuenta aquí."""
+        return hilo.nombre in self.propios and hilo.nombre not in self.vivos
 
 
 def _mux(ctx) -> tuple[Multiplexor | None, str]:
@@ -269,6 +277,11 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
 
     hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
+    try:
+        propios = {n: s for n, s in mod_movil.propios().items() if n not in vivos}
+    except RuntimeError:  # sin servidor tmux no hay sesiones propias, y eso no es un error
+        propios = {}
+
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
     if con_ficha:
         unidades = lectura.indice(ctx.perfil, config.raiz)
@@ -277,6 +290,7 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
     return Telar(
         hilos=hilos,
         vivos=vivos,
+        propios=propios,
         sesion=config.sesion,
         # con un aviso de por medio no se declara viva: el contrato dice que entonces
         # los hilos son los que telar recuerda, y eso es justo lo que se está dibujando
@@ -543,6 +557,7 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "id": hilo.id,
         "nombre": hilo.nombre,
         "vivo": tel.vivo(hilo),
+        "propio": tel.propio(hilo),
         "activo": hilo.activo,
         "archivado": hilo.archivado,
         "vinculado": hilo.vinculado,

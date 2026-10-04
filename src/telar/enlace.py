@@ -134,8 +134,13 @@ def _enviar(ctx, args, entrada):
         raise ErrorDePuerta("un texto con saltos de línea solo se puede mandar con «enter»")
     from telar.ordenes import _comun
 
+    from telar import movil
+
     tel = _comun.tejer(ctx, con_ficha=False)
     hilo = tel.por_nombre(args[0])
+    if hilo is not None and tel.propio(hilo):  # vive en su propia sesión (celular, periódico), no en un tab
+        movil.escribir(tel.propios[hilo.nombre], texto, enviar=enter)
+        return {"hilo": hilo.nombre, "caracteres": len(texto), "enviado": enter}
     if hilo is None or not tel.vivo(hilo):
         raise ErrorDePuerta(f"no hay un hilo vivo que se llame «{args[0]}»")
     if tel.mux is None:
