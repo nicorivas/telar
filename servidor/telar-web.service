@@ -24,7 +24,8 @@ Environment=PYTHONUNBUFFERED=1
 # `telar web` escucha en la IP de Tailscale; al encender, esa interfaz tarda unos segundos en existir, y si
 # arrancara antes caería a localhost sin avisar. Se espera hasta un par de minutos a que tenga IP.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; echo "tailscale no tiene IP todavía" >&2; exit 1'
-ExecStart=%h/.local/bin/telar web --escribir --tambien telar.tail22505a.ts.net
+# --tambien: el nombre https que da `tailscale serve` a esta máquina (el tuyo, no este de ejemplo)
+ExecStart=%h/.local/bin/telar web --escribir --tambien servidor.tu-red.ts.net
 Restart=always
 RestartSec=5
 NoNewPrivileges=yes

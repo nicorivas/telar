@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-10-05
+
 ### Added
 
 - `telar periodicos`: the processes that run on their own, defined in `periodicos.toml` next to `config.toml` on
@@ -20,6 +22,18 @@ workflow refuses to run if the two disagree.
   prompt), schedule presets with a live preview of the next runs (or why the expression is wrong), the thread's
   name, how many may stay open, the agent's arguments, folder and active. Errors stay in the form with what was
   typed. `telar periodicos horario` and `telar periodicos skills` back it.
+- `telar web`: installable on the phone as a PWA when served over https (`tailscale serve`): icon, manifest and a
+  service worker that caches nothing; an https `Origin` is accepted only for a host declared with `--tambien`.
+- `telar web`: the reply box grows to six lines (Enter is a new line on the phone, sends with a keyboard) and a large
+  «enviar» button; tapping a thread that has a conversation goes straight into it.
+- Threads with their own session (opened from the phone or by a periodic process, `telar-…` sessions) count as
+  `propio`: they can be written to (`enviar`, the web) even though they are not tabs.
+
+### Fixed
+
+- `telar web`: a reply box opened by a direct reload stayed read-only; two polls in flight duplicated the last message.
+- Calendar: monthly series with an ordinal BYDAY (`1MO`, `-1FR`) fell on the start date's day of the month instead of
+  the weekday.
 
 ## [0.1.10] — 2026-10-02
 
@@ -396,7 +410,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/nicorivas/telar/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/nicorivas/telar/compare/v0.1.9...v0.1.10
 [0.1.4]: https://github.com/nicorivas/telar/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/nicorivas/telar/compare/v0.1.2...v0.1.3
