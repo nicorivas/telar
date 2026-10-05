@@ -25,6 +25,8 @@ Environment=PYTHONUNBUFFERED=1
 # arrancara antes caería a localhost sin avisar. Se espera hasta un par de minutos a que tenga IP.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; echo "tailscale no tiene IP todavía" >&2; exit 1'
 # --tambien: el nombre https que da `tailscale serve` a esta máquina (el tuyo, no este de ejemplo)
+# Opcional, la pestaña «plan» y sus comentarios (ver docs/contratos.md): agregar al final de la línea
+#   --plan %h/ruta/a/los/planes --plan-comando %h/ruta/al/programa
 ExecStart=%h/.local/bin/telar web --escribir --tambien servidor.tu-red.ts.net
 Restart=always
 RestartSec=5

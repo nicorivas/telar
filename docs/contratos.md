@@ -804,7 +804,35 @@ puerta (`{"ok": true, "hilo": …, "caracteres": …, "enviado": …}` o `{"ok":
 | 409 | la puerta lo rechazó: el hilo no existe o no está vivo, el texto es vacío o pasa de 8000 caracteres… |
 | 429 | otro envío hace menos de medio segundo |
 
-`GET /api/yo` dice qué puede hacer esa página: `{"escribir": bool, "enlaces": ["laptop"]}`.
+`GET /api/yo` dice qué puede hacer esa página: `{"escribir": bool, "plan": bool, "enlaces": ["laptop"]}`.
+
+## `GET /api/plan` — el plan de un día, en la pestaña «plan» de `telar web`
+
+Solo existe si `telar web` arrancó con `--plan CARPETA`; sin eso, 404 y la pestaña no aparece (`/api/yo` dice `plan: true|false`). Los planes
+son archivos `AAAA-MM-DD.json` en esa carpeta (o `.md`, los de antes), escritos por quien quiera —en el repo de Nico, la skill `/planear`—; telar solo los lee.
+
+```
+/api/plan                    el de hoy; si no hay, el próximo que haya; si no, el último
+/api/plan?dia=2026-10-05     el de ese día (404 si no existe o si el nombre no es una fecha)
+```
+```json
+{ "dia": "2026-10-05", "dias": ["2026-10-05", "2026-10-04"], "hoy": "2026-10-04", "plan": { "version": 1, "resumen": {…}, "agenda": […] } }
+```
+
+`dias` va del más nuevo al más viejo. Con un `.json`, `plan` es su contenido tal cual (502 si no es JSON válido); su esquema lo define quien lo escribe y lo
+documenta la skill (`.claude/skills/planear/esquema.md` en el repo de Nico). La página dibuja el resumen, los resultados, la **agenda con el contexto de cada reunión
+plegable**, los pendientes, el foco y las personas. Con un `.md`, viene `texto` (el markdown sin su front-matter) y la página lo dibuja con las tablas apiladas.
+Sin ningún plan, `dia` viene vacío y `dias` es `[]`. Si hay `.json` y `.md` del mismo día, manda el `.json`.
+
+## `POST /api/plan/comentar` — un comentario sobre el plan abre una sesión
+
+Solo con `telar web --escribir --plan CARPETA --plan-comando CMD` (si no, 404 o 403; `/api/yo` dice `plan_comentar`). Cuerpo: `{"dia": "2026-10-05", "texto": "…"}`,
+de hasta 4.000 caracteres, sobre un plan que exista. Tiene las mismas defensas que `/api/enviar` (encabezado `X-Telar`, `Host` y `Origin` de esta página) y se
+anota en `web.log` (solo el tamaño). Un comentario cada cinco segundos.
+
+telar no sabe qué hace una sesión: corre `CMD` con el comentario en la **entrada estándar** —nunca en la línea de comandos— y `TELAR_PLAN_DIA` y
+`TELAR_PLAN_CARPETA` en el entorno. La primera línea que imprima es el nombre del hilo que abrió. Respuesta: `{"ok": true, "hilo": "✎ plan 10/05 21:40", "caracteres": 213}`;
+un fallo del programa es 502 con su última línea de error.
 
 ## `GET /api/conversacion` — el historial de un hilo, por páginas
 

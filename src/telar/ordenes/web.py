@@ -4,6 +4,8 @@
     telar web --host IP --puerto N
     telar web --sin-recarga      no recarga la página cuando cambian sus archivos
     telar web --escribir         permite escribirle a un hilo desde la página (por defecto, solo lee)
+    telar web --plan CARPETA --plan-comando CMD   (con --escribir) la pestaña «plan» recibe comentarios que abren una sesión
+    telar web --plan CARPETA     muestra una pestaña «plan» con los archivos AAAA-MM-DD.json de esa carpeta
 
 Una capa fina sobre lo que telar ya sabe: cada pantalla lee un `--json` documentado
 (docs/contratos.md), así que la lógica no se duplica. Los hilos de otras máquinas (el laptop) salen
@@ -24,9 +26,12 @@ de ellos recarga la página abierta en el celular en un par de segundos: ese es 
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import mimetypes
+import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -132,6 +137,43 @@ def enviar(ctx, datos: object) -> tuple[int, dict]:
             return 404, {"ok": False, "error": f"no sé a qué enlace corresponde «{maquina[:40]}» (ver [enlaces])"}
         r = enlace.llamar(destino, "enviar", args, texto.encode())
     return (200 if r.get("ok") else 409), r
+
+
+MAX_COMENTARIO = 4000
+ENTRE_COMENTARIOS = 5.0
+_ultimo_comentario = [0.0]
+
+
+def comentar_plan(plan: Path, comando: str, datos: object) -> tuple[int, dict]:
+    """Un comentario sobre el plan de un día abre una sesión de agente que lo atiende: `(código http, respuesta)`.
+
+    telar no sabe qué hace esa sesión: corre `comando` (el que se declaró con `--plan-comando`) con el comentario en la
+    **entrada estándar** —nunca en la línea de comandos— y el día y la carpeta en el entorno. La primera línea que imprima
+    es el nombre del hilo que abrió. Un comentario a la vez, cada cinco segundos."""
+    if not isinstance(datos, dict) or not isinstance(datos.get("dia"), str) or not isinstance(datos.get("texto"), str):
+        return 400, {"ok": False, "error": "faltan o no son válidos dia y texto"}
+    dia, texto = datos["dia"], datos["texto"].strip()
+    if not _DIA.fullmatch(dia) or not any((plan / f"{dia}{ext}").is_file() for ext in (".json", ".md")):
+        return 404, {"ok": False, "error": f"no hay un plan del {dia[:10]}"}
+    if not texto:
+        return 400, {"ok": False, "error": "el comentario está vacío"}
+    if len(texto) > MAX_COMENTARIO:
+        return 413, {"ok": False, "error": f"el comentario pasa de {MAX_COMENTARIO} caracteres"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultimo_comentario[0] < ENTRE_COMENTARIOS:
+            return 429, {"ok": False, "error": "muy rápido: un comentario cada cinco segundos"}
+        _ultimo_comentario[0] = ahora
+    entorno = {**os.environ, "TELAR_PLAN_DIA": dia, "TELAR_PLAN_CARPETA": str(plan)}
+    try:
+        r = subprocess.run(shlex.split(comando), input=texto.encode(), capture_output=True, timeout=30, env=entorno)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 502, {"ok": False, "error": f"no se pudo abrir la sesión: {type(e).__name__}"}
+    if r.returncode != 0:
+        cola = (r.stderr.decode("utf-8", "replace").strip().splitlines() or [f"salió con {r.returncode}"])[-1]
+        return 502, {"ok": False, "error": f"no se pudo abrir la sesión: {cola[:200]}"}
+    primera = (r.stdout.decode("utf-8", "replace").strip().splitlines() or [""])[0]
+    return 200, {"ok": True, "hilo": primera.split(" · ")[0][:120], "caracteres": len(texto)}
 
 
 def anotar_envio(config, cliente: str, maquina: str, hilo: str, caracteres: int, resultado: str) -> None:
@@ -246,6 +288,44 @@ def _conversacion_remota(q: dict, nombre: str, config, responder) -> tuple[int, 
     return responder(*resultado)
 
 
+_DIA = re.compile(r"\d{4}-\d{2}-\d{2}")
+MAX_PLAN = 400_000
+
+
+def leer_plan(carpeta: Path, consulta: str) -> tuple[int, dict]:
+    """El plan de un día: `(código http, cuerpo)`. Los planes son `AAAA-MM-DD.json` en `carpeta` (o `.md`, los de antes);
+    sin `dia`, el de hoy, o el próximo que haya, o el último. Solo se lee, y el nombre se valida antes de tocar el disco."""
+    por_dia: dict[str, Path] = {}
+    for f in sorted(carpeta.glob("*")):  # el .json manda sobre un .md del mismo día
+        if f.suffix in (".json", ".md") and _DIA.fullmatch(f.stem) and (f.stem not in por_dia or f.suffix == ".json"):
+            por_dia[f.stem] = f
+    dias = sorted(por_dia, reverse=True)
+    hoy = datetime.date.today().isoformat()
+    pedido = parse_qs(consulta).get("dia", [""])[0]
+    if pedido:
+        if not _DIA.fullmatch(pedido) or pedido not in por_dia:
+            return 404, {"error": f"no hay un plan del {pedido[:10]}"}
+        dia = pedido
+    elif dias:
+        dia = hoy if hoy in por_dia else next((d for d in reversed(dias) if d > hoy), dias[0])
+    else:
+        return 200, {"dia": "", "dias": [], "hoy": hoy}
+    archivo = por_dia[dia]
+    texto = archivo.read_text(encoding="utf-8", errors="replace")[:MAX_PLAN]
+    cuerpo = {"dia": dia, "dias": dias, "hoy": hoy}
+    if archivo.suffix == ".json":
+        try:
+            cuerpo["plan"] = json.loads(texto)
+        except ValueError as e:
+            return 502, {"error": f"el plan del {dia} no es JSON válido: {e}"}
+    else:
+        if texto.startswith("---\n"):  # el front-matter es para las máquinas
+            fin = texto.find("\n---", 4)
+            texto = texto[fin + 4:].lstrip("\n") if fin > 0 else texto
+        cuerpo["texto"] = texto
+    return 200, cuerpo
+
+
 def version_de_la_pagina() -> str:
     """Una huella de los archivos de la página: cambia cuando se edita uno."""
     h = hashlib.sha1()
@@ -255,7 +335,8 @@ def version_de_la_pagina() -> str:
     return h.hexdigest()[:12]
 
 
-def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tambien: tuple[str, ...] = ()):
+def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tambien: tuple[str, ...] = (), plan: Path | None = None,
+              plan_comando: str = ""):
     config = config if config is not None else (ctx.config if ctx is not None else None)
 
     class Manejador(BaseHTTPRequestHandler):
@@ -276,8 +357,14 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if ruta == "/api/conversacion":  # el historial de un hilo de esta máquina, por páginas (solo lee)
                     return self._enviar(*_conversacion(consulta, config))
                 if ruta == "/api/yo":  # qué puede hacer esta página: la escritura es opt-in y necesita el enlace
-                    cuerpo = {"escribir": escribir, "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
+                    cuerpo = {"escribir": escribir, "plan": plan is not None, "plan_comentar": bool(plan is not None and plan_comando and escribir),
+                              "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")
+                if ruta == "/api/plan":  # los planes del día (solo si se arrancó con --plan)
+                    if plan is None:
+                        return self._enviar(404, json.dumps({"error": "esta página no tiene planes: `telar web --plan CARPETA`"}).encode(), "application/json")
+                    codigo, cuerpo = leer_plan(plan, consulta)
+                    return self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
                 if ruta == "/api/espejos":  # los hilos de otras máquinas (el laptop), de sus fotos; no cuesta nada leerlos
                     cuerpo = {"espejos": espejo.leer_todos(config) if config is not None else [], "vigente": espejo.VIGENTE}
                     return self._enviar(200, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
@@ -315,8 +402,11 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
             def responder(codigo, cuerpo):
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
-            if self.path.partition("?")[0] != "/api/enviar":
+            ruta = self.path.partition("?")[0]
+            if ruta not in ("/api/enviar", "/api/plan/comentar"):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
+            if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
+                return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
             if not escribir or ctx is None:
                 return responder(403, {"ok": False, "error": "esta página solo lee: arráncala con `telar web --escribir`"})
             rechazo = self._permitido()
@@ -332,6 +422,15 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 datos = json.loads(self.rfile.read(largo))
             except ValueError:
                 return responder(400, {"ok": False, "error": "el cuerpo no es JSON"})
+            if ruta == "/api/plan/comentar":
+                try:
+                    codigo, resultado = comentar_plan(plan, plan_comando, datos)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "plan", str(datos.get("dia", "")), len(str(datos.get("texto", ""))),
+                                 "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
             try:
                 codigo, resultado = enviar(ctx, datos)
             except Exception as e:  # noqa: BLE001 - una falla interna se dice, no cuelga la conexión
@@ -354,6 +453,9 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--puerto", type=int, default=PUERTO)
     p.add_argument("--abierto", action="store_true", help="permitir escuchar en todas las interfaces (0.0.0.0)")
     p.add_argument("--escribir", action="store_true", help="permitir escribirle a un hilo desde la página (por defecto, solo lee)")
+    p.add_argument("--plan", default="", metavar="CARPETA", help="una pestaña «plan» con los AAAA-MM-DD.json de esa carpeta (solo lee)")
+    p.add_argument("--plan-comando", default="", metavar="CMD",
+                   help="con --plan y --escribir: el programa que atiende un comentario del plan (lo recibe por la entrada estándar)")
     p.add_argument("--tambien", action="append", default=[], metavar="HOST:PUERTO",
                    help="otro nombre con el que se llega a esta página (para `--escribir`); se puede repetir")
     p.add_argument("--sin-recarga", action="store_true", help="no recargar la página al cambiar sus archivos")
@@ -368,7 +470,9 @@ def main(argv: list[str], ctx) -> int:
     threading.Thread(target=mantener_fresco, daemon=True).start()
     if ctx.config.enlaces:
         threading.Thread(target=mantener_espejos, args=(ctx.config,), daemon=True).start()
-    servidor = ThreadingHTTPServer((host, o.puerto), manejador(not o.sin_recarga, ctx.config, ctx, o.escribir, tuple(o.tambien)))
+    servidor = ThreadingHTTPServer((host, o.puerto), manejador(not o.sin_recarga, ctx.config, ctx, o.escribir, tuple(o.tambien),
+                                                                plan=Path(o.plan).expanduser().resolve() if o.plan else None,
+                                                                plan_comando=o.plan_comando))
     print(f"telar web en http://{host}:{o.puerto}  ·  {'con' if not o.sin_recarga else 'sin'} recarga automática  ·  "
           f"{'PUEDE ESCRIBIR en hilos' if o.escribir else 'solo lee'}")
     try:
