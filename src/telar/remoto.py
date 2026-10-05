@@ -75,7 +75,7 @@ def carpeta_remota(config, remoto: Remoto, relativa: str = "") -> str:
 #: queda donde Claude mismo la habría puesto. No pisa una que ya esté.
 _DEJAR = r"""
 import os, re, sys
-carpeta, sid = sys.argv[1], sys.argv[2]
+carpeta, sid, esperado = sys.argv[1], sys.argv[2], int(sys.argv[3])
 base = os.path.abspath(os.path.expanduser(carpeta))
 destino = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", base))
 os.makedirs(destino, exist_ok=True)
@@ -83,6 +83,8 @@ ruta = os.path.join(destino, sid + ".jsonl")
 if os.path.exists(ruta):
     sys.exit("ya hay una conversación con ese id allá: " + ruta)
 datos = sys.stdin.buffer.read()
+if len(datos) != esperado:
+    sys.exit(f"llegaron {len(datos)} de {esperado} bytes: no la guardo (una conversación cortada no se retoma)")
 with open(ruta + ".tmp", "wb") as f:
     f.write(datos)
 os.chmod(ruta + ".tmp", 0o600)
@@ -137,9 +139,12 @@ def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tupl
     except OSError as e:
         return "", f"no pude leer la conversación: {e}"
     orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
-             shlex.join(["python3", "-c", _DEJAR, carpeta, sid])]
+             shlex.join(["python3", "-c", _DEJAR, carpeta, sid, str(len(datos))])]
+    # una conversación larga pesa decenas de MB y un laptop sube lento: un minuto fijo la cortaba
+    # a la mitad. Diez minutos, o 50 KB/s como piso, lo que sea más
+    espera = max(600, len(datos) / 50_000)
     try:
-        r = subprocess.run(orden, input=datos, capture_output=True, timeout=60)
+        r = subprocess.run(orden, input=datos, capture_output=True, timeout=espera)
     except (OSError, subprocess.TimeoutExpired) as e:
         return "", f"{remoto.destino} no responde: {e}"
     if r.returncode != 0:

@@ -65,6 +65,9 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- `telar hilo llevar`: a long conversation (tens of MB over a slow uplink) was cut at a fixed 60 s and the other
+  machine kept the truncated file. The wait now grows with the size, and the receiving side refuses to store a copy
+  whose length does not match.
 - `telar web`: a reply box opened by a direct reload stayed read-only; two polls in flight duplicated the last message.
 - Calendar: monthly series with an ordinal BYDAY (`1MO`, `-1FR`) fell on the start date's day of the month instead of
   the weekday.
