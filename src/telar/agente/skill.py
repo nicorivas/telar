@@ -18,7 +18,7 @@ MARCA = "<!-- instalada por `telar agente instalar`; `telar agente desinstalar` 
 
 SKILL = f"""---
 name: hilos
-description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, escribirles (mensaje nativo o correo entre agentes) y responder un correo que llegó. Úsala cuando haya que hablar con "otra sesión", "otro hilo", "escríbele a", "pregúntale a", "qué hilos hay", "de qué trata ese hilo", o cuando llegue un "[correo de agente]".
+description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, leer lo que pasó en otra, escribirles (mensaje nativo o correo entre agentes), encargarle algo a un agente residente y responder un correo que llegó. Úsala cuando haya que hablar con "otra sesión", "otro hilo", "otro agente", "escríbele a", "pregúntale a", "encárgale a", "qué hilos hay", "de qué trata ese hilo", "qué dijo ese hilo", o cuando llegue un "[correo de agente]".
 ---
 
 {MARCA}
@@ -44,6 +44,21 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
 `telar ficha <hilo> --json` da su documento (el README o lo que el perfil diga), su estado y
 sus pendientes. Si hace falta más, lee lo último que cambió en su carpeta. No le preguntes
 al otro lo que puedes leer tú.
+
+## Leer lo que pasó en uno
+
+`telar hilo leer <hilo> [--ultimos N]` da sus últimos turnos: lo que le pidieron y lo que
+contestó, con cada herramienta en una línea. Úsalo para ver si un hilo ya respondió a lo que le
+pediste, o en qué quedó, antes de preguntarle. Desde el servidor, un hilo del laptop se lee con
+`telar enlace leer <hilo>` (si el laptop lo permite).
+
+## Encargarle algo a un agente residente
+
+Los agentes residentes (`[agentes]` en la configuración; salen bajo «Agentes» en la lista) tienen
+un hilo de siempre. Para pedirles algo no abras otro: `telar encargar <agente> "texto"` se lo
+escribe si está libre, lo deja en cola si está trabajando, o abre su sesión retomando su
+conversación. `telar encargar <agente> --cola` muestra lo que espera. Pídele que deje el
+resultado en el registro (la tarea, el estado del proyecto), no solo en su conversación.
 
 ## Escribirle
 

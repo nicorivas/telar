@@ -42,6 +42,7 @@ class Agente:
     carpeta: Path
     hilos: tuple[str, ...] = ()
     home: tuple[str, ...] = ()
+    argumentos: tuple[str, ...] = ()
 
     @property
     def seccion(self) -> str:
@@ -89,7 +90,7 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
             if destino == real and hilo not in hilos:
                 hilos.append(hilo)
         salida.append(Agente(clave=d.name, nombre=nombre, carpeta=d, hilos=tuple(hilos),
-                             home=tuple(extra.home) if extra else ()))
+                             home=tuple(extra.home) if extra else (), argumentos=tuple(extra.argumentos) if extra else ()))
     return salida
 
 

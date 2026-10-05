@@ -19,6 +19,12 @@ que no se apaga). Cada proceso es una tabla con su nombre:
     carpeta = "~/trabajo"              # dónde corre (por defecto, el hogar)
     activo = false                     # pausado: no corre, pero no se olvida
 
+    [avanzar]
+    cuando = "0 9-19/2 * * 1-5"
+    mensaje = "/avanzar"
+    agente = "gestion"                 # se le encarga al agente residente (telar.encargos) en vez de
+                                       # abrir un hilo nuevo cada vez: una sola sesión que dura
+
 `telar periodicos aplicar` escribe en el crontab de la máquina un bloque entre marcas con una
 línea por proceso activo, y no toca nada fuera de él. Cada línea llama a `telar periodicos correr
 <nombre>`, que anota inicio, fin y resultado en `<estado>/periodicos/<nombre>.json` y la salida en
@@ -49,7 +55,7 @@ MARCA_FIN = "# <<< telar periodicos"
 NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 #: el log de cada proceso no crece sin fin: al pasar de esto se queda con la mitad más nueva
 MAX_LOG = 512 * 1024
-CLAVES = ("cuando", "comando", "mensaje", "hilo", "max_abiertos", "argumentos", "carpeta", "descripcion", "activo")
+CLAVES = ("cuando", "comando", "mensaje", "agente", "hilo", "max_abiertos", "argumentos", "carpeta", "descripcion", "activo")
 
 
 class ErrorDePeriodicos(Exception):
@@ -62,6 +68,7 @@ class Proceso:
     cuando: str
     comando: str = ""
     mensaje: str = ""
+    agente: str = ""
     hilo: str = ""
     max_abiertos: int = 1
     argumentos: tuple[str, ...] = ()
@@ -83,6 +90,8 @@ class Proceso:
         Horario(self.cuando)  # levanta si no se entiende
         if bool(self.comando.strip()) == bool(self.mensaje.strip()):
             raise ErrorDePeriodicos(f"«{self.nombre}»: lleva `comando` o `mensaje`, uno de los dos")
+        if self.agente and not self.mensaje.strip():
+            raise ErrorDePeriodicos(f"«{self.nombre}»: `agente` va con `mensaje` (lo que se le encarga)")
         if self.max_abiertos < 1:
             raise ErrorDePeriodicos(f"«{self.nombre}»: max_abiertos va desde 1")
         if "\n" in self.comando or "\n" in self.cuando:
@@ -217,7 +226,8 @@ def leer(destino: Path) -> Archivo:
             raise ErrorDePeriodicos(f"{destino}: [{nombre}] no conoce «{sorted(sobra)[0]}»")
         try:
             p = Proceso(nombre=nombre, cuando=str(cuerpo.get("cuando", "")), comando=str(cuerpo.get("comando", "")),
-                        mensaje=str(cuerpo.get("mensaje", "")), hilo=str(cuerpo.get("hilo", "")),
+                        mensaje=str(cuerpo.get("mensaje", "")), agente=str(cuerpo.get("agente", "")),
+                        hilo=str(cuerpo.get("hilo", "")),
                         max_abiertos=int(cuerpo.get("max_abiertos", 1)),
                         argumentos=tuple(str(x) for x in cuerpo.get("argumentos", ())),
                         carpeta=str(cuerpo.get("carpeta", "")), descripcion=str(cuerpo.get("descripcion", "")),
@@ -277,6 +287,7 @@ def cambiar(a: Archivo, nombre: str, **campos) -> Proceso:
     # cambiar de comando a mensaje (o al revés) deja el otro vacío
     if campos.get("comando"):
         campos.setdefault("mensaje", "")
+        campos.setdefault("agente", "")
     if campos.get("mensaje"):
         campos.setdefault("comando", "")
     nuevo = replace(p, **campos)
@@ -400,6 +411,8 @@ def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
             except OSError as e:
                 codigo, resultado = 127, f"no corrió: {e}"
                 f.write(resultado + "\n")
+        elif p.agente:
+            codigo, resultado, hilo = _encargar(ctx, p)
         else:
             codigo, resultado, hilo = _abrir_hilo(ctx, p, carpeta, ahora)
             f.write(resultado + "\n")
@@ -411,6 +424,23 @@ def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
                      "segundos": round((fin - ahora).total_seconds(), 1)})
     _anotar(ctx.config, p.nombre, registro)
     return registro
+
+
+def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
+    """El prompt, encargado al agente residente: su hilo de siempre, no uno nuevo."""
+    os.environ.update({k: v for k, v in _entorno().items() if k in ("PATH", "LANG")})
+    from telar import agentes as mod_agentes
+    from telar import encargos
+
+    agente = next((a for a in mod_agentes.descubrir(ctx.config) if a.clave == p.agente), None)
+    if agente is None:
+        return 1, f"no hay un agente «{p.agente}» en [agentes] carpeta", ""
+    try:
+        r = encargos.encargar(ctx, agente, p.mensaje)
+    except encargos.ErrorDeEncargo as e:
+        return 1, f"no se pudo encargar a {agente.nombre}: {e}", ""
+    dice = {"entregado": "le escribí", "en cola": f"quedó en cola ({r.get('en_cola')})", "abierto": "abrí su sesión"}
+    return 0, f"encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])}", agente.nombre
 
 
 def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, str, str]:
@@ -426,6 +456,9 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
     if not ctx.config.agente.nombre:
         return 1, "un proceso con `mensaje` necesita un agente: [agente] nombre en config.toml", ""
     nombre = f"{p.nombre_hilo} {ahora:%m/%d %H:%M}"
+    from telar import encargos
+
+    encargos.liberar(ctx.config, 1)  # bajo `[agente] max_vivos`: antes de abrir, se cierran ociosas
     try:
         palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(p.mensaje)
         palabras = [*palabras, *p.argumentos]  # después del prompt: hay banderas que se tragan lo que sigue
@@ -442,7 +475,8 @@ def resumen(ctx, a: Archivo, ahora: datetime | None = None) -> list[dict]:
     for p in a.procesos:
         sig = proxima(p, a.zona, ahora)
         salida.append({"nombre": p.nombre, "cuando": Horario(p.cuando).texto, "tipo": p.tipo,
-                       "comando": p.comando, "mensaje": p.mensaje, "hilo": p.hilo, "max_abiertos": p.max_abiertos,
+                       "comando": p.comando, "mensaje": p.mensaje, "agente": p.agente, "hilo": p.hilo,
+                       "max_abiertos": p.max_abiertos,
                        "argumentos": list(p.argumentos), "carpeta": p.carpeta, "descripcion": p.descripcion,
                        "activo": p.activo, "proxima": sig.isoformat(timespec="minutes") if sig else "",
                        "ultima": ultima(ctx.config, p.nombre)})

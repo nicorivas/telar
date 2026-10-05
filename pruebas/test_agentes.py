@@ -32,7 +32,7 @@ class ConCasa(Prueba):
         (r / "agentes" / "faro" / "memoria" / "MEMORY.md").write_text(
             "# Memoria\n\n- [La lámpara](lampara.md) — se cambia los lunes\n- [Afuera](https://ejemplo.org) — un enlace\n")
         self.config = mod_config.Config(raiz=r, agentes_carpeta="agentes",
-                                        agentes_extra=(mod_config.Seccion(clave="faro", nombre="faro", hilos=("◌ guardia*",)),))
+                                        agentes_extra=(mod_config.AgenteExtra(clave="faro", hilos=("◌ guardia*",)),))
 
 
 class Descubrir(ConCasa):

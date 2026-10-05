@@ -569,6 +569,29 @@ cada archivo para abrirlo. Un hilo vinculado a la carpeta del agente **arranca a
 `[agente] carpeta` diga otra cosa: así Claude carga el `CLAUDE.md` del agente (y los de las carpetas de
 arriba) desde el comienzo.
 
+**Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` le escribe
+a su hilo de siempre si está libre, lo deja en cola si está trabajando (el gancho `Stop` le entrega el
+siguiente al terminar) o abre su sesión retomando su conversación. Si esa conversación pesa más de
+`[agentes] rotar_mb` (MB), empieza una nueva. Un proceso periódico con `agente = "<carpeta>"` y un
+`mensaje` es un encargo. Los argumentos para el agente al abrir su sesión (permisos, herramientas) van
+en `[agentes.<carpeta>] argumentos`.
+
+```toml
+[agente]
+max_vivos = 4                        # sesiones propias vivas a la vez en esta máquina (0: sin tope)
+
+[agentes]
+carpeta = "agentes"
+rotar_mb = 8
+
+[agentes.gestion]
+argumentos = ["--permission-mode", "acceptEdits"]
+```
+
+`max_vivos` cuenta las sesiones propias (las de los periódicos, los encargos y el celular). Antes de
+abrir otra, telar cierra las ociosas que nadie está mirando, la más quieta primero y los residentes al
+final; su conversación queda en disco y se retoma cuando haga falta.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml

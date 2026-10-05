@@ -48,6 +48,7 @@ def _analizador():
     p.add_argument("--cuando", default=None, help="el horario, en cron: minuto hora día mes día-semana")
     p.add_argument("--comando", default=None, help="una línea de shell")
     p.add_argument("--mensaje", default=None, help="un prompt: abre un hilo con el agente")
+    p.add_argument("--agente", default=None, help="con --mensaje: encargárselo a ese agente residente (su carpeta)")
     p.add_argument("--hilo", default=None, help="con --mensaje: el nombre del hilo")
     p.add_argument("--max", type=int, default=None, help="con --mensaje: cuántos abiertos a la vez, como mucho")
     p.add_argument("--arg", action="append", default=None, help="con --mensaje: un argumento más para el agente")
@@ -120,7 +121,7 @@ def _aqui(ctx, o) -> int:
         for d in datos:
             ult = d["ultima"]
             marca = "⏸" if not d["activo"] else ("✗" if ult.get("codigo") not in (None, 0) else "●")
-            que = d["mensaje"] and f"✦ {d['mensaje']}" or d["comando"]
+            que = d["mensaje"] and (f"✦ {d['mensaje']}" + (f" → {d['agente']}" if d.get("agente") else "")) or d["comando"]
             print(f"{marca} {d['nombre']:<20} {d['cuando']:<18} {que}")
             detalle = [f"próxima {d['proxima'][5:16].replace('T', ' ')}" if d["proxima"] else "pausado"]
             if ult.get("inicio"):
@@ -196,6 +197,7 @@ def _aqui(ctx, o) -> int:
         if archivo.por_nombre(o.nombre):
             return _comun.queja(f"ya hay un proceso «{o.nombre}»: telar periodicos editar {o.nombre}")
         p = mod.Proceso(nombre=o.nombre, cuando=o.cuando or "", comando=o.comando or "", mensaje=o.mensaje or "",
+                        agente=o.agente or "",
                         hilo=o.hilo or "", max_abiertos=o.max or 1, argumentos=tuple(o.arg or ()),
                         carpeta=o.carpeta or "", descripcion=o.descripcion or "", activo=not o.pausado)
         p.validar()
@@ -203,7 +205,7 @@ def _aqui(ctx, o) -> int:
         hecho = f"{p.nombre}: creado"
     elif o.verbo == "editar":
         _requerir(archivo, o.nombre)
-        campos = {k: v for k, v in (("cuando", o.cuando), ("comando", o.comando), ("mensaje", o.mensaje),
+        campos = {k: v for k, v in (("cuando", o.cuando), ("comando", o.comando), ("mensaje", o.mensaje), ("agente", o.agente),
                                      ("hilo", o.hilo), ("max_abiertos", o.max), ("argumentos", o.arg),
                                      ("carpeta", o.carpeta), ("descripcion", o.descripcion)) if v is not None}
         if o.sin_args:

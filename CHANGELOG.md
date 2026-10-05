@@ -12,6 +12,15 @@ workflow refuses to run if the two disagree.
   «Agentes» header, each one collapsible with a home and its threads; the home (`telar seccion agente:<folder>`)
   is built by telar from its `CLAUDE.md`, `bitacora.md` and `memoria/MEMORY.md`, with an optional `home` command on
   top. A thread linked to an agent's folder starts its agent there, so it loads that `CLAUDE.md` from the start.
+- `telar encargar <agent> "…"`: ask a resident agent for something in its one long-lived thread instead of opening a
+  new session — typed in if it is idle, queued if it is working (the `Stop` hook hands it the next one), or its
+  session reopened resuming its conversation, or a fresh one once that conversation is over `[agentes] rotar_mb`.
+  `[agentes.<folder>] argumentos` are passed to the agent when its session opens. A periodic process with
+  `agente = "<folder>"` and a `mensaje` is an encargo.
+- `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
+  telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
+- Agents learn the basics: the start-up context names `telar hilo leer` and the resident agents with
+  `telar encargar`, and the `/hilos` skill explains both.
 
 ## [0.1.11] — 2026-10-05
 

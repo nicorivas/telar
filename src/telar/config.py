@@ -128,6 +128,9 @@ class Agente:
     #: si el agente recibe al empezar unas líneas sobre su hilo y cómo hablar con los otros
     #: (el gancho SessionStart de `telar agente contexto`).
     contexto: bool = True
+    #: cuántas sesiones propias (hilos que no son tabs: periódicos, encargos, el celular) pueden
+    #: estar vivas a la vez en esta máquina; 0 es sin tope. Al abrir otra se cierran las ociosas.
+    max_vivos: int = 0
 
 
 #: teclas que el dashboard ya usa: un atajo no las puede tomar. r (recargar), p (proyectos),
@@ -200,6 +203,19 @@ class Seccion:
 
     def contiene(self, hilo: str) -> bool:
         return any(hilo.startswith(p[:-1]) if p.endswith("*") else hilo == p for p in self.hilos)
+
+
+@dataclass(frozen=True, slots=True)
+class AgenteExtra:
+    """Lo que un agente residente agrega a lo que telar descubre (`[agentes.<carpeta>]`)."""
+
+    clave: str
+    #: hilos suyos además del que lleva su nombre: nombre exacto, o prefijo si termina en `*`.
+    hilos: tuple[str, ...] = ()
+    #: un comando que imprime una página propia; sus bloques van arriba del home que arma telar.
+    home: tuple[str, ...] = ()
+    #: para el agente al abrir su sesión, después del prompt (permisos, herramientas).
+    argumentos: tuple[str, ...] = ()
 
 
 #: con qué se llega a una máquina remota. mosh sobrevive a que el laptop se duerma.
@@ -276,8 +292,10 @@ class Config:
     raiz: Path = field(default_factory=Path.cwd)
     #: dónde viven los agentes residentes (`[agentes] carpeta`), relativa a la raíz; "" es que no hay.
     agentes_carpeta: str = ""
-    #: lo que un agente agrega a lo que telar descubre (`[agentes.<carpeta>] hilos/home`).
-    agentes_extra: tuple[Seccion, ...] = ()
+    #: lo que un agente agrega a lo que telar descubre (`[agentes.<carpeta>] hilos/home/argumentos`).
+    agentes_extra: tuple[AgenteExtra, ...] = ()
+    #: una conversación de agente que pesa más que esto (MB) no se retoma: se empieza otra. 0: siempre.
+    agentes_rotar_mb: int = 0
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -424,7 +442,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "minuta", "proyecto", "pendiente", "pendiente_nuevo", "contexto"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "minuta", "proyecto", "pendiente", "pendiente_nuevo", "contexto", "max_vivos"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -453,8 +471,12 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         contexto = tabla.get("contexto", True)
         if not isinstance(contexto, bool):
             raise ErrorDeConfig(f"agente.contexto: se esperaba true o false, llegó {contexto!r}")
-        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(),
-                                   reunion=reunion.strip(), minuta=minuta.strip(), proyecto=proyecto.strip(), contexto=contexto, **textos)
+        max_vivos = tabla.get("max_vivos", 0)
+        if not isinstance(max_vivos, int) or isinstance(max_vivos, bool) or max_vivos < 0:
+            raise ErrorDeConfig(f"agente.max_vivos: se esperaba un número desde 0, llegó {max_vivos!r}")
+        cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(), reunion=reunion.strip(),
+                                   minuta=minuta.strip(), proyecto=proyecto.strip(), contexto=contexto,
+                                   max_vivos=max_vivos, **textos)
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")
@@ -635,22 +657,26 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         carpeta = tabla.get("carpeta", "")
         if not isinstance(carpeta, str):
             raise ErrorDeConfig(f"agentes.carpeta: se esperaba una carpeta, llegó {carpeta!r}")
+        rotar = tabla.get("rotar_mb", 0)
+        if not isinstance(rotar, int) or isinstance(rotar, bool) or rotar < 0:
+            raise ErrorDeConfig(f"agentes.rotar_mb: se esperaba un número de MB desde 0, llegó {rotar!r}")
         extras = []
         for clave, cuerpo in tabla.items():
-            if clave == "carpeta":
+            if clave in ("carpeta", "rotar_mb"):
                 continue
             cuerpo = _tabla(cuerpo, f"agentes.{clave}")
-            sobra = set(cuerpo) - {"hilos", "home"}
+            sobra = set(cuerpo) - {"hilos", "home", "argumentos"}
             if sobra:
                 raise ErrorDeConfig(f"agentes.{clave}.{sorted(sobra)[0]}: no existe")
-            for campo in ("hilos", "home"):
+            for campo in ("hilos", "home", "argumentos"):
                 valor = cuerpo.get(campo, [])
                 if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
                     raise ErrorDeConfig(f"agentes.{clave}.{campo}: se esperaba una lista de textos, llegó {valor!r}")
-            extras.append(Seccion(clave=clave, nombre=clave, hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
-                                  home=tuple(cuerpo.get("home", []))))
+            extras.append(AgenteExtra(clave=clave, hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
+                                      home=tuple(cuerpo.get("home", [])), argumentos=tuple(cuerpo.get("argumentos", []))))
         cambios["agentes_carpeta"] = carpeta.strip()
         cambios["agentes_extra"] = tuple(extras)
+        cambios["agentes_rotar_mb"] = rotar
 
     if "periodicos" in datos:
         cuerpo = _tabla(datos["periodicos"], "periodicos")
