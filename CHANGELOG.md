@@ -27,6 +27,12 @@ workflow refuses to run if the two disagree.
 - `telar pendiente --proveedor`, and providers asked one at a time until the task turns up: taking a task to its
   thread no longer downloads the whole calendar (5 s → under 1 s from the dashboard). VS Code shows a progress
   notification while a task goes to its thread or a shortcut runs.
+- `telar remotos atencion`: copies the remote threads' semaphore (working, waiting, done) here, since their hooks run
+  over there; VS Code calls it every 20 s, so a remote thread shows when its agent is working. Each thread's JSON
+  carries `atencion_desde`.
+- VS Code thread list: fixed columns — priority · semaphore · ⇄ · ✉ · name · last activity — each icon in its own
+  column whether shown or not, so names line up; the right side is only the last activity (last focus or the agent's
+  last change).
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
   telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
 - `telar remotos traer` closes local windows whose remote session no longer exists (closed by `max_vivos` or from

@@ -132,6 +132,36 @@ def conversacion_alla(remoto: Remoto, hilo: str, candidatas) -> tuple[str | None
     return r.stdout.strip(), ""
 
 
+#: lo que corre allá para saber en qué anda cada hilo: el semáforo que anotan sus ganchos.
+_ATENCIONES = r"""
+import json, os
+estado = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "telar")
+try:
+    print(json.dumps(json.load(open(os.path.join(estado, "atencion.json")))))
+except (OSError, ValueError):
+    print("{}")
+"""
+
+
+def atenciones(remoto: Remoto) -> tuple[dict | None, str]:
+    """El semáforo de los hilos de allá: {hilo: {"atencion", "desde"}}, o (None, error)."""
+    import json
+
+    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
+             shlex.join(["python3", "-c", _ATENCIONES])]
+    try:
+        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return None, f"{remoto.destino} no responde: {e}"
+    if r.returncode != 0:
+        return None, (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+    try:
+        datos = json.loads(r.stdout or "{}")
+    except ValueError:
+        return None, "allá no devolvió JSON"
+    return (datos if isinstance(datos, dict) else {}), ""
+
+
 def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tuple[str, str]:
     """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o "")."""
     try:

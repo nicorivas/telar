@@ -339,6 +339,16 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         const r = await cli.traerRemotos();
         if (r.datos?.traidos.length) await modelo.sondear();
     };
+    // el semáforo de los hilos remotos (trabajando, espera…) lo anotan sus ganchos allá: cada
+    // 20 s se copia aquí, con una sola conexión por máquina, y la lista se redibuja si cambió
+    let leyendoAtencion = false;
+    const atencionRemota = setInterval(() => {
+        if (!modelo.hayRemotos || leyendoAtencion) return;
+        leyendoAtencion = true;
+        void cli.atencionRemotos().then(r => { if (r.datos?.cambios.length) return modelo.sondear(); })
+            .catch(e => anotar(`atención remota: ${e}`)).finally(() => { leyendoAtencion = false; });
+    }, 20 * 1000);
+    ctx.subscriptions.push({ dispose: () => clearInterval(atencionRemota) });
     // el día se relee solo mientras se esté mirando
     const cadaMinuto = setInterval(() => {
         if (vuelta++ % 3 === 0) void traer().catch(e => anotar(`traer remotos: ${e}`));

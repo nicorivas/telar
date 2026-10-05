@@ -33,8 +33,8 @@ const CSS = `
   .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
   .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
-  .at { flex: none; margin-left: 1ch; }
-  .remoto { flex: none; margin-left: 1ch; color: var(--cian); }
+  .at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
+  .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
   .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
   .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
@@ -156,21 +156,24 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         const contexto = esc(JSON.stringify({
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
-        const glifo = GLIFO[h.atencion] ? `<span class="at ${h.atencion}">${GLIFO[h.atencion]}</span>` : '';
+        // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
+        // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · ✉ · nombre · última actividad
+        const glifo = `<span class="at ${esc(h.atencion)}" title="${esc(NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
         // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
-        const remoto = h.remoto ? `<span class="remoto" title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}">⇄</span>` : '';
-        // ✉ después de la prioridad: el hilo tiene correo que la persona todavía no vio. La
-        // columna existe solo si algún hilo tiene casilla, para no correr todos los nombres.
+        const remoto = `<span class="remoto"${h.remoto ? ` title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}"` : ''}>${h.remoto ? '⇄' : ' '}</span>`;
+        // ✉: correo que la persona todavía no vio. La columna existe solo si algún hilo tiene casilla
         const c = modelo.correoDe(h.nombre);
         const noLeidos = c?.no_leidos ?? 0, sinEntregar = c?.pendientes.length ?? 0;
         const sobre = !modelo.buzones.length ? '' : `<span class="sobre" title="${esc(noLeidos
             ? `${noLeidos} correo${noLeidos === 1 ? '' : 's'} sin leer${sinEntregar ? ` · ${sinEntregar} sin entregar al agente` : ''}: la pestaña ✉ correo de la ficha`
             : '')}">${noLeidos ? '✉' : ' '}</span>`;
-        const der = seccion === 'archivado' || !h.vivo ? haceCorto(h.visto) : duracion(h.tiempo);
+        // al final, solo cuándo fue su última actividad: el último foco o lo último que hizo su agente
+        const ultima = [h.visto, h.atencion_desde].filter((x): x is string => !!x).sort().pop();
+        const der = haceCorto(ultima);
         const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span>${remoto}${glifo}<span class="der">${esc(der)}</span>`
+            + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             + '<span class="iconos">' + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`

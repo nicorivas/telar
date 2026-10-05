@@ -3,6 +3,7 @@
     telar remotos                 cuáles hay allá, y cuáles telar todavía no conoce
     telar remotos traer           abrir aquí una ventana para cada una que no conoce
     telar remotos traer --json
+    telar remotos atencion        copiar aquí el semáforo de los hilos remotos (trabajando, espera…)
 
 Un hilo remoto casi siempre nace aquí (`telar hilo llevar`, «nuevo hilo remoto»). Pero
 también puede nacer allá: un reloj que abre una pasada de trabajo en el servidor, una
@@ -28,7 +29,8 @@ AYUDA = "Las sesiones de hilo de cada máquina remota, y traer las que nacieron 
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("remotos", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", nargs="?", choices=("traer",), help="traer: abrir aquí las que no conoce")
+    p.add_argument("verbo", nargs="?", choices=("traer", "atencion"),
+                   help="traer: abrir aquí las que no conoce; atencion: traer su semáforo")
     p.add_argument("--remoto", default="", help="solo esa máquina de [remotos]")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
@@ -37,6 +39,9 @@ def main(argv: list[str], ctx) -> int:
     remotos = [r for r in ctx.config.remotos if not o.remoto or r.nombre == o.remoto]
     if not remotos:
         return _comun.queja("no hay máquinas en [remotos]" if not o.remoto else f"no hay remoto «{o.remoto}»")
+
+    if o.verbo == "atencion":
+        return _atencion(ctx, remotos, o.json)
 
     tel = _comun.tejer(ctx, con_ficha=False)
     conocidas = {d["sesion"] for d in tel.estado.remotos().values() if d.get("sesion")}
@@ -89,4 +94,46 @@ def main(argv: list[str], ctx) -> int:
         print(f"traído: {t['hilo']} ({t['remoto']})")
     for c in cerrados:
         print(f"cerrada la ventana de {c['hilo']}: su sesión ya no existe en {c['remoto']} (▶ la retoma)")
+    return 0
+
+
+def _atencion(ctx, remotos, como_json: bool) -> int:
+    """Copia aquí el semáforo de los hilos remotos: sus ganchos corren allá y aquí nadie se entera.
+
+    Solo toca los hilos que viven en esa máquina; lo que allá no está anotado queda en «ninguna»."""
+    from datetime import datetime
+
+    from telar import estado as mod_estado
+    from telar.modelo import Atencion
+
+    est = mod_estado.abrir(ctx.config)
+    actuales = est.atenciones()
+    cambios, errores = [], []
+    for r in remotos:
+        alla, error = mod_remoto.atenciones(r)
+        if alla is None:
+            errores.append(error)
+            continue
+        for hilo, anotado in est.remotos().items():
+            if anotado.get("remoto") != r.nombre:
+                continue
+            cuerpo = alla.get(hilo) or {}
+            try:
+                nueva = Atencion(cuerpo.get("atencion", "ninguna"))
+            except ValueError:
+                nueva = Atencion.NINGUNA
+            try:
+                desde = datetime.fromisoformat(cuerpo["desde"]) if cuerpo.get("desde") else None
+            except ValueError:
+                desde = None
+            vieja, vieja_desde = actuales.get(hilo, (Atencion.NINGUNA, None))
+            if nueva != vieja or (desde and desde != vieja_desde):
+                est.anotar_atencion(hilo, nueva, desde)
+                cambios.append({"hilo": hilo, "atencion": nueva.value})
+    if como_json:
+        return _comun.escribir_json({"cambios": cambios, "errores": errores})
+    for c in cambios:
+        print(f"{c['hilo']}: {c['atencion']}")
+    for e in errores:
+        print(_comun.tenue(e))
     return 0

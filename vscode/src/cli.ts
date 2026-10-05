@@ -142,6 +142,8 @@ export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
+    /** desde cuándo está en ese semáforo: lo último que hizo su agente */
+    atencion_desde?: string | null;
     sesiones: string[]; ficha?: JsonFicha | null;
     /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
     remoto?: string;
@@ -312,6 +314,9 @@ export const conversacion = (id: string) => telarJson<JsonConversacion>(['agente
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
 /** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). */
+/** Copia aquí el semáforo de los hilos remotos (sus ganchos corren allá). */
+export const atencionRemotos = () =>
+    telarJson<{ cambios: { hilo: string; atencion: string }[]; errores: string[] }>(['remotos', 'atencion', '--json'], 30000);
 export const traerRemotos = () =>
     telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[] }>(['remotos', 'traer', '--json'], 60000);
 export const abrirItem = (clave: string, mensaje: string, nombre: string) =>

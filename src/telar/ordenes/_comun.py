@@ -566,6 +566,9 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "arquetipo": hilo.arquetipo,
         "prioridad": int(hilo.prioridad) if hilo.prioridad else None,
         "atencion": hilo.atencion.value,
+        # desde cuándo está en ese estado: lo último que hizo su agente (junto con `visto`, la
+        # última actividad del hilo)
+        "atencion_desde": _iso(tel.estado.atenciones().get(hilo.nombre, (None, None))[1]),
         "visto": _iso(hilo.visto),
         "tiempo": round(hilo.tiempo, 1),
         "sesiones": list(hilo.sesiones),
