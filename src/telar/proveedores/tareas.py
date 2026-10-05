@@ -96,6 +96,8 @@ class Tarea:
     #: a qué parte de la vida pertenece («trabajo», «personal»): el dashboard filtra por aquí
     area: str = ""
     #: el color de la palabra de `avance` (azul, verde, rojo…); vacío, el de fábrica
+    #: quién la hace, si no es la persona («Nataly»); vacío es suya. El dashboard filtra «mías / de otros».
+    dueno: str = ""
     color: str = ""
 
     @property
@@ -127,6 +129,7 @@ class Tarea:
                 "avance": self.avance,
                 "area": self.area,
                 "color": self.color,
+                "dueno": self.dueno,
             },
         )
 
@@ -676,6 +679,7 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         avance=texto_de("avance"),
         area=texto_de("area"),
         color=texto_de("color"),
+        dueno=texto_de("dueno"),
     )
 
 

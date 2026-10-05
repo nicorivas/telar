@@ -64,8 +64,9 @@ TIPOS_ACCION = ("comando", "hilo", "abrir")
 
 def _acciones(lista: object) -> str:
     """Los botones de una página: correr un comando, llevar al hilo o abrir un enlace."""
-    if not isinstance(lista, list) or len(lista) > 9:
-        return "se esperaba una lista de hasta 9 acciones"
+    # diez: ⏎ para la principal y del 1 al 9 para las demás, que es lo que caben en teclas
+    if not isinstance(lista, list) or len(lista) > 10:
+        return "se esperaba una lista de hasta 10 acciones"
     principales = 0
     for i, a in enumerate(lista):
         if not isinstance(a, dict) or not isinstance(a.get("nombre"), str) or not a["nombre"].strip():

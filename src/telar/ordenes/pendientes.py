@@ -126,6 +126,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "avance": str((item.datos or {}).get("avance") or ""),
                 "ficha": item.proveedor in con_ficha,
                 "area": str((item.datos or {}).get("area") or ""),
+                "dueno": str((item.datos or {}).get("dueno") or ""),
                 "color": str((item.datos or {}).get("color") or ""),
                 "pestana": pestanas.get(item.proveedor, ""),
             }

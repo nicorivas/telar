@@ -177,6 +177,8 @@ export interface JsonFila {
     ficha?: boolean;
     /** a qué parte de la vida pertenece («trabajo», «personal»): las listas filtran por aquí */
     area?: string;
+    /** quién la hace, si no es la persona; vacío es suya */
+    dueno?: string;
     /** el color de la palabra de `avance` (verde, rojo…) */
     color?: string;
     /** si su proveedor tiene pestaña propia (un feed): no es un pendiente, va a esa pestaña */

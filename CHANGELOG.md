@@ -33,6 +33,8 @@ workflow refuses to run if the two disagree.
 - VS Code thread list: fixed columns — priority · semaphore · ⇄ · ✉ · name · last activity — each icon in its own
   column whether shown or not, so names line up; the right side is only the last activity (last focus or the agent's
   last change).
+- Task owner: a provider task may carry `dueno` (who does it, if not you); the task lists in VS Code (sidebar, today,
+  review) get a «todas · mías · de otros» filter and show «→ Name» before a task someone else owns.
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
   telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
 - `telar remotos traer` closes local windows whose remote session no longer exists (closed by `max_vivos` or from
@@ -71,6 +73,7 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- A task card with ten actions (⏎ plus 1–9) failed the page contract, which allowed nine.
 - `telar remotos traer`: a session over there named like a sleeping thread here is that same thread (it moved):
   it is adopted under its name instead of showing up again as «· 2».
 - `telar hilo llevar`: a long conversation (tens of MB over a slow uplink) was cut at a fixed 60 s and the other

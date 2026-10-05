@@ -156,6 +156,19 @@ export function pista(tecla: string, nombre: string): string {
     return `<span class="atajo pista"><kbd>${esc(tecla)}</kbd><span>${esc(nombre)}</span></span>`;
 }
 
+/** El filtro por dueño: «todas», «mías» (sin dueño) y «de otros» (con dueño), con su cuenta. Si
+ *  ninguna tarea tiene dueño no hay nada que separar y no se dibuja. */
+export function filtroDuenos(duenos: string[], compacto = false): string {
+    const otros = duenos.filter(Boolean).length;
+    if (!otros) return '';
+    const mias = duenos.length - otros;
+    return '<div class="titulo-tareas duenos-t"><span class="modos">'
+        + `<button data-dueno-filtro="" title="todas, mías y de otros">${compacto ? '∗' : 'todas'} ${duenos.length}</button>`
+        + `<button data-dueno-filtro="mias" title="las mías: sin dueño">${compacto ? 'yo' : 'mías'} ${mias}</button>`
+        + `<button data-dueno-filtro="otros" title="de otros: tienen dueño (a quién empujar)">${compacto ? '→' : 'de otros'} ${otros}</button>`
+        + '</span></div>';
+}
+
 /** El filtro por área de una lista de tareas: «todas» y cada área con su cuenta, la más
  *  grande primero. Con una sola área no hay nada que filtrar y no se dibuja. El script lo
  *  aplica a toda `.tarea` con `data-area` de la vista (hoy, revisar, la barra). */
@@ -200,13 +213,15 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         + '<button data-orden-t="alfa" title="por el texto">a-z</button></span></div>');
     const areas = filtroAreas(lista.map(t => t.fila.area ?? ''), compacto);
     if (areas) h.push(areas);
+    const duenos = filtroDuenos(lista.map(t => t.fila.dueno ?? ''), compacto);
+    if (duenos) h.push(duenos);
     const cerrar = compacto ? [] : ['</section>'];
     if (d.error) return [...h, `<div class="vacio falla">${esc(d.error)}</div>`, ...cerrar];
     if (!lista.length) return [...h, '<div class="vacio">nada pendiente</div>', ...cerrar];
     h.push('<div id="tareas">');
     for (const t of lista) {
         const destino = compacto ? '' : `<span class="destino">${t.hilo ? '→' : '+'}</span>`;
-        const buscable = normalizar([t.ref, t.texto, t.hilo, t.fila.ruta ?? '', t.fila.proveedor ?? '', t.fila.avance ?? ''].join(' '));
+        const buscable = normalizar([t.ref, t.texto, t.hilo, t.fila.ruta ?? '', t.fila.proveedor ?? '', t.fila.avance ?? '', t.fila.dueno ?? ''].join(' '));
         // lo que dejó un agente: una palabra con color antes del texto (preparado, cerrar, pregunta, choca)
         const [avanceTodo, avanceFecha] = (t.fila.avance ?? '').split(' ');
         const avance = t.avance;
@@ -215,7 +230,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         const accion = t.fila.ficha
             ? `data-accion="tarea" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}"`
             : `data-accion="pendiente" data-valor="${esc(t.ref)}"`;
-        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}" data-area="${esc(t.fila.area ?? '')}"`
+        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}" data-area="${esc(t.fila.area ?? '')}" data-dueno="${esc(t.fila.dueno ?? '')}"`
             + ` data-orden="${t.urgencia}" data-ref="${esc(t.ref)}" data-alfa="${esc(normalizar(limpiarMd(t.texto)))}" data-urgente="${t.urgente ? 1 : 0}" data-texto="${esc(buscable)}"`
             // el texto entero va en un globo propio (ver `globo` en el script): el `title` nativo
             // no siempre se muestra dentro de una vista de la barra
@@ -224,7 +239,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
             // (el globo dice cuál); `●` en la columna angosta, que ya se trabaja
             + `<span class="id">${esc(t.ref)}</span><span class="pri">${t.enCurso ? '●' : ''}</span>`
             // al final, después del plazo: con ficha, al pasar el mouse un ✓ la marca hecha sin abrir nada
-            + `<span class="desc">${marcaAvance}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}`
+            + `<span class="desc">${marcaAvance}${t.fila.dueno ? `<span class="dueno">→ ${esc(t.fila.dueno)}</span>` : ''}${esc(limpiarMd(t.texto))}</span><span class="meta">${plazo(t.dias)}${destino}`
             + (t.fila.ficha
                 ? `<span class="marcar" data-accion="hecha" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}" title="marcarla hecha"></span>`
                 : '<span></span>') + '</span></div>');
@@ -259,7 +274,7 @@ export const CSS_DIA = `
   .titulo-tareas.estrecho { flex-direction: column; align-items: stretch; gap: 0; margin-top: 0; }
   .estrecho .modos { margin-left: 0; }
   .modos.ordenes { gap: 2ch; }
-  .areas-t .modos { margin-left: 0; flex-wrap: wrap; gap: 0 2ch; }
+  .areas-t .modos, .duenos-t .modos { margin-left: 0; flex-wrap: wrap; gap: 0 2ch; }
   .modos { display: flex; gap: 2ch; align-items: baseline; margin-left: auto; }
   .modos button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; white-space: nowrap; }
   .modos button:hover { color: var(--fg); }
@@ -367,6 +382,7 @@ export const CSS_DIA = `
   .tarea.encurso .pri { color: var(--azul); }
   .tarea:hover .marcar::after { content: '✓'; color: var(--dim); }
   .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
+  .tarea .dueno { color: var(--magenta); margin-right: 1ch; }
   .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }
   .av { font-weight: bold; margin-right: 1ch; }
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
@@ -482,7 +498,14 @@ export const CSS_DIA = `
  *  extensión. El estado (modo y búsqueda) sobrevive a que la vista se esconda. */
 export const SCRIPT_DIA = `
 const raiz = document.getElementById('dia');
-let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '' }, vscode.getState() || {});
+let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '', dueno: '' }, vscode.getState() || {});
+// el área y el dueño filtran antes que todo lo demás: lo que queda fuera ni se cuenta
+function pasa(f) {
+  if (estado.area && f.dataset.area !== estado.area) return false;
+  if (estado.dueno === 'mias' && f.dataset.dueno) return false;
+  if (estado.dueno === 'otros' && !f.dataset.dueno) return false;
+  return true;
+}
 // código de mayor a menor, con los números como números (T130 antes que T81): lo más nuevo
 // arriba, como el orden «número descendente» de flow. El texto, sin tildes.
 function comparar(a, b) {
@@ -498,7 +521,7 @@ function aplicar() {
   aplicarArea();   // también en «revisar», que no tiene la lista de hoy
   const c = document.getElementById('tareas'); if (!c) return;
   // el área filtra antes que todo lo demás: lo de otra área ni se cuenta
-  const todas = filas().filter(function (f) { return !estado.area || f.dataset.area === estado.area; });
+  const todas = filas().filter(pasa);
   filas().forEach(function (f) { if (todas.indexOf(f) < 0) f.hidden = true; });
   const partes = norm(estado.q).split(/\\s+/).filter(Boolean);
   let lista = todas;
@@ -527,8 +550,9 @@ function aplicar() {
 }
 // el filtro por área fuera de la lista de hoy (la pestaña «revisar») y el botón activo
 function aplicarArea() {
-  document.querySelectorAll('#revisar .tarea').forEach(function (f) { f.hidden = !!estado.area && f.dataset.area !== estado.area; });
+  document.querySelectorAll('#revisar .tarea').forEach(function (f) { f.hidden = !pasa(f); });
   document.querySelectorAll('[data-area-filtro]').forEach(function (b) { b.classList.toggle('activo', b.dataset.areaFiltro === estado.area); });
+  document.querySelectorAll('[data-dueno-filtro]').forEach(function (b) { b.classList.toggle('activo', b.dataset.duenoFiltro === (estado.dueno || '')); });
 }
 // la pantalla de proyectos: filtrar por todas las palabras, ordenar por nombre o por fecha
 function proyectosVisibles() { const c = document.getElementById('proyectos'); return c ? Array.prototype.slice.call(c.querySelectorAll('.proy')).filter(function (f) { return !f.hidden; }) : []; }
@@ -646,6 +670,8 @@ document.addEventListener('click', function (e) {
   if (op) { estado.po = op.dataset.ordenP; guardar(); return aplicarProyectos(); }
   const ar = e.target.closest('[data-area-filtro]');
   if (ar) { estado.area = ar.dataset.areaFiltro; guardar(); aplicar(); return aplicarArea(); }
+  const du = e.target.closest('[data-dueno-filtro]');
+  if (du) { estado.dueno = du.dataset.duenoFiltro; guardar(); aplicar(); return aplicarArea(); }
   const m = e.target.closest('[data-modo-tareas]');
   if (m) { estado.modo = m.dataset.modoTareas; estado.q = ''; estado.todas = false; guardar(); const b = document.getElementById('buscar'); if (b) b.value = ''; return aplicar(); }
   if (e.target.closest('#tareas-mas')) { estado.todas = true; guardar(); return aplicar(); }
