@@ -291,7 +291,9 @@ export class PanelHoy {
     }
 
     private async lanzarAtajo(tecla: string): Promise<void> {
-        const r = await cli.atajo(tecla);
+        const nombre = this.atajos.find(a => a.tecla === tecla)?.nombre ?? tecla;
+        const r = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `telar: ${nombre}…` }, () => cli.atajo(tecla));
         if (!r.datos) {
             void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
             return;
@@ -714,7 +716,7 @@ export class PanelHoy {
         const a = f?.pagina?.acciones?.[k];
         if (!f || !a) return;
         const tipo = a.tipo ?? 'comando';
-        if (tipo === 'hilo') { await llevarPendiente(f.ref, false); return; }
+        if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
         if (a.pide) {
@@ -1195,7 +1197,7 @@ export class PanelHoy {
             case 'tarea':
                 if (!m.valor) break;
                 // ⌘-clic: como antes, al hilo donde se trabaja; clic: la ficha
-                if (m.nuevo) { const [, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false); }
+                if (m.nuevo) { const [proveedor, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false, proveedor); }
                 else await this.abrirTarea(m.valor);
                 break;
             case 'accion-tarea': if (m.valor) await this.accionTarea(Number(m.valor)); break;

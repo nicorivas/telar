@@ -95,10 +95,13 @@ def con_area(filas: list[dict]) -> list[dict]:
     return filas
 
 
-def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date) -> tuple[list[dict], list[str]]:
-    """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca."""
+def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...] | None = None) -> tuple[list[dict], list[str]]:
+    """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca.
+
+    `solo` limita la consulta a esos proveedores: buscar una tarea no necesita bajar el calendario."""
     _comun.asegurar_proveedores(ctx.config)
-    items, fallas = consultar(list(ctx.config.proveedores_activos()), dia)
+    activos = [p for p in ctx.config.proveedores_activos() if solo is None or p.nombre in solo]
+    items, fallas = consultar(activos, dia)
     # los proveedores que dan ficha (`detalle`): un clic en su tarea la abre en vez de ir al hilo
     con_ficha = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("detalle")}
     # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)

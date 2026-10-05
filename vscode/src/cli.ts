@@ -415,8 +415,9 @@ export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */
-export const pendiente = (ref: string, nuevo = false) =>
-    telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : [])], 60000);
+/** `proveedor`, si se sabe, evita preguntarles a todos (el calendario se baja entero): de 5 s a menos de 1. */
+export const pendiente = (ref: string, nuevo = false, proveedor = '') =>
+    telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : [])], 90000);
 
 /** `--si` porque la confirmación ya la dio la persona en un diálogo: sin eso, una acción que
  *  pide confirmar falla aquí, donde no hay una terminal que pueda preguntar. */

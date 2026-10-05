@@ -24,6 +24,9 @@ workflow refuses to run if the two disagree.
   without a window) is **resumed** with its conversation and the task as first message — here or on the machine
   where it lives — instead of reopening its name with a new conversation; a task with no project goes, with
   `[agentes] sin_proyecto = "<folder>"`, to that resident agent as an encargo instead of a new thread.
+- `telar pendiente --proveedor`, and providers asked one at a time until the task turns up: taking a task to its
+  thread no longer downloads the whole calendar (5 s → under 1 s from the dashboard). VS Code shows a progress
+  notification while a task goes to its thread or a shortcut runs.
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
   telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
 - `telar remotos traer` closes local windows whose remote session no longer exists (closed by `max_vivos` or from

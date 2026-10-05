@@ -116,11 +116,13 @@ def _encargar(ctx, atajo, como_json: bool) -> int:
         r = json.loads(salida.getvalue().strip().splitlines()[-1])
     except (ValueError, IndexError):
         r = {"estado": "?"}
-    if ctx.config.agentes_en:
-        with redirect_stdout(io.StringIO()):
-            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
     tel = _comun.tejer(ctx, con_ficha=False)
     hilo = tel.por_nombre(agente.nombre)
+    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
+        with redirect_stdout(io.StringIO()):
+            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
+        tel = _comun.tejer(ctx, con_ficha=False)
+        hilo = tel.por_nombre(agente.nombre)
     if hilo is not None and tel.mux is not None and tel.vivo(hilo):
         try:
             tel.mux.ir(hilo.id)

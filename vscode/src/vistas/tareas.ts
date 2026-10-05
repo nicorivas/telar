@@ -55,7 +55,7 @@ export class VistaTareas implements vscode.WebviewViewProvider {
         if (m.accion === 'hecha' && m.valor) { await marcarHecha(m.valor); await this.actualizar(true); return; }
         // con ficha: el clic la abre en el dashboard para leerla y decidir; ⌘-clic, a su hilo
         if (m.accion === 'tarea' && m.valor) {
-            if (m.nuevo) { const [, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false); }
+            if (m.nuevo) { const [proveedor, , ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false, proveedor); }
             else await vscode.commands.executeCommand('telar.tarea', m.valor);
         }
     }
@@ -64,8 +64,12 @@ export class VistaTareas implements vscode.WebviewViewProvider {
 /** Un pendiente no se marca desde aquí: se va a trabajarlo. `telar pendiente` busca el hilo
  *  del proyecto al que le toca, le pone el foco y le deja la frase escrita al agente que ya
  *  está ahí —sin enviarla—. Con ⌘ se fuerza un hilo nuevo. */
-export async function llevarPendiente(ref: string, nuevo: boolean): Promise<void> {
-    const r = await cli.pendiente(ref, nuevo);
+export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = ''): Promise<void> {
+    // buscar el hilo, retomarlo o encargárselo a un agente del servidor toma unos segundos:
+    // una notificación lo dice mientras tanto, para que el Enter no parezca perdido
+    const r = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `telar: llevando ${ref} a su hilo…` },
+        () => cli.pendiente(ref, nuevo, proveedor));
     if (!r.datos) {
         void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude llevar «${ref}»`}`);
         return;

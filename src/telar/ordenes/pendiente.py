@@ -40,13 +40,14 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--donde", action="store_true", help="decir adónde iría, sin tocar nada")
     p.add_argument("--texto", default="", help="qué escribirle, en vez del texto del pendiente")
     p.add_argument("--enviar", action="store_true", help="además de escribirlo, enviarlo")
+    p.add_argument("--proveedor", default="", help="de qué proveedor es (más rápido: no pregunta a los demás)")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
 
     tel = _comun.tejer(ctx)
-    fila = _buscar(ctx, tel, o.ref)
+    fila = _buscar(ctx, tel, o.ref, proveedor=o.proveedor)
     if fila is None:
         return _comun.queja(
             f"no encuentro el pendiente «{o.ref}». `telar pendientes` los lista con su referencia."
@@ -117,8 +118,19 @@ def main(argv: list[str], ctx) -> int:
     return 0
 
 
-def _buscar(ctx, tel: _comun.Telar, ref: str) -> dict | None:
-    """El pendiente que nombra `ref`. Los documentos primero; la red, solo si hace falta."""
+def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | None:
+    """El pendiente que nombra `ref`. Los documentos primero; la red, solo si hace falta.
+
+    Los proveedores se consultan de a uno (el que se nombró, primero) y se para en el primero que
+    lo tiene: consultarlos todos juntos bajaba el calendario entero para encontrar una tarea."""
+    def calza(f):
+        return ref in (f["ref"], f["id"]) or (f["id"] and f["id"].casefold() == ref.casefold())
+
+    if proveedor:
+        externos, _ = orden_pendientes.de_proveedores(ctx, tel, dt.date.today(), solo=(proveedor,))
+        hallado = next((f for f in externos if calza(f)), None)
+        if hallado is not None:
+            return hallado
     filas = orden_pendientes.juntar(ctx, tel, repo=True, hechos=True)
     directo = next((f for f in filas if f["ref"] == ref), None)
     if directo is not None:
@@ -126,13 +138,14 @@ def _buscar(ctx, tel: _comun.Telar, ref: str) -> dict | None:
     porid = next((f for f in filas if f["id"] and f["id"].casefold() == ref.casefold()), None)
     if porid is not None:
         return porid
-    if not ctx.config.proveedores_activos():
-        return None
-    externos, _ = orden_pendientes.de_proveedores(ctx, tel, dt.date.today())
-    return next(
-        (f for f in externos if ref in (f["ref"], f["id"]) or f["id"].casefold() == ref.casefold()),
-        None,
-    )
+    for p in ctx.config.proveedores_activos():
+        if p.nombre == proveedor:
+            continue
+        externos, _ = orden_pendientes.de_proveedores(ctx, tel, dt.date.today(), solo=(p.nombre,))
+        hallado = next((f for f in externos if calza(f)), None)
+        if hallado is not None:
+            return hallado
+    return None
 
 
 def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:
@@ -268,11 +281,14 @@ def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int
         r = json.loads(salida.getvalue().strip().splitlines()[-1])
     except (ValueError, IndexError):
         r = {}
-    if ctx.config.agentes_en:
-        with redirect_stdout(io.StringIO()):
-            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
     tel = _comun.tejer(ctx, con_ficha=False)
     hilo = tel.por_nombre(agente.nombre)
+    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
+        # su ventana todavía no está aquí: se trae (una vuelta más al servidor, solo esa vez)
+        with redirect_stdout(io.StringIO()):
+            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
+        tel = _comun.tejer(ctx, con_ficha=False)
+        hilo = tel.por_nombre(agente.nombre)
     if hilo is not None and tel.mux is not None and tel.vivo(hilo):
         try:
             tel.mux.ir(hilo.id)
