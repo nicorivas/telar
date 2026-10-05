@@ -42,7 +42,7 @@ const guardado = (clave, valor) => {
   return null;
 };
 const estado = {
-  hoy: null, hilos: null, espejos: [], yo: { escribir: false, enlaces: [] }, crudo: '', error: '',
+  hoy: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, enlaces: [] }, plan: null, diaPlan: '', crudo: '', error: '',
   borradores: new Map(), envios: new Map(), repintar: false,
   abiertos: new Set(), sinVentana: new Set(), masPendientes: false,
   modo: guardado('telar.modo') === 'todos' ? 'todos' : 'urgentes',
@@ -318,7 +318,7 @@ function seccionEspejo(e) {
     ...(otros.length ? filasSinVentana(`${e.nombre}:otros`, e.nombre, otros) : []));
 }
 
-const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : 'hoy');
+const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : 'hoy');
 
 function pintar(forzar = false) {
   // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
@@ -334,14 +334,20 @@ function pintar(forzar = false) {
   }
   if (vista !== 'conversacion') soltarConversacion();
   const ahora = new Date();
-  $('reloj').textContent = hhmm(ahora);
   const fecha = estado.hoy && estado.hoy.fecha ? new Date(`${estado.hoy.fecha}T12:00`) : ahora;
   $('fecha').replaceChildren(`${DIAS[fecha.getDay()]} ${fecha.getDate()} ${MESES[fecha.getMonth()]} `,
     txt('dim', `· sem ${estado.hoy ? estado.hoy.semana : ''}`.trim()));
 
+  $('tab-plan').hidden = !estado.yo.plan;
   const cont = $('vista');
   if (vista === 'conversacion') { pintarConversacion(); return; }
   const y = scrollY;
+  if (vista === 'plan' && estado.yo.plan) {
+    if (!estado.plan) cargarPlan();
+    cont.replaceChildren(...pantallaPlan());
+    scrollTo(0, y);
+    return;
+  }
   if (!estado.hoy || !estado.hilos) {
     cont.replaceChildren(estado.error
       ? el('div', { className: 'error', textContent: estado.error })
@@ -357,6 +363,188 @@ function pintar(forzar = false) {
   }
 }
 
+// ── el plan del día ────────────────────────────────────────
+async function cargarPlan() {
+  try {
+    const r = await fetch(`/api/plan${estado.diaPlan ? `?dia=${encodeURIComponent(estado.diaPlan)}` : ''}`, { cache: 'no-store' });
+    const cuerpo = await r.json();
+    if (!r.ok) throw new Error(cuerpo.error || `error ${r.status}`);
+    const igual = estado.plan && JSON.stringify(estado.plan) === JSON.stringify(cuerpo);
+    estado.plan = cuerpo;
+    if (!igual && vistaActual() === 'plan') pintar();
+  } catch (e) {
+    estado.plan = { dia: '', dias: [], texto: '', error: e.message };
+    if (vistaActual() === 'plan') pintar();
+  }
+}
+
+function pantallaPlan() {
+  const p = estado.plan;
+  if (!p) return [el('div', { className: 'vacio', textContent: 'leyendo el plan…' })];
+  if (p.error) return [el('div', { className: 'error', textContent: p.error })];
+  if (!p.dia) return [el('div', { className: 'vacio', textContent: 'todavía no hay ningún plan escrito' })];
+  const i = p.dias.indexOf(p.dia);  // los días vienen del más nuevo al más viejo
+  const ir = (dia) => () => { estado.diaPlan = dia; estado.plan = null; cargarPlan(); };
+  const f = new Date(`${p.dia}T12:00`);
+  const etiqueta = `${DIAS[f.getDay()]} ${f.getDate()} ${MESES[f.getMonth()]}${p.dia === p.hoy ? ' · hoy' : ''}`;
+  const nav = el('div', { className: 'plan-nav' },
+    el('button', { type: 'button', disabled: i >= p.dias.length - 1, 'aria-label': 'plan anterior', onclick: ir(p.dias[i + 1]) }, '‹'),
+    el('span', { className: 'plan-dia', textContent: etiqueta }),
+    el('button', { type: 'button', disabled: i <= 0, 'aria-label': 'plan siguiente', onclick: ir(p.dias[i - 1]) }, '›'));
+  // los planes de antes eran markdown; los de ahora, JSON (ver el esquema de la skill /planear)
+  if (!p.plan) return [nav, el('div', { className: 'plan' }, markdown(p.texto || '', { tablas: true }))];
+  return [nav, ...vistaPlan(p.plan, p.dia, p.dia === p.hoy)];
+}
+
+const minutos = (h) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+const CLASE_TIPO = { estratégico: 'est', táctico: 'tac', desbloqueo: 'des' };
+
+// un plegable: tocar la fila abre o cierra su detalle (el estado se guarda por clave, como las demás filas)
+function plegable(clave, fila, detalle) {
+  const abierto = estado.abiertos.has(clave);
+  fila.classList.add('clic');
+  fila.setAttribute('role', 'button'); fila.tabIndex = 0; fila.setAttribute('aria-expanded', String(abierto));
+  fila.onclick = () => { estado.abiertos.has(clave) ? estado.abiertos.delete(clave) : estado.abiertos.add(clave); pintar(); };
+  return abierto ? [fila, detalle()] : [fila];
+}
+
+// pares clave → valor; un valor con lista va una línea por elemento
+function detallePlan(pares) {
+  const filas = pares.filter(([, v]) => v && (!Array.isArray(v) || v.length));
+  return el('div', { className: 'ag-det' }, filas.flatMap(([k, v]) => [
+    txt('k', k),
+    el('span', { className: 'v' }, Array.isArray(v) ? v.map((x) => el('div', {}, g('•'), ' ', enLinea(x))) : enLinea(v))]));
+}
+
+function vistaPlan(plan, dia, esHoy) {
+  const r = plan.resumen || {};
+  const carga = r.carga || {};
+  const pct = carga.tope_min ? Math.min(100, Math.round(((carga.enfocado_min || 0) / carga.tope_min) * 100)) : 0;
+  const ahoraMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const out = [];
+
+  out.push(el('section', { className: 'plan-resumen' },
+    el('div', { className: 'pr-txt' }, enLinea(r.texto || '')),
+    r.riesgo ? el('div', { className: 'pr-riesgo' }, g('!'), ' ', enLinea(r.riesgo)) : null,
+    carga.tope_min ? el('div', { className: 'carga', title: 'trabajo enfocado planificado contra el tope del día' },
+      el('span', { className: 'carga-barra' }, el('span', { className: 'carga-lleno', style: `width:${pct}%` })),
+      txt('dim', `${carga.enfocado_min} de ${carga.tope_min} min enfocados${carga.reuniones_h ? ` · ${String(carga.reuniones_h).replace('.', ',')} h de agenda` : ''}`)) : null,
+    plan.borrador ? el('div', { className: 'dim' }, 'borrador: las prioridades de la semana no están aprobadas') : null));
+
+  out.push(bloque('hilos', 'resultados', (plan.resultados || []).length, null,
+    ...(plan.resultados || []).flatMap((x, k) => plegable(`plan:${dia}:res${k}`,
+      el('div', { className: 'fila res' }, txt(`chip ${CLASE_TIPO[x.tipo] || ''}`, x.tipo), txt('que', x.texto)),
+      () => detallePlan([['logrado si', x.logrado_si]])))));
+
+  // la agenda: las reuniones y los bloques propios, en una sola lista; el contexto de cada una se abre al tocarla
+  const items = plan.agenda || [];
+  const reuniones = items.filter((a) => a.tipo === 'reunion' && !a.condicional);
+  const choca = (a) => a.tipo === 'reunion' && !a.condicional && reuniones.some((o) => o !== a && minutos(a.inicio) < minutos(o.fin) && minutos(o.inicio) < minutos(a.fin));
+  const proxima = esHoy ? items.find((a) => minutos(a.inicio) >= ahoraMin) : null;
+  out.push(bloque('agenda', 'agenda', reuniones.length, null,
+    ...items.flatMap((a, k) => {
+      const f = a.ficha || {};
+      const pasada = esHoy && minutos(a.fin) <= ahoraMin;
+      const fila = el('div', { className: `fila ag pl ${a.tipo}${a.estrategico ? ' estrategico' : ''}${a.condicional ? ' condicional' : ''}${pasada ? ' pasada' : ''}${proxima === a ? ' proxima' : ''}` },
+        txt('hora', a.inicio),
+        el('span', { className: 'que' }, txt('titulo', a.titulo),
+          a.nota ? el('span', { className: 'sub' }, enLinea(a.nota)) : null),
+        el('span', { className: 'chips' },
+          a.accion ? txt('chip acc', a.accion) : null,
+          choca(a) ? txt('chip choca', 'choca') : null));
+      const pares = [
+        ['con', (a.con || []).join(', ')], ['lugar', a.lugar], ['invitación', a.estado],
+        ['decisión', f.decision], ['llevar', f.llevar], ['pedir', f.pedir], ['resultado', f.resultado], ['riesgo', f.riesgo],
+        ['opciones', (f.opciones || []).map((o) => `${o.id}) ${o.texto}`)], ['recomiendo', f.recomendacion],
+        ['borrador', f.borrador], ['nota', f.nota]];
+      const hayDetalle = pares.some(([, v]) => v && (!Array.isArray(v) || v.length));
+      return hayDetalle ? plegable(`plan:${dia}:ag${k}`, fila, () => detallePlan(pares)) : [fila];
+    })));
+
+  const t = plan.tacticos || {};
+  const noHoy = t.no_hoy || [];
+  const noHoyAbierto = estado.sinVentana.has(`plan:${dia}:nohoy`);
+  out.push(bloque('pendientes', 'para hoy', (t.hoy || []).length, null,
+    ...(t.hoy || []).map((x) => el('div', { className: 'fila pe pl' }, txt('id', x.ref),
+      el('span', { className: 'que' }, enLinea(x.texto), x.donde ? el('span', { className: 'sub' }, `→ ${x.donde}`) : null))),
+    noHoy.length ? el('button', { type: 'button', className: 'mas', textContent: noHoyAbierto ? '… ocultar lo que no es de hoy' : `… ${noHoy.length} no hoy`,
+      onclick: () => { noHoyAbierto ? estado.sinVentana.delete(`plan:${dia}:nohoy`) : estado.sinVentana.add(`plan:${dia}:nohoy`); pintar(); } }) : null,
+    ...(noHoyAbierto ? noHoy.map((x) => el('div', { className: 'fila pe pl viejo' }, txt('id', x.ref),
+      el('span', { className: 'que' }, enLinea(x.texto), x.razon ? el('span', { className: 'sub' }, x.razon) : null))) : [])));
+
+  const fo = plan.foco || {};
+  out.push(bloque('tiempo', 'foco estratégico', null, null,
+    detallePlan([['prioridad', fo.prioridad], ['bloque', fo.bloque], ['primer paso', fo.paso], ['terminado', fo.terminado], ['pregunta', fo.pregunta], ['nota', fo.nota]])));
+
+  if ((plan.personas || []).length) {
+    out.push(bloque('esperan', 'personas', plan.personas.length, null,
+      ...plan.personas.map((x) => el('div', { className: 'fila pl' }, txt('quien', x.quien), el('span', { className: 'que' }, enLinea(x.para))))));
+  }
+  if ((plan.personal || []).length) {
+    out.push(bloque('otros', 'personal', null, null,
+      ...plan.personal.map((x) => el('div', { className: 'fila pl' }, txt('id', x.ref || ''), el('span', { className: 'que' }, enLinea(x.texto))))));
+  }
+  if ((plan.proximos || []).length) {
+    out.push(bloque('espejo', 'los días que vienen', null, null,
+      ...plan.proximos.map((x) => el('div', { className: 'fila pl' }, txt('quien', x.dia), el('span', { className: 'que' }, enLinea(x.texto))))));
+  }
+  const re = plan.retrospectiva;
+  if (re) {
+    out.push(bloque('viejo', 'retrospectiva', null, null, detallePlan([
+      ['resultados', (re.resultados || []).join(' · ')], ['imprevistos', re.imprevistos], ['energía', re.energia ? `${re.energia} de 5` : ''], ['nota', re.nota]])));
+  }
+  const previos = plan.comentarios || [];
+  if (previos.length) {
+    out.push(bloque('otros', 'comentarios', previos.length, null,
+      ...previos.flatMap((c, k) => plegable(`plan:${dia}:com${k}`,
+        el('div', { className: 'fila pl com' }, txt('quien', (c.cuando || '').slice(5, 16).replace('T', ' ')), el('span', { className: 'que' }, enLinea(c.texto))),
+        () => detallePlan([['qué se hizo', c.resultado || 'todavía sin resultado']])))));
+  }
+  const huecos = plan.huecos || [];
+  if (huecos.length) {
+    const abierto = estado.sinVentana.has(`plan:${dia}:huecos`);
+    out.push(el('section', { className: 'bloque otros' },
+      el('button', { type: 'button', className: 'mas', textContent: abierto ? '… ocultar lo que falta ver' : `… ${huecos.length} datos que faltan`,
+        onclick: () => { abierto ? estado.sinVentana.delete(`plan:${dia}:huecos`) : estado.sinVentana.add(`plan:${dia}:huecos`); pintar(); } }),
+      ...(abierto ? [detallePlan(huecos.map((h, k) => [String(k + 1), h]))] : [])));
+  }
+  if (estado.yo.plan_comentar) out.push(cuadroComentario(dia));
+  return out;
+}
+
+// el cuadro de abajo del plan: un comentario abre una sesión de agente que entiende qué cambia (el plan, la skill, un proyecto…)
+function cuadroComentario(dia) {
+  const clave = `plan-comentario:${dia}`;
+  const campo = el('textarea', {
+    rows: 3, className: 'campo', maxLength: 4000, autocomplete: 'off', autocapitalize: 'sentences', 'data-clave': clave,
+    placeholder: 'Comentarios sobre este plan: contexto que falta, algo que corregir…', 'aria-label': 'comentario sobre el plan',
+    value: estado.borradores.get(clave) || '',
+    oninput: () => { estado.borradores.set(clave, campo.value); },
+    onfocus: () => document.body.classList.add('escribiendo'),
+    onblur: () => document.body.classList.remove('escribiendo'),
+  });
+  const dijo = el('div', { className: 'dijo' });
+  const boton = el('button', { type: 'button', className: 'manda' }, 'enviar comentario');
+  boton.onclick = async () => {
+    const texto = campo.value.trim();
+    if (!texto) return;
+    boton.disabled = true; dijo.className = 'dijo'; dijo.textContent = 'abriendo una sesión…';
+    try {
+      const r = await fetch('/api/plan/comentar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
+        body: JSON.stringify({ dia, texto }) });
+      const cuerpo = await r.json().catch(() => ({}));
+      if (r.ok && cuerpo.ok) {
+        estado.borradores.delete(clave); campo.value = '';
+        dijo.className = 'dijo bien';
+        dijo.replaceChildren(`Se abrió «${cuerpo.hilo}». `, el('a', { href: '#hilos' }, 'verlo en hilos'));
+        setTimeout(() => cargarPlan(), 20000);  // la sesión anota el comentario en el plan
+      } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
+    } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
+    boton.disabled = false;
+  };
+  return el('section', { className: 'comenta' }, campo, el('div', { className: 'comenta-pie' }, dijo, boton));
+}
+
 // ── datos ──────────────────────────────────────────────────
 async function pedir(ruta, fresco = false) {
   const r = await fetch(`/api/${ruta}${fresco ? '?fresco=1' : ''}`, { cache: 'no-store' });
@@ -368,19 +556,22 @@ async function pedir(ruta, fresco = false) {
 async function cargar(fresco = false) {
   const aviso = $('aviso');
   aviso.textContent = 'actualizando…';
-  aviso.className = '';
+  aviso.className = 'dim';
+  $('menu').classList.remove('mal');
   try {
     const [hoy, hilos, fotos, yo] = await Promise.all([pedir('hoy', fresco), pedir('hilos', fresco), pedir('espejos'), pedir('yo')]);
     // la edad de una foto crece sola: para saber si algo cambió se mira lo demás y si sigue en línea
     const crudo = JSON.stringify([hoy, hilos, yo, (fotos.espejos || []).map((e) => [e.nombre, e.en_linea, e.recibido, e.error])]);
     const cambio = crudo !== estado.crudo || estado.error;
     Object.assign(estado, { hoy, hilos, yo, espejos: fotos.espejos || [], crudo, error: '' });
-    aviso.textContent = hhmm(new Date());
+    if (yo.plan && (vistaActual() === 'plan' || !estado.plan)) cargarPlan();
+    aviso.textContent = `· ${hhmm(new Date())}`;
     if (cambio) pintar();
   } catch (e) {
     estado.error = e.message;
-    aviso.textContent = 'sin conexión';
+    aviso.textContent = '· sin conexión';
     aviso.className = 'mal';
+    $('menu').classList.add('mal');
     pintar();
   }
 }
@@ -435,10 +626,20 @@ function enLinea(texto) {
   return nodos;
 }
 
+// una tabla de markdown como filas apilables: la primera columna a la izquierda, lo demás debajo (en el celular una tabla ancha no se lee)
+function tablaTarjetas(filas) {
+  const partir = (f) => f.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  const cuerpo = filas.filter((f) => !/^\s*\|[\s:|-]+\|?\s*$/.test(f)).slice(1).map(partir);  // sin la cabecera ni la regla
+  return el('div', { className: 'blq tabla' }, cuerpo.map(([primera, segunda, ...resto]) => el('div', { className: 'fila-t' },
+    el('span', { className: 'c1' }, enLinea(primera || '')),
+    el('span', { className: 'c2' }, enLinea(segunda || '')),
+    resto.length && resto.join('') ? el('span', { className: 'c3' }, enLinea(resto.join(' · '))) : null)));
+}
+
 // el markdown que escriben los agentes, sin dependencias: cercados de código, títulos, listas, tablas y párrafos
 const ES_LISTA = /^\s*([-*•]|\d+[.)])\s+/;
 const ES_BLOQUE = (l) => /^\s*```/.test(l) || /^\s*#{1,6}\s/.test(l) || ES_LISTA.test(l) || /^\s*\|/.test(l);
-function markdown(texto) {
+function markdown(texto, { tablas = false } = {}) {
   const lineas = String(texto).replace(/\r\n?/g, '\n').split('\n');
   const bloques = [];
   let i = 0;
@@ -452,7 +653,7 @@ function markdown(texto) {
     } else if (!l.trim()) {
       i++;
     } else if (/^\s*#{1,6}\s/.test(l)) {
-      bloques.push(el('div', { className: 'blq tit' }, enLinea(l.replace(/^\s*#{1,6}\s+/, ''))));
+      bloques.push(el('div', { className: `blq tit n${/^\s*(#+)/.exec(l)[1].length}` }, enLinea(l.replace(/^\s*#{1,6}\s+/, ''))));
       i++;
     } else if (ES_LISTA.test(l)) {
       const items = [];
@@ -465,7 +666,7 @@ function markdown(texto) {
     } else if (/^\s*\|/.test(l)) {
       const filas = [];
       for (; i < lineas.length && /^\s*\|/.test(lineas[i]); i++) filas.push(lineas[i]);
-      bloques.push(el('div', { className: 'blq codigo' }, celdas(filas.join('\n'))));
+      bloques.push(tablas ? tablaTarjetas(filas) : el('div', { className: 'blq codigo' }, celdas(filas.join('\n'))));
     } else {
       const par = [];
       for (; i < lineas.length && lineas[i].trim() && !ES_BLOQUE(lineas[i]); i++) par.push(lineas[i]);
@@ -768,8 +969,9 @@ function pintarConversacion() {
 const tema = () => (document.documentElement.dataset.tema === 'claro' ? 'claro' : 'oscuro');
 function pintarTema() {
   const claro = tema() === 'claro';
-  $('icono-tema').textContent = claro ? '☀' : '☾';
-  $('tema').title = claro ? 'tema claro (t para cambiar)' : 'tema oscuro (t para cambiar)';
+  // el botón dice a qué se pasa, no en cuál se está
+  $('icono-tema').textContent = claro ? '☾' : '☀';
+  $('texto-tema').textContent = claro ? 'tema oscuro' : 'tema claro';
   document.querySelector('meta[name=color-scheme]').content = claro ? 'light' : 'dark';
   document.querySelector('meta[name=theme-color]').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
 }
@@ -779,16 +981,27 @@ function alternarTema() {
   guardado('telar.tema', nuevo === 'claro' ? 'claro' : 'oscuro');
   pintarTema();
 }
-$('tema').onclick = alternarTema;
+$('tema').onclick = () => { alternarTema(); cerrarMenu(); };
 
 // ── vida de la página ──────────────────────────────────────
 addEventListener('hashchange', () => { scrollTo(0, 0); pintar(); });
-$('recargar').onclick = () => cargar(true);
+$('recargar').onclick = () => { cargar(true); cerrarMenu(); };
+// el menú de arriba a la derecha: tema y actualizar. Se cierra al elegir, al tocar fuera y con Escape.
+function cerrarMenu() { $('menu-panel').hidden = true; $('menu').setAttribute('aria-expanded', 'false'); }
+$('menu').onclick = (e) => {
+  e.stopPropagation();
+  const abrir = $('menu-panel').hidden;
+  $('menu-panel').hidden = !abrir;
+  $('menu').setAttribute('aria-expanded', String(abrir));
+};
+document.addEventListener('click', (e) => { if (!$('menu-panel').hidden && !e.target.closest('.der')) cerrarMenu(); });
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || /input|textarea/i.test(e.target.tagName)) return;
-  if (e.key === 'Escape' && vistaActual() === 'conversacion') volver();
+  if (e.key === 'Escape' && !$('menu-panel').hidden) cerrarMenu();
+  else if (e.key === 'Escape' && vistaActual() === 'conversacion') volver();
   else if (e.key === '1') location.hash = '#hoy';
   else if (e.key === '2') location.hash = '#hilos';
+  else if (e.key === '3' && estado.yo.plan) location.hash = '#plan';
   else if (e.key === 'r') cargar(true);
   else if (e.key === 't') alternarTema();
 });
