@@ -228,3 +228,27 @@ class VentanasFantasma(Prueba):
 
     def test_si_alla_no_responde_no_cierra_nada(self):
         self.assertEqual(self.correr([], "u@s no responde"), [])
+
+
+class AdoptarElDormido(Prueba):
+    def test_una_sesion_de_alla_con_el_nombre_de_un_hilo_dormido_de_aqui_lo_adopta(self):
+        import io
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar.ordenes import remotos
+
+        traidos = []
+        hilos = [SimpleNamespace(nombre="Lumbre", id="", ruta=None), SimpleNamespace(nombre="Faro", id="@1", ruta=None)]
+        tel = SimpleNamespace(hilos=hilos, viva=True, aviso="", vivo=lambda h: h.nombre == "Faro",
+                              mux=SimpleNamespace(cerrar=lambda i: None), estado=SimpleNamespace(remotos=lambda: {}))
+        ctx = SimpleNamespace(config=Config(remotos=(Remoto(nombre="s", destino="u@s"),)))
+        de_alla = [("telar-aaaa0001", "Lumbre"), ("telar-bbbb0002", "Faro")]
+        with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
+                mock.patch.object(r, "sesiones", return_value=(de_alla, "")), \
+                mock.patch.object(r, "traer", side_effect=lambda t, rem, ses, aqui: traidos.append((ses, aqui))), \
+                mock.patch("telar.directorio.publicar_callado"), redirect_stdout(io.StringIO()):
+            remotos.main(["traer"], ctx)
+        # el dormido conserva su nombre; el que está vivo aquí no se pisa
+        self.assertEqual(traidos, [("telar-aaaa0001", "Lumbre"), ("telar-bbbb0002", "Faro · 2")])

@@ -65,6 +65,8 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- `telar remotos traer`: a session over there named like a sleeping thread here is that same thread (it moved):
+  it is adopted under its name instead of showing up again as «· 2».
 - `telar hilo llevar`: a long conversation (tens of MB over a slow uplink) was cut at a fixed 60 s and the other
   machine kept the truncated file. The wait now grows with the size, and the receiving side refuses to store a copy
   whose length does not match.

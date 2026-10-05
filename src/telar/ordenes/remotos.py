@@ -40,7 +40,10 @@ def main(argv: list[str], ctx) -> int:
 
     tel = _comun.tejer(ctx, con_ficha=False)
     conocidas = {d["sesion"] for d in tel.estado.remotos().values() if d.get("sesion")}
-    nombres = {h.nombre for h in tel.hilos} | set(tel.estado.remotos())
+    # un hilo dormido de aquí con el mismo nombre que una sesión de allá es el mismo hilo que se mudó
+    # (`telar hilo llevar`, un agente que pasó al servidor): se adopta su nombre en vez de crear «· 2»
+    dormidos = {h.nombre for h in tel.hilos if not tel.vivo(h) and h.nombre not in tel.estado.remotos()}
+    nombres = ({h.nombre for h in tel.hilos} | set(tel.estado.remotos())) - dormidos
     datos, traidos, cerrados = [], [], []
     for r in remotos:
         de_alla, error = mod_remoto.sesiones(r)
