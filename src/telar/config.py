@@ -219,6 +219,9 @@ class AgenteExtra:
     home: tuple[str, ...] = ()
     #: para el agente al abrir su sesión, después del prompt (permisos, herramientas).
     argumentos: tuple[str, ...] = ()
+    #: dónde vive este agente, si no es donde dice `[agentes] en`: «aqui», un [remotos] o un
+    #: [enlaces] (la puerta: así el servidor le encarga a un agente que vive en el laptop).
+    en: str = ""
 
 
 #: con qué se llega a una máquina remota. mosh sobrevive a que el laptop se duerma.
@@ -266,9 +269,10 @@ class Enlace:
 
 
 #: lo que una puerta sabe hacer. Cada verbo se puede apagar con `[enlace] verbos`.
-VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar", "leer")
-#: los que responde sin que se diga: `leer` expone lo conversado y se prende a propósito
-VERBOS_POR_DEFECTO = tuple(v for v in VERBOS_ENLACE if v != "leer")
+VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar", "leer", "encargar")
+#: los que responde sin que se diga: `leer` expone lo conversado y `encargar` puede abrir un agente,
+#: así que se prenden a propósito
+VERBOS_POR_DEFECTO = tuple(v for v in VERBOS_ENLACE if v not in ("leer", "encargar"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +307,9 @@ class Config:
     agentes_en: str = ""
     #: el agente que recibe los pendientes sin proyecto (`[agentes] sin_proyecto`); "" abre un hilo nuevo.
     agentes_sin_proyecto: str = ""
+    #: cómo se abre aquí el hilo de un agente: «sesion» (una sesión tmux propia, como en un servidor) o
+    #: «tab» (un hilo más de la lista, como en el laptop).
+    agentes_abrir: str = "sesion"
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -672,23 +679,31 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         if not isinstance(sin_proyecto, str):
             raise ErrorDeConfig(f"agentes.sin_proyecto: se esperaba la carpeta de un agente, llegó {sin_proyecto!r}")
         cambios["agentes_sin_proyecto"] = sin_proyecto.strip()
+        abrir = tabla.get("abrir", "sesion")
+        if abrir not in ("sesion", "tab"):
+            raise ErrorDeConfig(f"agentes.abrir: «sesion» o «tab», llegó {abrir!r}")
+        cambios["agentes_abrir"] = abrir
         rotar = tabla.get("rotar_mb", 0)
         if not isinstance(rotar, int) or isinstance(rotar, bool) or rotar < 0:
             raise ErrorDeConfig(f"agentes.rotar_mb: se esperaba un número de MB desde 0, llegó {rotar!r}")
         extras = []
         for clave, cuerpo in tabla.items():
-            if clave in ("carpeta", "rotar_mb", "en", "sin_proyecto"):
+            if clave in ("carpeta", "rotar_mb", "en", "sin_proyecto", "abrir"):
                 continue
             cuerpo = _tabla(cuerpo, f"agentes.{clave}")
-            sobra = set(cuerpo) - {"hilos", "home", "argumentos"}
+            sobra = set(cuerpo) - {"hilos", "home", "argumentos", "en"}
             if sobra:
                 raise ErrorDeConfig(f"agentes.{clave}.{sorted(sobra)[0]}: no existe")
+            en_agente = cuerpo.get("en", "")
+            if not isinstance(en_agente, str):
+                raise ErrorDeConfig(f"agentes.{clave}.en: «aqui», un remoto o un enlace, llegó {en_agente!r}")
             for campo in ("hilos", "home", "argumentos"):
                 valor = cuerpo.get(campo, [])
                 if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
                     raise ErrorDeConfig(f"agentes.{clave}.{campo}: se esperaba una lista de textos, llegó {valor!r}")
             extras.append(AgenteExtra(clave=clave, hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
-                                      home=tuple(cuerpo.get("home", [])), argumentos=tuple(cuerpo.get("argumentos", []))))
+                                      home=tuple(cuerpo.get("home", [])), argumentos=tuple(cuerpo.get("argumentos", [])),
+                                      en=en_agente.strip()))
         cambios["agentes_carpeta"] = carpeta.strip()
         cambios["agentes_extra"] = tuple(extras)
         cambios["agentes_rotar_mb"] = rotar

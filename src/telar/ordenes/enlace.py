@@ -34,7 +34,7 @@ from telar.ordenes import _comun
 
 AYUDA = "La puerta entre dos máquinas: pedirle cosas al laptop desde el servidor."
 
-LLAMADAS = ("ping", "hilos", "archivo", "enviar", "notificar", "leer")
+LLAMADAS = ("ping", "hilos", "archivo", "enviar", "notificar", "leer", "encargar")
 LOCALES = ("instalar", "autorizar", "revocar", "servir")
 
 
@@ -147,6 +147,11 @@ def main(argv: list[str], ctx) -> int:
         if not o.args:
             return _comun.queja('notificar lleva el texto: telar enlace notificar "terminó" --titulo telar')
         args, entrada = [o.titulo], " ".join(o.args).encode("utf-8")
+    elif o.verbo == "encargar":
+        if len(o.args) < 2:
+            return _comun.queja('encargar lleva el agente y el texto: telar enlace encargar laptop "…" (o «-»)')
+        texto = sys.stdin.read() if o.args[1:] == ["-"] else " ".join(o.args[1:])
+        args, entrada = [o.args[0]], texto.encode("utf-8")
     elif o.verbo == "leer":
         if len(o.args) != 1:
             return _comun.queja('leer lleva el hilo: telar enlace leer "Faro" --ultimos 3')

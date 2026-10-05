@@ -33,6 +33,10 @@ workflow refuses to run if the two disagree.
 - VS Code thread list: fixed columns — priority · semaphore · ⇄ · ✉ · name · last activity — each icon in its own
   column whether shown or not, so names line up; the right side is only the last activity (last focus or the agent's
   last change).
+- An agent can live somewhere else than the others: `[agentes.<folder>] en` («aqui», a remote, or an enlace). With an
+  enlace, `telar encargar` goes through the door's new `encargar` verb (off by default), so the server can hand work
+  to an agent that lives on the laptop. `[agentes] abrir = "tab"` opens an agent's thread as a regular thread of the
+  list (the laptop) instead of its own tmux session (the server); encargos and their queue work the same.
 - A task action with `mensaje` and `al_hilo: true` sends the message to the thread where the task is worked — its
   project's (resumed if asleep) or the `[agentes] sin_proyecto` agent — instead of opening a new thread.
 - Task owner: a provider task may carry `dueno` (who does it, if not you); the task lists in VS Code (sidebar, today,

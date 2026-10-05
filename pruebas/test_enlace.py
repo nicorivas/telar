@@ -417,3 +417,31 @@ class Leer(ConPuerta):
         self.addCleanup(os.unlink, f.name)
         c = mod_config.cargar(Path(f.name))
         self.assertEqual(c.puerta.no_leer, ("vida/*", "Diario"))
+
+
+class Encargar(ConPuerta):
+    """Encargar por la puerta: apagado si no se prende, y solo a agentes que viven en esta máquina."""
+
+    def agentes(self, en=""):
+        from telar.agentes import Agente
+
+        return [Agente(clave="laptop", nombre="Laptop", carpeta=self.base, en=en)]
+
+    def test_apagado_por_defecto(self):
+        self.assertIn("no hace «encargar»", m.servir(self.ctx, "encargar laptop", b"hola")["error"])
+
+    def test_prendido_le_encarga_al_agente_de_aqui(self):
+        ctx = self.contexto(verbos=("encargar",))
+        with mock.patch("telar.agentes.descubrir", return_value=self.agentes("aqui")), \
+                mock.patch("telar.encargos.encargar", return_value={"hilo": "Laptop", "estado": "entregado"}) as enc:
+            r = m.servir(ctx, "encargar laptop", "revisa la cartola".encode())
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((r["estado"], enc.call_args.args[2]), ("entregado", "revisa la cartola"))
+
+    def test_no_reenvia_a_un_agente_que_vive_en_otra_parte(self):
+        ctx = self.contexto(verbos=("encargar",))
+        with mock.patch("telar.agentes.descubrir", return_value=self.agentes("servidor")), \
+                mock.patch("telar.encargos.encargar") as enc:
+            r = m.servir(ctx, "encargar laptop", b"hola")
+        self.assertFalse(r["ok"])
+        enc.assert_not_called()

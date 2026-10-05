@@ -133,28 +133,49 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     return cerrados
 
 
+# ── dónde vive su hilo ─────────────────────────────────────────────────────────
+
+def _donde(ctx, hilo: str):
+    """Cómo escribirle al hilo vivo de un agente: una función (texto) → None, o None si no está vivo.
+
+    Primero un hilo de la lista (un tab, como en el laptop); si no, una sesión propia (servidor)."""
+    from telar import movil
+    from telar.ordenes import _comun
+
+    try:
+        tel = _comun.tejer(ctx, con_ficha=False)
+        h = tel.por_nombre(hilo)
+        if h is not None and tel.mux is not None and tel.vivo(h):
+            return lambda texto: tel.mux.escribir(h.id, texto, enviar=True)
+    except Exception:  # noqa: BLE001 - sin multiplexor se busca la sesión propia
+        pass
+    sesion = movil.propios().get(hilo)
+    if sesion:
+        return lambda texto: movil.escribir(sesion, texto, enviar=True)
+    return None
+
+
 # ── encargar y repartir ───────────────────────────────────────────────────────
 
 def encargar(ctx, agente, texto: str) -> dict:
-    """Le hace llegar `texto` al hilo de `agente` (un `telar.agentes.Agente`)."""
+    """Le hace llegar `texto` al hilo de `agente` (un `telar.agentes.Agente`), en esta máquina."""
     from telar import estado as mod_estado
-    from telar import movil
 
     texto = texto.strip()
     if not texto:
         raise ErrorDeEncargo("un encargo sin texto")
     hilo = agente.nombre
     est = mod_estado.abrir(ctx.config)
-    sesion = movil.propios().get(hilo)
-    if sesion:
+    escribir = _donde(ctx, hilo)
+    if escribir is not None:
         if est.atencion(hilo) == Atencion.TRABAJANDO or pendientes(ctx.config, hilo):
             n = _encolar(ctx.config, hilo, texto)
             _anotar(ctx.config, f"«{hilo}» trabajando: en cola ({n}) · {texto[:80]}")
             return {"hilo": hilo, "estado": "en cola", "en_cola": n}
-        movil.escribir(sesion, _una_linea(texto), enviar=True)
+        escribir(_una_linea(texto))
         est.anotar_atencion(hilo, Atencion.TRABAJANDO)
         _anotar(ctx.config, f"«{hilo}» libre: entregado · {texto[:80]}")
-        return {"hilo": hilo, "estado": "entregado", "sesion": sesion}
+        return {"hilo": hilo, "estado": "entregado"}
     return _abrir(ctx, agente, texto)
 
 
@@ -188,6 +209,25 @@ def _abrir(ctx, agente, texto: str) -> dict:
     else:
         palabras, nueva = ag.nuevo_con_id(texto)
     palabras = [*palabras, *agente.argumentos]  # después del prompt: hay banderas que se tragan lo que sigue
+    if getattr(ctx.config, "agentes_abrir", "sesion") == "tab":
+        # un hilo más de la lista (el laptop): se ve y se entra como a cualquiera
+        from telar.mux import ErrorDeMux
+        from telar.ordenes import _comun
+
+        tel = _comun.tejer(ctx, con_ficha=False)
+        if tel.mux is None or not tel.viva:
+            raise ErrorDeEncargo(tel.aviso or "la sesión no está viva: primero telar tejer")
+        try:
+            tel.mux.crear_tab(hilo, ruta=agente.carpeta.resolve(), comando=lanzar.envolver(palabras, hilo), foco=False)
+        except ErrorDeMux as e:
+            raise ErrorDeEncargo(f"no pude abrir el hilo de {hilo}: {e}") from e
+        if nueva:
+            lanzar.anotar(ctx.config, hilo, lanzar.Lanzamiento(comando=[], carpeta=agente.carpeta, nueva=nueva), tel.mux)
+        tel.estado.vincular(hilo, _comun.ruta_relativa(agente.carpeta, tel.raiz))
+        tel.estado.desarchivar(hilo)
+        est.anotar_atencion(hilo, Atencion.TRABAJANDO)
+        _anotar(ctx.config, f"«{hilo}» sin hilo: abierto en la lista ({'retoma ' + retoma[:8] if retoma else 'conversación nueva'}) · {texto[:80]}")
+        return {"hilo": hilo, "estado": "abierto", "retoma": retoma, "cerrados": []}
     cerrados = liberar(ctx.config, 1, cuidar=(hilo,))
     try:
         h = movil.crear(hilo, str(agente.carpeta.resolve()), lanzar.envolver(palabras, hilo))
@@ -207,15 +247,14 @@ def repartir(ctx, hilo: str) -> bool:
     if not hilo or not _cola(ctx.config, hilo).exists():
         return False
     from telar import estado as mod_estado
-    from telar import movil
 
-    sesion = movil.propios().get(hilo)
-    if not sesion:
+    escribir = _donde(ctx, hilo)
+    if escribir is None:
         return False
     siguiente = _sacar(ctx.config, hilo)
     if siguiente is None:
         return False
-    movil.escribir(sesion, _una_linea(siguiente["texto"]), enviar=True)
+    escribir(_una_linea(siguiente["texto"]))
     mod_estado.abrir(ctx.config).anotar_atencion(hilo, Atencion.TRABAJANDO)
     _anotar(ctx.config, f"«{hilo}» terminó: le entregué el siguiente de la cola · {siguiente['texto'][:80]}")
     return True

@@ -10,7 +10,7 @@ laptop hay una **puerta con una sola llave**:
 La llave del servidor solo puede ejecutar `telar enlace servir` en el laptop —eso lo impone sshd, no
 esta librería—, y `servir` solo cumple lo que está en `VERBOS_ENLACE` y en `[enlace] verbos`. No hay
 shell, ni ejecución de comandos, ni lectura de archivos: un servidor comprometido puede pedir
-esos seis verbos y nada más. `restrict` apaga además el terminal, los túneles y el agente ssh.
+esos siete verbos y nada más. `restrict` apaga además el terminal, los túneles y el agente ssh.
 
     ping         ¿estás? — responde quién es y qué verbos tiene
     hilos        la foto de sus hilos (la misma del espejo)
@@ -19,6 +19,9 @@ esos seis verbos y nada más. `restrict` apaga además el terminal, los túneles
     notificar    muestra un aviso en pantalla con el texto de la entrada estándar
     leer H [N]   los últimos N turnos del hilo H, en texto (apagado si no se nombra en `verbos`;
                  `[enlace] no_leer` deja hilos fuera por nombre o carpeta)
+    encargar A   le encarga el texto de la entrada estándar al agente residente A de esta máquina
+                 (`telar encargar`: a su hilo si está libre, en cola si trabaja, o lo abre). Apagado
+                 si no se nombra en `verbos`: puede abrir un agente
 
 Todo lo que llega es dato hostil: los nombres de archivo se limpian y nunca escapan de la carpeta de
 entrada, un archivo nunca pisa a otro, los tamaños tienen tope, y a un hilo solo se le escribe si
@@ -47,7 +50,7 @@ from telar.config import VERBOS_ENLACE
 MAX_ARCHIVO = 100 * 1024 * 1024
 MAX_TEXTO = 8000
 MAX_AVISO = 500
-LIMITE = {"archivo": MAX_ARCHIVO, "enviar": MAX_TEXTO * 4, "notificar": MAX_AVISO * 4}
+LIMITE = {"archivo": MAX_ARCHIVO, "enviar": MAX_TEXTO * 4, "notificar": MAX_AVISO * 4, "encargar": MAX_TEXTO * 4}
 
 
 class ErrorDePuerta(Exception):
@@ -195,8 +198,30 @@ def _leer(ctx, args, entrada):
         raise ErrorDePuerta(str(e)) from e
 
 
+def _encargar(ctx, args, entrada):
+    from telar import agentes as mod_agentes
+    from telar import encargos
+
+    if len(args) != 1:
+        raise ErrorDePuerta("«encargar» lleva el agente")
+    try:
+        texto = entrada.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ErrorDePuerta("el texto no es UTF-8") from e
+    if not texto.strip() or len(texto) > MAX_TEXTO:
+        raise ErrorDePuerta(f"el encargo va por la entrada, entre 1 y {MAX_TEXTO} caracteres")
+    agente = next((a for a in mod_agentes.descubrir(ctx.config) if args[0] in (a.clave, a.nombre)), None)
+    # solo los que viven aquí: la puerta no reenvía a una tercera máquina
+    if agente is None or (agente.en or ctx.config.agentes_en) not in ("", "aqui"):
+        raise ErrorDePuerta(f"aquí no vive un agente «{args[0][:60]}»")
+    try:
+        return encargos.encargar(ctx, agente, texto)
+    except encargos.ErrorDeEncargo as e:
+        raise ErrorDePuerta(str(e)) from e
+
+
 VERBO = {"ping": _ping, "hilos": _hilos, "archivo": _archivo, "enviar": _enviar, "notificar": _notificar,
-         "leer": _leer}
+         "leer": _leer, "encargar": _encargar}
 assert set(VERBO) == set(VERBOS_ENLACE)
 
 
