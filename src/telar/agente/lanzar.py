@@ -49,7 +49,12 @@ class Lanzamiento:
 
 
 def carpeta(config, carpeta_hilo: Path | None) -> Path | None:
-    """Dónde arranca el agente, según `[agente] carpeta`."""
+    """Dónde arranca el agente, según `[agente] carpeta`; el hilo de un agente residente, en su casa."""
+    from telar import agentes as mod_agentes
+
+    residente = mod_agentes.de_carpeta(config, carpeta_hilo)
+    if residente is not None:
+        return residente.carpeta.resolve()  # la ruta real: Claude sube desde ahí buscando sus CLAUDE.md
     donde = config.agente.carpeta
     if donde == "hilo":
         return carpeta_hilo or Path(config.raiz)

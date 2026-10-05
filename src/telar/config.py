@@ -274,6 +274,10 @@ class Config:
     sesion: str = "telar"
     #: raíz del repositorio de trabajo: de ahí sale el perfil y ahí viven los hilos.
     raiz: Path = field(default_factory=Path.cwd)
+    #: dónde viven los agentes residentes (`[agentes] carpeta`), relativa a la raíz; "" es que no hay.
+    agentes_carpeta: str = ""
+    #: lo que un agente agrega a lo que telar descubre (`[agentes.<carpeta>] hilos/home`).
+    agentes_extra: tuple[Seccion, ...] = ()
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -626,6 +630,28 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos),
                                    no_leer=tuple(v.strip() for v in no_leer if v.strip()))
 
+    if "agentes" in datos:
+        tabla = _tabla(datos["agentes"], "agentes")
+        carpeta = tabla.get("carpeta", "")
+        if not isinstance(carpeta, str):
+            raise ErrorDeConfig(f"agentes.carpeta: se esperaba una carpeta, llegó {carpeta!r}")
+        extras = []
+        for clave, cuerpo in tabla.items():
+            if clave == "carpeta":
+                continue
+            cuerpo = _tabla(cuerpo, f"agentes.{clave}")
+            sobra = set(cuerpo) - {"hilos", "home"}
+            if sobra:
+                raise ErrorDeConfig(f"agentes.{clave}.{sorted(sobra)[0]}: no existe")
+            for campo in ("hilos", "home"):
+                valor = cuerpo.get(campo, [])
+                if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
+                    raise ErrorDeConfig(f"agentes.{clave}.{campo}: se esperaba una lista de textos, llegó {valor!r}")
+            extras.append(Seccion(clave=clave, nombre=clave, hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
+                                  home=tuple(cuerpo.get("home", []))))
+        cambios["agentes_carpeta"] = carpeta.strip()
+        cambios["agentes_extra"] = tuple(extras)
+
     if "periodicos" in datos:
         cuerpo = _tabla(datos["periodicos"], "periodicos")
         sobra = set(cuerpo) - {"en"}
@@ -639,7 +665,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
-        "enlaces", "enlace", "periodicos",
+        "enlaces", "enlace", "periodicos", "agentes",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

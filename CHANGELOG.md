@@ -6,6 +6,13 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `[agentes] carpeta`: resident agents, one per folder with a `CLAUDE.md`. They show in the thread list under an
+  «Agentes» header, each one collapsible with a home and its threads; the home (`telar seccion agente:<folder>`)
+  is built by telar from its `CLAUDE.md`, `bitacora.md` and `memoria/MEMORY.md`, with an optional `home` command on
+  top. A thread linked to an agent's folder starts its agent there, so it loads that `CLAUDE.md` from the start.
+
 ## [0.1.11] — 2026-10-05
 
 ### Added

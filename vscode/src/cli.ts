@@ -238,7 +238,8 @@ export const config = () => telarJson<{
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
  *  prefijos si terminan en `*`. `home`: si declara una página. */
-export interface JsonSeccion { clave: string; nombre: string; hilos: string[]; home: boolean }
+/** `grupo: 'agentes'` es un agente residente: va bajo la cabecera «Agentes», con su home armado por telar. */
+export interface JsonSeccion { clave: string; nombre: string; hilos: string[]; home: boolean; grupo?: string }
 
 export function enSeccion(s: JsonSeccion, hilo: string): boolean {
     return s.hilos.some(p => p.endsWith('*') ? hilo.startsWith(p.slice(0, -1)) : hilo === p);

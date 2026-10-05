@@ -140,6 +140,28 @@ def main(argv: list[str], ctx) -> int:
             print(_comun.tenue("no hay secciones: se declaran en la configuración, [secciones.<clave>]"))
         return 0
 
+    if o.clave.startswith("agente:"):
+        from telar import agentes as mod_agentes
+
+        a = next((x for x in mod_agentes.descubrir(ctx.config) if x.seccion == o.clave), None)
+        if a is None:
+            return _comun.queja(f"no hay un agente «{o.clave[7:]}» en [agentes] carpeta")
+        datos = mod_agentes.pagina(a)
+        problema = validar(datos)
+        if problema:
+            return _comun.queja(f"el home de {a.nombre} no cumple el contrato: {problema}")
+        if o.json:
+            return _comun.escribir_json(datos)
+        print(datos["titulo"])
+        for b in datos["bloques"]:
+            if b.get("titulo"):
+                print(f"\n{b['titulo'].upper()}")
+            if b.get("texto"):
+                print(b["texto"])
+            for x in b.get("items", []):
+                print(f"  · {x.get('titulo', '')}  " + _comun.tenue((x.get("fecha") or "")[:16]))
+        return 0
+
     s = secciones.get(o.clave)
     if s is None:
         return _comun.queja(f"no hay sección «{o.clave}»: `telar seccion` lista las que hay")

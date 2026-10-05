@@ -549,6 +549,26 @@ En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la o
 en = "servidor"                      # el nombre de un [remotos.<nombre>]
 ```
 
+## `[agentes]` — agentes residentes, cada uno en su carpeta
+
+```toml
+[agentes]
+carpeta = "agentes"                  # relativa a la raíz: cada subcarpeta con un CLAUDE.md es un agente
+
+[agentes.faro]                       # opcional, por carpeta
+hilos = ["◌ guardia*"]               # hilos suyos además del que lleva su nombre y los vinculados a su carpeta
+home = ["~/bin/faro-casa", "--json"] # una página propia: sus bloques van arriba de los que arma telar
+```
+
+Un agente residente es una carpeta con su `CLAUDE.md` (las que empiezan con `_` o `.`, como una
+plantilla, no cuentan). Su nombre es el título del `README.md` de la carpeta. En la lista de hilos
+van todos bajo una cabecera **Agentes**, cada uno desplegable con un **home** y sus hilos. El home lo
+arma telar (`telar seccion agente:<carpeta>`): el primer párrafo de su `CLAUDE.md`, su bitácora
+(`bitacora.md`, la entrada más nueva arriba) y el índice de su memoria (`memoria/MEMORY.md`), con
+cada archivo para abrirlo. Un hilo vinculado a la carpeta del agente **arranca ahí**, aunque
+`[agente] carpeta` diga otra cosa: así Claude carga el `CLAUDE.md` del agente (y los de las carpetas de
+arriba) desde el comienzo.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml

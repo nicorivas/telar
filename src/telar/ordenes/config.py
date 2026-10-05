@@ -203,7 +203,7 @@ def main(argv: list[str], ctx) -> int:
         "secciones": [
             {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
             for s in cfg.secciones
-        ],
+        ] + _agentes(cfg),
         "atajos": [
             {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion, "en": a.en}
             for a in cfg.atajos
@@ -238,3 +238,16 @@ def main(argv: list[str], ctx) -> int:
         print()
         print(_comun.tenue("pisado por el entorno: " + ", ".join(f"{k}={v}" for k, v in pisadas.items())))
     return 0
+
+
+def _agentes(cfg) -> list[dict]:
+    """Los agentes residentes, como secciones del grupo «agentes»: su home lo arma telar."""
+    from telar import agentes as mod_agentes
+    from telar import estado as mod_estado
+
+    try:
+        vinculos = mod_estado.abrir(cfg).vinculos()
+    except Exception:  # noqa: BLE001 - sin estado, los agentes salen igual, solo con sus nombres
+        vinculos = {}
+    return [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes"}
+            for a in mod_agentes.descubrir(cfg, vinculos)]

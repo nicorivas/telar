@@ -40,6 +40,9 @@ const CSS = `
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
   .cab { color: var(--amarillo); font-weight: bold; }
+  /* un agente: su fila bajo «Agentes», y lo suyo (home, hilos) un paso más adentro */
+  .agente { padding-left: 2ch; } .agente .nombre { color: var(--amarillo); }
+  .dentro { padding-left: 4ch; }
   .hoy .nombre { color: var(--azul); }
   .cab .dim { font-weight: normal; }
   .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
@@ -222,7 +225,31 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo
         // los que tienen tab primero, los que no después; dentro de cada grupo, el orden elegido
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
-        for (const s of modelo.secciones) {
+        // los agentes residentes: una cabecera «Agentes» y, dentro, cada agente desplegable con su
+        // home y sus hilos. Las demás secciones, como siempre, una cabecera cada una
+        const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
+        if (agentes.length) {
+            const todos = modelo.enLista.filter(x => agentes.some(a => cli.enSeccion(a, x.nombre)));
+            const abierta = !this.plegadas.has('__agentes');
+            h.push('<div class="sep"></div>');
+            h.push(`<div class="fila cab" data-accion="seccion" data-id="__agentes" title="abrir o cerrar los agentes">`
+                + `<span class="prio">${abierta ? '▾' : '▸'}</span>AGENTES`
+                + (todos.length ? ` <span class="dim">${todos.length}</span>` : '') + '</div>');
+            if (abierta) {
+                for (const a of agentes) {
+                    const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
+                    const suya = !this.plegadas.has(a.clave);
+                    h.push(`<div class="fila agente" data-accion="seccion" data-id="${esc(a.clave)}" title="abrir o cerrar ${esc(a.nombre)}">`
+                        + `<span class="prio">${suya ? '▾' : '▸'}</span><span class="nombre">${esc(a.nombre)}</span>`
+                        + (suyos.length ? ` <span class="dim">${suyos.length}</span>` : '') + '</div>');
+                    if (!suya) continue;
+                    h.push(`<div class="fila hoy dentro" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">`
+                        + '<span class="prio"> </span><span class="nombre">home</span></div>');
+                    for (const x of suyos) h.push(this.fila(x, 'hilo').replace('class="fila ', 'class="fila dentro '));
+                }
+            }
+        }
+        for (const s of modelo.secciones.filter(x => x.grupo !== 'agentes')) {
             const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre)));
             const abierta = !this.plegadas.has(s.clave);
             h.push('<div class="sep"></div>');
