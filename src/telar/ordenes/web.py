@@ -4,6 +4,7 @@
     telar web --host IP --puerto N
     telar web --sin-recarga      no recarga la página cuando cambian sus archivos
     telar web --escribir         permite escribirle a un hilo desde la página (por defecto, solo lee)
+    telar web --escribir --nuevo [--nuevo-args PALABRAS]   la página abre hilos nuevos (nombre obligatorio)
     telar web --plan CARPETA --plan-comando CMD   (con --escribir) la pestaña «plan» recibe comentarios que abren una sesión
     telar web --plan CARPETA     muestra una pestaña «plan» con los archivos AAAA-MM-DD.json de esa carpeta
 
@@ -53,7 +54,7 @@ PUERTO = 8765
 #: cuánto se reusa la respuesta de cada orden (segundos). `hoy` consulta el calendario y tarda ~10 s:
 #: lo rehace un hilo de fondo cada `RENUEVA` segundos, y quien pide recibe lo que haya, aunque el
 #: refresco esté a medias; solo se espera si lo último tiene más de `VIGENCIA` (el hilo murió).
-VIGENCIA = {"hoy": 300.0, "hilos": 4.0}
+VIGENCIA = {"hoy": 300.0, "hilos": 4.0, "proyectos": 120.0}
 RENUEVA = 40.0
 _cache: dict[str, tuple[float, bytes]] = {}
 _candado = threading.Lock()
@@ -174,6 +175,68 @@ def comentar_plan(plan: Path, comando: str, datos: object) -> tuple[int, dict]:
         return 502, {"ok": False, "error": f"no se pudo abrir la sesión: {cola[:200]}"}
     primera = (r.stdout.decode("utf-8", "replace").strip().splitlines() or [""])[0]
     return 200, {"ok": True, "hilo": primera.split(" · ")[0][:120], "caracteres": len(texto)}
+
+
+MAX_NOMBRE = 60
+ENTRE_NUEVOS = 5.0
+_ultimo_nuevo = [0.0]
+
+
+def nuevo_hilo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]:
+    """Abre un hilo nuevo en esta máquina, con el agente configurado: `(código http, respuesta)`.
+
+    Es la misma apertura que `telar movil`, con dos diferencias: `extra` son palabras que se le agregan al agente
+    (`--nuevo-args`, p. ej. el modo de permisos) y puede llevar un primer mensaje. El nombre es obligatorio y no puede
+    repetir el de ningún hilo, vivo o no, porque la conversación se anota por nombre. La carpeta solo puede ser una
+    unidad de `telar proyectos` (o ninguna: la del agente), nunca una ruta que mande la página."""
+    from telar import agente as mod_agente
+    from telar import movil as mod_movil
+    from telar.agente import lanzar
+    from telar.ordenes import _comun
+
+    if not isinstance(datos, dict) or not all(isinstance(datos.get(k, ""), str) for k in ("nombre", "carpeta", "mensaje")):
+        return 400, {"ok": False, "error": "faltan o no son válidos nombre, carpeta y mensaje"}
+    nombre = " ".join(datos.get("nombre", "").split())
+    ruta, mensaje = datos.get("carpeta", "").strip(), datos.get("mensaje", "").strip()
+    if not nombre:
+        return 400, {"ok": False, "error": "el hilo necesita un nombre"}
+    if len(nombre) > MAX_NOMBRE or not nombre.isprintable():
+        return 400, {"ok": False, "error": f"el nombre pasa de {MAX_NOMBRE} caracteres o trae caracteres raros"}
+    if len(mensaje) > MAX_COMENTARIO:
+        return 413, {"ok": False, "error": f"el mensaje pasa de {MAX_COMENTARIO} caracteres"}
+    config = ctx.config
+    if not config.agente.nombre:
+        return 409, {"ok": False, "error": "no hay agente configurado ([agente] nombre)"}
+    if ruta:
+        rutas = {p["ruta"] for p in json.loads(datos_proyectos())["proyectos"]}
+        if ruta not in rutas:
+            return 404, {"ok": False, "error": "esa carpeta no es una unidad de `telar proyectos`"}
+    tel = _comun.tejer(ctx, con_ficha=False)
+    if tel.por_nombre(nombre) is not None or nombre in tel.propios:
+        return 409, {"ok": False, "error": f"ya hay un hilo llamado «{nombre}»: elige otro nombre"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultimo_nuevo[0] < ENTRE_NUEVOS:
+            return 429, {"ok": False, "error": "muy rápido: un hilo nuevo cada cinco segundos"}
+        _ultimo_nuevo[0] = ahora
+    agente = mod_agente.obtener(config.agente.nombre, config)
+    palabras, sid = agente.nuevo_con_id("")
+    palabras = [*palabras, *extra]
+    if mensaje:  # un mensaje que empiece con «-» se leería como una opción del agente
+        palabras.append(f" {mensaje}" if mensaje.startswith("-") else mensaje)
+    base = lanzar.carpeta(config, None)
+    carpeta = (Path(config.raiz) / ruta) if ruta else Path(str(base or config.raiz)).expanduser()
+    lanz = lanzar.Lanzamiento(comando=lanzar.envolver(palabras, nombre), carpeta=carpeta, nueva=sid)
+    try:
+        mod_movil.crear(nombre, str(carpeta), lanz.comando)
+    except RuntimeError as e:
+        return 502, {"ok": False, "error": f"no pude abrir «{nombre}»: {str(e)[:160]}"}
+    lanzar.anotar(config, nombre, lanz)
+    return 200, {"ok": True, "hilo": nombre, "carpeta": ruta or str(carpeta)}
+
+
+def datos_proyectos() -> bytes:
+    return datos("proyectos")
 
 
 def anotar_envio(config, cliente: str, maquina: str, hilo: str, caracteres: int, resultado: str) -> None:
@@ -336,7 +399,7 @@ def version_de_la_pagina() -> str:
 
 
 def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tambien: tuple[str, ...] = (), plan: Path | None = None,
-              plan_comando: str = ""):
+              plan_comando: str = "", nuevo: bool = False, nuevo_args: tuple[str, ...] = ()):
     config = config if config is not None else (ctx.config if ctx is not None else None)
 
     class Manejador(BaseHTTPRequestHandler):
@@ -358,6 +421,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                     return self._enviar(*_conversacion(consulta, config))
                 if ruta == "/api/yo":  # qué puede hacer esta página: la escritura es opt-in y necesita el enlace
                     cuerpo = {"escribir": escribir, "plan": plan is not None, "plan_comentar": bool(plan is not None and plan_comando and escribir),
+                              "nuevo": bool(nuevo and escribir),
                               "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")
                 if ruta == "/api/plan":  # los planes del día (solo si se arrancó con --plan)
@@ -368,7 +432,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if ruta == "/api/espejos":  # los hilos de otras máquinas (el laptop), de sus fotos; no cuesta nada leerlos
                     cuerpo = {"espejos": espejo.leer_todos(config) if config is not None else [], "vigente": espejo.VIGENTE}
                     return self._enviar(200, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
-                if ruta in ("/api/hoy", "/api/hilos"):
+                if ruta in ("/api/hoy", "/api/hilos", "/api/proyectos"):
                     return self._enviar(200, datos(ruta[5:], fresco="fresco" in consulta), "application/json; charset=utf-8")
                 nombre = "index.html" if ruta == "/" else ruta.lstrip("/")
                 archivo = (CARPETA / nombre).resolve()
@@ -403,10 +467,12 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar"):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo"):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
+            if ruta == "/api/hilo/nuevo" and not nuevo:
+                return responder(404, {"ok": False, "error": "esta página no abre hilos: `telar web --escribir --nuevo`"})
             if not escribir or ctx is None:
                 return responder(403, {"ok": False, "error": "esta página solo lee: arráncala con `telar web --escribir`"})
             rechazo = self._permitido()
@@ -422,6 +488,15 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 datos = json.loads(self.rfile.read(largo))
             except ValueError:
                 return responder(400, {"ok": False, "error": "el cuerpo no es JSON"})
+            if ruta == "/api/hilo/nuevo":
+                try:
+                    codigo, resultado = nuevo_hilo(ctx, datos, nuevo_args)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
+                                 "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
             if ruta == "/api/plan/comentar":
                 try:
                     codigo, resultado = comentar_plan(plan, plan_comando, datos)
@@ -456,6 +531,9 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--plan", default="", metavar="CARPETA", help="una pestaña «plan» con los AAAA-MM-DD.json de esa carpeta (solo lee)")
     p.add_argument("--plan-comando", default="", metavar="CMD",
                    help="con --plan y --escribir: el programa que atiende un comentario del plan (lo recibe por la entrada estándar)")
+    p.add_argument("--nuevo", action="store_true", help="con --escribir: la página puede abrir hilos nuevos con el agente configurado")
+    p.add_argument("--nuevo-args", default="", metavar="PALABRAS",
+                   help="palabras que se le agregan al agente de un hilo abierto desde la página (p. ej. «--permission-mode auto»)")
     p.add_argument("--tambien", action="append", default=[], metavar="HOST:PUERTO",
                    help="otro nombre con el que se llega a esta página (para `--escribir`); se puede repetir")
     p.add_argument("--sin-recarga", action="store_true", help="no recargar la página al cambiar sus archivos")
@@ -472,7 +550,7 @@ def main(argv: list[str], ctx) -> int:
         threading.Thread(target=mantener_espejos, args=(ctx.config,), daemon=True).start()
     servidor = ThreadingHTTPServer((host, o.puerto), manejador(not o.sin_recarga, ctx.config, ctx, o.escribir, tuple(o.tambien),
                                                                 plan=Path(o.plan).expanduser().resolve() if o.plan else None,
-                                                                plan_comando=o.plan_comando))
+                                                                plan_comando=o.plan_comando, nuevo=o.nuevo, nuevo_args=tuple(shlex.split(o.nuevo_args))))
     print(f"telar web en http://{host}:{o.puerto}  ·  {'con' if not o.sin_recarga else 'sin'} recarga automática  ·  "
           f"{'PUEDE ESCRIBIR en hilos' if o.escribir else 'solo lee'}")
     try:

@@ -834,6 +834,17 @@ telar no sabe qué hace una sesión: corre `CMD` con el comentario en la **entra
 `TELAR_PLAN_CARPETA` en el entorno. La primera línea que imprima es el nombre del hilo que abrió. Respuesta: `{"ok": true, "hilo": "✎ plan 10/05 21:40", "caracteres": 213}`;
 un fallo del programa es 502 con su última línea de error.
 
+## `POST /api/hilo/nuevo` — abrir un hilo nuevo desde `telar web`
+
+Solo con `telar web --escribir --nuevo` (si no, 404 o 403; `/api/yo` dice `nuevo`). Cuerpo: `{"nombre": "…", "carpeta": "…", "mensaje": "…"}`.
+`nombre` es obligatorio (hasta 60 caracteres) y no puede repetir el de ningún hilo, vivo o archivado: 409 si ya existe. `carpeta` es opcional y solo puede
+ser la `ruta` de una unidad de `telar proyectos` (404 si no); sin ella, la que diga `[agente] carpeta`. `mensaje` es opcional (hasta 4.000 caracteres): el primer
+prompt del agente; si empieza con «-» se le antepone un espacio para que no se lea como una opción. Mismas defensas que `/api/enviar`; un hilo nuevo cada cinco segundos.
+
+Abre lo mismo que `telar movil`: una sesión tmux `telar-<8 hex>` en esta máquina con el agente configurado, y anota su conversación. `--nuevo-args` agrega palabras a la línea
+del agente (p. ej. `--permission-mode auto`). Respuesta: `{"ok": true, "hilo": "…", "carpeta": "…"}`. La conversación del hilo existe en disco recién con su primer mensaje,
+así que la página reintenta unos segundos al entrar. `GET /api/proyectos` sirve la lista de unidades para elegir la carpeta (la misma salida de `telar proyectos --json`).
+
 ## `GET /api/conversacion` — el historial de un hilo, por páginas
 
 `telar web` sirve la conversación de un hilo **de esta máquina** por trozos (una conversación larga pesa decenas

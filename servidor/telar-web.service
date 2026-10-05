@@ -27,6 +27,8 @@ ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&
 # --tambien: el nombre https que da `tailscale serve` a esta máquina (el tuyo, no este de ejemplo)
 # Opcional, la pestaña «plan» y sus comentarios (ver docs/contratos.md): agregar al final de la línea
 #   --plan %h/ruta/a/los/planes --plan-comando %h/ruta/al/programa
+# Opcional, abrir hilos nuevos desde la página (el agente corre en esta máquina): agregar --nuevo, y si hace falta
+#   "--nuevo-args=--permission-mode auto" (palabras que se le agregan al agente)
 ExecStart=%h/.local/bin/telar web --escribir --tambien servidor.tu-red.ts.net
 Restart=always
 RestartSec=5

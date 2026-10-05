@@ -346,3 +346,10 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .comenta .dijo.bien { color: var(--verde); } .comenta .dijo.mal { color: var(--rojo); }
 .comenta .dijo a { text-decoration: underline; }
 .com .quien { white-space: nowrap; }
+
+/* + nuevo hilo, y su formulario (comparte el aspecto del cuadro de comentarios del plan) */
+.nuevo-hilo { padding: 0 2ch; margin-top: 1lh; }
+.nuevo-hilo button { height: calc(2 * var(--lh)); padding: 0 2ch; width: 100%; color: var(--verde); font-weight: 700; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); }
+.nuevo-hilo button:active { background: var(--hover); }
+.comenta.nuevo input.campo { min-height: calc(2 * var(--lh)); }
+.comenta.nuevo textarea.campo { min-height: calc(4 * var(--lh)); }

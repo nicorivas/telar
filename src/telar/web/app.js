@@ -42,7 +42,7 @@ const guardado = (clave, valor) => {
   return null;
 };
 const estado = {
-  hoy: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, enlaces: [] }, plan: null, diaPlan: '', crudo: '', error: '',
+  hoy: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, nuevo: false, enlaces: [] }, proyectos: null, plan: null, diaPlan: '', crudo: '', error: '',
   borradores: new Map(), envios: new Map(), repintar: false,
   abiertos: new Set(), sinVentana: new Set(), masPendientes: false,
   modo: guardado('telar.modo') === 'todos' ? 'todos' : 'urgentes',
@@ -286,6 +286,7 @@ function pantallaHilos() {
     .sort((a, b) => (ORDEN_ATENCION[a.atencion] - ORDEN_ATENCION[b.atencion]) || a.nombre.localeCompare(b.nombre));
   const otros = todos.filter((h) => !activos.includes(h)).sort((a, b) => a.nombre.localeCompare(b.nombre));
   return [
+    estado.yo.nuevo ? el('div', { className: 'nuevo-hilo' }, el('button', { type: 'button', onclick: () => { location.hash = '#nuevo'; } }, '+ nuevo hilo')) : null,
     bloque('hilos', 'hilos', activos.length, null,
       ...(activos.length ? activos.flatMap((h) => filaHilo(h)) : [vacio('ningún hilo activo')])),
     otros.length ? bloque('otros', 'sin ventana', otros.length, null, ...filasSinVentana(':otros', '', otros, '… mostrar')) : null,
@@ -319,7 +320,7 @@ function seccionEspejo(e) {
     ...(otros.length ? filasSinVentana(`${e.nombre}:otros`, e.nombre, otros) : []));
 }
 
-const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : 'hoy');
+const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : location.hash === '#nuevo' ? 'nuevo' : 'hoy');
 
 function pintar(forzar = false) {
   // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
@@ -328,7 +329,7 @@ function pintar(forzar = false) {
   const clave = activo && activo.classList.contains('campo') ? activo.dataset.clave : '';
   if (clave && !forzar) { estado.repintar = true; return; }
   const vista = vistaActual();
-  const pestana = vista === 'conversacion' ? 'hilos' : vista;
+  const pestana = vista === 'conversacion' || vista === 'nuevo' ? 'hilos' : vista;
   for (const a of document.querySelectorAll('#barra a')) {
     a.classList.toggle('activa', a.dataset.vista === pestana);
     a.setAttribute('aria-current', a.dataset.vista === pestana ? 'page' : 'false');
@@ -343,6 +344,12 @@ function pintar(forzar = false) {
   const cont = $('vista');
   if (vista === 'conversacion') { pintarConversacion(); return; }
   const y = scrollY;
+  if (vista === 'nuevo' && estado.yo.nuevo) {
+    if (!estado.proyectos) cargarProyectos();
+    cont.replaceChildren(...pantallaNuevo());
+    scrollTo(0, 0);
+    return;
+  }
   if (vista === 'plan' && estado.yo.plan) {
     if (!estado.plan) cargarPlan();
     cont.replaceChildren(...pantallaPlan());
@@ -362,6 +369,55 @@ function pintar(forzar = false) {
     const nuevo = [...document.querySelectorAll('.campo')].find((c) => c.dataset.clave === clave);
     if (nuevo) { nuevo.focus({ preventScroll: true }); nuevo.setSelectionRange(nuevo.value.length, nuevo.value.length); }
   }
+}
+
+// ── un hilo nuevo, abierto desde la página ──────────────────
+async function cargarProyectos() {
+  try {
+    const r = await fetch('/api/proyectos', { cache: 'no-store' });
+    const cuerpo = await r.json();
+    estado.proyectos = r.ok ? cuerpo.proyectos || [] : [];
+  } catch (e) { estado.proyectos = []; }
+  if (vistaActual() === 'nuevo' && !document.activeElement.classList.contains('campo')) pintar();
+}
+
+// el nombre es obligatorio, la carpeta y el primer mensaje no; el agente corre en el servidor
+function pantallaNuevo() {
+  const k = (c) => `nuevo:${c}`;
+  const campo = (tag, c, props) => el(tag, { className: 'campo', 'data-clave': k(c), autocomplete: 'off', value: estado.borradores.get(k(c)) || '',
+    oninput: (e) => { estado.borradores.set(k(c), e.target.value); }, ...props });
+  const nombre = campo('input', 'nombre', { type: 'text', maxLength: 60, placeholder: 'nombre del hilo (obligatorio)', 'aria-label': 'nombre del hilo' });
+  const carpeta = campo('input', 'carpeta', { type: 'text', placeholder: 'carpeta del proyecto (opcional)', 'aria-label': 'carpeta' });
+  carpeta.setAttribute('list', 'lista-proyectos');  // `list` es solo lectura como propiedad
+  const mensaje = campo('textarea', 'mensaje', { rows: 4, maxLength: 4000, placeholder: 'primer mensaje (opcional): lo que quieres que empiece a hacer', 'aria-label': 'primer mensaje' });
+  const lista = el('datalist', { id: 'lista-proyectos' }, (estado.proyectos || []).map((p) => el('option', { value: p.ruta }, p.nombre)));
+  const dijo = el('div', { className: 'dijo' });
+  const boton = el('button', { type: 'button', className: 'manda' }, 'abrir hilo');
+  boton.onclick = async () => {
+    if (!nombre.value.trim()) { dijo.className = 'dijo mal'; dijo.textContent = 'el hilo necesita un nombre'; nombre.focus(); return; }
+    boton.disabled = true; dijo.className = 'dijo'; dijo.textContent = 'abriendo el hilo…';
+    try {
+      const r = await fetch('/api/hilo/nuevo', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
+        body: JSON.stringify({ nombre: nombre.value, carpeta: carpeta.value, mensaje: mensaje.value }) });
+      const cuerpo = await r.json().catch(() => ({}));
+      if (r.ok && cuerpo.ok) {
+        for (const c of ['nombre', 'carpeta', 'mensaje']) estado.borradores.delete(k(c));
+        estado.recien = cuerpo.hilo;  // su conversación existe recién con el primer mensaje: la pantalla reintenta un rato
+        cargar(true);
+        location.hash = hashConv(cuerpo.hilo);
+        return;
+      }
+      dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`;
+    } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
+    boton.disabled = false;
+  };
+  return [
+    el('div', { className: 'plan-nav' }, el('button', { type: 'button', 'aria-label': 'volver a hilos', onclick: () => { location.hash = '#hilos'; } }, '‹'),
+      el('span', { className: 'plan-dia', textContent: 'nuevo hilo' }), el('span')),
+    el('section', { className: 'comenta nuevo' },
+      el('div', { className: 'dim' }, 'Se abre en el servidor con el agente en modo automático. La carpeta es una unidad de proyectos; sin ella, la del agente.'),
+      nombre, carpeta, lista, mensaje, el('div', { className: 'comenta-pie' }, dijo, boton)),
+  ];
 }
 
 // ── el plan del día ────────────────────────────────────────
@@ -950,6 +1006,10 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
   } catch (e) {
     avisoConv(e.message);
     $('conv').append(dockConv());
+    if (estado.recien === nombre && !origen) {  // un hilo recién abierto: su conversación aparece con su primer mensaje
+      estado.reintentos = (estado.reintentos || 0) + 1;
+      if (estado.reintentos <= 12) setTimeout(() => { if (conv.nombre === nombre) abrirConversacion(nombre); }, 3000);
+    } else { estado.reintentos = 0; }
   }
   conv.cargando = false;
 }
