@@ -63,8 +63,10 @@ def carpeta(config, carpeta_hilo: Path | None) -> Path | None:
     return Path(donde).expanduser()
 
 
-def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | None:
-    """El lanzamiento del agente configurado para ese hilo, o None si no hay agente."""
+def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -> Lanzamiento | None:
+    """El lanzamiento del agente configurado para ese hilo, o None si no hay agente.
+
+    Con `mensaje`, el agente lo recibe como primer prompt, retome o no su conversación."""
     nombre = config.agente.nombre
     if not nombre:
         return None
@@ -80,6 +82,8 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
             palabras = agente.retomar(conversacion)
         except ErrorDeAgente:
             continue
+        if mensaje:
+            palabras = [*palabras, mensaje]
         retoma = conversacion.id
         break
     nueva, vacia = "", False
@@ -87,7 +91,7 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None) -> Lanzamiento | Non
         # Claude escribe la conversación en disco recién con el primer mensaje: si la
         # principal no tiene archivo, estaba vacía, y se abre con su mismo id
         principal = conversaciones[0].id if conversaciones else ""
-        palabras, nueva = agente.nuevo_con_id(id=principal)
+        palabras, nueva = agente.nuevo_con_id(mensaje, id=principal)
         vacia = bool(principal) and nueva == principal
     return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
                        retoma=retoma, nueva=nueva, vacia=vacia)

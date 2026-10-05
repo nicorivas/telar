@@ -95,12 +95,12 @@ class QueSeRetoma(Prueba):
             nuevo_con_id=lambda mensaje="", id="": (["claude", "--session-id", id or "id-nuevo"], id or "id-nuevo"),
         )
 
-    def _correr(self, agente):
+    def _correr(self, agente, mensaje=""):
         cfg = replace(Config(raiz=Path("/repo")), agente=Agente(nombre="falso", carpeta="hilo"))
         original = lanzar.mod_agente.obtener
         lanzar.mod_agente.obtener = lambda nombre, config: agente
         try:
-            return lanzar.para_hilo(cfg, "faro", Path("/repo/faro"))
+            return lanzar.para_hilo(cfg, "faro", Path("/repo/faro"), mensaje=mensaje)
         finally:
             lanzar.mod_agente.obtener = original
 
@@ -112,6 +112,12 @@ class QueSeRetoma(Prueba):
             lanz = self._correr(self._agente(["vieja", "buena"], {"buena": Path(f.name)}))
         self.assertEqual(lanz.retoma, "buena")
         self.assertIn("--resume buena", lanz.comando[2])
+
+    def test_con_mensaje_lo_recibe_al_retomar(self):
+        # un pendiente llevado al hilo dormido de su proyecto: la conversación vuelve con la frase
+        with tempfile.NamedTemporaryFile() as f:
+            lanz = self._correr(self._agente(["buena"], {"buena": Path(f.name)}), mensaje="Veamos T84")
+        self.assertIn("--resume buena 'Veamos T84'", lanz.comando[2])
 
     def test_si_ninguna_existe_abre_una_nueva(self):
         lanz = self._correr(self._agente(["perdida"], {"perdida": Path("/no/existe.jsonl")}))

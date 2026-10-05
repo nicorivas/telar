@@ -12,7 +12,10 @@ enviarla**: quien decide apretar Enter es la persona.
 
 Abrir siempre un hilo nuevo dejaba dos agentes trabajando el mismo proyecto sin
 saber uno del otro. Esa es la razón de que el destino se busque antes de crear
-nada.
+nada. Si el hilo del proyecto está dormido (archivado, o sin ventana), se **retoma** con su
+conversación y la frase como primer mensaje, aquí o en la máquina donde vive; y un pendiente
+sin proyecto, con `[agentes] sin_proyecto = "gestion"`, se le encarga a ese agente residente
+(`telar encargar`) en vez de abrir un hilo.
 """
 
 from __future__ import annotations
@@ -66,6 +69,10 @@ def main(argv: list[str], ctx) -> int:
                     "nuevo": bool(o.nuevo or destino is None),
                 }
             )
+        general = _agente_general(ctx) if destino is None and not o.nuevo else None
+        if general is not None:
+            print(f"{fila['ref']} → «{general.nombre}» (sin proyecto: se le encarga al agente)")
+            return 0
         adonde = f"«{destino.nombre}»" if destino else "un hilo nuevo"
         vivo = "" if destino and tel.vivo(destino) and not o.nuevo else " (habría que abrirlo)"
         print(f"{fila['ref']} → {adonde}{vivo}")
@@ -73,6 +80,10 @@ def main(argv: list[str], ctx) -> int:
 
     if tel.mux is None:
         return _comun.queja(tel.aviso or "no hay multiplexor con el que hablar")
+
+    general = _agente_general(ctx) if destino is None and not o.nuevo else None
+    if general is not None:
+        return _al_agente(ctx, general, fila, primero, como_json=o.json)
 
     hilo, creado, problema = _llevar(ctx, tel, destino, fila, nuevo=o.nuevo, primero=primero)
     if hilo is None:
@@ -160,6 +171,10 @@ def _llevar(
         if destino.archivado:
             tel.estado.desarchivar(destino.nombre)
         return destino, False, ""
+    if destino is not None and not nuevo:
+        revivido, problema = _retomar(ctx, tel, destino, primero)
+        if revivido is not None or problema:
+            return revivido, revivido is not None, problema
 
     nombre = _nombre_libre(tel, destino, fila, nuevo=nuevo)
     ruta = None
@@ -189,6 +204,86 @@ def _llevar(
     if lanz is not None:
         lanzar.anotar(ctx.config, abierto.nombre, lanz)
     return abierto, True, ""
+
+
+def _retomar(ctx, tel: _comun.Telar, destino: Hilo, primero: str) -> tuple[Hilo | None, str]:
+    """Revivir el hilo dormido de un proyecto con su conversación y `primero` como mensaje.
+
+    (None, "") si no tiene conversación que retomar: entonces se abre como siempre."""
+    from telar import remoto as mod_remoto
+    from telar.ordenes.hilo import _remoto_de
+
+    anotado = tel.estado.remotos().get(destino.nombre)
+    remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
+    if remoto is not None:
+        conversacion, _ = mod_remoto.conversacion_alla(remoto, destino.nombre, list(destino.sesiones))
+        if conversacion is None:
+            conversacion = destino.sesiones[0] if destino.sesiones else ""
+        try:
+            mod_remoto.abrir(ctx, tel, destino.nombre, remoto,
+                             relativa=tel.estado.vinculos().get(destino.nombre, ""),
+                             sesion=anotado.get("sesion", ""), conversacion=conversacion, aviso=primero)
+        except (ErrorDeMux, ErrorDeAgente) as e:
+            return None, f"no pude retomar «{destino.nombre}» en {remoto.destino}: {e}"
+    else:
+        if not destino.sesiones or not ctx.config.agente.nombre:
+            return None, ""
+        try:
+            lanz = lanzar.para_hilo(ctx.config, destino.nombre, destino.ruta if destino.ruta and destino.ruta.is_dir() else None,
+                                    mensaje=primero)
+            if lanz is None or not lanz.retoma:
+                return None, ""
+            tel.mux.crear(destino.nombre, ruta=lanz.carpeta, comando=lanz.comando)
+        except (ErrorDeMux, ErrorDeAgente) as e:
+            return None, f"no pude retomar «{destino.nombre}»: {e}"
+    tel.estado.desarchivar(destino.nombre)
+    revivido = next((h for h in tel.mux.hilos() if h.nombre == destino.nombre), None)
+    return (revivido, "") if revivido is not None else (None, f"retomé «{destino.nombre}» pero no lo veo en la sesión")
+
+
+def _agente_general(ctx):
+    """El agente residente que recibe los pendientes sin proyecto (`[agentes] sin_proyecto`)."""
+    clave = getattr(ctx.config, "agentes_sin_proyecto", "")
+    if not clave:
+        return None
+    from telar import agentes as mod_agentes
+
+    return next((a for a in mod_agentes.descubrir(ctx.config) if clave in (a.clave, a.nombre)), None)
+
+
+def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int:
+    """Le encarga el pendiente al agente y lleva a su hilo (lo trae si vive en otra máquina)."""
+    import io
+    import json
+    from contextlib import redirect_stdout
+
+    from telar.ordenes import encargar, remotos
+
+    salida = io.StringIO()
+    with redirect_stdout(salida):
+        codigo = encargar.main([agente.clave, primero, "--json"], ctx)
+    if codigo != 0:
+        return codigo
+    try:
+        r = json.loads(salida.getvalue().strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        r = {}
+    if ctx.config.agentes_en:
+        with redirect_stdout(io.StringIO()):
+            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = tel.por_nombre(agente.nombre)
+    if hilo is not None and tel.mux is not None and tel.vivo(hilo):
+        try:
+            tel.mux.ir(hilo.id)
+        except ErrorDeMux:
+            pass
+    if como_json:
+        return _comun.escribir_json({"ref": fila["ref"], "texto": primero, "destino": agente.nombre,
+                                     "creado": r.get("estado") == "abierto", "enviado": True,
+                                     "encargo": r.get("estado", "")})
+    print(f"{fila['ref']} → «{agente.nombre}»: encargado ({r.get('estado', '')})")
+    return 0
 
 
 def _nombre_libre(tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo: bool) -> str:

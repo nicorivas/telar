@@ -301,6 +301,8 @@ class Config:
     agentes_rotar_mb: int = 0
     #: en qué máquina de [remotos] viven los agentes (`[agentes] en`): encargar se hace allá. "" es esta.
     agentes_en: str = ""
+    #: el agente que recibe los pendientes sin proyecto (`[agentes] sin_proyecto`); "" abre un hilo nuevo.
+    agentes_sin_proyecto: str = ""
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -666,12 +668,16 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         if not isinstance(en, str):
             raise ErrorDeConfig(f"agentes.en: se esperaba el nombre de un remoto, llegó {en!r}")
         cambios["agentes_en"] = en.strip()
+        sin_proyecto = tabla.get("sin_proyecto", "")
+        if not isinstance(sin_proyecto, str):
+            raise ErrorDeConfig(f"agentes.sin_proyecto: se esperaba la carpeta de un agente, llegó {sin_proyecto!r}")
+        cambios["agentes_sin_proyecto"] = sin_proyecto.strip()
         rotar = tabla.get("rotar_mb", 0)
         if not isinstance(rotar, int) or isinstance(rotar, bool) or rotar < 0:
             raise ErrorDeConfig(f"agentes.rotar_mb: se esperaba un número de MB desde 0, llegó {rotar!r}")
         extras = []
         for clave, cuerpo in tabla.items():
-            if clave in ("carpeta", "rotar_mb", "en"):
+            if clave in ("carpeta", "rotar_mb", "en", "sin_proyecto"):
                 continue
             cuerpo = _tabla(cuerpo, f"agentes.{clave}")
             sobra = set(cuerpo) - {"hilos", "home", "argumentos"}

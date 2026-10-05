@@ -71,3 +71,10 @@ class ElHome(ConCasa):
         self.assertEqual(validar(p), "")
         self.assertEqual(p["bloques"][0]["texto"], "Eres faro, el que cuida el faro. Segunda línea.")
         self.assertEqual([b.get("titulo", "") for b in p["bloques"]][1:], ["bitácora · 3", "memoria · 2", "archivos"])
+
+
+class SinProyecto(Prueba):
+    def test_la_config_dice_que_agente_recibe_lo_general(self):
+        c = mod_config.desde_dict({"agentes": {"carpeta": "agentes", "sin_proyecto": "gestion", "en": "srv"}})
+        self.assertEqual((c.agentes_sin_proyecto, c.agentes_en), ("gestion", "srv"))
+        self.assertEqual(mod_config.desde_dict({}).agentes_sin_proyecto, "")
