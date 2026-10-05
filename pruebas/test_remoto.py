@@ -197,3 +197,34 @@ class QueConversacionRetomarAlla(Prueba):
         with mock.patch("subprocess.run", return_value=mock.Mock(returncode=255, stdout="", stderr="sin ruta")):
             sid, error = r.conversacion_alla(Remoto(nombre="s", destino="u@s"), "Faro", ["aqui"])
         self.assertEqual((sid, error), (None, "sin ruta"))
+
+
+class VentanasFantasma(Prueba):
+    """Si la sesión de un hilo remoto ya no existe allá, su ventana de aquí se cierra; si allá no responde, nada."""
+
+    def correr(self, de_alla, error=""):
+        import io
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar.ordenes import remotos
+
+        cerradas = []
+        hilos = [SimpleNamespace(nombre="Faro", id="@1"), SimpleNamespace(nombre="Lumbre", id="@2"),
+                 SimpleNamespace(nombre="Local", id="@3")]
+        anotados = {"Faro": {"remoto": "s", "sesion": "telar-aaaa0001"}, "Lumbre": {"remoto": "s", "sesion": "telar-bbbb0002"}}
+        tel = SimpleNamespace(hilos=hilos, viva=True, aviso="", vivo=lambda h: True,
+                              mux=SimpleNamespace(cerrar=lambda i: cerradas.append(i)),
+                              estado=SimpleNamespace(remotos=lambda: anotados))
+        ctx = SimpleNamespace(config=Config(remotos=(Remoto(nombre="s", destino="u@s"),)))
+        with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
+                mock.patch.object(r, "sesiones", return_value=(de_alla, error)), redirect_stdout(io.StringIO()):
+            remotos.main(["traer"], ctx)
+        return cerradas
+
+    def test_cierra_solo_la_que_ya_no_existe_alla(self):
+        self.assertEqual(self.correr([("telar-aaaa0001", "Faro")]), ["@2"])
+
+    def test_si_alla_no_responde_no_cierra_nada(self):
+        self.assertEqual(self.correr([], "u@s no responde"), [])

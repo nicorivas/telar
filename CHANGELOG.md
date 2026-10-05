@@ -19,6 +19,9 @@ workflow refuses to run if the two disagree.
   `agente = "<folder>"` and a `mensaje` is an encargo.
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
   telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
+- `telar remotos traer` closes local windows whose remote session no longer exists (closed by `max_vivos` or from
+  the phone): they showed a frozen screen and counted as alive. The thread keeps its conversation and ▶ resumes it.
+  Nothing is closed when the other machine does not answer.
 - Agents learn the basics: the start-up context names `telar hilo leer` and the resident agents with
   `telar encargar`, and the `/hilos` skill explains both.
 

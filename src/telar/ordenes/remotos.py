@@ -9,6 +9,11 @@ también puede nacer allá: un reloj que abre una pasada de trabajo en el servid
 sesión empezada desde el celular. Si sigue la convención (una sesión tmux `telar-…` con su
 nombre en `@telar_hilo`), `traer` la suma a la lista como cualquier hilo remoto, sin
 quitarle el foco a nadie. La extensión de VS Code lo corre sola cada pocos minutos.
+
+`traer` también cierra aquí las ventanas **fantasma**: las de un hilo remoto cuya sesión ya no existe
+allá (la cerró el tope de `[agente] max_vivos`, o alguien desde el celular). La ventana mostraría una
+pantalla congelada; el hilo conserva su conversación y vuelve con `telar hilo retomar` (▶). Solo se
+hace con la lista de sesiones de allá en la mano: si la otra máquina no responde, no se toca nada.
 """
 
 from __future__ import annotations
@@ -36,7 +41,7 @@ def main(argv: list[str], ctx) -> int:
     tel = _comun.tejer(ctx, con_ficha=False)
     conocidas = {d["sesion"] for d in tel.estado.remotos().values() if d.get("sesion")}
     nombres = {h.nombre for h in tel.hilos} | set(tel.estado.remotos())
-    datos, traidos = [], []
+    datos, traidos, cerrados = [], [], []
     for r in remotos:
         de_alla, error = mod_remoto.sesiones(r)
         faltan = mod_remoto.nuevas(conocidas, de_alla, nombres)
@@ -50,6 +55,19 @@ def main(argv: list[str], ctx) -> int:
                     traidos.append({"remoto": r.nombre, "sesion": sesion, "hilo": aqui})
                 except ErrorDeMux as e:
                     error = error or f"no pude abrir «{aqui}»: {e}"
+        if o.verbo == "traer" and not error and tel.mux is not None:
+            alla = {s for s, _ in de_alla}
+            for h in tel.hilos:
+                anotado = tel.estado.remotos().get(h.nombre) or {}
+                if anotado.get("remoto") != r.nombre or not anotado.get("sesion") or anotado["sesion"] in alla:
+                    continue
+                if not tel.vivo(h):
+                    continue
+                try:
+                    tel.mux.cerrar(h.id)
+                    cerrados.append({"remoto": r.nombre, "sesion": anotado["sesion"], "hilo": h.nombre})
+                except ErrorDeMux as e:
+                    error = error or f"no pude cerrar la ventana fantasma de «{h.nombre}»: {e}"
         datos.append({"remoto": r.nombre, "error": error,
                       "sesiones": [{"sesion": s, "hilo": h, "conocida": s in conocidas} for s, h in de_alla]})
     if traidos:
@@ -59,11 +77,13 @@ def main(argv: list[str], ctx) -> int:
             mod_directorio.publicar_callado(ctx, tel, nombre)
 
     if o.json:
-        return _comun.escribir_json({"remotos": datos, "traidos": traidos})
+        return _comun.escribir_json({"remotos": datos, "traidos": traidos, "cerrados": cerrados})
     for d in datos:
         print(_comun.fuerte(d["remoto"]) + (f"  {_comun.tenue(d['error'])}" if d["error"] else ""))
         for s in d["sesiones"]:
             print(f"  {s['hilo']}  " + _comun.tenue(s["sesion"] + ("" if s["conocida"] else "  · nueva")))
     for t in traidos:
         print(f"traído: {t['hilo']} ({t['remoto']})")
+    for c in cerrados:
+        print(f"cerrada la ventana de {c['hilo']}: su sesión ya no existe en {c['remoto']} (▶ la retoma)")
     return 0
