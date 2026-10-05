@@ -226,9 +226,9 @@ function pantallaHoy() {
 
   // te esperan: los de esta máquina y los de las otras que estén en línea (una apagada no espera nada)
   const esperan = [
-    ...(d.atencion || []).map((h) => ({ h, origen: '' })),
+    ...(d.atencion || []).filter((h) => h.vivo || h.propio).map((h) => ({ h, origen: '' })),
     ...estado.espejos.filter((e) => e.en_linea).flatMap((e) => (e.hilos || [])
-      .filter((h) => NOMBRE_ATENCION[h.atencion]).map((h) => ({ h, origen: e.nombre }))),
+      .filter((h) => h.vivo && NOMBRE_ATENCION[h.atencion]).map((h) => ({ h, origen: e.nombre }))),
   ].sort((a, b) => ORDEN_ATENCION[a.h.atencion] - ORDEN_ATENCION[b.h.atencion]);
   const llaman = esperan.flatMap(({ h, origen }) => filaHilo(h, { origen, dondeSub: true }));
 
@@ -281,7 +281,8 @@ function pantallaHoy() {
 
 function pantallaHilos() {
   const todos = (estado.hilos.hilos || []).filter((h) => !h.archivado);
-  const activos = todos.filter((h) => h.vivo || h.atencion !== 'ninguna')
+  // activo es lo que tiene ventana (o sesión propia): un hilo cerrado que quedó «esperando» ya no espera a nadie
+  const activos = todos.filter((h) => h.vivo || h.propio)
     .sort((a, b) => (ORDEN_ATENCION[a.atencion] - ORDEN_ATENCION[b.atencion]) || a.nombre.localeCompare(b.nombre));
   const otros = todos.filter((h) => !activos.includes(h)).sort((a, b) => a.nombre.localeCompare(b.nombre));
   return [
@@ -309,7 +310,7 @@ function seccionEspejo(e) {
   const estadoTxt = el('span', { className: `estado-esp ${e.en_linea ? 'en-linea' : 'apagado'}` },
     g(e.en_linea ? '●' : '○'), e.error ? ' sin leer' : (e.en_linea ? ' en línea' : ` apagado · hace ${hace(e.edad)}`));
   const todos = (e.hilos || []).filter((h) => !h.archivado);
-  const activos = todos.filter((h) => h.vivo || (h.atencion && h.atencion !== 'ninguna'))
+  const activos = todos.filter((h) => h.vivo)
     .sort((a, b) => (ORDEN_ATENCION[a.atencion] ?? 3) - (ORDEN_ATENCION[b.atencion] ?? 3) || a.nombre.localeCompare(b.nombre));
   const otros = todos.filter((h) => !activos.includes(h)).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const cuerpo = e.error ? [el('div', { className: 'falla', textContent: e.error })]
