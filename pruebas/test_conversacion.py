@@ -159,7 +159,7 @@ class LaRuta(ConAgente):
     def test_devuelve_la_pagina_con_el_estado_del_hilo(self):
         codigo, cuerpo = self.pedir("hilo=Faro")
         self.assertEqual(codigo, 200)
-        self.assertEqual(cuerpo["hilo"], {"nombre": "Faro", "atencion": "espera", "vivo": True})
+        self.assertEqual(cuerpo["hilo"], {"nombre": "Faro", "atencion": "espera", "vivo": True, "propio": False})
         self.assertEqual(cuerpo["hasta"], 150)
         self.assertEqual(len(cuerpo["mensajes"]), 60)
 

@@ -134,7 +134,8 @@ class Enviar(ConPuerta):
         escrito = []
         mux = SimpleNamespace(escribir=lambda h, t, enviar=False: escrito.append((h, t, enviar)))
         hilos = {n: SimpleNamespace(nombre=n) for n in ("Faro", "Dormido")}
-        tel = SimpleNamespace(mux=mux, aviso="", por_nombre=hilos.get, vivo=lambda h: h.nombre in vivos)
+        tel = SimpleNamespace(mux=mux, aviso="", por_nombre=hilos.get, vivo=lambda h: h.nombre in vivos,
+                              propio=lambda h: False, propios={})
         return mock.patch("telar.ordenes._comun.tejer", return_value=tel), escrito
 
     def test_escribe_en_un_hilo_vivo(self):
