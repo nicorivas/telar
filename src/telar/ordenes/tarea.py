@@ -14,8 +14,9 @@ Un `{texto}` en el comando se reemplaza por lo que se escribió (`--texto`).
 
 Una acción con `mensaje` abre además, después de su comando, un hilo nuevo con el agente y
 ese primer prompt (`nombre_hilo` es su nombre): marcar hecha y procesar las secuelas de
-inmediato, por ejemplo. Un `{texto}` en el mensaje también se reemplaza: así una acción puede
-abrir una sesión nueva sobre la tarea con lo que se acaba de escribir como primer prompt.
+inmediato, por ejemplo. Un `{texto}` en el mensaje también se reemplaza. Con `al_hilo: true`, el
+mensaje no abre un hilo nuevo: va al hilo donde se trabaja la tarea, como `telar pendiente` (el de
+su proyecto, retomándolo si duerme; sin proyecto, el agente de `[agentes] sin_proyecto`).
 """
 
 from __future__ import annotations
@@ -85,7 +86,26 @@ def main(argv: list[str], ctx) -> int:
     if r.returncode != 0:
         return _comun.queja(f"«{a['nombre']}» salió con {r.returncode}: {r.stderr.strip()[-300:]}")
     salida = {"tipo": "comando", "hecho": a["nombre"], "salida": r.stdout.strip()[-500:], "hilo": ""}
-    if a.get("mensaje"):
+    if a.get("mensaje") and a.get("al_hilo"):
+        # al hilo donde se trabaja la tarea, no a uno nuevo: el de su proyecto (retomándolo si
+        # duerme) o, sin proyecto, el agente de `[agentes] sin_proyecto` (ver `telar pendiente`)
+        import io
+        import json as mod_json
+        from contextlib import redirect_stdout
+
+        from telar.ordenes import pendiente
+
+        texto = a["mensaje"].replace("{texto}", o.texto.strip())
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            codigo = pendiente.main([o.id, "--texto", texto, "--enviar", "--proveedor", o.proveedor, "--json"], ctx)
+        if codigo != 0:
+            return _comun.queja(f"«{a['nombre']}» se anotó, pero no pude llevarlo a su hilo")
+        try:
+            salida["hilo"] = mod_json.loads(buf.getvalue().strip().splitlines()[-1]).get("destino", "")
+        except (ValueError, IndexError):
+            salida["hilo"] = ""
+    elif a.get("mensaje"):
         import datetime as dt
 
         from telar.ordenes.atajo import abrir

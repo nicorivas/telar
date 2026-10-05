@@ -728,7 +728,11 @@ export class PanelHoy {
             const si = await vscode.window.showWarningMessage(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, { modal: true }, 'Sí');
             if (si !== 'Sí') return;
         }
-        const r = await cli.accionTarea(f.id, f.proveedor, k, texto);
+        // una acción que lleva un mensaje a un hilo (el de la tarea, Gestión) toma unos segundos: se avisa
+        const r = a.mensaje
+            ? await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: ${a.nombre} · ${f.id}…` },
+                () => cli.accionTarea(f.id, f.proveedor, k, texto))
+            : await cli.accionTarea(f.id, f.proveedor, k, texto);
         if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
         // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
         if (r.datos.hilo) {

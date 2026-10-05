@@ -83,7 +83,7 @@ def _acciones(lista: object) -> str:
         for campo in ("pide", "color", "mensaje", "nombre_hilo"):
             if not isinstance(a.get(campo, ""), str):
                 return f"[{i}].{campo}: se esperaba un texto"
-        for campo in ("principal", "confirmar"):
+        for campo in ("principal", "confirmar", "al_hilo"):
             if not isinstance(a.get(campo, False), bool):
                 return f"[{i}].{campo}: se esperaba true o false"
         principales += bool(a.get("principal"))

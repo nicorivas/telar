@@ -33,6 +33,8 @@ workflow refuses to run if the two disagree.
 - VS Code thread list: fixed columns — priority · semaphore · ⇄ · ✉ · name · last activity — each icon in its own
   column whether shown or not, so names line up; the right side is only the last activity (last focus or the agent's
   last change).
+- A task action with `mensaje` and `al_hilo: true` sends the message to the thread where the task is worked — its
+  project's (resumed if asleep) or the `[agentes] sin_proyecto` agent — instead of opening a new thread.
 - Task owner: a provider task may carry `dueno` (who does it, if not you); the task lists in VS Code (sidebar, today,
   review) get a «todas · mías · de otros» filter and show «→ Name» before a task someone else owns.
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,

@@ -266,8 +266,9 @@ export interface JsonAccionPagina {
     pide?: string; principal?: boolean; confirmar?: boolean;
     /** qué es, para quien la corre sin abrir la ficha: `hecha` es el ✓ de la lista de tareas */
     rol?: string;
-    /** después del comando, un hilo nuevo con el agente y este mensaje (`nombre_hilo`) */
-    mensaje?: string; nombre_hilo?: string;
+    /** después del comando, un hilo nuevo con el agente y este mensaje (`nombre_hilo`); con `al_hilo`,
+     *  el mensaje va al hilo donde se trabaja la tarea (el de su proyecto, o Gestión) */
+    mensaje?: string; nombre_hilo?: string; al_hilo?: boolean;
 }
 export interface JsonPagina {
     titulo: string; subtitulo?: string;
