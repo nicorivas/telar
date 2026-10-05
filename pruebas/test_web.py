@@ -160,7 +160,8 @@ class Escritura(Prueba):
             puerto = self.servir(escribir=escribir)
             with urllib.request.urlopen(f"http://127.0.0.1:{puerto}/api/yo") as r:
                 cuerpo = json.loads(r.read())
-            self.assertEqual(cuerpo, {"escribir": escribir, "enlaces": ["laptop"]})
+            # sin --plan, la pestaña del plan no está ni se puede comentar
+            self.assertEqual(cuerpo, {"escribir": escribir, "plan": False, "plan_comentar": False, "enlaces": ["laptop"]})
 
     def test_una_pagina_ajena_no_puede_escribir(self):
         puerto = self.servir()

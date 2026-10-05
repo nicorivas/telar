@@ -26,6 +26,11 @@ workflow refuses to run if the two disagree.
   service worker that caches nothing; an https `Origin` is accepted only for a host declared with `--tambien`.
 - `telar web`: the reply box grows to six lines (Enter is a new line on the phone, sends with a keyboard) and a large
   «enviar» button; tapping a thread that has a conversation goes straight into it.
+- `telar web --plan CARPETA`: a «plan» tab that draws the day's plan (`AAAA-MM-DD.json`, or `.md`) as cards — summary,
+  results, agenda with each meeting's context folded, pending items, focus, people, missing data. With
+  `--plan-comando CMD` a comment box at the end sends the comment to that command on stdin (never on the command
+  line), with the same defences as `/api/enviar`, one comment every five seconds and 4,000 characters at most. The
+  bottom bar is only the tabs now; theme and refresh moved to a ⋮ menu.
 - Threads with their own session (opened from the phone or by a periodic process, `telar-…` sessions) count as
   `propio`: they can be written to (`enviar`, the web) even though they are not tabs.
 
