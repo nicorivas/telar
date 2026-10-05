@@ -5,7 +5,9 @@
     telar encargar gestion --cola            lo que espera en su cola
     telar encargar --liberar                 cerrar sesiones ociosas hasta caber bajo [agente] max_vivos
 
-El agente es la carpeta de `[agentes] carpeta` (gestion) o su nombre (Gestión). Ver `telar.encargos`.
+El agente es la carpeta de `[agentes] carpeta` (gestion) o su nombre (Gestión). Con `[agentes] en`
+(o `--en <remoto>`) se encarga en esa máquina, por ssh: los agentes suelen vivir en el servidor.
+Ver `telar.encargos`.
 """
 
 from __future__ import annotations
@@ -24,10 +26,16 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("texto", nargs="*", help="el encargo (o «-» para leerlo de la entrada)")
     p.add_argument("--cola", action="store_true", help="ver lo que espera en su cola")
     p.add_argument("--liberar", action="store_true", help="cerrar sesiones ociosas hasta caber bajo el tope")
+    p.add_argument("--en", default=None, metavar="REMOTO", help="hacerlo en esa máquina de [remotos]; «aqui» para esta")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    en = o.en if o.en is not None else ctx.config.agentes_en
+    if en and en != "aqui":
+        from telar.ordenes.periodicos import en_otra
+
+        return en_otra(ctx, en, "encargar", argv)
     if o.liberar:
         cerrados = encargos.liberar(ctx.config, 0)
         if o.json:

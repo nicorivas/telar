@@ -171,6 +171,9 @@ class Atajo:
     #: dashboard (en su título: «correo» → el de procesar el correo) o «seccion:<clave>» (en
     #: la pestaña de esa sección). La tecla funciona desde cualquier pestaña.
     en: str = "hoy"
+    #: si no es "", el mensaje se le encarga a ese agente residente (su carpeta) en vez de abrir
+    #: un hilo nuevo: la tecla lleva a su hilo de siempre (ver telar.encargos).
+    agente: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +299,8 @@ class Config:
     agentes_extra: tuple[AgenteExtra, ...] = ()
     #: una conversación de agente que pesa más que esto (MB) no se retoma: se empieza otra. 0: siempre.
     agentes_rotar_mb: int = 0
+    #: en qué máquina de [remotos] viven los agentes (`[agentes] en`): encargar se hace allá. "" es esta.
+    agentes_en: str = ""
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -503,7 +508,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                 raise ErrorDeConfig(f"atajos.{tecla}: la tecla es un solo carácter")
             if tecla in TECLAS_RESERVADAS:
                 raise ErrorDeConfig(f"atajos.{tecla}: esa tecla ya la usa el dashboard")
-            sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion", "en"}
+            sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion", "en", "agente"}
             if sobra:
                 raise ErrorDeConfig(f"atajos.{tecla}.{sorted(sobra)[0]}: no existe")
             campos = {}
@@ -511,9 +516,9 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             if not isinstance(en, str) or not en.strip():
                 raise ErrorDeConfig(f"atajos.{tecla}.en: «hoy», la clave de un bloque o «seccion:<clave>», llegó {en!r}")
             campos["en"] = en.strip()
-            for clave in ("nombre", "mensaje", "descripcion"):
+            for clave in ("nombre", "mensaje", "descripcion", "agente"):
                 valor = cuerpo.get(clave, "")
-                if not isinstance(valor, str) or (clave != "descripcion" and not valor.strip()):
+                if not isinstance(valor, str) or (clave not in ("descripcion", "agente") and not valor.strip()):
                     raise ErrorDeConfig(f"atajos.{tecla}.{clave}: se esperaba un texto, llegó {valor!r}")
                 campos[clave] = valor.strip()
             atajos.append(Atajo(tecla=tecla, **campos))
@@ -657,12 +662,16 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         carpeta = tabla.get("carpeta", "")
         if not isinstance(carpeta, str):
             raise ErrorDeConfig(f"agentes.carpeta: se esperaba una carpeta, llegó {carpeta!r}")
+        en = tabla.get("en", "")
+        if not isinstance(en, str):
+            raise ErrorDeConfig(f"agentes.en: se esperaba el nombre de un remoto, llegó {en!r}")
+        cambios["agentes_en"] = en.strip()
         rotar = tabla.get("rotar_mb", 0)
         if not isinstance(rotar, int) or isinstance(rotar, bool) or rotar < 0:
             raise ErrorDeConfig(f"agentes.rotar_mb: se esperaba un número de MB desde 0, llegó {rotar!r}")
         extras = []
         for clave, cuerpo in tabla.items():
-            if clave in ("carpeta", "rotar_mb"):
+            if clave in ("carpeta", "rotar_mb", "en"):
                 continue
             cuerpo = _tabla(cuerpo, f"agentes.{clave}")
             sobra = set(cuerpo) - {"hilos", "home", "argumentos"}

@@ -17,6 +17,9 @@ workflow refuses to run if the two disagree.
   session reopened resuming its conversation, or a fresh one once that conversation is over `[agentes] rotar_mb`.
   `[agentes.<folder>] argumentos` are passed to the agent when its session opens. A periodic process with
   `agente = "<folder>"` and a `mensaje` is an encargo.
+- An `[atajos.<key>]` with `agente = "<folder>"` hands its message to that resident agent instead of opening a new
+  thread, and takes you to the agent's thread. `[agentes] en` (or `telar encargar --en`) makes encargos on that
+  remote machine, over ssh, where the agents live.
 - `[agente] max_vivos`: a cap on live own sessions (periodic, encargos, the phone) on a machine; before opening one,
   telar closes the idle ones nobody is looking at, oldest first, residents last. Their conversations stay on disk.
 - `telar remotos traer` closes local windows whose remote session no longer exists (closed by `max_vivos` or from

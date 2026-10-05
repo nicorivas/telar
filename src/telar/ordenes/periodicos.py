@@ -78,7 +78,11 @@ def main(argv: list[str], ctx) -> int:
 
 
 def _en_otra(ctx, nombre: str, argv: list[str]) -> int:
-    """La misma orden, en la otra máquina. La salida (texto o JSON) llega tal cual."""
+    return en_otra(ctx, nombre, "periodicos", argv)
+
+
+def en_otra(ctx, nombre: str, orden_telar: str, argv: list[str]) -> int:
+    """La misma orden de telar, en la otra máquina. La salida (texto o JSON) llega tal cual."""
     remoto = next((r for r in ctx.config.remotos if r.nombre == nombre), None)
     if remoto is None:
         return _comun.queja(f"no hay un remoto «{nombre}» en [remotos]")
@@ -91,7 +95,7 @@ def _en_otra(ctx, nombre: str, argv: list[str]) -> int:
             saltar = True
         elif not a.startswith("--en="):
             resto.append(a)
-    linea = "PATH=$HOME/.local/bin:$PATH telar periodicos " + shlex.join([*resto, "--en", "aqui"])
+    linea = f"PATH=$HOME/.local/bin:$PATH LANG=C.UTF-8 telar {orden_telar} " + shlex.join([*resto, "--en", "aqui"])
     orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino, "bash -lc " + shlex.quote(linea)]
     try:
         r = subprocess.run(orden, capture_output=True, text=True, timeout=60)

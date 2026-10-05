@@ -52,6 +52,8 @@ def main(argv: list[str], ctx) -> int:
     atajo = atajos.get(o.tecla)
     if atajo is None:
         return _comun.queja(f"no hay atajo en «{o.tecla}»: `telar atajo` lista los que hay")
+    if atajo.agente:
+        return _encargar(ctx, atajo, o.json)
     nombre = f"{atajo.nombre} {dt.datetime.now():%m/%d %H:%M}"
     problema = abrir(ctx, nombre, atajo.mensaje)
     if problema:
@@ -88,3 +90,43 @@ def abrir(ctx, nombre: str, mensaje: str) -> str:
     except (ErrorDeMux, ErrorDeAgente) as e:
         return f"no pude abrir «{nombre}»: {e}"
     return ""
+
+
+def _encargar(ctx, atajo, como_json: bool) -> int:
+    """El atajo de un agente residente: le encarga el mensaje y lleva a su hilo de siempre.
+
+    Si el agente vive en otra máquina (`[agentes] en`), el encargo se hace allá y la ventana de su
+    hilo se trae aquí si todavía no estaba (`telar remotos traer`)."""
+    import io
+    import json
+    from contextlib import redirect_stdout
+
+    from telar import agentes as mod_agentes
+    from telar.ordenes import encargar, remotos
+
+    agente = next((a for a in mod_agentes.descubrir(ctx.config) if atajo.agente in (a.clave, a.nombre)), None)
+    if agente is None:
+        return _comun.queja(f"el atajo «{atajo.tecla}» le encarga a «{atajo.agente}», que no está en [agentes] carpeta")
+    salida = io.StringIO()
+    with redirect_stdout(salida):
+        codigo = encargar.main([agente.clave, atajo.mensaje, "--json"], ctx)
+    if codigo != 0:
+        return codigo
+    try:
+        r = json.loads(salida.getvalue().strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        r = {"estado": "?"}
+    if ctx.config.agentes_en:
+        with redirect_stdout(io.StringIO()):
+            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = tel.por_nombre(agente.nombre)
+    if hilo is not None and tel.mux is not None and tel.vivo(hilo):
+        try:
+            tel.mux.ir(hilo.id)
+        except ErrorDeMux:
+            pass
+    if como_json:
+        return _comun.escribir_json({"hilo": agente.nombre, "mensaje": atajo.mensaje, "encargo": r.get("estado", "")})
+    print(f"{agente.nombre} · {atajo.mensaje} · {r.get('estado', '')}")
+    return 0
