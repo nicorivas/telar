@@ -104,8 +104,8 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
             ajenos |= otra
             colegas |= not otra
             cadena = f", salto {m.get('saltos', 0)} de {TOPE_SALTOS}" if m.get("saltos") else ""
-            bloque = (f"[{tipo} de {de}{f' (otra persona: {m['persona']})' if otra else ''}, {cuando}, id {m['id']}{cadena}]\n"
-                      f"{m.get('texto', '').strip()}")
+            ajena = f" (otra persona: {m['persona']})" if otra else ""
+            bloque = f"[{tipo} de {de}{ajena}, {cuando}, id {m['id']}{cadena}]\n{m.get('texto', '').strip()}"
         if partes and largo + len(bloque) > MAX_ENTREGA:
             break
         partes.append(bloque)
