@@ -91,10 +91,11 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
         from telar.ordenes import mensaje
 
         try:
-            m = mod_bus.enviar(ctx.config, ext, f"Asunto: {asunto.strip()}\n\n{cuerpo.strip()}",
-                               de=mensaje.remitente(ctx))
+            m = mensaje.enviar(ctx, ext, f"Asunto: {asunto.strip()}\n\n{cuerpo.strip()}")
         except mod_bus.ErrorDeBus as e:
             return "", str(e)
+        if m.get("estado") == "retenido":
+            return "", f"retenido, no se entregó ({m['motivo']}); tu persona lo suelta con: telar mensaje --soltar {m['id']}"
         return f"el bus (id {m['id']})", ""
     # sin charset declarado, quien lo lee asume us-ascii y cada tilde llega como «��»
     orden = ["mail", "-s", asunto.strip(), "-a", "MIME-Version: 1.0",
