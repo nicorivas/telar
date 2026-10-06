@@ -83,7 +83,9 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
         return "", "el asunto va en una sola línea, y no vacío"
     if responde and not re.fullmatch(r"<[^<>\s]+>", responde.strip()):
         return "", f"«{responde}» no es un Message-Id (<algo@servidor>)"
-    orden = ["mail", "-s", asunto.strip()]
+    # sin charset declarado, quien lo lee asume us-ascii y cada tilde llega como «��»
+    orden = ["mail", "-s", asunto.strip(), "-a", "MIME-Version: 1.0",
+             "-a", "Content-Type: text/plain; charset=UTF-8", "-a", "Content-Transfer-Encoding: 8bit"]
     if responde:
         orden += ["-a", f"In-Reply-To: {responde.strip()}", "-a", f"References: {responde.strip()}"]
     orden.append(direccion)

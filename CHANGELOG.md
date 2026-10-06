@@ -79,6 +79,10 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- The mail carrier (`servidor/cartero`) read a message with no declared charset as us-ascii, so every accented
+  letter arrived as «��»; it now tries UTF-8 first. `telar correo enviar` always declares `charset=UTF-8`.
+- `telar enlace enviar` and encargos typed a long text into the agent's prompt, which could lose its beginning;
+  past 600 characters the text is left as a file and a short line pointing to it is typed instead.
 - A task card with ten actions (⏎ plus 1–9) failed the page contract, which allowed nine.
 - `telar remotos traer`: a session over there named like a sleeping thread here is that same thread (it moved):
   it is adopted under its name instead of showing up again as «· 2».

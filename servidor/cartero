@@ -160,7 +160,28 @@ if recientes >= TOPE_HORA:
 
 # 4. Tamaño.
 parte = msg.get_body(preferencelist=("plain",))
-cuerpo = (parte.get_content() if parte else "")[:MAX_CUERPO]
+
+
+def texto_de(parte) -> str:
+    """El cuerpo en texto. Un correo sin `charset` (lo que manda `mail` sin cabeceras) se lee como
+    us-ascii, y cada letra con tilde sale como «��»: casi todo lo que llega aquí es UTF-8, así que
+    sin charset declarado (o si dice us-ascii) se prueba UTF-8 primero."""
+    if parte is None:
+        return ""
+    charset = (parte.get_content_charset() or "").lower()
+    if charset in ("", "us-ascii", "ascii"):
+        crudo = parte.get_payload(decode=True) or b""
+        try:
+            return crudo.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+    try:
+        return parte.get_content()
+    except (LookupError, UnicodeDecodeError):
+        return (parte.get_payload(decode=True) or b"").decode("utf-8", errors="replace")
+
+
+cuerpo = texto_de(parte)[:MAX_CUERPO]
 
 # Destino: la sesión del hilo cuya dirección es esta (usuario+ext); ninguna otra.
 ext = os.environ.get("EXTENSION", "")
