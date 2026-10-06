@@ -17,6 +17,17 @@ workflow refuses to run if the two disagree.
   does not stop and gets the messages) and `UserPromptSubmit` (an idle agent gets a short fixed «↯» typed, and
   the content as context). Installed by `telar agente instalar`.
 - `servidor/telar-bus.service`, `servidor/telar-nodo.service` and `servidor/telar-nodo.plist`.
+- Threads of the same person talk without asking her. `telar agente instalar` allows, in Claude Code's
+  `permissions.allow`, only the commands to talk and read (`telar mensaje`, `encargar`, `hilos`, `ficha`,
+  `hilo leer`, `nodo estado`); `desinstalar` removes exactly those. A message from a same-person thread is
+  delivered as a colleague's request (do it if it is your trade and reversible; what goes out to the world,
+  what cannot be undone and what is not yours still needs the person), one from another person stays a mere
+  message. The context and the `/hilos` skill say asking and delegating is expected.
+- Brakes instead of approval: each message carries `persona` and `saltos` (how many thread-to-thread hops
+  since the person last spoke; her own prompt resets it). Past 6 hops, or past 30 messages an hour from one
+  thread, the message is held: it stays only in the bus log (`TELAR_REGISTRO`, two weeks) until the person
+  releases it (`telar mensaje --soltar <id>`). `telar mensaje --registro` and `--retenidos` show the log; the
+  dashboard's «agentes» tab lists the messages between threads with a «soltar» link on the held ones.
 - With a bus, the rest goes through it too: `telar enlace enviar` leaves the message in the thread's mailbox;
   the web writes to a thread on another machine as a `persona` message and reads its conversation with an
   rpc to that machine's node (honoring `[enlace] no_leer`); mail between threads of the same person

@@ -126,6 +126,11 @@ mensajes que esperan en vez de perderse.
   las de los demás). El nodo publica `vivo: false` cuando un hilo deja de vivir en su máquina, con su
   sesión tmux si tiene una propia: la otra máquina trae la ventana de lo que nace allá y cierra la de lo
   que muere, al instante. `remotos traer` queda para llamarlo a mano; con bus, la extensión apaga sus sondeos de ventanas y de atención en cuanto la primera respuesta dice `por: bus`.
+- Entre hilos de una misma persona se habla sin aprobación (desde el 5-oct): `telar agente instalar`
+  autoriza los comandos de hablar y leer; el mensaje de un hilo propio llega como pedido de un colega y
+  el de otra persona como mensaje. En lugar de la aprobación, frenos: cada mensaje lleva `persona` y
+  `saltos` (la cadena se corta cuando la persona habla), y pasado el tope de saltos (6) o de mensajes
+  por hora de un hilo (30) se retiene en el registro (`TELAR_REGISTRO`) hasta que la persona lo suelte.
 - Probado de punta a punta entre un laptop y un servidor: un mensaje a un agente cerrado lo abre
   retomando su conversación y le entrega el contenido; a uno abierto e inactivo se le teclea solo «↯»;
   la atención de un hilo de la otra máquina llega en uno o dos segundos.
