@@ -62,6 +62,19 @@ def hilos() -> list[HiloMovil]:
     return lista
 
 
+def hilo_de_panel(panel: str) -> str:
+    """El hilo de un panel tmux que vive en una sesión propia (su `@telar_hilo`). Vacío si no.
+
+    Las ventanas de la sesión del telar no llevan la marca, así que un panel de ahí da vacío y
+    quien pregunta sigue con el multiplexor."""
+    if not panel.startswith("%"):
+        return ""
+    try:
+        return _tmux("display-message", "-p", "-t", panel, f"#{{{OPCION_HILO}}}", tolerante=True).strip()
+    except OSError:
+        return ""
+
+
 def propios() -> dict[str, str]:
     """nombre del hilo → sesión tmux, de los hilos que viven en una sesión propia de esta máquina.
 

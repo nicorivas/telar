@@ -6,6 +6,12 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Fixed
+
+- The mailbox hook no longer depends on `$TELAR_HILO` alone. An agent started without it (a `claude` launched
+  by hand inside a thread's tab) got the «↯» and never the messages; now the hook also tries the conversation
+  already recorded, the `@telar_hilo` mark of the tmux session the pane lives in, and the multiplexor's tab.
+
 ## [0.1.11] — 2026-10-05
 
 ### Added

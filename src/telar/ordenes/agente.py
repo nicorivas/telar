@@ -67,6 +67,7 @@ from telar.agente.base import (
     Aviso,
     Evento,
     aplicar,
+    hilo_del_panel,
     panel_del_entorno,
     resolver_hilo,
     ruta_inestable,
@@ -224,11 +225,13 @@ def _casilla(ctx) -> int:
     agente no interactivo o con la casilla vacía, no imprime nada: el turno sigue como si nada."""
     try:
         datos = json.loads(sys.stdin.read() or "{}")
-        hilo = os.environ.get(VARIABLE_HILO, "").strip()
-        if not hilo or _no_interactivo():
+        if _no_interactivo():
             return 0
         evento = str(datos.get("hook_event_name") or "")
         if evento not in ("Stop", "UserPromptSubmit"):
+            return 0
+        hilo = _hilo_de_casilla(ctx, datos)
+        if not hilo:
             return 0
         if evento == "Stop" and datos.get("stop_hook_active"):
             # ya está siguiendo por un Stop anterior: solo entrega si llegó algo más (sin bucle vacío)
@@ -244,6 +247,36 @@ def _casilla(ctx) -> int:
     except Exception:  # noqa: BLE001 - un gancho nunca tumba el turno del agente
         pass
     return 0
+
+
+def _hilo_de_casilla(ctx, datos: dict) -> str:
+    """El hilo cuya casilla se vacía. Vacío si no hay manera de saberlo.
+
+    `$TELAR_HILO` primero. Un agente que se abrió sin ella (un `claude` lanzado a mano dentro del
+    tab) recibía el «↯» y nunca sus mensajes; por eso después vienen la conversación ya anotada y el
+    panel: la marca `@telar_hilo` de su sesión propia, o el tab del multiplexor.
+    """
+    hilo = os.environ.get(VARIABLE_HILO, "").strip()
+    if hilo:
+        return hilo
+    sesion = str(datos.get("session_id") or "")
+    if sesion:
+        anotado = mod_estado.abrir(ctx.config).hilo_de(sesion)
+        if anotado:
+            return anotado
+    panel = panel_del_entorno(ctx.config.multiplexor)
+    if not panel:
+        return ""
+    if ctx.config.multiplexor == "tmux":
+        from telar import movil
+
+        propio = movil.hilo_de_panel(panel)
+        if propio:
+            return propio
+    try:
+        return hilo_del_panel(obtener_mux(ctx.config), panel)
+    except ErrorDeMux:
+        return ""
 
 
 def _agentes_en_contexto(ctx) -> str:
