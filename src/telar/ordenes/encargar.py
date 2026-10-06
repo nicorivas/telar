@@ -44,6 +44,12 @@ def main(argv: list[str], ctx) -> int:
             texto_bus = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
             try:
                 r = mensaje.enviar(ctx, o.agente, texto_bus, tipo="encargo")
+                if r.get("estado") == "retenido":
+                    if o.json:
+                        return _comun.escribir_json({"hilo": r["para"], "estado": "retenido", "motivo": r["motivo"], "id": r["id"]})
+                    print(f"{r['para']}: RETENIDO, no se entregó ({r['motivo']}). Cuéntale a tu persona; ella lo suelta "
+                          f"con: telar mensaje --soltar {r['id']}", file=sys.stderr)
+                    return 3
                 salida = {"hilo": r["para"], "estado": "en su casilla (bus)", "id": r["id"]}
                 if o.json:
                     return _comun.escribir_json(salida)
