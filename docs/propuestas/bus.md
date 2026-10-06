@@ -125,7 +125,7 @@ mensajes que esperan en vez de perderse.
   hilos de una misma persona y el espejo (cada nodo publica su foto cada 30 s en `TELAR_ESPEJO` y guarda
   las de los demás). El nodo publica `vivo: false` cuando un hilo deja de vivir en su máquina, con su
   sesión tmux si tiene una propia: la otra máquina trae la ventana de lo que nace allá y cierra la de lo
-  que muere, al instante. `remotos traer` queda para llamarlo a mano; el sondeo de la extensión (`--sondeo`) no hace nada si hay bus.
+  que muere, al instante. `remotos traer` queda para llamarlo a mano; con bus, la extensión apaga sus sondeos de ventanas y de atención en cuanto la primera respuesta dice `por: bus`.
 - Probado de punta a punta entre un laptop y un servidor: un mensaje a un agente cerrado lo abre
   retomando su conversación y le entrega el contenido; a uno abierto e inactivo se le teclea solo «↯»;
   la atención de un hilo de la otra máquina llega en uno o dos segundos.
