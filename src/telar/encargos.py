@@ -88,9 +88,22 @@ def _sacar(config, hilo: str) -> dict | None:
     return primero
 
 
-def _una_linea(texto: str) -> str:
-    """Lo que se teclea en una sesión: un salto de línea sería un ↩ que manda el encargo a medias."""
-    return " ".join(texto.split())
+#: desde qué largo un encargo no se teclea: se deja en un archivo y se escribe una línea que lo apunta
+LARGO_TECLEADO = 600
+
+
+def _una_linea(texto: str, config=None, hilo: str = "") -> str:
+    """Lo que se teclea en una sesión: un salto de línea sería un ↩ que manda el encargo a medias, y un
+    texto largo pegado de una vez puede perder el comienzo. Ese va entero a un archivo."""
+    plano = " ".join(texto.split())
+    if config is None or len(plano) <= LARGO_TECLEADO:
+        return plano
+    carpeta = _carpeta(config) / "textos"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    nombre = re.sub(r"[^\w-]+", "_", hilo, flags=re.UNICODE).strip("_") or "encargo"
+    ruta = carpeta / f"{nombre}-{datetime.now():%Y%m%d-%H%M%S}.md"
+    ruta.write_text(texto.strip() + "\n", encoding="utf-8")
+    return f"[encargo de {len(plano)} caracteres: léelo entero en {ruta}]"
 
 
 # ── el tope de sesiones vivas ─────────────────────────────────────────────────
@@ -172,7 +185,7 @@ def encargar(ctx, agente, texto: str) -> dict:
             n = _encolar(ctx.config, hilo, texto)
             _anotar(ctx.config, f"«{hilo}» trabajando: en cola ({n}) · {texto[:80]}")
             return {"hilo": hilo, "estado": "en cola", "en_cola": n}
-        escribir(_una_linea(texto))
+        escribir(_una_linea(texto, ctx.config, hilo))
         est.anotar_atencion(hilo, Atencion.TRABAJANDO)
         _anotar(ctx.config, f"«{hilo}» libre: entregado · {texto[:80]}")
         return {"hilo": hilo, "estado": "entregado"}
@@ -254,7 +267,7 @@ def repartir(ctx, hilo: str) -> bool:
     siguiente = _sacar(ctx.config, hilo)
     if siguiente is None:
         return False
-    escribir(_una_linea(siguiente["texto"]))
+    escribir(_una_linea(siguiente["texto"], ctx.config, hilo))
     mod_estado.abrir(ctx.config).anotar_atencion(hilo, Atencion.TRABAJANDO)
     _anotar(ctx.config, f"«{hilo}» terminó: le entregué el siguiente de la cola · {siguiente['texto'][:80]}")
     return True

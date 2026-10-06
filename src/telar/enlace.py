@@ -50,6 +50,8 @@ from telar.config import VERBOS_ENLACE
 MAX_ARCHIVO = 100 * 1024 * 1024
 MAX_TEXTO = 8000
 MAX_AVISO = 500
+#: desde qué largo un texto no se teclea en un hilo sino que se deja como archivo y se apunta
+LARGO_TECLEADO = 600
 LIMITE = {"archivo": MAX_ARCHIVO, "enviar": MAX_TEXTO * 4, "notificar": MAX_AVISO * 4, "encargar": MAX_TEXTO * 4}
 
 
@@ -148,8 +150,15 @@ def _enviar(ctx, args, entrada):
         raise ErrorDePuerta(f"no hay un hilo vivo que se llame «{args[0]}»")
     if tel.mux is None:
         raise ErrorDePuerta(tel.aviso or "no hay multiplexor donde escribir")
+    archivo = ""
+    if len(texto) > LARGO_TECLEADO:
+        # pegado de una vez en el prompt de un agente, un texto largo puede perder el comienzo: se
+        # deja entero en la carpeta de entrada y en el hilo se escribe una línea corta que lo apunta
+        destino = guardar_archivo(ctx.config, f"mensaje-{hilo.nombre}.md", texto.encode("utf-8"))
+        archivo = str(destino)
+        texto = f"[mensaje de la otra máquina, {len(texto)} caracteres: léelo entero en {destino}]"
     tel.mux.escribir(hilo.nombre, texto, enviar=enter)
-    return {"hilo": hilo.nombre, "caracteres": len(texto), "enviado": enter}
+    return {"hilo": hilo.nombre, "caracteres": len(texto), "enviado": enter, "archivo": archivo}
 
 
 def _notificar(ctx, args, entrada):
