@@ -17,6 +17,10 @@ workflow refuses to run if the two disagree.
   does not stop and gets the messages) and `UserPromptSubmit` (an idle agent gets a short fixed «↯» typed, and
   the content as context). Installed by `telar agente instalar`.
 - `servidor/telar-bus.service`, `servidor/telar-nodo.service` and `servidor/telar-nodo.plist`.
+- `telar pendiente` (and the dashboard's «↩ escribirle a Claude» on a task) finds the thread whose folder holds
+  the file the item links to (its `url`), the most specific first; a one-level folder is an area and does not
+  decide. With no such thread here, it looks in the other machines' mirror snapshots and writes to that thread
+  through the bus.
 - Threads of the same person talk without asking her. `telar agente instalar` allows, in Claude Code's
   `permissions.allow`, only the commands to talk and read (`telar mensaje`, `encargar`, `hilos`, `ficha`,
   `hilo leer`, `nodo estado`); `desinstalar` removes exactly those. A message from a same-person thread is
