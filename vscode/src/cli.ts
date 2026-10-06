@@ -411,6 +411,18 @@ export const skills = (hilo: string) => telarJson<{
 export const correoLeido = (hilo: string, ids: string[] = []) =>
     telar(['correo', 'leido', hilo, ...(ids.length ? ['--ids', ...ids] : [])], 40000);
 
+/** Un mensaje entre hilos por el bus, como lo guarda su registro (`telar mensaje --registro`). */
+export interface JsonMensajeBus {
+    id: string; de: string; para: string; tipo: string; texto: string; creado: string;
+    persona?: string; saltos?: number; estado?: 'enviado' | 'retenido'; motivo?: string;
+}
+/** Los últimos mensajes entre hilos, de todas las máquinas. Sin bus, error (y la pestaña no los muestra). */
+export const mensajesBus = (n = 60) =>
+    telarJson<{ mensajes: JsonMensajeBus[] }>(['mensaje', '--registro', String(n)], 30000);
+/** `telar mensaje --soltar <id>`: la persona deja pasar un mensaje retenido. */
+export const soltarMensaje = (id: string) =>
+    telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);
+
 export const correo = (cuerpos = false) =>
     telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);
 

@@ -45,6 +45,9 @@ export class PanelHoy {
     private decididas = new Set<string>();
     /** el correo con cuerpos, leído al entrar a la pantalla; y el filtro elegido */
     private buzones?: cli.JsonBuzon[];
+    /** los mensajes entre hilos por el bus (undefined: sin bus o sin leer) */
+    private mensajesBus?: cli.JsonMensajeBus[];
+    private abiertoMsg = new Set<string>();
     private filtroCorreo: 'todas' | 'mias' | 'sin' = 'todas';
     /** la sección abierta y su página; la conversación que se está leyendo */
     private seccion = '';
@@ -827,11 +830,12 @@ export class PanelHoy {
      *  textos (se piden al entrar, no en el refresco: pueden ser muchos). */
     private async abrirCorreo(): Promise<void> {
         this.pantalla = 'correo';
-        this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>', '<div class="fila dim">leyendo por ssh…</div>']);
-        const r = await cli.correo(true);
+        this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>', '<div class="fila dim">leyendo…</div>']);
+        const [r, bus] = await Promise.all([cli.correo(true), cli.mensajesBus()]);
         if (this.pantalla !== 'correo') return;
+        this.mensajesBus = bus.datos?.mensajes;
         this.buzones = r.datos?.remotos;
-        if (!r.datos) {
+        if (!r.datos && !this.mensajesBus) {
             this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>',
                 `<div class="fila falla">${esc(r.error ?? 'no pude leer el correo')}</div>`]);
             return;
@@ -846,6 +850,7 @@ export class PanelHoy {
             '<div class="titulo-tareas"><span class="modos">' + filtros.map(([k, t]) =>
                 `<button data-accion="filtro-correo" data-valor="${k}" class="${this.filtroCorreo === k ? 'activo' : ''}">${t}</button>`).join('')
             + '</span></div>'];
+        if (this.mensajesBus) h.push(...this.htmlMensajesBus(this.mensajesBus));
         for (const b of this.buzones ?? []) {
             h.push(`<h2>${esc(b.remoto)}<small>${esc(b.usuario)}${b.archivo_comun ? ' · con el archivo común' : ' · solo tu casilla'}</small></h2>`);
             if (b.error) { h.push(`<div class="fila falla">${esc(b.error)}</div>`); continue; }
@@ -864,6 +869,38 @@ export class PanelHoy {
             });
         }
         this.pintar(h);
+    }
+
+    /** Lo que se dijeron los hilos por el bus, lo más nuevo arriba. Lo retenido (cadena larga,
+     *  demasiados por hora) espera aquí a que la persona lo suelte. */
+    private htmlMensajesBus(lista: cli.JsonMensajeBus[]): string[] {
+        const soltados = new Set(lista.filter(m => m.estado !== 'retenido').map(m => m.id));
+        const retenidos = lista.filter(m => m.estado === 'retenido' && !soltados.has(m.id));
+        const h = [`<h2>entre hilos<small>por el bus · ${lista.length} último${lista.length === 1 ? '' : 's'}`
+            + `${retenidos.length ? ` · ${retenidos.length} retenido${retenidos.length === 1 ? '' : 's'}` : ''}</small></h2>`];
+        if (!lista.length) h.push('<div class="fila dim">nada todavía</div>');
+        const fila = (m: cli.JsonMensajeBus, retenido: boolean) => {
+            const abierto = this.abiertoMsg.has(m.id);
+            const texto = abierto ? m.texto : m.texto.split(/\s+/).join(' ').slice(0, 140);
+            return `<div class="item-pag clic" data-accion="ver-msg" data-valor="${esc(m.id)}" title="clic: ${abierto ? 'acortar' : 'el texto entero'}">`
+                + `<div class="fila">${retenido ? '<span class="falla">⏸ </span>' : ''}<b>${esc(m.de)}</b><span class="dim"> → </span><b>${esc(m.para)}</b>`
+                + `<span class="dim"> · ${esc(m.tipo)}${m.saltos ? ` · salto ${m.saltos}` : ''}</span>`
+                + `<span class="der dim">${esc(fechaCorta(m.creado))}`
+                + (retenido ? ` · <a data-accion="soltar-msg" data-valor="${esc(m.id)}" title="mandarlo igual: lo decides tú">soltar</a>` : '')
+                + '</span></div>'
+                + (retenido && m.motivo ? `<div class="fila falla">${esc(m.motivo)}</div>` : '')
+                + `<div class="fila${abierto ? '' : ' dim'}" style="white-space:pre-wrap">${esc(texto)}</div></div>`;
+        };
+        for (const m of retenidos) h.push(fila(m, true));
+        for (const m of [...lista].reverse()) if (m.estado !== 'retenido') h.push(fila(m, false));
+        return h;
+    }
+
+    private async soltarMensaje(id: string): Promise<void> {
+        const r = await cli.soltarMensaje(id);
+        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
+        void vscode.window.setStatusBarMessage(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
+        await this.abrirCorreo();
     }
 
     private verConvCorreo(valor: string): void {
@@ -1240,6 +1277,10 @@ export class PanelHoy {
             case 'filtro-correo': this.filtroCorreo = (m.valor as 'todas' | 'mias' | 'sin') || 'todas'; this.renderCorreo(); break;
             case 'conv-correo': if (m.valor) this.verConvCorreo(m.valor); break;
             case 'volver-correo': this.renderCorreo(); break;
+            case 'ver-msg':
+                if (m.valor) { if (this.abiertoMsg.has(m.valor)) this.abiertoMsg.delete(m.valor); else this.abiertoMsg.add(m.valor); this.renderCorreo(); }
+                break;
+            case 'soltar-msg': if (m.valor) await this.soltarMensaje(m.valor); break;
             case 'retomar-charla':
                 if (this.charla?.hilo) {
                     const vivo = modelo.porNombre(this.charla.hilo)?.vivo;
