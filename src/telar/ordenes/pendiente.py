@@ -54,9 +54,31 @@ def main(argv: list[str], ctx) -> int:
         )
 
     destino = _destino(tel, fila)
+    # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
+    alla = _destino_remoto(ctx, fila) if destino is None and not o.nuevo else None
     agente = ctx.config.agente
     texto = o.texto or mensaje(agente.pendiente, fila)
     primero = o.texto or mensaje(agente.pendiente_nuevo, fila)
+
+    if alla is not None:
+        nombre, maquina = alla
+        if o.donde:
+            if o.json:
+                return _comun.escribir_json({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina,
+                                             "vivo": True, "ruta": fila.get("ruta", ""), "nuevo": False})
+            print(f"{fila['ref']} → «{nombre}» (en {maquina}: por el bus)")
+            return 0
+        from telar import bus as mod_bus
+
+        try:
+            m = mod_bus.enviar(ctx.config, nombre, texto, de="el dashboard", tipo="persona")
+        except mod_bus.ErrorDeBus as e:
+            return _comun.queja(f"«{nombre}» vive en {maquina} y el bus no lo llevó: {e}")
+        if o.json:
+            return _comun.escribir_json({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina,
+                                         "creado": False, "enviado": True, "id": m["id"]})
+        print(f"{fila['ref']} → «{nombre}» en {maquina}: en su casilla (bus)")
+        return 0
 
     if o.donde:
         if o.json:
@@ -160,7 +182,52 @@ def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:
         )
         if porruta is not None:
             return porruta
+    por_enlace = _por_enlace([(h, _comun.ruta_relativa(h.ruta, tel.raiz), tel.vivo(h)) for h in tel.hilos], fila.get("url", ""))
+    if por_enlace is not None:
+        return por_enlace
     return _comun.enrutar(tel, f"{fila['texto']} {ruta}")
+
+
+def _por_enlace(candidatos: list[tuple[object, str, bool]], url: str):
+    """El hilo cuya carpeta contiene el archivo al que apunta el pendiente (su `url`, si es una ruta
+    de la casa): la más específica gana, y entre iguales la viva. Una carpeta de un solo nivel
+    («brinca») es un área, no un proyecto: no decide."""
+    if not url or "://" in url or url.startswith("/"):
+        return None
+    rel = url.strip().lstrip("./")
+    mejores = [(len(r), vivo, x) for x, r, vivo in candidatos
+               if r and "/" in r and not r.startswith("..") and (rel == r or rel.startswith(r.rstrip("/") + "/"))]
+    if not mejores:
+        return None
+    return max(mejores, key=lambda t: (t[0], t[1]))[2]
+
+
+def _destino_remoto(ctx, fila: dict) -> tuple[str, str] | None:
+    """(hilo, máquina) de otra máquina donde se trabaja este pendiente, según la foto que publicó su
+    nodo (`telar.espejo`). Solo con bus: es el que lleva el mensaje hasta allá."""
+    from telar import bus as mod_bus
+    from telar import espejo
+
+    if not mod_bus.hay_bus(ctx.config):
+        return None
+    candidatos = []
+    for foto in espejo.leer_todos(ctx.config):
+        if not foto.get("en_linea") and foto.get("edad") is not None and foto["edad"] > 24 * 3600:
+            continue
+        for h in foto.get("hilos", []):
+            if h.get("remoto"):
+                continue  # una ventana allá de un hilo que vive en otra parte (quizás aquí)
+            candidatos.append(((h.get("nombre", ""), foto["nombre"]), h.get("relativa", ""), bool(h.get("vivo"))))
+    if fila.get("hilo"):
+        exacto = next((c[0] for c in candidatos if c[0][0] == fila["hilo"]), None)
+        if exacto is not None:
+            return exacto
+    ruta = fila.get("ruta", "")
+    if ruta:
+        exacto = next((c[0] for c in candidatos if c[1] == ruta), None)
+        if exacto is not None:
+            return exacto
+    return _por_enlace(candidatos, fila.get("url", ""))
 
 
 def mensaje(plantilla: str, fila: dict) -> str:
