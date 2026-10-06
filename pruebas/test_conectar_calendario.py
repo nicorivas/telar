@@ -17,7 +17,7 @@ URL = "https://calendar.google.com/calendar/ical/x%40y/private-abc/basic.ics"
 
 EJEMPLO = """# La configuración de telar.
 multiplexor = "tmux"
-sesion = "brinca"
+sesion = "trabajo"
 
 # [proveedores.calendario]
 # activo = true
@@ -47,7 +47,7 @@ class ConectarCalendario(Prueba):
         self.assertEqual(cfg.agente.nombre, "claude-code")
         texto = self.ruta.read_text()
         self.assertIn("# [proveedores.calendario]", texto)  # el ejemplo comentado sigue ahí
-        self.assertIn('sesion = "brinca"', texto)
+        self.assertIn('sesion = "trabajo"', texto)
 
     def test_conectar_otra_vez_reemplaza_en_vez_de_duplicar(self):
         self.ruta.write_text(EJEMPLO)

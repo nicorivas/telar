@@ -191,7 +191,7 @@ def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:
 def _por_enlace(candidatos: list[tuple[object, str, bool]], url: str):
     """El hilo cuya carpeta contiene el archivo al que apunta el pendiente (su `url`, si es una ruta
     de la casa): la más específica gana, y entre iguales la viva. Una carpeta de un solo nivel
-    («brinca») es un área, no un proyecto: no decide."""
+    («trabajo») es un área, no un proyecto: no decide."""
     if not url or "://" in url or url.startswith("/"):
         return None
     rel = url.strip().lstrip("./")

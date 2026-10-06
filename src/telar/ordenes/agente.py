@@ -247,7 +247,7 @@ def _casilla(ctx) -> int:
 
 
 def _agentes_en_contexto(ctx) -> str:
-    """« Agentes residentes (Gestión, Kichoro): encárgales con …», o nada si no hay."""
+    """« Agentes residentes (Gestión, Faro): encárgales con …», o nada si no hay."""
     try:
         from telar import agentes as mod_agentes
 

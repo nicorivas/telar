@@ -86,7 +86,7 @@ class LaConfiguracionDeHilos(Prueba):
 
 class LoQueEmpiezaConGuion(Prueba):
     def test_una_carpeta_con_guion_bajo_no_es_unidad(self):
-        # `_perdidos` en el pipeline de brinca: además telar reserva las claves con _ en su
+        # `_perdidos` en el pipeline de un usuario: además telar reserva las claves con _ en su
         # estado, y un hilo así llamado perdía su conversación al archivarlo.
         with tempfile.TemporaryDirectory() as tmp:
             raiz = Path(tmp)
