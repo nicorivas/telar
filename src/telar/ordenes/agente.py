@@ -173,7 +173,13 @@ def contexto(ctx) -> str:
 
     lineas = [f"Eres el hilo «{hilo}» de telar" + (f" (vinculado a {vinculo})" if vinculo else "")
               + (f", en la máquina {servidor}" if cartero else "") + "."]
-    if cartero:
+    from telar import bus as mod_bus
+
+    con_bus = mod_bus.hay_bus(ctx.config)
+    if con_bus:
+        lineas.append("Tienes casilla en el bus: lo que te escriban otros hilos, de esta máquina o de otra, "
+                      "te llega entero al terminar el turno o con «↯ mensaje nuevo».")
+    elif cartero:
         ext = mod_correo.extension(hilo)
         direccion = f"{getpass.getuser()}+{ext}@{servidor}" if ext else ""
         lineas.append(f"Tu correo: {direccion}. Solo te despierta un correo a esa dirección." if direccion
@@ -184,12 +190,18 @@ def contexto(ctx) -> str:
     lineas.append("Otros hilos: `telar hilos --json`; en esta máquina también ListAgents"
                   + ("; los de otras personas: `telar directorio`" if directorio else "")
                   + ". De qué trata uno: `telar ficha <hilo> --json`.")
-    escribir = "Escribir: SendMessage (misma persona y máquina)"
-    if cartero:
-        escribir += f" · correo a usuario+hilo@{servidor} con `mail -s 'asunto'` (otras personas)"
-    if remotos:
-        escribir += (f" · a hilos de otras máquinas ({remotos}) u otras personas: "
-                     "`telar correo enviar <usuario+hilo@servidor> -s \"asunto\"` (cuerpo por stdin)")
+    if con_bus:
+        escribir = ("Escribir a otro hilo o agente tuyo, en cualquier máquina: `telar mensaje <hilo> \"…\"` "
+                    "(o «-» y el texto por stdin; llega aunque esté cerrado)")
+        if cartero or remotos:
+            escribir += " · a otras personas: `telar correo enviar <usuario+hilo@servidor> -s \"asunto\"`"
+    else:
+        escribir = "Escribir: SendMessage (misma persona y máquina)"
+        if cartero:
+            escribir += f" · correo a usuario+hilo@{servidor} con `mail -s 'asunto'` (otras personas)"
+        if remotos:
+            escribir += (f" · a hilos de otras máquinas ({remotos}) u otras personas: "
+                         "`telar correo enviar <usuario+hilo@servidor> -s \"asunto\"` (cuerpo por stdin)")
     lineas.append(escribir + ".")
     lineas.append("Lo último de otro hilo: `telar hilo leer <hilo>`."
                   + _agentes_en_contexto(ctx))
