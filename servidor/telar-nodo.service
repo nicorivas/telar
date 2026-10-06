@@ -1,0 +1,26 @@
+# Esta máquina en el bus de telar (`telar nodo`): recibe los mensajes de sus hilos, los avisa y publica
+# su estado. Va en cada máquina Linux que tenga hilos; en macOS, telar-nodo.plist.
+#
+#   telar con el extra «bus»:  uv tool install --force --editable <repo> --with nats-py
+#   [bus] en la configuración de telar (ver telar-bus.service)
+#   mkdir -p ~/.config/systemd/user && cp telar-nodo.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-nodo
+#
+# Ver cómo va:  journalctl --user -u telar-nodo -f
+
+[Unit]
+Description=telar nodo: esta máquina en el bus de telar
+After=network-online.target telar-bus.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=LANG=C.UTF-8
+ExecStart=%h/.local/bin/telar nodo
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,33 @@
+# El bus de telar (docs/propuestas/bus.md): nats-server con JetStream, en la máquina que no se apaga.
+#
+#   el binario en ~/.local/bin/nats-server (https://github.com/nats-io/nats-server/releases)
+#   un token:     umask 077; openssl rand -hex 24 > ~/.config/telar/bus.token
+#   mkdir -p ~/.config/systemd/user && cp telar-bus.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-bus
+#   loginctl enable-linger "$USER"
+#
+# En cada máquina, el mismo token en ~/.config/telar/bus.token y en la configuración de telar:
+#   [bus]
+#   url = "nats://<IP de esta máquina en la red privada>:4222"
+#   token = "~/.config/telar/bus.token"
+#
+# Solo escucha en la IP de la red privada (Tailscale): quien no esté en ella no lo alcanza, y quien
+# esté necesita el token. Los mensajes y el estado viven en ~/.local/share/telar/bus.
+
+[Unit]
+Description=telar bus: mensajes y estado entre máquinas (NATS)
+Documentation=https://github.com/nicorivas/telar/blob/main/docs/propuestas/bus.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# la IP de Tailscale tarda unos segundos en existir al encender
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
+ExecStart=/bin/sh -c 'exec nats-server -a "$(tailscale ip -4 | head -1)" -p 4222 --js --store_dir %h/.local/share/telar/bus --auth "$(cat %h/.config/telar/bus.token)"'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

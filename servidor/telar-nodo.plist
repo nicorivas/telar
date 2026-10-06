@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- telar nodo en macOS (launchd): esta máquina en el bus de telar. Reemplaza TU_USUARIO.
+     cp telar-nodo.plist ~/Library/LaunchAgents/com.telar.nodo.plist
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.telar.nodo.plist
+     Ver cómo va: tail -f ~/Library/Logs/telar-nodo.log
+     Quitarlo:    launchctl bootout gui/$(id -u)/com.telar.nodo -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.telar.nodo</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/TU_USUARIO/.local/bin/telar</string><string>nodo</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/TU_USUARIO/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <key>LANG</key><string>es_CL.UTF-8</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/TU_USUARIO/Library/Logs/telar-nodo.log</string>
+  <key>StandardErrorPath</key><string>/Users/TU_USUARIO/Library/Logs/telar-nodo.log</string>
+</dict>
+</plist>
