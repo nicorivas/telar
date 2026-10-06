@@ -209,6 +209,20 @@ class Seccion:
 
 
 @dataclass(frozen=True, slots=True)
+class Bus:
+    """El bus entre máquinas (`[bus]`, ver telar.bus). Sin `url`, no hay bus: todo es local."""
+
+    #: `nats://host:4222`, casi siempre la IP de la red privada de la máquina que no se apaga.
+    url: str = ""
+    #: el archivo con el token de esta persona en el bus (nunca el token mismo en la configuración).
+    token: str = ""
+    #: quién es esta persona en el bus; vacío es el usuario del sistema.
+    persona: str = ""
+    #: cómo se llama esta máquina en el bus; vacío es su nombre de red, corto.
+    maquina: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class AgenteExtra:
     """Lo que un agente residente agrega a lo que telar descubre (`[agentes.<carpeta>]`)."""
 
@@ -310,6 +324,8 @@ class Config:
     #: cómo se abre aquí el hilo de un agente: «sesion» (una sesión tmux propia, como en un servidor) o
     #: «tab» (un hilo más de la lista, como en el laptop).
     agentes_abrir: str = "sesion"
+    #: el bus entre máquinas (`[bus]`); sin url, telar trabaja solo con esta máquina.
+    bus: Bus = field(default_factory=Bus)
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -708,6 +724,21 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         cambios["agentes_extra"] = tuple(extras)
         cambios["agentes_rotar_mb"] = rotar
 
+    if "bus" in datos:
+        cuerpo = _tabla(datos["bus"], "bus")
+        sobra = set(cuerpo) - {"url", "token", "persona", "maquina"}
+        if sobra:
+            raise ErrorDeConfig(f"bus.{sorted(sobra)[0]}: no existe")
+        valores = {}
+        for clave in ("url", "token", "persona", "maquina"):
+            v = cuerpo.get(clave, "")
+            if not isinstance(v, str):
+                raise ErrorDeConfig(f"bus.{clave}: se esperaba un texto, llegó {v!r}")
+            valores[clave] = v.strip()
+        if valores["url"] and not valores["url"].startswith(("nats://", "tls://")):
+            raise ErrorDeConfig(f"bus.url: se esperaba nats://host:puerto, llegó {valores['url']!r}")
+        cambios["bus"] = Bus(**valores)
+
     if "periodicos" in datos:
         cuerpo = _tabla(datos["periodicos"], "periodicos")
         sobra = set(cuerpo) - {"en"}
@@ -721,7 +752,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
-        "enlaces", "enlace", "periodicos", "agentes",
+        "enlaces", "enlace", "periodicos", "agentes", "bus",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

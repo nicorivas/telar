@@ -54,6 +54,8 @@ ORDENES: dict[str, str] = {
     "web": "telar en el navegador del celular: el día y los hilos, tocables.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",
     "encargar": "Pedirle algo a un agente residente, en su hilo de siempre.",
+    "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",
+    "nodo": "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su estado.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",
     "atencion": "Qué dice el agente de cada hilo: trabajando, espera, terminó.",
     "agente": "El agente que corre en un hilo: sus ganchos, sus conversaciones.",

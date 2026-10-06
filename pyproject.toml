@@ -27,6 +27,10 @@ classifiers = [
 # de terceros, y solo para leer el perfil del repositorio de trabajo.
 dependencies = ["PyYAML>=6.0"]
 
+[project.optional-dependencies]
+# el bus entre máquinas (docs/propuestas/bus.md): sin esto, telar funciona en una sola máquina
+bus = ["nats-py>=2.6"]
+
 [project.urls]
 Homepage = "https://github.com/nicorivas/telar"
 Source = "https://github.com/nicorivas/telar"
