@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-10-05
+
 ### Added
 
 - **The bus** (docs/propuestas/bus.md): with `[bus] url` (NATS with JetStream on the always-on machine) and the
@@ -84,11 +86,6 @@ workflow refuses to run if the two disagree.
   Nothing is closed when the other machine does not answer.
 - Agents learn the basics: the start-up context names `telar hilo leer` and the resident agents with
   `telar encargar`, and the `/hilos` skill explains both.
-
-## [0.1.11] — 2026-10-05
-
-### Added
-
 - `telar periodicos`: the processes that run on their own, defined in `periodicos.toml` next to `config.toml` on
   the machine that runs them — each with a cron schedule and either a shell command or a prompt that opens a
   thread with the agent (like a remote thread, so other machines pick it up), with `max_abiertos`. `aplicar` writes
