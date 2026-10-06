@@ -12,6 +12,8 @@ Ver `telar.encargos`.
 
 from __future__ import annotations
 
+import sys
+
 from telar import agentes as mod_agentes
 from telar import encargos
 from telar.ordenes import _comun
@@ -31,6 +33,26 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    # con bus, el encargo va a la casilla del agente y lo recoge su máquina, esté donde esté. Si el
+    # bus no responde, por el camino de siempre (y se dice)
+    if o.en is None and not o.cola and not o.liberar and o.agente and o.texto:
+        from telar import bus as mod_bus
+
+        if mod_bus.hay_bus(ctx.config):
+            from telar.ordenes import mensaje
+
+            texto_bus = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
+            try:
+                r = mensaje.enviar(ctx, o.agente, texto_bus, tipo="encargo")
+                salida = {"hilo": r["para"], "estado": "en su casilla (bus)", "id": r["id"]}
+                if o.json:
+                    return _comun.escribir_json(salida)
+                print(f"{r['para']}: en su casilla (bus) · id {r['id']}")
+                return 0
+            except mod_bus.ErrorDeBus as e:
+                print(f"telar: el bus no recibió el encargo ({e}); voy por el camino de siempre", file=sys.stderr)
+                if o.texto == ["-"]:
+                    o.texto = [texto_bus]
     if o.en is not None:
         en = o.en
     else:
