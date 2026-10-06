@@ -118,7 +118,7 @@ def _atencion(ctx, remotos, como_json: bool) -> int:
 
     if mod_bus.hay_bus(ctx.config):
         # con bus, el nodo de esta máquina ya anota la atención de los remotos apenas cambia
-        return _comun.escribir_json({"cambios": [], "errores": [], "bus": True}) if como_json else 0
+        return _comun.escribir_json({"cambios": [], "errores": [], "bus": True, "por": "bus"}) if como_json else 0
     est = mod_estado.abrir(ctx.config)
     actuales = est.atenciones()
     cambios, errores = [], []
