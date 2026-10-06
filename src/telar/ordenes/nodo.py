@@ -117,6 +117,11 @@ class Nodo:
                 continue  # su ventana está aquí, pero vive en otra máquina: lo publica esa
             if tel.vivo(h) or tel.propio(h):
                 salida[h.nombre] = ficha_de(h.nombre, True)
+        # una sesión propia que telar todavía no registró (la abrió un periódico, el celular, otra
+        # máquina) también vive aquí: sin esto, la otra máquina no se entera de que nació
+        for nombre in propias:
+            if nombre not in salida and nombre not in remotos:
+                salida[nombre] = ficha_de(nombre, True)
         for a in mod_agentes.descubrir(self.config):
             if (a.en or self.config.agentes_en) not in ("", "aqui"):
                 continue
