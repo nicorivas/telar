@@ -316,12 +316,13 @@ export interface JsonConversacion {
 export const conversacion = (id: string) => telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
-/** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). */
+/** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). Es el sondeo
+ *  de cada tres minutos: con bus no hace nada, porque `telar nodo` los trae al instante. */
 /** Copia aquí el semáforo de los hilos remotos (sus ganchos corren allá). */
 export const atencionRemotos = () =>
     telarJson<{ cambios: { hilo: string; atencion: string }[]; errores: string[] }>(['remotos', 'atencion', '--json'], 30000);
 export const traerRemotos = () =>
-    telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[] }>(['remotos', 'traer', '--json'], 60000);
+    telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[] }>(['remotos', 'traer', '--sondeo', '--json'], 60000);
 export const abrirItem = (clave: string, mensaje: string, nombre: string) =>
     telarJson<{ hilo: string; mensaje: string }>(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
 export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);

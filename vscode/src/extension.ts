@@ -332,7 +332,8 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     ctx.subscriptions.push({ dispose: () => { if (temporizador) clearTimeout(temporizador); } });
 
     // los hilos que nacen en una máquina remota (un reloj allá, el celular) se traen
-    // solos; cada tres minutos es lo que tarda en aparecer, y un ssh cada tanto es barato
+    // solos; cada tres minutos es lo que tarda en aparecer, y un ssh cada tanto es barato.
+    // Con bus, `telar nodo` los trae al instante y este sondeo vuelve sin hacer nada
     let vuelta = 0;
     const traer = async () => {
         if (!modelo.hayRemotos) return;
