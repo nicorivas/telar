@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-10-05
+
 ### Fixed
 
 - The mailbox hook no longer depends on `$TELAR_HILO` alone. An agent started without it (a `claude` launched
@@ -507,7 +509,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/nicorivas/telar/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/nicorivas/telar/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/nicorivas/telar/compare/v0.1.9...v0.1.10
 [0.1.4]: https://github.com/nicorivas/telar/compare/v0.1.3...v0.1.4
