@@ -34,6 +34,8 @@ AYUDA = "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su
 
 #: cada cuánto se miran los hilos de aquí, las casillas y el estado
 VUELTA = 2.0
+#: cada cuántas vueltas se publica la foto del espejo (15 × 2 s = 30 s)
+ESPEJO_CADA = 15
 
 
 def main(argv: list[str], ctx) -> int:
@@ -74,6 +76,8 @@ class Nodo:
         self.persona = mod_bus.persona(self.config)
         self.subs: dict[str, object] = {}
         self.publicado: dict[str, str] = {}
+        self.vueltas = 0
+        self.espejo = None
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -92,12 +96,21 @@ class Nodo:
         sesiones = est.sesiones()
         salida: dict[str, dict] = {}
 
+        from telar import movil
+
+        try:
+            propias = movil.propios()
+        except Exception:  # noqa: BLE001 - sin tmux no hay sesiones propias
+            propias = {}
+
         def ficha_de(nombre: str, vivo: bool, residente: str = "") -> dict:
             atencion, desde = atenciones.get(nombre, (None, None))
             return {"nombre": nombre, "maquina": self.yo, "vivo": vivo, "residente": residente,
                     "atencion": atencion.value if atencion else "ninguna",
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
-                    "conversacion": (sesiones.get(nombre) or ("",))[0]}
+                    "conversacion": (sesiones.get(nombre) or ("",))[0],
+                    # la sesión tmux propia, si la tiene: con ella otra máquina abre su ventana (remotos)
+                    "sesion_tmux": propias.get(nombre, "")}
 
         for h in tel.hilos:
             if h.nombre in remotos:
@@ -141,10 +154,12 @@ class Nodo:
         js = nc.jetstream()
         await mod_bus.asegurar(js)
         kv = await js.key_value(mod_bus.ESTADO)
+        self.espejo = await js.key_value(mod_bus.ESPEJO)
         self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
         vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
+        vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
             while True:
                 try:
@@ -155,8 +170,9 @@ class Nodo:
                     break
                 await asyncio.sleep(VUELTA)
         finally:
-            if vigia:
-                vigia.cancel()
+            for t in (vigia, vigia_espejo):
+                if t:
+                    t.cancel()
             await nc.close()
 
     async def _vuelta(self, js, kv) -> None:
@@ -189,16 +205,27 @@ class Nodo:
             if nuevos:
                 dicho = await asyncio.to_thread(self.avisar, nombre, info)
                 self.anotar(f"«{nombre}»: {nuevos} mensaje(s) · {dicho}")
-        # estado: solo lo que cambió
+        # estado: solo lo que cambió, y que dejó de estar vivo lo que ya no está aquí
         from datetime import datetime
 
-        for nombre, info in locales.items():
+        actuales = dict(locales)
+        for clave, valor in list(self.publicado.items()):
+            previo = json.loads(valor)
+            if previo["nombre"] not in actuales and previo.get("vivo"):
+                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": ""}
+        for nombre, info in actuales.items():
             valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
             clave = mod_bus.clave_estado(self.config, nombre)
             if self.publicado.get(clave) != valor:
                 await kv.put(clave, json.dumps({**info, "actualizado": datetime.now().astimezone().isoformat(timespec="seconds")},
                                                ensure_ascii=False).encode())
                 self.publicado[clave] = valor
+        # la foto del espejo, cada tanto: la que muestra `telar web` en la otra máquina
+        self.vueltas += 1
+        if self.vueltas % ESPEJO_CADA == 1:
+            foto = await asyncio.to_thread(self.foto)
+            if foto is not None:
+                await self.espejo.put(f"{self.persona}.{self.yo}", json.dumps(foto, ensure_ascii=False).encode())
 
     async def _vigilar(self, kv) -> None:
         """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia."""
@@ -230,6 +257,65 @@ class Nodo:
                 est.anotar_atencion(d["nombre"], atencion, desde)
 
             await asyncio.to_thread(anotar_aqui)
+            try:
+                await asyncio.to_thread(self.ventana_de, d)
+            except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
+                self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
+
+    def ventana_de(self, d: dict) -> None:
+        """La ventana aquí de un hilo que vive en otra máquina de [remotos]: se trae si nació allá y aquí
+        no está, y se cierra si su sesión allá ya no existe (lo que hacía `telar remotos traer`)."""
+        from telar import remoto as mod_remoto
+
+        remoto = next((r for r in self.config.remotos if r.nombre == d.get("maquina")), None)
+        if remoto is None:
+            return
+        tel = _comun.tejer(self.ctx, con_ficha=False)
+        if tel.mux is None or not tel.viva:
+            return
+        nombre, sesion = d.get("nombre", ""), d.get("sesion_tmux", "")
+        anotados = tel.estado.remotos()
+        hilo = tel.por_nombre(nombre)
+        if d.get("vivo") and sesion:
+            conocidas = {x.get("sesion") for x in anotados.values() if x.get("sesion")}
+            if sesion in conocidas:
+                return
+            dormidos = {h.nombre for h in tel.hilos if not tel.vivo(h) and h.nombre not in anotados}
+            nombres = ({h.nombre for h in tel.hilos} | set(anotados)) - dormidos
+            for ses, _, aqui in mod_remoto.nuevas(conocidas, [(sesion, nombre)], nombres):
+                mod_remoto.traer(tel, remoto, ses, aqui)
+                self.anotar(f"«{aqui}» nació en {remoto.nombre}: traje su ventana")
+        elif not d.get("vivo") and hilo is not None and tel.vivo(hilo):
+            anotado = anotados.get(nombre) or {}
+            if anotado.get("remoto") == remoto.nombre:
+                tel.mux.cerrar(hilo.id)
+                self.anotar(f"«{nombre}»: su sesión en {remoto.nombre} terminó; cerré la ventana (▶ la retoma)")
+
+    def foto(self) -> dict | None:
+        from telar import __version__, espejo
+
+        try:
+            tel = _comun.tejer(self.ctx)
+            return espejo.foto(tel, maquina=self.yo, version_telar=__version__)
+        except Exception as e:  # noqa: BLE001
+            self.anotar(f"la foto del espejo no salió: {type(e).__name__}: {e}")
+            return None
+
+    async def _vigilar_espejo(self) -> None:
+        """Las fotos de las otras máquinas, guardadas donde las lee `telar web` (telar.espejo)."""
+        from telar import espejo
+
+        vigia = await self.espejo.watch(f"{self.persona}.>")
+        async for e in vigia:
+            if e is None or not e.value:
+                continue
+            de = e.key.split(".", 1)[-1]
+            if de == self.yo:
+                continue
+            try:
+                await asyncio.to_thread(espejo.guardar, self.config, de, e.value.decode())
+            except Exception as x:  # noqa: BLE001 - una foto rota se ignora: el espejo queda con la anterior
+                self.anotar(f"la foto de {de} no se guardó: {x}")
 
     # ── pedidos con respuesta ────────────────────────────────────────────────────
 
@@ -245,8 +331,9 @@ class Nodo:
             pedido = json.loads(m.data or b"{}")
             tel = _comun.tejer(self.ctx, con_ficha=False)
             hilo = tel.por_nombre(str(pedido.get("hilo", "")))
-            if hilo is None:
-                return {"ok": False, "error": f"aquí no hay un hilo «{pedido.get('hilo', '')}»"}
+            if hilo is None or historia.vetado(self.config.puerta.no_leer, hilo.nombre,
+                                               tel.estado.vinculos().get(hilo.nombre, "")):
+                return {"ok": False, "error": f"aquí no hay un hilo «{pedido.get('hilo', '')}» que se pueda leer"}
             return {"ok": True, "historia": historia.leer(self.ctx, tel, hilo, int(pedido.get("ultimos") or 5))}
 
         try:
