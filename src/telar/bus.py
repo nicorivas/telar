@@ -31,6 +31,8 @@ from pathlib import Path
 #: el stream de las casillas y el almacén del estado, en el servidor del bus
 STREAM = "TELAR_CASILLAS"
 ESTADO = "TELAR_HILOS"
+#: la foto de los hilos de cada máquina (la de telar.espejo), clave <persona>.<maquina>
+ESPEJO = "TELAR_ESPEJO"
 #: lo que se espera al bus para una orden de una sola vez (enviar, ver): más es que no está
 ESPERA = 8
 
@@ -120,10 +122,11 @@ async def asegurar(js) -> None:
         # cola de trabajo: un mensaje confirmado se borra; los no recogidos esperan (hasta 30 días)
         await js.add_stream(StreamConfig(name=STREAM, subjects=["casilla.>"], retention=RetentionPolicy.WORK_QUEUE,
                                          max_age=30 * 24 * 3600, duplicate_window=3600))
-    try:
-        await js.key_value(ESTADO)
-    except Exception:  # noqa: BLE001
-        await js.create_key_value(bucket=ESTADO, history=1)
+    for bucket in (ESTADO, ESPEJO):
+        try:
+            await js.key_value(bucket)
+        except Exception:  # noqa: BLE001
+            await js.create_key_value(bucket=bucket, history=1)
 
 
 def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", quien: str = "") -> dict:
@@ -184,3 +187,28 @@ def estados(config) -> dict:
         raise
     except Exception as e:  # noqa: BLE001
         raise ErrorDeBus(f"no pude leer el estado del bus: {e}") from e
+
+
+def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30) -> dict:
+    """Un pedido con respuesta al nodo de otra máquina (`rpc.<persona>.<maquina>.<verbo>`). Siempre
+    devuelve un dict con `ok`; si nadie responde a tiempo, `ok: False` con el motivo."""
+    if not hay_bus(config):
+        return {"ok": False, "error": "no hay bus: [bus] url en la configuración"}
+
+    async def _pedir():
+        nc = await conectar(config)
+        try:
+            r = await nc.request(tema_rpc(config, a_maquina, verbo), json.dumps(datos, ensure_ascii=False).encode(),
+                                 timeout=espera)
+            return json.loads(r.data)
+        finally:
+            await nc.close()
+
+    try:
+        return asyncio.run(asyncio.wait_for(_pedir(), espera + 5))
+    except ErrorDeBus as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:  # noqa: BLE001 - sin respuesta a tiempo, o una que no es JSON
+        nombre = type(e).__name__
+        motivo = "no respondió a tiempo (¿está apagada o sin su nodo?)" if "Timeout" in nombre or "NoResponders" in nombre else f"{nombre}: {e}"
+        return {"ok": False, "error": f"{a_maquina} {motivo}"[:300]}
