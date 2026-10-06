@@ -106,6 +106,11 @@ def _atencion(ctx, remotos, como_json: bool) -> int:
     from telar import estado as mod_estado
     from telar.modelo import Atencion
 
+    from telar import bus as mod_bus
+
+    if mod_bus.hay_bus(ctx.config):
+        # con bus, el nodo de esta máquina ya anota la atención de los remotos apenas cambia
+        return _comun.escribir_json({"cambios": [], "errores": [], "bus": True}) if como_json else 0
     est = mod_estado.abrir(ctx.config)
     actuales = est.atenciones()
     cambios, errores = [], []

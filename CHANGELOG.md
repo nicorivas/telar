@@ -8,6 +8,16 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- **The bus** (docs/propuestas/bus.md): with `[bus] url` (NATS with JetStream on the always-on machine) and the
+  `bus` extra, `telar nodo` connects each machine outbound, picks up the messages of the threads that live there,
+  leaves them in the thread's local mailbox and lets it know; it publishes its threads' state and hears the
+  others' at once. `telar mensaje <thread|agent> "…"` sends to any thread on any machine; `telar encargar` uses
+  the bus when there is one. Messages wait for a sleeping machine, arrive in order and are not duplicated.
+- The mailbox enters the conversation through the agent's hooks, never typed: `Stop` (the agent was working: it
+  does not stop and gets the messages) and `UserPromptSubmit` (an idle agent gets a short fixed «↯» typed, and
+  the content as context). Installed by `telar agente instalar`.
+- `servidor/telar-bus.service`, `servidor/telar-nodo.service` and `servidor/telar-nodo.plist`.
+
 - `[agentes] carpeta`: resident agents, one per folder with a `CLAUDE.md`. They show in the thread list under an
   «Agentes» header, each one collapsible with a home and its threads; the home (`telar seccion agente:<folder>`)
   is built by telar from its `CLAUDE.md`, `bitacora.md` and `memoria/MEMORY.md`, with an optional `home` command on

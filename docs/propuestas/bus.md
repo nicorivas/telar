@@ -1,6 +1,6 @@
 # Un bus para telar: mensajes y estado entre varias máquinas
 
-*Estado: propuesta, con prueba de concepto hecha (octubre de 2026). Nada construido todavía.*
+*Estado: construido en lo principal (octubre de 2026): bus, demonio, casillas, entrega por ganchos, `telar mensaje`, `telar encargar` por el bus y el estado por aviso. Lo que falta, al final de «Cómo llegar».*
 
 ## Por qué
 
@@ -111,11 +111,26 @@ El bus es **opcional**: telar en una sola máquina sigue funcionando con archivo
 La ganancia no es velocidad bruta (la manda la distancia) sino conexión permanente, avisos sin sondeo y
 mensajes que esperan en vez de perderse.
 
+## Cómo quedó (octubre de 2026)
+
+- `[bus]` en la configuración; `telar[bus]` trae el cliente (nats-py). Sin `[bus] url`, nada cambia.
+- `telar nodo` (servicios en `servidor/telar-nodo.service` y `telar-nodo.plist`) y el bus como servicio
+  (`servidor/telar-bus.service`).
+- `telar mensaje <hilo|agente> "…"`; `telar encargar` publica en la casilla del agente si hay bus.
+- Los ganchos `Stop` y `UserPromptSubmit` (`telar agente casilla`) entregan la casilla; se instalan con
+  `telar agente instalar`. Un agente abierto antes de instalarlos los lee recién al reiniciarse.
+- Probado de punta a punta entre un laptop y un servidor: un mensaje a un agente cerrado lo abre
+  retomando su conversación y le entrega el contenido; a uno abierto e inactivo se le teclea solo «↯»;
+  la atención de un hilo de la otra máquina llega en uno o dos segundos.
+
 ## Cómo llegar
 
 1. Bus, demonio y casillas en el servidor; los agentes residentes como primeros usuarios.
-2. El laptop como nodo; `encargar`, `enlace enviar` y el correo entre agentes pasan al bus.
-3. El estado por suscripción; se apagan los sondeos y se retira el reenviador.
+2. El laptop como nodo; `encargar`, `enlace enviar` y el correo entre agentes pasan al bus. *Hecho: el
+   nodo y `encargar`. Falta: los periódicos con agente (siguen tecleando con `telar.encargos`), `enlace
+   enviar` y el correo entre agentes.*
+3. El estado por suscripción; se apagan los sondeos y se retira el reenviador. *Hecho: la atención de los
+   remotos. Falta: el espejo, `remotos traer` y el reenviador del correo.*
 4. Varias personas: credenciales y permisos por persona; varias máquinas siempre prendidas, en clúster.
 
 ## Riesgos

@@ -592,6 +592,23 @@ argumentos = ["--permission-mode", "acceptEdits"]
 abrir otra, telar cierra las ociosas que nadie está mirando, la más quieta primero y los residentes al
 final; su conversación queda en disco y se retoma cuando haga falta.
 
+## `[bus]` — mensajes y estado entre varias máquinas
+
+```toml
+[bus]
+url = "nats://<IP privada de la máquina que no se apaga>:4222"
+token = "~/.config/telar/bus.token"   # el mismo archivo en todas las máquinas de la persona
+maquina = "laptop"                     # cómo se llama esta en el bus (por defecto, su nombre de red)
+```
+
+Con `[bus]`, cada máquina corre `telar nodo` (`servidor/telar-nodo.service` en Linux,
+`servidor/telar-nodo.plist` en macOS) y la que no se apaga corre además el bus
+(`servidor/telar-bus.service`, nats-server). `telar mensaje <hilo|agente> "…"` le escribe a cualquier
+hilo, viva donde viva: el mensaje espera en su casilla hasta que lo recoja la máquina donde vive y entra
+a la conversación por los ganchos del agente (`telar agente instalar`), sin teclearse. `telar encargar`
+usa el bus si lo hay. El estado de cada hilo (máquina, atención) se publica y se escucha al instante.
+Diseño y pruebas: `docs/propuestas/bus.md`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml
