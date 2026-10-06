@@ -24,7 +24,8 @@ workflow refuses to run if the two disagree.
   publishes its mirror snapshot every 30 s and saves the others' where `telar web` reads them
   (`telar espejo publicar` becomes a no-op), and it publishes when a thread stops living there: the other
   machine opens the window of a thread born remotely and closes the window of one whose session ended, at
-  once instead of every three minutes. The threads' context and the `/hilos` skill point to `telar mensaje`.
+  once instead of every three minutes (`telar remotos traer --sondeo`, the extension's poll, does nothing with a
+  bus). The threads' context and the `/hilos` skill point to `telar mensaje`.
 - A periodic process with `agente` hands its prompt to the agent's mailbox through the bus when there is one (the
   node where the agent lives opens or nudges it); if the bus does not answer, it falls back to typing and says so.
 
