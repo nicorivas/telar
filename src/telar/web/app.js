@@ -980,7 +980,9 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
                         cargando: true, turnos: 10, totalTurnos: 0, turnosVistos: 0, fuente: '', firma: '' });
   const fuente = origen ? ((estado.espejos.find((e) => e.nombre === origen) || {}).hilos || []) : (estado.hilos && estado.hilos.hilos || []);
   const local = fuente.find((h) => h.nombre === nombre);
-  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo, propio: local.propio, en_linea: true } : null;
+  conv.hilo = local ? { nombre, atencion: local.atencion, vivo: local.vivo, propio: local.propio, en_linea: true }
+    // recién abierto: la lista del día aún no lo trae, pero tiene sesión propia y se le puede escribir
+    : estado.recien === nombre && !origen ? { nombre, atencion: '', vivo: false, propio: true, en_linea: true } : null;
   cabeceraConv();
   $('conv-lista').replaceChildren(el('div', { className: 'vacio', textContent: origen ? `pidiéndole la conversación a ${origen}…` : 'leyendo la conversación…' }));
   try {
