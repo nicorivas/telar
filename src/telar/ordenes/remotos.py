@@ -33,9 +33,17 @@ def main(argv: list[str], ctx) -> int:
                    help="traer: abrir aquí las que no conoce; atencion: traer su semáforo")
     p.add_argument("--remoto", default="", help="solo esa máquina de [remotos]")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
+    p.add_argument("--sondeo", action="store_true",
+                   help="traer: lo pide un sondeo periódico; con bus no hace nada (lo hace `telar nodo` al instante)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    from telar import bus as mod_bus
+
+    if o.sondeo and o.verbo == "traer" and mod_bus.hay_bus(ctx.config):
+        if o.json:
+            return _comun.escribir_json({"remotos": [], "traidos": [], "cerrados": [], "por": "bus"})
+        return 0
     remotos = [r for r in ctx.config.remotos if not o.remoto or r.nombre == o.remoto]
     if not remotos:
         return _comun.queja("no hay máquinas en [remotos]" if not o.remoto else f"no hay remoto «{o.remoto}»")
