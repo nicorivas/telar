@@ -83,3 +83,17 @@ class PorElBus(Prueba):
         self.assertIn("no respondió", json.loads(cuerpo)["error"])
         self.assertEqual(pedir.call_args[0][1:3], ("servidor", "leer"))
         self.assertEqual(pedir.call_args[0][3], {"hilo": "Faro", "ultimos": 3})
+
+    def test_con_bus_el_sondeo_de_remotos_no_hace_ssh(self):
+        from telar.ordenes import remotos
+
+        import dataclasses
+
+        ctx = SimpleNamespace(config=dataclasses.replace(
+            self.config, remotos=(mod_config.Remoto(nombre="servidor", destino="ana@servidor"),)))
+        salida = io.StringIO()
+        with mock.patch("subprocess.run") as run, redirect_stdout(salida):
+            codigo = remotos.main(["traer", "--sondeo", "--json"], ctx)
+        self.assertEqual(codigo, 0)
+        run.assert_not_called()
+        self.assertEqual(json.loads(salida.getvalue())["por"], "bus")
