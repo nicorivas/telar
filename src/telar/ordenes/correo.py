@@ -83,6 +83,19 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
         return "", "el asunto va en una sola línea, y no vacío"
     if responde and not re.fullmatch(r"<[^<>\s]+>", responde.strip()):
         return "", f"«{responde}» no es un Message-Id (<algo@servidor>)"
+    from telar import bus as mod_bus
+
+    usuario, _, ext = direccion.rsplit("@", 1)[0].partition("+")
+    if ext and mod_bus.hay_bus(ctx.config) and usuario == mod_bus.persona(ctx.config):
+        # entre hilos de una misma persona, el correo es un mensaje del bus: sin Postfix ni cartero
+        from telar.ordenes import mensaje
+
+        try:
+            m = mod_bus.enviar(ctx.config, ext, f"Asunto: {asunto.strip()}\n\n{cuerpo.strip()}",
+                               de=mensaje.remitente(ctx))
+        except mod_bus.ErrorDeBus as e:
+            return "", str(e)
+        return f"el bus (id {m['id']})", ""
     # sin charset declarado, quien lo lee asume us-ascii y cada tilde llega como «��»
     orden = ["mail", "-s", asunto.strip(), "-a", "MIME-Version: 1.0",
              "-a", "Content-Type: text/plain; charset=UTF-8", "-a", "Content-Transfer-Encoding: 8bit"]
