@@ -98,3 +98,22 @@ class PorElBus(Prueba):
         self.assertEqual(codigo, 0)
         run.assert_not_called()
         self.assertEqual(json.loads(salida.getvalue())["por"], "bus")
+
+    def test_una_tarea_va_al_hilo_cuya_carpeta_contiene_su_enlace(self):
+        from telar.ordenes.pendiente import _por_enlace
+
+        candidatos = [("brinca", "brinca", True), ("PA", "brinca/proyectos/pa", False), ("PA2", "brinca/proyectos/pa-otro", True)]
+        self.assertEqual(_por_enlace(candidatos, "brinca/proyectos/pa/reuniones/x.md"), "PA")
+        self.assertIsNone(_por_enlace(candidatos, "brinca/notas.md"))  # un área no decide
+        self.assertIsNone(_por_enlace(candidatos, "https://brinca/proyectos/pa/x"))
+
+    def test_sin_hilo_aqui_la_tarea_va_al_de_otra_maquina(self):
+        from telar import espejo
+        from telar.ordenes.pendiente import _destino_remoto
+
+        fotos = [{"nombre": "laptop", "en_linea": True, "edad": 5, "hilos": [
+            {"nombre": "Parque", "relativa": "brinca/proyectos/pa", "vivo": True, "remoto": ""},
+            {"nombre": "Gestión", "relativa": "agentes/gestion", "vivo": True, "remoto": "servidor"}]}]
+        with mock.patch.object(espejo, "leer_todos", return_value=fotos):
+            self.assertEqual(_destino_remoto(self.ctx, {"url": "brinca/proyectos/pa/x.md"}), ("Parque", "laptop"))
+            self.assertIsNone(_destino_remoto(self.ctx, {"url": "agentes/gestion/bitacora.md"}))
