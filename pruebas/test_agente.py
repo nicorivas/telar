@@ -376,6 +376,20 @@ class Instalador(ConEstado):
         )
         self.assertNotIn("SessionStart", datos["hooks"])
 
+    def test_instalar_permite_hablar_con_otros_hilos_y_desinstalar_lo_quita(self):
+        from telar.agente.claude_code import PERMISOS
+
+        self.ajustes.write_text(json.dumps({"permissions": {"allow": ["Bash(ls:*)"]}}), encoding="utf-8")
+        a = self.agente()
+        a.instalar(ruta=self.ajustes)
+        a.instalar(ruta=self.ajustes)  # dos veces no duplica
+        permitidos = self.leer()["permissions"]["allow"]
+        self.assertEqual(permitidos, ["Bash(ls:*)", *PERMISOS])
+        self.assertIn("Bash(telar mensaje:*)", permitidos)
+        self.assertFalse(any("cerrar" in x or "archivar" in x or "olvidar" in x for x in permitidos))
+        a.desinstalar(ruta=self.ajustes)
+        self.assertEqual(self.leer()["permissions"]["allow"], ["Bash(ls:*)"])
+
     def test_desinstalar_sin_nada_puesto_no_escribe(self):
         self.ajustes.write_text(json.dumps({"modelo": "opus"}), encoding="utf-8")
         hecho = self.agente().desinstalar(ruta=self.ajustes)

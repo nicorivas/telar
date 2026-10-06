@@ -28,8 +28,9 @@ class PorElBus(Prueba):
         self.ctx = SimpleNamespace(config=self.config)
         self.enviados: list[dict] = []
 
-        def enviar(config, para, texto, *, de, tipo="mensaje", quien=""):
-            m = {"id": f"m{len(self.enviados)}", "para": para, "texto": texto, "de": de, "tipo": tipo}
+        def enviar(config, para, texto, *, de, tipo="mensaje", quien="", saltos=0, mid="", retener=""):
+            m = {"id": mid or f"m{len(self.enviados)}", "para": para, "texto": texto, "de": de, "tipo": tipo,
+                 "saltos": saltos, **({"estado": "retenido", "motivo": retener} if retener else {})}
             self.enviados.append(m)
             return m
 

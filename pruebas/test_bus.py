@@ -78,6 +78,46 @@ class ContraUnServidor(Prueba):
         asyncio.run(publicar())
         self.assertEqual(m.estados(self.config)["Gestión"]["atencion"], "espera")
 
+    def test_una_cadena_larga_se_retiene_y_la_persona_la_suelta(self):
+        from unittest import mock
+
+        from telar import casilla
+        from telar.ordenes import mensaje
+
+        ctx = SimpleNamespace(config=self.config)
+        casilla.anotar_cadena(self.config, "Faro", casilla.TOPE_SALTOS)  # Faro ya está al final de una cadena
+        with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
+            r = mensaje.enviar(ctx, "Gestión", "¿seguimos?")
+        self.assertEqual(r["estado"], "retenido")
+        self.assertEqual(r["saltos"], casilla.TOPE_SALTOS + 1)
+        retenidos = mensaje.retenidos(m.registro(self.config))
+        self.assertEqual([x["id"] for x in retenidos], [r["id"]])
+        mensaje.soltar(ctx, r["id"])
+        self.assertEqual(mensaje.retenidos(m.registro(self.config)), [])
+
+        async def recoger():
+            nc = await m.conectar(self.config)
+            js = nc.jetstream()
+            sub = await js.pull_subscribe(m.tema_casilla(self.config, "Gestión"), durable="c-ana-gestion", stream=m.STREAM)
+            msgs = await sub.fetch(5, timeout=2)
+            await nc.close()
+            return [json.loads(x.data) for x in msgs]
+
+        llegados = asyncio.run(recoger())
+        self.assertEqual([(x["texto"], x["saltos"], x["persona"]) for x in llegados], [("¿seguimos?", 0, "ana")])
+
+    def test_un_hilo_suma_un_salto_a_su_cadena(self):
+        from unittest import mock
+
+        from telar import casilla
+        from telar.ordenes import mensaje
+
+        casilla.anotar_cadena(self.config, "Faro", 2)
+        with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
+            r = mensaje.enviar(SimpleNamespace(config=self.config), "Gestión", "hola")
+        self.assertEqual((r["saltos"], r.get("estado")), (3, None))
+        self.assertEqual(m.registro(self.config)[-1]["estado"], "enviado")
+
     def test_sin_servidor_el_error_se_entiende(self):
         cfg = mod_config.Config(bus=mod_config.Bus(url="nats://127.0.0.1:1"))
         with self.assertRaises(m.ErrorDeBus):

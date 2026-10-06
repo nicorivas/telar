@@ -49,3 +49,31 @@ class LaCasilla(Prueba):
 
     def test_sin_pendientes_no_imprime_nada(self):
         self.assertEqual(m.para_gancho(self.config, "Nadie", "Stop"), "")
+
+
+class LaCadena(Prueba):
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.config = SimpleNamespace(estado=Path(self.tmp.name))
+
+    def test_entregar_anota_los_saltos_y_hablar_la_persona_la_corta(self):
+        m.dejar(self.config, "Faro", {"id": "a", "de": "Gestión", "texto": "x", "saltos": 3, "persona": "ana"})
+        m.para_gancho(self.config, "Faro", "Stop", persona="ana")
+        self.assertEqual(m.cadena(self.config, "Faro"), 3)
+        m.para_gancho(self.config, "Faro", "UserPromptSubmit", prompt="sigue con lo tuyo", persona="ana")
+        self.assertEqual(m.cadena(self.config, "Faro"), 0)
+
+    def test_el_aviso_no_corta_la_cadena(self):
+        m.anotar_cadena(self.config, "Faro", 2)
+        m.para_gancho(self.config, "Faro", "UserPromptSubmit", prompt=m.AVISO, persona="ana")
+        self.assertEqual(m.cadena(self.config, "Faro"), 2)
+
+    def test_un_colega_se_atiende_y_otra_persona_no(self):
+        texto, _ = m.como_texto([{"id": "a", "de": "Gestión", "texto": "x", "persona": "ana"}], "ana")
+        self.assertIn("colega", texto)
+        self.assertNotIn("otra persona:", texto)
+        texto, _ = m.como_texto([{"id": "b", "de": "Faro", "texto": "x", "persona": "berta"}], "ana")
+        self.assertIn("otra persona: berta", texto)
+        self.assertIn("espera", texto)
