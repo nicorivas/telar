@@ -44,6 +44,7 @@ from pathlib import Path
 
 from urllib.parse import parse_qs
 
+from telar import bus as mod_bus
 from telar import conversacion, enlace, espejo
 from telar.ordenes import _comun
 
@@ -129,6 +130,13 @@ def enviar(ctx, datos: object) -> tuple[int, dict]:
         if ahora - _ultimo_envio[0] < ENTRE_ENVIOS:
             return 429, {"ok": False, "error": "muy rápido: un envío a la vez"}
         _ultimo_envio[0] = ahora
+    if maquina and mod_bus.hay_bus(ctx.config):
+        # a un hilo de otra máquina, por el bus: lo escribe la persona desde la web
+        try:
+            m = mod_bus.enviar(ctx.config, hilo, texto, de="la web", tipo="persona")
+        except mod_bus.ErrorDeBus as e:
+            return 409, {"ok": False, "error": str(e)}
+        return 200, {"ok": True, "por": "bus", "id": m["id"]}
     args = [hilo, *(["enter"] if enter else [])]
     if not maquina:
         r = enlace.servir(ctx, shlex.join(["enviar", *args]), texto.encode())
@@ -253,6 +261,8 @@ def anotar_envio(config, cliente: str, maquina: str, hilo: str, caracteres: int,
 def mantener_espejos(config, pausa: float = 30.0) -> None:
     """Cada `pausa` segundos le pide su foto a cada máquina de `[enlaces]`, para que el espejo esté al día
     aunque su extensión no esté publicando. Un laptop apagado falla rápido y queda con su última foto."""
+    if mod_bus.hay_bus(config):
+        return  # con bus, cada nodo publica su foto y el de aquí la guarda (telar nodo)
     while True:
         for e in config.enlaces:
             try:
@@ -321,15 +331,18 @@ def _conversacion_remota(q: dict, nombre: str, config, responder) -> tuple[int, 
     except ValueError as e:
         return responder(400, {"error": str(e)})
     turnos = max(1, min(turnos, 50))
-    destino = enlace_para(config, maquina)
-    if destino is None:
+    destino = None if mod_bus.hay_bus(config) else enlace_para(config, maquina)
+    if destino is None and not mod_bus.hay_bus(config):
         return responder(404, {"error": f"no sé a qué enlace corresponde «{maquina[:40]}» (ver [enlaces])"})
     clave = (maquina, nombre, turnos)
     with _candado:
         hora, previo = _remotas.get(clave, (0.0, None))
         if previo is not None and time.monotonic() - hora < 3.0:
             return responder(*previo)
-    r = enlace.llamar(destino, "leer", [nombre, str(turnos)], espera=30)
+    if destino is None:  # con bus: un pedido al nodo de esa máquina
+        r = mod_bus.pedir(config, maquina, "leer", {"hilo": nombre, "ultimos": turnos}, espera=30)
+    else:
+        r = enlace.llamar(destino, "leer", [nombre, str(turnos)], espera=30)
     if not r.get("ok"):
         resultado = (409, {"error": str(r.get("error", "la otra máquina no respondió"))})
     else:
