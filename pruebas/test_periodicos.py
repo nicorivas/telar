@@ -201,3 +201,44 @@ class ElFormulario(_ConArchivo):
         with mock.patch("telar.agente.obtener", return_value=falso), redirect_stdout(io.StringIO()) as salida:
             orden.main(["skills", "--carpeta", "/tmp", "--json"], ctx)
         self.assertEqual(json.loads(salida.getvalue())["skills"], [{"nombre": "correo", "descripcion": "el correo", "origen": "proyecto"}])
+
+
+class ConAgente(Prueba):
+    """Un periódico con agente: con bus, el encargo va a la casilla del agente; si el bus falla, se teclea."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.ctx = SimpleNamespace(config=mod_config.Config(raiz=base, estado=base / "estado",
+                                                           bus=mod_config.Bus(url="nats://127.0.0.1:1")))
+        from telar.agentes import Agente
+
+        self.agente = Agente(clave="gestion", nombre="Gestión", carpeta=base)
+        self.p = m.Proceso(nombre="avanzar", cuando="0 9 * * *", mensaje="/avanzar", agente="gestion")
+
+    def correr(self, enviar):
+        with mock.patch("telar.agentes.descubrir", return_value=[self.agente]), \
+                mock.patch("telar.bus.enviar", side_effect=enviar) as env, \
+                mock.patch("telar.encargos.encargar", return_value={"estado": "entregado"}) as tecleado:
+            r = m.correr(self.ctx, self.p)
+        return r, env, tecleado
+
+    def test_con_bus_va_a_su_casilla_y_no_se_teclea(self):
+        r, env, tecleado = self.correr(lambda cfg, para, texto, **k: {"id": "x1"})
+        self.assertEqual(r["codigo"], 0)
+        self.assertIn("por el bus", r["resultado"])
+        self.assertEqual((env.call_args.args[1], env.call_args.kwargs["tipo"]), ("Gestión", "encargo"))
+        tecleado.assert_not_called()
+
+    def test_si_el_bus_falla_va_por_el_camino_de_siempre_y_lo_dice(self):
+        from telar import bus
+
+        def falla(*a, **k):
+            raise bus.ErrorDeBus("no responde")
+
+        r, _, tecleado = self.correr(falla)
+        self.assertEqual(r["codigo"], 0)
+        self.assertIn("el bus no lo recibió", r["resultado"])
+        tecleado.assert_called_once()

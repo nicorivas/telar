@@ -127,8 +127,7 @@ mensajes que esperan en vez de perderse.
 
 1. Bus, demonio y casillas en el servidor; los agentes residentes como primeros usuarios.
 2. El laptop como nodo; `encargar`, `enlace enviar` y el correo entre agentes pasan al bus. *Hecho: el
-   nodo y `encargar`. Falta: los periódicos con agente (siguen tecleando con `telar.encargos`), `enlace
-   enviar` y el correo entre agentes.*
+   nodo, `encargar` y los periódicos con agente. Falta: `enlace enviar` y el correo entre agentes.*
 3. El estado por suscripción; se apagan los sondeos y se retira el reenviador. *Hecho: la atención de los
    remotos. Falta: el espejo, `remotos traer` y el reenviador del correo.*
 4. Varias personas: credenciales y permisos por persona; varias máquinas siempre prendidas, en clúster.

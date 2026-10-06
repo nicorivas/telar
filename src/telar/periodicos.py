@@ -435,12 +435,23 @@ def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
     agente = next((a for a in mod_agentes.descubrir(ctx.config) if a.clave == p.agente), None)
     if agente is None:
         return 1, f"no hay un agente «{p.agente}» en [agentes] carpeta", ""
+    from telar import bus as mod_bus
+
+    problema_bus = ""
+    if mod_bus.hay_bus(ctx.config):
+        # por el bus: espera en su casilla y lo recoge el nodo de la máquina donde vive el agente, que
+        # lo abre o lo avisa; el contenido entra por sus ganchos, sin teclearlo
+        try:
+            r = mod_bus.enviar(ctx.config, agente.nombre, p.mensaje, de=f"periódico {p.nombre}", tipo="encargo")
+            return 0, f"encargado a «{agente.nombre}» por el bus · id {r['id']}", agente.nombre
+        except mod_bus.ErrorDeBus as e:
+            problema_bus = f"el bus no lo recibió ({e}); "
     try:
         r = encargos.encargar(ctx, agente, p.mensaje)
     except encargos.ErrorDeEncargo as e:
         return 1, f"no se pudo encargar a {agente.nombre}: {e}", ""
     dice = {"entregado": "le escribí", "en cola": f"quedó en cola ({r.get('en_cola')})", "abierto": "abrí su sesión"}
-    return 0, f"encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])}", agente.nombre
+    return 0, f"{problema_bus}encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])}", agente.nombre
 
 
 def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, str, str]:

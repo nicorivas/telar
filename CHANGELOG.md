@@ -17,6 +17,8 @@ workflow refuses to run if the two disagree.
   does not stop and gets the messages) and `UserPromptSubmit` (an idle agent gets a short fixed «↯» typed, and
   the content as context). Installed by `telar agente instalar`.
 - `servidor/telar-bus.service`, `servidor/telar-nodo.service` and `servidor/telar-nodo.plist`.
+- A periodic process with `agente` hands its prompt to the agent's mailbox through the bus when there is one (the
+  node where the agent lives opens or nudges it); if the bus does not answer, it falls back to typing and says so.
 
 - `[agentes] carpeta`: resident agents, one per folder with a `CLAUDE.md`. They show in the thread list under an
   «Agentes» header, each one collapsible with a home and its threads; the home (`telar seccion agente:<folder>`)
