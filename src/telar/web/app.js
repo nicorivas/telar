@@ -996,6 +996,7 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
     }
     const r = await pedirConv(sesion ? { sesion } : {});
     Object.assign(conv, { sesion: r.sesion, sesiones: r.sesiones, msgs: r.mensajes, desde: r.desde, total: r.hasta, hilo: r.hilo });
+    if (estado.recien === nombre) estado.recien = '';  // ya tiene conversación: deja de ser «recién abierto»
     cabeceraConv();
     $('conv-lista').replaceChildren(...nodosDe(r.mensajes, r.desde, ''));
     if (!r.mensajes.length) avisoConv('la conversación todavía no tiene mensajes');
@@ -1004,12 +1005,19 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
     alFinal();
     conv.timer = setInterval(sondear, 3000);
   } catch (e) {
-    avisoConv(e.message);
-    $('conv').append(dockConv());
-    if (estado.recien === nombre && !origen) {  // un hilo recién abierto: su conversación aparece con su primer mensaje
-      estado.reintentos = (estado.reintentos || 0) + 1;
-      if (estado.reintentos <= 12) setTimeout(() => { if (conv.nombre === nombre) abrirConversacion(nombre); }, 3000);
-    } else { estado.reintentos = 0; }
+    if (estado.recien === nombre && !origen) {
+      // un hilo recién abierto no tiene conversación en disco hasta su primer mensaje: no es un error, se espera sin repintar
+      avisoConv('El hilo está abierto. La conversación aparece cuando el agente reciba su primer mensaje; mientras tanto puedes escribirle abajo.');
+      $('conv').append(dockConv());
+      let intentos = 0;
+      conv.timer = setInterval(async () => {
+        if (conv.nombre !== nombre || ++intentos > 100) { clearInterval(conv.timer); return; }
+        try { await pedirConv({}); abrirConversacion(nombre); } catch (_) { /* todavía no está */ }
+      }, 3000);
+    } else {
+      avisoConv(e.message);
+      $('conv').append(dockConv());
+    }
   }
   conv.cargando = false;
 }
