@@ -28,6 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from telar import bus as _bus
 from telar import enlace as mod
 from telar.config import VERBOS_ENLACE
 from telar.ordenes import _comun
@@ -121,6 +122,21 @@ def main(argv: list[str], ctx) -> int:
     if o.verbo == "revocar":
         n = mod.revocar(Path.home() / ".ssh" / "authorized_keys")
         print(f"{n} llave(s) quitada(s)" if n else "no había ninguna llave atada a la puerta")
+        return 0
+
+    if o.verbo == "enviar" and _bus.hay_bus(ctx.config) and len(o.args) >= 2:
+        # con bus, escribirle a un hilo es dejarle un mensaje en su casilla, viva donde viva: llega
+        # entero y por los ganchos del agente, no tecleado en su panel
+        from telar.ordenes import mensaje
+
+        texto = sys.stdin.read() if o.args[1:] == ["-"] else " ".join(o.args[1:])
+        try:
+            m = mensaje.enviar(ctx, o.args[0], texto)
+        except _bus.ErrorDeBus as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"ok": True, "por": "bus", "id": m["id"]})
+        print(f"en la casilla de «{o.args[0]}» (por el bus, id {m['id']})")
         return 0
 
     # llamar
