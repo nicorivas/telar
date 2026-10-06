@@ -93,6 +93,18 @@ MARCA_CONTEXTO = f"agente contexto {NOMBRE}"
 #: El gancho que entrega la casilla del hilo (telar.casilla): en Stop y en UserPromptSubmit.
 MARCA_CASILLA = f"agente casilla {NOMBRE}"
 
+#: Lo que un agente puede correr sin pedir permiso para hablar con otros hilos y leerlos. Solo
+#: comunicarse y mirar: nada que cierre, borre, mueva o abra hilos. `instalar` los agrega a
+#: `permissions.allow` y `desinstalar` los quita (solo estos, exactos).
+PERMISOS = (
+    "Bash(telar mensaje:*)",
+    "Bash(telar encargar:*)",
+    "Bash(telar hilos:*)",
+    "Bash(telar ficha:*)",
+    "Bash(telar hilo leer:*)",
+    "Bash(telar nodo estado:*)",
+)
+
 #: El nombre del primer respaldo que se deja antes de tocar la configuración del usuario.
 SUFIJO_RESPALDO = ".telar.bak"
 
@@ -365,6 +377,15 @@ class ClaudeCode(AgenteBase):
             nuevos["hooks"].setdefault(nativo, []).append(
                 {"hooks": [{"type": "command", "command": shlex.join(casilla), "timeout": 5}]})
             puestos.append(f"{nativo} (casilla)")
+        # hablar con otros hilos y leerlos no pasa por la aprobación de la persona (PERMISOS)
+        permisos = nuevos.setdefault("permissions", {})
+        if isinstance(permisos, dict):
+            permitidos = permisos.setdefault("allow", [])
+            if isinstance(permitidos, list):
+                faltan = [x for x in PERMISOS if x not in permitidos]
+                permitidos.extend(faltan)
+                if faltan:
+                    puestos.append(f"permisos ({len(faltan)})")
         texto = json.dumps(nuevos, ensure_ascii=False, indent=2) + "\n"
         antes = _texto_actual(destino)
         respaldo = None
@@ -551,10 +572,21 @@ def _mezclar(
 def _quitar(datos: dict) -> tuple[dict, list[str]]:
     """La configuración sin los ganchos de telar. Lo que queda vacío se va con ellos."""
     nuevos = deepcopy(datos)
+    sacados: list[str] = []
+    permisos = nuevos.get("permissions")
+    if isinstance(permisos, dict) and isinstance(permisos.get("allow"), list):
+        quedan = [x for x in permisos["allow"] if x not in PERMISOS]
+        if len(quedan) != len(permisos["allow"]):
+            sacados.append("permisos")
+            if quedan:
+                permisos["allow"] = quedan
+            else:
+                permisos.pop("allow")
+                if not permisos:
+                    nuevos.pop("permissions")
     hooks = nuevos.get("hooks")
     if not isinstance(hooks, dict):
-        return nuevos, []
-    sacados: list[str] = []
+        return nuevos, sacados
     for nativo, entradas in list(hooks.items()):
         if not isinstance(entradas, list):
             continue
