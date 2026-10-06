@@ -79,6 +79,15 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
+    from telar import bus as mod_bus
+
+    if o.verbo == "publicar" and mod_bus.hay_bus(ctx.config):
+        # con bus, la foto la publica `telar nodo` cada 30 s: empujarla por ssh además sería doble trabajo
+        if o.json:
+            return _comun.escribir_json({"publicado": True, "por": "bus", "maquina": "", "remoto": "", "error": ""})
+        print("con bus, la foto la publica `telar nodo`; no hace falta empujarla")
+        return 0
+
     if o.verbo == "recibir":
         if not o.de:
             return _comun.queja("recibir necesita --de NOMBRE")
