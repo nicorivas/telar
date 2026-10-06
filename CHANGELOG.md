@@ -17,6 +17,14 @@ workflow refuses to run if the two disagree.
   does not stop and gets the messages) and `UserPromptSubmit` (an idle agent gets a short fixed «↯» typed, and
   the content as context). Installed by `telar agente instalar`.
 - `servidor/telar-bus.service`, `servidor/telar-nodo.service` and `servidor/telar-nodo.plist`.
+- With a bus, the rest goes through it too: `telar enlace enviar` leaves the message in the thread's mailbox;
+  the web writes to a thread on another machine as a `persona` message and reads its conversation with an
+  rpc to that machine's node (honoring `[enlace] no_leer`); mail between threads of the same person
+  (`usuario+hilo@…`) is a bus message, so Postfix and the cartero stay only for other people. Each node
+  publishes its mirror snapshot every 30 s and saves the others' where `telar web` reads them
+  (`telar espejo publicar` becomes a no-op), and it publishes when a thread stops living there: the other
+  machine opens the window of a thread born remotely and closes the window of one whose session ended, at
+  once instead of every three minutes. The threads' context and the `/hilos` skill point to `telar mensaje`.
 - A periodic process with `agente` hands its prompt to the agent's mailbox through the bus when there is one (the
   node where the agent lives opens or nudges it); if the bus does not answer, it falls back to typing and says so.
 

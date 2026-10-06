@@ -1,6 +1,6 @@
 # Un bus para telar: mensajes y estado entre varias máquinas
 
-*Estado: construido en lo principal (octubre de 2026): bus, demonio, casillas, entrega por ganchos, `telar mensaje`, `telar encargar` por el bus y el estado por aviso. Lo que falta, al final de «Cómo llegar».*
+*Estado: construido (octubre de 2026): bus, demonio, casillas, entrega por ganchos, `telar mensaje`, y por el bus `encargar`, `enlace enviar`, la web, el correo de una misma persona, el espejo y las ventanas de los remotos. Lo que falta, al final de «Cómo llegar».*
 
 ## Por qué
 
@@ -119,6 +119,13 @@ mensajes que esperan en vez de perderse.
 - `telar mensaje <hilo|agente> "…"`; `telar encargar` publica en la casilla del agente si hay bus.
 - Los ganchos `Stop` y `UserPromptSubmit` (`telar agente casilla`) entregan la casilla; se instalan con
   `telar agente instalar`. Un agente abierto antes de instalarlos los lee recién al reiniciarse.
+- También por el bus: `telar enlace enviar` (a la casilla del hilo), lo que se escribe desde la web a un
+  hilo de otra máquina (mensaje `persona`: lo escribe la persona, no otro hilo), la lectura desde la web
+  de una conversación de otra máquina (pedido `leer` a su nodo, con `[enlace] no_leer`), el correo entre
+  hilos de una misma persona y el espejo (cada nodo publica su foto cada 30 s en `TELAR_ESPEJO` y guarda
+  las de los demás). El nodo publica `vivo: false` cuando un hilo deja de vivir en su máquina, con su
+  sesión tmux si tiene una propia: la otra máquina trae la ventana de lo que nace allá y cierra la de lo
+  que muere, al instante. `remotos traer` queda como respaldo manual y del sondeo de la extensión.
 - Probado de punta a punta entre un laptop y un servidor: un mensaje a un agente cerrado lo abre
   retomando su conversación y le entrega el contenido; a uno abierto e inactivo se le teclea solo «↯»;
   la atención de un hilo de la otra máquina llega en uno o dos segundos.
@@ -126,10 +133,10 @@ mensajes que esperan en vez de perderse.
 ## Cómo llegar
 
 1. Bus, demonio y casillas en el servidor; los agentes residentes como primeros usuarios.
-2. El laptop como nodo; `encargar`, `enlace enviar` y el correo entre agentes pasan al bus. *Hecho: el
-   nodo, `encargar` y los periódicos con agente. Falta: `enlace enviar` y el correo entre agentes.*
-3. El estado por suscripción; se apagan los sondeos y se retira el reenviador. *Hecho: la atención de los
-   remotos. Falta: el espejo, `remotos traer` y el reenviador del correo.*
+2. El laptop como nodo; `encargar`, `enlace enviar` y el correo entre agentes pasan al bus. *Hecho.*
+3. El estado por suscripción; se apagan los sondeos y se retira el reenviador. *Hecho: la atención, el
+   espejo y las ventanas de los remotos; el correo de una misma persona ya no pasa por el reenviador.
+   Falta: apagar el sondeo de `remotos traer` en la extensión cuando hay bus, y el correo entre personas.*
 4. Varias personas: credenciales y permisos por persona; varias máquinas siempre prendidas, en clúster.
 
 ## Riesgos
