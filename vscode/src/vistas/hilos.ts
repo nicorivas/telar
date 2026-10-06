@@ -40,9 +40,9 @@ const CSS = `
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
   .cab { color: var(--amarillo); font-weight: bold; }
-  /* un agente: su fila bajo «Agentes», y lo suyo (home, hilos) un paso más adentro */
-  .agente { padding-left: 2ch; } .agente .nombre { color: var(--amarillo); }
-  .dentro { padding-left: 4ch; }
+  /* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
+  .agente .nombre { color: var(--amarillo); } .agente.muerto .nombre { color: color-mix(in srgb, var(--amarillo) 55%, var(--bg)); }
+  .casa { flex: none; color: var(--azul); }
   .hoy .nombre { color: var(--azul); }
   .cab .dim { font-weight: normal; }
   .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
@@ -152,7 +152,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         void v.webview.postMessage({ tipo: 'lista', html, mostrar });
     }
 
-    private fila(h: cli.JsonHilo, seccion: Seccion): string {
+    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = ''): string {
         const contexto = esc(JSON.stringify({
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
@@ -173,7 +173,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>`
+            + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             + '<span class="iconos">' + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
@@ -228,28 +228,22 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo
         // los que tienen tab primero, los que no después; dentro de cada grupo, el orden elegido
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
-        // los agentes residentes: una cabecera «Agentes» y, dentro, cada agente desplegable con su
-        // home y sus hilos. Las demás secciones, como siempre, una cabecera cada una
+        // los agentes residentes: uno por línea, como cualquier hilo, con su home al final de la línea.
+        // Un agente sin hilo abierto sale igual, tenue, y su línea lleva a su home
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
         if (agentes.length) {
-            const todos = modelo.enLista.filter(x => agentes.some(a => cli.enSeccion(a, x.nombre)));
-            const abierta = !this.plegadas.has('__agentes');
             h.push('<div class="sep"></div>');
-            h.push(`<div class="fila cab" data-accion="seccion" data-id="__agentes" title="abrir o cerrar los agentes">`
-                + `<span class="prio">${abierta ? '▾' : '▸'}</span>AGENTES`
-                + (todos.length ? ` <span class="dim">${todos.length}</span>` : '') + '</div>');
-            if (abierta) {
-                for (const a of agentes) {
-                    const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
-                    const suya = !this.plegadas.has(a.clave);
-                    h.push(`<div class="fila agente" data-accion="seccion" data-id="${esc(a.clave)}" title="abrir o cerrar ${esc(a.nombre)}">`
-                        + `<span class="prio">${suya ? '▾' : '▸'}</span><span class="nombre">${esc(a.nombre)}</span>`
-                        + (suyos.length ? ` <span class="dim">${suyos.length}</span>` : '') + '</div>');
-                    if (!suya) continue;
-                    h.push(`<div class="fila hoy dentro" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">`
-                        + '<span class="prio"> </span><span class="nombre">home</span></div>');
-                    for (const x of suyos) h.push(this.fila(x, 'hilo').replace('class="fila ', 'class="fila dentro '));
+            for (const a of agentes) {
+                const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
+                const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
+                if (!suyos.length) {
+                    h.push(`<div class="fila agente muerto" data-accion="home" data-id="${esc(a.clave)}" title="${esc(a.nombre)}: sin hilo abierto; su home">`
+                        + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
+                        + (modelo.buzones.length ? '<span class="sobre"> </span>' : '')
+                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${casa}</div>`);
+                    continue;
                 }
+                suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
             }
         }
         for (const s of modelo.secciones.filter(x => x.grupo !== 'agentes')) {
