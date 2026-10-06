@@ -334,19 +334,26 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     // los hilos que nacen en una máquina remota (un reloj allá, el celular) se traen
     // solos; cada tres minutos es lo que tarda en aparecer, y un ssh cada tanto es barato.
     // Con bus, `telar nodo` los trae al instante y este sondeo vuelve sin hacer nada
+    // Con bus, `telar nodo` hace los dos sondeos de abajo al instante: la primera respuesta que lo
+    // dice los apaga hasta que la extensión se recargue, sin lanzar más procesos
+    let conBus = false;
     let vuelta = 0;
     const traer = async () => {
-        if (!modelo.hayRemotos) return;
+        if (!modelo.hayRemotos || conBus) return;
         const r = await cli.traerRemotos();
+        if (r.datos?.por === 'bus') { conBus = true; return; }
         if (r.datos?.traidos.length) await modelo.sondear();
     };
     // el semáforo de los hilos remotos (trabajando, espera…) lo anotan sus ganchos allá: cada
     // 20 s se copia aquí, con una sola conexión por máquina, y la lista se redibuja si cambió
     let leyendoAtencion = false;
     const atencionRemota = setInterval(() => {
-        if (!modelo.hayRemotos || leyendoAtencion) return;
+        if (!modelo.hayRemotos || leyendoAtencion || conBus) return;
         leyendoAtencion = true;
-        void cli.atencionRemotos().then(r => { if (r.datos?.cambios.length) return modelo.sondear(); })
+        void cli.atencionRemotos().then(r => {
+            if (r.datos?.por === 'bus') { conBus = true; return; }
+            if (r.datos?.cambios.length) return modelo.sondear();
+        })
             .catch(e => anotar(`atención remota: ${e}`)).finally(() => { leyendoAtencion = false; });
     }, 20 * 1000);
     ctx.subscriptions.push({ dispose: () => clearInterval(atencionRemota) });
