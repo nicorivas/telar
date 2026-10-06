@@ -309,7 +309,9 @@ class Instalador(ConEstado):
         self.assertEqual(datos["modelo"], "opus")
         comandos = [g["command"] for e in datos["hooks"]["Stop"] for g in e["hooks"]]
         self.assertIn("mi-script.sh", comandos)
-        self.assertEqual(len(comandos), 2)
+        # el ajeno, el aviso de telar y la casilla (que entrega los mensajes de otros hilos)
+        self.assertEqual(len(comandos), 3)
+        self.assertTrue(any("agente casilla" in c for c in comandos))
 
     def test_instalar_dos_veces_no_duplica(self):
         a = self.agente()
@@ -317,6 +319,10 @@ class Instalador(ConEstado):
         hecho = a.instalar(ruta=self.ajustes)
         self.assertIn("Stop", hecho.reemplazados)
         self.assertEqual(len(self.leer()["hooks"]["Stop"][0]["hooks"]), 1)
+        # la casilla tampoco se duplica: una en Stop y una en UserPromptSubmit
+        for nativo in ("Stop", "UserPromptSubmit"):
+            casillas = [g for e in self.leer()["hooks"][nativo] for g in e["hooks"] if "agente casilla" in g["command"]]
+            self.assertEqual(len(casillas), 1, nativo)
 
     def test_deja_un_respaldo_antes_de_tocar_nada(self):
         self.ajustes.write_text(json.dumps({"modelo": "opus"}), encoding="utf-8")

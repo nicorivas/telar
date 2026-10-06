@@ -90,6 +90,9 @@ MARCA = f"agente aviso {NOMBRE}"
 #: El gancho que le da al agente, al empezar, unas líneas sobre su hilo y los otros.
 MARCA_CONTEXTO = f"agente contexto {NOMBRE}"
 
+#: El gancho que entrega la casilla del hilo (telar.casilla): en Stop y en UserPromptSubmit.
+MARCA_CASILLA = f"agente casilla {NOMBRE}"
+
 #: El nombre del primer respaldo que se deja antes de tocar la configuración del usuario.
 SUFIJO_RESPALDO = ".telar.bak"
 
@@ -355,6 +358,13 @@ class ClaudeCode(AgenteBase):
             nuevos["hooks"]["SessionStart"].append(
                 {"hooks": [{"type": "command", "command": shlex.join(contexto), "timeout": 5}]})
             puestos.append("SessionStart (contexto)")
+        # la casilla: los mensajes de otros hilos entran por aquí, nunca tecleados (telar.casilla).
+        # Al terminar un turno (Stop) y al llegar un mensaje (UserPromptSubmit, el «↯»)
+        casilla = [*palabras[:-3], "agente", "casilla", self.nombre]
+        for nativo in ("Stop", "UserPromptSubmit"):
+            nuevos["hooks"].setdefault(nativo, []).append(
+                {"hooks": [{"type": "command", "command": shlex.join(casilla), "timeout": 5}]})
+            puestos.append(f"{nativo} (casilla)")
         texto = json.dumps(nuevos, ensure_ascii=False, indent=2) + "\n"
         antes = _texto_actual(destino)
         respaldo = None
@@ -487,7 +497,7 @@ def _nuestro(gancho: object) -> bool:
     if not isinstance(gancho, dict):
         return False
     comando = gancho.get("command")
-    return isinstance(comando, str) and (MARCA in comando or MARCA_CONTEXTO in comando)
+    return isinstance(comando, str) and (MARCA in comando or MARCA_CONTEXTO in comando or MARCA_CASILLA in comando)
 
 
 def _limpiar(entradas: list) -> tuple[list, int]:
