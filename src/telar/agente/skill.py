@@ -62,8 +62,13 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
 
 ## Escribirle
 
+- **Con bus** (`[bus]` en la configuración; el contexto del hilo lo dice): a cualquier hilo o
+  agente de tu persona, en cualquier máquina, `telar mensaje <hilo> "texto"` (o `-` y el texto
+  por stdin). Queda en su casilla aunque esté cerrado y le entra entero: al terminar su turno
+  si está trabajando, o con «↯ mensaje nuevo» si está inactivo. El correo a un hilo de tu misma
+  persona también va por ahí.
 - **Misma persona y misma máquina**: `SendMessage` al nombre que da `ListAgents`.
-- **Otra persona, u otra máquina**: correo a `usuario+hilo@servidor` (la extensión es el
+- **Otra persona, u otra máquina sin bus**: correo a `usuario+hilo@servidor` (la extensión es el
   nombre del hilo en minúsculas, sin acentos y con guiones):
   `echo "cuerpo" | telar correo enviar usuario+hilo@servidor -s "asunto"`. Desde el laptop
   sale por ssh; en el servidor, `mail -s "asunto" usuario+hilo@servidor` hace lo mismo.
@@ -73,8 +78,8 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
   quede en la misma conversación:
   `telar correo enviar usuario@servidor -s "Re: asunto" --responde "<Message-Id>"`. El
   `[correo de agente]` que te llega trae el id y el comando con `mail`.
-- Un hilo del laptop no tiene casilla: solo recibe mensajes nativos de su misma máquina.
-  No le prometas a nadie que le va a llegar un correo.
+- Sin bus, un hilo del laptop no tiene casilla: solo recibe mensajes nativos de su misma
+  máquina. No le prometas a nadie que le va a llegar un correo.
 
 ## Las reglas
 
