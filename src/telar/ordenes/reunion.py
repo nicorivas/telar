@@ -16,6 +16,9 @@ carpeta y su ficha es la del proyecto; si no, la cola «· proyecto:» se quita 
 Si el tab de esa reunión ya existe, se va a él en vez de abrir otro: dos Claude
 preparando la misma reunión es trabajo repetido.
 
+Con un agente que recibe lo sin proyecto (`[agentes] sin_proyecto`), no se abre un tab: se le
+encarga la preparación o la minuta a ese agente y se va a su hilo. `--hilo-nuevo` abre el tab igual.
+
 Qué se le dice depende del evento. Si ya empezó, es su minuta (`[agente] minuta`, de
 fábrica `/minuta`) en un tab «✎ HH:MM …»; si no, la preparación. Y una regla
 `[agenda.<clave>]` cuyo `si` calce con el título cambia cualquiera de los dos: una clase,
@@ -142,6 +145,8 @@ def main(argv: list[str], ctx) -> int:
     momento = p.add_mutually_exclusive_group()
     momento.add_argument("--antes", action="store_true", help="prepararla aunque ya haya empezado")
     momento.add_argument("--despues", action="store_true", help="su minuta aunque no haya empezado")
+    p.add_argument("--hilo-nuevo", dest="hilo_nuevo", action="store_true",
+                   help="abrir un hilo propio aunque haya un agente que reciba lo sin proyecto")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -165,6 +170,22 @@ def main(argv: list[str], ctx) -> int:
     nombre = nombre_del_tab(titulo, hora, MARCA_DESPUES if despues else MARCA)
     resultado = {"hilo": nombre, "proyecto": proyecto, "mensaje": texto, "hecho": "",
                  "momento": "despues" if despues else "antes", "regla": regla}
+
+    # con un agente que recibe lo sin proyecto (`[agentes] sin_proyecto`, Gestión), la reunión se le
+    # encarga a él: prepara y escribe minutas en su hilo de siempre, sin abrir uno por reunión
+    from telar.ordenes import pendiente
+
+    general = None if o.hilo_nuevo else pendiente._agente_general(ctx)
+    if general is not None:
+        resultado.update(hilo=general.nombre, agente=general.clave)
+        if o.donde:
+            resultado["hecho"] = "nada (--donde)"
+            return _responder(resultado, o)
+        codigo, r = pendiente.encargar_y_ir(ctx, general, texto)
+        if codigo != 0:
+            return codigo
+        resultado["hecho"] = f"encargado a {general.nombre} ({r.get('estado', '')})"
+        return _responder(resultado, o)
 
     if o.donde:
         resultado["hecho"] = "nada (--donde)"
