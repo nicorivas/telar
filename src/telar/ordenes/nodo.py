@@ -180,6 +180,8 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie-recordar"), cb=self._serie_recordar)
         vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
@@ -397,6 +399,21 @@ class Nodo:
         await self._responder(m, lambda p: notas.agregar_local(
             self.config, str(p.get("dia", "")), str(p.get("evento", "")), str(p.get("texto", "")),
             de=str(p.get("de", "")), titulo=str(p.get("titulo", "")), inicio=str(p.get("inicio", ""))))
+
+
+    async def _serie(self, m) -> None:
+        from telar import reuniones
+
+        await self._responder(m, lambda p: {"ok": True, "destino": reuniones.recordado_local(self.config, str(p.get("titulo", "")))})
+
+    async def _serie_recordar(self, m) -> None:
+        from telar import reuniones
+
+        def hacer(p):
+            reuniones.recordar_local(self.config, str(p.get("titulo", "")), str(p.get("destino", "")))
+            return {"ok": True}
+
+        await self._responder(m, hacer)
 
 
 # para `python -m telar.ordenes.nodo` en una prueba
