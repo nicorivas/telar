@@ -644,7 +644,7 @@ function pantallaCal() {
     const fila = el('div', { className: `fila ag${e.fin <= ahoraMin && esHoy ? ' pasada' : ''}${proxima === e ? ' proxima' : ''}${e.soloPlan ? ' delplan' : ''}` },
       txt('hora', horaMin(e.ini)),
       el('span', { className: 'que' }, txt('titulo', e.titulo), el('span', { className: 'sub' }, `hasta ${horaMin(e.fin)}${e.lugar ? ` · ${e.lugar}` : ''}`)),
-      el('span', { className: 'chips' }, nNotas || (!e.soloPlan && e.plan && e.plan.nota) ? txt('chip acc', '✎') : null));
+      nNotas || (!e.soloPlan && e.plan && e.plan.nota) ? txt('marca-nota', '✎') : el('span'));
     return plegable(`cal:${real}:${e.id}`, fila, () => detalleEventoCal(e, d, real));
   });
   return [nav,
