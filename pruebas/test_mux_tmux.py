@@ -469,6 +469,21 @@ class ApuntarAlTabQueSeNombro(Prueba):
 
 
 class CambiarDeTab(Prueba):
+    def setUp(self) -> None:
+        super().setUp()
+        # estas pruebas hablan de una persona: si corren dentro de un agente, `$TELAR_HILO` las cambiaría
+        previo = os.environ.pop("TELAR_HILO", None)
+        if previo is not None:
+            self.addCleanup(os.environ.__setitem__, "TELAR_HILO", previo)
+
+    def test_un_agente_no_le_mueve_la_terminal_a_la_persona(self):
+        m = self._con_tmux("/dev/ttys004")
+        os.environ["TELAR_HILO"] = "Gestión"
+        self.addCleanup(os.environ.pop, "TELAR_HILO", None)
+        m.ir_a_tab("@3")
+        self.assertEqual(m.ordenes("switch-client"), [])
+        self.assertEqual(m.ordenes("select-window"), [])
+
     def _con_tmux(self, valor="/dev/ttys004"):
         """Como si el comando saliera de adentro de tmux: hay un cliente al que apuntar."""
         previo = os.environ.get("TMUX")

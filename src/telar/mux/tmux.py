@@ -388,7 +388,18 @@ class Tmux(MultiplexorBase):
             return None
         return self._tab(renglon)
 
+    @staticmethod
+    def _llama_un_agente() -> bool:
+        """Quien corre el comando es un agente (`$TELAR_HILO`), no una persona.
+
+        El foco es de la persona: dentro de tmux, `switch-client` mueve al cliente que mira el panel
+        del agente, que es la terminal de Nico en el hilo de ese agente. Gestión delegando un pendiente
+        le cambiaba esa terminal por la del hilo nuevo, y Gestión parecía muerta."""
+        return bool(os.environ.get("TELAR_HILO", "").strip())
+
     def ir_a_tab(self, tab: str) -> None:
+        if self._llama_un_agente():
+            return
         objetivo = self._objetivo_tab(tab)
         self._tmux("select-window", "-t", objetivo)
         cliente = self._cliente()
@@ -448,7 +459,7 @@ class Tmux(MultiplexorBase):
             if nombre:
                 args += ["-n", nombre]
             args += carpeta
-            if not foco:
+            if not foco or self._llama_un_agente():
                 args.append("-d")
 
         if linea:
