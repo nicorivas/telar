@@ -223,6 +223,30 @@ class Bus:
 
 
 @dataclass(frozen=True, slots=True)
+class Resultado:
+    """Lo que una skill deja por día y se quiere ver en el dashboard (`[resultados.<clave>]`, ver
+    telar.resultados): un `AAAA-MM-DD.json` (o `.md`) por día en una carpeta."""
+
+    clave: str
+    #: la carpeta en la máquina donde vive. Con `en`, es la de respaldo si esa máquina no responde.
+    carpeta: str = ""
+    #: la máquina del bus donde se escribe (la que corre la skill); "" es esta.
+    en: str = ""
+    #: cómo se llama en el dashboard; por defecto, la clave.
+    nombre: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Notas:
+    """Las notas que las skills y la persona le dejan a los eventos del día (`[notas]`, telar.notas)."""
+
+    #: dónde se guardan, un `AAAA-MM-DD.json` por día; "" es `<estado>/notas`.
+    carpeta: str = ""
+    #: la máquina del bus que las guarda; "" es esta.
+    en: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class AgenteExtra:
     """Lo que un agente residente agrega a lo que telar descubre (`[agentes.<carpeta>]`)."""
 
@@ -328,6 +352,10 @@ class Config:
     bus: Bus = field(default_factory=Bus)
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
+    #: lo que dejan las skills por día, para verlo en el dashboard (`[resultados.<clave>]`).
+    resultados: tuple[Resultado, ...] = ()
+    #: las notas de los eventos del día (`[notas]`).
+    notas: Notas = field(default_factory=Notas)
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -749,10 +777,44 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raise ErrorDeConfig(f"periodicos.en: se esperaba el nombre de un remoto, llegó {en!r}")
         cambios["periodicos_en"] = en.strip()
 
+    if "resultados" in datos:
+        tabla = _tabla(datos["resultados"], "resultados")
+        lista = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"resultados.{clave}")
+            sobra = set(cuerpo) - {"carpeta", "en", "nombre"}
+            if sobra:
+                raise ErrorDeConfig(f"resultados.{clave}.{sorted(sobra)[0]}: no existe")
+            valores = {}
+            for campo in ("carpeta", "en", "nombre"):
+                v = cuerpo.get(campo, "")
+                if not isinstance(v, str):
+                    raise ErrorDeConfig(f"resultados.{clave}.{campo}: se esperaba un texto, llegó {v!r}")
+                valores[campo] = v.strip()
+            if not valores["carpeta"] and not valores["en"]:
+                raise ErrorDeConfig(f"resultados.{clave}: falta carpeta o en")
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", clave):
+                raise ErrorDeConfig(f"resultados.{clave}: la clave va en minúsculas, sin espacios")
+            lista.append(Resultado(clave=clave, **valores))
+        cambios["resultados"] = tuple(lista)
+
+    if "notas" in datos:
+        cuerpo = _tabla(datos["notas"], "notas")
+        sobra = set(cuerpo) - {"carpeta", "en"}
+        if sobra:
+            raise ErrorDeConfig(f"notas.{sorted(sobra)[0]}: no existe")
+        valores = {}
+        for campo in ("carpeta", "en"):
+            v = cuerpo.get(campo, "")
+            if not isinstance(v, str):
+                raise ErrorDeConfig(f"notas.{campo}: se esperaba un texto, llegó {v!r}")
+            valores[campo] = v.strip()
+        cambios["notas"] = Notas(**valores)
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
-        "enlaces", "enlace", "periodicos", "agentes", "bus",
+        "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
