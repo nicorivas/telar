@@ -18,12 +18,21 @@ import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
+import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan } from './plan';
 import { llevarPendiente, marcarHecha } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' = 'dia';
+    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
+    /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
+    private plan?: cli.JsonResultado;
+    private planError = '';
+    private planCargando = false;
+    /** las notas de los eventos de hoy, y el evento elegido en el calendario */
+    private notas?: cli.JsonNotas;
+    private notasAviso = '';
+    private eventoSel = '';
     /** la pestaña de los procesos periódicos: la lista leída y el abierto (con su log), si hay uno */
     private periodicos?: cli.JsonPeriodicos;
     private periodicosError = '';
@@ -96,7 +105,7 @@ export class PanelHoy {
     pintarMarco(): void {
         if (this.panel) {
             this.nonce = nuevoNonce();
-            this.panel.webview.html = marco(this.panel.webview, CSS_DIA,
+            this.panel.webview.html = marco(this.panel.webview, CSS_DIA + CSS_PLAN,
                 '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce);
         }
     }
@@ -118,6 +127,8 @@ export class PanelHoy {
         if (this.panel && this.pantalla === 'revisar') { this.renderRevisar(); return; }
         if (this.panel && this.pantalla === 'pestana') { this.renderPestana(); return; }
         if (this.panel && this.pantalla === 'periodicos') { if (!this.formPer) this.renderPeriodicos(); return; }
+        if (this.panel && this.pantalla === 'plan') { this.renderPlan(); return; }
+        if (this.panel && this.pantalla === 'calendario') { this.renderCalendario(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
@@ -157,6 +168,8 @@ export class PanelHoy {
             ['revisar', 'revisar', '', aRevisar ? `revisar ${aRevisar}` : 'revisar', 'v'],
             ...deProveedores,
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
+            ['plan', 'plan', '', 'plan', 'd'],
+            ['calendario', 'calendario', '', 'calendario', 'a'],
             ['periodicos', 'periodicos', '', 'periódicos', 'o'],
             ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
             ...modelo.secciones.filter(x => x.home).map(x =>
@@ -400,6 +413,64 @@ export class PanelHoy {
         });
         h.push('</section></div>');
         this.pintar(h);
+    }
+
+    // ── el plan del día y el calendario ────────────────────────────────────────
+
+    /** El plan de un día (vacío es hoy), leído de la máquina donde lo escribe la skill. */
+    private async abrirPlan(diaPedido: string): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'plan';
+        this.planCargando = true;
+        this.renderPlan();
+        const r = await cli.resultado('plan', diaPedido);
+        this.planCargando = false;
+        this.plan = r.datos?.ok ? r.datos : undefined;
+        this.planError = r.datos?.ok ? '' : (r.datos?.error ?? r.error ?? 'no contestó');
+        if (this.pantalla === 'plan') this.renderPlan();
+    }
+
+    private renderPlan(): void {
+        this.teclas.clear();
+        this.pintar(htmlPlan(this.plan, this.planError, this.planCargando));
+    }
+
+    /** El calendario de hoy: los eventos, los bloques del plan y las notas de cada uno. */
+    private async abrirCalendario(): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'calendario';
+        if (!this.datos) this.datos = await dia();
+        this.renderCalendario();
+        const hoyIso = this.datos.fecha;
+        const [plan, notas] = await Promise.all([
+            this.plan?.dia === hoyIso ? Promise.resolve({ datos: this.plan }) : cli.resultado('plan', ''),
+            cli.notasEventos(''),
+        ]);
+        if (plan.datos?.ok) this.plan = plan.datos;
+        this.notas = notas.datos?.ok ? notas.datos : undefined;
+        this.notasAviso = notas.datos?.aviso ?? (notas.datos?.ok ? '' : (notas.datos?.error ?? notas.error ?? ''));
+        if (this.pantalla === 'calendario') this.renderCalendario();
+    }
+
+    private renderCalendario(): void {
+        const d = this.datos;
+        if (!d) return;
+        this.teclas.clear();
+        const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
+        this.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso));
+    }
+
+    /** Una nota de la persona sobre un evento: se guarda donde viven las notas (`telar evento nota`). */
+    private async notaEvento(valor: string): Promise<void> {
+        const [id, titulo, inicio, fecha] = JSON.parse(valor) as string[];
+        const texto = await vscode.window.showInputBox({ title: `Nota para «${titulo}»`, prompt: 'Se guarda junto al evento y la ven las skills', ignoreFocusOut: true });
+        if (!texto?.trim()) return;
+        const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha);
+        if (!r.datos?.ok) { void vscode.window.showErrorMessage(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
+        this.eventoSel = id;
+        const notas = await cli.notasEventos(fecha);
+        if (notas.datos?.ok) this.notas = notas.datos;
+        if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
     // ── procesos periódicos ────────────────────────────────────────────────────
@@ -1238,7 +1309,7 @@ export class PanelHoy {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
                 p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
-                o: () => this.abrirPeriodicos(),
+                o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
@@ -1318,7 +1389,14 @@ export class PanelHoy {
                     await vscode.commands.executeCommand(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
                 }
                 break;
-            case 'calendario': await this.elegirCalendario(m.valor ?? ''); break;
+            case 'calendario':
+                // desde la configuración elige de dónde sale la agenda; desde una pestaña, la abre
+                if (this.pantalla === 'config') await this.elegirCalendario(m.valor ?? ''); else await this.abrirCalendario();
+                break;
+            case 'plan': await this.abrirPlan(''); break;
+            case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
+            case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
+            case 'nota-evento': if (m.valor) await this.notaEvento(m.valor); break;
             case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
             case 'directorios': await this.cambiarDirectorios(); break;
         }

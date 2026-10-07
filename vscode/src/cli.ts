@@ -183,7 +183,30 @@ export interface JsonFila {
     color?: string;
     /** si su proveedor tiene pestaña propia (un feed): no es un pendiente, va a esa pestaña */
     pestana?: string;
+    /** un evento: cuándo termina, dónde, y si es de día completo */
+    fin?: string; lugar?: string; todo_el_dia?: boolean;
 }
+
+/** Lo que dejó una skill un día (`telar resultado <clave> [día]`), leído de la máquina donde vive. */
+export interface JsonResultado {
+    ok: boolean; error?: string; aviso?: string; desde?: string;
+    clave: string; nombre: string; dia: string; dias: string[];
+    formato: 'json' | 'md' | ''; contenido: unknown;
+}
+export const resultado = (clave: string, dia = '') =>
+    telarJson<JsonResultado>(['resultado', clave, ...(dia ? [dia] : [])], 30000);
+
+/** Una nota sobre un evento del día (`telar evento`). */
+export interface JsonNota { de: string; texto: string; creado: string }
+export interface JsonNotas {
+    ok: boolean; error?: string; aviso?: string; dia: string;
+    eventos: Record<string, { titulo: string; inicio: string; notas: JsonNota[] }>;
+}
+export const notasEventos = (dia = '') =>
+    telarJson<JsonNotas>(['evento', 'notas', ...(dia ? [dia] : [])], 30000);
+export const notaEvento = (evento: string, texto: string, titulo: string, inicio: string, dia = '') =>
+    telarJson<{ ok: boolean; error?: string }>(['evento', 'nota', evento, texto, '--de', 'Nico', '--titulo', titulo,
+        '--inicio', inicio, ...(dia ? ['--dia', dia] : [])], 30000);
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay
  *  ningún proveedor declarado: son dos silencios distintos, y los dos se dicen. */
