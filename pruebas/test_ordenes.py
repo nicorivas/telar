@@ -585,6 +585,11 @@ class Secciones(Orden):
         self.assertIn("no existe", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": "/no/hay.html"}}]}))
         self.assertIn(".html", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(Path(self.tmp.name))}}]}))
         self.assertIn("alto", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "alto": 5}}]}))
+        # la memoria es un .json absoluto, que puede no existir todavía (lo crea el panel al guardar)
+        memoria = str(Path(self.tmp.name) / "nueva" / "m.json")
+        self.assertEqual(validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "memoria": memoria}}]}), "")
+        self.assertIn("memoria", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "memoria": "m.json"}}]}))
+        self.assertIn("memoria", validar({"titulo": "x", "bloques": [{"lienzo": {"archivo": str(html), "memoria": "/tmp/m.txt"}}]}))
 
     def test_la_orden_corre_el_home_y_devuelve_su_json(self):
         import sys
