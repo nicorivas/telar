@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Dashboard «revisar»: the delay of each task is a button that reschedules it (tomorrow, the day after, next
+  Monday, in a week, end of month, or a typed date), through the provider action with the new `rol: "fecha"`;
+  the same picker opens from that action in a task's card.
 - Dashboard calendar: a text field under the selected event writes to the general agent (`[agentes]
   sin_proyecto`) with the meeting, its project (remembered or deduced), what the plan and the notes say, and
   how to leave a note on the event; the request is kept as a note. `telar config --json` gives
