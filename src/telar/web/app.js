@@ -641,10 +641,10 @@ function pantallaCal() {
   const proxima = esHoy ? evs.find((e) => e.fin > ahoraMin) : null;
   const filas = evs.flatMap((e) => {
     const nNotas = notasCal(e, d).length;
-    const fila = el('div', { className: `fila ag${e.fin <= ahoraMin && esHoy ? ' pasada' : ''}${proxima === e ? ' proxima' : ''}${e.soloPlan ? ' condicional' : ''}` },
+    const fila = el('div', { className: `fila ag${e.fin <= ahoraMin && esHoy ? ' pasada' : ''}${proxima === e ? ' proxima' : ''}${e.soloPlan ? ' delplan' : ''}` },
       txt('hora', horaMin(e.ini)),
       el('span', { className: 'que' }, txt('titulo', e.titulo), el('span', { className: 'sub' }, `hasta ${horaMin(e.fin)}${e.lugar ? ` · ${e.lugar}` : ''}`)),
-      el('span', { className: 'chips' }, e.soloPlan ? txt('chip acc', 'plan') : null, nNotas || (e.plan && e.plan.nota) ? txt('chip acc', '✎') : null));
+      el('span', { className: 'chips' }, nNotas || (!e.soloPlan && e.plan && e.plan.nota) ? txt('chip acc', '✎') : null));
     return plegable(`cal:${real}:${e.id}`, fila, () => detalleEventoCal(e, d, real));
   });
   return [nav,
