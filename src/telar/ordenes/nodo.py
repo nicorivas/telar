@@ -36,6 +36,8 @@ AYUDA = "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su
 VUELTA = 2.0
 #: cada cuántas vueltas se publica la foto del espejo (15 × 2 s = 30 s)
 ESPEJO_CADA = 15
+#: un «trabajando» sin cambios por más de esto se da por pegado y se avisa igual (segundos)
+TRABAJANDO_VIEJO = 45 * 60
 
 
 def main(argv: list[str], ctx) -> int:
@@ -140,7 +142,7 @@ class Nodo:
         est = mod_estado.abrir(self.config)
         escribir = encargos._donde(self.ctx, nombre)
         if escribir is not None:
-            if est.atencion(nombre) == Atencion.TRABAJANDO:
+            if est.atencion(nombre) == Atencion.TRABAJANDO and not self.atencion_vieja(est, nombre):
                 return "trabajando: se lo entrega Stop"
             escribir(casilla.AVISO)
             est.anotar_atencion(nombre, Atencion.TRABAJANDO)
@@ -151,6 +153,18 @@ class Nodo:
                 encargos._abrir(self.ctx, agente, casilla.AVISO)
                 return "abierto"
         return "en su casilla, hasta que se abra"
+
+    @staticmethod
+    def atencion_vieja(est, nombre: str) -> bool:
+        """Un «trabajando» que lleva más de TRABAJANDO_VIEJO sin cambiar es un estado que quedó pegado
+        (un gancho que no corrió), no un turno real: esperar al Stop dejaría los mensajes sin entregar."""
+        from datetime import datetime
+
+        _, desde = est.atenciones().get(nombre, (None, None))
+        if desde is None:
+            return False
+        ahora = datetime.now(desde.tzinfo) if desde.tzinfo else datetime.now()
+        return (ahora - desde).total_seconds() > TRABAJANDO_VIEJO
 
     # ── el bucle ─────────────────────────────────────────────────────────────────
 
@@ -284,6 +298,14 @@ class Nodo:
         if d.get("vivo") and sesion:
             conocidas = {x.get("sesion") for x in anotados.values() if x.get("sesion")}
             if sesion in conocidas:
+                # ya la conocemos: si su ventana se cayó (el laptop durmió, se cortó la red) y el hilo no
+                # se archivó a propósito, se vuelve a abrir con el mismo nombre
+                aqui = next((n for n, x in anotados.items() if x.get("sesion") == sesion), "")
+                local = tel.por_nombre(aqui) if aqui else None
+                if not aqui or (local is not None and tel.vivo(local)) or aqui in tel.estado.archivados():
+                    return
+                mod_remoto.traer(tel, remoto, sesion, aqui)
+                self.anotar(f"«{aqui}»: su ventana se había cerrado y la sesión sigue en {remoto.nombre}: la reabrí")
                 return
             dormidos = {h.nombre for h in tel.hilos if not tel.vivo(h) and h.nombre not in anotados}
             nombres = ({h.nombre for h in tel.hilos} | set(anotados)) - dormidos
