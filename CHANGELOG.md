@@ -8,6 +8,8 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Dashboard «revisar»: each row has a «⋯» menu with the task's provider actions (close, new date, note, wait
+  for…), run directly without opening the card; a task with no proposal left leaves the list.
 - Dashboard «revisar»: the delay of each task is a button that reschedules it (tomorrow, the day after, next
   Monday, in a week, end of month, or a typed date), through the provider action with the new `rol: "fecha"`;
   the same picker opens from that action in a task's card.
