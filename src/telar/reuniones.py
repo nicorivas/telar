@@ -5,7 +5,7 @@ pesada por lo poco común que es (una palabra que está en cinco proyectos dice 
 está en uno):
 
 - las palabras del título que están en el nombre de la carpeta del proyecto;
-- el dominio del correo de los asistentes («@anasac.cl») en el nombre de la carpeta;
+- el dominio del correo de los asistentes («@cliente.cl») en el nombre de la carpeta;
 - los asistentes (su correo o su nombre completo) que aparecen en el README del proyecto.
 
 Un dominio o una persona que aparece en muchos proyectos es la propia empresa: no decide nada y se
@@ -111,7 +111,7 @@ def _asistente(texto: str) -> tuple[str, str]:
 
 
 def _dominio(correo: str) -> str:
-    """«ana@mail.anasac.cl» → «anasac»: la parte del dominio que nombra a la organización."""
+    """«ana@mail.cliente.cl» → «cliente»: la parte del dominio que nombra a la organización."""
     partes = correo.rsplit("@", 1)[-1].split(".")
     if len(partes) >= 3 and len(partes[-1]) == 2 and partes[-2] in {"com", "co", "gob", "org", "net", "edu"}:
         return partes[-3]
