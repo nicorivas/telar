@@ -414,7 +414,8 @@ export class PanelHoy {
                 + `<span class="desc"><span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>${esc(p.texto)}</span>`
                 // el atraso es un botón: reagendar lo que venció sin abrir la ficha
                 + `<span class="meta"><span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>`
-                + `<span class="destino"></span></span></div>`);
+                // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
+                + `<span class="destino"></span><span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span></span></div>`);
         });
         h.push('</section></div>');
         this.pintar(h);
@@ -894,6 +895,60 @@ export class PanelHoy {
             this.ficha.pagina = releida.datos ?? this.ficha.pagina;
             this.renderTarea();
         }
+    }
+
+    /** Las acciones de una tarea en un menú, desde la lista: se corren sin abrir la ficha. Si después
+     *  la tarea ya no tiene una propuesta esperando, se da por decidida y sale de «revisar». */
+    private async menuTarea(valor: string): Promise<void> {
+        const [proveedor, id, ref] = JSON.parse(valor) as string[];
+        const guardada = this.fichas.get(`${proveedor}:${id}`);
+        const pagina = guardada?.pagina ?? (await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
+        const acciones = pagina?.acciones ?? [];
+        if (!acciones.length) { void vscode.window.showWarningMessage(`telar: ${id} no tiene acciones`); return; }
+        const items = acciones.map((a, k) => ({
+            label: a.nombre, k,
+            description: [a.rol === 'fecha' ? 'elige la fecha' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
+                a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
+        }));
+        const elegida = await vscode.window.showQuickPick(items, { title: `${id} · ${pagina?.titulo ?? ''}`, placeHolder: 'qué hacer con esta tarea' });
+        if (!elegida) return;
+        const a = acciones[elegida.k];
+        const tipo = a.tipo ?? 'comando';
+        if (tipo === 'hilo') { await llevarPendiente(ref, false, proveedor); return; }
+        if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
+        let texto = '';
+        if (a.rol === 'fecha') {
+            const fecha = await elegirFecha(`${id} ${pagina?.titulo ?? ''}`.trim());
+            if (!fecha) return;
+            texto = fecha;
+        } else if (a.pide) {
+            const escrito = await vscode.window.showInputBox({ prompt: `${id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            if (escrito === undefined) return;
+            texto = escrito;
+        }
+        if (a.confirmar) {
+            const si = await vscode.window.showWarningMessage(`¿${a.nombre}? ${pagina?.titulo ?? id}`, { modal: true }, 'Sí');
+            if (si !== 'Sí') return;
+        }
+        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: ${a.nombre} · ${id}…` },
+            () => cli.accionTarea(id, proveedor, elegida.k, texto));
+        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+        this.fichas.delete(`${proveedor}:${id}`);
+        olvidarDia();
+        if (r.datos.hilo) {
+            this.decididas.add(id);
+            void this.actualizar(true);
+            await modelo.sondear();
+            await mostrarTerminal();
+            return;
+        }
+        const releida = await cli.tarea(id, proveedor);
+        if (releida.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: releida.datos, hora: Date.now() });
+        if (!releida.datos?.bloques.some(b => b.destacado)) this.decididas.add(id);
+        vscode.window.setStatusBarMessage(`${id}: ${a.nombre}`, 5000);
+        await this.actualizar(true);
+        if (this.pantalla === 'revisar') this.renderRevisar();
     }
 
     /** Los bloques de una página (una sección, la ficha de una tarea), en HTML. */
@@ -1496,6 +1551,7 @@ export class PanelHoy {
             case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
             case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
             case 'nota-evento': if (m.valor) await this.notaEvento(m.valor); break;
+            case 'menu-tarea': if (m.valor) await this.menuTarea(m.valor); break;
             case 'reagendar':
                 if (m.valor && await reagendar(m.valor)) { await this.actualizar(true); if (this.pantalla === 'revisar') this.renderRevisar(); }
                 break;

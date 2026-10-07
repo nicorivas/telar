@@ -350,6 +350,7 @@ export const CSS_DIA = `
 
   /* agenda: tecla · hora · qué · lo de al lado */
   .plazo-clic { cursor: pointer; } .plazo-clic:hover { text-decoration: underline; }
+  .menu-fila { cursor: pointer; color: var(--dim); text-align: center; } .menu-fila:hover { color: var(--fg); background: var(--hover); }
   .ag { display: grid; grid-template-columns: 7ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
   .ag .hora { color: var(--c); }
   .ag .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
