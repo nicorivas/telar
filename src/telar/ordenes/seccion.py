@@ -105,6 +105,9 @@ def _lienzo(l: object) -> str:
     params = l.get("params", {})
     if not isinstance(params, dict) or not all(isinstance(k, str) and isinstance(v, (str, int, float)) for k, v in params.items()):
         return "params: se esperaba un objeto de textos"
+    memoria = l.get("memoria")
+    if memoria is not None and (not isinstance(memoria, str) or not memoria.endswith(".json") or not Path(memoria).is_absolute()):
+        return "memoria: se esperaba la ruta absoluta de un .json"
     return ""
 
 
