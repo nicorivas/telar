@@ -1047,11 +1047,14 @@ export class PanelHoy {
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
     private async preparar(titulo: string, hora: string, enlace: string): Promise<void> {
-        const r = await cli.reunion(titulo, hora, enlace);
+        const r = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` }, () => cli.reunion(titulo, hora, enlace));
         if (!r.datos) {
             void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
             return;
         }
+        // con un agente que recibe lo sin proyecto (Gestión), se le encargó a él: se dice a quién
+        if (r.datos.hecho.startsWith('encargado')) void vscode.window.setStatusBarMessage(`telar: «${titulo}» ${r.datos.hecho}`, 6000);
         await modelo.sondear();
         await mostrarTerminal();
     }
