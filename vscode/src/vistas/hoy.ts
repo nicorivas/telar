@@ -49,6 +49,8 @@ export class PanelHoy {
     /** fichas ya pedidas: una pestaña de proveedor puede estar lejos (el feed se pide por ssh
      *  a otro continente, ~0,5 s cada una), así que se piden antes de que se abran */
     private fichas = new Map<string, { pagina: cli.JsonPagina; hora: number }>();
+    /** cuándo se lanzó cada atajo, para no encargar lo mismo dos veces sin querer */
+    private atajosLanzados = new Map<string, number>();
     /** las pestañas de proveedor declaradas y su tecla (`telar config --json`) */
     private pestanasCfg: cli.JsonPestana[] = [];
     /** la ficha abierta: de qué proveedor, su id y su ref (con la que se lleva al hilo) */
@@ -315,12 +317,21 @@ export class PanelHoy {
 
     private async lanzarAtajo(tecla: string): Promise<void> {
         const nombre = this.atajos.find(a => a.tecla === tecla)?.nombre ?? tecla;
+        // apretarla dos veces seguidas encargaba lo mismo dos veces (y el agente lo hacía dos veces)
+        const antes = this.atajosLanzados.get(tecla);
+        if (antes && Date.now() - antes < 120000) {
+            const si = await vscode.window.showWarningMessage(`«${nombre}» ya se encargó hace ${Math.round((Date.now() - antes) / 1000)} s. ¿Otra vez?`, { modal: true }, 'Sí');
+            if (si !== 'Sí') { await mostrarTerminal(); return; }
+        }
         const r = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: `telar: ${nombre}…` }, () => cli.atajo(tecla));
         if (!r.datos) {
             void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
             return;
         }
+        this.atajosLanzados.set(tecla, Date.now());
+        const estado = (r.datos as { encargo?: string }).encargo;
+        void vscode.window.setStatusBarMessage(`telar: ${nombre} → ${r.datos.hilo}${estado ? ` (${estado})` : ''}`, 8000);
         await modelo.sondear();
         await mostrarTerminal();
     }
