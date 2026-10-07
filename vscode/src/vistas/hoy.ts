@@ -17,7 +17,7 @@ import { irAHilo, mostrarTerminal } from '../acciones';
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
-import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
+import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
 import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
 import { elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
@@ -85,6 +85,10 @@ export class PanelHoy {
     private avisoConfig = '';
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
+    /** el día que muestra el calendario si no es hoy (AAAA-MM-DD), con sus datos y si están cargando */
+    private calFecha = '';
+    private calDatos?: Dia;
+    private calCargando = false;
 
     /** ⌥H: si el dashboard ya está al frente, devuelve el teclado al terminal. */
     alternar(): void {
@@ -452,35 +456,63 @@ export class PanelHoy {
         this.pintar(htmlPlan(this.plan, this.planError, this.planCargando));
     }
 
-    /** El calendario de hoy: los eventos, los bloques del plan y las notas de cada uno. */
-    private async abrirCalendario(): Promise<void> {
+    /** El día que muestra el calendario: hoy, u otro al que se navegó (`calFecha`). */
+    private diaCal(): Dia | undefined {
+        return this.calFecha && this.calFecha !== this.datos?.fecha ? this.calDatos : this.datos;
+    }
+
+    /** El calendario de un día (vacío es hoy): los eventos, los bloques del plan y las notas de cada uno. */
+    private async abrirCalendario(fecha = ''): Promise<void> {
         if (!this.panel) this.abrir();
         this.pantalla = 'calendario';
         if (!this.datos) this.datos = await dia();
-        this.renderCalendario();
         const hoyIso = this.datos.fecha;
-        const [plan, notas] = await Promise.all([
-            this.plan?.dia === hoyIso ? Promise.resolve({ datos: this.plan }) : cli.resultado('plan', ''),
-            cli.notasEventos(''),
+        this.calFecha = fecha === hoyIso ? '' : fecha;
+        const iso = this.calFecha || hoyIso;
+        this.calCargando = !!this.calFecha && this.calDatos?.fecha !== iso;
+        if (this.calCargando) { this.calDatos = { ...this.datos, fecha: iso, agenda: [], pendientes: [], error: undefined }; this.notas = undefined; }
+        this.renderCalendario();
+        const [otro, plan, notas] = await Promise.all([
+            this.calFecha ? diaDe(iso) : Promise.resolve(this.datos),
+            this.plan?.dia === iso ? Promise.resolve({ datos: this.plan }) : cli.resultado('plan', this.calFecha ? iso : ''),
+            cli.notasEventos(this.calFecha ? iso : ''),
         ]);
+        if ((this.calFecha || hoyIso) !== iso) return;  // se cambió de día mientras esto cargaba
+        if (this.calFecha) this.calDatos = otro;
+        this.calCargando = false;
         if (plan.datos?.ok) this.plan = plan.datos;
         this.notas = notas.datos?.ok ? notas.datos : undefined;
         this.notasAviso = notas.datos?.aviso ?? (notas.datos?.ok ? '' : (notas.datos?.error ?? notas.error ?? ''));
         if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
+    /** ‹ › y «hoy» del calendario: `valor` es «hoy» o cuántos días moverse. */
+    private async moverDiaCal(valor: string): Promise<void> {
+        const hoyIso = this.datos?.fecha;
+        if (!hoyIso) return;
+        if (valor === 'hoy') { this.eventoSel = ''; return this.abrirCalendario(''); }
+        const f = new Date(`${this.calFecha || hoyIso}T12:00:00`);
+        f.setDate(f.getDate() + (Number(valor) || 0));
+        const dos = (n: number) => String(n).padStart(2, '0');
+        this.eventoSel = '';
+        await this.abrirCalendario(`${f.getFullYear()}-${dos(f.getMonth() + 1)}-${dos(f.getDate())}`);
+    }
+
     private renderCalendario(): void {
-        const d = this.datos;
+        const d = this.diaCal();
         if (!d) return;
         this.teclas.clear();
+        this.teclas.set('[', () => this.moverDiaCal('-1'));
+        this.teclas.set(']', () => this.moverDiaCal('1'));
         const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
-        this.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso, this.general?.nombre ?? ''));
+        this.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso,
+            this.general?.nombre ?? '', this.datos?.fecha ?? d.fecha, this.calCargando));
     }
 
     /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el
      *  agente necesita para no preguntar: la reunión, su proyecto, lo que dicen el plan y las notas. */
     private async escribirSobreEvento(id: string, texto: string): Promise<void> {
-        const d = this.datos;
+        const d = this.diaCal();
         if (!texto.trim() || !d) return;
         if (!this.general) { void vscode.window.showWarningMessage('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
         const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
@@ -1561,6 +1593,7 @@ export class PanelHoy {
             case 'plan': await this.abrirPlan(''); break;
             case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
             case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
+            case 'cal-dia': if (m.valor) await this.moverDiaCal(m.valor); break;
             case 'nota-evento': if (m.valor) await this.notaEvento(m.valor); break;
             case 'menu-tarea': if (m.valor) await this.menuTarea(m.valor); break;
             case 'reagendar':

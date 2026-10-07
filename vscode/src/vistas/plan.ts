@@ -24,6 +24,10 @@ export const CSS_PLAN = `
   .plan-fila .k { color: var(--dim); }
   .plan-fila .sub { color: var(--dim); display: block; }
   .plan-fila.estrategico .v { font-weight: bold; }
+  .cal-nav { display: flex; gap: 1.5ch; align-items: baseline; margin: .5lh 0 0 6ch; }
+  .cal-nav a { color: var(--dim); }
+  .cal-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+  .cal-nav .cal-fecha { min-width: 14ch; text-align: center; }
   .cal-dos { display: grid; grid-template-columns: minmax(28ch, 1fr) minmax(32ch, 1.2fr); gap: 2ch; align-items: start; }
   .cal { position: relative; margin: 1lh 0 1lh 6ch; border-left: 1px solid var(--linea); }
   .cal-hora { position: absolute; left: -6ch; width: 5ch; text-align: right; color: var(--dim); font-size: .85em; transform: translateY(-.6em); }
@@ -245,13 +249,30 @@ function carriles(evs: EventoCal[]): Map<string, [number, number]> {
 
 /** El calendario en dos columnas: a la izquierda el día con todos sus eventos, a la derecha el
  *  detalle y las notas del que se eligió. */
-export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string, general = ''): string[] {
-    const h: string[] = [seccion('calendario', 'azul', d.fecha, '<a data-accion="plan">plan del día</a>')];
+const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/** «‹ mié 8 oct ›» sobre la columna del día, y «hoy» para volver cuando se está en otro. */
+function htmlNavDia(fecha: string, hoyIso: string, cargando: boolean): string {
+    const f = new Date(`${fecha}T12:00:00`);
+    const legible = isNaN(f.getTime()) ? fecha : `${DIAS_CORTOS[f.getDay()]} ${f.getDate()} ${MESES_CORTOS[f.getMonth()]}`;
+    return `<div id="cal-nav" class="cal-nav"><a data-accion="cal-dia" data-valor="-1" title="día anterior (←)">‹</a>`
+        + `<span class="cal-fecha">${esc(legible)}${cargando ? ' …' : ''}</span>`
+        + `<a data-accion="cal-dia" data-valor="1" title="día siguiente (→)">›</a>`
+        + (fecha !== hoyIso ? '<a data-accion="cal-dia" data-valor="hoy">hoy</a>' : '') + '</div>';
+}
+
+export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string,
+    general = '', hoyIso = d.fecha, cargando = false): string[] {
+    const h: string[] = [seccion('calendario', 'azul', d.fecha, `<a data-accion="plan-dia" data-valor="${esc(d.fecha)}">plan del día</a>`)];
     if (aviso) h.push(`<div class="vacio falla">${esc(aviso)}</div>`);
+    if (d.error) h.push(`<div class="vacio falla">${esc(d.error)}</div>`);
+    h.push(htmlNavDia(d.fecha, hoyIso, cargando));
     const completos = (d.agenda ?? []).filter(e => e.todo_el_dia);
     for (const e of completos) h.push(`<div class="cal-dia-completo">todo el día: ${esc(e.texto)}</div>`);
     if (!evs.length) {
-        h.push(`<div class="vacio">${d.agenda === null ? 'sin calendario consultado · <kbd>r</kbd>' : 'nada con hora hoy'}</div></section>`);
+        const nada = d.fecha === hoyIso ? 'nada con hora hoy' : 'nada con hora ese día';
+        h.push(`<div class="vacio">${cargando ? 'cargando…' : d.agenda === null ? 'sin calendario consultado · <kbd>r</kbd>' : nada}</div></section>`);
         return h;
     }
     const base = new Date(`${d.fecha}T00:00:00`).getTime();

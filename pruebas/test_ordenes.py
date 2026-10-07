@@ -208,6 +208,19 @@ class UnHilo(Orden):
         self.correr("hilo", "olvidar", "--hilo", "faro")
         self.assertEqual(self.json_de("hilos", "--json")["hilos"], [])
 
+    def test_olvidar_con_el_nombre_suelto_olvida_ese_y_no_el_actual(self):
+        self.vincular_faro()
+        codigo, _, error = self.correr("hilo", "olvidar", "faro")
+        self.assertEqual(codigo, 0, error)
+        self.assertEqual(self.json_de("hilos", "--json")["hilos"], [])
+
+    def test_un_verbo_sin_valor_con_nombre_y_hilo_se_niega(self):
+        self.vincular_faro()
+        codigo, _, error = self.correr("hilo", "olvidar", "otro", "--hilo", "faro")
+        self.assertEqual(codigo, 2)
+        self.assertIn("sobra", error)
+        self.assertEqual(len(self.json_de("hilos", "--json")["hilos"]), 1)
+
 
 class Ficha(Orden):
     def test_la_ficha_de_un_hilo_trae_el_documento_leido(self):
@@ -285,6 +298,25 @@ class Pendientes(Orden):
 
 
 class Hoy(Orden):
+    def test_otro_dia_pide_la_agenda_de_esa_fecha(self):
+        from unittest import mock
+
+        from telar import config as mod_config
+        from telar.ordenes import pendientes as orden_pendientes
+
+        cal = mock.Mock()
+        cal.nombre = "calendario"
+        with mock.patch.object(mod_config.Config, "proveedores_activos", return_value=[cal]), \
+                mock.patch.object(orden_pendientes, "de_proveedores", return_value=([], [])) as consulta:
+            datos = self.json_de("hoy", "--json", "--dia", "2026-02-03")
+        self.assertEqual((datos["fecha"], datos["dia"], datos["agenda"]), ("2026-02-03", "martes", []))
+        self.assertEqual(consulta.call_args[0][2].isoformat(), "2026-02-03")
+
+    def test_un_dia_mal_escrito_se_dice(self):
+        codigo, _, error = self.correr("hoy", "--json", "--dia", "mañana")
+        self.assertEqual(codigo, 2)
+        self.assertIn("no es un día", error)
+
     def test_local_no_consulta_nada_y_lo_declara(self):
         datos = self.json_de("hoy", "--json", "--local")
         self.assertTrue(datos["local"])

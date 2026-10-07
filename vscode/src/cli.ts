@@ -415,8 +415,8 @@ export const hilos = (conFicha: boolean, orden: string) =>
 export const ficha = (hilo: string) => telarJson<JsonFichaOrden>(['ficha', hilo], 30000);
 
 /** Sin `local`, se consulta a los proveedores declarados y puede tardar lo que tarden. */
-export const hoy = (local: boolean) =>
-    telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : [])], local ? 20000 : 120000);
+export const hoy = (local: boolean, dia = '') =>
+    telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : []), ...(dia ? ['--dia', dia] : [])], local ? 20000 : 120000);
 
 export const ir = (hilo: string, crear = false, remoto = '') =>
     telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);

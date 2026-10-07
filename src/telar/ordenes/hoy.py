@@ -7,6 +7,7 @@ después lo que está por hacer, y al final cuánto llevas.
     telar hoy              todo, consultando los proveedores declarados
     telar hoy --local      sin salir a la red: solo lo que hay en disco
     telar hoy --json       para una barra o un editor (docs/contratos.md)
+    telar hoy --dia 2026-10-08   la agenda de otro día
 
 Sin proveedores declarados no hay agenda, y está bien: telar no sabe de tu
 calendario hasta que tu configuración nombra una fuente que lo lea.
@@ -38,12 +39,18 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     p.add_argument("--local", action="store_true", help="sin red: no se consulta a los proveedores")
     p.add_argument("--limite", type=int, default=8, metavar="N", help="cuántos pendientes mostrar")
+    p.add_argument("--dia", default="", metavar="AAAA-MM-DD", help="otro día: la agenda de esa fecha (el calendario del dashboard)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
 
     ahora = dt.datetime.now()
     hoy = ahora.date()
+    if o.dia:
+        try:
+            hoy = dt.date.fromisoformat(o.dia)
+        except ValueError:
+            return _comun.queja(f"«{o.dia}» no es un día (AAAA-MM-DD)")
     tel = _comun.tejer(ctx)
 
     llaman = [h for h in tel.hilos if h.atencion in LLAMAN]

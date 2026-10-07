@@ -84,7 +84,23 @@ async function leer(tocaRed: boolean): Promise<Dia> {
     return d;
 }
 
-export function olvidarDia(): void { cache = undefined; agenda = { filas: null, hora: 0 }; deProveedores = []; }
+/** Otro día (la agenda de esa fecha, para el calendario): se consulta a los proveedores y se guarda unos minutos. */
+const otros = new Map<string, { dia: Dia; hora: number }>();
+export async function diaDe(fecha: string): Promise<Dia> {
+    const guardado = otros.get(fecha);
+    if (guardado && Date.now() - guardado.hora < CADA_RED) return guardado.dia;
+    const r = await cli.hoy(false, fecha);
+    const j = r.datos;
+    const d: Dia = j ? {
+        ahora: j.ahora ?? new Date().toISOString(), fecha: j.fecha ?? fecha, nombreDia: j.dia ?? '', semana: j.semana ?? 0,
+        agenda: j.agenda ?? null, pendientes: j.pendientes ?? [], declarados: j.proveedores?.declarados ?? [],
+        fallas: j.proveedores?.fallas ?? [],
+    } : { ...VACIO, fecha, error: r.error };
+    if (j) otros.set(fecha, { dia: d, hora: Date.now() });
+    return d;
+}
+
+export function olvidarDia(): void { otros.clear(); cache = undefined; agenda = { filas: null, hora: 0 }; deProveedores = []; }
 
 // ───────────────────────── la urgencia ─────────────────────────
 
@@ -739,6 +755,10 @@ document.addEventListener('keydown', function (e) {
   if (document.getElementById('ficha-per') && !e.metaKey && !e.ctrlKey && !e.altKey) {
     if (e.key === 'Enter') { e.preventDefault(); return vscode.postMessage({ tipo: 'tecla', k: '⏎' }); }
     if (e.key === 'Escape') { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'periodicos' }); }
+  }
+  // en el calendario, ← → cambian de día
+  if (document.getElementById('cal-nav') && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'cal-dia', valor: e.key === 'ArrowLeft' ? '-1' : '1' });
   }
   // en «revisar», ⏎ abre la primera propuesta
   if (document.getElementById('revisar') && e.key === 'Enter') {

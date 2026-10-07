@@ -391,6 +391,8 @@ entrada del agente y no la manda. Apretar Enter es de la persona.
 
 ### `telar hoy --json`
 
+Con `--dia AAAA-MM-DD`, la agenda (y `fecha`, `dia`, `semana`) es la de ese día; el resto no cambia.
+
 ```json
 { "ahora": "2026-09-18T09:12:44", "dia": "viernes", "fecha": "2026-09-18",
   "semana": 38, "local": false,
