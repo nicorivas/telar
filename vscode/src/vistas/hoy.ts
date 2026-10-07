@@ -10,6 +10,7 @@
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
 import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { irAHilo, mostrarTerminal } from '../acciones';
@@ -55,6 +56,9 @@ export class PanelHoy {
     private charla?: cli.JsonConversacion;
     /** el nonce del CSP del panel: los lienzos lo necesitan para que corran sus scripts */
     private nonce = nuevoNonce();
+    /** las memorias de los lienzos pintados: una llave al azar por lienzo → el archivo que declaró
+     *  su página. El lienzo solo escribe ese archivo, y lo nombra con la llave, nunca con una ruta. */
+    private memorias = new Map<string, string>();
     private proyectos?: cli.JsonProyecto[];
     private avisoProyectos = '';
     /** las teclas que declara `[atajos]`; se leen al abrir el panel y al volver de la configuración */
@@ -772,6 +776,7 @@ export class PanelHoy {
     /** Los bloques de una página (una sección, la ficha de una tarea), en HTML. */
     private htmlBloques(bloques: cli.JsonPagina['bloques']): string[] {
         const h: string[] = [];
+        this.memorias.clear();   // los iframes de antes se reemplazan: sus llaves ya no valen
         bloques.forEach((b, i) => {
             if (b.lienzo) h.push(this.htmlLienzo(b.lienzo));
             if (b.destacado) h.push(`<div class="prop" style="--c: var(--${esc(b.color ?? 'azul')})">`);
@@ -819,7 +824,18 @@ export class PanelHoy {
         const params: Record<string, string> = {};
         for (const [k, v] of Object.entries(l.params ?? {})) params[k] = String(v);
         const datos = JSON.stringify(params).replace(/</g, '\\u003c');
-        const previo = `<script nonce="${this.nonce}">(function(){var p=${datos};window.lienzo={params:p};`
+        // con `memoria`, el lienzo recibe lo que guardó la vez anterior y una función para guardar:
+        // el iframe no tiene almacenamiento propio (sandbox sin allow-same-origin)
+        let memoria = '';
+        if (l.memoria) {
+            const llave = nuevoNonce();
+            this.memorias.set(llave, l.memoria);
+            let leida = 'null';
+            try { const t = fs.readFileSync(l.memoria, 'utf8'); JSON.parse(t); leida = t; } catch { /* todavía no guardó nada */ }
+            memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
+                + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
+        }
+        const previo = `<script nonce="${this.nonce}">(function(){var p=${datos};window.lienzo={params:p};${memoria}`
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
         doc = previo + doc.replace(/<script(?![^>]*\bnonce=)/gi, `<script nonce="${this.nonce}"`);
@@ -1194,7 +1210,22 @@ export class PanelHoy {
         void this.panel?.webview.postMessage({ tipo: 'dia', html: this.nav() + h.join('\n') });
     }
 
-    private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string }): Promise<void> {
+    /** Lo que un lienzo pide guardar, en el archivo que declaró su página. Se escribe entero
+     *  (temporal y rename): un corte a medias no deja un JSON roto que el lienzo no pueda leer. */
+    private guardarLienzo(llave: string, datos: string): void {
+        const ruta = this.memorias.get(llave);
+        if (!ruta || datos.length > 4_000_000) return;
+        try { JSON.parse(datos); } catch { return; }
+        try {
+            fs.mkdirSync(path.dirname(ruta), { recursive: true });
+            const tmp = `${ruta}.${process.pid}.tmp`;
+            fs.writeFileSync(tmp, datos);
+            fs.renameSync(tmp, ruta);
+        } catch { /* sin permiso o sin disco: el lienzo sigue, sin memoria */ }
+    }
+
+    private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string }): Promise<void> {
+        if (m.tipo === 'lienzo-guardar') { this.guardarLienzo(m.valor ?? '', m.datos ?? ''); return; }
         if (m.tipo === 'per-horario') { await this.previaHorario(m.valor ?? ''); return; }
         if (m.tipo === 'per-skills') { await this.cargarSkills(m.valor ?? ''); return; }
         if (m.tipo === 'listo') {

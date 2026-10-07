@@ -278,7 +278,7 @@ export interface JsonPagina {
 }
 
 /** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
-export interface JsonLienzo { archivo: string; alto?: number; params?: Record<string, string | number> }
+export interface JsonLienzo { archivo: string; alto?: number; params?: Record<string, string | number>; memoria?: string }
 
 export const seccion = (clave: string) => telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */

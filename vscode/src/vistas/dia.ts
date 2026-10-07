@@ -598,8 +598,17 @@ document.addEventListener('mouseover', function (e) {
 });
 document.addEventListener('mouseleave', esconderGlobo);
 document.addEventListener('scroll', esconderGlobo, true);
+// un lienzo que pide guardar su memoria: solo se acepta de un iframe de lienzo de este panel, y
+// la extensión decide el archivo (el que declaró la página), nunca el lienzo
+window.addEventListener('message', function (e) {
+  const d = e.data;
+  if (!d || d.lienzo !== 'guardar' || typeof d.llave !== 'string' || typeof d.datos !== 'string') return;
+  const propio = Array.prototype.some.call(document.querySelectorAll('iframe.lienzo'), function (f) { return f.contentWindow === e.source; });
+  if (propio) vscode.postMessage({ tipo: 'lienzo-guardar', valor: d.llave, datos: d.datos });
+});
 window.addEventListener('message', function (e) {
   // un pedazo de la página (el formulario de un periódico): se cambia sin tocar lo escrito
+  if (!e.data || typeof e.data !== 'object') return;
   if (e.data.tipo === 'parcial') { const el = document.getElementById(e.data.id); if (el) { el.innerHTML = e.data.html; filtrarSkills(); } return; }
   if (e.data.tipo !== 'dia') return;
   esconderGlobo();
