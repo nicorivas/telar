@@ -42,7 +42,7 @@ const guardado = (clave, valor) => {
   return null;
 };
 const estado = {
-  hoy: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, nuevo: false, enlaces: [] }, proyectos: null, plan: null, diaPlan: '', crudo: '', error: '',
+  hoy: null, cal: null, calElegir: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, nuevo: false, enlaces: [] }, proyectos: null, plan: null, diaPlan: '', crudo: '', error: '',
   borradores: new Map(), envios: new Map(), repintar: false,
   abiertos: new Set(), sinVentana: new Set(), masPendientes: false,
   modo: guardado('telar.modo') === 'todos' ? 'todos' : 'urgentes',
@@ -350,7 +350,7 @@ function seccionEspejo(e) {
     ...(otros.length ? filasSinVentana(`${e.nombre}:otros`, e.nombre, otros) : []));
 }
 
-const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : location.hash === '#nuevo' ? 'nuevo' : 'hoy');
+const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash.startsWith('#cal') ? 'cal' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : location.hash === '#nuevo' ? 'nuevo' : 'hoy');
 
 function pintar(forzar = false) {
   // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
@@ -378,6 +378,12 @@ function pintar(forzar = false) {
     if (!estado.proyectos) cargarProyectos();
     cont.replaceChildren(...pantallaNuevo());
     scrollTo(0, 0);
+    return;
+  }
+  if (vista === 'cal') {
+    cargarCal(calDiaHash());
+    cont.replaceChildren(...pantallaCal().filter(Boolean));
+    scrollTo(0, y);
     return;
   }
   if (vista === 'plan' && estado.yo.plan) {
@@ -448,6 +454,180 @@ function pantallaNuevo() {
       el('div', { className: 'dim' }, 'Se abre en el servidor con el agente en modo automático. La carpeta es una unidad de proyectos; sin ella, la del agente.'),
       nombre, carpeta, lista, mensaje, el('div', { className: 'comenta-pie' }, dijo, boton)),
   ];
+}
+
+// ── el calendario: lo mismo que el del dashboard de VS Code, en una columna ──
+const calDiaHash = () => { const m = location.hash.match(/^#cal\/(\d{4}-\d{2}-\d{2})$/); return m ? m[1] : ''; };
+const hmDe = (iso) => (iso || '').slice(11, 16);
+const aMin = (h) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+const normal = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const parecidos = (a, b) => { const x = new Set(normal(a).split(' ').filter((w) => w.length > 3)); return normal(b).split(' ').some((w) => w.length > 3 && x.has(w)); };
+
+async function cargarCal(dia, fresco = false) {
+  const clave = dia || 'hoy';
+  if (estado.cal && estado.cal.clave === clave && (estado.cal.cargando || (!fresco && !estado.cal.error))) return;
+  const previo = estado.cal && estado.cal.clave === clave ? estado.cal.datos : null;
+  estado.cal = { clave, cargando: true, datos: previo, error: '' };
+  if (!previo) pintar();
+  let nuevo;
+  try {
+    const r = await fetch(`/api/calendario${dia ? `?dia=${dia}` : ''}`, { cache: 'no-store' });
+    const cuerpo = await r.json();
+    if (!r.ok) throw new Error(cuerpo.error || `error ${r.status}`);
+    nuevo = { clave, cargando: false, datos: cuerpo, error: '' };
+  } catch (e) { nuevo = { clave, cargando: false, datos: previo, error: e.message }; }
+  if (!estado.cal || estado.cal.clave !== clave) return;  // se cambió de día mientras cargaba
+  estado.cal = nuevo;
+  if (vistaActual() === 'cal' && calDiaHash() === dia) pintar();
+}
+
+// los eventos del día con lo que el plan dice de cada uno; un bloque del plan sin evento va aparte
+function eventosCal(d) {
+  const evs = (d.agenda || []).filter((e) => e.cuando && !e.todo_el_dia).map((e) => {
+    const ini = aMin(hmDe(e.cuando));
+    const fin = e.fin ? aMin(hmDe(e.fin)) : ini + 30;
+    return { id: e.id || `${e.cuando}:${e.texto}`, titulo: e.texto, ini, fin: fin > ini ? fin : ini + 30, lugar: e.lugar || '', url: e.url || '',
+             asistentes: (e.asistentes || []).filter((a) => !a.includes('resource.calendar')), soloPlan: false, plan: null };
+  });
+  for (const x of (d.plan && d.plan.agenda) || []) {
+    if (!x.inicio) continue;
+    const ini = aMin(String(x.inicio));
+    const par = (x.evento && evs.find((e) => e.id === x.evento && !e.plan))
+      || evs.find((e) => !e.plan && !e.soloPlan && Math.abs(e.ini - ini) <= 10 && parecidos(e.titulo, x.titulo));
+    if (par) { par.plan = x; continue; }
+    const fin = x.fin ? aMin(String(x.fin)) : ini + 30;
+    evs.push({ id: `plan:${x.inicio}:${x.titulo}`, titulo: x.titulo || '', ini, fin: fin > ini ? fin : ini + 30, lugar: '', url: '', asistentes: [], soloPlan: true, plan: x });
+  }
+  return evs.sort((a, b) => a.ini - b.ini || a.fin - b.fin);
+}
+
+function notasCal(e, d) {
+  const ev = d.notas || {};
+  if (ev[e.id]) return ev[e.id].notas || [];
+  const hm = `${String(Math.floor(e.ini / 60)).padStart(2, '0')}:${String(e.ini % 60).padStart(2, '0')}`;
+  const otro = Object.values(ev).find((x) => x.inicio === hm && x.titulo && parecidos(x.titulo, e.titulo));
+  return (otro && otro.notas) || [];
+}
+
+const horaMin = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+async function postCal(ruta, cuerpo) {
+  const r = await fetch(ruta, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' }, body: JSON.stringify(cuerpo) });
+  const resp = await r.json().catch(() => ({}));
+  return r.ok && resp.ok ? resp : { ok: false, error: resp.error || `no salió (${r.status})` };
+}
+
+// un campo de texto con su botón, que guarda el borrador y dice cómo salió
+function campoCal(clave, placeholder, boton, alMandar) {
+  const campo = el('textarea', { rows: 2, className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', maxLength: 4000, placeholder,
+    'aria-label': placeholder, 'data-clave': clave, value: estado.borradores.get(clave) || '',
+    oninput: () => { estado.borradores.set(clave, campo.value); crece(); },
+    onblur: () => { if (estado.repintar) { estado.repintar = false; pintar(); } } });
+  const crece = () => { campo.style.height = 'auto'; campo.style.height = `${Math.min(campo.scrollHeight, 160)}px`; };
+  const dijo = estado.envios.get(clave);
+  const manda = el('button', { type: 'button', className: 'manda', onclick: async () => {
+    const texto = campo.value.trim();
+    if (!texto) return;
+    manda.disabled = true; estado.envios.set(clave, { t: 'enviando…', ok: null });
+    const r = await alMandar(texto);
+    if (r.ok) { estado.borradores.delete(clave); estado.envios.delete(clave); } else estado.envios.set(clave, { t: r.error, ok: false });
+    pintar(true);
+  } }, boton);
+  return el('div', { className: 'cal-escribir' }, campo, manda,
+    dijo ? el('div', { className: `dijo ${dijo.ok === false ? 'mal' : ''}`, textContent: dijo.t }) : null);
+}
+
+function detalleEventoCal(e, d, dia) {
+  const p = e.plan || {};
+  const f = p.ficha || {};
+  const pares = [
+    ['lugar', e.lugar],
+    ['con', (p.con && p.con.length ? p.con : e.asistentes.map((a) => a.split('@')[0])).slice(0, 8).join(', ')],
+    ['plan', [p.estado, p.accion ? `propone: ${p.accion}` : ''].filter(Boolean).join(' · ')], ['nota', p.nota],
+    ['decisión', f.decision], ['opciones', (f.opciones || []).map((o) => `${o.id}) ${o.texto}`)], ['recomiendo', f.recomendacion],
+    ['resultado', f.resultado], ['llevar', f.llevar], ['pedir', f.pedir], ['riesgo', f.riesgo], ['borrador', f.borrador]];
+  const notas = notasCal(e, d);
+  const clave = `cal:${dia}:${e.id}`;
+  const elegir = estado.calElegir && estado.calElegir.id === e.id ? estado.calElegir : null;
+  const acciones = [];
+  if (e.url && /^https:\/\//.test(e.url)) acciones.push(el('a', { className: 'boton', href: e.url, target: '_blank', rel: 'noopener' }, 'entrar ↗'));
+  if (!e.soloPlan && estado.yo.nuevo) {
+    acciones.push(el('button', { type: 'button', onclick: async (ev) => {
+      ev.target.disabled = true;
+      const r = await postCal('/api/evento/reunion', { dia, id: e.id, proyecto: '' });
+      if (r.ok && r.hecho === 'preguntar') { estado.calElegir = { id: e.id, candidatos: r.candidatos || [], gestion: r.gestion || 'Gestión' }; pintar(true); }
+      else if (r.ok && r.hilo) { estado.recien = r.hilo; cargar(true); location.hash = hashConv(r.hilo); }
+      else { estado.envios.set(`${clave}:reunion`, { t: r.error || 'no pude abrir la reunión', ok: false }); pintar(true); }
+    } }, 'preparar o minuta'));
+  }
+  const dReunion = estado.envios.get(`${clave}:reunion`);
+  return el('div', { className: 'cal-det' },
+    detallePlan(pares),
+    ...notas.map((n) => el('div', { className: 'cal-nota' }, txt('k', `${n.de} · ${(n.creado || '').slice(11, 16)}`), el('div', { className: 'v', style: 'white-space:pre-wrap' }, enLinea(n.texto)))),
+    acciones.length ? el('div', { className: 'acciones-ev' }, ...acciones) : null,
+    dReunion ? el('div', { className: 'dijo mal', textContent: dReunion.t }) : null,
+    elegir ? el('div', { className: 'cal-elegir' },
+      el('div', { className: 'dim' }, `¿de qué proyecto es «${e.titulo}»? Se recuerda para esta serie.`),
+      ...elegir.candidatos.map((c) => el('button', { type: 'button', onclick: () => elige(c.ruta) }, c.nombre || c.ruta, el('span', { className: 'sub' }, (c.motivos || []).join(' · ')))),
+      el('button', { type: 'button', onclick: () => elige('gestion') }, elegir.gestion, el('span', { className: 'sub' }, 'el agente de lo que no tiene proyecto'))) : null,
+    estado.yo.escribir ? campoCal(`${clave}:nota`, 'una nota sobre esta reunión', '+ nota', async (texto) => {
+      const r = await postCal('/api/evento/nota', { dia, id: e.id, texto });
+      if (r.ok) cargarCal(calDiaHash(), true);
+      return r;
+    }) : null,
+    estado.yo.escribir && d.general && !e.soloPlan ? campoCal(`${clave}:esc`, `escríbele a ${d.general.nombre} sobre esta reunión`, `enviar a ${d.general.nombre}`, async (texto) => {
+      const r = await postCal('/api/evento/escribir', { dia, id: e.id, texto });
+      if (r.ok) cargarCal(calDiaHash(), true);
+      return r;
+    }) : null);
+
+  async function elige(proyecto) {
+    const r = await postCal('/api/evento/reunion', { dia, id: e.id, proyecto });
+    if (r.ok && r.hilo) { estado.calElegir = null; estado.recien = r.hilo; cargar(true); location.hash = hashConv(r.hilo); }
+    else { estado.envios.set(`${clave}:reunion`, { t: r.error || 'no pude abrir la reunión', ok: false }); pintar(true); }
+  }
+}
+
+function pantallaCal() {
+  const c = estado.cal;
+  const dia = calDiaHash();
+  const d = c && c.datos;
+  const real = (d && d.dia) || dia || estado.hoy && estado.hoy.fecha || '';
+  const hoyIso = (d && d.hoy) || (estado.hoy && estado.hoy.fecha) || '';
+  const mueve = (n) => () => {
+    const f = new Date(`${real}T12:00`); f.setDate(f.getDate() + n);
+    const iso = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+    estado.calElegir = null; location.hash = iso === hoyIso ? '#cal' : `#cal/${iso}`;
+  };
+  const f = new Date(`${real}T12:00`);
+  const etiqueta = real ? `${DIAS[f.getDay()]} ${f.getDate()} ${MESES[f.getMonth()]}${real === hoyIso ? ' · hoy' : ''}` : 'calendario';
+  const nav = el('div', { className: 'plan-nav' },
+    el('button', { type: 'button', 'aria-label': 'día anterior', onclick: mueve(-1) }, '‹'),
+    el('span', { className: 'plan-dia', textContent: `${etiqueta}${c && c.cargando ? ' …' : ''}` }),
+    el('button', { type: 'button', 'aria-label': 'día siguiente', onclick: mueve(1) }, '›'));
+  const cola = real && real !== hoyIso ? el('div', { className: 'nuevo-hilo' }, el('button', { type: 'button', onclick: () => { location.hash = '#cal'; } }, 'volver a hoy')) : null;
+  if (!d) return [nav, c && c.error ? el('div', { className: 'error', textContent: c.error }) : vacio('leyendo el calendario…')];
+  const evs = eventosCal(d);
+  const completos = (d.agenda || []).filter((e) => e.todo_el_dia);
+  const esHoy = real === hoyIso;
+  const ahoraMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const proxima = esHoy ? evs.find((e) => e.fin > ahoraMin) : null;
+  const filas = evs.flatMap((e) => {
+    const nNotas = notasCal(e, d).length;
+    const fila = el('div', { className: `fila ag${e.fin <= ahoraMin && esHoy ? ' pasada' : ''}${proxima === e ? ' proxima' : ''}${e.soloPlan ? ' condicional' : ''}` },
+      txt('hora', horaMin(e.ini)),
+      el('span', { className: 'que' }, txt('titulo', e.titulo), el('span', { className: 'sub' }, `hasta ${horaMin(e.fin)}${e.lugar ? ` · ${e.lugar}` : ''}`)),
+      el('span', { className: 'chips' }, e.soloPlan ? txt('chip acc', 'plan') : null, nNotas || (e.plan && e.plan.nota) ? txt('chip acc', '✎') : null));
+    return plegable(`cal:${real}:${e.id}`, fila, () => detalleEventoCal(e, d, real));
+  });
+  return [nav,
+    c.error ? el('div', { className: 'error', textContent: c.error }) : null,
+    d.aviso ? el('div', { className: 'falla', textContent: d.aviso }) : null,
+    ...(d.fallas || []).map((x) => el('div', { className: 'falla', textContent: `(proveedor caído · ${x})` })),
+    ...completos.map((e) => el('div', { className: 'dim', style: 'padding:0 2ch', textContent: `todo el día: ${e.texto}` })),
+    bloque('agenda', 'agenda', evs.length || null, null,
+      ...(filas.length ? filas : [vacio(d.agenda === null ? 'sin calendario consultado' : 'nada con hora')])),
+    cola];
 }
 
 // ── el plan del día ────────────────────────────────────────

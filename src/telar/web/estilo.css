@@ -358,3 +358,16 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .nuevo-hilo button:active { background: var(--hover); }
 .comenta.nuevo input.campo { min-height: calc(2 * var(--lh)); }
 .comenta.nuevo textarea.campo { min-height: calc(4 * var(--lh)); }
+
+/* calendario */
+.cal-det { padding: 0 2ch .5lh; }
+.cal-nota { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--dim); }
+.acciones-ev { display: flex; flex-wrap: wrap; gap: 1ch; margin: .5lh 0; }
+.acciones-ev a.boton, .acciones-ev button, .cal-elegir button { padding: .3lh 1.5ch; color: var(--verde); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); text-decoration: none; }
+.cal-elegir { display: flex; flex-direction: column; gap: .5lh; margin: .5lh 0; }
+.cal-elegir button { text-align: left; }
+.cal-elegir .sub { display: block; color: var(--dim); font-weight: 400; }
+.cal-escribir { margin: .5lh 0; display: flex; flex-direction: column; gap: .3lh; }
+.cal-escribir textarea { width: 100%; resize: none; }
+.fila.ag .que .sub { display: block; color: var(--dim); }
+.cal-escribir .manda { align-self: flex-end; padding: .3lh 1.5ch; color: var(--verde); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); }

@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar web`: a «cal» tab with the VS Code dashboard's calendar in one column — day navigation, the plan's blocks merged
+  with the events, each event's context and notes, «+ nota», «preparar o minuta» (asks the project when it can't tell) and a
+  message to the general agent with the meeting as context. New `telar.webcal`; `/api/calendario`, `/api/evento/{nota,reunion,escribir}`.
 - One tmux session per machine: every thread is a window of the telar session, stamped with its own id
   (`@telar_id`), including agents' errands, periodic jobs, the phone, the web, and threads the laptop opens or
   resumes on a server (created over ssh). Another machine or the phone looks at a thread through a grouped

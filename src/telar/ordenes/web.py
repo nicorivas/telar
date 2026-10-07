@@ -45,7 +45,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 
 from telar import bus as mod_bus
-from telar import conversacion, enlace, espejo
+from telar import conversacion, enlace, espejo, webcal
 from telar.ordenes import _comun
 
 AYUDA = "telar en el navegador del celular: el día y los hilos."
@@ -185,6 +185,7 @@ def comentar_plan(plan: Path, comando: str, datos: object) -> tuple[int, dict]:
     return 200, {"ok": True, "hilo": primera.split(" · ")[0][:120], "caracteres": len(texto)}
 
 
+RUTAS_EVENTO = ("/api/evento/nota", "/api/evento/reunion", "/api/evento/escribir")
 MAX_NOMBRE = 60
 ENTRE_NUEVOS = 5.0
 _ultimo_nuevo = [0.0]
@@ -476,10 +477,14 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if ruta == "/api/yo":  # qué puede hacer esta página: la escritura es opt-in y necesita el enlace
                     cuerpo = {"escribir": escribir, "plan": plan is not None, "plan_comentar": bool(plan is not None and plan_comando and escribir),
                               "nuevo": bool(nuevo and escribir),
+                              "calendario": ctx is not None,
                               "atajos": [{"tecla": a.tecla, "nombre": a.nombre, "descripcion": a.descripcion or a.mensaje}
                                          for a in (config.atajos if config and nuevo and escribir else ())],
                               "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")
+                if ruta == "/api/calendario":  # un día del calendario: agenda, notas, plan (solo lee)
+                    codigo, cuerpo = webcal.dia(config, plan, parse_qs(consulta).get("dia", [""])[0])
+                    return self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
                 if ruta == "/api/plan":  # los planes del día (solo si se arrancó con --plan)
                     if plan is None:
                         return self._enviar(404, json.dumps({"error": "esta página no tiene planes: `telar web --plan CARPETA`"}).encode(), "application/json")
@@ -523,11 +528,11 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo"):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", *RUTAS_EVENTO):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
-            if ruta in ("/api/hilo/nuevo", "/api/atajo") and not nuevo:
+            if ruta in ("/api/hilo/nuevo", "/api/atajo", "/api/evento/reunion") and not nuevo:
                 return responder(404, {"ok": False, "error": "esta página no abre hilos: `telar web --escribir --nuevo`"})
             if not escribir or ctx is None:
                 return responder(403, {"ok": False, "error": "esta página solo lee: arráncala con `telar web --escribir`"})
@@ -552,6 +557,20 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if isinstance(datos, dict):
                     anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
                                  "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
+            if ruta in RUTAS_EVENTO:
+                try:
+                    if ruta == "/api/evento/nota":
+                        codigo, resultado = webcal.nota(config, plan, datos)
+                    elif ruta == "/api/evento/escribir":
+                        codigo, resultado = webcal.escribir(config, plan, datos)
+                    else:
+                        codigo, resultado = webcal.reunion(config, plan, datos, {p["ruta"] for p in json.loads(datos_proyectos())["proyectos"]})
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "evento", str(datos.get("id", ""))[:60] + ruta[len("/api/evento"):],
+                                 len(str(datos.get("texto", ""))), "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
                 return responder(codigo, resultado)
             if ruta == "/api/atajo":
                 try:
