@@ -45,6 +45,10 @@ export const CSS_PLAN = `
   .cal-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
   .cal-nota { padding: .3lh 0; border-top: 1px solid var(--linea); }
   .cal-nota .de { color: var(--dim); font-size: .85em; }
+  .cal-escribir { margin-top: 1lh; display: flex; flex-direction: column; gap: .4lh; }
+  .cal-escribir textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea); padding: .3lh 1ch; resize: vertical; }
+  .cal-escribir textarea:focus { outline: none; border-color: var(--amarillo); }
+  .cal-escribir a { align-self: flex-end; }
 `;
 
 function t(s: unknown): string {
@@ -241,7 +245,7 @@ function carriles(evs: EventoCal[]): Map<string, [number, number]> {
 
 /** El calendario en dos columnas: a la izquierda el día con todos sus eventos, a la derecha el
  *  detalle y las notas del que se eligió. */
-export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string): string[] {
+export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string, general = ''): string[] {
     const h: string[] = [seccion('calendario', 'azul', d.fecha, '<a data-accion="plan">plan del día</a>')];
     if (aviso) h.push(`<div class="vacio falla">${esc(aviso)}</div>`);
     const completos = (d.agenda ?? []).filter(e => e.todo_el_dia);
@@ -276,7 +280,7 @@ export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | 
             + `<span class="h">${esc(hm)}${tieneNotas ? ' <span class="marca-nota">✎</span>' : ''}</span><span class="t">${esc(e.titulo)}</span></div>`);
     }
     col.push('</div>');
-    h.push(`<div class="cal-dos"><div>${col.join('')}</div><div class="cal-det">${htmlDetalle(elegido, notas, d.fecha)}</div></div></section>`);
+    h.push(`<div class="cal-dos"><div>${col.join('')}</div><div class="cal-det">${htmlDetalle(elegido, notas, d.fecha)}${htmlEscribir(elegido, general)}</div></div></section>`);
     return h;
 }
 
@@ -285,6 +289,14 @@ export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | 
 function conRutas(html: string): string {
     return html.replace(/(^|[\s(:])((?:[\w.-]+\/)+[\w.-]+\.(?:md|json|html))(?=$|[\s).,;])/g,
         (_, antes: string, ruta: string) => `${antes}<a data-accion="abrir-ruta" data-valor="${ruta}" title="abrir ${ruta}">${ruta}</a>`);
+}
+
+/** El campo para escribirle al agente general sobre la reunión elegida (⌘⏎ envía). */
+function htmlEscribir(e: EventoCal, general: string): string {
+    if (!general) return '';
+    return `<div class="cal-escribir"><textarea id="ev-texto" data-evento="${esc(e.id)}" rows="3" spellcheck="false"`
+        + ` placeholder="Escríbele a ${esc(general)} sobre esta reunión. Le llega con la reunión, su proyecto y las notas (⌘⏎ envía)"></textarea>`
+        + `<a id="ev-enviar" data-accion="ev-escribir" data-campo="ev-texto" data-valor="${esc(e.id)}">enviar a ${esc(general)}</a></div>`;
 }
 
 function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: string): string {

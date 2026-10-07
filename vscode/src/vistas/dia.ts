@@ -614,7 +614,12 @@ window.addEventListener('message', function (e) {
   esconderGlobo();
   const activo = document.activeElement, id = activo && activo.id;
   const pos = id === 'buscar' || id === 'buscar-p' ? activo.selectionStart : 0;
+  // lo que se está escribiendo sobre una reunión sobrevive al repintado de cada minuto
+  const ta = document.getElementById('ev-texto');
+  const previo = ta ? { ev: ta.dataset.evento, v: ta.value, foco: activo === ta, s: ta.selectionStart } : null;
   raiz.innerHTML = e.data.html;
+  const nt = document.getElementById('ev-texto');
+  if (previo && nt && nt.dataset.evento === previo.ev) { nt.value = previo.v; if (previo.foco) { nt.focus(); nt.setSelectionRange(previo.s, previo.s); } }
   const nb = document.getElementById('buscar');
   if (nb) { nb.value = estado.q; if (id === 'buscar') { nb.focus(); nb.setSelectionRange(pos, pos); } }
   const np = document.getElementById('buscar-p');
@@ -687,9 +692,20 @@ document.addEventListener('click', function (e) {
   const a = e.target.closest('[data-accion]');
   // el ✓ tacha la fila al tiro: la lista se relee cuando el proveedor termine
   if (a && a.dataset.accion === 'hecha') { const f = a.closest('.tarea'); if (f) f.classList.add('marcada'); }
-  if (a) vscode.postMessage({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey });
+  // un botón que manda lo escrito en un campo (el de escribirle al agente sobre una reunión)
+  const campo = a && a.dataset.campo ? document.getElementById(a.dataset.campo) : null;
+  if (campo && !campo.value.trim()) { campo.focus(); return; }
+  if (a) vscode.postMessage({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey, datos: campo ? campo.value : undefined });
+  if (campo) campo.value = '';
 });
 document.addEventListener('keydown', function (e) {
+  // escribiéndole al agente sobre una reunión: las letras son del campo; ⌘⏎ envía, ⎋ sale del campo
+  const activo = document.activeElement;
+  if (activo && activo.id === 'ev-texto') {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); const b = document.getElementById('ev-enviar'); if (b) b.click(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); activo.blur(); }
+    return;
+  }
   // escribiendo en el formulario de un periódico: las letras son del campo, no atajos
   if (document.getElementById('form-per')) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); return guardarPer(); }

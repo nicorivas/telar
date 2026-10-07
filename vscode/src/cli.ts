@@ -229,12 +229,12 @@ export interface JsonReunion {
 /** Preparar o hacer la minuta de una reunión. Con `preguntar`, si no se sabe de qué proyecto es,
  *  no hace nada y devuelve los candidatos (`hecho: "preguntar"`); `proyecto` es la elección. */
 export const reunion = (titulo: string, hora: string, enlace = '', evento = '',
-    opciones: { asistentes?: string[]; proyecto?: string; preguntar?: boolean } = {}) =>
+    opciones: { asistentes?: string[]; proyecto?: string; preguntar?: boolean; donde?: boolean } = {}) =>
     telarJson<JsonReunion>(
         ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), ...(evento ? ['--evento', evento] : []),
             ...(opciones.asistentes?.length ? ['--asistentes', opciones.asistentes.join(',')] : []),
             ...(opciones.proyecto ? ['--proyecto', opciones.proyecto] : []),
-            ...(opciones.preguntar ? ['--preguntar'] : []), '--json'], 40000);
+            ...(opciones.preguntar ? ['--preguntar'] : []), ...(opciones.donde ? ['--donde'] : []), '--json'], 40000);
 
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {
@@ -273,7 +273,13 @@ export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
     atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
     pestanas?: JsonPestana[];
+    /** el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`); vacío si no hay */
+    agente_general?: { clave?: string; nombre?: string };
 }>(['config', '--json'], 20000);
+
+/** `telar encargar <agente> "…"`: pedirle algo a un agente residente, viva donde viva. */
+export const encargar = (agente: string, texto: string) =>
+    telarJson<{ hilo?: string; estado?: string; id?: string }>(['encargar', agente, texto], 30000);
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
  *  prefijos si terminan en `*`. `home`: si declara una página. */

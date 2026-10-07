@@ -18,7 +18,7 @@ import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
-import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan } from './plan';
+import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
 import { llevarPendiente, marcarHecha } from './tareas';
 
 export class PanelHoy {
@@ -31,6 +31,8 @@ export class PanelHoy {
     private planCargando = false;
     /** las notas de los eventos de hoy, y el evento elegido en el calendario */
     private notas?: cli.JsonNotas;
+    /** el agente que recibe lo que no tiene proyecto: a quién le escribe el calendario */
+    private general?: { clave: string; nombre: string };
     private notasAviso = '';
     private eventoSel = '';
     /** la pestaña de los procesos periódicos: la lista leída y el abierto (con su log), si hay uno */
@@ -251,6 +253,7 @@ export class PanelHoy {
         this.atajos = r.datos?.atajos ?? [];
         this.bloquesCfg = r.datos?.bloques ?? [];
         this.pestanasCfg = r.datos?.pestanas ?? [];
+        this.general = r.datos?.agente_general?.clave ? { clave: r.datos.agente_general.clave, nombre: r.datos.agente_general.nombre ?? r.datos.agente_general.clave } : undefined;
         this.render();
         void this.leerBloques();
     }
@@ -457,7 +460,49 @@ export class PanelHoy {
         if (!d) return;
         this.teclas.clear();
         const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
-        this.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso));
+        this.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso, this.general?.nombre ?? ''));
+    }
+
+    /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el
+     *  agente necesita para no preguntar: la reunión, su proyecto, lo que dicen el plan y las notas. */
+    private async escribirSobreEvento(id: string, texto: string): Promise<void> {
+        const d = this.datos;
+        if (!texto.trim() || !d) return;
+        if (!this.general) { void vscode.window.showWarningMessage('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
+        const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
+        const e = eventosDelDia(d, plan).find(x => x.id === id);
+        if (!e) return;
+        const hm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+        // de qué proyecto es: lo que telar recuerda para la serie o lo que deduce (sin hacer nada)
+        let proyecto = '';
+        if (!e.soloPlan) {
+            const r = await cli.reunion(e.titulo, hm(e.inicio), e.url, e.id, { asistentes: e.asistentes, preguntar: true, donde: true });
+            if (r.datos?.destino && r.datos.destino !== 'gestion') proyecto = `Proyecto: ${r.datos.destino}${r.datos.recordado ? ' (elegido por Nico para esta serie)' : ' (deducido)'}.`;
+            else if (r.datos?.candidatos?.length) proyecto = `Proyecto: no está claro; candidatos: ${r.datos.candidatos.slice(0, 3).map(c => `${c.ruta} (${c.motivos.join(', ')})`).join('; ')}.`;
+            else proyecto = 'Proyecto: ninguno deducido.';
+        }
+        const notas = notasDe(e, this.notas).map(n => `${n.de}: ${n.texto}`);
+        const lineas = [
+            `[Nico, desde el calendario del dashboard] ${texto.trim()}`,
+            '',
+            `Contexto. La reunión: «${e.titulo}», ${d.fecha} de ${hm(e.inicio)} a ${hm(e.fin)}${e.lugar ? `, ${e.lugar}` : ''}${e.soloPlan ? ' (bloque del plan del día, no está en el calendario)' : ''}.`,
+            e.asistentes.length ? `Asistentes: ${e.asistentes.join(', ')}.` : '',
+            proyecto,
+            e.plan?.nota ? `El plan del día dice: ${e.plan.nota}` : '',
+            e.plan?.ficha?.decision ? `Decisión que pide el plan: ${e.plan.ficha.decision}` : '',
+            notas.length ? `Notas del evento: ${notas.join(' | ')}` : '',
+            `Id del evento: ${e.id}. Si lo que hagas es de esta reunión, déjale una nota: telar evento nota "${e.id}" "…" --de ${this.general.clave} --titulo "${e.titulo}" --inicio ${hm(e.inicio)} --dia ${d.fecha}`,
+        ].filter(Boolean);
+        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: escribiéndole a ${this.general.nombre}…` },
+            () => cli.encargar(this.general!.clave, lineas.join('\n')));
+        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        // queda constancia en el evento: lo que se pidió y a quién
+        await cli.notaEvento(e.id, `A ${this.general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha);
+        const n = await cli.notasEventos(d.fecha);
+        if (n.datos?.ok) this.notas = n.datos;
+        this.eventoSel = id;
+        void vscode.window.setStatusBarMessage(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
     /** Una nota de la persona sobre un evento: se guarda donde viven las notas (`telar evento nota`). */
@@ -1444,6 +1489,7 @@ export class PanelHoy {
             case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
             case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
             case 'nota-evento': if (m.valor) await this.notaEvento(m.valor); break;
+            case 'ev-escribir': if (m.valor) await this.escribirSobreEvento(m.valor, m.datos ?? ''); break;
             case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
             case 'directorios': await this.cambiarDirectorios(); break;
         }
