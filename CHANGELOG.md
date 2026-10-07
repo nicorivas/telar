@@ -17,6 +17,9 @@ workflow refuses to run if the two disagree.
   a «calendario» tab (`a`) in two columns: the day with its events and the plan's own blocks on the left,
   the selected event with its notes on the right («+ nota» writes one).
 - The day's agenda rows carry `fin`, `lugar` and `todo_el_dia` for calendar events.
+- `telar reunion` hands the preparation or the minutes to the agent that receives what has no project
+  (`[agentes] sin_proyecto`) and goes to its thread, instead of opening a tab per meeting; `--hilo-nuevo`
+  keeps the old behaviour.
 
 ### Fixed
 
