@@ -117,3 +117,16 @@ class PorElBus(Prueba):
         with mock.patch.object(espejo, "leer_todos", return_value=fotos):
             self.assertEqual(_destino_remoto(self.ctx, {"url": "trabajo/proyectos/pa/x.md"}), ("Faro", "laptop"))
             self.assertIsNone(_destino_remoto(self.ctx, {"url": "agentes/gestion/bitacora.md"}))
+
+    def test_un_trabajando_viejo_se_da_por_pegado(self):
+        from datetime import datetime, timedelta
+
+        from telar.modelo import Atencion
+        from telar.ordenes.nodo import TRABAJANDO_VIEJO, Nodo
+
+        def est(hace):
+            return SimpleNamespace(atenciones=lambda: {"Faro": (Atencion.TRABAJANDO, datetime.now() - timedelta(seconds=hace))})
+
+        self.assertTrue(Nodo.atencion_vieja(est(TRABAJANDO_VIEJO + 60), "Faro"))
+        self.assertFalse(Nodo.atencion_vieja(est(60), "Faro"))
+        self.assertFalse(Nodo.atencion_vieja(SimpleNamespace(atenciones=lambda: {}), "Faro"))

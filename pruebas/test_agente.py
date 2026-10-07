@@ -676,3 +676,30 @@ class SkillsDelAgente(unittest.TestCase):
                     os.environ.pop("CLAUDE_CONFIG_DIR")
                 else:
                     os.environ["CLAUDE_CONFIG_DIR"] = antes
+
+
+class AvisoEnSesionPropia(ConEstado):
+    """El gancho de aviso encuentra su hilo por la marca de su sesión propia, sin $TELAR_HILO."""
+
+    def test_sin_variable_usa_la_marca_de_la_sesion(self):
+        import io
+        import json as _json
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar import movil
+        from telar.ordenes import agente as orden
+
+        carga = _json.dumps({"hook_event_name": "Stop", "session_id": "s-nueva"})
+        o = SimpleNamespace(json=True, panel="%7", olvidar=False, evento="", agente="claude-code", sesion="", hilo="")
+        ctx = SimpleNamespace(config=self.config)
+        with mock.patch.dict(os.environ, {"TMUX_PANE": "%7"}, clear=True), \
+                mock.patch.object(movil, "hilo_de_panel", return_value="Faro"), \
+                mock.patch.object(orden, "_mux_si_hace_falta", return_value=None), \
+                mock.patch("sys.stdin", io.StringIO(carga)):
+            salida = io.StringIO()
+            with redirect_stdout(salida):
+                orden._aviso(o, ctx)
+        r = _json.loads(salida.getvalue())
+        self.assertEqual(r.get("hilo"), "Faro", r)
