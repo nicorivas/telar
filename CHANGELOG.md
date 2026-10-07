@@ -6,6 +6,8 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-10-07
+
 ### Added
 
 - `[resultados.<clave>]` and `telar resultado <clave> [day]`: what a skill leaves each day (a
@@ -28,6 +30,11 @@ workflow refuses to run if the two disagree.
   the suggestions and why, every project to search, the general agent and «new project…»; the choice is
   remembered for the meeting series (`telar reunion --asistentes --proyecto --preguntar`, `telar.reuniones`).
 - Calendar events carry their attendees (iCal `ATTENDEE`, gws `attendees`), without the calendar's owner.
+- A lienzo can declare a `memoria` (an absolute `.json`): the panel hands it what it saved last time and stores
+  what it sends back.
+- `telar enlace hilos` shows the machine each thread lives on, and `telar enlace enviar` warns when the target
+  lives on the calling machine. The `/hilos` skill says which path to use: `telar mensaje` to talk to a thread,
+  `telar encargar <agent>` for what only another machine can do.
 
 ### Fixed
 
@@ -541,7 +548,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/nicorivas/telar/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/nicorivas/telar/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/nicorivas/telar/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/nicorivas/telar/compare/v0.1.9...v0.1.10
