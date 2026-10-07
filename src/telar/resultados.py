@@ -5,7 +5,7 @@ Una skill que corre sola (el plan del día, la preparación de las reuniones) es
 cual y quien lo muestra decide cómo.
 
     [resultados.plan]
-    carpeta = "~/Life/nico/vida/carrera/planes"
+    carpeta = "~/notas/planes"
     en = "telar"           # la máquina que corre la skill; "" es esta
 
 Con `en` y bus, se le pide a esa máquina (su nodo lee su propia carpeta): la sincronización entre
