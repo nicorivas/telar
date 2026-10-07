@@ -349,6 +349,7 @@ export const CSS_DIA = `
   .clic { cursor: pointer; }
 
   /* agenda: tecla · hora · qué · lo de al lado */
+  .plazo-clic { cursor: pointer; } .plazo-clic:hover { text-decoration: underline; }
   .ag { display: grid; grid-template-columns: 7ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
   .ag .hora { color: var(--c); }
   .ag .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

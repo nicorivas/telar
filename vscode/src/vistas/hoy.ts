@@ -19,7 +19,7 @@ import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, 
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
 import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
-import { llevarPendiente, marcarHecha } from './tareas';
+import { elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
@@ -412,7 +412,9 @@ export class PanelHoy {
             h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" data-area="${esc(p.fila.area ?? '')}" data-dueno="${esc(p.fila.dueno ?? '')}" title="clic: leerla y decidir">`
                 + `<span class="id">${esc(p.ref)}</span><span class="pri"></span>`
                 + `<span class="desc"><span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>${esc(p.texto)}</span>`
-                + `<span class="meta">${plazo(p.dias)}<span class="destino"></span></span></div>`);
+                // el atraso es un botón: reagendar lo que venció sin abrir la ficha
+                + `<span class="meta"><span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>`
+                + `<span class="destino"></span></span></div>`);
         });
         h.push('</section></div>');
         this.pintar(h);
@@ -842,7 +844,12 @@ export class PanelHoy {
         if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
-        if (a.pide) {
+        if (a.rol === 'fecha') {
+            // cambiar la fecha: el selector de fechas, no un campo de texto
+            const fecha = await elegirFecha(`${f.id} ${f.pagina?.titulo ?? ''}`.trim());
+            if (!fecha) return;
+            texto = fecha;
+        } else if (a.pide) {
             const escrito = await vscode.window.showInputBox({ prompt: `${f.id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
             if (escrito === undefined) return;
             texto = escrito;
@@ -1489,6 +1496,9 @@ export class PanelHoy {
             case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
             case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
             case 'nota-evento': if (m.valor) await this.notaEvento(m.valor); break;
+            case 'reagendar':
+                if (m.valor && await reagendar(m.valor)) { await this.actualizar(true); if (this.pantalla === 'revisar') this.renderRevisar(); }
+                break;
             case 'ev-escribir': if (m.valor) await this.escribirSobreEvento(m.valor, m.datos ?? ''); break;
             case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
             case 'directorios': await this.cambiarDirectorios(); break;
