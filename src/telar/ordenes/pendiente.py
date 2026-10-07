@@ -331,8 +331,9 @@ def _agente_general(ctx):
     return next((a for a in mod_agentes.descubrir(ctx.config) if clave in (a.clave, a.nombre)), None)
 
 
-def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int:
-    """Le encarga el pendiente al agente y lleva a su hilo (lo trae si vive en otra máquina)."""
+def encargar_y_ir(ctx, agente, texto: str) -> tuple[int, dict]:
+    """Le encarga `texto` al agente y lleva a su hilo (lo trae si vive en otra máquina).
+    Devuelve el código de `telar encargar` y lo que respondió."""
     import io
     import json
     from contextlib import redirect_stdout
@@ -341,9 +342,9 @@ def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int
 
     salida = io.StringIO()
     with redirect_stdout(salida):
-        codigo = encargar.main([agente.clave, primero, "--json"], ctx)
+        codigo = encargar.main([agente.clave, texto, "--json"], ctx)
     if codigo != 0:
-        return codigo
+        return codigo, {}
     try:
         r = json.loads(salida.getvalue().strip().splitlines()[-1])
     except (ValueError, IndexError):
@@ -361,6 +362,14 @@ def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int
             tel.mux.ir(hilo.id)
         except ErrorDeMux:
             pass
+    return 0, r
+
+
+def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int:
+    """Le encarga el pendiente al agente y lleva a su hilo."""
+    codigo, r = encargar_y_ir(ctx, agente, primero)
+    if codigo != 0:
+        return codigo
     if como_json:
         return _comun.escribir_json({"ref": fila["ref"], "texto": primero, "destino": agente.nombre,
                                      "creado": r.get("estado") == "abierto", "enviado": True,
