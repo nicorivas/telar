@@ -1018,6 +1018,25 @@ function nodosDe(msgs, desde, diaPrevio) {
   return nodos;
 }
 
+// cerrar un hilo de esta máquina: se archiva y termina su sesión (se puede retomar). Dos toques, para no cerrar uno sin querer
+function botonCerrar(h) {
+  if (!estado.yo.escribir || conv.origen || !(h.vivo || h.propio)) return null;
+  const parar = () => { conv.cerrando = false; cabeceraConv(); };
+  if (!conv.cerrando) return el('button', { type: 'button', className: 'cerrar', title: 'cerrar este hilo', onclick: () => { conv.cerrando = true; cabeceraConv(); } }, g('×'), ' cerrar');
+  return el('span', { className: 'cerrar-pregunta' }, '¿cerrar? ',
+    el('button', { type: 'button', className: 'cerrar si', onclick: async (ev) => {
+      ev.target.disabled = true;
+      try {
+        const r = await fetch('/api/hilo/cerrar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' }, body: JSON.stringify({ hilo: conv.nombre }) });
+        const cuerpo = await r.json().catch(() => ({}));
+        if (r.ok && cuerpo.ok) { cargar(true); volver(); return; }
+        avisoConv(cuerpo.error || `no salió (${r.status})`);
+      } catch (e) { avisoConv('sin conexión con el servidor'); }
+      parar();
+    } }, 'sí'),
+    el('button', { type: 'button', className: 'cerrar', onclick: parar }, 'no'));
+}
+
 function cabeceraConv() {
   const h = conv.hilo || {};
   const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo || h.propio ? 'abierto' : 'sin ventana');
@@ -1028,7 +1047,7 @@ function cabeceraConv() {
     txt('nombre una', conv.nombre),
     conv.origen ? txt('donde', `en ${conv.origen}`) : null,
     el('span', { className: `estado-conv ${h.atencion || ''}` }, g(GLIFO[h.atencion] || '·', `at ${h.atencion || 'ninguna'}`), ` ${dice}`),
-    sesiones].filter(Boolean));
+    sesiones, botonCerrar(h)].filter(Boolean));
 }
 
 // atrás si se llegó navegando dentro de la página (así se vuelve a donde se estaba); si se abrió directo, a la lista de hilos
@@ -1264,7 +1283,7 @@ async function abrirConversacion(nombre, origen = '', sesion = '') {
 function pintarConversacion() {
   const { nombre, origen } = refConv();
   if (conv.nombre !== nombre || conv.origen !== origen || !$('conv')) { abrirConversacion(nombre, origen); return; }
-  if (conv.hilo && !conv.origen) {  // el semáforo del hilo viene del día; se refresca sin tocar los mensajes
+  if (!conv.origen) {  // el semáforo (y, si la página abrió la conversación antes de tener la lista, el hilo) del hilo viene del día; se refresca sin tocar los mensajes
     const h = (estado.hilos && estado.hilos.hilos || []).find((x) => x.nombre === conv.nombre);
     if (h) { conv.hilo = { nombre: h.nombre, atencion: h.atencion, vivo: h.vivo, propio: h.propio }; cabeceraConv(); }
   }

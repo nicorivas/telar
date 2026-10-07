@@ -375,3 +375,7 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .ag.delplan:not(.pasada) .hora, .ag.delplan:not(.pasada) .titulo { color: var(--magenta); }
 .marca-nota { color: var(--amarillo); text-align: right; }
 .fila.ag .marca-nota { padding-right: .5ch; }
+/* cerrar un hilo desde su conversación */
+#conv-cab .cerrar { color: var(--rojo); margin-left: auto; padding: 0 1ch; }
+#conv-cab .cerrar.si { box-shadow: inset 0 0 0 1px var(--rojo); }
+#conv-cab .cerrar-pregunta { margin-left: auto; color: var(--rojo); }

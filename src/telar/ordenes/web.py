@@ -285,6 +285,40 @@ def lanzar_atajo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]
     return 200, {"ok": True, "hilo": agente.nombre, "atajo": atajo.nombre, "encargo": estado}
 
 
+def cerrar_hilo(ctx, cuerpo: object) -> tuple[int, dict]:
+    """Cierra un hilo de esta máquina: lo archiva y termina su sesión o su ventana (`telar hilo archivar --cerrar`),
+    así que sale de la lista y se puede retomar. `(código http, respuesta)`.
+
+    Solo hilos que existen, están abiertos y no son agentes residentes (Gestión, Kichoro, Laptop…): esos no se
+    apagan desde una página. El hilo se nombra, y se busca en la lista que arma telar; nunca se confía en un id."""
+    if not isinstance(cuerpo, dict) or not isinstance(cuerpo.get("hilo"), str) or not cuerpo["hilo"]:
+        return 400, {"ok": False, "error": "falta el hilo"}
+    nombre = cuerpo["hilo"]
+    h = next((x for x in json.loads(datos("hilos", fresco=True)).get("hilos", [])
+              if x.get("nombre") == nombre and not x.get("archivado")), None)
+    if h is None:
+        return 404, {"ok": False, "error": f"no hay un hilo abierto llamado «{nombre[:60]}»"}
+    if not (h.get("vivo") or h.get("propio")):
+        return 409, {"ok": False, "error": "ese hilo ya no está abierto"}
+    from telar import agentes as mod_agentes
+
+    if any(nombre in (a.nombre, a.clave) for a in mod_agentes.descubrir(ctx.config)):
+        return 403, {"ok": False, "error": "es un agente residente: no se cierra desde la página"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultimo_nuevo[0] < ENTRE_NUEVOS:
+            return 429, {"ok": False, "error": "muy rápido: una cosa a la vez"}
+        _ultimo_nuevo[0] = ahora
+    r = subprocess.run([sys.executable, "-m", "telar", "hilo", "--hilo", nombre, "archivar", "--cerrar"],
+                       capture_output=True, text=True, timeout=40)
+    if r.returncode != 0:
+        detalle = (r.stderr or r.stdout).strip().splitlines()
+        return 502, {"ok": False, "error": f"no pude cerrarlo: {(detalle[-1] if detalle else r.returncode)}"[:200]}
+    with _candado:
+        _cache.pop("hilos", None)
+    return 200, {"ok": True, "hilo": nombre}
+
+
 def datos_proyectos() -> bytes:
     return datos("proyectos")
 
@@ -528,7 +562,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", *RUTAS_EVENTO):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", "/api/hilo/cerrar", *RUTAS_EVENTO):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
@@ -556,6 +590,15 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                     codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
                 if isinstance(datos, dict):
                     anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
+                                 "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
+            if ruta == "/api/hilo/cerrar":
+                try:
+                    codigo, resultado = cerrar_hilo(ctx, datos)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "cerrar", str(datos.get("hilo", ""))[:60], 0,
                                  "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
                 return responder(codigo, resultado)
             if ruta in RUTAS_EVENTO:

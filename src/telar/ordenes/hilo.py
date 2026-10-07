@@ -375,6 +375,8 @@ def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
     # un hilo remoto tiene además su sesión en la otra máquina, que sigue viva aunque la
     # ventana local ya no esté: se termina igual, o el agente quedaría corriendo allá
     _matar_remoto(ctx, tel, hilo)
+    if tel.propio(hilo):  # vive en su propia sesión (el celular, un encargo): no es un tab que cerrar
+        return _cerrar_sesion(tel.propios[hilo.nombre])
     if tel.mux is None or not tel.vivo(hilo):
         print(_comun.tenue("  no está vivo: no hay nada que cerrar"))
         return 0
@@ -383,6 +385,24 @@ def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
     except ErrorDeMux as e:
         return _comun.queja(f"no pude cerrarlo: {e}")
     print("  cerrado en el multiplexor")
+    return 0
+
+
+def _cerrar_sesion(sesion: str) -> int:
+    """Terminar la sesión propia de un hilo, y las del celular enganchadas a ella (mismo grupo): mientras
+    una del grupo siga viva, sus ventanas —y el agente— siguen corriendo."""
+    from telar import movil
+
+    try:
+        grupo = movil._tmux("display-message", "-p", "-t", f"={sesion}:", "#{session_group}", tolerante=True).strip()
+        hermanas = [n for n, g in (r.split("\t") for r in movil._tmux(
+            "list-sessions", "-F", "#{session_name}\t#{session_group}", tolerante=True).splitlines() if "\t" in r)
+            if grupo and g == grupo]
+        for nombre in dict.fromkeys([sesion, *hermanas]):
+            movil._tmux("kill-session", "-t", f"={nombre}", tolerante=True)
+    except RuntimeError as e:
+        return _comun.queja(f"no pude cerrarlo: {e}")
+    print("  cerrada su sesión")
     return 0
 
 

@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar web`: a «× cerrar» button in a thread's conversation (two taps) archives it and ends its session, like
+  `telar hilo archivar --cerrar`; resident agents can't be closed from the page. `telar hilo cerrar|archivar --cerrar` now also
+  ends a thread that lives in its own session (the phone's, an encargo's), with the phone's sessions grouped to it.
 - `telar web`: a «cal» tab with the VS Code dashboard's calendar in one column — day navigation, the plan's blocks merged
   with the events, each event's context and notes, «+ nota», «preparar o minuta» (asks the project when it can't tell) and a
   message to the general agent with the meeting as context. New `telar.webcal`; `/api/calendario`, `/api/evento/{nota,reunion,escribir}`.
