@@ -8,6 +8,18 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- One tmux session per machine: every thread is a window of the telar session, stamped with its own id
+  (`@telar_id`), including agents' errands, periodic jobs, the phone, the web, and threads the laptop opens or
+  resumes on a server (created over ssh). Another machine or the phone looks at a thread through a grouped
+  session pinned to its window (`ver-<id>-<machine>`, `movil-<id>`): it lets go of the viewer if its window
+  dies, and disappears when nobody looks. Remote windows are addressed as `@338/<stamp>`, so a window id that
+  tmux reuses after a restart is never shown or closed. Threads that still have their own session keep working.
+- The node publishes each thread's window address; the other machine follows a thread that changed address (no
+  more «name · 2») or was renamed over there. `[agente] max_vivos` counts windows where nobody watches the
+  telar session directly (a server). `[remotos.<x>] sesion` names the telar session over there.
+- Dashboard calendar: a «‹ day ›» bar above the day column (and «hoy» to come back) moves between days with a
+  click, ←/→ or [ ], loading that day's events, plan and notes; `telar hoy --dia AAAA-MM-DD` gives the agenda of
+  another day.
 - `telar web --escribir --nuevo`: the «hoy» and «hilos» tabs show the dashboard shortcuts (`[atajos.<tecla>]`, e.g.
   «⚑ correo»); one tap opens the thread (or hands it to the resident agent), like the key in VS Code.
 - The line typed to wake an idle agent says what arrived («↯ mensaje nuevo · encargo de X: /correo»), so whoever
@@ -22,6 +34,16 @@ workflow refuses to run if the two disagree.
   sin_proyecto`) with the meeting, its project (remembered or deduced), what the plan and the notes say, and
   how to leave a note on the event; the request is kept as a note. `telar config --json` gives
   `agente_general`.
+
+### Fixed
+
+- `telar hilo olvidar <name>` (and `cerrar`, `archivar`, `retomar`… which take no value) ignored the name and
+  acted on the current thread; the bare name is now the thread, and giving both it and `--hilo` is refused.
+- telar targets a window with its session (`=telar:@3`): a bare `@3` could resolve to a grouped session someone
+  is watching from another machine and move their screen; nor does it `switch-client` a client watching a thread
+  through a pinned session.
+- Cards: a paragraph that opens in **bold** was taken for a bullet and dropped, and the indented continuation of
+  a bullet could be read as a section's paragraph; a bullet now needs a space after its marker.
 
 ## [0.1.13] — 2026-10-07
 
