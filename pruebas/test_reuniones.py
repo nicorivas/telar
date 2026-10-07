@@ -41,7 +41,9 @@ class Deducir(Prueba):
         self.assertEqual(c, [])
 
     def test_la_eleccion_se_recuerda_por_serie(self):
-        cfg = SimpleNamespace(estado=self.raiz / "estado")
+        from telar import config as mod_config
+
+        cfg = mod_config.Config(raiz=self.raiz, estado=self.raiz / "estado")
         m.recordar(cfg, "Weekly Faro 7-oct", "proyectos/faro-diagnostico")
         self.assertEqual(m.recordado(cfg, "Weekly Faro 14-oct"), "proyectos/faro-diagnostico")
         self.assertEqual(m.recordado(cfg, "Otra reunión"), "")
