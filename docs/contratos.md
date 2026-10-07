@@ -460,6 +460,19 @@ del webview queda en blanco. Eso trae tres consecuencias para quien lo escribe:
   de que corra nada) y también en `window.lienzo.params`. Un bloque puede ser solo un lienzo, o lienzo con título,
 texto e ítems.
 
+El sandbox deja al lienzo sin almacenamiento propio (`localStorage` lanza un error). Si lo
+necesita —un juego que recuerda, un dibujo que se sigue—, la página declara `memoria`, la ruta
+absoluta de un `.json` que puede no existir todavía:
+
+```json
+{ "lienzo": { "archivo": "/ruta/juego.html", "alto": 640, "memoria": "/ruta/estado/juego.json" } }
+```
+
+El lienzo recibe lo último guardado en `window.lienzo.memoria` (`null` la primera vez o si el
+archivo no es JSON) y guarda con `window.lienzo.guardar(objeto)`, que reemplaza el archivo
+entero. El lienzo nunca nombra la ruta: el panel le da una llave al pintarlo y escribe solo el
+archivo que declaró la página, hasta 4 MB.
+
 Todo es opcional salvo `titulo` en la página y en cada ítem. `texto` admite párrafos,
 `**negrita**`, `*cursiva*`, `` `código` `` y listas con `- `; lo demás se muestra como
 texto, nunca como HTML. Un ítem con `conversacion` se abre como conversación; uno con
