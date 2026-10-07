@@ -91,22 +91,46 @@ def _bloques(lineas: list[str]) -> list[tuple[int, str, list[str]]]:
 
 # ── extraer cada tipo ───────────────────────────────────────────────────────────
 
+_RAYA = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*$")
+
+
 def _es_texto(linea: str) -> bool:
+    """¿Es una línea de prosa? Una viñeta es `-`, `*` o `+` seguido de espacio: `**Vendido.**`
+    abre en negrita y es texto (descartarla dejaba vacío el `## Estado` que abre así)."""
     t = linea.strip()
-    return bool(t) and not t.startswith(("-", "*", "+", "|", ">", "#", "<!--", "```"))
+    if not t or _VINETA.match(t) or _RAYA.match(t):
+        return False
+    return not t.startswith(("|", ">", "#", "<!--", "```"))
+
+
+def _prosa(cuerpo: list[str]):
+    """Las líneas del cuerpo, cada una con si es prosa. La continuación sangrada de una viñeta
+    es parte de la viñeta, no un párrafo: no cuenta como texto."""
+    en_vineta = False
+    for linea in cuerpo:
+        if _VINETA.match(linea):
+            en_vineta = True
+            yield linea, False
+            continue
+        if en_vineta and linea.strip() and linea[:1] in (" ", "\t"):
+            yield linea, False
+            continue
+        if linea.strip():
+            en_vineta = False
+        yield linea, _es_texto(linea)
 
 
 def _linea(cuerpo: list[str]) -> str:
-    for linea in cuerpo:
-        if _es_texto(linea):
+    for linea, texto in _prosa(cuerpo):
+        if texto:
             return limpiar(linea)
     return ""
 
 
 def _parrafo(cuerpo: list[str]) -> str:
     juntas: list[str] = []
-    for linea in cuerpo:
-        if _es_texto(linea):
+    for linea, texto in _prosa(cuerpo):
+        if texto:
             juntas.append(linea.strip())
         elif juntas:
             break

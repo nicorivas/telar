@@ -120,6 +120,24 @@ class Tipos(Prueba):
         a = self.arquetipo(Seccion(nombre="pendientes", tipo="casillas", encabezado=r"^##\s+Cosas"))
         self.assertEqual(lectura.parsear(self.TEXTO, a).pendientes, ())
 
+    def test_un_parrafo_que_abre_en_negrita_es_texto_y_no_vineta(self):
+        texto = "## Estado\n\n**Vendido y en arranque.** Falta el kick-off.\n\n- 2026-10-05 — una nota\n"
+        a = self.arquetipo(Seccion(nombre="estado", tipo="parrafo", encabezado=r"^##\s+Estado"))
+        self.assertEqual(lectura.parsear(texto, a).estado, "Vendido y en arranque. Falta el kick-off.")
+        a = self.arquetipo(Seccion(nombre="estado", tipo="linea", encabezado=r"^##\s+Estado"))
+        self.assertEqual(lectura.parsear(texto, a).estado, "Vendido y en arranque. Falta el kick-off.")
+
+    def test_la_continuacion_sangrada_de_una_vineta_no_es_un_parrafo(self):
+        texto = ("## Contexto\n\n- Un proyecto de cumplimiento: gobierno, licencias y\n"
+                 "  registro de lo que se hace.\n- Otra viñeta.\n\nEl párrafo de verdad.\n")
+        a = self.arquetipo(Seccion(nombre="estado", tipo="parrafo", encabezado=r"^##\s+Contexto"))
+        self.assertEqual(lectura.parsear(texto, a).estado, "El párrafo de verdad.")
+
+    def test_una_raya_horizontal_no_es_texto(self):
+        texto = "## Estado\n\n---\n\nVa bien.\n"
+        a = self.arquetipo(Seccion(nombre="estado", tipo="parrafo", encabezado=r"^##\s+Estado"))
+        self.assertEqual(lectura.parsear(texto, a).estado, "Va bien.")
+
 
 class Ubicar(Prueba):
     """De una ruta a su arquetipo: la clave es la unidad, no el documento."""
