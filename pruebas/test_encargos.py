@@ -9,6 +9,8 @@ from unittest import mock
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
+from telar.movil import HiloMovil  # noqa: E402
+
 from telar import config as mod_config
 from telar import encargos as m
 from telar import estado as mod_estado
@@ -36,7 +38,8 @@ class ConEstado(Prueba):
             mock.patch("telar.movil.propios", return_value=dict(propios or {})),
             mock.patch("telar.movil.hilos", return_value=list(hilos)),
             mock.patch("telar.movil.escribir", side_effect=lambda s, t, enviar=False: escritos.append((s, t, enviar))),
-            mock.patch("telar.movil.crear", side_effect=lambda n, c, p: creados.append((n, c, p)) or SimpleNamespace(sesion="telar-nuevo", nombre=n)),
+            mock.patch("telar.movil.crear", side_effect=lambda n, c, p, principal="": creados.append((n, c, p)) or HiloMovil(
+                sesion=principal or "telar-nuevo", nombre=n, ventana="@9" if principal else "", marca="m" if principal else "")),
             mock.patch("telar.movil._tmux", side_effect=lambda *a, **k: matados.append(a) or ""),
         ]
         for p in parches:
@@ -91,7 +94,7 @@ class Encargar(ConEstado):
 
 class ElTope(ConEstado):
     def test_cierra_las_ociosas_mas_viejas_y_respeta_a_quien_mira_o_trabaja(self):
-        h = lambda n, s, c=0: SimpleNamespace(nombre=n, sesion=s, clientes=c)  # noqa: E731
+        h = lambda n, s, c=0: HiloMovil(nombre=n, sesion=s, clientes=c)  # noqa: E731
         hilos = [h("▶ vieja", "t1"), h("▶ nueva", "t2"), h("mirada", "t3", 1), h("ocupada", "t4"), h("Gestión", "t5")]
         _, _, matados = self.movil(hilos=hilos)
         self.est.anotar_atencion("▶ vieja", Atencion.TERMINO, cuando=__import__("datetime").datetime(2026, 1, 1))
@@ -100,6 +103,18 @@ class ElTope(ConEstado):
         cerrados = m.liberar(self.config, 1, cuidar=("Gestión",))   # 5 vivas + 1 > 3: sobran 3
         # primero las de paso, la más quieta antes; el residente al final
         self.assertEqual(cerrados, ["▶ vieja", "▶ nueva", "Gestión"])
+
+    def test_en_un_servidor_cuentan_las_ventanas_y_se_cierra_la_ventana(self):
+        # nadie enganchado directo a la sesión del telar: sus ventanas son hilos y el tope las cuenta
+        hilos = [HiloMovil(nombre=f"h{i}", sesion="telar", ventana=f"@{i}", marca=f"m{i}") for i in range(4)]
+        pedidos = []
+        with mock.patch("telar.movil.sin_mirar", return_value=True), \
+             mock.patch("telar.movil.hilos", side_effect=lambda principal="": pedidos.append(principal) or hilos), \
+             mock.patch("telar.movil._tmux", side_effect=lambda *a, **k: pedidos.append(a) or ""):
+            cerrados = m.liberar(self.config, 1)
+        self.assertEqual(pedidos[0], self.config.sesion)
+        self.assertEqual(len(cerrados), 2)
+        self.assertIn(("kill-window", "-t", "@0"), pedidos)
 
     def test_sin_tope_no_cierra_nada(self):
         cfg = mod_config.Config(raiz=self.config.raiz, estado=self.config.estado)

@@ -238,8 +238,10 @@ class LeerLoQueContesta(Prueba):
 class Apuntar(Prueba):
     """`_objetivo_tab`: `@3` es un id, `3` un índice, lo demás un nombre exacto."""
 
-    def test_un_id_va_tal_cual(self):
-        self.assertEqual(mux()._objetivo_tab("@3"), "@3")
+    def test_un_id_va_con_su_sesion(self):
+        # la ventana puede estar también en sesiones agrupadas (quien la mira desde otra máquina):
+        # sin la sesión, tmux puede elegir la de quien mira y moverle la pantalla
+        self.assertEqual(mux()._objetivo_tab("@3"), "=taller:@3")
 
     def test_un_numero_es_el_indice_de_la_sesion(self):
         self.assertEqual(mux()._objetivo_tab("3"), "=taller:3")
@@ -250,7 +252,7 @@ class Apuntar(Prueba):
         self.assertEqual(mux()._objetivo_tab("trabajo"), "=taller:=trabajo")
 
     def test_los_espacios_de_los_bordes_no_cuentan(self):
-        self.assertEqual(mux()._objetivo_tab("  @3  "), "@3")
+        self.assertEqual(mux()._objetivo_tab("  @3  "), "=taller:@3")
 
     def test_no_nombrar_ningun_tab_se_dice(self):
         for vacio in ("", "   "):
@@ -431,7 +433,7 @@ class TejerLaSesion(Prueba):
 
 class ApuntarAlTabQueSeNombro(Prueba):
     def test_cerrar_por_id_por_indice_y_por_nombre(self):
-        casos = {"@3": "@3", "3": "=taller:3", "faro": "=taller:=faro"}
+        casos = {"@3": "=taller:@3", "3": "=taller:3", "faro": "=taller:=faro"}
         for nombrado, objetivo in casos.items():
             with self.subTest(tab=nombrado):
                 m = TmuxFalso()
@@ -501,10 +503,16 @@ class CambiarDeTab(Prueba):
     def test_se_mueve_la_sesion_y_tambien_el_cliente_que_pregunto(self):
         m = self._con_tmux("/dev/ttys004")
         m.ir_a_tab("@3")
-        self.assertEqual(m.una("select-window"), ["select-window", "-t", "@3"])
+        self.assertEqual(m.una("select-window"), ["select-window", "-t", "=taller:@3"])
         self.assertEqual(
-            m.una("switch-client"), ["switch-client", "-c", "/dev/ttys004", "-t", "@3"]
+            m.una("switch-client"), ["switch-client", "-c", "/dev/ttys004", "-t", "=taller:@3"]
         )
+
+    def test_a_quien_mira_por_una_sesion_fija_no_se_lo_mueve(self):
+        m = self._con_tmux("/dev/ttys004" + t.SEP + "ver-3-laptop")
+        m.ir_a_tab("@3")
+        self.assertEqual(m.una("select-window"), ["select-window", "-t", "=taller:@3"])
+        self.assertEqual(m.ordenes("switch-client"), [])
 
     def test_sin_nadie_mirando_alcanza_con_mover_la_sesion(self):
         m = TmuxFalso(respuestas={"display-message": "", "list-clients": ""})

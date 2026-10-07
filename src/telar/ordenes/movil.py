@@ -166,6 +166,10 @@ def filas_hoy(datos: dict, ancho: int, vivos: set[str]) -> list[tuple[str, int, 
     return filas
 
 
+#: la sesión del telar de esta máquina: sus ventanas son los hilos que lista el celular
+_principal = [""]
+
+
 def _hoy(pantalla) -> tuple[str, object]:
     """El día en una pantalla: agenda, quién te espera, pendientes. Un toque (o ⏎) sobre un hilo que espera
     entra a él. Devuelve como `_menu`: ("entrar", (hilo, correos)) o ("volver", None)."""
@@ -174,7 +178,7 @@ def _hoy(pantalla) -> tuple[str, object]:
     pantalla.erase()
     pantalla.addnstr(0, 0, "cargando el día…", 30, curses.A_DIM)
     pantalla.refresh()
-    hilos = {h.nombre: h for h in mod_movil.hilos()}
+    hilos = {h.nombre: h for h in mod_movil.hilos(_principal[0])}
     error = ""
     try:
         datos = _datos_hoy()
@@ -238,7 +242,7 @@ def _menu(pantalla) -> tuple[str, object]:
     curses.curs_set(0)
     curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
     elegido = 0
-    hilos = mod_movil.hilos()
+    hilos = mod_movil.hilos(_principal[0])
     pend = _pendientes([h.nombre for h in hilos])
     while True:
         pantalla.erase()
@@ -270,7 +274,7 @@ def _menu(pantalla) -> tuple[str, object]:
                 return "nuevo", nombre
             continue
         if k == ord("r"):
-            hilos = mod_movil.hilos()
+            hilos = mod_movil.hilos(_principal[0])
             pend = _pendientes([h.nombre for h in hilos])
             elegido = min(elegido, max(len(hilos) - 1, 0))
         elif k in (curses.KEY_DOWN, ord("j")) and hilos:
@@ -306,7 +310,8 @@ def _abrir_nuevo(ctx, nombre: str):
         lanz = None
     carpeta = lanz.carpeta if lanz is not None and lanz.carpeta else Path(ctx.config.raiz)
     try:
-        hilo = mod_movil.crear(nombre, str(Path(carpeta).expanduser()), lanz.comando if lanz else None)
+        hilo = mod_movil.crear(nombre, str(Path(carpeta).expanduser()), lanz.comando if lanz else None,
+                               ctx.config.sesion)
     except RuntimeError as e:
         print(f"no pude abrir «{nombre}»: {e}")
         return None
@@ -323,15 +328,16 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    _principal[0] = ctx.config.sesion
     if o.lista:
-        hilos = mod_movil.hilos()
+        hilos = mod_movil.hilos(_principal[0])
         pend = _pendientes([h.nombre for h in hilos])
         for h in hilos:
             print(f"{'●' if h.clientes else '·'} {h.nombre}" + (f" ✉{pend[h.nombre]}" if pend.get(h.nombre) else "")
-                  + _comun.tenue(f"  {h.sesion}"))
+                  + _comun.tenue(f"  {h.direccion}"))
         return 0
     if o.hoy:
-        vivos = {h.nombre for h in mod_movil.hilos()}
+        vivos = {h.nombre for h in mod_movil.hilos(_principal[0])}
         for texto, _, hilo in filas_hoy(_datos_hoy(), shutil.get_terminal_size((60, 24)).columns, vivos):
             print(texto + (_comun.tenue("  ⏎") if hilo else ""))
         return 0

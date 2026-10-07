@@ -120,7 +120,8 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     from telar import estado as mod_estado
     from telar import movil
 
-    vivos = movil.hilos()
+    # las ventanas de la sesión del telar cuentan solo donde nadie la mira directo (un servidor)
+    vivos = movil.hilos(config.sesion if movil.sin_mirar(config.sesion) else "")
     sobran = len(vivos) + nuevas - tope
     if sobran <= 0:
         return []
@@ -136,13 +137,13 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     cerrados = []
     for _, _, h in candidatos[:sobran]:
         try:
-            movil._tmux("kill-session", "-t", f"={h.sesion}")
+            movil._tmux("kill-window" if h.ventana else "kill-session", "-t", h.objetivo)
         except Exception as e:  # noqa: BLE001 - una que no se deja cerrar no tumba al resto
-            _anotar(config, f"no pude cerrar «{h.nombre}» ({h.sesion}): {e}")
+            _anotar(config, f"no pude cerrar «{h.nombre}» ({h.direccion}): {e}")
             continue
         est.anotar_atencion(h.nombre, Atencion.NINGUNA)
         cerrados.append(h.nombre)
-        _anotar(config, f"cerré «{h.nombre}» ({h.sesion}) por el tope de {tope} sesiones vivas")
+        _anotar(config, f"cerré «{h.nombre}» ({h.direccion}) por el tope de {tope} hilos vivos")
     return cerrados
 
 
@@ -243,7 +244,7 @@ def _abrir(ctx, agente, texto: str) -> dict:
         return {"hilo": hilo, "estado": "abierto", "retoma": retoma, "cerrados": []}
     cerrados = liberar(ctx.config, 1, cuidar=(hilo,))
     try:
-        h = movil.crear(hilo, str(agente.carpeta.resolve()), lanzar.envolver(palabras, hilo))
+        h = movil.crear(hilo, str(agente.carpeta.resolve()), lanzar.envolver(palabras, hilo), ctx.config.sesion)
     except (RuntimeError, OSError) as e:
         raise ErrorDeEncargo(f"no pude abrir el hilo de {hilo}: {e}") from e
     if nueva:
@@ -251,7 +252,7 @@ def _abrir(ctx, agente, texto: str) -> dict:
     est.anotar_atencion(hilo, Atencion.TRABAJANDO)
     _anotar(ctx.config, f"«{hilo}» sin sesión: abierto ({'retoma ' + retoma[:8] if retoma else 'conversación nueva'})"
                         f"{' · cerré ' + ', '.join(cerrados) if cerrados else ''} · {texto[:80]}")
-    return {"hilo": hilo, "estado": "abierto", "sesion": h.sesion, "retoma": retoma, "cerrados": cerrados}
+    return {"hilo": hilo, "estado": "abierto", "sesion": h.direccion, "retoma": retoma, "cerrados": cerrados}
 
 
 def repartir(ctx, hilo: str) -> bool:

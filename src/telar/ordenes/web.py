@@ -236,7 +236,7 @@ def nuevo_hilo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]:
     carpeta = (Path(config.raiz) / ruta) if ruta else Path(str(base or config.raiz)).expanduser()
     lanz = lanzar.Lanzamiento(comando=lanzar.envolver(palabras, nombre), carpeta=carpeta, nueva=sid)
     try:
-        mod_movil.crear(nombre, str(carpeta), lanz.comando)
+        mod_movil.crear(nombre, str(carpeta), lanz.comando, config.sesion)
     except RuntimeError as e:
         return 502, {"ok": False, "error": f"no pude abrir «{nombre}»: {str(e)[:160]}"}
     lanzar.anotar(config, nombre, lanz)

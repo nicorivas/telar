@@ -269,12 +269,16 @@ class Tmux(MultiplexorBase):
 
         El `=` que va delante del nombre es de tmux: sin él, `trabajo` también calza con
         `trabajo-viejo`, y uno termina cerrando el tab de al lado.
+
+        `@3` va con la sesión delante: una ventana que además miran sesiones agrupadas (otra máquina,
+        el celular) está en varias sesiones, y `select-window -t @3` a secas puede elegir la de quien
+        mira y moverle la pantalla.
         """
         aguja = str(tab).strip()
         if not aguja:
             raise NoExiste("no se nombró ningún tab")
         if aguja.startswith("@"):
-            return aguja
+            return f"={self.sesion}:{aguja}"
         if aguja.isdigit():
             return f"={self.sesion}:{aguja}"
         return f"={self.sesion}:={aguja}"
@@ -416,7 +420,12 @@ class Tmux(MultiplexorBase):
         salió de afuera, se busca alguno enganchado a la sesión del telar.
         """
         if os.environ.get("TMUX"):
-            tty = self._tmux("display-message", "-p", "#{client_tty}", tolerante=True).strip()
+            tty, _, sesion = self._tmux("display-message", "-p", f"#{{client_tty}}{SEP}#{{client_session}}",
+                                        tolerante=True).strip().partition(SEP)
+            # quien mira un solo hilo desde otra máquina o el celular (`ver-…`, `movil-…`) no se mueve:
+            # su sesión está fija en esa ventana, y moverla es mostrarle otro hilo creyendo que es el suyo
+            if sesion.startswith(("ver-", "movil-")):
+                return ""
             if tty:
                 return tty
         salida = self._tmux(

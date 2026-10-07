@@ -322,21 +322,32 @@ raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
 correo_archivo = ""            # opcional: la Maildir común con los correos entre agentes
 directorio = ""                # opcional: la carpeta común donde cada persona publica sus hilos
 repos = ["~/repo", "~/repo/otro"]  # opcional: repositorios que viven en las dos máquinas
+sesion = ""                    # opcional: la sesión del telar EN esa máquina; "" es la misma que aquí
 ```
 
 Un hilo remoto es uno cuyo agente vive en otra máquina, siempre encendida, y sigue
-trabajando con el laptop cerrado; la ventana local solo lo mira. telar la arma así:
+trabajando con el laptop cerrado; la ventana local solo lo mira.
+
+Allá el hilo es **una ventana de la sesión del telar**, como cualquier hilo de esa máquina,
+marcada con un id propio (`@telar_id`). Aquí, una ventana que corre
 
 ```
-mosh usuario@servidor -- tmux new-session -A -s telar-1a2b3c4d bash -lc 'cd ~/repo/…; <agente>; exec bash -l'
+mosh usuario@servidor -- bash -lc '<mirar la ventana @338 con marca 1a2b3c4d>'
 ```
 
-Cada hilo remoto tiene su propia sesión tmux allá, con un nombre que telar elige al
-crearla y guarda en su estado (`remotos.json`), así que renombrar el hilo no la pierde.
-`-A` hace que la misma línea cree la sesión o se enganche a la que ya está: si la ventana
-local se cierra sin pasar por telar, la sesión de allá sigue viva y `telar hilo retomar`
-vuelve a ella. La carpeta del hilo se traduce: su vínculo relativo a la raíz local es la
-misma relativa bajo `raiz` de allá.
+y lo que corre allá es una **sesión agrupada** con la del telar (`ver-338-<esta máquina>`), fija
+en esa ventana: comparte las ventanas pero elige la suya, así que el laptop y el celular pueden
+mirar hilos distintos sin moverse uno al otro. Si la ventana muere, la sesión suelta a quien
+mira (la ventana local se cierra en vez de mostrar otro hilo); si nadie la mira, desaparece.
+La dirección del hilo (`@338/1a2b3c4d`) se guarda en el estado (`remotos.json`): renombrar el
+hilo no la pierde, y una marca que no coincide (tmux reusa los `@N` al reiniciarse) no se mira.
+La carpeta del hilo se traduce: su vínculo relativo a la raíz local es la misma relativa bajo
+`raiz` de allá.
+
+Con bus, el nodo de cada máquina publica la dirección de sus hilos y el de aquí trae las
+ventanas que faltan, sigue a un hilo que cambió de dirección o de nombre allá (el nombre lo pone
+la máquina donde vive) y cierra la ventana de uno que terminó. Los hilos de antes, con sesión
+tmux propia allá (`telar-1a2b3c4d`), se siguen mirando mientras existan.
 
 - Crear: `telar ir <nombre> --crear --remoto casa`, o en VS Code «hilo nuevo», que pregunta
   dónde si hay algún remoto declarado. La ventana queda con la opción tmux `@telar_remoto`.
@@ -350,8 +361,8 @@ misma relativa bajo `raiz` de allá.
   carpeta del agente, la del hilo y cada uno de `repos` (un repo anidado, como uno de la
   empresa dentro del repo personal, no se ve desde el de afuera). Si alguno tiene algo sin
   commitear o sin subir, lo dice y pide confirmar (`--si` para no preguntar). Aquí queda la copia de cómo estaba la conversación al irse.
-- Cerrar (✕) y archivar con `--cerrar` terminan también la sesión de allá; retomar un
-  archivado la recrea retomando su conversación.
+- Cerrar (✕) y archivar con `--cerrar` terminan también el hilo de allá; retomar un
+  archivado lo recrea retomando su conversación.
 - `telar doctor` revisa cada remoto: que responda por ssh, que tenga tmux (y mosh-server
   si el transporte es mosh), y avisa si su tmux muestra barra.
 

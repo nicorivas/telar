@@ -104,21 +104,29 @@ class Nodo:
             propias = movil.propios()
         except Exception:  # noqa: BLE001 - sin tmux no hay sesiones propias
             propias = {}
+        try:
+            # la dirección de cada ventana de la sesión del telar («@338/marca»): con ella otra máquina
+            # la mira (telar.remoto.guion_ver). Listarlas también les pone marca a las que no tienen
+            direcciones = {v.ventana: v.direccion for v in movil.ventanas(self.config.sesion)}
+        except Exception:  # noqa: BLE001 - sin tmux (o con zellij) no hay ventanas que mirar desde afuera
+            direcciones = {}
 
-        def ficha_de(nombre: str, vivo: bool, residente: str = "") -> dict:
+        def ficha_de(nombre: str, vivo: bool, residente: str = "", ventana: str = "") -> dict:
             atencion, desde = atenciones.get(nombre, (None, None))
             return {"nombre": nombre, "maquina": self.yo, "vivo": vivo, "residente": residente,
                     "atencion": atencion.value if atencion else "ninguna",
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
-                    # la sesión tmux propia, si la tiene: con ella otra máquina abre su ventana (remotos)
+                    # dónde mirarlo desde otra máquina: su ventana en la sesión del telar, o la sesión
+                    # tmux propia de antes (remotos)
+                    "ventana": ventana,
                     "sesion_tmux": propias.get(nombre, "")}
 
         for h in tel.hilos:
             if h.nombre in remotos:
                 continue  # su ventana está aquí, pero vive en otra máquina: lo publica esa
             if tel.vivo(h) or tel.propio(h):
-                salida[h.nombre] = ficha_de(h.nombre, True)
+                salida[h.nombre] = ficha_de(h.nombre, True, ventana=direcciones.get(h.id, "") if tel.vivo(h) else "")
         # una sesión propia que telar todavía no registró (la abrió un periódico, el celular, otra
         # máquina) también vive aquí: sin esto, la otra máquina no se entera de que nació
         for nombre in propias:
@@ -236,7 +244,7 @@ class Nodo:
         for clave, valor in list(self.publicado.items()):
             previo = json.loads(valor)
             if previo["nombre"] not in actuales and previo.get("vivo"):
-                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": ""}
+                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": "", "ventana": ""}
         for nombre, info in actuales.items():
             valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
             clave = mod_bus.clave_estado(self.config, nombre)
@@ -297,7 +305,7 @@ class Nodo:
         tel = _comun.tejer(self.ctx, con_ficha=False)
         if tel.mux is None or not tel.viva:
             return
-        nombre, sesion = d.get("nombre", ""), d.get("sesion_tmux", "")
+        nombre, sesion = d.get("nombre", ""), d.get("ventana") or d.get("sesion_tmux", "")
         anotados = tel.estado.remotos()
         hilo = tel.por_nombre(nombre)
         if d.get("vivo") and sesion:
@@ -306,11 +314,33 @@ class Nodo:
                 # ya la conocemos: si su ventana se cayó (el laptop durmió, se cortó la red) y el hilo no
                 # se archivó a propósito, se vuelve a abrir con el mismo nombre
                 aqui = next((n for n, x in anotados.items() if x.get("sesion") == sesion), "")
+                if aqui and aqui != nombre and nombre not in anotados and tel.por_nombre(nombre) is None:
+                    # se renombró allá: el nombre lo pone la máquina donde vive
+                    previo = tel.por_nombre(aqui)
+                    if previo is not None and tel.vivo(previo):
+                        tel.mux.renombrar(previo.id, nombre)
+                    tel.estado.renombrar(aqui, nombre)
+                    self.anotar(f"«{aqui}» se llama «{nombre}» en {remoto.nombre}: lo renombré aquí")
+                    if previo is not None and tel.vivo(previo):
+                        return  # su ventana sigue abierta, ya con el nombre nuevo
+                    aqui = nombre
                 local = tel.por_nombre(aqui) if aqui else None
                 if not aqui or (local is not None and tel.vivo(local)) or aqui in tel.estado.archivados():
                     return
                 mod_remoto.traer(tel, remoto, sesion, aqui)
                 self.anotar(f"«{aqui}»: su ventana se había cerrado y la sesión sigue en {remoto.nombre}: la reabrí")
+                return
+            previo = anotados.get(nombre) or {}
+            if previo.get("remoto") == remoto.nombre and previo.get("sesion"):
+                # el mismo hilo en otra dirección: pasó de sesión propia a ventana, o se reabrió allá. Se
+                # sigue a la dirección nueva en vez de traerlo otra vez como «· 2»
+                if hilo is not None and tel.vivo(hilo):
+                    tel.mux.cerrar(hilo.id)
+                if nombre in tel.estado.archivados():
+                    tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
+                    return
+                mod_remoto.traer(tel, remoto, sesion, nombre)
+                self.anotar(f"«{nombre}» cambió de lugar en {remoto.nombre} ({previo['sesion']} → {sesion}): lo sigo")
                 return
             dormidos = {h.nombre for h in tel.hilos if not tel.vivo(h) and h.nombre not in anotados}
             nombres = ({h.nombre for h in tel.hilos} | set(anotados)) - dormidos

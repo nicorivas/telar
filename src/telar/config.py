@@ -270,8 +270,8 @@ TRANSPORTES = ("mosh", "ssh")
 class Remoto:
     """Una máquina donde pueden vivir hilos (`[remotos.<nombre>]`).
 
-    El agente de un hilo remoto corre allá, en una sesión tmux propia; el hilo local es
-    solo la ventana desde donde se lo mira. Ver docs/propuestas/hilos-remotos.md.
+    El agente de un hilo remoto corre allá, en una ventana de la sesión del telar de allá; el hilo
+    local es solo la ventana desde donde se lo mira. Ver docs/propuestas/un-dueno-por-hilo.md.
     """
 
     nombre: str
@@ -289,6 +289,8 @@ class Remoto:
     #: los repositorios que viven en las dos máquinas (`~/repo/empresa`): antes de llevar un
     #: hilo allá se revisa que no tengan trabajo sin subir, además de la raíz.
     repos: tuple[str, ...] = ()
+    #: la sesión del telar EN la otra máquina, donde nacen sus hilos; "" es la misma que aquí.
+    sesion: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -648,7 +650,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         remotos = []
         for nombre, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"remotos.{nombre}")
-            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo", "directorio", "repos"}
+            sobra = set(cuerpo) - {"destino", "transporte", "raiz", "correo_archivo", "directorio", "repos", "sesion"}
             if sobra:
                 raise ErrorDeConfig(f"remotos.{nombre}.{sorted(sobra)[0]}: no existe")
             destino = cuerpo.get("destino", "")
@@ -668,9 +670,12 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             repos = cuerpo.get("repos", [])
             if not isinstance(repos, list) or not all(isinstance(x, str) and x.strip() for x in repos):
                 raise ErrorDeConfig(f"remotos.{nombre}.repos: se esperaba una lista de carpetas, llegó {repos!r}")
+            sesion = cuerpo.get("sesion", "")
+            if not isinstance(sesion, str) or any(c in sesion for c in ".:"):
+                raise ErrorDeConfig(f"remotos.{nombre}.sesion: se esperaba el nombre de una sesión tmux, llegó {sesion!r}")
             remotos.append(Remoto(nombre=nombre, destino=destino.strip(), transporte=transporte, repos=tuple(x.strip() for x in repos),
                                   raiz=raiz.strip().rstrip("/") or "/", correo_archivo=archivo.strip(),
-                                  directorio=directorio.strip().rstrip("/")))
+                                  directorio=directorio.strip().rstrip("/"), sesion=sesion.strip()))
         cambios["remotos"] = tuple(remotos)
 
     if "enlaces" in datos:

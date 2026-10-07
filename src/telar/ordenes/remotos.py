@@ -59,7 +59,7 @@ def main(argv: list[str], ctx) -> int:
     nombres = ({h.nombre for h in tel.hilos} | set(tel.estado.remotos())) - dormidos
     datos, traidos, cerrados = [], [], []
     for r in remotos:
-        de_alla, error = mod_remoto.sesiones(r)
+        de_alla, error = mod_remoto.sesiones(r, ctx.config)
         faltan = mod_remoto.nuevas(conocidas, de_alla, nombres)
         nombres |= {aqui for _, _, aqui in faltan}
         if o.verbo == "traer" and faltan:

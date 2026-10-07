@@ -461,7 +461,7 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
     from telar.agente import ErrorDeAgente, lanzar
     from telar import agente as mod_agente
 
-    abiertos = [h for h in mod_movil.hilos() if h.nombre.startswith(p.nombre_hilo + " ")]
+    abiertos = [h for h in mod_movil.hilos(ctx.config.sesion) if h.nombre.startswith(p.nombre_hilo + " ")]
     if len(abiertos) >= p.max_abiertos:
         return 0, f"saltado: ya hay {len(abiertos)} «{p.nombre_hilo}» abiertos sin cerrar", ""
     if not ctx.config.agente.nombre:
@@ -473,7 +473,7 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
     try:
         palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(p.mensaje)
         palabras = [*palabras, *p.argumentos]  # después del prompt: hay banderas que se tragan lo que sigue
-        mod_movil.crear(nombre, str(carpeta), lanzar.envolver(palabras, nombre))
+        mod_movil.crear(nombre, str(carpeta), lanzar.envolver(palabras, nombre), ctx.config.sesion)
         lanzar.anotar(ctx.config, nombre, lanzar.Lanzamiento(comando=[], carpeta=carpeta, nueva=sid))
     except (ErrorDeAgente, RuntimeError, OSError) as e:
         return 1, f"no pude abrir el hilo: {e}", ""
