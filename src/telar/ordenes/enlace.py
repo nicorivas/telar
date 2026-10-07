@@ -130,13 +130,25 @@ def main(argv: list[str], ctx) -> int:
         from telar.ordenes import mensaje
 
         texto = sys.stdin.read() if o.args[1:] == ["-"] else " ".join(o.args[1:])
+        # la puerta es para pedirle algo a otra máquina: si el hilo vive en esta, decirlo (el mensaje
+        # llega igual, pero quien escribía quizás quería que lo hiciera el laptop)
+        aviso = ""
+        try:
+            vive = (_bus.estados(ctx.config).get(o.args[0]) or {}).get("maquina", "")
+        except _bus.ErrorDeBus:
+            vive = ""
+        if vive and vive == _bus.maquina(ctx.config):
+            aviso = (f"«{o.args[0]}» vive en esta misma máquina ({vive}): le llega igual, pero no lo hará otra "
+                     "máquina. Para algo que solo puede hacer el laptop, `telar encargar laptop \"…\"`.")
         try:
             m = mensaje.enviar(ctx, o.args[0], texto)
         except _bus.ErrorDeBus as e:
             return _comun.queja(str(e))
         if o.json:
-            return _comun.escribir_json({"ok": True, "por": "bus", "id": m["id"]})
-        print(f"en la casilla de «{o.args[0]}» (por el bus, id {m['id']})")
+            return _comun.escribir_json({"ok": True, "por": "bus", "id": m["id"], "vive": vive, "aviso": aviso})
+        if aviso:
+            print(_comun.tenue(aviso), file=sys.stderr)
+        print(f"en la casilla de «{o.args[0]}»{f' ({vive})' if vive else ''} (por el bus, id {m['id']})")
         return 0
 
     # llamar
@@ -180,8 +192,9 @@ def main(argv: list[str], ctx) -> int:
     elif not r.get("ok"):
         print(f"{enlace.nombre}: {r.get('error', 'no salió')}", file=sys.stderr)
     elif o.verbo == "hilos":
+        # dónde vive cada uno: la ventana de un hilo remoto está en esa máquina, pero el hilo corre allá
         for h in r["foto"]["hilos"]:
-            print(f"{h.get('atencion', ''):<11}{h['nombre']}")
+            print(f"{h.get('atencion', ''):<11}{(h.get('remoto') or enlace.nombre):<10} {h['nombre']}")
     elif o.verbo == "leer":
         from telar import historia
 
