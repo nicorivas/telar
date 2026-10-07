@@ -412,6 +412,13 @@ def _aviso(o, ctx) -> int:
             mux=_mux_si_hace_falta(ctx, est, aviso, panel),
             multiplexor=ctx.config.multiplexor,
         )
+        if not hilo and panel and ctx.config.multiplexor == "tmux":
+            # un agente abierto sin $TELAR_HILO en una sesión propia (un agente residente, el
+            # celular): ni la conversación ni el tab lo nombran, pero su sesión lleva @telar_hilo.
+            # Sin esto su semáforo se quedaba pegado y el nodo nunca le entregaba la casilla
+            from telar import movil
+
+            hilo = movil.hilo_de_panel(panel) or hilo
         efecto = aplicar(est, aviso, hilo=hilo, panel=panel, olvidar_al_cerrar=o.olvidar)
         if efecto.atencion in (Atencion.ESPERA, Atencion.TERMINO):
             # terminó su turno: si es un agente con encargos en cola, el siguiente (ver telar.encargos)
