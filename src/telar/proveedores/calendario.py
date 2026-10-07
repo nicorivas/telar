@@ -107,6 +107,8 @@ class Evento:
     todo_el_dia: bool = False
     lugar: str = ""
     origen: str = ""
+    #: quiénes están invitados: «Nombre <correo>» o solo el correo. Sirve para saber de qué proyecto es.
+    asistentes: tuple[str, ...] = ()
 
     @property
     def duracion(self) -> timedelta | None:
@@ -127,6 +129,7 @@ class Evento:
                 "todo_el_dia": self.todo_el_dia,
                 "lugar": self.lugar,
                 "origen": self.origen,
+                "asistentes": list(self.asistentes),
             },
         )
 
@@ -179,6 +182,7 @@ class _Vevento:
     todo_el_dia: bool = False
     enlace: str = ""
     lugar: str = ""
+    asistentes: list[str] = field(default_factory=list)
     cancelado: bool = False
     regla: dict[str, str] = field(default_factory=dict)
     excluidas: set[date] = field(default_factory=set)
@@ -291,6 +295,7 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
     fin: datetime | None = None
     duracion: timedelta | None = None
     roto = False
+    dueno = ""
 
     for linea in desplegar(texto):
         p = _propiedad(linea)
@@ -317,6 +322,9 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
                 actual = None
             continue
 
+        if nombre == "X-WR-CALNAME" and pila == ["VCALENDAR"]:
+            # el nombre de un calendario de Google es el correo de su dueño: no es un asistente más
+            dueno = valor.strip().lower()
         if actual is None or pila[-1:] != ["VEVENT"]:
             continue  # propiedades del calendario, o de un VALARM adentro del evento
 
@@ -329,6 +337,12 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
                 actual.lugar = _desescapar(valor).strip()
             elif nombre == "URL":
                 actual.enlace = valor.strip()
+            elif nombre == "ATTENDEE":
+                correo = valor.strip()
+                correo = correo[7:] if correo.lower().startswith("mailto:") else correo
+                cn = _desescapar(params.get("CN", "")).strip().strip('"')
+                if correo or cn:
+                    actual.asistentes.append(f"{cn} <{correo}>" if cn and correo and cn != correo else (correo or cn))
             elif nombre == "STATUS":
                 actual.cancelado = valor.strip().upper() == "CANCELLED"
             elif nombre == "DTSTART":
@@ -352,6 +366,9 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
         except ValueError:
             roto = True
 
+    if "@" in dueno:
+        for v in salida:
+            v.asistentes = [a for a in v.asistentes if not (a.lower() == dueno or a.lower().endswith(f"<{dueno}>"))]
     return salida
 
 
@@ -536,6 +553,7 @@ def eventos_del_dia(
                 enlace=v.enlace,
                 todo_el_dia=v.todo_el_dia,
                 lugar=v.lugar,
+                asistentes=tuple(v.asistentes),
                 origen=origen,
             )
 
@@ -821,6 +839,8 @@ def eventos_de_gws(salida: str, local: timezone | None = None) -> list[Evento]:
             todo_el_dia=todo,
             lugar=e.get("location", ""),
             origen="gws",
+            asistentes=tuple(f"{a['displayName']} <{a['email']}>" if a.get("displayName") else a.get("email", "")
+                             for a in e.get("attendees", []) or [] if a.get("email") and not a.get("resource")),
         ))
     return sorted(eventos, key=lambda x: (x.inicio, x.titulo))
 
