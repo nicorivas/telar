@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
+from telar.movil import HiloMovil  # noqa: E402
+
 from telar import config as mod_config
 from telar import periodicos as m
 
@@ -106,13 +108,34 @@ class Correr(Prueba):
         self.assertEqual(m.ultima(self.ctx.config, "eco")["codigo"], 3)
 
     def test_un_mensaje_no_abre_mas_de_la_cuenta(self):
-        abiertos = [SimpleNamespace(nombre="✉ correo 10/01 08:00"), SimpleNamespace(nombre="✉ correo 10/01 10:00")]
+        hoy = datetime.now().strftime("%m/%d")
+        abiertos = [HiloMovil(sesion="t", nombre=f"✉ correo {hoy} 08:00", ventana="@1", marca="a"),
+                    HiloMovil(sesion="t", nombre=f"✉ correo {hoy} 10:00", ventana="@2", marca="b")]
         p = m.Proceso(nombre="correo", cuando="* * * * *", mensaje="/correo", hilo="✉ correo", max_abiertos=2)
         with mock.patch("telar.movil.hilos", return_value=abiertos), mock.patch("telar.movil.crear") as crear:
             r = m.correr(self.ctx, p)
         self.assertEqual(r["codigo"], 0)
         self.assertIn("saltado", r["resultado"])
         crear.assert_not_called()
+
+    def test_uno_olvidado_de_otro_dia_se_cierra_en_vez_de_frenar(self):
+        from telar import estado as mod_estado
+        from telar.modelo import Atencion
+
+        ahora = datetime(2026, 10, 7, 20, 30)
+        quieto = HiloMovil(sesion="t", nombre="▣ planear 10/05 20:30", ventana="@1", marca="a")
+        mirado = HiloMovil(sesion="t", nombre="▣ planear 10/05 21:00", clientes=1, ventana="@2", marca="b")
+        ocupado = HiloMovil(sesion="t", nombre="▣ planear 10/06 20:30", ventana="@3", marca="c")
+        pegado = HiloMovil(sesion="t", nombre="▣ planear 10/06 20:31", ventana="@4", marca="d")
+        est = mod_estado.abrir(self.ctx.config)
+        est.anotar_atencion(ocupado.nombre, Atencion.TRABAJANDO, cuando=datetime(2026, 10, 7, 19, 0))
+        est.anotar_atencion(pegado.nombre, Atencion.TRABAJANDO, cuando=datetime(2026, 10, 6, 21, 0))
+        matados = []
+        with mock.patch("telar.movil._tmux", side_effect=lambda *a, **k: matados.append(a) or ""):
+            cerrados = m.cerrar_viejos(self.ctx.config, [quieto, mirado, ocupado, pegado], ahora)
+        # el quieto y el pegado (trabajando hace más de tres horas) se cierran; el mirado y el ocupado no
+        self.assertEqual(cerrados, [quieto.nombre, pegado.nombre])
+        self.assertEqual(matados, [("kill-window", "-t", "@1"), ("kill-window", "-t", "@4")])
 
 
 class _ConArchivo(Prueba):

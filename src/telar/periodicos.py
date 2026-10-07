@@ -454,6 +454,41 @@ def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
     return 0, f"{problema_bus}encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])}", agente.nombre
 
 
+#: un «trabajando» sin cambios por más de esto es un agente pegado, no uno que trabaja
+TRABAJANDO_VIEJO = timedelta(hours=3)
+
+
+def cerrar_viejos(config, abiertos, ahora: datetime) -> list[str]:
+    """Cierra los hilos de este proceso que quedaron abiertos de otro día, sin nadie mirándolos y
+    sin el agente trabajando. Devuelve sus nombres.
+
+    Un hilo olvidado de anoche no puede impedir la pasada de hoy: el 6-oct un «▣ planear» del 5
+    quedó abierto y no hubo plan del 7. Lo que alguien mira, o lo que un agente sigue haciendo, se
+    respeta: ese sí cuenta para `max_abiertos`."""
+    from telar import estado as mod_estado
+    from telar import movil as mod_movil
+    from telar.modelo import Atencion
+
+    est = mod_estado.abrir(config)
+    atenciones = est.atenciones()
+    hoy = f"{ahora:%m/%d}"
+    cerrados = []
+    for h in abiertos:
+        fecha = re.search(r"(\d{2}/\d{2}) \d{2}:\d{2}$", h.nombre)
+        if not fecha or fecha.group(1) == hoy or h.clientes:
+            continue
+        atencion, desde = atenciones.get(h.nombre, (Atencion.NINGUNA, None))
+        if atencion == Atencion.TRABAJANDO and desde is not None and ahora.timestamp() - desde.timestamp() < TRABAJANDO_VIEJO.total_seconds():
+            continue
+        try:
+            mod_movil._tmux("kill-window" if h.ventana else "kill-session", "-t", h.objetivo)
+        except (RuntimeError, OSError):
+            continue
+        est.anotar_atencion(h.nombre, Atencion.NINGUNA)
+        cerrados.append(h.nombre)
+    return cerrados
+
+
 def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, str, str]:
     """Un hilo nuevo con el agente y el prompt, si no hay ya `max_abiertos` de este proceso."""
     os.environ.update({k: v for k, v in _entorno().items() if k in ("PATH", "LANG")})
@@ -462,6 +497,8 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
     from telar import agente as mod_agente
 
     abiertos = [h for h in mod_movil.hilos(ctx.config.sesion) if h.nombre.startswith(p.nombre_hilo + " ")]
+    viejos = cerrar_viejos(ctx.config, abiertos, ahora)
+    abiertos = [h for h in abiertos if h.nombre not in viejos]
     if len(abiertos) >= p.max_abiertos:
         return 0, f"saltado: ya hay {len(abiertos)} «{p.nombre_hilo}» abiertos sin cerrar", ""
     if not ctx.config.agente.nombre:
@@ -477,7 +514,8 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
         lanzar.anotar(ctx.config, nombre, lanzar.Lanzamiento(comando=[], carpeta=carpeta, nueva=sid))
     except (ErrorDeAgente, RuntimeError, OSError) as e:
         return 1, f"no pude abrir el hilo: {e}", ""
-    return 0, f"abrí «{nombre}»", nombre
+    cerre = f" (cerré {', '.join(f'«{v}»' for v in viejos)}: de otro día y quietos)" if viejos else ""
+    return 0, f"abrí «{nombre}»{cerre}", nombre
 
 
 def resumen(ctx, a: Archivo, ahora: datetime | None = None) -> list[dict]:
