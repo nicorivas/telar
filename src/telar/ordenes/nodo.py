@@ -177,6 +177,9 @@ class Nodo:
         self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
@@ -368,6 +371,32 @@ class Nodo:
         except Exception as e:  # noqa: BLE001
             r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
         await m.respond(json.dumps(r, ensure_ascii=False).encode())
+
+
+    async def _responder(self, m, hacer) -> None:
+        try:
+            pedido = json.loads(m.data or b"{}")
+            r = await asyncio.to_thread(hacer, pedido)
+        except Exception as e:  # noqa: BLE001 - un pedido roto se responde con su error
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+        await m.respond(json.dumps(r, ensure_ascii=False).encode())
+
+    async def _resultado(self, m) -> None:
+        from telar import resultados
+
+        await self._responder(m, lambda p: resultados.local(self.config, str(p.get("clave", "")), str(p.get("dia", ""))))
+
+    async def _notas(self, m) -> None:
+        from telar import notas
+
+        await self._responder(m, lambda p: notas.leer_local(self.config, str(p.get("dia", ""))))
+
+    async def _nota(self, m) -> None:
+        from telar import notas
+
+        await self._responder(m, lambda p: notas.agregar_local(
+            self.config, str(p.get("dia", "")), str(p.get("evento", "")), str(p.get("texto", "")),
+            de=str(p.get("de", "")), titulo=str(p.get("titulo", "")), inicio=str(p.get("inicio", ""))))
 
 
 # para `python -m telar.ordenes.nodo` en una prueba
