@@ -144,13 +144,13 @@ class Nodo:
         if escribir is not None:
             if est.atencion(nombre) == Atencion.TRABAJANDO and not self.atencion_vieja(est, nombre):
                 return "trabajando: se lo entrega Stop"
-            escribir(casilla.AVISO)
+            escribir(casilla.aviso(self.config, nombre))
             est.anotar_atencion(nombre, Atencion.TRABAJANDO)
             return "avisado"
         if info.get("residente"):
             agente = next((a for a in mod_agentes.descubrir(self.config) if a.clave == info["residente"]), None)
             if agente is not None:
-                encargos._abrir(self.ctx, agente, casilla.AVISO)
+                encargos._abrir(self.ctx, agente, casilla.aviso(self.config, nombre))
                 return "abierto"
         return "en su casilla, hasta que se abra"
 

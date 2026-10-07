@@ -43,6 +43,22 @@ def carpeta(config, hilo: str) -> Path:
     return Path(config.estado) / "casillas" / nombre_de_carpeta(hilo)
 
 
+def aviso(config, hilo: str) -> str:
+    """La línea que se teclea para despertar al agente: el aviso fijo y un resumen corto de lo que
+    llegó, para que quien mire la pantalla vea qué le pidieron. Una sola línea, sin el contenido
+    entero: el contenido entra por el gancho."""
+    mensajes = pendientes(config, hilo)
+    if not mensajes:
+        return AVISO
+    m = mensajes[0]
+    tipo = {"encargo": "encargo", "persona": "tu persona"}.get(m.get("tipo", ""), "mensaje")
+    primera = " ".join(str(m.get("texto", "")).split())
+    primera = re.sub(r"[^\w\s/«».,:;¿?¡!()@-]", "", primera)[:70]
+    resumen = f"{tipo} de {m.get('de') or 'alguien'}: {primera}" if tipo != "tu persona" else f"tu persona: {primera}"
+    otros = f" (+{len(mensajes) - 1})" if len(mensajes) > 1 else ""
+    return f"{AVISO} · {resumen}{otros}"
+
+
 def nuevo_id() -> str:
     import uuid
 

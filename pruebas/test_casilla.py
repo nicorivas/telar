@@ -77,3 +77,18 @@ class LaCadena(Prueba):
         texto, _ = m.como_texto([{"id": "b", "de": "Faro", "texto": "x", "persona": "berta"}], "ana")
         self.assertIn("otra persona: berta", texto)
         self.assertIn("espera", texto)
+
+
+class ElAviso(Prueba):
+    def test_el_aviso_dice_que_llego_en_una_linea_limpia(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cfg = SimpleNamespace(estado=Path(tmp.name))
+        self.assertEqual(m.aviso(cfg, "Faro"), m.AVISO)
+        m.dejar(cfg, "Faro", {"id": "a", "de": "ana@laptop", "tipo": "encargo", "texto": "/correo\\nmás $HOME `x`"})
+        linea = m.aviso(cfg, "Faro")
+        self.assertTrue(linea.startswith(m.AVISO))
+        self.assertIn("encargo de ana@laptop: /correo", linea)
+        self.assertNotIn("\\n", linea)
+        self.assertNotIn("$", linea)
+        self.assertNotIn("`", linea)
