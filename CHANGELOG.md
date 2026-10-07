@@ -20,6 +20,8 @@ workflow refuses to run if the two disagree.
 - `telar reunion` hands the preparation or the minutes to the agent that receives what has no project
   (`[agentes] sin_proyecto`) and goes to its thread, instead of opening a tab per meeting; `--hilo-nuevo`
   keeps the old behaviour.
+- `telar reunion --evento <id>` puts the calendar event's id in the message, so the agent can leave its note on
+  it; the dashboard passes it. Paths in an event's notes open the file.
 
 ### Fixed
 
