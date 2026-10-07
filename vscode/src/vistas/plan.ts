@@ -193,7 +193,8 @@ export function eventosDelDia(d: Dia, plan?: Plan): EventoCal[] {
         if (!x.inicio) continue;
         const ini = aMs(d.fecha, String(x.inicio));
         if (Number.isNaN(ini)) continue;
-        const par = evs.find(e => !e.plan && !e.soloPlan && Math.abs(e.inicio - ini) <= 10 * 60000 && parecidos(e.titulo, String(x.titulo ?? '')));
+        const par = (x.evento ? evs.find(e => e.id === x.evento && !e.plan) : undefined)
+            ?? evs.find(e => !e.plan && !e.soloPlan && Math.abs(e.inicio - ini) <= 10 * 60000 && parecidos(e.titulo, String(x.titulo ?? '')));
         if (par) { par.plan = x; continue; }
         const fin = x.fin ? aMs(d.fecha, String(x.fin)) : NaN;
         evs.push({ id: `plan:${x.inicio}:${x.titulo}`, titulo: String(x.titulo ?? ''), inicio: ini,
@@ -288,16 +289,31 @@ function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: stri
     if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url]))}">preparar o minuta</a>`);
     acciones.push(`<a data-accion="nota-evento" data-valor="${esc(JSON.stringify([e.id, e.titulo, hm(e.inicio), fecha]))}">+ nota</a>`);
     h.push(`<div class="acciones-ev">${acciones.join('')}</div>`);
-    if (e.plan?.nota) h.push(`<div class="cal-nota"><div class="de">del plan del día</div>${t(e.plan.nota)}</div>`);
-    if (e.plan?.ficha?.decision) {
-        const ops: Plan[] = e.plan.ficha.opciones ?? [];
-        h.push(`<div class="cal-nota"><div class="de">decisión que pide el plan</div>${t(e.plan.ficha.decision)}`
-            + (ops.length ? '<ul>' + ops.map(o => `<li>${t(o.texto)}</li>`).join('') + '</ul>' : '') + '</div>');
+    const p = e.plan;
+    if (p) {
+        const f: Plan = p.ficha ?? {};
+        const lista = (xs: unknown) => Array.isArray(xs) && xs.length ? '<ul>' + xs.map(x => `<li>${t(x)}</li>`).join('') + '</ul>' : '';
+        const datos = [p.con?.length ? `con ${(p.con as string[]).join(', ')}` : '', p.estado ?? '', p.accion ? `propone: ${p.accion}` : '']
+            .filter(Boolean).join(' · ');
+        const partes = [
+            datos ? `<div class="dim">${t(datos)}</div>` : '',
+            p.nota ? `<div>${t(p.nota)}</div>` : '',
+            f.decision ? `<div><b>decidir:</b> ${t(f.decision)}</div>` : '',
+            (f.opciones ?? []).length ? lista((f.opciones as Plan[]).map(o => o.texto)) : '',
+            f.recomendacion ? `<div><b>recomendación:</b> ${t(f.recomendacion)}</div>` : '',
+            f.resultado ? `<div><b>resultado buscado:</b> ${t(f.resultado)}</div>` : '',
+            (f.llevar ?? []).length ? `<div><b>llevar</b>${lista(f.llevar)}</div>` : '',
+            (f.pedir ?? []).length ? `<div><b>pedir</b>${lista(f.pedir)}</div>` : '',
+            f.riesgo ? `<div class="plan-riesgo">${t(f.riesgo)}</div>` : '',
+            f.nota ? `<div class="dim">${t(f.nota)}</div>` : '',
+            f.borrador ? `<div class="dim">borrador: ${t(f.borrador)}</div>` : '',
+        ].filter(Boolean);
+        if (partes.length) h.push(`<div class="cal-nota"><div class="de">del plan del día</div>${partes.join('')}</div>`);
     }
     for (const n of notasDe(e, notas)) {
         h.push(`<div class="cal-nota"><div class="de">${esc(n.de)} · ${esc((n.creado ?? '').slice(11, 16))}</div>`
             + `<div style="white-space:pre-wrap">${t(n.texto)}</div></div>`);
     }
-    if (!e.plan?.nota && !notasDe(e, notas).length) h.push('<div class="dim">sin notas</div>');
+    if (!e.plan && !notasDe(e, notas).length) h.push('<div class="dim">sin notas</div>');
     return h.join('');
 }
