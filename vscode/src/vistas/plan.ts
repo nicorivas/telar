@@ -158,7 +158,7 @@ export function htmlPlan(r: cli.JsonResultado | undefined, error: string, cargan
 
 /** Un evento del calendario: del calendario de la persona, o un bloque que propuso el plan. */
 export interface EventoCal {
-    id: string; titulo: string; inicio: number; fin: number; lugar: string; url: string;
+    id: string; titulo: string; inicio: number; fin: number; lugar: string; url: string; asistentes: string[];
     /** lo que el plan dice de este evento, o el bloque mismo si no está en el calendario */
     plan?: Plan;
     /** un bloque del plan que no está en el calendario */
@@ -187,7 +187,7 @@ export function eventosDelDia(d: Dia, plan?: Plan): EventoCal[] {
         const ini = Date.parse(e.cuando ?? '');
         const fin = e.fin ? Date.parse(e.fin) : NaN;
         return { id: e.id || `${e.cuando}:${e.texto}`, titulo: e.texto, inicio: ini, fin: Number.isNaN(fin) ? ini + SIN_FIN * 60000 : fin,
-            lugar: e.lugar ?? '', url: e.url ?? '', soloPlan: false };
+            lugar: e.lugar ?? '', url: e.url ?? '', asistentes: e.asistentes ?? [], soloPlan: false };
     });
     for (const x of (plan?.agenda ?? []) as Plan[]) {
         if (!x.inicio) continue;
@@ -198,7 +198,7 @@ export function eventosDelDia(d: Dia, plan?: Plan): EventoCal[] {
         if (par) { par.plan = x; continue; }
         const fin = x.fin ? aMs(d.fecha, String(x.fin)) : NaN;
         evs.push({ id: `plan:${x.inicio}:${x.titulo}`, titulo: String(x.titulo ?? ''), inicio: ini,
-            fin: Number.isNaN(fin) ? ini + SIN_FIN * 60000 : fin, lugar: '', url: '', plan: x, soloPlan: true });
+            fin: Number.isNaN(fin) ? ini + SIN_FIN * 60000 : fin, lugar: '', url: '', asistentes: [], plan: x, soloPlan: true });
     }
     return evs.sort((a, b) => a.inicio - b.inicio || a.fin - b.fin);
 }
@@ -293,7 +293,7 @@ function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: stri
         `<div class="cal-meta">${esc(hm(e.inicio))}–${esc(hm(e.fin))}${e.lugar ? ` · ${esc(e.lugar)}` : ''}${e.soloPlan ? ' · bloque del plan' : ''}</div>`];
     const acciones: string[] = [];
     if (e.url) acciones.push(`<a class="enlace" data-url="${esc(e.url)}" title="${esc(e.url)}">entrar ↗</a>`);
-    if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url, e.id]))}">preparar o minuta</a>`);
+    if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url, e.id, e.asistentes]))}">preparar o minuta</a>`);
     acciones.push(`<a data-accion="nota-evento" data-valor="${esc(JSON.stringify([e.id, e.titulo, hm(e.inicio), fecha]))}">+ nota</a>`);
     h.push(`<div class="acciones-ev">${acciones.join('')}</div>`);
     const p = e.plan;

@@ -184,7 +184,7 @@ export interface JsonFila {
     /** si su proveedor tiene pestaña propia (un feed): no es un pendiente, va a esa pestaña */
     pestana?: string;
     /** un evento: cuándo termina, dónde, y si es de día completo */
-    fin?: string; lugar?: string; todo_el_dia?: boolean;
+    fin?: string; lugar?: string; todo_el_dia?: boolean; asistentes?: string[];
 }
 
 /** Lo que dejó una skill un día (`telar resultado <clave> [día]`), leído de la máquina donde vive. */
@@ -220,9 +220,21 @@ export interface JsonHoy {
 }
 
 /** `telar reunion`: un hilo con el agente preparando esa reunión (o ir a él, si ya existe). */
-export const reunion = (titulo: string, hora: string, enlace = '', evento = '') =>
-    telarJson<{ hilo: string; proyecto: string; mensaje: string; hecho: string }>(
-        ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), ...(evento ? ['--evento', evento] : []), '--json'], 30000);
+/** Un proyecto del que podría ser una reunión, con por qué (`telar reunion --preguntar`). */
+export interface JsonCandidato { ruta: string; nombre: string; puntaje: number; motivos: string[] }
+export interface JsonReunion {
+    hilo: string; proyecto: string; mensaje: string; hecho: string;
+    candidatos?: JsonCandidato[]; gestion?: string; destino?: string; recordado?: boolean;
+}
+/** Preparar o hacer la minuta de una reunión. Con `preguntar`, si no se sabe de qué proyecto es,
+ *  no hace nada y devuelve los candidatos (`hecho: "preguntar"`); `proyecto` es la elección. */
+export const reunion = (titulo: string, hora: string, enlace = '', evento = '',
+    opciones: { asistentes?: string[]; proyecto?: string; preguntar?: boolean } = {}) =>
+    telarJson<JsonReunion>(
+        ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), ...(evento ? ['--evento', evento] : []),
+            ...(opciones.asistentes?.length ? ['--asistentes', opciones.asistentes.join(',')] : []),
+            ...(opciones.proyecto ? ['--proyecto', opciones.proyecto] : []),
+            ...(opciones.preguntar ? ['--preguntar'] : []), '--json'], 40000);
 
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {

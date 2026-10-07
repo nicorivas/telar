@@ -207,7 +207,7 @@ export class PanelHoy {
             const hilo = e.hilo ? `<span class="hilo-ag">${esc(e.hilo)}</span>` : '';
             // un clic en cualquier evento abre su hilo; telar decide qué skill según si ya
             // empezó (preparar o minuta) y las reglas de `[agenda]`
-            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url, e.id]));
+            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url, e.id, e.asistentes ?? []]));
             if (Date.parse(cuando) <= t) {
                 h.push(`<div class="ag pasada clic" data-accion="reunion" data-valor="${valor}" title="clic: la minuta">`
                     + `<span class="hora">${esc(hhmm(cuando))}</span>`
@@ -1046,17 +1046,57 @@ export class PanelHoy {
 
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
-    private async preparar(titulo: string, hora: string, enlace: string, evento = ''): Promise<void> {
-        const r = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` }, () => cli.reunion(titulo, hora, enlace, evento));
+    private async preparar(titulo: string, hora: string, enlace: string, evento = '', asistentes: string[] = []): Promise<void> {
+        const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` },
+            () => cli.reunion(titulo, hora, enlace, evento, { asistentes, ...opciones }));
+        let r = await pedir({ preguntar: true });
+        if (r.datos?.hecho === 'preguntar') {
+            const eleccion = await this.elegirProyecto(titulo, hora, r.datos);
+            if (!eleccion) return;
+            r = await pedir({ proyecto: eleccion });
+        }
         if (!r.datos) {
             void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
             return;
         }
-        // con un agente que recibe lo sin proyecto (Gestión), se le encargó a él: se dice a quién
-        if (r.datos.hecho.startsWith('encargado')) void vscode.window.setStatusBarMessage(`telar: «${titulo}» ${r.datos.hecho}`, 6000);
+        void vscode.window.setStatusBarMessage(`telar: «${titulo}» → ${r.datos.hilo}: ${r.datos.hecho}`, 6000);
         await modelo.sondear();
         await mostrarTerminal();
+    }
+
+    /** De qué proyecto es una reunión que no se pudo deducir: los sugeridos con su porqué, Gestión
+     *  siempre, un proyecto nuevo con su nombre, y todos los proyectos para buscar. La elección se
+     *  recuerda para la serie (`telar reunion --proyecto`). */
+    private async elegirProyecto(titulo: string, hora: string, r: cli.JsonReunion): Promise<string | undefined> {
+        type Item = vscode.QuickPickItem & { valor?: string };
+        const sep = (label: string): Item => ({ label, kind: vscode.QuickPickItemKind.Separator });
+        const items: Item[] = [];
+        const sugeridos = r.candidatos ?? [];
+        if (sugeridos.length) {
+            items.push(sep('sugeridos'));
+            for (const c of sugeridos) items.push({ label: c.nombre, description: c.ruta, detail: c.motivos.join(' · '), valor: c.ruta });
+        }
+        items.push(sep('otros destinos'));
+        items.push({ label: r.gestion || 'Gestión', description: 'el agente de lo que no tiene proyecto', valor: 'gestion' });
+        items.push({ label: 'Proyecto nuevo…', description: 'se le pide al agente crearlo con su nombre', valor: 'nuevo' });
+        const todos = await cli.proyectos();
+        if (todos.datos) {
+            items.push(sep('todos los proyectos'));
+            const vistos = new Set(sugeridos.map(c => c.ruta));
+            const lista = [...todos.datos.proyectos].filter(x => !vistos.has(x.ruta))
+                .sort((a, b) => (b.modificado ?? '').localeCompare(a.modificado ?? ''));
+            for (const x of lista) items.push({ label: x.nombre, description: `${x.ruta} · ${x.arquetipo}`, valor: x.ruta });
+        }
+        const elegido = await vscode.window.showQuickPick(items, {
+            title: `¿De qué proyecto es «${titulo}» (${hora})?`,
+            placeHolder: 'escribe para buscar un proyecto; la elección se recuerda para esta reunión',
+            matchOnDescription: true, matchOnDetail: true, ignoreFocusOut: true,
+        });
+        if (!elegido?.valor) return undefined;
+        if (elegido.valor !== 'nuevo') return elegido.valor;
+        const nombre = await vscode.window.showInputBox({ title: 'Proyecto nuevo', prompt: 'El nombre del proyecto', ignoreFocusOut: true });
+        return nombre?.trim() ? `nuevo:${nombre.trim()}` : undefined;
     }
 
     /** La pantalla de proyectos. La lista se pide cada vez que se entra: es barata (medio
@@ -1328,8 +1368,8 @@ export class PanelHoy {
             case 'refrescar': await this.actualizar(true); break;
             case 'volver': void mostrarTerminal(); break;
             case 'reunion': {
-                const [titulo, hora, enlace, evento] = JSON.parse(m.valor ?? '[]') as string[];
-                if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '');
+                const [titulo, hora, enlace, evento, asistentes] = JSON.parse(m.valor ?? '[]') as [string, string, string?, string?, string[]?];
+                if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '', asistentes ?? []);
                 break;
             }
             case 'config': await this.abrirConfig(); break;
