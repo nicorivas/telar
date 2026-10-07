@@ -296,8 +296,9 @@ function barraAtajos() {
         const cuerpo = await r.json().catch(() => ({}));
         if (r.ok && cuerpo.ok) {
           cargar(true);
-          if (cuerpo.encargo !== undefined) { dijo.className = 'dijo'; dijo.textContent = `encargado a ${cuerpo.hilo}`; }
-          else { estado.recien = cuerpo.hilo; location.hash = hashConv(cuerpo.hilo); return; }
+          if (cuerpo.encargo === undefined) estado.recien = cuerpo.hilo;  // un hilo nuevo espera su primera conversación
+          location.hash = hashConv(cuerpo.hilo);  // y el encargo a un agente lleva a su hilo de siempre
+          return;
         } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
       } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
       for (const x of botones) x.disabled = false;
