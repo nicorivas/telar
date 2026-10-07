@@ -214,6 +214,9 @@ def main(argv: list[str], ctx) -> int:
         },
         "entorno": pisadas,
         "multiplexores": list(MULTIPLEXORES),
+        # el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`): a quién le escribe el
+        # dashboard sobre una reunión
+        "agente_general": _general(ctx),
     }
     if o.json:
         return _comun.escribir_json(cuerpo)
@@ -251,3 +254,13 @@ def _agentes(cfg) -> list[dict]:
         vinculos = {}
     return [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes"}
             for a in mod_agentes.descubrir(cfg, vinculos)]
+
+
+def _general(ctx) -> dict:
+    from telar.ordenes import pendiente
+
+    try:
+        a = pendiente._agente_general(ctx)
+    except Exception:  # noqa: BLE001 - sin agentes, nada
+        a = None
+    return {"clave": a.clave, "nombre": a.nombre} if a is not None else {}
