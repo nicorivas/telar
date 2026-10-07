@@ -145,6 +145,8 @@ def main(argv: list[str], ctx) -> int:
     momento = p.add_mutually_exclusive_group()
     momento.add_argument("--antes", action="store_true", help="prepararla aunque ya haya empezado")
     momento.add_argument("--despues", action="store_true", help="su minuta aunque no haya empezado")
+    p.add_argument("--evento", default="", help="el id del evento en el calendario: va en el mensaje, para que el "
+                   "agente le deje su nota (`telar evento nota`)")
     p.add_argument("--hilo-nuevo", dest="hilo_nuevo", action="store_true",
                    help="abrir un hilo propio aunque haya un agente que reciba lo sin proyecto")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
@@ -167,6 +169,9 @@ def main(argv: list[str], ctx) -> int:
     molde, regla = plantilla(ctx.config, titulo, despues)
     texto = mensaje(molde, titulo=titulo, hora=hora, fecha=o.fecha or dt.date.today().isoformat(),
                     enlace=o.enlace, proyecto=proyecto)
+    if o.evento.strip():
+        # con el id del evento, el agente puede dejarle su nota y el dashboard la muestra en él
+        texto += f" · evento: {o.evento.strip()}"
     nombre = nombre_del_tab(titulo, hora, MARCA_DESPUES if despues else MARCA)
     resultado = {"hilo": nombre, "proyecto": proyecto, "mensaje": texto, "hecho": "",
                  "momento": "despues" if despues else "antes", "regla": regla}
