@@ -10,6 +10,9 @@ workflow refuses to run if the two disagree.
 
 - `telar web --escribir --nuevo`: the «hoy» and «hilos» tabs show the dashboard shortcuts (`[atajos.<tecla>]`, e.g.
   «⚑ correo»); one tap opens the thread (or hands it to the resident agent), like the key in VS Code.
+- The line typed to wake an idle agent says what arrived («↯ mensaje nuevo · encargo de X: /correo»), so whoever
+  looks at its pane sees the request; the content still enters through the hook. The dashboard says who got a
+  shortcut's errand and asks before sending the same shortcut twice within two minutes.
 - Dashboard «revisar»: each row has a «⋯» menu with the task's provider actions (close, new date, note, wait
   for…), run directly without opening the card; a task with no proposal left leaves the list.
 - Dashboard «revisar»: the delay of each task is a button that reschedules it (tomorrow, the day after, next
