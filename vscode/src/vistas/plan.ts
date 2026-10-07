@@ -280,13 +280,20 @@ export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | 
     return h;
 }
 
+/** Las rutas de un documento (`carpeta/archivo.md`, relativas a la raíz de telar) se vuelven un enlace
+ *  que abre el archivo. Recibe texto ya escapado. */
+function conRutas(html: string): string {
+    return html.replace(/(^|[\s(:])((?:[\w.-]+\/)+[\w.-]+\.(?:md|json|html))(?=$|[\s).,;])/g,
+        (_, antes: string, ruta: string) => `${antes}<a data-accion="abrir-ruta" data-valor="${ruta}" title="abrir ${ruta}">${ruta}</a>`);
+}
+
 function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: string): string {
     const hm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
     const h: string[] = [`<h3>${esc(e.titulo)}</h3>`,
         `<div class="cal-meta">${esc(hm(e.inicio))}–${esc(hm(e.fin))}${e.lugar ? ` · ${esc(e.lugar)}` : ''}${e.soloPlan ? ' · bloque del plan' : ''}</div>`];
     const acciones: string[] = [];
     if (e.url) acciones.push(`<a class="enlace" data-url="${esc(e.url)}" title="${esc(e.url)}">entrar ↗</a>`);
-    if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url]))}">preparar o minuta</a>`);
+    if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url, e.id]))}">preparar o minuta</a>`);
     acciones.push(`<a data-accion="nota-evento" data-valor="${esc(JSON.stringify([e.id, e.titulo, hm(e.inicio), fecha]))}">+ nota</a>`);
     h.push(`<div class="acciones-ev">${acciones.join('')}</div>`);
     const p = e.plan;
@@ -312,7 +319,7 @@ function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: stri
     }
     for (const n of notasDe(e, notas)) {
         h.push(`<div class="cal-nota"><div class="de">${esc(n.de)} · ${esc((n.creado ?? '').slice(11, 16))}</div>`
-            + `<div style="white-space:pre-wrap">${t(n.texto)}</div></div>`);
+            + `<div style="white-space:pre-wrap">${conRutas(t(n.texto))}</div></div>`);
     }
     if (!e.plan && !notasDe(e, notas).length) h.push('<div class="dim">sin notas</div>');
     return h.join('');

@@ -207,7 +207,7 @@ export class PanelHoy {
             const hilo = e.hilo ? `<span class="hilo-ag">${esc(e.hilo)}</span>` : '';
             // un clic en cualquier evento abre su hilo; telar decide qué skill según si ya
             // empezó (preparar o minuta) y las reglas de `[agenda]`
-            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url]));
+            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url, e.id]));
             if (Date.parse(cuando) <= t) {
                 h.push(`<div class="ag pasada clic" data-accion="reunion" data-valor="${valor}" title="clic: la minuta">`
                     + `<span class="hora">${esc(hhmm(cuando))}</span>`
@@ -1046,9 +1046,9 @@ export class PanelHoy {
 
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
-    private async preparar(titulo: string, hora: string, enlace: string): Promise<void> {
+    private async preparar(titulo: string, hora: string, enlace: string, evento = ''): Promise<void> {
         const r = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` }, () => cli.reunion(titulo, hora, enlace));
+            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` }, () => cli.reunion(titulo, hora, enlace, evento));
         if (!r.datos) {
             void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
             return;
@@ -1328,8 +1328,8 @@ export class PanelHoy {
             case 'refrescar': await this.actualizar(true); break;
             case 'volver': void mostrarTerminal(); break;
             case 'reunion': {
-                const [titulo, hora, enlace] = JSON.parse(m.valor ?? '[]') as string[];
-                if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '');
+                const [titulo, hora, enlace, evento] = JSON.parse(m.valor ?? '[]') as string[];
+                if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '');
                 break;
             }
             case 'config': await this.abrirConfig(); break;
@@ -1374,6 +1374,10 @@ export class PanelHoy {
                 break;
             case 'tarea-anterior': await this.otraPropuesta(-1); break;
             case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
+            case 'abrir-ruta':
+                // una ruta relativa a la raíz de telar (la que traen las notas de un evento)
+                if (m.valor && !m.valor.includes('..') && modelo.raiz) await abrirEnlace(path.join(modelo.raiz, m.valor));
+                break;
             case 'tareas': await vscode.commands.executeCommand('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else { this.pantalla = 'dia'; this.render(); } break;

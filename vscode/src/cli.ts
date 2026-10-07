@@ -220,9 +220,9 @@ export interface JsonHoy {
 }
 
 /** `telar reunion`: un hilo con el agente preparando esa reunión (o ir a él, si ya existe). */
-export const reunion = (titulo: string, hora: string, enlace = '') =>
+export const reunion = (titulo: string, hora: string, enlace = '', evento = '') =>
     telarJson<{ hilo: string; proyecto: string; mensaje: string; hecho: string }>(
-        ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), '--json'], 30000);
+        ['reunion', titulo, hora, ...(enlace ? ['--enlace', enlace] : []), ...(evento ? ['--evento', evento] : []), '--json'], 30000);
 
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {
