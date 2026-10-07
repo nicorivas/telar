@@ -56,6 +56,8 @@ ORDENES: dict[str, str] = {
     "encargar": "Pedirle algo a un agente residente, en su hilo de siempre.",
     "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",
     "nodo": "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su estado.",
+    "resultado": "Lo que una skill dejó un día (el plan, por ejemplo), leído de la máquina donde vive.",
+    "evento": "Las notas de los eventos del día: verlas y dejarle una a un evento.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",
     "atencion": "Qué dice el agente de cada hilo: trabajando, espera, terminó.",
     "agente": "El agente que corre en un hilo: sus ganchos, sus conversaciones.",
