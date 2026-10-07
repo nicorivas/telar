@@ -32,6 +32,9 @@ VENTAJA = 2.0
 VACIAS = {"reunion", "reuniones", "weekly", "semanal", "daily", "comite", "sesion", "coordinacion", "interna",
           "interno", "seguimiento", "avance", "con", "para", "del", "las", "los", "una", "the", "and", "meeting",
           "sync", "call", "brief", "kick", "off", "kickoff", "revision", "entrevista"}
+#: lo que queda de una fecha en un título («7-oct», «14 de octubre»): no distingue una serie de otra
+MESES = {"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "sept", "oct", "nov", "dic", "enero", "febrero",
+         "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre", "de"}
 #: dominios de correo que no son de ninguna organización
 GENERICOS = {"gmail", "hotmail", "outlook", "yahoo", "icloud", "live", "google", "googlemail", "proton", "protonmail"}
 
@@ -47,7 +50,7 @@ def palabras(texto: str) -> set[str]:
 def serie(titulo: str) -> str:
     """El título sin fechas ni números: «Weekly KO Andina 7-oct» y la del 14 son la misma serie."""
     t = re.sub(r"\d+", " ", _plano(titulo))
-    return " ".join(w for w in re.split(r"[^a-z]+", t) if w)
+    return " ".join(w for w in re.split(r"[^a-z]+", t) if w and w not in MESES)
 
 
 def _archivo(config) -> Path:

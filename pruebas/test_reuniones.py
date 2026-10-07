@@ -47,6 +47,7 @@ class Deducir(Prueba):
         m.recordar(cfg, "Weekly Faro 7-oct", "proyectos/faro-diagnostico")
         self.assertEqual(m.recordado(cfg, "Weekly Faro 14-oct"), "proyectos/faro-diagnostico")
         self.assertEqual(m.recordado(cfg, "Otra reunión"), "")
+        self.assertEqual(m.serie("Weekly Faro 14 de octubre"), "weekly faro")
 
 
 class AsistentesDelIcal(Prueba):
