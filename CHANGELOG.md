@@ -6,6 +6,13 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard calendar: a text field under the selected event writes to the general agent (`[agentes]
+  sin_proyecto`) with the meeting, its project (remembered or deduced), what the plan and the notes say, and
+  how to leave a note on the event; the request is kept as a note. `telar config --json` gives
+  `agente_general`.
+
 ## [0.1.13] — 2026-10-07
 
 ### Added
