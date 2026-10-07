@@ -348,6 +348,11 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .com .quien { white-space: nowrap; }
 
 /* + nuevo hilo, y su formulario (comparte el aspecto del cuadro de comentarios del plan) */
+.atajos { padding: 0 2ch; margin-top: 1lh; }
+.atajos-fila { display: flex; flex-wrap: wrap; gap: 1ch; }
+.atajos-fila button { height: calc(2 * var(--lh)); padding: 0 2ch; flex: 1 1 auto; color: var(--verde); font-weight: 700; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); }
+.atajos-fila button:active { background: var(--hover); }
+.atajos-fila button:disabled { opacity: .5; }
 .nuevo-hilo { padding: 0 2ch; margin-top: 1lh; }
 .nuevo-hilo button { height: calc(2 * var(--lh)); padding: 0 2ch; width: 100%; color: var(--verde); font-weight: 700; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); }
 .nuevo-hilo button:active { background: var(--hover); }

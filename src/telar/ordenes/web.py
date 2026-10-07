@@ -4,7 +4,7 @@
     telar web --host IP --puerto N
     telar web --sin-recarga      no recarga la página cuando cambian sus archivos
     telar web --escribir         permite escribirle a un hilo desde la página (por defecto, solo lee)
-    telar web --escribir --nuevo [--nuevo-args PALABRAS]   la página abre hilos nuevos (nombre obligatorio)
+    telar web --escribir --nuevo [--nuevo-args PALABRAS]   la página abre hilos nuevos (nombre obligatorio) y lanza los atajos del dashboard (`[atajos.<tecla>]`, p. ej. ⚑ correo)
     telar web --plan CARPETA --plan-comando CMD   (con --escribir) la pestaña «plan» recibe comentarios que abren una sesión
     telar web --plan CARPETA     muestra una pestaña «plan» con los archivos AAAA-MM-DD.json de esa carpeta
 
@@ -243,6 +243,47 @@ def nuevo_hilo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]:
     return 200, {"ok": True, "hilo": nombre, "carpeta": ruta or str(carpeta)}
 
 
+def lanzar_atajo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]:
+    """Lo mismo que la tecla de un atajo del dashboard (`telar atajo`), desde la página: `(código http, respuesta)`.
+
+    Solo se acepta la **tecla** de un atajo declarado en la configuración: el mensaje sale de ahí, nunca de la página.
+    Un atajo normal abre un hilo nuevo con la hora en el nombre (como `nuevo_hilo`); uno de agente residente le
+    encarga el mensaje a su hilo de siempre."""
+    import io
+    from contextlib import redirect_stdout
+
+    if not isinstance(datos, dict) or not isinstance(datos.get("tecla"), str):
+        return 400, {"ok": False, "error": "falta la tecla del atajo"}
+    atajo = next((a for a in ctx.config.atajos if a.tecla == datos["tecla"]), None)
+    if atajo is None:
+        return 404, {"ok": False, "error": f"no hay atajo en «{datos['tecla'][:20]}»"}
+    if not atajo.agente:
+        nombre = f"{atajo.nombre} {time.strftime('%m/%d %H:%M')}"
+        codigo, r = nuevo_hilo(ctx, {"nombre": nombre, "carpeta": "", "mensaje": atajo.mensaje}, extra)
+        return codigo, ({**r, "atajo": atajo.nombre} if r.get("ok") else r)
+    from telar import agentes as mod_agentes
+    from telar.ordenes import encargar
+
+    agente = next((a for a in mod_agentes.descubrir(ctx.config) if atajo.agente in (a.clave, a.nombre)), None)
+    if agente is None:
+        return 404, {"ok": False, "error": f"el atajo le encarga a «{atajo.agente}», que no está en [agentes]"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultimo_nuevo[0] < ENTRE_NUEVOS:
+            return 429, {"ok": False, "error": "muy rápido: un atajo cada cinco segundos"}
+        _ultimo_nuevo[0] = ahora
+    salida = io.StringIO()
+    with redirect_stdout(salida):
+        codigo = encargar.main([agente.clave, atajo.mensaje, "--json"], ctx)
+    if codigo != 0:
+        return 502, {"ok": False, "error": f"«{agente.nombre}» no recibió el encargo"}
+    try:
+        estado = json.loads(salida.getvalue().strip().splitlines()[-1]).get("estado", "")
+    except (ValueError, IndexError):
+        estado = ""
+    return 200, {"ok": True, "hilo": agente.nombre, "atajo": atajo.nombre, "encargo": estado}
+
+
 def datos_proyectos() -> bytes:
     return datos("proyectos")
 
@@ -435,6 +476,8 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if ruta == "/api/yo":  # qué puede hacer esta página: la escritura es opt-in y necesita el enlace
                     cuerpo = {"escribir": escribir, "plan": plan is not None, "plan_comentar": bool(plan is not None and plan_comando and escribir),
                               "nuevo": bool(nuevo and escribir),
+                              "atajos": [{"tecla": a.tecla, "nombre": a.nombre, "descripcion": a.descripcion or a.mensaje}
+                                         for a in (config.atajos if config and nuevo and escribir else ())],
                               "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")
                 if ruta == "/api/plan":  # los planes del día (solo si se arrancó con --plan)
@@ -480,11 +523,11 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo"):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo"):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
-            if ruta == "/api/hilo/nuevo" and not nuevo:
+            if ruta in ("/api/hilo/nuevo", "/api/atajo") and not nuevo:
                 return responder(404, {"ok": False, "error": "esta página no abre hilos: `telar web --escribir --nuevo`"})
             if not escribir or ctx is None:
                 return responder(403, {"ok": False, "error": "esta página solo lee: arráncala con `telar web --escribir`"})
@@ -508,6 +551,15 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                     codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
                 if isinstance(datos, dict):
                     anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
+                                 "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
+            if ruta == "/api/atajo":
+                try:
+                    codigo, resultado = lanzar_atajo(ctx, datos, nuevo_args)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "atajo", str(datos.get("tecla", ""))[:20], 0,
                                  "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
                 return responder(codigo, resultado)
             if ruta == "/api/plan/comentar":

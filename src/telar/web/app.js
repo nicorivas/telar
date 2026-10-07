@@ -264,6 +264,7 @@ function pantallaHoy() {
   const total = d.tiempo && d.tiempo.total;
   const fallas = (d.proveedores && d.proveedores.fallas) || [];
   return [
+    barraAtajos(),
     bloque('agenda', 'agenda', filasAgenda.length || null, null,
       ...(filasAgenda.length ? filasAgenda : [vacio(d.agenda ? 'nada con hora' : 'sin agenda declarada')])),
     bloque('esperan', 'te esperan', esperan.length || null, null,
@@ -279,6 +280,33 @@ function pantallaHoy() {
   ];
 }
 
+// los atajos del dashboard (`[atajos.<tecla>]`): un toque abre el hilo con el agente haciendo eso, o se lo encarga a su agente
+function barraAtajos() {
+  const atajos = estado.yo.atajos || [];
+  if (!atajos.length) return null;
+  const dijo = el('div', { className: 'dijo' });
+  const botones = atajos.map((a) => {
+    const b = el('button', { type: 'button', title: a.descripcion, textContent: a.nombre });
+    b.onclick = async () => {
+      for (const x of botones) x.disabled = true;
+      dijo.className = 'dijo'; dijo.textContent = `abriendo ${a.nombre}…`;
+      try {
+        const r = await fetch('/api/atajo', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' },
+          body: JSON.stringify({ tecla: a.tecla }) });
+        const cuerpo = await r.json().catch(() => ({}));
+        if (r.ok && cuerpo.ok) {
+          cargar(true);
+          if (cuerpo.encargo !== undefined) { dijo.className = 'dijo'; dijo.textContent = `encargado a ${cuerpo.hilo}`; }
+          else { estado.recien = cuerpo.hilo; location.hash = hashConv(cuerpo.hilo); return; }
+        } else { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; }
+      } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; }
+      for (const x of botones) x.disabled = false;
+    };
+    return b;
+  });
+  return el('div', { className: 'atajos' }, el('div', { className: 'atajos-fila' }, ...botones), dijo);
+}
+
 function pantallaHilos() {
   const todos = (estado.hilos.hilos || []).filter((h) => !h.archivado);
   // activo es lo que tiene ventana (o sesión propia): un hilo cerrado que quedó «esperando» ya no espera a nadie
@@ -286,6 +314,7 @@ function pantallaHilos() {
     .sort((a, b) => (ORDEN_ATENCION[a.atencion] - ORDEN_ATENCION[b.atencion]) || a.nombre.localeCompare(b.nombre));
   const otros = todos.filter((h) => !activos.includes(h)).sort((a, b) => a.nombre.localeCompare(b.nombre));
   return [
+    barraAtajos(),
     estado.yo.nuevo ? el('div', { className: 'nuevo-hilo' }, el('button', { type: 'button', onclick: () => { location.hash = '#nuevo'; } }, '+ nuevo hilo')) : null,
     bloque('hilos', 'hilos', activos.length, null,
       ...(activos.length ? activos.flatMap((h) => filaHilo(h)) : [vacio('ningún hilo activo')])),
