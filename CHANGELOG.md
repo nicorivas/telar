@@ -6,6 +6,27 @@ workflow refuses to run if the two disagree.
 
 ## [Unreleased]
 
+### Added
+
+- `[resultados.<clave>]` and `telar resultado <clave> [day]`: what a skill leaves each day (a
+  `YYYY-MM-DD.json` or `.md` in a folder), read from the machine where the skill runs (`en`, through the
+  node over the bus), or from the local folder if that machine does not answer.
+- `[notas]` and `telar evento nota|notas`: notes that skills and the person leave on the day's calendar
+  events, stored on the machine that keeps them.
+- Dashboard: a «plan» tab (`d`) with the day plan from `[resultados.plan]`, with arrows to other days, and
+  a «calendario» tab (`a`) in two columns: the day with its events and the plan's own blocks on the left,
+  the selected event with its notes on the right («+ nota» writes one).
+- The day's agenda rows carry `fin`, `lugar` and `todo_el_dia` for calendar events.
+
+### Fixed
+
+- A remote thread whose window closed (the laptop slept, the network dropped) is reopened by the node while
+  its session lives on the other machine and the thread was not archived on purpose.
+- A «trabajando» state unchanged for 45 minutes is treated as stuck: the node nudges the agent instead of
+  waiting for a Stop that never comes.
+- The notification hook finds its thread through the `@telar_hilo` mark of its own tmux session when the
+  agent was started without `$TELAR_HILO`, as the mailbox hook already did.
+
 ## [0.1.12] — 2026-10-05
 
 ### Fixed

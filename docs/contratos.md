@@ -795,6 +795,40 @@ es una línea (cuál y sobre qué), nunca su salida. `recortado` dice si se cort
 caracteres) o se soltaron turnos viejos para no pasar de 60 000 en total. Sin conversación en esta máquina:
 `{"hilo", "fuente": "panel", "texto", "recortado"}` con lo último del panel.
 
+## `telar resultado <clave> [día] --json` — lo que una skill dejó un día
+
+Lo que declara `[resultados.<clave>]` (carpeta y, con `en`, la máquina del bus donde vive). Siempre
+un objeto con `ok`. Con `en` y bus se lee en esa máquina (pedido `resultado` a su nodo); si no
+responde, se lee la carpeta de aquí y `aviso` lo dice.
+
+```json
+{"ok": true, "clave": "plan", "nombre": "Plan del día", "dia": "2026-10-07",
+ "dias": ["2026-10-07", "2026-10-06"], "formato": "json", "contenido": {"...": "lo que escribió la skill"},
+ "desde": "servidor", "aviso": ""}
+```
+
+`formato` es `json`, `md` o vacío (no hay archivo ese día: `contenido` es `null`). `dias` son los
+que existen, del más nuevo al más viejo (hasta 60). telar no fija la forma de `contenido`: la decide
+la skill, y quien lo muestra la conoce (el dashboard dibuja la del plan del día).
+
+## `telar evento notas|nota` — las notas de los eventos del día
+
+`[notas]` dice dónde viven (`carpeta`, `<estado>/notas` por defecto) y, con `en`, en qué máquina.
+
+```
+telar evento nota <id del evento> "texto" --de <skill o hilo> [--titulo T] [--inicio HH:MM] [--dia AAAA-MM-DD]
+telar evento notas [AAAA-MM-DD] --json
+```
+
+```json
+{"ok": true, "dia": "2026-10-07", "eventos": {"<id>": {"titulo": "Comité", "inicio": "10:00",
+  "notas": [{"de": "planear", "texto": "…", "creado": "2026-10-07T08:30:00-03:00"}]}}}
+```
+
+El id es el del evento en el calendario (el `id` de la agenda de `telar hoy --json`). El título y la
+hora van al lado para mostrar la nota aunque el id cambie. Con `en`, escribir en otra máquina que no
+responde falla (`ok: false`) en vez de dejar la nota aquí, donde nadie la vería.
+
 ## `POST /api/enviar` — escribirle a un hilo desde `telar web`
 
 Solo existe con `telar web --escribir`; sin eso responde 403. Pide `Content-Type: application/json`, el
