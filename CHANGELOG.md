@@ -22,6 +22,12 @@ workflow refuses to run if the two disagree.
   keeps the old behaviour.
 - `telar reunion --evento <id>` puts the calendar event's id in the message, so the agent can leave its note on
   it; the dashboard passes it. Paths in an event's notes open the file.
+- A meeting goes to its project's thread when telar can tell which project it is: words of the title, the
+  attendees' mail domain and attendees named in a project's README, each weighted by how rare it is (the
+  own company's domain and the calendar owner do not count). When it cannot tell, the dashboard asks with
+  the suggestions and why, every project to search, the general agent and «new project…»; the choice is
+  remembered for the meeting series (`telar reunion --asistentes --proyecto --preguntar`, `telar.reuniones`).
+- Calendar events carry their attendees (iCal `ATTENDEE`, gws `attendees`), without the calendar's owner.
 
 ### Fixed
 
