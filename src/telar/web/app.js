@@ -588,17 +588,44 @@ function detalleEventoCal(e, d, dia) {
   }
 }
 
+// n días hacia adelante (o atrás); el día que se ve y «hoy» salen de lo último que se leyó
+function moverDiaCal(n) {
+  const d = estado.cal && estado.cal.datos;
+  const real = (d && d.dia) || calDiaHash() || (estado.hoy && estado.hoy.fecha) || '';
+  const hoyIso = (d && d.hoy) || (estado.hoy && estado.hoy.fecha) || '';
+  if (!real) return;
+  const f = new Date(`${real}T12:00`); f.setDate(f.getDate() + n);
+  const iso = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+  estado.calElegir = null; location.hash = iso === hoyIso ? '#cal' : `#cal/${iso}`;
+}
+
+// deslizar el dedo cambia de día: a la derecha el anterior, a la izquierda el siguiente. Solo vale un gesto claramente
+// horizontal que no empiece sobre un campo de texto (ahí el dedo selecciona)
+(() => {
+  let ini = null;
+  const principal = document;  // toda la pantalla, no solo la lista: con pocos eventos queda mucho vacío
+  principal.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    ini = e.touches.length === 1 && vistaActual() === 'cal' && !e.target.closest('input, textarea, #barra, header')
+      ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+  }, { passive: true });
+  principal.addEventListener('touchend', (e) => {
+    if (!ini) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - ini.x, dy = t.clientY - ini.y;
+    const rapido = Date.now() - ini.t < 800;
+    ini = null;
+    if (rapido && Math.abs(dx) >= 60 && Math.abs(dx) > 2 * Math.abs(dy)) moverDiaCal(dx > 0 ? -1 : 1);
+  }, { passive: true });
+})();
+
 function pantallaCal() {
   const c = estado.cal;
   const dia = calDiaHash();
   const d = c && c.datos;
   const real = (d && d.dia) || dia || estado.hoy && estado.hoy.fecha || '';
   const hoyIso = (d && d.hoy) || (estado.hoy && estado.hoy.fecha) || '';
-  const mueve = (n) => () => {
-    const f = new Date(`${real}T12:00`); f.setDate(f.getDate() + n);
-    const iso = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
-    estado.calElegir = null; location.hash = iso === hoyIso ? '#cal' : `#cal/${iso}`;
-  };
+  const mueve = (n) => () => moverDiaCal(n);
   const f = new Date(`${real}T12:00`);
   const etiqueta = real ? `${DIAS[f.getDay()]} ${f.getDate()} ${MESES[f.getMonth()]}${real === hoyIso ? ' · hoy' : ''}` : 'calendario';
   const nav = el('div', { className: 'plan-nav' },
