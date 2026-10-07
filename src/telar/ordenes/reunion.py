@@ -147,6 +147,12 @@ def main(argv: list[str], ctx) -> int:
     momento.add_argument("--despues", action="store_true", help="su minuta aunque no haya empezado")
     p.add_argument("--evento", default="", help="el id del evento en el calendario: va en el mensaje, para que el "
                    "agente le deje su nota (`telar evento nota`)")
+    p.add_argument("--asistentes", default="", help="los invitados, separados por comas («Nombre <correo>»): "
+                   "ayudan a saber de qué proyecto es")
+    p.add_argument("--proyecto", default="", help="a quién va: la ruta de un proyecto, «gestion» (el agente de lo "
+                   "sin proyecto) o «nuevo:Nombre». Se recuerda para la serie")
+    p.add_argument("--preguntar", action="store_true", help="si no se puede deducir el proyecto, no hacer nada y "
+                   "devolver los candidatos (para que el dashboard pregunte)")
     p.add_argument("--hilo-nuevo", dest="hilo_nuevo", action="store_true",
                    help="abrir un hilo propio aunque haya un agente que reciba lo sin proyecto")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
@@ -164,7 +170,23 @@ def main(argv: list[str], ctx) -> int:
 
     tel = _comun.tejer(ctx, con_ficha=False)
     unidades = list(lectura.indice(ctx.perfil, ctx.config.raiz)) if ctx.perfil else []
-    proyecto = proyecto_para(titulo, unidades, set(tel.vivos))
+    from telar import reuniones
+    from telar.ordenes import pendiente
+
+    asistentes = [x.strip() for x in o.asistentes.split(",") if x.strip()]
+    cands = reuniones.candidatos(Path(ctx.config.raiz), unidades, titulo, asistentes)
+    recordado = reuniones.recordado(ctx.config, titulo)
+    eleccion = o.proyecto.strip()
+    if eleccion and eleccion != "gestion" and not eleccion.startswith("nuevo:") and eleccion not in unidades:
+        return _comun.queja(f"«{eleccion}» no es un proyecto del perfil (telar proyectos), ni «gestion», ni «nuevo:Nombre»")
+    destino = eleccion or recordado or reuniones.decidir(cands)
+    general = None if o.hilo_nuevo else pendiente._agente_general(ctx)
+    if not destino and o.preguntar and not o.hilo_nuevo:
+        return _responder({"hecho": "preguntar", "candidatos": cands, "gestion": general.nombre if general else "",
+                           "titulo": titulo, "hora": hora}, o)
+    # sin deducción ni elección, lo de siempre: el agente general si hay, o un tab con la unidad parecida
+    proyecto = destino if destino and destino != "gestion" and not destino.startswith("nuevo:") else (
+        "" if destino else proyecto_para(titulo, unidades, set(tel.vivos)))
     despues = o.despues or (not o.antes and empezo(o.fecha, hora))
     molde, regla = plantilla(ctx.config, titulo, despues)
     texto = mensaje(molde, titulo=titulo, hora=hora, fecha=o.fecha or dt.date.today().isoformat(),
@@ -174,14 +196,28 @@ def main(argv: list[str], ctx) -> int:
         texto += f" · evento: {o.evento.strip()}"
     nombre = nombre_del_tab(titulo, hora, MARCA_DESPUES if despues else MARCA)
     resultado = {"hilo": nombre, "proyecto": proyecto, "mensaje": texto, "hecho": "",
-                 "momento": "despues" if despues else "antes", "regla": regla}
+                 "momento": "despues" if despues else "antes", "regla": regla, "candidatos": cands,
+                 "destino": destino, "recordado": bool(recordado and not eleccion)}
+    if eleccion and not eleccion.startswith("nuevo:") and not o.donde:
+        reuniones.recordar(ctx.config, titulo, eleccion)
 
-    # con un agente que recibe lo sin proyecto (`[agentes] sin_proyecto`, Gestión), la reunión se le
-    # encarga a él: prepara y escribe minutas en su hilo de siempre, sin abrir uno por reunión
-    from telar.ordenes import pendiente
+    # un proyecto con su hilo: la reunión se trabaja ahí, donde está el contexto
+    if destino and destino not in ("gestion",) and not destino.startswith("nuevo:") and not o.hilo_nuevo:
+        fila = {"ref": f"reunion:{titulo[:30]}", "texto": titulo, "ruta": destino, "hilo": "", "url": "", "id": ""}
+        resultado["hilo"] = pendiente._destino(tel, fila).nombre if pendiente._destino(tel, fila) else Path(destino).name
+        if o.donde:
+            resultado["hecho"] = "nada (--donde)"
+            return _responder(resultado, o)
+        return _al_proyecto(ctx, tel, fila, texto, resultado, o)
 
-    general = None if o.hilo_nuevo else pendiente._agente_general(ctx)
-    if general is not None:
+    if destino.startswith("nuevo:"):
+        nuevo_nombre = destino[6:].strip()
+        texto = (f"Proyecto nuevo «{nuevo_nombre}»: créalo con el estándar de su repositorio (el arquetipo de proyecto, "
+                 f"su README y su lugar en el índice) y trabaja ahí lo que sigue. {texto}")
+        resultado["mensaje"] = texto
+
+    # el agente que recibe lo sin proyecto (`[agentes] sin_proyecto`, Gestión): se le encarga
+    if general is not None and (destino in ("gestion", "") or destino.startswith("nuevo:")):
         resultado.update(hilo=general.nombre, agente=general.clave)
         if o.donde:
             resultado["hecho"] = "nada (--donde)"
@@ -220,6 +256,39 @@ def main(argv: list[str], ctx) -> int:
             tel.mux.ir(hilo.id)
     except (ErrorDeMux, ErrorDeAgente) as e:
         return _comun.queja(f"no pude abrir la reunión: {e}")
+    return _responder(resultado, o)
+
+
+def _al_proyecto(ctx, tel, fila: dict, texto: str, resultado: dict, o) -> int:
+    """La reunión al hilo del proyecto: el que está vivo, el dormido que se retoma, el de otra máquina
+    (por el bus) o uno nuevo vinculado a la carpeta."""
+    from telar.ordenes import pendiente
+
+    destino = pendiente._destino(tel, fila)
+    if destino is None:
+        alla = pendiente._destino_remoto(ctx, fila)
+        if alla is not None:
+            from telar import bus as mod_bus
+
+            nombre, maquina = alla
+            try:
+                mod_bus.enviar(ctx.config, nombre, texto, de="el dashboard", tipo="persona")
+            except mod_bus.ErrorDeBus as e:
+                return _comun.queja(f"«{nombre}» vive en {maquina} y el bus no lo llevó: {e}")
+            resultado.update(hilo=nombre, hecho=f"en la casilla de «{nombre}» ({maquina})")
+            return _responder(resultado, o)
+    if tel.mux is None or not tel.viva:
+        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
+    hilo, creado, problema = pendiente._llevar(ctx, tel, destino, fila, nuevo=False, primero=texto)
+    if hilo is None:
+        return _comun.queja(problema)
+    try:
+        tel.mux.ir(hilo.id)
+        if not (creado and ctx.config.agente.nombre):
+            tel.mux.escribir(hilo.id, texto, enviar=True)
+    except ErrorDeMux as e:
+        return _comun.queja(f"llegué al hilo pero no pude escribirle: {e}")
+    resultado.update(hilo=hilo.nombre, hecho="abierto en su proyecto" if creado else "escrito en su proyecto")
     return _responder(resultado, o)
 
 
