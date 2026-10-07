@@ -60,6 +60,17 @@ escribe si está libre, lo deja en cola si está trabajando, o abre su sesión r
 conversación. `telar encargar <agente> --cola` muestra lo que espera. Pídele que deje el
 resultado en el registro (la tarea, el estado del proyecto), no solo en su conversación.
 
+## Cuál camino usar
+
+- **Hablarle a un hilo** (preguntarle, pasarle un dato, pedirle algo de su proyecto): `telar mensaje
+  <hilo> "…"`. Le llega donde viva; `telar hilos --json` dice en qué máquina (`maquina`, `remoto`).
+- **Pedirle a otra máquina algo que solo ella puede hacer** (su navegador con sesiones, un token
+  que solo está ahí, WhatsApp Web): `telar encargar <agente de esa máquina> "…"`, por ejemplo
+  `telar encargar laptop "…"`. Escribirle a un hilo cualquiera no sirve: ese hilo puede vivir en tu
+  misma máquina.
+- `telar enlace enviar` es el camino viejo de la puerta; con bus hace lo mismo que `telar mensaje`, y
+  avisa si el hilo vive en tu misma máquina.
+
 ## Escribirle
 
 - **Con bus** (`[bus]` en la configuración; el contexto del hilo lo dice): a cualquier hilo o
