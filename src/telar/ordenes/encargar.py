@@ -39,8 +39,14 @@ def main(argv: list[str], ctx) -> int:
         from telar import bus as mod_bus
 
         if mod_bus.hay_bus(ctx.config):
+            from telar import agentes as residentes
             from telar.ordenes import mensaje
 
+            # un encargo es para un agente residente: a un nombre que no lo es, nadie lo recogería
+            hay = residentes.descubrir(ctx.config)
+            if o.agente not in {x for a in hay for x in (a.clave, a.nombre)}:
+                return _comun.queja(f"«{o.agente}» no es un agente residente (hay: {', '.join(sorted(a.nombre for a in hay))}). "
+                                    "Para escribirle a un hilo cualquiera: telar mensaje")
             texto_bus = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
             try:
                 r = mensaje.enviar(ctx, o.agente, texto_bus, tipo="encargo")
@@ -91,7 +97,6 @@ def main(argv: list[str], ctx) -> int:
         if not cola:
             print(_comun.tenue(f"{agente.nombre} no tiene nada en cola"))
         return 0
-    import sys
 
     texto = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
     try:
@@ -107,7 +112,6 @@ def main(argv: list[str], ctx) -> int:
 
 def _por_la_puerta(ctx, nombre: str, o) -> int:
     """El agente vive al otro lado de la puerta (`[enlaces]`): el servidor le encarga al laptop."""
-    import sys
 
     from telar import enlace as mod_enlace
 
