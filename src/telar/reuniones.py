@@ -10,7 +10,8 @@ está en uno):
 
 Un dominio o una persona que aparece en muchos proyectos es la propia empresa: no decide nada y se
 descarta. Cuando la persona elige un proyecto para una serie de reuniones, se recuerda por el título
-de la serie (`<estado>/reuniones.json`): la próxima vez va directo, sin preguntar.
+de la serie (`<estado>/reuniones.json`, en la máquina de `[notas] en`): la próxima vez va directo,
+sin preguntar.
 """
 
 from __future__ import annotations
@@ -53,7 +54,7 @@ def _archivo(config) -> Path:
     return Path(config.estado) / "reuniones.json"
 
 
-def recordado(config, titulo: str) -> str:
+def recordado_local(config, titulo: str) -> str:
     """Lo que la persona eligió antes para esta serie: la ruta de un proyecto, «gestion», o ""."""
     try:
         return str(json.loads(_archivo(config).read_text(encoding="utf-8")).get(serie(titulo), ""))
@@ -61,7 +62,31 @@ def recordado(config, titulo: str) -> str:
         return ""
 
 
+def recordado(config, titulo: str) -> str:
+    """Lo mismo, leído en la máquina que guarda las notas (`[notas] en`): la elección hecha en el
+    dashboard del laptop vale también para lo que corre en el servidor (el correo, las minutas)."""
+    from telar import bus as mod_bus
+    from telar import notas
+
+    en = notas._remota(config)
+    if en:
+        r = mod_bus.pedir(config, en, "serie", {"titulo": titulo}, espera=10)
+        if r.get("ok"):
+            return str(r.get("destino", ""))
+    return recordado_local(config, titulo)
+
+
 def recordar(config, titulo: str, destino: str) -> None:
+    from telar import bus as mod_bus
+    from telar import notas
+
+    en = notas._remota(config)
+    if en and mod_bus.pedir(config, en, "serie-recordar", {"titulo": titulo, "destino": destino}, espera=10).get("ok"):
+        return
+    recordar_local(config, titulo, destino)
+
+
+def recordar_local(config, titulo: str, destino: str) -> None:
     f = _archivo(config)
     try:
         datos = json.loads(f.read_text(encoding="utf-8"))
