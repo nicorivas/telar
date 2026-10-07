@@ -131,7 +131,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "pestana": pestanas.get(item.proveedor, ""),
                 # un evento: cuándo termina y dónde, para dibujarlo en su alto (el calendario del dashboard)
                 **({"fin": str((item.datos or {}).get("fin") or ""), "lugar": str((item.datos or {}).get("lugar") or ""),
-                    "todo_el_dia": bool((item.datos or {}).get("todo_el_dia"))} if item.clase == "evento" else {}),
+                    "todo_el_dia": bool((item.datos or {}).get("todo_el_dia")),
+                    "asistentes": list((item.datos or {}).get("asistentes") or [])} if item.clase == "evento" else {}),
             }
         )
     return filas, fallas
