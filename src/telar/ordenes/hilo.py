@@ -70,6 +70,10 @@ VERBOS = (
 )
 
 
+#: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
+SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "retomar", "olvidar")
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("hilo", AYUDA)
     p.epilog = __doc__
@@ -78,7 +82,7 @@ def main(argv: list[str], ctx) -> int:
         "valor",
         nargs="?",
         default="",
-        help="la carpeta, el nombre nuevo, el hilo que se adopta o la prioridad",
+        help="la carpeta, el nombre nuevo, el hilo que se adopta o la prioridad; en los verbos sin valor, el hilo",
     )
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--cerrar", action="store_true", help="al archivar, cerrar además el hilo")
@@ -92,6 +96,11 @@ def main(argv: list[str], ctx) -> int:
         return codigo
     if o.verbo == "leer":
         return _leer(ctx, o)
+    if o.valor and o.verbo in SIN_VALOR:
+        # `telar hilo olvidar X` actuaba sobre el hilo actual e ignoraba X: lo suelto es el hilo
+        if o.hilo:
+            return _comun.queja(f"«{o.verbo}» no lleva valor: «{o.valor}» sobra (el hilo ya es «{o.hilo}»)")
+        o.hilo = o.valor
 
     tel = _comun.tejer(ctx, con_ficha=o.verbo in ("ver", "vincular"))
     if o.hilo:
