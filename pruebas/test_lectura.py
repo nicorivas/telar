@@ -173,6 +173,12 @@ class MarcasDeUnaViñeta(unittest.TestCase):
         self.assertEqual(marcas("Revisar el NDA @prioridad(P1) @deadline(2026-10-14) @owner(Ana Pérez)"),
                          ("Revisar el NDA", "Ana Pérez", "2026-10-14"))
 
+    def test_para_tambien_dice_quien_y_la_flecha_no_queda(self):
+        from telar.lectura import marcas
+
+        self.assertEqual(marcas("Agendar con Pontoni la reunión -> @para(Nico) @desde(2026-09-01)"),
+                         ("Agendar con Pontoni la reunión", "Nico", ""))
+
     def test_quien_al_comienzo_hasta_los_dos_puntos(self):
         from telar.lectura import marcas
 
