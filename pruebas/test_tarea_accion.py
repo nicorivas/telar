@@ -37,3 +37,41 @@ class LoEscritoLlegaAlHilo(Prueba):
         codigo, corrido, abierto = self.correr(accion)
         self.assertNotEqual(codigo, 0)
         self.assertEqual((corrido, abierto), ([], []))
+
+
+class ProcesarAhoraVaASuHilo(Prueba):
+    """«✓ hecha y procesar ahora» cierra la tarea y lleva /avanzar a su hilo (el del proyecto o el
+    agente general). Cerrada, su proveedor ya no la lista: adónde va se busca antes del comando."""
+
+    def test_el_destino_se_busca_antes_de_cerrarla(self):
+        accion = {"nombre": "✓ hecha y procesar ahora", "comando": ["todo", "done", "T7"],
+                  "mensaje": "/avanzar T7", "al_hilo": True}
+        orden, llevado = [], []
+        fila = {"ref": "T7", "texto": "x", "ruta": "proyectos/faro", "proveedor": "tareas"}
+
+        def buscar(ctx, tel, ref, proveedor=""):
+            orden.append("buscar")
+            return fila
+
+        def correr_cmd(w, **k):
+            orden.append("comando")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        def llevar(argv, ctx, fila=None):
+            orden.append("llevar")
+            llevado.append((argv, fila))
+            print('{"destino": "faro"}')
+            return 0
+
+        with mock.patch.object(tarea, "detalle_de", return_value=(("x",), "")), \
+                mock.patch.object(tarea, "correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
+                mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace()), \
+                mock.patch("telar.ordenes.pendiente._buscar", side_effect=buscar), \
+                mock.patch("telar.ordenes.pendiente.main", side_effect=llevar), \
+                mock.patch("subprocess.run", side_effect=correr_cmd), \
+                redirect_stdout(io.StringIO()):
+            codigo = tarea.main(["T7", "--accion", "0", "--proveedor", "tareas"], SimpleNamespace())
+        self.assertEqual(codigo, 0)
+        self.assertEqual(orden, ["buscar", "comando", "llevar"])
+        self.assertIs(llevado[0][1], fila)
+        self.assertIn("/avanzar T7", llevado[0][0])

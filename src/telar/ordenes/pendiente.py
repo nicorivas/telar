@@ -35,7 +35,9 @@ from telar.ordenes import _comun, pendientes as orden_pendientes
 AYUDA = "Llevar un pendiente al hilo donde se trabaja."
 
 
-def main(argv: list[str], ctx) -> int:
+def main(argv: list[str], ctx, *, fila: dict | None = None) -> int:
+    """`fila`: el pendiente ya encontrado (lo pasa `telar tarea` cuando la acción lo cierra antes de
+    llevar el mensaje: cerrado, su proveedor ya no lo lista y no se lo encontraría)."""
     p = _comun.analizador("pendiente", AYUDA)
     p.epilog = __doc__
     p.add_argument("ref", help="la referencia que muestra `telar pendientes` (faro:2, T84…)")
@@ -56,7 +58,7 @@ def main(argv: list[str], ctx) -> int:
         return codigo
 
     tel = _comun.tejer(ctx)
-    fila = _buscar(ctx, tel, o.ref, proveedor=o.proveedor)
+    fila = fila or _buscar(ctx, tel, o.ref, proveedor=o.proveedor)
     if fila is None:
         return _comun.queja(
             f"no encuentro el pendiente «{o.ref}». `telar pendientes` los lista con su referencia."

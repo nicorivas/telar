@@ -79,6 +79,13 @@ def main(argv: list[str], ctx) -> int:
     if a.get("pide") and not o.texto.strip() and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
         return _comun.queja(f"«{a['nombre']}» pide texto: --texto")
     palabras = [w.replace("{texto}", o.texto.strip()) for w in a["comando"]]
+    fila = None
+    if a.get("mensaje") and a.get("al_hilo"):
+        # adónde va el mensaje se busca ANTES del comando: si el comando cierra la tarea («✓ hecha y
+        # procesar ahora»), su proveedor ya no la lista y después no se la encontraría
+        from telar.ordenes import pendiente
+
+        fila = pendiente._buscar(ctx, _comun.tejer(ctx), o.id, proveedor=o.proveedor)
     try:
         r = subprocess.run(palabras, capture_output=True, text=True, timeout=ESPERA, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired) as e:
@@ -98,7 +105,7 @@ def main(argv: list[str], ctx) -> int:
         texto = a["mensaje"].replace("{texto}", o.texto.strip())
         buf = io.StringIO()
         with redirect_stdout(buf):
-            codigo = pendiente.main([o.id, "--texto", texto, "--enviar", "--proveedor", o.proveedor, "--json"], ctx)
+            codigo = pendiente.main([o.id, "--texto", texto, "--enviar", "--proveedor", o.proveedor, "--json"], ctx, fila=fila)
         if codigo != 0:
             return _comun.queja(f"«{a['nombre']}» se anotó, pero no pude llevarlo a su hilo")
         try:
