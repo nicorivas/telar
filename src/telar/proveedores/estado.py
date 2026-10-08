@@ -453,7 +453,7 @@ class Documento:
                  lo armó `cascada_por_defecto`.
       `marcas`   `hecho` y `en_curso`: qué más cuenta como marca, además de la
                  casilla del perfil (`✅`, `⏳`, `▶`).
-      `maximo`   tope de elementos por campo. 0 = sin tope.
+      `maximo`   tope de elementos por campo (esperas, hitos…; los pendientes no se cortan). 0 = sin tope.
       `meses`    mapa de tres letras → número, para las fechas escritas a mano.
     """
 
@@ -596,7 +596,9 @@ class Documento:
                     continue
                 vistos.add(pendiente.texto)
                 salida.append(pendiente)
-        return self._tope(salida)
+        # sin tope: cortar una lista de pendientes esconde trabajo (y contaba los hechos, que llenaban el
+        # tope antes de llegar a los abiertos). Quien la muestra en poco espacio la corta él
+        return salida
 
     def _pendiente(self, item: object, origen: str) -> Pendiente | None:
         """Un ítem de sección como pendiente, con las marcas que el repositorio use."""

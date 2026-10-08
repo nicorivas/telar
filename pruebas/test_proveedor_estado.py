@@ -274,11 +274,14 @@ class Cascada(Prueba):
         ruta = self.escribir("# X\n\n## Esperando\n\n- El informe, prometido para el 2026-06-30\n")
         self.assertEqual(e.leer(ruta, arquetipo).esperando[0].cuando, date(2026, 6, 30))
 
-    def test_el_maximo_recorta_cada_campo(self):
+    def test_el_maximo_de_la_seccion_cuenta_solo_lo_abierto_y_el_del_proveedor_no_corta_pendientes(self):
         arquetipo = self.arquetipo(p.Seccion(nombre="pendientes", tipo="casillas", maximo=3))
-        ruta = self.escribir("# X\n\n- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d\n")
-        self.assertEqual(len(e.leer(ruta, arquetipo).pendientes), 3)  # el de la sección
-        self.assertEqual(len(e.leer(ruta, arquetipo, maximo=1).pendientes), 1)  # el del proveedor
+        ruta = self.escribir("# X\n\n- [x] h\n- [ ] a\n- [x] i\n- [ ] b\n- [ ] c\n- [ ] d\n")
+        abiertos = lambda ps: [x.texto for x in ps if not x.hecho]  # noqa: E731
+        # el de la sección: tres abiertos, aunque haya hechos antes (no ocupan lugar)
+        self.assertEqual(abiertos(e.leer(ruta, arquetipo).pendientes), ["a", "b", "c"])
+        # el del proveedor no corta pendientes: cortarlos escondía trabajo
+        self.assertEqual(abiertos(e.leer(ruta, arquetipo, maximo=1).pendientes), ["a", "b", "c"])
 
     def test_los_enlaces_salen_del_documento_y_no_se_repiten(self):
         ruta = self.escribir(

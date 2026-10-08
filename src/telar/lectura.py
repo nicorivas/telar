@@ -200,7 +200,18 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
                 vence=vence,
             )
         )
-    return tuple(salida[:maximo] if maximo else salida)
+    if not maximo:
+        return tuple(salida)
+    # el tope cuenta lo abierto: los hechos no ocupan lugar (con tres hechos arriba, un tope de 6 dejaba
+    # fuera casi todo lo pendiente), pero se quedan, para que la referencia `faro:n` no cambie de dueño
+    abiertos, recortada = 0, []
+    for p in salida:
+        if not p.hecho:
+            if abiertos >= maximo:
+                continue
+            abiertos += 1
+        recortada.append(p)
+    return tuple(recortada)
 
 
 def _tabla(cuerpo: list[str], maximo: int) -> dict[str, str]:
