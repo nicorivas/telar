@@ -217,6 +217,10 @@ def main(argv: list[str], ctx) -> int:
         # el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`): a quién le escribe el
         # dashboard sobre una reunión
         "agente_general": _general(ctx),
+        # quién es la persona de esta máquina (`[bus] persona`, o el usuario): una tarea sin dueño es suya
+        "persona": _persona(cfg),
+        # cómo más la nombran en un documento («Nicolás Rivas», de git): un pendiente a ese nombre es suyo
+        "persona_nombres": _nombres(cfg),
     }
     if o.json:
         return _comun.escribir_json(cuerpo)
@@ -254,6 +258,29 @@ def _agentes(cfg) -> list[dict]:
         vinculos = {}
     return [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes"}
             for a in mod_agentes.descubrir(cfg, vinculos)]
+
+
+def _nombres(cfg) -> list[str]:
+    import subprocess
+
+    nombres = [n for n in [_persona(cfg)] if n]
+    try:
+        git = subprocess.run(["git", "config", "--get", "user.name"], capture_output=True, text=True, timeout=5,
+                             cwd=str(cfg.raiz)).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        git = ""
+    if git and git not in nombres:
+        nombres.append(git)
+    return nombres
+
+
+def _persona(cfg) -> str:
+    from telar import bus as mod_bus
+
+    try:
+        return mod_bus.persona(cfg)
+    except Exception:  # noqa: BLE001 - sin usuario conocido, el dashboard dice «tú»
+        return ""
 
 
 def _general(ctx) -> dict:

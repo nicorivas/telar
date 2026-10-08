@@ -67,7 +67,8 @@ def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
     cuerpo["hilo"] = hilo  # vacío si la unidad no tiene hilo abierto: la clave va igual
     cuerpo["ruta"] = ruta
     cuerpo["proveedor"] = ""
-    cuerpo["cuando"] = None
+    # la fecha límite que dice la viñeta (`@deadline(…)`): así vence como una tarea
+    cuerpo["cuando"] = f"{pendiente.vence}T00:00" if getattr(pendiente, "vence", "") else None
     cuerpo["url"] = ""
     return cuerpo
 
@@ -95,6 +96,15 @@ def con_area(filas: list[dict]) -> list[dict]:
     return filas
 
 
+def _carpeta_de(origen: str) -> str:
+    """El origen de una tarea, si es una carpeta del repositorio («brinca/negocio/x»); "" si es otra
+    cosa (un correo, una url, una ruta absoluta)."""
+    origen = origen.strip().split("#")[0]
+    if not origen or ":" in origen or origen.startswith(("/", ".", "~")) or " " in origen:
+        return ""
+    return origen.strip("/")
+
+
 def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...] | None = None) -> tuple[list[dict], list[str]]:
     """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca.
 
@@ -119,6 +129,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "ref": item.id or f"{item.proveedor}:{item.titulo[:24]}",
                 "hilo": destino.nombre if destino else "",
                 "ruta": _comun.ruta_relativa(destino.ruta, tel.raiz) if destino else "",
+                # la carpeta que la tarea dice que es su proyecto, haya o no un hilo ahí (la vista de proyectos)
+                "proyecto": _carpeta_de(str((item.datos or {}).get("origen") or "")),
                 "proveedor": item.proveedor,
                 "cuando": _local(item.cuando),
                 "clase": item.clase,

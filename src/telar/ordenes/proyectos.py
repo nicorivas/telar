@@ -60,6 +60,26 @@ def mensaje(plantilla: str, **valores: str) -> str:
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
 
 
+def area_de(documento: Path) -> str:
+    """El `area:` del frontmatter del documento («area: PIA»), o "" si no la declara. Solo se lee el
+    comienzo: el frontmatter va arriba, y un documento largo no tiene por qué leerse entero aquí."""
+    try:
+        with open(documento, encoding="utf-8", errors="ignore") as f:
+            cabeza = f.read(4096)
+    except OSError:
+        return ""
+    m = re.match(r"---\n(.*?)\n---", cabeza, re.S)
+    area = re.search(r"^area:\s*[\"']?([^\"'#\n]+?)[\"']?\s*(?:#.*)?$", m.group(1), re.M) if m else None
+    return area.group(1).strip() if area else ""
+
+
+def corto(estado: str, largo: int = 24) -> str:
+    """«En pausa por el cliente desde el 9-sep. Ver Notas» → «En pausa por el cliente…»: lo de antes
+    del primer punto, coma, dos puntos o paréntesis, y no más de `largo` letras."""
+    texto = re.split(r"[.,;:(]|\s[—–-]\s", estado.replace("**", ""), maxsplit=1)[0].strip()
+    return texto if len(texto) <= largo else texto[: largo - 1].rstrip() + "…"
+
+
 def listar(ctx, tel) -> list[dict]:
     raiz = Path(ctx.config.raiz)
     unidades = lectura.indice(ctx.perfil, raiz)
@@ -70,11 +90,20 @@ def listar(ctx, tel) -> list[dict]:
     for relativa, (arquetipo, documento) in unidades.items():
         ficha = _comun.leer_ficha(documento, arquetipo, fuente)
         nombre = lectura.etiqueta(arquetipo.etiqueta, ficha) or Path(relativa).name
+        campos = (getattr(ficha, "secciones", {}) or {}).get("campos") or {}
+        estado = str(campos.get("Estado") or campos.get("Etapa") or "").strip()
         mtime = reciente(raiz / relativa)
         hilo = hilo_de.get(relativa, "")
         salida.append({
             "ruta": relativa,
             "nombre": nombre,
+            # el cliente, si el nombre lo lleva adelante («Cliente · título»): el dashboard lo destaca
+            "cliente": lectura.etiqueta("{campo:Cliente}", ficha) if "{campo:Cliente}" in (arquetipo.etiqueta or "") else "",
+            # el Estado (o la Etapa, en un deal) de su tabla de campos: corto, y entero aparte
+            "estado": corto(estado),
+            "estado_completo": estado,
+            # el área que declara el frontmatter del documento («area: PIA»); "" si no la tiene
+            "area": area_de(documento),
             "arquetipo": arquetipo.nombre,
             "modificado": datetime.fromtimestamp(mtime, timezone.utc).isoformat() if mtime else None,
             "hilo": hilo,

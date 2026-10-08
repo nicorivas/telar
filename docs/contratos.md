@@ -299,7 +299,7 @@ existe, falta una sección requerida). Ver [el estado de un hilo](#el-estado-de-
 ```json
 {
   "ref": "faro:2", "texto": "Ajustar la velocidad de giro",
-  "hecho": false, "en_curso": true, "id": "", "origen": "pendientes",
+  "hecho": false, "en_curso": true, "id": "", "origen": "pendientes", "dueno": "Ana Pérez",
   "hilo": "faro", "ruta": "proyectos/faro",
   "proveedor": "", "clase": "", "cuando": null, "url": ""
 }
@@ -315,6 +315,15 @@ pendiente salió del documento de un hilo, `<ruta>:<n>` si salió de una unidad 
 hilo abierto, y el id del proveedor si vino de afuera. La `n` es la posición en el
 documento, y **cambia si el documento cambia**: sirve para el minuto siguiente, no
 para guardarla. `hilo` puede ser `""` (nadie lo está trabajando todavía).
+
+`dueno` es quién lo hace: en una viñeta, lo que dice `@owner(Ana Pérez)` (en cualquier parte) o
+`@Ana Pérez:` (al comienzo), y `""` si no dice nadie («sin responsable»); `@deadline(AAAA-MM-DD)` llega
+como `cuando`. Esas marcas, y `@prioridad(…)`, no quedan en `texto`. En una tarea de proveedor, `dueno`
+vacío es de la persona.
+
+Lo que viene de un proveedor trae además `proyecto`: la carpeta que la tarea dice que es suya
+(su `origen`, si es una ruta del repositorio), haya o no un hilo ahí; `ruta` es la del hilo al
+que se la llevaría. La vista de proyectos del dashboard junta por `proyecto`.
 
 ## Orden por orden
 
@@ -529,7 +538,8 @@ el contrato de una página de sección y tres cosas más. Un bloque puede ser `d
 | `confirmar` | antes de correr se pregunta |
 | `principal` | la de ⏎; una como mucho. Las demás van numeradas y el número es su tecla |
 | `mensaje` | después del comando, abre un hilo nuevo con el agente y este primer prompt (`nombre_hilo`: su nombre); un `{texto}` en él también se reemplaza |
-| `rol` | qué es, para quien la corre sin abrir la ficha: `hecha` es la que corre el ✓ de la lista de tareas de VS Code, sin preguntar aunque tenga `confirmar`; `fecha` cambia la fecha de la tarea, y recibe en `{texto}` la fecha nueva (`AAAA-MM-DD`, o `+Nd`) que el dashboard pide con un selector al hacer clic en el atraso |
+| `rol` | qué es, para quien la corre sin abrir la ficha: `hecha` es la que corre el ✓ de la lista de tareas de VS Code, sin preguntar aunque tenga `confirmar`; `fecha` cambia la fecha de la tarea, y recibe en `{texto}` la fecha nueva (`AAAA-MM-DD`, o `+Nd`) que el dashboard pide con un selector al hacer clic en el atraso; `dueno` cambia quién la hace, y recibe en `{texto}` el nombre (o `none`, sin asignar) que el dashboard pide al hacer clic en el responsable, ofreciendo `opciones` |
+| `opciones` | con `rol: dueno`, las personas para elegir (una lista de nombres); se puede escribir otra |
 
 `telar tarea <id> --accion N [--texto T]` corre la acción `N`. telar vuelve a pedir la ficha
 y toma el comando de ahí, nunca de quien lo pide: desde el dashboard solo se puede correr

@@ -822,3 +822,41 @@ class HilosGemelos(Orden):
     def test_llevar_sin_conversacion_sugiere_sesion(self):
         codigo, _, error = self.correr("hilo", "llevar", "--hilo", "faro")
         self.assertNotEqual(codigo, 0)
+
+
+class ProyectoDeUnaTarea(Prueba):
+    def test_solo_una_carpeta_del_repositorio_es_proyecto(self):
+        from telar.ordenes.pendientes import _carpeta_de
+
+        self.assertEqual(_carpeta_de("negocio/pipeline/faro/"), "negocio/pipeline/faro")
+        self.assertEqual(_carpeta_de("proyectos/faro/README.md#pendientes"), "proyectos/faro/README.md")
+        for otra in ("", "gmail:1a2b", "https://x.y/z", "/abs/faro", "~/faro", ".", "dos palabras"):
+            self.assertEqual(_carpeta_de(otra), "", otra)
+
+
+class EstadoCorto(Prueba):
+    def test_el_estado_queda_en_lo_de_antes_de_la_explicacion(self):
+        from telar.ordenes.proyectos import corto
+
+        self.assertEqual(corto("Activo"), "Activo")
+        self.assertEqual(corto("Cerrado (confirmado el 16-sep)"), "Cerrado")
+        self.assertEqual(corto("**Prospecto**. Marco presentado"), "Prospecto")
+        self.assertEqual(corto("En pausa por el cliente desde el 9-sep. Ver Notas"), "En pausa por el cliente…")
+        self.assertEqual(corto(""), "")
+
+
+class AreaDelFrontmatter(Prueba):
+    def test_el_area_sale_del_frontmatter_y_no_del_cuerpo(self):
+        import tempfile
+        from pathlib import Path
+        from telar.ordenes.proyectos import area_de
+
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "README.md"
+            f.write_text('---\ntitulo: Faro\narea: "PIA"   # la unidad\n---\n\n# Faro\n')
+            self.assertEqual(area_de(f), "PIA")
+            f.write_text("---\ntitulo: Faro\n---\n\narea: EIC\n")
+            self.assertEqual(area_de(f), "")
+            f.write_text("# sin frontmatter\narea: GT\n")
+            self.assertEqual(area_de(f), "")
+            self.assertEqual(area_de(Path(d) / "no-existe.md"), "")
