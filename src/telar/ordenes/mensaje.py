@@ -92,8 +92,21 @@ def main(argv: list[str], ctx) -> int:
     return 0
 
 
+def _hilo_propio(ctx) -> str:
+    """El hilo de quien escribe (`$TELAR_HILO`), con su nombre de hoy si se renombró mientras corría."""
+    hilo = os.environ.get("TELAR_HILO", "").strip()
+    if not hilo:
+        return ""
+    from telar import estado as mod_estado
+
+    try:
+        return mod_estado.abrir(ctx.config).nombre_actual(hilo)
+    except Exception:  # noqa: BLE001 - sin estado legible, el nombre que se heredó
+        return hilo
+
+
 def remitente(ctx, de: str = "") -> str:
-    return de or os.environ.get("TELAR_HILO", "").strip() or f"{mod_bus.persona(ctx.config)}@{mod_bus.maquina(ctx.config)}"
+    return de or _hilo_propio(ctx) or f"{mod_bus.persona(ctx.config)}@{mod_bus.maquina(ctx.config)}"
 
 
 def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "") -> dict:
@@ -107,7 +120,7 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "") -
 
     agente = next((a for a in mod_agentes.descubrir(ctx.config) if para in (a.clave, a.nombre)), None)
     nombre = agente.nombre if agente is not None else para
-    hilo = os.environ.get("TELAR_HILO", "").strip()
+    hilo = _hilo_propio(ctx)
     saltos, retener = 0, ""
     if hilo:
         saltos = casilla.cadena(ctx.config, hilo) + 1

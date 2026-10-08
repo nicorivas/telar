@@ -427,3 +427,41 @@ class Escrituras(ConCarpeta):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AliasDeUnRenombre(unittest.TestCase):
+    """Un agente que ya corría cuando su hilo se renombró sigue diciendo el nombre viejo: el alias lo
+    lleva al nuevo, salvo que el nombre viejo ya sea de otro hilo."""
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.est = e.Estado(Path(self.tmp.name))
+
+    def test_el_nombre_viejo_lleva_al_nuevo_y_encadena(self):
+        self.est.vincular("santander-gob", "proyectos/santander")
+        self.est.renombrar("santander-gob", "Santander")
+        self.assertEqual(self.est.nombre_actual("santander-gob"), "Santander")
+        self.est.renombrar("Santander", "Banco")
+        self.assertEqual(self.est.nombre_actual("santander-gob"), "Banco")
+        self.assertEqual(self.est.nombre_actual("otro"), "otro")
+
+    def test_volver_al_nombre_de_antes_no_hace_un_ciclo(self):
+        self.est.renombrar("a", "b")
+        self.est.renombrar("b", "a")
+        self.assertEqual(self.est.nombre_actual("a"), "a")
+        self.assertEqual(self.est.nombre_actual("b"), "a")
+
+    def test_un_hilo_nuevo_con_el_nombre_viejo_es_el_suyo(self):
+        self.est.renombrar("faro", "Faro")
+        self.est.vincular("faro", "proyectos/otro-faro")
+        self.assertEqual(self.est.nombre_actual("faro"), "faro")
+
+    def test_el_gancho_de_un_agente_que_ya_corria_escribe_en_el_hilo_renombrado(self):
+        from telar.agente.base import Aviso, Evento, resolver_hilo
+
+        self.est.renombrar("santander-gob", "Santander")
+        aviso = Aviso(evento=Evento.ESPERA)
+        self.assertEqual(resolver_hilo(self.est, aviso, entorno={"TELAR_HILO": "santander-gob"}), "Santander")

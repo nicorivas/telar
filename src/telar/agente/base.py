@@ -311,7 +311,8 @@ def resolver_hilo(
         return aviso.hilo
     del_entorno = (entorno.get(VARIABLE_HILO) or "").strip()
     if del_entorno:
-        return del_entorno
+        # si el hilo se renombró mientras el agente corría, su variable dice el nombre viejo
+        return est.nombre_actual(del_entorno)
 
     panel = aviso.panel or panel_del_entorno(multiplexor, entorno)
     if aviso.evento is Evento.ABRE:

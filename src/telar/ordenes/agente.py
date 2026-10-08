@@ -167,7 +167,9 @@ def contexto(ctx) -> str:
     hilo = os.environ.get(VARIABLE_HILO, "").strip()
     if not hilo or not ctx.config.agente.contexto or _no_interactivo():
         return ""
-    vinculo = mod_estado.abrir(ctx.config).vinculos().get(hilo, "")
+    est = mod_estado.abrir(ctx.config)
+    hilo = est.nombre_actual(hilo)
+    vinculo = est.vinculos().get(hilo, "")
     cartero = _cartero_aqui()
     servidor = socket.gethostname().split(".")[0]
     remotos = ", ".join(r.nombre for r in ctx.config.remotos)
@@ -258,7 +260,8 @@ def _hilo_de_casilla(ctx, datos: dict) -> str:
     """
     hilo = os.environ.get(VARIABLE_HILO, "").strip()
     if hilo:
-        return hilo
+        # renombrado mientras el agente corría: la variable dice el nombre viejo, el alias lo lleva al nuevo
+        return mod_estado.abrir(ctx.config).nombre_actual(hilo)
     sesion = str(datos.get("session_id") or "")
     if sesion:
         anotado = mod_estado.abrir(ctx.config).hilo_de(sesion)
@@ -661,7 +664,7 @@ def _hilo(o, ctx) -> tuple[str, str]:
         return o.hilo, ""
     del_entorno = os.environ.get(VARIABLE_HILO, "").strip()
     if del_entorno:
-        return del_entorno, ""
+        return mod_estado.abrir(ctx.config).nombre_actual(del_entorno), ""
     tel = _comun.tejer(ctx, con_ficha=False)
     actual = _comun.hilo_actual(tel)
     if actual is None:

@@ -440,6 +440,9 @@ def hilo_actual(tel: Telar) -> Hilo | None:
     """
     nombre = os.environ.get(VARIABLE_HILO, "").strip()
     if nombre:
+        # si se renombró mientras el agente corría, la variable dice el nombre viejo
+        if tel.estado is not None:
+            nombre = tel.estado.nombre_actual(nombre)
         return tel.por_nombre(nombre) or Hilo(id=nombre, nombre=nombre)
     if tel.mux is None:
         return None

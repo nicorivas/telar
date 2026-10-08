@@ -94,6 +94,8 @@ ARCHIVOS = {
     "ids": "ids.json",
     "remotos": "remotos.json",
     "leidos": "leidos.json",
+    #: nombre viejo → nombre nuevo, de cada renombre: un agente que ya corría sigue diciendo el viejo
+    "alias": "alias.json",
 }
 
 #: El registro de cambios de foco, que no es JSON sino un log que solo crece.
@@ -886,6 +888,31 @@ class Estado:
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
+
+            # el agente que ya corría en el hilo heredó `$TELAR_HILO` con el nombre viejo y un proceso
+            # vivo no lo cambia: sus ganchos seguirían escribiendo en un hilo fantasma. El alias los
+            # lleva al nuevo (ver `nombre_actual`). Volver al nombre de antes deshace el alias
+            def anotar_alias(d):
+                d.pop(nuevo, None)
+                d[viejo] = nuevo
+
+            self._actualizar("alias", anotar_alias, {})
+
+    def nombre_actual(self, nombre: str) -> str:
+        """El nombre que tiene hoy un hilo que alguna vez se llamó `nombre` (siguiendo los renombres).
+
+        Solo si ese nombre ya no es de nadie: un hilo nuevo que reusa un nombre viejo, con su vínculo o
+        su conversación anotada, es ese hilo y no el renombrado."""
+        alias = self._leer("alias", {})
+        if not isinstance(alias, dict) or nombre not in alias:
+            return nombre
+        if nombre in self._leer("vinculos", {}) or nombre in self._leer("sesiones", {}):
+            return nombre
+        visto, actual = {nombre}, nombre
+        while actual in alias and isinstance(alias[actual], str) and alias[actual] not in visto:
+            actual = alias[actual]
+            visto.add(actual)
+        return actual
 
     def olvidar(self, hilo: str) -> None:
         """Borra todo lo que telar sabía de un hilo, menos el registro de foco.
