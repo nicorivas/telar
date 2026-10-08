@@ -452,3 +452,15 @@ class Conversion(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DestacadaYEstrella(Prueba):
+    def test_el_proveedor_dice_cual_va_siempre_en_la_vista_corta(self):
+        from telar.proveedores.tareas import ErrorDeProveedor, _tarea_de_json
+
+        t = _tarea_de_json({"id": "T1", "texto": "x", "destacada": True, "estrella": True}, "cmd", 0)
+        self.assertEqual((t.destacada, t.estrella), (True, True))
+        self.assertEqual(t.item(proveedor="tareas").datos["destacada"], True)
+        self.assertFalse(_tarea_de_json({"id": "T2", "texto": "y"}, "cmd", 1).destacada)
+        with self.assertRaises(ErrorDeProveedor):
+            _tarea_de_json({"id": "T3", "texto": "z", "estrella": "sí"}, "cmd", 2)

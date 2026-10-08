@@ -99,6 +99,10 @@ class Tarea:
     #: quién la hace, si no es la persona («Nataly»); vacío es suya. El dashboard filtra «mías / de otros».
     dueno: str = ""
     color: str = ""
+    #: el proveedor la destaca (la más alta prioridad, o marcada): va siempre en la vista corta
+    destacada: bool = False
+    #: la persona la marcó con estrella
+    estrella: bool = False
 
     @property
     def activa(self) -> bool:
@@ -130,6 +134,8 @@ class Tarea:
                 "area": self.area,
                 "color": self.color,
                 "dueno": self.dueno,
+                "destacada": self.destacada,
+                "estrella": self.estrella,
             },
         )
 
@@ -680,6 +686,8 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         area=texto_de("area"),
         color=texto_de("color"),
         dueno=texto_de("dueno"),
+        destacada=bandera("destacada"),
+        estrella=bandera("estrella"),
     )
 
 
