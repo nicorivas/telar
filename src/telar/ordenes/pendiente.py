@@ -9,6 +9,9 @@ enviarla**: quien decide apretar Enter es la persona.
     telar pendiente faro:2 --donde    solo dice adónde iría
     telar pendiente faro:2 --nuevo    fuerza un hilo nuevo aunque el proyecto tenga el suyo
     telar pendiente T84 --texto "…"   otra frase, en vez del texto del pendiente
+    telar pendiente faro:2 --hecho              marca la casilla en su documento ([ ] → [x])
+    telar pendiente faro:2 --responsable "Ana"  dice quién la hace (@owner(Ana)); «none» lo quita
+    telar pendiente faro:2 --linea              en qué archivo y línea está
 
 Abrir siempre un hilo nuevo dejaba dos agentes trabajando el mismo proyecto sin
 saber uno del otro. Esa es la razón de que el destino se busque antes de crear
@@ -41,6 +44,12 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--texto", default="", help="qué escribirle, en vez del texto del pendiente")
     p.add_argument("--enviar", action="store_true", help="además de escribirlo, enviarlo")
     p.add_argument("--proveedor", default="", help="de qué proveedor es (más rápido: no pregunta a los demás)")
+    p.add_argument("--hecho", action="store_true", help="una casilla de un documento: marcarla hecha")
+    p.add_argument("--responsable", default=None, metavar="NOMBRE",
+                   help="una casilla de un documento: quién la hace (@owner); «none» lo quita")
+    p.add_argument("--linea", action="store_true", help="una casilla de un documento: en qué archivo y línea está")
+    p.add_argument("--esperado", default="", metavar="TEXTO",
+                   help="el texto que se vio: si la casilla ya no dice eso, no se toca (el documento cambió)")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -52,6 +61,9 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(
             f"no encuentro el pendiente «{o.ref}». `telar pendientes` los lista con su referencia."
         )
+
+    if o.hecho or o.responsable is not None or o.linea:
+        return _en_su_documento(tel, fila, o)
 
     destino = _destino(tel, fila)
     # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
@@ -237,6 +249,38 @@ def mensaje(plantilla: str, fila: dict) -> str:
         plantilla = "{texto}"
     valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", "")}
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
+
+
+def _en_su_documento(tel: _comun.Telar, fila: dict, o) -> int:
+    """Marcar hecha, cambiar el responsable o ubicar una casilla en el documento de donde salió."""
+    from telar import vinetas
+
+    if fila.get("proveedor"):
+        return _comun.queja(f"«{fila['ref']}» es de {fila['proveedor']}: eso se cambia con sus acciones (telar tarea)")
+    unidad = tel.unidades.get(fila.get("ruta", ""))
+    if unidad is None:
+        return _comun.queja(f"no sé de qué documento es «{fila['ref']}»")
+    documento = unidad[1]
+    texto = o.esperado.strip() or fila["texto"]
+    if o.esperado.strip() and o.esperado.strip() != fila["texto"]:
+        return _comun.queja(f"«{fila['ref']}» ya no dice «{o.esperado.strip()[:60]}»: el documento cambió, vuelve a mirarlo")
+    try:
+        if o.linea:
+            hecho, n = "", vinetas.linea(documento, texto)
+        elif o.hecho:
+            hecho, n = "marcada hecha", vinetas.cambiar(documento, texto, vinetas.hecha)
+        else:
+            nombre = o.responsable.strip()
+            hecho = "sin responsable" if nombre.lower() in ("", "none") else f"responsable: {nombre}"
+            n = vinetas.cambiar(documento, texto, lambda linea: vinetas.con_responsable(linea, nombre))
+    except (vinetas.ErrorDeVineta, OSError) as e:
+        return _comun.queja(str(e))
+    relativa = _comun.ruta_relativa(documento, tel.raiz)
+    if o.json:
+        return _comun.escribir_json({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa,
+                                     "linea": n, "hecho": hecho})
+    print(f"{relativa}:{n}" + (f" · {hecho}" if hecho else ""))
+    return 0
 
 
 def _llevar(
