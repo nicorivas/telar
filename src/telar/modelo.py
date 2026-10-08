@@ -62,6 +62,10 @@ class Pendiente:
     id: str = ""
     #: de dónde salió: el nombre de la sección del perfil o del proveedor.
     origen: str = ""
+    #: quién lo hace, si la viñeta lo dice («@owner(Ana Pérez)» o «@Ana Pérez: …»); "" si no.
+    dueno: str = ""
+    #: la fecha límite que dice la viñeta («@deadline(2026-10-14)»), AAAA-MM-DD; "" si no.
+    vence: str = ""
 
 
 @dataclass(frozen=True, slots=True)

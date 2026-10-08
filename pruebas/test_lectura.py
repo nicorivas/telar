@@ -164,3 +164,32 @@ class Ubicar(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarcasDeUnaViñeta(unittest.TestCase):
+    def test_owner_y_deadline_se_leen_y_no_se_muestran(self):
+        from telar.lectura import marcas
+
+        self.assertEqual(marcas("Revisar el NDA @prioridad(P1) @deadline(2026-10-14) @owner(Ana Pérez)"),
+                         ("Revisar el NDA", "Ana Pérez", "2026-10-14"))
+
+    def test_quien_al_comienzo_hasta_los_dos_puntos(self):
+        from telar.lectura import marcas
+
+        self.assertEqual(marcas("@Francisco Martínez: el levantamiento por escrito"),
+                         ("el levantamiento por escrito", "Francisco Martínez", ""))
+        # el @owner explícito manda sobre el del comienzo
+        self.assertEqual(marcas("@Marcelo: subir el deck @owner(Ignacia)")[1:], ("Ignacia", ""))
+
+    def test_una_mencion_en_minuscula_o_en_medio_no_es_responsable(self):
+        from telar.lectura import marcas
+
+        self.assertEqual(marcas("correo a @juan por la factura"), ("correo a @juan por la factura", "", ""))
+        self.assertEqual(marcas("vence @deadline(mañana)"), ("vence", "", ""))
+
+    def test_las_casillas_del_documento_traen_su_responsable_y_su_fecha(self):
+        from telar.lectura import _casillas
+
+        p = _casillas(["- [ ] Mandar la propuesta @deadline(2026-10-14) @owner(Ana Pérez)", "- [ ] sin nadie"], 0, "pendientes")
+        self.assertEqual([(x.texto, x.dueno, x.vence) for x in p],
+                         [("Mandar la propuesta", "Ana Pérez", "2026-10-14"), ("sin nadie", "", "")])

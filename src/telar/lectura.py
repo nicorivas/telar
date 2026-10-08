@@ -152,6 +152,33 @@ def _lista(cuerpo: list[str], maximo: int) -> tuple[str, ...]:
     return tuple(salida[:maximo] if maximo else salida)
 
 
+#: una marca entre paréntesis en una viñeta: `@owner(Ana Pérez)`, `@deadline(2026-10-14)`, `@prioridad(P1)`
+_MARCA = re.compile(r"\s*@(owner|due[nñ]o|responsable|deadline|vence|prioridad|priority)\(([^)]*)\)", re.I)
+#: quién al comienzo, como lo escribe la gente: «@Ana Pérez: revisar el NDA» (nombres con mayúscula)
+_QUIEN = re.compile(r"^@([A-ZÁÉÍÓÚÑ][\w.'-]*(?:\s+[A-ZÁÉÍÓÚÑ][\w.'-]*){0,3})\s*:\s+")
+
+
+def marcas(texto: str) -> tuple[str, str, str]:
+    """(texto sin marcas, responsable, fecha límite) de una viñeta.
+
+    El responsable sale de `@owner(…)` en cualquier parte o de `@Nombre Apellido:` al comienzo; la
+    fecha, de `@deadline(AAAA-MM-DD)`. Las marcas no se muestran (tampoco `@prioridad(…)`): el texto
+    queda como lo leería una persona."""
+    dueno, vence = "", ""
+    for clave, valor in _MARCA.findall(texto):
+        clave, valor = clave.lower(), valor.strip()
+        if clave in ("owner", "dueño", "dueno", "responsable") and valor:
+            dueno = dueno or valor
+        elif clave in ("deadline", "vence") and re.fullmatch(r"\d{4}-\d{2}-\d{2}", valor):
+            vence = vence or valor
+    texto = _MARCA.sub("", texto).strip()
+    m = _QUIEN.match(texto)
+    if m:
+        dueno = dueno or m.group(1)
+        texto = texto[m.end():].strip()
+    return texto, dueno, vence
+
+
 def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, ...]:
     salida = []
     for linea in cuerpo:
@@ -159,7 +186,7 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
         if not m or m.group(1) is None:
             continue
         marca = m.group(1).lower()
-        valor = limpiar(m.group(2))
+        valor, dueno, vence = marcas(limpiar(m.group(2)))
         if not valor:
             continue
         salida.append(
@@ -168,6 +195,8 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
                 hecho=marca == "x",
                 en_curso=marca == ">",
                 origen=origen,
+                dueno=dueno,
+                vence=vence,
             )
         )
     return tuple(salida[:maximo] if maximo else salida)

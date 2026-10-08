@@ -544,6 +544,8 @@ def json_pendiente(p: Pendiente, *, ref: str = "", hilo: str = "") -> dict:
         "en_curso": p.en_curso,
         "id": p.id,
         "origen": p.origen,
+        # quién lo hace, si la viñeta lo dice; "" es «sin responsable»
+        "dueno": p.dueno,
     }
     if ref:
         cuerpo["ref"] = ref
