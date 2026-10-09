@@ -319,6 +319,60 @@ def cerrar_hilo(ctx, cuerpo: object) -> tuple[int, dict]:
     return 200, {"ok": True, "hilo": nombre}
 
 
+#: las teclas que la página puede apretar en la terminal de un hilo, y cómo las llama tmux. Son las que
+#: sacan a un agente de un diálogo (Enter, Esc, flechas, Tab) y la que interrumpe lo que hace (Ctrl-C).
+TECLAS = {"enter": "Enter", "esc": "Escape", "arriba": "Up", "abajo": "Down", "izquierda": "Left", "derecha": "Right",
+          "tab": "Tab", "ctrl-c": "C-c", "espacio": "Space"}
+_ultima_tecla = [0.0]
+
+
+def _objetivo_terminal(ctx, nombre: str):
+    """A qué apuntar con tmux para un hilo de esta máquina: su ventana, o su sesión propia. None si no está abierto."""
+    from telar.ordenes import _comun
+
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = tel.por_nombre(nombre)
+    if hilo is None:
+        return None
+    if tel.propio(hilo):
+        return f"={tel.propios[hilo.nombre]}:"
+    return hilo.id if tel.vivo(hilo) and str(hilo.id).startswith("@") else None
+
+
+def terminal_hilo(ctx, consulta: str) -> tuple[int, dict]:
+    """`GET /api/terminal?hilo=`: lo que se ve ahora en la terminal del hilo (las últimas líneas), para ver si un
+    diálogo del agente está esperando una tecla. Solo hilos abiertos de esta máquina."""
+    nombre = parse_qs(consulta).get("hilo", [""])[0]
+    objetivo = _objetivo_terminal(ctx, nombre) if nombre else None
+    if objetivo is None:
+        return 404, {"ok": False, "error": "ese hilo no está abierto en esta máquina"}
+    r = subprocess.run(["tmux", "capture-pane", "-p", "-J", "-t", objetivo, "-S", "-40"], capture_output=True, text=True, timeout=10)
+    if r.returncode != 0:
+        return 502, {"ok": False, "error": (r.stderr.strip() or "tmux no contestó")[:160]}
+    lineas = [l.rstrip() for l in r.stdout.splitlines()]
+    while lineas and not lineas[-1]:
+        lineas.pop()
+    return 200, {"ok": True, "texto": "\n".join(lineas[-40:])}
+
+
+def teclear_hilo(ctx, cuerpo: object) -> tuple[int, dict]:
+    """`POST /api/teclas {hilo, tecla}`: aprieta una tecla de la lista `TECLAS` en la terminal del hilo."""
+    if not isinstance(cuerpo, dict) or not isinstance(cuerpo.get("hilo"), str) or cuerpo.get("tecla") not in TECLAS:
+        return 400, {"ok": False, "error": "faltan el hilo o una tecla válida (" + ", ".join(TECLAS) + ")"}
+    objetivo = _objetivo_terminal(ctx, cuerpo["hilo"])
+    if objetivo is None:
+        return 404, {"ok": False, "error": "ese hilo no está abierto en esta máquina"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultima_tecla[0] < 0.15:
+            return 429, {"ok": False, "error": "muy rápido"}
+        _ultima_tecla[0] = ahora
+    r = subprocess.run(["tmux", "send-keys", "-t", objetivo, TECLAS[cuerpo["tecla"]]], capture_output=True, text=True, timeout=10)
+    if r.returncode != 0:
+        return 502, {"ok": False, "error": (r.stderr.strip() or "tmux no contestó")[:160]}
+    return 200, {"ok": True}
+
+
 def datos_proyectos() -> bytes:
     return datos("proyectos")
 
@@ -516,6 +570,11 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                                          for a in (config.atajos if config and nuevo and escribir else ())],
                               "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
                     return self._enviar(200, json.dumps(cuerpo).encode(), "application/json")
+                if ruta == "/api/terminal":  # lo que se ve en la terminal de un hilo (solo con --escribir: puede traer de todo)
+                    if not escribir or ctx is None:
+                        return self._enviar(403, json.dumps({"ok": False, "error": "esta página solo lee: `telar web --escribir`"}).encode(), "application/json")
+                    codigo, cuerpo = terminal_hilo(ctx, consulta)
+                    return self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
                 if ruta == "/api/calendario":  # un día del calendario: agenda, notas, plan (solo lee)
                     codigo, cuerpo = webcal.dia(config, plan, parse_qs(consulta).get("dia", [""])[0])
                     return self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
@@ -562,7 +621,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", "/api/hilo/cerrar", *RUTAS_EVENTO):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", "/api/hilo/cerrar", "/api/teclas", *RUTAS_EVENTO):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
@@ -591,6 +650,15 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if isinstance(datos, dict):
                     anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
                                  "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
+            if ruta == "/api/teclas":
+                try:
+                    codigo, resultado = teclear_hilo(ctx, datos)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                if isinstance(datos, dict):
+                    anotar_envio(config, self.client_address[0], "tecla", str(datos.get("hilo", ""))[:60], 0,
+                                 str(datos.get("tecla", "")) + ":" + ("ok" if resultado.get("ok") else str(resultado.get("error", codigo))))
                 return responder(codigo, resultado)
             if ruta == "/api/hilo/cerrar":
                 try:

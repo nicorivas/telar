@@ -892,6 +892,7 @@ const claveDia = (iso) => (iso || '').slice(0, 10);
 
 function soltarConversacion() {
   if (conv.timer) { clearInterval(conv.timer); conv.timer = 0; }
+  if (conv.termTimer) { clearInterval(conv.termTimer); conv.termTimer = 0; }
   if (conv.nombre) { conv.nombre = ''; conv.origen = ''; document.body.classList.remove('escribiendo', 'en-conv'); document.documentElement.style.removeProperty('--dock-h'); }
 }
 
@@ -1037,6 +1038,13 @@ function botonCerrar(h) {
     el('button', { type: 'button', className: 'cerrar', onclick: parar }, 'no'));
 }
 
+function botonTerminal(h) {
+  if (!estado.yo.escribir || conv.origen || !(h.vivo || h.propio)) return null;
+  const caja = $('conv-term');
+  const abierta = !!(caja && !caja.hidden);
+  return el('button', { type: 'button', className: `term-boton${abierta ? ' activo' : ''}`, title: 'ver la terminal y apretar teclas', onclick: alternarTerminal }, g('⌨'));
+}
+
 function cabeceraConv() {
   const h = conv.hilo || {};
   const dice = h.atencion && NOMBRE_ATENCION[h.atencion] ? NOMBRE_ATENCION[h.atencion] : (h.vivo || h.propio ? 'abierto' : 'sin ventana');
@@ -1047,7 +1055,7 @@ function cabeceraConv() {
     txt('nombre una', conv.nombre),
     conv.origen ? txt('donde', `en ${conv.origen}`) : null,
     el('span', { className: `estado-conv ${h.atencion || ''}` }, g(GLIFO[h.atencion] || '·', `at ${h.atencion || 'ninguna'}`), ` ${dice}`),
-    sesiones, botonCerrar(h)].filter(Boolean));
+    sesiones, botonTerminal(h), botonCerrar(h)].filter(Boolean));
 }
 
 // atrás si se llegó navegando dentro de la página (así se vuelve a donde se estaba); si se abrió directo, a la lista de hilos
@@ -1170,6 +1178,48 @@ function puedeConv() {
   return !!(estado.yo.escribir && conv.hilo && (conv.hilo.vivo || conv.hilo.propio) && (!conv.origen || (conv.hilo.en_linea && estado.yo.enlaces.length)));
 }
 
+// la terminal del hilo: lo que se ve ahora y las teclas que sacan a un agente de un diálogo (Enter, Esc, flechas…)
+const TECLAS_TERM = [['↩', 'enter', 'Enter'], ['esc', 'esc', 'Esc'], ['↑', 'arriba', 'arriba'], ['↓', 'abajo', 'abajo'], ['←', 'izquierda', 'izquierda'],
+                     ['→', 'derecha', 'derecha'], ['tab', 'tab', 'Tab'], ['^C', 'ctrl-c', 'interrumpir']];
+
+function terminalConv() {
+  clearInterval(conv.termTimer); conv.termTimer = 0;  // un dock rehecho deja sin dueño al sondeo del anterior
+  const pre = el('pre', { id: 'term-texto', className: 'term-texto', textContent: 'leyendo la terminal…' });
+  const dijo = el('div', { className: 'dijo', id: 'term-dijo' });
+  const leer = async () => {
+    try {
+      const r = await fetch(`/api/terminal?hilo=${encodeURIComponent(conv.nombre)}`, { cache: 'no-store' });
+      const cuerpo = await r.json();
+      if (!r.ok) throw new Error(cuerpo.error || `error ${r.status}`);
+      const abajo = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 4;
+      if (pre.textContent !== cuerpo.texto) { pre.textContent = cuerpo.texto; if (abajo) pre.scrollTop = pre.scrollHeight; }
+      dijo.textContent = '';
+    } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = e.message; }
+  };
+  const apretar = async (tecla) => {
+    dijo.className = 'dijo'; dijo.textContent = '';
+    try {
+      const r = await fetch('/api/teclas', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' }, body: JSON.stringify({ hilo: conv.nombre, tecla }) });
+      const cuerpo = await r.json().catch(() => ({}));
+      if (!(r.ok && cuerpo.ok)) { dijo.className = 'dijo mal'; dijo.textContent = cuerpo.error || `no salió (${r.status})`; return; }
+    } catch (e) { dijo.className = 'dijo mal'; dijo.textContent = 'sin conexión con el servidor'; return; }
+    setTimeout(leer, 400);
+  };
+  const caja = el('div', { id: 'conv-term', className: 'term', hidden: true }, pre,
+    el('div', { className: 'term-teclas' }, ...TECLAS_TERM.map(([glifo, tecla, nombre]) => el('button', { type: 'button', title: nombre, 'aria-label': nombre, onclick: () => apretar(tecla) }, glifo))),
+    dijo);
+  caja.abrir = () => { caja.hidden = false; leer(); conv.termTimer = setInterval(leer, 2000); };
+  caja.cerrar = () => { caja.hidden = true; clearInterval(conv.termTimer); conv.termTimer = 0; };
+  return caja;
+}
+
+function alternarTerminal() {
+  const caja = $('conv-term');
+  if (!caja) return;
+  if (caja.hidden) caja.abrir(); else caja.cerrar();
+  cabeceraConv();
+}
+
 function dockConv() {
   const puede = conv.puede = puedeConv();
   if (!puede) {
@@ -1211,6 +1261,7 @@ function dockConv() {
     if (e.ctrlKey || e.metaKey || (!tactil && !e.shiftKey)) { e.preventDefault(); enviar(); }
   };
   const dock = el('div', { id: 'dock', className: 'dock' },
+    terminalConv(),
     el('div', { className: 'linea-dock' }, g('›', 'prompt'), campo,
       el('button', { type: 'button', className: 'manda', onclick: enviar }, 'enviar')),
     dijo);

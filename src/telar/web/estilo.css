@@ -379,3 +379,12 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 #conv-cab .cerrar { color: var(--rojo); margin-left: auto; padding: 0 1ch; }
 #conv-cab .cerrar.si { box-shadow: inset 0 0 0 1px var(--rojo); }
 #conv-cab .cerrar-pregunta { margin-left: auto; color: var(--rojo); }
+/* la terminal de un hilo */
+.dock .term { margin-bottom: .5lh; }
+.dock .term[hidden] { display: none; }
+.term-texto { margin: 0; max-height: 30vh; overflow: auto; font: inherit; font-size: 11px; line-height: 1.25; white-space: pre; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); padding: .3lh 1ch; }
+.term-teclas { display: flex; gap: .5ch; margin-top: .3lh; }
+.term-teclas button { flex: 1 1 0; height: calc(2 * var(--lh)); color: var(--verde); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--verde) 45%, transparent); }
+.term-teclas button:active { background: var(--hover); }
+#conv-cab .term-boton { color: var(--dim); padding: 0 1ch; }
+#conv-cab .term-boton.activo { color: var(--verde); }

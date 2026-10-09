@@ -8,6 +8,8 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar web`: a ⌨ button in a thread's conversation shows its terminal (refreshed every 2 s) with keys to press — Enter, Esc,
+  arrows, Tab, Ctrl-C — to get an agent out of a dialog that swallows what's typed (`/api/terminal`, `/api/teclas`).
 - `telar web`: a «× cerrar» button in a thread's conversation (two taps) archives it and ends its session, like
   `telar hilo archivar --cerrar`; resident agents can't be closed from the page. `telar hilo cerrar|archivar --cerrar` now also
   ends a thread that lives in its own session (the phone's, an encargo's), with the phone's sessions grouped to it.
