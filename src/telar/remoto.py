@@ -78,7 +78,7 @@ def carpeta_remota(config, remoto: Remoto, relativa: str = "") -> str:
 #: letra o número hecho «-»). `--resume <id>` la encuentra igual desde otra carpeta, pero así
 #: queda donde Claude mismo la habría puesto. No pisa una que ya esté.
 _DEJAR = r"""
-import os, re, sys
+import gzip, os, re, sys
 carpeta, sid, esperado = sys.argv[1], sys.argv[2], int(sys.argv[3])
 base = os.path.abspath(os.path.expanduser(carpeta))
 destino = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", base))
@@ -86,7 +86,7 @@ os.makedirs(destino, exist_ok=True)
 ruta = os.path.join(destino, sid + ".jsonl")
 if os.path.exists(ruta):
     sys.exit("ya hay una conversación con ese id allá: " + ruta)
-datos = sys.stdin.buffer.read()
+datos = gzip.decompress(sys.stdin.buffer.read())
 if len(datos) != esperado:
     sys.exit(f"llegaron {len(datos)} de {esperado} bytes: no la guardo (una conversación cortada no se retoma)")
 with open(ruta + ".tmp", "wb") as f:
@@ -172,13 +172,18 @@ def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tupl
         datos = open(archivo, "rb").read()
     except OSError as e:
         return "", f"no pude leer la conversación: {e}"
+    import gzip
+
     orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
              shlex.join(["python3", "-c", _DEJAR, carpeta, sid, str(len(datos))])]
+    # viaja comprimida: es texto (con imágenes en base64) y pesa la mitad o menos; con la subida de un
+    # laptop, 12 MB tardaban cuatro minutos. Allá se descomprime y se revisa el tamaño de lo descomprimido
+    comprimida = gzip.compress(datos, 6)
     # una conversación larga pesa decenas de MB y un laptop sube lento: un minuto fijo la cortaba
-    # a la mitad. Diez minutos, o 50 KB/s como piso, lo que sea más
-    espera = max(600, len(datos) / 50_000)
+    # a la mitad. Diez minutos, o 20 KB/s como piso, lo que sea más
+    espera = max(600, len(comprimida) / 20_000)
     try:
-        r = subprocess.run(orden, input=datos, capture_output=True, timeout=espera)
+        r = subprocess.run(orden, input=comprimida, capture_output=True, timeout=espera)
     except (OSError, subprocess.TimeoutExpired) as e:
         return "", f"{remoto.destino} no responde: {e}"
     if r.returncode != 0:
