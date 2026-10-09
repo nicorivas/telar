@@ -246,6 +246,31 @@ def estados(config) -> dict:
         raise ErrorDeBus(f"no pude leer el estado del bus: {e}") from e
 
 
+def tema_cambio(config, tema: str = "*", quien: str = "") -> str:
+    """Donde se avisa que algo cambió (`telar cambio`): todas las máquinas de la persona lo oyen."""
+    return f"cambio.{quien or persona(config)}.{tema}"
+
+
+def anunciar(config, tema: str) -> dict:
+    """Avisa a todas las máquinas que `tema` cambió (sin respuesta: el que no está, no se entera)."""
+    if not hay_bus(config):
+        return {"ok": False, "error": "no hay bus: [bus] url en la configuración"}
+
+    async def _anunciar():
+        nc = await conectar(config)
+        try:
+            await nc.publish(tema_cambio(config, tema), json.dumps({"de": maquina(config)}).encode())
+            await nc.flush(timeout=5)
+        finally:
+            await nc.close()
+
+    try:
+        asyncio.run(asyncio.wait_for(_anunciar(), 15))
+        return {"ok": True}
+    except Exception as e:  # noqa: BLE001 - sin bus a mano: el aviso no llega, y se dice
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+
+
 def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30) -> dict:
     """Un pedido con respuesta al nodo de otra máquina (`rpc.<persona>.<maquina>.<verbo>`). Siempre
     devuelve un dict con `ok`; si nadie responde a tiempo, `ok: False` con el motivo."""

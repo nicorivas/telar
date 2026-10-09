@@ -40,6 +40,7 @@ ORDENES: dict[str, str] = {
     "pendientes": "Lo que está por hacer, junto y con su hilo al lado.",
     "pendiente": "Llevar un pendiente al hilo donde se trabaja.",
     "tarea": "La ficha de una tarea de un proveedor, y correr una de sus acciones.",
+    "cambio": "Avisar que algo cambió (las tareas), para que el dashboard lo relea ya.",
     "hoy": "El día en una pantalla: agenda, quién te espera, qué falta.",
     "reunion": "Preparar una reunión: un hilo con el agente ya trabajando en ella.",
     "atajo": "Una tecla del dashboard: un hilo con el agente haciendo algo recurrente.",

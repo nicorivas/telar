@@ -186,6 +186,9 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "proveedor"), cb=self._proveedor)
+        await nc.subscribe(mod_bus.tema_cambio(self.config, "*"), cb=self._cambio)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -417,6 +420,32 @@ class Nodo:
         from telar import resultados
 
         await self._responder(m, lambda p: resultados.local(self.config, str(p.get("clave", "")), str(p.get("dia", ""))))
+
+    async def _cambio(self, m) -> None:
+        """Algo cambió en alguna máquina (`telar cambio`): se anota aquí para que el dashboard lo relea."""
+        from telar.ordenes import cambio
+
+        tema = m.subject.rsplit(".", 1)[-1]
+        if tema and tema.replace("-", "").isalnum():
+            await asyncio.to_thread(cambio.anotar, self.config, tema)
+
+    async def _proveedor(self, m) -> None:
+        """Lo que da un proveedor de esta máquina, para otra que lo declara `en` esta (telar.alla)."""
+        from telar import alla
+
+        await self._responder(m, lambda p: alla.consultar_aqui(self.config, str(p.get("nombre", "")), str(p.get("dia", ""))))
+
+    async def _tarea(self, m) -> None:
+        """`telar tarea …` corrido aquí, para otra máquina: la ficha o una acción de una tarea de aquí."""
+        from telar import alla
+
+        def correr(p):
+            argv = p.get("argv")
+            if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+                return {"ok": False, "error": "argv: se esperaba una lista de textos"}
+            return alla.tarea_aqui(argv)
+
+        await self._responder(m, correr)
 
     async def _notas(self, m) -> None:
         from telar import notas

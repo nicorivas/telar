@@ -21,7 +21,6 @@ import datetime as dt
 import shutil
 
 from telar.ordenes import _comun
-from telar.proveedores import consultar
 
 AYUDA = "Lo que está por hacer, junto y con su hilo al lado."
 
@@ -111,7 +110,10 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
     `solo` limita la consulta a esos proveedores: buscar una tarea no necesita bajar el calendario."""
     _comun.asegurar_proveedores(ctx.config)
     activos = [p for p in ctx.config.proveedores_activos() if solo is None or p.nombre in solo]
-    items, fallas = consultar(activos, dia)
+    # un proveedor que vive en otra máquina (`en`) se le pide a ella: sus archivos están allá (ver telar.alla)
+    from telar import alla
+
+    items, fallas = alla.consultar(ctx.config, activos, dia)
     # los proveedores que dan ficha (`detalle`): un clic en su tarea la abre en vez de ir al hilo
     con_ficha = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("detalle")}
     # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)

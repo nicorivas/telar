@@ -51,6 +51,15 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    # las tareas de un proveedor que vive en otra máquina se leen y se cambian allá (ver telar.alla):
+    # aquí hay una copia, y una acción corrida aquí la cambiaría a ella y no a las tareas
+    from telar import alla
+
+    config = getattr(ctx, "config", None)
+    proveedor = next((x for x in config.proveedores_activos() if x.nombre == o.proveedor), None) if config else None
+    en = alla.donde(config, proveedor) if proveedor is not None else ""
+    if en:
+        return alla.tarea_alla(config, en, argv)
 
     detalle, problema = detalle_de(ctx, o.proveedor)
     if problema:
