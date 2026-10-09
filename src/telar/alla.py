@@ -50,7 +50,9 @@ def item_de_dict(d: dict) -> Item:
 def consultar_aqui(config, nombre: str, dia: str) -> dict:
     """Lo que da un proveedor de esta máquina (lo que responde el nodo al pedido `proveedor`)."""
     from telar import proveedores as mod_prov
+    from telar.ordenes import _comun
 
+    _comun.asegurar_proveedores(config)  # los proveedores se registran al importarse: sin esto, «ninguno»
     cfg = next((p for p in config.proveedores_activos() if p.nombre == nombre), None)
     if cfg is None:
         return {"ok": False, "error": f"no hay proveedor activo «{nombre}» en esta máquina"}
