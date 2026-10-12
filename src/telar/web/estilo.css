@@ -396,3 +396,9 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .fila.dest { grid-template-columns: 2ch minmax(0, 1fr) auto; }
 .dest .sub { display: block; color: var(--dim); }
 .dest.abierto .titulo { color: var(--verde); }
+
+/* pantalla de arranque: un telar de texto que teje unas filas */
+#splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1lh; background: var(--bg); transition: opacity .35s; }
+#splash.fuera { opacity: 0; pointer-events: none; }
+#splash pre { margin: 0; font: inherit; line-height: 1.15; color: var(--azul); }
+#splash .splash-t { color: var(--fg); font-weight: 700; }
