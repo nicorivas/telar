@@ -388,3 +388,11 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .term-teclas button:active { background: var(--hover); }
 #conv-cab .term-boton { color: var(--dim); padding: 0 1ch; }
 #conv-cab .term-boton.activo { color: var(--verde); }
+/* compartir */
+.compartido { display: flex; flex-direction: column; gap: .4lh; padding: 0 2ch; margin-top: .5lh; }
+.compartido .titulo { font-weight: 700; }
+.compartido .url { word-break: break-all; }
+.compartido textarea { width: 100%; resize: none; }
+.fila.dest { grid-template-columns: 2ch minmax(0, 1fr) auto; }
+.dest .sub { display: block; color: var(--dim); }
+.dest.abierto .titulo { color: var(--verde); }

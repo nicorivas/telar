@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar web`: the installed app is an Android share target (`share_target` in the manifest): «compartir» → telar opens a
+  screen to pick which threads receive the link (plus «lecturas», the reading feed) with an optional note; nothing is sent until
+  you tap «enviar». New `/api/lectura` (`kichoro/bin/lecturas dejar`).
 - `telar web`: a ⌨ button in a thread's conversation shows its terminal (refreshed every 2 s) with keys to press — Enter, Esc,
   arrows, Tab, Ctrl-C — to get an agent out of a dialog that swallows what's typed (`/api/terminal`, `/api/teclas`).
 - `telar web`: a «× cerrar» button in a thread's conversation (two taps) archives it and ends its session, like

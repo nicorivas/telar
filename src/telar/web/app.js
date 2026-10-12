@@ -42,7 +42,7 @@ const guardado = (clave, valor) => {
   return null;
 };
 const estado = {
-  hoy: null, cal: null, calElegir: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, nuevo: false, enlaces: [] }, proyectos: null, plan: null, diaPlan: '', crudo: '', error: '',
+  hoy: null, compartir: null, cal: null, calElegir: null, hilos: null, espejos: [], yo: { escribir: false, plan: false, plan_comentar: false, nuevo: false, enlaces: [] }, proyectos: null, plan: null, diaPlan: '', crudo: '', error: '',
   borradores: new Map(), envios: new Map(), repintar: false,
   abiertos: new Set(), sinVentana: new Set(), masPendientes: false,
   modo: guardado('telar.modo') === 'todos' ? 'todos' : 'urgentes',
@@ -350,7 +350,7 @@ function seccionEspejo(e) {
     ...(otros.length ? filasSinVentana(`${e.nombre}:otros`, e.nombre, otros) : []));
 }
 
-const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash.startsWith('#cal') ? 'cal' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : location.hash === '#nuevo' ? 'nuevo' : 'hoy');
+const vistaActual = () => (location.hash.startsWith('#hilos/') ? 'conversacion' : location.hash.startsWith('#cal') ? 'cal' : location.hash === '#hilos' ? 'hilos' : location.hash === '#plan' ? 'plan' : location.hash === '#nuevo' ? 'nuevo' : location.hash === '#compartir' ? 'compartir' : 'hoy');
 
 function pintar(forzar = false) {
   // mientras se escribe en un campo, repintar lo destruiría (y con él el teclado): se deja para cuando se suelte.
@@ -359,7 +359,7 @@ function pintar(forzar = false) {
   const clave = activo && activo.classList.contains('campo') ? activo.dataset.clave : '';
   if (clave && !forzar) { estado.repintar = true; return; }
   const vista = vistaActual();
-  const pestana = vista === 'conversacion' || vista === 'nuevo' ? 'hilos' : vista;
+  const pestana = vista === 'conversacion' || vista === 'nuevo' || vista === 'compartir' ? 'hilos' : vista;
   for (const a of document.querySelectorAll('#barra a')) {
     a.classList.toggle('activa', a.dataset.vista === pestana);
     a.setAttribute('aria-current', a.dataset.vista === pestana ? 'page' : 'false');
@@ -377,6 +377,11 @@ function pintar(forzar = false) {
   if (vista === 'nuevo' && estado.yo.nuevo) {
     if (!estado.proyectos) cargarProyectos();
     cont.replaceChildren(...pantallaNuevo());
+    scrollTo(0, 0);
+    return;
+  }
+  if (vista === 'compartir') {
+    cont.replaceChildren(...pantallaCompartir().filter(Boolean));
     scrollTo(0, 0);
     return;
   }
@@ -655,6 +660,92 @@ function pantallaCal() {
     bloque('agenda', 'agenda', evs.length || null, null,
       ...(filas.length ? filas : [vacio(d.agenda === null ? 'sin calendario consultado' : 'nada con hora')])),
     cola];
+}
+
+// ── compartir desde Android: telar aparece en el menú «compartir» y deja elegir a qué hilos llega ──
+// El manifiesto declara un `share_target` (GET): Android abre «/?title=…&text=…&url=…». Aquí se recoge, se limpia la dirección
+// y se muestra la pantalla de elegir destinos; no se manda nada hasta que se toque «enviar».
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (!['title', 'text', 'url'].some((k) => q.has(k))) return;
+  let url = (q.get('url') || '').trim(), texto = (q.get('text') || '').trim();
+  if (!url) {  // muchas apps ponen el enlace dentro del texto
+    const m = texto.match(/https?:\/\/\S+/);
+    if (m) { url = m[0]; texto = texto.replace(m[0], '').trim(); }
+  }
+  estado.compartir = { titulo: (q.get('title') || '').trim(), texto, url, sel: new Set(), res: new Map(), enviando: false };
+  history.replaceState(null, '', '/#compartir');
+})();
+
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function pantallaCompartir() {
+  const c = estado.compartir;
+  const nav = el('div', { className: 'plan-nav' }, el('button', { type: 'button', 'aria-label': 'volver a hilos', onclick: () => { location.hash = '#hilos'; } }, '‹'),
+    el('span', { className: 'plan-dia', textContent: 'compartir' }), el('span'));
+  if (!c) return [nav, vacio('no hay nada compartido: usa «compartir» en otra app y elige telar')];
+  if (!estado.yo.escribir) return [nav, el('div', { className: 'error', textContent: 'esta página solo lee: arráncala con `telar web --escribir`' })];
+  if (!estado.hilos) return [nav, vacio('leyendo los hilos…')];
+
+  const destinos = [];
+  if (estado.yo.lecturas) destinos.push({ clave: 'lecturas', nombre: 'lecturas', sub: 'para leer después (el feed)', glifo: '▤' });
+  const automatico = (h) => /^[◌▣▶]/.test(h.nombre);  // los periódicos no son con quien se conversa
+  const locales = (estado.hilos.hilos || []).filter((h) => !h.archivado && !automatico(h) && puedeEscribir(h, ''))
+    .sort((a, b) => (ORDEN_ATENCION[a.atencion] - ORDEN_ATENCION[b.atencion]) || a.nombre.localeCompare(b.nombre));
+  for (const h of locales) destinos.push({ clave: `:${h.nombre}`, nombre: h.nombre, origen: '', sub: h.relativa && h.relativa !== '.' ? h.relativa : '', atencion: h.atencion });
+  for (const e of estado.espejos) {
+    for (const h of (e.hilos || []).filter((x) => !x.archivado && !automatico(x) && puedeEscribir(x, e.nombre)).sort((a, b) => a.nombre.localeCompare(b.nombre))) {
+      destinos.push({ clave: `${e.nombre}:${h.nombre}`, nombre: h.nombre, origen: e.nombre, sub: `en ${e.nombre}`, atencion: h.atencion });
+    }
+  }
+  const elegidos = destinos.filter((d) => c.sel.has(d.clave));
+  const nota = el('textarea', { rows: 2, className: 'campo', autocomplete: 'off', autocapitalize: 'sentences', maxLength: 2000, 'data-clave': 'compartir:nota',
+    placeholder: 'una nota (opcional): qué quieres que haga con esto', 'aria-label': 'nota', value: estado.borradores.get('compartir:nota') || '',
+    oninput: () => estado.borradores.set('compartir:nota', nota.value),
+    onblur: () => { if (estado.repintar) { estado.repintar = false; pintar(); } } });
+
+  const mensaje = (texto) => ['[compartido desde el celular]', c.titulo, c.url, c.texto, texto].filter(Boolean).join('\n');
+  const enviar = async () => {
+    const extra = nota.value.trim();
+    c.enviando = true; c.res = new Map(); pintar(true);
+    for (const d of elegidos) {
+      c.res.set(d.clave, { t: 'enviando…', ok: null }); pintar(true);
+      let r;
+      try {
+        const resp = d.clave === 'lecturas'
+          ? await fetch('/api/lectura', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' }, body: JSON.stringify({ url: c.url, nota: [c.titulo, c.texto, extra].filter(Boolean).join('\n') }) })
+          : await fetch('/api/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Telar': '1' }, body: JSON.stringify({ maquina: d.origen, hilo: d.nombre, texto: mensaje(extra), enter: true }) });
+        const cuerpo = await resp.json().catch(() => ({}));
+        r = resp.ok && cuerpo.ok ? { t: 'enviado', ok: true } : { t: cuerpo.error || `no salió (${resp.status})`, ok: false };
+      } catch (e) { r = { t: 'sin conexión con el servidor', ok: false }; }
+      c.res.set(d.clave, r); pintar(true);
+      await esperar(700);  // el servidor deja pasar un envío cada medio segundo
+    }
+    c.enviando = false;
+    if (elegidos.every((d) => (c.res.get(d.clave) || {}).ok)) estado.borradores.delete('compartir:nota');
+    pintar(true);
+  };
+
+  const listo = elegidos.length && !c.enviando && elegidos.every((d) => (c.res.get(d.clave) || {}).ok);
+  const filas = destinos.map((d) => {
+    const marcado = c.sel.has(d.clave);
+    const r = c.res.get(d.clave);
+    return el('div', { className: `fila dest clic${marcado ? ' abierto' : ''}`, role: 'checkbox', 'aria-checked': String(marcado), tabIndex: 0,
+      onclick: () => { if (c.enviando) return; marcado ? c.sel.delete(d.clave) : c.sel.add(d.clave); c.res = new Map(); pintar(true); } },
+      g(marcado ? '☑' : '☐', marcado ? 'at termino' : ''),
+      el('span', { className: 'que' }, txt('titulo', d.nombre), d.sub ? el('span', { className: 'sub' }, d.sub) : null),
+      r ? txt(r.ok === false ? 'falla' : 'dim', r.t) : null);
+  });
+  return [nav,
+    el('section', { className: 'comenta compartido' },
+      c.titulo ? el('div', { className: 'titulo', textContent: c.titulo }) : null,
+      c.texto ? el('div', { className: 'dim', textContent: c.texto.slice(0, 400) }) : null,
+      c.url ? el('div', { className: 'dim url', textContent: c.url }) : null,
+      !c.titulo && !c.texto && !c.url ? vacio('lo compartido llegó vacío') : null,
+      nota),
+    el('div', { className: 'nuevo-hilo' }, el('button', { type: 'button', disabled: !elegidos.length || c.enviando,
+      onclick: enviar }, listo ? 'enviado ✓ · enviar otra vez' : c.enviando ? 'enviando…' : elegidos.length ? `enviar a ${elegidos.length}` : 'elige a quién enviarlo')),
+    bloque('hilos', 'enviar a', elegidos.length || null, null, ...(filas.length ? filas : [vacio('no hay hilos a los que escribir')]))];
 }
 
 // ── el plan del día ────────────────────────────────────────

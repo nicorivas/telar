@@ -373,6 +373,42 @@ def teclear_hilo(ctx, cuerpo: object) -> tuple[int, dict]:
     return 200, {"ok": True}
 
 
+MAX_LECTURA = 2000
+
+
+def _programa_lecturas(config) -> Path:
+    return Path(config.raiz) / "kichoro" / "bin" / "lecturas"
+
+
+def dejar_lectura(ctx, cuerpo: object) -> tuple[int, dict]:
+    """`POST /api/lectura {url, nota}`: deja un enlace (o una nota) en la entrada de lecturas de Nico, para que `/lecturas` lo
+    procese después (`kichoro/bin/lecturas dejar`). Lo que sale de la página va como argumentos, nunca por shell; la dirección
+    tiene que ser http(s)."""
+    if not isinstance(cuerpo, dict) or not all(isinstance(cuerpo.get(k, ""), str) for k in ("url", "nota")):
+        return 400, {"ok": False, "error": "faltan o no son válidos url y nota"}
+    url, nota = cuerpo.get("url", "").strip(), cuerpo.get("nota", "").strip()
+    if not url and not nota:
+        return 400, {"ok": False, "error": "no hay nada que dejar"}
+    if url and not re.fullmatch(r"https?://\S+", url):
+        return 400, {"ok": False, "error": "la dirección tiene que ser http o https"}
+    if len(url) > MAX_LECTURA or len(nota) > MAX_LECTURA:
+        return 413, {"ok": False, "error": f"pasa de {MAX_LECTURA} caracteres"}
+    programa = _programa_lecturas(ctx.config)
+    if not programa.is_file():
+        return 404, {"ok": False, "error": "esta máquina no tiene el feed de lecturas"}
+    with _candado:
+        ahora = time.monotonic()
+        if ahora - _ultimo_envio[0] < ENTRE_ENVIOS:
+            return 429, {"ok": False, "error": "muy rápido: un envío a la vez"}
+        _ultimo_envio[0] = ahora
+    args = [str(programa), "dejar", *([url] if url else []), *(["--nota", nota] if nota else []), "--de", "nico"]
+    r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        detalle = (r.stderr or r.stdout).strip().splitlines()
+        return 502, {"ok": False, "error": f"no se pudo dejar: {(detalle[-1] if detalle else r.returncode)}"[:200]}
+    return 200, {"ok": True}
+
+
 def datos_proyectos() -> bytes:
     return datos("proyectos")
 
@@ -566,6 +602,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                     cuerpo = {"escribir": escribir, "plan": plan is not None, "plan_comentar": bool(plan is not None and plan_comando and escribir),
                               "nuevo": bool(nuevo and escribir),
                               "calendario": ctx is not None,
+                              "lecturas": bool(escribir and config is not None and _programa_lecturas(config).is_file()),
                               "atajos": [{"tecla": a.tecla, "nombre": a.nombre, "descripcion": a.descripcion or a.mensaje}
                                          for a in (config.atajos if config and nuevo and escribir else ())],
                               "enlaces": [e.nombre for e in (config.enlaces if config else ())]}
@@ -621,7 +658,7 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 self._enviar(codigo, json.dumps(cuerpo, ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
             ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", "/api/hilo/cerrar", "/api/teclas", *RUTAS_EVENTO):
+            if ruta not in ("/api/enviar", "/api/plan/comentar", "/api/hilo/nuevo", "/api/atajo", "/api/hilo/cerrar", "/api/teclas", "/api/lectura", *RUTAS_EVENTO):
                 return responder(404, {"ok": False, "error": "no hay tal ruta"})
             if ruta == "/api/plan/comentar" and not (plan is not None and plan_comando):
                 return responder(404, {"ok": False, "error": "esta página no recibe comentarios del plan: `telar web --plan CARPETA --plan-comando CMD`"})
@@ -650,6 +687,14 @@ def manejador(recarga: bool, config=None, ctx=None, escribir: bool = False, tamb
                 if isinstance(datos, dict):
                     anotar_envio(config, self.client_address[0], "nuevo", str(datos.get("nombre", ""))[:60], len(str(datos.get("mensaje", ""))),
                                  "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
+                return responder(codigo, resultado)
+            if ruta == "/api/lectura":
+                try:
+                    codigo, resultado = dejar_lectura(ctx, datos)
+                except Exception as e:  # noqa: BLE001
+                    codigo, resultado = 500, {"ok": False, "error": f"falló por dentro: {type(e).__name__}"}
+                anotar_envio(config, self.client_address[0], "lectura", "", len(str(datos.get("url", "")) if isinstance(datos, dict) else ""),
+                             "ok" if resultado.get("ok") else str(resultado.get("error", codigo)))
                 return responder(codigo, resultado)
             if ruta == "/api/teclas":
                 try:
