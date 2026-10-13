@@ -140,6 +140,8 @@ export interface JsonFicha {
 
 export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
+    /** vive en una sesión tmux propia de esta máquina (no es un tab): está vivo aunque `vivo` no lo cuente */
+    propio?: boolean;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
@@ -185,6 +187,14 @@ export interface JsonFila {
     pestana?: string;
     /** un evento: cuándo termina, dónde, y si es de día completo */
     fin?: string; lugar?: string; todo_el_dia?: boolean; asistentes?: string[];
+    /** «evento» o «tarea», si la trajo un proveedor */
+    clase?: string;
+    /** el proveedor la destaca (la más alta prioridad, o con estrella): va siempre en «esta semana» */
+    destacada?: boolean;
+    /** la persona la marcó con estrella */
+    estrella?: boolean;
+    /** de un proveedor: la carpeta que la tarea dice que es su proyecto, haya o no hilo ahí */
+    proyecto?: string;
 }
 
 /** Lo que dejó una skill un día (`telar resultado <clave> [día]`), leído de la máquina donde vive. */
@@ -239,9 +249,18 @@ export const reunion = (titulo: string, hora: string, enlace = '', evento = '',
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {
     ruta: string; nombre: string; arquetipo: string; modificado: string | null; hilo: string; vivo: boolean;
+    /** el cliente, si el nombre lo lleva adelante («Cliente · título»); "" si no */
+    cliente?: string;
+    /** el Estado (o la Etapa) de su tabla de campos, corto; y entero */
+    estado?: string; estado_completo?: string;
+    /** el área que declara su frontmatter («area: PIA»); "" si no la tiene */
+    area?: string;
 }
 
 export const proyectos = () => telarJson<{ raiz: string; proyectos: JsonProyecto[] }>(['proyectos', '--json'], 30000);
+
+/** Los pendientes de los documentos de todas las unidades, tengan hilo o no (sin proveedores: rápido). */
+export const pendientesRepo = () => telarJson<{ pendientes: JsonFila[] }>(['pendientes', '--json', '--repo'], 30000);
 
 /** `telar proyectos abrir`: un hilo vinculado a esa unidad con el agente cargándola, o ir al que ya hay. */
 export const abrirProyecto = (ruta: string) =>
@@ -275,6 +294,10 @@ export const config = () => telarJson<{
     pestanas?: JsonPestana[];
     /** el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`); vacío si no hay */
     agente_general?: { clave?: string; nombre?: string };
+    /** quién es la persona de esta máquina: una tarea sin dueño es suya */
+    persona?: string; persona_nombres?: string[];
+    /** la carpeta del estado de telar en esta máquina */
+    estado?: string;
 }>(['config', '--json'], 20000);
 
 /** `telar encargar <agente> "…"`: pedirle algo a un agente residente, viva donde viva. */
@@ -305,8 +328,11 @@ export interface JsonAccionPagina {
     nombre: string; tipo?: 'comando' | 'hilo' | 'abrir'; comando?: string[]; enlace?: string;
     /** pide un texto antes de correr (reemplaza `{texto}`); `confirmar` pregunta primero */
     pide?: string; principal?: boolean; confirmar?: boolean;
-    /** qué es, para quien la corre sin abrir la ficha: `hecha` es el ✓ de la lista de tareas */
+    /** qué es, para quien la corre sin abrir la ficha: `hecha` es el ✓ de la lista de tareas, `fecha`
+     *  cambia la fecha, `dueno` quién la hace */
     rol?: string;
+    /** con `rol: dueno`, las personas para elegir */
+    opciones?: string[];
     /** después del comando, un hilo nuevo con el agente y este mensaje (`nombre_hilo`); con `al_hilo`,
      *  el mensaje va al hilo donde se trabaja la tarea (el de su proyecto, o Gestión) */
     mensaje?: string; nombre_hilo?: string; al_hilo?: boolean;
@@ -473,13 +499,21 @@ export interface JsonRemoto { nombre: string; destino: string; transporte: strin
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
 export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[] = []) =>
     // llevar copia una conversación por ssh y abre el hilo allá: puede tardar más
-    telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], verbo === 'llevar' ? 120000 : 30000);
+    // llevar copia la conversación por ssh y abre el hilo allá: una conversación grande con la subida de un
+    // laptop tarda minutos (4 con 12 MB, el 9-oct). Con 2 la extensión daba por fallado lo que seguía andando
+    telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], verbo === 'llevar' ? 15 * 60000 : 30000);
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */
 /** `proveedor`, si se sabe, evita preguntarles a todos (el calendario se baja entero): de 5 s a menos de 1. */
 export const pendiente = (ref: string, nuevo = false, proveedor = '') =>
     telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : [])], 90000);
+
+/** Una casilla en su documento: `--hecho`, `--responsable NOMBRE` o `--linea`. `esperado` es el texto
+ *  que se vio: si el documento cambió y ya no dice eso, telar no toca nada. */
+export interface JsonVineta { ref: string; archivo: string; relativa: string; linea: number; hecho: string }
+export const vineta = (ref: string, esperado: string, opciones: string[]) =>
+    telarJson<JsonVineta>(['pendiente', ref, ...opciones, '--esperado', esperado, '--json'], 60000);
 
 /** `--si` porque la confirmación ya la dio la persona en un diálogo: sin eso, una acción que
  *  pide confirmar falla aquí, donde no hay una terminal que pueda preguntar. */

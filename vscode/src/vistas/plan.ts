@@ -8,7 +8,7 @@ import { Dia, seccion } from './dia';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Plan = Record<string, any>;
+export type Plan = Record<string, any>;
 
 /** Alto de una hora en el calendario, en píxeles. */
 const ALTO_HORA = 56;
@@ -275,13 +275,23 @@ export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | 
         h.push(`<div class="vacio">${cargando ? 'cargando…' : d.agenda === null ? 'sin calendario consultado · <kbd>r</kbd>' : nada}</div></section>`);
         return h;
     }
+    const elegido = evs.find(e => e.id === sel) ?? evs.find(e => e.fin > ahora.getTime()) ?? evs[0];
+    h.push(`<div class="cal-dos"><div>${columnaCalendario(d, evs, elegido.id, ahora, notas)}</div><div class="cal-det">${htmlDetalle(elegido, notas, d.fecha)}${htmlEscribir(elegido, general)}</div></div></section>`);
+    return h;
+}
+
+/** La columna del día: las horas, la línea de «ahora» y los eventos en su alto. Un clic en un evento
+ *  manda `accion` con su id (el calendario lo muestra al lado; «ahora» mueve el reloj a ese momento). */
+export function columnaCalendario(d: Dia, evs: EventoCal[], sel: string, ahora: Date, notas?: cli.JsonNotas,
+    accion = 'evento-sel'): string {
+    if (!evs.length) return '<div class="vacio">nada con hora ese día</div>';
     const base = new Date(`${d.fecha}T00:00:00`).getTime();
     const horaDe = (ms: number) => (ms - base) / 3600000;
     const desde = Math.min(8, Math.floor(Math.min(...evs.map(e => horaDe(e.inicio)))));
     const hasta = Math.max(19, Math.ceil(Math.max(...evs.map(e => horaDe(e.fin)))));
     const y = (ms: number) => (horaDe(ms) - desde) * ALTO_HORA;
     const lanes = carriles(evs);
-    const elegido = evs.find(e => e.id === sel) ?? evs.find(e => e.fin > ahora.getTime()) ?? evs[0];
+    const elegido = evs.find(e => e.id === sel);
     const col: string[] = [`<div class="cal" style="height:${(hasta - desde) * ALTO_HORA}px">`];
     for (let hh = desde; hh <= hasta; hh++) {
         col.push(`<div class="cal-linea" style="top:${(hh - desde) * ALTO_HORA}px"></div>`
@@ -296,13 +306,12 @@ export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | 
         const tieneNotas = notasDe(e, notas).length > 0 || !!e.plan?.nota;
         const clases = ['cal-ev', e.soloPlan ? 'plan' : '', e.fin <= t0 ? 'pasado' : '', e === elegido ? 'sel' : '',
             alto < 40 ? 'corto' : ''].filter(Boolean).join(' ');
-        col.push(`<div class="${clases}" data-accion="evento-sel" data-valor="${esc(e.id)}" title="${esc(e.titulo)}"`
+        col.push(`<div class="${clases}" data-accion="${accion}" data-valor="${esc(e.id)}" title="${esc(e.titulo)}"`
             + ` style="top:${y(e.inicio)}px;height:${alto}px;left:calc(${(100 * k) / n}% + 2px);width:calc(${100 / n}% - 4px)">`
             + `<span class="h">${esc(hm)}${tieneNotas ? ' <span class="marca-nota">✎</span>' : ''}</span><span class="t">${esc(e.titulo)}</span></div>`);
     }
     col.push('</div>');
-    h.push(`<div class="cal-dos"><div>${col.join('')}</div><div class="cal-det">${htmlDetalle(elegido, notas, d.fecha)}${htmlEscribir(elegido, general)}</div></div></section>`);
-    return h;
+    return col.join('');
 }
 
 /** Las rutas de un documento (`carpeta/archivo.md`, relativas a la raíz de telar) se vuelven un enlace

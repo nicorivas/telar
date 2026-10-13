@@ -7,6 +7,7 @@
 //
 // Aquí solo vive la activación: las órdenes, el sondeo y el reparto a las cinco vistas.
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -60,7 +61,11 @@ async function llevar(a: Arg): Promise<void> {
         if (!r) return;
         remoto = r.x.nombre;
     }
-    const intento = await cli.hilo('llevar', hilo, remoto);
+    // mientras viaja, el hilo no se ve en ninguna parte (aquí se cerró, allá todavía no abre): que se diga
+    const conAviso = (extra: string[] = []) => vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `telar: llevando «${hilo}» a ${remoto}: cierro el agente, copio la conversación y la abro allá…` },
+        () => cli.hilo('llevar', hilo, remoto, extra));
+    const intento = await conAviso();
     let r = intento;
     if (!intento.ok && /sin subir/.test(intento.err)) {
         const avisos = intento.out.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
@@ -69,7 +74,7 @@ async function llevar(a: Arg): Promise<void> {
             { modal: true, detail: `${avisos}\n\nSincroniza primero, o llévala sabiendo que el agente de allá no lo verá.` },
             'Llevar igual');
         if (si !== 'Llevar igual') return;
-        r = await cli.hilo('llevar', hilo, remoto, ['--si']);
+        r = await conAviso(['--si']);
     }
     anotar(`hilo llevar ${remoto} --hilo ${hilo} → ${r.ok ? 'ok' : `error ${r.codigo}`} ${r.out.trim()}`);
     if (!r.ok) { void vscode.window.showErrorMessage(`telar: ${r.err.trim().split('\n').pop() ?? 'no se llevó'}`); return; }
@@ -297,6 +302,12 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         { treeDataProvider: vistaCarpeta, showCollapseAll: true });
     ctx.subscriptions.push(vistaCarpeta.vista);
     hoy = new PanelHoy();
+    // con el dashboard al frente, la lista marca su fila y no la del último hilo (que no es lo que se mira)
+    hoy.alCambiarFoco = activo => {
+        if (vistaHilos.dashboardActivo === activo) return;
+        vistaHilos.dashboardActivo = activo;
+        vistaHilos.refrescar(true);
+    };
 
     await cli.resolverPath();
     anotar(`PATH: ${cli.pathResuelto()}`);
@@ -364,6 +375,24 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         if (vistaTareas.vista?.visible) void vistaTareas.actualizar();
     }, 60 * 1000);
     ctx.subscriptions.push({ dispose: () => clearInterval(cadaMinuto) });
+
+    // «las tareas cambiaron» (`telar cambio tareas`, lo que deja /correo al terminar): el nodo lo anota
+    // en <estado>/cambios/tareas y aquí se relee al tiro, sin esperar la vuelta de cinco minutos
+    let marcaTareas = '';
+    let vistoTareas = 0;
+    void cli.config().then(r => { if (r.datos?.estado) marcaTareas = path.join(r.datos.estado, 'cambios', 'tareas'); });
+    const avisoTareas = setInterval(() => {
+        if (!marcaTareas) return;
+        let mtime = 0;
+        try { mtime = fs.statSync(marcaTareas).mtimeMs; } catch { return; }
+        if (!vistoTareas) { vistoTareas = mtime; return; }  // lo de antes de abrir VS Code ya se leyó al abrir
+        if (mtime <= vistoTareas) return;
+        vistoTareas = mtime;
+        anotar('las tareas cambiaron: releo');
+        if (hoy.panel) void hoy.actualizar(true);
+        if (vistaTareas.vista?.visible) void vistaTareas.actualizar();
+    }, 15 * 1000);
+    ctx.subscriptions.push({ dispose: () => clearInterval(avisoTareas) });
 
     // el espejo: cada 30 s el laptop empuja al servidor una foto de sus hilos. Con `telar.espejo`
     // vacío no hace nada. Si el laptop duerme o no hay red, simplemente no publica: el servidor

@@ -43,8 +43,10 @@ export class Modelo {
     private ultimaFicha = 0;
 
     get activo(): cli.JsonHilo | undefined { return this.hilos.find(h => h.activo); }
-    get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado); }
-    get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado); }
+    /** Los hilos con ventana (aquí, o la de otra máquina). Uno sin ventana que no se archivó a propósito
+     *  no queda en un limbo gris bajo los activos: va al archivo con los demás, que es lo que es. */
+    get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado && (h.vivo || h.propio)); }
+    get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || (!h.vivo && !h.propio)); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
 
     /** Lee el correo de las máquinas remotas sin esperar: cuando llega, redibuja. */

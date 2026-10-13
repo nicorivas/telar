@@ -136,6 +136,66 @@ export async function reagendar(valor: string): Promise<boolean> {
     return true;
 }
 
+/** Elegir quién hace una tarea: la persona (que es lo de siempre, sin asignar), ella misma asignada a
+ *  propósito, el equipo que ofrece el proveedor, u otro nombre escrito. Devuelve el texto para la
+ *  acción («none» para dejarla sin asignar), o undefined si se cancela. */
+export async function elegirDueno(titulo: string, actual: string, opciones: string[], persona: string,
+    vineta = false): Promise<string | undefined> {
+    type Item = vscode.QuickPickItem & { valor?: string };
+    const yo = persona ? persona[0].toUpperCase() + persona.slice(1) : 'yo';
+    const items: Item[] = [
+        // una viñeta de un documento sin responsable no es de nadie; una tarea sin dueño es de la persona
+        vineta ? { label: 'Sin responsable', description: 'la viñeta no dice quién la hace', valor: 'none' }
+            : { label: `${yo} (sin asignar)`, description: 'lo de siempre: una tarea sin dueño es tuya', valor: 'none' },
+        { label: yo, description: 'asignada a ti a propósito', valor: yo },
+        { label: '', kind: vscode.QuickPickItemKind.Separator },
+        ...opciones.filter(o => o.toLowerCase() !== yo.toLowerCase()).map(o => ({ label: o, valor: o })),
+        { label: '', kind: vscode.QuickPickItemKind.Separator },
+        { label: 'otra persona…', valor: '' },
+    ];
+    for (const it of items) if (it.valor !== undefined && it.valor && (it.valor === actual || (it.valor === 'none' && !actual))) it.description = `${it.description ?? ''} ← ahora`.trim();
+    const e = await vscode.window.showQuickPick(items, { title: titulo, placeHolder: 'quién hace esta tarea' });
+    if (!e) return undefined;
+    if (e.valor) return e.valor;
+    const escrito = await vscode.window.showInputBox({ title: titulo, prompt: 'el nombre de quien la hace', ignoreFocusOut: true });
+    return escrito?.trim() || undefined;
+}
+
+/** El responsable de una tarea, desde su fila: la acción del proveedor con `rol: dueno`. */
+export async function asignar(valor: string, actual: string, persona: string): Promise<boolean> {
+    const [proveedor, id] = JSON.parse(valor) as string[];
+    const ficha = await cli.tarea(id, proveedor);
+    const acciones = ficha.datos?.acciones ?? [];
+    const k = acciones.findIndex(a => a.rol === 'dueno');
+    if (k < 0) {
+        void vscode.window.showWarningMessage(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar el responsable`}`);
+        return false;
+    }
+    const quien = await elegirDueno(`${id} ${ficha.datos?.titulo ?? ''}`.trim(), actual, acciones[k].opciones ?? [], persona);
+    if (!quien) return false;
+    const r = await cli.accionTarea(id, proveedor, k, quien);
+    olvidarDia();
+    if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude asignar ${id}`}`); return false; }
+    vscode.window.setStatusBarMessage(`${id} → ${quien === 'none' ? 'sin asignar' : quien}`, 5000);
+    return true;
+}
+
+/** Poner o quitar la estrella de una tarea: la acción del proveedor con `rol: estrella`. */
+export async function alternarEstrella(valor: string): Promise<boolean> {
+    const [proveedor, id] = JSON.parse(valor) as string[];
+    const ficha = await cli.tarea(id, proveedor);
+    const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'estrella') ?? -1;
+    if (k < 0) {
+        void vscode.window.showWarningMessage(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece estrella`}`);
+        return false;
+    }
+    const r = await cli.accionTarea(id, proveedor, k, '');
+    olvidarDia();
+    if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude cambiar la estrella de ${id}`}`); return false; }
+    vscode.window.setStatusBarMessage(`${id}: ${ficha.datos?.acciones?.[k].nombre ?? 'estrella'}`, 4000);
+    return true;
+}
+
 export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
     const ficha = await cli.tarea(id, proveedor);

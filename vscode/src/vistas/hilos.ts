@@ -79,6 +79,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     private listo = false;
     private ultimoHtml = '';
     private ultimoActivo?: string;
+    /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
+    dashboardActivo = false;
     private irAlArchivo = false;
     /** las secciones plegadas, por clave; abiertas por defecto */
     private plegadas = new Set<string>();
@@ -143,7 +145,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         v.title = orden ? `hilos · ${orden}` : 'hilos';
         if (!this.listo) return;
         const html = this.html();
-        const activo = modelo.activo?.nombre;
+        const activo = this.dashboardActivo ? '\u0000dashboard' : modelo.activo?.nombre;
         const seMovio = activo !== this.ultimoActivo;
         if (!forzar && !seMovio && html === this.ultimoHtml) return;
         this.ultimoActivo = activo; this.ultimoHtml = html;
@@ -170,7 +172,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // al final, solo cuándo fue su última actividad: el último foco o lo último que hizo su agente
         const ultima = [h.visto, h.atencion_desde].filter((x): x is string => !!x).sort().pop();
         const der = haceCorto(ultima);
-        const clases = [seccion, h.activo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
+        const clases = [seccion, h.activo && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
@@ -222,7 +224,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // título: es el lugar al que se vuelve varias veces al día, y en flow estaba ahí
         // porque era un tab. En telar no es un tab del multiplexor sino un panel de VS Code,
         // así que la fila la pone la vista y no la sesión.
-        h.push('<div class="fila hoy" data-accion="cmd" data-id="telar.hoy" title="el día: agenda, tareas y lo que espera">'
+        h.push(`<div class="fila hoy${this.dashboardActivo ? ' activa' : ''}" data-accion="cmd" data-id="telar.hoy"`
+            + ' title="el día: agenda, tareas y lo que espera">'
             + '<span class="prio"> </span><span class="nombre">dashboard</span></div>');
         // cada sección es un grupo propio entre el dashboard y la lista general: sus hilos
         // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo

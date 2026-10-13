@@ -15,16 +15,19 @@ import * as vscode from 'vscode';
 
 import { irAHilo, mostrarTerminal } from '../acciones';
 import * as cli from '../cli';
-import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, marco, normalizar, nuevoNonce } from '../estilo';
+import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
-import { CSS_DIA, Dia, SCRIPT_DIA, atajo, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion } from './dia';
-import { CSS_PLAN, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
-import { elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
+import { CSS_DIA, Dia, SCRIPT_DIA, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
+import { CSS_PLAN, columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
+import { CSS_PROY, DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
+import { CSS_AHORA, Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
+import type { EventoCal } from './plan';
+import { alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
+    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
     /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
     private plan?: cli.JsonResultado;
     private planError = '';
@@ -74,6 +77,24 @@ export class PanelHoy {
     private memorias = new Map<string, string>();
     private proyectos?: cli.JsonProyecto[];
     private avisoProyectos = '';
+    /** «ahora»: el bloque que se mira si no es el que toca (al moverse o fijar), y el contexto de cada uno */
+    private ahoraSel = '';
+    private ahoraFijo = false;
+    private ahoraCtx = new Map<string, Contexto>();
+    private ahoraCargando = '';
+    /** «ahora» corrido a otro momento (ms), para ver qué mostraría; y el día y el plan de ese momento */
+    private ahoraSim?: number;
+    private ahoraDia?: Dia;
+    private ahoraPlan?: Record<string, unknown>;
+    private ahoraDiaCargando = false;
+    /** el calendario desplegado en «ahora» para elegir el momento */
+    private ahoraElegir = false;
+    /** el proyecto elegido en la lista, y lo que se muestra de él a la derecha */
+    private proySel = '';
+    private proyDet?: DetalleProyecto;
+    /** las viñetas pendientes de todos los documentos: se leen una vez por entrada a la pantalla */
+    private pendRepo?: cli.JsonFila[];
+    private pendRepoAviso = '';
     /** las teclas que declara `[atajos]`; se leen al abrir el panel y al volver de la configuración */
     private atajos: cli.JsonAtajo[] = [];
     /** los bloques del día declarados, y lo último que mostró cada uno */
@@ -91,6 +112,9 @@ export class PanelHoy {
     private calCargando = false;
 
     /** ⌥H: si el dashboard ya está al frente, devuelve el teclado al terminal. */
+    /** Se le avisa cuando el dashboard gana o pierde el foco (la lista de hilos marca su fila). */
+    alCambiarFoco?: (activo: boolean) => void;
+
     alternar(): void {
         if (this.panel?.active) { void mostrarTerminal(); return; }
         this.abrir();
@@ -105,15 +129,19 @@ export class PanelHoy {
         void this.leerAtajos();
         panel.iconPath = new vscode.ThemeIcon('calendar');
         panel.webview.onDidReceiveMessage(m => void this.mensaje(m));
-        panel.onDidDispose(() => { this.panel = undefined; });
-        panel.onDidChangeViewState(e => { if (e.webviewPanel.visible) void this.actualizar(); });
+        panel.onDidDispose(() => { this.panel = undefined; this.alCambiarFoco?.(false); });
+        panel.onDidChangeViewState(e => {
+            if (e.webviewPanel.visible) void this.actualizar();
+            this.alCambiarFoco?.(e.webviewPanel.active);
+        });
+        this.alCambiarFoco?.(true);
         this.pintarMarco();
     }
 
     pintarMarco(): void {
         if (this.panel) {
             this.nonce = nuevoNonce();
-            this.panel.webview.html = marco(this.panel.webview, CSS_DIA + CSS_PLAN,
+            this.panel.webview.html = marco(this.panel.webview, CSS_DIA + CSS_PLAN + CSS_PROY + CSS_AHORA,
                 '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce);
         }
     }
@@ -137,6 +165,7 @@ export class PanelHoy {
         if (this.panel && this.pantalla === 'periodicos') { if (!this.formPer) this.renderPeriodicos(); return; }
         if (this.panel && this.pantalla === 'plan') { this.renderPlan(); return; }
         if (this.panel && this.pantalla === 'calendario') { this.renderCalendario(); return; }
+        if (this.panel && this.pantalla === 'ahora') { this.renderAhora(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
@@ -150,7 +179,8 @@ export class PanelHoy {
         h.push('<div class="generales">' + this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
             .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
             + atajo('t', 'tareas', 'tareas', '', 'la vista de tareas') + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal') + '</div>');
-        h.push(...this.agenda(d, ahora), ...this.bloques(), ...this.hilos(), ...htmlPendientes(d, false), ...this.fallas(d));
+        // las tareas: la misma tabla que la pestaña «tareas»
+        h.push(...this.agenda(d, ahora), ...this.bloques(), ...this.tablaTareas(d), ...this.fallas(d));
         for (const [k, f] of [['r', () => this.actualizar(true)], ['p', () => this.abrirProyectos()],
             ['t', () => vscode.commands.executeCommand('telar.tareas')]] as const) {
             if (!this.teclas.has(k)) this.teclas.set(k, f);
@@ -172,16 +202,16 @@ export class PanelHoy {
                 this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as [string, string, string, string, string]);
         const aRevisar = this.propuestas('').length;
         const pestanas: [string, string, string, string, string][] = [  // clave, acción, valor, nombre, tecla
+            ['ahora', 'ahora', '', 'ahora', 'n'],
             ['dia', 'dia', '', 'hoy', ''],
-            ['revisar', 'revisar', '', aRevisar ? `revisar ${aRevisar}` : 'revisar', 'v'],
+            ['revisar', 'revisar', '', aRevisar ? `tareas ◆${aRevisar}` : 'tareas', 'v'],
             ...deProveedores,
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
             ['plan', 'plan', '', 'plan', 'd'],
             ['calendario', 'calendario', '', 'calendario', 'a'],
             ['periodicos', 'periodicos', '', 'periódicos', 'o'],
             ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
-            ...modelo.secciones.filter(x => x.home).map(x =>
-                [`seccion:${x.clave}`, 'seccion', x.clave, x.nombre.toLowerCase(), ''] as [string, string, string, string, string]),
+            // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda
             ['config', 'config', '', '⚙', ''],
         ];
         return '<div class="fijo"><header class="top"><div class="marca-t"><span class="logo">telar</span>'
@@ -236,29 +266,13 @@ export class PanelHoy {
         return [...h, '</section>'];
     }
 
-    private hilos(): string[] {
-        const orden: Record<string, number> = { espera: 0, termino: 1, trabajando: 2 };
-        const filas = modelo.enLista
-            .filter(x => x.atencion in orden)
-            .sort((a, b) => orden[a.atencion] - orden[b.atencion] || a.nombre.localeCompare(b.nombre));
-        const esperan = filas.filter(x => x.atencion === 'espera').length;
-        const h = [seccion('esperan', 'amarillo', filas.length ? `${esperan}/${filas.length}` : '',
-            '<span class="leyenda">○ espera  ✓ listo  ● trabaja</span>')];
-        if (!filas.length) return [...h, '<div class="vacio">nadie</div>', '</section>'];
-        for (const x of filas) {
-            h.push(`<div class="hl clic" data-accion="ir" data-valor="${esc(x.nombre)}" title="${esc(NOMBRE_ATENCION[x.atencion] ?? x.atencion)}">`
-                + `<span class="at ${x.atencion}">${GLIFO[x.atencion]}</span>`
-                + `<span class="nombre">${esc(cli.nombreVisible(modelo.hilos.find(y => y.nombre === x.nombre) ?? x))}</span>`
-                + `<span class="cuando">${esc(haceCorto(x.visto))}</span></div>`);
-        }
-        return [...h, '</section>'];
-    }
-
     private async leerAtajos(): Promise<void> {
         const r = await cli.config();
         this.atajos = r.datos?.atajos ?? [];
         this.bloquesCfg = r.datos?.bloques ?? [];
         this.pestanasCfg = r.datos?.pestanas ?? [];
+        yo.persona = r.datos?.persona ?? '';
+        yo.nombres = r.datos?.persona_nombres ?? [];
         this.general = r.datos?.agente_general?.clave ? { clave: r.datos.agente_general.clave, nombre: r.datos.agente_general.nombre ?? r.datos.agente_general.clave } : undefined;
         this.render();
         void this.leerBloques();
@@ -403,37 +417,112 @@ export class PanelHoy {
         await Promise.all([pedir(), pedir(), pedir(), pedir()]);
     }
 
-    /** La pestaña «revisar»: lo que un agente dejó para decidir, entero y en una lista. Un clic
-     *  abre la ficha; ← → pasa de una a otra y al decidir salta a la siguiente. */
+    /** La pestaña «tareas»: todas, con lo que un agente dejó para decidir arriba (◆), y filtros para
+     *  ver solo eso, lo vencido, lo de la semana… Un clic abre la ficha; ← → pasa de una propuesta a
+     *  otra y al decidir salta a la siguiente. */
     private async abrirRevisar(): Promise<void> {
         if (!this.panel) this.abrir();
         this.pantalla = 'revisar';
         this.fichaDesde = 'revisar';
         if (!this.datos) this.datos = await dia();
         this.renderRevisar();
+        // los nombres de los proyectos (para la columna): si no estaban, se piden y se repinta
+        if (!this.proyectos) {
+            const r = await cli.proyectos();
+            if (r.datos) { this.proyectos = r.datos.proyectos; if (this.pantalla === 'revisar') this.renderRevisar(); }
+        }
+    }
+
+    /** De qué proyecto es un pendiente: la carpeta que dice la tarea, o la del documento de donde salió,
+     *  llevada a la unidad más honda que la contiene. */
+    private proyectoDe(f: cli.JsonFila): cli.JsonProyecto | undefined {
+        const carpeta = f.proyecto || f.ruta;
+        if (!carpeta || !this.proyectos) return undefined;
+        const ruta = unidadDe(carpeta, this.proyectos.map(p => p.ruta));
+        return this.proyectos.find(p => p.ruta === ruta);
     }
 
     private renderRevisar(): void {
         const d = this.datos;
         if (!d) return;
         this.teclas.clear();
-        const lista = pendientes(d).filter(p => p.avance && p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
-        const h = ['<div id="revisar">', seccion('revisar', 'cian', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'la primera') : ''),
-            filtroAreas(lista.map(p => p.fila.area ?? '')), filtroDuenos(lista.map(p => p.fila.dueno ?? ''))];
-        if (!lista.length) h.push('<div class="vacio">nada que decidir: lo que un agente proponga aparece aquí</div>');
-        lista.forEach((p, i) => {
+        this.pintar(this.tablaTareas(d));
+    }
+
+    /** La tabla de tareas: la de la pestaña «tareas» y la de «hoy» son la misma (filtros, columnas,
+     *  orden, ⋯). Lo que se elija en una (el modo, lo buscado, el orden) se ve igual en la otra. */
+    private tablaTareas(d: Dia): string[] {
+        const lista = pendientes(d).filter(p => !this.decididas.has(p.fila.id || p.ref));
+        const esRev = (p: (typeof lista)[number]) => !!p.avance && !!p.fila.ficha;
+        const cuenta = (f: (p: (typeof lista)[number]) => boolean) => lista.filter(f).length;
+        // cada filtro con su cuenta: lo que decide qué mirar es cuánto hay
+        // «esta semana», lo que se ve de entrada: lo vencido o que vence en 7 días, lo destacado (P0 o con
+        // estrella) y lo que espera una decisión con fecha en 14 días. Lo demás, detrás de «ver todas»
+        const deLaSemana = (p: (typeof lista)[number]) => (p.dias !== null && p.dias <= 7) || !!p.fila.destacada
+            || (esRev(p) && p.dias !== null && p.dias <= 14);
+        const modos: [string, string, number][] = [
+            ['semana', 'esta semana', cuenta(deLaSemana)], ['todas', 'todas', lista.length], ['revisar', '◆ por revisar', cuenta(esRev)],
+            ['vencidas', 'vencidas', cuenta(p => p.dias !== null && p.dias < 0)],
+            ['estrella', '★', cuenta(p => !!p.fila.estrella)],
+            ['encurso', 'en curso', cuenta(p => p.enCurso)], ['sinfecha', 'sin fecha', cuenta(p => p.dias === null)],
+        ];
+        // cuándo se leyeron: el proveedor se consulta solo cada 5 minutos, y «actualizar» lo fuerza ya
+        const leido = leidoProveedores();
+        const hace = leido ? Math.round((Date.now() - leido) / 60000) : -1;
+        const actualizar = `<a data-accion="refrescar" title="volver a leer las tareas ahora (también r)">↻ actualizar</a>`
+            + `<span class="dim"> · ${hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min`}</span>`;
+        const h = ['<div id="revisar">', seccion('tareas', 'cian', String(lista.length), actualizar),
+            '<div class="titulo-tareas"><span class="modos">'
+            + modos.map(([k, n, c]) => `<button data-modo-t="${k}"${c ? '' : ' class="vacio-m"'}>${esc(n)} ${c}</button>`).join('')
+            + `<input id="buscar-t" type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off"><span id="tareas-t-cuenta"></span></span></div>`,
+            filtroAreas(lista.map(p => p.fila.area ?? '')), filtroDuenos(lista.map(p => [p.fila.dueno ?? '', !!p.fila.proveedor] as [string, boolean]))];
+        if (!lista.length) h.push('<div class="vacio">nada pendiente</div>');
+        // un ícono sobre cada columna: el clic ordena por ella, otro clic vuelve al orden de siempre (urgencia)
+        const col = (k: string, t: string) => `<span data-orden-c="${k}" title="ordenar por ${t} (otra vez: por urgencia)">↕</span>`;
+        h.push(`<div class="tareas-cab">${col('ref', 'código')}${col('est', 'estrella')}<span></span>${col('proy', 'proyecto')}${col('resp', 'responsable')}`
+            + `${col('alfa', 'el texto')}<span class="meta">${col('dias', 'fecha')}</span></div>`);
+        h.push('<div id="tareas-t">');
+        for (const p of lista) {
             const [todo] = (p.fila.avance ?? '').split(' ');
             const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
-            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" data-area="${esc(p.fila.area ?? '')}" data-dueno="${esc(p.fila.dueno ?? '')}" title="clic: leerla y decidir">`
-                + `<span class="id">${esc(p.ref)}</span><span class="pri"></span>`
-                + `<span class="desc"><span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>${esc(p.texto)}</span>`
+            const ficha = !!p.fila.ficha;
+            const proy = this.proyectoDe(p.fila);
+            // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo
+            // («Brinca» o «Interno» como cliente no dice nada: ahí va el nombre sin ese prefijo)
+            const interno = !proy?.cliente || /^(brinca|interno)$/i.test(proy.cliente);
+            const proyCorto = !proy ? '' : interno ? proy.nombre.replace(/^(brinca|interno)\s*·\s*/i, '') : proy.cliente!;
+            const buscable = normalizar([p.ref, p.texto, p.hilo, p.fila.ruta ?? '', p.fila.proyecto ?? '', proy?.nombre ?? '', p.fila.avance ?? '', p.fila.dueno ?? ''].join(' '));
+            const accion = ficha ? `data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir"`
+                : `data-accion="pendiente" data-valor="${esc(p.ref)}" title="clic: ${p.hilo ? `llevarlo a «${esc(p.hilo)}»` : 'abrir un hilo donde trabajarlo'}"`;
+            const dueno = p.fila.dueno ?? '';
+            const persona = yo.persona ? yo.persona[0].toUpperCase() + yo.persona.slice(1) : 'tú';
+            // el responsable: el dueño, o la persona en gris (es suya porque nadie la tomó); con ficha, un clic lo cambia
+            // una viñeta de un documento: su responsable si lo dice (@owner(…) o «@Nombre:»), sin cambiarlo desde aquí
+            const resp = !ficha ? (dueno ? `<span class="resp fijo" title="${esc(`responsable: ${dueno}\n(lo dice el documento)`)}">${esc(dueno)}</span>`
+                    : '<span class="resp dim" title="la viñeta no dice quién la hace">sin responsable</span>')
+                : `<span class="resp${dueno ? '' : ' defecto'}" data-accion="dueno-tarea" data-valor="${esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref, dueno]))}"`
+                    + ` title="${esc(dueno ? `responsable: ${dueno}\nclic: cambiarlo` : `sin asignar: es tuya por defecto\nclic: asignarla`)}">${esc(dueno || persona)}</span>`;
+            h.push(`<div class="tarea${p.enCurso ? ' encurso' : ''}" ${accion} data-area="${esc(p.fila.area ?? '')}"${datosDueno(dueno, ficha || !!p.fila.proveedor)}`
+                + ` data-rev="${esRev(p) ? 1 : 0}" data-dias="${p.dias ?? ''}" data-encurso="${p.enCurso ? 1 : 0}" data-texto="${esc(buscable)}"`
+                + ` data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
+                + ` data-orden="${p.urgencia}" data-ref="${esc(p.ref)}" data-alfa="${esc(normalizar(limpiarMd(p.texto)))}"`
+                + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
+                + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
+                // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
+                + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? '★' : '☆'}</span>` : '<span></span>')
+                + `<span class="pri">${p.enCurso ? '●' : ''}</span>`
+                + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
+                    : '<span class="proy-t dim">—</span>') + resp
+                + `<span class="desc">${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
+                + `${esc(limpiarMd(p.texto))}</span>`
                 // el atraso es un botón: reagendar lo que venció sin abrir la ficha
-                + `<span class="meta"><span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>`
+                + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
                 // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
-                + `<span class="destino"></span><span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span></span></div>`);
-        });
-        h.push('</section></div>');
-        this.pintar(h);
+                + `<span class="destino"></span>${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span>`
+                    : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">⋯</span>`}</span></div>`);
+        }
+        h.push('<div id="tareas-t-vacio" class="vacio" hidden></div><div id="tareas-t-mas" class="vacio clic" hidden></div></div></section></div>');
+        return h;
     }
 
     // ── el plan del día y el calendario ────────────────────────────────────────
@@ -888,7 +977,12 @@ export class PanelHoy {
         if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
-        if (a.rol === 'fecha') {
+        if (a.rol === 'dueno') {
+            // quién la hace: el equipo para elegir, no un campo de texto
+            const quien = await elegirDueno(`${f.id} ${f.pagina?.titulo ?? ''}`.trim(), '', a.opciones ?? [], yo.persona);
+            if (!quien) return;
+            texto = quien;
+        } else if (a.rol === 'fecha') {
             // cambiar la fecha: el selector de fechas, no un campo de texto
             const fecha = await elegirFecha(`${f.id} ${f.pagina?.titulo ?? ''}`.trim());
             if (!fecha) return;
@@ -1234,7 +1328,7 @@ export class PanelHoy {
         if (todos.datos) {
             items.push(sep('todos los proyectos'));
             const vistos = new Set(sugeridos.map(c => c.ruta));
-            const lista = [...todos.datos.proyectos].filter(x => !vistos.has(x.ruta))
+            const lista = [...todos.datos.proyectos].filter(x => !vistos.has(x.ruta) && !esServicio(x))
                 .sort((a, b) => (b.modificado ?? '').localeCompare(a.modificado ?? ''));
             for (const x of lista) items.push({ label: x.nombre, description: `${x.ruta} · ${x.arquetipo}`, valor: x.ruta });
         }
@@ -1254,11 +1348,415 @@ export class PanelHoy {
     private async abrirProyectos(): Promise<void> {
         this.pantalla = 'proyectos';
         this.avisoProyectos = '';
+        this.pendRepo = undefined;
         if (!this.proyectos) this.renderProyectos('leyendo los proyectos…');
+        // los pendientes de los documentos se piden en paralelo: la lista no los espera
+        const repo = cli.pendientesRepo().then(r => {
+            this.pendRepo = r.datos?.pendientes ?? [];
+            this.pendRepoAviso = r.datos ? '' : (r.error ?? 'telar pendientes no contestó');
+            if (this.pantalla !== 'proyectos') return;
+            // la lista ya está pintada: solo se le dan las cuentas, para filtrar «con pendientes»
+            const cuentas = this.cuentasPendientes();
+            if (cuentas) void this.panel?.webview.postMessage({ tipo: 'proy-pend', cuentas: Object.fromEntries(cuentas) });
+            if (this.proySel) void this.verProyecto(this.proySel, false);
+        });
         const r = await cli.proyectos();
         if (r.datos) this.proyectos = r.datos.proyectos;
         else this.avisoProyectos = r.error ?? 'telar proyectos no contestó';
+        if (this.proySel && !this.proyectos?.some(p => p.ruta === this.proySel)) { this.proySel = ''; this.proyDet = undefined; }
         if (this.pantalla === 'proyectos') this.renderProyectos();
+        if (this.proySel) void this.verProyecto(this.proySel);
+        await repo;
+    }
+
+    /** Los pendientes de un proyecto: las viñetas de su documento y las tareas de un proveedor que
+     *  dicen ser de esa carpeta (o de algo adentro). null mientras se leen los del documento. */
+    private pendientesDe(ruta: string): ReturnType<typeof pendientes> | null {
+        const filas = this.filasPorProyecto()?.get(ruta);
+        if (!filas) return this.pendRepo ? [] : null;
+        return pendientes({ ...(this.datos ?? { fecha: '' }), pendientes: filas } as Dia);
+    }
+
+    /** Las filas pendientes de cada proyecto: las viñetas de su documento, y cada tarea de un
+     *  proveedor en el proyecto más hondo que contiene la carpeta que dice ser suya. */
+    private filasPorProyecto(): Map<string, cli.JsonFila[]> | null {
+        if (!this.pendRepo) return null;
+        const rutas = (this.proyectos ?? []).map(p => p.ruta);
+        const m = new Map<string, cli.JsonFila[]>();
+        const sumar = (r: string, f: cli.JsonFila) => { if (r) m.set(r, [...(m.get(r) ?? []), f]); };
+        for (const f of this.pendRepo) if (!f.proveedor && !f.hecho) sumar(f.ruta, f);
+        for (const f of this.datos?.pendientes ?? []) {
+            if (f.proveedor && f.clase !== 'evento' && !f.hecho && !f.pestana && f.proyecto) sumar(unidadDe(f.proyecto, rutas), f);
+        }
+        return m;
+    }
+
+    private cuentasPendientes(): Map<string, number> | undefined {
+        const m = this.filasPorProyecto();
+        return m ? new Map([...m].map(([r, fs]) => [r, fs.length])) : undefined;
+    }
+
+    /** Elegir un proyecto de la lista: su detalle a la derecha, sin repintar la lista. El README se
+     *  dibuja con el Markdown de VS Code; `releer` vuelve a leerlo (al cambiar de proyecto). */
+    private async verProyecto(ruta: string, releer = true): Promise<void> {
+        const p = this.proyectos?.find(x => x.ruta === ruta);
+        if (!p || !this.panel) return;
+        this.proySel = ruta;
+        const previo = this.proyDet?.p.ruta === ruta ? this.proyDet.readme : null;
+        this.proyDet = { p, pendientes: this.pendientesDe(ruta), aviso: this.pendRepoAviso, readme: releer ? null : previo };
+        this.pintarDetalleProyecto();
+        if (!releer && previo !== null) return;
+        const readme = await this.readmeHtml(ruta);
+        if (this.proySel !== ruta || !this.proyDet) return;
+        this.proyDet.readme = readme;
+        this.pintarDetalleProyecto();
+    }
+
+    private pintarDetalleProyecto(): void {
+        void this.panel?.webview.postMessage({ tipo: 'parcial', id: 'proy-det', html: htmlDetalleProyecto(this.proyDet) });
+    }
+
+    /** El README de una unidad como html, sin su encabezado YAML. "" si no tiene. */
+    private async readmeHtml(ruta: string): Promise<string> {
+        if (!modelo.raiz || ruta.includes('..')) return '';
+        const archivo = ['README.md', 'readme.md'].map(n => path.join(modelo.raiz!, ruta, n)).find(f => fs.existsSync(f));
+        if (!archivo) return '';
+        try {
+            let texto = fs.readFileSync(archivo, 'utf8').slice(0, 300_000);
+            texto = texto.replace(/^---\n[\s\S]*?\n---\n/, '');
+            return await vscode.commands.executeCommand<string>('markdown.api.render', texto) ?? '';
+        } catch (e) {
+            return `<p class="falla">no pude leer el README: ${esc(String(e))}</p>`;
+        }
+    }
+
+    /** Las personas para elegir como responsable: las que ofrece el proveedor de tareas (se pide la
+     *  ficha de una tarea cualquiera, una vez) y todos los que ya son responsables de algo. */
+    private personas?: string[];
+    private async personasConocidas(): Promise<string[]> {
+        if (!this.personas) {
+            const unaTarea = this.datos?.pendientes.find(f => f.ficha && f.proveedor);
+            const ficha = unaTarea ? await cli.tarea(unaTarea.id || unaTarea.ref, unaTarea.proveedor) : undefined;
+            this.personas = ficha?.datos?.acciones?.find(a => a.rol === 'dueno')?.opciones ?? [];
+        }
+        const vistos = [...(this.datos?.pendientes ?? []), ...(this.pendRepo ?? [])].map(f => f.dueno ?? '').filter(Boolean);
+        return [...new Set([...this.personas, ...vistos])].sort((a, b) => a.localeCompare(b));
+    }
+
+    /** El ⋯ de una casilla de un documento (un README): llevarla a su hilo, abrirla donde está,
+     *  marcarla hecha o decir quién la hace. Lo que cambia el documento cambia esa línea y nada más. */
+    private async menuVineta(valor: string): Promise<void> {
+        const [ref, texto, hilo, dueno] = JSON.parse(valor) as string[];
+        type Item = vscode.QuickPickItem & { hacer: () => Promise<unknown> };
+        const despues = async (r: { datos?: cli.JsonVineta; error?: string }) => {
+            if (!r.datos) { void vscode.window.showErrorMessage(`telar: ${r.error ?? 'no pude cambiarla'}`); return; }
+            void vscode.window.setStatusBarMessage(`telar: ${r.datos.relativa}:${r.datos.linea} · ${r.datos.hecho} (sin commitear)`, 6000);
+            olvidarDia();
+            this.pendRepo = undefined;
+            await this.actualizar(true);
+            if (this.pantalla === 'revisar') this.renderRevisar();
+            else if (this.pantalla === 'proyectos') await this.abrirProyectos();
+        };
+        const items: Item[] = [
+            { label: hilo ? `Llevarla a «${hilo}»` : 'Llevarla a un hilo', description: 'escrita y sin enviar', hacer: () => llevarPendiente(ref, false) },
+            { label: 'Un hilo nuevo para ella', hacer: () => llevarPendiente(ref, true) },
+            { label: 'Abrir el README en esa línea', hacer: async () => {
+                const r = await cli.vineta(ref, texto, ['--linea']);
+                if (!r.datos) { void vscode.window.showErrorMessage(`telar: ${r.error ?? 'no la encontré'}`); return; }
+                const doc = await vscode.workspace.openTextDocument(r.datos.archivo);
+                const pos = new vscode.Position(Math.max(0, r.datos.linea - 1), 0);
+                await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos) });
+            } },
+            { label: 'Marcar hecha', description: '[ ] → [x] en el README', hacer: async () => {
+                const si = await vscode.window.showWarningMessage(`¿Marcar hecha? ${texto.slice(0, 90)}`, { modal: true }, 'Marcar hecha');
+                if (si === 'Marcar hecha') await despues(await cli.vineta(ref, texto, ['--hecho']));
+            } },
+            { label: 'Responsable…', description: dueno ? `ahora: ${dueno}` : 'ahora: sin responsable', hacer: async () => {
+                const quien = await elegirDueno(texto.slice(0, 80), dueno, await this.personasConocidas(), yo.persona, true);
+                if (quien) await despues(await cli.vineta(ref, texto, ['--responsable', quien]));
+            } },
+        ];
+        const e = await vscode.window.showQuickPick(items, { title: texto.slice(0, 100), placeHolder: 'qué hacer con este pendiente' });
+        if (e) await e.hacer();
+    }
+
+    // ── ahora ──────────────────────────────────────────────────────────────────
+
+    /** La pantalla «ahora»: el bloque que toca y lo que conviene mirar en él (ver `vistas/ahora.ts`). */
+    private async abrirAhora(): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'ahora';
+        if (!this.datos) this.datos = await dia();
+        this.renderAhora();
+        // lo que hace falta para el contexto: el plan de hoy, los proyectos y sus pendientes
+        const [plan, proys, repo] = await Promise.all([
+            this.plan?.dia === this.datos?.fecha ? Promise.resolve(undefined) : cli.resultado('plan', ''),
+            this.proyectos ? Promise.resolve(undefined) : cli.proyectos(),
+            this.pendRepo ? Promise.resolve(undefined) : cli.pendientesRepo(),
+        ]);
+        if (plan?.datos?.ok) this.plan = plan.datos;
+        if (proys?.datos) this.proyectos = proys.datos.proyectos;
+        if (repo?.datos) this.pendRepo = repo.datos.pendientes;
+        this.ahoraCtx.clear();
+        if (this.pantalla === 'ahora') this.renderAhora();
+    }
+
+    /** El día que se mira: hoy, o el del momento simulado (con su calendario y su plan). */
+    private diaAhora(): { d?: Dia; plan?: Record<string, unknown> } {
+        if (this.ahoraSim !== undefined && this.ahoraDia) return { d: this.ahoraDia, plan: this.ahoraPlan };
+        const d = this.datos;
+        const plan = d && this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
+        return { d, plan };
+    }
+
+    private eventosAhora(): EventoCal[] {
+        const { d, plan } = this.diaAhora();
+        return d ? eventosDelDia(d, plan) : [];
+    }
+
+    /** El índice del bloque que se mira en `evs`: el elegido, o el que toca a esa hora. Sobre la misma
+     *  lista que se dibuja: `eventosDelDia` arma objetos nuevos cada vez, y buscar uno de una lista en
+     *  otra no lo encuentra nunca (la vista quedaba en «nada en el calendario»). */
+    private indiceAhora(evs: EventoCal[]): number {
+        const i = this.ahoraSel ? evs.findIndex(e => e.id === this.ahoraSel) : -1;
+        return i >= 0 ? i : bloqueActual(evs, this.ahoraSim ?? Date.now());
+    }
+
+    private eventoAhora(): EventoCal | undefined {
+        const evs = this.eventosAhora();
+        return evs[this.indiceAhora(evs)];
+    }
+
+    /** Un bloque elegido en el calendario desplegado: «ahora» pasa a su comienzo y se lo mira a él. */
+    private ahoraAlEvento(id: string): void {
+        const e = this.eventosAhora().find(x => x.id === id);
+        if (!e) return;
+        this.ahoraSim = e.inicio + 60000;
+        this.ahoraSel = e.id;
+        this.ahoraElegir = false;
+        this.renderAhora();
+    }
+
+    /** ‹ › del calendario desplegado: otro día, a la misma hora (con su calendario y su plan). */
+    private async ahoraOtroDia(paso: number): Promise<void> {
+        const base = new Date(this.ahoraSim ?? Date.now());
+        base.setDate(base.getDate() + paso);
+        const local = new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        await this.simularAhora(local);
+    }
+
+    /** Mover «ahora» a otro momento (`AAAA-MM-DDTHH:MM`): qué mostraría entonces. Otro día trae su
+     *  calendario y su plan; el mismo día de hoy usa lo que ya hay. */
+    private async simularAhora(valor: string): Promise<void> {
+        const ms = Date.parse(valor);
+        if (Number.isNaN(ms)) return;
+        this.ahoraSim = ms;
+        this.ahoraSel = '';
+        this.ahoraFijo = false;
+        const fecha = valor.slice(0, 10);
+        if (fecha === this.datos?.fecha) { this.ahoraDia = undefined; this.ahoraPlan = undefined; this.renderAhora(); return; }
+        this.ahoraDiaCargando = true;
+        this.renderAhora();
+        const [d, plan] = await Promise.all([diaDe(fecha), cli.resultado('plan', fecha)]);
+        if (this.ahoraSim !== ms) return;  // se eligió otro momento mientras tanto
+        this.ahoraDia = d;
+        this.ahoraPlan = plan.datos?.ok && plan.datos.formato === 'json' ? plan.datos.contenido as Record<string, unknown> : undefined;
+        this.ahoraDiaCargando = false;
+        if (this.pantalla === 'ahora') this.renderAhora();
+    }
+
+    /** ‹ ›: moverse a otro bloque deja la vista fija ahí hasta «volver a ahora». */
+    private moverAhora(paso: number): void {
+        const evs = this.eventosAhora();
+        const actual = this.eventoAhora();
+        const i = Math.max(0, Math.min(evs.length - 1, evs.findIndex(e => e.id === actual?.id) + paso));
+        this.ahoraSel = evs[i]?.id ?? '';
+        this.ahoraFijo = true;
+        this.renderAhora();
+    }
+
+    private renderAhora(): void {
+        const d = this.datos;
+        if (!this.panel || !d) return;
+        this.teclas.clear();
+        this.teclas.set('[', () => this.moverAhora(-1));
+        this.teclas.set(']', () => this.moverAhora(1));
+        // lo elegido se mantiene si está fijo o si se está simulando otro momento; si no, manda el reloj
+        if (!this.ahoraFijo && this.ahoraSim === undefined) this.ahoraSel = '';
+        const evs = this.eventosAhora();
+        const i = evs.length ? this.indiceAhora(evs) : -1;
+        const e = i >= 0 ? evs[i] : undefined;
+        const { d: diaVisto, plan } = this.diaAhora();
+        const momento = new Date(this.ahoraSim ?? Date.now());
+        const ctx = e ? this.ahoraCtx.get(e.id) : undefined;
+        if (e && !ctx && this.ahoraCargando !== e.id) void this.cargarContexto(e, plan);
+        const todas = pendientes(d);
+        this.pintar(htmlAhora({
+            evs, i, ahora: this.ahoraSim ?? Date.now(), fijo: this.ahoraFijo, plan, contexto: ctx, cargando: !!e && !ctx,
+            simulado: this.ahoraSim !== undefined, cargandoDia: this.ahoraDiaCargando,
+            elegir: this.ahoraElegir && diaVisto ? columnaCalendario(diaVisto, evs, e?.id ?? '', momento, undefined, 'ahora-evento') : undefined,
+            fechaElegir: diaVisto?.fecha,
+            urgentes: todas.filter(t => t.dias !== null && t.dias <= 0 || !!t.fila.destacada),
+            propuestas: todas.filter(t => t.avance && t.fila.ficha),
+            aviso: plan ? '' : 'sin plan para ese día: se ve el calendario',
+        }));
+    }
+
+    /** Lo que se muestra de un bloque: su proyecto (el que dice el plan; el de la reunión, como lo
+     *  deduce `telar reunion`; o el que nombra el título), su Estado y pendientes, las tareas que nombra,
+     *  y en una reunión la última preparación y lo que la minuta anterior dejó para la próxima. */
+    private async cargarContexto(e: EventoCal, plan?: Record<string, unknown>): Promise<void> {
+        this.ahoraCargando = e.id;
+        const clase = claseDe(e);
+        const p = (e.plan ?? {}) as Record<string, any>;
+        const ctx: Contexto = { estado: '', pendientes: [], tareas: [] };
+        try {
+            let ruta = String(p.proyecto ?? '');
+            if (!ruta && clase === 'reunion' && !e.soloPlan) {
+                const hm = new Date(e.inicio).toTimeString().slice(0, 5);
+                const r = await cli.reunion(e.titulo, hm, e.url, e.id, { asistentes: e.asistentes, preguntar: true, donde: true });
+                if (r.datos?.destino && r.datos.destino !== 'gestion') ruta = r.datos.destino;
+                else ctx.sinProyecto = r.datos?.candidatos?.length
+                    ? `no sé de qué proyecto es: quizás ${r.datos.candidatos.slice(0, 3).map(c => c.nombre).join(', ')}`
+                    : 'no sé de qué proyecto es esta reunión';
+            }
+            if (!ruta && clase !== 'reunion' && this.proyectos) ruta = proyectoDelTitulo(e.titulo, this.proyectos.filter(p => !esServicio(p)));
+            ctx.proyecto = this.proyectos?.find(x => x.ruta === ruta);
+            const ids = new Set(((p.tareas ?? []) as string[]).map(String));
+            if (ids.size && this.datos) {
+                ctx.tareas = pendientes({ ...this.datos, pendientes: this.datos.pendientes.filter(f => ids.has(f.id)) } as Dia);
+            }
+            if (ctx.proyecto && modelo.raiz) {
+                const carpeta = path.join(modelo.raiz, ctx.proyecto.ruta);
+                ctx.pendientes = this.pendientesDe(ctx.proyecto.ruta) ?? [];
+                const readme = path.join(carpeta, 'README.md');
+                const est = fs.existsSync(readme) ? estadoDe(fs.readFileSync(readme, 'utf8')) : '';
+                if (est) ctx.estado = await this.markdown(est);
+                if (clase === 'reunion') {
+                    const prep = this.masReciente(carpeta, n => /preparaci[oó]n/i.test(n), e.titulo);
+                    if (prep) ctx.preparacion = { ruta: path.relative(modelo.raiz, prep), html: await this.markdown(fs.readFileSync(prep, 'utf8').slice(0, 12000)) };
+                    const minuta = this.masReciente(carpeta, (n, r) => /minuta/i.test(n) || (/\/reuniones\//.test(r) && !/preparaci/i.test(n)), e.titulo,
+                        f => !!paraLaProxima(fs.readFileSync(f, 'utf8')));
+                    if (minuta) ctx.minuta = { ruta: path.relative(modelo.raiz, minuta), html: await this.markdown(paraLaProxima(fs.readFileSync(minuta, 'utf8'))) };
+                }
+            }
+        } catch { /* sin contexto: el bloque y el foco igual se ven */ }
+        this.ahoraCtx.set(e.id, ctx);
+        this.ahoraCargando = '';
+        if (this.pantalla === 'ahora') this.renderAhora();
+    }
+
+    private async markdown(texto: string): Promise<string> {
+        try { return await vscode.commands.executeCommand<string>('markdown.api.render', texto) ?? ''; } catch { return esc(texto); }
+    }
+
+    /** El .md más reciente de una carpeta (hasta tres niveles) que cumple `elegir`, prefiriendo los que
+     *  comparten alguna palabra con el título de la reunión (su serie) sobre los demás. */
+    private masReciente(carpeta: string, elegir: (nombre: string, ruta: string) => boolean, titulo: string,
+        ademas: (ruta: string) => boolean = () => true): string {
+        const hallados: { ruta: string; mtime: number }[] = [];
+        const recorrer = (dir: string, hondo: number) => {
+            let entradas: fs.Dirent[] = [];
+            try { entradas = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const x of entradas) {
+                if (x.name.startsWith('.') || x.name === 'node_modules' || x.name === 'assets') continue;
+                const r = path.join(dir, x.name);
+                if (x.isDirectory() && hondo < 3) recorrer(r, hondo + 1);
+                else if (x.isFile() && x.name.endsWith('.md') && elegir(x.name, r)) {
+                    try { hallados.push({ ruta: r, mtime: fs.statSync(r).mtimeMs }); } catch { /* se fue */ }
+                }
+            }
+        };
+        recorrer(carpeta, 0);
+        const palabras = normalizar(titulo).split(/\s+/).filter(w => w.length > 3);
+        const deLaSerie = (r: string) => palabras.some(w => normalizar(path.basename(r)).includes(w));
+        hallados.sort((a, b) => Number(deLaSerie(b.ruta)) - Number(deLaSerie(a.ruta)) || b.mtime - a.mtime);
+        return hallados.find(h => ademas(h.ruta))?.ruta ?? '';
+    }
+
+    /** Pedirle al agente general que consolide los pendientes del README de un proyecto (`/consolidar`):
+     *  que marque hecho, con su prueba, lo que ya se hizo. Corre donde vive el agente (el servidor). */
+    private async consolidarProyecto(ruta: string): Promise<void> {
+        const p = this.proyectos?.find(x => x.ruta === ruta);
+        if (!this.general) { void vscode.window.showWarningMessage('telar: no hay un agente general ([agentes] sin_proyecto) que lo haga'); return; }
+        const n = this.pendientesDe(ruta)?.filter(t => !t.fila.proveedor).length;
+        const si = await vscode.window.showInformationMessage(
+            `¿Consolidar los pendientes de «${p?.nombre ?? ruta}»?`,
+            { modal: true, detail: `${this.general.nombre} revisa ${n ?? 'cada'} pendiente${n === 1 ? '' : 's'} abierto${n === 1 ? '' : 's'} del README, busca si ya se hizo y marca lo hecho con su prueba. Lo dudoso te lo pregunta.` },
+            'Consolidar');
+        if (si !== 'Consolidar') return;
+        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: encargándoselo a ${this.general.nombre}…` },
+            () => cli.encargar(this.general!.clave, `/consolidar ${ruta}`));
+        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void vscode.window.setStatusBarMessage(`telar: ${this.general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
+    }
+
+    /** El ⋯ de un proyecto: lo que se puede hacer con él sin abrirlo. */
+    private async menuProyecto(ruta: string): Promise<void> {
+        const p = this.proyectos?.find(x => x.ruta === ruta);
+        if (!p) return;
+        const carpeta = modelo.raiz ? path.join(modelo.raiz, ruta) : '';
+        type Item = vscode.QuickPickItem & { hacer: () => Promise<unknown> | unknown };
+        const items: Item[] = [
+            { label: p.vivo ? 'Ir a su hilo' : p.hilo ? 'Retomar su hilo' : 'Abrir con el agente',
+              description: p.hilo ? `«${p.hilo}»` : 'un hilo nuevo cargando el proyecto', hacer: () => this.abrirProyecto(ruta) },
+        ];
+        if (this.general) {
+            items.push({ label: 'Consolidar sus pendientes', description: `${this.general.nombre} marca lo hecho con su prueba (/consolidar)`,
+                         hacer: () => this.consolidarProyecto(ruta) });
+            items.push({ label: `Escribirle a ${this.general.nombre} sobre este proyecto…`, description: 'le llega con el proyecto y lo pendiente',
+                         hacer: () => this.escribirSobreProyecto(p) });
+        }
+        if (carpeta) {
+            items.push(
+                { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(path.join(carpeta, 'README.md')) },
+                { label: 'Mostrar la carpeta en el explorador', hacer: () => vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(carpeta)) },
+            );
+        }
+        items.push({ label: 'Copiar la ruta', description: ruta, hacer: async () => {
+            await vscode.env.clipboard.writeText(ruta);
+            void vscode.window.setStatusBarMessage(`telar: copiado ${ruta}`, 3000);
+        } });
+        if (p.hilo) {
+            items.push({ label: 'Archivar su hilo', description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
+                const si = await vscode.window.showWarningMessage(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, { modal: true }, 'Archivar');
+                if (si !== 'Archivar') return;
+                const r = await cli.hilo('archivar', p.hilo, undefined, ['--cerrar']);
+                if (!r.ok) void vscode.window.showErrorMessage(`telar: ${r.err.trim() || 'no pude archivarlo'}`);
+                await this.abrirProyectos();
+            } });
+        }
+        const elegida = await vscode.window.showQuickPick(items, { title: p.nombre, placeHolder: 'qué hacer con este proyecto' });
+        if (elegida) await elegida.hacer();
+    }
+
+    /** Lo que la persona le escribe al agente general sobre un proyecto, con lo que necesita para no
+     *  preguntar: cuál es, dónde está, en qué estado, y lo pendiente. */
+    private async escribirSobreProyecto(p: cli.JsonProyecto): Promise<void> {
+        if (!this.general) return;
+        const texto = await vscode.window.showInputBox({ title: `A ${this.general.nombre} · ${p.nombre}`, prompt: 'qué hacer con este proyecto', ignoreFocusOut: true });
+        if (!texto?.trim()) return;
+        const pend = this.pendientesDe(p.ruta) ?? [];
+        const lineas = [
+            `[Nico, desde los proyectos del dashboard] ${texto.trim()}`,
+            '',
+            `Contexto. El proyecto: «${p.nombre}» (${p.arquetipo}${p.estado_completo ? `, estado: ${p.estado_completo}` : ''}), en ${p.ruta}; su README es ${p.ruta}/README.md.`,
+            p.hilo ? `Tiene un hilo: «${p.hilo}»${p.vivo ? ' (abierto)' : ' (dormido)'}; si el trabajo es suyo, pásaselo con telar mensaje.` : 'No tiene hilo abierto.',
+            pend.length ? `Pendiente: ${pend.slice(0, 12).map(t => `${t.fila.proveedor ? `${t.ref} ` : ''}${t.texto}`).join(' | ')}` : '',
+        ].filter(Boolean);
+        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: escribiéndole a ${this.general.nombre}…` },
+            () => cli.encargar(this.general!.clave, lineas.join('\n')));
+        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void vscode.window.setStatusBarMessage(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+    }
+
+    /** Un enlace del README: una ruta relativa se abre como archivo; una dirección, en el navegador. */
+    private async enlaceReadme(href: string, base: string): Promise<void> {
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await vscode.env.openExternal(vscode.Uri.parse(href)); return; }
+        if (!modelo.raiz || href.startsWith('#')) return;
+        const destino = path.normalize(path.join(modelo.raiz, base, decodeURIComponent(href.split('#')[0])));
+        if (!destino.startsWith(modelo.raiz)) return;
+        await abrirEnlace(destino);
     }
 
     /** Todas las filas van al webview de una vez; buscar y ordenar ocurre allá, sin ir y
@@ -1266,29 +1764,14 @@ export class PanelHoy {
     private renderProyectos(cargando = ''): void {
         if (!this.panel) return;
         this.teclas.clear();
-        const lista = this.proyectos ?? [];
+        // sin los servicios: no son proyectos (sí se usan para decir de qué es una tarea)
+        const lista = (this.proyectos ?? []).filter(p => !esServicio(p));
         const h: string[] = [`<div class="subcab"><b>Proyectos</b><span class="dim">${lista.length || ''}</span>`
             + '</div>'];
         if (this.avisoProyectos) h.push(`<div class="fila falla">${esc(this.avisoProyectos)}</div>`);
         if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
-        h.push('<div class="titulo-tareas">'
-            + `<input id="buscar-p" type="text" placeholder="/ buscar en los ${lista.length}" spellcheck="false" autocomplete="off">`
-            + '<span class="modos"><span id="proyectos-cuenta"></span>'
-            + '<button data-orden-p="alfa" title="por nombre">a-z</button>'
-            + '<button data-orden-p="fecha" title="lo tocado más recientemente primero">recientes</button></span></div>');
-        h.push('<div class="ayuda">⏎ · abrir con el agente   ● · ya abierto</div>');
-        h.push('<div id="proyectos">');
-        for (const p of lista) {
-            const marca = p.vivo ? '●' : p.hilo ? '·' : '';
-            const texto = normalizar(`${p.nombre} ${p.ruta} ${p.arquetipo}`);
-            const fecha = p.modificado ?? '';
-            h.push(`<div class="fila clic proy" data-accion="proyecto" data-valor="${esc(p.ruta)}"`
-                + ` data-texto="${esc(texto)}" data-nombre="${esc(normalizar(p.nombre))}" data-fecha="${esc(fecha)}"`
-                + ` title="${esc(`${p.ruta}${fecha ? `\nmodificado ${fecha.slice(0, 16).replace('T', ' ')}` : ''}${p.hilo ? `\nhilo: ${p.hilo}` : ''}`)}">`
-                + `<span class="at">${marca}</span><span class="que">${esc(p.nombre)}</span>`
-                + `<span class="dim tipo">${esc(p.arquetipo)}</span><span class="dim cuando-p">${esc(haceCorto(fecha))}</span></div>`);
-        }
-        h.push('<div id="proyectos-vacio" class="fila dim" hidden></div></div>');
+        h.push('<div class="proy-dos"><div class="proy-lista">', ...htmlListaProyectos(lista, this.proySel, this.cuentasPendientes()),
+            `</div><div id="proy-det">${htmlDetalleProyecto(this.proySel ? this.proyDet : undefined)}</div></div>`);
         this.pintar(h);
     }
 
@@ -1502,7 +1985,7 @@ export class PanelHoy {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
                 p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
-                o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(),
+                o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
@@ -1526,6 +2009,30 @@ export class PanelHoy {
             case 'proyectos': await this.abrirProyectos(); break;
             case 'seccion': if (m.valor) await this.abrirSeccion(m.valor); break;
             case 'proyecto': if (m.valor) await this.abrirProyecto(m.valor); break;
+            case 'proy-sel': if (m.valor) await this.verProyecto(m.valor); break;
+            case 'ahora': await this.abrirAhora(); break;
+            case 'ahora-mover': this.moverAhora(Number(m.valor) || 0); break;
+            case 'ahora-fijar': this.ahoraFijo = true; this.ahoraSel = this.eventoAhora()?.id ?? ''; this.renderAhora(); break;
+            case 'ahora-soltar': this.ahoraFijo = false; this.ahoraSel = ''; this.ahoraSim = undefined; this.ahoraDia = undefined; this.ahoraPlan = undefined; this.ahoraElegir = false; this.renderAhora(); break;
+            case 'ahora-elegir': this.ahoraElegir = !this.ahoraElegir; this.renderAhora(); break;
+            case 'ahora-evento': if (m.valor) this.ahoraAlEvento(m.valor); break;
+            case 'ahora-dia': if (m.valor) await this.ahoraOtroDia(Number(m.valor) || 0); break;
+            case 'estrella-tarea': if (m.valor && await alternarEstrella(m.valor)) {
+                await this.actualizar(true);
+                if (this.pantalla === 'revisar') this.renderRevisar();
+            } break;
+            case 'dueno-tarea': if (m.valor) {
+                const [proveedor, id, ref, actual] = JSON.parse(m.valor) as string[];
+                if (await asignar(JSON.stringify([proveedor, id, ref]), actual ?? '', yo.persona)) {
+                    await this.actualizar(true);
+                    if (this.pantalla === 'revisar') this.renderRevisar();
+                }
+            } break;
+            case 'proy-ir': if (m.valor) { this.proySel = m.valor; await this.abrirProyectos(); } break;
+            case 'proy-menu': if (m.valor) await this.menuProyecto(m.valor); break;
+            case 'menu-vineta': if (m.valor) await this.menuVineta(m.valor); break;
+            case 'proy-consolidar': if (m.valor) await this.consolidarProyecto(m.valor); break;
+            case 'proy-enlace': if (m.valor) await this.enlaceReadme(m.valor, String(m.datos ?? '')); break;
             case 'plantilla-proyecto': await this.cambiarPlantillaProyecto(m.valor === 'restablecer'); break;
             case 'dia': this.pantalla = 'dia'; void this.leerAtajos(); break;
             case 'atajo': if (m.valor) await this.lanzarAtajo(m.valor); break;

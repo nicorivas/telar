@@ -49,6 +49,9 @@ const CADA_RED = 5 * 60 * 1000;
  *  a un proveedor no se hace dos veces porque dos paneles la quisieron a la vez. */
 let enCurso: Promise<Dia> | undefined;
 
+/** Cuándo se consultó por última vez a los proveedores (las tareas, el calendario); 0 si nunca. */
+export function leidoProveedores(): number { return agenda.hora; }
+
 /** El día. `conRed` consulta a los proveedores; sin él se lee solo lo que hay en disco. */
 export function dia(maxEdad = 45000, conRed = false): Promise<Dia> {
     const tocaRed = conRed || Date.now() - agenda.hora > CADA_RED;
@@ -174,14 +177,43 @@ export function pista(tecla: string, nombre: string): string {
 
 /** El filtro por dueño: «todas», «mías» (sin dueño) y «de otros» (con dueño), con su cuenta. Si
  *  ninguna tarea tiene dueño no hay nada que separar y no se dibuja. */
-export function filtroDuenos(duenos: string[], compacto = false): string {
-    const otros = duenos.filter(Boolean).length;
-    if (!otros) return '';
-    const mias = duenos.length - otros;
+/** Quién es la persona de esta máquina (`telar config --json`): una tarea sin dueño es suya, y una
+ *  asignada a su nombre también. La pone la vista al leer la configuración. */
+export const yo = { persona: '', nombres: [] as string[] };
+
+/** ¿Es mía? Sin dueño, o con uno de mis nombres: la primera palabra basta («Nico» y «Nico Rivas»,
+ *  «Nicolás» con el nombre de git «Nicolás Rivas»), pero entera («Nicole» no es «Nico»). */
+export function esMia(dueno: string): boolean {
+    if (!dueno.trim()) return true;
+    const primera = (t: string) => normalizar(t).split(/\s+/)[0] ?? '';
+    const d = primera(dueno);
+    return [yo.persona, ...yo.nombres].some(n => !!n && primera(n) === d);
+}
+
+/** ¿Es mía? `vacioEsMio`: una tarea sin dueño es de la persona; una viñeta de un documento sin
+ *  responsable no es de nadie (está «sin responsable»). */
+function mia(dueno: string, vacioEsMio: boolean): boolean {
+    return dueno.trim() ? esMia(dueno) : vacioEsMio;
+}
+
+/** Los atributos de una fila para el filtro por dueño: mía y sin responsable. */
+export function datosDueno(dueno: string, vacioEsMio = true): string {
+    // «sin responsable» es lo de un documento que no dice quién: una tarea sin dueño es de la persona, no está sin responsable
+    return ` data-dueno="${esc(dueno)}" data-mia="${mia(dueno, vacioEsMio) ? 1 : 0}" data-sin="${!dueno.trim() && !vacioEsMio ? 1 : 0}"`;
+}
+
+/** El filtro por dueño de una lista: cada fila como [dueño, si vacío es mía]. */
+export function filtroDuenos(filas: [string, boolean][], compacto = false): string {
+    const duenos = filas.map(([d]) => d);
+    const otros = filas.filter(([d]) => d.trim() && !esMia(d)).length;
+    const sin = filas.filter(([d, v]) => !d.trim() && !v).length;
+    if (!otros && !sin) return '';
+    const mias = filas.filter(([d, v]) => mia(d, v)).length;
     return '<div class="titulo-tareas duenos-t"><span class="modos">'
         + `<button data-dueno-filtro="" title="todas, mías y de otros">${compacto ? '∗' : 'todas'} ${duenos.length}</button>`
-        + `<button data-dueno-filtro="mias" title="las mías: sin dueño">${compacto ? 'yo' : 'mías'} ${mias}</button>`
-        + `<button data-dueno-filtro="otros" title="de otros: tienen dueño (a quién empujar)">${compacto ? '→' : 'de otros'} ${otros}</button>`
+        + `<button data-dueno-filtro="mias" title="las mías: mis tareas sin dueño y lo que está a mi nombre">${compacto ? 'yo' : 'mías'} ${mias}</button>`
+        + `<button data-dueno-filtro="otros" title="de otros: a nombre de otra persona (a quién empujar)">${compacto ? '→' : 'de otros'} ${otros}</button>`
+        + `<button data-dueno-filtro="sin" title="sin responsable: pendientes de un proyecto que no dicen quién (tus tareas sin dueño son tuyas)">${compacto ? '∅' : 'sin responsable'} ${sin}</button>`
         + '</span></div>';
 }
 
@@ -229,7 +261,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         + '<button data-orden-t="alfa" title="por el texto">a-z</button></span></div>');
     const areas = filtroAreas(lista.map(t => t.fila.area ?? ''), compacto);
     if (areas) h.push(areas);
-    const duenos = filtroDuenos(lista.map(t => t.fila.dueno ?? ''), compacto);
+    const duenos = filtroDuenos(lista.map(t => [t.fila.dueno ?? '', !!t.fila.proveedor] as [string, boolean]), compacto);
     if (duenos) h.push(duenos);
     const cerrar = compacto ? [] : ['</section>'];
     if (d.error) return [...h, `<div class="vacio falla">${esc(d.error)}</div>`, ...cerrar];
@@ -246,7 +278,7 @@ export function htmlPendientes(d: Dia, compacto: boolean): string[] {
         const accion = t.fila.ficha
             ? `data-accion="tarea" data-valor="${esc(JSON.stringify([t.fila.proveedor, t.fila.id || t.ref, t.ref]))}"`
             : `data-accion="pendiente" data-valor="${esc(t.ref)}"`;
-        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}" data-area="${esc(t.fila.area ?? '')}" data-dueno="${esc(t.fila.dueno ?? '')}"`
+        h.push(`<div class="tarea${compacto ? ' compacta' : ''}${t.enCurso ? ' encurso' : ''}" ${accion} data-propuesta="${avance ? 1 : 0}" data-area="${esc(t.fila.area ?? '')}"${datosDueno(t.fila.dueno ?? '', !!t.fila.proveedor)}`
             + ` data-orden="${t.urgencia}" data-ref="${esc(t.ref)}" data-alfa="${esc(normalizar(limpiarMd(t.texto)))}" data-urgente="${t.urgente ? 1 : 0}" data-texto="${esc(buscable)}"`
             // el texto entero va en un globo propio (ver `globo` en el script): el `title` nativo
             // no siempre se muestra dentro de una vista de la barra
@@ -501,13 +533,30 @@ export const CSS_DIA = `
     .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
   }
   @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
+  #revisar #tareas-t .tarea, #revisar .tareas-cab { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
+  #revisar .estr { cursor: pointer; color: var(--dim); opacity: 0; } #revisar .tarea:hover .estr { opacity: 1; }
+  #revisar .estr.on { color: var(--amarillo); opacity: 1; } #revisar .estr:hover { color: var(--amarillo); }
+  #tareas-t-mas { margin-top: .5lh; color: var(--azul); }
+  #revisar .tareas-cab { display: grid; gap: 1ch; padding: 0 1ch; color: var(--dim); margin-top: .5lh; }
+  #revisar .tareas-cab [data-orden-c] { cursor: pointer; } #revisar .tareas-cab [data-orden-c]:hover { color: var(--fg); }
+  #revisar .tareas-cab .activo { color: var(--azul); }
+  #revisar .resp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); cursor: pointer; }
+  #revisar .resp:hover { text-decoration: underline; } #revisar .resp.defecto { color: var(--dim); }
+  #revisar .resp.dim, #revisar .resp.fijo { cursor: default; text-decoration: none; } #revisar .resp.dim { color: var(--dim); }
+  #revisar .proy-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--azul); cursor: pointer; }
+  #revisar .proy-t:hover { text-decoration: underline; } #revisar .proy-t.dim { color: var(--dim); cursor: default; text-decoration: none; }
+  #buscar-t { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
+              width: 20ch; padding: 0 1ch; outline: none; }
+  #buscar-t:focus { border-bottom-color: var(--azul); }
+  #tareas-t-cuenta { color: var(--dim); }
+  .modos button.vacio-m { opacity: .5; }
   #buscar-p { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
               width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
   #buscar-p:focus { border-bottom-color: var(--azul); }
   #buscar-p::placeholder { color: var(--dim); }
   #proyectos-cuenta { color: var(--dim); }
   .proy .que { flex: 1; }
-  .proy .tipo { flex: none; width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+  .proy .tipo { flex: none; width: 9ch; overflow: hidden; text-overflow: ellipsis; }
   .proy .cuando-p { flex: none; width: 4ch; text-align: right; }
   .proy.primera { background: var(--hover); }
 `;
@@ -516,12 +565,18 @@ export const CSS_DIA = `
  *  extensión. El estado (modo y búsqueda) sobrevive a que la vista se esconda. */
 export const SCRIPT_DIA = `
 const raiz = document.getElementById('dia');
-let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '', dueno: '' }, vscode.getState() || {});
+let estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '', dueno: '', pc: false, pf: {}, ordenP: '' }, vscode.getState() || {});
+// antes, «area» filtraba por la carpeta de la raíz (brinca, nico…); ahora es el área del documento
+// «tareas» abre en «esta semana» (8-oct): lo que estaba guardado como «todas» pasa una vez a ese modo
+if (!estado.tmv) { if (!estado.tm || estado.tm === 'todas') estado.tm = 'semana'; estado.tmv = 1; }
+if (!estado.pfv) { estado.pf = Object.assign({}, estado.pf || {}); if (estado.pf.area) { estado.pf.raiz = estado.pf.area; estado.pf.area = ''; } estado.pfv = 2; }
 // el área y el dueño filtran antes que todo lo demás: lo que queda fuera ni se cuenta
-function pasa(f) {
-  if (estado.area && f.dataset.area !== estado.area) return false;
-  if (estado.dueno === 'mias' && f.dataset.dueno) return false;
-  if (estado.dueno === 'otros' && !f.dataset.dueno) return false;
+function pasa(f) { return pasaArea(f, estado.area) && pasaDueno(f, estado.dueno); }
+function pasaArea(f, area) { return !area || f.dataset.area === area; }
+function pasaDueno(f, dueno) {
+  if (dueno === 'mias' && f.dataset.mia === '0') return false;
+  if (dueno === 'otros' && (f.dataset.mia !== '0' || f.dataset.sin === '1')) return false;
+  if (dueno === 'sin' && f.dataset.sin !== '1') return false;
   return true;
 }
 // código de mayor a menor, con los números como números (T130 antes que T81): lo más nuevo
@@ -568,9 +623,81 @@ function aplicar() {
 }
 // el filtro por área fuera de la lista de hoy (la pestaña «revisar») y el botón activo
 function aplicarArea() {
-  document.querySelectorAll('#revisar .tarea').forEach(function (f) { f.hidden = !pasa(f); });
+  aplicarTareas();
   document.querySelectorAll('[data-area-filtro]').forEach(function (b) { b.classList.toggle('activo', b.dataset.areaFiltro === estado.area); });
   document.querySelectorAll('[data-dueno-filtro]').forEach(function (b) { b.classList.toggle('activo', b.dataset.duenoFiltro === (estado.dueno || '')); });
+}
+// la pestaña «tareas»: todas, filtradas por modo (por revisar, vencidas…), área, dueño y lo buscado
+function enModo(f, modo) {
+  const m = modo || estado.tm || 'semana', d = f.dataset.dias === '' ? null : Number(f.dataset.dias);
+  if (m === 'revisar') return f.dataset.rev === '1';
+  if (m === 'vencidas') return d !== null && d < 0;
+  if (m === 'semana') return f.dataset.sem === '1';
+  if (m === 'estrella') return f.dataset.estrella === '1';
+  if (m === 'encurso') return f.dataset.encurso === '1';
+  if (m === 'sinfecha') return d === null;
+  return true;
+}
+// el orden de la columna elegida en «tareas»; sin elegir, la urgencia. Lo vacío siempre al final
+function compararColumna(a, b) {
+  const k = estado.ordenC || '';
+  if (!k) return Number(a.dataset.orden) - Number(b.dataset.orden);
+  const x = a.dataset[k] || '', y = b.dataset[k] || '';
+  if (x !== y) {
+    if (!x || !y) return x ? -1 : 1;
+    if (k === 'dias') return Number(x) - Number(y);
+    // el código, de mayor a menor con los números como números (lo más nuevo arriba)
+    if (k === 'ref') return y.localeCompare(x, undefined, { numeric: true });
+    return x.localeCompare(y);
+  }
+  return Number(a.dataset.orden) - Number(b.dataset.orden);
+}
+function aplicarTareas() {
+  const c = document.getElementById('tareas-t'); if (!c) return;
+  const todas = Array.prototype.slice.call(c.querySelectorAll('.tarea'));
+  const partes = norm(estado.tq || '').split(/\s+/).filter(Boolean);
+  const vacio = document.getElementById('tareas-t-vacio');
+  todas.sort(compararColumna);
+  document.querySelectorAll('.tareas-cab [data-orden-c]').forEach(function (s) {
+    const es = s.dataset.ordenC === (estado.ordenC || '');
+    s.classList.toggle('activo', es);
+    s.textContent = es ? (s.dataset.ordenC === 'ref' ? '▼' : '▲') : '↕';
+  });
+  let n = 0;
+  todas.forEach(function (f) {
+    c.insertBefore(f, vacio);
+    f.hidden = !(pasa(f) && enModo(f) && partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; }));
+    if (!f.hidden) n += 1;
+  });
+  vacio.hidden = n > 0 || !todas.length;
+  vacio.textContent = partes.length ? 'sin resultados' : 'nada aquí';
+  // en «esta semana», lo demás queda plegado detrás de «ver todas»: cuántas más hay con los otros filtros
+  const mas = document.getElementById('tareas-t-mas');
+  if (mas) {
+    const resto = (estado.tm || 'semana') === 'semana'
+      ? todas.filter(function (f) { return f.hidden && pasa(f) && partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; }); }).length : 0;
+    mas.hidden = resto === 0;
+    mas.textContent = 'ver todas (' + resto + ' más)';
+    c.appendChild(mas);
+  }
+  document.querySelectorAll('[data-modo-t]').forEach(function (b) { b.classList.toggle('activo', b.dataset.modoT === (estado.tm || 'semana')); });
+  // cada botón dice cuántas quedarían si se lo eligiera, con lo demás que está filtrado (la búsqueda y
+  // las otras filas de filtros): el del filtro activo es lo que se ve
+  const conTexto = function (f) { return partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; }); };
+  const cuantas = function (cond) { return todas.filter(function (f) { return conTexto(f) && cond(f); }).length; };
+  const poner = function (b, n) { b.textContent = b.textContent.replace(/\\s*\\d+$/, '') + ' ' + n; b.classList.toggle('vacio-m', n === 0); };
+  document.querySelectorAll('#revisar [data-modo-t]').forEach(function (b) {
+    poner(b, cuantas(function (f) { return enModo(f, b.dataset.modoT) && pasaArea(f, estado.area) && pasaDueno(f, estado.dueno); }));
+  });
+  document.querySelectorAll('#revisar [data-area-filtro]').forEach(function (b) {
+    poner(b, cuantas(function (f) { return enModo(f) && pasaArea(f, b.dataset.areaFiltro) && pasaDueno(f, estado.dueno); }));
+  });
+  document.querySelectorAll('#revisar [data-dueno-filtro]').forEach(function (b) {
+    poner(b, cuantas(function (f) { return enModo(f) && pasaArea(f, estado.area) && pasaDueno(f, b.dataset.duenoFiltro); }));
+  });
+  document.querySelectorAll('[data-orden-t]').forEach(function (b) { b.classList.toggle('activo', b.dataset.ordenT === estado.to); });
+  const cuenta = document.getElementById('tareas-t-cuenta');
+  if (cuenta) cuenta.textContent = partes.length || (estado.tm || 'semana') !== 'todas' ? n + ' de ' + todas.length : '';
 }
 // la pantalla de proyectos: filtrar por todas las palabras, ordenar por nombre o por fecha
 function proyectosVisibles() { const c = document.getElementById('proyectos'); return c ? Array.prototype.slice.call(c.querySelectorAll('.proy')).filter(function (f) { return !f.hidden; }) : []; }
@@ -578,23 +705,61 @@ function aplicarProyectos() {
   const c = document.getElementById('proyectos'); if (!c) return;
   const todas = Array.prototype.slice.call(c.querySelectorAll('.proy'));
   const partes = norm(estado.pq).split(/\\s+/).filter(Boolean);
+  // por defecto: por estado (en marcha arriba, cerrado y sin estado abajo) y después por nombre. Una
+  // columna elegida ordena por ella en su sentido natural (lo reciente y lo con hilo primero); lo vacío al final
+  const k = estado.ordenP || '';
+  const porNombre = function (a, b) { return a.dataset.nombre.localeCompare(b.dataset.nombre); };
   todas.sort(function (a, b) {
-    if (estado.po === 'fecha' && a.dataset.fecha !== b.dataset.fecha) return a.dataset.fecha < b.dataset.fecha ? 1 : -1;
-    return a.dataset.nombre.localeCompare(b.dataset.nombre);
+    if (!k || k === 'estado') return (Number(a.dataset.rango) - Number(b.dataset.rango)) || porNombre(a, b);
+    const x = a.dataset[k] || '', y = b.dataset[k] || '';
+    if (x !== y) {
+      if (!x || !y) return x ? -1 : 1;
+      return k === 'fecha' || k === 'hilo' ? (x < y ? 1 : -1) : x.localeCompare(y);
+    }
+    return porNombre(a, b);
+  });
+  document.querySelectorAll('.proy-cab [data-orden-p]').forEach(function (s) {
+    const es = s.dataset.ordenP === k;
+    s.classList.toggle('activo', es);
+    s.textContent = es ? (k === 'fecha' || k === 'hilo' ? '▼' : '▲') : '↕';
   });
   const vacio = document.getElementById('proyectos-vacio');
   let n = 0;
   todas.forEach(function (f) {
     c.insertBefore(f, vacio);
-    f.hidden = !partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; });
+    // los cerrados se esconden salvo que se pidan, o que se los busque por nombre
+    const pf = estado.pf || {};
+    f.hidden = !partes.every(function (p) { return f.dataset.texto.indexOf(p) >= 0; })
+      || (f.dataset.cerrado === '1' && !estado.pc && !partes.length && pf.tipo !== f.dataset.tipo)
+      || (!!pf.raiz && f.dataset.raiz !== pf.raiz) || (!!pf.area && f.dataset.unidad !== pf.area)
+      || (!!pf.tipo && f.dataset.tipo !== pf.tipo)
+      || (!!pf.hilo && f.dataset.hilo === '0') || (!!pf.pend && !(Number(f.dataset.pend) > 0));
     f.classList.toggle('primera', !f.hidden && n === 0 && partes.length > 0);
     if (!f.hidden) n += 1;
   });
   vacio.hidden = n > 0;
   vacio.textContent = 'sin resultados';
-  document.querySelectorAll('[data-orden-p]').forEach(function (b) { b.classList.toggle('activo', b.dataset.ordenP === estado.po); });
   const cuenta = document.getElementById('proyectos-cuenta');
   if (cuenta) cuenta.textContent = partes.length ? n + ' de ' + todas.length : '';
+  const vc = document.getElementById('ver-cerrados');
+  if (vc) vc.classList.toggle('activo', !!estado.pc);
+  document.querySelectorAll('[data-pf]').forEach(function (b) {
+    const v = (estado.pf || {})[b.dataset.pf] || '';
+    b.classList.toggle('activo', v === b.dataset.pv);
+  });
+}
+// elegir un proyecto: se marca al tiro y se pide su detalle (la derecha la cambia la extensión)
+function elegirProy(f) {
+  if (!f) return;
+  document.querySelectorAll('.proy.sel').forEach(function (x) { x.classList.remove('sel'); });
+  f.classList.add('sel');
+  f.scrollIntoView({ block: 'nearest' });
+  vscode.postMessage({ tipo: 'accion', accion: 'proy-sel', valor: f.dataset.valor });
+}
+function moverProy(paso) {
+  const vis = proyectosVisibles(); if (!vis.length) return;
+  const i = vis.findIndex(function (f) { return f.classList.contains('sel'); });
+  elegirProy(vis[i < 0 ? 0 : Math.max(0, Math.min(vis.length - 1, i + paso))]);
 }
 // el globo: el texto entero de una tarea al detenerse sobre ella, cuando la fila lo corta
 const globo = document.createElement('div'); globo.id = 'globo'; globo.hidden = true; document.body.appendChild(globo);
@@ -627,11 +792,17 @@ window.addEventListener('message', function (e) {
 window.addEventListener('message', function (e) {
   // un pedazo de la página (el formulario de un periódico): se cambia sin tocar lo escrito
   if (!e.data || typeof e.data !== 'object') return;
+  if (e.data.tipo === 'proy-pend') {   // cuántos pendientes tiene cada proyecto: llega después de la lista
+    const c = e.data.cuentas || {}; let n = 0;
+    document.querySelectorAll('.proy').forEach(function (f) { const k = c[f.dataset.valor] || 0; f.dataset.pend = String(k); if (k) n += 1; });
+    const cp = document.getElementById('cuenta-pend'); if (cp) cp.textContent = String(n);
+    return aplicarProyectos();
+  }
   if (e.data.tipo === 'parcial') { const el = document.getElementById(e.data.id); if (el) { el.innerHTML = e.data.html; filtrarSkills(); } return; }
   if (e.data.tipo !== 'dia') return;
   esconderGlobo();
   const activo = document.activeElement, id = activo && activo.id;
-  const pos = id === 'buscar' || id === 'buscar-p' ? activo.selectionStart : 0;
+  const pos = id === 'buscar' || id === 'buscar-p' || id === 'buscar-t' ? activo.selectionStart : 0;
   // lo que se está escribiendo sobre una reunión sobrevive al repintado de cada minuto
   const ta = document.getElementById('ev-texto');
   const previo = ta ? { ev: ta.dataset.evento, v: ta.value, foco: activo === ta, s: ta.selectionStart } : null;
@@ -640,6 +811,8 @@ window.addEventListener('message', function (e) {
   if (previo && nt && nt.dataset.evento === previo.ev) { nt.value = previo.v; if (previo.foco) { nt.focus(); nt.setSelectionRange(previo.s, previo.s); } }
   const nb = document.getElementById('buscar');
   if (nb) { nb.value = estado.q; if (id === 'buscar') { nb.focus(); nb.setSelectionRange(pos, pos); } }
+  const nt2 = document.getElementById('buscar-t');
+  if (nt2) { nt2.value = estado.tq || ''; if (id === 'buscar-t') { nt2.focus(); nt2.setSelectionRange(pos, pos); } }
   const np = document.getElementById('buscar-p');
   if (np) { np.value = estado.pq; if (id === 'buscar-p' || id !== 'buscar') { np.focus(); np.setSelectionRange(pos || np.value.length, pos || np.value.length); } }
   aplicar(); aplicarProyectos();
@@ -690,6 +863,7 @@ document.addEventListener('click', function (e) {
 }, true);
 document.addEventListener('input', function (e) {
   if (e.target.id === 'buscar-p') { estado.pq = e.target.value; guardar(); return aplicarProyectos(); }
+  if (e.target.id === 'buscar-t') { estado.tq = e.target.value; guardar(); return aplicarTareas(); }
   if (e.target.id !== 'buscar') return;
   estado.q = e.target.value; estado.todas = false; guardar(); aplicar();
 });
@@ -698,8 +872,28 @@ document.addEventListener('click', function (e) {
   if (u) { e.preventDefault(); e.stopPropagation(); return vscode.postMessage({ tipo: 'url', url: u.dataset.url }); }
   const ot = e.target.closest('[data-orden-t]');
   if (ot) { estado.to = ot.dataset.ordenT; guardar(); return aplicar(); }
+  const oc = e.target.closest('[data-orden-c]');
+  if (oc) { estado.ordenC = estado.ordenC === oc.dataset.ordenC ? '' : oc.dataset.ordenC; guardar(); return aplicarTareas(); }
+  if (e.target.closest('#tareas-t-mas')) { estado.tm = 'todas'; guardar(); return aplicarTareas(); }
+  const mt = e.target.closest('[data-modo-t]');
+  if (mt) { estado.tm = mt.dataset.modoT; guardar(); return aplicarTareas(); }
   const op = e.target.closest('[data-orden-p]');
-  if (op) { estado.po = op.dataset.ordenP; guardar(); return aplicarProyectos(); }
+  // una flecha ordena por su columna; otra vez, vuelve al orden por defecto (estado y nombre)
+  if (op) { estado.ordenP = estado.ordenP === op.dataset.ordenP ? '' : op.dataset.ordenP; guardar(); return aplicarProyectos(); }
+  if (e.target.closest('#ver-cerrados')) { estado.pc = !estado.pc; guardar(); return aplicarProyectos(); }
+  // un filtro de la lista de proyectos: área y tipo eligen uno; «con hilo» y «con pendientes» se prenden y apagan
+  const bf = e.target.closest('[data-pf]');
+  if (bf) { const pf = Object.assign({}, estado.pf || {}), k = bf.dataset.pf;
+    pf[k] = pf[k] === bf.dataset.pv && (k === 'hilo' || k === 'pend') ? '' : bf.dataset.pv;
+    estado.pf = pf; guardar(); return aplicarProyectos(); }
+  const fp = e.target.closest('.proy[data-accion="proy-sel"]');
+  // el ⋯ de una fila: la elige y abre el menú de acciones (lo manda el manejador general)
+  if (fp && e.target.closest('.menu-fila')) elegirProy(fp);
+  else if (fp) { e.preventDefault(); return elegirProy(fp); }
+  // un enlace del README: lo abre la extensión (un archivo del repositorio o el navegador)
+  const ln = e.target.closest('.proy-readme a[href]');
+  if (ln) { e.preventDefault(); const base = ln.closest('.proy-readme').dataset.base || '';
+    return vscode.postMessage({ tipo: 'accion', accion: 'proy-enlace', valor: ln.getAttribute('href'), datos: base }); }
   const ar = e.target.closest('[data-area-filtro]');
   if (ar) { estado.area = ar.dataset.areaFiltro; guardar(); aplicar(); return aplicarArea(); }
   const du = e.target.closest('[data-dueno-filtro]');
@@ -735,9 +929,12 @@ document.addEventListener('keydown', function (e) {
   const bp = document.getElementById('buscar-p');
   if (bp && document.activeElement === bp) {         // en proyectos: ⏎ abre el primero que calza
     if (e.key === 'Escape') { e.preventDefault(); if (bp.value) { bp.value = ''; estado.pq = ''; guardar(); aplicarProyectos(); } else vscode.postMessage({ tipo: 'accion', accion: 'dia' }); }
-    else if (e.key === 'Enter') { e.preventDefault(); const f = proyectosVisibles()[0]; if (f) vscode.postMessage({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); }
+    else if (e.key === 'Enter') { e.preventDefault(); const vis = proyectosVisibles(); const f = vis.find(function (x) { return x.classList.contains('sel'); }) || vis[0]; if (f) vscode.postMessage({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moverProy(e.key === 'ArrowDown' ? 1 : -1); }
     return;
   }
+  if (bp && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) { e.preventDefault(); return moverProy(e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1); }
+  if (bp && e.key === 'Enter') { const f = document.querySelector('.proy.sel'); if (f && !f.hidden) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); } }
   if (bp && e.key === 'Escape') { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'dia' }); }
   if (bp && e.key === '/') { e.preventDefault(); bp.focus(); return; }
   const b = document.getElementById('buscar');
@@ -760,10 +957,16 @@ document.addEventListener('keydown', function (e) {
   if (document.getElementById('cal-nav') && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'cal-dia', valor: e.key === 'ArrowLeft' ? '-1' : '1' });
   }
-  // en «revisar», ⏎ abre la primera propuesta
+  // en «tareas»: escribir en la búsqueda; ⏎ abre la primera que se ve; / va a buscar
+  const bt = document.getElementById('buscar-t');
+  if (bt && document.activeElement === bt) {
+    if (e.key === 'Escape') { e.preventDefault(); if (bt.value) { bt.value = ''; estado.tq = ''; guardar(); aplicarTareas(); } else bt.blur(); return; }
+    if (e.key !== 'Enter') return;
+  }
+  if (bt && e.key === '/') { e.preventDefault(); bt.focus(); return; }
   if (document.getElementById('revisar') && e.key === 'Enter') {
-    const f = document.querySelector('#revisar .tarea');
-    if (f) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: 'tarea', valor: f.dataset.valor }); }
+    const f = document.querySelector('#revisar .tarea:not([hidden])');
+    if (f) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: f.dataset.accion, valor: f.dataset.valor }); }
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;    // los atajos con modificador son de VS Code
   if (e.key === '/') { e.preventDefault(); if (b) b.focus(); return; }
