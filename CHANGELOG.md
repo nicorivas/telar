@@ -11,14 +11,52 @@ workflow refuses to run if the two disagree.
 - `telar web`: the installed app is an Android share target (`share_target` in the manifest): «compartir» → telar opens a
   screen to pick which threads receive the link (plus «lecturas», the reading feed) with an optional note; nothing is sent until
   you tap «enviar». New `/api/lectura` (`kichoro/bin/lecturas dejar`).
+- A provider can live on another machine (`[proveedores.<x>] en = "<machine>"`): it is queried there over the bus,
+  and `telar tarea` runs its card and actions there — the tasks are files on that machine, and reading the copy
+  synced by git showed hours-old data while an action run here changed the copy. If that machine doesn't answer,
+  the copy here is read and it says so; an action is not run here. `telar cambio <tema>` tells every machine that
+  something changed (the tasks): each node marks it and the VS Code dashboard rereads at once; «tareas» shows when
+  they were read and a «↻ actualizar».
 - `telar web`: a ⌨ button in a thread's conversation shows its terminal (refreshed every 2 s) with keys to press — Enter, Esc,
   arrows, Tab, Ctrl-C — to get an agent out of a dialog that swallows what's typed (`/api/terminal`, `/api/teclas`).
+- Dashboard «ahora» (`n`): the day's block in progress (or the next one), crossing the calendar with the day's plan,
+  and only what fits it — a strategic block shows the day's focus, its tasks and its project; a meeting, the plan's
+  card (decide, bring, ask), the latest preparation, what the previous minutes left «para la próxima» and its project;
+  a commercial block, its project; free time, almost nothing; the close, the day's results and the agents' proposals.
+  ‹ › move between blocks (and pin the view), «volver a ahora» follows the clock again; «elegir momento» opens the day's calendar
+  column (the «calendario» one) to pick a block and see what «ahora» would show then; ‹ › there go to other days,
+  with their calendar and plan. A block's class and project
+  come from the plan (`clase`, `proyecto`, `tareas`) or are deduced from its title.
 - `telar web`: a «× cerrar» button in a thread's conversation (two taps) archives it and ends its session, like
   `telar hilo archivar --cerrar`; resident agents can't be closed from the page. `telar hilo cerrar|archivar --cerrar` now also
   ends a thread that lives in its own session (the phone's, an encargo's), with the phone's sessions grouped to it.
 - `telar web`: a «cal» tab with the VS Code dashboard's calendar in one column — day navigation, the plan's blocks merged
   with the events, each event's context and notes, «+ nota», «preparar o minuta» (asks the project when it can't tell) and a
   message to the general agent with the meeting as context. New `telar.webcal`; `/api/calendario`, `/api/evento/{nota,reunion,escribir}`.
+- Dashboard: the «revisar» tab is now «tareas» (`v`, `tareas ◆N` when something waits for a decision): every pending
+  item, with what an agent proposed on top, filters (all, ◆ to review, overdue, this week, in progress, no date, each
+  with how many it would show given the search and the other filters, faded at zero), search, area and owner, and an icon above each column (code, project, responsible, text, date) that sorts
+  by it, a second click going back to urgency. Rows without a card go to their thread. A project column (its client, or its
+  name when the client is the company itself) says what each task belongs to; a click opens it in «proyectos». A «responsable» column shows who does each task (the person of
+  this machine in gray when nobody took it); a click picks someone from the provider's `opciones` (new action
+  `rol: dueno`) or a typed name. The owner filter gains «sin asignar», and «mías» counts the ones assigned to
+  the person by name. `telar config --json` gives `persona` and
+  `persona_nombres` (with git's user.name). A document's checkbox says who does it with `@owner(Name)` anywhere or
+  `@Name Surname:` at the start, and when with `@deadline(YYYY-MM-DD)`; the markers (and `@prioridad(…)`) are hidden
+  from the text, and pending rows carry `dueno` and that date as `cuando`. Without either, it is «sin responsable»,
+  not the person's. `@para(…)` also says who; `@desde(…)` and the arrow before them are hidden. A document's checkbox
+  gets its own «⋯» in «tareas» and «proyectos»: take it to its thread or a new one, open the README at its line, mark it
+  done, or set who does it — `telar pendiente <ref> --hecho | --responsable NAME|none | --linea`, with `--esperado`
+  (the text that was seen): it finds the line by its text and changes only that line, or nothing if it changed.
+- Dashboard «proyectos» in two columns, like the calendar: the list on the left (search; sorted by status — active, negotiation,
+  proposal, prospect, paused, closed — and then by name; an icon above a column sorts by it, a second click goes back; ↑↓ to move, ⏎ opens it
+  with the agent, closed projects hidden behind a toggle; filters by folder, by area — `area:` in the document's frontmatter, shown once there are two —, by type, with a
+  thread, with pending items); the client leads each name in color with the rest dimmed, and a status column (`Estado`, or `Etapa`
+  for a deal, cut short) colored by kind. `telar proyectos --json` gives `cliente`, `estado` and `estado_completo`. A «⋯» on each row opens its actions: open it with the agent (or go to
+  its thread), write to the general agent about it with its context, open the README, show the folder, copy the
+  path, archive its thread and the chosen one on the right: its pending items (the
+  checkboxes of its document and the provider tasks that name it) and its README, rendered. Provider rows carry
+  `proyecto`, the folder the task says it belongs to, whether or not a thread is open there.
 - One tmux session per machine: every thread is a window of the telar session, stamped with its own id
   (`@telar_id`), including agents' errands, periodic jobs, the phone, the web, and threads the laptop opens or
   resumes on a server (created over ssh). Another machine or the phone looks at a thread through a grouped
@@ -48,6 +86,14 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- Taking a thread to another machine (`telar hilo llevar`): the conversation travels gzip-compressed, the extension
+  waits up to 15 minutes instead of 2 (it reported a failure while the copy kept going), and says what it is doing
+  while the thread is visible nowhere.
+- Renaming a thread leaves an alias from the old name to the new one: an agent that was already running keeps the
+  old `$TELAR_HILO`, and its hooks wrote its attention to a ghost thread (the renamed one stuck on «trabajando»).
+- `[ficha] maximo` cut the pending list counting done items: a README with five done checkboxes on top showed one
+  of its five open ones. The provider's cap no longer cuts pending items, and a profile section's cap counts only open
+  ones.
 - `telar hilo olvidar <name>` (and `cerrar`, `archivar`, `retomar`… which take no value) ignored the name and
   acted on the current thread; the bare name is now the thread, and giving both it and `--hilo` is refused.
 - telar targets a window with its session (`=telar:@3`): a bare `@3` could resolve to a grouped session someone
