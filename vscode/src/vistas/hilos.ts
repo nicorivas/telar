@@ -240,10 +240,16 @@ export class VistaHilos implements vscode.WebviewViewProvider {
                 const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
                 const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
                 if (!suyos.length) {
-                    h.push(`<div class="fila agente muerto" data-accion="home" data-id="${esc(a.clave)}" title="${esc(a.nombre)}: sin hilo abierto; su home">`
+                    // sin hilo vivo: si telar recuerda uno (cerrado o archivado), la línea lo retoma;
+                    // si nunca existió, lleva a su home
+                    const previo = modelo.hilos.find(x => cli.enSeccion(a, x.nombre));
+                    const retomar = previo
+                        ? `<span class="icono" data-accion="retomar" data-id="${esc(previo.nombre)}" title="retomar: reabre el hilo con su conversación">▶</span>` : '';
+                    const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="home" data-id="${esc(a.clave)}"`;
+                    h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; ${previo ? 'pincha para retomarlo' : 'su home'}">`
                         + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
                         + (modelo.buzones.length ? '<span class="sobre"> </span>' : '')
-                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${casa}</div>`);
+                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${casa}</div>`);
                     continue;
                 }
                 suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
