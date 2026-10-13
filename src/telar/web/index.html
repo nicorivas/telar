@@ -31,8 +31,11 @@
       const medida = document.createElement('span'); medida.textContent = 'M'.repeat(20); medida.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
       pre.append(medida);
       const cw = medida.getBoundingClientRect().width / 20 || 8, ch = parseFloat(getComputedStyle(pre).lineHeight) || 16;
-      const W = Math.max(11, Math.floor(innerWidth / cw)), H = Math.max(8, Math.floor(innerHeight / ch)), mid = W >> 1;
-      const TITULO = '◖ t e l a r ◗', t0 = mid - (TITULO.length >> 1), rt = H >> 1;
+      // ancho y alto impares y la grilla centrada en la pantalla, para que el nombre quede en el medio justo
+      const impar = (n) => (n % 2 ? n : n - 1);
+      const W = impar(Math.max(21, Math.floor(innerWidth / cw))), H = impar(Math.max(9, Math.floor(innerHeight / ch))), mid = W >> 1;
+      pre.style.cssText = 'left:' + (innerWidth - W * cw) / 2 + 'px;top:' + (innerHeight - H * ch) / 2 + 'px;right:auto;bottom:auto;width:' + W * cw + 'px;height:' + H * ch + 'px';
+      const TITULO = '« t e l a r »', t0 = mid - (TITULO.length >> 1), rt = H >> 1;
       const BANDAS = ['a', 'c', 'm', 'v'];  // el color de cada banda del tejido: azul, cian, magenta, verde
       // la celda tejida: cruce de urdimbre y trama, con un rombo de motivos que baja por el centro
       const celda = (r, c) => {
