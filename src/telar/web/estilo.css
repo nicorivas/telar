@@ -397,8 +397,11 @@ body.escribiendo { padding-bottom: calc(var(--dock-h, 1lh) + env(safe-area-inset
 .dest .sub { display: block; color: var(--dim); }
 .dest.abierto .titulo { color: var(--verde); }
 
-/* pantalla de arranque: un telar de texto que teje unas filas */
-#splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1lh; background: var(--bg); transition: opacity .35s; }
+/* pantalla de arranque: un telar de texto que teje la pantalla entera */
+#splash { position: fixed; inset: 0; z-index: 100; overflow: hidden; background: var(--bg); transition: opacity .45s; }
 #splash.fuera { opacity: 0; pointer-events: none; }
-#splash pre { margin: 0; font: inherit; line-height: 1.15; color: var(--azul); }
-#splash .splash-t { color: var(--fg); font-weight: 700; }
+#splash pre { position: absolute; inset: 0; margin: 0; font: inherit; white-space: pre; overflow: hidden; }
+#splash i { font-style: normal; }
+#splash .a { color: var(--azul); } #splash .c { color: var(--cian); } #splash .m { color: var(--magenta); }
+#splash .v { color: var(--verde); } #splash .y { color: var(--amarillo); font-weight: 700; }
+#splash .d { color: var(--dim); opacity: .5; } #splash .t { color: var(--fg); font-weight: 700; }
