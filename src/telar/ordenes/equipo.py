@@ -172,8 +172,13 @@ def _por_ssh(ctx, remoto: str, argv: list[str]) -> tuple[str, str]:
     elegido = next((r for r in ctx.config.remotos if r.nombre == remoto), None)
     if elegido is None:
         return "", f"no hay remoto «{remoto}»"
-    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", elegido.destino, shlex.join(["telar", "equipo", *argv])],
-                       capture_output=True, text=True, timeout=40)
+    # `bash -lc`: un ssh sin terminal no trae ~/.local/bin, donde viven telar y uv, en el PATH
+    comando = shlex.join(["bash", "-lc", shlex.join(["telar", "equipo", *argv])])
+    try:
+        r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", elegido.destino, comando],
+                           capture_output=True, text=True, timeout=40)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return "", f"no pude hablar con {elegido.destino}: {e}"
     return r.stdout, "" if r.returncode == 0 else (r.stderr.strip() or r.stdout.strip() or f"ssh salió con {r.returncode}")[-300:]
 
 
