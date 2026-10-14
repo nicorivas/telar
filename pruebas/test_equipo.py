@@ -81,6 +81,49 @@ class Sugerencias(unittest.TestCase):
             self.assertIsNone(mod.resolver(eq, a["id"], "rechazar")[0])  # ya resuelta
 
 
+class Pedidos(unittest.TestCase):
+    def test_pedir_valida_y_anota(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {})
+            hoy = datetime.datetime(2026, 10, 14, 9, 0)
+            r, p = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-10-20", ahora=hoy)
+            self.assertEqual((p, r["tipo"], r["estado"], r["vence"]), ("", "tarea", "pendiente", "2026-10-20"))
+            self.assertIn("ya tienes", mod.pedir(eq, "marcelo", "hacer la SESIÓN 5 de goa", ahora=hoy)[1])
+            self.assertIn("de 5 a", mod.pedir(eq, "marcelo", "no", ahora=hoy)[1])
+            self.assertIn("AAAA-MM-DD", mod.pedir(eq, "marcelo", "otra cosa distinta", vence="mañana", ahora=hoy)[1])
+            self.assertIn("ya pasó", mod.pedir(eq, "marcelo", "otra cosa distinta", vence="2026-10-01", ahora=hoy)[1])
+
+    def test_tope_de_pendientes_por_persona(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {})
+            for i in range(mod.MAX_PENDIENTES):
+                self.assertTrue(mod.pedir(eq, "marcelo", f"pedido número {i} largo")[0])
+            self.assertIn("esperando", mod.pedir(eq, "marcelo", "uno más que sobra")[1])
+            self.assertTrue(mod.pedir(eq, "ana", "pedido de otra persona")[0])
+
+    def test_aceptar_agrega_la_tarea_con_el_cli(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            eq = montar(tmp, {})
+            (tmp / "todo").write_text("#!/bin/sh\necho \"$@\" >> " + str(tmp / "todo.log") + "\necho 'añadida: T412  hacer algo'\n")
+            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-12-31")[0]
+            hecho, _ = mod.resolver(eq, r["id"], "aceptar", "ok")
+            self.assertEqual((hecho["estado"], hecho["tarea"]), ("aceptada", "T412"))
+            log = (tmp / "todo.log").read_text()
+            self.assertIn("add Hacer la sesión 5 de GOA", log)
+            self.assertIn("--tag equipo", log)
+            self.assertIn("--due 2026-12-31", log)
+            self.assertIn("equipo:marcelo", log)
+
+    def test_rechazar_no_crea_nada(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            eq = montar(tmp, {})
+            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            self.assertEqual(mod.resolver(eq, r["id"], "rechazar", "no esta semana")[0]["estado"], "rechazada")
+            self.assertFalse((tmp / "todo.log").exists())
+
+
 class Servidor(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -115,6 +158,16 @@ class Servidor(unittest.TestCase):
         self.assertTrue(d["ok"], d)
         self.assertEqual(self.pedir("/api/tareas")[1]["sugerencias"][0]["estado"], "pendiente")
         self.assertEqual(self.pedir("/api/sugerir", cuerpo={"tarea": "T1", "motivo": "bloquea al equipo"})[0], 429)
+
+    def test_pide_una_tarea(self):
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA", "contexto": "urge"})
+        self.assertTrue(d["ok"], d)
+        mias = self.pedir("/api/tareas")[1]["sugerencias"]
+        self.assertEqual([(x["tipo"], x["titulo"], x["estado"]) for x in mias], [("tarea", "Hacer la sesión 5 de GOA", "pendiente")])
+        self.assertEqual(self.pedir("/api/pedir", token="mala", cuerpo={"titulo": "xxxxxx"})[0], 401)
+
+    def test_pedido_mal_formado(self):
+        self.assertEqual(self.pedir("/api/pedir", cuerpo={"contexto": "falta el título"})[0], 400)
 
     def test_no_hay_otras_rutas(self):
         self.assertEqual(self.pedir("/api/enviar", cuerpo={"x": 1})[0], 404)

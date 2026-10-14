@@ -492,10 +492,12 @@ export const mensajesBus = (n = 60) =>
 export const soltarMensaje = (id: string) =>
     telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);
 
-/** Una sugerencia del equipo (`telar equipo sugerencias --json`): alguien pide subir una prioridad. */
+/** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {
     id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;
     motivo: string; estado: string; nota: string;
+    /** «prioridad»: sugiere subir una tarea · «tarea»: pide una tarea nueva (aceptarla la agrega) */
+    tipo?: 'prioridad' | 'tarea'; vence?: string | null;
 }
 const remotoEquipo = (remoto: string) => (remoto && remoto !== 'local' ? ['--remoto', remoto] : []);
 export const equipoPendientes = (remoto: string) =>

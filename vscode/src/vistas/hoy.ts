@@ -180,7 +180,7 @@ export class PanelHoy {
         if (modelo.sugerencias.length) {
             const n = modelo.sugerencias.length;
             h.push('<div class="fila falla clic" data-accion="equipo" title="decidir: aceptar sube la prioridad un nivel">'
-                + `◆ ${n} sugerencia${n === 1 ? '' : 's'} del equipo esperan tu decisión · ${esc(modelo.sugerencias.map(x => x.tarea).join(', '))}</div>`);
+                + `◆ ${n} cosa${n === 1 ? '' : 's'} del equipo esperan tu decisión · ${esc(modelo.sugerencias.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', '))}</div>`);
         }
         // arriba, lo general: los atajos que no son de ninguna sección, las tareas y el terminal
         h.push('<div class="generales">' + this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
@@ -1177,18 +1177,22 @@ export class PanelHoy {
     }
 
     private renderEquipo(): void {
-        const h = ['<div class="subcab"><b>Sugerencias del equipo</b><span class="der dim"><a data-accion="equipo" title="volver a leer">↻</a></span></div>'];
+        const h = ['<div class="subcab"><b>Lo que pide el equipo</b><span class="der dim"><a data-accion="equipo" title="volver a leer">↻</a></span></div>'];
         if (!modelo.equipoRemoto) h.push('<div class="fila dim">apagado: pon <code>telar.equipoRemoto</code> (la máquina de [remotos] donde corre <code>telar equipo servir</code>, o <code>local</code>)</div>');
         else if (!modelo.sugerencias.length) h.push('<div class="fila dim">nada por decidir</div>');
         for (const x of modelo.sugerencias) {
+            const pedido = x.tipo === 'tarea';
             const hoy = x.prioridad === null ? '?' : `P${x.prioridad}`;
             const nueva = x.prioridad === null ? '' : ` → P${Math.max(0, x.prioridad - 1)}`;
             h.push('<div class="item-pag">'
-                + `<div class="fila"><b>${esc(x.persona)}</b> sugiere subir <b>${esc(x.tarea)}</b> <span class="dim">${hoy}${nueva} · ${esc(fechaCorta(x.cuando))}</span></div>`
-                + `<div class="fila">${esc(x.titulo)}</div>`
-                + `<div class="fila dim" style="white-space:pre-wrap">«${esc(x.motivo)}»</div>`
-                + `<div class="fila"><a data-accion="equipo-decidir" data-valor="${esc(`aceptar|${x.id}`)}">aceptar</a> · `
-                + `<a data-accion="equipo-decidir" data-valor="${esc(`rechazar|${x.id}`)}">rechazar</a></div></div>`);
+                + (pedido
+                    ? `<div class="fila"><b>${esc(x.persona)}</b> te pide una tarea${x.vence ? ` <span class="dim">para el ${esc(x.vence)}</span>` : ''}`
+                        + ` <span class="dim">${esc(fechaCorta(x.cuando))}</span></div><div class="fila"><b>${esc(x.titulo)}</b></div>`
+                    : `<div class="fila"><b>${esc(x.persona)}</b> sugiere subir <b>${esc(x.tarea)}</b> <span class="dim">${hoy}${nueva} · ${esc(fechaCorta(x.cuando))}</span></div>`
+                        + `<div class="fila">${esc(x.titulo)}</div>`)
+                + (x.motivo ? `<div class="fila dim" style="white-space:pre-wrap">«${esc(x.motivo)}»</div>` : '')
+                + `<div class="fila"><a data-accion="equipo-decidir" data-valor="${esc(`aceptar|${x.id}`)}">${pedido ? 'agregar como tarea (P2)' : 'aceptar'}</a> · `
+                + `<a data-accion="equipo-decidir" data-valor="${esc(`rechazar|${x.id}`)}">${pedido ? 'descartar' : 'rechazar'}</a></div></div>`);
         }
         this.pintar(h);
     }

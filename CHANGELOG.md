@@ -8,6 +8,10 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar equipo`: a teammate can also **ask you for a new task** (`POST /api/pedir`, a form on the page): it lands in the same tray
+  and notifies the same way; accepting it adds a P2 task (`todo add`, tagged `equipo`, `origen: equipo:<person>`, with the context
+  and date) and the person sees its state and number. Max 10 things waiting per person. VS Code shows it as «te pide una tarea»
+  with «agregar como tarea» / «descartar».
 - `telar imagen`: uploads the clipboard image (or a file) from this computer to `~/telar-entrada/` on a `[remotos]` machine over ssh,
   prints the path it has there and puts it on the clipboard — Claude Code's image paste only reads the clipboard of the machine it runs on,
   so a thread living on the server never saw the laptop's. Paste the path into the thread and Claude reads the image.

@@ -1,6 +1,6 @@
 ---
 name: equipo-nico
-description: Consultar las tareas que Nico comparte con el equipo y sugerirle subir una prioridad. Úsala cuando pregunten por lo que Nico está haciendo, su estado o prioridad, o cuando haya que pedirle que priorice algo.
+description: Consultar las tareas que Nico comparte con el equipo, sugerirle subir una prioridad y pedirle una tarea nueva. Úsala cuando pregunten por lo que Nico está haciendo, su estado o prioridad, o cuando haya que pedirle que priorice algo.
 ---
 
 # Tareas compartidas de Nico
@@ -35,6 +35,23 @@ curl -s -X POST -H "Authorization: Bearer $EQUIPO_NICO_LLAVE" -H "Content-Type: 
 Antes de enviar, muéstrale a tu persona la tarea y el motivo, y espera su visto bueno: a Nico le llega
 como una notificación. Con un 429, espera unos segundos.
 
+## Pedirle algo a Nico (una tarea nueva)
+
+Si necesitas que Nico haga algo («hacer la sesión 5 de GOA»), no lo dejes para un chat: déjalo como pedido. Le llega
+como notificación y él decide si lo agrega como tarea suya (P2, con la etiqueta de equipo, y tú la ves en la lista).
+Hace falta un título concreto (5 a 150 caracteres); el contexto (por qué, para quién, qué depende de esto) y la fecha
+(`AAAA-MM-DD`) son opcionales pero ayudan. Máximo 10 cosas tuyas esperando a Nico a la vez.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $EQUIPO_NICO_LLAVE" -H "Content-Type: application/json" \
+  -d '{"titulo":"Hacer la sesión 5 de GOA","contexto":"la pide el cliente para el jueves","vence":"2026-10-22"}' \
+  http://100.66.75.117:8766/api/pedir
+```
+
+Antes de enviar, muéstrale a tu persona el pedido tal como saldrá y espera su visto bueno. En `GET /api/tareas`, tus
+pedidos salen en `sugerencias` con `tipo: "tarea"`, su estado (pendiente, aceptada, rechazada) y, si Nico la aceptó,
+el número de la tarea que quedó.
+
 ## Lo que no se puede
-No hay forma de crear, editar ni cerrar tareas, ni de hablar con los agentes de Nico por aquí.
-Para otra cosa, díselo a Nico directamente.
+No hay forma de crear, editar ni cerrar las tareas de Nico directamente (solo pedirlas, arriba), ni de hablar con sus
+agentes por aquí. Para otra cosa, díselo a Nico directamente.

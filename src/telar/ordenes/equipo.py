@@ -3,14 +3,14 @@
     telar equipo servir [--host IP] [--puerto N]   la página y la API de la persona (solo lee y sugiere)
     telar equipo sugerencias [--todas] [--json]    la bandeja: lo que falta por decidir
     telar equipo sugerencias --remoto telar        la misma bandeja, leída por ssh desde otra máquina
-    telar equipo aceptar ID [--nota "…"]           subir la prioridad un nivel (con el CLI de tareas)
+    telar equipo aceptar ID [--nota "…"]           una sugerencia: sube la prioridad un nivel · un pedido: lo agrega como tarea
     telar equipo rechazar ID [--nota "…"]          cerrarla; la nota la ve quien la hizo
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
 El servidor es otro proceso y otro puerto que `telar web`, a propósito: `telar web` puede escribirles
 a tus agentes; este no tiene esa fuerza. Con el token de una persona solo se puede: leer las tareas
-marcadas para el equipo (sin su cuerpo), dejar una sugerencia y ver cómo salió. Cada sugerencia
-avisa al laptop con una notificación. Ver `telar.equipo`.
+marcadas para el equipo (sin su cuerpo), dejar una sugerencia de prioridad, **pedirte una tarea nueva**
+y ver cómo salió. Cada una avisa al laptop con una notificación. Ver `telar.equipo`.
 """
 
 from __future__ import annotations
@@ -44,7 +44,12 @@ button{font:inherit;color:var(--azul);background:none;border:1px solid var(--azu
 textarea,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--dim);width:100%;box-sizing:border-box;padding:4px}
 .ok{color:var(--verde)}.mal{color:var(--rojo)}
 </style></head><body>
-<h1>equipo</h1><div class="dim" id="quien"></div><div id="msg"></div><div id="lista"></div>
+<h1>equipo</h1><div class="dim" id="quien"></div><div id="msg"></div>
+<div class="t" id="pedir"><b>pedirle algo a Nico</b> <span class="dim">(una tarea nueva; él decide si la agrega)</span><br>
+<input id="p-titulo" maxlength="150" placeholder="qué necesitas que haga (ej. hacer la sesión 5 de GOA)">
+<textarea id="p-contexto" rows="2" maxlength="500" placeholder="contexto (opcional): por qué, para quién, qué depende de esto"></textarea>
+<input id="p-vence" type="date" aria-label="para cuándo (opcional)"> <button id="p-enviar">enviar pedido</button></div>
+<div id="pedidos"></div><div id="lista"></div>
 <script>
 let token = '';
 // el enlace que se le manda a la persona lleva su llave tras el # (no viaja al servidor): se guarda y se borra de la barra
@@ -61,9 +66,15 @@ async function cargar() {
   const d = await r.json();
   $('quien').textContent = d.quien + ' · lo que el equipo ve de las tareas de Nico';
   const mias = d.sugerencias;
+  $('pedidos').innerHTML = '';
+  for (const x of mias.filter((y) => y.tipo === 'tarea').slice(-5).reverse()) {
+    const e = document.createElement('div'); e.className = 'dim';
+    e.textContent = 'tu pedido «' + x.titulo + '»: ' + x.estado + (x.tarea ? ' (ahora es ' + x.tarea + ')' : '') + (x.nota ? ' — ' + x.nota : '');
+    $('pedidos').append(e);
+  }
   $('lista').innerHTML = '';
   for (const t of d.tareas) {
-    const s = mias.filter((x) => x.tarea === t.id).slice(-1)[0];
+    const s = mias.filter((x) => x.tipo !== 'tarea' && x.tarea === t.id).slice(-1)[0];
     const div = document.createElement('div'); div.className = 't' + (t.estado === 'hecha' ? ' hecha' : '');
     div.innerHTML = '<span class="p p' + t.prioridad + '">P' + (t.prioridad ?? '?') + '</span> <b></b> <span class="dim"></span>';
     div.querySelector('b').textContent = t.id + ' ' + t.titulo;
@@ -89,7 +100,14 @@ function formulario(div, t, b) {
   };
   div.append(ta, go);
 }
-cargar(); setInterval(() => { if (!document.hidden && !document.querySelector('textarea')) cargar(); }, 60000);
+$('p-enviar').onclick = async () => {
+  const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value }) });
+  const d = await r.json();
+  $('msg').innerHTML = d.ok ? '<span class="ok">pedido enviado: Nico lo verá y decide</span>' : '<span class="mal"></span>';
+  if (!d.ok) $('msg').firstChild.textContent = d.error; else { $('p-titulo').value = ''; $('p-contexto').value = ''; $('p-vence').value = ''; }
+  cargar();
+};
+cargar(); setInterval(() => { if (!document.hidden && !document.activeElement.matches('textarea, input') && ![...document.querySelectorAll('textarea, input')].some((c) => c.value)) cargar(); }, 60000);
 </script></body></html>
 """
 
@@ -129,10 +147,11 @@ def manejador(eq: mod_equipo.Equipo):
                 return self._responder(401, {"ok": False, "error": "llave inválida"})
             mias = [r for r in mod_equipo.leer_bandeja(eq) if r["persona"] == persona]
             self._responder(200, {"quien": persona, "tareas": mod_equipo.tareas_visibles(eq),
-                                  "sugerencias": [{k: r.get(k) for k in ("id", "tarea", "estado", "nota", "cuando")} for r in mias[-100:]]})
+                                  "sugerencias": [{k: r.get(k) for k in ("id", "tipo", "tarea", "titulo", "vence", "estado", "nota", "cuando")} for r in mias[-100:]]})
 
         def do_POST(self):  # noqa: N802
-            if self.path.partition("?")[0] != "/api/sugerir":
+            ruta = self.path.partition("?")[0]
+            if ruta not in ("/api/sugerir", "/api/pedir"):
                 return self._responder(404, {"ok": False, "error": "no hay tal ruta"})
             persona = self._persona()
             if not persona:
@@ -145,25 +164,38 @@ def manejador(eq: mod_equipo.Equipo):
                 return self._responder(400, {"ok": False, "error": "el cuerpo falta o es demasiado grande"})
             try:
                 datos = json.loads(self.rfile.read(largo))
-                tarea, motivo = str(datos["tarea"]), str(datos["motivo"])
+                if not isinstance(datos, dict):
+                    raise TypeError
+                if ruta == "/api/sugerir":
+                    pedido = (str(datos["tarea"]), str(datos["motivo"]))
+                else:
+                    pedido = (str(datos["titulo"]), str(datos.get("contexto", "")), str(datos.get("vence") or ""))
             except (ValueError, KeyError, TypeError):
-                return self._responder(400, {"ok": False, "error": "se esperaba {tarea, motivo}"})
-            with candado:  # una sugerencia cada 5 s por persona: una mano, no un guion
+                return self._responder(400, {"ok": False, "error": "se esperaba {tarea, motivo}" if ruta == "/api/sugerir"
+                                             else "se esperaba {titulo, contexto?, vence?}"})
+            with candado:  # una cada 5 s por persona: una mano, no un guion
                 ahora = time.monotonic()
                 if ahora - ultimo.get(persona, -99) < 5:
                     return self._responder(429, {"ok": False, "error": "más despacio"})
                 ultimo[persona] = ahora
-                registro, problema = mod_equipo.sugerir(eq, persona, tarea, motivo)
+                registro, problema = (mod_equipo.sugerir(eq, persona, *pedido) if ruta == "/api/sugerir"
+                                      else mod_equipo.pedir(eq, persona, *pedido))
             if registro is None:
                 return self._responder(400, {"ok": False, "error": problema})
-            threading.Thread(target=mod_equipo.avisar, args=(
-                f"{persona} sugiere subir {registro['tarea']}", f"{registro['titulo'][:80]}: {registro['motivo'][:140]}"), daemon=True).start()
+            titulo = (f"{persona} sugiere subir {registro['tarea']}" if registro["tipo"] == "prioridad"
+                      else f"{persona} te pide una tarea")
+            texto = (f"{registro['titulo'][:80]}: {registro['motivo'][:140]}" if registro["tipo"] == "prioridad"
+                     else f"{registro['titulo'][:120]}" + (f" (para el {registro['vence']})" if registro["vence"] else ""))
+            threading.Thread(target=mod_equipo.avisar, args=(titulo, texto), daemon=True).start()
             self._responder(200, {"ok": True, "id": registro["id"]})
 
     return Manejo
 
 
 def _cuadro(r: dict) -> str:
+    if r.get("tipo") == "tarea":
+        return (f"{r['id']}  {r['persona']} pide: {r['titulo'][:80]}" + (f" (para el {r['vence']})" if r.get("vence") else "")
+                + (f"\n      «{r['motivo']}»" if r["motivo"] else "") + f"  [{r['estado']}]")
     pri = "?" if r["prioridad"] is None else f"P{r['prioridad']}"
     return f"{r['id']}  {r['persona']} · {r['tarea']} ({pri}) {r['titulo'][:60]}\n      «{r['motivo']}»  [{r['estado']}]"
 
@@ -240,5 +272,6 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(problema)
     if o.json:
         return _comun.escribir_json({"sugerencia": r})
-    print(f"{r['id']}: {r['estado']}" + (f" (ahora P{r['prioridad_nueva']})" if "prioridad_nueva" in r else ""))
+    print(f"{r['id']}: {r['estado']}" + (f" (ahora P{r['prioridad_nueva']})" if "prioridad_nueva" in r else "")
+          + (f" como {r['tarea']}" if r.get("tipo") == "tarea" and r["estado"] == "aceptada" and r.get("tarea") else ""))
     return 0

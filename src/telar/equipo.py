@@ -1,9 +1,11 @@
 """El equipo: lo que una persona de confianza puede ver de tus tareas y pedirte.
 
-Marcelo (u otra persona) mira el estado de las tareas que marcaste para el equipo y te
-**sugiere** subir una prioridad. Nada más: no escribe en tus archivos ni habla con tus agentes.
-Las sugerencias quedan en una bandeja (un JSONL) que tú decides: aceptar cambia la prioridad
-con el CLI de tareas; rechazar la cierra con una nota para quien la hizo.
+Marcelo (u otra persona) mira el estado de las tareas que marcaste para el equipo y puede hacer
+dos cosas: **sugerir** subir una prioridad, o **pedirte** algo nuevo («Nico tiene que hacer la
+sesión 5 de GOA»). Nada más: no escribe en tus archivos ni habla con tus agentes. Ambas quedan
+en una bandeja (un JSONL) que tú decides: aceptar una sugerencia cambia la prioridad con el CLI
+de tareas; aceptar un pedido lo agrega como tarea tuya; rechazar cierra la entrada con una nota
+para quien la hizo.
 
 Qué se comparte, a propósito poco: de cada tarea con la etiqueta `equipo` (o la que diga
 `[equipo] etiqueta`), el título, estado, prioridad, fecha, proyecto y la línea de `avance`. **Nunca**
@@ -38,6 +40,9 @@ PUERTO = 8766
 #: tareas cerradas que siguen a la vista (días), para que Marcelo vea que se hizo lo que preguntó
 RECIENTES = 14
 MAX_MOTIVO = 500
+MAX_TITULO = 150
+#: lo que una persona puede tener esperando a la vez (sugerencias y pedidos): una mano, no un guion
+MAX_PENDIENTES = 10
 _ID = re.compile(r"^T\d{1,5}$")
 _CAMPO = re.compile(r"^([a-zñ_]+):\s*(.*)$")
 
@@ -169,11 +174,13 @@ def sugerir(eq: Equipo, persona: str, tarea: str, motivo: str, *, ahora: datetim
     registros = leer_bandeja(eq)
     if any(r["persona"] == persona and r["tarea"] == tarea and r["estado"] == "pendiente" for r in registros):
         return None, "ya hay una sugerencia tuya pendiente para esa tarea"
+    if sum(1 for r in registros if r["persona"] == persona and r["estado"] == "pendiente") >= MAX_PENDIENTES:
+        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a Nico: espera a que decida"
     ahora = ahora or datetime.datetime.now()
     registro = {
         "id": secrets.token_hex(4), "cuando": ahora.isoformat(timespec="seconds"), "persona": persona,
-        "tarea": tarea, "titulo": visible["titulo"], "prioridad": visible["prioridad"],
-        "motivo": motivo, "estado": "pendiente", "nota": "",
+        "tipo": "prioridad", "tarea": tarea, "titulo": visible["titulo"], "prioridad": visible["prioridad"],
+        "motivo": motivo, "vence": None, "estado": "pendiente", "nota": "",
     }
     registros.append(registro)
     _escribir_bandeja(eq, registros)
@@ -188,7 +195,19 @@ def resolver(eq: Equipo, ident: str, decision: str, nota: str = "") -> tuple[dic
     r = next((x for x in registros if x["id"] == ident and x["estado"] == "pendiente"), None)
     if r is None:
         return None, f"no hay sugerencia pendiente «{ident}»"
-    if decision == "aceptar":
+    if decision == "aceptar" and r.get("tipo") == "tarea":
+        if eq.todo is None:
+            return None, "falta [equipo] todo = \"…\" para agregar la tarea"
+        cmd = [str(eq.todo), "add", r["titulo"], "--pri", "2", "--tag", eq.etiqueta, "--origen", f"equipo:{r['persona']}",
+               "--contexto", f"Pedido de {r['persona']} ({r['cuando'][:10]}). {r['motivo']}".strip()]
+        if r.get("vence"):
+            cmd += ["--due", r["vence"]]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if p.returncode != 0:
+            return None, (p.stderr.strip() or p.stdout.strip() or "todo falló")[-300:]
+        m = re.search(r"\bT\d+\b", p.stdout)
+        r["tarea"] = m.group(0) if m else ""
+    elif decision == "aceptar":
         actual = next((t for t in tareas_visibles(eq) if t["id"] == r["tarea"]), None)
         if actual is None or actual["prioridad"] is None:
             return None, "la tarea ya no se comparte o no tiene prioridad"
@@ -206,6 +225,39 @@ def resolver(eq: Equipo, ident: str, decision: str, nota: str = "") -> tuple[dic
     r["resuelta"] = datetime.datetime.now().isoformat(timespec="seconds")
     _escribir_bandeja(eq, registros)
     return r, ""
+
+
+def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str = "",
+          *, ahora: datetime.datetime | None = None) -> tuple[dict | None, str]:
+    """Anota que `persona` le pide a Nico una tarea nueva. (registro, "") o (None, por qué no)."""
+    titulo = " ".join(titulo.split())
+    contexto = " ".join(contexto.split())
+    if not 5 <= len(titulo) <= MAX_TITULO:
+        return None, f"lo que pides va de 5 a {MAX_TITULO} caracteres"
+    if len(contexto) > MAX_MOTIVO:
+        return None, f"el contexto no puede pasar de {MAX_MOTIVO} caracteres"
+    ahora = ahora or datetime.datetime.now()
+    if vence:
+        try:
+            fecha = datetime.date.fromisoformat(vence)
+        except ValueError:
+            return None, "la fecha va como AAAA-MM-DD"
+        if fecha < ahora.date():
+            return None, "esa fecha ya pasó"
+    registros = leer_bandeja(eq)
+    if any(r["persona"] == persona and r.get("tipo") == "tarea" and r["estado"] == "pendiente"
+           and r["titulo"].lower() == titulo.lower() for r in registros):
+        return None, "ya tienes ese pedido pendiente"
+    if sum(1 for r in registros if r["persona"] == persona and r["estado"] == "pendiente") >= MAX_PENDIENTES:
+        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a Nico: espera a que decida"
+    registro = {
+        "id": secrets.token_hex(4), "cuando": ahora.isoformat(timespec="seconds"), "persona": persona, "tipo": "tarea",
+        "tarea": "", "titulo": titulo, "prioridad": None, "motivo": contexto, "vence": vence or None,
+        "estado": "pendiente", "nota": "",
+    }
+    registros.append(registro)
+    _escribir_bandeja(eq, registros)
+    return registro, ""
 
 
 def avisar(titulo: str, texto: str) -> None:

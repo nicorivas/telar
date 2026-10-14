@@ -78,13 +78,17 @@ export class Modelo {
         this.firma = ''; this.cambio.fire();
         if (!nuevas.length) return;
         const uno = nuevas.length === 1 ? nuevas[0] : undefined;
-        const texto = uno ? `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`
-            : `${nuevas.length} sugerencias del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tarea).join(', ')}`;
-        void vscode.window.showWarningMessage(`telar · ${texto}`, 'Ver', ...(uno ? ['Aceptar'] : [])).then(async eleccion => {
+        const texto = uno
+            ? (uno.tipo === 'tarea'
+                ? `${uno.persona} te pide una tarea: «${uno.titulo.slice(0, 80)}»${uno.vence ? ` (para el ${uno.vence})` : ''}`
+                : `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`)
+            : `${nuevas.length} cosas del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', ')}`;
+        void vscode.window.showWarningMessage(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
             if (eleccion === 'Ver') await vscode.commands.executeCommand('telar.equipo');
-            else if (eleccion === 'Aceptar' && uno) {
+            else if ((eleccion === 'Aceptar' || eleccion === 'Agregar') && uno) {
                 const a = await cli.equipoResolver(remoto, 'aceptar', uno.id);
-                void vscode.window.showInformationMessage(a.datos ? `telar: ${uno.tarea} sube de prioridad` : `telar: no se pudo: ${a.error ?? ''}`);
+                void vscode.window.showInformationMessage(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`
+                    : uno.tipo === 'tarea' ? `telar: agregada${a.datos.sugerencia.tarea ? ` como ${a.datos.sugerencia.tarea}` : ''}` : `telar: ${uno.tarea} sube de prioridad`);
                 await this.leerEquipo();
             }
         });
