@@ -6,6 +6,8 @@ import stat
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace as N
+from unittest import mock
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -34,7 +36,7 @@ def montar(tmp: Path, tareas: dict[str, dict]) -> mod.Equipo:
     todo = tmp / "todo"
     todo.write_text("#!/bin/sh\necho \"$@\" >> " + str(tmp / "todo.log") + "\n", encoding="utf-8")
     todo.chmod(todo.stat().st_mode | stat.S_IXUSR)
-    return mod.Equipo(tareas=carpeta, todo=todo, personas={"marcelo": "secreto"}, bandeja=tmp / "est" / "sug.jsonl")
+    return mod.Equipo(tareas=carpeta, todo=todo, personas={"marcelo": "secreto"}, bandeja=tmp / "est" / "sug.jsonl", semantica="")
 
 
 class Visibles(unittest.TestCase):
@@ -154,6 +156,57 @@ class Existentes(unittest.TestCase):
             self.assertTrue(hecho["nota"].endswith("va para el jueves"))
             self.assertNotIn("CUERPO", hecho["nota"])
             self.assertIn("T123", mod.resolver(eq, mod.pedir(eq, "marcelo", "Otro pedido distinto")[0]["id"], "existe", "", "")[1])
+
+
+class Semantica(unittest.TestCase):
+    HOY = datetime.date(2026, 10, 14)
+
+    def montar(self, tmp):
+        eq = montar(tmp, {
+            "T1": {"titulo": "Programa de otoño del cliente GOA", "tags": "equipo", "extra": "creada: 2026-10-10\n"},
+            "T2": {"titulo": "Cierre de contrato con Anasac", "tags": "privada", "extra": "creada: 2026-10-12\n"},
+            "T3": {"titulo": "Tarea vieja sin relación", "extra": "creada: 2026-08-01\n"},
+        })
+        # el cuerpo de T1 dice de qué trata de verdad; el de T3 no debería viajar (tiene 2 meses)
+        (eq.tareas / "T1.md").write_text(TAREA.format(titulo="Programa de otoño del cliente GOA", estado="activa", pri=2, tags="equipo",
+                                                      extra="creada: 2026-10-10\n").replace("CUERPO PRIVADO que no debe salir", "Dictar la quinta sesión del programa"), encoding="utf-8")
+        return mod.Equipo(**{**eq.__dict__, "semantica": "haiku"})
+
+    def test_recientes_trae_descripcion_solo_de_las_ultimas_dos_semanas(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = self.montar(Path(d))
+            vistas = {t["id"]: t for t in mod.recientes(eq, self.HOY)}
+            self.assertEqual(sorted(vistas), ["T1", "T2"])
+            self.assertIn("quinta sesión", vistas["T1"]["descripcion"])
+
+    def test_el_modelo_encuentra_lo_que_las_palabras_no(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = self.montar(Path(d))
+            with mock.patch("subprocess.run", return_value=N(returncode=0, stdout='{"ids": ["T1", "T9"]}', stderr="")) as run:
+                ya = mod.parecidas(eq, "Hacer la sesión 5 de GOA", "", self.HOY)
+            self.assertEqual([(t["id"], t["via"], t["compartida"]) for t in ya], [("T1", "sentido", True)])  # T9 no era candidata
+            orden = run.call_args.args[0]
+            self.assertEqual(orden[0], "claude")
+            prompt = orden[2]
+            self.assertIn("quinta sesión", prompt)       # la descripción viaja
+            self.assertNotIn("Tarea vieja", prompt)       # lo de hace 2 meses no
+            self.assertEqual(orden[orden.index("--tools") + 1], "")  # el modelo no tiene herramientas
+
+    def test_si_el_modelo_falla_quedan_las_palabras(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = self.montar(Path(d))
+            for falla in (N(returncode=1, stdout="", stderr="x"), N(returncode=0, stdout="no es json", stderr="")):
+                with mock.patch("subprocess.run", return_value=falla):
+                    self.assertEqual(mod.parecidas(eq, "Programa de otoño GOA", "", self.HOY)[0]["via"], "palabras")
+            with mock.patch("subprocess.run", side_effect=OSError):
+                self.assertEqual(mod.parecidas(eq, "algo que no se parece a nada", "", self.HOY), [])
+
+    def test_sin_modelo_configurado_no_se_llama(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = mod.Equipo(**{**self.montar(Path(d)).__dict__, "semantica": ""})
+            with mock.patch("subprocess.run") as run:
+                mod.parecidas(eq, "Hacer la sesión 5 de GOA", "", self.HOY)
+            run.assert_not_called()
 
 
 class Servidor(unittest.TestCase):

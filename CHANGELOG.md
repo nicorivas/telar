@@ -8,6 +8,11 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar equipo`: «does this request already exist?» now also compares **meaning**, not just words. A small model (`[equipo] semantica`,
+  default `haiku`; `""` turns it off) reads the title and short description of the tasks with activity in the last 14 days
+  (`dias`, at most 40) plus the ones the keywords matched, and says which already cover the request. It runs with no tools, outside the repo,
+  and only the ids it returns count (and only if they were candidates). If the model fails, the keyword check still runs. The page says
+  «revisando…» while it thinks (3–6 s).
 - `telar equipo`: a request for a new task first checks whether it already exists. If a task the team sees looks like the same
   thing (same words, same numbers: «sesión 5» ≠ «sesión 6»), the person gets its state back (`409` + `existe`) instead of a new
   request, and can insist with `aunque_exista`. A look-alike the team doesn't see is kept for you: the dashboard lists it under

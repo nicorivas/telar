@@ -109,6 +109,7 @@ function yaExiste(lista) {
 }
 $('p-enviar').onclick = () => enviarPedido(false);
 async function enviarPedido(insistir) {
+  $('msg').innerHTML = '<span class="dim">revisando si Nico ya tiene algo sobre esto…</span>';
   const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value, aunque_exista: insistir }) });
   const d = await r.json();
   if (r.status === 409 && d.existe) { yaExiste(d.existe); return; }
@@ -123,6 +124,7 @@ cargar(); setInterval(() => { if (!document.hidden && !document.activeElement.ma
 
 def manejador(eq: mod_equipo.Equipo):
     ultimo: dict[str, float] = {}
+    ultimo_chequeo: dict[str, float] = {}
     candado = threading.Lock()
 
     class Manejo(BaseHTTPRequestHandler):
@@ -183,10 +185,21 @@ def manejador(eq: mod_equipo.Equipo):
             except (ValueError, KeyError, TypeError):
                 return self._responder(400, {"ok": False, "error": "se esperaba {tarea, motivo}" if ruta == "/api/sugerir"
                                              else "se esperaba {titulo, contexto?, vence?}"})
-            if ruta == "/api/pedir" and not insistir:
-                # antes de molestar a Nico: ¿ya hay una tarea sobre esto que el equipo ve? Se le contesta su estado
-                ya = [t for t in mod_equipo.duplicadas(eq, pedido[0]) if t["compartida"]]
-                if ya:
+            parecidas: list[dict] | None = None
+            if ruta == "/api/pedir":
+                with candado:  # revisar cuesta una llamada a un modelo: no más de una cada 3 s por persona.
+                    ahora = time.monotonic()  # Insistir tras un aviso ya pagó su revisión: solo cuenta el límite de los registrados
+                    if insistir:
+                        if ahora - ultimo.get(persona, -99) < 5:
+                            return self._responder(429, {"ok": False, "error": "más despacio"})
+                    elif ahora - ultimo_chequeo.get(persona, -99) < 3:
+                        return self._responder(429, {"ok": False, "error": "más despacio"})
+                    else:
+                        ultimo_chequeo[persona] = ahora
+                # antes de molestar a Nico: ¿ya hay una tarea sobre esto (por palabras o por sentido)? Si el equipo la ve, se le contesta su estado
+                parecidas = mod_equipo.parecidas(eq, pedido[0], pedido[1])
+                ya = [t for t in parecidas if t["compartida"]]
+                if ya and not insistir:
                     return self._responder(409, {"ok": False, "existe": [
                         {k: t[k] for k in ("id", "titulo", "estado", "prioridad", "vence", "avance", "espera", "cerrada")} | {"resumen": mod_equipo.resumen_de(t)}
                         for t in ya[:3]], "error": "ya hay una tarea parecida; si es otra cosa, envíalo con aunque_exista"})
@@ -196,7 +209,7 @@ def manejador(eq: mod_equipo.Equipo):
                     return self._responder(429, {"ok": False, "error": "más despacio"})
                 ultimo[persona] = ahora
                 registro, problema = (mod_equipo.sugerir(eq, persona, *pedido) if ruta == "/api/sugerir"
-                                      else mod_equipo.pedir(eq, persona, *pedido))
+                                      else mod_equipo.pedir(eq, persona, *pedido, similares=parecidas))
             if registro is None:
                 return self._responder(400, {"ok": False, "error": problema})
             titulo = (f"{persona} sugiere subir {registro['tarea']}" if registro["tipo"] == "prioridad"
