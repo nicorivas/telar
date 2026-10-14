@@ -60,12 +60,12 @@ def validar(datos: object) -> str:
 
 COLORES = ("azul", "amarillo", "verde", "rojo", "magenta", "cian", "violeta")
 TIPOS_ACCION = ("comando", "hilo", "abrir")
-MAX_ACCIONES = 11
+MAX_ACCIONES = 12
 
 
 def _acciones(lista: object) -> str:
     """Los botones de una página: correr un comando, llevar al hilo o abrir un enlace."""
-    # once: ⏎ para la principal y del 1 al 9 para las demás; la última no tiene tecla, pero se pincha
+    # doce: ⏎ para la principal y del 1 al 9 para las demás; las últimas no tienen tecla, pero se pinchan
     if not isinstance(lista, list) or len(lista) > MAX_ACCIONES:
         return f"se esperaba una lista de hasta {MAX_ACCIONES} acciones"
     principales = 0
