@@ -819,7 +819,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
-        "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas",
+        "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

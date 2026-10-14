@@ -119,6 +119,11 @@
         "category": "telar"
       },
       {
+        "command": "telar.equipo",
+        "title": "sugerencias del equipo (aceptar o rechazar)",
+        "category": "telar"
+      },
+      {
         "command": "telar.hoy",
         "title": "dashboard (lo abre, o vuelve al terminal)",
         "category": "telar",
@@ -669,6 +674,11 @@
           "default": 2000,
           "minimum": 250,
           "markdownDescription": "How often (ms) to run `telar hilos --json --sin-ficha` for the thread list."
+        },
+        "telar.equipoRemoto": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Where the team suggestions live (`telar equipo`): the name of a machine in `[remotos]` to read them over ssh, `local` for this machine, or empty to turn the feature off. New suggestions raise a notification and a ◆ tab on the dashboard."
         },
         "telar.intervaloFicha": {
           "type": "number",

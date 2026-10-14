@@ -472,6 +472,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());
+    orden('telar.equipo', () => hoy.abrirEquipo());
     orden('telar.seccion', (clave?: string) => { if (typeof clave === 'string' && clave) void hoy.abrirSeccion(clave); });
     orden('telar.conectarCalendario', conectarCalendario);
     orden('telar.tareas', async () => {

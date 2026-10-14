@@ -33,6 +33,9 @@ export class Modelo {
      *  aparte, para que un servidor lento no frene la lista */
     buzones: cli.JsonBuzon[] = [];
     private leyendoCorreo = false;
+    /** lo que el equipo sugiere y Nico no ha decidido (`telar equipo`); vacío si la función está apagada */
+    sugerencias: cli.JsonSugerencia[] = [];
+    private sugerenciasVistas: Set<string> | undefined;
     hayRemotos = false;
 
     readonly cambio = new vscode.EventEmitter<void>();
@@ -57,6 +60,34 @@ export class Modelo {
             const r = await cli.correo();
             if (r.datos) { this.buzones = r.datos.remotos; this.firma = ''; this.cambio.fire(); }
         } finally { this.leyendoCorreo = false; }
+    }
+
+    get equipoRemoto(): string { return String(cli.ajuste('equipoRemoto', '')).trim(); }
+
+    /** Lee las sugerencias del equipo y avisa de las nuevas con una notificación que no se va sola:
+     *  la primera lectura avisa de lo que ya esperaba, para que nada pendiente pase sin verse. */
+    async leerEquipo(): Promise<void> {
+        const remoto = this.equipoRemoto;
+        if (!remoto) { this.sugerencias = []; return; }
+        const r = await cli.equipoPendientes(remoto);
+        if (!r.datos) return;
+        const nuevas = r.datos.sugerencias.filter(x => !this.sugerenciasVistas?.has(x.id));
+        const primera = this.sugerenciasVistas === undefined;
+        this.sugerenciasVistas = new Set([...(this.sugerenciasVistas ?? []), ...r.datos.sugerencias.map(x => x.id)]);
+        this.sugerencias = r.datos.sugerencias;
+        this.firma = ''; this.cambio.fire();
+        if (!nuevas.length) return;
+        const uno = nuevas.length === 1 ? nuevas[0] : undefined;
+        const texto = uno ? `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`
+            : `${nuevas.length} sugerencias del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tarea).join(', ')}`;
+        void vscode.window.showWarningMessage(`telar · ${texto}`, 'Ver', ...(uno ? ['Aceptar'] : [])).then(async eleccion => {
+            if (eleccion === 'Ver') await vscode.commands.executeCommand('telar.equipo');
+            else if (eleccion === 'Aceptar' && uno) {
+                const a = await cli.equipoResolver(remoto, 'aceptar', uno.id);
+                void vscode.window.showInformationMessage(a.datos ? `telar: ${uno.tarea} sube de prioridad` : `telar: no se pudo: ${a.error ?? ''}`);
+                await this.leerEquipo();
+            }
+        });
     }
 
     /** El correo de un hilo remoto: su dirección y lo que le espera. */
@@ -98,6 +129,7 @@ export class Modelo {
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
                 }
                 if (this.hayRemotos) void this.leerCorreo();
+                void this.leerEquipo();
                 this.ultimaFicha = Date.now();
                 this.fichas = new Map(d.hilos.map(h => [h.nombre, h.ficha ?? null]));
             }

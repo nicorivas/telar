@@ -490,6 +490,17 @@ export const mensajesBus = (n = 60) =>
 export const soltarMensaje = (id: string) =>
     telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);
 
+/** Una sugerencia del equipo (`telar equipo sugerencias --json`): alguien pide subir una prioridad. */
+export interface JsonSugerencia {
+    id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;
+    motivo: string; estado: string; nota: string;
+}
+const remotoEquipo = (remoto: string) => (remoto && remoto !== 'local' ? ['--remoto', remoto] : []);
+export const equipoPendientes = (remoto: string) =>
+    telarJson<{ sugerencias: JsonSugerencia[] }>(['equipo', 'sugerencias', ...remotoEquipo(remoto)], 30000);
+export const equipoResolver = (remoto: string, verbo: 'aceptar' | 'rechazar', id: string, nota = '') =>
+    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...remotoEquipo(remoto)], 40000);
+
 export const correo = (cuerpos = false) =>
     telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);
 

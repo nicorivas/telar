@@ -620,6 +620,24 @@ a la conversación por los ganchos del agente (`telar agente instalar`), sin tec
 usa el bus si lo hay. El estado de cada hilo (máquina, atención) se publica y se escucha al instante.
 Diseño y pruebas: `docs/propuestas/bus.md`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
 
+## `[equipo]` — que alguien de confianza vea tus tareas y te sugiera prioridades
+
+```toml
+[equipo]
+tareas   = "~/Life/nico/proyectos/tareas"   # una tarea por archivo con front-matter (T123.md)
+todo     = "~/Life/nico/proyectos/todo"     # el CLI que cambia la prioridad al aceptar
+etiqueta = "equipo"                         # solo se comparten las tareas con esta etiqueta
+puerto   = 8766
+[equipo.personas]
+marcelo  = "…"                              # `telar equipo token marcelo` da una llave
+```
+
+Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de cada tarea etiquetada
+(y las cerradas en los últimos 14 días). Nunca el cuerpo ni la historia. `telar equipo servir` escucha
+en la IP de Tailscale (otro puerto que `telar web`); cada persona entra con su llave y puede solo leer
+y dejar una sugerencia (una cada 5 s). En VS Code, `telar.equipoRemoto` (`local`, o la máquina de
+`[remotos]` donde corre el servidor) enciende las notificaciones y la pestaña «equipo». Ver `telar equipo --help`.
+
 ## `[secciones]` — grupos propios en la lista de hilos
 
 ```toml

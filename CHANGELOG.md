@@ -8,6 +8,15 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar equipo`: a person you trust (a teammate) reads the tasks you tag `equipo` — title, state, priority, date, project and
+  the `avance` line, never the body or history — and suggests raising a priority. `telar equipo servir` is its own small
+  server (own port, own per-person token, no power over your agents); every suggestion lands in a tray, notifies the
+  laptop (`telar enlace notificar`), and `telar equipo aceptar|rechazar ID` decides it (accepting raises the priority one
+  level with the tasks CLI and leaves a note on the task). VS Code: with `telar.equipoRemoto` set, a warning notification
+  (with «Ver» / «Aceptar»), a red row on the dashboard and an «equipo ◆N» tab until each one is decided. Config:
+  `[equipo]` (docs/configuracion.md).
+- `telar web`: the first launch of each session shows a full-screen ASCII loom that weaves the screen in colour and
+  clears a framed «« t e l a r »» in the middle (tap to skip; off with «reduce motion»).
 - `telar web`: the installed app is an Android share target (`share_target` in the manifest): «compartir» → telar opens a
   screen to pick which threads receive the link (plus «lecturas», the reading feed) with an optional note; nothing is sent until
   you tap «enviar». New `/api/lectura` (`kichoro/bin/lecturas dejar`).
