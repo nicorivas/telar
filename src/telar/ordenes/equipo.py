@@ -205,7 +205,7 @@ def main(argv: list[str], ctx) -> int:
         if o.verbo == "servir":
             return _comun.queja("servir corre en la máquina donde viven las tareas, no por ssh")
         sub = [o.verbo, *([o.valor] if o.valor else []), *(["--todas"] if o.todas else []),
-               *(["--nota", o.nota] if o.nota else []), "--json"]
+               *(["--nota", o.nota] if o.nota else []), *(["--json"] if o.json else [])]
         salida, problema = _por_ssh(ctx, o.remoto, sub)
         if problema:
             return _comun.queja(problema)
