@@ -64,34 +64,37 @@ export async function verEntrada(id?: string): Promise<void> {
     if (!x && lista.length === 1) x = lista[0];
     if (!x) {
         const e = await vscode.window.showQuickPick(lista.map(y => ({
-            label: `${y.persona} · ${y.titulo}`, description: y.tipo === 'tarea' ? 'te pide una tarea' : `sugiere subir ${y.tarea}`, id: y.id })),
-            { title: 'Lo que pide el equipo', placeHolder: 'elige una' });
+            label: `${y.persona}: ${y.titulo.slice(0, 80)}`, description: y.tipo === 'tarea' ? 'pide una tarea' : `subir ${y.tarea}`, id: y.id })),
+            { title: 'Lo que pide el equipo', placeHolder: 'elige una entrada' });
         x = lista.find(y => y.id === e?.id);
     }
     if (!x) return;
     const pedido = x.tipo === 'tarea';
-    type Item = vscode.QuickPickItem & { accion?: () => Promise<void> };
-    const items: Item[] = [];
-    if (x.motivo) items.push({ label: x.motivo.replace(/\s+/g, ' ').slice(0, 300), kind: vscode.QuickPickItemKind.Separator });
-    const revisando = x.revisando ? ` · ${x.revisando.quien} la revisa desde ${fecha(x.revisando.desde)}` : '';
-    items.push({
-        label: `$(comment-discussion) Preguntarle a Gestión${pedido ? ': ¿ya existe? que lo procese y decida' : ''}`,
-        description: x.revisando ? `ya se le encargó${revisando}` : 'revisa si existe, y decide si es nueva, actualiza una existente o no corresponde',
-        accion: () => preguntarAGestion(x!) });
-    if (pedido) {
-        items.push({ label: '$(add) Agregar como tarea', description: 'P2, etiquetada equipo' + (x.vence ? `, para el ${x.vence}` : ''), accion: () => decidir(x!, 'aceptar') });
-        for (const t of x.similares ?? []) {
-            items.push({ label: `$(link) Es ${t.id}: contestarle su estado`, description: `${t.titulo.slice(0, 70)} · ${t.estado}${t.compartida ? '' : ' · no compartida'}`,
-                accion: () => decidir(x!, 'existe', t.id) });
-        }
-        items.push({ label: '$(trash) Descartar…', description: 'no se agrega nada; puedes dejarle una nota', accion: () => decidir(x!, 'rechazar') });
-    } else {
-        const nueva = x.prioridad === null ? '' : ` (P${x.prioridad} → P${Math.max(0, x.prioridad - 1)})`;
-        items.push({ label: `$(arrow-up) Subir la prioridad de ${x.tarea}${nueva}`, accion: () => decidir(x!, 'aceptar') });
-        items.push({ label: '$(close) Rechazar…', description: 'puedes dejarle una nota', accion: () => decidir(x!, 'rechazar') });
+    // el detalle en un diálogo: se lee entero (un menú desplegable corta el texto y confunde un dato con una acción)
+    const cuando = fecha(x.cuando);
+    const parecidas = (x.similares ?? []).map(t =>
+        `  · ${t.id} «${t.titulo.slice(0, 90)}» — ${t.estado}${t.prioridad === null ? '' : `, P${t.prioridad}`}${t.vence ? `, vence ${t.vence}` : ''}${t.compartida ? '' : ' (no compartida)'}`);
+    const detalle = [
+        pedido ? `«${x.titulo}»${x.vence ? `\nPara el ${x.vence}.` : ''}`
+               : `Tarea ${x.tarea} «${x.titulo}»${x.prioridad === null ? '' : ` (hoy P${x.prioridad}; subiría a P${Math.max(0, x.prioridad - 1)})`}`,
+        ...(x.motivo ? [`${pedido ? 'Contexto' : 'Motivo'}: ${x.motivo.replace(/\s+/g, ' ')}`] : []),
+        ...(parecidas.length ? ['¿Ya existe?', ...parecidas] : []),
+        ...(x.revisando ? [`${x.revisando.quien} la revisa desde ${fecha(x.revisando.desde)}.`] : []),
+    ].join('\n\n');
+    const GESTION = x.revisando ? 'Preguntarle de nuevo a Gestión' : 'Preguntarle a Gestión';
+    const botones = pedido
+        ? [GESTION, 'Agregar como tarea', ...(parecidas.length ? ['Ya existe…'] : []), 'Descartar…']
+        : [GESTION, `Subir prioridad de ${x.tarea}`, 'Rechazar…'];
+    const elegido = await vscode.window.showInformationMessage(
+        `${x.persona} ${pedido ? 'te pide una tarea' : 'sugiere subir una prioridad'} · ${cuando}`,
+        { modal: true, detail: detalle }, ...botones);
+    if (!elegido) return;
+    if (elegido === GESTION) await preguntarAGestion(x);
+    else if (elegido === 'Agregar como tarea' || elegido.startsWith('Subir prioridad')) await decidir(x, 'aceptar');
+    else if (elegido === 'Descartar…' || elegido === 'Rechazar…') await decidir(x, 'rechazar');
+    else if (elegido === 'Ya existe…') {
+        const t = await vscode.window.showQuickPick((x.similares ?? []).map(y => ({ label: y.id, description: `${y.titulo.slice(0, 80)} · ${y.estado}`, id: y.id })),
+            { title: 'Contestarle el estado de cuál tarea', placeHolder: x.persona + ' recibirá su estado' });
+        if (t) await decidir(x, 'existe', t.id);
     }
-    const elegido = await vscode.window.showQuickPick(items, {
-        title: pedido ? `${x.persona} te pide: ${x.titulo}${x.vence ? ` (para el ${x.vence})` : ''}` : `${x.persona} sugiere subir ${x.tarea} · ${x.titulo}`,
-        placeHolder: fecha(x.cuando) + revisando, ignoreFocusOut: true });
-    await elegido?.accion?.();
 }
