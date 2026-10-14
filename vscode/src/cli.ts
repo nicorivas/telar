@@ -193,6 +193,8 @@ export interface JsonFila {
     destacada?: boolean;
     /** la persona la marcó con estrella */
     estrella?: boolean;
+    /** las etiquetas de la tarea; «equipo» es la que la comparte con el equipo (`telar equipo`) */
+    etiquetas?: string[];
     /** de un proveedor: la carpeta que la tarea dice que es su proyecto, haya o no hilo ahí */
     proyecto?: string;
 }

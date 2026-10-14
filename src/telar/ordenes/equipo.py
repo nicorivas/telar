@@ -47,6 +47,9 @@ textarea,input{font:inherit;color:inherit;background:transparent;border:1px soli
 <h1>equipo</h1><div class="dim" id="quien"></div><div id="msg"></div><div id="lista"></div>
 <script>
 let token = '';
+// el enlace que se le manda a la persona lleva su llave tras el # (no viaja al servidor): se guarda y se borra de la barra
+const enlace = /[#&]k=([^&]+)/.exec(location.hash);
+if (enlace) { try { localStorage.setItem('equipo.token', decodeURIComponent(enlace[1])); } catch (e) {} history.replaceState(null, '', location.pathname); }
 try { token = localStorage.getItem('equipo.token') || ''; } catch (e) {}
 const $ = (id) => document.getElementById(id);
 const hdr = () => ({ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' });

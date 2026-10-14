@@ -14,7 +14,8 @@ workflow refuses to run if the two disagree.
   laptop (`telar enlace notificar`), and `telar equipo aceptar|rechazar ID` decides it (accepting raises the priority one
   level with the tasks CLI and leaves a note on the task). VS Code: with `telar.equipoRemoto` set, a warning notification
   (with «Ver» / «Aceptar»), a red row on the dashboard and an «equipo ◆N» tab until each one is decided. Config:
-  `[equipo]` (docs/configuracion.md).
+  `[equipo]` (docs/configuracion.md). The task list gets a ○/◉ to share a task from the dashboard; the person's link carries
+  their key after the `#`; `servidor/telar-equipo.service` runs it.
 - `telar web`: the first launch of each session shows a full-screen ASCII loom that weaves the screen in colour and
   clears a framed «« t e l a r »» in the middle (tap to skip; off with «reduce motion»).
 - `telar web`: the installed app is an Android share target (`share_target` in the manifest): «compartir» → telar opens a

@@ -22,7 +22,7 @@ import { CSS_PLAN, columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, n
 import { CSS_PROY, DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
 import { CSS_AHORA, Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
 import type { EventoCal } from './plan';
-import { alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
+import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
@@ -521,7 +521,8 @@ export class PanelHoy {
                 + `<span class="pri">${p.enCurso ? '●' : ''}</span>`
                 + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
                     : '<span class="proy-t dim">—</span>') + resp
-                + `<span class="desc">${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
+                // compartida con el equipo (etiqueta «equipo»): ◉ la deja de compartir, ○ al pasar el cursor la comparte
+                + `<span class="desc">${ficha && modelo.equipoRemoto ? `<span class="eq${p.fila.etiquetas?.includes('equipo') ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${p.fila.etiquetas?.includes('equipo') ? 'compartida con el equipo: clic para dejar de compartirla' : 'clic: compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${p.fila.etiquetas?.includes('equipo') ? '◉' : '○'}</span> ` : ''}${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
                 + `${esc(limpiarMd(p.texto))}</span>`
                 // el atraso es un botón: reagendar lo que venció sin abrir la ficha
                 + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
@@ -2066,6 +2067,10 @@ export class PanelHoy {
             case 'ahora-elegir': this.ahoraElegir = !this.ahoraElegir; this.renderAhora(); break;
             case 'ahora-evento': if (m.valor) this.ahoraAlEvento(m.valor); break;
             case 'ahora-dia': if (m.valor) await this.ahoraOtroDia(Number(m.valor) || 0); break;
+            case 'equipo-tarea': if (m.valor && await alternarEquipo(m.valor)) {
+                await this.actualizar(true);
+                if (this.pantalla === 'revisar') this.renderRevisar();
+            } break;
             case 'estrella-tarea': if (m.valor && await alternarEstrella(m.valor)) {
                 await this.actualizar(true);
                 if (this.pantalla === 'revisar') this.renderRevisar();

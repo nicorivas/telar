@@ -1,0 +1,24 @@
+# telar equipo como servicio de usuario: la página donde el equipo ve las tareas compartidas y sugiere prioridades.
+#
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-equipo
+#   Ver cómo va:  systemctl --user status telar-equipo   ·   journalctl --user -u telar-equipo -f
+#
+# Solo lee las tareas con la etiqueta «equipo» y recibe sugerencias; no puede escribirle a ningún agente.
+
+[Unit]
+Description=telar equipo: tareas compartidas y sugerencias de prioridad, por Tailscale
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; echo "tailscale no tiene IP todavía" >&2; exit 1'
+ExecStart=%h/.local/bin/telar equipo servir
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

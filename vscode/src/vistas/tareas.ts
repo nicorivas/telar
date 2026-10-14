@@ -180,21 +180,27 @@ export async function asignar(valor: string, actual: string, persona: string): P
     return true;
 }
 
-/** Poner o quitar la estrella de una tarea: la acción del proveedor con `rol: estrella`. */
-export async function alternarEstrella(valor: string): Promise<boolean> {
+/** Correr la acción de una tarea que tiene ese `rol` (estrella, equipo…) sin abrir su ficha. */
+async function alternarPorRol(valor: string, rol: string, queEs: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
     const ficha = await cli.tarea(id, proveedor);
-    const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'estrella') ?? -1;
+    const k = ficha.datos?.acciones?.findIndex(a => a.rol === rol) ?? -1;
     if (k < 0) {
-        void vscode.window.showWarningMessage(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece estrella`}`);
+        void vscode.window.showWarningMessage(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece ${queEs}`}`);
         return false;
     }
     const r = await cli.accionTarea(id, proveedor, k, '');
     olvidarDia();
-    if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude cambiar la estrella de ${id}`}`); return false; }
-    vscode.window.setStatusBarMessage(`${id}: ${ficha.datos?.acciones?.[k].nombre ?? 'estrella'}`, 4000);
+    if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude cambiar ${queEs} de ${id}`}`); return false; }
+    vscode.window.setStatusBarMessage(`${id}: ${ficha.datos?.acciones?.[k].nombre ?? queEs}`, 4000);
     return true;
 }
+
+/** Poner o quitar la estrella de una tarea: la acción del proveedor con `rol: estrella`. */
+export const alternarEstrella = (valor: string) => alternarPorRol(valor, 'estrella', 'la estrella');
+
+/** Compartir una tarea con el equipo, o dejar de hacerlo: la acción con `rol: equipo` (`telar equipo`). */
+export const alternarEquipo = (valor: string) => alternarPorRol(valor, 'equipo', 'compartir con el equipo');
 
 export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
