@@ -60,13 +60,14 @@ def validar(datos: object) -> str:
 
 COLORES = ("azul", "amarillo", "verde", "rojo", "magenta", "cian", "violeta")
 TIPOS_ACCION = ("comando", "hilo", "abrir")
+MAX_ACCIONES = 11
 
 
 def _acciones(lista: object) -> str:
     """Los botones de una página: correr un comando, llevar al hilo o abrir un enlace."""
-    # diez: ⏎ para la principal y del 1 al 9 para las demás, que es lo que caben en teclas
-    if not isinstance(lista, list) or len(lista) > 10:
-        return "se esperaba una lista de hasta 10 acciones"
+    # once: ⏎ para la principal y del 1 al 9 para las demás; la última no tiene tecla, pero se pincha
+    if not isinstance(lista, list) or len(lista) > MAX_ACCIONES:
+        return f"se esperaba una lista de hasta {MAX_ACCIONES} acciones"
     principales = 0
     for i, a in enumerate(lista):
         if not isinstance(a, dict) or not isinstance(a.get("nombre"), str) or not a["nombre"].strip():
