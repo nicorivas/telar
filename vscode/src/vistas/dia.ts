@@ -536,8 +536,8 @@ export const CSS_DIA = `
   #revisar #tareas-t .tarea, #revisar .tareas-cab { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
   #revisar .estr { cursor: pointer; color: var(--dim); opacity: 0; } #revisar .tarea:hover .estr { opacity: 1; }
   #revisar .estr.on { color: var(--amarillo); opacity: 1; } #revisar .estr:hover { color: var(--amarillo); }
-  #revisar .eq { cursor: pointer; color: var(--dim); opacity: 0; } #revisar .tarea:hover .eq { opacity: 1; }
-  #revisar .eq.on { color: var(--cian); opacity: 1; } #revisar .eq:hover { color: var(--cian); }
+  #revisar .eq { cursor: pointer; color: var(--dim); opacity: .35; } #revisar .tarea:hover .eq { opacity: 1; }
+  #revisar .eq.on { color: var(--cian); opacity: 1; font-weight: 700; } #revisar .eq:hover { color: var(--cian); }
   #tareas-t-mas { margin-top: .5lh; color: var(--azul); }
   #revisar .tareas-cab { display: grid; gap: 1ch; padding: 0 1ch; color: var(--dim); margin-top: .5lh; }
   #revisar .tareas-cab [data-orden-c] { cursor: pointer; } #revisar .tareas-cab [data-orden-c]:hover { color: var(--fg); }

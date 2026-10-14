@@ -144,6 +144,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 # va siempre en la vista corta («esta semana»): la destaca el proveedor, o tiene estrella
                 "destacada": bool((item.datos or {}).get("destacada")),
                 "estrella": bool((item.datos or {}).get("estrella")),
+                # sus etiquetas: «equipo» la comparte con el equipo (la vista pinta ◉ u ○)
+                "etiquetas": [str(e) for e in (item.datos or {}).get("etiquetas") or []],
                 "color": str((item.datos or {}).get("color") or ""),
                 "pestana": pestanas.get(item.proveedor, ""),
                 # un evento: cuándo termina y dónde, para dibujarlo en su alto (el calendario del dashboard)

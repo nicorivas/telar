@@ -200,7 +200,17 @@ async function alternarPorRol(valor: string, rol: string, queEs: string): Promis
 export const alternarEstrella = (valor: string) => alternarPorRol(valor, 'estrella', 'la estrella');
 
 /** Compartir una tarea con el equipo, o dejar de hacerlo: la acción con `rol: equipo` (`telar equipo`). */
-export const alternarEquipo = (valor: string) => alternarPorRol(valor, 'equipo', 'compartir con el equipo');
+export async function alternarEquipo(valor: string): Promise<boolean> {
+    const [proveedor, id] = JSON.parse(valor) as string[];
+    // la acción dice qué hará: «○ compartir…» la comparte, «◉ dejar de compartir…» la deja
+    const antes = (await cli.tarea(id, proveedor)).datos?.acciones?.find(a => a.rol === 'equipo')?.nombre ?? '';
+    if (!await alternarPorRol(valor, 'equipo', 'compartir con el equipo')) return false;
+    const compartida = antes.startsWith('○');
+    void vscode.window.showInformationMessage(compartida
+        ? `telar: ${id} ahora la ve el equipo (título, estado, prioridad y fecha); pueden sugerir subirla.`
+        : `telar: ${id} dejó de compartirse con el equipo.`);
+    return true;
+}
 
 export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
