@@ -57,6 +57,19 @@ class Main(unittest.TestCase):
         self.assertTrue(sube.call_args.args[2].endswith(".png"))
         copia.assert_called_once_with("/h/telar-entrada/x.png")
 
+    def test_pegar_sin_imagen_sale_con_1_sin_tocar_tmux(self):
+        with mock.patch.object(imagen, "del_portapapeles", return_value="no hay imagen"), \
+             mock.patch("subprocess.run") as run:
+            self.assertEqual(imagen.main(["--pegar", "%3"], self.ctx("telar")), 1)
+        run.assert_not_called()
+
+    def test_pegar_con_imagen_escribe_la_ruta_en_el_panel(self):
+        with mock.patch.object(imagen, "del_portapapeles", side_effect=lambda d: d.write_bytes(b"x") and "" or ""), \
+             mock.patch.object(imagen, "subir", return_value=("/h/telar-entrada/a.png", "")), \
+             mock.patch("subprocess.run", return_value=N(returncode=0)) as run:
+            self.assertEqual(imagen.main(["--pegar", "%3"], self.ctx("telar")), 0)
+        self.assertEqual(run.call_args.args[0], ["tmux", "send-keys", "-t", "%3", "-l", "/h/telar-entrada/a.png"])
+
 
 if __name__ == "__main__":
     unittest.main()

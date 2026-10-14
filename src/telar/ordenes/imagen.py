@@ -1,8 +1,16 @@
-"""`telar imagen` — llevar una imagen de este computador a la máquina donde corre el hilo.
+r"""`telar imagen` — llevar una imagen de este computador a la máquina donde corre el hilo.
 
     telar imagen                    la imagen que hay en el portapapeles
     telar imagen captura.png        un archivo
     telar imagen --remoto telar     a qué máquina de [remotos] (por defecto, la única)
+    telar imagen --pegar %3         lo que hace Ctrl+V en un hilo de otra máquina (ver abajo)
+
+Para que Ctrl+V funcione tal cual en un hilo que vive en otra máquina, el tmux de ESTE computador lo
+engancha (`~/.tmux.conf`): si el panel corre mosh, `--pegar` sube la imagen del portapapeles y
+**escribe su ruta en el panel**; si no hay imagen, sale con 1 y el atajo manda el Ctrl+V de siempre:
+
+    bind -n C-v if-shell -F '#{==:#{pane_current_command},mosh-client}' \
+        "run-shell -b \"telar imagen --pegar #{pane_id} || tmux send-keys -t #{pane_id} C-v\"" "send-keys C-v"
 
 Claude Code pega imágenes (Ctrl+V) leyendo el portapapeles de la máquina donde corre; un hilo que
 vive en el servidor no ve el de tu laptop, y un terminal solo transporta texto. Esto sube la imagen
@@ -78,6 +86,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("archivo", nargs="?", default="", help="una imagen; sin él, la del portapapeles")
     p.add_argument("--remoto", default="", help="la máquina de [remotos] (por defecto, la única)")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
+    p.add_argument("--pegar", default="", metavar="PANEL",
+                   help="como Ctrl+V: sube la imagen del portapapeles y escribe su ruta en ese panel de tmux; sin imagen, sale con 1")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -96,13 +106,19 @@ def main(argv: list[str], ctx) -> int:
             origen = Path(tmp) / "portapapeles.png"
             problema = del_portapapeles(origen)
             if problema:
-                return _comun.queja(problema)
+                return 1 if o.pegar else _comun.queja(problema)  # sin imagen, --pegar deja que el Ctrl+V siga
             nombre = f"portapapeles-{ahora}.png"
         if origen.stat().st_size > MAX_BYTES:
             return _comun.queja(f"la imagen pesa más de {MAX_BYTES // (1024 * 1024)} MB")
         ruta, problema = subir(remotos[0], origen, nombre)
     if problema:
+        if o.pegar:  # no hay a quién quejarse: el atajo corre sin terminal
+            subprocess.run(["tmux", "display-message", "-d", "4000", f"telar imagen: no se subió: {problema}"], capture_output=True)
+            return 0
         return _comun.queja(f"no se subió: {problema}")
+    if o.pegar:
+        # la ruta como texto, sin Enter: la persona la ve en su input y decide
+        return subprocess.run(["tmux", "send-keys", "-t", o.pegar, "-l", ruta], capture_output=True).returncode
     copiada = al_portapapeles(ruta)
     if o.json:
         return _comun.escribir_json({"ruta": ruta, "remoto": remotos[0].nombre, "portapapeles": copiada})
