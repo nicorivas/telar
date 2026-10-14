@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -109,6 +110,25 @@ def remitente(ctx, de: str = "") -> str:
     return de or _hilo_propio(ctx) or f"{mod_bus.persona(ctx.config)}@{mod_bus.maquina(ctx.config)}"
 
 
+_ID_DE_HILO = re.compile(r"^@?\d+$")
+
+
+def _por_nombre(ctx, para: str) -> str:
+    """El nombre del hilo si `para` es un id (`@144`, como lo muestran `telar hilos` y el dashboard).
+
+    La casilla se llama como el hilo, no como su id: un `@144` tal cual iba a una casilla «144» que
+    nadie lee, y el mensaje salía como entregado. Un id que no es de un hilo de esta máquina se
+    rechaza: el hilo de otra máquina se nombra, no se numera."""
+    if not _ID_DE_HILO.match(para.strip()):
+        return para
+    ref = "@" + para.strip().lstrip("@")
+    tel = _comun.tejer(ctx, con_ficha=False)
+    hilo = next((h for h in tel.hilos if h.id == ref), None)
+    if hilo is None:
+        raise mod_bus.ErrorDeBus(f"no hay ningún hilo con id {ref} en esta máquina: escribe su nombre")
+    return hilo.nombre
+
+
 def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "") -> dict:
     """Publica para `para` (un agente por su carpeta o nombre, o un hilo por su nombre).
 
@@ -118,6 +138,7 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "") -
     from telar import agentes as mod_agentes
     from telar import casilla
 
+    para = _por_nombre(ctx, para)
     agente = next((a for a in mod_agentes.descubrir(ctx.config) if para in (a.clave, a.nombre)), None)
     nombre = agente.nombre if agente is not None else para
     hilo = _hilo_propio(ctx)

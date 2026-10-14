@@ -118,6 +118,21 @@ class ContraUnServidor(Prueba):
         self.assertEqual((r["saltos"], r.get("estado")), (3, None))
         self.assertEqual(m.registro(self.config)[-1]["estado"], "enviado")
 
+    def test_un_id_de_hilo_se_vuelve_su_nombre(self):
+        """`telar mensaje @144` iba a la casilla «144», que nadie lee, y salía como entregado."""
+        from unittest import mock
+
+        from telar.ordenes import mensaje
+
+        ctx = SimpleNamespace(config=self.config)
+        tel = SimpleNamespace(hilos=[SimpleNamespace(id="@144", nombre="Coca-Cola System HR")])
+        with mock.patch.object(mensaje._comun, "tejer", return_value=tel):
+            self.assertEqual(mensaje._por_nombre(ctx, "@144"), "Coca-Cola System HR")
+            self.assertEqual(mensaje._por_nombre(ctx, "144"), "Coca-Cola System HR")
+            self.assertEqual(mensaje._por_nombre(ctx, "Gestión"), "Gestión")  # un nombre no se toca
+            with self.assertRaises(m.ErrorDeBus):
+                mensaje._por_nombre(ctx, "@999")
+
     def test_sin_servidor_el_error_se_entiende(self):
         cfg = mod_config.Config(bus=mod_config.Bus(url="nats://127.0.0.1:1"))
         with self.assertRaises(m.ErrorDeBus):
