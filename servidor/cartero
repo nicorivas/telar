@@ -11,7 +11,9 @@ Capas de seguridad:
      escribe Postfix. Las de más abajo las escribe quien manda (por SMTP a localhost:25 se
      puede poner cualquiera) y no se miran. Sin esa cabecera, no se entrega.
   2. Lista de permitidos: ~/.cartero-permitidos (un usuario por línea). Quien no está, queda
-     en el Maildir sin despertar a nadie.
+     en el Maildir sin despertar a nadie. Una línea `usuario` lo deja despertar a cualquiera de
+     tus hilos; `usuario: kichoro, gestion` solo a los hilos que nombra (por su extensión de
+     dirección: `usuario+kichoro@servidor`). Un correo para otro hilo queda en el Maildir.
   3. Tope de entregas por remitente y hora: corta bucles de agentes que se responden solos.
   Solo se despierta al hilo cuya dirección es esta (usuario+hilo@servidor, por el @telar_hilo
   de su sesión tmux): ni una sesión de nombre parecido, ni la más reciente. Sin hilo, o con
@@ -134,12 +136,37 @@ except KeyError:
     sys.exit(0)
 
 # 2. Lista de permitidos.
-permitidos = set()
+def leer_permitidos(texto):
+    """{usuario: None | {extensiones}}: `usuario` despierta a cualquier hilo; `usuario: a, b`, solo a esos.
+    Si un usuario sale dos veces, vale lo más amplio."""
+    reglas = {}
+    for linea in texto.splitlines():
+        linea = linea.split("#", 1)[0].strip()
+        if not linea:
+            continue
+        quien, _, hilos = linea.partition(":")
+        quien = quien.strip()
+        nombres = {extension(h) for h in hilos.split(",") if extension(h)}
+        if not quien:
+            continue
+        if ":" not in linea or not nombres:
+            # `usuario` a secas, o `usuario:` sin hilos: la línea no restringe (lo segundo es un
+            # descuido, y despertar a todos sería lo contrario de lo que se quiso: no se concede nada)
+            if ":" in linea:
+                reglas.setdefault(quien, set())
+            else:
+                reglas[quien] = None
+            continue
+        if reglas.get(quien, set()) is not None:
+            reglas[quien] = reglas.get(quien, set()) | nombres
+    return reglas
+
+
 try:
     with open(os.path.join(HOME, ".cartero-permitidos")) as f:
-        permitidos = {l.strip() for l in f if l.strip() and not l.startswith("#")}
+        permitidos = leer_permitidos(f.read())
 except FileNotFoundError:
-    pass
+    permitidos = {}
 if de not in permitidos:
     log(f"RETENIDO {de} no está en ~/.cartero-permitidos: asunto={asunto!r}")
     sys.exit(0)
@@ -189,6 +216,11 @@ if not ext:
     # Sin hilo en la dirección (usuario@servidor) no se despierta a nadie: no hay forma de
     # saber qué conversación es la destinataria. Queda en la Maildir y telar lo muestra.
     log(f"SIN SESIÓN de={de} asunto={asunto!r}: dirección sin hilo, queda en Maildir")
+    sys.exit(0)
+hilos_permitidos = permitidos[de]
+if hilos_permitidos is not None and extension(ext) not in hilos_permitidos:
+    log(f"RETENIDO {de} no puede despertar a «{ext}» (~/.cartero-permitidos lo limita a "
+        f"{', '.join(sorted(hilos_permitidos)) or 'ninguno'}): asunto={asunto!r}")
     sys.exit(0)
 sesiones = []
 for ruta in glob.glob(os.path.join(HOME, ".claude/sessions/*.json")):

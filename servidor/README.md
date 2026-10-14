@@ -34,7 +34,10 @@ si no está, el correo rebota. Las direcciones son `usuario@<nombre-corto>` y
 - `~/.forward` con dos líneas: `\usuario` (guardar en la Maildir) y
   `"|/usr/local/bin/cartero"`;
 - `~/.cartero-permitidos`: quién puede despertar a sus agentes, un usuario por línea. El
-  propio también, si quiere que sus agentes de otra máquina lo despierten;
+  propio también, si quiere que sus agentes de otra máquina lo despierten. Una línea `usuario`
+  lo deja despertar a cualquiera de tus hilos; `usuario: kichoro, gestion` solo a esos (la
+  extensión de la dirección: `usuario+kichoro@servidor`), y un correo a otro hilo queda en la
+  Maildir sin despertar a nadie. Si un usuario sale dos veces, vale lo más amplio;
 - `loginctl enable-linger usuario`, para que exista `/run/user/<uid>` sin sesión abierta.
 
 Activar el cartero es decisión de cada persona: sus agentes se van a despertar con correo

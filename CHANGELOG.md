@@ -8,6 +8,8 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `servidor/cartero`: `~/.cartero-permitidos` admite `usuario: hilo, hilo` — ese usuario solo despierta a esos hilos (un correo a otro
+  queda en la Maildir, `RETENIDO … no puede despertar a «x»`); `usuario` a secas sigue valiendo para todos.
 - `telar equipo`: a person you trust (a teammate) reads the tasks you tag `equipo` — title, state, priority, date, project and
   the `avance` line, never the body or history — and suggests raising a priority. `telar equipo servir` is its own small
   server (own port, own per-person token, no power over your agents); every suggestion lands in a tray, notifies the
