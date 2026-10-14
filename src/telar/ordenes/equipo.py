@@ -134,6 +134,11 @@ def manejador(eq: mod_equipo.Equipo):
             pass
 
         def _responder(self, codigo: int, cuerpo, tipo: str = "application/json; charset=utf-8") -> None:
+            # una línea al diario del servicio (journalctl --user -u telar-equipo): quién, qué ruta y cómo salió; nunca la llave ni el texto
+            if self.path.startswith("/api/"):
+                quien = mod_equipo.quien(eq, self.headers.get("Authorization", "")[7:].strip()) or "?"
+                detalle = cuerpo.get("error", "") if isinstance(cuerpo, dict) and not cuerpo.get("ok", True) else ""
+                print(f"{quien} {self.command} {self.path.partition('?')[0]} -> {codigo} {detalle}".rstrip(), flush=True)
             datos = cuerpo if isinstance(cuerpo, bytes) else json.dumps(cuerpo, ensure_ascii=False).encode()
             self.send_response(codigo)
             self.send_header("Content-Type", tipo)
