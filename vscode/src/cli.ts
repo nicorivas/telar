@@ -498,12 +498,15 @@ export interface JsonSugerencia {
     motivo: string; estado: string; nota: string;
     /** «prioridad»: sugiere subir una tarea · «tarea»: pide una tarea nueva (aceptarla la agrega) */
     tipo?: 'prioridad' | 'tarea'; vence?: string | null;
+    /** de un pedido: tareas tuyas que parecen lo mismo (solo las ves tú) */
+    similares?: { id: string; titulo: string; estado: string; prioridad: number | null; vence: string | null; avance: string | null; compartida: boolean }[];
 }
 const remotoEquipo = (remoto: string) => (remoto && remoto !== 'local' ? ['--remoto', remoto] : []);
 export const equipoPendientes = (remoto: string) =>
     telarJson<{ sugerencias: JsonSugerencia[] }>(['equipo', 'sugerencias', ...remotoEquipo(remoto)], 30000);
-export const equipoResolver = (remoto: string, verbo: 'aceptar' | 'rechazar', id: string, nota = '') =>
-    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...remotoEquipo(remoto)], 40000);
+export const equipoResolver = (remoto: string, verbo: 'aceptar' | 'rechazar' | 'existe', id: string, nota = '', tarea = '') =>
+    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...(tarea ? ['--tarea', tarea] : []),
+        ...remotoEquipo(remoto)], 40000);
 
 export const correo = (cuerpos = false) =>
     telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);

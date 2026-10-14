@@ -48,6 +48,12 @@ curl -s -X POST -H "Authorization: Bearer $EQUIPO_NICO_LLAVE" -H "Content-Type: 
   http://100.66.75.117:8766/api/pedir
 ```
 
+Antes de molestar a Nico, el servidor revisa si ya hay una tarea parecida **que el equipo ve**. Si la hay, no crea el pedido:
+responde `409` con `existe` (título, estado, prioridad, fecha, avance y un `resumen`). Cuéntale a tu persona ese estado: puede
+que no necesite pedir nada. Solo si es de verdad otra cosa, repite el envío con `"aunque_exista": true` en el JSON. Y si Nico
+dice que ya existía una tarea que el equipo no ve, tu pedido queda como `ya existía` con su estado en `nota`: léelo y
+transmítelo, no lo pidas de nuevo.
+
 Antes de enviar, muéstrale a tu persona el pedido tal como saldrá y espera su visto bueno. En `GET /api/tareas`, tus
 pedidos salen en `sugerencias` con `tipo: "tarea"`, su estado (pendiente, aceptada, rechazada) y, si Nico la aceptó,
 el número de la tarea que quedó.

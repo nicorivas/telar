@@ -41,6 +41,7 @@ PUERTO = 8766
 RECIENTES = 14
 MAX_MOTIVO = 500
 MAX_TITULO = 150
+MAX_NOTA = 700
 #: lo que una persona puede tener esperando a la vez (sugerencias y pedidos): una mano, no un guion
 MAX_PENDIENTES = 10
 _ID = re.compile(r"^T\d{1,5}$")
@@ -187,14 +188,38 @@ def sugerir(eq: Equipo, persona: str, tarea: str, motivo: str, *, ahora: datetim
     return registro, ""
 
 
-def resolver(eq: Equipo, ident: str, decision: str, nota: str = "") -> tuple[dict | None, str]:
-    """Acepta (sube la prioridad un nivel con el CLI de tareas) o rechaza una sugerencia pendiente."""
-    if decision not in ("aceptar", "rechazar"):
-        return None, "la decisión es aceptar o rechazar"
+def resolver(eq: Equipo, ident: str, decision: str, nota: str = "", existente: str = "") -> tuple[dict | None, str]:
+    """Acepta (sube la prioridad un nivel, o agrega la tarea pedida), rechaza, o dice que un pedido «existe»:
+    ya hay una tarea (`existente`) y quien pidió recibe su estado en vez de una tarea nueva."""
+    if decision not in ("aceptar", "rechazar", "existe"):
+        return None, "la decisión es aceptar, rechazar o existe"
     registros = leer_bandeja(eq)
     r = next((x for x in registros if x["id"] == ident and x["estado"] == "pendiente"), None)
     if r is None:
         return None, f"no hay sugerencia pendiente «{ident}»"
+    if decision == "existe":
+        if r.get("tipo") != "tarea":
+            return None, "«existe» solo vale para un pedido de tarea nueva"
+        if not _ID.match(existente or ""):
+            return None, "¿cuál tarea? existe necesita su número (T123)"
+        archivo = eq.tareas / f"{existente}.md"
+        if not archivo.is_file():
+            return None, f"no hay tarea {existente}"
+        c = _front(archivo.read_text(encoding="utf-8"))
+        try:
+            prioridad = int(c.get("prioridad", ""))
+        except ValueError:
+            prioridad = None
+        t = {"id": existente, "titulo": c.get("titulo", ""), "estado": c.get("estado", ""), "prioridad": prioridad,
+             "vence": c.get("vence") or None, "avance": c.get("avance") or None, "espera": c.get("espera") or None,
+             "cerrada": c.get("cerrada") or None}
+        r["tarea"] = existente
+        nota = (f"Ya existe: {resumen_de(t)}" + (f". {nota}" if nota else ""))
+        r["estado"] = "ya existía"
+        r["nota"] = " ".join(nota.split())[:MAX_NOTA]
+        r["resuelta"] = datetime.datetime.now().isoformat(timespec="seconds")
+        _escribir_bandeja(eq, registros)
+        return r, ""
     if decision == "aceptar" and r.get("tipo") == "tarea":
         if eq.todo is None:
             return None, "falta [equipo] todo = \"…\" para agregar la tarea"
@@ -227,6 +252,86 @@ def resolver(eq: Equipo, ident: str, decision: str, nota: str = "") -> tuple[dic
     return r, ""
 
 
+# --- ¿ya existe? -----------------------------------------------------------------------------
+
+_PALABRAS_VACIAS = {"de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "que", "con", "para", "por", "en", "y", "o",
+                    "al", "a", "se", "su", "sus", "lo", "le", "les", "es", "ser", "hacer", "tiene", "tengo", "tener", "debe",
+                    "nico", "favor", "necesito", "necesita", "sobre", "como", "este", "esta", "ese", "esa"}
+#: cuánto de lo que dice el más corto de los dos títulos debe estar en el otro
+UMBRAL_PARECIDO = 0.6
+#: cuántos días se sigue contando una tarea cerrada: pedir algo que se hizo ayer es pedir algo que ya existe
+DIAS_CERRADA = 30
+
+
+def _palabras(texto: str) -> set[str]:
+    import unicodedata
+    plano = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode().lower()
+    return {w for w in re.findall(r"[a-z0-9]+", plano) if w not in _PALABRAS_VACIAS and (len(w) >= 3 or w.isdigit())}
+
+
+def parecido(a: str, b: str) -> bool:
+    """¿Dos títulos hablan de lo mismo? Comparten casi todo lo del más corto, y si traen números (sesión 5 / sesión 6)
+    son los mismos: una cifra distinta es otra tarea."""
+    pa, pb = _palabras(a), _palabras(b)
+    if len(pa & pb) < 2 or not pa or not pb:
+        return False
+    if {w for w in pa if w.isdigit()} != {w for w in pb if w.isdigit()}:
+        return False
+    return len(pa & pb) / min(len(pa), len(pb)) >= UMBRAL_PARECIDO
+
+
+def duplicadas(eq: Equipo, titulo: str, hoy: datetime.date | None = None) -> list[dict]:
+    """Las tareas de Nico (abiertas, o cerradas hace poco) cuyo título habla de lo mismo; `compartida` dice si el equipo la ve."""
+    hoy = hoy or datetime.date.today()
+    salida: list[dict] = []
+    if not eq.tareas.is_dir():
+        return salida
+    for archivo in sorted(eq.tareas.glob("T*.md")):
+        if not _ID.match(archivo.stem):
+            continue
+        try:
+            c = _front(archivo.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        estado = c.get("estado", "")
+        if estado == "hecha":
+            try:
+                if (hoy - datetime.date.fromisoformat(c.get("cerrada", ""))).days > DIAS_CERRADA:
+                    continue
+            except ValueError:
+                continue
+        elif estado not in ("activa", "espera"):
+            continue
+        if not parecido(titulo, c.get("titulo", "")):
+            continue
+        etiquetas = [e.strip().lower() for e in re.split(r"[,\s]+", c.get("etiquetas", "")) if e.strip()]
+        try:
+            prioridad = int(c.get("prioridad", ""))
+        except ValueError:
+            prioridad = None
+        salida.append({"id": archivo.stem, "titulo": c.get("titulo", ""), "estado": estado, "prioridad": prioridad,
+                       "vence": c.get("vence") or None, "avance": c.get("avance") or None, "espera": c.get("espera") or None,
+                       "cerrada": c.get("cerrada") or None, "compartida": eq.etiqueta in etiquetas})
+    return salida
+
+
+def resumen_de(t: dict) -> str:
+    """La tarea en una frase, solo con lo que se comparte: lo que se le contesta a quien pidió algo que ya existía."""
+    partes = [f"{t['id']} «{t['titulo']}»"]
+    partes.append("cerrada el " + t["cerrada"] if t["estado"] == "hecha" and t.get("cerrada")
+                  else {"activa": "en curso", "espera": "esperando"}.get(t["estado"], t["estado"]))
+    if t["prioridad"] is not None:
+        partes.append(f"P{t['prioridad']}")
+    if t.get("vence"):
+        partes.append(f"vence {t['vence']}")
+    if t.get("espera"):
+        partes.append(f"espera a {t['espera']}")
+    if t.get("avance"):
+        partes.append(f"avance: {t['avance']}")
+    return " · ".join(partes)
+
+
+
 def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str = "",
           *, ahora: datetime.datetime | None = None) -> tuple[dict | None, str]:
     """Anota que `persona` le pide a Nico una tarea nueva. (registro, "") o (None, por qué no)."""
@@ -254,6 +359,9 @@ def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str 
         "id": secrets.token_hex(4), "cuando": ahora.isoformat(timespec="seconds"), "persona": persona, "tipo": "tarea",
         "tarea": "", "titulo": titulo, "prioridad": None, "motivo": contexto, "vence": vence or None,
         "estado": "pendiente", "nota": "",
+        # solo para Nico: tareas suyas que parecen lo mismo (el equipo no ve las que no compartió)
+        "similares": [{k: t[k] for k in ("id", "titulo", "estado", "prioridad", "vence", "avance", "compartida")}
+                      for t in duplicadas(eq, titulo, ahora.date())],
     }
     registros.append(registro)
     _escribir_bandeja(eq, registros)

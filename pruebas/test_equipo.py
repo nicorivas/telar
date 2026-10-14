@@ -124,6 +124,38 @@ class Pedidos(unittest.TestCase):
             self.assertFalse((tmp / "todo.log").exists())
 
 
+class Existentes(unittest.TestCase):
+    def test_parecido_distingue_numeros_y_palabras(self):
+        self.assertTrue(mod.parecido("Hacer la sesión 5 de GOA", "GOA: preparar y dictar la sesión 5"))
+        self.assertFalse(mod.parecido("Hacer la sesión 5 de GOA", "GOA sesión 6"))
+        self.assertFalse(mod.parecido("pagar la cuenta de luz", "Cerrar las 2 cuentas Enel"))
+
+    def test_duplicadas_marca_las_compartidas(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {"T1": {"titulo": "GOA: dictar la sesión 5", "tags": "equipo", "extra": "avance: preparado\n"},
+                                  "T2": {"titulo": "Preparar la sesión 5 de GOA con el cliente", "tags": "privada"},
+                                  "T3": {"titulo": "otra cosa sin relación alguna"}})
+            ya = {t["id"]: t["compartida"] for t in mod.duplicadas(eq, "Hacer la sesión 5 de GOA")}
+            self.assertEqual(ya, {"T1": True, "T2": False})
+
+    def test_el_pedido_guarda_las_parecidas_solo_para_nico(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {"T2": {"titulo": "Preparar la sesión 5 de GOA con el cliente", "tags": "privada"}})
+            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            self.assertEqual([t["id"] for t in r["similares"]], ["T2"])
+
+    def test_existe_contesta_con_el_estado(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {"T1": {"titulo": "GOA: dictar la sesión 5", "pri": 1, "extra": "vence: 2026-10-22\navance: preparado 2026-10-13\n"}})
+            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            hecho, p = mod.resolver(eq, r["id"], "existe", "va para el jueves", "T1")
+            self.assertEqual((p, hecho["estado"], hecho["tarea"]), ("", "ya existía", "T1"))
+            self.assertIn("T1 «GOA: dictar la sesión 5» · en curso · P1 · vence 2026-10-22 · avance: preparado 2026-10-13", hecho["nota"])
+            self.assertTrue(hecho["nota"].endswith("va para el jueves"))
+            self.assertNotIn("CUERPO", hecho["nota"])
+            self.assertIn("T123", mod.resolver(eq, mod.pedir(eq, "marcelo", "Otro pedido distinto")[0]["id"], "existe", "", "")[1])
+
+
 class Servidor(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -165,6 +197,17 @@ class Servidor(unittest.TestCase):
         mias = self.pedir("/api/tareas")[1]["sugerencias"]
         self.assertEqual([(x["tipo"], x["titulo"], x["estado"]) for x in mias], [("tarea", "Hacer la sesión 5 de GOA", "pendiente")])
         self.assertEqual(self.pedir("/api/pedir", token="mala", cuerpo={"titulo": "xxxxxx"})[0], 401)
+
+    def test_pedir_algo_que_ya_existe_contesta_su_estado(self):
+        mod_t = self.eq.tareas / "T9.md"
+        mod_t.write_text(TAREA.format(titulo="GOA: dictar la sesión 5", estado="activa", pri=1, tags="equipo", extra="avance: preparado\n"), encoding="utf-8")
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA"})
+        self.assertEqual(c, 409)
+        self.assertIn("T9", d["existe"][0]["resumen"])
+        self.assertNotIn("CUERPO", json.dumps(d))
+        self.assertEqual(mod.leer_bandeja(self.eq), [])  # no molestó a Nico
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA", "aunque_exista": True})
+        self.assertTrue(d["ok"], d)
 
     def test_pedido_mal_formado(self):
         self.assertEqual(self.pedir("/api/pedir", cuerpo={"contexto": "falta el título"})[0], 400)

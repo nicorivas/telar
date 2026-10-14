@@ -8,6 +8,10 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar equipo`: a request for a new task first checks whether it already exists. If a task the team sees looks like the same
+  thing (same words, same numbers: «sesión 5» ≠ «sesión 6»), the person gets its state back (`409` + `existe`) instead of a new
+  request, and can insist with `aunque_exista`. A look-alike the team doesn't see is kept for you: the dashboard lists it under
+  the request («¿ya existe T123?») and one click (`telar equipo existe ID --tarea T123`) answers with that task's state.
 - `telar equipo`: a teammate can also **ask you for a new task** (`POST /api/pedir`, a form on the page): it lands in the same tray
   and notifies the same way; accepting it adds a P2 task (`todo add`, tagged `equipo`, `origen: equipo:<person>`, with the context
   and date) and the person sees its state and number. Max 10 things waiting per person. VS Code shows it as «te pide una tarea»

@@ -1191,6 +1191,10 @@ export class PanelHoy {
                     : `<div class="fila"><b>${esc(x.persona)}</b> sugiere subir <b>${esc(x.tarea)}</b> <span class="dim">${hoy}${nueva} · ${esc(fechaCorta(x.cuando))}</span></div>`
                         + `<div class="fila">${esc(x.titulo)}</div>`)
                 + (x.motivo ? `<div class="fila dim" style="white-space:pre-wrap">«${esc(x.motivo)}»</div>` : '')
+                // ¿ya existe? las tareas tuyas que parecen lo mismo; un clic le contesta a quien pidió con su estado
+                + (x.similares ?? []).map(t => `<div class="fila falla">¿ya existe? <b>${esc(t.id)}</b> ${esc(t.titulo)} <span class="dim">· ${esc(t.estado)}`
+                    + `${t.prioridad === null ? '' : ` · P${t.prioridad}`}${t.vence ? ` · vence ${esc(t.vence)}` : ''}${t.compartida ? '' : ' · no compartida'}</span> `
+                    + `<a data-accion="equipo-decidir" data-valor="${esc(`existe|${x.id}|${t.id}`)}" title="no se agrega nada: le contestas con el estado de esa tarea">es esta: contestarle su estado</a></div>`).join('')
                 + `<div class="fila"><a data-accion="equipo-decidir" data-valor="${esc(`aceptar|${x.id}`)}">${pedido ? 'agregar como tarea (P2)' : 'aceptar'}</a> · `
                 + `<a data-accion="equipo-decidir" data-valor="${esc(`rechazar|${x.id}`)}">${pedido ? 'descartar' : 'rechazar'}</a></div></div>`);
         }
@@ -1198,14 +1202,15 @@ export class PanelHoy {
     }
 
     private async decidirEquipo(valor: string): Promise<void> {
-        const [verbo, id] = valor.split('|') as ['aceptar' | 'rechazar', string];
+        const [verbo, id, tarea = ''] = valor.split('|') as ['aceptar' | 'rechazar' | 'existe', string, string];
         let nota = '';
-        if (verbo === 'rechazar') {
-            const dicha = await vscode.window.showInputBox({ prompt: 'Qué verá quien la hizo (opcional)', placeHolder: 'ahora no, porque…' });
+        if (verbo === 'rechazar' || verbo === 'existe') {
+            const dicha = await vscode.window.showInputBox({ prompt: verbo === 'existe' ? 'Qué le agregas al estado de esa tarea (opcional)' : 'Qué verá quien la hizo (opcional)',
+                placeHolder: verbo === 'existe' ? 'va para el jueves' : 'ahora no, porque…' });
             if (dicha === undefined) return;   // Escape: no se decide nada
             nota = dicha;
         }
-        const r = await cli.equipoResolver(modelo.equipoRemoto, verbo, id, nota);
+        const r = await cli.equipoResolver(modelo.equipoRemoto, verbo, id, nota, tarea);
         if (!r.datos) void vscode.window.showErrorMessage(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`);
         await modelo.leerEquipo();
         this.renderEquipo();

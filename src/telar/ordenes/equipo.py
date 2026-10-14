@@ -5,6 +5,7 @@
     telar equipo sugerencias --remoto telar        la misma bandeja, leída por ssh desde otra máquina
     telar equipo aceptar ID [--nota "…"]           una sugerencia: sube la prioridad un nivel · un pedido: lo agrega como tarea
     telar equipo rechazar ID [--nota "…"]          cerrarla; la nota la ve quien la hizo
+    telar equipo existe ID --tarea T123            un pedido que ya existe: quien lo hizo recibe el estado de esa tarea
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
 El servidor es otro proceso y otro puerto que `telar web`, a propósito: `telar web` puede escribirles
@@ -100,13 +101,21 @@ function formulario(div, t, b) {
   };
   div.append(ta, go);
 }
-$('p-enviar').onclick = async () => {
-  const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value }) });
+function yaExiste(lista) {
+  const m = $('msg'); m.innerHTML = '<span class="mal">ya hay una tarea parecida, mira si es lo mismo:</span>';
+  for (const t of lista) { const e = document.createElement('div'); e.className = 'dim'; e.textContent = t.resumen; m.append(e); }
+  const b = document.createElement('button'); b.textContent = 'es otra cosa: pedirla igual';
+  b.onclick = () => enviarPedido(true); m.append(b);
+}
+$('p-enviar').onclick = () => enviarPedido(false);
+async function enviarPedido(insistir) {
+  const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value, aunque_exista: insistir }) });
   const d = await r.json();
+  if (r.status === 409 && d.existe) { yaExiste(d.existe); return; }
   $('msg').innerHTML = d.ok ? '<span class="ok">pedido enviado: Nico lo verá y decide</span>' : '<span class="mal"></span>';
   if (!d.ok) $('msg').firstChild.textContent = d.error; else { $('p-titulo').value = ''; $('p-contexto').value = ''; $('p-vence').value = ''; }
   cargar();
-};
+}
 cargar(); setInterval(() => { if (!document.hidden && !document.activeElement.matches('textarea, input') && ![...document.querySelectorAll('textarea, input')].some((c) => c.value)) cargar(); }, 60000);
 </script></body></html>
 """
@@ -170,9 +179,17 @@ def manejador(eq: mod_equipo.Equipo):
                     pedido = (str(datos["tarea"]), str(datos["motivo"]))
                 else:
                     pedido = (str(datos["titulo"]), str(datos.get("contexto", "")), str(datos.get("vence") or ""))
+                    insistir = datos.get("aunque_exista") is True
             except (ValueError, KeyError, TypeError):
                 return self._responder(400, {"ok": False, "error": "se esperaba {tarea, motivo}" if ruta == "/api/sugerir"
                                              else "se esperaba {titulo, contexto?, vence?}"})
+            if ruta == "/api/pedir" and not insistir:
+                # antes de molestar a Nico: ¿ya hay una tarea sobre esto que el equipo ve? Se le contesta su estado
+                ya = [t for t in mod_equipo.duplicadas(eq, pedido[0]) if t["compartida"]]
+                if ya:
+                    return self._responder(409, {"ok": False, "existe": [
+                        {k: t[k] for k in ("id", "titulo", "estado", "prioridad", "vence", "avance", "espera", "cerrada")} | {"resumen": mod_equipo.resumen_de(t)}
+                        for t in ya[:3]], "error": "ya hay una tarea parecida; si es otra cosa, envíalo con aunque_exista"})
             with candado:  # una cada 5 s por persona: una mano, no un guion
                 ahora = time.monotonic()
                 if ahora - ultimo.get(persona, -99) < 5:
@@ -194,8 +211,9 @@ def manejador(eq: mod_equipo.Equipo):
 
 def _cuadro(r: dict) -> str:
     if r.get("tipo") == "tarea":
+        parecidas = "".join(f"\n      ¿ya existe? {t['id']} «{t['titulo'][:60]}» ({t['estado']})" for t in r.get("similares") or [])
         return (f"{r['id']}  {r['persona']} pide: {r['titulo'][:80]}" + (f" (para el {r['vence']})" if r.get("vence") else "")
-                + (f"\n      «{r['motivo']}»" if r["motivo"] else "") + f"  [{r['estado']}]")
+                + (f"\n      «{r['motivo']}»" if r["motivo"] else "") + f"  [{r['estado']}]" + parecidas)
     pri = "?" if r["prioridad"] is None else f"P{r['prioridad']}"
     return f"{r['id']}  {r['persona']} · {r['tarea']} ({pri}) {r['titulo'][:60]}\n      «{r['motivo']}»  [{r['estado']}]"
 
@@ -217,12 +235,13 @@ def _por_ssh(ctx, remoto: str, argv: list[str]) -> tuple[str, str]:
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("equipo", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", choices=("servir", "sugerencias", "aceptar", "rechazar", "token"))
+    p.add_argument("verbo", choices=("servir", "sugerencias", "aceptar", "rechazar", "existe", "token"))
     p.add_argument("valor", nargs="?", default="", help="aceptar/rechazar: el id · token: la persona")
     p.add_argument("--host", default="", help="servir: la IP donde escuchar (por defecto, la de Tailscale)")
     p.add_argument("--puerto", type=int, default=0, help="servir: el puerto (por defecto, [equipo] puerto)")
     p.add_argument("--todas", action="store_true", help="sugerencias: también las ya resueltas")
-    p.add_argument("--nota", default="", help="aceptar/rechazar: lo que ve quien la hizo")
+    p.add_argument("--nota", default="", help="aceptar/rechazar/existe: lo que ve quien la hizo")
+    p.add_argument("--tarea", default="", help="existe: el número de la tarea que ya existe (T123)")
     p.add_argument("--remoto", default="", help="leer o decidir en otra máquina de [remotos], por ssh")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     o, codigo = _comun.parsear(p, argv)
@@ -237,7 +256,8 @@ def main(argv: list[str], ctx) -> int:
         if o.verbo == "servir":
             return _comun.queja("servir corre en la máquina donde viven las tareas, no por ssh")
         sub = [o.verbo, *([o.valor] if o.valor else []), *(["--todas"] if o.todas else []),
-               *(["--nota", o.nota] if o.nota else []), *(["--json"] if o.json else [])]
+               *(["--nota", o.nota] if o.nota else []), *(["--tarea", o.tarea] if o.tarea else []),
+               *(["--json"] if o.json else [])]
         salida, problema = _por_ssh(ctx, o.remoto, sub)
         if problema:
             return _comun.queja(problema)
@@ -267,7 +287,7 @@ def main(argv: list[str], ctx) -> int:
         return 0
     if not o.valor:
         return _comun.queja(f"¿cuál? telar equipo {o.verbo} ID")
-    r, problema = mod_equipo.resolver(eq, o.valor, o.verbo, o.nota)
+    r, problema = mod_equipo.resolver(eq, o.valor, o.verbo, o.nota, o.tarea)
     if r is None:
         return _comun.queja(problema)
     if o.json:
