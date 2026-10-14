@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar imagen`: uploads the clipboard image (or a file) from this computer to `~/telar-entrada/` on a `[remotos]` machine over ssh,
+  prints the path it has there and puts it on the clipboard — Claude Code's image paste only reads the clipboard of the machine it runs on,
+  so a thread living on the server never saw the laptop's. Paste the path into the thread and Claude reads the image.
 - `servidor/cartero`: `~/.cartero-permitidos` admite `usuario: hilo, hilo` — ese usuario solo despierta a esos hilos (un correo a otro
   queda en la Maildir, `RETENIDO … no puede despertar a «x»`); `usuario` a secas sigue valiendo para todos.
 - `telar equipo`: a person you trust (a teammate) reads the tasks you tag `equipo` — title, state, priority, date, project and
