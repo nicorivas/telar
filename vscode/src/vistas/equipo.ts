@@ -1,5 +1,5 @@
-// Lo que el equipo deja en tu bandeja (`telar equipo`): una sección de la barra lateral, y un menú por entrada.
-// Aquí no hay pantalla propia: pinchar una fila abre una lista de acciones sobre ella.
+// Lo que el equipo deja en tu bandeja (`telar equipo`): una sección de la barra lateral; pinchar una fila abre su
+// página en el dashboard (`PanelHoy.abrirEquipo`). Aquí viven el encargo a Gestión y las decisiones.
 
 import * as vscode from 'vscode';
 import * as cli from '../cli';
@@ -30,7 +30,7 @@ export function encargoParaGestion(x: Sugerencia): string {
     ].join('\n');
 }
 
-async function preguntarAGestion(x: Sugerencia): Promise<void> {
+export async function preguntarAGestion(x: Sugerencia): Promise<void> {
     const r = await cli.encargar('gestion', encargoParaGestion(x));
     if (!r.datos) { void vscode.window.showErrorMessage(`telar: no pude encargárselo a Gestión: ${r.error ?? 'sin respuesta'}`); return; }
     await cli.equipoRevisando(modelo.equipoRemoto, x.id);
@@ -38,7 +38,7 @@ async function preguntarAGestion(x: Sugerencia): Promise<void> {
     await modelo.leerEquipo();
 }
 
-async function decidir(x: Sugerencia, verbo: 'aceptar' | 'rechazar' | 'existe', tarea = ''): Promise<void> {
+export async function decidir(x: Sugerencia, verbo: 'aceptar' | 'rechazar' | 'existe', tarea = ''): Promise<void> {
     let nota = '';
     if (verbo !== 'aceptar') {
         const dicha = await vscode.window.showInputBox({
@@ -55,46 +55,15 @@ async function decidir(x: Sugerencia, verbo: 'aceptar' | 'rechazar' | 'existe', 
     await modelo.leerEquipo();
 }
 
-/** El menú de una entrada: lo que se puede hacer con ella. Sin `id`, se elige primero cuál. */
-export async function verEntrada(id?: string): Promise<void> {
+/** Cuál entrada abrir: la que se pidió, la única que hay, o la que se elija de una lista corta. "" si no hay ninguna o no se eligió. */
+export async function elegirEntrada(id?: string): Promise<string> {
     await modelo.leerEquipo();
     const lista = modelo.sugerencias;
-    if (!lista.length) { void vscode.window.showInformationMessage('telar: el equipo no tiene nada esperando'); return; }
-    let x = lista.find(y => y.id === id);
-    if (!x && lista.length === 1) x = lista[0];
-    if (!x) {
-        const e = await vscode.window.showQuickPick(lista.map(y => ({
-            label: `${y.persona}: ${y.titulo.slice(0, 80)}`, description: y.tipo === 'tarea' ? 'pide una tarea' : `subir ${y.tarea}`, id: y.id })),
-            { title: 'Lo que pide el equipo', placeHolder: 'elige una entrada' });
-        x = lista.find(y => y.id === e?.id);
-    }
-    if (!x) return;
-    const pedido = x.tipo === 'tarea';
-    // el detalle en un diálogo: se lee entero (un menú desplegable corta el texto y confunde un dato con una acción)
-    const cuando = fecha(x.cuando);
-    const parecidas = (x.similares ?? []).map(t =>
-        `  · ${t.id} «${t.titulo.slice(0, 90)}» — ${t.estado}${t.prioridad === null ? '' : `, P${t.prioridad}`}${t.vence ? `, vence ${t.vence}` : ''}${t.compartida ? '' : ' (no compartida)'}`);
-    const detalle = [
-        pedido ? `«${x.titulo}»${x.vence ? `\nPara el ${x.vence}.` : ''}`
-               : `Tarea ${x.tarea} «${x.titulo}»${x.prioridad === null ? '' : ` (hoy P${x.prioridad}; subiría a P${Math.max(0, x.prioridad - 1)})`}`,
-        ...(x.motivo ? [`${pedido ? 'Contexto' : 'Motivo'}: ${x.motivo.replace(/\s+/g, ' ')}`] : []),
-        ...(parecidas.length ? ['¿Ya existe?', ...parecidas] : []),
-        ...(x.revisando ? [`${x.revisando.quien} la revisa desde ${fecha(x.revisando.desde)}.`] : []),
-    ].join('\n\n');
-    const GESTION = x.revisando ? 'Preguntarle de nuevo a Gestión' : 'Preguntarle a Gestión';
-    const botones = pedido
-        ? [GESTION, 'Agregar como tarea', ...(parecidas.length ? ['Ya existe…'] : []), 'Descartar…']
-        : [GESTION, `Subir prioridad de ${x.tarea}`, 'Rechazar…'];
-    const elegido = await vscode.window.showInformationMessage(
-        `${x.persona} ${pedido ? 'te pide una tarea' : 'sugiere subir una prioridad'} · ${cuando}`,
-        { modal: true, detail: detalle }, ...botones);
-    if (!elegido) return;
-    if (elegido === GESTION) await preguntarAGestion(x);
-    else if (elegido === 'Agregar como tarea' || elegido.startsWith('Subir prioridad')) await decidir(x, 'aceptar');
-    else if (elegido === 'Descartar…' || elegido === 'Rechazar…') await decidir(x, 'rechazar');
-    else if (elegido === 'Ya existe…') {
-        const t = await vscode.window.showQuickPick((x.similares ?? []).map(y => ({ label: y.id, description: `${y.titulo.slice(0, 80)} · ${y.estado}`, id: y.id })),
-            { title: 'Contestarle el estado de cuál tarea', placeHolder: x.persona + ' recibirá su estado' });
-        if (t) await decidir(x, 'existe', t.id);
-    }
+    if (!lista.length) { void vscode.window.showInformationMessage('telar: el equipo no tiene nada esperando'); return ''; }
+    if (id && lista.some(y => y.id === id)) return id;
+    if (lista.length === 1) return lista[0].id;
+    const e = await vscode.window.showQuickPick(lista.map(y => ({
+        label: `${y.persona}: ${y.titulo.slice(0, 80)}`, description: y.tipo === 'tarea' ? 'pide una tarea' : `subir ${y.tarea}`, id: y.id })),
+        { title: 'Lo que pide el equipo', placeHolder: 'elige una entrada' });
+    return e?.id ?? '';
 }

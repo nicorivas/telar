@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import * as acciones from './acciones';
-import { verEntrada } from './vistas/equipo';
+import { elegirEntrada } from './vistas/equipo';
 import { irAHilo, mostrarTerminal } from './acciones';
 import * as cli from './cli';
 import { modelo } from './modelo';
@@ -473,8 +473,9 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());
-    orden('telar.equipo', () => verEntrada());
-    orden('telar.equipoVer', (id?: string) => verEntrada(typeof id === 'string' ? id : undefined));
+    const verEquipo = async (id?: string) => { const e = await elegirEntrada(id); if (e) await hoy.abrirEquipo(e); };
+    orden('telar.equipo', () => verEquipo());
+    orden('telar.equipoVer', (id?: string) => verEquipo(typeof id === 'string' ? id : undefined));
     orden('telar.seccion', (clave?: string) => { if (typeof clave === 'string' && clave) void hoy.abrirSeccion(clave); });
     orden('telar.conectarCalendario', conectarCalendario);
     orden('telar.tareas', async () => {

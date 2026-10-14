@@ -22,12 +22,13 @@ import { CSS_PLAN, columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, n
 import { CSS_PROY, DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
 import { CSS_AHORA, Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
 import type { EventoCal } from './plan';
+import { decidir, preguntarAGestion } from './equipo';
 import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
+    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
     /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
     private plan?: cli.JsonResultado;
     private planError = '';
@@ -65,6 +66,8 @@ export class PanelHoy {
     /** los mensajes entre hilos por el bus (undefined: sin bus o sin leer) */
     private mensajesBus?: cli.JsonMensajeBus[];
     private abiertoMsg = new Set<string>();
+    /** la entrada del equipo que muestra la pantalla «equipo» */
+    private equipoId = '';
     private filtroCorreo: 'todas' | 'mias' | 'sin' = 'todas';
     /** la sección abierta y su página; la conversación que se está leyendo */
     private seccion = '';
@@ -170,6 +173,7 @@ export class PanelHoy {
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
         if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo' || this.pantalla === 'tarea')) return;
+        if (this.panel && this.pantalla === 'equipo') { this.renderEquipo(); return; }
         const d = this.datos;
         if (!this.panel || !d) return;
         this.teclas.clear();
@@ -1158,6 +1162,66 @@ export class PanelHoy {
         return `<iframe class="lienzo" sandbox="allow-scripts" srcdoc="${esc(doc)}" style="height:${alto}px"></iframe>`;
     }
 
+    /** La página de una entrada del equipo (un pedido de tarea, o una sugerencia de prioridad), con lo que se puede hacer con ella. */
+    async abrirEquipo(id: string): Promise<void> {
+        this.abrir();
+        this.pantalla = 'equipo';
+        this.equipoId = id;
+        this.renderEquipo();
+        await modelo.leerEquipo();
+        if (this.pantalla === 'equipo') this.renderEquipo();
+    }
+
+    private renderEquipo(): void {
+        this.teclas.clear();
+        const x = modelo.sugerencias.find(y => y.id === this.equipoId);
+        const volver = '<div class="fila"><a data-accion="dia">← volver al dashboard</a></div>';
+        if (!x) {
+            this.pintar(['<div class="subcab"><b>Equipo</b></div>', '<div class="fila dim">esa entrada ya se resolvió, o no está.</div>', volver]);
+            return;
+        }
+        const pedido = x.tipo === 'tarea';
+        const h: string[] = [`<div class="subcab"><b>${esc(x.persona)}</b> ${pedido ? 'te pide una tarea' : 'sugiere subir una prioridad'}`
+            + `<span class="der dim">${esc(fechaCorta(x.cuando))}</span></div>`];
+        if (pedido) {
+            h.push(`<h2>«${esc(x.titulo)}»${x.vence ? `<small>para el ${esc(x.vence)}</small>` : ''}</h2>`);
+        } else {
+            const nueva = x.prioridad === null ? '' : ` · hoy P${x.prioridad}, subiría a P${Math.max(0, x.prioridad - 1)}`;
+            h.push(`<h2>${esc(x.tarea)} · ${esc(x.titulo)}<small>${esc(nueva.replace(/^ · /, ''))}</small></h2>`);
+        }
+        if (x.motivo) h.push(`<div class="md-pag"><p style="white-space:pre-wrap">${esc(x.motivo)}</p></div>`);
+        if (x.revisando) h.push(`<div class="fila dim">${esc(x.revisando.quien)} la revisa desde ${esc(fechaCorta(x.revisando.desde))}: te contesta en una línea cuando decida.</div>`);
+        const parecidas = x.similares ?? [];
+        if (parecidas.length) {
+            h.push('<h2>¿ya existe?<small>tareas tuyas que parecen lo mismo</small></h2>');
+            for (const t of parecidas) {
+                h.push(`<div class="item-pag"><div class="fila"><b>${esc(t.id)}</b> ${esc(t.titulo)}</div>`
+                    + `<div class="fila dim">${esc(t.estado)}${t.prioridad === null ? '' : ` · P${t.prioridad}`}${t.vence ? ` · vence ${esc(t.vence)}` : ''}`
+                    + `${t.avance ? ` · ${esc(t.avance)}` : ''}${t.compartida ? '' : ' · no compartida'}</div>`
+                    + `<div class="fila"><a data-accion="equipo-accion" data-valor="${esc(`existe|${x.id}|${t.id}`)}" title="no se agrega nada: ${esc(x.persona)} recibe el estado de esa tarea">es esta: contestarle su estado</a></div></div>`);
+            }
+        }
+        const botones: [string, string, string, string][] = [
+            ['1', x.revisando ? 'preguntarle de nuevo a Gestión' : 'preguntarle a Gestión', `gestion|${x.id}`, 'Gestión revisa si ya existe y decide: nueva, actualizar una existente o no corresponde'],
+            ...(pedido ? [['2', 'agregar como tarea', `aceptar|${x.id}`, 'P2, etiquetada equipo' + (x.vence ? `, para el ${x.vence}` : '')] as [string, string, string, string]]
+                : [['2', `subir la prioridad de ${x.tarea}`, `aceptar|${x.id}`, 'un nivel, con el CLI de tareas'] as [string, string, string, string]]),
+            ['3', pedido ? 'descartar' : 'rechazar', `rechazar|${x.id}`, `puedes dejarle una nota a ${x.persona}`],
+        ];
+        h.push('<h2>qué hacer</h2><div class="acciones-t fila-botones">' + botones.map(([k, n, v, t]) => atajo(k, n, 'equipo-accion', v, t)).join('') + '</div>');
+        for (const [k, , v] of botones) this.teclas.set(k, () => this.accionEquipo(v));
+        h.push(volver);
+        this.pintar(h);
+    }
+
+    private async accionEquipo(valor: string): Promise<void> {
+        const [verbo, id, tarea = ''] = valor.split('|');
+        const x = modelo.sugerencias.find(y => y.id === id);
+        if (!x) return;
+        if (verbo === 'gestion') await preguntarAGestion(x);
+        else await decidir(x, verbo as 'aceptar' | 'rechazar' | 'existe', tarea);
+        if (this.pantalla === 'equipo') this.renderEquipo();
+    }
+
     /** El correo entre agentes: las conversaciones de todas las máquinas remotas, con sus
      *  textos (se piden al entrar, no en el refresco: pueden ser muchos). */
     private async abrirCorreo(): Promise<void> {
@@ -2085,6 +2149,7 @@ export class PanelHoy {
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else { this.pantalla = 'dia'; this.render(); } break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
             case 'correo': await this.abrirCorreo(); break;
+            case 'equipo-accion': if (m.valor) await this.accionEquipo(m.valor); break;
             case 'filtro-correo': this.filtroCorreo = (m.valor as 'todas' | 'mias' | 'sin') || 'todas'; this.renderCorreo(); break;
             case 'conv-correo': if (m.valor) this.verConvCorreo(m.valor); break;
             case 'volver-correo': this.renderCorreo(); break;
