@@ -8,6 +8,11 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- VS Code: what the team asks of you is now an **EQUIPO section in the sidebar** (not a dashboard tab): one row per request or
+  priority suggestion; clicking one opens its actions — «preguntarle a Gestión» (hands it the request: it checks whether it already
+  exists and decides new task / update an existing one / not applicable, using `telar equipo aceptar|existe|rechazar`, and answers in
+  one line; the row shows «Gestión» while it works), «agregar como tarea», «es T123: contestarle su estado» and «descartar». New
+  `telar equipo revisando ID`. The dashboard keeps only the ○/◉ share toggle in the task list.
 - `telar equipo`: «does this request already exist?» now also compares **meaning**, not just words. A small model (`[equipo] semantica`,
   default `haiku`; `""` turns it off) reads the title and short description of the tasks with activity in the last 14 days
   (`dias`, at most 40) plus the ones the keywords matched, and says which already cover the request. It runs with no tools, outside the repo,

@@ -477,6 +477,17 @@ def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str 
     return registro, ""
 
 
+def marcar_revision(eq: Equipo, ident: str, quien: str = "gestion") -> tuple[dict | None, str]:
+    """Anota que alguien (Gestión) está revisando una entrada: sigue pendiente, pero la lista de Nico lo muestra."""
+    registros = leer_bandeja(eq)
+    r = next((x for x in registros if x["id"] == ident and x["estado"] == "pendiente"), None)
+    if r is None:
+        return None, f"no hay entrada pendiente «{ident}»"
+    r["revisando"] = {"quien": quien, "desde": datetime.datetime.now().isoformat(timespec="seconds")}
+    _escribir_bandeja(eq, registros)
+    return r, ""
+
+
 def avisar(titulo: str, texto: str) -> None:
     """Una notificación al laptop por la puerta (`telar enlace notificar`). Nunca lanza."""
     try:

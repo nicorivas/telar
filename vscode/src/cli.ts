@@ -498,12 +498,16 @@ export interface JsonSugerencia {
     motivo: string; estado: string; nota: string;
     /** «prioridad»: sugiere subir una tarea · «tarea»: pide una tarea nueva (aceptarla la agrega) */
     tipo?: 'prioridad' | 'tarea'; vence?: string | null;
+    /** si alguien (Gestión) la está revisando */
+    revisando?: { quien: string; desde: string };
     /** de un pedido: tareas tuyas que parecen lo mismo (solo las ves tú) */
     similares?: { id: string; titulo: string; estado: string; prioridad: number | null; vence: string | null; avance: string | null; compartida: boolean }[];
 }
 const remotoEquipo = (remoto: string) => (remoto && remoto !== 'local' ? ['--remoto', remoto] : []);
 export const equipoPendientes = (remoto: string) =>
     telarJson<{ sugerencias: JsonSugerencia[] }>(['equipo', 'sugerencias', ...remotoEquipo(remoto)], 30000);
+export const equipoRevisando = (remoto: string, id: string, quien = 'gestion') =>
+    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', 'revisando', id, '--quien', quien, ...remotoEquipo(remoto)], 30000);
 export const equipoResolver = (remoto: string, verbo: 'aceptar' | 'rechazar' | 'existe', id: string, nota = '', tarea = '') =>
     telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...(tarea ? ['--tarea', tarea] : []),
         ...remotoEquipo(remoto)], 40000);

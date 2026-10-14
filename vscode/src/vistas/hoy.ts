@@ -27,7 +27,7 @@ import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, ll
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
+    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
     /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
     private plan?: cli.JsonResultado;
     private planError = '';
@@ -170,18 +170,11 @@ export class PanelHoy {
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
         if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo' || this.pantalla === 'tarea')) return;
-        if (this.panel && this.pantalla === 'equipo') { this.renderEquipo(); return; }
         const d = this.datos;
         if (!this.panel || !d) return;
         this.teclas.clear();
         const ahora = new Date();
         const h: string[] = [];
-        // lo que el equipo pide no se pasa por alto: una fila arriba del todo, hasta que se decide
-        if (modelo.sugerencias.length) {
-            const n = modelo.sugerencias.length;
-            h.push('<div class="fila falla clic" data-accion="equipo" title="decidir: aceptar sube la prioridad un nivel">'
-                + `◆ ${n} cosa${n === 1 ? '' : 's'} del equipo esperan tu decisión · ${esc(modelo.sugerencias.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', '))}</div>`);
-        }
         // arriba, lo general: los atajos que no son de ninguna sección, las tareas y el terminal
         h.push('<div class="generales">' + this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
             .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
@@ -217,7 +210,6 @@ export class PanelHoy {
             ['plan', 'plan', '', 'plan', 'd'],
             ['calendario', 'calendario', '', 'calendario', 'a'],
             ['periodicos', 'periodicos', '', 'periódicos', 'o'],
-            ...(modelo.equipoRemoto ? [['equipo', 'equipo', '', modelo.sugerencias.length ? `equipo ◆${modelo.sugerencias.length}` : 'equipo', ''] as [string, string, string, string, string]] : []),
             ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
             // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda
             ['config', 'config', '', '⚙', ''],
@@ -1166,56 +1158,6 @@ export class PanelHoy {
         return `<iframe class="lienzo" sandbox="allow-scripts" srcdoc="${esc(doc)}" style="height:${alto}px"></iframe>`;
     }
 
-    /** Lo que el equipo sugiere: cada una con su motivo y dos decisiones. Aceptar sube la prioridad
-     *  un nivel con el CLI de tareas; rechazar pide una nota corta que verá quien la hizo. */
-    async abrirEquipo(): Promise<void> {
-        this.abrir();
-        this.pantalla = 'equipo';
-        this.renderEquipo();
-        await modelo.leerEquipo();
-        if (this.pantalla === 'equipo') this.renderEquipo();
-    }
-
-    private renderEquipo(): void {
-        const h = ['<div class="subcab"><b>Lo que pide el equipo</b><span class="der dim"><a data-accion="equipo" title="volver a leer">↻</a></span></div>'];
-        if (!modelo.equipoRemoto) h.push('<div class="fila dim">apagado: pon <code>telar.equipoRemoto</code> (la máquina de [remotos] donde corre <code>telar equipo servir</code>, o <code>local</code>)</div>');
-        else if (!modelo.sugerencias.length) h.push('<div class="fila dim">nada por decidir</div>');
-        for (const x of modelo.sugerencias) {
-            const pedido = x.tipo === 'tarea';
-            const hoy = x.prioridad === null ? '?' : `P${x.prioridad}`;
-            const nueva = x.prioridad === null ? '' : ` → P${Math.max(0, x.prioridad - 1)}`;
-            h.push('<div class="item-pag">'
-                + (pedido
-                    ? `<div class="fila"><b>${esc(x.persona)}</b> te pide una tarea${x.vence ? ` <span class="dim">para el ${esc(x.vence)}</span>` : ''}`
-                        + ` <span class="dim">${esc(fechaCorta(x.cuando))}</span></div><div class="fila"><b>${esc(x.titulo)}</b></div>`
-                    : `<div class="fila"><b>${esc(x.persona)}</b> sugiere subir <b>${esc(x.tarea)}</b> <span class="dim">${hoy}${nueva} · ${esc(fechaCorta(x.cuando))}</span></div>`
-                        + `<div class="fila">${esc(x.titulo)}</div>`)
-                + (x.motivo ? `<div class="fila dim" style="white-space:pre-wrap">«${esc(x.motivo)}»</div>` : '')
-                // ¿ya existe? las tareas tuyas que parecen lo mismo; un clic le contesta a quien pidió con su estado
-                + (x.similares ?? []).map(t => `<div class="fila falla">¿ya existe? <b>${esc(t.id)}</b> ${esc(t.titulo)} <span class="dim">· ${esc(t.estado)}`
-                    + `${t.prioridad === null ? '' : ` · P${t.prioridad}`}${t.vence ? ` · vence ${esc(t.vence)}` : ''}${t.compartida ? '' : ' · no compartida'}</span> `
-                    + `<a data-accion="equipo-decidir" data-valor="${esc(`existe|${x.id}|${t.id}`)}" title="no se agrega nada: le contestas con el estado de esa tarea">es esta: contestarle su estado</a></div>`).join('')
-                + `<div class="fila"><a data-accion="equipo-decidir" data-valor="${esc(`aceptar|${x.id}`)}">${pedido ? 'agregar como tarea (P2)' : 'aceptar'}</a> · `
-                + `<a data-accion="equipo-decidir" data-valor="${esc(`rechazar|${x.id}`)}">${pedido ? 'descartar' : 'rechazar'}</a></div></div>`);
-        }
-        this.pintar(h);
-    }
-
-    private async decidirEquipo(valor: string): Promise<void> {
-        const [verbo, id, tarea = ''] = valor.split('|') as ['aceptar' | 'rechazar' | 'existe', string, string];
-        let nota = '';
-        if (verbo === 'rechazar' || verbo === 'existe') {
-            const dicha = await vscode.window.showInputBox({ prompt: verbo === 'existe' ? 'Qué le agregas al estado de esa tarea (opcional)' : 'Qué verá quien la hizo (opcional)',
-                placeHolder: verbo === 'existe' ? 'va para el jueves' : 'ahora no, porque…' });
-            if (dicha === undefined) return;   // Escape: no se decide nada
-            nota = dicha;
-        }
-        const r = await cli.equipoResolver(modelo.equipoRemoto, verbo, id, nota, tarea);
-        if (!r.datos) void vscode.window.showErrorMessage(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`);
-        await modelo.leerEquipo();
-        this.renderEquipo();
-    }
-
     /** El correo entre agentes: las conversaciones de todas las máquinas remotas, con sus
      *  textos (se piden al entrar, no en el refresco: pueden ser muchos). */
     private async abrirCorreo(): Promise<void> {
@@ -2143,8 +2085,6 @@ export class PanelHoy {
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else { this.pantalla = 'dia'; this.render(); } break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
             case 'correo': await this.abrirCorreo(); break;
-            case 'equipo': await this.abrirEquipo(); break;
-            case 'equipo-decidir': if (m.valor) await this.decidirEquipo(m.valor); break;
             case 'filtro-correo': this.filtroCorreo = (m.valor as 'todas' | 'mias' | 'sin') || 'todas'; this.renderCorreo(); break;
             case 'conv-correo': if (m.valor) this.verConvCorreo(m.valor); break;
             case 'volver-correo': this.renderCorreo(); break;

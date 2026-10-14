@@ -84,7 +84,7 @@ export class Modelo {
                 : `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`)
             : `${nuevas.length} cosas del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', ')}`;
         void vscode.window.showWarningMessage(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
-            if (eleccion === 'Ver') await vscode.commands.executeCommand('telar.equipo');
+            if (eleccion === 'Ver') await vscode.commands.executeCommand('telar.equipoVer', uno?.id);
             else if ((eleccion === 'Aceptar' || eleccion === 'Agregar') && uno) {
                 const a = await cli.equipoResolver(remoto, 'aceptar', uno.id);
                 void vscode.window.showInformationMessage(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`

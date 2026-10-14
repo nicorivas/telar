@@ -123,6 +123,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             case 'seccion':
                 if (m.id) { if (this.plegadas.has(m.id)) this.plegadas.delete(m.id); else this.plegadas.add(m.id); this.refrescar(true); }
                 break;
+            case 'equipo': void vscode.commands.executeCommand('telar.equipoVer', m.id); break;
             case 'home': if (m.id) void vscode.commands.executeCommand('telar.seccion', m.id); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
@@ -231,6 +232,23 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo
         // los que tienen tab primero, los que no después; dentro de cada grupo, el orden elegido
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
+        // lo que el equipo le pide a Nico: una sección propia, arriba; pinchar una fila abre sus acciones
+        if (modelo.equipoRemoto) {
+            const pend = modelo.sugerencias;
+            const abierta = !this.plegadas.has('__equipo');
+            h.push('<div class="sep"></div>');
+            h.push(`<div class="fila cab" data-accion="seccion" data-id="__equipo" title="lo que el equipo te pide: abrir o cerrar la sección">`
+                + `<span class="prio">${abierta ? '▾' : '▸'}</span>EQUIPO${pend.length ? ` <span class="dim">${pend.length}</span>` : ''}</div>`);
+            if (abierta) {
+                if (!pend.length) h.push('<div class="fila dim"><span class="prio"> </span>nada esperando</div>');
+                for (const x of pend) {
+                    const pedido = x.tipo === 'tarea';
+                    h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
+                        + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
+                        + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
+                }
+            }
+        }
         // los agentes residentes: uno por línea, como cualquier hilo, con su home al final de la línea.
         // Un agente sin hilo abierto sale igual, tenue, y su línea lleva a su home
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');

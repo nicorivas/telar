@@ -117,6 +117,15 @@ class Pedidos(unittest.TestCase):
             self.assertIn("--due 2026-12-31", log)
             self.assertIn("equipo:marcelo", log)
 
+    def test_revisando_marca_sin_resolver(self):
+        with tempfile.TemporaryDirectory() as d:
+            eq = montar(Path(d), {})
+            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            marcada, _ = mod.marcar_revision(eq, r["id"], "gestion")
+            self.assertEqual((marcada["estado"], marcada["revisando"]["quien"]), ("pendiente", "gestion"))
+            self.assertEqual(mod.leer_bandeja(eq)[0]["revisando"]["quien"], "gestion")
+            self.assertIsNone(mod.marcar_revision(eq, "noexiste")[0])
+
     def test_rechazar_no_crea_nada(self):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)

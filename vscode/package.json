@@ -120,7 +120,7 @@
       },
       {
         "command": "telar.equipo",
-        "title": "sugerencias del equipo (aceptar o rechazar)",
+        "title": "lo que pide el equipo (acciones sobre cada entrada)",
         "category": "telar"
       },
       {

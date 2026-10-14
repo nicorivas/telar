@@ -5,6 +5,7 @@
     telar equipo sugerencias --remoto telar        la misma bandeja, leída por ssh desde otra máquina
     telar equipo aceptar ID [--nota "…"]           una sugerencia: sube la prioridad un nivel · un pedido: lo agrega como tarea
     telar equipo rechazar ID [--nota "…"]          cerrarla; la nota la ve quien la hizo
+    telar equipo revisando ID [--quien gestion]    anotar que alguien la está revisando (la lista de Nico lo muestra)
     telar equipo existe ID --tarea T123            un pedido que ya existe: quien lo hizo recibe el estado de esa tarea
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
@@ -253,12 +254,13 @@ def _por_ssh(ctx, remoto: str, argv: list[str]) -> tuple[str, str]:
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("equipo", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", choices=("servir", "sugerencias", "aceptar", "rechazar", "existe", "token"))
+    p.add_argument("verbo", choices=("servir", "sugerencias", "aceptar", "rechazar", "existe", "revisando", "token"))
     p.add_argument("valor", nargs="?", default="", help="aceptar/rechazar: el id · token: la persona")
     p.add_argument("--host", default="", help="servir: la IP donde escuchar (por defecto, la de Tailscale)")
     p.add_argument("--puerto", type=int, default=0, help="servir: el puerto (por defecto, [equipo] puerto)")
     p.add_argument("--todas", action="store_true", help="sugerencias: también las ya resueltas")
     p.add_argument("--nota", default="", help="aceptar/rechazar/existe: lo que ve quien la hizo")
+    p.add_argument("--quien", default="gestion", help="revisando: quién la revisa")
     p.add_argument("--tarea", default="", help="existe: el número de la tarea que ya existe (T123)")
     p.add_argument("--remoto", default="", help="leer o decidir en otra máquina de [remotos], por ssh")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
@@ -275,6 +277,7 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja("servir corre en la máquina donde viven las tareas, no por ssh")
         sub = [o.verbo, *([o.valor] if o.valor else []), *(["--todas"] if o.todas else []),
                *(["--nota", o.nota] if o.nota else []), *(["--tarea", o.tarea] if o.tarea else []),
+               *(["--quien", o.quien] if o.verbo == "revisando" else []),
                *(["--json"] if o.json else [])]
         salida, problema = _por_ssh(ctx, o.remoto, sub)
         if problema:
@@ -305,6 +308,11 @@ def main(argv: list[str], ctx) -> int:
         return 0
     if not o.valor:
         return _comun.queja(f"¿cuál? telar equipo {o.verbo} ID")
+    if o.verbo == "revisando":
+        r, problema = mod_equipo.marcar_revision(eq, o.valor, o.quien)
+        if r is None:
+            return _comun.queja(problema)
+        return _comun.escribir_json({"sugerencia": r}) if o.json else (print(f"{r['id']}: la revisa {o.quien}") or 0)
     r, problema = mod_equipo.resolver(eq, o.valor, o.verbo, o.nota, o.tarea)
     if r is None:
         return _comun.queja(problema)
