@@ -318,8 +318,17 @@ y el dashboard muestra sus ítems como filas: marca, hora, `texto` y `titulo`; l
 página que traen `lienzo` (un gráfico) o `texto` se muestran arriba de las filas, como en una página. Se pide con el
 ritmo de la red (cada 5 minutos, o con `r`), no en cada refresco. Los atajos con
 `en = "<clave>"` van en su título: el correo y la tecla que lo procesa, juntos.
-Un ítem con `mensaje` se puede clicar: abre un hilo nuevo con el agente para esa fila,
-como un atajo pero para un solo correo.
+Un ítem con `mensaje` o `tareas` se puede clicar: se abre solo, en la misma pestaña, con las
+tareas que nacieron de él (`tareas`: `[{"proveedor": "tareas", "id": "T366", "estado": "activa"}]`;
+cada una abre su ficha, y al cerrarla se vuelve al ítem) y, si trae `mensaje`, un botón que abre un
+hilo nuevo con el agente para esa fila, como un atajo pero para un solo correo.
+Los ítems con el mismo `grupo` (los correos de una conversación) van anidados bajo el primero de la
+lista, con ▸ y cuántos son; el clic en ▸ despliega los demás.
+Un ítem con `id` muestra además su detalle al abrirlo (el cuerpo de un correo, cinco líneas y «ver
+todo»): el dashboard corre `telar bloque <clave> --item <id>`, que llama al comando del bloque con
+`--item <id>` al final; el comando imprime `{"texto": "…"}`. Se pide al abrir el ítem, no en cada
+lectura del bloque. Con `enlace`, el título del ítem abierto lleva al original; con `reusar`, en la
+pestaña de Chrome cuyo título o dirección lo contiene, si hay una abierta.
 
 ## `[remotos]` — máquinas donde pueden vivir hilos
 

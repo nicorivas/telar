@@ -20,6 +20,38 @@ workflow refuses to run if the two disagree.
   guion que se corre con `sudo bash`. `quitar` cierra el acceso y conserva el home (`--borrar-home` lo borra).
   Cada persona queda anotada en `/etc/telar/personas.d/<nombre>.toml`. El plan es una función pura
   (`telar.persona`), así que se prueba sin root. Reemplaza al guion `servidor/alta-colega`.
+- Threads bar: HILOS and ARCHIVO each get a search box under their header (by name or folder, accents
+  ignored; ⏎ opens the first match, ⎋ clears) and three sort orders — ● urgency (priority, then waiting,
+  then most recent), a-z name, ◷ last change (the last prompt to its agent). A second click on the
+  active order goes back to telar's own. The search survives redraws; the order is remembered per group.
+- A thread's last change is now when its agent was last asked something (a prompt or an errand):
+  telar records `actividad` whenever an agent starts working, and `telar hilos --json` gives it. The
+  threads bar shows and sorts by it (falling back to the agent's last state change); focusing a thread
+  (`visto`) no longer counts as a change.
+- A block item (an email) opens on its own in its tab instead of starting a thread: what it says, the
+  tasks born from it (new item field `tareas`, each opening its card and coming back to the item) and,
+  when it has `mensaje`, a «▶ procesarlo en un hilo» button.
+  When a block's items carry `tareas`, the list shows them in a column of their own (comma-separated codes,
+  «—» when none); closed ones are dimmed — pending means still in the current task list — and a
+  «☐ con tareas pendientes» switch in the block's header shows only the items (conversations) with one.
+  Items with the same `grupo` (the emails of one conversation) nest under the most recent, like Gmail:
+  one row with ▸ and how many, unprocessed if any of them is, with all their tasks; ▸ unfolds the rest.
+  In an open item, its title links to the original (`enlace`; for an email, its Gmail conversation). With
+  the item field `reusar`, on macOS the link opens in an already open Chrome tab whose title or address
+  contains it (the Gmail tab of that account), brought to the front; otherwise in a new tab.
+  An open item's tasks use the same row as «tareas» (✓ ◉ ▶ ⋯, date, owner), so a task can be closed
+  right after answering the email; the ones no longer pending show in one line that opens their card.
+  An open item with `id` shows its detail — an email's body, five lines and «ver todo» — asked for when
+  it opens: `telar bloque <clave> --item <id>` runs the block's command with `--item <id>` (it prints
+  `{"texto": …}`).
+- Dashboard «tareas»: a column of one-click actions before «⋯» — ✓ mark it done (the provider's
+  `rol: hecha` action, or the checkbox of a document's item), ◉/○ share it with the team (moved out of the
+  text) and ▶ take it to a thread. Dim until the row is hovered.
+  ✓ answers at once: the row is struck through and the ✓ spins while the provider works, the row leaves
+  the list as soon as it is done, and the list is reread in the background instead of being waited for.
+  It costs one trip to the provider instead of two: `telar tarea <id> --rol hecha` runs the action with that
+  `rol` without reading the card first (the extension falls back to the card when the other machine's telar
+  does not know `--rol` yet).
 - Modules (`[modulos.<nombre>] carpeta = "…"`): a folder with a `modulo.toml` that brings everything
   one thing needs — a dashboard tab (`[pestana]`, a block), a panel app (`[app]`), periodic jobs
   (`[periodicos.<x>]`, run in the module's folder) and a daily result (`[resultado]`, read where the
