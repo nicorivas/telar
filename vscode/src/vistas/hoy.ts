@@ -679,7 +679,10 @@ export class PanelHoy {
         const eq = ficha && modelo.equipoRemoto
             ? `<span class="rap eq${compartida ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${compartida ? 'compartida con el equipo: clic para dejar de compartirla' : 'compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${compartida ? '◉' : '○'}</span>`
             : '<span class="rap"></span>';
-        const hilo = `<span class="rap ir" data-accion="hilo-fila" data-valor="${esc(JSON.stringify([fila.proveedor, ref]))}" title="${fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">▶</span>`;
+        // una tarea con ficha va a su hilo (el de su proyecto, o el agente general) con /tarea <id>,
+        // enviado: el agente la empieza con su contexto cargado. Una casilla de un README, escrita
+        const hilo = `<span class="rap ir" data-accion="hilo-fila" data-valor="${esc(JSON.stringify([fila.proveedor, ref, ficha ? fila.id || ref : '']))}"`
+            + ` title="${ficha ? `trabajarla: /tarea ${esc(fila.id || ref)} en ${fila.hilo ? `«${esc(fila.hilo)}»` : 'su hilo'}` : fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">▶</span>`;
         return `<span class="rapidas">${hecha}${eq}${hilo}</span>`;
     }
 
@@ -2367,7 +2370,10 @@ export class PanelHoy {
                 if (!r.datos) void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude marcarla'}`);
                 else { vscode.window.setStatusBarMessage(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
             } break;
-            case 'hilo-fila': if (m.valor) { const [proveedor, ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false, proveedor); } break;
+            case 'hilo-fila': if (m.valor) {
+                const [proveedor, ref, id] = JSON.parse(m.valor) as string[];
+                await llevarPendiente(ref, false, proveedor, id ? `/tarea ${id}` : '', !!id);
+            } break;
             case 'hecha':
                 if (!m.valor) break;
                 await marcarHecha(m.valor);

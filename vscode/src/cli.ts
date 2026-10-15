@@ -559,8 +559,9 @@ export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */
 /** `proveedor`, si se sabe, evita preguntarles a todos (el calendario se baja entero): de 5 s a menos de 1. */
-export const pendiente = (ref: string, nuevo = false, proveedor = '') =>
-    telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : [])], 90000);
+export const pendiente = (ref: string, nuevo = false, proveedor = '', texto = '', enviar = false) =>
+    telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : []),
+        ...(texto ? ['--texto', texto] : []), ...(enviar ? ['--enviar'] : [])], 90000);
 
 /** Una casilla en su documento: `--hecho`, `--responsable NOMBRE` o `--linea`. `esperado` es el texto
  *  que se vio: si el documento cambió y ya no dice eso, telar no toca nada. */

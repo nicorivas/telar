@@ -8,6 +8,9 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Dashboard «tareas»: ▶ on a task with a card sends `/tarea <id>` to its thread (its project's, or the
+  general agent's), so the agent starts on it with its context loaded; before, in an existing thread it only
+  typed «Veamos <id>» without sending it. A document's checkbox is still only typed.
 - `telar hilos --red`: además de los hilos de esta máquina, los de todas las demás según el registro del bus
   (`otras_maquinas` y `maquinas` en el JSON; en la terminal, una sección por máquina). Sin la bandera, `telar
   hilos` sigue viendo solo el multiplexor de aquí, que es lo que la extensión necesita. La skill `/hilos` ahora

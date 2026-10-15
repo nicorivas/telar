@@ -64,12 +64,13 @@ export class VistaTareas implements vscode.WebviewViewProvider {
 /** Un pendiente no se marca desde aquí: se va a trabajarlo. `telar pendiente` busca el hilo
  *  del proyecto al que le toca, le pone el foco y le deja la frase escrita al agente que ya
  *  está ahí —sin enviarla—. Con ⌘ se fuerza un hilo nuevo. */
-export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = ''): Promise<void> {
+/** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). */
+export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false): Promise<void> {
     // buscar el hilo, retomarlo o encargárselo a un agente del servidor toma unos segundos:
     // una notificación lo dice mientras tanto, para que el Enter no parezca perdido
     const r = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `telar: llevando ${ref} a su hilo…` },
-        () => cli.pendiente(ref, nuevo, proveedor));
+        () => cli.pendiente(ref, nuevo, proveedor, texto, enviar));
     if (!r.datos) {
         void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude llevar «${ref}»`}`);
         return;
