@@ -845,6 +845,14 @@ class Bloques(Orden):
         pagina = self.json_de("bloque", "correo", "--json")
         self.assertEqual(pagina["bloques"][0]["items"][0]["marca"], "●")
 
+    def test_el_detalle_de_un_item_es_el_comando_con_item(self):
+        self._config('import json, sys; i = sys.argv.index("--item"); print(json.dumps({"texto": "cuerpo de " + sys.argv[i + 1]}))')
+        self.assertEqual(self.json_de("bloque", "correo", "--item", "1a0d9", "--json"), {"texto": "cuerpo de 1a0d9"})
+        self._config('print("no sé")')
+        codigo, _, error = self.correr("bloque", "correo", "--item", "1a0d9", "--json")
+        self.assertEqual(codigo, 2)
+        self.assertIn("1a0d9", error)
+
     def test_una_pagina_con_otra_forma_sale_con_2(self):
         self._config('print("[]")')
         codigo, _, error = self.correr("bloque", "correo", "--json")

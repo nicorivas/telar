@@ -537,9 +537,22 @@ class Estado:
     def atencion(self, hilo: str) -> Atencion:
         return self.atenciones().get(hilo, (Atencion.NINGUNA, None))[0]
 
-    def anotar_atencion(self, hilo: str, atencion: Atencion, cuando: datetime | None = None) -> None:
-        """Deja dicho en qué anda el agente de un hilo. `ninguna` borra la anotación."""
+    def actividades(self) -> dict[str, datetime]:
+        """hilo → la última vez que su agente empezó a trabajar (un prompt, un encargo)."""
+        return {h: f for h, v in self._leer("actividad", {}).items() if (f := _fecha(v))}
+
+    def anotar_actividad(self, hilo: str, cuando: datetime | None = None) -> None:
+        """La última modificación de un hilo: cuándo se le pidió algo a su agente. Mirarlo no cuenta
+        (eso es `visto`), ni que el agente termine: es la hora que la barra muestra y ordena."""
         marca = (cuando or datetime.now()).isoformat(timespec="seconds")
+        self._actualizar("actividad", lambda d: d.__setitem__(hilo, marca), {})
+
+    def anotar_atencion(self, hilo: str, atencion: Atencion, cuando: datetime | None = None) -> None:
+        """Deja dicho en qué anda el agente de un hilo. `ninguna` borra la anotación. Pasar a
+        `trabajando` es que se le pidió algo: también es su última actividad."""
+        marca = (cuando or datetime.now()).isoformat(timespec="seconds")
+        if atencion == Atencion.TRABAJANDO:
+            self.anotar_actividad(hilo, cuando)
         if atencion == Atencion.NINGUNA:
             self._actualizar("atencion", lambda d: d.pop(hilo, None), {})
             return
@@ -884,7 +897,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "remotos", "leidos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "remotos", "leidos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])

@@ -75,3 +75,26 @@ class ProcesarAhoraVaASuHilo(Prueba):
         self.assertEqual(orden, ["buscar", "comando", "llevar"])
         self.assertIs(llevado[0][1], fila)
         self.assertIn("/avanzar T7", llevado[0][0])
+
+
+class PorSuRol(Prueba):
+    """`--rol hecha`: la acción por su rol, sin saber su número (el ✓ de una lista, en un viaje)."""
+
+    def correr(self, *argv):
+        acciones = [{"nombre": "nota", "comando": ["todo", "nota", "T7", "{texto}"], "pide": "qué"},
+                    {"nombre": "✓ hecha", "comando": ["todo", "done", "T7"], "rol": "hecha", "confirmar": True}]
+        corrido = []
+        with mock.patch.object(tarea, "detalle_de", return_value=(("x",), "")), \
+                mock.patch.object(tarea, "correr", return_value=({"titulo": "T7", "acciones": acciones}, "")), \
+                mock.patch("subprocess.run", side_effect=lambda w, **k: corrido.append(w) or SimpleNamespace(returncode=0, stdout="", stderr="")), \
+                redirect_stdout(io.StringIO()), mock.patch("sys.stderr", io.StringIO()):
+            codigo = tarea.main(["T7", *argv], SimpleNamespace())
+        return codigo, corrido
+
+    def test_corre_la_de_ese_rol(self):
+        self.assertEqual(self.correr("--rol", "hecha"), (0, [["todo", "done", "T7"]]))
+
+    def test_sin_esa_accion_no_corre_nada(self):
+        codigo, corrido = self.correr("--rol", "fecha")
+        self.assertNotEqual(codigo, 0)
+        self.assertEqual(corrido, [])

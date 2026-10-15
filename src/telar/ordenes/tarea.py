@@ -46,6 +46,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("id", help="la tarea, como la da el proveedor")
     p.add_argument("--proveedor", default="tareas", help="de qué proveedor (tareas si no se dice)")
     p.add_argument("--accion", type=int, default=None, metavar="N", help="correr la acción N (desde 0)")
+    p.add_argument("--rol", default="", metavar="ROL",
+                   help="correr la acción con ese `rol` (hecha, fecha…), sin saber su número: un viaje en vez de dos")
     p.add_argument("--texto", default="", help="lo escrito, para una acción que lo pide")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
@@ -67,6 +69,13 @@ def main(argv: list[str], ctx) -> int:
     pagina, problema = correr([w.replace("{id}", o.id) for w in detalle], f"la ficha de {o.id}")
     if problema:
         return _comun.queja(problema)
+
+    if o.rol:
+        # la acción por su rol: quien la pide (el ✓ de una lista) no tiene que leer la ficha antes
+        k = next((i for i, a in enumerate(pagina.get("acciones", [])) if a.get("rol") == o.rol), None)
+        if k is None:
+            return _comun.queja(f"{o.id} no tiene una acción «{o.rol}»: ábrela")
+        o.accion = k
 
     if o.accion is None:
         if o.json:

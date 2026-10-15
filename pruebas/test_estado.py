@@ -465,3 +465,19 @@ class AliasDeUnRenombre(unittest.TestCase):
         self.est.renombrar("santander-gob", "Santander")
         aviso = Aviso(evento=Evento.ESPERA)
         self.assertEqual(resolver_hilo(self.est, aviso, entorno={"TELAR_HILO": "santander-gob"}), "Santander")
+
+
+class Actividad(ConCarpeta):
+    """La última modificación de un hilo es cuándo se le pidió algo a su agente; mirarlo no cuenta."""
+
+    def test_empezar_a_trabajar_la_anota_y_lo_demas_no(self):
+        t1, t2 = datetime(2026, 10, 15, 9, 0), datetime(2026, 10, 15, 10, 0)
+        self.est.anotar_atencion("faro", Atencion.TRABAJANDO, t1)
+        self.est.anotar_atencion("faro", Atencion.TERMINO, t2)
+        self.est.anotar_atencion("faro", Atencion.NINGUNA)
+        self.assertEqual(self.est.actividades(), {"faro": t1})
+
+    def test_renombrar_se_la_lleva(self):
+        self.est.anotar_actividad("faro", datetime(2026, 10, 15, 9, 0))
+        self.est.renombrar("faro", "el faro")
+        self.assertEqual(list(self.est.actividades()), ["el faro"])
