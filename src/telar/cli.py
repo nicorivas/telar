@@ -55,6 +55,7 @@ ORDENES: dict[str, str] = {
     "enlace": "La puerta entre dos máquinas: pedirle cosas al laptop desde el servidor.",
     "espejo": "Los hilos de otra máquina, vistos desde esta: publicar los propios, recibir, ver.",
     "equipo": "Que una persona de confianza vea tus tareas del equipo y te sugiera prioridades.",
+    "persona": "Las personas de este servidor: darles de alta con un perfil, verlas, cerrarles el acceso.",
     "imagen": "Llevar una imagen del portapapeles (o un archivo) a la máquina donde corre el hilo.",
     "web": "telar en el navegador del celular: el día y los hilos, tocables.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",

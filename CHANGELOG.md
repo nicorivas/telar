@@ -8,6 +8,13 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar persona` (`ver`, `crear`, `quitar`): dar de alta a un colega en el servidor — su usuario (sin el grupo
+  `agentes`, que lee el correo archivado), su llave ssh, sshd sin contraseña ni túneles, un tope de memoria y
+  CPU para toda su cuenta (slice de systemd), a qué hilos tuyos puede despertar por correo, y su propio uv,
+  Claude Code y telar con las skills. Con `--seco` muestra el plan; con root lo ejecuta; sin root deja un
+  guion que se corre con `sudo bash`. `quitar` cierra el acceso y conserva el home (`--borrar-home` lo borra).
+  Cada persona queda anotada en `/etc/telar/personas.d/<nombre>.toml`. El plan es una función pura
+  (`telar.persona`), así que se prueba sin root. Reemplaza al guion `servidor/alta-colega`.
 - Modules (`[modulos.<nombre>] carpeta = "…"`): a folder with a `modulo.toml` that brings everything
   one thing needs — a dashboard tab (`[pestana]`, a block), a panel app (`[app]`), periodic jobs
   (`[periodicos.<x>]`, run in the module's folder) and a daily result (`[resultado]`, read where the

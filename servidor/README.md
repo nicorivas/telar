@@ -8,7 +8,7 @@ en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.m
 
 | archivo | qué hace | se instala en |
 | --- | --- | --- |
-| `alta-colega` | deja a un colega con su propio telar y Claude Code en su home, fuera del grupo `agentes` y con tope de memoria y CPU (`sudo bash alta-colega USUARIO [MEM] [CPU]`) | se corre desde el repo |
+| *(`telar persona`)* | dar de alta a un colega: usuario, ssh, tope de recursos, correo y su propio telar y Claude Code. Es una orden de telar, no un archivo de esta carpeta | `telar persona crear NOMBRE --llave …` |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
 | `telar-web.service` | `telar web` como servicio de usuario: arranca al encender y se levanta si se cae | `~/.config/systemd/user/` |
@@ -118,3 +118,12 @@ loginctl enable-linger "$USER"        # que arranque al encender, sin que nadie 
 Ver cómo va: `systemctl --user status telar-web` y `journalctl --user -u telar-web -f`. Quitarlo:
 `systemctl --user disable --now telar-web`.
 
+
+## Personas: dar de alta a un colega
+
+`telar persona crear marcelo --llave ~/marcelo.pub` deja a esa persona con su propio entorno:
+usuario sin grupos extra, ssh solo con llave y sin túneles, tope de memoria y CPU, correo hacia
+los hilos que se le digan (`--correo kichoro`), y su `uv`, Claude Code y telar instalados en su
+home. `--seco` muestra el plan; sin root, deja un guion para `sudo bash`. Quedan para quien
+administra: abrir el puerto 22 en Tailscale para su nodo, y que la persona haga `claude login`
+con su cuenta. Ver `telar persona --help`.
