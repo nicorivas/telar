@@ -636,6 +636,139 @@ class Secciones(Orden):
         self.assertEqual(self.json_de("seccion", "diario", "--json")["titulo"], "Diario")
 
 
+class Apps(Orden):
+    def test_cada_app_tiene_una_sola_fuente(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        cfg = mod_config.desde_dict({"apps": {
+            "babel": {"descripcion": "un juego", "pagina": ["x", "--json"]},
+            "vivero": {"nombre": "Vivero", "archivo": "/a/vivero.html", "memoria": "/a/v.json"},
+            "pixel": {"url": "http://telar:8790"}}})
+        self.assertEqual([(a.clave, a.nombre, a.fuente) for a in cfg.apps],
+                         [("babel", "babel", "pagina"), ("vivero", "Vivero", "archivo"), ("pixel", "pixel", "url")])
+        for mal in ({}, {"pagina": ["x"], "url": "http://a"}, {"archivo": "rel.html"}, {"archivo": "/a.txt"},
+                    {"url": "ftp://a"}, {"url": "http://a", "memoria": "/m.json"}, {"pagina": "x"},
+                    {"url": "http://a", "otra": 1}):
+            with self.assertRaises(ErrorDeConfig, msg=mal):
+                mod_config.desde_dict({"apps": {"a": mal}})
+
+    def test_las_tres_fuentes_dan_una_pagina_del_contrato(self):
+        import sys
+
+        from telar import config as mod_config
+        from telar.ordenes.app import pagina
+        from telar.ordenes.seccion import validar
+
+        html = Path(self.tmp.name) / "v.html"
+        html.write_text("<canvas></canvas>", encoding="utf-8")
+        codigo = 'import json; print(json.dumps({"bloques": []}))'
+        cfg = mod_config.desde_dict({"apps": {
+            "juego": {"pagina": [sys.executable, "-c", codigo]},
+            "vivero": {"archivo": str(html), "memoria": "/a/v.json"},
+            "atlas": {"url": "http://telar:8790", "descripcion": "el mapa"}}})
+        juego, vivero, atlas = (pagina(a)[0] for a in cfg.apps)
+        self.assertEqual(juego["titulo"], "juego")   # sin título propio, el de la app
+        self.assertEqual(vivero["bloques"][0]["lienzo"], {"archivo": str(html), "alto": "lleno", "memoria": "/a/v.json"})
+        self.assertEqual(atlas["bloques"][0]["marco"]["url"], "http://telar:8790")
+        self.assertEqual(atlas["acciones"][0]["enlace"], "http://telar:8790")
+        for p in (juego, vivero, atlas):
+            self.assertEqual(validar(p), "", p)
+        falta = mod_config.desde_dict({"apps": {"x": {"archivo": "/no/hay.html"}}}).apps[0]
+        self.assertIn("no existe", pagina(falta)[1])
+
+    def test_el_marco_y_el_alto_lleno(self):
+        from telar.ordenes.seccion import validar
+
+        self.assertEqual(validar({"titulo": "x", "bloques": [{"marco": {"url": "https://a.b", "alto": "lleno"}}]}), "")
+        self.assertIn("url", validar({"titulo": "x", "bloques": [{"marco": {"url": "file:///a"}}]}))
+        self.assertIn("alto", validar({"titulo": "x", "bloques": [{"marco": {"url": "http://a", "alto": "todo"}}]}))
+
+    def test_la_orden_lista_y_devuelve_la_pagina(self):
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text('[apps.atlas]\nurl = "http://telar:8790"\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+        self.assertEqual(self.json_de("app", "--json")["apps"][0]["fuente"], "url")
+        self.assertEqual(self.json_de("app", "atlas", "--json")["titulo"], "atlas")
+
+
+class Modulos(Orden):
+    def _modulo(self, nombre="nino34", extra=""):
+        carpeta = Path(self.tmp.name) / nombre
+        (carpeta / "bin").mkdir(parents=True, exist_ok=True)
+        (carpeta / "bin" / "dibujar").write_text("#!/bin/sh\n", encoding="utf-8")
+        (carpeta / "modulo.toml").write_text(
+            'descripcion = "el mar"\n'
+            '[pestana]\nnombre = "niño 3.4"\ncomando = ["bin/dibujar", "pagina"]\n'
+            '[app]\narchivo = "app.html"\n'
+            '[periodicos.bajar]\ncuando = "30 7 * * *"\ncomando = "bin/dibujar bajar"\n'
+            '[resultado]\ncarpeta = "~/.local/state/nino34"\n' + extra, encoding="utf-8")
+        return carpeta
+
+    def test_lo_que_aporta_se_suma_a_la_configuracion(self):
+        from telar import config as mod_config
+
+        carpeta = self._modulo()
+        cfg = mod_config.desde_dict({"periodicos": {"en": "servidor"},
+                                     "modulos": {"nino34": {"carpeta": str(carpeta)}}})
+        m = cfg.modulos[0]
+        self.assertEqual(m.aporta, ["pestaña", "app", "periódico nino34-bajar", "resultado"])
+        b = cfg.bloques[0]
+        self.assertEqual((b.clave, b.nombre, b.comando), ("nino34", "niño 3.4", (str(carpeta.resolve() / "bin/dibujar"), "pagina")))
+        self.assertEqual((cfg.apps[0].archivo, cfg.apps[0].descripcion), (str(carpeta.resolve() / "app.html"), "el mar"))
+        r = cfg.resultados[0]
+        self.assertEqual((r.clave, r.carpeta, r.en), ("nino34", "~/.local/state/nino34", "servidor"))
+
+    def test_un_modulo_apagado_o_que_choca(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        carpeta = self._modulo()
+        apagado = mod_config.desde_dict({"modulos": {"nino34": {"carpeta": str(carpeta), "activo": False}}})
+        self.assertEqual((apagado.modulos, apagado.bloques), ((), ()))
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"bloques": {"nino34": {"comando": ["x"]}}, "modulos": {"nino34": {"carpeta": str(carpeta)}}})
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"modulos": {"x": {"carpeta": str(Path(self.tmp.name) / "no-hay")}}})
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"modulos": {"x": {"carpeta": str(self._modulo("x", "otra = 1\n"))}}})
+
+    def test_sus_periodicos_corren_en_su_carpeta_y_no_se_escriben(self):
+        from telar import config as mod_config
+        from telar import periodicos as mod
+
+        carpeta = self._modulo()
+        cfg = mod_config.desde_dict({"modulos": {"nino34": {"carpeta": str(carpeta)}}})
+        a = mod.con_modulos(mod.Archivo(procesos=[mod.Proceso(nombre="propio", cuando="0 8 * * *", comando="x")]), cfg)
+        p = a.por_nombre("nino34-bajar")
+        self.assertEqual((p.carpeta, p.modulo, p.descripcion), (str(carpeta.resolve()), "nino34", "el mar"))
+        texto = mod.texto(a)
+        self.assertIn("[propio]", texto)
+        self.assertNotIn("nino34", texto)
+        with self.assertRaises(mod.ErrorDePeriodicos):
+            mod.con_modulos(mod.Archivo(procesos=[mod.Proceso(nombre="nino34-bajar", cuando="0 8 * * *", comando="x")]), cfg)
+
+    def test_las_pestanas_del_dashboard(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        cfg = mod_config.desde_dict({"dashboard": {"orden": ["ahora", "revisar"], "ocultas": ["plan"]}})
+        self.assertEqual((cfg.dashboard_orden, cfg.dashboard_ocultas), (("ahora", "revisar"), ("plan",)))
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.desde_dict({"dashboard": {"orden": "ahora"}})
+
+    def test_la_orden_y_escribir_las_pestanas(self):
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(f'[modulos.nino34]\ncarpeta = "{self._modulo()}"\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+        self.assertEqual(self.json_de("modulos", "--json")["modulos"][0]["nombre"], "nino34")
+        self.json_de("config", "--pestanas", "ahora,revisar,-plan", "--json")
+        d = self.json_de("config", "--json")["dashboard"]
+        self.assertEqual(d, {"orden": ["ahora", "revisar", "plan"], "ocultas": ["plan"]})
+
+
 class Bloques(Orden):
     def test_se_declaran_con_comando_y_color(self):
         from telar import config as mod_config
@@ -644,6 +777,16 @@ class Bloques(Orden):
         self.assertEqual([(b.clave, b.nombre, b.comando, b.color) for b in cfg.bloques],
                          [("correo", "correo", ("x", "--json"), "rojo")])
         self.assertEqual(mod_config.desde_dict({"bloques": {"c": {"nombre": "c", "comando": ["x"]}}}).bloques[0].color, "cian")
+
+    def test_un_bloque_es_su_pestana_o_va_en_el_plan(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        b = mod_config.desde_dict({"bloques": {"c": {"comando": ["x"], "tecla": "e"}, "r": {"comando": ["y"], "en": "plan"}}}).bloques
+        self.assertEqual([(x.en, x.tecla) for x in b], [("", "e"), ("plan", "")])
+        for mal in ({"comando": ["x"], "en": "hoy"}, {"comando": ["x"], "tecla": "ee"}):
+            with self.assertRaises(ErrorDeConfig, msg=mal):
+                mod_config.desde_dict({"bloques": {"c": mal}})
 
     def test_lo_mal_declarado_es_un_error(self):
         from telar import config as mod_config

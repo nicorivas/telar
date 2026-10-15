@@ -45,6 +45,8 @@ ORDENES: dict[str, str] = {
     "reunion": "Preparar una reunión: un hilo con el agente ya trabajando en ella.",
     "atajo": "Una tecla del dashboard: un hilo con el agente haciendo algo recurrente.",
     "bloque": "Lo que muestra un bloque del día: corre su comando y devuelve su página.",
+    "modulos": "Los módulos instalados (una carpeta con modulo.toml) y lo que aporta cada uno.",
+    "app": "Las apps del panel (un juego, un vivero): la lista, o la página de una.",
     "seccion": "La página de una sección de la lista: corre su `home` y devuelve su JSON.",
     "directorio": "Los hilos remotos de cada persona de una máquina compartida: leerlos y publicar los propios.",
     "correo": "El correo entre agentes de las máquinas remotas: direcciones, pendientes, conversaciones.",

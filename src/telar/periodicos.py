@@ -75,6 +75,9 @@ class Proceso:
     carpeta: str = ""
     descripcion: str = ""
     activo: bool = True
+    #: el módulo que lo declara (`telar.modulos`); "" si vive en periodicos.toml. Los de un módulo
+    #: no se escriben en periodicos.toml ni se cambian desde aquí: se cambian en su modulo.toml.
+    modulo: str = ""
 
     @property
     def tipo(self) -> str:
@@ -240,6 +243,31 @@ def leer(destino: Path) -> Archivo:
     return Archivo(zona=zona, procesos=procesos)
 
 
+def con_modulos(a: Archivo, config) -> Archivo:
+    """El archivo con los procesos de los módulos instalados (`[modulos]`) al final. Corren en la
+    carpeta del módulo, así que su comando puede ser una ruta relativa a ella."""
+    for m in getattr(config, "modulos", ()):
+        for nombre, cuerpo in m.periodicos.items():
+            if a.por_nombre(nombre):
+                raise ErrorDePeriodicos(f"el módulo {m.nombre} trae «{nombre}», que ya está en periodicos.toml: bórralo de ahí")
+            sobra = set(cuerpo) - set(CLAVES)
+            if sobra:
+                raise ErrorDePeriodicos(f"módulo {m.nombre}: [periodicos.{nombre}] no conoce «{sorted(sobra)[0]}»")
+            try:
+                p = Proceso(nombre=nombre, cuando=str(cuerpo.get("cuando", "")), comando=str(cuerpo.get("comando", "")),
+                            mensaje=str(cuerpo.get("mensaje", "")), agente=str(cuerpo.get("agente", "")),
+                            hilo=str(cuerpo.get("hilo", "")), max_abiertos=int(cuerpo.get("max_abiertos", 1)),
+                            argumentos=tuple(str(x) for x in cuerpo.get("argumentos", ())),
+                            carpeta=str(cuerpo.get("carpeta") or m.carpeta),
+                            descripcion=str(cuerpo.get("descripcion", "") or m.descripcion),
+                            activo=bool(cuerpo.get("activo", True)), modulo=m.nombre)
+            except (TypeError, ValueError) as e:
+                raise ErrorDePeriodicos(f"módulo {m.nombre}: [periodicos.{nombre}]: {e}") from e
+            p.validar()
+            a.procesos.append(p)
+    return a
+
+
 def _toml(valor) -> str:
     if isinstance(valor, bool):
         return "true" if valor else "false"
@@ -256,6 +284,8 @@ def texto(a: Archivo) -> str:
     if a.zona:
         lineas += [f"zona = {_toml(a.zona)}", ""]
     for p in a.procesos:
+        if p.modulo:
+            continue   # lo declara su módulo
         lineas.append(f"[{p.nombre}]")
         por_defecto = Proceso(nombre=p.nombre, cuando="")
         for clave in CLAVES:
@@ -527,6 +557,6 @@ def resumen(ctx, a: Archivo, ahora: datetime | None = None) -> list[dict]:
                        "comando": p.comando, "mensaje": p.mensaje, "agente": p.agente, "hilo": p.hilo,
                        "max_abiertos": p.max_abiertos,
                        "argumentos": list(p.argumentos), "carpeta": p.carpeta, "descripcion": p.descripcion,
-                       "activo": p.activo, "proxima": sig.isoformat(timespec="minutes") if sig else "",
+                       "activo": p.activo, "modulo": p.modulo, "proxima": sig.isoformat(timespec="minutes") if sig else "",
                        "ultima": ultima(ctx.config, p.nombre)})
     return salida

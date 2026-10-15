@@ -105,9 +105,26 @@ def main(argv: list[str], ctx) -> int:
                    help="de qué carpetas salen los hilos, separadas por coma, relativas a la raíz; "
                         "vacío vuelve a las unidades del perfil")
     p.add_argument("--tope", type=int, default=None, help="cuántos hilos abre tejer de una vez")
+    p.add_argument("--pestanas", metavar="ORDEN", default=None,
+                   help="las pestañas del dashboard, en orden y separadas por coma; las que llevan «-» delante "
+                        "no se muestran (ej. «ahora,revisar,-plan»); vacío vuelve a todas en su orden de siempre")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+
+    if o.pestanas is not None:
+        nombres = [x.strip() for x in o.pestanas.split(",") if x.strip()]
+        orden = [x.lstrip("-") for x in nombres]
+        ocultas = [x[1:] for x in nombres if x.startswith("-")]
+        try:
+            escribir_clave("dashboard", "orden", orden or None, ctx.config.origen)
+            destino = escribir_clave("dashboard", "ocultas", ocultas or None, ctx.config.origen)
+        except ErrorDeConfig as e:
+            return _comun.queja(str(e))
+        if o.json:
+            return _comun.escribir_json({"dashboard": {"orden": orden, "ocultas": ocultas}, "archivo": str(destino)})
+        print(f"pestañas: {', '.join(nombres) or 'todas, en su orden'} · {destino}")
+        return 0
 
     if o.directorios is not None or o.tope is not None:
         try:
@@ -195,7 +212,7 @@ def main(argv: list[str], ctx) -> int:
             {"nombre": r.nombre, "destino": r.destino, "transporte": r.transporte, "raiz": r.raiz}
             for r in cfg.remotos
         ],
-        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color} for b in cfg.bloques],
+        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla} for b in cfg.bloques],
         # las pestañas de proveedor (un feed) y su tecla, para el dashboard
         "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
                      for p in cfg.proveedores_activos() if p.opciones.get("pestana")],
@@ -204,6 +221,11 @@ def main(argv: list[str], ctx) -> int:
             {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
             for s in cfg.secciones
         ] + _agentes(cfg),
+        "dashboard": {"orden": list(cfg.dashboard_orden), "ocultas": list(cfg.dashboard_ocultas)},
+        "modulos": [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta}
+                    for m in cfg.modulos],
+        "apps": [{"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente,
+                  **({"url": a.url} if a.url else {})} for a in cfg.apps],
         "atajos": [
             {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion, "en": a.en}
             for a in cfg.atajos

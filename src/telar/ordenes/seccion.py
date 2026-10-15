@@ -51,6 +51,10 @@ def validar(datos: object) -> str:
             problema = _lienzo(b["lienzo"])
             if problema:
                 return f"bloques[{i}].lienzo: {problema}"
+        if "marco" in b:
+            problema = _marco(b["marco"])
+            if problema:
+                return f"bloques[{i}].marco: {problema}"
     if "acciones" in datos:
         problema = _acciones(datos["acciones"])
         if problema:
@@ -100,9 +104,9 @@ def _lienzo(l: object) -> str:
         return "archivo: se esperaba la ruta absoluta de un .html"
     if not Path(archivo).is_file():
         return f"no existe {archivo}"
-    alto = l.get("alto", 240)
-    if not isinstance(alto, int) or isinstance(alto, bool) or not 40 <= alto <= 2000:
-        return "alto: se esperaba un número de píxeles entre 40 y 2000"
+    problema = _alto(l.get("alto", 240))
+    if problema:
+        return problema
     params = l.get("params", {})
     if not isinstance(params, dict) or not all(isinstance(k, str) and isinstance(v, (str, int, float)) for k, v in params.items()):
         return "params: se esperaba un objeto de textos"
@@ -110,6 +114,25 @@ def _lienzo(l: object) -> str:
     if memoria is not None and (not isinstance(memoria, str) or not memoria.endswith(".json") or not Path(memoria).is_absolute()):
         return "memoria: se esperaba la ruta absoluta de un .json"
     return ""
+
+
+def _alto(alto: object) -> str:
+    """Píxeles entre 40 y 2000, o «lleno»: lo que queda del panel bajo la cabecera."""
+    if alto == "lleno":
+        return ""
+    if not isinstance(alto, int) or isinstance(alto, bool) or not 40 <= alto <= 2000:
+        return "alto: se esperaba un número de píxeles entre 40 y 2000, o «lleno»"
+    return ""
+
+
+def _marco(m: object) -> str:
+    """Un marco es una página servida (http o https) que se muestra en un iframe dentro del panel."""
+    if not isinstance(m, dict):
+        return "se esperaba un objeto"
+    url = m.get("url")
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return "url: se esperaba una dirección http:// o https://"
+    return _alto(m.get("alto", 240))
 
 
 def correr(comando, que: str) -> tuple[dict | None, str]:

@@ -113,7 +113,7 @@ def _telar() -> str:
 
 def _aqui(ctx, o) -> int:
     destino = mod.ruta()
-    archivo = mod.leer(destino)
+    archivo = mod.con_modulos(mod.leer(destino), ctx.config)
 
     if o.verbo == "ver":
         datos = mod.resumen(ctx, archivo)
@@ -190,7 +190,12 @@ def _aqui(ctx, o) -> int:
         activos = sum(1 for p in archivo.procesos if p.activo)
         return _hecho(o, f"crontab al día: {activos} activo(s) de {len(archivo.procesos)}")
 
-    # lo que cambia el archivo
+    # lo que cambia el archivo; un proceso de un módulo se cambia en su modulo.toml
+    de_modulo = archivo.por_nombre(o.nombre) if o.verbo in ("editar", "pausar", "activar", "borrar") and o.nombre else None
+    if de_modulo and de_modulo.modulo:
+        m = next((x for x in ctx.config.modulos if x.nombre == de_modulo.modulo), None)
+        return _comun.queja(f"«{o.nombre}» lo trae el módulo {de_modulo.modulo}: se cambia en "
+                            f"{m.carpeta / 'modulo.toml' if m else 'su modulo.toml'} (y después `telar periodicos aplicar`)")
     if o.verbo == "zona":
         archivo.zona = o.nombre.strip()
         mod.zona_info(archivo.zona)

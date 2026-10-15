@@ -178,15 +178,44 @@ class Atajo:
 
 @dataclass(frozen=True, slots=True)
 class Bloque:
-    """Una sección del día que llena un comando (`[bloques.<clave>]`): los últimos correos,
-    lo que sea que se quiera ver junto a la agenda. El comando imprime el mismo JSON que una
-    página de sección (docs/contratos.md); telar lo pide con el ritmo de la red."""
+    """Una sección del dashboard que llena un comando (`[bloques.<clave>]`): los correos de hoy,
+    la retro del día. El comando imprime el mismo JSON que una página de sección
+    (docs/contratos.md); telar lo pide con el ritmo de la red. Cada bloque es su propia pestaña,
+    salvo que `en` lo ponga dentro de otra («plan»)."""
 
     clave: str
     nombre: str
     comando: tuple[str, ...]
     #: el color de la sección: azul, amarillo, verde, rojo, magenta, cian, violeta
     color: str = "cian"
+    #: "" es una pestaña propia; «plan», arriba de la pestaña del plan (y solo si trae algo)
+    en: str = ""
+    #: la tecla de su pestaña en el dashboard, si tiene una
+    tecla: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class App:
+    """Algo que se abre en el panel y no es un hilo: un juego, un vivero, un atlas.
+
+    Viene de una de tres fuentes, y solo una: `pagina`, un comando que imprime el JSON de una
+    página (el contrato de `telar seccion`); `archivo`, un HTML autocontenido que llena el panel;
+    o `url`, una página servida que se muestra en un marco. `telar app <clave> --json` las vuelve
+    las tres una página, así el panel dibuja una sola cosa (ver docs/configuracion.md, `[apps]`).
+    """
+
+    clave: str
+    nombre: str
+    descripcion: str = ""
+    pagina: tuple[str, ...] = ()
+    archivo: str = ""
+    url: str = ""
+    #: con `archivo`: el .json donde el HTML guarda lo suyo (`window.lienzo.guardar`)
+    memoria: str = ""
+
+    @property
+    def fuente(self) -> str:
+        return "pagina" if self.pagina else "archivo" if self.archivo else "url"
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,6 +410,15 @@ class Config:
     agenda: tuple[ReglaAgenda, ...] = ()
     #: grupos propios en la lista de hilos (`[secciones.x]`), en el orden del archivo.
     secciones: tuple[Seccion, ...] = ()
+    #: lo que se abre en el panel y no es un hilo (`[apps.x]`), en el orden del archivo.
+    apps: tuple[App, ...] = ()
+    #: los módulos instalados (`[modulos.x]`, ver telar.modulos); lo que aportan ya está sumado a
+    #: los bloques, las apps y los resultados.
+    modulos: tuple = ()
+    #: las pestañas del dashboard: en qué orden van (`orden`) y cuáles no se muestran (`ocultas`).
+    #: Las que no se nombran van después, en su orden de siempre.
+    dashboard_orden: tuple[str, ...] = ()
+    dashboard_ocultas: tuple[str, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
     remotos: tuple[Remoto, ...] = ()
     #: máquinas a las que esta puede llamar por la puerta (`telar enlace`).
@@ -446,10 +484,50 @@ def _tabla(valor: object, contexto: str) -> dict:
     return valor
 
 
+def _con_modulos(datos: dict) -> tuple[dict, tuple]:
+    """Lo que aportan los módulos (`[modulos.x]`), sumado a lo declarado a mano, para que pase por
+    la misma validación: la pestaña es un `[bloques.x]`, la app un `[apps.x]`, el resultado un
+    `[resultados.x]` que vive donde corren los periódicos. Los periódicos no van aquí: los suma
+    `telar.periodicos` al leer `periodicos.toml`. Un nombre que ya está declarado es un error."""
+    from telar import modulos as mod_modulos
+
+    if "modulos" not in datos:
+        return datos, ()
+    datos = {k: (dict(v) if isinstance(v, dict) else v) for k, v in datos.items()}
+    lista = []
+    for nombre, cuerpo in _tabla(datos.pop("modulos"), "modulos").items():
+        cuerpo = _tabla(cuerpo, f"modulos.{nombre}")
+        sobra = set(cuerpo) - {"carpeta", "activo"}
+        if sobra:
+            raise ErrorDeConfig(f"modulos.{nombre}.{sorted(sobra)[0]}: no existe")
+        if not isinstance(cuerpo.get("carpeta"), str) or not cuerpo["carpeta"].strip():
+            raise ErrorDeConfig(f"modulos.{nombre}.carpeta: se esperaba la carpeta del módulo")
+        if not isinstance(cuerpo.get("activo", True), bool):
+            raise ErrorDeConfig(f"modulos.{nombre}.activo: true o false")
+        if not cuerpo.get("activo", True):
+            continue
+        try:
+            m = mod_modulos.leer(nombre, Path(cuerpo["carpeta"]))
+        except mod_modulos.ErrorDeModulo as e:
+            raise ErrorDeConfig(f"modulos.{e}") from None
+        en = datos.get("periodicos", {}).get("en", "") if isinstance(datos.get("periodicos"), dict) else ""
+        for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
+                              ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
+            if not aporte:
+                continue
+            destino = datos.setdefault(tabla, {})
+            if nombre in destino:
+                raise ErrorDeConfig(f"modulos.{nombre}: ya hay un [{tabla}.{nombre}] declarado a mano")
+            destino[nombre] = aporte
+        lista.append(m)
+    return datos, tuple(lista)
+
+
 def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
     """Arma una `Config` desde el TOML ya parseado, validando lo que llegó."""
     base = Config()
-    cambios: dict[str, object] = {"origen": origen}
+    datos, modulos = _con_modulos(datos)
+    cambios: dict[str, object] = {"origen": origen, "modulos": modulos}
 
     if "multiplexor" in datos:
         mux = datos["multiplexor"]
@@ -584,7 +662,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         bloques = []
         for clave, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"bloques.{clave}")
-            sobra = set(cuerpo) - {"nombre", "comando", "color"}
+            sobra = set(cuerpo) - {"nombre", "comando", "color", "en", "tecla"}
             if sobra:
                 raise ErrorDeConfig(f"bloques.{clave}.{sorted(sobra)[0]}: no existe")
             comando = cuerpo.get("comando", [])
@@ -596,7 +674,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             nombre = cuerpo.get("nombre", clave)
             if not isinstance(nombre, str) or not nombre.strip():
                 raise ErrorDeConfig(f"bloques.{clave}.nombre: se esperaba un texto")
-            bloques.append(Bloque(clave=clave, nombre=nombre.strip(), comando=tuple(comando), color=color))
+            en = cuerpo.get("en", "")
+            if en not in ("", "plan"):
+                raise ErrorDeConfig(f"bloques.{clave}.en: «plan», o nada para una pestaña propia; llegó {en!r}")
+            tecla = cuerpo.get("tecla", "")
+            if not isinstance(tecla, str) or len(tecla) > 1:
+                raise ErrorDeConfig(f"bloques.{clave}.tecla: se esperaba una letra, llegó {tecla!r}")
+            bloques.append(Bloque(clave=clave, nombre=nombre.strip(), comando=tuple(comando), color=color,
+                                  en=en, tecla=tecla))
         cambios["bloques"] = tuple(bloques)
 
     if "agenda" in datos:
@@ -644,6 +729,41 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                                      hilos=tuple(x.strip() for x in cuerpo.get("hilos", [])),
                                      home=tuple(cuerpo.get("home", []))))
         cambios["secciones"] = tuple(secciones)
+
+    if "apps" in datos:
+        tabla = _tabla(datos["apps"], "apps")
+        apps = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"apps.{clave}")
+            sobra = set(cuerpo) - {"nombre", "descripcion", "pagina", "archivo", "url", "memoria"}
+            if sobra:
+                raise ErrorDeConfig(f"apps.{clave}.{sorted(sobra)[0]}: no existe")
+            textos = {}
+            for campo in ("nombre", "descripcion", "archivo", "url", "memoria"):
+                v = cuerpo.get(campo, "")
+                if not isinstance(v, str):
+                    raise ErrorDeConfig(f"apps.{clave}.{campo}: se esperaba un texto, llegó {v!r}")
+                textos[campo] = v.strip()
+            pagina = cuerpo.get("pagina", [])
+            if not isinstance(pagina, list) or not all(isinstance(x, str) and x.strip() for x in pagina):
+                raise ErrorDeConfig(f"apps.{clave}.pagina: se esperaba una lista de textos (el comando), llegó {pagina!r}")
+            fuentes = [f for f in ("pagina", "archivo", "url") if (pagina if f == "pagina" else textos[f])]
+            if len(fuentes) != 1:
+                raise ErrorDeConfig(f"apps.{clave}: se esperaba una sola de pagina, archivo o url"
+                                    + (f", llegaron {' y '.join(fuentes)}" if fuentes else ""))
+            for campo, fin in (("archivo", ".html"), ("memoria", ".json")):
+                if textos[campo]:
+                    textos[campo] = str(Path(textos[campo]).expanduser())
+                    if not textos[campo].endswith(fin) or not Path(textos[campo]).is_absolute():
+                        raise ErrorDeConfig(f"apps.{clave}.{campo}: se esperaba la ruta absoluta de un {fin}")
+            if textos["memoria"] and not textos["archivo"]:
+                raise ErrorDeConfig(f"apps.{clave}.memoria: solo vale con archivo")
+            if textos["url"] and not textos["url"].startswith(("http://", "https://")):
+                raise ErrorDeConfig(f"apps.{clave}.url: se esperaba http:// o https://")
+            apps.append(App(clave=clave, nombre=textos["nombre"] or clave, descripcion=textos["descripcion"],
+                            pagina=tuple(pagina), archivo=textos["archivo"], url=textos["url"],
+                            memoria=textos["memoria"]))
+        cambios["apps"] = tuple(apps)
 
     if "remotos" in datos:
         tabla = _tabla(datos["remotos"], "remotos")
@@ -782,6 +902,17 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             raise ErrorDeConfig(f"periodicos.en: se esperaba el nombre de un remoto, llegó {en!r}")
         cambios["periodicos_en"] = en.strip()
 
+    if "dashboard" in datos:
+        cuerpo = _tabla(datos["dashboard"], "dashboard")
+        sobra = set(cuerpo) - {"orden", "ocultas"}
+        if sobra:
+            raise ErrorDeConfig(f"dashboard.{sorted(sobra)[0]}: no existe")
+        for campo in ("orden", "ocultas"):
+            v = cuerpo.get(campo, [])
+            if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+                raise ErrorDeConfig(f"dashboard.{campo}: se esperaba una lista de pestañas, llegó {v!r}")
+            cambios[f"dashboard_{campo}"] = tuple(x.strip() for x in v)
+
     if "resultados" in datos:
         tabla = _tabla(datos["resultados"], "resultados")
         lista = []
@@ -818,7 +949,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
-        "ficha", "agente", "hilos", "atajos", "secciones", "remotos", "bloques", "agenda",
+        "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
     }
     if desconocidas:
