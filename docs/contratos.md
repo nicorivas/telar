@@ -456,7 +456,7 @@ Un bloque puede traer además un **lienzo**, una página HTML local que se muest
 ```
 
 `archivo` es obligatorio (absoluto, `.html`, tiene que existir); `alto` en píxeles, de 40
-a 2000 (240 si falta); `params` va como query string (`?animo=jugando&nota=…`) y es la
+a 2000 (240 si falta), o `"lleno"`; `params` va como query string (`?animo=jugando&nota=…`) y es la
 forma de pasarle datos. El iframe lleva `sandbox="allow-scripts"` sin `allow-same-origin`:
 el lienzo corre sus scripts pero no alcanza el panel ni la extensión. Cada vez que se pide
 la página el iframe se vuelve a crear.
@@ -489,6 +489,28 @@ Todo es opcional salvo `titulo` en la página y en cada ítem. `texto` admite p�
 texto, nunca como HTML. Un ítem con `conversacion` se abre como conversación; uno con
 `hilo` y sin conversación lleva a ese hilo. Si el comando falla, tarda más de 30 s o
 devuelve otra forma, la orden sale con 2 y dice por qué.
+
+### `telar app [clave] --json`
+
+Sin clave, las apps declaradas (`[apps]`, ver `docs/configuracion.md`):
+
+```json
+{ "apps": [ { "clave": "babel", "nombre": "babel", "descripcion": "…", "fuente": "pagina" } ] }
+```
+
+Con clave, su página, con el contrato de `telar seccion`. Cada fuente da una página así:
+
+- `pagina`: lo que imprime su comando, tal cual (con el nombre de la app como `titulo` si no trae uno);
+- `archivo`: `{"titulo", "subtitulo"?, "bloques": [{"lienzo": {"archivo", "alto": "lleno", "memoria"?}}]}`;
+- `url`: `{"titulo", "subtitulo"?, "bloques": [{"marco": {"url", "alto": "lleno"}}],
+  "acciones": [{"nombre": "abrir en el navegador", "tipo": "abrir", "enlace": url}]}`.
+
+Un **marco** es una página servida en un iframe del panel: `url` es `http://` o `https://`, y `alto`
+el de un lienzo. El iframe lleva `sandbox="allow-scripts allow-same-origin allow-forms allow-popups
+allow-downloads"`: la página tiene su propio origen (sus cookies, su almacenamiento) y, por ser otro
+origen, no alcanza al panel. El panel deja enmarcar solo los orígenes de las apps declaradas. El
+`alto` de un lienzo o un marco puede ser `"lleno"`: lo que queda del panel bajo su cabecera. Las
+acciones `abrir` de una página se muestran como enlaces junto al ↻.
 
 ### `telar bloque <clave> --json`
 

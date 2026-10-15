@@ -291,22 +291,31 @@ La tecla es un solo carácter y no puede ser una de las que el dashboard ya usa:
 
 | `en` | dónde |
 | --- | --- |
-| `"hoy"` | la línea de arriba de **hoy**, con los atajos generales |
-| `"<clave>"` | el título del bloque `[bloques.<clave>]` |
+| `"hoy"` | la barra de arriba del dashboard, en todas las pestañas, junto a «⎋ terminal» |
+| `"<clave>"` | el título del bloque `[bloques.<clave>]`, en su pestaña |
 | `"seccion:<clave>"` | el título de la pestaña de esa sección |
 
-## `[bloques]` — secciones del día que llena un comando
+## `[bloques]` — pestañas del dashboard que llena un comando
 
 ```toml
 [bloques.correo]
 nombre = "correo"
 comando = ["/ruta/a/mi-correo", "--json"]
 color = "rojo"        # azul, amarillo, verde, rojo, magenta, cian o violeta; cian si falta
+tecla = "e"           # opcional: la tecla de su pestaña
+
+[bloques.retro]
+nombre = "retro"
+comando = ["/ruta/a/mi-retro"]
+en = "plan"           # opcional: arriba de la pestaña del plan, y solo cuando trae algo
 ```
 
-Cada bloque es una sección más de **hoy**, entre la agenda y los hilos. El comando imprime
+Cada bloque es una pestaña del dashboard, después de «tareas», con su nombre; con `en = "plan"`
+va en cambio arriba del plan del día, y no se muestra mientras no traiga nada (una retro que
+aparece a la tarde). El comando imprime
 una página con el contrato de `telar seccion` (ver [contratos](contratos.md#telar-bloque-clave---json))
-y el dashboard muestra sus ítems como filas: marca, hora, `texto` y `titulo`. Se pide con el
+y el dashboard muestra sus ítems como filas: marca, hora, `texto` y `titulo`; los bloques de la
+página que traen `lienzo` (un gráfico) o `texto` se muestran arriba de las filas, como en una página. Se pide con el
 ritmo de la red (cada 5 minutos, o con `r`), no en cada refresco. Los atajos con
 `en = "<clave>"` van en su título: el correo y la tecla que lo procesa, juntos.
 Un ítem con `mensaje` se puede clicar: abre un hilo nuevo con el agente para esa fila,
@@ -647,14 +656,116 @@ hilos = ["notas", "◌ rato*"]          # nombre exacto, o prefijo si termina en
 home = ["/ruta/a/mi-home", "--json"]  # opcional: un comando que imprime su página
 ```
 
-Una sección es un grupo con cabecera plegable en la barra de hilos, entre el dashboard y
-la lista general. Los hilos que reclama (los vivos; un archivado sigue en el archivo)
+Una sección es un grupo con cabecera plegable en la barra de hilos, justo debajo de
+**HILOS**. Los hilos que reclama (los vivos; un archivado sigue en el archivo)
 salen de la lista general y van ahí. Con `home`, la sección tiene además una fila **home**
 que abre su página en el panel del dashboard: telar corre el comando, comprueba que el
 JSON tenga la forma del contrato (`docs/contratos.md`, `telar seccion`) y lo dibuja. Un
 ítem de la página que trae `conversacion` abre esa conversación entera, con la opción de
 retomarla en su hilo. `telar seccion` lista las declaradas y `telar seccion <clave>`
 muestra la página en la terminal.
+
+## `[apps]` — lo que se abre en el panel y no es un hilo
+
+```toml
+[apps.babel]
+descripcion = "breakout de la biblioteca"     # opcional: el globo de su fila
+pagina = ["/ruta/babel/casa"]                 # un comando que imprime una página
+
+[apps.vivero]
+nombre = "Vivero"                             # opcional; si falta, la clave
+archivo = "~/proyectos/plantas/dist-app/vivero.html"   # un HTML autocontenido
+memoria = "~/.local/state/vivero.json"        # opcional, solo con archivo
+
+[apps.atlas]
+url = "http://servidor:8790"                  # una página servida
+```
+
+Una app es algo que se abre y se usa: un juego, un catálogo, un mapa. No tiene hilos (eso es una
+sección) ni es una tarea. Van todas bajo una cabecera **APPS** de la barra, plegable, una fila cada
+una, en el orden del archivo; un clic abre su página en el panel del dashboard, y su fila queda
+marcada mientras se la mira.
+
+Cada app tiene **una sola** de tres fuentes, de la más libre a la más simple:
+
+| fuente | qué es | cómo se ve |
+| --- | --- | --- |
+| `pagina` | un comando que imprime el JSON de una página (el contrato de `telar seccion`, en `docs/contratos.md`) | lo que diga la página: bloques, ítems, lienzos. El comando puede armar el HTML en cada pedido o leer un estado |
+| `archivo` | la ruta de un `.html` **autocontenido** (todo adentro: sin rutas relativas ni red) | un lienzo a todo el panel; con `memoria`, el HTML guarda y recupera con `window.lienzo` |
+| `url` | una página servida (`http://` o `https://`) | un marco a todo el panel, y un botón «↗ abrir en el navegador» por si no carga |
+
+Una app también puede venir de un módulo (`[modulos]`, abajo): su `modulo.toml` la declara con
+las mismas claves en `[app]`.
+
+Las tres llegan al panel como una página del mismo contrato (`telar app <clave> --json`), así que
+una app nueva no toca la extensión: basta declararla. Los límites son los del lienzo (sandbox, sin
+red, sin `localStorage`) para `archivo`; una `url` corre con su propio origen, que el panel agrega
+a su CSP, y no alcanza al panel. Un proyecto que quiera ser app arma su HTML autocontenido (un
+script de build, p. ej. con `vite-plugin-singlefile`) o sirve su página, y se declara aquí.
+
+`telar app` lista las declaradas y `telar app <clave>` muestra su página en la terminal.
+Una `[secciones.x]` que solo tenía `home` y ningún hilo era una app con otro nombre: muévela a
+`[apps.x]` con `pagina` en lugar de `home`.
+
+## `[modulos]` — lo que se instala de una vez
+
+```toml
+[modulos.nino34]
+carpeta = "~/proyectos/nino34"     # una carpeta con modulo.toml
+activo = false                     # opcional: instalado pero apagado
+```
+
+Un **módulo** es una carpeta que trae todo lo que una cosa necesita para estar en telar: una pestaña
+del dashboard, una app del panel, procesos periódicos y lo que esos procesos dejan cada día. Sin
+módulo, cada pieza se declara aparte (`[bloques]`, `[apps]`, `periodicos.toml`, `[resultados]`) y en
+dos máquinas; con módulo, la carpeta lo dice en su `modulo.toml` y la configuración solo la nombra.
+Puede vivir en cualquier parte: dentro de otro proyecto, o en un repositorio propio.
+
+```toml
+# <carpeta>/modulo.toml
+descripcion = "la temperatura del mar en Niño 3.4"
+
+[pestana]                    # como un [bloques.x]: nombre, comando, color, tecla, en
+nombre = "niño 3.4"
+comando = ["bin/nino34", "pagina"]
+
+[app]                        # como un [apps.x]: pagina, archivo o url (y nombre, descripcion, memoria)
+archivo = "dist/app.html"
+
+[periodicos.bajar]           # como un proceso de periodicos.toml; corre en la carpeta del módulo
+cuando = "30 7,15 * * *"
+comando = "bin/nino34 bajar"
+
+[resultado]                  # como un [resultados.x]: lo que el periódico deja por día
+carpeta = "~/.local/state/nino34"
+```
+
+Todas las secciones son opcionales. Lo que aporta toma el nombre del módulo: la pestaña es el bloque
+`nino34` (y su pestaña `bloque:nino34`), la app `nino34`, el resultado `nino34`, y cada periódico
+`<módulo>-<nombre>` (o `<módulo>` si se llama igual). Las rutas relativas son de la carpeta del
+módulo. El resultado se lee donde corren los periódicos (`[periodicos] en`), porque es allá donde
+lo escribe. Un nombre que ya está declarado a mano es un error: hay que elegir uno de los dos.
+
+Se instala en **cada máquina que lo usa**: la que muestra la pestaña y la que corre los periódicos.
+En esta, después de instalarlo o de cambiar su manifiesto, `telar periodicos aplicar` lo pone en el
+crontab. Sus periódicos se ven en `telar periodicos` como los demás, pero no se escriben en
+`periodicos.toml` ni se cambian con `editar`, `pausar` o `borrar`: se cambian en su `modulo.toml`.
+`telar modulos` lista los instalados y lo que trae cada uno; ⚙ en el dashboard también.
+
+## `[dashboard]` — qué pestañas se ven y en qué orden
+
+```toml
+[dashboard]
+orden = ["ahora", "revisar", "bloque:correo", "calendario"]
+ocultas = ["periodicos"]
+```
+
+Lo escribe ⚙ en el dashboard (✓ para mostrar u ocultar, ↑↓ para mover), o `telar config --pestanas
+"ahora,revisar,-periodicos"` (con «-», oculta). Las pestañas que `orden` no nombra van después, en su
+orden de siempre: así la de un módulo nuevo aparece sola. ⚙ va siempre al final. Las claves:
+`ahora`, `revisar` (tareas), `proyectos`, `plan`, `calendario`, `periodicos`, `correo` (los agentes),
+`bloque:<clave>` para cada bloque y `pestana:<nombre>` para la de un proveedor. Una pestaña oculta
+sigue respondiendo a su tecla.
 
 ## `[hilos]` — de qué carpetas salen
 

@@ -8,6 +8,33 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- Modules (`[modulos.<nombre>] carpeta = "…"`): a folder with a `modulo.toml` that brings everything
+  one thing needs — a dashboard tab (`[pestana]`, a block), a panel app (`[app]`), periodic jobs
+  (`[periodicos.<x>]`, run in the module's folder) and a daily result (`[resultado]`, read where the
+  periodic jobs live). telar adds them to what is declared by hand when reading the configuration, so the
+  rest of telar does not tell them apart; a name declared twice is an error. Module jobs show in `telar
+  periodicos` but are changed in their manifest, never written to `periodicos.toml`. `telar modulos` lists
+  them; `telar config --json` gives `modulos`.
+- Dashboard tabs are configurable (`[dashboard] orden` and `ocultas`): ⚙ lists every tab with ✓ to show or
+  hide it and ↑↓ to move it, and the installed modules. Unnamed tabs go after, in their usual order, so a new
+  module's tab shows up on its own. `telar config --pestanas "ahora,revisar,-plan"` writes it.
+- Dashboard: the «hoy» tab is gone — its agenda and tasks had their own tabs. The dashboard opens on
+  «ahora». Each `[bloques.<clave>]` is now its own tab (after «tareas», with an optional `tecla`), or sits on
+  top of the «plan» tab with `en = "plan"`, shown only when it brings something. Shortcuts with
+  `en = "hoy"` and «⎋ terminal» go in the top bar of every tab, and a provider that is down shows as a red
+  line under the tabs, in every tab.
+  A block's tab also shows the page's `lienzo` and `texto`, not only its rows (a plot), and does not
+  rebuild a lienzo on the minute refresh.
+- Threads bar: every group has a foldable header, in this order — AGENTES, HILOS (then your own
+  `[secciones]`), EQUIPO, ARCHIVO, APPS. AGENTES and HILOS start open; EQUIPO, ARCHIVO and APPS start closed.
+- Apps (`[apps.<clave>]`): what opens in the panel and is not a thread — a game, a catalog, a map —
+  under an «APPS» header in the threads bar, one row each, marked while it is shown. Each has one source:
+  `pagina` (a command that prints a page), `archivo` (a self-contained HTML filling the panel, with
+  optional `memoria`) or `url` (a served page in a frame filling the panel, with «↗ abrir en el
+  navegador»). `telar app [clave] [--json]` lists them or gives an app's page; the three sources come
+  out as one page contract, so a new app needs no extension change. Pages gain a `marco` block (a served
+  page in an iframe; the panel only frames the declared apps' origins) and `alto: "lleno"`. A section
+  with only a `home` and no threads is an app: move it to `[apps]` with `pagina`.
 - VS Code: what the team asks of you is now an **EQUIPO section in the sidebar** (not a dashboard tab): one row per request or
   priority suggestion; clicking one opens its actions — «preguntarle a Gestión» (hands it the request: it checks whether it already
   exists and decides new task / update an existing one / not applicable, using `telar equipo aceptar|existe|rechazar`, and answers in
