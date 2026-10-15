@@ -436,6 +436,9 @@ export const CSS_DIA = `
   .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
   .tarea .dueno { color: var(--magenta); margin-right: 1ch; }
   .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }
+  /* el ✓ mientras se marca: gira, en verde, hasta que la lista se relee */
+  .rap.girando { color: var(--verde); opacity: 1; display: inline-block; animation: girar 1s linear infinite; }
+  @keyframes girar { to { transform: rotate(360deg); } }
   .av { font-weight: bold; margin-right: 1ch; }
   /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
   #ficha-tarea { --c: var(--verde); }
@@ -521,6 +524,16 @@ export const CSS_DIA = `
   .cr .mk { color: var(--dim); } .cr .hora { color: var(--dim); }
   .cr .de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cr .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* las tareas de cada ítem (las de un correo), separadas por coma; «—» si no tiene */
+  .cr.con-t { grid-template-columns: 1ch 5ch 20ch minmax(0, 1fr) 16ch; }
+  /* el cuerpo de un ítem abierto (un correo): cinco líneas, y entero al desplegarlo */
+  .cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; margin: .5lh 0 .25lh; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--linea); }
+  .cuerpo.plegado { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .cr .plegar { color: var(--c); cursor: pointer; margin-right: .5ch; } .cr .plegar:hover { color: var(--fg); }
+  .cr.hijo .que { padding-left: 3ch; } .cr.hijo .de { padding-left: 1ch; }
+  .cr .tar .cerrada { color: var(--dim); opacity: .6; } .cr .tar .abierta { color: var(--cian); }
+  .solo-pend { color: var(--dim); cursor: pointer; white-space: nowrap; } .solo-pend:hover, .solo-pend.si { color: var(--fg); }
+  .cr .tar { color: var(--cian); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
   .cr.nuevo { color: var(--fg); } .cr.nuevo .mk { color: var(--c); } .cr.nuevo .hora { color: var(--c); }
   .cr:hover { background: var(--hover); } .cr.clic { cursor: pointer; } .cr.clic:hover .que { color: var(--c); }
 
@@ -532,10 +545,18 @@ export const CSS_DIA = `
     .ag { grid-template-columns: 7ch minmax(0, 1fr); } .ag .extra { grid-column: 2; }
     .ag:not(.proxima) .extra { display: none; }
     .cr { grid-template-columns: 1ch 5ch minmax(0, 1fr); } .cr .de { display: none; }
+    .cr.con-t { grid-template-columns: 1ch 5ch minmax(0, 1fr) 11ch; }
     .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
   }
   @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
-  #revisar #tareas-t .tarea, #revisar .tareas-cab { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
+  #revisar #tareas-t .tarea, #revisar .tareas-cab, .tareas-sueltas .tarea { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
+  /* las acciones a un clic, antes del ⋯: ✓ hecha, ◉ compartir, ▶ a un hilo */
+  #revisar .tarea .meta, .tareas-sueltas .tarea .meta { grid-template-columns: 5ch 1ch 7ch 1ch; }
+  .rapidas { display: inline-grid; grid-template-columns: repeat(3, 1ch); gap: 1ch; }
+  .rap { color: var(--dim); cursor: pointer; text-align: center; opacity: .55; }
+  .tarea:hover .rap { opacity: 1; }
+  .rap.ok:hover { color: var(--verde); font-weight: bold; } .rap.ir:hover { color: var(--azul); }
+  .rap.eq:hover, .rap.eq.on { color: var(--cian); opacity: 1; }
   #revisar .estr { cursor: pointer; color: var(--dim); opacity: 0; } #revisar .tarea:hover .estr { opacity: 1; }
   #revisar .estr.on { color: var(--amarillo); opacity: 1; } #revisar .estr:hover { color: var(--amarillo); }
   #revisar .eq { cursor: pointer; color: var(--dim); opacity: .35; } #revisar .tarea:hover .eq { opacity: 1; }
@@ -907,7 +928,11 @@ document.addEventListener('click', function (e) {
   if (e.target.closest('#tareas-mas')) { estado.todas = true; guardar(); return aplicar(); }
   const a = e.target.closest('[data-accion]');
   // el ✓ tacha la fila al tiro: la lista se relee cuando el proveedor termine
-  if (a && a.dataset.accion === 'hecha') { const f = a.closest('.tarea'); if (f) f.classList.add('marcada'); }
+  // (también los ✓ de la columna de acciones: la fila se tacha y el ✓ gira mientras el proveedor trabaja)
+  if (a && (a.dataset.accion === 'hecha' || a.dataset.accion === 'hecha-fila' || a.dataset.accion === 'hecha-vineta')) {
+    const f = a.closest('.tarea'); if (f) f.classList.add('marcada');
+    if (a.classList.contains('rap')) a.classList.add('girando');
+  }
   // un botón que manda lo escrito en un campo (el de escribirle al agente sobre una reunión)
   const campo = a && a.dataset.campo ? document.getElementById(a.dataset.campo) : null;
   if (campo && !campo.value.trim()) { campo.focus(); return; }

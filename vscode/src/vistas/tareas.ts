@@ -214,6 +214,20 @@ export async function alternarEquipo(valor: string): Promise<boolean> {
 
 export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
+    // un viaje: la acción por su rol. Un telar de antes (el de otra máquina sin actualizar) no
+    // conoce --rol: entonces, como siempre, la ficha primero para saber su número
+    const directo = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: `✓ ${id}…` },
+        () => cli.accionPorRol(id, proveedor, 'hecha'));
+    if (directo.datos) {
+        olvidarDia();
+        vscode.window.setStatusBarMessage(`✓ ${id} hecha`, 5000);
+        return true;
+    }
+    if (!/--rol|unrecognized|argumentos/i.test(directo.error ?? '')) {
+        void vscode.window.showWarningMessage(`telar: ${directo.error ?? `no pude marcar ${id}`}`);
+        olvidarDia();
+        return false;
+    }
     const ficha = await cli.tarea(id, proveedor);
     const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'hecha') ?? -1;
     if (k < 0) {

@@ -9,6 +9,7 @@
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
+import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -35,6 +36,15 @@ export class PanelHoy {
     private dashOrden: string[] = [];
     private dashOcultas: string[] = [];
     private modulosCfg: NonNullable<Awaited<ReturnType<typeof cli.config>>['datos']>['modulos'] = [];
+    /** el detalle de los ítems abiertos (el cuerpo de un correo), por «<bloque>:<id>»; y cuáles se ven enteros */
+    private cuerpos = new Map<string, { texto?: string; error?: string }>();
+    private cuerposAbiertos = new Set<string>();
+    /** los bloques donde se ven solo los ítems con alguna tarea pendiente */
+    private soloPendientes = new Set<string>();
+    /** las conversaciones desplegadas en los bloques («correo:<grupo>») */
+    private gruposAbiertos = new Set<string>();
+    /** el ítem del bloque que se está mirando (un correo y sus tareas), si alguno */
+    private itemSel?: number;
     /** el bloque y la hora de lo leído que la pestaña pintó la última vez (ver `renderBloque`) */
     private bloquePintado = '';
     /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
@@ -213,6 +223,8 @@ export class PanelHoy {
         this.teclas.clear();
         const b = this.bloquesCfg.find(x => x.clave === this.bloqueSel);
         const leido = b ? this.bloquesDatos.get(b.clave) : undefined;
+        const item = this.itemSel !== undefined ? (leido?.pagina?.bloques ?? []).flatMap(x => x.items ?? [])[this.itemSel] : undefined;
+        if (b && item) { this.bloquePintado = ''; this.pintar(this.htmlItem(b, item, this.itemSel!)); return; }
         // un bloque con lienzo no se repinta si no cambió: el refresco de cada minuto rehace el
         // iframe (el gráfico parpadea y pierde el mouse). Sin lienzo, sí, para que el reloj avance
         const firma = `${this.bloqueSel}:${leido?.hora ?? 0}`;
@@ -222,9 +234,20 @@ export class PanelHoy {
     }
 
     /** Abre la pestaña de un bloque y lo relee si tiene más de 5 minutos. */
-    private async abrirBloque(clave: string): Promise<void> {
+    private async abrirBloque(clave: string, item?: number): Promise<void> {
         this.pantalla = 'bloque';
         this.bloquePintado = '';
+        this.itemSel = item;
+        // un ítem abierto con `id`: su detalle (el cuerpo de un correo) se pide ahora, una vez
+        const x = item === undefined ? undefined : (this.bloquesDatos.get(clave)?.pagina?.bloques ?? []).flatMap(b => b.items ?? [])[item];
+        if (x?.id && !this.cuerpos.has(`${clave}:${x.id}`)) {
+            const llave = `${clave}:${x.id}`;
+            this.cuerpos.set(llave, {});
+            void cli.bloqueItem(clave, x.id).then(r => {
+                this.cuerpos.set(llave, r.datos ? { texto: r.datos.texto } : { error: r.error ?? 'no pude leerlo' });
+                if (this.pantalla === 'bloque' && this.bloqueSel === clave && this.itemSel === item) this.render();
+            });
+        }
         this.bloqueSel = clave;
         this.render();
         await this.leerBloques();
@@ -291,7 +314,7 @@ export class PanelHoy {
         const d = this.datos;
         const ahora = new Date();
         const activa = this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
-            : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde
+            : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1')
             : this.pantalla === 'pestana' ? `pestana:${this.pestana}`
             : this.pantalla === 'bloque' ? `bloque:${this.bloqueSel}` : this.pantalla;
         // los atajos que no son de ninguna pestaña (`en = "hoy"`) y el terminal: en la barra, en todas
@@ -337,8 +360,14 @@ export class PanelHoy {
         for (const b of cuales) {
             const leido = this.bloquesDatos.get(b.clave);
             if (soloConAlgo && !(leido?.pagina?.bloques ?? []).some(x => x.items?.length)) continue;
+            const itemsB = (leido?.pagina?.bloques ?? []).flatMap(x => x.items ?? []);
+            const conTareasB = itemsB.some(x => Array.isArray(x.tareas));
+            const solo = this.soloPendientes.has(b.clave);
+            // con tareas en sus filas (los correos), un interruptor: solo las que tienen alguna pendiente
+            const filtro = !conTareasB ? '' : `<a class="solo-pend${solo ? ' si' : ''}" data-accion="solo-pendientes" data-valor="${esc(b.clave)}"`
+                + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? '☑' : '☐'} con tareas pendientes</a>`;
             const suyos = this.atajos.filter(a => a.en === b.clave)
-                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('');
+                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('') + filtro;
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
             if (!leido) h.push('<div class="vacio">leyendo…</div>');
             else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
@@ -351,13 +380,50 @@ export class PanelHoy {
                 const items = (leido.pagina?.bloques ?? []).flatMap(x => x.items ?? []);
                 const otros = (leido.pagina?.bloques ?? []).some(x => x.lienzo || x.texto);
                 if (!items.length && !otros) h.push('<div class="vacio">nada</div>');
-                items.forEach((x, i) => {
-                    const clic = x.mensaje ? ` data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}"` : '';
-                    h.push(`<div class="cr${x.destacado ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
-                        + ` title="${esc(x.mensaje ? `clic: un hilo para esto (${x.mensaje})` : x.titulo)}"><span class="mk">${esc(x.marca ?? '·')}</span>`
+                // si el bloque dice las tareas de sus ítems (un correo), van en una columna propia, a la derecha
+                const conTareas = items.some(x => Array.isArray(x.tareas));
+                // ¿sigue pendiente? Lo dice la lista de tareas de ahora (el estado que trae el ítem
+                // puede ser de antes); sin ella todavía, el estado del ítem
+                const vivas = this.datos ? new Set(pendientes(this.datos).filter(q => !this.decididas.has(q.fila.id || q.ref))
+                    .map(q => `${q.fila.proveedor}:${q.fila.id || q.ref}`)) : undefined;
+                const pendiente = (t: { proveedor: string; id: string; estado?: string }) =>
+                    vivas ? vivas.has(`${t.proveedor}:${t.id}`) : !/^(hecha|cerrada|descartada|cancelada)$/.test(t.estado ?? '');
+                // un ítem es una fila; un clic lo muestra con sus tareas (procesarlo en un hilo es un botón de ahí)
+                type Extra = { hijo?: boolean; cuantos?: number; abierta?: boolean; llave?: string; ts?: NonNullable<cli.JsonPaginaItem['tareas']>; nuevo?: boolean; marca?: string };
+                const fila = (x: cli.JsonPaginaItem, i: number, e: Extra = {}) => {
+                    const clic = x.mensaje || x.tareas?.length ? ` data-accion="ver-item" data-valor="${esc(b.clave)}:${i}"` : '';
+                    const ts = e.ts ?? x.tareas ?? [];
+                    // las cerradas, apagadas: de un vistazo, si al correo le queda algo por hacer
+                    const tareas = !conTareas ? '' : `<span class="tar" title="${esc(ts.map(t => `${t.id} ${pendiente(t) ? (t.estado || 'pendiente') : 'cerrada'}`).join('\n') || 'sin tareas')}">`
+                        + (ts.length ? ts.map(t => `<span class="${pendiente(t) ? 'abierta' : 'cerrada'}">${esc(t.id)}</span>`).join(', ') : '—') + '</span>';
+                    // una conversación: ▸ con cuántos son, que la despliega
+                    const plegar = e.cuantos ? `<span class="plegar" data-accion="grupo-item" data-valor="${esc(e.llave!)}" title="${e.abierta ? 'plegar' : `ver los ${e.cuantos} de esta conversación`}">${e.abierta ? '▾' : '▸'}${e.cuantos}</span> ` : '';
+                    const nuevo = e.nuevo ?? x.destacado;
+                    return `<div class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
+                        + ` title="${esc(clic ? `clic: ${x.tareas?.length ? 'sus tareas' : 'verlo'}${x.mensaje ? ', y procesarlo en un hilo' : ''}` : x.titulo)}"><span class="mk">${esc(e.marca ?? x.marca ?? '·')}</span>`
                         + `<span class="hora">${esc((x.fecha ?? '').slice(11, 16))}</span>`
-                        + `<span class="de">${esc(x.texto ?? '')}</span><span class="que">${esc(x.titulo)}</span></div>`);
-                });
+                        + `<span class="de">${esc(conTareas ? (x.texto ?? '').replace(/ · tareas: .*$/, '') : x.texto ?? '')}</span><span class="que">${plegar}${esc(x.titulo)}</span>${tareas}</div>`;
+                };
+                // los de una misma conversación (`grupo`), anidados bajo el más reciente, como Gmail; el
+                // orden es el de la lista: cada conversación va donde aparece su primer ítem
+                const grupos = new Map<string, number[]>();
+                items.forEach((x, i) => { const g = x.grupo || `#${i}`; if (!grupos.has(g)) grupos.set(g, []); grupos.get(g)!.push(i); });
+                let mostrados = 0;
+                for (const [g, idx] of grupos) {
+                    const x = items[idx[0]];
+                    if (solo && !idx.some(k => (items[k].tareas ?? []).some(pendiente))) continue;
+                    mostrados++;
+                    if (idx.length === 1) { h.push(fila(x, idx[0])); continue; }
+                    const llave = `${b.clave}:${g}`;
+                    const abierta = this.gruposAbiertos.has(llave);
+                    const todos = idx.map(k => items[k]);
+                    const ts = [...new Map(todos.flatMap(y => y.tareas ?? []).map(t => [t.id, t])).values()];
+                    // la conversación está sin procesar si alguno de sus correos lo está
+                    const nuevo = todos.some(y => y.destacado);
+                    h.push(fila(x, idx[0], { cuantos: idx.length, abierta, llave, ts, nuevo, marca: nuevo ? (todos.find(y => y.destacado)?.marca ?? x.marca) : x.marca }));
+                    if (abierta) idx.slice(1).forEach(k => h.push(fila(items[k], k, { hijo: true })));
+                }
+                if (solo && items.length && !mostrados) h.push('<div class="vacio">ningún correo con tareas pendientes</div>');
             }
             h.push('</section>');
         }
@@ -376,7 +442,49 @@ export class PanelHoy {
         }));
     }
 
-    /** Un clic en una fila de un bloque que trae `mensaje`: un hilo nuevo para esa fila. */
+    /** Un ítem de un bloque, solo: lo que dice, las tareas que nacieron de él (cada una abre su
+     *  ficha) y, si trae `mensaje`, el botón para procesarlo en un hilo. */
+    private htmlItem(b: cli.JsonBloque, x: cli.JsonPaginaItem, i: number): string[] {
+        // el título lleva al original (la conversación en Gmail), en su pestaña si ya está abierta
+        const titulo = x.enlace ? `<a class="titulo-item" data-accion="item-enlace" data-valor="${esc(b.clave)}:${i}" title="${esc(`abrirlo: ${x.enlace}`)}"><b>${esc(x.titulo)}</b> ↗</a>` : `<b>${esc(x.titulo)}</b>`;
+        const h = [`<div class="subcab"><a data-accion="item-volver" title="volver a la lista">‹ ${esc(b.nombre)}</a>&nbsp; ${titulo}`
+            + `<span class="dim">${esc((x.texto ?? '').replace(/ · tareas: .*$/, ''))}${x.fecha ? ` · ${esc(x.fecha.slice(0, 16).replace('T', ' '))}` : ''}</span></div>`];
+        // el cuerpo: cinco líneas, y «ver todo» lo despliega
+        if (x.id) {
+            const llave = `${b.clave}:${x.id}`;
+            const c = this.cuerpos.get(llave);
+            if (!c || (!c.texto && !c.error)) h.push('<div class="fila dim">leyendo el correo…</div>');
+            else if (c.error) h.push(`<div class="fila dim">sin el cuerpo: ${esc(c.error)}</div>`);
+            else {
+                const abierto = this.cuerposAbiertos.has(llave);
+                const largo = c.texto!.split('\n').length > 5 || c.texto!.length > 600;
+                h.push(`<div class="cuerpo${abierto || !largo ? '' : ' plegado'}">${esc(c.texto!)}</div>`);
+                if (largo) h.push(`<div class="fila"><a data-accion="cuerpo-alternar" data-valor="${esc(llave)}">${abierto ? '▴ plegar' : '▾ ver todo'}</a></div>`);
+            }
+        }
+        h.push('<h2>Tareas<small>las que nacieron de este correo o de otro mensaje de su conversación</small></h2>');
+        if (!x.tareas?.length) h.push('<div class="fila dim">ninguna</div>');
+        // las pendientes, con la misma fila que «tareas» (✓ ◉ ▶ ⋯, fecha, responsable): se responde en
+        // Gmail y se vuelve aquí a cerrarla. Las que ya no están pendientes, en una línea, a su ficha
+        const vivas = (this.datos ? pendientes(this.datos) : []).filter(q => !this.decididas.has(q.fila.id || q.ref));
+        h.push('<div class="tareas-sueltas">');
+        for (const t of x.tareas ?? []) {
+            const p = vivas.find(q => q.fila.proveedor === t.proveedor && (q.fila.id === t.id || q.ref === t.id));
+            if (p) { h.push(this.filaTarea(p, !!p.avance && !!p.fila.ficha, false)); continue; }
+            const valor = esc(JSON.stringify([t.proveedor, t.id, t.id]));
+            h.push(`<div class="fila clic" data-accion="tarea" data-valor="${valor}" title="clic: su ficha">`
+                + `<span class="dim">${esc(t.id)}</span>&nbsp; <span class="dim">ya no está pendiente</span></div>`);
+        }
+        h.push('</div>');
+        if (x.mensaje) {
+            h.push('<h2>Procesar</h2>');
+            h.push(`<div class="fila"><a data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}" title="${esc(x.mensaje)}">▶ procesarlo en un hilo</a>`
+                + `&nbsp;<span class="dim">abre un hilo con <code>${esc(x.mensaje)}</code></span></div>`);
+        }
+        return h;
+    }
+
+    /** Un clic en «procesar» de un ítem que trae `mensaje`: un hilo nuevo para ese ítem. */
     private async abrirItem(valor: string): Promise<void> {
         const corte = valor.lastIndexOf(':');
         const clave = valor.slice(0, corte);
@@ -444,6 +552,8 @@ export class PanelHoy {
         if (!this.panel) this.abrir();
         else if (!this.panel.visible) this.panel.reveal(undefined, false);
         if (this.pantalla === 'revisar') this.fichaDesde = this.pantalla;
+        // desde un ítem de un bloque (un correo): al cerrar la ficha se vuelve a ese ítem
+        if (this.pantalla === 'bloque') this.fichaDesde = `bloque:${this.bloqueSel}:${this.itemSel ?? ''}`;
         if (this.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
         this.pantalla = 'tarea';
         this.ficha = { proveedor, id, ref };
@@ -513,6 +623,66 @@ export class PanelHoy {
 
     /** La tabla de tareas: la de la pestaña «tareas» y la de «hoy» son la misma (filtros, columnas,
      *  orden, ⋯). Lo que se elija en una (el modo, lo buscado, el orden) se ve igual en la otra. */
+    /** Una fila de tarea, la misma en «tareas» y donde se muestren tareas sueltas (un correo y las
+     *  suyas): código, estrella, proyecto, responsable, texto, fecha, ✓ ◉ ▶ y ⋯. `rev`: espera una
+     *  decisión; `semana`: va en «esta semana». */
+    private filaTarea(p: ReturnType<typeof pendientes>[number], rev: boolean, semana: boolean): string {
+        const esRev = (_p: unknown) => rev;
+        const deLaSemana = (_p: unknown) => semana;
+        const [todo] = (p.fila.avance ?? '').split(' ');
+        const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
+        const ficha = !!p.fila.ficha;
+        const proy = this.proyectoDe(p.fila);
+        // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo
+        // («Brinca» o «Interno» como cliente no dice nada: ahí va el nombre sin ese prefijo)
+        const interno = !proy?.cliente || /^(brinca|interno)$/i.test(proy.cliente);
+        const proyCorto = !proy ? '' : interno ? proy.nombre.replace(/^(brinca|interno)\s*·\s*/i, '') : proy.cliente!;
+        const buscable = normalizar([p.ref, p.texto, p.hilo, p.fila.ruta ?? '', p.fila.proyecto ?? '', proy?.nombre ?? '', p.fila.avance ?? '', p.fila.dueno ?? ''].join(' '));
+        const accion = ficha ? `data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir"`
+            : `data-accion="pendiente" data-valor="${esc(p.ref)}" title="clic: ${p.hilo ? `llevarlo a «${esc(p.hilo)}»` : 'abrir un hilo donde trabajarlo'}"`;
+        const dueno = p.fila.dueno ?? '';
+        const persona = yo.persona ? yo.persona[0].toUpperCase() + yo.persona.slice(1) : 'tú';
+        // el responsable: el dueño, o la persona en gris (es suya porque nadie la tomó); con ficha, un clic lo cambia
+        // una viñeta de un documento: su responsable si lo dice (@owner(…) o «@Nombre:»), sin cambiarlo desde aquí
+        const resp = !ficha ? (dueno ? `<span class="resp fijo" title="${esc(`responsable: ${dueno}\n(lo dice el documento)`)}">${esc(dueno)}</span>`
+                : '<span class="resp dim" title="la viñeta no dice quién la hace">sin responsable</span>')
+            : `<span class="resp${dueno ? '' : ' defecto'}" data-accion="dueno-tarea" data-valor="${esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref, dueno]))}"`
+                + ` title="${esc(dueno ? `responsable: ${dueno}\nclic: cambiarlo` : `sin asignar: es tuya por defecto\nclic: asignarla`)}">${esc(dueno || persona)}</span>`;
+        return `<div class="tarea${p.enCurso ? ' encurso' : ''}" ${accion} data-area="${esc(p.fila.area ?? '')}"${datosDueno(dueno, ficha || !!p.fila.proveedor)}`
+            + ` data-rev="${esRev(p) ? 1 : 0}" data-dias="${p.dias ?? ''}" data-encurso="${p.enCurso ? 1 : 0}" data-texto="${esc(buscable)}"`
+            + ` data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
+            + ` data-orden="${p.urgencia}" data-ref="${esc(p.ref)}" data-alfa="${esc(normalizar(limpiarMd(p.texto)))}"`
+            + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
+            + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
+            // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
+            + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? '★' : '☆'}</span>` : '<span></span>')
+            + `<span class="pri">${p.enCurso ? '●' : ''}</span>`
+            + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
+                : '<span class="proy-t dim">—</span>') + resp
+            + `<span class="desc">${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
+            + `${esc(limpiarMd(p.texto))}</span>`
+            // el atraso es un botón: reagendar lo que venció sin abrir la ficha
+            + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
+            // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
+            + `<span class="destino"></span>${this.rapidas(p.fila, p.ref, p.texto, valor, ficha)}${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span>`
+                : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">⋯</span>`}</span></div>`;
+    }
+
+    /** Las acciones de todos los días, a un clic, antes del ⋯: ✓ marcarla hecha, ◉/○ compartirla con
+     *  el equipo (solo una tarea con ficha, y si hay equipo) y ▶ llevarla a un hilo. En una viñeta de
+     *  un README, ✓ marca su casilla. */
+    private rapidas(fila: cli.JsonFila, ref: string, texto: string, valor: string, ficha: boolean): string {
+        const compartida = !!fila.etiquetas?.includes('equipo');
+        const hecha = ficha ? `<span class="rap ok" data-accion="hecha-fila" data-valor="${valor}" title="marcarla hecha">✓</span>`
+            : !fila.proveedor ? `<span class="rap ok" data-accion="hecha-vineta" data-valor="${esc(JSON.stringify([ref, texto]))}" title="marcarla hecha: [ ] → [x] en su documento">✓</span>`
+            : '<span class="rap"></span>';
+        const eq = ficha && modelo.equipoRemoto
+            ? `<span class="rap eq${compartida ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${compartida ? 'compartida con el equipo: clic para dejar de compartirla' : 'compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${compartida ? '◉' : '○'}</span>`
+            : '<span class="rap"></span>';
+        const hilo = `<span class="rap ir" data-accion="hilo-fila" data-valor="${esc(JSON.stringify([fila.proveedor, ref]))}" title="${fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">▶</span>`;
+        return `<span class="rapidas">${hecha}${eq}${hilo}</span>`;
+    }
+
     private tablaTareas(d: Dia): string[] {
         const lista = pendientes(d).filter(p => !this.decididas.has(p.fila.id || p.ref));
         const esRev = (p: (typeof lista)[number]) => !!p.avance && !!p.fila.ficha;
@@ -544,46 +714,7 @@ export class PanelHoy {
         h.push(`<div class="tareas-cab">${col('ref', 'código')}${col('est', 'estrella')}<span></span>${col('proy', 'proyecto')}${col('resp', 'responsable')}`
             + `${col('alfa', 'el texto')}<span class="meta">${col('dias', 'fecha')}</span></div>`);
         h.push('<div id="tareas-t">');
-        for (const p of lista) {
-            const [todo] = (p.fila.avance ?? '').split(' ');
-            const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
-            const ficha = !!p.fila.ficha;
-            const proy = this.proyectoDe(p.fila);
-            // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo
-            // («Brinca» o «Interno» como cliente no dice nada: ahí va el nombre sin ese prefijo)
-            const interno = !proy?.cliente || /^(brinca|interno)$/i.test(proy.cliente);
-            const proyCorto = !proy ? '' : interno ? proy.nombre.replace(/^(brinca|interno)\s*·\s*/i, '') : proy.cliente!;
-            const buscable = normalizar([p.ref, p.texto, p.hilo, p.fila.ruta ?? '', p.fila.proyecto ?? '', proy?.nombre ?? '', p.fila.avance ?? '', p.fila.dueno ?? ''].join(' '));
-            const accion = ficha ? `data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir"`
-                : `data-accion="pendiente" data-valor="${esc(p.ref)}" title="clic: ${p.hilo ? `llevarlo a «${esc(p.hilo)}»` : 'abrir un hilo donde trabajarlo'}"`;
-            const dueno = p.fila.dueno ?? '';
-            const persona = yo.persona ? yo.persona[0].toUpperCase() + yo.persona.slice(1) : 'tú';
-            // el responsable: el dueño, o la persona en gris (es suya porque nadie la tomó); con ficha, un clic lo cambia
-            // una viñeta de un documento: su responsable si lo dice (@owner(…) o «@Nombre:»), sin cambiarlo desde aquí
-            const resp = !ficha ? (dueno ? `<span class="resp fijo" title="${esc(`responsable: ${dueno}\n(lo dice el documento)`)}">${esc(dueno)}</span>`
-                    : '<span class="resp dim" title="la viñeta no dice quién la hace">sin responsable</span>')
-                : `<span class="resp${dueno ? '' : ' defecto'}" data-accion="dueno-tarea" data-valor="${esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref, dueno]))}"`
-                    + ` title="${esc(dueno ? `responsable: ${dueno}\nclic: cambiarlo` : `sin asignar: es tuya por defecto\nclic: asignarla`)}">${esc(dueno || persona)}</span>`;
-            h.push(`<div class="tarea${p.enCurso ? ' encurso' : ''}" ${accion} data-area="${esc(p.fila.area ?? '')}"${datosDueno(dueno, ficha || !!p.fila.proveedor)}`
-                + ` data-rev="${esRev(p) ? 1 : 0}" data-dias="${p.dias ?? ''}" data-encurso="${p.enCurso ? 1 : 0}" data-texto="${esc(buscable)}"`
-                + ` data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
-                + ` data-orden="${p.urgencia}" data-ref="${esc(p.ref)}" data-alfa="${esc(normalizar(limpiarMd(p.texto)))}"`
-                + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
-                + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
-                // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
-                + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? '★' : '☆'}</span>` : '<span></span>')
-                + `<span class="pri">${p.enCurso ? '●' : ''}</span>`
-                + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
-                    : '<span class="proy-t dim">—</span>') + resp
-                // compartida con el equipo (etiqueta «equipo»): ◉ la deja de compartir, ○ al pasar el cursor la comparte
-                + `<span class="desc">${ficha && modelo.equipoRemoto ? `<span class="eq${p.fila.etiquetas?.includes('equipo') ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${p.fila.etiquetas?.includes('equipo') ? 'compartida con el equipo: clic para dejar de compartirla' : 'clic: compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${p.fila.etiquetas?.includes('equipo') ? '◉' : '○'}</span> ` : ''}${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
-                + `${esc(limpiarMd(p.texto))}</span>`
-                // el atraso es un botón: reagendar lo que venció sin abrir la ficha
-                + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
-                // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
-                + `<span class="destino"></span>${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span>`
-                    : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">⋯</span>`}</span></div>`);
-        }
+        for (const p of lista) h.push(this.filaTarea(p, esRev(p), deLaSemana(p)));
         h.push('<div id="tareas-t-vacio" class="vacio" hidden></div><div id="tareas-t-mas" class="vacio clic" hidden></div></div></section></div>');
         return h;
     }
@@ -2193,6 +2324,28 @@ export class PanelHoy {
                 break;
             case 'atajo': if (m.valor) await this.lanzarAtajo(m.valor); break;
             case 'abrir-item': if (m.valor) await this.abrirItem(m.valor); break;
+            case 'ver-item': if (m.valor) {
+                const corte = m.valor.lastIndexOf(':');
+                await this.abrirBloque(m.valor.slice(0, corte), Number(m.valor.slice(corte + 1)));
+            } break;
+            case 'item-volver': await this.abrirBloque(this.bloqueSel); break;
+            case 'solo-pendientes': if (m.valor) {
+                if (this.soloPendientes.has(m.valor)) this.soloPendientes.delete(m.valor); else this.soloPendientes.add(m.valor);
+                this.render();
+            } break;
+            case 'cuerpo-alternar': if (m.valor) {
+                if (this.cuerposAbiertos.has(m.valor)) this.cuerposAbiertos.delete(m.valor); else this.cuerposAbiertos.add(m.valor);
+                this.render();
+            } break;
+            case 'item-enlace': if (m.valor) {
+                const corte = m.valor.lastIndexOf(':');
+                const x = (this.bloquesDatos.get(m.valor.slice(0, corte))?.pagina?.bloques ?? []).flatMap(y => y.items ?? [])[Number(m.valor.slice(corte + 1))];
+                if (x?.enlace) await abrirEnlace(x.enlace, x.reusar);
+            } break;
+            case 'grupo-item': if (m.valor) {
+                if (this.gruposAbiertos.has(m.valor)) this.gruposAbiertos.delete(m.valor); else this.gruposAbiertos.add(m.valor);
+                this.render();
+            } break;
             case 'tarea':
                 if (!m.valor) break;
                 // ⌘-clic: como antes, al hilo donde se trabaja; clic: la ficha
@@ -2200,6 +2353,21 @@ export class PanelHoy {
                 else await this.abrirTarea(m.valor);
                 break;
             case 'accion-tarea': if (m.valor) await this.accionTarea(Number(m.valor)); break;
+            case 'hecha-fila': if (m.valor) {
+                // la fila ya está tachada (lo hace la vista al clic); hecha, sale de la lista al tiro y
+                // la lista se relee por detrás (son ~6 s que no hay por qué esperar)
+                if (await marcarHecha(m.valor)) this.decididas.add((JSON.parse(m.valor) as string[])[1]);
+                this.render();
+                void this.actualizar(true);
+                void vscode.commands.executeCommand('telar.tareasActualizar');
+            } break;
+            case 'hecha-vineta': if (m.valor) {
+                const [ref, texto] = JSON.parse(m.valor) as string[];
+                const r = await cli.vineta(ref, texto, ['--hecho']);
+                if (!r.datos) void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude marcarla'}`);
+                else { vscode.window.setStatusBarMessage(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
+            } break;
+            case 'hilo-fila': if (m.valor) { const [proveedor, ref] = JSON.parse(m.valor) as string[]; await llevarPendiente(ref, false, proveedor); } break;
             case 'hecha':
                 if (!m.valor) break;
                 await marcarHecha(m.valor);
@@ -2224,6 +2392,10 @@ export class PanelHoy {
             case 'volver-ficha':
                 if (this.fichaDesde === 'revisar') await this.abrirRevisar();
                 else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
+                else if (this.fichaDesde.startsWith('bloque:')) {
+                    const [, clave, item] = this.fichaDesde.split(':');
+                    await this.abrirBloque(clave, item === '' ? undefined : Number(item));
+                }
                 else await this.abrirAhora();
                 break;
             case 'tarea-anterior': await this.otraPropuesta(-1); break;
@@ -2321,9 +2493,15 @@ function fechaLarga(nombreDia: string, fecha: string): string {
     return `${nombreDia.slice(0, 3)} ${d || ''} ${meses[(m || 1) - 1]}`.trim();
 }
 
-/** Abre un enlace de una página: una URL en el navegador, una ruta local en el editor. */
-async function abrirEnlace(enlace: string): Promise<void> {
-    if (/^https?:\/\//.test(enlace)) { await vscode.env.openExternal(vscode.Uri.parse(enlace)); return; }
+/** Abre un enlace de una página: una URL en el navegador, una ruta local en el editor. Con
+ *  `reusar`, primero busca en Chrome una pestaña cuyo título o dirección lo contenga (la de Gmail
+ *  de esa cuenta) y abre el enlace ahí; si no hay, en una pestaña nueva. */
+async function abrirEnlace(enlace: string, reusar = ''): Promise<void> {
+    if (/^https?:\/\//.test(enlace)) {
+        if (reusar && await enPestanaDeChrome(enlace, reusar)) return;
+        await vscode.env.openExternal(vscode.Uri.parse(enlace));
+        return;
+    }
     if (enlace.startsWith('/') && fs.existsSync(enlace)) {
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(enlace));
         return;
@@ -2378,3 +2556,37 @@ function htmlMarco(m: cli.JsonMarco): string {
 
 /** Una pestaña del dashboard: [clave, acción, valor, nombre, tecla]. */
 type Pestana = [string, string, string, string, string];
+
+/** En macOS, lleva una pestaña ya abierta de Chrome (la primera cuyo título o dirección contiene
+ *  `reusar`) a `url`, y la trae al frente. false si Chrome no está abierto, no hay esa pestaña o
+ *  macOS no dio permiso (la primera vez pregunta si VS Code puede controlar Chrome). Los textos van
+ *  como argumentos del script, nunca dentro de él. */
+async function enPestanaDeChrome(url: string, reusar: string): Promise<boolean> {
+    if (process.platform !== 'darwin') return false;
+    const script = [
+        'on run argv',
+        '  set destino to item 1 of argv',
+        '  set clave to item 2 of argv',
+        '  if application "Google Chrome" is not running then return "no"',
+        '  tell application "Google Chrome"',
+        '    repeat with w in windows',
+        '      set i to 0',
+        '      repeat with t in tabs of w',
+        '        set i to i + 1',
+        '        if (title of t contains clave) or (URL of t contains clave) then',
+        '          set URL of t to destino',
+        '          set active tab index of w to i',
+        '          set index of w to 1',
+        '          activate',
+        '          return "si"',
+        '        end if',
+        '      end repeat',
+        '    end repeat',
+        '  end tell',
+        '  return "no"',
+        'end run',
+    ].join('\n');
+    return new Promise(resolve => {
+        execFile('osascript', ['-e', script, url, reusar], { timeout: 8000 }, (error, stdout) => resolve(!error && stdout.trim() === 'si'));
+    });
+}

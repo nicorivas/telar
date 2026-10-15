@@ -52,15 +52,61 @@ const CSS = `
   .fila:hover .iconos { display: flex; }
   .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
   .icono:hover { color: var(--fg); }
+  /* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
+  .herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
+  .herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;
+                  border: 0; border-bottom: 1px solid var(--linea); padding: 0 0 1px; outline: none; }
+  .herram input:focus { border-bottom-color: var(--azul); }
+  .herram input::placeholder { color: var(--dim); }
+  .ord { flex: none; color: var(--dim); cursor: pointer; }
+  .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
+  .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
 `;
 
 const SCRIPT = `
 const lista = document.getElementById('lista');
+// lo escrito en cada buscador sobrevive a los redibujos (llegan varios por minuto) y a recargar
+const est = vscode.getState() || {};
+est.q = est.q || {};
+const norm = t => (t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+function filtrar() {
+  document.querySelectorAll('input.buscar').forEach(inp => {
+    const g = inp.dataset.grupo, q = norm(inp.value.trim());
+    let n = 0;
+    document.querySelectorAll('.fila[data-grupo="' + g + '"]').forEach(f => {
+      const ok = !q || norm(f.dataset.busca).includes(q);
+      f.hidden = !ok; if (ok) n++;
+    });
+    const v = document.querySelector('.vacia[data-grupo="' + g + '"]');
+    if (v) v.hidden = !(q && !n);
+  });
+}
 window.addEventListener('message', e => {
   const m = e.data;
   if (m.tipo !== 'lista') return;
+  const a = document.activeElement, foco = a && a.classList && a.classList.contains('buscar')
+    ? { g: a.dataset.grupo, i: a.selectionStart, j: a.selectionEnd } : null;
   lista.innerHTML = m.html;
-  if (m.mostrar) { const el = document.querySelector(m.mostrar); if (el) el.scrollIntoView({ block: 'nearest' }); }
+  document.querySelectorAll('input.buscar').forEach(inp => { inp.value = est.q[inp.dataset.grupo] || ''; });
+  if (foco) {
+    const inp = document.querySelector('input.buscar[data-grupo="' + foco.g + '"]');
+    if (inp) { inp.focus(); inp.setSelectionRange(foco.i, foco.j); }
+  }
+  filtrar();
+  if (m.mostrar) { const el = document.querySelector(m.mostrar); if (el && !el.hidden) el.scrollIntoView({ block: 'nearest' }); }
+});
+document.addEventListener('input', e => {
+  if (!e.target.classList.contains('buscar')) return;
+  est.q[e.target.dataset.grupo] = e.target.value; vscode.setState(est); filtrar();
+});
+document.addEventListener('keydown', e => {
+  if (!e.target.classList || !e.target.classList.contains('buscar')) return;
+  if (e.key === 'Escape') { e.target.value = ''; est.q[e.target.dataset.grupo] = ''; vscode.setState(est); filtrar(); }
+  // ⏎: al primero que se ve
+  if (e.key === 'Enter') {
+    const f = document.querySelector('.fila[data-grupo="' + e.target.dataset.grupo + '"]:not([hidden])');
+    if (f) vscode.postMessage({ tipo: 'ir', hilo: f.dataset.hilo });
+  }
 });
 document.addEventListener('click', e => {
   const f = e.target.closest('[data-hilo],[data-accion]');
@@ -72,6 +118,30 @@ vscode.postMessage({ tipo: 'listo' });
 `;
 
 type Seccion = 'hilo' | 'archivado';
+/** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
+type Orden = '' | 'urgencia' | 'nombre' | 'reciente';
+const ORDENES: [Orden, string, string][] = [
+    ['urgencia', '●', 'urgencia: prioridad alta primero; a igual prioridad, el que te espera y después el más reciente'],
+    ['nombre', 'a-z', 'nombre, alfabético'],
+    ['reciente', '◷', 'última modificación: el último prompt a su agente, lo más reciente arriba'],
+];
+
+/** La última modificación de un hilo: cuándo se le pidió algo a su agente. Si telar todavía no lo
+ *  anotó (un hilo de antes), lo último que hizo su agente. Mirarlo (`visto`) nunca cuenta: un clic
+ *  no es trabajo. */
+const ultimaDe = (h: cli.JsonHilo): string => h.actividad || h.atencion_desde || '';
+
+function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
+    if (!orden) return l;
+    const reciente = (a: cli.JsonHilo, b: cli.JsonHilo) => ultimaDe(b).localeCompare(ultimaDe(a));
+    const cmp: Record<Exclude<Orden, ''>, (a: cli.JsonHilo, b: cli.JsonHilo) => number> = {
+        urgencia: (a, b) => ((a.prioridad || 9) - (b.prioridad || 9))
+            || (Number(b.atencion === 'espera') - Number(a.atencion === 'espera')) || reciente(a, b),
+        nombre: (a, b) => cli.nombreVisible(a).localeCompare(cli.nombreVisible(b), 'es', { sensitivity: 'base' }),
+        reciente,
+    };
+    return [...l].sort(cmp[orden]);
+}
 
 export class VistaHilos implements vscode.WebviewViewProvider {
     vista?: vscode.WebviewView;
@@ -83,6 +153,9 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
     appActiva = '';
     private irAlArchivo = false;
+    /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */
+    estado?: vscode.Memento;
+    private ordenDe(grupo: string): Orden { return (this.estado?.get<string>(`telar.orden.${grupo}`) ?? '') as Orden; }
     /** las cabeceras que el usuario dejó al revés de como empiezan (abierta una cerrada, o al revés) */
     private invertidas = new Set<string>();
 
@@ -135,6 +208,10 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             case 'equipo': void vscode.commands.executeCommand('telar.equipoVer', m.id); break;
             case 'home': if (m.id) void vscode.commands.executeCommand('telar.seccion', m.id); break;
             case 'app': if (m.id) void vscode.commands.executeCommand('telar.app', m.id); break;
+            case 'orden-grupo': if (m.id) {
+                const [grupo, orden] = m.id.split(':');
+                void this.estado?.update(`telar.orden.${grupo}`, orden === this.ordenDe(grupo) ? '' : orden).then(() => this.refrescar(true));
+            } break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
     }
@@ -165,7 +242,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         void v.webview.postMessage({ tipo: 'lista', html, mostrar });
     }
 
-    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = ''): string {
+    /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
+    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = '', grupo = ''): string {
         const contexto = esc(JSON.stringify({
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
@@ -180,11 +258,12 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         const sobre = !modelo.buzones.length ? '' : `<span class="sobre" title="${esc(noLeidos
             ? `${noLeidos} correo${noLeidos === 1 ? '' : 's'} sin leer${sinEntregar ? ` · ${sinEntregar} sin entregar al agente` : ''}: la pestaña ✉ correo de la ficha`
             : '')}">${noLeidos ? '✉' : ' '}</span>`;
-        // al final, solo cuándo fue su última actividad: el último foco o lo último que hizo su agente
-        const ultima = [h.visto, h.atencion_desde].filter((x): x is string => !!x).sort().pop();
+        // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
+        const ultima = ultimaDe(h);
         const der = haceCorto(ultima);
         const clases = [seccion, h.activo && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
-        return `<div class="fila ${clases}" data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
+        const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''}`)}"` : '';
+        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
@@ -193,6 +272,14 @@ export class VistaHilos implements vscode.WebviewViewProvider {
                 : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab, guarda su conversación y lo manda al archivo">⏸</span>`
                   + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro, y lo saca de la lista; para guardarlo, ⏸">✕</span>`)
             + '</span></div>';
+    }
+
+    /** Bajo la cabecera de un grupo: el buscador (lo filtra la vista, sin redibujar) y los órdenes.
+     *  Un clic en el orden que ya rige vuelve al de telar. */
+    private herramientas(grupo: string, orden: Orden): string {
+        return `<div class="herram"><input class="buscar" data-grupo="${grupo}" placeholder="buscar" spellcheck="false" title="buscar por nombre o carpeta · ⏎ abre el primero · ⎋ borra">`
+            + ORDENES.map(([k, glifo, ayuda]) => `<span class="ord${k === orden ? ' si' : ''}" data-accion="orden-grupo" data-id="${grupo}:${k}" title="${esc(`ordenar por ${ayuda}${k === orden ? ' (clic: volver al orden de telar)' : ''}`)}">${glifo}</span>`).join('')
+            + `</div><div class="vacia" data-grupo="${grupo}" hidden>nada calza</div>`;
     }
 
     private tooltip(h: cli.JsonHilo): string {
@@ -206,6 +293,7 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         if (GLIFO[h.atencion]) datos.push(`${GLIFO[h.atencion]} ${NOMBRE_ATENCION[h.atencion] ?? h.atencion}`);
         if (h.prioridad) datos.push(`prioridad ${PRIORIDAD[h.prioridad]} ${['', 'alta', 'media', 'baja'][h.prioridad]}`);
         if (h.tiempo >= 60) datos.push(`hoy ${duracion(h.tiempo)}`);
+        if (h.actividad) datos.push(`último prompt hace ${hace(h.actividad)}`);
         if (h.visto) datos.push(`último foco hace ${hace(h.visto)}`);
         if (datos.length) l.push(datos.join(' · '));
         const f = h.ficha;
@@ -275,9 +363,11 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         }
 
         // los hilos abiertos que no reclama nadie
-        const sueltos = vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre)));
+        const ordenH = this.ordenDe('hilos');
+        const sueltos = ordenar(vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre))), ordenH);
         if (cabecera('__hilos', 'HILOS', sueltos.length, true, 'los hilos abiertos')) {
-            for (const x of sueltos) h.push(this.fila(x, 'hilo'));
+            h.push(this.herramientas('hilos', ordenH));
+            for (const x of sueltos) h.push(this.fila(x, 'hilo', '', 'hilos'));
         }
 
         // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS
@@ -305,9 +395,11 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             }
         }
 
-        const archivados = modelo.archivados;
+        const ordenA = this.ordenDe('archivo');
+        const archivados = ordenar(modelo.archivados, ordenA);
         if (archivados.length && cabecera('__archivo', 'ARCHIVO', archivados.length, false, 'los hilos archivados')) {
-            for (const x of archivados) h.push(this.fila(x, 'archivado'));
+            h.push(this.herramientas('archivo', ordenA));
+            for (const x of archivados) h.push(this.fila(x, 'archivado', '', 'archivo'));
         }
 
         // las apps (`[apps]`): lo que se abre en el panel y no es un hilo; una fila cada una

@@ -289,6 +289,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     cli.conBitacora(anotar);
 
     vistaHilos = new VistaHilos();
+    vistaHilos.estado = ctx.globalState;
     ctx.subscriptions.push(vscode.window.registerWebviewViewProvider('telar.hilos', vistaHilos,
         { webviewOptions: { retainContextWhenHidden: true } }));
     vistaTareas = new VistaTareas();

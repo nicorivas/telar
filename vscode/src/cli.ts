@@ -146,6 +146,8 @@ export interface JsonHilo {
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
     atencion_desde?: string | null;
+    /** la última vez que se le pidió algo a su agente (un prompt, un encargo): su «última modificación» */
+    actividad?: string | null;
     sesiones: string[]; ficha?: JsonFicha | null;
     /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
     remoto?: string;
@@ -287,6 +289,9 @@ export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; des
 /** `en`: "" es una pestaña propia del dashboard; «plan», arriba del plan. `tecla`: la de su pestaña. */
 export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string }
 
+/** `telar bloque <clave> --item <id>`: el detalle de un ítem (el cuerpo de un correo), al abrirlo. */
+export const bloqueItem = (clave: string, id: string) => telarJson<{ texto: string }>(['bloque', clave, '--item', id, '--json'], 70000);
+
 /** `telar bloque <clave>`: la página que imprime su comando. */
 export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
 
@@ -333,6 +338,15 @@ export interface JsonPaginaItem {
     mensaje?: string; nombre?: string;
     /** un clic lo abre: una URL en el navegador, una ruta en el editor */
     enlace?: string;
+    /** las tareas que nacieron de este ítem (un correo): un clic en el ítem las muestra, y cada una abre su ficha */
+    tareas?: { proveedor: string; id: string; estado?: string }[];
+    /** los ítems con el mismo `grupo` (los correos de una conversación) van anidados bajo el más reciente */
+    grupo?: string;
+    /** su id en el bloque: con él, el dashboard pide su detalle (el cuerpo de un correo) al abrirlo */
+    id?: string;
+    /** con `enlace`: un texto que identifica una pestaña ya abierta del navegador (su título o su
+     *  dirección lo contiene, p. ej. la cuenta de Gmail); el enlace se abre en ella en vez de en una nueva */
+    reusar?: string;
 }
 /** Un botón de una página (la ficha de una tarea): lo corre `telar tarea --accion N`. */
 export interface JsonAccionPagina {
@@ -367,6 +381,9 @@ export const configPestanas = (valor: string) => telarJson<{ dashboard: { orden:
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
 export const tarea = (id: string, proveedor: string) =>
     telarJson<JsonPagina>(['tarea', id, '--proveedor', proveedor, '--json'], 40000);
+/** Correr la acción de una tarea por su `rol` (hecha…): un solo viaje, sin leer la ficha antes. */
+export const accionPorRol = (id: string, proveedor: string, rol: string) =>
+    telarJson<{ tipo: string; hecho: string; salida?: string; hilo?: string }>(['tarea', id, '--proveedor', proveedor, '--rol', rol, '--json'], 40000);
 export const accionTarea = (id: string, proveedor: string, n: number, texto = '') =>
     telarJson<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>(
         ['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
