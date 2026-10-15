@@ -93,11 +93,12 @@ export function nuevoNonce(): string {
     return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
 }
 
-/** El HTML completo de una vista: política de contenido cerrada, estilo, cuerpo y script. */
+/** El HTML completo de una vista: política de contenido cerrada, estilo, cuerpo y script.
+ *  `marcos`: los orígenes, además del propio, que la vista deja enmarcar (las apps con `url`). */
 export function marco(_webview: vscode.Webview, css: string, cuerpo: string, script: string,
-    nonce = nuevoNonce()): string {
+    nonce = nuevoNonce(), marcos: string[] = []): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${_webview.cspSource}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${[_webview.cspSource, ...marcos].join(' ')}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>${estiloBase()}${css}</style></head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>${cuerpo}
 <script nonce="${nonce}">const vscode = acquireVsCodeApi();

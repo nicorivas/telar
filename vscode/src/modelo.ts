@@ -29,6 +29,8 @@ export class Modelo {
     hilos: cli.JsonHilo[] = [];
     /** las secciones de la configuración; se releen con el ritmo lento */
     secciones: cli.JsonSeccion[] = [];
+    /** las apps de la configuración (`[apps]`), en su orden */
+    apps: cli.JsonApp[] = [];
     /** el correo entre agentes de cada máquina remota; se lee por ssh con el ritmo lento y
      *  aparte, para que un servidor lento no frene la lista */
     buzones: cli.JsonBuzon[] = [];
@@ -130,6 +132,7 @@ export class Modelo {
                 const c = await cli.config();
                 if (c.datos) {
                     this.secciones = c.datos.secciones ?? [];
+                    this.apps = c.datos.apps ?? [];
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
                 }
                 if (this.hayRemotos) void this.leerCorreo();

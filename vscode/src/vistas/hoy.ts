@@ -28,7 +28,15 @@ import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, ll
 export class PanelHoy {
     panel?: vscode.WebviewPanel;
     private datos?: Dia;
-    private pantalla: 'ahora' | 'dia' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'dia';
+    private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'ahora';
+    /** el bloque (`[bloques.x]`) que muestra la pestaña 'bloque' */
+    private bloqueSel = '';
+    /** las pestañas: en qué orden van y cuáles no se muestran (`[dashboard]`, se cambia en ⚙) */
+    private dashOrden: string[] = [];
+    private dashOcultas: string[] = [];
+    private modulosCfg: NonNullable<Awaited<ReturnType<typeof cli.config>>['datos']>['modulos'] = [];
+    /** el bloque y la hora de lo leído que la pestaña pintó la última vez (ver `renderBloque`) */
+    private bloquePintado = '';
     /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
     private plan?: cli.JsonResultado;
     private planError = '';
@@ -47,7 +55,7 @@ export class PanelHoy {
     private formPer?: { original: string; p: cli.JsonPeriodico; skills?: cli.JsonSkill[]; skillsDe?: string };
     /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada. `pestana:<n>` es
      *  la de un proveedor con pestaña propia (un feed) */
-    private fichaDesde = 'dia';
+    private fichaDesde = 'revisar';
     /** la pestaña de proveedor abierta (`pestana` del proveedor: «leer») */
     private pestana = '';
     /** fichas ya pedidas: una pestaña de proveedor puede estar lejos (el feed se pide por ssh
@@ -71,6 +79,8 @@ export class PanelHoy {
     private filtroCorreo: 'todas' | 'mias' | 'sin' = 'todas';
     /** la sección abierta y su página; la conversación que se está leyendo */
     private seccion = '';
+    /** los orígenes de las apps con `url` que el CSP del panel deja enmarcar (ver `abrirApp`) */
+    private marcos: string[] = [];
     private pagina?: cli.JsonPagina;
     private charla?: cli.JsonConversacion;
     /** el nonce del CSP del panel: los lienzos lo necesitan para que corran sus scripts */
@@ -144,9 +154,30 @@ export class PanelHoy {
     pintarMarco(): void {
         if (this.panel) {
             this.nonce = nuevoNonce();
+            this.marcos = origenesApps();
+            this.bloquePintado = '';   // el webview se rehace: lo pintado ya no está
             this.panel.webview.html = marco(this.panel.webview, CSS_DIA + CSS_PLAN + CSS_PROY + CSS_AHORA,
-                '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce);
+                '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce, this.marcos);
         }
+    }
+
+    /** La app que el panel muestra ahora, o "": la lista de la izquierda marca su fila. */
+    get appActual(): string {
+        return this.pantalla === 'seccion' && this.seccion.startsWith('app:') ? this.seccion.slice(4) : '';
+    }
+
+    /** Una app (`[apps.x]`): su página, en el panel. Una app con `url` necesita que su origen esté
+     *  en el CSP del panel (frame-src); si se declaró después de abrirlo, el panel se rearma, y la
+     *  página se pinta cuando el script vuelve a estar listo. */
+    async abrirApp(clave: string): Promise<void> {
+        const url = modelo.apps.find(a => a.clave === clave)?.url;
+        const origen = url ? origenDe(url) : '';
+        if (this.panel && origen && !this.marcos.includes(origen)) {
+            this.pagina = undefined;
+            this.pintarMarco();
+        }
+        await this.abrirSeccion(`app:${clave}`);
+        this.alCambiarFoco?.(true);
     }
 
     async actualizar(conRed = false): Promise<void> {
@@ -174,22 +205,84 @@ export class PanelHoy {
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
         if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo' || this.pantalla === 'tarea')) return;
         if (this.panel && this.pantalla === 'equipo') { this.renderEquipo(); return; }
-        const d = this.datos;
-        if (!this.panel || !d) return;
+        if (this.panel && this.pantalla === 'bloque') this.renderBloque();
+    }
+
+    /** Un bloque (`[bloques.x]`) en su pestaña: lo que imprime su comando, con sus atajos. */
+    private renderBloque(): void {
         this.teclas.clear();
-        const ahora = new Date();
-        const h: string[] = [];
-        // arriba, lo general: los atajos que no son de ninguna sección, las tareas y el terminal
-        h.push('<div class="generales">' + this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
-            .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
-            + atajo('t', 'tareas', 'tareas', '', 'la vista de tareas') + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal') + '</div>');
-        // las tareas: la misma tabla que la pestaña «tareas»
-        h.push(...this.agenda(d, ahora), ...this.bloques(), ...this.tablaTareas(d), ...this.fallas(d));
-        for (const [k, f] of [['r', () => this.actualizar(true)], ['p', () => this.abrirProyectos()],
-            ['t', () => vscode.commands.executeCommand('telar.tareas')]] as const) {
-            if (!this.teclas.has(k)) this.teclas.set(k, f);
+        const b = this.bloquesCfg.find(x => x.clave === this.bloqueSel);
+        const leido = b ? this.bloquesDatos.get(b.clave) : undefined;
+        // un bloque con lienzo no se repinta si no cambió: el refresco de cada minuto rehace el
+        // iframe (el gráfico parpadea y pierde el mouse). Sin lienzo, sí, para que el reloj avance
+        const firma = `${this.bloqueSel}:${leido?.hora ?? 0}`;
+        if (leido?.pagina?.bloques.some(x => x.lienzo) && firma === this.bloquePintado) return;
+        this.bloquePintado = firma;
+        this.pintar(b ? this.bloques([b]) : ['<div class="vacio">ese bloque ya no está en la configuración</div>']);
+    }
+
+    /** Abre la pestaña de un bloque y lo relee si tiene más de 5 minutos. */
+    private async abrirBloque(clave: string): Promise<void> {
+        this.pantalla = 'bloque';
+        this.bloquePintado = '';
+        this.bloqueSel = clave;
+        this.render();
+        await this.leerBloques();
+    }
+
+    /** Todas las pestañas que puede haber (sin ⚙), en su orden de siempre: las fijas, las de los
+     *  bloques y las de los proveedores. Cada una: [clave, acción, valor, nombre, tecla]. */
+    private todasLasPestanas(): Pestana[] {
+        const d = this.datos;
+        // las pestañas de los proveedores que las declaran (un feed), con cuántos ítems tienen
+        const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
+            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(),
+                this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
+        const aRevisar = this.propuestas('').length;
+        const todas: Pestana[] = [  // clave, acción, valor, nombre, tecla
+            ['ahora', 'ahora', '', 'ahora', 'n'],
+            ['revisar', 'revisar', '', aRevisar ? `tareas ◆${aRevisar}` : 'tareas', 'v'],
+            // cada bloque sin `en` es su propia pestaña (el correo de hoy)
+            ...this.bloquesCfg.filter(b => !b.en).map(b =>
+                [`bloque:${b.clave}`, 'bloque', b.clave, b.nombre, b.tecla ?? ''] as Pestana),
+            ...deProveedores,
+            ['proyectos', 'proyectos', '', 'proyectos', 'p'],
+            ['plan', 'plan', '', 'plan', 'd'],
+            ['calendario', 'calendario', '', 'calendario', 'a'],
+            ['periodicos', 'periodicos', '', 'periódicos', 'o'],
+            ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as Pestana] : []),
+            // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda
+        ];
+        return todas;
+    }
+
+    /** Las que se ven, en el orden elegido en ⚙ (`[dashboard] orden`); las que no se nombran van
+     *  después, en su orden de siempre, así una pestaña nueva (un módulo) aparece sola. */
+    private pestanasVisibles(todas = this.todasLasPestanas()): Pestana[] {
+        const pos = (c: string) => { const i = this.dashOrden.indexOf(c); return i < 0 ? this.dashOrden.length + todas.findIndex(x => x[0] === c) : i; };
+        return todas.filter(x => !this.dashOcultas.includes(x[0])).sort((a, b) => pos(a[0]) - pos(b[0]));
+    }
+
+    /** Mostrar u ocultar una pestaña, o moverla un lugar, y guardarlo (`telar config --pestanas`). */
+    private async cambiarPestanas(accion: string, clave: string): Promise<void> {
+        const todas = this.todasLasPestanas();
+        const pos = (c: string) => { const i = this.dashOrden.indexOf(c); return i < 0 ? this.dashOrden.length + todas.findIndex(x => x[0] === c) : i; };
+        const orden = todas.map(x => x[0]).sort((a, b) => pos(a) - pos(b));
+        let ocultas = [...this.dashOcultas];
+        const i = orden.indexOf(clave);
+        if (i < 0) return;
+        if (accion === 'ver') ocultas = ocultas.includes(clave) ? ocultas.filter(x => x !== clave) : [...ocultas, clave];
+        else {
+            const j = i + (accion === 'subir' ? -1 : 1);
+            if (j < 0 || j >= orden.length) return;
+            [orden[i], orden[j]] = [orden[j], orden[i]];
         }
-        this.pintar(h);
+        const r = await cli.configPestanas(orden.map(c => (ocultas.includes(c) ? '-' : '') + c).join(','));
+        if (!r.datos) { this.avisoConfig = r.error ?? 'no pude guardar las pestañas'; this.renderConfig(); return; }
+        this.dashOrden = r.datos.dashboard.orden;
+        this.dashOcultas = r.datos.dashboard.ocultas;
+        this.avisoConfig = '';
+        this.renderConfig();
     }
 
     /** La barra de arriba, igual en todas las pestañas y fija al desplazarse: la marca, el
@@ -199,82 +292,36 @@ export class PanelHoy {
         const ahora = new Date();
         const activa = this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
             : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde
-            : this.pantalla === 'pestana' ? `pestana:${this.pestana}` : this.pantalla;
-        // las pestañas de los proveedores que las declaran (un feed), con cuántos ítems tienen
-        const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
-            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(),
-                this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as [string, string, string, string, string]);
-        const aRevisar = this.propuestas('').length;
-        const pestanas: [string, string, string, string, string][] = [  // clave, acción, valor, nombre, tecla
-            ['ahora', 'ahora', '', 'ahora', 'n'],
-            ['dia', 'dia', '', 'hoy', ''],
-            ['revisar', 'revisar', '', aRevisar ? `tareas ◆${aRevisar}` : 'tareas', 'v'],
-            ...deProveedores,
-            ['proyectos', 'proyectos', '', 'proyectos', 'p'],
-            ['plan', 'plan', '', 'plan', 'd'],
-            ['calendario', 'calendario', '', 'calendario', 'a'],
-            ['periodicos', 'periodicos', '', 'periódicos', 'o'],
-            ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as [string, string, string, string, string]] : []),
-            // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda
-            ['config', 'config', '', '⚙', ''],
-        ];
+            : this.pantalla === 'pestana' ? `pestana:${this.pestana}`
+            : this.pantalla === 'bloque' ? `bloque:${this.bloqueSel}` : this.pantalla;
+        // los atajos que no son de ninguna pestaña (`en = "hoy"`) y el terminal: en la barra, en todas
+        const generales = this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
+            .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+            + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal');
+        // un proveedor caído se dice en todas las pestañas (el calendario, además, en la suya)
+        const caidos = (d?.fallas ?? []).filter(f => !f.startsWith('calendario'));
+        const pestanas = [...this.pestanasVisibles(), ['config', 'config', '', '⚙', ''] as Pestana];
         return '<div class="fijo"><header class="top"><div class="marca-t"><span class="logo">telar</span>'
             + (d ? `<span class="fecha">${esc(fechaLarga(d.nombreDia, d.fecha))}</span>` : '')
             + `<span class="reloj">${ahora.toTimeString().slice(0, 5)}</span>${d?.semana ? `<span class="sem">s${d.semana}</span>` : ''}</div>`
+            + `<span class="generales">${generales}</span>`
             + atajo('r', 'recargar', 'refrescar', '', 'recargar, proveedores incluidos') + '</header>'
             + '<nav class="tabs">' + pestanas.map(([clave, accion, valor, nombre, tecla]) =>
                 `<a class="tab${clave === activa ? ' activa' : ''}" data-accion="${accion}"${valor ? ` data-valor="${esc(valor)}"` : ''}>`
                 + `${tecla ? `<kbd>${tecla}</kbd> ` : ''}${esc(nombre)}</a>`).join('') + '</nav>'
+            + caidos.map(f => `<div class="fila falla">caído · ${esc(f)}</div>`).join('')
             + '<div class="regla"></div></div>';
     }
 
-    private agenda(d: Dia, ahora: Date): string[] {
-        const t = ahora.getTime();
-        const filas = d.agenda ?? [];
-        const quedan = filas.filter(e => Date.parse(e.cuando ?? '') > t).length;
-        const h = [seccion('agenda', 'azul', d.agenda?.length ? `${quedan}/${filas.length}` : '')];
-        const fin = (x: string) => [...h, x, '</section>'];
-        if (d.error) return fin(`<div class="vacio falla">${esc(d.error)}</div>`);
-        const falla = d.fallas.find(f => f.startsWith('calendario'));
-        if (falla) return fin(`<div class="vacio falla">calendario caído · <a data-accion="config">configurar</a></div>`);
-        if (d.agenda === null) {
-            return fin(d.declarados.length ? '<div class="vacio">sin consultar · <kbd>r</kbd></div>'
-                : '<div class="vacio">sin calendario · <a data-accion="config">conectar</a></div>');
-        }
-        if (!filas.length) return fin('<div class="vacio">nada con hora</div>');
-        const proxima = filas.find(e => Date.parse(e.cuando ?? '') > t);
-        for (const e of filas) {
-            const cuando = e.cuando ?? '';
-            const url = e.url ?? '';
-            const hilo = e.hilo ? `<span class="hilo-ag">${esc(e.hilo)}</span>` : '';
-            // un clic en cualquier evento abre su hilo; telar decide qué skill según si ya
-            // empezó (preparar o minuta) y las reglas de `[agenda]`
-            const valor = esc(JSON.stringify([e.texto, hhmm(cuando), url, e.id, e.asistentes ?? []]));
-            if (Date.parse(cuando) <= t) {
-                h.push(`<div class="ag pasada clic" data-accion="reunion" data-valor="${valor}" title="clic: la minuta">`
-                    + `<span class="hora">${esc(hhmm(cuando))}</span>`
-                    + `<span class="que">${esc(e.texto)}</span><span class="extra">${hilo}</span></div>`);
-                continue;
-            }
-            const esProxima = e === proxima;
-            let falta = '';
-            if (esProxima) {
-                const min = Math.floor((Date.parse(cuando) - t) / 60000);
-                falta = `<span class="falta">${min <= 0 ? 'ahora' : min < 90 ? `${min}m` : `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`}</span>`;
-            }
-            const entrar = url ? `<a class="enlace" data-url="${esc(url)}" title="${esc(url)}">entrar ↗</a>` : '';
-            h.push(`<div class="ag clic${esProxima ? ' proxima' : ''}" data-accion="reunion" data-valor="${valor}" title="clic: preparar">`
-                + `<span class="hora">${esProxima ? '<i class="punto">●</i>' : ''}${esc(hhmm(cuando))}</span>`
-                + `<span class="que">${esc(e.texto)}</span><span class="extra">${hilo}${falta}${entrar}</span></div>`);
-        }
-        return [...h, '</section>'];
-    }
 
     private async leerAtajos(): Promise<void> {
         const r = await cli.config();
         this.atajos = r.datos?.atajos ?? [];
         this.bloquesCfg = r.datos?.bloques ?? [];
         this.pestanasCfg = r.datos?.pestanas ?? [];
+        this.dashOrden = r.datos?.dashboard?.orden ?? [];
+        this.dashOcultas = r.datos?.dashboard?.ocultas ?? [];
+        this.modulosCfg = r.datos?.modulos ?? [];
         yo.persona = r.datos?.persona ?? '';
         yo.nombres = r.datos?.persona_nombres ?? [];
         this.general = r.datos?.agente_general?.clave ? { clave: r.datos.agente_general.clave, nombre: r.datos.agente_general.nombre ?? r.datos.agente_general.clave } : undefined;
@@ -285,18 +332,25 @@ export class PanelHoy {
     /** Los bloques del día (`[bloques.<clave>]`): una sección cada uno, con su color, su cuenta
      *  y en el título los atajos que dicen `en = "<clave>"`. Lo que muestran lo pide
      *  `leerBloques`, aparte y con el ritmo de la red: un comando lento no frena el día. */
-    private bloques(): string[] {
+    private bloques(cuales: cli.JsonBloque[], soloConAlgo = false): string[] {
         const h: string[] = [];
-        for (const b of this.bloquesCfg) {
+        for (const b of cuales) {
             const leido = this.bloquesDatos.get(b.clave);
+            if (soloConAlgo && !(leido?.pagina?.bloques ?? []).some(x => x.items?.length)) continue;
             const suyos = this.atajos.filter(a => a.en === b.clave)
                 .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('');
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
             if (!leido) h.push('<div class="vacio">leyendo…</div>');
             else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
             else {
+                // un bloque puede traer, además de filas, un lienzo (un gráfico) y texto, como una página
+                for (const x of leido.pagina?.bloques ?? []) {
+                    if (x.lienzo) h.push(this.htmlLienzo(x.lienzo));
+                    if (x.texto) h.push(`<div class="md-pag">${mdSimple(x.texto)}</div>`);
+                }
                 const items = (leido.pagina?.bloques ?? []).flatMap(x => x.items ?? []);
-                if (!items.length) h.push('<div class="vacio">nada</div>');
+                const otros = (leido.pagina?.bloques ?? []).some(x => x.lienzo || x.texto);
+                if (!items.length && !otros) h.push('<div class="vacio">nada</div>');
                 items.forEach((x, i) => {
                     const clic = x.mensaje ? ` data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}"` : '';
                     h.push(`<div class="cr${x.destacado ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
@@ -318,7 +372,7 @@ export class PanelHoy {
             if (!forzar && antes && ahora - antes.hora < 5 * 60 * 1000) return;
             const r = await cli.bloque(b.clave);
             this.bloquesDatos.set(b.clave, { pagina: r.datos, error: r.datos ? '' : (r.error ?? 'no contestó'), hora: Date.now() });
-            if (this.pantalla === 'dia') this.render();
+            if (this.pantalla === 'bloque' || this.pantalla === 'plan') this.render();
         }));
     }
 
@@ -362,11 +416,15 @@ export class PanelHoy {
      *  panel si hace falta; el refresco del día no la pisa (ver `render`). */
     async abrirSeccion(clave: string): Promise<void> {
         this.abrir();
+        const antes = this.appActual;
         this.pantalla = 'seccion';
         if (this.seccion !== clave) { this.seccion = clave; this.pagina = undefined; }
-        const nombre = modelo.secciones.find(s => s.clave === clave)?.nombre ?? clave;
+        if (antes !== this.appActual) this.alCambiarFoco?.(true);
+        // «app:<clave>» es una app (`telar app`); lo demás, una sección o un agente (`telar seccion`)
+        const app = clave.startsWith('app:') ? clave.slice(4) : '';
+        const nombre = (app ? modelo.apps.find(a => a.clave === app)?.nombre : modelo.secciones.find(s => s.clave === clave)?.nombre) ?? clave;
         if (!this.pagina) this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`, '<div class="fila dim">leyendo…</div>']);
-        const r = await cli.seccion(clave);
+        const r = app ? await cli.app(app) : await cli.seccion(clave);
         if (this.pantalla !== 'seccion' || this.seccion !== clave) return;
         if (!r.datos) {
             this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`,
@@ -385,7 +443,7 @@ export class PanelHoy {
         // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         if (!this.panel) this.abrir();
         else if (!this.panel.visible) this.panel.reveal(undefined, false);
-        if (this.pantalla === 'revisar' || this.pantalla === 'dia') this.fichaDesde = this.pantalla;
+        if (this.pantalla === 'revisar') this.fichaDesde = this.pantalla;
         if (this.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
         this.pantalla = 'tarea';
         this.ficha = { proveedor, id, ref };
@@ -547,7 +605,9 @@ export class PanelHoy {
 
     private renderPlan(): void {
         this.teclas.clear();
-        this.pintar(htmlPlan(this.plan, this.planError, this.planCargando));
+        // arriba, los bloques que van en el plan (la retro de la tarde), si traen algo
+        this.pintar([...this.bloques(this.bloquesCfg.filter(b => b.en === 'plan'), true),
+            ...htmlPlan(this.plan, this.planError, this.planCargando)]);
     }
 
     /** El día que muestra el calendario: hoy, u otro al que se navegó (`calFecha`). */
@@ -1099,6 +1159,7 @@ export class PanelHoy {
         this.memorias.clear();   // los iframes de antes se reemplazan: sus llaves ya no valen
         bloques.forEach((b, i) => {
             if (b.lienzo) h.push(this.htmlLienzo(b.lienzo));
+            if (b.marco) h.push(htmlMarco(b.marco));
             if (b.destacado) h.push(`<div class="prop" style="--c: var(--${esc(b.color ?? 'azul')})">`);
             if (b.titulo) h.push(`<h2>${esc(b.titulo)}</h2>`);
             else if (i > 0 && !b.destacado) h.push('<div class="sep-pag"></div>');
@@ -1124,6 +1185,9 @@ export class PanelHoy {
         const h: string[] = [`<div class="subcab"><b>${esc(p.titulo)}</b>${p.subtitulo ? `<span class="dim">${esc(p.subtitulo)}</span>` : ''}`
             + '<span class="der">' + this.atajos.filter(a => a.en === `seccion:${this.seccion}`)
                 .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+            // los enlaces de la página (una app servida: abrirla en el navegador) van junto al ↻
+            + (p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace)
+                .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>↗</span> ${esc(a.nombre)}</a>`).join('')
             + '<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>↻</span></a>'
             + '</span></div>'];
         h.push(...this.htmlBloques(p.bloques));
@@ -1137,7 +1201,6 @@ export class PanelHoy {
      *  script previo deja los params en la URL (`about:srcdoc?…`) y en `window.lienzo`.
      *  El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar el panel. */
     private htmlLienzo(l: cli.JsonLienzo): string {
-        const alto = Math.round(l.alto ?? 240);
         let doc: string;
         try { doc = fs.readFileSync(l.archivo, 'utf8'); }
         catch (e) { return `<div class="fila falla">no pude leer ${esc(l.archivo)}: ${esc(String(e))}</div>`; }
@@ -1159,7 +1222,7 @@ export class PanelHoy {
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
         doc = previo + doc.replace(/<script(?![^>]*\bnonce=)/gi, `<script nonce="${this.nonce}"`);
-        return `<iframe class="lienzo" sandbox="allow-scripts" srcdoc="${esc(doc)}" style="height:${alto}px"></iframe>`;
+        return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts" srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
     }
 
     /** La página de una entrada del equipo (un pedido de tarea, o una sugerencia de prioridad), con lo que se puede hacer con ella. */
@@ -1346,12 +1409,6 @@ export class PanelHoy {
         this.pintar(h);
     }
 
-    /** Un proveedor caído no apaga el telar: se dice cuál se cayó y el resto sigue. */
-    private fallas(d: Dia): string[] {
-        const otras = d.fallas.filter(f => !f.startsWith('calendario'));
-        if (!otras.length) return [];
-        return ['<h2>Proveedores</h2>', ...otras.map(f => `<div class="fila dim">caído · ${esc(f)}</div>`)];
-    }
 
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
@@ -1942,6 +1999,29 @@ export class PanelHoy {
     }
 
     /** La pantalla de configuración: de dónde sale la agenda, si funciona, y las otras opciones. */
+    /** En ⚙: cada pestaña con ✓ si se ve, y ↑↓ para moverla; debajo, los módulos instalados. */
+    private htmlPestanasConfig(): string[] {
+        const todas = this.todasLasPestanas();
+        const pos = (c: string) => { const i = this.dashOrden.indexOf(c); return i < 0 ? this.dashOrden.length + todas.findIndex(x => x[0] === c) : i; };
+        const h = ['<h2>Pestañas<small>cuáles se ven y en qué orden; las de un módulo nuevo aparecen solas</small></h2>'];
+        [...todas].sort((a, b) => pos(a[0]) - pos(b[0])).forEach(([clave, , , nombre]) => {
+            const ve = !this.dashOcultas.includes(clave);
+            const modulo = clave.startsWith('bloque:') && this.modulosCfg?.some(m => m.nombre === clave.slice(7)) ? ' <span class="dim">· módulo</span>' : '';
+            h.push(`<div class="fila${ve ? '' : ' dim'}"><a data-accion="pest-ver" data-valor="${esc(clave)}" title="${ve ? 'ocultarla' : 'mostrarla'}">${ve ? '✓' : '·'}</a> `
+                + `${esc(nombre.replace(/ ◆\d+$/, ''))}${modulo}<span class="der">`
+                + `<a data-accion="pest-subir" data-valor="${esc(clave)}" title="un lugar antes">↑</a> `
+                + `<a data-accion="pest-bajar" data-valor="${esc(clave)}" title="un lugar después">↓</a></span></div>`);
+        });
+        h.push('<div class="fila dim">⚙ va siempre al final.</div>');
+        h.push('<h2>Módulos<small>una carpeta con modulo.toml; se instalan en <code>[modulos]</code> de la configuración</small></h2>');
+        if (!this.modulosCfg?.length) h.push('<div class="fila dim">ninguno instalado</div>');
+        for (const m of this.modulosCfg ?? []) {
+            h.push(`<div class="fila"><b>${esc(m.nombre)}</b>&nbsp;<span class="dim">${esc(m.descripcion)}</span></div>`
+                + `<div class="fila dim">aporta ${esc(m.aporta.join(', ') || 'nada')} · ${esc(m.carpeta)}</div>`);
+        }
+        return h;
+    }
+
     private renderConfig(cargando = ''): void {
         if (!this.panel) return;
         this.teclas.clear();
@@ -1949,6 +2029,7 @@ export class PanelHoy {
             + '</div>'];
         if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
         if (this.avisoConfig) h.push(`<div class="fila falla">${esc(this.avisoConfig)}</div>`);
+        h.push(...this.htmlPestanasConfig());
         const c = this.calendario;
         h.push('<h2>Calendario<small>de dónde sale la agenda</small></h2>');
         if (!c) { this.pintar(h); return; }
@@ -2043,6 +2124,8 @@ export class PanelHoy {
         if (m.tipo === 'listo') {
             // un panel recién abierto para una sección pierde lo que se le mandó antes de estar listo
             if (this.pantalla === 'seccion' && this.pagina) this.renderSeccion();
+            // el dashboard abre en «ahora»: su contexto (el plan, los proyectos) se pide aquí
+            if (this.pantalla === 'ahora') void this.abrirAhora();
             this.render(); void this.actualizar(); return;
         }
         if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await vscode.env.openExternal(vscode.Uri.parse(m.url)); return; }
@@ -2052,6 +2135,7 @@ export class PanelHoy {
                 p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
                 o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
+                ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
                 t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
                 ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
@@ -2103,7 +2187,10 @@ export class PanelHoy {
             case 'proy-consolidar': if (m.valor) await this.consolidarProyecto(m.valor); break;
             case 'proy-enlace': if (m.valor) await this.enlaceReadme(m.valor, String(m.datos ?? '')); break;
             case 'plantilla-proyecto': await this.cambiarPlantillaProyecto(m.valor === 'restablecer'); break;
-            case 'dia': this.pantalla = 'dia'; void this.leerAtajos(); break;
+            case 'bloque': if (m.valor) await this.abrirBloque(m.valor); break;
+            case 'pest-ver': case 'pest-subir': case 'pest-bajar':
+                if (m.valor) await this.cambiarPestanas(m.accion.slice(5), m.valor);
+                break;
             case 'atajo': if (m.valor) await this.lanzarAtajo(m.valor); break;
             case 'abrir-item': if (m.valor) await this.abrirItem(m.valor); break;
             case 'tarea':
@@ -2136,7 +2223,8 @@ export class PanelHoy {
             case 'pestana': if (m.valor) await this.abrirPestana(m.valor); break;
             case 'volver-ficha':
                 if (this.fichaDesde === 'revisar') await this.abrirRevisar();
-                else { this.pantalla = 'dia'; this.render(); }   // de una pestaña de proveedor, a hoy
+                else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
+                else await this.abrirAhora();
                 break;
             case 'tarea-anterior': await this.otraPropuesta(-1); break;
             case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
@@ -2146,7 +2234,7 @@ export class PanelHoy {
                 break;
             case 'tareas': await vscode.commands.executeCommand('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
-            case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else { this.pantalla = 'dia'; this.render(); } break;
+            case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else await this.abrirAhora(); break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
             case 'correo': await this.abrirCorreo(); break;
             case 'equipo-accion': if (m.valor) await this.accionEquipo(m.valor); break;
@@ -2265,3 +2353,28 @@ function diaHora(iso: string): string {
     const d = new Date(iso);
     return `${['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][d.getDay()]} ${d.getDate()} ${iso.slice(11, 16)}`;
 }
+
+/** El origen de una dirección (`http://telar:8790`), o "" si no se entiende. */
+function origenDe(url: string): string {
+    try { return new URL(url).origin; } catch { return ''; }
+}
+
+/** Los orígenes de las apps servidas: los únicos, además del propio, que el panel deja enmarcar. */
+function origenesApps(): string[] {
+    return [...new Set(modelo.apps.map(a => a.url ? origenDe(a.url) : '').filter(Boolean))];
+}
+
+/** El alto de un lienzo o un marco: píxeles, o «lleno» (lo que queda del panel, por la clase). */
+function estiloAlto(alto: number | 'lleno' | undefined): string {
+    return alto === 'lleno' ? '' : ` style="height:${Math.round(alto ?? 240)}px"`;
+}
+
+/** Una página servida dentro del panel. Su sandbox le deja su propio origen (necesita sus
+ *  cookies y su almacenamiento), pero no alcanzar el panel: es otro origen. */
+function htmlMarco(m: cli.JsonMarco): string {
+    return `<iframe class="lienzo${m.alto === 'lleno' ? ' lleno' : ''}" src="${esc(m.url)}"`
+        + ` sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"${estiloAlto(m.alto)}></iframe>`;
+}
+
+/** Una pestaña del dashboard: [clave, acción, valor, nombre, tecla]. */
+type Pestana = [string, string, string, string, string];

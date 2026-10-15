@@ -75,15 +75,23 @@ type Seccion = 'hilo' | 'archivado';
 
 export class VistaHilos implements vscode.WebviewViewProvider {
     vista?: vscode.WebviewView;
-    archivoAbierto = false;
     private listo = false;
     private ultimoHtml = '';
     private ultimoActivo?: string;
     /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
     dashboardActivo = false;
+    /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
+    appActiva = '';
     private irAlArchivo = false;
-    /** las secciones plegadas, por clave; abiertas por defecto */
-    private plegadas = new Set<string>();
+    /** las cabeceras que el usuario dejó al revés de como empiezan (abierta una cerrada, o al revés) */
+    private invertidas = new Set<string>();
+
+    /** El archivo es una cabecera más (`__archivo`); `archivoAbierto` lo deja ver y cambiar desde afuera. */
+    get archivoAbierto(): boolean { return this.abierta('__archivo', false); }
+    set archivoAbierto(v: boolean) { if (v !== this.archivoAbierto) this.alternar('__archivo'); }
+
+    private abierta(clave: string, porDefecto: boolean): boolean { return porDefecto !== this.invertidas.has(clave); }
+    private alternar(clave: string): void { if (this.invertidas.has(clave)) this.invertidas.delete(clave); else this.invertidas.add(clave); }
 
     resolveWebviewView(v: vscode.WebviewView): void {
         this.vista = v;
@@ -121,10 +129,12 @@ export class VistaHilos implements vscode.WebviewViewProvider {
             case 'cerrar': if (m.id) void vscode.commands.executeCommand('telar.cerrar', { hilo: m.id }); break;
             case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
             case 'seccion':
-                if (m.id) { if (this.plegadas.has(m.id)) this.plegadas.delete(m.id); else this.plegadas.add(m.id); this.refrescar(true); }
+                if (m.id === '__archivo') { void vscode.commands.executeCommand('telar.archivo'); break; }
+                if (m.id) { this.alternar(m.id); this.refrescar(true); }
                 break;
             case 'equipo': void vscode.commands.executeCommand('telar.equipoVer', m.id); break;
             case 'home': if (m.id) void vscode.commands.executeCommand('telar.seccion', m.id); break;
+            case 'app': if (m.id) void vscode.commands.executeCommand('telar.app', m.id); break;
             case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
         }
     }
@@ -225,35 +235,25 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // título: es el lugar al que se vuelve varias veces al día, y en flow estaba ahí
         // porque era un tab. En telar no es un tab del multiplexor sino un panel de VS Code,
         // así que la fila la pone la vista y no la sesión.
-        h.push(`<div class="fila hoy${this.dashboardActivo ? ' activa' : ''}" data-accion="cmd" data-id="telar.hoy"`
+        h.push(`<div class="fila hoy${this.dashboardActivo && !this.appActiva ? ' activa' : ''}" data-accion="cmd" data-id="telar.hoy"`
             + ' title="el día: agenda, tareas y lo que espera">'
             + '<span class="prio"> </span><span class="nombre">dashboard</span></div>');
-        // cada sección es un grupo propio entre el dashboard y la lista general: sus hilos
-        // (los vivos; los archivados siguen en el archivo) salen de la lista de abajo
-        // los que tienen tab primero, los que no después; dentro de cada grupo, el orden elegido
+        // debajo, grupos con cabecera plegable, en este orden: AGENTES, HILOS (y las secciones propias),
+        // EQUIPO, ARCHIVO y APPS. Los dos primeros empiezan abiertos (es donde se trabaja); los demás,
+        // cerrados (se miran de vez en cuando). Dentro de cada grupo, los que tienen tab primero
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
-        // lo que el equipo le pide a Nico: una sección propia, arriba; pinchar una fila abre sus acciones
-        if (modelo.equipoRemoto) {
-            const pend = modelo.sugerencias;
-            const abierta = !this.plegadas.has('__equipo');
+        const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string): boolean => {
+            const abierta = this.abierta(clave, porDefecto);
             h.push('<div class="sep"></div>');
-            h.push(`<div class="fila cab" data-accion="seccion" data-id="__equipo" title="lo que el equipo te pide: abrir o cerrar la sección">`
-                + `<span class="prio">${abierta ? '▾' : '▸'}</span>EQUIPO${pend.length ? ` <span class="dim">${pend.length}</span>` : ''}</div>`);
-            if (abierta) {
-                if (!pend.length) h.push('<div class="fila dim"><span class="prio"> </span>nada esperando</div>');
-                for (const x of pend) {
-                    const pedido = x.tipo === 'tarea';
-                    h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
-                        + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
-                        + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
-                }
-            }
-        }
+            h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
+                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}</div>`);
+            return abierta;
+        };
+
         // los agentes residentes: uno por línea, como cualquier hilo, con su home al final de la línea.
         // Un agente sin hilo abierto sale igual, tenue, y su línea lleva a su home
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
-        if (agentes.length) {
-            h.push('<div class="sep"></div>');
+        if (agentes.length && cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes')) {
             for (const a of agentes) {
                 const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
                 const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
@@ -273,29 +273,50 @@ export class VistaHilos implements vscode.WebviewViewProvider {
                 suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
             }
         }
+
+        // los hilos abiertos que no reclama nadie
+        const sueltos = vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre)));
+        if (cabecera('__hilos', 'HILOS', sueltos.length, true, 'los hilos abiertos')) {
+            for (const x of sueltos) h.push(this.fila(x, 'hilo'));
+        }
+
+        // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS
         for (const s of modelo.secciones.filter(x => x.grupo !== 'agentes')) {
             const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre)));
-            const abierta = !this.plegadas.has(s.clave);
-            h.push('<div class="sep"></div>');
-            h.push(`<div class="fila cab" data-accion="seccion" data-id="${esc(s.clave)}" title="abrir o cerrar la sección">`
-                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(s.nombre.toUpperCase())}`
-                + (suyos.length ? ` <span class="dim">${suyos.length}</span>` : '') + '</div>');
-            if (!abierta) continue;
+            if (!cabecera(s.clave, s.nombre.toUpperCase(), suyos.length, true, `la sección ${s.nombre}`)) continue;
             if (s.home) {
                 h.push(`<div class="fila hoy" data-accion="home" data-id="${esc(s.clave)}" title="la página de ${esc(s.nombre)}">`
                     + '<span class="prio"> </span><span class="nombre">home</span></div>');
             }
             for (const x of suyos) h.push(this.fila(x, 'hilo'));
         }
-        h.push('<div class="sep"></div>');
-        for (const x of vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre)))) h.push(this.fila(x, 'hilo'));
+
+        // lo que el equipo le pide a Nico; pinchar una fila abre sus acciones
+        if (modelo.equipoRemoto) {
+            const pend = modelo.sugerencias;
+            if (cabecera('__equipo', 'EQUIPO', pend.length, false, 'lo que el equipo te pide')) {
+                if (!pend.length) h.push('<div class="fila dim"><span class="prio"> </span>nada esperando</div>');
+                for (const x of pend) {
+                    const pedido = x.tipo === 'tarea';
+                    h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
+                        + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
+                        + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
+                }
+            }
+        }
+
         const archivados = modelo.archivados;
-        if (archivados.length) {
-            h.push('<div class="sep"></div>');
-            h.push('<div id="archivo" class="fila cab" data-accion="archivo" title="abrir o cerrar el archivo">'
-                + `<span class="prio">${this.archivoAbierto ? '▾' : '▸'}</span>`
-                + `ARCHIVO <span class="dim">${archivados.length} hilo${archivados.length === 1 ? '' : 's'}</span></div>`);
-            if (this.archivoAbierto) for (const x of archivados) h.push(this.fila(x, 'archivado'));
+        if (archivados.length && cabecera('__archivo', 'ARCHIVO', archivados.length, false, 'los hilos archivados')) {
+            for (const x of archivados) h.push(this.fila(x, 'archivado'));
+        }
+
+        // las apps (`[apps]`): lo que se abre en el panel y no es un hilo; una fila cada una
+        if (modelo.apps.length && cabecera('__apps', 'APPS', 0, false, 'lo que se abre en el panel')) {
+            for (const a of modelo.apps) {
+                const activa = this.dashboardActivo && this.appActiva === a.clave ? ' activa' : '';
+                h.push(`<div class="fila hoy${activa}" data-accion="app" data-id="${esc(a.clave)}" title="${esc(a.descripcion || a.nombre)}">`
+                    + `<span class="prio"> </span><span class="nombre">${esc(a.nombre)}</span></div>`);
+            }
         }
         return h.join('');
     }

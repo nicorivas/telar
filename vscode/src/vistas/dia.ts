@@ -355,6 +355,8 @@ export const CSS_DIA = `
   .md-pag p { margin: 0 0; white-space: normal; } .md-pag ul { margin: 0 0; padding-left: 2ch; }
   .md-pag code, .texto-pag code { color: var(--verde); }
   .lienzo { display: block; width: 100%; border: 0; margin: 0 0 1lh; background: transparent; }
+  /* una app a todo el panel: lo que queda bajo la barra y la cabecera */
+  .lienzo.lleno { height: calc(100vh - 6.5lh); min-height: 320px; margin: 0; }
   .sep-pag { border-top: 1px solid var(--linea); margin: 1lh 0; }
   .item-pag { padding: 0 1ch; margin: 0 0; border-left: 2px solid var(--linea); }
   .item-pag.clic { cursor: pointer; } .item-pag.clic:hover { background: var(--hover); border-left-color: var(--azul); }

@@ -284,7 +284,8 @@ export interface JsonAgenteConfig {
 export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; descripcion: string; en?: string }
 
 /** Una sección del día que llena un comando (`[bloques.<clave>]`). */
-export interface JsonBloque { clave: string; nombre: string; color: string }
+/** `en`: "" es una pestaña propia del dashboard; «plan», arriba del plan. `tecla`: la de su pestaña. */
+export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string }
 
 /** `telar bloque <clave>`: la página que imprime su comando. */
 export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
@@ -292,7 +293,11 @@ export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave]
 export interface JsonPestana { nombre: string; tecla: string }
 export const config = () => telarJson<{
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
-    atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
+    atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; apps?: JsonApp[];
+    /** las pestañas del dashboard: su orden y las que no se muestran (`[dashboard]`) */
+    dashboard?: { orden: string[]; ocultas: string[] };
+    /** los módulos instalados (`[modulos]`) y lo que aporta cada uno */
+    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[] }[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
     pestanas?: JsonPestana[];
     /** el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`); vacío si no hay */
     agente_general?: { clave?: string; nombre?: string };
@@ -314,6 +319,10 @@ export interface JsonSeccion { clave: string; nombre: string; hilos: string[]; h
 export function enSeccion(s: JsonSeccion, hilo: string): boolean {
     return s.hilos.some(p => p.endsWith('*') ? hilo.startsWith(p.slice(0, -1)) : hilo === p);
 }
+
+/** Lo que se abre en el panel y no es un hilo (`[apps.x]`): su página la da `telar app <clave>`.
+ *  `url`, si la app es una página servida: el panel la deja entrar en su CSP. */
+export interface JsonApp { clave: string; nombre: string; descripcion?: string; fuente: 'pagina' | 'archivo' | 'url'; url?: string }
 
 /** La página de una sección, tal como la devuelve su comando `home` (docs/contratos.md). */
 export interface JsonPaginaItem {
@@ -341,15 +350,20 @@ export interface JsonAccionPagina {
 }
 export interface JsonPagina {
     titulo: string; subtitulo?: string;
-    bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo;
+    bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo; marco?: JsonMarco;
                destacado?: boolean; color?: string }[];
     acciones?: JsonAccionPagina[];
 }
 
 /** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
-export interface JsonLienzo { archivo: string; alto?: number; params?: Record<string, string | number>; memoria?: string }
+export interface JsonLienzo { archivo: string; alto?: number | 'lleno'; params?: Record<string, string | number>; memoria?: string }
+/** Una página servida (http o https) en un iframe del panel: lo que muestra una app con `url`. */
+export interface JsonMarco { url: string; alto?: number | 'lleno' }
 
 export const seccion = (clave: string) => telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
+export const app = (clave: string) => telarJson<JsonPagina>(['app', clave, '--json'], 40000);
+/** Guardar el orden de las pestañas del dashboard: «ahora,revisar,-plan» (con «-», oculta). */
+export const configPestanas = (valor: string) => telarJson<{ dashboard: { orden: string[]; ocultas: string[] } }>(['config', '--pestanas', valor, '--json'], 20000);
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
 export const tarea = (id: string, proveedor: string) =>
     telarJson<JsonPagina>(['tarea', id, '--proveedor', proveedor, '--json'], 40000);

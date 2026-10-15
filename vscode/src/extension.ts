@@ -305,8 +305,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     hoy = new PanelHoy();
     // con el dashboard al frente, la lista marca su fila y no la del último hilo (que no es lo que se mira)
     hoy.alCambiarFoco = activo => {
-        if (vistaHilos.dashboardActivo === activo) return;
+        const app = activo ? hoy.appActual : '';
+        if (vistaHilos.dashboardActivo === activo && vistaHilos.appActiva === app) return;
         vistaHilos.dashboardActivo = activo;
+        vistaHilos.appActiva = app;
         vistaHilos.refrescar(true);
     };
 
@@ -477,6 +479,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.equipo', () => verEquipo());
     orden('telar.equipoVer', (id?: string) => verEquipo(typeof id === 'string' ? id : undefined));
     orden('telar.seccion', (clave?: string) => { if (typeof clave === 'string' && clave) void hoy.abrirSeccion(clave); });
+    orden('telar.app', (clave?: string) => { if (typeof clave === 'string' && clave) void hoy.abrirApp(clave); });
     orden('telar.conectarCalendario', conectarCalendario);
     orden('telar.tareas', async () => {
         await vscode.commands.executeCommand('telar.tareas.focus');
