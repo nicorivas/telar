@@ -519,13 +519,13 @@ export const CSS_DIA = `
   .subcab { --c: var(--violeta); } .subcab .der { display: flex; gap: 0 3ch; }
 
   /* un bloque del día (el correo): marca · hora · de · qué */
-  .cr { display: grid; grid-template-columns: 1ch 5ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
+  .cr { display: grid; grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
         box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); color: var(--dim); }
   .cr .mk { color: var(--dim); } .cr .hora { color: var(--dim); }
   .cr .de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cr .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* las tareas de cada ítem (las de un correo), separadas por coma; «—» si no tiene */
-  .cr.con-t { grid-template-columns: 1ch 5ch 20ch minmax(0, 1fr) 16ch; }
+  .cr.con-t { grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr) 16ch; }
   /* el cuerpo de un ítem abierto (un correo): cinco líneas, y entero al desplegarlo */
   .cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; margin: .5lh 0 .25lh; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--linea); }
   .cuerpo.plegado { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
@@ -544,8 +544,8 @@ export const CSS_DIA = `
     .tarea:not(.compacta) { grid-template-columns: 5ch minmax(0, 1fr) auto; } .tarea:not(.compacta) .pri { display: none; }
     .ag { grid-template-columns: 7ch minmax(0, 1fr); } .ag .extra { grid-column: 2; }
     .ag:not(.proxima) .extra { display: none; }
-    .cr { grid-template-columns: 1ch 5ch minmax(0, 1fr); } .cr .de { display: none; }
-    .cr.con-t { grid-template-columns: 1ch 5ch minmax(0, 1fr) 11ch; }
+    .cr { grid-template-columns: 1ch 6ch minmax(0, 1fr); } .cr .de { display: none; }
+    .cr.con-t { grid-template-columns: 1ch 6ch minmax(0, 1fr) 11ch; }
     .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
   }
   @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }

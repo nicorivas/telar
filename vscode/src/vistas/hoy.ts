@@ -401,7 +401,7 @@ export class PanelHoy {
                     const nuevo = e.nuevo ?? x.destacado;
                     return `<div class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
                         + ` title="${esc(clic ? `clic: ${x.tareas?.length ? 'sus tareas' : 'verlo'}${x.mensaje ? ', y procesarlo en un hilo' : ''}` : x.titulo)}"><span class="mk">${esc(e.marca ?? x.marca ?? '·')}</span>`
-                        + `<span class="hora">${esc((x.fecha ?? '').slice(11, 16))}</span>`
+                        + `<span class="hora" title="${esc((x.fecha ?? '').replace('T', ' '))}">${esc(cuandoCorto(x.fecha ?? ''))}</span>`
                         + `<span class="de">${esc(conTareas ? (x.texto ?? '').replace(/ · tareas: .*$/, '') : x.texto ?? '')}</span><span class="que">${plegar}${esc(x.titulo)}</span>${tareas}</div>`;
                 };
                 // los de una misma conversación (`grupo`), anidados bajo el más reciente, como Gmail; el
@@ -2589,4 +2589,13 @@ async function enPestanaDeChrome(url: string, reusar: string): Promise<boolean> 
     return new Promise(resolve => {
         execFile('osascript', ['-e', script, url, reusar], { timeout: 8000 }, (error, stdout) => resolve(!error && stdout.trim() === 'si'));
     });
+}
+
+/** La hora de un ítem si es de hoy; si no, el día («21 sep»): en la bandeja hay correos de semanas atrás. */
+function cuandoCorto(fecha: string): string {
+    const hoy = new Date();
+    const dia = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    if (!fecha || fecha.slice(0, 10) === dia) return fecha.slice(11, 16);
+    const [, m, d] = fecha.slice(0, 10).split('-').map(Number);
+    return `${d} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][(m || 1) - 1]}`;
 }
