@@ -482,6 +482,38 @@ class ElOrdenEnQueSeAbren(Prueba):
         self.assertEqual(len(tejer._primeras(self._perfil("uno"), unidades)), tejer.TOPE)
 
 
+class HilosRed(unittest.TestCase):
+    """`telar hilos --red`: los hilos de las otras máquinas, del registro del bus."""
+
+    def ctx(self, url="nats://x:4222"):
+        from types import SimpleNamespace as N
+        return N(config=N(bus=N(url=url)))
+
+    def test_deja_fuera_los_de_esta_maquina_y_pone_los_de_las_otras(self):
+        from unittest import mock
+        from telar import bus as mod_bus
+        from telar.ordenes import hilos
+        registro = {"Telar": {"nombre": "Telar", "maquina": "laptop", "vivo": True, "atencion": "espera"},
+                    "Gestión": {"nombre": "Gestión", "maquina": "telar", "vivo": True},
+                    "Roche": {"nombre": "Roche", "maquina": "laptop", "vivo": False}}
+        with mock.patch.object(mod_bus, "estados", return_value=registro), \
+                mock.patch.object(mod_bus, "maquina", return_value="telar"):
+            otras, maquinas, aviso = hilos._red(self.ctx())
+        self.assertEqual([h["nombre"] for h in otras], ["Roche", "Telar"])
+        self.assertEqual({h["nombre"]: h["vivo"] for h in otras}, {"Roche": False, "Telar": True})
+        self.assertEqual(aviso, "")
+
+    def test_sin_bus_o_con_el_bus_caido_avisa_y_no_revienta(self):
+        from unittest import mock
+        from telar import bus as mod_bus
+        from telar.ordenes import hilos
+        self.assertIn("no hay bus", hilos._red(self.ctx(url=""))[2])
+        with mock.patch.object(mod_bus, "estados", side_effect=mod_bus.ErrorDeBus("el bus no responde")):
+            otras, _, aviso = hilos._red(self.ctx())
+        self.assertEqual(otras, [])
+        self.assertIn("no responde", aviso)
+
+
 if __name__ == "__main__":
     unittest.main()
 

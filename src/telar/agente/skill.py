@@ -30,8 +30,12 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
 
 ## Encontrarlos
 
-- `telar hilos --json`: los hilos de esta persona, con su carpeta (`relativa`), si están
-  abiertos (`vivo`), en qué máquina viven (`remoto`: "" es aquí) y su ficha.
+- `telar hilos --red --json`: **todos** los hilos de esta persona, en todas las máquinas. `hilos`
+  son los de aquí (carpeta `relativa`, `vivo`, ficha); `otras_maquinas`, los de las demás, según el
+  registro del bus (`maquina`, `vivo`, `atencion`); `maquinas` dice si cada una está en línea (si
+  no, lo que muestra es lo último que alcanzó a decir). **Sin `--red`, `telar hilos` ve solo esta
+  máquina**: no lo uses para saber qué hay abierto en el laptop. (`remoto` es otra cosa: el agente
+  de un hilo de aquí que corre en otra máquina por ssh.)
 - `ListAgents`: las sesiones de agente de **esta máquina y esta persona**, con el nombre al
   que se les escribe con SendMessage.
 - `telar directorio`: los hilos de **otras personas** en las máquinas compartidas, con su
@@ -63,7 +67,7 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
 ## Cuál camino usar
 
 - **Hablarle a un hilo** (preguntarle, pasarle un dato, pedirle algo de su proyecto): `telar mensaje
-  <hilo> "…"`. Le llega donde viva; `telar hilos --json` dice en qué máquina (`maquina`, `remoto`).
+  <hilo> "…"`. Le llega donde viva; `telar hilos --red --json` dice en qué máquina vive (`maquina`).
 - **Pedirle a otra máquina algo que solo ella puede hacer** (su navegador con sesiones, un token
   que solo está ahí, WhatsApp Web): `telar encargar <agente de esa máquina> "…"`, por ejemplo
   `telar encargar laptop "…"`. Escribirle a un hilo cualquiera no sirve: ese hilo puede vivir en tu

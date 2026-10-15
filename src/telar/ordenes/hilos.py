@@ -30,6 +30,8 @@ def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("hilos", AYUDA)
     p.add_argument("--json", action="store_true", help="los datos, en una línea (docs/contratos.md)")
     p.add_argument("--vivos", action="store_true", help="solo los que el multiplexor muestra ahora")
+    p.add_argument("--red", action="store_true",
+                   help="además, los hilos de las otras máquinas (el registro del bus): todos, en todos los computadores")
     p.add_argument("--sin-ficha", action="store_true", help="no leer los documentos (más rápido)")
     p.add_argument(
         "--orden",
@@ -45,6 +47,7 @@ def main(argv: list[str], ctx) -> int:
     hilos = mod_estado.ordenar(tel.hilos, o.orden)
     vivos, sin_ventana, archivados = mod_estado.repartir(hilos, tel.vivos)
 
+    otras, maquinas, aviso_red = _red(ctx) if o.red else ([], [], "")
     if o.json:
         return _comun.escribir_json(
             {
@@ -56,6 +59,7 @@ def main(argv: list[str], ctx) -> int:
                 "orden": o.orden,
                 "clientes": _clientes(tel),
                 "hilos": [_comun.json_hilo(h, tel, con_ficha=not o.sin_ficha) for h in hilos],
+                **({"otras_maquinas": otras, "maquinas": maquinas, "aviso_red": aviso_red} if o.red else {}),
             }
         )
 
@@ -93,7 +97,57 @@ def main(argv: list[str], ctx) -> int:
         print(_comun.tenue(f"archivados ({len(archivados)})"))
         for hilo in archivados:
             print(_linea(hilo, tel, ancho))
+    if o.red:
+        _imprimir_red(otras, maquinas, aviso_red, tel)
     return 0
+
+
+def _red(ctx) -> tuple[list[dict], list[dict], str]:
+    """Los hilos de las otras máquinas, como los registra el bus: (hilos, máquinas, aviso).
+
+    El bus tiene un registro de todos los hilos de la persona, de cualquier máquina; cada nodo
+    publica los suyos. `telar hilos` a secas lee solo el multiplexor de aquí, por eso no veía los del
+    laptop. Un hilo del registro lleva `vivo` según lo último que publicó su máquina: si esa máquina
+    se apagó, no pudo decirlo, y `maquinas` trae si su espejo sigue en línea.
+    """
+    from telar import bus as mod_bus
+    from telar import espejo as mod_espejo
+
+    if not ctx.config.bus.url:
+        return [], [], "no hay bus ([bus] en la configuración): solo se ven los hilos de esta máquina"
+    try:
+        registro = mod_bus.estados(ctx.config)
+    except mod_bus.ErrorDeBus as e:
+        return [], [], f"{e}; se muestran solo los hilos de esta máquina"
+    yo = mod_bus.maquina(ctx.config)
+    otras = [
+        {"nombre": d.get("nombre") or n, "maquina": d.get("maquina", ""), "vivo": bool(d.get("vivo")),
+         "atencion": d.get("atencion", "ninguna"), "atencion_desde": d.get("desde", ""),
+         "residente": d.get("residente", ""), "actualizado": d.get("actualizado", "")}
+        for n, d in sorted(registro.items(), key=lambda x: (x[1].get("maquina", ""), x[0].lower()))
+        if d.get("maquina") and d.get("maquina") != yo
+    ]
+    try:
+        maquinas = [{"nombre": e.get("nombre"), "en_linea": bool(e.get("en_linea")), "edad": e.get("edad")}
+                    for e in mod_espejo.leer_todos(ctx.config)]
+    except Exception:  # noqa: BLE001 - sin espejos, solo falta saber si la máquina sigue encendida
+        maquinas = []
+    return otras, maquinas, ""
+
+
+def _imprimir_red(otras: list[dict], maquinas: list[dict], aviso: str, tel) -> None:
+    if aviso:
+        print(_comun.tenue(f"({aviso})"))
+    apagadas = {m["nombre"] for m in maquinas if not m["en_linea"]}
+    for maquina in dict.fromkeys(h["maquina"] for h in otras):
+        suyos = [h for h in otras if h["maquina"] == maquina]
+        vivos = [h for h in suyos if h["vivo"]]
+        nota = " · apagada o sin señal: lo último que dijo" if maquina in apagadas else ""
+        print(_comun.fuerte(f"{maquina} · {len(vivos)} hilos") + (_comun.tenue(nota) if nota else ""))
+        for h in vivos:
+            print(f"  {h['nombre']}  " + _comun.tenue(h["atencion"] if h["atencion"] != "ninguna" else ""))
+        if len(suyos) > len(vivos):
+            print(_comun.tenue(f"  y {len(suyos) - len(vivos)} cerrados o archivados"))
 
 
 def _linea(hilo, tel: _comun.Telar, ancho: int) -> str:

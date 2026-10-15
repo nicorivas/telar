@@ -335,6 +335,12 @@ que se la llevaría. La vista de proyectos del dashboard junta por `proyecto`.
   "hilos": [ hilo, … ] }
 ```
 
+Con `--red` suma tres claves, que se piden y no cambian las demás: `otras_maquinas`
+(`[{ "nombre", "maquina", "vivo", "atencion", "atencion_desde", "residente", "actualizado" }]`: los hilos que el
+registro del bus tiene en máquinas distintas de esta, vivos o no), `maquinas` (`[{ "nombre", "en_linea",
+"edad" }]`, de los espejos: una máquina sin señal muestra lo último que dijo) y `aviso_red` (por qué no se leyó
+el bus, vacío si todo bien; sin bus o con el bus caído, `hilos` sigue valiendo y `otras_maquinas` va vacío).
+
 `clientes` son los pids de las terminales enganchadas a la sesión: los procesos del
 multiplexor que la están mostrando. Sirven para encontrar desde afuera cuál terminal
 mira la sesión (la extensión de VS Code busca aquel terminal cuya shell es antepasado de

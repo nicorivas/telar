@@ -8,6 +8,11 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar hilos --red`: además de los hilos de esta máquina, los de todas las demás según el registro del bus
+  (`otras_maquinas` y `maquinas` en el JSON; en la terminal, una sección por máquina). Sin la bandera, `telar
+  hilos` sigue viendo solo el multiplexor de aquí, que es lo que la extensión necesita. La skill `/hilos` ahora
+  manda a `telar hilos --red --json`: antes decía que `remoto` daba la máquina, y un hilo preguntando qué había
+  abierto no veía los del laptop.
 - `telar persona` (`ver`, `crear`, `quitar`): dar de alta a un colega en el servidor — su usuario (sin el grupo
   `agentes`, que lee el correo archivado), su llave ssh, sshd sin contraseña ni túneles, un tope de memoria y
   CPU para toda su cuenta (slice de systemd), a qué hilos tuyos puede despertar por correo, y su propio uv,
