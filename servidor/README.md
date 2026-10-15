@@ -8,6 +8,7 @@ en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.m
 
 | archivo | qué hace | se instala en |
 | --- | --- | --- |
+| `alta-colega` | deja a un colega con su propio telar y Claude Code en su home, fuera del grupo `agentes` y con tope de memoria y CPU (`sudo bash alta-colega USUARIO [MEM] [CPU]`) | se corre desde el repo |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
 | `telar-web.service` | `telar web` como servicio de usuario: arranca al encender y se levanta si se cae | `~/.config/systemd/user/` |
