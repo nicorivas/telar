@@ -178,3 +178,49 @@ class QueConversacionRetomarAlla(Prueba):
         with mock.patch("subprocess.run", return_value=mock.Mock(returncode=255, stdout="", stderr="sin ruta")):
             sid, error = r.conversacion_alla(Remoto(nombre="s", destino="u@s"), "Faro", ["aqui"])
         self.assertEqual((sid, error), (None, "sin ruta"))
+
+
+class TraerNoDuplica(Prueba):
+    """Reabrir la ventana de un hilo remoto abre una sola, y marca la que abrió.
+
+    Pasó al despertar un laptop: el ssh se cortó, la ventana se cerró, y el nodo y el sondeo
+    reabrieron el mismo hilo varias veces en segundos. Quedaron seis ventanas iguales, y como la
+    marca se buscaba por nombre, solo la primera quedó marcada y las otras no se reconocían.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from types import SimpleNamespace
+
+        from telar.modelo import Hilo
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ventanas: list[dict] = []
+        siguiente = iter(range(1, 100))
+
+        def crear_tab(nombre, comando=None, foco=True):
+            v = {"id": f"@{next(siguiente)}", "nombre": nombre, "remoto": ""}
+            self.ventanas.append(v)
+            return Tab(id=v["id"], nombre=nombre, posicion=len(self.ventanas), activo=False)
+
+        def marcar_remoto(tab, remoto):
+            next(v for v in self.ventanas if v["id"] == tab)["remoto"] = remoto
+
+        self.mux = SimpleNamespace(
+            crear_tab=crear_tab, marcar_remoto=marcar_remoto, ir=lambda i: None,
+            hilos=lambda: [Hilo(id=v["id"], nombre=v["nombre"], remoto=v["remoto"]) for v in self.ventanas])
+        self.tel = SimpleNamespace(mux=self.mux, estado=mod_estado.abrir(Config(estado=Path(self.tmp.name))))
+
+    def test_reabrir_dos_veces_deja_una_sola_ventana(self):
+        r.traer(self.tel, CASA, "telar-aaaa0001", "obs-demo")
+        r.traer(self.tel, CASA, "telar-aaaa0001", "obs-demo", foco=True)
+        self.assertEqual([v["id"] for v in self.ventanas], ["@1"])
+        self.assertEqual(self.ventanas[0]["remoto"], "casa")
+
+    def test_marca_la_ventana_que_abrio_y_no_otra_con_el_mismo_nombre(self):
+        # una ventana local (sin marca) que se llama igual no cuenta como la del hilo remoto
+        self.ventanas.append({"id": "@50", "nombre": "obs-demo", "remoto": ""})
+        r.traer(self.tel, CASA, "telar-aaaa0001", "obs-demo")
+        marcadas = {v["id"]: v["remoto"] for v in self.ventanas}
+        self.assertEqual(marcadas, {"@50": "", "@1": "casa"})

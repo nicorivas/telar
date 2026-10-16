@@ -6,6 +6,14 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- Reopening a remote thread's window no longer opens it several times. When a laptop woke up, the node and the
+  page's poll reopened the same thread at once and each one saw «no window» before the other created it: six
+  identical windows in five seconds. `remoto.traer` now checks and creates under the state's lock, and counts a
+  live window with that name that already runs a mosh/ssh as open. The remote mark goes to the window that was just
+  created, by its id, not to the first one with that name. (Pablo Ferreiro, PR #2)
+
 ## [0.6.0] — 2026-10-26
 
 ### Added
