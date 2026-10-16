@@ -195,6 +195,12 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- Reopening a remote thread's window no longer opens it several times. When a laptop woke up, the node and the
+  extension's poll reopened the same thread at once and each one saw «no window» before the other created it: six
+  identical windows in five seconds. `remoto.traer` now checks and creates under the state's lock, and counts a
+  live window with that name that already runs a mosh/ssh as open.
+- The remote mark goes to the window that was just created, by its id. It was looked up by name, so it landed on
+  the first window with that name and the new one stayed unmarked (and unrecognised).
 - Taking a thread to another machine (`telar hilo llevar`): the conversation travels gzip-compressed, the extension
   waits up to 15 minutes instead of 2 (it reported a failure while the copy kept going), and says what it is doing
   while the thread is visible nowhere.

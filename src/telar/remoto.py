@@ -425,14 +425,12 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
             lanz = lanzar.Lanzamiento(comando=[], carpeta=None, nueva=sid)
     sesion = crear_alla(ctx.config, remoto, nombre,
                         linea(carpeta_remota(ctx.config, remoto, relativa), palabras, nombre, marcar=False))
-    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "", nombre), foco=True)
-    hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
-    if hilo is not None:
-        tel.mux.marcar_remoto(hilo.id, remoto.nombre)
+    tab = tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "", nombre), foco=True)
+    # por id, no por nombre: si ya hay otra ventana con ese nombre, la marca y el foco irían a ella
+    tel.mux.marcar_remoto(tab.id, remoto.nombre)
     tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
     lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
-    if hilo is not None:
-        tel.mux.ir(hilo.id)
+    tel.mux.ir(tab.id)
     return sesion
 
 
@@ -497,11 +495,26 @@ def nuevas(conocidas: set[str], de_alla: list[tuple[str, str]], nombres: set[str
 def traer(tel, remoto: Remoto, sesion: str, nombre: str, *, foco: bool = False) -> None:
     """Abre aquí la ventana de un hilo que vive allá (su dirección en `sesion`), sin quitarle el
     foco a nadie salvo que se pida. Allá no corre nada nuevo: solo se lo mira."""
-    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "exec bash -l", nombre), foco=foco)
-    hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
-    if hilo is not None:
-        tel.mux.marcar_remoto(hilo.id, remoto.nombre)
-    tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
-    if foco and hilo is not None:
-        tel.mux.ir(hilo.id)
+    # Varias instancias reabren a la vez (el nodo, el sondeo de la extensión, un `retomar`): sin el
+    # candado, cada una ve que «no hay ventana» antes de que la otra la cree y se abren N iguales.
+    with tel.estado.bajo_candado():
+        abierta = ventana_abierta(tel, nombre)
+        if abierta is None:
+            tab = tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "exec bash -l", nombre), foco=foco)
+            # se marca la ventana que se acaba de crear, por su id: buscarla por nombre encuentra la
+            # primera con ese nombre, que puede ser otra
+            tel.mux.marcar_remoto(tab.id, remoto.nombre)
+            abierta = tab.id
+        tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
+    if foco:
+        tel.mux.ir(abierta)
+
+
+def ventana_abierta(tel, nombre: str) -> str | None:
+    """El id de la ventana viva de un hilo remoto con ese nombre, o None.
+
+    Cuenta la que telar marcó y también la que corre un mosh/ssh sin marca (`remoto == "?"`):
+    las dos ya miran la sesión de allá, y abrir otra solo duplica la vista.
+    """
+    return next((h.id for h in tel.mux.hilos() if h.nombre == nombre and h.remoto), None)
 
