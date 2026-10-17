@@ -244,9 +244,12 @@ def ordenes_ver(grupo: str, vista: str, ventana: str) -> list[list[str]]:
     ]
 
 
-def enganchar(vista: str) -> list[str]:
-    """El attach a una sesión de `ordenes_ver`, que además la borra cuando nadie la mire."""
-    return ["attach-session", "-t", f"={vista}", ";", "set-option", "-t", f"={vista}:", "destroy-unattached", "on"]
+def enganchar(vista: str, sin_tamano: bool = False) -> list[str]:
+    """El attach a una sesión de `ordenes_ver`, que además la borra cuando nadie la mire. Con
+    `sin_tamano`, quien mira no cambia el tamaño de la ventana (`ignore-size`): la ajusta quien
+    trabaja en ella, no una vista de paso."""
+    return ["attach-session", *(["-f", "ignore-size"] if sin_tamano else []), "-t", f"={vista}",
+            ";", "set-option", "-t", f"={vista}:", "destroy-unattached", "on"]
 
 
 def barra(nombre: str, correos: int = 0) -> str:
