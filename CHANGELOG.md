@@ -8,6 +8,10 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The app's logo (`telar web` icons) is redrawn on an invisible grid of square cells: the «t» has 2-cell strokes,
+  the cursor is 3×6 and sits on the same baseline, right under the «t»'s arm, with 1 cell between them. It
+  comes in a full-bleed version and a smaller «maskable» one that survives Android's circular crop; there is
+  also an `icono.svg` for the tab. `docs/marca/hacer_iconos.py` generates all of them from one list of shapes.
 - `telar commit -m "…" -- rutas`: commits only those paths (new and deleted ones too), never touches
   paths marked `skip-worktree`, and pushes. Before pushing it fetches and rebases, unless what comes in
   touches a file that is dirty here (someone else's work in progress): then it does not integrate, says
