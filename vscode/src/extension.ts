@@ -11,6 +11,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
+import { usar } from './anfitrion';
+import { anfitrionVscode, conectarVscode } from './anfitrion-vscode';
+import { superficieVscode } from './superficie-vscode';
 import * as acciones from './acciones';
 import { elegirEntrada } from './vistas/equipo';
 import { irAHilo, mostrarTerminal } from './acciones';
@@ -18,9 +21,9 @@ import * as cli from './cli';
 import { modelo } from './modelo';
 import { Entrada, VistaCarpeta } from './vistas/carpeta';
 import { VistaFicha } from './vistas/ficha';
-import { VistaHilos } from './vistas/hilos';
+import { VistaHilos } from './vistas/hilos-vscode';
 import { PanelHoy } from './vistas/hoy';
-import { VistaTareas } from './vistas/tareas';
+import { VistaTareas } from './vistas/tareas-barra';
 
 let bitacora: vscode.LogOutputChannel;
 let vistaHilos: VistaHilos;
@@ -283,6 +286,9 @@ async function conectarCalendario(): Promise<void> {
 // ───────────────────────── activación ─────────────────────────
 
 export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+    // el dashboard y la barra le piden a VS Code lo que es de VS Code (ver anfitrion.ts)
+    usar(anfitrionVscode);
+    conectarVscode();
     bitacora = vscode.window.createOutputChannel('telar', { log: true });
     acciones.conBitacora(anotar);
     ctx.subscriptions.push(bitacora);
@@ -304,6 +310,7 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         { treeDataProvider: vistaCarpeta, showCollapseAll: true });
     ctx.subscriptions.push(vistaCarpeta.vista);
     hoy = new PanelHoy();
+    hoy.crearSuperficie = superficieVscode;
     // con el dashboard al frente, la lista marca su fila y no la del último hilo (que no es lo que se mira)
     hoy.alCambiarFoco = activo => {
         const app = activo ? hoy.appActual : '';

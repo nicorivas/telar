@@ -1,0 +1,33 @@
+/* Los tokens: colores, tipografía y espacio. Los colores son los del tema de la terminal de VS Code
+   (sus variables --vscode-*) y, fuera de VS Code, catppuccin mocha. Todo lo demás se arma con estos. */
+
+:root {
+  /* colores */
+  --fg: var(--vscode-terminal-foreground, var(--vscode-foreground, #cdd6f4));
+  --bg: var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e2e)));
+  --dim: var(--vscode-terminal-ansiBrightBlack, #6c7086);
+  --linea: color-mix(in srgb, var(--fg) 16%, transparent);
+  --sel: var(--vscode-terminal-selectionBackground, rgb(128 128 128 / 25%));
+  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
+  --azul: var(--vscode-terminal-ansiBlue, #89b4fa);
+  --amarillo: var(--vscode-terminal-ansiYellow, #f9e2af);
+  --verde: var(--vscode-terminal-ansiGreen, #a6e3a1);
+  --rojo: var(--vscode-terminal-ansiRed, #f38ba8);
+  --magenta: var(--vscode-terminal-ansiBrightMagenta, #f5c2e7);
+  --cian: var(--vscode-terminal-ansiCyan, #94e2d5);
+  --violeta: var(--vscode-terminal-ansiMagenta, #cba6f7);
+
+  /* tipografía: una sola letra (la de la terminal) y una escala corta */
+  --t-chica: .85em;
+  --t-menor: .9em;
+  --t-normal: 1em;
+  --t-mayor: 1.25em;
+
+  /* espacio: en líneas (vertical) y en caracteres (horizontal), como una terminal */
+  --e-1: .25lh;
+  --e-2: .5lh;
+  --e-3: 1lh;
+  --h-1: 1ch;
+  --h-2: 2ch;
+  --borde: 1px solid var(--linea);
+}

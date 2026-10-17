@@ -8,7 +8,9 @@
 // tema sin saber cuál es; la letra sale de la configuración del terminal, que no se expone
 // como variable CSS.
 
-import * as vscode from 'vscode';
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 /** Cómo se dibuja cada atención. Las cuatro palabras son las de `telar atencion`. */
 export const GLIFO: Record<string, string> = { trabajando: '●', espera: '○', termino: '✓' };
@@ -55,36 +57,39 @@ export const limpiarMd = (t: string): string => t.replace(/\*\*/g, '').replace(/
 export const normalizar = (t: string): string =>
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-/** La letra y los colores del terminal de VS Code, como variables CSS. */
+/** La letra de las vistas: la del terminal de VS Code (la da su anfitrión), o una monoespaciada. */
+export interface Letra { familia: string; tam: number; peso: string; altoLinea: number }
+let leerLetra: () => Letra = () => ({ familia: 'Menlo, Consolas, monospace', tam: 13, peso: 'normal', altoLinea: 1 });
+export function usarLetra(f: () => Letra): void { leerLetra = f; }
+
+/** La letra y los colores del terminal de VS Code, como variables CSS. Fuera de VS Code, las
+ *  variables `--vscode-*` no existen y rigen los colores de respaldo (los de la página web). */
 export function estiloBase(): string {
-    const term = vscode.workspace.getConfiguration('terminal.integrated');
-    const editor = vscode.workspace.getConfiguration('editor');
-    const familia = (term.get<string>('fontFamily') || editor.get<string>('fontFamily') || 'Menlo, Consolas, monospace')
-        .replace(/[<>{};]/g, '');
-    const tam = term.get<number>('fontSize') || editor.get<number>('fontSize') || 12;
-    const peso = String(term.get<string | number>('fontWeight') ?? 'normal').replace(/[<>{};]/g, '');
-    const alto = (term.get<number>('lineHeight') || 1) * 1.3;
-    return `
-  :root {
-    --fg: var(--vscode-terminal-foreground, var(--vscode-foreground));
-    --bg: var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background)));
-    --dim: var(--vscode-terminal-ansiBrightBlack, #6c7086);
-    --linea: color-mix(in srgb, var(--fg) 16%, transparent);
-    --sel: var(--vscode-terminal-selectionBackground, rgba(128,128,128,.25));
-    --hover: color-mix(in srgb, var(--fg) 7%, transparent);
-    --azul: var(--vscode-terminal-ansiBlue); --amarillo: var(--vscode-terminal-ansiYellow);
-    --verde: var(--vscode-terminal-ansiGreen); --rojo: var(--vscode-terminal-ansiRed);
-    --magenta: var(--vscode-terminal-ansiBrightMagenta); --cian: var(--vscode-terminal-ansiCyan); --violeta: var(--vscode-terminal-ansiMagenta, var(--magenta));
-  }
-  html, body { background: var(--bg); }
-  body { color: var(--fg); font-family: ${familia}, monospace; font-size: ${tam}px; font-weight: ${peso};
-         line-height: ${alto.toFixed(2)}; margin: 0; -webkit-font-smoothing: antialiased; }
-  a { color: var(--azul); text-decoration: none; cursor: pointer; } a:hover { text-decoration: underline; }
-  .dim { color: var(--dim); }
-  .aviso { color: var(--dim); padding: 1lh 2ch; }
-  .aviso code { color: var(--verde); }
-  [hidden] { display: none !important; }   /* .fila y .tarea son flex: sin esto, hidden no oculta */
-`;
+    const l = leerLetra();
+    const limpio = (t: string) => t.replace(/[<>{};]/g, '');
+    // lo único calculado: la letra de la terminal, como variables; lo demás está en media/css
+    return `:root { --letra: ${limpio(l.familia)}; --tam: ${l.tam}px; --peso: ${limpio(String(l.peso))}; --alto: ${((l.altoLinea || 1) * 1.3).toFixed(2)}; }
+@layer base { ${estilo('tokens')}
+${estilo('base')} }`;
+}
+
+/** Los estilos viven en media/css/<nombre>.css (se leen una vez y quedan en memoria): archivos de
+ *  CSS de verdad, con su resaltado y su linter, que VS Code y la web usan igual. */
+const estilos = new Map<string, string>();
+let carpetaCss = '';
+export function estilo(nombre: string): string {
+    const guardado = estilos.get(nombre);
+    if (guardado !== undefined) return guardado;
+    if (!carpetaCss) {
+        // de out/, out/vistas o out/web hacia arriba, hasta la carpeta de la extensión
+        let d = __dirname;
+        while (!fs.existsSync(path.join(d, 'media', 'css')) && path.dirname(d) !== d) d = path.dirname(d);
+        carpetaCss = path.join(d, 'media', 'css');
+    }
+    let css = '';
+    try { css = fs.readFileSync(path.join(carpetaCss, `${nombre}.css`), 'utf8'); } catch { /* sin archivo, sin estilo: se nota y se arregla */ }
+    estilos.set(nombre, css);
+    return css;
 }
 
 /** Un nonce para el CSP de una vista. Quien necesite marcar scripts propios (un lienzo) lo
@@ -95,11 +100,11 @@ export function nuevoNonce(): string {
 
 /** El HTML completo de una vista: política de contenido cerrada, estilo, cuerpo y script.
  *  `marcos`: los orígenes, además del propio, que la vista deja enmarcar (las apps con `url`). */
-export function marco(_webview: vscode.Webview, css: string, cuerpo: string, script: string,
+export function marco(_webview: { cspSource: string; cspConectar?: string }, css: string, cuerpo: string, script: string,
     nonce = nuevoNonce(), marcos: string[] = []): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${[_webview.cspSource, ...marcos].join(' ')}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>${estiloBase()}${css}</style></head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${[_webview.cspSource, ...marcos].join(' ')}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';${_webview.cspConectar ? ` connect-src ${_webview.cspConectar};` : ''}">
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${css} }</style></head>
 <body data-vscode-context='{"preventDefaultContextMenuItems": true}'>${cuerpo}
 <script nonce="${nonce}">const vscode = acquireVsCodeApi();
 ${script}</script></body></html>`;

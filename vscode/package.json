@@ -704,13 +704,25 @@
     "vscode:prepublish": "npm run compile",
     "package": "vsce package",
     "publish:marketplace": "vsce publish",
-    "publish:openvsx": "ovsx publish"
+    "publish:openvsx": "ovsx publish",
+    "panel": "node out/web/servidor.js",
+    "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
+    "lint:css": "stylelint \"media/css/*.css\""
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.18.2",
     "@vscode/vsce": "^3.2.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "markdown-it": "^15.0.3",
+    "node-pty": "^1.1.0",
     "ovsx": "^0.10.0",
-    "typescript": "^5.5.0"
+    "stylelint": "^17.16.0",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": "^5.5.0",
+    "ws": "^8.22.0"
   }
 }

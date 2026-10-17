@@ -1,0 +1,37 @@
+/* La base de todas las vistas: la página, la letra (--letra, --tam, --peso y --alto los pone
+   estilo.ts con la de la terminal) y los enlaces. */
+
+html,
+body {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  color: var(--fg);
+  font-family: var(--letra), monospace;
+  font-size: var(--tam);
+  font-weight: var(--peso);
+  line-height: var(--alto);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--azul);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+}
+
+.dim { color: var(--dim); }
+
+.aviso {
+  padding: var(--e-3) var(--h-2);
+  color: var(--dim);
+
+  & code { color: var(--verde); }
+}
+
+/* .fila y .tarea son flex: sin esto, hidden no oculta */
+[hidden] { display: none !important; }

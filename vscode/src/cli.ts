@@ -11,12 +11,15 @@
 import * as cp from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
 // ───────────────────────── configuración de la extensión ─────────────────────────
 
+/** Los ajustes `telar.*` (en VS Code, su configuración; en la web, los de su servidor). */
+let leerAjuste: <T>(clave: string, porDefecto: T) => T = (_c, d) => d;
+export function usarAjustes(f: <T>(clave: string, porDefecto: T) => T): void { leerAjuste = f; }
+
 export function ajuste<T>(clave: string, porDefecto: T): T {
-    return vscode.workspace.getConfiguration('telar').get<T>(clave) ?? porDefecto;
+    return leerAjuste(clave, porDefecto);
 }
 
 /** El programa. Se busca en el PATH: aquí no se escribe ninguna ruta de nadie. */

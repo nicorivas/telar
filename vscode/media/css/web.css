@@ -1,0 +1,79 @@
+/* Lo que la página web agrega: diálogos y avisos que en VS Code son nativos (web/pagina.ts). */
+
+/* un diálogo (<dialog>): un campo para escribir, un menú para elegir, un aviso con botones */
+.web-caja {
+  width: min(640px, 92vw);
+  margin: 12vh auto auto;
+  padding: var(--e-3) var(--h-2);
+  border: var(--borde);
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 40%);
+
+  &::backdrop { background: rgb(0 0 0 / 45%); }
+
+  & h3 { margin: 0 0 var(--e-2); font-size: var(--t-normal); }
+  & .ayuda { margin: 0 0 var(--e-2); color: var(--dim); white-space: pre-wrap; }
+
+  & input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: .2lh 0;
+    border: 0;
+    border-bottom: 1px solid var(--azul);
+    outline: none;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+  }
+
+  & .problema { min-height: 1lh; margin-top: .3lh; color: var(--rojo); }
+
+  & .botones {
+    display: flex;
+    gap: var(--h-2);
+    justify-content: flex-end;
+    margin-top: .6lh;
+
+    & a { color: var(--azul); cursor: pointer; }
+    & a:focus-visible { outline: 1px solid var(--azul); outline-offset: 2px; }
+  }
+}
+
+/* el menú: un filtro arriba y las opciones, con la elegida marcada */
+.web-lista { max-height: 50vh; margin-top: .4lh; overflow: auto; }
+
+.web-op {
+  display: flex;
+  gap: var(--h-2);
+  padding: 0 var(--h-1);
+  cursor: pointer;
+
+  & .d { color: var(--dim); }
+  &.sel, &:hover { background: var(--sel); }
+}
+
+.web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); font-size: var(--t-menor); }
+
+/* los avisos: abajo a la derecha, se van solos */
+.web-avisos {
+  position: fixed;
+  z-index: 60;
+  right: var(--h-2);
+  bottom: var(--e-3);
+  display: flex;
+  flex-direction: column;
+  gap: .3lh;
+}
+
+.web-aviso {
+  max-width: 60ch;
+  padding: .3lh 1.5ch;
+  border: var(--borde);
+  border-left: 3px solid var(--azul);
+  background: var(--bg);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 35%);
+
+  &.falla { border-left-color: var(--rojo); }
+  &.aviso { border-left-color: var(--amarillo); }
+}

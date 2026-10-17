@@ -11,9 +11,20 @@
 // Entre uno y otro, la ficha conocida se conserva: vale más una línea de hace un minuto que
 // ninguna, y se nota si queda vieja porque el documento se relee al tocarlo.
 
-import * as vscode from 'vscode';
+import { ui } from './anfitrion';
 
 import * as cli from './cli';
+
+/** Avisar a quien escucha que algo cambió (como el EventEmitter de VS Code, sin VS Code). */
+export class Emisor {
+    private oyentes = new Set<() => void>();
+    /** Escuchar; devuelve con qué dejar de hacerlo. */
+    readonly event = (f: () => void): { dispose(): void } => {
+        this.oyentes.add(f);
+        return { dispose: () => { this.oyentes.delete(f); } };
+    };
+    fire(): void { for (const f of [...this.oyentes]) f(); }
+}
 
 export class Modelo {
     sesion = '';
@@ -40,7 +51,7 @@ export class Modelo {
     private sugerenciasVistas: Set<string> | undefined;
     hayRemotos = false;
 
-    readonly cambio = new vscode.EventEmitter<void>();
+    readonly cambio = new Emisor();
 
     private fichas = new Map<string, cli.JsonFicha | null>();
     private firma = '';
@@ -85,11 +96,11 @@ export class Modelo {
                 ? `${uno.persona} te pide una tarea: «${uno.titulo.slice(0, 80)}»${uno.vence ? ` (para el ${uno.vence})` : ''}${uno.similares?.length ? ` · ¿ya existe ${uno.similares[0].id}?` : ''}`
                 : `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`)
             : `${nuevas.length} cosas del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', ')}`;
-        void vscode.window.showWarningMessage(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
-            if (eleccion === 'Ver') await vscode.commands.executeCommand('telar.equipoVer', uno?.id);
+        void ui().aviso(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
+            if (eleccion === 'Ver') await ui().orden('telar.equipoVer', uno?.id);
             else if ((eleccion === 'Aceptar' || eleccion === 'Agregar') && uno) {
                 const a = await cli.equipoResolver(remoto, 'aceptar', uno.id);
-                void vscode.window.showInformationMessage(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`
+                void ui().info(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`
                     : uno.tipo === 'tarea' ? `telar: agregada${a.datos.sugerencia.tarea ? ` como ${a.datos.sugerencia.tarea}` : ''}` : `telar: ${uno.tarea} sube de prioridad`);
                 await this.leerEquipo();
             }

@@ -12,9 +12,9 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as vscode from 'vscode';
 
-import { irAHilo, mostrarTerminal } from '../acciones';
+import { type Opcion, ui } from '../anfitrion';
+import type { CrearSuperficie, Superficie } from '../superficie';
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
@@ -27,7 +27,9 @@ import { decidir, preguntarAGestion } from './equipo';
 import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
-    panel?: vscode.WebviewPanel;
+    panel?: Superficie;
+    /** cómo se crea la superficie: la da quien muestra el dashboard (VS Code, o la web) */
+    crearSuperficie?: CrearSuperficie;
     private datos?: Dia;
     private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'ahora';
     /** el bloque (`[bloques.x]`) que muestra la pestaña 'bloque' */
@@ -139,24 +141,22 @@ export class PanelHoy {
     alCambiarFoco?: (activo: boolean) => void;
 
     alternar(): void {
-        if (this.panel?.active) { void mostrarTerminal(); return; }
+        if (this.panel?.activa) { void ui().mostrarTerminal(); return; }
         this.abrir();
     }
 
     abrir(): void {
-        if (this.panel) { this.panel.reveal(vscode.ViewColumn.Active, false); void this.actualizar(); return; }
-        const panel = vscode.window.createWebviewPanel('telar.hoy', 'dashboard',
-            { viewColumn: vscode.ViewColumn.Active, preserveFocus: false },
-            { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
-        this.panel = panel;
-        void this.leerAtajos();
-        panel.iconPath = new vscode.ThemeIcon('calendar');
-        panel.webview.onDidReceiveMessage(m => void this.mensaje(m));
-        panel.onDidDispose(() => { this.panel = undefined; this.alCambiarFoco?.(false); });
-        panel.onDidChangeViewState(e => {
-            if (e.webviewPanel.visible) void this.actualizar();
-            this.alCambiarFoco?.(e.webviewPanel.active);
+        if (this.panel) { this.panel.revelar(); void this.actualizar(); return; }
+        if (!this.crearSuperficie) throw new Error('telar: el dashboard no sabe dónde dibujarse (crearSuperficie)');
+        this.panel = this.crearSuperficie({
+            mensaje: m => void this.mensaje(m),
+            cerrada: () => { this.panel = undefined; this.alCambiarFoco?.(false); },
+            cambio: (visible, activa) => {
+                if (visible) void this.actualizar();
+                this.alCambiarFoco?.(activa);
+            },
         });
+        void this.leerAtajos();
         this.alCambiarFoco?.(true);
         this.pintarMarco();
     }
@@ -166,8 +166,8 @@ export class PanelHoy {
             this.nonce = nuevoNonce();
             this.marcos = origenesApps();
             this.bloquePintado = '';   // el webview se rehace: lo pintado ya no está
-            this.panel.webview.html = marco(this.panel.webview, CSS_DIA + CSS_PLAN + CSS_PROY + CSS_AHORA,
-                '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce, this.marcos);
+            this.panel.html(marco(this.panel, CSS_DIA + CSS_PLAN + CSS_PROY + CSS_AHORA,
+                '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce, this.marcos));
         }
     }
 
@@ -492,11 +492,11 @@ export class PanelHoy {
         if (!x?.mensaje) return;
         const r = await cli.abrirItem(clave, x.mensaje, x.nombre || x.titulo);
         if (!r.datos) {
-            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el hilo'}`);
+            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el hilo'}`);
             return;
         }
         await modelo.sondear();
-        await mostrarTerminal();
+        await ui().mostrarTerminal();
     }
 
     private async lanzarAtajo(tecla: string): Promise<void> {
@@ -504,20 +504,19 @@ export class PanelHoy {
         // apretarla dos veces seguidas encargaba lo mismo dos veces (y el agente lo hacía dos veces)
         const antes = this.atajosLanzados.get(tecla);
         if (antes && Date.now() - antes < 120000) {
-            const si = await vscode.window.showWarningMessage(`«${nombre}» ya se encargó hace ${Math.round((Date.now() - antes) / 1000)} s. ¿Otra vez?`, { modal: true }, 'Sí');
-            if (si !== 'Sí') { await mostrarTerminal(); return; }
+            const si = await ui().aviso(`«${nombre}» ya se encargó hace ${Math.round((Date.now() - antes) / 1000)} s. ¿Otra vez?`, { modal: true }, 'Sí');
+            if (si !== 'Sí') { await ui().mostrarTerminal(); return; }
         }
-        const r = await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `telar: ${nombre}…` }, () => cli.atajo(tecla));
+        const r = await ui().progreso({ title: `telar: ${nombre}…` }, () => cli.atajo(tecla));
         if (!r.datos) {
-            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
+            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
             return;
         }
         this.atajosLanzados.set(tecla, Date.now());
         const estado = (r.datos as { encargo?: string }).encargo;
-        void vscode.window.setStatusBarMessage(`telar: ${nombre} → ${r.datos.hilo}${estado ? ` (${estado})` : ''}`, 8000);
+        void ui().estado(`telar: ${nombre} → ${r.datos.hilo}${estado ? ` (${estado})` : ''}`, 8000);
         await modelo.sondear();
-        await mostrarTerminal();
+        await ui().mostrarTerminal();
     }
 
     /** La página de una sección: la pide a `telar seccion`, que corre su `home`. Abre el
@@ -550,7 +549,7 @@ export class PanelHoy {
         // desde la barra el dashboard puede existir tapado por otra pestaña: se trae al frente,
         // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         if (!this.panel) this.abrir();
-        else if (!this.panel.visible) this.panel.reveal(undefined, false);
+        else if (!this.panel.visible) this.panel.revelar();
         if (this.pantalla === 'revisar') this.fichaDesde = this.pantalla;
         // desde un ítem de un bloque (un correo): al cerrar la ficha se vuelve a ese ítem
         if (this.pantalla === 'bloque') this.fichaDesde = `bloque:${this.bloqueSel}:${this.itemSel ?? ''}`;
@@ -802,7 +801,7 @@ export class PanelHoy {
     private async escribirSobreEvento(id: string, texto: string): Promise<void> {
         const d = this.diaCal();
         if (!texto.trim() || !d) return;
-        if (!this.general) { void vscode.window.showWarningMessage('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
+        if (!this.general) { void ui().aviso('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
         const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
         const e = eventosDelDia(d, plan).find(x => x.id === id);
         if (!e) return;
@@ -827,25 +826,25 @@ export class PanelHoy {
             notas.length ? `Notas del evento: ${notas.join(' | ')}` : '',
             `Id del evento: ${e.id}. Si lo que hagas es de esta reunión, déjale una nota: telar evento nota "${e.id}" "…" --de ${this.general.clave} --titulo "${e.titulo}" --inicio ${hm(e.inicio)} --dia ${d.fecha}`,
         ].filter(Boolean);
-        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: escribiéndole a ${this.general.nombre}…` },
+        const r = await ui().progreso({ title: `telar: escribiéndole a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, lineas.join('\n')));
-        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
         // queda constancia en el evento: lo que se pidió y a quién
         await cli.notaEvento(e.id, `A ${this.general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha);
         const n = await cli.notasEventos(d.fecha);
         if (n.datos?.ok) this.notas = n.datos;
         this.eventoSel = id;
-        void vscode.window.setStatusBarMessage(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        void ui().estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
         if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
     /** Una nota de la persona sobre un evento: se guarda donde viven las notas (`telar evento nota`). */
     private async notaEvento(valor: string): Promise<void> {
         const [id, titulo, inicio, fecha] = JSON.parse(valor) as string[];
-        const texto = await vscode.window.showInputBox({ title: `Nota para «${titulo}»`, prompt: 'Se guarda junto al evento y la ven las skills', ignoreFocusOut: true });
+        const texto = await ui().campo({ title: `Nota para «${titulo}»`, prompt: 'Se guarda junto al evento y la ven las skills', ignoreFocusOut: true });
         if (!texto?.trim()) return;
         const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha);
-        if (!r.datos?.ok) { void vscode.window.showErrorMessage(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
+        if (!r.datos?.ok) { void ui().falla(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
         this.eventoSel = id;
         const notas = await cli.notasEventos(fecha);
         if (notas.datos?.ok) this.notas = notas.datos;
@@ -937,12 +936,12 @@ export class PanelHoy {
     /** Corre una orden de `telar periodicos` y relee: la lista cambia (o el log, si se corrió). */
     private async ordenPeriodico(args: string[]): Promise<void> {
         if (args[0] === 'borrar') {
-            const si = await vscode.window.showWarningMessage(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, { modal: true }, 'Borrar');
+            const si = await ui().aviso(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, { modal: true }, 'Borrar');
             if (si !== 'Borrar') return;
         }
         const r = await cli.periodicosOrden(args);
-        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no se pudo'}`); return; }
-        vscode.window.setStatusBarMessage(`telar: ${r.datos.hecho}`, 5000);
+        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? 'no se pudo'}`); return; }
+        ui().estado(`telar: ${r.datos.hecho}`, 5000);
         if (args[0] === 'borrar') this.periodico = undefined;
         await this.abrirPeriodicos();
         if (this.periodico) {
@@ -1050,7 +1049,7 @@ export class PanelHoy {
 
     /** Cambia un pedazo de la página sin repintarla: lo escrito en el formulario no se pierde. */
     private parcial(id: string, html: string): void {
-        void this.panel?.webview.postMessage({ tipo: 'parcial', id, html });
+        void this.panel?.enviar({ tipo: 'parcial', id, html });
     }
 
     private async guardarFormPer(valor: string): Promise<void> {
@@ -1075,7 +1074,7 @@ export class PanelHoy {
         this.parcial('per-error', '<span class="dim">guardando…</span>');
         const r = await cli.periodicosOrden(lista);
         if (!r.datos) { this.parcial('per-error', esc(r.error ?? 'no se pudo')); return; }
-        vscode.window.setStatusBarMessage(`telar: ${r.datos.hecho}`, 5000);
+        ui().estado(`telar: ${r.datos.hecho}`, 5000);
         this.formPer = undefined;
         this.periodico = { nombre, log: '' };
         await this.abrirPeriodicos();
@@ -1187,27 +1186,27 @@ export class PanelHoy {
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
-            const escrito = await vscode.window.showInputBox({ prompt: `${f.id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            const escrito = await ui().campo({ prompt: `${f.id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
             if (escrito === undefined) return;
             texto = escrito;
         }
         if (a.confirmar) {
-            const si = await vscode.window.showWarningMessage(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, { modal: true }, 'Sí');
+            const si = await ui().aviso(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, { modal: true }, 'Sí');
             if (si !== 'Sí') return;
         }
         // una acción que lleva un mensaje a un hilo (el de la tarea, Gestión) toma unos segundos: se avisa
         const r = a.mensaje
-            ? await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: ${a.nombre} · ${f.id}…` },
+            ? await ui().progreso({ title: `telar: ${a.nombre} · ${f.id}…` },
                 () => cli.accionTarea(f.id, f.proveedor, k, texto))
             : await cli.accionTarea(f.id, f.proveedor, k, texto);
-        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
         // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
         if (r.datos.hilo) {
             this.decididas.add(f.id);
             olvidarDia();
             void this.actualizar(true);
             await modelo.sondear();
-            await mostrarTerminal();
+            await ui().mostrarTerminal();
             return;
         }
         // se decidió sobre la propuesta: la siguiente, si hay; si no, se relee la ficha
@@ -1238,16 +1237,15 @@ export class PanelHoy {
     private async menuTarea(valor: string): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
         const guardada = this.fichas.get(`${proveedor}:${id}`);
-        const pagina = guardada?.pagina ?? (await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Window, title: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
+        const pagina = guardada?.pagina ?? (await ui().progreso({ ventana: true, title: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
         const acciones = pagina?.acciones ?? [];
-        if (!acciones.length) { void vscode.window.showWarningMessage(`telar: ${id} no tiene acciones`); return; }
+        if (!acciones.length) { void ui().aviso(`telar: ${id} no tiene acciones`); return; }
         const items = acciones.map((a, k) => ({
             label: a.nombre, k,
             description: [a.rol === 'fecha' ? 'elige la fecha' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
                 a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
         }));
-        const elegida = await vscode.window.showQuickPick(items, { title: `${id} · ${pagina?.titulo ?? ''}`, placeHolder: 'qué hacer con esta tarea' });
+        const elegida = await ui().elegir(items, { title: `${id} · ${pagina?.titulo ?? ''}`, placeHolder: 'qué hacer con esta tarea' });
         if (!elegida) return;
         const a = acciones[elegida.k];
         const tipo = a.tipo ?? 'comando';
@@ -1259,30 +1257,30 @@ export class PanelHoy {
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
-            const escrito = await vscode.window.showInputBox({ prompt: `${id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            const escrito = await ui().campo({ prompt: `${id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
             if (escrito === undefined) return;
             texto = escrito;
         }
         if (a.confirmar) {
-            const si = await vscode.window.showWarningMessage(`¿${a.nombre}? ${pagina?.titulo ?? id}`, { modal: true }, 'Sí');
+            const si = await ui().aviso(`¿${a.nombre}? ${pagina?.titulo ?? id}`, { modal: true }, 'Sí');
             if (si !== 'Sí') return;
         }
-        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: ${a.nombre} · ${id}…` },
+        const r = await ui().progreso({ title: `telar: ${a.nombre} · ${id}…` },
             () => cli.accionTarea(id, proveedor, elegida.k, texto));
-        if (!r.datos) { void vscode.window.showWarningMessage(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
         this.fichas.delete(`${proveedor}:${id}`);
         olvidarDia();
         if (r.datos.hilo) {
             this.decididas.add(id);
             void this.actualizar(true);
             await modelo.sondear();
-            await mostrarTerminal();
+            await ui().mostrarTerminal();
             return;
         }
         const releida = await cli.tarea(id, proveedor);
         if (releida.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: releida.datos, hora: Date.now() });
         if (!releida.datos?.bloques.some(b => b.destacado)) this.decididas.add(id);
-        vscode.window.setStatusBarMessage(`${id}: ${a.nombre}`, 5000);
+        ui().estado(`${id}: ${a.nombre}`, 5000);
         await this.actualizar(true);
         if (this.pantalla === 'revisar') this.renderRevisar();
     }
@@ -1491,8 +1489,8 @@ export class PanelHoy {
 
     private async soltarMensaje(id: string): Promise<void> {
         const r = await cli.soltarMensaje(id);
-        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
-        void vscode.window.setStatusBarMessage(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
+        if (!r.datos) { void ui().falla(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui().estado(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
         await this.abrirCorreo();
     }
 
@@ -1547,8 +1545,7 @@ export class PanelHoy {
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
     private async preparar(titulo: string, hora: string, enlace: string, evento = '', asistentes: string[] = []): Promise<void> {
-        const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: `telar: ${titulo}…` },
+        const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => ui().progreso({ title: `telar: ${titulo}…` },
             () => cli.reunion(titulo, hora, enlace, evento, { asistentes, ...opciones }));
         let r = await pedir({ preguntar: true });
         if (r.datos?.hecho === 'preguntar') {
@@ -1557,20 +1554,20 @@ export class PanelHoy {
             r = await pedir({ proyecto: eleccion });
         }
         if (!r.datos) {
-            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
+            void ui().aviso(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
             return;
         }
-        void vscode.window.setStatusBarMessage(`telar: «${titulo}» → ${r.datos.hilo}: ${r.datos.hecho}`, 6000);
+        void ui().estado(`telar: «${titulo}» → ${r.datos.hilo}: ${r.datos.hecho}`, 6000);
         await modelo.sondear();
-        await mostrarTerminal();
+        await ui().mostrarTerminal();
     }
 
     /** De qué proyecto es una reunión que no se pudo deducir: los sugeridos con su porqué, Gestión
      *  siempre, un proyecto nuevo con su nombre, y todos los proyectos para buscar. La elección se
      *  recuerda para la serie (`telar reunion --proyecto`). */
     private async elegirProyecto(titulo: string, hora: string, r: cli.JsonReunion): Promise<string | undefined> {
-        type Item = vscode.QuickPickItem & { valor?: string };
-        const sep = (label: string): Item => ({ label, kind: vscode.QuickPickItemKind.Separator });
+        type Item = Opcion & { valor?: string };
+        const sep = (label: string): Item => ({ label, separador: true });
         const items: Item[] = [];
         const sugeridos = r.candidatos ?? [];
         if (sugeridos.length) {
@@ -1588,14 +1585,14 @@ export class PanelHoy {
                 .sort((a, b) => (b.modificado ?? '').localeCompare(a.modificado ?? ''));
             for (const x of lista) items.push({ label: x.nombre, description: `${x.ruta} · ${x.arquetipo}`, valor: x.ruta });
         }
-        const elegido = await vscode.window.showQuickPick(items, {
+        const elegido = await ui().elegir(items, {
             title: `¿De qué proyecto es «${titulo}» (${hora})?`,
             placeHolder: 'escribe para buscar un proyecto; la elección se recuerda para esta reunión',
             matchOnDescription: true, matchOnDetail: true, ignoreFocusOut: true,
         });
         if (!elegido?.valor) return undefined;
         if (elegido.valor !== 'nuevo') return elegido.valor;
-        const nombre = await vscode.window.showInputBox({ title: 'Proyecto nuevo', prompt: 'El nombre del proyecto', ignoreFocusOut: true });
+        const nombre = await ui().campo({ title: 'Proyecto nuevo', prompt: 'El nombre del proyecto', ignoreFocusOut: true });
         return nombre?.trim() ? `nuevo:${nombre.trim()}` : undefined;
     }
 
@@ -1613,7 +1610,7 @@ export class PanelHoy {
             if (this.pantalla !== 'proyectos') return;
             // la lista ya está pintada: solo se le dan las cuentas, para filtrar «con pendientes»
             const cuentas = this.cuentasPendientes();
-            if (cuentas) void this.panel?.webview.postMessage({ tipo: 'proy-pend', cuentas: Object.fromEntries(cuentas) });
+            if (cuentas) void this.panel?.enviar({ tipo: 'proy-pend', cuentas: Object.fromEntries(cuentas) });
             if (this.proySel) void this.verProyecto(this.proySel, false);
         });
         const r = await cli.proyectos();
@@ -1669,7 +1666,7 @@ export class PanelHoy {
     }
 
     private pintarDetalleProyecto(): void {
-        void this.panel?.webview.postMessage({ tipo: 'parcial', id: 'proy-det', html: htmlDetalleProyecto(this.proyDet) });
+        void this.panel?.enviar({ tipo: 'parcial', id: 'proy-det', html: htmlDetalleProyecto(this.proyDet) });
     }
 
     /** El README de una unidad como html, sin su encabezado YAML. "" si no tiene. */
@@ -1680,7 +1677,7 @@ export class PanelHoy {
         try {
             let texto = fs.readFileSync(archivo, 'utf8').slice(0, 300_000);
             texto = texto.replace(/^---\n[\s\S]*?\n---\n/, '');
-            return await vscode.commands.executeCommand<string>('markdown.api.render', texto) ?? '';
+            return await ui().markdown(texto) ?? '';
         } catch (e) {
             return `<p class="falla">no pude leer el README: ${esc(String(e))}</p>`;
         }
@@ -1703,10 +1700,10 @@ export class PanelHoy {
      *  marcarla hecha o decir quién la hace. Lo que cambia el documento cambia esa línea y nada más. */
     private async menuVineta(valor: string): Promise<void> {
         const [ref, texto, hilo, dueno] = JSON.parse(valor) as string[];
-        type Item = vscode.QuickPickItem & { hacer: () => Promise<unknown> };
+        type Item = Opcion & { hacer: () => Promise<unknown> };
         const despues = async (r: { datos?: cli.JsonVineta; error?: string }) => {
-            if (!r.datos) { void vscode.window.showErrorMessage(`telar: ${r.error ?? 'no pude cambiarla'}`); return; }
-            void vscode.window.setStatusBarMessage(`telar: ${r.datos.relativa}:${r.datos.linea} · ${r.datos.hecho} (sin commitear)`, 6000);
+            if (!r.datos) { void ui().falla(`telar: ${r.error ?? 'no pude cambiarla'}`); return; }
+            void ui().estado(`telar: ${r.datos.relativa}:${r.datos.linea} · ${r.datos.hecho} (sin commitear)`, 6000);
             olvidarDia();
             this.pendRepo = undefined;
             await this.actualizar(true);
@@ -1718,13 +1715,11 @@ export class PanelHoy {
             { label: 'Un hilo nuevo para ella', hacer: () => llevarPendiente(ref, true) },
             { label: 'Abrir el README en esa línea', hacer: async () => {
                 const r = await cli.vineta(ref, texto, ['--linea']);
-                if (!r.datos) { void vscode.window.showErrorMessage(`telar: ${r.error ?? 'no la encontré'}`); return; }
-                const doc = await vscode.workspace.openTextDocument(r.datos.archivo);
-                const pos = new vscode.Position(Math.max(0, r.datos.linea - 1), 0);
-                await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos) });
+                if (!r.datos) { void ui().falla(`telar: ${r.error ?? 'no la encontré'}`); return; }
+                await ui().abrirArchivo(r.datos.archivo, r.datos.linea);
             } },
             { label: 'Marcar hecha', description: '[ ] → [x] en el README', hacer: async () => {
-                const si = await vscode.window.showWarningMessage(`¿Marcar hecha? ${texto.slice(0, 90)}`, { modal: true }, 'Marcar hecha');
+                const si = await ui().aviso(`¿Marcar hecha? ${texto.slice(0, 90)}`, { modal: true }, 'Marcar hecha');
                 if (si === 'Marcar hecha') await despues(await cli.vineta(ref, texto, ['--hecho']));
             } },
             { label: 'Responsable…', description: dueno ? `ahora: ${dueno}` : 'ahora: sin responsable', hacer: async () => {
@@ -1732,7 +1727,7 @@ export class PanelHoy {
                 if (quien) await despues(await cli.vineta(ref, texto, ['--responsable', quien]));
             } },
         ];
-        const e = await vscode.window.showQuickPick(items, { title: texto.slice(0, 100), placeHolder: 'qué hacer con este pendiente' });
+        const e = await ui().elegir(items, { title: texto.slice(0, 100), placeHolder: 'qué hacer con este pendiente' });
         if (e) await e.hacer();
     }
 
@@ -1903,7 +1898,7 @@ export class PanelHoy {
     }
 
     private async markdown(texto: string): Promise<string> {
-        try { return await vscode.commands.executeCommand<string>('markdown.api.render', texto) ?? ''; } catch { return esc(texto); }
+        try { return await ui().markdown(texto) ?? ''; } catch { return esc(texto); }
     }
 
     /** El .md más reciente de una carpeta (hasta tres niveles) que cumple `elegir`, prefiriendo los que
@@ -1934,17 +1929,17 @@ export class PanelHoy {
      *  que marque hecho, con su prueba, lo que ya se hizo. Corre donde vive el agente (el servidor). */
     private async consolidarProyecto(ruta: string): Promise<void> {
         const p = this.proyectos?.find(x => x.ruta === ruta);
-        if (!this.general) { void vscode.window.showWarningMessage('telar: no hay un agente general ([agentes] sin_proyecto) que lo haga'); return; }
+        if (!this.general) { void ui().aviso('telar: no hay un agente general ([agentes] sin_proyecto) que lo haga'); return; }
         const n = this.pendientesDe(ruta)?.filter(t => !t.fila.proveedor).length;
-        const si = await vscode.window.showInformationMessage(
+        const si = await ui().info(
             `¿Consolidar los pendientes de «${p?.nombre ?? ruta}»?`,
             { modal: true, detail: `${this.general.nombre} revisa ${n ?? 'cada'} pendiente${n === 1 ? '' : 's'} abierto${n === 1 ? '' : 's'} del README, busca si ya se hizo y marca lo hecho con su prueba. Lo dudoso te lo pregunta.` },
             'Consolidar');
         if (si !== 'Consolidar') return;
-        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: encargándoselo a ${this.general.nombre}…` },
+        const r = await ui().progreso({ title: `telar: encargándoselo a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, `/consolidar ${ruta}`));
-        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
-        void vscode.window.setStatusBarMessage(`telar: ${this.general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
+        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui().estado(`telar: ${this.general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
     }
 
     /** El ⋯ de un proyecto: lo que se puede hacer con él sin abrirlo. */
@@ -1952,7 +1947,7 @@ export class PanelHoy {
         const p = this.proyectos?.find(x => x.ruta === ruta);
         if (!p) return;
         const carpeta = modelo.raiz ? path.join(modelo.raiz, ruta) : '';
-        type Item = vscode.QuickPickItem & { hacer: () => Promise<unknown> | unknown };
+        type Item = Opcion & { hacer: () => Promise<unknown> | unknown };
         const items: Item[] = [
             { label: p.vivo ? 'Ir a su hilo' : p.hilo ? 'Retomar su hilo' : 'Abrir con el agente',
               description: p.hilo ? `«${p.hilo}»` : 'un hilo nuevo cargando el proyecto', hacer: () => this.abrirProyecto(ruta) },
@@ -1966,23 +1961,23 @@ export class PanelHoy {
         if (carpeta) {
             items.push(
                 { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(path.join(carpeta, 'README.md')) },
-                { label: 'Mostrar la carpeta en el explorador', hacer: () => vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(carpeta)) },
+                { label: 'Mostrar la carpeta en el explorador', hacer: () => ui().mostrarCarpeta(carpeta) },
             );
         }
         items.push({ label: 'Copiar la ruta', description: ruta, hacer: async () => {
-            await vscode.env.clipboard.writeText(ruta);
-            void vscode.window.setStatusBarMessage(`telar: copiado ${ruta}`, 3000);
+            await ui().copiar(ruta);
+            void ui().estado(`telar: copiado ${ruta}`, 3000);
         } });
         if (p.hilo) {
             items.push({ label: 'Archivar su hilo', description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
-                const si = await vscode.window.showWarningMessage(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, { modal: true }, 'Archivar');
+                const si = await ui().aviso(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, { modal: true }, 'Archivar');
                 if (si !== 'Archivar') return;
                 const r = await cli.hilo('archivar', p.hilo, undefined, ['--cerrar']);
-                if (!r.ok) void vscode.window.showErrorMessage(`telar: ${r.err.trim() || 'no pude archivarlo'}`);
+                if (!r.ok) void ui().falla(`telar: ${r.err.trim() || 'no pude archivarlo'}`);
                 await this.abrirProyectos();
             } });
         }
-        const elegida = await vscode.window.showQuickPick(items, { title: p.nombre, placeHolder: 'qué hacer con este proyecto' });
+        const elegida = await ui().elegir(items, { title: p.nombre, placeHolder: 'qué hacer con este proyecto' });
         if (elegida) await elegida.hacer();
     }
 
@@ -1990,7 +1985,7 @@ export class PanelHoy {
      *  preguntar: cuál es, dónde está, en qué estado, y lo pendiente. */
     private async escribirSobreProyecto(p: cli.JsonProyecto): Promise<void> {
         if (!this.general) return;
-        const texto = await vscode.window.showInputBox({ title: `A ${this.general.nombre} · ${p.nombre}`, prompt: 'qué hacer con este proyecto', ignoreFocusOut: true });
+        const texto = await ui().campo({ title: `A ${this.general.nombre} · ${p.nombre}`, prompt: 'qué hacer con este proyecto', ignoreFocusOut: true });
         if (!texto?.trim()) return;
         const pend = this.pendientesDe(p.ruta) ?? [];
         const lineas = [
@@ -2000,15 +1995,15 @@ export class PanelHoy {
             p.hilo ? `Tiene un hilo: «${p.hilo}»${p.vivo ? ' (abierto)' : ' (dormido)'}; si el trabajo es suyo, pásaselo con telar mensaje.` : 'No tiene hilo abierto.',
             pend.length ? `Pendiente: ${pend.slice(0, 12).map(t => `${t.fila.proveedor ? `${t.ref} ` : ''}${t.texto}`).join(' | ')}` : '',
         ].filter(Boolean);
-        const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `telar: escribiéndole a ${this.general.nombre}…` },
+        const r = await ui().progreso({ title: `telar: escribiéndole a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, lineas.join('\n')));
-        if (!r.datos) { void vscode.window.showErrorMessage(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
-        void vscode.window.setStatusBarMessage(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui().estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
     }
 
     /** Un enlace del README: una ruta relativa se abre como archivo; una dirección, en el navegador. */
     private async enlaceReadme(href: string, base: string): Promise<void> {
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await vscode.env.openExternal(vscode.Uri.parse(href)); return; }
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await ui().abrirExterno(href); return; }
         if (!modelo.raiz || href.startsWith('#')) return;
         const destino = path.normalize(path.join(modelo.raiz, base, decodeURIComponent(href.split('#')[0])));
         if (!destino.startsWith(modelo.raiz)) return;
@@ -2036,18 +2031,18 @@ export class PanelHoy {
     private async abrirProyecto(ruta: string): Promise<void> {
         const r = await cli.abrirProyecto(ruta);
         if (!r.datos) {
-            void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude abrir el proyecto'}`);
+            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el proyecto'}`);
             return;
         }
         await modelo.sondear();
-        await mostrarTerminal();
+        await ui().mostrarTerminal();
     }
 
     private async cambiarPlantillaProyecto(restablecer: boolean): Promise<void> {
         let texto = '';
         if (!restablecer) {
             const actual = this.agenteConfig?.proyecto ?? '';
-            const nuevo = await vscode.window.showInputBox({
+            const nuevo = await ui().campo({
                 title: 'Qué decirle al agente al abrir un proyecto',
                 prompt: 'Marcadores: {nombre} {ruta} {carpeta} {documento}. Una skill (/nombre …) o una instrucción en prosa.',
                 value: actual, ignoreFocusOut: true,
@@ -2074,7 +2069,7 @@ export class PanelHoy {
 
     private async elegirCalendario(valor: string): Promise<void> {
         if (valor === 'ics') {
-            await vscode.commands.executeCommand('telar.conectarCalendario');
+            await ui().orden('telar.conectarCalendario');
         } else {
             const r = await cli.elegirCalendario(valor);
             if (!r.ok) {
@@ -2091,7 +2086,7 @@ export class PanelHoy {
 
     private async cambiarDirectorios(): Promise<void> {
         const actual = (this.hilosConfig?.directorios ?? []).join(', ');
-        const nuevo = await vscode.window.showInputBox({
+        const nuevo = await ui().campo({
             title: 'De qué carpetas salen los hilos',
             prompt: 'Relativas a la raíz del repositorio, separadas por coma, en el orden en que se abren. Vacío: las unidades del perfil.',
             placeHolder: 'operacion/proyectos, negocio/pipeline',
@@ -2106,11 +2101,11 @@ export class PanelHoy {
         }
         await this.abrirConfig();
         // cada hilo abre un agente: se ofrece, no se hace
-        const si = await vscode.window.showInformationMessage(
+        const si = await ui().info(
             'Carpetas guardadas. ¿Abrir ahora los hilos que falten? Cada uno arranca su agente.', 'Abrir ahora');
         if (si === 'Abrir ahora') {
             const t = await cli.telar(['tejer', '--sumar'], 60000);
-            if (!t.ok) void vscode.window.showWarningMessage(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
+            if (!t.ok) void ui().aviso(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
             await modelo.sondear();
         }
     }
@@ -2119,7 +2114,7 @@ export class PanelHoy {
         let texto = '';
         if (!restablecer) {
             const actual = this.agenteConfig?.reunion ?? '';
-            const nuevo = await vscode.window.showInputBox({
+            const nuevo = await ui().campo({
                 title: 'Qué decirle al agente al preparar una reunión',
                 prompt: 'Marcadores: {titulo} {hora} {fecha} {enlace} {proyecto}. Una skill (/nombre …) o una instrucción en prosa.',
                 value: actual, ignoreFocusOut: true,
@@ -2234,7 +2229,7 @@ export class PanelHoy {
     }
 
     private pintar(h: string[]): void {
-        void this.panel?.webview.postMessage({ tipo: 'dia', html: this.nav() + h.join('\n') });
+        void this.panel?.enviar({ tipo: 'dia', html: this.nav() + h.join('\n') });
     }
 
     /** Lo que un lienzo pide guardar, en el archivo que declaró su página. Se escribe entero
@@ -2262,7 +2257,7 @@ export class PanelHoy {
             if (this.pantalla === 'ahora') void this.abrirAhora();
             this.render(); void this.actualizar(); return;
         }
-        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await vscode.env.openExternal(vscode.Uri.parse(m.url)); return; }
+        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui().abrirExterno(m.url); return; }
         if (m.tipo === 'tecla' && m.k) {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
@@ -2270,7 +2265,7 @@ export class PanelHoy {
                 o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
-                t: () => Promise.resolve(vscode.commands.executeCommand('telar.tareas')),
+                t: () => Promise.resolve(ui().orden('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
                 ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
             };
@@ -2280,9 +2275,9 @@ export class PanelHoy {
         if (m.tipo !== 'accion') return;
         switch (m.accion) {
             case 'pendiente': if (m.valor) await llevarPendiente(m.valor, !!m.nuevo); break;
-            case 'ir': if (m.valor) await irAHilo(m.valor); break;
+            case 'ir': if (m.valor) await ui().irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
-            case 'volver': void mostrarTerminal(); break;
+            case 'volver': void ui().mostrarTerminal(); break;
             case 'reunion': {
                 const [titulo, hora, enlace, evento, asistentes] = JSON.parse(m.valor ?? '[]') as [string, string, string?, string?, string[]?];
                 if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '', asistentes ?? []);
@@ -2362,13 +2357,13 @@ export class PanelHoy {
                 if (await marcarHecha(m.valor)) this.decididas.add((JSON.parse(m.valor) as string[])[1]);
                 this.render();
                 void this.actualizar(true);
-                void vscode.commands.executeCommand('telar.tareasActualizar');
+                void ui().orden('telar.tareasActualizar');
             } break;
             case 'hecha-vineta': if (m.valor) {
                 const [ref, texto] = JSON.parse(m.valor) as string[];
                 const r = await cli.vineta(ref, texto, ['--hecho']);
-                if (!r.datos) void vscode.window.showWarningMessage(`telar: ${r.error ?? 'no pude marcarla'}`);
-                else { vscode.window.setStatusBarMessage(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
+                if (!r.datos) void ui().aviso(`telar: ${r.error ?? 'no pude marcarla'}`);
+                else { ui().estado(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
             } break;
             case 'hilo-fila': if (m.valor) {
                 const [proveedor, ref, id] = JSON.parse(m.valor) as string[];
@@ -2378,7 +2373,7 @@ export class PanelHoy {
                 if (!m.valor) break;
                 await marcarHecha(m.valor);
                 void this.actualizar(true);
-                void vscode.commands.executeCommand('telar.tareasActualizar');
+                void ui().orden('telar.tareasActualizar');
                 break;
             case 'tarea-principal': {
                 const i = (this.ficha?.pagina?.acciones ?? []).findIndex(a => a.principal);
@@ -2410,7 +2405,7 @@ export class PanelHoy {
                 // una ruta relativa a la raíz de telar (la que traen las notas de un evento)
                 if (m.valor && !m.valor.includes('..') && modelo.raiz) await abrirEnlace(path.join(modelo.raiz, m.valor));
                 break;
-            case 'tareas': await vscode.commands.executeCommand('telar.tareas'); break;
+            case 'tareas': await ui().orden('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else await this.abrirAhora(); break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
@@ -2426,7 +2421,7 @@ export class PanelHoy {
             case 'retomar-charla':
                 if (this.charla?.hilo) {
                     const vivo = modelo.porNombre(this.charla.hilo)?.vivo;
-                    await vscode.commands.executeCommand(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
+                    await ui().orden(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
                 }
                 break;
             case 'calendario':
@@ -2505,14 +2500,14 @@ function fechaLarga(nombreDia: string, fecha: string): string {
 async function abrirEnlace(enlace: string, reusar = ''): Promise<void> {
     if (/^https?:\/\//.test(enlace)) {
         if (reusar && await enPestanaDeChrome(enlace, reusar)) return;
-        await vscode.env.openExternal(vscode.Uri.parse(enlace));
+        await ui().abrirExterno(enlace);
         return;
     }
     if (enlace.startsWith('/') && fs.existsSync(enlace)) {
-        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(enlace));
+        await ui().abrirArchivo(enlace);
         return;
     }
-    void vscode.window.showWarningMessage(`telar: no sé abrir ${enlace}`);
+    void ui().aviso(`telar: no sé abrir ${enlace}`);
 }
 
 /** La marca, el color y la frase del estado de un proceso: pausado, corriendo, falló, bien. */

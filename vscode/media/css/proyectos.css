@@ -1,0 +1,39 @@
+/* Los proyectos en dos columnas: la lista y el detalle (vistas/proyectos.ts). */
+
+/* la lista se lleva más que el detalle: lo que se lee ahí es el nombre */
+.proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) minmax(40ch, 1fr); gap: 1.5ch; align-items: start; }
+#dia:has(.proy-dos) { max-width: none; }
+.proy-lista .fila { gap: .8ch; }
+.proy-lista { min-width: 0; }
+.proy.sel { background: color-mix(in srgb, var(--azul) 22%, transparent); }
+.proy .que { overflow: hidden; text-overflow: ellipsis; }
+.proy .cliente { color: var(--azul); }
+.proy .cliente + .resto { color: var(--dim); }
+.proy-cab { color: var(--dim); }
+.proy .menu-col, .proy-cab .menu-col { flex: none; width: 2ch; }
+.proy-cab [data-orden-p] { cursor: pointer; } .proy-cab [data-orden-p]:hover { color: var(--fg); }
+.proy-cab .activo { color: var(--azul); }
+.proy-cab .estado { flex: none; width: 12ch; } .proy-cab .tipo { flex: none; width: 9ch; }
+.proy-cab .cuando-p { flex: none; width: 4ch; text-align: right; } .proy-cab .que { flex: 1; }
+.proy .estado { flex: none; width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.proy .estado.e-activo { color: var(--verde); }
+.proy .estado.e-abierto { color: var(--amarillo); }
+.proy .estado.e-trabado { color: var(--rojo); }
+.proy.cerrado .cliente, .proy.cerrado .estado { color: var(--dim); }
+.proy.cerrado { color: var(--dim); }
+#proy-det { position: sticky; top: 1lh; max-height: calc(100vh - 3lh); overflow-y: auto; padding: .5lh 1ch;
+  border-left: 1px solid var(--linea); min-width: 0; }
+#proy-det h3 { margin: 0 0 .2lh; }
+#proy-det .proy-meta { color: var(--dim); margin-bottom: .4lh; white-space: normal; }
+#proy-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
+#proy-det h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+#proy-det .tarea { padding: 0; }
+.proy-readme { white-space: normal; line-height: 1.45; border-top: 1px solid var(--linea); padding-top: .4lh; }
+.proy-readme h1 { font-size: var(--t-mayor); margin: .6lh 0 .3lh; }
+.proy-readme h2 { font-size: 1.05em; text-transform: none; margin: .9lh 0 .3lh; }
+.proy-readme h3, .proy-readme h4 { font-size: 1em; margin: .7lh 0 .2lh; }
+.proy-readme table { border-collapse: collapse; margin: .3lh 0; }
+.proy-readme td, .proy-readme th { border: 1px solid var(--linea); padding: 0 1ch; vertical-align: top; }
+.proy-readme pre { white-space: pre-wrap; } .proy-readme img { max-width: 100%; }
+.proy-readme blockquote { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--linea); color: var(--dim); }
+.proy-readme ul, .proy-readme ol { padding-left: 3ch; margin: .2lh 0; }

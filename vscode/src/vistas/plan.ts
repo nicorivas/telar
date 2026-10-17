@@ -3,7 +3,7 @@
 // Aquí solo se dibuja; el estado y las acciones viven en `hoy.ts`.
 
 import * as cli from '../cli';
-import { esc } from '../estilo';
+import { esc, estilo } from '../estilo';
 import { Dia, seccion } from './dia';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
@@ -15,45 +15,7 @@ const ALTO_HORA = 56;
 /** Lo que dura un evento sin fin declarado, en minutos. */
 const SIN_FIN = 30;
 
-export const CSS_PLAN = `
-  .plan-nav { display: flex; gap: 2ch; align-items: baseline; padding: 0 1ch .5lh; color: var(--dim); }
-  .plan-nav a { color: var(--azul); }
-  .plan-txt { padding: .2lh 1ch; } .plan-txt p { margin: .2lh 0; }
-  .plan-riesgo { color: var(--rojo); }
-  .plan-fila { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 1ch; padding: .15lh 1ch; }
-  .plan-fila .k { color: var(--dim); }
-  .plan-fila .sub { color: var(--dim); display: block; }
-  .plan-fila.estrategico .v { font-weight: bold; }
-  .cal-nav { display: flex; gap: 1.5ch; align-items: baseline; margin: .5lh 0 0 6ch; }
-  .cal-nav a { color: var(--dim); }
-  .cal-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
-  .cal-nav .cal-fecha { min-width: 14ch; text-align: center; }
-  .cal-dos { display: grid; grid-template-columns: minmax(28ch, 1fr) minmax(32ch, 1.2fr); gap: 2ch; align-items: start; }
-  .cal { position: relative; margin: 1lh 0 1lh 6ch; border-left: 1px solid var(--linea); }
-  .cal-hora { position: absolute; left: -6ch; width: 5ch; text-align: right; color: var(--dim); font-size: .85em; transform: translateY(-.6em); }
-  .cal-linea { position: absolute; left: 0; right: 0; border-top: 1px solid var(--linea); }
-  .cal-ahora { position: absolute; left: 0; right: 0; border-top: 2px solid var(--rojo); z-index: 3; }
-  .cal-ev { position: absolute; box-sizing: border-box; padding: 2px 6px; overflow: hidden; cursor: pointer;
-            background: color-mix(in srgb, var(--azul) 22%, transparent); border-left: 3px solid var(--azul); }
-  .cal-ev:hover { background: color-mix(in srgb, var(--azul) 34%, transparent); }
-  .cal-ev.plan { background: transparent; border: 1px dashed var(--amarillo); border-left: 3px solid var(--amarillo); }
-  .cal-ev.pasado { opacity: .55; }
-  .cal-ev.sel { outline: 2px solid var(--fg); z-index: 2; }
-  .cal-ev .h { color: var(--dim); font-size: .85em; } .cal-ev .t { display: block; }
-  .cal-ev.corto { white-space: nowrap; text-overflow: ellipsis; } .cal-ev.corto .t { display: inline; margin-left: .5ch; }
-  .cal-ev .marca-nota { color: var(--amarillo); }
-  .cal-dia-completo { padding: .2lh 1ch; color: var(--dim); }
-  .cal-det { position: sticky; top: 4lh; padding: .5lh 1ch; border-left: 1px solid var(--linea); text-align: left; }
-  .cal-det h3 { margin: 0 0 .3lh; }
-  .cal-det .cal-meta { color: var(--dim); margin-bottom: .5lh; }
-  .cal-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
-  .cal-nota { padding: .3lh 0; border-top: 1px solid var(--linea); }
-  .cal-nota .de { color: var(--dim); font-size: .85em; }
-  .cal-escribir { margin-top: 1lh; display: flex; flex-direction: column; gap: .4lh; }
-  .cal-escribir textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea); padding: .3lh 1ch; resize: vertical; }
-  .cal-escribir textarea:focus { outline: none; border-color: var(--amarillo); }
-  .cal-escribir a { align-self: flex-end; }
-`;
+export const CSS_PLAN = estilo('plan');
 
 function t(s: unknown): string {
     return esc(String(s ?? '')).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');

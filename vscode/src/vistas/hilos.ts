@@ -15,55 +15,14 @@
 // El HTML entra por mensajes y no recargando la webview: así no se pierde el scroll ni
 // parpadea la lista cada vez que cambia un segundo del tiempo de hoy.
 
-import * as vscode from 'vscode';
-import { anotarDesdeFuera as anotarClic, mostrarTerminal } from '../acciones';
+import { ui } from '../anfitrion';
 
 import * as cli from '../cli';
-import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto } from '../estilo';
+import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, estilo } from '../estilo';
 import { marco } from '../estilo';
 import { modelo } from '../modelo';
 
-const CSS = `
-  #lista { padding: .5em 0 1.5em; user-select: none; }
-  .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
-  .fila:hover { background: var(--hover); }
-  .fila.activa { background: var(--sel); }
-  .prio { flex: none; width: 1ch; margin-right: 1ch; }
-  .prio.p0 { color: var(--dim); }
-  .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
-  .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
-  .at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
-  .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
-  .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
-  .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
-  /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
-  .at.termino.visto { color: var(--dim); }
-  .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
-  .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
-  .cab { color: var(--amarillo); font-weight: bold; }
-  /* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
-  .agente .nombre { color: var(--amarillo); } .agente.muerto .nombre { color: color-mix(in srgb, var(--amarillo) 55%, var(--bg)); }
-  .casa { flex: none; color: var(--azul); }
-  .hoy .nombre { color: var(--azul); }
-  .cab .dim { font-weight: normal; }
-  .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
-  .iconos { position: absolute; right: 1.5ch; top: 0; bottom: 0; display: none; padding-left: 1ch;
-           background: linear-gradient(var(--hover), var(--hover)), var(--bg); }
-  .activa .iconos { background: linear-gradient(var(--sel), var(--sel)), var(--bg); }
-  .fila:hover .iconos { display: flex; }
-  .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
-  .icono:hover { color: var(--fg); }
-  /* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
-  .herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
-  .herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;
-                  border: 0; border-bottom: 1px solid var(--linea); padding: 0 0 1px; outline: none; }
-  .herram input:focus { border-bottom-color: var(--azul); }
-  .herram input::placeholder { color: var(--dim); }
-  .ord { flex: none; color: var(--dim); cursor: pointer; }
-  .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
-  .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
-`;
+const CSS = estilo('hilos');
 
 const SCRIPT = `
 const lista = document.getElementById('lista');
@@ -145,8 +104,27 @@ function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
     return [...l].sort(cmp[orden]);
 }
 
-export class VistaHilos implements vscode.WebviewViewProvider {
-    vista?: vscode.WebviewView;
+/** Donde se dibuja la barra: la vista lateral de VS Code (hilos-vscode.ts) o la columna izquierda
+ *  de la página web (web/servidor.ts). Lo mismo que la superficie del dashboard, más su cabecera. */
+export interface SuperficieBarra {
+    readonly cspSource: string;
+    readonly cspConectar?: string;
+    readonly visible: boolean;
+    html(pagina: string): void;
+    enviar(mensaje: unknown): void;
+    /** el título, la línea de abajo y la cuenta de los que esperan (en VS Code, la insignia) */
+    cabecera(c: { titulo: string; descripcion: string; insignia?: { valor: number; ayuda: string } }): void;
+}
+
+/** Donde se guarda lo que se recuerda entre sesiones (en VS Code, su globalState). */
+export interface Guardado {
+    get<T>(clave: string): T | undefined;
+    update(clave: string, valor: unknown): PromiseLike<void>;
+}
+
+/** La barra de hilos, sin VS Code: arma la lista y responde a sus clics. */
+export class BarraHilos {
+    vista?: SuperficieBarra;
     private listo = false;
     private ultimoHtml = '';
     private ultimoActivo?: string;
@@ -154,9 +132,12 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     dashboardActivo = false;
     /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
     appActiva = '';
+    /** en la web: el hilo cuya terminal se muestra a la derecha. Si se da, manda sobre el foco de
+     *  tmux para marcar la fila (en VS Code no se da: manda el hilo con foco) */
+    mostrado?: string;
     private irAlArchivo = false;
     /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */
-    estado?: vscode.Memento;
+    estado?: Guardado;
     private ordenDe(grupo: string): Orden { return (this.estado?.get<string>(`telar.orden.${grupo}`) ?? '') as Orden; }
     /** las cabeceras que el usuario dejó al revés de como empiezan (abierta una cerrada, o al revés) */
     private invertidas = new Set<string>();
@@ -168,53 +149,49 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     private abierta(clave: string, porDefecto: boolean): boolean { return porDefecto !== this.invertidas.has(clave); }
     private alternar(clave: string): void { if (this.invertidas.has(clave)) this.invertidas.delete(clave); else this.invertidas.add(clave); }
 
-    resolveWebviewView(v: vscode.WebviewView): void {
-        this.vista = v;
-        v.webview.options = { enableScripts: true };
-        v.webview.onDidReceiveMessage(m => this.mensaje(m));
-        v.onDidDispose(() => { this.vista = undefined; this.listo = false; });
-        // Abrir la barra de telar es ir a trabajar en la sesión: el terminal que la muestra
-        // pasa al frente, como cuando se elige con ⌃P. Solo si lo encuentra: sin terminal
-        // de la sesión, abrir la barra no le quita el foco a nadie.
-        const alFrente = () => { if (v.visible) void mostrarTerminal({ soloSuyo: true }); };
-        v.onDidChangeVisibility(alFrente);
-        alFrente();
+    /** La barra ya tiene dónde dibujarse. Abrirla es ir a trabajar en la sesión: la terminal que
+     *  la muestra pasa al frente (en VS Code; en la web, la terminal es otra ventana). */
+    conectar(vista: SuperficieBarra): void {
+        this.vista = vista;
         this.pintarMarco();
     }
+
+    /** La superficie se cerró. */
+    desconectar(): void { this.vista = undefined; this.listo = false; }
 
     /** El HTML fijo (estilo y script); la lista entra después por mensajes. */
     pintarMarco(): void {
         if (!this.vista) return;
         this.listo = false; this.ultimoHtml = '';
-        this.vista.webview.html = marco(this.vista.webview, CSS, '<div id="lista"></div>', SCRIPT);
+        this.vista.html(marco(this.vista, CSS, '<div id="lista"></div>', SCRIPT));
     }
 
-    private mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
+    mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
         switch (m.tipo) {
             case 'listo': this.listo = true; this.refrescar(true); break;
             case 'ir': {
                 if (!m.hilo) break;
                 // un archivado no tiene tab al que ir: pincharlo es retomarlo
                 const sinTab = modelo.hilos.some(x => x.nombre === m.hilo && (!x.vivo || x.archivado));
-                void vscode.commands.executeCommand(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
+                void ui().orden(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
                 break;
             }
-            case 'archivar': if (m.id) void vscode.commands.executeCommand('telar.archivar', { hilo: m.id }); break;
-            case 'retomar': if (m.id) void vscode.commands.executeCommand('telar.retomar', { hilo: m.id }); break;
-            case 'cerrar': if (m.id) void vscode.commands.executeCommand('telar.cerrar', { hilo: m.id }); break;
-            case 'archivo': void vscode.commands.executeCommand('telar.archivo'); break;
+            case 'archivar': if (m.id) void ui().orden('telar.archivar', { hilo: m.id }); break;
+            case 'retomar': if (m.id) void ui().orden('telar.retomar', { hilo: m.id }); break;
+            case 'cerrar': if (m.id) void ui().orden('telar.cerrar', { hilo: m.id }); break;
+            case 'archivo': void ui().orden('telar.archivo'); break;
             case 'seccion':
-                if (m.id === '__archivo') { void vscode.commands.executeCommand('telar.archivo'); break; }
+                if (m.id === '__archivo') { void ui().orden('telar.archivo'); break; }
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
                 break;
-            case 'equipo': void vscode.commands.executeCommand('telar.equipoVer', m.id); break;
-            case 'home': if (m.id) void vscode.commands.executeCommand('telar.seccion', m.id); break;
-            case 'app': if (m.id) void vscode.commands.executeCommand('telar.app', m.id); break;
+            case 'equipo': void ui().orden('telar.equipoVer', m.id); break;
+            case 'home': if (m.id) void ui().orden('telar.seccion', m.id); break;
+            case 'app': if (m.id) void ui().orden('telar.app', m.id); break;
             case 'orden-grupo': if (m.id) {
                 const [grupo, orden] = m.id.split(':');
                 void this.estado?.update(`telar.orden.${grupo}`, orden === this.ordenDe(grupo) ? '' : orden).then(() => this.refrescar(true));
             } break;
-            case 'cmd': if (m.id?.startsWith('telar.')) void vscode.commands.executeCommand(m.id); break;
+            case 'cmd': if (m.id?.startsWith('telar.')) void ui().orden(m.id); break;
         }
     }
 
@@ -227,21 +204,21 @@ export class VistaHilos implements vscode.WebviewViewProvider {
     refrescar(forzar = false): void {
         const v = this.vista;
         if (!v) return;
-        v.badge = modelo.esperan
-            ? { value: modelo.esperan, tooltip: `${modelo.esperan} te espera${modelo.esperan === 1 ? '' : 'n'}` }
-            : undefined;
-        v.description = modelo.error ? 'sin telar' : !modelo.viva ? 'sesión no tejida' : modelo.sesion;
         const orden = ({ alfa: 'a-z', reciente: '◷', prioridad: '●' } as Record<string, string>)[modelo.orden] ?? '';
-        v.title = orden ? `hilos · ${orden}` : 'hilos';
+        v.cabecera({
+            titulo: orden ? `hilos · ${orden}` : 'hilos',
+            descripcion: modelo.error ? 'sin telar' : !modelo.viva ? 'sesión no tejida' : modelo.sesion,
+            insignia: modelo.esperan ? { valor: modelo.esperan, ayuda: `${modelo.esperan} te espera${modelo.esperan === 1 ? '' : 'n'}` } : undefined,
+        });
         if (!this.listo) return;
         const html = this.html();
-        const activo = this.dashboardActivo ? '\u0000dashboard' : modelo.activo?.nombre;
+        const activo = this.dashboardActivo ? '\u0000dashboard' : this.mostrado ?? modelo.activo?.nombre;
         const seMovio = activo !== this.ultimoActivo;
         if (!forzar && !seMovio && html === this.ultimoHtml) return;
         this.ultimoActivo = activo; this.ultimoHtml = html;
         const mostrar = this.irAlArchivo ? '#archivo' : seMovio || forzar ? '.activa' : undefined;
         this.irAlArchivo = false;
-        void v.webview.postMessage({ tipo: 'lista', html, mostrar });
+        v.enviar({ tipo: 'lista', html, mostrar });
     }
 
     /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
@@ -264,7 +241,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
         const ultima = ultimaDe(h);
         const der = haceCorto(ultima);
-        const clases = [seccion, h.activo && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
+        const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
+        const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`

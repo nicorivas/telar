@@ -4,7 +4,7 @@
 // mostrar no se muestra: el bloque y el foco, no una lista larga.
 
 import * as cli from '../cli';
-import { esc, normalizar } from '../estilo';
+import { esc, normalizar, estilo } from '../estilo';
 import { Pendiente, seccion } from './dia';
 import { EventoCal, Plan } from './plan';
 import { filaPendiente } from './proyectos';
@@ -210,22 +210,5 @@ export function estadoDe(md: string): string {
     return lineas.slice(i + 1, fin < 0 ? undefined : fin).join('\n').trim().slice(0, 1500);
 }
 
-export const CSS_AHORA = `
-  .ahora-nav { display: flex; gap: 2ch; align-items: baseline; margin: .3lh 0 .6lh; }
-  .ahora-nav a { color: var(--dim); }
-  .ahora-cuando { margin-left: auto; } .ahora-nav a.ahora-cuando.simulado { color: var(--amarillo); }
-  .ahora-elegir { border: 1px solid var(--linea); padding: .3lh 1ch .6lh; margin: 0 0 .8lh; max-width: 70ch; }
-  .ahora-elegir .cal { margin-top: .5lh; } .ahora-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
-  .ahora-bloque { margin-bottom: .8lh; } .ahora-bloque h3 { margin: .1lh 0; }
-  .ahora-bloque .clase { font-size: .85em; text-transform: uppercase; color: var(--dim); }
-  .ahora-bloque .c-estrategico { color: var(--amarillo); } .ahora-bloque .c-reunion { color: var(--azul); }
-  .ahora-bloque .c-comercial { color: var(--verde); }
-  .ahora-foco { border-left: 2px solid var(--amarillo); padding: .2lh 1ch; margin: .5lh 0; }
-  .ahora-foco .paso { font-size: 1.05em; margin: .2lh 0; } .ahora-foco.corto { border-left-color: var(--linea); }
-  .ahora-ficha { border-left: 2px solid var(--azul); padding: .2lh 1ch; margin: .5lh 0; }
-  .ahora-ficha ul { margin: 0; padding-left: 3ch; }
-  #dia h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
-  .ahora-doc { max-height: 22lh; overflow-y: auto; }
-  .ahora-estado { border-top: none; }
-`;
+export const CSS_AHORA = estilo('ahora');
 
