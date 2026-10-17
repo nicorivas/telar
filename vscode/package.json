@@ -318,6 +318,11 @@
         "title": "Abrir al lado",
         "category": "telar",
         "enablement": "view == telar.carpeta"
+      },
+      {
+        "command": "telar.siguienteQueEspera",
+        "title": "ir al siguiente hilo que te espera",
+        "category": "telar"
       }
     ],
     "menus": {
@@ -627,6 +632,10 @@
         "command": "telar.lanzador",
         "key": "alt+p",
         "when": "!editorTextFocus"
+      },
+      {
+        "key": "alt+s",
+        "command": "telar.siguienteQueEspera"
       }
     ],
     "configuration": {

@@ -92,6 +92,30 @@ class Traduccion(unittest.TestCase):
 
 
 class Aplicar(ConEstado):
+    def test_el_prompt_anota_la_conversacion_si_se_perdio_el_arranque(self):
+        base.aplicar(self.est, Aviso(evento=Evento.EMPIEZA, sesion="s9"), hilo="faro")
+        self.assertIn("s9", self.est.sesiones().get("faro", ()))
+
+    def test_un_aviso_viejo_no_pisa_al_nuevo(self):
+        from datetime import datetime
+        base.aplicar(self.est, Aviso(evento=Evento.TERMINA, cuando=datetime(2026, 10, 16, 10, 0, 5)), hilo="faro")
+        efecto = base.aplicar(self.est, Aviso(evento=Evento.EMPIEZA, cuando=datetime(2026, 10, 16, 10, 0, 1)), hilo="faro")
+        self.assertIsNone(efecto.atencion)
+        self.assertEqual(self.est.atencion("faro"), Atencion.TERMINO)
+
+    def test_el_aviso_de_ocioso_no_es_espera(self):
+        from telar.agente import claude_code
+        cc = self.agente()
+        leer = lambda tipo: cc.leer_aviso({"hook_event_name": "Notification", "notification_type": tipo}).evento
+        self.assertIs(leer("permission_prompt"), Evento.ESPERA)
+        self.assertIs(leer("idle_prompt"), Evento.TERMINA)
+        self.assertIs(leer("auth_success"), Evento.SIGUE)
+        self.assertIs(leer(""), Evento.ESPERA)   # uno de antes, sin tipo: como siempre
+
+    def test_el_error_de_la_api_termina_el_turno(self):
+        from telar.agente import claude_code
+        self.assertIs(claude_code.EVENTOS["StopFailure"], Evento.TERMINA)
+
     def test_abrir_anota_la_conversacion_en_el_hilo(self):
         aviso = Aviso(evento=Evento.ABRE, sesion="s1", panel="terminal_3")
         efecto = base.aplicar(self.est, aviso, hilo="faro")
@@ -317,13 +341,14 @@ class Instalador(ConEstado):
     def leer(self) -> dict:
         return json.loads(self.ajustes.read_text(encoding="utf-8"))
 
-    def test_deja_los_seis_ganchos(self):
+    def test_deja_los_siete_ganchos(self):
         hecho = self.agente().instalar(ruta=self.ajustes)
         self.assertTrue(hecho.escrito)
         hooks = self.leer()["hooks"]
+        # StopFailure: el turno que acaba por un error de la API no dispara Stop
         self.assertEqual(
             sorted(hooks),
-            ["Notification", "PostToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"],
+            ["Notification", "PostToolUse", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"],
         )
         comando = hooks["Stop"][0]["hooks"][0]["command"]
         self.assertIn("agente aviso claude-code", comando)

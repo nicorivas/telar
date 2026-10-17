@@ -37,6 +37,8 @@ const CSS = `
   .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
   .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
   .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
+  /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
+  .at.termino.visto { color: var(--dim); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
   .cab { color: var(--amarillo); font-weight: bold; }
@@ -249,7 +251,8 @@ export class VistaHilos implements vscode.WebviewViewProvider {
         }));
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · ✉ · nombre · última actividad
-        const glifo = `<span class="at ${esc(h.atencion)}" title="${esc(NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
+        const visto = h.atencion === 'termino' && !h.sin_ver;
+        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
         // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
         const remoto = `<span class="remoto"${h.remoto ? ` title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}"` : ''}>${h.remoto ? '⇄' : ' '}</span>`;
         // ✉: correo que la persona todavía no vio. La columna existe solo si algún hilo tiene casilla

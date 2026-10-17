@@ -9,10 +9,16 @@ configuración del usuario.
     ──────────────────────────────────────────────────────────────────────────────
     SessionStart             abre              este hilo tiene esta conversación
     UserPromptSubmit         empieza           atención: trabajando
-    Notification             espera            atención: espera
+    Notification             espera            atención: espera, si pide algo (permission_prompt,
+                                               elicitation_dialog); idle_prompt —ocioso en el
+                                               prompt, un minuto después de terminar— es termina,
+                                               y auth_success no dice nada (ver NOTIFICACIONES)
     PostToolUse              sigue             desmiente un «espera» anterior
     SubagentStop             sigue             lo mismo: sigue vivo
     Stop                     termina           atención: terminó
+    StopFailure              termina           lo mismo: el turno acabó por un error de la API, y
+                                               Claude Code no dispara Stop (sin esto, «trabajando»
+                                               para siempre)
     SessionEnd               cierra            atención: ninguna
 
 Los seis se enganchan al **mismo** comando —`telar agente aviso claude-code`— y cuál
@@ -71,7 +77,18 @@ EVENTOS: dict[str, Evento] = {
     "PostToolUse": Evento.SIGUE,
     "SubagentStop": Evento.SIGUE,
     "Stop": Evento.TERMINA,
+    "StopFailure": Evento.TERMINA,
     "SessionEnd": Evento.CIERRA,
+}
+
+#: `Notification` dice varias cosas distintas, en `notification_type`. Solo pedir algo es «te
+#: espera»: el aviso de ocioso llega un minuto después de cada turno, y tomarlo como espera dejaba
+#: todo hilo terminado en «espera» (y escondía el «terminó» sin ver). Lo que no está aquí, espera.
+NOTIFICACIONES: dict[str, Evento] = {
+    "permission_prompt": Evento.ESPERA,
+    "elicitation_dialog": Evento.ESPERA,
+    "idle_prompt": Evento.TERMINA,
+    "auth_success": Evento.SIGUE,
 }
 
 #: Los ganchos que instala telar. `PostToolUse` se dispara a cada rato: tope corto.
@@ -81,6 +98,7 @@ GANCHOS: tuple[Gancho, ...] = (
     Gancho(Evento.ESPERA, "Notification"),
     Gancho(Evento.SIGUE, "PostToolUse", filtro="*", espera=3),
     Gancho(Evento.TERMINA, "Stop"),
+    Gancho(Evento.TERMINA, "StopFailure"),
     Gancho(Evento.CIERRA, "SessionEnd"),
 )
 
@@ -306,6 +324,8 @@ class ClaudeCode(AgenteBase):
         """
         nativo = str(crudo.get("hook_event_name") or "")
         elegido = evento or EVENTOS.get(nativo)
+        if evento is None and nativo == "Notification":
+            elegido = NOTIFICACIONES.get(str(crudo.get("notification_type") or ""), Evento.ESPERA)
         if elegido is None:
             conocidos = ", ".join(sorted(EVENTOS))
             raise ErrorDeAgente(

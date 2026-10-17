@@ -537,6 +537,15 @@ class Estado:
     def atencion(self, hilo: str) -> Atencion:
         return self.atenciones().get(hilo, (Atencion.NINGUNA, None))[0]
 
+    def vivos_vistos(self) -> dict[str, datetime]:
+        """hilo → la última vez que el nodo de esta máquina lo vio vivo. Si tmux se cae, dice cuáles
+        estaban corriendo, para retomarlos de una vez (`telar hilo caidos`)."""
+        return {h: f for h, v in self._leer("vivos", {}).items() if (f := _fecha(v))}
+
+    def anotar_vivos(self, nombres, cuando: datetime | None = None) -> None:
+        marca = (cuando or datetime.now()).isoformat(timespec="seconds")
+        self._actualizar("vivos", lambda d: d.update({n: marca for n in nombres}), {})
+
     def actividades(self) -> dict[str, datetime]:
         """hilo → la última vez que su agente empezó a trabajar (un prompt, un encargo)."""
         return {h: f for h, v in self._leer("actividad", {}).items() if (f := _fecha(v))}
@@ -897,7 +906,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "remotos", "leidos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "vivos", "remotos", "leidos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])

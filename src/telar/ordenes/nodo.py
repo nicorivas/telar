@@ -28,6 +28,7 @@ import json
 import sys
 
 from telar import bus as mod_bus
+from telar import estado as mod_estado
 from telar.ordenes import _comun
 
 AYUDA = "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su estado."
@@ -79,6 +80,8 @@ class Nodo:
         self.subs: dict[str, object] = {}
         self.publicado: dict[str, str] = {}
         self.vueltas = 0
+        #: cuántas vueltas seguidas falta un hilo que estaba vivo (se anuncia muerto a la segunda)
+        self.ausentes: dict[str, int] = {}
         self.espejo = None
 
     def anotar(self, texto: str) -> None:
@@ -247,7 +250,19 @@ class Nodo:
         for clave, valor in list(self.publicado.items()):
             previo = json.loads(valor)
             if previo["nombre"] not in actuales and previo.get("vivo"):
+                # muerto solo si falta dos vueltas seguidas: una lectura de tmux que falla una vez
+                # no tiene por qué anunciarle a la otra máquina que el hilo se fue
+                self.ausentes[previo["nombre"]] = self.ausentes.get(previo["nombre"], 0) + 1
+                if self.ausentes[previo["nombre"]] < 2:
+                    actuales[previo["nombre"]] = previo
+                    continue
                 actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": "", "ventana": ""}
+        for nombre in locales:
+            self.ausentes.pop(nombre, None)
+        # cada 30 s, quiénes están vivos aquí: si tmux se cae, `telar hilo caidos` sabe qué reabrir
+        if self.vueltas % 15 == 0:
+            vivos = [n for n, i in locales.items() if i.get("vivo")]
+            await asyncio.to_thread(lambda: mod_estado.abrir(self.config).anotar_vivos(vivos))
         for nombre, info in actuales.items():
             valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
             clave = mod_bus.clave_estado(self.config, nombre)

@@ -481,3 +481,29 @@ class Actividad(ConCarpeta):
         self.est.anotar_actividad("faro", datetime(2026, 10, 15, 9, 0))
         self.est.renombrar("faro", "el faro")
         self.assertEqual(list(self.est.actividades()), ["el faro"])
+
+
+class Vivos(ConCarpeta):
+    """Quién estaba vivo: lo anota el nodo, y `telar hilo caidos` reabre lo que se cayó."""
+
+    def test_se_anota_y_se_lleva_al_renombrar(self):
+        t = datetime(2026, 10, 16, 9, 0)
+        self.est.anotar_vivos(["faro", "molino"], t)
+        self.est.anotar_vivos(["faro"], datetime(2026, 10, 16, 9, 30))
+        self.assertEqual(self.est.vivos_vistos()["molino"], t)
+        self.est.renombrar("faro", "el faro")
+        self.assertIn("el faro", self.est.vivos_vistos())
+
+    def test_caidos_son_los_vistos_vivos_sin_ventana(self):
+        from types import SimpleNamespace
+        from telar.modelo import Hilo
+        from telar.ordenes.hilo import caidos
+
+        ahora = datetime(2026, 10, 16, 10, 0)
+        self.est.anotar_vivos(["faro", "molino", "viejo", "guardado", "sin-conversacion"], ahora - timedelta(minutes=5))
+        self.est.anotar_vivos(["viejo"], ahora - timedelta(hours=20))
+        hilos = (Hilo(id="1", nombre="faro", sesiones=("s1",)), Hilo(id="2", nombre="molino", sesiones=("s2",)),
+                 Hilo(id="3", nombre="viejo", sesiones=("s3",)), Hilo(id="4", nombre="guardado", sesiones=("s4",), archivado=True),
+                 Hilo(id="5", nombre="sin-conversacion"))
+        tel = SimpleNamespace(estado=self.est, hilos=hilos, vivo=lambda h: h.nombre == "molino", propio=lambda h: False)
+        self.assertEqual([h.nombre for h in caidos(tel, 6, ahora)], ["faro"])

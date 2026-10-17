@@ -148,6 +148,8 @@ export interface JsonHilo {
     atencion_desde?: string | null;
     /** la última vez que se le pidió algo a su agente (un prompt, un encargo): su «última modificación» */
     actividad?: string | null;
+    /** terminó y la persona no lo ha mirado desde entonces: te espera, como «espera» */
+    sin_ver?: boolean;
     sesiones: string[]; ficha?: JsonFicha | null;
     /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
     remoto?: string;

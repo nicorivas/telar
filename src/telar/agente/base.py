@@ -356,13 +356,24 @@ def aplicar(
     if aviso.evento is Evento.ABRE and aviso.sesion:
         conversaciones = est.anotar_sesion(hilo, aviso.sesion, panel=panel or aviso.panel)
         anotada = aviso.sesion
+    elif aviso.evento is Evento.EMPIEZA and aviso.sesion and aviso.sesion not in est.sesiones().get(hilo, ()):
+        # el prompt repara un SessionStart que se perdió: la conversación que trae el aviso es la
+        # de este hilo, y sin anotarla no se retoma después
+        conversaciones = est.anotar_sesion(hilo, aviso.sesion, panel=panel or aviso.panel)
+        anotada = aviso.sesion
     elif aviso.evento is Evento.CIERRA and aviso.sesion and olvidar_al_cerrar:
         est.olvidar_sesion(aviso.sesion)
         olvidada = True
 
-    nueva = atencion_de(aviso.evento, est.atencion(hilo))
-    if nueva is not None:
+    actual, desde = est.atenciones().get(hilo, (Atencion.NINGUNA, None))
+    nueva = atencion_de(aviso.evento, actual)
+    # un aviso más viejo que lo anotado no lo pisa: dos ganchos pueden terminar en otro orden
+    # que el que empezaron (un PostToolUse lento y el Stop que vino después)
+    viejo = bool(desde and aviso.cuando and aviso.cuando.replace(microsecond=0, tzinfo=None) < desde)
+    if nueva is not None and not viejo:
         est.anotar_atencion(hilo, nueva, aviso.cuando)
+    elif viejo:
+        nueva = None
 
     return Efecto(
         hilo=hilo,

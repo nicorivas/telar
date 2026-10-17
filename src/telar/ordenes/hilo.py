@@ -16,6 +16,10 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
                                            la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
+    telar hilo caidos [--horas N] [--seco] reabrir de una vez, con su conversación, los hilos que
+                                           estaban vivos en esta máquina y ya no tienen ventana
+                                           (tmux se cayó, la máquina se reinició). Los cuenta el
+                                           nodo cada 30 s; --horas, qué tan reciente (6)
     telar hilo llevar [remoto] [--sesion ID]   pasar su conversación a otra máquina de [remotos]:
                                            se cierra aquí y sigue allá, retomada. Con --sesion,
                                            esa conversación aunque telar no la tenga anotada
@@ -67,6 +71,7 @@ VERBOS = (
     "olvidar",
     "llevar",
     "leer",
+    "caidos",
 )
 
 
@@ -91,11 +96,15 @@ def main(argv: list[str], ctx) -> int:
                    help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
     p.add_argument("--ultimos", type=int, default=0, metavar="N", help="con leer: cuántos turnos")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
+    p.add_argument("--horas", type=float, default=6, help="con caidos: vistos vivos en estas últimas horas")
+    p.add_argument("--seco", action="store_true", help="con caidos: solo decir cuáles reabriría")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
     if o.verbo == "leer":
         return _leer(ctx, o)
+    if o.verbo == "caidos":
+        return _caidos(ctx, o)
     if o.valor and o.verbo in SIN_VALOR:
         # `telar hilo olvidar X` actuaba sobre el hilo actual e ignoraba X: lo suelto es el hilo
         if o.hilo:
@@ -602,6 +611,38 @@ def _leer(ctx, o) -> int:
         return _comun.escribir_json(datos)
     print(historia.como_texto(datos))
     return 0
+
+
+def caidos(tel: _comun.Telar, horas: float, ahora=None) -> list:
+    """Los hilos que el nodo vio vivos en las últimas `horas` y ya no tienen ventana ni sesión: no
+    archivados, de esta máquina (un remoto lo reabre la suya) y con una conversación que retomar."""
+    from datetime import datetime, timedelta
+
+    est = tel.estado
+    limite = (ahora or datetime.now()) - timedelta(hours=horas)
+    vistos, remotos = est.vivos_vistos(), est.remotos()
+    return [h for h in tel.hilos
+            if vistos.get(h.nombre) and vistos[h.nombre] >= limite and not h.archivado and h.sesiones
+            and h.nombre not in remotos and not tel.vivo(h) and not tel.propio(h)]
+
+
+def _caidos(ctx, o) -> int:
+    tel = _comun.tejer(ctx, con_ficha=False)
+    lista = caidos(tel, o.horas)
+    if o.json and o.seco:
+        return _comun.escribir_json({"caidos": [h.nombre for h in lista]})
+    if not lista:
+        print(_comun.tenue(f"ningún hilo que estuviera vivo en las últimas {o.horas:g} h está caído"))
+        return 0
+    if o.seco:
+        print("reabriría: " + ", ".join(h.nombre for h in lista))
+        return 0
+    fallas = 0
+    for h in lista:
+        # cada uno con el telar al día: retomar abre ventanas y cambia lo que está vivo
+        fallas += _retomar(ctx, _comun.tejer(ctx, con_ficha=False), h) != 0
+    print(f"reabiertos {len(lista) - fallas} de {len(lista)}")
+    return 1 if fallas else 0
 
 
 def _retomar(ctx, tel: _comun.Telar, hilo) -> int:

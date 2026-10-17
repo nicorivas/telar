@@ -558,6 +558,7 @@ def json_pendiente(p: Pendiente, *, ref: str = "", hilo: str = "") -> dict:
 
 
 def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
+    desde = tel.estado.atenciones().get(hilo.nombre, (None, None))[1] if tel.estado else None
     cuerpo = {
         "id": hilo.id,
         "nombre": hilo.nombre,
@@ -572,7 +573,11 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "prioridad": int(hilo.prioridad) if hilo.prioridad else None,
         "atencion": hilo.atencion.value,
         # desde cuándo está en ese estado: lo último que hizo su agente
-        "atencion_desde": _iso(tel.estado.atenciones().get(hilo.nombre, (None, None))[1]),
+        "atencion_desde": _iso(desde),
+        # terminó y la persona no lo ha mirado desde entonces: te espera, igual que «espera». El que
+        # tiene el foco ahora se da por visto
+        "sin_ver": hilo.atencion.value == "termino" and not hilo.activo
+                   and (hilo.visto is None or (desde is not None and hilo.visto < desde)),
         "visto": _iso(hilo.visto),
         # la última vez que se le pidió algo a su agente: la «última modificación» de la barra
         "actividad": _iso(tel.estado.actividades().get(hilo.nombre)) if tel.estado else None,

@@ -8,6 +8,20 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The attention of a thread no longer lies (see `docs/propuestas/lo-que-hacen-los-otros.md`, block 1):
+  `StopFailure` (a turn that ends on an API error, which does not fire `Stop`) ends the turn;
+  `Notification` only means «waiting» when it asks something (`permission_prompt`,
+  `elicitation_dialog`) — the idle notice a minute after each turn (`idle_prompt`) now means «done», so
+  finished threads stopped piling up as «waiting»; a prompt records the conversation if `SessionStart`
+  was lost; and a notice older than the recorded one does not overwrite it. `telar agente instalar --si`
+  adds the new hook.
+- «Done and not seen» (`sin_ver` in `telar hilos --json`): finished, and not focused since. The threads
+  bar dims a done thread you already saw; ⌥S (`telar.siguienteQueEspera`) jumps to the next thread
+  waiting on you — those asking something first, then the unseen ones, oldest first — and repeating it
+  walks the queue.
+- `telar hilo caidos [--horas N] [--seco]` reopens, with their conversation, the threads that were alive
+  on this machine and have no window anymore (tmux died, the machine restarted). The node records who is
+  alive every 30 s, and only announces a thread dead after missing it in two rounds in a row.
 - Dashboard «tareas»: ▶ on a task with a card sends `/tarea <id>` to its thread (its project's, or the
   general agent's), so the agent starts on it with its context loaded; before, in an existing thread it only
   typed «Veamos <id>» without sending it. A document's checkbox is still only typed.

@@ -476,6 +476,18 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     orden('telar.accion', accion);
 
     orden('telar.hoy', () => hoy.alternar());
+    // ⌥S: al siguiente hilo que te espera — primero los que piden algo, después los que terminaron
+    // sin que los vieras; de cada grupo, el que espera hace más rato. Repetirlo recorre la fila
+    orden('telar.siguienteQueEspera', async () => {
+        const fila = modelo.hilos.filter(h => !h.archivado && (h.atencion === 'espera' || h.sin_ver))
+            .sort((a, b) => Number(b.atencion === 'espera') - Number(a.atencion === 'espera')
+                || (a.atencion_desde ?? '').localeCompare(b.atencion_desde ?? ''));
+        if (!fila.length) { vscode.window.setStatusBarMessage('telar: nadie te espera', 4000); return; }
+        const i = fila.findIndex(h => h.nombre === modelo.activo?.nombre);
+        const siguiente = fila[(i + 1) % fila.length];
+        vscode.window.setStatusBarMessage(`telar: ${siguiente.nombre} (${fila.length} te esperan)`, 4000);
+        await irAHilo(siguiente.nombre);
+    });
     const verEquipo = async (id?: string) => { const e = await elegirEntrada(id); if (e) await hoy.abrirEquipo(e); };
     orden('telar.equipo', () => verEquipo());
     orden('telar.equipoVer', (id?: string) => verEquipo(typeof id === 'string' ? id : undefined));
