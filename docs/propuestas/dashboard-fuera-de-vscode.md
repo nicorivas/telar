@@ -1,7 +1,7 @@
 # El dashboard fuera de VS Code
 
-Propuesta, 16-oct-2026. Estado: **por hacer**; es el camino para que el dashboard pueda vivir en el
-navegador (y en el celular, y en una app propia) sin dejar de verse en VS Code mientras tanto.
+Propuesta, 16-oct-2026. Estado: **la barra y el dashboard ya corren en el navegador** (`npm run panel`
+en `vscode/`, ver «Lo hecho» al final); falta el servicio, el celular y fusionar `telar web`.
 
 ## Por qué
 
@@ -96,3 +96,30 @@ Cada paso deja todo funcionando; se puede parar en cualquiera.
 - **Teclas.** En un navegador, ⌘W y ⌘T son del navegador; la app propia (paso 7) lo resuelve.
 - **El tamaño del paso 2.** Es el más grande: `hoy.ts` mezcla todo. Por eso va pantalla por pantalla,
   con el dashboard de VS Code funcionando en cada commit.
+
+## Lo hecho (16-oct-2026)
+
+Se tomó un camino más corto que el de arriba: **el núcleo sigue en Node** (ya llamaba a la CLI) y no
+se reescribió en el navegador. La dependencia de VS Code resultó concentrada en ~10 clases de llamadas:
+
+- `anfitrion.ts`: la interfaz (avisos, campos, menús, abrir enlaces y archivos, la barra de estado, ir
+  a un hilo, órdenes). `anfitrion-vscode.ts` la cumple con la API de VS Code, igual que antes.
+- `superficie.ts`: dónde se dibuja el dashboard (el panel de VS Code, o las pestañas de un navegador).
+  La barra tiene la suya (`SuperficieBarra`, en `vistas/hilos.ts`).
+- El dashboard (`vistas/hoy.ts`), la barra (`vistas/hilos.ts`), `modelo.ts`, `cli.ts`, `estilo.ts` y las
+  acciones de tareas ya no importan VS Code. Lo que es solo de VS Code quedó aparte:
+  `vistas/hilos-vscode.ts` (la vista lateral) y `vistas/tareas-barra.ts` (la lista de tareas lateral).
+- `web/servidor.ts` (`npm run panel`, o `node out/web/servidor.js --puerto 8770 --host …`): sirve en `/`
+  una página con la barra y el dashboard, cada uno en su marco, y conecta sus mensajes por WebSocket.
+  Lo que el dashboard le pide a la interfaz se dibuja en la página (`web/pagina.ts`). Se entra con una
+  llave (`~/.config/telar/panel.llave`): `?k=` la primera vez, después una cookie.
+
+- **Las terminales** (16-oct): un clic en un hilo de la barra abre su terminal en una pestaña al lado
+  del dashboard (xterm.js). El servidor corre `telar mirar <hilo>` en un PTY (node-pty): una sesión
+  agrupada fija en la ventana del hilo, como las de las otras máquinas y el celular. Escribir ahí es
+  escribir en el hilo sin mover lo que ven los demás; cerrar la pestaña borra la vista. En macOS,
+  node-pty necesita `chmod +x` a su `spawn-helper` (lo hace el `postinstall`); en Linux se compila.
+
+Lo que falta: `telar panel` como orden y como servicio (launchd en el laptop, systemd en el servidor),
+correrlo en el servidor por Tailscale para el celular, fusionar `telar web`, y lo que en la web todavía
+es solo de VS Code (la ficha y la carpeta de la barra, el menú contextual de un hilo).

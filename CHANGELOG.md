@@ -8,6 +8,26 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The views' CSS lives in real files (`vscode/media/css/*.css`), read by VS Code and by the web the same
+  way: `tokens.css` (the palette — the terminal theme in VS Code, catppuccin mocha outside —, a type scale
+  and a spacing scale), `base.css`, and one file per view. They go in cascade layers (`@layer base,
+  vistas`), use native CSS nesting, and pass stylelint (`npm run lint:css`); the linter found five rules
+  defined twice, now merged. The web dialogs are native `<dialog>` elements (focus kept inside, Escape and
+  the backdrop for free).
+- The threads bar and the dashboard run in a browser: `npm run panel` (in `vscode/`) serves one page with
+  both, the same code as in VS Code. What depended on VS Code goes through a host interface
+  (`anfitrion.ts`: notices, input fields, pickers, opening links and files, going to a thread) and a
+  surface (`superficie.ts`); VS Code implements them with its API, and the web server with dialogs drawn
+  in the page and a WebSocket per view. Entry needs a key (`~/.config/telar/panel.llave`). See
+  `docs/propuestas/dashboard-fuera-de-vscode.md`.
+- The web panel shows the terminals: the bar is the navigation — its «dashboard» row shows the
+  dashboard, a thread shows its terminal (xterm.js) on the right, and its row is marked; terminals already
+  open stay alive in the background (the 8 most recent), and a closed browser tab frees its view within
+  30 s (a WebSocket heartbeat). Behind
+  it, the server runs `telar mirar <hilo>` in a pseudo-terminal (node-pty): a new order that attaches to a
+  grouped tmux session pinned to the thread's window — the same as other machines and the phone use —,
+  so typing there types in the thread but does not move what anyone else sees, and closing the tab
+  removes the view. A thread of another machine is seen through its window on this one.
 - The attention of a thread no longer lies (see `docs/propuestas/lo-que-hacen-los-otros.md`, block 1):
   `StopFailure` (a turn that ends on an API error, which does not fire `Stop`) ends the turn;
   `Notification` only means «waiting» when it asks something (`permission_prompt`,
