@@ -218,7 +218,7 @@ def leer(remoto: Remoto, *, con_cuerpo: bool = False, archivo: str = "") -> Buzo
 
 
 def leer_local(*, con_cuerpo: bool = False, archivo: str = "") -> Buzon:
-    """Lo mismo que `leer`, en esta máquina: para `telar movil`, que corre en el servidor."""
+    """Lo mismo que `leer`, en esta máquina: para lo que corre en el servidor (la web)."""
     import os
     import sys
 

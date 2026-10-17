@@ -8,6 +8,18 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar commit -m "…" -- rutas`: commits only those paths (new and deleted ones too), never touches
+  paths marked `skip-worktree`, and pushes. Before pushing it fetches and rebases, unless what comes in
+  touches a file that is dirty here (someone else's work in progress): then it does not integrate, says
+  so, and the commit stays local; a rebase that conflicts with the own commit is aborted. A push that loses
+  a race with another machine («is at … but expected …», «fetch first») is retried with a wait. One push
+  at a time per repository (a lock shared by its worktrees), and every run is logged in
+  `<state>/commits.log`. `--local` only commits; `--subir` only pushes. The protocol was written by hand
+  in several skills; see `docs/propuestas/primitivas.md`.
+- `docs/propuestas/primitivas.md`: the primitives telar is built from (object, type, change; subject,
+  thread, message, trigger; node, place, view, module; plus addresses and permissions), what an agent is,
+  how each of the 44 orders maps onto them, and how telar should live with git (a worktree per thread,
+  one writer for hot files, `telar commit`).
 - The views' CSS lives in real files (`vscode/media/css/*.css`), read by VS Code and by the web the same
   way: `tokens.css` (the palette — the terminal theme in VS Code, catppuccin mocha outside —, a type scale
   and a spacing scale), `base.css`, and one file per view. They go in cascade layers (`@layer base,
@@ -226,6 +238,12 @@ workflow refuses to run if the two disagree.
   sin_proyecto`) with the meeting, its project (remembered or deduced), what the plan and the notes say, and
   how to leave a note on the event; the request is kept as a note. `telar config --json` gives
   `agente_general`.
+
+### Removed
+
+- `telar movil`, the phone screen over mosh: the web page (`telar web`, and now the panel) replaced it,
+  and nothing called it. Its window library (`telar.movil`) stays: `mirar`, the web, periodic jobs and
+  other machines use it.
 
 ### Fixed
 

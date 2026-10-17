@@ -218,7 +218,7 @@ def linea(ruta: str, palabras: list[str] | None, hilo: str, *, marcar: bool = Tr
 
 
 #: la opción de sesión tmux, allá, con el nombre del hilo: la leen el cartero (para entregar
-#: el correo de `usuario+hilo@servidor` a esta sesión) y `telar movil` (para mostrar nombres).
+#: el correo de `usuario+hilo@servidor` a esta sesión) y la web (para mostrar nombres).
 OPCION_HILO = "@telar_hilo"
 
 

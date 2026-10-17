@@ -194,7 +194,7 @@ _ultimo_nuevo = [0.0]
 def nuevo_hilo(ctx, datos: object, extra: tuple[str, ...]) -> tuple[int, dict]:
     """Abre un hilo nuevo en esta máquina, con el agente configurado: `(código http, respuesta)`.
 
-    Es la misma apertura que `telar movil`, con dos diferencias: `extra` son palabras que se le agregan al agente
+    Es la apertura de un hilo con sesión propia, con dos diferencias: `extra` son palabras que se le agregan al agente
     (`--nuevo-args`, p. ej. el modo de permisos) y puede llevar un primer mensaje. El nombre es obligatorio y no puede
     repetir el de ningún hilo, vivo o no, porque la conversación se anota por nombre. La carpeta solo puede ser una
     unidad de `telar proyectos` (o ninguna: la del agente), nunca una ruta que mande la página."""

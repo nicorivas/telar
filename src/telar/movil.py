@@ -1,6 +1,7 @@
-"""telar en el celular: los hilos de esta máquina, y entrar a uno sin quedar encerrado.
+"""Las ventanas de los hilos de esta máquina, y mirarlas desde afuera sin mover lo que ven los demás.
 
-Corre **en el servidor** (`mosh usuario@servidor -- telar movil`). Los hilos de esta máquina son
+Lo usan `mirar`, la web, los periódicos, los encargos y las otras máquinas (el nombre viene de la
+primera que lo usó, la vista del celular que hoy hace la web). Los hilos de esta máquina son
 las ventanas de la sesión del telar, cada una marcada con un id propio (`@telar_id`): el `@338`
 de tmux se reusa cuando su servidor se reinicia, la marca no. Las sesiones propias de antes
 (`telar-1a2b3c4d`, con su nombre en `@telar_hilo`) se siguen viendo mientras queden.
@@ -163,7 +164,7 @@ def hilo_de_panel(panel: str) -> str:
 def propios() -> dict[str, str]:
     """nombre del hilo → sesión tmux, de los hilos que viven en una sesión propia de esta máquina.
 
-    Son los que abre el celular (`telar movil`) y los periódicos: no son ventanas de la sesión
+    Son los que abrían versiones viejas y los periódicos: no son ventanas de la sesión
     del telar, así que el multiplexor no los ve, pero están vivos y se les puede escribir. Si dos
     sesiones se llaman igual, gana la que tiene a alguien mirando.
     """
@@ -298,14 +299,3 @@ def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo
     ]
     return ordenes
 
-
-def entrar(h: HiloMovil, correos: int = 0, correo_cmd: str = "") -> None:
-    """Engancha el celular al hilo por una sesión agrupada; vuelve cuando se sale de ella."""
-    grupo = f"{PREFIJO}{h.ventana.lstrip('@') if h.ventana else h.sesion.removeprefix('telar-')}"
-    _tmux("kill-session", "-t", f"={grupo}", tolerante=True)  # una que quedó de otra vez
-    try:
-        for orden in ordenes_grupo(h.sesion, grupo, h.nombre, correos, correo_cmd, ventana=h.ventana):
-            _tmux(*orden)
-        subprocess.run(["tmux", "attach-session", "-t", f"={grupo}"])
-    finally:
-        _tmux("kill-session", "-t", f"={grupo}", tolerante=True)

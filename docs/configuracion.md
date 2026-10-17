@@ -426,22 +426,6 @@ todos, y descarta un archivo cuyo dueño no es el usuario de su nombre. `telar d
 publicar` lo hace a mano. La carpeta la monta quien administra el servidor (ver
 `servidor/README.md`).
 
-### En el celular: `telar movil`
-
-`mosh usuario@servidor -- ~/.local/bin/telar movil` (en la otra máquina, con telar instalado
-allá) abre una lista de sus hilos para pantalla chica: flechas o números eligen, ⏎ o un toque
-entran, `c` el correo, `q` sale. Adentro de un hilo hay una barra arriba, `◀ telar · ✉ 2 ·
-nombre`: **Alt+q**, tocar «◀ telar» o F12 vuelven a la lista, tocar «✉ N» abre el correo encima.
-
-El celular no se engancha a la sesión del hilo sino a una **sesión agrupada** con ella
-(`movil-…`): el mismo agente, con barra, mouse y una tabla de teclas propia (`telar-movil`).
-El laptop, enganchado a la sesión original, no ve nada de eso. Al volver, la agrupada se
-cierra. Para tener F12 en Termux, en `~/.termux/termux.properties`:
-
-```
-extra-keys = [['ESC','TAB','CTRL','ALT','UP','DOWN','F12']]
-```
-
 ### Ver los hilos del laptop desde el servidor (`telar espejo`)
 
 Un laptop se apaga y un servidor no. Para ver desde el servidor —y desde `telar web` en el

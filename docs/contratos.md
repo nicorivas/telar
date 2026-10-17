@@ -265,7 +265,7 @@ el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dic
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
 que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer. `propio` es `true`
 para un hilo que no es tab del multiplexor pero vive en una sesión tmux propia de esta máquina (los
-que abre el celular con `telar movil` y los periódicos): `vivo` sigue siendo `false` —`ir`, `cerrar`
+que abrían versiones viejas y los periódicos): `vivo` sigue siendo `false` —`ir`, `cerrar`
 y el resto operan sobre tabs—, pero se le puede escribir con `enviar`.
 `tiempo` son los segundos con el foco **en el día en curso**. `ficha` puede ser
 `null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
@@ -805,6 +805,21 @@ Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
   veta responde lo mismo que uno que no existe.
 - Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
 
+## `telar commit --json` — commitear solo unas rutas y subirlas
+
+```json
+{"repo": "/home/x/Life", "rama": "main", "rutas": ["memory/x.md"], "commit": "a1b2c3d",
+ "subido": true, "intentos": 1, "estado": "subido", "detalle": ""}
+```
+
+`estado` es `subido` (quedó arriba), `commiteado` (quedó local: se pidió `--local`, o la rama no tiene una
+de arriba), `nada` (esas rutas no tenían cambios), `choque` (lo que llega toca algo sin commitear de aquí,
+o el rebase chocó con lo propio: el commit queda local y `detalle` dice con qué) o `fallo` (no se pudo
+commitear, o el push falló por algo que no es una carrera, como la red o la llave). `intentos` cuenta los
+push: más de uno es que otro subió en el mismo momento. `rutas` van relativas al repositorio. Sale con 0
+si quedó como se pidió, 1 si quedó local y 2 si no se pudo commitear. Cada corrida deja una línea con estos
+mismos campos, más `fecha` y `mensaje`, en `<estado>/commits.log`.
+
 ## `telar periodicos --json` — los procesos periódicos
 
 ```json
@@ -928,7 +943,7 @@ Solo con `telar web --escribir --nuevo` (si no, 404 o 403; `/api/yo` dice `nuevo
 ser la `ruta` de una unidad de `telar proyectos` (404 si no); sin ella, la que diga `[agente] carpeta`. `mensaje` es opcional (hasta 4.000 caracteres): el primer
 prompt del agente; si empieza con «-» se le antepone un espacio para que no se lea como una opción. Mismas defensas que `/api/enviar`; un hilo nuevo cada cinco segundos.
 
-Abre lo mismo que `telar movil`: una sesión tmux `telar-<8 hex>` en esta máquina con el agente configurado, y anota su conversación. `--nuevo-args` agrega palabras a la línea
+Abre una sesión tmux `telar-<8 hex>` en esta máquina con el agente configurado, y anota su conversación. `--nuevo-args` agrega palabras a la línea
 del agente (p. ej. `--permission-mode auto`). Respuesta: `{"ok": true, "hilo": "…", "carpeta": "…"}`. La conversación del hilo existe en disco recién con su primer mensaje,
 así que la página reintenta unos segundos al entrar. `GET /api/proyectos` sirve la lista de unidades para elegir la carpeta (la misma salida de `telar proyectos --json`).
 
