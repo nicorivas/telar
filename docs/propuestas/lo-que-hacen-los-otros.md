@@ -1,7 +1,7 @@
 # Lo que hacen los otros: qué aprender de otros administradores de agentes
 
-Propuesta, 16-oct-2026. Estado: **el bloque 1 hecho** (salvo los avisos al celular, que esperan
-elegir el servidor de ntfy); lo demás, por decidir.
+Propuesta, 16-oct-2026. Estado: **el bloque 1 hecho**, y las dos primeras ideas del 2; los avisos al
+celular, descartados por ahora (Nico, 16-oct); lo demás, por decidir.
 
 ## Por qué
 
@@ -54,7 +54,7 @@ Ninguno vive en VS Code: los agentes corren en la terminal y la interfaz es nati
   fin del turno es «te espera» (`sin_ver` en `telar hilos --json`; la barra apaga el «terminó» ya visto).
 - **Una tecla que salta al siguiente que te espera** (OpenHarness ⇧⌘I): primero los que piden algo,
   después los que terminaron sin que los vieras, el más antiguo primero. En VS Code, ⌥S.
-- **Avisos al celular solo en la transición desde «trabajando»**, sin contenido (Roamgate
+- *(Descartado por ahora, 16-oct.)* **Avisos al celular solo en la transición desde «trabajando»**, sin contenido (Roamgate
   `server/src/notifications/task-events.ts`; happy manda solo el nombre de la sesión). Con ntfy
   bastaría una línea en el hook. Falta decidir el servidor de ntfy (el público o uno propio).
 - **No avisar «terminó» si quedó una pregunta abierta** (OpenHarness `lib/agentNotifications.ts`).
