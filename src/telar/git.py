@@ -199,6 +199,8 @@ def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
             p = _git(repo, "push", "-q", remoto, f"HEAD:{rama_arriba}", timeout=60)
             if p.returncode == 0:
                 res.subido, res.estado, res.detalle = True, "subido", ""
+                if res.commit:  # el rebase le cambia el hash: el que vale es el que quedó arriba
+                    res.commit = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
                 return res
             error = (p.stderr or p.stdout).strip()
             if not any(c in error for c in CARRERA):

@@ -77,6 +77,7 @@ class Commit(Prueba):
         (self.a / "de-a.md").write_text("a\n")
         res = self.commit(self.a, ["de-a.md"])
         self.assertEqual(res.estado, "subido")
+        self.assertEqual(res.commit, sh(self.a, "rev-parse", "--short", "HEAD").strip())  # el de después del rebase
         self.assertTrue((self.a / "de-b.md").exists())
         self.assertEqual((self.a / "otro.md").read_text(), "a medias\n")
         self.assertEqual(sh(self.a, "stash", "list"), "")
