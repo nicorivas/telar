@@ -616,24 +616,11 @@ pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con
 su `description`, `command` o `file_path`), no su salida. El razonamiento y los resultados
 de herramientas se omiten. `hilo` es el hilo donde telar anotó esa conversación, o `""`.
 
-### `telar correo --json`
+### `telar correo enviar --json`
 
-```json
-{ "remotos": [ {
-    "remoto": "casa", "usuario": "usuario", "error": "", "sabe_pendientes": true, "cartero": true,
-    "archivo_comun": false,
-    "hilos": { "Pizza": { "direccion": "usuario+pizza@servidor", "pendientes": [ correo, … ],
-                          "correos": [ correo + "leido", … ], "no_leidos": 1 } },
-    "conversaciones": [ { "id": "<…>", "asunto": "…", "participantes": ["otro", "usuario"],
-                          "mensajes": 3, "ultima": "Thu, 24 Sep 2026 12:19:03 -0300",
-                          "estado": "entregado", "correos": [ correo, … ] } ] } ] }
-```
-
-`correo` es `{id, de, para, asunto, fecha, estado, nuevo}`, y con `--cuerpos` también
-`cuerpo`. `de` es el usuario que lo mandó según el uid que anotó el servidor de correo, no
-el campo `From`. `estado` es `entregado`, `retenido`, `sin sesión` o `""` si el cartero no
-anota ids (entonces `sabe_pendientes` es `false` y `pendientes` va vacío). Un `error` no
-vacío dice por qué no se pudo leer esa máquina; las otras siguen.
+`{"enviado": true, "a": "usuario+hilo@servidor", "via": "bus"|"mail"|"ssh"}`. A un hilo propio va por el bus;
+a otra persona, por el correo del servidor. Leer la Maildir (`telar correo` sin verbo, `correo leido`) se
+retiró: ver docs/propuestas/retiro-correo-y-remotos.md.
 
 ### `telar directorio --json`
 

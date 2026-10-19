@@ -93,7 +93,6 @@ ARCHIVOS = {
     "paneles": "paneles.json",
     "ids": "ids.json",
     "remotos": "remotos.json",
-    "leidos": "leidos.json",
     #: nombre viejo → nombre nuevo, de cada renombre: un agente que ya corría sigue diciendo el viejo
     "alias": "alias.json",
 }
@@ -463,18 +462,6 @@ class Estado:
             if isinstance(valor, dict) and isinstance(valor.get("remoto"), str):
                 salida[hilo] = {"remoto": valor["remoto"], "sesion": str(valor.get("sesion", ""))}
         return salida
-
-    def leidos(self) -> dict[str, set[str]]:
-        """hilo → los Message-Id de su correo que la persona ya vio en telar."""
-        return {h: set(ids) for h, ids in self._leer("leidos", {}).items() if isinstance(ids, list)}
-
-    def marcar_leidos(self, hilo: str, ids) -> None:
-        #: se guardan los últimos 500 por hilo: una casilla vieja no hace crecer esto sin fin
-        def cambio(d):
-            actuales = [i for i in d.get(hilo, []) if isinstance(i, str)]
-            nuevos = [i for i in ids if i and i not in actuales]
-            d[hilo] = (actuales + nuevos)[-500:]
-        self._actualizar("leidos", cambio, {})
 
     def anotar_remoto(self, hilo: str, remoto: str, sesion: str) -> None:
         self._actualizar("remotos", lambda d: d.__setitem__(hilo, {"remoto": remoto, "sesion": sesion}), {})
@@ -906,7 +893,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "vivos", "remotos", "leidos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "vivos", "remotos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -943,7 +930,7 @@ class Estado:
         debería cambiar porque se cerró un tab.
         """
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "sesiones", "remotos", "leidos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "sesiones", "remotos"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
 

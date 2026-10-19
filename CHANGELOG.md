@@ -28,6 +28,8 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `telar correo` only sends now (`telar correo enviar`, to another person); reading the Maildir over ssh
+  (`telar correo`, `correo leido`, the mail notice when resuming a remote thread) is gone.
 - Retired what the bus replaced: the door (`telar enlace`, `[enlaces]`; `[enlace] entrada|no_leer` still
   read, now `[bus] entrada|no_leer`), `telar remotos atencion|traer` (the node does it), and the mirror over
   ssh (`telar espejo publicar|recibir|traer`; the node publishes it). New: `telar aviso` and `telar archivo`,

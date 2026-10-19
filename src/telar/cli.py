@@ -54,7 +54,7 @@ ORDENES: dict[str, str] = {
     "app": "Las apps del panel (un juego, un vivero): la lista, o la página de una.",
     "seccion": "La página de una sección de la lista: corre su `home` y devuelve su JSON.",
     "directorio": "Los hilos remotos de cada persona de una máquina compartida: leerlos y publicar los propios.",
-    "correo": "El correo entre agentes de las máquinas remotas: direcciones, pendientes, conversaciones.",
+    "correo": "Escribirle a un hilo de otra persona (por el bus, si es propio).",
     "espejo": "Los hilos de otra máquina, vistos desde esta.",
     "equipo": "Que una persona de confianza vea tus tareas del equipo y te sugiera prioridades.",
     "persona": "Las personas de este servidor: darles de alta con un perfil, verlas, cerrarles el acceso.",

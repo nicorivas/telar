@@ -329,6 +329,7 @@ class Remoto:
     raiz: str = "~"
     #: la casilla (Maildir) común con todos los correos entre agentes, si el servidor la
     #: publica; sin ella, las conversaciones son solo las de la Maildir propia.
+    #: de cuando el panel leía la casilla común por ssh (se retiró): se acepta y no se usa
     correo_archivo: str = ""
     #: la carpeta común donde cada persona publica sus hilos de esa máquina (`telar
     #: directorio`); sin ella, no se publica ni se lee nada.

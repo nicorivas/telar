@@ -8,10 +8,11 @@ Estado (19-oct-2026): **en curso**.
   - el paso 2 (el panel ya no sondea por ssh ni muestra el correo);
   - del paso 3:
     - el aviso y el archivo por el bus (`telar aviso`, `telar archivo`; el equipo avisa así);
-    - fuera la puerta (`telar enlace`), `telar remotos` y el espejo por ssh (`espejo publicar|recibir|traer`).
+    - fuera la puerta (`telar enlace`), `telar remotos` y el espejo por ssh (`espejo publicar|recibir|traer`);
+    - fuera el lado de lectura del correo (`telar correo` sin verbo, `correo leido`, `estado.leidos`,
+      `_aviso_de_correo`; `correo_archivo` se acepta sin usarse). Queda `telar correo enviar`.
 - Falta:
-  - del paso 3, el lado de lectura del correo (`telar correo` sin verbo, `correo leido`,
-    `_aviso_de_correo`, `correo_archivo`);
+  - `movil.barra`/`ordenes_grupo` (el menú viejo del celular por mosh, sin llamadores);
   - los pasos 4 y 5;
   - el 6, que sigue bloqueado.
 

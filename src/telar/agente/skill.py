@@ -40,8 +40,6 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
   que se les escribe con SendMessage.
 - `telar directorio`: los hilos de **otras personas** en las máquinas compartidas, con su
   dirección, a qué carpeta están vinculados y el título de su documento.
-- `telar correo --json`: por cada máquina remota, la dirección de correo de cada hilo y las
-  conversaciones entre agentes (el correo entre agentes es público dentro del servidor).
 
 ## Saber de qué trata uno
 
@@ -116,8 +114,7 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
 - Que la respuesta quede donde se va a buscar (la tarea, el estado del proyecto) y no en un ida
   y vuelta: una pregunta y una respuesta, no una conversación.
 - Un correo **retenido** (remitente no permitido, tope por hora) o **sin entregar** (el hilo
-  estaba cerrado) espera en la casilla; `telar correo` los muestra y, al retomar el hilo,
-  telar avisa cuántos hay.
+  estaba cerrado) espera en la Maildir de su persona, en el servidor.
 """
 
 

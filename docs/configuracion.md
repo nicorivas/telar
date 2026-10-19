@@ -392,7 +392,6 @@ pestaña de Chrome cuyo título o dirección lo contiene, si hay una abierta.
 destino = "usuario@servidor"   # lo que va después de mosh/ssh; puede ser un alias de ~/.ssh/config
 transporte = "mosh"            # mosh (por defecto) · ssh
 raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
-correo_archivo = ""            # opcional: la Maildir común con los correos entre agentes
 directorio = ""                # opcional: la carpeta común donde cada persona publica sus hilos
 repos = ["~/repo", "~/repo/otro"]  # opcional: repositorios que viven en las dos máquinas
 sesion = ""                    # opcional: la sesión del telar EN esa máquina; "" es la misma que aquí
@@ -451,19 +450,10 @@ Si la otra máquina entrega correo local entre agentes (ver
 («T42 Faro Norte» → `usuario+t42-faro-norte@servidor`). La sesión de allá lleva su nombre
 en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién entregar.
 
-- `telar correo` lee por ssh la Maildir, el registro del cartero y, con `correo_archivo`, la
-  casilla común: la dirección, la **bandeja** (lo que llegó a esa dirección) y lo **sin
-  entregar** de cada hilo, y las conversaciones entre agentes. En VS Code: un **✉** después
-  de la prioridad cuando el hilo tiene correo que no viste, la pestaña **✉ correo** de su
-  ficha con la bandeja, y la pantalla **✉ correo** del dashboard (tecla `c`) con todas las
-  conversaciones. Ver la bandeja la marca como leída (`telar correo leido <hilo>`): «leído»
-  es que lo viste en telar, no que lo recibió el agente.
-- Sin entregar es lo que llegó con el hilo cerrado o quedó retenido. Para saberlo, el
-  registro del cartero tiene que anotar `id=<Message-Id>` en cada línea; si no lo hace,
-  telar lo dice y no cuenta.
-- Retomar un hilo con correos sin entregar le avisa al agente cuántos hay y dónde, **sin
-  copiarlos**: ese primer mensaje llega con la voz de la persona, y un correo ajeno no puede
-  hablar con esa voz.
+- Lo que el panel mostraba del correo (✉, la pestaña de la ficha, la Maildir de la pantalla «correo»)
+  se retiró, con `telar correo` sin verbo y `correo leido`: entre los hilos de una misma persona habla el
+  bus (`telar mensaje`), y la pantalla «correo» del dashboard (tecla `c`) muestra esos mensajes. Queda
+  escribirle a otra persona, hasta que el bus cruce personas (docs/propuestas/retiro-correo-y-remotos.md):
 
 - `telar correo enviar usuario+hilo@servidor -s "asunto" [--responde "<id>"]`, con el cuerpo
   por la entrada estándar, le escribe a un hilo de otra persona u otra máquina: desde el

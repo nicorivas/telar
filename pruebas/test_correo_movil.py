@@ -34,72 +34,6 @@ class Direcciones(Prueba):
         self.assertEqual(c.extension_de("usuario@servidor"), "")
 
 
-class Registro(Prueba):
-    def test_sin_ids_no_se_saben_los_pendientes(self):
-        lineas = ["2026-09-24T12:17:58 ENTREGADO de=otro a=s asunto='x' salida=0"]
-        self.assertEqual(c.estados(lineas), ({}, False))
-        b = c.desde_json({"correos": [{"id": "<1@s>", "para": "usuario+pizza@servidor"}], "log": lineas})
-        self.assertEqual(c.pendientes(b), [])
-
-    def test_con_ids_cada_estado(self):
-        lineas = ["2026-09-24T12:17:58 ENTREGADO de=a a=s id=<1@s> asunto='x'",
-                  "2026-09-24T12:18:00 RETENIDO b no está id=<2@s> asunto='y'",
-                  "2026-09-24T12:19:00 SIN SESIÓN de=a id=<3@s> asunto='z'"]
-        estados, sabe = c.estados(lineas)
-        self.assertTrue(sabe)
-        self.assertEqual(estados, {"<1@s>": "entregado", "<2@s>": "retenido", "<3@s>": "sin sesión"})
-
-    def test_pendientes_por_hilo(self):
-        f = "Thu, 24 Sep 2026 13:00:00 -0300"
-        datos = {"log": ["2026-09-24T12:17:58 ENTREGADO de=a a=s asunto='x' salida=0 id=<1@s>"],
-                 "correos": [{"id": "<1@s>", "para": "usuario+pizza@servidor", "fecha": f},
-                             {"id": "<2@s>", "para": "usuario+pizza@servidor", "fecha": f},
-                             {"id": "<3@s>", "para": "usuario+otro@servidor", "fecha": f}]}
-        b = c.desde_json(datos)
-        por = c.por_hilo(c.pendientes(b), ["Pizza"])
-        self.assertEqual([x.id for x in por["Pizza"]], ["<2@s>"])
-
-
-    def test_lo_anterior_a_los_ids_no_se_sabe(self):
-        # el registro empezó a anotar ids a las 13:17: un correo de las 12:19 pudo entregarse
-        datos = {"log": ["2026-09-24T12:19:03 ENTREGADO de=a a=s asunto='viejo' salida=0",
-                         "2026-09-24T13:17:02 ENTREGADO de=a a=s asunto='nuevo' salida=0 id=<n@s>"],
-                 "correos": [{"id": "<v@s>", "para": "usuario+pizza@servidor", "fecha": "Thu, 24 Sep 2026 12:19:03 -0300"},
-                             {"id": "<p@s>", "para": "usuario+pizza@servidor", "fecha": "Thu, 24 Sep 2026 13:30:00 -0300"}]}
-        b = c.desde_json(datos)
-        self.assertEqual({x.id: x.estado for x in b.correos}, {"<v@s>": "", "<p@s>": "sin sesión"})
-
-
-    def test_una_copia_de_la_casilla_comun_no_se_juzga(self):
-        f = "Thu, 24 Sep 2026 17:09:23 -0300"
-        datos = {"log": ["2026-09-24T13:17:02 ENTREGADO de=a a=s asunto='x' salida=0 id=<x@s>"],
-                 "correos": [{"id": "<r@s>", "para": "<otro@servidor>", "fecha": f, "propia": False}]}
-        (x,) = c.desde_json(datos).correos
-        self.assertEqual(x.estado, "")  # iba a otro usuario: su registro no se ve desde aquí
-
-
-class Conversaciones(Prueba):
-    def test_por_referencias_aunque_falte_un_eslabon(self):
-        a = correo(id="<a>", asunto="Pizza", fecha="Thu, 24 Sep 2026 10:00:00 -0300")
-        # <b> no está: <c> la cita en References igual que a la raíz
-        cc = correo(id="<c>", asunto="Re: Pizza", responde="<b>", referencias=("<a>", "<b>"),
-                    fecha="Thu, 24 Sep 2026 12:00:00 -0300")
-        otro = correo(id="<z>", asunto="Otra cosa", fecha="Thu, 24 Sep 2026 11:00:00 -0300")
-        grupos = c.conversaciones([cc, otro, a])
-        self.assertEqual([[x.id for x in g] for g in grupos], [["<a>", "<c>"], ["<z>"]])
-
-    def test_sin_encabezados_por_asunto(self):
-        grupos = c.conversaciones([correo(asunto="Prueba"), correo(asunto="Re: Prueba")])
-        self.assertEqual(len(grupos), 1)
-
-    def test_con_id_y_sin_cabeceras_de_respuesta_tambien_por_asunto(self):
-        # `mail -s "Re: …"` responde sin In-Reply-To: el asunto es lo que queda
-        grupos = c.conversaciones([correo(id="<o@s>", asunto="Prueba 5: archivo"),
-                                   correo(id="<r@s>", asunto="Re: Prueba 5: archivo"),
-                                   correo(id="<z@s>", asunto="Otra")])
-        self.assertEqual(sorted(len(g) for g in grupos), [1, 2])
-
-
 class Movil(Prueba):
     def test_la_barra_tiene_los_rangos_y_escapa_el_nombre(self):
         b = m.barra("50# de algo", 2)
@@ -187,27 +121,3 @@ class Directorio(Prueba):
         por = {e["usuario"]: e for e in salida}
         self.assertNotIn("error", por[yo])
         self.assertIn("se descarta", por["otra"]["error"])  # lo escribí yo con el nombre de otra
-
-
-class Bandeja(Prueba):
-    def test_la_bandeja_de_un_hilo_es_solo_la_de_su_persona(self):
-        # en la casilla común también está `otra+pizza@`: no es para el Pizza de `usuario`
-        propio = correo(id="<1>", para="usuario+pizza@servidor")
-        ajeno = correo(id="<2>", para="<otra+pizza@servidor>")
-        por = c.por_hilo([propio, ajeno], ["Pizza"], "usuario")
-        self.assertEqual([x.id for x in por["Pizza"]], ["<1>"])
-
-    def test_los_leidos_se_guardan_por_hilo_y_siguen_al_renombrar(self):
-        import tempfile
-        from pathlib import Path
-
-        from telar import estado as mod_estado
-        from telar.config import Config
-
-        with tempfile.TemporaryDirectory() as tmp:
-            est = mod_estado.abrir(Config(estado=Path(tmp)))
-            est.marcar_leidos("Pizza", ["<1>", "<2>"])
-            est.marcar_leidos("Pizza", ["<2>", "<3>"])
-            self.assertEqual(est.leidos(), {"Pizza": {"<1>", "<2>", "<3>"}})
-            est.renombrar("Pizza", "Pizza 2")
-            self.assertEqual(set(est.leidos()), {"Pizza 2"})
