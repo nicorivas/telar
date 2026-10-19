@@ -17,6 +17,12 @@ workflow refuses to run if the two disagree.
 - `telar hilos` and `telar config` moved to `telar.servicios` too (`GET /hilos`, `GET /config`), and the
   panel asks the API for them. `config` keeps `gws`'s account for 10 minutes instead of asking it on every
   read (the question can take 10 s).
+- `telar tarea`, `telar bloque` and `telar resultado` moved to `telar.servicios` with their routes: a task's
+  card and its actions (`GET /tareas/{id}`, `POST /tareas/{id}/accion`), a day block, an item's detail and
+  opening a thread for a row (`/bloques/{clave}`…), a day's result and a comment on it (`/resultados/{clave}`…).
+  A service error is a complaint in the CLI and its HTTP status in the API, with the same message. The panel
+  uses the API, and falls back to the CLI only when there is no API (or it lacks the route): an action that
+  fails in the API is not retried through the CLI, since it would run twice.
 
 ### Changed
 

@@ -22,15 +22,21 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from telar import __version__
 from telar.cli import Contexto
 from telar.config import cargar as cargar_config
 from telar.config import ruta_config
+from telar.servicios import ErrorDeServicio, Pagina
+from telar.servicios import bloques as servicio_bloques
 from telar.servicios import config as servicio_config
 from telar.servicios import hilos as servicio_hilos
 from telar.servicios import hoy as servicio_hoy
+from telar.servicios import resultados as servicio_resultados
+from telar.servicios import tareas as servicio_tareas
 
 log = logging.getLogger("telar.api")
 
@@ -103,6 +109,70 @@ def get_hilos(vivos: bool = False, red: bool = False, ficha: bool = True, orden:
 def get_config(ctx: Contexto = Depends(contexto)):
     """La configuración resuelta de esta máquina (`telar config --json`)."""
     return servicio_config.resuelta(ctx)
+
+
+@app.exception_handler(ErrorDeServicio)
+async def _error_de_servicio(_req: Request, e: ErrorDeServicio):
+    """Lo que no se pudo hacer, con el mismo mensaje que daría la CLI."""
+    return JSONResponse(status_code=e.codigo, content={"detail": str(e)})
+
+
+# ── las tareas de un proveedor: su ficha y sus acciones ───────────────────────
+
+class PedidoAccion(BaseModel):
+    """Qué acción correr: por su número (`n`) o por su `rol` (hecha, fecha…), y lo escrito si la pide."""
+
+    n: int | None = None
+    rol: str = ""
+    texto: str = ""
+    proveedor: str = "tareas"
+
+
+@app.get("/tareas/{id:path}", response_model=Pagina, response_model_exclude_unset=True)
+def get_tarea(id: str, proveedor: str = "tareas", ctx: Contexto = Depends(contexto)):
+    """La ficha de una tarea, con sus acciones (`telar tarea <id> --json`)."""
+    return servicio_tareas.ficha(ctx, id, proveedor)
+
+
+@app.post("/tareas/{id:path}/accion", response_model=servicio_tareas.AccionHecha)
+def post_accion(id: str, pedido: PedidoAccion, ctx: Contexto = Depends(contexto)):
+    """Correr una acción de la ficha (`telar tarea <id> --accion N | --rol R`). El comando lo da el
+    proveedor, nunca quien pide."""
+    return servicio_tareas.accion(ctx, id, pedido.proveedor, n=pedido.n, rol=pedido.rol, texto=pedido.texto)
+
+
+# ── los bloques del día ───────────────────────────────────────────────────────
+
+@app.get("/bloques/{clave}", response_model=Pagina, response_model_exclude_unset=True)
+def get_bloque(clave: str, ctx: Contexto = Depends(contexto)):
+    """La página de un bloque del día (`telar bloque <clave> --json`)."""
+    return servicio_bloques.pagina(ctx, clave)
+
+
+@app.get("/bloques/{clave}/items/{id:path}", response_model=servicio_bloques.Detalle)
+def get_item(clave: str, id: str, ctx: Contexto = Depends(contexto)):
+    """El detalle de un ítem de un bloque: el cuerpo de un correo (`telar bloque <clave> --item <id>`)."""
+    return servicio_bloques.item(ctx, clave, id)
+
+
+@app.post("/bloques/{clave}/abrir", response_model=servicio_bloques.Abierto)
+def post_abrir(clave: str, mensaje: str = Body(...), nombre: str = Body(""), ctx: Contexto = Depends(contexto)):
+    """Un hilo nuevo con el agente y ese mensaje, para una fila del bloque (`telar bloque <clave> --abrir`)."""
+    return servicio_bloques.abrir(ctx, clave, mensaje, nombre)
+
+
+# ── lo que dejan las skills por día ──────────────────────────────────────────
+
+@app.get("/resultados/{clave}", response_model=servicio_resultados.Resultado, response_model_exclude_unset=True)
+def get_resultado(clave: str, dia: str = "", ctx: Contexto = Depends(contexto)):
+    """Lo que una skill dejó ese día (por defecto, hoy), leído donde vive (`telar resultado <clave> --json`)."""
+    return servicio_resultados.leer(ctx, clave, dia)
+
+
+@app.post("/resultados/{clave}/comentario", response_model=servicio_resultados.Comentario, response_model_exclude_unset=True)
+def post_comentario(clave: str, dia: str = Body(...), texto: str = Body(...), ctx: Contexto = Depends(contexto)):
+    """Un comentario sobre el resultado de un día, atendido donde vive (`telar resultado … --comentar`)."""
+    return servicio_resultados.comentar(ctx, clave, dia, texto)
 
 
 @app.get("/salud")

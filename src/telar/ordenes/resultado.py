@@ -19,6 +19,7 @@ import sys
 
 from telar import resultados as mod
 from telar.ordenes import _comun
+from telar.servicios import resultados as servicio
 
 AYUDA = "Lo que una skill dejó un día (el plan, por ejemplo), leído de la máquina donde vive."
 
@@ -38,13 +39,13 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja("¿sobre qué resultado? telar resultado plan [día] --comentar < texto")
         from datetime import date
 
-        r = mod.comentar(ctx.config, o.clave, o.dia or date.today().isoformat(), sys.stdin.read())
+        c = servicio.comentar(ctx, o.clave, o.dia or date.today().isoformat(), sys.stdin.read())
         if o.json:
-            _comun.escribir_json(r)
-            return 0 if r.get("ok") else 1
-        if not r.get("ok"):
-            return _comun.queja(r.get("error", "no salió"), 1)
-        print(f"se abrió «{r.get('abrio', '')}»" if r.get("abrio") else "listo")
+            _comun.escribir_json(c.model_dump(mode="json", exclude_unset=True))
+            return 0 if c.ok else 1
+        if not c.ok:
+            return _comun.queja(c.error or "no salió", 1)
+        print(f"se abrió «{c.abrio}»" if c.abrio else "listo")
         return 0
     if not o.clave:
         lista = [{"clave": r.clave, "nombre": r.nombre or r.clave, "en": r.en, "carpeta": r.carpeta}
@@ -56,7 +57,7 @@ def main(argv: list[str], ctx) -> int:
         for r in lista:
             print(f"{r['clave']:<16} {r['nombre']:<20} " + _comun.tenue(f"{r['en'] or 'aquí'} · {r['carpeta']}"))
         return 0
-    r = mod.leer(ctx.config, o.clave, o.dia)
+    r = servicio.leer(ctx, o.clave, o.dia).model_dump(mode="json", exclude_unset=True)
     if o.json:
         return _comun.escribir_json(r)
     if not r.get("ok"):

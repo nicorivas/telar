@@ -21,23 +21,12 @@ su proyecto, retomándolo si duerme; sin proyecto, el agente de `[agentes] sin_p
 
 from __future__ import annotations
 
-import subprocess
-
 from telar.ordenes import _comun
-from telar.ordenes.seccion import ESPERA, correr
+from telar.servicios import ErrorDeServicio
+from telar.servicios import tareas as servicio
+from telar.servicios.tareas import detalle_de  # noqa: F401 - quien lo importaba de aquí
 
 AYUDA = "La ficha de una tarea de un proveedor, y correr una de sus acciones."
-
-
-def detalle_de(ctx, proveedor: str) -> tuple[tuple[str, ...], str]:
-    """El comando de ficha de ese proveedor, o por qué no hay."""
-    p = next((x for x in ctx.config.proveedores_activos() if x.nombre == proveedor), None)
-    if p is None:
-        return (), f"no hay proveedor activo «{proveedor}»"
-    detalle = p.opciones.get("detalle")
-    if not isinstance(detalle, list) or not detalle or not all(isinstance(x, str) for x in detalle):
-        return (), f"el proveedor «{proveedor}» no declara `detalle`"
-    return tuple(detalle), ""
 
 
 def main(argv: list[str], ctx) -> int:
@@ -53,94 +42,19 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
-    # las tareas de un proveedor que vive en otra máquina se leen y se cambian allá (ver telar.alla):
-    # aquí hay una copia, y una acción corrida aquí la cambiaría a ella y no a las tareas
-    from telar import alla
-
-    config = getattr(ctx, "config", None)
-    proveedor = next((x for x in config.proveedores_activos() if x.nombre == o.proveedor), None) if config else None
-    en = alla.donde(config, proveedor) if proveedor is not None else ""
-    if en:
-        return alla.tarea_alla(config, en, argv)
-
-    detalle, problema = detalle_de(ctx, o.proveedor)
-    if problema:
-        return _comun.queja(problema)
-    pagina, problema = correr([w.replace("{id}", o.id) for w in detalle], f"la ficha de {o.id}")
-    if problema:
-        return _comun.queja(problema)
-
-    if o.rol:
-        # la acción por su rol: quien la pide (el ✓ de una lista) no tiene que leer la ficha antes
-        k = next((i for i, a in enumerate(pagina.get("acciones", [])) if a.get("rol") == o.rol), None)
-        if k is None:
-            return _comun.queja(f"{o.id} no tiene una acción «{o.rol}»: ábrela")
-        o.accion = k
-
-    if o.accion is None:
-        if o.json:
-            return _comun.escribir_json(pagina)
-        print(_comun.fuerte(pagina.get("titulo", o.id)))
-        for i, a in enumerate(pagina.get("acciones", [])):
-            print(f"  {i}  {a['nombre']}")
-        return 0
-
-    acciones = pagina.get("acciones", [])
-    if not 0 <= o.accion < len(acciones):
-        return _comun.queja(f"{o.id} no tiene la acción {o.accion}")
-    a = acciones[o.accion]
-    tipo = a.get("tipo", "comando")
-    if tipo != "comando":
-        # llevar al hilo y abrir un enlace los hace quien dibuja: aquí solo se dice cuál
-        resultado = {"tipo": tipo, "enlace": a.get("enlace", ""), "hecho": ""}
-        return _comun.escribir_json(resultado) if o.json else (print(resultado) or 0)
-    if a.get("pide") and not o.texto.strip() and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
-        return _comun.queja(f"«{a['nombre']}» pide texto: --texto")
-    palabras = [w.replace("{texto}", o.texto.strip()) for w in a["comando"]]
-    fila = None
-    if a.get("mensaje") and a.get("al_hilo"):
-        # adónde va el mensaje se busca ANTES del comando: si el comando cierra la tarea («✓ hecha y
-        # procesar ahora»), su proveedor ya no la lista y después no se la encontraría
-        from telar.ordenes import pendiente
-
-        fila = pendiente._buscar(ctx, _comun.tejer(ctx), o.id, proveedor=o.proveedor)
     try:
-        r = subprocess.run(palabras, capture_output=True, text=True, timeout=ESPERA, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return _comun.queja(f"«{a['nombre']}» no corrió: {e}")
-    if r.returncode != 0:
-        return _comun.queja(f"«{a['nombre']}» salió con {r.returncode}: {r.stderr.strip()[-300:]}")
-    salida = {"tipo": "comando", "hecho": a["nombre"], "salida": r.stdout.strip()[-500:], "hilo": ""}
-    if a.get("mensaje") and a.get("al_hilo"):
-        # al hilo donde se trabaja la tarea, no a uno nuevo: el de su proyecto (retomándolo si
-        # duerme) o, sin proyecto, el agente de `[agentes] sin_proyecto` (ver `telar pendiente`)
-        import io
-        import json as mod_json
-        from contextlib import redirect_stdout
-
-        from telar.ordenes import pendiente
-
-        texto = a["mensaje"].replace("{texto}", o.texto.strip())
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            codigo = pendiente.main([o.id, "--texto", texto, "--enviar", "--proveedor", o.proveedor, "--json"], ctx, fila=fila)
-        if codigo != 0:
-            return _comun.queja(f"«{a['nombre']}» se anotó, pero no pude llevarlo a su hilo")
-        try:
-            salida["hilo"] = mod_json.loads(buf.getvalue().strip().splitlines()[-1]).get("destino", "")
-        except (ValueError, IndexError):
-            salida["hilo"] = ""
-    elif a.get("mensaje"):
-        import datetime as dt
-
-        from telar.ordenes.atajo import abrir
-
-        nombre = " ".join(a.get("nombre_hilo", "").split())[:48] or f"{o.id} {dt.datetime.now():%m/%d %H:%M}"
-        problema = abrir(ctx, nombre, a["mensaje"].replace("{texto}", o.texto.strip()))
-        if problema:
-            return _comun.queja(f"«{a['nombre']}» se hizo, pero no pude abrir el hilo: {problema}")
-        salida["hilo"] = nombre
+        if o.accion is None and not o.rol:
+            pagina = servicio.ficha(ctx, o.id, o.proveedor)
+            if o.json:
+                return _comun.escribir_json(pagina.model_dump(mode="json", exclude_unset=True))
+            print(_comun.fuerte(getattr(pagina, "titulo", "") or o.id))
+            for i, a in enumerate(getattr(pagina, "acciones", None) or []):
+                print(f"  {i}  {a['nombre']}")
+            return 0
+        hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
     if o.json:
-        return _comun.escribir_json(salida)
-    print(f"{a['nombre']}: hecho")
+        return _comun.escribir_json(hecho.model_dump(mode="json", exclude_defaults=False))
+    print(f"{hecho.hecho}: hecho" if hecho.tipo == "comando" else hecho.model_dump())
     return 0

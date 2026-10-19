@@ -122,25 +122,41 @@ function socketServe(): string {
     return path.join(base, 'telar', 'serve', 'telar.sock');
 }
 
-/** Un GET a la API de telar por su socket. Sin API (no corre, o falló), `undefined`: quien llama usa
- *  la CLI, que da lo mismo (las dos son cáscaras de la misma función, `telar.servicios`). */
-function deServe<T>(ruta: string, timeout: number): Promise<Respuesta<T> | undefined> {
+/** Un pedido a la API de telar por su socket. `undefined` solo si no hay API que conteste: no corre, o
+ *  todavía no tiene esa ruta (un servidor más viejo). Entonces quien llama usa la CLI, que da lo mismo
+ *  (las dos son cáscaras de la misma función, `telar.servicios`). Si la API contesta con un error, ese
+ *  es el error: una acción no se reintenta por la CLI, porque se correría dos veces. */
+function aServe<T>(metodo: 'GET' | 'POST', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T> | undefined> {
     const sock = socketServe();
     if (!fs.existsSync(sock)) return Promise.resolve(undefined);
+    const datos = cuerpo === undefined ? undefined : JSON.stringify(cuerpo);
     return new Promise(listo => {
-        const pedido = http.get({ socketPath: sock, path: ruta, timeout }, res => {
-            let cuerpo = '';
+        const pedido = http.request({
+            socketPath: sock, path: ruta, method: metodo, timeout,
+            headers: datos === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(datos) },
+        }, res => {
+            let texto = '';
             res.setEncoding('utf8');
-            res.on('data', d => { cuerpo += d; });
+            res.on('data', d => { texto += d; });
             res.on('end', () => {
-                if (res.statusCode !== 200) { registrar(`telar serve ${ruta} → ${res.statusCode}: ${cuerpo.slice(0, 200)}`); listo(undefined); return; }
-                try { listo({ datos: JSON.parse(cuerpo) as T }); } catch { listo(undefined); }
+                let json: unknown;
+                try { json = JSON.parse(texto); } catch { json = undefined; }
+                const detalle = (json as { detail?: unknown } | undefined)?.detail;
+                if (res.statusCode === 200 && json !== undefined) { listo({ datos: json as T }); return; }
+                // la ruta no existe en esa API: como si no hubiera API
+                if (res.statusCode === 404 && detalle === 'Not Found') { listo(undefined); return; }
+                registrar(`telar serve ${metodo} ${ruta} → ${res.statusCode}: ${texto.slice(0, 200)}`);
+                listo({ error: typeof detalle === 'string' ? detalle : `la API respondió ${res.statusCode}` });
             });
         });
-        pedido.on('timeout', () => { pedido.destroy(); registrar(`telar serve ${ruta}: no respondió en ${timeout} ms`); listo(undefined); });
+        pedido.on('timeout', () => { pedido.destroy(); registrar(`telar serve ${ruta}: no respondió en ${timeout} ms`); listo({ error: 'telar serve no respondió a tiempo' }); });
+        // sin conexión (el socket quedó de una vuelta anterior): como si no hubiera API
         pedido.on('error', () => listo(undefined));
+        if (datos !== undefined) pedido.write(datos);
+        pedido.end();
     });
 }
+const deServe = <T>(ruta: string, timeout: number) => aServe<T>('GET', ruta, timeout);
 
 /** El error, en una frase que se pueda mostrar sin asustar. */
 function motivo(r: Salida, args: string[]): string {
@@ -244,13 +260,18 @@ export interface JsonResultado {
     /** si la máquina donde vive atiende comentarios sobre un día (`[resultados.<clave>] comentar`) */
     comentable?: boolean;
 }
-export const resultado = (clave: string, dia = '') =>
-    telarJson<JsonResultado>(['resultado', clave, ...(dia ? [dia] : [])], 30000);
+export async function resultado(clave: string, dia = ''): Promise<Respuesta<JsonResultado>> {
+    return await deServe<JsonResultado>(`/resultados/${encodeURIComponent(clave)}${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`, 30000)
+        ?? telarJson<JsonResultado>(['resultado', clave, ...(dia ? [dia] : [])], 30000);
+}
 
 /** Un comentario sobre el resultado de un día: lo atiende la máquina donde vive, y dice qué abrió
  *  (`telar resultado <clave> <día> --comentar`, con el texto por la entrada estándar). */
-export const comentarResultado = (clave: string, dia: string, texto: string) =>
-    conEntrada<{ ok: boolean; abrio?: string; error?: string }>(['resultado', clave, dia, '--comentar', '--json'], texto);
+export async function comentarResultado(clave: string, dia: string, texto: string): Promise<{ ok: boolean; abrio?: string; error?: string }> {
+    const r = await aServe<{ ok: boolean; abrio?: string; error?: string }>('POST', `/resultados/${encodeURIComponent(clave)}/comentario`, 90000, { dia, texto });
+    if (r) return r.datos ?? { ok: false, error: r.error };
+    return conEntrada<{ ok: boolean; abrio?: string; error?: string }>(['resultado', clave, dia, '--comentar', '--json'], texto);
+}
 
 /** Un mensaje que escribe la persona desde otra parte (el panel) a un hilo de cualquier máquina, por
  *  el bus: le llega como suyo (`telar mensaje <hilo> - --tipo persona`). */
@@ -358,10 +379,15 @@ export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; des
 export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string }
 
 /** `telar bloque <clave> --item <id>`: el detalle de un ítem (el cuerpo de un correo), al abrirlo. */
-export const bloqueItem = (clave: string, id: string) => telarJson<{ texto: string }>(['bloque', clave, '--item', id, '--json'], 70000);
+export async function bloqueItem(clave: string, id: string): Promise<Respuesta<{ texto: string }>> {
+    return await deServe<{ texto: string }>(`/bloques/${encodeURIComponent(clave)}/items/${encodeURIComponent(id)}`, 70000)
+        ?? telarJson<{ texto: string }>(['bloque', clave, '--item', id, '--json'], 70000);
+}
 
 /** `telar bloque <clave>`: la página que imprime su comando. */
-export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
+export async function bloque(clave: string): Promise<Respuesta<JsonPagina>> {
+    return await deServe<JsonPagina>(`/bloques/${encodeURIComponent(clave)}`, 90000) ?? telarJson<JsonPagina>(['bloque', clave], 90000);
+}
 
 export interface JsonPestana { nombre: string; tecla: string }
 /** La configuración resuelta: primero la API (`/config`), sin ella la CLI. */
@@ -451,14 +477,19 @@ export const app = (clave: string) => telarJson<JsonPagina>(['app', clave, '--js
 /** Guardar el orden de las pestañas del dashboard: «ahora,revisar,-plan» (con «-», oculta). */
 export const configPestanas = (valor: string) => telarJson<{ dashboard: { orden: string[]; ocultas: string[] } }>(['config', '--pestanas', valor, '--json'], 20000);
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
-export const tarea = (id: string, proveedor: string) =>
-    telarJson<JsonPagina>(['tarea', id, '--proveedor', proveedor, '--json'], 40000);
+export async function tarea(id: string, proveedor: string): Promise<Respuesta<JsonPagina>> {
+    return await deServe<JsonPagina>(`/tareas/${encodeURIComponent(id)}?proveedor=${encodeURIComponent(proveedor)}`, 40000)
+        ?? telarJson<JsonPagina>(['tarea', id, '--proveedor', proveedor, '--json'], 40000);
+}
 /** Correr la acción de una tarea por su `rol` (hecha…): un solo viaje, sin leer la ficha antes. */
-export const accionPorRol = (id: string, proveedor: string, rol: string) =>
-    telarJson<{ tipo: string; hecho: string; salida?: string; hilo?: string }>(['tarea', id, '--proveedor', proveedor, '--rol', rol, '--json'], 40000);
-export const accionTarea = (id: string, proveedor: string, n: number, texto = '') =>
-    telarJson<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>(
-        ['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
+export async function accionPorRol(id: string, proveedor: string, rol: string): Promise<Respuesta<{ tipo: string; hecho: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol })
+        ?? telarJson(['tarea', id, '--proveedor', proveedor, '--rol', rol, '--json'], 40000);
+}
+export async function accionTarea(id: string, proveedor: string, n: number, texto = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto })
+        ?? telarJson(['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
+}
 
 /** Los procesos periódicos (`telar periodicos`), de esta máquina o de `[periodicos] en`. */
 export interface JsonPeriodico {
@@ -495,8 +526,10 @@ export const atencionRemotos = () =>
     telarJson<{ cambios: { hilo: string; atencion: string }[]; errores: string[]; por?: string }>(['remotos', 'atencion', '--json'], 30000);
 export const traerRemotos = () =>
     telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[]; por?: string }>(['remotos', 'traer', '--sondeo', '--json'], 60000);
-export const abrirItem = (clave: string, mensaje: string, nombre: string) =>
-    telarJson<{ hilo: string; mensaje: string }>(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
+export async function abrirItem(clave: string, mensaje: string, nombre: string): Promise<Respuesta<{ hilo: string; mensaje: string }>> {
+    return await aServe<{ hilo: string; mensaje: string }>('POST', `/bloques/${encodeURIComponent(clave)}/abrir`, 30000, { mensaje, nombre })
+        ?? telarJson(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
+}
 export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
 /** Empuja al servidor una foto de los hilos de este laptop (`telar espejo publicar`), para verlos

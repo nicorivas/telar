@@ -19,14 +19,9 @@ en cada lectura: corre el comando del bloque con `--item <id>` al final, que imp
 
 from __future__ import annotations
 
-import json
-import subprocess
-
-import datetime as dt
-
 from telar.ordenes import _comun
-from telar.ordenes.atajo import abrir
-from telar.ordenes.seccion import correr
+from telar.servicios import ErrorDeServicio
+from telar.servicios import bloques as servicio
 
 AYUDA = "Lo que muestra un bloque del día: corre su comando y devuelve su página."
 
@@ -42,43 +37,31 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
-    bloques = {b.clave: b for b in ctx.config.bloques}
     if not o.clave:
-        for b in bloques.values():
+        for b in ctx.config.bloques:
             print(f"{b.clave}  {b.nombre}  " + _comun.tenue(" ".join(b.comando)))
-        if not bloques:
+        if not ctx.config.bloques:
             print(_comun.tenue("no hay bloques: se declaran en la configuración, [bloques.<clave>]"))
         return 0
-    b = bloques.get(o.clave)
-    if b is None:
-        return _comun.queja(f"no hay bloque «{o.clave}»")
-    if o.abrir:
-        nombre = " ".join(o.nombre.split())[:48] or f"{b.nombre} {dt.datetime.now():%m/%d %H:%M}"
-        problema = abrir(ctx, nombre, o.abrir)
-        if problema:
-            return _comun.queja(problema)
-        if o.json:
-            return _comun.escribir_json({"hilo": nombre, "mensaje": o.abrir})
-        print(f"{nombre} · {o.abrir}")
-        return 0
-    if o.item:
-        try:
-            r = subprocess.run([*b.comando, "--item", o.item], capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
-            detalle = json.loads(r.stdout) if r.returncode == 0 else None
-        except (OSError, subprocess.TimeoutExpired, ValueError) as e:
-            return _comun.queja(f"el detalle de {o.item} no corrió: {e}")
-        if not isinstance(detalle, dict) or not isinstance(detalle.get("texto"), str):
-            return _comun.queja(f"el bloque «{o.clave}» no dio el detalle de {o.item}: {r.stderr.strip()[-200:]}")
-        if o.json:
-            return _comun.escribir_json({"texto": detalle["texto"]})
-        print(detalle["texto"])
-        return 0
-    datos, problema = correr(b.comando, f"el bloque «{o.clave}»")
-    if problema:
-        return _comun.queja(problema)
+    try:
+        if o.abrir:
+            r = servicio.abrir(ctx, o.clave, o.abrir, o.nombre)
+            if o.json:
+                return _comun.escribir_json(r.model_dump(mode="json"))
+            print(f"{r.hilo} · {r.mensaje}")
+            return 0
+        if o.item:
+            d = servicio.item(ctx, o.clave, o.item)
+            if o.json:
+                return _comun.escribir_json(d.model_dump(mode="json"))
+            print(d.texto)
+            return 0
+        pagina = servicio.pagina(ctx, o.clave)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
     if o.json:
-        return _comun.escribir_json(datos)
-    for bl in datos.get("bloques", []):
+        return _comun.escribir_json(pagina.model_dump(mode="json", exclude_unset=True))
+    for bl in pagina.bloques:
         for x in bl.get("items", []):
             print(f"{x.get('marca', '·'):2} {x.get('fecha', '')[11:16]}  {x.get('texto', '')}  {x.get('titulo', '')}")
     return 0

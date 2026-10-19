@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+
+import json
+
 import io
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
@@ -65,6 +69,12 @@ class EnOtraMaquina(Prueba):
     def test_telar_tarea_se_reenvia_si_el_proveedor_vive_alla(self):
         from telar.ordenes import tarea
 
-        with mock.patch.object(alla, "tarea_alla", return_value=0) as reenvio:
-            tarea.main(["T7", "--accion", "1"], SimpleNamespace(config=self.cfg))
-        self.assertEqual(reenvio.call_args[0][1:], ("servidor", ["T7", "--accion", "1"]))
+        from telar import bus as mod_bus
+
+        respuesta = {"ok": True, "codigo": 0, "salida": '{"tipo": "comando", "hecho": "✓ hecha"}'}
+        with mock.patch.object(mod_bus, "pedir", return_value=respuesta) as pedir, redirect_stdout(io.StringIO()) as salida:
+            codigo = tarea.main(["T7", "--accion", "1", "--json"], SimpleNamespace(config=self.cfg))
+        self.assertEqual(codigo, 0)
+        self.assertEqual(pedir.call_args[0][1:3], ("servidor", "tarea"))
+        self.assertEqual(pedir.call_args[0][3]["argv"], ["T7", "--proveedor", "tareas", "--accion", "1", "--json"])
+        self.assertEqual(json.loads(salida.getvalue())["hecho"], "✓ hecha")

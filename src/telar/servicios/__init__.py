@@ -9,3 +9,25 @@ Los modelos (Pydantic) son el contrato: lo que `telar <orden> --json` imprime y 
 es el mismo objeto, serializado igual. Se migran orden por orden; las que todavía no están aquí siguen
 con su `main` de siempre (ver docs/propuestas/dashboard-fuera-de-vscode.md).
 """
+
+from pydantic import BaseModel, ConfigDict
+
+
+class ErrorDeServicio(Exception):
+    """Lo pedido no se puede hacer, con un mensaje para la persona. La CLI lo dice como queja y sale con
+    error; la API responde con `codigo` (404 si no existe, 400 si el pedido no sirve, 502 si un
+    programa de afuera falló)."""
+
+    def __init__(self, mensaje: str, codigo: int = 400) -> None:
+        super().__init__(mensaje)
+        self.codigo = codigo
+
+
+class Pagina(BaseModel):
+    """Una página: la de una sección, la de un bloque del día o la ficha de una tarea (docs/contratos.md,
+    «telar seccion»). La arma un programa de afuera; telar la valida y la entrega como viene."""
+
+    model_config = ConfigDict(extra="allow")
+
+    titulo: str = ""
+    bloques: list[dict] = []

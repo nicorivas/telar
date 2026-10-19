@@ -128,3 +128,60 @@ class CuentaDeGws(Prueba):
             self.assertEqual(preguntar.call_count, 1)
             self.assertEqual(sc._cuenta_gws("otro-gws"), ("yo@ejemplo.org", True))  # otro programa: se pregunta
             self.assertEqual(preguntar.call_count, 2)
+
+
+@unittest.skipIf(api is None, "sin fastapi")
+class TareasBloquesResultados(Prueba):
+    """Las rutas de tareas, bloques y resultados: cáscaras de sus servicios, y los errores con su código."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+        self.c = TestClient(api.app)
+
+    def test_un_error_del_servicio_es_su_codigo_con_el_mensaje_de_la_cli(self):
+        from telar.servicios import ErrorDeServicio
+
+        with mock.patch.object(api.servicio_tareas, "ficha", side_effect=ErrorDeServicio("no hay proveedor activo «x»", 404)):
+            r = self.c.get("/tareas/T7", params={"proveedor": "x"})
+        self.assertEqual((r.status_code, r.json()), (404, {"detail": "no hay proveedor activo «x»"}))
+
+    def test_un_id_con_lo_que_sea_llega_entero(self):
+        from telar.servicios import Pagina
+
+        with mock.patch.object(api.servicio_tareas, "ficha", return_value=Pagina(titulo="x")) as ficha:
+            self.c.get("/tareas/2026-10-05 lectura·rara", params={"proveedor": "lecturas"})
+        self.assertEqual(ficha.call_args[0][1:], ("2026-10-05 lectura·rara", "lecturas"))
+
+    def test_una_accion_llega_con_su_rol_o_su_numero_y_su_texto(self):
+        from telar.servicios import tareas as st
+
+        hecha = st.AccionHecha(tipo="comando", hecho="✓ hecha")
+        with mock.patch.object(api.servicio_tareas, "accion", return_value=hecha) as accion:
+            r = self.c.post("/tareas/T7/accion", json={"rol": "hecha"})
+            self.c.post("/tareas/T7/accion", json={"n": 2, "texto": "sigue viva", "proveedor": "tareas"})
+        self.assertEqual(r.json()["hecho"], "✓ hecha")
+        self.assertEqual(accion.call_args_list[0].kwargs, {"n": None, "rol": "hecha", "texto": ""})
+        self.assertEqual(accion.call_args_list[1].kwargs, {"n": 2, "rol": "", "texto": "sigue viva"})
+
+    def test_la_cli_y_la_api_dan_la_misma_pagina_de_un_bloque(self):
+        from telar.ordenes import bloque as orden
+        from telar.servicios import Pagina
+        from telar.servicios import bloques as sb
+
+        pagina = Pagina(titulo="correo", bloques=[{"titulo": "hoy", "items": [{"texto": "hola", "id": "1a"}]}], extra=True)
+        with mock.patch.object(sb, "pagina", return_value=pagina):
+            salida = io.StringIO()
+            with redirect_stdout(salida):
+                orden.main(["correo", "--json"], SimpleNamespace(config=SimpleNamespace(bloques=())))
+            self.assertEqual(json.loads(salida.getvalue()), self.c.get("/bloques/correo").json())
+
+    def test_un_comentario_va_al_servicio_con_su_dia(self):
+        from telar.servicios import resultados as sr
+
+        with mock.patch.object(api.servicio_resultados, "comentar", return_value=sr.Comentario(ok=True, abrio="✎ plan")) as comentar:
+            r = self.c.post("/resultados/plan/comentario", json={"dia": "2026-10-19", "texto": "falta algo"})
+        self.assertEqual(r.json(), {"ok": True, "abrio": "✎ plan"})
+        self.assertEqual(comentar.call_args[0][1:], ("plan", "2026-10-19", "falta algo"))

@@ -18,8 +18,9 @@ ACCION = {"nombre": "escribirle", "pide": "qué le dices", "comando": ["todo", "
 class LoEscritoLlegaAlHilo(Prueba):
     def correr(self, accion, *argv):
         corrido, abierto = [], []
-        with mock.patch.object(tarea, "detalle_de", return_value=(("x",), "")), \
-                mock.patch.object(tarea, "correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
+        with mock.patch("telar.servicios.tareas._alla", return_value=""), \
+                mock.patch("telar.servicios.tareas.detalle_de", return_value=(("x",), "")), \
+                mock.patch("telar.ordenes.seccion.correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
                 mock.patch("subprocess.run", side_effect=lambda w, **k: corrido.append(w) or SimpleNamespace(returncode=0, stdout="", stderr="")), \
                 mock.patch("telar.ordenes.atajo.abrir", side_effect=lambda ctx, n, m: abierto.append((n, m)) or ""), \
                 redirect_stdout(io.StringIO()):
@@ -63,8 +64,9 @@ class ProcesarAhoraVaASuHilo(Prueba):
             print('{"destino": "faro"}')
             return 0
 
-        with mock.patch.object(tarea, "detalle_de", return_value=(("x",), "")), \
-                mock.patch.object(tarea, "correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
+        with mock.patch("telar.servicios.tareas._alla", return_value=""), \
+                mock.patch("telar.servicios.tareas.detalle_de", return_value=(("x",), "")), \
+                mock.patch("telar.ordenes.seccion.correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
                 mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace()), \
                 mock.patch("telar.ordenes.pendiente._buscar", side_effect=buscar), \
                 mock.patch("telar.ordenes.pendiente.main", side_effect=llevar), \
@@ -84,8 +86,9 @@ class PorSuRol(Prueba):
         acciones = [{"nombre": "nota", "comando": ["todo", "nota", "T7", "{texto}"], "pide": "qué"},
                     {"nombre": "✓ hecha", "comando": ["todo", "done", "T7"], "rol": "hecha", "confirmar": True}]
         corrido = []
-        with mock.patch.object(tarea, "detalle_de", return_value=(("x",), "")), \
-                mock.patch.object(tarea, "correr", return_value=({"titulo": "T7", "acciones": acciones}, "")), \
+        with mock.patch("telar.servicios.tareas._alla", return_value=""), \
+                mock.patch("telar.servicios.tareas.detalle_de", return_value=(("x",), "")), \
+                mock.patch("telar.ordenes.seccion.correr", return_value=({"titulo": "T7", "acciones": acciones}, "")), \
                 mock.patch("subprocess.run", side_effect=lambda w, **k: corrido.append(w) or SimpleNamespace(returncode=0, stdout="", stderr="")), \
                 redirect_stdout(io.StringIO()), mock.patch("sys.stderr", io.StringIO()):
             codigo = tarea.main(["T7", *argv], SimpleNamespace())
