@@ -249,6 +249,8 @@ class Bus:
     persona: str = ""
     #: hilos que otra máquina no puede leer (`telar hilo leer --maquina`), por nombre o carpeta, con `*`
     no_leer: tuple[str, ...] = ()
+    #: dónde caen los archivos que otra máquina manda (`telar archivo`); vacío, `[enlace] entrada` o ~/telar-entrada
+    entrada: str = ""
     #: cómo se llama esta máquina en el bus; vacío es su nombre de red, corto.
     maquina: str = ""
 
@@ -897,7 +899,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "bus" in datos:
         cuerpo = _tabla(datos["bus"], "bus")
-        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "no_leer"}
+        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "no_leer", "entrada"}
         if sobra:
             raise ErrorDeConfig(f"bus.{sorted(sobra)[0]}: no existe")
         valores = {}
@@ -905,6 +907,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         if not isinstance(no_leer_bus, list) or not all(isinstance(v, str) for v in no_leer_bus):
             raise ErrorDeConfig(f"bus.no_leer: se esperaba una lista de patrones, llegó {no_leer_bus!r}")
         valores["no_leer"] = tuple(v.strip() for v in no_leer_bus if v.strip())
+        entrada_bus = cuerpo.get("entrada", "")
+        if not isinstance(entrada_bus, str):
+            raise ErrorDeConfig(f"bus.entrada: se esperaba una carpeta, llegó {entrada_bus!r}")
+        valores["entrada"] = entrada_bus.strip()
         for clave in ("url", "token", "persona", "maquina"):
             v = cuerpo.get(clave, "")
             if not isinstance(v, str):

@@ -489,8 +489,10 @@ def marcar_revision(eq: Equipo, ident: str, quien: str = "gestion") -> tuple[dic
 
 
 def avisar(titulo: str, texto: str) -> None:
-    """Una notificación al laptop por la puerta (`telar enlace notificar`). Nunca lanza."""
+    """Un aviso en las otras máquinas de su dueño (el laptop), por el bus (telar.entrega). Nunca lanza."""
     try:
-        subprocess.run(["telar", "enlace", "notificar", texto, "--titulo", titulo], capture_output=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired):
+        from telar import entrega
+
+        entrega.aviso(mod_config.cargar(), texto, titulo=titulo)
+    except Exception:  # noqa: BLE001 - un aviso que no sale no puede tumbar la sugerencia
         pass

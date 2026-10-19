@@ -196,6 +196,8 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tipo"), cb=self._tipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "periodicos"), cb=self._periodicos)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "equipo"), cb=self._equipo)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "aviso"), cb=self._aviso)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo"), cb=self._archivo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -511,6 +513,18 @@ class Nodo:
             return alla.tarea_aqui(argv, "equipo")
 
         await self._responder(m, correr)
+
+    async def _aviso(self, m) -> None:
+        """Un aviso en la pantalla de esta máquina, que manda otra (telar.entrega)."""
+        from telar import entrega
+
+        await self._responder(m, entrega.recibir_aviso)
+
+    async def _archivo(self, m) -> None:
+        """Un archivo que manda otra máquina, a la carpeta de entrada de esta (telar.entrega)."""
+        from telar import entrega
+
+        await self._responder(m, lambda p: entrega.recibir_archivo(self.config, p))
 
     async def _notas(self, m) -> None:
         from telar import notas
