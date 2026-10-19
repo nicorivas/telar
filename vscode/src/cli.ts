@@ -228,7 +228,7 @@ export const escribirComoPersona = (hilo: string, texto: string, de: string) =>
     conEntrada<{ ok?: boolean; id?: string; error?: string }>(['mensaje', hilo, '-', '--tipo', 'persona', '--de', de, '--json'], texto);
 
 /** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`). */
-export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }[] }
+export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string }[] }
 export const espejos = () => telarJson<{ espejos: JsonEspejo[] }>(['espejo', 'ver', '--json'], 15000);
 
 /** Una orden de telar con un texto por su entrada estándar, y su JSON. */
