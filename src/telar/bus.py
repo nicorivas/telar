@@ -236,21 +236,39 @@ def estados(config) -> dict:
         try:
             js = nc.jetstream()
             await asegurar(js)
-            kv = await js.key_value(ESTADO)
+            await js.key_value(ESTADO)
+            # el último valor de cada clave de esta persona, de una vez: un consumidor efímero sobre el
+            # stream del almacén, filtrado por su prefijo. Pedirlas de a una (`kv.get`) era un viaje por
+            # hilo, y con cien hilos y la red de Tailscale se pasaba del plazo
+            from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+
+            sub = await js.pull_subscribe(
+                f"$KV.{ESTADO}.{persona(config)}.>", stream=f"KV_{ESTADO}",
+                config=ConsumerConfig(deliver_policy=DeliverPolicy.LAST_PER_SUBJECT, ack_policy=AckPolicy.NONE,
+                                      inactive_threshold=30.0, mem_storage=True))
             salida = {}
             try:
-                claves = await kv.keys()
-            except Exception:  # noqa: BLE001 - un almacén vacío no tiene claves
-                claves = []
-            for k in claves:
-                if not k.startswith(persona(config) + "."):
-                    continue
-                e = await kv.get(k)
+                while True:
+                    try:
+                        lote = await sub.fetch(batch=256, timeout=2)
+                    except asyncio.TimeoutError:
+                        break
+                    for r in lote:
+                        if (r.headers or {}).get("KV-Operation") in ("DEL", "PURGE"):
+                            continue  # borrada: el hilo ya no está
+                        k = r.subject.removeprefix(f"$KV.{ESTADO}.")
+                        try:
+                            d = json.loads(r.data)
+                            salida[d.get("nombre") or k] = d
+                        except (ValueError, AttributeError):
+                            continue
+                    if not lote or lote[-1].metadata.num_pending == 0:
+                        break
+            finally:
                 try:
-                    d = json.loads(e.value)
-                    salida[d.get("nombre") or k] = d
-                except (ValueError, AttributeError):
-                    continue
+                    await sub.unsubscribe()
+                except Exception:  # noqa: BLE001 - el consumidor efímero se borra solo
+                    pass
             return salida
         finally:
             await nc.close()
@@ -260,7 +278,7 @@ def estados(config) -> dict:
     except ErrorDeBus:
         raise
     except Exception as e:  # noqa: BLE001
-        raise ErrorDeBus(f"no pude leer el estado del bus: {e}") from e
+        raise ErrorDeBus(f"no pude leer el estado del bus: {e or type(e).__name__}") from e
 
 
 def tema_cambio(config, tema: str = "*", quien: str = "") -> str:
@@ -288,22 +306,59 @@ def anunciar(config, tema: str) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
 
 
+# ── la conexión del nodo, para los pedidos de este proceso ──
+#
+# En `telar serve --nodo`, el nodo y la API viven en el mismo proceso: el nodo tiene una conexión al bus
+# abierta todo el tiempo, y los pedidos de la API (que corren en sus hilos de trabajo) la usan en vez de
+# abrir y cerrar una por pedido. Fuera de ese proceso (una orden suelta), cada pedido abre la suya.
+
+_viva: tuple | None = None  # (conexión, su bucle)
+
+
+def registrar_conexion(nc, bucle) -> None:
+    """La conexión abierta del nodo de este proceso (o None al cerrarla)."""
+    global _viva
+    _viva = (nc, bucle) if nc is not None else None
+
+
+def _conexion_viva():
+    """(conexión, bucle) si hay una abierta y se puede usar desde este hilo; si no, None."""
+    import threading
+
+    if _viva is None:
+        return None
+    nc, bucle = _viva
+    if not getattr(nc, "is_connected", False) or bucle.is_closed() or not bucle.is_running():
+        return None
+    # desde el hilo del propio bucle no se puede esperar una corrutina suya: ahí, una conexión aparte
+    if getattr(bucle, "_thread_id", None) == threading.get_ident():
+        return None
+    return nc, bucle
+
+
 def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30) -> dict:
     """Un pedido con respuesta al nodo de otra máquina (`rpc.<persona>.<maquina>.<verbo>`). Siempre
     devuelve un dict con `ok`; si nadie responde a tiempo, `ok: False` con el motivo."""
     if not hay_bus(config):
         return {"ok": False, "error": "no hay bus: [bus] url en la configuración"}
+    tema, cuerpo = tema_rpc(config, a_maquina, verbo), json.dumps(datos, ensure_ascii=False).encode()
+
+    async def _por(nc):
+        r = await nc.request(tema, cuerpo, timeout=espera)
+        return json.loads(r.data)
 
     async def _pedir():
         nc = await conectar(config)
         try:
-            r = await nc.request(tema_rpc(config, a_maquina, verbo), json.dumps(datos, ensure_ascii=False).encode(),
-                                 timeout=espera)
-            return json.loads(r.data)
+            return await _por(nc)
         finally:
             await nc.close()
 
     try:
+        viva = _conexion_viva()
+        if viva is not None:
+            nc, bucle = viva
+            return asyncio.run_coroutine_threadsafe(asyncio.wait_for(_por(nc), espera + 5), bucle).result(espera + 10)
         return asyncio.run(asyncio.wait_for(_pedir(), espera + 5))
     except ErrorDeBus as e:
         return {"ok": False, "error": str(e)}

@@ -5,6 +5,9 @@
     telar serve --puerto 8771       en TCP, solo en 127.0.0.1 (para probar; en una máquina compartida,
                                     cualquier usuario de ella alcanzaría el puerto)
     telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
+    telar serve --nodo              además, el nodo del bus (lo que hace `telar nodo`), en el mismo proceso:
+                                    una máquina, un proceso; y los pedidos al bus de la API van por su
+                                    conexión, que queda abierta
 
 La página del equipo es **otra app** (telar.api_equipo), en otro puerto: con la llave de una persona no se
 alcanza ninguna ruta de esta API. Mismo proceso, nada compartido entre las dos salvo los archivos.
@@ -31,6 +34,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--socket", default="", help="el socket Unix (por defecto, <estado>/serve.sock)")
     p.add_argument("--puerto", type=int, default=0, help="en TCP, en 127.0.0.1, en vez del socket")
     p.add_argument("--equipo", action="store_true", help="además, la página del equipo ([equipo]), en Tailscale")
+    p.add_argument("--nodo", action="store_true", help="además, el nodo del bus (`telar nodo`), en el mismo proceso")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -55,8 +59,17 @@ def main(argv: list[str], ctx) -> int:
         host = ip_de_tailscale() or "127.0.0.1"
         equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
         print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
+    nodo = None
+    if o.nodo:
+        from telar import bus as mod_bus
+        from telar.ordenes.nodo import Nodo
+
+        if not mod_bus.hay_bus(ctx.config):
+            return _comun.queja("--nodo: no hay bus ([bus] url en la configuración)")
+        nodo = Nodo(ctx)
+        print("telar serve: con el nodo del bus", flush=True)
     if o.puerto:
-        _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo)
+        _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo, nodo)
         return 0
     sock = Path(o.socket).expanduser() if o.socket else api.socket_por_defecto()
     # solo su dueño entra a la carpeta del socket: uvicorn le pone al socket mismo permisos para todos
@@ -66,24 +79,29 @@ def main(argv: list[str], ctx) -> int:
     if sock.exists():
         sock.unlink()  # uno que quedó de una vuelta anterior
     print(f"telar serve: {sock}", flush=True)
-    _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo)
+    _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo, nodo)
     return 0
 
 
-def _correr(uvicorn, principal, equipo) -> None:
-    """La API y, si se pidió, la página del equipo: dos servidores en el mismo bucle. Si uno se cae, se cae el
-    proceso entero (y el servicio lo levanta): uno a medias no sirve."""
+def _correr(uvicorn, principal, equipo, nodo=None) -> None:
+    """La API y, si se pidieron, la página del equipo y el nodo del bus: todo en el mismo bucle. Si uno se
+    cae, se cae el proceso entero (y el servicio lo levanta): uno a medias no sirve."""
     import asyncio
 
     servidores = [uvicorn.Server(principal), *([uvicorn.Server(equipo)] if equipo else [])]
 
     async def todos():
         tareas = [asyncio.create_task(s.serve()) for s in servidores]
+        if nodo is not None:
+            tareas.append(asyncio.create_task(nodo.correr()))
         hecho, _ = await asyncio.wait(tareas, return_when=asyncio.FIRST_COMPLETED)
         for s in servidores:
             s.should_exit = True
+        if nodo is not None:
+            tareas[-1].cancel()  # el nodo no mira should_exit: se le cancela
         await asyncio.gather(*tareas, return_exceptions=True)
         for t in hecho:
-            t.result()
+            if not t.cancelled():
+                t.result()
 
     asyncio.run(todos())

@@ -231,7 +231,11 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    Quedan aparte `periodicos` y `correo`, que desde el laptop van al servidor por ssh: pasan cuando ese
    reenvío pase al bus.
 2. **El nodo, adentro del proceso único**: ya es Python, asyncio y NATS; una máquina queda con un
-   proceso menos al tiro.
+   proceso menos al tiro. Hecho (19-oct): `telar serve --nodo` corre el nodo en el mismo bucle que la API
+   (y la página del equipo), y los pedidos al bus de la API van por la conexión del nodo, que queda
+   abierta: del laptop al servidor, la bandeja del equipo pasó de 1,07 s a 0,34 s y los periódicos a 0,37
+   s. `telar-nodo` queda para quien prefiera el nodo aparte. Leer el estado de los hilos del bus y su
+   registro dejó de ser un viaje por clave (un consumidor efímero, de una vez).
 3. **Las vistas, al navegador**: `cli.ts` llama a la API en vez de abrir procesos; `hoy.ts` e
    `hilos.ts` casi no cambian, porque ya hablan por `anfitrion` y `superficie`.
 4. **Las terminales, a Python**, y se retira Node.

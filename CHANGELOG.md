@@ -28,6 +28,10 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `telar serve --nodo` runs the bus node in the same process as the API: one process per machine, and the
+  API's bus requests go over the node's open connection instead of opening one each (laptop → server:
+  1.07 s → 0.34 s). Reading the bus state (`telar nodo estado`, `telar hilos --red`) is one batch instead
+  of a request per key (3 s for 107 threads, where it used to time out).
 - `telar correo` only sends now (`telar correo enviar`, to another person); reading the Maildir over ssh
   (`telar correo`, `correo leido`, the mail notice when resuming a remote thread) is gone.
 - Retired what the bus replaced: the door (`telar enlace`, `[enlaces]`; `[enlace] entrada|no_leer` still

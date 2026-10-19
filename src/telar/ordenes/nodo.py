@@ -181,6 +181,8 @@ class Nodo:
 
     async def correr(self, *, una_vez: bool = False) -> None:
         nc = await mod_bus.conectar(self.config, para_siempre=not una_vez)
+        # los pedidos al bus de este proceso (la API, en `telar serve --nodo`) van por esta conexión
+        mod_bus.registrar_conexion(nc, asyncio.get_running_loop())
         js = nc.jetstream()
         await mod_bus.asegurar(js)
         kv = await js.key_value(mod_bus.ESTADO)
@@ -217,6 +219,7 @@ class Nodo:
             for t in (vigia, vigia_espejo):
                 if t:
                     t.cancel()
+            mod_bus.registrar_conexion(None, None)
             await nc.close()
 
     async def _vuelta(self, js, kv) -> None:

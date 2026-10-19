@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -137,3 +138,34 @@ class ContraUnServidor(Prueba):
         cfg = mod_config.Config(bus=mod_config.Bus(url="nats://127.0.0.1:1"))
         with self.assertRaises(m.ErrorDeBus):
             m.enviar(cfg, "Faro", "x", de="y")
+
+
+class LaConexionDelNodo(unittest.TestCase):
+    """En `telar serve --nodo`, los pedidos de la API van por la conexión abierta del nodo."""
+
+    def test_un_pedido_desde_otro_hilo_usa_la_conexion_viva(self):
+        import asyncio
+        import threading
+
+        from telar import bus as m
+
+        class Falsa:
+            is_connected = True
+
+            async def request(self, tema, cuerpo, timeout):
+                return type("R", (), {"data": json.dumps({"ok": True, "tema": tema}).encode()})()
+
+        bucle = asyncio.new_event_loop()
+        hilo = threading.Thread(target=bucle.run_forever, daemon=True)
+        hilo.start()
+        try:
+            m.registrar_conexion(Falsa(), bucle)
+            config = type("C", (), {"bus": type("B", (), {"url": "nats://x", "persona": "ana", "maquina": "laptop", "token": ""})()})()
+            with mock.patch.object(m, "conectar", side_effect=AssertionError("no debía abrir otra")):
+                r = m.pedir(config, "servidor", "ping", {})
+            self.assertEqual(r, {"ok": True, "tema": "rpc.ana.servidor.ping"})
+        finally:
+            m.registrar_conexion(None, None)
+            bucle.call_soon_threadsafe(bucle.stop)
+            hilo.join(2)
+            bucle.close()
