@@ -5,19 +5,16 @@ from __future__ import annotations
 import json
 import os
 import stat
-import sys
 import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from comun import Prueba, RAIZ  # noqa: E402  (pone src/ en el camino)
+from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import config as mod_config
 from telar import espejo as m
-from telar.cli import Contexto
-from telar.config import Remoto
 
 
 def hilo(nombre="Faro", **extra):
@@ -129,39 +126,3 @@ class LaFoto(Prueba):
             self.assertNotIn(prohibido, texto)
         self.assertEqual(f["hilos"][0]["resumen"], "Cliente · A")
         m.validar(f, "laptop")  # lo que sale, entra
-
-
-class DeExtremoAExtremo(ConCarpeta):
-    """`publicar` en un «laptop» y `recibir` en un «servidor», con un ssh de mentira que corre
-    la orden aquí mismo: prueba el guion completo (citado, con el PATH, por la entrada estándar)."""
-
-    def test_publicar_llega_al_servidor(self):
-        bin_ = self.base / "bin"
-        bin_.mkdir()
-        (bin_ / "ssh").write_text('#!/bin/sh\nwhile [ "$1" = "-o" ]; do shift 2; done\nshift\nexec sh -c "$*"\n')
-        (bin_ / "telar").write_text(f'#!/bin/sh\nPYTHONPATH="{RAIZ / "src"}" exec "{sys.executable}" -m telar "$@"\n')
-        for f in ("ssh", "telar"):
-            (bin_ / f).chmod(0o755)
-        servidor = self.base / "servidor"
-        env = {"PATH": f"{bin_}:{os.environ['PATH']}", "HOME": str(self.base), "TELAR_ESTADO": str(servidor)}
-        remoto = Remoto(nombre="casa", destino="nico@servidor")
-        config = mod_config.Config(raiz=self.base, estado=self.base / "estado-laptop", remotos=(remoto,))
-        from telar.ordenes import espejo as orden
-        with mock.patch.dict(os.environ, env):
-            error = orden.publicar_una_vez(Contexto(config=config), remoto, "mi-laptop")
-        self.assertEqual(error, "")
-        llegada = json.loads((servidor / "espejos" / "mi-laptop.json").read_text())
-        self.assertEqual(llegada["maquina"], "mi-laptop")
-        self.assertIn("hilos", llegada)
-
-    def test_un_ssh_que_falla_se_dice_y_no_levanta_nada(self):
-        bin_ = self.base / "bin"
-        bin_.mkdir()
-        (bin_ / "ssh").write_text('#!/bin/sh\necho "Connection timed out" >&2\nexit 255\n')
-        (bin_ / "ssh").chmod(0o755)
-        remoto = Remoto(nombre="casa", destino="nico@servidor")
-        config = mod_config.Config(raiz=self.base, estado=self.base / "e", remotos=(remoto,))
-        from telar.ordenes import espejo as orden
-        with mock.patch.dict(os.environ, {"PATH": f"{bin_}:{os.environ['PATH']}"}):
-            error = orden.publicar_una_vez(Contexto(config=config), remoto, "mi-laptop")
-        self.assertIn("Connection timed out", error)

@@ -69,8 +69,6 @@ def main(argv: list[str], ctx) -> int:
         propio = next((a for a in mod_agentes.descubrir(ctx.config) if o.agente and o.agente in (a.clave, a.nombre)), None)
         en = (propio.en if propio and propio.en else "") or ctx.config.agentes_en
     if en and en != "aqui":
-        if any(e.nombre == en for e in ctx.config.enlaces):
-            return _por_la_puerta(ctx, en, o)
         from telar.ordenes.periodicos import en_otra
 
         return en_otra(ctx, en, "encargar", argv)
@@ -104,23 +102,4 @@ def main(argv: list[str], ctx) -> int:
         return _comun.escribir_json(r)
     print(f"{agente.nombre}: {r['estado']}" + (f" ({r['en_cola']} en cola)" if r.get("en_cola") else "")
           + (f" · cerré {', '.join(r['cerrados'])}" if r.get("cerrados") else ""))
-    return 0
-
-
-def _por_la_puerta(ctx, nombre: str, o) -> int:
-    """El agente vive al otro lado de la puerta (`[enlaces]`): el servidor le encarga al laptop."""
-
-    from telar import enlace as mod_enlace
-
-    enlace = next(e for e in ctx.config.enlaces if e.nombre == nombre)
-    if o.cola or o.liberar:
-        return _comun.queja("por la puerta solo se encarga: la cola se mira en esa máquina")
-    texto = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
-    r = mod_enlace.llamar(enlace, "encargar", [o.agente], texto.encode("utf-8"))
-    if not r.get("ok"):
-        return _comun.queja(f"{enlace.nombre}: {r.get('error', 'no salió')}")
-    r = {k: v for k, v in r.items() if k not in ("ok", "verbo")}
-    if o.json:
-        return _comun.escribir_json(r)
-    print(f"{r.get('hilo', o.agente)}: {r.get('estado', '')} (en {enlace.nombre})" + (f" ({r['en_cola']} en cola)" if r.get("en_cola") else ""))
     return 0

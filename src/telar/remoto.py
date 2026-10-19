@@ -137,35 +137,6 @@ def conversacion_alla(remoto: Remoto, hilo: str, candidatas) -> tuple[str | None
 
 
 #: lo que corre allá para saber en qué anda cada hilo: el semáforo que anotan sus ganchos.
-_ATENCIONES = r"""
-import json, os
-estado = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "telar")
-try:
-    print(json.dumps(json.load(open(os.path.join(estado, "atencion.json")))))
-except (OSError, ValueError):
-    print("{}")
-"""
-
-
-def atenciones(remoto: Remoto) -> tuple[dict | None, str]:
-    """El semáforo de los hilos de allá: {hilo: {"atencion", "desde"}}, o (None, error)."""
-    import json
-
-    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
-             shlex.join(["python3", "-c", _ATENCIONES])]
-    try:
-        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return None, f"{remoto.destino} no responde: {e}"
-    if r.returncode != 0:
-        return None, (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
-    try:
-        datos = json.loads(r.stdout or "{}")
-    except ValueError:
-        return None, "allá no devolvió JSON"
-    return (datos if isinstance(datos, dict) else {}), ""
-
-
 def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tuple[str, str]:
     """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o "")."""
     try:
@@ -434,45 +405,6 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
     if hilo is not None:
         tel.mux.ir(hilo.id)
     return sesion
-
-
-def sesiones(remoto: Remoto, config=None) -> tuple[list[tuple[str, str]], str]:
-    """Los hilos que hay allá: (dirección, nombre del hilo), y un error o "".
-
-    Las ventanas de la sesión del telar de allá que tienen marca (`@telar_id`), y las sesiones
-    propias de antes: las que se llaman `telar-…` y tienen `@telar_hilo`.
-    """
-    from telar import movil
-
-    ventanas: list[tuple[str, str]] = []
-    p = principal(config, remoto) if config is not None else remoto.sesion
-    if p:
-        formato = SEP_FORMATO.join(["#{window_id}", f"#{{{movil.OPCION_ID}}}", "#{window_name}"])
-        codigo, salida, _ = _ssh(remoto, shlex.join(["tmux", "list-windows", "-t", f"={p}", "-F", formato]))
-        if codigo == 0:
-            for renglon in salida.splitlines():
-                partes = (renglon if "\x1f" in renglon else renglon.replace("\\037", "\x1f")).split("\x1f")
-                if len(partes) == 3 and partes[0].startswith("@") and partes[1]:
-                    ventanas.append((f"{partes[0]}/{partes[1]}", partes[2]))
-    sep = "\x1f"
-    formato = sep.join(["#{session_name}", f"#{{{OPCION_HILO}}}"])
-    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
-             shlex.join(["tmux", "list-sessions", "-F", formato])]
-    try:
-        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return [], f"{remoto.destino} no responde: {e}"
-    if r.returncode != 0:
-        if "no server running" in r.stderr or "no sessions" in r.stderr:
-            return ventanas, ""
-        return [], (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
-    salida = []
-    for renglon in r.stdout.splitlines():
-        # algunos tmux devuelven el separador como texto octal (ver telar.mux.tmux.SEP_EN_OCTAL)
-        partes = (renglon if sep in renglon else renglon.replace("\\037", sep)).split(sep)
-        if len(partes) == 2 and partes[0].startswith("telar-") and partes[1].strip():
-            salida.append((partes[0], partes[1].strip()))
-    return salida + ventanas, ""
 
 
 def nuevas(conocidas: set[str], de_alla: list[tuple[str, str]], nombres: set[str]) -> list[tuple[str, str, str]]:

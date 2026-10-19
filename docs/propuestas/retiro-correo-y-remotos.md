@@ -1,6 +1,19 @@
 # Retirar lo que el bus ya reemplazó: el correo entre agentes y los remotos por ssh
 
-Estado: **propuesta** (19-oct-2026). Inventario hecho; nada borrado todavía.
+Estado (19-oct-2026): **en curso**.
+
+- Hecho:
+  - el paso 1 (preparar: `extension()` a `casilla`, `[bus] no_leer`, `encargar_y_ir` sin `remotos
+    traer`, `MAILTO=""` en el bloque de cron);
+  - el paso 2 (el panel ya no sondea por ssh ni muestra el correo);
+  - del paso 3:
+    - el aviso y el archivo por el bus (`telar aviso`, `telar archivo`; el equipo avisa así);
+    - fuera la puerta (`telar enlace`), `telar remotos` y el espejo por ssh (`espejo publicar|recibir|traer`).
+- Falta:
+  - del paso 3, el lado de lectura del correo (`telar correo` sin verbo, `correo leido`,
+    `_aviso_de_correo`, `correo_archivo`);
+  - los pasos 4 y 5;
+  - el 6, que sigue bloqueado.
 
 Antes del bus (`docs/propuestas/bus.md`), las máquinas se hablaban por ssh y los agentes por correo:
 el espejo se empujaba por ssh, el semáforo y las ventanas de los hilos remotos se traían por ssh cada

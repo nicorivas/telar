@@ -204,8 +204,8 @@ class SeguirAlDueno(Prueba):
         self.nodo.anotar = self.anotado.append
         self.traidos: list[tuple[str, str]] = []
 
-    def correr(self, d: dict) -> None:
-        hilos = tuple(Hilo(id=f"@{n}", nombre=n) for n in sorted(self.vivos | set(self.est.remotos())))
+    def correr(self, d: dict, dormidos: tuple[str, ...] = ()) -> None:
+        hilos = tuple(Hilo(id=f"@{n}", nombre=n) for n in sorted(self.vivos | set(self.est.remotos()) | set(dormidos)))
         tel = SimpleNamespace(mux=self.mux, viva=True, estado=self.est, hilos=hilos,
                               por_nombre=lambda n: next((h for h in hilos if h.nombre == n), None),
                               vivo=lambda h: h.nombre in self.vivos)
@@ -229,6 +229,18 @@ class SeguirAlDueno(Prueba):
         self.assertEqual(self.traidos, [("@7/bb", "Gestión")])
         self.mux.cerrar.assert_called_once_with("@Gestión")
         self.assertEqual(self.est.remotos()["Gestión"]["sesion"], "@7/bb")
+
+    def test_si_su_sesion_alla_termino_se_cierra_la_ventana_de_aqui(self):
+        # lo que hacía `telar remotos traer` con las ventanas fantasma: ahora lo dice el estado del bus
+        self.est.anotar_remoto("Lumbre", "srv", "telar-bbbb0002")
+        self.vivos.add("Lumbre")
+        self.correr({"nombre": "Lumbre", "maquina": "srv", "vivo": False})
+        self.mux.cerrar.assert_called_once_with("@Lumbre")
+
+    def test_una_sesion_de_alla_con_el_nombre_de_un_hilo_dormido_de_aqui_lo_adopta(self):
+        # el dormido conserva su nombre (no «Lumbre · 2»)
+        self.correr({"nombre": "Lumbre", "maquina": "srv", "vivo": True, "ventana": "@3/dd"}, dormidos=("Lumbre",))
+        self.assertEqual(self.traidos, [("@3/dd", "Lumbre")])
 
     def test_un_renombre_alla_se_sigue_aqui(self):
         self.est.anotar_remoto("telar-1a2b3c4d", "srv", "@9/cc")

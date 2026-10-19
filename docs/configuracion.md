@@ -481,96 +481,46 @@ todos, y descarta un archivo cuyo dueño no es el usuario de su nombre. `telar d
 publicar` lo hace a mano. La carpeta la monta quien administra el servidor (ver
 `servidor/README.md`).
 
-### Ver los hilos del laptop desde el servidor (`telar espejo`)
+### Ver los hilos de otra máquina (`telar espejo`)
 
-Un laptop se apaga y un servidor no. Para ver desde el servidor —y desde el panel en el
-celular— qué hilos tiene el laptop y cuáles esperan algo, **el laptop empuja una foto** de sus
-hilos y el servidor la guarda con la hora en que llegó. No hace falta configurar nada más que la
-máquina en `[remotos]` (la misma de los hilos remotos):
+Un laptop se apaga y un servidor no. Para ver desde una máquina —y desde el panel en el celular— qué
+hilos tiene la otra y cuáles esperan algo, **el nodo de cada una** (`telar nodo`) publica una foto de sus
+hilos en el bus cada 30 s, y las demás la guardan con la hora en que llegó. Basta con `[bus]`.
 
 ```
-telar espejo publicar               # una vez, para probar (en el laptop)
-telar espejo publicar --cada 30     # cada 30 s hasta Ctrl-C (en un terminal, o desde launchd/systemd)
-telar espejo ver                    # en el servidor: qué fotos hay y cuánto hace que llegaron
+telar espejo ver                    # qué fotos hay y cuánto hace que llegaron
 ```
-
-Con la extensión de VS Code no hace falta dejar nada corriendo: el ajuste `telar.espejo`, con el
-nombre de la máquina de `[remotos]`, la hace publicar cada 30 s mientras VS Code esté abierto.
 
 Solo viajan los hilos —nombre, semáforo, carpeta relativa, prioridad, tiempo y el título de su
 documento—; ninguna conversación ni el estado del proyecto. Una foto con menos de 2 minutos está
-**en línea**; pasado eso el laptop se da por apagado y se sigue mostrando la última, atenuada y con
-su edad. Es de solo lectura: no se puede entrar a un hilo del laptop desde el servidor, porque su
-agente vive allá (para eso, `telar hilo llevar`). El contrato está en `docs/contratos.md`.
+**en línea**; pasado eso la máquina se da por apagada y se sigue mostrando la última, atenuada y con
+su edad. Es de solo lectura (para entrar a un hilo de la otra máquina, `telar hilo llevar`). El contrato
+está en `docs/contratos.md`.
 
-## `[enlaces]` y `[enlace]` — la puerta entre dos máquinas
+## Entre máquinas, por el bus: leer un hilo, un aviso, un archivo
 
-`telar enlace` deja que una máquina (el servidor) **le pida cosas** a otra (el laptop) sin abrirle un
-shell a nadie. Es una llave ssh atada a un solo comando: en el laptop, `authorized_keys` dice
-`restrict,command="/…/telar enlace servir" ssh-ed25519 AAAA… telar-enlace`, y eso lo impone sshd:
-esa llave no puede abrir terminal, ni túneles, ni correr otra cosa. `servir` cumple seis verbos:
+Lo que antes hacía «la puerta» (`telar enlace`, una llave ssh atada a un comando) lo hace el bus, y la
+puerta se retiró (`[enlaces]` y `[enlace] verbos` se aceptan y no se usan):
 
-| verbo | qué hace |
+| | |
 | --- | --- |
-| `ping` | responde quién es y qué verbos tiene |
-| `hilos` | la foto de sus hilos (la del espejo) |
-| `archivo` | recibe un archivo y lo deja en `entrada`, sin pisar ninguno y sin escapar de la carpeta |
-| `enviar` | escribe un texto en un hilo suyo vivo (con `enter`, y lo manda) |
-| `notificar` | muestra un aviso en pantalla |
-| `leer` | los últimos turnos de un hilo, en texto (**apagado** si no se nombra en `verbos`) |
-
-En **el servidor** (quien llama), la configuración dice a dónde:
+| leer los últimos turnos de un hilo de otra máquina | `telar hilo leer <hilo> --maquina <máquina>` |
+| escribirle | `telar mensaje <hilo> "…"` |
+| encargarle algo a un agente de otra máquina | `telar encargar <agente> "…"` |
+| un aviso en su pantalla | `telar aviso "…" [--a <máquina>]` (sin `--a`, a las otras en línea) |
+| un archivo a su carpeta de entrada (hasta 700 KB) | `telar archivo <ruta> --a <máquina>` |
 
 ```toml
-[enlaces.laptop]
-destino = "nico@100.64.0.12"   # usuario@máquina; el nombre o la IP de Tailscale
-llave = "~/.ssh/telar_enlace"     # la crea `telar enlace instalar`
+[bus]
+entrada = "~/telar-entrada"          # dónde caen los archivos que llegan (antes, [enlace] entrada)
+no_leer = ["personal", "Diario"]     # hilos que otra máquina no puede leer: por nombre o carpeta (glob)
 ```
 
-En **el laptop** (quien responde), opcional:
-
-```toml
-[enlace]
-entrada = "~/telar-entrada"          # dónde caen los archivos que llegan
-verbos = ["ping", "hilos", "archivo", "enviar", "notificar"]   # quitar uno lo apaga; "leer" hay que agregarlo
-no_leer = ["personal", "Diario"]    # hilos que `leer` no entrega: por nombre o carpeta (glob)
-```
-
-**Leer un hilo.** `telar hilo leer [hilo] [--ultimos N]` muestra los últimos N turnos (5 si no se dice, 50 a
-lo más) de la conversación de ese hilo: lo que se le pidió y lo que contestó el agente, con cada herramienta en
-una línea —cuál y sobre qué, sin su salida—. Si el hilo no tiene conversación en esta máquina (uno remoto, uno
-sin agente), lo último de su panel. Todo con tope: 4000 caracteres por mensaje y 60 000 en total. Por la
-puerta es `telar enlace leer <hilo> [--ultimos N]`, y como expone lo conversado viene **apagado**: se prende
-agregando `"leer"` a `verbos`, y `no_leer` deja fuera los hilos que no se deben leer desde la otra máquina
-(un patrón vale contra el nombre del hilo y contra su carpeta, y una carpeta veta también lo de abajo). Un hilo
-vetado responde igual que uno que no existe.
-
-Montarlo, una vez:
-
-```
-telar enlace instalar --destino nico@100.64.0.12     # servidor: crea la llave y dice qué hacer
-telar enlace autorizar "ssh-ed25519 AAAA… telar-enlace"  # laptop: ata la llave a la puerta
-telar enlace ping                                        # servidor: ¿responde?
-```
-
-El laptop necesita la **Sesión remota** activada (Ajustes → General → Compartir en macOS) y estar en la
-misma red de Tailscale. `telar enlace revocar` en el laptop quita la llave. Cada petición queda en
-`<estado>/enlace.log` del laptop, también las rechazadas. La primera conexión guarda la huella del
-laptop (`StrictHostKeyChecking=accept-new`); después, si cambia, ssh se niega.
-
-**El espejo por la puerta.** Con `[enlaces]` configurado, el servidor no espera a que el laptop publique:
-`telar espejo traer` le pide la foto de sus hilos por la
-puerta y la guarda como espejo. Sirve aunque VS Code esté cerrado; con el laptop apagado falla rápido y el
-espejo queda con su última foto, atenuada.
-
-**Escribirle a un hilo desde el celular.** El panel (`telar panel`) lee los hilos de otra máquina por el bus
-(`telar hilo leer --maquina`) y les escribe como la persona (`telar mensaje --tipo persona`); ver
-`docs/propuestas/dashboard-fuera-de-vscode.md`.
-
-Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
-carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos y, si lo prendiste, lo
-conversado en los hilos que `no_leer` no vete. No puede leer archivos, correr comandos ni entrar. Si «enviar»
-te parece demasiado, quítalo de `verbos`.
+`telar hilo leer [hilo] [--ultimos N]` muestra los últimos N turnos (5 si no se dice, 50 a lo más): lo que se
+le pidió y lo que contestó el agente, con cada herramienta en una línea —cuál y sobre qué, sin su salida—. Todo
+con tope: 4000 caracteres por mensaje y 60 000 en total. Un patrón de `no_leer` vale contra el nombre del hilo y
+contra su carpeta (y una carpeta veta también lo de abajo); un hilo vetado responde igual que uno que no existe.
+Un archivo que llega nunca pisa a otro ni escapa de la carpeta de entrada.
 
 ## `periodicos.toml` y `[periodicos]` — lo que corre solo cada cierto tiempo
 

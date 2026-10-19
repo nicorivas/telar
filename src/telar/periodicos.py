@@ -32,7 +32,7 @@ línea por proceso activo, y no toca nada fuera de él. Cada línea llama a `tel
 Cambiar el archivo desde telar guarda la versión anterior en `periodicos.toml.anterior`.
 
 Los hilos que abre un proceso con `mensaje` son sesiones tmux `telar-…` con `@telar_hilo`, la misma
-convención de los hilos remotos: otra máquina los trae a su lista (`telar remotos traer`).
+convención de los hilos remotos: otra máquina los trae a su lista (su nodo, al verlos en el bus).
 """
 
 from __future__ import annotations

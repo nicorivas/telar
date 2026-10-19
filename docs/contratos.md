@@ -757,9 +757,9 @@ telar instalaría.
 
 ## `telar espejo` — los hilos de otra máquina
 
-`telar espejo publicar` (en el laptop) arma esta foto y la manda por ssh a `telar espejo recibir
---de <nombre>` (en el servidor), que la valida, le pone la hora de llegada —la de **ese** reloj, no
-la de la foto— y la guarda en `<estado>/espejos/<nombre>.json` con permisos 600. `<nombre>` es
+El nodo de cada máquina (`telar nodo`) arma esta foto y la publica en el bus cada 30 s; el de las otras
+la valida, le pone la hora de llegada —la de **ese** reloj, no la de la foto— y la guarda en
+`<estado>/espejos/<nombre>.json` con permisos 600. `<nombre>` es
 `a-z0-9_-`, hasta 32 caracteres; lo que no cabe en eso se rechaza.
 
 La foto (versión 1):
@@ -791,42 +791,12 @@ documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 
 ```
 
 `en_linea` es `edad < vigente`. Un archivo que no se puede leer aparece con `error`, no se esconde.
-`telar espejo publicar --json` dice `{"publicado": true|false, "maquina", "remoto", "error"}` y sale
-con 1 si falló.
 
-## `telar enlace` — la puerta entre dos máquinas
+## `telar aviso --json` y `telar archivo --json` — a otra máquina, por el bus
 
-El cliente (`telar enlace <verbo>`, o `telar.enlace.llamar`) corre por ssh, con la llave de la puerta:
-
-```
-ssh -i <llave> -o BatchMode=yes <destino> '<verbo> [argumentos citados]'   < contenido
-```
-
-sshd ignora esa línea como orden y ejecuta el comando forzado `telar enlace servir`, entregándola en
-`SSH_ORIGINAL_COMMAND`; el **contenido** (un archivo, un texto) va por la entrada estándar. `servir`
-imprime una sola línea JSON y sale con 0 si `ok`, con 1 si no. Toda respuesta trae `ok` y `verbo`; un fallo
-trae `error` y nada más. Los verbos y sus topes:
-
-| verbo | argumentos | entrada | respuesta |
-| --- | --- | --- | --- |
-| `ping` | — | ninguna | `maquina`, `telar`, `hora`, `verbos` |
-| `hilos` | — | ninguna | `foto`: la del espejo (ver `telar espejo`) |
-| `archivo` | `<nombre>` | el archivo, hasta 100 MB | `ruta`, `bytes`, `sha256` |
-| `enviar` | `<hilo> [enter]` | el texto, UTF-8, hasta 8000 caracteres | `hilo`, `caracteres`, `enviado` |
-| `notificar` | `[titulo]` (hasta 60) | el texto, hasta 500 caracteres | `titulo`, `caracteres` |
-| `leer` | `<hilo> [N]` (1 a 50, 5 si no se dice) | ninguna | `historia`: la de `telar hilo leer --json` |
-
-Reglas que la puerta impone (y `pruebas/test_enlace.py` comprueba):
-
-- Un verbo que no está en la tabla —o que `[enlace] verbos` apagó— se rechaza; no hay forma de correr otra cosa.
-- `archivo`: el nombre se reduce a `[A-Za-z0-9._ -]` sin carpetas ni puntos delante, y el archivo nunca pisa a
-  otro (agrega `-1`, `-2`…). Queda con permisos 600 en una carpeta 700.
-- `enviar`: solo a un hilo que existe **y** está vivo (con tab, o `propio`); un texto con saltos de línea exige `enter`, porque el
-  salto es un ↩.
-- `notificar`: el texto llega por variables de entorno, nunca dentro de un script.
-- `leer`: apagado si `[enlace] verbos` no lo nombra; solo un hilo por su nombre exacto, y uno que `no_leer`
-  veta responde lo mismo que uno que no existe.
-- Lo que pesa más que el tope del verbo se rechaza antes de leerse o hacerse nada.
+`telar aviso "…" [--titulo T] [--a M] --json` da `{"maquinas": {"laptop": ""}}`: a cada máquina, "" si el
+aviso salió o el motivo si no. `telar archivo <ruta> --a M --json` da `{"ruta": "<dónde quedó allá>",
+"bytes": N}`. Los pedidos del bus son `aviso` (`{titulo, texto}`) y `archivo` (`{nombre, datos}` en base64).
 
 ## `telar commit --json` — commitear solo unas rutas y subirlas
 

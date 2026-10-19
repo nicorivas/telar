@@ -1,16 +1,14 @@
 """El espejo: los hilos de otra máquina, vistos desde esta.
 
 Un laptop se apaga; un servidor no. Para ver desde el servidor (y desde la web del celular)
-qué hilos tiene el laptop y cuáles esperan algo, el laptop **empuja una foto** de sus hilos y
-el servidor la guarda con la hora en que llegó:
+qué hilos tiene el laptop y cuáles esperan algo, el nodo de cada máquina (`telar nodo`) **publica
+una foto** de sus hilos en el bus cada 30 s, y las otras la guardan con la hora en que llegó:
 
-    laptop:    telar espejo publicar      →  ssh servidor  telar espejo recibir --de laptop
-    servidor:  ~/.local/state/telar/espejos/laptop.json
+    <estado>/espejos/laptop.json
 
-Se empuja y no se va a buscar por tres razones. El servidor no necesita entrar al laptop, así
-que un servidor comprometido no abre una puerta hacia él. Con el laptop apagado nadie espera un
-tiempo de espera: quien lee solo mira un archivo. Y el servidor no necesita saber nada de la
-red del laptop.
+Se publica y no se va a buscar: ninguna máquina necesita entrar a otra, con el laptop apagado nadie
+espera un tiempo de espera (quien lee solo mira un archivo), y nadie necesita saber nada de la red
+del otro. (Antes se empujaba por ssh, `telar espejo publicar`; el bus lo reemplazó.)
 
 La foto lleva lo que sirve para *mirar* —nombre, semáforo, carpeta, prioridad, tiempo y el
 título del documento del hilo— y nada de lo que hay dentro: ni conversaciones ni el estado del

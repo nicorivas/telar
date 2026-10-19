@@ -341,36 +341,11 @@ class Remoto:
 
 
 @dataclass(frozen=True, slots=True)
-class Enlace:
-    """Una máquina a la que esta puede llamar por la puerta (`[enlaces.<nombre>]`, ver `telar enlace`).
-
-    La puerta es una llave ssh atada a un solo comando (`telar enlace servir`) en la otra máquina:
-    con ella se puede pedir lo que su lista de verbos permita, y nada más.
-    """
-
-    nombre: str
-    #: `usuario@maquina`, casi siempre el nombre de Tailscale de la otra máquina.
-    destino: str
-    #: la llave privada que abre esa puerta (la crea `telar enlace instalar`).
-    llave: str = "~/.ssh/telar_enlace"
-
-
-#: lo que una puerta sabe hacer. Cada verbo se puede apagar con `[enlace] verbos`.
-VERBOS_ENLACE = ("ping", "hilos", "archivo", "enviar", "notificar", "leer", "encargar")
-#: los que responde sin que se diga: `leer` expone lo conversado y `encargar` puede abrir un agente,
-#: así que se prenden a propósito
-VERBOS_POR_DEFECTO = tuple(v for v in VERBOS_ENLACE if v not in ("leer", "encargar"))
-
-
-@dataclass(frozen=True, slots=True)
 class Puerta:
-    """El lado de esta máquina como destino de llamadas (`[enlace]`)."""
+    """Lo que queda de `[enlace]`, de cuando había una puerta por ssh entre las máquinas (se retiró: lo hace
+    el bus): `entrada` y `no_leer` todavía valen, y `[bus] entrada` y `[bus] no_leer` los reemplazan."""
 
-    #: dónde caen los archivos que llegan por la puerta.
     entrada: str = "~/telar-entrada"
-    #: qué verbos responde. Por defecto todos menos `leer`; quitar uno lo apaga.
-    verbos: tuple[str, ...] = VERBOS_POR_DEFECTO
-    #: hilos que `leer` no entrega: patrones contra su nombre o su carpeta vinculada.
     no_leer: tuple[str, ...] = ()
 
 
@@ -441,9 +416,7 @@ class Config:
     dashboard_ocultas: tuple[str, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
     remotos: tuple[Remoto, ...] = ()
-    #: máquinas a las que esta puede llamar por la puerta (`telar enlace`).
-    enlaces: tuple[Enlace, ...] = ()
-    #: lo que esta máquina responde cuando la llaman.
+    #: lo que queda de `[enlace]` (la puerta se retiró): `entrada` y `no_leer`
     puerta: Puerta = field(default_factory=Puerta)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
@@ -818,41 +791,24 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                                   directorio=directorio.strip().rstrip("/"), sesion=sesion.strip()))
         cambios["remotos"] = tuple(remotos)
 
+    # `[enlaces.*]`: las máquinas a las que esta llamaba por la puerta. La puerta se retiró (lo hace el bus):
+    # se acepta y no se usa, para que una configuración de antes siga cargando
     if "enlaces" in datos:
-        tabla = _tabla(datos["enlaces"], "enlaces")
-        enlaces = []
-        for nombre, cuerpo in tabla.items():
-            cuerpo = _tabla(cuerpo, f"enlaces.{nombre}")
-            sobra = set(cuerpo) - {"destino", "llave"}
-            if sobra:
-                raise ErrorDeConfig(f"enlaces.{nombre}.{sorted(sobra)[0]}: no existe")
-            destino = cuerpo.get("destino", "")
-            if not isinstance(destino, str) or not destino.strip() or destino.strip().startswith("-"):
-                raise ErrorDeConfig(f"enlaces.{nombre}.destino: se esperaba usuario@maquina, llegó {destino!r}")
-            llave = cuerpo.get("llave", "~/.ssh/telar_enlace")
-            if not isinstance(llave, str) or not llave.strip() or llave.strip().startswith("-"):
-                raise ErrorDeConfig(f"enlaces.{nombre}.llave: se esperaba la ruta de una llave, llegó {llave!r}")
-            enlaces.append(Enlace(nombre=nombre, destino=destino.strip(), llave=llave.strip()))
-        cambios["enlaces"] = tuple(enlaces)
+        _tabla(datos["enlaces"], "enlaces")
 
     if "enlace" in datos:
         cuerpo = _tabla(datos["enlace"], "enlace")
+        # `verbos` era de la puerta (se retiró): se acepta y no se usa
         sobra = set(cuerpo) - {"entrada", "verbos", "no_leer"}
         if sobra:
             raise ErrorDeConfig(f"enlace.{sorted(sobra)[0]}: no existe")
         entrada = cuerpo.get("entrada", Puerta().entrada)
         if not isinstance(entrada, str) or not entrada.strip():
             raise ErrorDeConfig(f"enlace.entrada: se esperaba una carpeta, llegó {entrada!r}")
-        verbos = cuerpo.get("verbos", list(VERBOS_POR_DEFECTO))
-        if not isinstance(verbos, list) or not all(isinstance(v, str) for v in verbos):
-            raise ErrorDeConfig(f"enlace.verbos: se esperaba una lista de verbos, llegó {verbos!r}")
-        raros = [v for v in verbos if v not in VERBOS_ENLACE]
-        if raros:
-            raise ErrorDeConfig(f"enlace.verbos: «{raros[0]}» no existe (hay {', '.join(VERBOS_ENLACE)})")
         no_leer = cuerpo.get("no_leer", [])
         if not isinstance(no_leer, list) or not all(isinstance(v, str) for v in no_leer):
             raise ErrorDeConfig(f"enlace.no_leer: se esperaba una lista de patrones, llegó {no_leer!r}")
-        cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/", verbos=tuple(verbos),
+        cambios["puerta"] = Puerta(entrada=entrada.strip().rstrip("/") or "/",
                                    no_leer=tuple(v.strip() for v in no_leer if v.strip()))
 
     if "agentes" in datos:

@@ -53,8 +53,8 @@ al otro lo que puedes leer tú.
 
 `telar hilo leer <hilo> [--ultimos N]` da sus últimos turnos: lo que le pidieron y lo que
 contestó, con cada herramienta en una línea. Úsalo para ver si un hilo ya respondió a lo que le
-pediste, o en qué quedó, antes de preguntarle. Desde el servidor, un hilo del laptop se lee con
-`telar enlace leer <hilo>` (si el laptop lo permite).
+pediste, o en qué quedó, antes de preguntarle. Un hilo de otra máquina se lee con
+`telar hilo leer <hilo> --maquina <máquina>` (por el bus; `[bus] no_leer` deja hilos fuera).
 
 ## Encargarle algo a un agente residente
 
@@ -72,8 +72,8 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
   que solo está ahí, WhatsApp Web): `telar encargar <agente de esa máquina> "…"`, por ejemplo
   `telar encargar laptop "…"`. Escribirle a un hilo cualquiera no sirve: ese hilo puede vivir en tu
   misma máquina.
-- `telar enlace enviar` es el camino viejo de la puerta; con bus hace lo mismo que `telar mensaje`, y
-  avisa si el hilo vive en tu misma máquina.
+- **Un aviso en la pantalla de otra máquina** o **un archivo a su carpeta de entrada**: `telar aviso
+  "…"`, `telar archivo <ruta> --a <máquina>`.
 
 ## Escribirle
 

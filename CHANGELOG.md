@@ -28,6 +28,12 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- Retired what the bus replaced: the door (`telar enlace`, `[enlaces]`; `[enlace] entrada|no_leer` still
+  read, now `[bus] entrada|no_leer`), `telar remotos atencion|traer` (the node does it), and the mirror over
+  ssh (`telar espejo publicar|recibir|traer`; the node publishes it). New: `telar aviso` and `telar archivo`,
+  a notice and a file to another machine over the bus. The panel no longer polls over ssh or shows agent
+  mail. The cron block telar writes sets `MAILTO=""` (each run already logs its output). **Two machines now
+  need the bus.**
 - The team page is a separate FastAPI app (`telar.api_equipo`) that `telar serve --equipo` runs on its own
   Tailscale port in the same process (or alone, `telar equipo servir`): a person's key reaches none of the
   owner's routes. The owner's inbox has routes in the owner's API (`/equipo/bandeja`,
