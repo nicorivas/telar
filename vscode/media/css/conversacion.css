@@ -1,0 +1,148 @@
+/* Un hilo leído como conversación, en el celular (web/pagina.ts, paginaConversacion): los turnos
+   arriba, que se desplazan, y abajo las teclas y la caja para escribirle. */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+#turnos {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--e-2) var(--h-1);
+  overscroll-behavior: contain;
+}
+
+.nada {
+  color: var(--dim);
+  font-size: var(--t-menor);
+}
+
+.turno {
+  padding: var(--e-2) 0;
+  border-bottom: var(--borde);
+}
+
+.msj {
+  margin: var(--e-1) 0;
+
+  & .quien {
+    color: var(--dim);
+    font-size: var(--t-chica);
+  }
+
+  & .cuerpo {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  &.usuario .quien,
+  &.usuario .cuerpo { color: var(--azul); }
+
+  &.herramienta {
+    margin: 0;
+    color: var(--dim);
+    font-size: var(--t-chica);
+
+    & .cuerpo::before { content: "· "; }
+  }
+}
+
+.panel {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
+footer {
+  padding: var(--e-1) var(--h-1) calc(var(--e-1) + env(safe-area-inset-bottom));
+  border-top: var(--borde);
+}
+
+#teclas {
+  display: flex;
+  gap: var(--h-1);
+  margin-bottom: var(--e-1);
+}
+
+button {
+  padding: .3em 1ch;
+  border: var(--borde);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+
+  &:active { background: var(--sel); }
+}
+
+#escribir {
+  display: flex;
+  gap: var(--h-1);
+  align-items: flex-end;
+
+  & textarea {
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: .3em .5ch;
+    border: var(--borde);
+    outline: none;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: max(16px, 1em); /* bajo 16 px, el iPhone agranda la página al escribir */
+    resize: none;
+
+    &:focus { border-color: var(--azul); }
+  }
+
+  & button { color: var(--azul); }
+}
+
+/* el markdown de la persona y del agente, ya convertido: compacto, como en una terminal */
+.cuerpo.md {
+  white-space: normal;
+
+  & p,
+  & ul,
+  & ol,
+  & pre { margin: var(--e-1) 0; }
+
+  & ul,
+  & ol { padding-left: var(--h-2); }
+
+  & code {
+    color: var(--cian);
+    font: inherit;
+  }
+
+  & pre {
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  & strong { color: var(--amarillo); }
+
+  & h1,
+  & h2,
+  & h3 {
+    margin: var(--e-2) 0 var(--e-1);
+    font-size: var(--t-normal);
+  }
+
+  & table { border-collapse: collapse; }
+
+  & td,
+  & th {
+    padding: 0 var(--h-1);
+    border: var(--borde);
+  }
+}

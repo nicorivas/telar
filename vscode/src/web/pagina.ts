@@ -4,7 +4,7 @@
 // El script del dashboard (dia.ts) no cambia: habla con `vscode` como siempre, y aquí ese
 // `vscode` es un WebSocket con el servidor (servidor.ts).
 
-import { estilo } from '../estilo';
+import { estilo, estiloBase } from '../estilo';
 
 export const CSS_WEB = estilo('web');
 
@@ -117,45 +117,183 @@ export const SCRIPT_WEB = String.raw`
 /** La página que junta las dos: la barra de hilos a la izquierda y, a la derecha, lo que la barra
  *  elige: el dashboard o la terminal de un hilo. Cada uno en su marco, con su propio script y su propio
  *  canal, como en VS Code. La barra lo pide con un mensaje a esta página (`__mostrar`); las
- *  terminales abiertas siguen vivas mientras se mira otra cosa (hasta TOPE, las más viejas se cierran). */
+ *  terminales abiertas siguen vivas mientras se mira otra cosa (hasta TOPE, las más viejas se cierran).
+ *
+ *  En una pantalla angosta (un celular, hasta 700 px) se ve una cosa a la vez: primero la lista de
+ *  hilos; un toque abre el dashboard o un hilo a pantalla completa, con «◀» arriba (y el botón atrás
+ *  del teléfono) para volver. Ahí un hilo se lee como conversación (`/conversacion`), no como
+ *  terminal: en un teclado de celular, una terminal de 40 columnas no se puede usar. «terminal»
+ *  arriba la abre igual. */
 export function paginaCasa(nonce: string): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e1e2e">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <title>telar</title>
 <style>
   html, body { margin: 0; height: 100%; background: #1e1e2e; }
-  body { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr; }
+  body { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr; height: 100dvh; }
   iframe { border: 0; width: 100%; height: 100%; display: block; }
-  #barra { border-right: 1px solid rgba(205,214,244,.12); }
-  #marcos { position: relative; min-width: 0; } #marcos iframe { position: absolute; inset: 0; } #marcos iframe[hidden] { display: none; }
-  @media (max-width: 700px) { body { grid-template-columns: 1fr; grid-template-rows: 35vh 1fr; } }
+  #barra { border-right: 1px solid rgba(205,214,244,.12); grid-row: 1 / span 2; }
+  #marcos { position: relative; min-width: 0; grid-row: 1 / span 2; } #marcos iframe { position: absolute; inset: 0; } #marcos iframe[hidden] { display: none; }
+  #tira { display: none; align-items: center; gap: 2ch; padding: .45em 1ch; border-bottom: 1px solid rgba(205,214,244,.12);
+    font: 15px Menlo, "JetBrains Mono", monospace; color: #cdd6f4; }
+  #tira button { font: inherit; color: #89b4fa; background: none; border: 0; padding: .2em .4ch; cursor: pointer; }
+  #tira #titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.angosto { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  body.angosto #barra { border-right: 0; }
+  body.angosto.en-lista #tira, body.angosto.en-lista #marcos, body.angosto.en-detalle #barra { display: none; }
+  body.angosto.en-detalle #tira { display: flex; }
+  body.angosto.en-detalle #marcos { grid-row: 2; }
 </style></head>
-<body><iframe id="barra" src="/barra" title="hilos"></iframe>
+<body><div id="tira"><button id="volver" title="volver a los hilos">◀ hilos</button><span id="titulo"></span><button id="modo"></button></div>
+<iframe id="barra" src="/barra" title="hilos"></iframe>
 <div id="marcos"><iframe data-p="dashboard" src="/dashboard" title="dashboard"></iframe></div>
 <script nonce="${nonce}">
 (function () {
-  var marcos = document.getElementById('marcos'), TOPE = 8, usadas = [];
-  function marco(clave) { return marcos.querySelector('iframe[data-p="' + CSS.escape(clave) + '"]'); }
-  function mostrar(clave) {
-    var f = marco(clave);
+  var marcos = document.getElementById('marcos'), TOPE = 8, usadas = [], actual = 'dashboard', modo = {};
+  var angosto = window.matchMedia('(max-width: 700px)');
+  var titulo = document.getElementById('titulo'), botonModo = document.getElementById('modo');
+  function marco(p) { return marcos.querySelector('iframe[data-p="' + CSS.escape(p) + '"]'); }
+  // un hilo en pantalla angosta se lee como conversación (salvo que se pida la terminal); en ancha, terminal
+  function forma(clave) { return clave === 'dashboard' ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
+  function llave(clave) { var f = forma(clave); return f ? f + ':' + clave : clave; }
+  function mostrar(clave, desdeHistoria) {
+    actual = clave;
+    var p = llave(clave), f = marco(p);
     if (!f) {
       f = document.createElement('iframe');
-      f.setAttribute('data-p', clave); f.title = clave; f.src = '/terminal?hilo=' + encodeURIComponent(clave);
+      f.setAttribute('data-p', p); f.title = clave;
+      f.src = (forma(clave) === 'conv' ? '/conversacion?hilo=' : '/terminal?hilo=') + encodeURIComponent(clave);
       marcos.appendChild(f);
     }
     [].forEach.call(marcos.querySelectorAll('iframe'), function (x) { x.hidden = x !== f; });
-    // las terminales que hace rato no se miran se cierran (cada una es una vista de tmux abierta)
+    // las vistas de hilos que hace rato no se miran se cierran (cada terminal es una vista de tmux abierta)
     if (clave !== 'dashboard') {
-      usadas = usadas.filter(function (u) { return u !== clave; }).concat([clave]);
+      usadas = usadas.filter(function (u) { return u !== p; }).concat([p]);
       while (usadas.length > TOPE) { var vieja = marco(usadas.shift()); if (vieja) vieja.remove(); }
     }
     document.title = clave === 'dashboard' ? 'telar' : clave + ' · telar';
-    if (f.contentWindow) f.contentWindow.focus();
+    titulo.textContent = clave;
+    botonModo.hidden = clave === 'dashboard';
+    botonModo.textContent = forma(clave) === 'conv' ? 'terminal' : 'conversación';
+    if (angosto.matches) {
+      document.body.classList.remove('en-lista'); document.body.classList.add('en-detalle');
+      if (!desdeHistoria) history.pushState({ d: clave }, '');
+    }
+    if (f.contentWindow && !angosto.matches) f.contentWindow.focus();
   }
+  function lista() { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
+  function ajustar() {
+    document.body.classList.toggle('angosto', angosto.matches);
+    if (angosto.matches) lista();
+    else { document.body.classList.remove('en-lista', 'en-detalle'); mostrar(actual, true); }
+  }
+  document.getElementById('volver').addEventListener('click', function () { if (history.state && history.state.d) history.back(); else lista(); });
+  botonModo.addEventListener('click', function () {
+    modo[actual] = forma(actual) === 'conv' ? 'term' : 'conv';
+    mostrar(actual, true);
+  });
+  window.addEventListener('popstate', function (e) { if (e.state && e.state.d) mostrar(String(e.state.d), true); else lista(); });
+  angosto.addEventListener('change', ajustar);
   window.addEventListener('message', function (e) {
     if (e.origin !== location.origin || !e.data || !e.data.__mostrar) return;
     mostrar(String(e.data.__mostrar));
+  });
+  ajustar();
+})();
+</script></body></html>`;
+}
+
+/** Un hilo leído como conversación, para el celular: los últimos turnos (`telar hilo leer`, releídos
+ *  cada pocos segundos), una caja para escribirle y las teclas para contestarle una pregunta (⏎, ⎋,
+ *  1-3, ↑↓). Lo escrito va por el mismo canal que la terminal (`/pty`, una vista de `telar mirar`):
+ *  es teclear en el hilo, con la misma llave. */
+export function paginaConversacion(nonce: string): string {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self';">
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('conversacion')} }</style>
+</head><body>
+<main id="turnos"><p class="nada">leyendo…</p></main>
+<footer>
+  <div id="teclas">
+    <button data-t="\\r">⏎</button><button data-t="\\u001b">⎋</button><button data-t="1">1</button><button data-t="2">2</button><button data-t="3">3</button><button data-t="\\u001b[A">↑</button><button data-t="\\u001b[B">↓</button>
+  </div>
+  <form id="escribir"><textarea id="texto" rows="2" placeholder="escríbele al hilo"></textarea><button type="submit">enviar</button></form>
+</footer>
+<script nonce="${nonce}">
+(function () {
+  var hilo = new URLSearchParams(location.search).get('hilo') || '';
+  var turnos = document.getElementById('turnos'), texto = document.getElementById('texto');
+  var QUIEN = { usuario: 'tú', agente: 'agente', herramienta: '·' };
+  function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
+  function abajo() { return turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40; }
+  var ultimo = '';
+  function pintar(d) {
+    var firma = JSON.stringify(d);
+    if (firma === ultimo) return;
+    ultimo = firma;
+    var seguir = abajo() || !turnos.dataset.leido;
+    turnos.textContent = '';
+    if (d.error) { turnos.appendChild(el('p', 'nada', d.error)); return; }
+    if (d.fuente === 'panel') { turnos.appendChild(el('pre', 'panel', d.texto || '')); }
+    else {
+      if (d.recortado || (d.total_turnos || 0) > (d.turnos || []).length) turnos.appendChild(el('p', 'nada', 'turnos anteriores sin mostrar'));
+      (d.turnos || []).forEach(function (turno) {
+        var t = el('section', 'turno');
+        turno.forEach(function (m) {
+          var f = el('div', 'msj ' + m.quien);
+          if (m.quien !== 'herramienta') f.appendChild(el('span', 'quien', QUIEN[m.quien] || m.quien));
+          var c = el('div', m.html ? 'cuerpo md' : 'cuerpo');
+          if (m.html) c.innerHTML = m.html; else c.textContent = m.texto || '';
+          f.appendChild(c);
+          t.appendChild(f);
+        });
+        turnos.appendChild(t);
+      });
+      if (!(d.turnos || []).length) turnos.appendChild(el('p', 'nada', 'todavía no hay conversación'));
+    }
+    turnos.dataset.leido = '1';
+    if (seguir) turnos.scrollTop = turnos.scrollHeight;
+  }
+  var leyendo = false, pronto = 0;
+  function leer() {
+    if (leyendo) return;
+    leyendo = true;
+    fetch('/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(pintar)
+      .catch(function () { /* sin conexión: se reintenta en la vuelta */ })
+      .then(function () { leyendo = false; });
+  }
+  function vuelta() { leer(); setTimeout(vuelta, Date.now() < pronto ? 1500 : (document.hidden ? 20000 : 4000)); }
+  vuelta();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) leer(); });
+
+  // escribir: una vista de la terminal del hilo, abierta la primera vez que hace falta
+  var ws = null, cola = [];
+  function canal() {
+    if (ws && ws.readyState <= 1) return ws;
+    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/pty?hilo=' + encodeURIComponent(hilo) + '&cols=100&rows=30');
+    ws.onopen = function () { cola.splice(0).forEach(function (d) { ws.send(JSON.stringify({ d: d })); }); };
+    ws.onmessage = function () { /* lo que dibuja la terminal no se muestra aquí */ };
+    ws.onclose = function () { ws = null; };
+    return ws;
+  }
+  function teclear(d) { var c = canal(); if (c.readyState === 1) c.send(JSON.stringify({ d: d })); else cola.push(d); pronto = Date.now() + 20000; }
+  document.getElementById('escribir').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var t = texto.value.replace(/\\s+$/, '');
+    if (!t) return;
+    // como un pegado (para que un salto de línea no envíe antes de tiempo), y después ⏎
+    teclear('\\u001b[200~' + t + '\\u001b[201~');
+    setTimeout(function () { teclear('\\r'); }, 120);
+    texto.value = '';
+    setTimeout(leer, 1200);
+  });
+  [].forEach.call(document.querySelectorAll('#teclas button'), function (b) {
+    b.addEventListener('click', function () { teclear(JSON.parse('"' + b.getAttribute('data-t') + '"')); setTimeout(leer, 800); });
   });
 })();
 </script></body></html>`;

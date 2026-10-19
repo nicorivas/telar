@@ -26,7 +26,7 @@ h2 small { font-weight: normal; text-transform: none; color: var(--dim); margin-
 .estrecho .modos { margin-left: 0; }
 .modos.ordenes { gap: 2ch; }
 .areas-t .modos, .duenos-t .modos { margin-left: 0; flex-wrap: wrap; gap: 0 2ch; }
-.modos { display: flex; gap: 2ch; align-items: baseline; margin-left: auto; }
+.modos { display: flex; flex-wrap: wrap; gap: 0 2ch; align-items: baseline; margin-left: auto; }
 .modos button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; white-space: nowrap; }
 .modos button:hover { color: var(--fg); }
 /* el seleccionado va solo en color: un subrayado se pegaba a la línea de abajo */
@@ -258,6 +258,21 @@ h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transfo
 /* las acciones a un clic, antes del ⋯: ✓ hecha, ◉ compartir, ▶ a un hilo */
 #revisar .tarea .meta, .tareas-sueltas .tarea .meta { grid-template-columns: 5ch 1ch 7ch 1ch; }
 .rapidas { display: inline-grid; grid-template-columns: repeat(3, 1ch); gap: 1ch; }
+
+/* la tabla de tareas en un celular: el código y el texto, con espacio para leerlo, y debajo la fecha y
+   ✓ ▶ ⋯; la estrella, el proyecto y el responsable se van (siguen en la ficha) */
+@container (max-width: 620px) {
+  #revisar #tareas-t .tarea,
+  #revisar .tareas-cab,
+  .tareas-sueltas .tarea { grid-template-columns: 5ch minmax(0, 1fr); row-gap: 0; padding-block: .2lh; }
+
+  #revisar #tareas-t .tarea > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)),
+  #revisar .tareas-cab > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)),
+  .tareas-sueltas .tarea > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)) { display: none; }
+
+  #revisar .tarea .meta,
+  .tareas-sueltas .tarea .meta { grid-column: 2; justify-self: start; }
+}
 .rap { color: var(--dim); cursor: pointer; text-align: center; opacity: .55; }
 .tarea:hover .rap { opacity: 1; }
 .rap.ok:hover { color: var(--verde); font-weight: bold; } .rap.ir:hover { color: var(--azul); }

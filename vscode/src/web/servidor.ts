@@ -30,7 +30,7 @@ import { modelo } from '../modelo';
 import type { CrearSuperficie, Superficie } from '../superficie';
 import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos';
 import { PanelHoy } from '../vistas/hoy';
-import { CSS_WEB, SCRIPT_WEB, paginaCasa, paginaTerminal } from './pagina';
+import { CSS_WEB, SCRIPT_WEB, paginaCasa, paginaConversacion, paginaTerminal } from './pagina';
 
 function argumento(nombre: string, porDefecto: string): string {
     const i = process.argv.indexOf(`--${nombre}`);
@@ -351,13 +351,32 @@ async function main(): Promise<void> {
             fs.createReadStream(estatico).pipe(res);
             return;
         }
+        // lo último de un hilo, para leerlo como conversación (el celular): `telar hilo leer`
+        if (u.pathname === '/api/leer') {
+            const hilo = u.searchParams.get('hilo') ?? '';
+            const n = String(Math.max(1, Math.min(30, Number(u.searchParams.get('n')) || 8)));
+            void cli.telar(['hilo', 'leer', hilo, '--ultimos', n, '--json'], 20000).then(r => {
+                let cuerpo: string;
+                try {
+                    // lo que dicen la persona y el agente va en markdown: se manda también convertido (sin HTML
+                    // crudo: markdown-it con html:false lo escapa), y la página lo pinta así
+                    const d = JSON.parse(r.out) as { turnos?: { quien: string; texto?: string; html?: string }[][] };
+                    for (const turno of d.turnos ?? []) for (const m of turno) if (m.quien !== 'herramienta' && m.texto) m.html = md.render(m.texto);
+                    cuerpo = JSON.stringify(d);
+                } catch { cuerpo = JSON.stringify({ error: (r.err || 'no pude leer el hilo').trim().split('\n').pop() }); }
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+                res.end(cuerpo);
+            });
+            return;
+        }
         // el dashboard se arma la primera vez que alguien lo pide
         if (u.pathname === '/dashboard' && !hoy.panel) hoy.abrir();
         const nonce = crypto.randomBytes(12).toString('base64url');
         const pagina = u.pathname === '/' ? paginaCasa(nonce)
             : u.pathname === '/dashboard' ? paginaWeb('dash')
             : u.pathname === '/barra' ? paginaWeb('barra')
-            : u.pathname === '/terminal' ? paginaTerminal(nonce) : null;
+            : u.pathname === '/terminal' ? paginaTerminal(nonce)
+            : u.pathname === '/conversacion' ? paginaConversacion(nonce) : null;
         if (pagina === null) { res.writeHead(404); res.end(); return; }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(pagina);

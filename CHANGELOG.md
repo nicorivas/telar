@@ -8,6 +8,13 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The web panel on a phone (up to 700 px wide): one thing at a time — the threads list, and a tap opens the
+  dashboard or a thread full screen, with «◀» (and the phone's back button) to return. A thread reads as a
+  conversation (`/conversacion`: its last turns from `telar hilo leer`, markdown rendered, re-read every few
+  seconds) with a box to write to it and keys to answer a question (⏎ ⎋ 1 2 3 ↑ ↓); what is written goes
+  through the thread's terminal view as a paste, so a line break does not send it early. «terminal» opens
+  the xterm anyway. The tasks table keeps the code and the text, with the date and ✓ ▶ ⋯ below; filter rows
+  wrap instead of running off the screen.
 - `telar panel`: runs the web panel (the threads bar, the dashboard and the threads' terminals) without
   `npm`: it finds the panel next to telar's code (or `$TELAR_PANEL_DIR`), says what is missing (Node,
   `npm ci`, `npm run compile`; `--verificar` only checks), and becomes the node process. `--tailscale`

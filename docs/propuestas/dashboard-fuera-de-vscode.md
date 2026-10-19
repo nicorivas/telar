@@ -138,7 +138,8 @@ primera carga tarda unos 10 s. Así quedó cada pieza:
 | panel web: barra, dashboard y terminales de los hilos (xterm.js sobre `telar mirar`) | hecho, a mano |
 | CSS en archivos, tokens, capas, stylelint, `<dialog>` | hecho |
 | `telar panel`, y el panel como servicio (launchd en el laptop, systemd en el servidor) | **paso 1**: la orden y las plantillas hechas (18-oct); corriendo en el laptop |
-| el panel en el celular, por Tailscale | **paso 1**: hoy el celular usa `telar web`, y hay dos dashboards |
+| el panel en el celular, por Tailscale | **paso 1**: en el servidor por Tailscale (`telar:8770`) desde el 18-oct, con vista angosta (abajo); el celular todavía tiene también `telar web` |
+| la vista angosta (hasta 700 px) | hecha (18-oct): una cosa a la vez (la lista, y un toque abre el dashboard o un hilo, con «◀» y el atrás del teléfono); el hilo se lee como conversación (`/conversacion`: `telar hilo leer`, el markdown convertido) con una caja para escribirle y teclas ⏎ ⎋ 1 2 3 ↑ ↓, que van por la vista de la terminal (`/pty`) como un pegado; «terminal» abre la xterm igual. La tabla de tareas deja el código, el texto y debajo la fecha con ✓ ▶ ⋯ |
 | retirar `telar web` | **paso 1**, después de que el panel sirva en un celular. `telar web` es una app para el celular (1.500 líneas): lee la conversación de un hilo por páginas, aprieta teclas en su terminal, deja lecturas, anota eventos, comenta el plan, abre hilos y atajos, y se instala como app. El panel hoy es de pantalla grande (marcos y xterm): le falta una vista angosta y leer la conversación en vez de la terminal |
 | lo que en la web es solo de VS Code: la ficha y la carpeta de un hilo, su menú contextual | **paso 1** |
 | `telar serve`: Python que se queda corriendo y contesta las órdenes sin abrir procesos, y avisa cuando algo cambia | **paso 2** |
