@@ -35,6 +35,7 @@ encontrar los paneles que telar mismo tituló, no para reconocer lo que corre ad
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -116,6 +117,44 @@ AJENAS = ("ZELLIJ", "ZELLIJ_PANE_ID", "ZELLIJ_SESSION_NAME", "ZELLIJ_TAB_NAME")
 def entorno_limpio() -> dict[str, str]:
     """El entorno de este proceso sin las variables de otro multiplexor."""
     return {k: v for k, v in os.environ.items() if k not in AJENAS}
+
+
+#: las órdenes de tmux que arrancan un proceso: el panel nuevo hereda el entorno de quien la corre
+#: (no el del servidor tmux), así que esas van con el de la persona (`entorno_para_abrir`)
+ABREN = ("new-session", "new-window", "split-window")
+
+_path_de_la_persona: str | None = None
+
+
+def path_de_la_persona() -> str:
+    """El PATH que tiene la persona en su terminal: el de una shell de login interactiva, leído una vez.
+
+    Quien abre un hilo puede ser un servicio (`telar serve`, el nodo) o un `ssh host 'orden'`, con un PATH
+    mínimo; el hilo lo hereda, y el agente sale sin lo que la persona instaló (Node, Homebrew, el mismo
+    agente: diez tabs con «claude: not found»). "" si no se pudo leer."""
+    global _path_de_la_persona
+    if _path_de_la_persona is None:
+        _path_de_la_persona = ""
+        shell = os.environ.get("SHELL") or "/bin/sh"
+        base = {k: os.environ[k] for k in ("HOME", "USER", "LOGNAME", "LANG") if k in os.environ}
+        try:
+            r = subprocess.run([shell, "-lic", 'printf "\n__TELAR_PATH__%s__\n" "$PATH"'], capture_output=True,
+                               text=True, timeout=10, stdin=subprocess.DEVNULL,
+                               env={**base, "SHELL": shell, "TERM": "dumb"})
+            m = re.search(r"__TELAR_PATH__(.*?)__\n", r.stdout)
+            if m:
+                _path_de_la_persona = m.group(1)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return _path_de_la_persona
+
+
+def entorno_para_abrir() -> dict[str, str]:
+    """El entorno limpio, con el PATH de la persona delante del de este proceso (sin repetir)."""
+    env = entorno_limpio()
+    partes = [*path_de_la_persona().split(":"), *env.get("PATH", "").split(":")]
+    env["PATH"] = ":".join(dict.fromkeys(p for p in partes if p))
+    return env
 
 
 def _descamuflar(salida: str) -> str:
@@ -202,6 +241,8 @@ class Tmux(MultiplexorBase):
 
     def _tmux(self, *args: str, tolerante: bool = False, entorno: dict | None = None) -> str:
         """Corre `tmux <args>` y devuelve su salida. El error trae qué se pidió y qué dijo."""
+        if entorno is None and args and args[0] in ABREN:
+            entorno = entorno_para_abrir()
         try:
             hecho = subprocess.run(
                 [PROGRAMA, *args],

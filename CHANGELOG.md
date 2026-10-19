@@ -35,6 +35,10 @@ workflow refuses to run if the two disagree.
 - Replacing a pane no longer uses `respawn-pane`, which crashes tmux 3.4 (seen twice on a server, taking
   every thread with it): the new pane opens next to the old one, and the old one is closed.
 - A thread finds its agent in `~/.local/bin` when whoever opens it doesn't have it on the PATH.
+- A new tmux window or pane inherits the environment of whoever asks tmux for it (a service, an `ssh host
+  'cmd'`), not that of the tmux server: telar now opens them with the PATH of the person's login shell,
+  read once per process, in front of its own. A thread opened by `telar serve` or the node has Node,
+  Homebrew and the agent.
 - `GET /secciones/{clave}`, `/apps`, `/apps/{clave}`, `/ficha`, `/notas`, `/mensajes` and
   `/conversaciones/{id}`, one service each behind the CLI and the API; the panel asks the API first.
 - `GET /espejos`, `/proyectos` and `/pendientes`: the same JSON as `telar espejo ver`, `telar proyectos`
