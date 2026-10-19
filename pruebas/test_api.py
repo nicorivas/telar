@@ -163,8 +163,8 @@ class TareasBloquesResultados(Prueba):
             r = self.c.post("/tareas/T7/accion", json={"rol": "hecha"})
             self.c.post("/tareas/T7/accion", json={"n": 2, "texto": "sigue viva", "proveedor": "tareas"})
         self.assertEqual(r.json()["hecho"], "✓ hecha")
-        self.assertEqual(accion.call_args_list[0].kwargs, {"n": None, "rol": "hecha", "texto": ""})
-        self.assertEqual(accion.call_args_list[1].kwargs, {"n": 2, "rol": "", "texto": "sigue viva"})
+        self.assertEqual(accion.call_args_list[0].kwargs, {"n": None, "rol": "hecha", "texto": "", "version": None})
+        self.assertEqual(accion.call_args_list[1].kwargs, {"n": 2, "rol": "", "texto": "sigue viva", "version": None})
 
     def test_la_cli_y_la_api_dan_la_misma_pagina_de_un_bloque(self):
         from telar.ordenes import bloque as orden

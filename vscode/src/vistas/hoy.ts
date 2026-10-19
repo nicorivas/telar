@@ -1204,11 +1204,18 @@ export class PanelHoy {
             if (si !== 'Sí') return;
         }
         // una acción que lleva un mensaje a un hilo (el de la tarea, Gestión) toma unos segundos: se avisa
+        // con la versión de la ficha que se está mirando: si la tarea cambió desde entonces, no se hace
+        const version = f.pagina?.version ?? '';
         const r = a.mensaje
             ? await ui().progreso({ title: `telar: ${a.nombre} · ${f.id}…` },
-                () => cli.accionTarea(f.id, f.proveedor, k, texto))
-            : await cli.accionTarea(f.id, f.proveedor, k, texto);
-        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+                () => cli.accionTarea(f.id, f.proveedor, k, texto, version))
+            : await cli.accionTarea(f.id, f.proveedor, k, texto, version);
+        if (!r.datos) {
+            // la tarea cambió mientras se miraba: la ficha guardada ya no sirve, y se vuelve a leer
+            if (/cambió desde que se leyó/.test(r.error ?? '')) this.fichas.delete(f.id);
+            void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`);
+            return;
+        }
         // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
         if (r.datos.hilo) {
             this.decididas.add(f.id);

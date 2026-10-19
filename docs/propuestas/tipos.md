@@ -292,9 +292,13 @@ base de datos).
    sobre las mismas tareas: las 88 activas, idénticas campo por campo, en 2 ms en vez de 71 ms (más el
    viaje por el bus). Desde el laptop, `en = "telar"` las pide al servidor con el reenvío de proveedores
    que ya existe: allá las lee el índice del nodo.
-2. **La ficha y sus acciones**: que telar arme la ficha (la propuesta del agente, la historia, los
-   botones) y corra las acciones por el tipo, con versión, en vez de `telar-tareas --ver` y la CLI de
-   tareas. Lo propio de una casa (el nombre del agente, la cuenta de Gmail de cada área, el equipo) pasa a
-   la configuración.
+2. **La ficha y sus acciones** (hecha): sin `detalle`, el proveedor del tipo arma la ficha y sus botones
+   son acciones del tipo (`accion` y `params`, con `{texto}`), que el servicio corre sobre el archivo con
+   la versión que mostraba la ficha; después commitea y sube ese archivo en un proceso aparte (como hacía la
+   CLI de tareas), y lleva el mensaje al hilo si el botón lo tiene. Comparada con `telar-tareas --ver` en
+   las 308 tareas: título, subtítulo, bloques y el nombre, rol, orden y opciones de cada botón, idénticos.
+   Lo propio de una casa (quién propone, a quién se le escribe, los mensajes a los hilos, el equipo, la
+   cuenta de Gmail de cada área) son opciones del proveedor. El panel manda la versión de la ficha que
+   muestra; si la tarea cambió entretanto, la acción no se hace y la ficha se vuelve a leer.
 3. **Crear tareas, y la CLI de tareas como cáscara del tipo**, para que las skills sigan iguales.
 

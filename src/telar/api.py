@@ -126,6 +126,8 @@ class PedidoAccion(BaseModel):
     rol: str = ""
     texto: str = ""
     proveedor: str = "tareas"
+    #: la versión de la ficha que se leyó: si la tarea cambió desde entonces, 409 y no se hace
+    version: str | None = None
 
 
 @app.get("/tareas/{id:path}", response_model=Pagina, response_model_exclude_unset=True)
@@ -138,7 +140,8 @@ def get_tarea(id: str, proveedor: str = "tareas", ctx: Contexto = Depends(contex
 def post_accion(id: str, pedido: PedidoAccion, ctx: Contexto = Depends(contexto)):
     """Correr una acción de la ficha (`telar tarea <id> --accion N | --rol R`). El comando lo da el
     proveedor, nunca quien pide."""
-    return servicio_tareas.accion(ctx, id, pedido.proveedor, n=pedido.n, rol=pedido.rol, texto=pedido.texto)
+    return servicio_tareas.accion(ctx, id, pedido.proveedor, n=pedido.n, rol=pedido.rol, texto=pedido.texto,
+                                  version=pedido.version)
 
 
 # ── los bloques del día ───────────────────────────────────────────────────────

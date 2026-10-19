@@ -732,6 +732,134 @@ class DeTipo(_Base):
             raiz = str(mod_git.repositorio(self.carpeta) or self.carpeta)
         self.raiz = Path(raiz).expanduser()
         self.alcance = f"lee las tareas de {self.carpeta}; no sale de la máquina"
+        self._opciones = dict(opciones)
+
+    # ── la ficha: la página de una tarea, con las acciones del tipo ──
+
+    #: el color de la propuesta del agente, por su estado
+    COLOR_PROPUESTA = {"preparado": "verde", "cerrar": "cian", "pregunta": "amarillo", "choca": "rojo"}
+    #: un archivo nombrado en un texto, relativo a la raíz: lo que «abrir lo preparado» abre
+    ARCHIVO_NOMBRADO = re.compile(r"(?<![\w/])([\w.-]+/[\w./áéíóúñÁÉÍÓÚÑ-]+\.(?:md|docx|pptx|xlsx|html|pdf|csv))")
+
+    def _opcion(self, clave: str, defecto: str = "") -> str:
+        v = getattr(self, "_opciones", {}).get(clave, defecto)
+        return v if isinstance(v, str) else defecto
+
+    def ficha(self, id: str) -> tuple[dict, str]:
+        """(la página de la tarea, su versión): la propuesta del agente arriba, el contexto, los enlaces, las
+        conexiones y la historia; y las acciones que le tocan, como acciones del tipo (`accion` y `params`).
+        Lo propio de una casa va en las opciones: `agente` (quién propone), `escribir_a` (a quién se le
+        escribe en un hilo), `mensaje_procesar` y `mensaje_escribir` (qué recibe el hilo; `{id}`, `{texto}`),
+        y `equipo` (a quién se puede asignar)."""
+        from telar.tipos import tarea as tipo
+        from telar.tipos.indice import compartido
+
+        indice = compartido(self.carpeta, tipo.ARCHIVO)
+        t, version = indice.obtener(id)
+        agente = self._opcion("agente", "el agente")
+        prop = _propuesta(t)
+        partes = [t.estado, f"P{t.prioridad}"]
+        if t.vence:
+            partes.append(f"vence {t.vence}")
+        if t.espera:
+            partes.append(f"espera a {t.espera}")
+        if t.dueno:
+            partes.append(f"la hace {t.dueno}")
+        if t.proyecto:
+            partes.append(t.proyecto.split("/")[-1])
+        bloques: list[dict] = []
+        if prop:
+            como = {"hecha": "hecha", "caduca": "caducó", "descartada": "descartada"}.get(prop["como"], prop["como"])
+            verbo = {"cerrar": f"cerrar ({como})", "preparado": "lo dejó preparado", "pregunta": "pregunta",
+                     "choca": "chocó al subir"}.get(prop["estado"], prop["estado"])
+            bloques.append({"titulo": f"{agente} · {verbo} · {prop['fecha']}", "texto": prop["texto"],
+                            "destacado": True, "color": self.COLOR_PROPUESTA.get(prop["estado"], "azul")})
+        if t.contexto:
+            bloques.append({"texto": t.contexto})
+        enlaces = [{"titulo": f"{nombre}: {uri}", "enlace": self._enlace(uri, t.area)}
+                   for nombre, uri in (("origen", t.origen), ("trabajo", t.trabajo)) if uri]
+        archivo = self.carpeta / f"{id}.md"
+        try:
+            relativa = str(archivo.relative_to(self.raiz))
+        except ValueError:
+            relativa = str(archivo)
+        enlaces.append({"titulo": f"la tarea: {relativa}", "enlace": str(archivo)})
+        bloques.append({"titulo": "enlaces", "items": enlaces})
+        if t.conexiones:
+            bloques.append({"titulo": "conexiones", "texto": "\n".join(t.conexiones)})
+        historia = [{"titulo": c.tipo, "texto": c.texto, "fecha": f"{c.fecha}T{c.hora or '00:00'}"}
+                    for c in reversed(t.historia) if c.fecha]
+        if historia:
+            bloques.append({"titulo": "historia", "items": historia})
+        return ({"titulo": f"{id} · {t.titulo}", "subtitulo": " · ".join(partes), "bloques": bloques,
+                 "acciones": _recortar(self._acciones(t, prop, agente), 12), "version": version}, version)
+
+    def _acciones(self, t, prop, agente: str) -> list[dict]:
+        from telar.tipos import tarea as tipo
+
+        procesar = self._opcion("mensaje_procesar")
+        escribir = self._opcion("mensaje_escribir")
+        escribir_a = self._opcion("escribir_a", "el agente")
+        cerrada = t.estado in tipo.TERMINALES
+
+        def accion(nombre: str, que: str, **params) -> dict:
+            return {"nombre": nombre, "accion": que, "params": params}
+
+        def y_procesar(a: dict) -> dict:
+            # que sus secuelas se hagan ya, en el hilo donde se trabaja la tarea (el de su proyecto o el
+            # agente de lo que no tiene proyecto), no en uno nuevo que no sabe nada del proyecto
+            return {**a, "mensaje": procesar.replace("{id}", t.id), "al_hilo": True}
+
+        acciones: list[dict] = []
+        if prop and prop["estado"] == "cerrar" and prop["como"] in tipo.TERMINALES:
+            etiqueta = {"hecha": "hecha", "caduca": "caducó", "descartada": "descartada"}[prop["como"]]
+            nota = f"aceptada la propuesta de {agente} del {prop['fecha']}"
+            acciones.append({**accion(f"✓ de acuerdo: {etiqueta}", "cerrar", como=prop["como"], nota=nota), "principal": True})
+            if procesar:
+                acciones.append(y_procesar(accion("✓ de acuerdo y procesar ahora", "cerrar", como=prop["como"], nota=nota)))
+            acciones.append({**accion("no, sigue viva", "responder", texto="no, sigue viva: {texto}"), "pide": "por qué sigue viva"})
+        elif prop and prop["estado"] == "preparado":
+            hecho = next((m for m in self.ARCHIVO_NOMBRADO.findall(prop["texto"]) if (self.raiz / m).exists()), "")
+            if hecho:
+                acciones.append({"nombre": "abrir lo preparado", "tipo": "abrir", "enlace": str(self.raiz / hecho), "principal": True})
+            acciones.append({"nombre": "seguir en un hilo", "tipo": "hilo", "principal": not hecho})
+            acciones.append({**accion("responder", "responder", texto="{texto}"), "pide": "tu respuesta o la decisión"})
+        elif prop and prop["estado"] == "pregunta":
+            acciones.append({**accion("responder", "responder", texto="{texto}"), "pide": "tu respuesta", "principal": True})
+        if not any(a.get("tipo") == "hilo" for a in acciones):
+            acciones.append({"nombre": "trabajar en un hilo", "tipo": "hilo", "principal": not acciones})
+        if not cerrada:
+            if escribir:
+                # queda anotado en la tarea, y va al hilo donde se trabaja
+                acciones.append({**accion(f"↩ escribirle a {escribir_a}", "anotar", texto=f"le escribí a {escribir_a} en un hilo: {{texto}}"),
+                                 "pide": f"qué le dices a {escribir_a}", "mensaje": escribir.replace("{id}", t.id), "al_hilo": True})
+            acciones.append({**accion("nota", "anotar", texto="{texto}"), "pide": "la nota"})
+            acciones.append({**accion("nueva fecha…", "reagendar", fecha="{texto}"), "pide": "la nueva fecha (AAAA-MM-DD o +Nd)", "rol": "fecha"})
+            acciones.append({**accion("esperar a…", "esperar", quien="{texto}"), "pide": "a quién"})
+            acciones.append({**accion("responsable…", "asignar", persona="{texto}"), "pide": "quién la hace («none»: sin asignar)",
+                             "rol": "dueno", "opciones": self._personas()})
+            for etiqueta, rol, si, no in (("estrella", "estrella", "★ quitar la estrella", "☆ marcar con estrella"),
+                                          ("equipo", "equipo", "◉ dejar de compartir con el equipo", "○ compartir con el equipo")):
+                tiene = etiqueta in t.etiquetas
+                nuevas = [e for e in t.etiquetas if e != etiqueta] if tiene else [*t.etiquetas, etiqueta]
+                acciones.append({**accion(si if tiene else no, "editar", etiquetas=nuevas), "rol": rol})
+            acciones.append({**accion("✓ hecha", "completar"), "confirmar": True, "rol": "hecha"})
+            if procesar and not (prop and prop["estado"] == "cerrar"):
+                acciones.append(y_procesar(accion("✓ hecha y procesar ahora", "completar")))
+            acciones.append({**accion("descartar", "cerrar", como="descartada"), "confirmar": True})
+        return acciones
+
+    def _personas(self) -> list[str]:
+        """A quién se le puede asignar: el `equipo` declarado y todo el que ya es dueño de alguna."""
+        from telar.tipos import tarea as tipo
+        from telar.tipos.indice import compartido
+
+        equipo = getattr(self, "_opciones", {}).get("equipo", [])
+        vistos = {p.casefold(): p for p in equipo if isinstance(p, str)}
+        for t, _ in compartido(self.carpeta, tipo.ARCHIVO).consultar():
+            if t.dueno and t.dueno not in ("none", "~", "null", '""'):
+                vistos.setdefault(t.dueno.casefold(), t.dueno)
+        return sorted(vistos.values(), key=str.casefold)
 
     def _enlace(self, uri: str, area: str) -> str:
         if not uri:
@@ -766,6 +894,28 @@ class DeTipo(_Base):
                 destacada=t.prioridad == 0 or "estrella" in etiquetas,
             ))
         return salida
+
+
+def _propuesta(t) -> dict | None:
+    """Lo último que dejó un agente para decidir (`avance`: «cerrar:hecha 2026-10-05»), con su texto (la
+    última línea `[avance]` de la historia), o None si no hay nada vigente."""
+    if not t.avance:
+        return None
+    estado, _, fecha = t.avance.partition(" ")
+    estado, _, como = estado.partition(":")
+    texto = next((c.texto for c in reversed(t.historia) if c.tipo == "avance"), "")
+    return {"estado": estado, "como": como, "fecha": fecha, "texto": re.sub(r"^[\w:]+: ", "", texto)}
+
+
+def _recortar(acciones: list[dict], tope: int) -> list[dict]:
+    """Las primeras `tope`, sin perder las que tienen `rol` ni la principal: sobran las últimas sin rol."""
+    salida = list(acciones)
+    while len(salida) > tope:
+        sin_rol = [i for i, a in enumerate(salida) if not a.get("rol") and not a.get("principal")]
+        if not sin_rol:
+            break
+        salida.pop(sin_rol[-1])
+    return salida
 
 
 # ── ninguno: la forma explícita de no tener tareas ──────────────────────────────

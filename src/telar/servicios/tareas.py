@@ -68,13 +68,33 @@ def _pedir_alla(ctx, en: str, argv: list[str]) -> dict:
         raise ErrorDeServicio(f"{en} no devolvió JSON", 502) from e
 
 
+def _de_tipo(ctx, proveedor: str):
+    """El proveedor, si es del tipo `tarea` y arma él mismo la ficha (sin `detalle`); si no, None."""
+    config = getattr(ctx, "config", None)
+    p = next((x for x in config.proveedores_activos() if x.nombre == proveedor), None) if config else None
+    if p is None or p.opciones.get("tipo") != "tipo" or p.opciones.get("detalle"):
+        return None
+    from telar.proveedores import tareas as mod_prov
+
+    return mod_prov.DeTipo(p)
+
+
 def ficha(ctx, id: str, proveedor: str = "tareas") -> Pagina:
-    """La ficha de la tarea: la página que imprime el `detalle` del proveedor, con sus acciones."""
+    """La ficha de la tarea: la arma el proveedor del tipo `tarea` (con la versión del archivo), o la
+    imprime el `detalle` de un proveedor `comando`."""
     from telar.ordenes.seccion import correr
 
     en = _alla(ctx, proveedor)
     if en:
         return Pagina(**_pedir_alla(ctx, en, [id, "--proveedor", proveedor]))
+    tipo = _de_tipo(ctx, proveedor)
+    if tipo is not None:
+        from telar.tipos.carpeta import NoExiste
+
+        try:
+            return Pagina(**tipo.ficha(id)[0])
+        except NoExiste as e:
+            raise ErrorDeServicio(str(e), 404) from e
     detalle, problema = detalle_de(ctx, proveedor)
     if problema:
         raise ErrorDeServicio(problema, 404)
@@ -84,7 +104,8 @@ def ficha(ctx, id: str, proveedor: str = "tareas") -> Pagina:
     return Pagina(**pagina)
 
 
-def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol: str = "", texto: str = "") -> AccionHecha:
+def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol: str = "", texto: str = "",
+           version: str | None = None) -> AccionHecha:
     """Corre una acción de la ficha, por su número (`n`) o por su `rol`. El comando sale de la ficha que
     vuelve a dar el proveedor, nunca de quien pide."""
     from telar.ordenes import _comun
@@ -95,7 +116,7 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     en = _alla(ctx, proveedor)
     if en:
         argv = [id, "--proveedor", proveedor, *(["--rol", rol] if rol else ["--accion", str(n)]),
-                *(["--texto", texto] if texto else [])]
+                *(["--texto", texto] if texto else []), *(["--version", version] if version else [])]
         return AccionHecha(**_pedir_alla(ctx, en, argv))
     pagina = ficha(ctx, id, proveedor).model_dump()
     acciones = pagina.get("acciones") or []
@@ -111,6 +132,8 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     if tipo != "comando":
         return AccionHecha(tipo=tipo, enlace=a.get("enlace", ""))
     texto = texto.strip()
+    if "accion" in a:
+        return _accion_del_tipo(ctx, id, proveedor, a, texto, version)
     if a.get("pide") and not texto and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
         raise ErrorDeServicio(f"«{a['nombre']}» pide texto")
     palabras = [w.replace("{texto}", texto) for w in a["comando"]]
@@ -141,6 +164,64 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
             raise ErrorDeServicio(f"«{a['nombre']}» se hizo, pero no pude abrir el hilo: {problema}", 502)
         hecho.hilo = nombre
     return hecho
+
+
+def _accion_del_tipo(ctx, id: str, proveedor: str, a: dict, texto: str, version: str | None) -> AccionHecha:
+    """Una acción de la ficha del tipo `tarea`: la acción del tipo sobre su archivo (con la versión, si
+    vino), el commit de ese archivo, y después el mensaje al hilo si la acción lo lleva."""
+    from telar.tipos import ErrorDeFormato
+    from telar.tipos import tarea as tipo
+    from telar.tipos.carpeta import ErrorDeVersion, NoExiste
+    from telar.tipos.indice import compartido
+
+    fn = tipo.ACCIONES.get(a["accion"])
+    if fn is None:
+        raise ErrorDeServicio(f"«{a['nombre']}»: el tipo no tiene la acción «{a['accion']}»", 502)
+    params = a.get("params") or {}
+    if a.get("pide") and not texto and any("{texto}" in str(v) for v in [*params.values(), a.get("mensaje", "")]):
+        raise ErrorDeServicio(f"«{a['nombre']}» pide texto")
+    valores = {k: (v.replace("{texto}", texto) if isinstance(v, str) else v) for k, v in params.items()}
+    # «none» es «nadie»: sin dueño, o que vuelva a ser de la persona
+    for k in ("persona", "quien"):
+        if isinstance(valores.get(k), str) and valores[k].strip().lower() == "none":
+            valores[k] = ""
+    proveedor_tipo = _de_tipo(ctx, proveedor)
+    fila = None
+    if a.get("mensaje") and a.get("al_hilo"):
+        # adónde va el mensaje se busca ANTES de la acción: si la cierra, después no se la encontraría
+        from telar.ordenes import _comun
+        from telar.ordenes import pendiente
+
+        fila = pendiente._buscar(ctx, _comun.tejer(ctx), id, proveedor=proveedor)
+    try:
+        indice = compartido(proveedor_tipo.carpeta, tipo.ARCHIVO)
+        indice.aplicar(id, fn, version=version, **valores)
+    except NoExiste as e:
+        raise ErrorDeServicio(str(e), 404) from e
+    except ErrorDeVersion as e:
+        raise ErrorDeServicio(str(e), 409) from e
+    except tipo.ErrorDeAccion as e:
+        raise ErrorDeServicio(str(e), 409) from e
+    except (TypeError, ErrorDeFormato) as e:
+        raise ErrorDeServicio(f"«{a['nombre']}» no se pudo: {e}", 422) from e
+    _subir(proveedor_tipo.carpeta / f"{id}.md", f"tareas: {id} {a['accion']}")
+    hecho = AccionHecha(tipo="comando", hecho=a["nombre"])
+    if a.get("mensaje") and a.get("al_hilo"):
+        hecho.hilo = _al_hilo(ctx, id, proveedor, a["mensaje"].replace("{texto}", texto), fila, a["nombre"])
+    return hecho
+
+
+def _subir(archivo, mensaje: str) -> None:
+    """Commitea ese archivo y lo sube (`telar commit`), en un proceso aparte que sobrevive a quien llamó:
+    quien hizo clic no espera el push, y una orden suelta que termina no se lo lleva."""
+    import sys
+
+    try:
+        subprocess.Popen([sys.executable, "-m", "telar", "commit", "-m", mensaje, "--", str(archivo)],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass  # sin commit, queda en el árbol: /sincronizar lo junta
 
 
 def _al_hilo(ctx, id: str, proveedor: str, mensaje: str, fila, nombre: str) -> str:

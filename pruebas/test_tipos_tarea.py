@@ -275,3 +275,61 @@ class ElProveedorTipo(Prueba):
         from telar.config import Proveedor
         with self.assertRaises(self.P.ErrorDeProveedor):
             self.P.DeTipo(Proveedor(nombre="tareas", opciones={"tipo": "tipo"}))
+
+
+class LaFichaYSusAcciones(Prueba):
+    """La ficha que arma el proveedor del tipo, y sus botones corridos por el servicio: la acción del tipo
+    sobre el archivo, con su versión, y el commit de ese archivo."""
+
+    def setUp(self):
+        super().setUp()
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar.config import Config, Proveedor
+        from telar.servicios import tareas as servicio
+        self.servicio, self.mock = servicio, mock
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T84.md").write_text(TAREA, encoding="utf-8")
+        prov = Proveedor(nombre="tareas", opciones={"tipo": "tipo", "carpeta": str(self.dir), "agente": "Ada",
+                                                    "equipo": ["Marcelo"]})
+        self.ctx = SimpleNamespace(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores={"tareas": prov}))
+        sube = mock.patch.object(servicio, "_subir")
+        self.subir = sube.start()
+        self.addCleanup(sube.stop)
+
+    def test_la_ficha_trae_la_propuesta_la_version_y_los_botones_del_tipo(self):
+        p = self.servicio.ficha(self.ctx, "T84").model_dump()
+        self.assertEqual(p["titulo"], "T84 · Watts: volver con Ignacia por el contrato")
+        self.assertTrue(p["bloques"][0]["titulo"].startswith("Ada · pregunta"))
+        self.assertEqual(len(p["version"]), 16)
+        roles = {a.get("rol"): a for a in p["acciones"] if a.get("rol")}
+        self.assertEqual(roles["hecha"]["accion"], "completar")
+        self.assertIn("Marcelo", roles["dueno"]["opciones"])
+
+    def test_el_check_completa_por_el_tipo_y_pide_el_commit(self):
+        h = self.servicio.accion(self.ctx, "T84", rol="hecha")
+        self.assertEqual(h.hecho, "✓ hecha")
+        self.assertIn("estado: hecha", (self.dir / "T84.md").read_text())
+        self.assertEqual(self.subir.call_args[0][1], "tareas: T84 completar")
+
+    def test_lo_escrito_llena_el_parametro(self):
+        acciones = self.servicio.ficha(self.ctx, "T84").model_dump()["acciones"]
+        n = next(i for i, a in enumerate(acciones) if a["nombre"] == "nota")
+        self.servicio.accion(self.ctx, "T84", n=n, texto="le escribí el lunes")
+        self.assertIn("[nota] le escribí el lunes", (self.dir / "T84.md").read_text())
+
+    def test_con_una_version_vieja_no_se_hace(self):
+        from telar.servicios import ErrorDeServicio
+        with self.assertRaises(ErrorDeServicio) as e:
+            self.servicio.accion(self.ctx, "T84", rol="hecha", version="0000000000000000")
+        self.assertEqual(e.exception.codigo, 409)
+        self.assertIn("estado: activa", (self.dir / "T84.md").read_text())
+        self.subir.assert_not_called()
+
+    def test_none_deja_sin_dueno(self):
+        self.servicio.accion(self.ctx, "T84", rol="dueno", texto="Marcelo")
+        self.assertIn("dueño: Marcelo", (self.dir / "T84.md").read_text())
+        self.servicio.accion(self.ctx, "T84", rol="dueno", texto="none")
+        self.assertNotIn("dueño:", (self.dir / "T84.md").read_text())

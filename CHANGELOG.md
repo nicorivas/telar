@@ -28,6 +28,11 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- The `tipo` provider builds each task's card itself (no `detalle`), and its buttons are the type's actions:
+  the service applies them to the file with the card's version (a changed task is a 409, and the panel
+  re-reads the card), then commits and pushes that file in a separate process. A house's own bits (who
+  proposes, whom to write to, the messages for threads, the team, the Gmail account per area) are provider
+  options. On 308 real tasks, the card is identical to the previous adapter's.
 - `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
   directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
   used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first

@@ -462,6 +462,9 @@ export interface JsonAccionPagina {
 }
 export interface JsonPagina {
     titulo: string; subtitulo?: string;
+    /** la versión de lo que muestra (la ficha de una tarea del tipo): se devuelve con una acción, y si la
+     *  tarea cambió desde entonces, la acción no se hace */
+    version?: string;
     bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo; marco?: JsonMarco;
                destacado?: boolean; color?: string }[];
     acciones?: JsonAccionPagina[];
@@ -486,9 +489,9 @@ export async function accionPorRol(id: string, proveedor: string, rol: string): 
     return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol })
         ?? telarJson(['tarea', id, '--proveedor', proveedor, '--rol', rol, '--json'], 40000);
 }
-export async function accionTarea(id: string, proveedor: string, n: number, texto = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
-    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto })
-        ?? telarJson(['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), '--json'], 40000);
+export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto, ...(version ? { version } : {}) })
+        ?? telarJson(['tarea', id, '--proveedor', proveedor, '--accion', String(n), ...(texto ? ['--texto', texto] : []), ...(version ? ['--version', version] : []), '--json'], 40000);
 }
 
 /** Los procesos periódicos (`telar periodicos`), de esta máquina o de `[periodicos] en`. */

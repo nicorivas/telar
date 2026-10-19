@@ -38,6 +38,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--rol", default="", metavar="ROL",
                    help="correr la acción con ese `rol` (hecha, fecha…), sin saber su número: un viaje en vez de dos")
     p.add_argument("--texto", default="", help="lo escrito, para una acción que lo pide")
+    p.add_argument("--version", default=None, help="la versión que se leyó (la de la ficha): si la tarea cambió, no se hace")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -51,7 +52,7 @@ def main(argv: list[str], ctx) -> int:
             for i, a in enumerate(getattr(pagina, "acciones", None) or []):
                 print(f"  {i}  {a['nombre']}")
             return 0
-        hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto)
+        hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto, version=o.version)
     except ErrorDeServicio as e:
         return _comun.queja(str(e))
     if o.json:
