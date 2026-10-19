@@ -1,23 +1,104 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 17:55",
+  "actualizado": "2026-10-19 18:10",
   "piezas": [
-    {"grupo": "1. El servidor nuevo", "nombre": "telar serve --web: la página y la API detrás de la llave, en Tailscale", "estado": "en curso"},
-    {"grupo": "1. El servidor nuevo", "nombre": "esta página de progreso", "estado": "hecho"},
-    {"grupo": "2. El paquete", "nombre": "esbuild empaqueta las vistas para el navegador (estatico/app.js)", "estado": "pendiente"},
-    {"grupo": "2. El paquete", "nombre": "cli para el navegador: fetch a /api en vez de procesos", "estado": "pendiente"},
-    {"grupo": "2. El paquete", "nombre": "estilo partido: lo puro (marcos, colores) y lo que lee archivos", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "proyectos", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "plan y ahora", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "periódicos", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "tareas", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "el día: agenda, bloques, mensajes", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "la ficha de una tarea y sus acciones", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "equipo", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "configuración", "estado": "pendiente"},
-    {"grupo": "3. Las pantallas", "nombre": "apps", "estado": "pendiente"},
-    {"grupo": "4. El anfitrión web", "nombre": "menús, campos y avisos en HTML", "estado": "pendiente"},
-    {"grupo": "5. La barra de hilos", "nombre": "la lista de hilos en el navegador; un clic abre su conversación", "estado": "pendiente"},
-    {"grupo": "Paso 4 (después)", "nombre": "las terminales en Python (xterm.js y una PTY por WebSocket), y se retira Node", "estado": "pendiente"}
+    {
+      "grupo": "1. El servidor nuevo",
+      "nombre": "telar serve --web: la página y la API detrás de la llave, en Tailscale",
+      "estado": "hecho",
+      "nota": "en el servidor: https://telar.tail22505a.ts.net:8781 (la llave del panel)"
+    },
+    {
+      "grupo": "1. El servidor nuevo",
+      "nombre": "esta página de progreso",
+      "estado": "hecho"
+    },
+    {
+      "grupo": "2. El paquete",
+      "nombre": "esbuild empaqueta las vistas para el navegador (estatico/app.js)",
+      "estado": "hecho",
+      "nota": "el dashboard entero (PanelHoy) corre en la página, en un iframe"
+    },
+    {
+      "grupo": "2. El paquete",
+      "nombre": "cli para el navegador: fetch a /api en vez de procesos",
+      "estado": "hecho",
+      "nota": "un transporte enchufable en cli.ts: en el navegador, fetch a /api"
+    },
+    {
+      "grupo": "2. El paquete",
+      "nombre": "estilo partido: lo puro (marcos, colores) y lo que lee archivos",
+      "estado": "hecho",
+      "nota": "los estilos van empaquetados; en VS Code y Node siguen leyéndose del disco"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "proyectos",
+      "estado": "hecho",
+      "nota": "se ve, busca y filtra; falta el detalle de un proyecto (lee su README del disco)"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "plan y ahora",
+      "estado": "hecho",
+      "nota": "se ven con los datos del día"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "periódicos",
+      "estado": "hecho",
+      "nota": "se ven (desde el laptop, por el bus al servidor)"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "tareas",
+      "estado": "hecho",
+      "nota": "las 156, con sus filtros"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "el día: agenda, bloques, mensajes",
+      "estado": "hecho",
+      "nota": "calendario y correo de trabajo se ven; falta probar las acciones"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "la ficha de una tarea y sus acciones",
+      "estado": "en curso",
+      "nota": "se abre; falta probar los botones"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "equipo",
+      "estado": "pendiente",
+      "nota": ""
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "configuración",
+      "estado": "pendiente",
+      "nota": "se ve; falta probar los cambios"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "apps",
+      "estado": "pendiente",
+      "nota": "leen archivos del disco: hace falta una ruta en la API"
+    },
+    {
+      "grupo": "4. El anfitrión web",
+      "nombre": "menús, campos y avisos en HTML",
+      "estado": "pendiente"
+    },
+    {
+      "grupo": "5. La barra de hilos",
+      "nombre": "la lista de hilos en el navegador; un clic abre su conversación",
+      "estado": "pendiente"
+    },
+    {
+      "grupo": "Paso 4 (después)",
+      "nombre": "las terminales en Python (xterm.js y una PTY por WebSocket), y se retira Node",
+      "estado": "pendiente"
+    }
   ]
 }

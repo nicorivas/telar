@@ -77,6 +77,10 @@ ${estilo('base')} }`;
  *  CSS de verdad, con su resaltado y su linter, que VS Code y la web usan igual. */
 const estilos = new Map<string, string>();
 let carpetaCss = '';
+/** En el navegador no hay archivos que leer: los estilos llegan empaquetados (src/navegador). */
+export function usarEstilos(css: Record<string, string>): void {
+    for (const [nombre, texto] of Object.entries(css)) estilos.set(nombre, texto);
+}
 export function estilo(nombre: string): string {
     const guardado = estilos.get(nombre);
     if (guardado !== undefined) return guardado;

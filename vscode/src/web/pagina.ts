@@ -9,8 +9,9 @@ import { estilo, estiloBase } from '../estilo';
 export const CSS_WEB = estilo('web');
 
 /** El script que va antes del del dashboard: define `acquireVsCodeApi` y la interfaz. */
-export const SCRIPT_WEB = String.raw`
-(function () {
+// El canal: con un servidor en Node, un WebSocket; en el navegador (src/navegador), la página que contiene
+// al dashboard, por postMessage. El resto del script (la interfaz) es el mismo para los dos.
+const CANAL_WS = String.raw`
   // cada página (la barra, el dashboard) tiene su canal: el servidor sabe a quién mandarle qué
   var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?v=' + (location.pathname === '/barra' ? 'barra' : 'dash');
   var ws, abierto = false, cola = [];
@@ -20,6 +21,27 @@ export const SCRIPT_WEB = String.raw`
     ws.onclose = function () { abierto = false; avisar('sin conexión con telar; reintentando…', 'aviso'); setTimeout(conectar, 2000); };
     ws.onmessage = function (e) {
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+      llega(m);
+    };
+  }
+  function enviar(s) { ws.send(s); }`;
+
+const CANAL_PADRE = String.raw`
+  // la página que contiene al dashboard (src/navegador) le habla por postMessage
+  var abierto = false, cola = [];
+  function conectar() {
+    window.addEventListener('message', function (e) {
+      if (e.source !== window.parent || !e.data || !e.data.__telarPadre) return;
+      llega(e.data.__telarPadre);
+    });
+    abierto = true; medir();
+  }
+  function enviar(s) { window.parent.postMessage({ __telarHijo: s }, location.origin === 'null' ? '*' : location.origin); }`;
+
+function script(canal: string): string {
+    return String.raw`
+(function () {` + canal + String.raw`
+  function llega(m) {
       if (m.__recargar) { location.reload(); return; }
       if (m.__aviso) { avisar(m.__aviso, m.nivel, m.ms); return; }
       if (m.__abrir) { window.open(m.__abrir, '_blank', 'noopener'); return; }
@@ -27,9 +49,8 @@ export const SCRIPT_WEB = String.raw`
       if (m.__mostrar) { try { parent.postMessage({ __mostrar: m.__mostrar }, location.origin); } catch (x) {} return; }
       if (m.__ui) { preguntar(m); return; }
       window.dispatchEvent(new MessageEvent('message', { data: m }));
-    };
   }
-  function mandar(m) { var s = JSON.stringify(m); if (abierto) ws.send(s); else cola.push(s); }
+  function mandar(m) { var s = JSON.stringify(m); if (abierto) enviar(s); else cola.push(s); }
   // cuánto se ve esta página: el servidor le manda los menús y los avisos a la que se está mirando
   // (en un celular, la lista de hilos y el dashboard no se ven a la vez). Oculta, mide 0
   function medir() {
@@ -37,7 +58,7 @@ export const SCRIPT_WEB = String.raw`
     try { llena = window.innerWidth >= window.parent.innerWidth - 2; } catch (x) {}
     // y la página lo sabe también: la barra se dibuja distinto si ocupa la pantalla (un celular)
     document.documentElement.classList.toggle('llena', llena && window.innerWidth > 0);
-    if (abierto) ws.send(JSON.stringify({ __ancho: window.innerWidth, __llena: llena }));
+    if (abierto) enviar(JSON.stringify({ __ancho: window.innerWidth, __llena: llena }));
   }
   window.__telarWeb = true;
   new ResizeObserver(medir).observe(document.documentElement);
@@ -124,6 +145,13 @@ export const SCRIPT_WEB = String.raw`
   }
 })();
 `;
+}
+
+/** El script que va antes del del dashboard en el panel en Node: el canal es un WebSocket. */
+export const SCRIPT_WEB = script(CANAL_WS);
+/** El mismo, para el dashboard que corre en el navegador (src/navegador): le habla a la página que lo
+ *  contiene, por postMessage. */
+export const SCRIPT_NAVEGADOR = script(CANAL_PADRE);
 
 /** La página que junta las dos: la barra de hilos a la izquierda y, a la derecha, lo que la barra
  *  elige: el dashboard o la terminal de un hilo. Cada uno en su marco, con su propio script y su propio

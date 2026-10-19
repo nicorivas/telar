@@ -126,7 +126,14 @@ function socketServe(): string {
  *  todavía no tiene esa ruta (un servidor más viejo). Entonces quien llama usa la CLI, que da lo mismo
  *  (las dos son cáscaras de la misma función, `telar.servicios`). Si la API contesta con un error, ese
  *  es el error: una acción no se reintenta por la CLI, porque se correría dos veces. */
+/** Cómo llegar a la API, si no es por el socket de esta máquina: en el navegador (src/navegador), un
+ *  `fetch` a `/api` de la página. Con uno puesto, la CLI no se usa: allá no hay procesos que abrir. */
+export type Transporte = (metodo: string, ruta: string, timeout: number, cuerpo?: unknown) => Promise<Respuesta<unknown> | undefined>;
+let transporte: Transporte | undefined;
+export function usarTransporte(t: Transporte): void { transporte = t; }
+
 function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T> | undefined> {
+    if (transporte) return transporte(metodo, ruta, timeout, cuerpo) as Promise<Respuesta<T> | undefined>;
     const sock = socketServe();
     if (!fs.existsSync(sock)) return Promise.resolve(undefined);
     const datos = cuerpo === undefined ? undefined : JSON.stringify(cuerpo);
