@@ -610,13 +610,15 @@ class AbrirUnPanel(Prueba):
         m.abrir_pane(["sh"], titulo="ficha")
         self.assertEqual(m.una("select-pane"), ["select-pane", "-t", "%9", "-T", "ficha"])
 
-    def test_reemplazar_no_parte_nada_y_mata_lo_que_corria(self):
+    def test_reemplazar_abre_junto_al_viejo_y_lo_cierra_sin_respawn(self):
+        # respawn-pane tumba a tmux 3.4: se abre el nuevo junto al viejo y se cierra el viejo
         m = TmuxFalso()
         m.abrir_pane(["agente"], reemplaza="%2")
-        self.assertEqual(m.ordenes("split-window"), [])
-        orden = m.una("respawn-pane")
-        self.assertEqual(orden[:4], ["respawn-pane", "-k", "-t", "%2"])
+        orden = m.una("split-window")
+        self.assertEqual(orden[:3], ["split-window", "-t", "%2"])
         self.assertEqual(orden[-2:], ["--", "agente"])
+        self.assertEqual(m.una("kill-pane"), ["kill-pane", "-t", "%2"])
+        self.assertEqual(m.ordenes("respawn-pane"), [])
 
     def test_junto_a_y_reemplaza_a_la_vez_no_se_acepta(self):
         m = TmuxFalso()

@@ -554,15 +554,19 @@ class Tmux(MultiplexorBase):
         carpeta = _carpeta(ruta)
 
         if reemplaza:
-            nuevo = self._objetivo_pane(reemplaza)
-            # `respawn-pane -k` mata lo que corría y arranca lo nuevo en el mismo panel: la
-            # pantalla no se mueve ni un carácter, que es todo el punto de reemplazar.
-            args = ["respawn-pane", "-k", "-t", nuevo, *carpeta]
+            viejo = self._objetivo_pane(reemplaza)
+            # se abre el nuevo junto al viejo y se cierra el viejo: el nuevo queda con todo su lugar.
+            # No `respawn-pane -k`, que lo hacía en el mismo panel sin mover la pantalla: tmux 3.4 se
+            # cae con él (un segfault que se lleva la sesión entera, visto dos veces en un servidor)
+            args = ["split-window", "-t", viejo, "-P", "-F", "#{pane_id}", *carpeta]
+            if not foco:
+                args.append("-d")
             if linea:
                 args += ["--", linea]
-            self._tmux(*args)
-            if foco:
-                self._tmux("select-pane", "-t", nuevo)
+            nuevo = self._tmux(*args).strip()
+            if not nuevo:
+                raise ErrorDeMux("tmux abrió el panel pero no dijo cuál es")
+            self._tmux("kill-pane", "-t", viejo)
         else:
             objetivo = self._objetivo_pane(junto_a) if junto_a else self._objetivo_sesion
             args = [
