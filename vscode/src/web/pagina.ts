@@ -170,9 +170,11 @@ export function paginaCasa(nonce: string): string {
   var titulo = document.getElementById('titulo'), botonModo = document.getElementById('modo');
   function marco(p) { return marcos.querySelector('iframe[data-p="' + CSS.escape(p) + '"]'); }
   // un hilo en pantalla angosta se lee como conversación (salvo que se pida la terminal); en ancha, terminal
-  function forma(clave) { return clave === 'dashboard' || clave.indexOf('doc:') === 0 ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
+  // claves: «dashboard», el nombre de un hilo de aquí, «doc:<hilo>» (su carpeta) y «rem:<máquina>:<hilo>» (de otra máquina)
+  function forma(clave) { return clave === 'dashboard' || clave.indexOf('doc:') === 0 || clave.indexOf('rem:') === 0 ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
   function fuente(clave) {
     if (clave.indexOf('doc:') === 0) return '/documento?hilo=' + encodeURIComponent(clave.slice(4));
+    if (clave.indexOf('rem:') === 0) { var r = clave.slice(4), i = r.indexOf(':'); return '/conversacion?maquina=' + encodeURIComponent(r.slice(0, i)) + '&hilo=' + encodeURIComponent(r.slice(i + 1)); }
     return (forma(clave) === 'conv' ? '/conversacion?hilo=' : '/terminal?hilo=') + encodeURIComponent(clave);
   }
   function llave(clave) { var f = forma(clave); return f ? f + ':' + clave : clave; }
@@ -191,7 +193,8 @@ export function paginaCasa(nonce: string): string {
       usadas = usadas.filter(function (u) { return u !== p; }).concat([p]);
       while (usadas.length > TOPE) { var vieja = marco(usadas.shift()); if (vieja) vieja.remove(); }
     }
-    var nombre = clave.indexOf('doc:') === 0 ? clave.slice(4) + ' · carpeta' : clave;
+    var nombre = clave.indexOf('doc:') === 0 ? clave.slice(4) + ' · carpeta'
+      : clave.indexOf('rem:') === 0 ? (function (r) { var i = r.indexOf(':'); return r.slice(i + 1) + ' · en ' + r.slice(0, i); })(clave.slice(4)) : clave;
     document.title = clave === 'dashboard' ? 'telar' : nombre + ' · telar';
     titulo.textContent = nombre;
     botonModo.hidden = !forma(clave);
@@ -337,11 +340,15 @@ export function paginaConversacion(nonce: string): string {
     <button data-t="\\r">⏎</button><button data-t="\\u001b">⎋</button><button data-t="1">1</button><button data-t="2">2</button><button data-t="3">3</button><button data-t="\\u001b[A">↑</button><button data-t="\\u001b[B">↓</button>
   </div>
   <form id="escribir"><textarea id="texto" rows="2" placeholder="escríbele al hilo"></textarea><button type="submit">enviar</button></form>
+  <p id="dijo" class="nada"></p>
 </footer>
 <script nonce="${nonce}">
 (function () {
-  var hilo = new URLSearchParams(location.search).get('hilo') || '';
-  var turnos = document.getElementById('turnos'), texto = document.getElementById('texto');
+  var q = new URLSearchParams(location.search);
+  var hilo = q.get('hilo') || '', maquina = q.get('maquina') || '';
+  var turnos = document.getElementById('turnos'), texto = document.getElementById('texto'), dijo = document.getElementById('dijo');
+  // un hilo de otra máquina se lee y se le escribe por el bus: sin terminal, no hay teclas que apretar
+  if (maquina) { document.getElementById('teclas').hidden = true; texto.placeholder = 'escríbele al hilo (en ' + maquina + ', por el bus)'; }
   var QUIEN = { usuario: 'tú', agente: 'agente', herramienta: '·' };
   function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
   function abajo() { return turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40; }
@@ -377,7 +384,7 @@ export function paginaConversacion(nonce: string): string {
   function leer() {
     if (leyendo) return;
     leyendo = true;
-    fetch('/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8', { credentials: 'same-origin' })
+    fetch('/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : ''), { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(pintar)
       .catch(function () { /* sin conexión: se reintenta en la vuelta */ })
@@ -402,6 +409,17 @@ export function paginaConversacion(nonce: string): string {
     e.preventDefault();
     var t = texto.value.replace(/\\s+$/, '');
     if (!t) return;
+    if (maquina) {
+      // a otra máquina: por el bus, como la persona; le llega al hilo al terminar su turno (o al tiro si espera)
+      fetch('/api/remoto/enviar', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hilo: hilo, texto: t }) })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          dijo.textContent = r.ok ? 'enviado: le llega al terminar su turno, o al tiro si te espera' : (r.error || 'no llegó');
+          if (r.ok) { texto.value = ''; pronto = Date.now() + 30000; setTimeout(leer, 3000); }
+        })
+        .catch(function () { dijo.textContent = 'sin conexión con telar'; });
+      return;
+    }
     // como un pegado (para que un salto de línea no envíe antes de tiempo), y después ⏎
     teclear('\\u001b[200~' + t + '\\u001b[201~');
     setTimeout(function () { teclear('\\r'); }, 120);

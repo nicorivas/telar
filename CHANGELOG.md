@@ -8,6 +8,11 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The web panel shows the threads of other machines (the laptop's, seen from the server): one group per
+  machine whose snapshot arrives here and whose threads the list does not already have. A click reads the
+  thread as a conversation over the bus, and its box writes to it as the person. Behind it,
+  `telar hilo leer <hilo> --maquina <nombre>` (read by that machine's node) and
+  `telar mensaje <hilo> - --tipo persona` (it arrives as the person's own words, not a colleague's).
 - The web panel's thread menu: ⋯ on each thread (and right-click) opens what VS Code has as its context
   menu — view, rename, link (to one of the profile's units, or a typed path), unlink, priority, archive or
   unarchive, close, take to another machine, forget, and see its folder and document (`/documento`: the

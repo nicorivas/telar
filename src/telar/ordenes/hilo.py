@@ -24,7 +24,7 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            se cierra aquí y sigue allá, retomada. Con --sesion,
                                            esa conversación aunque telar no la tenga anotada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
-    telar hilo leer [«Faro»] [--ultimos N] lo último que pasó en ese hilo: lo que se le pidió y
+    telar hilo leer [«Faro»] [--ultimos N] [--maquina M]   lo último que pasó en ese hilo (de esa máquina, por el bus): lo que se le pidió y
                                            lo que respondió su agente (5 turnos si no se dice)
 
 `adoptar` es la salida del único agujero que tiene guardar el estado por nombre:
@@ -95,6 +95,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--sesion", default="",
                    help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
     p.add_argument("--ultimos", type=int, default=0, metavar="N", help="con leer: cuántos turnos")
+    p.add_argument("--maquina", default="", metavar="NOMBRE", help="con leer: un hilo de otra máquina, por el bus")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     p.add_argument("--horas", type=float, default=6, help="con caidos: vistos vivos en estas últimas horas")
     p.add_argument("--seco", action="store_true", help="con caidos: solo decir cuáles reabriría")
@@ -588,10 +589,24 @@ def _sesiones(hilo) -> str:
 
 def _leer(ctx, o) -> int:
     """Lo último de un hilo, sin moverle nada: ni foco, ni atención, ni estado."""
+    from telar import bus as mod_bus
     from telar import historia
 
-    tel = _comun.tejer(ctx, con_ficha=False)
     referencia = o.hilo or o.valor
+    if o.maquina and mod_bus.hay_bus(ctx.config) and o.maquina != mod_bus.maquina(ctx.config):
+        # un hilo de otra máquina: lo lee su nodo (la conversación vive allá) y responde por el bus
+        if not referencia:
+            return _comun.queja("¿qué hilo de esa máquina? telar hilo leer «Faro» --maquina laptop")
+        ultimos = o.ultimos or historia.POR_DEFECTO
+        r = mod_bus.pedir(ctx.config, o.maquina, "leer", {"hilo": referencia, "ultimos": ultimos}, espera=30)
+        if not r.get("ok"):
+            return _comun.queja(r.get("error", f"{o.maquina} no respondió"))
+        datos = {**r["historia"], "maquina": o.maquina}
+        if o.json:
+            return _comun.escribir_json(datos)
+        print(historia.como_texto(datos))
+        return 0
+    tel = _comun.tejer(ctx, con_ficha=False)
     if referencia:
         hilo, problema = _comun.resolver(tel, referencia)
         if hilo is None:

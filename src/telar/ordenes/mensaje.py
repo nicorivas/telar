@@ -3,6 +3,7 @@
     telar mensaje Gestión "¿quedó la nota en T185?"
     telar mensaje gestion -              el texto por la entrada estándar (sin tope de largo práctico)
     telar mensaje Faro "…" --tipo encargo
+    telar mensaje Faro - --tipo persona --de "el panel"   lo escribe la persona, desde otra parte
     telar mensaje --registro [N]         los últimos mensajes entre hilos, de todas las máquinas
     telar mensaje --retenidos            los que se retuvieron (cadena larga, demasiados por hora)
     telar mensaje --soltar <id>          mandar uno retenido (lo decide la persona)
@@ -43,7 +44,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--registro", nargs="?", type=int, const=40, default=0, metavar="N", help="los últimos N mensajes")
     p.add_argument("--retenidos", action="store_true", help="los retenidos que nadie ha soltado")
     p.add_argument("--soltar", default="", metavar="ID", help="mandar uno retenido")
-    p.add_argument("--tipo", choices=("mensaje", "encargo"), default="mensaje")
+    # persona: lo escribe la persona desde otra parte (el panel en el celular): le llega como suyo, no de un colega
+    p.add_argument("--tipo", choices=("mensaje", "encargo", "persona"), default="mensaje")
     p.add_argument("--de", default="", help="quién lo manda (por defecto, este hilo o esta máquina)")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)

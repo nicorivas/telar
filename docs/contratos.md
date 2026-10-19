@@ -845,6 +845,9 @@ responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
              {"quien": "agente", "hora": "…", "texto": "…"}]]}
 ```
 
+Con `--maquina <nombre>` se lee un hilo de otra máquina: lo lee su nodo (pedido `leer` por el bus) y la
+respuesta es la misma, con `"maquina"` agregado.
+
 Un turno empieza con un mensaje de `usuario`. `quien` es `usuario`, `agente` o `herramienta`; una herramienta
 es una línea (cuál y sobre qué), nunca su salida. `recortado` dice si se cortó un texto (más de 4000
 caracteres) o se soltaron turnos viejos para no pasar de 60 000 en total. Sin conversación en esta máquina:

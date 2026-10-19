@@ -219,17 +219,30 @@ export const resultado = (clave: string, dia = '') =>
 
 /** Un comentario sobre el resultado de un día: lo atiende la máquina donde vive, y dice qué abrió
  *  (`telar resultado <clave> <día> --comentar`, con el texto por la entrada estándar). */
-export function comentarResultado(clave: string, dia: string, texto: string): Promise<{ ok: boolean; abrio?: string; error?: string }> {
+export const comentarResultado = (clave: string, dia: string, texto: string) =>
+    conEntrada<{ ok: boolean; abrio?: string; error?: string }>(['resultado', clave, dia, '--comentar', '--json'], texto);
+
+/** Un mensaje que escribe la persona desde otra parte (el panel) a un hilo de cualquier máquina, por
+ *  el bus: le llega como suyo (`telar mensaje <hilo> - --tipo persona`). */
+export const escribirComoPersona = (hilo: string, texto: string, de: string) =>
+    conEntrada<{ ok?: boolean; id?: string; error?: string }>(['mensaje', hilo, '-', '--tipo', 'persona', '--de', de, '--json'], texto);
+
+/** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`). */
+export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }[] }
+export const espejos = () => telarJson<{ espejos: JsonEspejo[] }>(['espejo', 'ver', '--json'], 15000);
+
+/** Una orden de telar con un texto por su entrada estándar, y su JSON. */
+function conEntrada<T>(args: string[], texto: string): Promise<T & { ok?: boolean; error?: string }> {
     return new Promise(listo => {
-        const p = cp.spawn(programa(), [...banderas(), 'resultado', clave, dia, '--comentar', '--json'], { env: ambiente() });
+        const p = cp.spawn(programa(), [...banderas(), ...args], { env: ambiente() });
         let out = '', err = '';
         const tope = setTimeout(() => { p.kill(); }, 90000);
         p.stdout.on('data', d => { out += d; });
         p.stderr.on('data', d => { err += d; });
-        p.on('error', e => { clearTimeout(tope); listo({ ok: false, error: e.message }); });
+        p.on('error', e => { clearTimeout(tope); listo({ ok: false, error: e.message } as T & { ok?: boolean; error?: string }); });
         p.on('close', () => {
             clearTimeout(tope);
-            try { listo(JSON.parse(out)); } catch { listo({ ok: false, error: ultimaLinea(err) || 'no respondió' }); }
+            try { listo(JSON.parse(out)); } catch { listo({ ok: false, error: ultimaLinea(err) || 'no respondió' } as T & { ok?: boolean; error?: string }); }
         });
         p.stdin.end(texto);
     });

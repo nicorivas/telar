@@ -313,6 +313,8 @@ async function llevarWeb(hilo: string): Promise<void> {
 
 const ordenes: Record<string, (...args: any[]) => unknown> = {
     'telar.menuHilo': a => menuHilo(a),
+    // un hilo de otra máquina: se lee como conversación y se le escribe por el bus (aquí no hay su terminal)
+    'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) mostrar(`rem:${maq}:${resto.join('|')}`); },
     // en la web, ir a un hilo es mostrar su terminal a la derecha (no mover la ventana de tmux de nadie)
     'telar.ir': a => mostrar(hiloDe(a)),
     'telar.retomar': async a => { if (await sobreHilo(a, 'retomar')) mostrar(hiloDe(a)); },
@@ -479,6 +481,17 @@ async function main(): Promise<void> {
         barra.refrescar(true);
     };
     modelo.cambio.event(() => barra.refrescar());
+    // los hilos de otras máquinas que aquí no se ven (en el servidor, los del laptop): de sus fotos, cada
+    // 30 s. Una máquina cuyos hilos ya trae la lista (los remotos de [remotos]) no se repite
+    const otras = async () => {
+        const r = await cli.espejos().catch(() => undefined);
+        const yaEstan = new Set(modelo.hilos.map(h => h.remoto).filter(Boolean));
+        const nuevas = (r?.datos?.espejos ?? []).filter(e => !e.error && !yaEstan.has(e.nombre))
+            .map(e => ({ nombre: e.nombre, en_linea: e.en_linea, edad: e.edad, hilos: e.hilos }));
+        if (JSON.stringify(nuevas) !== JSON.stringify(barra.otras)) { barra.otras = nuevas; barra.refrescar(true); }
+    };
+    void otras();
+    setInterval(() => void otras(), 30 * 1000);
 
     const servidor = http.createServer((req, res) => {
         const u = new URL(req.url ?? '/', 'http://x');
@@ -535,11 +548,26 @@ async function main(): Promise<void> {
             });
             return;
         }
-        // lo último de un hilo, para leerlo como conversación (el celular): `telar hilo leer`
+        // escribirle a un hilo de otra máquina, por el bus, como la persona (`telar mensaje --tipo persona`)
+        if (u.pathname === '/api/remoto/enviar') {
+            if (req.method !== 'POST' || !mismoOrigen(req)) { res.writeHead(403); res.end(); return; }
+            void leerCuerpo(req).then(async d => {
+                const hilo = typeof d?.hilo === 'string' ? d.hilo : '', texto = typeof d?.texto === 'string' ? d.texto.trim() : '';
+                const r = !hilo || !texto ? { ok: false, error: 'faltan el hilo o el texto' }
+                    : texto.length > 8000 ? { ok: false, error: 'pasa de 8000 caracteres' }
+                    : await cli.escribirComoPersona(hilo, texto, 'el panel');
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+                res.end(JSON.stringify({ ok: r.ok !== false && !r.error, error: r.error }));
+            });
+            return;
+        }
+        // lo último de un hilo, para leerlo como conversación (el celular): `telar hilo leer`; de otra
+        // máquina (`maquina`), por el bus
         if (u.pathname === '/api/leer') {
             const hilo = u.searchParams.get('hilo') ?? '';
+            const maquina = u.searchParams.get('maquina') ?? '';
             const n = String(Math.max(1, Math.min(30, Number(u.searchParams.get('n')) || 8)));
-            void cli.telar(['hilo', 'leer', hilo, '--ultimos', n, '--json'], 20000).then(r => {
+            void cli.telar(['hilo', 'leer', hilo, '--ultimos', n, ...(maquina ? ['--maquina', maquina] : []), '--json'], 35000).then(r => {
                 let cuerpo: string;
                 try {
                     // lo que dicen la persona y el agente va en markdown: se manda también convertido (sin HTML

@@ -86,6 +86,9 @@ document.addEventListener('contextmenu', e => {
 vscode.postMessage({ tipo: 'listo' });
 `;
 
+/** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
+export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }
+
 type Seccion = 'hilo' | 'archivado';
 /** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
 type Orden = '' | 'urgencia' | 'nombre' | 'reciente';
@@ -143,6 +146,9 @@ export class BarraHilos {
     /** en la web: el hilo cuya terminal se muestra a la derecha. Si se da, manda sobre el foco de
      *  tmux para marcar la fila (en VS Code no se da: manda el hilo con foco) */
     mostrado?: string;
+    /** los hilos de otras máquinas que esta no ve en su multiplexor, de la foto que publica cada una
+     *  (`telar espejo ver`): un grupo por máquina. Lo pone el panel web del servidor; vacío, no hay grupo */
+    otras: { nombre: string; en_linea: boolean; edad: number | null; hilos: HiloDeFoto[] }[] = [];
     private irAlArchivo = false;
     /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */
     estado?: Guardado;
@@ -189,6 +195,7 @@ export class BarraHilos {
             case 'cerrar': if (m.id) void ui().orden('telar.cerrar', { hilo: m.id }); break;
             case 'archivo': void ui().orden('telar.archivo'); break;
             case 'menu': if (m.id) void ui().orden('telar.menuHilo', { hilo: m.id }); break;
+            case 'ir-remoto': if (m.id) void ui().orden('telar.irRemoto', m.id); break;
             case 'seccion':
                 if (m.id === '__archivo') { void ui().orden('telar.archivo'); break; }
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
@@ -383,6 +390,22 @@ export class BarraHilos {
                         + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
                         + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
                 }
+            }
+        }
+
+        // los hilos de otras máquinas (el laptop, visto desde el servidor): de su foto, solo los vivos. Un
+        // clic los lee como conversación, por el bus; desde aquí no se les abre una terminal
+        for (const m of this.otras) {
+            const vivos = m.hilos.filter(x => x.vivo);
+            const estadoM = m.en_linea ? '' : ` · apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
+            if (!cabecera(`__maquina:${m.nombre}`, `${m.nombre.toUpperCase()}${estadoM}`, vivos.length, true, `los hilos de ${m.nombre}`)) continue;
+            for (const x of vivos) {
+                const at = x.atencion ?? 'ninguna';
+                h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
+                    + ` title="${esc(`${x.nombre} · en ${m.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}\nclic: leerlo y escribirle (por el bus)`)}">`
+                    + `<span class="prio p${x.prioridad ?? 0}">${PRIORIDAD[x.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
+                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${GLIFO[at] ?? ' '}</span><span class="remoto">⇄</span>`
+                    + `<span class="nombre">${esc(x.nombre)}</span></div>`);
             }
         }
 
