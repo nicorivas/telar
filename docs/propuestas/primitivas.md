@@ -304,6 +304,11 @@ dashboard y un agente usan la misma API.
 
 Cada paso deja todo funcionando y se puede parar en cualquiera.
 
+**Corrección del 18-oct:** `telar serve` (el paso 9) va **antes** de los pasos 2 a 8, después de que
+el panel web quede como servicio y en el celular. Las primitivas se escriben una sola vez, sobre la
+API que se queda corriendo, y no dos (CLI suelta y API). El estado de esa migración y su orden están
+en `dashboard-fuera-de-vscode.md`, «Estado y plan».
+
 0. **Limpiar lo muerto.** Se va la orden `movil` (su librería de ventanas queda: la usa medio telar).
    La puerta (`enlace`) y el correo por Maildir se van cuando el bus cubra a otras personas: hoy solo
    cruza entre hilos de un mismo usuario. Zellij, por decidir: nadie lo usa aquí, pero el README lo

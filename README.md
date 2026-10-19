@@ -127,6 +127,8 @@ from a temporary virtualenv, say. The six events are in
 
 Docs are in Spanish, the language this is written in.
 
+- [`docs/arquitectura.md`](docs/arquitectura.md) — how the pieces fit, where your own things
+  plug in, and connecting a task system end to end (in Spanish).
 - [`docs/configuracion.md`](docs/configuracion.md) — the config file, key by key.
 - [`docs/perfil.md`](docs/perfil.md) — the profile schema, and the minimal
   convention that applies when there is no profile.

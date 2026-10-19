@@ -8,6 +8,17 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar panel`: runs the web panel (the threads bar, the dashboard and the threads' terminals) without
+  `npm`: it finds the panel next to telar's code (or `$TELAR_PANEL_DIR`), says what is missing (Node,
+  `npm ci`, `npm run compile`; `--verificar` only checks), and becomes the node process. `--tailscale`
+  listens on the machine's Tailscale IP, waiting for it at boot; it refuses to listen on every address.
+  `servidor/telar-panel.service` (systemd) and `servidor/telar-panel.plist` (launchd) start it on their own.
+- The state of the move out of VS Code, and its order (the panel everywhere, then `telar serve`, then the
+  primitives), in `docs/propuestas/dashboard-fuera-de-vscode.md`; `docs/arquitectura.md` shows where it goes.
+- `docs/arquitectura.md`: how telar is built (the CLI at the center, the surfaces that only draw, the
+  repository profile, providers, modules, the bus), where your own things plug in, and a task system
+  connected in three levels: checkboxes in markdown, a bridge script (a working `todo.txt` example), and
+  the task card with its actions.
 - The app's logo (`telar web` icons) is redrawn on an invisible grid of square cells: the «t» has 2-cell strokes,
   the cursor is 3×6 and sits on the same baseline, right under the «t»'s arm, with 1 cell between them. It
   comes in a full-bleed version and a smaller «maskable» one that survives Android's circular crop; there is

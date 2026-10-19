@@ -1,7 +1,9 @@
 # El dashboard fuera de VS Code
 
-Propuesta, 16-oct-2026. Estado: **la barra y el dashboard ya corren en el navegador** (`npm run panel`
-en `vscode/`, ver «Lo hecho» al final); falta el servicio, el celular y fusionar `telar web`.
+Propuesta, 16-oct-2026. Estado al 18-oct: **la barra, el dashboard y las terminales ya corren en el
+navegador** (`npm run panel` en `vscode/`), pero hay que levantarlo a mano, el celular sigue en `telar
+web` y no existe `telar serve`. El estado y lo que sigue están en «Estado y plan», al final: esa sección
+manda sobre los pasos de más abajo, que fueron el plan original.
 
 ## Por qué
 
@@ -123,3 +125,42 @@ se reescribió en el navegador. La dependencia de VS Code resultó concentrada e
 Lo que falta: `telar panel` como orden y como servicio (launchd en el laptop, systemd en el servidor),
 correrlo en el servidor por Tailscale para el celular, fusionar `telar web`, y lo que en la web todavía
 es solo de VS Code (la ficha y la carpeta de la barra, el menú contextual de un hilo).
+
+## Estado y plan (18-oct-2026)
+
+Se tomó un atajo respecto de los pasos de arriba: el panel funciona **sin** `telar serve`. Es un
+servidor Node (`web/servidor.ts`) que, por cada dato, abre un proceso `telar … --json`; por eso la
+primera carga tarda unos 10 s. Así quedó cada pieza:
+
+| pieza | estado |
+|---|---|
+| dashboard y barra sin VS Code (`anfitrion.ts`, `superficie.ts`) | hecho |
+| panel web: barra, dashboard y terminales de los hilos (xterm.js sobre `telar mirar`) | hecho, a mano |
+| CSS en archivos, tokens, capas, stylelint, `<dialog>` | hecho |
+| `telar panel`, y el panel como servicio (launchd en el laptop, systemd en el servidor) | **paso 1**: la orden y las plantillas hechas (18-oct); corriendo en el laptop |
+| el panel en el celular, por Tailscale | **paso 1**: hoy el celular usa `telar web`, y hay dos dashboards |
+| retirar `telar web` | **paso 1**, después de que el panel sirva en un celular. `telar web` es una app para el celular (1.500 líneas): lee la conversación de un hilo por páginas, aprieta teclas en su terminal, deja lecturas, anota eventos, comenta el plan, abre hilos y atajos, y se instala como app. El panel hoy es de pantalla grande (marcos y xterm): le falta una vista angosta y leer la conversación en vez de la terminal |
+| lo que en la web es solo de VS Code: la ficha y la carpeta de un hilo, su menú contextual | **paso 1** |
+| `telar serve`: Python que se queda corriendo y contesta las órdenes sin abrir procesos, y avisa cuando algo cambia | **paso 2** |
+| las primitivas (objetos con dirección, encargos, worktrees, permisos; ver `primitivas.md`) | **paso 3**; hecho solo `telar commit` |
+
+**El orden y por qué.**
+
+1. **El panel en todas partes.** Es corto y es lo que se usa a diario: que arranque solo, que el
+   celular lo vea, y que haya un solo dashboard.
+2. **`telar serve`.** Lo lento hoy es abrir un proceso por pedido, no el lenguaje. Se hace por
+   partes, empezando por lo más pedido (`hilos`, `hoy`, los bloques). Si `telar serve` no corre, el
+   panel vuelve a lanzar la CLI, así que cada parte se puede subir sola. Con él, los cambios se avisan
+   por WebSocket en vez de preguntar cada pocos segundos.
+3. **Las primitivas, encima de `telar serve`.** Hacerlas antes es escribirlas dos veces: para la CLI
+   suelta y para la API que se queda corriendo. (`primitivas.md` las ponía antes; se corrigió.)
+
+**Una decisión abierta: uno o dos procesos.** El panel en Node ya sirve la página y dibuja.
+`telar serve` daría los datos. Hay dos caminos:
+
+- **Dos procesos** (recomendado por ahora): Node sirve la página y Python los datos. Reusa todo lo que
+  funciona.
+- **Uno solo**: `telar serve` sirve también la página, y la lógica del dashboard (TypeScript) pasa al
+  navegador. Más limpio a la larga, pero es una reescritura.
+
+Se parte con dos, y se fusionan si molesta.

@@ -1,0 +1,32 @@
+# telar panel como servicio de usuario: la barra, el dashboard y las terminales, en la IP de Tailscale
+# (puerto 8770), para verlo desde el celular u otra máquina.
+#
+#   mkdir -p ~/.config/systemd/user && cp telar-panel.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-panel
+#   loginctl enable-linger "$USER"        # que arranque al encender, sin que nadie inicie sesión
+#
+# La dirección con la llave, la primera vez:  journalctl --user -u telar-panel | grep k= | tail -1
+# Ver cómo va:  systemctl --user status telar-panel   ·   journalctl --user -u telar-panel -f
+# Quitarlo:     systemctl --user disable --now telar-panel
+#
+# Quien alcance el puerto y tenga la llave puede escribirle a tus agentes: por eso escucha solo en
+# Tailscale. Antes, una vez: cd vscode && npm ci && npm run compile (telar panel --verificar lo revisa).
+
+[Unit]
+Description=telar panel: la barra, el dashboard y las terminales, por Tailscale
+Documentation=https://github.com/nicorivas/telar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# un servicio de usuario no hereda tu PATH: telar, node, tmux y tailscale tienen que estar a la vista
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/bin/telar panel --tailscale
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

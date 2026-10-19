@@ -11,6 +11,7 @@ en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.m
 | *(`telar persona`)* | dar de alta a un colega: usuario, ssh, tope de recursos, correo y su propio telar y Claude Code. Es una orden de telar, no un archivo de esta carpeta | `telar persona crear NOMBRE --llave …` |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
+| `telar-panel.service` / `telar-panel.plist` | `telar panel` como servicio (systemd en el servidor, por Tailscale; launchd en un Mac, en esta máquina): la barra, el dashboard y las terminales | `~/.config/systemd/user/` · `~/Library/LaunchAgents/` |
 | `telar-web.service` | `telar web` como servicio de usuario: arranca al encender y se levanta si se cae | `~/.config/systemd/user/` |
 
 ## Montarlo
