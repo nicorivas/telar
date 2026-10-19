@@ -28,6 +28,11 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- The team page is a separate FastAPI app (`telar.api_equipo`) that `telar serve --equipo` runs on its own
+  Tailscale port in the same process (or alone, `telar equipo servir`): a person's key reaches none of the
+  owner's routes. The owner's inbox has routes in the owner's API (`/equipo/bandeja`,
+  `/equipo/{id}/aceptar|rechazar|existe|revisando`) and goes to the machine with the tasks over the bus
+  (a new `equipo` request) instead of ssh. The old `http.server` handler is gone.
 - `PUT /config/{ajuste}` (directories, meeting and project templates, calendar), `/compartir`,
   `/hilos/leer`, `/skills` and `/periodicos`, one service each. Periodic jobs that live on another machine
   are asked of its node over the bus (a new `periodicos` request); the CLI uses the bus too, and ssh only

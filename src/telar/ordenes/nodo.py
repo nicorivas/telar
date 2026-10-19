@@ -195,6 +195,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tipo"), cb=self._tipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "periodicos"), cb=self._periodicos)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "equipo"), cb=self._equipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -493,6 +494,21 @@ class Nodo:
             if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
                 return {"ok": False, "error": "argv: se esperaba una lista de textos"}
             return alla.tarea_aqui(argv, "periodicos")
+
+        await self._responder(m, correr)
+
+    async def _equipo(self, m) -> None:
+        """`telar equipo …` corrido aquí, para otra máquina: la bandeja del equipo vive donde están las tareas.
+        Nunca `servir` ni `token`: solo leer la bandeja y decidirla."""
+        from telar import alla
+
+        def correr(p):
+            argv = p.get("argv")
+            if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+                return {"ok": False, "error": "argv: se esperaba una lista de textos"}
+            if not argv or argv[0] not in ("sugerencias", "aceptar", "rechazar", "existe", "revisando"):
+                return {"ok": False, "error": "equipo: solo la bandeja y sus decisiones"}
+            return alla.tarea_aqui(argv, "equipo")
 
         await self._responder(m, correr)
 

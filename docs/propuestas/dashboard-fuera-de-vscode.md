@@ -235,5 +235,11 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
 3. **Las vistas, al navegador**: `cli.ts` llama a la API en vez de abrir procesos; `hoy.ts` e
    `hilos.ts` casi no cambian, porque ya hablan por `anfitrion` y `superficie`.
 4. **Las terminales, a Python**, y se retira Node.
-5. **`telar-equipo`, como rutas**, y sale el código muerto.
+5. **`telar-equipo`, como rutas**, y sale el código muerto. Hecho en el código (19-oct): la página del
+   equipo es una app FastAPI aparte (`telar.api_equipo`), que `telar serve --equipo` sirve en su propio
+   puerto de Tailscale, en el mismo proceso; nada de tu API se alcanza desde ahí (probado: `/hoy`, `/docs`,
+   las rutas de tareas dan 404 con o sin llave). La bandeja, del lado del dueño, tiene sus rutas en tu API
+   (`/equipo/…`), y desde el laptop va al servidor por el bus en vez de ssh. Falta en el servidor: parar
+   `telar-equipo` y agregar `--equipo` al `telar serve` (mismo puerto, 8766). El código muerto, en
+   [retiro-correo-y-remotos.md](retiro-correo-y-remotos.md).
 

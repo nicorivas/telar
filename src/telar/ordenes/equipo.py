@@ -9,22 +9,19 @@
     telar equipo existe ID --tarea T123            un pedido que ya existe: quien lo hizo recibe el estado de esa tarea
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
-El servidor es otro proceso y otro puerto que el panel (`telar panel`), a propósito: el panel puede escribirles
-a tus agentes; este no tiene esa fuerza. Con el token de una persona solo se puede: leer las tareas
+La página y su API (telar.api_equipo) son otra app y otro puerto que los tuyos, a propósito: el panel y tu
+API pueden escribirles a tus agentes; esta no tiene esa fuerza. Las sirve `telar serve --equipo` (o sola,
+`telar equipo servir`). Con el token de una persona solo se puede: leer las tareas
 marcadas para el equipo (sin su cuerpo), dejar una sugerencia de prioridad, **pedirte una tarea nueva**
 y ver cómo salió. Cada una avisa al laptop con una notificación. Ver `telar.equipo`.
 """
 
 from __future__ import annotations
 
-import json
 import secrets
 import shlex
 import shutil
 import subprocess
-import threading
-import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from telar import equipo as mod_equipo
 from telar.ordenes import _comun
@@ -38,202 +35,7 @@ def ip_de_tailscale() -> str:
     return r.stdout.split()[0] if r.returncode == 0 and r.stdout.split() else ""
 
 AYUDA = "Que una persona de confianza vea tus tareas del equipo y te sugiera prioridades."
-MAX_CUERPO = 4096
 
-PAGINA = """<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>equipo</title>
-<style>
-:root{color-scheme:dark;--bg:#2e3440;--fg:#d8dee9;--dim:#8590a6;--azul:#81a1c1;--amarillo:#ebcb8b;--verde:#a3be8c;--rojo:#bf616a}
-@media (prefers-color-scheme: light){:root{color-scheme:light;--bg:#eceff4;--fg:#2e3440;--dim:#667085;--azul:#4c6f9a;--amarillo:#9a6f00;--verde:#4f7d3a;--rojo:#b3424d}}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/22px ui-monospace,Menlo,Consolas,monospace;padding:16px;max-width:760px;margin:auto}
-h1{font-size:16px;margin:0 0 4px}.dim{color:var(--dim)}
-.t{border-top:1px solid color-mix(in srgb,var(--fg) 16%,transparent);padding:8px 0}
-.p{display:inline-block;min-width:2.4em;color:var(--amarillo);font-weight:700}.p0{color:var(--rojo)}.hecha{opacity:.55}
-button{font:inherit;color:var(--azul);background:none;border:1px solid var(--azul);border-radius:3px;padding:0 8px;cursor:pointer}
-textarea,input{font:inherit;color:inherit;background:transparent;border:1px solid var(--dim);width:100%;box-sizing:border-box;padding:4px}
-.ok{color:var(--verde)}.mal{color:var(--rojo)}
-</style></head><body>
-<h1>equipo</h1><div class="dim" id="quien"></div><div id="msg"></div>
-<div class="t" id="pedir"><b>pedirle algo a Nico</b> <span class="dim">(una tarea nueva; él decide si la agrega)</span><br>
-<input id="p-titulo" maxlength="150" placeholder="qué necesitas que haga (ej. hacer la sesión 5 de GOA)">
-<textarea id="p-contexto" rows="2" maxlength="500" placeholder="contexto (opcional): por qué, para quién, qué depende de esto"></textarea>
-<input id="p-vence" type="date" aria-label="para cuándo (opcional)"> <button id="p-enviar">enviar pedido</button></div>
-<div id="pedidos"></div><div id="lista"></div>
-<script>
-let token = '';
-// el enlace que se le manda a la persona lleva su llave tras el # (no viaja al servidor): se guarda y se borra de la barra
-const enlace = /[#&]k=([^&]+)/.exec(location.hash);
-if (enlace) { try { localStorage.setItem('equipo.token', decodeURIComponent(enlace[1])); } catch (e) {} history.replaceState(null, '', location.pathname); }
-try { token = localStorage.getItem('equipo.token') || ''; } catch (e) {}
-const $ = (id) => document.getElementById(id);
-const hdr = () => ({ 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' });
-const dec = ['aceptada', 'rechazada'];
-async function cargar() {
-  if (!token) { token = prompt('tu llave de equipo') || ''; if (!token) return; try { localStorage.setItem('equipo.token', token); } catch (e) {} }
-  const r = await fetch('api/tareas', { headers: hdr() });
-  if (r.status === 401) { try { localStorage.removeItem('equipo.token'); } catch (e) {} token = ''; $('msg').innerHTML = '<span class="mal">llave inválida</span>'; return; }
-  const d = await r.json();
-  $('quien').textContent = d.quien + ' · lo que el equipo ve de las tareas de Nico';
-  const mias = d.sugerencias;
-  $('pedidos').innerHTML = '';
-  for (const x of mias.filter((y) => y.tipo === 'tarea').slice(-5).reverse()) {
-    const e = document.createElement('div'); e.className = 'dim';
-    e.textContent = 'tu pedido «' + x.titulo + '»: ' + x.estado + (x.tarea ? ' (ahora es ' + x.tarea + ')' : '') + (x.nota ? ' — ' + x.nota : '');
-    $('pedidos').append(e);
-  }
-  $('lista').innerHTML = '';
-  for (const t of d.tareas) {
-    const s = mias.filter((x) => x.tipo !== 'tarea' && x.tarea === t.id).slice(-1)[0];
-    const div = document.createElement('div'); div.className = 't' + (t.estado === 'hecha' ? ' hecha' : '');
-    div.innerHTML = '<span class="p p' + t.prioridad + '">P' + (t.prioridad ?? '?') + '</span> <b></b> <span class="dim"></span>';
-    div.querySelector('b').textContent = t.id + ' ' + t.titulo;
-    div.querySelector('.dim').textContent = [t.estado, t.vence && 'vence ' + t.vence, t.proyecto, t.espera && 'espera ' + t.espera, t.avance].filter(Boolean).join(' · ');
-    if (s) { const e = document.createElement('div'); e.className = 'dim'; e.textContent = 'tu sugerencia: ' + s.estado + (s.nota ? ' — ' + s.nota : ''); div.append(e); }
-    if (t.estado !== 'hecha' && t.prioridad !== 0 && !(s && s.estado === 'pendiente')) {
-      const b = document.createElement('button'); b.textContent = 'sugerir subir prioridad';
-      b.onclick = () => formulario(div, t, b); div.append(document.createElement('br'), b);
-    }
-    $('lista').append(div);
-  }
-}
-function formulario(div, t, b) {
-  b.remove();
-  const ta = document.createElement('textarea'); ta.rows = 2; ta.maxLength = 500; ta.placeholder = 'por qué debería subir (obligatorio)';
-  const go = document.createElement('button'); go.textContent = 'enviar';
-  go.onclick = async () => {
-    const r = await fetch('api/sugerir', { method: 'POST', headers: hdr(), body: JSON.stringify({ tarea: t.id, motivo: ta.value }) });
-    const d = await r.json();
-    $('msg').innerHTML = d.ok ? '<span class="ok">sugerencia enviada: Nico la verá</span>' : '<span class="mal"></span>';
-    if (!d.ok) $('msg').firstChild.textContent = d.error;
-    cargar();
-  };
-  div.append(ta, go);
-}
-function yaExiste(lista) {
-  const m = $('msg'); m.innerHTML = '<span class="mal">ya hay una tarea parecida, mira si es lo mismo:</span>';
-  for (const t of lista) { const e = document.createElement('div'); e.className = 'dim'; e.textContent = t.resumen; m.append(e); }
-  const b = document.createElement('button'); b.textContent = 'es otra cosa: pedirla igual';
-  b.onclick = () => enviarPedido(true); m.append(b);
-}
-$('p-enviar').onclick = () => enviarPedido(false);
-async function enviarPedido(insistir) {
-  $('msg').innerHTML = '<span class="dim">revisando si Nico ya tiene algo sobre esto…</span>';
-  const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value, aunque_exista: insistir }) });
-  const d = await r.json();
-  if (r.status === 409 && d.existe) { yaExiste(d.existe); return; }
-  $('msg').innerHTML = d.ok ? '<span class="ok">pedido enviado: Nico lo verá y decide</span>' : '<span class="mal"></span>';
-  if (!d.ok) $('msg').firstChild.textContent = d.error; else { $('p-titulo').value = ''; $('p-contexto').value = ''; $('p-vence').value = ''; }
-  cargar();
-}
-cargar(); setInterval(() => { if (!document.hidden && !document.activeElement.matches('textarea, input') && ![...document.querySelectorAll('textarea, input')].some((c) => c.value)) cargar(); }, 60000);
-</script></body></html>
-"""
-
-
-def manejador(eq: mod_equipo.Equipo):
-    ultimo: dict[str, float] = {}
-    ultimo_chequeo: dict[str, float] = {}
-    candado = threading.Lock()
-
-    class Manejo(BaseHTTPRequestHandler):
-        server_version = "telar-equipo"
-
-        def log_message(self, *a):  # silencio: no hay nada que anotar de más
-            pass
-
-        def _responder(self, codigo: int, cuerpo, tipo: str = "application/json; charset=utf-8") -> None:
-            # una línea al diario del servicio (journalctl --user -u telar-equipo): quién, qué ruta y cómo salió; nunca la llave ni el texto
-            if self.path.startswith("/api/"):
-                quien = mod_equipo.quien(eq, self.headers.get("Authorization", "")[7:].strip()) or "?"
-                detalle = cuerpo.get("error", "") if isinstance(cuerpo, dict) and not cuerpo.get("ok", True) else ""
-                print(f"{quien} {self.command} {self.path.partition('?')[0]} -> {codigo} {detalle}".rstrip(), flush=True)
-            datos = cuerpo if isinstance(cuerpo, bytes) else json.dumps(cuerpo, ensure_ascii=False).encode()
-            self.send_response(codigo)
-            self.send_header("Content-Type", tipo)
-            self.send_header("Content-Length", str(len(datos)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            self.wfile.write(datos)
-
-        def _persona(self) -> str:
-            cabecera = self.headers.get("Authorization", "")
-            return mod_equipo.quien(eq, cabecera[7:].strip() if cabecera.startswith("Bearer ") else "")
-
-        def do_GET(self):  # noqa: N802
-            ruta = self.path.partition("?")[0]
-            if ruta == "/":
-                return self._responder(200, PAGINA.encode(), "text/html; charset=utf-8")
-            if ruta != "/api/tareas":
-                return self._responder(404, {"ok": False, "error": "no hay tal ruta"})
-            persona = self._persona()
-            if not persona:
-                return self._responder(401, {"ok": False, "error": "llave inválida"})
-            mias = [r for r in mod_equipo.leer_bandeja(eq) if r["persona"] == persona]
-            self._responder(200, {"quien": persona, "tareas": mod_equipo.tareas_visibles(eq),
-                                  "sugerencias": [{k: r.get(k) for k in ("id", "tipo", "tarea", "titulo", "vence", "estado", "nota", "cuando")} for r in mias[-100:]]})
-
-        def do_POST(self):  # noqa: N802
-            ruta = self.path.partition("?")[0]
-            if ruta not in ("/api/sugerir", "/api/pedir"):
-                return self._responder(404, {"ok": False, "error": "no hay tal ruta"})
-            persona = self._persona()
-            if not persona:
-                return self._responder(401, {"ok": False, "error": "llave inválida"})
-            try:
-                largo = int(self.headers.get("Content-Length", "-1"))
-            except ValueError:
-                largo = -1
-            if not 0 < largo <= MAX_CUERPO:
-                return self._responder(400, {"ok": False, "error": "el cuerpo falta o es demasiado grande"})
-            try:
-                datos = json.loads(self.rfile.read(largo))
-                if not isinstance(datos, dict):
-                    raise TypeError
-                if ruta == "/api/sugerir":
-                    pedido = (str(datos["tarea"]), str(datos["motivo"]))
-                else:
-                    pedido = (str(datos["titulo"]), str(datos.get("contexto", "")), str(datos.get("vence") or ""))
-                    insistir = datos.get("aunque_exista") is True
-            except (ValueError, KeyError, TypeError):
-                return self._responder(400, {"ok": False, "error": "se esperaba {tarea, motivo}" if ruta == "/api/sugerir"
-                                             else "se esperaba {titulo, contexto?, vence?}"})
-            parecidas: list[dict] | None = None
-            if ruta == "/api/pedir":
-                with candado:  # revisar cuesta una llamada a un modelo: no más de una cada 3 s por persona.
-                    ahora = time.monotonic()  # Insistir tras un aviso ya pagó su revisión: solo cuenta el límite de los registrados
-                    if insistir:
-                        if ahora - ultimo.get(persona, -99) < 5:
-                            return self._responder(429, {"ok": False, "error": "más despacio"})
-                    elif ahora - ultimo_chequeo.get(persona, -99) < 3:
-                        return self._responder(429, {"ok": False, "error": "más despacio"})
-                    else:
-                        ultimo_chequeo[persona] = ahora
-                # antes de molestar a Nico: ¿ya hay una tarea sobre esto (por palabras o por sentido)? Si el equipo la ve, se le contesta su estado
-                parecidas = mod_equipo.parecidas(eq, pedido[0], pedido[1])
-                ya = [t for t in parecidas if t["compartida"]]
-                if ya and not insistir:
-                    return self._responder(409, {"ok": False, "existe": [
-                        {k: t[k] for k in ("id", "titulo", "estado", "prioridad", "vence", "avance", "espera", "cerrada")} | {"resumen": mod_equipo.resumen_de(t)}
-                        for t in ya[:3]], "error": "ya hay una tarea parecida; si es otra cosa, envíalo con aunque_exista"})
-            with candado:  # una cada 5 s por persona: una mano, no un guion
-                ahora = time.monotonic()
-                if ahora - ultimo.get(persona, -99) < 5:
-                    return self._responder(429, {"ok": False, "error": "más despacio"})
-                ultimo[persona] = ahora
-                registro, problema = (mod_equipo.sugerir(eq, persona, *pedido) if ruta == "/api/sugerir"
-                                      else mod_equipo.pedir(eq, persona, *pedido, similares=parecidas))
-            if registro is None:
-                return self._responder(400, {"ok": False, "error": problema})
-            titulo = (f"{persona} sugiere subir {registro['tarea']}" if registro["tipo"] == "prioridad"
-                      else f"{persona} te pide una tarea")
-            texto = (f"{registro['titulo'][:80]}: {registro['motivo'][:140]}" if registro["tipo"] == "prioridad"
-                     else f"{registro['titulo'][:120]}" + (f" (para el {registro['vence']})" if registro["vence"] else ""))
-            threading.Thread(target=mod_equipo.avisar, args=(titulo, texto), daemon=True).start()
-            self._responder(200, {"ok": True, "id": registro["id"]})
-
-    return Manejo
 
 
 def _cuadro(r: dict) -> str:
@@ -280,6 +82,32 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja("¿de quién? telar equipo token marcelo")
         print(f'{o.valor.lower()} = "{secrets.token_urlsafe(24)}"   # pégalo en [equipo.personas]')
         return 0
+    if o.remoto and o.verbo != "servir":
+        from telar import bus as mod_bus
+
+        if mod_bus.hay_bus(ctx.config):
+            from telar.servicios import ErrorDeServicio
+            from telar.servicios import equipo as servicio
+
+            try:
+                if o.verbo == "sugerencias":
+                    r = servicio.bandeja(ctx, todas=o.todas, maquina=o.remoto).model_dump(mode="json")
+                elif o.verbo == "revisando":
+                    r = servicio.revisando(ctx, o.valor, quien=o.quien, maquina=o.remoto).model_dump(mode="json")
+                else:
+                    r = servicio.decidir(ctx, o.valor, o.verbo, nota=o.nota, tarea=o.tarea, maquina=o.remoto).model_dump(mode="json")
+            except ErrorDeServicio as e:
+                if e.codigo != 502:
+                    return _comun.queja(str(e))
+                r = None  # el bus no respondió: por ssh, como antes
+            if r is not None:
+                if o.json:
+                    return _comun.escribir_json(r)
+                if "sugerencias" in r:
+                    print("\n".join(_cuadro(x) for x in r["sugerencias"]) or "ninguna sugerencia pendiente")
+                else:
+                    print(f"{r['sugerencia']['id']}: {r['sugerencia']['estado']}")
+                return 0
     if o.remoto:
         if o.verbo == "servir":
             return _comun.queja("servir corre en la máquina donde viven las tareas, no por ssh")
@@ -299,14 +127,16 @@ def main(argv: list[str], ctx) -> int:
     if o.verbo == "servir":
         if not eq.personas:
             return _comun.queja("no hay nadie en [equipo.personas]: `telar equipo token marcelo` da una llave")
+        try:
+            import uvicorn
+
+            from telar import api_equipo
+        except ImportError as e:
+            return _comun.queja(f"falta el extra «serve» ({e.name}): pip install 'telar[serve]'")
         host = o.host or ip_de_tailscale() or "127.0.0.1"
         puerto = o.puerto or eq.puerto
-        servidor = ThreadingHTTPServer((host, puerto), manejador(eq))
-        print(f"telar equipo en http://{host}:{puerto}  ·  {', '.join(sorted(eq.personas))}  ·  solo lee tareas «{eq.etiqueta}» y recibe sugerencias")
-        try:
-            servidor.serve_forever()
-        except KeyboardInterrupt:
-            print()
+        print(f"telar equipo en http://{host}:{puerto}  ·  {', '.join(sorted(eq.personas))}  ·  solo lee tareas «{eq.etiqueta}» y recibe sugerencias", flush=True)
+        uvicorn.run(api_equipo.crear(eq), host=host, port=puerto, log_level="warning")
         return 0
     if o.verbo == "sugerencias":
         registros = [r for r in mod_equipo.leer_bandeja(eq) if o.todas or r["estado"] == "pendiente"]

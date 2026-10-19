@@ -685,10 +685,14 @@ marcelo  = "…"                              # `telar equipo token marcelo` da 
 ```
 
 Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de cada tarea etiquetada
-(y las cerradas en los últimos 14 días). Nunca el cuerpo ni la historia. `telar equipo servir` escucha
-en la IP de Tailscale (otro puerto que el panel); cada persona entra con su llave y puede solo leer
-y dejar una sugerencia (una cada 5 s). En VS Code, `telar.equipoRemoto` (`local`, o la máquina de
-`[remotos]` donde corre el servidor) enciende las notificaciones y la pestaña «equipo». Ver `telar equipo --help`.
+(y las cerradas en los últimos 14 días). Nunca el cuerpo ni la historia. La página la sirve
+`telar serve --equipo` (o sola, `telar equipo servir`), en la IP de Tailscale y en `[equipo] puerto`: es
+**otra app** que tu API, en su propio puerto, así que con la llave de una persona no se alcanza ninguna de
+tus rutas. Cada persona entra con su llave y puede solo leer y dejar una sugerencia o un pedido (uno cada
+5 s). La bandeja la decides tú, desde tu API (`/equipo/bandeja`, `/equipo/{id}/aceptar|rechazar|existe`);
+desde otra máquina, se le pide a la que tiene las tareas por el bus. En VS Code, `telar.equipoRemoto`
+(`local`, o la máquina donde viven las tareas) enciende las notificaciones y la pestaña «equipo». Ver
+`telar equipo --help`.
 
 ## `[secciones]` — grupos propios en la lista de hilos
 

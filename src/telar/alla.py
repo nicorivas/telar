@@ -87,7 +87,7 @@ def consultar(config, proveedores: list, dia: date) -> tuple[list[Item], list[st
 def tarea_aqui(argv: list[str], orden: str = "tarea") -> dict:
     """Corre `telar tarea …` (o `telar tipo …`, `telar periodicos …`) en esta máquina: lo que responde el
     nodo a los pedidos `tarea`, `tipo` y `periodicos`."""
-    if orden not in ("tarea", "tipo", "periodicos"):
+    if orden not in ("tarea", "tipo", "periodicos", "equipo"):
         return {"ok": False, "error": f"no se corre «{orden}» para otra máquina"}
     try:
         r = subprocess.run([sys.executable, "-m", "telar", orden, *argv], capture_output=True, text=True,

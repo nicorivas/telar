@@ -4,19 +4,14 @@ import datetime
 import json
 import stat
 import tempfile
-import threading
 import unittest
 from types import SimpleNamespace as N
 from unittest import mock
-import urllib.error
-import urllib.request
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import comun  # noqa: F401 (src/ en el camino)
 
 from telar import equipo as mod
-from telar.ordenes import equipo as orden
 
 TAREA = """---
 titulo: {titulo}
@@ -223,23 +218,18 @@ class Servidor(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.eq = montar(Path(self.tmp.name), {"T1": {"titulo": "x"}})
         mod.avisar = lambda *a: None  # sin notificar de verdad
-        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), orden.manejador(self.eq))
-        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
-        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
+        from fastapi.testclient import TestClient
+
+        from telar import api_equipo
+        self.c = TestClient(api_equipo.crear(self.eq))
 
     def tearDown(self):
-        self.srv.shutdown()
-        self.srv.server_close()
         self.tmp.cleanup()
 
     def pedir(self, ruta, token="secreto", cuerpo=None):
-        req = urllib.request.Request(self.url + ruta, data=json.dumps(cuerpo).encode() if cuerpo else None,
-                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req) as r:
-                return r.status, json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
+        cab = {"Authorization": f"Bearer {token}"}
+        r = self.c.post(ruta, json=cuerpo, headers=cab) if cuerpo is not None else self.c.get(ruta, headers=cab)
+        return r.status_code, r.json()
 
     def test_sin_llave_no_ve_nada(self):
         self.assertEqual(self.pedir("/api/tareas", token="mala")[0], 401)
@@ -276,7 +266,57 @@ class Servidor(unittest.TestCase):
 
     def test_no_hay_otras_rutas(self):
         self.assertEqual(self.pedir("/api/enviar", cuerpo={"x": 1})[0], 404)
+        # ni las de la API de su dueño: es otra app
+        for ruta in ("/hoy", "/mensajes", "/tipos/tarea", "/docs", "/openapi.json"):
+            self.assertEqual(self.pedir(ruta)[0], 404, ruta)
+
+    def test_un_cuerpo_demasiado_grande_no_se_lee(self):
+        self.assertEqual(self.pedir("/api/sugerir", cuerpo={"tarea": "T1", "motivo": "x" * 5000})[0], 400)
+
+    def test_la_pagina(self):
+        r = self.c.get("/")
+        self.assertEqual((r.status_code, r.headers["x-content-type-options"]), (200, "nosniff"))
+        self.assertIn("pedirle algo a Nico", r.text)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LaBandejaDelDueno(unittest.TestCase):
+    """La bandeja, del lado de su dueño (telar.servicios.equipo): aquí, o en la máquina donde vive por el bus."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.eq = montar(Path(self.tmp.name), {"T1": {"titulo": "x"}})
+        self.ctx = N(config=N(bus=N(url="nats://x", maquina="laptop")))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_aqui_lee_y_marca_y_lo_que_no_hay_es_409(self):
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import equipo as servicio
+        mod.sugerir(self.eq, "marcelo", "T1", "bloquea al equipo")
+        with mock.patch.object(mod, "cargar", return_value=self.eq):
+            b = servicio.bandeja(self.ctx)
+            self.assertEqual([r["tarea"] for r in b.sugerencias], ["T1"])
+            r = servicio.revisando(self.ctx, b.sugerencias[0]["id"], quien="gestion")
+            self.assertEqual(r.sugerencia["revisando"]["quien"], "gestion")
+            with self.assertRaises(ErrorDeServicio) as e:
+                servicio.decidir(self.ctx, "no-hay", "rechazar")
+            self.assertEqual(e.exception.codigo, 409)
+            with self.assertRaises(ErrorDeServicio):
+                servicio.decidir(self.ctx, "x", "volar")
+
+    def test_en_otra_maquina_por_el_bus(self):
+        from telar import bus as mod_bus
+        from telar.servicios import equipo as servicio
+        r = {"ok": True, "codigo": 0, "salida": '{"sugerencias": [{"id": "a1"}]}\n', "error_salida": ""}
+        with mock.patch.object(mod_bus, "pedir", return_value=r) as pedir:
+            self.assertEqual(servicio.bandeja(self.ctx, maquina="telar").sugerencias, [{"id": "a1"}])
+        self.assertEqual(pedir.call_args[0][1:3], ("telar", "equipo"))
+        self.assertEqual(pedir.call_args[0][3]["argv"], ["sugerencias", "--json"])
+        with mock.patch.object(mod_bus, "pedir", return_value={"ok": True, "codigo": 0, "salida": '{"sugerencia": {"id": "a1"}}'}) as pedir:
+            servicio.decidir(self.ctx, "a1", "aceptar", nota="dale", maquina="telar")
+        self.assertEqual(pedir.call_args[0][3]["argv"], ["aceptar", "a1", "--nota", "dale", "--json"])

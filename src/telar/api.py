@@ -559,6 +559,36 @@ def post_periodicos(pedido: PedidoPeriodicos, ctx: Contexto = Depends(contexto))
     return servicio_periodicos.orden(ctx, pedido.argv)
 
 
+# ── la bandeja del equipo, del lado de su dueño (la página del equipo es otra app: telar.api_equipo) ──
+
+from telar.servicios import equipo as servicio_equipo
+
+
+@app.get("/equipo/bandeja", response_model=servicio_equipo.Bandeja)
+def get_bandeja(todas: bool = False, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Lo que el equipo sugirió o pidió y falta decidir (`telar equipo sugerencias`); `maquina`, donde vive."""
+    return servicio_equipo.bandeja(ctx, todas=todas, maquina=maquina)
+
+
+class PedidoDecision(BaseModel):
+    nota: str = ""
+    #: con «existe»: la tarea que ya existe (T123)
+    tarea: str = ""
+    maquina: str = ""
+
+
+@app.post("/equipo/{ident}/revisando", response_model=servicio_equipo.Sugerencia)
+def post_revisando(ident: str, pedido: PedidoDecision, quien: str = "gestion", ctx: Contexto = Depends(contexto)):
+    """Anotar que alguien la está revisando (`telar equipo revisando`)."""
+    return servicio_equipo.revisando(ctx, ident, quien=quien, maquina=pedido.maquina)
+
+
+@app.post("/equipo/{ident}/{decision}", response_model=servicio_equipo.Sugerencia)
+def post_decision(ident: str, decision: str, pedido: PedidoDecision, ctx: Contexto = Depends(contexto)):
+    """Aceptar, rechazar o decir que ya existe (`telar equipo aceptar|rechazar|existe`)."""
+    return servicio_equipo.decidir(ctx, ident, decision, nota=pedido.nota, tarea=pedido.tarea, maquina=pedido.maquina)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

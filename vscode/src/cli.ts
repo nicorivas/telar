@@ -704,12 +704,16 @@ export interface JsonSugerencia {
     similares?: { id: string; titulo: string; estado: string; prioridad: number | null; vence: string | null; avance: string | null; compartida: boolean }[];
 }
 const remotoEquipo = (remoto: string) => (remoto && remoto !== 'local' ? ['--remoto', remoto] : []);
-export const equipoPendientes = (remoto: string) =>
-    telarJson<{ sugerencias: JsonSugerencia[] }>(['equipo', 'sugerencias', ...remotoEquipo(remoto)], 30000);
-export const equipoRevisando = (remoto: string, id: string, quien = 'gestion') =>
-    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', 'revisando', id, '--quien', quien, ...remotoEquipo(remoto)], 30000);
-export const equipoResolver = (remoto: string, verbo: 'aceptar' | 'rechazar' | 'existe', id: string, nota = '', tarea = '') =>
-    telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...(tarea ? ['--tarea', tarea] : []),
+// por la API (que la pide por el bus a la máquina donde vive); sin ella, la orden (bus o ssh)
+export const equipoPendientes = async (remoto: string) =>
+    await deServe<{ sugerencias: JsonSugerencia[] }>(`/equipo/bandeja?maquina=${encodeURIComponent(remoto)}`, 30000)
+    ?? telarJson<{ sugerencias: JsonSugerencia[] }>(['equipo', 'sugerencias', ...remotoEquipo(remoto)], 30000);
+export const equipoRevisando = async (remoto: string, id: string, quien = 'gestion') =>
+    await aServe<{ sugerencia: JsonSugerencia }>('POST', `/equipo/${encodeURIComponent(id)}/revisando?quien=${encodeURIComponent(quien)}`, 30000, { maquina: remoto })
+    ?? telarJson<{ sugerencia: JsonSugerencia }>(['equipo', 'revisando', id, '--quien', quien, ...remotoEquipo(remoto)], 30000);
+export const equipoResolver = async (remoto: string, verbo: 'aceptar' | 'rechazar' | 'existe', id: string, nota = '', tarea = '') =>
+    await aServe<{ sugerencia: JsonSugerencia }>('POST', `/equipo/${encodeURIComponent(id)}/${verbo}`, 40000, { nota, tarea, maquina: remoto })
+    ?? telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...(tarea ? ['--tarea', tarea] : []),
         ...remotoEquipo(remoto)], 40000);
 
 export const correo = (cuerpos = false) =>

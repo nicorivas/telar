@@ -4,6 +4,10 @@
     telar serve --socket RUTA       en otro socket
     telar serve --puerto 8771       en TCP, solo en 127.0.0.1 (para probar; en una máquina compartida,
                                     cualquier usuario de ella alcanzaría el puerto)
+    telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
+
+La página del equipo es **otra app** (telar.api_equipo), en otro puerto: con la llave de una persona no se
+alcanza ninguna ruta de esta API. Mismo proceso, nada compartido entre las dos salvo los archivos.
 
 Lo que sirve y por qué está en telar.api. La documentación de cada ruta, en `/docs` (con --puerto) o
 `curl --unix-socket <socket> http://telar/openapi.json`. Necesita el extra «serve»:
@@ -26,6 +30,7 @@ def main(argv: list[str], ctx) -> int:
     p.epilog = __doc__
     p.add_argument("--socket", default="", help="el socket Unix (por defecto, <estado>/serve.sock)")
     p.add_argument("--puerto", type=int, default=0, help="en TCP, en 127.0.0.1, en vez del socket")
+    p.add_argument("--equipo", action="store_true", help="además, la página del equipo ([equipo]), en Tailscale")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -35,8 +40,23 @@ def main(argv: list[str], ctx) -> int:
         from telar import api
     except ImportError as e:
         return _comun.queja(f"falta el extra «serve» ({e.name}): pip install 'telar[serve]'")
+    equipo = None
+    if o.equipo:
+        from telar import equipo as mod_equipo
+        from telar import api_equipo
+        from telar.ordenes.equipo import ip_de_tailscale
+
+        try:
+            eq = mod_equipo.cargar()
+        except ValueError as e:
+            return _comun.queja(f"--equipo: {e}")
+        if not eq.personas:
+            return _comun.queja("--equipo: no hay nadie en [equipo.personas] (`telar equipo token marcelo` da una llave)")
+        host = ip_de_tailscale() or "127.0.0.1"
+        equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
+        print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
     if o.puerto:
-        uvicorn.run(api.app, host="127.0.0.1", port=o.puerto, log_level="warning")
+        _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo)
         return 0
     sock = Path(o.socket).expanduser() if o.socket else api.socket_por_defecto()
     # solo su dueño entra a la carpeta del socket: uvicorn le pone al socket mismo permisos para todos
@@ -46,5 +66,24 @@ def main(argv: list[str], ctx) -> int:
     if sock.exists():
         sock.unlink()  # uno que quedó de una vuelta anterior
     print(f"telar serve: {sock}", flush=True)
-    uvicorn.run(api.app, uds=str(sock), log_level="warning")
+    _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo)
     return 0
+
+
+def _correr(uvicorn, principal, equipo) -> None:
+    """La API y, si se pidió, la página del equipo: dos servidores en el mismo bucle. Si uno se cae, se cae el
+    proceso entero (y el servicio lo levanta): uno a medias no sirve."""
+    import asyncio
+
+    servidores = [uvicorn.Server(principal), *([uvicorn.Server(equipo)] if equipo else [])]
+
+    async def todos():
+        tareas = [asyncio.create_task(s.serve()) for s in servidores]
+        hecho, _ = await asyncio.wait(tareas, return_when=asyncio.FIRST_COMPLETED)
+        for s in servidores:
+            s.should_exit = True
+        await asyncio.gather(*tareas, return_exceptions=True)
+        for t in hecho:
+            t.result()
+
+    asyncio.run(todos())
