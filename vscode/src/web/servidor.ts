@@ -482,7 +482,7 @@ async function main(): Promise<void> {
     };
     modelo.cambio.event(() => barra.refrescar());
     // los hilos de otras máquinas que aquí no se ven (en el servidor, los del laptop): de sus fotos, cada
-    // 30 s. Una máquina cuyos hilos ya trae la lista (los remotos de [remotos]) no se repite
+    // 30 s. Un hilo que la lista ya trae (uno de [remotos]) no se repite
     const otras = async () => {
         const r = await cli.espejos().catch(() => undefined);
         // de la foto, solo los que viven en esa máquina: los que ella mira de otra (los de aquí, por

@@ -395,10 +395,11 @@ export class BarraHilos {
 
         // los hilos de otras máquinas (el laptop, visto desde el servidor): de su foto, solo los vivos. Un
         // clic los lee como conversación, por el bus; desde aquí no se les abre una terminal
-        // una máquina cuyos hilos ya trae la lista (los remotos de [remotos]) no se repite
-        const yaEstan = new Set(modelo.hilos.map(x => x.remoto).filter(Boolean));
-        for (const m of this.otras.filter(x => !yaEstan.has(x.nombre))) {
-            const vivos = m.hilos.filter(x => x.vivo);
+        // un hilo que la lista ya trae (uno de [remotos], que vive allá) no se repite; los demás de esa
+        // máquina sí se ven (antes, con un solo hilo de [remotos], se escondía la máquina entera)
+        const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
+        for (const m of this.otras) {
+            const vivos = m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`));
             const estadoM = m.en_linea ? '' : ` · apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
             if (!cabecera(`__maquina:${m.nombre}`, `${m.nombre.toUpperCase()}${estadoM}`, vivos.length, true, `los hilos de ${m.nombre}`)) continue;
             for (const x of vivos) {
