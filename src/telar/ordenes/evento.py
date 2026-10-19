@@ -32,7 +32,9 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
     if o.verbo == "notas":
-        r = mod.leer(ctx.config, o.args[0] if o.args else "")
+        from telar.servicios import notas as servicio
+
+        r = servicio.notas(ctx, o.args[0] if o.args else "").model_dump(mode="json")
         if o.json:
             return _comun.escribir_json(r)
         if not r.get("ok"):

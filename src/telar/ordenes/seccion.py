@@ -168,49 +168,18 @@ def main(argv: list[str], ctx) -> int:
             print(_comun.tenue("no hay secciones: se declaran en la configuración, [secciones.<clave>]"))
         return 0
 
-    if o.clave.startswith("agente:"):
-        from telar import agentes as mod_agentes
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import paginas
 
-        a = next((x for x in mod_agentes.descubrir(ctx.config) if x.seccion == o.clave), None)
-        if a is None:
-            return _comun.queja(f"no hay un agente «{o.clave[7:]}» en [agentes] carpeta")
-        datos = mod_agentes.pagina(a)
-        problema = validar(datos)
-        if problema:
-            return _comun.queja(f"el home de {a.nombre} no cumple el contrato: {problema}")
-        if o.json:
-            return _comun.escribir_json(datos)
-        print(datos["titulo"])
-        for b in datos["bloques"]:
-            if b.get("titulo"):
-                print(f"\n{b['titulo'].upper()}")
-            if b.get("texto"):
-                print(b["texto"])
-            for x in b.get("items", []):
-                print(f"  · {x.get('titulo', '')}  " + _comun.tenue((x.get("fecha") or "")[:16]))
-        return 0
-
-    s = secciones.get(o.clave)
-    if s is None:
-        return _comun.queja(f"no hay sección «{o.clave}»: `telar seccion` lista las que hay")
-    if not s.home:
-        return _comun.queja(f"la sección «{o.clave}» no declara home")
     try:
-        r = subprocess.run(list(s.home), capture_output=True, text=True, timeout=ESPERA)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return _comun.queja(f"el home de «{o.clave}» no corrió: {e}")
-    if r.returncode != 0:
-        return _comun.queja(f"el home de «{o.clave}» salió con {r.returncode}: {r.stderr.strip()[-300:]}")
-    try:
-        datos = json.loads(r.stdout)
-    except ValueError:
-        return _comun.queja(f"el home de «{o.clave}» no devolvió JSON")
-    problema = validar(datos)
-    if problema:
-        return _comun.queja(f"el home de «{o.clave}» no cumple el contrato: {problema}")
+        pagina = paginas.seccion(ctx, o.clave)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
+    datos = pagina.model_dump(mode="json", exclude_unset=True)
     if o.json:
         return _comun.escribir_json(datos)
-    print(datos.get("titulo", s.nombre))
+    s = secciones.get(o.clave)
+    print(datos.get("titulo") or (s.nombre if s else o.clave))
     for b in datos.get("bloques", []):
         if b.get("titulo"):
             print(f"\n{b['titulo'].upper()}")

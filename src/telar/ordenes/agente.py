@@ -337,22 +337,16 @@ def _skills(o, ctx) -> int:
 
 
 def _conversacion(o, ctx) -> int:
-    sid = (o.agente or o.sesion).strip()
-    if not sid:
-        return _comun.queja("¿cuál? telar agente conversacion <id>")
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import conversaciones
+
     try:
-        agente = _construir(ctx.config.agente.nombre, ctx.config)
-    except ErrorDeAgente as e:
+        r = conversaciones.conversacion(ctx, o.agente or o.sesion)
+    except ErrorDeServicio as e:
         return _comun.queja(str(e))
-    mensajes = agente.mensajes(sid)
-    if mensajes is None:
-        return _comun.queja(f"no encuentro la conversación {sid}")
-    archivo = agente.archivo_de(sid)
-    est = mod_estado.abrir(ctx.config)
-    hilo = est.hilo_de(sid) or ""
     if o.json:
-        return _comun.escribir_json({"conversacion": sid, "archivo": str(archivo or ""),
-                                     "hilo": hilo, "mensajes": mensajes})
+        return _comun.escribir_json(r.model_dump(mode="json"))
+    mensajes = r.mensajes
     for m in mensajes:
         if m["quien"] == "herramienta":
             print(_comun.tenue(f"  › {m['texto']}"))

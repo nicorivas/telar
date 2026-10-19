@@ -306,8 +306,8 @@ export interface JsonNotas {
     ok: boolean; error?: string; aviso?: string; dia: string;
     eventos: Record<string, { titulo: string; inicio: string; notas: JsonNota[] }>;
 }
-export const notasEventos = (dia = '') =>
-    telarJson<JsonNotas>(['evento', 'notas', ...(dia ? [dia] : [])], 30000);
+export const notasEventos = async (dia = '') => await deServe<JsonNotas>(`/notas${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`, 30000)
+    ?? telarJson<JsonNotas>(['evento', 'notas', ...(dia ? [dia] : [])], 30000);
 export const notaEvento = (evento: string, texto: string, titulo: string, inicio: string, dia = '') =>
     telarJson<{ ok: boolean; error?: string }>(['evento', 'nota', evento, texto, '--de', 'Nico', '--titulo', titulo,
         '--inicio', inicio, ...(dia ? ['--dia', dia] : [])], 30000);
@@ -478,8 +478,10 @@ export interface JsonLienzo { archivo: string; alto?: number | 'lleno'; params?:
 /** Una página servida (http o https) en un iframe del panel: lo que muestra una app con `url`. */
 export interface JsonMarco { url: string; alto?: number | 'lleno' }
 
-export const seccion = (clave: string) => telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
-export const app = (clave: string) => telarJson<JsonPagina>(['app', clave, '--json'], 40000);
+export const seccion = async (clave: string) => await deServe<JsonPagina>(`/secciones/${encodeURIComponent(clave)}`, 40000)
+    ?? telarJson<JsonPagina>(['seccion', clave, '--json'], 40000);
+export const app = async (clave: string) => await deServe<JsonPagina>(`/apps/${encodeURIComponent(clave)}`, 40000)
+    ?? telarJson<JsonPagina>(['app', clave, '--json'], 40000);
 /** Guardar el orden de las pestañas del dashboard: «ahora,revisar,-plan» (con «-», oculta). */
 export const configPestanas = (valor: string) => telarJson<{ dashboard: { orden: string[]; ocultas: string[] } }>(['config', '--pestanas', valor, '--json'], 20000);
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
@@ -522,7 +524,8 @@ export interface JsonConversacion {
     mensajes: { quien: 'usuario' | 'agente' | 'herramienta'; hora: string; texto: string }[];
 }
 
-export const conversacion = (id: string) => telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
+export const conversacion = async (id: string) => await deServe<JsonConversacion>(`/conversaciones/${encodeURIComponent(id)}`, 20000)
+    ?? telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
 /** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). Es el sondeo
@@ -585,7 +588,8 @@ export async function hilos(conFicha: boolean, orden: string): Promise<Respuesta
         ?? telarJson<JsonHilos>(['hilos', ...(conFicha ? [] : ['--sin-ficha']), '--orden', orden], conFicha ? 30000 : 8000);
 }
 
-export const ficha = (hilo: string) => telarJson<JsonFichaOrden>(['ficha', hilo], 30000);
+export const ficha = async (hilo: string) => await deServe<JsonFichaOrden>(`/ficha?hilo=${encodeURIComponent(hilo)}`, 30000)
+    ?? telarJson<JsonFichaOrden>(['ficha', hilo], 30000);
 
 /** Sin `local`, se consulta a los proveedores declarados y puede tardar lo que tarden. */
 export async function hoy(local: boolean, dia = ''): Promise<Respuesta<JsonHoy>> {
@@ -635,8 +639,8 @@ export interface JsonMensajeBus {
     persona?: string; saltos?: number; estado?: 'enviado' | 'retenido'; motivo?: string;
 }
 /** Los últimos mensajes entre hilos, de todas las máquinas. Sin bus, error (y la pestaña no los muestra). */
-export const mensajesBus = (n = 60) =>
-    telarJson<{ mensajes: JsonMensajeBus[] }>(['mensaje', '--registro', String(n)], 30000);
+export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensajeBus[] }>(`/mensajes?n=${n}`, 30000)
+    ?? telarJson<{ mensajes: JsonMensajeBus[] }>(['mensaje', '--registro', String(n)], 30000);
 /** `telar mensaje --soltar <id>`: la persona deja pasar un mensaje retenido. */
 export const soltarMensaje = (id: string) =>
     telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);

@@ -152,6 +152,40 @@ class EspejosProyectosPendientes(Prueba):
         self.assertEqual(p.call_args.kwargs, {"repo": True, "hechos": False, "proveedores": False, "hilo": "", "limite": 3})
 
 
+class PaginasFichaNotas(Prueba):
+    """`/secciones`, `/apps`, `/ficha` y `/notas`: lo de la CLI, con los errores como códigos."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+        from telar.config import App, Config
+        cfg = Config(raiz=Path("/r"), estado=Path("/e"), apps=(App(clave="vivero", nombre="Vivero", pagina=("/no/existe",)),))
+        api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=cfg)
+        self.addCleanup(api.app.dependency_overrides.clear)
+        self.c = TestClient(api.app)
+
+    def test_lo_que_no_existe_es_404_y_una_pagina_rota_502(self):
+        self.assertEqual(self.c.get("/secciones/correo").status_code, 404)
+        self.assertEqual(self.c.get("/apps/otra").status_code, 404)
+        self.assertEqual(self.c.get("/apps/vivero").status_code, 502)
+        self.assertEqual(self.c.get("/apps").json(), {"apps": [{"clave": "vivero", "nombre": "Vivero", "descripcion": "", "fuente": "pagina"}]})
+
+    def test_una_pagina_sale_como_vino(self):
+        from telar.servicios import Pagina
+        from telar.servicios import paginas
+        p = Pagina(titulo="Vivero", bloques=[{"titulo": "x", "items": []}], extra_de_alguien=1)
+        with mock.patch.object(paginas, "app", return_value=p):
+            self.assertEqual(self.c.get("/apps/vivero").json(), {"titulo": "Vivero", "bloques": [{"titulo": "x", "items": []}], "extra_de_alguien": 1})
+
+    def test_notas_pasa_el_dia(self):
+        from telar.servicios import notas
+        with mock.patch.object(notas, "notas", return_value=notas.Notas(ok=True, dia="2026-10-19", eventos={})) as n:
+            self.assertEqual(self.c.get("/notas", params={"dia": "2026-10-19"}).json(), {"ok": True, "dia": "2026-10-19", "eventos": {}})
+        self.assertEqual(n.call_args[0][1], "2026-10-19")
+
+
 class CuentaDeGws(Prueba):
     """La cuenta de gws se pregunta una vez y vale 10 minutos: la pregunta puede tardar."""
 

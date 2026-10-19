@@ -52,14 +52,16 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
     if o.registro or o.retenidos:
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import mensajes as servicio
+
         try:
-            lista = mod_bus.registro(ctx.config, max(o.registro, 200 if o.retenidos else 0))
-        except mod_bus.ErrorDeBus as e:
+            r = servicio.registro(ctx, o.registro, retenidos=bool(o.retenidos))
+        except ErrorDeServicio as e:
             return _comun.queja(str(e))
-        if o.retenidos:
-            lista = retenidos(lista)
         if o.json:
-            return _comun.escribir_json({"mensajes": lista})
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        lista = r.mensajes
         for m in lista:
             marca = "⏸ " if m.get("estado") == "retenido" else ""
             print(f"{str(m.get('creado', ''))[:16].replace('T', ' ')}  {marca}{m.get('de', '')} → {m.get('para', '')}"

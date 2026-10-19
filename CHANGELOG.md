@@ -28,6 +28,8 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `GET /secciones/{clave}`, `/apps`, `/apps/{clave}`, `/ficha`, `/notas`, `/mensajes` and
+  `/conversaciones/{id}`, one service each behind the CLI and the API; the panel asks the API first.
 - `GET /espejos`, `/proyectos` and `/pendientes`: the same JSON as `telar espejo ver`, `telar proyectos`
   and `telar pendientes`, from one service each; the panel asks the API first (the mirror poll every 30 s
   no longer spawns a process).

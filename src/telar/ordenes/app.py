@@ -51,27 +51,23 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import paginas
+
     apps = {a.clave: a for a in ctx.config.apps}
     if not o.clave:
         if o.json:
-            return _comun.escribir_json({"apps": [
-                {"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente}
-                for a in apps.values()]})
+            return _comun.escribir_json(paginas.apps(ctx).model_dump(mode="json"))
         for a in apps.values():
             print(f"{a.clave}  {a.nombre}  " + _comun.tenue(f"{a.fuente}" + (f" · {a.descripcion}" if a.descripcion else "")))
         if not apps:
             print(_comun.tenue("no hay apps: se declaran en la configuración, [apps.<clave>]"))
         return 0
 
-    a = apps.get(o.clave)
-    if a is None:
-        return _comun.queja(f"no hay app «{o.clave}»: `telar app` lista las que hay")
-    datos, error = pagina(a)
-    if datos is None:
-        return _comun.queja(error)
-    problema = mod_seccion.validar(datos)
-    if problema:
-        return _comun.queja(f"la página de «{o.clave}» no cumple el contrato: {problema}")
+    try:
+        datos = paginas.app(ctx, o.clave).model_dump(mode="json", exclude_unset=True)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
     if o.json:
         return _comun.escribir_json(datos)
     print(datos["titulo"])

@@ -254,6 +254,59 @@ def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool =
                                           limite=limite)
 
 
+# ── páginas, la ficha de un hilo y las notas del día ─────────────────────────
+
+from telar.servicios import fichas as servicio_fichas
+from telar.servicios import notas as servicio_notas
+from telar.servicios import paginas as servicio_paginas
+
+
+@app.get("/secciones/{clave}", response_model=Pagina, response_model_exclude_unset=True)
+def get_seccion(clave: str, ctx: Contexto = Depends(contexto)):
+    """El home de una sección o de un agente (`agente:<nombre>`), validado (`telar seccion <clave> --json`)."""
+    return servicio_paginas.seccion(ctx, clave)
+
+
+@app.get("/apps", response_model=servicio_paginas.Apps)
+def get_apps(ctx: Contexto = Depends(contexto)):
+    """Las apps declaradas (`telar app --json`)."""
+    return servicio_paginas.apps(ctx)
+
+
+@app.get("/apps/{clave}", response_model=Pagina, response_model_exclude_unset=True)
+def get_app(clave: str, ctx: Contexto = Depends(contexto)):
+    """La página de una app (`telar app <clave> --json`)."""
+    return servicio_paginas.app(ctx, clave)
+
+
+@app.get("/ficha", response_model=servicio_fichas.FichaDeHilo)
+def get_ficha(hilo: str, ctx: Contexto = Depends(contexto)):
+    """La ficha de un hilo (`telar ficha <hilo> --json`)."""
+    return servicio_fichas.ficha(ctx, hilo)
+
+
+@app.get("/notas", response_model=servicio_notas.Notas)
+def get_notas(dia: str = "", ctx: Contexto = Depends(contexto)):
+    """Las notas de los eventos de un día (`telar evento notas --json`)."""
+    return servicio_notas.notas(ctx, dia)
+
+
+from telar.servicios import conversaciones as servicio_conversaciones
+from telar.servicios import mensajes as servicio_mensajes
+
+
+@app.get("/mensajes", response_model=servicio_mensajes.Mensajes)
+def get_mensajes(n: int = 40, retenidos: bool = False, ctx: Contexto = Depends(contexto)):
+    """Los últimos `n` mensajes entre hilos, de todas las máquinas (`telar mensaje --registro N --json`)."""
+    return servicio_mensajes.registro(ctx, n, retenidos=retenidos)
+
+
+@app.get("/conversaciones/{sid}", response_model=servicio_conversaciones.Conversacion)
+def get_conversacion(sid: str, ctx: Contexto = Depends(contexto)):
+    """Una conversación del agente, entera (`telar agente conversacion <id> --json`)."""
+    return servicio_conversaciones.conversacion(ctx, sid)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

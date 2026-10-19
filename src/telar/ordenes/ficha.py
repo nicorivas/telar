@@ -25,6 +25,15 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
+    if o.json and o.hilo:
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import fichas
+
+        try:
+            return _comun.escribir_json(fichas.ficha(ctx, o.hilo).model_dump(mode="json"))
+        except ErrorDeServicio as e:
+            return _comun.queja(str(e))
+
     tel = _comun.tejer(ctx)
     if o.hilo:
         hilo, problema = _comun.resolver(tel, o.hilo)
