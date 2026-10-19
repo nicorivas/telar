@@ -28,7 +28,6 @@ import subprocess
 from dataclasses import dataclass
 
 #: la tabla de teclas de las sesiones del celular: lo que se ata aquí no toca al laptop.
-TABLA = "telar-movil"
 PREFIJO = "movil-"
 #: las sesiones que solo miran una ventana desde otra máquina: no son hilos
 PREFIJO_VER = "ver-"
@@ -251,51 +250,3 @@ def enganchar(vista: str, sin_tamano: bool = False) -> list[str]:
     trabaja en ella, no una vista de paso."""
     return ["attach-session", *(["-f", "ignore-size"] if sin_tamano else []), "-t", f"={vista}",
             ";", "set-option", "-t", f"={vista}:", "destroy-unattached", "on"]
-
-
-def barra(nombre: str, correos: int = 0) -> str:
-    """La línea de arriba en el celular: «◀ telar · ✉ 2 · Pizza», con rangos tocables."""
-    correo = f" · #[range=user|correo]✉ {correos}#[norange]" if correos else ""
-    nombre_seguro = nombre.replace("#", "##")  # un # en el nombre no es un formato de tmux
-    return f"#[range=user|volver]#[reverse] ◀ telar (Alt+q) #[noreverse]#[norange]{correo} · {nombre_seguro}"
-
-
-def ordenes_grupo(sesion: str, grupo: str, nombre: str, correos: int = 0, correo_cmd: str = "",
-                  ventana: str = "") -> list[list[str]]:
-    """Los comandos tmux que arman la sesión agrupada del celular. Puros: se prueban sin tmux.
-
-    Con `ventana`, el hilo es una ventana de la sesión del telar: la agrupada se fija en ella."""
-    t = f"={grupo}:"  # set-option apunta a un panel: sin los dos puntos, tmux no resuelve la sesión
-    ordenes = ordenes_ver(sesion, grupo, ventana) if ventana else [["new-session", "-d", "-t", f"={sesion}", "-s", grupo]]
-    ordenes += [
-        ["set-option", "-t", t, "status", "on"],
-        ["set-option", "-t", t, "status-position", "top"],
-        # la barra por defecto de tmux es verde chillón; un gris azulado que no compita con el texto
-        ["set-option", "-t", t, "status-style", "bg=#3b4252,fg=#d8dee9"],
-        ["set-option", "-t", t, "status-left-length", "80"],
-        ["set-option", "-t", t, "status-left", barra(nombre, correos)],
-        ["set-option", "-t", t, "status-right", ""],
-        ["set-option", "-t", t, "window-status-format", ""],
-        ["set-option", "-t", t, "window-status-current-format", ""],
-        ["set-option", "-t", t, "mouse", "on"],
-        ["set-option", "-t", t, "key-table", TABLA],
-        # la tabla es global al servidor tmux, pero solo la usan las sesiones que la eligen
-        ["bind-key", "-T", TABLA, "F12", "detach-client"],
-        # Alt+q: la vuelta que sí tiene el teclado del celular (Termux la trae en su fila extra)
-        ["bind-key", "-T", TABLA, "M-q", "detach-client"],
-        # tocar la barra: «◀ telar» vuelve al menú; «✉ N» abre el correo encima, sin salir
-        ["bind-key", "-T", TABLA, "MouseDown1Status",
-         "if-shell", "-F", "#{==:#{mouse_status_range},volver}", "detach-client",
-         *([f"if-shell -F '#{{==:#{{mouse_status_range}},correo}}' "
-            f"\"display-popup -E -w 100% -h 100% '{correo_cmd}'\""] if correo_cmd else [])],
-        # la rueda del mouse sigue desplazando lo que hay en pantalla
-        ["bind-key", "-T", TABLA, "WheelUpPane", "if-shell", "-F", "#{mouse_any_flag}",
-         "send-keys -M", "copy-mode -e; send-keys -M"],
-        # sin mouse (Termux por mosh), deslizar el dedo manda flechas al Claude y recorre su
-        # historial de mensajes. PgUp (fila extra de Termux) o Alt+u entran al historial de tmux;
-        # ahí las flechas y el deslizar sí mueven la pantalla, y bajar hasta el final sale solo.
-        ["bind-key", "-T", TABLA, "PageUp", "copy-mode", "-eu"],
-        ["bind-key", "-T", TABLA, "M-u", "copy-mode", "-eu"],
-    ]
-    return ordenes
-

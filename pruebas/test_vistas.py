@@ -55,12 +55,6 @@ class Direcciones(unittest.TestCase):
         self.assertNotIn("set-option", mod_remoto.linea("~/x", ["claude"], "faro", marcar=False))
         self.assertIn("set-option", mod_remoto.linea("~/x", ["claude"], "faro"))
 
-    def test_el_celular_se_fija_en_la_ventana_del_hilo(self):
-        ordenes = movil.ordenes_grupo("telar", "movil-12", "faro", ventana="@12")
-        self.assertEqual(ordenes[0], ["new-session", "-d", "-t", "=telar", "-s", "movil-12"])
-        self.assertEqual(ordenes[1], ["select-window", "-t", "=movil-12:@12"])
-        self.assertEqual(ordenes[2][:4], ["set-hook", "-t", "=movil-12:", "session-window-changed"])
-
     def test_la_configuracion_del_remoto_lleva_su_sesion(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "config.toml"

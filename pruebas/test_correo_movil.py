@@ -34,29 +34,6 @@ class Direcciones(Prueba):
         self.assertEqual(c.extension_de("usuario@servidor"), "")
 
 
-class Movil(Prueba):
-    def test_la_barra_tiene_los_rangos_y_escapa_el_nombre(self):
-        b = m.barra("50# de algo", 2)
-        self.assertIn("#[range=user|volver]", b)
-        self.assertIn("#[range=user|correo]✉ 2", b)
-        self.assertIn("50## de algo", b)
-        self.assertNotIn("correo", m.barra("Pizza", 0))
-
-    def test_la_sesion_agrupada_usa_su_propia_tabla(self):
-        ordenes = m.ordenes_grupo("telar-1a2b", "movil-1a2b", "Pizza")
-        self.assertEqual(ordenes[0], ["new-session", "-d", "-t", "=telar-1a2b", "-s", "movil-1a2b"])
-        opciones = {o[3]: o[4] for o in ordenes if o[0] == "set-option"}
-        self.assertEqual(opciones["key-table"], m.TABLA)
-        self.assertEqual(opciones["status-position"], "top")
-        # las opciones van a la agrupada, nunca a la sesión del hilo, que es la que ve el laptop
-        self.assertTrue(all(o[2] == "=movil-1a2b:" for o in ordenes if o[0] == "set-option"))
-        # Alt+q vuelve al menú: el toque no llega por mosh y F12 no está en el celular
-        self.assertIn(["bind-key", "-T", m.TABLA, "M-q", "detach-client"], ordenes)
-        self.assertIn("Alt+q", m.barra("Pizza"))
-        # y las teclas, a la tabla propia: ni una en root
-        self.assertTrue(all(o[2] == m.TABLA for o in ordenes if o[0] == "bind-key"))
-
-
 class MovilNuevoHilo(Prueba):
     def test_el_hilo_nuevo_nace_como_los_remotos(self):
         orden = m.ordenes_nuevo("telar-9f9f9f9f", "Kinross", "/home/n/Life", ["claude", "--session-id", "x"])

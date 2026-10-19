@@ -15,8 +15,8 @@ Estado (19-oct-2026): **en curso**.
     máquinas);
   - el paso 5 (en cada máquina: fuera la llave de la puerta en `authorized_keys`, `[enlace]`,
     `[enlaces.*]`, `correo_archivo`).
+  - el código muerto: `movil.barra`/`ordenes_grupo` (el menú viejo del celular por mosh).
 - Falta:
-  - `movil.barra`/`ordenes_grupo` (el menú viejo del celular por mosh, sin llamadores);
   - el paso 6, que sigue bloqueado (el correo entre personas y el directorio, hasta que el bus tenga
     credenciales por persona).
 
