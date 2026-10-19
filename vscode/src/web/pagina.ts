@@ -356,7 +356,16 @@ export function paginaCompartir(nonce: string): string {
  *  cada pocos segundos), una caja para escribirle y las teclas para contestarle una pregunta (⏎, ⎋,
  *  1-3, ↑↓). Lo escrito va por el mismo canal que la terminal (`/pty`, una vista de `telar mirar`):
  *  es teclear en el hilo, con la misma llave. */
-export function paginaConversacion(nonce: string): string {
+/** De dónde lee y a dónde escribe la página de una conversación. En el panel en Node, sus rutas (`/api/leer`,
+ *  y la terminal o `/api/remoto/enviar`); en el navegador (src/navegador), la API de telar: `/api/hilos/leer`
+ *  y `/api/mensajes`, sin terminal todavía (todo se escribe como mensaje). */
+export interface RutasConversacion {
+    /** el hilo y su máquina, si la página no los lee de su dirección (un iframe con srcdoc no tiene) */
+    hilo?: string; maquina?: string;
+    navegador?: boolean;
+}
+
+export function paginaConversacion(nonce: string, rutas: RutasConversacion = {}): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self';">
@@ -372,11 +381,13 @@ export function paginaConversacion(nonce: string): string {
 </footer>
 <script nonce="${nonce}">
 (function () {
-  var q = new URLSearchParams(location.search);
-  var hilo = q.get('hilo') || '', maquina = q.get('maquina') || '';
+  var q = new URLSearchParams(location.search), R = ${JSON.stringify(rutas).replace(/</g, '\\u003c')};
+  var hilo = R.hilo || q.get('hilo') || '', maquina = R.maquina || q.get('maquina') || '';
+  // en el navegador no hay terminal todavía: se lee por la API y todo se escribe como mensaje (por el bus)
+  var porMensaje = !!(maquina || R.navegador);
   var turnos = document.getElementById('turnos'), texto = document.getElementById('texto'), dijo = document.getElementById('dijo');
   // un hilo de otra máquina se lee y se le escribe por el bus: sin terminal, no hay teclas que apretar
-  if (maquina) { document.getElementById('teclas').hidden = true; texto.placeholder = 'escríbele al hilo (en ' + maquina + ', por el bus)'; }
+  if (porMensaje) { document.getElementById('teclas').hidden = true; texto.placeholder = maquina ? 'escríbele al hilo (en ' + maquina + ', por el bus)' : 'escríbele al hilo (le llega como mensaje)'; }
   var QUIEN = { usuario: 'tú', agente: 'agente', herramienta: '·' };
   function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
   function abajo() { return turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40; }
@@ -412,8 +423,10 @@ export function paginaConversacion(nonce: string): string {
   function leer() {
     if (leyendo) return;
     leyendo = true;
-    fetch('/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : ''), { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
+    var url = R.navegador ? '/api/hilos/leer?hilo=' + encodeURIComponent(hilo) + '&ultimos=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : '')
+      : '/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : '');
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (d) { return r.ok ? d : { error: d.detail || ('la API respondió ' + r.status) }; }); })
       .then(pintar)
       .catch(function () { /* sin conexión: se reintenta en la vuelta */ })
       .then(function () { leyendo = false; });
@@ -437,10 +450,14 @@ export function paginaConversacion(nonce: string): string {
     e.preventDefault();
     var t = texto.value.replace(/\\s+$/, '');
     if (!t) return;
-    if (maquina) {
-      // a otra máquina: por el bus, como la persona; le llega al hilo al terminar su turno (o al tiro si espera)
-      fetch('/api/remoto/enviar', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hilo: hilo, texto: t }) })
-        .then(function (r) { return r.json(); })
+    if (porMensaje) {
+      // por el bus, como la persona; le llega al hilo al terminar su turno (o al tiro si espera)
+      var envio = R.navegador
+        ? fetch('/api/mensajes', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ para: hilo, texto: t, tipo: 'persona', de: 'el panel' }) })
+            .then(function (r) { return r.json().then(function (d) { return r.ok ? { ok: true } : { ok: false, error: d.detail }; }); })
+        : fetch('/api/remoto/enviar', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hilo: hilo, texto: t }) })
+            .then(function (r) { return r.json(); });
+      envio
         .then(function (r) {
           dijo.textContent = r.ok ? 'enviado: le llega al terminar su turno, o al tiro si te espera' : (r.error || 'no llegó');
           if (r.ok) { texto.value = ''; pronto = Date.now() + 30000; setTimeout(leer, 3000); }

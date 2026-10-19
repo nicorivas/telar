@@ -703,7 +703,7 @@
     "panel": "node out/web/servidor.js",
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true",
     "lint:css": "stylelint \"media/css/*.css\"",
-    "navegador": "node scripts/navegador.mjs --min"
+    "navegador": "tsc -p tsconfig.navegador.json && node scripts/navegador.mjs --min"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

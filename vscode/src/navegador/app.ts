@@ -17,9 +17,11 @@ import MarkdownIt from 'markdown-it';
 import { type Anfitrion, type Opcion, type OpcionesAviso, usar } from '../anfitrion';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos';
+import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
-import { SCRIPT_NAVEGADOR } from '../web/pagina';
+import { paginaConversacion, SCRIPT_NAVEGADOR } from '../web/pagina';
 
 
 // ── la API: fetch a /api ───────────────────────────────────────────────────────
@@ -44,17 +46,40 @@ cli.usarTransporte(async (metodo, ruta, timeout, cuerpo) => {
     return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}` };
 });
 
-// ── el iframe donde se dibuja el dashboard ────────────────────────────────────
+// ── los marcos: la barra a la izquierda; a la derecha, el dashboard o la conversación de un hilo ──
 
-let marco: HTMLIFrameElement | undefined;
+const marcos = () => document.getElementById('marcos')!;
+let marco: HTMLIFrameElement | undefined;       // el del dashboard
+let marcoBarra: HTMLIFrameElement | undefined;
 let avisosPanel: AvisosSuperficie | undefined;
 const pendientes = new Map<string, (valor: unknown) => void>();
+let actual = 'dashboard';
 
-function aLaPagina(m: unknown): void {
-    marco?.contentWindow?.postMessage({ __telarPadre: m }, location.origin);
+function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
+    const f = document.createElement('iframe');
+    f.dataset.p = clave;
+    f.title = clave;
+    f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals');
+    donde.appendChild(f);
+    return f;
 }
 
-/** La página del dashboard con el guion de interfaz, con el mismo nonce del CSP que pone `estilo.marco`. */
+function a(f: HTMLIFrameElement | undefined, m: unknown): void {
+    f?.contentWindow?.postMessage({ __telarPadre: m }, location.origin);
+}
+const aLaPagina = (m: unknown) => a(marco, m);
+
+/** A quién se le muestra un menú o un aviso: al dashboard si se ve; si no (una conversación, el celular
+ *  con la lista), a la barra. */
+function destino(): HTMLIFrameElement | undefined {
+    const angosto = document.body.classList.contains('angosto');
+    const enLista = document.body.classList.contains('en-lista');
+    if (marco && !marco.hidden && !(angosto && enLista)) return marco;
+    return marcoBarra ?? marco;
+}
+const aQuienMira = (m: unknown) => a(destino(), m);
+
+/** Una página con el guion de interfaz, con el mismo nonce del CSP que pone `estilo.marco`. */
 function conInterfaz(pagina: string): string {
     const nonce = /'nonce-([^']+)'/.exec(pagina)?.[1] ?? '';
     return pagina
@@ -63,7 +88,9 @@ function conInterfaz(pagina: string): string {
 }
 
 window.addEventListener('message', e => {
-    if (e.source !== marco?.contentWindow || typeof e.data?.__telarHijo !== 'string') return;
+    const desdeBarra = !!marcoBarra && e.source === marcoBarra.contentWindow;
+    if (!desdeBarra && e.source !== marco?.contentWindow) return;
+    if (typeof e.data?.__telarHijo !== 'string') return;
     let m: Record<string, unknown>;
     try { m = JSON.parse(e.data.__telarHijo); } catch { return; }
     if (typeof m.__ui_r === 'string') {
@@ -72,38 +99,87 @@ window.addEventListener('message', e => {
         return;
     }
     if ('__ancho' in m) return;
-    avisosPanel?.mensaje(m);
+    if (desdeBarra) barra.mensaje(m as { tipo: string });
+    else avisosPanel?.mensaje(m);
 });
 
 const superficie: CrearSuperficie = avisos => {
     avisosPanel = avisos;
     const s: Superficie = {
         cspSource: "'self'",
-        get visible() { return !document.hidden; },
+        get visible() { return !document.hidden && !!marco && !marco.hidden; },
         get activa() { return document.hasFocus(); },
         html: p => {
-            if (!marco) {
-                marco = document.createElement('iframe');
-                marco.id = 'dashboard';
-                marco.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals');
-                document.getElementById('vista')!.replaceChildren(marco);
-            }
+            if (!marco) marco = nuevoMarco('dashboard', marcos());
             marco.srcdoc = conInterfaz(p);
         },
         enviar: m => aLaPagina(m),
-        revelar: () => { /* ya está al frente */ },
+        revelar: () => mostrar('dashboard'),
     };
     document.addEventListener('visibilitychange', () => avisos.cambio(!document.hidden, document.hasFocus()));
     return s;
 };
 
+const superficieBarra: SuperficieBarra = {
+    cspSource: "'self'",
+    get visible() { return !document.hidden; },
+    html: p => {
+        if (!marcoBarra) marcoBarra = nuevoMarco('barra', document.getElementById('barra')!);
+        marcoBarra.srcdoc = conInterfaz(p);
+    },
+    enviar: m => a(marcoBarra, m),
+    cabecera: () => { /* el título y la cuenta: la lista ya los dice */ },
+};
+
+/** Lo que la barra recuerda (el orden de cada grupo): en este navegador. */
+const guardado: Guardado = {
+    get: <T>(clave: string) => {
+        try { return JSON.parse(localStorage.getItem(`telar.barra.${clave}`) ?? 'null') ?? undefined as T | undefined; } catch { return undefined; }
+    },
+    update: async (clave, valor) => { try { localStorage.setItem(`telar.barra.${clave}`, JSON.stringify(valor)); } catch { /* sin almacén */ } },
+};
+
+/** A la derecha: «dashboard», un hilo (su conversación: la terminal llega con el paso 4), «rem:<máquina>:<hilo>»
+ *  (uno de otra máquina) o «doc:<hilo>» (su carpeta, todavía no en el navegador). */
+function mostrar(que: string): void {
+    if (!que) return;
+    if (que.startsWith('doc:')) { aQuienMira({ __aviso: 'ver la carpeta de un hilo todavía no está en el navegador', nivel: 'aviso' }); return; }
+    actual = que;
+    document.getElementById('progreso')!.hidden = true;
+    let f: HTMLIFrameElement | undefined;
+    if (que === 'dashboard') {
+        if (!hoy.panel) hoy.abrir();
+        f = marco;
+    } else {
+        f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === que);
+        if (!f) {
+            const remoto = que.startsWith('rem:') ? que.slice(4) : '';
+            const i = remoto.indexOf(':');
+            const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
+            f = nuevoMarco(que, marcos());
+            f.srcdoc = paginaConversacion(Math.random().toString(36).slice(2), { hilo, maquina, navegador: true });
+        }
+    }
+    for (const x of marcos().querySelectorAll('iframe')) x.hidden = x !== f;
+    const nombre = que.startsWith('rem:') ? (() => { const r = que.slice(4), i = r.indexOf(':'); return `${r.slice(i + 1)} · en ${r.slice(0, i)}`; })() : que;
+    document.getElementById('titulo')!.textContent = que === 'dashboard' ? '' : nombre;
+    document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
+    document.body.classList.remove('en-lista');
+    document.body.classList.add('en-detalle');
+    // la barra marca lo que se ve
+    barra.dashboardActivo = que === 'dashboard';
+    barra.mostrado = que === 'dashboard' ? '' : que;
+    barra.refrescar(true);
+}
+
 // ── lo que el dashboard le pide a la interfaz (su anfitrión) ──────────────────
 
 function preguntar(m: Record<string, unknown>): Promise<unknown> {
-    const id = crypto.randomUUID();
+    // randomUUID solo existe en páginas seguras (https, localhost): un id que sirve en las dos
+    const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
     return new Promise(resolve => {
         pendientes.set(id, resolve);
-        aLaPagina({ ...m, __ui: id });
+        aQuienMira({ ...m, __ui: id });
         setTimeout(() => { if (pendientes.delete(id)) resolve(null); }, 10 * 60 * 1000);
     });
 }
@@ -111,7 +187,7 @@ function preguntar(m: Record<string, unknown>): Promise<unknown> {
 function avisoCon(nivel: string) {
     return async (texto: string, ...botones: (string | OpcionesAviso)[]): Promise<string | undefined> => {
         const nombres = botones.filter((b): b is string => typeof b === 'string');
-        if (!nombres.length) { aLaPagina({ __aviso: texto, nivel }); return undefined; }
+        if (!nombres.length) { aQuienMira({ __aviso: texto, nivel }); return undefined; }
         const r = await preguntar({ tipo: 'aviso', texto, botones: nombres });
         return typeof r === 'string' ? r : undefined;
     };
@@ -123,9 +199,9 @@ const anfitrion: Anfitrion = {
     aviso: avisoCon('aviso'),
     falla: avisoCon('falla'),
     info: avisoCon('info'),
-    estado: (texto, ms) => aLaPagina({ __aviso: texto, nivel: 'info', ms: ms ?? 4000 }),
+    estado: (texto, ms) => aQuienMira({ __aviso: texto, nivel: 'info', ms: ms ?? 4000 }),
     progreso: async (o, trabajo) => {
-        if (!o.ventana) aLaPagina({ __aviso: o.title, nivel: 'info', ms: 2500 });
+        if (!o.ventana) aQuienMira({ __aviso: o.title, nivel: 'info', ms: 2500 });
         return trabajo();
     },
     campo: async o => {
@@ -157,24 +233,50 @@ const anfitrion: Anfitrion = {
         else aLaPagina({ __aviso: `→ ${hilo}, en la terminal`, nivel: 'info', ms: 2500 });
     },
     mostrarTerminal: async () => { /* la terminal es otra ventana */ },
-    orden: async id => {
-        aLaPagina({ __aviso: `«${id}» todavía no está en el navegador`, nivel: 'aviso' });
+    orden: async (id, ...args) => {
+        const f = ordenes[id];
+        if (f) return f(...args);
+        aQuienMira({ __aviso: `«${id}» todavía no está en el navegador`, nivel: 'aviso' });
         return undefined;
     },
 };
 
-// ── arrancar: una pantalla más en el menú de la página ────────────────────────
+// ── arrancar ──────────────────────────────────────────────────────────────────
 
 usar(anfitrion);
 const hoy = new PanelHoy();
 hoy.crearSuperficie = superficie;
+const barra = new BarraHilos();
+barra.estado = guardado;
+barra.dashboardActivo = true;
+barra.mostrado = '';
+const ordenes = crearOrdenes({ hoy, barra, anfitrion, avisar: aQuienMira, mostrar });
+barra.conectar(superficieBarra);
+hoy.alCambiarFoco = () => {
+    const app = hoy.appActual;
+    if (barra.appActiva === app) return;
+    barra.appActiva = app;
+    barra.refrescar(true);
+};
+modelo.cambio.event(() => barra.refrescar());
 
-declare global { interface Window { telar?: { registrar(nombre: string, f: () => Promise<void>): void } } }
-window.telar?.registrar('dashboard', async () => {
-    if (!hoy.panel) hoy.abrir();
-    else if (marco) document.getElementById('vista')!.replaceChildren(marco);
-});
-setInterval(() => { if (hoy.panel && !document.hidden) void hoy.actualizar(); }, 60 * 1000);
+// los hilos de otras máquinas (sus fotos): un grupo por máquina en la barra
+const otras = async () => {
+    const r = await cli.espejos().catch(() => undefined);
+    const nuevas = (r?.datos?.espejos ?? []).filter(e => !e.error)
+        .map(e => ({ nombre: e.nombre, en_linea: e.en_linea, edad: e.edad, hilos: e.hilos.filter(h => !h.remoto) }));
+    if (JSON.stringify(nuevas) !== JSON.stringify(barra.otras)) { barra.otras = nuevas; barra.refrescar(true); }
+};
+void otras();
+setInterval(() => void otras(), 30 * 1000);
+
+declare global { interface Window { telar?: { mostrar?: (que: string) => void; verProgreso?: () => void } } }
+window.telar = { ...(window.telar ?? {}), mostrar };
+mostrar('dashboard');
+// en el celular se empieza por la lista
+if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
+
+setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
 // lo mismo que el panel en Node: el modelo (los hilos, su atención) se sondea mientras la página se mira
 const sondear = async () => {
     if (!document.hidden) await modelo.sondear().catch(() => undefined);

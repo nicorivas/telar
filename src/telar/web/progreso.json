@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 18:10",
+  "actualizado": "2026-10-19 18:15",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -88,12 +88,14 @@
     {
       "grupo": "4. El anfitrión web",
       "nombre": "menús, campos y avisos en HTML",
-      "estado": "pendiente"
+      "estado": "hecho",
+      "nota": "los mismos diálogos del panel, en el marco que se está mirando"
     },
     {
       "grupo": "5. La barra de hilos",
       "nombre": "la lista de hilos en el navegador; un clic abre su conversación",
-      "estado": "pendiente"
+      "estado": "hecho",
+      "nota": "la barra a la izquierda (la misma del panel); un clic abre la conversación del hilo para leerla y escribirle (como mensaje, por el bus); su menú (⋯) funciona. La terminal llega con el paso 4"
     },
     {
       "grupo": "Paso 4 (después)",

@@ -30,6 +30,7 @@ import { modelo } from '../modelo';
 import type { CrearSuperficie, Superficie } from '../superficie';
 import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos';
 import { PanelHoy } from '../vistas/hoy';
+import { crearOrdenes } from './ordenes';
 import { CSS_WEB, SCRIPT_WEB, paginaCasa, paginaCompartir, paginaConversacion, paginaDocumento, paginaTerminal } from './pagina';
 
 function argumento(nombre: string, porDefecto: string): string {
@@ -232,120 +233,7 @@ function mostrar(que: string): void {
 
 let hoy: PanelHoy;
 let barra: BarraHilos;
-const hiloDe = (a: unknown): string => typeof a === 'string' ? a : (a as { hilo?: string } | undefined)?.hilo ?? '';
-
-/** `telar hilo <verbo>` sobre un hilo, y la lista al día. */
-async function sobreHilo(a: unknown, verbo: string, extra: string[] = [], valor?: string): Promise<boolean> {
-    const hilo = hiloDe(a);
-    if (!hilo) return false;
-    const r = await cli.hilo(verbo, hilo, valor, extra);
-    if (!r.ok) { aTodos({ __aviso: `telar: ${r.err.trim().split('\n').pop() || `«telar hilo ${verbo}» falló`}`, nivel: 'falla' }); return false; }
-    modelo.invalidar();
-    await modelo.sondear();
-    return true;
-}
-
-/** El menú de un hilo, que en VS Code es su menú contextual: lo que se puede hacer con él, según esté
- *  vivo, archivado o vinculado. Cada acción es una orden `telar hilo …`. */
-async function menuHilo(a: unknown): Promise<void> {
-    const hilo = hiloDe(a);
-    const h = modelo.porNombre(hilo);
-    if (!hilo || !h) return;
-    type Fila = Opcion & { hacer?: () => Promise<unknown> };
-    const prioridad = (n: string, nombre: string): Fila => ({ label: `prioridad ${nombre}`, description: String(h.prioridad ?? '') === n ? 'la que tiene' : '',
-        hacer: () => sobreHilo(hilo, 'prioridad', [], n) });
-    const filas: Fila[] = [
-        { label: h.archivado || !h.vivo ? 'retomar' : 'ver', description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
-            hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) mostrar(hilo); } else mostrar(hilo); } },
-        { label: 'renombrar', description: 'se mueve con él lo que telar sabía', hacer: async () => {
-            const nombre = await anfitrionWeb.campo({ title: `Nombre nuevo para «${hilo}»`, value: hilo });
-            if (nombre && nombre !== hilo) await sobreHilo(hilo, 'renombrar', [], nombre);
-        } },
-        ...(h.vinculado ? [{ label: 'ver su carpeta y documento', description: h.relativa || h.ruta, hacer: async () => mostrar(`doc:${hilo}`) }] : []),
-        { label: 'vincular a un proyecto', description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
-        ...(h.vinculado ? [{ label: 'desvincular', description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
-        { label: 'prioridad', separador: true },
-        prioridad('1', 'alta'), prioridad('2', 'media'), prioridad('3', 'baja'), prioridad('ninguna', 'ninguna'),
-        { label: 'guardar o cerrar', separador: true },
-        ...(h.archivado ? [{ label: 'desarchivar', description: 'volver a la lista sin abrirlo', hacer: () => sobreHilo(hilo, 'desarchivar') }]
-            : [{ label: 'archivar', description: 'cierra el tab y guarda su conversación', hacer: () => sobreHilo(hilo, 'archivar', ['--cerrar']) }]),
-        ...(h.vivo ? [{ label: 'cerrar', description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
-        ...(!h.remoto ? [{ label: 'llevar a otra máquina', description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }] : []),
-        { label: 'olvidar', description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
-            const si = await anfitrionWeb.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, { modal: true }, 'Olvidar');
-            if (si === 'Olvidar') await sobreHilo(hilo, 'olvidar');
-        } },
-    ];
-    const elegida = await anfitrionWeb.elegir(filas, { title: hilo });
-    await elegida?.hacer?.();
-}
-
-/** Vincular desde la web: se elige entre los proyectos del perfil, o se escribe una ruta. */
-async function vincularWeb(hilo: string): Promise<void> {
-    const r = await cli.proyectos();
-    const otra = { label: 'otra carpeta…', description: 'escribir su ruta', ruta: '' };
-    const filas = [...(r.datos?.proyectos ?? []).map(p => ({ label: p.nombre, description: p.ruta, ruta: String(p.ruta) })), otra];
-    const elegida = await anfitrionWeb.elegir(filas, { title: `Vincular «${hilo}» a…`, placeHolder: 'filtrar' });
-    if (!elegida) return;
-    const ruta = elegida.ruta || await anfitrionWeb.campo({ title: `La carpeta de «${hilo}»`, prompt: 'relativa a la raíz del repositorio, o absoluta' });
-    if (ruta) await sobreHilo(hilo, 'vincular', [], ruta);
-}
-
-/** Llevar un hilo a otra máquina de [remotos]: si aquí hay trabajo sin subir, se pregunta antes. */
-async function llevarWeb(hilo: string): Promise<void> {
-    const remotos = (await cli.config()).datos?.remotos ?? [];
-    if (!remotos.length) { aTodos({ __aviso: 'telar: no hay máquinas en [remotos]', nivel: 'aviso' }); return; }
-    const elegida = remotos.length === 1 ? remotos[0]
-        : (await anfitrionWeb.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { title: `¿A qué máquina llevo «${hilo}»?` }))?.x;
-    if (!elegida) return;
-    aTodos({ __aviso: `llevando «${hilo}» a ${elegida.nombre}…`, nivel: 'info', ms: 4000 });
-    let r = await cli.hilo('llevar', hilo, elegida.nombre);
-    if (!r.ok && /sin subir/.test(r.err)) {
-        const lista = r.out.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
-        const si = await anfitrionWeb.aviso(`La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:\n${lista}`, { modal: true }, 'Llevar igual');
-        if (si !== 'Llevar igual') return;
-        r = await cli.hilo('llevar', hilo, elegida.nombre, ['--si']);
-    }
-    if (!r.ok) { aTodos({ __aviso: `telar: ${r.err.trim().split('\n').pop() || 'no se llevó'}`, nivel: 'falla' }); return; }
-    modelo.invalidar();
-    await modelo.sondear();
-}
-
-const ordenes: Record<string, (...args: any[]) => unknown> = {
-    'telar.menuHilo': a => menuHilo(a),
-    // un hilo de otra máquina: se lee como conversación y se le escribe por el bus (aquí no hay su terminal)
-    'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) mostrar(`rem:${maq}:${resto.join('|')}`); },
-    // en la web, ir a un hilo es mostrar su terminal a la derecha (no mover la ventana de tmux de nadie)
-    'telar.ir': a => mostrar(hiloDe(a)),
-    'telar.retomar': async a => { if (await sobreHilo(a, 'retomar')) mostrar(hiloDe(a)); },
-    'telar.archivar': a => sobreHilo(a, 'archivar', ['--cerrar']),
-    'telar.cerrar': a => sobreHilo(a, 'cerrar'),
-    'telar.archivo': () => barra.alternarArchivo(),
-    'telar.equipoVer': (id?: string) => id ? hoy.abrirEquipo(id) : undefined,
-    'telar.seccion': (clave?: string) => { if (clave) { mostrar('dashboard'); return hoy.abrirSeccion(clave); } },
-    'telar.app': (clave?: string) => { if (clave) { mostrar('dashboard'); return hoy.abrirApp(clave); } },
-    'telar.tarea': (valor?: string) => valor ? hoy.abrirTarea(valor) : undefined,
-    'telar.hoy': () => mostrar('dashboard'),
-    'telar.actualizar': () => modelo.sondear(true),
-    'telar.tejer': async () => { await cli.tejer(); await modelo.sondear(); },
-    'telar.nuevo': async () => {
-        const nombre = (await anfitrionWeb.campo({ prompt: 'Nombre del hilo nuevo', placeHolder: 'faro' }))?.trim();
-        if (!nombre) return;
-        const remotos = (await cli.config()).datos?.remotos ?? [];
-        let remoto = '';
-        if (remotos.length) {
-            const e = await anfitrionWeb.elegir([{ label: 'Local', description: 'en esta máquina', remoto: '' },
-                ...remotos.map(r => ({ label: `Remoto: ${r.nombre}`, description: r.destino, remoto: r.nombre }))],
-                { placeHolder: `¿Dónde vive el agente de «${nombre}»?` });
-            if (!e) return;
-            remoto = e.remoto;
-        }
-        await anfitrionWeb.irAHilo(nombre, true, remoto);
-    },
-    // la lista de tareas de la barra lateral es de VS Code: aquí las tareas están en el dashboard
-    'telar.tareas': () => undefined,
-    'telar.tareasActualizar': () => undefined,
-};
+let ordenes: Record<string, (...args: any[]) => unknown> = {};
 
 // ── las terminales ─────────────────────────────────────────────────────────────
 
@@ -468,6 +356,7 @@ async function main(): Promise<void> {
     hoy = new PanelHoy();
     hoy.crearSuperficie = superficieWeb;
     barra = new BarraHilos();
+    ordenes = crearOrdenes({ hoy, barra, anfitrion: anfitrionWeb, avisar: aTodos, mostrar });
     barra.estado = guardado;
     barra.dashboardActivo = true;   // al abrir, a la derecha está el dashboard
     barra.mostrado = '';

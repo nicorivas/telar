@@ -1,27 +1,41 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e1e2e">
 <title>telar</title>
 <style>
 :root{color-scheme:dark;--bg:#1e1e2e;--panel:#181825;--fg:#cdd6f4;--dim:#7f849c;--borde:#313244;--azul:#89b4fa;--verde:#a6e3a1;--amarillo:#f9e2af;--rojo:#f38ba8;--malva:#cba6f7}
 @media (prefers-color-scheme: light){:root{color-scheme:light;--bg:#eff1f5;--panel:#e6e9ef;--fg:#4c4f69;--dim:#8c8fa1;--borde:#ccd0da;--azul:#1e66f5;--verde:#40a02b;--amarillo:#df8e1d;--rojo:#d20f39;--malva:#8839ef}}
 *{box-sizing:border-box;border-radius:0}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/22px ui-monospace,"SF Mono",Menlo,Consolas,monospace}
-header{display:flex;gap:16px;align-items:baseline;padding:10px 16px;border-bottom:1px solid var(--borde);background:var(--panel);flex-wrap:wrap}
-header b{color:var(--malva)} nav a{color:var(--azul);text-decoration:none;margin-right:12px;cursor:pointer} nav a.activa{color:var(--fg);border-bottom:1px solid var(--malva)}
-main{padding:16px;max-width:980px}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/22px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  display:grid;grid-template-columns:minmax(240px,22vw) 1fr;height:100dvh}
+iframe{border:0;width:100%;height:100%;display:block}
+#barra{border-right:1px solid var(--borde);min-width:0}
+#derecha{display:grid;grid-template-rows:auto 1fr;min-width:0}
+header{display:flex;gap:14px;align-items:baseline;padding:6px 12px;border-bottom:1px solid var(--borde);background:var(--panel);flex-wrap:wrap}
+header b{color:var(--malva)} header a{color:var(--azul);text-decoration:none;cursor:pointer}
+#volver{display:none} #titulo{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#marcos{position:relative;min-width:0} #marcos iframe{position:absolute;inset:0} #marcos iframe[hidden]{display:none}
+#progreso{position:absolute;inset:0;overflow:auto;padding:16px} #progreso[hidden]{display:none}
 .dim{color:var(--dim)} h2{font-size:14px;margin:18px 0 6px;color:var(--malva)}
-.fila{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:4px 0;border-bottom:1px solid var(--borde)}
+.fila{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:4px 0;border-bottom:1px solid var(--borde);max-width:980px}
 .hecho{color:var(--verde)} .curso{color:var(--amarillo)} .pendiente{color:var(--dim)}
-.barra{height:6px;background:var(--borde);margin:8px 0 2px}.barra i{display:block;height:100%;background:var(--verde)}
-#vista{min-height:200px}
-#vista:has(#dashboard){padding:0;max-width:none}
-#dashboard{display:block;width:100%;height:calc(100vh - 45px);border:0}
-</style></head><body>
-<header><b>telar</b><span class="dim" id="maquina"></span><nav id="nav"><a data-p="progreso" class="activa">progreso</a></nav></header>
-<main id="vista"><div class="dim">leyendo…</div></main>
+.barra{height:6px;background:var(--borde);margin:8px 0 2px;max-width:980px}.barra i{display:block;height:100%;background:var(--verde)}
+/* angosto (el celular): la lista o el detalle, de a uno */
+body.angosto{grid-template-columns:1fr}
+body.angosto #volver{display:inline}
+body.angosto.en-lista #derecha, body.angosto.en-detalle #barra{display:none}
+</style></head><body class="en-lista">
+<aside id="barra"></aside>
+<section id="derecha">
+  <header><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span>
+    <a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
+  <div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
+</section>
 <script>
-// La página nueva de telar: el panel sin Node, pantalla por pantalla. Mientras se arma, la portada es el
-// progreso (estatico/progreso.json); cada pantalla que ya corre en el navegador aparece en el menú.
+// La página de telar sin Node: la barra de hilos a la izquierda y, a la derecha, el dashboard o la
+// conversación de un hilo (estatico/app.js, el mismo código del panel, empaquetado). Mientras se arma,
+// «progreso» dice qué ya está en el navegador (estatico/progreso.json).
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function json(url) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: ${r.status}`); return r.json(); }
@@ -38,13 +52,26 @@ async function progreso() {
     const clase = x.estado === 'hecho' ? 'hecho' : x.estado === 'en curso' ? 'curso' : 'pendiente';
     h.push(`<div class="fila"><span class="${clase}">${x.estado === 'hecho' ? '✓' : x.estado === 'en curso' ? '…' : '·'} ${esc(x.estado)}</span><span>${esc(x.nombre)}${x.nota ? ` <span class="dim">— ${esc(x.nota)}</span>` : ''}</span></div>`);
   }
-  $('#vista').innerHTML = h.join('');
+  $('#progreso').innerHTML = h.join('');
 }
-async function salud() { try { const s = await json('/api/salud'); $('#maquina').textContent = `telar ${s.version}`; } catch (e) { $('#maquina').textContent = 'sin API'; } }
-const pantallas = { progreso };
-// las pantallas que ya están en el navegador se registran aquí (estatico/app.js, cuando exista)
-window.telar = { registrar(nombre, f) { pantallas[nombre] = f; const a = document.createElement('a'); a.dataset.p = nombre; a.textContent = nombre; $('#nav').append(a); } };
-$('#nav').addEventListener('click', (e) => { const p = e.target.dataset?.p; if (!p) return; document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('activa', a.dataset.p === p)); pantallas[p]().catch((err) => { $('#vista').innerHTML = `<div class="rojo">${esc(err.message)}</div>`; }); });
-salud(); progreso().catch((e) => { $('#vista').textContent = e.message; });
-const app = document.createElement('script'); app.src = '/estatico/app.js'; app.onerror = () => {}; document.body.append(app);
+// lo que muestra la derecha lo decide app.js (window.telar.mostrar); «progreso» es de esta página
+window.telar = window.telar || {};
+window.telar.verProgreso = () => {
+  document.querySelectorAll('#marcos iframe').forEach((f) => { f.hidden = true; });
+  $('#progreso').hidden = false; $('#titulo').textContent = 'progreso';
+  progreso().catch((e) => { $('#progreso').textContent = e.message; });
+};
+document.querySelector('header').addEventListener('click', (e) => {
+  const p = e.target.dataset?.p;
+  if (p === 'progreso') { window.telar.verProgreso(); document.body.classList.replace('en-lista', 'en-detalle'); }
+  else if (p && window.telar.mostrar) window.telar.mostrar(p);
+});
+$('#volver').addEventListener('click', () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); });
+const angosto = window.matchMedia('(max-width: 700px)');
+const ajustar = () => document.body.classList.toggle('angosto', angosto.matches);
+angosto.addEventListener('change', ajustar); ajustar();
+json('/api/salud').then((s) => { $('#maquina').textContent = `telar ${s.version}`; }).catch(() => { $('#maquina').textContent = 'sin API'; });
+const app = document.createElement('script'); app.src = '/estatico/app.js';
+app.onerror = () => window.telar.verProgreso();
+document.body.append(app);
 </script></body></html>
