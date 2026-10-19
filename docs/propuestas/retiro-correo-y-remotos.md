@@ -11,10 +11,14 @@ Estado (19-oct-2026): **en curso**.
     - fuera la puerta (`telar enlace`), `telar remotos` y el espejo por ssh (`espejo publicar|recibir|traer`);
     - fuera el lado de lectura del correo (`telar correo` sin verbo, `correo leido`, `estado.leidos`,
       `_aviso_de_correo`; `correo_archivo` se acepta sin usarse). Queda `telar correo enviar`.
+  - el paso 4 (la skill de hilos ya no enseña la puerta ni a leer el correo; regenerada en las dos
+    máquinas);
+  - el paso 5 (en cada máquina: fuera la llave de la puerta en `authorized_keys`, `[enlace]`,
+    `[enlaces.*]`, `correo_archivo`).
 - Falta:
   - `movil.barra`/`ordenes_grupo` (el menú viejo del celular por mosh, sin llamadores);
-  - los pasos 4 y 5;
-  - el 6, que sigue bloqueado.
+  - el paso 6, que sigue bloqueado (el correo entre personas y el directorio, hasta que el bus tenga
+    credenciales por persona).
 
 Antes del bus (`docs/propuestas/bus.md`), las máquinas se hablaban por ssh y los agentes por correo:
 el espejo se empujaba por ssh, el semáforo y las ventanas de los hilos remotos se traían por ssh cada
