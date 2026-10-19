@@ -114,7 +114,7 @@ def get_config(ctx: Contexto = Depends(contexto)):
 @app.exception_handler(ErrorDeServicio)
 async def _error_de_servicio(_req: Request, e: ErrorDeServicio):
     """Lo que no se pudo hacer, con el mismo mensaje que daría la CLI."""
-    return JSONResponse(status_code=e.codigo, content={"detail": str(e)})
+    return JSONResponse(status_code=e.codigo, content={"detail": str(e), **e.datos})
 
 
 # ── las tareas de un proveedor: su ficha y sus acciones ───────────────────────
@@ -180,37 +180,8 @@ def post_comentario(clave: str, dia: str = Body(...), texto: str = Body(...), ct
 
 # ── los tipos: objetos sobre archivos (telar.tipos), desde el índice en memoria ───────
 
-from telar.tipos import ErrorDeFormato
-from telar.tipos import tarea as tipo_tarea
-from telar.tipos.carpeta import Carpeta, ErrorDeVersion, NoExiste
-from telar.tipos.indice import Indice
-
-_indices: dict[tuple[str, str], Indice] = {}
-
-
-def _indice_de(ctx: Contexto, clave: str) -> Indice:
-    """El índice del tipo en esta máquina: uno por carpeta, y vive lo que vive el proceso."""
-    t = next((x for x in ctx.config.tipos if x.clave == clave), None)
-    if t is None or not t.carpeta:
-        raise ErrorDeServicio(f"esta máquina no declara dónde viven los objetos «{clave}» ([tipos.{clave}] carpeta)", 404)
-    llave = (clave, t.carpeta)
-    if llave not in _indices:
-        # el mismo índice que usan los proveedores de este proceso (telar.tipos.indice.compartido)
-        from telar.tipos.indice import compartido
-
-        _indices[llave] = compartido(t.carpeta, tipo_tarea.ARCHIVO)
-    return _indices[llave]
-
-
-class TareaConVersion(tipo_tarea.Tarea):
-    """Una tarea y la versión de su archivo: la que se devuelve con una acción para no pisar a otro."""
-
-    version: str
-
-
-class Tareas(BaseModel):
-    tareas: list[TareaConVersion]
-    fallas: dict[str, str] = {}
+from telar.servicios import tipos as servicio_tipos
+from telar.servicios.tipos import Borrada, TareaConVersion, Tareas
 
 
 class PedidoTarea(BaseModel):
@@ -220,52 +191,39 @@ class PedidoTarea(BaseModel):
     version: str | None = None
 
 
-def _con_version(par) -> TareaConVersion:
-    t, v = par
-    return TareaConVersion(**t.model_dump(), version=v)
-
-
 @app.get("/tipos/tarea", response_model=Tareas)
 def get_tareas(abiertas: bool = True, area: str = "", proyecto: str = "", dueno: str | None = None,
                vence_hasta: str = "", ctx: Contexto = Depends(contexto)):
     """Las tareas, desde el índice. Filtros: `abiertas` (por defecto), `area`, `proyecto`, `dueno` («» es
     sin dueño) y `vence_hasta` (AAAA-MM-DD)."""
-    def pasa(t) -> bool:
-        return ((not abiertas or not t.cerrada_ya) and (not area or t.area == area)
-                and (not proyecto or t.proyecto == proyecto) and (dueno is None or t.dueno == dueno)
-                and (not vence_hasta or (t.vence and t.vence <= vence_hasta)))
-    ind = _indice_de(ctx, "tarea")
-    return Tareas(tareas=[_con_version(x) for x in ind.consultar(pasa)], fallas=dict(ind.fallas))
+    return servicio_tipos.lista(ctx, todas=not abiertas, area=area, proyecto=proyecto, dueno=dueno,
+                                vence_hasta=vence_hasta)
+
+
+@app.post("/tipos/tarea", response_model=TareaConVersion)
+def post_tarea_nueva(pedido: PedidoTarea, ctx: Contexto = Depends(contexto)):
+    """Una tarea nueva (`params`: `titulo` y lo que acepta telar.tipos.tarea.nueva). El número lo elige
+    este servidor, el único que las escribe."""
+    return servicio_tipos.crear(ctx, pedido.params)
 
 
 @app.get("/tipos/tarea/{id}", response_model=TareaConVersion)
 def get_tarea_tipo(id: str, ctx: Contexto = Depends(contexto)):
     """Una tarea y su versión."""
-    try:
-        return _con_version(_indice_de(ctx, "tarea").obtener(id))
-    except NoExiste as e:
-        raise ErrorDeServicio(str(e), 404) from e
+    return servicio_tipos.obtener(ctx, id)
+
+
+@app.delete("/tipos/tarea/{id}", response_model=Borrada)
+def delete_tarea_tipo(id: str, version: str | None = None, ctx: Contexto = Depends(contexto)):
+    """Borra el archivo de la tarea; con `version`, solo si no cambió."""
+    return servicio_tipos.borrar(ctx, id, version=version)
 
 
 @app.post("/tipos/tarea/{id}/{accion}", response_model=TareaConVersion)
 def post_tarea_accion(id: str, accion: str, pedido: PedidoTarea, ctx: Contexto = Depends(contexto)):
     """Una acción sobre la tarea (`completar`, `reagendar`, `esperar`…), con la versión que se leyó: si el
     archivo cambió desde entonces, 409 y la versión de ahora. Este servidor es el único que la escribe."""
-    fn = tipo_tarea.ACCIONES.get(accion)
-    if fn is None:
-        raise ErrorDeServicio(f"no hay una acción «{accion}»: {', '.join(tipo_tarea.ACCIONES)}", 422)
-    try:
-        return _con_version(_indice_de(ctx, "tarea").aplicar(id, fn, version=pedido.version, **pedido.params))
-    except NoExiste as e:
-        raise ErrorDeServicio(str(e), 404) from e
-    except ErrorDeVersion as e:
-        return JSONResponse(status_code=409, content={"detail": str(e), "version": e.actual})
-    except tipo_tarea.ErrorDeAccion as e:
-        raise ErrorDeServicio(str(e), 409) from e
-    except TypeError as e:
-        raise ErrorDeServicio(f"«{accion}» no lleva esos parámetros: {e}", 422) from e
-    except ErrorDeFormato as e:
-        raise ErrorDeServicio(str(e), 422) from e
+    return servicio_tipos.aplicar(ctx, id, accion, pedido.params, version=pedido.version)
 
 
 @app.get("/salud")

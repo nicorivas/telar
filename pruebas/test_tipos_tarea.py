@@ -333,3 +333,125 @@ class LaFichaYSusAcciones(Prueba):
         self.assertIn("dueño: Marcelo", (self.dir / "T84.md").read_text())
         self.servicio.accion(self.ctx, "T84", rol="dueno", texto="none")
         self.assertNotIn("dueño:", (self.dir / "T84.md").read_text())
+
+
+class CrearYLasAccionesQueFaltaban(Prueba):
+    """Crear una tarea (el número lo elige quien escribe), borrarla, y las acciones que la CLI de tareas
+    tenía y el tipo no: la secuela de un cierre, una conexión del grafo, quitar la fecha."""
+
+    def setUp(self):
+        super().setUp()
+        from datetime import datetime
+
+        from telar.tipos import tarea as tipo
+        from telar.tipos.carpeta import Carpeta
+        self.tipo = tipo
+        self.reloj = lambda: datetime(2026, 10, 19, 9, 30)
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T84.md").write_text(TAREA, encoding="utf-8")
+        (self.dir / "T9.md").write_text("---\ntitulo: x\n---\n", encoding="utf-8")
+        self.carpeta = Carpeta(self.dir, ARCHIVO)
+
+    def test_crear_da_el_numero_que_sigue_y_escribe_la_forma_de_siempre(self):
+        t, v = self.carpeta.crear(self.tipo.nueva("Llamar a Ana: el NDA", prioridad=1, etiquetas=["nda"],
+                                                  desde="email", reloj=self.reloj))
+        self.assertEqual(t.id, "T85")
+        self.assertEqual((self.dir / "T85.md").read_text(), "---\ntitulo: Llamar a Ana: el NDA\nestado: activa\n"
+                         "prioridad: 1\narea: personal\netiquetas: nda\ncreada: 2026-10-19\n---\n"
+                         "## Historia\n- 2026-10-19 [creada] desde email\n")
+        self.assertEqual(self.carpeta.leer("T85"), (t, v))
+        self.assertEqual(self.carpeta.crear(self.tipo.nueva("Otra"))[0].id, "T86")
+
+    def test_lo_que_una_tarea_nueva_no_puede_ser(self):
+        for kw in ({"titulo": " "}, {"titulo": "x", "estado": "hecha"}, {"titulo": "x", "prioridad": 7},
+                   {"titulo": "x", "vence": "mañana"}):
+            with self.assertRaises(self.tipo.ErrorDeAccion):
+                self.tipo.nueva(**kw)
+
+    def test_borrar_con_version(self):
+        from telar.tipos.carpeta import ErrorDeVersion, NoExiste
+        _, v = self.carpeta.leer("T9")
+        with self.assertRaises(ErrorDeVersion):
+            self.carpeta.borrar("T9", version="0" * 16)
+        self.carpeta.borrar("T9", version=v)
+        with self.assertRaises(NoExiste):
+            self.carpeta.leer("T9")
+
+    def test_secuela_conexion_y_sin_fecha(self):
+        t, _ = self.carpeta.aplicar("T84", self.tipo.secuela, "avisé a Marcelo", reloj=self.reloj)
+        self.assertEqual(t.historia[-1].tipo, "secuela")
+        t, _ = self.carpeta.aplicar("T84", self.tipo.conectar, "bloquea", "[T9](T9.md)", "sin el contrato no hay pago")
+        self.assertEqual(t.conexiones, ["- `bloquea` [T9](T9.md) · sin el contrato no hay pago"])
+        self.assertIn("## Conexiones\n- `bloquea` [T9](T9.md) · sin el contrato no hay pago\n\n## Historia",
+                      (self.dir / "T84.md").read_text())
+        t, _ = self.carpeta.aplicar("T84", self.tipo.reagendar, "none", reloj=self.reloj)
+        self.assertEqual((t.vence, t.historia[-1].texto), ("", "2026-10-30 → sin fecha"))
+        self.assertNotIn("vence:", (self.dir / "T84.md").read_text())
+        with self.assertRaises(self.tipo.ErrorDeAccion):
+            self.tipo.conectar(t, "dos palabras", "[T9](T9.md)", "x")
+
+
+class LaOrdenTipo(Prueba):
+    """`telar tipo tarea …`: aquí si las tareas viven aquí; si viven en otra máquina, se le pide a ella, y
+    sus errores llegan con su código."""
+
+    def setUp(self):
+        super().setUp()
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar.config import Config, Tipo
+        from telar.servicios import tipos as servicio
+        self.mock, self.ns = mock, SimpleNamespace
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T84.md").write_text(TAREA, encoding="utf-8")
+        self.cfg = Config(raiz=self.dir, estado=self.dir / "e", tipos=(Tipo(clave="tarea", carpeta=str(self.dir)),))
+        sube = mock.patch.object(servicio, "subir")
+        self.subir = sube.start()
+        self.addCleanup(sube.stop)
+
+    def correr(self, *argv, cfg=None):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        from telar.ordenes import tipo
+        with redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            codigo = tipo.main(list(argv), self.ns(config=cfg or self.cfg))
+        return codigo, out.getvalue()
+
+    def test_aqui(self):
+        import json
+        codigo, out = self.correr("tarea", "crear", "--params", '{"titulo": "Llamar a Ana"}', "--json")
+        self.assertEqual((codigo, json.loads(out)["id"]), (0, "T85"))
+        codigo, out = self.correr("tarea", "anotar", "T85", "--params", '{"texto": "le escribí"}', "--json")
+        self.assertEqual(json.loads(out)["historia"][-1]["texto"], "le escribí")
+        codigo, out = self.correr("tarea", "completar", "T85", "--version", "0" * 16, "--json")
+        self.assertEqual((codigo != 0, json.loads(out)["codigo"]), (True, 409))
+        self.assertIn("version", json.loads(out))
+        codigo, out = self.correr("tarea", "lista", "--json")
+        self.assertEqual([t["id"] for t in json.loads(out)["tareas"]], ["T84", "T85"])
+
+    def test_alla(self):
+        import json
+
+        from telar import bus as mod_bus
+        from telar.config import Bus, Config, Tipo
+        cfg = Config(raiz=self.dir, estado=self.dir / "e", bus=Bus(url="nats://x", maquina="laptop"),
+                     tipos=(Tipo(clave="tarea", en="servidor"),))
+        nueva = {"id": "T90", "titulo": "Llamar a Ana", "version": "a" * 16}
+        with self.mock.patch.object(mod_bus, "pedir", return_value={"ok": True, "codigo": 0, "salida": json.dumps(nueva)}) as pedir:
+            codigo, out = self.correr("tarea", "crear", "--params", '{"titulo": "Llamar a Ana"}', "--json", cfg=cfg)
+        self.assertEqual((codigo, json.loads(out)["id"]), (0, "T90"))
+        self.assertEqual(pedir.call_args[0][1:3], ("servidor", "tipo"))
+        self.assertEqual(pedir.call_args[0][3]["argv"], ["tarea", "crear", "--params", '{"titulo": "Llamar a Ana"}', "--json"])
+        error = {"ok": True, "codigo": 2, "salida": '{"error": "T84 cambió", "codigo": 409, "version": "b"}', "error_salida": ""}
+        with self.mock.patch.object(mod_bus, "pedir", return_value=error):
+            codigo, out = self.correr("tarea", "completar", "T84", "--version", "a", "--json", cfg=cfg)
+        self.assertEqual(json.loads(out), {"error": "T84 cambió", "codigo": 409, "version": "b"})
+        # y si allá no responde, no se escribe la copia de aquí
+        with self.mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "nadie"}):
+            codigo, out = self.correr("tarea", "completar", "T84", "--json", cfg=cfg)
+        self.assertEqual(json.loads(out)["codigo"], 502)
+        self.assertIn("estado: activa", (self.dir / "T84.md").read_text())

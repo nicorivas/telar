@@ -93,6 +93,16 @@ class Indice:
         return objeto, nueva
 
 
+    def crear(self, objeto, **kwargs):
+        objeto, version = self.carpeta.crear(objeto, **kwargs)
+        self.refrescar()
+        return objeto, version
+
+    def borrar(self, id: str, *, version: str | None = None) -> None:
+        self.carpeta.borrar(id, version=version)
+        self.refrescar()
+
+
 _compartidos: dict[tuple[str, int], Indice] = {}
 _candado_compartidos = threading.Lock()
 

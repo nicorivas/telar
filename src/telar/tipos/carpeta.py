@@ -6,6 +6,7 @@
     tareas = Carpeta("~/notas/tareas", tarea.ARCHIVO)
     t, version = tareas.leer("T84")
     t, version = tareas.aplicar("T84", tarea.completar, version=version)
+    t, version = tareas.crear(tarea.nueva("Llamar a Ana"))      # T85: el número lo elige quien escribe
 
 **La versión** es la huella del archivo. Quien lee recibe la versión, y la devuelve con la acción: si el
 archivo cambió desde entonces (lo editó una persona, otro agente, un `git pull`), la acción se rechaza
@@ -71,6 +72,47 @@ class Carpeta:
 
     def ids(self) -> list[str]:
         return sorted(p.stem for p in self.ruta.glob("*.md") if self._id.fullmatch(p.stem) and p.stem.upper() != "README")
+
+    def crear(self, objeto, *, prefijo: str = "T"):
+        """Escribe un objeto nuevo y le da su identificador: el número que sigue al mayor de la carpeta con
+        ese prefijo (T343 → T344). Lo elige quien escribe, con el candado tomado: dos que crean a la vez no
+        eligen el mismo. (el objeto con su id, su versión)."""
+        self.ruta.mkdir(parents=True, exist_ok=True)
+        with open(self.ruta / ".telar-escribe.lock", "w") as candado:
+            fcntl.flock(candado, fcntl.LOCK_EX)
+            patron = re.compile(rf"{re.escape(prefijo)}(\d+)", re.I)
+            usados = [int(m.group(1)) for p in self.ruta.glob("*.md") if (m := patron.fullmatch(p.stem))]
+            id = f"{prefijo}{max(usados, default=0) + 1:02d}"
+            objeto = objeto.model_copy(update={"id": id})
+            texto = self.formato.nuevo(objeto)
+            releido = self.formato.leer(texto, id)
+            ignora = set(getattr(self.formato, "IGNORA", ()))
+            if releido.model_dump(exclude={"duplicadas", *ignora}) != objeto.model_dump(exclude={"duplicadas", *ignora}):
+                raise ErrorDeFormato(f"{id}: lo escrito no se relee igual; no se escribió")
+            archivo = self._archivo(id)
+            temporal = archivo.with_suffix(".md.tmp")
+            temporal.write_text(texto, encoding="utf-8")
+            # sin pisar: si el archivo apareció (alguien lo escribió sin el candado), no se reemplaza
+            try:
+                os.link(temporal, archivo)
+            except FileExistsError as e:
+                raise ErrorDeVersion(id, "nuevo", version_de(archivo.read_text(encoding="utf-8"))) from e
+            finally:
+                temporal.unlink(missing_ok=True)
+            return releido, version_de(texto)
+
+    def borrar(self, id: str, *, version: str | None = None) -> None:
+        """Borra el archivo del objeto; con `version`, solo si sigue en esa versión."""
+        archivo = self._archivo(id)
+        with open(self.ruta / ".telar-escribe.lock", "w") as candado:
+            fcntl.flock(candado, fcntl.LOCK_EX)
+            try:
+                texto = archivo.read_text(encoding="utf-8")
+            except FileNotFoundError as e:
+                raise NoExiste(f"no hay {id}") from e
+            if version is not None and version != version_de(texto):
+                raise ErrorDeVersion(id, version, version_de(texto))
+            archivo.unlink()
 
     def aplicar(self, id: str, accion: Callable, *args, version: str | None = None, **kwargs):
         """Aplica `accion(objeto, *args, **kwargs)` y escribe el cambio. (el objeto nuevo, su versión).

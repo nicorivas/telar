@@ -205,7 +205,10 @@ class TiposTarea(Prueba):
         cfg = Config(raiz=self.dir, estado=self.dir / "estado", tipos=(Tipo(clave="tarea", carpeta=str(self.dir)),))
         api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=cfg)
         self.addCleanup(api.app.dependency_overrides.clear)
-        api._indices.clear()
+        from telar.servicios import tipos as servicio_tipos
+        sube = mock.patch.object(servicio_tipos, "subir")
+        self.subir = sube.start()
+        self.addCleanup(sube.stop)
         self.c = TestClient(api.app)
 
     def test_lista_las_abiertas_con_su_version(self):
@@ -229,6 +232,27 @@ class TiposTarea(Prueba):
         self.assertEqual(r.status_code, 409)
         self.assertNotEqual(r.json()["version"], v)
         self.assertIn("estado: activa", (self.dir / "T1.md").read_text())
+
+    def test_crear_le_da_el_numero_que_sigue_y_la_commitea(self):
+        r = self.c.post("/tipos/tarea", json={"params": {"titulo": "Llamar a Ana", "prioridad": 1}})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((r.json()["id"], r.json()["prioridad"]), ("T03", 1))
+        self.assertIn("titulo: Llamar a Ana", (self.dir / "T03.md").read_text())
+        self.assertEqual(self.subir.call_args[0][0], self.dir / "T03.md")
+        self.assertEqual(self.c.post("/tipos/tarea", json={"params": {"titulo": ""}}).status_code, 409)
+        self.assertEqual(self.c.post("/tipos/tarea", json={"params": {"titulo": "x", "volar": 1}}).status_code, 422)
+
+    def test_borrar_con_version(self):
+        v = self.c.get("/tipos/tarea/T1").json()["version"]
+        self.assertEqual(self.c.delete("/tipos/tarea/T1", params={"version": "0" * 16}).status_code, 409)
+        self.assertEqual(self.c.delete("/tipos/tarea/T1", params={"version": v}).json(), {"id": "T1", "borrada": True})
+        self.assertFalse((self.dir / "T1.md").exists())
+
+    def test_una_accion_que_no_cambia_nada_no_commitea(self):
+        self.c.post("/tipos/tarea/T1/asignar", json={"params": {"persona": ""}})
+        self.subir.assert_not_called()
+        self.c.post("/tipos/tarea/T1/anotar", json={"params": {"texto": "algo"}})
+        self.subir.assert_called_once()
 
     def test_lo_que_no_se_puede_y_lo_que_no_existe(self):
         self.assertEqual(self.c.post("/tipos/tarea/T2/completar", json={}).status_code, 409)   # ya cerrada

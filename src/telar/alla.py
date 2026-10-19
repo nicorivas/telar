@@ -84,13 +84,16 @@ def consultar(config, proveedores: list, dia: date) -> tuple[list[Item], list[st
     return items, fallas
 
 
-def tarea_aqui(argv: list[str]) -> dict:
-    """Corre `telar tarea …` en esta máquina (lo que responde el nodo al pedido `tarea`)."""
+def tarea_aqui(argv: list[str], orden: str = "tarea") -> dict:
+    """Corre `telar tarea …` (o `telar tipo …`) en esta máquina: lo que responde el nodo a los pedidos
+    `tarea` y `tipo`."""
+    if orden not in ("tarea", "tipo"):
+        return {"ok": False, "error": f"no se corre «{orden}» para otra máquina"}
     try:
-        r = subprocess.run([sys.executable, "-m", "telar", "tarea", *argv], capture_output=True, text=True,
+        r = subprocess.run([sys.executable, "-m", "telar", orden, *argv], capture_output=True, text=True,
                            timeout=ESPERA * 2, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired) as e:
-        return {"ok": False, "error": f"telar tarea no corrió: {e}"}
+        return {"ok": False, "error": f"telar {orden} no corrió: {e}"}
     return {"ok": True, "codigo": r.returncode, "salida": r.stdout, "error_salida": r.stderr}
 
 

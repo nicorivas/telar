@@ -584,6 +584,25 @@ agente que la trabajó solo, `<estado>[:<cómo>] <fecha>` (`preparado 2026-09-25
 Y `area`: a qué parte de la vida pertenece la tarea (`trabajo`, `personal`, lo que el
 proveedor use). Con más de un área, las listas de tareas ofrecen un filtro por ella.
 
+### `telar tipo tarea <verbo> --json`
+
+Los objetos de un tipo (telar.tipos), con su `version` (la huella del archivo):
+
+```
+telar tipo tarea lista [--todas]                  {"tareas": [{…tarea, "version": "…"}], "fallas": {}}
+telar tipo tarea ver T84                          {…tarea, "version": "…"}
+telar tipo tarea crear --params '{"titulo": "…"}' la tarea nueva, con su número
+telar tipo tarea <acción> T84 --params '{…}' [--version V]
+telar tipo tarea borrar T84 [--version V]         {"id": "T84", "borrada": true}
+```
+
+Una tarea es el modelo de `telar.tipos.tarea.Tarea`: `id`, `titulo`, `estado`, `prioridad`, `vence`,
+`espera`, `dueno`, `proyecto`, `area`, `etiquetas`, `origen`, `trabajo`, `creada`, `cerrada`, `avance`,
+`contexto`, `conexiones`, `historia` (`[{fecha, hora, tipo, texto}]`). Las acciones y sus parámetros son
+las de `telar.tipos.tarea.ACCIONES`. Si no se pudo, la salida es `{"error": "…", "codigo": N}` (409: la
+tarea cambió, y entonces trae su `version` de ahora, o la acción no se puede; 404: no existe; 422: el
+pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con error.
+
 ### `telar agente conversacion <id> --json`
 
 ```json

@@ -28,6 +28,12 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- Creating tasks and the type's CLI: `telar tipo tarea lista|ver|crear|borrar|<action>` (and `POST`/`DELETE`
+  on `/tipos/tarea`), one service behind both. The writer picks a new task's number under its lock; a
+  machine with `[tipos.tarea] en` asks the one that has them over the bus (`tipo`), with error codes
+  intact. New actions: `secuela`, `conectar`, and clearing a date. The writer commits and pushes the file.
+- `telar commit` commits and pushes one at a time per repository: two background commits in a row
+  collided on git's `index.lock` and one file stayed uncommitted.
 - The `tipo` provider builds each task's card itself (no `detalle`), and its buttons are the type's actions:
   the service applies them to the file with the card's version (a changed task is a 409, and the panel
   re-reads the card), then commits and pushes that file in a separate process. A house's own bits (who

@@ -128,6 +128,15 @@ carpeta = "~/notas/tareas"     # un T84.md por tarea
 formato = "archivo"            # el único, por ahora
 ```
 
+Las escribe una sola máquina, la que declara `carpeta`. En las demás, `en` dice cuál es, y `telar tipo
+tarea …` (leer, crear, cambiar) se le pide a ella por el bus: lo que se cambia desde otra máquina cambia
+las tareas, no la copia que llega por git.
+
+```toml
+[tipos.tarea]
+en = "servidor"
+```
+
 Para que `telar hoy` y el panel las muestren, el proveedor de tareas las lee del mismo índice:
 
 ```toml

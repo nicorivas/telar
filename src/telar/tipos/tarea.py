@@ -24,7 +24,8 @@ from pydantic import BaseModel, Field
 
 from telar.tipos import ErrorDeFormato
 
-__all__ = ["Tarea", "Cambio", "FormatoArchivo", "FormatoCasilla", "ARCHIVO", "CASILLA", "ESTADOS", "TERMINALES"]
+__all__ = ["Tarea", "Cambio", "FormatoArchivo", "FormatoCasilla", "ARCHIVO", "CASILLA", "ESTADOS", "TERMINALES",
+           "ACCIONES", "ErrorDeAccion", "nueva", "PREFIJO"]
 
 ESTADOS = ("activa", "espera", "algun-dia", "hecha", "caduca", "descartada")
 TERMINALES = ("hecha", "caduca", "descartada")
@@ -217,6 +218,28 @@ class FormatoArchivo:
                     tras = max((L2.donde[c][-1] for c in previas if c in L2.donde), default=L2.fm[0])
                     lineas.insert(tras + 1, f"{clave}: {nuevo}")
         return "\n".join(lineas)
+
+    def nuevo(self, t: Tarea) -> str:
+        """El archivo de una tarea que todavía no existe: las claves con valor, en su orden, el contexto y
+        las secciones. Es la forma que tienen las que escribía la CLI de tareas."""
+        for campo in self.NO_GUARDA:
+            if getattr(t, campo) != getattr(Tarea(), campo):
+                raise ErrorDeFormato(f"una tarea en su archivo no guarda «{campo}»")
+        claves = []
+        for campo, clave in self.claves.items():
+            valor = self._valor(t, campo)
+            if "\n" in valor:
+                raise ErrorDeFormato(f"{campo}: un valor de una sola línea")
+            if valor:
+                claves.append(f"{clave}: {valor}")
+        out = ["---", *claves, "---"]
+        if t.contexto.strip():
+            out += [t.contexto.strip(), ""]
+        if t.conexiones:
+            out += ["## Conexiones", *t.conexiones, ""]
+        if t.historia:
+            out += ["## Historia", *(self._linea_historia(c) for c in t.historia)]
+        return "\n".join(out).rstrip() + "\n"
 
     def _historia(self, lineas: list[str], L: _Lectura, antes: list[Cambio], despues: list[Cambio]) -> list[str]:
         rango = L.seccion("Historia")
@@ -491,10 +514,16 @@ def esperar(t: Tarea, quien: str, nota: str = "", *, reloj=None) -> Tarea:
 
 
 def reagendar(t: Tarea, fecha: str, nota: str = "", *, reloj=None) -> Tarea:
-    """Otra fecha: `AAAA-MM-DD`, o `+Nd` (N días desde la fecha que tenía si no pasó, o desde hoy)."""
+    """Otra fecha: `AAAA-MM-DD`, o `+Nd` (N días desde la fecha que tenía si no pasó, o desde hoy); vacía
+    (o `none`), ninguna."""
     if t.estado in TERMINALES:
         raise ErrorDeAccion(f"{t.id} está cerrada")
     hoy = _ahora(reloj).date()
+    if fecha.strip().lower() in ("", "none"):
+        # sin fecha: deja de vencer
+        if not t.vence:
+            return t
+        return _con(t, "mover", f"{t.vence} → sin fecha", nota, reloj=reloj, vence="", avance="")
     if (m := re.fullmatch(r"\+(\d+)d", fecha.strip())):
         base = _dt.date.fromisoformat(t.vence) if t.vence and t.vence >= hoy.isoformat() else hoy
         nueva = (base + _dt.timedelta(days=int(m.group(1)))).isoformat()
@@ -550,6 +579,54 @@ def editar(t: Tarea, *, reloj=None, **campos) -> Tarea:
     return _con(t, "edita", ", ".join(sorted(cambios)), reloj=reloj, **cambios)
 
 
+def secuela(t: Tarea, texto: str, *, reloj=None) -> Tarea:
+    """Lo que se hizo con lo que el cierre dejó por hacer (avisar, archivar, la tarea que sigue)."""
+    if not _limpio(texto):
+        raise ErrorDeAccion("la secuela está vacía")
+    return _con(t, "secuela", texto, reloj=reloj)
+
+
+def conectar(t: Tarea, tipo: str, destino: str, porque: str, *, reloj=None) -> Tarea:
+    """Una arista del grafo en `## Conexiones`: «- `tipo` destino · por qué». `destino` es el enlace ya
+    escrito (`[T228](T228.md)`). La conexión es su propio registro: no deja línea en la historia."""
+    if not re.fullmatch(r"[\w-]+", tipo or ""):
+        raise ErrorDeAccion("el tipo de una conexión es una palabra")
+    if not _limpio(destino) or not _limpio(porque):
+        raise ErrorDeAccion("una conexión lleva destino y por qué")
+    linea = f"- `{tipo}` {_limpio(destino)} · {_limpio(porque)}"
+    return t.model_copy(update={"conexiones": [*t.conexiones, linea]})
+
+
+#: con qué letra empiezan los identificadores que se les dan a las tareas nuevas (T1, T2… T344)
+PREFIJO = "T"
+
+
+def nueva(titulo: str, *, contexto: str = "", estado: str = "activa", prioridad: int = 2, vence: str = "",
+          dueno: str = "", proyecto: str = "", area: str = "personal", etiquetas: list[str] | tuple = (),
+          origen: str = "", trabajo: str = "", desde: str = "", reloj=None) -> Tarea:
+    """Una tarea que todavía no existe, sin identificador: se lo da quien la escribe (Carpeta.crear).
+    `desde` dice de dónde salió (email, minuta…), y queda en la historia; sin él, «a mano»."""
+    titulo = _limpio(titulo)
+    if not titulo:
+        raise ErrorDeAccion("una tarea lleva título")
+    if estado not in ("activa", "algun-dia"):
+        raise ErrorDeAccion("una tarea nueva está activa o es de algún día")
+    if prioridad not in (0, 1, 2, 3):
+        raise ErrorDeAccion("la prioridad va de 0 a 3")
+    if vence:
+        try:
+            vence = _dt.date.fromisoformat(vence.strip()).isoformat()
+        except ValueError as e:
+            raise ErrorDeAccion(f"fecha inválida: {vence} (AAAA-MM-DD)") from e
+    hoy = _ahora(reloj).date().isoformat()
+    origen_txt = f"desde {_limpio(desde)}" if _limpio(desde) and _limpio(desde) != "manual" else "a mano"
+    return Tarea(titulo=titulo, contexto=contexto.strip(), estado=estado, prioridad=prioridad, vence=vence,
+                 dueno=_limpio(dueno), proyecto=_limpio(proyecto), area=_limpio(area) or "personal",
+                 etiquetas=[_limpio(e) for e in etiquetas if _limpio(e)], origen=_limpio(origen),
+                 trabajo=_limpio(trabajo), creada=hoy, historia=[Cambio(fecha=hoy, tipo="creada", texto=origen_txt)])
+
+
 ACCIONES = {"completar": completar, "cerrar": cerrar, "reabrir": reabrir, "algun_dia": algun_dia,
             "esperar": esperar, "reagendar": reagendar, "asignar": asignar, "anotar": anotar,
-            "proponer": proponer, "responder": responder, "editar": editar}
+            "proponer": proponer, "responder": responder, "editar": editar, "secuela": secuela,
+            "conectar": conectar}

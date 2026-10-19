@@ -300,5 +300,17 @@ base de datos).
    Lo propio de una casa (quién propone, a quién se le escribe, los mensajes a los hilos, el equipo, la
    cuenta de Gmail de cada área) son opciones del proveedor. El panel manda la versión de la ficha que
    muestra; si la tarea cambió entretanto, la acción no se hace y la ficha se vuelve a leer.
-3. **Crear tareas, y la CLI de tareas como cáscara del tipo**, para que las skills sigan iguales.
+3. **Crear tareas, y la CLI de tareas como cáscara del tipo** (hecha): `nueva` arma una tarea y
+   `Carpeta.crear` le da el número que sigue al mayor, con el candado tomado: el número lo elige quien
+   escribe, y dos que crean a la vez no eligen el mismo. El texto de una tarea nueva es el mismo que
+   escribía la CLI de tareas, byte por byte. Se sumaron las acciones que la CLI tenía y el tipo no:
+   `secuela` (lo que se hizo con lo que dejó un cierre), `conectar` (una arista en `## Conexiones`) y
+   quitar la fecha (`reagendar` con `none`); y borrar. Todo eso está en el servicio
+   `telar.servicios.tipos`, con dos cáscaras: la orden `telar tipo tarea <verbo>` y las rutas
+   `/tipos/tarea` (`POST` crea, `DELETE` borra). Desde una máquina con `[tipos.tarea] en`, la orden se le
+   pide a la que las tiene por el bus (`tipo`), y sus errores llegan con su código. Quien escribe
+   commitea y sube el archivo (`telar commit`, que ahora commitea y sube de a uno por repositorio: dos
+   commits seguidos chocaban en el `index.lock` de git). La CLI de tareas del repositorio de vida ya no
+   escribe archivos ni commitea: arma el pedido a `telar tipo tarea` y muestra lo que vuelve con su
+   forma de siempre, para que las skills sigan iguales.
 

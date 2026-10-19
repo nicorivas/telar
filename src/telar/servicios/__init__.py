@@ -18,9 +18,11 @@ class ErrorDeServicio(Exception):
     error; la API responde con `codigo` (404 si no existe, 400 si el pedido no sirve, 502 si un
     programa de afuera falló)."""
 
-    def __init__(self, mensaje: str, codigo: int = 400) -> None:
+    def __init__(self, mensaje: str, codigo: int = 400, datos: dict | None = None) -> None:
         super().__init__(mensaje)
         self.codigo = codigo
+        #: lo que acompaña al error en la respuesta (la `version` de ahora, si la tarea cambió)
+        self.datos = dict(datos or {})
 
 
 class Pagina(BaseModel):

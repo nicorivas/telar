@@ -216,16 +216,9 @@ def _accion_del_tipo(ctx, id: str, proveedor: str, a: dict, texto: str, version:
 
 
 def _subir(archivo, mensaje: str) -> None:
-    """Commitea ese archivo y lo sube (`telar commit`), en un proceso aparte que sobrevive a quien llamó:
-    quien hizo clic no espera el push, y una orden suelta que termina no se lo lleva."""
-    import sys
+    from telar.servicios.tipos import subir
 
-    try:
-        subprocess.Popen([sys.executable, "-m", "telar", "commit", "-m", mensaje, "--", str(archivo)],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
-    except OSError:
-        pass  # sin commit, queda en el árbol: /sincronizar lo junta
+    subir(archivo, mensaje)
 
 
 def _al_hilo(ctx, id: str, proveedor: str, mensaje: str, fila, nombre: str) -> str:

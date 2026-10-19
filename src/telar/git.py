@@ -21,6 +21,7 @@ con cosas a medio hacer. Lo que aquí se hace parte de eso:
 from __future__ import annotations
 
 import fcntl
+from contextlib import contextmanager
 import json
 import os
 import subprocess
@@ -123,9 +124,26 @@ def _relativas(repo: Path, rutas: list[Path]) -> list[str]:
     return salida
 
 
+@contextmanager
+def _de_a_uno(repo: Path):
+    """El candado del repositorio: commitear y subir, de a uno. Dos cambios seguidos (dos acciones sobre
+    tareas, cada una con su `telar commit` en segundo plano) chocaban en el `index.lock` de git, y uno
+    quedaba sin commitear; y un commit en medio de un rebase lo rompe."""
+    with open(_comun(repo) / "telar-subir.lock", "w") as candado:
+        fcntl.flock(candado, fcntl.LOCK_EX)
+        yield
+
+
 def commitear(rutas: list[Path], mensaje: str, *, repo: Path | None = None) -> Resultado:
     """Commitea solo `rutas` (las nuevas incluidas, las borradas como borradas)."""
     repo = repo or repositorio(rutas[0])
+    if repo is not None:
+        with _de_a_uno(repo):
+            return _commitear(rutas, mensaje, repo)
+    return _commitear(rutas, mensaje, repo)
+
+
+def _commitear(rutas: list[Path], mensaje: str, repo: Path | None) -> Resultado:
     res = Resultado(repo=str(repo or ""))
     if repo is None:
         res.estado, res.detalle = "fallo", f"{rutas[0]} no está en un repositorio git"
@@ -193,8 +211,7 @@ def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
         res.estado, res.detalle = res.estado or "commiteado", "la rama no tiene una de arriba: queda local"
         return res
     remoto, _, rama_arriba = arriba.partition("/")
-    with open(_comun(repo) / "telar-subir.lock", "w") as candado:
-        fcntl.flock(candado, fcntl.LOCK_EX)
+    with _de_a_uno(repo):
         for i in range(len(esperas) + 1):
             res.intentos = i + 1
             ok, motivo = _integrar(repo, arriba)
