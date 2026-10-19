@@ -23,7 +23,9 @@ texto ajeno y no se interpola crudo.
 
 from __future__ import annotations
 
+import os
 import shlex
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -126,8 +128,28 @@ def _panel(mux, hilo: str) -> str:
         return ""
 
 
+#: donde se instala un agente por usuario (el instalador de Claude Code lo deja aquí): una shell que no es
+#: de login (un `ssh host 'orden'`, un servicio) no la tiene en el PATH
+DONDE_SE_INSTALA = ("~/.local/bin",)
+
+
+def _programa(nombre: str) -> str:
+    """El programa como se puede llamar desde el tab: tal cual si está en el PATH de quien lanza (el tab
+    lo hereda); si no, su ruta entera, si está donde se instala. Retomar los hilos desde un `ssh` dejó
+    diez tabs con «claude: not found»."""
+    if "/" in nombre or shutil.which(nombre):
+        return nombre
+    for carpeta in DONDE_SE_INSTALA:
+        ruta = Path(carpeta).expanduser() / nombre
+        if ruta.is_file() and os.access(ruta, os.X_OK):
+            return str(ruta)
+    return nombre
+
+
 def envolver(palabras: list[str], hilo: str) -> list[str]:
     """El agente dentro de un `sh -c` que exporta el hilo y deja una shell al salir."""
+    if palabras:
+        palabras = [_programa(palabras[0]), *palabras[1:]]
     linea = (
         f"unset {' '.join(AJENAS)}; "
         f"export TELAR_HILO={shlex.quote(hilo)}; "
