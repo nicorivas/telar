@@ -243,17 +243,11 @@ export class BarraHilos {
             webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
         }));
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
-        // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · ✉ · nombre · última actividad
+        // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
         const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
         // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
         const remoto = `<span class="remoto"${h.remoto ? ` title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}"` : ''}>${h.remoto ? '⇄' : ' '}</span>`;
-        // ✉: correo que la persona todavía no vio. La columna existe solo si algún hilo tiene casilla
-        const c = modelo.correoDe(h.nombre);
-        const noLeidos = c?.no_leidos ?? 0, sinEntregar = c?.pendientes.length ?? 0;
-        const sobre = !modelo.buzones.length ? '' : `<span class="sobre" title="${esc(noLeidos
-            ? `${noLeidos} correo${noLeidos === 1 ? '' : 's'} sin leer${sinEntregar ? ` · ${sinEntregar} sin entregar al agente` : ''}: la pestaña ✉ correo de la ficha`
-            : '')}">${noLeidos ? '✉' : ' '}</span>`;
         // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
         const ultima = ultimaDe(h);
         const der = haceCorto(ultima);
@@ -262,7 +256,7 @@ export class BarraHilos {
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${remoto}${sobre}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
+            + `${glifo}${remoto}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo: solo en el navegador (en VS Code es su menú contextual; ahí se esconde)
             + `<span class="iconos"><span class="icono menu-web" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
@@ -352,7 +346,6 @@ export class BarraHilos {
                     const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="home" data-id="${esc(a.clave)}"`;
                     h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; ${previo ? 'pincha para retomarlo' : 'su home'}">`
                         + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
-                        + (modelo.buzones.length ? '<span class="sobre"> </span>' : '')
                         + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${casa}</div>`);
                     continue;
                 }

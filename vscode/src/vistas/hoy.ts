@@ -81,14 +81,11 @@ export class PanelHoy {
     private ficha?: { proveedor: string; id: string; ref: string; pagina?: cli.JsonPagina; aviso?: string };
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído */
     private decididas = new Set<string>();
-    /** el correo con cuerpos, leído al entrar a la pantalla; y el filtro elegido */
-    private buzones?: cli.JsonBuzon[];
     /** los mensajes entre hilos por el bus (undefined: sin bus o sin leer) */
     private mensajesBus?: cli.JsonMensajeBus[];
     private abiertoMsg = new Set<string>();
     /** la entrada del equipo que muestra la pantalla «equipo» */
     private equipoId = '';
-    private filtroCorreo: 'todas' | 'mias' | 'sin' = 'todas';
     /** la sección abierta y su página; la conversación que se está leyendo */
     private seccion = '';
     /** los orígenes de las apps con `url` que el CSP del panel deja enmarcar (ver `abrirApp`) */
@@ -1433,48 +1430,25 @@ export class PanelHoy {
         if (this.pantalla === 'equipo') this.renderEquipo();
     }
 
-    /** El correo entre agentes: las conversaciones de todas las máquinas remotas, con sus
-     *  textos (se piden al entrar, no en el refresco: pueden ser muchos). */
+    /** Los mensajes entre hilos, por el bus: lo que se dijeron y lo retenido. */
     private async abrirCorreo(): Promise<void> {
         this.pantalla = 'correo';
-        this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>', '<div class="fila dim">leyendo…</div>']);
-        const [r, bus] = await Promise.all([cli.correo(true), cli.mensajesBus()]);
+        this.pintar(['<div class="subcab"><b>Mensajes entre hilos</b></div>', '<div class="fila dim">leyendo…</div>']);
+        const bus = await cli.mensajesBus();
         if (this.pantalla !== 'correo') return;
         this.mensajesBus = bus.datos?.mensajes;
-        this.buzones = r.datos?.remotos;
-        if (!r.datos && !this.mensajesBus) {
-            this.pintar(['<div class="subcab"><b>Correo entre agentes</b></div>',
-                `<div class="fila falla">${esc(r.error ?? 'no pude leer el correo')}</div>`]);
+        if (!this.mensajesBus) {
+            this.pintar(['<div class="subcab"><b>Mensajes entre hilos</b></div>',
+                `<div class="fila falla">${esc(bus.error ?? 'no pude leer el registro del bus')}</div>`]);
             return;
         }
         this.renderCorreo();
     }
 
     private renderCorreo(): void {
-        const filtros: [string, string][] = [['todas', 'todas'], ['mias', 'mías'], ['sin', 'sin entregar']];
-        const h: string[] = ['<div class="subcab"><b>Correo entre agentes</b>'
-            + '<span class="der dim"><a data-accion="correo" title="volver a leer">↻</a></span></div>',
-            '<div class="titulo-tareas"><span class="modos">' + filtros.map(([k, t]) =>
-                `<button data-accion="filtro-correo" data-valor="${k}" class="${this.filtroCorreo === k ? 'activo' : ''}">${t}</button>`).join('')
-            + '</span></div>'];
+        const h: string[] = ['<div class="subcab"><b>Mensajes entre hilos</b>'
+            + '<span class="der dim"><a data-accion="correo" title="volver a leer">↻</a></span></div>'];
         if (this.mensajesBus) h.push(...this.htmlMensajesBus(this.mensajesBus));
-        for (const b of this.buzones ?? []) {
-            h.push(`<h2>${esc(b.remoto)}<small>${esc(b.usuario)}${b.archivo_comun ? ' · con el archivo común' : ' · solo tu casilla'}</small></h2>`);
-            if (b.error) { h.push(`<div class="fila falla">${esc(b.error)}</div>`); continue; }
-            if (b.cartero === false) h.push('<div class="fila dim">sin cartero: el correo de este usuario no se entrega a sus agentes, queda en su casilla</div>');
-            else if (!b.sabe_pendientes) h.push('<div class="fila dim">el cartero de esa máquina no anota qué entregó: no se sabe qué quedó sin entregar</div>');
-            const convs = b.conversaciones.filter(c => this.filtroCorreo === 'todas'
-                || (this.filtroCorreo === 'mias' && c.participantes.includes(b.usuario))
-                || (this.filtroCorreo === 'sin' && (c.estado === 'sin sesión' || c.estado === 'retenido')));
-            if (!convs.length) h.push('<div class="fila dim">nada</div>');
-            convs.forEach(c => {
-                const i = b.conversaciones.indexOf(c);
-                h.push(`<div class="item-pag clic" data-accion="conv-correo" data-valor="${esc(`${b.remoto}|${i}`)}">`
-                    + `<div class="fila"><b>${esc(c.asunto || '(sin asunto)')}</b><span class="der dim">${esc(fechaCorta(c.ultima))}</span></div>`
-                    + `<div class="fila dim">${esc(c.participantes.join(', '))} · ${c.mensajes} mensaje${c.mensajes === 1 ? '' : 's'}`
-                    + `${c.estado ? ` · ${esc(c.estado)}` : ''}</div></div>`);
-            });
-        }
         this.pintar(h);
     }
 
@@ -1508,21 +1482,6 @@ export class PanelHoy {
         if (!r.datos) { void ui().falla(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
         void ui().estado(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
         await this.abrirCorreo();
-    }
-
-    private verConvCorreo(valor: string): void {
-        const corte = valor.lastIndexOf('|');
-        const remoto = valor.slice(0, corte), i = valor.slice(corte + 1);
-        const c = this.buzones?.find(b => b.remoto === remoto)?.conversaciones[Number(i)];
-        if (!c) return;
-        const h: string[] = [`<div class="subcab"><b>${esc(c.asunto || '(sin asunto)')}</b><span class="dim">${esc(c.participantes.join(', '))}</span>`
-            + '<span class="der dim"><a data-accion="volver-correo">← correo</a></span></div>',
-            '<div class="fila dim">el remitente es el usuario que lo mandó según el servidor (verificado), no el campo From</div>'];
-        for (const m of c.correos) {
-            h.push(`<div class="msg"><div class="quien">${esc(m.de || '(sistema)')} <span class="dim">→ ${esc(m.para)} · ${esc(fechaCorta(m.fecha))}`
-                + `${m.estado ? ` · ${esc(m.estado)}` : ''}</span></div><div class="md-pag"><p style="white-space:pre-wrap">${esc(m.cuerpo ?? '')}</p></div></div>`);
-        }
-        this.pintar(h);
     }
 
     /** Una conversación entera: lo que se dijo, y una línea por herramienta. */
@@ -2427,9 +2386,6 @@ export class PanelHoy {
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
             case 'correo': await this.abrirCorreo(); break;
             case 'equipo-accion': if (m.valor) await this.accionEquipo(m.valor); break;
-            case 'filtro-correo': this.filtroCorreo = (m.valor as 'todas' | 'mias' | 'sin') || 'todas'; this.renderCorreo(); break;
-            case 'conv-correo': if (m.valor) this.verConvCorreo(m.valor); break;
-            case 'volver-correo': this.renderCorreo(); break;
             case 'ver-msg':
                 if (m.valor) { if (this.abiertoMsg.has(m.valor)) this.abiertoMsg.delete(m.valor); else this.abiertoMsg.add(m.valor); this.renderCorreo(); }
                 break;

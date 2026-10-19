@@ -542,13 +542,6 @@ export const conversacion = async (id: string) => await deServe<JsonConversacion
     ?? telarJson<JsonConversacion>(['agente', 'conversacion', id, '--json'], 20000);
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
-/** Abre aquí los hilos que nacieron en una máquina remota (un reloj allá, el celular). Es el sondeo
- *  de cada tres minutos: con bus no hace nada, porque `telar nodo` los trae al instante. */
-/** Copia aquí el semáforo de los hilos remotos (sus ganchos corren allá). */
-export const atencionRemotos = () =>
-    telarJson<{ cambios: { hilo: string; atencion: string }[]; errores: string[]; por?: string }>(['remotos', 'atencion', '--json'], 30000);
-export const traerRemotos = () =>
-    telarJson<{ traidos: { remoto: string; sesion: string; hilo: string }[]; por?: string }>(['remotos', 'traer', '--sondeo', '--json'], 60000);
 export async function abrirItem(clave: string, mensaje: string, nombre: string): Promise<Respuesta<{ hilo: string; mensaje: string }>> {
     return await aServe<{ hilo: string; mensaje: string }>('POST', `/bloques/${encodeURIComponent(clave)}/abrir`, 30000, { mensaje, nombre })
         ?? telarJson(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
@@ -557,11 +550,6 @@ export const atajo = async (tecla: string) =>
     await aServe<{ hilo: string; mensaje: string }>('POST', `/atajos/${encodeURIComponent(tecla)}`, 30000)
     ?? telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
-/** Empuja al servidor una foto de los hilos de este laptop (`telar espejo publicar`), para verlos
- *  desde allá y desde la web del celular. `remoto` es una máquina de `[remotos]`; vacío, la única. */
-export const publicarEspejo = (remoto: string) =>
-    telarJson<{ publicado: boolean; maquina: string; remoto: string; error: string }>(
-        ['espejo', 'publicar', ...(remoto ? ['--a', remoto] : [])], 40000);
 
 /** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */
 export const directoriosHilos = (carpetas: string) => ajusteConfig('directorios', carpetas, ['config', '--directorios', carpetas]);
@@ -628,24 +616,6 @@ export async function ir(hilo: string, crear = false, remoto = ''): Promise<Sali
     return telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
 }
 
-/** Un correo entre agentes, como lo da `telar correo --json`. */
-export interface JsonCorreo {
-    id: string; de: string; para: string; asunto: string; fecha: string; estado: string; nuevo: boolean;
-    cuerpo?: string; leido?: boolean;
-}
-export interface JsonConversacionCorreo {
-    id: string; asunto: string; participantes: string[]; mensajes: number; ultima: string; estado: string; correos: JsonCorreo[];
-}
-export interface JsonBuzon {
-    remoto: string; usuario: string; error: string; sabe_pendientes: boolean; archivo_comun: boolean; cartero?: boolean;
-    hilos: Record<string, JsonCorreoHilo>;
-    conversaciones: JsonConversacionCorreo[];
-}
-
-/** El correo de un hilo con casilla: su dirección, lo sin entregar, su bandeja y cuánto no se vio. */
-export interface JsonCorreoHilo { direccion: string; pendientes: JsonCorreo[]; correos?: JsonCorreo[]; no_leidos?: number }
-
-/** `telar correo leido <hilo>`: marcar vista su bandeja (o esos ids). */
 /** Una skill que el agente de un hilo tiene a mano (`telar agente skills`). */
 export interface JsonSkill {
     nombre: string; descripcion: string; origen: string; alcance: string; ruta: string;
@@ -675,9 +645,6 @@ export async function compartir(a: string, url: string, texto: string, titulo: s
     if (r) return r.error ? { ok: false, codigo: 1, out: JSON.stringify({ ok: false, error: r.error }), err: r.error } : { ok: true, codigo: 0, out: JSON.stringify(r.datos), err: '' };
     return telar(['compartir', '--a', a, '--url', url, '--texto', texto, '--titulo', titulo, '--json'], 40000);
 }
-
-export const correoLeido = (hilo: string, ids: string[] = []) =>
-    telar(['correo', 'leido', hilo, ...(ids.length ? ['--ids', ...ids] : [])], 40000);
 
 /** Un mensaje entre hilos por el bus, como lo guarda su registro (`telar mensaje --registro`). */
 export interface JsonMensajeBus {
@@ -715,9 +682,6 @@ export const equipoResolver = async (remoto: string, verbo: 'aceptar' | 'rechaza
     await aServe<{ sugerencia: JsonSugerencia }>('POST', `/equipo/${encodeURIComponent(id)}/${verbo}`, 40000, { nota, tarea, maquina: remoto })
     ?? telarJson<{ sugerencia: JsonSugerencia }>(['equipo', verbo, id, ...(nota ? ['--nota', nota] : []), ...(tarea ? ['--tarea', tarea] : []),
         ...remotoEquipo(remoto)], 40000);
-
-export const correo = (cuerpos = false) =>
-    telarJson<{ remotos: JsonBuzon[] }>(['correo', ...(cuerpos ? ['--cuerpos'] : [])], 40000);
 
 /** Una máquina de `[remotos]` donde pueden vivir hilos. */
 export interface JsonRemoto { nombre: string; destino: string; transporte: string; raiz: string }

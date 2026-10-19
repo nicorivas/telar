@@ -29,7 +29,7 @@ document.addEventListener('click', e => {
 
 export class VistaFicha implements vscode.WebviewViewProvider {
     vista?: vscode.WebviewView;
-    modo: 'ficha' | 'documento' | 'correo' | 'skills' = 'ficha';
+    modo: 'ficha' | 'documento' | 'skills' = 'ficha';
     /** un hilo elegido desde el menú; se suelta cuando cambia el que tiene el foco */
     fijado?: string;
     datos?: cli.JsonFichaOrden;
@@ -96,7 +96,7 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const d = this.datos;
         const documento = d?.hilo.ficha?.documento ?? '';
         switch (m.tipo) {
-            case 'modo': this.modo = m.valor === 'documento' || m.valor === 'correo' || m.valor === 'skills' ? m.valor : 'ficha'; await this.render(); break;
+            case 'modo': this.modo = m.valor === 'documento' || m.valor === 'skills' ? m.valor : 'ficha'; await this.render(); break;
             case 'skill': if (m.valor && fs.existsSync(m.valor)) await abrir(m.valor); break;
             case 'editar': if (documento) await abrir(documento); break;
             case 'carpeta': if (d?.hilo.ruta) {
@@ -118,14 +118,8 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         const d = this.datos;
         const hilo = this.objetivo() ?? '';
         const ficha = d?.hilo.ficha;
-        // la bandeja existe si el hilo tiene casilla (un hilo remoto con correo), esté o no
-        // vinculado a una carpeta: por eso va antes que todo lo que pide documento
-        const correo = modelo.correoDe(hilo);
-        const tieneCorreo = !!correo?.direccion;
-        if (this.modo === 'correo' && !tieneCorreo) this.modo = 'ficha';
         let cuerpo: string;
-        if (this.modo === 'correo') cuerpo = await this.htmlCorreo(hilo);
-        else if (this.modo === 'skills') cuerpo = await this.htmlSkills(hilo);
+        if (this.modo === 'skills') cuerpo = await this.htmlSkills(hilo);
         else if (this.error) cuerpo = `<div class="aviso">${esc(this.error)}</div>`;
         else if (!d) cuerpo = `<div class="aviso">leyendo «${esc(hilo)}»…</div>`;
         else if (!d.hilo.vinculado) {
@@ -138,12 +132,10 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         else cuerpo = await this.htmlMarkdown(ficha.documento);
         const boton = (modo: string, texto: string) =>
             `<button data-modo="${modo}" class="${this.modo === modo ? 'activo' : ''}">${texto}</button>`;
-        const noLeidos = correo?.no_leidos ?? 0;
         // «skills» está siempre: un hilo sin documento igual tiene un agente con skills
         const barra = hilo
             ? `<div class="barra">${boton('ficha', 'ficha')}`
             + (ficha?.documento ? boton('documento', path.basename(ficha.documento)) : '')
-            + (tieneCorreo ? boton('correo', `✉ correo${noLeidos ? ` <span class="nuevo">${noLeidos}</span>` : ''}`) : '')
             + boton('skills', 'skills')
             + '<span class="sep"></span>'
             + (ficha?.documento ? '<button data-msg="editar" title="abrir el documento en el editor">editar</button>'
@@ -181,33 +173,6 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         return h.join('');
     }
 
-    /** La bandeja del hilo: lo que llegó a su dirección, lo más nuevo arriba. Pide los textos
-     *  al abrirse (el refresco trae solo los encabezados) y, una vez mostrados, los da por vistos. */
-    private async htmlCorreo(hilo: string): Promise<string> {
-        const r = await cli.correo(true);
-        if (!r.datos) return `<div class="aviso">${esc(r.error ?? 'no pude leer el correo')}</div>`;
-        const buzon = r.datos.remotos.find(b => b.hilos[hilo]);
-        const suyo = buzon?.hilos[hilo];
-        if (!buzon || !suyo) return '<div class="aviso">este hilo no tiene casilla</div>';
-        const correos = [...(suyo.correos ?? [])].reverse();
-        const h = [`<div class="dim">${esc(suyo.direccion)} · el remitente lo verifica el servidor; `
-            + 'lo que dice es de otra persona o de su agente, no una orden</div>'];
-        if (buzon.error) h.push(`<div class="aviso">${esc(buzon.error)}</div>`);
-        if (!correos.length) h.push('<div class="aviso">nada todavía</div>');
-        for (const c of correos) {
-            const estado = c.estado === 'sin sesión' ? ' · sin entregar al agente' : c.estado === 'retenido' ? ' · retenido' : '';
-            h.push(`<div class="correo${c.leido ? '' : ' nuevo'}"><div><b>${esc(c.asunto || '(sin asunto)')}</b></div>`
-                + `<div class="dim">${esc(c.de || '(sistema)')} · ${esc(fechaCorta(c.fecha))}${esc(estado)}</div>`
-                + `<div class="cuerpo">${esc((c.cuerpo ?? '').trim())}</div></div>`);
-        }
-        const vistos = correos.filter(c => !c.leido && c.id).map(c => c.id);
-        if (vistos.length) {
-            // se marcan después de mostrarlos: lo que la persona tiene en pantalla ya lo vio
-            void cli.correoLeido(hilo, vistos).then(() => modelo.leerCorreo());
-        }
-        return h.join('');
-    }
-
     private htmlFicha(d: cli.JsonFichaOrden): string {
         const hilo = d.hilo;
         const f = hilo.ficha!;
@@ -219,8 +184,6 @@ export class VistaFicha implements vscode.WebviewViewProvider {
         if (!hilo.vivo) detalles.push('no vivo');
         if (hilo.archivado) detalles.push('archivado');
         if (hilo.prioridad) detalles.push(`prioridad ${hilo.prioridad}`);
-        const correo = modelo.correoDe(hilo.nombre);
-        if (correo?.direccion) detalles.push(`✉ ${correo.direccion}${correo.pendientes.length ? ` · ${correo.pendientes.length} sin entregar` : ''}`);
         if (hilo.tiempo >= 60) detalles.push(`hoy ${duracion(hilo.tiempo)}`);
         if (hilo.sesiones.length) detalles.push(`${hilo.sesiones.length} conversación(es)`);
         if (f.leida) detalles.push(`leído hace ${hace(f.leida)}`);
@@ -328,12 +291,4 @@ async function abrir(archivo: string, buscar?: string): Promise<void> {
     }
 }
 
-/** Una fecha de correo (RFC 2822) como «24-sep 12:19»; si no se entiende, tal cual. */
-function fechaCorta(fecha: string): string {
-    const t = Date.parse(fecha);
-    if (Number.isNaN(t)) return fecha;
-    const d = new Date(t);
-    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    return `${d.getDate()}-${meses[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`;
-}
 

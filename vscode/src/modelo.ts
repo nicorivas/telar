@@ -42,10 +42,6 @@ export class Modelo {
     secciones: cli.JsonSeccion[] = [];
     /** las apps de la configuración (`[apps]`), en su orden */
     apps: cli.JsonApp[] = [];
-    /** el correo entre agentes de cada máquina remota; se lee por ssh con el ritmo lento y
-     *  aparte, para que un servidor lento no frene la lista */
-    buzones: cli.JsonBuzon[] = [];
-    private leyendoCorreo = false;
     /** lo que el equipo sugiere y Nico no ha decidido (`telar equipo`); vacío si la función está apagada */
     sugerencias: cli.JsonSugerencia[] = [];
     private sugerenciasVistas: Set<string> | undefined;
@@ -64,16 +60,6 @@ export class Modelo {
     get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado && (h.vivo || h.propio)); }
     get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || (!h.vivo && !h.propio)); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
-
-    /** Lee el correo de las máquinas remotas sin esperar: cuando llega, redibuja. */
-    async leerCorreo(): Promise<void> {
-        if (this.leyendoCorreo) return;
-        this.leyendoCorreo = true;
-        try {
-            const r = await cli.correo();
-            if (r.datos) { this.buzones = r.datos.remotos; this.firma = ''; this.cambio.fire(); }
-        } finally { this.leyendoCorreo = false; }
-    }
 
     get equipoRemoto(): string { return String(cli.ajuste('equipoRemoto', '')).trim(); }
 
@@ -105,12 +91,6 @@ export class Modelo {
                 await this.leerEquipo();
             }
         });
-    }
-
-    /** El correo de un hilo remoto: su dirección y lo que le espera. */
-    correoDe(hilo: string): cli.JsonCorreoHilo | undefined {
-        for (const b of this.buzones) if (b.hilos[hilo]) return b.hilos[hilo];
-        return undefined;
     }
 
     /** La sección a la que pertenece un hilo, si alguna lo reclama. */
@@ -146,7 +126,6 @@ export class Modelo {
                     this.apps = c.datos.apps ?? [];
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
                 }
-                if (this.hayRemotos) void this.leerCorreo();
                 void this.leerEquipo();
                 this.ultimaFicha = Date.now();
                 this.fichas = new Map(d.hilos.map(h => [h.nombre, h.ficha ?? null]));

@@ -353,35 +353,10 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
     void modelo.sondear(true).catch(e => anotar(`sondeo: ${e}`)).then(programar);
     ctx.subscriptions.push({ dispose: () => { if (temporizador) clearTimeout(temporizador); } });
 
-    // los hilos que nacen en una máquina remota (un reloj allá, el celular) se traen
-    // solos; cada tres minutos es lo que tarda en aparecer, y un ssh cada tanto es barato.
-    // Con bus, `telar nodo` los trae al instante y este sondeo vuelve sin hacer nada
-    // Con bus, `telar nodo` hace los dos sondeos de abajo al instante: la primera respuesta que lo
-    // dice los apaga hasta que la extensión se recargue, sin lanzar más procesos
-    let conBus = false;
-    let vuelta = 0;
-    const traer = async () => {
-        if (!modelo.hayRemotos || conBus) return;
-        const r = await cli.traerRemotos();
-        if (r.datos?.por === 'bus') { conBus = true; return; }
-        if (r.datos?.traidos.length) await modelo.sondear();
-    };
-    // el semáforo de los hilos remotos (trabajando, espera…) lo anotan sus ganchos allá: cada
-    // 20 s se copia aquí, con una sola conexión por máquina, y la lista se redibuja si cambió
-    let leyendoAtencion = false;
-    const atencionRemota = setInterval(() => {
-        if (!modelo.hayRemotos || leyendoAtencion || conBus) return;
-        leyendoAtencion = true;
-        void cli.atencionRemotos().then(r => {
-            if (r.datos?.por === 'bus') { conBus = true; return; }
-            if (r.datos?.cambios.length) return modelo.sondear();
-        })
-            .catch(e => anotar(`atención remota: ${e}`)).finally(() => { leyendoAtencion = false; });
-    }, 20 * 1000);
-    ctx.subscriptions.push({ dispose: () => clearInterval(atencionRemota) });
+    // los hilos que nacen en otra máquina, y su semáforo, los trae `telar nodo` por el bus, al instante:
+    // aquí ya no se sondea por ssh
     // el día se relee solo mientras se esté mirando
     const cadaMinuto = setInterval(() => {
-        if (vuelta++ % 3 === 0) void traer().catch(e => anotar(`traer remotos: ${e}`));
         if (hoy.panel?.visible) void hoy.actualizar();
         if (vistaTareas.vista?.visible) void vistaTareas.actualizar();
     }, 60 * 1000);
@@ -404,28 +379,6 @@ export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
         if (vistaTareas.vista?.visible) void vistaTareas.actualizar();
     }, 15 * 1000);
     ctx.subscriptions.push({ dispose: () => clearInterval(avisoTareas) });
-
-    // el espejo: cada 30 s el laptop empuja al servidor una foto de sus hilos. Con `telar.espejo`
-    // vacío no hace nada. Si el laptop duerme o no hay red, simplemente no publica: el servidor
-    // ve la foto vieja y la da por apagada. Solo se anota cuando cambia el resultado.
-    let publicando = false;
-    let ultimoEspejo = '';
-    const espejo = async () => {
-        const remoto = vscode.workspace.getConfiguration('telar').get<string>('espejo', '').trim();
-        if (!remoto || publicando) return;
-        publicando = true;
-        try {
-            const r = await cli.publicarEspejo(remoto);
-            const dicho = r.datos?.publicado ? 'publicado' : (r.datos?.error || r.error || 'no publicó');
-            if (dicho !== ultimoEspejo) { anotar(`espejo → ${remoto}: ${dicho}`); ultimoEspejo = dicho; }
-        } finally { publicando = false; }
-    };
-    const cadaTreinta = setInterval(() => void espejo().catch(e => anotar(`espejo: ${e}`)), 30 * 1000);
-    ctx.subscriptions.push({ dispose: () => clearInterval(cadaTreinta) });
-    ctx.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('telar.espejo')) void espejo().catch(x => anotar(`espejo: ${x}`));
-    }));
-    void espejo().catch(e => anotar(`espejo: ${e}`));
 
     const orden = (id: string, f: (...a: any[]) => unknown) =>
         ctx.subscriptions.push(vscode.commands.registerCommand(id,
