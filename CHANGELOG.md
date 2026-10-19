@@ -8,6 +8,18 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
+  directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
+  used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first
+  (`GET /hoy`); the web panel asks the API first and falls back to the CLI. Install the `serve` extra
+  (`pip install 'telar[serve]'`); `servidor/telar-serve.service` and `.plist` start it on their own.
+  Pydantic is now a core dependency.
+
+### Changed
+
+- The iCal calendar keeps a copy (`~/.cache/telar/`) valid for `cache` seconds (600 by default) and caps the
+  whole download (`tiempo_maximo`, now 20 s), not each read; with no network it uses the last copy and says
+  so among the provider failures, instead of an empty agenda. What was read is parsed once and kept.
 - The web panel shows the threads of other machines (the laptop's, seen from the server): one group per
   machine whose snapshot arrives here and whose threads the list does not already have. A click reads the
   thread as a conversation over the bus, and its box writes to it as the person. Behind it,

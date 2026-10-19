@@ -9,6 +9,8 @@
 // ahí se lee como opcional, para que una versión más nueva de telar no tire la vista.
 
 import * as cp from 'child_process';
+import * as fs from 'fs';
+import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -110,6 +112,34 @@ export async function telarJson<T>(args: string[], timeout = 15000): Promise<Res
         registrar(`telar ${args.join(' ')} --json: salida ilegible (${e})`);
         return { error: `«telar ${args.join(' ')}» no devolvió JSON` };
     }
+}
+
+// ───────────────────────── la API (`telar serve`) ─────────────────────────
+
+/** El socket de `telar serve` en esta máquina (`<estado>/serve/telar.sock`). */
+function socketServe(): string {
+    const base = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
+    return path.join(base, 'telar', 'serve', 'telar.sock');
+}
+
+/** Un GET a la API de telar por su socket. Sin API (no corre, o falló), `undefined`: quien llama usa
+ *  la CLI, que da lo mismo (las dos son cáscaras de la misma función, `telar.servicios`). */
+function deServe<T>(ruta: string, timeout: number): Promise<Respuesta<T> | undefined> {
+    const sock = socketServe();
+    if (!fs.existsSync(sock)) return Promise.resolve(undefined);
+    return new Promise(listo => {
+        const pedido = http.get({ socketPath: sock, path: ruta, timeout }, res => {
+            let cuerpo = '';
+            res.setEncoding('utf8');
+            res.on('data', d => { cuerpo += d; });
+            res.on('end', () => {
+                if (res.statusCode !== 200) { registrar(`telar serve ${ruta} → ${res.statusCode}: ${cuerpo.slice(0, 200)}`); listo(undefined); return; }
+                try { listo({ datos: JSON.parse(cuerpo) as T }); } catch { listo(undefined); }
+            });
+        });
+        pedido.on('timeout', () => { pedido.destroy(); registrar(`telar serve ${ruta}: no respondió en ${timeout} ms`); listo(undefined); });
+        pedido.on('error', () => listo(undefined));
+    });
 }
 
 /** El error, en una frase que se pueda mostrar sin asustar. */
@@ -512,8 +542,12 @@ export const hilos = (conFicha: boolean, orden: string) =>
 export const ficha = (hilo: string) => telarJson<JsonFichaOrden>(['ficha', hilo], 30000);
 
 /** Sin `local`, se consulta a los proveedores declarados y puede tardar lo que tarden. */
-export const hoy = (local: boolean, dia = '') =>
-    telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : []), ...(dia ? ['--dia', dia] : [])], local ? 20000 : 120000);
+export async function hoy(local: boolean, dia = ''): Promise<Respuesta<JsonHoy>> {
+    // primero la API (rápida: el calendario ya bajado, la configuración en memoria); sin ella, la CLI
+    const q = new URLSearchParams({ ...(local ? { local: 'true' } : {}), ...(dia ? { dia } : {}) }).toString();
+    return await deServe<JsonHoy>(`/hoy${q ? `?${q}` : ''}`, local ? 20000 : 60000)
+        ?? telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : []), ...(dia ? ['--dia', dia] : [])], local ? 20000 : 120000);
+}
 
 export const ir = (hilo: string, crear = false, remoto = '') =>
     telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);

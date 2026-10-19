@@ -86,7 +86,11 @@ def consultar(proveedores: list[ConfigProveedor], dia: date) -> tuple[list[Item]
         if not cfg.activo:
             continue
         try:
-            items.extend(obtener(cfg).consultar(dia))
+            fuente = obtener(cfg)
+            items.extend(fuente.consultar(dia))
+            # lo que salió pero con reparos (el calendario de una copia vieja, sin red): se dice como falla
+            if getattr(fuente, "aviso", ""):
+                fallas.append(f"{cfg.nombre}: {fuente.aviso}")
         except ErrorDeProveedor as e:
             fallas.append(f"{cfg.nombre}: {e}")
         except Exception as e:  # un proveedor ajeno no tiene por qué ser prolijo

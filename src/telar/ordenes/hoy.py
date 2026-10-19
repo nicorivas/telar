@@ -18,19 +18,17 @@ from __future__ import annotations
 import datetime as dt
 import shutil
 
-from telar.modelo import Atencion
-from telar.ordenes import _comun, pendientes as orden_pendientes
+from telar.ordenes import _comun
+from telar.servicios import hoy as servicio
 
 AYUDA = "El día en una pantalla."
 
-DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 MESES = (
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
 )
-
-#: Las atenciones que piden algo de la persona, en el orden en que lo piden.
-LLAMAN = (Atencion.ESPERA, Atencion.TERMINO, Atencion.TRABAJANDO)
+#: compatibilidad: quien los importaba de aquí los sigue encontrando
+DIAS, LLAMAN = servicio.DIAS, servicio.LLAMAN
 
 
 def main(argv: list[str], ctx) -> int:
@@ -43,110 +41,67 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
-
-    ahora = dt.datetime.now()
-    hoy = ahora.date()
+    dia = None
     if o.dia:
         try:
-            hoy = dt.date.fromisoformat(o.dia)
+            dia = dt.date.fromisoformat(o.dia)
         except ValueError:
             return _comun.queja(f"«{o.dia}» no es un día (AAAA-MM-DD)")
-    tel = _comun.tejer(ctx)
 
-    llaman = [h for h in tel.hilos if h.atencion in LLAMAN]
-    llaman.sort(key=lambda h: (LLAMAN.index(h.atencion), h.nombre))
-
-    filas = orden_pendientes.juntar(ctx, tel)
-    # sin ningún hilo vinculado, la pantalla que debería mostrar el día salía vacía
-    # teniendo los documentos delante: se cae al repositorio y se dice que es eso
-    del_repo = False
-    if not filas:
-        filas = orden_pendientes.juntar(ctx, tel, repo=True)
-        del_repo = bool(filas)
-    filas.sort(key=lambda f: (not f["en_curso"], f["hilo"] or "~", f["ref"]))
-
-    agenda: list[dict] | None = None
-    fallas: list[str] = []
-    declarados = [pr.nombre for pr in ctx.config.proveedores_activos()]
-    if not o.local and declarados:
-        externos, fallas = orden_pendientes.de_proveedores(ctx, tel, hoy)
-        # la agenda son los eventos, no todo lo que trae fecha: una tarea vence un día y no
-        # por eso ocupa una hora. Antes se repartía por `cuando`, y las tareas con plazo se
-        # iban a la agenda; al día le llegaban solo las que no tenían fecha.
-        def es_evento(e: dict) -> bool:
-            return e.get("clase") == "evento" or (not e.get("clase") and bool(e["cuando"]))
-
-        agenda = [e for e in externos if es_evento(e)]
-        agenda.sort(key=lambda e: e["cuando"] or "")
-        filas += [e for e in externos if not es_evento(e)]
-    orden_pendientes.con_area(filas)
-
-    tiempos = {h.nombre: round(h.tiempo, 1) for h in tel.hilos if h.tiempo}
-
+    r = servicio.hoy(ctx, dia=dia, local=o.local)
     if o.json:
-        return _comun.escribir_json(
-            {
-                "ahora": ahora.isoformat(timespec="seconds"),
-                "dia": DIAS[hoy.weekday()],
-                "fecha": hoy.isoformat(),
-                "semana": hoy.isocalendar()[1],
-                "local": o.local,
-                "agenda": agenda,
-                "atencion": [_comun.json_hilo(h, tel, con_ficha=False) for h in llaman],
-                "pendientes": filas,
-                "tiempo": {"total": round(sum(tiempos.values()), 1), "hilos": tiempos},
-                "proveedores": {"declarados": declarados, "fallas": fallas},
-            }
-        )
+        return _comun.escribir_json(r.model_dump(mode="json", exclude_unset=True))
+    _imprimir(r, o.limite)
+    return 0
 
+
+def _imprimir(r: servicio.Hoy, limite: int) -> None:
     ancho = shutil.get_terminal_size((100, 24)).columns
+    fecha = dt.date.fromisoformat(r.fecha)
     print(
-        _comun.fuerte(f"{DIAS[hoy.weekday()]} {hoy.day} de {MESES[hoy.month - 1]}")
-        + _comun.tenue(f"  ·  semana {hoy.isocalendar()[1]}  ·  {ahora:%H:%M}")
+        _comun.fuerte(f"{r.dia} {fecha.day} de {MESES[fecha.month - 1]}")
+        + _comun.tenue(f"  ·  semana {r.semana}  ·  {r.ahora[11:16]}")
     )
 
     print()
     print(_comun.fuerte("AGENDA"))
-    if agenda is None:
-        pista = "--local: no se consultó nada" if o.local else "ningún proveedor declarado"
+    if r.agenda is None:
+        pista = "--local: no se consultó nada" if r.local else "ningún proveedor declarado"
         print(_comun.tenue(f"  {pista}"))
-    elif not agenda:
+    elif not r.agenda:
         print(_comun.tenue("  nada con hora"))
     else:
-        for item in agenda:
-            hora = (item["cuando"] or "")[11:16]
-            print(f"  {hora:>5}  {item['texto'][:ancho - 20]}  {_comun.tenue(item['hilo'])}")
+        for item in r.agenda:
+            hora = (item.cuando or "")[11:16]
+            print(f"  {hora:>5}  {item.texto[:ancho - 20]}  {_comun.tenue(item.hilo)}")
 
     print()
     print(_comun.fuerte("TE ESPERAN"))
-    if not llaman:
+    if not r.atencion:
         print(_comun.tenue("  nadie"))
-    for hilo in llaman:
-        simbolo = _comun.SIMBOLO.get(hilo.atencion, " ")
-        print(f"  {simbolo} {hilo.nombre[:22]:<22} {_comun.tenue(hilo.atencion.value)}")
+    for hilo in r.atencion:
+        simbolo = _comun.SIMBOLO.get(_comun.Atencion(hilo.atencion), " ")
+        print(f"  {simbolo} {hilo.nombre[:22]:<22} {_comun.tenue(hilo.atencion)}")
 
     print()
     print(
         _comun.fuerte("PENDIENTES")
-        + (_comun.tenue("  ·  del repositorio: ningún hilo vinculado todavía") if del_repo else "")
+        + (_comun.tenue("  ·  del repositorio: ningún hilo vinculado todavía") if r.del_repo else "")
     )
-    if not filas:
+    if not r.pendientes:
         print(_comun.tenue("  nada que los documentos declaren pendiente"))
-    for fila in filas[: o.limite]:
-        casilla = "▣" if fila["en_curso"] else "☐"
-        ref = fila["ref"][:18]
-        print(f"  {_comun.tenue(f'{ref:<18}')} {casilla} {fila['texto'][:ancho - 30]}")
-    if len(filas) > o.limite:
-        resto = len(filas) - o.limite
-        print(_comun.tenue(f"  … y {resto} más (telar pendientes)"))
+    for fila in r.pendientes[:limite]:
+        casilla = "▣" if fila.en_curso else "☐"
+        ref = fila.ref[:18]
+        print(f"  {_comun.tenue(f'{ref:<18}')} {casilla} {fila.texto[:ancho - 30]}")
+    if len(r.pendientes) > limite:
+        print(_comun.tenue(f"  … y {len(r.pendientes) - limite} más (telar pendientes)"))
 
-    if tiempos:
-        total = _comun.duracion(sum(tiempos.values()))
-        arriba = sorted(tiempos.items(), key=lambda kv: -kv[1])[:4]
+    if r.tiempo.hilos:
+        arriba = sorted(r.tiempo.hilos.items(), key=lambda kv: -kv[1])[:4]
         detalle = ", ".join(f"{n} {_comun.duracion(s)}" for n, s in arriba)
         print()
-        print(_comun.fuerte("HOY") + f"  {total}  " + _comun.tenue(detalle))
+        print(_comun.fuerte("HOY") + f"  {_comun.duracion(r.tiempo.total)}  " + _comun.tenue(detalle))
 
-    for falla in fallas:
+    for falla in r.proveedores.fallas:
         print(_comun.tenue(f"(proveedor caído · {falla})"))
-    return 0

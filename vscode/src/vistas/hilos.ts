@@ -395,7 +395,9 @@ export class BarraHilos {
 
         // los hilos de otras máquinas (el laptop, visto desde el servidor): de su foto, solo los vivos. Un
         // clic los lee como conversación, por el bus; desde aquí no se les abre una terminal
-        for (const m of this.otras) {
+        // una máquina cuyos hilos ya trae la lista (los remotos de [remotos]) no se repite
+        const yaEstan = new Set(modelo.hilos.map(x => x.remoto).filter(Boolean));
+        for (const m of this.otras.filter(x => !yaEstan.has(x.nombre))) {
             const vivos = m.hilos.filter(x => x.vivo);
             const estadoM = m.en_linea ? '' : ` · apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
             if (!cabecera(`__maquina:${m.nombre}`, `${m.nombre.toUpperCase()}${estadoM}`, vivos.length, true, `los hilos de ${m.nombre}`)) continue;

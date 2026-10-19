@@ -485,10 +485,9 @@ async function main(): Promise<void> {
     // 30 s. Una máquina cuyos hilos ya trae la lista (los remotos de [remotos]) no se repite
     const otras = async () => {
         const r = await cli.espejos().catch(() => undefined);
-        const yaEstan = new Set(modelo.hilos.map(h => h.remoto).filter(Boolean));
-        const nuevas = (r?.datos?.espejos ?? []).filter(e => !e.error && !yaEstan.has(e.nombre))
-            // de la foto, solo los que viven en esa máquina: los que ella mira de otra (los de aquí, por
-            // [remotos]) llevan `remoto` y ya están en la lista
+        // de la foto, solo los que viven en esa máquina: los que ella mira de otra (los de aquí, por
+        // [remotos]) llevan `remoto`. Qué máquinas ya trae la lista lo decide la barra al dibujar
+        const nuevas = (r?.datos?.espejos ?? []).filter(e => !e.error)
             .map(e => ({ nombre: e.nombre, en_linea: e.en_linea, edad: e.edad, hilos: e.hilos.filter(h => !h.remoto) }));
         if (JSON.stringify(nuevas) !== JSON.stringify(barra.otras)) { barra.otras = nuevas; barra.refrescar(true); }
     };

@@ -342,3 +342,81 @@ class Eleccion(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ── la copia de un calendario que se baja ───────────────────────────────────────
+
+class CopiaDelCalendario(Prueba):
+    """Un iCal por URL se guarda en una copia que vale un rato; la descarga tiene un tope total; sin
+    red, se usa la copia vieja y se dice."""
+
+    def setUp(self):
+        super().setUp()
+        import http.server
+        import os
+        import tempfile
+        import threading
+
+        self.cache = tempfile.TemporaryDirectory()
+        self.addCleanup(self.cache.cleanup)
+        self._antes = os.environ.get("XDG_CACHE_HOME")
+        os.environ["XDG_CACHE_HOME"] = self.cache.name
+        self.addCleanup(lambda: os.environ.__setitem__("XDG_CACHE_HOME", self._antes) if self._antes else os.environ.pop("XDG_CACHE_HOME", None))
+        C._LEIDOS.clear()
+        prueba = self
+        self.pedidos, self.modo = 0, "bien"
+
+        class Manejador(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                prueba.pedidos += 1
+                if prueba.modo == "caido":
+                    self.send_response(503); self.end_headers(); return
+                cuerpo = ics(vevento(UID="1", SUMMARY="Comité", DTSTART="20261019T120000Z", DTEND="20261019T130000Z")).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(cuerpo))); self.end_headers()
+                if prueba.modo == "lento":
+                    import time
+                    for b in cuerpo:  # un byte cada 50 ms: cada lectura llega a tiempo, la descarga entera no
+                        self.wfile.write(bytes([b])); self.wfile.flush(); time.sleep(0.05)
+                    return
+                self.wfile.write(cuerpo)
+
+            def log_message(self, *a):
+                pass
+
+        self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Manejador)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.addCleanup(self.srv.shutdown)
+        self.url = f"http://127.0.0.1:{self.srv.server_address[1]}/basic.ics"
+
+    def fuente(self, **extra):
+        return C.construir(cfg(tipo="ics", url=self.url, **extra))
+
+    def test_mientras_la_copia_vale_no_se_baja_de_nuevo(self):
+        self.assertEqual([e.titulo for e in self.fuente().eventos(date(2026, 10, 19))], ["Comité"])
+        self.fuente().eventos(date(2026, 10, 19))
+        self.assertEqual(self.pedidos, 1)
+        self.fuente(cache=0).eventos(date(2026, 10, 19))
+        self.assertEqual(self.pedidos, 2)
+
+    def test_sin_red_se_usa_la_copia_vieja_y_se_dice(self):
+        self.fuente().eventos(date(2026, 10, 19))
+        self.modo = "caido"
+        f = self.fuente(cache=0)
+        self.assertEqual([e.titulo for e in f.eventos(date(2026, 10, 19))], ["Comité"])
+        self.assertIn("uso la copia de hace", f.aviso)
+        self.assertIn("503", f.aviso)
+
+    def test_sin_red_y_sin_copia_falla(self):
+        self.modo = "caido"
+        with self.assertRaises(C.ErrorDeProveedor):
+            self.fuente().eventos(date(2026, 10, 19))
+
+    def test_una_descarga_lenta_tiene_tope_total(self):
+        import time
+
+        self.modo = "lento"
+        inicio = time.monotonic()
+        with self.assertRaises(C.ErrorDeProveedor) as e:
+            self.fuente(tiempo_maximo=1).eventos(date(2026, 10, 19))
+        self.assertLess(time.monotonic() - inicio, 3)
+        self.assertIn("pasó de 1 s", str(e.exception))

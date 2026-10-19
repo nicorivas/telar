@@ -59,6 +59,7 @@ ORDENES: dict[str, str] = {
     "persona": "Las personas de este servidor: darles de alta con un perfil, verlas, cerrarles el acceso.",
     "imagen": "Llevar una imagen del portapapeles (o un archivo) a la máquina donde corre el hilo.",
     "panel": "La barra de hilos, el dashboard y las terminales, en un navegador.",
+    "serve": "La API de telar: los mismos datos que la CLI, por HTTP, desde un proceso que se queda.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",
     "encargar": "Pedirle algo a un agente residente, en su hilo de siempre.",
     "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",

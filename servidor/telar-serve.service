@@ -1,0 +1,25 @@
+# telar serve como servicio de usuario: la API de telar en su socket (<estado>/serve/telar.sock), que usa el
+# panel. Necesita el extra «serve» (pip install 'telar[serve]', o uv tool install … --with fastapi --with uvicorn).
+#
+#   mkdir -p ~/.config/systemd/user && cp telar-serve.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now telar-serve
+#
+# Ver cómo va:  systemctl --user status telar-serve   ·   journalctl --user -u telar-serve -f
+# Probarlo:     curl --unix-socket ~/.local/state/telar/serve/telar.sock http://telar/salud
+
+[Unit]
+Description=telar serve: la API de telar (los datos del panel), en un socket solo para su dueño
+Documentation=https://github.com/nicorivas/telar
+
+[Service]
+Type=simple
+# un servicio de usuario no hereda tu PATH: telar, tmux y lo que corran los proveedores tienen que estar a la vista
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/.local/bin/telar serve
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

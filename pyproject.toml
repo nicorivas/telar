@@ -25,11 +25,13 @@ classifiers = [
 
 # tomllib es de la biblioteca estándar desde 3.11; PyYAML es la única dependencia
 # de terceros, y solo para leer el perfil del repositorio de trabajo.
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "pydantic>=2.6"]
 
 [project.optional-dependencies]
 # el bus entre máquinas (docs/propuestas/bus.md): sin esto, telar funciona en una sola máquina
 bus = ["nats-py>=2.6"]
+# la API (`telar serve`): los mismos datos que la CLI, por HTTP, con caché (docs/propuestas/dashboard-fuera-de-vscode.md)
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.urls]
 Homepage = "https://github.com/nicorivas/telar"

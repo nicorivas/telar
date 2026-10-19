@@ -33,10 +33,12 @@ consulte o no lo sigue decidiendo la configuración.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import subprocess
+import time as _reloj
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -560,11 +562,37 @@ def eventos_del_dia(
     return sorted(salida.values(), key=lambda e: (e.inicio, e.titulo))
 
 
+#: lo leído de cada calendario, ya interpretado: bajar uno grande es lento y leerlo entero también (años
+#: de eventos para sacar un día). Clave: el texto (su huella); se guardan los últimos.
+_LEIDOS: dict[str, list] = {}
+
+
+def _leer_con_memoria(texto: str) -> list:
+    huella = hashlib.sha1(texto.encode("utf-8", "replace")).hexdigest()
+    if huella not in _LEIDOS:
+        if len(_LEIDOS) >= 4:
+            _LEIDOS.pop(next(iter(_LEIDOS)))
+        _LEIDOS[huella] = leer_ics(texto)
+    return _LEIDOS[huella]
+
+
+def _carpeta_cache() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME")
+    return (Path(base) if base else Path.home() / ".cache") / "telar"
+
+
+def _hace(segundos: float) -> str:
+    return f"{segundos / 60:.0f} min" if segundos < 5400 else f"{segundos / 3600:.0f} h" if segundos < 172800 else f"{segundos / 86400:.0f} días"
+
+
 class DeICS(_Base):
     """Un calendario iCalendar: un archivo de la máquina, o una URL que lo publica.
 
-    Con `archivo` no se abre ningún socket. Con `url` se baja cada vez que se
-    consulta, y el intervalo con que se consulta lo pone `intervalos.proveedores`.
+    Con `archivo` no se abre ningún socket. Con `url`, lo bajado se guarda en una copia
+    (`~/.cache/telar/`) que vale `cache` segundos (600 por defecto; 0, ninguna): mientras valga, no
+    se baja de nuevo. La descarga entera tiene un tope (`tiempo_maximo`, 20 s por defecto), no solo
+    cada lectura: una red lenta no la estira sin fin. Si la descarga falla y hay una copia, aunque
+    sea vieja, se usa esa y se dice (`aviso`), en vez de dejar el día sin agenda.
     """
 
     def __init__(self, cfg: ConfigProveedor) -> None:
@@ -592,10 +620,39 @@ class DeICS(_Base):
             self.url = url.strip()
             self.alcance = f"descarga {tapar(self.url)} cada vez que se consulta"
 
-        espera = opciones.get("tiempo_maximo", 10)
+        espera = opciones.get("tiempo_maximo", 20)
         if isinstance(espera, bool) or not isinstance(espera, (int, float)) or espera <= 0:
             raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.tiempo_maximo: se esperaba un número positivo")
         self.tiempo_maximo = float(espera)
+        vale = opciones.get("cache", 600)
+        if isinstance(vale, bool) or not isinstance(vale, (int, float)) or vale < 0:
+            raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.cache: se esperaba un número de segundos (0: sin copia)")
+        self.cache = float(vale)
+        self.aviso = ""
+        self.copia = _carpeta_cache() / f"calendario-{hashlib.sha1(self.url.encode()).hexdigest()[:12]}.ics" if self.url else None
+
+    def _bajar(self) -> str:
+        """La descarga, con un tope para toda ella (no solo para cada lectura)."""
+        fin = _reloj.monotonic() + self.tiempo_maximo
+        peticion = urllib.request.Request(self.url, headers={"Accept": "text/calendar"})
+        try:
+            with urllib.request.urlopen(peticion, timeout=self.tiempo_maximo) as r:  # noqa: S310
+                trozos, total = [], 0
+                while True:
+                    if _reloj.monotonic() > fin:
+                        raise ErrorDeProveedor(f"{tapar(self.url)}: la descarga pasó de {self.tiempo_maximo:.0f} s")
+                    trozo = r.read1(256 * 1024)  # lo que haya llegado: read() esperaría a juntar el trozo entero
+                    if not trozo:
+                        break
+                    trozos.append(trozo)
+                    total += len(trozo)
+                    if total > TOPE_DESCARGA:
+                        raise ErrorDeProveedor(f"{tapar(self.url)}: pesa más de {TOPE_DESCARGA // (1024 * 1024)} MiB")
+        except urllib.error.HTTPError as e:
+            raise ErrorDeProveedor(f"{tapar(self.url)}: el servidor respondió {e.code}") from e
+        except (urllib.error.URLError, OSError) as e:
+            raise ErrorDeProveedor(f"{tapar(self.url)}: no se pudo bajar: {e}") from e
+        return b"".join(trozos).decode("utf-8", errors="replace")
 
     def _texto(self) -> str:
         if self.archivo is not None:
@@ -603,21 +660,31 @@ class DeICS(_Base):
                 return self.archivo.read_text(encoding="utf-8", errors="replace")
             except OSError as e:
                 raise ErrorDeProveedor(f"{self.archivo}: no se pudo leer: {e}") from e
-        peticion = urllib.request.Request(self.url, headers={"Accept": "text/calendar"})
+        self.aviso = ""
+        edad = _reloj.time() - self.copia.stat().st_mtime if self.copia and self.copia.is_file() else None
+        if edad is not None and edad < self.cache:
+            return self.copia.read_text(encoding="utf-8", errors="replace")
         try:
-            with urllib.request.urlopen(peticion, timeout=self.tiempo_maximo) as r:  # noqa: S310
-                crudo = r.read(TOPE_DESCARGA + 1)
-        except urllib.error.HTTPError as e:
-            raise ErrorDeProveedor(f"{tapar(self.url)}: el servidor respondió {e.code}") from e
-        except (urllib.error.URLError, OSError) as e:
-            raise ErrorDeProveedor(f"{tapar(self.url)}: no se pudo bajar: {e}") from e
-        if len(crudo) > TOPE_DESCARGA:
-            raise ErrorDeProveedor(f"{tapar(self.url)}: pesa más de {TOPE_DESCARGA // (1024 * 1024)} MiB")
-        return crudo.decode("utf-8", errors="replace")
+            texto = self._bajar()
+        except ErrorDeProveedor as e:
+            if edad is None:
+                raise
+            # sin red, la última copia sirve más que un día vacío; se dice de cuándo es
+            self.aviso = f"{e}; uso la copia de hace {_hace(edad)}"
+            return self.copia.read_text(encoding="utf-8", errors="replace")
+        if self.cache and self.copia:
+            try:
+                self.copia.parent.mkdir(parents=True, exist_ok=True)
+                temporal = self.copia.with_suffix(".tmp")
+                temporal.write_text(texto, encoding="utf-8")
+                temporal.replace(self.copia)
+            except OSError:
+                pass  # sin copia, se baja la próxima vez: no es motivo para fallar
+        return texto
 
     def eventos(self, dia: date) -> list[Evento]:
         origen = str(self.archivo) if self.archivo is not None else tapar(self.url)
-        return eventos_del_dia(leer_ics(self._texto()), dia, origen=origen)
+        return eventos_del_dia(_leer_con_memoria(self._texto()), dia, origen=origen)
 
 
 # ── comando: un programa externo que imprime JSON ───────────────────────────────

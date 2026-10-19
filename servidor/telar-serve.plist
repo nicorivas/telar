@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- telar serve en macOS (launchd): la API de telar en su socket (<estado>/serve/telar.sock), que usa el panel.
+     Reemplaza TU_USUARIO. Necesita el extra «serve» (uv tool install … --with fastapi --with uvicorn).
+     cp telar-serve.plist ~/Library/LaunchAgents/com.telar.serve.plist
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.telar.serve.plist
+     Ver cómo va: tail -f ~/Library/Logs/telar-serve.log
+     Quitarlo:    launchctl bootout gui/$(id -u)/com.telar.serve -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.telar.serve</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/TU_USUARIO/.local/bin/telar</string><string>serve</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/TU_USUARIO/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <key>LANG</key><string>en_US.UTF-8</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/TU_USUARIO/Library/Logs/telar-serve.log</string>
+  <key>StandardErrorPath</key><string>/Users/TU_USUARIO/Library/Logs/telar-serve.log</string>
+</dict>
+</plist>
