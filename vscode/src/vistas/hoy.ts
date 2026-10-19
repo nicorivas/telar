@@ -10,12 +10,12 @@
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
 import { execFile } from 'child_process';
-import * as fs from 'fs';
 import * as path from 'path';
 
 import { type Opcion, ui } from '../anfitrion';
 import type { CrearSuperficie, Superficie } from '../superficie';
 import * as cli from '../cli';
+import { disco } from '../disco';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
@@ -434,6 +434,7 @@ export class PanelHoy {
             const antes = this.bloquesDatos.get(b.clave);
             if (!forzar && antes && ahora - antes.hora < 5 * 60 * 1000) return;
             const r = await cli.bloque(b.clave);
+            await this.precargarLienzos(r.datos?.bloques);
             this.bloquesDatos.set(b.clave, { pagina: r.datos, error: r.datos ? '' : (r.error ?? 'no contestó'), hora: Date.now() });
             if (this.pantalla === 'bloque' || this.pantalla === 'plan') this.render();
         }));
@@ -529,6 +530,7 @@ export class PanelHoy {
         const nombre = (app ? modelo.apps.find(a => a.clave === app)?.nombre : modelo.secciones.find(s => s.clave === clave)?.nombre) ?? clave;
         if (!this.pagina) this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`, '<div class="fila dim">leyendo…</div>']);
         const r = app ? await cli.app(app) : await cli.seccion(clave);
+        await this.precargarLienzos(r.datos?.bloques);
         if (this.pantalla !== 'seccion' || this.seccion !== clave) return;
         if (!r.datos) {
             this.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`,
@@ -1299,6 +1301,17 @@ export class PanelHoy {
     }
 
     /** Los bloques de una página (una sección, la ficha de una tarea), en HTML. */
+    /** La página y la memoria de los lienzos de una página, leídas del disco (o de la API, en el navegador)
+     *  antes de dibujarla: el HTML se arma sin esperar. */
+    private lienzos = new Map<string, string>();
+    private async precargarLienzos(bloques: cli.JsonPagina['bloques'] | undefined): Promise<void> {
+        const rutas = (bloques ?? []).flatMap(b => b.lienzo ? [b.lienzo.archivo, ...(b.lienzo.memoria ? [b.lienzo.memoria] : [])] : []);
+        await Promise.all(rutas.map(async r => {
+            const t = await disco().leer(r);
+            if (t !== undefined) this.lienzos.set(r, t); else this.lienzos.delete(r);
+        }));
+    }
+
     private htmlBloques(bloques: cli.JsonPagina['bloques']): string[] {
         const h: string[] = [];
         this.memorias.clear();   // los iframes de antes se reemplazan: sus llaves ya no valen
@@ -1346,9 +1359,9 @@ export class PanelHoy {
      *  script previo deja los params en la URL (`about:srcdoc?…`) y en `window.lienzo`.
      *  El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar el panel. */
     private htmlLienzo(l: cli.JsonLienzo): string {
-        let doc: string;
-        try { doc = fs.readFileSync(l.archivo, 'utf8'); }
-        catch (e) { return `<div class="fila falla">no pude leer ${esc(l.archivo)}: ${esc(String(e))}</div>`; }
+        // lo que necesita (su página y su memoria) se leyó antes, al llegar la página (precargarLienzos)
+        let doc = this.lienzos.get(l.archivo);
+        if (doc === undefined) return `<div class="fila falla">no pude leer ${esc(l.archivo)}</div>`;
         const params: Record<string, string> = {};
         for (const [k, v] of Object.entries(l.params ?? {})) params[k] = String(v);
         const datos = JSON.stringify(params).replace(/</g, '\\u003c');
@@ -1359,7 +1372,7 @@ export class PanelHoy {
             const llave = nuevoNonce();
             this.memorias.set(llave, l.memoria);
             let leida = 'null';
-            try { const t = fs.readFileSync(l.memoria, 'utf8'); JSON.parse(t); leida = t; } catch { /* todavía no guardó nada */ }
+            try { const t = this.lienzos.get(l.memoria); if (t !== undefined) { JSON.parse(t); leida = t; } } catch { /* todavía no guardó nada */ }
             memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
                 + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
         }
@@ -1647,10 +1660,11 @@ export class PanelHoy {
     /** El README de una unidad como html, sin su encabezado YAML. "" si no tiene. */
     private async readmeHtml(ruta: string): Promise<string> {
         if (!modelo.raiz || ruta.includes('..')) return '';
-        const archivo = ['README.md', 'readme.md'].map(n => path.join(modelo.raiz!, ruta, n)).find(f => fs.existsSync(f));
-        if (!archivo) return '';
+        let crudo: string | undefined;
+        for (const n of ['README.md', 'readme.md']) { crudo = await disco().leer(path.join(modelo.raiz, ruta, n)); if (crudo !== undefined) break; }
+        if (crudo === undefined) return '';
         try {
-            let texto = fs.readFileSync(archivo, 'utf8').slice(0, 300_000);
+            let texto = crudo.slice(0, 300_000);
             texto = texto.replace(/^---\n[\s\S]*?\n---\n/, '');
             return await ui().markdown(texto) ?? '';
         } catch (e) {
@@ -1855,15 +1869,17 @@ export class PanelHoy {
             if (ctx.proyecto && modelo.raiz) {
                 const carpeta = path.join(modelo.raiz, ctx.proyecto.ruta);
                 ctx.pendientes = this.pendientesDe(ctx.proyecto.ruta) ?? [];
-                const readme = path.join(carpeta, 'README.md');
-                const est = fs.existsSync(readme) ? estadoDe(fs.readFileSync(readme, 'utf8')) : '';
+                const readme = await disco().leer(path.join(carpeta, 'README.md'));
+                const est = readme !== undefined ? estadoDe(readme) : '';
                 if (est) ctx.estado = await this.markdown(est);
                 if (clase === 'reunion') {
-                    const prep = this.masReciente(carpeta, n => /preparaci[oó]n/i.test(n), e.titulo);
-                    if (prep) ctx.preparacion = { ruta: path.relative(modelo.raiz, prep), html: await this.markdown(fs.readFileSync(prep, 'utf8').slice(0, 12000)) };
-                    const minuta = this.masReciente(carpeta, (n, r) => /minuta/i.test(n) || (/\/reuniones\//.test(r) && !/preparaci/i.test(n)), e.titulo,
-                        f => !!paraLaProxima(fs.readFileSync(f, 'utf8')));
-                    if (minuta) ctx.minuta = { ruta: path.relative(modelo.raiz, minuta), html: await this.markdown(paraLaProxima(fs.readFileSync(minuta, 'utf8'))) };
+                    const prep = await this.masReciente(carpeta, n => /preparaci[oó]n/i.test(n), e.titulo);
+                    const textoPrep = prep ? await disco().leer(prep) : undefined;
+                    if (prep && textoPrep !== undefined) ctx.preparacion = { ruta: path.relative(modelo.raiz, prep), html: await this.markdown(textoPrep.slice(0, 12000)) };
+                    const leidas = new Map<string, string>();
+                    const minuta = await this.masReciente(carpeta, (n, r) => /minuta/i.test(n) || (/\/reuniones\//.test(r) && !/preparaci/i.test(n)), e.titulo,
+                        async f => { const t = await disco().leer(f) ?? ''; leidas.set(f, t); return !!paraLaProxima(t); });
+                    if (minuta) ctx.minuta = { ruta: path.relative(modelo.raiz, minuta), html: await this.markdown(paraLaProxima(leidas.get(minuta) ?? '')) };
                 }
             }
         } catch { /* sin contexto: el bloque y el foco igual se ven */ }
@@ -1878,26 +1894,14 @@ export class PanelHoy {
 
     /** El .md más reciente de una carpeta (hasta tres niveles) que cumple `elegir`, prefiriendo los que
      *  comparten alguna palabra con el título de la reunión (su serie) sobre los demás. */
-    private masReciente(carpeta: string, elegir: (nombre: string, ruta: string) => boolean, titulo: string,
-        ademas: (ruta: string) => boolean = () => true): string {
-        const hallados: { ruta: string; mtime: number }[] = [];
-        const recorrer = (dir: string, hondo: number) => {
-            let entradas: fs.Dirent[] = [];
-            try { entradas = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-            for (const x of entradas) {
-                if (x.name.startsWith('.') || x.name === 'node_modules' || x.name === 'assets') continue;
-                const r = path.join(dir, x.name);
-                if (x.isDirectory() && hondo < 3) recorrer(r, hondo + 1);
-                else if (x.isFile() && x.name.endsWith('.md') && elegir(x.name, r)) {
-                    try { hallados.push({ ruta: r, mtime: fs.statSync(r).mtimeMs }); } catch { /* se fue */ }
-                }
-            }
-        };
-        recorrer(carpeta, 0);
+    private async masReciente(carpeta: string, elegir: (nombre: string, ruta: string) => boolean, titulo: string,
+        ademas: (ruta: string) => Promise<boolean> = async () => true): Promise<string> {
+        const hallados = (await disco().buscarMd(carpeta, 3)).filter(h => elegir(path.basename(h.ruta), h.ruta));
         const palabras = normalizar(titulo).split(/\s+/).filter(w => w.length > 3);
         const deLaSerie = (r: string) => palabras.some(w => normalizar(path.basename(r)).includes(w));
         hallados.sort((a, b) => Number(deLaSerie(b.ruta)) - Number(deLaSerie(a.ruta)) || b.mtime - a.mtime);
-        return hallados.find(h => ademas(h.ruta))?.ruta ?? '';
+        for (const h of hallados) if (await ademas(h.ruta)) return h.ruta;
+        return '';
     }
 
     /** Pedirle al agente general que consolide los pendientes del README de un proyecto (`/consolidar`):
@@ -2213,12 +2217,8 @@ export class PanelHoy {
         const ruta = this.memorias.get(llave);
         if (!ruta || datos.length > 4_000_000) return;
         try { JSON.parse(datos); } catch { return; }
-        try {
-            fs.mkdirSync(path.dirname(ruta), { recursive: true });
-            const tmp = `${ruta}.${process.pid}.tmp`;
-            fs.writeFileSync(tmp, datos);
-            fs.renameSync(tmp, ruta);
-        } catch { /* sin permiso o sin disco: el lienzo sigue, sin memoria */ }
+        // sin permiso o sin disco: el lienzo sigue, sin memoria
+        void disco().escribir(ruta, datos).then(ok => { if (ok) this.lienzos.set(ruta, datos); });
     }
 
     private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string }): Promise<void> {
@@ -2476,7 +2476,7 @@ async function abrirEnlace(enlace: string, reusar = ''): Promise<void> {
         await ui().abrirExterno(enlace);
         return;
     }
-    if (enlace.startsWith('/') && fs.existsSync(enlace)) {
+    if (enlace.startsWith('/')) {
         await ui().abrirArchivo(enlace);
         return;
     }

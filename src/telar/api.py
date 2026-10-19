@@ -30,6 +30,7 @@ from telar import __version__
 from telar.cli import Contexto
 from telar.config import cargar as cargar_config
 from telar.config import ruta_config
+from telar.servicios import archivos as servicio_archivos
 from telar.servicios import ErrorDeServicio, Pagina
 from telar.servicios import bloques as servicio_bloques
 from telar.servicios import config as servicio_config
@@ -149,7 +150,7 @@ def post_accion(id: str, pedido: PedidoAccion, ctx: Contexto = Depends(contexto)
 @app.get("/bloques/{clave}", response_model=Pagina, response_model_exclude_unset=True)
 def get_bloque(clave: str, ctx: Contexto = Depends(contexto)):
     """La página de un bloque del día (`telar bloque <clave> --json`)."""
-    return servicio_bloques.pagina(ctx, clave)
+    return servicio_archivos.anotar_lienzos(servicio_bloques.pagina(ctx, clave))
 
 
 @app.get("/bloques/{clave}/items/{id:path}", response_model=servicio_bloques.Detalle)
@@ -264,7 +265,7 @@ from telar.servicios import paginas as servicio_paginas
 @app.get("/secciones/{clave}", response_model=Pagina, response_model_exclude_unset=True)
 def get_seccion(clave: str, ctx: Contexto = Depends(contexto)):
     """El home de una sección o de un agente (`agente:<nombre>`), validado (`telar seccion <clave> --json`)."""
-    return servicio_paginas.seccion(ctx, clave)
+    return servicio_archivos.anotar_lienzos(servicio_paginas.seccion(ctx, clave))
 
 
 @app.get("/apps", response_model=servicio_paginas.Apps)
@@ -276,7 +277,7 @@ def get_apps(ctx: Contexto = Depends(contexto)):
 @app.get("/apps/{clave}", response_model=Pagina, response_model_exclude_unset=True)
 def get_app(clave: str, ctx: Contexto = Depends(contexto)):
     """La página de una app (`telar app <clave> --json`)."""
-    return servicio_paginas.app(ctx, clave)
+    return servicio_archivos.anotar_lienzos(servicio_paginas.app(ctx, clave))
 
 
 @app.get("/ficha", response_model=servicio_fichas.FichaDeHilo)
@@ -587,6 +588,33 @@ def post_revisando(ident: str, pedido: PedidoDecision, quien: str = "gestion", c
 def post_decision(ident: str, decision: str, pedido: PedidoDecision, ctx: Contexto = Depends(contexto)):
     """Aceptar, rechazar o decir que ya existe (`telar equipo aceptar|rechazar|existe`)."""
     return servicio_equipo.decidir(ctx, ident, decision, nota=pedido.nota, tarea=pedido.tarea, maquina=pedido.maquina)
+
+
+# ── archivos de esta máquina, para la página (telar.servicios.archivos) ───────────
+
+
+
+@app.get("/archivos", response_model=servicio_archivos.Archivo)
+def get_archivo(ruta: str, ctx: Contexto = Depends(contexto)):
+    """Un archivo de la raíz del repositorio (o declarado por una app), hasta 2 MB."""
+    return servicio_archivos.leer(ctx, ruta)
+
+
+@app.get("/archivos/md", response_model=servicio_archivos.Hallados)
+def get_archivos_md(carpeta: str, hondo: int = 3, ctx: Contexto = Depends(contexto)):
+    """Los .md de una carpeta de la raíz, hasta `hondo` niveles, con su fecha."""
+    return servicio_archivos.buscar_md(ctx, carpeta, min(max(hondo, 0), 5))
+
+
+class PedidoArchivo(BaseModel):
+    ruta: str
+    texto: str
+
+
+@app.put("/archivos", response_model=servicio_archivos.Escrito)
+def put_archivo(pedido: PedidoArchivo, ctx: Contexto = Depends(contexto)):
+    """La memoria de un lienzo: un .json de la raíz o declarado por una app."""
+    return servicio_archivos.escribir(ctx, pedido.ruta, pedido.texto)
 
 
 @app.get("/salud")

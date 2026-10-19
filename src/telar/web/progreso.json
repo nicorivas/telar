@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 18:15",
+  "actualizado": "2026-10-19 20:21",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -82,8 +82,14 @@
     {
       "grupo": "3. Las pantallas",
       "nombre": "apps",
-      "estado": "pendiente",
-      "nota": "leen archivos del disco: hace falta una ruta en la API"
+      "estado": "hecho",
+      "nota": "lienzos y su memoria por /api/archivos (vivero, babel)"
+    },
+    {
+      "grupo": "3. Las pantallas",
+      "nombre": "leer archivos: README de proyecto, preparación y minuta",
+      "estado": "hecho",
+      "nota": "GET /api/archivos y /api/archivos/md"
     },
     {
       "grupo": "4. El anfitrión web",

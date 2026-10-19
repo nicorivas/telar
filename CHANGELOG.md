@@ -45,6 +45,11 @@ workflow refuses to run if the two disagree.
   owner's routes. The owner's inbox has routes in the owner's API (`/equipo/bandeja`,
   `/equipo/{id}/aceptar|rechazar|existe|revisando`) and goes to the machine with the tasks over the bus
   (a new `equipo` request) instead of ssh. The old `http.server` handler is gone.
+- `GET /archivos`, `GET /archivos/md` and `PUT /archivos`, so the dashboard in the browser reads what it
+  used to read from disk (a project's README, a meeting's preparation and minutes, an app's lienzo and its
+  memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
+  writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
+  in the browser).
 - `PUT /config/{ajuste}` (directories, meeting and project templates, calendar), `/compartir`,
   `/hilos/leer`, `/skills` and `/periodicos`, one service each. Periodic jobs that live on another machine
   are asked of its node over the bus (a new `periodicos` request); the CLI uses the bus too, and ssh only
