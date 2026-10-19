@@ -5,6 +5,8 @@
     telar serve --puerto 8771       en TCP, solo en 127.0.0.1 (para probar; en una máquina compartida,
                                     cualquier usuario de ella alcanzaría el puerto)
     telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
+    telar serve --web               además, la página de telar (telar.api_web) en la IP de Tailscale, puerto
+                                    8780 (--web-puerto), con la llave del panel: la que reemplaza al panel en Node
     telar serve --nodo              además, el nodo del bus (lo que hace `telar nodo`), en el mismo proceso:
                                     una máquina, un proceso; y los pedidos al bus de la API van por su
                                     conexión, que queda abierta
@@ -35,6 +37,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--puerto", type=int, default=0, help="en TCP, en 127.0.0.1, en vez del socket")
     p.add_argument("--equipo", action="store_true", help="además, la página del equipo ([equipo]), en Tailscale")
     p.add_argument("--nodo", action="store_true", help="además, el nodo del bus (`telar nodo`), en el mismo proceso")
+    p.add_argument("--web", action="store_true", help="además, la página de telar en el navegador, en Tailscale")
+    p.add_argument("--web-puerto", dest="web_puerto", type=int, default=8780, help="con --web: el puerto")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -59,6 +63,15 @@ def main(argv: list[str], ctx) -> int:
         host = ip_de_tailscale() or "127.0.0.1"
         equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
         print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
+    otros = [equipo] if equipo else []
+    if o.web:
+        from telar import api_web
+        from telar.ordenes.equipo import ip_de_tailscale
+
+        host = ip_de_tailscale() or "127.0.0.1"
+        otros.append(uvicorn.Config(api_web.crear(api.app), host=host, port=o.web_puerto, log_level="warning"))
+        print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
+    equipo = otros
     nodo = None
     if o.nodo:
         from telar import bus as mod_bus
@@ -88,7 +101,9 @@ def _correr(uvicorn, principal, equipo, nodo=None) -> None:
     cae, se cae el proceso entero (y el servicio lo levanta): uno a medias no sirve."""
     import asyncio
 
-    servidores = [uvicorn.Server(principal), *([uvicorn.Server(equipo)] if equipo else [])]
+    # `equipo`: los servidores de más (la página del equipo, la página de telar), cada uno en su puerto
+    extra = equipo if isinstance(equipo, list) else ([equipo] if equipo else [])
+    servidores = [uvicorn.Server(principal), *(uvicorn.Server(c) for c in extra)]
 
     async def todos():
         tareas = [asyncio.create_task(s.serve()) for s in servidores]
