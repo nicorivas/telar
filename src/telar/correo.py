@@ -18,7 +18,6 @@ import json
 import re
 import shlex
 import subprocess
-import unicodedata
 from dataclasses import dataclass, field
 
 from telar.config import Remoto
@@ -105,14 +104,7 @@ class Buzon:
 
 # ── la dirección de un hilo ──────────────────────────────────────────────────────────
 
-def extension(nombre: str) -> str:
-    """El nombre de un hilo como extensión de dirección: «T42 Faro Norte» → `t42-faro-norte`.
-
-    Minúsculas, sin acentos, y todo lo que no sea letra o número se vuelve un guion. Un
-    nombre que no deja nada (solo símbolos) no tiene dirección propia: "".
-    """
-    plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]+", "-", plano).strip("-")
+from telar.casilla import extension  # noqa: E402,F401 - vive en casilla: la usan el bus y las casillas
 
 
 def direccion(remoto: Remoto, nombre: str) -> str:

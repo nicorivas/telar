@@ -199,7 +199,7 @@ def _leer(ctx, args, entrada):
     tel = _comun.tejer(ctx, con_ficha=False)
     hilo = tel.por_nombre(args[0])
     # el mismo mensaje para el que no existe y el vetado: la puerta no confirma qué hilos hay detrás
-    if hilo is None or historia.vetado(ctx.config.puerta.no_leer, hilo.nombre, tel.estado.vinculos().get(hilo.nombre, "")):
+    if hilo is None or historia.vetado(historia.no_leer(ctx.config), hilo.nombre, tel.estado.vinculos().get(hilo.nombre, "")):
         raise ErrorDePuerta(f"no hay un hilo que se pueda leer con el nombre «{args[0][:80]}»")
     try:
         return {"historia": historia.leer(ctx, tel, hilo, ultimos)}

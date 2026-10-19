@@ -91,19 +91,15 @@ def encargar(ctx, agente: str, texto: str) -> Encargo:
 
 def encargar_y_ir(ctx, agente, texto: str) -> Encargo:
     """Le encarga `texto` al agente residente (su objeto, de telar.agentes) y lleva a su hilo de siempre. Si
-    vive en otra máquina, su ventana se trae aquí si todavía no estaba (`telar remotos traer`): una vuelta
-    más al servidor, solo esa vez. Lo usan los atajos, los pendientes sin proyecto y las reuniones."""
+    vive en otra máquina, su ventana la trae el nodo (`telar nodo`, al ver su estado en el bus): si todavía
+    no llegó, el encargo igual quedó en su casilla. Lo usan los atajos, los pendientes sin proyecto y las
+    reuniones."""
     from telar.mux import ErrorDeMux
     from telar.ordenes import _comun
-    from telar.servicios import en_proceso
 
     r = encargar(ctx, agente.clave, texto)
     tel = _comun.tejer(ctx, con_ficha=False)
     hilo = tel.por_nombre(agente.nombre)
-    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
-        en_proceso.correr(ctx, "remotos", ["traer", "--remoto", ctx.config.agentes_en])
-        tel = _comun.tejer(ctx, con_ficha=False)
-        hilo = tel.por_nombre(agente.nombre)
     if hilo is not None and tel.mux is not None and tel.vivo(hilo):
         try:
             tel.mux.ir(hilo.id)

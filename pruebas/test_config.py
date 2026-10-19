@@ -127,3 +127,13 @@ class Quejas(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoLeerEnElBus(unittest.TestCase):
+    def test_bus_no_leer_y_el_de_la_puerta_tambien_vale(self):
+        from telar import config as mod_config
+        from telar import historia
+        c = mod_config.desde_dict({"bus": {"url": "nats://x:4222", "no_leer": ["Privado*"]}, "enlace": {"no_leer": ["notas"]}})
+        self.assertEqual(historia.no_leer(c), ("Privado*", "notas"))
+        with self.assertRaises(mod_config.ErrorDeConfig):
+            mod_config.desde_dict({"bus": {"no_leer": "Privado"}})

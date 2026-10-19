@@ -247,6 +247,8 @@ class Bus:
     token: str = ""
     #: quién es esta persona en el bus; vacío es el usuario del sistema.
     persona: str = ""
+    #: hilos que otra máquina no puede leer (`telar hilo leer --maquina`), por nombre o carpeta, con `*`
+    no_leer: tuple[str, ...] = ()
     #: cómo se llama esta máquina en el bus; vacío es su nombre de red, corto.
     maquina: str = ""
 
@@ -895,10 +897,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "bus" in datos:
         cuerpo = _tabla(datos["bus"], "bus")
-        sobra = set(cuerpo) - {"url", "token", "persona", "maquina"}
+        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "no_leer"}
         if sobra:
             raise ErrorDeConfig(f"bus.{sorted(sobra)[0]}: no existe")
         valores = {}
+        no_leer_bus = cuerpo.get("no_leer", [])
+        if not isinstance(no_leer_bus, list) or not all(isinstance(v, str) for v in no_leer_bus):
+            raise ErrorDeConfig(f"bus.no_leer: se esperaba una lista de patrones, llegó {no_leer_bus!r}")
+        valores["no_leer"] = tuple(v.strip() for v in no_leer_bus if v.strip())
         for clave in ("url", "token", "persona", "maquina"):
             v = cuerpo.get(clave, "")
             if not isinstance(v, str):

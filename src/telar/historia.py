@@ -91,6 +91,11 @@ def leer(ctx, tel, hilo, ultimos: int = POR_DEFECTO) -> dict:
     raise ErrorDeHistoria(f"«{hilo.nombre}» no tiene conversación en esta máquina ni panel vivo que leer")
 
 
+def no_leer(config) -> tuple[str, ...]:
+    """Los hilos que otra máquina no puede leer: `[bus] no_leer` (y, de antes, `[enlace] no_leer`)."""
+    return tuple(dict.fromkeys([*getattr(config.bus, "no_leer", ()), *getattr(config.puerta, "no_leer", ())]))
+
+
 def vetado(patrones, nombre: str, carpeta: str) -> bool:
     """Si un hilo está fuera de lo que se puede leer por la puerta (`[enlace] no_leer`).
 

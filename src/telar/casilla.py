@@ -33,9 +33,17 @@ TOPE_SALTOS = 6
 VENTANA_CADENA = 30 * 60
 
 
-def nombre_de_carpeta(hilo: str) -> str:
-    from telar.correo import extension
+def extension(nombre: str) -> str:
+    """El nombre de un hilo como palabra de una dirección o de un tema del bus: «T42 Faro Norte» →
+    `t42-faro-norte`. Minúsculas, sin acentos, y todo lo que no sea letra o número se vuelve un guion. Un
+    nombre que no deja nada (solo símbolos): ""."""
+    import unicodedata
 
+    plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", plano).strip("-")
+
+
+def nombre_de_carpeta(hilo: str) -> str:
     return extension(hilo) or re.sub(r"[^\w-]+", "_", hilo).strip("_") or "hilo"
 
 

@@ -265,3 +265,11 @@ class ConAgente(Prueba):
         self.assertEqual(r["codigo"], 0)
         self.assertIn("el bus no lo recibió", r["resultado"])
         tecleado.assert_called_once()
+
+
+class LaSalidaDeCron(Prueba):
+    def test_el_bloque_no_manda_correo(self):
+        # cada corrida guarda su salida en su log: por correo era una copia más, en una casilla compartida
+        from telar import periodicos as mod
+        lineas = mod.bloque(mod.Archivo(procesos=[]), "/x/telar")
+        self.assertEqual(lineas[:2], [mod.MARCA_INICIO, 'MAILTO=""'])

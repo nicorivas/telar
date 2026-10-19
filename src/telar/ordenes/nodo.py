@@ -415,7 +415,7 @@ class Nodo:
             pedido = json.loads(m.data or b"{}")
             tel = _comun.tejer(self.ctx, con_ficha=False)
             hilo = tel.por_nombre(str(pedido.get("hilo", "")))
-            if hilo is None or historia.vetado(self.config.puerta.no_leer, hilo.nombre,
+            if hilo is None or historia.vetado(historia.no_leer(self.config), hilo.nombre,
                                                tel.estado.vinculos().get(hilo.nombre, "")):
                 return {"ok": False, "error": f"aquí no hay un hilo «{pedido.get('hilo', '')}» que se pueda leer"}
             return {"ok": True, "historia": historia.leer(self.ctx, tel, hilo, int(pedido.get("ultimos") or 5))}

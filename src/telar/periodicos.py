@@ -330,7 +330,9 @@ def cambiar(a: Archivo, nombre: str, **campos) -> Proceso:
 
 def bloque(a: Archivo, telar: str) -> list[str]:
     """Las líneas del bloque de telar en el crontab. Los pausados quedan comentados, a la vista."""
-    lineas = [MARCA_INICIO]
+    # cada corrida guarda su salida en su log (`telar periodicos log`): por correo era una copia más, que
+    # además llenaba la casilla. Como CRON_TZ, vale para las líneas de abajo: el bloque va al final
+    lineas = [MARCA_INICIO, 'MAILTO=""']
     if a.zona:
         lineas.append(f"CRON_TZ={a.zona}")
     for p in a.procesos:

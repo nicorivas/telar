@@ -14,7 +14,7 @@ conexión saliente (`telar nodo`). Tres cosas viajan por ahí:
     registro.<persona>                 copia de cada mensaje (y de los retenidos), para ver quién le
                                        dijo qué a quién: no se consume, dura dos semanas.
 
-El hilo va en los temas con su nombre como extensión (`telar.correo.extension`: «Gestión» →
+El hilo va en los temas con su nombre como extensión (`telar.casilla.extension`: «Gestión» →
 `gestion`), porque un tema no admite espacios ni puntos. Las direcciones no dependen de la máquina:
 mudar un hilo cambia su estado, no su casilla.
 
