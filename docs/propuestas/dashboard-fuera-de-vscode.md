@@ -218,8 +218,14 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    /pendiente/llevar`, `POST /pendiente/casilla`). Los verbos de `telar hilo` (`POST /hilo/{verbo}`) y
    `telar tejer` (`POST /tejer`) van por un **puente**: la misma orden corrida en el proceso de la API, con
    su salida capturada y de a una (`telar.servicios.en_proceso`), porque sus funciones imprimen en vez de
-   devolver un modelo; cada una deja el puente cuando se reescriba. `hilo llevar` (minutos, por ssh) y
-   `hilo leer` siguen por la CLI. El entorno ya no es problema: un
+   devolver un modelo; cada una deja el puente cuando se reescriba. Después, los ajustes de la
+   configuración (`PUT /config/{ajuste}`), compartir (`/compartir`), leer un hilo (`/hilos/leer`), las
+   skills (`/skills`) y los periódicos (`/periodicos`): desde el laptop, se piden al nodo del servidor por
+   el bus (un pedido `periodicos`), y la CLI también va por el bus en vez de ssh. **Quedan por la CLI, a
+   propósito**: `hilo llevar` (minutos, copia por ssh), las acciones del perfil (corren su comando con la
+   terminal heredada), y lo que el bus ya reemplazó y conviene **retirar** en vez de migrar: el correo
+   entre agentes y los remotos por ssh (`telar correo`, `telar remotos atencion|traer`). `telar-equipo`
+   es el paso 5. El entorno ya no es problema: un
    panel nuevo hereda el de quien le pide a tmux que lo abra, y telar lo abre con el PATH de la shell de
    login de la persona, así que da lo mismo si lo pide el panel, la API o el nodo.
    Quedan aparte `periodicos` y `correo`, que desde el laptop van al servidor por ssh: pasan cuando ese

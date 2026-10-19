@@ -28,6 +28,10 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `PUT /config/{ajuste}` (directories, meeting and project templates, calendar), `/compartir`,
+  `/hilos/leer`, `/skills` and `/periodicos`, one service each. Periodic jobs that live on another machine
+  are asked of its node over the bus (a new `periodicos` request); the CLI uses the bus too, and ssh only
+  without one.
 - `POST /pendiente/llevar` and `/pendiente/casilla`: carrying a pending item to its thread and changing its
   checkbox, as functions that return their result (the CLI, the task actions and meetings use them; no
   more captured output). `POST /hilo/{verbo}` and `POST /tejer` run the same command inside the API

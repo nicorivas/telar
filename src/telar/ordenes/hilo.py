@@ -588,39 +588,19 @@ def _sesiones(hilo) -> str:
 
 
 def _leer(ctx, o) -> int:
-    """Lo último de un hilo, sin moverle nada: ni foco, ni atención, ni estado."""
-    from telar import bus as mod_bus
+    """Lo último de un hilo, sin moverle nada: ni foco, ni atención, ni estado (telar.servicios.historias)."""
     from telar import historia
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import historias
 
     referencia = o.hilo or o.valor
-    if o.maquina and mod_bus.hay_bus(ctx.config) and o.maquina != mod_bus.maquina(ctx.config):
-        # un hilo de otra máquina: lo lee su nodo (la conversación vive allá) y responde por el bus
-        if not referencia:
-            return _comun.queja("¿qué hilo de esa máquina? telar hilo leer «Faro» --maquina laptop")
-        ultimos = o.ultimos or historia.POR_DEFECTO
-        r = mod_bus.pedir(ctx.config, o.maquina, "leer", {"hilo": referencia, "ultimos": ultimos}, espera=30)
-        if not r.get("ok"):
-            return _comun.queja(r.get("error", f"{o.maquina} no respondió"))
-        datos = {**r["historia"], "maquina": o.maquina}
-        if o.json:
-            return _comun.escribir_json(datos)
-        print(historia.como_texto(datos))
-        return 0
-    tel = _comun.tejer(ctx, con_ficha=False)
-    if referencia:
-        hilo, problema = _comun.resolver(tel, referencia)
-        if hilo is None:
-            return _comun.queja(problema)
-    else:
-        hilo = _comun.hilo_actual(tel)
-        if hilo is None:
+    if not referencia and not o.maquina:
+        tel = _comun.tejer(ctx, con_ficha=False)
+        if _comun.hilo_actual(tel) is None:
             return _comun.sin_hilo("hilo", tel)
-    ultimos = o.ultimos or historia.POR_DEFECTO
-    if not 1 <= ultimos <= historia.MAX_TURNOS:
-        return _comun.queja(f"--ultimos va de 1 a {historia.MAX_TURNOS}")
     try:
-        datos = historia.leer(ctx, tel, hilo, ultimos)
-    except historia.ErrorDeHistoria as e:
+        datos = historias.leer(ctx, referencia, ultimos=o.ultimos, maquina=o.maquina).model_dump(mode="json")
+    except ErrorDeServicio as e:
         return _comun.queja(str(e))
     if o.json:
         return _comun.escribir_json(datos)

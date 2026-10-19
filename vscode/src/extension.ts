@@ -274,7 +274,7 @@ async function conectarCalendario(): Promise<void> {
         ignoreFocusOut: true,
     });
     if (!valor?.trim()) return;
-    const r = await cli.telar(['config', '--calendario', valor.trim()], 20000);
+    const r = await cli.elegirCalendario(valor.trim());
     if (!r.ok) {
         void vscode.window.showWarningMessage(`telar: ${r.err.trim().split('\n').pop() || 'no pude conectar el calendario'}`);
         return;

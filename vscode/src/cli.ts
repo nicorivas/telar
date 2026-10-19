@@ -516,15 +516,21 @@ export interface JsonPeriodico {
 }
 export interface JsonPeriodicos { maquina: string; archivo: string; zona: string; procesos: JsonPeriodico[] }
 
-export const periodicos = () => telarJson<JsonPeriodicos>(['periodicos', 'ver'], 30000);
-export const periodicosLog = (nombre: string) => telarJson<{ nombre: string; log: string }>(['periodicos', 'log', nombre, '--lineas', '200'], 30000);
+/** Un verbo de `telar periodicos`, por la API (que lo pide a la máquina donde viven, por el bus); sin
+ *  ella, la orden (que va por el bus o por ssh). */
+async function periodicosPor<T>(argv: string[], timeout: number): Promise<Respuesta<T>> {
+    return await aServe<T>('POST', '/periodicos', timeout, { argv }) ?? telarJson<T>(['periodicos', ...argv], timeout);
+}
+export const periodicos = async () => await deServe<JsonPeriodicos>('/periodicos', 30000)
+    ?? telarJson<JsonPeriodicos>(['periodicos', 'ver'], 30000);
+export const periodicosLog = (nombre: string) => periodicosPor<{ nombre: string; log: string }>(['log', nombre, '--lineas', '200'], 30000);
 export const periodicosHorario = (cuando: string) =>
-    telarJson<{ valido: boolean; cuando: string; proximas: string[]; error: string }>(['periodicos', 'horario', cuando, '--n', '3'], 30000);
+    periodicosPor<{ valido: boolean; cuando: string; proximas: string[]; error: string }>(['horario', cuando, '--n', '3'], 30000);
 export interface JsonSkill { nombre: string; descripcion: string; origen: string }
 export const periodicosSkills = (carpeta: string) =>
-    telarJson<{ carpeta: string; skills: JsonSkill[] }>(['periodicos', 'skills', ...(carpeta ? ['--carpeta', carpeta] : [])], 30000);
+    periodicosPor<{ carpeta: string; skills: JsonSkill[] }>(['skills', ...(carpeta ? ['--carpeta', carpeta] : [])], 30000);
 /** Cambiar uno: `nuevo`, `editar`, `pausar`, `activar`, `borrar`, `ahora`, con sus banderas. */
-export const periodicosOrden = (args: string[]) => telarJson<{ ok: boolean; hecho: string }>(['periodicos', ...args], 60000);
+export const periodicosOrden = (args: string[]) => periodicosPor<{ ok: boolean; hecho: string }>(args, 60000);
 
 /** Una conversación del agente, entera, para leerla. */
 export interface JsonConversacion {
@@ -558,16 +564,23 @@ export const publicarEspejo = (remoto: string) =>
         ['espejo', 'publicar', ...(remoto ? ['--a', remoto] : [])], 40000);
 
 /** `telar config --directorios a,b`: de qué carpetas salen los hilos. Vacío: las del perfil. */
-export const directoriosHilos = (carpetas: string) => telar(['config', '--directorios', carpetas], 20000);
+export const directoriosHilos = (carpetas: string) => ajusteConfig('directorios', carpetas, ['config', '--directorios', carpetas]);
 
 /** `telar config --reunion`: qué decirle al agente al preparar una reunión. Vacío: el de fábrica. */
-export const plantillaReunion = (texto: string) => telar(['config', '--reunion', texto], 20000);
+export const plantillaReunion = (texto: string) => ajusteConfig('reunion', texto, ['config', '--reunion', texto]);
 
 /** `telar config --proyecto`: qué decirle al agente al abrir un proyecto. Vacío: el de fábrica. */
-export const plantillaProyecto = (texto: string) => telar(['config', '--proyecto', texto], 20000);
+export const plantillaProyecto = (texto: string) => ajusteConfig('proyecto', texto, ['config', '--proyecto', texto]);
 
 /** `telar config --calendario gws|ninguno|<dirección>`: elegir de dónde sale la agenda. */
-export const elegirCalendario = (valor: string) => telar(['config', '--calendario', valor], 20000);
+export const elegirCalendario = (valor: string) => ajusteConfig('calendario', valor, ['config', '--calendario', valor]);
+
+/** Un ajuste de la configuración, por la API (`PUT /config/<ajuste>`); sin ella, la orden. */
+async function ajusteConfig(ajuste: string, valor: string, argv: string[]): Promise<Salida> {
+    const r = await aServe<{ archivo: string }>('PUT', `/config/${ajuste}`, 20000, { valor });
+    if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.archivo ?? '', err: '' };
+    return telar(argv, 20000);
+}
 
 /** Lo que devuelve `telar pendiente <ref> --json`: adónde fue y qué se le escribió. */
 export interface JsonPendienteIdo {
@@ -639,9 +652,29 @@ export interface JsonSkill {
     /** cuántas veces se usó en la conversación del hilo */
     usada: number;
 }
-export const skills = (hilo: string) => telarJson<{
-    hilo: string; conversacion: string; remoto: boolean; skills: JsonSkill[];
-}>(['agente', 'skills', '--hilo', hilo, '--json'], 30000);
+type JsonSkills = { hilo: string; conversacion: string; remoto: boolean; skills: JsonSkill[] };
+export const skills = async (hilo: string) => await deServe<JsonSkills>(`/skills?hilo=${encodeURIComponent(hilo)}`, 30000)
+    ?? telarJson<JsonSkills>(['agente', 'skills', '--hilo', hilo, '--json'], 30000);
+
+/** Lo último de un hilo (`telar hilo leer`), de esta máquina o de otra por el bus: el JSON tal cual. */
+export async function leerHilo(hilo: string, ultimos: string, maquina = ''): Promise<Salida> {
+    const q = new URLSearchParams({ hilo, ultimos, ...(maquina ? { maquina } : {}) }).toString();
+    const r = await deServe<unknown>(`/hilos/leer?${q}`, 35000);
+    if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: JSON.stringify(r.datos), err: '' };
+    return telar(['hilo', 'leer', hilo, '--ultimos', ultimos, ...(maquina ? ['--maquina', maquina] : []), '--json'], 35000);
+}
+
+/** `telar compartir`: a dónde se puede llevar algo compartido, y llevarlo. El JSON tal cual. */
+export async function compartirDestinos(): Promise<Salida> {
+    const r = await deServe<unknown>('/compartir/destinos', 15000);
+    if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: JSON.stringify(r.datos), err: '' };
+    return telar(['compartir', '--destinos', '--json'], 15000);
+}
+export async function compartir(a: string, url: string, texto: string, titulo: string): Promise<Salida> {
+    const r = await aServe<unknown>('POST', '/compartir', 40000, { a, url, texto, titulo });
+    if (r) return r.error ? { ok: false, codigo: 1, out: JSON.stringify({ ok: false, error: r.error }), err: r.error } : { ok: true, codigo: 0, out: JSON.stringify(r.datos), err: '' };
+    return telar(['compartir', '--a', a, '--url', url, '--texto', texto, '--titulo', titulo, '--json'], 40000);
+}
 
 export const correoLeido = (hilo: string, ids: string[] = []) =>
     telar(['correo', 'leido', hilo, ...(ids.length ? ['--ids', ...ids] : [])], 40000);

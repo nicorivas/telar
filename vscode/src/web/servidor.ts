@@ -362,9 +362,8 @@ const APP: Record<string, string> = {
 /** La carpeta de un hilo y uno de sus archivos (su documento, si no se pide otro), ya listos para la
  *  página: nada fuera de la carpeta del hilo, nada oculto, y un tope de tamaño. */
 async function documento(hilo: string, archivo: string): Promise<import('./pagina').Documento> {
-    const r = await cli.telar(['ficha', hilo, '--json'], 20000);
-    let h: { ruta?: string; vinculado?: boolean; ficha?: { documento?: string; titulo?: string } } = {};
-    try { h = JSON.parse(r.out).hilo ?? {}; } catch { /* sin ficha */ }
+    const r = await cli.ficha(hilo);
+    const h = ((r.datos as { hilo?: unknown } | undefined)?.hilo ?? {}) as { ruta?: string; vinculado?: boolean; ficha?: { documento?: string; titulo?: string } };
     const base = h.vinculado && h.ruta ? path.resolve(h.ruta) : '';
     if (!base || !fs.existsSync(base)) return { hilo, titulo: hilo, error: `«${hilo}» no tiene una carpeta en esta máquina` };
     const elegido = archivo ? path.resolve(base, archivo) : (h.ficha?.documento ? path.resolve(h.ficha.documento) : '');
@@ -519,7 +518,7 @@ async function main(): Promise<void> {
         }
         // compartir desde el teléfono: a dónde se puede llevar, y llevarlo (`telar compartir`)
         if (u.pathname === '/api/compartir/destinos') {
-            void cli.telar(['compartir', '--destinos', '--json'], 15000).then(r => {
+            void cli.compartirDestinos().then(r => {
                 let proveedores: unknown[] = [];
                 try { proveedores = JSON.parse(r.out).destinos ?? []; } catch { /* sin destinos propios */ }
                 const hilos = modelo.hilos.filter(h => !h.archivado).map(h => ({ destino: `hilo:${h.nombre}`, nombre: cli.nombreVisible(h), tipo: 'hilo' }));
@@ -533,7 +532,7 @@ async function main(): Promise<void> {
             void leerCuerpo(req).then(async d => {
                 const texto = (k: string) => (typeof d?.[k] === 'string' ? String(d[k]) : '');
                 const r = !d ? { ok: false, error: 'el pedido no se entiende' }
-                    : await cli.telar(['compartir', '--a', texto('a'), '--url', texto('url'), '--texto', texto('texto'), '--titulo', texto('titulo'), '--json'], 40000)
+                    : await cli.compartir(texto('a'), texto('url'), texto('texto'), texto('titulo'))
                         .then(x => { try { return JSON.parse(x.out); } catch { return { ok: false, error: x.err.trim().split('\n').pop() || 'no respondió' }; } });
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
                 res.end(JSON.stringify(r));
@@ -568,7 +567,7 @@ async function main(): Promise<void> {
             const hilo = u.searchParams.get('hilo') ?? '';
             const maquina = u.searchParams.get('maquina') ?? '';
             const n = String(Math.max(1, Math.min(30, Number(u.searchParams.get('n')) || 8)));
-            void cli.telar(['hilo', 'leer', hilo, '--ultimos', n, ...(maquina ? ['--maquina', maquina] : []), '--json'], 35000).then(r => {
+            void cli.leerHilo(hilo, n, maquina).then(r => {
                 let cuerpo: string;
                 try {
                     // lo que dicen la persona y el agente va en markdown: se manda también convertido (sin HTML

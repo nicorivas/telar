@@ -194,6 +194,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_cambio(self.config, "*"), cb=self._cambio)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tipo"), cb=self._tipo)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "periodicos"), cb=self._periodicos)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -480,6 +481,18 @@ class Nodo:
             if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
                 return {"ok": False, "error": "argv: se esperaba una lista de textos"}
             return alla.tarea_aqui(argv, "tipo")
+
+        await self._responder(m, correr)
+
+    async def _periodicos(self, m) -> None:
+        """`telar periodicos …` corrido aquí, para otra máquina que declara `[periodicos] en` esta."""
+        from telar import alla
+
+        def correr(p):
+            argv = p.get("argv")
+            if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+                return {"ok": False, "error": "argv: se esperaba una lista de textos"}
+            return alla.tarea_aqui(argv, "periodicos")
 
         await self._responder(m, correr)
 

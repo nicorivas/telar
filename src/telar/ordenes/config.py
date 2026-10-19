@@ -9,15 +9,7 @@ from __future__ import annotations
 
 import os
 
-from telar.config import (
-    MULTIPLEXORES,
-    PROYECTO_POR_DEFECTO,
-    REUNION_POR_DEFECTO,
-    ErrorDeConfig,
-    escribir_calendario,
-    escribir_clave,
-    ruta_config,
-)
+from telar.config import MULTIPLEXORES, ruta_config  # noqa: F401 - MULTIPLEXORES: quien lo importaba de aquí
 from telar.ordenes import _comun
 from telar.proveedores.calendario import tapar  # noqa: F401 - quien lo importaba de aquí
 from telar.servicios import config as servicio
@@ -74,53 +66,31 @@ def main(argv: list[str], ctx) -> int:
         print(f"pestañas: {', '.join(nombres) or 'todas, en su orden'} · {r.archivo}")
         return 0
 
-    if o.directorios is not None or o.tope is not None:
-        try:
-            if o.directorios is not None:
-                dirs = [d.strip().strip("/") for d in o.directorios.split(",") if d.strip()]
-                faltan = [d for d in dirs if not (ctx.config.raiz / d).is_dir()]
-                if faltan:
-                    return _comun.queja(f"no existe en {ctx.config.raiz}: {', '.join(faltan)}")
-                destino = escribir_clave("hilos", "directorios", dirs or None, ctx.config.origen)
-            if o.tope is not None:
-                destino = escribir_clave("hilos", "tope", o.tope, ctx.config.origen)
-        except ErrorDeConfig as e:
-            return _comun.queja(str(e))
-        if o.json:
-            return _comun.escribir_json({"hilos": "ok", "archivo": str(destino)})
-        print(f"hilos · {destino}")
-        return 0
+    if o.directorios is not None or o.tope is not None or o.reunion is not None or o.proyecto is not None or o.calendario:
+        from telar.servicios import ErrorDeServicio
 
-    if o.reunion is not None:
-        valor = o.reunion.strip() or None  # vacío: se borra la clave y rige el de fábrica
         try:
-            destino = escribir_clave("agente", "reunion", valor, ctx.config.origen)
-        except ErrorDeConfig as e:
+            if o.directorios is not None or o.tope is not None:
+                if o.directorios is not None:
+                    r = servicio.directorios(ctx, o.directorios)
+                if o.tope is not None:
+                    r = servicio.tope(ctx, o.tope)
+                linea = f"hilos · {r.archivo}"
+            elif o.reunion is not None:
+                r = servicio.plantilla(ctx, "reunion", o.reunion)
+                linea = f"reunión: {r.reunion} · {r.archivo}"
+            elif o.proyecto is not None:
+                r = servicio.plantilla(ctx, "proyecto", o.proyecto)
+                linea = f"proyecto: {r.proyecto} · {r.archivo}"
+            else:
+                r = servicio.calendario(ctx, o.calendario)
+                tipo = o.calendario if o.calendario.strip().lower() in ("gws", "ninguno") else "ics"
+                linea = f"calendario: {tipo} · {r.archivo}"
+        except ErrorDeServicio as e:
             return _comun.queja(str(e))
         if o.json:
-            return _comun.escribir_json({"reunion": valor or REUNION_POR_DEFECTO, "archivo": str(destino)})
-        print(f"reunión: {valor or REUNION_POR_DEFECTO} · {destino}")
-        return 0
-
-    if o.proyecto is not None:
-        valor = o.proyecto.strip() or None
-        try:
-            destino = escribir_clave("agente", "proyecto", valor, ctx.config.origen)
-        except ErrorDeConfig as e:
-            return _comun.queja(str(e))
-        if o.json:
-            return _comun.escribir_json({"proyecto": valor or PROYECTO_POR_DEFECTO, "archivo": str(destino)})
-        print(f"proyecto: {valor or PROYECTO_POR_DEFECTO} · {destino}")
-        return 0
-
-    if o.calendario:
-        try:
-            destino = escribir_calendario(o.calendario, ctx.config.origen)
-        except ErrorDeConfig as e:
-            return _comun.queja(str(e))
-        if o.json:
-            return _comun.escribir_json({"calendario": "conectado", "archivo": str(destino)})
-        print(f"calendario: {o.calendario if o.calendario.strip().lower() in ('gws', 'ninguno') else 'ics'} · {destino}")
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        print(linea)
         return 0
 
     cfg = ctx.config

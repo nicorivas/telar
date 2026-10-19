@@ -479,6 +479,86 @@ def post_tejer(pedido: PedidoTejer, ctx: Contexto = Depends(contexto)):
     return en_proceso.o_falla(en_proceso.correr(ctx, "tejer", argv), "telar tejer")
 
 
+# ── ajustes, compartir, leer un hilo, skills ──────────────────────────────────
+
+from telar.servicios import compartir as servicio_compartir
+from telar.servicios import historias as servicio_historias
+from telar.servicios import skills as servicio_skills
+
+
+class PedidoAjuste(BaseModel):
+    valor: str = ""
+
+
+@app.put("/config/{ajuste}", response_model=servicio_config.Escrito)
+def put_ajuste(ajuste: str, pedido: PedidoAjuste, ctx: Contexto = Depends(contexto)):
+    """Un ajuste escrito en la configuración (`telar config --directorios|--reunion|--proyecto|--calendario`):
+    `directorios` («a,b»), `reunion` y `proyecto` (la plantilla; vacía, la de fábrica), `calendario`
+    (`gws`, `ninguno` o una dirección iCal)."""
+    if ajuste == "directorios":
+        return servicio_config.directorios(ctx, pedido.valor)
+    if ajuste in ("reunion", "proyecto"):
+        return servicio_config.plantilla(ctx, ajuste, pedido.valor)
+    if ajuste == "calendario":
+        if not pedido.valor.strip():
+            raise ErrorDeServicio("calendario: gws, ninguno o la dirección de un calendario", 422)
+        return servicio_config.calendario(ctx, pedido.valor)
+    raise ErrorDeServicio(f"no hay un ajuste «{ajuste}»: directorios, reunion, proyecto, calendario o pestanas", 404)
+
+
+@app.get("/compartir/destinos", response_model=servicio_compartir.Destinos)
+def get_destinos(ctx: Contexto = Depends(contexto)):
+    """Los proveedores que reciben algo compartido (`telar compartir --destinos`)."""
+    return servicio_compartir.destinos(ctx)
+
+
+class PedidoCompartir(BaseModel):
+    a: str
+    url: str = ""
+    texto: str = ""
+    titulo: str = ""
+
+
+@app.post("/compartir", response_model=servicio_compartir.Compartido)
+def post_compartir(pedido: PedidoCompartir, ctx: Contexto = Depends(contexto)):
+    """Llevar algo compartido a un hilo (`hilo:<nombre>`) o a un proveedor (`telar compartir`)."""
+    return servicio_compartir.llevar(ctx, pedido.a, url=pedido.url, texto=pedido.texto, titulo=pedido.titulo)
+
+
+@app.get("/hilos/leer", response_model=servicio_historias.Historia)
+def get_leer(hilo: str, ultimos: int = 0, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Lo último de un hilo, de esta máquina o de otra por el bus (`telar hilo leer <hilo> --json`)."""
+    return servicio_historias.leer(ctx, hilo, ultimos=ultimos, maquina=maquina)
+
+
+@app.get("/skills", response_model=servicio_skills.Skills)
+def get_skills(hilo: str = "", ctx: Contexto = Depends(contexto)):
+    """Las skills del agente de un hilo, y cuántas veces usó cada una (`telar agente skills --json`)."""
+    return servicio_skills.skills(ctx, hilo)
+
+
+# ── los procesos periódicos: aquí, o en la máquina de `[periodicos] en` por el bus ───
+
+from telar.servicios import periodicos as servicio_periodicos
+
+
+@app.get("/periodicos", response_model=servicio_periodicos.Respuesta)
+def get_periodicos(ctx: Contexto = Depends(contexto)):
+    """Los procesos periódicos, con su horario y su última corrida (`telar periodicos ver --json`)."""
+    return servicio_periodicos.orden(ctx, ["ver"])
+
+
+class PedidoPeriodicos(BaseModel):
+    #: el verbo y sus argumentos, como en la CLI: ["log", "correo", "--lineas", "200"], ["pausar", "correo"]…
+    argv: list[str]
+
+
+@app.post("/periodicos", response_model=servicio_periodicos.Respuesta)
+def post_periodicos(pedido: PedidoPeriodicos, ctx: Contexto = Depends(contexto)):
+    """Un verbo de `telar periodicos` (`log`, `horario`, `skills`, `ahora`, `pausar`, `editar`…; no `correr`)."""
+    return servicio_periodicos.orden(ctx, pedido.argv)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

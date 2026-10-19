@@ -229,6 +229,43 @@ class LoQueEscribe(Prueba):
             self.assertIn('"plan"', cfg.read_text())
 
 
+class AjustesCompartirLeer(Prueba):
+    """`PUT /config/{ajuste}`, `/compartir` y `/hilos/leer`: lo de la CLI, con los errores como códigos."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+        self.dir = Path(tempfile.mkdtemp())
+        (self.dir / "proyectos").mkdir()
+        self.cfg = self.dir / "config.toml"
+        self.cfg.write_text("[agente]\nnombre = \"claude-code\"\n", encoding="utf-8")
+        api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=SimpleNamespace(origen=self.cfg, raiz=self.dir))
+        self.addCleanup(api.app.dependency_overrides.clear)
+        self.c = TestClient(api.app)
+
+    def test_los_ajustes_se_escriben_y_lo_que_no_calza_no(self):
+        self.assertEqual(self.c.put("/config/directorios", json={"valor": "proyectos"}).json()["archivo"], str(self.cfg))
+        self.assertIn('directorios = ["proyectos"]', self.cfg.read_text())
+        self.assertEqual(self.c.put("/config/directorios", json={"valor": "no-hay"}).status_code, 422)
+        self.assertEqual(self.c.put("/config/reunion", json={"valor": "/preparar {titulo}"}).json()["reunion"], "/preparar {titulo}")
+        self.assertIn("/preparar-reunion", self.c.put("/config/reunion", json={"valor": ""}).json()["reunion"])
+        self.assertEqual(self.c.put("/config/calendario", json={"valor": ""}).status_code, 422)
+        self.assertEqual(self.c.put("/config/volar", json={"valor": "x"}).status_code, 404)
+
+    def test_compartir_dice_lo_mismo_que_la_cli_aunque_no_salga(self):
+        r = self.c.post("/compartir", json={"a": "", "texto": "x"})
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.json()["ok"])
+        self.assertIn("¿a dónde?", r.json()["error"])
+
+    def test_leer_un_hilo_que_no_existe_es_404(self):
+        from telar.servicios import historias
+        with mock.patch.object(historias, "leer", side_effect=api.ErrorDeServicio("no hay un hilo «x»", 404)):
+            self.assertEqual(self.c.get("/hilos/leer", params={"hilo": "x"}).status_code, 404)
+
+
 class CuentaDeGws(Prueba):
     """La cuenta de gws se pregunta una vez y vale 10 minutos: la pregunta puede tardar."""
 

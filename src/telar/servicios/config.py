@@ -287,3 +287,59 @@ def pestanas(ctx, valor: str) -> Pestanas:
     except ErrorDeConfig as e:
         raise ErrorDeServicio(str(e), 422) from e
     return Pestanas(dashboard={"orden": orden, "ocultas": ocultas}, archivo=str(destino))
+
+
+class Escrito(BaseModel):
+    """Lo que quedó escrito en la configuración, y en qué archivo (el contrato de `telar config --json`)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    archivo: str
+
+
+def _escribir(ctx, seccion: str, clave: str, valor):
+    from telar.config import ErrorDeConfig, escribir_clave
+    from telar.servicios import ErrorDeServicio
+
+    try:
+        return escribir_clave(seccion, clave, valor, ctx.config.origen)
+    except ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+
+
+def directorios(ctx, carpetas: str) -> Escrito:
+    """De qué carpetas salen los hilos («a,b»); vacío, las del perfil."""
+    from telar.servicios import ErrorDeServicio
+
+    dirs = [d.strip().strip("/") for d in carpetas.split(",") if d.strip()]
+    faltan = [d for d in dirs if not (ctx.config.raiz / d).is_dir()]
+    if faltan:
+        raise ErrorDeServicio(f"no existe en {ctx.config.raiz}: {', '.join(faltan)}", 422)
+    return Escrito(hilos="ok", archivo=str(_escribir(ctx, "hilos", "directorios", dirs or None)))
+
+
+def tope(ctx, n: int) -> Escrito:
+    return Escrito(hilos="ok", archivo=str(_escribir(ctx, "hilos", "tope", n)))
+
+
+def plantilla(ctx, cual: str, texto: str) -> Escrito:
+    """Qué decirle al agente al preparar una reunión (`reunion`) o al abrir un proyecto (`proyecto`); vacío,
+    el de fábrica."""
+    from telar.config import PROYECTO_POR_DEFECTO, REUNION_POR_DEFECTO
+
+    valor = texto.strip() or None
+    destino = _escribir(ctx, "agente", cual, valor)
+    defecto = REUNION_POR_DEFECTO if cual == "reunion" else PROYECTO_POR_DEFECTO
+    return Escrito(**{cual: valor or defecto, "archivo": str(destino)})
+
+
+def calendario(ctx, valor: str) -> Escrito:
+    """De dónde sale la agenda: `gws`, `ninguno` o la dirección de un calendario iCal."""
+    from telar.config import ErrorDeConfig, escribir_calendario
+    from telar.servicios import ErrorDeServicio
+
+    try:
+        destino = escribir_calendario(valor, ctx.config.origen)
+    except ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return Escrito(calendario="conectado", archivo=str(destino))

@@ -77,16 +77,8 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(str(e))
 
 
-def _en_otra(ctx, nombre: str, argv: list[str]) -> int:
-    return en_otra(ctx, nombre, "periodicos", argv)
-
-
-def en_otra(ctx, nombre: str, orden_telar: str, argv: list[str]) -> int:
-    """La misma orden de telar, en la otra máquina. La salida (texto o JSON) llega tal cual."""
-    remoto = next((r for r in ctx.config.remotos if r.nombre == nombre), None)
-    if remoto is None:
-        return _comun.queja(f"no hay un remoto «{nombre}» en [remotos]")
-    # sin el --en de aquí (`--en X` o `--en=X`): allá va `--en aqui`, para que no rebote
+def sin_en(argv: list[str]) -> list[str]:
+    """argv sin el `--en` de aquí (`--en X` o `--en=X`), con `--en aqui`: allá no rebota."""
     resto, saltar = [], False
     for a in argv:
         if saltar:
@@ -95,7 +87,29 @@ def en_otra(ctx, nombre: str, orden_telar: str, argv: list[str]) -> int:
             saltar = True
         elif not a.startswith("--en="):
             resto.append(a)
-    linea = f"PATH=$HOME/.local/bin:$PATH LANG=C.UTF-8 telar {orden_telar} " + shlex.join([*resto, "--en", "aqui"])
+    return [*resto, "--en", "aqui"]
+
+
+def _en_otra(ctx, nombre: str, argv: list[str]) -> int:
+    """En la otra máquina: por el bus, que lo corre su nodo; sin bus (o si no responde), por ssh."""
+    from telar import alla
+    from telar import bus as mod_bus
+
+    if mod_bus.hay_bus(ctx.config):
+        r = mod_bus.pedir(ctx.config, nombre, "periodicos", {"argv": sin_en(argv)}, espera=alla.ESPERA * 2 + 10)
+        if r.get("ok"):
+            sys.stdout.write(r.get("salida", ""))
+            sys.stderr.write(r.get("error_salida", ""))
+            return int(r.get("codigo", 1))
+    return en_otra(ctx, nombre, "periodicos", argv)
+
+
+def en_otra(ctx, nombre: str, orden_telar: str, argv: list[str]) -> int:
+    """La misma orden de telar, en la otra máquina. La salida (texto o JSON) llega tal cual."""
+    remoto = next((r for r in ctx.config.remotos if r.nombre == nombre), None)
+    if remoto is None:
+        return _comun.queja(f"no hay un remoto «{nombre}» en [remotos]")
+    linea = f"PATH=$HOME/.local/bin:$PATH LANG=C.UTF-8 telar {orden_telar} " + shlex.join(sin_en(argv))
     orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino, "bash -lc " + shlex.quote(linea)]
     try:
         r = subprocess.run(orden, capture_output=True, text=True, timeout=60)

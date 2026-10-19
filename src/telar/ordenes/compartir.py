@@ -77,16 +77,18 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    from telar.servicios import compartir as servicio
+
     if o.destinos:
-        lista = receptores(ctx.config)
+        r = servicio.destinos(ctx)
         if o.json:
-            return _comun.escribir_json({"destinos": lista})
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        lista = r.destinos
         for d in lista:
             print(f"{d['destino']:<16} {d['nombre']}")
         print(_comun.tenue("y cualquier hilo o agente: --a hilo:<nombre>"))
         return 0
-    url, texto, titulo = o.url.strip(), o.texto.strip(), o.titulo.strip()
-    r = _llevar(ctx, o.a.strip(), url, texto, titulo)
+    r = servicio.llevar(ctx, o.a, url=o.url, texto=o.texto, titulo=o.titulo).model_dump(mode="json")
     if o.json:
         _comun.escribir_json(r)
     elif r["ok"]:

@@ -299,37 +299,17 @@ def _agentes_en_contexto(ctx) -> str:
 
 
 def _skills(o, ctx) -> int:
-    """Las skills del agente de un hilo: las de su carpeta (y las de más arriba), las del
-    usuario y las de los plugins; y las que usó en la conversación que tiene anotada."""
+    """Las skills del agente de un hilo (telar.servicios.skills)."""
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import skills as servicio
+
     try:
-        agente = _construir(ctx.config.agente.nombre, ctx.config)
-    except ErrorDeAgente as e:
+        r = servicio.skills(ctx, o.hilo)
+    except ErrorDeServicio as e:
         return _comun.queja(str(e))
-    if not hasattr(agente, "skills"):
-        return _comun.queja(f"el agente {ctx.config.agente.nombre} no sabe listar sus skills")
-    tel = _comun.tejer(ctx, con_ficha=False)
-    hilo = None
-    if o.hilo:
-        hilo, aviso = _comun.hilo_o_nombre(tel, o.hilo)
-        if hilo is None:
-            return _comun.queja(aviso)
-    else:
-        hilo = _comun.hilo_actual(tel)
-    carpeta = hilo.ruta if hilo is not None and hilo.ruta else Path(ctx.config.raiz)
-    remoto = bool(hilo is not None and tel.estado.remotos().get(hilo.nombre))
-    conversacion = hilo.sesiones[0] if hilo is not None and hilo.sesiones else ""
-    usadas = agente.usadas(conversacion) if conversacion and not remoto else {}
-    skills = agente.skills(carpeta)
-    for s in skills:
-        s["usada"] = usadas.get(s["nombre"], 0)
-    # lo que se usó y no está en disco (una skill del sistema, una ya borrada) también cuenta
-    for nombre, n in usadas.items():
-        if not any(s["nombre"] == nombre for s in skills):
-            skills.append({"nombre": nombre, "descripcion": "", "origen": "otra", "alcance": "", "ruta": "", "usada": n})
-    datos = {"hilo": hilo.nombre if hilo is not None else "", "carpeta": str(carpeta),
-             "conversacion": conversacion, "remoto": remoto, "skills": skills}
     if o.json:
-        return _comun.escribir_json(datos)
+        return _comun.escribir_json(r.model_dump(mode="json"))
+    skills = r.skills
     for s in skills:
         marca = f"✓{s['usada']}" if s["usada"] else "  "
         print(f"{marca:>3} {s['nombre']}  " + _comun.tenue(f"{s['origen']}{' · en ' + s['alcance'] if s['alcance'] else ''}"))
