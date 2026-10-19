@@ -18,8 +18,6 @@ tarde son dos conversaciones, y la de la mañana puede seguir abierta. El agente
 
 from __future__ import annotations
 
-import datetime as dt
-
 from telar.agente import ErrorDeAgente
 from telar.agente import lanzar
 from telar.mux import ErrorDeMux
@@ -37,30 +35,25 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
-    atajos = {a.tecla: a for a in ctx.config.atajos}
-    if not o.tecla:
-        if o.json:
-            return _comun.escribir_json({"atajos": [
-                {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion}
-                for a in atajos.values()]})
-        if not atajos:
-            print(_comun.tenue("no hay atajos: se declaran en la configuración, [atajos.<tecla>]"))
-        for a in atajos.values():
-            print(f"{a.tecla}  {a.nombre}  " + _comun.tenue(a.descripcion or a.mensaje))
-        return 0
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import atajos as servicio
 
-    atajo = atajos.get(o.tecla)
-    if atajo is None:
-        return _comun.queja(f"no hay atajo en «{o.tecla}»: `telar atajo` lista los que hay")
-    if atajo.agente:
-        return _encargar(ctx, atajo, o.json)
-    nombre = f"{atajo.nombre} {dt.datetime.now():%m/%d %H:%M}"
-    problema = abrir(ctx, nombre, atajo.mensaje)
-    if problema:
-        return _comun.queja(problema)
+    if not o.tecla:
+        r = servicio.lista(ctx)
+        if o.json:
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        if not r.atajos:
+            print(_comun.tenue("no hay atajos: se declaran en la configuración, [atajos.<tecla>]"))
+        for a in r.atajos:
+            print(f"{a['tecla']}  {a['nombre']}  " + _comun.tenue(a["descripcion"] or a["mensaje"]))
+        return 0
+    try:
+        r = servicio.correr(ctx, o.tecla)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
     if o.json:
-        return _comun.escribir_json({"hilo": nombre, "mensaje": atajo.mensaje})
-    print(f"{nombre} · {atajo.mensaje}")
+        return _comun.escribir_json(r.model_dump(mode="json"))
+    print(f"{r.hilo} · {r.mensaje}" + (f" · {r.encargo}" if getattr(r, "encargo", "") else ""))
     return 0
 
 
@@ -90,45 +83,3 @@ def abrir(ctx, nombre: str, mensaje: str) -> str:
     except (ErrorDeMux, ErrorDeAgente) as e:
         return f"no pude abrir «{nombre}»: {e}"
     return ""
-
-
-def _encargar(ctx, atajo, como_json: bool) -> int:
-    """El atajo de un agente residente: le encarga el mensaje y lleva a su hilo de siempre.
-
-    Si el agente vive en otra máquina (`[agentes] en`), el encargo se hace allá y la ventana de su
-    hilo se trae aquí si todavía no estaba (`telar remotos traer`)."""
-    import io
-    import json
-    from contextlib import redirect_stdout
-
-    from telar import agentes as mod_agentes
-    from telar.ordenes import encargar, remotos
-
-    agente = next((a for a in mod_agentes.descubrir(ctx.config) if atajo.agente in (a.clave, a.nombre)), None)
-    if agente is None:
-        return _comun.queja(f"el atajo «{atajo.tecla}» le encarga a «{atajo.agente}», que no está en [agentes] carpeta")
-    salida = io.StringIO()
-    with redirect_stdout(salida):
-        codigo = encargar.main([agente.clave, atajo.mensaje, "--json"], ctx)
-    if codigo != 0:
-        return codigo
-    try:
-        r = json.loads(salida.getvalue().strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        r = {"estado": "?"}
-    tel = _comun.tejer(ctx, con_ficha=False)
-    hilo = tel.por_nombre(agente.nombre)
-    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
-        with redirect_stdout(io.StringIO()):
-            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
-        tel = _comun.tejer(ctx, con_ficha=False)
-        hilo = tel.por_nombre(agente.nombre)
-    if hilo is not None and tel.mux is not None and tel.vivo(hilo):
-        try:
-            tel.mux.ir(hilo.id)
-        except ErrorDeMux:
-            pass
-    if como_json:
-        return _comun.escribir_json({"hilo": agente.nombre, "mensaje": atajo.mensaje, "encargo": r.get("estado", "")})
-    print(f"{agente.nombre} · {atajo.mensaje} · {r.get('estado', '')}")
-    return 0

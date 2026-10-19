@@ -24,9 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from telar import lectura
-from telar.agente import ErrorDeAgente
 from telar.agente import lanzar
-from telar.mux import ErrorDeMux
 from telar.ordenes import _comun
 
 AYUDA = "Todas las unidades del perfil, y abrir un hilo cargando una."
@@ -207,15 +205,13 @@ def main(argv: list[str], ctx) -> int:
         print(_comun.tenue(f"{len(lista)} unidades · ● con hilo abierto · telar proyectos abrir <ruta>"))
         return 0
 
-    tel = _comun.tejer(ctx, con_ficha=False)
-    if tel.mux is None or not tel.viva:
-        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import atajos as servicio_atajos
+
     try:
-        r = abrir(ctx, tel, o.ruta)
-    except ValueError as e:
+        r = servicio_atajos.abrir_unidad(ctx, o.ruta).model_dump(mode="json")
+    except ErrorDeServicio as e:
         return _comun.queja(str(e))
-    except (ErrorDeMux, ErrorDeAgente) as e:
-        return _comun.queja(f"no pude abrirlo: {e}")
     if o.json:
         return _comun.escribir_json(r)
     print(f"{r['hilo']} · {r['hecho']}")

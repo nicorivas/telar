@@ -8,12 +8,6 @@ multiplexor), pero lo que pasa por telar no se pierde.
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from telar.agente import ErrorDeAgente
-from telar.agente import lanzar
-from telar.mux import ErrorDeMux
-from telar import remoto as mod_remoto
 from telar.ordenes import _comun
 
 AYUDA = "Poner el foco en un hilo."
@@ -28,58 +22,19 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
-    tel = _comun.tejer(ctx, con_ficha=False)
-    if tel.mux is None:
-        return _comun.queja(tel.aviso or "no hay multiplexor con el que hablar")
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import ir as servicio
 
-    hilo, problema = _comun.resolver(tel, o.hilo)
-    if hilo is not None and tel.vivo(hilo):
-        try:
-            tel.mux.ir(hilo.id)
-        except ErrorDeMux as e:
-            return _comun.queja(str(e))
-        tel.estado.marcar(hilo.nombre)
-        print(f"→ «{hilo.nombre}»")
-        return 0
-
-    if not o.crear:
-        pista = "" if hilo is None else " (está archivado o la sesión no lo muestra)"
-        return _comun.queja(f"{problema or 'ese hilo no está vivo'}{pista}. `--crear` lo abre.")
-
-    nombre = hilo.nombre if hilo is not None else o.hilo
-    if o.remoto:
-        remoto = next((r for r in ctx.config.remotos if r.nombre == o.remoto), None)
-        if remoto is None:
-            nombres = ", ".join(r.nombre for r in ctx.config.remotos) or "ninguno declarado"
-            return _comun.queja(f"no hay remoto «{o.remoto}» en la configuración ({nombres})")
-        relativa = tel.estado.vinculos().get(nombre, "")
-        try:
-            sesion = mod_remoto.abrir(ctx, tel, nombre, remoto, relativa=relativa)
-        except (ErrorDeMux, ErrorDeAgente) as e:
-            return _comun.queja(f"no pude abrirlo en {remoto.destino}: {e}")
-        tel.estado.desarchivar(nombre)
-        tel.estado.marcar(nombre)
-        from telar import directorio as mod_directorio
-
-        mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
-        print(f"→ «{nombre}» (nuevo, en {remoto.destino} · sesión {sesion})")
-        return 0
-    # sin carpeta, el tab nace donde esté parado el servidor del multiplexor, que suele ser
-    # «/»: un hilo en la raíz del disco no sirve para nada. Y nace con su agente, como los
-    # que abre `tejer`: un hilo es un lugar de trabajo, no una shell.
-    ruta = hilo.ruta if hilo is not None and hilo.ruta is not None else None
     try:
-        lanz = lanzar.para_hilo(ctx.config, nombre, ruta)
-    except ErrorDeAgente as e:
-        print(_comun.tenue(f"  sin agente: {e}"))
-        lanz = None
-    carpeta = lanz.carpeta if lanz is not None else (ruta or Path(ctx.config.raiz))
-    try:
-        nuevo = tel.mux.crear(nombre, ruta=carpeta, comando=lanz.comando if lanz else None)
-    except ErrorDeMux as e:
-        return _comun.queja(f"no pude abrirlo: {e}")
-    tel.estado.desarchivar(nombre)
-    tel.estado.marcar(nombre)
-    lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
-    print(f"→ «{nuevo.nombre}» (nuevo)" + (f" · {carpeta}" if carpeta else ""))
+        r = servicio.ir(ctx, o.hilo, crear=o.crear, remoto=o.remoto)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
+    if r.aviso:
+        print(_comun.tenue(f"  {r.aviso}"))
+    if r.hecho == "foco":
+        print(f"→ «{r.hilo}»")
+    elif r.hecho == "nuevo-remoto":
+        print(f"→ «{r.hilo}» (nuevo, en {r.destino} · sesión {r.sesion})")
+    else:
+        print(f"→ «{r.hilo}» (nuevo)" + (f" · {r.carpeta}" if r.carpeta else ""))
     return 0

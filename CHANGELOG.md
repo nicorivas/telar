@@ -28,6 +28,9 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `GET /atajos`, `POST /atajos/{tecla}`, `POST /encargos`, `POST /proyectos/abrir` and `POST /ir`: the
+  calls that open or focus a thread, one service each; the CLI's old paths to another machine without a
+  bus (through the door, over ssh) stay in the CLI, and the API says so with a 502.
 - `POST /mensajes`, `POST /mensajes/{id}/soltar`, `POST /notas` and `PUT /config/pestanas`: the writes
   that don't open a thread, one service each; the panel asks the API first.
 - The bus log is read in batches with an ephemeral consumer instead of one request per message: the last 60

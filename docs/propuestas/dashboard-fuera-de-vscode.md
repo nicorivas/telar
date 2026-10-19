@@ -213,7 +213,9 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    comparada con la CLI de antes sobre los datos reales (mismo JSON). De las que escriben, hechas las que no
    abren hilos: mandar un mensaje (`POST /mensajes`), soltar uno retenido (`POST /mensajes/{id}/soltar`), una
    nota en un evento (`POST /notas`) y el orden de las pestañas (`PUT /config/pestanas`). Siguen las que
-   abren hilos (atajos, encargos, abrir un proyecto, ir a un pendiente). El entorno ya no es problema: un
+   abren hilos: hechas los atajos (`/atajos`, `POST /atajos/{tecla}`), los encargos (`POST /encargos`),
+   abrir una unidad (`POST /proyectos/abrir`) e ir a un hilo (`POST /ir`); siguen `pendiente` (llevar un
+   pendiente a su hilo, marcar una casilla), los verbos de `hilo` y `tejer`. El entorno ya no es problema: un
    panel nuevo hereda el de quien le pide a tmux que lo abra, y telar lo abre con el PATH de la shell de
    login de la persona, así que da lo mismo si lo pide el panel, la API o el nodo.
    Quedan aparte `periodicos` y `correo`, que desde el laptop van al servidor por ssh: pasan cuando ese

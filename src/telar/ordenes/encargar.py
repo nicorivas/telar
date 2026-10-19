@@ -39,32 +39,29 @@ def main(argv: list[str], ctx) -> int:
         from telar import bus as mod_bus
 
         if mod_bus.hay_bus(ctx.config):
-            from telar import agentes as residentes
-            from telar.ordenes import mensaje
+            from telar.servicios import ErrorDeServicio
+            from telar.servicios import encargos as servicio
 
             # un encargo es para un agente residente: a un nombre que no lo es, nadie lo recogería
-            hay = residentes.descubrir(ctx.config)
-            if o.agente not in {x for a in hay for x in (a.clave, a.nombre)}:
-                return _comun.queja(f"«{o.agente}» no es un agente residente (hay: {', '.join(sorted(a.nombre for a in hay))}). "
-                                    "Para escribirle a un hilo cualquiera: telar mensaje")
             texto_bus = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
             try:
-                r = mensaje.enviar(ctx, o.agente, texto_bus, tipo="encargo")
-                if r.get("estado") == "retenido":
+                r = servicio.por_el_bus(ctx, o.agente, texto_bus)
+                if r.estado == "retenido":
                     if o.json:
-                        return _comun.escribir_json({"hilo": r["para"], "estado": "retenido", "motivo": r["motivo"], "id": r["id"]})
-                    print(f"{r['para']}: RETENIDO, no se entregó ({r['motivo']}). Cuéntale a tu persona; ella lo suelta "
-                          f"con: telar mensaje --soltar {r['id']}", file=sys.stderr)
+                        return _comun.escribir_json(r.model_dump(mode="json"))
+                    print(f"{r.hilo}: RETENIDO, no se entregó ({r.motivo}). Cuéntale a tu persona; ella lo suelta "
+                          f"con: telar mensaje --soltar {r.id}", file=sys.stderr)
                     return 3
-                salida = {"hilo": r["para"], "estado": "en su casilla (bus)", "id": r["id"]}
                 if o.json:
-                    return _comun.escribir_json(salida)
-                print(f"{r['para']}: en su casilla (bus) · id {r['id']}")
+                    return _comun.escribir_json(r.model_dump(mode="json"))
+                print(f"{r.hilo}: en su casilla (bus) · id {r.id}")
                 return 0
-            except mod_bus.ErrorDeBus as e:
-                print(f"telar: el bus no recibió el encargo ({e}); voy por el camino de siempre", file=sys.stderr)
+            except servicio.BusCaido as e:
+                print(f"telar: {e}; voy por el camino de siempre", file=sys.stderr)
                 if o.texto == ["-"]:
                     o.texto = [texto_bus]
+            except ErrorDeServicio as e:
+                return _comun.queja(str(e))
     if o.en is not None:
         en = o.en
     else:

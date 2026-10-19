@@ -356,6 +356,60 @@ def put_pestanas(pedido: PedidoPestanas, ctx: Contexto = Depends(contexto)):
     return servicio_config.pestanas(ctx, pedido.valor)
 
 
+# ── lo que abre hilos: atajos, encargos, unidades ────────────────────────────
+
+from telar.servicios import atajos as servicio_atajos
+from telar.servicios import encargos as servicio_encargos
+
+
+@app.get("/atajos", response_model=servicio_atajos.Atajos)
+def get_atajos(ctx: Contexto = Depends(contexto)):
+    """Los atajos del dashboard (`telar atajo --json`)."""
+    return servicio_atajos.lista(ctx)
+
+
+@app.post("/atajos/{tecla}", response_model=servicio_atajos.AtajoHecho)
+def post_atajo(tecla: str, ctx: Contexto = Depends(contexto)):
+    """Correr un atajo: un hilo nuevo con su mensaje, o el encargo a su agente (`telar atajo <tecla>`)."""
+    return servicio_atajos.correr(ctx, tecla)
+
+
+class PedidoEncargo(BaseModel):
+    agente: str
+    texto: str
+
+
+@app.post("/encargos", response_model=servicio_encargos.Encargo)
+def post_encargo(pedido: PedidoEncargo, ctx: Contexto = Depends(contexto)):
+    """Encargarle algo a un agente residente (`telar encargar`)."""
+    return servicio_encargos.encargar(ctx, pedido.agente, pedido.texto)
+
+
+class PedidoUnidad(BaseModel):
+    ruta: str
+
+
+@app.post("/proyectos/abrir", response_model=servicio_atajos.Abierto)
+def post_abrir_unidad(pedido: PedidoUnidad, ctx: Contexto = Depends(contexto)):
+    """Ir al hilo de una unidad o abrirle uno (`telar proyectos abrir <ruta>`)."""
+    return servicio_atajos.abrir_unidad(ctx, pedido.ruta)
+
+
+from telar.servicios import ir as servicio_ir
+
+
+class PedidoIr(BaseModel):
+    hilo: str
+    crear: bool = False
+    remoto: str = ""
+
+
+@app.post("/ir", response_model=servicio_ir.Ido)
+def post_ir(pedido: PedidoIr, ctx: Contexto = Depends(contexto)):
+    """El foco en un hilo; con `crear`, lo abre si no está vivo (aquí, o en `remoto`) (`telar ir`)."""
+    return servicio_ir.ir(ctx, pedido.hilo, crear=pedido.crear, remoto=pedido.remoto)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

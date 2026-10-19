@@ -363,8 +363,9 @@ export const pendientesRepo = async () => await deServe<{ pendientes: JsonFila[]
     ?? telarJson<{ pendientes: JsonFila[] }>(['pendientes', '--json', '--repo'], 30000);
 
 /** `telar proyectos abrir`: un hilo vinculado a esa unidad con el agente cargándola, o ir al que ya hay. */
-export const abrirProyecto = (ruta: string) =>
-    telarJson<{ hilo: string; ruta: string; mensaje: string; hecho: string }>(['proyectos', 'abrir', ruta, '--json'], 30000);
+export const abrirProyecto = async (ruta: string) =>
+    await aServe<{ hilo: string; ruta: string; mensaje: string; hecho: string }>('POST', '/proyectos/abrir', 30000, { ruta })
+    ?? telarJson<{ hilo: string; ruta: string; mensaje: string; hecho: string }>(['proyectos', 'abrir', ruta, '--json'], 30000);
 
 /** De dónde sale la agenda, según `telar config --json`. La dirección iCal viene tapada. */
 export interface JsonCalendario {
@@ -418,8 +419,9 @@ export async function config(): Promise<Respuesta<JsonConfig>> {
 }
 
 /** `telar encargar <agente> "…"`: pedirle algo a un agente residente, viva donde viva. */
-export const encargar = (agente: string, texto: string) =>
-    telarJson<{ hilo?: string; estado?: string; id?: string }>(['encargar', agente, texto], 30000);
+export const encargar = async (agente: string, texto: string) =>
+    await aServe<{ hilo?: string; estado?: string; id?: string }>('POST', '/encargos', 30000, { agente, texto })
+    ?? telarJson<{ hilo?: string; estado?: string; id?: string }>(['encargar', agente, texto], 30000);
 
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
  *  prefijos si terminan en `*`. `home`: si declara una página. */
@@ -545,7 +547,9 @@ export async function abrirItem(clave: string, mensaje: string, nombre: string):
     return await aServe<{ hilo: string; mensaje: string }>('POST', `/bloques/${encodeURIComponent(clave)}/abrir`, 30000, { mensaje, nombre })
         ?? telarJson(['bloque', clave, '--abrir', mensaje, '--nombre', nombre, '--json'], 30000);
 }
-export const atajo = (tecla: string) => telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
+export const atajo = async (tecla: string) =>
+    await aServe<{ hilo: string; mensaje: string }>('POST', `/atajos/${encodeURIComponent(tecla)}`, 30000)
+    ?? telarJson<{ hilo: string; mensaje: string }>(['atajo', tecla, '--json'], 30000);
 
 /** Empuja al servidor una foto de los hilos de este laptop (`telar espejo publicar`), para verlos
  *  desde allá y desde la web del celular. `remoto` es una máquina de `[remotos]`; vacío, la única. */
@@ -605,8 +609,11 @@ export async function hoy(local: boolean, dia = ''): Promise<Respuesta<JsonHoy>>
         ?? telarJson<JsonHoy>(['hoy', ...(local ? ['--local'] : []), ...(dia ? ['--dia', dia] : [])], local ? 20000 : 120000);
 }
 
-export const ir = (hilo: string, crear = false, remoto = '') =>
-    telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
+export async function ir(hilo: string, crear = false, remoto = ''): Promise<Salida> {
+    const r = await aServe<{ hilo: string; hecho: string }>('POST', '/ir', remoto ? 60000 : 20000, { hilo, crear, remoto });
+    if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: `→ «${r.datos?.hilo ?? hilo}»`, err: '' };
+    return telar(['ir', hilo, ...(crear ? ['--crear'] : []), ...(remoto ? ['--remoto', remoto] : [])], remoto ? 60000 : 20000);
+}
 
 /** Un correo entre agentes, como lo da `telar correo --json`. */
 export interface JsonCorreo {
