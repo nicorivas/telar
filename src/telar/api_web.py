@@ -74,7 +74,10 @@ def crear(api_app, clave: str | None = None) -> FastAPI:
             r.set_cookie(COOKIE, clave, httponly=True, samesite="lax", max_age=31536000, path="/")
             return r
         if not secrets.compare_digest(request.cookies.get(COOKIE, ""), clave):
-            return PlainTextResponse("telar: falta la llave (?k=…)", status_code=403)
+            return PlainTextResponse(
+                "telar: falta la llave. Ábrela una vez con ?k=<llave> al final de la dirección: es la de "
+                "~/.config/telar/panel.llave en esta máquina (la misma del panel). Después queda en una cookie.",
+                status_code=403)
         if request.method not in ("GET", "HEAD", "OPTIONS") and not _mismo_origen(request):
             return JSONResponse({"detail": "desde otra página, no"}, status_code=403)
         r = await siguiente(request)
