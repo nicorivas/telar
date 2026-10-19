@@ -1,6 +1,7 @@
 # Los tipos: un esquema sobre archivos de texto
 
-Propuesta, 19-oct-2026. Estado: **por construir**, empezando por el tipo `tarea`. Es el paso 2 de
+Propuesta, 19-oct-2026. Estado: **en construcción**: el tipo `tarea` y sus dos formatos ya leen y
+escriben (ver «Lo hecho», al final). Es el paso 2 de
 [primitivas.md](primitivas.md) («direcciones y objetos») hecho concreto.
 
 ## Por qué
@@ -29,12 +30,12 @@ el mismo cuidado con que los cambiaría una persona.
 | **Obsidian Bases**, **Dataview**, **Obsidian Tasks** | vistas de base de datos sobre las propiedades de las notas; un formato de tarea en una línea | las vistas y el formato de línea |
 | **Backlog.md** | tareas como archivos `.md` con frontmatter, CLI y tablero, pensado para agentes | la confirmación de que esto sirve tal cual |
 | **MarkdownDB**, la caché de Obsidian, el índice de git | un índice derivado de los archivos, que se puede borrar y reconstruir | el índice en memoria |
-| **ruamel.yaml** | YAML de ida y vuelta: cambia un valor y conserva orden y comentarios | el formato del frontmatter |
+| **ruamel.yaml** | YAML de ida y vuelta: cambia un valor y conserva orden y comentarios | nada, al final: el frontmatter de las tareas no es YAML (ver «Lo hecho») |
 
 **Augeas como referencia, no como librería.** Es una librería en C con un lenguaje propio para escribir
 lentes, difícil de escribir y depurar, sin lentes para markdown ni frontmatter, y pensada para la
 configuración del sistema. Se toma el principio y se implementa en Python con lo estándar: un motor chico
-para formatos de línea y `ruamel.yaml` para el frontmatter.
+para formatos de línea, y lentes en código para los formatos con estructura.
 
 ## Las piezas de un tipo
 
@@ -52,20 +53,21 @@ La acción cambia el modelo; el formato traduce ese cambio a la edición mínima
 ### El modelo de una tarea
 
 ```python
-class Tarea(BaseModel):
+class Tarea(BaseModel):            # telar/tipos/tarea.py
     id: str                         # T84
     titulo: str
-    estado: Literal["activa", "en_curso", "esperando", "hecha", "caduca", "descartada"]
-    prioridad: int | None = None    # 0 la más alta
-    vence: date | None = None
+    estado: str = "activa"          # activa, espera, algun-dia, hecha, caduca, descartada
+    en_curso: bool = False          # una casilla [>]
+    prioridad: int = 2              # 0 la más alta
+    vence: str = ""                 # AAAA-MM-DD
+    espera: str = ""                # a quién le toca ahora (solo mientras espera)
     dueno: str = ""                 # "" es la persona dueña del repositorio
-    espera: str = ""                # a quién le toca ahora, si no es a ella
-    area: str = ""
-    proyecto: str = ""
+    proyecto, area, origen, trabajo, avance: str
     etiquetas: list[str] = []
-    creada: date | None = None
-    cerrada: date | None = None
-    cuerpo: str = ""                # el texto libre
+    creada: str = ""
+    cerrada: str = ""               # solo mientras está cerrada
+    contexto: str = ""              # el texto libre
+    conexiones: list[str] = []
     historia: list[Cambio] = []     # lo que le pasó, una línea por acción
 ```
 
@@ -77,7 +79,7 @@ class Tarea(BaseModel):
 | `reabrir` | está cerrada | `estado = activa`, `cerrada = None` |
 | `reagendar(fecha)` | no está cerrada | `vence = fecha` |
 | `asignar(persona)` | — | `dueno = persona` |
-| `esperar(a quién)` | no está cerrada | `estado = esperando`, `espera = …` |
+| `esperar(a quién)` | no está cerrada | `estado = espera`, `espera = …` |
 | `anotar(texto)` | — | una línea más en la historia |
 
 Toda acción agrega a `historia` una línea con la fecha, qué fue y quién la pidió: es el «cambio» de las
@@ -85,7 +87,7 @@ primitivas, ya escrito en el archivo (las tareas de hoy ya tienen esa sección).
 
 ### Los formatos
 
-**El archivo propio** (la CLI de tareas de hoy): frontmatter YAML, el cuerpo, y la historia como sección.
+**El archivo propio** (la CLI de tareas de hoy): líneas `clave: valor` entre `---` (no es YAML), el contexto, y la historia como sección.
 
 ```diff
  ---
@@ -107,7 +109,7 @@ primitivas, ya escrito en el archivo (las tareas de hoy ya tienen esa sección).
 
 ```diff
 -- [ ] Medir el alcance  vence:2026-06-30  !alta  #faro  <!-- id: T84 -->
-+- [x] Medir el alcance  vence:2026-06-30  !alta  #faro  hecha:2026-10-19  <!-- id: T84 -->
++- [x] Medir el alcance  vence:2026-06-30  !alta  #faro @hecha(2026-10-19) <!-- id: T84 -->
 ```
 
 **todo.txt**, si alguien lo usa:
@@ -126,7 +128,8 @@ objeto y dónde está cada campo; escribir recibe los campos que cambiaron y ree
 campo que no estaba se agrega en su lugar definido).
 
 - **Formatos de línea** (la casilla, todo.txt): declarativos, en el módulo del tipo o en el perfil del
-  repositorio.
+  repositorio. (La casilla, por ahora, está escrita en código —`FormatoCasilla`— con sus dos dialectos;
+  pasarla a esta declaración es el paso siguiente cuando haya un segundo formato de línea.)
 
   ```toml
   [tipos.tarea.formatos.casilla]
@@ -141,9 +144,11 @@ campo que no estaba se agrega en su lugar definido).
   dueno     = { ficha = "@{valor}" }
   ```
 
-- **Formatos con estructura** (el frontmatter): en código, con dos funciones (`leer`, `escribir`) y
-  `ruamel.yaml` para que el orden de los campos y los comentarios sobrevivan. Las claves son
-  configurables: un repositorio en inglés puede decir `status` y `due` donde este dice `estado` y `vence`.
+- **Formatos con estructura** (el archivo propio): en código, con dos funciones (`leer`, `escribir`).
+  Las claves son configurables: un repositorio en inglés puede decir `status` y `due` donde este dice
+  `estado` y `vence`. (El frontmatter de las tareas resultó no ser YAML: son líneas `clave: valor`, y un
+  título lleva «:» sin comillas. Una lente por líneas es más simple que YAML de ida y vuelta, y da la
+  edición mínima sin librería.)
 
 ## Las reglas
 
@@ -224,4 +229,30 @@ base de datos).
   reconoce por su texto, que cambia. Al escribirlo la primera vez, ¿se le pone un id?
 - **Las migraciones.** Cuando el modelo cambie, ¿un campo `version` en cada archivo, o un lector que
   entienda las dos formas?
-- **La dependencia.** `ruamel.yaml` entra al núcleo (hoy solo está PyYAML, que no conserva el formato).
+- ~~**La dependencia.**~~ No hizo falta `ruamel.yaml`: el frontmatter de las tareas son líneas
+  `clave: valor`, no YAML.
+
+## Lo hecho (19-oct-2026)
+
+**Paso 1, y la mitad del 2**: `telar/tipos/` con el tipo `tarea` y sus dos lentes, que ya leen y escriben.
+
+- **El archivo propio** (`FormatoArchivo`): líneas `clave: valor` en su orden, el contexto, `## Conexiones`
+  y `## Historia`. Verificado contra las 308 tareas reales:
+  - leer da lo mismo que la CLI de tareas, campo por campo, en las 308;
+  - escribir sin cambios da los mismos bytes;
+  - siete cambios por tarea (completar, reagendar, asignar, etiquetas, contexto, conexiones, quitar un
+    campo): 2.156 ediciones, todas releídas con el valor nuevo por las dos lecturas (esta y la de la CLI),
+    y cada una tocando solo sus líneas.
+- **La casilla** (`FormatoCasilla`): lee los dos dialectos (`@owner(…)`, `@deadline(…)`, `@prioridad(…)`,
+  «@Nombre:» al comienzo; y `vence:`, `!alta`, `#etiqueta`) y escribe en el de la línea, o como
+  `@clave(valor)` antes del identificador. La fecha de cierre es `@hecha(AAAA-MM-DD)`. Verificado contra
+  las 4.868 casillas de los documentos: la misma lectura que `telar.lectura` (dueño, fecha, estado), y
+  34.076 cambios releídos con el valor nuevo sin tocar otro campo.
+- **Las reglas que salieron de los datos**: a quién se espera vale solo mientras la tarea espera; la fecha
+  de cierre, solo mientras está cerrada (las dos como la CLI de tareas); una fecha que no es fecha («@vence(YYYY-MM-DD)»,
+  una plantilla) no se lee como fecha; una casilla no guarda cuerpo, conexiones ni de dónde salió, y
+  cambiarlos es un error; la historia tampoco, y eso está declarado.
+
+Falta: las acciones (completar saca de «en curso», reabrir, reagendar…, con su línea en la historia), las
+versiones para la concurrencia optimista, el índice en `telar serve`, y el cambio de la CLI de tareas.
+

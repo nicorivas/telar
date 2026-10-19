@@ -8,6 +8,12 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar.tipos`: types over text files (`docs/propuestas/tipos.md`). The first is `tarea`, with two lenses
+  that read leniently and write minimally — what did not change stays byte for byte: its own file
+  (`clave: valor` lines, context, `## Conexiones`, `## Historia`; keys configurable) and a checkbox in a
+  document (both dialects: `@owner(…)`/`@deadline(…)`/`@prioridad(…)` and `vence:`/`!alta`/`#tag`). Checked
+  against real data: 308 task files and 4,868 checkboxes, read the same as before and changed thousands of
+  times without touching anything else.
 - `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
   directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
   used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first
