@@ -28,6 +28,11 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `POST /pendiente/llevar` and `/pendiente/casilla`: carrying a pending item to its thread and changing its
+  checkbox, as functions that return their result (the CLI, the task actions and meetings use them; no
+  more captured output). `POST /hilo/{verbo}` and `POST /tejer` run the same command inside the API
+  process with its output captured, one at a time (`telar.servicios.en_proceso`): a bridge until those
+  verbs return models. `hilo llevar` (minutes, over ssh) stays on the CLI.
 - `GET /atajos`, `POST /atajos/{tecla}`, `POST /encargos`, `POST /proyectos/abrir` and `POST /ir`: the
   calls that open or focus a thread, one service each; the CLI's old paths to another machine without a
   bus (through the door, over ssh) stay in the CLI, and the API says so with a 502.

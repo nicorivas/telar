@@ -686,31 +686,48 @@ export const correo = (cuerpos = false) =>
 export interface JsonRemoto { nombre: string; destino: string; transporte: string; raiz: string }
 
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
-export const hilo = (verbo: string, hilo: string, valor?: string, extra: string[] = []) =>
-    // llevar copia una conversación por ssh y abre el hilo allá: puede tardar más
-    // llevar copia la conversación por ssh y abre el hilo allá: una conversación grande con la subida de un
-    // laptop tarda minutos (4 con 12 MB, el 9-oct). Con 2 la extensión daba por fallado lo que seguía andando
-    telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], verbo === 'llevar' ? 15 * 60000 : 30000);
+export async function hilo(verbo: string, hilo: string, valor?: string, extra: string[] = []): Promise<Salida> {
+    // por la API, salvo llevar: copia la conversación por ssh y abre el hilo allá, y una conversación grande
+    // con la subida de un laptop tarda minutos (4 con 12 MB, el 9-oct). Con 2 la extensión daba por fallado
+    // lo que seguía andando
+    const soloCerrar = extra.every(x => x === '--cerrar');
+    if (verbo !== 'llevar' && soloCerrar) {
+        const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', `/hilo/${encodeURIComponent(verbo)}`, 30000,
+            { hilo, valor: valor ?? '', cerrar: extra.includes('--cerrar') });
+        if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.salida ?? '', err: r.datos?.error ?? '' };
+    }
+    return telar(['hilo', verbo, ...(valor ? [valor] : []), '--hilo', hilo, ...extra], verbo === 'llevar' ? 15 * 60000 : 30000);
+}
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */
 /** `proveedor`, si se sabe, evita preguntarles a todos (el calendario se baja entero): de 5 s a menos de 1. */
-export const pendiente = (ref: string, nuevo = false, proveedor = '', texto = '', enviar = false) =>
-    telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : []),
+export const pendiente = async (ref: string, nuevo = false, proveedor = '', texto = '', enviar = false) =>
+    await aServe<JsonPendienteIdo>('POST', '/pendiente/llevar', 90000, { ref, nuevo, proveedor, texto, enviar })
+    ?? telarJson<JsonPendienteIdo>(['pendiente', ref, ...(nuevo ? ['--nuevo'] : []), ...(proveedor ? ['--proveedor', proveedor] : []),
         ...(texto ? ['--texto', texto] : []), ...(enviar ? ['--enviar'] : [])], 90000);
 
 /** Una casilla en su documento: `--hecho`, `--responsable NOMBRE` o `--linea`. `esperado` es el texto
  *  que se vio: si el documento cambió y ya no dice eso, telar no toca nada. */
 export interface JsonVineta { ref: string; archivo: string; relativa: string; linea: number; hecho: string }
-export const vineta = (ref: string, esperado: string, opciones: string[]) =>
-    telarJson<JsonVineta>(['pendiente', ref, ...opciones, '--esperado', esperado, '--json'], 60000);
+export async function vineta(ref: string, esperado: string, opciones: string[]): Promise<Respuesta<JsonVineta>> {
+    const i = opciones.indexOf('--responsable');
+    const cuerpo = { ref, esperado, hecho: opciones.includes('--hecho'), linea: opciones.includes('--linea'),
+        ...(i >= 0 ? { responsable: opciones[i + 1] ?? '' } : {}) };
+    return await aServe<JsonVineta>('POST', '/pendiente/casilla', 60000, cuerpo)
+        ?? telarJson<JsonVineta>(['pendiente', ref, ...opciones, '--esperado', esperado, '--json'], 60000);
+}
 
 /** `--si` porque la confirmación ya la dio la persona en un diálogo: sin eso, una acción que
  *  pide confirmar falla aquí, donde no hay una terminal que pueda preguntar. */
 export const accion = (nombre: string, hilo: string) =>
     telar(['accion', nombre, '--hilo', hilo, '--si'], 120000);
 
-export const tejer = () => telar(['tejer'], 20000);
+export async function tejer(sumar = false): Promise<Salida> {
+    const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', '/tejer', sumar ? 60000 : 20000, { sumar });
+    if (r) return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.salida ?? '', err: r.datos?.error ?? '' };
+    return telar(['tejer', ...(sumar ? ['--sumar'] : [])], sumar ? 60000 : 20000);
+}
 
 /** Cómo se llama un hilo en pantalla: la etiqueta de su ficha, o su nombre. El nombre sigue
  *  siendo la llave (la del multiplexor y la del estado): esto solo cambia lo que se lee. */

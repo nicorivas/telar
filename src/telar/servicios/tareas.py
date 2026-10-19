@@ -224,17 +224,10 @@ def _subir(archivo, mensaje: str) -> None:
 def _al_hilo(ctx, id: str, proveedor: str, mensaje: str, fila, nombre: str) -> str:
     """Al hilo donde se trabaja la tarea, no a uno nuevo: el de su proyecto (retomándolo si duerme) o,
     sin proyecto, el agente de `[agentes] sin_proyecto` (ver `telar pendiente`)."""
-    import io
-    from contextlib import redirect_stdout
-
     from telar.ordenes import pendiente
 
-    buf = io.StringIO()
-    with redirect_stdout(buf):
-        codigo = pendiente.main([id, "--texto", mensaje, "--enviar", "--proveedor", proveedor, "--json"], ctx, fila=fila)
-    if codigo != 0:
-        raise ErrorDeServicio(f"«{nombre}» se anotó, pero no pude llevarlo a su hilo", 502)
     try:
-        return json.loads(buf.getvalue().strip().splitlines()[-1]).get("destino", "")
-    except (ValueError, IndexError):
-        return ""
+        datos, _ = pendiente.llevar(ctx, id, texto=mensaje, enviar=True, proveedor=proveedor, fila=fila)
+    except ErrorDeServicio as e:
+        raise ErrorDeServicio(f"«{nombre}» se anotó, pero no pude llevarlo a su hilo: {e}", 502) from e
+    return datos.get("destino", "")

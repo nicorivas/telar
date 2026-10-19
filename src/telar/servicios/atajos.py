@@ -57,32 +57,14 @@ def correr(ctx, tecla: str) -> AtajoHecho:
 
 
 def _al_agente(ctx, atajo) -> AtajoHecho:
-    """Le encarga el mensaje al agente y lleva a su hilo de siempre. Si vive en otra máquina, su ventana se
-    trae aquí si todavía no estaba (`telar remotos traer`)."""
-    import io
-    from contextlib import redirect_stdout
-
+    """Le encarga el mensaje al agente y lleva a su hilo de siempre."""
     from telar import agentes as mod_agentes
-    from telar.mux import ErrorDeMux
-    from telar.ordenes import _comun, remotos
     from telar.servicios import encargos
 
     agente = next((a for a in mod_agentes.descubrir(ctx.config) if atajo.agente in (a.clave, a.nombre)), None)
     if agente is None:
         raise ErrorDeServicio(f"el atajo «{atajo.tecla}» le encarga a «{atajo.agente}», que no está en [agentes] carpeta", 404)
-    r = encargos.encargar(ctx, agente.clave, atajo.mensaje)
-    tel = _comun.tejer(ctx, con_ficha=False)
-    hilo = tel.por_nombre(agente.nombre)
-    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
-        with redirect_stdout(io.StringIO()):
-            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
-        tel = _comun.tejer(ctx, con_ficha=False)
-        hilo = tel.por_nombre(agente.nombre)
-    if hilo is not None and tel.mux is not None and tel.vivo(hilo):
-        try:
-            tel.mux.ir(hilo.id)
-        except ErrorDeMux:
-            pass
+    r = encargos.encargar_y_ir(ctx, agente, atajo.mensaje)
     return AtajoHecho(hilo=agente.nombre, mensaje=atajo.mensaje, encargo=r.estado)
 
 

@@ -57,75 +57,84 @@ def main(argv: list[str], ctx, *, fila: dict | None = None) -> int:
     if o is None:
         return codigo
 
-    tel = _comun.tejer(ctx)
-    fila = fila or _buscar(ctx, tel, o.ref, proveedor=o.proveedor)
+    from telar.servicios import ErrorDeServicio
+
+    try:
+        if o.hecho or o.responsable is not None or o.linea:
+            datos, linea = en_su_documento(ctx, o.ref, hecho=o.hecho, responsable=o.responsable, linea=o.linea,
+                                           esperado=o.esperado, proveedor=o.proveedor, fila=fila)
+        else:
+            datos, linea = llevar(ctx, o.ref, nuevo=o.nuevo, donde=o.donde, texto=o.texto, enviar=o.enviar,
+                                  proveedor=o.proveedor, fila=fila)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
+    if o.json:
+        return _comun.escribir_json(datos)
+    print(linea)
+    return 0
+
+
+def _encontrar(ctx, tel, ref: str, proveedor: str, fila: dict | None) -> dict:
+    from telar.servicios import ErrorDeServicio
+
+    fila = fila or _buscar(ctx, tel, ref, proveedor=proveedor)
     if fila is None:
-        return _comun.queja(
-            f"no encuentro el pendiente «{o.ref}». `telar pendientes` los lista con su referencia."
-        )
+        raise ErrorDeServicio(f"no encuentro el pendiente «{ref}». `telar pendientes` los lista con su referencia.", 404)
+    return fila
 
-    if o.hecho or o.responsable is not None or o.linea:
-        return _en_su_documento(tel, fila, o)
 
+def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: str = "", enviar: bool = False,
+           proveedor: str = "", fila: dict | None = None) -> tuple[dict, str]:
+    """Lleva el pendiente al hilo donde se trabaja (o solo dice adónde, con `donde`). (lo que pasó, en el
+    contrato de `--json`; y en una línea, para la terminal). `ErrorDeServicio` si no se pudo."""
+    from telar.servicios import ErrorDeServicio
+
+    tel = _comun.tejer(ctx)
+    fila = _encontrar(ctx, tel, ref, proveedor, fila)
     destino = _destino(tel, fila)
     # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
-    alla = _destino_remoto(ctx, fila) if destino is None and not o.nuevo else None
+    alla = _destino_remoto(ctx, fila) if destino is None and not nuevo else None
     agente = ctx.config.agente
-    texto = o.texto or mensaje(agente.pendiente, fila)
-    primero = o.texto or mensaje(agente.pendiente_nuevo, fila)
+    primero = texto or mensaje(agente.pendiente_nuevo, fila)
+    texto = texto or mensaje(agente.pendiente, fila)
 
     if alla is not None:
         nombre, maquina = alla
-        if o.donde:
-            if o.json:
-                return _comun.escribir_json({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina,
-                                             "vivo": True, "ruta": fila.get("ruta", ""), "nuevo": False})
-            print(f"{fila['ref']} → «{nombre}» (en {maquina}: por el bus)")
-            return 0
+        if donde:
+            return ({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina, "vivo": True,
+                     "ruta": fila.get("ruta", ""), "nuevo": False}, f"{fila['ref']} → «{nombre}» (en {maquina}: por el bus)")
         from telar import bus as mod_bus
 
         try:
             m = mod_bus.enviar(ctx.config, nombre, texto, de="el dashboard", tipo="persona")
         except mod_bus.ErrorDeBus as e:
-            return _comun.queja(f"«{nombre}» vive en {maquina} y el bus no lo llevó: {e}")
-        if o.json:
-            return _comun.escribir_json({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina,
-                                         "creado": False, "enviado": True, "id": m["id"]})
-        print(f"{fila['ref']} → «{nombre}» en {maquina}: en su casilla (bus)")
-        return 0
+            raise ErrorDeServicio(f"«{nombre}» vive en {maquina} y el bus no lo llevó: {e}", 502) from e
+        return ({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina, "creado": False,
+                 "enviado": True, "id": m["id"]}, f"{fila['ref']} → «{nombre}» en {maquina}: en su casilla (bus)")
 
-    if o.donde:
-        if o.json:
-            return _comun.escribir_json(
-                {
-                    "ref": fila["ref"],
-                    "texto": texto,
-                    "destino": destino.nombre if destino else "",
-                    "vivo": bool(destino and tel.vivo(destino)),
-                    "ruta": fila.get("ruta", ""),
-                    "nuevo": bool(o.nuevo or destino is None),
-                }
-            )
-        general = _agente_general(ctx) if destino is None and not o.nuevo else None
+    general = _agente_general(ctx) if destino is None and not nuevo else None
+    if donde:
+        datos = {"ref": fila["ref"], "texto": texto, "destino": destino.nombre if destino else "",
+                 "vivo": bool(destino and tel.vivo(destino)), "ruta": fila.get("ruta", ""),
+                 "nuevo": bool(nuevo or destino is None)}
         if general is not None:
-            print(f"{fila['ref']} → «{general.nombre}» (sin proyecto: se le encarga al agente)")
-            return 0
+            return datos, f"{fila['ref']} → «{general.nombre}» (sin proyecto: se le encarga al agente)"
         adonde = f"«{destino.nombre}»" if destino else "un hilo nuevo"
-        vivo = "" if destino and tel.vivo(destino) and not o.nuevo else " (habría que abrirlo)"
-        print(f"{fila['ref']} → {adonde}{vivo}")
-        return 0
+        vivo = "" if destino and tel.vivo(destino) and not nuevo else " (habría que abrirlo)"
+        return datos, f"{fila['ref']} → {adonde}{vivo}"
 
     if tel.mux is None:
-        return _comun.queja(tel.aviso or "no hay multiplexor con el que hablar")
-
-    general = _agente_general(ctx) if destino is None and not o.nuevo else None
+        raise ErrorDeServicio(tel.aviso or "no hay multiplexor con el que hablar", 409)
     if general is not None:
-        return _al_agente(ctx, general, fila, primero, como_json=o.json)
+        from telar.servicios import encargos
 
-    hilo, creado, problema = _llevar(ctx, tel, destino, fila, nuevo=o.nuevo, primero=primero)
+        r = encargos.encargar_y_ir(ctx, general, primero)
+        return ({"ref": fila["ref"], "texto": primero, "destino": general.nombre, "creado": r.estado == "abierto",
+                 "enviado": True, "encargo": r.estado}, f"{fila['ref']} → «{general.nombre}»: encargado ({r.estado})")
+
+    hilo, creado, problema = _llevar(ctx, tel, destino, fila, nuevo=nuevo, primero=primero)
     if hilo is None:
-        return _comun.queja(problema)
-
+        raise ErrorDeServicio(problema, 502)
     # un hilo recién abierto con su agente ya recibió el mensaje al arrancar: escribirle
     # ahora lo haría en una terminal donde el agente todavía no está
     con_agente = creado and bool(agente.nombre)
@@ -134,24 +143,13 @@ def main(argv: list[str], ctx, *, fila: dict | None = None) -> int:
     try:
         tel.mux.ir(hilo.id)
         if not con_agente:
-            tel.mux.escribir(hilo.id, texto, enviar=o.enviar)
+            tel.mux.escribir(hilo.id, texto, enviar=enviar)
     except ErrorDeMux as e:
-        return _comun.queja(f"llegué al hilo pero no pude escribirle: {e}")
+        raise ErrorDeServicio(f"llegué al hilo pero no pude escribirle: {e}", 502) from e
     tel.estado.marcar(hilo.nombre)
-
-    if o.json:
-        return _comun.escribir_json(
-            {
-                "ref": fila["ref"],
-                "texto": texto,
-                "destino": hilo.nombre,
-                "creado": creado,
-                "enviado": o.enviar or con_agente,
-            }
-        )
-    modo = "abierto con el agente trabajándolo" if con_agente else "enviado" if o.enviar else "escrito, sin enviar"
-    print(f"{fila['ref']} → «{hilo.nombre}»{' (nuevo)' if creado else ''}: {modo}")
-    return 0
+    modo = "abierto con el agente trabajándolo" if con_agente else "enviado" if enviar else "escrito, sin enviar"
+    return ({"ref": fila["ref"], "texto": texto, "destino": hilo.nombre, "creado": creado,
+             "enviado": enviar or con_agente}, f"{fila['ref']} → «{hilo.nombre}»{' (nuevo)' if creado else ''}: {modo}")
 
 
 def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | None:
@@ -253,36 +251,37 @@ def mensaje(plantilla: str, fila: dict) -> str:
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
 
 
-def _en_su_documento(tel: _comun.Telar, fila: dict, o) -> int:
+def en_su_documento(ctx, ref: str, *, hecho: bool = False, responsable: str | None = None, linea: bool = False,
+                    esperado: str = "", proveedor: str = "", fila: dict | None = None) -> tuple[dict, str]:
     """Marcar hecha, cambiar el responsable o ubicar una casilla en el documento de donde salió."""
     from telar import vinetas
+    from telar.servicios import ErrorDeServicio
 
+    tel = _comun.tejer(ctx)
+    fila = _encontrar(ctx, tel, ref, proveedor, fila)
     if fila.get("proveedor"):
-        return _comun.queja(f"«{fila['ref']}» es de {fila['proveedor']}: eso se cambia con sus acciones (telar tarea)")
+        raise ErrorDeServicio(f"«{fila['ref']}» es de {fila['proveedor']}: eso se cambia con sus acciones (telar tarea)", 409)
     unidad = tel.unidades.get(fila.get("ruta", ""))
     if unidad is None:
-        return _comun.queja(f"no sé de qué documento es «{fila['ref']}»")
+        raise ErrorDeServicio(f"no sé de qué documento es «{fila['ref']}»", 404)
     documento = unidad[1]
-    texto = o.esperado.strip() or fila["texto"]
-    if o.esperado.strip() and o.esperado.strip() != fila["texto"]:
-        return _comun.queja(f"«{fila['ref']}» ya no dice «{o.esperado.strip()[:60]}»: el documento cambió, vuelve a mirarlo")
+    texto = esperado.strip() or fila["texto"]
+    if esperado.strip() and esperado.strip() != fila["texto"]:
+        raise ErrorDeServicio(f"«{fila['ref']}» ya no dice «{esperado.strip()[:60]}»: el documento cambió, vuelve a mirarlo", 409)
     try:
-        if o.linea:
-            hecho, n = "", vinetas.linea(documento, texto)
-        elif o.hecho:
-            hecho, n = "marcada hecha", vinetas.cambiar(documento, texto, vinetas.hecha)
+        if linea:
+            que, n = "", vinetas.linea(documento, texto)
+        elif hecho:
+            que, n = "marcada hecha", vinetas.cambiar(documento, texto, vinetas.hecha)
         else:
-            nombre = o.responsable.strip()
-            hecho = "sin responsable" if nombre.lower() in ("", "none") else f"responsable: {nombre}"
-            n = vinetas.cambiar(documento, texto, lambda linea: vinetas.con_responsable(linea, nombre))
+            nombre = (responsable or "").strip()
+            que = "sin responsable" if nombre.lower() in ("", "none") else f"responsable: {nombre}"
+            n = vinetas.cambiar(documento, texto, lambda l: vinetas.con_responsable(l, nombre))
     except (vinetas.ErrorDeVineta, OSError) as e:
-        return _comun.queja(str(e))
+        raise ErrorDeServicio(str(e), 409) from e
     relativa = _comun.ruta_relativa(documento, tel.raiz)
-    if o.json:
-        return _comun.escribir_json({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa,
-                                     "linea": n, "hecho": hecho})
-    print(f"{relativa}:{n}" + (f" · {hecho}" if hecho else ""))
-    return 0
+    return ({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa, "linea": n, "hecho": que},
+            f"{relativa}:{n}" + (f" · {que}" if que else ""))
 
 
 def _llevar(
@@ -378,50 +377,15 @@ def _agente_general(ctx):
 
 
 def encargar_y_ir(ctx, agente, texto: str) -> tuple[int, dict]:
-    """Le encarga `texto` al agente y lleva a su hilo (lo trae si vive en otra máquina).
-    Devuelve el código de `telar encargar` y lo que respondió."""
-    import io
-    import json
-    from contextlib import redirect_stdout
+    """Le encarga `texto` al agente y lleva a su hilo (telar.servicios.encargos). (0, lo que respondió), o
+    (2, {}) con la queja dicha. Lo usa `telar reunion`."""
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import encargos
 
-    from telar.ordenes import encargar, remotos
-
-    salida = io.StringIO()
-    with redirect_stdout(salida):
-        codigo = encargar.main([agente.clave, texto, "--json"], ctx)
-    if codigo != 0:
-        return codigo, {}
     try:
-        r = json.loads(salida.getvalue().strip().splitlines()[-1])
-    except (ValueError, IndexError):
-        r = {}
-    tel = _comun.tejer(ctx, con_ficha=False)
-    hilo = tel.por_nombre(agente.nombre)
-    if ctx.config.agentes_en and not (hilo is not None and tel.vivo(hilo)):
-        # su ventana todavía no está aquí: se trae (una vuelta más al servidor, solo esa vez)
-        with redirect_stdout(io.StringIO()):
-            remotos.main(["traer", "--remoto", ctx.config.agentes_en], ctx)
-        tel = _comun.tejer(ctx, con_ficha=False)
-        hilo = tel.por_nombre(agente.nombre)
-    if hilo is not None and tel.mux is not None and tel.vivo(hilo):
-        try:
-            tel.mux.ir(hilo.id)
-        except ErrorDeMux:
-            pass
-    return 0, r
-
-
-def _al_agente(ctx, agente, fila: dict, primero: str, *, como_json: bool) -> int:
-    """Le encarga el pendiente al agente y lleva a su hilo."""
-    codigo, r = encargar_y_ir(ctx, agente, primero)
-    if codigo != 0:
-        return codigo
-    if como_json:
-        return _comun.escribir_json({"ref": fila["ref"], "texto": primero, "destino": agente.nombre,
-                                     "creado": r.get("estado") == "abierto", "enviado": True,
-                                     "encargo": r.get("estado", "")})
-    print(f"{fila['ref']} → «{agente.nombre}»: encargado ({r.get('estado', '')})")
-    return 0
+        return 0, encargos.encargar_y_ir(ctx, agente, texto).model_dump(mode="json")
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e)), {}
 
 
 def _nombre_libre(tel: _comun.Telar, destino: Hilo | None, fila: dict, *, nuevo: bool) -> str:

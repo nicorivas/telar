@@ -58,18 +58,17 @@ class ProcesarAhoraVaASuHilo(Prueba):
             orden.append("comando")
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        def llevar(argv, ctx, fila=None):
+        def llevar(ctx, ref, *, texto="", enviar=False, proveedor="", fila=None, **_):
             orden.append("llevar")
-            llevado.append((argv, fila))
-            print('{"destino": "faro"}')
-            return 0
+            llevado.append((texto, fila))
+            return {"destino": "faro"}, "T7 → «faro»"
 
         with mock.patch("telar.servicios.tareas._alla", return_value=""), \
                 mock.patch("telar.servicios.tareas.detalle_de", return_value=(("x",), "")), \
                 mock.patch("telar.ordenes.seccion.correr", return_value=({"titulo": "T7", "acciones": [accion]}, "")), \
                 mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace()), \
                 mock.patch("telar.ordenes.pendiente._buscar", side_effect=buscar), \
-                mock.patch("telar.ordenes.pendiente.main", side_effect=llevar), \
+                mock.patch("telar.ordenes.pendiente.llevar", side_effect=llevar), \
                 mock.patch("subprocess.run", side_effect=correr_cmd), \
                 redirect_stdout(io.StringIO()):
             codigo = tarea.main(["T7", "--accion", "0", "--proveedor", "tareas"], SimpleNamespace())

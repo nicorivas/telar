@@ -410,6 +410,75 @@ def post_ir(pedido: PedidoIr, ctx: Contexto = Depends(contexto)):
     return servicio_ir.ir(ctx, pedido.hilo, crear=pedido.crear, remoto=pedido.remoto)
 
 
+class PedidoLlevar(BaseModel):
+    ref: str
+    nuevo: bool = False
+    donde: bool = False
+    texto: str = ""
+    enviar: bool = False
+    proveedor: str = ""
+
+
+@app.post("/pendiente/llevar", response_model=servicio_pendientes.Llevado)
+def post_llevar(pedido: PedidoLlevar, ctx: Contexto = Depends(contexto)):
+    """Llevar un pendiente al hilo donde se trabaja (`telar pendiente <ref>`)."""
+    return servicio_pendientes.llevar(ctx, pedido.ref, nuevo=pedido.nuevo, donde=pedido.donde, texto=pedido.texto,
+                                      enviar=pedido.enviar, proveedor=pedido.proveedor)
+
+
+class PedidoCasilla(BaseModel):
+    ref: str
+    hecho: bool = False
+    responsable: str | None = None
+    linea: bool = False
+    esperado: str = ""
+    proveedor: str = ""
+
+
+@app.post("/pendiente/casilla", response_model=servicio_pendientes.Llevado)
+def post_casilla(pedido: PedidoCasilla, ctx: Contexto = Depends(contexto)):
+    """Una casilla en su documento: hecha, responsable o dónde está (`telar pendiente <ref> --hecho`…)."""
+    return servicio_pendientes.casilla(ctx, pedido.ref, hecho=pedido.hecho, responsable=pedido.responsable,
+                                       linea=pedido.linea, esperado=pedido.esperado, proveedor=pedido.proveedor)
+
+
+# ── los verbos de un hilo y tejer: la misma orden, en el proceso (telar.servicios.en_proceso) ──
+
+from telar.servicios import en_proceso
+
+#: los verbos de `telar hilo` que se corren por la API; `llevar` (minutos, por ssh) y `leer`/`caidos` no
+VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "mudar", "cerrar",
+               "archivar", "desarchivar", "retomar", "olvidar")
+
+
+class PedidoHilo(BaseModel):
+    hilo: str
+    valor: str = ""
+    #: con archivar: además, cerrarlo en el multiplexor
+    cerrar: bool = False
+
+
+@app.post("/hilo/{verbo}", response_model=en_proceso.Corrida)
+def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto)):
+    """Vincular, renombrar, priorizar, archivar, cerrar… un hilo (`telar hilo <verbo> [valor] --hilo <hilo>`)."""
+    if verbo not in VERBOS_HILO:
+        raise ErrorDeServicio(f"«{verbo}» no se pide por aquí: uno de {', '.join(VERBOS_HILO)}", 422)
+    argv = [verbo, *([pedido.valor] if pedido.valor else []), "--hilo", pedido.hilo, *(["--cerrar"] if pedido.cerrar else [])]
+    return en_proceso.o_falla(en_proceso.correr(ctx, "hilo", argv), f"telar hilo {verbo}")
+
+
+class PedidoTejer(BaseModel):
+    sumar: bool = False
+    vacia: bool = False
+
+
+@app.post("/tejer", response_model=en_proceso.Corrida)
+def post_tejer(pedido: PedidoTejer, ctx: Contexto = Depends(contexto)):
+    """Levantar la sesión, o reengancharla; con `sumar`, abrir los hilos de [hilos] que falten (`telar tejer`)."""
+    argv = [*(["--sumar"] if pedido.sumar else []), *(["--vacia"] if pedido.vacia else [])]
+    return en_proceso.o_falla(en_proceso.correr(ctx, "tejer", argv), "telar tejer")
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

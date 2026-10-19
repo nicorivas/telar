@@ -2120,7 +2120,7 @@ export class PanelHoy {
         const si = await ui().info(
             'Carpetas guardadas. ¿Abrir ahora los hilos que falten? Cada uno arranca su agente.', 'Abrir ahora');
         if (si === 'Abrir ahora') {
-            const t = await cli.telar(['tejer', '--sumar'], 60000);
+            const t = await cli.tejer(true);
             if (!t.ok) void ui().aviso(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
             await modelo.sondear();
         }

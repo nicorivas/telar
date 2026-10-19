@@ -214,8 +214,12 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    abren hilos: mandar un mensaje (`POST /mensajes`), soltar uno retenido (`POST /mensajes/{id}/soltar`), una
    nota en un evento (`POST /notas`) y el orden de las pestañas (`PUT /config/pestanas`). Siguen las que
    abren hilos: hechas los atajos (`/atajos`, `POST /atajos/{tecla}`), los encargos (`POST /encargos`),
-   abrir una unidad (`POST /proyectos/abrir`) e ir a un hilo (`POST /ir`); siguen `pendiente` (llevar un
-   pendiente a su hilo, marcar una casilla), los verbos de `hilo` y `tejer`. El entorno ya no es problema: un
+   abrir una unidad (`POST /proyectos/abrir`), ir a un hilo (`POST /ir`) y los pendientes (`POST
+   /pendiente/llevar`, `POST /pendiente/casilla`). Los verbos de `telar hilo` (`POST /hilo/{verbo}`) y
+   `telar tejer` (`POST /tejer`) van por un **puente**: la misma orden corrida en el proceso de la API, con
+   su salida capturada y de a una (`telar.servicios.en_proceso`), porque sus funciones imprimen en vez de
+   devolver un modelo; cada una deja el puente cuando se reescriba. `hilo llevar` (minutos, por ssh) y
+   `hilo leer` siguen por la CLI. El entorno ya no es problema: un
    panel nuevo hereda el de quien le pide a tmux que lo abra, y telar lo abre con el PATH de la shell de
    login de la persona, así que da lo mismo si lo pide el panel, la API o el nodo.
    Quedan aparte `periodicos` y `correo`, que desde el laptop van al servidor por ssh: pasan cuando ese
