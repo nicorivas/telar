@@ -117,6 +117,21 @@ de la ficha. Ver [contratos](contratos.md#telar-tarea-id---json). Las tareas que
 `avance` (lo último que dejó un agente trabajando solo) van primero en la lista, con esa
 palabra en color, y el modo «propuestas» las junta para revisarlas con ← →.
 
+### Los tipos: objetos sobre archivos (`[tipos]`)
+
+Dónde viven los objetos de un tipo, un archivo por objeto (ver `docs/propuestas/tipos.md`). Por ahora,
+el tipo `tarea` en su formato de archivo propio:
+
+```toml
+[tipos.tarea]
+carpeta = "~/notas/tareas"     # un T84.md por tarea
+formato = "archivo"            # el único, por ahora
+```
+
+`telar serve` las tiene en memoria (un índice que se mantiene al día con los archivos) y las sirve en
+`/tipos/tarea`; las acciones (`POST /tipos/tarea/{id}/completar`, `…/reagendar`…) llevan la versión que se
+leyó y las escribe solo ese proceso. Declárala en la máquina donde viven las tareas.
+
 ### El calendario: iCal o gws
 
 La agenda del dashboard sale de una de dos fuentes, y se elige sin editar el archivo:

@@ -185,3 +185,53 @@ class TareasBloquesResultados(Prueba):
             r = self.c.post("/resultados/plan/comentario", json={"dia": "2026-10-19", "texto": "falta algo"})
         self.assertEqual(r.json(), {"ok": True, "abrio": "✎ plan"})
         self.assertEqual(comentar.call_args[0][1:], ("plan", "2026-10-19", "falta algo"))
+
+
+@unittest.skipIf(api is None, "sin fastapi")
+class TiposTarea(Prueba):
+    """`/tipos/tarea`: las tareas desde el índice, y las acciones con su versión."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+        import shutil
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T1.md").write_text("---\ntitulo: Una\nestado: activa\narea: trabajo\n---\n", encoding="utf-8")
+        (self.dir / "T2.md").write_text("---\ntitulo: Otra\nestado: hecha\ncerrada: 2026-10-01\n---\n", encoding="utf-8")
+        from telar.config import Config, Tipo
+        cfg = Config(raiz=self.dir, estado=self.dir / "estado", tipos=(Tipo(clave="tarea", carpeta=str(self.dir)),))
+        api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=cfg)
+        self.addCleanup(api.app.dependency_overrides.clear)
+        api._indices.clear()
+        self.c = TestClient(api.app)
+
+    def test_lista_las_abiertas_con_su_version(self):
+        r = self.c.get("/tipos/tarea").json()
+        self.assertEqual([t["id"] for t in r["tareas"]], ["T1"])
+        self.assertEqual(len(r["tareas"][0]["version"]), 16)
+        self.assertEqual(len(self.c.get("/tipos/tarea", params={"abiertas": "false"}).json()["tareas"]), 2)
+
+    def test_una_accion_con_la_version_leida_escribe_y_devuelve_la_nueva(self):
+        v = self.c.get("/tipos/tarea/T1").json()["version"]
+        r = self.c.post("/tipos/tarea/T1/completar", json={"version": v, "params": {"nota": "listo"}})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["estado"], "hecha")
+        self.assertNotEqual(r.json()["version"], v)
+        self.assertIn("estado: hecha", (self.dir / "T1.md").read_text())
+
+    def test_con_una_version_vieja_409_y_la_de_ahora(self):
+        v = self.c.get("/tipos/tarea/T1").json()["version"]
+        (self.dir / "T1.md").write_text("---\ntitulo: Una, editada a mano\nestado: activa\n---\n", encoding="utf-8")
+        r = self.c.post("/tipos/tarea/T1/completar", json={"version": v})
+        self.assertEqual(r.status_code, 409)
+        self.assertNotEqual(r.json()["version"], v)
+        self.assertIn("estado: activa", (self.dir / "T1.md").read_text())
+
+    def test_lo_que_no_se_puede_y_lo_que_no_existe(self):
+        self.assertEqual(self.c.post("/tipos/tarea/T2/completar", json={}).status_code, 409)   # ya cerrada
+        self.assertEqual(self.c.post("/tipos/tarea/T9/completar", json={}).status_code, 404)
+        self.assertEqual(self.c.post("/tipos/tarea/T1/volar", json={}).status_code, 422)
+        self.assertEqual(self.c.post("/tipos/tarea/T1/reagendar", json={"params": {"cuando": "mañana"}}).status_code, 422)

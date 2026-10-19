@@ -20,6 +20,10 @@ workflow refuses to run if the two disagree.
   read, one writer at a time, atomic writes, and nothing written unless it reads back as intended. On copies
   of 308 real tasks, 1,887 of 1,903 action runs leave the same bytes as the previous task CLI; the rest are
   two files whose history that CLI was corrupting further on every save.
+- The in-memory index (`telar.tipos.indice`) and `[tipos.tarea] carpeta`: `telar serve` keeps the tasks in
+  memory, up to date with their files by date and size (308 real tasks: 66 ms to build, 1 ms to check), and
+  serves them at `/tipos/tarea` (filters), `/tipos/tarea/{id}` (with its version) and
+  `POST /tipos/tarea/{id}/{action}` (`{params, version}`; a stale version is a 409 with the current one).
 - `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
   directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
   used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first

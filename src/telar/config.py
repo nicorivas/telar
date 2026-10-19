@@ -269,6 +269,17 @@ class Resultado:
 
 
 @dataclass(frozen=True, slots=True)
+class Tipo:
+    """Dónde viven los objetos de un tipo y con qué formato (`[tipos.<clave>]`, telar.tipos): una
+    carpeta con un archivo por objeto. Con `en`, viven en otra máquina del bus."""
+
+    clave: str
+    carpeta: str = ""
+    formato: str = "archivo"
+    en: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Notas:
     """Las notas que las skills y la persona le dejan a los eventos del día (`[notas]`, telar.notas)."""
 
@@ -388,6 +399,8 @@ class Config:
     periodicos_en: str = ""
     #: lo que dejan las skills por día, para verlo en el dashboard (`[resultados.<clave>]`).
     resultados: tuple[Resultado, ...] = ()
+    #: dónde viven los objetos de cada tipo (`[tipos.<clave>]`): las tareas, por ejemplo.
+    tipos: tuple[Tipo, ...] = ()
     #: las notas de los eventos del día (`[notas]`).
     notas: Notas = field(default_factory=Notas)
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
@@ -941,6 +954,30 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             lista.append(Resultado(clave=clave, **valores))
         cambios["resultados"] = tuple(lista)
 
+    if "tipos" in datos:
+        tabla = _tabla(datos["tipos"], "tipos")
+        lista_tipos = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"tipos.{clave}")
+            sobra = set(cuerpo) - {"carpeta", "formato", "en"}
+            if sobra:
+                raise ErrorDeConfig(f"tipos.{clave}.{sorted(sobra)[0]}: no existe")
+            valores = {}
+            for campo in ("carpeta", "formato", "en"):
+                v = cuerpo.get(campo, "")
+                if not isinstance(v, str):
+                    raise ErrorDeConfig(f"tipos.{clave}.{campo}: se esperaba un texto, llegó {v!r}")
+                valores[campo] = v.strip()
+            valores["formato"] = valores["formato"] or "archivo"
+            if clave != "tarea":
+                raise ErrorDeConfig(f"tipos.{clave}: telar conoce el tipo «tarea»")
+            if valores["formato"] != "archivo":
+                raise ErrorDeConfig(f"tipos.{clave}.formato: por ahora, «archivo»")
+            if not valores["carpeta"] and not valores["en"]:
+                raise ErrorDeConfig(f"tipos.{clave}: falta carpeta o en")
+            lista_tipos.append(Tipo(clave=clave, **valores))
+        cambios["tipos"] = tuple(lista_tipos)
+
     if "notas" in datos:
         cuerpo = _tabla(datos["notas"], "notas")
         sobra = set(cuerpo) - {"carpeta", "en"}
@@ -958,6 +995,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
+        "tipos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

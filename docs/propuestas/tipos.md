@@ -272,6 +272,20 @@ base de datos).
   además un caso que la comparación no habría visto: pasar a «algún día» una tarea que esperaba a alguien
   dejaba a quién se esperaba en el modelo; ahora se borra, como termina haciéndolo la CLI.
 
-Falta: el índice en `telar serve` (las tareas desde la memoria, `/tareas` desde el índice, el servidor como
-único escritor) y el cambio de la CLI de tareas a una cáscara del tipo.
+**Paso 3: el índice** (`telar/tipos/indice.py`) y sus rutas en `telar serve`.
+
+- **El índice** tiene los objetos en memoria y se mantiene al día por la fecha y el tamaño de cada archivo:
+  antes de cada consulta relee solo lo que cambió y saca lo que ya no está. Nadie escribe en él: una acción
+  escribe el archivo y después el índice lo relee. Un archivo roto queda en `fallas`, sin llevarse a los
+  demás. Medido con las 308 tareas reales: se arma en 66 ms; mirar si algo cambió, 1 ms; consultar las 93
+  abiertas, 1 ms.
+- **`[tipos.tarea] carpeta`** dice dónde viven, en la máquina que las tiene.
+- **Las rutas**: `GET /tipos/tarea` (filtros: abiertas, área, proyecto, dueño, vence hasta), `GET
+  /tipos/tarea/{id}` (con su versión) y `POST /tipos/tarea/{id}/{acción}` con `{params, version}`. Una
+  versión vieja es un 409 con la versión de ahora; una acción que no se puede, 409 con su motivo; una que no
+  existe o parámetros que no calzan, 422. Solo ese proceso escribe.
+
+Falta: que `telar hoy`, el panel y los agentes lean y cambien las tareas por aquí (el cambio de la CLI de
+tareas a una cáscara del tipo, y el adaptador fuera); y desde el laptop, pedirlas a la máquina donde viven
+(`[tipos.tarea] en`, por el bus).
 
