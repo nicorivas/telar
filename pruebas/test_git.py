@@ -60,6 +60,16 @@ class Commit(Prueba):
         self.assertEqual(res.estado, "commiteado")
         self.assertNotIn("uno.md", sh(self.a, "ls-files"))
 
+    def test_lo_ya_borrado_con_git_rm_tambien_entra(self):
+        sh(self.a, "rm", "-q", "uno.md")
+        (self.a / "nuevo.md").write_text("n\n")
+        res = self.commit(self.a, ["uno.md", "nuevo.md"], subir=False)
+        self.assertEqual(res.estado, "commiteado")
+        self.assertEqual(sorted(sh(self.a, "show", "--name-only", "--format=", "HEAD").split()), ["nuevo.md", "uno.md"])
+
+    def test_un_nombre_imposible_no_es_un_traceback(self):
+        self.assertEqual(git.commitear([Path("x" * 2000)], "m").estado, "fallo")
+
     def test_no_toca_lo_marcado_skip_worktree(self):
         sh(self.a, "update-index", "--skip-worktree", "otro.md")
         (self.a / "otro.md").unlink()  # como en un disco que no acepta su nombre

@@ -64,9 +64,12 @@ def _git(repo: Path, *args: str, timeout: float = 60) -> subprocess.CompletedPro
 
 def repositorio(ruta: Path) -> Path | None:
     """La raíz del repositorio (o del worktree) donde está `ruta`."""
-    carpeta = ruta if ruta.is_dir() else ruta.parent
-    while not carpeta.exists() and carpeta != carpeta.parent:
-        carpeta = carpeta.parent
+    try:
+        carpeta = ruta if ruta.is_dir() else ruta.parent
+        while not carpeta.exists() and carpeta != carpeta.parent:
+            carpeta = carpeta.parent
+    except OSError:  # un nombre imposible (demasiado largo): no es una ruta de ningún repositorio
+        return None
     r = _git(carpeta, "rev-parse", "--show-toplevel")
     return Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else None
 
@@ -135,7 +138,12 @@ def commitear(rutas: list[Path], mensaje: str, *, repo: Path | None = None) -> R
     ocultas = _ocultas(repo)
     res.rutas = rel
     excluir = [f":(exclude,literal){o}" for o in ocultas]
-    r = _git(repo, "add", "-A", "--", *rel, *excluir)
+    # lo ya borrado del índice (`git rm`) no existe ni en el disco ni en el índice: `add` no lo
+    # encuentra y falla, pero el commit sí lo lleva (está en HEAD)
+    en_indice = set(_git(repo, "ls-files", "--", *rel).stdout.splitlines())
+    para_add = [r for r in rel if (repo / r).exists() or (repo / r).is_symlink()
+                or r in en_indice or any(i.startswith(r.rstrip("/") + "/") for i in en_indice)]
+    r = _git(repo, "add", "-A", "--", *para_add, *excluir) if para_add else subprocess.CompletedProcess([], 0, "", "")
     if r.returncode != 0:
         res.estado, res.detalle = "fallo", (r.stderr or r.stdout).strip()[-300:]
         return res

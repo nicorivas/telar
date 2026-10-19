@@ -328,6 +328,27 @@ Cada paso deja todo funcionando y se puede parar en cualquiera.
    con lo que piden.
 9. **`telar serve`.** La API que se queda corriendo, con el contrato de arriba.
 
+### Las CLI sueltas
+
+Fuera de telar, el repo de vida tenía unas 40 CLI propias. Seis tocan el correo y cuatro las
+tareas, y 17 eran restos del sistema anterior (flow). No es malo tener muchas órdenes chicas; lo
+malo es que no haya una puerta para encontrarlas, que dos hagan lo mismo y que la lógica se copie.
+Lo que se centraliza es **la entrada y el contrato, no el código**:
+
+- **Órdenes de módulo.** Un módulo declara sus órdenes en `modulo.toml` (`[ordenes]`), y se llaman
+  `telar <modulo> <verbo>`, como git encuentra `git-lfs`. `telar --help` las lista con su ayuda,
+  así que un agente las descubre solo. El código sigue en la carpeta del módulo.
+- **Los adaptadores van con su dato.** `telar-tareas`, `telar-correo` y `telar-retro` traducen datos
+  de una vida al contrato de telar: no son de telar (que es genérico) ni del agente en cuya carpeta
+  quedaron. Cada uno va a un módulo junto a su dato: las tareas con su CLI, el correo con sus
+  clientes de Gmail (las seis en un solo proveedor, con acciones) y la retro con los planes del día.
+  La configuración deja de listar rutas a mano: declara módulos, y cada uno dice lo que aporta.
+- **Módulos de ejemplo en telar.** Lo genérico, como un proveedor de Gmail sin nada de nadie, puede
+  vivir en `telar/modulos/` para que otros lo usen; el módulo propio se apoya en él.
+
+Orden: borrar lo muerto de flow (hecho el 18-oct), las órdenes de módulo, y el correo como
+proveedor único (va con el paso 2).
+
 Las fallas del bus que vio el inventario van aparte, antes del paso 4: los `nats: timeout`, el
 «Slow Consumer» del laptop y un registro del nodo de 19 MB.
 
