@@ -219,13 +219,15 @@ plan cambia una flecha y agrega una caja:
 ```
  hoy:        superficie ──(un proceso por pedido)──▶ CLI telar ──▶ tmux, bus, proveedores
 
- después:    superficie ──(HTTP / WebSocket)──▶ telar serve ──▶ el mismo núcleo
-             (el panel web primero;               (siempre corriendo: objetos, acciones,
-              VS Code, el celular, otra app)       y los cambios avisados, no preguntados)
+ después:    navegador, celular, VS Code ──(HTTP / WebSocket)──▶ telar (un proceso por máquina:
+                                                                  API, página, terminales,
+                                                                  bus, tareas de fondo)
+             telar del laptop ◀──── NATS ────▶ telar del servidor
 ```
 
-Para quien conecta un sistema de tareas, el puente no cambia: sigue siendo un programa que imprime
-el JSON. El estado y el orden de esa migración están en
+Cada orden de la CLI y cada ruta de la API son cáscaras de una misma función de `telar.servicios`, que
+devuelve un modelo (Pydantic): la lógica vive una vez y el modelo es el contrato. Para quien conecta un
+sistema de tareas, el puente no cambia: sigue siendo un programa que imprime el JSON. El estado y el orden de esa migración están en
 [dashboard-fuera-de-vscode.md](propuestas/dashboard-fuera-de-vscode.md), «Estado y plan».
 
 ## Lo que viene

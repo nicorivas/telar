@@ -14,6 +14,9 @@ workflow refuses to run if the two disagree.
   (`GET /hoy`); the web panel asks the API first and falls back to the CLI. Install the `serve` extra
   (`pip install 'telar[serve]'`); `servidor/telar-serve.service` and `.plist` start it on their own.
   Pydantic is now a core dependency.
+- `telar hilos` and `telar config` moved to `telar.servicios` too (`GET /hilos`, `GET /config`), and the
+  panel asks the API for them. `config` keeps `gws`'s account for 10 minutes instead of asking it on every
+  read (the question can take 10 s).
 
 ### Changed
 

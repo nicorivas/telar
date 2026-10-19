@@ -148,7 +148,7 @@ primera carga tarda unos 10 s. Así quedó cada pieza:
 | ver los hilos de la otra máquina en el panel | hecho (19-oct): la barra suma un grupo por cada máquina cuya foto llega aquí (`telar espejo ver`, cada 30 s) y que la lista no trae ya (en el laptop, los del servidor vienen de `[remotos]` y no se repiten). Un clic lee el hilo como conversación por el bus (`telar hilo leer --maquina`) y la caja le escribe como la persona (`telar mensaje --tipo persona`); sin terminal ni teclas, que no viajan por el bus |
 | retirar `telar web` | hecho (19-oct): probado el panel en el celular, `https://<servidor>/` (y `:8443`) apunta al panel, `telar-web.service` apagado y su código fuera (`ordenes/web.py`, `telar/web/`, `webcal.py`, sus pruebas y sus rutas `/api/*` en los contratos). Queda un solo dashboard |
 | `telar serve` | **paso 2, empezado (19-oct)**. Medido antes: abrir un proceso cuesta 0,07 s; lo lento era esperar la red (`hoy` bajaba el iCal entero cada vez: 4,5 s en el servidor, 63 s o más en el laptop con mala red; `config` esperaba 10 s a `gws`). Se hizo lo estándar: una API FastAPI con modelos Pydantic en un proceso que se queda (`telar serve`, en un socket Unix dentro de una carpeta solo para su dueño), y cada orden pasa a ser una cáscara de una función de `telar.servicios` que usan la CLI y la API: la lógica vive una vez y el modelo es el contrato. `hoy` es la primera: el calendario se guarda en una copia que vale 10 min, con tope total de descarga y la copia vieja si no hay red (y lo dice); la API lo refresca de fondo. El panel pide `/hoy` a la API y, si no corre, a la CLI. Medido: el dashboard con su agenda en 3,7 s (antes 63 s). Lo que queda de esos segundos: las tareas por el bus (1,5 s), el feed de lecturas (0,6 s) y `enrutar` (0,8 s, resuelve rutas 8.000 veces) |
-| las demás órdenes a `telar.servicios` | una a una, empezando por las que más pide el panel: `hilos`, `config` (y su espera a `gws`), `tarea`, `bloque`, `resultado` |
+| las demás órdenes a `telar.servicios` | hechas `hilos` (`GET /hilos`, 0,12 s) y `config` (`GET /config`, 0,03 s; la cuenta de `gws` se guarda 10 min en vez de preguntarse a cada lectura) el 19-oct; el panel las pide a la API. Siguen `tarea`, `bloque`, `resultado` y las que escriben (las de `config --pestanas …` siguen en la orden) |
 | las primitivas (objetos con dirección, encargos, worktrees, permisos; ver `primitivas.md`) | **paso 3**; hecho solo `telar commit` |
 
 **El orden y por qué.**
@@ -171,3 +171,45 @@ primera carga tarda unos 10 s. Así quedó cada pieza:
   navegador. Más limpio a la larga, pero es una reescritura.
 
 Se parte con dos, y se fusionan si molesta.
+
+## El estado final (19-oct-2026)
+
+Decidido: **un solo proceso de telar por máquina**, el mismo código en las dos, y NATS entre ellas. Los
+agentes siguen corriendo en las dos máquinas (el laptop tiene lo que solo él puede hacer: Chrome,
+archivos locales), así que el bus se queda: es la pieza estándar entre máquinas, y su cola durable es
+justo lo que hace falta cuando el laptop está cerrado.
+
+En cada máquina, ese proceso (Python) tiene:
+
+- **la API** (FastAPI, modelos Pydantic de `telar.servicios`) y **la página** (archivos estáticos que se
+  dibujan en el navegador);
+- **las terminales** de sus hilos (PTY por WebSocket, sobre `telar mirar`);
+- **la conexión al bus**: lo que hace hoy `telar nodo` (recibir mensajes, avisar a los hilos, publicar el
+  estado), como una tarea del mismo proceso;
+- **las tareas de fondo**: refrescar el calendario, la foto del estado.
+
+Lo que cambia entre máquinas es configuración: el servidor tiene el calendario, las tareas, los
+periódicos y las rutas de quien colabora (hoy `telar-equipo`); el laptop, sus hilos y sus terminales.
+
+| hoy | al final |
+|---|---|
+| `telar-panel` (Node) | parte del proceso único, cuando las vistas se dibujen en el navegador |
+| `telar-serve` | es el proceso único |
+| `telar-nodo` | una tarea del proceso único |
+| `telar-equipo` | rutas del mismo servidor, con su llave |
+| espejo por ssh, la puerta (`enlace`), el correo entre agentes | ya los reemplazó el bus: sale su código |
+| `telar-bus` (NATS) | se queda: el broker entre máquinas |
+
+En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
+
+**El orden.**
+
+1. **Las órdenes a `telar.servicios`**, con su ruta en la API (unas 60 llamadas del panel). Hechas `hoy`,
+   `hilos` y `config`; siguen `tarea`, `bloque` y `resultado`.
+2. **El nodo, adentro del proceso único**: ya es Python, asyncio y NATS; una máquina queda con un
+   proceso menos al tiro.
+3. **Las vistas, al navegador**: `cli.ts` llama a la API en vez de abrir procesos; `hoy.ts` e
+   `hilos.ts` casi no cambian, porque ya hablan por `anfitrion` y `superficie`.
+4. **Las terminales, a Python**, y se retira Node.
+5. **`telar-equipo`, como rutas**, y sale el código muerto.
+

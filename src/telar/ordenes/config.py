@@ -19,7 +19,11 @@ from telar.config import (
     ruta_config,
 )
 from telar.ordenes import _comun
-from telar.proveedores.calendario import tapar
+from telar.proveedores.calendario import tapar  # noqa: F401 - quien lo importaba de aquí
+from telar.servicios import config as servicio
+from telar.servicios.config import (  # noqa: F401 - antes vivían aquí
+    _agentes, _alcance, _calendario, _cuenta_gws, _general, _nombres, _persona, _sin_secretos,
+)
 
 AYUDA = "Mostrar la configuración resuelta y de dónde salió."
 
@@ -32,61 +36,6 @@ ENTORNO = {
     "TELAR_ESTADO": "estado",
     "TELAR_PERFIL": "perfil",
 }
-
-
-def _alcance(pr) -> str:
-    """Qué promete tocar ese proveedor. Se lee antes de encenderlo, que es para lo que está."""
-    try:
-        from telar.proveedores import REGISTRO
-
-        return REGISTRO[pr.nombre](pr).alcance
-    except Exception:  # noqa: BLE001 - un proveedor ajeno no tiene por qué ser prolijo
-        return ""
-
-
-def _sin_secretos(opciones: dict) -> dict:
-    return {k: (tapar(v) if k == "url" and isinstance(v, str) else v) for k, v in opciones.items()}
-
-
-def _calendario(cfg) -> dict:
-    """Qué fuente tiene la agenda, para la pantalla de configuración del dashboard."""
-    import shutil
-
-    pr = cfg.proveedores.get("calendario")
-    opciones = pr.opciones if pr else {}
-    tipo = str(opciones.get("tipo") or "") if pr and pr.activo else ""
-    url = opciones.get("url") if isinstance(opciones.get("url"), str) else ""
-    programa = str(opciones.get("programa") or "gws")
-    instalado = bool(shutil.which(programa))
-    cuenta, conectado = _cuenta_gws(programa) if instalado else ("", False)
-    return {
-        "tipo": tipo or "ninguno",
-        "fuente": tapar(url) if url else str(opciones.get("archivo") or ""),
-        # la pública solo sirve si el calendario está publicado para todo internet
-        "publica": "/public/" in url,
-        "gws": instalado,
-        "gws_cuenta": cuenta,
-        "gws_conectado": conectado,
-    }
-
-
-def _cuenta_gws(programa: str) -> tuple[str, bool]:
-    """Con qué cuenta está conectado `gws`, y si la sesión sirve.
-
-    De `gws auth status` se toman dos datos y ninguno más: esa salida también trae rutas
-    de credenciales e identificadores del cliente OAuth, que no tienen por qué viajar.
-    """
-    import json
-    import subprocess
-
-    try:
-        r = subprocess.run([programa, "auth", "status"], capture_output=True, text=True,
-                           timeout=10, stdin=subprocess.DEVNULL)
-        datos = json.loads(r.stdout[r.stdout.index("{"):])
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return "", False
-    cuenta = datos.get("user") if isinstance(datos.get("user"), str) else ""
-    return cuenta, bool(datos.get("token_valid") or datos.get("has_refresh_token"))
 
 
 def main(argv: list[str], ctx) -> int:
@@ -180,70 +129,8 @@ def main(argv: list[str], ctx) -> int:
         print(cfg.origen or ruta_config())
         return 0
 
-    pisadas = {v: os.environ[k] for k, v in ENTORNO.items() if os.environ.get(k)}
-    cuerpo = {
-        "origen": str(cfg.origen) if cfg.origen else "",
-        "multiplexor": cfg.multiplexor,
-        "sesion": cfg.sesion,
-        "raiz": str(cfg.raiz),
-        "estado": str(cfg.estado),
-        "perfil": str(cfg.perfil) if cfg.perfil else "",
-        "ruta_perfil": str(cfg.ruta_perfil),
-        "intervalos": {
-            "refresco": cfg.intervalos.refresco,
-            "ficha": cfg.intervalos.ficha,
-            "proveedores": cfg.intervalos.proveedores,
-            "foco_maximo": cfg.intervalos.foco_maximo,
-        },
-        "calendario": _calendario(cfg),
-        "hilos": {"directorios": list(cfg.hilos.directorios), "tope": cfg.hilos.tope},
-        "agente": {
-            "nombre": cfg.agente.nombre,
-            "carpeta": cfg.agente.carpeta,
-            "reunion": cfg.agente.reunion,
-            "reunion_por_defecto": REUNION_POR_DEFECTO,
-            "minuta": cfg.agente.minuta,
-            "proyecto": cfg.agente.proyecto,
-            "proyecto_por_defecto": PROYECTO_POR_DEFECTO,
-            "pendiente": cfg.agente.pendiente,
-            "pendiente_nuevo": cfg.agente.pendiente_nuevo,
-        },
-        "remotos": [
-            {"nombre": r.nombre, "destino": r.destino, "transporte": r.transporte, "raiz": r.raiz}
-            for r in cfg.remotos
-        ],
-        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla} for b in cfg.bloques],
-        # las pestañas de proveedor (un feed) y su tecla, para el dashboard
-        "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
-                     for p in cfg.proveedores_activos() if p.opciones.get("pestana")],
-        "agenda": [{"clave": r.clave, "si": r.si, "antes": r.antes, "despues": r.despues} for r in cfg.agenda],
-        "secciones": [
-            {"clave": s.clave, "nombre": s.nombre, "hilos": list(s.hilos), "home": bool(s.home)}
-            for s in cfg.secciones
-        ] + _agentes(cfg),
-        "dashboard": {"orden": list(cfg.dashboard_orden), "ocultas": list(cfg.dashboard_ocultas)},
-        "modulos": [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta}
-                    for m in cfg.modulos],
-        "apps": [{"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente,
-                  **({"url": a.url} if a.url else {})} for a in cfg.apps],
-        "atajos": [
-            {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion, "en": a.en}
-            for a in cfg.atajos
-        ],
-        "proveedores": {
-            nombre: {"activo": pr.activo, "alcance": _alcance(pr), "opciones": _sin_secretos(pr.opciones)}
-            for nombre, pr in cfg.proveedores.items()
-        },
-        "entorno": pisadas,
-        "multiplexores": list(MULTIPLEXORES),
-        # el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`): a quién le escribe el
-        # dashboard sobre una reunión
-        "agente_general": _general(ctx),
-        # quién es la persona de esta máquina (`[bus] persona`, o el usuario): una tarea sin dueño es suya
-        "persona": _persona(cfg),
-        # cómo más la nombran en un documento («Nicolás Rivas», de git): un pendiente a ese nombre es suyo
-        "persona_nombres": _nombres(cfg),
-    }
+    cuerpo = servicio.resuelta(ctx).model_dump(mode="json", exclude_unset=True)
+    pisadas = cuerpo.get("entorno") or {}
     if o.json:
         return _comun.escribir_json(cuerpo)
 
@@ -269,47 +156,3 @@ def main(argv: list[str], ctx) -> int:
     return 0
 
 
-def _agentes(cfg) -> list[dict]:
-    """Los agentes residentes, como secciones del grupo «agentes»: su home lo arma telar."""
-    from telar import agentes as mod_agentes
-    from telar import estado as mod_estado
-
-    try:
-        vinculos = mod_estado.abrir(cfg).vinculos()
-    except Exception:  # noqa: BLE001 - sin estado, los agentes salen igual, solo con sus nombres
-        vinculos = {}
-    return [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes"}
-            for a in mod_agentes.descubrir(cfg, vinculos)]
-
-
-def _nombres(cfg) -> list[str]:
-    import subprocess
-
-    nombres = [n for n in [_persona(cfg)] if n]
-    try:
-        git = subprocess.run(["git", "config", "--get", "user.name"], capture_output=True, text=True, timeout=5,
-                             cwd=str(cfg.raiz)).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        git = ""
-    if git and git not in nombres:
-        nombres.append(git)
-    return nombres
-
-
-def _persona(cfg) -> str:
-    from telar import bus as mod_bus
-
-    try:
-        return mod_bus.persona(cfg)
-    except Exception:  # noqa: BLE001 - sin usuario conocido, el dashboard dice «tú»
-        return ""
-
-
-def _general(ctx) -> dict:
-    from telar.ordenes import pendiente
-
-    try:
-        a = pendiente._agente_general(ctx)
-    except Exception:  # noqa: BLE001 - sin agentes, nada
-        a = None
-    return {"clave": a.clave, "nombre": a.nombre} if a is not None else {}

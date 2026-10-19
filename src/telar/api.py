@@ -22,12 +22,14 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 
 from telar import __version__
 from telar.cli import Contexto
 from telar.config import cargar as cargar_config
 from telar.config import ruta_config
+from telar.servicios import config as servicio_config
+from telar.servicios import hilos as servicio_hilos
 from telar.servicios import hoy as servicio_hoy
 
 log = logging.getLogger("telar.api")
@@ -85,6 +87,22 @@ app = FastAPI(title="telar", version=__version__, lifespan=_vida,
 def get_hoy(dia: dt.date | None = None, local: bool = False, ctx: Contexto = Depends(contexto)):
     """El día: la agenda, quién te espera, qué está por hacer y cuánto llevas (`telar hoy --json`)."""
     return servicio_hoy.hoy(ctx, dia=dia, local=local)
+
+
+@app.get("/hilos", response_model=servicio_hilos.Hilos, response_model_exclude_unset=True)
+def get_hilos(vivos: bool = False, red: bool = False, ficha: bool = True, orden: str = "",
+              ctx: Contexto = Depends(contexto)):
+    """Los hilos de la sesión (`telar hilos --json`). `ficha=false` no lee los documentos (más rápido);
+    `red=true` suma los de las otras máquinas, del registro del bus."""
+    if orden and orden not in servicio_hilos.ORDENES:
+        raise HTTPException(422, f"orden: una de {', '.join(servicio_hilos.ORDENES)}")
+    return servicio_hilos.hilos(ctx, vivos=vivos, red=red, con_ficha=ficha, orden=orden)
+
+
+@app.get("/config", response_model=servicio_config.ConfigResuelta, response_model_exclude_unset=True)
+def get_config(ctx: Contexto = Depends(contexto)):
+    """La configuración resuelta de esta máquina (`telar config --json`)."""
+    return servicio_config.resuelta(ctx)
 
 
 @app.get("/salud")

@@ -364,7 +364,8 @@ export const bloqueItem = (clave: string, id: string) => telarJson<{ texto: stri
 export const bloque = (clave: string) => telarJson<JsonPagina>(['bloque', clave], 90000);
 
 export interface JsonPestana { nombre: string; tecla: string }
-export const config = () => telarJson<{
+/** La configuración resuelta: primero la API (`/config`), sin ella la CLI. */
+export type JsonConfig = {
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
     atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; apps?: JsonApp[];
     /** las pestañas del dashboard: su orden y las que no se muestran (`[dashboard]`) */
@@ -378,7 +379,10 @@ export const config = () => telarJson<{
     persona?: string; persona_nombres?: string[];
     /** la carpeta del estado de telar en esta máquina */
     estado?: string;
-}>(['config', '--json'], 20000);
+};
+export async function config(): Promise<Respuesta<JsonConfig>> {
+    return await deServe<JsonConfig>('/config', 20000) ?? telarJson<JsonConfig>(['config', '--json'], 20000);
+}
 
 /** `telar encargar <agente> "…"`: pedirle algo a un agente residente, viva donde viva. */
 export const encargar = (agente: string, texto: string) =>
@@ -536,8 +540,11 @@ export function conRutasAbsolutas(h: JsonHilo, raiz: string): JsonHilo {
 
 // ───────────────────────── las órdenes que usa la vista ─────────────────────────
 
-export const hilos = (conFicha: boolean, orden: string) =>
-    telarJson<JsonHilos>(['hilos', ...(conFicha ? [] : ['--sin-ficha']), '--orden', orden], conFicha ? 30000 : 8000);
+export async function hilos(conFicha: boolean, orden: string): Promise<Respuesta<JsonHilos>> {
+    const q = new URLSearchParams({ orden, ...(conFicha ? {} : { ficha: 'false' }) }).toString();
+    return await deServe<JsonHilos>(`/hilos?${q}`, conFicha ? 30000 : 8000)
+        ?? telarJson<JsonHilos>(['hilos', ...(conFicha ? [] : ['--sin-ficha']), '--orden', orden], conFicha ? 30000 : 8000);
+}
 
 export const ficha = (hilo: string) => telarJson<JsonFichaOrden>(['ficha', hilo], 30000);
 

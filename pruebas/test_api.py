@@ -69,3 +69,62 @@ class LaApi(Prueba):
                 ruta.write_text('sesion = "otra"\n')
                 os.utime(ruta, (1, 1))  # otra marca de tiempo, aunque el reloj no haya avanzado
                 self.assertEqual(ctx().config.sesion, "otra")
+
+
+@unittest.skipIf(api is None, "sin fastapi")
+class HilosYConfig(Prueba):
+    """`/hilos` y `/config`: lo mismo que la CLI, con los parámetros validados."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_hilos_pasa_sus_parametros_y_rechaza_un_orden_que_no_existe(self):
+        from telar.servicios import hilos as sh
+
+        vacio = sh.Hilos(sesion="s", viva=True, raiz="/r", multiplexor="tmux", orden="mux", hilos=[])
+        with mock.patch.object(api.servicio_hilos, "hilos", return_value=vacio) as h:
+            r = TestClient(api.app).get("/hilos", params={"ficha": "false", "red": "true"})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(h.call_args.kwargs, {"vivos": False, "red": True, "con_ficha": False, "orden": ""})
+            self.assertEqual(TestClient(api.app).get("/hilos", params={"orden": "al-azar"}).status_code, 422)
+
+    def test_la_cli_y_la_api_dicen_lo_mismo_de_los_hilos(self):
+        from telar.ordenes import hilos as orden
+        from telar.servicios import hilos as sh
+
+        uno = sh.Hilos(sesion="s", viva=True, raiz="/r", multiplexor="tmux", orden="mux",
+                       hilos=[sh.Hilo(id="@1", nombre="Faro", vivo=True, relativa="faro", extra_de_alguien=1)])
+        with mock.patch.object(sh, "hilos", return_value=uno):
+            salida = io.StringIO()
+            with redirect_stdout(salida):
+                orden.main(["--json"], SimpleNamespace())
+            self.assertEqual(json.loads(salida.getvalue()), TestClient(api.app).get("/hilos").json())
+
+    def test_config_es_la_de_la_cli(self):
+        from telar.ordenes import config as orden
+        from telar.servicios import config as sc
+
+        r = sc.ConfigResuelta(multiplexor="tmux", sesion="s", raiz="/r", estado="/e", persona="nico")
+        with mock.patch.object(sc, "resuelta", return_value=r):
+            salida = io.StringIO()
+            with redirect_stdout(salida):
+                orden.main(["--json"], SimpleNamespace(config=SimpleNamespace(origen=None)))
+            self.assertEqual(json.loads(salida.getvalue()), TestClient(api.app).get("/config").json())
+
+
+class CuentaDeGws(Prueba):
+    """La cuenta de gws se pregunta una vez y vale 10 minutos: la pregunta puede tardar."""
+
+    def test_la_segunda_vez_no_se_pregunta(self):
+        from telar.servicios import config as sc
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"XDG_CACHE_HOME": tmp}), \
+                mock.patch.object(sc, "_preguntar_gws", return_value=("yo@ejemplo.org", True)) as preguntar:
+            self.assertEqual(sc._cuenta_gws("gws"), ("yo@ejemplo.org", True))
+            self.assertEqual(sc._cuenta_gws("gws"), ("yo@ejemplo.org", True))
+            self.assertEqual(preguntar.call_count, 1)
+            self.assertEqual(sc._cuenta_gws("otro-gws"), ("yo@ejemplo.org", True))  # otro programa: se pregunta
+            self.assertEqual(preguntar.call_count, 2)
