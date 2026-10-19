@@ -128,6 +128,15 @@ carpeta = "~/notas/tareas"     # un T84.md por tarea
 formato = "archivo"            # el único, por ahora
 ```
 
+Para que `telar hoy` y el panel las muestren, el proveedor de tareas las lee del mismo índice:
+
+```toml
+[proveedores.tareas]
+tipo    = "tipo"
+carpeta = "~/notas/tareas"     # la misma de [tipos.tarea]
+en      = "servidor"           # opcional: en la máquina donde viven, por el bus
+```
+
 `telar serve` las tiene en memoria (un índice que se mantiene al día con los archivos) y las sirve en
 `/tipos/tarea`; las acciones (`POST /tipos/tarea/{id}/completar`, `…/reagendar`…) llevan la versión que se
 leyó y las escribe solo ese proceso. Declárala en la máquina donde viven las tareas.

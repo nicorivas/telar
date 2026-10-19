@@ -285,7 +285,16 @@ base de datos).
   versión vieja es un 409 con la versión de ahora; una acción que no se puede, 409 con su motivo; una que no
   existe o parámetros que no calzan, 422. Solo ese proceso escribe.
 
-Falta: que `telar hoy`, el panel y los agentes lean y cambien las tareas por aquí (el cambio de la CLI de
-tareas a una cáscara del tipo, y el adaptador fuera); y desde el laptop, pedirlas a la máquina donde viven
-(`[tipos.tarea] en`, por el bus).
+**Paso 4, el cambio, en tres partes.**
+
+1. **Leer** (hecha): un proveedor `tipo = "tipo"` da las tareas a `telar hoy` y al panel desde el índice
+   del proceso (el mismo de la API), con la forma de siempre. Comparado con el adaptador `telar-tareas`
+   sobre las mismas tareas: las 88 activas, idénticas campo por campo, en 2 ms en vez de 71 ms (más el
+   viaje por el bus). Desde el laptop, `en = "telar"` las pide al servidor con el reenvío de proveedores
+   que ya existe: allá las lee el índice del nodo.
+2. **La ficha y sus acciones**: que telar arme la ficha (la propuesta del agente, la historia, los
+   botones) y corra las acciones por el tipo, con versión, en vez de `telar-tareas --ver` y la CLI de
+   tareas. Lo propio de una casa (el nombre del agente, la cuenta de Gmail de cada área, el equipo) pasa a
+   la configuración.
+3. **Crear tareas, y la CLI de tareas como cáscara del tipo**, para que las skills sigan iguales.
 

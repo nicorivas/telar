@@ -691,6 +691,83 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
     )
 
 
+# ── tipo: las tareas del tipo `tarea` (telar.tipos), desde su carpeta ──────────────
+
+class DeTipo(_Base):
+    """Las tareas del tipo `tarea`, un archivo por tarea en una carpeta (docs/propuestas/tipos.md), leídas
+    con el índice en memoria del proceso: en `telar serve` y en el nodo se leen una vez y se mantienen al día.
+
+        [proveedores.tareas]
+        tipo    = "tipo"
+        carpeta = "~/notas/tareas"        # la misma de [tipos.tarea]
+        detalle = ["…", "--ver", "{id}"]  # opcional: la ficha (ver `comando`)
+        gmail   = { personal = "yo@gmail.com", "*" = "yo@trabajo.com" }   # opcional
+
+    Entran las que no están cerradas ni en «algún día». En la ficha, un origen `gmail:<id>` se abre como el
+    correo en Gmail, con la cuenta de su área (`gmail`, o `*` para las demás), y una ruta relativa como
+    archivo de la raíz (la del repositorio git de las tareas, o `raiz`).
+    """
+
+    def __init__(self, cfg: ConfigProveedor) -> None:
+        self.nombre = cfg.nombre
+        opciones = cfg.opciones
+        carpeta = opciones.get("carpeta")
+        if not isinstance(carpeta, str) or not carpeta.strip():
+            raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.carpeta: falta (la de [tipos.tarea])")
+        self.carpeta = Path(carpeta).expanduser()
+        detalle = opciones.get("detalle")
+        if detalle is not None and (not isinstance(detalle, list) or not all(isinstance(x, str) for x in detalle)):
+            raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.detalle: se esperaba una lista de palabras con {{id}}")
+        self.detalle = tuple(detalle or ())
+        gmail = opciones.get("gmail", {})
+        if not isinstance(gmail, dict) or not all(isinstance(v, str) for v in gmail.values()):
+            raise ErrorDeProveedor(f"proveedores.{cfg.nombre}.gmail: se esperaba una tabla área → cuenta")
+        self.gmail = dict(gmail)
+        # contra qué se resuelve una ruta relativa (un origen «proyectos/x/README.md»): `raiz`, o la raíz
+        # del repositorio git donde viven las tareas
+        raiz = opciones.get("raiz") or ""
+        if not raiz:
+            from telar import git as mod_git
+
+            raiz = str(mod_git.repositorio(self.carpeta) or self.carpeta)
+        self.raiz = Path(raiz).expanduser()
+        self.alcance = f"lee las tareas de {self.carpeta}; no sale de la máquina"
+
+    def _enlace(self, uri: str, area: str) -> str:
+        if not uri:
+            return ""
+        if uri.startswith("gmail:"):
+            cuenta = self.gmail.get(area) or self.gmail.get("*") or "0"
+            return f"https://mail.google.com/mail/?authuser={cuenta}#all/{uri[6:]}"
+        if uri.startswith(("http://", "https://")):
+            return uri
+        ruta = self.raiz / uri.split("#")[0]
+        return str(ruta) if ruta.exists() else ""
+
+    def activas(self, dia: date) -> list[Tarea]:
+        from telar.tipos import tarea as tipo
+        from telar.tipos.indice import compartido
+
+        indice = compartido(self.carpeta, tipo.ARCHIVO)
+        salida = []
+        for t, _version in indice.consultar(lambda x: not x.cerrada_ya and x.estado != "algun-dia"):
+            etiquetas = tuple(e.lstrip("#").lower() for e in t.etiquetas)
+            salida.append(Tarea(
+                id=t.id, texto=t.titulo.strip() or t.id,
+                prioridad=_prioridad({0: "alta", 1: "alta", 2: "media", 3: "baja"}.get(t.prioridad), f"{t.id}.prioridad"),
+                vence=_fecha(t.vence or None, f"{t.id}.vence"),
+                etiquetas=etiquetas,
+                # en la lista, el enlace como está escrito (el de la ficha se abre: `_enlace`)
+                enlace=t.trabajo or t.origen,
+                espera=("@" + (t.espera or "alguien").lstrip("@")) if t.estado == "espera" else "",
+                origen=t.proyecto,
+                avance=t.avance, area=t.area, dueno=t.dueno,
+                estrella="estrella" in etiquetas,
+                destacada=t.prioridad == 0 or "estrella" in etiquetas,
+            ))
+        return salida
+
+
 # ── ninguno: la forma explícita de no tener tareas ──────────────────────────────
 
 class Ninguno(_Base):
@@ -709,6 +786,7 @@ class Ninguno(_Base):
 IMPLEMENTACIONES = {
     "markdown": DeMarkdown,
     "comando": DeComando,
+    "tipo": DeTipo,
     "ninguno": Ninguno,
 }
 

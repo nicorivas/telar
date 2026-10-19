@@ -144,6 +144,7 @@ class Casilla(Prueba):
 # ── las acciones y la carpeta ───────────────────────────────────────────────────
 
 import datetime as _dt
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -239,3 +240,38 @@ class LaCarpeta(Prueba):
         with self.assertRaises(T.ErrorDeAccion):
             self.c.aplicar("T84", T.completar, reloj=reloj)
         self.assertEqual((self.dir / "T84.md").read_text(), antes)
+
+
+class ElProveedorTipo(Prueba):
+    """`[proveedores.tareas] tipo = "tipo"`: las tareas de una carpeta, con la forma de siempre de un proveedor."""
+
+    def setUp(self):
+        super().setUp()
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T1.md").write_text(TAREA, encoding="utf-8")
+        (self.dir / "T2.md").write_text("---\ntitulo: Esperando\nestado: espera\nprioridad: 0\nespera: ana\n---\n", encoding="utf-8")
+        (self.dir / "T3.md").write_text("---\ntitulo: Hecha\nestado: hecha\ncerrada: 2026-10-01\n---\n", encoding="utf-8")
+        (self.dir / "T4.md").write_text("---\ntitulo: Algún día\nestado: algun-dia\n---\n", encoding="utf-8")
+        from telar.config import Proveedor
+        from telar.proveedores import tareas as P
+        self.P = P
+        self.prov = P.DeTipo(Proveedor(nombre="tareas", opciones={"tipo": "tipo", "carpeta": str(self.dir)}))
+
+    def test_entran_las_abiertas_con_su_prioridad_y_a_quien_esperan(self):
+        items = {i.id: i for i in self.prov.consultar(_dt.date(2026, 10, 19))}
+        self.assertEqual(sorted(items), ["T1", "T2"])
+        self.assertEqual(items["T1"].titulo, "Watts: volver con Ignacia por el contrato")
+        self.assertEqual(items["T1"].datos["etiquetas"], ["watts", "contratos"])
+        self.assertEqual((items["T2"].datos["espera"], items["T2"].datos["destacada"]), ("@ana", True))
+
+    def test_un_cambio_en_el_archivo_se_ve_en_la_siguiente_consulta(self):
+        self.prov.consultar(_dt.date(2026, 10, 19))
+        (self.dir / "T1.md").write_text(TAREA.replace("estado: activa", "estado: hecha\ncerrada: 2026-10-19"), encoding="utf-8")
+        os.utime(self.dir / "T1.md", (1, 1))  # otra fecha, aunque el reloj no haya avanzado
+        self.assertEqual([i.id for i in self.prov.consultar(_dt.date(2026, 10, 19))], ["T2"])
+
+    def test_sin_carpeta_se_dice(self):
+        from telar.config import Proveedor
+        with self.assertRaises(self.P.ErrorDeProveedor):
+            self.P.DeTipo(Proveedor(nombre="tareas", opciones={"tipo": "tipo"}))

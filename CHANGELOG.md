@@ -24,6 +24,10 @@ workflow refuses to run if the two disagree.
   memory, up to date with their files by date and size (308 real tasks: 66 ms to build, 1 ms to check), and
   serves them at `/tipos/tarea` (filters), `/tipos/tarea/{id}` (with its version) and
   `POST /tipos/tarea/{id}/{action}` (`{params, version}`; a stale version is a 409 with the current one).
+- A `tipo = "tipo"` task provider: `telar hoy` and the panel read the tasks from the type's in-memory index
+  (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
+  the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
+  machine's node serves them over the bus.
 - `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
   directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
   used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first

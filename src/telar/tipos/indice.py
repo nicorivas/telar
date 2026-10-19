@@ -25,7 +25,7 @@ from typing import Callable
 
 from telar.tipos.carpeta import Carpeta, NoExiste
 
-__all__ = ["Indice"]
+__all__ = ["Indice", "compartido"]
 
 
 class Indice:
@@ -91,3 +91,20 @@ class Indice:
         objeto, nueva = self.carpeta.aplicar(id, accion, *args, version=version, **kwargs)
         self.refrescar()
         return objeto, nueva
+
+
+_compartidos: dict[tuple[str, int], Indice] = {}
+_candado_compartidos = threading.Lock()
+
+
+def compartido(ruta, formato) -> Indice:
+    """El índice de esa carpeta en este proceso, uno solo: lo usan la API y los proveedores, y vive lo que
+    vive el proceso (en `telar serve` y en el nodo, siempre; en una orden suelta, lo que dura la orden)."""
+    from pathlib import Path
+
+    llave = (str(Path(ruta).expanduser()), id(formato))
+    with _candado_compartidos:
+        if llave not in _compartidos:
+            _compartidos[llave] = Indice(Carpeta(ruta, formato))
+        return _compartidos[llave]
+

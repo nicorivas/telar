@@ -192,7 +192,10 @@ def _indice_de(ctx: Contexto, clave: str) -> Indice:
         raise ErrorDeServicio(f"esta máquina no declara dónde viven los objetos «{clave}» ([tipos.{clave}] carpeta)", 404)
     llave = (clave, t.carpeta)
     if llave not in _indices:
-        _indices[llave] = Indice(Carpeta(t.carpeta, tipo_tarea.ARCHIVO))
+        # el mismo índice que usan los proveedores de este proceso (telar.tipos.indice.compartido)
+        from telar.tipos.indice import compartido
+
+        _indices[llave] = compartido(t.carpeta, tipo_tarea.ARCHIVO)
     return _indices[llave]
 
 
