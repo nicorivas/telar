@@ -265,3 +265,25 @@ def _general(ctx) -> dict:
         a = None
     return {"clave": a.clave, "nombre": a.nombre} if a is not None else {}
 
+
+
+class Pestanas(BaseModel):
+    dashboard: dict
+    archivo: str
+
+
+def pestanas(ctx, valor: str) -> Pestanas:
+    """El orden de las pestañas del dashboard y cuáles se esconden («hoy,plan,-correo»), escrito en la
+    configuración (`telar config --pestanas`)."""
+    from telar.config import ErrorDeConfig, escribir_clave
+    from telar.servicios import ErrorDeServicio
+
+    nombres = [x.strip() for x in valor.split(",") if x.strip()]
+    orden = [x.lstrip("-") for x in nombres]
+    ocultas = [x[1:] for x in nombres if x.startswith("-")]
+    try:
+        escribir_clave("dashboard", "orden", orden or None, ctx.config.origen)
+        destino = escribir_clave("dashboard", "ocultas", ocultas or None, ctx.config.origen)
+    except ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return Pestanas(dashboard={"orden": orden, "ocultas": ocultas}, archivo=str(destino))

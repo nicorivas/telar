@@ -186,21 +186,38 @@ def registro(config, n: int = 100) -> list[dict]:
             await asegurar(js)
             info = await js.stream_info(REGISTRO)
             ultimo, primero = info.state.last_seq, info.state.first_seq
-            salida, seq = [], ultimo
-            # hacia atrás, hasta juntar n de esta persona o llegar al principio
-            while seq >= max(primero, 1) and len(salida) < n and ultimo - seq < n * 4:
-                try:
-                    r = await js.get_msg(REGISTRO, seq)
-                except Exception:  # noqa: BLE001 - un hueco (borrado por edad)
-                    seq -= 1
-                    continue
-                if r.subject == f"registro.{persona(config)}":
+            if not ultimo:
+                return []
+            # las últimas n*4 secuencias, y de ellas los últimos n de esta persona. De una vez, con un
+            # consumidor efímero que filtra por su tema: pedirlas de a una era un viaje por mensaje
+            # (17 s por 60 desde el laptop; 200 no alcanzaban a llegar antes del plazo)
+            desde = max(primero, 1, ultimo - n * 4 + 1)
+            from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+
+            sub = await js.pull_subscribe(
+                f"registro.{persona(config)}", stream=REGISTRO,
+                config=ConsumerConfig(deliver_policy=DeliverPolicy.BY_START_SEQUENCE, opt_start_seq=desde,
+                                      ack_policy=AckPolicy.NONE, inactive_threshold=30.0, mem_storage=True))
+            salida: list[dict] = []
+            try:
+                while True:
                     try:
-                        salida.append(json.loads(r.data))
-                    except ValueError:
-                        pass
-                seq -= 1
-            return list(reversed(salida))
+                        lote = await sub.fetch(batch=256, timeout=2)
+                    except asyncio.TimeoutError:
+                        break  # no queda nada en la ventana
+                    for r in lote:
+                        try:
+                            salida.append(json.loads(r.data))
+                        except ValueError:
+                            pass
+                    if not lote or lote[-1].metadata.num_pending == 0:
+                        break
+            finally:
+                try:
+                    await sub.unsubscribe()
+                except Exception:  # noqa: BLE001 - el consumidor efímero se borra solo
+                    pass
+            return salida[-n:] if n else salida
         finally:
             await nc.close()
 
@@ -209,7 +226,7 @@ def registro(config, n: int = 100) -> list[dict]:
     except ErrorDeBus:
         raise
     except Exception as e:  # noqa: BLE001
-        raise ErrorDeBus(f"no pude leer el registro del bus: {e}") from e
+        raise ErrorDeBus(f"no pude leer el registro del bus: {e or type(e).__name__}") from e
 
 
 def estados(config) -> dict:

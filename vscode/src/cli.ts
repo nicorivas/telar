@@ -126,7 +126,7 @@ function socketServe(): string {
  *  todavía no tiene esa ruta (un servidor más viejo). Entonces quien llama usa la CLI, que da lo mismo
  *  (las dos son cáscaras de la misma función, `telar.servicios`). Si la API contesta con un error, ese
  *  es el error: una acción no se reintenta por la CLI, porque se correría dos veces. */
-function aServe<T>(metodo: 'GET' | 'POST', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T> | undefined> {
+function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T> | undefined> {
     const sock = socketServe();
     if (!fs.existsSync(sock)) return Promise.resolve(undefined);
     const datos = cuerpo === undefined ? undefined : JSON.stringify(cuerpo);
@@ -275,8 +275,11 @@ export async function comentarResultado(clave: string, dia: string, texto: strin
 
 /** Un mensaje que escribe la persona desde otra parte (el panel) a un hilo de cualquier máquina, por
  *  el bus: le llega como suyo (`telar mensaje <hilo> - --tipo persona`). */
-export const escribirComoPersona = (hilo: string, texto: string, de: string) =>
-    conEntrada<{ ok?: boolean; id?: string; error?: string }>(['mensaje', hilo, '-', '--tipo', 'persona', '--de', de, '--json'], texto);
+export const escribirComoPersona = async (hilo: string, texto: string, de: string) => {
+    const r = await aServe<{ ok?: boolean; id?: string; error?: string }>('POST', '/mensajes', 30000, { para: hilo, texto, tipo: 'persona', de });
+    if (r) return r.error ? { error: r.error } : { ok: true, id: r.datos?.id };
+    return conEntrada<{ ok?: boolean; id?: string; error?: string }>(['mensaje', hilo, '-', '--tipo', 'persona', '--de', de, '--json'], texto);
+};
 
 /** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`). */
 export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string }[] }
@@ -308,8 +311,9 @@ export interface JsonNotas {
 }
 export const notasEventos = async (dia = '') => await deServe<JsonNotas>(`/notas${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`, 30000)
     ?? telarJson<JsonNotas>(['evento', 'notas', ...(dia ? [dia] : [])], 30000);
-export const notaEvento = (evento: string, texto: string, titulo: string, inicio: string, dia = '') =>
-    telarJson<{ ok: boolean; error?: string }>(['evento', 'nota', evento, texto, '--de', 'Nico', '--titulo', titulo,
+export const notaEvento = async (evento: string, texto: string, titulo: string, inicio: string, dia = '') =>
+    await aServe<{ ok: boolean; error?: string }>('POST', '/notas', 30000, { evento, texto, de: 'Nico', titulo, inicio, dia })
+    ?? telarJson<{ ok: boolean; error?: string }>(['evento', 'nota', evento, texto, '--de', 'Nico', '--titulo', titulo,
         '--inicio', inicio, ...(dia ? ['--dia', dia] : [])], 30000);
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay
@@ -483,7 +487,9 @@ export const seccion = async (clave: string) => await deServe<JsonPagina>(`/secc
 export const app = async (clave: string) => await deServe<JsonPagina>(`/apps/${encodeURIComponent(clave)}`, 40000)
     ?? telarJson<JsonPagina>(['app', clave, '--json'], 40000);
 /** Guardar el orden de las pestañas del dashboard: «ahora,revisar,-plan» (con «-», oculta). */
-export const configPestanas = (valor: string) => telarJson<{ dashboard: { orden: string[]; ocultas: string[] } }>(['config', '--pestanas', valor, '--json'], 20000);
+export const configPestanas = async (valor: string) =>
+    await aServe<{ dashboard: { orden: string[]; ocultas: string[] } }>('PUT', '/config/pestanas', 20000, { valor })
+    ?? telarJson<{ dashboard: { orden: string[]; ocultas: string[] } }>(['config', '--pestanas', valor, '--json'], 20000);
 /** La ficha de una tarea (`telar tarea`) y correr una de sus acciones, por su número. */
 export async function tarea(id: string, proveedor: string): Promise<Respuesta<JsonPagina>> {
     return await deServe<JsonPagina>(`/tareas/${encodeURIComponent(id)}?proveedor=${encodeURIComponent(proveedor)}`, 40000)
@@ -642,8 +648,9 @@ export interface JsonMensajeBus {
 export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensajeBus[] }>(`/mensajes?n=${n}`, 30000)
     ?? telarJson<{ mensajes: JsonMensajeBus[] }>(['mensaje', '--registro', String(n)], 30000);
 /** `telar mensaje --soltar <id>`: la persona deja pasar un mensaje retenido. */
-export const soltarMensaje = (id: string) =>
-    telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);
+export const soltarMensaje = async (id: string) =>
+    await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000)
+    ?? telarJson<{ id: string; para: string }>(['mensaje', '--soltar', id], 30000);
 
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {

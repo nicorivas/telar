@@ -210,7 +210,11 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    (`/espejos`, que el panel pedía cada 30 s abriendo un proceso), `proyectos`, `pendientes`, las páginas
    (`/secciones/{clave}`, `/apps`, `/apps/{clave}`), la ficha de un hilo (`/ficha`), las notas del día
    (`/notas`), el registro del bus (`/mensajes`) y una conversación (`/conversaciones/{id}`); cada una
-   comparada con la CLI de antes sobre los datos reales (mismo JSON). Siguen las que escriben y el resto.
+   comparada con la CLI de antes sobre los datos reales (mismo JSON). De las que escriben, hechas las que no
+   abren hilos: mandar un mensaje (`POST /mensajes`), soltar uno retenido (`POST /mensajes/{id}/soltar`), una
+   nota en un evento (`POST /notas`) y el orden de las pestañas (`PUT /config/pestanas`). Siguen las que
+   abren hilos (atajos, encargos, abrir un proyecto, ir a un pendiente): antes, que el proceso de la API
+   tenga el entorno de quien abre (en el laptop le falta Node en el PATH, y un hilo lo hereda).
    Quedan aparte `periodicos` y `correo`, que desde el laptop van al servidor por ssh: pasan cuando ese
    reenvío pase al bus.
 2. **El nodo, adentro del proceso único**: ya es Python, asyncio y NATS; una máquina queda con un

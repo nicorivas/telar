@@ -1,6 +1,6 @@
 """Las notas que las skills y la persona le dejan a los eventos del día (telar.notas).
 
-Lo usan `telar evento notas --json` y `GET /notas`. Si viven en otra máquina, se le piden a ella.
+Lo usan `telar evento notas|nota --json` y `GET /notas`, `POST /notas`. Si viven en otra máquina, se le piden a ella.
 """
 
 from __future__ import annotations
@@ -21,3 +21,10 @@ def notas(ctx, dia: str = "") -> Notas:
     from telar import notas as mod
 
     return Notas(**mod.leer(ctx.config, dia))
+
+
+def agregar(ctx, evento: str, texto: str, *, de: str, titulo: str = "", inicio: str = "", dia: str = "") -> Notas:
+    """Una nota en un evento del día: `{ok, dia, en?}`, o `{ok: false, error}`."""
+    from telar import notas as mod
+
+    return Notas(**mod.agregar(ctx.config, dia, evento, texto, de=de, titulo=titulo, inicio=inicio))

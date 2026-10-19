@@ -70,9 +70,12 @@ def main(argv: list[str], ctx) -> int:
             print("    " + " ".join(str(m.get("texto", "")).split())[:160])
         return 0
     if o.soltar:
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import mensajes as servicio
+
         try:
-            r = soltar(ctx, o.soltar)
-        except mod_bus.ErrorDeBus as e:
+            r = servicio.soltar(ctx, o.soltar).model_dump(mode="json")
+        except ErrorDeServicio as e:
             return _comun.queja(str(e))
         if o.json:
             return _comun.escribir_json(r)
@@ -83,9 +86,12 @@ def main(argv: list[str], ctx) -> int:
     texto = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
     if not texto.strip():
         return _comun.queja("¿qué le digo? telar mensaje <hilo> \"texto\" (o «-» para la entrada)")
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import mensajes as servicio
+
     try:
-        r = enviar(ctx, o.para, texto, tipo=o.tipo, de=o.de)
-    except mod_bus.ErrorDeBus as e:
+        r = servicio.enviar(ctx, o.para, texto, tipo=o.tipo, de=o.de).model_dump(mode="json")
+    except ErrorDeServicio as e:
         return _comun.queja(str(e))
     if o.json:
         return _comun.escribir_json(r)

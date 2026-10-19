@@ -186,6 +186,49 @@ class PaginasFichaNotas(Prueba):
         self.assertEqual(n.call_args[0][1], "2026-10-19")
 
 
+class LoQueEscribe(Prueba):
+    """`POST /mensajes`, `/mensajes/{id}/soltar`, `/notas` y `PUT /config/pestanas`: lo mismo que la CLI."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+        self.c = TestClient(api.app)
+
+    def test_un_mensaje_va_con_quien_lo_manda_y_sin_texto_no(self):
+        from telar.ordenes import mensaje
+        enviado = {"id": "m1", "para": "Gestión", "estado": "enviado"}
+        with mock.patch.object(mensaje, "enviar", return_value=enviado) as env:
+            r = self.c.post("/mensajes", json={"para": "Gestión", "texto": "hola", "tipo": "persona", "de": "el panel"})
+        self.assertEqual(r.json(), enviado)
+        self.assertEqual(env.call_args.kwargs, {"tipo": "persona", "de": "el panel"})
+        self.assertEqual(self.c.post("/mensajes", json={"para": "Gestión", "texto": " "}).status_code, 422)
+
+    def test_soltar_uno_que_no_esta_es_404_y_el_bus_caido_502(self):
+        from telar import bus as mod_bus
+        from telar.ordenes import mensaje
+        with mock.patch.object(mensaje, "soltar", side_effect=mod_bus.ErrorDeBus("no hay un mensaje retenido con id x")):
+            self.assertEqual(self.c.post("/mensajes/x/soltar").status_code, 404)
+        with mock.patch.object(mensaje, "soltar", side_effect=mod_bus.ErrorDeBus("el bus no responde")):
+            self.assertEqual(self.c.post("/mensajes/x/soltar").status_code, 502)
+
+    def test_una_nota_y_las_pestanas(self):
+        from telar import notas
+        with mock.patch.object(notas, "agregar", return_value={"ok": True, "dia": "2026-10-19"}) as ag:
+            r = self.c.post("/notas", json={"evento": "e1", "texto": "llevar el deck", "de": "Nico", "dia": "2026-10-19"})
+        self.assertEqual(r.json(), {"ok": True, "dia": "2026-10-19"})
+        self.assertEqual(ag.call_args.args[1:], ("2026-10-19", "e1", "llevar el deck"))
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / "config.toml"
+            cfg.write_text("[dashboard]\norden = [\"hoy\"]\n", encoding="utf-8")
+            api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=SimpleNamespace(origen=cfg))
+            self.addCleanup(api.app.dependency_overrides.clear)
+            r = self.c.put("/config/pestanas", json={"valor": "plan,hoy,-correo"})
+            self.assertEqual(r.json()["dashboard"], {"orden": ["plan", "hoy", "correo"], "ocultas": ["correo"]})
+            self.assertIn('"plan"', cfg.read_text())
+
+
 class CuentaDeGws(Prueba):
     """La cuenta de gws se pregunta una vez y vale 10 minutos: la pregunta puede tardar."""
 

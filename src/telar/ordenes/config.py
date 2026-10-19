@@ -62,17 +62,16 @@ def main(argv: list[str], ctx) -> int:
         return codigo
 
     if o.pestanas is not None:
-        nombres = [x.strip() for x in o.pestanas.split(",") if x.strip()]
-        orden = [x.lstrip("-") for x in nombres]
-        ocultas = [x[1:] for x in nombres if x.startswith("-")]
+        from telar.servicios import ErrorDeServicio
+
         try:
-            escribir_clave("dashboard", "orden", orden or None, ctx.config.origen)
-            destino = escribir_clave("dashboard", "ocultas", ocultas or None, ctx.config.origen)
-        except ErrorDeConfig as e:
+            r = servicio.pestanas(ctx, o.pestanas)
+        except ErrorDeServicio as e:
             return _comun.queja(str(e))
         if o.json:
-            return _comun.escribir_json({"dashboard": {"orden": orden, "ocultas": ocultas}, "archivo": str(destino)})
-        print(f"pestañas: {', '.join(nombres) or 'todas, en su orden'} · {destino}")
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        nombres = [x.strip() for x in o.pestanas.split(",") if x.strip()]
+        print(f"pestañas: {', '.join(nombres) or 'todas, en su orden'} · {r.archivo}")
         return 0
 
     if o.directorios is not None or o.tope is not None:

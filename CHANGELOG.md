@@ -28,6 +28,13 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `POST /mensajes`, `POST /mensajes/{id}/soltar`, `POST /notas` and `PUT /config/pestanas`: the writes
+  that don't open a thread, one service each; the panel asks the API first.
+- The bus log is read in batches with an ephemeral consumer instead of one request per message: the last 60
+  from the laptop in 3.5 s instead of 17 s, and 200 no longer time out (`telar mensaje --retenidos` works).
+- Replacing a pane no longer uses `respawn-pane`, which crashes tmux 3.4 (seen twice on a server, taking
+  every thread with it): the new pane opens next to the old one, and the old one is closed.
+- A thread finds its agent in `~/.local/bin` when whoever opens it doesn't have it on the PATH.
 - `GET /secciones/{clave}`, `/apps`, `/apps/{clave}`, `/ficha`, `/notas`, `/mensajes` and
   `/conversaciones/{id}`, one service each behind the CLI and the API; the panel asks the API first.
 - `GET /espejos`, `/proyectos` and `/pendientes`: the same JSON as `telar espejo ver`, `telar proyectos`

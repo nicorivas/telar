@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import sys
 
-from telar import notas as mod
 from telar.ordenes import _comun
 
 AYUDA = "Las notas de los eventos del día: verlas y dejarle una a un evento."
@@ -52,7 +51,10 @@ def main(argv: list[str], ctx) -> int:
     if len(o.args) < 2:
         return _comun.queja('nota lleva el evento y el texto: telar evento nota <id> "texto" --de planear (o «-»)')
     texto = sys.stdin.read() if o.args[1:] == ["-"] else " ".join(o.args[1:])
-    r = mod.agregar(ctx.config, o.dia, o.args[0], texto, de=o.de or _de(), titulo=o.titulo, inicio=o.inicio)
+    from telar.servicios import notas as servicio
+
+    r = servicio.agregar(ctx, o.args[0], texto, de=o.de or _de(), titulo=o.titulo, inicio=o.inicio,
+                         dia=o.dia).model_dump(mode="json")
     if o.json:
         return _comun.escribir_json(r)
     if not r.get("ok"):

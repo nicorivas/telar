@@ -307,6 +307,55 @@ def get_conversacion(sid: str, ctx: Contexto = Depends(contexto)):
     return servicio_conversaciones.conversacion(ctx, sid)
 
 
+# ── lo que escribe: mensajes, notas, pestañas ─────────────────────────────────
+
+class PedidoMensaje(BaseModel):
+    para: str
+    texto: str
+    tipo: str = "mensaje"
+    #: quién lo manda; vacío, la persona (el panel escribe como ella: «persona»)
+    de: str = ""
+
+
+@app.post("/mensajes", response_model=servicio_mensajes.Enviado)
+def post_mensaje(pedido: PedidoMensaje, ctx: Contexto = Depends(contexto)):
+    """Un mensaje para un hilo o un agente de cualquier máquina, por el bus (`telar mensaje`)."""
+    return servicio_mensajes.enviar(ctx, pedido.para, pedido.texto, tipo=pedido.tipo, de=pedido.de)
+
+
+@app.post("/mensajes/{mid}/soltar", response_model=servicio_mensajes.Enviado)
+def post_soltar(mid: str, ctx: Contexto = Depends(contexto)):
+    """Manda un mensaje retenido (`telar mensaje --soltar`)."""
+    return servicio_mensajes.soltar(ctx, mid)
+
+
+class PedidoNota(BaseModel):
+    evento: str
+    texto: str
+    de: str
+    titulo: str = ""
+    inicio: str = ""
+    dia: str = ""
+
+
+@app.post("/notas", response_model=servicio_notas.Notas)
+def post_nota(pedido: PedidoNota, ctx: Contexto = Depends(contexto)):
+    """Una nota en un evento del día (`telar evento nota`)."""
+    return servicio_notas.agregar(ctx, pedido.evento, pedido.texto, de=pedido.de, titulo=pedido.titulo,
+                                  inicio=pedido.inicio, dia=pedido.dia)
+
+
+class PedidoPestanas(BaseModel):
+    #: «hoy,plan,-correo»: el orden, y con «-» las que se esconden; vacío, todas en su orden
+    valor: str = ""
+
+
+@app.put("/config/pestanas", response_model=servicio_config.Pestanas)
+def put_pestanas(pedido: PedidoPestanas, ctx: Contexto = Depends(contexto)):
+    """El orden de las pestañas del dashboard, escrito en la configuración (`telar config --pestanas`)."""
+    return servicio_config.pestanas(ctx, pedido.valor)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}
