@@ -226,6 +226,34 @@ def post_tarea_accion(id: str, accion: str, pedido: PedidoTarea, ctx: Contexto =
     return servicio_tipos.aplicar(ctx, id, accion, pedido.params, version=pedido.version)
 
 
+# ── espejos, proyectos y pendientes ───────────────────────────────────────────
+
+from telar.servicios import espejos as servicio_espejos
+from telar.servicios import pendientes as servicio_pendientes
+from telar.servicios import proyectos as servicio_proyectos
+
+
+@app.get("/espejos", response_model=servicio_espejos.Espejos)
+def get_espejos(ctx: Contexto = Depends(contexto)):
+    """Las fotos de las otras máquinas: sus hilos, como los ve cada una (`telar espejo ver --json`)."""
+    return servicio_espejos.ver(ctx)
+
+
+@app.get("/proyectos", response_model=servicio_proyectos.Proyectos)
+def get_proyectos(ctx: Contexto = Depends(contexto)):
+    """Las unidades del repositorio y si tienen hilo (`telar proyectos --json`)."""
+    return servicio_proyectos.lista(ctx)
+
+
+@app.get("/pendientes", response_model=servicio_pendientes.Pendientes)
+def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
+                   limite: int = 0, ctx: Contexto = Depends(contexto)):
+    """Lo pendiente en los documentos (con `repo`, de todas las unidades) y, con `proveedores`, de las
+    fuentes declaradas (`telar pendientes --json`)."""
+    return servicio_pendientes.pendientes(ctx, repo=repo, hechos=hechos, proveedores=proveedores, hilo=hilo,
+                                          limite=limite)
+
+
 @app.get("/salud")
 def get_salud() -> dict:
     return {"ok": True, "version": __version__}

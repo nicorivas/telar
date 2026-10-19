@@ -115,6 +115,43 @@ class HilosYConfig(Prueba):
             self.assertEqual(json.loads(salida.getvalue()), TestClient(api.app).get("/config").json())
 
 
+class EspejosProyectosPendientes(Prueba):
+    """`/espejos`, `/proyectos` y `/pendientes`: el mismo JSON que la CLI, campos extra incluidos."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(api, "_refrescar", mock.AsyncMock())
+        p.start()
+        self.addCleanup(p.stop)
+
+    def igual(self, mod, fn, valor, argv, ruta, orden_mod):
+        with mock.patch.object(mod, fn, return_value=valor):
+            salida = io.StringIO()
+            with redirect_stdout(salida):
+                orden_mod.main(argv, SimpleNamespace(config=SimpleNamespace()))
+            self.assertEqual(json.loads(salida.getvalue()), TestClient(api.app).get(ruta).json())
+
+    def test_los_tres_dicen_lo_mismo_por_la_cli_y_la_api(self):
+        from telar.ordenes import espejo, pendientes, proyectos
+        from telar.servicios import espejos as se
+        from telar.servicios import pendientes as sp
+        from telar.servicios import proyectos as spr
+
+        self.igual(se, "ver", se.Espejos(espejos=[{"nombre": "laptop", "en_linea": True, "edad": 3, "hilos": [{"nombre": "x"}],
+                                                   "sesion": "s"}], vigente=120), ["ver", "--json"], "/espejos", espejo)
+        self.igual(spr, "lista", spr.Proyectos(raiz="/r", proyectos=[{"ruta": "a/b", "nombre": "B", "hilo": "", "vivo": False}]),
+                   ["--json"], "/proyectos", proyectos)
+        self.igual(sp, "pendientes", sp.Pendientes(dia="2026-10-19", raiz="/r", pendientes=[{"ref": "a#1", "hilo": "",
+                   "cuando": None, "en_curso": False}]), ["--json"], "/pendientes", pendientes)
+
+    def test_pendientes_pasa_sus_parametros(self):
+        from telar.servicios import pendientes as sp
+
+        with mock.patch.object(sp, "pendientes", return_value=sp.Pendientes(dia="d", raiz="/r")) as p:
+            TestClient(api.app).get("/pendientes", params={"repo": "true", "limite": 3})
+        self.assertEqual(p.call_args.kwargs, {"repo": True, "hechos": False, "proveedores": False, "hilo": "", "limite": 3})
+
+
 class CuentaDeGws(Prueba):
     """La cuenta de gws se pregunta una vez y vale 10 minutos: la pregunta puede tardar."""
 

@@ -170,33 +170,18 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
 
-    tel = _comun.tejer(ctx)
-    filas = juntar(ctx, tel, repo=o.repo, hechos=o.hechos)
-    fallas: list[str] = []
-    if o.proveedores:
-        externos, fallas = de_proveedores(ctx, tel, dt.date.today())
-        filas += externos
-    con_area(filas)
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import pendientes as servicio
 
-    if o.hilo:
-        hilo, problema = _comun.resolver(tel, o.hilo)
-        if hilo is None:
-            return _comun.queja(problema)
-        filas = [f for f in filas if f["hilo"] == hilo.nombre]
-
-    filas.sort(key=lambda f: (not f["en_curso"], f["hilo"] or "~", f["ref"]))
-    if o.limite:
-        filas = filas[: o.limite]
-
+    try:
+        r = servicio.pendientes(ctx, repo=o.repo, hechos=o.hechos, proveedores=o.proveedores, hilo=o.hilo,
+                                limite=o.limite)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
     if o.json:
-        return _comun.escribir_json(
-            {
-                "dia": dt.date.today().isoformat(),
-                "raiz": str(tel.raiz),
-                "pendientes": filas,
-                "fallas": fallas,
-            }
-        )
+        return _comun.escribir_json(r.model_dump(mode="json"))
+    filas = [f.model_dump() for f in r.pendientes]
+    fallas = r.fallas
 
     if not filas:
         print(_comun.tenue("nada pendiente en lo que telar alcanza a ver."))

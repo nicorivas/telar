@@ -280,7 +280,8 @@ export const escribirComoPersona = (hilo: string, texto: string, de: string) =>
 
 /** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`). */
 export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string }[] }
-export const espejos = () => telarJson<{ espejos: JsonEspejo[] }>(['espejo', 'ver', '--json'], 15000);
+export const espejos = async () => await deServe<{ espejos: JsonEspejo[] }>('/espejos', 15000)
+    ?? telarJson<{ espejos: JsonEspejo[] }>(['espejo', 'ver', '--json'], 15000);
 
 /** Una orden de telar con un texto por su entrada estándar, y su JSON. */
 function conEntrada<T>(args: string[], texto: string): Promise<T & { ok?: boolean; error?: string }> {
@@ -350,10 +351,12 @@ export interface JsonProyecto {
     area?: string;
 }
 
-export const proyectos = () => telarJson<{ raiz: string; proyectos: JsonProyecto[] }>(['proyectos', '--json'], 30000);
+export const proyectos = async () => await deServe<{ raiz: string; proyectos: JsonProyecto[] }>('/proyectos', 30000)
+    ?? telarJson<{ raiz: string; proyectos: JsonProyecto[] }>(['proyectos', '--json'], 30000);
 
 /** Los pendientes de los documentos de todas las unidades, tengan hilo o no (sin proveedores: rápido). */
-export const pendientesRepo = () => telarJson<{ pendientes: JsonFila[] }>(['pendientes', '--json', '--repo'], 30000);
+export const pendientesRepo = async () => await deServe<{ pendientes: JsonFila[] }>('/pendientes?repo=true', 30000)
+    ?? telarJson<{ pendientes: JsonFila[] }>(['pendientes', '--json', '--repo'], 30000);
 
 /** `telar proyectos abrir`: un hilo vinculado a esa unidad con el agente cargándola, o ir al que ya hay. */
 export const abrirProyecto = (ruta: string) =>

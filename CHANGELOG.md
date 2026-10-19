@@ -28,6 +28,9 @@ workflow refuses to run if the two disagree.
   (shared with the API in the same process), in the same shape as before. On the same 88 real tasks it gives
   the same items as the previous adapter, field by field, in 2 ms instead of 71 ms. With `en`, another
   machine's node serves them over the bus.
+- `GET /espejos`, `/proyectos` and `/pendientes`: the same JSON as `telar espejo ver`, `telar proyectos`
+  and `telar pendientes`, from one service each; the panel asks the API first (the mirror poll every 30 s
+  no longer spawns a process).
 - Creating tasks and the type's CLI: `telar tipo tarea lista|ver|crear|borrar|<action>` (and `POST`/`DELETE`
   on `/tipos/tarea`), one service behind both. The writer picks a new task's number under its lock; a
   machine with `[tipos.tarea] en` asks the one that has them over the bus (`tipo`), with error codes

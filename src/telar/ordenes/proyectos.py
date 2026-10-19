@@ -191,11 +191,13 @@ def main(argv: list[str], ctx) -> int:
     if o.verbo == "abrir" and not o.ruta:
         return _comun.queja("¿cuál? telar proyectos abrir <ruta relativa a la raíz>")
 
-    tel = _comun.tejer(ctx, con_ficha=False)
     if o.verbo != "abrir":
-        lista = listar(ctx, tel)
+        from telar.servicios import proyectos as servicio
+
+        r = servicio.lista(ctx)
         if o.json:
-            return _comun.escribir_json({"raiz": str(ctx.config.raiz), "proyectos": lista})
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        lista = [x.model_dump() for x in r.proyectos]
         ancho = min(max((len(x["nombre"]) for x in lista), default=0), 48)
         for x in lista:
             nombre = x["nombre"] if len(x["nombre"]) <= ancho else x["nombre"][: ancho - 1] + "…"
@@ -205,6 +207,7 @@ def main(argv: list[str], ctx) -> int:
         print(_comun.tenue(f"{len(lista)} unidades · ● con hilo abierto · telar proyectos abrir <ruta>"))
         return 0
 
+    tel = _comun.tejer(ctx, con_ficha=False)
     if tel.mux is None or not tel.viva:
         return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
     try:

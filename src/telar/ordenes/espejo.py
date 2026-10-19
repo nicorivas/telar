@@ -112,9 +112,12 @@ def main(argv: list[str], ctx) -> int:
         return 1 if any(salida.values()) else 0
 
     if o.verbo == "ver":
-        fotos = mod.leer_todos(ctx.config)
+        from telar.servicios import espejos as servicio
+
+        r = servicio.ver(ctx)
         if o.json:
-            return _comun.escribir_json({"espejos": fotos, "vigente": mod.VIGENTE})
+            return _comun.escribir_json(r.model_dump(mode="json"))
+        fotos = [f.model_dump() for f in r.espejos]
         if not fotos:
             print(_comun.tenue("ninguna máquina ha publicado aquí todavía"))
         for f in fotos:

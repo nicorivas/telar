@@ -206,7 +206,9 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
 **El orden.**
 
 1. **Las órdenes a `telar.servicios`**, con su ruta en la API (unas 60 llamadas del panel). Hechas `hoy`,
-   `hilos`, `config`, `tarea`, `bloque` y `resultado`; siguen las que escriben y el resto.
+   `hilos`, `config`, `tarea`, `bloque`, `resultado`, el tipo `tarea` (`/tipos/tarea`), `espejo ver`
+   (`/espejos`, que el panel pedía cada 30 s abriendo un proceso), `proyectos` y `pendientes`; cada una
+   comparada con la CLI de antes sobre los datos reales (mismo JSON). Siguen las que escriben y el resto.
 2. **El nodo, adentro del proceso único**: ya es Python, asyncio y NATS; una máquina queda con un
    proceso menos al tiro.
 3. **Las vistas, al navegador**: `cli.ts` llama a la API en vez de abrir procesos; `hoy.ts` e
