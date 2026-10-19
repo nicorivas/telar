@@ -571,7 +571,11 @@ el contrato de una página de sección y tres cosas más. Un bloque puede ser `d
 
 `telar tarea <id> --accion N [--texto T]` corre la acción `N`. telar vuelve a pedir la ficha
 y toma el comando de ahí, nunca de quien lo pide: desde el dashboard solo se puede correr
-lo que el proveedor ofreció. Las de tipo `hilo` y `abrir` las hace quien dibuja.
+lo que el proveedor ofreció. Las de tipo `hilo` y `abrir` las hace quien dibuja. Con
+`--version V` (la `version` que traía la ficha), la acción solo se hace si la tarea no cambió
+desde entonces. Si no se puede hacer, con `--json` la salida dice por qué y con qué código
+HTTP: `{"error": "T7 cambió desde que se leyó…", "codigo": 409}` (404: no existe; 422: el
+cambio no cabe en el archivo).
 
 La lista de tareas del proveedor `comando` acepta además `avance`: lo último que dejó un
 agente que la trabajó solo, `<estado>[:<cómo>] <fecha>` (`preparado 2026-09-25`,

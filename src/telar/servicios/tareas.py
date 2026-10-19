@@ -61,7 +61,11 @@ def _pedir_alla(ctx, en: str, argv: list[str]) -> dict:
         raise ErrorDeServicio(f"las tareas viven en {en} y no respondió: {r.get('error', '')}", 502)
     if int(r.get("codigo", 1)) != 0:
         linea = (r.get("error_salida", "").strip().splitlines() or [f"{en} no pudo"])[-1]
-        raise ErrorDeServicio(linea.removeprefix("telar: "), 400)
+        try:
+            codigo = int(json.loads(r.get("salida", "")).get("codigo", 400))
+        except (ValueError, AttributeError, TypeError):
+            codigo = 400
+        raise ErrorDeServicio(linea.removeprefix("telar: "), codigo)
     try:
         return json.loads(r.get("salida", ""))
     except ValueError as e:

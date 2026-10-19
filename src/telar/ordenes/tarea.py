@@ -54,6 +54,9 @@ def main(argv: list[str], ctx) -> int:
             return 0
         hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto, version=o.version)
     except ErrorDeServicio as e:
+        if o.json:
+            # con su código, para quien la pidió desde otra máquina (409: la tarea cambió; 404: no existe)
+            _comun.escribir_json({"error": str(e), "codigo": e.codigo})
         return _comun.queja(str(e))
     if o.json:
         return _comun.escribir_json(hecho.model_dump(mode="json", exclude_defaults=False))

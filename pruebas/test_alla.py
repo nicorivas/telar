@@ -66,6 +66,23 @@ class EnOtraMaquina(Prueba):
             self.assertNotEqual(alla.tarea_alla(self.cfg, "servidor", ["T7", "--accion", "3"]), 0)
         correr.assert_not_called()
 
+    def test_el_codigo_del_error_de_alla_llega_aca(self):
+        # la tarea cambió allá: la API de aquí responde 409, como la de allá, y no un 400 cualquiera
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import tareas as servicio
+
+        respuesta = {"ok": True, "codigo": 2, "salida": '{"error": "T7 cambió", "codigo": 409}\n',
+                     "error_salida": "telar: T7 cambió desde que se leyó\n"}
+        with mock.patch.object(mod_bus, "pedir", return_value=respuesta):
+            with self.assertRaises(ErrorDeServicio) as e:
+                servicio._pedir_alla(SimpleNamespace(config=self.cfg), "servidor", ["T7"])
+        self.assertEqual((e.exception.codigo, str(e.exception)), (409, "T7 cambió desde que se leyó"))
+        respuesta = {"ok": True, "codigo": 2, "salida": "", "error_salida": "telar: no se pudo\n"}
+        with mock.patch.object(mod_bus, "pedir", return_value=respuesta):
+            with self.assertRaises(ErrorDeServicio) as e:
+                servicio._pedir_alla(SimpleNamespace(config=self.cfg), "servidor", ["T7"])
+        self.assertEqual(e.exception.codigo, 400)
+
     def test_telar_tarea_se_reenvia_si_el_proveedor_vive_alla(self):
         from telar.ordenes import tarea
 
