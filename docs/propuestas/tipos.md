@@ -253,6 +253,25 @@ base de datos).
   una plantilla) no se lee como fecha; una casilla no guarda cuerpo, conexiones ni de dónde salió, y
   cambiarlos es un error; la historia tampoco, y eso está declarado.
 
-Falta: las acciones (completar saca de «en curso», reabrir, reagendar…, con su línea en la historia), las
-versiones para la concurrencia optimista, el índice en `telar serve`, y el cambio de la CLI de tareas.
+**Paso 2: las acciones, las versiones y la escritura** (`telar/tipos/tarea.py`, `telar/tipos/carpeta.py`).
+
+- **Las acciones**: `completar`, `cerrar` (hecha, caduca o descartada), `reabrir`, `algun_dia`, `esperar`,
+  `reagendar` (fecha o `+Nd`), `asignar`, `anotar`, `proponer` (lo que deja un agente para decidir),
+  `responder` y `editar`. Funciones sobre el modelo, sin texto, cada una con su precondición y su línea en
+  la historia. Son las transiciones de la CLI de tareas, con dos diferencias a propósito: cerrar lo cerrado
+  o reabrir lo abierto es un error (un doble clic repetía la historia), y asignar o editar dejan su línea.
+- **La carpeta** (`Carpeta`): lee una tarea con su versión (la huella del archivo) y le aplica una acción.
+  Con una versión vieja, la acción se rechaza (`ErrorDeVersion`); un escritor a la vez (un candado de la
+  carpeta); la escritura es atómica; y lo escrito tiene que releerse igual a lo que se quiso escribir, o no
+  se escribe. Un identificador es un nombre de archivo, nunca una ruta.
+- **Comparado con la CLI de tareas**, sobre copias de las 308 tareas y a la misma hora: nueve acciones,
+  1.903 aplicaciones; 1.887 dejan **el mismo archivo, byte por byte**. Las 16 restantes son dos tareas con
+  la historia ya dañada (líneas `-  [nota] [nota] [nota]…` con una copia de su propio frontmatter): la CLI
+  reescribe el archivo entero y le agrega otro `[nota]` a cada línea en cada guardado; el tipo agrega su
+  línea y deja las viejas como están. La red de seguridad («lo escrito tiene que releerse igual») atajó
+  además un caso que la comparación no habría visto: pasar a «algún día» una tarea que esperaba a alguien
+  dejaba a quién se esperaba en el modelo; ahora se borra, como termina haciéndolo la CLI.
+
+Falta: el índice en `telar serve` (las tareas desde la memoria, `/tareas` desde el índice, el servidor como
+único escritor) y el cambio de la CLI de tareas a una cáscara del tipo.
 

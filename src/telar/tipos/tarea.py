@@ -421,3 +421,135 @@ class FormatoCasilla:
 
 ARCHIVO = FormatoArchivo()
 CASILLA = FormatoCasilla()
+
+
+# ── las acciones ───────────────────────────────────────────────────────────────
+#
+# Funciones sobre el modelo, sin texto: reciben una tarea y devuelven otra (la de entrada no cambia).
+# Cada una deja su línea en la historia. Son las mismas transiciones que la CLI de tareas, con dos
+# diferencias a propósito: cerrar lo cerrado o reabrir lo abierto es un error (un doble clic dejaría la
+# historia repetida), y asignar o editar también dejan su línea.
+
+import datetime as _dt
+
+AVANCES = ("preparado", "cerrar", "pregunta", "choca")
+_ETIQUETA_CIERRE = {"hecha": "hecha", "caduca": "caducó", "descartada": "descartada"}
+
+
+class ErrorDeAccion(ValueError):
+    """La acción no se puede hacer sobre la tarea como está (la precondición no se cumple)."""
+
+
+def _ahora(reloj=None) -> _dt.datetime:
+    return reloj() if reloj else _dt.datetime.now()
+
+
+def _con(t: Tarea, tipo: str, texto: str, nota: str = "", *, hora: bool = True, reloj=None, **cambios) -> Tarea:
+    """La tarea con esos cambios y una línea más en la historia."""
+    ahora = _ahora(reloj)
+    linea = Cambio(fecha=ahora.date().isoformat(), hora=ahora.strftime("%H:%M") if hora else "", tipo=tipo,
+                   texto=_limpio(texto + (f": {nota}" if nota else "")))
+    return t.model_copy(update={**cambios, "historia": [*t.historia, linea]})
+
+
+def cerrar(t: Tarea, como: str = "hecha", nota: str = "", *, reloj=None) -> Tarea:
+    """Cerrarla: `hecha`, `caduca` o `descartada`. La propuesta pendiente y la espera se van."""
+    if como not in TERMINALES:
+        raise ErrorDeAccion(f"cerrar es {', '.join(TERMINALES)}")
+    if t.estado in TERMINALES:
+        raise ErrorDeAccion(f"{t.id} ya está cerrada ({t.estado})")
+    return _con(t, "cierre", _ETIQUETA_CIERRE[como], nota, reloj=reloj, estado=como, en_curso=False,
+                cerrada=_ahora(reloj).date().isoformat(), espera="", avance="")
+
+
+def completar(t: Tarea, nota: str = "", *, reloj=None) -> Tarea:
+    return cerrar(t, "hecha", nota, reloj=reloj)
+
+
+def reabrir(t: Tarea, nota: str = "", *, reloj=None) -> Tarea:
+    """Volver a abrirla: vuelve a estar activa, sin fecha de cierre."""
+    if t.estado not in TERMINALES and t.estado != "algun-dia":
+        raise ErrorDeAccion(f"{t.id} no está cerrada")
+    return _con(t, "mover", "reabierta", nota, reloj=reloj, estado="activa", cerrada="", avance="")
+
+
+def algun_dia(t: Tarea, nota: str = "", *, reloj=None) -> Tarea:
+    if t.estado in TERMINALES:
+        raise ErrorDeAccion(f"{t.id} está cerrada: reábrela primero")
+    # a quién se esperaba deja de valer: ya no espera a nadie (el archivo solo lo guarda mientras espera)
+    return _con(t, "mover", "a algún día", nota, reloj=reloj, estado="algun-dia", espera="", avance="")
+
+
+def esperar(t: Tarea, quien: str, nota: str = "", *, reloj=None) -> Tarea:
+    """Que le toque a otra persona (`quien`); con `quien` vacío, vuelve a ser de la dueña."""
+    if t.estado in TERMINALES:
+        raise ErrorDeAccion(f"{t.id} está cerrada")
+    quien = _limpio(quien).lstrip("@")
+    if not quien:
+        return _con(t, "espera", "vuelve a ser tuya", nota, reloj=reloj, estado="activa", espera="", avance="")
+    return _con(t, "espera", f"espera a {quien}", nota, reloj=reloj, estado="espera", espera=quien, avance="")
+
+
+def reagendar(t: Tarea, fecha: str, nota: str = "", *, reloj=None) -> Tarea:
+    """Otra fecha: `AAAA-MM-DD`, o `+Nd` (N días desde la fecha que tenía si no pasó, o desde hoy)."""
+    if t.estado in TERMINALES:
+        raise ErrorDeAccion(f"{t.id} está cerrada")
+    hoy = _ahora(reloj).date()
+    if (m := re.fullmatch(r"\+(\d+)d", fecha.strip())):
+        base = _dt.date.fromisoformat(t.vence) if t.vence and t.vence >= hoy.isoformat() else hoy
+        nueva = (base + _dt.timedelta(days=int(m.group(1)))).isoformat()
+    else:
+        try:
+            nueva = _dt.date.fromisoformat(fecha.strip()).isoformat()
+        except ValueError as e:
+            raise ErrorDeAccion(f"fecha inválida: {fecha} (AAAA-MM-DD o +Nd)") from e
+    texto = f"{t.vence} → {nueva}" if t.vence else f"fecha {nueva}"
+    return _con(t, "mover", texto, nota, reloj=reloj, vence=nueva, avance="",
+                estado="activa" if t.estado == "algun-dia" else t.estado)
+
+
+def asignar(t: Tarea, persona: str, *, reloj=None) -> Tarea:
+    """Quién la hace; vacío, nadie en particular (es de la dueña del repositorio)."""
+    persona = _limpio(persona)
+    if persona == t.dueno:
+        return t
+    return _con(t, "edita", f"dueño {persona}" if persona else "sin dueño", reloj=reloj, dueno=persona)
+
+
+def anotar(t: Tarea, texto: str, *, reloj=None) -> Tarea:
+    if not _limpio(texto):
+        raise ErrorDeAccion("la nota está vacía")
+    return _con(t, "nota", texto, reloj=reloj)
+
+
+def proponer(t: Tarea, estado: str, texto: str, como: str = "", *, reloj=None) -> Tarea:
+    """Lo que un agente dejó preparado para decidir (`avance`): preparado, cerrar (con `como`),
+    pregunta o choca."""
+    if estado not in AVANCES:
+        raise ErrorDeAccion(f"avance: {' | '.join(AVANCES)}")
+    if estado == "cerrar" and como not in TERMINALES:
+        raise ErrorDeAccion("cerrar pide cómo: hecha, caduca o descartada")
+    marca = f"cerrar:{como}" if estado == "cerrar" else estado
+    return _con(t, "avance", f"{marca}: {texto}", reloj=reloj, avance=f"{marca} {_ahora(reloj).date().isoformat()}")
+
+
+def responder(t: Tarea, texto: str, *, reloj=None) -> Tarea:
+    """La respuesta de la persona a una propuesta: queda en la historia y la propuesta deja de estar pendiente."""
+    return _con(t, "respuesta", texto, reloj=reloj, avance="")
+
+
+def editar(t: Tarea, *, reloj=None, **campos) -> Tarea:
+    """Cambiar campos sueltos (título, prioridad, área, proyecto, etiquetas…), con su línea en la historia."""
+    permitidos = {"titulo", "prioridad", "area", "proyecto", "origen", "trabajo", "etiquetas", "contexto"}
+    raros = set(campos) - permitidos
+    if raros:
+        raise ErrorDeAccion(f"editar no cambia {', '.join(sorted(raros))}: para eso hay una acción")
+    cambios = {k: v for k, v in campos.items() if getattr(t, k) != v}
+    if not cambios:
+        return t
+    return _con(t, "edita", ", ".join(sorted(cambios)), reloj=reloj, **cambios)
+
+
+ACCIONES = {"completar": completar, "cerrar": cerrar, "reabrir": reabrir, "algun_dia": algun_dia,
+            "esperar": esperar, "reagendar": reagendar, "asignar": asignar, "anotar": anotar,
+            "proponer": proponer, "responder": responder, "editar": editar}

@@ -139,3 +139,103 @@ class Casilla(Prueba):
                 CASILLA.escribir(linea, t, t.model_copy(update=cambio))
         # la historia no se guarda, y eso está declarado: no es un error
         self.assertEqual(CASILLA.escribir(linea, t, t.model_copy(update={"historia": [Cambio(texto="x")]})), linea)
+
+
+# ── las acciones y la carpeta ───────────────────────────────────────────────────
+
+import datetime as _dt
+import shutil
+import tempfile
+from pathlib import Path
+
+from telar.tipos import tarea as T
+from telar.tipos.carpeta import Carpeta, ErrorDeVersion, NoExiste
+
+AHORA = _dt.datetime(2026, 10, 19, 10, 30)
+reloj = lambda: AHORA  # noqa: E731
+
+
+class Acciones(Prueba):
+    def setUp(self):
+        super().setUp()
+        self.t = ARCHIVO.leer(TAREA, "T84")
+
+    def test_completar_cierra_saca_de_en_curso_y_deja_su_linea(self):
+        h = T.completar(self.t.model_copy(update={"en_curso": True, "estado": "espera", "espera": "ana"}), reloj=reloj)
+        self.assertEqual((h.estado, h.en_curso, h.cerrada, h.espera, h.avance), ("hecha", False, "2026-10-19", "", ""))
+        self.assertEqual(h.historia[-1], T.Cambio(fecha="2026-10-19", hora="10:30", tipo="cierre", texto="hecha"))
+
+    def test_cerrar_lo_cerrado_o_reabrir_lo_abierto_es_un_error(self):
+        h = T.completar(self.t, reloj=reloj)
+        with self.assertRaises(T.ErrorDeAccion):
+            T.completar(h, reloj=reloj)  # un doble clic no repite la historia
+        with self.assertRaises(T.ErrorDeAccion):
+            T.reabrir(self.t, reloj=reloj)
+        self.assertEqual(T.reabrir(h, reloj=reloj).estado, "activa")
+
+    def test_reagendar_en_dias_cuenta_desde_la_fecha_si_no_paso(self):
+        self.assertEqual(T.reagendar(self.t, "+7d", reloj=reloj).vence, "2026-11-06")  # vencía el 30
+        pasada = self.t.model_copy(update={"vence": "2026-10-01"})
+        self.assertEqual(T.reagendar(pasada, "+7d", reloj=reloj).vence, "2026-10-26")  # desde hoy
+        with self.assertRaises(T.ErrorDeAccion):
+            T.reagendar(self.t, "el lunes", reloj=reloj)
+
+    def test_esperar_y_volver(self):
+        e = T.esperar(self.t, "@ignacia", reloj=reloj)
+        self.assertEqual((e.estado, e.espera, e.historia[-1].texto), ("espera", "ignacia", "espera a ignacia"))
+        v = T.esperar(e, "", reloj=reloj)
+        self.assertEqual((v.estado, v.espera), ("activa", ""))
+        self.assertEqual(T.algun_dia(e, reloj=reloj).espera, "")  # a algún día: ya no espera a nadie
+
+    def test_proponer_y_responder(self):
+        p = T.proponer(self.t, "cerrar", "ya se hizo", "hecha", reloj=reloj)
+        self.assertEqual(p.avance, "cerrar:hecha 2026-10-19")
+        self.assertEqual(T.responder(p, "de acuerdo", reloj=reloj).avance, "")
+        with self.assertRaises(T.ErrorDeAccion):
+            T.proponer(self.t, "cerrar", "x", reloj=reloj)  # cerrar pide cómo
+
+    def test_editar_solo_lo_que_no_tiene_accion_propia(self):
+        self.assertEqual(T.editar(self.t, prioridad=0, reloj=reloj).historia[-1].texto, "prioridad")
+        with self.assertRaises(T.ErrorDeAccion):
+            T.editar(self.t, estado="hecha", reloj=reloj)
+        self.assertIs(T.editar(self.t, prioridad=1, reloj=reloj), self.t)  # sin cambios, la misma
+
+    def test_las_acciones_no_cambian_la_tarea_que_reciben(self):
+        antes = self.t.model_dump()
+        T.completar(self.t, reloj=reloj)
+        self.assertEqual(self.t.model_dump(), antes)
+
+
+class LaCarpeta(Prueba):
+    def setUp(self):
+        super().setUp()
+        self.dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        (self.dir / "T84.md").write_text(TAREA, encoding="utf-8")
+        self.c = Carpeta(self.dir, ARCHIVO)
+
+    def test_aplicar_escribe_al_minimo_y_devuelve_la_version_nueva(self):
+        t, v = self.c.leer("T84")
+        h, v2 = self.c.aplicar("T84", T.completar, version=v, reloj=reloj)
+        self.assertNotEqual(v, v2)
+        self.assertEqual(self.c.leer("T84"), (h, v2))
+        self.assertEqual(len(lineas_tocadas(TAREA, (self.dir / "T84.md").read_text())), 5)
+
+    def test_con_una_version_vieja_no_se_pisa_el_cambio_de_otro(self):
+        _, v = self.c.leer("T84")
+        (self.dir / "T84.md").write_text(TAREA.replace("prioridad: 1", "prioridad: 0"), encoding="utf-8")  # alguien lo editó
+        with self.assertRaises(ErrorDeVersion):
+            self.c.aplicar("T84", T.completar, version=v, reloj=reloj)
+        self.assertIn("estado: activa", (self.dir / "T84.md").read_text())
+
+    def test_un_id_no_es_una_ruta(self):
+        for malo in ("../T84", "T84/..", "", "/etc/passwd"):
+            with self.assertRaises(NoExiste):
+                self.c.leer(malo)
+
+    def test_una_accion_que_no_se_puede_no_escribe_nada(self):
+        self.c.aplicar("T84", T.completar, reloj=reloj)
+        antes = (self.dir / "T84.md").read_text()
+        with self.assertRaises(T.ErrorDeAccion):
+            self.c.aplicar("T84", T.completar, reloj=reloj)
+        self.assertEqual((self.dir / "T84.md").read_text(), antes)

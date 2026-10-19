@@ -14,6 +14,12 @@ workflow refuses to run if the two disagree.
   document (both dialects: `@owner(…)`/`@deadline(…)`/`@prioridad(…)` and `vence:`/`!alta`/`#tag`). Checked
   against real data: 308 task files and 4,868 checkboxes, read the same as before and changed thousands of
   times without touching anything else.
+- `tarea`'s actions (complete, close, reopen, someday, wait, reschedule, assign, note, propose, answer,
+  edit) — functions on the model with a precondition and a history line — and `telar.tipos.carpeta`: read
+  a task with its version (the file's hash), apply an action, reject it if the file changed since it was
+  read, one writer at a time, atomic writes, and nothing written unless it reads back as intended. On copies
+  of 308 real tasks, 1,887 of 1,903 action runs leave the same bytes as the previous task CLI; the rest are
+  two files whose history that CLI was corrupting further on every save.
 - `telar serve`: telar's API (FastAPI, Pydantic models) in a process that stays, on a Unix socket inside a
   directory only its owner can enter. Each command becomes a shell around a function in `telar.servicios`,
   used by both the CLI and the API: the logic lives once, and the model is the contract. `hoy` is the first
