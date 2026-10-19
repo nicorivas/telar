@@ -436,7 +436,7 @@ publicar` lo hace a mano. La carpeta la monta quien administra el servidor (ver
 
 ### Ver los hilos del laptop desde el servidor (`telar espejo`)
 
-Un laptop se apaga y un servidor no. Para ver desde el servidor —y desde `telar web` en el
+Un laptop se apaga y un servidor no. Para ver desde el servidor —y desde el panel en el
 celular— qué hilos tiene el laptop y cuáles esperan algo, **el laptop empuja una foto** de sus
 hilos y el servidor la guarda con la hora en que llegó. No hace falta configurar nada más que la
 máquina en `[remotos]` (la misma de los hilos remotos):
@@ -512,18 +512,13 @@ misma red de Tailscale. `telar enlace revocar` en el laptop quita la llave. Cada
 laptop (`StrictHostKeyChecking=accept-new`); después, si cambia, ssh se niega.
 
 **El espejo por la puerta.** Con `[enlaces]` configurado, el servidor no espera a que el laptop publique:
-`telar espejo traer` (o el hilo de fondo de `telar web`, cada 30 s) le pide la foto de sus hilos por la
+`telar espejo traer` le pide la foto de sus hilos por la
 puerta y la guarda como espejo. Sirve aunque VS Code esté cerrado; con el laptop apagado falla rápido y el
 espejo queda con su última foto, atenuada.
 
-**Escribirle a un hilo desde la web.** `telar web --escribir` (por defecto la página solo lee) agrega un campo
-en el detalle de cada hilo vivo —de esta máquina o del laptop, si está en línea— y un botón `↩ enviar`.
-Manda el texto y lo ejecuta ↩; lo que se escribe lo lee el agente del hilo como si lo hubieras tecleado. La
-única ruta que escribe es `POST /api/enviar`, y se defiende: exige el encabezado `X-Telar`, que `Host` y
-`Origin` sean los de este servidor (contra páginas ajenas y DNS rebinding; para llegar por otro nombre,
-`--tambien HOST:PUERTO`), tope de tamaño, un envío cada medio segundo, y anota cada uno en `<estado>/web.log`
-(quién, a qué hilo, cuántos caracteres y cómo salió; el texto no). Quien alcance el puerto puede escribirle a
-tus agentes: por eso solo escucha en Tailscale y la escritura es opt-in.
+**Escribirle a un hilo desde el celular.** El panel (`telar panel`) lee los hilos de otra máquina por el bus
+(`telar hilo leer --maquina`) y les escribe como la persona (`telar mensaje --tipo persona`); ver
+`docs/propuestas/dashboard-fuera-de-vscode.md`.
 
 Lo que un servidor comprometido podría hacer con la llave es exactamente esa lista: mandar archivos a una
 carpeta, escribir en un hilo vivo, mostrar un aviso, leer nombres y estados de hilos y, si lo prendiste, lo
@@ -644,7 +639,7 @@ marcelo  = "…"                              # `telar equipo token marcelo` da 
 
 Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de cada tarea etiquetada
 (y las cerradas en los últimos 14 días). Nunca el cuerpo ni la historia. `telar equipo servir` escucha
-en la IP de Tailscale (otro puerto que `telar web`); cada persona entra con su llave y puede solo leer
+en la IP de Tailscale (otro puerto que el panel); cada persona entra con su llave y puede solo leer
 y dejar una sugerencia (una cada 5 s). En VS Code, `telar.equipoRemoto` (`local`, o la máquina de
 `[remotos]` donde corre el servidor) enciende las notificaciones y la pestaña «equipo». Ver `telar equipo --help`.
 

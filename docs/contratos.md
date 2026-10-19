@@ -757,7 +757,7 @@ Los archivados no viajan. No viajan tampoco la ruta absoluta, las sesiones ni el
 proyecto: lo que se lee desde afuera es lo que sirve para mirar. `resumen` es el título del
 documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 2 MB se rechaza.
 
-`telar espejo ver --json` (y `/api/espejos` de `telar web`) lee lo guardado:
+`telar espejo ver --json` (lo que usa el panel) lee lo guardado:
 
 ```json
 {"vigente": 120.0,
@@ -907,101 +907,3 @@ telar evento notas [AAAA-MM-DD] --json
 El id es el del evento en el calendario (el `id` de la agenda de `telar hoy --json`). El título y la
 hora van al lado para mostrar la nota aunque el id cambie. Con `en`, escribir en otra máquina que no
 responde falla (`ok: false`) en vez de dejar la nota aquí, donde nadie la vería.
-
-## `POST /api/enviar` — escribirle a un hilo desde `telar web`
-
-Solo existe con `telar web --escribir`; sin eso responde 403. Pide `Content-Type: application/json`, el
-encabezado `X-Telar: 1` y que `Host` (y `Origin`, si viene) sean los de ese servidor.
-
-```json
-{"maquina": "", "hilo": "Lumbre", "texto": "hola", "enter": true}
-```
-
-`maquina` vacío es la máquina del servidor; con un nombre (el `nombre` de un espejo), esa máquina por
-`telar enlace`. `enter` (por defecto `true`) además de escribir el texto lo manda. La respuesta es la de la
-puerta (`{"ok": true, "hilo": …, "caracteres": …, "enviado": …}` o `{"ok": false, "error": …}`):
-
-| código | cuándo |
-| --- | --- |
-| 200 | se escribió |
-| 400 / 413 | cuerpo mal formado / de más de 64 KB |
-| 403 | la página está en solo lectura, o la petición no es de esta página |
-| 404 | ninguna máquina de `[enlaces]` corresponde a `maquina` |
-| 409 | la puerta lo rechazó: el hilo no existe o no está vivo, el texto es vacío o pasa de 8000 caracteres… |
-| 429 | otro envío hace menos de medio segundo |
-
-`GET /api/yo` dice qué puede hacer esa página: `{"escribir": bool, "plan": bool, "enlaces": ["laptop"]}`.
-
-## `GET /api/plan` — el plan de un día, en la pestaña «plan» de `telar web`
-
-Solo existe si `telar web` arrancó con `--plan CARPETA`; sin eso, 404 y la pestaña no aparece (`/api/yo` dice `plan: true|false`). Los planes
-son archivos `AAAA-MM-DD.json` en esa carpeta (o `.md`, los de antes), escritos por quien quiera —en el repo de Nico, la skill `/planear`—; telar solo los lee.
-
-```
-/api/plan                    el de hoy; si no hay, el próximo que haya; si no, el último
-/api/plan?dia=2026-10-05     el de ese día (404 si no existe o si el nombre no es una fecha)
-```
-```json
-{ "dia": "2026-10-05", "dias": ["2026-10-05", "2026-10-04"], "hoy": "2026-10-04", "plan": { "version": 1, "resumen": {…}, "agenda": […] } }
-```
-
-`dias` va del más nuevo al más viejo. Con un `.json`, `plan` es su contenido tal cual (502 si no es JSON válido); su esquema lo define quien lo escribe y lo
-documenta la skill (`.claude/skills/planear/esquema.md` en el repo de Nico). La página dibuja el resumen, los resultados, la **agenda con el contexto de cada reunión
-plegable**, los pendientes, el foco y las personas. Con un `.md`, viene `texto` (el markdown sin su front-matter) y la página lo dibuja con las tablas apiladas.
-Sin ningún plan, `dia` viene vacío y `dias` es `[]`. Si hay `.json` y `.md` del mismo día, manda el `.json`.
-
-## `POST /api/plan/comentar` — un comentario sobre el plan abre una sesión
-
-Solo con `telar web --escribir --plan CARPETA --plan-comando CMD` (si no, 404 o 403; `/api/yo` dice `plan_comentar`). Cuerpo: `{"dia": "2026-10-05", "texto": "…"}`,
-de hasta 4.000 caracteres, sobre un plan que exista. Tiene las mismas defensas que `/api/enviar` (encabezado `X-Telar`, `Host` y `Origin` de esta página) y se
-anota en `web.log` (solo el tamaño). Un comentario cada cinco segundos.
-
-telar no sabe qué hace una sesión: corre `CMD` con el comentario en la **entrada estándar** —nunca en la línea de comandos— y `TELAR_PLAN_DIA` y
-`TELAR_PLAN_CARPETA` en el entorno. La primera línea que imprima es el nombre del hilo que abrió. Respuesta: `{"ok": true, "hilo": "✎ plan 10/05 21:40", "caracteres": 213}`;
-un fallo del programa es 502 con su última línea de error.
-
-## `POST /api/hilo/nuevo` — abrir un hilo nuevo desde `telar web`
-
-Solo con `telar web --escribir --nuevo` (si no, 404 o 403; `/api/yo` dice `nuevo`). Cuerpo: `{"nombre": "…", "carpeta": "…", "mensaje": "…"}`.
-`nombre` es obligatorio (hasta 60 caracteres) y no puede repetir el de ningún hilo, vivo o archivado: 409 si ya existe. `carpeta` es opcional y solo puede
-ser la `ruta` de una unidad de `telar proyectos` (404 si no); sin ella, la que diga `[agente] carpeta`. `mensaje` es opcional (hasta 4.000 caracteres): el primer
-prompt del agente; si empieza con «-» se le antepone un espacio para que no se lea como una opción. Mismas defensas que `/api/enviar`; un hilo nuevo cada cinco segundos.
-
-Abre una sesión tmux `telar-<8 hex>` en esta máquina con el agente configurado, y anota su conversación. `--nuevo-args` agrega palabras a la línea
-del agente (p. ej. `--permission-mode auto`). Respuesta: `{"ok": true, "hilo": "…", "carpeta": "…"}`. La conversación del hilo existe en disco recién con su primer mensaje,
-así que la página reintenta unos segundos al entrar. `GET /api/proyectos` sirve la lista de unidades para elegir la carpeta (la misma salida de `telar proyectos --json`).
-
-## `GET /api/conversacion` — el historial de un hilo, por páginas
-
-`telar web` sirve la conversación de un hilo **de esta máquina** por trozos (una conversación larga pesa decenas
-de MB). Se pide por hilo, no por id: de `telar hilos --json` sale la lista de conversaciones permitidas (`sesiones`),
-así que un id suelto nunca abre un archivo. Solo lee, y funciona sin `--escribir`.
-
-```
-/api/conversacion?hilo=Faro                       los últimos 60 mensajes
-/api/conversacion?hilo=Faro&antes=340&n=60        los 60 anteriores al mensaje 340
-/api/conversacion?hilo=Faro&despues=400           lo que llegó desde el 400 (seguirla en vivo)
-/api/conversacion?hilo=Faro&sesion=<id>           otra conversación del mismo hilo (la primera es la del hilo)
-```
-
-```json
-{"sesion": "0f3a…", "sesiones": ["0f3a…"], "total": 390, "desde": 330, "hasta": 390, "modificada": 1790000000000000000,
- "hilo": {"nombre": "Faro", "atencion": "espera", "vivo": true},
- "mensajes": [{"quien": "usuario", "hora": "2026-09-30T10:24:00Z", "texto": "…"},
-              {"quien": "herramienta", "hora": "…", "texto": "Bash · ls -la"},
-              {"quien": "agente", "hora": "…", "texto": "…", "recortado": 123}]}
-```
-
-**De otra máquina** (`&maquina=<nombre del espejo>`): el servidor pide el verbo `leer` de la puerta
-(`telar enlace`) y devuelve **la misma forma**, para que la pantalla sea una sola. La otra máquina entrega los
-últimos N turnos (`&turnos=10`, hasta 50), no mensajes numerados: `desde` es siempre 0, no hay `despues`, y se
-pide más turnos o se vuelve a pedir. Trae además `remota`, `fuente` (`conversacion`, o `panel` si no había
-conversación y se leyó la ventana), `turnos`, `total_turnos` y `recortado`. Lo que la otra máquina no entrega
-—el verbo `leer` apagado, un hilo vetado por `[enlace] no_leer`, la máquina apagada— llega como 409 con su
-motivo. Nada de lo conversado se guarda en el servidor: se pide, se muestra y se olvida (unos 3 s de caché).
-
-Los mensajes se numeran por su posición y una conversación solo crece, así que un índice sigue valiendo mientras
-el archivo no se reescriba (si `total` baja, hay que volver a leer). Un mensaje de más de 20 000 caracteres viaja
-recortado, con `recortado` = los que faltan. Errores: 400 (falta el hilo o un número mal escrito) y 404 (no hay
-ese hilo, la conversación no es de él, o no está en disco en esta máquina).
-

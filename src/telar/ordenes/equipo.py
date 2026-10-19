@@ -9,7 +9,7 @@
     telar equipo existe ID --tarea T123            un pedido que ya existe: quien lo hizo recibe el estado de esa tarea
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
-El servidor es otro proceso y otro puerto que `telar web`, a propósito: `telar web` puede escribirles
+El servidor es otro proceso y otro puerto que el panel (`telar panel`), a propósito: el panel puede escribirles
 a tus agentes; este no tiene esa fuerza. Con el token de una persona solo se puede: leer las tareas
 marcadas para el equipo (sin su cuerpo), dejar una sugerencia de prioridad, **pedirte una tarea nueva**
 y ver cómo salió. Cada una avisa al laptop con una notificación. Ver `telar.equipo`.
@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import secrets
 import shlex
+import shutil
 import subprocess
 import threading
 import time
@@ -27,7 +28,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from telar import equipo as mod_equipo
 from telar.ordenes import _comun
-from telar.ordenes.web import ip_de_tailscale
+
+
+def ip_de_tailscale() -> str:
+    """La IPv4 de esta máquina en Tailscale, o «» si no hay."""
+    if not shutil.which("tailscale"):
+        return ""
+    r = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True)
+    return r.stdout.split()[0] if r.returncode == 0 and r.stdout.split() else ""
 
 AYUDA = "Que una persona de confianza vea tus tareas del equipo y te sugiera prioridades."
 MAX_CUERPO = 4096

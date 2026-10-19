@@ -282,6 +282,11 @@ workflow refuses to run if the two disagree.
 
 ### Removed
 
+- `telar web`, the phone page: the web panel (`telar panel`) replaced it, and it does all it did — the day,
+  the threads of every machine, reading and writing to them, the plan and its comments, opening threads and
+  shortcuts, sharing from the phone, installing as an app. Gone with it: `src/telar/web/`, `webcal.py`,
+  `servidor/telar-web.service`, its `/api/*` routes in the contracts, and their tests. The icons moved to
+  `vscode/media/app/` (`docs/marca/hacer_iconos.py` writes them there).
 - `telar movil`, the phone screen over mosh: the web page (`telar web`, and now the panel) replaced it,
   and nothing called it. Its window library (`telar.movil`) stays: `mirar`, the web, periodic jobs and
   other machines use it.

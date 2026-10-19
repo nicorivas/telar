@@ -12,7 +12,6 @@ en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.m
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
 | `telar-panel.service` / `telar-panel.plist` | `telar panel` como servicio (systemd en el servidor, por Tailscale; launchd en un Mac, en esta máquina): la barra, el dashboard y las terminales | `~/.config/systemd/user/` · `~/Library/LaunchAgents/` |
-| `telar-web.service` | `telar web` como servicio de usuario: arranca al encender y se levanta si se cae | `~/.config/systemd/user/` |
 
 ## Montarlo
 
@@ -97,27 +96,29 @@ Corre como el destinatario, uno por correo. Cada caso queda en `~/.cartero.log` 
 - El `claude` del cartero necesita `~/.local/bin` en el `PATH`: Postfix corre el `.forward`
   con un entorno mínimo.
 
-## `telar web` como servicio
+## `telar panel` como servicio
 
-La web de telar (`telar web --escribir`) tiene que seguir ahí cuando la máquina se reinicia. `telar-web.service` es
-un servicio de **usuario** de systemd —vive en tu cuenta, sin tocar el sistema—:
+El panel (la barra, el dashboard y las terminales; también la app del celular) tiene que seguir ahí cuando la
+máquina se reinicia. `telar-panel.service` es un servicio de **usuario** de systemd —vive en tu cuenta, sin tocar
+el sistema—:
 
 ```
-mkdir -p ~/.config/systemd/user && cp telar-web.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now telar-web
+cd ../vscode && npm ci && npm run compile          # una vez: el panel compilado (telar panel --verificar lo revisa)
+mkdir -p ~/.config/systemd/user && cp telar-panel.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now telar-panel
 loginctl enable-linger "$USER"        # que arranque al encender, sin que nadie inicie sesión
 ```
 
-- **Espera a Tailscale.** Al encender, la interfaz tarda unos segundos en tener IP, y `telar web` sin ella caería a
-  localhost sin avisar. Un `ExecStartPre` espera hasta dos minutos a que `tailscale ip -4` responda; si nunca
-  responde, el servicio falla y systemd lo reintenta cada 5 s.
-- **Se levanta solo.** `Restart=always`: un `kill -9` lo devuelve en unos 5 s.
-- **Su PATH es suyo.** Un servicio de usuario no hereda el tuyo: la unidad pone `~/.local/bin` y `/usr/local/bin`,
-  donde están `telar`, `tmux` y `tailscale`.
-- **`--escribir`** permite escribirle a los hilos desde la página; quítalo de `ExecStart` para que solo lea.
+- **Escucha en Tailscale.** `telar panel --tailscale` espera hasta dos minutos a que la interfaz tenga IP; sin ella,
+  sale con error y systemd lo reintenta cada 5 s. Nunca escucha en todas las direcciones.
+- **Se entra con llave.** La imprime al arrancar (`journalctl --user -u telar-panel | grep k=`); después queda en
+  una cookie.
+- **HTTPS, para instalarlo como app.** `sudo tailscale serve --bg --https=443 http://<ip de tailscale>:8770` lo pone
+  en `https://<máquina>.<tailnet>.ts.net/`, solo dentro de la tailnet.
+- **Se levanta solo.** `Restart=always`.
 
-Ver cómo va: `systemctl --user status telar-web` y `journalctl --user -u telar-web -f`. Quitarlo:
-`systemctl --user disable --now telar-web`.
+Ver cómo va: `systemctl --user status telar-panel` y `journalctl --user -u telar-panel -f`. Quitarlo:
+`systemctl --user disable --now telar-panel`.
 
 
 ## Personas: dar de alta a un colega

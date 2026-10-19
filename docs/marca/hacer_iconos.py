@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Genera el logo de la app de telar (los iconos de `telar web`) a partir de una grilla de cuadrados.
+"""Genera el logo de la app de telar (los iconos del panel web, instalable como app) a partir de una grilla de cuadrados.
 
 El logo es una «t» con un cursor al lado. Todo cae en una grilla invisible de celdas cuadradas: el
 trazo mide 2 celdas, el cursor 3×6, y entre la «t» y el cursor hay 1 celda. El cursor arranca justo
 debajo del brazo de la «t» y los dos se apoyan en la misma línea base. Las medidas no se tocan a mano:
 se cambia `FORMAS` y se vuelve a correr.
 
-    python3 docs/marca/hacer_iconos.py          escribe los PNG de src/telar/web/ y el SVG
+    python3 docs/marca/hacer_iconos.py          escribe los PNG de vscode/media/app/ y el SVG
 
 Cada tamaño elige una celda de píxeles enteros, para que ningún borde quede a medias. El ícono
 «maskable» (el que Android recorta en círculo) usa una celda menor, para que el logo quepa en el
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-DESTINO = Path(__file__).resolve().parents[2] / "src" / "telar" / "web"
+DESTINO = Path(__file__).resolve().parents[2] / "vscode" / "media" / "app"
 
 FONDO = (46, 52, 64)       # #2e3440
 AZUL = (136, 192, 208)     # #88c0d0

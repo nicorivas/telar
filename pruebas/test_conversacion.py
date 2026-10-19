@@ -17,7 +17,6 @@ from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import config as mod_config
 from telar import conversacion as m
-from telar.ordenes import web
 
 SID = "aaaaaaaa-1111-2222-3333-444444444444"
 OTRA = "bbbbbbbb-1111-2222-3333-444444444444"
@@ -136,48 +135,6 @@ class Cache(ConAgente):
         self.assertEqual(self.lecturas, 2)
 
 
-class LaRuta(ConAgente):
-    """`GET /api/conversacion`: se pide por hilo, y de ahí salen las conversaciones permitidas."""
-
-    HILOS = {"hilos": [
-        {"nombre": "Faro", "atencion": "espera", "vivo": True, "archivado": False, "sesiones": [SID]},
-        {"nombre": "Viejo", "atencion": "ninguna", "vivo": False, "archivado": True, "sesiones": [OTRA]},
-        {"nombre": "Vacio", "atencion": "ninguna", "vivo": False, "archivado": False, "sesiones": []},
-    ]}
-
-    def pedir(self, consulta):
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), web.manejador(True, self.config))
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
-        try:
-            with mock.patch.object(web, "datos", return_value=json.dumps(self.HILOS).encode()):
-                with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/api/conversacion?{consulta}") as r:
-                    return r.status, json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read())
-
-    def test_devuelve_la_pagina_con_el_estado_del_hilo(self):
-        codigo, cuerpo = self.pedir("hilo=Faro")
-        self.assertEqual(codigo, 200)
-        self.assertEqual(cuerpo["hilo"], {"nombre": "Faro", "atencion": "espera", "vivo": True, "propio": False})
-        self.assertEqual(cuerpo["hasta"], 150)
-        self.assertEqual(len(cuerpo["mensajes"]), 60)
-
-    def test_los_parametros_llegan(self):
-        _, cuerpo = self.pedir("hilo=Faro&antes=90&n=10")
-        self.assertEqual((cuerpo["desde"], cuerpo["hasta"]), (80, 90))
-        _, cuerpo = self.pedir("hilo=Faro&despues=148")
-        self.assertEqual([x["texto"] for x in cuerpo["mensajes"]], ["mensaje 148", "mensaje 149"])
-
-    def test_lo_que_no_es_de_un_hilo_conocido_se_rechaza(self):
-        self.contenido[OTRA] = mensajes(2)
-        self.poner(OTRA)
-        for consulta, codigo in (("", 400), ("hilo=Nadie", 404), ("hilo=Viejo", 404), ("hilo=Vacio", 404),
-                                 (f"hilo=Faro&sesion={OTRA}", 404), ("hilo=Faro&antes=abc", 400),
-                                 (f"sesion={SID}", 400)):
-            self.assertEqual(self.pedir(consulta)[0], codigo, consulta)
-
-
 class UnSoloLector(ConAgente):
     """La web y la CLI/la puerta (`telar.historia`) leen la misma conversación por el mismo camino."""
 
@@ -211,73 +168,3 @@ class UnSoloLector(ConAgente):
         [panel] = m.aplanar({"fuente": "panel", "texto": "$ ls\nfoo"})
         self.assertEqual((panel["quien"], panel["texto"]), ("panel", "$ ls\nfoo"))
         self.assertEqual(m.aplanar({}), [])
-
-
-class LaRutaRemota(ConAgente):
-    """`GET /api/conversacion?maquina=…`: la conversación de un hilo del laptop, por la puerta."""
-
-    def setUp(self):
-        super().setUp()
-        from telar.config import Enlace
-        from telar import espejo
-
-        self.config = mod_config.Config(raiz=self.base, estado=self.base / "estado",
-                                        enlaces=(Enlace(nombre="laptop", destino="nico@mac"),))
-        espejo.guardar(self.config, "macbook", json.dumps({"version": 1, "hilos": [
-            {"nombre": "Lumbre", "atencion": "espera", "vivo": True}]}))
-        web._remotas.clear()
-        self.addCleanup(web._remotas.clear)
-
-    HISTORIA = {"ok": True, "verbo": "leer", "historia": {
-        "hilo": "Lumbre", "fuente": "conversacion", "conversacion": "abc", "total_turnos": 7, "recortado": False,
-        "turnos": [[{"quien": "usuario", "hora": "2026-10-01T10:00:00Z", "texto": "hola"},
-                    {"quien": "herramienta", "hora": "2026-10-01T10:00:01Z", "texto": "Bash · ls"},
-                    {"quien": "agente", "hora": "2026-10-01T10:00:02Z", "texto": "listo"}]]}}
-
-    def pedir(self, consulta, respuesta=None):
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), web.manejador(True, self.config))
-        threading.Thread(target=srv.serve_forever, daemon=True).start()
-        self.addCleanup(lambda: (srv.shutdown(), srv.server_close()))
-        try:
-            with mock.patch.object(web.enlace, "llamar", return_value=respuesta or self.HISTORIA) as llamar:
-                with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/api/conversacion?{consulta}") as r:
-                    return r.status, json.loads(r.read()), llamar
-        except urllib.error.HTTPError as e:
-            return e.code, json.loads(e.read()), None
-
-    def test_la_forma_es_la_de_un_hilo_de_aqui(self):
-        codigo, cuerpo, llamar = self.pedir("maquina=macbook&hilo=Lumbre")
-        self.assertEqual(codigo, 200)
-        self.assertEqual([x["texto"] for x in cuerpo["mensajes"]], ["hola", "Bash · ls", "listo"])
-        self.assertEqual((cuerpo["desde"], cuerpo["hasta"], cuerpo["total"]), (0, 3, 3))
-        self.assertEqual(cuerpo["hilo"], {"nombre": "Lumbre", "atencion": "espera", "vivo": True, "en_linea": True})
-        self.assertEqual((cuerpo["turnos"], cuerpo["total_turnos"], cuerpo["remota"]), (1, 7, "macbook"))
-        self.assertEqual(llamar.call_args.args[1:3], ("leer", ["Lumbre", "10"]))
-
-    def test_los_turnos_pedidos_se_acotan(self):
-        _, _, llamar = self.pedir("maquina=macbook&hilo=Lumbre&turnos=500")
-        self.assertEqual(llamar.call_args.args[2], ["Lumbre", "50"])
-
-    def test_lo_que_la_otra_maquina_no_entrega_llega_con_su_motivo(self):
-        for motivo in ("esta puerta no hace «leer»", "no hay un hilo que se pueda leer con el nombre «Lumbre»",
-                       "macbook no responde: timed out"):
-            web._remotas.clear()
-            codigo, cuerpo, _ = self.pedir("maquina=macbook&hilo=Lumbre", {"ok": False, "error": motivo})
-            self.assertEqual((codigo, cuerpo["error"]), (409, motivo))
-
-    def test_el_panel_llega_como_un_solo_mensaje(self):
-        r = {"ok": True, "historia": {"hilo": "K", "fuente": "panel", "texto": "$ ls\\nfoo", "recortado": False}}
-        _, cuerpo, _ = self.pedir("maquina=macbook&hilo=Lumbre", r)
-        self.assertEqual((cuerpo["fuente"], cuerpo["mensajes"][0]["quien"]), ("panel", "panel"))
-
-    def test_una_maquina_sin_enlace_o_un_numero_malo(self):
-        from telar.config import Enlace
-
-        self.config = mod_config.Config(raiz=self.base, estado=self.base / "estado", enlaces=(Enlace("a", "x@a"), Enlace("b", "x@b")))
-        self.assertEqual(self.pedir("maquina=otra&hilo=Lumbre")[0], 404)
-        self.assertEqual(self.pedir("maquina=a&hilo=Lumbre&turnos=abc")[0], 400)
-
-    def test_no_se_guarda_nada_de_lo_conversado_en_el_servidor(self):
-        self.pedir("maquina=macbook&hilo=Lumbre")
-        guardado = [p for p in self.base.rglob("*") if p.is_file() and "hola" in p.read_text(errors="ignore")]
-        self.assertEqual([p for p in guardado if "estado" in str(p)], [])

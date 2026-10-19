@@ -56,13 +56,10 @@ class PorElBus(Prueba):
         self.assertEqual(self.enviados, [])
         self.assertEqual(run.call_args[0][0][0], "mail")
 
-    def test_la_web_le_escribe_a_un_hilo_de_otra_maquina_como_la_persona(self):
-        from telar.ordenes import web
+    def test_el_panel_le_escribe_a_un_hilo_de_otra_maquina_como_la_persona(self):
+        from telar.ordenes import mensaje
 
-        web._ultimo_envio[0] = 0.0
-        codigo, r = web.enviar(self.ctx, {"maquina": "servidor", "hilo": "Faro", "texto": "hola", "enter": True})
-        self.assertEqual(codigo, 200)
-        self.assertEqual(r["por"], "bus")
+        mensaje.enviar(self.ctx, "Faro", "hola", tipo="persona", de="el panel")
         self.assertEqual((self.enviados[0]["tipo"], self.enviados[0]["para"]), ("persona", "Faro"))
 
     def test_con_bus_el_espejo_no_se_empuja_por_ssh(self):
@@ -74,16 +71,20 @@ class PorElBus(Prueba):
         self.assertEqual(codigo, 0)
         self.assertEqual(json.loads(salida.getvalue())["por"], "bus")
 
-    def test_la_lectura_remota_de_la_web_es_un_pedido_al_nodo(self):
-        from telar.ordenes import web
+    def test_leer_un_hilo_de_otra_maquina_es_un_pedido_al_nodo(self):
+        from telar.ordenes import hilo
 
-        web._remotas.clear()
-        with mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "servidor no respondió"}) as pedir:
-            codigo, cuerpo, _ = web._conversacion("hilo=Faro&maquina=servidor&turnos=3", self.config)
-        self.assertEqual(codigo, 409)
-        self.assertIn("no respondió", json.loads(cuerpo)["error"])
+        salida, error = io.StringIO(), io.StringIO()
+        with mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "servidor no respondió"}) as pedir, \
+                redirect_stdout(salida), mock.patch("sys.stderr", error):
+            codigo = hilo.main(["leer", "Faro", "--maquina", "servidor", "--ultimos", "3", "--json"], self.ctx)
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("no respondió", error.getvalue())
         self.assertEqual(pedir.call_args[0][1:3], ("servidor", "leer"))
         self.assertEqual(pedir.call_args[0][3], {"hilo": "Faro", "ultimos": 3})
+        with mock.patch.object(mod_bus, "pedir", return_value={"ok": True, "historia": {"hilo": "Faro", "turnos": []}}), redirect_stdout(salida := io.StringIO()):
+            self.assertEqual(hilo.main(["leer", "Faro", "--maquina", "servidor", "--json"], self.ctx), 0)
+        self.assertEqual(json.loads(salida.getvalue())["maquina"], "servidor")
 
     def test_con_bus_el_sondeo_de_remotos_no_hace_ssh(self):
         from telar.ordenes import remotos

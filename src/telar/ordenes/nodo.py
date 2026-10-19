@@ -271,7 +271,7 @@ class Nodo:
                 await kv.put(clave, json.dumps({**info, "actualizado": datetime.now().astimezone().isoformat(timespec="seconds")},
                                                ensure_ascii=False).encode())
                 self.publicado[clave] = valor
-        # la foto del espejo, cada tanto: la que muestra `telar web` en la otra máquina
+        # la foto del espejo, cada tanto: la que muestra el panel en la otra máquina
         self.vueltas += 1
         if self.vueltas % ESPEJO_CADA == 1:
             foto = await asyncio.to_thread(self.foto)
@@ -383,7 +383,7 @@ class Nodo:
             return None
 
     async def _vigilar_espejo(self) -> None:
-        """Las fotos de las otras máquinas, guardadas donde las lee `telar web` (telar.espejo)."""
+        """Las fotos de las otras máquinas, guardadas donde las lee el panel (telar.espejo)."""
         from telar import espejo
 
         vigia = await self.espejo.watch(f"{self.persona}.>")
