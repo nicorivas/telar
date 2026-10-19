@@ -19,6 +19,9 @@ Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=LANG=C.UTF-8
 ExecStart=%h/.local/bin/telar nodo
+# al pararlo, solo el proceso principal: los hilos que este proceso abrió (el servidor tmux, si lo
+# levantó él al retomar uno) viven en su grupo, y matarlo entero los mataba a todos
+KillMode=process
 Restart=always
 RestartSec=5
 
