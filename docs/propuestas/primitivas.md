@@ -318,6 +318,8 @@ en `dashboard-fuera-de-vscode.md`, «Estado y plan».
 2. **Direcciones y objetos.** Un registro de tipos en el núcleo (las tareas primero, después correo,
    evento, reunión, proyecto) y `telar objeto <dirección> [--accion …]`, con `tarea` como alias. Las
    acciones con esquema.
+   Hecho concreto en [tipos.md](tipos.md): cada tipo con su modelo, sus acciones y sus formatos
+   (lentes sobre los archivos), un índice en memoria y un solo escritor.
 3. **El agente como definición.** `agente.toml` en la carpeta de cada residente. El hilo guarda su
    agente, su conversación del motor y su lugar, cada uno por separado.
 4. **Mensajes con modos y el Encargo.** `mensaje --modo aviso|pedido|encargo|consulta`, el objeto
