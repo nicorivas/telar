@@ -211,9 +211,29 @@ export interface JsonResultado {
     ok: boolean; error?: string; aviso?: string; desde?: string;
     clave: string; nombre: string; dia: string; dias: string[];
     formato: 'json' | 'md' | ''; contenido: unknown;
+    /** si la máquina donde vive atiende comentarios sobre un día (`[resultados.<clave>] comentar`) */
+    comentable?: boolean;
 }
 export const resultado = (clave: string, dia = '') =>
     telarJson<JsonResultado>(['resultado', clave, ...(dia ? [dia] : [])], 30000);
+
+/** Un comentario sobre el resultado de un día: lo atiende la máquina donde vive, y dice qué abrió
+ *  (`telar resultado <clave> <día> --comentar`, con el texto por la entrada estándar). */
+export function comentarResultado(clave: string, dia: string, texto: string): Promise<{ ok: boolean; abrio?: string; error?: string }> {
+    return new Promise(listo => {
+        const p = cp.spawn(programa(), [...banderas(), 'resultado', clave, dia, '--comentar', '--json'], { env: ambiente() });
+        let out = '', err = '';
+        const tope = setTimeout(() => { p.kill(); }, 90000);
+        p.stdout.on('data', d => { out += d; });
+        p.stderr.on('data', d => { err += d; });
+        p.on('error', e => { clearTimeout(tope); listo({ ok: false, error: e.message }); });
+        p.on('close', () => {
+            clearTimeout(tope);
+            try { listo(JSON.parse(out)); } catch { listo({ ok: false, error: ultimaLinea(err) || 'no respondió' }); }
+        });
+        p.stdin.end(texto);
+    });
+}
 
 /** Una nota sobre un evento del día (`telar evento`). */
 export interface JsonNota { de: string; texto: string; creado: string }

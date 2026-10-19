@@ -263,6 +263,9 @@ class Resultado:
     en: str = ""
     #: cómo se llama en el dashboard; por defecto, la clave.
     nombre: str = ""
+    #: el comando que atiende un comentario sobre un día (lista de palabras; el texto le llega por la
+    #: entrada estándar). Se declara en la máquina donde vive el resultado; vacío, no recibe comentarios.
+    comentar: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -918,10 +921,14 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         lista = []
         for clave, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"resultados.{clave}")
-            sobra = set(cuerpo) - {"carpeta", "en", "nombre"}
+            sobra = set(cuerpo) - {"carpeta", "en", "nombre", "comentar"}
             if sobra:
                 raise ErrorDeConfig(f"resultados.{clave}.{sorted(sobra)[0]}: no existe")
-            valores = {}
+            valores: dict = {}
+            comentar = cuerpo.get("comentar", [])
+            if not isinstance(comentar, list) or not all(isinstance(x, str) and x.strip() for x in comentar):
+                raise ErrorDeConfig(f"resultados.{clave}.comentar: se esperaba una lista de palabras, llegó {comentar!r}")
+            valores["comentar"] = tuple(comentar)
             for campo in ("carpeta", "en", "nombre"):
                 v = cuerpo.get(campo, "")
                 if not isinstance(v, str):

@@ -6,3 +6,4 @@ node_modules/**
 .gitignore
 *.vsix
 out/web/**
+media/app/**

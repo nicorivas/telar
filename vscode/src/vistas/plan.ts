@@ -51,7 +51,7 @@ export function htmlPlan(r: cli.JsonResultado | undefined, error: string, cargan
         return h;
     }
     if (r.formato === 'md') {
-        h.push(`<div class="plan-txt"><p style="white-space:pre-wrap">${esc(String(r.contenido))}</p></div></section>`);
+        h.push(`<div class="plan-txt"><p style="white-space:pre-wrap">${esc(String(r.contenido))}</p></div>${htmlComentar(r)}</section>`);
         return h;
     }
     const p = r.contenido as Plan;
@@ -123,7 +123,17 @@ export function htmlPlan(r: cli.JsonResultado | undefined, error: string, cargan
         huecos.forEach((x, k) => h.push(fila(String(k + 1), `<span class="dim">${t(x)}</span>`)));
         h.push('</section>');
     }
+    if (r.comentable) h.push(`<section>${htmlComentar(r)}</section>`);
     return h;
+}
+
+/** Un comentario sobre el plan de ese día (contexto que falta, algo que corregir): lo atiende la
+ *  máquina donde vive el plan (`[resultados.plan] comentar`), que suele abrir un hilo con un agente. */
+function htmlComentar(r: cli.JsonResultado): string {
+    if (!r.comentable) return '';
+    return `<div class="cal-escribir"><textarea id="plan-texto" rows="3" spellcheck="false"`
+        + ` placeholder="Un comentario sobre este plan: contexto que falta, algo que corregir… (⌘⏎ envía)"></textarea>`
+        + `<a id="plan-enviar" data-accion="plan-comentar" data-campo="plan-texto" data-valor="${esc(r.dia)}">enviar comentario</a></div>`;
 }
 
 /** Un evento del calendario: del calendario de la persona, o un bloque que propuso el plan. */

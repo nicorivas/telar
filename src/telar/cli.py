@@ -63,6 +63,7 @@ ORDENES: dict[str, str] = {
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",
     "encargar": "Pedirle algo a un agente residente, en su hilo de siempre.",
     "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",
+    "compartir": "Llevar algo de afuera (un enlace, un texto) a un hilo, a un agente o a un proveedor que lo recibe.",
     "nodo": "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su estado.",
     "resultado": "Lo que una skill dejó un día (el plan, por ejemplo), leído de la máquina donde vive.",
     "evento": "Las notas de los eventos del día: verlas y dejarle una a un evento.",

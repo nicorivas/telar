@@ -104,6 +104,14 @@ pestana = "leer"
 tecla   = "l"               # opcional: abre la pestaña, en el primer ítem
 ```
 
+Con `recibir`, el proveedor además **recibe** lo que el celular le comparte al panel instalado como app
+(«guardar en leer»; ver `telar compartir`): una lista de palabras donde `{url}`, `{texto}` y `{titulo}`
+se reemplazan, sin shell.
+
+```toml
+recibir = ["/casa/bin/lecturas", "dejar", "{url}", "--nota", "{texto}"]
+```
+
 `detalle` imprime una página (el contrato de `telar seccion`) con `acciones`, los botones
 de la ficha. Ver [contratos](contratos.md#telar-tarea-id---json). Las tareas que traen
 `avance` (lo último que dejó un agente trabajando solo) van primero en la lista, con esa

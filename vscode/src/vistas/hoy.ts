@@ -798,6 +798,15 @@ export class PanelHoy {
 
     /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el
      *  agente necesita para no preguntar: la reunión, su proyecto, lo que dicen el plan y las notas. */
+    /** Un comentario sobre el plan de un día: lo atiende la máquina donde vive el plan, que abre un hilo
+     *  con un agente; ese agente actualiza el plan, y la pestaña lo relee en un rato. */
+    private async comentarPlan(dia: string, texto: string): Promise<void> {
+        const r = await ui().progreso({ title: 'telar: mandando el comentario sobre el plan…' }, () => cli.comentarResultado('plan', dia, texto));
+        if (!r.ok) { void ui().falla(`telar: el comentario no llegó: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui().info(r.abrio ? `telar: se abrió «${r.abrio}» para atender el comentario` : 'telar: comentario recibido');
+        setTimeout(() => { this.plan = undefined; void this.actualizar(true); }, 30000);
+    }
+
     private async escribirSobreEvento(id: string, texto: string): Promise<void> {
         const d = this.diaCal();
         if (!texto.trim() || !d) return;
@@ -2438,6 +2447,7 @@ export class PanelHoy {
                 if (m.valor && await reagendar(m.valor)) { await this.actualizar(true); if (this.pantalla === 'revisar') this.renderRevisar(); }
                 break;
             case 'ev-escribir': if (m.valor) await this.escribirSobreEvento(m.valor, m.datos ?? ''); break;
+            case 'plan-comentar': if (m.valor && m.datos?.trim()) await this.comentarPlan(m.valor, m.datos); break;
             case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
             case 'directorios': await this.cambiarDirectorios(); break;
         }

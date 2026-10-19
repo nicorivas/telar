@@ -8,6 +8,20 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- The web panel's thread menu: ⋯ on each thread (and right-click) opens what VS Code has as its context
+  menu — view, rename, link (to one of the profile's units, or a typed path), unlink, priority, archive or
+  unarchive, close, take to another machine, forget, and see its folder and document (`/documento`: the
+  folder and the chosen file, markdown rendered, never outside the thread's folder, not even through a
+  symlink). Menus and notices go to the page being looked at: each page tells the server how much of it is
+  visible.
+- Comments on a day's result, in the core: `[resultados.<clave>] comentar` (a command, on the machine where
+  the result lives) and `telar resultado <clave> <día> --comentar` (the text on stdin), which goes there over
+  the bus. The dashboard offers a comment box under the plan, in VS Code and on the web.
+- `telar compartir`: takes something from outside (a link, a text) to a thread or agent, as a message, or
+  to a provider that declares `recibir` (its words with `{url}`, `{texto}`, `{titulo}`; no shell).
+- The web panel installs as an app (manifest, icons, a service worker that caches nothing), and the phone's
+  share sheet opens `/compartir`, which uses `telar compartir`. The session cookie is now `SameSite=Lax`, so
+  that launch carries it; writes (POSTs and WebSockets) must come from the panel's own pages (`Origin`).
 - The web panel on a phone (up to 700 px wide): one thing at a time — the threads list, and a tap opens the
   dashboard or a thread full screen, with «◀» (and the phone's back button) to return. A thread reads as a
   conversation (`/conversacion`: its last turns from `telar hilo leer`, markdown rendered, re-read every few

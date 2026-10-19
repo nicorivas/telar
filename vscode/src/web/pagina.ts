@@ -16,7 +16,7 @@ export const SCRIPT_WEB = String.raw`
   var ws, abierto = false, cola = [];
   function conectar() {
     ws = new WebSocket(url);
-    ws.onopen = function () { abierto = true; cola.splice(0).forEach(function (m) { ws.send(m); }); };
+    ws.onopen = function () { abierto = true; cola.splice(0).forEach(function (m) { ws.send(m); }); medir(); };
     ws.onclose = function () { abierto = false; avisar('sin conexión con telar; reintentando…', 'aviso'); setTimeout(conectar, 2000); };
     ws.onmessage = function (e) {
       var m; try { m = JSON.parse(e.data); } catch (x) { return; }
@@ -30,6 +30,17 @@ export const SCRIPT_WEB = String.raw`
     };
   }
   function mandar(m) { var s = JSON.stringify(m); if (abierto) ws.send(s); else cola.push(s); }
+  // cuánto se ve esta página: el servidor le manda los menús y los avisos a la que se está mirando
+  // (en un celular, la lista de hilos y el dashboard no se ven a la vez). Oculta, mide 0
+  function medir() {
+    var llena = false;
+    try { llena = window.innerWidth >= window.parent.innerWidth - 2; } catch (x) {}
+    // y la página lo sabe también: la barra se dibuja distinto si ocupa la pantalla (un celular)
+    document.documentElement.classList.toggle('llena', llena && window.innerWidth > 0);
+    if (abierto) ws.send(JSON.stringify({ __ancho: window.innerWidth, __llena: llena }));
+  }
+  window.__telarWeb = true;
+  new ResizeObserver(medir).observe(document.documentElement);
   window.acquireVsCodeApi = function () {
     return {
       postMessage: mandar,
@@ -128,7 +139,10 @@ export function paginaCasa(nonce: string): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1e1e2e">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; manifest-src 'self'; img-src 'self'; worker-src 'self';">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>telar</title>
 <style>
   html, body { margin: 0; height: 100%; background: #1e1e2e; }
@@ -156,7 +170,11 @@ export function paginaCasa(nonce: string): string {
   var titulo = document.getElementById('titulo'), botonModo = document.getElementById('modo');
   function marco(p) { return marcos.querySelector('iframe[data-p="' + CSS.escape(p) + '"]'); }
   // un hilo en pantalla angosta se lee como conversación (salvo que se pida la terminal); en ancha, terminal
-  function forma(clave) { return clave === 'dashboard' ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
+  function forma(clave) { return clave === 'dashboard' || clave.indexOf('doc:') === 0 ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
+  function fuente(clave) {
+    if (clave.indexOf('doc:') === 0) return '/documento?hilo=' + encodeURIComponent(clave.slice(4));
+    return (forma(clave) === 'conv' ? '/conversacion?hilo=' : '/terminal?hilo=') + encodeURIComponent(clave);
+  }
   function llave(clave) { var f = forma(clave); return f ? f + ':' + clave : clave; }
   function mostrar(clave, desdeHistoria) {
     actual = clave;
@@ -164,7 +182,7 @@ export function paginaCasa(nonce: string): string {
     if (!f) {
       f = document.createElement('iframe');
       f.setAttribute('data-p', p); f.title = clave;
-      f.src = (forma(clave) === 'conv' ? '/conversacion?hilo=' : '/terminal?hilo=') + encodeURIComponent(clave);
+      f.src = fuente(clave);
       marcos.appendChild(f);
     }
     [].forEach.call(marcos.querySelectorAll('iframe'), function (x) { x.hidden = x !== f; });
@@ -173,9 +191,10 @@ export function paginaCasa(nonce: string): string {
       usadas = usadas.filter(function (u) { return u !== p; }).concat([p]);
       while (usadas.length > TOPE) { var vieja = marco(usadas.shift()); if (vieja) vieja.remove(); }
     }
-    document.title = clave === 'dashboard' ? 'telar' : clave + ' · telar';
-    titulo.textContent = clave;
-    botonModo.hidden = clave === 'dashboard';
+    var nombre = clave.indexOf('doc:') === 0 ? clave.slice(4) + ' · carpeta' : clave;
+    document.title = clave === 'dashboard' ? 'telar' : nombre + ' · telar';
+    titulo.textContent = nombre;
+    botonModo.hidden = !forma(clave);
     botonModo.textContent = forma(clave) === 'conv' ? 'terminal' : 'conversación';
     if (angosto.matches) {
       document.body.classList.remove('en-lista'); document.body.classList.add('en-detalle');
@@ -201,6 +220,103 @@ export function paginaCasa(nonce: string): string {
     mostrar(String(e.data.__mostrar));
   });
   ajustar();
+  // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+})();
+</script></body></html>`;
+}
+
+/** La carpeta de un hilo y uno de sus archivos, para `paginaDocumento` (lo arma servidor.ts). */
+export interface Documento {
+    hilo: string; titulo: string; error?: string;
+    carpeta?: string; archivo?: string; subir?: string;
+    archivos?: { nombre: string; ruta: string }[];
+    /** el archivo, ya convertido (markdown) o como texto */
+    html?: string; texto?: string;
+}
+
+const escHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** La carpeta de un hilo y su documento, en la web (lo que en VS Code son la ficha y la vista de
+ *  carpeta): la lista de archivos arriba, y el elegido abajo. Solo lee. */
+export function paginaDocumento(nonce: string, d: Documento): string {
+    const enlace = (ruta: string, texto: string, clase = '') =>
+        `<a class="${clase}" href="/documento?hilo=${encodeURIComponent(d.hilo)}&amp;archivo=${encodeURIComponent(ruta)}">${escHtml(texto)}</a>`;
+    const cuerpo = d.error ? `<p class="nada">${escHtml(d.error)}</p>`
+        : `<nav class="carpeta"><div class="donde">${escHtml(d.carpeta ?? '.')}</div>`
+            + (d.subir !== undefined ? enlace(d.subir, '../', 'dir') : '')
+            + (d.archivos ?? []).map(a => enlace(a.ruta, a.nombre, `${a.nombre.endsWith('/') ? 'dir' : ''}${a.ruta === d.archivo ? ' sel' : ''}`)).join('')
+            + `</nav>`
+            + (d.archivo ? `<article><div class="donde">${escHtml(d.archivo)}</div>${d.html ? `<div class="md">${d.html}</div>` : `<pre>${escHtml(d.texto ?? '')}</pre>`}</article>` : '');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:;">
+<title>${escHtml(d.titulo)} · telar</title>
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('documento')} }</style>
+</head><body><h1>${escHtml(d.titulo)}</h1>${cuerpo}</body></html>`;
+}
+
+/** Lo que el teléfono le comparte al panel instalado como app (`share_target` del manifiesto): un
+ *  enlace o un texto, para llevarlo a un hilo, a un agente o a un proveedor que lo recibe (un feed de
+ *  lecturas). Lo lleva `telar compartir`. */
+export function paginaCompartir(nonce: string): string {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self';">
+<title>compartir · telar</title>
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('compartir')} }</style>
+</head><body>
+<header><a href="/">◀ telar</a><b>compartir</b></header>
+<main>
+  <section id="que"></section>
+  <textarea id="nota" rows="3" placeholder="una nota, si quieres (va con lo compartido)"></textarea>
+  <input id="filtro" placeholder="filtrar destinos" autocomplete="off">
+  <div id="destinos"><p class="dim">leyendo destinos…</p></div>
+  <p id="dicho" class="dim"></p>
+</main>
+<script nonce="${nonce}">
+(function () {
+  var q = new URLSearchParams(location.search);
+  var titulo = (q.get('title') || '').trim(), texto = (q.get('text') || '').trim(), url = (q.get('url') || '').trim();
+  // muchas apps mandan el enlace dentro del texto, no en url
+  if (!url) { var m = texto.match(/https?:\\/\\/\\S+/); if (m) { url = m[0]; texto = texto.replace(m[0], '').trim(); } }
+  function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
+  var que = document.getElementById('que');
+  if (titulo) que.appendChild(el('div', 'titulo', titulo));
+  if (url) que.appendChild(el('div', 'url', url));
+  if (texto) que.appendChild(el('div', 'texto', texto));
+  if (!titulo && !url && !texto) que.appendChild(el('div', 'dim', 'nada compartido: escribe una nota y elige a dónde'));
+  var dicho = document.getElementById('dicho'), lista = [], filtro = document.getElementById('filtro');
+  function pintar() {
+    var cont = document.getElementById('destinos'), f = filtro.value.toLowerCase();
+    cont.textContent = '';
+    var grupos = [['proveedor', 'guardar en'], ['hilo', 'mandar a un hilo']];
+    grupos.forEach(function (g) {
+      var de = lista.filter(function (d) { return d.tipo === g[0] && (!f || d.nombre.toLowerCase().indexOf(f) >= 0); });
+      if (!de.length) return;
+      cont.appendChild(el('div', 'grupo', g[1]));
+      de.forEach(function (d) {
+        var b = el('button', 'destino', d.nombre);
+        b.addEventListener('click', function () { llevar(d, b); });
+        cont.appendChild(b);
+      });
+    });
+  }
+  function llevar(d, b) {
+    var nota = document.getElementById('nota').value.trim();
+    if (!url && !texto && !nota) { dicho.textContent = 'no hay nada que llevar'; return; }
+    b.disabled = true; dicho.className = 'dim'; dicho.textContent = 'llevando a ' + d.nombre + '…';
+    fetch('/api/compartir', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a: d.destino, url: url, titulo: titulo, texto: [nota, texto].filter(Boolean).join('\\n') }) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { dicho.className = r.ok ? 'bien' : 'mal'; dicho.textContent = r.ok ? (r.dicho || 'listo') : (r.error || 'no salió'); })
+      .catch(function () { dicho.className = 'mal'; dicho.textContent = 'sin conexión con telar'; })
+      .then(function () { b.disabled = false; });
+  }
+  filtro.addEventListener('input', pintar);
+  fetch('/api/compartir/destinos', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+    .then(function (d) { lista = d.destinos || []; pintar(); })
+    .catch(function () { document.getElementById('destinos').textContent = 'no pude leer los destinos'; });
 })();
 </script></body></html>`;
 }

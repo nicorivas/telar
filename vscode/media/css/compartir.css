@@ -1,0 +1,66 @@
+/* Lo que el teléfono le comparte al panel (web/pagina.ts, paginaCompartir): qué llegó, una nota, y a
+   dónde llevarlo. */
+
+header {
+  display: flex;
+  gap: var(--h-2);
+  padding: var(--e-2) var(--h-1);
+  border-bottom: var(--borde);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+  padding: var(--e-2) var(--h-1) calc(var(--e-3) + env(safe-area-inset-bottom));
+}
+
+#que {
+  overflow-wrap: anywhere;
+
+  & .titulo { font-weight: bold; }
+  & .url { color: var(--azul); }
+  & .texto { white-space: pre-wrap; }
+}
+
+textarea,
+input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: .3em .5ch;
+  border: var(--borde);
+  outline: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: max(16px, 1em); /* bajo 16 px, el iPhone agranda la página al escribir */
+
+  &:focus { border-color: var(--azul); }
+}
+
+.grupo {
+  margin-top: var(--e-2);
+  color: var(--dim);
+  font-size: var(--t-menor);
+}
+
+.destino {
+  display: block;
+  width: 100%;
+  padding: .45em 1ch;
+  border: 0;
+  border-bottom: var(--borde);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:active,
+  &:hover { background: var(--sel); }
+  &:disabled { color: var(--dim); }
+}
+
+.dim { color: var(--dim); }
+.bien { color: var(--verde); }
+.mal { color: var(--rojo); }

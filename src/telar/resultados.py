@@ -7,6 +7,7 @@ cual y quien lo muestra decide cómo.
     [resultados.plan]
     carpeta = "~/notas/planes"
     en = "telar"           # la máquina que corre la skill; "" es esta
+    comentar = ["~/bin/plan-comentario"]   # opcional, donde vive: atiende un comentario sobre un día
 
 Con `en` y bus, se le pide a esa máquina (su nodo lee su propia carpeta): la sincronización entre
 máquinas es frágil, y el resultado vive donde se escribió. Si esa máquina no responde, o no hay
@@ -17,6 +18,8 @@ from __future__ import annotations
 
 import json
 import re
+import os
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -42,7 +45,7 @@ def local(config, clave: str, dia: str = "") -> dict:
         return {"ok": False, "error": f"«{dia[:12]}» no es un día (AAAA-MM-DD)"}
     dias = sorted({f.stem for f in carpeta.glob("*") if DIA.fullmatch(f.stem) and f.suffix in (".json", ".md")},
                   reverse=True)[:DIAS_LISTADOS] if carpeta.is_dir() else []
-    base = {"clave": clave, "nombre": r.nombre or clave, "dia": dia, "dias": dias}
+    base = {"clave": clave, "nombre": r.nombre or clave, "dia": dia, "dias": dias, "comentable": bool(r.comentar)}
     for ext in (".json", ".md"):
         f = carpeta / f"{dia}{ext}"
         if not f.is_file():
@@ -71,3 +74,53 @@ def leer(config, clave: str, dia: str = "") -> dict:
         aqui = local(config, clave, dia)
         return {**aqui, "desde": "aquí", "aviso": f"{r.en} no respondió ({alla.get('error', '')}); se leyó la copia de aquí"}
     return {**local(config, clave, dia), "desde": "aquí"}
+
+
+#: el comentario más largo que se acepta
+MAX_COMENTARIO = 4000
+
+
+def comentar_local(config, clave: str, dia: str, texto: str) -> dict:
+    """Un comentario sobre el resultado de un día, atendido aquí: corre el `comentar` declarado con el
+    texto por la entrada estándar (nunca en la línea de comandos) y el día y la carpeta en el entorno
+    (`TELAR_RESULTADO_DIA`, `TELAR_RESULTADO_CARPETA`). La primera línea que imprima es lo que abrió
+    (un hilo, normalmente). Siempre `{"ok": …}`."""
+    r = declarado(config, clave)
+    if r is None:
+        return {"ok": False, "error": f"no hay un resultado «{clave}» en [resultados]"}
+    if not r.comentar:
+        return {"ok": False, "error": f"«{clave}» no recibe comentarios en esta máquina ([resultados.{clave}] comentar)"}
+    texto = (texto or "").strip()
+    if not DIA.fullmatch(dia or ""):
+        return {"ok": False, "error": f"«{(dia or '')[:12]}» no es un día (AAAA-MM-DD)"}
+    if not texto:
+        return {"ok": False, "error": "el comentario está vacío"}
+    if len(texto) > MAX_COMENTARIO:
+        return {"ok": False, "error": f"el comentario pasa de {MAX_COMENTARIO} caracteres"}
+    carpeta = Path(r.carpeta).expanduser() if r.carpeta else Path()
+    if r.carpeta and not any((carpeta / f"{dia}{ext}").is_file() for ext in (".json", ".md")):
+        return {"ok": False, "error": f"no hay {r.nombre or clave} del {dia}"}
+    comando = [os.path.expanduser(r.comentar[0]), *r.comentar[1:]]
+    entorno = {**os.environ, "TELAR_RESULTADO_DIA": dia, "TELAR_RESULTADO_CARPETA": str(carpeta)}
+    try:
+        p = subprocess.run(comando, input=texto, capture_output=True, text=True, timeout=60, env=entorno)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "error": f"no pude correr {r.comentar[0]}: {type(e).__name__}"}
+    if p.returncode != 0:
+        cola = (p.stderr.strip().splitlines() or [f"salió con {p.returncode}"])[-1]
+        return {"ok": False, "error": cola[:200]}
+    primera = (p.stdout.strip().splitlines() or [""])[0]
+    return {"ok": True, "abrio": primera.split(" · ")[0][:120]}
+
+
+def comentar(config, clave: str, dia: str, texto: str) -> dict:
+    """Un comentario sobre un día: lo atiende la máquina donde vive el resultado (`en`, por el bus)."""
+    from telar import bus as mod_bus
+
+    r = declarado(config, clave)
+    if r is None:
+        return {"ok": False, "error": f"no hay un resultado «{clave}» en [resultados]"}
+    if r.en and mod_bus.hay_bus(config) and r.en != mod_bus.maquina(config):
+        return mod_bus.pedir(config, r.en, "resultado-comentar", {"clave": clave, "dia": dia, "texto": texto}, espera=70)
+    return comentar_local(config, clave, dia, texto)
+

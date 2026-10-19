@@ -189,6 +189,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado-comentar"), cb=self._resultado_comentar)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "proveedor"), cb=self._proveedor)
         await nc.subscribe(mod_bus.tema_cambio(self.config, "*"), cb=self._cambio)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
@@ -435,6 +436,12 @@ class Nodo:
         from telar import resultados
 
         await self._responder(m, lambda p: resultados.local(self.config, str(p.get("clave", "")), str(p.get("dia", ""))))
+
+    async def _resultado_comentar(self, m) -> None:
+        from telar import resultados
+
+        await self._responder(m, lambda p: resultados.comentar_local(
+            self.config, str(p.get("clave", "")), str(p.get("dia", "")), str(p.get("texto", ""))))
 
     async def _cambio(self, m) -> None:
         """Algo cambió en alguna máquina (`telar cambio`): se anota aquí para que el dashboard lo relea."""

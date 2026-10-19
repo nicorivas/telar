@@ -57,6 +57,39 @@ class Resultados(Prueba):
         self.assertEqual((r["desde"], r["contenido"]["foco"]["paso"]), ("aquí", "x"))
         self.assertIn("no respondió", r["aviso"])
 
+    def comentador(self, cuerpo='cat > "$TELAR_RESULTADO_CARPETA/comentario-$TELAR_RESULTADO_DIA.txt"; echo "✎ plan · abierto"'):
+        guion = Path(self.tmp.name) / "comentar"
+        guion.write_text("#!/bin/sh\n" + cuerpo + "\n")
+        guion.chmod(0o755)
+        return (str(guion),)
+
+    def test_un_comentario_llega_por_la_entrada_al_comando_con_el_dia(self):
+        r = resultados.comentar_local(self.config(comentar=self.comentador()), "plan", "2026-10-06", "  falta la reunión  ")
+        self.assertEqual(r, {"ok": True, "abrio": "✎ plan"})
+        self.assertEqual((self.planes / "comentario-2026-10-06.txt").read_text(), "falta la reunión")
+        self.assertTrue(resultados.local(self.config(comentar=self.comentador()), "plan", "2026-10-06")["comentable"])
+        self.assertFalse(resultados.local(self.config(), "plan", "2026-10-06")["comentable"])
+
+    def test_un_comentario_que_no_sirve_no_corre_nada(self):
+        cfg = self.config(comentar=self.comentador())
+        for dia, texto in (("2026-10-01", "x"), ("../etc", "x"), ("2026-10-06", "   ")):
+            self.assertFalse(resultados.comentar_local(cfg, "plan", dia, texto)["ok"])
+        self.assertFalse(resultados.comentar_local(self.config(), "plan", "2026-10-06", "x")["ok"])  # sin comentar
+        self.assertEqual(list(self.planes.glob("comentario-*")), [])
+
+    def test_si_el_comando_falla_se_dice_su_ultima_linea(self):
+        r = resultados.comentar_local(self.config(comentar=self.comentador('echo "no hay pasada" >&2; exit 3')), "plan", "2026-10-06", "x")
+        self.assertEqual(r, {"ok": False, "error": "no hay pasada"})
+
+    def test_con_bus_el_comentario_va_a_la_maquina_del_resultado(self):
+        cfg = mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado",
+                                bus=mod_config.Bus(url="nats://x:1", maquina="laptop"),
+                                resultados=(mod_config.Resultado(clave="plan", carpeta=str(self.planes), en="servidor"),))
+        with mock.patch.object(mod_bus, "pedir", return_value={"ok": True, "abrio": "✎ plan"}) as pedir:
+            r = resultados.comentar(cfg, "plan", "2026-10-06", "hola")
+        self.assertEqual(r["abrio"], "✎ plan")
+        self.assertEqual(pedir.call_args[0][1:4], ("servidor", "resultado-comentar", {"clave": "plan", "dia": "2026-10-06", "texto": "hola"}))
+
     def test_la_configuracion_se_lee_y_se_valida(self):
         f = Path(self.tmp.name) / "config.toml"
         f.write_text('[resultados.plan]\ncarpeta = "~/planes"\nen = "telar"\nnombre = "Plan del día"\n\n[notas]\nen = "telar"\n')

@@ -55,6 +55,12 @@
 
 .web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); font-size: var(--t-menor); }
 
+/* en un celular, cada opción en dos renglones: el nombre, y debajo para qué sirve */
+@media (width <= 700px) {
+  .web-op { flex-direction: column; gap: 0; padding-block: .15lh; }
+  .web-op .d { font-size: var(--t-chica); }
+}
+
 /* los avisos: abajo a la derecha, se van solos */
 .web-avisos {
   position: fixed;
@@ -77,3 +83,13 @@
   &.falla { border-left-color: var(--rojo); }
   &.aviso { border-left-color: var(--amarillo); }
 }
+
+/* la barra en el navegador: el ⋯ abre el menú del hilo, que en VS Code es el contextual. En un
+   celular no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕) queda dentro del menú */
+.menu-web { display: inline; }
+
+/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular */
+.llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
+.llena .fila .iconos .icono:not(.menu-web) { display: none; }
+.llena .fila .menu-web { padding-inline: 1ch; }
+

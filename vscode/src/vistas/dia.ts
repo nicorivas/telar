@@ -654,8 +654,8 @@ document.addEventListener('click', function (e) {
 document.addEventListener('keydown', function (e) {
   // escribiéndole al agente sobre una reunión: las letras son del campo; ⌘⏎ envía, ⎋ sale del campo
   const activo = document.activeElement;
-  if (activo && activo.id === 'ev-texto') {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); const b = document.getElementById('ev-enviar'); if (b) b.click(); return; }
+  if (activo && (activo.id === 'ev-texto' || activo.id === 'plan-texto')) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); const b = document.getElementById(activo.id === 'ev-texto' ? 'ev-enviar' : 'plan-enviar'); if (b) b.click(); return; }
     if (e.key === 'Escape') { e.preventDefault(); activo.blur(); }
     return;
   }

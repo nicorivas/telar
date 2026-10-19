@@ -1,0 +1,75 @@
+/* La carpeta de un hilo y su documento, en la web (web/pagina.ts, paginaDocumento): los archivos
+   arriba, como una lista corta, y el elegido abajo. */
+
+body { padding: var(--e-2) var(--h-2) var(--e-3); }
+
+h1 {
+  margin: 0 0 var(--e-2);
+  font-size: var(--t-mayor);
+}
+
+.donde {
+  color: var(--dim);
+  font-size: var(--t-menor);
+}
+
+.nada { color: var(--dim); }
+
+.carpeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--h-2);
+  padding-bottom: var(--e-2);
+  border-bottom: var(--borde);
+
+  & .donde { flex-basis: 100%; }
+  & a { color: var(--fg); }
+  & a.dir { color: var(--azul); }
+  & a.sel { color: var(--amarillo); }
+}
+
+article {
+  padding-top: var(--e-2);
+
+  & pre {
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+  }
+}
+
+.md {
+  max-width: 90ch;
+  overflow-wrap: anywhere;
+
+  & h1,
+  & h2,
+  & h3 {
+    margin: var(--e-3) 0 var(--e-1);
+    color: var(--amarillo);
+    font-size: var(--t-normal);
+  }
+
+  & code { color: var(--cian); font: inherit; }
+
+  & pre {
+    overflow-x: auto;
+    padding: var(--e-1) var(--h-1);
+    border: var(--borde);
+  }
+
+  & table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  & td,
+  & th {
+    padding: 0 var(--h-1);
+    border: var(--borde);
+  }
+
+  & img { max-width: 100%; }
+}

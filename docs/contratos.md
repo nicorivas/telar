@@ -866,6 +866,27 @@ responde, se lee la carpeta de aquí y `aviso` lo dice.
 que existen, del más nuevo al más viejo (hasta 60). telar no fija la forma de `contenido`: la decide
 la skill, y quien lo muestra la conoce (el dashboard dibuja la del plan del día).
 
+`comentable` dice si la máquina donde vive atiende comentarios sobre un día (`comentar` en su
+`[resultados.<clave>]`). `telar resultado <clave> <día> --comentar --json`, con el comentario por la
+entrada estándar, lo manda allá (pedido `resultado-comentar` a su nodo, si hay `en`): corre ese comando
+con el texto por su entrada y `TELAR_RESULTADO_DIA` y `TELAR_RESULTADO_CARPETA` en el entorno, y responde
+`{"ok": true, "abrio": "✎ plan"}` (la primera línea que imprimió, normalmente el hilo que abrió) o
+`{"ok": false, "error": "…"}`. Hasta 4000 caracteres; un día sin resultado no se comenta.
+
+## `telar compartir --json` — llevar algo de afuera a un hilo o a un proveedor
+
+`telar compartir --destinos --json` da los proveedores que reciben cosas (los que declaran `recibir`):
+
+```json
+{"destinos": [{"destino": "lecturas", "nombre": "leer", "tipo": "proveedor"}]}
+```
+
+`telar compartir --a <destino> [--url U] [--texto T] [--titulo X] --json` lo lleva: a `hilo:<nombre>`
+como mensaje (`telar mensaje`), o a un proveedor corriendo su `recibir` con `{url}`, `{texto}` y
+`{titulo}` reemplazados (sin shell; una palabra que queda vacía se cae con su `--opción`). Responde
+`{"ok": true, "dicho": "…"}` (la primera línea que imprimió el proveedor, o a quién le llegó) o
+`{"ok": false, "error": "…"}`. La dirección tiene que ser http o https; nada pasa de 8000 caracteres.
+
 ## `telar evento notas|nota` — las notas de los eventos del día
 
 `[notas]` dice dónde viven (`carpeta`, `<estado>/notas` por defecto) y, con `en`, en qué máquina.
