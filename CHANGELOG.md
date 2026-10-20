@@ -54,7 +54,9 @@ workflow refuses to run if the two disagree.
   round trip. Built for Claude Code, which redraws the whole screen on every key (VS Code's typeahead expects
   each letter echoed alone, so with Claude Code it never confirms a prediction and stays off): after each
   frame, the pending letters already before the cursor count as confirmed and the rest are drawn again. It
-  turns on above 40 ms of measured latency, only with a visible cursor at the end of its line
+  turns on above 40 ms of measured latency, only with a visible cursor at the end of its line (spaces,
+  including the non-breaking ones Claude Code pads its input box with, count as the end); each frame and its
+  echo are drawn together with synchronized output (DEC 2026), so the cursor doesn't jump between them
   (`vscode/src/navegador/eco`, bundled as `src/telar/web/eco.js`; `npm run prueba:eco` tests it against a fake
   Claude Code). The terminal gets the focus again; the box below stays, a click away.
 - The server joins the pieces of a tmux frame (up to 8 ms) before sending them, so the browser draws whole

@@ -24,6 +24,9 @@ const ESC = '\x1b';
 const GUARDAR = `${ESC}7`;      // DECSC: la posición y los atributos del cursor
 const VOLVER = `${ESC}8`;       // DECRC
 const TENUE = `${ESC}[2m`;
+// salida sincronizada (DEC 2026): xterm no dibuja entre el comienzo y el fin, así un cuadro y su eco se ven
+// juntos (si no, el cursor salta al lugar del servidor y de vuelta al del eco con cada cuadro)
+const SINCRO = `${ESC}[?2026h`, FIN_SINCRO = `${ESC}[?2026l`;
 
 export interface EstadoEco { mostrando: boolean; pendientes: string; latencia: number; muestras: number }
 
@@ -56,20 +59,22 @@ export function conEco(term: Terminal): {
         return s;
     };
 
-    /** Si en la línea del cursor no hay nada después de él: solo ahí se predice (no se pisa texto). */
+    /** Si en la línea del cursor no hay nada después de él (solo espacios: Claude Code rellena su caja con
+     *  espacios duros): solo ahí se predice, para no pisar texto. */
     const alFinal = () => {
         const b = term.buffer.active;
         const linea = b.getLine(b.baseY + b.cursorY);
-        return !!linea && linea.translateToString(true).length <= b.cursorX;
+        return !!linea && /^[\s\u00a0]*$/.test(linea.translateToString(false).slice(b.cursorX));
     };
 
-    /** Dibuja, tenue, lo pendiente a partir del cursor; el cursor queda después (como si ya hubiera llegado). */
-    const dibujar = () => {
-        if (!pendientes.length || !mostrando() || !cursorVisible || !alFinal()) return;
+    /** Lo pendiente, tenue, a partir del cursor (el cursor queda después, como si ya hubiera llegado); "" si
+     *  no corresponde dibujarlo. Lo escribe quien llama, junto con lo demás. */
+    const eco = () => {
+        if (!pendientes.length || !mostrando() || !cursorVisible || !alFinal()) return '';
         const texto = pendientes.map(p => p.c).join('');
-        if (term.buffer.active.cursorX + texto.length >= term.cols) return;
-        term.write(GUARDAR + TENUE + texto);
+        if (term.buffer.active.cursorX + texto.length >= term.cols) return '';
         dibujadas = texto.length;
+        return GUARDAR + TENUE + texto;
     };
 
     /** Después de un cuadro: cuántas de las pendientes ya están antes del cursor (la confirmación es por el
@@ -96,7 +101,8 @@ export function conEco(term: Terminal): {
                 // el estado del cursor que deja este cuadro: el último ?25h / ?25l que trae
                 const v = datos.lastIndexOf(`${ESC}[?25h`), e = datos.lastIndexOf(`${ESC}[?25l`);
                 if (v >= 0 || e >= 0) cursorVisible = v > e;
-                term.write(borrar() + datos, () => { confirmar(); dibujar(); listo(); });
+                // el cuadro y su eco, en una sola salida sincronizada
+                term.write(SINCRO + borrar() + datos, () => { confirmar(); term.write(eco() + FIN_SINCRO, listo); });
             }));
         },
         tecleado(datos) {
@@ -108,7 +114,8 @@ export function conEco(term: Terminal): {
                     term.write(datos);
                     dibujadas++;
                 } else {
-                    dibujar();
+                    const e = eco();
+                    if (e) term.write(e);
                 }
                 return;
             }

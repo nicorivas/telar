@@ -21,8 +21,9 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
 const term = new Terminal({ cols: 80, rows: 8, allowProposedApi: true });
 const eco = conEco(term);
 let escrito = '';
-const cuadro = () => `\x1b[?25l\x1b[H\x1b[2Jcabecera\r\n────────\r\n❯ ${escrito}\x1b[K\r\n────────\r\n  ctx 41%\x1b[3;${3 + escrito.length}H\x1b[?25h`;
-const linea = () => term.buffer.active.getLine(2).translateToString(true).trimEnd();
+// como Claude Code: la caja del input se rellena con espacios duros después del texto
+const cuadro = () => `\x1b[?25l\x1b[H\x1b[2Jcabecera\r\n────────\r\n❯ ${escrito}${'\u00a0'.repeat(20)}\r\n────────\r\n  ctx 41%\x1b[3;${3 + escrito.length}H\x1b[?25h`;
+const linea = () => term.buffer.active.getLine(2).translateToString(true).replace(/[\s\u00a0]+$/, '');
 const LATENCIA = 250;
 const tecla = c => { eco.tecleado(c); setTimeout(() => { escrito += c; eco.escribir(cuadro()); }, LATENCIA); };
 
@@ -53,6 +54,18 @@ for (const [i, c] of [...' rapido'].entries()) {
 await espera(LATENCIA + 100);
 assert.equal(linea(), '❯ aprendiz rapido', 'al final, lo del servidor y nada más');
 assert.equal(eco.estado().pendientes, '');
+
+// 3b. cuadros que llegan solos (el reloj, la animación de Claude) entre teclas: el eco sigue ahí
+tecla('!');
+await espera(20);
+eco.escribir(cuadro());
+await espera(20);
+assert.equal(linea(), '❯ aprendiz rapido!', 'un cuadro sin la letra no borra el eco');
+await espera(LATENCIA + 50);
+assert.equal(linea(), '❯ aprendiz rapido!');
+eco.tecleado('\x7f');
+setTimeout(() => { escrito = escrito.slice(0, -1); eco.escribir(cuadro()); }, LATENCIA);
+await espera(LATENCIA + 100);
 
 // 4. ⌫ sobre una letra pendiente la quita al tiro
 tecla('x');
