@@ -50,12 +50,6 @@ red).
 
 ## Vestigios de versiones anteriores
 
-- **La forma de la extensión de VS Code, en la página.** La extensión está deprecada y su código propio se
-  borró (20-oct-2026); `vscode/` es solo el código de la página. Pero la página todavía arrastra su forma: el
-  dashboard (`vistas/hoy.ts`, unas 2.500 líneas) corre con un `acquireVsCodeApi` simulado, cada pantalla en
-  un iframe, con mensajes que van y vuelven entre marcos, y las capas `anfitrion` y `superficie` que existían
-  para servir a dos dueños. Falta escribir la página para el navegador sin esa capa, y después darle a la
-  carpeta un nombre que diga lo que es.
 - **El correo entre personas y los remotos por ssh y mosh** (`remoto.py`, `movil.py`, `correo.py`,
   `espejo.py`, el `cartero`; unas mil líneas): se van cuando el bus cruce personas (el punto 3 de arriba).
   Quien use dos máquinas sin bus queda sin semáforo ni ventanas remotas: el CHANGELOG lo dice, con el bus
@@ -70,7 +64,7 @@ red).
 
 - **Otros asistentes, en serio.** Hoy todo supone Claude Code (sus hooks, su registro, ahora el mod). Hace
   falta una interfaz de adaptador por asistente —su estado, sus mensajes, su conversación— y que Claude Code
-  sea un adaptador más. El registro de vistas de un hilo (`vscode/src/web/vistas-hilo.ts`) y los
+  sea un adaptador más. El registro de vistas de un hilo (`pagina/src/web/vistas-hilo.ts`) y los
   renderizadores de la lectura ya van por ahí.
 - **Varias personas en una máquina**, cada una con su acceso: hoy la página tiene una llave por máquina; falta
   entrar como persona y poder rotar la llave.
@@ -81,5 +75,4 @@ red).
 ## El orden
 
 1. El correo y el directorio entre personas por el bus.
-2. Escribir la página para el navegador, sin la capa del webview (la extensión ya está deprecada y borrada).
-3. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.
+2. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

@@ -6,7 +6,7 @@
 
 Corre dos cosas hasta ⌃C:
 
-- `npm run navegador:watch` (en vscode/): esbuild rehace src/telar/web/app.js y marco.css con cada cambio
+- `npm run navegador:watch` (en pagina/): esbuild rehace src/telar/web/app.js y marco.css con cada cambio
   en el TypeScript o el CSS, en menos de un segundo;
 - un `telar serve --web --dev` aparte, en su propio puerto y su propio socket (el `serve` de siempre, con el
   bus y el nodo, no se toca), que se reinicia cuando cambia un .py de src/telar.
@@ -74,7 +74,7 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, salir)
     signal.signal(signal.SIGHUP, salir)
-    esbuild = subprocess.Popen(["npm", "run", "-s", "navegador:watch"], cwd=RAIZ / "vscode", start_new_session=True)
+    esbuild = subprocess.Popen(["npm", "run", "-s", "navegador:watch"], cwd=RAIZ / "pagina", start_new_session=True)
     servidor = arrancar(o.puerto, socket)
     antes = firma()
     try:

@@ -11,8 +11,7 @@ porque son cuentas y permisos que solo tiene su dueño, y después el runbook de
 El paquete se llama `telar` porque el nombre estaba libre en PyPI el 21-sep-2026, no porque
 se haya elegido. Antes de la primera publicación conviene confirmarlo: después de subir una
 versión, el nombre queda tomado para siempre aunque se borre el archivo. Si se cambia, hay
-tres lugares: `name` en pyproject.toml, `name` y `publisher` en vscode/package.json, y el
-módulo `src/telar/`.
+dos lugares: `name` en pyproject.toml y el módulo `src/telar/`.
 
 ### 2. PyPI sin guardar ningún token
 
@@ -39,8 +38,8 @@ con `pypa/gh-action-pypi-publish` apuntado a `https://test.pypi.org/legacy/`.
 ### 3. La extensión de VS Code: ya no
 
 La extensión está deprecada desde el 20-oct-2026 y el workflow ya no la empaqueta ni la publica:
-la página que sirve `telar serve --web` hace todo lo que hacía. El código de la página sigue en
-`vscode/` y viaja dentro del paquete de Python (`src/telar/web/`).
+la página que sirve `telar serve --web` hace todo lo que hacía. El código de la página está en
+`pagina/` y viaja dentro del paquete de Python (`src/telar/web/`).
 
 ### 4. Abrir el repositorio
 

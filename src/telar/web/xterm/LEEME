@@ -1,3 +1,3 @@
 xterm.js 6.0.0 y su addon-fit 0.11.0 (MIT, ver LICENSE y LICENSE-addon-fit), copiados de
-vscode/node_modules/@xterm para que la página en Python no dependa de Node. Al subir de versión: npm
-update en vscode/ y volver a copiar xterm.js, xterm.css y addon-fit.js.
+pagina/node_modules/@xterm para que la página en Python no dependa de Node. Al subir de versión: npm
+update en pagina/ y volver a copiar xterm.js, xterm.css y addon-fit.js.

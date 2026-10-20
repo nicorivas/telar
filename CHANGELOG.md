@@ -15,12 +15,29 @@ extension shared the version number.
   such as unpushed work that needs `si`), otherwise it answers `en_curso` and keeps going, with its output in
   `<estado>/llevar/<hilo>.log`.
 
+### Changed
+
+- The web page no longer carries the shape of the VS Code extension. Every screen (the thread bar, the
+  dashboard, a thread's terminal, reading and conversation views, its folder, «compartir») is drawn in one
+  document, each with its CSS under `@scope`; only the dashboard's canvases and apps stay in sandboxed iframes,
+  canvases with their own content policy (no network), as `docs/contratos.md` promises. Notices and dialogs are
+  the page's own, on top of everything. The page talks only to the API (`fetch`), with no CLI fallback, and its
+  source moved from `vscode/` to `pagina/` (`npm ci`, `npm run navegador` there).
+- The dashboard's keys only act while it is showing, and never while typing in a field outside it (the bar's
+  search, a terminal).
+
 ### Fixed
 
 - The dashboard's task table can be sorted by deadline, and now it shows: each column header has its name
   (código, proyecto, responsable, tarea, fecha), «fecha» sits over the dates (it was an unlabeled ↕ at the
   right edge), and the column that sorts is blue. A click on «fecha» puts the most overdue first and the
   undated last; another click goes back to urgency.
+- Sharing from a phone shows what was shared (the page opened on the thread list on top of it).
+- Preparing a meeting and taking a thread to another machine work from the page (they needed the CLI, which the
+  browser cannot run; now `POST /reunion` and `POST /hilo/llevar`).
+- A dialog's detail text is shown (it was dropped), and its line breaks are kept.
+- A relative link inside a document in a thread's folder opens that file in the folder view; code blocks in it
+  no longer wrap.
 
 ## [0.2.0] — 2026-10-20
 

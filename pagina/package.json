@@ -1,12 +1,12 @@
 {
   "name": "telar-pagina",
   "private": true,
-  "description": "La página de telar (telar serve --web): la barra de hilos, el dashboard y cada hilo, empaquetados en src/telar/web/. Antes, la extensión de VS Code, deprecada el 20-oct-2026.",
+  "description": "La página de telar (telar serve --web): la barra de hilos, el dashboard y cada hilo, empaquetados en src/telar/web/.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/nicorivas/telar.git",
-    "directory": "vscode"
+    "directory": "pagina"
   },
   "scripts": {
     "tipos": "tsc -p .",

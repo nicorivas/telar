@@ -10,7 +10,7 @@ python3 scripts/dev.py                 # http://<ip de tailscale>:18780, con la 
 
 Corre dos cosas hasta ⌃C:
 
-- **esbuild mirando** `vscode/src` y `vscode/media/css` (`npm run navegador:watch`): rehace
+- **esbuild mirando** `pagina/src` y `pagina/media/css` (`npm run navegador:watch`): rehace
   `src/telar/web/app.js` y `marco.css` en menos de un segundo, con el mismo resultado que `npm run navegador`
   (minificado), así que lo que queda en git es lo que se commitea.
 - **un `telar serve --web --dev` aparte**, en el puerto 18780 y su propio socket: el `serve` de siempre (el
@@ -26,7 +26,7 @@ escribirle a un hilo, un atajo), pasa. Para probar sin tocar nada, una configura
 Para probar la terminal con la latencia de una red lejana sin depender de ella:
 `localStorage['telar.latencia'] = '500'` en la consola de la página (y recargar) la simula, la mitad a la ida y
 la mitad a la vuelta; ahí mismo, `__eco.estado()` dice si el eco de la terminal que se mira se está mostrando
-y la latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `vscode/`.
+y la latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `pagina/`.
 
 Las pruebas de Python se corren como el CI: con telar instalado con `pip install -e '.[serve,bus,pruebas]'`
 (sin los extras, las de la API y el bus se saltan), `python -m unittest discover -s pruebas` (escritas como
@@ -34,7 +34,7 @@ Las pruebas de Python se corren como el CI: con telar instalado con `pip install
 suyas: `claude plugin test` en `src/telar/mod/`, y `claude plugin validate --strict src/telar/mod`.
 
 Necesita telar instalado editable (`uv tool install --editable '.[serve,bus]'`): así `telar` corre el
-código del repositorio. Los tipos de la página: `npm run tipos` en `vscode/`. Lo que se commitea en
+código del repositorio. Los tipos de la página: `npm run tipos` en `pagina/`. Lo que se commitea en
 `src/telar/web/` es lo que sale de `npm run navegador`, y el CI lo comprueba.
 
 ## Llevarlo a las máquinas: `servidor/desplegar.sh`

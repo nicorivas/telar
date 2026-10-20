@@ -64,7 +64,7 @@ Tres reglas sostienen el dibujo:
 | **mensaje** | texto para un hilo o un agente, en cualquier máquina; llega aunque el hilo esté cerrado | `telar mensaje`; viaja por el bus |
 | **periódico** | algo que corre solo cada cierto tiempo, a veces abriendo un hilo con un agente | `telar periodicos` (cron) |
 | **nodo** | la parte de `telar serve` que habla con el bus: recibe los mensajes, avisa a los hilos, publica qué hay vivo | `telar serve --nodo` |
-| **la página** | lo que se ve: la barra de hilos, el dashboard y cada hilo; también es la app del celular | `telar serve --web`; su código, en `vscode/` |
+| **la página** | lo que se ve: la barra de hilos, el dashboard y cada hilo; también es la app del celular | `telar serve --web`; su código, en `pagina/` |
 
 ## Un proceso por máquina
 
@@ -225,8 +225,8 @@ da esas tareas a `telar hoy` y al dashboard, con su ficha y sus botones.
 
 ## La página
 
-Se escribe en TypeScript (`vscode/src/`) y se empaqueta con esbuild (`vscode/scripts/navegador.mjs`)
-en `src/telar/web/`: `app.js` y `marco.css` (los estilos de `vscode/media/css/`). xterm.js va aparte, en
+Se escribe en TypeScript (`pagina/src/`) y se empaqueta con esbuild (`pagina/scripts/navegador.mjs`)
+en `src/telar/web/`: `app.js` y `marco.css` (los estilos de `pagina/media/css/`). xterm.js va aparte, en
 `src/telar/web/xterm/`, y se carga la primera vez que se abre una terminal. Cómo desarrollarla con recarga
 sola: [desarrollar.md](desarrollar.md).
 
@@ -236,28 +236,25 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
-  abre uno (`POST /ir` con `crear`). Está en `vscode/src/vistas/hilos.ts`.
+  abre uno (`POST /ir` con `crear`). Está en `pagina/src/vistas/hilos.ts`.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos). `vistas/hoy.ts` decide qué mostrar y lo pinta en `vistas/dashboard.ts`, que filtra, ordena y
   atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
   de afuera (el buscador de la barra, una terminal).
-- **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
+- **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la
   lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la
   deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
   (⌥C). Una vista nueva es una entrada del registro, con su `montar`: se dibuja en un elemento de la página
   y se cierra cuando ya no hace falta (de las terminales quedan abiertas las ocho últimas). La carpeta de un
   hilo y «compartir» se dibujan igual (`web/carpeta.ts`, `web/compartir.ts`).
-- **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`vscode/src/navegador/eco/`): dibuja
+- **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso
-  con botones) los pone la página misma, encima de todo (`vscode/src/web/interfaz.ts`): se ven mire uno lo
+  con botones) los pone la página misma, encima de todo (`pagina/src/web/interfaz.ts`): se ven mire uno lo
   que mire, también la lista en el celular. El dashboard, la barra y las órdenes `telar.*` los piden a
   `web/ui.ts`, que también sabe abrir un enlace, mostrar un hilo o una carpeta, y correr una orden.
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
-
-De la extensión de VS Code, deprecada, queda el nombre de la carpeta, `vscode/`: cambiarlo es lo que sigue
-del plan.
 
 ## Cómo se mueve una cosa
 

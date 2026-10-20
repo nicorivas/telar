@@ -23,7 +23,7 @@ const VISTAS = ['marco', 'web', 'hilos', 'dia', 'plan', 'proyectos', 'ahora', 'd
 function marco() {
     const css = n => readFileSync(path.join(carpetaCss, `${n}.css`), 'utf8');
     writeFileSync(path.join(web, 'marco.css'),
-        `/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (${[...BASE, ...VISTAS].join(', ')}): no editar aquí. */\n`
+        `/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (${[...BASE, ...VISTAS].join(', ')}): no editar aquí. */\n`
         + `@layer base, vistas;\n@layer base {\n${BASE.map(css).join('\n')}\n}\n@layer vistas {\n${VISTAS.map(css).join('\n')}\n}\n`);
 }
 
