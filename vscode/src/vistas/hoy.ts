@@ -708,10 +708,13 @@ export class PanelHoy {
             + `<input id="buscar-t" type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off"><span id="tareas-t-cuenta"></span></span></div>`,
             filtroAreas(lista.map(p => p.fila.area ?? '')), filtroDuenos(lista.map(p => [p.fila.dueno ?? '', !!p.fila.proveedor] as [string, boolean]))];
         if (!lista.length) h.push('<div class="vacio">nada pendiente</div>');
-        // un ícono sobre cada columna: el clic ordena por ella, otro clic vuelve al orden de siempre (urgencia)
-        const col = (k: string, t: string) => `<span data-orden-c="${k}" title="ordenar por ${t} (otra vez: por urgencia)">↕</span>`;
-        h.push(`<div class="tareas-cab">${col('ref', 'código')}${col('est', 'estrella')}<span></span>${col('proy', 'proyecto')}${col('resp', 'responsable')}`
-            + `${col('alfa', 'el texto')}<span class="meta">${col('dias', 'fecha')}</span></div>`);
+        // el nombre de cada columna: el clic ordena por ella (la que ordena, en azul), otro clic vuelve al orden de
+        // siempre (urgencia). La fecha va sobre las fechas: la cabecera repite la grilla de lo que hay a la derecha
+        const col = (k: string, nombre: string, por: string) =>
+            `<span data-orden-c="${k}" title="${esc(`ordenar por ${por} (otra vez: por urgencia)`)}">${nombre}</span>`;
+        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', '★', 'estrella')}<span></span>`
+            + `${col('proy', 'proyecto', 'proyecto')}${col('resp', 'responsable', 'responsable')}${col('alfa', 'tarea', 'el texto, alfabético')}`
+            + `<span class="meta">${col('dias', 'fecha', 'fecha límite: lo más vencido arriba, lo sin fecha al final')}<span></span><span></span><span></span></span></div>`);
         h.push('<div id="tareas-t">');
         for (const p of lista) h.push(this.filaTarea(p, esRev(p), deLaSemana(p)));
         h.push('<div id="tareas-t-vacio" class="vacio" hidden></div><div id="tareas-t-mas" class="vacio clic" hidden></div></div></section></div>');

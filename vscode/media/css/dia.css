@@ -275,6 +275,7 @@ h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transfo
   .tareas-sueltas .tarea > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)) { display: none; }
 
   #revisar .tarea .meta,
+  #revisar .tareas-cab .meta,
   .tareas-sueltas .tarea .meta { grid-column: 2; justify-self: start; }
 }
 .rap { color: var(--dim); cursor: pointer; text-align: center; opacity: .55; }
@@ -289,6 +290,9 @@ h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transfo
 #revisar .tareas-cab { display: grid; gap: 1ch; padding: 0 1ch; color: var(--dim); margin-top: .5lh; }
 #revisar .tareas-cab [data-orden-c] { cursor: pointer; } #revisar .tareas-cab [data-orden-c]:hover { color: var(--fg); }
 #revisar .tareas-cab .activo { color: var(--azul); }
+#revisar .tareas-cab > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* la misma grilla de la derecha de una fila, para que «fecha» quede sobre las fechas */
+#revisar .tareas-cab .meta { display: grid; grid-template-columns: 5ch 1ch 7ch 1ch; gap: 2ch; overflow: visible; }
 #revisar .resp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); cursor: pointer; }
 #revisar .resp:hover { text-decoration: underline; } #revisar .resp.defecto { color: var(--dim); }
 #revisar .resp.dim, #revisar .resp.fijo { cursor: default; text-decoration: none; } #revisar .resp.dim { color: var(--dim); }

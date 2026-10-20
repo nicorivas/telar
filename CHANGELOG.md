@@ -15,6 +15,13 @@ extension shared the version number.
   such as unpushed work that needs `si`), otherwise it answers `en_curso` and keeps going, with its output in
   `<estado>/llevar/<hilo>.log`.
 
+### Fixed
+
+- The dashboard's task table can be sorted by deadline, and now it shows: each column header has its name
+  (código, proyecto, responsable, tarea, fecha), «fecha» sits over the dates (it was an unlabeled ↕ at the
+  right edge), and the column that sorts is blue. A click on «fecha» puts the most overdue first and the
+  undated last; another click goes back to urgency.
+
 ## [0.2.0] — 2026-10-20
 
 ### Deprecated

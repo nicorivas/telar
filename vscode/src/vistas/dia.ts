@@ -396,9 +396,7 @@ function aplicarTareas() {
   const vacio = document.getElementById('tareas-t-vacio');
   todas.sort(compararColumna);
   document.querySelectorAll('.tareas-cab [data-orden-c]').forEach(function (s) {
-    const es = s.dataset.ordenC === (estado.ordenC || '');
-    s.classList.toggle('activo', es);
-    s.textContent = es ? (s.dataset.ordenC === 'ref' ? '▼' : '▲') : '↕';
+    s.classList.toggle('activo', s.dataset.ordenC === (estado.ordenC || ''));
   });
   let n = 0;
   todas.forEach(function (f) {
