@@ -447,7 +447,7 @@ class Instalador(ConEstado):
         self.assertEqual(self.leer()["permissions"]["allow"], ["Bash(ls:*)"])
 
     def test_instalar_pone_el_mod_y_desinstalar_lo_quita(self):
-        from telar.agente.claude_code import carpeta_mod
+        from telar.agente.claude_code import carpeta_mod, carpeta_sordina
 
         self.ajustes.write_text(json.dumps({"env": {"CLAUDE_CODE_PLUGIN_DIRS": "/otro/mod", "FOO": "1"}}),
                                 encoding="utf-8")
@@ -455,7 +455,9 @@ class Instalador(ConEstado):
         a.instalar(ruta=self.ajustes)
         a.instalar(ruta=self.ajustes)  # dos veces no lo repite
         env = self.leer()["env"]
-        self.assertEqual(env["CLAUDE_CODE_PLUGIN_DIRS"].split(os.pathsep), ["/otro/mod", str(carpeta_mod())])
+        self.assertEqual(env["CLAUDE_CODE_PLUGIN_DIRS"].split(os.pathsep),
+                         ["/otro/mod", str(carpeta_mod()), str(carpeta_sordina())])
+        self.assertTrue((carpeta_sordina() / ".claude-plugin" / "plugin.json").exists())
         self.assertTrue(json.loads(env["TELAR_EJECUTABLE"]))
         self.assertTrue((carpeta_mod() / ".claude-plugin" / "plugin.json").exists())
         a.desinstalar(ruta=self.ajustes)

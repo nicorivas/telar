@@ -131,6 +131,9 @@ class Agente:
     #: cuántas sesiones propias (hilos que no son tabs: periódicos, encargos, el celular) pueden
     #: estar vivas a la vez en esta máquina; 0 es sin tope. Al abrir otra se cierran las ociosas.
     max_vivos: int = 0
+    #: la sordina (telar/sordina/): en Claude Code, una línea gris por archivo editado y por comando, sin
+    #: diffs ni salida. La pone `telar agente instalar`; con false, no.
+    sordina: bool = True
 
 
 #: teclas que el dashboard ya usa: un atajo no las puede tomar. r (recargar), p (proyectos),
@@ -574,7 +577,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "agente" in datos:
         tabla = _tabla(datos["agente"], "agente")
-        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "minuta", "proyecto", "pendiente", "pendiente_nuevo", "contexto", "max_vivos"}
+        sobra = set(tabla) - {"nombre", "carpeta", "reunion", "minuta", "proyecto", "pendiente", "pendiente_nuevo", "contexto", "max_vivos", "sordina"}
         if sobra:
             raise ErrorDeConfig(f"agente.{sorted(sobra)[0]}: no existe")
         nombre = tabla.get("nombre", "")
@@ -603,12 +606,15 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         contexto = tabla.get("contexto", True)
         if not isinstance(contexto, bool):
             raise ErrorDeConfig(f"agente.contexto: se esperaba true o false, llegó {contexto!r}")
+        sordina = tabla.get("sordina", True)
+        if not isinstance(sordina, bool):
+            raise ErrorDeConfig(f"agente.sordina: se esperaba true o false, llegó {sordina!r}")
         max_vivos = tabla.get("max_vivos", 0)
         if not isinstance(max_vivos, int) or isinstance(max_vivos, bool) or max_vivos < 0:
             raise ErrorDeConfig(f"agente.max_vivos: se esperaba un número desde 0, llegó {max_vivos!r}")
         cambios["agente"] = Agente(nombre=nombre.strip(), carpeta=carpeta.strip(), reunion=reunion.strip(),
                                    minuta=minuta.strip(), proyecto=proyecto.strip(), contexto=contexto,
-                                   max_vivos=max_vivos, **textos)
+                                   max_vivos=max_vivos, sordina=sordina, **textos)
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")

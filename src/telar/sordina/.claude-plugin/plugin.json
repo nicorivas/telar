@@ -1,0 +1,7 @@
+{
+  "name": "sordina",
+  "version": "0.2.0",
+  "description": "Baja el volumen de las herramientas: una línea gris por archivo editado (+N −M) y por comando, sin los diffs ni la salida. Lo que dice el modelo queda al frente; ctrl+o muestra todo.",
+  "author": { "name": "Nicolás Rivas" },
+  "homepage": "https://github.com/nicorivas/telar"
+}

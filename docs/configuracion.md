@@ -256,7 +256,13 @@ proyecto = "Carga el proyecto {nombre}: lee {documento} y dime en qué está y q
 pendiente = "{texto}"         # se escribe, sin enviar, al agente de un hilo ya abierto
 pendiente_nuevo = "{texto}"   # primer mensaje de un hilo que se abre para el pendiente
 contexto = true               # el agente recibe al empezar unas líneas sobre su hilo y los otros
+sordina = true                # en Claude Code, una línea gris por edición y por comando, sin diffs
 ```
+
+`sordina` decide si `telar agente instalar` carga en Claude Code la sordina (`src/telar/sordina/`), un mod
+que baja el volumen de las herramientas: cada archivo editado es una línea gris con sus filas agregadas y
+sacadas, y cada comando, una línea gris con lo que hace y cuánto imprimió, sin el diff ni la salida. Un
+error, una interrupción o la vista expandida (ctrl+o) se ven enteros. Con `false`, no se carga.
 
 `reunion` es lo que se le dice al agente cuando se pincha una reunión en la agenda del
 dashboard (o con `telar reunion "<título>" HH:MM`): se abre un tab «◷ hora reunión» con

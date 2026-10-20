@@ -49,7 +49,7 @@ package-dir = { "" = "src" }
 version = { attr = "telar.__version__" }
 
 [tool.setuptools.package-data]
-telar = ["web/*", "web/xterm/*", "web/app/*", "mod/.claude-plugin/*", "mod/hooks/*"]
+telar = ["web/*", "web/xterm/*", "web/app/*", "mod/.claude-plugin/*", "mod/hooks/*", "sordina/.claude-plugin/*", "sordina/hooks/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

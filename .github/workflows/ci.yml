@@ -90,3 +90,7 @@ jobs:
       - name: Pruebas del mod
         working-directory: src/telar/mod
         run: claude plugin test
+      - name: La sordina
+        run: |
+          claude plugin validate --strict src/telar/sordina
+          (cd src/telar/sordina && claude plugin test)

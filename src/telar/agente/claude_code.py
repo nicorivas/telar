@@ -399,8 +399,9 @@ class ClaudeCode(AgenteBase):
             puestos.append(f"{nativo} (casilla)")
         # el mod de telar (telar/mod/): avisa de los mensajes sin teclearlos. Lo carga cada sesión por
         # CLAUDE_CODE_PLUGIN_DIRS; TELAR_EJECUTABLE le dice con qué llamar a telar (una lista JSON)
-        _poner_mod(nuevos, palabras[:-3])
-        puestos.append("mod de telar (CLAUDE_CODE_PLUGIN_DIRS)")
+        sordina = getattr(getattr(self.config, "agente", None), "sordina", True)
+        _poner_mod(nuevos, palabras[:-3], sordina=sordina)
+        puestos.append("mod de telar (CLAUDE_CODE_PLUGIN_DIRS)" + (" y la sordina" if sordina else ""))
         # hablar con otros hilos y leerlos no pasa por la aprobación de la persona (PERMISOS)
         permisos = nuevos.setdefault("permissions", {})
         if isinstance(permisos, dict):
@@ -598,19 +599,27 @@ def carpeta_mod() -> Path:
     return Path(__file__).resolve().parent.parent / "mod"
 
 
+def carpeta_sordina() -> Path:
+    """La sordina (telar/sordina/): baja el volumen de las herramientas en Claude Code."""
+    return Path(__file__).resolve().parent.parent / "sordina"
+
+
 def _es_mod_de_telar(carpeta: str) -> bool:
+    """Si es uno de los mods que trae telar (el de telar o la sordina), de esta instalación o de otra."""
     try:
-        return json.loads((Path(carpeta) / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("name") == "telar"
+        nombre = json.loads((Path(carpeta) / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("name")
+        return nombre in ("telar", "sordina")
     except (OSError, ValueError, AttributeError):
-        return Path(carpeta).parts[-2:] == ("telar", "mod")
+        return Path(carpeta).parts[-2:] in (("telar", "mod"), ("telar", "sordina"))
 
 
-def _poner_mod(datos: dict, base: Sequence[str]) -> None:
+def _poner_mod(datos: dict, base: Sequence[str], *, sordina: bool = True) -> None:
     env = datos.setdefault("env", {})
     if not isinstance(env, dict):
         return
     otras = [c for c in str(env.get("CLAUDE_CODE_PLUGIN_DIRS") or "").split(os.pathsep) if c and not _es_mod_de_telar(c)]
-    env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join([*otras, str(carpeta_mod())])
+    nuestras = [str(carpeta_mod()), *([str(carpeta_sordina())] if sordina else [])]
+    env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join([*otras, *nuestras])
     env["TELAR_EJECUTABLE"] = json.dumps(list(base))
 
 

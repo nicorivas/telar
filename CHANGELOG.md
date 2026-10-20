@@ -18,6 +18,11 @@ extension shared the version number.
 
 ### Added
 
+- The sordina, a second Claude Code mod (`src/telar/sordina/`) that turns tools down so what the model says
+  stays in front: a file edit is one grey line with the file and its lines added and removed (`✎ src/a.py
+  +2 −1`), with no diff, and a shell command is one grey line with what it does and how much it printed,
+  with no output. Errors, interruptions and the expanded view (ctrl+o) show everything as before. `telar
+  agente instalar` loads it with the telar mod; `[agente] sordina = false` leaves it out.
 - The telar mod for Claude Code (`src/telar/mod/`, shipped in the package). `telar agente instalar` loads it
   in every Claude Code session through `CLAUDE_CODE_PLUGIN_DIRS` (and `desinstalar` takes it out). When
   messages reach a thread's mailbox while its session is idle, the mod submits the notice line itself, so
