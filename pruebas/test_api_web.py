@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest import mock
+
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from fastapi import FastAPI
@@ -118,6 +121,52 @@ class LaTerminal(Prueba):
                 with c.websocket_connect("/pty?hilo=faro", headers=origen) as ws:
                     ws.receive_text()
         self.assertEqual(self.abiertos, [])
+
+    def test_otra_maquina_entra_con_el_token_del_bus(self):
+        from fastapi import FastAPI
+        from starlette.websockets import WebSocketDisconnect
+
+        from telar import api_web as w
+
+        with mock.patch.object(w, "_token_del_bus", return_value="token-del-bus"):
+            c = TestClient(w.crear(FastAPI(), clave="llave-de-prueba", config=object()))
+        with c.websocket_connect("/pty?hilo=faro", headers={"authorization": "Bearer token-del-bus"}) as ws:
+            ws.send_json({"d": "hola\n"})
+            visto = ""
+            while "hola" not in visto:
+                visto += ws.receive_text()
+        with self.assertRaises(WebSocketDisconnect):
+            with c.websocket_connect("/pty?hilo=faro", headers={"authorization": "Bearer otro"}) as ws:
+                ws.receive_text()
+
+    def test_un_hilo_de_otra_maquina_se_reenvia_a_su_pagina(self):
+        from fastapi import FastAPI
+
+        from telar import api_web as w
+        from telar import terminal
+
+        llamadas = []
+
+        async def reenviar(ws, web, hilo, maquina, cols, rows, token):
+            llamadas.append((web, hilo, maquina, token))
+            await ws.close()
+
+        config = SimpleNamespace()
+        with mock.patch.object(w, "_token_del_bus", return_value="token-del-bus"):
+            c = TestClient(w.crear(FastAPI(), clave="llave-de-prueba", config=config))
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        with mock.patch.object(terminal, "reenviar", reenviar), \
+                mock.patch("telar.bus.maquina", return_value="telar"), \
+                mock.patch("telar.espejo.web_de", return_value="http://100.1.2.3:8780"):
+            with c.websocket_connect("/pty?hilo=Telar&maquina=laptop", headers={"origin": "http://testserver"}) as ws:
+                with self.assertRaises(Exception):
+                    ws.receive_text()
+            # el de esta misma máquina no se reenvía
+            with c.websocket_connect("/pty?hilo=faro&maquina=telar", headers={"origin": "http://testserver"}) as ws:
+                ws.send_json({"d": "x\n"})
+                ws.receive_text()
+        self.assertEqual(llamadas, [("http://100.1.2.3:8780", "Telar", "laptop", "token-del-bus")])
+        self.assertEqual([a[0] for a in self.abiertos], ["faro"])
 
     def test_lo_tecleado_llega_y_vuelve(self):
         c = _app()

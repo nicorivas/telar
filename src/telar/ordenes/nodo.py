@@ -72,8 +72,10 @@ def main(argv: list[str], ctx) -> int:
 
 
 class Nodo:
-    def __init__(self, ctx):
+    def __init__(self, ctx, web: str = ""):
         self.ctx = ctx
+        #: la dirección de la página de esta máquina (`telar serve --web`), para la foto
+        self.web = web
         self.config = ctx.config
         self.yo = mod_bus.maquina(self.config)
         self.persona = mod_bus.persona(self.config)
@@ -385,7 +387,7 @@ class Nodo:
 
         try:
             tel = _comun.tejer(self.ctx)
-            return espejo.foto(tel, maquina=self.yo, version_telar=__version__)
+            return espejo.foto(tel, maquina=self.yo, version_telar=__version__, web=self.web)
         except Exception as e:  # noqa: BLE001
             self.anotar(f"la foto del espejo no salió: {type(e).__name__}: {e}")
             return None

@@ -5,8 +5,10 @@ Mirar arma una sesión agrupada propia sobre la ventana del hilo: escribir aquí
 no mueve lo que ven los demás. Al cerrarse la página se cierra el PTY, `mirar` termina y tmux borra la
 vista (destroy-unattached).
 
-El protocolo es el que usaba el panel en Node: del servidor salen los bytes de la terminal como texto; de
-la página llega JSON, `{"d": "…"}` para teclear y `{"r": [columnas, filas]}` para cambiar el tamaño.
+Un hilo de otra máquina se reenvía (`reenviar`): la página de aquí se une a la de allá, que corre su
+`telar mirar`. El protocolo es el que usaba el panel en Node: del servidor salen los bytes de la terminal
+como texto; de la página llega JSON, `{"d": "…"}` para teclear y `{"r": [columnas, filas]}` para cambiar el
+tamaño.
 """
 
 from __future__ import annotations
@@ -146,5 +148,59 @@ async def puente(ws, hilo: str, columnas, filas) -> None:
         if proceso.returncode is None:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(proceso.pid, signal.SIGKILL)
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+            await ws.close()
+
+
+async def reenviar(ws, web: str, hilo: str, maquina: str, columnas, filas, token: str) -> None:
+    """La terminal de un hilo de otra máquina: este WebSocket (ya aceptado) se une al `/pty` de la página de
+    esa máquina (`web`, de su foto del bus), que entra con el token del bus. Los mensajes pasan tal cual,
+    en los dos sentidos, hasta que uno de los dos se cierre."""
+    from urllib.parse import urlencode
+
+    from starlette.websockets import WebSocketDisconnect
+
+    async def decir(texto: str) -> None:
+        with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+            await ws.send_text(f"\r\n\x1b[2m[{texto}]\x1b[0m\r\n")
+            await ws.close()
+
+    if not web:
+        await decir(f"«{maquina}» no está en línea o no sirve su página (telar serve --web): ábrelo como conversación")
+        return
+    if not token:
+        await decir("sin el token del bus no puedo pedirle la terminal a otra máquina")
+        return
+    try:
+        import websockets
+    except ImportError:
+        await decir("falta websockets (el extra serve de telar)")
+        return
+    consulta = urlencode({"hilo": hilo, "cols": _medida(columnas, COLUMNAS, 100), "rows": _medida(filas, FILAS, 30)})
+    destino = f"{web.replace('http', 'ws', 1)}/pty?{consulta}"
+    try:
+        alla = await websockets.connect(destino, additional_headers={"Authorization": f"Bearer {token}"},
+                                        open_timeout=10, max_size=None)
+    except Exception as e:  # noqa: BLE001 - se le dice a quien mira
+        await decir(f"no pude abrir la terminal en {maquina}: {type(e).__name__}")
+        return
+
+    async def hacia_alla() -> None:
+        with contextlib.suppress(WebSocketDisconnect):
+            while True:
+                await alla.send(await ws.receive_text())
+
+    async def desde_alla() -> None:
+        async for m in alla:
+            await ws.send_text(m if isinstance(m, str) else m.decode("utf-8", "replace"))
+
+    tareas = [asyncio.create_task(hacia_alla()), asyncio.create_task(desde_alla())]
+    try:
+        await asyncio.wait(tareas, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for t in tareas:
+            t.cancel()
+        with contextlib.suppress(Exception):
+            await alla.close()
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):
             await ws.close()

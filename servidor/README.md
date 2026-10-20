@@ -102,6 +102,10 @@ la llave de `~/.config/telar/panel.llave` (`?k=…` la primera vez; después que
 
 - **HTTPS, para instalarla como app.** `tailscale serve --bg --https=443 http://<ip de tailscale>:8780` la pone en
   `https://<máquina>.<tailnet>.ts.net/`, solo dentro de la tailnet.
+- **Las terminales de los hilos de otra máquina** (un hilo del laptop, visto desde el servidor) se reenvían a
+  la página de esa máquina: su dirección viaja en la foto del nodo por el bus, y esa página acepta al
+  servidor con el token del bus (`[bus] token`), el secreto que ya comparten las máquinas. Por eso cada
+  máquina que tenga hilos corre `telar serve --nodo --web`, y todas con el mismo token.
 - Antes la servía `telar panel`, un servidor en Node (`telar-panel.service`); se retiró el 19-oct-2026.
 
 

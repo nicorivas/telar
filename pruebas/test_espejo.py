@@ -62,6 +62,23 @@ class Validar(Prueba):
                 m.validar(malo, "laptop")
 
 
+class LaPaginaDeLaMaquina(ConCarpeta):
+    """La foto dice dónde está la página de su máquina (para reenviarle las terminales): solo esquema, host y
+    puerto, y solo mientras la foto está vigente."""
+
+    def test_pasa_una_direccion_y_no_otra_cosa(self):
+        self.assertEqual(m.validar(foto(web="http://100.1.2.3:8780"), "laptop")["web"], "http://100.1.2.3:8780")
+        for malo in ("javascript:alert(1)", "http://a/b", "http://a:8780/pty?x", "ftp://a", 3, ""):
+            self.assertEqual(m.validar(foto(web=malo), "laptop")["web"], "", malo)
+
+    def test_web_de_solo_si_esta_en_linea(self):
+        m.guardar(self.config, "laptop", json.dumps(foto(web="http://100.1.2.3:8780")))
+        self.assertEqual(m.web_de(self.config, "laptop"), "http://100.1.2.3:8780")
+        self.assertEqual(m.web_de(self.config, "otra"), "")
+        with mock.patch.object(m.time, "time", return_value=time.time() + m.VIGENTE + 5):
+            self.assertEqual(m.web_de(self.config, "laptop"), "")
+
+
 class Guardar(ConCarpeta):
     def test_se_guarda_privado_y_con_la_hora_de_aqui(self):
         antes = time.time()

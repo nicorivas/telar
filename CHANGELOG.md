@@ -50,6 +50,13 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- Terminals of threads on another machine in the browser page: `/pty?hilo=…&maquina=…` forwards the
+  WebSocket to that machine's own page (its address now travels in the node's photo on the bus, `web`),
+  which accepts it with the bus token — the secret a person's machines already share. A thread from another
+  machine opens as its real terminal on a wide screen, and as its conversation on a narrow one.
+- The box to write to a thread (its conversation in the browser): ⏎ sends and ⇧⏎ is a new line; it uses the
+  page's font (16 px only on touch screens, so the iPhone doesn't zoom) and, instead of a box, a line at the
+  left that turns blue while writing.
 - `scripts/dev.py` (`docs/desarrollar.md`): esbuild watching the page's TypeScript and CSS, plus a separate
   `telar serve --web --dev` on port 18780 that restarts when the Python changes; with `--dev` the page
   reloads itself when its files change (`/dev/cambios`). And `servidor/desplegar.sh`: pull, reinstall or

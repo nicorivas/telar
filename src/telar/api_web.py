@@ -10,7 +10,10 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
     GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
     GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
-    WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí
+    WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí;
+                            &maquina=… la de un hilo de otra máquina: se reenvía al /pty de su página (la
+                            dirección viene en su foto del bus), presentándose con el token del bus. Ese
+                            token también abre el /pty de aquí: es lo que comparten las máquinas de una persona
     GET  /dev/cambios       solo con `--dev`: avisa (server-sent events) cuando cambian los archivos de la página
     *    /api/…             la API de esta máquina (la misma de `telar serve`), detrás de la llave
 """
@@ -106,8 +109,23 @@ async def _cambios():
             yield ": latido\n\n"
 
 
-def crear(api_app, clave: str | None = None, dev: bool = False) -> FastAPI:
+def _token_del_bus(config) -> str:
+    """El secreto que comparten las máquinas de una persona (`[bus] token`); "" sin bus."""
+    if config is None:
+        return ""
+    try:
+        from telar import bus as mod_bus
+
+        return mod_bus._token(config) if mod_bus.hay_bus(config) else ""
+    except Exception:  # noqa: BLE001 - sin token, solo entra el navegador
+        return ""
+
+
+def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> FastAPI:
+    """La página. `config` (la de `telar serve`) da el token del bus y las fotos de las otras máquinas: sin
+    ella, las terminales son solo de esta."""
     clave = clave or llave()
+    token = _token_del_bus(config)
     app = FastAPI(title="telar web", docs_url=None, redoc_url=None, openapi_url=None)
     # comprimido: el JS de la página y de xterm baja a un cuarto, y el JSON de la API también
     from starlette.middleware.gzip import GZipMiddleware
@@ -150,16 +168,36 @@ def crear(api_app, clave: str | None = None, dev: bool = False) -> FastAPI:
         app.add_api_route(ruta, _de_la_app(ruta, tipo), methods=["GET"], include_in_schema=False)
 
     @app.websocket("/pty")
-    async def terminal(ws: WebSocket, hilo: str = "", cols: int = 100, rows: int = 30):
+    async def terminal(ws: WebSocket, hilo: str = "", cols: int = 100, rows: int = 30, maquina: str = ""):
         # el middleware de arriba no ve los WebSocket: la llave y el origen se miran aquí. Un WebSocket
-        # escribe en un hilo, así que el `Origin` es obligatorio (un navegador siempre lo manda)
+        # escribe en un hilo, así que el `Origin` es obligatorio (un navegador siempre lo manda). Otra
+        # máquina de la persona (su página, reenviando) entra con el token del bus, que un navegador no
+        # puede poner en un WebSocket
         origen = ws.headers.get("origin", "")
-        if (not secrets.compare_digest(ws.cookies.get(COOKIE, ""), clave) or not origen
-                or urlsplit(origen).netloc != ws.headers.get("host", "") or not hilo):
+        navegador = (secrets.compare_digest(ws.cookies.get(COOKIE, ""), clave) and bool(origen)
+                     and urlsplit(origen).netloc == ws.headers.get("host", ""))
+        otra_maquina = bool(token) and secrets.compare_digest(ws.headers.get("authorization", ""), f"Bearer {token}")
+        if not (navegador or otra_maquina) or not hilo:
             await ws.close(code=1008)
             return
         from telar import terminal as mod_terminal
 
+        aqui = ""
+        if maquina and config is not None:
+            from telar import bus as mod_bus
+
+            aqui = mod_bus.maquina(config)
+        if maquina and maquina != aqui:
+            # solo desde el navegador: una máquina no le reenvía a una tercera
+            if not navegador:
+                await ws.close(code=1008)
+                return
+            from telar import espejo
+
+            await ws.accept()
+            web = espejo.web_de(config, maquina) if config is not None else ""
+            await mod_terminal.reenviar(ws, web, hilo, maquina, cols, rows, token)
+            return
         await ws.accept()
         await mod_terminal.puente(ws, hilo, cols, rows)
 

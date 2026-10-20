@@ -67,12 +67,15 @@ def main(argv: list[str], ctx) -> int:
         equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
         print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
     otros = [equipo] if equipo else []
+    url_web = ""
     if o.web:
         from telar import api_web
         from telar.ordenes.equipo import ip_de_tailscale
 
         host = ip_de_tailscale() or "127.0.0.1"
-        otros.append(uvicorn.Config(api_web.crear(api.app, dev=o.dev), host=host, port=o.web_puerto, log_level="warning"))
+        otros.append(uvicorn.Config(api_web.crear(api.app, dev=o.dev, config=ctx.config), host=host, port=o.web_puerto,
+                                    log_level="warning"))
+        url_web = f"http://{host}:{o.web_puerto}" if host != "127.0.0.1" else ""
         print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
     equipo = otros
     nodo = None
@@ -82,7 +85,7 @@ def main(argv: list[str], ctx) -> int:
 
         if not mod_bus.hay_bus(ctx.config):
             return _comun.queja("--nodo: no hay bus ([bus] url en la configuración)")
-        nodo = Nodo(ctx)
+        nodo = Nodo(ctx, web=url_web)
         print("telar serve: con el nodo del bus", flush=True)
     if o.puerto:
         _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo, nodo)

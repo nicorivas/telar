@@ -42,7 +42,7 @@ cd "$HOME/$1"
 antes=$(git rev-parse HEAD)
 git pull -q --ff-only
 cambios=$(git diff --name-only "$antes" HEAD)
-echo "  $(git log --oneline -1) ($(printf '%s\n' "$cambios" | grep -c . || true) archivos nuevos)"
+echo "  $(git log --oneline -1) ($(printf '%s\n' "$cambios" | grep -c . || true) archivos cambiados)"
 if grep -q '^pyproject.toml$' <<<"$cambios"; then
     echo "  pyproject cambió: reinstalo telar"
     uv tool install -q --force --editable "$PWD[serve,bus]"

@@ -88,23 +88,33 @@ button {
   gap: var(--h-1);
   align-items: flex-end;
 
+  /* como el prompt de una terminal: la letra de todo lo demás, sin caja; una línea a la izquierda que se
+     pone azul mientras se escribe. ⏎ envía, ⇧⏎ es una línea nueva */
   & textarea {
     flex: 1;
     min-width: 0;
     box-sizing: border-box;
-    padding: .3em .5ch;
-    border: var(--borde);
+    padding: 0 var(--h-1);
+    border: 0;
+    border-left: 2px solid var(--linea);
     outline: none;
     background: transparent;
     color: var(--fg);
     font: inherit;
-    font-size: max(16px, 1em); /* bajo 16 px, el iPhone agranda la página al escribir */
     resize: none;
 
-    &:focus { border-color: var(--azul); }
+    &:focus { border-left-color: var(--azul); }
+    &::placeholder { color: var(--dim); }
+
+    /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
+    @media (pointer: coarse) { font-size: max(16px, 1em); }
   }
 
-  & button { color: var(--azul); }
+  & button {
+    padding: 0;
+    border: 0;
+    color: var(--azul);
+  }
 }
 
 /* el markdown de la persona y del agente, ya convertido: compacto, como en una terminal */

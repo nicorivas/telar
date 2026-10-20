@@ -174,12 +174,13 @@ const guardado: Guardado = {
     update: async (clave, valor) => { try { localStorage.setItem(`telar.barra.${clave}`, JSON.stringify(valor)); } catch { /* sin almacén */ } },
 };
 
-/** Cómo se ve un hilo de esta máquina: su terminal (xterm.js sobre `/pty`) o su conversación (la que se lee
- *  en el celular). En pantalla ancha, terminal; en angosta, conversación; el botón de arriba cambia. */
+/** Cómo se ve un hilo: su terminal (xterm.js sobre `/pty`; la de uno de otra máquina, reenviada por la página
+ *  de aquí a la de allá) o su conversación (la que se lee en el celular). En pantalla ancha, terminal; en
+ *  angosta, conversación; el botón de arriba cambia. */
 const modo: Record<string, 'term' | 'conv'> = {};
 const angosto = () => document.body.classList.contains('angosto');
 function forma(que: string): '' | 'term' | 'conv' {
-    if (que === 'dashboard' || que === 'compartir' || que.startsWith('rem:') || que.startsWith('doc:')) return '';
+    if (que === 'dashboard' || que === 'compartir' || que.startsWith('doc:')) return '';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
@@ -187,7 +188,7 @@ const TOPE = 8;
 const usadas: string[] = [];
 
 /** A la derecha: «dashboard», un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
- *  otra máquina: su conversación, por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
+ *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
  *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
 function mostrar(que: string): void {
     if (!que) return;
@@ -210,7 +211,7 @@ function mostrar(que: string): void {
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
             const nonce = Math.random().toString(36).slice(2);
             f = nuevoMarco(llave, marcos());
-            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo })
+            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo, maquina })
                 : paginaConversacion(nonce, { hilo, maquina });
         }
         if (como === 'term') {

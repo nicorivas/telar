@@ -260,7 +260,7 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
   <div id="teclas">
     <button data-t="\\r">⏎</button><button data-t="\\u001b">⎋</button><button data-t="1">1</button><button data-t="2">2</button><button data-t="3">3</button><button data-t="\\u001b[A">↑</button><button data-t="\\u001b[B">↓</button>
   </div>
-  <form id="escribir"><textarea id="texto" rows="2" placeholder="escríbele al hilo"></textarea><button type="submit">enviar</button></form>
+  <form id="escribir"><textarea id="texto" rows="2" placeholder="escríbele al hilo (⏎ envía, ⇧⏎ línea nueva)"></textarea><button type="submit">enviar</button></form>
   <p id="dijo" class="nada"></p>
 </footer>
 <script nonce="${nonce}">
@@ -271,7 +271,7 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
   var porMensaje = !!maquina;
   var turnos = document.getElementById('turnos'), texto = document.getElementById('texto'), dijo = document.getElementById('dijo');
   // un hilo de otra máquina se lee y se le escribe por el bus: sin terminal, no hay teclas que apretar
-  if (porMensaje) { document.getElementById('teclas').hidden = true; texto.placeholder = maquina ? 'escríbele al hilo (en ' + maquina + ', por el bus)' : 'escríbele al hilo (le llega como mensaje)'; }
+  if (porMensaje) { document.getElementById('teclas').hidden = true; texto.placeholder = (maquina ? 'escríbele al hilo (en ' + maquina + ', por el bus' : 'escríbele al hilo (le llega como mensaje') + '; ⏎ envía, ⇧⏎ línea nueva)'; }
   var QUIEN = { usuario: 'tú', agente: 'agente', herramienta: '·' };
   function el(tag, cls, t) { var e = document.createElement(tag); if (cls) e.className = cls; if (t != null) e.textContent = t; return e; }
   function abajo() { return turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40; }
@@ -331,6 +331,10 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
     return ws;
   }
   function teclear(d) { var c = canal(); if (c.readyState === 1) c.send(JSON.stringify({ d: d })); else cola.push(d); pronto = Date.now() + 20000; }
+  // ⏎ envía; ⇧⏎ es una línea nueva (y mientras se compone una letra con acento, ⏎ es de la composición)
+  texto.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); document.getElementById('escribir').requestSubmit(); }
+  });
   document.getElementById('escribir').addEventListener('submit', function (e) {
     e.preventDefault();
     var t = texto.value.replace(/\\s+$/, '');
@@ -361,8 +365,9 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 }
 
 /** La terminal de un hilo: xterm.js (servido por telar.api_web en `/estatico/xterm`) conectado por
- *  WebSocket a `telar mirar` en un PTY de la máquina (`/pty`, telar.terminal). */
-export function paginaTerminal(nonce: string, rutas: { hilo?: string } = {}): string {
+ *  WebSocket a `telar mirar` en un PTY de la máquina (`/pty`, telar.terminal); el de un hilo de otra máquina,
+ *  reenviado por la página de aquí a la de allá. */
+export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: string } = {}): string {
     const xterm = '/estatico/xterm';
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
@@ -383,7 +388,10 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string } = {}): st
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
   // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó)
-  var u = new URL('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=' + term.cols + '&rows=' + term.rows, document.baseURI);
+  // un hilo de otra máquina: la página de aquí la reenvía a la de allá (telar.terminal.reenviar)
+  var maquina = ${JSON.stringify(rutas.maquina ?? '').replace(/</g, '\\u003c')};
+  var u = new URL('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=' + term.cols + '&rows=' + term.rows
+    + (maquina ? '&maquina=' + encodeURIComponent(maquina) : ''), document.baseURI);
   u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
   var ws = new WebSocket(u.href);
   ws.onmessage = function (e) { term.write(e.data); };

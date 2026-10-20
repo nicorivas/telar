@@ -61,8 +61,13 @@ def nombre_valido(texto: str) -> str:
     return limpio if NOMBRE.match(limpio) else ""
 
 
-def foto(tel, *, maquina: str, version_telar: str = "") -> dict:
-    """La foto de los hilos de este telar, lista para viajar. Sin los archivados."""
+#: la dirección de la página de una máquina (`telar serve --web`): esquema, host y puerto, nada más
+WEB = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d{1,5})?$")
+
+
+def foto(tel, *, maquina: str, version_telar: str = "", web: str = "") -> dict:
+    """La foto de los hilos de este telar, lista para viajar. Sin los archivados. `web`: la dirección de su
+    página, si la sirve (las otras máquinas le reenvían por ahí las terminales de sus hilos)."""
     from telar.ordenes import _comun
 
     hilos = []
@@ -77,7 +82,7 @@ def foto(tel, *, maquina: str, version_telar: str = "") -> dict:
     return {
         "version": VERSION, "maquina": maquina, "telar": version_telar,
         "publicado": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "sesion": getattr(tel, "sesion", ""), "hilos": hilos,
+        "sesion": getattr(tel, "sesion", ""), "web": web, "hilos": hilos,
     }
 
 
@@ -103,7 +108,8 @@ def validar(datos: object, de: str) -> dict:
         hilos.append(limpio)
     return {
         "version": VERSION, "maquina": de, "telar": str(datos.get("telar", ""))[:20],
-        "publicado": str(datos.get("publicado", ""))[:40], "sesion": str(datos.get("sesion", ""))[:60], "hilos": hilos,
+        "publicado": str(datos.get("publicado", ""))[:40], "sesion": str(datos.get("sesion", ""))[:60],
+        "web": datos["web"] if isinstance(datos.get("web"), str) and WEB.match(datos["web"]) else "", "hilos": hilos,
     }
 
 
@@ -154,6 +160,12 @@ def leer_todos(config, ahora: float | None = None) -> list[dict]:
         salida.append({
             "nombre": nombre, "en_linea": edad < VIGENTE, "edad": round(edad, 1),
             "recibido": recibido, "publicado": datos.get("publicado", ""), "telar": datos.get("telar", ""),
-            "sesion": datos.get("sesion", ""), "hilos": datos.get("hilos", []),
+            "sesion": datos.get("sesion", ""), "web": datos.get("web", ""), "hilos": datos.get("hilos", []),
         })
     return salida
+
+
+def web_de(config, maquina: str) -> str:
+    """La dirección de la página de otra máquina, de su foto vigente; "" si no sirve una o no está en línea."""
+    f = next((x for x in leer_todos(config) if x["nombre"] == maquina), None)
+    return f["web"] if f and f["en_linea"] and WEB.match(f.get("web") or "") else ""
