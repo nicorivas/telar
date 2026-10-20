@@ -164,8 +164,9 @@ export function seccion(nombre: string, color: string, cuenta = '', derecha = ''
 /** Un atajo: la tecla y lo que hace, clicable. El mismo en todas partes: en la cabecera, en
  *  los títulos de sección, arriba del día y en las pestañas de sección. */
 export function atajo(tecla: string, nombre: string, accion: string, valor = '', titulo = ''): string {
+    // sin tecla (la suya es de otra cosa): solo con un clic
     return `<a class="atajo" data-accion="${esc(accion)}"${valor ? ` data-valor="${esc(valor)}"` : ''}`
-        + `${titulo ? ` title="${esc(titulo)}"` : ''}><kbd>${esc(tecla)}</kbd><span>${esc(nombre)}</span></a>`;
+        + `${titulo ? ` title="${esc(titulo)}"` : ''}>${tecla ? `<kbd>${esc(tecla)}</kbd>` : ''}<span>${esc(nombre)}</span></a>`;
 }
 
 /** Lo mismo, pero solo dice: una tecla que funciona sin ser un botón (`/`, `1–9`). */

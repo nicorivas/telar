@@ -38,6 +38,9 @@ extension shared the version number.
 - A dialog's detail text is shown (it was dropped), and its line breaks are kept.
 - A relative link inside a document in a thread's folder opens that file in the folder view; code blocks in it
   no longer wrap.
+- A shortcut in `[atajos]` with the key of a dashboard tab no longer takes the key over: «n» launched
+  `/sincronizar` instead of opening «ahora». The tab wins; the shortcut shows without its key and a click
+  launches it.
 
 ## [0.2.0] — 2026-10-20
 

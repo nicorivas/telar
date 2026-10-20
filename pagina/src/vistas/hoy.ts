@@ -287,8 +287,7 @@ export class PanelHoy {
             : this.pantalla === 'pestana' ? `pestana:${this.pestana}`
             : this.pantalla === 'bloque' ? `bloque:${this.bloqueSel}` : this.pantalla;
         // los atajos que no son de ninguna pestaña (`en = "hoy"`) y el terminal: en la barra, en todas
-        const generales = this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy')
-            .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+        const generales = this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy').map(a => this.botonAtajo(a)).join('')
             + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal');
         // un proveedor caído se dice en todas las pestañas (el calendario, además, en la suya)
         const caidos = (d?.fallas ?? []).filter(f => !f.startsWith('calendario'));
@@ -335,8 +334,7 @@ export class PanelHoy {
             // con tareas en sus filas (los correos), un interruptor: solo las que tienen alguna pendiente
             const filtro = !conTareasB ? '' : `<a class="solo-pend${solo ? ' si' : ''}" data-accion="solo-pendientes" data-valor="${esc(b.clave)}"`
                 + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? '☑' : '☐'} con tareas pendientes</a>`;
-            const suyos = this.atajos.filter(a => a.en === b.clave)
-                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('') + filtro;
+            const suyos = this.atajos.filter(a => a.en === b.clave).map(a => this.botonAtajo(a)).join('') + filtro;
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
             if (!leido) h.push('<div class="vacio">leyendo…</div>');
             else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
@@ -467,6 +465,26 @@ export class PanelHoy {
         }
         await modelo.sondear();
         await ui.mostrarTerminal();
+    }
+
+    /** Las teclas de las pestañas y de lo que vale en todas (r recarga, c el correo): mandan sobre las de
+     *  [atajos]. */
+    private teclasDePestanas(): Record<string, () => Promise<unknown>> {
+        return {
+            p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
+            o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
+            ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
+            ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
+            ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
+        };
+    }
+
+    /** El botón de un atajo de [atajos]. Si su tecla es de una pestaña, va sin tecla: se lanza con un clic. */
+    private botonAtajo(a: cli.JsonAtajo): string {
+        const ocupada = a.tecla in this.teclasDePestanas();
+        const ayuda = a.descripcion || a.mensaje;
+        return atajo(ocupada ? '' : a.tecla, a.nombre, 'atajo', a.tecla,
+            ocupada ? `${ayuda}\n(su tecla, «${a.tecla}», es de una pestaña: este atajo va con un clic)` : ayuda);
     }
 
     private async lanzarAtajo(tecla: string): Promise<void> {
@@ -1317,7 +1335,7 @@ export class PanelHoy {
         if (!p) return;
         const h: string[] = [`<div class="subcab"><b>${esc(p.titulo)}</b>${p.subtitulo ? `<span class="dim">${esc(p.subtitulo)}</span>` : ''}`
             + '<span class="der">' + this.atajos.filter(a => a.en === `seccion:${this.seccion}`)
-                .map(a => atajo(a.tecla, a.nombre, 'atajo', a.tecla, a.descripcion || a.mensaje)).join('')
+                .map(a => this.botonAtajo(a)).join('')
             // los enlaces de la página (una app servida: abrirla en el navegador) van junto al ↻
             + (p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace)
                 .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>↗</span> ${esc(a.nombre)}</a>`).join('')
@@ -2206,14 +2224,11 @@ export class PanelHoy {
         }
         if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui.abrirExterno(m.url); return; }
         if (m.tipo === 'tecla' && m.k) {
-            // las de la pestaña primero; p, c y r valen en todas
+            // las de la pantalla primero; después las de las pestañas, que valen en todas; y al final los atajos de
+            // [atajos]: uno con la tecla de una pestaña no la pisa (ir a «ahora» con la n no puede lanzar /sincronizar)
             const globales: Record<string, () => Promise<unknown>> = {
-                p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
-                o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
-                ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
-                ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
-                ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
                 ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
+                ...this.teclasDePestanas(),
             };
             await (this.teclas.get(m.k) ?? globales[m.k])?.();
             return;
