@@ -50,6 +50,9 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- Connecting the calendar from the browser dashboard (configuration › calendar › iCal): it asks for the private
+  iCal address in a hidden field, checks it is an https address, and saves it like VS Code did. With that,
+  everything the dashboard asks of its host works in the page too.
 - Opening a file or a folder from the browser dashboard (a project's README, its folder, a local link) shows it
   in the page (`arch:<ruta>`, the same view as a thread's folder, based on the repository root and never
   outside it); what is not text (a PDF, an image, a large file) gets a «bajar» link (`GET /archivos/bajar`,

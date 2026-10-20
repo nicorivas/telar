@@ -112,6 +112,21 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa (como en VS Code)
         'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
+        // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
+        'telar.conectarCalendario': async () => {
+            const valor = await c.anfitrion.campo({
+                title: 'Conectar calendario', password: true, ignoreFocusOut: true,
+                prompt: 'La dirección privada de tu calendario en formato iCal. En Google Calendar: '
+                    + 'Configuración › tu calendario › «Dirección secreta en formato iCal».',
+                placeHolder: 'https://calendar.google.com/calendar/ical/…/basic.ics',
+                validateInput: t => !t.trim() || /^https?:\/\/\S+$/.test(t.trim()) ? undefined : 'tiene que ser una dirección https://…',
+            });
+            if (!valor?.trim()) return;
+            const r = await cli.elegirCalendario(valor.trim());
+            if (!r.ok) { c.avisar({ __aviso: `telar: ${r.err.trim().split('\n').pop() || 'no pude conectar el calendario'}`, nivel: 'falla' }); return; }
+            c.avisar({ __aviso: 'Calendario conectado.', nivel: 'info' });
+            await c.hoy.actualizar(true);
+        },
         'telar.seccion': (clave?: string) => { if (clave) { c.mostrar('dashboard'); return c.hoy.abrirSeccion(clave); } },
         'telar.app': (clave?: string) => { if (clave) { c.mostrar('dashboard'); return c.hoy.abrirApp(clave); } },
         'telar.tarea': (valor?: string) => valor ? c.hoy.abrirTarea(valor) : undefined,
