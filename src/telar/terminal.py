@@ -25,6 +25,9 @@ import struct
 import sys
 import termios
 
+#: cuánto se espera el resto de un cuadro de tmux antes de mandarlo (ver `puente`)
+JUNTAR = 0.008
+
 #: los límites del tamaño que se acepta de la página
 COLUMNAS = (20, 400)
 FILAS = (5, 200)
@@ -107,8 +110,22 @@ async def puente(ws, hilo: str, columnas, filas) -> None:
         import codecs
 
         texto = codecs.getincrementaldecoder("utf-8")("replace")
-        while (datos := await salida.get()) is not None:
-            await ws.send_text(texto.decode(datos))
+        fin = False
+        while not fin and (datos := await salida.get()) is not None:
+            # un cuadro de tmux sale en varias lecturas: se juntan las que llegan en JUNTAR segundos, para que
+            # el navegador lo dibuje entero (si dibuja entre dos pedazos, el cursor, que el cuadro esconde al
+            # empezar y muestra al terminar, parpadea)
+            partes, limite = [datos], bucle.time() + JUNTAR
+            while (falta := limite - bucle.time()) > 0:
+                try:
+                    siguiente = await asyncio.wait_for(salida.get(), falta)
+                except asyncio.TimeoutError:
+                    break
+                if siguiente is None:
+                    fin = True
+                    break
+                partes.append(siguiente)
+            await ws.send_text(texto.decode(b"".join(partes)))
 
     async def desde_la_pagina() -> None:
         with contextlib.suppress(WebSocketDisconnect):

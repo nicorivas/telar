@@ -387,9 +387,11 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
       black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
       brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
-  // el eco predictivo (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor
-  // lo confirma (src/navegador/eco). Lo que llega pasa primero por él
+  window.__terminal = term;  // para revisar desde la consola (el buffer, el eco)
+  // el eco (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor lo muestra
+  // (src/navegador/eco). Lo que llega pasa por él, y le avisa lo que se teclea
   var eco = window.telarEco ? window.telarEco.conEco(term) : null;
+  window.__eco = eco;  // para revisar desde la consola: __eco.estado()
   function escribir(datos) { if (eco) eco.escribir(datos); else term.write(datos); }
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
@@ -406,6 +408,11 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   // si la conexión se corta (el laptop durmió, cambió la red, se reinició telar), se reconecta sola: al
   // segundo, y después cada vez más espaciado, hasta cada 15 s; al volver a la pestaña o a la red, al tiro
   var ws = null, esperas = [1000, 2000, 5000, 10000, 15000], intento = 0, pendiente = 0, conectada = false;
+  // para desarrollar (docs/desarrollar.md): localStorage['telar.latencia'] = ms simula esa latencia, la mitad
+  // a la ida y la mitad a la vuelta (probar el eco sin depender de la red)
+  var simulada = 0;
+  try { simulada = Number(localStorage.getItem('telar.latencia')) || 0; } catch (x) { /* sin almacén */ }
+  function luego(f) { if (simulada > 0) setTimeout(f, simulada / 2); else f(); }
   function conectar() {
     clearTimeout(pendiente); pendiente = 0;
     if (ws && ws.readyState <= 1) return;
@@ -415,7 +422,7 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
       if (intento) { term.reset(); if (eco) eco.reiniciar(); }
       intento = 0; conectada = true;
     };
-    ws.onmessage = function (e) { escribir(e.data); };
+    ws.onmessage = function (e) { luego(function () { escribir(e.data); }); };
     ws.onclose = function () {
       if (conectada) term.write('\\r\\n\\x1b[2m[se cortó la conexión con la terminal: reconectando…]\\x1b[0m');
       conectada = false;
@@ -425,8 +432,8 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   conectar();
   document.addEventListener('visibilitychange', function () { if (!document.hidden && !conectada) { intento = 0; conectar(); } });
   window.addEventListener('online', function () { if (!conectada) { intento = 0; conectar(); } });
-  function teclear(d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }
-  term.onData(teclear);
+  function teclear(d) { luego(function () { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }); }
+  term.onData(function (d) { if (eco) eco.tecleado(d); teclear(d); });
 
   // la caja, a un clic: se escribe aquí entero, sin que Claude redibuje con cada letra; ⏎ lo manda como un
   // pegado, y después un ⏎. Con la caja vacía, ⏎ ⎋ ↑ ↓ van directo (los diálogos de Claude, interrumpirlo)

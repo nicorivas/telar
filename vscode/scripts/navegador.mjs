@@ -2,7 +2,7 @@
 // sirve `telar serve --web`. Los módulos de Node que importan las vistas se reemplazan por los de
 // src/navegador/nodo (en el navegador no hay archivos ni procesos), y los estilos se cargan como texto.
 // Y arma src/telar/web/marco.css (el marco de la página: tokens, base y marco) y src/telar/web/eco.js (el eco
-// predictivo de la terminal, src/navegador/eco).
+// de la terminal, src/navegador/eco).
 //
 //   node scripts/navegador.mjs --min      una vez (npm run navegador, que antes revisa los tipos)
 //   node scripts/navegador.mjs --watch    y de nuevo con cada cambio (npm run navegador:watch, con --min: el mismo
@@ -47,13 +47,12 @@ const ctx = await context({
     logLevel: 'warning',
 });
 
-// el eco predictivo: aparte, porque lo carga la página de la terminal (no app.js)
+// el eco de la terminal: aparte, porque lo carga la página de la terminal (no app.js)
 const ctxEco = await context({
     entryPoints: [path.join(aqui, '..', 'src', 'navegador', 'eco', 'entrada.ts')],
     outfile: path.join(web, 'eco.js'),
     bundle: true, format: 'iife', platform: 'browser', target: 'es2022',
     minify: process.argv.includes('--min'), sourcemap: false, legalComments: 'none',
-    banner: { js: '/*! Incluye el eco local de la terminal de VS Code: Copyright (c) Microsoft Corporation, licencia MIT (src/navegador/eco/LICENSE-vscode). */' },
     plugins: mirar ? [{ name: 'avisar', setup(b) { b.onEnd(r => console.log(`${hora()} eco.js ${r.errors.length ? 'con errores' : 'listo'}`)); } }] : [],
     logLevel: 'warning',
 });

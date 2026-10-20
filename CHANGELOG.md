@@ -50,10 +50,15 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
-- Predictive local echo in the browser terminal, like mosh: what you type appears at once, dim, and is
-  reconciled when the server's echo arrives. It is VS Code's terminal typeahead addon (MIT), adapted in
-  `vscode/src/navegador/eco` and bundled as `src/telar/web/eco.js`; it turns itself on above 30 ms of latency
-  while its predictions keep being right. The terminal gets the focus again; the box below stays, a click away.
+- Local echo in the browser terminal, like mosh: what you type appears at once, dim, without waiting for the
+  round trip. Built for Claude Code, which redraws the whole screen on every key (VS Code's typeahead expects
+  each letter echoed alone, so with Claude Code it never confirms a prediction and stays off): after each
+  frame, the pending letters already before the cursor count as confirmed and the rest are drawn again. It
+  turns on above 40 ms of measured latency, only with a visible cursor at the end of its line
+  (`vscode/src/navegador/eco`, bundled as `src/telar/web/eco.js`; `npm run prueba:eco` tests it against a fake
+  Claude Code). The terminal gets the focus again; the box below stays, a click away.
+- The server joins the pieces of a tmux frame (up to 8 ms) before sending them, so the browser draws whole
+  frames: the cursor, which each frame hides at its start and shows at its end, no longer flickers.
 - A box under each thread's terminal in the browser: you type locally, with no per-key round trip (and no
   flicker from Claude redrawing its input on every letter); ⏎ sends it whole as a paste, ⇧⏎ is a new line;
   with the box empty, ⏎ ⎋ ↑ ↓ go straight to the terminal. A click on the terminal types into it directly.

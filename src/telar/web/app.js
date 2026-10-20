@@ -1891,9 +1891,11 @@ ${De()}
       black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
       brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
-  // el eco predictivo (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor
-  // lo confirma (src/navegador/eco). Lo que llega pasa primero por \xE9l
+  window.__terminal = term;  // para revisar desde la consola (el buffer, el eco)
+  // el eco (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor lo muestra
+  // (src/navegador/eco). Lo que llega pasa por \xE9l, y le avisa lo que se teclea
   var eco = window.telarEco ? window.telarEco.conEco(term) : null;
+  window.__eco = eco;  // para revisar desde la consola: __eco.estado()
   function escribir(datos) { if (eco) eco.escribir(datos); else term.write(datos); }
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(a.hilo??"").replace(/</g,"\\u003c")} || new URLSearchParams(location.search).get('hilo') || '';
@@ -1910,6 +1912,11 @@ ${De()}
   // si la conexi\xF3n se corta (el laptop durmi\xF3, cambi\xF3 la red, se reinici\xF3 telar), se reconecta sola: al
   // segundo, y despu\xE9s cada vez m\xE1s espaciado, hasta cada 15 s; al volver a la pesta\xF1a o a la red, al tiro
   var ws = null, esperas = [1000, 2000, 5000, 10000, 15000], intento = 0, pendiente = 0, conectada = false;
+  // para desarrollar (docs/desarrollar.md): localStorage['telar.latencia'] = ms simula esa latencia, la mitad
+  // a la ida y la mitad a la vuelta (probar el eco sin depender de la red)
+  var simulada = 0;
+  try { simulada = Number(localStorage.getItem('telar.latencia')) || 0; } catch (x) { /* sin almac\xE9n */ }
+  function luego(f) { if (simulada > 0) setTimeout(f, simulada / 2); else f(); }
   function conectar() {
     clearTimeout(pendiente); pendiente = 0;
     if (ws && ws.readyState <= 1) return;
@@ -1919,7 +1926,7 @@ ${De()}
       if (intento) { term.reset(); if (eco) eco.reiniciar(); }
       intento = 0; conectada = true;
     };
-    ws.onmessage = function (e) { escribir(e.data); };
+    ws.onmessage = function (e) { luego(function () { escribir(e.data); }); };
     ws.onclose = function () {
       if (conectada) term.write('\\r\\n\\x1b[2m[se cort\xF3 la conexi\xF3n con la terminal: reconectando\u2026]\\x1b[0m');
       conectada = false;
@@ -1929,8 +1936,8 @@ ${De()}
   conectar();
   document.addEventListener('visibilitychange', function () { if (!document.hidden && !conectada) { intento = 0; conectar(); } });
   window.addEventListener('online', function () { if (!conectada) { intento = 0; conectar(); } });
-  function teclear(d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }
-  term.onData(teclear);
+  function teclear(d) { luego(function () { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }); }
+  term.onData(function (d) { if (eco) eco.tecleado(d); teclear(d); });
 
   // la caja, a un clic: se escribe aqu\xED entero, sin que Claude redibuje con cada letra; \u23CE lo manda como un
   // pegado, y despu\xE9s un \u23CE. Con la caja vac\xEDa, \u23CE \u238B \u2191 \u2193 van directo (los di\xE1logos de Claude, interrumpirlo)

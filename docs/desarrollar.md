@@ -23,6 +23,11 @@ Usa la configuración y los datos de verdad: solo cambia el código. Lo que se a
 escribirle a un hilo, un atajo), pasa. Para probar sin tocar nada, una configuración aparte con
 `TELAR_CONFIG` y `XDG_CONFIG_HOME` (su propia llave) y sin `[atajos]`.
 
+Para probar la terminal con la latencia de una red lejana sin depender de ella:
+`localStorage['telar.latencia'] = '500'` en la consola de la página (y recargar) la simula, la mitad a la ida y
+la mitad a la vuelta; en la consola de la terminal, `__eco.estado()` dice si el eco se está mostrando y la
+latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `vscode/`.
+
 Necesita telar instalado editable (`uv tool install --editable '.[serve,bus]'`): así `telar` corre el
 código del repositorio. Un cambio en la extensión de VS Code (lo que no es la página) se ve con
 `npm run compile` en `vscode/` y recargando la ventana de VS Code.

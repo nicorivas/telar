@@ -36,12 +36,6 @@ xterm.js and its fit addon — MIT License. Copyright (c) The xterm.js authors.
     https://github.com/xtermjs/xterm.js
     Copied in src/telar/web/xterm (with its licenses).
 
-Visual Studio Code — the terminal's local echo (typeahead) addon, adapted in
-vscode/src/navegador/eco and bundled in src/telar/web/eco.js.
-    https://github.com/microsoft/vscode
-    Copyright (c) Microsoft Corporation
-    MIT License (vscode/src/navegador/eco/LICENSE-vscode)
-
 ────────────────────────────────────────────────────────────────────────────
 
 Bundled font
