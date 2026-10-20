@@ -236,11 +236,15 @@ en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`
   (⌥C). Una vista nueva es una entrada del registro.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`eco.js`): dibuja al tiro lo
   que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
+- **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso
+  con botones) los pone la página misma, encima de todo (`vscode/src/web/interfaz.ts`): se ven mire uno lo
+  que mire, también la lista en el celular.
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
 
 El código todavía arrastra la forma de la extensión de VS Code, que está deprecada: el dashboard corre
-con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es parte del plan.
+con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es parte del plan, por partes:
+ya no tiene Node (la API va por `fetch`, en `cli.ts`) y los avisos y diálogos ya no viven en cada iframe.
 
 ## Cómo se mueve una cosa
 

@@ -1,15 +1,13 @@
-// Lo que la página del dashboard necesita en el navegador: `acquireVsCodeApi` (mandar mensajes y guardar
-// su estado; el nombre viene del webview de la extensión de VS Code, deprecada), los mensajes que llegan,
-// y su interfaz —avisos, un campo para escribir, un menú para elegir—. El script del dashboard (dia.ts)
-// habla con `vscode`, y ese `vscode` es la página que lo contiene (src/navegador), por postMessage. Y las
-// otras páginas de un hilo: su conversación, su terminal, su carpeta, y la de compartir.
+// Lo que el marco del dashboard y el de la barra necesitan en el navegador: `acquireVsCodeApi` (mandar
+// mensajes y guardar su estado; el nombre viene del webview de la extensión de VS Code, deprecada) y los
+// mensajes que llegan. El script del dashboard (dia.ts) habla con `vscode`, y ese `vscode` es la página que
+// lo contiene (src/navegador), por postMessage. Los avisos y diálogos los pone esa página (web/interfaz.ts).
+// Y las otras páginas de un hilo: su conversación, su terminal, su carpeta, y la de compartir.
 
 import { estilo, estiloBase } from '../estilo';
 
-export const CSS_WEB = estilo('web');
-
-/** El script que va antes del del dashboard: define `acquireVsCodeApi` y la interfaz. El canal: la página
- *  que contiene al dashboard (src/navegador), por postMessage. */
+/** El script que va antes del del dashboard: define `acquireVsCodeApi`. El canal: la página que contiene al
+ *  dashboard (src/navegador), por postMessage. */
 const CANAL_PADRE = String.raw`
   // la página que contiene al dashboard (src/navegador) le habla por postMessage
   var abierto = false, cola = [];
@@ -25,24 +23,13 @@ const CANAL_PADRE = String.raw`
 function script(canal: string): string {
     return String.raw`
 (function () {` + canal + String.raw`
-  function llega(m) {
-      if (m.__recargar) { location.reload(); return; }
-      if (m.__aviso) { avisar(m.__aviso, m.nivel, m.ms); return; }
-      if (m.__abrir) { window.open(m.__abrir, '_blank', 'noopener'); return; }
-      if (m.__copiar) { try { navigator.clipboard.writeText(m.__copiar); } catch (x) {} return; }
-      if (m.__mostrar) { try { parent.postMessage({ __mostrar: m.__mostrar }, location.origin); } catch (x) {} return; }
-      if (m.__ui) { preguntar(m); return; }
-      window.dispatchEvent(new MessageEvent('message', { data: m }));
-  }
+  function llega(m) { window.dispatchEvent(new MessageEvent('message', { data: m })); }
   function mandar(m) { var s = JSON.stringify(m); if (abierto) enviar(s); else cola.push(s); }
-  // cuánto se ve esta página: el servidor le manda los menús y los avisos a la que se está mirando
-  // (en un celular, la lista de hilos y el dashboard no se ven a la vez). Oculta, mide 0
+  // si ocupa la pantalla (un celular): la barra se dibuja distinto. Oculta, mide 0
   function medir() {
     var llena = false;
     try { llena = window.innerWidth >= window.parent.innerWidth - 2; } catch (x) {}
-    // y la página lo sabe también: la barra se dibuja distinto si ocupa la pantalla (un celular)
     document.documentElement.classList.toggle('llena', llena && window.innerWidth > 0);
-    if (abierto) enviar(JSON.stringify({ __ancho: window.innerWidth, __llena: llena }));
   }
   window.__telarWeb = true;
   new ResizeObserver(medir).observe(document.documentElement);
@@ -54,79 +41,6 @@ function script(canal: string): string {
     };
   };
   conectar();
-
-  function el(tag, cls, texto) { var e = document.createElement(tag); if (cls) e.className = cls; if (texto != null) e.textContent = texto; return e; }
-  var avisos;
-  function avisar(texto, nivel, ms) {
-    if (!avisos) { avisos = el('div', 'web-avisos'); document.body.appendChild(avisos); }
-    var a = el('div', 'web-aviso ' + (nivel || ''), texto);
-    avisos.appendChild(a);
-    setTimeout(function () { a.remove(); }, ms || 6000);
-  }
-
-  // un pedido del servidor que espera respuesta: un campo, un menú, un aviso con botones
-  function preguntar(m) {
-    // <dialog>: el navegador pone el fondo, atrapa el foco adentro y cierra con Escape (evento cancel)
-    var caja = el('dialog', 'web-caja');
-    document.body.appendChild(caja);
-    var listo = false;
-    function responder(valor) {
-      if (listo) return; listo = true; caja.close(); caja.remove();
-      mandar({ __ui_r: m.__ui, valor: valor });
-    }
-    caja.addEventListener('cancel', function (e) { e.preventDefault(); responder(null); });
-    // un clic fuera de la caja (en el fondo) es cancelar: el dialog ocupa solo la caja
-    caja.addEventListener('click', function (e) {
-      var r = caja.getBoundingClientRect();
-      if (e.target === caja && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) responder(null);
-    });
-    if (m.titulo) caja.appendChild(el('h3', null, m.titulo));
-    if (m.ayuda) caja.appendChild(el('p', 'ayuda', m.ayuda));
-    if (m.tipo === 'campo') {
-      var inp = el('input'); inp.value = m.valor || ''; inp.placeholder = m.placeholder || '';
-      if (m.password) inp.type = 'password';
-      var prob = el('div', 'problema', m.problema || '');
-      caja.appendChild(inp); caja.appendChild(prob);
-      inp.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); responder(inp.value); }
-      });
-      caja.showModal(); inp.focus(); inp.select();
-    } else if (m.tipo === 'elegir') {
-      var filtro = el('input'); filtro.placeholder = m.placeholder || 'buscar';
-      var lista = el('div', 'web-lista'); caja.appendChild(filtro); caja.appendChild(lista);
-      var vis = [], sel = 0;
-      function norm(t) { return (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
-      function pintar() {
-        lista.innerHTML = ''; vis = []; var q = norm(filtro.value);
-        m.opciones.forEach(function (o, i) {
-          if (o.separador) { if (!q) lista.appendChild(el('div', 'web-sep', o.label)); return; }
-          if (q && norm(o.label + ' ' + (o.description || '') + ' ' + (o.detail || '')).indexOf(q) < 0) return;
-          var f = el('div', 'web-op'); f.appendChild(el('span', null, o.label));
-          if (o.description) f.appendChild(el('span', 'd', o.description));
-          f.addEventListener('click', function () { responder(i); });
-          vis.push([f, i]); lista.appendChild(f);
-        });
-        sel = Math.min(sel, Math.max(0, vis.length - 1));
-        vis.forEach(function (v, k) { v[0].classList.toggle('sel', k === sel); });
-      }
-      filtro.addEventListener('input', function () { sel = 0; pintar(); });
-      filtro.addEventListener('keydown', function (e) {
-        if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, vis.length - 1); pintar(); }
-        if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); pintar(); }
-        if (e.key === 'Enter') { e.preventDefault(); if (vis[sel]) responder(vis[sel][1]); }
-      });
-      pintar(); caja.showModal(); filtro.focus();
-    } else {
-      // un aviso con botones
-      caja.appendChild(el('p', null, m.texto));
-      var bot = el('div', 'botones');
-      (m.botones || []).forEach(function (b) { var a = el('a', null, b); a.addEventListener('click', function () { responder(b); }); bot.appendChild(a); });
-      var c = el('a', null, 'cancelar'); c.addEventListener('click', function () { responder(null); }); bot.appendChild(c);
-      caja.appendChild(bot);
-      caja.showModal();
-      var primero = bot.querySelector('a'); if (primero) { primero.tabIndex = 0; primero.focus(); }
-    }
-  }
 })();
 `;
 }

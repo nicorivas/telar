@@ -45,3 +45,8 @@
 .ord { flex: none; color: var(--dim); cursor: pointer; }
 .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
 .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
+/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular. No hay hover: el ⋯ se ve siempre,
+   y lo demás (⏸ ✕) queda dentro de su menú */
+.llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
+.llena .fila .iconos .icono:not(.menu-hilo) { display: none; }
+.llena .fila .menu-hilo { padding-inline: 1ch; }

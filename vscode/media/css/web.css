@@ -1,4 +1,5 @@
-/* Los diálogos y avisos de la página (web/pagina.ts), y la barra cuando está sola en la pantalla. */
+/* Los diálogos y avisos de la página (web/interfaz.ts), encima de todo. scripts/navegador.mjs los junta en
+   src/telar/web/marco.css. */
 
 /* un diálogo (<dialog>): un campo para escribir, un menú para elegir, un aviso con botones */
 .web-caja {
@@ -83,10 +84,4 @@
   &.falla { border-left-color: var(--rojo); }
   &.aviso { border-left-color: var(--amarillo); }
 }
-
-/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular. No hay hover: el ⋯ se ve siempre,
-   y lo demás (⏸ ✕) queda dentro de su menú */
-.llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
-.llena .fila .iconos .icono:not(.menu-hilo) { display: none; }
-.llena .fila .menu-hilo { padding-inline: 1ch; }
 

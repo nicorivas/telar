@@ -1,6 +1,6 @@
 // Empaqueta la página (src/navegador/app.ts) en src/telar/web/app.js, el archivo que sirve
 // `telar serve --web`. Los estilos se cargan como texto.
-// Y arma src/telar/web/marco.css (el marco de la página: tokens, base y marco) y src/telar/web/eco.js (el eco
+// Y arma src/telar/web/marco.css (el marco de la página: tokens, base, marco y sus diálogos, web) y src/telar/web/eco.js (el eco
 // de la terminal, src/navegador/eco).
 //
 //   node scripts/navegador.mjs --min      una vez (npm run navegador, que antes revisa los tipos)
@@ -21,8 +21,8 @@ const hora = () => new Date().toTimeString().slice(0, 8);
 function marco() {
     const css = n => readFileSync(path.join(carpetaCss, `${n}.css`), 'utf8');
     writeFileSync(path.join(web, 'marco.css'),
-        `/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base y marco): no editar aquí. */\n`
-        + `@layer base, vistas;\n@layer base {\n${css('tokens')}\n${css('base')}\n}\n@layer vistas {\n${css('marco')}\n}\n`);
+        `/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base, marco y web): no editar aquí. */\n`
+        + `@layer base, vistas;\n@layer base {\n${css('tokens')}\n${css('base')}\n}\n@layer vistas {\n${css('marco')}\n${css('web')}\n}\n`);
 }
 
 const ctx = await context({
@@ -76,7 +76,7 @@ if (!mirar) {
     // esbuild mira lo que importa app.ts (y los CSS de las vistas); marco.css no lo importa nadie: aparte
     let pendiente;
     watch(carpetaCss, (_, nombre) => {
-        if (!/^(tokens|base|marco)\.css$/.test(nombre ?? '')) return;
+        if (!/^(tokens|base|marco|web)\.css$/.test(nombre ?? '')) return;
         clearTimeout(pendiente);
         pendiente = setTimeout(() => { try { marco(); console.log(`${hora()} marco.css listo`); } catch (e) { console.error(e.message); } }, 50);
     });

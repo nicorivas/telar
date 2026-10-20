@@ -1,10 +1,11 @@
 // Las órdenes `telar.*` de la página (el menú de un hilo, ir a uno, retomarlo, abrir uno nuevo, abrir una
 // sección…): las piden la barra y el dashboard, y las cumple el anfitrión del navegador (src/navegador),
-// que da lo suyo: su interfaz, cómo avisar y qué mostrar a la derecha.
+// que da lo suyo: su interfaz (web/interfaz.ts) y qué mostrar a la derecha.
 
 import type { Anfitrion, Opcion } from '../anfitrion';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import { avisar } from './interfaz';
 import { elegirEntrada } from '../vistas/equipo';
 import type { BarraHilos } from '../vistas/hilos';
 import type { PanelHoy } from '../vistas/hoy';
@@ -13,8 +14,6 @@ export interface Casa {
     hoy: PanelHoy;
     barra: BarraHilos;
     anfitrion: Anfitrion;
-    /** un aviso a quien mira: `{ __aviso, nivel, ms }` */
-    avisar(m: { __aviso: string; nivel?: string; ms?: number }): void;
     /** a la derecha: «dashboard», un hilo, «doc:<hilo>» o «rem:<máquina>:<hilo>» */
     mostrar(que: string): void;
 }
@@ -36,7 +35,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         const hilo = hiloDe(a);
         if (!hilo) return false;
         const r = await cli.hilo(verbo, hilo, valor, extra);
-        if (!r.ok) { c.avisar({ __aviso: `telar: ${r.err.trim().split('\n').pop() || `«telar hilo ${verbo}» falló`}`, nivel: 'falla' }); return false; }
+        if (!r.ok) { avisar(`telar: ${r.err.trim().split('\n').pop() || `«telar hilo ${verbo}» falló`}`, 'falla'); return false; }
         modelo.invalidar();
         await modelo.sondear();
         return true;
@@ -91,11 +90,11 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
     /** Llevar un hilo a otra máquina de [remotos]: si aquí hay trabajo sin subir, se pregunta antes. */
     async function llevarWeb(hilo: string): Promise<void> {
         const remotos = (await cli.config()).datos?.remotos ?? [];
-        if (!remotos.length) { c.avisar({ __aviso: 'telar: no hay máquinas en [remotos]', nivel: 'aviso' }); return; }
+        if (!remotos.length) { avisar('telar: no hay máquinas en [remotos]', 'aviso'); return; }
         const elegida = remotos.length === 1 ? remotos[0]
             : (await c.anfitrion.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { title: `¿A qué máquina llevo «${hilo}»?` }))?.x;
         if (!elegida) return;
-        c.avisar({ __aviso: `llevando «${hilo}» a ${elegida.nombre}…`, nivel: 'info', ms: 4000 });
+        avisar(`llevando «${hilo}» a ${elegida.nombre}…`, 'info', 4000);
         let r = await cli.llevar(hilo, elegida.nombre);
         if (r.error && /sin subir/.test(r.error)) {
             const salida = String(r.cuerpo?.salida ?? '');
@@ -104,9 +103,9 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             if (si !== 'Llevar igual') return;
             r = await cli.llevar(hilo, elegida.nombre, true);
         }
-        if (r.error) { c.avisar({ __aviso: `telar: ${r.error}`, nivel: 'falla' }); return; }
+        if (r.error) { avisar(`telar: ${r.error}`, 'falla'); return; }
         // una conversación grande sigue copiándose: la API ya respondió, y el hilo aparece allá al terminar
-        if (r.datos?.en_curso) c.avisar({ __aviso: `«${hilo}» sigue viajando a ${elegida.nombre}: aparece allá al terminar`, nivel: 'info', ms: 8000 });
+        if (r.datos?.en_curso) avisar(`«${hilo}» sigue viajando a ${elegida.nombre}: aparece allá al terminar`, 'info', 8000);
         modelo.invalidar();
         await modelo.sondear();
     }
@@ -135,8 +134,8 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             });
             if (!valor?.trim()) return;
             const r = await cli.elegirCalendario(valor.trim());
-            if (!r.ok) { c.avisar({ __aviso: `telar: ${r.err.trim().split('\n').pop() || 'no pude conectar el calendario'}`, nivel: 'falla' }); return; }
-            c.avisar({ __aviso: 'Calendario conectado.', nivel: 'info' });
+            if (!r.ok) { avisar(`telar: ${r.err.trim().split('\n').pop() || 'no pude conectar el calendario'}`, 'falla'); return; }
+            avisar('Calendario conectado.', 'info');
             await c.hoy.actualizar(true);
         },
         'telar.seccion': (clave?: string) => { if (clave) { c.mostrar('dashboard'); return c.hoy.abrirSeccion(clave); } },

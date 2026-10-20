@@ -5,12 +5,13 @@
 //   - la API, por `fetch` a `/api` (la misma de `telar serve`, detrás de la llave de esta página);
 //   - el dashboard se dibuja en un iframe, con el mismo guion de interfaz que en Node (web/pagina.ts) pero
 //     hablándole a esta página por postMessage;
-//   - los avisos, campos y menús que pide el dashboard (su anfitrión) los muestra ese iframe.
+//   - los avisos, campos y menús que pide el dashboard (su anfitrión) los pone esta página, encima de todo
+//     (web/interfaz.ts).
 //
 // Se empaqueta con esbuild (scripts/navegador.mjs) en src/telar/web/app.js, que sirve `telar serve --web`.
 
 // primero: los estilos (las vistas arman su CSS al cargarse, y tienen que encontrarlos)
-import { web } from './estilos';
+import './estilos';
 
 import MarkdownIt from 'markdown-it';
 
@@ -21,6 +22,7 @@ import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos
 import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
+import { avisar, campo, elegir, type Nivel, preguntar } from '../web/interfaz';
 import { type Documento, paginaCompartir, paginaDocumento, SCRIPT_NAVEGADOR } from '../web/pagina';
 import { scriptAtajos, vista, VISTAS } from '../web/vistas-hilo';
 
@@ -40,7 +42,6 @@ const marcos = () => document.getElementById('vistas')!;
 let marco: HTMLIFrameElement | undefined;       // el del dashboard
 let marcoBarra: HTMLIFrameElement | undefined;
 let avisosPanel: AvisosSuperficie | undefined;
-const pendientes = new Map<string, (valor: unknown) => void>();
 let actual = 'dashboard';
 
 function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
@@ -55,24 +56,12 @@ function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
 function a(f: HTMLIFrameElement | undefined, m: unknown): void {
     f?.contentWindow?.postMessage({ __telarPadre: m }, location.origin);
 }
-const aLaPagina = (m: unknown) => a(marco, m);
 
-/** A quién se le muestra un menú o un aviso: al dashboard si se ve; si no (una conversación, el celular
- *  con la lista), a la barra. */
-function destino(): HTMLIFrameElement | undefined {
-    const angosto = document.body.classList.contains('angosto');
-    const enLista = document.body.classList.contains('en-lista');
-    if (marco && !marco.hidden && !(angosto && enLista)) return marco;
-    return marcoBarra ?? marco;
-}
-const aQuienMira = (m: unknown) => a(destino(), m);
-
-/** Una página con el guion de interfaz, con el mismo nonce del CSP que pone `estilo.marco`. */
+/** Una página con el guion que le da `acquireVsCodeApi` (web/pagina.ts), con el mismo nonce del CSP que pone
+ *  `estilo.marco`. */
 function conInterfaz(pagina: string): string {
     const nonce = /'nonce-([^']+)'/.exec(pagina)?.[1] ?? '';
-    return pagina
-        .replace('</style>', `${web}</style>`)
-        .replace('<body', `<script nonce="${nonce}">${SCRIPT_NAVEGADOR}</script><body`);
+    return pagina.replace('<body', `<script nonce="${nonce}">${SCRIPT_NAVEGADOR}</script><body`);
 }
 
 window.addEventListener('message', e => {
@@ -81,12 +70,6 @@ window.addEventListener('message', e => {
     if (typeof e.data?.__telarHijo !== 'string') return;
     let m: Record<string, unknown>;
     try { m = JSON.parse(e.data.__telarHijo); } catch { return; }
-    if (typeof m.__ui_r === 'string') {
-        const listo = pendientes.get(m.__ui_r);
-        if (listo) { pendientes.delete(m.__ui_r); listo(m.valor); }
-        return;
-    }
-    if ('__ancho' in m) return;
     if (desdeBarra) barra.mensaje(m as { tipo: string });
     else avisosPanel?.mensaje(m);
 });
@@ -101,7 +84,7 @@ const superficie: CrearSuperficie = avisos => {
             if (!marco) marco = nuevoMarco('dashboard', marcos());
             marco.srcdoc = conInterfaz(p);
         },
-        enviar: m => aLaPagina(m),
+        enviar: m => a(marco, m),
         revelar: () => mostrar('dashboard'),
     };
     document.addEventListener('visibilitychange', () => avisos.cambio(!document.hidden, document.hasFocus()));
@@ -195,22 +178,11 @@ function mostrar(que: string): void {
 
 // ── lo que el dashboard le pide a la interfaz (su anfitrión) ──────────────────
 
-function preguntar(m: Record<string, unknown>): Promise<unknown> {
-    // randomUUID solo existe en páginas seguras (https, localhost): un id que sirve en las dos
-    const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    return new Promise(resolve => {
-        pendientes.set(id, resolve);
-        aQuienMira({ ...m, __ui: id });
-        setTimeout(() => { if (pendientes.delete(id)) resolve(null); }, 10 * 60 * 1000);
-    });
-}
-
-function avisoCon(nivel: string) {
+function avisoCon(nivel: Nivel) {
     return async (texto: string, ...botones: (string | OpcionesAviso)[]): Promise<string | undefined> => {
         const nombres = botones.filter((b): b is string => typeof b === 'string');
-        if (!nombres.length) { aQuienMira({ __aviso: texto, nivel }); return undefined; }
-        const r = await preguntar({ tipo: 'aviso', texto, botones: nombres });
-        return typeof r === 'string' ? r : undefined;
+        if (!nombres.length) { avisar(texto, nivel); return undefined; }
+        return preguntar(texto, nombres);
     };
 }
 
@@ -220,30 +192,27 @@ const anfitrion: Anfitrion = {
     aviso: avisoCon('aviso'),
     falla: avisoCon('falla'),
     info: avisoCon('info'),
-    estado: (texto, ms) => aQuienMira({ __aviso: texto, nivel: 'info', ms: ms ?? 4000 }),
+    estado: (texto, ms) => avisar(texto, 'info', ms ?? 4000),
     progreso: async (o, trabajo) => {
-        if (!o.ventana) aQuienMira({ __aviso: o.title, nivel: 'info', ms: 2500 });
+        if (!o.ventana) avisar(o.title, 'info', 2500);
         return trabajo();
     },
     campo: async o => {
         let problema = '';
         let valor = o.value ?? '';
         for (;;) {
-            const r = await preguntar({ tipo: 'campo', titulo: o.title ?? '', ayuda: o.prompt ?? '', placeholder: o.placeHolder ?? '',
-                valor, password: !!o.password, problema });
-            if (typeof r !== 'string') return undefined;
+            const r = await campo({ titulo: o.title, ayuda: o.prompt, placeholder: o.placeHolder, valor, password: o.password, problema });
+            if (r === undefined) return undefined;
             problema = o.validateInput?.(r) ?? '';
             if (!problema) return r;
             valor = r;
         }
     },
     elegir: async <T extends Opcion>(opciones: T[], menu?: { title?: string; placeHolder?: string }) => {
-        const r = await preguntar({ tipo: 'elegir', titulo: menu?.title ?? '', placeholder: menu?.placeHolder ?? '',
-            opciones: opciones.map(o => ({ label: o.label, description: o.description, detail: o.detail, separador: !!o.separador })) });
-        return typeof r === 'number' ? opciones[r] : undefined;
+        const i = await elegir(opciones, { titulo: menu?.title, placeholder: menu?.placeHolder });
+        return i === undefined ? undefined : opciones[i];
     },
     abrirExterno: async url => { window.open(url, '_blank', 'noopener'); },
-    // un archivo o una carpeta viven en la máquina, no en el navegador: por ahora se dice
     // un archivo o una carpeta del repositorio: en la página (la vista de carpeta, `arch:<ruta>`), sin salir de
     // la raíz; lo que no es texto trae un enlace para bajarlo
     abrirArchivo: async ruta => { mostrar(`arch:${ruta}`); },
@@ -253,7 +222,7 @@ const anfitrion: Anfitrion = {
     // ir a un hilo: telar lo crea o lo revive si hace falta (`telar ir`), y la página lo muestra a la derecha
     irAHilo: async (hilo, crear, remoto) => {
         const r = await cli.ir(hilo, !!crear, remoto ?? '');
-        if (!r.ok) { aLaPagina({ __aviso: `telar: ${r.err.trim() || `no pude ir a «${hilo}»`}`, nivel: 'falla' }); return; }
+        if (!r.ok) { avisar(`telar: ${r.err.trim() || `no pude ir a «${hilo}»`}`, 'falla'); return; }
         await modelo.sondear().catch(() => undefined);
         mostrar(remoto ? `rem:${remoto}:${hilo}` : hilo);
     },
@@ -267,7 +236,7 @@ const anfitrion: Anfitrion = {
     orden: async (id, ...args) => {
         const f = ordenes[id];
         if (f) return f(...args);
-        aQuienMira({ __aviso: `«${id}» todavía no está en el navegador`, nivel: 'aviso' });
+        avisar(`«${id}» todavía no está en el navegador`, 'aviso');
         return undefined;
     },
 };
@@ -281,7 +250,7 @@ const barra = new BarraHilos();
 barra.estado = guardado;
 barra.dashboardActivo = true;
 barra.mostrado = '';
-const ordenes = crearOrdenes({ hoy, barra, anfitrion, avisar: aQuienMira, mostrar });
+const ordenes = crearOrdenes({ hoy, barra, anfitrion, mostrar });
 barra.conectar(superficieBarra);
 hoy.alCambiarFoco = () => {
     const app = hoy.appActual;
