@@ -357,8 +357,8 @@ export function paginaCompartir(nonce: string): string {
  *  1-3, ↑↓). Lo escrito va por el mismo canal que la terminal (`/pty`, una vista de `telar mirar`):
  *  es teclear en el hilo, con la misma llave. */
 /** De dónde lee y a dónde escribe la página de una conversación. En el panel en Node, sus rutas (`/api/leer`,
- *  y la terminal o `/api/remoto/enviar`); en el navegador (src/navegador), la API de telar: `/api/hilos/leer`
- *  y `/api/mensajes`, sin terminal todavía (todo se escribe como mensaje). */
+ *  y la terminal o `/api/remoto/enviar`); en el navegador (src/navegador), la API de telar: `/api/hilos/leer`,
+ *  la terminal (`/pty` de telar.api_web) para un hilo de aquí y `/api/mensajes` para uno de otra máquina. */
 export interface RutasConversacion {
     /** el hilo y su máquina, si la página no los lee de su dirección (un iframe con srcdoc no tiene) */
     hilo?: string; maquina?: string;
@@ -383,8 +383,8 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 (function () {
   var q = new URLSearchParams(location.search), R = ${JSON.stringify(rutas).replace(/</g, '\\u003c')};
   var hilo = R.hilo || q.get('hilo') || '', maquina = R.maquina || q.get('maquina') || '';
-  // en el navegador no hay terminal todavía: se lee por la API y todo se escribe como mensaje (por el bus)
-  var porMensaje = !!(maquina || R.navegador);
+  // un hilo de otra máquina se lee por la API y se le escribe como mensaje (por el bus); uno de aquí, por su terminal
+  var porMensaje = !!maquina;
   var turnos = document.getElementById('turnos'), texto = document.getElementById('texto'), dijo = document.getElementById('dijo');
   // un hilo de otra máquina se lee y se le escribe por el bus: sin terminal, no hay teclas que apretar
   if (porMensaje) { document.getElementById('teclas').hidden = true; texto.placeholder = maquina ? 'escríbele al hilo (en ' + maquina + ', por el bus)' : 'escríbele al hilo (le llega como mensaje)'; }
@@ -437,9 +437,11 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 
   // escribir: una vista de la terminal del hilo, abierta la primera vez que hace falta
   var ws = null, cola = [];
+  // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó)
+  function enchufe(ruta) { var u = new URL(ruta, document.baseURI); u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'; return u.href; }
   function canal() {
     if (ws && ws.readyState <= 1) return ws;
-    ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/pty?hilo=' + encodeURIComponent(hilo) + '&cols=100&rows=30');
+    ws = new WebSocket(enchufe('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=100&rows=30'));
     ws.onopen = function () { cola.splice(0).forEach(function (d) { ws.send(JSON.stringify({ d: d })); }); };
     ws.onmessage = function () { /* lo que dibuja la terminal no se muestra aquí */ };
     ws.onclose = function () { ws = null; };
@@ -478,13 +480,16 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 </script></body></html>`;
 }
 
-/** La terminal de un hilo: xterm.js conectado por WebSocket a `telar mirar` en un PTY del servidor. */
-export function paginaTerminal(nonce: string): string {
+/** La terminal de un hilo: xterm.js conectado por WebSocket a `telar mirar` en un PTY del servidor. En el
+ *  panel en Node, el hilo viene en la dirección y xterm de `/xterm`; en el navegador (un iframe srcdoc), los
+ *  dos por parámetro, con xterm en `/estatico/xterm` (lo sirve telar.api_web). */
+export function paginaTerminal(nonce: string, rutas: { hilo?: string; xterm?: string } = {}): string {
+    const xterm = rutas.xterm ?? '/xterm';
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
-<link rel="stylesheet" href="/xterm/xterm.css">
+<link rel="stylesheet" href="${xterm}/xterm.css">
 <style>html, body { margin: 0; height: 100%; background: #1e1e2e; } #t { position: absolute; inset: 0; padding: 6px 0 0 8px; }</style>
-<script src="/xterm/xterm.js"></script><script src="/xterm/addon-fit.js"></script>
+<script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script>
 </head><body><div id="t"></div>
 <script nonce="${nonce}">
 (function () {
@@ -494,9 +499,11 @@ export function paginaTerminal(nonce: string): string {
       brightBlack: '#585b70', brightRed: '#f38ba8', brightGreen: '#a6e3a1', brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#f5c2e7', brightCyan: '#94e2d5', brightWhite: '#a6adc8' } });
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
-  var hilo = new URLSearchParams(location.search).get('hilo') || '';
-  var ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/pty?hilo=' + encodeURIComponent(hilo)
-    + '&cols=' + term.cols + '&rows=' + term.rows);
+  var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
+  // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó)
+  var u = new URL('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=' + term.cols + '&rows=' + term.rows, document.baseURI);
+  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+  var ws = new WebSocket(u.href);
   ws.onmessage = function (e) { term.write(e.data); };
   ws.onclose = function () { term.write('\\r\\n\\x1b[2m[la terminal se cerró: recarga para volver a mirar]\\x1b[0m\\r\\n'); };
   term.onData(function (d) { if (ws.readyState === 1) ws.send(JSON.stringify({ d: d })); });

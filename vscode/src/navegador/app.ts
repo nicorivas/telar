@@ -22,7 +22,7 @@ import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos
 import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
-import { paginaConversacion, SCRIPT_NAVEGADOR } from '../web/pagina';
+import { paginaConversacion, paginaTerminal, SCRIPT_NAVEGADOR } from '../web/pagina';
 
 
 // ── la API: fetch a /api ───────────────────────────────────────────────────────
@@ -174,8 +174,20 @@ const guardado: Guardado = {
     update: async (clave, valor) => { try { localStorage.setItem(`telar.barra.${clave}`, JSON.stringify(valor)); } catch { /* sin almacén */ } },
 };
 
-/** A la derecha: «dashboard», un hilo (su conversación: la terminal llega con el paso 4), «rem:<máquina>:<hilo>»
- *  (uno de otra máquina) o «doc:<hilo>» (su carpeta, todavía no en el navegador). */
+/** Cómo se ve un hilo de esta máquina: su terminal (xterm.js sobre `/pty`) o su conversación (la que se lee
+ *  en el celular). En pantalla ancha, terminal; en angosta, conversación; el botón de arriba cambia. */
+const modo: Record<string, 'term' | 'conv'> = {};
+const angosto = () => document.body.classList.contains('angosto');
+function forma(que: string): '' | 'term' | 'conv' {
+    if (que === 'dashboard' || que.startsWith('rem:') || que.startsWith('doc:')) return '';
+    return modo[que] ?? (angosto() ? 'conv' : 'term');
+}
+/** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
+const TOPE = 8;
+const usadas: string[] = [];
+
+/** A la derecha: «dashboard», un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
+ *  otra máquina: su conversación, por el bus) o «doc:<hilo>» (su carpeta, todavía no en el navegador). */
 function mostrar(que: string): void {
     if (!que) return;
     if (que.startsWith('doc:')) { aQuienMira({ __aviso: 'ver la carpeta de un hilo todavía no está en el navegador', nivel: 'aviso' }); return; }
@@ -186,16 +198,31 @@ function mostrar(que: string): void {
         if (!hoy.panel) hoy.abrir();
         f = marco;
     } else {
-        f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === que);
+        const como = forma(que), llave = como ? `${como}:${que}` : que;
+        f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === llave);
         if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
-            f = nuevoMarco(que, marcos());
-            f.srcdoc = paginaConversacion(Math.random().toString(36).slice(2), { hilo, maquina, navegador: true });
+            const nonce = Math.random().toString(36).slice(2);
+            f = nuevoMarco(llave, marcos());
+            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo, xterm: '/estatico/xterm' })
+                : paginaConversacion(nonce, { hilo, maquina, navegador: true });
+        }
+        if (como === 'term') {
+            const j = usadas.indexOf(llave);
+            if (j >= 0) usadas.splice(j, 1);
+            usadas.push(llave);
+            while (usadas.length > TOPE) [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === usadas[0])?.remove(), usadas.shift();
         }
     }
     for (const x of marcos().querySelectorAll('iframe')) x.hidden = x !== f;
+    const botonModo = document.getElementById('modo');
+    if (botonModo) {
+        botonModo.hidden = !forma(que);
+        botonModo.textContent = forma(que) === 'term' ? 'conversación' : 'terminal';
+    }
+    if (forma(que) === 'term' && !angosto()) f?.contentWindow?.focus();
     const nombre = que.startsWith('rem:') ? (() => { const r = que.slice(4), i = r.indexOf(':'); return `${r.slice(i + 1)} · en ${r.slice(0, i)}`; })() : que;
     document.getElementById('titulo')!.textContent = que === 'dashboard' ? '' : nombre;
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
@@ -305,8 +332,16 @@ const otras = async () => {
 void otras();
 setInterval(() => void otras(), 30 * 1000);
 
-declare global { interface Window { telar?: { mostrar?: (que: string) => void; verProgreso?: () => void } } }
-window.telar = { ...(window.telar ?? {}), mostrar };
+/** El botón de arriba: el hilo que se ve, de terminal a conversación o al revés. */
+function cambiarModo(): void {
+    const como = forma(actual);
+    if (!como) return;
+    modo[actual] = como === 'term' ? 'conv' : 'term';
+    mostrar(actual);
+}
+
+declare global { interface Window { telar?: { mostrar?: (que: string) => void; verProgreso?: () => void; cambiarModo?: () => void } } }
+window.telar = { ...(window.telar ?? {}), mostrar, cambiarModo };
 mostrar('dashboard');
 // en el celular se empieza por la lista
 if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }

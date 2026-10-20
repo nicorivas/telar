@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 21:13",
+  "actualizado": "2026-10-19 21:20",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -105,8 +105,33 @@
     },
     {
       "grupo": "Paso 4 (después)",
-      "nombre": "las terminales en Python (xterm.js y una PTY por WebSocket), y se retira Node",
-      "estado": "pendiente"
+      "nombre": "las terminales en Python: xterm.js y una PTY por WebSocket (/pty)",
+      "estado": "hecho",
+      "nota": "telar mirar en un PTY de asyncio; terminal en ancho, conversación en angosto, y el botón de arriba cambia"
+    },
+    {
+      "grupo": "Paso 4 (después)",
+      "nombre": "la app del celular: manifiesto, service worker e íconos",
+      "estado": "pendiente",
+      "nota": "hoy los sirve el panel en Node"
+    },
+    {
+      "grupo": "Paso 4 (después)",
+      "nombre": "compartir desde el celular (share_target)",
+      "estado": "pendiente",
+      "nota": "la API ya tiene /compartir; falta la página"
+    },
+    {
+      "grupo": "Paso 4 (después)",
+      "nombre": "la carpeta y el documento de un hilo (doc:)",
+      "estado": "pendiente",
+      "nota": ""
+    },
+    {
+      "grupo": "Paso 4 (después)",
+      "nombre": "retirar el panel en Node (telar-panel, servidor.ts, node-pty)",
+      "estado": "pendiente",
+      "nota": "con lo de arriba hecho; se pregunta antes"
     }
   ]
 }

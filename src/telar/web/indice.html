@@ -14,7 +14,7 @@ iframe{border:0;width:100%;height:100%;display:block}
 #derecha{display:grid;grid-template-rows:auto 1fr;min-width:0}
 header{display:flex;gap:14px;align-items:baseline;padding:6px 12px;border-bottom:1px solid var(--borde);background:var(--panel);flex-wrap:wrap}
 header b{color:var(--malva)} header a{color:var(--azul);text-decoration:none;cursor:pointer}
-#volver{display:none} #titulo{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#modo[hidden]{display:none} #volver{display:none} #titulo{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #marcos{position:relative;min-width:0} #marcos iframe{position:absolute;inset:0} #marcos iframe[hidden]{display:none}
 #progreso{position:absolute;inset:0;overflow:auto;padding:16px} #progreso[hidden]{display:none}
 .dim{color:var(--dim)} h2{font-size:14px;margin:18px 0 6px;color:var(--malva)}
@@ -29,7 +29,7 @@ body.angosto.en-lista #derecha, body.angosto.en-detalle #barra{display:none}
 <aside id="barra"></aside>
 <section id="derecha">
   <header><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span>
-    <a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
+    <a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
   <div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
 </section>
 <script>
@@ -63,6 +63,7 @@ window.telar.verProgreso = () => {
 };
 document.querySelector('header').addEventListener('click', (e) => {
   const p = e.target.dataset?.p;
+  if (e.target.id === 'modo') { window.telar.cambiarModo?.(); return; }
   if (p === 'progreso') { window.telar.verProgreso(); document.body.classList.replace('en-lista', 'en-detalle'); }
   else if (p && window.telar.mostrar) window.telar.mostrar(p);
 });

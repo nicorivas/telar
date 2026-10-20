@@ -48,3 +48,58 @@ class LaLlave(Prueba):
         self.assertEqual(c.post("/api/algo", headers={"Origin": "http://telar:8780"}).status_code, 200)
         self.assertEqual(c.post("/api/algo", headers={"Origin": "https://ajeno.example"}).status_code, 403)
         self.assertEqual(c.post("/api/algo").status_code, 200)  # sin Origin (curl): manda la llave
+
+
+class LaTerminal(Prueba):
+    """`/pty`: la terminal de un hilo. Sin la llave o desde otra página, ni se abre; con las dos, va y vuelve.
+    (El cliente de prueba manda `host: testserver` en los WebSocket: de ahí el origen.)"""
+
+    def setUp(self):
+        super().setUp()
+        import asyncio
+        import os
+        import pty
+        from unittest import mock
+
+        from telar import terminal
+
+        async def abrir(hilo, columnas, filas):
+            # `cat` en vez de `telar mirar`: devuelve lo que se teclea, sin tmux
+            principal, secundario = pty.openpty()
+            proceso = await asyncio.create_subprocess_exec("cat", stdin=secundario, stdout=secundario,
+                                                           stderr=secundario, start_new_session=True)
+            os.close(secundario)
+            os.set_blocking(principal, False)
+            self.abiertos.append((hilo, columnas, filas))
+            return proceso, principal
+
+        self.abiertos = []
+        p = mock.patch.object(terminal, "abrir", abrir)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_sin_llave_o_de_otra_pagina_no_se_abre(self):
+        from starlette.websockets import WebSocketDisconnect
+
+        c = _app()
+        with self.assertRaises(WebSocketDisconnect):
+            with c.websocket_connect("/pty?hilo=faro", headers={"origin": "http://testserver"}) as ws:
+                ws.receive_text()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        for origen in ({"origin": "http://otro:9999"}, {}):
+            with self.assertRaises(WebSocketDisconnect):
+                with c.websocket_connect("/pty?hilo=faro", headers=origen) as ws:
+                    ws.receive_text()
+        self.assertEqual(self.abiertos, [])
+
+    def test_lo_tecleado_llega_y_vuelve(self):
+        c = _app()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        with c.websocket_connect("/pty?hilo=faro&cols=900&rows=40", headers={"origin": "http://testserver"}) as ws:
+            ws.send_json({"r": [120, 50]})
+            ws.send_json({"d": "hola ñandú\n"})
+            visto = ""
+            while "hola ñandú" not in visto:
+                visto += ws.receive_text()
+        # el tamaño que pide la página se acota (hasta 400 columnas)
+        self.assertEqual(self.abiertos, [("faro", 400, 40)])

@@ -7,7 +7,8 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
 `Origin`. Sin `Origin` (curl, la CLI) manda la llave.
 
     GET  /                  la página (se arma pantalla por pantalla: docs/propuestas/dashboard-fuera-de-vscode.md)
-    GET  /estatico/…        sus archivos (src/telar/web)
+    GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
+    WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí
     *    /api/…             la API de esta máquina (la misma de `telar serve`), detrás de la llave
 """
 
@@ -18,7 +19,7 @@ import secrets
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -93,6 +94,20 @@ def crear(api_app, clave: str | None = None) -> FastAPI:
         @app.get("/manifest.webmanifest")
         def manifiesto():
             return FileResponse(CARPETA / "manifest.webmanifest", media_type="application/manifest+json")
+
+    @app.websocket("/pty")
+    async def terminal(ws: WebSocket, hilo: str = "", cols: int = 100, rows: int = 30):
+        # el middleware de arriba no ve los WebSocket: la llave y el origen se miran aquí. Un WebSocket
+        # escribe en un hilo, así que el `Origin` es obligatorio (un navegador siempre lo manda)
+        origen = ws.headers.get("origin", "")
+        if (not secrets.compare_digest(ws.cookies.get(COOKIE, ""), clave) or not origen
+                or urlsplit(origen).netloc != ws.headers.get("host", "") or not hilo):
+            await ws.close(code=1008)
+            return
+        from telar import terminal as mod_terminal
+
+        await ws.accept()
+        await mod_terminal.puente(ws, hilo, cols, rows)
 
     app.mount("/estatico", StaticFiles(directory=CARPETA), name="estatico")
     app.mount("/api", api_app)

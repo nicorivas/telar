@@ -237,8 +237,14 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    s. `telar-nodo` queda para quien prefiera el nodo aparte. Leer el estado de los hilos del bus y su
    registro dejó de ser un viaje por clave (un consumidor efímero, de una vez).
 3. **Las vistas, al navegador**: `cli.ts` llama a la API en vez de abrir procesos; `hoy.ts` e
-   `hilos.ts` casi no cambian, porque ya hablan por `anfitrion` y `superficie`.
-4. **Las terminales, a Python**, y se retira Node.
+   `hilos.ts` casi no cambian, porque ya hablan por `anfitrion` y `superficie`. Hecho (19-oct): la página de
+   `telar serve --web` arma la barra y todas las pantallas del dashboard con el mismo código del panel
+   (esbuild), contra la API; lo que leía del disco va por `/api/archivos`.
+4. **Las terminales, a Python**, y se retira Node. Las terminales, hechas (19-oct): `/pty` de
+   `telar.api_web` corre `telar mirar` en un PTY y la página usa xterm.js (servido desde `estatico/xterm`).
+   Antes de retirar el panel en Node falta lo que solo él sirve: la app del celular (manifiesto, service
+   worker, íconos), la página de compartir y la carpeta de un hilo (`doc:`). El avance, en la página:
+   «progreso».
 5. **`telar-equipo`, como rutas**, y sale el código muerto. Hecho en el código (19-oct): la página del
    equipo es una app FastAPI aparte (`telar.api_equipo`), que `telar serve --equipo` sirve en su propio
    puerto de Tailscale, en el mismo proceso; nada de tu API se alcanza desde ahí (probado: `/hoy`, `/docs`,

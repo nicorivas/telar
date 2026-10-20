@@ -50,6 +50,11 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- Thread terminals in the browser page without Node: `/pty` in `telar.api_web` runs `telar mirar <hilo>` in a
+  PTY (asyncio) behind the same key and an origin check, and xterm.js is served from `estatico/xterm`. A thread
+  of this machine opens as its terminal on a wide screen and as its conversation on a narrow one (the button
+  at the top switches); at most 8 terminals stay open. The conversation of a local thread now types into its
+  terminal instead of sending a message. Needs `websockets` (in the `serve` extra).
 - The team inbox in the browser: `/config` says where it lives (`equipo`: `aqui`, the machine in
   `[equipo] en`, or empty) and the page uses it as its `equipoRemoto` setting; «Ver» on the «N things from
   the team» notice lets you pick one when there are several, as in VS Code.
