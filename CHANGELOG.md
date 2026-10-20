@@ -50,6 +50,9 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- A thread's terminal in the browser reconnects by itself when its connection drops (the laptop slept, the
+  network changed, telar restarted): after 1 s, then backing off to every 15 s, and at once when the tab or
+  the network comes back; it redraws the screen on reconnecting. It used to stay closed until a reload.
 - Terminals of threads on another machine in the browser page: `/pty?hilo=…&maquina=…` forwards the
   WebSocket to that machine's own page (its address now travels in the node's photo on the bus, `web`),
   which accepts it with the bus token — the secret a person's machines already share. A thread from another

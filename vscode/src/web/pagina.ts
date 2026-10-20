@@ -387,19 +387,42 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
-  // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó)
   // un hilo de otra máquina: la página de aquí la reenvía a la de allá (telar.terminal.reenviar)
   var maquina = ${JSON.stringify(rutas.maquina ?? '').replace(/</g, '\\u003c')};
-  var u = new URL('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=' + term.cols + '&rows=' + term.rows
-    + (maquina ? '&maquina=' + encodeURIComponent(maquina) : ''), document.baseURI);
-  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-  var ws = new WebSocket(u.href);
-  ws.onmessage = function (e) { term.write(e.data); };
-  ws.onclose = function () { term.write('\\r\\n\\x1b[2m[la terminal se cerró: recarga para volver a mirar]\\x1b[0m\\r\\n'); };
-  term.onData(function (d) { if (ws.readyState === 1) ws.send(JSON.stringify({ d: d })); });
+  // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó), con el
+  // tamaño de ahora: cada conexión abre una vista nueva del hilo
+  function direccion() {
+    var u = new URL('/pty?hilo=' + encodeURIComponent(hilo) + '&cols=' + term.cols + '&rows=' + term.rows
+      + (maquina ? '&maquina=' + encodeURIComponent(maquina) : ''), document.baseURI);
+    u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+    return u.href;
+  }
+  // si la conexión se corta (el laptop durmió, cambió la red, se reinició telar), se reconecta sola: al
+  // segundo, y después cada vez más espaciado, hasta cada 15 s; al volver a la pestaña o a la red, al tiro
+  var ws = null, esperas = [1000, 2000, 5000, 10000, 15000], intento = 0, pendiente = 0, conectada = false;
+  function conectar() {
+    clearTimeout(pendiente); pendiente = 0;
+    if (ws && ws.readyState <= 1) return;
+    ws = new WebSocket(direccion());
+    ws.onopen = function () {
+      // la vista nueva redibuja la pantalla entera: lo de antes se borra para que no quede mezclado
+      if (intento) term.reset();
+      intento = 0; conectada = true;
+    };
+    ws.onmessage = function (e) { term.write(e.data); };
+    ws.onclose = function () {
+      if (conectada) term.write('\\r\\n\\x1b[2m[se cortó la conexión con la terminal: reconectando…]\\x1b[0m');
+      conectada = false;
+      pendiente = setTimeout(conectar, esperas[Math.min(intento++, esperas.length - 1)]);
+    };
+  }
+  conectar();
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && !conectada) { intento = 0; conectar(); } });
+  window.addEventListener('online', function () { if (!conectada) { intento = 0; conectar(); } });
+  term.onData(function (d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); });
   new ResizeObserver(function () {
     fit.fit();
-    if (ws.readyState === 1) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
   }).observe(caja);
   window.addEventListener('focus', function () { term.focus(); });
   term.focus();
