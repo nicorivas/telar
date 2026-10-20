@@ -65,3 +65,20 @@ jobs:
         working-directory: vscode
       - run: npx tsc -p .
         working-directory: vscode
+
+  mod:
+    # El mod de telar para Claude Code (src/telar/mod/): que Claude Code lo lea como se debe y que sus
+    # pruebas pasen. `claude plugin test` corre sin sesión, sin cuenta y sin red.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Claude Code
+        run: npm install -g @anthropic-ai/claude-code && claude --version
+      - name: Validar el mod
+        run: claude plugin validate --strict src/telar/mod
+      - name: Pruebas del mod
+        working-directory: src/telar/mod
+        run: claude plugin test

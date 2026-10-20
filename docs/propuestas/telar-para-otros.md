@@ -47,11 +47,8 @@ El mod ya existe (`src/telar/mod/`, viaja en el paquete) y `telar agente instala
 sesión por `CLAUDE_CODE_PLUGIN_DIRS` ([arquitectura](../arquitectura.md), «Cómo llega un mensaje»). Hoy
 avisa de los mensajes de la casilla sin teclear en la terminal, lleva el semáforo de cada hilo desde
 sus propios eventos ([agentes.md](../agentes.md)) y deja la conversación ya estructurada para la lectura.
-Lo que falta que haga, en este orden:
-
-1. **Una franja de telar sobre el prompt** (quién espera, los mensajes pendientes) y comandos `/telar …`
-   instantáneos.
-2. **Pruebas del mod** con `claude plugin test`, y `claude plugin validate` en el CI.
+Tiene sus pruebas (`claude plugin test src/telar/mod`) y el CI las corre. Por ahora no le falta nada:
+la franja sobre el prompt se descartó (20-oct-2026), porque la página ya muestra quién espera.
 
 Es JavaScript en un proyecto de Python, y el mod tiene los mismos poderes que telar (archivos, procesos,
 red).
@@ -92,6 +89,5 @@ red).
 
 1. El correo y el directorio entre personas por el bus.
 2. La 0.2.0.
-3. El mod de Claude Code: la franja sobre el prompt y sus pruebas.
-4. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
-5. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.
+3. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
+4. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

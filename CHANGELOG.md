@@ -29,6 +29,8 @@ extension shared the version number.
   reading a thread (the page's reading mode, `telar hilo leer`, which now says `origen: mod|registro`) uses
   them when they belong to the thread's main conversation and the mod is alive, instead of parsing Claude
   Code's transcript file.
+  The mod has its own tests (`claude plugin test` in `src/telar/mod/`), run by CI along with `claude plugin
+  validate --strict`.
 - `telar instalar`: one command to get a machine running, and safe to run again. It writes the config
   (`telar init`) if missing, creates the page key, joins the bus with `--bus nats://…` (adds `[bus]`),
   installs the `telar serve` service for this machine (systemd user unit on Linux, launchd agent on macOS,

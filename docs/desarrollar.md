@@ -28,6 +28,10 @@ Para probar la terminal con la latencia de una red lejana sin depender de ella:
 la mitad a la vuelta; en la consola de la terminal, `__eco.estado()` dice si el eco se está mostrando y la
 latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `vscode/`.
 
+Las pruebas de Python se corren como el CI, con `python -m unittest discover -s pruebas` (escritas como
+`unittest`, no como funciones sueltas de pytest: el CI no las vería). El mod de Claude Code tiene las
+suyas: `claude plugin test` en `src/telar/mod/`, y `claude plugin validate --strict src/telar/mod`.
+
 Necesita telar instalado editable (`uv tool install --editable '.[serve,bus]'`): así `telar` corre el
 código del repositorio. Un cambio en la extensión de VS Code (lo que no es la página) se ve con
 `npm run compile` en `vscode/` y recargando la ventana de VS Code.
