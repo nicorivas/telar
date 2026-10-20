@@ -500,6 +500,8 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- The browser dashboard was blank (also a thread's folder, a file and «compartir»): with the thread's action bar
+  hidden, the views fell into the bar's row of the grid, which measured nothing.
 - Tasks from a `tipo = "tipo"` provider came without a card in the lists (`ficha: false`): a click sent the
   task to a thread instead of opening it, and «ahora» lost «lo que dejaron los agentes para decidir». The
   card is now offered for providers that have `detalle` or are of the `tarea` type.

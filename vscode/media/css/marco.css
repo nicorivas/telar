@@ -100,7 +100,10 @@ header {
   & .lleno { flex: 1; }
 }
 
+/* en su fila aunque la barra de acciones esté escondida (el dashboard): si no, cae en la de arriba, que
+   mide lo que su contenido, y con los marcos en posición absoluta eso es 0 */
 #vistas {
+  grid-row: 2;
   position: relative;
   min-width: 0;
   min-height: 0;
