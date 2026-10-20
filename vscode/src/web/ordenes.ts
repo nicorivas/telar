@@ -22,6 +22,15 @@ export interface Casa {
 export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknown> {
     const hiloDe = (a: unknown): string => typeof a === 'string' ? a : (a as { hilo?: string } | undefined)?.hilo ?? '';
 
+    /** Por qué un nombre no sirve para un hilo nuevo, o undefined: `telar ir --crear` con el nombre de uno que
+     *  ya existe va a ese (o lo retoma), no abre otro. */
+    function yaEsta(nombre: string): string | undefined {
+        const igual = nombre ? modelo.hilos.find(h => h.nombre === nombre) : undefined;
+        if (!igual) return undefined;
+        return igual.archivado || !igual.vivo ? `ya hay un hilo «${nombre}», cerrado: retómalo desde la lista, o elige otro nombre`
+            : `ya hay un hilo «${nombre}»: elige otro nombre`;
+    }
+
     /** `telar hilo <verbo>` sobre un hilo, y la lista al día. */
     async function sobreHilo(a: unknown, verbo: string, extra: string[] = [], valor?: string): Promise<boolean> {
         const hilo = hiloDe(a);
@@ -134,7 +143,11 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.actualizar': () => modelo.sondear(true),
         'telar.tejer': async () => { await cli.tejer(); await modelo.sondear(); },
         'telar.nuevo': async () => {
-            const nombre = (await c.anfitrion.campo({ prompt: 'Nombre del hilo nuevo', placeHolder: 'faro' }))?.trim();
+            const nombre = (await c.anfitrion.campo({
+                title: 'Hilo nuevo', placeHolder: 'faro',
+                prompt: 'Un tab con su agente. Después se vincula a un proyecto con ⋯.',
+                validateInput: t => yaEsta(t.trim()),
+            }))?.trim();
             if (!nombre) return;
             const remotos = (await cli.config()).datos?.remotos ?? [];
             let remoto = '';

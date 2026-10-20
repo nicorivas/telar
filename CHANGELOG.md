@@ -72,6 +72,9 @@ workflow refuses to run if the two disagree.
   The views are a registry (`vscode/src/web/vistas-hilo.ts`): a new way of looking at a thread is one more
   entry; and the reading mode draws each source with its renderer (`conversacion`, `panel`), so a new
   assistant is one more renderer. The header's terminal/conversation button moved into that bar.
+- Opening a thread from the browser page: «+ nuevo» on the HILOS header asks for its name (and, with
+  `[remotos]`, which machine) and shows the new thread's terminal; a name that already has a thread is refused
+  (it would go to that one). In VS Code it stays the + of the view's title bar.
 - Connecting the calendar from the browser dashboard (configuration › calendar › iCal): it asks for the private
   iCal address in a hidden field, checks it is an https address, and saves it like VS Code did. With that,
   everything the dashboard asks of its host works in the page too.

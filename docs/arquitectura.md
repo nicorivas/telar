@@ -217,7 +217,8 @@ en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`
 `lectura.js`. Cómo desarrollarla con recarga sola: [desarrollar.md](desarrollar.md).
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
-  una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`.
+  una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
+  abre uno (`POST /ir` con `crear`).
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos).
 - **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la

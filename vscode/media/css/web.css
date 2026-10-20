@@ -84,9 +84,10 @@
   &.aviso { border-left-color: var(--amarillo); }
 }
 
-/* la barra en el navegador: el ⋯ abre el menú del hilo, que en VS Code es el contextual. En un
-   celular no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕) queda dentro del menú */
+/* la barra en el navegador: el ⋯ abre el menú del hilo, que en VS Code es el contextual, y el + de HILOS
+   abre uno nuevo. En un celular no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕) queda dentro del menú */
 .menu-web { display: inline; }
+.nuevo-web { display: inline; }
 
 /* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular */
 .llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }

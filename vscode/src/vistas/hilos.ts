@@ -343,11 +343,12 @@ export class BarraHilos {
         // EQUIPO, ARCHIVO y APPS. Los dos primeros empiezan abiertos (es donde se trabaja); los demás,
         // cerrados (se miran de vez en cuando). Dentro de cada grupo, los que tienen tab primero
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
-        const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string): boolean => {
+        // `extra`: lo que va al final de la cabecera, con su propia acción (el + de HILOS)
+        const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, extra = ''): boolean => {
             const abierta = this.abierta(clave, porDefecto);
             h.push('<div class="sep"></div>');
             h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
-                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}</div>`);
+                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
             return abierta;
         };
 
@@ -382,7 +383,9 @@ export class BarraHilos {
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
         const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
         this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
-        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras')) {
+        // + abre un hilo nuevo: solo en el navegador (en VS Code es el + de la barra del título)
+        const nuevo = '<span class="nuevo-web" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
+        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras', nuevo)) {
             h.push(this.herramientas('hilos', ordenH));
             for (const x of sueltos) h.push(this.fila(x, 'hilo', '', 'hilos'));
             for (const { m, x } of deOtras) {
