@@ -149,11 +149,16 @@ async def conectar(config, *, para_siempre: bool = False):
     try:
         return await nats.connect(config.bus.url, **opciones)
     except Exception as e:  # noqa: BLE001 - cualquier falla de conexión es «el bus no responde»
-        if token and modo == "cuenta" and not para_siempre and "authorization" in str(e).lower():
-            _MODO[config.bus.url] = "token"     # un bus de antes (ver _modo)
-            del opciones["user"], opciones["password"]
+        if token and not para_siempre and "authorization" in str(e).lower():
+            # el bus cambió de modo (de un solo token a cuentas, o al revés; ver _modo): el otro, y se recuerda
+            otro = "token" if modo == "cuenta" else "cuenta"
+            for k in ("user", "password", "token"):
+                opciones.pop(k, None)
+            opciones.update(token=token) if otro == "token" else opciones.update(user=persona(config), password=token)
             try:
-                return await nats.connect(config.bus.url, token=token, **opciones)
+                nc = await nats.connect(config.bus.url, **opciones)
+                _MODO[config.bus.url] = otro
+                return nc
             except Exception:  # noqa: BLE001 - se cuenta la primera falla
                 pass
         raise ErrorDeBus(f"el bus ({config.bus.url}) no responde: {e}") from e
