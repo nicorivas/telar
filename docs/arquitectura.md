@@ -251,12 +251,13 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso
   con botones) los pone la página misma, encima de todo (`vscode/src/web/interfaz.ts`): se ven mire uno lo
-  que mire, también la lista en el celular.
+  que mire, también la lista en el celular. El dashboard, la barra y las órdenes `telar.*` los piden a
+  `web/ui.ts`, que también sabe abrir un enlace, mostrar un hilo o una carpeta, y correr una orden.
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
 
-De la extensión de VS Code, deprecada, quedan las capas `anfitrion` (lo que el dashboard le pide a la
-interfaz) y el nombre de la carpeta, `vscode/`: retirarlas es lo que sigue del plan.
+De la extensión de VS Code, deprecada, queda el nombre de la carpeta, `vscode/`: cambiarlo es lo que sigue
+del plan.
 
 ## Cómo se mueve una cosa
 

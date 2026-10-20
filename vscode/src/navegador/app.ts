@@ -3,33 +3,27 @@
 // «compartir». Todo en este documento, sin marcos:
 //
 //   - la API, por `fetch` a `/api` (cli.ts; la misma de `telar serve`, detrás de la llave de esta página);
-//   - los avisos, campos y menús que pide el dashboard (su anfitrión) los pone esta página, encima de todo
-//     (web/interfaz.ts).
+//   - los avisos, campos y menús que piden el dashboard y la barra (web/ui.ts) los pone esta página, encima de
+//     todo (web/interfaz.ts).
 //
 // Se empaqueta con esbuild (scripts/navegador.mjs) en src/telar/web/app.js, que sirve `telar serve --web`; los
 // estilos van aparte, en src/telar/web/marco.css.
 
-import MarkdownIt from 'markdown-it';
-
-import { type Anfitrion, type Opcion, type OpcionesAviso, usar } from '../anfitrion';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { PanelHoy } from '../vistas/hoy';
-import { avisar, campo, elegir, type Nivel, preguntar } from '../web/interfaz';
 import { montar as montarCarpeta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
+import * as ui from '../web/ui';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
-// ── los ajustes: salen del servidor (/config) ──
+// ── la bandeja del equipo: la del servidor que sirve la página («aqui») o la de la máquina que diga /config ──
 
-const ajustes: Record<string, unknown> = {};
-cli.usarAjustes(<T>(clave: string, porDefecto: T): T => (clave in ajustes ? ajustes[clave] as T : porDefecto));
 void cli.config().then(r => {
-    // la bandeja del equipo: la del servidor que sirve la página («aqui») o la de la máquina que diga
-    if (r.datos?.equipo) { ajustes.equipoRemoto = r.datos.equipo; void modelo.leerEquipo(); }
+    if (r.datos?.equipo) { modelo.equipoRemoto = r.datos.equipo.trim(); void modelo.leerEquipo(); }
 });
 
 // ── a la izquierda la barra (vistas/hilos.ts); a la derecha, una vista a la vez: el dashboard o un hilo ──
@@ -98,8 +92,8 @@ function mostrar(que: string): void {
         if (que.startsWith('doc:') || que.startsWith('arch:') || que === 'compartir') {
             f ??= nuevaVista(llave);
             if (que === 'compartir') montarCompartir(f, location.search);
-            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), t => md.render(t));
-            else void montarCarpeta(f, que.slice(4), '', t => md.render(t));
+            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), ui.markdown);
+            else void montarCarpeta(f, que.slice(4), '', ui.markdown);
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');
@@ -134,74 +128,8 @@ function mostrar(que: string): void {
     barra.refrescar(true);
 }
 
-// ── lo que el dashboard le pide a la interfaz (su anfitrión) ──────────────────
-
-function avisoCon(nivel: Nivel) {
-    return async (texto: string, ...botones: (string | OpcionesAviso)[]): Promise<string | undefined> => {
-        const nombres = botones.filter((b): b is string => typeof b === 'string');
-        if (!nombres.length) { avisar(texto, nivel); return undefined; }
-        return preguntar(texto, nombres);
-    };
-}
-
-const md = new MarkdownIt({ html: false, linkify: true });
-
-const anfitrion: Anfitrion = {
-    aviso: avisoCon('aviso'),
-    falla: avisoCon('falla'),
-    info: avisoCon('info'),
-    estado: (texto, ms) => avisar(texto, 'info', ms ?? 4000),
-    progreso: async (o, trabajo) => {
-        if (!o.ventana) avisar(o.title, 'info', 2500);
-        return trabajo();
-    },
-    campo: async o => {
-        let problema = '';
-        let valor = o.value ?? '';
-        for (;;) {
-            const r = await campo({ titulo: o.title, ayuda: o.prompt, placeholder: o.placeHolder, valor, password: o.password, problema });
-            if (r === undefined) return undefined;
-            problema = o.validateInput?.(r) ?? '';
-            if (!problema) return r;
-            valor = r;
-        }
-    },
-    elegir: async <T extends Opcion>(opciones: T[], menu?: { title?: string; placeHolder?: string }) => {
-        const i = await elegir(opciones, { titulo: menu?.title, placeholder: menu?.placeHolder });
-        return i === undefined ? undefined : opciones[i];
-    },
-    abrirExterno: async url => { window.open(url, '_blank', 'noopener'); },
-    // un archivo o una carpeta del repositorio: en la página (la vista de carpeta, `arch:<ruta>`), sin salir de
-    // la raíz; lo que no es texto trae un enlace para bajarlo
-    abrirArchivo: async ruta => { mostrar(`arch:${ruta}`); },
-    mostrarCarpeta: async ruta => { mostrar(`arch:${ruta}`); },
-    copiar: async texto => { try { await navigator.clipboard.writeText(texto); } catch { /* sin permiso */ } },
-    markdown: async texto => md.render(texto),
-    // ir a un hilo: telar lo crea o lo revive si hace falta (`telar ir`), y la página lo muestra a la derecha
-    irAHilo: async (hilo, crear, remoto) => {
-        const r = await cli.ir(hilo, !!crear, remoto ?? '');
-        if (!r.ok) { avisar(`telar: ${r.err.trim() || `no pude ir a «${hilo}»`}`, 'falla'); return; }
-        await modelo.sondear().catch(() => undefined);
-        mostrar(remoto ? `rem:${remoto}:${hilo}` : hilo);
-    },
-    // «ir a la terminal» después de abrir un hilo o encargarle algo: el que quedó al frente en tmux (el que la
-    // acción acaba de abrir), mostrado en la página
-    mostrarTerminal: async () => {
-        await modelo.sondear().catch(() => undefined);
-        const activo = modelo.activo;
-        if (activo) mostrar(activo.nombre);
-    },
-    orden: async (id, ...args) => {
-        const f = ordenes[id];
-        if (f) return f(...args);
-        avisar(`«${id}» todavía no está en el navegador`, 'aviso');
-        return undefined;
-    },
-};
-
 // ── arrancar ──────────────────────────────────────────────────────────────────
 
-usar(anfitrion);
 const hoy = new PanelHoy();
 hoy.donde = () => nuevaVista('dashboard');
 hoy.mostrarme = () => mostrar('dashboard');
@@ -209,7 +137,7 @@ const barra = new BarraHilos();
 barra.estado = guardado;
 barra.dashboardActivo = true;
 barra.mostrado = '';
-const ordenes = crearOrdenes({ hoy, barra, anfitrion, mostrar });
+ui.usarNavegacion({ mostrar, ordenes: crearOrdenes({ hoy, barra, mostrar }) });
 barra.montar(document.getElementById('barra')!);
 hoy.alCambiarFoco = () => {
     const app = hoy.appActual;

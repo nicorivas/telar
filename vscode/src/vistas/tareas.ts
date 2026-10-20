@@ -1,8 +1,8 @@
 // Las acciones sobre una tarea —llevarla a su hilo, marcarla hecha, reagendarla, asignarla,
-// la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz pasa por el anfitrión
-// (anfitrion.ts).
+// la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz va a la página (web/ui.ts).
 
-import { type Opcion, ui } from '../anfitrion';
+import * as ui from '../web/ui';
+import type { Opcion } from '../web/ui';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { olvidarDia } from './dia';
@@ -11,14 +11,14 @@ import { olvidarDia } from './dia';
 export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false): Promise<void> {
     // buscar el hilo, retomarlo o encargárselo a un agente del servidor toma unos segundos:
     // una notificación lo dice mientras tanto, para que el Enter no parezca perdido
-    const r = await ui().progreso({ title: `telar: llevando ${ref} a su hilo…` },
+    const r = await ui.progreso({ titulo: `telar: llevando ${ref} a su hilo…` },
         () => cli.pendiente(ref, nuevo, proveedor, texto, enviar));
     if (!r.datos) {
-        void ui().aviso(`telar: ${r.error ?? `no pude llevar «${ref}»`}`);
+        void ui.aviso(`telar: ${r.error ?? `no pude llevar «${ref}»`}`);
         return;
     }
     await modelo.sondear();
-    void ui().mostrarTerminal();
+    void ui.mostrarTerminal();
 }
 
 /** El ✓ de la lista: corre la acción que el proveedor declara con `rol: "hecha"`, sin abrir
@@ -40,7 +40,7 @@ export async function elegirFecha(titulo: string): Promise<string | undefined> {
         { label: 'fin de mes', description: `${dias[finDeMes.getDay()]} ${iso(finDeMes)}`, valor: iso(finDeMes) },
         { label: 'otra fecha…', description: 'AAAA-MM-DD, 15-10, 15-oct o +10d', valor: '' },
     ];
-    const elegida = await ui().elegir(opciones, { title: `Nueva fecha · ${titulo}`, placeHolder: 'para cuándo queda', ignoreFocusOut: true });
+    const elegida = await ui.elegir(opciones, { titulo: `Nueva fecha · ${titulo}`, placeholder: 'para cuándo queda' });
     if (!elegida) return undefined;
     if (elegida.valor) return elegida.valor;
     const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -56,8 +56,8 @@ export async function elegirFecha(titulo: string): Promise<string | undefined> {
         if (d < new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())) d = new Date(hoy.getFullYear() + 1, mes - 1, Number(m[1]));
         return iso(d);
     };
-    const escrita = await ui().campo({ title: `Nueva fecha · ${titulo}`, prompt: 'AAAA-MM-DD, 15-10, 15-oct o +10d', ignoreFocusOut: true,
-        validateInput: t => (t.trim() && !leer(t) ? 'no entiendo esa fecha' : undefined) });
+    const escrita = await ui.campo({ titulo: `Nueva fecha · ${titulo}`, ayuda: 'AAAA-MM-DD, 15-10, 15-oct o +10d',
+        validar: t => (t.trim() && !leer(t) ? 'no entiendo esa fecha' : undefined) });
     return escrita?.trim() ? leer(escrita) || undefined : undefined;
 }
 
@@ -67,15 +67,15 @@ export async function reagendar(valor: string): Promise<boolean> {
     const ficha = await cli.tarea(id, proveedor);
     const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'fecha') ?? -1;
     if (k < 0) {
-        void ui().aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar la fecha`}`);
+        void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar la fecha`}`);
         return false;
     }
     const fecha = await elegirFecha(`${id} ${ficha.datos?.titulo ?? ''}`.trim());
     if (!fecha) return false;
     const r = await cli.accionTarea(id, proveedor, k, fecha);
     olvidarDia();
-    if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude mover ${id}`}`); return false; }
-    ui().estado(`${id} → ${fecha}`, 5000);
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude mover ${id}`}`); return false; }
+    ui.estado(`${id} → ${fecha}`, 5000);
     return true;
 }
 
@@ -97,10 +97,10 @@ export async function elegirDueno(titulo: string, actual: string, opciones: stri
         { label: 'otra persona…', valor: '' },
     ];
     for (const it of items) if (it.valor !== undefined && it.valor && (it.valor === actual || (it.valor === 'none' && !actual))) it.description = `${it.description ?? ''} ← ahora`.trim();
-    const e = await ui().elegir(items, { title: titulo, placeHolder: 'quién hace esta tarea' });
+    const e = await ui.elegir(items, { titulo: titulo, placeholder: 'quién hace esta tarea' });
     if (!e) return undefined;
     if (e.valor) return e.valor;
-    const escrito = await ui().campo({ title: titulo, prompt: 'el nombre de quien la hace', ignoreFocusOut: true });
+    const escrito = await ui.campo({ titulo: titulo, ayuda: 'el nombre de quien la hace' });
     return escrito?.trim() || undefined;
 }
 
@@ -111,15 +111,15 @@ export async function asignar(valor: string, actual: string, persona: string): P
     const acciones = ficha.datos?.acciones ?? [];
     const k = acciones.findIndex(a => a.rol === 'dueno');
     if (k < 0) {
-        void ui().aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar el responsable`}`);
+        void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar el responsable`}`);
         return false;
     }
     const quien = await elegirDueno(`${id} ${ficha.datos?.titulo ?? ''}`.trim(), actual, acciones[k].opciones ?? [], persona);
     if (!quien) return false;
     const r = await cli.accionTarea(id, proveedor, k, quien);
     olvidarDia();
-    if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude asignar ${id}`}`); return false; }
-    ui().estado(`${id} → ${quien === 'none' ? 'sin asignar' : quien}`, 5000);
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude asignar ${id}`}`); return false; }
+    ui.estado(`${id} → ${quien === 'none' ? 'sin asignar' : quien}`, 5000);
     return true;
 }
 
@@ -129,13 +129,13 @@ async function alternarPorRol(valor: string, rol: string, queEs: string): Promis
     const ficha = await cli.tarea(id, proveedor);
     const k = ficha.datos?.acciones?.findIndex(a => a.rol === rol) ?? -1;
     if (k < 0) {
-        void ui().aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece ${queEs}`}`);
+        void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece ${queEs}`}`);
         return false;
     }
     const r = await cli.accionTarea(id, proveedor, k, '');
     olvidarDia();
-    if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude cambiar ${queEs} de ${id}`}`); return false; }
-    ui().estado(`${id}: ${ficha.datos?.acciones?.[k].nombre ?? queEs}`, 4000);
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude cambiar ${queEs} de ${id}`}`); return false; }
+    ui.estado(`${id}: ${ficha.datos?.acciones?.[k].nombre ?? queEs}`, 4000);
     return true;
 }
 
@@ -149,7 +149,7 @@ export async function alternarEquipo(valor: string): Promise<boolean> {
     const antes = (await cli.tarea(id, proveedor)).datos?.acciones?.find(a => a.rol === 'equipo')?.nombre ?? '';
     if (!await alternarPorRol(valor, 'equipo', 'compartir con el equipo')) return false;
     const compartida = antes.startsWith('○');
-    void ui().info(compartida
+    void ui.info(compartida
         ? `telar: ${id} ahora la ve el equipo (título, estado, prioridad y fecha); pueden sugerir subirla.`
         : `telar: ${id} dejó de compartirse con el equipo.`);
     return true;
@@ -159,28 +159,28 @@ export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
     // un viaje: la acción por su rol. Un telar de antes (el de otra máquina sin actualizar) no
     // conoce --rol: entonces, como siempre, la ficha primero para saber su número
-    const directo = await ui().progreso({ ventana: true, title: `✓ ${id}…` },
+    const directo = await ui.progreso({ discreto: true, titulo: `✓ ${id}…` },
         () => cli.accionPorRol(id, proveedor, 'hecha'));
     if (directo.datos) {
         olvidarDia();
-        ui().estado(`✓ ${id} hecha`, 5000);
+        ui.estado(`✓ ${id} hecha`, 5000);
         return true;
     }
     if (!/--rol|unrecognized|argumentos/i.test(directo.error ?? '')) {
-        void ui().aviso(`telar: ${directo.error ?? `no pude marcar ${id}`}`);
+        void ui.aviso(`telar: ${directo.error ?? `no pude marcar ${id}`}`);
         olvidarDia();
         return false;
     }
     const ficha = await cli.tarea(id, proveedor);
     const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'hecha') ?? -1;
     if (k < 0) {
-        void ui().aviso(`telar: ${ficha.error ?? `${id} no se puede marcar hecha desde la lista: ábrela`}`);
+        void ui.aviso(`telar: ${ficha.error ?? `${id} no se puede marcar hecha desde la lista: ábrela`}`);
         olvidarDia();
         return false;
     }
     const r = await cli.accionTarea(id, proveedor, k);
     olvidarDia();
-    if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
-    ui().estado(`✓ ${id} hecha`, 5000);
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
+    ui.estado(`✓ ${id} hecha`, 5000);
     return true;
 }

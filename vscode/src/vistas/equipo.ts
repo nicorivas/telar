@@ -1,7 +1,8 @@
 // Lo que el equipo deja en tu bandeja (`telar equipo`): una sección de la barra lateral; pinchar una fila abre su
 // página en el dashboard (`PanelHoy.abrirEquipo`). Aquí viven el encargo a Gestión y las decisiones.
 
-import { type Opcion, ui } from '../anfitrion';
+import * as ui from '../web/ui';
+import type { Opcion } from '../web/ui';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 
@@ -32,25 +33,25 @@ export function encargoParaGestion(x: Sugerencia): string {
 
 export async function preguntarAGestion(x: Sugerencia): Promise<void> {
     const r = await cli.encargar('gestion', encargoParaGestion(x));
-    if (!r.datos) { void ui().falla(`telar: no pude encargárselo a Gestión: ${r.error ?? 'sin respuesta'}`); return; }
+    if (!r.datos) { void ui.falla(`telar: no pude encargárselo a Gestión: ${r.error ?? 'sin respuesta'}`); return; }
     await cli.equipoRevisando(modelo.equipoRemoto, x.id);
-    void ui().estado('telar: Gestión está revisando el pedido', 5000);
+    void ui.estado('telar: Gestión está revisando el pedido', 5000);
     await modelo.leerEquipo();
 }
 
 export async function decidir(x: Sugerencia, verbo: 'aceptar' | 'rechazar' | 'existe', tarea = ''): Promise<void> {
     let nota = '';
     if (verbo !== 'aceptar') {
-        const dicha = await ui().campo({
-            prompt: verbo === 'existe' ? `Qué le agregas al estado de ${tarea} (opcional)` : `Qué verá ${x.persona} (opcional)`,
-            placeHolder: verbo === 'existe' ? 'va para el jueves' : 'ahora no, porque…', ignoreFocusOut: true });
+        const dicha = await ui.campo({
+            ayuda: verbo === 'existe' ? `Qué le agregas al estado de ${tarea} (opcional)` : `Qué verá ${x.persona} (opcional)`,
+            placeholder: verbo === 'existe' ? 'va para el jueves' : 'ahora no, porque…' });
         if (dicha === undefined) return;   // Escape: no se decide nada
         nota = dicha;
     }
     const r = await cli.equipoResolver(modelo.equipoRemoto, verbo, x.id, nota, tarea);
-    if (!r.datos) void ui().falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`);
+    if (!r.datos) void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`);
     else if (verbo === 'aceptar' && x.tipo === 'tarea') {
-        void ui().info(`telar: agregada${r.datos.sugerencia.tarea ? ` como ${r.datos.sugerencia.tarea}` : ''}`);
+        void ui.info(`telar: agregada${r.datos.sugerencia.tarea ? ` como ${r.datos.sugerencia.tarea}` : ''}`);
     }
     await modelo.leerEquipo();
 }
@@ -59,11 +60,11 @@ export async function decidir(x: Sugerencia, verbo: 'aceptar' | 'rechazar' | 'ex
 export async function elegirEntrada(id?: string): Promise<string> {
     await modelo.leerEquipo();
     const lista = modelo.sugerencias;
-    if (!lista.length) { void ui().info('telar: el equipo no tiene nada esperando'); return ''; }
+    if (!lista.length) { void ui.info('telar: el equipo no tiene nada esperando'); return ''; }
     if (id && lista.some(y => y.id === id)) return id;
     if (lista.length === 1) return lista[0].id;
-    const e = await ui().elegir(lista.map(y => ({
+    const e = await ui.elegir(lista.map(y => ({
         label: `${y.persona}: ${y.titulo.slice(0, 80)}`, description: y.tipo === 'tarea' ? 'pide una tarea' : `subir ${y.tarea}`, id: y.id })),
-        { title: 'Lo que pide el equipo', placeHolder: 'elige una entrada' });
+        { titulo: 'Lo que pide el equipo', placeholder: 'elige una entrada' });
     return e?.id ?? '';
 }

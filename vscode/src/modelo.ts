@@ -4,18 +4,20 @@
 // telar lo tenga, y aquí solo queda la última respuesta de `telar hilos --json`.
 //
 // Dos ritmos, porque leer los documentos es lo único caro de todo esto:
-//   · el rápido (`telar.intervalo`) trae los hilos SIN ficha: quién está vivo, cuál tiene el
-//     foco, qué dijo cada agente, cuánto lleva hoy;
-//   · el lento (`telar.intervaloFicha`) los trae CON ficha, que es lo que pone la línea de
+//   · el rápido (cada pocos segundos, lo pide la página) trae los hilos SIN ficha: quién está vivo,
+//     cuál tiene el foco, qué dijo cada agente, cuánto lleva hoy;
+//   · el lento (cada INTERVALO_FICHA) los trae CON ficha, que es lo que pone la línea de
 //     estado bajo cada hilo.
 // Entre uno y otro, la ficha conocida se conserva: vale más una línea de hace un minuto que
 // ninguna, y se nota si queda vieja porque el documento se relee al tocarlo.
 
-import { ui } from './anfitrion';
-
 import * as cli from './cli';
+import * as ui from './web/ui';
 
-/** Avisar a quien escucha que algo cambió (como el EventEmitter de VS Code, sin VS Code). */
+/** Cada cuánto se traen los hilos con su ficha (lo caro: leer los documentos). */
+const INTERVALO_FICHA = 60000;
+
+/** Avisar a quien escucha que algo cambió (un EventEmitter chico). */
 export class Emisor {
     private oyentes = new Set<() => void>();
     /** Escuchar; devuelve con qué dejar de hacerlo. */
@@ -61,7 +63,9 @@ export class Modelo {
     get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || (!h.vivo && !h.propio)); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
 
-    get equipoRemoto(): string { return String(cli.ajuste('equipoRemoto', '')).trim(); }
+    /** dónde vive la bandeja del equipo, vista desde aquí («aqui», otra máquina, o vacío: sin equipo). La pone
+     *  la página con lo que dice `/config`. */
+    equipoRemoto = '';
 
     /** Lee las sugerencias del equipo y avisa de las nuevas con una notificación que no se va sola:
      *  la primera lectura avisa de lo que ya esperaba, para que nada pendiente pase sin verse. */
@@ -82,11 +86,11 @@ export class Modelo {
                 ? `${uno.persona} te pide una tarea: «${uno.titulo.slice(0, 80)}»${uno.vence ? ` (para el ${uno.vence})` : ''}${uno.similares?.length ? ` · ¿ya existe ${uno.similares[0].id}?` : ''}`
                 : `${uno.persona} sugiere subir ${uno.tarea} «${uno.titulo.slice(0, 60)}»: ${uno.motivo.slice(0, 120)}`)
             : `${nuevas.length} cosas del equipo ${primera ? 'esperan' : 'nuevas'}: ${nuevas.map(x => x.tipo === 'tarea' ? `pedido de ${x.persona}` : x.tarea).join(', ')}`;
-        void ui().aviso(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
-            if (eleccion === 'Ver') await ui().orden('telar.equipoVer', uno?.id);
+        void ui.aviso(`telar · ${texto}`, 'Ver', ...(uno ? [uno.tipo === 'tarea' ? 'Agregar' : 'Aceptar'] : [])).then(async eleccion => {
+            if (eleccion === 'Ver') await ui.orden('telar.equipoVer', uno?.id);
             else if ((eleccion === 'Aceptar' || eleccion === 'Agregar') && uno) {
                 const a = await cli.equipoResolver(remoto, 'aceptar', uno.id);
-                void ui().info(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`
+                void ui.info(!a.datos ? `telar: no se pudo: ${a.error ?? ''}`
                     : uno.tipo === 'tarea' ? `telar: agregada${a.datos.sugerencia.tarea ? ` como ${a.datos.sugerencia.tarea}` : ''}` : `telar: ${uno.tarea} sube de prioridad`);
                 await this.leerEquipo();
             }
@@ -99,16 +103,14 @@ export class Modelo {
     porNombre(nombre: string): cli.JsonHilo | undefined { return this.hilos.find(h => h.nombre === nombre); }
     porId(id: string): cli.JsonHilo | undefined { return this.hilos.find(h => h.id === id); }
 
-    /** El orden lo aplica telar (`--orden`), no esta vista: es una preferencia, y vive en la
-     *  configuración para que sobreviva a cerrar la ventana. */
-    get orden(): string { return String(cli.ajuste('orden', 'mux')); }
+    /** El orden lo aplica telar: el del multiplexor (cada grupo de la barra se ordena aparte, ahí). */
+    readonly orden = 'mux';
 
     async sondear(conFicha = false): Promise<void> {
         if (this.enCurso) return;
         this.enCurso = true;
         try {
-            const cada = Number(cli.ajuste('intervaloFicha', 60000));
-            const toca = conFicha || Date.now() - this.ultimaFicha > cada;
+            const toca = conFicha || Date.now() - this.ultimaFicha > INTERVALO_FICHA;
             const r = await cli.hilos(toca, this.orden);
             if (!r.datos) {
                 this.error = r.error ?? '';

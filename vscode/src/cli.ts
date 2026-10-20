@@ -11,16 +11,6 @@
 
 import { esAbsoluta, unir } from './rutas';
 
-// ───────────────────────── configuración ─────────────────────────
-
-/** Los ajustes `telar.*`: los del servidor de la página (/config). */
-let leerAjuste: <T>(clave: string, porDefecto: T) => T = (_c, d) => d;
-export function usarAjustes(f: <T>(clave: string, porDefecto: T) => T): void { leerAjuste = f; }
-
-export function ajuste<T>(clave: string, porDefecto: T): T {
-    return leerAjuste(clave, porDefecto);
-}
-
 /** Lo que devuelve una orden que no tiene JSON propio: si salió bien, y su salida o su error. */
 export interface Salida { ok: boolean; codigo: number; out: string; err: string }
 

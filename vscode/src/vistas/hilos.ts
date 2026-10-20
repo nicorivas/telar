@@ -16,7 +16,7 @@
 // rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
 // estilos, en media/css/hilos.css.
 
-import { ui } from '../anfitrion';
+import * as ui from '../web/ui';
 
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
@@ -186,22 +186,22 @@ export class BarraHilos {
                 if (!m.hilo) break;
                 // un archivado no tiene tab al que ir: pincharlo es retomarlo
                 const sinTab = modelo.hilos.some(x => x.nombre === m.hilo && (!x.vivo || x.archivado));
-                void ui().orden(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
+                void ui.orden(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
                 break;
             }
-            case 'archivar': if (m.id) void ui().orden('telar.archivar', { hilo: m.id }); break;
-            case 'retomar': if (m.id) void ui().orden('telar.retomar', { hilo: m.id }); break;
-            case 'cerrar': if (m.id) void ui().orden('telar.cerrar', { hilo: m.id }); break;
-            case 'archivo': void ui().orden('telar.archivo'); break;
-            case 'menu': if (m.id) void ui().orden('telar.menuHilo', { hilo: m.id }); break;
-            case 'ir-remoto': if (m.id) void ui().orden('telar.irRemoto', m.id); break;
+            case 'archivar': if (m.id) void ui.orden('telar.archivar', { hilo: m.id }); break;
+            case 'retomar': if (m.id) void ui.orden('telar.retomar', { hilo: m.id }); break;
+            case 'cerrar': if (m.id) void ui.orden('telar.cerrar', { hilo: m.id }); break;
+            case 'archivo': void ui.orden('telar.archivo'); break;
+            case 'menu': if (m.id) void ui.orden('telar.menuHilo', { hilo: m.id }); break;
+            case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
             case 'seccion':
-                if (m.id === '__archivo') { void ui().orden('telar.archivo'); break; }
+                if (m.id === '__archivo') { void ui.orden('telar.archivo'); break; }
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
                 break;
-            case 'equipo': void ui().orden('telar.equipoVer', m.id); break;
-            case 'home': if (m.id) void ui().orden('telar.seccion', m.id); break;
-            case 'app': if (m.id) void ui().orden('telar.app', m.id); break;
+            case 'equipo': void ui.orden('telar.equipoVer', m.id); break;
+            case 'home': if (m.id) void ui.orden('telar.seccion', m.id); break;
+            case 'app': if (m.id) void ui.orden('telar.app', m.id); break;
             case 'ver-maquina':
                 void this.estado?.update('telar.hilos.maquina', !this.conMaquina()).then(() => this.refrescar(true));
                 break;
@@ -209,7 +209,7 @@ export class BarraHilos {
                 const [grupo, orden] = m.id.split(':');
                 void this.estado?.update(`telar.orden.${grupo}`, orden === this.ordenDe(grupo) ? '' : orden).then(() => this.refrescar(true));
             } break;
-            case 'cmd': if (m.id?.startsWith('telar.')) void ui().orden(m.id); break;
+            case 'cmd': if (m.id?.startsWith('telar.')) void ui.orden(m.id); break;
         }
     }
 

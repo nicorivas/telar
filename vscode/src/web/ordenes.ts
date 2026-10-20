@@ -1,8 +1,9 @@
 // Las órdenes `telar.*` de la página (el menú de un hilo, ir a uno, retomarlo, abrir uno nuevo, abrir una
-// sección…): las piden la barra y el dashboard, y las cumple el anfitrión del navegador (src/navegador),
-// que da lo suyo: su interfaz (web/interfaz.ts) y qué mostrar a la derecha.
+// sección…): las piden la barra y el dashboard (`ui.orden`), y las cumple esta página, con su interfaz
+// (web/ui.ts) y lo que muestra a la derecha (src/navegador/app.ts).
 
-import type { Anfitrion, Opcion } from '../anfitrion';
+import * as ui from './ui';
+import type { Opcion } from './ui';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { avisar } from './interfaz';
@@ -13,7 +14,6 @@ import type { PanelHoy } from '../vistas/hoy';
 export interface Casa {
     hoy: PanelHoy;
     barra: BarraHilos;
-    anfitrion: Anfitrion;
     /** a la derecha: «dashboard», un hilo, «doc:<hilo>» o «rem:<máquina>:<hilo>» */
     mostrar(que: string): void;
 }
@@ -54,7 +54,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             { label: h.archivado || !h.vivo ? 'retomar' : 'ver', description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
                 hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) c.mostrar(hilo); } else c.mostrar(hilo); } },
             { label: 'renombrar', description: 'se mueve con él lo que telar sabía', hacer: async () => {
-                const nombre = await c.anfitrion.campo({ title: `Nombre nuevo para «${hilo}»`, value: hilo });
+                const nombre = await ui.campo({ titulo: `Nombre nuevo para «${hilo}»`, valor: hilo });
                 if (nombre && nombre !== hilo) await sobreHilo(hilo, 'renombrar', [], nombre);
             } },
             ...(h.vinculado ? [{ label: 'ver su carpeta y documento', description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
@@ -68,11 +68,11 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             ...(h.vivo ? [{ label: 'cerrar', description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
             ...(!h.remoto ? [{ label: 'llevar a otra máquina', description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }] : []),
             { label: 'olvidar', description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
-                const si = await c.anfitrion.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, { modal: true }, 'Olvidar');
+                const si = await ui.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, 'Olvidar');
                 if (si === 'Olvidar') await sobreHilo(hilo, 'olvidar');
             } },
         ];
-        const elegida = await c.anfitrion.elegir(filas, { title: hilo });
+        const elegida = await ui.elegir(filas, { titulo: hilo });
         await elegida?.hacer?.();
     }
 
@@ -81,9 +81,9 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         const r = await cli.proyectos();
         const otra = { label: 'otra carpeta…', description: 'escribir su ruta', ruta: '' };
         const filas = [...(r.datos?.proyectos ?? []).map(p => ({ label: p.nombre, description: p.ruta, ruta: String(p.ruta) })), otra];
-        const elegida = await c.anfitrion.elegir(filas, { title: `Vincular «${hilo}» a…`, placeHolder: 'filtrar' });
+        const elegida = await ui.elegir(filas, { titulo: `Vincular «${hilo}» a…`, placeholder: 'filtrar' });
         if (!elegida) return;
-        const ruta = elegida.ruta || await c.anfitrion.campo({ title: `La carpeta de «${hilo}»`, prompt: 'relativa a la raíz del repositorio, o absoluta' });
+        const ruta = elegida.ruta || await ui.campo({ titulo: `La carpeta de «${hilo}»`, ayuda: 'relativa a la raíz del repositorio, o absoluta' });
         if (ruta) await sobreHilo(hilo, 'vincular', [], ruta);
     }
 
@@ -92,14 +92,14 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         const remotos = (await cli.config()).datos?.remotos ?? [];
         if (!remotos.length) { avisar('telar: no hay máquinas en [remotos]', 'aviso'); return; }
         const elegida = remotos.length === 1 ? remotos[0]
-            : (await c.anfitrion.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { title: `¿A qué máquina llevo «${hilo}»?` }))?.x;
+            : (await ui.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { titulo: `¿A qué máquina llevo «${hilo}»?` }))?.x;
         if (!elegida) return;
         avisar(`llevando «${hilo}» a ${elegida.nombre}…`, 'info', 4000);
         let r = await cli.llevar(hilo, elegida.nombre);
         if (r.error && /sin subir/.test(r.error)) {
             const salida = String(r.cuerpo?.salida ?? '');
             const lista = salida.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
-            const si = await c.anfitrion.aviso(`La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:\n${lista}`, { modal: true }, 'Llevar igual');
+            const si = await ui.aviso(`La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:\n${lista}`, 'Llevar igual');
             if (si !== 'Llevar igual') return;
             r = await cli.llevar(hilo, elegida.nombre, true);
         }
@@ -125,12 +125,12 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
         'telar.conectarCalendario': async () => {
-            const valor = await c.anfitrion.campo({
-                title: 'Conectar calendario', password: true, ignoreFocusOut: true,
-                prompt: 'La dirección privada de tu calendario en formato iCal. En Google Calendar: '
+            const valor = await ui.campo({
+                titulo: 'Conectar calendario', password: true,
+                ayuda: 'La dirección privada de tu calendario en formato iCal. En Google Calendar: '
                     + 'Configuración › tu calendario › «Dirección secreta en formato iCal».',
-                placeHolder: 'https://calendar.google.com/calendar/ical/…/basic.ics',
-                validateInput: t => !t.trim() || /^https?:\/\/\S+$/.test(t.trim()) ? undefined : 'tiene que ser una dirección https://…',
+                placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics',
+                validar: t => !t.trim() || /^https?:\/\/\S+$/.test(t.trim()) ? undefined : 'tiene que ser una dirección https://…',
             });
             if (!valor?.trim()) return;
             const r = await cli.elegirCalendario(valor.trim());
@@ -145,25 +145,22 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.actualizar': () => modelo.sondear(true),
         'telar.tejer': async () => { await cli.tejer(); await modelo.sondear(); },
         'telar.nuevo': async () => {
-            const nombre = (await c.anfitrion.campo({
-                title: 'Hilo nuevo', placeHolder: 'faro',
-                prompt: 'Un tab con su agente. Después se vincula a un proyecto con ⋯.',
-                validateInput: t => yaEsta(t.trim()),
+            const nombre = (await ui.campo({
+                titulo: 'Hilo nuevo', placeholder: 'faro',
+                ayuda: 'Un tab con su agente. Después se vincula a un proyecto con ⋯.',
+                validar: t => yaEsta(t.trim()),
             }))?.trim();
             if (!nombre) return;
             const remotos = (await cli.config()).datos?.remotos ?? [];
             let remoto = '';
             if (remotos.length) {
-                const e = await c.anfitrion.elegir([{ label: 'Local', description: 'en esta máquina', remoto: '' },
+                const e = await ui.elegir([{ label: 'Local', description: 'en esta máquina', remoto: '' },
                     ...remotos.map(r => ({ label: `Remoto: ${r.nombre}`, description: r.destino, remoto: r.nombre }))],
-                    { placeHolder: `¿Dónde vive el agente de «${nombre}»?` });
+                    { placeholder: `¿Dónde vive el agente de «${nombre}»?` });
                 if (!e) return;
                 remoto = e.remoto;
             }
-            await c.anfitrion.irAHilo(nombre, true, remoto);
+            await ui.irAHilo(nombre, true, remoto);
         },
-        // la lista de tareas de la barra era de la extensión de VS Code: las tareas están en el dashboard
-        'telar.tareas': () => undefined,
-        'telar.tareasActualizar': () => undefined,
     };
 }

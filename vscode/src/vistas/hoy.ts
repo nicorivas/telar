@@ -9,7 +9,8 @@
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
-import { type Opcion, ui } from '../anfitrion';
+import * as ui from '../web/ui';
+import type { Opcion } from '../web/ui';
 import * as cli from '../cli';
 import { disco } from '../disco';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, llaveAlAzar, normalizar } from '../estilo';
@@ -134,7 +135,7 @@ export class PanelHoy {
     alCambiarFoco?: (activo: boolean) => void;
 
     alternar(): void {
-        if (this.panel?.visible) { void ui().mostrarTerminal(); return; }
+        if (this.panel?.visible) { void ui.mostrarTerminal(); return; }
         this.abrir();
     }
 
@@ -461,11 +462,11 @@ export class PanelHoy {
         if (!x?.mensaje) return;
         const r = await cli.abrirItem(clave, x.mensaje, x.nombre || x.titulo);
         if (!r.datos) {
-            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el hilo'}`);
+            void ui.aviso(`telar: ${r.error ?? 'no pude abrir el hilo'}`);
             return;
         }
         await modelo.sondear();
-        await ui().mostrarTerminal();
+        await ui.mostrarTerminal();
     }
 
     private async lanzarAtajo(tecla: string): Promise<void> {
@@ -473,19 +474,19 @@ export class PanelHoy {
         // apretarla dos veces seguidas encargaba lo mismo dos veces (y el agente lo hacía dos veces)
         const antes = this.atajosLanzados.get(tecla);
         if (antes && Date.now() - antes < 120000) {
-            const si = await ui().aviso(`«${nombre}» ya se encargó hace ${Math.round((Date.now() - antes) / 1000)} s. ¿Otra vez?`, { modal: true }, 'Sí');
-            if (si !== 'Sí') { await ui().mostrarTerminal(); return; }
+            const si = await ui.aviso(`«${nombre}» ya se encargó hace ${Math.round((Date.now() - antes) / 1000)} s. ¿Otra vez?`, 'Sí');
+            if (si !== 'Sí') { await ui.mostrarTerminal(); return; }
         }
-        const r = await ui().progreso({ title: `telar: ${nombre}…` }, () => cli.atajo(tecla));
+        const r = await ui.progreso({ titulo: `telar: ${nombre}…` }, () => cli.atajo(tecla));
         if (!r.datos) {
-            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
+            void ui.aviso(`telar: ${r.error ?? 'no pude abrir el atajo'}`);
             return;
         }
         this.atajosLanzados.set(tecla, Date.now());
         const estado = (r.datos as { encargo?: string }).encargo;
-        void ui().estado(`telar: ${nombre} → ${r.datos.hilo}${estado ? ` (${estado})` : ''}`, 8000);
+        void ui.estado(`telar: ${nombre} → ${r.datos.hilo}${estado ? ` (${estado})` : ''}`, 8000);
         await modelo.sondear();
-        await ui().mostrarTerminal();
+        await ui.mostrarTerminal();
     }
 
     /** La página de una sección: la pide a `telar seccion`, que corre su `home`. Abre el
@@ -774,16 +775,16 @@ export class PanelHoy {
     /** Un comentario sobre el plan de un día: lo atiende la máquina donde vive el plan, que abre un hilo
      *  con un agente; ese agente actualiza el plan, y la pestaña lo relee en un rato. */
     private async comentarPlan(dia: string, texto: string): Promise<void> {
-        const r = await ui().progreso({ title: 'telar: mandando el comentario sobre el plan…' }, () => cli.comentarResultado('plan', dia, texto));
-        if (!r.ok) { void ui().falla(`telar: el comentario no llegó: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui().info(r.abrio ? `telar: se abrió «${r.abrio}» para atender el comentario` : 'telar: comentario recibido');
+        const r = await ui.progreso({ titulo: 'telar: mandando el comentario sobre el plan…' }, () => cli.comentarResultado('plan', dia, texto));
+        if (!r.ok) { void ui.falla(`telar: el comentario no llegó: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui.info(r.abrio ? `telar: se abrió «${r.abrio}» para atender el comentario` : 'telar: comentario recibido');
         setTimeout(() => { this.plan = undefined; void this.actualizar(true); }, 30000);
     }
 
     private async escribirSobreEvento(id: string, texto: string): Promise<void> {
         const d = this.diaCal();
         if (!texto.trim() || !d) return;
-        if (!this.general) { void ui().aviso('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
+        if (!this.general) { void ui.aviso('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
         const plan = this.plan?.dia === d.fecha && this.plan.formato === 'json' ? this.plan.contenido as Record<string, unknown> : undefined;
         const e = eventosDelDia(d, plan).find(x => x.id === id);
         if (!e) return;
@@ -808,25 +809,25 @@ export class PanelHoy {
             notas.length ? `Notas del evento: ${notas.join(' | ')}` : '',
             `Id del evento: ${e.id}. Si lo que hagas es de esta reunión, déjale una nota: telar evento nota "${e.id}" "…" --de ${this.general.clave} --titulo "${e.titulo}" --inicio ${hm(e.inicio)} --dia ${d.fecha}`,
         ].filter(Boolean);
-        const r = await ui().progreso({ title: `telar: escribiéndole a ${this.general.nombre}…` },
+        const r = await ui.progreso({ titulo: `telar: escribiéndole a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, lineas.join('\n')));
-        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        if (!r.datos) { void ui.falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
         // queda constancia en el evento: lo que se pidió y a quién
         await cli.notaEvento(e.id, `A ${this.general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha);
         const n = await cli.notasEventos(d.fecha);
         if (n.datos?.ok) this.notas = n.datos;
         this.eventoSel = id;
-        void ui().estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        void ui.estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
         if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
     /** Una nota de la persona sobre un evento: se guarda donde viven las notas (`telar evento nota`). */
     private async notaEvento(valor: string): Promise<void> {
         const [id, titulo, inicio, fecha] = JSON.parse(valor) as string[];
-        const texto = await ui().campo({ title: `Nota para «${titulo}»`, prompt: 'Se guarda junto al evento y la ven las skills', ignoreFocusOut: true });
+        const texto = await ui.campo({ titulo: `Nota para «${titulo}»`, ayuda: 'Se guarda junto al evento y la ven las skills' });
         if (!texto?.trim()) return;
         const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha);
-        if (!r.datos?.ok) { void ui().falla(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
+        if (!r.datos?.ok) { void ui.falla(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
         this.eventoSel = id;
         const notas = await cli.notasEventos(fecha);
         if (notas.datos?.ok) this.notas = notas.datos;
@@ -918,12 +919,12 @@ export class PanelHoy {
     /** Corre una orden de `telar periodicos` y relee: la lista cambia (o el log, si se corrió). */
     private async ordenPeriodico(args: string[]): Promise<void> {
         if (args[0] === 'borrar') {
-            const si = await ui().aviso(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, { modal: true }, 'Borrar');
+            const si = await ui.aviso(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, 'Borrar');
             if (si !== 'Borrar') return;
         }
         const r = await cli.periodicosOrden(args);
-        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? 'no se pudo'}`); return; }
-        ui().estado(`telar: ${r.datos.hecho}`, 5000);
+        if (!r.datos) { void ui.aviso(`telar: ${r.error ?? 'no se pudo'}`); return; }
+        ui.estado(`telar: ${r.datos.hecho}`, 5000);
         if (args[0] === 'borrar') this.periodico = undefined;
         await this.abrirPeriodicos();
         if (this.periodico) {
@@ -1056,7 +1057,7 @@ export class PanelHoy {
         this.parcial('per-error', '<span class="dim">guardando…</span>');
         const r = await cli.periodicosOrden(lista);
         if (!r.datos) { this.parcial('per-error', esc(r.error ?? 'no se pudo')); return; }
-        ui().estado(`telar: ${r.datos.hecho}`, 5000);
+        ui.estado(`telar: ${r.datos.hecho}`, 5000);
         this.formPer = undefined;
         this.periodico = { nombre, log: '' };
         await this.abrirPeriodicos();
@@ -1168,25 +1169,25 @@ export class PanelHoy {
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
-            const escrito = await ui().campo({ prompt: `${f.id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            const escrito = await ui.campo({ ayuda: `${f.id} · ${a.nombre}`, placeholder: a.pide });
             if (escrito === undefined) return;
             texto = escrito;
         }
         if (a.confirmar) {
-            const si = await ui().aviso(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, { modal: true }, 'Sí');
+            const si = await ui.aviso(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, 'Sí');
             if (si !== 'Sí') return;
         }
         // una acción que lleva un mensaje a un hilo (el de la tarea, Gestión) toma unos segundos: se avisa
         // con la versión de la ficha que se está mirando: si la tarea cambió desde entonces, no se hace
         const version = f.pagina?.version ?? '';
         const r = a.mensaje
-            ? await ui().progreso({ title: `telar: ${a.nombre} · ${f.id}…` },
+            ? await ui.progreso({ titulo: `telar: ${a.nombre} · ${f.id}…` },
                 () => cli.accionTarea(f.id, f.proveedor, k, texto, version))
             : await cli.accionTarea(f.id, f.proveedor, k, texto, version);
         if (!r.datos) {
             // la tarea cambió mientras se miraba: la ficha guardada ya no sirve, y se vuelve a leer
             if (/cambió desde que se leyó/.test(r.error ?? '')) this.fichas.delete(f.id);
-            void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`);
+            void ui.aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`);
             return;
         }
         // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
@@ -1195,7 +1196,7 @@ export class PanelHoy {
             olvidarDia();
             void this.actualizar(true);
             await modelo.sondear();
-            await ui().mostrarTerminal();
+            await ui.mostrarTerminal();
             return;
         }
         // se decidió sobre la propuesta: la siguiente, si hay; si no, se relee la ficha
@@ -1226,15 +1227,15 @@ export class PanelHoy {
     private async menuTarea(valor: string): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
         const guardada = this.fichas.get(`${proveedor}:${id}`);
-        const pagina = guardada?.pagina ?? (await ui().progreso({ ventana: true, title: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
+        const pagina = guardada?.pagina ?? (await ui.progreso({ discreto: true, titulo: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
         const acciones = pagina?.acciones ?? [];
-        if (!acciones.length) { void ui().aviso(`telar: ${id} no tiene acciones`); return; }
+        if (!acciones.length) { void ui.aviso(`telar: ${id} no tiene acciones`); return; }
         const items = acciones.map((a, k) => ({
             label: a.nombre, k,
             description: [a.rol === 'fecha' ? 'elige la fecha' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
                 a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
         }));
-        const elegida = await ui().elegir(items, { title: `${id} · ${pagina?.titulo ?? ''}`, placeHolder: 'qué hacer con esta tarea' });
+        const elegida = await ui.elegir(items, { titulo: `${id} · ${pagina?.titulo ?? ''}`, placeholder: 'qué hacer con esta tarea' });
         if (!elegida) return;
         const a = acciones[elegida.k];
         const tipo = a.tipo ?? 'comando';
@@ -1246,30 +1247,30 @@ export class PanelHoy {
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
-            const escrito = await ui().campo({ prompt: `${id} · ${a.nombre}`, placeHolder: a.pide, ignoreFocusOut: true });
+            const escrito = await ui.campo({ ayuda: `${id} · ${a.nombre}`, placeholder: a.pide });
             if (escrito === undefined) return;
             texto = escrito;
         }
         if (a.confirmar) {
-            const si = await ui().aviso(`¿${a.nombre}? ${pagina?.titulo ?? id}`, { modal: true }, 'Sí');
+            const si = await ui.aviso(`¿${a.nombre}? ${pagina?.titulo ?? id}`, 'Sí');
             if (si !== 'Sí') return;
         }
-        const r = await ui().progreso({ title: `telar: ${a.nombre} · ${id}…` },
+        const r = await ui.progreso({ titulo: `telar: ${a.nombre} · ${id}…` },
             () => cli.accionTarea(id, proveedor, elegida.k, texto));
-        if (!r.datos) { void ui().aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
+        if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
         this.fichas.delete(`${proveedor}:${id}`);
         olvidarDia();
         if (r.datos.hilo) {
             this.decididas.add(id);
             void this.actualizar(true);
             await modelo.sondear();
-            await ui().mostrarTerminal();
+            await ui.mostrarTerminal();
             return;
         }
         const releida = await cli.tarea(id, proveedor);
         if (releida.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: releida.datos, hora: Date.now() });
         if (!releida.datos?.bloques.some(b => b.destacado)) this.decididas.add(id);
-        ui().estado(`${id}: ${a.nombre}`, 5000);
+        ui.estado(`${id}: ${a.nombre}`, 5000);
         await this.actualizar(true);
         if (this.pantalla === 'revisar') this.renderRevisar();
     }
@@ -1464,8 +1465,8 @@ export class PanelHoy {
 
     private async soltarMensaje(id: string): Promise<void> {
         const r = await cli.soltarMensaje(id);
-        if (!r.datos) { void ui().falla(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui().estado(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
+        if (!r.datos) { void ui.falla(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui.estado(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
         await this.abrirCorreo();
     }
 
@@ -1505,7 +1506,7 @@ export class PanelHoy {
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
      *  al agente lo decide `[agente] reunion` en la configuración de telar, no la página. */
     private async preparar(titulo: string, hora: string, enlace: string, evento = '', asistentes: string[] = []): Promise<void> {
-        const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => ui().progreso({ title: `telar: ${titulo}…` },
+        const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => ui.progreso({ titulo: `telar: ${titulo}…` },
             () => cli.reunion(titulo, hora, enlace, evento, { asistentes, ...opciones }));
         let r = await pedir({ preguntar: true });
         if (r.datos?.hecho === 'preguntar') {
@@ -1514,12 +1515,12 @@ export class PanelHoy {
             r = await pedir({ proyecto: eleccion });
         }
         if (!r.datos) {
-            void ui().aviso(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
+            void ui.aviso(`telar: ${r.error ?? 'no pude abrir la reunión'}`);
             return;
         }
-        void ui().estado(`telar: «${titulo}» → ${r.datos.hilo}: ${r.datos.hecho}`, 6000);
+        void ui.estado(`telar: «${titulo}» → ${r.datos.hilo}: ${r.datos.hecho}`, 6000);
         await modelo.sondear();
-        await ui().mostrarTerminal();
+        await ui.mostrarTerminal();
     }
 
     /** De qué proyecto es una reunión que no se pudo deducir: los sugeridos con su porqué, Gestión
@@ -1545,14 +1546,13 @@ export class PanelHoy {
                 .sort((a, b) => (b.modificado ?? '').localeCompare(a.modificado ?? ''));
             for (const x of lista) items.push({ label: x.nombre, description: `${x.ruta} · ${x.arquetipo}`, valor: x.ruta });
         }
-        const elegido = await ui().elegir(items, {
-            title: `¿De qué proyecto es «${titulo}» (${hora})?`,
-            placeHolder: 'escribe para buscar un proyecto; la elección se recuerda para esta reunión',
-            matchOnDescription: true, matchOnDetail: true, ignoreFocusOut: true,
+        const elegido = await ui.elegir(items, {
+            titulo: `¿De qué proyecto es «${titulo}» (${hora})?`,
+            placeholder: 'escribe para buscar un proyecto; la elección se recuerda para esta reunión',
         });
         if (!elegido?.valor) return undefined;
         if (elegido.valor !== 'nuevo') return elegido.valor;
-        const nombre = await ui().campo({ title: 'Proyecto nuevo', prompt: 'El nombre del proyecto', ignoreFocusOut: true });
+        const nombre = await ui.campo({ titulo: 'Proyecto nuevo', ayuda: 'El nombre del proyecto' });
         return nombre?.trim() ? `nuevo:${nombre.trim()}` : undefined;
     }
 
@@ -1610,7 +1610,7 @@ export class PanelHoy {
     }
 
     /** Elegir un proyecto de la lista: su detalle a la derecha, sin repintar la lista. El README se
-     *  dibuja con el Markdown del anfitrión; `releer` vuelve a leerlo (al cambiar de proyecto). */
+     *  dibuja con el Markdown de la página (web/ui.ts); `releer` vuelve a leerlo (al cambiar de proyecto). */
     private async verProyecto(ruta: string, releer = true): Promise<void> {
         const p = this.proyectos?.find(x => x.ruta === ruta);
         if (!p || !this.panel) return;
@@ -1638,7 +1638,7 @@ export class PanelHoy {
         try {
             let texto = crudo.slice(0, 300_000);
             texto = texto.replace(/^---\n[\s\S]*?\n---\n/, '');
-            return await ui().markdown(texto) ?? '';
+            return await ui.markdown(texto) ?? '';
         } catch (e) {
             return `<p class="falla">no pude leer el README: ${esc(String(e))}</p>`;
         }
@@ -1663,8 +1663,8 @@ export class PanelHoy {
         const [ref, texto, hilo, dueno] = JSON.parse(valor) as string[];
         type Item = Opcion & { hacer: () => Promise<unknown> };
         const despues = async (r: { datos?: cli.JsonVineta; error?: string }) => {
-            if (!r.datos) { void ui().falla(`telar: ${r.error ?? 'no pude cambiarla'}`); return; }
-            void ui().estado(`telar: ${r.datos.relativa}:${r.datos.linea} · ${r.datos.hecho} (sin commitear)`, 6000);
+            if (!r.datos) { void ui.falla(`telar: ${r.error ?? 'no pude cambiarla'}`); return; }
+            void ui.estado(`telar: ${r.datos.relativa}:${r.datos.linea} · ${r.datos.hecho} (sin commitear)`, 6000);
             olvidarDia();
             this.pendRepo = undefined;
             await this.actualizar(true);
@@ -1676,11 +1676,11 @@ export class PanelHoy {
             { label: 'Un hilo nuevo para ella', hacer: () => llevarPendiente(ref, true) },
             { label: 'Abrir el README en esa línea', hacer: async () => {
                 const r = await cli.vineta(ref, texto, ['--linea']);
-                if (!r.datos) { void ui().falla(`telar: ${r.error ?? 'no la encontré'}`); return; }
-                await ui().abrirArchivo(r.datos.archivo, r.datos.linea);
+                if (!r.datos) { void ui.falla(`telar: ${r.error ?? 'no la encontré'}`); return; }
+                await ui.abrirArchivo(r.datos.archivo);
             } },
             { label: 'Marcar hecha', description: '[ ] → [x] en el README', hacer: async () => {
-                const si = await ui().aviso(`¿Marcar hecha? ${texto.slice(0, 90)}`, { modal: true }, 'Marcar hecha');
+                const si = await ui.aviso(`¿Marcar hecha? ${texto.slice(0, 90)}`, 'Marcar hecha');
                 if (si === 'Marcar hecha') await despues(await cli.vineta(ref, texto, ['--hecho']));
             } },
             { label: 'Responsable…', description: dueno ? `ahora: ${dueno}` : 'ahora: sin responsable', hacer: async () => {
@@ -1688,7 +1688,7 @@ export class PanelHoy {
                 if (quien) await despues(await cli.vineta(ref, texto, ['--responsable', quien]));
             } },
         ];
-        const e = await ui().elegir(items, { title: texto.slice(0, 100), placeHolder: 'qué hacer con este pendiente' });
+        const e = await ui.elegir(items, { titulo: texto.slice(0, 100), placeholder: 'qué hacer con este pendiente' });
         if (e) await e.hacer();
     }
 
@@ -1861,7 +1861,7 @@ export class PanelHoy {
     }
 
     private async markdown(texto: string): Promise<string> {
-        try { return await ui().markdown(texto) ?? ''; } catch { return esc(texto); }
+        try { return await ui.markdown(texto) ?? ''; } catch { return esc(texto); }
     }
 
     /** El .md más reciente de una carpeta (hasta tres niveles) que cumple `elegir`, prefiriendo los que
@@ -1880,17 +1880,17 @@ export class PanelHoy {
      *  que marque hecho, con su prueba, lo que ya se hizo. Corre donde vive el agente (el servidor). */
     private async consolidarProyecto(ruta: string): Promise<void> {
         const p = this.proyectos?.find(x => x.ruta === ruta);
-        if (!this.general) { void ui().aviso('telar: no hay un agente general ([agentes] sin_proyecto) que lo haga'); return; }
+        if (!this.general) { void ui.aviso('telar: no hay un agente general ([agentes] sin_proyecto) que lo haga'); return; }
         const n = this.pendientesDe(ruta)?.filter(t => !t.fila.proveedor).length;
-        const si = await ui().info(
+        const si = await ui.info(
             `¿Consolidar los pendientes de «${p?.nombre ?? ruta}»?`,
-            { modal: true, detail: `${this.general.nombre} revisa ${n ?? 'cada'} pendiente${n === 1 ? '' : 's'} abierto${n === 1 ? '' : 's'} del README, busca si ya se hizo y marca lo hecho con su prueba. Lo dudoso te lo pregunta.` },
+            { detalle: `${this.general.nombre} revisa ${n ?? 'cada'} pendiente${n === 1 ? '' : 's'} abierto${n === 1 ? '' : 's'} del README, busca si ya se hizo y marca lo hecho con su prueba. Lo dudoso te lo pregunta.` },
             'Consolidar');
         if (si !== 'Consolidar') return;
-        const r = await ui().progreso({ title: `telar: encargándoselo a ${this.general.nombre}…` },
+        const r = await ui.progreso({ titulo: `telar: encargándoselo a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, `/consolidar ${ruta}`));
-        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui().estado(`telar: ${this.general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
+        if (!r.datos) { void ui.falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui.estado(`telar: ${this.general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
     }
 
     /** El ⋯ de un proyecto: lo que se puede hacer con él sin abrirlo. */
@@ -1912,23 +1912,23 @@ export class PanelHoy {
         if (carpeta) {
             items.push(
                 { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(rutas.unir(carpeta, 'README.md')) },
-                { label: 'Mostrar la carpeta en el explorador', hacer: () => ui().mostrarCarpeta(carpeta) },
+                { label: 'Mostrar la carpeta en el explorador', hacer: () => ui.mostrarCarpeta(carpeta) },
             );
         }
         items.push({ label: 'Copiar la ruta', description: ruta, hacer: async () => {
-            await ui().copiar(ruta);
-            void ui().estado(`telar: copiado ${ruta}`, 3000);
+            await ui.copiar(ruta);
+            void ui.estado(`telar: copiado ${ruta}`, 3000);
         } });
         if (p.hilo) {
             items.push({ label: 'Archivar su hilo', description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
-                const si = await ui().aviso(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, { modal: true }, 'Archivar');
+                const si = await ui.aviso(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, 'Archivar');
                 if (si !== 'Archivar') return;
                 const r = await cli.hilo('archivar', p.hilo, undefined, ['--cerrar']);
-                if (!r.ok) void ui().falla(`telar: ${r.err.trim() || 'no pude archivarlo'}`);
+                if (!r.ok) void ui.falla(`telar: ${r.err.trim() || 'no pude archivarlo'}`);
                 await this.abrirProyectos();
             } });
         }
-        const elegida = await ui().elegir(items, { title: p.nombre, placeHolder: 'qué hacer con este proyecto' });
+        const elegida = await ui.elegir(items, { titulo: p.nombre, placeholder: 'qué hacer con este proyecto' });
         if (elegida) await elegida.hacer();
     }
 
@@ -1936,7 +1936,7 @@ export class PanelHoy {
      *  preguntar: cuál es, dónde está, en qué estado, y lo pendiente. */
     private async escribirSobreProyecto(p: cli.JsonProyecto): Promise<void> {
         if (!this.general) return;
-        const texto = await ui().campo({ title: `A ${this.general.nombre} · ${p.nombre}`, prompt: 'qué hacer con este proyecto', ignoreFocusOut: true });
+        const texto = await ui.campo({ titulo: `A ${this.general.nombre} · ${p.nombre}`, ayuda: 'qué hacer con este proyecto' });
         if (!texto?.trim()) return;
         const pend = this.pendientesDe(p.ruta) ?? [];
         const lineas = [
@@ -1946,15 +1946,15 @@ export class PanelHoy {
             p.hilo ? `Tiene un hilo: «${p.hilo}»${p.vivo ? ' (abierto)' : ' (dormido)'}; si el trabajo es suyo, pásaselo con telar mensaje.` : 'No tiene hilo abierto.',
             pend.length ? `Pendiente: ${pend.slice(0, 12).map(t => `${t.fila.proveedor ? `${t.ref} ` : ''}${t.texto}`).join(' | ')}` : '',
         ].filter(Boolean);
-        const r = await ui().progreso({ title: `telar: escribiéndole a ${this.general.nombre}…` },
+        const r = await ui.progreso({ titulo: `telar: escribiéndole a ${this.general.nombre}…` },
             () => cli.encargar(this.general!.clave, lineas.join('\n')));
-        if (!r.datos) { void ui().falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui().estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        if (!r.datos) { void ui.falla(`telar: no llegó a ${this.general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui.estado(`telar: enviado a ${this.general.nombre} (${r.datos.estado ?? ''})`, 6000);
     }
 
     /** Un enlace del README: una ruta relativa se abre como archivo; una dirección, en el navegador. */
     private async enlaceReadme(href: string, base: string): Promise<void> {
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await ui().abrirExterno(href); return; }
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await ui.abrirExterno(href); return; }
         if (!modelo.raiz || href.startsWith('#')) return;
         const destino = rutas.unir(modelo.raiz, base, decodeURIComponent(href.split('#')[0]));
         if (!destino.startsWith(modelo.raiz)) return;
@@ -1982,21 +1982,21 @@ export class PanelHoy {
     private async abrirProyecto(ruta: string): Promise<void> {
         const r = await cli.abrirProyecto(ruta);
         if (!r.datos) {
-            void ui().aviso(`telar: ${r.error ?? 'no pude abrir el proyecto'}`);
+            void ui.aviso(`telar: ${r.error ?? 'no pude abrir el proyecto'}`);
             return;
         }
         await modelo.sondear();
-        await ui().mostrarTerminal();
+        await ui.mostrarTerminal();
     }
 
     private async cambiarPlantillaProyecto(restablecer: boolean): Promise<void> {
         let texto = '';
         if (!restablecer) {
             const actual = this.agenteConfig?.proyecto ?? '';
-            const nuevo = await ui().campo({
-                title: 'Qué decirle al agente al abrir un proyecto',
-                prompt: 'Marcadores: {nombre} {ruta} {carpeta} {documento}. Una skill (/nombre …) o una instrucción en prosa.',
-                value: actual, ignoreFocusOut: true,
+            const nuevo = await ui.campo({
+                titulo: 'Qué decirle al agente al abrir un proyecto',
+                ayuda: 'Marcadores: {nombre} {ruta} {carpeta} {documento}. Una skill (/nombre …) o una instrucción en prosa.',
+                valor: actual,
             });
             if (nuevo === undefined || nuevo.trim() === actual) return;
             texto = nuevo.trim();
@@ -2020,7 +2020,7 @@ export class PanelHoy {
 
     private async elegirCalendario(valor: string): Promise<void> {
         if (valor === 'ics') {
-            await ui().orden('telar.conectarCalendario');
+            await ui.orden('telar.conectarCalendario');
         } else {
             const r = await cli.elegirCalendario(valor);
             if (!r.ok) {
@@ -2037,11 +2037,11 @@ export class PanelHoy {
 
     private async cambiarDirectorios(): Promise<void> {
         const actual = (this.hilosConfig?.directorios ?? []).join(', ');
-        const nuevo = await ui().campo({
-            title: 'De qué carpetas salen los hilos',
-            prompt: 'Relativas a la raíz del repositorio, separadas por coma, en el orden en que se abren. Vacío: las unidades del perfil.',
-            placeHolder: 'operacion/proyectos, negocio/pipeline',
-            value: actual, ignoreFocusOut: true,
+        const nuevo = await ui.campo({
+            titulo: 'De qué carpetas salen los hilos',
+            ayuda: 'Relativas a la raíz del repositorio, separadas por coma, en el orden en que se abren. Vacío: las unidades del perfil.',
+            placeholder: 'operacion/proyectos, negocio/pipeline',
+            valor: actual,
         });
         if (nuevo === undefined || nuevo.trim() === actual) return;
         const r = await cli.directoriosHilos(nuevo.trim());
@@ -2052,11 +2052,11 @@ export class PanelHoy {
         }
         await this.abrirConfig();
         // cada hilo abre un agente: se ofrece, no se hace
-        const si = await ui().info(
+        const si = await ui.info(
             'Carpetas guardadas. ¿Abrir ahora los hilos que falten? Cada uno arranca su agente.', 'Abrir ahora');
         if (si === 'Abrir ahora') {
             const t = await cli.tejer(true);
-            if (!t.ok) void ui().aviso(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
+            if (!t.ok) void ui.aviso(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
             await modelo.sondear();
         }
     }
@@ -2065,10 +2065,10 @@ export class PanelHoy {
         let texto = '';
         if (!restablecer) {
             const actual = this.agenteConfig?.reunion ?? '';
-            const nuevo = await ui().campo({
-                title: 'Qué decirle al agente al preparar una reunión',
-                prompt: 'Marcadores: {titulo} {hora} {fecha} {enlace} {proyecto}. Una skill (/nombre …) o una instrucción en prosa.',
-                value: actual, ignoreFocusOut: true,
+            const nuevo = await ui.campo({
+                titulo: 'Qué decirle al agente al preparar una reunión',
+                ayuda: 'Marcadores: {titulo} {hora} {fecha} {enlace} {proyecto}. Una skill (/nombre …) o una instrucción en prosa.',
+                valor: actual,
             });
             if (nuevo === undefined || nuevo.trim() === actual) return;
             texto = nuevo.trim();
@@ -2204,7 +2204,7 @@ export class PanelHoy {
             if (this.pantalla === 'ahora') void this.abrirAhora();
             this.render(); void this.actualizar(); return;
         }
-        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui().abrirExterno(m.url); return; }
+        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui.abrirExterno(m.url); return; }
         if (m.tipo === 'tecla' && m.k) {
             // las de la pestaña primero; p, c y r valen en todas
             const globales: Record<string, () => Promise<unknown>> = {
@@ -2212,7 +2212,6 @@ export class PanelHoy {
                 o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
                 ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
                 ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
-                t: () => Promise.resolve(ui().orden('telar.tareas')),
                 ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
                 ...Object.fromEntries(this.atajos.map(a => [a.tecla, () => this.lanzarAtajo(a.tecla)])),
             };
@@ -2222,9 +2221,9 @@ export class PanelHoy {
         if (m.tipo !== 'accion') return;
         switch (m.accion) {
             case 'pendiente': if (m.valor) await llevarPendiente(m.valor, !!m.nuevo); break;
-            case 'ir': if (m.valor) await ui().irAHilo(m.valor); break;
+            case 'ir': if (m.valor) await ui.irAHilo(m.valor); break;
             case 'refrescar': await this.actualizar(true); break;
-            case 'volver': void ui().mostrarTerminal(); break;
+            case 'volver': void ui.mostrarTerminal(); break;
             case 'reunion': {
                 const [titulo, hora, enlace, evento, asistentes] = JSON.parse(m.valor ?? '[]') as [string, string, string?, string?, string[]?];
                 if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '', asistentes ?? []);
@@ -2304,13 +2303,12 @@ export class PanelHoy {
                 if (await marcarHecha(m.valor)) this.decididas.add((JSON.parse(m.valor) as string[])[1]);
                 this.render();
                 void this.actualizar(true);
-                void ui().orden('telar.tareasActualizar');
             } break;
             case 'hecha-vineta': if (m.valor) {
                 const [ref, texto] = JSON.parse(m.valor) as string[];
                 const r = await cli.vineta(ref, texto, ['--hecho']);
-                if (!r.datos) void ui().aviso(`telar: ${r.error ?? 'no pude marcarla'}`);
-                else { ui().estado(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
+                if (!r.datos) void ui.aviso(`telar: ${r.error ?? 'no pude marcarla'}`);
+                else { ui.estado(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.actualizar(true); }
             } break;
             case 'hilo-fila': if (m.valor) {
                 const [proveedor, ref, id] = JSON.parse(m.valor) as string[];
@@ -2320,7 +2318,6 @@ export class PanelHoy {
                 if (!m.valor) break;
                 await marcarHecha(m.valor);
                 void this.actualizar(true);
-                void ui().orden('telar.tareasActualizar');
                 break;
             case 'tarea-principal': {
                 const i = (this.ficha?.pagina?.acciones ?? []).findIndex(a => a.principal);
@@ -2352,7 +2349,6 @@ export class PanelHoy {
                 // una ruta relativa a la raíz de telar (la que traen las notas de un evento)
                 if (m.valor && !m.valor.includes('..') && modelo.raiz) await abrirEnlace(rutas.unir(modelo.raiz, m.valor));
                 break;
-            case 'tareas': await ui().orden('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else await this.abrirAhora(); break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
@@ -2365,7 +2361,7 @@ export class PanelHoy {
             case 'retomar-charla':
                 if (this.charla?.hilo) {
                     const vivo = modelo.porNombre(this.charla.hilo)?.vivo;
-                    await ui().orden(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
+                    await ui.orden(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
                 }
                 break;
             case 'calendario':
@@ -2443,14 +2439,14 @@ function fechaLarga(nombreDia: string, fecha: string): string {
  *  carpeta de la página. */
 async function abrirEnlace(enlace: string): Promise<void> {
     if (/^https?:\/\//.test(enlace)) {
-        await ui().abrirExterno(enlace);
+        await ui.abrirExterno(enlace);
         return;
     }
     if (enlace.startsWith('/')) {
-        await ui().abrirArchivo(enlace);
+        await ui.abrirArchivo(enlace);
         return;
     }
-    void ui().aviso(`telar: no sé abrir ${enlace}`);
+    void ui.aviso(`telar: no sé abrir ${enlace}`);
 }
 
 /** La marca, el color y la frase del estado de un proceso: pausado, corriendo, falló, bien. */
