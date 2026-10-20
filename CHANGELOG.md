@@ -50,6 +50,11 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- `/maquinas`, the mother page («máquinas», top right): your machines in the middle — this one, and those on
+  the bus that serve their page (the node's photo carries its address) — over an ASCII loom weaving a twill
+  around them. You go into another machine's page without its key: the link carries a ticket signed with the
+  bus token (the secret a person's machines share), for that machine only, valid once and for a minute
+  (`/entrar`). The «progreso» page is gone.
 - The browser page's header says, in the middle, which machine serves it and what you are looking at:
   `telar › Gestión` for a thread of that machine, `telar ⇢ laptop:Telar` for one of another (forwarded). A
   thread of another machine is named `máquina:hilo`, like `scp máquina:ruta` (with the person it would be

@@ -8,6 +8,9 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
 
     GET  /                  la página (se arma pantalla por pantalla: docs/propuestas/dashboard-fuera-de-vscode.md)
     GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
+    GET  /maquinas          la página madre: tus máquinas, para elegir en cuál abrir la página
+    GET  /maquinas.json     esta máquina y las del bus que sirven su página, cada una con su enlace para entrar
+    GET  /entrar?…          entrar con un boleto de otra máquina (sin la llave de esta): ver `boleto`
     GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
     WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí;
@@ -40,7 +43,28 @@ APP = {
     "/apple-touch-icon.png": "image/png", "/icono-192.png": "image/png", "/icono-512.png": "image/png",
     "/icono-maskable-192.png": "image/png", "/icono-maskable-512.png": "image/png",
 }
-LIBRES = tuple(APP)
+LIBRES = (*APP, "/entrar")
+
+#: cuánto vale un boleto para entrar a otra máquina (ver `boleto`)
+BOLETO_SEGUNDOS = 60
+
+
+def _firma(token: str, de: str, para: str, expira: int) -> str:
+    import hashlib
+    import hmac
+
+    return hmac.new(token.encode(), f"entrar|{de}|{para}|{expira}".encode(), hashlib.sha256).hexdigest()
+
+
+def boleto(token: str, de: str, para: str, web: str, ahora: float | None = None) -> str:
+    """La dirección para entrar a la página de otra máquina sin su llave: cada máquina tiene la suya, pero todas
+    comparten el token del bus. El boleto lo firma esta máquina con ese token, nombra a quién va y vence en
+    BOLETO_SEGUNDOS; la otra lo comprueba (`/entrar`), lo acepta una sola vez y le da su cookie."""
+    import time
+    from urllib.parse import urlencode
+
+    expira = int((ahora if ahora is not None else time.time()) + BOLETO_SEGUNDOS)
+    return f"{web}/entrar?{urlencode({'de': de, 'e': expira, 'f': _firma(token, de, para, expira)})}"
 
 
 def ruta_llave() -> Path:
@@ -126,6 +150,18 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
     ella, las terminales son solo de esta."""
     clave = clave or llave()
     token = _token_del_bus(config)
+    def nombre_aqui() -> str:
+        """El nombre de esta máquina (en el bus, o su hostname); "" sin configuración."""
+        if config is None:
+            return ""
+        try:
+            from telar import bus as mod_bus
+
+            return mod_bus.maquina(config)
+        except Exception:  # noqa: BLE001 - sin nombre, no hay boletos
+            return ""
+
+    usados: dict[str, int] = {}  # los boletos ya usados, hasta que vencen: cada uno sirve una vez
     app = FastAPI(title="telar web", docs_url=None, redoc_url=None, openapi_url=None)
     # comprimido: el JS de la página y de xterm baja a un cuarto, y el JSON de la API también
     from starlette.middleware.gzip import GZipMiddleware
@@ -154,6 +190,48 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
         r.headers.setdefault("Cache-Control", _cache(ruta))
         r.headers.setdefault("X-Content-Type-Options", "nosniff")
         return r
+
+    @app.get("/entrar")
+    def entrar(de: str = "", e: int = 0, f: str = ""):
+        import hmac
+        import time
+
+        ahora, aqui = int(time.time()), nombre_aqui()
+        for k in [k for k, v in usados.items() if v < ahora]:
+            del usados[k]
+        valido = (bool(token) and bool(aqui) and ahora <= e <= ahora + BOLETO_SEGUNDOS + 5 and f not in usados
+                  and hmac.compare_digest(f, _firma(token, de, aqui, e)))
+        if not valido:
+            return PlainTextResponse("telar: ese enlace para entrar no vale (venció, ya se usó, o no es de una de tus "
+                                     "máquinas). Vuelve a «máquinas» y elige de nuevo.", status_code=403)
+        usados[f] = e
+        r = RedirectResponse("/", status_code=302)
+        r.set_cookie(COOKIE, clave, httponly=True, samesite="lax", max_age=31536000, path="/")
+        return r
+
+    @app.get("/maquinas")
+    def maquinas():
+        return FileResponse(CARPETA / "maquinas.html", media_type="text/html; charset=utf-8")
+
+    @app.get("/maquinas.json")
+    def maquinas_json():
+        """Esta máquina y las otras de la persona que sirven su página (su foto del bus trae la dirección), con
+        un boleto nuevo para entrar a cada una. Las fotos viejas salen como fuera de línea, sin enlace."""
+        aqui = nombre_aqui()
+        lista = [{"nombre": aqui or "esta", "aqui": True, "en_linea": True, "edad": 0, "url": "/"}]
+        if config is not None:
+            from telar import espejo
+
+            for x in espejo.leer_todos(config):
+                if x.get("nombre") == aqui or x.get("error"):
+                    continue
+                web = x.get("web") or ""
+                lista.append({
+                    "nombre": x["nombre"], "aqui": False, "en_linea": x["en_linea"], "edad": x["edad"],
+                    "hilos": sum(1 for h in x.get("hilos", []) if h.get("vivo")), "version": x.get("telar", ""),
+                    "url": boleto(token, aqui, x["nombre"], web) if web and token and x["en_linea"] else "",
+                })
+        return {"aqui": aqui, "maquinas": lista}
 
     @app.get("/")
     @app.get("/compartir")

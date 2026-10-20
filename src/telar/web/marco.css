@@ -82,8 +82,8 @@ a {
 }
 @layer vistas {
 /* El marco de la página de telar en el navegador (src/telar/web/indice.html): arriba la cabecera, de lado a
-   lado; abajo la barra de hilos a la izquierda y los marcos (el dashboard, un hilo) o «progreso» a la
-   derecha. Solo oscuro.
+   lado; abajo la barra de hilos a la izquierda y los marcos (el dashboard, un hilo) a la derecha. Solo
+   oscuro.
    scripts/navegador.mjs lo junta con tokens.css y base.css en src/telar/web/marco.css, que la página
    carga antes que app.js: así se ve armada desde el primer momento. */
 
@@ -165,40 +165,6 @@ header {
 
   & iframe { position: absolute; inset: 0; }
   & iframe[hidden] { display: none; }
-}
-
-/* «progreso»: qué ya está en el navegador (estatico/progreso.json) */
-#progreso {
-  position: absolute;
-  inset: 0;
-  overflow: auto;
-  padding: var(--e-3) var(--h-2);
-
-  &[hidden] { display: none; }
-
-  & h2 { margin: var(--e-3) 0 var(--e-1); font-size: var(--t-normal); color: var(--violeta); }
-
-  & .fila {
-    display: grid;
-    grid-template-columns: 14ch 1fr;
-    gap: var(--h-2);
-    max-width: 120ch;
-    padding: var(--e-1) 0;
-    border-bottom: var(--borde);
-  }
-
-  & .hecho { color: var(--verde); }
-  & .curso { color: var(--amarillo); }
-  & .pendiente { color: var(--dim); }
-
-  & .barra {
-    max-width: 120ch;
-    height: .5lh;
-    margin: var(--e-2) 0 var(--e-1);
-    background: var(--linea);
-
-    & i { display: block; height: 100%; background: var(--verde); }
-  }
 }
 
 /* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («◀ hilos» vuelve a la lista) */

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1e1e2e">
+<title>telar · máquinas</title>
+<link rel="stylesheet" href="/estatico/marco.css">
+<style>
+/* La página madre: tus máquinas al centro, y alrededor un telar que teje. Los colores y la letra, de los tokens. */
+body { display: block; height: 100dvh; overflow: hidden; }
+#telar { position: fixed; inset: 0; width: 100%; height: 100%; }
+main {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(56ch, calc(100vw - 4ch)); padding: var(--e-3) var(--h-2);
+  border: var(--borde); background: var(--bg);
+}
+h1 { margin: 0 0 var(--e-2); font-size: var(--t-normal); font-weight: normal; color: var(--violeta); }
+h1 small { color: var(--dim); margin-left: var(--h-1); }
+.maquina {
+  display: grid; grid-template-columns: 3ch 1fr auto; gap: var(--h-1); align-items: baseline;
+  padding: var(--e-1) var(--h-1); color: var(--fg); text-decoration: none; border-left: 2px solid transparent;
+}
+a.maquina:hover, a.maquina:focus { background: var(--hover); border-left-color: var(--azul); outline: none; text-decoration: none; }
+.maquina .tecla { color: var(--dim); }
+.maquina .nombre { color: var(--amarillo); }
+.maquina.aqui .nombre { color: var(--violeta); }
+.maquina .estado { color: var(--dim); font-size: var(--t-chica); }
+.maquina.fuera { color: var(--dim); }
+.maquina.fuera .nombre { color: var(--dim); }
+.pie { margin-top: var(--e-2); color: var(--dim); font-size: var(--t-chica); }
+</style></head><body>
+<canvas id="telar" aria-hidden="true"></canvas>
+<main>
+  <h1>telar <small>tus máquinas</small></h1>
+  <div id="lista"><div class="pie">leyendo…</div></div>
+  <div class="pie">1–9 abre · ⎋ vuelve · cada máquina sirve su página; se entra a otra con un boleto que vence en un minuto</div>
+</main>
+<script>
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const edad = (s) => s == null ? '' : s < 90 ? `hace ${Math.round(s)} s` : s < 5400 ? `hace ${Math.round(s / 60)} min` : `hace ${Math.round(s / 3600)} h`;
+
+// ── la lista: esta máquina y las del bus que sirven su página ───────────────────────────────────────
+let maquinas = [];
+async function leer() {
+  const r = await fetch('/maquinas.json', { cache: 'no-store' });
+  if (!r.ok) throw new Error(`la página respondió ${r.status}`);
+  return r.json();
+}
+function pintar(d) {
+  maquinas = d.maquinas || [];
+  document.getElementById('lista').innerHTML = maquinas.map((m, i) => {
+    const estado = m.aqui ? 'aquí' : !m.en_linea ? `fuera de línea · ${edad(m.edad)}` : !m.url ? 'no sirve su página' : `${m.hilos ?? 0} hilos vivos`;
+    const clase = `maquina${m.aqui ? ' aqui' : ''}${!m.aqui && !m.url ? ' fuera' : ''}`;
+    const fila = `<span class="tecla">${i < 9 ? i + 1 : ''}</span><span class="nombre">${m.aqui ? '◉' : m.url ? '●' : '○'} ${esc(m.nombre)}</span><span class="estado">${esc(estado)}</span>`;
+    return m.aqui || m.url ? `<a class="${clase}" href="${m.aqui ? '/' : '#'}" data-i="${i}">${fila}</a>` : `<div class="${clase}">${fila}</div>`;
+  }).join('');
+}
+// a otra máquina se entra con un boleto nuevo (vence en un minuto): se pide al momento de ir
+async function ir(i) {
+  const m = maquinas[i];
+  if (!m) return;
+  if (m.aqui) { location.href = '/'; return; }
+  try {
+    const d = await leer();
+    const fresca = (d.maquinas || []).find((x) => x.nombre === m.nombre);
+    if (fresca && fresca.url) location.href = fresca.url;
+    else pintar(d);
+  } catch (e) { /* sin conexión: se queda aquí */ }
+}
+document.getElementById('lista').addEventListener('click', (e) => {
+  const a = e.target.closest('a.maquina');
+  if (!a) return;
+  e.preventDefault();
+  ir(Number(a.dataset.i));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { location.href = '/'; return; }
+  if (/^[1-9]$/.test(e.key)) ir(Number(e.key) - 1);
+});
+const vuelta = () => leer().then(pintar).catch((e) => { document.getElementById('lista').innerHTML = `<div class="pie">${esc(e.message)}</div>`; });
+vuelta(); setInterval(vuelta, 15000);
+
+// ── el telar: la urdimbre baja en vertical y la lanzadera va y viene tejiendo filas de colores. La tela
+// tejida baja, como en un telar de verdad, y arriba de la línea del tejido quedan los hilos sueltos ──────────
+const lienzo = document.getElementById('telar'), ctx = lienzo.getContext('2d');
+const css = getComputedStyle(document.documentElement), tok = (n) => css.getPropertyValue('--' + n).trim();
+// un color de los tokens, ya resuelto (el canvas no entiende var() ni color-mix): lo resuelve el navegador
+const muestra = document.createElement('i'); document.body.append(muestra);
+const color = (n) => { muestra.style.color = `var(--${n})`; return getComputedStyle(muestra).color; };
+const PALETA = ['violeta', 'azul', 'cian', 'verde', 'amarillo', 'magenta', 'rojo'].map(color);
+const URDIMBRE = color('linea'), LANZADERA = color('fg'), FONDO = color('bg');
+muestra.remove();
+let cw = 8, ch = 16, cols = 0, filas = 0, linea = 0, tela = [], fila = null, x = 0, dir = 1, n = 0;
+function medir() {
+  const dpr = window.devicePixelRatio || 1;
+  lienzo.width = innerWidth * dpr; lienzo.height = innerHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = `${tok('tam') || '13px'} ${tok('letra') || 'monospace'}`; ctx.textBaseline = 'top';
+  cw = Math.ceil(ctx.measureText('─').width); ch = Math.ceil(cw * 1.9);
+  cols = Math.ceil(innerWidth / cw); filas = Math.ceil(innerHeight / ch); linea = Math.floor(filas * 0.42);
+  tela = tela.slice(0, filas); dibujarTodo();
+}
+// una fila de tela: la trama (de un color) y por dónde pasa sobre la urdimbre (un sarga 2/2, que corre)
+function nuevaFila() { return { color: PALETA[Math.floor(n / 3) % PALETA.length], corrida: n++ % 4, hecha: [] }; }
+function celda(f, c) {
+  // columnas pares: hilos de la urdimbre; impares: la trama entre ellos
+  if (c % 2 === 0) return ((c / 2 + f.corrida) % 4) < 2 ? ['│', URDIMBRE] : ['─', f.color];
+  return ['─', f.color];
+}
+function dibujarFila(y, f, hasta) {
+  ctx.fillStyle = FONDO; ctx.fillRect(0, y * ch, innerWidth, ch);
+  for (let c = 0; c < cols; c++) {
+    let [g, color] = c % 2 === 0 ? ['│', URDIMBRE] : [' ', FONDO];
+    if (f && (hasta === undefined || (dir > 0 ? c < hasta : c > hasta))) [g, color] = celda(f, c);
+    if (g === ' ') continue;
+    ctx.fillStyle = color; ctx.fillText(g, c * cw, y * ch);
+  }
+}
+function dibujarTodo() {
+  ctx.fillStyle = FONDO; ctx.fillRect(0, 0, innerWidth, innerHeight);
+  for (let y = 0; y < filas; y++) {
+    if (y < linea) dibujarFila(y, null);                    // los hilos sueltos, arriba
+    else if (y === linea) dibujarFila(y, fila, x);           // la fila que se está tejiendo
+    else dibujarFila(y, tela[y - linea - 1]);                // la tela, que baja
+  }
+  if (fila) { ctx.fillStyle = LANZADERA; ctx.fillText(dir > 0 ? '▶' : '◀', x * cw, linea * ch); }
+}
+function paso() {
+  if (!fila) { fila = nuevaFila(); x = dir > 0 ? 0 : cols - 1; }
+  x += dir * 2;
+  if (x < 0 || x >= cols) {
+    // la fila quedó tejida: la tela baja una, y la lanzadera vuelve por la siguiente
+    tela.unshift(fila); tela.length = Math.min(tela.length, filas);
+    fila = null; dir = -dir; dibujarTodo(); return;
+  }
+  dibujarFila(linea, fila, x);
+  ctx.fillStyle = LANZADERA; ctx.fillText(dir > 0 ? '▶' : '◀', x * cw, linea * ch);
+}
+addEventListener('resize', medir);
+medir();
+// al abrir, ya hay algo de tela tejida
+for (let i = 0; i < Math.min(12, filas - linea - 1); i++) tela.unshift(nuevaFila());
+dibujarTodo();
+// sin animación si quien mira pidió menos movimiento: la tela queda tejida y quieta
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) { for (let i = 0; i < filas; i++) { tela.unshift(nuevaFila()); } dibujarTodo(); }
+else setInterval(paso, 28);
+</script></body></html>

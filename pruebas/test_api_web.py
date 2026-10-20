@@ -43,7 +43,7 @@ class LaLlave(Prueba):
         c.cookies.set(api_web.COOKIE, "llave-de-prueba")
         self.assertEqual(c.get("/").status_code, 200)
         self.assertEqual(c.get("/api/salud").json(), {"ok": True})
-        self.assertEqual(c.get("/estatico/progreso.json").status_code, 200)
+        self.assertEqual(c.get("/estatico/indice.html").status_code, 200)
 
     def test_lo_que_escribe_tiene_que_venir_de_aqui(self):
         c = _app()
@@ -78,6 +78,60 @@ class ElModoDesarrollo(Prueba):
         self.assertEqual(c.get("/dev/cambios").status_code, 404)
         con = api_web.crear(FastAPI(), clave="llave-de-prueba", dev=True)
         self.assertIn("/dev/cambios", [getattr(r, "path", "") for r in con.routes])
+
+
+class LasMaquinas(Prueba):
+    """La página madre: tus máquinas, y entrar a otra con un boleto firmado con el token del bus."""
+
+    def _app(self, aqui="telar"):
+        from fastapi import FastAPI
+
+        from telar import api_web as w
+
+        # el nombre de la máquina se lee en cada pedido: el parche vale toda la prueba
+        nombre = mock.patch("telar.bus.maquina", return_value=aqui)
+        nombre.start()
+        self.addCleanup(nombre.stop)
+        with mock.patch.object(w, "_token_del_bus", return_value="token-del-bus"):
+            return TestClient(w.crear(FastAPI(), clave=f"llave-de-{aqui}", config=SimpleNamespace()),
+                              base_url="http://otra:8780")
+
+    def test_un_boleto_entra_una_vez_y_no_vence_de_mas(self):
+        import time
+        from urllib.parse import urlsplit
+
+        c = self._app("laptop")
+        url = api_web.boleto("token-del-bus", "telar", "laptop", "http://otra:8780")
+        ruta = url[len("http://otra:8780"):]
+        r = c.get(ruta, follow_redirects=False)
+        self.assertEqual((r.status_code, r.headers["location"]), (302, "/"))
+        self.assertIn("telar_panel=llave-de-laptop", r.headers["set-cookie"])
+        self.assertEqual(c.get(ruta, follow_redirects=False).status_code, 403, "se usa una vez")
+        for malo in (api_web.boleto("token-del-bus", "telar", "otra-maquina", "http://otra:8780"),  # para otra
+                     api_web.boleto("otro-token", "telar", "laptop", "http://otra:8780"),           # otro secreto
+                     api_web.boleto("token-del-bus", "telar", "laptop", "http://otra:8780", ahora=time.time() - 120)):
+            self.assertEqual(c.get(malo[len("http://otra:8780"):], follow_redirects=False).status_code, 403, malo)
+        self.assertEqual(urlsplit(url).path, "/entrar")
+
+    def test_la_lista_trae_las_que_sirven_su_pagina(self):
+        fotos = [
+            {"nombre": "telar", "en_linea": True, "edad": 2, "web": "http://100.1.1.1:8780", "hilos": []},
+            {"nombre": "laptop", "en_linea": True, "edad": 5, "web": "http://100.2.2.2:8780", "telar": "0.1.13",
+             "hilos": [{"nombre": "A", "vivo": True}, {"nombre": "B", "vivo": False}]},
+            {"nombre": "vieja", "en_linea": False, "edad": 9000, "web": "http://100.3.3.3:8780", "hilos": []},
+        ]
+        c = self._app("telar")
+        c.cookies.set(api_web.COOKIE, "llave-de-telar")
+        with mock.patch("telar.espejo.leer_todos", return_value=fotos):
+            d = c.get("/maquinas.json").json()
+        nombres = [(m["nombre"], m["aqui"], bool(m["url"])) for m in d["maquinas"]]
+        self.assertEqual(nombres, [("telar", True, True), ("laptop", False, True), ("vieja", False, False)])
+        laptop = d["maquinas"][1]
+        self.assertEqual(laptop["hilos"], 1)
+        self.assertTrue(laptop["url"].startswith("http://100.2.2.2:8780/entrar?de=telar&"))
+        self.assertEqual(c.get("/maquinas").status_code, 200)
+        c.cookies.clear()
+        self.assertEqual(c.get("/maquinas.json").status_code, 403, "la lista, solo con la llave")
 
 
 class LaTerminal(Prueba):

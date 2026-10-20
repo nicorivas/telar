@@ -193,7 +193,6 @@ const usadas: string[] = [];
 function mostrar(que: string): void {
     if (!que) return;
     actual = que;
-    document.getElementById('progreso')!.hidden = true;
     let f: HTMLIFrameElement | undefined;
     if (que === 'dashboard') {
         if (!hoy.panel) hoy.abrir();
@@ -377,7 +376,7 @@ function cambiarModo(): void {
 declare global {
     interface Window {
         telar?: {
-            mostrar?: (que: string) => void; verProgreso?: () => void; cambiarModo?: () => void;
+            mostrar?: (que: string) => void; cambiarModo?: () => void;
             donde?: (lo: { texto: string; otraMaquina: boolean } | null) => void;
         };
     }

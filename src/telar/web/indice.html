@@ -8,44 +8,21 @@
 <header>
   <div class="izq"><a id="volver">◀ hilos</a></div>
   <div id="donde"><b id="aqui" title="la máquina que sirve esta página">telar</b><span id="icono" hidden></span><span id="visto"></span></div>
-  <div class="der"><a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></div>
+  <div class="der"><a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a href="/maquinas" title="tus máquinas: elegir en cuál abrir la página">máquinas</a><span class="dim" id="maquina"></span></div>
 </header>
 <aside id="barra"></aside>
-<div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
+<div id="marcos"></div>
 <script>
-// La página de telar sin Node: la barra de hilos a la izquierda y, a la derecha, el dashboard o la
-// conversación de un hilo (estatico/app.js, el mismo código del panel, empaquetado). Mientras se arma,
-// «progreso» dice qué ya está en el navegador (estatico/progreso.json).
+// La página de telar: la barra de hilos a la izquierda y, a la derecha, el dashboard o un hilo (estatico/app.js,
+// el mismo código del panel, empaquetado). «máquinas», arriba, es la página madre: elegir en cuál abrirla.
 const $ = (s) => document.querySelector(s);
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function json(url) { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error(`${url}: ${r.status}`); return r.json(); }
-async function progreso() {
-  const p = await json('/estatico/progreso.json');
-  const piezas = p.piezas || [];
-  const hechas = piezas.filter((x) => x.estado === 'hecho').length;
-  const h = [`<div class="dim">${esc(p.titulo)} · actualizado ${esc(p.actualizado)}</div>`,
-    `<div class="barra"><i style="width:${Math.round(100 * hechas / Math.max(piezas.length, 1))}%"></i></div>`,
-    `<div class="dim">${hechas} de ${piezas.length} piezas</div>`];
-  let grupo = '';
-  for (const x of piezas) {
-    if (x.grupo !== grupo) { grupo = x.grupo; h.push(`<h2>${esc(grupo)}</h2>`); }
-    const clase = x.estado === 'hecho' ? 'hecho' : x.estado === 'en curso' ? 'curso' : 'pendiente';
-    h.push(`<div class="fila"><span class="${clase}">${x.estado === 'hecho' ? '✓' : x.estado === 'en curso' ? '…' : '·'} ${esc(x.estado)}</span><span>${esc(x.nombre)}${x.nota ? ` <span class="dim">— ${esc(x.nota)}</span>` : ''}</span></div>`);
-  }
-  $('#progreso').innerHTML = h.join('');
-}
-// lo que muestra la derecha lo decide app.js (window.telar.mostrar); «progreso» es de esta página
 window.telar = window.telar || {};
-window.telar.verProgreso = () => {
-  document.querySelectorAll('#marcos iframe').forEach((f) => { f.hidden = true; });
-  $('#progreso').hidden = false; window.telar.donde({ texto: 'progreso', otraMaquina: false }); $('#modo').hidden = true;
-  progreso().catch((e) => { $('#progreso').textContent = e.message; });
-};
 document.querySelector('header').addEventListener('click', (e) => {
   const p = e.target.dataset?.p;
   if (e.target.id === 'modo') { window.telar.cambiarModo?.(); return; }
-  if (p === 'progreso') { window.telar.verProgreso(); document.body.classList.replace('en-lista', 'en-detalle'); }
-  else if (p && window.telar.mostrar) window.telar.mostrar(p);
+  if (p && window.telar.mostrar) window.telar.mostrar(p);
 });
 $('#volver').addEventListener('click', () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); });
 const angosto = window.matchMedia('(max-width: 700px)');
@@ -81,6 +58,6 @@ try {
   dev.onerror = () => { if (dev.readyState === EventSource.CLOSED) dev.close(); else caido = true; };
 } catch (e) { /* sin EventSource */ }
 const app = document.createElement('script'); app.src = '/estatico/app.js';
-app.onerror = () => window.telar.verProgreso();
+app.onerror = () => { $('#marcos').textContent = 'no pude cargar la página (estatico/app.js)'; };
 document.body.append(app);
 </script></body></html>
