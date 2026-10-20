@@ -8,11 +8,10 @@ import compartir from '../../media/css/compartir.css';
 import conversacion from '../../media/css/conversacion.css';
 import dia from '../../media/css/dia.css';
 import documento from '../../media/css/documento.css';
-import hilos from '../../media/css/hilos.css';
 import lectura from '../../media/css/lectura.css';
 import plan from '../../media/css/plan.css';
 import proyectos from '../../media/css/proyectos.css';
 import terminal from '../../media/css/terminal.css';
 import tokens from '../../media/css/tokens.css';
 
-usarEstilos({ ahora, base, compartir, conversacion, dia, documento, hilos, lectura, plan, proyectos, terminal, tokens });
+usarEstilos({ ahora, base, compartir, conversacion, dia, documento, lectura, plan, proyectos, terminal, tokens });

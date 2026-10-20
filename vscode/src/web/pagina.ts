@@ -16,7 +16,7 @@ const CANAL_PADRE = String.raw`
       if (e.source !== window.parent || !e.data || !e.data.__telarPadre) return;
       llega(e.data.__telarPadre);
     });
-    abierto = true; medir();
+    abierto = true;
   }
   function enviar(s) { window.parent.postMessage({ __telarHijo: s }, location.origin === 'null' ? '*' : location.origin); }`;
 
@@ -25,14 +25,6 @@ function script(canal: string): string {
 (function () {` + canal + String.raw`
   function llega(m) { window.dispatchEvent(new MessageEvent('message', { data: m })); }
   function mandar(m) { var s = JSON.stringify(m); if (abierto) enviar(s); else cola.push(s); }
-  // si ocupa la pantalla (un celular): la barra se dibuja distinto. Oculta, mide 0
-  function medir() {
-    var llena = false;
-    try { llena = window.innerWidth >= window.parent.innerWidth - 2; } catch (x) {}
-    document.documentElement.classList.toggle('llena', llena && window.innerWidth > 0);
-  }
-  window.__telarWeb = true;
-  new ResizeObserver(medir).observe(document.documentElement);
   window.acquireVsCodeApi = function () {
     return {
       postMessage: mandar,

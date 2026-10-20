@@ -227,7 +227,8 @@ en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
-  abre uno (`POST /ir` con `crear`).
+  abre uno (`POST /ir` con `crear`). Se dibuja directo en la columna izquierda de la página, sin marco
+  (`vscode/src/vistas/hilos.ts`); su CSS va con `@scope (#barra)`, para que sus nombres sean solo suyos.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos).
 - **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
@@ -244,7 +245,8 @@ en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`
 
 El código todavía arrastra la forma de la extensión de VS Code, que está deprecada: el dashboard corre
 con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es parte del plan, por partes:
-ya no tiene Node (la API va por `fetch`, en `cli.ts`) y los avisos y diálogos ya no viven en cada iframe.
+ya no tiene Node (la API va por `fetch`, en `cli.ts`), los avisos y diálogos ya no viven en cada iframe y
+la barra de hilos ya no tiene el suyo.
 
 ## Cómo se mueve una cosa
 

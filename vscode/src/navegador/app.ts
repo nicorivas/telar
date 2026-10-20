@@ -18,7 +18,7 @@ import MarkdownIt from 'markdown-it';
 import { type Anfitrion, type Opcion, type OpcionesAviso, usar } from '../anfitrion';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
-import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos';
+import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
@@ -36,11 +36,10 @@ void cli.config().then(r => {
     if (r.datos?.equipo) { ajustes.equipoRemoto = r.datos.equipo; void modelo.leerEquipo(); }
 });
 
-// ── los marcos: la barra a la izquierda; a la derecha, el dashboard o la conversación de un hilo ──
+// ── a la izquierda la barra (vistas/hilos.ts, sin marco); a la derecha, en marcos, el dashboard o un hilo ──
 
 const marcos = () => document.getElementById('vistas')!;
 let marco: HTMLIFrameElement | undefined;       // el del dashboard
-let marcoBarra: HTMLIFrameElement | undefined;
 let avisosPanel: AvisosSuperficie | undefined;
 let actual = 'dashboard';
 
@@ -65,13 +64,11 @@ function conInterfaz(pagina: string): string {
 }
 
 window.addEventListener('message', e => {
-    const desdeBarra = !!marcoBarra && e.source === marcoBarra.contentWindow;
-    if (!desdeBarra && e.source !== marco?.contentWindow) return;
+    if (e.source !== marco?.contentWindow) return;
     if (typeof e.data?.__telarHijo !== 'string') return;
     let m: Record<string, unknown>;
     try { m = JSON.parse(e.data.__telarHijo); } catch { return; }
-    if (desdeBarra) barra.mensaje(m as { tipo: string });
-    else avisosPanel?.mensaje(m);
+    avisosPanel?.mensaje(m);
 });
 
 const superficie: CrearSuperficie = avisos => {
@@ -89,17 +86,6 @@ const superficie: CrearSuperficie = avisos => {
     };
     document.addEventListener('visibilitychange', () => avisos.cambio(!document.hidden, document.hasFocus()));
     return s;
-};
-
-const superficieBarra: SuperficieBarra = {
-    cspSource: "'self'",
-    get visible() { return !document.hidden; },
-    html: p => {
-        if (!marcoBarra) marcoBarra = nuevoMarco('barra', document.getElementById('barra')!);
-        marcoBarra.srcdoc = conInterfaz(p);
-    },
-    enviar: m => a(marcoBarra, m),
-    cabecera: () => { /* el título y la cuenta: la lista ya los dice */ },
 };
 
 /** Lo que la barra recuerda (el orden de cada grupo): en este navegador. */
@@ -251,7 +237,7 @@ barra.estado = guardado;
 barra.dashboardActivo = true;
 barra.mostrado = '';
 const ordenes = crearOrdenes({ hoy, barra, anfitrion, mostrar });
-barra.conectar(superficieBarra);
+barra.montar(document.getElementById('barra')!);
 hoy.alCambiarFoco = () => {
     const app = hoy.appActual;
     if (barra.appActiva === app) return;

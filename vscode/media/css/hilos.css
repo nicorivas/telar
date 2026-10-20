@@ -1,52 +1,58 @@
-/* La barra de hilos (vistas/hilos.ts). */
+/* La barra de hilos (vistas/hilos.ts), en la columna izquierda de la página. Con @scope: sus nombres
+   (.fila, .nombre…) son solo suyos, aunque el resto de la página use los mismos.
+   scripts/navegador.mjs la junta en src/telar/web/marco.css. */
 
-#lista { padding: .5em 0 1.5em; user-select: none; }
-.fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
-.fila:hover { background: var(--hover); }
-.fila.activa { background: var(--sel); }
-.prio { flex: none; width: 1ch; margin-right: 1ch; }
-.prio.p0 { color: var(--dim); }
-.p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
-.nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
-.at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
-.remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
-/* con la columna ancha (⇄ junto a buscar): el nombre de la máquina; el ancho lo da la fila */
-.remoto.ancho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
-.remoto.ancho.aqui { color: var(--dim); }
-.sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
-.at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
-/* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
-.at.termino.visto { color: var(--dim); }
-.der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
-.sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
-.cab { color: var(--amarillo); font-weight: bold; }
-/* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
-.agente .nombre { color: var(--amarillo); } .agente.muerto .nombre { color: color-mix(in srgb, var(--amarillo) 55%, var(--bg)); }
-.casa { flex: none; color: var(--azul); }
-.hoy .nombre { color: var(--azul); }
-.cab .dim { font-weight: normal; }
-.nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
-.iconos { position: absolute; right: 1.5ch; top: 0; bottom: 0; display: none; padding-left: 1ch;
-         background: linear-gradient(var(--hover), var(--hover)), var(--bg); }
-.activa .iconos { background: linear-gradient(var(--sel), var(--sel)), var(--bg); }
-.fila:hover .iconos { display: flex; }
-.icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
-.icono:hover { color: var(--fg); }
-/* el + de HILOS: abre un hilo nuevo */
-.nuevo-hilo { margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
-.nuevo-hilo:hover { color: var(--fg); }
-/* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
-.herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
-.herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;
-                border: 0; border-bottom: 1px solid var(--linea); padding: 0 0 1px; outline: none; }
-.herram input:focus { border-bottom-color: var(--azul); }
-.herram input::placeholder { color: var(--dim); }
-.ord { flex: none; color: var(--dim); cursor: pointer; }
-.ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
-.vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
-/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular. No hay hover: el ⋯ se ve siempre,
-   y lo demás (⏸ ✕) queda dentro de su menú */
-.llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
-.llena .fila .iconos .icono:not(.menu-hilo) { display: none; }
-.llena .fila .menu-hilo { padding-inline: 1ch; }
+@scope (#barra) {
+  #lista { padding: .5em 0 1.5em; user-select: none; }
+  .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
+  .fila:hover { background: var(--hover); }
+  .fila.activa { background: var(--sel); }
+  .prio { flex: none; width: 1ch; margin-right: 1ch; }
+  .prio.p0 { color: var(--dim); }
+  .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
+  .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
+  .at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
+  .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
+  /* con la columna ancha (⇄ junto a buscar): el nombre de la máquina; el ancho lo da la fila */
+  .remoto.ancho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
+  .remoto.ancho.aqui { color: var(--dim); }
+  .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
+  .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
+  /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
+  .at.termino.visto { color: var(--dim); }
+  .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
+  .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
+  .cab { color: var(--amarillo); font-weight: bold; }
+  /* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
+  .agente .nombre { color: var(--amarillo); } .agente.muerto .nombre { color: color-mix(in srgb, var(--amarillo) 55%, var(--bg)); }
+  .casa { flex: none; color: var(--azul); }
+  .hoy .nombre { color: var(--azul); }
+  .cab .dim { font-weight: normal; }
+  .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
+  .iconos { position: absolute; right: 1.5ch; top: 0; bottom: 0; display: none; padding-left: 1ch;
+           background: linear-gradient(var(--hover), var(--hover)), var(--bg); }
+  .activa .iconos { background: linear-gradient(var(--sel), var(--sel)), var(--bg); }
+  .fila:hover .iconos { display: flex; }
+  .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
+  .icono:hover { color: var(--fg); }
+  /* el + de HILOS: abre un hilo nuevo */
+  .nuevo-hilo { margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
+  .nuevo-hilo:hover { color: var(--fg); }
+  /* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
+  .herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
+  .herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;
+                  border: 0; border-bottom: 1px solid var(--linea); padding: 0 0 1px; outline: none; }
+  .herram input:focus { border-bottom-color: var(--azul); }
+  .herram input::placeholder { color: var(--dim); }
+  .ord { flex: none; color: var(--dim); cursor: pointer; }
+  .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
+  .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
+  /* en un celular (angosto: la barra sola en la pantalla) no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕)
+     queda dentro de su menú */
+  @media (width <= 700px) {
+    .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
+    .fila .iconos .icono:not(.menu-hilo) { display: none; }
+    .fila .menu-hilo { padding-inline: 1ch; }
+  }
+}

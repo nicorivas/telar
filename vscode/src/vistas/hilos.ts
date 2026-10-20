@@ -12,79 +12,15 @@
 // Los botones de la fila (⏸ ✕ ▶) flotan sobre el borde derecho al pasar el mouse y no
 // ocupan lugar, porque si lo ocuparan correrían la columna del tiempo según cuántos hay.
 //
-// El HTML entra por mensajes y no recargando la webview: así no se pierde el scroll ni
-// parpadea la lista cada vez que cambia un segundo del tiempo de hoy.
+// Se dibuja directo en la columna izquierda de la página (`#barra`), y solo cambia la lista, no lo que la
+// rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
+// estilos, en media/css/hilos.css.
 
 import { ui } from '../anfitrion';
 
 import * as cli from '../cli';
-import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, estilo } from '../estilo';
-import { marco } from '../estilo';
+import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
 import { modelo } from '../modelo';
-
-const CSS = estilo('hilos');
-
-const SCRIPT = `
-const lista = document.getElementById('lista');
-// lo escrito en cada buscador sobrevive a los redibujos (llegan varios por minuto) y a recargar
-const est = vscode.getState() || {};
-est.q = est.q || {};
-const norm = t => (t || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
-function filtrar() {
-  document.querySelectorAll('input.buscar').forEach(inp => {
-    const g = inp.dataset.grupo, q = norm(inp.value.trim());
-    let n = 0;
-    document.querySelectorAll('.fila[data-grupo="' + g + '"]').forEach(f => {
-      const ok = !q || norm(f.dataset.busca).includes(q);
-      f.hidden = !ok; if (ok) n++;
-    });
-    const v = document.querySelector('.vacia[data-grupo="' + g + '"]');
-    if (v) v.hidden = !(q && !n);
-  });
-}
-window.addEventListener('message', e => {
-  const m = e.data;
-  if (m.tipo !== 'lista') return;
-  const a = document.activeElement, foco = a && a.classList && a.classList.contains('buscar')
-    ? { g: a.dataset.grupo, i: a.selectionStart, j: a.selectionEnd } : null;
-  lista.innerHTML = m.html;
-  document.querySelectorAll('input.buscar').forEach(inp => { inp.value = est.q[inp.dataset.grupo] || ''; });
-  if (foco) {
-    const inp = document.querySelector('input.buscar[data-grupo="' + foco.g + '"]');
-    if (inp) { inp.focus(); inp.setSelectionRange(foco.i, foco.j); }
-  }
-  filtrar();
-  if (m.mostrar) { const el = document.querySelector(m.mostrar); if (el && !el.hidden) el.scrollIntoView({ block: 'nearest' }); }
-});
-document.addEventListener('input', e => {
-  if (!e.target.classList.contains('buscar')) return;
-  est.q[e.target.dataset.grupo] = e.target.value; vscode.setState(est); filtrar();
-});
-document.addEventListener('keydown', e => {
-  if (!e.target.classList || !e.target.classList.contains('buscar')) return;
-  if (e.key === 'Escape') { e.target.value = ''; est.q[e.target.dataset.grupo] = ''; vscode.setState(est); filtrar(); }
-  // ⏎: al primero que se ve
-  if (e.key === 'Enter') {
-    const f = document.querySelector('.fila[data-grupo="' + e.target.dataset.grupo + '"]:not([hidden])');
-    if (f) vscode.postMessage({ tipo: 'ir', hilo: f.dataset.hilo });
-  }
-});
-document.addEventListener('click', e => {
-  const f = e.target.closest('[data-hilo],[data-accion]');
-  if (!f) return;
-  if (f.dataset.accion) vscode.postMessage({ tipo: f.dataset.accion, id: f.dataset.id });
-  else vscode.postMessage({ tipo: 'ir', hilo: f.dataset.hilo });
-});
-// en el navegador no hay menú contextual nativo: el clic derecho abre el del hilo (⋯)
-document.addEventListener('contextmenu', e => {
-  if (!window.__telarWeb) return;
-  const f = e.target.closest('[data-hilo]');
-  if (!f) return;
-  e.preventDefault();
-  vscode.postMessage({ tipo: 'menu', id: f.dataset.hilo });
-});
-vscode.postMessage({ tipo: 'listo' });
-`;
 
 /** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
 export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }
@@ -97,6 +33,10 @@ const ORDENES: [Orden, string, string][] = [
     ['nombre', 'a-z', 'nombre, alfabético'],
     ['reciente', '◷', 'última modificación: el último prompt a su agente, lo más reciente arriba'],
 ];
+
+function leerBuscado(): Record<string, string> {
+    try { return JSON.parse(localStorage.getItem('telar.barra.buscado') ?? '{}') ?? {}; } catch { return {}; }
+}
 
 /** La última modificación de un hilo: cuándo se le pidió algo a su agente. Si telar todavía no lo
  *  anotó (un hilo de antes), lo último que hizo su agente. Mirarlo (`visto`) nunca cuenta: un clic
@@ -115,18 +55,6 @@ function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
     return [...l].sort(cmp[orden]);
 }
 
-/** Donde se dibuja la barra: la columna izquierda de la página (src/navegador). Lo mismo que la superficie
- *  del dashboard, más su cabecera. Una capa de cuando también la dibujaba la extensión de VS Code (deprecada). */
-export interface SuperficieBarra {
-    readonly cspSource: string;
-    readonly cspConectar?: string;
-    readonly visible: boolean;
-    html(pagina: string): void;
-    enviar(mensaje: unknown): void;
-    /** el título, la línea de abajo y la cuenta de los que esperan */
-    cabecera(c: { titulo: string; descripcion: string; insignia?: { valor: number; ayuda: string } }): void;
-}
-
 /** Donde se guarda lo que se recuerda entre sesiones (la página: el localStorage del navegador). */
 export interface Guardado {
     get<T>(clave: string): T | undefined;
@@ -135,8 +63,10 @@ export interface Guardado {
 
 /** La barra de hilos, sin VS Code: arma la lista y responde a sus clics. */
 export class BarraHilos {
-    vista?: SuperficieBarra;
-    private listo = false;
+    /** donde se dibuja la lista (dentro de `#barra`); hasta `montar`, nada */
+    private lista?: HTMLElement;
+    /** lo escrito en cada buscador: sobrevive a los redibujos (llegan varios por minuto) y a recargar */
+    private buscado: Record<string, string> = leerBuscado();
     private ultimoHtml = '';
     private ultimoActivo?: string;
     /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
@@ -169,25 +99,89 @@ export class BarraHilos {
     private abierta(clave: string, porDefecto: boolean): boolean { return porDefecto !== this.invertidas.has(clave); }
     private alternar(clave: string): void { if (this.invertidas.has(clave)) this.invertidas.delete(clave); else this.invertidas.add(clave); }
 
-    /** La barra ya tiene dónde dibujarse. */
-    conectar(vista: SuperficieBarra): void {
-        this.vista = vista;
-        this.pintarMarco();
+    /** La barra ya tiene dónde dibujarse: `raiz` es la columna izquierda de la página. Los clics y lo que
+     *  se escribe en los buscadores se atienden ahí, sobre la lista que se redibuja. */
+    montar(raiz: HTMLElement): void {
+        const lista = document.createElement('div');
+        lista.id = 'lista';
+        raiz.replaceChildren(lista);
+        this.lista = lista;
+        this.ultimoHtml = '';
+        lista.addEventListener('input', e => {
+            const inp = e.target as HTMLInputElement;
+            if (!inp.classList.contains('buscar')) return;
+            this.buscar(inp.dataset.grupo ?? '', inp.value);
+        });
+        lista.addEventListener('keydown', e => {
+            const inp = e.target as HTMLInputElement;
+            if (!inp.classList?.contains('buscar')) return;
+            if (e.key === 'Escape') { inp.value = ''; this.buscar(inp.dataset.grupo ?? '', ''); }
+            // ⏎: al primero que se ve
+            if (e.key === 'Enter') {
+                const f = lista.querySelector<HTMLElement>(`.fila[data-grupo="${inp.dataset.grupo}"]:not([hidden])`);
+                if (f?.dataset.hilo) this.mensaje({ tipo: 'ir', hilo: f.dataset.hilo });
+                else if (f?.dataset.accion) this.mensaje({ tipo: f.dataset.accion, id: f.dataset.id });
+            }
+        });
+        lista.addEventListener('click', e => {
+            const f = (e.target as HTMLElement).closest<HTMLElement>('[data-hilo],[data-accion]');
+            if (!f) return;
+            if (f.dataset.accion) this.mensaje({ tipo: f.dataset.accion, id: f.dataset.id });
+            else this.mensaje({ tipo: 'ir', hilo: f.dataset.hilo });
+        });
+        // el clic derecho abre el menú del hilo (⋯)
+        lista.addEventListener('contextmenu', e => {
+            const f = (e.target as HTMLElement).closest<HTMLElement>('[data-hilo]');
+            if (!f) return;
+            e.preventDefault();
+            this.mensaje({ tipo: 'menu', id: f.dataset.hilo });
+        });
+        this.refrescar(true);
     }
 
-    /** La superficie se cerró. */
-    desconectar(): void { this.vista = undefined; this.listo = false; }
+    private buscar(grupo: string, texto: string): void {
+        this.buscado[grupo] = texto;
+        try { localStorage.setItem('telar.barra.buscado', JSON.stringify(this.buscado)); } catch { /* sin almacén */ }
+        this.filtrar();
+    }
 
-    /** El HTML fijo (estilo y script); la lista entra después por mensajes. */
-    pintarMarco(): void {
-        if (!this.vista) return;
-        this.listo = false; this.ultimoHtml = '';
-        this.vista.html(marco(this.vista, CSS, '<div id="lista"></div>', SCRIPT));
+    /** Esconde las filas de cada grupo que no tienen lo buscado (sin tildes ni mayúsculas). */
+    private filtrar(): void {
+        const lista = this.lista;
+        if (!lista) return;
+        for (const inp of lista.querySelectorAll<HTMLInputElement>('input.buscar')) {
+            const g = inp.dataset.grupo ?? '', q = normalizar(inp.value.trim());
+            let n = 0;
+            for (const f of lista.querySelectorAll<HTMLElement>(`.fila[data-grupo="${g}"]`)) {
+                const ok = !q || normalizar(f.dataset.busca ?? '').includes(q);
+                f.hidden = !ok;
+                if (ok) n++;
+            }
+            const v = lista.querySelector<HTMLElement>(`.vacia[data-grupo="${g}"]`);
+            if (v) v.hidden = !(q && !n);
+        }
+    }
+
+    /** La lista nueva, sin perder lo escrito en un buscador (ni dónde estaba el cursor). `mostrar`: la fila
+     *  que tiene que quedar a la vista (la marcada, o el archivo recién abierto). */
+    private pintarLista(html: string, mostrar?: string): void {
+        const lista = this.lista;
+        if (!lista) return;
+        const a = document.activeElement as HTMLInputElement | null;
+        const foco = a && lista.contains(a) && a.classList.contains('buscar')
+            ? { g: a.dataset.grupo, i: a.selectionStart, j: a.selectionEnd } : undefined;
+        lista.innerHTML = html;
+        for (const inp of lista.querySelectorAll<HTMLInputElement>('input.buscar')) inp.value = this.buscado[inp.dataset.grupo ?? ''] ?? '';
+        if (foco) {
+            const inp = lista.querySelector<HTMLInputElement>(`input.buscar[data-grupo="${foco.g}"]`);
+            if (inp) { inp.focus(); inp.setSelectionRange(foco.i, foco.j); }
+        }
+        this.filtrar();
+        if (mostrar) { const el = lista.querySelector<HTMLElement>(mostrar); if (el && !el.hidden) el.scrollIntoView({ block: 'nearest' }); }
     }
 
     mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
         switch (m.tipo) {
-            case 'listo': this.listo = true; this.refrescar(true); break;
             case 'ir': {
                 if (!m.hilo) break;
                 // un archivado no tiene tab al que ir: pincharlo es retomarlo
@@ -226,15 +220,7 @@ export class BarraHilos {
     }
 
     refrescar(forzar = false): void {
-        const v = this.vista;
-        if (!v) return;
-        const orden = ({ alfa: 'a-z', reciente: '◷', prioridad: '●' } as Record<string, string>)[modelo.orden] ?? '';
-        v.cabecera({
-            titulo: orden ? `hilos · ${orden}` : 'hilos',
-            descripcion: modelo.error ? 'sin telar' : !modelo.viva ? 'sesión no tejida' : modelo.sesion,
-            insignia: modelo.esperan ? { valor: modelo.esperan, ayuda: `${modelo.esperan} te espera${modelo.esperan === 1 ? '' : 'n'}` } : undefined,
-        });
-        if (!this.listo) return;
+        if (!this.lista) return;
         const html = this.html();
         const activo = this.dashboardActivo ? '\u0000dashboard' : this.mostrado ?? modelo.activo?.nombre;
         const seMovio = activo !== this.ultimoActivo;
@@ -242,7 +228,7 @@ export class BarraHilos {
         this.ultimoActivo = activo; this.ultimoHtml = html;
         const mostrar = this.irAlArchivo ? '#archivo' : seMovio || forzar ? '.activa' : undefined;
         this.irAlArchivo = false;
-        v.enviar({ tipo: 'lista', html, mostrar });
+        this.pintarLista(html, mostrar);
     }
 
     /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
