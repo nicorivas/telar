@@ -18,13 +18,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
+import json
 import logging
 import os
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from telar import __version__
 from telar.cli import Contexto
@@ -459,6 +460,24 @@ class PedidoHilo(BaseModel):
     cerrar: bool = False
 
 
+class PedidoLlevarHilo(BaseModel):
+    hilo: str
+    #: a cuál de [remotos]; vacío, la única que haya
+    maquina: str = ""
+    #: seguir aunque aquí haya trabajo sin subir (la primera vez sin esto, la queja lo dice)
+    si: bool = False
+
+
+from telar.servicios import llevar as servicio_llevar  # noqa: E402
+
+
+@app.post("/hilo/llevar", response_model=servicio_llevar.Llevado)
+def post_hilo_llevar(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)):
+    """Llevar un hilo a otra máquina (`telar hilo llevar`). Tarda minutos con una conversación grande: si no
+    termina en unos segundos, responde `en_curso` y sigue solo. Con trabajo sin subir, 409 hasta que `si`."""
+    return servicio_llevar.llevar(ctx, pedido.hilo, pedido.maquina, pedido.si)
+
+
 @app.post("/hilo/{verbo}", response_model=en_proceso.Corrida)
 def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto)):
     """Vincular, renombrar, priorizar, archivar, cerrar… un hilo (`telar hilo <verbo> [valor] --hilo <hilo>`)."""
@@ -466,6 +485,40 @@ def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto))
         raise ErrorDeServicio(f"«{verbo}» no se pide por aquí: uno de {', '.join(VERBOS_HILO)}", 422)
     argv = [verbo, *([pedido.valor] if pedido.valor else []), "--hilo", pedido.hilo, *(["--cerrar"] if pedido.cerrar else [])]
     return en_proceso.o_falla(en_proceso.correr(ctx, "hilo", argv), f"telar hilo {verbo}")
+
+
+class PedidoReunion(BaseModel):
+    titulo: str
+    hora: str
+    fecha: str = ""
+    enlace: str = ""
+    evento: str = ""
+    asistentes: list[str] = []
+    proyecto: str = ""
+    preguntar: bool = False
+    donde: bool = False
+    hilo_nuevo: bool = False
+
+
+class Reunion(BaseModel):
+    """Lo que dice `telar reunion --json`: el hilo, el proyecto, el mensaje y qué se hizo."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+@app.post("/reunion", response_model=Reunion)
+def post_reunion(pedido: PedidoReunion, ctx: Contexto = Depends(contexto)):
+    """Preparar una reunión, o hacer su minuta: un hilo con el agente ya trabajando en ella (`telar reunion`)."""
+    argv = [pedido.titulo, pedido.hora, *(["--fecha", pedido.fecha] if pedido.fecha else []),
+            *(["--enlace", pedido.enlace] if pedido.enlace else []), *(["--evento", pedido.evento] if pedido.evento else []),
+            *(["--asistentes", ",".join(pedido.asistentes)] if pedido.asistentes else []),
+            *(["--proyecto", pedido.proyecto] if pedido.proyecto else []), *(["--preguntar"] if pedido.preguntar else []),
+            *(["--donde"] if pedido.donde else []), *(["--hilo-nuevo"] if pedido.hilo_nuevo else []), "--json"]
+    c = en_proceso.o_falla(en_proceso.correr(ctx, "reunion", argv), "telar reunion")
+    try:
+        return Reunion(**json.loads(c.salida.strip().splitlines()[-1]))
+    except (ValueError, IndexError) as e:
+        raise ErrorDeServicio(f"telar reunion no respondió JSON: {c.salida[-200:]!r}", 502) from e
 
 
 class PedidoTejer(BaseModel):

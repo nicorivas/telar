@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- `POST /reunion`: prepare a meeting, or take its minutes, from the API (`telar reunion … --json`), so the web
+  page no longer needs the CLI for it.
+- `POST /hilo/llevar`: take a thread to another machine from the API. It runs in its own process, since copying
+  a large conversation takes minutes: if it ends within 20 s the answer is what it said (409 with its complaint,
+  such as unpushed work that needs `si`), otherwise it answers `en_curso` and keeps going, with its output in
+  `<estado>/llevar/<hilo>.log`.
+
 ## [0.2.0] — 2026-10-20
 
 ### Deprecated

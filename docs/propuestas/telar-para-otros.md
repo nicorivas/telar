@@ -26,11 +26,6 @@ Cada persona ya tiene su cuenta en el bus, que el servidor hace cumplir ([arquit
 
 ## Lo que falta para que alguien lo instale solo
 
-- **Publicar una versión.** La última en PyPI es la 0.1.13; desde entonces hay más de cien cambios sin
-  publicar (el bus con cuentas, la página sin Node, las terminales, los tipos, `telar instalar`). Corresponde
-  una 0.2.0, con el flujo de [publicar.md](../publicar.md). Antes: `.github/workflows/publicar.yml` también
-  publica la extensión de VS Code, que está deprecada; sacarla de ese flujo (o publicar una última versión
-  que avise que se depreca), y que el número de `vscode/package.json` deje de tener que coincidir.
 - **Un día que funcione con la configuración de fábrica.** El dashboard rinde con los proveedores de quien lo
   armó (sus tareas, su calendario). Una persona nueva necesita un proveedor de tareas por defecto (una
   carpeta de markdown, que el tipo `tarea` ya sabe leer y escribir) y una guía de su primera hora. Los
@@ -86,6 +81,5 @@ red).
 ## El orden
 
 1. El correo y el directorio entre personas por el bus.
-2. La 0.2.0.
-3. Escribir la página para el navegador, sin la capa del webview (la extensión ya está deprecada y borrada).
-4. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.
+2. Escribir la página para el navegador, sin la capa del webview (la extensión ya está deprecada y borrada).
+3. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

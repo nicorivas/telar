@@ -388,8 +388,9 @@ lista, con ▸ y cuántos son; el clic en ▸ despliega los demás.
 Un ítem con `id` muestra además su detalle al abrirlo (el cuerpo de un correo, cinco líneas y «ver
 todo»): el dashboard corre `telar bloque <clave> --item <id>`, que llama al comando del bloque con
 `--item <id>` al final; el comando imprime `{"texto": "…"}`. Se pide al abrir el ítem, no en cada
-lectura del bloque. Con `enlace`, el título del ítem abierto lleva al original; con `reusar`, en la
-pestaña de Chrome cuyo título o dirección lo contiene, si hay una abierta.
+lectura del bloque. Con `enlace`, el título del ítem abierto lleva al original, en una pestaña nueva.
+(`reusar`, que pedía abrirlo en la pestaña de Chrome ya abierta, se acepta pero ya no hace nada: lo hacía
+la extensión de VS Code.)
 
 ## `[remotos]` — máquinas donde pueden vivir hilos
 

@@ -32,13 +32,70 @@ class ElPuente(Prueba):
             en_proceso.correr(SimpleNamespace(), "encargar", ["x"])
 
     @unittest.skipIf(not HAY_FASTAPI, "sin fastapi (el extra «serve»)")
-    def test_la_ruta_no_deja_pedir_llevar(self):
-        from fastapi.testclient import TestClient
-
+    def test_llevar_no_pasa_por_el_puente(self):
+        """`hilo llevar` tarda minutos: tiene su ruta (telar.servicios.llevar), que lo corre aparte."""
         from telar import api
-        with mock.patch.object(api, "_refrescar", mock.AsyncMock()):
-            r = TestClient(api.app).post("/hilo/llevar", json={"hilo": "faro", "valor": "telar"})
-        self.assertEqual(r.status_code, 422)
+
+        self.assertNotIn("llevar", api.VERBOS_HILO)
+        rutas = {r.path for r in api.app.routes}
+        self.assertIn("/hilo/llevar", rutas)
+        # antes que /hilo/{verbo}, que si no la tomaría
+        orden = [r.path for r in api.app.routes]
+        self.assertLess(orden.index("/hilo/llevar"), orden.index("/hilo/{verbo}"))
+
+
+class Llevar(Prueba):
+    """`telar.servicios.llevar`: aparte, y si no termina pronto, sigue solo."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ctx = SimpleNamespace(config=SimpleNamespace(estado=self.tmp.name))
+
+    def proceso(self, codigo, texto=""):
+        """Un proceso de mentira: escribe `texto` en su registro y termina con `codigo` (None: sigue)."""
+        def popen(argv, stdout=None, **_):
+            stdout.write(texto)
+            stdout.flush()
+            self.argv = argv
+            return SimpleNamespace(poll=lambda: codigo, returncode=codigo)
+        return mock.patch("telar.servicios.llevar.subprocess.Popen", side_effect=popen)
+
+    def test_lo_que_termina_pronto_se_devuelve(self):
+        from telar.servicios import llevar
+
+        with self.proceso(0, "«faro» sigue en telar\n"):
+            r = llevar.llevar(self.ctx, "faro", "telar", si=True)
+        self.assertEqual((r.codigo, r.en_curso), (0, False))
+        self.assertEqual(self.argv[-5:], ["llevar", "telar", "--hilo", "faro", "--si"])
+
+    def test_una_queja_es_un_409_con_su_linea(self):
+        from telar.servicios import llevar
+
+        with self.proceso(2, "· proyectos/faro: 3 sin subir\ntelar: hay trabajo sin subir; --si para llevarla igual\n"):
+            with self.assertRaises(ErrorDeServicio) as e:
+                llevar.llevar(self.ctx, "faro", "telar")
+        self.assertEqual(e.exception.codigo, 409)
+        self.assertEqual(str(e.exception), "hay trabajo sin subir; --si para llevarla igual")
+
+    def test_la_queja_es_la_linea_de_telar_aunque_no_sea_la_ultima(self):
+        from telar.servicios import llevar
+
+        with self.proceso(2, "telar: no hay ningún hilo que se llame «x»\n(«x» no estaba en la lista)\n"):
+            with self.assertRaises(ErrorDeServicio) as e:
+                llevar.llevar(self.ctx, "x", "telar")
+        self.assertEqual(str(e.exception), "no hay ningún hilo que se llame «x»")
+
+    def test_lo_que_tarda_sigue_solo(self):
+        from telar.servicios import llevar
+
+        with self.proceso(None, "copiando…\n"):
+            r = llevar.llevar(self.ctx, "faro", "telar", espera=0.01)
+        self.assertTrue(r.en_curso)
+        self.assertTrue(r.registro.endswith("faro.log"))
 
 
 class LosPeriodicos(Prueba):
@@ -68,3 +125,24 @@ class LosPeriodicos(Prueba):
         self.assertEqual(correr.call_args[0][1:], ("periodicos", ["pausar", "x", "--json", "--en", "aqui"]))
         with self.assertRaises(ErrorDeServicio):
             periodicos.orden(self._ctx(), ["correr", "x"])
+
+
+@unittest.skipIf(not HAY_FASTAPI, "sin fastapi (el extra «serve»)")
+class LaReunion(Prueba):
+    """`POST /reunion`: `telar reunion … --json` por el puente, y su JSON tal cual."""
+
+    def test_arma_la_orden_y_devuelve_su_json(self):
+        from fastapi.testclient import TestClient
+
+        from telar import api
+        salida = '{"hilo": "◷ 12:00 Comité", "proyecto": "comite", "mensaje": "…", "hecho": "abierto"}\n'
+        corrida = en_proceso.Corrida(codigo=0, salida=salida)
+        with mock.patch.object(api, "_refrescar", mock.AsyncMock()), \
+                mock.patch.object(api.en_proceso, "correr", return_value=corrida) as correr:
+            r = TestClient(api.app).post("/reunion", json={"titulo": "Comité", "hora": "12:00",
+                                                           "asistentes": ["Ana <a@x.cl>"], "preguntar": True})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["hecho"], "abierto")
+        _, orden, argv = correr.call_args.args
+        self.assertEqual(orden, "reunion")
+        self.assertEqual(argv, ["Comité", "12:00", "--asistentes", "Ana <a@x.cl>", "--preguntar", "--json"])
