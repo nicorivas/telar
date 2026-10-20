@@ -50,6 +50,22 @@ class LaLlave(Prueba):
         self.assertEqual(c.post("/api/algo").status_code, 200)  # sin Origin (curl): manda la llave
 
 
+class LoQueSeGuarda(Prueba):
+    """xterm se guarda en el navegador; lo demás de la página se revalida; los datos, nunca. Y va comprimido."""
+
+    def test_cache_y_gzip(self):
+        c = _app()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        x = c.get("/estatico/xterm/xterm.js", headers={"accept-encoding": "gzip"})
+        self.assertEqual((x.status_code, x.headers["cache-control"], x.headers.get("content-encoding")),
+                         (200, "public, max-age=604800", "gzip"))
+        self.assertEqual(c.get("/estatico/indice.html").headers["cache-control"], "no-cache")
+        self.assertEqual(c.get("/api/salud").headers["cache-control"], "no-store")
+        # revalidar: si no cambió, un 304 sin cuerpo
+        etag = c.get("/estatico/indice.html").headers["etag"]
+        self.assertEqual(c.get("/estatico/indice.html", headers={"if-none-match": etag}).status_code, 304)
+
+
 class LaTerminal(Prueba):
     """`/pty`: la terminal de un hilo. Sin la llave o desde otra página, ni se abre; con las dos, va y vuelve.
     (El cliente de prueba manda `host: testserver` en los WebSocket: de ahí el origen.)"""

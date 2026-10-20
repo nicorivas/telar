@@ -68,9 +68,25 @@ def _mismo_origen(request: Request) -> bool:
     return urlsplit(origen).netloc == request.headers.get("host", "")
 
 
+def _cache(ruta: str) -> str:
+    """Qué puede guardar el navegador. Entre el laptop y el servidor hay ~220 ms de ida y vuelta y poco ancho:
+    xterm.js (medio mega) se bajaba de nuevo en cada hilo que se abría. Lo copiado de afuera (xterm) no
+    cambia entre versiones de telar: se guarda. Lo demás de la página se guarda pero se revalida (un 304
+    si no cambió); los datos, nunca."""
+    if ruta.startswith("/estatico/xterm/"):
+        return "public, max-age=604800"
+    if ruta.startswith("/estatico/"):
+        return "no-cache"
+    return "no-store"
+
+
 def crear(api_app, clave: str | None = None) -> FastAPI:
     clave = clave or llave()
     app = FastAPI(title="telar web", docs_url=None, redoc_url=None, openapi_url=None)
+    # comprimido: el JS de la página y de xterm baja a un cuarto, y el JSON de la API también
+    from starlette.middleware.gzip import GZipMiddleware
+
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
     async def con_llave(request: Request, siguiente):
@@ -91,7 +107,7 @@ def crear(api_app, clave: str | None = None) -> FastAPI:
         if request.method not in ("GET", "HEAD", "OPTIONS") and not _mismo_origen(request):
             return JSONResponse({"detail": "desde otra página, no"}, status_code=403)
         r = await siguiente(request)
-        r.headers.setdefault("Cache-Control", "no-store")
+        r.headers.setdefault("Cache-Control", _cache(ruta))
         r.headers.setdefault("X-Content-Type-Options", "nosniff")
         return r
 

@@ -50,6 +50,9 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- The browser page caches what does not change and compresses everything: xterm.js is kept for a week (it
+  was downloaded again for every thread opened, ~1.7 s over the laptop–server link), the page's own files
+  are revalidated (a 304 when unchanged), API data is never stored, and responses go gzipped.
 - What only the Node panel served, now in the Python page: installing it as a phone app (manifest, icons
   and service worker from `web/app`, served without the key), sharing to it from the phone (`/compartir`
   opens the page on the share view, with providers and threads from the API) and a thread's folder and
