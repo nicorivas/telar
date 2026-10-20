@@ -50,6 +50,9 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- The team inbox in the browser: `/config` says where it lives (`equipo`: `aqui`, the machine in
+  `[equipo] en`, or empty) and the page uses it as its `equipoRemoto` setting; «Ver» on the «N things from
+  the team» notice lets you pick one when there are several, as in VS Code.
 - `PUT /config/{ajuste}` (directories, meeting and project templates, calendar), `/compartir`,
   `/hilos/leer`, `/skills` and `/periodicos`, one service each. Periodic jobs that live on another machine
   are asked of its node over the bus (a new `periodicos` request); the CLI uses the bus too, and ssh only

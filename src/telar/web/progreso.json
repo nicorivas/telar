@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 20:50",
+  "actualizado": "2026-10-19 21:13",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -70,8 +70,8 @@
     {
       "grupo": "3. Las pantallas",
       "nombre": "equipo",
-      "estado": "pendiente",
-      "nota": ""
+      "estado": "hecho",
+      "nota": "aviso, elegir entre varias, la pantalla y descartar con nota, sobre una bandeja de prueba"
     },
     {
       "grupo": "3. Las pantallas",

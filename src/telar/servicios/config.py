@@ -74,6 +74,8 @@ class ConfigResuelta(BaseModel):
     agente_general: dict[str, str] = Field(default_factory=dict)
     persona: str = ""
     persona_nombres: list[str] = Field(default_factory=list)
+    #: dónde vive la bandeja del equipo, vista desde aquí: «aqui», el nombre de otra máquina, o vacío
+    equipo: str = ""
 
 
 def resuelta(ctx) -> ConfigResuelta:
@@ -142,7 +144,22 @@ def resuelta(ctx) -> ConfigResuelta:
         "persona": _persona(cfg),
         # cómo más la nombran en un documento («Nicolás Rivas», de git): un pendiente a ese nombre es suyo
         "persona_nombres": _nombres(cfg),
+        # la bandeja del equipo: la página en el navegador la lee de aquí (en VS Code, el ajuste equipoRemoto)
+        "equipo": _equipo(cfg),
     })
+
+
+def _equipo(cfg) -> str:
+    """`[equipo]` de esta configuración: «aqui», la máquina de `[equipo] en`, o "" si no hay equipo."""
+    import tomllib
+
+    try:
+        tabla = tomllib.loads(Path(cfg.origen).read_text(encoding="utf-8")).get("equipo") if cfg.origen else None
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(tabla, dict) or not tabla.get("tareas"):
+        return ""
+    return str(tabla.get("en") or "").strip() or "aqui"
 
 
 def _alcance(pr) -> str:

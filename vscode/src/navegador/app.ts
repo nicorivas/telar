@@ -47,6 +47,15 @@ cli.usarTransporte(async (metodo, ruta, timeout, cuerpo) => {
     return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}` };
 });
 
+// ── los ajustes: en VS Code son suyos; aquí salen del servidor (/config) ──
+
+const ajustes: Record<string, unknown> = {};
+cli.usarAjustes(<T>(clave: string, porDefecto: T): T => (clave in ajustes ? ajustes[clave] as T : porDefecto));
+void cli.config().then(r => {
+    // la bandeja del equipo: la del servidor que sirve la página («aqui») o la de la máquina que diga
+    if (r.datos?.equipo) { ajustes.equipoRemoto = r.datos.equipo; void modelo.leerEquipo(); }
+});
+
 // ── el disco: los archivos de la máquina, por la API (que pone los límites: telar.servicios.archivos) ──
 
 usarDisco({

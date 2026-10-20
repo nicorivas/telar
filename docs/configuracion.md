@@ -631,8 +631,9 @@ Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de ca
 tus rutas. Cada persona entra con su llave y puede solo leer y dejar una sugerencia o un pedido (uno cada
 5 s). La bandeja la decides tú, desde tu API (`/equipo/bandeja`, `/equipo/{id}/aceptar|rechazar|existe`);
 desde otra máquina, se le pide a la que tiene las tareas por el bus. En VS Code, `telar.equipoRemoto`
-(`local`, o la máquina donde viven las tareas) enciende las notificaciones y la pestaña «equipo». Ver
-`telar equipo --help`.
+(`local`, o la máquina donde viven las tareas) enciende las notificaciones y la pestaña «equipo». En la
+página del navegador lo dice la configuración (`/config`, campo `equipo`): `aqui` si esta máquina tiene
+`[equipo]`, o la de `[equipo] en = "<máquina>"` si la bandeja vive en otra. Ver `telar equipo --help`.
 
 ## `[secciones]` — grupos propios en la lista de hilos
 

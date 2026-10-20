@@ -420,6 +420,8 @@ export type JsonConfig = {
     persona?: string; persona_nombres?: string[];
     /** la carpeta del estado de telar en esta máquina */
     estado?: string;
+    /** dónde vive la bandeja del equipo, vista desde aquí: «aqui», otra máquina, o vacío */
+    equipo?: string;
 };
 export async function config(): Promise<Respuesta<JsonConfig>> {
     return await deServe<JsonConfig>('/config', 20000) ?? telarJson<JsonConfig>(['config', '--json'], 20000);

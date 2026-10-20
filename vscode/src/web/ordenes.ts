@@ -5,6 +5,7 @@
 import type { Anfitrion, Opcion } from '../anfitrion';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import { elegirEntrada } from '../vistas/equipo';
 import type { BarraHilos } from '../vistas/hilos';
 import type { PanelHoy } from '../vistas/hoy';
 
@@ -108,7 +109,9 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.archivar': a => sobreHilo(a, 'archivar', ['--cerrar']),
         'telar.cerrar': a => sobreHilo(a, 'cerrar'),
         'telar.archivo': () => c.barra.alternarArchivo(),
-        'telar.equipoVer': (id?: string) => id ? c.hoy.abrirEquipo(id) : undefined,
+        // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa (como en VS Code)
+        'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
+        'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         'telar.seccion': (clave?: string) => { if (clave) { c.mostrar('dashboard'); return c.hoy.abrirSeccion(clave); } },
         'telar.app': (clave?: string) => { if (clave) { c.mostrar('dashboard'); return c.hoy.abrirApp(clave); } },
         'telar.tarea': (valor?: string) => valor ? c.hoy.abrirTarea(valor) : undefined,
