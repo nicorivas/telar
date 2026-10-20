@@ -50,6 +50,11 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- The browser terminal sizes its thread's tmux window (the most recently used screen wins, tmux's
+  `window-size latest`): it used to defer to any other terminal attached to the session (a VS Code one), so
+  the window kept that size and tmux filled the rest of the browser with dots. It takes the full height and at
+  most 130 columns (`localStorage['telar.columnas']`), centred, with a very faint loom around it (still when
+  the system asks for less motion). `telar mirar --sin-tamano` keeps the old behaviour.
 - The thread list has no group per machine any more: threads of other machines go in HILOS with the local
   ones, and the column after the status says where each lives (⇄ for another machine). The ⇄ button next to
   «buscar» widens that column to show each thread's machine by name, this one included; searching by machine

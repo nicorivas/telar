@@ -374,7 +374,7 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
 <link rel="stylesheet" href="${xterm}/xterm.css">
 <style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('terminal')} }</style>
 <script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script><script src="/estatico/eco.js"></script>
-</head><body><div id="t"></div>
+</head><body><div id="caja"><canvas id="fondo" aria-hidden="true"></canvas><div id="t"></div></div>
 <form id="escribir"><textarea id="texto" rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea><span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>
 <script nonce="${nonce}">
 (function () {
@@ -393,8 +393,34 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   var eco = window.telarEco ? window.telarEco.conEco(term) : null;
   window.__eco = eco;  // para revisar desde la consola: __eco.estado()
   function escribir(datos) { if (eco) eco.escribir(datos); else term.write(datos); }
-  var caja = document.getElementById('t'); term.open(caja); fit.fit();
+  var caja = document.getElementById('caja'), marco = document.getElementById('t'); term.open(marco);
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
+  // el tamaño: todo el alto, y de ancho lo que quepa hasta COLUMNAS (más ancho se lee mal), centrada. La
+  // ventana del hilo toma este tamaño (la vista se lo da a tmux), así que no sobra nada que rellenar
+  var COLUMNAS = 130;
+  try { COLUMNAS = Number(localStorage.getItem('telar.columnas')) || COLUMNAS; } catch (x) { /* sin almacén */ }
+  function celda() {
+    var d = term._core && term._core._renderService && term._core._renderService.dimensions;
+    var c = d && d.css && d.css.cell;
+    if (c && c.width && c.height) return c;
+    var p = fit.proposeDimensions();   // sin medidas todavía: las de lo que propondría llenar todo
+    return p ? { width: (caja.clientWidth - 24) / p.cols, height: caja.clientHeight / p.rows } : null;
+  }
+  function ajustar() {
+    var c = celda();
+    if (!c) return;
+    var arriba = parseFloat(getComputedStyle(marco).paddingTop) || 0, barra = 14;
+    var cols = Math.max(20, Math.min(COLUMNAS, Math.floor((caja.clientWidth - barra - 2 * c.width) / c.width)));
+    var rows = Math.max(5, Math.floor((caja.clientHeight - arriba) / c.height));
+    marco.style.width = Math.ceil(cols * c.width + barra) + 'px';
+    if (cols !== term.cols || rows !== term.rows) {
+      term.resize(cols, rows);
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [cols, rows] }));
+    }
+  }
+  ajustar();
+  fondo(document.getElementById('fondo'));
+
   // un hilo de otra máquina: la página de aquí la reenvía a la de allá (telar.terminal.reenviar)
   var maquina = ${JSON.stringify(rutas.maquina ?? '').replace(/</g, '\\u003c')};
   // la dirección del WebSocket, desde la de la página (en un iframe srcdoc, la de quien lo armó), con el
@@ -438,7 +464,7 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   // la caja, a un clic: se escribe aquí entero, sin que Claude redibuje con cada letra; ⏎ lo manda como un
   // pegado, y después un ⏎. Con la caja vacía, ⏎ ⎋ ↑ ↓ van directo (los diálogos de Claude, interrumpirlo)
   var texto = document.getElementById('texto');
-  function crecer() { texto.style.height = 'auto'; texto.style.height = texto.scrollHeight + 'px'; fit.fit(); }
+  function crecer() { texto.style.height = 'auto'; texto.style.height = texto.scrollHeight + 'px'; ajustar(); }
   texto.addEventListener('input', crecer);
   texto.addEventListener('keydown', function (e) {
     if (e.isComposing) return;
@@ -455,10 +481,48 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
       e.preventDefault(); teclear(e.key === 'ArrowUp' ? '\\u001b[A' : '\\u001b[B');
     }
   });
-  new ResizeObserver(function () {
-    fit.fit();
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
-  }).observe(caja);
+  new ResizeObserver(ajustar).observe(caja);
+  // alrededor de la terminal, un telar muy tenue: la urdimbre quieta y, de vez en cuando, un hilo de trama que
+  // cruza despacio y se apaga. Quieto si quien mira pidió menos movimiento
+  function fondo(lienzo) {
+    var ctx = lienzo.getContext('2d');
+    var muestra = document.createElement('i'); document.body.appendChild(muestra);
+    function color(n) { muestra.style.color = 'var(--' + n + ')'; return getComputedStyle(muestra).color; }
+    var URDIMBRE = color('linea'), PALETA = ['violeta', 'azul', 'cian', 'verde', 'amarillo', 'magenta'].map(color);
+    muestra.remove();
+    var cw = 8, ch = 16, cols = 0, filas = 0, tramas = [];
+    function medir() {
+      var dpr = window.devicePixelRatio || 1;
+      lienzo.width = lienzo.clientWidth * dpr; lienzo.height = lienzo.clientHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.font = (t('tam') || '13px') + ' ' + (t('letra') || 'monospace'); ctx.textBaseline = 'top';
+      cw = Math.ceil(ctx.measureText('─').width); ch = Math.ceil(cw * 1.9);
+      cols = Math.ceil(lienzo.clientWidth / cw); filas = Math.ceil(lienzo.clientHeight / ch);
+    }
+    function dibujar() {
+      ctx.clearRect(0, 0, lienzo.clientWidth, lienzo.clientHeight);
+      ctx.globalAlpha = 0.45; ctx.fillStyle = URDIMBRE;
+      for (var y = 0; y < filas; y++) for (var c = 0; c < cols; c += 2) ctx.fillText('│', c * cw, y * ch);
+      tramas.forEach(function (h) {
+        ctx.globalAlpha = Math.max(0, 0.5 - h.vida / 160); ctx.fillStyle = h.color;
+        var desde = h.dir > 0 ? 0 : h.x, hasta = h.dir > 0 ? h.x : cols;
+        for (var c = desde; c < hasta; c++) ctx.fillText(c % 2 ? '─' : '┼', c * cw, h.y * ch);
+      });
+      ctx.globalAlpha = 1;
+    }
+    function paso() {
+      if (Math.random() < 0.02 && tramas.length < 3) {
+        var dir = Math.random() < 0.5 ? 1 : -1;
+        tramas.push({ y: Math.floor(Math.random() * filas), dir: dir, x: dir > 0 ? 0 : cols, vida: 0, color: PALETA[Math.floor(Math.random() * PALETA.length)] });
+      }
+      tramas.forEach(function (h) { h.x += h.dir; h.vida++; });
+      tramas = tramas.filter(function (h) { return h.vida < 160; });   // cruza mientras se apaga
+      dibujar();
+    }
+    new ResizeObserver(function () { medir(); dibujar(); }).observe(lienzo);
+    medir(); dibujar();
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(paso, 90);
+  }
+
   // al volver a esta terminal, se escribe en ella (con el eco, sin esperar); la caja queda a un clic
   window.addEventListener('focus', function () { if (document.activeElement !== texto) term.focus(); });
   term.focus();

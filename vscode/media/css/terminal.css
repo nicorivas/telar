@@ -10,10 +10,23 @@ body {
   height: 100dvh;
 }
 
-#t {
+/* la terminal centrada, del ancho de sus columnas (lo pone la página); alrededor, el fondo (un telar tenue) */
+#caja {
+  position: relative;
+  display: flex;
   flex: 1;
+  justify-content: center;
   min-height: 0;
+  overflow: hidden;
+}
+
+#fondo { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+#t {
+  position: relative;
+  height: 100%;
   padding: var(--e-1) 0 0 var(--h-1);
+  background: var(--bg);
 }
 
 #escribir {
