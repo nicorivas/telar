@@ -11,6 +11,9 @@
 .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
 .at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
 .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
+/* con la columna ancha (⇄ junto a buscar): el nombre de la máquina; el ancho lo da la fila */
+.remoto.ancho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
+.remoto.ancho.aqui { color: var(--dim); }
 .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
 .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
 /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */

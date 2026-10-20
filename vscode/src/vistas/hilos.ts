@@ -147,8 +147,14 @@ export class BarraHilos {
      *  tmux para marcar la fila (en VS Code no se da: manda el hilo con foco) */
     mostrado?: string;
     /** los hilos de otras máquinas que esta no ve en su multiplexor, de la foto que publica cada una
-     *  (`telar espejo ver`): un grupo por máquina. Lo pone la página web del servidor; vacío, no hay grupo */
+     *  (`telar espejo ver`): van en HILOS, con su máquina en la columna de dónde vive. Lo pone la página web */
     otras: { nombre: string; en_linea: boolean; edad: number | null; hilos: HiloDeFoto[] }[] = [];
+    /** el nombre de esta máquina (la que sirve la página): con la columna ancha, lo muestran sus hilos */
+    aqui = '';
+    /** la columna de dónde vive cada hilo: ⇄ (o nada, si vive aquí), o el nombre de la máquina */
+    private conMaquina(): boolean { return !!this.estado?.get<boolean>('telar.hilos.maquina'); }
+    /** el ancho de esa columna con los nombres: el del nombre más largo, hasta 12 */
+    private anchoMaquina = 1;
     private irAlArchivo = false;
     /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */
     estado?: Guardado;
@@ -203,6 +209,9 @@ export class BarraHilos {
             case 'equipo': void ui().orden('telar.equipoVer', m.id); break;
             case 'home': if (m.id) void ui().orden('telar.seccion', m.id); break;
             case 'app': if (m.id) void ui().orden('telar.app', m.id); break;
+            case 'ver-maquina':
+                void this.estado?.update('telar.hilos.maquina', !this.conMaquina()).then(() => this.refrescar(true));
+                break;
             case 'orden-grupo': if (m.id) {
                 const [grupo, orden] = m.id.split(':');
                 void this.estado?.update(`telar.orden.${grupo}`, orden === this.ordenDe(grupo) ? '' : orden).then(() => this.refrescar(true));
@@ -246,14 +255,15 @@ export class BarraHilos {
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
         const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
-        // ⇄: el agente vive en otra máquina y esta ventana solo lo mira
-        const remoto = `<span class="remoto"${h.remoto ? ` title="${esc(h.remoto === '?' ? 'conectado a otra máquina' : `remoto: ${h.remoto}`)}"` : ''}>${h.remoto ? '⇄' : ' '}</span>`;
+        // dónde vive: ⇄ si es en otra máquina y esta ventana solo lo mira (con la columna ancha, su nombre)
+        const remoto = this.columnaMaquina(h.remoto === '?' ? '?' : h.remoto ?? '',
+            h.remoto ? (h.remoto === '?' ? 'conectado a otra máquina' : `vive en ${h.remoto}`) : '');
         // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
         const ultima = ultimaDe(h);
         const der = haceCorto(ultima);
         const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
         const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
-        const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''}`)}"` : '';
+        const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `${glifo}${remoto}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
@@ -266,12 +276,23 @@ export class BarraHilos {
             + '</span></div>';
     }
 
+    /** La columna de dónde vive un hilo: `maquina` vacía es esta. Angosta, ⇄ para los de otra máquina;
+     *  ancha (el botón ⇄ junto a buscar), el nombre de la máquina de cada uno, también el de esta. */
+    private columnaMaquina(maquina: string, titulo: string): string {
+        const t = titulo ? ` title="${esc(titulo)}"` : '';
+        if (!this.conMaquina()) return `<span class="remoto"${t}>${maquina ? '⇄' : ' '}</span>`;
+        const nombre = maquina === '?' ? '?' : maquina || this.aqui || '·';
+        return `<span class="remoto ancho${maquina ? '' : ' aqui'}" style="width: ${this.anchoMaquina}ch"${t || ` title="${esc(`vive aquí${this.aqui ? ` (${this.aqui})` : ''}`)}"`}>${esc(nombre)}</span>`;
+    }
+
     /** Bajo la cabecera de un grupo: el buscador (lo filtra la vista, sin redibujar) y los órdenes.
-     *  Un clic en el orden que ya rige vuelve al de telar. */
+     *  Un clic en el orden que ya rige vuelve al de telar. En HILOS, además, ⇄: ver la máquina de cada uno. */
     private herramientas(grupo: string, orden: Orden): string {
-        return `<div class="herram"><input class="buscar" data-grupo="${grupo}" placeholder="buscar" spellcheck="false" title="buscar por nombre o carpeta · ⏎ abre el primero · ⎋ borra">`
+        const maquina = grupo === 'hilos'
+            ? `<span class="ord${this.conMaquina() ? ' si' : ''}" data-accion="ver-maquina" title="${this.conMaquina() ? 'ver solo ⇄ en los hilos de otra máquina' : 'ver en qué máquina vive cada hilo'}">⇄</span>` : '';
+        return `<div class="herram"><input class="buscar" data-grupo="${grupo}" placeholder="buscar" spellcheck="false" title="buscar por nombre, carpeta o máquina · ⏎ abre el primero · ⎋ borra">`
             + ORDENES.map(([k, glifo, ayuda]) => `<span class="ord${k === orden ? ' si' : ''}" data-accion="orden-grupo" data-id="${grupo}:${k}" title="${esc(`ordenar por ${ayuda}${k === orden ? ' (clic: volver al orden de telar)' : ''}`)}">${glifo}</span>`).join('')
-            + `</div><div class="vacia" data-grupo="${grupo}" hidden>nada calza</div>`;
+            + maquina + `</div><div class="vacia" data-grupo="${grupo}" hidden>nada calza</div>`;
     }
 
     private tooltip(h: cli.JsonHilo): string {
@@ -353,12 +374,28 @@ export class BarraHilos {
             }
         }
 
-        // los hilos abiertos que no reclama nadie
+        // los hilos abiertos que no reclama nadie: los de esta máquina y, después, los de las otras (de su foto,
+        // solo los vivos; un hilo que la lista ya trae, uno de [remotos], no se repite). Cada uno dice dónde vive
         const ordenH = this.ordenDe('hilos');
         const sueltos = ordenar(vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre))), ordenH);
-        if (cabecera('__hilos', 'HILOS', sueltos.length, true, 'los hilos abiertos')) {
+        const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
+        const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
+        const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
+        this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
+        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras')) {
             h.push(this.herramientas('hilos', ordenH));
             for (const x of sueltos) h.push(this.fila(x, 'hilo', '', 'hilos'));
+            for (const { m, x } of deOtras) {
+                const at = x.atencion ?? 'ninguna';
+                const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
+                h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
+                    + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
+                    + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
+                    + `<span class="prio p${x.prioridad ?? 0}">${PRIORIDAD[x.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
+                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${GLIFO[at] ?? ' '}</span>`
+                    + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
+                    + `<span class="nombre">${esc(x.nombre)}</span></div>`);
+            }
         }
 
         // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS
@@ -383,25 +420,6 @@ export class BarraHilos {
                         + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
                         + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
                 }
-            }
-        }
-
-        // los hilos de otras máquinas (el laptop, visto desde el servidor): de su foto, solo los vivos. Un
-        // clic los lee como conversación, por el bus; desde aquí no se les abre una terminal
-        // un hilo que la lista ya trae (uno de [remotos], que vive allá) no se repite; los demás de esa
-        // máquina sí se ven (antes, con un solo hilo de [remotos], se escondía la máquina entera)
-        const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
-        for (const m of this.otras) {
-            const vivos = m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`));
-            const estadoM = m.en_linea ? '' : ` · apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
-            if (!cabecera(`__maquina:${m.nombre}`, `${m.nombre.toUpperCase()}${estadoM}`, vivos.length, true, `los hilos de ${m.nombre}`)) continue;
-            for (const x of vivos) {
-                const at = x.atencion ?? 'ninguna';
-                h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
-                    + ` title="${esc(`${x.nombre} · en ${m.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}\nclic: leerlo y escribirle (por el bus)`)}">`
-                    + `<span class="prio p${x.prioridad ?? 0}">${PRIORIDAD[x.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${GLIFO[at] ?? ' '}</span><span class="remoto">⇄</span>`
-                    + `<span class="nombre">${esc(x.nombre)}</span></div>`);
             }
         }
 

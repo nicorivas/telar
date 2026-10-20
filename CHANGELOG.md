@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- The thread list has no group per machine any more: threads of other machines go in HILOS with the local
+  ones, and the column after the status says where each lives (⇄ for another machine). The ⇄ button next to
+  «buscar» widens that column to show each thread's machine by name, this one included; searching by machine
+  name filters too.
 - `/maquinas`, the mother page («máquinas», top right): your machines in the middle — this one, and those on
   the bus that serve their page (the node's photo carries its address) — over an ASCII loom weaving a twill
   around them. You go into another machine's page without its key: the link carries a ticket signed with the
