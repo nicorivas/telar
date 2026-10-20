@@ -231,7 +231,8 @@ en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos).
 - **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
-  lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente) y la conversación
+  lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la
+  deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
   (⌥C). Una vista nueva es una entrada del registro.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`eco.js`): dibuja al tiro lo
   que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.

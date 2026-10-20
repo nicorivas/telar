@@ -5,7 +5,8 @@ lo que hizo y contestó el agente. Las herramientas van en una línea cada una �
 nunca con su salida: la conversación de un día entero pesa megas, y lo que se quiere saber es qué
 se pidió y qué se respondió.
 
-La fuente es la conversación anotada del agente, la primera que tenga archivo (la elige y la lee
+La fuente es la conversación que deja el mod de telar en la casilla, si es la principal del hilo y el mod
+vive (telar/mod/); si no, la conversación anotada del agente, la primera que tenga archivo (la elige y la lee
 `telar.conversacion`, el mismo lector que usa la web). Si no hay ninguna
 (un hilo sin agente, uno remoto cuya conversación vive en la otra máquina), el scrollback del
 panel, si sigue vivo.
@@ -72,14 +73,16 @@ def leer(ctx, tel, hilo, ultimos: int = POR_DEFECTO) -> dict:
     # los mensajes los lee `telar.conversacion`, el único lector: la misma conversación que ve la web
     from telar import conversacion
 
+    del_mod = _del_mod(ctx.config, hilo)
     try:
-        sid, mensajes, _ = conversacion.mensajes_del_hilo(ctx.config, list(hilo.sesiones))
+        sid, mensajes, origen = (*del_mod, "mod") if del_mod else (
+            *conversacion.mensajes_del_hilo(ctx.config, list(hilo.sesiones))[:2], "registro")
     except conversacion.ErrorDeConversacion:
         pass  # sin conversación aquí: el panel, si sigue vivo
     else:
         todos = turnos(mensajes)
         elegidos, cortado = recortar(todos, ultimos)
-        return {"hilo": hilo.nombre, "fuente": "conversacion", "conversacion": sid,
+        return {"hilo": hilo.nombre, "fuente": "conversacion", "conversacion": sid, "origen": origen,
                 "total_turnos": len(todos), "turnos": elegidos, "recortado": cortado}
     if tel.mux is not None and tel.vivo(hilo):
         panel = tel.mux.pane_de(hilo.id)
@@ -89,6 +92,26 @@ def leer(ctx, tel, hilo, ultimos: int = POR_DEFECTO) -> dict:
             return {"hilo": hilo.nombre, "fuente": "panel", "texto": texto[-MAX_TOTAL:],
                     "recortado": len(texto) > MAX_TOTAL}
     raise ErrorDeHistoria(f"«{hilo.nombre}» no tiene conversación en esta máquina ni panel vivo que leer")
+
+
+def _del_mod(config, hilo) -> tuple[str, list[dict]] | None:
+    """La conversación que dejó el mod de telar en la casilla (telar/mod/), si es de la conversación principal
+    del hilo y el mod sigue vivo: (id, mensajes). Si no, None, y se lee el registro del agente."""
+    import json
+
+    from telar import casilla
+
+    if not hilo.sesiones or not getattr(config, "estado", None) or not casilla.mod_vivo(config, hilo.nombre):
+        return None
+    try:
+        datos = json.loads((casilla.carpeta(config, hilo.nombre) / "mod" / "conversacion.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None  # todavía no la escribe, o se lee a medio escribir: el registro, esta vez
+    if not isinstance(datos, dict) or datos.get("sesion") != hilo.sesiones[0]:
+        return None
+    from telar.agente.claude_code import mensajes_del_mod
+
+    return hilo.sesiones[0], mensajes_del_mod(datos)
 
 
 def no_leer(config) -> tuple[str, ...]:

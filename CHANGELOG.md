@@ -25,6 +25,10 @@ extension shared the version number.
   (`turn.complete` also fires when the person interrupts with Esc, which the classic `Stop` hook never saw,
   so the thread no longer stays stuck in «trabajando»), `espera` on a permission dialog, an MCP request or an
   `AskUserQuestion`, and `sigue` once answered. While the mod is alive, the classic hooks skip those four.
+  And it keeps the session's last messages, already structured, in the mailbox (`mod/conversacion.json`):
+  reading a thread (the page's reading mode, `telar hilo leer`, which now says `origen: mod|registro`) uses
+  them when they belong to the thread's main conversation and the mod is alive, instead of parsing Claude
+  Code's transcript file.
 - `telar instalar`: one command to get a machine running, and safe to run again. It writes the config
   (`telar init`) if missing, creates the page key, joins the bus with `--bus nats://…` (adds `[bus]`),
   installs the `telar serve` service for this machine (systemd user unit on Linux, launchd agent on macOS,

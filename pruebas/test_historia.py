@@ -79,6 +79,62 @@ class DeDondeSeLee(Prueba):
             h.leer(self.ctx(""), SimpleNamespace(mux=None), hilo)
 
 
+class DelMod(Prueba):
+    """La conversación que deja el mod de telar en la casilla (telar/mod/)."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.config = SimpleNamespace(estado=Path(self.tmp.name), agente=SimpleNamespace(nombre="claude-code"))
+        self.hilo = SimpleNamespace(nombre="Faro", id="@1", sesiones=("s-actual", "s-vieja"))
+
+    def dejar(self, sesion="s-actual", vivo=True):
+        import json
+
+        from telar import casilla
+
+        d = casilla.carpeta(self.config, "Faro")
+        d.mkdir(parents=True, exist_ok=True)
+        if vivo:
+            (d / casilla.MOD).write_text("1")
+        (d / "mod").mkdir(exist_ok=True)
+        (d / "mod" / "conversacion.json").write_text(json.dumps({"sesion": sesion, "mensajes": [
+            {"role": "user", "text": "¿cómo va?<system-reminder>ruido</system-reminder>", "tools": []},
+            {"role": "assistant", "text": "Miro.", "tools": [{"tool": "Bash", "input": {"command": "git   status"}}]},
+            {"role": "user", "text": "", "tools": []},
+            {"role": "assistant", "text": "Va bien.", "tools": []},
+        ]}))
+
+    def leer(self):
+        return h.leer(SimpleNamespace(config=self.config), SimpleNamespace(mux=None), self.hilo)
+
+    def test_se_lee_del_mod_con_la_forma_de_siempre(self):
+        self.dejar()
+        d = self.leer()
+        self.assertEqual((d["origen"], d["conversacion"]), ("mod", "s-actual"))
+        self.assertEqual([(x["quien"], x["texto"]) for x in d["turnos"][0]], [
+            ("usuario", "¿cómo va?"), ("agente", "Miro."), ("herramienta", "Bash · git status"), ("agente", "Va bien.")])
+
+    def test_lo_del_mod_no_cuenta_como_un_mensaje_pendiente(self):
+        from telar import casilla
+
+        self.dejar()
+        self.assertEqual(casilla.pendientes(self.config, "Faro"), [])
+
+    def test_de_otra_conversacion_o_con_el_mod_muerto_no(self):
+        for sesion, vivo in (("s-vieja", True), ("s-actual", False)):
+            with self.subTest(sesion=sesion, vivo=vivo):
+                import shutil
+
+                shutil.rmtree(Path(self.tmp.name) / "casillas", ignore_errors=True)
+                self.dejar(sesion, vivo)
+                with self.assertRaises(h.ErrorDeHistoria):  # sin registro ni panel: no hay de dónde leer
+                    self.leer()
+
+
 class Vetado(Prueba):
     def test_por_nombre_o_por_carpeta_y_lo_de_abajo(self):
         self.assertTrue(h.vetado(["diario"], "Diario", ""))

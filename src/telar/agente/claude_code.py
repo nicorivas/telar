@@ -674,6 +674,31 @@ def construir(config) -> ClaudeCode:
 registrar(NOMBRE, construir)
 
 
+def mensajes_del_mod(datos: Mapping) -> list[dict]:
+    """La conversación que deja el mod de telar en la casilla del hilo (telar/mod/, `mod/conversacion.json`), en la
+    misma forma que `mensajes`: la persona, el agente y una línea por herramienta. El mod no guarda la hora."""
+    import re
+
+    salida: list[dict] = []
+    for m in datos.get("mensajes") or []:
+        if not isinstance(m, dict):
+            continue
+        texto = str(m.get("text") or "")
+        if m.get("role") == "user":
+            # los recordatorios que Claude Code agrega al mensaje no son de la persona
+            texto = _sin_marcas(re.sub(r"<system-reminder>.*?</system-reminder>", "", texto, flags=re.S))
+            if texto:
+                salida.append({"quien": "usuario", "hora": "", "texto": texto})
+        elif m.get("role") == "assistant":
+            if texto.strip():
+                salida.append({"quien": "agente", "hora": "", "texto": texto.strip()})
+            for u in m.get("tools") or []:
+                if isinstance(u, dict):
+                    entrada = u.get("input") if isinstance(u.get("input"), Mapping) else {}
+                    salida.append({"quien": "herramienta", "hora": "", "texto": _herramienta(str(u.get("tool", "")), entrada)})
+    return salida
+
+
 def _sin_marcas(texto: str) -> str:
     """Lo que la persona escribió, sin el envoltorio con que Claude Code guarda una skill."""
     import re

@@ -819,7 +819,7 @@ responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
 ## `telar hilo leer --json` — lo último de un hilo
 
 ```json
-{"hilo": "Faro", "fuente": "conversacion", "conversacion": "<id>", "total_turnos": 12, "recortado": false,
+{"hilo": "Faro", "fuente": "conversacion", "conversacion": "<id>", "origen": "mod", "total_turnos": 12, "recortado": false,
  "turnos": [[{"quien": "usuario", "hora": "2026-10-01T12:00:00Z", "texto": "…"},
              {"quien": "herramienta", "hora": "…", "texto": "Bash · qué hace"},
              {"quien": "agente", "hora": "…", "texto": "…"}]]}
@@ -828,7 +828,9 @@ responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
 Con `--maquina <nombre>` se lee un hilo de otra máquina: lo lee su nodo (pedido `leer` por el bus) y la
 respuesta es la misma, con `"maquina"` agregado.
 
-Un turno empieza con un mensaje de `usuario`. `quien` es `usuario`, `agente` o `herramienta`; una herramienta
+`origen` dice de dónde salió la conversación: `mod`, la que deja el mod de telar en la casilla del hilo
+(cuando es la conversación principal del hilo y el mod vive; esos mensajes no traen `hora`), o
+`registro`, el archivo que guarda el agente. Un turno empieza con un mensaje de `usuario`. `quien` es `usuario`, `agente` o `herramienta`; una herramienta
 es una línea (cuál y sobre qué), nunca su salida. `recortado` dice si se cortó un texto (más de 4000
 caracteres) o se soltaron turnos viejos para no pasar de 60 000 en total. Sin conversación en esta máquina:
 `{"hilo", "fuente": "panel", "texto", "recortado"}` con lo último del panel.

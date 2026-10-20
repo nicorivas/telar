@@ -1,7 +1,7 @@
 // El mod de telar para Claude Code. Lo carga cada sesión de Claude Code con CLAUDE_CODE_PLUGIN_DIRS (lo pone
 // `telar agente instalar`); en una sesión que no es un hilo de telar no hace nada.
 //
-// Hace dos cosas, y mientras vive toca un archivo en la casilla (.mod) para que telar sepa que está:
+// Hace tres cosas, y mientras vive toca un archivo en la casilla (.mod) para que telar sepa que está:
 //
 // 1. La casilla. Cuando llegan mensajes y la sesión está ociosa, manda la línea de aviso («↯ mensaje
 //    nuevo · …») como un mensaje, y el gancho UserPromptSubmit de siempre le agrega el contenido. Antes ese
@@ -12,6 +12,11 @@
 //    cuando aparece un diálogo de permiso o una pregunta, y sigue cuando se contesta. Con el mod vivo, los
 //    ganchos clásicos de esos cuatro eventos no avisan (telar agente aviso los descarta), para no avisar dos
 //    veces.
+// 3. La conversación. Mientras la sesión avanza, deja sus últimos mensajes ya estructurados en la casilla
+//    (mod/conversacion.json, aparte de los mensajes pendientes): lo que escribió la persona, lo que
+//    contestó el agente y cada herramienta con lo que la distingue. Con eso telar lee el hilo (el modo
+//    lectura de la página, `telar hilo leer`) sin descifrar el registro de Claude Code, que cambia de forma
+//    sin avisar.
 
 const CADA_MS = 2000        // cada cuánto mira la casilla
 const VIDA_MS = 10_000      // cada cuánto toca la señal de vida (el nodo la da por muerta a los 30 s)
@@ -23,6 +28,10 @@ let trabajando = false
 let enviando = false
 let vida = 0
 let resuelto = 0
+let guardando = false  // ya hay una escritura de la conversación en camino
+const MENSAJES = 300   // cuántos mensajes de la conversación se guardan, los últimos
+const TEXTO = 8000     // caracteres por mensaje
+const DETALLE = ['description', 'command', 'file_path', 'pattern', 'url', 'query', 'prompt']
 let semaforo = ''      // el último evento avisado: no se repite el mismo
 let cola = Promise.resolve()  // los avisos salen de a uno y en orden
 
@@ -67,6 +76,37 @@ async function resolver($) {
   casilla = d.casilla || ''
   resuelto = await $.clock.now()
   return d
+}
+
+// la conversación, ya estructurada, en la casilla: se junta lo que pase en el próximo segundo y se escribe una vez
+function guardarPronto($) {
+  if (!hilo || !casilla || guardando) return
+  guardando = true
+  $.clock.after(1000, () => guardar($))
+}
+
+function recortar(texto) {
+  return texto.length > TEXTO ? texto.slice(0, TEXTO) + ' […]' : texto
+}
+
+async function guardar($) {
+  guardando = false
+  const todos = await $.session.messages()
+  const mensajes = todos.slice(-MENSAJES).map((m) => ({
+    role: m.role,
+    text: recortar(m.text || ''),
+    // de cada herramienta, lo que la distingue de otra llamada igual (telar arma la línea)
+    tools: (m.toolUses || []).map((u) => {
+      const input = {}
+      for (const k of DETALLE) {
+        const v = u.input ? u.input[k] : undefined
+        if (typeof v === 'string' && v.trim()) input[k] = v.slice(0, 300)
+      }
+      return { tool: u.tool, input }
+    }),
+  }))
+  const datos = { sesion: await $.session.id(), hora: await $.clock.now(), total: todos.length, mensajes }
+  await $.fs.write(casilla + '/mod/conversacion.json', JSON.stringify(datos))
 }
 
 async function hayMensajes($) {
@@ -122,7 +162,14 @@ export function register(on) {
     if (!e.agentId) {
       trabajando = false
       avisar($, 'termina')
+      guardarPronto($)
     }
+    return next(e)
+  })
+
+  // cada fila que la conversación guarda (un mensaje, una respuesta, un resultado): la lectura la ve al tiro
+  on('session.append', async ($, e, next) => {
+    guardarPronto($)
     return next(e)
   })
 
