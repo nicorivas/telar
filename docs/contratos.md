@@ -566,7 +566,7 @@ el contrato de una página de sección y tres cosas más. Un bloque puede ser `d
 | `confirmar` | antes de correr se pregunta |
 | `principal` | la de ⏎; una como mucho. Las demás van numeradas y el número es su tecla |
 | `mensaje` | después del comando, abre un hilo nuevo con el agente y este primer prompt (`nombre_hilo`: su nombre); un `{texto}` en él también se reemplaza |
-| `rol` | qué es, para quien la corre sin abrir la ficha: `hecha` es la que corre el ✓ de la lista de tareas de VS Code, sin preguntar aunque tenga `confirmar`; `fecha` cambia la fecha de la tarea, y recibe en `{texto}` la fecha nueva (`AAAA-MM-DD`, o `+Nd`) que el dashboard pide con un selector al hacer clic en el atraso; `dueno` cambia quién la hace, y recibe en `{texto}` el nombre (o `none`, sin asignar) que el dashboard pide al hacer clic en el responsable, ofreciendo `opciones` |
+| `rol` | qué es, para quien la corre sin abrir la ficha: `hecha` es la que corre el ✓ de la lista de tareas, sin preguntar aunque tenga `confirmar`; `fecha` cambia la fecha de la tarea, y recibe en `{texto}` la fecha nueva (`AAAA-MM-DD`, o `+Nd`) que el dashboard pide con un selector al hacer clic en el atraso; `dueno` cambia quién la hace, y recibe en `{texto}` el nombre (o `none`, sin asignar) que el dashboard pide al hacer clic en el responsable, ofreciendo `opciones` |
 | `opciones` | con `rol: dueno`, las personas para elegir (una lista de nombres); se puede escribir otra |
 
 `telar tarea <id> --accion N [--texto T]` corre la acción `N`. telar vuelve a pedir la ficha

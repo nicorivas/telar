@@ -11,7 +11,10 @@ extension shared the version number.
 ### Deprecated
 
 - The VS Code extension. The web page (`telar serve --web`) does everything it did, and the release no longer
-  builds or publishes it. Its code stays in `vscode/` as the source of the web page.
+  builds or publishes it. Its own code is gone (`extension.ts`, the VS Code host and surface, the sidebar
+  views, its manifest and packaging); `vscode/` is now only the source of the web page (`npm run tipos`,
+  `npm run navegador`), and CI checks that `src/telar/web/` matches what it compiles to. Deploying no longer
+  compiles anything.
 
 ### Added
 

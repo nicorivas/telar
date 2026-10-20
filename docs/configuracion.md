@@ -174,7 +174,7 @@ telar config --calendario https://…/private-…/basic.ics  # una dirección iC
 telar config --calendario ninguno                      # sin agenda
 ```
 
-En VS Code es lo mismo desde el dashboard: **⚙ configuración** dice cuál está en uso,
+En la página es lo mismo desde el dashboard: **⚙ configuración** dice cuál está en uso,
 si responde, y deja cambiarla.
 
 - **gws** usa la cuenta con la que la CLI `gws` ya está conectada (`gws auth login`).
@@ -421,7 +421,7 @@ ventanas que faltan, sigue a un hilo que cambió de dirección o de nombre allá
 la máquina donde vive) y cierra la ventana de uno que terminó. Los hilos de antes, con sesión
 tmux propia allá (`telar-1a2b3c4d`), se siguen mirando mientras existan.
 
-- Crear: `telar ir <nombre> --crear --remoto casa`, o en VS Code «hilo nuevo», que pregunta
+- Crear: `telar ir <nombre> --crear --remoto casa`, o en la página «+ nuevo», que pregunta
   dónde si hay algún remoto declarado. La ventana queda con la opción tmux `@telar_remoto`.
   Allá el agente arranca donde diga `[agente] carpeta`: «hilo» es la carpeta del hilo
   traducida a la raíz de allá, «raiz» la raíz de allá, y una ruta del hogar de aquí
@@ -638,10 +638,8 @@ Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de ca
 **otra app** que tu API, en su propio puerto, así que con la llave de una persona no se alcanza ninguna de
 tus rutas. Cada persona entra con su llave y puede solo leer y dejar una sugerencia o un pedido (uno cada
 5 s). La bandeja la decides tú, desde tu API (`/equipo/bandeja`, `/equipo/{id}/aceptar|rechazar|existe`);
-desde otra máquina, se le pide a la que tiene las tareas por el bus. En VS Code, `telar.equipoRemoto`
-(`local`, o la máquina donde viven las tareas) enciende las notificaciones y la pestaña «equipo». En la
-página del navegador lo dice la configuración (`/config`, campo `equipo`): `aqui` si esta máquina tiene
-`[equipo]`, o la de `[equipo] en = "<máquina>"` si la bandeja vive en otra. Ver `telar equipo --help`.
+desde otra máquina, se le pide a la que tiene las tareas por el bus. En la página lo dice la configuración
+(`/config`, campo `equipo`): `aqui` si esta máquina tiene `[equipo]`, o la de `[equipo] en = "<máquina>"` si la bandeja vive en otra. Ver `telar equipo --help`.
 
 ## `[secciones]` — grupos propios en la lista de hilos
 

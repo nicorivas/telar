@@ -115,8 +115,8 @@ function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
     return [...l].sort(cmp[orden]);
 }
 
-/** Donde se dibuja la barra: la vista lateral de VS Code (hilos-vscode.ts) o la columna izquierda
- *  de la página web (src/navegador). Lo mismo que la superficie del dashboard, más su cabecera. */
+/** Donde se dibuja la barra: la columna izquierda de la página (src/navegador). Lo mismo que la superficie
+ *  del dashboard, más su cabecera. Una capa de cuando también la dibujaba la extensión de VS Code (deprecada). */
 export interface SuperficieBarra {
     readonly cspSource: string;
     readonly cspConectar?: string;

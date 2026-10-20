@@ -55,14 +55,12 @@ red).
 
 ## Vestigios de versiones anteriores
 
-- **La extensión de VS Code, deprecada (decidido el 20-oct-2026).** VS Code no aporta nada propio: se usaba
-  como sustento de la barra, el dashboard y las terminales, no como editor, y hoy la página hace todo eso.
-  Lo que queda de ella es un vestigio: el dashboard (`vistas/hoy.ts`, unas 2.500 líneas) corre en el navegador
-  con un `acquireVsCodeApi` simulado, cada pantalla en un iframe y mensajes que van y vuelven entre marcos. El
-  retiro: avisar en la extensión y en el CHANGELOG que está deprecada (y dejar de publicarla en el Marketplace
-  y Open VSX), mover el código que comparte con la página a la página, escribir la página para el navegador
-  sin la capa del webview (anfitrión, superficies, `acquireVsCodeApi`), y borrar lo que es solo de VS Code
-  (`extension.ts`, `anfitrion-vscode.ts`, las vistas laterales). `vscode/` pasa a ser el código de la página.
+- **La forma de la extensión de VS Code, en la página.** La extensión está deprecada y su código propio se
+  borró (20-oct-2026); `vscode/` es solo el código de la página. Pero la página todavía arrastra su forma: el
+  dashboard (`vistas/hoy.ts`, unas 2.500 líneas) corre con un `acquireVsCodeApi` simulado, cada pantalla en
+  un iframe, con mensajes que van y vuelven entre marcos, y las capas `anfitrion` y `superficie` que existían
+  para servir a dos dueños. Falta escribir la página para el navegador sin esa capa, y después darle a la
+  carpeta un nombre que diga lo que es.
 - **El correo entre personas y los remotos por ssh y mosh** (`remoto.py`, `movil.py`, `correo.py`,
   `espejo.py`, el `cartero`; unas mil líneas): se van cuando el bus cruce personas (el punto 3 de arriba).
   Quien use dos máquinas sin bus queda sin semáforo ni ventanas remotas: el CHANGELOG lo dice, con el bus
@@ -89,5 +87,5 @@ red).
 
 1. El correo y el directorio entre personas por el bus.
 2. La 0.2.0.
-3. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
+3. Escribir la página para el navegador, sin la capa del webview (la extensión ya está deprecada y borrada).
 4. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

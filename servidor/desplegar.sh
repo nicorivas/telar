@@ -7,9 +7,9 @@
 #   TELAR_SERVIDOR=yo@otra servidor/desplegar.sh
 #
 # El servidor es el `destino` del primer [remotos] de la configuración (o TELAR_SERVIDOR). Allá: git pull;
-# reinstalar telar si cambió pyproject.toml; npm ci si cambiaron las dependencias de vscode/; compilar la
-# extensión si cambió vscode/; reiniciar telar-serve y comprobar que contesta y que los hilos (las ventanas
-# de tmux) siguen ahí. Aquí: compilar la extensión y reiniciar el `serve` de esta máquina.
+# reinstalar telar si cambió pyproject.toml; reiniciar telar-serve y comprobar que contesta y que los hilos
+# (las ventanas de tmux) siguen ahí. Aquí: reiniciar el `serve` de esta máquina. La página viaja ya
+# compilada (src/telar/web), así que ninguna de las dos máquinas compila nada.
 #
 # Solo despliega lo que ya está en el remoto de git: si hay commits sin subir, se detiene.
 set -euo pipefail
@@ -47,13 +47,6 @@ if grep -q '^pyproject.toml$' <<<"$cambios"; then
     echo "  pyproject cambió: reinstalo telar"
     uv tool install -q --force --editable "$PWD[serve,bus]"
 fi
-if grep -q '^vscode/package' <<<"$cambios"; then
-    echo "  dependencias de vscode/: npm ci"
-    (cd vscode && npm ci -s >/dev/null)
-fi
-if grep -q '^vscode/' <<<"$cambios"; then
-    (cd vscode && npm run -s compile)
-fi
 ventanas=$(tmux list-windows -a -F '#{window_id}' 2>/dev/null | sort -u | wc -l)
 systemctl --user restart telar-serve
 for _ in $(seq 30); do
@@ -70,7 +63,6 @@ ALLA
 $solo_servidor && exit 0
 
 echo "→ esta máquina"
-(cd vscode && npm run -s compile)
 if [[ $(uname) == Darwin ]]; then
     launchctl kickstart -k "gui/$(id -u)/com.telar.serve"
 else

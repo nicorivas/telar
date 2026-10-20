@@ -34,8 +34,8 @@ Las pruebas de Python se corren como el CI: con telar instalado con `pip install
 suyas: `claude plugin test` en `src/telar/mod/`, y `claude plugin validate --strict src/telar/mod`.
 
 Necesita telar instalado editable (`uv tool install --editable '.[serve,bus]'`): así `telar` corre el
-código del repositorio. Un cambio en la extensión de VS Code (lo que no es la página) se ve con
-`npm run compile` en `vscode/` y recargando la ventana de VS Code.
+código del repositorio. Los tipos de la página: `npm run tipos` en `vscode/`. Lo que se commitea en
+`src/telar/web/` es lo que sale de `npm run navegador`, y el CI lo comprueba.
 
 ## Llevarlo a las máquinas: `servidor/desplegar.sh`
 
@@ -46,7 +46,7 @@ servidor/desplegar.sh --solo-servidor
 
 Despliega lo que ya está en el remoto de git (si hay commits sin subir, se detiene). En el servidor (el
 `destino` del primer `[remotos]`, o `TELAR_SERVIDOR`): `git pull`; reinstala telar si cambió
-`pyproject.toml`, `npm ci` si cambiaron las dependencias de `vscode/`, compila la extensión si cambió
-`vscode/`; reinicia `telar-serve` y comprueba que la API contesta y que no se perdió ninguna ventana de tmux
-(los hilos). En esta máquina: compila la extensión y reinicia su `serve`. Reiniciar `serve` corta las
+`pyproject.toml`; reinicia `telar-serve` y comprueba que la API contesta y que no se perdió ninguna ventana
+de tmux (los hilos). En esta máquina: reinicia su `serve`. La página viaja compilada (`src/telar/web/`): nadie
+compila nada al desplegar. Reiniciar `serve` corta las
 terminales abiertas en el navegador: se recarga la página.

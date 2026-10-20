@@ -1,6 +1,6 @@
-// La superficie: donde se dibuja el dashboard. En VS Code, un panel con un webview
-// (`superficie-vscode.ts`); en la web, la página de un navegador conectada por WebSocket
-// (`web/`). El dashboard le manda HTML y mensajes, y recibe los de la página; no sabe cuál es.
+// La superficie: donde se dibuja el dashboard, la página del navegador (`web/`). El dashboard le manda HTML
+// y mensajes, y recibe los de la página. Una capa de cuando el dashboard también vivía en un webview de la
+// extensión de VS Code (deprecada, 20-oct-2026): queda hasta que la página se escriba sin ella.
 
 export interface Superficie {
     /** El origen de sus recursos, para la política de contenido de la página (CSP). */

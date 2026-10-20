@@ -52,8 +52,9 @@ jobs:
           telar --version
           telar --help
 
-  extension:
-    # La otra mitad del paquete: si la extensión no compila, telar está a medias.
+  pagina:
+    # La página (vscode/, empaquetada en src/telar/web/): que sus tipos cierren, que lo commiteado en
+    # src/telar/web sea lo que sale de compilarla, y la prueba del eco de la terminal.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +65,13 @@ jobs:
           cache-dependency-path: vscode/package-lock.json
       - run: npm ci
         working-directory: vscode
-      - run: npx tsc -p .
+      - run: npm run tipos
+        working-directory: vscode
+      - name: Lo commiteado es lo compilado
+        run: |
+          (cd vscode && npm run -s navegador)
+          git diff --exit-code src/telar/web || { echo "::error::src/telar/web no es lo que sale de compilar vscode/: npm run navegador y commitear"; exit 1; }
+      - run: npm run prueba:eco
         working-directory: vscode
 
   mod:
