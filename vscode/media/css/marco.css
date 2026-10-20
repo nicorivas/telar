@@ -39,8 +39,8 @@ iframe {
   border-right: var(--borde);
 }
 
-/* la cabecera: a la izquierda telar y lo que se ve; al centro, en qué máquina está esta página; a la derecha,
-   los botones */
+/* la cabecera: al centro, la máquina que sirve esta página y lo que se ve («telar › Gestión», o
+   «telar ⇢ laptop:Telar» si es de otra máquina); a la derecha, los botones */
 header {
   grid-column: 1 / -1;
   display: grid;
@@ -55,26 +55,25 @@ header {
   & .der { display: flex; gap: var(--h-2); align-items: baseline; min-width: 0; }
 
   & .der { justify-content: flex-end; }
-  & .izq b { color: var(--violeta); }
 }
 
 #donde {
-  color: var(--dim);
+  display: flex;
+  gap: var(--h-1);
+  align-items: baseline;
+  min-width: 0;
   white-space: nowrap;
 
-  & b { color: var(--amarillo); font-weight: normal; }
+  & #aqui { color: var(--violeta); }
+  & #icono { color: var(--dim); }
+  & #icono.otra { color: var(--amarillo); }
+  & #icono[hidden] { display: none; }
+  & #visto { overflow: hidden; text-overflow: ellipsis; }
 }
 
 #modo[hidden] { display: none; }
 #volver { display: none; }
 
-#titulo {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 #marcos {
   position: relative;

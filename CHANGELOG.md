@@ -50,9 +50,12 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
-- The browser page says, in the middle of its header, which machine serves it («página en telar»): its name on
-  the bus, or its hostname without one, from `/salud` (which now also returns `maquina` and `host`). Every
-  machine serves its own page, so with any number of them you know which one you are on.
+- The browser page's header says, in the middle, which machine serves it and what you are looking at:
+  `telar › Gestión` for a thread of that machine, `telar ⇢ laptop:Telar` for one of another (forwarded). A
+  thread of another machine is named `máquina:hilo`, like `scp máquina:ruta` (with the person it would be
+  `nico@laptop:Telar`). The machine is its name on the bus, or its hostname without one, from `/salud` (which
+  now also returns `maquina` and `host`): every machine serves its own page, so with any number of them you
+  know which one you are on.
 - Local echo in the browser terminal, like mosh: what you type appears at once, dim, without waiting for the
   round trip. Built for Claude Code, which redraws the whole screen on every key (VS Code's typeahead expects
   each letter echoed alone, so with Claude Code it never confirms a prediction and stays off): after each

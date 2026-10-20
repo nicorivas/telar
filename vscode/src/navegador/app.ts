@@ -228,9 +228,12 @@ function mostrar(que: string): void {
         botonModo.textContent = forma(que) === 'term' ? 'conversación' : 'terminal';
     }
     if (forma(que) === 'term' && !angosto()) f?.contentWindow?.focus();
-    const nombre = que.startsWith('rem:') ? (() => { const r = que.slice(4), i = r.indexOf(':'); return `${r.slice(i + 1)} · en ${r.slice(0, i)}`; })()
+    // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
+    // `scp máquina:ruta`; con la persona sería «nico@laptop:Telar»). Lo muestra la cabecera (indice.html)
+    const remoto = que.startsWith('rem:') ? que.slice(4) : '';
+    const nombre = remoto ? remoto
         : que.startsWith('doc:') ? `${que.slice(4)} · carpeta` : que;
-    document.getElementById('titulo')!.textContent = que === 'dashboard' ? '' : nombre;
+    window.telar?.donde?.(que === 'dashboard' ? null : { texto: nombre, otraMaquina: !!remoto });
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
     document.body.classList.remove('en-lista');
     document.body.classList.add('en-detalle');
@@ -371,7 +374,14 @@ function cambiarModo(): void {
     mostrar(actual);
 }
 
-declare global { interface Window { telar?: { mostrar?: (que: string) => void; verProgreso?: () => void; cambiarModo?: () => void } } }
+declare global {
+    interface Window {
+        telar?: {
+            mostrar?: (que: string) => void; verProgreso?: () => void; cambiarModo?: () => void;
+            donde?: (lo: { texto: string; otraMaquina: boolean } | null) => void;
+        };
+    }
+}
 window.telar = { ...(window.telar ?? {}), mostrar, cambiarModo };
 // abierta por «compartir» del teléfono (share_target del manifiesto): eso primero
 mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
