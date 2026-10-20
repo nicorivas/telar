@@ -213,6 +213,7 @@ class Semantica(unittest.TestCase):
             run.assert_not_called()
 
 
+@unittest.skipIf(not comun.HAY_FASTAPI, "sin fastapi (el extra «serve»)")
 class Servidor(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

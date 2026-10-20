@@ -115,6 +115,7 @@ class HilosYConfig(Prueba):
             self.assertEqual(json.loads(salida.getvalue()), TestClient(api.app).get("/config").json())
 
 
+@unittest.skipIf(api is None, "sin fastapi")
 class EspejosProyectosPendientes(Prueba):
     """`/espejos`, `/proyectos` y `/pendientes`: el mismo JSON que la CLI, campos extra incluidos."""
 
@@ -152,6 +153,7 @@ class EspejosProyectosPendientes(Prueba):
         self.assertEqual(p.call_args.kwargs, {"repo": True, "hechos": False, "proveedores": False, "hilo": "", "limite": 3})
 
 
+@unittest.skipIf(api is None, "sin fastapi")
 class PaginasFichaNotas(Prueba):
     """`/secciones`, `/apps`, `/ficha` y `/notas`: lo de la CLI, con los errores como códigos."""
 
@@ -186,6 +188,7 @@ class PaginasFichaNotas(Prueba):
         self.assertEqual(n.call_args[0][1], "2026-10-19")
 
 
+@unittest.skipIf(api is None, "sin fastapi")
 class LoQueEscribe(Prueba):
     """`POST /mensajes`, `/mensajes/{id}/soltar`, `/notas` y `PUT /config/pestanas`: lo mismo que la CLI."""
 
@@ -229,6 +232,7 @@ class LoQueEscribe(Prueba):
             self.assertIn('"plan"', cfg.read_text())
 
 
+@unittest.skipIf(api is None, "sin fastapi")
 class AjustesCompartirLeer(Prueba):
     """`PUT /config/{ajuste}`, `/compartir` y `/hilos/leer`: lo de la CLI, con los errores como códigos."""
 

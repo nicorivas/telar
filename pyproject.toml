@@ -32,6 +32,8 @@ dependencies = ["PyYAML>=6.0", "pydantic>=2.6"]
 bus = ["nats-py>=2.6", "bcrypt>=4"]
 # la API (`telar serve`): los mismos datos que la CLI, por HTTP, con caché (docs/arquitectura.md)
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=12"]
+# lo que piden las pruebas, además de lo de arriba: el cliente de pruebas de la API (starlette.testclient)
+pruebas = ["httpx>=0.25"]
 
 [project.urls]
 Homepage = "https://github.com/nicorivas/telar"

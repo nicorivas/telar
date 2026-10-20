@@ -20,6 +20,13 @@ if str(RAIZ / "src") not in sys.path:
     sys.path.insert(0, str(RAIZ / "src"))
 
 
+try:
+    import fastapi  # noqa: F401
+    HAY_FASTAPI = True
+except ImportError:  # sin el extra «serve»: las pruebas de la API y de la página se saltan
+    HAY_FASTAPI = False
+
+
 class Prueba(unittest.TestCase):
     """Caso base: el entorno queda limpio de `TELAR_*` mientras dure la prueba."""
 

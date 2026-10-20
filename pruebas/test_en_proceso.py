@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from comun import Prueba  # noqa: E402  (pone src/ en el camino)
+from comun import HAY_FASTAPI, Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar.servicios import ErrorDeServicio
 from telar.servicios import en_proceso
@@ -30,6 +31,7 @@ class ElPuente(Prueba):
         with self.assertRaises(ErrorDeServicio):
             en_proceso.correr(SimpleNamespace(), "encargar", ["x"])
 
+    @unittest.skipIf(not HAY_FASTAPI, "sin fastapi (el extra «serve»)")
     def test_la_ruta_no_deja_pedir_llevar(self):
         from fastapi.testclient import TestClient
 

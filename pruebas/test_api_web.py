@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from comun import Prueba  # noqa: E402  (pone src/ en el camino)
+from comun import HAY_FASTAPI, Prueba  # noqa: E402  (pone src/ en el camino)
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+if not HAY_FASTAPI:
+    raise unittest.SkipTest("sin fastapi (el extra «serve»)")
 
-from telar import api_web
+from fastapi import FastAPI  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from telar import api_web  # noqa: E402
 
 
 def _app():

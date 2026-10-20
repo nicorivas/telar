@@ -38,7 +38,8 @@ jobs:
       - name: Instalar telar
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          # con sus extras: la API (serve) y el bus tienen pruebas propias que, sin ellos, se saltan
+          pip install -e '.[serve,bus,pruebas]'
 
       - name: Compilar todo
         run: python -m compileall -q src pruebas
