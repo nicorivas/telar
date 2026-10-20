@@ -27,6 +27,17 @@ class LasCuentas(Prueba):
         self.assertEqual(conf.count("jetstream: enabled"), 2)
         self.assertIn(f'users: [ {{ user: "nico", password: "{HASH}" }} ]', conf)
 
+    def test_entre_cuentas_cruzan_solo_el_correo_y_el_directorio(self):
+        conf = cuentas.configuracion({"nico": HASH, "marcelo": HASH, "pablo": HASH})
+        self.assertIn('{ service: "correo.nico" }', conf)
+        self.assertIn('{ stream: "directorio.nico" }', conf)
+        # cada una importa los de las demás, el correo con share (quien recibe sabe de qué cuenta viene)
+        self.assertIn('{ service: { account: "marcelo", subject: "correo.marcelo" }, share: true }', conf)
+        self.assertEqual(conf.count("share: true"), 6)
+        self.assertEqual(conf.count("exports: ["), 3)
+        # una sola persona: nada que importar
+        self.assertNotIn("imports", cuentas.configuracion({"nico": HASH}))
+
     def test_escribir_y_leer(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "bus"

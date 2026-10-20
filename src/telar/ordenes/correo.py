@@ -3,8 +3,9 @@
     echo "cuerpo" | telar correo enviar usuario+hilo@servidor -s "asunto" [--responde "<id>"]
 
 A un hilo propio (de esta persona, en cualquier máquina) va por el bus, como `telar mensaje`. A otra
-persona, por el correo del servidor, que lo entrega su `cartero`: el bus todavía no cruza personas
-(docs/propuestas/telar-para-otros.md). Leer la Maildir por ssh se retiró.
+persona, también por el bus si esa persona tiene cuenta y nodo en él (telar.entre_personas): su nodo lo deja
+en la casilla del hilo y lo entrega como cualquier mensaje. Si nadie lo atiende por el bus, por el correo del
+servidor, que entrega su `cartero`. Leer la Maildir por ssh se retiró.
 """
 
 from __future__ import annotations
@@ -51,6 +52,16 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
         if m.get("estado") == "retenido":
             return "", f"retenido, no se entregó ({m['motivo']}); tu persona lo suelta con: telar mensaje --soltar {m['id']}"
         return f"el bus (id {m['id']})", ""
+    if ext and mod_bus.hay_bus(ctx.config):
+        # a otra persona: por su cuenta del bus, si tiene nodo (telar.entre_personas); si no, el correo del
+        # servidor, como antes
+        try:
+            r = mod_bus.escribir_a(ctx.config, usuario, ext, cuerpo.strip(), asunto=asunto.strip(), de=_quien(ctx))
+            return f"el bus, a {usuario} (id {r.get('id', '?')})", ""
+        except mod_bus.ErrorDeBus as e:
+            if "no lo aceptó" in str(e):
+                return "", str(e)
+            # nadie lo atiende por el bus: sigue por el correo del servidor
     # sin charset declarado, quien lo lee asume us-ascii y cada tilde llega como «��»
     orden = ["mail", "-s", asunto.strip(), "-a", "MIME-Version: 1.0",
              "-a", "Content-Type: text/plain; charset=UTF-8", "-a", "Content-Transfer-Encoding: 8bit"]
@@ -72,6 +83,13 @@ def enviar(ctx, direccion: str, asunto: str, cuerpo: str, *, responde: str = "",
         return "", str(e)
     via = "aquí" if elegido is None else elegido.destino
     return via, "" if r.returncode == 0 else (r.stderr.strip() or f"mail salió con {r.returncode}")[-300:]
+
+
+def _quien(ctx) -> str:
+    """El hilo que escribe, para que quien recibe sepa a quién contestarle."""
+    import os
+
+    return os.environ.get("TELAR_HILO", "").strip()
 
 
 def main(argv: list[str], ctx) -> int:

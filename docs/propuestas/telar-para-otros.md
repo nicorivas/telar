@@ -13,14 +13,15 @@ retirar en el camino.
 Cada persona ya tiene su cuenta en el bus, que el servidor hace cumplir ([arquitectura](../arquitectura.md),
 «Entre máquinas: el bus»). Lo que falta para que las personas se hablen:
 
-1. **El correo entre personas y el directorio por el bus.** Hoy van por el servidor: `telar correo enviar` a
-   otro usuario, el `cartero` y Postfix, la lista de permitidos de `telar persona --correo`, y `telar
-   directorio` (`<servidor>/directorio/<usuario>.json`, la única forma de ver los hilos de otra persona).
-   Con un servicio que cada cuenta exporte (su casilla) y las demás importen, se retiran el `cartero`, Postfix y la casilla común. Antes de
-   desinstalar Postfix: la salida de cron de `telar periodicos` llega por correo (poner `MAILTO=""` o
-   mandarla a un log; con `always_bcc` a una casilla común, la lee todo el grupo). `enlace archivo` y
-   `enlace notificar` no tienen pedido en el bus: portarlos al nodo o aceptar perderlos. Es irreversible y
-   afecta a las otras personas del servidor: se decide con ellas.
+1. **Retirar el correo del servidor.** El correo y el directorio entre personas ya van por el bus
+   ([arquitectura](../arquitectura.md), «Entre máquinas: el bus»), con el correo del servidor de respaldo
+   para quien no tenga nodo. Para retirarlo (el `cartero`, Postfix, la casilla común, `telar directorio`
+   por carpeta y la lista de permitidos de `telar persona --correo`), cada persona del servidor necesita su
+   cuenta en el bus (`telar bus persona`) y su nodo (`telar instalar --bus`). Antes de desinstalar Postfix:
+   la salida de cron de `telar periodicos` llega por correo (poner `MAILTO=""` o mandarla a un log; con
+   `always_bcc` a una casilla común, la lee todo el grupo). `enlace archivo` y `enlace notificar` no tienen
+   pedido en el bus: portarlos al nodo o aceptar perderlos. Es irreversible y afecta a las otras personas
+   del servidor: se decide con ellas.
 2. **Más de una máquina siempre prendida**, en clúster (NATS de tres), si el equipo crece: hoy el servidor es
    un punto único de falla.
 
@@ -74,5 +75,5 @@ red).
 
 ## El orden
 
-1. El correo y el directorio entre personas por el bus.
+1. Darles cuenta y nodo en el bus a las otras personas del servidor, y retirar el correo del servidor (con ellas).
 2. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

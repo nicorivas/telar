@@ -8,6 +8,13 @@ extension shared the version number.
 
 ### Added
 
+- Mail between people over the bus (`telar.entre_personas`). Each bus account exports `correo.<person>`, a
+  service another person uses to leave a message for one of their threads (their node puts it in the thread's
+  mailbox, durable like any message; the server tells which account it came from, so nobody writes as someone
+  else), and `directorio.<person>`, the list of their threads that their node publishes every 30 s. `telar
+  correo enviar person+thread@…` goes over the bus when that person has a node there, and falls back to the
+  server's mail otherwise; `telar directorio` also shows what arrives over the bus. Run `telar bus persona` again
+  on the bus machine to regenerate its accounts with these exports and imports.
 - `POST /reunion`: prepare a meeting, or take its minutes, from the API (`telar reunion … --json`), so the web
   page no longer needs the CLI for it.
 - `POST /hilo/llevar`: take a thread to another machine from the API. It runs in its own process, since copying

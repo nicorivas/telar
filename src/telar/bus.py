@@ -221,6 +221,34 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
             **({"estado": "retenido", "motivo": retener} if retener else {})}
 
 
+def escribir_a(config, persona_destino: str, hilo: str, texto: str, *, de: str, asunto: str = "") -> dict:
+    """Un correo a un hilo de otra persona (telar.entre_personas): lo recibe su nodo, que lo guarda en su
+    casilla y responde. Devuelve su respuesta (`{"ok": true, "id": …}`). Levanta ErrorDeBus si nadie lo
+    atiende (esa persona no tiene nodo en el bus, o no hay cuenta suya) o si lo rechazó."""
+    from telar import cuentas
+
+    pedido = {"para": hilo, "texto": texto, "de": de, "asunto": asunto}
+
+    async def _pedir():
+        nc = await conectar(config)
+        try:
+            r = await nc.request(cuentas.CORREO.format(persona_destino), json.dumps(pedido, ensure_ascii=False).encode(),
+                                 timeout=ESPERA)
+            return json.loads(r.data or b"{}")
+        finally:
+            await nc.close()
+
+    try:
+        respuesta = asyncio.run(asyncio.wait_for(_pedir(), ESPERA + 5))
+    except ErrorDeBus:
+        raise
+    except Exception as e:  # noqa: BLE001 - sin nadie que responda: nats-py levanta NoRespondersError o timeout
+        raise ErrorDeBus(f"nadie atiende el correo de {persona_destino} en el bus ({type(e).__name__})") from e
+    if not respuesta.get("ok"):
+        raise ErrorDeBus(f"{persona_destino} no lo aceptó: {respuesta.get('error', 'sin motivo')}")
+    return respuesta
+
+
 def registro(config, n: int = 100) -> list[dict]:
     """Los últimos `n` mensajes entre hilos de esta persona, del más viejo al más nuevo."""
     async def _leer():

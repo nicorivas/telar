@@ -66,21 +66,45 @@ def leer(base: Path) -> dict[str, str]:
     return personas
 
 
+#: lo único que cruza entre cuentas: el correo a una persona (un servicio: pedido y respuesta) y su
+#: directorio (un tema: la lista de sus hilos, que publica su nodo)
+CORREO = "correo.{}"
+DIRECTORIO = "directorio.{}"
+
+
 def configuracion(personas: dict[str, str]) -> str:
     """La configuración de nats-server: una cuenta por persona, con JetStream y un solo usuario.
+
+    Entre cuentas cruza solo lo que se exporta: `correo.<persona>` (un servicio: otra persona le deja un
+    mensaje a un hilo suyo y su nodo responde si lo guardó) y `directorio.<persona>` (sus hilos, para que
+    otra persona sepa a quién escribirle). Cada cuenta importa los de todas las demás, y el correo con
+    `share`: quien recibe ve de qué cuenta vino, y nadie escribe a nombre de otro.
     La dirección, el puerto y la carpeta de datos van en la línea de órdenes (telar-bus.service)."""
     lineas = [
         "# La escribe `telar bus persona`; no se edita a mano.",
-        "# Una cuenta por persona: lo de una (temas, streams, almacenes) no lo ve otra.",
+        "# Una cuenta por persona: lo de una (temas, streams, almacenes) no lo ve otra, salvo lo que exporta.",
         "accounts {",
     ]
     for nombre, h in sorted(personas.items()):
+        otras = [o for o in sorted(personas) if o != nombre]
         lineas += [
             f"  {nombre}: {{",
             "    jetstream: enabled",
             f'    users: [ {{ user: "{nombre}", password: "{h}" }} ]',
-            "  }",
+            "    exports: [",
+            f'      {{ service: "{CORREO.format(nombre)}" }}',
+            f'      {{ stream: "{DIRECTORIO.format(nombre)}" }}',
+            "    ]",
         ]
+        if otras:
+            lineas.append("    imports: [")
+            for o in otras:
+                lineas += [
+                    f'      {{ service: {{ account: "{o}", subject: "{CORREO.format(o)}" }}, share: true }}',
+                    f'      {{ stream: {{ account: "{o}", subject: "{DIRECTORIO.format(o)}" }} }}',
+                ]
+            lineas.append("    ]")
+        lineas.append("  }")
     lineas.append("}")
     return "\n".join(lineas) + "\n"
 

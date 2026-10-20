@@ -26,11 +26,16 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    from telar import entre_personas
+
     remotos = [r for r in ctx.config.remotos if r.directorio and (not o.remoto or r.nombre == o.remoto)]
-    if not remotos:
-        return _comun.queja("ninguna máquina de [remotos] declara `directorio`")
+    por_bus = {} if o.remoto else entre_personas.leer(ctx.config)
+    if not remotos and not por_bus:
+        return _comun.queja("nadie publica su directorio: ni por el bus ni en una máquina de [remotos] con `directorio`")
 
     if o.verbo == "publicar":
+        if not remotos:
+            return _comun.queja("por el bus, el directorio lo publica el nodo solo; aquí no hay [remotos] con `directorio`")
         tel = _comun.tejer(ctx, con_ficha=False)
         salida = {}
         for r in remotos:
@@ -46,7 +51,14 @@ def main(argv: list[str], ctx) -> int:
         entradas, error = mod_directorio.leer(r)
         datos.append({"remoto": r.nombre, "error": error, "personas": entradas})
     if o.json:
-        return _comun.escribir_json({"remotos": datos})
+        return _comun.escribir_json({"remotos": datos, "bus": por_bus})
+    if por_bus:
+        print(_comun.fuerte("por el bus"))
+        for persona, maquinas in sorted(por_bus.items()):
+            for maquina, d in sorted(maquinas.items()):
+                print(f"  {persona}@{maquina}" + _comun.tenue(f" · {str(d.get('publicado', ''))[:16]}"))
+                for h in d.get("hilos", []):
+                    print(f"    {h['nombre']}  " + _comun.tenue(f"{persona}+{h.get('ext', '')}  {h.get('resumen', '')}"))
     for d in datos:
         print(_comun.fuerte(d["remoto"]))
         if d["error"]:

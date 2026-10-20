@@ -190,9 +190,17 @@ class Nodo:
         js = nc.jetstream()
         await mod_bus.asegurar(js)
         kv = await js.key_value(mod_bus.ESTADO)
+        self.kv, self.js = kv, js
         self.espejo = await js.key_value(mod_bus.ESPEJO)
         self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
+        # entre personas (telar.entre_personas): el correo que le escriben a esta persona (lo atiende un
+        # solo nodo suyo: cola «correo») y los directorios de las demás
+        from telar import cuentas
+
+        self.nc = nc
+        await nc.subscribe(cuentas.CORREO.format(self.persona), queue="correo", cb=self._correo)
+        await nc.subscribe(cuentas.DIRECTORIO.format("*"), cb=self._directorio)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado-comentar"), cb=self._resultado_comentar)
@@ -289,6 +297,11 @@ class Nodo:
             foto = await asyncio.to_thread(self.foto)
             if foto is not None:
                 await self.espejo.put(f"{self.persona}.{self.yo}", json.dumps(foto, ensure_ascii=False).encode())
+                # y el directorio, para las demás personas: solo nombres, carpetas y una línea
+                from telar import cuentas, entre_personas
+
+                await self.nc.publish(cuentas.DIRECTORIO.format(self.persona), json.dumps(
+                    entre_personas.directorio(foto, self.persona), ensure_ascii=False).encode())
 
     async def _vigilar(self, kv) -> None:
         """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia."""
@@ -436,6 +449,51 @@ class Nodo:
                 self.anotar(f"la foto de {de} no se guardó: {x}")
 
     # ── pedidos con respuesta ────────────────────────────────────────────────────
+
+    async def _correo(self, m) -> None:
+        """Un correo de otra persona para un hilo de esta: a la casilla del hilo, como cualquier mensaje."""
+        from telar import entre_personas
+
+        try:
+            info = json.loads((m.headers or {}).get("Nats-Request-Info", "{}"))
+            c = entre_personas.correo(json.loads(m.data or b"{}"), str(info.get("acc") or ""))
+            if c["persona"] == self.persona:
+                raise entre_personas.CorreoInvalido("entre tus hilos se escribe con telar mensaje")
+            if await self._hilo_existe(c["para"]) is False:
+                raise entre_personas.CorreoInvalido(f"{self.persona} no tiene un hilo «{c['para']}»")
+            msg = mod_bus.mensaje(c["texto"], de=c["de"], para=c["para"], tipo="correo", persona=c["persona"])
+            await self.js.publish(mod_bus.tema_casilla(self.config, c["para"]),
+                                  json.dumps(msg, ensure_ascii=False).encode(), headers={"Nats-Msg-Id": msg["id"]})
+            await self.js.publish(f"registro.{self.persona}", json.dumps({**msg, "estado": "enviado"},
+                                                                          ensure_ascii=False).encode())
+            self.anotar(f"correo de {c['persona']} para «{c['para']}» ({msg['id']})")
+            respuesta = {"ok": True, "id": msg["id"]}
+        except (entre_personas.CorreoInvalido, ValueError) as e:
+            respuesta = {"ok": False, "error": str(e)}
+        except Exception as e:  # noqa: BLE001 - quien escribe se entera; el nodo sigue
+            respuesta = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        await m.respond(json.dumps(respuesta, ensure_ascii=False).encode())
+
+    async def _hilo_existe(self, ext: str) -> bool | None:
+        """Si esta persona tiene un hilo con esa palabra (en el estado del bus, de cualquier máquina suya).
+        None si no se pudo saber: entonces se acepta, y espera en la casilla."""
+        try:
+            await self.kv.get(f"{self.persona}.{ext}")
+            return True
+        except Exception as e:  # noqa: BLE001
+            return False if type(e).__name__ in ("KeyNotFoundError", "KeyDeletedError") else None
+
+    async def _directorio(self, m) -> None:
+        """El directorio que publicó otra persona: se guarda, para `telar directorio` y para escribirle."""
+        from telar import entre_personas
+
+        persona = m.subject.split(".", 1)[-1]
+        if persona == self.persona:
+            return
+        try:
+            await asyncio.to_thread(entre_personas.guardar, self.config, persona, json.loads(m.data or b"{}"))
+        except Exception as e:  # noqa: BLE001 - uno roto se ignora: queda el anterior
+            self.anotar(f"el directorio de {persona} no se guardó: {e}")
 
     async def _ping(self, m) -> None:
         from telar import __version__
