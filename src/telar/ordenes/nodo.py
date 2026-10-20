@@ -338,6 +338,9 @@ class Nodo:
             return
         nombre, sesion = d.get("nombre", ""), d.get("ventana") or d.get("sesion_tmux", "")
         anotados = tel.estado.remotos()
+        if d.get("vivo"):
+            for aqui in {nombre, *(n for n, x in anotados.items() if sesion and x.get("sesion") == sesion)}:
+                self._revivir(tel, aqui, d, remoto.nombre)
         hilo = tel.por_nombre(nombre)
         if d.get("vivo") and sesion:
             conocidas = {x.get("sesion") for x in anotados.values() if x.get("sesion")}
@@ -383,6 +386,28 @@ class Nodo:
             if anotado.get("remoto") == remoto.nombre:
                 tel.mux.cerrar(hilo.id)
                 self.anotar(f"«{nombre}»: su sesión en {remoto.nombre} terminó; cerré la ventana (▶ la retoma)")
+
+    def _revivir(self, tel, aqui: str, d: dict, donde: str) -> None:
+        """Un hilo archivado aquí, cuyo agente vuelve a trabajar allá, se desarchiva: igual que aquí un
+        agente que arranca desarchiva su hilo. Archivarlo fue una decisión, y se respeta mientras allá
+        no pase nada nuevo: se compara cuándo se archivó con desde cuándo está su atención en ese estado.
+        Sin fecha de archivo (se archivó antes de que se anotara) no se reabre, y se dice."""
+        from datetime import datetime
+
+        est = tel.estado
+        if aqui not in est.archivados():
+            return
+        try:
+            desde = datetime.fromisoformat(d["desde"]) if d.get("desde") else None
+        except ValueError:
+            desde = None
+        cuando = est.archivado_en(aqui)
+        if cuando is None or desde is None or desde.replace(tzinfo=None) <= cuando:
+            self.anotar(f"«{aqui}» sigue archivado: en {donde} no hay actividad posterior a cuando se archivó"
+                        + ("" if cuando else " (sin fecha de archivo)"))
+            return
+        est.desarchivar(aqui)
+        self.anotar(f"«{aqui}» estaba archivado y en {donde} volvió a trabajar ({d['desde']}): lo desarchivé")
 
     def foto(self) -> dict | None:
         from telar import __version__, espejo

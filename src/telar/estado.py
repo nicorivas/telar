@@ -88,6 +88,8 @@ ARCHIVOS = {
     "vinculos": "vinculos.json",
     "prioridades": "prioridades.json",
     "archivados": "archivados.json",
+    #: hilo → cuándo se archivó (ISO, hora local): para saber si su agente volvió a vivir después
+    "archivados_en": "archivados_en.json",
     "atencion": "atencion.json",
     "sesiones": "sesiones.json",
     "paneles": "paneles.json",
@@ -499,6 +501,7 @@ class Estado:
                 lista.append(hilo)
 
         self._actualizar("archivados", cambio, [])
+        self._actualizar("archivados_en", lambda d: d.update({hilo: datetime.now().isoformat(timespec="seconds")}), {})
 
     def desarchivar(self, hilo: str) -> None:
         def cambio(lista):
@@ -506,6 +509,14 @@ class Estado:
                 lista.remove(hilo)
 
         self._actualizar("archivados", cambio, [])
+        self._actualizar("archivados_en", lambda d: d.pop(hilo, None), {})
+
+    def archivado_en(self, hilo: str) -> datetime | None:
+        """Cuándo se archivó, si se sabe (los archivados antes de que se anotara no tienen fecha)."""
+        try:
+            return datetime.fromisoformat(self._leer("archivados_en", {}).get(hilo, ""))
+        except (ValueError, TypeError):
+            return None
 
     # ── atención: el contrato con el agente ────────────────────────────────────
 

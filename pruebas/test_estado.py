@@ -507,3 +507,15 @@ class Vivos(ConCarpeta):
                  Hilo(id="5", nombre="sin-conversacion"))
         tel = SimpleNamespace(estado=self.est, hilos=hilos, vivo=lambda h: h.nombre == "molino", propio=lambda h: False)
         self.assertEqual([h.nombre for h in caidos(tel, 6, ahora)], ["faro"])
+
+
+class ArchivadoEn(ConCarpeta):
+    def test_archivar_anota_cuando_y_desarchivar_lo_borra(self):
+        est = self.est
+        self.assertIsNone(est.archivado_en("x"))
+        antes = datetime.now().replace(microsecond=0)
+        est.archivar("x")
+        self.assertGreaterEqual(est.archivado_en("x"), antes)
+        est.desarchivar("x")
+        self.assertIsNone(est.archivado_en("x"))
+        self.assertNotIn("x", est.archivados())
