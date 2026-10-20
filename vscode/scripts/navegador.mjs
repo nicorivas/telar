@@ -57,12 +57,25 @@ const ctxEco = await context({
     logLevel: 'warning',
 });
 
+// el modo lectura de un hilo (src/navegador/vistas/lectura.ts): aparte, porque lo carga su página
+const ctxLectura = await context({
+    entryPoints: [path.join(aqui, '..', 'src', 'navegador', 'vistas', 'lectura.ts')],
+    outfile: path.join(web, 'lectura.js'),
+    bundle: true, format: 'iife', platform: 'browser', target: 'es2022',
+    minify: process.argv.includes('--min'), sourcemap: false, legalComments: 'none',
+    plugins: mirar ? [{ name: 'avisar', setup(b) { b.onEnd(r => console.log(`${hora()} lectura.js ${r.errors.length ? 'con errores' : 'listo'}`)); } }] : [],
+    logLevel: 'warning',
+});
+
 if (!mirar) {
     await ctx.rebuild();
     await ctx.dispose();
     await ctxEco.rebuild();
     await ctxEco.dispose();
     console.log('src/telar/web/eco.js');
+    await ctxLectura.rebuild();
+    await ctxLectura.dispose();
+    console.log('src/telar/web/lectura.js');
     marco();
     console.log('src/telar/web/app.js');
     console.log('src/telar/web/marco.css');
@@ -70,6 +83,7 @@ if (!mirar) {
     marco();
     await ctx.watch();
     await ctxEco.watch();
+    await ctxLectura.watch();
     // esbuild mira lo que importa app.ts (y los CSS de las vistas); marco.css no lo importa nadie: aparte
     let pendiente;
     watch(carpetaCss, (_, nombre) => {

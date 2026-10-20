@@ -251,6 +251,8 @@ export function paginaCompartir(nonce: string, rutas: { consulta?: string } = {}
  *  como mensaje (`/api/mensajes`, por el bus) a uno de otra máquina. */
 export interface RutasConversacion {
     hilo?: string; maquina?: string;
+    /** el script de los atajos de las vistas (web/vistas-hilo.ts) */
+    atajos?: string;
 }
 
 export function paginaConversacion(nonce: string, rutas: RutasConversacion = {}): string {
@@ -267,9 +269,9 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
   <form id="escribir"><textarea id="texto" rows="2" placeholder="escríbele al hilo (⏎ envía, ⇧⏎ línea nueva)"></textarea><button type="submit">enviar</button></form>
   <p id="dijo" class="nada"></p>
 </footer>
-<script nonce="${nonce}">
+<script nonce="${nonce}">${rutas.atajos ?? ''}
 (function () {
-  var q = new URLSearchParams(location.search), R = ${JSON.stringify(rutas).replace(/</g, '\\u003c')};
+  var q = new URLSearchParams(location.search), R = ${JSON.stringify({ hilo: rutas.hilo, maquina: rutas.maquina }).replace(/</g, '\\u003c')};
   var hilo = R.hilo || q.get('hilo') || '', maquina = R.maquina || q.get('maquina') || '';
   // un hilo de otra máquina se lee por la API y se le escribe como mensaje (por el bus); uno de aquí, por su terminal
   var porMensaje = !!maquina;
@@ -368,10 +370,28 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 </script></body></html>`;
 }
 
+/** El modo lectura de un hilo: la respuesta del agente, con su markdown bien dibujado y letra de lectura
+ *  (src/navegador/vistas/lectura.ts, que la página carga de `/estatico/lectura.js`). ⎋ vuelve a la terminal. */
+export function paginaLectura(nonce: string, rutas: { hilo: string; maquina?: string; atajos?: string }): string {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self'; img-src https: data:;">
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('lectura')} }</style>
+<script src="/estatico/lectura.js"></script>
+</head><body><main id="lectura"><p class="nada">leyendo…</p></main>
+<script nonce="${nonce}">${rutas.atajos ?? ''}
+(function () {
+  var R = ${JSON.stringify({ hilo: rutas.hilo, maquina: rutas.maquina ?? '' }).replace(/</g, '\\u003c')};
+  if (window.telarLectura) window.telarLectura.montar(document.getElementById('lectura'), R);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') parent.postMessage({ __telarVista: 'term' }, '*'); });
+})();
+</script></body></html>`;
+}
+
 /** La terminal de un hilo: xterm.js (servido por telar.api_web en `/estatico/xterm`) conectado por
  *  WebSocket a `telar mirar` en un PTY de la máquina (`/pty`, telar.terminal); el de un hilo de otra máquina,
  *  reenviado por la página de aquí a la de allá. */
-export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: string } = {}): string {
+export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: string; atajos?: string } = {}): string {
     const xterm = '/estatico/xterm';
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
@@ -380,7 +400,7 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
 <script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script><script src="/estatico/eco.js"></script>
 </head><body><div id="caja"><canvas id="fondo" aria-hidden="true"></canvas><div id="t"></div></div>
 <form id="escribir"><textarea id="texto" rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea><span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>
-<script nonce="${nonce}">
+<script nonce="${nonce}">${rutas.atajos ?? ''}
 (function () {
   // los colores, de los tokens (media/css/tokens.css): los mismos del resto de la página
   var css = getComputedStyle(document.documentElement);
@@ -411,6 +431,9 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
     return p ? { width: (caja.clientWidth - 24) / p.cols, height: caja.clientHeight / p.rows } : null;
   }
   function ajustar() {
+    // escondida (otra vista, otro hilo) mide 0: no se toca el tamaño (si no, la ventana del hilo quedaba de
+    // 20×5 para todos); al volver a verse, el ResizeObserver la mide de nuevo y se redibuja
+    if (!caja.clientWidth || !caja.clientHeight) return;
     var c = celda();
     if (!c) return;
     var arriba = parseFloat(getComputedStyle(marco).paddingTop) || 0, barra = 14;
@@ -420,6 +443,8 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
     if (cols !== term.cols || rows !== term.rows) {
       term.resize(cols, rows);
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [cols, rows] }));
+    } else {
+      term.refresh(0, term.rows - 1);   // vuelve a verse con el mismo tamaño: se redibuja igual
     }
   }
   ajustar();

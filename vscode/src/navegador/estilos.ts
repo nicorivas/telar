@@ -10,12 +10,13 @@ import dia from '../../media/css/dia.css';
 import documento from '../../media/css/documento.css';
 import ficha from '../../media/css/ficha.css';
 import hilos from '../../media/css/hilos.css';
+import lectura from '../../media/css/lectura.css';
 import plan from '../../media/css/plan.css';
 import proyectos from '../../media/css/proyectos.css';
 import terminal from '../../media/css/terminal.css';
 import tokens from '../../media/css/tokens.css';
 import webCss from '../../media/css/web.css';
 
-usarEstilos({ ahora, base, compartir, conversacion, dia, documento, ficha, hilos, plan, proyectos, terminal, tokens, web: webCss });
+usarEstilos({ ahora, base, compartir, conversacion, dia, documento, ficha, hilos, lectura, plan, proyectos, terminal, tokens, web: webCss });
 
 export const web = webCss;

@@ -22,7 +22,8 @@ import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos
 import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
-import { type Documento, paginaCompartir, paginaConversacion, paginaDocumento, paginaTerminal, SCRIPT_NAVEGADOR } from '../web/pagina';
+import { type Documento, paginaCompartir, paginaDocumento, SCRIPT_NAVEGADOR } from '../web/pagina';
+import { scriptAtajos, vista, VISTAS } from '../web/vistas-hilo';
 
 
 // ── la API: fetch a /api ───────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ usarDisco({
 
 // ── los marcos: la barra a la izquierda; a la derecha, el dashboard o la conversación de un hilo ──
 
-const marcos = () => document.getElementById('marcos')!;
+const marcos = () => document.getElementById('vistas')!;
 let marco: HTMLIFrameElement | undefined;       // el del dashboard
 let marcoBarra: HTMLIFrameElement | undefined;
 let avisosPanel: AvisosSuperficie | undefined;
@@ -174,13 +175,14 @@ const guardado: Guardado = {
     update: async (clave, valor) => { try { localStorage.setItem(`telar.barra.${clave}`, JSON.stringify(valor)); } catch { /* sin almacén */ } },
 };
 
-/** Cómo se ve un hilo: su terminal (xterm.js sobre `/pty`; la de uno de otra máquina, reenviada por la página
- *  de aquí a la de allá) o su conversación (la que se lee en el celular). En pantalla ancha, terminal; en
- *  angosta, conversación; el botón de arriba cambia. */
-const modo: Record<string, 'term' | 'conv'> = {};
+/** Cómo se ve un hilo: una de sus vistas (web/vistas-hilo.ts): la terminal, la lectura, la conversación. En
+ *  pantalla ancha empieza en la terminal; en angosta, en la conversación; la barra de arriba del hilo (y ⌥T,
+ *  ⌥L, ⌥C) cambian. */
+const modo: Record<string, string> = {};
 const angosto = () => document.body.classList.contains('angosto');
-function forma(que: string): '' | 'term' | 'conv' {
-    if (que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:')) return '';
+const esHilo = (que: string) => !(que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:'));
+function forma(que: string): string {
+    if (!esHilo(que)) return '';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
@@ -211,8 +213,7 @@ function mostrar(que: string): void {
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
             const nonce = Math.random().toString(36).slice(2);
             f = nuevoMarco(llave, marcos());
-            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo, maquina })
-                : paginaConversacion(nonce, { hilo, maquina });
+            f.srcdoc = (vista(como) ?? VISTAS[0]).pagina(nonce, { hilo, maquina, atajos: scriptAtajos() });
         }
         if (como === 'term') {
             const j = usadas.indexOf(llave);
@@ -222,12 +223,8 @@ function mostrar(que: string): void {
         }
     }
     for (const x of marcos().querySelectorAll('iframe')) x.hidden = x !== f;
-    const botonModo = document.getElementById('modo');
-    if (botonModo) {
-        botonModo.hidden = !forma(que);
-        botonModo.textContent = forma(que) === 'term' ? 'conversación' : 'terminal';
-    }
-    if (forma(que) === 'term' && !angosto()) f?.contentWindow?.focus();
+    pintarAcciones(que);
+    if (forma(que) && !angosto()) f?.contentWindow?.focus();
     // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
     // `scp máquina:ruta`; con la persona sería «nico@laptop:Telar»). Lo muestra la cabecera (indice.html)
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
@@ -387,23 +384,51 @@ async function verDocumento(f: HTMLIFrameElement, hilo: string, archivo: string)
     f.srcdoc = paginaDocumento(Math.random().toString(36).slice(2), d);
 }
 
-/** El botón de arriba: el hilo que se ve, de terminal a conversación o al revés. */
-function cambiarModo(): void {
-    const como = forma(actual);
+/** La barra de acciones de un hilo, arriba: sus vistas (con su atajo) y su carpeta. Solo con un hilo a la vista. */
+function pintarAcciones(que: string): void {
+    const barraH = document.getElementById('acciones')!;
+    const como = forma(que);
+    barraH.hidden = !como;
     if (!como) return;
-    modo[actual] = como === 'term' ? 'conv' : 'term';
+    const local = !que.startsWith('rem:');
+    barraH.innerHTML = VISTAS.map(v => `<a data-vista="${v.clave}" class="${v.clave === como ? 'si' : ''}" title="${v.ayuda}">${v.nombre} <span class="tecla">${v.atajo}</span></a>`).join('')
+        + '<span class="lleno"></span>'
+        + (local ? `<a data-carpeta="1" title="la carpeta del hilo y su documento">carpeta</a>` : '');
+}
+
+/** Cambiar la vista del hilo que se ve (la barra de acciones, o ⌥ y su letra desde adentro de una vista). */
+function cambiarVista(clave: string): void {
+    if (!forma(actual) || !vista(clave) || forma(actual) === clave) return;
+    modo[actual] = clave;
     mostrar(actual);
 }
+
+document.getElementById('acciones')!.addEventListener('click', e => {
+    const a = (e.target as HTMLElement).closest('a');
+    if (!a) return;
+    if (a.dataset.vista) cambiarVista(a.dataset.vista);
+    else if (a.dataset.carpeta) mostrar(`doc:${actual}`);
+});
+// el atajo, desde adentro de una vista (web/vistas-hilo.ts, scriptAtajos) o desde la página
+window.addEventListener('message', e => {
+    const v = (e.data as { __telarVista?: string } | null)?.__telarVista;
+    if (v && [...marcos().querySelectorAll('iframe')].some(f => f.contentWindow === e.source)) cambiarVista(v);
+});
+document.addEventListener('keydown', e => {
+    if (!e.altKey || e.metaKey || e.ctrlKey) return;
+    const v = VISTAS.find(x => x.tecla === e.code);
+    if (v && forma(actual)) { e.preventDefault(); cambiarVista(v.clave); }
+});
 
 declare global {
     interface Window {
         telar?: {
-            mostrar?: (que: string) => void; cambiarModo?: () => void;
+            mostrar?: (que: string) => void;
             donde?: (lo: { texto: string; otraMaquina: boolean } | null) => void;
         };
     }
 }
-window.telar = { ...(window.telar ?? {}), mostrar, cambiarModo };
+window.telar = { ...(window.telar ?? {}), mostrar };
 // abierta por «compartir» del teléfono (share_target del manifiesto): eso primero
 mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
 // en el celular se empieza por la lista

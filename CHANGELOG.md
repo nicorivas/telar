@@ -50,6 +50,18 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- A browser terminal that is hidden (another view, another thread) no longer measures itself: it measured 0 and
+  shrank its thread's tmux window to 20×5 for every screen, so coming back to it showed a crushed terminal
+  until a reload. It measures again, and redraws, when shown.
+- Views of a thread in the browser, switched from an action bar above it or with ⌥ and a letter (even from
+  inside the terminal): the terminal (⌥T), the conversation (⌥C) and a new reading mode (⌥L) that renders the
+  agent's final answer for a careful read (only what it wrote after its last tool call: the process before it —
+  the notes between tools, the diffs, the calls — stays in the terminal) — serif type, its markdown properly
+  drawn, a reading width, the question
+  above as an epigraph; ← → walk the answers, ⎋ goes back, and the last one updates while the agent writes.
+  The views are a registry (`vscode/src/web/vistas-hilo.ts`): a new way of looking at a thread is one more
+  entry; and the reading mode draws each source with its renderer (`conversacion`, `panel`), so a new
+  assistant is one more renderer. The header's terminal/conversation button moved into that bar.
 - Connecting the calendar from the browser dashboard (configuration › calendar › iCal): it asks for the private
   iCal address in a hidden field, checks it is an https address, and saves it like VS Code did. With that,
   everything the dashboard asks of its host works in the page too.

@@ -8,10 +8,10 @@
 <header>
   <div class="izq"><a id="volver">◀ hilos</a></div>
   <div id="donde"><b id="aqui" title="la máquina que sirve esta página">telar</b><span id="icono" hidden></span><span id="visto"></span></div>
-  <div class="der"><a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a href="/maquinas" title="tus máquinas: elegir en cuál abrir la página">máquinas</a><span class="dim" id="maquina"></span></div>
+  <div class="der"><a data-p="dashboard">dashboard</a><a href="/maquinas" title="tus máquinas: elegir en cuál abrir la página">máquinas</a><span class="dim" id="maquina"></span></div>
 </header>
 <aside id="barra"></aside>
-<div id="marcos"></div>
+<div id="marcos"><nav id="acciones" hidden></nav><div id="vistas"></div></div>
 <script>
 // La página de telar: la barra de hilos a la izquierda y, a la derecha, el dashboard o un hilo (estatico/app.js,
 // el mismo código del panel, empaquetado). «máquinas», arriba, es la página madre: elegir en cuál abrirla.
@@ -21,7 +21,6 @@ async function json(url) { const r = await fetch(url, { cache: 'no-store' }); if
 window.telar = window.telar || {};
 document.querySelector('header').addEventListener('click', (e) => {
   const p = e.target.dataset?.p;
-  if (e.target.id === 'modo') { window.telar.cambiarModo?.(); return; }
   if (p && window.telar.mostrar) window.telar.mostrar(p);
 });
 $('#volver').addEventListener('click', () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); });
@@ -58,6 +57,6 @@ try {
   dev.onerror = () => { if (dev.readyState === EventSource.CLOSED) dev.close(); else caido = true; };
 } catch (e) { /* sin EventSource */ }
 const app = document.createElement('script'); app.src = '/estatico/app.js';
-app.onerror = () => { $('#marcos').textContent = 'no pude cargar la página (estatico/app.js)'; };
+app.onerror = () => { $('#vistas').textContent = 'no pude cargar la página (estatico/app.js)'; };
 document.body.append(app);
 </script></body></html>

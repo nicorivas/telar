@@ -75,7 +75,32 @@ header {
 #volver { display: none; }
 
 
+/* a la derecha: arriba la barra de acciones del hilo que se ve (sus vistas, su carpeta), y abajo sus vistas */
 #marcos {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+
+#acciones {
+  display: flex;
+  gap: var(--h-2);
+  align-items: baseline;
+  padding: var(--e-1) var(--h-2);
+  border-bottom: var(--borde);
+  background: var(--bg-barra);
+
+  &[hidden] { display: none; }
+
+  & a { color: var(--dim); text-decoration: none; }
+  & a:hover { color: var(--fg); }
+  & a.si { color: var(--violeta); }
+  & .tecla { color: var(--dim); font-size: var(--t-chica); }
+  & .lleno { flex: 1; }
+}
+
+#vistas {
   position: relative;
   min-width: 0;
   min-height: 0;
