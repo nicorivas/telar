@@ -10,26 +10,19 @@ retirar en el camino.
 
 ## Lo que bloquea a un equipo: la seguridad entre personas
 
-El bus tiene un solo token y no hay credenciales por persona ([arquitectura](../arquitectura.md), «Entre
-máquinas: el bus»). Ese mismo token abre la terminal de cualquier hilo en cualquier máquina del bus
-(`/pty?maquina=…`). Con una sola persona es lo que se quiere;
-con dos, cualquiera de ellas abriría las terminales de la otra.
+Hecho: una cuenta del bus por persona, que el servidor NATS hace cumplir; con ella, el reenvío de
+terminales y los boletos de `/maquinas` solo valen entre máquinas de la misma persona
+([arquitectura](../arquitectura.md), «Entre máquinas: el bus»). Lo que falta para hablarse entre personas:
 
-Antes de sumar a una segunda persona al mismo bus:
-
-1. **Un token por persona**, y temas del bus por persona que el servidor NATS haga cumplir (cuentas o
-   usuarios con permisos por sujeto), no solo por convención de nombres.
-2. **El reenvío de terminales y los boletos de `/maquinas`** firmados con el secreto de la persona, no con
-   uno compartido: una máquina solo acepta a otra de su misma dueña.
-3. **El correo entre personas y el directorio por el bus.** Hoy van por el servidor: `telar correo enviar` a
+1. **El correo entre personas y el directorio por el bus.** Hoy van por el servidor: `telar correo enviar` a
    otro usuario, el `cartero` y Postfix, la lista de permitidos de `telar persona --correo`, y `telar
    directorio` (`<servidor>/directorio/<usuario>.json`, la única forma de ver los hilos de otra persona).
-   Con sujetos por persona en el bus, se retiran el `cartero`, Postfix y la casilla común. Antes de
+   Con un servicio que cada cuenta exporte (su casilla) y las demás importen, se retiran el `cartero`, Postfix y la casilla común. Antes de
    desinstalar Postfix: la salida de cron de `telar periodicos` llega por correo (poner `MAILTO=""` o
    mandarla a un log; con `always_bcc` a una casilla común, la lee todo el grupo). `enlace archivo` y
    `enlace notificar` no tienen pedido en el bus: portarlos al nodo o aceptar perderlos. Es irreversible y
    afecta a las otras personas del servidor: se decide con ellas.
-4. **Más de una máquina siempre prendida**, en clúster (NATS de tres), si el equipo crece: hoy el servidor es
+2. **Más de una máquina siempre prendida**, en clúster (NATS de tres), si el equipo crece: hoy el servidor es
    un punto único de falla.
 
 ## Lo que falta para que alguien lo instale solo
@@ -108,7 +101,7 @@ red); `claude plugin validate` y `claude plugin test` lo revisan en el CI.
 
 ## El orden
 
-1. Credenciales por persona en el bus (destraba a un equipo y protege las terminales).
+1. El correo y el directorio entre personas por el bus (las cuentas por persona ya están).
 2. `telar instalar` y la 0.2.0.
 3. El mod de Claude Code: el semáforo y la casilla.
 4. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.

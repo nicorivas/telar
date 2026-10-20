@@ -81,7 +81,7 @@ el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos local
   origen.
 - **Las terminales**: `/pty` es un WebSocket que corre `telar mirar <hilo>` en un PTY. Con
   `?maquina=<otra>` reenvía a la de esa máquina: la dirección sale de la foto del espejo y se entra
-  con el token del bus.
+  con el secreto del bus de la persona.
 - **Las máquinas**: `/maquinas` lista las del bus que sirven su página; se pasa a otra con un boleto
   firmado que vence en un minuto y sirve una vez.
 - **La página del equipo** (`--equipo`) es otra app, en su propio puerto: alguien de confianza ve tus
@@ -143,9 +143,14 @@ de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay f
 lleva `persona` y `saltos` (la cadena se corta cuando la persona habla), y pasado el tope de saltos (6)
 o de mensajes por hora de un hilo (30) se retiene en el registro hasta que la persona lo suelte.
 
-**Seguridad.** El bus tiene un solo token, y ese token también abre las terminales de otra máquina.
-Sirve para una persona; para dos, falta separar (ver [telar-para-otros](propuestas/telar-para-otros.md)).
-El correo entre personas sigue por el servidor (el `cartero`, en [servidor/](../servidor/README.md)).
+**Una cuenta por persona.** El servidor NATS tiene una cuenta por persona (`telar bus persona`,
+`telar.cuentas`): su usuario es su nombre en el bus y su clave, el secreto de `[bus] token`, el mismo en
+todas sus máquinas. Una cuenta es un espacio aparte: sus casillas, el estado de sus hilos, la foto de sus
+máquinas y los pedidos a sus nodos no los ve otra persona, porque el servidor no lo deja. El mismo secreto
+abre la terminal de otra máquina suya (`/pty?maquina=`) y firma los boletos de `/maquinas`, así que una
+máquina solo acepta a otra de la misma persona. El servidor guarda solo el hash de cada clave (bcrypt).
+Entre personas todavía no se habla por el bus: el correo entre personas sigue por el servidor (el
+`cartero`, en [servidor/](../servidor/README.md)).
 
 Git sigue siendo para el contenido: los archivos se sincronizan con `pull` y `push`, a su ritmo, y un
 hilo vinculado a una carpeta que la otra máquina todavía no tiene se ve sin ficha hasta el próximo pull.

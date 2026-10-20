@@ -100,6 +100,32 @@ def _token(config) -> str:
         raise ErrorDeBus(f"no puedo leer el token del bus ({config.bus.token}): {e}") from e
 
 
+#: cómo se entra a cada bus en este proceso: "cuenta" (usuario y clave) o "token" (un bus de antes)
+_MODO: dict[str, str] = {}
+
+
+async def _callar(_e) -> None:
+    """Sin esto, nats-py imprime la traza de cada falla de conexión; la falla la cuenta ErrorDeBus."""
+
+
+async def _modo(config, nats, token: str) -> str:
+    """Si este bus tiene una cuenta por persona (`telar bus persona`) o un solo token para todos
+    (`nats-server --auth`, el de antes). Se prueba una vez por proceso. El token se acepta mientras se pasa
+    a las cuentas; se retira en la 0.3."""
+    url = config.bus.url
+    if url not in _MODO:
+        try:
+            nc = await nats.connect(url, user=persona(config), password=token, connect_timeout=5,
+                                    max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
+            await nc.close()
+            _MODO[url] = "cuenta"
+        except Exception as e:  # noqa: BLE001
+            if "authorization" not in str(e).lower():
+                return "cuenta"            # no responde: no se sabe todavía; se prueba la próxima vez
+            _MODO[url] = "token"
+    return _MODO[url]
+
+
 async def conectar(config, *, para_siempre: bool = False):
     """Una conexión al bus. `para_siempre`: reconecta sin rendirse (el demonio); si no, falla rápido."""
     try:
@@ -108,15 +134,28 @@ async def conectar(config, *, para_siempre: bool = False):
         raise ErrorDeBus("falta el cliente del bus: instala telar con el extra «bus» (nats-py)") from e
     opciones = {"name": f"telar-{maquina(config)}", "connect_timeout": 5}
     token = _token(config)
+    # el demonio reconecta para siempre, también ante una clave rechazada: antes se prueba cómo se entra
+    modo = await _modo(config, nats, token) if token and para_siempre else _MODO.get(config.bus.url, "cuenta")
     if token:
-        opciones["token"] = token
+        if modo == "cuenta":
+            # la cuenta de esta persona (telar.cuentas): su nombre y su secreto
+            opciones.update(user=persona(config), password=token)
+        else:
+            opciones["token"] = token
     if para_siempre:
         opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True)
     else:
-        opciones.update(max_reconnect_attempts=0, allow_reconnect=False)
+        opciones.update(max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
     try:
         return await nats.connect(config.bus.url, **opciones)
     except Exception as e:  # noqa: BLE001 - cualquier falla de conexión es «el bus no responde»
+        if token and modo == "cuenta" and not para_siempre and "authorization" in str(e).lower():
+            _MODO[config.bus.url] = "token"     # un bus de antes (ver _modo)
+            del opciones["user"], opciones["password"]
+            try:
+                return await nats.connect(config.bus.url, token=token, **opciones)
+            except Exception:  # noqa: BLE001 - se cuenta la primera falla
+                pass
         raise ErrorDeBus(f"el bus ({config.bus.url}) no responde: {e}") from e
 
 

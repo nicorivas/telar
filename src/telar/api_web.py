@@ -57,8 +57,8 @@ def _firma(token: str, de: str, para: str, expira: int) -> str:
 
 
 def boleto(token: str, de: str, para: str, web: str, ahora: float | None = None) -> str:
-    """La dirección para entrar a la página de otra máquina sin su llave: cada máquina tiene la suya, pero todas
-    comparten el token del bus. El boleto lo firma esta máquina con ese token, nombra a quién va y vence en
+    """La dirección para entrar a la página de otra máquina sin su llave: cada máquina tiene la suya, pero las
+    de una persona comparten su secreto del bus (su clave, telar.cuentas): otra persona no puede firmarlo. El boleto lo firma esta máquina con ese token, nombra a quién va y vence en
     BOLETO_SEGUNDOS; la otra lo comprueba (`/entrar`), lo acepta una sola vez y le da su cookie."""
     import time
     from urllib.parse import urlencode

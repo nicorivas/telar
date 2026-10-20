@@ -600,7 +600,8 @@ final; su conversación queda en disco y se retoma cuando haga falta.
 ```toml
 [bus]
 url = "nats://<IP privada de la máquina que no se apaga>:4222"
-token = "~/.config/telar/bus.token"   # el mismo archivo en todas las máquinas de la persona
+token = "~/.config/telar/bus.token"   # tu secreto: el mismo archivo en todas tus máquinas
+persona = "nico"                       # tu cuenta en el bus (por defecto, tu usuario del sistema)
 maquina = "laptop"                     # cómo se llama esta en el bus (por defecto, su nombre de red)
 ```
 
@@ -610,7 +611,14 @@ Con `[bus]`, cada máquina corre `telar nodo` (`servidor/telar-nodo.service` en 
 hilo, viva donde viva: el mensaje espera en su casilla hasta que lo recoja la máquina donde vive y entra
 a la conversación por los ganchos del agente (`telar agente instalar`), sin teclearse. `telar encargar`
 usa el bus si lo hay. El estado de cada hilo (máquina, atención) se publica y se escucha al instante.
-Diseño: `docs/arquitectura.md`, «Entre máquinas: el bus». Sin `[bus]`, todo sigue en una sola máquina, como siempre.
+Diseño: `docs/arquitectura.md`, «Entre máquinas: el bus».
+
+El servidor del bus tiene **una cuenta por persona**: lo de una no lo ve otra. Se administran en la
+máquina del bus con `telar bus persona NOMBRE` (una cuenta nueva o una clave nueva; para ti, con tu
+`[bus] token`; para otra persona genera un secreto que hay que pasarle), `telar bus personas` y `telar bus
+quitar NOMBRE`, y después `systemctl --user reload telar-bus`. Un bus de antes, con un solo token para
+todos (`nats-server --auth`), se sigue aceptando hasta la 0.3; para pasarlo a cuentas, ver
+`servidor/telar-bus.service`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
 
 ## `[equipo]` — que alguien de confianza vea tus tareas y te sugiera prioridades
 

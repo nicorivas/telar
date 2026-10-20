@@ -65,6 +65,7 @@ ORDENES: dict[str, str] = {
     "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",
     "compartir": "Llevar algo de afuera (un enlace, un texto) a un hilo, a un agente o a un proveedor que lo recibe.",
     "nodo": "Esta máquina en el bus: recibe lo suyo, avisa a sus hilos y publica su estado.",
+    "bus": "Las cuentas del bus: una por persona, que el servidor hace cumplir.",
     "resultado": "Lo que una skill dejó un día (el plan, por ejemplo), leído de la máquina donde vive.",
     "evento": "Las notas de los eventos del día: verlas y dejarle una a un evento.",
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",

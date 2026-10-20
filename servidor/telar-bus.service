@@ -1,18 +1,21 @@
 # El bus de telar (docs/arquitectura.md, «Entre máquinas: el bus»): nats-server con JetStream, en la máquina que no se apaga.
 #
 #   el binario en ~/.local/bin/nats-server (https://github.com/nats-io/nats-server/releases)
-#   un token:     umask 077; openssl rand -hex 24 > ~/.config/telar/bus.token
+#   tu secreto:   umask 077; openssl rand -hex 24 > ~/.config/telar/bus.token
+#   tu cuenta:    telar bus persona "$USER"      (escribe ~/.config/telar/bus/servidor.conf)
 #   mkdir -p ~/.config/systemd/user && cp telar-bus.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload && systemctl --user enable --now telar-bus
 #   loginctl enable-linger "$USER"
 #
-# En cada máquina, el mismo token en ~/.config/telar/bus.token y en la configuración de telar:
+# Una cuenta por persona (telar.cuentas): lo de una no lo ve otra. Otra persona: `telar bus persona NOMBRE`
+# y `systemctl --user reload telar-bus`. En cada máquina de una persona, su mismo secreto en
+# ~/.config/telar/bus.token y en la configuración de telar:
 #   [bus]
 #   url = "nats://<IP de esta máquina en la red privada>:4222"
 #   token = "~/.config/telar/bus.token"
 #
 # Solo escucha en la IP de la red privada (Tailscale): quien no esté en ella no lo alcanza, y quien
-# esté necesita el token. Los mensajes y el estado viven en ~/.local/share/telar/bus.
+# esté necesita una cuenta. Los mensajes y el estado viven en ~/.local/share/telar/bus, por cuenta.
 
 [Unit]
 Description=telar bus: mensajes y estado entre máquinas (NATS)
@@ -25,7 +28,9 @@ Type=simple
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 # la IP de Tailscale tarda unos segundos en existir al encender
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do tailscale ip -4 >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
-ExecStart=/bin/sh -c 'exec nats-server -a "$(tailscale ip -4 | head -1)" -p 4222 --js --store_dir %h/.local/share/telar/bus --auth "$(cat %h/.config/telar/bus.token)"'
+ExecStart=/bin/sh -c 'exec nats-server -a "$(tailscale ip -4 | head -1)" -p 4222 --js --store_dir %h/.local/share/telar/bus -c %h/.config/telar/bus/servidor.conf'
+# telar bus persona|quitar cambian las cuentas; se leen sin cortar a nadie
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
 

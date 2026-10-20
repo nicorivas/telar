@@ -8,6 +8,16 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- One bus account per person (`telar bus persona|personas|quitar`, `telar.cuentas`): nats-server gets an
+  account for each person, with their bus name as user and their `[bus] token` secret as password (only its
+  bcrypt hash is stored). What one person has on the bus (mailboxes, thread state, machine snapshots,
+  requests to their nodes) is invisible to another, enforced by the server; terminal forwarding and
+  `/maquinas` tickets only work between machines of the same person. `servidor/telar-bus.service` now reads
+  `~/.config/telar/bus/servidor.conf` and reloads on `systemctl --user reload telar-bus`. A bus with a single
+  shared token (`nats-server --auth`) is still accepted until 0.3. To migrate one: stop the bus, run `telar bus
+  persona <you>`, move `~/.local/share/telar/bus/jetstream/$G` to `…/jetstream/<you>`, install the new unit,
+  start it and restart `telar serve` on every machine. The `bus` extra now needs `bcrypt`.
+
 - `telar.tipos`: types over text files (`docs/arquitectura.md`, «Los tipos»). The first is `tarea`, with two lenses
   that read leniently and write minimally — what did not change stays byte for byte: its own file
   (`clave: valor` lines, context, `## Conexiones`, `## Historia`; keys configurable) and a checkbox in a
