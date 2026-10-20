@@ -1,3 +1,4 @@
+# Lo escribe `telar instalar` con las rutas de tu máquina; esto es para hacerlo a mano.
 # telar serve como servicio de usuario: la API de telar en su socket (<estado>/serve/telar.sock), que usa el
 # panel. Necesita el extra «serve» (pip install 'telar[serve]', o uv tool install … --with fastapi --with uvicorn).
 #

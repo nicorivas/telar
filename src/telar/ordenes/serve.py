@@ -17,8 +17,8 @@ alcanza ninguna ruta de esta API. Mismo proceso, nada compartido entre las dos s
 
 Lo que sirve y por qué está en telar.api. La documentación de cada ruta, en `/docs` (con --puerto) o
 `curl --unix-socket <socket> http://telar/openapi.json`. Necesita el extra «serve»:
-`pip install 'telar[serve]'`. Para que arranque solo: `servidor/telar-serve.service` y
-`servidor/telar-serve.plist`.
+`pip install 'telar[serve]'`. Para que arranque solo: `telar instalar` (escribe el servicio de esta
+máquina); a mano, `servidor/telar-serve.service` y `servidor/telar-serve.plist`.
 """
 
 from __future__ import annotations

@@ -8,6 +8,12 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
+- `telar instalar`: one command to get a machine running, and safe to run again. It writes the config
+  (`telar init`) if missing, creates the page key, joins the bus with `--bus nats://…` (adds `[bus]`),
+  installs the `telar serve` service for this machine (systemd user unit on Linux, launchd agent on macOS,
+  with the real path of telar and a PATH that reaches tmux and the agent; `--nodo` with a bus, `--equipo`
+  with `[equipo]` people) and restarts it only if it changed, installs the agent hooks and skill, and ends
+  with `telar doctor`. It shows what it will do and asks first (`--si`, `--seco`).
 - One bus account per person (`telar bus persona|personas|quitar`, `telar.cuentas`): nats-server gets an
   account for each person, with their bus name as user and their `[bus] token` secret as password (only its
   bcrypt hash is stored). What one person has on the bus (mailboxes, thread state, machine snapshots,
@@ -211,6 +217,7 @@ workflow refuses to run if the two disagree.
 
 ### Changed
 
+- `telar doctor` asks for tmux 3.5 or newer (was 3.0): 3.4 has a server crash that takes every thread with it.
 - The iCal calendar keeps a copy (`~/.cache/telar/`) valid for `cache` seconds (600 by default) and caps the
   whole download (`tiempo_maximo`, now 20 s), not each read; with no network it uses the last copy and says
   so among the provider failures, instead of an empty agenda. What was read is parsed once and kept.

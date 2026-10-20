@@ -226,9 +226,9 @@ class Tmux(MultiplexorBase):
     una barra con lo que había hace un rato.
     """
 
-    #: probado contra esta versión; `move-pane` y los formatos que usamos son viejos,
-    #: pero `-t` con `=nombre:` y `#{pane_current_command}` piden un tmux moderno.
-    version_minima = "3.0"
+    #: `-t` con `=nombre:` y `#{pane_current_command}` piden un tmux moderno, y la 3.4 tiene un segfault
+    #: del servidor que se lleva todos los hilos: telar doctor avisa por debajo de la 3.5.
+    version_minima = "3.5"
 
     nombre = "tmux"
 

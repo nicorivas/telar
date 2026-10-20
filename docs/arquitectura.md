@@ -68,8 +68,9 @@ Tres reglas sostienen el dibujo:
 
 ## Un proceso por máquina
 
-Cada máquina corre un solo `telar serve`, como servicio (`servidor/telar-serve.service` en Linux,
-`telar-serve.plist` en macOS), con el mismo código en todas. Lo que cambia entre máquinas es la
+Cada máquina corre un solo `telar serve`, como servicio (systemd de usuario en Linux, launchd en
+macOS), con el mismo código en todas. `telar instalar` deja una máquina andando: la configuración, la
+llave de la página, el `[bus]`, el servicio y los ganchos del agente, y al final `telar doctor`. Lo que cambia entre máquinas es la
 configuración: el servidor tiene el calendario, las tareas, los periódicos y la página del equipo;
 el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos locales).
 

@@ -23,19 +23,16 @@ says so plainly when you ask for something that isn't written yet.
 ## Install
 
 ```sh
-pip install telar          # the CLI
-pip install -e .           # from a clone, instead
-telar --version
+uv tool install 'telar[serve,bus]'   # the CLI, the web page and the bus client (or pip install)
+telar instalar                       # config, page key, the `telar serve` service, the agent hooks
 ```
 
-The VS Code extension is a separate install, and optional — the CLI works on its own:
+`telar instalar` shows what it will do and asks first; run it again whenever you like, it only does
+what is missing. To join the bus of your other machines: `telar instalar --bus nats://host:4222` (the
+secret comes from `telar bus persona` on the bus machine). Then open the page it prints.
 
-```sh
-code --install-extension nicorivas.telar-hilos
-```
-
-Python 3.11+. Standard library only, except PyYAML for reading the profile. A
-terminal multiplexer (tmux 3.0+ or zellij 0.45+) does the actual work of holding tabs.
+Python 3.11+ and tmux 3.5+ (3.4 has a server crash that takes every thread with it). The VS Code
+extension is deprecated: the web page does everything it did.
 
 ## Try it
 

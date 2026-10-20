@@ -10,9 +10,8 @@ retirar en el camino.
 
 ## Lo que bloquea a un equipo: la seguridad entre personas
 
-Hecho: una cuenta del bus por persona, que el servidor NATS hace cumplir; con ella, el reenvío de
-terminales y los boletos de `/maquinas` solo valen entre máquinas de la misma persona
-([arquitectura](../arquitectura.md), «Entre máquinas: el bus»). Lo que falta para hablarse entre personas:
+Cada persona ya tiene su cuenta en el bus, que el servidor hace cumplir ([arquitectura](../arquitectura.md),
+«Entre máquinas: el bus»). Lo que falta para que las personas se hablen:
 
 1. **El correo entre personas y el directorio por el bus.** Hoy van por el servidor: `telar correo enviar` a
    otro usuario, el `cartero` y Postfix, la lista de permitidos de `telar persona --correo`, y `telar
@@ -27,15 +26,12 @@ terminales y los boletos de `/maquinas` solo valen entre máquinas de la misma p
 
 ## Lo que falta para que alguien lo instale solo
 
-- **`telar instalar`**, un solo comando para la primera vez: la configuración (lo que hoy hace `telar init`),
-  los servicios (`launchd` en macOS, `systemd --user` en Linux; hoy son plantillas en `servidor/` que se
-  copian a mano), la llave de la página, unirse al bus si hay uno, la skill y el mod de Claude Code (abajo),
-  y al final `telar doctor`. Que se pueda correr de nuevo sin romper nada.
+- **El mod de Claude Code en `telar instalar`**, cuando exista (abajo).
 - **Publicar una versión.** La última en PyPI es la 0.1.13; desde entonces hay más de cien cambios sin
-  publicar (el bus, la página sin Node, las terminales, los tipos). Corresponde una 0.2.0, con el flujo de
-  [publicar.md](../publicar.md).
-- **Pedir tmux 3.5 o más.** La 3.4 se cae sola (un segfault del servidor de tmux, que se lleva todos los hilos);
-  `telar doctor` debería avisarlo.
+  publicar (el bus con cuentas, la página sin Node, las terminales, los tipos, `telar instalar`). Corresponde
+  una 0.2.0, con el flujo de [publicar.md](../publicar.md). Antes: `.github/workflows/publicar.yml` también
+  publica la extensión de VS Code, que está deprecada; sacarla de ese flujo (o publicar una última versión
+  que avise que se depreca), y que el número de `vscode/package.json` deje de tener que coincidir.
 - **Un día que funcione con la configuración de fábrica.** El dashboard rinde con los proveedores de quien lo
   armó (sus tareas, su calendario). Una persona nueva necesita un proveedor de tareas por defecto (una
   carpeta de markdown, que el tipo `tarea` ya sabe leer y escribir) y una guía de su primera hora. Los
@@ -101,8 +97,8 @@ red); `claude plugin validate` y `claude plugin test` lo revisan en el CI.
 
 ## El orden
 
-1. El correo y el directorio entre personas por el bus (las cuentas por persona ya están).
-2. `telar instalar` y la 0.2.0.
+1. El correo y el directorio entre personas por el bus.
+2. La 0.2.0.
 3. El mod de Claude Code: el semáforo y la casilla.
 4. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
 5. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.
