@@ -1,6 +1,6 @@
 // Empaqueta la página (src/navegador/app.ts) en src/telar/web/app.js, el archivo que sirve
-// `telar serve --web`. Los estilos se cargan como texto. Arma también src/telar/web/marco.css (el marco de la
-// página y lo que se dibuja directo en ella: la barra de hilos, los diálogos, la carpeta, las vistas de un hilo).
+// `telar serve --web`. Y arma src/telar/web/marco.css: los estilos de toda la página (media/css), que carga
+// antes que app.js.
 //
 //   node scripts/navegador.mjs --min      una vez (npm run navegador, que antes revisa los tipos)
 //   node scripts/navegador.mjs --watch    y de nuevo con cada cambio (npm run navegador:watch, con --min: el mismo
@@ -16,10 +16,10 @@ const web = path.join(aqui, '..', '..', 'src', 'telar', 'web');
 const mirar = process.argv.includes('--watch');
 const hora = () => new Date().toTimeString().slice(0, 8);
 
-// el marco de la página (indice.html): sus estilos sobre los tokens, en un archivo que carga antes que app.js. En
-// la capa «vistas», el marco y lo que se dibuja directo en la página (cada uno con su @scope)
+// los estilos de la página (indice.html), en un archivo que carga antes que app.js: en la capa «base», los tokens;
+// en «vistas», el marco y cada pantalla (cada una con su @scope)
 const BASE = ['tokens', 'base'];
-const VISTAS = ['marco', 'web', 'hilos', 'documento', 'compartir', 'lectura', 'conversacion', 'terminal'];
+const VISTAS = ['marco', 'web', 'hilos', 'dia', 'plan', 'proyectos', 'ahora', 'documento', 'compartir', 'lectura', 'conversacion', 'terminal'];
 function marco() {
     const css = n => readFileSync(path.join(carpetaCss, `${n}.css`), 'utf8');
     writeFileSync(path.join(web, 'marco.css'),
@@ -32,7 +32,6 @@ const ctx = await context({
     outfile: path.join(web, 'app.js'),
     bundle: true, format: 'iife', platform: 'browser', target: 'es2022',
     minify: process.argv.includes('--min'), sourcemap: false, legalComments: 'none',
-    loader: { '.css': 'text' },
     // con --watch, cada vuelta dice cómo le fue (los errores ya los imprime esbuild)
     plugins: mirar ? [{ name: 'avisar', setup(b) { b.onEnd(r => console.log(`${hora()} app.js ${r.errors.length ? `con ${r.errors.length} error(es)` : 'listo'}`)); } }] : [],
     logLevel: 'warning',

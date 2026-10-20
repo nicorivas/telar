@@ -3,7 +3,7 @@
 // Aquí solo se dibuja; el estado y las acciones viven en `hoy.ts`.
 
 import * as cli from '../cli';
-import { esc, estilo } from '../estilo';
+import { esc } from '../estilo';
 import { Dia, seccion } from './dia';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
@@ -15,7 +15,6 @@ const ALTO_HORA = 56;
 /** Lo que dura un evento sin fin declarado, en minutos. */
 const SIN_FIN = 30;
 
-export const CSS_PLAN = estilo('plan');
 
 function t(s: unknown): string {
     return esc(String(s ?? '')).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');

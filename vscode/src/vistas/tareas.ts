@@ -1,12 +1,11 @@
 // Las acciones sobre una tarea —llevarla a su hilo, marcarla hecha, reagendarla, asignarla,
-// la estrella, compartirla— que usan el dashboard y la lista de la barra. No dependen de VS Code:
-// lo que piden a la interfaz pasa por el anfitrión (anfitrion.ts).
+// la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz pasa por el anfitrión
+// (anfitrion.ts).
 
 import { type Opcion, ui } from '../anfitrion';
 import * as cli from '../cli';
-import { marco } from '../estilo';
 import { modelo } from '../modelo';
-import { CSS_DIA, SCRIPT_DIA, dia, htmlPendientes, olvidarDia, pendientes } from './dia';
+import { olvidarDia } from './dia';
 
 /** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). */
 export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false): Promise<void> {

@@ -2,7 +2,7 @@
 //
 // Es la lista de proyectos de la barra, pero se llama como la llama telar: un hilo es una
 // unidad de trabajo viva, y qué cuenta como proyecto lo declara el perfil del repositorio,
-// no esta extensión.
+// no esta página.
 //
 //   ● faro            ●   49m   ← prioridad (· si no tiene) · nombre · atención · hoy
 //   ◐ molino               7m
@@ -61,7 +61,7 @@ export interface Guardado {
     update(clave: string, valor: unknown): PromiseLike<void>;
 }
 
-/** La barra de hilos, sin VS Code: arma la lista y responde a sus clics. */
+/** La barra de hilos: arma la lista y responde a sus clics. */
 export class BarraHilos {
     /** donde se dibuja la lista (dentro de `#barra`); hasta `montar`, nada */
     private lista?: HTMLElement;

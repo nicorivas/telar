@@ -4,7 +4,7 @@
 // mostrar no se muestra: el bloque y el foco, no una lista larga.
 
 import * as cli from '../cli';
-import { esc, normalizar, estilo } from '../estilo';
+import { esc, normalizar } from '../estilo';
 import { Pendiente, seccion } from './dia';
 import { EventoCal, Plan } from './plan';
 import { filaPendiente } from './proyectos';
@@ -210,5 +210,4 @@ export function estadoDe(md: string): string {
     return lineas.slice(i + 1, fin < 0 ? undefined : fin).join('\n').trim().slice(0, 1500);
 }
 
-export const CSS_AHORA = estilo('ahora');
 

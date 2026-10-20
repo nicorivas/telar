@@ -230,14 +230,17 @@ en `src/telar/web/`: `app.js` y `marco.css` (los estilos de `vscode/media/css/`)
 `src/telar/web/xterm/`, y se carga la primera vez que se abre una terminal. Cómo desarrollarla con recarga
 sola: [desarrollar.md](desarrollar.md).
 
-Todo vive en un solo documento: lo que no es el dashboard se dibuja directo en la página, y el CSS de cada
-pantalla va con `@scope` (`#barra`, `.v-terminal`, `.v-lectura`…), para que sus nombres sean solo suyos.
+Todo vive en un solo documento, sin marcos: cada pantalla se dibuja en un elemento de la página, y su CSS va
+con `@scope` (`#barra`, `.v-dia`, `.v-terminal`…), para que sus nombres sean solo suyos. Solo van en un iframe
+los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `sandbox`).
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
   abre uno (`POST /ir` con `crear`). Está en `vscode/src/vistas/hilos.ts`.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
-  los módulos).
+  los módulos). `vistas/hoy.ts` decide qué mostrar y lo pinta en `vistas/dashboard.ts`, que filtra, ordena y
+  atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
+  de afuera (el buscador de la barra, una terminal).
 - **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
   lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la
   deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
@@ -252,9 +255,8 @@ pantalla va con `@scope` (`#barra`, `.v-terminal`, `.v-lectura`…), para que su
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
 
-El dashboard todavía arrastra la forma de la extensión de VS Code, que está deprecada: corre en un iframe,
-con un `acquireVsCodeApi` simulado y mensajes que van y vuelven. Retirarla es lo que sigue del plan (el resto
-de la página ya no la tiene: sin Node, la API va por `fetch` en `cli.ts`).
+De la extensión de VS Code, deprecada, quedan las capas `anfitrion` (lo que el dashboard le pide a la
+interfaz) y el nombre de la carpeta, `vscode/`: retirarlas es lo que sigue del plan.
 
 ## Cómo se mueve una cosa
 

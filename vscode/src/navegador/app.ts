@@ -1,17 +1,13 @@
-// El dashboard de telar, corriendo en el navegador: el `PanelHoy` de vistas/hoy.ts, sin Node. Lo que
-// en el panel en Node (retirado el 19-oct-2026) hacía su servidor (hablar con la CLI, mandar la página por
-// un WebSocket, preguntarle cosas a quien mira) aquí lo hace esta página:
+// La página de telar: a la izquierda la barra de hilos (vistas/hilos.ts); a la derecha, una vista a la vez: el
+// dashboard (vistas/hoy.ts, que pinta en vistas/dashboard.ts) o un hilo (web/vistas-hilo.ts), su carpeta o
+// «compartir». Todo en este documento, sin marcos:
 //
-//   - la API, por `fetch` a `/api` (la misma de `telar serve`, detrás de la llave de esta página);
-//   - el dashboard se dibuja en un iframe, con el mismo guion de interfaz que en Node (web/pagina.ts) pero
-//     hablándole a esta página por postMessage;
+//   - la API, por `fetch` a `/api` (cli.ts; la misma de `telar serve`, detrás de la llave de esta página);
 //   - los avisos, campos y menús que pide el dashboard (su anfitrión) los pone esta página, encima de todo
 //     (web/interfaz.ts).
 //
-// Se empaqueta con esbuild (scripts/navegador.mjs) en src/telar/web/app.js, que sirve `telar serve --web`.
-
-// primero: los estilos (las vistas arman su CSS al cargarse, y tienen que encontrarlos)
-import './estilos';
+// Se empaqueta con esbuild (scripts/navegador.mjs) en src/telar/web/app.js, que sirve `telar serve --web`; los
+// estilos van aparte, en src/telar/web/marco.css.
 
 import MarkdownIt from 'markdown-it';
 
@@ -20,12 +16,10 @@ import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
-import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
 import { avisar, campo, elegir, type Nivel, preguntar } from '../web/interfaz';
 import { montar as montarCarpeta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
-import { SCRIPT_NAVEGADOR } from '../web/pagina';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
@@ -38,74 +32,27 @@ void cli.config().then(r => {
     if (r.datos?.equipo) { ajustes.equipoRemoto = r.datos.equipo; void modelo.leerEquipo(); }
 });
 
-// ── a la izquierda la barra (vistas/hilos.ts, sin marco); a la derecha, en marcos, el dashboard o un hilo ──
+// ── a la izquierda la barra (vistas/hilos.ts); a la derecha, una vista a la vez: el dashboard o un hilo ──
 
 const marcos = () => document.getElementById('vistas')!;
-let marco: HTMLIFrameElement | undefined;       // el del dashboard
-let avisosPanel: AvisosSuperficie | undefined;
 let actual = 'dashboard';
 
-/** Lo que se ve a la derecha: un marco (el dashboard, las vistas de un hilo que todavía lo tienen) o una vista
- *  dibujada directo en la página (la carpeta, compartir), con su clave en `data-p`. */
+/** Lo que se ve a la derecha: el dashboard, una vista de un hilo, su carpeta o «compartir», cada una dibujada en un
+ *  elemento de la página con su clave en `data-p`. */
 const vistas = () => [...marcos().children] as HTMLElement[];
 
 /** Las vistas de un hilo dibujadas en la página (la lectura, la conversación), por su clave: se les avisa al
  *  volver a verse. */
 const montadas = new Map<string, Vista>();
 
-/** Una vista dibujada directo en la página: un elemento que su módulo llena (web/carpeta.ts, web/compartir.ts,
- *  las vistas de un hilo). */
+/** Una vista: un elemento que su módulo llena (vistas/dashboard.ts, web/carpeta.ts, web/compartir.ts, las vistas
+ *  de un hilo). */
 function nuevaVista(clave: string): HTMLElement {
     const s = document.createElement('section');
     s.dataset.p = clave;
     marcos().appendChild(s);
     return s;
 }
-
-function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
-    const f = document.createElement('iframe');
-    f.dataset.p = clave;
-    f.title = clave;
-    f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads');
-    donde.appendChild(f);
-    return f;
-}
-
-function a(f: HTMLIFrameElement | undefined, m: unknown): void {
-    f?.contentWindow?.postMessage({ __telarPadre: m }, location.origin);
-}
-
-/** Una página con el guion que le da `acquireVsCodeApi` (web/pagina.ts), con el mismo nonce del CSP que pone
- *  `estilo.marco`. */
-function conInterfaz(pagina: string): string {
-    const nonce = /'nonce-([^']+)'/.exec(pagina)?.[1] ?? '';
-    return pagina.replace('<body', `<script nonce="${nonce}">${SCRIPT_NAVEGADOR}</script><body`);
-}
-
-window.addEventListener('message', e => {
-    if (e.source !== marco?.contentWindow) return;
-    if (typeof e.data?.__telarHijo !== 'string') return;
-    let m: Record<string, unknown>;
-    try { m = JSON.parse(e.data.__telarHijo); } catch { return; }
-    avisosPanel?.mensaje(m);
-});
-
-const superficie: CrearSuperficie = avisos => {
-    avisosPanel = avisos;
-    const s: Superficie = {
-        cspSource: "'self'",
-        get visible() { return !document.hidden && !!marco && !marco.hidden; },
-        get activa() { return document.hasFocus(); },
-        html: p => {
-            if (!marco) marco = nuevoMarco('dashboard', marcos());
-            marco.srcdoc = conInterfaz(p);
-        },
-        enviar: m => a(marco, m),
-        revelar: () => mostrar('dashboard'),
-    };
-    document.addEventListener('visibilitychange', () => avisos.cambio(!document.hidden, document.hasFocus()));
-    return s;
-};
 
 /** Lo que la barra recuerda (el orden de cada grupo): en este navegador. */
 const guardado: Guardado = {
@@ -144,7 +91,7 @@ function mostrar(que: string): void {
     let f: HTMLElement | undefined;
     if (que === 'dashboard') {
         if (!hoy.panel) hoy.abrir();
-        f = marco;
+        f = vistas().find(x => x.dataset.p === 'dashboard');
     } else {
         const como = forma(que), llave = como ? `${como}:${que}` : que;
         f = vistas().find(x => x.dataset.p === llave);
@@ -256,7 +203,8 @@ const anfitrion: Anfitrion = {
 
 usar(anfitrion);
 const hoy = new PanelHoy();
-hoy.crearSuperficie = superficie;
+hoy.donde = () => nuevaVista('dashboard');
+hoy.mostrarme = () => mostrar('dashboard');
 const barra = new BarraHilos();
 barra.estado = guardado;
 barra.dashboardActivo = true;
@@ -339,6 +287,8 @@ mostrar(compartiendo ? 'compartir' : 'dashboard');
 if (document.body.classList.contains('angosto') && !compartiendo) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 
 setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
+// al volver a la pestaña, el dashboard se pone al día (lo que pasó mientras no se miraba)
+document.addEventListener('visibilitychange', () => { if (hoy.panel?.visible) void hoy.actualizar(); });
 // el modelo (los hilos, su atención) se sondea mientras la página se mira
 const sondear = async () => {
     if (!document.hidden) await modelo.sondear().catch(() => undefined);

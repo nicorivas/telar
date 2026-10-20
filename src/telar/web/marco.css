@@ -1,4 +1,4 @@
-/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base, marco, web, hilos, documento, compartir, lectura, conversacion, terminal): no editar aquí. */
+/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base, marco, web, hilos, dia, plan, proyectos, ahora, documento, compartir, lectura, conversacion, terminal): no editar aquí. */
 @layer base, vistas;
 @layer base {
 /* Los tokens: colores, tipografía y espacio. Los colores son catppuccin mocha. Todo lo demás se arma con
@@ -105,13 +105,6 @@ body {
   height: 100dvh;
 }
 
-iframe {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-
 #barra {
   min-width: 0;
   min-height: 0;
@@ -120,8 +113,9 @@ iframe {
 }
 
 /* la cabecera: al centro, la máquina que sirve esta página y lo que se ve («telar › Gestión», o
-   «telar ⇢ laptop:Telar» si es de otra máquina); a la derecha, los botones */
-header {
+   «telar ⇢ laptop:Telar» si es de otra máquina); a la derecha, los botones. Solo la de la página: las
+   pantallas tienen las suyas */
+body > header {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -201,7 +195,7 @@ body.angosto {
   & #maquina { display: none; }
 
   /* el centro (lo que se ve) se acorta con «…» antes de pisar los botones de los lados */
-  & header { grid-template-columns: auto minmax(0, 1fr) auto; }
+  & > header { grid-template-columns: auto minmax(0, 1fr) auto; }
   & #donde { justify-content: center; }
 }
 
@@ -355,6 +349,439 @@ body.angosto.en-detalle #barra { display: none; }
     .fila .iconos .icono:not(.menu-hilo) { display: none; }
     .fila .menu-hilo { padding-inline: 1ch; }
   }
+}
+
+/* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios, la barra de arriba (vistas/dia.ts,
+   vistas/hoy.ts, vistas/dashboard.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
+   el dashboard (`.v-dia`), que es un contenedor de su tamaño: «lo que queda del panel» se mide en cqh. */
+
+@scope (.v-dia) {
+  /* el relleno va en #dia y no aquí: la barra de arriba (.fijo, sticky) se pegaría bajo el relleno del que se
+     desplaza */
+  :scope { container-type: size; }
+  /* el dashboard se armó con las medidas de siempre del navegador (en su marco, sin el border-box de la página) */
+  * { box-sizing: content-box; }
+  #dia { max-width: 120ch; padding: 1lh 3ch 3lh; container-type: inline-size; }
+  .cab { display: flex; gap: 1ch; align-items: baseline; }
+  .cab .der { margin-left: auto; }
+  h2 { font-size: 1em; font-weight: bold; text-transform: uppercase; margin: 1lh 0 0; }
+  h2 small { font-weight: normal; text-transform: none; color: var(--dim); margin-left: 1ch; }
+  .fila { display: flex; gap: 1ch; align-items: baseline; padding: 0 1ch; white-space: nowrap; }
+  .fila.clic { cursor: pointer; } .fila.clic:hover { background: var(--hover); }
+  .fila code { color: var(--verde); }
+  /* un code largo en una fila (una plantilla) se corta con «…»; lo de la derecha (cambiar…) siempre se ve */
+  .fila > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fila > .der { flex: none; margin-left: auto; }
+  .falla { color: var(--rojo); }
+  .opcion { margin: 1lh 0; padding-left: 1ch; border-left: 2px solid transparent; }
+  .opcion.activa { border-left-color: var(--azul); }
+  .opcion .fila.dim { white-space: normal; }
+  /* una fila tenue que solo trae texto (con su code, b, a o em) es un párrafo: se lee de corrido y se parte en
+     líneas; como flex, cada pedazo de texto era una columna aparte («Lee tu ⎵ gws») y lo largo se salía */
+  .fila.dim:not(:has(> :not(code, b, a, em, i, strong))) { display: block; white-space: normal; }
+  .tecla { flex: none; width: 3ch; color: var(--dim); }
+  .hora { flex: none; color: var(--dim); }
+  .pasada, .pasada .que { color: var(--dim); }
+  .proxima .que, .proxima .hora { color: var(--fg); font-weight: bold; }
+  .que { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .cuando { color: var(--amarillo); flex: none; }
+  .enlace { flex: none; color: var(--azul); }
+  .titulo-tareas { display: flex; align-items: baseline; gap: 2ch; margin: 1lh 0 0; flex-wrap: wrap; }
+  .titulo-tareas h2 { margin: 0; }
+  .titulo-tareas.estrecho { flex-direction: column; align-items: stretch; gap: 0; margin-top: 0; }
+  .estrecho .modos { margin-left: 0; }
+  .modos.ordenes { gap: 2ch; }
+  .areas-t .modos, .duenos-t .modos { margin-left: 0; flex-wrap: wrap; gap: 0 2ch; }
+  .modos { display: flex; flex-wrap: wrap; gap: 0 2ch; align-items: baseline; margin-left: auto; }
+  .modos button { font: inherit; background: none; border: 0; padding: 0; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .modos button:hover { color: var(--fg); }
+  /* el seleccionado va solo en color: un subrayado se pegaba a la línea de abajo */
+  .modos button.activo { color: var(--c, var(--verde)); }
+  #buscar { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
+            width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
+  #buscar:focus { border-bottom-color: var(--azul); }
+  #buscar::placeholder { color: var(--dim); }
+  .ayuda { color: var(--dim); margin: 0 0 0 1ch; }
+  #tareas-cuenta { color: var(--dim); }
+  .tarea.compacta .desc { -webkit-line-clamp: 1; }
+  .tarea.compacta .id { width: auto; min-width: 4ch; }
+  .compacta + #tareas-mas, #dia > .titulo-tareas { margin-top: 0; }
+  .tarea:hover { background: var(--hover); }
+  .tarea .desc { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .id, .pri { flex: none; color: var(--dim); } .id { width: 12ch; overflow: hidden; }
+  .meta { flex: none; color: var(--dim); text-align: right; }
+  .venc { color: var(--rojo); } .pronto { color: var(--amarillo); } .espera { color: var(--cian); }
+  .destino { color: var(--magenta); }
+  .at { flex: none; width: 1ch; } .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
+  .nombre { min-width: 20ch; }
+  #globo { position: absolute; z-index: 10; pointer-events: none; white-space: pre-wrap; max-width: min(60ch, calc(100cqw - 3ch));
+           padding: 0 1ch; background: var(--bg); color: var(--fg); border: var(--borde);
+           box-shadow: 0 2px 8px rgb(0 0 0 / 35%); }
+  .md-pag p { margin: 0; white-space: normal; } .md-pag ul { margin: 0; padding-left: 2ch; }
+  .md-pag code, .texto-pag code { color: var(--verde); }
+  /* el esquema de colores de su página (que no declara uno): si no coincide con el de la página de telar (oscuro),
+     el navegador le pone un fondo opaco, blanco, y el lienzo deja de ser transparente */
+  .lienzo { display: block; width: 100%; border: 0; margin: 0 0 1lh; background: transparent; color-scheme: normal; }
+  /* una app a todo el panel: lo que queda bajo la barra y la cabecera */
+  .lienzo.lleno { height: calc(100cqh - 6.5lh); min-height: 320px; margin: 0; }
+  .sep-pag { border-top: 1px solid var(--linea); margin: 1lh 0; }
+  .item-pag { padding: 0 1ch; margin: 0; border-left: 2px solid var(--linea); }
+  .item-pag.clic { cursor: pointer; } .item-pag.clic:hover { background: var(--hover); border-left-color: var(--azul); }
+  .texto-pag { color: var(--dim); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .texto-pag p { margin: 0; }
+  .msg { margin: 1lh 0 0; } .msg .quien { font-weight: bold; } .msg.usuario .quien { color: var(--azul); }
+  .msg.agente .quien { color: var(--verde); }
+  .herr { padding-left: 2ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── el dashboard: terminal con color ─────────────────────────────────
+     Reglas de terminal: un solo tamaño de letra y sin espaciado entre letras; lo
+     horizontal en caracteres enteros (ch) y lo vertical en renglones enteros (lh); nada
+     que decore ocupa lugar (bordes → outline o sombra; teclas en video inverso). */
+  #dia, #dia * { font-size: inherit !important; letter-spacing: 0 !important; }
+  small, code, kbd, button, input, b, i { font: inherit; }
+  /* una tecla: marco fino y borde de abajo más grueso, como una tecla de verdad. El marco
+     es outline y sombra (no ocupa lugar) y el relleno es medio carácter por lado: la tecla
+     ocupa exactamente dos celdas y la grilla no se corre. */
+  kbd { padding: 0 .5ch; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent);
+        outline: 1px solid var(--linea); outline-offset: -1px; box-shadow: inset 0 -2px 0 var(--linea); }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 2ch; }
+  .top .marca-t { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
+  .logo { font-weight: bold; color: transparent;
+          background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+          background-size: 480px 100%; -webkit-background-clip: text; background-clip: text; animation: flujo 9s linear infinite; }
+  .fecha { color: var(--fg); } .reloj { color: var(--amarillo); } .sem { color: var(--dim); }
+  .regla { height: 2px; margin: 0;
+           background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+           background-size: 480px 100%; animation: flujo 9s linear infinite; }
+
+  @keyframes flujo { from { background-position: 0 0; } to { background-position: 480px 0; } }
+
+  .bloque { margin: 1lh 0 0; }
+  h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transform: uppercase; color: var(--c); font-weight: bold; }
+  .sec .marca { width: 1ch; align-self: stretch; background: var(--c); }
+  .sec .cuenta { color: var(--bg); background: var(--c); padding: 0 1ch; }
+  .bloque > .ag, .bloque > .hl, .bloque #tareas, .bloque > .vacio, .bloque > .titulo-tareas {
+      box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); }
+  .vacio { color: var(--dim); padding: 0 2ch; }
+  .clic { cursor: pointer; }
+
+  /* agenda: tecla · hora · qué · lo de al lado */
+  .plazo-clic { cursor: pointer; } .plazo-clic:hover { text-decoration: underline; }
+  .menu-fila { cursor: pointer; color: var(--dim); text-align: center; } .menu-fila:hover { color: var(--fg); background: var(--hover); }
+  .ag { display: grid; grid-template-columns: 7ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; }
+  .ag .hora { color: var(--c); }
+  .ag .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ag .extra { display: flex; gap: 2ch; align-items: baseline; white-space: nowrap; color: var(--dim); }
+  .ag.pasada { color: var(--dim); } .ag.pasada .hora { color: var(--dim); } .ag.pasada .que { text-decoration: line-through; text-decoration-color: var(--linea); }
+  .ag.clic:hover, .hl.clic:hover, .tarea:hover { background: var(--hover); box-shadow: inset 2px 0 0 var(--c); }
+  .ag.proxima { background: color-mix(in srgb, var(--c) 12%, transparent); box-shadow: inset 2px 0 0 var(--c); }
+  .ag.proxima .que { color: var(--fg); font-weight: bold; }
+  .punto { font-style: normal; color: var(--c); animation: latido 1.6s ease-in-out infinite; }
+  .falta { color: var(--bg); background: var(--amarillo); padding: 0 1ch; font-weight: bold; }
+  .ag .enlace { color: var(--azul); }
+
+  @keyframes latido { 50% { opacity: .2; } }
+
+  /* esperan: estado · hilo · hace cuánto */
+  .hl { display: grid; grid-template-columns: 1ch minmax(0, 1fr) 4ch; gap: 1ch; align-items: baseline; padding: 0 1ch; }
+  .hl .nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .hl .cuando { text-align: right; color: var(--dim); }
+  .hl .at { width: auto; font-weight: bold; } .hl .at.espera { animation: pulso 2.4s ease-in-out infinite; }
+
+  @keyframes pulso { 50% { opacity: .45; } }
+
+  /* atajos: teclas-botón */
+  /* los atajos se ven como el resto de las teclas (pestañas, pie): tecla y nombre, sin marco */
+
+  /* pendientes: tecla · código · casilla · texto · plazo */
+  .bloque .titulo-tareas { margin: 0; padding: 0 1ch; gap: 0 2ch; }
+  .bloque .titulo-tareas .modos:first-child { margin-left: 0; }
+  .bloque .modos button.activo { color: var(--c); }
+  .tarea { display: grid; grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; cursor: pointer; }
+  .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
+  .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+  .tarea.encurso .pri { color: var(--azul); }
+  .tarea:hover .marcar::after { content: '✓'; color: var(--dim); }
+  .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
+  .tarea .dueno { color: var(--magenta); margin-right: 1ch; }
+  .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }
+  /* el ✓ mientras se marca: gira, en verde, hasta que la lista se relee */
+  .rap.girando { color: var(--verde); opacity: 1; display: inline-block; animation: girar 1s linear infinite; }
+
+  @keyframes girar { to { transform: rotate(360deg); } }
+  .av { font-weight: bold; margin-right: 1ch; }
+  /* la ficha de una tarea: la propuesta del agente con el color de su estado, y los botones */
+  #ficha-tarea { --c: var(--verde); }
+  /* la pestaña de procesos periódicos: una fila por proceso, y su ficha con el log */
+  .fila.per { display: grid; grid-template-columns: 2ch 22ch 16ch minmax(0, 1fr) max-content; }
+  .fila.per b, .fila.per .que, .fila.per code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila.per.dim b { color: var(--dim); }
+  #ficha-per .fila { white-space: normal; } #ficha-per .fila .que { overflow-wrap: anywhere; }
+  #ficha-per pre.log { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); max-height: 60vh; overflow: auto;
+    box-shadow: inset 2px 0 0 var(--linea); padding: 0 2ch; margin: 0; }
+  /* el formulario de un periódico: etiqueta a la izquierda, control a la derecha */
+  #form-per .campo { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 2ch; align-items: baseline; margin: .5lh 0; }
+  #form-per .etiqueta { color: var(--dim); text-align: right; }
+  #form-per .control { display: flex; flex-direction: column; gap: .25lh; min-width: 0; }
+  #form-per input:not([type="checkbox"]), #form-per textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea);
+    padding: 0 1ch; outline: none; width: 100%; max-width: 80ch; box-sizing: border-box; resize: vertical; }
+  #form-per input:focus, #form-per textarea:focus { border-color: var(--amarillo); }
+  #form-per input:disabled { color: var(--dim); }
+  #form-per input[type="number"] { width: 8ch; }
+  #form-per input[type="checkbox"] { align-self: flex-start; margin: 0; accent-color: var(--amarillo); }
+  #form-per .ayuda { font-size: var(--t-menor); }
+  #form-per .opciones, #form-per .presets { display: flex; flex-wrap: wrap; gap: 0 2ch; }
+  #form-per .opcion-t, #form-per .presets a { cursor: pointer; color: var(--dim); }
+  #form-per .opcion-t.activa { color: var(--amarillo); font-weight: bold; }
+  #form-per .opcion-t:hover, #form-per .presets a:hover { color: var(--fg); }
+  #form-per.tipo-mensaje .solo-comando, #form-per.tipo-comando .solo-mensaje { display: none; }
+  #form-per .skills { max-height: 14lh; overflow: auto; max-width: 80ch; box-shadow: inset 2px 0 0 var(--linea); }
+  #form-per .skill { display: grid; grid-template-columns: 22ch minmax(0, 1fr); gap: 1ch; padding: 0 1ch; cursor: pointer; }
+  #form-per .skill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #form-per .skill:hover { background: var(--hover); } #form-per .skill.activa b { color: var(--amarillo); }
+  #form-per .skill[hidden] { display: none; }
+  #form-per #per-error { margin: .5lh 0 0 14ch; white-space: pre-wrap; }
+  #form-per .fila-botones { grid-auto-flow: column; justify-content: start; gap: 3ch; margin-left: 14ch; }
+
+  @media (width <= 90ch) { .fila.per { grid-template-columns: 2ch minmax(0, 1fr) max-content; } .fila.per code, .fila.per .que { display: none; } }
+  .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
+  .sub-ficha { white-space: normal; overflow-wrap: anywhere; }
+  .prop h2 { color: var(--c); }
+  /* una acción por fila: la tecla en su columna, el nombre en la otra */
+  .acciones-t { display: grid; grid-template-columns: max-content; margin: 1lh 0; }
+  .acciones-t .atajo { gap: 1ch; }
+  .pasar { display: inline-flex; gap: 1ch; } .pasar a { color: var(--c); cursor: pointer; } .pasar a:hover { text-decoration: none; color: var(--fg); }
+  .acciones-t .atajo.principal span { color: var(--c); font-weight: bold; }
+  .acciones-t .atajo.principal kbd { outline-color: var(--c); box-shadow: inset 0 -2px 0 var(--c); color: var(--c); }
+  .av-preparado { color: var(--verde); } .av-cerrar { color: var(--cian); }
+  .av-pregunta { color: var(--amarillo); } .av-choca { color: var(--rojo); }
+  .tarea .meta { display: grid; grid-template-columns: 5ch 1ch 1ch; gap: 2ch; white-space: nowrap; }
+  .tarea .meta > :first-child { text-align: right; }
+  .tarea.compacta .meta { grid-template-columns: 5ch 1ch; gap: 1ch; font-size: .95em; }
+  .tarea .destino { color: var(--magenta); overflow: hidden; text-overflow: ellipsis; text-align: left; }
+  #tareas-mas { color: var(--c); padding: 0 1ch; }
+
+  /* la barra de arriba: fija, igual en todas las pestañas */
+  .fijo { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 1lh 0 0; margin-top: -1lh; }
+  .top .recargar { color: var(--dim); } .top .recargar:hover { color: var(--fg); text-decoration: none; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0; margin-top: 1lh; }
+  .tab { padding: 0 1ch; color: var(--dim); white-space: nowrap; }
+  .tab:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+  .tab.activa { color: var(--bg); background: var(--t, var(--azul)); font-weight: bold; }
+  .tab.activa kbd { color: var(--bg); background: transparent; outline-color: var(--bg); box-shadow: inset 0 -2px 0 var(--bg); }
+  .tab[data-accion="dia"] { --t: var(--amarillo); } .tab[data-accion="proyectos"] { --t: var(--cian); }
+  .tab[data-accion="correo"] { --t: var(--magenta); } .tab[data-accion="seccion"] { --t: var(--violeta); }
+  .tab[data-accion="config"] { --t: var(--verde); }
+  .fijo::after { content: ""; display: block; height: 1lh; }
+  .subcab { display: flex; gap: 0 2ch; align-items: baseline; flex-wrap: wrap; margin: 0 0 1lh; --c: var(--violeta); }
+  .subcab b { color: var(--fg); } .subcab .der { display: flex; gap: 0 3ch; margin-left: auto; }
+
+  /* el atajo: uno solo en todo el dashboard. Tecla y nombre; al pasar el mouse, los dos
+     toman el color de su sección (--c) */
+  .atajo { display: inline-flex; gap: 1ch; align-items: baseline; color: var(--fg); white-space: nowrap; cursor: pointer; }
+  .atajo:hover { color: var(--c, var(--azul)); text-decoration: none; }
+  .atajo:hover kbd { color: var(--c, var(--azul)); outline-color: var(--c, var(--azul)); box-shadow: inset 0 -2px 0 var(--c, var(--azul)); }
+  .atajo.pista { color: var(--dim); cursor: default; }
+  .atajo.pista:hover, .atajo.pista:hover kbd { color: var(--dim); outline-color: var(--linea); box-shadow: inset 0 -2px 0 var(--linea); }
+  .sec .acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0 3ch; text-transform: none; font-weight: normal; }
+  .sec .leyenda { color: var(--dim); }
+  .generales { display: flex; flex-wrap: wrap; gap: 0 3ch; --c: var(--cian); }
+  .top .atajo { color: var(--dim); } .top .atajo:hover { color: var(--c, var(--azul)); }
+
+  /* un bloque del día (el correo): marca · hora · de · qué */
+  .cr { display: grid; grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
+        box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 35%, transparent); color: var(--dim); }
+  .cr .mk { color: var(--dim); } .cr .hora { color: var(--dim); }
+  .cr .de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cr .que { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* las tareas de cada ítem (las de un correo), separadas por coma; «—» si no tiene */
+  .cr.con-t { grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr) 16ch; }
+  /* el cuerpo de un ítem abierto (un correo): cinco líneas, y entero al desplegarlo */
+  .cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; margin: .5lh 0 .25lh; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--linea); }
+  .cuerpo.plegado { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  .cr .plegar { color: var(--c); cursor: pointer; margin-right: .5ch; } .cr .plegar:hover { color: var(--fg); }
+  .cr.hijo .que { padding-left: 3ch; } .cr.hijo .de { padding-left: 1ch; }
+  .cr .tar .cerrada { color: var(--dim); opacity: .6; } .cr .tar .abierta { color: var(--cian); }
+  .solo-pend { color: var(--dim); cursor: pointer; white-space: nowrap; } .solo-pend:hover, .solo-pend.si { color: var(--fg); }
+  .cr .tar { color: var(--cian); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .cr.nuevo { color: var(--fg); } .cr.nuevo .mk { color: var(--c); } .cr.nuevo .hora { color: var(--c); }
+  .cr:hover { background: var(--hover); } .cr.clic { cursor: pointer; } .cr.clic:hover .que { color: var(--c); }
+
+  /* angosto: lo secundario se va, lo principal nunca */
+  @container (max-width: 620px) {
+    .ag .extra .hilo-ag { display: none; }
+    .tarea .meta { grid-template-columns: 5ch 1ch 1ch; }
+    .tarea:not(.compacta) { grid-template-columns: 5ch minmax(0, 1fr) auto; } .tarea:not(.compacta) .pri { display: none; }
+    .ag { grid-template-columns: 7ch minmax(0, 1fr); } .ag .extra { grid-column: 2; }
+    .ag:not(.proxima) .extra { display: none; }
+    .cr { grid-template-columns: 1ch 6ch minmax(0, 1fr); } .cr .de { display: none; }
+    .cr.con-t { grid-template-columns: 1ch 6ch minmax(0, 1fr) 11ch; }
+    .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
+  }
+
+  @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
+  #revisar #tareas-t .tarea, #revisar .tareas-cab, .tareas-sueltas .tarea { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
+  /* las acciones a un clic, antes del ⋯: ✓ hecha, ◉ compartir, ▶ a un hilo */
+  #revisar .tarea .meta, .tareas-sueltas .tarea .meta { grid-template-columns: 5ch 1ch 7ch 1ch; }
+  .rapidas { display: inline-grid; grid-template-columns: repeat(3, 1ch); gap: 1ch; }
+
+  /* la tabla de tareas en un celular: el código y el texto, con espacio para leerlo, y debajo la fecha y
+     ✓ ▶ ⋯; la estrella, el proyecto y el responsable se van (siguen en la ficha) */
+  @container (max-width: 620px) {
+    #revisar #tareas-t .tarea,
+    #revisar .tareas-cab,
+    .tareas-sueltas .tarea { grid-template-columns: 5ch minmax(0, 1fr); row-gap: 0; padding-block: .2lh; }
+
+    #revisar #tareas-t .tarea > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)),
+    #revisar .tareas-cab > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)),
+    .tareas-sueltas .tarea > :is(:nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5)) { display: none; }
+
+    #revisar .tarea .meta,
+    #revisar .tareas-cab .meta,
+    .tareas-sueltas .tarea .meta { grid-column: 2; justify-self: start; }
+  }
+  .rap { color: var(--dim); cursor: pointer; text-align: center; opacity: .55; }
+  .tarea:hover .rap { opacity: 1; }
+  .rap.ok:hover { color: var(--verde); font-weight: bold; } .rap.ir:hover { color: var(--azul); }
+  .rap.eq:hover, .rap.eq.on { color: var(--cian); opacity: 1; }
+  #revisar .estr { cursor: pointer; color: var(--dim); opacity: 0; } #revisar .tarea:hover .estr { opacity: 1; }
+  #revisar .estr.on { color: var(--amarillo); opacity: 1; } #revisar .estr:hover { color: var(--amarillo); }
+  #revisar .eq { cursor: pointer; color: var(--dim); opacity: .35; } #revisar .tarea:hover .eq { opacity: 1; }
+  #revisar .eq.on { color: var(--cian); opacity: 1; font-weight: 700; } #revisar .eq:hover { color: var(--cian); }
+  #tareas-t-mas { margin-top: .5lh; color: var(--azul); }
+  #revisar .tareas-cab { display: grid; gap: 1ch; padding: 0 1ch; color: var(--dim); margin-top: .5lh; }
+  #revisar .tareas-cab [data-orden-c] { cursor: pointer; } #revisar .tareas-cab [data-orden-c]:hover { color: var(--fg); }
+  #revisar .tareas-cab .activo { color: var(--azul); }
+  #revisar .tareas-cab > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* la misma grilla de la derecha de una fila, para que «fecha» quede sobre las fechas */
+  #revisar .tareas-cab .meta { display: grid; grid-template-columns: 5ch 1ch 7ch 1ch; gap: 2ch; overflow: visible; }
+  #revisar .resp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); cursor: pointer; }
+  #revisar .resp:hover { text-decoration: underline; } #revisar .resp.defecto { color: var(--dim); }
+  #revisar .resp.dim, #revisar .resp.fijo { cursor: default; text-decoration: none; } #revisar .resp.dim { color: var(--dim); }
+  #revisar .proy-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--azul); cursor: pointer; }
+  #revisar .proy-t:hover { text-decoration: underline; } #revisar .proy-t.dim { color: var(--dim); cursor: default; text-decoration: none; }
+  #buscar-t { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
+              width: 20ch; padding: 0 1ch; outline: none; }
+  #buscar-t:focus { border-bottom-color: var(--azul); }
+  #tareas-t-cuenta { color: var(--dim); }
+  .modos button.vacio-m { opacity: .5; }
+  #buscar-p { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
+              width: 28ch; max-width: 100%; padding: 0 1ch; outline: none; flex: 1 1 12ch; }
+  #buscar-p:focus { border-bottom-color: var(--azul); }
+  #buscar-p::placeholder { color: var(--dim); }
+  #proyectos-cuenta { color: var(--dim); }
+  .proy .que { flex: 1; }
+  .proy .tipo { flex: none; width: 9ch; overflow: hidden; text-overflow: ellipsis; }
+  .proy .cuando-p { flex: none; width: 4ch; text-align: right; }
+  .proy.primera { background: var(--hover); }
+}
+
+/* El plan del día y el calendario (vistas/plan.ts). scripts/navegador.mjs
+   lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
+
+@scope (.v-dia) {
+  .plan-nav { display: flex; gap: 2ch; align-items: baseline; padding: 0 1ch .5lh; color: var(--dim); }
+  .plan-nav a { color: var(--azul); }
+  .plan-txt { padding: .2lh 1ch; } .plan-txt p { margin: .2lh 0; }
+  .plan-riesgo { color: var(--rojo); }
+  .plan-fila { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 1ch; padding: .15lh 1ch; }
+  .plan-fila .k { color: var(--dim); }
+  .plan-fila .sub { color: var(--dim); display: block; }
+  .plan-fila.estrategico .v { font-weight: bold; }
+  .cal-nav { display: flex; gap: 1.5ch; align-items: baseline; margin: .5lh 0 0 6ch; }
+  .cal-nav a { color: var(--dim); }
+  .cal-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+  .cal-nav .cal-fecha { min-width: 14ch; text-align: center; }
+  .cal-dos { display: grid; grid-template-columns: minmax(28ch, 1fr) minmax(32ch, 1.2fr); gap: 2ch; align-items: start; }
+  .cal { position: relative; margin: 1lh 0 1lh 6ch; border-left: 1px solid var(--linea); }
+  .cal-hora { position: absolute; left: -6ch; width: 5ch; text-align: right; color: var(--dim); font-size: var(--t-chica); transform: translateY(-.6em); }
+  .cal-linea { position: absolute; left: 0; right: 0; border-top: 1px solid var(--linea); }
+  .cal-ahora { position: absolute; left: 0; right: 0; border-top: 2px solid var(--rojo); z-index: 3; }
+  .cal-ev { position: absolute; box-sizing: border-box; padding: 2px 6px; overflow: hidden; cursor: pointer;
+            background: color-mix(in srgb, var(--azul) 22%, transparent); border-left: 3px solid var(--azul); }
+  .cal-ev:hover { background: color-mix(in srgb, var(--azul) 34%, transparent); }
+  .cal-ev.plan { background: transparent; border: 1px dashed var(--amarillo); border-left: 3px solid var(--amarillo); }
+  .cal-ev.pasado { opacity: .55; }
+  .cal-ev.sel { outline: 2px solid var(--fg); z-index: 2; }
+  .cal-ev .h { color: var(--dim); font-size: var(--t-chica); } .cal-ev .t { display: block; }
+  .cal-ev.corto { white-space: nowrap; text-overflow: ellipsis; } .cal-ev.corto .t { display: inline; margin-left: .5ch; }
+  .cal-ev .marca-nota { color: var(--amarillo); }
+  .cal-dia-completo { padding: .2lh 1ch; color: var(--dim); }
+  .cal-det { position: sticky; top: 4lh; padding: .5lh 1ch; border-left: 1px solid var(--linea); text-align: left; }
+  .cal-det h3 { margin: 0 0 .3lh; }
+  .cal-det .cal-meta { color: var(--dim); margin-bottom: .5lh; }
+  .cal-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
+  .cal-nota { padding: .3lh 0; border-top: 1px solid var(--linea); }
+  .cal-nota .de { color: var(--dim); font-size: var(--t-chica); }
+  .cal-escribir { margin-top: 1lh; display: flex; flex-direction: column; gap: .4lh; }
+  .cal-escribir textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea); padding: .3lh 1ch; resize: vertical; }
+  .cal-escribir textarea:focus { outline: none; border-color: var(--amarillo); }
+  .cal-escribir a { align-self: flex-end; }
+}
+
+/* Los proyectos en dos columnas: la lista y el detalle (vistas/proyectos.ts). scripts/navegador.mjs
+   lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
+
+@scope (.v-dia) {
+  /* la lista se lleva más que el detalle: lo que se lee ahí es el nombre */
+  .proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) minmax(40ch, 1fr); gap: 1.5ch; align-items: start; }
+  #dia:has(.proy-dos) { max-width: none; }
+  .proy-lista .fila { gap: .8ch; }
+  .proy-lista { min-width: 0; }
+  .proy.sel { background: color-mix(in srgb, var(--azul) 22%, transparent); }
+  .proy .que { overflow: hidden; text-overflow: ellipsis; }
+  .proy .cliente { color: var(--azul); }
+  .proy .cliente + .resto { color: var(--dim); }
+  .proy-cab { color: var(--dim); }
+  .proy .menu-col, .proy-cab .menu-col { flex: none; width: 2ch; }
+  .proy-cab [data-orden-p] { cursor: pointer; } .proy-cab [data-orden-p]:hover { color: var(--fg); }
+  .proy-cab .activo { color: var(--azul); }
+  .proy-cab .estado { flex: none; width: 12ch; } .proy-cab .tipo { flex: none; width: 9ch; }
+  .proy-cab .cuando-p { flex: none; width: 4ch; text-align: right; } .proy-cab .que { flex: 1; }
+  .proy .estado { flex: none; width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  .proy .estado.e-activo { color: var(--verde); }
+  .proy .estado.e-abierto { color: var(--amarillo); }
+  .proy .estado.e-trabado { color: var(--rojo); }
+  .proy.cerrado .cliente, .proy.cerrado .estado { color: var(--dim); }
+  .proy.cerrado { color: var(--dim); }
+  #proy-det { position: sticky; top: 1lh; max-height: calc(100cqh - 3lh); overflow-y: auto; padding: .5lh 1ch;
+    border-left: 1px solid var(--linea); min-width: 0; }
+  #proy-det h3 { margin: 0 0 .2lh; }
+  #proy-det .proy-meta { color: var(--dim); margin-bottom: .4lh; white-space: normal; }
+  #proy-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
+  #proy-det h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+  #proy-det .tarea { padding: 0; }
+  .proy-readme { white-space: normal; line-height: 1.45; border-top: 1px solid var(--linea); padding-top: .4lh; }
+  .proy-readme h1 { font-size: var(--t-mayor); margin: .6lh 0 .3lh; }
+  .proy-readme h2 { font-size: 1.05em; text-transform: none; margin: .9lh 0 .3lh; }
+  .proy-readme h3, .proy-readme h4 { font-size: 1em; margin: .7lh 0 .2lh; }
+  .proy-readme table { border-collapse: collapse; margin: .3lh 0; }
+  .proy-readme td, .proy-readme th { border: 1px solid var(--linea); padding: 0 1ch; vertical-align: top; }
+  .proy-readme pre { white-space: pre-wrap; } .proy-readme img { max-width: 100%; }
+  .proy-readme blockquote { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--linea); color: var(--dim); }
+  .proy-readme ul, .proy-readme ol { padding-left: 3ch; margin: .2lh 0; }
+}
+
+/* «ahora»: el bloque del momento (vistas/ahora.ts). scripts/navegador.mjs
+   lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
+
+@scope (.v-dia) {
+  .ahora-nav { display: flex; gap: 2ch; align-items: baseline; margin: .3lh 0 .6lh; }
+  .ahora-nav a { color: var(--dim); }
+  .ahora-cuando { margin-left: auto; } .ahora-nav a.ahora-cuando.simulado { color: var(--amarillo); }
+  .ahora-elegir { border: 1px solid var(--linea); padding: .3lh 1ch .6lh; margin: 0 0 .8lh; max-width: 70ch; }
+  .ahora-elegir .cal { margin-top: .5lh; } .ahora-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+  .ahora-bloque { margin-bottom: .8lh; } .ahora-bloque h3 { margin: .1lh 0; }
+  .ahora-bloque .clase { font-size: var(--t-chica); text-transform: uppercase; color: var(--dim); }
+  .ahora-bloque .c-estrategico { color: var(--amarillo); } .ahora-bloque .c-reunion { color: var(--azul); }
+  .ahora-bloque .c-comercial { color: var(--verde); }
+  .ahora-foco { border-left: 2px solid var(--amarillo); padding: .2lh 1ch; margin: .5lh 0; }
+  .ahora-foco .paso { font-size: 1.05em; margin: .2lh 0; } .ahora-foco.corto { border-left-color: var(--linea); }
+  .ahora-ficha { border-left: 2px solid var(--azul); padding: .2lh 1ch; margin: .5lh 0; }
+  .ahora-ficha ul { margin: 0; padding-left: 3ch; }
+  #dia h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+  .ahora-doc { max-height: 22lh; overflow-y: auto; }
+  .ahora-estado { border-top: none; }
 }
 
 /* La carpeta de un hilo y su documento (web/carpeta.ts): los archivos arriba, como una lista corta, y el

@@ -4,10 +4,9 @@
 // repintar la lista, que es larga y no debe perder ni el scroll ni lo buscado.
 
 import * as cli from '../cli';
-import { esc, haceCorto, limpiarMd, normalizar, estilo } from '../estilo';
+import { esc, haceCorto, limpiarMd, normalizar } from '../estilo';
 import { Pendiente, plazo } from './dia';
 
-export const CSS_PROY = estilo('proyectos');
 
 /** El color del estado según de qué tipo es: en marcha, por ganar, trabado o terminado. */
 function claseEstado(estado: string): string {
@@ -55,7 +54,7 @@ export function unidadDe(carpeta: string, rutas: string[]): string {
     return mejor;
 }
 
-/** Una fila de botones que filtra la lista por un campo (`data-pf`); el webview marca el activo. */
+/** Una fila de botones que filtra la lista por un campo (`data-pf`); la página marca el activo. */
 function filtro(campo: string, todos: string, valores: Map<string, number>, orden: string[] = []): string {
     if (valores.size < 2) return '';
     // con `orden`, ese orden (lo que no está en él, después); si no, lo más común primero
@@ -72,8 +71,8 @@ function contar(xs: string[]): Map<string, number> {
     return m;
 }
 
-/** La lista de la izquierda. Buscar, ordenar y mostrar los cerrados ocurre en el webview
- *  (`aplicarProyectos`); elegir una fila pide su detalle. */
+/** La lista de la izquierda. Buscar, ordenar y mostrar los cerrados ocurre en la página
+ *  (`aplicarProyectos`, vistas/dashboard.ts); elegir una fila pide su detalle. */
 export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuentas?: Map<string, number>): string[] {
     const cerrados = lista.filter(esCerrado).length;
     const conHilo = lista.filter(p => p.hilo).length;

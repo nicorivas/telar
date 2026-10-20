@@ -1,6 +1,6 @@
-// El modelo: lo que hay ahora mismo, leído una vez y compartido por las cinco vistas.
+// El modelo: lo que hay ahora mismo, leído una vez y compartido por la barra y el dashboard.
 //
-// No guarda nada propio. Si la extensión muere, no se pierde un dato: el estado vive donde
+// No guarda nada propio. Si la página se cierra, no se pierde un dato: el estado vive donde
 // telar lo tenga, y aquí solo queda la última respuesta de `telar hilos --json`.
 //
 // Dos ritmos, porque leer los documentos es lo único caro de todo esto:

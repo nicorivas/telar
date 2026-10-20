@@ -464,15 +464,15 @@ Un bloque puede traer además un **lienzo**, una página HTML local que se muest
 `archivo` es obligatorio (absoluto, `.html`, tiene que existir); `alto` en píxeles, de 40
 a 2000 (240 si falta), o `"lleno"`; `params` va como query string (`?animo=jugando&nota=…`) y es la
 forma de pasarle datos. El iframe lleva `sandbox="allow-scripts"` sin `allow-same-origin`:
-el lienzo corre sus scripts pero no alcanza el panel ni la extensión. Cada vez que se pide
+el lienzo corre sus scripts pero no alcanza la página. Cada vez que se pide
 la página el iframe se vuelve a crear.
 
-El lienzo entra como `srcdoc` (su contenido, no su ruta): un iframe hacia un recurso local
-del webview queda en blanco. Eso trae tres consecuencias para quien lo escribe:
+El lienzo entra como `srcdoc` (su contenido, no su ruta): su página la lee telar del repositorio, no se
+sirve. Eso trae tres consecuencias para quien lo escribe:
 
 - tiene que ser **autocontenido**: sus rutas relativas no resuelven, y no hay red;
-- hereda el CSP del panel; telar le pone el nonce del panel a cada `<script>`, así que el
-  script en línea corre, pero un `<script src>` externo o un `eval` no;
+- lleva su propia política de contenido: el `<script>` y el estilo en línea corren, y las imágenes (https,
+  `data:`) se ven, pero un `<script src>` externo, un `eval` o una conexión a la red no;
 - los params llegan por `location.search` (telar reescribe la URL a `about:srcdoc?…` antes
   de que corra nada) y también en `window.lienzo.params`. Un bloque puede ser solo un lienzo, o lienzo con título,
 texto e ítems.

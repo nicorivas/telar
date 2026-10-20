@@ -10,24 +10,26 @@
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
 import { type Opcion, ui } from '../anfitrion';
-import type { CrearSuperficie, Superficie } from '../superficie';
 import * as cli from '../cli';
 import { disco } from '../disco';
-import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, marco, normalizar, nuevoNonce } from '../estilo';
+import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, llaveAlAzar, normalizar } from '../estilo';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
-import { CSS_DIA, Dia, SCRIPT_DIA, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
-import { CSS_PLAN, columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
-import { CSS_PROY, DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
-import { CSS_AHORA, Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
+import { Dia, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
+import { columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
+import { DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
+import { Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
 import type { EventoCal } from './plan';
+import { type MensajeDia, montarDia, type VistaDia } from './dashboard';
 import { decidir, preguntarAGestion } from './equipo';
 import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
 export class PanelHoy {
-    panel?: Superficie;
-    /** cómo se crea la superficie: la da quien muestra el dashboard (la página, src/navegador) */
-    crearSuperficie?: CrearSuperficie;
+    /** el dashboard en la página, ya montado (vistas/dashboard.ts); hasta abrirlo, nada */
+    panel?: VistaDia;
+    /** dónde se dibuja (un elemento de la página) y cómo se lo trae al frente: los da la página (src/navegador) */
+    donde?: () => HTMLElement;
+    mostrarme?: () => void;
     private datos?: Dia;
     private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'ahora';
     /** el bloque (`[bloques.x]`) que muestra la pestaña 'bloque' */
@@ -86,12 +88,8 @@ export class PanelHoy {
     private equipoId = '';
     /** la sección abierta y su página; la conversación que se está leyendo */
     private seccion = '';
-    /** los orígenes de las apps con `url` que el CSP del panel deja enmarcar (ver `abrirApp`) */
-    private marcos: string[] = [];
     private pagina?: cli.JsonPagina;
     private charla?: cli.JsonConversacion;
-    /** el nonce del CSP del panel: los lienzos lo necesitan para que corran sus scripts */
-    private nonce = nuevoNonce();
     /** las memorias de los lienzos pintados: una llave al azar por lienzo → el archivo que declaró
      *  su página. El lienzo solo escribe ese archivo, y lo nombra con la llave, nunca con una ruta. */
     private memorias = new Map<string, string>();
@@ -136,34 +134,17 @@ export class PanelHoy {
     alCambiarFoco?: (activo: boolean) => void;
 
     alternar(): void {
-        if (this.panel?.activa) { void ui().mostrarTerminal(); return; }
+        if (this.panel?.visible) { void ui().mostrarTerminal(); return; }
         this.abrir();
     }
 
     abrir(): void {
-        if (this.panel) { this.panel.revelar(); void this.actualizar(); return; }
-        if (!this.crearSuperficie) throw new Error('telar: el dashboard no sabe dónde dibujarse (crearSuperficie)');
-        this.panel = this.crearSuperficie({
-            mensaje: m => void this.mensaje(m),
-            cerrada: () => { this.panel = undefined; this.alCambiarFoco?.(false); },
-            cambio: (visible, activa) => {
-                if (visible) void this.actualizar();
-                this.alCambiarFoco?.(activa);
-            },
-        });
+        if (this.panel) { this.mostrarme?.(); void this.actualizar(); return; }
+        if (!this.donde) throw new Error('telar: el dashboard no sabe dónde dibujarse (donde)');
+        this.panel = montarDia(this.donde(), m => void this.mensaje(m));
         void this.leerAtajos();
         this.alCambiarFoco?.(true);
-        this.pintarMarco();
-    }
-
-    pintarMarco(): void {
-        if (this.panel) {
-            this.nonce = nuevoNonce();
-            this.marcos = origenesApps();
-            this.bloquePintado = '';   // el webview se rehace: lo pintado ya no está
-            this.panel.html(marco(this.panel, CSS_DIA + CSS_PLAN + CSS_PROY + CSS_AHORA,
-                '<div id="dia"><div class="aviso">leyendo el día…</div></div>', SCRIPT_DIA, this.nonce, this.marcos));
-        }
+        void this.mensaje({ tipo: 'listo' });
     }
 
     /** La app que el panel muestra ahora, o "": la lista de la izquierda marca su fila. */
@@ -171,16 +152,8 @@ export class PanelHoy {
         return this.pantalla === 'seccion' && this.seccion.startsWith('app:') ? this.seccion.slice(4) : '';
     }
 
-    /** Una app (`[apps.x]`): su página, en el panel. Una app con `url` necesita que su origen esté
-     *  en el CSP del panel (frame-src); si se declaró después de abrirlo, el panel se rearma, y la
-     *  página se pinta cuando el script vuelve a estar listo. */
+    /** Una app (`[apps.x]`): su página, en el panel. */
     async abrirApp(clave: string): Promise<void> {
-        const url = modelo.apps.find(a => a.clave === clave)?.url;
-        const origen = url ? origenDe(url) : '';
-        if (this.panel && origen && !this.marcos.includes(origen)) {
-            this.pagina = undefined;
-            this.pintarMarco();
-        }
         await this.abrirSeccion(`app:${clave}`);
         this.alCambiarFoco?.(true);
     }
@@ -546,7 +519,7 @@ export class PanelHoy {
         // desde la barra el dashboard puede existir tapado por otra pestaña: se trae al frente,
         // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         if (!this.panel) this.abrir();
-        else if (!this.panel.visible) this.panel.revelar();
+        else if (!this.panel.visible) this.mostrarme?.();
         if (this.pantalla === 'revisar') this.fichaDesde = this.pantalla;
         // desde un ítem de un bloque (un correo): al cerrar la ficha se vuelve a ese ítem
         if (this.pantalla === 'bloque') this.fichaDesde = `bloque:${this.bloqueSel}:${this.itemSel ?? ''}`;
@@ -1058,7 +1031,7 @@ export class PanelHoy {
 
     /** Cambia un pedazo de la página sin repintarla: lo escrito en el formulario no se pierde. */
     private parcial(id: string, html: string): void {
-        void this.panel?.enviar({ tipo: 'parcial', id, html });
+        this.panel?.parcial(id, html);
     }
 
     private async guardarFormPer(valor: string): Promise<void> {
@@ -1353,12 +1326,10 @@ export class PanelHoy {
         this.pintar(h);
     }
 
-    /** Un lienzo va como `srcdoc` y no como `src`: un iframe hacia un recurso del webview no
-     *  carga (el service worker que los sirve no atiende la navegación de un iframe de otro
-     *  origen), y queda en blanco. Con srcdoc el documento hereda el CSP del panel, así que
-     *  sus `<script>` llevan el nonce del panel; y como srcdoc no tiene query string, un
-     *  script previo deja los params en la URL (`about:srcdoc?…`) y en `window.lienzo`.
-     *  El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar el panel. */
+    /** Un lienzo va como `srcdoc`: su página la lee la API (es un archivo del repositorio), no se sirve. Como
+     *  srcdoc no tiene query string, un script previo deja los params en la URL (`about:srcdoc?…`) y en
+     *  `window.lienzo`. El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar la página, y su
+     *  política de contenido (POLITICA_LIENZO), sin red: lo que promete docs/contratos.md. */
     private htmlLienzo(l: cli.JsonLienzo): string {
         // lo que necesita (su página y su memoria) se leyó antes, al llegar la página (precargarLienzos)
         let doc = this.lienzos.get(l.archivo);
@@ -1370,17 +1341,17 @@ export class PanelHoy {
         // el iframe no tiene almacenamiento propio (sandbox sin allow-same-origin)
         let memoria = '';
         if (l.memoria) {
-            const llave = nuevoNonce();
+            const llave = llaveAlAzar();
             this.memorias.set(llave, l.memoria);
             let leida = 'null';
             try { const t = this.lienzos.get(l.memoria); if (t !== undefined) { JSON.parse(t); leida = t; } } catch { /* todavía no guardó nada */ }
             memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
                 + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
         }
-        const previo = `<script nonce="${this.nonce}">(function(){var p=${datos};window.lienzo={params:p};${memoria}`
+        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}"><script>(function(){var p=${datos};window.lienzo={params:p};${memoria}`
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
-        doc = previo + doc.replace(/<script(?![^>]*\bnonce=)/gi, `<script nonce="${this.nonce}"`);
+        doc = previo + doc;
         return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts" srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
     }
 
@@ -1532,7 +1503,7 @@ export class PanelHoy {
 
 
     /** Un hilo con el agente preparando la reunión, y el teclado ahí. Lo que se le dice
-     *  al agente lo decide `[agente] reunion` en la configuración de telar, no la extensión. */
+     *  al agente lo decide `[agente] reunion` en la configuración de telar, no la página. */
     private async preparar(titulo: string, hora: string, enlace: string, evento = '', asistentes: string[] = []): Promise<void> {
         const pedir = (opciones: { proyecto?: string; preguntar?: boolean }) => ui().progreso({ title: `telar: ${titulo}…` },
             () => cli.reunion(titulo, hora, enlace, evento, { asistentes, ...opciones }));
@@ -1599,7 +1570,7 @@ export class PanelHoy {
             if (this.pantalla !== 'proyectos') return;
             // la lista ya está pintada: solo se le dan las cuentas, para filtrar «con pendientes»
             const cuentas = this.cuentasPendientes();
-            if (cuentas) void this.panel?.enviar({ tipo: 'proy-pend', cuentas: Object.fromEntries(cuentas) });
+            if (cuentas) this.panel?.cuentasProyectos(Object.fromEntries(cuentas));
             if (this.proySel) void this.verProyecto(this.proySel, false);
         });
         const r = await cli.proyectos();
@@ -1655,7 +1626,7 @@ export class PanelHoy {
     }
 
     private pintarDetalleProyecto(): void {
-        void this.panel?.enviar({ tipo: 'parcial', id: 'proy-det', html: htmlDetalleProyecto(this.proyDet) });
+        this.panel?.parcial('proy-det', htmlDetalleProyecto(this.proyDet));
     }
 
     /** El README de una unidad como html, sin su encabezado YAML. "" si no tiene. */
@@ -1990,8 +1961,8 @@ export class PanelHoy {
         await abrirEnlace(destino);
     }
 
-    /** Todas las filas van al webview de una vez; buscar y ordenar ocurre allá, sin ir y
-     *  volver por cada letra. Ver `aplicarProyectos` en el script del día. */
+    /** Todas las filas van a la página de una vez; buscar y ordenar ocurre allá, sin ir y
+     *  volver por cada letra. Ver `aplicarProyectos` en vistas/dashboard.ts. */
     private renderProyectos(cargando = ''): void {
         if (!this.panel) return;
         this.teclas.clear();
@@ -2007,7 +1978,7 @@ export class PanelHoy {
     }
 
     /** Un hilo con el agente cargando el proyecto, o el que ya había; y el teclado ahí. Lo
-     *  que se le dice al agente lo decide `[agente] proyecto`, no la extensión. */
+     *  que se le dice al agente lo decide `[agente] proyecto`, no la página. */
     private async abrirProyecto(ruta: string): Promise<void> {
         const r = await cli.abrirProyecto(ruta);
         if (!r.datos) {
@@ -2209,7 +2180,7 @@ export class PanelHoy {
     }
 
     private pintar(h: string[]): void {
-        void this.panel?.enviar({ tipo: 'dia', html: this.nav() + h.join('\n') });
+        this.panel?.pintar(this.nav() + h.join('\n'));
     }
 
     /** Lo que un lienzo pide guardar, en el archivo que declaró su página. Se escribe entero
@@ -2222,7 +2193,7 @@ export class PanelHoy {
         void disco().escribir(ruta, datos).then(ok => { if (ok) this.lienzos.set(ruta, datos); });
     }
 
-    private async mensaje(m: { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string }): Promise<void> {
+    private async mensaje(m: MensajeDia): Promise<void> {
         if (m.tipo === 'lienzo-guardar') { this.guardarLienzo(m.valor ?? '', m.datos ?? ''); return; }
         if (m.tipo === 'per-horario') { await this.previaHorario(m.valor ?? ''); return; }
         if (m.tipo === 'per-skills') { await this.cargarSkills(m.valor ?? ''); return; }
@@ -2506,14 +2477,8 @@ function diaHora(iso: string): string {
 }
 
 /** El origen de una dirección (`http://telar:8790`), o "" si no se entiende. */
-function origenDe(url: string): string {
-    try { return new URL(url).origin; } catch { return ''; }
-}
-
-/** Los orígenes de las apps servidas: los únicos, además del propio, que el panel deja enmarcar. */
-function origenesApps(): string[] {
-    return [...new Set(modelo.apps.map(a => a.url ? origenDe(a.url) : '').filter(Boolean))];
-}
+/** Lo que puede un lienzo: sus scripts y estilos en línea, e imágenes; ni red, ni `<script src>`, ni `eval`. */
+const POLITICA_LIENZO = "default-src 'none'; img-src https: data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 
 /** El alto de un lienzo o un marco: píxeles, o «lleno» (lo que queda del panel, por la clase). */
 function estiloAlto(alto: number | 'lleno' | undefined): string {

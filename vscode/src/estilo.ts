@@ -47,36 +47,7 @@ export const limpiarMd = (t: string): string => t.replace(/\*\*/g, '').replace(/
 export const normalizar = (t: string): string =>
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-/** Los tokens y la base, para la página de una vista: lo que va en su capa `base`. */
-export function estiloBase(): string {
-    return `@layer base { ${estilo('tokens')}
-${estilo('base')} }`;
-}
-
-/** Los estilos viven en media/css/<nombre>.css: archivos de CSS de verdad, con su resaltado y su linter.
- *  Llegan empaquetados como texto (src/navegador/estilos.ts, que va primero en app.ts). */
-const estilos = new Map<string, string>();
-export function usarEstilos(css: Record<string, string>): void {
-    for (const [nombre, texto] of Object.entries(css)) estilos.set(nombre, texto);
-}
-export function estilo(nombre: string): string {
-    return estilos.get(nombre) ?? '';
-}
-
-/** Un nonce para el CSP de una vista. Quien necesite marcar scripts propios (un lienzo) lo
- *  genera antes y se lo pasa a `marco`. */
-export function nuevoNonce(): string {
+/** Una llave al azar: la que nombra la memoria de un lienzo (el lienzo la usa para guardar, nunca una ruta). */
+export function llaveAlAzar(): string {
     return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-}
-
-/** El HTML completo de una vista: política de contenido cerrada, estilo, cuerpo y script.
- *  `marcos`: los orígenes, además del propio, que la vista deja enmarcar (las apps con `url`). */
-export function marco(_webview: { cspSource: string; cspConectar?: string }, css: string, cuerpo: string, script: string,
-    nonce = nuevoNonce(), marcos: string[] = []): string {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${[_webview.cspSource, ...marcos].join(' ')}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';${_webview.cspConectar ? ` connect-src ${_webview.cspConectar};` : ''}">
-<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${css} }</style></head>
-<body>${cuerpo}
-<script nonce="${nonce}">const vscode = acquireVsCodeApi();
-${script}</script></body></html>`;
 }
