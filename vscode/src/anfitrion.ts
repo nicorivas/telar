@@ -64,9 +64,9 @@ export interface Anfitrion {
     copiar(texto: string): Promise<void>;
     /** Markdown a HTML. */
     markdown(texto: string): Promise<string>;
-    /** Llevar a un hilo (en VS Code, su terminal al frente; en la web, su ventana en tmux). */
+    /** Llevar a un hilo (en VS Code, su terminal al frente; en la web, se muestra en la página). */
     irAHilo(hilo: string, crear?: boolean, remoto?: string): Promise<void>;
-    /** Volver a la terminal de la sesión (en la web, nada: la terminal es otra ventana). */
+    /** Volver a la terminal de la sesión (en la web, mostrar el hilo que quedó al frente en tmux). */
     mostrarTerminal(): Promise<void>;
     /** Una orden de telar que vive en el anfitrión (`telar.ir`, `telar.tareas`…): en VS Code, un
      *  comando; en la web, lo que corresponda o nada. */

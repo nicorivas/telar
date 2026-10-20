@@ -50,6 +50,9 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- «Go to a thread» from the browser dashboard shows it in the page (it used to move tmux's focus, which only a
+  terminal attached to the session would see), and «back to the terminal» after opening a thread or handing
+  it something shows the thread the action left in front.
 - The browser terminal sizes its thread's tmux window (the most recently used screen wins, tmux's
   `window-size latest`): it used to defer to any other terminal attached to the session (a VS Code one), so
   the window kept that size and tmux filled the rest of the browser with dots. It takes the full height and at

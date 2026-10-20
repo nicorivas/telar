@@ -297,12 +297,20 @@ const anfitrion: Anfitrion = {
     mostrarCarpeta: async ruta => { aLaPagina({ __aviso: `${ruta}: abrir carpetas desde el navegador viene después`, nivel: 'aviso' }); },
     copiar: async texto => { try { await navigator.clipboard.writeText(texto); } catch { /* sin permiso */ } },
     markdown: async texto => md.render(texto),
+    // ir a un hilo: telar lo crea o lo revive si hace falta (`telar ir`), y la página lo muestra a la derecha
     irAHilo: async (hilo, crear, remoto) => {
         const r = await cli.ir(hilo, !!crear, remoto ?? '');
-        if (!r.ok) aLaPagina({ __aviso: `telar: ${r.err.trim() || `no pude ir a «${hilo}»`}`, nivel: 'falla' });
-        else aLaPagina({ __aviso: `→ ${hilo}, en la terminal`, nivel: 'info', ms: 2500 });
+        if (!r.ok) { aLaPagina({ __aviso: `telar: ${r.err.trim() || `no pude ir a «${hilo}»`}`, nivel: 'falla' }); return; }
+        await modelo.sondear().catch(() => undefined);
+        mostrar(remoto ? `rem:${remoto}:${hilo}` : hilo);
     },
-    mostrarTerminal: async () => { /* la terminal es otra ventana */ },
+    // «ir a la terminal» después de abrir un hilo o encargarle algo: el que quedó al frente en tmux (el que la
+    // acción acaba de abrir), mostrado en la página
+    mostrarTerminal: async () => {
+        await modelo.sondear().catch(() => undefined);
+        const activo = modelo.activo;
+        if (activo) mostrar(activo.nombre);
+    },
     orden: async (id, ...args) => {
         const f = ordenes[id];
         if (f) return f(...args);
