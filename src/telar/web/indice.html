@@ -4,36 +4,11 @@
 <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>telar</title>
-<style>
-:root{color-scheme:dark;--bg:#1e1e2e;--panel:#181825;--fg:#cdd6f4;--dim:#7f849c;--borde:#313244;--azul:#89b4fa;--verde:#a6e3a1;--amarillo:#f9e2af;--rojo:#f38ba8;--malva:#cba6f7}
-@media (prefers-color-scheme: light){:root{color-scheme:light;--bg:#eff1f5;--panel:#e6e9ef;--fg:#4c4f69;--dim:#8c8fa1;--borde:#ccd0da;--azul:#1e66f5;--verde:#40a02b;--amarillo:#df8e1d;--rojo:#d20f39;--malva:#8839ef}}
-*{box-sizing:border-box;border-radius:0}
-html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--fg);font:14px/22px ui-monospace,"SF Mono",Menlo,Consolas,monospace;
-  display:grid;grid-template-columns:minmax(240px,22vw) 1fr;height:100dvh}
-iframe{border:0;width:100%;height:100%;display:block}
-#barra{border-right:1px solid var(--borde);min-width:0}
-#derecha{display:grid;grid-template-rows:auto 1fr;min-width:0}
-header{display:flex;gap:14px;align-items:baseline;padding:6px 12px;border-bottom:1px solid var(--borde);background:var(--panel);flex-wrap:wrap}
-header b{color:var(--malva)} header a{color:var(--azul);text-decoration:none;cursor:pointer}
-#modo[hidden]{display:none} #volver{display:none} #titulo{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#marcos{position:relative;min-width:0} #marcos iframe{position:absolute;inset:0} #marcos iframe[hidden]{display:none}
-#progreso{position:absolute;inset:0;overflow:auto;padding:16px} #progreso[hidden]{display:none}
-.dim{color:var(--dim)} h2{font-size:14px;margin:18px 0 6px;color:var(--malva)}
-.fila{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:4px 0;border-bottom:1px solid var(--borde);max-width:980px}
-.hecho{color:var(--verde)} .curso{color:var(--amarillo)} .pendiente{color:var(--dim)}
-.barra{height:6px;background:var(--borde);margin:8px 0 2px;max-width:980px}.barra i{display:block;height:100%;background:var(--verde)}
-/* angosto (el celular): la lista o el detalle, de a uno */
-body.angosto{grid-template-columns:1fr}
-body.angosto #volver{display:inline}
-body.angosto.en-lista #derecha, body.angosto.en-detalle #barra{display:none}
-</style></head><body class="en-lista">
+<link rel="stylesheet" href="/estatico/marco.css"></head><body class="en-lista">
+<header><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span>
+  <a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
 <aside id="barra"></aside>
-<section id="derecha">
-  <header><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span>
-    <a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
-  <div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
-</section>
+<div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
 <script>
 // La página de telar sin Node: la barra de hilos a la izquierda y, a la derecha, el dashboard o la
 // conversación de un hilo (estatico/app.js, el mismo código del panel, empaquetado). Mientras se arma,
@@ -60,7 +35,7 @@ async function progreso() {
 window.telar = window.telar || {};
 window.telar.verProgreso = () => {
   document.querySelectorAll('#marcos iframe').forEach((f) => { f.hidden = true; });
-  $('#progreso').hidden = false; $('#titulo').textContent = 'progreso';
+  $('#progreso').hidden = false; $('#titulo').textContent = 'progreso'; $('#modo').hidden = true;
   progreso().catch((e) => { $('#progreso').textContent = e.message; });
 };
 document.querySelector('header').addEventListener('click', (e) => {

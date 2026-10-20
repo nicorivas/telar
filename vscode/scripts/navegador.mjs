@@ -4,6 +4,7 @@
 import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const nodo = path.join(aqui, '..', 'src', 'navegador', 'nodo');
@@ -26,3 +27,10 @@ await build({
     logLevel: 'warning',
 });
 console.log('src/telar/web/app.js');
+
+// el marco de la página (indice.html): sus estilos sobre los tokens, en un archivo que carga antes que app.js
+const css = n => readFileSync(path.join(aqui, '..', 'media', 'css', `${n}.css`), 'utf8');
+writeFileSync(path.join(aqui, '..', '..', 'src', 'telar', 'web', 'marco.css'),
+    `/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base y marco): no editar aquí. */\n`
+    + `@layer base, vistas;\n@layer base {\n${css('tokens')}\n${css('base')}\n}\n@layer vistas {\n${css('marco')}\n}\n`);
+console.log('src/telar/web/marco.css');

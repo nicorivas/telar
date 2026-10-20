@@ -16,6 +16,12 @@
   --magenta: var(--vscode-terminal-ansiBrightMagenta, #f5c2e7);
   --cian: var(--vscode-terminal-ansiCyan, #94e2d5);
   --violeta: var(--vscode-terminal-ansiMagenta, #cba6f7);
+  /* lo que completa los 16 colores de una terminal (xterm, en la página) y el fondo de una barra */
+  --negro: var(--vscode-terminal-ansiBlack, #45475a);
+  --blanco: var(--vscode-terminal-ansiWhite, #bac2de);
+  --blanco-claro: var(--vscode-terminal-ansiBrightWhite, #a6adc8);
+  --cursor: var(--vscode-terminalCursor-foreground, #f5e0dc);
+  --bg-barra: var(--vscode-sideBar-background, #181825);
 
   /* tipografía: una sola letra (la de la terminal) y una escala corta */
   --t-chica: .85em;

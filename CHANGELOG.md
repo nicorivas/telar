@@ -50,6 +50,11 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- The browser page's frame (header, columns, «progreso») and its terminal colors now come from the design
+  tokens (`vscode/media/css/tokens.css`) like every other view: the frame's styles live in
+  `media/css/marco.css` and the build bundles them with the tokens into `src/telar/web/marco.css`. The frame's
+  own palette and its light mode are gone (telar is dark only); the frame now uses the views' font.
+  The header now spans the whole width, above the thread list (on a phone it stays on top of the list too).
 - The browser page caches what does not change and compresses everything: xterm.js is kept for a week (it
   was downloaded again for every thread opened, ~1.7 s over the laptop–server link), the page's own files
   are revalidated (a 304 when unchanged), API data is never stored, and responses go gzipped.

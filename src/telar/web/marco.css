@@ -1,0 +1,202 @@
+/* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base y marco): no editar aquí. */
+@layer base, vistas;
+@layer base {
+/* Los tokens: colores, tipografía y espacio. Los colores son los del tema de la terminal de VS Code
+   (sus variables --vscode-*) y, fuera de VS Code, catppuccin mocha. Todo lo demás se arma con estos. */
+
+:root {
+  /* colores */
+  --fg: var(--vscode-terminal-foreground, var(--vscode-foreground, #cdd6f4));
+  --bg: var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e2e)));
+  --dim: var(--vscode-terminal-ansiBrightBlack, #6c7086);
+  --linea: color-mix(in srgb, var(--fg) 16%, transparent);
+  --sel: var(--vscode-terminal-selectionBackground, rgb(128 128 128 / 25%));
+  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
+  --azul: var(--vscode-terminal-ansiBlue, #89b4fa);
+  --amarillo: var(--vscode-terminal-ansiYellow, #f9e2af);
+  --verde: var(--vscode-terminal-ansiGreen, #a6e3a1);
+  --rojo: var(--vscode-terminal-ansiRed, #f38ba8);
+  --magenta: var(--vscode-terminal-ansiBrightMagenta, #f5c2e7);
+  --cian: var(--vscode-terminal-ansiCyan, #94e2d5);
+  --violeta: var(--vscode-terminal-ansiMagenta, #cba6f7);
+  /* lo que completa los 16 colores de una terminal (xterm, en la página) y el fondo de una barra */
+  --negro: var(--vscode-terminal-ansiBlack, #45475a);
+  --blanco: var(--vscode-terminal-ansiWhite, #bac2de);
+  --blanco-claro: var(--vscode-terminal-ansiBrightWhite, #a6adc8);
+  --cursor: var(--vscode-terminalCursor-foreground, #f5e0dc);
+  --bg-barra: var(--vscode-sideBar-background, #181825);
+
+  /* tipografía: una sola letra (la de la terminal) y una escala corta */
+  --t-chica: .85em;
+  --t-menor: .9em;
+  --t-normal: 1em;
+  --t-mayor: 1.25em;
+
+  /* espacio: en líneas (vertical) y en caracteres (horizontal), como una terminal */
+  --e-1: .25lh;
+  --e-2: .5lh;
+  --e-3: 1lh;
+  --h-1: 1ch;
+  --h-2: 2ch;
+  --borde: 1px solid var(--linea);
+}
+
+/* La base de todas las vistas: la página, la letra (--letra, --tam, --peso y --alto los pone
+   estilo.ts con la de la terminal) y los enlaces. */
+
+html,
+body {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  color: var(--fg);
+  font-family: var(--letra), monospace;
+  font-size: var(--tam);
+  font-weight: var(--peso);
+  line-height: var(--alto);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--azul);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+}
+
+.dim { color: var(--dim); }
+
+.aviso {
+  padding: var(--e-3) var(--h-2);
+  color: var(--dim);
+
+  & code { color: var(--verde); }
+}
+
+/* .fila y .tarea son flex: sin esto, hidden no oculta */
+[hidden] { display: none !important; }
+
+}
+@layer vistas {
+/* El marco de la página de telar en el navegador (src/telar/web/indice.html): arriba la cabecera, de lado a
+   lado; abajo la barra de hilos a la izquierda y los marcos (el dashboard, un hilo) o «progreso» a la
+   derecha. Solo oscuro.
+   scripts/navegador.mjs lo junta con tokens.css y base.css en src/telar/web/marco.css, que la página
+   carga antes que app.js: así se ve armada desde el primer momento. */
+
+/* la letra: la misma que usan las vistas fuera de VS Code (la `Letra` por defecto de estilo.ts) */
+:root {
+  --letra: Menlo, Consolas, monospace;
+  --tam: 13px;
+  --peso: normal;
+  --alto: 1.3;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body { height: 100%; }
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(240px, 22vw) 1fr;
+  height: 100dvh;
+}
+
+iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+#barra {
+  min-width: 0;
+  min-height: 0;
+  border-right: var(--borde);
+}
+
+header {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--h-2);
+  align-items: baseline;
+  padding: var(--e-1) var(--h-1);
+  border-bottom: var(--borde);
+  background: var(--bg-barra);
+
+  & b { color: var(--violeta); }
+}
+
+#modo[hidden] { display: none; }
+#volver { display: none; }
+
+#titulo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#marcos {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+
+  & iframe { position: absolute; inset: 0; }
+  & iframe[hidden] { display: none; }
+}
+
+/* «progreso»: qué ya está en el navegador (estatico/progreso.json) */
+#progreso {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: var(--e-3) var(--h-2);
+
+  &[hidden] { display: none; }
+
+  & h2 { margin: var(--e-3) 0 var(--e-1); font-size: var(--t-normal); color: var(--violeta); }
+
+  & .fila {
+    display: grid;
+    grid-template-columns: 14ch 1fr;
+    gap: var(--h-2);
+    max-width: 120ch;
+    padding: var(--e-1) 0;
+    border-bottom: var(--borde);
+  }
+
+  & .hecho { color: var(--verde); }
+  & .curso { color: var(--amarillo); }
+  & .pendiente { color: var(--dim); }
+
+  & .barra {
+    max-width: 120ch;
+    height: .5lh;
+    margin: var(--e-2) 0 var(--e-1);
+    background: var(--linea);
+
+    & i { display: block; height: 100%; background: var(--verde); }
+  }
+}
+
+/* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («◀ hilos» vuelve a la lista) */
+body.angosto {
+  grid-template-columns: 1fr;
+}
+
+body.angosto.en-detalle #volver { display: inline; }
+
+body.angosto.en-lista #marcos,
+body.angosto.en-detalle #barra { display: none; }
+
+}

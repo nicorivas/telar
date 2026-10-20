@@ -367,15 +367,18 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string } = {}): st
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
 <link rel="stylesheet" href="${xterm}/xterm.css">
-<style>html, body { margin: 0; height: 100%; background: #1e1e2e; } #t { position: absolute; inset: 0; padding: 6px 0 0 8px; }</style>
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { html, body { height: 100%; } #t { position: absolute; inset: 0; padding: var(--e-1) 0 0 var(--h-1); } }</style>
 <script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script>
 </head><body><div id="t"></div>
 <script nonce="${nonce}">
 (function () {
-  var term = new Terminal({ fontFamily: 'Menlo, "JetBrains Mono", monospace', fontSize: 13, cursorBlink: true, allowProposedApi: false,
-    theme: { background: '#1e1e2e', foreground: '#cdd6f4', cursor: '#f5e0dc', selectionBackground: '#45475a',
-      black: '#45475a', red: '#f38ba8', green: '#a6e3a1', yellow: '#f9e2af', blue: '#89b4fa', magenta: '#f5c2e7', cyan: '#94e2d5', white: '#bac2de',
-      brightBlack: '#585b70', brightRed: '#f38ba8', brightGreen: '#a6e3a1', brightYellow: '#f9e2af', brightBlue: '#89b4fa', brightMagenta: '#f5c2e7', brightCyan: '#94e2d5', brightWhite: '#a6adc8' } });
+  // los colores, de los tokens (media/css/tokens.css): los mismos del resto de la página
+  var css = getComputedStyle(document.documentElement);
+  function t(nombre) { return css.getPropertyValue('--' + nombre).trim(); }
+  var term = new Terminal({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: true, allowProposedApi: false,
+    theme: { background: t('bg'), foreground: t('fg'), cursor: t('cursor'), selectionBackground: t('negro'),
+      black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
+      brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
