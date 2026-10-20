@@ -7,10 +7,9 @@
 // las letras pendientes que ya están antes del cursor, y las que faltan se vuelven a dibujar, tenues. Como el
 // cuadro siguiente redibuja todo, lo que sobre se corrige solo.
 //
-// Lo empaqueta scripts/navegador.mjs en src/telar/web/eco.js; lo usa la página de la terminal
-// (web/pagina.ts, paginaTerminal):
+// Lo usa la terminal de un hilo (web/terminal.ts):
 //
-//   var eco = telarEco.conEco(term);
+//   const eco = conEco(term);
 //   ws.onmessage = e => eco.escribir(e.data);    // en vez de term.write
 //   term.onData(d => { eco.tecleado(d); enviar(d); });
 import type { Terminal } from '@xterm/xterm';
@@ -135,5 +134,3 @@ export function conEco(term: Terminal): {
         },
     };
 }
-
-(globalThis as { telarEco?: unknown }).telarEco = { conEco };

@@ -25,8 +25,8 @@ escribirle a un hilo, un atajo), pasa. Para probar sin tocar nada, una configura
 
 Para probar la terminal con la latencia de una red lejana sin depender de ella:
 `localStorage['telar.latencia'] = '500'` en la consola de la página (y recargar) la simula, la mitad a la ida y
-la mitad a la vuelta; en la consola de la terminal, `__eco.estado()` dice si el eco se está mostrando y la
-latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `vscode/`.
+la mitad a la vuelta; ahí mismo, `__eco.estado()` dice si el eco de la terminal que se mira se está mostrando
+y la latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `vscode/`.
 
 Las pruebas de Python se corren como el CI: con telar instalado con `pip install -e '.[serve,bus,pruebas]'`
 (sin los extras, las de la API y el bus se saltan), `python -m unittest discover -s pruebas` (escritas como

@@ -1,66 +1,66 @@
-/* La terminal de un hilo en el navegador (web/pagina.ts, paginaTerminal): xterm arriba, y abajo una caja
-   para escribirle sin el viaje de ida y vuelta de cada tecla (lo escrito va entero al apretar ⏎). */
+/* La terminal de un hilo (web/terminal.ts): xterm arriba, y abajo una caja para escribirle sin el viaje de ida
+   y vuelta de cada tecla (lo escrito va entero al apretar ⏎). scripts/navegador.mjs la junta en
+   src/telar/web/marco.css. */
 
-html,
-body { height: 100%; }
-
-body {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-
-/* la terminal centrada, del ancho de sus columnas (lo pone la página); alrededor, el fondo (un telar tenue) */
-#caja {
-  position: relative;
-  display: flex;
-  flex: 1;
-  justify-content: center;
-  min-height: 0;
-  overflow: hidden;
-}
-
-#fondo { position: absolute; inset: 0; width: 100%; height: 100%; }
-
-#t {
-  position: relative;
-  height: 100%;
-  padding: var(--e-1) 0 0 var(--h-1);
-  background: var(--bg);
-}
-
-#escribir {
-  display: flex;
-  gap: var(--h-1);
-  align-items: flex-end;
-  padding: var(--e-1) var(--h-1);
-  border-top: var(--borde);
-
-  /* como el prompt de una terminal: la letra de todo lo demás, sin caja; la línea de la izquierda se pone
-     azul mientras se escribe aquí (y se apaga cuando las teclas van directo a la terminal) */
-  & textarea {
-    flex: 1;
-    min-width: 0;
-    max-height: 8lh;
-    box-sizing: border-box;
-    padding: 0 var(--h-1);
-    border: 0;
-    border-left: 2px solid var(--linea);
-    outline: none;
-    background: transparent;
-    color: var(--fg);
-    font: inherit;
-    resize: none;
-
-    &:focus { border-left-color: var(--azul); }
-    &::placeholder { color: var(--dim); }
-
-    @media (pointer: coarse) { font-size: max(16px, 1em); }
+@scope (.v-terminal) {
+  :scope {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
-  & .ayuda {
-    color: var(--dim);
-    font-size: var(--t-chica);
-    white-space: nowrap;
+  /* la terminal centrada, del ancho de sus columnas (lo pone la página); alrededor, el fondo (un telar tenue) */
+  .caja {
+    position: relative;
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .fondo { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .t {
+    position: relative;
+    height: 100%;
+    padding: var(--e-1) 0 0 var(--h-1);
+    background: var(--bg);
+  }
+
+  .escribir {
+    display: flex;
+    gap: var(--h-1);
+    align-items: flex-end;
+    padding: var(--e-1) var(--h-1);
+    border-top: var(--borde);
+
+    /* como el prompt de una terminal: la letra de todo lo demás, sin caja; la línea de la izquierda se pone
+       azul mientras se escribe aquí (y se apaga cuando las teclas van directo a la terminal) */
+    & textarea {
+      flex: 1;
+      min-width: 0;
+      max-height: 8lh;
+      box-sizing: border-box;
+      padding: 0 var(--h-1);
+      border: 0;
+      border-left: 2px solid var(--linea);
+      outline: none;
+      background: transparent;
+      color: var(--fg);
+      font: inherit;
+      resize: none;
+
+      &:focus { border-left-color: var(--azul); }
+      &::placeholder { color: var(--dim); }
+
+      @media (pointer: coarse) { font-size: max(16px, 1em); }
+    }
+
+    & .ayuda {
+      color: var(--dim);
+      font-size: var(--t-chica);
+      white-space: nowrap;
+    }
   }
 }

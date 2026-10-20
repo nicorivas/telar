@@ -158,8 +158,12 @@ todas sus máquinas. Una cuenta es un espacio aparte: sus casillas, el estado de
 máquinas y los pedidos a sus nodos no los ve otra persona, porque el servidor no lo deja. El mismo secreto
 abre la terminal de otra máquina suya (`/pty?maquina=`) y firma los boletos de `/maquinas`, así que una
 máquina solo acepta a otra de la misma persona. El servidor guarda solo el hash de cada clave (bcrypt).
-Entre personas todavía no se habla por el bus: el correo entre personas sigue por el servidor (el
-`cartero`, en [servidor/](../servidor/README.md)).
+Entre cuentas cruza solo lo que cada una exporta (`telar.entre_personas`): `correo.<persona>`, un
+servicio con el que otra persona le deja un mensaje a un hilo suyo (su nodo lo guarda en la casilla del
+hilo y responde; el servidor dice de qué cuenta vino, así que nadie escribe a nombre de otro), y
+`directorio.<persona>`, la lista de sus hilos que publica su nodo cada 30 s. `telar correo enviar
+persona+hilo@…` va por ahí si esa persona tiene nodo en el bus; si no, por el correo del servidor (el
+`cartero`, en [servidor/](../servidor/README.md)), que sigue mientras otras personas lo usen.
 
 Git sigue siendo para el contenido: los archivos se sincronizan con `pull` y `push`, a su ritmo, y un
 hilo vinculado a una carpeta que la otra máquina todavía no tiene se ve sin ficha hasta el próximo pull.
@@ -222,31 +226,35 @@ da esas tareas a `telar hoy` y al dashboard, con su ficha y sus botones.
 ## La página
 
 Se escribe en TypeScript (`vscode/src/`) y se empaqueta con esbuild (`vscode/scripts/navegador.mjs`)
-en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`), `eco.js` y
-`lectura.js`. Cómo desarrollarla con recarga sola: [desarrollar.md](desarrollar.md).
+en `src/telar/web/`: `app.js` y `marco.css` (los estilos de `vscode/media/css/`). xterm.js va aparte, en
+`src/telar/web/xterm/`, y se carga la primera vez que se abre una terminal. Cómo desarrollarla con recarga
+sola: [desarrollar.md](desarrollar.md).
+
+Todo vive en un solo documento: lo que no es el dashboard se dibuja directo en la página, y el CSS de cada
+pantalla va con `@scope` (`#barra`, `.v-terminal`, `.v-lectura`…), para que sus nombres sean solo suyos.
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
-  abre uno (`POST /ir` con `crear`). Se dibuja directo en la columna izquierda de la página, sin marco
-  (`vscode/src/vistas/hilos.ts`); su CSS va con `@scope (#barra)`, para que sus nombres sean solo suyos.
+  abre uno (`POST /ir` con `crear`). Está en `vscode/src/vistas/hilos.ts`.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos).
 - **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
   lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la
   deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
-  (⌥C). Una vista nueva es una entrada del registro.
-- **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`eco.js`): dibuja al tiro lo
-  que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
+  (⌥C). Una vista nueva es una entrada del registro, con su `montar`: se dibuja en un elemento de la página
+  y se cierra cuando ya no hace falta (de las terminales quedan abiertas las ocho últimas). La carpeta de un
+  hilo y «compartir» se dibujan igual (`web/carpeta.ts`, `web/compartir.ts`).
+- **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`vscode/src/navegador/eco/`): dibuja
+  al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso
   con botones) los pone la página misma, encima de todo (`vscode/src/web/interfaz.ts`): se ven mire uno lo
   que mire, también la lista en el celular.
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
 
-El código todavía arrastra la forma de la extensión de VS Code, que está deprecada: el dashboard corre
-con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es parte del plan, por partes:
-ya no tiene Node (la API va por `fetch`, en `cli.ts`), los avisos y diálogos ya no viven en cada iframe y
-la barra de hilos ya no tiene el suyo.
+El dashboard todavía arrastra la forma de la extensión de VS Code, que está deprecada: corre en un iframe,
+con un `acquireVsCodeApi` simulado y mensajes que van y vuelven. Retirarla es lo que sigue del plan (el resto
+de la página ya no la tiene: sin Node, la API va por `fetch` en `cli.ts`).
 
 ## Cómo se mueve una cosa
 

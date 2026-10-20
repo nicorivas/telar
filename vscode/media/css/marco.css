@@ -101,8 +101,10 @@ header {
   min-width: 0;
   min-height: 0;
 
-  & iframe { position: absolute; inset: 0; }
-  & iframe[hidden] { display: none; }
+  /* cada vista (un marco, o una dibujada directo en la página) ocupa todo; se ve una a la vez */
+  & > * { position: absolute; inset: 0; }
+  & > section { overflow: auto; }
+  & > [hidden] { display: none; }
 }
 
 /* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («◀ hilos» vuelve a la lista) */
@@ -110,6 +112,10 @@ body.angosto {
   grid-template-columns: 1fr;
 
   & #maquina { display: none; }
+
+  /* el centro (lo que se ve) se acorta con «…» antes de pisar los botones de los lados */
+  & header { grid-template-columns: auto minmax(0, 1fr) auto; }
+  & #donde { justify-content: center; }
 }
 
 body.angosto.en-detalle #volver { display: inline; }

@@ -23,8 +23,10 @@ import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
 import { avisar, campo, elegir, type Nivel, preguntar } from '../web/interfaz';
-import { type Documento, paginaCompartir, paginaDocumento, SCRIPT_NAVEGADOR } from '../web/pagina';
-import { scriptAtajos, vista, VISTAS } from '../web/vistas-hilo';
+import { montar as montarCarpeta } from '../web/carpeta';
+import { montar as montarCompartir } from '../web/compartir';
+import { SCRIPT_NAVEGADOR } from '../web/pagina';
+import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
 // ── los ajustes: salen del servidor (/config) ──
@@ -42,6 +44,23 @@ const marcos = () => document.getElementById('vistas')!;
 let marco: HTMLIFrameElement | undefined;       // el del dashboard
 let avisosPanel: AvisosSuperficie | undefined;
 let actual = 'dashboard';
+
+/** Lo que se ve a la derecha: un marco (el dashboard, las vistas de un hilo que todavía lo tienen) o una vista
+ *  dibujada directo en la página (la carpeta, compartir), con su clave en `data-p`. */
+const vistas = () => [...marcos().children] as HTMLElement[];
+
+/** Las vistas de un hilo dibujadas en la página (la lectura, la conversación), por su clave: se les avisa al
+ *  volver a verse. */
+const montadas = new Map<string, Vista>();
+
+/** Una vista dibujada directo en la página: un elemento que su módulo llena (web/carpeta.ts, web/compartir.ts,
+ *  las vistas de un hilo). */
+function nuevaVista(clave: string): HTMLElement {
+    const s = document.createElement('section');
+    s.dataset.p = clave;
+    marcos().appendChild(s);
+    return s;
+}
 
 function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
     const f = document.createElement('iframe');
@@ -109,6 +128,12 @@ function forma(que: string): string {
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
 const TOPE = 8;
 const usadas: string[] = [];
+/** Cierra una vista de un hilo (su conexión, sus lecturas) y la saca de la página. */
+function cerrarVista(llave: string): void {
+    montadas.get(llave)?.cerrar();
+    montadas.delete(llave);
+    vistas().find(x => x.dataset.p === llave)?.remove();
+}
 
 /** A la derecha: «dashboard», un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
  *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
@@ -116,36 +141,36 @@ const usadas: string[] = [];
 function mostrar(que: string): void {
     if (!que) return;
     actual = que;
-    let f: HTMLIFrameElement | undefined;
+    let f: HTMLElement | undefined;
     if (que === 'dashboard') {
         if (!hoy.panel) hoy.abrir();
         f = marco;
     } else {
         const como = forma(que), llave = como ? `${como}:${que}` : que;
-        f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === llave);
+        f = vistas().find(x => x.dataset.p === llave);
         if (que.startsWith('doc:') || que.startsWith('arch:') || que === 'compartir') {
-            f ??= nuevoMarco(llave, marcos());
-            if (que === 'compartir') f.srcdoc = paginaCompartir(Math.random().toString(36).slice(2), { consulta: location.search });
-            else if (que.startsWith('arch:')) void verDocumento(f, '', que.slice(5));
-            else void verDocumento(f, que.slice(4), '');
+            f ??= nuevaVista(llave);
+            if (que === 'compartir') montarCompartir(f, location.search);
+            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), t => md.render(t));
+            else void montarCarpeta(f, que.slice(4), '', t => md.render(t));
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
-            const nonce = Math.random().toString(36).slice(2);
-            f = nuevoMarco(llave, marcos());
-            f.srcdoc = (vista(como) ?? VISTAS[0]).pagina(nonce, { hilo, maquina, atajos: scriptAtajos() });
+            f = nuevaVista(llave);
+            montadas.set(llave, (vista(como) ?? VISTAS[0]).montar(f, { hilo, maquina }, () => cambiarVista('term')));
         }
         if (como === 'term') {
             const j = usadas.indexOf(llave);
             if (j >= 0) usadas.splice(j, 1);
             usadas.push(llave);
-            while (usadas.length > TOPE) [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === usadas[0])?.remove(), usadas.shift();
+            while (usadas.length > TOPE) cerrarVista(usadas.shift()!);
         }
     }
-    for (const x of marcos().querySelectorAll('iframe')) x.hidden = x !== f;
+    for (const x of vistas()) x.hidden = x !== f;
     pintarAcciones(que);
-    if (forma(que) && !angosto()) f?.contentWindow?.focus();
+    // ya a la vista: la terminal toma el teclado, la lectura y la conversación se releen
+    if (f && forma(que)) montadas.get(f.dataset.p ?? '')?.mostrada?.();
     // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
     // `scp máquina:ruta`; con la persona sería «nico@laptop:Telar»). Lo muestra la cabecera (indice.html)
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
@@ -266,31 +291,6 @@ function relativa(ruta: string): string {
     return raiz && ruta.startsWith(raiz + '/') ? ruta.slice(raiz.length + 1) : ruta;
 }
 
-/** La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), en su marco. Los enlaces de la
- *  página (a otro archivo, a la carpeta de arriba) no navegan: se leen aquí y se vuelve a dibujar. */
-async function verDocumento(f: HTMLIFrameElement, hilo: string, archivo: string): Promise<void> {
-    let d: Documento;
-    try {
-        const r = await fetch(`/api/hilos/documento?hilo=${encodeURIComponent(hilo)}&archivo=${encodeURIComponent(archivo)}`, { cache: 'no-store' });
-        const j = await r.json() as Documento & { markdown?: string; detail?: string };
-        d = r.ok ? { ...j, html: j.markdown ? md.render(j.markdown) : undefined, subir: j.subir ?? undefined }
-            : { hilo, titulo: hilo, error: typeof j.detail === 'string' ? j.detail : `la API respondió ${r.status}` };
-    } catch (e) {
-        d = { hilo, titulo: hilo, error: `la API no respondió: ${(e as Error).message}` };
-    }
-    f.onload = () => {
-        f.contentDocument?.addEventListener('click', e => {
-            const a = (e.target as HTMLElement).closest?.('a');
-            const href = a?.getAttribute('href') ?? '';
-            if (!href.startsWith('/documento')) return;
-            e.preventDefault();
-            const q = new URLSearchParams(href.slice(href.indexOf('?') + 1));
-            void verDocumento(f, q.get('hilo') ?? hilo, q.get('archivo') ?? '');
-        });
-    };
-    f.srcdoc = paginaDocumento(Math.random().toString(36).slice(2), d);
-}
-
 /** La barra de acciones de un hilo, arriba: sus vistas (con su atajo) y su carpeta. Solo con un hilo a la vista. */
 function pintarAcciones(que: string): void {
     const barraH = document.getElementById('acciones')!;
@@ -316,16 +316,12 @@ document.getElementById('acciones')!.addEventListener('click', e => {
     if (a.dataset.vista) cambiarVista(a.dataset.vista);
     else if (a.dataset.carpeta) mostrar(`doc:${actual}`);
 });
-// el atajo, desde adentro de una vista (web/vistas-hilo.ts, scriptAtajos) o desde la página
-window.addEventListener('message', e => {
-    const v = (e.data as { __telarVista?: string } | null)?.__telarVista;
-    if (v && [...marcos().querySelectorAll('iframe')].some(f => f.contentWindow === e.source)) cambiarVista(v);
-});
-document.addEventListener('keydown', e => {
+// el atajo (⌥ y la letra), antes que nadie: la terminal se lo comería
+window.addEventListener('keydown', e => {
     if (!e.altKey || e.metaKey || e.ctrlKey) return;
     const v = VISTAS.find(x => x.tecla === e.code);
-    if (v && forma(actual)) { e.preventDefault(); cambiarVista(v.clave); }
-});
+    if (v && forma(actual)) { e.preventDefault(); e.stopPropagation(); cambiarVista(v.clave); }
+}, true);
 
 declare global {
     interface Window {
@@ -336,10 +332,11 @@ declare global {
     }
 }
 window.telar = { ...(window.telar ?? {}), mostrar };
-// abierta por «compartir» del teléfono (share_target del manifiesto): eso primero
-mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
+// abierta por «compartir» del teléfono (share_target del manifiesto): eso primero, también en el celular
+const compartiendo = location.pathname === '/compartir';
+mostrar(compartiendo ? 'compartir' : 'dashboard');
 // en el celular se empieza por la lista
-if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
+if (document.body.classList.contains('angosto') && !compartiendo) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 
 setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
 // el modelo (los hilos, su atención) se sondea mientras la página se mira

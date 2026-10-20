@@ -1,164 +1,122 @@
-/* Un hilo leído como conversación, en el celular (web/pagina.ts, paginaConversacion): los turnos
-   arriba, que se desplazan, y abajo las teclas y la caja para escribirle. */
+/* Un hilo leído como conversación, la vista del celular (web/conversacion.ts): los turnos arriba, que se
+   desplazan, y abajo las teclas y la caja para escribirle. scripts/navegador.mjs la junta en
+   src/telar/web/marco.css. */
 
-html,
-body {
-  height: 100%;
-}
-
-body {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-
-#turnos {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--e-2) var(--h-1);
-  overscroll-behavior: contain;
-}
-
-.nada {
-  color: var(--dim);
-  font-size: var(--t-menor);
-}
-
-.turno {
-  padding: var(--e-2) 0;
-  border-bottom: var(--borde);
-}
-
-.msj {
-  margin: var(--e-1) 0;
-
-  & .quien {
-    color: var(--dim);
-    font-size: var(--t-chica);
+@scope (.v-conversacion) {
+  :scope {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
-  & .cuerpo {
+  .turnos {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--e-2) var(--h-1);
+    overscroll-behavior: contain;
+  }
+
+  .nada {
+    color: var(--dim);
+    font-size: var(--t-menor);
+  }
+
+  .turno {
+    padding: var(--e-2) 0;
+    border-bottom: var(--borde);
+  }
+
+  .msj {
+    margin: var(--e-1) 0;
+
+    & .quien {
+      color: var(--dim);
+      font-size: var(--t-chica);
+    }
+
+    & .cuerpo {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    &.usuario .quien,
+    &.usuario .cuerpo { color: var(--azul); }
+
+    &.herramienta {
+      margin: 0;
+      color: var(--dim);
+      font-size: var(--t-chica);
+
+      & .cuerpo::before { content: "· "; }
+    }
+  }
+
+  .panel {
+    margin: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    font: inherit;
   }
 
-  &.usuario .quien,
-  &.usuario .cuerpo { color: var(--azul); }
-
-  &.herramienta {
-    margin: 0;
-    color: var(--dim);
-    font-size: var(--t-chica);
-
-    & .cuerpo::before { content: "· "; }
+  footer {
+    padding: var(--e-1) var(--h-1) calc(var(--e-1) + env(safe-area-inset-bottom));
+    border-top: var(--borde);
   }
-}
 
-.panel {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-}
+  .teclas {
+    display: flex;
+    gap: var(--h-1);
+    margin-bottom: var(--e-1);
+  }
 
-footer {
-  padding: var(--e-1) var(--h-1) calc(var(--e-1) + env(safe-area-inset-bottom));
-  border-top: var(--borde);
-}
-
-#teclas {
-  display: flex;
-  gap: var(--h-1);
-  margin-bottom: var(--e-1);
-}
-
-button {
-  padding: .3em 1ch;
-  border: var(--borde);
-  background: transparent;
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-
-  &:active { background: var(--sel); }
-}
-
-#escribir {
-  display: flex;
-  gap: var(--h-1);
-  align-items: flex-end;
-
-  /* como el prompt de una terminal: la letra de todo lo demás, sin caja; una línea a la izquierda que se
-     pone azul mientras se escribe. ⏎ envía, ⇧⏎ es una línea nueva */
-  & textarea {
-    flex: 1;
-    min-width: 0;
-    box-sizing: border-box;
-    padding: 0 var(--h-1);
-    border: 0;
-    border-left: 2px solid var(--linea);
-    outline: none;
+  button {
+    padding: .3em 1ch;
+    border: var(--borde);
     background: transparent;
     color: var(--fg);
     font: inherit;
-    resize: none;
+    cursor: pointer;
 
-    &:focus { border-left-color: var(--azul); }
-    &::placeholder { color: var(--dim); }
-
-    /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
-    @media (pointer: coarse) { font-size: max(16px, 1em); }
+    &:active { background: var(--sel); }
   }
 
-  & button {
-    padding: 0;
-    border: 0;
-    color: var(--azul);
-  }
-}
+  .escribir {
+    display: flex;
+    gap: var(--h-1);
+    align-items: flex-end;
 
-/* el markdown de la persona y del agente, ya convertido: compacto, como en una terminal */
-.cuerpo.md {
-  white-space: normal;
+    /* como el prompt de una terminal: la letra de todo lo demás, sin caja; una línea a la izquierda que se
+       pone azul mientras se escribe. ⏎ envía, ⇧⏎ es una línea nueva */
+    & textarea {
+      flex: 1;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 0 var(--h-1);
+      border: 0;
+      border-left: 2px solid var(--linea);
+      outline: none;
+      background: transparent;
+      color: var(--fg);
+      font: inherit;
+      resize: none;
 
-  & p,
-  & ul,
-  & ol,
-  & pre { margin: var(--e-1) 0; }
+      &:focus { border-left-color: var(--azul); }
+      &::placeholder { color: var(--dim); }
 
-  & ul,
-  & ol { padding-left: var(--h-2); }
+      /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
+      @media (pointer: coarse) { font-size: max(16px, 1em); }
+    }
 
-  & code {
-    color: var(--cian);
-    font: inherit;
-  }
-
-  & pre {
-    overflow-x: auto;
-    white-space: pre;
-  }
-
-  & strong { color: var(--amarillo); }
-
-  & h1,
-  & h2,
-  & h3 {
-    margin: var(--e-2) 0 var(--e-1);
-    font-size: var(--t-normal);
+    & button {
+      padding: 0;
+      border: 0;
+      color: var(--azul);
+    }
   }
 
-  & table { border-collapse: collapse; }
-
-  & td,
-  & th {
-    padding: 0 var(--h-1);
-    border: var(--borde);
+  .dijo {
+    min-height: 1lh;
+    margin: var(--e-1) 0 0;
+    font-size: var(--t-chica);
   }
-}
-
-#dijo {
-  min-height: 1lh;
-  margin: var(--e-1) 0 0;
-  font-size: var(--t-chica);
 }

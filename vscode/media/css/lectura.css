@@ -1,108 +1,107 @@
-/* El modo lectura de un hilo (web/pagina.ts, paginaLectura; src/navegador/vistas/lectura.ts): la respuesta del
-   agente para leerla con calma. Letra con serifa y más grande, renglones holgados, un ancho de lectura
-   (68 caracteres) y centrada; los colores de los tokens. */
+/* El modo lectura de un hilo (web/lectura.ts): la respuesta del agente para leerla con calma. Letra con serifa
+   y más grande, renglones holgados, un ancho de lectura (68 caracteres) y centrada; los colores de los tokens.
+   scripts/navegador.mjs la junta en src/telar/web/marco.css. */
 
-html,
-body { height: 100%; }
+@scope (.v-lectura) {
+  :scope {
+    overflow-y: auto;
+    background: var(--bg);
+  }
 
-body {
-  overflow-y: auto;
-  background: var(--bg);
-}
+  .lectura {
+    --serifa: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
 
-#lectura {
-  --serifa: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    max-width: 68ch;
+    margin: 0 auto;
+    padding: 3rem 2rem 6rem;
+    color: var(--fg);
+    font-family: var(--serifa);
+    font-size: 18px;
+    line-height: 1.7;
+  }
 
-  max-width: 68ch;
-  margin: 0 auto;
-  padding: 3rem 2rem 6rem;
-  color: var(--fg);
-  font-family: var(--serifa);
-  font-size: 18px;
-  line-height: 1.7;
-}
-
-/* arriba: en qué respuesta se está, y cómo moverse */
-.pie-lectura {
-  display: flex;
-  justify-content: space-between;
-  gap: 1em;
-  margin-bottom: 2rem;
-  color: var(--dim);
-  font-family: var(--letra), monospace;
-  font-size: var(--t-chica);
-}
-
-/* lo que se le preguntó: chico y tenue, como un epígrafe */
-.pregunta {
-  margin: 0 0 2rem;
-  padding-left: 1em;
-  border-left: 2px solid var(--linea);
-  color: var(--dim);
-  font-size: .85em;
-  white-space: pre-wrap;
-}
-
-.herramientas {
-  margin: 1.2rem 0;
-  color: var(--dim);
-  font-family: var(--letra), monospace;
-  font-size: var(--t-chica);
-}
-
-.respuesta {
-  & p { margin: 0 0 1.1em; }
-  & h1,
-  & h2,
-  & h3,
-  & h4 { margin: 1.8em 0 .6em; color: var(--violeta); font-weight: 600; line-height: 1.3; }
-  & h1 { font-size: 1.5em; }
-  & h2 { font-size: 1.3em; }
-  & h3 { font-size: 1.1em; }
-  & strong { color: var(--fg); font-weight: 700; }
-  & em { font-style: italic; }
-  & a { color: var(--azul); }
-  & ul,
-  & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
-  & li { margin: .3em 0; }
-  & blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid var(--violeta); color: var(--dim); }
-  & hr { margin: 2em 0; border: 0; border-top: var(--borde); }
-
-  & code {
-    padding: 0 .25em;
-    background: var(--bg-barra);
-    color: var(--cian);
+  /* arriba: en qué respuesta se está, y cómo moverse */
+  .pie-lectura {
+    display: flex;
+    justify-content: space-between;
+    gap: 1em;
+    margin-bottom: 2rem;
+    color: var(--dim);
     font-family: var(--letra), monospace;
-    font-size: .82em;
+    font-size: var(--t-chica);
   }
 
-  & pre {
-    overflow-x: auto;
-    margin: 0 0 1.1em;
-    padding: .8em 1em;
-    background: var(--bg-barra);
-    line-height: 1.5;
-
-    & code { padding: 0; background: none; }
+  /* lo que se le preguntó: chico y tenue, como un epígrafe */
+  .pregunta {
+    margin: 0 0 2rem;
+    padding-left: 1em;
+    border-left: 2px solid var(--linea);
+    color: var(--dim);
+    font-size: .85em;
+    white-space: pre-wrap;
   }
 
-  & table {
-    margin: 0 0 1.1em;
-    border-collapse: collapse;
-    font-size: .9em;
+  .herramientas {
+    margin: 1.2rem 0;
+    color: var(--dim);
+    font-family: var(--letra), monospace;
+    font-size: var(--t-chica);
   }
 
-  & th,
-  & td {
-    padding: .3em .7em;
-    border: var(--borde);
-    text-align: left;
+  .respuesta {
+    & p { margin: 0 0 1.1em; }
+    & h1,
+    & h2,
+    & h3,
+    & h4 { margin: 1.8em 0 .6em; color: var(--violeta); font-weight: 600; line-height: 1.3; }
+    & h1 { font-size: 1.5em; }
+    & h2 { font-size: 1.3em; }
+    & h3 { font-size: 1.1em; }
+    & strong { color: var(--fg); font-weight: 700; }
+    & em { font-style: italic; }
+    & a { color: var(--azul); }
+    & ul,
+    & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
+    & li { margin: .3em 0; }
+    & blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid var(--violeta); color: var(--dim); }
+    & hr { margin: 2em 0; border: 0; border-top: var(--borde); }
+
+    & code {
+      padding: 0 .25em;
+      background: var(--bg-barra);
+      color: var(--cian);
+      font-family: var(--letra), monospace;
+      font-size: .82em;
+    }
+
+    & pre {
+      overflow-x: auto;
+      margin: 0 0 1.1em;
+      padding: .8em 1em;
+      background: var(--bg-barra);
+      line-height: 1.5;
+
+      & code { padding: 0; background: none; }
+    }
+
+    & table {
+      margin: 0 0 1.1em;
+      border-collapse: collapse;
+      font-size: .9em;
+    }
+
+    & th,
+    & td {
+      padding: .3em .7em;
+      border: var(--borde);
+      text-align: left;
+    }
+
+    & th { color: var(--violeta); font-weight: 600; }
   }
 
-  & th { color: var(--violeta); font-weight: 600; }
-}
-
-.nada {
-  color: var(--dim);
-  font-family: var(--letra), monospace;
+  .nada {
+    color: var(--dim);
+    font-family: var(--letra), monospace;
+  }
 }
