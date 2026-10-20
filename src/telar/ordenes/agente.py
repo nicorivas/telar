@@ -386,6 +386,10 @@ def _no_interactivo() -> bool:
     return os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
 
 
+#: los eventos que avisa el mod de telar cuando está: con él vivo, los ganchos clásicos no los repiten
+DEL_MOD = frozenset({Evento.EMPIEZA, Evento.ESPERA, Evento.SIGUE, Evento.TERMINA})
+
+
 def _aviso(o, ctx) -> int:
     """Aplica un evento del agente. Silencioso, y siempre 0.
 
@@ -419,6 +423,16 @@ def _aviso(o, ctx) -> int:
             from telar import movil
 
             hilo = movil.hilo_de_panel(panel) or hilo
+        if not o.evento and aviso.evento in DEL_MOD and hilo:
+            from telar import casilla
+
+            if casilla.mod_vivo(ctx.config, hilo):
+                # el mod de telar ya avisa estos cuatro desde sus propios eventos (telar/mod/): el gancho
+                # clásico los repetiría, y a veces mal (un Esc no dispara Stop)
+                salida = {"aplicado": False, "motivo": "lo avisa el mod", "hilo": hilo}
+                if o.json:
+                    _comun.escribir_json(salida)
+                return 0
         efecto = aplicar(est, aviso, hilo=hilo, panel=panel, olvidar_al_cerrar=o.olvidar)
         if efecto.atencion in (Atencion.ESPERA, Atencion.TERMINO):
             # terminó su turno: si es un agente con encargos en cola, el siguiente (ver telar.encargos)

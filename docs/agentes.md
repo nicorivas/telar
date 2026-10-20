@@ -163,6 +163,14 @@ Es el único que viene de fábrica. Traduce así:
 | `Stop` | `termina` |
 | `SessionEnd` | `cierra` |
 
+Con **el mod de telar** cargado (`src/telar/mod/`, lo pone `telar agente instalar`), cuatro de esos
+eventos los avisa el mod desde adentro de Claude Code, con `telar agente aviso --evento …`: `empieza`
+y `termina` con cada turno (`turn.start`, `turn.complete`, que llega también cuando la persona
+interrumpe con Esc o el turno cae por un error de la API), `espera` cuando aparece un diálogo de
+permiso (`PermissionRequest`), un pedido de un servidor MCP o una pregunta (`AskUserQuestion`), y
+`sigue` cuando se contesta. Mientras el mod vive (su señal en la casilla, de menos de 30 s), los
+ganchos clásicos de esos cuatro no avisan nada; `abre` y `cierra` siguen siendo suyos.
+
 Son siete momentos y **seis** ganchos: `SubagentStop` se entiende si llega, pero no se
 engancha —un subagente que termina no cambia en qué está la conversación—, así que en tu
 `settings.json` vas a contar seis. Los seis apuntan al **mismo** comando —`telar agente aviso

@@ -243,8 +243,8 @@ con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es pa
 
 ## Cómo se mueve una cosa
 
-**Un hilo pide atención.** El agente termina y espera respuesta. Su gancho (`telar agente aviso`)
-anota «te espera» en el estado; el nodo lo publica en el bus y la barra de cada máquina lo pinta.
+**Un hilo pide atención.** El agente termina y espera respuesta. El mod de telar (o, sin él, el gancho
+clásico; los dos llaman a `telar agente aviso`) anota «te espera» en el estado; el nodo lo publica en el bus y la barra de cada máquina lo pinta.
 «Terminó» y no lo viste cuenta como «te espera».
 
 **Un agente le pide algo a otro.** El hilo A corre `telar mensaje B "…"`. El mensaje va al bus, el

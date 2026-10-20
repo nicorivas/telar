@@ -630,6 +630,24 @@ class Orden(ConEstado):
         self.assertEqual(texto, "")  # callado: hay agentes que se leen la salida del gancho
         self.assertIs(self.est.atencion("faro"), Atencion.TRABAJANDO)
 
+    def test_con_el_mod_vivo_el_gancho_clasico_no_repite_su_aviso(self):
+        from telar import casilla
+
+        os.environ["TELAR_HILO"] = "faro"
+        d = casilla.carpeta(self.config, "faro")
+        d.mkdir(parents=True)
+        (d / casilla.MOD).write_text("1")
+        carga = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1"})
+        _, texto = self.correr(["aviso", "--json"], carga)
+        self.assertEqual(json.loads(texto)["motivo"], "lo avisa el mod")
+        self.assertIsNot(self.est.atencion("faro"), Atencion.TRABAJANDO)
+        # el mod mismo avisa con --evento, y eso sí se aplica
+        self.correr(["aviso", "--evento", "empieza", "--sesion", "s1"])
+        self.assertIs(self.est.atencion("faro"), Atencion.TRABAJANDO)
+        # abrir y cerrar siguen siendo de los ganchos clásicos
+        self.correr(["aviso", "--panel", "p1"], json.dumps({"hook_event_name": "SessionStart", "session_id": "s1"}))
+        self.assertEqual(self.est.hilo_de("s1"), "faro")
+
     def test_el_aviso_anota_la_conversacion_al_abrir(self):
         os.environ["TELAR_HILO"] = "faro"
         carga = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1"})

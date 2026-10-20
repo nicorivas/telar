@@ -45,18 +45,14 @@ que corren sin gastar un turno ([referencia](https://code.claude.com/docs/en/plu
 
 El mod ya existe (`src/telar/mod/`, viaja en el paquete) y `telar agente instalar` lo deja cargado en cada
 sesión por `CLAUDE_CODE_PLUGIN_DIRS` ([arquitectura](../arquitectura.md), «Cómo llega un mensaje»). Hoy
-hace una cosa: avisa de los mensajes de la casilla sin teclear en la terminal. Lo que falta que haga, de lo
-que hoy es frágil, en este orden:
+avisa de los mensajes de la casilla sin teclear en la terminal y lleva el semáforo de cada hilo desde
+sus propios eventos ([agentes.md](../agentes.md)). Lo que falta que haga, en este orden:
 
-1. **El semáforo de cada hilo**, de los eventos (`turn.start`, `turn.complete`, `tool.check` cuando queda
-   esperando un permiso) en vez de deducirlo de los ganchos clásicos (`Notification`, el «trabajando» que se
-   queda pegado). Al hacerlo, `telar agente instalar` deja de poner esos ganchos cuando el mod está, para
-   que no avisen dos veces.
-2. **El modo lectura**: la respuesta final de los mensajes ya estructurados, en vez de leer el registro
+1. **El modo lectura**: la respuesta final de los mensajes ya estructurados, en vez de leer el registro
    JSONL de Claude Code.
-3. **Una franja de telar sobre el prompt** (quién espera, los mensajes pendientes) y comandos `/telar …`
+2. **Una franja de telar sobre el prompt** (quién espera, los mensajes pendientes) y comandos `/telar …`
    instantáneos.
-4. **Pruebas del mod** con `claude plugin test`, y `claude plugin validate` en el CI.
+3. **Pruebas del mod** con `claude plugin test`, y `claude plugin validate` en el CI.
 
 Es JavaScript en un proyecto de Python, y el mod tiene los mismos poderes que telar (archivos, procesos,
 red).
@@ -97,6 +93,6 @@ red).
 
 1. El correo y el directorio entre personas por el bus.
 2. La 0.2.0.
-3. El mod de Claude Code: el semáforo (la casilla ya está).
+3. El mod de Claude Code: el modo lectura y la franja sobre el prompt.
 4. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
 5. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

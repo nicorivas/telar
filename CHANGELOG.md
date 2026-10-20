@@ -21,6 +21,10 @@ extension shared the version number.
   the node no longer types it into the terminal, where it could land on top of what the person was writing.
   The mod leaves a heartbeat in the mailbox (`.mod`); while it is fresh the node does not type. New verb:
   `telar agente mod` (what the mod asks: the thread, its mailbox, the notice).
+  The mod also drives each thread's status light from its own events: `empieza`/`termina` with every turn
+  (`turn.complete` also fires when the person interrupts with Esc, which the classic `Stop` hook never saw,
+  so the thread no longer stays stuck in «trabajando»), `espera` on a permission dialog, an MCP request or an
+  `AskUserQuestion`, and `sigue` once answered. While the mod is alive, the classic hooks skip those four.
 - `telar instalar`: one command to get a machine running, and safe to run again. It writes the config
   (`telar init`) if missing, creates the page key, joins the bus with `--bus nats://…` (adds `[bus]`),
   installs the `telar serve` service for this machine (systemd user unit on Linux, launchd agent on macOS,

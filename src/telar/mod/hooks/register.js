@@ -1,11 +1,17 @@
 // El mod de telar para Claude Code. Lo carga cada sesión de Claude Code con CLAUDE_CODE_PLUGIN_DIRS (lo pone
 // `telar agente instalar`); en una sesión que no es un hilo de telar no hace nada.
 //
-// Hace una cosa: cuando llegan mensajes a la casilla del hilo y la sesión está ociosa, manda la línea de
-// aviso («↯ mensaje nuevo · …») como un mensaje, y el gancho UserPromptSubmit de siempre le agrega el
-// contenido. Antes ese aviso lo tecleaba el nodo en la terminal, y podía caer sobre lo que la persona estaba
-// escribiendo. Mientras el mod vive, toca un archivo en la casilla (.mod) y el nodo deja de teclear.
-// Si la sesión está trabajando no hace nada: el gancho Stop entrega los mensajes al terminar el turno.
+// Hace dos cosas, y mientras vive toca un archivo en la casilla (.mod) para que telar sepa que está:
+//
+// 1. La casilla. Cuando llegan mensajes y la sesión está ociosa, manda la línea de aviso («↯ mensaje
+//    nuevo · …») como un mensaje, y el gancho UserPromptSubmit de siempre le agrega el contenido. Antes ese
+//    aviso lo tecleaba el nodo en la terminal, y podía caer sobre lo que la persona estaba escribiendo. Si
+//    la sesión trabaja, nada: el gancho Stop entrega los mensajes al terminar el turno.
+// 2. El semáforo. Dice en qué anda la sesión (`telar agente aviso --evento …`) desde sus propios eventos:
+//    empieza y termina con el turno (también uno interrumpido con Esc, que el gancho Stop no ve), espera
+//    cuando aparece un diálogo de permiso o una pregunta, y sigue cuando se contesta. Con el mod vivo, los
+//    ganchos clásicos de esos cuatro eventos no avisan (telar agente aviso los descarta), para no avisar dos
+//    veces.
 
 const CADA_MS = 2000        // cada cuánto mira la casilla
 const VIDA_MS = 10_000      // cada cuánto toca la señal de vida (el nodo la da por muerta a los 30 s)
@@ -17,17 +23,36 @@ let trabajando = false
 let enviando = false
 let vida = 0
 let resuelto = 0
+let semaforo = ''      // el último evento avisado: no se repite el mismo
+let cola = Promise.resolve()  // los avisos salen de a uno y en orden
 
-// `telar agente mod`: el hilo, la casilla y, si hay mensajes, el aviso. Nunca falla: {} si algo sale mal
-async function preguntar($, sesion) {
+async function ejecutable($) {
   // TELAR_EJECUTABLE: con qué se llama a telar, como una lista JSON (lo pone `telar agente instalar`)
-  let telar = ['telar']
   try {
     const crudo = await $.env.get('TELAR_EJECUTABLE')
-    if (crudo) telar = JSON.parse(crudo)
+    if (crudo) return JSON.parse(crudo)
   } catch {
     // no es JSON: telar del PATH
   }
+  return ['telar']
+}
+
+// el semáforo: encola el aviso sin esperar, para no frenar el turno
+function avisar($, evento) {
+  if (!hilo || evento === semaforo) return
+  semaforo = evento
+  cola = cola.then(() => correrAviso($, evento)).catch(() => {})
+}
+
+async function correrAviso($, evento) {
+  const telar = await ejecutable($)
+  const argv = [...telar, 'agente', 'aviso', 'claude-code', '--evento', evento, '--hilo', hilo, '--sesion', await $.session.id()]
+  await $.process.run(argv, { timeoutMs: 15_000 })
+}
+
+// `telar agente mod`: el hilo, la casilla y, si hay mensajes, el aviso. Nunca falla: {} si algo sale mal
+async function preguntar($, sesion) {
+  const telar = await ejecutable($)
   try {
     const r = await $.process.run([...telar, 'agente', 'mod', '--sesion', sesion], { timeoutMs: 15_000 })
     return r.exitCode === 0 ? JSON.parse(r.stdout || '{}') : {}
@@ -85,12 +110,41 @@ export function register(on) {
 
   // solo el turno principal: los de un subagente traen agentId
   on('turn.start', async ($, e, next) => {
-    if (!e.agentId) trabajando = true
+    if (!e.agentId) {
+      trabajando = true
+      avisar($, 'empieza')
+    }
     return next(e)
   })
 
+  // también al interrumpirlo con Esc o al caer por un error de la API
   on('turn.complete', async ($, e, next) => {
-    if (!e.agentId) trabajando = false
+    if (!e.agentId) {
+      trabajando = false
+      avisar($, 'termina')
+    }
     return next(e)
   })
+
+  // un diálogo de permiso a la vista: lo dispara Claude Code solo cuando de verdad le pregunta a la persona
+  // (en modo automático, un `ask` de tool.check lo decide el clasificador y no llega aquí)
+  on('classic.PermissionRequest', async ($, e, next) => {
+    avisar($, 'espera')
+    return next(e)
+  }).catch(async ($, e, next) => next(e))
+
+  // un servidor MCP que le pide algo a la persona
+  on('classic.Notification', async ($, e, next) => {
+    if (e.notification_type === 'permission_prompt' || e.notification_type === 'elicitation_dialog') avisar($, 'espera')
+    return next(e)
+  }).catch(async ($, e, next) => next(e))
+
+  // una pregunta del agente espera respuesta mientras corre; cualquier herramienta que termina de correr
+  // después de una espera quiere decir que la persona contestó
+  on('tool.call', async ($, e, next) => {
+    if (e.tool === 'AskUserQuestion') avisar($, 'espera')
+    const r = await next(e)
+    if (semaforo === 'espera' && trabajando) avisar($, 'sigue')
+    return r
+  }).catch(async ($, e, next) => next(e)) // si este gancho falla, la herramienta corre igual
 }
