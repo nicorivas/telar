@@ -27,3 +27,7 @@ ejemplo/proyectos/*/revision.txt
 
 # Sistema
 .DS_Store
+
+# lo que Claude Code genera al cargar el mod (los tipos de su versión)
+src/telar/mod/tsconfig.json
+src/telar/mod/.claude-plugin/types/
