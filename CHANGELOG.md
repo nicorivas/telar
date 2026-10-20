@@ -24,6 +24,8 @@ extension shared the version number.
 
 ### Changed
 
+- An `[atajos]` key the dashboard already uses no longer stops the config from loading: the tab wins, the
+  shortcut is shown without its key and runs with a click, and `telar doctor` warns about it.
 - The web page no longer carries the shape of the VS Code extension. Every screen (the thread bar, the
   dashboard, a thread's terminal, reading and conversation views, its folder, «compartir») is drawn in one
   document, each with its CSS under `@scope`; only the dashboard's canvases and apps stay in sandboxed iframes,

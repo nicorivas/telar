@@ -426,7 +426,7 @@ def _proveedores(ctx) -> list[dict]:
         ]
     activos = [p for p in declarados if p.activo]
     if not activos:
-        return [_r("proveedores", OK, "ninguno activo")]
+        return [*_atajos(ctx), _r("proveedores", OK, "ninguno activo")]
     # la tecla de una pestaña de proveedor no puede ser una del dashboard ni la de un atajo
     from telar.config import TECLAS_RESERVADAS
 
@@ -444,7 +444,21 @@ def _proveedores(ctx) -> list[dict]:
         except Exception:  # noqa: BLE001 - un proveedor roto se reporta, no revienta doctor
             alcance = "no supo decir qué toca"
         lineas.append(_r("proveedor", OK, f"{pr.nombre}: {alcance}"))
-    return lineas
+    return [*_atajos(ctx), *lineas]
+
+
+def _atajos(ctx) -> list[dict]:
+    """Un atajo con una tecla del dashboard (o de una pestaña de bloque o proveedor) no se rompe: la pestaña
+    le gana y el atajo queda con un clic. Pero probablemente no es lo que se quería: se avisa."""
+    from telar.config import TECLAS_RESERVADAS
+
+    ocupadas = set(TECLAS_RESERVADAS) | {str(p.opciones.get("tecla") or "") for p in ctx.config.proveedores.values()}
+    ocupadas |= {b.tecla for b in getattr(ctx.config, "bloques", ()) if getattr(b, "tecla", "")}
+    choques = sorted(a.tecla for a in ctx.config.atajos if a.tecla in ocupadas)
+    if not choques:
+        return []
+    return [_r("atajos", AVISO, f"la tecla de {', '.join(f'«{t}»' for t in choques)} es de una pestaña: el atajo va con un clic",
+               "cámbiale la tecla en [atajos], si lo quieres con tecla")]
 
 
 def _ganchos_vivos(ctx) -> list[dict]:

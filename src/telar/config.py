@@ -136,10 +136,11 @@ class Agente:
     sordina: bool = True
 
 
-#: teclas que el dashboard ya usa: un atajo no las puede tomar. r (recargar), p (proyectos),
-#: t (tareas), c (agentes), v (revisar), / (buscar). Las filas de la agenda y los pendientes
-#: se clican.
-TECLAS_RESERVADAS = frozenset("rptcv/")
+#: teclas que el dashboard ya usa (pagina/src/vistas/hoy.ts, teclasDePestanas): n (ahora), v (tareas),
+#: p (proyectos), r (recargar), o (periódicos), d (el plan), a (la agenda), c (el correo), / (buscar). Un
+#: atajo con una de ellas no es un error: la pestaña le gana y el atajo queda con un clic. `telar doctor`
+#: lo avisa. Las de las pestañas de bloques y proveedores se suman en cada configuración.
+TECLAS_RESERVADAS = frozenset("nvprodac/")
 
 
 @dataclass(frozen=True, slots=True)
@@ -639,8 +640,6 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
             cuerpo = _tabla(cuerpo, f"atajos.{tecla}")
             if len(tecla) != 1:
                 raise ErrorDeConfig(f"atajos.{tecla}: la tecla es un solo carácter")
-            if tecla in TECLAS_RESERVADAS:
-                raise ErrorDeConfig(f"atajos.{tecla}: esa tecla ya la usa el dashboard")
             sobra = set(cuerpo) - {"nombre", "mensaje", "descripcion", "en", "agente"}
             if sobra:
                 raise ErrorDeConfig(f"atajos.{tecla}.{sorted(sobra)[0]}: no existe")

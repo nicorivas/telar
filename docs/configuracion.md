@@ -344,9 +344,10 @@ para lo que se hace varias veces al día y no es de ningún proyecto: el correo,
 cargar las horas. El hilo se llama `nombre` más la fecha y la hora («⚑ correo 09/23
 10:32»), porque la revisión de la mañana y la de la tarde son dos conversaciones.
 
-La tecla es un solo carácter, y no se aceptan `r`, `p`, `t`, `c`, `v` ni `/`. Si es la de una pestaña del
-dashboard (`n`, `d`, `a`, `o`, o la de un bloque o un proveedor con pestaña propia), la pestaña gana: el atajo
-se muestra sin tecla y se lanza con un clic. Las filas de la agenda y de los pendientes no llevan tecla: se
+La tecla es un solo carácter. Si es una que ya usa el dashboard (`n` ahora, `v` tareas, `p` proyectos, `r`
+recargar, `o` periódicos, `d` el plan, `a` la agenda, `c` el correo, `/` buscar, o la de un bloque o un
+proveedor con pestaña propia), la pestaña gana: el atajo se muestra sin tecla y se lanza con un clic, y
+`telar doctor` lo avisa. Las filas de la agenda y de los pendientes no llevan tecla: se
 clican.
 `telar atajo` lista los declarados y `telar atajo m` hace lo mismo que la tecla.
 

@@ -580,13 +580,21 @@ class Atajos(Orden):
         cfg = mod_config.desde_dict({"atajos": {"m": {"nombre": "⚑ correo", "mensaje": "/correo"}}})
         self.assertEqual([(a.tecla, a.nombre, a.mensaje) for a in cfg.atajos], [("m", "⚑ correo", "/correo")])
 
-    def test_una_tecla_del_dashboard_se_rechaza(self):
-        from telar import config as mod_config
-        from telar.config import ErrorDeConfig
+    def test_una_tecla_del_dashboard_se_acepta_y_doctor_avisa(self):
+        """La pestaña le gana y el atajo queda con un clic: la configuración carga igual (la «n» de un atajo
+        no puede dejar sin telar a quien la tenía), y doctor lo avisa."""
+        from types import SimpleNamespace
 
-        for tecla in ("r", "p", "/"):
-            with self.assertRaises(ErrorDeConfig):
-                mod_config.desde_dict({"atajos": {tecla: {"nombre": "x", "mensaje": "y"}}})
+        from telar import config as mod_config
+        from telar.ordenes import doctor
+
+        cfg = mod_config.desde_dict({"atajos": {"n": {"nombre": "⟳ sincronizar", "mensaje": "/sincronizar"},
+                                                "m": {"nombre": "⚑ correo", "mensaje": "/correo"}}})
+        self.assertEqual(sorted(a.tecla for a in cfg.atajos), ["m", "n"])
+        avisos = doctor._atajos(SimpleNamespace(config=cfg))
+        self.assertEqual(len(avisos), 1)
+        self.assertEqual(avisos[0]["estado"], doctor.AVISO)
+        self.assertIn("«n»", avisos[0]["dice"])
 
     def test_sin_mensaje_es_un_error(self):
         from telar import config as mod_config
