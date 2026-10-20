@@ -47,7 +47,7 @@ package-dir = { "" = "src" }
 version = { attr = "telar.__version__" }
 
 [tool.setuptools.package-data]
-telar = ["web/*", "web/xterm/*"]
+telar = ["web/*", "web/xterm/*", "web/app/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

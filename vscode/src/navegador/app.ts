@@ -22,7 +22,7 @@ import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos
 import { crearOrdenes } from '../web/ordenes';
 import type { AvisosSuperficie, CrearSuperficie, Superficie } from '../superficie';
 import { PanelHoy } from '../vistas/hoy';
-import { paginaConversacion, paginaTerminal, SCRIPT_NAVEGADOR } from '../web/pagina';
+import { type Documento, paginaCompartir, paginaConversacion, paginaDocumento, paginaTerminal, SCRIPT_NAVEGADOR } from '../web/pagina';
 
 
 // ── la API: fetch a /api ───────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ const guardado: Guardado = {
 const modo: Record<string, 'term' | 'conv'> = {};
 const angosto = () => document.body.classList.contains('angosto');
 function forma(que: string): '' | 'term' | 'conv' {
-    if (que === 'dashboard' || que.startsWith('rem:') || que.startsWith('doc:')) return '';
+    if (que === 'dashboard' || que === 'compartir' || que.startsWith('rem:') || que.startsWith('doc:')) return '';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
@@ -187,10 +187,10 @@ const TOPE = 8;
 const usadas: string[] = [];
 
 /** A la derecha: «dashboard», un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
- *  otra máquina: su conversación, por el bus) o «doc:<hilo>» (su carpeta, todavía no en el navegador). */
+ *  otra máquina: su conversación, por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
+ *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
 function mostrar(que: string): void {
     if (!que) return;
-    if (que.startsWith('doc:')) { aQuienMira({ __aviso: 'ver la carpeta de un hilo todavía no está en el navegador', nivel: 'aviso' }); return; }
     actual = que;
     document.getElementById('progreso')!.hidden = true;
     let f: HTMLIFrameElement | undefined;
@@ -200,7 +200,11 @@ function mostrar(que: string): void {
     } else {
         const como = forma(que), llave = como ? `${como}:${que}` : que;
         f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === llave);
-        if (!f) {
+        if (que.startsWith('doc:') || que === 'compartir') {
+            f ??= nuevoMarco(llave, marcos());
+            if (que === 'compartir') f.srcdoc = paginaCompartir(Math.random().toString(36).slice(2), { consulta: location.search, navegador: true });
+            else void verDocumento(f, que.slice(4), '');
+        } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
@@ -223,7 +227,8 @@ function mostrar(que: string): void {
         botonModo.textContent = forma(que) === 'term' ? 'conversación' : 'terminal';
     }
     if (forma(que) === 'term' && !angosto()) f?.contentWindow?.focus();
-    const nombre = que.startsWith('rem:') ? (() => { const r = que.slice(4), i = r.indexOf(':'); return `${r.slice(i + 1)} · en ${r.slice(0, i)}`; })() : que;
+    const nombre = que.startsWith('rem:') ? (() => { const r = que.slice(4), i = r.indexOf(':'); return `${r.slice(i + 1)} · en ${r.slice(0, i)}`; })()
+        : que.startsWith('doc:') ? `${que.slice(4)} · carpeta` : que;
     document.getElementById('titulo')!.textContent = que === 'dashboard' ? '' : nombre;
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
     document.body.classList.remove('en-lista');
@@ -332,6 +337,31 @@ const otras = async () => {
 void otras();
 setInterval(() => void otras(), 30 * 1000);
 
+/** La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), en su marco. Los enlaces de la
+ *  página (a otro archivo, a la carpeta de arriba) no navegan: se leen aquí y se vuelve a dibujar. */
+async function verDocumento(f: HTMLIFrameElement, hilo: string, archivo: string): Promise<void> {
+    let d: Documento;
+    try {
+        const r = await fetch(`/api/hilos/documento?hilo=${encodeURIComponent(hilo)}&archivo=${encodeURIComponent(archivo)}`, { cache: 'no-store' });
+        const j = await r.json() as Documento & { markdown?: string; detail?: string };
+        d = r.ok ? { ...j, html: j.markdown ? md.render(j.markdown) : undefined, subir: j.subir ?? undefined }
+            : { hilo, titulo: hilo, error: typeof j.detail === 'string' ? j.detail : `la API respondió ${r.status}` };
+    } catch (e) {
+        d = { hilo, titulo: hilo, error: `la API no respondió: ${(e as Error).message}` };
+    }
+    f.onload = () => {
+        f.contentDocument?.addEventListener('click', e => {
+            const a = (e.target as HTMLElement).closest?.('a');
+            const href = a?.getAttribute('href') ?? '';
+            if (!href.startsWith('/documento')) return;
+            e.preventDefault();
+            const q = new URLSearchParams(href.slice(href.indexOf('?') + 1));
+            void verDocumento(f, q.get('hilo') ?? hilo, q.get('archivo') ?? '');
+        });
+    };
+    f.srcdoc = paginaDocumento(Math.random().toString(36).slice(2), d);
+}
+
 /** El botón de arriba: el hilo que se ve, de terminal a conversación o al revés. */
 function cambiarModo(): void {
     const como = forma(actual);
@@ -342,7 +372,8 @@ function cambiarModo(): void {
 
 declare global { interface Window { telar?: { mostrar?: (que: string) => void; verProgreso?: () => void; cambiarModo?: () => void } } }
 window.telar = { ...(window.telar ?? {}), mostrar, cambiarModo };
-mostrar('dashboard');
+// abierta por «compartir» del teléfono (share_target del manifiesto): eso primero
+mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
 // en el celular se empieza por la lista
 if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 

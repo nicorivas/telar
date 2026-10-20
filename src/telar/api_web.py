@@ -7,6 +7,8 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
 `Origin`. Sin `Origin` (curl, la CLI) manda la llave.
 
     GET  /                  la página (se arma pantalla por pantalla: docs/propuestas/dashboard-fuera-de-vscode.md)
+    GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
+    GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
     WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí
     *    /api/…             la API de esta máquina (la misma de `telar serve`), detrás de la llave
@@ -26,8 +28,15 @@ from fastapi.staticfiles import StaticFiles
 #: la misma cookie que el panel en Node: las cookies no distinguen puertos, y así una llave sirve a los dos
 COOKIE = "telar_panel"
 CARPETA = Path(__file__).parent / "web"
-#: lo que se sirve sin llave: no dice nada de nadie (el navegador lo pide sin la cookie)
-LIBRES = ("/manifest.webmanifest", "/icono.svg", "/favicon.ico")
+#: lo que deja instalar la página como app (y recibir lo que comparte el teléfono): el manifiesto, los
+#: íconos y un service worker. Se sirven sin llave: no dicen nada de nadie, y el navegador los pide sin
+#: la cookie
+APP = {
+    "/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
+    "/apple-touch-icon.png": "image/png", "/icono-192.png": "image/png", "/icono-512.png": "image/png",
+    "/icono-maskable-192.png": "image/png", "/icono-maskable-512.png": "image/png",
+}
+LIBRES = tuple(APP)
 
 
 def ruta_llave() -> Path:
@@ -87,13 +96,16 @@ def crear(api_app, clave: str | None = None) -> FastAPI:
         return r
 
     @app.get("/")
+    @app.get("/compartir")
     def pagina():
+        # /compartir es la misma página: app.js mira la dirección y abre «compartir» con lo que llegó
         return FileResponse(CARPETA / "indice.html", media_type="text/html; charset=utf-8")
 
-    if (CARPETA / "manifest.webmanifest").exists():
-        @app.get("/manifest.webmanifest")
-        def manifiesto():
-            return FileResponse(CARPETA / "manifest.webmanifest", media_type="application/manifest+json")
+    def _de_la_app(ruta: str, tipo: str):
+        return lambda: FileResponse(CARPETA / "app" / ruta.lstrip("/"), media_type=tipo)
+
+    for ruta, tipo in APP.items():
+        app.add_api_route(ruta, _de_la_app(ruta, tipo), methods=["GET"], include_in_schema=False)
 
     @app.websocket("/pty")
     async def terminal(ws: WebSocket, hilo: str = "", cols: int = 100, rows: int = 30):

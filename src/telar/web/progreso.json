@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 21:20",
+  "actualizado": "2026-10-19 21:29",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -112,20 +112,20 @@
     {
       "grupo": "Paso 4 (después)",
       "nombre": "la app del celular: manifiesto, service worker e íconos",
-      "estado": "pendiente",
-      "nota": "hoy los sirve el panel en Node"
+      "estado": "hecho",
+      "nota": "web/app, sin llave; se registra en https (tailscale serve)"
     },
     {
       "grupo": "Paso 4 (después)",
       "nombre": "compartir desde el celular (share_target)",
-      "estado": "pendiente",
-      "nota": "la API ya tiene /compartir; falta la página"
+      "estado": "hecho",
+      "nota": "/compartir abre la página en «compartir»; hilos y proveedores de la API"
     },
     {
       "grupo": "Paso 4 (después)",
       "nombre": "la carpeta y el documento de un hilo (doc:)",
-      "estado": "pendiente",
-      "nota": ""
+      "estado": "hecho",
+      "nota": "/api/hilos/documento; los enlaces se leen sin salir de la página"
     },
     {
       "grupo": "Paso 4 (después)",

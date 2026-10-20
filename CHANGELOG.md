@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- What only the Node panel served, now in the Python page: installing it as a phone app (manifest, icons
+  and service worker from `web/app`, served without the key), sharing to it from the phone (`/compartir`
+  opens the page on the share view, with providers and threads from the API) and a thread's folder and
+  document (`doc:<hilo>`, from `GET /hilos/documento`: nothing outside the thread's folder, nothing hidden).
 - Thread terminals in the browser page without Node: `/pty` in `telar.api_web` runs `telar mirar <hilo>` in a
   PTY (asyncio) behind the same key and an origin check, and xterm.js is served from `estatico/xterm`. A thread
   of this machine opens as its terminal on a wide screen and as its conversation on a narrow one (the button

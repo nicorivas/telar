@@ -242,9 +242,9 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    (esbuild), contra la API; lo que leía del disco va por `/api/archivos`.
 4. **Las terminales, a Python**, y se retira Node. Las terminales, hechas (19-oct): `/pty` de
    `telar.api_web` corre `telar mirar` en un PTY y la página usa xterm.js (servido desde `estatico/xterm`).
-   Antes de retirar el panel en Node falta lo que solo él sirve: la app del celular (manifiesto, service
-   worker, íconos), la página de compartir y la carpeta de un hilo (`doc:`). El avance, en la página:
-   «progreso».
+   Lo que solo servía el panel en Node también pasó (19-oct): la app del celular (manifiesto, service
+   worker e íconos en `web/app`), la página de compartir (`/compartir`) y la carpeta de un hilo (`doc:`,
+   con `/api/hilos/documento`). Queda retirar el panel en Node: `telar-panel`, `servidor.ts`, `node-pty`.
 5. **`telar-equipo`, como rutas**, y sale el código muerto. Hecho en el código (19-oct): la página del
    equipo es una app FastAPI aparte (`telar.api_equipo`), que `telar serve --equipo` sirve en su propio
    puerto de Tailscale, en el mismo proceso; nada de tu API se alcanza desde ahí (probado: `/hoy`, `/docs`,

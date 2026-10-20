@@ -290,14 +290,14 @@ export function paginaDocumento(nonce: string, d: Documento): string {
 /** Lo que el teléfono le comparte al panel instalado como app (`share_target` del manifiesto): un
  *  enlace o un texto, para llevarlo a un hilo, a un agente o a un proveedor que lo recibe (un feed de
  *  lecturas). Lo lleva `telar compartir`. */
-export function paginaCompartir(nonce: string): string {
+export function paginaCompartir(nonce: string, rutas: { consulta?: string; navegador?: boolean } = {}): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self';">
 <title>compartir · telar</title>
 <style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('compartir')} }</style>
 </head><body>
-<header><a href="/">◀ telar</a><b>compartir</b></header>
+<header><a href="/" target="_top">◀ telar</a><b>compartir</b></header>
 <main>
   <section id="que"></section>
   <textarea id="nota" rows="3" placeholder="una nota, si quieres (va con lo compartido)"></textarea>
@@ -307,7 +307,9 @@ export function paginaCompartir(nonce: string): string {
 </main>
 <script nonce="${nonce}">
 (function () {
-  var q = new URLSearchParams(location.search);
+  // en el navegador (un iframe srcdoc) lo compartido llega por parámetro: la dirección es la de la página de arriba
+  var R = ${JSON.stringify(rutas).replace(/</g, '\\u003c')};
+  var q = new URLSearchParams(R.consulta != null ? R.consulta : location.search);
   var titulo = (q.get('title') || '').trim(), texto = (q.get('text') || '').trim(), url = (q.get('url') || '').trim();
   // muchas apps mandan el enlace dentro del texto, no en url
   if (!url) { var m = texto.match(/https?:\\/\\/\\S+/); if (m) { url = m[0]; texto = texto.replace(m[0], '').trim(); } }
@@ -345,8 +347,14 @@ export function paginaCompartir(nonce: string): string {
       .then(function () { b.disabled = false; });
   }
   filtro.addEventListener('input', pintar);
+  // los proveedores que reciben; los hilos los suma el panel en Node, y en el navegador se leen de la API
+  var hilos = !R.navegador ? Promise.resolve([]) : fetch('/api/hilos?ficha=false&red=true', { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { return (d.hilos || []).filter(function (h) { return !h.archivado; })
+      .map(function (h) { return { destino: 'hilo:' + h.nombre, nombre: h.nombre, tipo: 'hilo' }; }); })
+    .catch(function () { return []; });
   fetch('/api/compartir/destinos', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
-    .then(function (d) { lista = d.destinos || []; pintar(); })
+    .then(function (d) { return hilos.then(function (hs) { lista = (d.destinos || []).concat(hs); pintar(); }); })
     .catch(function () { document.getElementById('destinos').textContent = 'no pude leer los destinos'; });
 })();
 </script></body></html>`;

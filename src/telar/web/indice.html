@@ -1,6 +1,8 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1e1e2e">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>telar</title>
 <style>
 :root{color-scheme:dark;--bg:#1e1e2e;--panel:#181825;--fg:#cdd6f4;--dim:#7f849c;--borde:#313244;--azul:#89b4fa;--verde:#a6e3a1;--amarillo:#f9e2af;--rojo:#f38ba8;--malva:#cba6f7}
@@ -72,6 +74,8 @@ const angosto = window.matchMedia('(max-width: 700px)');
 const ajustar = () => document.body.classList.toggle('angosto', angosto.matches);
 angosto.addEventListener('change', ajustar); ajustar();
 json('/api/salud').then((s) => { $('#maquina').textContent = `telar ${s.version}`; }).catch(() => { $('#maquina').textContent = 'sin API'; });
+// instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 const app = document.createElement('script'); app.src = '/estatico/app.js';
 app.onerror = () => window.telar.verProgreso();
 document.body.append(app);

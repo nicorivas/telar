@@ -532,6 +532,15 @@ def get_leer(hilo: str, ultimos: int = 0, maquina: str = "", ctx: Contexto = Dep
     return servicio_historias.leer(ctx, hilo, ultimos=ultimos, maquina=maquina)
 
 
+from telar.servicios import documentos as servicio_documentos
+
+
+@app.get("/hilos/documento", response_model=servicio_documentos.Documento)
+def get_documento(hilo: str, archivo: str = "", ctx: Contexto = Depends(contexto)):
+    """La carpeta de un hilo y uno de sus archivos (su documento, si no se pide otro), para leerlos."""
+    return servicio_documentos.documento(ctx, hilo, archivo)
+
+
 @app.get("/skills", response_model=servicio_skills.Skills)
 def get_skills(hilo: str = "", ctx: Contexto = Depends(contexto)):
     """Las skills del agente de un hilo, y cuántas veces usó cada una (`telar agente skills --json`)."""
