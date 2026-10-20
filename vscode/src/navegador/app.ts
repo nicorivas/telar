@@ -16,7 +16,6 @@ import MarkdownIt from 'markdown-it';
 
 import { type Anfitrion, type Opcion, type OpcionesAviso, usar } from '../anfitrion';
 import * as cli from '../cli';
-import { usarDisco } from '../disco';
 import { modelo } from '../modelo';
 import { BarraHilos, type Guardado, type SuperficieBarra } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
@@ -26,28 +25,6 @@ import { type Documento, paginaCompartir, paginaDocumento, SCRIPT_NAVEGADOR } fr
 import { scriptAtajos, vista, VISTAS } from '../web/vistas-hilo';
 
 
-// ── la API: fetch a /api ───────────────────────────────────────────────────────
-
-cli.usarTransporte(async (metodo, ruta, timeout, cuerpo) => {
-    let r: Response;
-    try {
-        r = await fetch(`/api${ruta}`, {
-            method: metodo, cache: 'no-store', signal: AbortSignal.timeout(timeout),
-            headers: cuerpo === undefined ? {} : { 'Content-Type': 'application/json' },
-            body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
-        });
-    } catch (e) {
-        return { error: `la API no respondió: ${(e as Error).message}` };
-    }
-    let json: unknown;
-    try { json = await r.json(); } catch { json = undefined; }
-    const detalle = (json as { detail?: unknown } | undefined)?.detail;
-    if (r.ok && json !== undefined) return { datos: json };
-    // la ruta no existe todavía: como sin API (y sin CLI, en el navegador eso es un error que se dice)
-    if (r.status === 404 && detalle === 'Not Found') return undefined;
-    return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}` };
-});
-
 // ── los ajustes: salen del servidor (/config) ──
 
 const ajustes: Record<string, unknown> = {};
@@ -55,31 +32,6 @@ cli.usarAjustes(<T>(clave: string, porDefecto: T): T => (clave in ajustes ? ajus
 void cli.config().then(r => {
     // la bandeja del equipo: la del servidor que sirve la página («aqui») o la de la máquina que diga
     if (r.datos?.equipo) { ajustes.equipoRemoto = r.datos.equipo; void modelo.leerEquipo(); }
-});
-
-// ── el disco: los archivos de la máquina, por la API (que pone los límites: telar.servicios.archivos) ──
-
-usarDisco({
-    leer: async ruta => {
-        try {
-            const r = await fetch(`/api/archivos?ruta=${encodeURIComponent(ruta)}`, { cache: 'no-store' });
-            return r.ok ? ((await r.json()) as { texto: string }).texto : undefined;
-        } catch { return undefined; }
-    },
-    buscarMd: async (carpeta, hondo) => {
-        try {
-            const r = await fetch(`/api/archivos/md?carpeta=${encodeURIComponent(carpeta)}&hondo=${hondo}`, { cache: 'no-store' });
-            return r.ok ? ((await r.json()) as { archivos: { ruta: string; mtime: number }[] }).archivos : [];
-        } catch { return []; }
-    },
-    escribir: async (ruta, texto) => {
-        try {
-            const r = await fetch('/api/archivos', {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ruta, texto }),
-            });
-            return r.ok;
-        } catch { return false; }
-    },
 });
 
 // ── los marcos: la barra a la izquierda; a la derecha, el dashboard o la conversación de un hilo ──

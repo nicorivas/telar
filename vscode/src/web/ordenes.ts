@@ -96,14 +96,17 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             : (await c.anfitrion.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { title: `¿A qué máquina llevo «${hilo}»?` }))?.x;
         if (!elegida) return;
         c.avisar({ __aviso: `llevando «${hilo}» a ${elegida.nombre}…`, nivel: 'info', ms: 4000 });
-        let r = await cli.hilo('llevar', hilo, elegida.nombre);
-        if (!r.ok && /sin subir/.test(r.err)) {
-            const lista = r.out.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
+        let r = await cli.llevar(hilo, elegida.nombre);
+        if (r.error && /sin subir/.test(r.error)) {
+            const salida = String(r.cuerpo?.salida ?? '');
+            const lista = salida.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
             const si = await c.anfitrion.aviso(`La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:\n${lista}`, { modal: true }, 'Llevar igual');
             if (si !== 'Llevar igual') return;
-            r = await cli.hilo('llevar', hilo, elegida.nombre, ['--si']);
+            r = await cli.llevar(hilo, elegida.nombre, true);
         }
-        if (!r.ok) { c.avisar({ __aviso: `telar: ${r.err.trim().split('\n').pop() || 'no se llevó'}`, nivel: 'falla' }); return; }
+        if (r.error) { c.avisar({ __aviso: `telar: ${r.error}`, nivel: 'falla' }); return; }
+        // una conversación grande sigue copiándose: la API ya respondió, y el hilo aparece allá al terminar
+        if (r.datos?.en_curso) c.avisar({ __aviso: `«${hilo}» sigue viajando a ${elegida.nombre}: aparece allá al terminar`, nivel: 'info', ms: 8000 });
         modelo.invalidar();
         await modelo.sondear();
     }

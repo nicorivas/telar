@@ -9,15 +9,13 @@
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
-import { execFile } from 'child_process';
-import * as path from 'path';
-
 import { type Opcion, ui } from '../anfitrion';
 import type { CrearSuperficie, Superficie } from '../superficie';
 import * as cli from '../cli';
 import { disco } from '../disco';
 import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, marco, normalizar, nuevoNonce } from '../estilo';
 import { modelo } from '../modelo';
+import * as rutas from '../rutas';
 import { CSS_DIA, Dia, SCRIPT_DIA, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, htmlPendientes, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { CSS_PLAN, columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
 import { CSS_PROY, DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
@@ -1661,7 +1659,7 @@ export class PanelHoy {
     private async readmeHtml(ruta: string): Promise<string> {
         if (!modelo.raiz || ruta.includes('..')) return '';
         let crudo: string | undefined;
-        for (const n of ['README.md', 'readme.md']) { crudo = await disco().leer(path.join(modelo.raiz, ruta, n)); if (crudo !== undefined) break; }
+        for (const n of ['README.md', 'readme.md']) { crudo = await disco().leer(rutas.unir(modelo.raiz, ruta, n)); if (crudo !== undefined) break; }
         if (crudo === undefined) return '';
         try {
             let texto = crudo.slice(0, 300_000);
@@ -1867,19 +1865,19 @@ export class PanelHoy {
                 ctx.tareas = pendientes({ ...this.datos, pendientes: this.datos.pendientes.filter(f => ids.has(f.id)) } as Dia);
             }
             if (ctx.proyecto && modelo.raiz) {
-                const carpeta = path.join(modelo.raiz, ctx.proyecto.ruta);
+                const carpeta = rutas.unir(modelo.raiz, ctx.proyecto.ruta);
                 ctx.pendientes = this.pendientesDe(ctx.proyecto.ruta) ?? [];
-                const readme = await disco().leer(path.join(carpeta, 'README.md'));
+                const readme = await disco().leer(rutas.unir(carpeta, 'README.md'));
                 const est = readme !== undefined ? estadoDe(readme) : '';
                 if (est) ctx.estado = await this.markdown(est);
                 if (clase === 'reunion') {
                     const prep = await this.masReciente(carpeta, n => /preparaci[oó]n/i.test(n), e.titulo);
                     const textoPrep = prep ? await disco().leer(prep) : undefined;
-                    if (prep && textoPrep !== undefined) ctx.preparacion = { ruta: path.relative(modelo.raiz, prep), html: await this.markdown(textoPrep.slice(0, 12000)) };
+                    if (prep && textoPrep !== undefined) ctx.preparacion = { ruta: rutas.relativa(modelo.raiz, prep), html: await this.markdown(textoPrep.slice(0, 12000)) };
                     const leidas = new Map<string, string>();
                     const minuta = await this.masReciente(carpeta, (n, r) => /minuta/i.test(n) || (/\/reuniones\//.test(r) && !/preparaci/i.test(n)), e.titulo,
                         async f => { const t = await disco().leer(f) ?? ''; leidas.set(f, t); return !!paraLaProxima(t); });
-                    if (minuta) ctx.minuta = { ruta: path.relative(modelo.raiz, minuta), html: await this.markdown(paraLaProxima(leidas.get(minuta) ?? '')) };
+                    if (minuta) ctx.minuta = { ruta: rutas.relativa(modelo.raiz, minuta), html: await this.markdown(paraLaProxima(leidas.get(minuta) ?? '')) };
                 }
             }
         } catch { /* sin contexto: el bloque y el foco igual se ven */ }
@@ -1896,9 +1894,9 @@ export class PanelHoy {
      *  comparten alguna palabra con el título de la reunión (su serie) sobre los demás. */
     private async masReciente(carpeta: string, elegir: (nombre: string, ruta: string) => boolean, titulo: string,
         ademas: (ruta: string) => Promise<boolean> = async () => true): Promise<string> {
-        const hallados = (await disco().buscarMd(carpeta, 3)).filter(h => elegir(path.basename(h.ruta), h.ruta));
+        const hallados = (await disco().buscarMd(carpeta, 3)).filter(h => elegir(rutas.nombre(h.ruta), h.ruta));
         const palabras = normalizar(titulo).split(/\s+/).filter(w => w.length > 3);
-        const deLaSerie = (r: string) => palabras.some(w => normalizar(path.basename(r)).includes(w));
+        const deLaSerie = (r: string) => palabras.some(w => normalizar(rutas.nombre(r)).includes(w));
         hallados.sort((a, b) => Number(deLaSerie(b.ruta)) - Number(deLaSerie(a.ruta)) || b.mtime - a.mtime);
         for (const h of hallados) if (await ademas(h.ruta)) return h.ruta;
         return '';
@@ -1925,7 +1923,7 @@ export class PanelHoy {
     private async menuProyecto(ruta: string): Promise<void> {
         const p = this.proyectos?.find(x => x.ruta === ruta);
         if (!p) return;
-        const carpeta = modelo.raiz ? path.join(modelo.raiz, ruta) : '';
+        const carpeta = modelo.raiz ? rutas.unir(modelo.raiz, ruta) : '';
         type Item = Opcion & { hacer: () => Promise<unknown> | unknown };
         const items: Item[] = [
             { label: p.vivo ? 'Ir a su hilo' : p.hilo ? 'Retomar su hilo' : 'Abrir con el agente',
@@ -1939,7 +1937,7 @@ export class PanelHoy {
         }
         if (carpeta) {
             items.push(
-                { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(path.join(carpeta, 'README.md')) },
+                { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(rutas.unir(carpeta, 'README.md')) },
                 { label: 'Mostrar la carpeta en el explorador', hacer: () => ui().mostrarCarpeta(carpeta) },
             );
         }
@@ -1984,7 +1982,7 @@ export class PanelHoy {
     private async enlaceReadme(href: string, base: string): Promise<void> {
         if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { await ui().abrirExterno(href); return; }
         if (!modelo.raiz || href.startsWith('#')) return;
-        const destino = path.normalize(path.join(modelo.raiz, base, decodeURIComponent(href.split('#')[0])));
+        const destino = rutas.unir(modelo.raiz, base, decodeURIComponent(href.split('#')[0]));
         if (!destino.startsWith(modelo.raiz)) return;
         await abrirEnlace(destino);
     }
@@ -2313,7 +2311,7 @@ export class PanelHoy {
             case 'item-enlace': if (m.valor) {
                 const corte = m.valor.lastIndexOf(':');
                 const x = (this.bloquesDatos.get(m.valor.slice(0, corte))?.pagina?.bloques ?? []).flatMap(y => y.items ?? [])[Number(m.valor.slice(corte + 1))];
-                if (x?.enlace) await abrirEnlace(x.enlace, x.reusar);
+                if (x?.enlace) await abrirEnlace(x.enlace);
             } break;
             case 'grupo-item': if (m.valor) {
                 if (this.gruposAbiertos.has(m.valor)) this.gruposAbiertos.delete(m.valor); else this.gruposAbiertos.add(m.valor);
@@ -2378,7 +2376,7 @@ export class PanelHoy {
             case 'abrir-enlace': if (m.valor) await abrirEnlace(m.valor); break;
             case 'abrir-ruta':
                 // una ruta relativa a la raíz de telar (la que traen las notas de un evento)
-                if (m.valor && !m.valor.includes('..') && modelo.raiz) await abrirEnlace(path.join(modelo.raiz, m.valor));
+                if (m.valor && !m.valor.includes('..') && modelo.raiz) await abrirEnlace(rutas.unir(modelo.raiz, m.valor));
                 break;
             case 'tareas': await ui().orden('telar.tareas'); break;
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
@@ -2467,12 +2465,10 @@ function fechaLarga(nombreDia: string, fecha: string): string {
     return `${nombreDia.slice(0, 3)} ${d || ''} ${meses[(m || 1) - 1]}`.trim();
 }
 
-/** Abre un enlace de una página: una URL en el navegador, una ruta local en el editor. Con
- *  `reusar`, primero busca en Chrome una pestaña cuyo título o dirección lo contenga (la de Gmail
- *  de esa cuenta) y abre el enlace ahí; si no hay, en una pestaña nueva. */
-async function abrirEnlace(enlace: string, reusar = ''): Promise<void> {
+/** Abre un enlace de una página: una URL en una pestaña nueva, una ruta de la máquina en la vista de
+ *  carpeta de la página. */
+async function abrirEnlace(enlace: string): Promise<void> {
     if (/^https?:\/\//.test(enlace)) {
-        if (reusar && await enPestanaDeChrome(enlace, reusar)) return;
         await ui().abrirExterno(enlace);
         return;
     }
@@ -2530,40 +2526,6 @@ function htmlMarco(m: cli.JsonMarco): string {
 
 /** Una pestaña del dashboard: [clave, acción, valor, nombre, tecla]. */
 type Pestana = [string, string, string, string, string];
-
-/** En macOS, lleva una pestaña ya abierta de Chrome (la primera cuyo título o dirección contiene
- *  `reusar`) a `url`, y la trae al frente. false si Chrome no está abierto, no hay esa pestaña o
- *  macOS no dio permiso (la primera vez pregunta si VS Code puede controlar Chrome). Los textos van
- *  como argumentos del script, nunca dentro de él. */
-async function enPestanaDeChrome(url: string, reusar: string): Promise<boolean> {
-    if (process.platform !== 'darwin') return false;
-    const script = [
-        'on run argv',
-        '  set destino to item 1 of argv',
-        '  set clave to item 2 of argv',
-        '  if application "Google Chrome" is not running then return "no"',
-        '  tell application "Google Chrome"',
-        '    repeat with w in windows',
-        '      set i to 0',
-        '      repeat with t in tabs of w',
-        '        set i to i + 1',
-        '        if (title of t contains clave) or (URL of t contains clave) then',
-        '          set URL of t to destino',
-        '          set active tab index of w to i',
-        '          set index of w to 1',
-        '          activate',
-        '          return "si"',
-        '        end if',
-        '      end repeat',
-        '    end repeat',
-        '  end tell',
-        '  return "no"',
-        'end run',
-    ].join('\n');
-    return new Promise(resolve => {
-        execFile('osascript', ['-e', script, url, reusar], { timeout: 8000 }, (error, stdout) => resolve(!error && stdout.trim() === 'si'));
-    });
-}
 
 /** La hora de un ítem si es de hoy; si no, el día («21 sep»): en la bandeja hay correos de semanas atrás. */
 function cuandoCorto(fecha: string): string {

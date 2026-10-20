@@ -1,19 +1,14 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
     "target": "ES2022",
-    "lib": [
-      "ES2022"
-    ],
-    "outDir": "out",
-    "rootDir": "src",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
     "strict": true,
-    "sourceMap": false,
-    "skipLibCheck": true
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true
   },
-  "exclude": [
-    "node_modules",
-    "out",
-    "src/navegador"
-  ]
+  "include": ["src/**/*.ts"]
 }

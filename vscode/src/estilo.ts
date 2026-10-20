@@ -1,16 +1,6 @@
-// El estilo: la letra y los colores del terminal, y las piezas de texto que todas las
-// vistas comparten.
-//
-// Las cinco vistas son webviews y no árboles nativos por una sola razón: la API de VS Code
-// no deja cambiarle la letra a un `TreeView`, y aquí la letra importa —esto se mira al lado
-// del terminal y tiene que leerse como una continuación suya, no como otro programa—. Los
-// colores salen de las variables `--vscode-terminal-*` del tema, así que la vista sigue al
-// tema sin saber cuál es; la letra sale de la configuración del terminal, que no se expone
-// como variable CSS.
-
-
-import * as fs from 'fs';
-import * as path from 'path';
+// El estilo: la letra, los colores y las piezas de texto que todas las vistas comparten. La letra es
+// monoespaciada a propósito: esto se mira al lado de la terminal y tiene que leerse como una continuación
+// suya, no como otro programa. Los colores, en media/css/tokens.css.
 
 /** Cómo se dibuja cada atención. Las cuatro palabras son las de `telar atencion`. */
 export const GLIFO: Record<string, string> = { trabajando: '●', espera: '○', termino: '✓' };
@@ -57,43 +47,20 @@ export const limpiarMd = (t: string): string => t.replace(/\*\*/g, '').replace(/
 export const normalizar = (t: string): string =>
     t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-/** La letra de las vistas: la del terminal de VS Code (la da su anfitrión), o una monoespaciada. */
-export interface Letra { familia: string; tam: number; peso: string; altoLinea: number }
-let leerLetra: () => Letra = () => ({ familia: 'Menlo, Consolas, monospace', tam: 13, peso: 'normal', altoLinea: 1 });
-export function usarLetra(f: () => Letra): void { leerLetra = f; }
-
-/** La letra y los colores del terminal de VS Code, como variables CSS. Fuera de VS Code, las
- *  variables `--vscode-*` no existen y rigen los colores de respaldo (los de la página web). */
+/** Los tokens y la base, para la página de una vista: lo que va en su capa `base`. */
 export function estiloBase(): string {
-    const l = leerLetra();
-    const limpio = (t: string) => t.replace(/[<>{};]/g, '');
-    // lo único calculado: la letra de la terminal, como variables; lo demás está en media/css
-    return `:root { --letra: ${limpio(l.familia)}; --tam: ${l.tam}px; --peso: ${limpio(String(l.peso))}; --alto: ${((l.altoLinea || 1) * 1.3).toFixed(2)}; }
-@layer base { ${estilo('tokens')}
+    return `@layer base { ${estilo('tokens')}
 ${estilo('base')} }`;
 }
 
-/** Los estilos viven en media/css/<nombre>.css (se leen una vez y quedan en memoria): archivos de
- *  CSS de verdad, con su resaltado y su linter, que VS Code y la web usan igual. */
+/** Los estilos viven en media/css/<nombre>.css: archivos de CSS de verdad, con su resaltado y su linter.
+ *  Llegan empaquetados como texto (src/navegador/estilos.ts, que va primero en app.ts). */
 const estilos = new Map<string, string>();
-let carpetaCss = '';
-/** En el navegador no hay archivos que leer: los estilos llegan empaquetados (src/navegador). */
 export function usarEstilos(css: Record<string, string>): void {
     for (const [nombre, texto] of Object.entries(css)) estilos.set(nombre, texto);
 }
 export function estilo(nombre: string): string {
-    const guardado = estilos.get(nombre);
-    if (guardado !== undefined) return guardado;
-    if (!carpetaCss) {
-        // de out/, out/vistas o out/web hacia arriba, hasta la carpeta de la extensión
-        let d = __dirname;
-        while (!fs.existsSync(path.join(d, 'media', 'css')) && path.dirname(d) !== d) d = path.dirname(d);
-        carpetaCss = path.join(d, 'media', 'css');
-    }
-    let css = '';
-    try { css = fs.readFileSync(path.join(carpetaCss, `${nombre}.css`), 'utf8'); } catch { /* sin archivo, sin estilo: se nota y se arregla */ }
-    estilos.set(nombre, css);
-    return css;
+    return estilos.get(nombre) ?? '';
 }
 
 /** Un nonce para el CSP de una vista. Quien necesite marcar scripts propios (un lienzo) lo
@@ -109,7 +76,7 @@ export function marco(_webview: { cspSource: string; cspConectar?: string }, css
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${_webview.cspSource} https: data:; frame-src ${[_webview.cspSource, ...marcos].join(' ')}; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';${_webview.cspConectar ? ` connect-src ${_webview.cspConectar};` : ''}">
 <style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${css} }</style></head>
-<body data-vscode-context='{"preventDefaultContextMenuItems": true}'>${cuerpo}
+<body>${cuerpo}
 <script nonce="${nonce}">const vscode = acquireVsCodeApi();
 ${script}</script></body></html>`;
 }

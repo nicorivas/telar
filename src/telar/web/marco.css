@@ -1,32 +1,36 @@
 /* Generado por vscode/scripts/navegador.mjs desde vscode/media/css (tokens, base y marco): no editar aquí. */
 @layer base, vistas;
 @layer base {
-/* Los tokens: colores, tipografía y espacio. Los colores son los del tema de la terminal de VS Code
-   (sus variables --vscode-*) y, fuera de VS Code, catppuccin mocha. Todo lo demás se arma con estos. */
+/* Los tokens: colores, tipografía y espacio. Los colores son catppuccin mocha. Todo lo demás se arma con
+   estos. */
 
 :root {
   /* colores */
-  --fg: var(--vscode-terminal-foreground, var(--vscode-foreground, #cdd6f4));
-  --bg: var(--vscode-terminal-background, var(--vscode-panel-background, var(--vscode-editor-background, #1e1e2e)));
-  --dim: var(--vscode-terminal-ansiBrightBlack, #6c7086);
+  --fg: #cdd6f4;
+  --bg: #1e1e2e;
+  --dim: #6c7086;
   --linea: color-mix(in srgb, var(--fg) 16%, transparent);
-  --sel: var(--vscode-terminal-selectionBackground, rgb(128 128 128 / 25%));
+  --sel: rgb(128 128 128 / 25%);
   --hover: color-mix(in srgb, var(--fg) 7%, transparent);
-  --azul: var(--vscode-terminal-ansiBlue, #89b4fa);
-  --amarillo: var(--vscode-terminal-ansiYellow, #f9e2af);
-  --verde: var(--vscode-terminal-ansiGreen, #a6e3a1);
-  --rojo: var(--vscode-terminal-ansiRed, #f38ba8);
-  --magenta: var(--vscode-terminal-ansiBrightMagenta, #f5c2e7);
-  --cian: var(--vscode-terminal-ansiCyan, #94e2d5);
-  --violeta: var(--vscode-terminal-ansiMagenta, #cba6f7);
+  --azul: #89b4fa;
+  --amarillo: #f9e2af;
+  --verde: #a6e3a1;
+  --rojo: #f38ba8;
+  --magenta: #f5c2e7;
+  --cian: #94e2d5;
+  --violeta: #cba6f7;
   /* lo que completa los 16 colores de una terminal (xterm, en la página) y el fondo de una barra */
-  --negro: var(--vscode-terminal-ansiBlack, #45475a);
-  --blanco: var(--vscode-terminal-ansiWhite, #bac2de);
-  --blanco-claro: var(--vscode-terminal-ansiBrightWhite, #a6adc8);
-  --cursor: var(--vscode-terminalCursor-foreground, #f5e0dc);
-  --bg-barra: var(--vscode-sideBar-background, #181825);
+  --negro: #45475a;
+  --blanco: #bac2de;
+  --blanco-claro: #a6adc8;
+  --cursor: #f5e0dc;
+  --bg-barra: #181825;
 
-  /* tipografía: una sola letra (la de la terminal) y una escala corta */
+  /* tipografía: una sola letra, monoespaciada como la de la terminal, y una escala corta */
+  --letra: Menlo, Consolas, monospace;
+  --tam: 13px;
+  --peso: normal;
+  --alto: 1.3;
   --t-chica: .85em;
   --t-menor: .9em;
   --t-normal: 1em;
@@ -87,15 +91,7 @@ a {
    scripts/navegador.mjs lo junta con tokens.css y base.css en src/telar/web/marco.css, que la página
    carga antes que app.js: así se ve armada desde el primer momento. */
 
-/* la letra: la misma que usan las vistas (la `Letra` por defecto de estilo.ts) */
-:root {
-  --letra: Menlo, Consolas, monospace;
-  --tam: 13px;
-  --peso: normal;
-  --alto: 1.3;
-
-  color-scheme: dark;
-}
+:root { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 

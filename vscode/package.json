@@ -9,15 +9,14 @@
     "directory": "vscode"
   },
   "scripts": {
-    "tipos": "tsc -p tsconfig.navegador.json && tsc -p . --noEmit",
-    "navegador": "tsc -p tsconfig.navegador.json && node scripts/navegador.mjs --min",
+    "tipos": "tsc -p .",
+    "navegador": "tsc -p . && node scripts/navegador.mjs --min",
     "navegador:watch": "node scripts/navegador.mjs --watch --min",
     "lint:css": "stylelint \"media/css/*.css\"",
     "prueba:eco": "node pruebas/eco.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
-    "@types/node": "^22.0.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/headless": "^6.0.0",
     "@xterm/xterm": "^6.0.0",

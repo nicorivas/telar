@@ -247,9 +247,6 @@ export class BarraHilos {
 
     /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
     private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = '', grupo = ''): string {
-        const contexto = esc(JSON.stringify({
-            webviewSection: seccion, hilo: h.nombre, preventDefaultContextMenuItems: true,
-        }));
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
@@ -263,7 +260,7 @@ export class BarraHilos {
         const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
         const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
-        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" data-vscode-context="${contexto}" title="${esc(this.tooltip(h))}">`
+        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `${glifo}${remoto}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo

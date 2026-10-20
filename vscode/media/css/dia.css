@@ -55,9 +55,7 @@ h2 small { font-weight: normal; text-transform: none; color: var(--dim); margin-
 .at { flex: none; width: 1ch; } .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
 .nombre { min-width: 20ch; }
 #globo { position: fixed; z-index: 10; pointer-events: none; white-space: pre-wrap; max-width: min(60ch, calc(100vw - 3ch));
-         padding: 0 1ch; background: var(--vscode-editorHoverWidget-background, #1e1e2e);
-         color: var(--vscode-editorHoverWidget-foreground, var(--fg));
-         border: 1px solid var(--vscode-editorHoverWidget-border, var(--linea));
+         padding: 0 1ch; background: var(--bg); color: var(--fg); border: var(--borde);
          box-shadow: 0 2px 8px rgb(0 0 0 / 35%); }
 .md-pag p { margin: 0; white-space: normal; } .md-pag ul { margin: 0; padding-left: 2ch; }
 .md-pag code, .texto-pag code { color: var(--verde); }

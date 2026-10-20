@@ -1,6 +1,5 @@
-// Empaqueta el dashboard para el navegador (src/navegador/app.ts) en src/telar/web/app.js, el archivo que
-// sirve `telar serve --web`. Los módulos de Node que importan las vistas se reemplazan por los de
-// src/navegador/nodo (en el navegador no hay archivos ni procesos), y los estilos se cargan como texto.
+// Empaqueta la página (src/navegador/app.ts) en src/telar/web/app.js, el archivo que sirve
+// `telar serve --web`. Los estilos se cargan como texto.
 // Y arma src/telar/web/marco.css (el marco de la página: tokens, base y marco) y src/telar/web/eco.js (el eco
 // de la terminal, src/navegador/eco).
 //
@@ -13,10 +12,8 @@ import path from 'node:path';
 import { readFileSync, watch, writeFileSync } from 'node:fs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
-const nodo = path.join(aqui, '..', 'src', 'navegador', 'nodo');
 const carpetaCss = path.join(aqui, '..', 'media', 'css');
 const web = path.join(aqui, '..', '..', 'src', 'telar', 'web');
-const reemplazos = { fs: 'fs.ts', path: 'path.ts', child_process: 'child_process.ts', os: 'os.ts', http: 'vacio.ts', crypto: 'vacio.ts' };
 const mirar = process.argv.includes('--watch');
 const hora = () => new Date().toTimeString().slice(0, 8);
 
@@ -34,16 +31,8 @@ const ctx = await context({
     bundle: true, format: 'iife', platform: 'browser', target: 'es2022',
     minify: process.argv.includes('--min'), sourcemap: false, legalComments: 'none',
     loader: { '.css': 'text' },
-    // `process` lo leen los módulos de Node al cargarse (cli.ts): en el navegador, uno vacío
-    banner: { js: 'var __dirname = "/", __filename = "/app.js"; var process = globalThis.process || { env: {}, platform: "navegador", cwd: function () { return "/"; } };' },
-    plugins: [{
-        name: 'node-en-el-navegador',
-        setup(b) {
-            b.onResolve({ filter: /^(node:)?(fs|path|child_process|os|http|crypto)$/ }, a => ({ path: path.join(nodo, reemplazos[a.path.replace(/^node:/, '')]) }));
-            // con --watch, cada vuelta dice cómo le fue (los errores ya los imprime esbuild)
-            if (mirar) b.onEnd(r => console.log(`${hora()} app.js ${r.errors.length ? `con ${r.errors.length} error(es)` : 'listo'}`));
-        },
-    }],
+    // con --watch, cada vuelta dice cómo le fue (los errores ya los imprime esbuild)
+    plugins: mirar ? [{ name: 'avisar', setup(b) { b.onEnd(r => console.log(`${hora()} app.js ${r.errors.length ? `con ${r.errors.length} error(es)` : 'listo'}`)); } }] : [],
     logLevel: 'warning',
 });
 
