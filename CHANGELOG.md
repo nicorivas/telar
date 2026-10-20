@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- Predictive local echo in the browser terminal, like mosh: what you type appears at once, dim, and is
+  reconciled when the server's echo arrives. It is VS Code's terminal typeahead addon (MIT), adapted in
+  `vscode/src/navegador/eco` and bundled as `src/telar/web/eco.js`; it turns itself on above 30 ms of latency
+  while its predictions keep being right. The terminal gets the focus again; the box below stays, a click away.
 - A box under each thread's terminal in the browser: you type locally, with no per-key round trip (and no
   flicker from Claude redrawing its input on every letter); ⏎ sends it whole as a paste, ⇧⏎ is a new line;
   with the box empty, ⏎ ⎋ ↑ ↓ go straight to the terminal. A click on the terminal types into it directly.

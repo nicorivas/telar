@@ -373,7 +373,7 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
 <link rel="stylesheet" href="${xterm}/xterm.css">
 <style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('terminal')} }</style>
-<script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script>
+<script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script><script src="/estatico/eco.js"></script>
 </head><body><div id="t"></div>
 <form id="escribir"><textarea id="texto" rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea><span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>
 <script nonce="${nonce}">
@@ -387,6 +387,10 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
       black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
       brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
   var fit = new FitAddon.FitAddon(); term.loadAddon(fit);
+  // el eco predictivo (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor
+  // lo confirma (src/navegador/eco). Lo que llega pasa primero por él
+  var eco = window.telarEco ? window.telarEco.conEco(term) : null;
+  function escribir(datos) { if (eco) eco.escribir(datos); else term.write(datos); }
   var caja = document.getElementById('t'); term.open(caja); fit.fit();
   var hilo = ${JSON.stringify(rutas.hilo ?? '').replace(/</g, '\\u003c')} || new URLSearchParams(location.search).get('hilo') || '';
   // un hilo de otra máquina: la página de aquí la reenvía a la de allá (telar.terminal.reenviar)
@@ -408,10 +412,10 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
     ws = new WebSocket(direccion());
     ws.onopen = function () {
       // la vista nueva redibuja la pantalla entera: lo de antes se borra para que no quede mezclado
-      if (intento) term.reset();
+      if (intento) { term.reset(); if (eco) eco.reiniciar(); }
       intento = 0; conectada = true;
     };
-    ws.onmessage = function (e) { term.write(e.data); };
+    ws.onmessage = function (e) { escribir(e.data); };
     ws.onclose = function () {
       if (conectada) term.write('\\r\\n\\x1b[2m[se cortó la conexión con la terminal: reconectando…]\\x1b[0m');
       conectada = false;
@@ -424,9 +428,8 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   function teclear(d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }
   term.onData(teclear);
 
-  // la caja: se escribe aquí, sin el viaje de ida y vuelta de cada tecla (ni el parpadeo de Claude
-  // redibujando su caja con cada letra); ⏎ lo manda entero, como un pegado, y después un ⏎. Con la caja
-  // vacía, ⏎ ⎋ ↑ ↓ van directo (los diálogos de Claude, interrumpirlo). Un clic en la terminal teclea en ella
+  // la caja, a un clic: se escribe aquí entero, sin que Claude redibuje con cada letra; ⏎ lo manda como un
+  // pegado, y después un ⏎. Con la caja vacía, ⏎ ⎋ ↑ ↓ van directo (los diálogos de Claude, interrumpirlo)
   var texto = document.getElementById('texto');
   function crecer() { texto.style.height = 'auto'; texto.style.height = texto.scrollHeight + 'px'; fit.fit(); }
   texto.addEventListener('input', crecer);
@@ -449,9 +452,9 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
     fit.fit();
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
   }).observe(caja);
-  // al volver a esta terminal, se escribe en la caja
-  window.addEventListener('focus', function () { if (document.activeElement !== texto && !document.querySelector('.xterm-helper-textarea:focus')) texto.focus(); });
-  texto.focus();
+  // al volver a esta terminal, se escribe en ella (con el eco, sin esperar); la caja queda a un clic
+  window.addEventListener('focus', function () { if (document.activeElement !== texto) term.focus(); });
+  term.focus();
 })();
 </script></body></html>`;
 }
