@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- Opening a file or a folder from the browser dashboard (a project's README, its folder, a local link) shows it
+  in the page (`arch:<ruta>`, the same view as a thread's folder, based on the repository root and never
+  outside it); what is not text (a PDF, an image, a large file) gets a «bajar» link (`GET /archivos/bajar`,
+  with `/archivos`' limits). `GET /hilos/documento` works without a thread.
 - «Go to a thread» from the browser dashboard shows it in the page (it used to move tmux's focus, which only a
   terminal attached to the session would see), and «back to the terminal» after opening a thread or handing
   it something shows the thread the action left in front.

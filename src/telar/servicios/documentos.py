@@ -5,7 +5,11 @@ Nada fuera de la carpeta del hilo (tampoco por un enlace simbólico que apunte a
 `node_modules`, y hasta 1 MB por archivo. Un `.md` va como markdown (la página lo convierte); el resto,
 como texto; un binario no se muestra.
 
-Lo usa `GET /hilos/documento` de la API (la vista `doc:<hilo>` de la página).
+Sin hilo, la base es la raíz del repositorio (`[telar] raiz`): un archivo o una carpeta cualquiera de ahí, lo que
+el dashboard abre (un README, la carpeta de un proyecto). Lo que no se muestra (un binario, uno grande) trae
+`descarga`, su ruta, para bajarlo (`GET /archivos/bajar`).
+
+Lo usa `GET /hilos/documento` de la API (las vistas `doc:<hilo>` y `arch:<ruta>` de la página).
 """
 
 from __future__ import annotations
@@ -34,13 +38,17 @@ class Documento(BaseModel):
     archivos: list[Entrada] = []
     markdown: str = ""
     texto: str = ""
+    #: la ruta del archivo elegido cuando no se muestra (binario o grande): para bajarlo
+    descarga: str = ""
 
 
 def _dentro(p: Path, base: Path) -> bool:
     return p == base or base in p.parents
 
 
-def documento(ctx, hilo: str, archivo: str = "") -> Documento:
+def documento(ctx, hilo: str = "", archivo: str = "") -> Documento:
+    if not hilo:
+        return _en_la_raiz(ctx, archivo)
     from telar.servicios import ErrorDeServicio
     from telar.servicios import fichas
 
@@ -60,9 +68,22 @@ def documento(ctx, hilo: str, archivo: str = "") -> Documento:
         elegido = Path(ficha["documento"]).resolve()
     else:
         elegido = None
+    return _leer(hilo, titulo, base, elegido)
+
+
+def _en_la_raiz(ctx, archivo: str) -> Documento:
+    """Un archivo o una carpeta de la raíz del repositorio (`archivo`: absoluto o relativo a ella)."""
+    base = Path(ctx.config.raiz).expanduser().resolve()
+    elegido = (base / archivo).resolve() if archivo else base
+    titulo = os.path.relpath(elegido, base) if elegido != base and (base in elegido.parents) else base.name
+    return _leer("", titulo, base, elegido)
+
+
+def _leer(hilo: str, titulo: str, base: Path, elegido: Path | None) -> Documento:
     # resolve() ya siguió los enlaces: si apunta afuera, se nota aquí
     if elegido is not None and not _dentro(elegido, base):
-        return Documento(hilo=hilo, titulo=titulo, error="ese archivo no es de la carpeta del hilo")
+        return Documento(hilo=hilo, titulo=titulo, error="ese archivo no es de la carpeta del hilo" if hilo
+                         else "ese archivo está fuera de la raíz del repositorio")
     es_carpeta = elegido is not None and elegido.is_dir()
     carpeta = elegido if es_carpeta else elegido.parent if elegido is not None else base
     try:
@@ -83,10 +104,12 @@ def documento(ctx, hilo: str, archivo: str = "") -> Documento:
         return doc
     if tamano > TOPE:
         doc.texto = f"pesa {round(tamano / 1024)} KB: no se muestra aquí"
+        doc.descarga = str(elegido)
         return doc
     crudo = elegido.read_bytes()
     if b"\0" in crudo:
         doc.texto = "es un archivo binario: no se muestra aquí"
+        doc.descarga = str(elegido)
     elif elegido.suffix.lower() == ".md":
         doc.markdown = crudo.decode("utf-8", "replace")
     else:

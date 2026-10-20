@@ -536,8 +536,9 @@ from telar.servicios import documentos as servicio_documentos
 
 
 @app.get("/hilos/documento", response_model=servicio_documentos.Documento)
-def get_documento(hilo: str, archivo: str = "", ctx: Contexto = Depends(contexto)):
-    """La carpeta de un hilo y uno de sus archivos (su documento, si no se pide otro), para leerlos."""
+def get_documento(hilo: str = "", archivo: str = "", ctx: Contexto = Depends(contexto)):
+    """La carpeta de un hilo y uno de sus archivos (su documento, si no se pide otro), para leerlos. Sin hilo,
+    un archivo o una carpeta de la raíz del repositorio."""
     return servicio_documentos.documento(ctx, hilo, archivo)
 
 
@@ -618,6 +619,15 @@ def get_archivos_md(carpeta: str, hondo: int = 3, ctx: Contexto = Depends(contex
 class PedidoArchivo(BaseModel):
     ruta: str
     texto: str
+
+
+@app.get("/archivos/bajar")
+def get_bajar(ruta: str, ctx: Contexto = Depends(contexto)):
+    """Un archivo entero, para bajarlo (lo que la página no muestra)."""
+    from fastapi.responses import FileResponse
+
+    p = servicio_archivos.para_bajar(ctx, ruta)
+    return FileResponse(p, filename=p.name)
 
 
 @app.put("/archivos", response_model=servicio_archivos.Escrito)

@@ -45,3 +45,37 @@ class LaCarpetaDeUnHilo(Prueba):
     def test_nada_fuera_de_la_carpeta(self):
         for ruta in ("../secreto.txt", "docs/../../secreto.txt", "atajo.txt"):
             self.assertIn("no es de la carpeta", documentos.documento(None, "faro", ruta).error)
+
+
+class UnArchivoDeLaRaiz(Prueba):
+    """Sin hilo: un archivo o una carpeta cualquiera del repositorio (lo que abre el dashboard), sin salir de él."""
+
+    def setUp(self):
+        super().setUp()
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        self.raiz = Path(d.name) / "repo"
+        (self.raiz / "proyectos" / "faro").mkdir(parents=True)
+        (self.raiz / "proyectos" / "faro" / "README.md").write_text("# Faro\n")
+        (self.raiz / "proyectos" / "faro" / "plano.pdf").write_bytes(b"%PDF\x00binario")
+        (Path(d.name) / "secreto.txt").write_text("no")
+        self.ctx = SimpleNamespace(config=SimpleNamespace(raiz=self.raiz, apps=()))
+
+    def test_un_archivo_por_su_ruta_absoluta_o_relativa(self):
+        for ruta in (str(self.raiz / "proyectos" / "faro" / "README.md"), "proyectos/faro/README.md"):
+            d = documentos.documento(self.ctx, "", ruta)
+            self.assertEqual((d.titulo, d.archivo, d.markdown, d.error), ("proyectos/faro/README.md", "proyectos/faro/README.md", "# Faro\n", ""))
+
+    def test_una_carpeta_y_lo_que_no_es_texto_se_baja(self):
+        d = documentos.documento(self.ctx, "", "proyectos/faro")
+        self.assertEqual([a.nombre for a in d.archivos], ["plano.pdf", "README.md"])
+        b = documentos.documento(self.ctx, "", "proyectos/faro/plano.pdf")
+        self.assertEqual(b.descarga, str((self.raiz / "proyectos" / "faro" / "plano.pdf").resolve()))
+        from telar.servicios import archivos
+        self.assertEqual(archivos.para_bajar(self.ctx, b.descarga).name, "plano.pdf")
+
+    def test_nada_fuera_de_la_raiz(self):
+        self.assertIn("fuera de la raíz", documentos.documento(self.ctx, "", "../secreto.txt").error)
+        from telar.servicios import ErrorDeServicio, archivos
+        with self.assertRaises(ErrorDeServicio):
+            archivos.para_bajar(self.ctx, str(self.raiz.parent / "secreto.txt"))

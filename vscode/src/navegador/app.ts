@@ -94,7 +94,7 @@ function nuevoMarco(clave: string, donde: HTMLElement): HTMLIFrameElement {
     const f = document.createElement('iframe');
     f.dataset.p = clave;
     f.title = clave;
-    f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals');
+    f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads');
     donde.appendChild(f);
     return f;
 }
@@ -180,7 +180,7 @@ const guardado: Guardado = {
 const modo: Record<string, 'term' | 'conv'> = {};
 const angosto = () => document.body.classList.contains('angosto');
 function forma(que: string): '' | 'term' | 'conv' {
-    if (que === 'dashboard' || que === 'compartir' || que.startsWith('doc:')) return '';
+    if (que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:')) return '';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
@@ -200,9 +200,10 @@ function mostrar(que: string): void {
     } else {
         const como = forma(que), llave = como ? `${como}:${que}` : que;
         f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === llave);
-        if (que.startsWith('doc:') || que === 'compartir') {
+        if (que.startsWith('doc:') || que.startsWith('arch:') || que === 'compartir') {
             f ??= nuevoMarco(llave, marcos());
             if (que === 'compartir') f.srcdoc = paginaCompartir(Math.random().toString(36).slice(2), { consulta: location.search });
+            else if (que.startsWith('arch:')) void verDocumento(f, '', que.slice(5));
             else void verDocumento(f, que.slice(4), '');
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
@@ -231,7 +232,8 @@ function mostrar(que: string): void {
     // `scp máquina:ruta`; con la persona sería «nico@laptop:Telar»). Lo muestra la cabecera (indice.html)
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
     const nombre = remoto ? remoto
-        : que.startsWith('doc:') ? `${que.slice(4)} · carpeta` : que;
+        : que.startsWith('doc:') ? `${que.slice(4)} · carpeta`
+        : que.startsWith('arch:') ? relativa(que.slice(5)) : que;
     window.telar?.donde?.(que === 'dashboard' ? null : { texto: nombre, otraMaquina: !!remoto });
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
     document.body.classList.remove('en-lista');
@@ -293,8 +295,10 @@ const anfitrion: Anfitrion = {
     },
     abrirExterno: async url => { window.open(url, '_blank', 'noopener'); },
     // un archivo o una carpeta viven en la máquina, no en el navegador: por ahora se dice
-    abrirArchivo: async ruta => { aLaPagina({ __aviso: `${ruta}: abrir archivos desde el navegador viene después`, nivel: 'aviso' }); },
-    mostrarCarpeta: async ruta => { aLaPagina({ __aviso: `${ruta}: abrir carpetas desde el navegador viene después`, nivel: 'aviso' }); },
+    // un archivo o una carpeta del repositorio: en la página (la vista de carpeta, `arch:<ruta>`), sin salir de
+    // la raíz; lo que no es texto trae un enlace para bajarlo
+    abrirArchivo: async ruta => { mostrar(`arch:${ruta}`); },
+    mostrarCarpeta: async ruta => { mostrar(`arch:${ruta}`); },
     copiar: async texto => { try { await navigator.clipboard.writeText(texto); } catch { /* sin permiso */ } },
     markdown: async texto => md.render(texto),
     // ir a un hilo: telar lo crea o lo revive si hace falta (`telar ir`), y la página lo muestra a la derecha
@@ -351,6 +355,12 @@ const otras = async () => {
 };
 void otras();
 setInterval(() => void otras(), 30 * 1000);
+
+/** Una ruta, relativa a la raíz del repositorio si está adentro (para el título). */
+function relativa(ruta: string): string {
+    const raiz = (modelo.raiz || '').replace(/\/$/, '');
+    return raiz && ruta.startsWith(raiz + '/') ? ruta.slice(raiz.length + 1) : ruta;
+}
 
 /** La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), en su marco. Los enlaces de la
  *  página (a otro archivo, a la carpeta de arriba) no navegan: se leen aquí y se vuelve a dibujar. */

@@ -110,6 +110,17 @@ def leer(ctx, ruta: str) -> Archivo:
                    recortado=len(datos) > TOPE_LEER)
 
 
+def para_bajar(ctx, ruta: str) -> Path:
+    """Un archivo para bajarlo entero (lo que la página no muestra: un binario, uno grande): los mismos límites
+    que `leer` (la raíz, lo que declaran las apps, los lienzos entregados), sin tope de tamaño."""
+    p = _resolver(ctx, ruta)
+    if not (_bajo_raiz(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
+        raise ErrorDeServicio(f"{ruta}: fuera de la raíz y de las apps declaradas", 403)
+    if not p.is_file():
+        raise ErrorDeServicio(f"no hay {ruta}", 404)
+    return p
+
+
 def buscar_md(ctx, carpeta: str, hondo: int = 3) -> Hallados:
     base = _resolver(ctx, carpeta)
     if not _bajo_raiz(ctx, base):

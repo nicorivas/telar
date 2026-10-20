@@ -142,6 +142,8 @@ export interface Documento {
     archivos?: { nombre: string; ruta: string }[];
     /** el archivo, ya convertido (markdown) o como texto */
     html?: string; texto?: string;
+    /** la ruta del archivo cuando no se muestra (un binario, uno grande): se ofrece bajarlo */
+    descarga?: string;
 }
 
 const escHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -156,7 +158,9 @@ export function paginaDocumento(nonce: string, d: Documento): string {
             + (d.subir !== undefined ? enlace(d.subir, '../', 'dir') : '')
             + (d.archivos ?? []).map(a => enlace(a.ruta, a.nombre, `${a.nombre.endsWith('/') ? 'dir' : ''}${a.ruta === d.archivo ? ' sel' : ''}`)).join('')
             + `</nav>`
-            + (d.archivo ? `<article><div class="donde">${escHtml(d.archivo)}</div>${d.html ? `<div class="md">${d.html}</div>` : `<pre>${escHtml(d.texto ?? '')}</pre>`}</article>` : '');
+            + (d.archivo ? `<article><div class="donde">${escHtml(d.archivo)}</div>${d.html ? `<div class="md">${d.html}</div>` : `<pre>${escHtml(d.texto ?? '')}</pre>`}`
+                + (d.descarga ? `<p><a href="/api/archivos/bajar?ruta=${encodeURIComponent(d.descarga)}" download>bajar ${escHtml(d.archivo.split('/').pop() ?? '')}</a></p>` : '')
+                + '</article>' : '');
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:;">
