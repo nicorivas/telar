@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- A box under each thread's terminal in the browser: you type locally, with no per-key round trip (and no
+  flicker from Claude redrawing its input on every letter); ⏎ sends it whole as a paste, ⇧⏎ is a new line;
+  with the box empty, ⏎ ⎋ ↑ ↓ go straight to the terminal. A click on the terminal types into it directly.
+  The terminal's cursor no longer blinks (Claude Code draws its own).
 - A thread's terminal in the browser reconnects by itself when its connection drops (the laptop slept, the
   network changed, telar restarted): after 1 s, then backing off to every 15 s, and at once when the tab or
   the network comes back; it redraws the screen on reconnecting. It used to stay closed until a reload.

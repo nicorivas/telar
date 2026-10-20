@@ -12,9 +12,10 @@ import ficha from '../../media/css/ficha.css';
 import hilos from '../../media/css/hilos.css';
 import plan from '../../media/css/plan.css';
 import proyectos from '../../media/css/proyectos.css';
+import terminal from '../../media/css/terminal.css';
 import tokens from '../../media/css/tokens.css';
 import webCss from '../../media/css/web.css';
 
-usarEstilos({ ahora, base, compartir, conversacion, dia, documento, ficha, hilos, plan, proyectos, tokens, web: webCss });
+usarEstilos({ ahora, base, compartir, conversacion, dia, documento, ficha, hilos, plan, proyectos, terminal, tokens, web: webCss });
 
 export const web = webCss;

@@ -372,15 +372,17 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
 <link rel="stylesheet" href="${xterm}/xterm.css">
-<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { html, body { height: 100%; } #t { position: absolute; inset: 0; padding: var(--e-1) 0 0 var(--h-1); } }</style>
+<style>@layer base, vistas;\n${estiloBase()}\n@layer vistas { ${estilo('terminal')} }</style>
 <script src="${xterm}/xterm.js"></script><script src="${xterm}/addon-fit.js"></script>
 </head><body><div id="t"></div>
+<form id="escribir"><textarea id="texto" rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea><span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>
 <script nonce="${nonce}">
 (function () {
   // los colores, de los tokens (media/css/tokens.css): los mismos del resto de la página
   var css = getComputedStyle(document.documentElement);
   function t(nombre) { return css.getPropertyValue('--' + nombre).trim(); }
-  var term = new Terminal({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: true, allowProposedApi: false,
+  // sin parpadeo: Claude Code dibuja su propio cursor, y uno que además parpadea molesta al escribir
+  var term = new Terminal({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: false, allowProposedApi: false,
     theme: { background: t('bg'), foreground: t('fg'), cursor: t('cursor'), selectionBackground: t('negro'),
       black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
       brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
@@ -419,13 +421,37 @@ export function paginaTerminal(nonce: string, rutas: { hilo?: string; maquina?: 
   conectar();
   document.addEventListener('visibilitychange', function () { if (!document.hidden && !conectada) { intento = 0; conectar(); } });
   window.addEventListener('online', function () { if (!conectada) { intento = 0; conectar(); } });
-  term.onData(function (d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); });
+  function teclear(d) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ d: d })); }
+  term.onData(teclear);
+
+  // la caja: se escribe aquí, sin el viaje de ida y vuelta de cada tecla (ni el parpadeo de Claude
+  // redibujando su caja con cada letra); ⏎ lo manda entero, como un pegado, y después un ⏎. Con la caja
+  // vacía, ⏎ ⎋ ↑ ↓ van directo (los diálogos de Claude, interrumpirlo). Un clic en la terminal teclea en ella
+  var texto = document.getElementById('texto');
+  function crecer() { texto.style.height = 'auto'; texto.style.height = texto.scrollHeight + 'px'; fit.fit(); }
+  texto.addEventListener('input', crecer);
+  texto.addEventListener('keydown', function (e) {
+    if (e.isComposing) return;
+    var vacia = texto.value === '';
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (vacia) { teclear('\\r'); return; }
+      teclear('\\u001b[200~' + texto.value.replace(/\\s+$/, '') + '\\u001b[201~');
+      setTimeout(function () { teclear('\\r'); }, 120);
+      texto.value = ''; crecer();
+    } else if (e.key === 'Escape') {
+      e.preventDefault(); teclear('\\u001b');
+    } else if (vacia && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault(); teclear(e.key === 'ArrowUp' ? '\\u001b[A' : '\\u001b[B');
+    }
+  });
   new ResizeObserver(function () {
     fit.fit();
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ r: [term.cols, term.rows] }));
   }).observe(caja);
-  window.addEventListener('focus', function () { term.focus(); });
-  term.focus();
+  // al volver a esta terminal, se escribe en la caja
+  window.addEventListener('focus', function () { if (document.activeElement !== texto && !document.querySelector('.xterm-helper-textarea:focus')) texto.focus(); });
+  texto.focus();
 })();
 </script></body></html>`;
 }
