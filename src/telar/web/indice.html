@@ -51,6 +51,16 @@ angosto.addEventListener('change', ajustar); ajustar();
 json('/api/salud').then((s) => { $('#maquina').textContent = `telar ${s.version}`; }).catch(() => { $('#maquina').textContent = 'sin API'; });
 // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+// modo desarrollo (`telar serve --web --dev`, scripts/dev.py): recargar cuando cambian los archivos de la
+// página, y cuando el servidor vuelve después de reiniciarse (cambió el Python). Sin --dev, la ruta no existe
+// (un 404) y el navegador deja de intentar
+try {
+  const dev = new EventSource('/dev/cambios');
+  let caido = false;
+  dev.onmessage = () => location.reload();
+  dev.onopen = () => { if (caido) location.reload(); };
+  dev.onerror = () => { if (dev.readyState === EventSource.CLOSED) dev.close(); else caido = true; };
+} catch (e) { /* sin EventSource */ }
 const app = document.createElement('script'); app.src = '/estatico/app.js';
 app.onerror = () => window.telar.verProgreso();
 document.body.append(app);

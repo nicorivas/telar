@@ -701,7 +701,8 @@
     "publish:marketplace": "vsce publish",
     "publish:openvsx": "ovsx publish",
     "lint:css": "stylelint \"media/css/*.css\"",
-    "navegador": "tsc -p tsconfig.navegador.json && node scripts/navegador.mjs --min"
+    "navegador": "tsc -p tsconfig.navegador.json && node scripts/navegador.mjs --min",
+    "navegador:watch": "node scripts/navegador.mjs --watch --min"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

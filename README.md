@@ -138,6 +138,8 @@ Docs are in Spanish, the language this is written in.
   another agent would have to do to integrate.
 - [`docs/publicar.md`](docs/publicar.md) — how a version gets out: what to set up
   once, and the runbook per release.
+- [`docs/desarrollar.md`](docs/desarrollar.md) — seeing a change at once while working
+  (`scripts/dev.py`), and deploying it to your machines (`servidor/desplegar.sh`).
 - [`ejemplo/`](ejemplo/) — a small invented workspace.
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, version by version.
 

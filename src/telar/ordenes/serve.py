@@ -6,7 +6,8 @@
                                     cualquier usuario de ella alcanzaría el puerto)
     telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
     telar serve --web               además, la página de telar (telar.api_web) en la IP de Tailscale, puerto
-                                    8780 (--web-puerto), con la llave de la página (~/.config/telar/panel.llave)
+                                    8780 (--web-puerto), con la llave de la página (~/.config/telar/panel.llave);
+                                    con --dev, la página se recarga sola al cambiar sus archivos (scripts/dev.py)
     telar serve --nodo              además, el nodo del bus (lo que hace `telar nodo`), en el mismo proceso:
                                     una máquina, un proceso; y los pedidos al bus de la API van por su
                                     conexión, que queda abierta
@@ -33,12 +34,14 @@ AYUDA = "La API de telar: los mismos datos que la CLI, por HTTP, desde un proces
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("serve", AYUDA)
     p.epilog = __doc__
-    p.add_argument("--socket", default="", help="el socket Unix (por defecto, <estado>/serve.sock)")
+    p.add_argument("--socket", default="", help="el socket Unix (por defecto, ~/.local/state/telar/serve/telar.sock)")
     p.add_argument("--puerto", type=int, default=0, help="en TCP, en 127.0.0.1, en vez del socket")
     p.add_argument("--equipo", action="store_true", help="además, la página del equipo ([equipo]), en Tailscale")
     p.add_argument("--nodo", action="store_true", help="además, el nodo del bus (`telar nodo`), en el mismo proceso")
     p.add_argument("--web", action="store_true", help="además, la página de telar en el navegador, en Tailscale")
     p.add_argument("--web-puerto", dest="web_puerto", type=int, default=8780, help="con --web: el puerto")
+    p.add_argument("--dev", action="store_true",
+                   help="con --web: la página se recarga sola cuando cambian sus archivos (scripts/dev.py)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -69,7 +72,7 @@ def main(argv: list[str], ctx) -> int:
         from telar.ordenes.equipo import ip_de_tailscale
 
         host = ip_de_tailscale() or "127.0.0.1"
-        otros.append(uvicorn.Config(api_web.crear(api.app), host=host, port=o.web_puerto, log_level="warning"))
+        otros.append(uvicorn.Config(api_web.crear(api.app, dev=o.dev), host=host, port=o.web_puerto, log_level="warning"))
         print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
     equipo = otros
     nodo = None

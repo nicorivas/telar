@@ -11,6 +11,7 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
     GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
     WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí
+    GET  /dev/cambios       solo con `--dev`: avisa (server-sent events) cuando cambian los archivos de la página
     *    /api/…             la API de esta máquina (la misma de `telar serve`), detrás de la llave
 """
 
@@ -22,7 +23,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 #: la cookie de la llave: el mismo nombre que usaba el panel en Node, para que una app ya instalada siga entrando
@@ -80,7 +81,32 @@ def _cache(ruta: str) -> str:
     return "no-store"
 
 
-def crear(api_app, clave: str | None = None) -> FastAPI:
+#: lo que, al cambiar, recarga la página en modo desarrollo (lo rehace `npm run navegador:watch`)
+VIGILADOS = ("app.js", "marco.css", "indice.html")
+
+
+async def _cambios():
+    """Un evento cada vez que cambia un archivo de la página; un latido cada 15 s para que nadie corte."""
+    import asyncio
+
+    def firma():
+        return tuple((CARPETA / n).stat().st_mtime_ns if (CARPETA / n).exists() else 0 for n in VIGILADOS)
+
+    antes, quieto = firma(), 0.0
+    yield ": hola\n\n"
+    while True:
+        await asyncio.sleep(0.3)
+        quieto += 0.3
+        ahora = firma()
+        if ahora != antes:
+            antes, quieto = ahora, 0.0
+            yield "data: cambio\n\n"
+        elif quieto >= 15:
+            quieto = 0.0
+            yield ": latido\n\n"
+
+
+def crear(api_app, clave: str | None = None, dev: bool = False) -> FastAPI:
     clave = clave or llave()
     app = FastAPI(title="telar web", docs_url=None, redoc_url=None, openapi_url=None)
     # comprimido: el JS de la página y de xterm baja a un cuarto, y el JSON de la API también
@@ -136,6 +162,11 @@ def crear(api_app, clave: str | None = None) -> FastAPI:
 
         await ws.accept()
         await mod_terminal.puente(ws, hilo, cols, rows)
+
+    if dev:
+        @app.get("/dev/cambios")
+        def cambios():
+            return StreamingResponse(_cambios(), media_type="text/event-stream")
 
     app.mount("/estatico", StaticFiles(directory=CARPETA), name="estatico")
     app.mount("/api", api_app)

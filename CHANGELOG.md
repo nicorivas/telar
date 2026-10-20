@@ -50,6 +50,10 @@ workflow refuses to run if the two disagree.
   memory): files under the root, those an app declares, and the lienzos of pages the API itself served;
   writing only a lienzo's `.json` memory. The panel reads through a `Disco` interface (fs in Node, the API
   in the browser).
+- `scripts/dev.py` (`docs/desarrollar.md`): esbuild watching the page's TypeScript and CSS, plus a separate
+  `telar serve --web --dev` on port 18780 that restarts when the Python changes; with `--dev` the page
+  reloads itself when its files change (`/dev/cambios`). And `servidor/desplegar.sh`: pull, reinstall or
+  `npm ci` only if needed, restart `telar-serve` and check the API answers and no tmux window was lost.
 - The browser page's frame (header, columns, «progreso») and its terminal colors now come from the design
   tokens (`vscode/media/css/tokens.css`) like every other view: the frame's styles live in
   `media/css/marco.css` and the build bundles them with the tokens into `src/telar/web/marco.css`. The frame's

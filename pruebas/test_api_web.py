@@ -66,6 +66,17 @@ class LoQueSeGuarda(Prueba):
         self.assertEqual(c.get("/estatico/indice.html", headers={"if-none-match": etag}).status_code, 304)
 
 
+class ElModoDesarrollo(Prueba):
+    def test_dev_cambios_solo_con_dev(self):
+        from fastapi import FastAPI
+
+        c = _app()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        self.assertEqual(c.get("/dev/cambios").status_code, 404)
+        con = api_web.crear(FastAPI(), clave="llave-de-prueba", dev=True)
+        self.assertIn("/dev/cambios", [getattr(r, "path", "") for r in con.routes])
+
+
 class LaTerminal(Prueba):
     """`/pty`: la terminal de un hilo. Sin la llave o desde otra página, ni se abre; con las dos, va y vuelve.
     (El cliente de prueba manda `host: testserver` en los WebSocket: de ahí el origen.)"""
