@@ -308,6 +308,13 @@ class LaFichaYSusAcciones(Prueba):
         self.assertEqual(roles["hecha"]["accion"], "completar")
         self.assertIn("Marcelo", roles["dueno"]["opciones"])
 
+    def test_en_la_lista_un_clic_abre_su_ficha(self):
+        # sin `detalle`: la ficha la arma el tipo, y la lista lo dice (si no, el clic la manda al hilo)
+        from telar.ordenes import _comun
+        from telar.ordenes import pendientes as orden
+        filas, _ = orden.de_proveedores(self.ctx, _comun.Telar(hilos=[], raiz=self.dir), _dt.date(2026, 10, 19))
+        self.assertEqual([(f["id"], f["ficha"]) for f in filas], [("T84", True)])
+
     def test_el_check_completa_por_el_tipo_y_pide_el_commit(self):
         h = self.servicio.accion(self.ctx, "T84", rol="hecha")
         self.assertEqual(h.hecho, "✓ hecha")

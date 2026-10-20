@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 20:21",
+  "actualizado": "2026-10-19 20:50",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -64,8 +64,8 @@
     {
       "grupo": "3. Las pantallas",
       "nombre": "la ficha de una tarea y sus acciones",
-      "estado": "en curso",
-      "nota": "se abre; falta probar los botones"
+      "estado": "hecho",
+      "nota": "nota, fecha, estrella, compartir y hecha probadas sobre una copia de las tareas"
     },
     {
       "grupo": "3. Las pantallas",
@@ -76,8 +76,8 @@
     {
       "grupo": "3. Las pantallas",
       "nombre": "configuración",
-      "estado": "pendiente",
-      "nota": "se ve; falta probar los cambios"
+      "estado": "hecho",
+      "nota": "pestañas probadas; los párrafos ya no se parten en columnas"
     },
     {
       "grupo": "3. Las pantallas",

@@ -652,6 +652,8 @@ document.addEventListener('click', function (e) {
   if (campo) campo.value = '';
 });
 document.addEventListener('keydown', function (e) {
+  // un diálogo de la página web (un campo, un menú: src/web/pagina.ts) se queda con sus teclas: nada de atajos
+  if (e.target && e.target.closest && e.target.closest('dialog')) return;
   // escribiéndole al agente sobre una reunión: las letras son del campo; ⌘⏎ envía, ⎋ sale del campo
   const activo = document.activeElement;
   if (activo && (activo.id === 'ev-texto' || activo.id === 'plan-texto')) {

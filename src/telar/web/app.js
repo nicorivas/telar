@@ -294,10 +294,16 @@ h2 small { font-weight: normal; text-transform: none; color: var(--dim); margin-
 .fila { display: flex; gap: 1ch; align-items: baseline; padding: 0 1ch; white-space: nowrap; }
 .fila.clic { cursor: pointer; } .fila.clic:hover { background: var(--hover); }
 .fila code { color: var(--verde); }
+/* un code largo en una fila (una plantilla) se corta con \xAB\u2026\xBB; lo de la derecha (cambiar\u2026) siempre se ve */
+.fila > code { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fila > .der { flex: none; margin-left: auto; }
 .falla { color: var(--rojo); }
 .opcion { margin: 1lh 0; padding-left: 1ch; border-left: 2px solid transparent; }
 .opcion.activa { border-left-color: var(--azul); }
 .opcion .fila.dim { white-space: normal; }
+/* una fila tenue que solo trae texto (con su code, b, a o em) es un p\xE1rrafo: se lee de corrido y se parte en
+   l\xEDneas; como flex, cada pedazo de texto era una columna aparte (\xABLee tu \u23B5 gws\xBB) y lo largo se sal\xEDa */
+.fila.dim:not(:has(> :not(code, b, a, em, i, strong))) { display: block; white-space: normal; }
 .tecla { flex: none; width: 3ch; color: var(--dim); }
 .hora { flex: none; color: var(--dim); }
 .pasada, .pasada .que { color: var(--dim); }
@@ -1401,6 +1407,8 @@ document.addEventListener('click', function (e) {
   if (campo) campo.value = '';
 });
 document.addEventListener('keydown', function (e) {
+  // un di\xE1logo de la p\xE1gina web (un campo, un men\xFA: src/web/pagina.ts) se queda con sus teclas: nada de atajos
+  if (e.target && e.target.closest && e.target.closest('dialog')) return;
   // escribi\xE9ndole al agente sobre una reuni\xF3n: las letras son del campo; \u2318\u23CE env\xEDa, \u238B sale del campo
   const activo = document.activeElement;
   if (activo && (activo.id === 'ev-texto' || activo.id === 'plan-texto')) {

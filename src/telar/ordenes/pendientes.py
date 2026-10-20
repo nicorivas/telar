@@ -114,8 +114,10 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
     from telar import alla
 
     items, fallas = alla.consultar(ctx.config, activos, dia)
-    # los proveedores que dan ficha (`detalle`): un clic en su tarea la abre en vez de ir al hilo
-    con_ficha = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("detalle")}
+    # los proveedores que dan ficha (`detalle`, o los del tipo `tarea`, que la arman ellos): un clic en su
+    # tarea la abre en vez de ir al hilo
+    con_ficha = {p.nombre for p in ctx.config.proveedores_activos()
+                 if p.opciones.get("detalle") or p.opciones.get("tipo") == "tipo"}
     # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)
     pestanas = {p.nombre: str(p.opciones.get("pestana") or "") for p in ctx.config.proveedores_activos()}
     filas = []

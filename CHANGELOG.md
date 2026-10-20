@@ -395,6 +395,14 @@ workflow refuses to run if the two disagree.
 
 ### Fixed
 
+- Tasks from a `tipo = "tipo"` provider came without a card in the lists (`ficha: false`): a click sent the
+  task to a thread instead of opening it, and «ahora» lost «lo que dejaron los agentes para decidir». The
+  card is now offered for providers that have `detalle` or are of the `tarea` type.
+- In the browser, letters typed into a dialog's field also reached the dashboard as shortcuts (and could
+  launch one); the dashboard ignores keys while a dialog has them.
+- Dim rows that are just text (configuration descriptions) were laid out as flex columns («Lee tu ⎵ gws»)
+  and long ones ran off the right edge; they read as paragraphs now, and a long template in a row is cut
+  with «…».
 - Taking a thread to another machine (`telar hilo llevar`): the conversation travels gzip-compressed, the extension
   waits up to 15 minutes instead of 2 (it reported a failure while the copy kept going), and says what it is doing
   while the thread is visible nowhere.
