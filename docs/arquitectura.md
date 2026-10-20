@@ -232,6 +232,10 @@ sistema de tareas, el puente no cambia: sigue siendo un programa que imprime el 
 
 ## Lo que viene
 
+Qué falta para que telar lo use un equipo y después cualquiera (la seguridad entre personas, un instalador, un
+mod de Claude Code, la extensión de VS Code deprecada), y en qué orden:
+[telar-para-otros.md](propuestas/telar-para-otros.md).
+
 La propuesta [primitivas.md](propuestas/primitivas.md) ordena todo esto en pocas piezas. Para quien
 conecta sus tareas, cambian dos cosas:
 
