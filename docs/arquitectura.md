@@ -136,8 +136,16 @@ hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
 
 **Cómo llega un mensaje.** El nodo de la máquina del hilo lo deja en su casilla local
 (`telar.casilla`). Los ganchos `Stop` y `UserPromptSubmit` del agente (`telar agente casilla`) se lo
-entregan entero al terminar el turno. Si el agente está ocioso, se le teclea solo «↯» para despertarlo,
-nunca el contenido. Un hilo cerrado se abre retomando su conversación.
+entregan entero al terminar el turno. Si el agente está ocioso, hay que despertarlo con una línea de
+aviso («↯ mensaje nuevo · …», nunca el contenido), y el gancho `UserPromptSubmit` le agrega los mensajes:
+
+- con **el mod de telar** (`src/telar/mod/`, un mod de Claude Code que cada sesión carga por
+  `CLAUDE_CODE_PLUGIN_DIRS`), el aviso lo manda el mod como un mensaje (`$.prompt.submit`) en cuanto la
+  sesión queda ociosa, sin pasar por el teclado: no cae sobre lo que la persona está escribiendo. Mientras
+  vive, el mod toca un archivo en la casilla (`.mod`) cada pocos segundos;
+- sin el mod (o con esa señal vieja de más de 30 s), el nodo teclea el aviso en la terminal del hilo.
+
+Un hilo cerrado se abre retomando su conversación.
 
 **Entre hilos de una misma persona no hay aprobación.** El mensaje de un hilo propio llega como pedido
 de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay frenos: cada mensaje

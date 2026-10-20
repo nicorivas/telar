@@ -1,6 +1,6 @@
 # Publicar una versión
 
-Publicar es apretar un botón: `git tag v0.1.0 && git push --tags`. Todo lo demás lo hace
+Publicar es apretar un botón: `git tag v0.2.0 && git push --tags`. Todo lo demás lo hace
 `.github/workflows/publicar.yml`. Lo que sigue es lo que hay que preparar **una sola vez**,
 porque son cuentas y permisos que solo tiene su dueño, y después el runbook de cada versión.
 
@@ -36,45 +36,11 @@ tiene, porque la etiqueta ya es una decisión deliberada.
 Para ensayar sin quemar el número de versión, TestPyPI acepta el mismo trámite y se prueba
 con `pypa/gh-action-pypi-publish` apuntado a `https://test.pypi.org/legacy/`.
 
-### 3. El Marketplace de VS Code
+### 3. La extensión de VS Code: ya no
 
-Este sí necesita un secreto, porque Microsoft no tiene trusted publishing.
-
-1. Crear un publisher en <https://marketplace.visualstudio.com/manage>. Tiene que llamarse
-   igual que el campo `publisher` de vscode/package.json (hoy, `nicorivas`).
-
-   **El Marketplace tiene un solo espacio de nombres para todo el catálogo**, y eso
-   sorprende viniendo de PyPI o npm: no basta con que `publisher.name` sea único, tienen
-   que serlo también `name` y `displayName` por separado, contra todas las extensiones de
-   todos los publishers. `telar` estaba tomado en los dos (por `davidbc01.telar`), así que
-   la extensión se llama `telar-hilos` y se muestra como «telar — threads of work». El
-   `displayName` se puede cambiar publicando otra versión; el `name` no, queda para
-   siempre.
-2. En Azure DevOps (<https://dev.azure.com>), con la misma cuenta Microsoft: User settings ›
-   Personal access tokens › New token, organización **All accessible organizations**,
-   alcance **Marketplace › Manage** (que está plegado tras «Show all scopes»). Sale una
-   sola vez; copiarlo entonces.
-
-   **Esto tiene fecha de caducidad más allá del token.** La propia página avisa que desde
-   el **1-dic-2026** Azure DevOps deja de admitir tokens con alcance «all accessible
-   organizations», que es justo el que el Marketplace exige. O sea que este camino se
-   rompe solo en diciembre, haga uno lo que haga con la fecha de expiración. Cuando pase,
-   hay que mirar qué ofrece Microsoft en reemplazo; mientras tanto, subir el `.vsix` a
-   mano desde <https://marketplace.visualstudio.com/manage> no necesita token de ninguna
-   clase y toma un minuto.
-3. En GitHub › Settings › Secrets and variables › Actions, guardarlo como `VSCE_PAT`.
-
-   Después, comprobarlo sin publicar nada: Actions › **verificar-pat** › Run workflow, o
-   `gh workflow run verificar-pat.yml`. Pregunta al Marketplace si el token sirve para el
-   publisher y dice cuántos caracteres tiene. Vale la pena porque `gh secret set` guarda
-   un secreto vacío sin quejarse si no recibe nada por teclado: el primer intento pasó
-   exactamente eso, y solo se habría visto como un 401 al etiquetar.
-
-Sin `VSCE_PAT` el workflow no falla: se saltea ese trabajo y deja el `.vsix` adjunto a la
-Release, que se instala con `code --install-extension telar-hilos-0.1.0.vsix`.
-
-Open VSX (el registro que usan VSCodium, Cursor y Gitpod) es un trámite aparte: cuenta con
-Eclipse, firmar el Publisher Agreement y un token `OVSX_PAT`. Vale la pena, pero no bloquea.
+La extensión está deprecada desde el 20-oct-2026 y el workflow ya no la empaqueta ni la publica:
+la página que sirve `telar serve --web` hace todo lo que hacía. El código de la página sigue en
+`vscode/` y viaja dentro del paquete de Python (`src/telar/web/`).
 
 ### 4. Abrir el repositorio
 
@@ -86,9 +52,8 @@ estar. El árbol limpio no alcanza: lo que se borró en un commit sigue ahí.
 
 ## Cada versión
 
-1. Cambiar el número **en los dos lados**: `__version__` en src/telar/\_\_init\_\_.py y
-   `version` en vscode/package.json. El primer trabajo del workflow no hace otra cosa que
-   comprobar que la etiqueta y esos dos coinciden.
+1. Cambiar el número: `__version__` en src/telar/\_\_init\_\_.py. El primer trabajo del workflow
+   no hace otra cosa que comprobar que la etiqueta y ese número coinciden.
 2. Mover lo que corresponda de «Unreleased» a la versión nueva en CHANGELOG.md.
 3. Commitear, y recién entonces etiquetar:
 
@@ -97,13 +62,12 @@ estar. El árbol limpio no alcanza: lo que se borró en un commit sigue ahí.
    git push origin main --follow-tags
    ```
 
-4. El workflow construye, corre `twine check`, empaqueta la extensión, publica en PyPI
-   (previa confirmación, si el entorno tiene revisor) y en el Marketplace, y adjunta las
-   tres cosas a la Release.
+4. El workflow construye, corre `twine check`, publica en PyPI (previa confirmación, si el
+   entorno tiene revisor) y adjunta el paquete a la Release.
 5. Comprobar que se puede instalar de verdad, en una máquina que no sea la de desarrollo:
 
    ```sh
-   pipx install telar && telar --version
+   uv tool install 'telar[serve,bus]' && telar --version && telar instalar --seco
    ```
 
 ## Lo que se verificó a mano antes de la primera versión

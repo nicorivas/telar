@@ -26,7 +26,6 @@ Cada persona ya tiene su cuenta en el bus, que el servidor hace cumplir ([arquit
 
 ## Lo que falta para que alguien lo instale solo
 
-- **El mod de Claude Code en `telar instalar`**, cuando exista (abajo).
 - **Publicar una versión.** La última en PyPI es la 0.1.13; desde entonces hay más de cien cambios sin
   publicar (el bus con cuentas, la página sin Node, las terminales, los tipos, `telar instalar`). Corresponde
   una 0.2.0, con el flujo de [publicar.md](../publicar.md). Antes: `.github/workflows/publicar.yml` también
@@ -44,24 +43,23 @@ reacciona a eventos (empieza o termina un turno, una herramienta está por corre
 cambiar prompts y decidir sobre herramientas, dibuja paneles o una franja sobre el prompt, y registra comandos
 que corren sin gastar un turno ([referencia](https://code.claude.com/docs/en/plugins/mods/reference)).
 
-telar lo puede llevar adentro: una carpeta con `.claude-plugin/plugin.json`, `hooks/hooks.json` y el módulo,
-como parte del paquete. Como telar lanza cada hilo, le basta agregar `--plugin-dir <esa carpeta>`; para las
-sesiones que no lanza, `telar instalar` la pone en `CLAUDE_CODE_PLUGIN_DIRS` (en el `env` de
-`~/.claude/settings.json`). El mod viaja con la versión de telar.
-
-Lo que reemplazaría, de lo que hoy es frágil, en este orden:
+El mod ya existe (`src/telar/mod/`, viaja en el paquete) y `telar agente instalar` lo deja cargado en cada
+sesión por `CLAUDE_CODE_PLUGIN_DIRS` ([arquitectura](../arquitectura.md), «Cómo llega un mensaje»). Hoy
+hace una cosa: avisa de los mensajes de la casilla sin teclear en la terminal. Lo que falta que haga, de lo
+que hoy es frágil, en este orden:
 
 1. **El semáforo de cada hilo**, de los eventos (`turn.start`, `turn.complete`, `tool.check` cuando queda
-   esperando un permiso) en vez de deducirlo de los hooks y de la pantalla.
-2. **La casilla**: un mensaje entra apenas llega si el agente espera (`session.receive`, `$.prompt.submit`), en
-   vez de esperar al final del turno por el hook Stop.
-3. **El modo lectura**: la respuesta final de los mensajes ya estructurados, en vez de leer el registro
+   esperando un permiso) en vez de deducirlo de los ganchos clásicos (`Notification`, el «trabajando» que se
+   queda pegado). Al hacerlo, `telar agente instalar` deja de poner esos ganchos cuando el mod está, para
+   que no avisen dos veces.
+2. **El modo lectura**: la respuesta final de los mensajes ya estructurados, en vez de leer el registro
    JSONL de Claude Code.
-4. **Una franja de telar sobre el prompt** (quién espera, los mensajes pendientes) y comandos `/telar …`
+3. **Una franja de telar sobre el prompt** (quién espera, los mensajes pendientes) y comandos `/telar …`
    instantáneos.
+4. **Pruebas del mod** con `claude plugin test`, y `claude plugin validate` en el CI.
 
 Es JavaScript en un proyecto de Python, y el mod tiene los mismos poderes que telar (archivos, procesos,
-red); `claude plugin validate` y `claude plugin test` lo revisan en el CI.
+red).
 
 ## Vestigios de versiones anteriores
 
@@ -99,6 +97,6 @@ red); `claude plugin validate` y `claude plugin test` lo revisan en el CI.
 
 1. El correo y el directorio entre personas por el bus.
 2. La 0.2.0.
-3. El mod de Claude Code: el semáforo y la casilla.
+3. El mod de Claude Code: el semáforo (la casilla ya está).
 4. Deprecar la extensión de VS Code y escribir la página para el navegador, sin la capa del webview.
 5. Para cualquiera: inglés, la configuración de fábrica, otros asistentes.

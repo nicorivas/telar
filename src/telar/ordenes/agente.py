@@ -79,7 +79,7 @@ from telar.ordenes import _comun
 
 AYUDA = "El agente que corre en un hilo: sus ganchos, sus conversaciones."
 
-VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto", "skills", "casilla")
+VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto", "skills", "casilla", "mod")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -121,6 +121,8 @@ def main(argv: list[str], ctx) -> int:
         return 0
     if o.verbo == "casilla":
         return _casilla(ctx)
+    if o.verbo == "mod":
+        return _mod(o, ctx)
     if o.verbo == "conversacion":
         # aquí la palabra suelta es el id de la conversación, no el nombre del agente
         return _conversacion(o, ctx)
@@ -248,6 +250,27 @@ def _casilla(ctx) -> int:
             print(salida)
     except Exception:  # noqa: BLE001 - un gancho nunca tumba el turno del agente
         pass
+    return 0
+
+
+def _mod(o, ctx) -> int:
+    """Lo que pregunta el mod de Claude Code (telar/mod/): en qué hilo está su sesión, dónde está su
+    casilla y, si hay mensajes, la línea de aviso que manda. Siempre JSON y 0: sin hilo, `hilo` vacío y el
+    mod no hace nada."""
+    salida = {"hilo": "", "casilla": "", "aviso": ""}
+    try:
+        hilo = o.hilo or _hilo_de_casilla(ctx, {"session_id": o.sesion})
+        if hilo:
+            from telar import casilla
+
+            d = casilla.carpeta(ctx.config, hilo)
+            d.mkdir(parents=True, exist_ok=True)
+            salida.update(hilo=hilo, casilla=str(d))
+            if casilla.pendientes(ctx.config, hilo):
+                salida["aviso"] = casilla.aviso(ctx.config, hilo)
+    except Exception:  # noqa: BLE001 - el mod pregunta cada pocos segundos: nunca le falla
+        pass
+    print(json.dumps(salida, ensure_ascii=False))
     return 0
 
 

@@ -16,7 +16,7 @@ En orden, y cada paso solo si falta:
 4. **El servicio de `telar serve`**: systemd de usuario en Linux, launchd en macOS, con la página
    (`--web`), el nodo si hay bus (`--nodo`) y la página del equipo si hay `[equipo]` con personas. Si ya
    estaba igual, no se toca; si cambió, se reescribe y se reinicia.
-5. **El agente** (`telar agente instalar`): los ganchos y la skill `/hilos` de Claude Code.
+5. **El agente** (`telar agente instalar`): los ganchos, la skill `/hilos` y el mod de Claude Code.
 6. **Revisar** con `telar doctor` (que avisa, entre otras cosas, si tmux es anterior a la 3.5).
 
 Se puede correr de nuevo cuando se quiera: lo que ya está, queda.
@@ -120,7 +120,7 @@ def _plan(ctx, o, ruta: Path) -> list[tuple]:
     if not o.sin_agente and not _ganchos_puestos(ctx):
         from telar.ordenes import agente
 
-        pasos.append((lambda: agente.main(["instalar", "--si"], ctx), "poner los ganchos y la skill de Claude Code"))
+        pasos.append((lambda: agente.main(["instalar", "--si"], ctx), "poner los ganchos, la skill y el mod de Claude Code"))
     return pasos
 
 
@@ -140,12 +140,16 @@ def _hay_equipo(ruta: Path) -> bool:
 
 
 def _ganchos_puestos(ctx) -> bool:
-    """Si el agente ya llama a telar en sus ganchos (lo que deja `telar agente instalar`; doctor revisa
-    que esa llamada siga viva)."""
+    """Si la configuración del agente ya tiene todo lo que `telar agente instalar` escribiría (los ganchos,
+    la skill, el mod): se compara lo que escribiría con lo que hay."""
     from telar.agente import INCLUIDOS, obtener as obtener_agente
 
     try:
-        return all(obtener_agente(n, ctx.config).comandos_instalados() for n in INCLUIDOS)
+        for n in INCLUIDOS:
+            hecho = obtener_agente(n, ctx.config).instalar(seco=True)
+            if hecho.texto != hecho.antes:
+                return False
+        return True
     except Exception:  # noqa: BLE001 - si no se puede saber, se instala (instalar respeta lo que hay)
         return False
 

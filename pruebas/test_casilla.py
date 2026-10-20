@@ -19,6 +19,16 @@ class LaCasilla(Prueba):
         self.addCleanup(self.tmp.cleanup)
         self.config = SimpleNamespace(estado=Path(self.tmp.name))
 
+    def test_el_mod_vive_mientras_toca_su_senal(self):
+        import time
+
+        self.assertFalse(m.mod_vivo(self.config, "Faro"))
+        d = m.carpeta(self.config, "Faro")
+        d.mkdir(parents=True)
+        (d / m.MOD).write_text("1")
+        self.assertTrue(m.mod_vivo(self.config, "Faro"))
+        self.assertFalse(m.mod_vivo(self.config, "Faro", ahora=time.time() + m.MOD_VIVO + 1))
+
     def test_un_mismo_id_no_se_duplica_ni_despues_de_entregado(self):
         self.assertTrue(m.dejar(self.config, "Faro", {"id": "a1", "texto": "hola"}))
         self.assertFalse(m.dejar(self.config, "Faro", {"id": "a1", "texto": "hola"}))

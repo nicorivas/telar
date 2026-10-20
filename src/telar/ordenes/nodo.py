@@ -157,6 +157,8 @@ class Nodo:
         if escribir is not None:
             if est.atencion(nombre) == Atencion.TRABAJANDO and not self.atencion_vieja(est, nombre):
                 return "trabajando: se lo entrega Stop"
+            if casilla.mod_vivo(self.config, nombre):
+                return "lo avisa su mod"
             escribir(casilla.aviso(self.config, nombre))
             est.anotar_atencion(nombre, Atencion.TRABAJANDO)
             return "avisado"

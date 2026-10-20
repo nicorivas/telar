@@ -397,6 +397,10 @@ class ClaudeCode(AgenteBase):
             nuevos["hooks"].setdefault(nativo, []).append(
                 {"hooks": [{"type": "command", "command": shlex.join(casilla), "timeout": 5}]})
             puestos.append(f"{nativo} (casilla)")
+        # el mod de telar (telar/mod/): avisa de los mensajes sin teclearlos. Lo carga cada sesión por
+        # CLAUDE_CODE_PLUGIN_DIRS; TELAR_EJECUTABLE le dice con qué llamar a telar (una lista JSON)
+        _poner_mod(nuevos, palabras[:-3])
+        puestos.append("mod de telar (CLAUDE_CODE_PLUGIN_DIRS)")
         # hablar con otros hilos y leerlos no pasa por la aprobación de la persona (PERMISOS)
         permisos = nuevos.setdefault("permissions", {})
         if isinstance(permisos, dict):
@@ -589,10 +593,49 @@ def _mezclar(
     return nuevos, puestos, reemplazados
 
 
+def carpeta_mod() -> Path:
+    """El mod de telar para Claude Code, que viaja dentro del paquete."""
+    return Path(__file__).resolve().parent.parent / "mod"
+
+
+def _es_mod_de_telar(carpeta: str) -> bool:
+    try:
+        return json.loads((Path(carpeta) / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("name") == "telar"
+    except (OSError, ValueError, AttributeError):
+        return Path(carpeta).parts[-2:] == ("telar", "mod")
+
+
+def _poner_mod(datos: dict, base: Sequence[str]) -> None:
+    env = datos.setdefault("env", {})
+    if not isinstance(env, dict):
+        return
+    otras = [c for c in str(env.get("CLAUDE_CODE_PLUGIN_DIRS") or "").split(os.pathsep) if c and not _es_mod_de_telar(c)]
+    env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join([*otras, str(carpeta_mod())])
+    env["TELAR_EJECUTABLE"] = json.dumps(list(base))
+
+
+def _quitar_mod(datos: dict) -> bool:
+    env = datos.get("env")
+    if not isinstance(env, dict) or ("TELAR_EJECUTABLE" not in env and "CLAUDE_CODE_PLUGIN_DIRS" not in env):
+        return False
+    antes = dict(env)
+    env.pop("TELAR_EJECUTABLE", None)
+    otras = [c for c in str(env.get("CLAUDE_CODE_PLUGIN_DIRS") or "").split(os.pathsep) if c and not _es_mod_de_telar(c)]
+    if otras:
+        env["CLAUDE_CODE_PLUGIN_DIRS"] = os.pathsep.join(otras)
+    else:
+        env.pop("CLAUDE_CODE_PLUGIN_DIRS", None)
+    if not env:
+        datos.pop("env")
+    return env != antes
+
+
 def _quitar(datos: dict) -> tuple[dict, list[str]]:
     """La configuración sin los ganchos de telar. Lo que queda vacío se va con ellos."""
     nuevos = deepcopy(datos)
     sacados: list[str] = []
+    if _quitar_mod(nuevos):
+        sacados.append("mod")
     permisos = nuevos.get("permissions")
     if isinstance(permisos, dict) and isinstance(permisos.get("allow"), list):
         quedan = [x for x in permisos["allow"] if x not in PERMISOS]

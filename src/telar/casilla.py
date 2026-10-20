@@ -87,6 +87,23 @@ def dejar(config, hilo: str, mensaje: dict) -> bool:
     return True
 
 
+#: la señal de vida del mod de Claude Code (telar/mod/): un archivo en la casilla que el mod toca cada
+#: pocos segundos. Mientras esté fresco, el nodo no teclea el aviso: el mod lo manda como un mensaje
+#: cuando la sesión queda ociosa, sin pasar por el teclado (no cae sobre lo que la persona escribe).
+MOD = ".mod"
+MOD_VIVO = 30
+
+
+def mod_vivo(config, hilo: str, ahora: float | None = None) -> bool:
+    import time
+
+    try:
+        visto = (carpeta(config, hilo) / MOD).stat().st_mtime
+    except OSError:
+        return False
+    return (ahora if ahora is not None else time.time()) - visto < MOD_VIVO
+
+
 def pendientes(config, hilo: str) -> list[dict]:
     d = carpeta(config, hilo)
     salida = []

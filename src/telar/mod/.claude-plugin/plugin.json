@@ -1,0 +1,9 @@
+{
+  "name": "telar",
+  "version": "0.2.0",
+  "description": "telar en Claude Code: avisa de los mensajes de la casilla del hilo sin teclearlos en la terminal.",
+  "homepage": "https://github.com/nicorivas/telar",
+  "author": {
+    "name": "Nicolás Rivas"
+  }
+}

@@ -1,13 +1,26 @@
 # Changelog
 
-Versions follow [semantic versioning](https://semver.org). The Python package and the
-VS Code extension share a version number: a tag `v0.1.0` releases both, and the release
-workflow refuses to run if the two disagree.
+Versions follow [semantic versioning](https://semver.org). A tag `v0.2.0` releases the Python package; the
+release workflow refuses to run if the tag and `telar.__version__` disagree. Up to 0.1.13 the VS Code
+extension shared the version number.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-20
+
+### Deprecated
+
+- The VS Code extension. The web page (`telar serve --web`) does everything it did, and the release no longer
+  builds or publishes it. Its code stays in `vscode/` as the source of the web page.
+
 ### Added
 
+- The telar mod for Claude Code (`src/telar/mod/`, shipped in the package). `telar agente instalar` loads it
+  in every Claude Code session through `CLAUDE_CODE_PLUGIN_DIRS` (and `desinstalar` takes it out). When
+  messages reach a thread's mailbox while its session is idle, the mod submits the notice line itself, so
+  the node no longer types it into the terminal, where it could land on top of what the person was writing.
+  The mod leaves a heartbeat in the mailbox (`.mod`); while it is fresh the node does not type. New verb:
+  `telar agente mod` (what the mod asks: the thread, its mailbox, the notice).
 - `telar instalar`: one command to get a machine running, and safe to run again. It writes the config
   (`telar init`) if missing, creates the page key, joins the bus with `--bus nats://…` (adds `[bus]`),
   installs the `telar serve` service for this machine (systemd user unit on Linux, launchd agent on macOS,
@@ -1078,7 +1091,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nicorivas/telar/compare/v0.1.13...v0.2.0
 [0.1.13]: https://github.com/nicorivas/telar/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/nicorivas/telar/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/nicorivas/telar/compare/v0.1.10...v0.1.11
