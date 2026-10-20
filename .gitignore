@@ -31,3 +31,5 @@ ejemplo/proyectos/*/revision.txt
 # lo que Claude Code genera al cargar el mod (los tipos de su versión)
 src/telar/mod/tsconfig.json
 src/telar/mod/.claude-plugin/types/
+src/telar/sordina/tsconfig.json
+src/telar/sordina/.claude-plugin/types/
