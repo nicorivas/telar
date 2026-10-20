@@ -5,8 +5,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>telar</title>
 <link rel="stylesheet" href="/estatico/marco.css"></head><body class="en-lista">
-<header><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span>
-  <a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></header>
+<header>
+  <div class="izq"><a id="volver">◀ hilos</a><b>telar</b><span id="titulo" class="dim"></span></div>
+  <div id="donde" title="la máquina que sirve esta página"></div>
+  <div class="der"><a id="modo" hidden title="ver este hilo como terminal o como conversación">terminal</a><a data-p="dashboard">dashboard</a><a data-p="progreso">progreso</a><span class="dim" id="maquina"></span></div>
+</header>
 <aside id="barra"></aside>
 <div id="marcos"><div id="progreso" hidden><div class="dim">leyendo…</div></div></div>
 <script>
@@ -48,7 +51,12 @@ $('#volver').addEventListener('click', () => { document.body.classList.remove('e
 const angosto = window.matchMedia('(max-width: 700px)');
 const ajustar = () => document.body.classList.toggle('angosto', angosto.matches);
 angosto.addEventListener('change', ajustar); ajustar();
-json('/api/salud').then((s) => { $('#maquina').textContent = `telar ${s.version}`; }).catch(() => { $('#maquina').textContent = 'sin API'; });
+// dónde está esta página: la máquina que la sirve (hay una por máquina, y un hilo de otra se ve reenviado)
+json('/api/salud').then((s) => {
+  $('#maquina').textContent = `telar ${s.version}`;
+  $('#donde').innerHTML = `página en <b>${esc(s.maquina || s.host || location.hostname)}</b>`;
+  $('#donde').title = `esta página la sirve ${s.maquina}${s.host && s.host !== s.maquina ? ` (${s.host})` : ''} · ${location.host}`;
+}).catch(() => { $('#maquina').textContent = 'sin API'; $('#donde').textContent = 'sin API'; });
 // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 // modo desarrollo (`telar serve --web --dev`, scripts/dev.py): recargar cuando cambian los archivos de la

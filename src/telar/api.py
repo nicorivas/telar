@@ -627,8 +627,14 @@ def put_archivo(pedido: PedidoArchivo, ctx: Contexto = Depends(contexto)):
 
 
 @app.get("/salud")
-def get_salud() -> dict:
-    return {"ok": True, "version": __version__}
+def get_salud(ctx: Contexto = Depends(contexto)) -> dict:
+    """Que contesta, con qué versión y quién es: la máquina (su nombre en el bus, o su hostname) y el host.
+    La página lo muestra arriba, para saber en qué máquina se está (hay una página por máquina)."""
+    import socket
+
+    from telar import bus as mod_bus
+
+    return {"ok": True, "version": __version__, "maquina": mod_bus.maquina(ctx.config), "host": socket.gethostname()}
 
 
 def socket_por_defecto() -> Path:

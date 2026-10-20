@@ -39,17 +39,30 @@ iframe {
   border-right: var(--borde);
 }
 
+/* la cabecera: a la izquierda telar y lo que se ve; al centro, en qué máquina está esta página; a la derecha,
+   los botones */
 header {
   grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   gap: var(--h-2);
   align-items: baseline;
   padding: var(--e-1) var(--h-1);
   border-bottom: var(--borde);
   background: var(--bg-barra);
 
-  & b { color: var(--violeta); }
+  & .izq,
+  & .der { display: flex; gap: var(--h-2); align-items: baseline; min-width: 0; }
+
+  & .der { justify-content: flex-end; }
+  & .izq b { color: var(--violeta); }
+}
+
+#donde {
+  color: var(--dim);
+  white-space: nowrap;
+
+  & b { color: var(--amarillo); font-weight: normal; }
 }
 
 #modo[hidden] { display: none; }
@@ -109,6 +122,8 @@ header {
 /* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («◀ hilos» vuelve a la lista) */
 body.angosto {
   grid-template-columns: 1fr;
+
+  & #maquina { display: none; }
 }
 
 body.angosto.en-detalle #volver { display: inline; }
