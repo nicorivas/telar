@@ -1,6 +1,6 @@
 """Leer y escribir archivos de esta máquina desde la página (el dashboard en el navegador), con límites.
 
-En VS Code y en el panel en Node el dashboard lee el disco directo (el README de un proyecto, la
+En VS Code el dashboard lee el disco directo (el README de un proyecto, la
 preparación de una reunión, la página y la memoria de un lienzo). En el navegador no hay disco: lo pide aquí.
 
 - **Leer**: un archivo bajo la raíz del repositorio (`[telar] raiz`), uno que la configuración declara

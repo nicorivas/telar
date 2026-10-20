@@ -1,6 +1,6 @@
 // El disco, para el dashboard: leer un archivo (el README de un proyecto, la preparación de una reunión, la
 // página y la memoria de un lienzo), buscar los .md de una carpeta y guardar la memoria de un lienzo. En VS
-// Code y en el panel en Node, el disco de la máquina (fs); en el navegador (src/navegador), la API de
+// Code, el disco de la máquina (fs); en el navegador (src/navegador), la API de
 // telar, que pone los límites (telar.servicios.archivos). Todo asíncrono: en el navegador no se espera.
 
 import * as fs from 'fs';

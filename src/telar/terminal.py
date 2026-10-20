@@ -5,8 +5,8 @@ Mirar arma una sesión agrupada propia sobre la ventana del hilo: escribir aquí
 no mueve lo que ven los demás. Al cerrarse la página se cierra el PTY, `mirar` termina y tmux borra la
 vista (destroy-unattached).
 
-El protocolo es el del panel en Node: del servidor salen los bytes de la terminal como texto; de la página
-llega JSON, `{"d": "…"}` para teclear y `{"r": [columnas, filas]}` para cambiar el tamaño.
+El protocolo es el que usaba el panel en Node: del servidor salen los bytes de la terminal como texto; de
+la página llega JSON, `{"d": "…"}` para teclear y `{"r": [columnas, filas]}` para cambiar el tamaño.
 """
 
 from __future__ import annotations

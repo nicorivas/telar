@@ -6,8 +6,8 @@
 Arma una sesión agrupada con la del telar, fija en la ventana del hilo (la misma forma que usan
 las otras máquinas y el celular, `movil.ordenes_ver`), y se engancha a ella. Cambiar de ventana
 ahí no le cambia nada a quien mira la sesión del telar; si la ventana muere, la vista suelta a
-quien mira; y cuando nadie mira, tmux la borra. Es lo que corre la terminal de un hilo en el
-panel web (vscode/src/web/servidor.ts).
+quien mira; y cuando nadie mira, tmux la borra. Es lo que corre la terminal de un hilo en la
+página de telar (telar.terminal, `/pty` de `telar serve --web`).
 
 Si alguien ya mira la sesión del telar (la terminal donde se trabaja), la vista no le cambia el
 tamaño a la ventana (`ignore-size`).

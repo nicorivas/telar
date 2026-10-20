@@ -116,7 +116,7 @@ function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
 }
 
 /** Donde se dibuja la barra: la vista lateral de VS Code (hilos-vscode.ts) o la columna izquierda
- *  de la página web (web/servidor.ts). Lo mismo que la superficie del dashboard, más su cabecera. */
+ *  de la página web (src/navegador). Lo mismo que la superficie del dashboard, más su cabecera. */
 export interface SuperficieBarra {
     readonly cspSource: string;
     readonly cspConectar?: string;
@@ -147,7 +147,7 @@ export class BarraHilos {
      *  tmux para marcar la fila (en VS Code no se da: manda el hilo con foco) */
     mostrado?: string;
     /** los hilos de otras máquinas que esta no ve en su multiplexor, de la foto que publica cada una
-     *  (`telar espejo ver`): un grupo por máquina. Lo pone el panel web del servidor; vacío, no hay grupo */
+     *  (`telar espejo ver`): un grupo por máquina. Lo pone la página web del servidor; vacío, no hay grupo */
     otras: { nombre: string; en_linea: boolean; edad: number | null; hilos: HiloDeFoto[] }[] = [];
     private irAlArchivo = false;
     /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */

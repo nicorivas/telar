@@ -1,4 +1,4 @@
-"""La página de telar en el navegador, servida por `telar serve --web`: la que reemplaza al panel en Node.
+"""La página de telar en el navegador, servida por `telar serve --web` (antes, el panel en Node).
 
 Es una app aparte de la API del socket (telar.api), que monta adentro bajo `/api`, y escucha en la IP de
 Tailscale. Como el panel: se entra con la llave de `~/.config/telar/panel.llave` (`?k=…` la primera vez;
@@ -25,7 +25,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-#: la misma cookie que el panel en Node: las cookies no distinguen puertos, y así una llave sirve a los dos
+#: la cookie de la llave: el mismo nombre que usaba el panel en Node, para que una app ya instalada siga entrando
 COOKIE = "telar_panel"
 CARPETA = Path(__file__).parent / "web"
 #: lo que deja instalar la página como app (y recibir lo que comparte el teléfono): el manifiesto, los

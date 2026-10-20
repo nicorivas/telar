@@ -63,7 +63,7 @@ Tres reglas sostienen el dibujo:
 | **mensaje** | texto para un hilo o un agente, en cualquier máquina; llega aunque el hilo esté cerrado | `telar mensaje`; viaja por el bus |
 | **periódico** | algo que corre solo cada cierto tiempo, a veces abriendo un hilo con un agente | `telar periodicos` |
 | **nodo** | el proceso de telar de cada máquina en el bus: recibe los mensajes, avisa a los hilos, publica qué hay vivo | `telar nodo`, como servicio |
-| **superficie** | lo que dibuja: la extensión de VS Code o el panel web (`telar panel`), que también es la app del celular | `vscode/` |
+| **superficie** | lo que dibuja: la extensión de VS Code o la página web (`telar serve --web`), que también es la app del celular | `vscode/` |
 
 ## Cómo se mueve una cosa
 

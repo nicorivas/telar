@@ -6,7 +6,7 @@
                                     cualquier usuario de ella alcanzaría el puerto)
     telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
     telar serve --web               además, la página de telar (telar.api_web) en la IP de Tailscale, puerto
-                                    8780 (--web-puerto), con la llave del panel: la que reemplaza al panel en Node
+                                    8780 (--web-puerto), con la llave de la página (~/.config/telar/panel.llave)
     telar serve --nodo              además, el nodo del bus (lo que hace `telar nodo`), en el mismo proceso:
                                     una máquina, un proceso; y los pedidos al bus de la API van por su
                                     conexión, que queda abierta

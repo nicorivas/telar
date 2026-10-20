@@ -11,7 +11,6 @@ en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.m
 | *(`telar persona`)* | dar de alta a un colega: usuario, ssh, tope de recursos, correo y su propio telar y Claude Code. Es una orden de telar, no un archivo de esta carpeta | `telar persona crear NOMBRE --llave …` |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
-| `telar-panel.service` / `telar-panel.plist` | `telar panel` como servicio (systemd en el servidor, por Tailscale; launchd en un Mac, en esta máquina): la barra, el dashboard y las terminales | `~/.config/systemd/user/` · `~/Library/LaunchAgents/` |
 
 ## Montarlo
 
@@ -96,29 +95,14 @@ Corre como el destinatario, uno por correo. Cada caso queda en `~/.cartero.log` 
 - El `claude` del cartero necesita `~/.local/bin` en el `PATH`: Postfix corre el `.forward`
   con un entorno mínimo.
 
-## `telar panel` como servicio
+## La página de telar (la barra, el dashboard y las terminales; también la app del celular)
 
-El panel (la barra, el dashboard y las terminales; también la app del celular) tiene que seguir ahí cuando la
-máquina se reinicia. `telar-panel.service` es un servicio de **usuario** de systemd —vive en tu cuenta, sin tocar
-el sistema—:
+La sirve el mismo `telar serve` con `--web` (telar.api_web), en la IP de Tailscale y el puerto 8780. Se entra con
+la llave de `~/.config/telar/panel.llave` (`?k=…` la primera vez; después queda en una cookie).
 
-```
-cd ../vscode && npm ci && npm run compile          # una vez: el panel compilado (telar panel --verificar lo revisa)
-mkdir -p ~/.config/systemd/user && cp telar-panel.service ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now telar-panel
-loginctl enable-linger "$USER"        # que arranque al encender, sin que nadie inicie sesión
-```
-
-- **Escucha en Tailscale.** `telar panel --tailscale` espera hasta dos minutos a que la interfaz tenga IP; sin ella,
-  sale con error y systemd lo reintenta cada 5 s. Nunca escucha en todas las direcciones.
-- **Se entra con llave.** La imprime al arrancar (`journalctl --user -u telar-panel | grep k=`); después queda en
-  una cookie.
-- **HTTPS, para instalarlo como app.** `sudo tailscale serve --bg --https=443 http://<ip de tailscale>:8770` lo pone
-  en `https://<máquina>.<tailnet>.ts.net/`, solo dentro de la tailnet.
-- **Se levanta solo.** `Restart=always`.
-
-Ver cómo va: `systemctl --user status telar-panel` y `journalctl --user -u telar-panel -f`. Quitarlo:
-`systemctl --user disable --now telar-panel`.
+- **HTTPS, para instalarla como app.** `tailscale serve --bg --https=443 http://<ip de tailscale>:8780` la pone en
+  `https://<máquina>.<tailnet>.ts.net/`, solo dentro de la tailnet.
+- Antes la servía `telar panel`, un servidor en Node (`telar-panel.service`); se retiró el 19-oct-2026.
 
 
 ## Personas: dar de alta a un colega

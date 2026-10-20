@@ -1,6 +1,6 @@
 {
   "titulo": "Paso 3: las vistas, al navegador",
-  "actualizado": "2026-10-19 21:29",
+  "actualizado": "2026-10-19 21:33",
   "piezas": [
     {
       "grupo": "1. El servidor nuevo",
@@ -130,8 +130,8 @@
     {
       "grupo": "Paso 4 (después)",
       "nombre": "retirar el panel en Node (telar-panel, servidor.ts, node-pty)",
-      "estado": "pendiente",
-      "nota": "con lo de arriba hecho; se pregunta antes"
+      "estado": "hecho",
+      "nota": "servicios fuera en las dos máquinas; 443 y 8443 del servidor apuntan a la página de Python"
     }
   ]
 }

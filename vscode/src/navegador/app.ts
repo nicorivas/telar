@@ -1,6 +1,6 @@
-// El dashboard de telar, corriendo en el navegador: el mismo `PanelHoy` que en VS Code y en el panel en
-// Node, sin Node. Lo que en el panel en Node hacía el servidor (hablar con la CLI, mandar la página por un
-// WebSocket, preguntarle cosas a quien mira) aquí lo hace esta página:
+// El dashboard de telar, corriendo en el navegador: el mismo `PanelHoy` que en VS Code, sin Node. Lo que
+// en el panel en Node (retirado el 19-oct-2026) hacía su servidor (hablar con la CLI, mandar la página por
+// un WebSocket, preguntarle cosas a quien mira) aquí lo hace esta página:
 //
 //   - la API, por `fetch` a `/api` (la misma de `telar serve`, detrás de la llave de esta página);
 //   - el dashboard se dibuja en un iframe, con el mismo guion de interfaz que en Node (web/pagina.ts) pero
@@ -202,7 +202,7 @@ function mostrar(que: string): void {
         f = [...marcos().querySelectorAll('iframe')].find(x => x.dataset.p === llave);
         if (que.startsWith('doc:') || que === 'compartir') {
             f ??= nuevoMarco(llave, marcos());
-            if (que === 'compartir') f.srcdoc = paginaCompartir(Math.random().toString(36).slice(2), { consulta: location.search, navegador: true });
+            if (que === 'compartir') f.srcdoc = paginaCompartir(Math.random().toString(36).slice(2), { consulta: location.search });
             else void verDocumento(f, que.slice(4), '');
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
@@ -210,8 +210,8 @@ function mostrar(que: string): void {
             const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
             const nonce = Math.random().toString(36).slice(2);
             f = nuevoMarco(llave, marcos());
-            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo, xterm: '/estatico/xterm' })
-                : paginaConversacion(nonce, { hilo, maquina, navegador: true });
+            f.srcdoc = como === 'term' ? paginaTerminal(nonce, { hilo })
+                : paginaConversacion(nonce, { hilo, maquina });
         }
         if (como === 'term') {
             const j = usadas.indexOf(llave);
@@ -378,7 +378,7 @@ mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
 if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 
 setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
-// lo mismo que el panel en Node: el modelo (los hilos, su atención) se sondea mientras la página se mira
+// como en VS Code: el modelo (los hilos, su atención) se sondea mientras la página se mira
 const sondear = async () => {
     if (!document.hidden) await modelo.sondear().catch(() => undefined);
     setTimeout(sondear, modelo.error || !modelo.viva ? 5000 : 3000);

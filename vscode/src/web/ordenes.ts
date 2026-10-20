@@ -1,6 +1,6 @@
 // Lo que en VS Code son comandos de la extensión (el menú de un hilo, ir a uno, retomarlo, abrir una
-// sección…), para los anfitriones que no son VS Code: el panel en Node (servidor.ts) y el dashboard en el
-// navegador (src/navegador). Cada uno da lo suyo: su interfaz, cómo avisar y qué mostrar a la derecha.
+// sección…), para el anfitrión que no es VS Code: el dashboard en el navegador (src/navegador), que da lo
+// suyo: su interfaz, cómo avisar y qué mostrar a la derecha.
 
 import type { Anfitrion, Opcion } from '../anfitrion';
 import * as cli from '../cli';

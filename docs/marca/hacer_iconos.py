@@ -6,7 +6,7 @@ trazo mide 2 celdas, el cursor 3×6, y entre la «t» y el cursor hay 1 celda. E
 debajo del brazo de la «t» y los dos se apoyan en la misma línea base. Las medidas no se tocan a mano:
 se cambia `FORMAS` y se vuelve a correr.
 
-    python3 docs/marca/hacer_iconos.py          escribe los PNG de vscode/media/app/ y el SVG
+    python3 docs/marca/hacer_iconos.py          escribe los PNG de src/telar/web/app/ y el SVG
 
 Cada tamaño elige una celda de píxeles enteros, para que ningún borde quede a medias. El ícono
 «maskable» (el que Android recorta en círculo) usa una celda menor, para que el logo quepa en el
@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-DESTINO = Path(__file__).resolve().parents[2] / "vscode" / "media" / "app"
+DESTINO = Path(__file__).resolve().parents[2] / "src" / "telar" / "web" / "app"
 
 FONDO = (46, 52, 64)       # #2e3440
 AZUL = (136, 192, 208)     # #88c0d0

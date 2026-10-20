@@ -2,30 +2,15 @@
 // `acquireVsCodeApi` (mandar mensajes y guardar su estado), los mensajes que llegan, y la
 // interfaz que en VS Code es nativa —avisos, un campo para escribir, un menú para elegir—.
 // El script del dashboard (dia.ts) no cambia: habla con `vscode` como siempre, y aquí ese
-// `vscode` es un WebSocket con el servidor (servidor.ts).
+// `vscode` es la página que lo contiene (src/navegador), por postMessage. Y las otras páginas de un
+// hilo en el navegador: su conversación, su terminal, su carpeta, y la de compartir.
 
 import { estilo, estiloBase } from '../estilo';
 
 export const CSS_WEB = estilo('web');
 
-/** El script que va antes del del dashboard: define `acquireVsCodeApi` y la interfaz. */
-// El canal: con un servidor en Node, un WebSocket; en el navegador (src/navegador), la página que contiene
-// al dashboard, por postMessage. El resto del script (la interfaz) es el mismo para los dos.
-const CANAL_WS = String.raw`
-  // cada página (la barra, el dashboard) tiene su canal: el servidor sabe a quién mandarle qué
-  var url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws?v=' + (location.pathname === '/barra' ? 'barra' : 'dash');
-  var ws, abierto = false, cola = [];
-  function conectar() {
-    ws = new WebSocket(url);
-    ws.onopen = function () { abierto = true; cola.splice(0).forEach(function (m) { ws.send(m); }); medir(); };
-    ws.onclose = function () { abierto = false; avisar('sin conexión con telar; reintentando…', 'aviso'); setTimeout(conectar, 2000); };
-    ws.onmessage = function (e) {
-      var m; try { m = JSON.parse(e.data); } catch (x) { return; }
-      llega(m);
-    };
-  }
-  function enviar(s) { ws.send(s); }`;
-
+/** El script que va antes del del dashboard: define `acquireVsCodeApi` y la interfaz. El canal: la página
+ *  que contiene al dashboard (src/navegador), por postMessage. */
 const CANAL_PADRE = String.raw`
   // la página que contiene al dashboard (src/navegador) le habla por postMessage
   var abierto = false, cola = [];
@@ -147,117 +132,10 @@ function script(canal: string): string {
 `;
 }
 
-/** El script que va antes del del dashboard en el panel en Node: el canal es un WebSocket. */
-export const SCRIPT_WEB = script(CANAL_WS);
-/** El mismo, para el dashboard que corre en el navegador (src/navegador): le habla a la página que lo
- *  contiene, por postMessage. */
+/** El script del dashboard que corre en el navegador (src/navegador): le habla a la página que lo contiene. */
 export const SCRIPT_NAVEGADOR = script(CANAL_PADRE);
 
-/** La página que junta las dos: la barra de hilos a la izquierda y, a la derecha, lo que la barra
- *  elige: el dashboard o la terminal de un hilo. Cada uno en su marco, con su propio script y su propio
- *  canal, como en VS Code. La barra lo pide con un mensaje a esta página (`__mostrar`); las
- *  terminales abiertas siguen vivas mientras se mira otra cosa (hasta TOPE, las más viejas se cierran).
- *
- *  En una pantalla angosta (un celular, hasta 700 px) se ve una cosa a la vez: primero la lista de
- *  hilos; un toque abre el dashboard o un hilo a pantalla completa, con «◀» arriba (y el botón atrás
- *  del teléfono) para volver. Ahí un hilo se lee como conversación (`/conversacion`), no como
- *  terminal: en un teclado de celular, una terminal de 40 columnas no se puede usar. «terminal»
- *  arriba la abre igual. */
-export function paginaCasa(nonce: string): string {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#1e1e2e">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src 'self'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; manifest-src 'self'; img-src 'self'; worker-src 'self';">
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>telar</title>
-<style>
-  html, body { margin: 0; height: 100%; background: #1e1e2e; }
-  body { display: grid; grid-template-columns: minmax(240px, 22vw) 1fr; height: 100dvh; }
-  iframe { border: 0; width: 100%; height: 100%; display: block; }
-  #barra { border-right: 1px solid rgba(205,214,244,.12); grid-row: 1 / span 2; }
-  #marcos { position: relative; min-width: 0; grid-row: 1 / span 2; } #marcos iframe { position: absolute; inset: 0; } #marcos iframe[hidden] { display: none; }
-  #tira { display: none; align-items: center; gap: 2ch; padding: .45em 1ch; border-bottom: 1px solid rgba(205,214,244,.12);
-    font: 15px Menlo, "JetBrains Mono", monospace; color: #cdd6f4; }
-  #tira button { font: inherit; color: #89b4fa; background: none; border: 0; padding: .2em .4ch; cursor: pointer; }
-  #tira #titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.angosto { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  body.angosto #barra { border-right: 0; }
-  body.angosto.en-lista #tira, body.angosto.en-lista #marcos, body.angosto.en-detalle #barra { display: none; }
-  body.angosto.en-detalle #tira { display: flex; }
-  body.angosto.en-detalle #marcos { grid-row: 2; }
-</style></head>
-<body><div id="tira"><button id="volver" title="volver a los hilos">◀ hilos</button><span id="titulo"></span><button id="modo"></button></div>
-<iframe id="barra" src="/barra" title="hilos"></iframe>
-<div id="marcos"><iframe data-p="dashboard" src="/dashboard" title="dashboard"></iframe></div>
-<script nonce="${nonce}">
-(function () {
-  var marcos = document.getElementById('marcos'), TOPE = 8, usadas = [], actual = 'dashboard', modo = {};
-  var angosto = window.matchMedia('(max-width: 700px)');
-  var titulo = document.getElementById('titulo'), botonModo = document.getElementById('modo');
-  function marco(p) { return marcos.querySelector('iframe[data-p="' + CSS.escape(p) + '"]'); }
-  // un hilo en pantalla angosta se lee como conversación (salvo que se pida la terminal); en ancha, terminal
-  // claves: «dashboard», el nombre de un hilo de aquí, «doc:<hilo>» (su carpeta) y «rem:<máquina>:<hilo>» (de otra máquina)
-  function forma(clave) { return clave === 'dashboard' || clave.indexOf('doc:') === 0 || clave.indexOf('rem:') === 0 ? '' : (angosto.matches ? (modo[clave] || 'conv') : 'term'); }
-  function fuente(clave) {
-    if (clave.indexOf('doc:') === 0) return '/documento?hilo=' + encodeURIComponent(clave.slice(4));
-    if (clave.indexOf('rem:') === 0) { var r = clave.slice(4), i = r.indexOf(':'); return '/conversacion?maquina=' + encodeURIComponent(r.slice(0, i)) + '&hilo=' + encodeURIComponent(r.slice(i + 1)); }
-    return (forma(clave) === 'conv' ? '/conversacion?hilo=' : '/terminal?hilo=') + encodeURIComponent(clave);
-  }
-  function llave(clave) { var f = forma(clave); return f ? f + ':' + clave : clave; }
-  function mostrar(clave, desdeHistoria) {
-    actual = clave;
-    var p = llave(clave), f = marco(p);
-    if (!f) {
-      f = document.createElement('iframe');
-      f.setAttribute('data-p', p); f.title = clave;
-      f.src = fuente(clave);
-      marcos.appendChild(f);
-    }
-    [].forEach.call(marcos.querySelectorAll('iframe'), function (x) { x.hidden = x !== f; });
-    // las vistas de hilos que hace rato no se miran se cierran (cada terminal es una vista de tmux abierta)
-    if (clave !== 'dashboard') {
-      usadas = usadas.filter(function (u) { return u !== p; }).concat([p]);
-      while (usadas.length > TOPE) { var vieja = marco(usadas.shift()); if (vieja) vieja.remove(); }
-    }
-    var nombre = clave.indexOf('doc:') === 0 ? clave.slice(4) + ' · carpeta'
-      : clave.indexOf('rem:') === 0 ? (function (r) { var i = r.indexOf(':'); return r.slice(i + 1) + ' · en ' + r.slice(0, i); })(clave.slice(4)) : clave;
-    document.title = clave === 'dashboard' ? 'telar' : nombre + ' · telar';
-    titulo.textContent = nombre;
-    botonModo.hidden = !forma(clave);
-    botonModo.textContent = forma(clave) === 'conv' ? 'terminal' : 'conversación';
-    if (angosto.matches) {
-      document.body.classList.remove('en-lista'); document.body.classList.add('en-detalle');
-      if (!desdeHistoria) history.pushState({ d: clave }, '');
-    }
-    if (f.contentWindow && !angosto.matches) f.contentWindow.focus();
-  }
-  function lista() { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
-  function ajustar() {
-    document.body.classList.toggle('angosto', angosto.matches);
-    if (angosto.matches) lista();
-    else { document.body.classList.remove('en-lista', 'en-detalle'); mostrar(actual, true); }
-  }
-  document.getElementById('volver').addEventListener('click', function () { if (history.state && history.state.d) history.back(); else lista(); });
-  botonModo.addEventListener('click', function () {
-    modo[actual] = forma(actual) === 'conv' ? 'term' : 'conv';
-    mostrar(actual, true);
-  });
-  window.addEventListener('popstate', function (e) { if (e.state && e.state.d) mostrar(String(e.state.d), true); else lista(); });
-  angosto.addEventListener('change', ajustar);
-  window.addEventListener('message', function (e) {
-    if (e.origin !== location.origin || !e.data || !e.data.__mostrar) return;
-    mostrar(String(e.data.__mostrar));
-  });
-  ajustar();
-  // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
-})();
-</script></body></html>`;
-}
-
-/** La carpeta de un hilo y uno de sus archivos, para `paginaDocumento` (lo arma servidor.ts). */
+/** La carpeta de un hilo y uno de sus archivos, para `paginaDocumento` (en el navegador, de `/api/hilos/documento`). */
 export interface Documento {
     hilo: string; titulo: string; error?: string;
     carpeta?: string; archivo?: string; subir?: string;
@@ -290,7 +168,7 @@ export function paginaDocumento(nonce: string, d: Documento): string {
 /** Lo que el teléfono le comparte al panel instalado como app (`share_target` del manifiesto): un
  *  enlace o un texto, para llevarlo a un hilo, a un agente o a un proveedor que lo recibe (un feed de
  *  lecturas). Lo lleva `telar compartir`. */
-export function paginaCompartir(nonce: string, rutas: { consulta?: string; navegador?: boolean } = {}): string {
+export function paginaCompartir(nonce: string, rutas: { consulta?: string } = {}): string {
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self';">
@@ -347,8 +225,8 @@ export function paginaCompartir(nonce: string, rutas: { consulta?: string; naveg
       .then(function () { b.disabled = false; });
   }
   filtro.addEventListener('input', pintar);
-  // los proveedores que reciben; los hilos los suma el panel en Node, y en el navegador se leen de la API
-  var hilos = !R.navegador ? Promise.resolve([]) : fetch('/api/hilos?ficha=false&red=true', { credentials: 'same-origin' })
+  // los proveedores que reciben, y los hilos (de esta máquina y de las otras)
+  var hilos = fetch('/api/hilos?ficha=false&red=true', { credentials: 'same-origin' })
     .then(function (r) { return r.json(); })
     .then(function (d) { return (d.hilos || []).filter(function (h) { return !h.archivado; })
       .map(function (h) { return { destino: 'hilo:' + h.nombre, nombre: h.nombre, tipo: 'hilo' }; }); })
@@ -364,13 +242,11 @@ export function paginaCompartir(nonce: string, rutas: { consulta?: string; naveg
  *  cada pocos segundos), una caja para escribirle y las teclas para contestarle una pregunta (⏎, ⎋,
  *  1-3, ↑↓). Lo escrito va por el mismo canal que la terminal (`/pty`, una vista de `telar mirar`):
  *  es teclear en el hilo, con la misma llave. */
-/** De dónde lee y a dónde escribe la página de una conversación. En el panel en Node, sus rutas (`/api/leer`,
- *  y la terminal o `/api/remoto/enviar`); en el navegador (src/navegador), la API de telar: `/api/hilos/leer`,
- *  la terminal (`/pty` de telar.api_web) para un hilo de aquí y `/api/mensajes` para uno de otra máquina. */
+/** De qué hilo es la página de una conversación (un iframe srcdoc no tiene dirección de donde leerlo). Lee
+ *  de la API (`/api/hilos/leer`) y escribe por la terminal (`/pty` de telar.api_web) a un hilo de aquí, o
+ *  como mensaje (`/api/mensajes`, por el bus) a uno de otra máquina. */
 export interface RutasConversacion {
-    /** el hilo y su máquina, si la página no los lee de su dirección (un iframe con srcdoc no tiene) */
     hilo?: string; maquina?: string;
-    navegador?: boolean;
 }
 
 export function paginaConversacion(nonce: string, rutas: RutasConversacion = {}): string {
@@ -431,8 +307,7 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
   function leer() {
     if (leyendo) return;
     leyendo = true;
-    var url = R.navegador ? '/api/hilos/leer?hilo=' + encodeURIComponent(hilo) + '&ultimos=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : '')
-      : '/api/leer?hilo=' + encodeURIComponent(hilo) + '&n=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : '');
+    var url = '/api/hilos/leer?hilo=' + encodeURIComponent(hilo) + '&ultimos=8' + (maquina ? '&maquina=' + encodeURIComponent(maquina) : '');
     fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.json().then(function (d) { return r.ok ? d : { error: d.detail || ('la API respondió ' + r.status) }; }); })
       .then(pintar)
@@ -462,11 +337,8 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
     if (!t) return;
     if (porMensaje) {
       // por el bus, como la persona; le llega al hilo al terminar su turno (o al tiro si espera)
-      var envio = R.navegador
-        ? fetch('/api/mensajes', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ para: hilo, texto: t, tipo: 'persona', de: 'el panel' }) })
-            .then(function (r) { return r.json().then(function (d) { return r.ok ? { ok: true } : { ok: false, error: d.detail }; }); })
-        : fetch('/api/remoto/enviar', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hilo: hilo, texto: t }) })
-            .then(function (r) { return r.json(); });
+      var envio = fetch('/api/mensajes', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ para: hilo, texto: t, tipo: 'persona', de: 'el panel' }) })
+        .then(function (r) { return r.json().then(function (d) { return r.ok ? { ok: true } : { ok: false, error: d.detail }; }); });
       envio
         .then(function (r) {
           dijo.textContent = r.ok ? 'enviado: le llega al terminar su turno, o al tiro si te espera' : (r.error || 'no llegó');
@@ -488,11 +360,10 @@ export function paginaConversacion(nonce: string, rutas: RutasConversacion = {})
 </script></body></html>`;
 }
 
-/** La terminal de un hilo: xterm.js conectado por WebSocket a `telar mirar` en un PTY del servidor. En el
- *  panel en Node, el hilo viene en la dirección y xterm de `/xterm`; en el navegador (un iframe srcdoc), los
- *  dos por parámetro, con xterm en `/estatico/xterm` (lo sirve telar.api_web). */
-export function paginaTerminal(nonce: string, rutas: { hilo?: string; xterm?: string } = {}): string {
-    const xterm = rutas.xterm ?? '/xterm';
+/** La terminal de un hilo: xterm.js (servido por telar.api_web en `/estatico/xterm`) conectado por
+ *  WebSocket a `telar mirar` en un PTY de la máquina (`/pty`, telar.terminal). */
+export function paginaTerminal(nonce: string, rutas: { hilo?: string } = {}): string {
+    const xterm = '/estatico/xterm';
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self' 'nonce-${nonce}'; connect-src 'self';">
 <link rel="stylesheet" href="${xterm}/xterm.css">

@@ -396,6 +396,10 @@ workflow refuses to run if the two disagree.
 
 ### Removed
 
+- The Node panel: `telar panel`, `vscode/src/web/servidor.ts`, the `telar-panel` service templates
+  (`servidor/telar-panel.service`, `.plist`), `vscode/media/app` and the `node-pty`, `ws` and `@types/ws`
+  dependencies. The page is served by `telar serve --web` (Python): point `tailscale serve` at its port
+  (8780) and an app already installed on the phone keeps working (same paths, key and cookie).
 - `telar web`, the phone page: the web panel (`telar panel`) replaced it, and it does all it did — the day,
   the threads of every machine, reading and writing to them, the plan and its comments, opening threads and
   shortcuts, sharing from the phone, installing as an app. Gone with it: `src/telar/web/`, `webcal.py`,

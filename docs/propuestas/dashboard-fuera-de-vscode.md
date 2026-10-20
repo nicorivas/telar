@@ -1,9 +1,9 @@
 # El dashboard fuera de VS Code
 
-Propuesta, 16-oct-2026. Estado al 18-oct: **la barra, el dashboard y las terminales ya corren en el
-navegador** (`npm run panel` en `vscode/`), pero hay que levantarlo a mano, el celular sigue en `telar
-web` y no existe `telar serve`. El estado y lo que sigue están en «Estado y plan», al final: esa sección
-manda sobre los pasos de más abajo, que fueron el plan original.
+Propuesta, 16-oct-2026. Estado al 19-oct: **la barra, el dashboard y las terminales corren en el
+navegador sin Node**, servidos por `telar serve --web` (Python), y el panel en Node se retiró. Lo que
+sigue está en «Estado y plan», al final: esa sección manda sobre los pasos de más abajo, que fueron el
+plan original (y lo que cuentan del panel en Node, `servidor.ts`, `telar panel`, es historia).
 
 ## Por qué
 
@@ -194,7 +194,7 @@ periódicos y las rutas de quien colabora (hoy `telar-equipo`); el laptop, sus h
 
 | hoy | al final |
 |---|---|
-| `telar-panel` (Node) | parte del proceso único, cuando las vistas se dibujen en el navegador |
+| `telar-panel` (Node) | retirado (19-oct): la página la sirve `telar serve --web` |
 | `telar-serve` | es el proceso único |
 | `telar-nodo` | una tarea del proceso único |
 | `telar-equipo` | rutas del mismo servidor, con su llave |
@@ -244,7 +244,9 @@ En el servidor quedan telar, NATS, tmux y cron; en el laptop, telar y tmux.
    `telar.api_web` corre `telar mirar` en un PTY y la página usa xterm.js (servido desde `estatico/xterm`).
    Lo que solo servía el panel en Node también pasó (19-oct): la app del celular (manifiesto, service
    worker e íconos en `web/app`), la página de compartir (`/compartir`) y la carpeta de un hilo (`doc:`,
-   con `/api/hilos/documento`). Queda retirar el panel en Node: `telar-panel`, `servidor.ts`, `node-pty`.
+   con `/api/hilos/documento`). Y el panel en Node se retiró (19-oct): fuera `telar-panel` en las dos
+   máquinas, `telar panel`, `servidor.ts`, `node-pty` y `ws`; en el servidor, `https://<máquina>.ts.net`
+   (443 y 8443) apunta a la página de Python, así que la app ya instalada en el celular sigue entrando.
 5. **`telar-equipo`, como rutas**, y sale el código muerto. Hecho en el código (19-oct): la página del
    equipo es una app FastAPI aparte (`telar.api_equipo`), que `telar serve --equipo` sirve en su propio
    puerto de Tailscale, en el mismo proceso; nada de tu API se alcanza desde ahí (probado: `/hoy`, `/docs`,
