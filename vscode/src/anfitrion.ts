@@ -4,7 +4,7 @@
 // los clics. Lo que sí depende de dónde corren —un aviso, un menú para elegir, un campo para
 // escribir, abrir un enlace o un archivo, la barra de estado— pasa por aquí. VS Code lo hace con
 // su API (`anfitrion-vscode.ts`); el navegador, con mensajes a la página (`web/`). Ver
-// docs/propuestas/dashboard-fuera-de-vscode.md.
+// docs/arquitectura.md.
 //
 // Las firmas siguen a las de VS Code que se usaban, para que el cambio fuera mecánico: un aviso
 // con botones devuelve el botón elegido (o undefined), un menú devuelve el ítem.

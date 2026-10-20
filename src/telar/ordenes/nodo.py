@@ -51,7 +51,7 @@ def main(argv: list[str], ctx) -> int:
     if o is None:
         return codigo
     if not mod_bus.hay_bus(ctx.config):
-        return _comun.queja("no hay bus: [bus] url en la configuración (docs/propuestas/bus.md)")
+        return _comun.queja("no hay bus: [bus] url en la configuración (docs/arquitectura.md, «Entre máquinas: el bus»)")
     if o.verbo == "estado":
         try:
             datos = mod_bus.estados(ctx.config)

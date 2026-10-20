@@ -6,7 +6,7 @@ después queda en una cookie HttpOnly, la misma del panel, así que entrar a uno
 escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio ajeno no puede fingir el
 `Origin`. Sin `Origin` (curl, la CLI) manda la llave.
 
-    GET  /                  la página (se arma pantalla por pantalla: docs/propuestas/dashboard-fuera-de-vscode.md)
+    GET  /                  la página (se arma pantalla por pantalla: docs/arquitectura.md)
     GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
     GET  /maquinas          la página madre: tus máquinas, para elegir en cuál abrir la página
     GET  /maquinas.json     esta máquina y las del bus que sirven su página, cada una con su enlace para entrar

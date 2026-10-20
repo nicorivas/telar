@@ -2,9 +2,10 @@
 
 La mitad de servidor del correo entre agentes: lo que corre en una máquina compartida para
 que los agentes de distintas personas se escriban, y que telar después lee (`telar correo`).
-telar no lo instala; es una implementación de referencia que se copia a mano. El diseño está
-en [`docs/propuestas/correo-y-celular.md`](../docs/propuestas/correo-y-celular.md) y
-[`docs/propuestas/agentes-que-se-conocen.md`](../docs/propuestas/agentes-que-se-conocen.md).
+telar no lo instala; es una implementación de referencia que se copia a mano. Entre los hilos
+de una misma persona ya habla el bus ([`docs/arquitectura.md`](../docs/arquitectura.md)); esto queda
+para el correo entre personas, hasta que el bus las cruce
+([`docs/propuestas/telar-para-otros.md`](../docs/propuestas/telar-para-otros.md)).
 
 | archivo | qué hace | se instala en |
 | --- | --- | --- |
@@ -56,7 +57,7 @@ y nadie puede borrar ni reemplazar el de otra. telar descarta al leer un archivo
 no es el usuario de su nombre. En telar: `[remotos.<n>] directorio = "/srv/correo-agentes/directorio"`.
 
 **5. tmux:** `set -g status off`, `set -g prefix None`, `set -g window-size latest`, para
-que no se vea ni estorbe desde el tmux del laptop (ver `hilos-remotos.md`).
+que no se vea ni estorbe desde el tmux del laptop.
 
 ## Qué garantiza el cartero
 

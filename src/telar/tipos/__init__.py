@@ -1,4 +1,4 @@
-"""Los tipos: un esquema sobre archivos de texto (docs/propuestas/tipos.md).
+"""Los tipos: un esquema sobre archivos de texto (docs/arquitectura.md, «Los tipos»).
 
 Un tipo tiene tres partes:
 

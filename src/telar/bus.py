@@ -1,4 +1,4 @@
-"""El bus entre máquinas: mensajes que esperan y estado que se avisa (docs/propuestas/bus.md).
+"""El bus entre máquinas: mensajes que esperan y estado que se avisa (docs/arquitectura.md, «Entre máquinas: el bus»).
 
 Un servidor NATS con JetStream en la máquina que no se apaga; cada máquina habla con él por una
 conexión saliente (`telar nodo`). Tres cosas viajan por ahí:

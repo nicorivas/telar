@@ -5,47 +5,45 @@ un agente (Claude Code, por ejemplo) trabajando en una carpeta. Alrededor de los
 muestra lo que hay que hacer (tareas, agenda, correo) y deja que los agentes se hablen entre sí,
 en una máquina o en varias.
 
-Este documento explica las piezas, cómo se conectan y por dónde se enchufa lo propio. El ejemplo
-de punta a punta es **conectar un sistema de tareas**, al final.
+Este documento describe cómo es telar hoy: las piezas, cómo se conectan y por dónde se enchufa lo
+propio. Las claves de cada pieza están en [configuracion.md](configuracion.md); lo que falta, en
+[propuestas/](propuestas/README.md).
 
 ## El dibujo
 
 ```
- lo que ves                el núcleo                         lo que hay debajo
- ─────────                 ─────────                         ─────────────────
+ lo que ves                  un proceso por máquina                 lo que hay debajo
+ ──────────                  ──────────────────────                 ─────────────────
 
- ┌──────────────┐        ┌──────────────────────┐          ┌──────────────────────┐
- │ barra de     │        │                      │  tmux    │ una sesión de tmux   │
- │ hilos        │──┐     │   la CLI `telar`     │─────────▶│ por máquina; cada    │
- └──────────────┘  │     │   (Python)           │          │ hilo es una ventana  │
- ┌──────────────┐  │     │                      │          │ con su agente        │
- │ dashboard    │──┼────▶│  · hilos             │          └──────────┬───────────┘
- │ (tareas,     │  │JSON │  · mensajes          │                     │ ganchos del agente
- │  agenda,     │  │     │  · proveedores       │◀────────────────────┘ («trabajando»,
- │  correo…)    │  │     │  · módulos           │                        «te espera»,
- └──────────────┘  │     │  · periódicos        │                        «terminó»)
- ┌──────────────┐  │     │                      │          ┌──────────────────────┐
- │ terminal del │──┘     │                      │  bus     │ las otras máquinas,  │
- │ hilo (web)   │        │                      │◀────────▶│ cada una con su      │
- └──────────────┘        └───┬─────────┬────────┘  (NATS)  │ `telar nodo`         │
-   VS Code o navegador       │         │                   └──────────────────────┘
-                             │         │
-                ┌────────────┘         └─────────────┐
-                ▼                                    ▼
- ┌────────────────────────────┐       ┌──────────────────────────────┐
- │ tu repositorio de trabajo  │       │ lo tuyo, enchufado           │
- │ + telar-perfil.yaml        │       │ · proveedores (tareas,       │
- │ (qué es un proyecto, qué   │       │   calendario, lo que sea)    │
- │ se lee de cada uno)        │       │ · módulos (modulo.toml)      │
- └────────────────────────────┘       └──────────────────────────────┘
+ ┌───────────────┐  HTTP    ┌──────────────────────────────┐  tmux  ┌──────────────────────┐
+ │ la página     │  WS      │ telar serve (Python)         │───────▶│ una sesión de tmux   │
+ │ · barra de    │─────────▶│  · la API (telar.servicios)  │        │ por máquina; cada    │
+ │   hilos       │ Tailscale│  · la página                 │        │ hilo es una ventana  │
+ │ · dashboard   │          │  · las terminales (PTY)      │◀───────│ con su agente        │
+ │ · el hilo:    │          │  · el nodo del bus           │ ganchos└──────────────────────┘
+ │   terminal,   │          │  · la página del equipo      │ del agente
+ │   lectura…    │          └──┬────────────┬──────────┬───┘
+ └───────────────┘             │            │          │ NATS   ┌──────────────────────┐
+  navegador o celular          │            │          └───────▶│ las otras máquinas,  │
+                               │            │                   │ con su telar serve   │
+ ┌───────────────┐  socket     │            │                   └──────────────────────┘
+ │ la CLI telar, │─────────────┤            │
+ │ agentes,      │             ▼            ▼
+ │ scripts       │  ┌───────────────────┐ ┌──────────────────────────────┐
+ └───────────────┘  │ tu repositorio    │ │ lo tuyo, enchufado           │
+                    │ + telar-perfil    │ │ · proveedores (tareas,       │
+                    │ (qué es un        │ │   calendario, lo que sea)    │
+                    │ proyecto)         │ │ · tipos (objetos en archivos)│
+                    └───────────────────┘ │ · módulos (modulo.toml)      │
+                                          └──────────────────────────────┘
 ```
 
 Tres reglas sostienen el dibujo:
 
-1. **Todo pasa por la CLI.** La barra, el dashboard y la página web no tienen lógica propia:
-   llaman a `telar … --json` y dibujan lo que vuelve. Cada salida `--json` es un contrato escrito
-   en [contratos.md](contratos.md). Cualquier cosa que telar muestra, un script o un agente la puede
-   pedir igual.
+1. **La lógica vive una vez.** Cada orden de la CLI y cada ruta de la API son cáscaras de una misma
+   función de `telar.servicios`, que devuelve un modelo (Pydantic): el modelo es el contrato
+   ([contratos.md](contratos.md)). La página no tiene lógica de datos propia: pide a la API y dibuja.
+   Cualquier cosa que telar muestra, un script o un agente la puede pedir igual (`telar … --json`).
 2. **telar no sabe qué es un proyecto, ni cómo son tus tareas.** Lo dice tu repositorio
    (`telar-perfil.yaml`) y lo traen tus proveedores. telar sabe de hilos, de mensajes y de máquinas.
 3. **Nada se hace a escondidas.** Los comandos son listas de palabras (sin shell), los proveedores
@@ -55,49 +53,210 @@ Tres reglas sostienen el dibujo:
 
 | pieza | qué es | dónde vive |
 |---|---|---|
-| **hilo** | una ventana de tmux con un agente, vinculada a una carpeta. telar recuerda su conversación, su atención y su prioridad | la sesión de tmux; el estado en `~/.local/state/telar/` |
+| **hilo** | una ventana de tmux con un agente, vinculada a una carpeta. telar recuerda su conversación, su atención y su prioridad | la sesión de tmux; el estado en `~/.local/state/telar/` ([estado.md](estado.md)) |
+| **agente** | el programa que corre dentro del hilo. telar no lo pilota: lo reconoce por sus ganchos | [agentes.md](agentes.md) |
+| **agente residente** | un hilo que siempre existe, con su carpeta, su memoria y su casilla; recibe encargos | `[agentes] carpeta` |
 | **perfil** | lo que tu repositorio dice de sí mismo: qué carpetas son unidades de trabajo, qué archivo es su cara, qué secciones se leen | `telar-perfil.yaml`, en la raíz del repo ([perfil.md](perfil.md)) |
-| **configuración** | lo de esta máquina: dónde está el repo, qué proveedores hay, qué se muestra | `~/.config/telar/config.toml` ([configuracion.md](configuracion.md)) |
-| **proveedor** | un programa que le trae a telar datos de afuera, en un JSON conocido: tareas, agenda, cualquier lista | lo declaras en la configuración |
-| **módulo** | una carpeta con un `modulo.toml` que aporta de una vez una pestaña, una app, un proceso periódico o un resultado | donde quieras; lo declaras en `[modulos]` |
+| **configuración** | lo de esta máquina: dónde está el repo, qué proveedores hay, qué se muestra | `~/.config/telar/config.toml` |
+| **proveedor** | un programa que le trae a telar datos de afuera, en un JSON conocido: tareas, agenda, cualquier lista | `[proveedores.*]` |
+| **tipo** | objetos guardados como archivos de texto, con un modelo y acciones; telar los lee y los escribe él mismo. Hoy hay uno: `tarea` | `telar.tipos`, `[tipos.*]` |
+| **módulo** | una carpeta con un `modulo.toml` que aporta de una vez una pestaña, una app, un proceso periódico o un resultado | `[modulos]` |
 | **mensaje** | texto para un hilo o un agente, en cualquier máquina; llega aunque el hilo esté cerrado | `telar mensaje`; viaja por el bus |
-| **periódico** | algo que corre solo cada cierto tiempo, a veces abriendo un hilo con un agente | `telar periodicos` |
-| **nodo** | el proceso de telar de cada máquina en el bus: recibe los mensajes, avisa a los hilos, publica qué hay vivo | `telar nodo`, como servicio |
-| **superficie** | lo que dibuja: la extensión de VS Code o la página web (`telar serve --web`), que también es la app del celular | `vscode/` |
+| **periódico** | algo que corre solo cada cierto tiempo, a veces abriendo un hilo con un agente | `telar periodicos` (cron) |
+| **nodo** | la parte de `telar serve` que habla con el bus: recibe los mensajes, avisa a los hilos, publica qué hay vivo | `telar serve --nodo` |
+| **la página** | lo que se ve: la barra de hilos, el dashboard y cada hilo; también es la app del celular | `telar serve --web`; su código, en `vscode/` |
+
+## Un proceso por máquina
+
+Cada máquina corre un solo `telar serve`, como servicio (`servidor/telar-serve.service` en Linux,
+`telar-serve.plist` en macOS), con el mismo código en todas. Lo que cambia entre máquinas es la
+configuración: el servidor tiene el calendario, las tareas, los periódicos y la página del equipo;
+el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos locales).
+
+- **La API** escucha en un socket Unix (`~/.local/state/telar/serve/telar.sock`, en una carpeta solo
+  para su dueño). La CLI, si la encuentra, le pide a ella; si no, hace el trabajo sola.
+- **La página** (`--web`) se sirve en la dirección de Tailscale de la máquina (puerto 8780; en el
+  servidor, `tailscale serve` le pone HTTPS). Se entra con una llave por máquina
+  (`~/.config/telar/panel.llave`), que deja una cookie; además, cada pedido tiene que venir del mismo
+  origen.
+- **Las terminales**: `/pty` es un WebSocket que corre `telar mirar <hilo>` en un PTY. Con
+  `?maquina=<otra>` reenvía a la de esa máquina: la dirección sale de la foto del espejo y se entra
+  con el token del bus.
+- **Las máquinas**: `/maquinas` lista las del bus que sirven su página; se pasa a otra con un boleto
+  firmado que vence en un minuto y sirve una vez.
+- **La página del equipo** (`--equipo`) es otra app, en su propio puerto: alguien de confianza ve tus
+  tareas y te sugiere prioridades, sin alcanzar nada de tu API.
+- **Las tareas de fondo**: refrescar el calendario (una copia que vale 10 minutos), la foto del
+  estado.
+
+Algunas órdenes todavía corren la CLI por dentro y leen su salida (`telar.servicios.en_proceso`): los
+verbos de `telar hilo` y `telar tejer`. `hilo llevar` y las acciones del perfil quedan en la CLI a
+propósito (tardan minutos o heredan la terminal).
+
+## Los hilos y tmux
+
+En cada máquina, todo hilo es una ventana de **una sola sesión** de tmux, la del telar (`sesion` en la
+configuración), marcada con `@telar_id`. Los agentes, los periódicos, la página y el laptop cuando
+abre un hilo en el servidor abren ventanas en esa sesión, nunca sesiones propias.
+
+Mirar un hilo es engancharse a una **sesión agrupada** con la del telar, fija en su ventana
+(`ver-<id>-<máquina>`). Comparte las ventanas pero elige la suya, así que dos pantallas miran hilos
+distintos sin moverse una a la otra. Para que sea confiable:
+
+- telar apunta siempre a las ventanas con su sesión delante (`=telar:@3`), nunca un `@3` a secas;
+- un gancho (`session-window-changed`) suelta a quien mira si su ventana deja de ser la actual;
+- la dirección guardada lleva la marca (`@338/1a2b3c4d`): tmux reusa los `@N` al reiniciarse;
+- `destroy-unattached` borra la vista cuando nadie la mira.
+
+La página dimensiona la ventana (`window-size latest`). El tmux de una máquina que se mira desde
+otra va sin prefijo ni barra. Pide tmux 3.5 o más: la 3.4 tiene un segfault que se lleva todos los hilos.
+
+Si tmux se cae, el nodo sabe quién estaba vivo (lo anota cada 30 s) y `telar hilo caidos` los reabre
+con su conversación.
+
+## Entre máquinas: el bus
+
+Las máquinas se unen por un servidor NATS con JetStream (`servidor/telar-bus.service`) en la que no se
+apaga. Cada nodo abre una conexión saliente hacia él. Sin `[bus] url`, nada de esto corre y telar
+funciona en una sola máquina.
+
+Por el bus viajan:
+
+| qué | dónde | para qué |
+|---|---|---|
+| los mensajes | stream `TELAR_CASILLAS`, tema `casilla.<persona>.<hilo>` | esperan hasta que los recoja la máquina donde vive el hilo; el mismo id no se guarda dos veces |
+| el estado | almacén `TELAR_HILOS`, clave `<persona>.<hilo>` | dónde vive cada hilo y en qué anda; cada máquina publica los suyos y se entera de los demás al instante |
+| la foto | almacén `TELAR_ESPEJO`, cada 30 s | los hilos de cada máquina y la dirección de su página |
+| los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo |
+| el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
+
+Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
+hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
+
+**Cómo llega un mensaje.** El nodo de la máquina del hilo lo deja en su casilla local
+(`telar.casilla`). Los ganchos `Stop` y `UserPromptSubmit` del agente (`telar agente casilla`) se lo
+entregan entero al terminar el turno. Si el agente está ocioso, se le teclea solo «↯» para despertarlo,
+nunca el contenido. Un hilo cerrado se abre retomando su conversación.
+
+**Entre hilos de una misma persona no hay aprobación.** El mensaje de un hilo propio llega como pedido
+de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay frenos: cada mensaje
+lleva `persona` y `saltos` (la cadena se corta cuando la persona habla), y pasado el tope de saltos (6)
+o de mensajes por hora de un hilo (30) se retiene en el registro hasta que la persona lo suelte.
+
+**Seguridad.** El bus tiene un solo token, y ese token también abre las terminales de otra máquina.
+Sirve para una persona; para dos, falta separar (ver [telar-para-otros](propuestas/telar-para-otros.md)).
+El correo entre personas sigue por el servidor (el `cartero`, en [servidor/](../servidor/README.md)).
+
+Git sigue siendo para el contenido: los archivos se sincronizan con `pull` y `push`, a su ritmo, y un
+hilo vinculado a una carpeta que la otra máquina todavía no tiene se ve sin ficha hasta el próximo pull.
+
+## Los agentes residentes
+
+No hay dos clases de hilo. Un hilo es siempre una conversación con una casa (una carpeta), y puede
+ser de paso (se abre para algo y se archiva) o **residente**: siempre existe, recibe encargos y rota
+su conversación cuando pesa. Un residente vive en una carpeta bajo `[agentes] carpeta`, con su
+`CLAUDE.md`, `README.md`, `memoria/` y `bitacora.md`.
+
+Cada agente arranca en su carpeta, para que Claude Code cargue su `CLAUDE.md` desde el comienzo: Claude
+lee los `CLAUDE.md` desde la carpeta de arranque hasta la raíz del repositorio, así que lo común a
+todos los agentes va en el `CLAUDE.md` de la carpeta que los contiene. Un `@import` fuera de la carpeta
+de arranque se ignora sin aviso, y `$CLAUDE_PROJECT_DIR` es la carpeta de arranque, no la raíz: los
+ganchos se escriben con ruta fija.
+
+`telar encargar <agente> "…"` (o un periódico con `agente = "…"`):
+
+- sesión viva y libre: se le escribe el encargo;
+- viva y trabajando: va a la cola, y el gancho `Stop` le entrega el siguiente al terminar su turno;
+- sin sesión: se abre retomando su última conversación, o una nueva si pasó de `[agentes] rotar_mb`.
+
+El resultado se deja en el registro (la tarea, el estado del proyecto, la bitácora), no en la
+conversación. `[agente] max_vivos` limita los hilos vivos de una máquina: antes de abrir otro, telar
+cierra los ociosos que nadie mira, los residentes al final. Cerrar no pierde nada.
+
+Cada hilo arranca sabiendo de los demás: el gancho `SessionStart` le da su nombre, su casilla y cómo
+escribir a otros, y `telar agente instalar` le pone la skill `/hilos`.
+
+## Los tipos: objetos sobre archivos
+
+Un **tipo** es la forma de unos objetos que viven como archivos de texto (`telar.tipos`): un modelo,
+sus **acciones** y sus **formatos** (lentes que leen el texto y lo editan al mínimo). El primero es
+`tarea`, con dos formatos:
+
+- **el archivo propio**: una tarea por archivo, con líneas `clave: valor`, el contexto,
+  `## Conexiones` y `## Historia`;
+- **la casilla**: una línea `- [ ]` de un documento, en sus dos dialectos (`@owner(…)`, `@deadline(…)`;
+  y `vence:`, `!alta`, `#etiqueta`).
+
+Leer y escribir sin cambios da los mismos bytes; una acción toca solo sus líneas.
+
+- **Las acciones** (`completar`, `cerrar`, `reabrir`, `algun_dia`, `esperar`, `reagendar`, `asignar`,
+  `anotar`, `proponer`, `responder`, `editar`, `secuela`, `conectar`) son funciones sobre el modelo,
+  cada una con su precondición y su línea en la historia.
+- **La carpeta** (`Carpeta`) lee un objeto con su versión (la huella del archivo) y le aplica una
+  acción. Con una versión vieja, la acción se rechaza. Hay un escritor a la vez (un candado), la
+  escritura es atómica, y lo escrito tiene que releerse igual a lo que se quiso escribir o no se
+  escribe. Al crear, el número lo elige quien escribe, con el candado tomado.
+- **El índice** (`telar.tipos.indice`) tiene los objetos en la memoria de `telar serve` y se pone al
+  día por la fecha y el tamaño de cada archivo: con 300 tareas, mirar si algo cambió cuesta 1 ms. Nadie
+  escribe en él: la acción escribe el archivo y el índice lo relee.
+
+Hay dos cáscaras: `telar tipo tarea <verbo>` y las rutas `/tipos/tarea` (una versión vieja es un 409).
+Desde una máquina con `[tipos.tarea] en`, la orden va por el bus a la que las tiene: hay un solo
+escritor. Quien escribe commitea y sube el archivo (`telar commit`). El proveedor `tipo = "tipo"` le
+da esas tareas a `telar hoy` y al dashboard, con su ficha y sus botones.
+
+## La página
+
+Se escribe en TypeScript (`vscode/src/`) y se empaqueta con esbuild (`vscode/scripts/navegador.mjs`)
+en `src/telar/web/`: `app.js`, `marco.css` (de los tokens de `vscode/media/css/`), `eco.js` y
+`lectura.js`. Cómo desarrollarla con recarga sola: [desarrollar.md](desarrollar.md).
+
+- **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
+  una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`.
+- **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
+  los módulos).
+- **Un hilo** tiene vistas, en un registro (`vscode/src/web/vistas-hilo.ts`): la terminal (⌥T), la
+  lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente) y la conversación
+  (⌥C). Una vista nueva es una entrada del registro.
+- **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`eco.js`): dibuja al tiro lo
+  que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
+- **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
+  «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
+
+El código todavía arrastra la forma de la extensión de VS Code, que está deprecada: el dashboard corre
+con un `acquireVsCodeApi` simulado y cada pantalla en un iframe. Retirarla es parte del plan.
 
 ## Cómo se mueve una cosa
 
-**Un hilo pide atención.** El agente de un hilo termina y espera respuesta. Su gancho
-(`telar agente aviso`) anota «te espera» en el estado. La barra relee `telar hilos --json` y pinta
-el hilo. Si el hilo vive en otra máquina, su nodo publica el cambio en el bus y la barra de aquí lo
-ve igual.
+**Un hilo pide atención.** El agente termina y espera respuesta. Su gancho (`telar agente aviso`)
+anota «te espera» en el estado; el nodo lo publica en el bus y la barra de cada máquina lo pinta.
+«Terminó» y no lo viste cuenta como «te espera».
 
-**Un agente le pide algo a otro.** El hilo A corre `telar mensaje B "…"`. El mensaje va al bus. El
-nodo de la máquina de B lo deja en su casilla, y el gancho de B se lo entrega al terminar su turno
-(o se lo teclea si está ocioso).
+**Un agente le pide algo a otro.** El hilo A corre `telar mensaje B "…"`. El mensaje va al bus, el
+nodo de la máquina de B lo deja en su casilla, y el gancho de B se lo entrega al terminar su turno.
 
-**Una tarea se trabaja.** El dashboard pide las tareas (`telar hoy --json`, que consulta al
-proveedor). Con ▶, telar busca el hilo de la tarea: el que lleva su id en el nombre, el que tiene su
-carpeta en el texto o el que calza con una etiqueta. Si no hay ninguno, abre uno nuevo con el
-agente y le da la tarea como primer mensaje (`pendiente_nuevo`). Con ✓, corre la acción «hecha»
-que el proveedor ofreció.
+**Una tarea se trabaja.** El dashboard pide las tareas (`/hoy`, que consulta al proveedor). Con ▶,
+telar busca el hilo de la tarea: el que lleva su id en el nombre, el que tiene su carpeta en el texto
+o el que calza con una etiqueta. Si no hay ninguno, abre uno nuevo con el agente y le da la tarea como
+primer mensaje. Con ✓, corre la acción «hecha» que el proveedor ofreció.
 
 ## Por dónde se enchufa lo propio
 
 | quiero… | se hace con | sin escribir código |
 |---|---|---|
 | que telar entienda mis proyectos | el perfil (`telar-perfil.yaml`) | sí |
-| ver mis tareas | `[proveedores.tareas]`: `markdown` o `comando` | sí, con `markdown` |
+| ver mis tareas | `[proveedores.tareas]`: `markdown`, `tipo` o `comando` | sí, con `markdown` o `tipo` |
 | ver mi agenda | `[proveedores.calendario]`: iCal o `gws` | sí |
 | una pestaña propia en el dashboard | `[bloques]`: un comando que imprime una página | no: un script |
 | una app (un juego, un visor) | `[apps]`: una página, un archivo o una URL | depende |
 | algo que corra solo | `telar periodicos crear …` | sí |
 | empaquetar todo lo anterior | un módulo con `modulo.toml` | — |
-| que otro agente o script use telar | la CLI con `--json` ([contratos.md](contratos.md)) | — |
+| que otro agente o script use telar | la CLI con `--json` o la API ([contratos.md](contratos.md)) | — |
+| integrar otro agente | sus ganchos, con los seis eventos ([agentes.md](agentes.md)) | casi |
 
 ## Conectar un sistema de tareas
 
-Hay tres niveles. Cada uno agrega algo al anterior, y se puede parar en cualquiera.
+Hay cuatro niveles. Cada uno agrega algo al anterior, y se puede parar en cualquiera.
 
 ### Nivel 1: casillas en tus documentos (sin código)
 
@@ -124,7 +283,23 @@ Cada casilla es una tarea, y entiende unas pocas marcas:
 `[>]` es «en curso», `espera:` saca la tarea de lo urgente (depende de otro), y como la tarea vive en
 la carpeta de un proyecto, telar ya sabe a qué hilo va.
 
-### Nivel 2: tu propio gestor, por un puente (un script)
+### Nivel 2: una carpeta de tareas, que telar escribe (sin código)
+
+Si quieres una tarea por archivo, con su historia, y que telar las cambie él mismo (✓, reagendar,
+anotar), usa el tipo `tarea`:
+
+```toml
+[tipos.tarea]
+carpeta = "~/notas/tareas"     # un T84.md por tarea
+
+[proveedores.tareas]
+tipo    = "tipo"
+carpeta = "~/notas/tareas"     # la misma
+```
+
+La ficha y sus botones salen de las acciones del tipo; desde la terminal, `telar tipo tarea …`.
+
+### Nivel 3: tu propio gestor, por un puente (un script)
 
 Si tus tareas viven en otra parte (un `todo.txt`, Todoist, una base de datos, una CLI propia),
 escribes un **puente**: un programa que las imprime en el JSON que telar espera.
@@ -168,7 +343,7 @@ print(json.dumps(tareas, ensure_ascii=False))
 Con eso, tus tareas aparecen en el dashboard ordenadas por urgencia (prioridad y fecha), cada una al
 lado del hilo donde se trabaja, y ▶ la lleva a un agente.
 
-### Nivel 3: la ficha y las acciones
+### Nivel 4: la ficha y las acciones del puente
 
 Para poder **hacer cosas** sobre una tarea desde telar (marcarla hecha, cambiarle la fecha,
 contestarle algo), el puente ofrece además su **ficha**:
@@ -210,38 +385,3 @@ tipo = "comando"
 en   = "servidor"          # la máquina, por el bus: se leen allá y sus acciones corren allá
 comando = ["/ruta/allá/mis-tareas"]
 ```
-
-## Hacia dónde va
-
-Lo de arriba es lo que corre hoy: cada superficie llama a la CLI abriendo un proceso por pedido. El
-plan cambia una flecha y agrega una caja:
-
-```
- hoy:        superficie ──(un proceso por pedido)──▶ CLI telar ──▶ tmux, bus, proveedores
-
- después:    navegador, celular, VS Code ──(HTTP / WebSocket)──▶ telar (un proceso por máquina:
-                                                                  API, página, terminales,
-                                                                  bus, tareas de fondo)
-             telar del laptop ◀──── NATS ────▶ telar del servidor
-```
-
-Cada orden de la CLI y cada ruta de la API son cáscaras de una misma función de `telar.servicios`, que
-devuelve un modelo (Pydantic): la lógica vive una vez y el modelo es el contrato. Para quien conecta un
-sistema de tareas, el puente no cambia: sigue siendo un programa que imprime el JSON. El estado y el orden de esa migración están en
-[dashboard-fuera-de-vscode.md](propuestas/dashboard-fuera-de-vscode.md), «Estado y plan».
-
-## Lo que viene
-
-Qué falta para que telar lo use un equipo y después cualquiera (la seguridad entre personas, un instalador, un
-mod de Claude Code, la extensión de VS Code deprecada), y en qué orden:
-[telar-para-otros.md](propuestas/telar-para-otros.md).
-
-La propuesta [primitivas.md](propuestas/primitivas.md) ordena todo esto en pocas piezas. Para quien
-conecta sus tareas, cambian dos cosas:
-
-- **Un módulo podrá traer su proveedor.** Hoy el proveedor se declara a mano en la configuración. Un
-  módulo `mis-tareas/` con su `modulo.toml` declarará el proveedor, sus acciones y su pestaña, y
-  instalarlo será una línea.
-- **Las tareas serán un tipo de objeto más.** Con una dirección (`tarea:T84`), acciones con esquema
-  y cambios que se piden «desde el último». Lo mismo valdrá para el correo, los eventos o lo que
-  traiga un módulo, y un agente los usará igual que el dashboard.

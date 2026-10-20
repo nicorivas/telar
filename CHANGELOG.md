@@ -8,7 +8,7 @@ workflow refuses to run if the two disagree.
 
 ### Added
 
-- `telar.tipos`: types over text files (`docs/propuestas/tipos.md`). The first is `tarea`, with two lenses
+- `telar.tipos`: types over text files (`docs/arquitectura.md`, «Los tipos»). The first is `tarea`, with two lenses
   that read leniently and write minimally — what did not change stays byte for byte: its own file
   (`clave: valor` lines, context, `## Conexiones`, `## Historia`; keys configurable) and a checkbox in a
   document (both dialects: `@owner(…)`/`@deadline(…)`/`@prioridad(…)` and `vence:`/`!alta`/`#tag`). Checked

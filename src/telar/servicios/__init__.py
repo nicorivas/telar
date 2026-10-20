@@ -7,7 +7,7 @@ vive aquí una sola vez.
 
 Los modelos (Pydantic) son el contrato: lo que `telar <orden> --json` imprime y lo que la API devuelve
 es el mismo objeto, serializado igual. Se migran orden por orden; las que todavía no están aquí siguen
-con su `main` de siempre (ver docs/propuestas/dashboard-fuera-de-vscode.md).
+con su `main` de siempre (ver docs/arquitectura.md).
 """
 
 from pydantic import BaseModel, ConfigDict

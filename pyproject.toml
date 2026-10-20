@@ -28,9 +28,9 @@ classifiers = [
 dependencies = ["PyYAML>=6.0", "pydantic>=2.6"]
 
 [project.optional-dependencies]
-# el bus entre máquinas (docs/propuestas/bus.md): sin esto, telar funciona en una sola máquina
+# el bus entre máquinas (docs/arquitectura.md, «Entre máquinas: el bus»): sin esto, telar funciona en una sola máquina
 bus = ["nats-py>=2.6"]
-# la API (`telar serve`): los mismos datos que la CLI, por HTTP, con caché (docs/propuestas/dashboard-fuera-de-vscode.md)
+# la API (`telar serve`): los mismos datos que la CLI, por HTTP, con caché (docs/arquitectura.md)
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=12"]
 
 [project.urls]

@@ -694,7 +694,7 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
 # ── tipo: las tareas del tipo `tarea` (telar.tipos), desde su carpeta ──────────────
 
 class DeTipo(_Base):
-    """Las tareas del tipo `tarea`, un archivo por tarea en una carpeta (docs/propuestas/tipos.md), leídas
+    """Las tareas del tipo `tarea`, un archivo por tarea en una carpeta (docs/arquitectura.md, «Los tipos»), leídas
     con el índice en memoria del proceso: en `telar serve` y en el nodo se leen una vez y se mantienen al día.
 
         [proveedores.tareas]

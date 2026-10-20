@@ -3,7 +3,7 @@
 En un servidor compartido, cada persona es un usuario y sus agentes se escribían por correo local, que
 entrega el `cartero` del servidor (servidor/cartero). Entre los hilos de una misma persona, eso ya lo hace
 el bus; queda el correo **entre personas** (`telar correo enviar`) y el directorio, hasta que el bus tenga
-credenciales por persona (docs/propuestas/retiro-correo-y-remotos.md). Lo que leía la Maildir por ssh
+credenciales por persona (docs/propuestas/telar-para-otros.md). Lo que leía la Maildir por ssh
 (pendientes, conversaciones, leídos) se retiró con el panel que lo mostraba.
 """
 

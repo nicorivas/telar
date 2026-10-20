@@ -1,4 +1,4 @@
-# El bus de telar (docs/propuestas/bus.md): nats-server con JetStream, en la máquina que no se apaga.
+# El bus de telar (docs/arquitectura.md, «Entre máquinas: el bus»): nats-server con JetStream, en la máquina que no se apaga.
 #
 #   el binario en ~/.local/bin/nats-server (https://github.com/nats-io/nats-server/releases)
 #   un token:     umask 077; openssl rand -hex 24 > ~/.config/telar/bus.token
@@ -16,7 +16,7 @@
 
 [Unit]
 Description=telar bus: mensajes y estado entre máquinas (NATS)
-Documentation=https://github.com/nicorivas/telar/blob/main/docs/propuestas/bus.md
+Documentation=https://github.com/nicorivas/telar/blob/main/docs/arquitectura.md
 After=network-online.target
 Wants=network-online.target
 

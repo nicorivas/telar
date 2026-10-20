@@ -1,7 +1,7 @@
 # telar para otros: primero un equipo, después cualquiera
 
-Estado (20-oct-2026): **propuesta**. Nada de esto está hecho todavía; es el orden en que conviene hacerlo. Una
-decisión ya tomada: la extensión de VS Code se depreca (ver abajo).
+Estado: **propuesta, por empezar**. Es el plan maestro: el orden está al final. Decidido: la extensión de VS
+Code se depreca (20-oct-2026).
 
 Hoy telar funciona bien para una persona con dos máquinas (un laptop y un servidor) unidas por un bus y
 por Tailscale, y con la configuración armada a mano por esa misma persona. Esta propuesta dice qué falta para
@@ -10,10 +10,9 @@ retirar en el camino.
 
 ## Lo que bloquea a un equipo: la seguridad entre personas
 
-El bus tiene un solo token y no hay credenciales por persona (el paso 6 de
-[retiro-correo-y-remotos.md](retiro-correo-y-remotos.md), y la parte por persona de [bus.md](bus.md)). Desde
-que las terminales se reenvían entre máquinas (`/pty?maquina=…`, telar.terminal), ese mismo token también
-abre la terminal de cualquier hilo en cualquier máquina del bus. Con una sola persona es lo que se quiere;
+El bus tiene un solo token y no hay credenciales por persona ([arquitectura](../arquitectura.md), «Entre
+máquinas: el bus»). Ese mismo token abre la terminal de cualquier hilo en cualquier máquina del bus
+(`/pty?maquina=…`). Con una sola persona es lo que se quiere;
 con dos, cualquiera de ellas abriría las terminales de la otra.
 
 Antes de sumar a una segunda persona al mismo bus:
@@ -22,8 +21,16 @@ Antes de sumar a una segunda persona al mismo bus:
    usuarios con permisos por sujeto), no solo por convención de nombres.
 2. **El reenvío de terminales y los boletos de `/maquinas`** firmados con el secreto de la persona, no con
    uno compartido: una máquina solo acepta a otra de su misma dueña.
-3. **El correo entre personas y el directorio por el bus**, y con eso se retiran el `cartero`, Postfix y la
-   casilla común.
+3. **El correo entre personas y el directorio por el bus.** Hoy van por el servidor: `telar correo enviar` a
+   otro usuario, el `cartero` y Postfix, la lista de permitidos de `telar persona --correo`, y `telar
+   directorio` (`<servidor>/directorio/<usuario>.json`, la única forma de ver los hilos de otra persona).
+   Con sujetos por persona en el bus, se retiran el `cartero`, Postfix y la casilla común. Antes de
+   desinstalar Postfix: la salida de cron de `telar periodicos` llega por correo (poner `MAILTO=""` o
+   mandarla a un log; con `always_bcc` a una casilla común, la lee todo el grupo). `enlace archivo` y
+   `enlace notificar` no tienen pedido en el bus: portarlos al nodo o aceptar perderlos. Es irreversible y
+   afecta a las otras personas del servidor: se decide con ellas.
+4. **Más de una máquina siempre prendida**, en clúster (NATS de tres), si el equipo crece: hoy el servidor es
+   un punto único de falla.
 
 ## Lo que falta para que alguien lo instale solo
 
@@ -78,7 +85,9 @@ red); `claude plugin validate` y `claude plugin test` lo revisan en el CI.
   sin la capa del webview (anfitrión, superficies, `acquireVsCodeApi`), y borrar lo que es solo de VS Code
   (`extension.ts`, `anfitrion-vscode.ts`, las vistas laterales). `vscode/` pasa a ser el código de la página.
 - **El correo entre personas y los remotos por ssh y mosh** (`remoto.py`, `movil.py`, `correo.py`,
-  `espejo.py`, el `cartero`; unas mil líneas): se van con el paso 6, una vez que el bus cruce personas.
+  `espejo.py`, el `cartero`; unas mil líneas): se van cuando el bus cruce personas (el punto 3 de arriba).
+  Quien use dos máquinas sin bus queda sin semáforo ni ventanas remotas: el CHANGELOG lo dice, con el bus
+  como requisito para dos máquinas.
 - **El puente `en_proceso`**: algunas órdenes (`hilo llevar`, las acciones del perfil) todavía corren la CLI
   por dentro y leen su salida, en vez de ser servicios.
 - **Claves viejas que se aceptan sin usarse** en `config.py` (`[enlace] no_leer`, `correo_archivo`): avisar

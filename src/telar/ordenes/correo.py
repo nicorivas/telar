@@ -4,7 +4,7 @@
 
 A un hilo propio (de esta persona, en cualquier máquina) va por el bus, como `telar mensaje`. A otra
 persona, por el correo del servidor, que lo entrega su `cartero`: el bus todavía no cruza personas
-(docs/propuestas/retiro-correo-y-remotos.md). Leer la Maildir por ssh se retiró.
+(docs/propuestas/telar-para-otros.md). Leer la Maildir por ssh se retiró.
 """
 
 from __future__ import annotations

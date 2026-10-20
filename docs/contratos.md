@@ -620,7 +620,7 @@ de herramientas se omiten. `hilo` es el hilo donde telar anotó esa conversació
 
 `{"enviado": true, "a": "usuario+hilo@servidor", "via": "bus"|"mail"|"ssh"}`. A un hilo propio va por el bus;
 a otra persona, por el correo del servidor. Leer la Maildir (`telar correo` sin verbo, `correo leido`) se
-retiró: ver docs/propuestas/retiro-correo-y-remotos.md.
+retiró: ver docs/propuestas/telar-para-otros.md.
 
 ### `telar directorio --json`
 

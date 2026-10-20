@@ -2,7 +2,7 @@
 
 Cada lente promete leer con tolerancia y escribir al mínimo: lo que no cambió queda byte por byte. Estas
 pruebas usan ejemplos inventados; la verificación contra archivos reales (cientos de tareas y miles de
-casillas, leídas y cambiadas) está en docs/propuestas/tipos.md.
+casillas, leídas y cambiadas) está en docs/arquitectura.md, «Los tipos».
 """
 
 from __future__ import annotations

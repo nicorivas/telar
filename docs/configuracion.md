@@ -119,7 +119,7 @@ palabra en color, y el modo «propuestas» las junta para revisarlas con ← →
 
 ### Los tipos: objetos sobre archivos (`[tipos]`)
 
-Dónde viven los objetos de un tipo, un archivo por objeto (ver `docs/propuestas/tipos.md`). Por ahora,
+Dónde viven los objetos de un tipo, un archivo por objeto (ver `docs/arquitectura.md`, «Los tipos»). Por ahora,
 el tipo `tarea` en su formato de archivo propio:
 
 ```toml
@@ -445,7 +445,7 @@ agente remoto (lo que escriben sus ganchos) todavía no llegan al laptop.
 ### El correo entre agentes
 
 Si la otra máquina entrega correo local entre agentes (ver
-`docs/propuestas/correo-y-celular.md`), cada hilo remoto tiene su dirección:
+`servidor/README.md`), cada hilo remoto tiene su dirección:
 `usuario+<nombre del hilo>@servidor`, con el nombre en minúsculas, sin acentos y con guiones
 («T42 Faro Norte» → `usuario+t42-faro-norte@servidor`). La sesión de allá lleva su nombre
 en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién entregar.
@@ -453,7 +453,7 @@ en la opción tmux `@telar_hilo`, que es por donde el servidor sabe a quién ent
 - Lo que el panel mostraba del correo (✉, la pestaña de la ficha, la Maildir de la pantalla «correo»)
   se retiró, con `telar correo` sin verbo y `correo leido`: entre los hilos de una misma persona habla el
   bus (`telar mensaje`), y la pantalla «correo» del dashboard (tecla `c`) muestra esos mensajes. Queda
-  escribirle a otra persona, hasta que el bus cruce personas (docs/propuestas/retiro-correo-y-remotos.md):
+  escribirle a otra persona, hasta que el bus cruce personas (docs/propuestas/telar-para-otros.md):
 
 - `telar correo enviar usuario+hilo@servidor -s "asunto" [--responde "<id>"]`, con el cuerpo
   por la entrada estándar, le escribe a un hilo de otra persona u otra máquina: desde el
@@ -610,7 +610,7 @@ Con `[bus]`, cada máquina corre `telar nodo` (`servidor/telar-nodo.service` en 
 hilo, viva donde viva: el mensaje espera en su casilla hasta que lo recoja la máquina donde vive y entra
 a la conversación por los ganchos del agente (`telar agente instalar`), sin teclearse. `telar encargar`
 usa el bus si lo hay. El estado de cada hilo (máquina, atención) se publica y se escucha al instante.
-Diseño y pruebas: `docs/propuestas/bus.md`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
+Diseño: `docs/arquitectura.md`, «Entre máquinas: el bus». Sin `[bus]`, todo sigue en una sola máquina, como siempre.
 
 ## `[equipo]` — que alguien de confianza vea tus tareas y te sugiera prioridades
 
