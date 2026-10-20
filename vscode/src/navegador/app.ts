@@ -1,4 +1,4 @@
-// El dashboard de telar, corriendo en el navegador: el mismo `PanelHoy` que en VS Code, sin Node. Lo que
+// El dashboard de telar, corriendo en el navegador: el `PanelHoy` de vistas/hoy.ts, sin Node. Lo que
 // en el panel en Node (retirado el 19-oct-2026) hacía su servidor (hablar con la CLI, mandar la página por
 // un WebSocket, preguntarle cosas a quien mira) aquí lo hace esta página:
 //
@@ -48,7 +48,7 @@ cli.usarTransporte(async (metodo, ruta, timeout, cuerpo) => {
     return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}` };
 });
 
-// ── los ajustes: en VS Code son suyos; aquí salen del servidor (/config) ──
+// ── los ajustes: salen del servidor (/config) ──
 
 const ajustes: Record<string, unknown> = {};
 cli.usarAjustes(<T>(clave: string, porDefecto: T): T => (clave in ajustes ? ajustes[clave] as T : porDefecto));
@@ -435,7 +435,7 @@ mostrar(location.pathname === '/compartir' ? 'compartir' : 'dashboard');
 if (document.body.classList.contains('angosto')) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 
 setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
-// como en VS Code: el modelo (los hilos, su atención) se sondea mientras la página se mira
+// el modelo (los hilos, su atención) se sondea mientras la página se mira
 const sondear = async () => {
     if (!document.hidden) await modelo.sondear().catch(() => undefined);
     setTimeout(sondear, modelo.error || !modelo.viva ? 5000 : 3000);

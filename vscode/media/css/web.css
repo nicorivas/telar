@@ -1,4 +1,4 @@
-/* Lo que la página web agrega: diálogos y avisos que en VS Code son nativos (web/pagina.ts). */
+/* Los diálogos y avisos de la página (web/pagina.ts), y la barra cuando está sola en la pantalla. */
 
 /* un diálogo (<dialog>): un campo para escribir, un menú para elegir, un aviso con botones */
 .web-caja {
@@ -84,13 +84,9 @@
   &.aviso { border-left-color: var(--amarillo); }
 }
 
-/* la barra en el navegador: el ⋯ abre el menú del hilo, que en VS Code es el contextual, y el + de HILOS
-   abre uno nuevo. En un celular no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕) queda dentro del menú */
-.menu-web { display: inline; }
-.nuevo-web { display: inline; }
-
-/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular */
+/* la barra sola en la pantalla (`llena`, la pone pagina.ts): un celular. No hay hover: el ⋯ se ve siempre,
+   y lo demás (⏸ ✕) queda dentro de su menú */
 .llena .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
-.llena .fila .iconos .icono:not(.menu-web) { display: none; }
-.llena .fila .menu-web { padding-inline: 1ch; }
+.llena .fila .iconos .icono:not(.menu-hilo) { display: none; }
+.llena .fila .menu-hilo { padding-inline: 1ch; }
 

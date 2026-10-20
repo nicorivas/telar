@@ -1,9 +1,8 @@
-// Lo que la página del dashboard necesita en un navegador y que en VS Code le da el webview:
-// `acquireVsCodeApi` (mandar mensajes y guardar su estado), los mensajes que llegan, y la
-// interfaz que en VS Code es nativa —avisos, un campo para escribir, un menú para elegir—.
-// El script del dashboard (dia.ts) no cambia: habla con `vscode` como siempre, y aquí ese
-// `vscode` es la página que lo contiene (src/navegador), por postMessage. Y las otras páginas de un
-// hilo en el navegador: su conversación, su terminal, su carpeta, y la de compartir.
+// Lo que la página del dashboard necesita en el navegador: `acquireVsCodeApi` (mandar mensajes y guardar
+// su estado; el nombre viene del webview de la extensión de VS Code, deprecada), los mensajes que llegan,
+// y su interfaz —avisos, un campo para escribir, un menú para elegir—. El script del dashboard (dia.ts)
+// habla con `vscode`, y ese `vscode` es la página que lo contiene (src/navegador), por postMessage. Y las
+// otras páginas de un hilo: su conversación, su terminal, su carpeta, y la de compartir.
 
 import { estilo, estiloBase } from '../estilo';
 
@@ -148,8 +147,7 @@ export interface Documento {
 
 const escHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** La carpeta de un hilo y su documento, en la web (lo que en VS Code son la ficha y la vista de
- *  carpeta): la lista de archivos arriba, y el elegido abajo. Solo lee. */
+/** La carpeta de un hilo y su documento: la lista de archivos arriba, y el elegido abajo. Solo lee. */
 export function paginaDocumento(nonce: string, d: Documento): string {
     const enlace = (ruta: string, texto: string, clase = '') =>
         `<a class="${clase}" href="/documento?hilo=${encodeURIComponent(d.hilo)}&amp;archivo=${encodeURIComponent(ruta)}">${escHtml(texto)}</a>`;

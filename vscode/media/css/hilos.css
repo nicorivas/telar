@@ -33,10 +33,9 @@
 .fila:hover .iconos { display: flex; }
 .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
 .icono:hover { color: var(--fg); }
-.menu-web { display: none; }  /* el ⋯ del navegador: en VS Code el menú es el contextual (web.css lo muestra) */
-/* el + de HILOS, del navegador: en VS Code es el + de la barra del título (web.css lo muestra) */
-.nuevo-web { display: none; margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
-.nuevo-web:hover { color: var(--fg); }
+/* el + de HILOS: abre un hilo nuevo */
+.nuevo-hilo { margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
+.nuevo-hilo:hover { color: var(--fg); }
 /* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
 .herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
 .herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;

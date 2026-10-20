@@ -711,7 +711,7 @@ document.addEventListener('keydown', function (e) {
     const f = document.querySelector('#revisar .tarea:not([hidden])');
     if (f) { e.preventDefault(); return vscode.postMessage({ tipo: 'accion', accion: f.dataset.accion, valor: f.dataset.valor }); }
   }
-  if (e.metaKey || e.ctrlKey || e.altKey) return;    // los atajos con modificador son de VS Code
+  if (e.metaKey || e.ctrlKey || e.altKey) return;    // los atajos con modificador son del navegador
   if (e.key === '/') { e.preventDefault(); if (b) b.focus(); return; }
   if (e.key === 'Escape') return vscode.postMessage({ tipo: 'accion', accion: 'volver' });
   if (e.key.length === 1) { e.preventDefault(); vscode.postMessage({ tipo: 'tecla', k: e.key }); }

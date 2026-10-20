@@ -28,7 +28,7 @@ import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, ll
 
 export class PanelHoy {
     panel?: Superficie;
-    /** cómo se crea la superficie: la da quien muestra el dashboard (VS Code, o la web) */
+    /** cómo se crea la superficie: la da quien muestra el dashboard (la página, src/navegador) */
     crearSuperficie?: CrearSuperficie;
     private datos?: Dia;
     private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'ahora';
@@ -1638,7 +1638,7 @@ export class PanelHoy {
     }
 
     /** Elegir un proyecto de la lista: su detalle a la derecha, sin repintar la lista. El README se
-     *  dibuja con el Markdown de VS Code; `releer` vuelve a leerlo (al cambiar de proyecto). */
+     *  dibuja con el Markdown del anfitrión; `releer` vuelve a leerlo (al cambiar de proyecto). */
     private async verProyecto(ruta: string, releer = true): Promise<void> {
         const p = this.proyectos?.find(x => x.ruta === ruta);
         if (!p || !this.panel) return;

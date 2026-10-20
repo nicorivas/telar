@@ -14,9 +14,9 @@ import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
 
-// ───────────────────────── configuración de la extensión ─────────────────────────
+// ───────────────────────── configuración ─────────────────────────
 
-/** Los ajustes `telar.*` (en VS Code, su configuración; en la web, los de su servidor). */
+/** Los ajustes `telar.*`: los del servidor de la página (/config). */
 let leerAjuste: <T>(clave: string, porDefecto: T) => T = (_c, d) => d;
 export function usarAjustes(f: <T>(clave: string, porDefecto: T) => T): void { leerAjuste = f; }
 

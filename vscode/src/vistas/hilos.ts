@@ -123,11 +123,11 @@ export interface SuperficieBarra {
     readonly visible: boolean;
     html(pagina: string): void;
     enviar(mensaje: unknown): void;
-    /** el título, la línea de abajo y la cuenta de los que esperan (en VS Code, la insignia) */
+    /** el título, la línea de abajo y la cuenta de los que esperan */
     cabecera(c: { titulo: string; descripcion: string; insignia?: { valor: number; ayuda: string } }): void;
 }
 
-/** Donde se guarda lo que se recuerda entre sesiones (en VS Code, su globalState). */
+/** Donde se guarda lo que se recuerda entre sesiones (la página: el localStorage del navegador). */
 export interface Guardado {
     get<T>(clave: string): T | undefined;
     update(clave: string, valor: unknown): PromiseLike<void>;
@@ -143,8 +143,8 @@ export class BarraHilos {
     dashboardActivo = false;
     /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
     appActiva = '';
-    /** en la web: el hilo cuya terminal se muestra a la derecha. Si se da, manda sobre el foco de
-     *  tmux para marcar la fila (en VS Code no se da: manda el hilo con foco) */
+    /** el hilo cuya terminal se muestra a la derecha. Si se da, manda sobre el foco de tmux para marcar
+     *  la fila; si no, la marca el hilo con foco */
     mostrado?: string;
     /** los hilos de otras máquinas que esta no ve en su multiplexor, de la foto que publica cada una
      *  (`telar espejo ver`): van en HILOS, con su máquina en la columna de dónde vive. Lo pone la página web */
@@ -156,7 +156,7 @@ export class BarraHilos {
     /** el ancho de esa columna con los nombres: el del nombre más largo, hasta 12 */
     private anchoMaquina = 1;
     private irAlArchivo = false;
-    /** dónde guardar el orden elegido de cada grupo (el globalState de la extensión) */
+    /** dónde guardar el orden elegido de cada grupo */
     estado?: Guardado;
     private ordenDe(grupo: string): Orden { return (this.estado?.get<string>(`telar.orden.${grupo}`) ?? '') as Orden; }
     /** las cabeceras que el usuario dejó al revés de como empiezan (abierta una cerrada, o al revés) */
@@ -169,8 +169,7 @@ export class BarraHilos {
     private abierta(clave: string, porDefecto: boolean): boolean { return porDefecto !== this.invertidas.has(clave); }
     private alternar(clave: string): void { if (this.invertidas.has(clave)) this.invertidas.delete(clave); else this.invertidas.add(clave); }
 
-    /** La barra ya tiene dónde dibujarse. Abrirla es ir a trabajar en la sesión: la terminal que
-     *  la muestra pasa al frente (en VS Code; en la web, la terminal es otra ventana). */
+    /** La barra ya tiene dónde dibujarse. */
     conectar(vista: SuperficieBarra): void {
         this.vista = vista;
         this.pintarMarco();
@@ -268,8 +267,8 @@ export class BarraHilos {
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
             + `${glifo}${remoto}<span class="nombre">${esc(cli.nombreVisible(h))}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
-            // ⋯ el menú del hilo: solo en el navegador (en VS Code es su menú contextual; ahí se esconde)
-            + `<span class="iconos"><span class="icono menu-web" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
+            // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
                 ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
                 : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab, guarda su conversación y lo manda al archivo">⏸</span>`
                   + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro, y lo saca de la lista; para guardarlo, ⏸">✕</span>`)
@@ -334,7 +333,7 @@ export class BarraHilos {
         if (!modelo.viva) h.push('<div class="nota">la sesión no está viva; esto es lo que telar recuerda</div>');
         // el dashboard encabeza la lista como una fila más, no solo como un ícono en la barra del
         // título: es el lugar al que se vuelve varias veces al día, y en flow estaba ahí
-        // porque era un tab. En telar no es un tab del multiplexor sino un panel de VS Code,
+        // porque era un tab. En telar no es un tab del multiplexor sino una vista de la página,
         // así que la fila la pone la vista y no la sesión.
         h.push(`<div class="fila hoy${this.dashboardActivo && !this.appActiva ? ' activa' : ''}" data-accion="cmd" data-id="telar.hoy"`
             + ' title="el día: agenda, tareas y lo que espera">'
@@ -383,8 +382,8 @@ export class BarraHilos {
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
         const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
         this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
-        // + abre un hilo nuevo: solo en el navegador (en VS Code es el + de la barra del título)
-        const nuevo = '<span class="nuevo-web" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
+        // + abre un hilo nuevo (ordenes.ts: pide el nombre y la máquina)
+        const nuevo = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
         if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras', nuevo)) {
             h.push(this.herramientas('hilos', ordenH));
             for (const x of sueltos) h.push(this.fila(x, 'hilo', '', 'hilos'));

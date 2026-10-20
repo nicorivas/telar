@@ -4,7 +4,7 @@
    scripts/navegador.mjs lo junta con tokens.css y base.css en src/telar/web/marco.css, que la página
    carga antes que app.js: así se ve armada desde el primer momento. */
 
-/* la letra: la misma que usan las vistas fuera de VS Code (la `Letra` por defecto de estilo.ts) */
+/* la letra: la misma que usan las vistas (la `Letra` por defecto de estilo.ts) */
 :root {
   --letra: Menlo, Consolas, monospace;
   --tam: 13px;

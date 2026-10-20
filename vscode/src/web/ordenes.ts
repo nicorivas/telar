@@ -1,6 +1,6 @@
-// Lo que en VS Code son comandos de la extensión (el menú de un hilo, ir a uno, retomarlo, abrir una
-// sección…), para el anfitrión que no es VS Code: el dashboard en el navegador (src/navegador), que da lo
-// suyo: su interfaz, cómo avisar y qué mostrar a la derecha.
+// Las órdenes `telar.*` de la página (el menú de un hilo, ir a uno, retomarlo, abrir uno nuevo, abrir una
+// sección…): las piden la barra y el dashboard, y las cumple el anfitrión del navegador (src/navegador),
+// que da lo suyo: su interfaz, cómo avisar y qué mostrar a la derecha.
 
 import type { Anfitrion, Opcion } from '../anfitrion';
 import * as cli from '../cli';
@@ -42,7 +42,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         return true;
     }
 
-    /** El menú de un hilo, que en VS Code es su menú contextual: lo que se puede hacer con él, según esté
+    /** El menú de un hilo (el ⋯ de su fila): lo que se puede hacer con él, según esté
      *  vivo, archivado o vinculado. Cada acción es una orden `telar hilo …`. */
     async function menuHilo(a: unknown): Promise<void> {
         const hilo = hiloDe(a);
@@ -118,7 +118,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.archivar': a => sobreHilo(a, 'archivar', ['--cerrar']),
         'telar.cerrar': a => sobreHilo(a, 'cerrar'),
         'telar.archivo': () => c.barra.alternarArchivo(),
-        // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa (como en VS Code)
+        // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa
         'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
@@ -160,7 +160,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             }
             await c.anfitrion.irAHilo(nombre, true, remoto);
         },
-        // la lista de tareas de la barra lateral es de VS Code: aquí las tareas están en el dashboard
+        // la lista de tareas de la barra era de la extensión de VS Code: las tareas están en el dashboard
         'telar.tareas': () => undefined,
         'telar.tareasActualizar': () => undefined,
     };

@@ -5,7 +5,7 @@
 export interface Superficie {
     /** El origen de sus recursos, para la política de contenido de la página (CSP). */
     readonly cspSource: string;
-    /** A dónde puede conectarse la página (la web: su WebSocket). VS Code no lo necesita. */
+    /** A dónde puede conectarse la página (la web: su WebSocket). */
     readonly cspConectar?: string;
     /** Se ve (no está tapada por otra pestaña). */
     readonly visible: boolean;
