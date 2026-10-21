@@ -257,7 +257,9 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   archivo que escribe el agente son enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del
   hilo. Una relativa es de donde arrancó el agente, que según `[agente] carpeta` es la carpeta del hilo o la
   raíz: se prueba primero la del hilo y después la raíz, y se abre la que existe. Una de otra máquina va como
-  `máquina:ruta`, que el visor lee sola por `/api/archivos`.
+  `máquina:ruta`, que el visor lee sola por `/api/archivos`. Un `.html` el visor lo muestra dibujado, en un
+  iframe aislado (`/api/archivos/ver`, con `sandbox`: sus scripts no ven la llave ni la API de la página), con
+  su código a un clic.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso

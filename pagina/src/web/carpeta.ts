@@ -1,9 +1,12 @@
 // La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), o un archivo cualquiera del repositorio
 // (`arch:<ruta>`): la lista de archivos arriba, y el elegido abajo. Una ruta de otra máquina («servidor:docs/x.md»)
-// o con `~` se lee sola, sin su carpeta (`/api/archivos`, que se la pide a esa máquina por el bus). Solo lee. Se
-// dibuja en un elemento de la página; sus estilos, en media/css/documento.css (con @scope, en `.v-documento`).
+// o con `~` se lee sola, sin su carpeta (`/api/archivos`, que se la pide a esa máquina por el bus). Un .html se ve
+// dibujado, en un iframe aislado (`/api/archivos/ver`: sus scripts corren en un origen propio, sin la llave ni la
+// API de la página), con su código a un clic. Solo lee. Se dibuja en un elemento de la página; sus estilos, en
+// media/css/documento.css (con @scope, en `.v-documento`).
 
 import { esc } from '../estilo';
+import { modelo } from '../modelo';
 import * as rutas from '../rutas';
 
 /** La carpeta de un hilo y uno de sus archivos, como la da `/api/hilos/documento`. */
@@ -17,7 +20,11 @@ export interface Documento {
     descarga?: string;
     /** lo que hay que saber de lo que se muestra (que se cortó) */
     aviso?: string;
+    /** un .html, para verlo dibujado: su ruta como la entiende `/api/archivos/ver` (con «máquina:» si es de otra) */
+    ver?: string;
 }
+
+const ES_HTML = /\.html?$/i;
 
 /** La máquina delante de una ruta («servidor:» en «servidor:docs/x.md»), como la entiende `/api/archivos`. */
 const MAQUINA = /^[A-Za-z0-9][\w-]*:(?!\/\/)/;
@@ -33,7 +40,9 @@ function html(d: Documento): string {
             + d.archivos.map(a => enlace(a.ruta, a.nombre, `${a.nombre.endsWith('/') ? 'dir' : ''}${a.ruta === d.archivo ? ' sel' : ''}`)).join('')
             + `</nav>` : '')
             + (d.aviso ? `<p class="nada">${esc(d.aviso)}</p>` : '')
-            + (d.archivo ? `<article><div class="donde">${esc(d.archivo)}</div>${d.html ? `<div class="md">${d.html}</div>` : `<pre>${esc(d.texto ?? '')}</pre>`}`
+            + (d.archivo ? `<article><div class="donde">${esc(d.archivo)}${d.ver ? '<a class="alternar" title="ver el código del .html, o de vuelta dibujado">código</a>' : ''}</div>`
+                + (d.ver ? `<iframe sandbox="allow-scripts allow-popups" src="/api/archivos/ver?ruta=${encodeURIComponent(d.ver)}" title="${esc(d.archivo)}"></iframe><pre hidden>${esc(d.texto ?? '')}</pre>`
+                    : d.html ? `<div class="md">${d.html}</div>` : `<pre>${esc(d.texto ?? '')}</pre>`)
                 + (d.descarga ? `<p><a href="/api/archivos/bajar?ruta=${encodeURIComponent(d.descarga)}" download>bajar ${esc(d.archivo.split('/').pop() ?? '')}</a></p>` : '')
                 + '</article>' : '');
     return `<h1>${esc(d.titulo)}</h1>${cuerpo}`;
@@ -50,6 +59,16 @@ export async function montar(el: HTMLElement, hilo: string, archivo: string, mar
         el.addEventListener('click', e => {
             const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a');
             if (!a) return;
+            // un .html: dibujado o su código
+            if (a.classList.contains('alternar')) {
+                e.preventDefault();
+                const marco = a.closest('article')?.querySelector('iframe'), codigo = a.closest('article')?.querySelector('pre');
+                if (!marco || !codigo) return;
+                const verCodigo = codigo.hidden;
+                codigo.hidden = !verCodigo; marco.hidden = verCodigo;
+                a.textContent = verCodigo ? 'dibujado' : 'código';
+                return;
+            }
             if (a.dataset.archivo !== undefined) {
                 e.preventDefault();
                 void montar(el, a.dataset.hilo ?? '', a.dataset.archivo, markdown);
@@ -79,6 +98,10 @@ export async function montar(el: HTMLElement, hilo: string, archivo: string, mar
     } catch (e) {
         d = { hilo, titulo: hilo, error: `la API no respondió: ${(e as Error).message}` };
     }
+    // un .html que se pudo leer se ve dibujado. La ruta de uno de la carpeta de un hilo es relativa a ella, y
+    // `/api/archivos/ver` la quiere desde la raíz o absoluta («no existe» es lo que dice la API de uno que no está)
+    if (d.archivo && d.texto !== undefined && d.texto !== 'no existe' && !d.descarga && ES_HTML.test(d.archivo))
+        d.ver = !hilo || MAQUINA.test(d.archivo) ? d.archivo : rutas.unir(modelo.porNombre(hilo)?.ruta ?? '', d.archivo);
     // desde dónde se resuelven los enlaces relativos del documento: el archivo que se muestra, como lo dice la API
     el.dataset.archivo = d.archivo ?? archivo;
     el.innerHTML = html(d);

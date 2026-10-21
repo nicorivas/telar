@@ -16,6 +16,10 @@ extension shared the version number.
   from where the agent started, which `[agente] carpeta` may make the thread's folder or the root: the page tries
   the thread's folder first and then the root, and opens the one that exists. The viewer opens `machine:path` (a
   file alone, without its folder), and a `README.md` in an answer no longer becomes a link to `http://README.md`.
+- The document viewer shows an `.html` file drawn, in an iframe (`GET /archivos/ver`, also `machine:path`) whose
+  scripts run in an origin of their own, without the page's key or its API; «código» next to its path shows the
+  source, and «dibujado» goes back. What the page loads by a relative path (images, styles) is not resolved: it
+  is for self-contained pages, like a slide.
 - Several working repositories (`[repos.<name>] ruta = "…"`, optional `perfil`). Each brings its own
   `telar-perfil.yaml`, and telar merges them into one (`perfil.cargar_todos`): each repo's archetypes become
   relative to the root and carry which repo they come from; when two profiles match the same folder, the
@@ -35,6 +39,10 @@ extension shared the version number.
 - A task's card changes in place what it shows: the star (☆/★) and sharing with the team (○/◉) are icons before
   the title, as in the task list, and «la hace …» (or «sin asignar») opens the people picker. Those four leave the
   card's list of actions, which now fits single-digit keys.
+- In a task's card, the priority («P1») and «espera a …» are buttons too: the priority opens a picker with the
+  provider's priorities, and «espera a …» the people picker, with «nadie» to stop waiting. Both leave the card's
+  list; «esperar a…» stays in it while the task waits for nobody. The task list's ⋯ menu uses the same pickers,
+  and the people picker for who does it, where it asked for a name.
 - In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
   does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,

@@ -10,8 +10,9 @@ import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 
-/** Las acciones de la ficha que no van en su lista porque se hacen donde se ve lo que cambian (ver `pintarFicha`). */
-const EN_LA_FICHA = new Set(['fecha', 'dueno', 'estrella', 'equipo']);
+/** Las acciones de la ficha que siempre se hacen donde se ve lo que cambian, como íconos junto al título; las del
+ *  subtítulo salen de la lista solo si `subtituloFicha` las pudo poner ahí (ver `pintarFicha`). */
+const ICONOS = ['estrella', 'equipo'];
 
 /** Cómo se nombra una tarea en lo que se le pregunta a la persona: el título de su ficha ya empieza con el id
  *  («T309 · …»); si no, el id va delante. */
@@ -73,6 +74,30 @@ export async function elegirFecha(titulo: string): Promise<string | undefined> {
     return escrita?.trim() ? leer(escrita) || undefined : undefined;
 }
 
+/** Lo que dice de `rol` el subtítulo de la ficha de una tarea («activa · P1 · vence … · espera a Ana · la hace
+ *  Leo»), sin la palabra de adelante: la prioridad, a quién espera, quién la hace. '' si no lo dice. */
+function enSubtitulo(subtitulo: string, rol: string): string {
+    const partes = subtitulo.split(' · ');
+    if (rol === 'prioridad') return partes.find(x => /^P\d$/.test(x)) ?? '';
+    const antes = ({ espera: 'espera a ', dueno: 'la hace ' } as Record<string, string>)[rol];
+    const x = antes ? partes.find(y => y.startsWith(antes)) : undefined;
+    return x ? x.slice(antes.length) : '';
+}
+
+/** El valor de una acción que se elige en vez de escribirse, según su `rol`: la fecha en el calendario, quién la
+ *  hace o a quién espera de la lista de personas, la prioridad de las que ofrece el proveedor. Lo de ahora sale
+ *  del subtítulo de la ficha. undefined si se cancela; null si esa acción no tiene selector. */
+async function elegirPorRol(a: cli.JsonAccionPagina, titulo: string, subtitulo: string): Promise<string | undefined | null> {
+    const actual = enSubtitulo(subtitulo, a.rol ?? '');
+    switch (a.rol) {
+        case 'fecha': return elegirFecha(titulo);
+        case 'dueno': return elegirDueno(titulo, actual, a.opciones ?? [], yo.persona);
+        case 'espera': return elegirEspera(titulo, actual, a.opciones ?? []);
+        case 'prioridad': return elegirPrioridad(titulo, actual, a.opciones ?? []);
+        default: return null;
+    }
+}
+
 /** Reagendar una tarea desde la lista: la acción con rol «fecha» de su proveedor, con la fecha elegida. */
 export async function reagendar(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
@@ -114,6 +139,33 @@ export async function elegirDueno(titulo: string, actual: string, opciones: stri
     if (e.valor) return e.valor;
     const escrito = await ui.campo({ titulo: titulo, ayuda: 'el nombre de quien la hace' });
     return escrito?.trim() || undefined;
+}
+
+/** A quién espera una tarea: nadie (deja de esperar, y vuelve a ser de la persona), alguien del equipo que ofrece
+ *  el proveedor, u otro nombre escrito. Devuelve el texto para la acción («none»: nadie), o undefined si se cancela. */
+async function elegirEspera(titulo: string, actual: string, opciones: string[]): Promise<string | undefined> {
+    type Item = Opcion & { valor?: string };
+    const items: Item[] = [
+        { label: 'nadie', description: actual ? 'deja de esperar: vuelve a ser tuya' : 'no espera a nadie ← ahora', valor: 'none' },
+        { label: '', separador: true },
+        ...opciones.map(o => ({ label: o, valor: o, description: o === actual ? '← ahora' : undefined })),
+        { label: '', separador: true },
+        { label: 'otra persona…', valor: '' },
+    ];
+    const e = await ui.elegir(items, { titulo, placeholder: 'a quién espera esta tarea' });
+    if (!e) return undefined;
+    if (e.valor) return e.valor;
+    const escrito = await ui.campo({ titulo, ayuda: 'a quién espera' });
+    return escrito?.trim() || undefined;
+}
+
+/** La prioridad de una tarea, de las que ofrece el proveedor, de la más alta a la más baja (P0 … P3). */
+async function elegirPrioridad(titulo: string, actual: string, opciones: string[]): Promise<string | undefined> {
+    const items = opciones.map((o, i) => ({
+        label: o, valor: o,
+        description: [i === 0 ? 'la más alta' : i === opciones.length - 1 ? 'la más baja' : '', o === actual ? '← ahora' : ''].filter(Boolean).join(' '),
+    }));
+    return (await ui.elegir(items, { titulo, placeholder: 'qué prioridad tiene' }))?.valor;
 }
 
 /** El responsable de una tarea, desde su fila: la acción del proveedor con `rol: dueno`. */
@@ -541,13 +593,15 @@ export class PantallaTareas implements Pantalla {
         const donde = i >= 0 && lista.length > 1
             ? `<span class="pasar"><a data-accion="tarea-anterior" title="la anterior (←)">←</a>`
               + `<span class="dim">${i + 1}/${lista.length}</span><a data-accion="tarea-siguiente" title="la siguiente (→)">→</a></span>` : '';
-        // lo que se cambia donde se ve no va en la lista: la fecha y quién la hace se pinchan en el subtítulo, y la
-        // estrella y compartir son íconos junto al título, como en la lista de tareas. ⏎ es la principal; las demás
-        // van numeradas en orden, y el número es su tecla
+        // lo que se cambia donde se ve no va en la lista: la prioridad, la fecha, a quién espera y quién la hace se
+        // pinchan en el subtítulo (si lo dice), y la estrella y compartir son íconos junto al título, como en la lista
+        // de tareas. ⏎ es la principal; las demás van numeradas en orden, y el número es su tecla
+        const puestas = new Set(ICONOS);
+        const subtitulo = p.subtitulo ? this.subtituloFicha(p, puestas) : '';
         this.t.teclas.clear();
         let n = 0;
         const acciones = (p.acciones ?? []).map((a, k) => ({ a, k }));
-        const botones = acciones.filter(({ a }) => !EN_LA_FICHA.has(a.rol ?? '')).map(({ a, k }) => {
+        const botones = acciones.filter(({ a }) => !puestas.has(a.rol ?? '')).map(({ a, k }) => {
             const tecla = a.principal ? '⏎' : String(++n);
             if (!a.principal) this.t.teclas.set(tecla, () => this.accionTarea(k));
             return `<a class="atajo${a.principal ? ' principal' : ''}" data-accion="accion-tarea" data-valor="${k}"`
@@ -563,7 +617,7 @@ export class PantallaTareas implements Pantalla {
         // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
         const color = p.bloques.find(b => b.destacado)?.color;
         this.t.pintar(this.marcoFicha([`<div class="subcab">${iconos.length ? `<span class="iconos-t">${iconos.join('')}</span>` : ''}<b>${esc(p.titulo)}</b></div>`,
-            p.subtitulo ? `<div class="sub-ficha dim">${this.subtituloFicha(p)}</div>` : '',
+            subtitulo ? `<div class="sub-ficha dim">${subtitulo}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
             ...this.t.paginas.html(p.bloques)], color, donde));
     }
@@ -577,9 +631,11 @@ export class PantallaTareas implements Pantalla {
     }
 
     /** El subtítulo de la ficha, con lo que se cambia ahí mismo como botón si el proveedor deja cambiarlo (sus acciones
-     *  con `rol`): la fecha («vence …», `fecha`) y quién la hace («la hace …», `dueno`), como en la lista. Lo que el
-     *  subtítulo no nombra va al final («sin fecha», «sin asignar»). */
-    private subtituloFicha(p: cli.JsonPagina): string {
+     *  con `rol`): la prioridad («P1», `prioridad`), la fecha («vence …», `fecha`), a quién espera («espera a …»,
+     *  `espera`) y quién la hace («la hace …», `dueno`). La fecha y quién la hace, si el subtítulo no los nombra, van
+     *  al final («sin fecha», «sin asignar»); a quién espera, no: si no espera a nadie, «esperar a…» sigue en la
+     *  lista. Los roles que quedaron puestos se suman a `puestas`. */
+    private subtituloFicha(p: cli.JsonPagina, puestas: Set<string>): string {
         let texto = esc(p.subtitulo ?? '');
         const f = this.ficha;
         const d = this.t.dia();
@@ -587,13 +643,17 @@ export class PantallaTareas implements Pantalla {
         /** `dicho`: cómo lo escribe el proveedor, si se sabe; `otro`: lo que va al final si no aparece */
         const pinchar = (rol: string, dicho: string, otro: string, ayuda: string) => {
             const k = (p.acciones ?? []).findIndex(a => a.rol === rol);
-            if (k < 0) return;
-            const boton = (que: string) => `<a class="plazo-clic" data-accion="accion-tarea" data-valor="${k}" title="${ayuda}">${que}</a>`;
             const i = dicho ? texto.indexOf(dicho) : -1;
+            if (k < 0 || (i < 0 && !otro)) return;
+            puestas.add(rol);
+            const boton = (que: string) => `<a class="plazo-clic" data-accion="accion-tarea" data-valor="${k}" title="${ayuda}">${que}</a>`;
             texto = i >= 0 ? texto.slice(0, i) + boton(dicho) + texto.slice(i + dicho.length) : `${texto}${texto ? ' · ' : ''}${boton(otro)}`;
         };
+        pinchar('prioridad', enSubtitulo(p.subtitulo ?? '', 'prioridad'), '', 'cambiar la prioridad');
         const fecha = fila?.cuando.slice(0, 10) ?? '';
         pinchar('fecha', fecha && `vence ${fecha}`, !fila ? 'cambiar la fecha' : fecha ? `vence ${fecha}` : 'sin fecha', 'cambiar la fecha');
+        const espera = esc(enSubtitulo(p.subtitulo ?? '', 'espera'));
+        pinchar('espera', espera && `espera a ${espera}`, '', 'cambiar a quién espera');
         const dueno = esc(fila?.fila.dueno ?? '');
         pinchar('dueno', dueno && `la hace ${dueno}`, !fila ? 'responsable…' : dueno ? `la hace ${dueno}` : 'sin asignar', 'cambiar quién la hace');
         return texto;
@@ -607,16 +667,11 @@ export class PantallaTareas implements Pantalla {
         if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
-        if (a.rol === 'dueno') {
-            // quién la hace: el equipo para elegir, no un campo de texto
-            const quien = await elegirDueno(nombreTarea(f.id, f.pagina?.titulo), '', a.opciones ?? [], yo.persona);
-            if (!quien) return;
-            texto = quien;
-        } else if (a.rol === 'fecha') {
-            // cambiar la fecha: el selector de fechas, no un campo de texto
-            const fecha = await elegirFecha(nombreTarea(f.id, f.pagina?.titulo));
-            if (!fecha) return;
-            texto = fecha;
+        // la fecha, quién la hace, a quién espera, la prioridad: con su selector, no un campo de texto
+        const elegido = await elegirPorRol(a, nombreTarea(f.id, f.pagina?.titulo), f.pagina?.subtitulo ?? '');
+        if (elegido === undefined) return;
+        if (elegido !== null) {
+            texto = elegido;
         } else if (a.pide) {
             const escrito = await ui.campo({ ayuda: `${f.id} · ${a.nombre}`, placeholder: a.pide });
             if (escrito === undefined) return;
@@ -681,7 +736,7 @@ export class PantallaTareas implements Pantalla {
         if (!acciones.length) { void ui.aviso(`telar: ${id} no tiene acciones`); return; }
         const items = acciones.map((a, k) => ({
             label: a.nombre, k,
-            description: [a.rol === 'fecha' ? 'elige la fecha' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
+            description: [a.rol === 'fecha' ? 'elige la fecha' : a.opciones?.length ? 'elige de una lista' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
                 a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
         }));
         const elegida = await ui.elegir(items, { titulo: nombreTarea(id, pagina?.titulo), placeholder: 'qué hacer con esta tarea' });
@@ -691,10 +746,10 @@ export class PantallaTareas implements Pantalla {
         if (tipo === 'hilo') { await llevarPendiente(ref, false, proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
-        if (a.rol === 'fecha') {
-            const fecha = await elegirFecha(nombreTarea(id, pagina?.titulo));
-            if (!fecha) return;
-            texto = fecha;
+        const elegido = await elegirPorRol(a, nombreTarea(id, pagina?.titulo), pagina?.subtitulo ?? '');
+        if (elegido === undefined) return;
+        if (elegido !== null) {
+            texto = elegido;
         } else if (a.pide) {
             const escrito = await ui.campo({ ayuda: `${id} · ${a.nombre}`, placeholder: a.pide });
             if (escrito === undefined) return;
