@@ -70,6 +70,8 @@ extension shared the version number.
 - A shortcut in `[atajos]` with the key of a dashboard tab no longer takes the key over: «n» launched
   `/sincronizar` instead of opening «ahora». The tab wins; the shortcut shows without its key and a click
   launches it.
+- ⎋ in the projects search, with nothing typed, goes back to «ahora». Since the «hoy» tab was removed (0.2.0)
+  it did nothing.
 
 ## [0.2.0] — 2026-10-20
 

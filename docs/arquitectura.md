@@ -242,8 +242,11 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   un menú vertical de secciones (pestañas, calendario, hilos, agente, periódicos, agentes, módulos), cada una
   en su archivo de `vistas/dashboard/config/` y nombrada en su registro (`configuracion.ts`): una sección nueva
   es un archivo más.
-  `vistas/dashboard/panel.ts` decide qué mostrar y lo pinta en `vistas/dashboard/vista.ts`, que filtra, ordena y
-  atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
+  `vistas/dashboard/panel.ts` es el núcleo: lee la configuración y el día, lleva las pestañas y las teclas, y le
+  pasa cada acción a la pantalla que la declara. Cada pantalla (ahora, tareas, los bloques, proyectos, el plan y
+  el calendario, las secciones, el equipo) vive en su archivo con su estado, su HTML y sus acciones, y recibe del
+  núcleo lo que dice `vistas/dashboard/pantalla.ts`: una pantalla nueva es un archivo más. Todo se pinta en
+  `vistas/dashboard/vista.ts`, que filtra, ordena y atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
   de afuera (el buscador de la barra, una terminal).
 - **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la
   lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la

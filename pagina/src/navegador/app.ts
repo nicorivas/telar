@@ -149,7 +149,8 @@ hoy.alCambiarFoco = () => {
 };
 // las pestañas del dashboard son un grupo de la barra: sus filas, sus cuentas y la que se ve, al día con cada pintada
 barra.pestanasDashboard = () => hoy.pestanas();
-hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.refrescar(); };
+// (también la app: al salir de ella a una pestaña, su fila dejaba de ser la que se ve y seguía marcada)
+hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.appActiva = hoy.appActual; barra.refrescar(); };
 modelo.cambio.event(() => barra.refrescar());
 
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la

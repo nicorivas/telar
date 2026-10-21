@@ -1,10 +1,12 @@
 // El plan del día y el calendario del dashboard: lo que deja una skill de planificación
 // (`telar resultado plan`) y la agenda del día con las notas de cada evento (`telar evento`).
-// Aquí solo se dibuja; el estado y las acciones viven en `panel.ts`.
+// Arriba se dibuja; abajo, PantallaPlan, el estado y las acciones de las dos pestañas.
 
 import * as cli from '../../cli';
 import { esc } from '../../estilo';
-import { Dia, seccion } from './dia';
+import * as ui from '../../web/ui';
+import { Dia, diaDe, seccion } from './dia';
+import type { Accion, Pantalla, Tablero } from './pantalla';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -336,4 +338,185 @@ function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: stri
     }
     if (!e.plan && !notasDe(e, notas).length) h.push('<div class="dim">sin notas</div>');
     return h.join('');
+}
+
+/** Las pestañas del plan y del calendario: el plan leído (lo usa también «ahora»), las notas de los eventos
+ *  y el día al que se navegó. */
+export class PantallaPlan implements Pantalla {
+    readonly pantallas = ['plan', 'calendario'] as const;
+    readonly conReloj = ['plan', 'calendario'] as const;
+    /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
+    plan?: cli.JsonResultado;
+    private planError = '';
+    private planCargando = false;
+    /** las notas de los eventos del día del calendario, y el evento elegido */
+    private notas?: cli.JsonNotas;
+    private notasAviso = '';
+    private eventoSel = '';
+    /** el día que muestra el calendario si no es hoy (AAAA-MM-DD), con sus datos y si están cargando */
+    private calFecha = '';
+    private calDatos?: Dia;
+    private calCargando = false;
+
+    readonly acciones: Record<string, Accion> = {
+        'calendario': () => this.abrirCalendario(),
+        'plan': () => this.abrirPlan(''),
+        'plan-dia': v => this.abrirPlan(v),
+        'evento-sel': v => { if (v) { this.eventoSel = v; this.pintarCalendario(); } },
+        'cal-dia': v => v && this.moverDiaCal(v),
+        'nota-evento': v => v && this.notaEvento(v),
+        'ev-escribir': (v, m) => v && this.escribirSobreEvento(v, m.datos ?? ''),
+        'plan-comentar': (v, m) => v && m.datos?.trim() && this.comentarPlan(v, m.datos),
+    };
+
+    constructor(private readonly t: Tablero) {}
+
+    pintar(): void {
+        if (this.t.pantalla === 'plan') this.pintarPlan();
+        else this.pintarCalendario();
+    }
+
+    /** El plan de un día, si es el que está leído y viene en JSON (el que entiende el calendario). */
+    planDe(fecha: string): Plan | undefined {
+        return this.plan?.dia === fecha && this.plan.formato === 'json' ? this.plan.contenido as Plan : undefined;
+    }
+
+    /** El plan de un día (vacío es hoy), leído de la máquina donde lo escribe la skill. */
+    async abrirPlan(diaPedido: string): Promise<void> {
+        this.t.montar();
+        this.t.ir('plan');
+        this.planCargando = true;
+        this.pintarPlan();
+        const r = await cli.resultado('plan', diaPedido);
+        this.planCargando = false;
+        this.plan = r.datos?.ok ? r.datos : undefined;
+        this.planError = r.datos?.ok ? '' : (r.datos?.error ?? r.error ?? 'no contestó');
+        if (this.t.pantalla === 'plan') this.pintarPlan();
+    }
+
+    private pintarPlan(): void {
+        this.t.teclas.clear();
+        // arriba, los bloques que van en el plan (la retro de la tarde), si traen algo
+        this.t.pintar([...this.t.bloquesEn('plan'),
+            ...htmlPlan(this.plan, this.planError, this.planCargando)]);
+    }
+
+    /** El día que muestra el calendario: hoy, u otro al que se navegó (`calFecha`). */
+    private diaCal(): Dia | undefined {
+        const hoy = this.t.dia();
+        return this.calFecha && this.calFecha !== hoy?.fecha ? this.calDatos : hoy;
+    }
+
+    /** El calendario de un día (vacío es hoy): los eventos, los bloques del plan y las notas de cada uno. */
+    async abrirCalendario(fecha = ''): Promise<void> {
+        this.t.montar();
+        this.t.ir('calendario');
+        const hoy = await this.t.diaLeido();
+        const hoyIso = hoy.fecha;
+        this.calFecha = fecha === hoyIso ? '' : fecha;
+        const iso = this.calFecha || hoyIso;
+        this.calCargando = !!this.calFecha && this.calDatos?.fecha !== iso;
+        if (this.calCargando) { this.calDatos = { ...hoy, fecha: iso, agenda: [], pendientes: [], error: undefined }; this.notas = undefined; }
+        this.pintarCalendario();
+        const [otro, plan, notas] = await Promise.all([
+            this.calFecha ? diaDe(iso) : Promise.resolve(hoy),
+            this.plan?.dia === iso ? Promise.resolve({ datos: this.plan }) : cli.resultado('plan', this.calFecha ? iso : ''),
+            cli.notasEventos(this.calFecha ? iso : ''),
+        ]);
+        if ((this.calFecha || hoyIso) !== iso) return;  // se cambió de día mientras esto cargaba
+        if (this.calFecha) this.calDatos = otro;
+        this.calCargando = false;
+        if (plan.datos?.ok) this.plan = plan.datos;
+        this.notas = notas.datos?.ok ? notas.datos : undefined;
+        this.notasAviso = notas.datos?.aviso ?? (notas.datos?.ok ? '' : (notas.datos?.error ?? notas.error ?? ''));
+        if (this.t.pantalla === 'calendario') this.pintarCalendario();
+    }
+
+    /** ‹ › y «hoy» del calendario: `valor` es «hoy» o cuántos días moverse. */
+    private async moverDiaCal(valor: string): Promise<void> {
+        const hoyIso = this.t.dia()?.fecha;
+        if (!hoyIso) return;
+        if (valor === 'hoy') { this.eventoSel = ''; return this.abrirCalendario(''); }
+        const f = new Date(`${this.calFecha || hoyIso}T12:00:00`);
+        f.setDate(f.getDate() + (Number(valor) || 0));
+        const dos = (n: number) => String(n).padStart(2, '0');
+        this.eventoSel = '';
+        await this.abrirCalendario(`${f.getFullYear()}-${dos(f.getMonth() + 1)}-${dos(f.getDate())}`);
+    }
+
+    private pintarCalendario(): void {
+        const d = this.diaCal();
+        if (!d) return;
+        this.t.teclas.clear();
+        this.t.teclas.set('[', () => this.moverDiaCal('-1'));
+        this.t.teclas.set(']', () => this.moverDiaCal('1'));
+        const plan = this.planDe(d.fecha);
+        this.t.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso,
+            this.t.general()?.nombre ?? '', this.t.dia()?.fecha ?? d.fecha, this.calCargando));
+    }
+
+    /** Un comentario sobre el plan de un día: lo atiende la máquina donde vive el plan, que abre un hilo
+     *  con un agente; ese agente actualiza el plan, y la pestaña lo relee en un rato. */
+    private async comentarPlan(dia: string, texto: string): Promise<void> {
+        const r = await ui.progreso({ titulo: 'telar: mandando el comentario sobre el plan…' }, () => cli.comentarResultado('plan', dia, texto));
+        if (!r.ok) { void ui.falla(`telar: el comentario no llegó: ${r.error ?? 'sin respuesta'}`); return; }
+        void ui.info(r.abrio ? `telar: se abrió «${r.abrio}» para atender el comentario` : 'telar: comentario recibido');
+        setTimeout(() => { this.plan = undefined; void this.t.actualizar(true); }, 30000);
+    }
+
+    /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el
+     *  agente necesita para no preguntar: la reunión, su proyecto, lo que dicen el plan y las notas. */
+    private async escribirSobreEvento(id: string, texto: string): Promise<void> {
+        const d = this.diaCal();
+        const general = this.t.general();
+        if (!texto.trim() || !d) return;
+        if (!general) { void ui.aviso('telar: no hay un agente que reciba lo sin proyecto ([agentes] sin_proyecto)'); return; }
+        const plan = this.planDe(d.fecha);
+        const e = eventosDelDia(d, plan).find(x => x.id === id);
+        if (!e) return;
+        const hm = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
+        // de qué proyecto es: lo que telar recuerda para la serie o lo que deduce (sin hacer nada)
+        let proyecto = '';
+        if (!e.soloPlan) {
+            const r = await cli.reunion(e.titulo, hm(e.inicio), e.url, e.id, { asistentes: e.asistentes, preguntar: true, donde: true });
+            if (r.datos?.destino && r.datos.destino !== 'gestion') proyecto = `Proyecto: ${r.datos.destino}${r.datos.recordado ? ' (elegido por Nico para esta serie)' : ' (deducido)'}.`;
+            else if (r.datos?.candidatos?.length) proyecto = `Proyecto: no está claro; candidatos: ${r.datos.candidatos.slice(0, 3).map(c => `${c.ruta} (${c.motivos.join(', ')})`).join('; ')}.`;
+            else proyecto = 'Proyecto: ninguno deducido.';
+        }
+        const notas = notasDe(e, this.notas).map(n => `${n.de}: ${n.texto}`);
+        const lineas = [
+            `[Nico, desde el calendario del dashboard] ${texto.trim()}`,
+            '',
+            `Contexto. La reunión: «${e.titulo}», ${d.fecha} de ${hm(e.inicio)} a ${hm(e.fin)}${e.lugar ? `, ${e.lugar}` : ''}${e.soloPlan ? ' (bloque del plan del día, no está en el calendario)' : ''}.`,
+            e.asistentes.length ? `Asistentes: ${e.asistentes.join(', ')}.` : '',
+            proyecto,
+            e.plan?.nota ? `El plan del día dice: ${e.plan.nota}` : '',
+            e.plan?.ficha?.decision ? `Decisión que pide el plan: ${e.plan.ficha.decision}` : '',
+            notas.length ? `Notas del evento: ${notas.join(' | ')}` : '',
+            `Id del evento: ${e.id}. Si lo que hagas es de esta reunión, déjale una nota: telar evento nota "${e.id}" "…" --de ${general.clave} --titulo "${e.titulo}" --inicio ${hm(e.inicio)} --dia ${d.fecha}`,
+        ].filter(Boolean);
+        const r = await ui.progreso({ titulo: `telar: escribiéndole a ${general.nombre}…` },
+            () => cli.encargar(general.clave, lineas.join('\n')));
+        if (!r.datos) { void ui.falla(`telar: no llegó a ${general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
+        // queda constancia en el evento: lo que se pidió y a quién
+        await cli.notaEvento(e.id, `A ${general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha);
+        const n = await cli.notasEventos(d.fecha);
+        if (n.datos?.ok) this.notas = n.datos;
+        this.eventoSel = id;
+        void ui.estado(`telar: enviado a ${general.nombre} (${r.datos.estado ?? ''})`, 6000);
+        if (this.t.pantalla === 'calendario') this.pintarCalendario();
+    }
+
+    /** Una nota de la persona sobre un evento: se guarda donde viven las notas (`telar evento nota`). */
+    private async notaEvento(valor: string): Promise<void> {
+        const [id, titulo, inicio, fecha] = JSON.parse(valor) as string[];
+        const texto = await ui.campo({ titulo: `Nota para «${titulo}»`, ayuda: 'Se guarda junto al evento y la ven las skills' });
+        if (!texto?.trim()) return;
+        const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha);
+        if (!r.datos?.ok) { void ui.falla(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
+        this.eventoSel = id;
+        const notas = await cli.notasEventos(fecha);
+        if (notas.datos?.ok) this.notas = notas.datos;
+        if (this.t.pantalla === 'calendario') this.pintarCalendario();
+    }
 }
