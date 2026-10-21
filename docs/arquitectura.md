@@ -253,7 +253,10 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
   (⌥C). Una vista nueva es una entrada del registro, con su `montar`: se dibuja en un elemento de la página
   y se cierra cuando ya no hace falta (de las terminales quedan abiertas las ocho últimas). La carpeta de un
-  hilo y «compartir» se dibujan igual (`web/carpeta.ts`, `web/compartir.ts`).
+  hilo y «compartir» se dibujan igual (`web/carpeta.ts`, `web/compartir.ts`). En las tres vistas, las rutas de
+  archivo que escribe el agente son enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del
+  hilo: una relativa es de la carpeta del hilo, y una de otra máquina va como `máquina:ruta`, que el visor lee
+  sola por `/api/archivos`.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso

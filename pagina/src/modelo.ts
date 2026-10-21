@@ -32,6 +32,8 @@ export class Modelo {
     sesion = '';
     multiplexor = '';
     raiz = '';
+    /** el nombre de la máquina que sirve esta página (`/api/salud`), para saber si un hilo vive en otra */
+    aqui = '';
     viva = false;
     /** los pids de los clientes del multiplexor: qué terminales muestran la sesión */
     clientes: number[] = [];

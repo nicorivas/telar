@@ -5,6 +5,7 @@
 // Se dibuja en un elemento de la página; sus estilos, en media/css/conversacion.css (con @scope, en
 // `.v-conversacion`).
 
+import { atenderClics, enlazar } from './rutas-agente';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 interface Mensaje { quien: string; texto?: string }
@@ -42,6 +43,7 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
         : 'escríbele al hilo (⏎ envía, ⇧⏎ línea nueva)';
     teclas.hidden = porMensaje;
 
+    atenderClics(turnos, { hilo, maquina });
     const abajo = () => turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40;
     let ultimo = '', leido = false;
     const pintar = (d: Leido) => {
@@ -66,6 +68,8 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
             }
             if (!(d.turnos ?? []).length) turnos.appendChild(el('p', 'nada', 'todavía no hay conversación'));
         }
+        // las rutas que escribió el agente, como enlaces al visor
+        enlazar(turnos);
         leido = true;
         if (seguir) turnos.scrollTop = turnos.scrollHeight;
     };

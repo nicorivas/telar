@@ -156,7 +156,7 @@ modelo.cambio.event(() => barra.refrescar());
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la
 // columna ancha
 void fetch('/api/salud', { cache: 'no-store' }).then(r => r.json()).then((s: { maquina?: string }) => {
-    barra.aqui = s.maquina ?? ''; barra.refrescar(true);
+    barra.aqui = modelo.aqui = s.maquina ?? ''; barra.refrescar(true);
 }).catch(() => undefined);
 const otras = async () => {
     const r = await cli.espejos().catch(() => undefined);

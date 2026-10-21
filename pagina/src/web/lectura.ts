@@ -11,6 +11,7 @@
 // a la terminal.
 import MarkdownIt from 'markdown-it';
 
+import { atenderClics, enlazar } from './rutas-agente';
 import { type Vista, teclaParaLaVista } from './vistas-hilo';
 
 interface Mensaje { quien: string; texto?: string }
@@ -71,7 +72,10 @@ export function montar(raiz: HTMLElement, rutas: { hilo: string; maquina?: strin
         const antes = datos.recortado || (datos.total_turnos ?? 0) > (datos.turnos ?? []).length ? 'hay respuestas anteriores que no se leen aquí · ' : '';
         caja.innerHTML = `<div class="pie-lectura"><span>${esc(rutas.hilo)} · respuesta ${i + 1} de ${n}${indice < 0 ? ' (la última)' : ''}</span>`
             + `<span>${antes}← → recorrer · ⎋ terminal</span></div>` + r.dibujar(datos, i);
+        // las rutas que escribió el agente, como enlaces al visor
+        enlazar(caja);
     }
+    atenderClics(caja, { hilo: rutas.hilo, maquina: rutas.maquina ?? '' });
 
     async function leer(): Promise<void> {
         try {

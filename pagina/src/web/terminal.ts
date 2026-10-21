@@ -10,6 +10,7 @@ import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 
 import { conEco } from '../navegador/eco/entrada';
+import { enlazarTerminal } from './rutas-agente';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 declare global {
@@ -101,6 +102,9 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     marco.textContent = '';
     term.open(marco);
     const { hilo, maquina } = rutas;
+    // las rutas que escribe el agente, como enlaces al visor (en la máquina del hilo)
+    const enlaces = enlazarTerminal(term, rutas);
+    deshacer.push(() => enlaces.dispose());
 
     // el tamaño: todo el alto, y de ancho lo que quepa hasta COLUMNAS (más ancho se lee mal), centrada. La ventana
     // del hilo toma este tamaño (la vista se lo da a tmux), así que no sobra nada que rellenar
