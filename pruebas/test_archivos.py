@@ -81,3 +81,40 @@ class LosArchivos(Prueba):
         self.assertEqual((estado / "babel.json").read_text(), '{"nivel": 2}')
         with self.assertRaises(ErrorDeServicio):
             archivos.leer(self.ctx, str(estado / "otro.html"))
+
+    def test_un_repo_de_la_configuracion_se_lee_y_no_se_escribe(self):
+        otro = Path(self.tmp.name) / "empresa"
+        otro.mkdir()
+        (otro / "nota.md").write_text("de la empresa")
+        (otro / "x.json").write_text("{}")
+        self.ctx.config.repos = (SimpleNamespace(nombre="empresa", ruta=otro),)
+        self.assertEqual(archivos.leer(self.ctx, str(otro / "nota.md")).texto, "de la empresa")
+        with self.assertRaises(ErrorDeServicio):
+            archivos.escribir(self.ctx, str(otro / "x.json"), "[]")
+
+    def test_en_otra_maquina_se_le_pide_a_su_nodo(self):
+        from unittest import mock
+
+        from telar import bus
+
+        self.ctx.config.bus = SimpleNamespace(url="nats://x", maquina="laptop")
+        lejos = {"ruta": "/home/n/Life/docs/x.md", "texto": "lejos", "mtime": 1.0, "recortado": False}
+        with mock.patch.object(bus, "hay_bus", return_value=True), \
+                mock.patch.object(bus, "pedir", return_value={"ok": True, "archivo": lejos}) as pedir:
+            a = archivos.leer_en(self.ctx, "servidor:docs/x.md")
+            self.assertEqual((a.texto, a.maquina), ("lejos", "servidor"))
+            self.assertEqual(pedir.call_args.args[1:4], ("servidor", "archivo-leer", {"ruta": "docs/x.md"}))
+            # la propia máquina, o sin máquina, se lee aquí
+            self.assertEqual(archivos.leer_en(self.ctx, "laptop:proyectos/faro/README.md").texto, "# Faro\n")
+            self.assertEqual(archivos.leer_en(self.ctx, "proyectos/faro/README.md").texto, "# Faro\n")
+            self.assertEqual(pedir.call_count, 1)
+        with mock.patch.object(bus, "hay_bus", return_value=True), \
+                mock.patch.object(bus, "pedir", return_value={"ok": False, "error": "fuera", "codigo": 403}):
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.leer_en(self.ctx, "docs/x.md", "servidor")
+            self.assertEqual(e.exception.codigo, 403)
+
+    def test_lo_que_responde_el_nodo(self):
+        self.assertTrue(archivos.leer_para_otra(self.ctx, {"ruta": "proyectos/faro/README.md"})["ok"])
+        r = archivos.leer_para_otra(self.ctx, {"ruta": str(self.afuera)})
+        self.assertEqual((r["ok"], r["codigo"]), (False, 403))

@@ -215,6 +215,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "equipo"), cb=self._equipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "aviso"), cb=self._aviso)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo"), cb=self._archivo)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo-leer"), cb=self._archivo_leer)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -668,6 +669,12 @@ class Nodo:
         from telar import entrega
 
         await self._responder(m, lambda p: entrega.recibir_archivo(self.config, p))
+
+    async def _archivo_leer(self, m) -> None:
+        """Un archivo de aquí que pide leer otra máquina (el visor de su página), con los límites de aquí."""
+        from telar.servicios import archivos
+
+        await self._responder(m, lambda p: archivos.leer_para_otra(self.ctx, p))
 
     async def _notas(self, m) -> None:
         from telar import notas

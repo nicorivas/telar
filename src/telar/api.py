@@ -658,9 +658,10 @@ def post_decision(ident: str, decision: str, pedido: PedidoDecision, ctx: Contex
 
 
 @app.get("/archivos", response_model=servicio_archivos.Archivo)
-def get_archivo(ruta: str, ctx: Contexto = Depends(contexto)):
-    """Un archivo de la raíz del repositorio (o declarado por una app), hasta 2 MB."""
-    return servicio_archivos.leer(ctx, ruta)
+def get_archivo(ruta: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Un archivo de la raíz o de un repo de `[repos]` (o declarado por una app), hasta 2 MB. Con `maquina`
+    (o una ruta `máquina:ruta`), el de otra máquina, que su nodo lee por el bus con sus propios límites."""
+    return servicio_archivos.leer_en(ctx, ruta, maquina)
 
 
 @app.get("/archivos/md", response_model=servicio_archivos.Hallados)

@@ -8,6 +8,9 @@ extension shared the version number.
 
 ### Added
 
+- The page reads files on other machines. `GET /archivos` takes `maquina` (or a `machine:path` route), and
+  that machine's node reads the file over the bus with its own limits. Files under the `[repos]` folders can be
+  read too, not only those under the root.
 - Several working repositories (`[repos.<name>] ruta = "…"`, optional `perfil`). Each brings its own
   `telar-perfil.yaml`, and telar merges them into one (`perfil.cargar_todos`): each repo's archetypes become
   relative to the root and carry which repo they come from; when two profiles match the same folder, the

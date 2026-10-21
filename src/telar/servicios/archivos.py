@@ -3,7 +3,7 @@
 En VS Code el dashboard lee el disco directo (el README de un proyecto, la
 preparación de una reunión, la página y la memoria de un lienzo). En el navegador no hay disco: lo pide aquí.
 
-- **Leer**: un archivo bajo la raíz del repositorio (`[telar] raiz`), uno que la configuración declara
+- **Leer**: un archivo bajo la raíz del repositorio (`[telar] raiz`) o de uno de `[repos]`, uno que la configuración declara
   para una app (`[apps.*] archivo` y `memoria`), o el lienzo de una página que esta misma API entregó (el
   programa de una app con `pagina` puede dejarlo donde quiera, p. ej. en `~/.local/state`). Nada de `..`
   que escape, hasta 2 MB.
@@ -12,6 +12,10 @@ preparación de una reunión, la página y la memoria de un lienzo). En el naveg
 - **Escribir**: solo la memoria de un lienzo, un `.json` válido bajo la raíz, declarado como `memoria` de
   una app o nombrado por una página entregada, hasta 4 MB, de una vez (temporal y rename).
 
+- **En otra máquina**: `leer_en` con `maquina` se lo pide al nodo de esa máquina por el bus, que lo lee con
+  sus propios límites (su raíz, sus repos, sus apps): el visor de la página abre `servidor:docs/x.md` sin
+  copiarlo antes.
+
 Lo usan `GET /archivos`, `GET /archivos/md` y `PUT /archivos` de la API; detrás de la llave de la página.
 """
 
@@ -19,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -52,6 +57,9 @@ class Archivo(BaseModel):
     texto: str
     mtime: float
     recortado: bool = False
+
+
+    maquina: str = ""  # dónde se leyó, si fue en otra máquina
 
 
 class Hallado(BaseModel):
@@ -98,9 +106,22 @@ def _bajo_raiz(ctx, p: Path) -> bool:
         return False
 
 
+def _bajo_repos(ctx, p: Path) -> bool:
+    """Bajo la raíz o bajo la carpeta de uno de `[repos]`: lo que se puede leer (escribir, solo bajo la raíz)."""
+    if _bajo_raiz(ctx, p):
+        return True
+    for r in getattr(ctx.config, "repos", ()) or ():
+        try:
+            p.relative_to(Path(r.ruta).expanduser().resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def leer(ctx, ruta: str) -> Archivo:
     p = _resolver(ctx, ruta)
-    if not (_bajo_raiz(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
+    if not (_bajo_repos(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
         raise ErrorDeServicio(f"{ruta}: fuera de la raíz y de las apps declaradas", 403)
     if not p.is_file():
         raise ErrorDeServicio(f"no hay {ruta}", 404)
@@ -110,11 +131,33 @@ def leer(ctx, ruta: str) -> Archivo:
                    recortado=len(datos) > TOPE_LEER)
 
 
+def leer_en(ctx, ruta: str, maquina: str = "") -> Archivo:
+    """`leer`, en esta máquina o en `maquina` (por el bus, a su nodo). Una ruta `máquina:ruta` también vale."""
+    from telar import bus as mod_bus
+
+    if not maquina and (m := re.match(r"([A-Za-z0-9][\w-]*):(?!//)(.+)", ruta)):
+        maquina, ruta = m.group(1), m.group(2)
+    if not maquina or not mod_bus.hay_bus(ctx.config) or maquina == mod_bus.maquina(ctx.config):
+        return leer(ctx, ruta)
+    r = mod_bus.pedir(ctx.config, maquina, "archivo-leer", {"ruta": ruta}, espera=20)
+    if not r.get("ok"):
+        raise ErrorDeServicio(r.get("error") or f"{maquina} no pudo leer {ruta}", int(r.get("codigo") or 502))
+    return Archivo(**{**r["archivo"], "maquina": maquina})
+
+
+def leer_para_otra(ctx, pedido: dict) -> dict:
+    """Lo que responde el nodo a `archivo-leer`: el archivo, o el error con su código."""
+    try:
+        return {"ok": True, "archivo": leer(ctx, str(pedido.get("ruta", ""))).model_dump()}
+    except ErrorDeServicio as e:
+        return {"ok": False, "error": str(e), "codigo": e.codigo}
+
+
 def para_bajar(ctx, ruta: str) -> Path:
     """Un archivo para bajarlo entero (lo que la página no muestra: un binario, uno grande): los mismos límites
     que `leer` (la raíz, lo que declaran las apps, los lienzos entregados), sin tope de tamaño."""
     p = _resolver(ctx, ruta)
-    if not (_bajo_raiz(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
+    if not (_bajo_repos(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
         raise ErrorDeServicio(f"{ruta}: fuera de la raíz y de las apps declaradas", 403)
     if not p.is_file():
         raise ErrorDeServicio(f"no hay {ruta}", 404)
