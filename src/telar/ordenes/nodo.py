@@ -85,6 +85,8 @@ class Nodo:
         #: cuántas vueltas seguidas falta un hilo que estaba vivo (se anuncia muerto a la segunda)
         self.ausentes: dict[str, int] = {}
         self.espejo = None
+        #: el último estado de cada hilo de las otras máquinas, por su clave del bus (lo llena `_vigilar`)
+        self.vistos: dict[str, dict] = {}
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -113,7 +115,7 @@ class Nodo:
             # la dirección de cada ventana de la sesión del telar («@338/marca»): con ella otra máquina
             # la mira (telar.remoto.guion_ver). Listarlas también les pone marca a las que no tienen
             direcciones = {v.ventana: v.direccion for v in movil.ventanas(self.config.sesion)}
-        except Exception:  # noqa: BLE001 - sin tmux (o con zellij) no hay ventanas que mirar desde afuera
+        except Exception:  # noqa: BLE001 - sin tmux no hay ventanas que mirar desde afuera
             direcciones = {}
 
         def ficha_de(nombre: str, vivo: bool, residente: str = "", ventana: str = "") -> dict:
@@ -209,6 +211,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tipo"), cb=self._tipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "periodicos"), cb=self._periodicos)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "hilo"), cb=self._hilo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "equipo"), cb=self._equipo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "aviso"), cb=self._aviso)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo"), cb=self._archivo)
@@ -302,6 +305,12 @@ class Nodo:
 
                 await self.nc.publish(cuentas.DIRECTORIO.format(self.persona), json.dumps(
                     entre_personas.directorio(foto, self.persona), ensure_ascii=False).encode())
+            # y las ventanas de los hilos de las otras máquinas, contra lo que dice el bus: un evento perdido,
+            # o una ventana cerrada aquí sin cambio allá, se corrige aquí (un dueño por hilo, paso 2)
+            try:
+                await asyncio.to_thread(self.conciliar)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"conciliar las ventanas: {type(e).__name__}: {e}")
 
     async def _vigilar(self, kv) -> None:
         """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia."""
@@ -312,14 +321,19 @@ class Nodo:
 
         vigia = await kv.watch(f"{self.persona}.>")
         async for e in vigia:
-            if e is None or not e.value:
+            if e is None:
+                continue
+            if not e.value:
+                self.vistos.pop(e.key, None)  # borrado: ese hilo ya no está en ninguna parte
                 continue
             try:
                 d = json.loads(e.value)
             except ValueError:
                 continue
             if d.get("maquina") == self.yo:
+                self.vistos.pop(e.key, None)
                 continue
+            self.vistos[e.key] = d
 
             def anotar_aqui():
                 est = mod_estado.abrir(self.config)
@@ -337,6 +351,28 @@ class Nodo:
                 await asyncio.to_thread(self.ventana_de, d)
             except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
                 self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
+
+    def conciliar(self) -> list[str]:
+        """Las ventanas de aquí de los hilos que viven en otras máquinas, contra su estado en el bus (lo que
+        `_vigilar` va guardando en `vistos`): se trae la de uno vivo allá que aquí no está (salvo archivado),
+        y se cierra la de uno que allá ya no vive. Devuelve los nombres que tocó."""
+        if not self.vistos:
+            return []
+        tel = _comun.tejer(self.ctx, con_ficha=False)
+        if tel.mux is None or not tel.viva:
+            return []
+        anotados, archivados = tel.estado.remotos(), tel.estado.archivados()
+        tocados = []
+        for d in list(self.vistos.values()):
+            nombre = d.get("nombre", "")
+            h = tel.por_nombre(nombre)
+            viva = h is not None and tel.vivo(h)
+            falta = bool(d.get("vivo")) and not viva and nombre not in archivados
+            sobra = not d.get("vivo") and viva and (anotados.get(nombre) or {}).get("remoto") == d.get("maquina")
+            if falta or sobra:
+                self.ventana_de(d)
+                tocados.append(nombre)
+        return tocados
 
     def ventana_de(self, d: dict) -> None:
         """La ventana aquí de un hilo que vive en otra máquina de [remotos]: se trae si nació allá y aquí
@@ -586,6 +622,23 @@ class Nodo:
             if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
                 return {"ok": False, "error": "argv: se esperaba una lista de textos"}
             return alla.tarea_aqui(argv, "periodicos")
+
+        await self._responder(m, correr)
+
+    async def _hilo(self, m) -> None:
+        """`telar hilo <verbo>` sobre un hilo que vive aquí, pedido desde otra máquina: el dueño aplica el
+        cambio y lo vuelve a publicar (docs/propuestas/un-dueno-por-hilo.md). Solo los verbos que cambian su
+        registro, nunca llevar ni retomar."""
+        from telar import alla
+        from telar.ordenes.hilo import AL_DUENO
+
+        def correr(p):
+            argv = p.get("argv")
+            if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+                return {"ok": False, "error": "argv: se esperaba una lista de textos"}
+            if not argv or argv[0] not in AL_DUENO:
+                return {"ok": False, "error": f"hilo: solo {', '.join(AL_DUENO)}"}
+            return alla.tarea_aqui(argv, "hilo")
 
         await self._responder(m, correr)
 

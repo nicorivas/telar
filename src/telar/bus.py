@@ -301,6 +301,26 @@ def registro(config, n: int = 100) -> list[dict]:
         raise ErrorDeBus(f"no pude leer el registro del bus: {e or type(e).__name__}") from e
 
 
+def maquina_de(config, hilo: str) -> str:
+    """En qué máquina vive un hilo, según el estado que publica su nodo; "" si el bus no lo sabe."""
+    async def _leer():
+        nc = await conectar(config)
+        try:
+            kv = await nc.jetstream().key_value(ESTADO)
+            try:
+                e = await kv.get(clave_estado(config, hilo))
+            except Exception:  # noqa: BLE001 - no está, o fue borrado
+                return ""
+            return str(json.loads(e.value or b"{}").get("maquina") or "")
+        finally:
+            await nc.close()
+
+    try:
+        return asyncio.run(asyncio.wait_for(_leer(), ESPERA))
+    except Exception:  # noqa: BLE001 - sin bus, no se sabe
+        return ""
+
+
 def estados(config) -> dict:
     """El estado de todos los hilos de esta persona, como lo tiene el bus: {hilo: {...}}."""
     async def _leer():

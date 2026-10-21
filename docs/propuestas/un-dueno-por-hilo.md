@@ -32,9 +32,10 @@ hasta el próximo pull. El registro puede decirlo («la carpeta no está aquí»
 
 ## Los pasos que faltan
 
-1. **Cambios al dueño**: un verbo `hilo` por RPC para renombrar, vincular, archivar y cerrar; `telar hilo
-   <verbo>` sobre un hilo ajeno lo usa en vez de tocar el estado local.
-2. **Reconciliar en cada vuelta**, no solo cuando cambia lo publicado.
-3. **Dejar de copiar**: la máquina deja de guardar vínculos, sesiones y archivados de los hilos ajenos;
+Hechos: los cambios a un hilo ajeno los aplica su dueño (`telar hilo` se los pide por el bus, pedido `hilo`
+a su nodo, y solo si allá sale bien ajusta lo de aquí), y el nodo concilia en cada vuelta de la foto (30 s)
+las ventanas de aquí contra el estado de los hilos de las otras máquinas.
+
+1. **Dejar de copiar**: la máquina deja de guardar vínculos, sesiones y archivados de los hilos ajenos;
    la lista y el dashboard los leen del bus.
-4. **Quitar las sesiones propias por hilo** del código, cuando no quede ninguna.
+2. **Quitar las sesiones propias por hilo** del código, cuando no quede ninguna.

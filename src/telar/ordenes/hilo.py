@@ -75,6 +75,10 @@ VERBOS = (
 )
 
 
+#: los verbos que cambian el registro de un hilo: sobre uno que vive en otra máquina, se le piden a su
+#: dueño por el bus (docs/propuestas/un-dueno-por-hilo.md), que los aplica y los vuelve a publicar
+AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "archivar", "desarchivar", "cerrar", "olvidar")
+
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
 SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "retomar", "olvidar")
 
@@ -129,6 +133,13 @@ def main(argv: list[str], ctx) -> int:
     salida = 0
     # si es un hilo remoto, lo que le pase cambia lo que su máquina publica en el directorio
     remoto_antes = est.remotos().get(hilo.nombre, {}).get("remoto", "")
+    # un hilo de otra máquina: el cambio lo hace su dueño. Lo de aquí (la copia de su registro, la ventana
+    # que lo mira) se ajusta después, si allá salió bien
+    dueno = _dueno(ctx, hilo) if o.verbo in AL_DUENO else ""
+    if dueno:
+        problema = _al_dueno(ctx, dueno, o, hilo.nombre)
+        if problema:
+            return _comun.queja(problema)
     if o.verbo == "ver":
         pass
     elif o.verbo == "vincular":
@@ -158,7 +169,7 @@ def main(argv: list[str], ctx) -> int:
             # un hilo remoto lleva su nombre también en la sesión de allá (`@telar_hilo`),
             # que es por donde el cartero le entrega su correo: se renombra con él
             anotado = tel.estado.remotos().get(o.valor.strip())
-            remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
+            remoto = _remoto_de(ctx, anotado["remoto"]) if anotado and not dueno else None
             if remoto is not None and anotado.get("sesion"):
                 problema = mod_remoto.nombrar(remoto, anotado["sesion"], o.valor.strip())
                 if problema:
@@ -177,7 +188,8 @@ def main(argv: list[str], ctx) -> int:
         # nombre le borraría a esa su conversación, su vínculo y su prioridad (le pasó a un
         # hilo real: cerrar su duplicado lo dejó sin conversación que llevar)
         gemelos = [h for h in tel.hilos if h.nombre == hilo.nombre and h.id != hilo.id and tel.vivo(h)]
-        salida = _cerrar(ctx, tel, hilo)
+        # si lo cerró su dueño, la ventana de aquí la cierra el nodo al ver que ya no vive allá
+        salida = 0 if dueno else _cerrar(ctx, tel, hilo)
         if salida == 0 and gemelos:
             print(f"cerrado; «{hilo.nombre}» sigue vivo en otra ventana y telar no lo olvida")
         elif salida == 0:
@@ -186,7 +198,7 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "archivar":
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
-        if o.cerrar:
+        if o.cerrar and not dueno:
             salida = _cerrar(ctx, tel, hilo)
         else:
             print(_comun.tenue("  sigue abierto; --cerrar además lo cierra en el multiplexor"))
@@ -379,6 +391,32 @@ def _resolver_ruta(ruta: Path | None) -> Path | None:
         return Path(ruta).resolve()
     except OSError:  # pragma: no cover - depende del sistema de archivos
         return Path(ruta)
+
+
+def _dueno(ctx, hilo) -> str:
+    """La máquina del bus donde vive el hilo, si es otra; "" si vive aquí, no hay bus o no se sabe."""
+    from telar import bus as mod_bus
+
+    if not hilo.remoto or hilo.remoto == "?" or not mod_bus.hay_bus(ctx.config):
+        return ""
+    maquina = mod_bus.maquina_de(ctx.config, hilo.nombre) or hilo.remoto
+    return "" if maquina == mod_bus.maquina(ctx.config) else maquina
+
+
+def _al_dueno(ctx, dueno: str, o, nombre: str) -> str:
+    """Pide el verbo a la máquina dueña del hilo y muestra lo que dijo. "" si salió bien; si no, el problema."""
+    from telar import bus as mod_bus
+
+    argv = [o.verbo, *([o.valor] if o.valor else []), "--hilo", nombre, *(["--cerrar"] if o.cerrar else [])]
+    r = mod_bus.pedir(ctx.config, dueno, "hilo", {"argv": argv}, espera=60)
+    if not r.get("ok"):
+        return f"«{nombre}» vive en {dueno}, y no respondió: {r.get('error', '')}"
+    if r.get("salida", "").strip() and not o.json:
+        print(_comun.tenue(f"  en {dueno}: " + r["salida"].strip().splitlines()[0]))
+    if int(r.get("codigo", 1)) != 0:
+        ultima = (r.get("error_salida", "").strip().splitlines() or ["falló"])[-1].removeprefix("telar: ")
+        return f"en {dueno}: {ultima}"
+    return ""
 
 
 def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
