@@ -181,6 +181,13 @@
   @media (width <= 90ch) { .fila.per { grid-template-columns: 2ch minmax(0, 1fr) max-content; } .fila.per code, .fila.per .que { display: none; } }
   .prop { box-shadow: inset 2px 0 0 var(--c); padding: 0 2ch; margin: 1lh 0; }
   .sub-ficha { white-space: normal; overflow-wrap: anywhere; }
+  /* la estrella y compartir, antes del título de la ficha (como en la lista): apagados en gris, encendidos en su
+     color. El título toma lo que queda y se parte adentro, sin empujarlos a otra línea */
+  #ficha-tarea .subcab { flex-wrap: nowrap; } #ficha-tarea .subcab b { flex: 1; min-width: 0; }
+  #ficha-tarea .iconos-t { display: flex; gap: 1ch; }
+  #ficha-tarea .icono-t { color: var(--dim); cursor: pointer; } #ficha-tarea .icono-t:hover { text-decoration: none; }
+  #ficha-tarea .icono-t.estrella.on, #ficha-tarea .icono-t.estrella:hover { color: var(--amarillo); }
+  #ficha-tarea .icono-t.equipo.on, #ficha-tarea .icono-t.equipo:hover { color: var(--cian); }
   .prop h2 { color: var(--c); }
   /* una acción por fila: la tecla en su columna, el nombre en la otra */
   .acciones-t { display: grid; grid-template-columns: max-content; margin: 1lh 0; }

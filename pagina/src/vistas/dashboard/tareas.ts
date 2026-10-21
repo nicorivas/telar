@@ -10,6 +10,9 @@ import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 
+/** Las acciones de la ficha que no van en su lista porque se hacen donde se ve lo que cambian (ver `pintarFicha`). */
+const EN_LA_FICHA = new Set(['fecha', 'dueno', 'estrella', 'equipo']);
+
 /** Cómo se nombra una tarea en lo que se le pregunta a la persona: el título de su ficha ya empieza con el id
  *  («T309 · …»); si no, el id va delante. */
 function nombreTarea(id: string, titulo = ''): string {
@@ -538,18 +541,28 @@ export class PantallaTareas implements Pantalla {
         const donde = i >= 0 && lista.length > 1
             ? `<span class="pasar"><a data-accion="tarea-anterior" title="la anterior (←)">←</a>`
               + `<span class="dim">${i + 1}/${lista.length}</span><a data-accion="tarea-siguiente" title="la siguiente (→)">→</a></span>` : '';
-        // ⏎ es la principal; las demás van numeradas en orden, y el número es su tecla
+        // lo que se cambia donde se ve no va en la lista: la fecha y quién la hace se pinchan en el subtítulo, y la
+        // estrella y compartir son íconos junto al título, como en la lista de tareas. ⏎ es la principal; las demás
+        // van numeradas en orden, y el número es su tecla
         this.t.teclas.clear();
         let n = 0;
-        const botones = (p.acciones ?? []).map((a, k) => {
+        const acciones = (p.acciones ?? []).map((a, k) => ({ a, k }));
+        const botones = acciones.filter(({ a }) => !EN_LA_FICHA.has(a.rol ?? '')).map(({ a, k }) => {
             const tecla = a.principal ? '⏎' : String(++n);
             if (!a.principal) this.t.teclas.set(tecla, () => this.accionTarea(k));
             return `<a class="atajo${a.principal ? ' principal' : ''}" data-accion="accion-tarea" data-valor="${k}"`
                 + ` title="${esc(a.pide ? `${a.nombre}: pide ${a.pide}` : a.nombre)}"><kbd>${tecla}</kbd><span>${esc(a.nombre)}</span></a>`;
         });
+        // el ícono es el estado de ahora (★ con estrella, ◉ compartida), que el proveedor pone al comienzo del nombre
+        // de la acción que la cambia («★ quitar la estrella»); lo que sigue es lo que hace un clic
+        const iconos = acciones.filter(({ a }) => a.rol === 'estrella' || a.rol === 'equipo').map(({ a, k }) => {
+            const [glifo, ...resto] = a.nombre.split(' ');
+            const on = glifo === '★' || glifo === '◉';
+            return `<a class="icono-t ${a.rol}${on ? ' on' : ''}" data-accion="accion-tarea" data-valor="${k}" title="${esc(resto.join(' '))}">${esc(glifo)}</a>`;
+        });
         // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
         const color = p.bloques.find(b => b.destacado)?.color;
-        this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(p.titulo)}</b></div>`,
+        this.t.pintar(this.marcoFicha([`<div class="subcab">${iconos.length ? `<span class="iconos-t">${iconos.join('')}</span>` : ''}<b>${esc(p.titulo)}</b></div>`,
             p.subtitulo ? `<div class="sub-ficha dim">${this.subtituloFicha(p)}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
             ...this.t.paginas.html(p.bloques)], color, donde));
@@ -563,21 +576,27 @@ export class PantallaTareas implements Pantalla {
             volver('volver-ficha', origen, donde, `volver a ${origen} (⎋)`), recuadro(cuerpo.join('\n')), '</div>'];
     }
 
-    /** El subtítulo de la ficha, con la fecha como botón si el proveedor deja cambiarla (su acción `rol: fecha`): se
-     *  pincha donde se ve, como en la lista. Si el subtítulo no la nombra, va al final («sin fecha» si no tiene). */
+    /** El subtítulo de la ficha, con lo que se cambia ahí mismo como botón si el proveedor deja cambiarlo (sus acciones
+     *  con `rol`): la fecha («vence …», `fecha`) y quién la hace («la hace …», `dueno`), como en la lista. Lo que el
+     *  subtítulo no nombra va al final («sin fecha», «sin asignar»). */
     private subtituloFicha(p: cli.JsonPagina): string {
-        const texto = esc(p.subtitulo ?? '');
-        const k = (p.acciones ?? []).findIndex(a => a.rol === 'fecha');
+        let texto = esc(p.subtitulo ?? '');
         const f = this.ficha;
-        if (k < 0 || !f) return texto;
         const d = this.t.dia();
-        const fila = d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id) : undefined;
+        const fila = f && d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id) : undefined;
+        /** `dicho`: cómo lo escribe el proveedor, si se sabe; `otro`: lo que va al final si no aparece */
+        const pinchar = (rol: string, dicho: string, otro: string, ayuda: string) => {
+            const k = (p.acciones ?? []).findIndex(a => a.rol === rol);
+            if (k < 0) return;
+            const boton = (que: string) => `<a class="plazo-clic" data-accion="accion-tarea" data-valor="${k}" title="${ayuda}">${que}</a>`;
+            const i = dicho ? texto.indexOf(dicho) : -1;
+            texto = i >= 0 ? texto.slice(0, i) + boton(dicho) + texto.slice(i + dicho.length) : `${texto}${texto ? ' · ' : ''}${boton(otro)}`;
+        };
         const fecha = fila?.cuando.slice(0, 10) ?? '';
-        const boton = (que: string) => `<a class="plazo-clic" data-accion="accion-tarea" data-valor="${k}" title="cambiar la fecha">${que}</a>`;
-        const dicha = fecha ? new RegExp(`(vence )?${fecha}`).exec(texto) : null;
-        if (dicha) return texto.slice(0, dicha.index) + boton(dicha[0]) + texto.slice(dicha.index + dicha[0].length);
-        const otra = fila ? (fecha ? `vence ${fecha}` : 'sin fecha') : 'cambiar la fecha';
-        return `${texto}${texto ? ' · ' : ''}${boton(otra)}`;
+        pinchar('fecha', fecha && `vence ${fecha}`, !fila ? 'cambiar la fecha' : fecha ? `vence ${fecha}` : 'sin fecha', 'cambiar la fecha');
+        const dueno = esc(fila?.fila.dueno ?? '');
+        pinchar('dueno', dueno && `la hace ${dueno}`, !fila ? 'responsable…' : dueno ? `la hace ${dueno}` : 'sin asignar', 'cambiar quién la hace');
+        return texto;
     }
 
     private async accionTarea(k: number): Promise<void> {

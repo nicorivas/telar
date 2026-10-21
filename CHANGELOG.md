@@ -24,6 +24,9 @@ extension shared the version number.
   colors, sits at the top left of the page; settings are the ⚙ at the top right, next to the version.
 - A task's card sits inside a bordered box, with «‹ tareas» (or the tab it was opened from) above it, next to
   «← 1/39 →». The box and that row are shared pieces (`componentes.css`), for other views to use.
+- A task's card changes in place what it shows: the star (☆/★) and sharing with the team (○/◉) are icons before
+  the title, as in the task list, and «la hace …» (or «sin asignar») opens the people picker. Those four leave the
+  card's list of actions, which now fits single-digit keys.
 - In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
   does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,
