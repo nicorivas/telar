@@ -22,6 +22,8 @@ extension shared the version number.
 - The dashboard's tabs are a group of the thread bar (DASHBOARD, first and open, a row per tab with its key), and
   the dashboard lost its own top bar (brand, date, shortcuts) and its row of tabs. «telar», with its moving
   colors, sits at the top left of the page; settings are the ⚙ at the top right, next to the version.
+- In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
+  does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,
   periodic processes and agents' messages (both moved out of the dashboard's tabs; `o` and `c` still open them),
   and modules.
@@ -83,6 +85,9 @@ extension shared the version number.
   launches it.
 - ⎋ in the projects search, with nothing typed, goes back to «ahora». Since the «hoy» tab was removed (0.2.0)
   it did nothing.
+- The dashboard no longer shows yesterday after midnight or after the laptop wakes: the saved day and agenda
+  remember their date and are reread when it is another day, and a failed read no longer passes yesterday off as
+  today.
 
 ## [0.2.0] — 2026-10-20
 

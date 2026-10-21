@@ -37,7 +37,7 @@ const VACIO: Dia = {
 
 let cache: { dia: Dia; hora: number } | undefined;
 /** La agenda cuesta una consulta a la red: se guarda aparte y se reusa entre lecturas locales. */
-let agenda: { filas: cli.JsonFila[] | null; hora: number } = { filas: null, hora: 0 };
+let agenda: { filas: cli.JsonFila[] | null; hora: number; fecha: string } = { filas: null, hora: 0, fecha: '' };
 /** Lo mismo con los pendientes que traen los proveedores (las tareas de un gestor): una
  *  lectura local no los trae, y si se tomara su lista tal cual desaparecerían hasta la
  *  próxima consulta a la red. Los de los documentos sí se releen en cada lectura. */
@@ -52,10 +52,18 @@ let enCurso: Promise<Dia> | undefined;
 /** Cuándo se consultó por última vez a los proveedores (las tareas, el calendario); 0 si nunca. */
 export function leidoProveedores(): number { return agenda.hora; }
 
-/** El día. `conRed` consulta a los proveedores; sin él se lee solo lo que hay en disco. */
+/** La fecha de hoy aquí (AAAA-MM-DD), para saber si lo guardado es de otro día. */
+function hoyAqui(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** El día. `conRed` consulta a los proveedores; sin él se lee solo lo que hay en disco. Lo guardado de
+ *  otro día no sirve: pasada la medianoche (o al despertar el laptop) se pide de nuevo, con la agenda. */
 export function dia(maxEdad = 45000, conRed = false): Promise<Dia> {
-    const tocaRed = conRed || Date.now() - agenda.hora > CADA_RED;
-    if (!tocaRed && cache && Date.now() - cache.hora < maxEdad) return Promise.resolve(cache.dia);
+    const hoy = hoyAqui();
+    const tocaRed = conRed || Date.now() - agenda.hora > CADA_RED || agenda.fecha !== hoy;
+    if (!tocaRed && cache && cache.dia.fecha === hoy && Date.now() - cache.hora < maxEdad) return Promise.resolve(cache.dia);
     if (!enCurso) enCurso = leer(tocaRed).finally(() => { enCurso = undefined; });
     return enCurso;
 }
@@ -63,23 +71,28 @@ export function dia(maxEdad = 45000, conRed = false): Promise<Dia> {
 async function leer(tocaRed: boolean): Promise<Dia> {
     const r = await cli.hoy(!tocaRed);
     if (!r.datos) {
-        const d: Dia = { ...(cache?.dia ?? VACIO), error: r.error };
+        // si no se pudo leer, lo de antes sirve solo si es de hoy: el día de ayer mostrado como hoy engaña
+        // («ahora» marcaba el último bloque de ayer); mejor decir que no se pudo
+        const previo = cache?.dia.fecha === hoyAqui() ? cache.dia : { ...VACIO, fecha: hoyAqui() };
+        const d: Dia = { ...previo, error: r.error };
         cache = { dia: d, hora: Date.now() };
         return d;
     }
     const j = r.datos;
     if (tocaRed) {
-        agenda = { filas: j.agenda ?? null, hora: Date.now() };
+        agenda = { filas: j.agenda ?? null, hora: Date.now(), fecha: j.fecha ?? '' };
         deProveedores = (j.pendientes ?? []).filter(f => f.proveedor);
     }
+    // la agenda guardada es de su fecha: en una lectura local de otro día no se mezcla
+    const agendaDeHoy = agenda.fecha === (j.fecha ?? '');
     const propios = (j.pendientes ?? []).filter(f => !f.proveedor);
     const d: Dia = {
         ahora: j.ahora ?? new Date().toISOString(),
         fecha: j.fecha ?? '',
         nombreDia: j.dia ?? '',
         semana: j.semana ?? 0,
-        agenda: tocaRed ? (j.agenda ?? null) : agenda.filas,
-        pendientes: tocaRed ? (j.pendientes ?? []) : [...propios, ...deProveedores],
+        agenda: tocaRed ? (j.agenda ?? null) : agendaDeHoy ? agenda.filas : null,
+        pendientes: tocaRed || !agendaDeHoy ? (j.pendientes ?? []) : [...propios, ...deProveedores],
         declarados: j.proveedores?.declarados ?? [],
         fallas: j.proveedores?.fallas ?? [],
     };
@@ -103,7 +116,7 @@ export async function diaDe(fecha: string): Promise<Dia> {
     return d;
 }
 
-export function olvidarDia(): void { otros.clear(); cache = undefined; agenda = { filas: null, hora: 0 }; deProveedores = []; }
+export function olvidarDia(): void { otros.clear(); cache = undefined; agenda = { filas: null, hora: 0, fecha: '' }; deProveedores = []; }
 
 // ───────────────────────── la urgencia ─────────────────────────
 

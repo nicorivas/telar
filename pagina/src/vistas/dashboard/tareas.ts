@@ -10,6 +10,12 @@ import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 
+/** Cómo se nombra una tarea en lo que se le pregunta a la persona: el título de su ficha ya empieza con el id
+ *  («T309 · …»); si no, el id va delante. */
+function nombreTarea(id: string, titulo = ''): string {
+    return titulo.startsWith(id) ? titulo : `${id} ${titulo}`.trim();
+}
+
 /** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). */
 export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false): Promise<void> {
     // buscar el hilo, retomarlo o encargárselo a un agente del servidor toma unos segundos:
@@ -73,7 +79,7 @@ export async function reagendar(valor: string): Promise<boolean> {
         void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar la fecha`}`);
         return false;
     }
-    const fecha = await elegirFecha(`${id} ${ficha.datos?.titulo ?? ''}`.trim());
+    const fecha = await elegirFecha(nombreTarea(id, ficha.datos?.titulo));
     if (!fecha) return false;
     const r = await cli.accionTarea(id, proveedor, k, fecha);
     olvidarDia();
@@ -117,7 +123,7 @@ export async function asignar(valor: string, actual: string, persona: string): P
         void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar el responsable`}`);
         return false;
     }
-    const quien = await elegirDueno(`${id} ${ficha.datos?.titulo ?? ''}`.trim(), actual, acciones[k].opciones ?? [], persona);
+    const quien = await elegirDueno(nombreTarea(id, ficha.datos?.titulo), actual, acciones[k].opciones ?? [], persona);
     if (!quien) return false;
     const r = await cli.accionTarea(id, proveedor, k, quien);
     olvidarDia();
@@ -546,9 +552,26 @@ export class PantallaTareas implements Pantalla {
         const color = p.bloques.find(b => b.destacado)?.color;
         this.t.pintar([`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
             `<div class="subcab"><b>${esc(p.titulo)}</b><span class="der">${donde}</span></div>`,
-            p.subtitulo ? `<div class="sub-ficha dim">${esc(p.subtitulo)}</div>` : '',
+            p.subtitulo ? `<div class="sub-ficha dim">${this.subtituloFicha(p)}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
             ...this.t.paginas.html(p.bloques), '</div>']);
+    }
+
+    /** El subtítulo de la ficha, con la fecha como botón si el proveedor deja cambiarla (su acción `rol: fecha`): se
+     *  pincha donde se ve, como en la lista. Si el subtítulo no la nombra, va al final («sin fecha» si no tiene). */
+    private subtituloFicha(p: cli.JsonPagina): string {
+        const texto = esc(p.subtitulo ?? '');
+        const k = (p.acciones ?? []).findIndex(a => a.rol === 'fecha');
+        const f = this.ficha;
+        if (k < 0 || !f) return texto;
+        const d = this.t.dia();
+        const fila = d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id) : undefined;
+        const fecha = fila?.cuando.slice(0, 10) ?? '';
+        const boton = (que: string) => `<a class="plazo-clic" data-accion="accion-tarea" data-valor="${k}" title="cambiar la fecha">${que}</a>`;
+        const dicha = fecha ? new RegExp(`(vence )?${fecha}`).exec(texto) : null;
+        if (dicha) return texto.slice(0, dicha.index) + boton(dicha[0]) + texto.slice(dicha.index + dicha[0].length);
+        const otra = fila ? (fecha ? `vence ${fecha}` : 'sin fecha') : 'cambiar la fecha';
+        return `${texto}${texto ? ' · ' : ''}${boton(otra)}`;
     }
 
     private async accionTarea(k: number): Promise<void> {
@@ -561,12 +584,12 @@ export class PantallaTareas implements Pantalla {
         let texto = '';
         if (a.rol === 'dueno') {
             // quién la hace: el equipo para elegir, no un campo de texto
-            const quien = await elegirDueno(`${f.id} ${f.pagina?.titulo ?? ''}`.trim(), '', a.opciones ?? [], yo.persona);
+            const quien = await elegirDueno(nombreTarea(f.id, f.pagina?.titulo), '', a.opciones ?? [], yo.persona);
             if (!quien) return;
             texto = quien;
         } else if (a.rol === 'fecha') {
             // cambiar la fecha: el selector de fechas, no un campo de texto
-            const fecha = await elegirFecha(`${f.id} ${f.pagina?.titulo ?? ''}`.trim());
+            const fecha = await elegirFecha(nombreTarea(f.id, f.pagina?.titulo));
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
@@ -636,7 +659,7 @@ export class PantallaTareas implements Pantalla {
             description: [a.rol === 'fecha' ? 'elige la fecha' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
                 a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
         }));
-        const elegida = await ui.elegir(items, { titulo: `${id} · ${pagina?.titulo ?? ''}`, placeholder: 'qué hacer con esta tarea' });
+        const elegida = await ui.elegir(items, { titulo: nombreTarea(id, pagina?.titulo), placeholder: 'qué hacer con esta tarea' });
         if (!elegida) return;
         const a = acciones[elegida.k];
         const tipo = a.tipo ?? 'comando';
@@ -644,7 +667,7 @@ export class PantallaTareas implements Pantalla {
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
         if (a.rol === 'fecha') {
-            const fecha = await elegirFecha(`${id} ${pagina?.titulo ?? ''}`.trim());
+            const fecha = await elegirFecha(nombreTarea(id, pagina?.titulo));
             if (!fecha) return;
             texto = fecha;
         } else if (a.pide) {
