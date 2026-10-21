@@ -23,15 +23,14 @@ export const RUTA = new RegExp(String.raw`(?<![\p{L}\p{N}_/.~:@+-])(?:~?\/)?(?:[
 /** Dónde vive lo que escribe un hilo: su máquina ('' esta) y su carpeta (aquí, absoluta; en otra máquina,
  *  relativa a su raíz). Se averigua al abrir, no al dibujar: la lista de hilos puede no haber llegado. */
 async function lugarDe({ hilo, maquina }: RutasVista): Promise<{ maquina: string; carpeta: string }> {
-    if (!maquina) {
-        const h = modelo.porNombre(hilo);
-        // un hilo de la lista cuyo agente vive en otra máquina (Gestión, en el servidor): sus archivos están allá
-        if (h?.remoto && h.remoto !== '?' && h.remoto !== modelo.aqui) return { maquina: h.remoto, carpeta: h.relativa ?? '' };
-        return { maquina: '', carpeta: h?.ruta ?? '' };
-    }
+    const h = maquina ? undefined : modelo.porNombre(hilo);
+    // un hilo de otra máquina (rem:), o uno de la lista cuyo agente vive en otra (Gestión, en el servidor)
+    const alla = maquina || (h?.remoto && h.remoto !== '?' && h.remoto !== modelo.aqui ? h.remoto : '');
+    if (!alla) return { maquina: '', carpeta: h?.ruta ?? '' };
+    // su carpeta, de la foto que publica esa máquina: la lista de aquí no la sabe (dice «/»)
     const r = await cli.espejos();
-    const x = r.datos?.espejos.find(e => e.nombre === maquina)?.hilos.find(h => h.nombre === hilo);
-    return { maquina, carpeta: x?.relativa ?? '' };
+    const x = r.datos?.espejos.find(e => e.nombre === alla)?.hilos.find(y => y.nombre === hilo);
+    return { maquina: alla, carpeta: x?.relativa ?? '' };
 }
 
 /** Abre en el visor una ruta que escribió el agente de un hilo. */
