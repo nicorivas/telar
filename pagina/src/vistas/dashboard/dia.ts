@@ -10,11 +10,11 @@
 // leer unos archivos; sin `--local` se consulta a los proveedores, que pueden tardar. Lo
 // caro se pide cada pocos minutos y lo barato cada vez.
 //
-// El orden y el filtro pasan en la página (vistas/dashboard.ts): la lista ya está en pantalla, y
+// El orden y el filtro pasan en la página (vistas/dashboard/vista.ts): la lista ya está en pantalla, y
 // filtrarla ahí es instantáneo mientras que volver a preguntar tarda lo que tarde el proveedor.
 
-import * as cli from '../cli';
-import { esc, limpiarMd, normalizar } from '../estilo';
+import * as cli from '../../cli';
+import { esc, limpiarMd, normalizar } from '../../estilo';
 
 // ───────────────────────── los datos ─────────────────────────
 

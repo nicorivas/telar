@@ -174,7 +174,7 @@ telar config --calendario https://…/private-…/basic.ics  # una dirección iC
 telar config --calendario ninguno                      # sin agenda
 ```
 
-En la página es lo mismo desde el dashboard: **⚙ configuración** dice cuál está en uso,
+En la página es lo mismo desde **⚙ configuración** (arriba a la derecha): dice cuál está en uso,
 si responde, y deja cambiarla.
 
 - **gws** usa la cuenta con la que la CLI `gws` ya está conectada (`gws auth login`).
@@ -270,7 +270,7 @@ el agente, y ese es su primer mensaje. Marcadores: `{titulo}`, `{hora}`, `{fecha
 `{enlace}` y `{proyecto}`, que es la carpeta del perfil que comparte palabras con el
 título; si no hay ninguna, la cola «· proyecto: …» se quita. El de fábrica es el de flow
 y supone la skill `/preparar-reunion` instalada; cualquier otra skill o una instrucción
-en prosa sirven igual. Se cambia desde **⚙ configuración** en el dashboard, o con
+en prosa sirven igual. Se cambia desde **⚙ configuración** en la página, o con
 `telar config --reunion "…"` (vacío vuelve al de fábrica).
 
 `minuta` es lo mismo para una reunión que **ya empezó**: el clic en un evento pasado de la
@@ -355,7 +355,7 @@ clican.
 
 | `en` | dónde |
 | --- | --- |
-| `"hoy"` | la barra de arriba del dashboard, en todas las pestañas, junto a «⎋ terminal» |
+| `"hoy"` | no se muestra: va solo con su tecla (el dashboard ya no tiene barra arriba) |
 | `"<clave>"` | el título del bloque `[bloques.<clave>]`, en su pestaña |
 | `"seccion:<clave>"` | el título de la pestaña de esa sección |
 
@@ -554,8 +554,8 @@ periodicos` … `# <<< telar periodicos`), al final, y no toca lo de afuera. Cad
 abre una sesión `telar-…` con `@telar_hilo`, como los hilos remotos, así que otra máquina la trae a
 su lista. Cada cambio guarda la versión anterior en `periodicos.toml.anterior`.
 
-En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la orden y la pestaña
-«periódicos» del dashboard (tecla `o`) los ven y los cambian allá, por ssh:
+En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la orden y la sección
+«periódicos» de ⚙ configuración (tecla `o` en el dashboard) los ven y los cambian allá, por ssh:
 
 ```toml
 [periodicos]
@@ -754,7 +754,7 @@ Se instala en **cada máquina que lo usa**: la que muestra la pestaña y la que 
 En esta, después de instalarlo o de cambiar su manifiesto, `telar periodicos aplicar` lo pone en el
 crontab. Sus periódicos se ven en `telar periodicos` como los demás, pero no se escriben en
 `periodicos.toml` ni se cambian con `editar`, `pausar` o `borrar`: se cambian en su `modulo.toml`.
-`telar modulos` lista los instalados y lo que trae cada uno; ⚙ en el dashboard también.
+`telar modulos` lista los instalados y lo que trae cada uno; ⚙ configuración, en la página, también.
 
 ## `[dashboard]` — qué pestañas se ven y en qué orden
 
@@ -764,12 +764,14 @@ orden = ["ahora", "revisar", "bloque:correo", "calendario"]
 ocultas = ["periodicos"]
 ```
 
-Lo escribe ⚙ en el dashboard (✓ para mostrar u ocultar, ↑↓ para mover), o `telar config --pestanas
+Las pestañas son las filas del grupo DASHBOARD, arriba en la barra de la izquierda de la página. Lo escribe
+⚙ configuración (✓ para mostrar u ocultar, ↑↓ para mover), o `telar config --pestanas
 "ahora,revisar,-periodicos"` (con «-», oculta). Las pestañas que `orden` no nombra van después, en su
-orden de siempre: así la de un módulo nuevo aparece sola. ⚙ va siempre al final. Las claves:
-`ahora`, `revisar` (tareas), `proyectos`, `plan`, `calendario`, `periodicos`, `correo` (los agentes),
-`bloque:<clave>` para cada bloque y `pestana:<nombre>` para la de un proveedor. Una pestaña oculta
-sigue respondiendo a su tecla.
+orden de siempre: así la de un módulo nuevo aparece sola. Las claves:
+`ahora`, `revisar` (tareas), `proyectos`, `plan`, `calendario`, `bloque:<clave>` para cada bloque y
+`pestana:<nombre>` para la de un proveedor. Una pestaña oculta sigue respondiendo a su tecla. Los periódicos y
+los mensajes entre agentes ya no son pestañas: están en ⚙ configuración (teclas `o` y `c`), y `periodicos` y
+`correo` en `orden` u `ocultas` se ignoran.
 
 ## `[hilos]` — de qué carpetas salen
 

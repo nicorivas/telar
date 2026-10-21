@@ -9,36 +9,36 @@
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
-import * as ui from '../web/ui';
-import type { Opcion } from '../web/ui';
-import * as cli from '../cli';
-import { disco } from '../disco';
-import { GLIFO, NOMBRE_ATENCION, esc, hace, haceCorto, hhmm, limpiarMd, llaveAlAzar, normalizar } from '../estilo';
-import { modelo } from '../modelo';
-import * as rutas from '../rutas';
+import * as ui from '../../web/ui';
+import type { Opcion } from '../../web/ui';
+import * as cli from '../../cli';
+import { disco } from '../../disco';
+import { GLIFO, NOMBRE_ATENCION, esc, fechaCorta, hace, haceCorto, hhmm, limpiarMd, llaveAlAzar, normalizar } from '../../estilo';
+import { modelo } from '../../modelo';
+import * as rutas from '../../rutas';
 import { Dia, atajo, datosDueno, leidoProveedores, dia, diaDe, filtroAreas, filtroDuenos, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { columnaCalendario, eventosDelDia, htmlCalendario, htmlPlan, notasDe } from './plan';
 import { DetalleProyecto, esServicio, htmlDetalleProyecto, htmlListaProyectos, unidadDe } from './proyectos';
 import { Contexto, bloqueActual, claseDe, estadoDe, htmlAhora, paraLaProxima, proyectoDelTitulo } from './ahora';
 import type { EventoCal } from './plan';
-import { type MensajeDia, montarDia, type VistaDia } from './dashboard';
+import { Configuracion } from './config/configuracion';
+import { type MensajeDia, montarDia, type VistaDia } from './vista';
 import { decidir, preguntarAGestion } from './equipo';
 import { alternarEquipo, alternarEstrella, asignar, elegirDueno, elegirFecha, llevarPendiente, marcarHecha, reagendar } from './tareas';
 
-export class PanelHoy {
-    /** el dashboard en la página, ya montado (vistas/dashboard.ts); hasta abrirlo, nada */
+export class Dashboard {
+    /** el dashboard en la página, ya montado (vista.ts); hasta abrirlo, nada */
     panel?: VistaDia;
     /** dónde se dibuja (un elemento de la página) y cómo se lo trae al frente: los da la página (src/navegador) */
     donde?: () => HTMLElement;
     mostrarme?: () => void;
     private datos?: Dia;
-    private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'correo' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'periodicos' | 'plan' | 'calendario' = 'ahora';
+    private pantalla: 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'tarea' | 'revisar' | 'pestana' | 'plan' | 'calendario' = 'ahora';
     /** el bloque (`[bloques.x]`) que muestra la pestaña 'bloque' */
     private bloqueSel = '';
     /** las pestañas: en qué orden van y cuáles no se muestran (`[dashboard]`, se cambia en ⚙) */
     private dashOrden: string[] = [];
     private dashOcultas: string[] = [];
-    private modulosCfg: NonNullable<Awaited<ReturnType<typeof cli.config>>['datos']>['modulos'] = [];
     /** el detalle de los ítems abiertos (el cuerpo de un correo), por «<bloque>:<id>»; y cuáles se ven enteros */
     private cuerpos = new Map<string, { texto?: string; error?: string }>();
     private cuerposAbiertos = new Set<string>();
@@ -60,12 +60,6 @@ export class PanelHoy {
     private general?: { clave: string; nombre: string };
     private notasAviso = '';
     private eventoSel = '';
-    /** la pestaña de los procesos periódicos: la lista leída y el abierto (con su log), si hay uno */
-    private periodicos?: cli.JsonPeriodicos;
-    private periodicosError = '';
-    private periodico?: { nombre: string; log: string };
-    /** el formulario de crear o editar un proceso: `original` es el nombre si se edita */
-    private formPer?: { original: string; p: cli.JsonPeriodico; skills?: cli.JsonSkill[]; skillsDe?: string };
     /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada. `pestana:<n>` es
      *  la de un proveedor con pestaña propia (un feed) */
     private fichaDesde = 'revisar';
@@ -82,9 +76,6 @@ export class PanelHoy {
     private ficha?: { proveedor: string; id: string; ref: string; pagina?: cli.JsonPagina; aviso?: string };
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído */
     private decididas = new Set<string>();
-    /** los mensajes entre hilos por el bus (undefined: sin bus o sin leer) */
-    private mensajesBus?: cli.JsonMensajeBus[];
-    private abiertoMsg = new Set<string>();
     /** la entrada del equipo que muestra la pantalla «equipo» */
     private equipoId = '';
     /** la sección abierta y su página; la conversación que se está leyendo */
@@ -119,12 +110,22 @@ export class PanelHoy {
     /** los bloques del día declarados, y lo último que mostró cada uno */
     private bloquesCfg: cli.JsonBloque[] = [];
     private bloquesDatos = new Map<string, { pagina?: cli.JsonPagina; error: string; hora: number }>();
-    private calendario?: cli.JsonCalendario;
-    private agenteConfig?: cli.JsonAgenteConfig;
-    private hilosConfig?: { directorios: string[]; tope: number };
-    private avisoConfig = '';
     private enCurso = false;
     private teclas = new Map<string, () => Promise<unknown> | unknown>();
+    /** ⚙: el menú de la configuración y sus secciones (config/) */
+    private readonly configuracion = new Configuracion({
+        pintar: h => this.pintar(h),
+        parcial: (id, html) => this.parcial(id, html),
+        teclas: this.teclas,
+        dashboard: {
+            dia: () => this.datos,
+            actualizar: conRed => this.actualizar(conRed),
+            // el nombre sin su cuenta («leer», no «leer 17»)
+            pestanas: () => this.todasLasPestanas().map(([clave, , valor, nombre]) => ({ clave, nombre: clave.startsWith('pestana:') ? valor : nombre })),
+            orden: () => ({ orden: this.dashOrden, ocultas: this.dashOcultas }),
+            usarOrden: d => { this.dashOrden = d.orden; this.dashOcultas = d.ocultas; this.alPintar?.(); },
+        },
+    });
     /** el día que muestra el calendario si no es hoy (AAAA-MM-DD), con sus datos y si están cargando */
     private calFecha = '';
     private calDatos?: Dia;
@@ -133,6 +134,8 @@ export class PanelHoy {
     /** ⌥H: si el dashboard ya está al frente, devuelve el teclado al terminal. */
     /** Se le avisa cuando el dashboard gana o pierde el foco (la lista de hilos marca su fila). */
     alCambiarFoco?: (activo: boolean) => void;
+    /** Se le avisa cada vez que pinta: la barra pone al día sus pestañas (sus cuentas, la que se ve). */
+    alPintar?: () => void;
 
     alternar(): void {
         if (this.panel?.visible) { void ui.mostrarTerminal(); return; }
@@ -172,17 +175,16 @@ export class PanelHoy {
 
     /** Redibuja con lo que hay: la marca «ahora» y los «hace» se mueven solos cada minuto. */
     render(): void {
-        if (this.panel && this.pantalla === 'config') { this.renderConfig(); return; }
+        if (this.panel && this.pantalla === 'config') { this.configuracion.pintar(); return; }
         if (this.panel && this.pantalla === 'revisar') { this.renderRevisar(); return; }
         if (this.panel && this.pantalla === 'pestana') { this.renderPestana(); return; }
-        if (this.panel && this.pantalla === 'periodicos') { if (!this.formPer) this.renderPeriodicos(); return; }
         if (this.panel && this.pantalla === 'plan') { this.renderPlan(); return; }
         if (this.panel && this.pantalla === 'calendario') { this.renderCalendario(); return; }
         if (this.panel && this.pantalla === 'ahora') { this.renderAhora(); return; }
         // la lista de proyectos no cambia con el reloj: repintarla cada minuto solo movería el scroll
         if (this.panel && this.pantalla === 'proyectos') return;
         // lo mismo con la página de una sección y una conversación: no dependen del reloj
-        if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'correo' || this.pantalla === 'tarea')) return;
+        if (this.panel && (this.pantalla === 'seccion' || this.pantalla === 'conversacion' || this.pantalla === 'tarea')) return;
         if (this.panel && this.pantalla === 'equipo') { this.renderEquipo(); return; }
         if (this.panel && this.pantalla === 'bloque') this.renderBloque();
     }
@@ -230,10 +232,10 @@ export class PanelHoy {
         const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
             .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(),
                 this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
-        const aRevisar = this.propuestas('').length;
         const todas: Pestana[] = [  // clave, acción, valor, nombre, tecla
             ['ahora', 'ahora', '', 'ahora', 'n'],
-            ['revisar', 'revisar', '', aRevisar ? `tareas ◆${aRevisar}` : 'tareas', 'v'],
+            // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde
+            ['revisar', 'revisar', '', 'tareas', 'v'],
             // cada bloque sin `en` es su propia pestaña (el correo de hoy)
             ...this.bloquesCfg.filter(b => !b.en).map(b =>
                 [`bloque:${b.clave}`, 'bloque', b.clave, b.nombre, b.tecla ?? ''] as Pestana),
@@ -241,9 +243,8 @@ export class PanelHoy {
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
             ['plan', 'plan', '', 'plan', 'd'],
             ['calendario', 'calendario', '', 'calendario', 'a'],
-            ['periodicos', 'periodicos', '', 'periódicos', 'o'],
-            ...(modelo.hayRemotos ? [['correo', 'correo', '', 'agentes', 'c'] as Pestana] : []),
-            // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda
+            // las secciones (los agentes, babel) no: a su página se llega desde su fila en la lista de la izquierda. Los
+            // periódicos y los mensajes entre agentes están en ⚙ (config/)
         ];
         return todas;
     }
@@ -255,53 +256,40 @@ export class PanelHoy {
         return todas.filter(x => !this.dashOcultas.includes(x[0])).sort((a, b) => pos(a[0]) - pos(b[0]));
     }
 
-    /** Mostrar u ocultar una pestaña, o moverla un lugar, y guardarlo (`telar config --pestanas`). */
-    private async cambiarPestanas(accion: string, clave: string): Promise<void> {
-        const todas = this.todasLasPestanas();
-        const pos = (c: string) => { const i = this.dashOrden.indexOf(c); return i < 0 ? this.dashOrden.length + todas.findIndex(x => x[0] === c) : i; };
-        const orden = todas.map(x => x[0]).sort((a, b) => pos(a) - pos(b));
-        let ocultas = [...this.dashOcultas];
-        const i = orden.indexOf(clave);
-        if (i < 0) return;
-        if (accion === 'ver') ocultas = ocultas.includes(clave) ? ocultas.filter(x => x !== clave) : [...ocultas, clave];
-        else {
-            const j = i + (accion === 'subir' ? -1 : 1);
-            if (j < 0 || j >= orden.length) return;
-            [orden[i], orden[j]] = [orden[j], orden[i]];
-        }
-        const r = await cli.configPestanas(orden.map(c => (ocultas.includes(c) ? '-' : '') + c).join(','));
-        if (!r.datos) { this.avisoConfig = r.error ?? 'no pude guardar las pestañas'; this.renderConfig(); return; }
-        this.dashOrden = r.datos.dashboard.orden;
-        this.dashOcultas = r.datos.dashboard.ocultas;
-        this.avisoConfig = '';
-        this.renderConfig();
+    /** Lo que va arriba de cada pantalla: un proveedor caído se dice en todas (el calendario, además, en la suya).
+     *  Las pestañas están en la barra de la izquierda (el grupo DASHBOARD, vistas/hilos.ts), y la configuración en
+     *  el ⚙ de la cabecera de la página. */
+    private nav(): string {
+        const caidos = (this.datos?.fallas ?? []).filter(f => !f.startsWith('calendario'));
+        return caidos.map(f => `<div class="fila falla">caído · ${esc(f)}</div>`).join('');
     }
 
-    /** La barra de arriba, igual en todas las pestañas y fija al desplazarse: la marca, el
-     *  reloj y las pestañas. Cambiar de pestaña es un clic; no hay que «volver» a ninguna parte. */
-    private nav(): string {
-        const d = this.datos;
-        const ahora = new Date();
-        const activa = this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
+    /** La pestaña que se ve (su clave): la ficha de una tarea es de la pestaña de donde se abrió, una conversación
+     *  de su sección. La barra marca su fila. */
+    pestanaActiva(): string {
+        return this.pantalla === 'conversacion' ? `seccion:${this.seccion}`
             : this.pantalla === 'seccion' ? `seccion:${this.seccion}` : this.pantalla === 'tarea' ? this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1')
             : this.pantalla === 'pestana' ? `pestana:${this.pestana}`
             : this.pantalla === 'bloque' ? `bloque:${this.bloqueSel}` : this.pantalla;
-        // los atajos que no son de ninguna pestaña (`en = "hoy"`) y el terminal: en la barra, en todas
-        const generales = this.atajos.filter(a => (a.en ?? 'hoy') === 'hoy').map(a => this.botonAtajo(a)).join('')
-            + atajo('⎋', 'terminal', 'volver', '', 'volver al terminal');
-        // un proveedor caído se dice en todas las pestañas (el calendario, además, en la suya)
-        const caidos = (d?.fallas ?? []).filter(f => !f.startsWith('calendario'));
-        const pestanas = [...this.pestanasVisibles(), ['config', 'config', '', '⚙', ''] as Pestana];
-        return '<div class="fijo"><header class="top"><div class="marca-t"><span class="logo">telar</span>'
-            + (d ? `<span class="fecha">${esc(fechaLarga(d.nombreDia, d.fecha))}</span>` : '')
-            + `<span class="reloj">${ahora.toTimeString().slice(0, 5)}</span>${d?.semana ? `<span class="sem">s${d.semana}</span>` : ''}</div>`
-            + `<span class="generales">${generales}</span>`
-            + atajo('r', 'recargar', 'refrescar', '', 'recargar, proveedores incluidos') + '</header>'
-            + '<nav class="tabs">' + pestanas.map(([clave, accion, valor, nombre, tecla]) =>
-                `<a class="tab${clave === activa ? ' activa' : ''}" data-accion="${accion}"${valor ? ` data-valor="${esc(valor)}"` : ''}>`
-                + `${tecla ? `<kbd>${tecla}</kbd> ` : ''}${esc(nombre)}</a>`).join('') + '</nav>'
-            + caidos.map(f => `<div class="fila falla">caído · ${esc(f)}</div>`).join('')
-            + '<div class="regla"></div></div>';
+    }
+
+    /** Las pestañas del dashboard, en el orden y sin las ocultas de `[dashboard]`: las filas del grupo DASHBOARD de
+     *  la barra. El nombre lleva su cuenta («tareas ◆45»), y la tecla es la que la abre con el dashboard a la vista. */
+    pestanas(): { clave: string; accion: string; valor: string; nombre: string; tecla: string }[] {
+        return this.pestanasVisibles().map(([clave, accion, valor, nombre, tecla]) => ({ clave, accion, valor, nombre, tecla }));
+    }
+
+    /** ⚙: la configuración, en la sección `clave` (o en la última que se miró). */
+    private async abrirConfig(clave = ''): Promise<void> {
+        if (!this.panel) this.abrir();
+        this.pantalla = 'config';
+        await this.configuracion.abrir(clave);
+    }
+
+    /** Ir a una pestaña (una fila del grupo DASHBOARD, o el ⚙ de la cabecera): el dashboard a la vista, en ella. */
+    async irAPestana(accion: string, valor = ''): Promise<void> {
+        if (!this.panel) this.abrir(); else this.mostrarme?.();
+        await this.mensaje({ tipo: 'accion', accion, valor });
     }
 
 
@@ -312,7 +300,6 @@ export class PanelHoy {
         this.pestanasCfg = r.datos?.pestanas ?? [];
         this.dashOrden = r.datos?.dashboard?.orden ?? [];
         this.dashOcultas = r.datos?.dashboard?.ocultas ?? [];
-        this.modulosCfg = r.datos?.modulos ?? [];
         yo.persona = r.datos?.persona ?? '';
         yo.nombres = r.datos?.persona_nombres ?? [];
         this.general = r.datos?.agente_general?.clave ? { clave: r.datos.agente_general.clave, nombre: r.datos.agente_general.nombre ?? r.datos.agente_general.clave } : undefined;
@@ -472,10 +459,10 @@ export class PanelHoy {
     private teclasDePestanas(): Record<string, () => Promise<unknown>> {
         return {
             p: () => this.abrirProyectos(), r: () => this.actualizar(true), v: () => this.abrirRevisar(),
-            o: () => this.abrirPeriodicos(), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
+            o: () => this.abrirConfig('periodicos'), d: () => this.abrirPlan(''), a: () => this.abrirCalendario(), n: () => this.abrirAhora(),
             ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.abrirPestana(x.nombre)])),
             ...Object.fromEntries(this.bloquesCfg.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.abrirBloque(b.clave)])),
-            ...(modelo.hayRemotos ? { c: () => this.abrirCorreo() } : {}),
+            ...(modelo.hayRemotos ? { c: () => this.abrirConfig('agentes') } : {}),
         };
     }
 
@@ -852,234 +839,9 @@ export class PanelHoy {
         if (this.pantalla === 'calendario') this.renderCalendario();
     }
 
-    // ── procesos periódicos ────────────────────────────────────────────────────
-
-    /** La pestaña de los procesos que corren solos: de esta máquina, o de la de `[periodicos] en`. */
-    private async abrirPeriodicos(): Promise<void> {
-        if (!this.panel) this.abrir();
-        this.pantalla = 'periodicos';
-        if (!this.periodicos) this.pintar(['<div class="vacio">leyendo los procesos periódicos…</div>']);
-        const r = await cli.periodicos();
-        this.periodicos = r.datos ?? this.periodicos;
-        this.periodicosError = r.datos ? '' : (r.error ?? 'no contestó');
-        if (this.pantalla === 'periodicos') this.renderPeriodicos();
-    }
-
-    private renderPeriodicos(): void {
-        const d = this.periodicos;
-        this.teclas.clear();
-        this.teclas.set('+', () => this.nuevoPeriodico());
-        if (this.formPer) { this.renderFormPer(); return; }
-        if (this.periodico) { this.renderPeriodico(); return; }
-        const lista = d?.procesos ?? [];
-        const activos = lista.filter(p => p.activo).length;
-        const h = [seccion(`periódicos${d?.maquina ? ` · ${d.maquina}` : ''}`, 'amarillo', lista.length ? `${activos}/${lista.length}` : '',
-            atajo('+', 'nuevo', 'per-nuevo', '', 'un proceso nuevo: un comando de shell o un prompt para el agente'))];
-        if (this.periodicosError) h.push(`<div class="vacio falla">${esc(this.periodicosError)}</div>`);
-        if (d && !lista.length) h.push(`<div class="vacio">ninguno todavía · <a data-accion="per-nuevo">crear uno</a> · se guardan en ${esc(d.archivo)}</div>`);
-        for (const p of lista) {
-            const [marca, color, dice] = estadoPeriodico(p);
-            const que = p.tipo === 'mensaje' ? `✦ ${p.mensaje}` : p.comando;
-            const cuando = p.activo ? (p.proxima ? `en ${enCuanto(p.proxima)}` : '—') : 'pausado';
-            const ultima = p.ultima.inicio ? `hace ${haceCorto(p.ultima.inicio)}` : 'nunca';
-            h.push(`<div class="fila clic per${p.activo ? '' : ' dim'}" data-accion="per-ver" data-valor="${esc(p.nombre)}" title="${esc(`${p.descripcion ? p.descripcion + '\n' : ''}${dice}\nclic: su ficha y su log`)}">`
-                + `<span style="color: var(--${color})">${marca}</span><b>${esc(p.nombre)}</b>`
-                + `<code class="dim">${esc(p.cuando)}</code><span class="que">${esc(que)}</span>`
-                + `<span class="der dim">${esc(cuando)} · ${esc(ultima)}</span></div>`);
-        }
-        h.push('</section>');
-        if (d) h.push(`<div class="vacio dim">${esc(d.archivo)}${d.zona ? ` · hora de ${esc(d.zona)}` : ''}</div>`);
-        this.pintar(h);
-    }
-
-    private async verPeriodico(nombre: string): Promise<void> {
-        this.periodico = { nombre, log: 'leyendo…' };
-        this.renderPeriodicos();
-        const r = await cli.periodicosLog(nombre);
-        if (this.periodico?.nombre !== nombre) return;
-        this.periodico.log = r.datos ? (r.datos.log || '(todavía no ha corrido)') : (r.error ?? 'no contestó');
-        if (this.pantalla === 'periodicos') this.renderPeriodicos();
-    }
-
-    private renderPeriodico(): void {
-        const actual = this.periodico;
-        const p = this.periodicos?.procesos.find(x => x.nombre === actual?.nombre);
-        if (!actual || !p) { this.periodico = undefined; this.renderPeriodicos(); return; }
-        const [marca, color, dice] = estadoPeriodico(p);
-        const orden = (args: string[]) => esc(JSON.stringify(args));
-        const botones = [
-            `<a class="atajo principal" data-accion="per-orden" data-valor="${orden(['ahora', p.nombre])}"><kbd>⏎</kbd><span>correr ahora</span></a>`,
-            `<a class="atajo" data-accion="per-orden" data-valor="${orden([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? '⏸ pausar' : '▶ activar'}</span></a>`,
-            `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>✎ editar</span></a>`,
-            `<a class="atajo" data-accion="per-orden" data-valor="${orden(['borrar', p.nombre])}"><kbd>3</kbd><span>✕ borrar</span></a>`,
-            `<a class="atajo" data-accion="periodicos"><kbd>⎋</kbd><span>volver</span></a>`,
-        ];
-        this.teclas.set('⏎', () => this.ordenPeriodico(['ahora', p.nombre]));
-        this.teclas.set('1', () => this.ordenPeriodico([p.activo ? 'pausar' : 'activar', p.nombre]));
-        this.teclas.set('2', () => this.editarPeriodico(p.nombre));
-        this.teclas.set('3', () => this.ordenPeriodico(['borrar', p.nombre]));
-        const filas: [string, string][] = [
-            ['cuándo', `${p.cuando}${p.proxima ? ` · la próxima ${p.proxima.slice(5, 16).replace('T', ' ')} (en ${enCuanto(p.proxima)})` : ''}`],
-            p.tipo === 'mensaje' ? ['prompt', p.mensaje] : ['comando', p.comando],
-            ...(p.tipo === 'mensaje' ? [['hilo', `${p.hilo || p.nombre} · hasta ${p.max_abiertos} abierto(s)`] as [string, string]] : []),
-            ...(p.argumentos.length ? [['argumentos', p.argumentos.join(' ')] as [string, string]] : []),
-            ...(p.carpeta ? [['carpeta', p.carpeta] as [string, string]] : []),
-            ['última', p.ultima.inicio ? `${p.ultima.inicio.slice(5, 16).replace('T', ' ')} · ${p.ultima.resultado ?? 'corriendo'}${p.ultima.hilo ? ` · «${p.ultima.hilo}»` : ''}` : 'nunca'],
-        ];
-        this.pintar([`<div id="ficha-per" style="--c: var(--${color})">`,
-            `<div class="subcab"><b>${marca} ${esc(p.nombre)}</b><span class="der dim">${esc(dice)}</span></div>`,
-            p.descripcion ? `<div class="sub-ficha dim">${esc(p.descripcion)}</div>` : '',
-            `<div class="acciones-t">${botones.join('')}</div>`,
-            ...filas.map(([k, v]) => `<div class="fila"><span class="dim" style="min-width: 11ch">${esc(k)}</span><span class="que">${esc(v)}</span></div>`),
-            `<h2 class="sec">log</h2><pre class="log">${esc(actual.log)}</pre></div>`]);
-    }
-
-    /** Corre una orden de `telar periodicos` y relee: la lista cambia (o el log, si se corrió). */
-    private async ordenPeriodico(args: string[]): Promise<void> {
-        if (args[0] === 'borrar') {
-            const si = await ui.aviso(`¿Borrar el proceso «${args[1]}»? Deja de correr; el archivo anterior queda en periodicos.toml.anterior.`, 'Borrar');
-            if (si !== 'Borrar') return;
-        }
-        const r = await cli.periodicosOrden(args);
-        if (!r.datos) { void ui.aviso(`telar: ${r.error ?? 'no se pudo'}`); return; }
-        ui.estado(`telar: ${r.datos.hecho}`, 5000);
-        if (args[0] === 'borrar') this.periodico = undefined;
-        await this.abrirPeriodicos();
-        if (this.periodico) {
-            // «ahora» corre suelto: el log se relee en unos segundos, cuando ya escribió algo
-            const nombre = this.periodico.nombre;
-            setTimeout(() => { if (this.periodico?.nombre === nombre) void this.abrirPeriodicos().then(() => this.verPeriodico(nombre)); }, args[0] === 'ahora' ? 4000 : 0);
-        }
-    }
-
-    /** Un proceso nuevo: el formulario, con lo que suelen llevar los que ya hay (carpeta, argumentos). */
-    private async nuevoPeriodico(): Promise<void> {
-        const hay = this.periodicos?.procesos ?? [];
-        const modelo = hay.find(x => x.tipo === 'mensaje');
-        const p: cli.JsonPeriodico = {
-            nombre: '', cuando: '0 9 * * 1-5', tipo: 'mensaje', comando: '', mensaje: '', hilo: '', max_abiertos: 1,
-            argumentos: modelo?.argumentos ?? ['--permission-mode', 'acceptEdits'], carpeta: modelo?.carpeta ?? '',
-            descripcion: '', activo: true, proxima: '', ultima: {},
-        };
-        await this.abrirFormPer('', p);
-    }
-
-    private async editarPeriodico(nombre: string): Promise<void> {
-        const p = this.periodicos?.procesos.find(x => x.nombre === nombre);
-        if (p) await this.abrirFormPer(nombre, { ...p, argumentos: [...p.argumentos] });
-    }
-
-    private async abrirFormPer(original: string, p: cli.JsonPeriodico): Promise<void> {
-        if (!this.panel) this.abrir();
-        this.pantalla = 'periodicos';
-        this.formPer = { original, p };
-        this.renderPeriodicos();
-        await Promise.all([this.previaHorario(p.cuando), this.cargarSkills(p.carpeta)]);
-    }
-
-    private renderFormPer(): void {
-        const f = this.formPer;
-        if (!f) return;
-        const p = f.p;
-        this.teclas.clear();
-        const campo = (etiqueta: string, html: string, ayuda = '') =>
-            `<label class="campo"><span class="etiqueta">${esc(etiqueta)}</span><span class="control">${html}`
-            + `${ayuda ? `<span class="ayuda dim">${esc(ayuda)}</span>` : ''}</span></label>`;
-        const presets: [string, string][] = [['0 9 * * *', 'todos los días 9:00'], ['0 9 * * 1-5', 'lun–vie 9:00'],
-            ['0 8-20/2 * * *', 'cada 2 h, 8–20'], ['0 * * * *', 'cada hora'], ['*/30 * * * *', 'cada 30 min'],
-            ['30 18 * * 5', 'viernes 18:30'], ['0 9 1 * *', 'el 1 de cada mes']];
-        this.pintar([`<div id="form-per" class="tipo-${p.tipo}">`,
-            seccion(f.original ? `editar «${f.original}»` : 'un proceso periódico nuevo', 'amarillo', this.periodicos?.maquina ?? ''),
-            campo('nombre', `<input id="per-nombre" value="${esc(p.nombre)}" placeholder="resumen-diario" spellcheck="false"${f.original ? ' disabled' : ''}>`,
-                f.original ? 'el nombre no se cambia' : 'minúsculas, números, - y _'),
-            campo('para qué', `<input id="per-desc" value="${esc(p.descripcion)}" placeholder="en una línea, para acordarte">`),
-            campo('qué hace', `<span class="opciones"><a class="opcion-t${p.tipo === 'mensaje' ? ' activa' : ''}" data-per-tipo="mensaje">✦ prompt para el agente</a>`
-                + `<a class="opcion-t${p.tipo === 'comando' ? ' activa' : ''}" data-per-tipo="comando">$ comando de shell</a></span>`),
-            `<div class="solo-mensaje">`,
-            campo('skill', `<input id="per-skill-filtro" placeholder="buscar una skill…" spellcheck="false" autocomplete="off">`
-                + `<div id="per-skills" class="skills">${this.htmlSkills()}</div>`, 'elegir una la pone como prompt; después puedes agregarle texto'),
-            campo('prompt', `<textarea id="per-mensaje" rows="4" placeholder="/correo, o lo que quieras pedirle" spellcheck="false">${esc(p.mensaje)}</textarea>`),
-            campo('hilo', `<input id="per-hilo" value="${esc(p.hilo)}" placeholder="${esc(p.nombre || 'el nombre del proceso')}">`, 'su nombre; se le agrega la fecha y la hora'),
-            campo('abiertos', `<input id="per-max" type="number" min="1" value="${p.max_abiertos}">`, 'con tantos sin cerrar, esa vez no abre otro'),
-            campo('argumentos', `<textarea id="per-args" rows="3" spellcheck="false">${esc(p.argumentos.join('\n'))}</textarea>`, 'para el agente, uno por línea (permisos, herramientas)'),
-            `</div><div class="solo-comando">`,
-            campo('comando', `<input id="per-comando" value="${esc(p.comando)}" placeholder="~/bin/resumen --corto" spellcheck="false">`, 'una línea de bash; su salida queda en el log'),
-            `</div>`,
-            campo('cuándo', `<input id="per-cuando" value="${esc(p.cuando)}" spellcheck="false">`
-                + `<span class="presets">${presets.map(([c, n]) => `<a data-per-horario="${esc(c)}" title="${esc(c)}">${esc(n)}</a>`).join('')}</span>`
-                + `<div id="per-previa" class="dim">…</div>`, 'cron: minuto hora día-del-mes mes día-de-la-semana'),
-            campo('carpeta', `<input id="per-carpeta" value="${esc(p.carpeta)}" placeholder="~ (el hogar)" spellcheck="false">`, 'dónde corre; las skills de la lista son las de ahí'),
-            campo('activo', `<input id="per-activo" type="checkbox"${p.activo ? ' checked' : ''}>`),
-            `<div id="per-error" class="falla"></div>`,
-            `<div class="acciones-t fila-botones"><a class="atajo principal" data-accion="per-guardar"><kbd>⌘⏎</kbd><span>${f.original ? 'guardar' : 'crear'}</span></a>`
-            + `<a class="atajo" data-accion="per-cancelar"><kbd>⎋</kbd><span>cancelar</span></a></div>`,
-            '</section></div>']);
-    }
-
-    private htmlSkills(): string {
-        const f = this.formPer;
-        if (!f?.skills) return '<div class="dim">leyendo las skills de allá…</div>';
-        if (!f.skills.length) return '<div class="dim">no hay skills en esa carpeta</div>';
-        return f.skills.map(x => `<a class="skill" data-skill="${esc(x.nombre)}" data-texto="${esc(normalizar(`${x.nombre} ${x.descripcion}`))}" title="${esc(x.descripcion)}">`
-            + `<b>/${esc(x.nombre)}</b><span class="dim">${esc(x.descripcion)}</span></a>`).join('');
-    }
-
-    /** Las próximas corridas de lo que se está escribiendo, o por qué no se entiende. */
-    private async previaHorario(cuando: string): Promise<void> {
-        const r = await cli.periodicosHorario(cuando);
-        const d = r.datos;
-        const html = !d ? `<span class="falla">${esc(r.error ?? 'no contestó')}</span>`
-            : !d.valido ? `<span class="falla">${esc(d.error)}</span>`
-            : 'las próximas: ' + d.proximas.map(x => `<b>${esc(diaHora(x))}</b>`).join(' · ')
-              + (d.proximas[0] ? ` <span class="dim">(en ${esc(enCuanto(d.proximas[0]))})</span>` : '');
-        this.parcial('per-previa', html);
-    }
-
-    private async cargarSkills(carpeta: string): Promise<void> {
-        const f = this.formPer;
-        if (!f) return;
-        if (f.skills && f.skillsDe === carpeta) return;
-        f.skills = undefined;
-        this.parcial('per-skills', this.htmlSkills());
-        const r = await cli.periodicosSkills(carpeta);
-        if (this.formPer !== f) return;
-        f.skills = r.datos?.skills ?? [];
-        f.skillsDe = carpeta;
-        this.parcial('per-skills', r.datos ? this.htmlSkills() : `<div class="falla">${esc(r.error ?? 'no contestó')}</div>`);
-    }
-
-    /** Cambia un pedazo de la página sin repintarla: lo escrito en el formulario no se pierde. */
+    /** Cambia un pedazo de la página sin repintarla: lo escrito en un formulario no se pierde. */
     private parcial(id: string, html: string): void {
         this.panel?.parcial(id, html);
-    }
-
-    private async guardarFormPer(valor: string): Promise<void> {
-        const f = this.formPer;
-        if (!f) return;
-        const d = JSON.parse(valor) as { nombre: string; descripcion: string; tipo: string; mensaje: string; comando: string;
-            hilo: string; max: string; args: string; cuando: string; carpeta: string; activo: boolean };
-        const nombre = f.original || d.nombre.trim();
-        const args = d.args.split('\n').map(x => x.trim()).filter(Boolean);
-        const lista = [f.original ? 'editar' : 'nuevo', nombre, '--cuando', d.cuando.trim(), '--descripcion', d.descripcion.trim(),
-            '--carpeta', d.carpeta.trim()];
-        if (d.tipo === 'mensaje') {
-            lista.push('--mensaje', d.mensaje.trim(), '--hilo', d.hilo.trim(), '--max', d.max.trim() || '1');
-            if (args.length) lista.push(...args.map(a => `--arg=${a}`));
-            else if (f.original) lista.push('--sin-args');
-        } else {
-            lista.push('--comando', d.comando.trim());
-            if (f.original) lista.push('--sin-args');
-        }
-        if (f.original) lista.push('--activo', d.activo ? 'si' : 'no');
-        else if (!d.activo) lista.push('--pausado');
-        this.parcial('per-error', '<span class="dim">guardando…</span>');
-        const r = await cli.periodicosOrden(lista);
-        if (!r.datos) { this.parcial('per-error', esc(r.error ?? 'no se pudo')); return; }
-        ui.estado(`telar: ${r.datos.hecho}`, 5000);
-        this.formPer = undefined;
-        this.periodico = { nombre, log: '' };
-        await this.abrirPeriodicos();
-        await this.verPeriodico(nombre);
     }
 
     /** La pestaña de un proveedor que la declara (un feed): sus ítems en una lista, con la
@@ -1434,60 +1196,6 @@ export class PanelHoy {
         if (this.pantalla === 'equipo') this.renderEquipo();
     }
 
-    /** Los mensajes entre hilos, por el bus: lo que se dijeron y lo retenido. */
-    private async abrirCorreo(): Promise<void> {
-        this.pantalla = 'correo';
-        this.pintar(['<div class="subcab"><b>Mensajes entre hilos</b></div>', '<div class="fila dim">leyendo…</div>']);
-        const bus = await cli.mensajesBus();
-        if (this.pantalla !== 'correo') return;
-        this.mensajesBus = bus.datos?.mensajes;
-        if (!this.mensajesBus) {
-            this.pintar(['<div class="subcab"><b>Mensajes entre hilos</b></div>',
-                `<div class="fila falla">${esc(bus.error ?? 'no pude leer el registro del bus')}</div>`]);
-            return;
-        }
-        this.renderCorreo();
-    }
-
-    private renderCorreo(): void {
-        const h: string[] = ['<div class="subcab"><b>Mensajes entre hilos</b>'
-            + '<span class="der dim"><a data-accion="correo" title="volver a leer">↻</a></span></div>'];
-        if (this.mensajesBus) h.push(...this.htmlMensajesBus(this.mensajesBus));
-        this.pintar(h);
-    }
-
-    /** Lo que se dijeron los hilos por el bus, lo más nuevo arriba. Lo retenido (cadena larga,
-     *  demasiados por hora) espera aquí a que la persona lo suelte. */
-    private htmlMensajesBus(lista: cli.JsonMensajeBus[]): string[] {
-        const soltados = new Set(lista.filter(m => m.estado !== 'retenido').map(m => m.id));
-        const retenidos = lista.filter(m => m.estado === 'retenido' && !soltados.has(m.id));
-        const h = [`<h2>entre hilos<small>por el bus · ${lista.length} último${lista.length === 1 ? '' : 's'}`
-            + `${retenidos.length ? ` · ${retenidos.length} retenido${retenidos.length === 1 ? '' : 's'}` : ''}</small></h2>`];
-        if (!lista.length) h.push('<div class="fila dim">nada todavía</div>');
-        const fila = (m: cli.JsonMensajeBus, retenido: boolean) => {
-            const abierto = this.abiertoMsg.has(m.id);
-            const texto = abierto ? m.texto : m.texto.split(/\s+/).join(' ').slice(0, 140);
-            return `<div class="item-pag clic" data-accion="ver-msg" data-valor="${esc(m.id)}" title="clic: ${abierto ? 'acortar' : 'el texto entero'}">`
-                + `<div class="fila">${retenido ? '<span class="falla">⏸ </span>' : ''}<b>${esc(m.de)}</b><span class="dim"> → </span><b>${esc(m.para)}</b>`
-                + `<span class="dim"> · ${esc(m.tipo)}${m.saltos ? ` · salto ${m.saltos}` : ''}</span>`
-                + `<span class="der dim">${esc(fechaCorta(m.creado))}`
-                + (retenido ? ` · <a data-accion="soltar-msg" data-valor="${esc(m.id)}" title="mandarlo igual: lo decides tú">soltar</a>` : '')
-                + '</span></div>'
-                + (retenido && m.motivo ? `<div class="fila falla">${esc(m.motivo)}</div>` : '')
-                + `<div class="fila${abierto ? '' : ' dim'}" style="white-space:pre-wrap">${esc(texto)}</div></div>`;
-        };
-        for (const m of retenidos) h.push(fila(m, true));
-        for (const m of [...lista].reverse()) if (m.estado !== 'retenido') h.push(fila(m, false));
-        return h;
-    }
-
-    private async soltarMensaje(id: string): Promise<void> {
-        const r = await cli.soltarMensaje(id);
-        if (!r.datos) { void ui.falla(`telar: no se soltó: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui.estado(`telar: soltado, en la casilla de «${r.datos.para}»`, 4000);
-        await this.abrirCorreo();
-    }
-
     /** Una conversación entera: lo que se dijo, y una línea por herramienta. */
     private async abrirConversacion(id: string): Promise<void> {
         this.pantalla = 'conversacion';
@@ -1712,7 +1420,7 @@ export class PanelHoy {
 
     // ── ahora ──────────────────────────────────────────────────────────────────
 
-    /** La pantalla «ahora»: el bloque que toca y lo que conviene mirar en él (ver `vistas/ahora.ts`). */
+    /** La pantalla «ahora»: el bloque que toca y lo que conviene mirar en él (ver `ahora.ts`). */
     private async abrirAhora(): Promise<void> {
         if (!this.panel) this.abrir();
         this.pantalla = 'ahora';
@@ -1980,7 +1688,7 @@ export class PanelHoy {
     }
 
     /** Todas las filas van a la página de una vez; buscar y ordenar ocurre allá, sin ir y
-     *  volver por cada letra. Ver `aplicarProyectos` en vistas/dashboard.ts. */
+     *  volver por cada letra. Ver `aplicarProyectos` en vista.ts. */
     private renderProyectos(cargando = ''): void {
         if (!this.panel) return;
         this.teclas.clear();
@@ -2007,198 +1715,9 @@ export class PanelHoy {
         await ui.mostrarTerminal();
     }
 
-    private async cambiarPlantillaProyecto(restablecer: boolean): Promise<void> {
-        let texto = '';
-        if (!restablecer) {
-            const actual = this.agenteConfig?.proyecto ?? '';
-            const nuevo = await ui.campo({
-                titulo: 'Qué decirle al agente al abrir un proyecto',
-                ayuda: 'Marcadores: {nombre} {ruta} {carpeta} {documento}. Una skill (/nombre …) o una instrucción en prosa.',
-                valor: actual,
-            });
-            if (nuevo === undefined || nuevo.trim() === actual) return;
-            texto = nuevo.trim();
-        }
-        const r = await cli.plantillaProyecto(texto);
-        if (!r.ok) this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude guardar el mensaje';
-        await this.abrirConfig();
-    }
-
-    private async abrirConfig(): Promise<void> {
-        this.pantalla = 'config';
-        this.avisoConfig = '';
-        this.renderConfig('leyendo la configuración…');
-        const r = await cli.config();
-        this.calendario = r.datos?.calendario;
-        this.agenteConfig = r.datos?.agente;
-        this.hilosConfig = r.datos?.hilos;
-        if (!r.datos) this.avisoConfig = r.error ?? 'telar config no contestó';
-        this.renderConfig();
-    }
-
-    private async elegirCalendario(valor: string): Promise<void> {
-        if (valor === 'ics') {
-            await ui.orden('telar.conectarCalendario');
-        } else {
-            const r = await cli.elegirCalendario(valor);
-            if (!r.ok) {
-                this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude cambiar el calendario';
-                this.renderConfig();
-                return;
-            }
-        }
-        olvidarDia();
-        await this.abrirConfig();
-        await this.actualizar(true);
-        this.renderConfig();
-    }
-
-    private async cambiarDirectorios(): Promise<void> {
-        const actual = (this.hilosConfig?.directorios ?? []).join(', ');
-        const nuevo = await ui.campo({
-            titulo: 'De qué carpetas salen los hilos',
-            ayuda: 'Relativas a la raíz del repositorio, separadas por coma, en el orden en que se abren. Vacío: las unidades del perfil.',
-            placeholder: 'operacion/proyectos, negocio/pipeline',
-            valor: actual,
-        });
-        if (nuevo === undefined || nuevo.trim() === actual) return;
-        const r = await cli.directoriosHilos(nuevo.trim());
-        if (!r.ok) {
-            this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude guardar las carpetas';
-            await this.abrirConfig();
-            return;
-        }
-        await this.abrirConfig();
-        // cada hilo abre un agente: se ofrece, no se hace
-        const si = await ui.info(
-            'Carpetas guardadas. ¿Abrir ahora los hilos que falten? Cada uno arranca su agente.', 'Abrir ahora');
-        if (si === 'Abrir ahora') {
-            const t = await cli.tejer(true);
-            if (!t.ok) void ui.aviso(`telar: ${t.err.trim().split('\n').pop() ?? 'no pude abrirlos'}`);
-            await modelo.sondear();
-        }
-    }
-
-    private async cambiarPlantilla(restablecer: boolean): Promise<void> {
-        let texto = '';
-        if (!restablecer) {
-            const actual = this.agenteConfig?.reunion ?? '';
-            const nuevo = await ui.campo({
-                titulo: 'Qué decirle al agente al preparar una reunión',
-                ayuda: 'Marcadores: {titulo} {hora} {fecha} {enlace} {proyecto}. Una skill (/nombre …) o una instrucción en prosa.',
-                valor: actual,
-            });
-            if (nuevo === undefined || nuevo.trim() === actual) return;
-            texto = nuevo.trim();
-        }
-        const r = await cli.plantillaReunion(texto);
-        if (!r.ok) this.avisoConfig = r.err.trim().split('\n').pop() || 'no pude guardar el mensaje';
-        await this.abrirConfig();
-    }
-
-    /** La pantalla de configuración: de dónde sale la agenda, si funciona, y las otras opciones. */
-    /** En ⚙: cada pestaña con ✓ si se ve, y ↑↓ para moverla; debajo, los módulos instalados. */
-    private htmlPestanasConfig(): string[] {
-        const todas = this.todasLasPestanas();
-        const pos = (c: string) => { const i = this.dashOrden.indexOf(c); return i < 0 ? this.dashOrden.length + todas.findIndex(x => x[0] === c) : i; };
-        const h = ['<h2>Pestañas<small>cuáles se ven y en qué orden; las de un módulo nuevo aparecen solas</small></h2>'];
-        [...todas].sort((a, b) => pos(a[0]) - pos(b[0])).forEach(([clave, , , nombre]) => {
-            const ve = !this.dashOcultas.includes(clave);
-            const modulo = clave.startsWith('bloque:') && this.modulosCfg?.some(m => m.nombre === clave.slice(7)) ? ' <span class="dim">· módulo</span>' : '';
-            h.push(`<div class="fila${ve ? '' : ' dim'}"><a data-accion="pest-ver" data-valor="${esc(clave)}" title="${ve ? 'ocultarla' : 'mostrarla'}">${ve ? '✓' : '·'}</a> `
-                + `${esc(nombre.replace(/ ◆\d+$/, ''))}${modulo}<span class="der">`
-                + `<a data-accion="pest-subir" data-valor="${esc(clave)}" title="un lugar antes">↑</a> `
-                + `<a data-accion="pest-bajar" data-valor="${esc(clave)}" title="un lugar después">↓</a></span></div>`);
-        });
-        h.push('<div class="fila dim">⚙ va siempre al final.</div>');
-        h.push('<h2>Módulos<small>una carpeta con modulo.toml; se instalan en <code>[modulos]</code> de la configuración</small></h2>');
-        if (!this.modulosCfg?.length) h.push('<div class="fila dim">ninguno instalado</div>');
-        for (const m of this.modulosCfg ?? []) {
-            h.push(`<div class="fila"><b>${esc(m.nombre)}</b>&nbsp;<span class="dim">${esc(m.descripcion)}</span></div>`
-                + `<div class="fila dim">aporta ${esc(m.aporta.join(', ') || 'nada')} · ${esc(m.carpeta)}</div>`);
-        }
-        return h;
-    }
-
-    private renderConfig(cargando = ''): void {
-        if (!this.panel) return;
-        this.teclas.clear();
-        const h: string[] = ['<div class="subcab"><b>Configuración</b>'
-            + '</div>'];
-        if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.pintar(h); return; }
-        if (this.avisoConfig) h.push(`<div class="fila falla">${esc(this.avisoConfig)}</div>`);
-        h.push(...this.htmlPestanasConfig());
-        const c = this.calendario;
-        h.push('<h2>Calendario<small>de dónde sale la agenda</small></h2>');
-        if (!c) { this.pintar(h); return; }
-
-        const falla = this.datos?.fallas.find(f => f.startsWith('calendario'));
-        const estado = c.tipo === 'ninguno' ? 'sin conectar'
-            : falla ? `no responde (${falla.split(': ').pop()})`
-            : this.datos?.agenda ? 'funcionando' : 'todavía sin consultar';
-        const nombre: Record<string, string> = { gws: 'Google Workspace (gws)', ics: 'iCal', comando: 'un comando', ninguno: 'ninguno' };
-        h.push(`<div class="fila">En uso: <b>${esc(nombre[c.tipo] ?? c.tipo)}</b> · `
-            + `<span class="${falla ? 'falla' : 'dim'}">${esc(estado)}</span></div>`);
-
-        const opcion = (tipo: string, titulo: string, boton: string, lineas: string[]) => {
-            const activa = c.tipo === tipo;
-            h.push(`<div class="opcion${activa ? ' activa' : ''}"><div class="fila"><b>${activa ? '●' : '○'} ${titulo}</b>`
-                + (activa && tipo !== 'ics' ? '' : ` <span class="der"><a data-accion="calendario" data-valor="${tipo}">${boton}</a></span>`)
-                + '</div>' + lineas.map(l => `<div class="fila dim">${l}</div>`).join('') + '</div>');
-        };
-        opcion('gws', 'Google Workspace (gws)', 'usar', [
-            'Lee tu calendario con la CLI <code>gws</code>, con la cuenta que ya tenga conectada. '
-                + 'No hay dirección que pegar ni secreto que guardar, y sirve aunque el administrador del dominio haya desactivado iCal.',
-            !c.gws ? 'No está instalado en esta máquina.'
-                : c.gws_conectado ? `Conectado como <b>${esc(c.gws_cuenta || 'una cuenta')}</b>.`
-                : 'Instalado pero sin sesión: corre <code>gws auth login</code> en un terminal.',
-        ]);
-        opcion('ics', 'iCal', c.tipo === 'ics' ? 'cambiar dirección…' : 'usar…', [
-            'Una dirección de calendario en formato .ics. En Google Calendar: Configuración › tu calendario › '
-                + '«Dirección <b>secreta</b> en formato iCal».',
-            ...(c.tipo === 'ics' && c.fuente ? [`Guardada: <code>${esc(c.fuente)}</code> (la parte secreta no se muestra).`] : []),
-            ...(c.tipo === 'ics' && c.publica ? ['<span class="falla">Es la dirección <b>pública</b>: solo funciona si el calendario '
-                + 'está publicado para todo internet. Usa la secreta.</span>'] : []),
-        ]);
-        opcion('ninguno', 'Ninguno', 'desconectar', ['El dashboard no muestra agenda.']);
-
-        const hc = this.hilosConfig;
-        if (hc) {
-            h.push('<h2>Hilos<small>de qué carpetas salen los de la lista</small></h2>');
-            h.push('<div class="fila">' + (hc.directorios.length
-                ? hc.directorios.map(d => `<code>${esc(d)}</code>`).join(' · ')
-                : 'las unidades del perfil, en su orden')
-                + '<span class="der"><a data-accion="directorios">cambiar…</a></span></div>');
-            h.push(`<div class="fila dim">Al tejer la sesión se abren hasta ${hc.tope}, repartidos por turnos: uno de cada carpeta. `
-                + 'Los archivados no se reabren solos: ⏸ en la lista archiva uno y guarda su conversación, ▶ lo retoma.</div>');
-        }
-
-        const a = this.agenteConfig;
-        if (a) {
-            const propia = a.reunion !== a.reunion_por_defecto;
-            h.push('<h2>Reuniones<small>qué se le dice al agente al pinchar una reunión</small></h2>');
-            h.push(`<div class="fila"><code>${esc(a.reunion)}</code>`
-                + '<span class="der"><a data-accion="plantilla" data-valor="cambiar">cambiar…</a>'
-                + (propia ? ' · <a data-accion="plantilla" data-valor="restablecer">volver a la de flow</a>' : '') + '</span></div>');
-            h.push('<div class="fila dim">Se abre un tab «◷ hora reunión» con '
-                + `<b>${esc(a.nombre || 'ningún agente')}</b> y se le escribe esto. Marcadores: `
-                + '<code>{titulo}</code> <code>{hora}</code> <code>{fecha}</code> <code>{enlace}</code> <code>{proyecto}</code>. '
-                + 'El proyecto es la carpeta que comparte palabras con el título; si no hay, la cola «· proyecto:» se quita.</div>');
-            if (!propia) h.push('<div class="fila dim">Es la de flow: supone la skill <code>/preparar-reunion</code> instalada en Claude Code.</div>');
-
-            const propiaP = a.proyecto !== a.proyecto_por_defecto;
-            h.push('<h2>Proyectos<small>qué se le dice al agente al abrir un proyecto de la lista</small></h2>');
-            h.push(`<div class="fila"><code>${esc(a.proyecto)}</code>`
-                + '<span class="der"><a data-accion="plantilla-proyecto" data-valor="cambiar">cambiar…</a>'
-                + (propiaP ? ' · <a data-accion="plantilla-proyecto" data-valor="restablecer">volver a la de fábrica</a>' : '') + '</span></div>');
-            h.push('<div class="fila dim">Se abre un tab con el nombre de la carpeta, vinculado a ella, y se le escribe esto. Marcadores: '
-                + '<code>{nombre}</code> <code>{ruta}</code> <code>{carpeta}</code> <code>{documento}</code>.</div>');
-        }
-        this.pintar(h);
-    }
-
     private pintar(h: string[]): void {
         this.panel?.pintar(this.nav() + h.join('\n'));
+        this.alPintar?.();
     }
 
     /** Lo que un lienzo pide guardar, en el archivo que declaró su página. Se escribe entero
@@ -2213,8 +1732,8 @@ export class PanelHoy {
 
     private async mensaje(m: MensajeDia): Promise<void> {
         if (m.tipo === 'lienzo-guardar') { this.guardarLienzo(m.valor ?? '', m.datos ?? ''); return; }
-        if (m.tipo === 'per-horario') { await this.previaHorario(m.valor ?? ''); return; }
-        if (m.tipo === 'per-skills') { await this.cargarSkills(m.valor ?? ''); return; }
+        // lo de una sección de ⚙ (sus acciones, sus formularios) lo atiende ella
+        if (this.pantalla === 'config' && m.tipo !== 'tecla' && m.tipo !== 'listo' && await this.configuracion.atender(m)) return;
         if (m.tipo === 'listo') {
             // un panel recién abierto para una sección pierde lo que se le mandó antes de estar listo
             if (this.pantalla === 'seccion' && this.pagina) this.renderSeccion();
@@ -2244,7 +1763,7 @@ export class PanelHoy {
                 if (titulo && hora) await this.preparar(titulo, hora, enlace ?? '', evento ?? '', asistentes ?? []);
                 break;
             }
-            case 'config': await this.abrirConfig(); break;
+            case 'config': await this.abrirConfig(m.valor ?? ''); break;
             case 'proyectos': await this.abrirProyectos(); break;
             case 'seccion': if (m.valor) await this.abrirSeccion(m.valor); break;
             case 'proyecto': if (m.valor) await this.abrirProyecto(m.valor); break;
@@ -2276,11 +1795,7 @@ export class PanelHoy {
             case 'menu-vineta': if (m.valor) await this.menuVineta(m.valor); break;
             case 'proy-consolidar': if (m.valor) await this.consolidarProyecto(m.valor); break;
             case 'proy-enlace': if (m.valor) await this.enlaceReadme(m.valor, String(m.datos ?? '')); break;
-            case 'plantilla-proyecto': await this.cambiarPlantillaProyecto(m.valor === 'restablecer'); break;
             case 'bloque': if (m.valor) await this.abrirBloque(m.valor); break;
-            case 'pest-ver': case 'pest-subir': case 'pest-bajar':
-                if (m.valor) await this.cambiarPestanas(m.accion.slice(5), m.valor);
-                break;
             case 'atajo': if (m.valor) await this.lanzarAtajo(m.valor); break;
             case 'abrir-item': if (m.valor) await this.abrirItem(m.valor); break;
             case 'ver-item': if (m.valor) {
@@ -2341,13 +1856,6 @@ export class PanelHoy {
             }
             case 'tarea-siguiente': await this.otraPropuesta(1); break;
             case 'revisar': await this.abrirRevisar(); break;
-            case 'periodicos': this.periodico = undefined; this.formPer = undefined; await this.abrirPeriodicos(); break;
-            case 'per-ver': if (m.valor) await this.verPeriodico(m.valor); break;
-            case 'per-nuevo': await this.nuevoPeriodico(); break;
-            case 'per-editar': if (m.valor) await this.editarPeriodico(m.valor); break;
-            case 'per-guardar': if (m.valor) await this.guardarFormPer(m.valor); break;
-            case 'per-cancelar': this.formPer = undefined; this.renderPeriodicos(); break;
-            case 'per-orden': if (m.valor) await this.ordenPeriodico(JSON.parse(m.valor) as string[]); break;
             case 'pestana': if (m.valor) await this.abrirPestana(m.valor); break;
             case 'volver-ficha':
                 if (this.fichaDesde === 'revisar') await this.abrirRevisar();
@@ -2367,22 +1875,14 @@ export class PanelHoy {
             case 'recargar-seccion': this.pagina = undefined; if (this.seccion) await this.abrirSeccion(this.seccion); break;
             case 'volver-seccion': if (this.seccion && this.pagina) { this.pantalla = 'seccion'; this.renderSeccion(); } else await this.abrirAhora(); break;
             case 'conversacion': if (m.valor) await this.abrirConversacion(m.valor); break;
-            case 'correo': await this.abrirCorreo(); break;
             case 'equipo-accion': if (m.valor) await this.accionEquipo(m.valor); break;
-            case 'ver-msg':
-                if (m.valor) { if (this.abiertoMsg.has(m.valor)) this.abiertoMsg.delete(m.valor); else this.abiertoMsg.add(m.valor); this.renderCorreo(); }
-                break;
-            case 'soltar-msg': if (m.valor) await this.soltarMensaje(m.valor); break;
             case 'retomar-charla':
                 if (this.charla?.hilo) {
                     const vivo = modelo.porNombre(this.charla.hilo)?.vivo;
                     await ui.orden(vivo ? 'telar.ir' : 'telar.retomar', { hilo: this.charla.hilo });
                 }
                 break;
-            case 'calendario':
-                // desde la configuración elige de dónde sale la agenda; desde una pestaña, la abre
-                if (this.pantalla === 'config') await this.elegirCalendario(m.valor ?? ''); else await this.abrirCalendario();
-                break;
+            case 'calendario': await this.abrirCalendario(); break;
             case 'plan': await this.abrirPlan(''); break;
             case 'plan-dia': await this.abrirPlan(m.valor ?? ''); break;
             case 'evento-sel': if (m.valor) { this.eventoSel = m.valor; this.renderCalendario(); } break;
@@ -2394,8 +1894,6 @@ export class PanelHoy {
                 break;
             case 'ev-escribir': if (m.valor) await this.escribirSobreEvento(m.valor, m.datos ?? ''); break;
             case 'plan-comentar': if (m.valor && m.datos?.trim()) await this.comentarPlan(m.valor, m.datos); break;
-            case 'plantilla': await this.cambiarPlantilla(m.valor === 'restablecer'); break;
-            case 'directorios': await this.cambiarDirectorios(); break;
         }
     }
 }
@@ -2434,21 +1932,6 @@ function horaLocal(iso: string): string {
     return Number.isNaN(t) ? '' : new Date(t).toTimeString().slice(0, 5);
 }
 
-/** Una fecha de correo (RFC 2822) como «24-sep 12:19»; si no se entiende, tal cual. */
-function fechaCorta(fecha: string): string {
-    const t = Date.parse(fecha);
-    if (Number.isNaN(t)) return fecha;
-    const d = new Date(t);
-    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    return `${d.getDate()}-${meses[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`;
-}
-
-/** «viernes», «2026-09-25» → «vie 25 sep». */
-function fechaLarga(nombreDia: string, fecha: string): string {
-    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-    const [, m, d] = fecha.split('-').map(Number);
-    return `${nombreDia.slice(0, 3)} ${d || ''} ${meses[(m || 1) - 1]}`.trim();
-}
 
 /** Abre un enlace de una página: una URL en una pestaña nueva, una ruta de la máquina en la vista de
  *  carpeta de la página. */
@@ -2464,30 +1947,6 @@ async function abrirEnlace(enlace: string): Promise<void> {
     void ui.aviso(`telar: no sé abrir ${enlace}`);
 }
 
-/** La marca, el color y la frase del estado de un proceso: pausado, corriendo, falló, bien. */
-function estadoPeriodico(p: cli.JsonPeriodico): [string, string, string] {
-    if (p.ultima.corriendo) return ['◐', 'azul', 'corriendo ahora'];
-    if (!p.activo) return ['⏸', 'dim', 'pausado: no corre hasta que lo actives'];
-    if (p.ultima.codigo !== undefined && p.ultima.codigo !== 0) return ['✗', 'rojo', `la última vez: ${p.ultima.resultado ?? 'falló'}`];
-    if (p.ultima.inicio) return ['●', 'verde', `la última vez: ${p.ultima.resultado ?? 'bien'}`];
-    return ['○', 'dim', 'todavía no ha corrido'];
-}
-
-/** «2 h 10», «35 min», «3 d»: cuánto falta hasta esa hora. */
-function enCuanto(iso: string): string {
-    const min = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000));
-    if (min < 60) return `${min} min`;
-    if (min < 60 * 24) return `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60}` : ''}`;
-    return `${Math.round(min / 1440)} d`;
-}
-
-/** «vie 2 10:00»: una corrida, corta. */
-function diaHora(iso: string): string {
-    const d = new Date(iso);
-    return `${['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'][d.getDay()]} ${d.getDate()} ${iso.slice(11, 16)}`;
-}
-
-/** El origen de una dirección (`http://telar:8790`), o "" si no se entiende. */
 /** Lo que puede un lienzo: sus scripts y estilos en línea, e imágenes; ni red, ni `<script src>`, ni `eval`. */
 const POLITICA_LIENZO = "default-src 'none'; img-src https: data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 

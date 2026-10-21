@@ -238,7 +238,11 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
   abre uno (`POST /ir` con `crear`). Está en `pagina/src/vistas/hilos.ts`.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
-  los módulos). `vistas/hoy.ts` decide qué mostrar y lo pinta en `vistas/dashboard.ts`, que filtra, ordena y
+  los módulos), que son las filas del grupo DASHBOARD de la barra. La configuración es el ⚙ de la cabecera:
+  un menú vertical de secciones (pestañas, calendario, hilos, agente, periódicos, agentes, módulos), cada una
+  en su archivo de `vistas/dashboard/config/` y nombrada en su registro (`configuracion.ts`): una sección nueva
+  es un archivo más.
+  `vistas/dashboard/panel.ts` decide qué mostrar y lo pinta en `vistas/dashboard/vista.ts`, que filtra, ordena y
   atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
   de afuera (el buscador de la barra, una terminal).
 - **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la

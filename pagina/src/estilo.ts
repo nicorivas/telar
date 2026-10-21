@@ -41,6 +41,15 @@ export function haceCorto(iso: string | null | undefined): string {
 
 export const hhmm = (iso: string): string => iso.slice(11, 16);
 
+/** Una fecha de correo (RFC 2822) o ISO como «24-sep 12:19»; si no se entiende, tal cual. */
+export function fechaCorta(fecha: string): string {
+    const t = Date.parse(fecha);
+    if (Number.isNaN(t)) return fecha;
+    const d = new Date(t);
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${d.getDate()}-${meses[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`;
+}
+
 export const limpiarMd = (t: string): string => t.replace(/\*\*/g, '').replace(/`/g, '');
 
 /** Para buscar sin acentos ni mayúsculas. */

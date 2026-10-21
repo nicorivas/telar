@@ -3,8 +3,8 @@
 // proyecto; una reunión, su ficha, la preparación, la minuta anterior y su proyecto. Lo que no se sabe
 // mostrar no se muestra: el bloque y el foco, no una lista larga.
 
-import * as cli from '../cli';
-import { esc, normalizar } from '../estilo';
+import * as cli from '../../cli';
+import { esc, normalizar } from '../../estilo';
 import { Pendiente, seccion } from './dia';
 import { EventoCal, Plan } from './plan';
 import { filaPendiente } from './proyectos';

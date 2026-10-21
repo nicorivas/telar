@@ -1,5 +1,5 @@
 // La página de telar: a la izquierda la barra de hilos (vistas/hilos.ts); a la derecha, una vista a la vez: el
-// dashboard (vistas/hoy.ts, que pinta en vistas/dashboard.ts) o un hilo (web/vistas-hilo.ts), su carpeta o
+// dashboard (vistas/dashboard/panel.ts, que pinta en vistas/dashboard/vista.ts) o un hilo (web/vistas-hilo.ts), su carpeta o
 // «compartir». Todo en este documento, sin marcos:
 //
 //   - la API, por `fetch` a `/api` (cli.ts; la misma de `telar serve`, detrás de la llave de esta página);
@@ -13,7 +13,7 @@ import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
-import { PanelHoy } from '../vistas/hoy';
+import { Dashboard } from '../vistas/dashboard/panel';
 import { montar as montarCarpeta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
 import * as ui from '../web/ui';
@@ -39,7 +39,7 @@ const vistas = () => [...marcos().children] as HTMLElement[];
  *  volver a verse. */
 const montadas = new Map<string, Vista>();
 
-/** Una vista: un elemento que su módulo llena (vistas/dashboard.ts, web/carpeta.ts, web/compartir.ts, las vistas
+/** Una vista: un elemento que su módulo llena (vistas/dashboard/vista.ts, web/carpeta.ts, web/compartir.ts, las vistas
  *  de un hilo). */
 function nuevaVista(clave: string): HTMLElement {
     const s = document.createElement('section');
@@ -76,11 +76,13 @@ function cerrarVista(llave: string): void {
     vistas().find(x => x.dataset.p === llave)?.remove();
 }
 
-/** A la derecha: «dashboard», un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
+/** A la derecha: «dashboard» («config»: el dashboard en su configuración, el ⚙ de la cabecera), un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
  *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
  *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
 function mostrar(que: string): void {
     if (!que) return;
+    // el ⚙ de la cabecera: la configuración, en el dashboard
+    if (que === 'config') { void hoy.irAPestana('config'); return; }
     actual = que;
     let f: HTMLElement | undefined;
     if (que === 'dashboard') {
@@ -130,7 +132,7 @@ function mostrar(que: string): void {
 
 // ── arrancar ──────────────────────────────────────────────────────────────────
 
-const hoy = new PanelHoy();
+const hoy = new Dashboard();
 hoy.donde = () => nuevaVista('dashboard');
 hoy.mostrarme = () => mostrar('dashboard');
 const barra = new BarraHilos();
@@ -145,6 +147,9 @@ hoy.alCambiarFoco = () => {
     barra.appActiva = app;
     barra.refrescar(true);
 };
+// las pestañas del dashboard son un grupo de la barra: sus filas, sus cuentas y la que se ve, al día con cada pintada
+barra.pestanasDashboard = () => hoy.pestanas();
+hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.refrescar(); };
 modelo.cambio.event(() => barra.refrescar());
 
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la

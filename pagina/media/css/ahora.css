@@ -1,4 +1,4 @@
-/* «ahora»: el bloque del momento (vistas/ahora.ts). scripts/navegador.mjs
+/* «ahora»: el bloque del momento (vistas/dashboard/ahora.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {

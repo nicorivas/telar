@@ -1,10 +1,10 @@
 // Lo que el equipo deja en tu bandeja (`telar equipo`): una sección de la barra lateral; pinchar una fila abre su
-// página en el dashboard (`PanelHoy.abrirEquipo`). Aquí viven el encargo a Gestión y las decisiones.
+// página en el dashboard (`Dashboard.abrirEquipo`, panel.ts). Aquí viven el encargo a Gestión y las decisiones.
 
-import * as ui from '../web/ui';
-import type { Opcion } from '../web/ui';
-import * as cli from '../cli';
-import { modelo } from '../modelo';
+import * as ui from '../../web/ui';
+import type { Opcion } from '../../web/ui';
+import * as cli from '../../cli';
+import { modelo } from '../../modelo';
 
 type Sugerencia = cli.JsonSugerencia;
 

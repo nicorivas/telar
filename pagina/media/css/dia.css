@@ -1,10 +1,8 @@
-/* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios, la barra de arriba (vistas/dia.ts,
-   vistas/hoy.ts, vistas/dashboard.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
+/* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios (vistas/dashboard/:
+   dia.ts, panel.ts, vista.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
    el dashboard (`.v-dia`), que es un contenedor de su tamaño: «lo que queda del panel» se mide en cqh. */
 
 @scope (.v-dia) {
-  /* el relleno va en #dia y no aquí: la barra de arriba (.fijo, sticky) se pegaría bajo el relleno del que se
-     desplaza */
   :scope { container-type: size; }
   /* el dashboard se armó con las medidas de siempre del navegador (en su marco, sin el border-box de la página) */
   * { box-sizing: content-box; }
@@ -91,17 +89,7 @@
      ocupa exactamente dos celdas y la grilla no se corre. */
   kbd { padding: 0 .5ch; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent);
         outline: 1px solid var(--linea); outline-offset: -1px; box-shadow: inset 0 -2px 0 var(--linea); }
-  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 2ch; }
-  .top .marca-t { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
-  .logo { font-weight: bold; color: transparent;
-          background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
-          background-size: 480px 100%; -webkit-background-clip: text; background-clip: text; animation: flujo 9s linear infinite; }
-  .fecha { color: var(--fg); } .reloj { color: var(--amarillo); } .sem { color: var(--dim); }
-  .regla { height: 2px; margin: 0;
-           background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
-           background-size: 480px 100%; animation: flujo 9s linear infinite; }
 
-  @keyframes flujo { from { background-position: 0 0; } to { background-position: 480px 0; } }
 
   .bloque { margin: 1lh 0 0; }
   h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transform: uppercase; color: var(--c); font-weight: bold; }
@@ -208,18 +196,6 @@
   .tarea .destino { color: var(--magenta); overflow: hidden; text-overflow: ellipsis; text-align: left; }
   #tareas-mas { color: var(--c); padding: 0 1ch; }
 
-  /* la barra de arriba: fija, igual en todas las pestañas */
-  .fijo { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 1lh 0 0; margin-top: -1lh; }
-  .top .recargar { color: var(--dim); } .top .recargar:hover { color: var(--fg); text-decoration: none; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 0; margin-top: 1lh; }
-  .tab { padding: 0 1ch; color: var(--dim); white-space: nowrap; }
-  .tab:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
-  .tab.activa { color: var(--bg); background: var(--t, var(--azul)); font-weight: bold; }
-  .tab.activa kbd { color: var(--bg); background: transparent; outline-color: var(--bg); box-shadow: inset 0 -2px 0 var(--bg); }
-  .tab[data-accion="dia"] { --t: var(--amarillo); } .tab[data-accion="proyectos"] { --t: var(--cian); }
-  .tab[data-accion="correo"] { --t: var(--magenta); } .tab[data-accion="seccion"] { --t: var(--violeta); }
-  .tab[data-accion="config"] { --t: var(--verde); }
-  .fijo::after { content: ""; display: block; height: 1lh; }
   .subcab { display: flex; gap: 0 2ch; align-items: baseline; flex-wrap: wrap; margin: 0 0 1lh; --c: var(--violeta); }
   .subcab b { color: var(--fg); } .subcab .der { display: flex; gap: 0 3ch; margin-left: auto; }
 
@@ -232,8 +208,6 @@
   .atajo.pista:hover, .atajo.pista:hover kbd { color: var(--dim); outline-color: var(--linea); box-shadow: inset 0 -2px 0 var(--linea); }
   .sec .acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0 3ch; text-transform: none; font-weight: normal; }
   .sec .leyenda { color: var(--dim); }
-  .generales { display: flex; flex-wrap: wrap; gap: 0 3ch; --c: var(--cian); }
-  .top .atajo { color: var(--dim); } .top .atajo:hover { color: var(--c, var(--azul)); }
 
   /* un bloque del día (el correo): marca · hora · de · qué */
   .cr { display: grid; grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
@@ -266,7 +240,7 @@
     .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
   }
 
-  @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .punto, .hl .at.espera { animation: none; } }
   #revisar #tareas-t .tarea, #revisar .tareas-cab, .tareas-sueltas .tarea { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
   /* las acciones a un clic, antes del ⋯: ✓ hecha, ◉ compartir, ▶ a un hilo */
   #revisar .tarea .meta, .tareas-sueltas .tarea .meta { grid-template-columns: 5ch 1ch 7ch 1ch; }

@@ -135,8 +135,8 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
 4. **Qué es de quién.** El núcleo sabe de hilos, mensajes, objetos, nodos, lugares y git; el perfil de
    cada repo, de sus unidades, campos, áreas, agente para lo que no tiene proyecto, calientes y worktrees;
    los módulos traen lo propio de una vida. Lo que hoy está fijo y debería salir del perfil o la
-   configuración: la lista de áreas (`vistas/proyectos.ts`), los clientes propios que no se muestran
-   (`vistas/hoy.ts`), el agente «gestion» por nombre, «Nico» en `--de` y en los textos (`[persona]
+   configuración: la lista de áreas (`vistas/dashboard/proyectos.ts`), los clientes propios que no se muestran
+   (`vistas/dashboard/panel.ts`), el agente «gestion» por nombre, «Nico» en `--de` y en los textos (`[persona]
    nombre`), el formato de tareas en `equipo.py`, `Estado`/`Etapa`/`Cliente` en `ordenes/proyectos.py`.
 
 ## Los pasos que faltan

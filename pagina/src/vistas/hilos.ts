@@ -22,6 +22,10 @@ import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
 import { modelo } from '../modelo';
 
+/** Una pestaña del dashboard (su lista y su orden los decide el dashboard, vistas/dashboard/panel.ts): una fila del grupo
+ *  DASHBOARD. */
+export interface PestanaDashboard { clave: string; accion: string; valor: string; nombre: string; tecla: string }
+
 /** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
 export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }
 
@@ -73,6 +77,9 @@ export class BarraHilos {
     dashboardActivo = false;
     /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
     appActiva = '';
+    /** las pestañas del dashboard, que pone la página (del dashboard), y la que se ve: su fila se marca */
+    pestanasDashboard: () => PestanaDashboard[] = () => [];
+    pestanaActiva = '';
     /** el hilo cuya terminal se muestra a la derecha. Si se da, manda sobre el foco de tmux para marcar
      *  la fila; si no, la marca el hilo con foco */
     mostrado?: string;
@@ -210,6 +217,8 @@ export class BarraHilos {
                 void this.estado?.update(`telar.orden.${grupo}`, orden === this.ordenDe(grupo) ? '' : orden).then(() => this.refrescar(true));
             } break;
             case 'cmd': if (m.id?.startsWith('telar.')) void ui.orden(m.id); break;
+            // una fila del grupo DASHBOARD: ir a esa pestaña
+            case 'dash': if (m.id) { const [accion, valor] = JSON.parse(m.id) as string[]; void ui.orden('telar.pestana', accion, valor); } break;
         }
     }
 
@@ -314,25 +323,31 @@ export class BarraHilos {
                 + '<a data-accion="cmd" data-id="telar.nuevo">abrir uno</a></div>';
         }
         if (!modelo.viva) h.push('<div class="nota">la sesión no está viva; esto es lo que telar recuerda</div>');
-        // el dashboard encabeza la lista como una fila más, no solo como un ícono en la barra del
-        // título: es el lugar al que se vuelve varias veces al día, y en flow estaba ahí
-        // porque era un tab. En telar no es un tab del multiplexor sino una vista de la página,
-        // así que la fila la pone la vista y no la sesión.
-        h.push(`<div class="fila hoy${this.dashboardActivo && !this.appActiva ? ' activa' : ''}" data-accion="cmd" data-id="telar.hoy"`
-            + ' title="el día: agenda, tareas y lo que espera">'
-            + '<span class="prio"> </span><span class="nombre">dashboard</span></div>');
-        // debajo, grupos con cabecera plegable, en este orden: AGENTES, HILOS (y las secciones propias),
-        // EQUIPO, ARCHIVO y APPS. Los dos primeros empiezan abiertos (es donde se trabaja); los demás,
-        // cerrados (se miran de vez en cuando). Dentro de cada grupo, los que tienen tab primero
+        // grupos con cabecera plegable, en este orden: DASHBOARD, AGENTES, HILOS (y las secciones propias), EQUIPO,
+        // ARCHIVO y APPS. Los tres primeros empiezan abiertos (es donde se trabaja); los demás, cerrados (se miran
+        // de vez en cuando). Dentro de cada grupo, los que tienen tab primero
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
         // `extra`: lo que va al final de la cabecera, con su propia acción (el + de HILOS)
+        let primera = true;
         const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, extra = ''): boolean => {
             const abierta = this.abierta(clave, porDefecto);
-            h.push('<div class="sep"></div>');
+            if (!primera) h.push('<div class="sep"></div>');
+            primera = false;
             h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
                 + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
             return abierta;
         };
+
+        // el dashboard: una fila por pestaña (ahora, tareas, el correo…), en el orden de `[dashboard]`. Es el lugar
+        // al que se vuelve varias veces al día: encabeza la lista
+        if (cabecera('__dashboard', 'DASHBOARD', 0, true, 'el día: agenda, tareas, correo y lo que traigan los proveedores')) {
+            for (const p of this.pestanasDashboard()) {
+                const activa = this.dashboardActivo && !this.appActiva && p.clave === this.pestanaActiva;
+                h.push(`<div class="fila hoy${activa ? ' activa' : ''}" data-accion="dash" data-id="${esc(JSON.stringify([p.accion, p.valor]))}"`
+                    + ` title="${esc(p.tecla ? `${p.nombre} · con el dashboard a la vista, la tecla ${p.tecla}` : p.nombre)}">`
+                    + `<span class="prio"> </span><span class="nombre">${esc(p.nombre)}</span>${p.tecla ? `<span class="der">${esc(p.tecla)}</span>` : ''}</div>`);
+            }
+        }
 
         // los agentes residentes: uno por línea, como cualquier hilo, con su home al final de la línea.
         // Un agente sin hilo abierto sale igual, tenue, y su línea lleva a su home

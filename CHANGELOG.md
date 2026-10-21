@@ -8,6 +8,12 @@ extension shared the version number.
 
 ### Changed
 
+- The dashboard's tabs are a group of the thread bar (DASHBOARD, first and open, a row per tab with its key), and
+  the dashboard lost its own top bar (brand, date, shortcuts) and its row of tabs. «telar», with its moving
+  colors, sits at the top left of the page; settings are the ⚙ at the top right, next to the version.
+- Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,
+  periodic processes and agents' messages (both moved out of the dashboard's tabs; `o` and `c` still open them),
+  and modules.
 - One owner per thread, first two steps. Renaming, linking, prioritizing, archiving, closing or forgetting a
   thread that lives on another machine is asked of its owner over the bus (request `hilo` to its node), and this
   machine adjusts its own copy only if that worked. And every 30 s the node reconciles this machine's windows of

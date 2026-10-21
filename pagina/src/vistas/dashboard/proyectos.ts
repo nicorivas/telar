@@ -3,8 +3,8 @@
 // README. Como el calendario, dos columnas; la derecha se cambia sola (un mensaje `parcial`), sin
 // repintar la lista, que es larga y no debe perder ni el scroll ni lo buscado.
 
-import * as cli from '../cli';
-import { esc, haceCorto, limpiarMd, normalizar } from '../estilo';
+import * as cli from '../../cli';
+import { esc, haceCorto, limpiarMd, normalizar } from '../../estilo';
 import { Pendiente, plazo } from './dia';
 
 
@@ -72,7 +72,7 @@ function contar(xs: string[]): Map<string, number> {
 }
 
 /** La lista de la izquierda. Buscar, ordenar y mostrar los cerrados ocurre en la página
- *  (`aplicarProyectos`, vistas/dashboard.ts); elegir una fila pide su detalle. */
+ *  (`aplicarProyectos`, vista.ts); elegir una fila pide su detalle. */
 export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuentas?: Map<string, number>): string[] {
     const cerrados = lista.filter(esCerrado).length;
     const conHilo = lista.filter(p => p.hilo).length;

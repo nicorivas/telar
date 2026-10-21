@@ -1,9 +1,9 @@
 // El plan del día y el calendario del dashboard: lo que deja una skill de planificación
 // (`telar resultado plan`) y la agenda del día con las notas de cada evento (`telar evento`).
-// Aquí solo se dibuja; el estado y las acciones viven en `hoy.ts`.
+// Aquí solo se dibuja; el estado y las acciones viven en `panel.ts`.
 
-import * as cli from '../cli';
-import { esc } from '../estilo';
+import * as cli from '../../cli';
+import { esc } from '../../estilo';
 import { Dia, seccion } from './dia';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */

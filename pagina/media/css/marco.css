@@ -58,6 +58,31 @@ body > header {
   & #visto { overflow: hidden; text-overflow: ellipsis; }
 }
 
+/* la marca, arriba a la izquierda: un hilo de colores que corre despacio (la regla bajo las pestañas del
+   dashboard es el mismo) */
+.logo {
+  color: transparent;
+  font-weight: bold;
+  background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+  background-size: 480px 100%;
+  -webkit-background-clip: text; /* Safari (el iPhone) todavía lo pide con prefijo */
+  background-clip: text;
+  animation: flujo 9s linear infinite;
+}
+
+@keyframes flujo {
+  from { background-position: 0 0; }
+  to { background-position: 480px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo { animation: none; }
+}
+
+/* el ⚙, junto a la versión: la configuración (en el dashboard) */
+body > header .config { color: var(--dim); }
+body > header .config:hover { color: var(--fg); text-decoration: none; }
+
 #modo[hidden] { display: none; }
 #volver { display: none; }
 
@@ -112,7 +137,9 @@ body.angosto {
   & #donde { justify-content: center; }
 }
 
+/* en un celular, viendo un hilo, ese lugar es para volver a la lista */
 body.angosto.en-detalle #volver { display: inline; }
+body.angosto.en-detalle .logo { display: none; }
 
 body.angosto.en-lista #marcos,
 body.angosto.en-detalle #barra { display: none; }

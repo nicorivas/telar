@@ -1,0 +1,66 @@
+/* La configuración (vistas/dashboard/config/): a la izquierda un menú vertical, como la barra de hilos; a la
+   derecha la sección elegida, con su título. scripts/navegador.mjs la junta en src/telar/web/marco.css, con @scope
+   en el dashboard (`.v-dia`). */
+
+@scope (.v-dia) {
+  .config {
+    display: grid;
+    grid-template-columns: 18ch minmax(0, 1fr);
+    gap: 0 3ch;
+    align-items: start;
+  }
+
+  .config-menu {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    padding-right: 1ch;
+    border-right: var(--borde);
+  }
+
+  .config-titulo {
+    margin-bottom: var(--e-1);
+    padding: 0 var(--h-1);
+    color: var(--amarillo);
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .config-op {
+    padding: 0 var(--h-1);
+    color: var(--fg);
+    white-space: nowrap;
+
+    &:hover { background: var(--hover); text-decoration: none; }
+    &.activa { background: var(--sel); }
+  }
+
+  .config-cuerpo { min-width: 0; }
+
+  .config-cab {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2ch;
+    align-items: baseline;
+    margin-bottom: var(--e-2);
+
+    & b { color: var(--amarillo); text-transform: uppercase; }
+  }
+
+  /* angosto (un celular): el menú arriba, en una fila */
+  @container (max-width: 620px) {
+    .config { grid-template-columns: 1fr; }
+
+    .config-menu {
+      position: static;
+      flex-flow: row wrap;
+      margin-bottom: var(--e-2);
+      padding: 0 0 var(--e-1);
+      border-right: 0;
+      border-bottom: var(--borde);
+    }
+
+    .config-titulo { width: 100%; }
+  }
+}

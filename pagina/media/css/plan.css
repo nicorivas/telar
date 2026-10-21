@@ -1,4 +1,4 @@
-/* El plan del día y el calendario (vistas/plan.ts). scripts/navegador.mjs
+/* El plan del día y el calendario (vistas/dashboard/plan.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {

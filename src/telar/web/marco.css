@@ -1,4 +1,4 @@
-/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (tokens, base, marco, web, hilos, dia, plan, proyectos, ahora, documento, compartir, lectura, conversacion, terminal): no editar aquí. */
+/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (tokens, base, marco, web, hilos, dia, plan, proyectos, ahora, configuracion, documento, compartir, lectura, conversacion, terminal): no editar aquí. */
 @layer base, vistas;
 @layer base {
 /* Los tokens: colores, tipografía y espacio. Los colores son catppuccin mocha. Todo lo demás se arma con
@@ -145,6 +145,31 @@ body > header {
   & #visto { overflow: hidden; text-overflow: ellipsis; }
 }
 
+/* la marca, arriba a la izquierda: un hilo de colores que corre despacio (la regla bajo las pestañas del
+   dashboard es el mismo) */
+.logo {
+  color: transparent;
+  font-weight: bold;
+  background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
+  background-size: 480px 100%;
+  -webkit-background-clip: text; /* Safari (el iPhone) todavía lo pide con prefijo */
+  background-clip: text;
+  animation: flujo 9s linear infinite;
+}
+
+@keyframes flujo {
+  from { background-position: 0 0; }
+  to { background-position: 480px 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo { animation: none; }
+}
+
+/* el ⚙, junto a la versión: la configuración (en el dashboard) */
+body > header .config { color: var(--dim); }
+body > header .config:hover { color: var(--fg); text-decoration: none; }
+
 #modo[hidden] { display: none; }
 #volver { display: none; }
 
@@ -199,7 +224,9 @@ body.angosto {
   & #donde { justify-content: center; }
 }
 
+/* en un celular, viendo un hilo, ese lugar es para volver a la lista */
 body.angosto.en-detalle #volver { display: inline; }
+body.angosto.en-detalle .logo { display: none; }
 
 body.angosto.en-lista #marcos,
 body.angosto.en-detalle #barra { display: none; }
@@ -353,13 +380,11 @@ body.angosto.en-detalle #barra { display: none; }
   }
 }
 
-/* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios, la barra de arriba (vistas/dia.ts,
-   vistas/hoy.ts, vistas/dashboard.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
+/* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios (vistas/dashboard/:
+   dia.ts, panel.ts, vista.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
    el dashboard (`.v-dia`), que es un contenedor de su tamaño: «lo que queda del panel» se mide en cqh. */
 
 @scope (.v-dia) {
-  /* el relleno va en #dia y no aquí: la barra de arriba (.fijo, sticky) se pegaría bajo el relleno del que se
-     desplaza */
   :scope { container-type: size; }
   /* el dashboard se armó con las medidas de siempre del navegador (en su marco, sin el border-box de la página) */
   * { box-sizing: content-box; }
@@ -446,17 +471,7 @@ body.angosto.en-detalle #barra { display: none; }
      ocupa exactamente dos celdas y la grilla no se corre. */
   kbd { padding: 0 .5ch; color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent);
         outline: 1px solid var(--linea); outline-offset: -1px; box-shadow: inset 0 -2px 0 var(--linea); }
-  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 2ch; }
-  .top .marca-t { display: flex; align-items: baseline; gap: 0 2ch; flex-wrap: wrap; }
-  .logo { font-weight: bold; color: transparent;
-          background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
-          background-size: 480px 100%; -webkit-background-clip: text; background-clip: text; animation: flujo 9s linear infinite; }
-  .fecha { color: var(--fg); } .reloj { color: var(--amarillo); } .sem { color: var(--dim); }
-  .regla { height: 2px; margin: 0;
-           background: linear-gradient(90deg, var(--azul), var(--violeta), var(--rojo), var(--amarillo), var(--verde), var(--cian), var(--azul));
-           background-size: 480px 100%; animation: flujo 9s linear infinite; }
 
-  @keyframes flujo { from { background-position: 0 0; } to { background-position: 480px 0; } }
 
   .bloque { margin: 1lh 0 0; }
   h2.sec { display: flex; align-items: baseline; gap: 1ch; margin: 0; text-transform: uppercase; color: var(--c); font-weight: bold; }
@@ -563,18 +578,6 @@ body.angosto.en-detalle #barra { display: none; }
   .tarea .destino { color: var(--magenta); overflow: hidden; text-overflow: ellipsis; text-align: left; }
   #tareas-mas { color: var(--c); padding: 0 1ch; }
 
-  /* la barra de arriba: fija, igual en todas las pestañas */
-  .fijo { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 1lh 0 0; margin-top: -1lh; }
-  .top .recargar { color: var(--dim); } .top .recargar:hover { color: var(--fg); text-decoration: none; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 0; margin-top: 1lh; }
-  .tab { padding: 0 1ch; color: var(--dim); white-space: nowrap; }
-  .tab:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
-  .tab.activa { color: var(--bg); background: var(--t, var(--azul)); font-weight: bold; }
-  .tab.activa kbd { color: var(--bg); background: transparent; outline-color: var(--bg); box-shadow: inset 0 -2px 0 var(--bg); }
-  .tab[data-accion="dia"] { --t: var(--amarillo); } .tab[data-accion="proyectos"] { --t: var(--cian); }
-  .tab[data-accion="correo"] { --t: var(--magenta); } .tab[data-accion="seccion"] { --t: var(--violeta); }
-  .tab[data-accion="config"] { --t: var(--verde); }
-  .fijo::after { content: ""; display: block; height: 1lh; }
   .subcab { display: flex; gap: 0 2ch; align-items: baseline; flex-wrap: wrap; margin: 0 0 1lh; --c: var(--violeta); }
   .subcab b { color: var(--fg); } .subcab .der { display: flex; gap: 0 3ch; margin-left: auto; }
 
@@ -587,8 +590,6 @@ body.angosto.en-detalle #barra { display: none; }
   .atajo.pista:hover, .atajo.pista:hover kbd { color: var(--dim); outline-color: var(--linea); box-shadow: inset 0 -2px 0 var(--linea); }
   .sec .acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0 3ch; text-transform: none; font-weight: normal; }
   .sec .leyenda { color: var(--dim); }
-  .generales { display: flex; flex-wrap: wrap; gap: 0 3ch; --c: var(--cian); }
-  .top .atajo { color: var(--dim); } .top .atajo:hover { color: var(--c, var(--azul)); }
 
   /* un bloque del día (el correo): marca · hora · de · qué */
   .cr { display: grid; grid-template-columns: 1ch 6ch 20ch minmax(0, 1fr); gap: 1ch; align-items: baseline; padding: 0 1ch;
@@ -621,7 +622,7 @@ body.angosto.en-detalle #barra { display: none; }
     .sec .acciones .pista { display: none; }  /* abajo solo va lo de la próxima: el resto sería un renglón vacío */
   }
 
-  @media (prefers-reduced-motion: reduce) { .logo, .regla, .punto, .hl .at.espera { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .punto, .hl .at.espera { animation: none; } }
   #revisar #tareas-t .tarea, #revisar .tareas-cab, .tareas-sueltas .tarea { grid-template-columns: 6ch 2ch 1ch 18ch 14ch minmax(0, 1fr) auto; }
   /* las acciones a un clic, antes del ⋯: ✓ hecha, ◉ compartir, ▶ a un hilo */
   #revisar .tarea .meta, .tareas-sueltas .tarea .meta { grid-template-columns: 5ch 1ch 7ch 1ch; }
@@ -678,7 +679,7 @@ body.angosto.en-detalle #barra { display: none; }
   .proy.primera { background: var(--hover); }
 }
 
-/* El plan del día y el calendario (vistas/plan.ts). scripts/navegador.mjs
+/* El plan del día y el calendario (vistas/dashboard/plan.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {
@@ -721,7 +722,7 @@ body.angosto.en-detalle #barra { display: none; }
   .cal-escribir a { align-self: flex-end; }
 }
 
-/* Los proyectos en dos columnas: la lista y el detalle (vistas/proyectos.ts). scripts/navegador.mjs
+/* Los proyectos en dos columnas: la lista y el detalle (vistas/dashboard/proyectos.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {
@@ -764,7 +765,7 @@ body.angosto.en-detalle #barra { display: none; }
   .proy-readme ul, .proy-readme ol { padding-left: 3ch; margin: .2lh 0; }
 }
 
-/* «ahora»: el bloque del momento (vistas/ahora.ts). scripts/navegador.mjs
+/* «ahora»: el bloque del momento (vistas/dashboard/ahora.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {
@@ -784,6 +785,73 @@ body.angosto.en-detalle #barra { display: none; }
   #dia h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
   .ahora-doc { max-height: 22lh; overflow-y: auto; }
   .ahora-estado { border-top: none; }
+}
+
+/* La configuración (vistas/dashboard/config/): a la izquierda un menú vertical, como la barra de hilos; a la
+   derecha la sección elegida, con su título. scripts/navegador.mjs la junta en src/telar/web/marco.css, con @scope
+   en el dashboard (`.v-dia`). */
+
+@scope (.v-dia) {
+  .config {
+    display: grid;
+    grid-template-columns: 18ch minmax(0, 1fr);
+    gap: 0 3ch;
+    align-items: start;
+  }
+
+  .config-menu {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    padding-right: 1ch;
+    border-right: var(--borde);
+  }
+
+  .config-titulo {
+    margin-bottom: var(--e-1);
+    padding: 0 var(--h-1);
+    color: var(--amarillo);
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .config-op {
+    padding: 0 var(--h-1);
+    color: var(--fg);
+    white-space: nowrap;
+
+    &:hover { background: var(--hover); text-decoration: none; }
+    &.activa { background: var(--sel); }
+  }
+
+  .config-cuerpo { min-width: 0; }
+
+  .config-cab {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2ch;
+    align-items: baseline;
+    margin-bottom: var(--e-2);
+
+    & b { color: var(--amarillo); text-transform: uppercase; }
+  }
+
+  /* angosto (un celular): el menú arriba, en una fila */
+  @container (max-width: 620px) {
+    .config { grid-template-columns: 1fr; }
+
+    .config-menu {
+      position: static;
+      flex-flow: row wrap;
+      margin-bottom: var(--e-2);
+      padding: 0 0 var(--e-1);
+      border-right: 0;
+      border-bottom: var(--borde);
+    }
+
+    .config-titulo { width: 100%; }
+  }
 }
 
 /* La carpeta de un hilo y su documento (web/carpeta.ts): los archivos arriba, como una lista corta, y el

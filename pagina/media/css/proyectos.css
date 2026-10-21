@@ -1,4 +1,4 @@
-/* Los proyectos en dos columnas: la lista y el detalle (vistas/proyectos.ts). scripts/navegador.mjs
+/* Los proyectos en dos columnas: la lista y el detalle (vistas/dashboard/proyectos.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {

@@ -1,10 +1,10 @@
 // Las acciones sobre una tarea —llevarla a su hilo, marcarla hecha, reagendarla, asignarla,
 // la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz va a la página (web/ui.ts).
 
-import * as ui from '../web/ui';
-import type { Opcion } from '../web/ui';
-import * as cli from '../cli';
-import { modelo } from '../modelo';
+import * as ui from '../../web/ui';
+import type { Opcion } from '../../web/ui';
+import * as cli from '../../cli';
+import { modelo } from '../../modelo';
 import { olvidarDia } from './dia';
 
 /** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). */

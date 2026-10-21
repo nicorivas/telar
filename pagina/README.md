@@ -19,7 +19,8 @@ npm run lint:css
 ```
 
 - `src/navegador/` — la entrada de la página (`app.ts`) y el eco de la terminal.
-- `src/vistas/` — la barra de hilos (`hilos.ts`) y el dashboard (`hoy.ts`, que pinta en `dashboard.ts`).
+- `src/vistas/` — la barra de hilos (`hilos.ts`) y el dashboard (`dashboard/`: `panel.ts` decide qué mostrar y lo
+  pinta en `vista.ts`; cada pantalla, en su módulo).
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
 - `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`.
 - `scripts/navegador.mjs` — el empaquetado.

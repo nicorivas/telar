@@ -1,16 +1,16 @@
-// El dashboard en la página: lo que pasa en el navegador con lo que dibuja hoy.ts. Filtra y ordena las listas
+// El dashboard en la página: lo que pasa en el navegador con lo que dibuja panel.ts. Filtra y ordena las listas
 // (tareas, proyectos), recuerda lo elegido (modo, búsqueda, orden), atiende los clics y las teclas, y le avisa a
-// PanelHoy (`enviar`) lo que tiene que hacer él: abrir una tarea, cambiar de pestaña, guardar un formulario.
+// Dashboard (`enviar`, panel.ts) lo que tiene que hacer él: abrir una tarea, cambiar de pestaña, guardar un formulario.
 // Todo queda dentro de su elemento (`.v-dia`); sus estilos, en media/css/dia.css, plan.css, proyectos.css y
 // ahora.css (con @scope, en `.v-dia`).
 //
 // Las teclas: el dashboard comparte la página con la barra y las vistas de los hilos, así que sus atajos solo
 // valen mientras se ve, y nunca mientras se escribe en un campo de afuera (el buscador de la barra, la terminal).
 
-/** Lo que el dashboard le pide a PanelHoy (`PanelHoy.mensaje`). */
+/** Lo que la vista le pide al Dashboard (`Dashboard.mensaje`, panel.ts). */
 export interface MensajeDia { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string }
 
-/** El dashboard ya montado: PanelHoy le manda lo que hay que dibujar. */
+/** La vista ya montada: el Dashboard le manda lo que hay que dibujar. */
 export interface VistaDia {
     /** la pantalla entera (lo que va dentro de `#dia`) */
     pintar(html: string): void;
@@ -218,7 +218,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         $('ver-cerrados')?.classList.toggle('activo', !!estado.pc);
         for (const b of todos('[data-pf]')) b.classList.toggle('activo', ((estado.pf || {})[b.dataset.pf ?? ''] || '') === b.dataset.pv);
     }
-    // elegir un proyecto: se marca al tiro y se pide su detalle (la derecha la cambia PanelHoy)
+    // elegir un proyecto: se marca al tiro y se pide su detalle (la derecha la cambia el Dashboard)
     const elegirProy = (f: HTMLElement | undefined) => {
         if (!f) return;
         for (const x of todos('.proy.sel')) x.classList.remove('sel');
@@ -254,7 +254,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
     raiz.addEventListener('mouseleave', esconderGlobo);
     raiz.addEventListener('scroll', esconderGlobo, true);
 
-    // un lienzo que pide guardar su memoria: solo se acepta de un iframe de lienzo de este dashboard, y PanelHoy
+    // un lienzo que pide guardar su memoria: solo se acepta de un iframe de lienzo de este dashboard, y el Dashboard
     // decide el archivo (el que declaró la página), nunca el lienzo
     window.addEventListener('message', e => {
         const d = e.data as { lienzo?: string; llave?: unknown; datos?: unknown } | null;
@@ -342,7 +342,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         // el ⋯ de una fila: la elige y abre el menú de acciones (lo manda el manejador general)
         if (fp && t.closest('.menu-fila')) elegirProy(fp);
         else if (fp) { e.preventDefault(); elegirProy(fp); return; }
-        // un enlace del README: lo abre PanelHoy (un archivo del repositorio o una pestaña)
+        // un enlace del README: lo abre el Dashboard (un archivo del repositorio o una pestaña)
         const ln = t.closest<HTMLAnchorElement>('.proy-readme a[href]');
         if (ln) {
             e.preventDefault();

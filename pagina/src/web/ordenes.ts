@@ -7,12 +7,12 @@ import type { Opcion } from './ui';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { avisar } from './interfaz';
-import { elegirEntrada } from '../vistas/equipo';
+import { elegirEntrada } from '../vistas/dashboard/equipo';
 import type { BarraHilos } from '../vistas/hilos';
-import type { PanelHoy } from '../vistas/hoy';
+import type { Dashboard } from '../vistas/dashboard/panel';
 
 export interface Casa {
-    hoy: PanelHoy;
+    hoy: Dashboard;
     barra: BarraHilos;
     /** a la derecha: «dashboard», un hilo, «doc:<hilo>» o «rem:<máquina>:<hilo>» */
     mostrar(que: string): void;
@@ -116,6 +116,8 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) c.mostrar(`rem:${maq}:${resto.join('|')}`); },
         // en la web, ir a un hilo es mostrar su terminal a la derecha (no mover la ventana de tmux de nadie)
         'telar.ir': a => c.mostrar(hiloDe(a)),
+        // una pestaña del dashboard (el grupo DASHBOARD de la barra, el ⚙ de la cabecera)
+        'telar.pestana': (accion: string, valor = '') => c.hoy.irAPestana(accion, valor),
         'telar.retomar': async a => { if (await sobreHilo(a, 'retomar')) c.mostrar(hiloDe(a)); },
         'telar.archivar': a => sobreHilo(a, 'archivar', ['--cerrar']),
         'telar.cerrar': a => sobreHilo(a, 'cerrar'),
