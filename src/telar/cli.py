@@ -22,7 +22,7 @@ from telar import __version__, salida
 from telar.config import Config, ErrorDeConfig
 from telar.config import cargar as cargar_config
 from telar.perfil import ErrorDePerfil, Perfil
-from telar.perfil import cargar as cargar_perfil
+from telar.perfil import cargar_todos as cargar_perfiles
 
 __all__ = ["Contexto", "ORDENES", "main"]
 
@@ -111,7 +111,7 @@ class Contexto:
     @property
     def perfil(self) -> Perfil:
         if self._perfil is None:
-            self._perfil = cargar_perfil(self.config.raiz, ruta=self.config.perfil)
+            self._perfil = cargar_perfiles(self.config)
         return self._perfil
 
     @property

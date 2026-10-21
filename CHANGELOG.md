@@ -6,6 +6,14 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- Several working repositories (`[repos.<name>] ruta = "…"`, optional `perfil`). Each brings its own
+  `telar-perfil.yaml`, and telar merges them into one (`perfil.cargar_todos`): each repo's archetypes become
+  relative to the root and carry which repo they come from; when two profiles match the same folder, the
+  deepest repo wins, so a team repo inside a personal one describes its own folders. A repo without a profile
+  adds nothing; one outside `raiz` is not merged yet. Without `[repos]`, only `raiz` counts, as before.
+
 ### Changed
 
 - The dashboard's tabs are a group of the thread bar (DASHBOARD, first and open, a row per tab with its key), and

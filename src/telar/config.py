@@ -136,7 +136,7 @@ class Agente:
     sordina: bool = True
 
 
-#: teclas que el dashboard ya usa (pagina/src/vistas/hoy.ts, teclasDePestanas): n (ahora), v (tareas),
+#: teclas que el dashboard ya usa (pagina/src/vistas/dashboard/panel.ts, teclasDePestanas): n (ahora), v (tareas),
 #: p (proyectos), r (recargar), o (periódicos), d (el plan), a (la agenda), c (el correo), / (buscar). Un
 #: atajo con una de ellas no es un error: la pestaña le gana y el atajo queda con un clic. `telar doctor`
 #: lo avisa. Las de las pestañas de bloques y proveedores se suman en cada configuración.
@@ -318,6 +318,21 @@ TRANSPORTES = ("mosh", "ssh")
 
 
 @dataclass(frozen=True, slots=True)
+class Repo:
+    """Un repositorio de trabajo (`[repos.<nombre>]`): su carpeta y, si no está en ella, su perfil.
+
+    Los hilos trabajan en carpetas de uno u otro; cada repo trae su perfil (qué es una unidad de trabajo
+    ahí), y telar los junta (telar.perfil.cargar_todos). Puede estar dentro de otro, como un repo del equipo
+    dentro del repo de vida: entonces sus carpetas las describe su propio perfil."""
+
+    nombre: str
+    #: la carpeta del repositorio, absoluta (con `~` expandida)
+    ruta: Path
+    #: el archivo de su perfil, si no es `telar-perfil.yaml` en su carpeta
+    perfil: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Remoto:
     """Una máquina donde pueden vivir hilos (`[remotos.<nombre>]`).
 
@@ -421,6 +436,8 @@ class Config:
     dashboard_ocultas: tuple[str, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
     remotos: tuple[Remoto, ...] = ()
+    #: los repositorios de trabajo, cada uno con su perfil (`[repos.<nombre>]`). Sin ninguno, solo `raiz`.
+    repos: tuple[Repo, ...] = ()
     #: lo que queda de `[enlace]` (la puerta se retiró): `entrada` y `no_leer`
     puerta: Puerta = field(default_factory=Puerta)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
@@ -767,6 +784,23 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
                             memoria=textos["memoria"]))
         cambios["apps"] = tuple(apps)
 
+    if "repos" in datos:
+        tabla = _tabla(datos["repos"], "repos")
+        repos_ = []
+        for nombre, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"repos.{nombre}")
+            sobra = set(cuerpo) - {"ruta", "perfil"}
+            if sobra:
+                raise ErrorDeConfig(f"repos.{nombre}.{sorted(sobra)[0]}: no existe")
+            ruta = cuerpo.get("ruta", "")
+            if not isinstance(ruta, str) or not ruta.strip():
+                raise ErrorDeConfig(f"repos.{nombre}.ruta: se esperaba la carpeta del repositorio, llegó {ruta!r}")
+            perfil_ = cuerpo.get("perfil", "")
+            if not isinstance(perfil_, str):
+                raise ErrorDeConfig(f"repos.{nombre}.perfil: se esperaba la ruta de un perfil, llegó {perfil_!r}")
+            repos_.append(Repo(nombre=nombre, ruta=Path(os.path.expanduser(ruta.strip())), perfil=perfil_.strip()))
+        cambios["repos"] = tuple(repos_)
+
     if "remotos" in datos:
         tabla = _tabla(datos["remotos"], "remotos")
         remotos = []
@@ -972,7 +1006,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
-        "tipos",
+        "tipos", "repos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

@@ -395,6 +395,24 @@ lectura del bloque. Con `enlace`, el título del ítem abierto lleva al original
 (`reusar`, que pedía abrirlo en la pestaña de Chrome ya abierta, se acepta pero ya no hace nada: lo hacía
 la extensión de VS Code.)
 
+## `[repos]` — los repositorios de trabajo
+
+```toml
+[repos.vida]
+ruta = "~/Life"
+[repos.brinca]
+ruta = "~/Life/brinca"            # puede estar dentro de otro
+[repos.telar]
+ruta = "~/Life/nico/proyectos/telar"
+perfil = "~/notas/telar-perfil.yaml"   # opcional: si su perfil no está en su carpeta
+```
+
+Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
+carpeta): qué es ahí una unidad de trabajo. telar los junta en uno (`docs/perfil.md`, «Varios repositorios»).
+Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo del equipo dentro del
+de vida describe lo suyo. Un repo sin perfil no aporta nada, y uno fuera de `raiz` todavía no se suma. Sin
+`[repos]`, solo cuenta `raiz`, como siempre.
+
 ## `[remotos]` — máquinas donde pueden vivir hilos
 
 ```toml

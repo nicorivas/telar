@@ -161,6 +161,14 @@ pide explícita: `["sh", "-c", "…"]`, a la vista.
 Marcadores que telar reemplaza en cada palabra: `{ruta}` (la carpeta del hilo),
 `{hilo}` (su nombre), `{documento}` (el archivo parseado).
 
+## Varios repositorios
+
+Con `[repos]` en la configuración, cada repositorio trae su propio perfil, con rutas relativas a sí mismo, y
+telar los junta: los arquetipos de cada uno pasan a ser relativos a la raíz y llevan de qué repo vienen. Si
+dos perfiles reconocen la misma carpeta, gana el del repo más profundo. Así un repositorio compartido con un
+equipo describe sus carpetas para todos, y el perfil personal de quien lo tiene dentro de su repo de vida no
+necesita repetirlas. Las acciones se suman; con el mismo nombre, gana la del repo más profundo.
+
 ## Sin perfil: la convención mínima
 
 Un repositorio sin `telar-perfil.yaml` no queda fuera: rige el **perfil de casa**, que

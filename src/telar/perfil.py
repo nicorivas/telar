@@ -110,6 +110,8 @@ class Arquetipo:
     #: cómo se llama una unidad de este tipo en pantalla: `{titulo}`, `{campo:Clave}`
     #: (una fila de la tabla de campos o del frontmatter). Vacía: el título del documento.
     etiqueta: str = ""
+    #: de qué repositorio de `[repos]` viene (cargar_todos); "" es el de la raíz
+    repo: str = ""
 
     @property
     def por_carpeta(self) -> bool:
@@ -416,3 +418,55 @@ def cargar(raiz: Path, *, ruta: Path | None = None) -> Perfil:
         raise ErrorDePerfil(f"{destino}: no se pudo leer: {e}") from e
 
     return desde_dict(datos, origen=destino)
+
+
+def cargar_todos(config) -> Perfil:
+    """El perfil de la raíz junto con los de los repositorios de `[repos]` que están dentro de ella.
+
+    Cada repo describe sus carpetas con su perfil, en rutas relativas a sí mismo; aquí pasan a ser relativas
+    a la raíz. Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo
+    del equipo dentro del de vida describe lo suyo, aunque el de vida también lo nombre (el índice se queda
+    con el primer arquetipo que la reconoce, y los más profundos van primero). Un repo sin perfil no aporta
+    nada: su perfil mínimo reconocería cualquier carpeta. Un repo fuera de la raíz todavía no se suma.
+    """
+    from dataclasses import replace
+
+    raiz = Path(config.raiz).expanduser()
+    base = cargar(raiz, ruta=getattr(config, "perfil", None))
+    partes: list[tuple[str, str, Perfil]] = []
+    for repo in getattr(config, "repos", ()) or ():
+        try:
+            relativa = Path(repo.ruta).expanduser().resolve().relative_to(raiz.resolve()).as_posix()
+        except (ValueError, OSError):
+            continue  # fuera de la raíz: todavía no (telar doctor lo dice)
+        if relativa in ("", "."):
+            continue  # es la raíz misma: su perfil es el de la base
+        perfil = cargar(Path(repo.ruta), ruta=Path(repo.perfil).expanduser() if repo.perfil else None)
+        if not perfil.minimo:
+            partes.append((repo.nombre, relativa, perfil))
+    if not partes:
+        return base
+    partes.sort(key=lambda x: x[1].count("/"), reverse=True)
+    arquetipos = [replace(a, ruta=f"{rel}/{a.ruta}", repo=nombre) for nombre, rel, p in partes for a in p.arquetipos]
+    acciones, vistas = [], set()
+    for a in [x for _, _, p in partes for x in p.acciones] + list(base.acciones):
+        if a.nombre not in vistas:
+            vistas.add(a.nombre)
+            acciones.append(a)
+    return replace(base, arquetipos=(*arquetipos, *base.arquetipos), acciones=tuple(acciones))
+
+
+def repo_de(config, ruta: str | Path) -> str:
+    """De qué repositorio de `[repos]` es una carpeta (relativa a la raíz o absoluta): el más profundo que la
+    contiene. "" si de ninguno declarado (es de la raíz)."""
+    raiz = Path(config.raiz).expanduser()
+    camino = Path(ruta).expanduser()
+    camino = (camino if camino.is_absolute() else raiz / camino).resolve()
+    mejor, largo = "", -1
+    for repo in getattr(config, "repos", ()) or ():
+        base = Path(repo.ruta).expanduser().resolve()
+        if camino == base or base in camino.parents:
+            if len(base.parts) > largo:
+                mejor, largo = repo.nombre, len(base.parts)
+    return mejor
+
