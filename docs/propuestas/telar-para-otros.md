@@ -63,6 +63,18 @@ red).
 
 ## Funcionalidades que faltan para cualquiera
 
+- **Registrarse en el bus desde la CLI** (decidido el 20-oct-2026 como el camino, para cuando telar salga de
+  Brinca). La persona corre `telar instalar --unirse <servidor>`: su secreto se genera en su máquina y al
+  servidor viaja solo su hash; quien administra el bus aprueba (`telar bus pedidos`, `telar bus aprobar`, o
+  un aviso en el dashboard, quizás automático por dominio) y el bus suma la cuenta y se recarga solo. Quién
+  pide se sabe de dos maneras, que pueden convivir:
+  - **dentro de una red de Tailscale** (lo de hoy, y lo de Brinca): `tailscale whois` de la máquina que
+    pide; la red ya cifra y ya deja entrar solo a quien se invitó (compartirle el servidor);
+  - **con el bus en internet**, para quien solo quiere el bus y no la red: NATS con TLS (un dominio y un
+    certificado) y un código de invitación de un solo uso (`telar bus invitar <persona>`). Sin TLS no: hoy
+    las claves viajan en claro y las cifra Tailscale.
+  Lo que sigue pidiendo una red privada es ver la página o las terminales de una máquina detrás de un router,
+  pero eso es entre las máquinas de una misma persona.
 - **Otros asistentes, en serio.** Hoy todo supone Claude Code (sus hooks, su registro, ahora el mod). Hace
   falta una interfaz de adaptador por asistente —su estado, sus mensajes, su conversación— y que Claude Code
   sea un adaptador más. El registro de vistas de un hilo (`pagina/src/web/vistas-hilo.ts`) y los
