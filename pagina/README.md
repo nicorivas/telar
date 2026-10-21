@@ -25,5 +25,6 @@ npm run lint:css
   `equipo.ts`) tiene su estado, su HTML y sus acciones, y recibe del núcleo lo que dice `pantalla.ts`. Todo se
   pinta en `vista.ts`; la configuración (⚙) está en `config/`.
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
-- `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`.
+- `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`, y las piezas que
+  comparten (el recuadro con borde, la fila de volver) en `componentes.css`, sin `@scope`.
 - `scripts/navegador.mjs` — el empaquetado.

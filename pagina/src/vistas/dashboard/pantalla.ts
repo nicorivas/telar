@@ -57,6 +57,8 @@ export interface Tablero {
     bloquesEn(en: string): string[];
     /** los botones de los atajos de `[atajos]` que van en un bloque o una sección (`en = "<clave>"`) */
     atajosEn(en: string): string;
+    /** cómo se llama una pestaña («revisar» es «tareas»; la de un feed, sin su cuenta) */
+    nombrePestana(clave: string): string;
     /** las teclas de la pantalla que se ve: cada una las pone al pintarse */
     readonly teclas: Map<string, () => unknown>;
     /** el día leído (`telar hoy`), leerlo si todavía no está, y releerlo (`conRed`: consultando a los proveedores ya) */

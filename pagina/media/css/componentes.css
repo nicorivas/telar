@@ -1,0 +1,19 @@
+/* Las piezas que comparten las vistas, sin @scope: van en la capa base (scripts/navegador.mjs), así que una vista
+   las ajusta con sus propias reglas. Su HTML lo arma src/estilo.ts (`recuadro`, `volver`). */
+
+/* un recuadro: lo que va junto (la ficha de una tarea), dentro de un borde */
+.recuadro {
+  padding: var(--e-3) var(--h-2);
+  border: var(--borde);
+}
+
+/* arriba de un recuadro: cómo volver a donde se estaba («‹ tareas») y, a la derecha, cómo pasar a otro del
+   mismo tipo («← 1/46 →») */
+.volver {
+  display: flex;
+  gap: 0 var(--h-2);
+  align-items: baseline;
+  margin: 0 0 var(--e-2);
+
+  & .der { margin-left: auto; }
+}

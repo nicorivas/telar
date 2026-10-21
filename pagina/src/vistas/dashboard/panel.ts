@@ -91,7 +91,7 @@ export class Dashboard implements Tablero {
             dia: () => this.datos,
             actualizar: conRed => this.actualizar(conRed),
             // el nombre sin su cuenta («leer», no «leer 17»)
-            pestanas: () => this.todasLasPestanas().map(([clave, , valor, nombre]) => ({ clave, nombre: clave.startsWith('pestana:') ? valor : nombre })),
+            pestanas: () => this.todasLasPestanas().map(([clave]) => ({ clave, nombre: this.nombrePestana(clave) })),
             orden: () => ({ orden: this.dashOrden, ocultas: this.dashOcultas }),
             usarOrden: d => { this.dashOrden = d.orden; this.dashOcultas = d.ocultas; this.alPintar?.(); },
         },
@@ -297,6 +297,11 @@ export class Dashboard implements Tablero {
     async accion(accion: string, valor = ''): Promise<void> { await this.mensaje({ tipo: 'accion', accion, valor }); }
     bloqueAbierto(): string { return this.bloques.abierto(); }
     bloquesEn(en: string): string[] { return this.bloques.html(this.bloques.declarados.filter(b => b.en === en), true); }
+    /** El nombre de una pestaña sin su cuenta («leer», no «leer 17»). */
+    nombrePestana(clave: string): string {
+        const p = this.todasLasPestanas().find(x => x[0] === clave);
+        return !p ? clave : clave.startsWith('pestana:') ? p[2] : p[3];
+    }
     /** Los botones de los atajos que van en un bloque o una sección (`en = "<clave>"`). */
     atajosEn(en: string): string { return this.atajos.filter(a => a.en === en).map(a => this.botonAtajo(a)).join(''); }
     general(): { clave: string; nombre: string } | undefined { return this.agenteGeneral; }

@@ -5,7 +5,7 @@
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
-import { esc, limpiarMd, normalizar } from '../../estilo';
+import { esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
 import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
@@ -321,7 +321,7 @@ export class PantallaTareas implements Pantalla {
             void this.precargar();
             return;
         }
-        this.t.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(id)}</b></div><div class="fila dim">leyendo…</div></div>`]);
+        this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(id)}</b></div>`, '<div class="fila dim">leyendo…</div>']));
         const r = await cli.tarea(id, proveedor);
         if (r.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: r.datos, hora: Date.now() });
         if (this.t.pantalla !== 'tarea' || this.ficha?.id !== id) return;
@@ -529,8 +529,7 @@ export class PantallaTareas implements Pantalla {
         if (!f) return;
         const p = f.pagina;
         if (!p) {
-            this.t.pintar([`<div id="ficha-tarea"><div class="subcab"><b>${esc(f.id)}</b></div>`,
-                `<div class="fila falla">${esc(f.aviso ?? '')}</div></div>`]);
+            this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(f.id)}</b></div>`, `<div class="fila falla">${esc(f.aviso ?? '')}</div>`]));
             return;
         }
         const lista = this.propuestas();
@@ -550,11 +549,18 @@ export class PantallaTareas implements Pantalla {
         });
         // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
         const color = p.bloques.find(b => b.destacado)?.color;
-        this.t.pintar([`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
-            `<div class="subcab"><b>${esc(p.titulo)}</b><span class="der">${donde}</span></div>`,
+        this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(p.titulo)}</b></div>`,
             p.subtitulo ? `<div class="sub-ficha dim">${this.subtituloFicha(p)}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
-            ...this.t.paginas.html(p.bloques), '</div>']);
+            ...this.t.paginas.html(p.bloques)], color, donde));
+    }
+
+    /** La ficha en su marco: arriba, volver a la lista de donde se abrió (lo mismo que ⎋) y pasar a otra propuesta;
+     *  abajo, en un recuadro, todo lo de la tarea. Igual mientras se lee y si no se pudo leer. */
+    private marcoFicha(cuerpo: string[], color = '', donde = ''): string[] {
+        const origen = this.t.nombrePestana(this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1'));
+        return [`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
+            volver('volver-ficha', origen, donde, `volver a ${origen} (⎋)`), recuadro(cuerpo.join('\n')), '</div>'];
     }
 
     /** El subtítulo de la ficha, con la fecha como botón si el proveedor deja cambiarla (su acción `rol: fecha`): se

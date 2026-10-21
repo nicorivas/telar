@@ -16,6 +16,17 @@ export function esc(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Un recuadro (media/css/componentes.css): lo que va junto, dentro de un borde. */
+export function recuadro(contenido: string): string {
+    return `<section class="recuadro">${contenido}</section>`;
+}
+
+/** La fila de arriba de un recuadro: «‹ adónde», que corre `accion`, y a la derecha `der` (cómo pasar a otro). */
+export function volver(accion: string, adonde: string, der = '', ayuda = `volver a ${adonde}`): string {
+    return `<div class="volver"><a data-accion="${esc(accion)}" title="${esc(ayuda)}">‹ ${esc(adonde)}</a>`
+        + (der ? `<span class="der">${der}</span>` : '') + '</div>';
+}
+
 /** `5400` → `1h30`. Vacío si no hay nada que decir, igual que en la terminal. */
 export function duracion(segundos: number | undefined): string {
     const minutos = Math.floor((segundos ?? 0) / 60);

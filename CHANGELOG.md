@@ -22,6 +22,8 @@ extension shared the version number.
 - The dashboard's tabs are a group of the thread bar (DASHBOARD, first and open, a row per tab with its key), and
   the dashboard lost its own top bar (brand, date, shortcuts) and its row of tabs. «telar», with its moving
   colors, sits at the top left of the page; settings are the ⚙ at the top right, next to the version.
+- A task's card sits inside a bordered box, with «‹ tareas» (or the tab it was opened from) above it, next to
+  «← 1/39 →». The box and that row are shared pieces (`componentes.css`), for other views to use.
 - In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
   does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,
