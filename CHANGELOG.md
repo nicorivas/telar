@@ -12,9 +12,10 @@ extension shared the version number.
   that machine's node reads the file over the bus with its own limits. Files under the `[repos]` folders can be
   read too, not only those under the root.
 - File paths an agent writes are links to the document viewer, in the terminal (click), the reading view and the
-  conversation, on the thread's machine: absolute, `~/…` or relative to the thread's folder, with `:line` ignored.
-  The viewer opens `machine:path` (a file alone, without its folder), and a `README.md` in an answer no longer
-  becomes a link to `http://README.md`.
+  conversation, on the thread's machine: absolute, `~/…` or relative, with `:line` ignored. A relative path is
+  from where the agent started, which `[agente] carpeta` may make the thread's folder or the root: the page tries
+  the thread's folder first and then the root, and opens the one that exists. The viewer opens `machine:path` (a
+  file alone, without its folder), and a `README.md` in an answer no longer becomes a link to `http://README.md`.
 - Several working repositories (`[repos.<name>] ruta = "…"`, optional `perfil`). Each brings its own
   `telar-perfil.yaml`, and telar merges them into one (`perfil.cargar_todos`): each repo's archetypes become
   relative to the root and carry which repo they come from; when two profiles match the same folder, the

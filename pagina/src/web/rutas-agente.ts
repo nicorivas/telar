@@ -1,8 +1,9 @@
 // Las rutas de archivo que escribe el agente de un hilo (en su terminal, su respuesta, su conversación), como
 // enlaces al visor de documentos (`arch:`, web/carpeta.ts), en la máquina del hilo. Una ruta absoluta o con `~`
-// se abre tal cual; una relativa es de la carpeta del hilo, que es desde donde la escribió su agente. La de un
-// hilo de otra máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus
-// (`/api/archivos?ruta=…`): con su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz.
+// se abre tal cual; una relativa es de donde arrancó su agente, que según `[agente] carpeta` es la carpeta del hilo
+// o la raíz (un agente residente, la suya). Como la página no lo sabe, prueba las dos. La de un hilo de otra
+// máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
+// su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz.
 
 import type { IDisposable, ILink, Terminal } from '@xterm/xterm';
 
@@ -33,12 +34,25 @@ async function lugarDe({ hilo, maquina }: RutasVista): Promise<{ maquina: string
     return { maquina: alla, carpeta: x?.relativa ?? '' };
 }
 
-/** Abre en el visor una ruta que escribió el agente de un hilo. */
+/** Abre en el visor una ruta que escribió el agente de un hilo. Una relativa, desde la carpeta del hilo si ahí
+ *  existe y si no desde la raíz: en ese orden porque un nombre corto (`README.md`) existe también en la raíz, y una
+ *  ruta larga desde la raíz casi nunca existe además bajo la carpeta del hilo. Si no está en ninguna, la del hilo,
+ *  para que el visor diga que no está. */
 export async function abrirRuta(ruta: string, vista: RutasVista): Promise<void> {
     const limpia = ruta.replace(/(?::\d+){1,2}$/, '');
     const { maquina, carpeta } = await lugarDe(vista);
-    const junta = limpia.startsWith('/') || limpia.startsWith('~') ? limpia : rutas.unir(carpeta, limpia);
-    await ui.abrirArchivo(maquina ? `${maquina}:${junta}` : junta);
+    const en = (r: string): string => (maquina ? `${maquina}:${r}` : r);
+    if (limpia.startsWith('/') || limpia.startsWith('~')) { await ui.abrirArchivo(en(limpia)); return; }
+    const candidatas = [...new Set([rutas.unir(carpeta, limpia), limpia])].map(en);
+    let elegida = candidatas[0];
+    for (const c of candidatas) if (await existe(c)) { elegida = c; break; }
+    await ui.abrirArchivo(elegida);
+}
+
+/** Si el backend encuentra el archivo (aquí, o en la máquina de «máquina:ruta»). */
+async function existe(ruta: string): Promise<boolean> {
+    try { return (await fetch(`/api/archivos?ruta=${encodeURIComponent(ruta)}`, { cache: 'no-store' })).ok; }
+    catch { return false; }
 }
 
 /** Las rutas de un texto ya dibujado (`raiz`), como enlaces `a.ruta[data-ruta]`: en los nodos de texto que no
