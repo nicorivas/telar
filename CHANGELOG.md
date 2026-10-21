@@ -6,6 +6,12 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Removed
+
+- zellij as a multiplexer. What telar is built on (the terminal in the browser, grouped views, threads on another
+  machine, the single session) only works with tmux, so zellij gave a half telar. A config with `multiplexor =
+  "zellij"` now fails with a clear message: use tmux.
+
 ### Added
 
 - Mail between people over the bus (`telar.entre_personas`). Each bus account exports `correo.<person>`, a

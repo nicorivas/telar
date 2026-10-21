@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 #: Multiplexores que telar sabe nombrar. Lo que cada uno puede hacer, en `telar.mux`.
-MULTIPLEXORES = ("tmux", "zellij")
+MULTIPLEXORES = ("tmux",)
 
 
 class ErrorDeConfig(Exception):
@@ -358,7 +358,7 @@ class Puerta:
 class Config:
     """La configuración resuelta. Inmutable; para variarla, `dataclasses.replace`."""
 
-    #: "tmux" o "zellij".
+    #: "tmux", el único (zellij se dejó de soportar en la 0.3).
     multiplexor: str = "tmux"
     #: nombre de la sesión del multiplexor que telar teje.
     sesion: str = "telar"
@@ -529,6 +529,9 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
 
     if "multiplexor" in datos:
         mux = datos["multiplexor"]
+        if mux == "zellij":
+            raise ErrorDeConfig("multiplexor: zellij se dejó de soportar en la 0.3 (lo central de telar es de tmux): "
+                                "usa multiplexor = \"tmux\", o borra la línea")
         if mux not in MULTIPLEXORES:
             conocidos = ", ".join(MULTIPLEXORES)
             raise ErrorDeConfig(f"multiplexor: {mux!r} no es uno de: {conocidos}")

@@ -1,4 +1,4 @@
-"""El multiplexor de terminal: la única parte de telar que habla con tmux o zellij.
+"""El multiplexor de terminal: la única parte de telar que habla con tmux.
 
 Todo lo demás trabaja con `telar.modelo.Hilo` y no sabe qué programa hay debajo.
 Un multiplexor nuevo se agrega escribiendo un módulo aquí que cumpla `Multiplexor`
@@ -23,7 +23,6 @@ __all__ = ["Multiplexor", "ErrorDeMux", "IMPLEMENTACIONES", "obtener"]
 #: multiplexor → módulo de esta carpeta que lo implementa.
 IMPLEMENTACIONES: dict[str, str] = {
     "tmux": "telar.mux.tmux",
-    "zellij": "telar.mux.zellij",
 }
 
 
@@ -40,7 +39,7 @@ class Multiplexor(Protocol):
     que crea algo sin que se lo pidan dos veces.
     """
 
-    #: el nombre con que se declara en la configuración ("tmux", "zellij").
+    #: el nombre con que se declara en la configuración ("tmux").
     nombre: str
 
     def viva(self) -> bool:

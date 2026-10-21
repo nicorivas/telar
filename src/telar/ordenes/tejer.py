@@ -24,7 +24,7 @@ TOPE = 8
 
 
 #: Cómo llama el multiplexor a un tab que nadie nombró. Ninguno dice nada del trabajo.
-ANONIMOS = ("zsh", "bash", "fish", "sh", "tmux", "zellij")
+ANONIMOS = ("zsh", "bash", "fish", "sh", "tmux")
 
 
 def _bautizar(tel, hilos, nombre: str) -> None:

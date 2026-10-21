@@ -58,7 +58,7 @@ En este orden, y **nunca por el foco**:
 
 1. `--hilo`, si se dijo;
 2. `$TELAR_HILO`, que el multiplexor exportó al abrir el tab y el agente heredó;
-3. al **abrir**, el panel donde corre el agente (`$TELAR_PANEL`, o `$ZELLIJ_PANE_ID` /
+3. al **abrir**, el panel donde corre el agente (`$TELAR_PANEL`, o
    `$TMUX_PANE`): una conversación que se retoma en otro tab tiene que mudarse con él,
    y el panel es lo único que lo dice;
 4. la conversación ya anotada, que para todo lo demás es exacta y no cuesta nada;

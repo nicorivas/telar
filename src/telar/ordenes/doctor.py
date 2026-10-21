@@ -358,8 +358,8 @@ def _partes(v: str) -> tuple[int, ...]:
 def _version_mux(ctx) -> list[dict]:
     """La versión instalada contra la que el backend declara necesitar.
 
-    telar habla por acciones que no existían en cualquier versión (`current-tab-info` en
-    zellij, `#{pane_current_command}` en tmux). Cuando falta una, el error que sale es
+    telar habla por acciones que no existían en cualquier versión (`#{pane_current_command}`,
+    `-t` con `=nombre:`). Cuando falta una, el error que sale es
     del programa y no dice que el problema es la edad.
     """
     try:

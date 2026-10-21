@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
@@ -79,13 +80,10 @@ class Traduccion(unittest.TestCase):
         self.assertIsNone(base.atencion_de(Evento.CIERRA, Atencion.NINGUNA))
 
     def test_el_panel_sale_del_entorno_de_cada_multiplexor(self):
-        self.assertEqual(base.panel_del_entorno("zellij", {"ZELLIJ_PANE_ID": "7"}), "terminal_7")
         self.assertEqual(base.panel_del_entorno("tmux", {"TMUX_PANE": "%3"}), "%3")
-        self.assertEqual(base.panel_del_entorno("zellij", {}), "")
+        self.assertEqual(base.panel_del_entorno("tmux", {}), "")
         # lo explícito manda sobre lo que exporte el multiplexor
-        self.assertEqual(
-            base.panel_del_entorno("zellij", {"ZELLIJ_PANE_ID": "7", "TELAR_PANEL": "p9"}), "p9"
-        )
+        self.assertEqual(base.panel_del_entorno("tmux", {"TMUX_PANE": "%3", "TELAR_PANEL": "p9"}), "p9")
 
 
 # ── aplicar: lo que queda escrito ───────────────────────────────────────────────
@@ -183,9 +181,9 @@ class MuxFalso:
     def hilos(self):
         return [Hilo(id="3", nombre="faro"), Hilo(id="4", nombre="molino", activo=True)]
 
-    def paneles(self):
+    def panes(self):
         self.preguntas += 1
-        return [{"id": 7, "tab_id": 3, "tab_name": "faro"}]
+        return [SimpleNamespace(id="%7", tab="3")]
 
     def activo(self):
         return Hilo(id="4", nombre="molino", activo=True)
@@ -211,7 +209,7 @@ class Resolver(ConEstado):
     def test_al_abrir_gana_el_panel_aunque_la_conversacion_estuviera_en_otro_tab(self):
         # una conversación que se retoma en otro tab se muda con él: eso lo dice el panel
         self.est.anotar_sesion("molino", "s1")
-        aviso = Aviso(evento=Evento.ABRE, sesion="s1", panel="terminal_7")
+        aviso = Aviso(evento=Evento.ABRE, sesion="s1", panel="%7")
         hilo = base.resolver_hilo(self.est, aviso, mux=MuxFalso(), entorno={})
         self.assertEqual(hilo, "faro")
 
@@ -221,15 +219,14 @@ class Resolver(ConEstado):
         aviso = Aviso(evento=Evento.EMPIEZA, sesion="s9")
         self.assertEqual(base.resolver_hilo(self.est, aviso, mux=mux, entorno={}), "")
 
-    def test_el_panel_de_un_zellij_se_reconoce_con_y_sin_prefijo(self):
-        self.assertEqual(base.hilo_del_panel(MuxFalso(), "terminal_7"), "faro")
-        self.assertEqual(base.hilo_del_panel(MuxFalso(), "7"), "faro")
-        self.assertEqual(base.hilo_del_panel(MuxFalso(), "terminal_9"), "")
+    def test_el_panel_lleva_a_su_tab(self):
+        self.assertEqual(base.hilo_del_panel(MuxFalso(), "%7"), "faro")
+        self.assertEqual(base.hilo_del_panel(MuxFalso(), "%9"), "")
 
     def test_un_multiplexor_que_revienta_no_tumba_el_gancho(self):
         class Roto:
             def hilos(self):
-                raise RuntimeError("zellij no está")
+                raise RuntimeError("tmux no está")
 
         self.assertEqual(base.hilo_del_panel(Roto(), "terminal_7"), "")
 

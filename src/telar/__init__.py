@@ -13,7 +13,7 @@ Los módulos, y qué le toca a cada uno:
   `telar.modelo`       los datos puros que los demás módulos se pasan. Sin E/S.
   `telar.estado`       lo que telar recuerda entre corridas. Derivado y desechable.
   `telar.lectura`      leer un documento como lo declara el perfil, y dar una ficha.
-  `telar.mux`          hablarle al multiplexor de terminal (tmux, zellij).
+  `telar.mux`          hablarle al multiplexor de terminal (tmux).
   `telar.proveedores`  fuentes externas opcionales, cada una declarada.
   `telar.agente`       reconocer y dirigirse al agente que corre en un hilo.
   `telar.salida`       que la codificación de la terminal no tumbe una orden.

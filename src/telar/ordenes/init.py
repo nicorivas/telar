@@ -32,7 +32,7 @@ PLANTILLA_CONFIG = """\
 # La configuración de telar en esta máquina. Esquema completo: docs/configuracion.md
 # Todo tiene valor por defecto: lo que sobre, se puede borrar.
 
-# Qué multiplexor de terminal hay debajo: "tmux" o "zellij".
+# Qué multiplexor de terminal hay debajo: "tmux", el único.
 multiplexor = "{multiplexor}"
 
 # El nombre de la sesión que telar teje. Una sesión, un telar.
@@ -271,16 +271,9 @@ def main(argv: list[str], ctx) -> int:
 
 
 def detectar_multiplexor() -> str:
-    """Qué multiplexor hay: primero el que nos está corriendo, después el que esté instalado."""
-    if os.environ.get("ZELLIJ_SESSION_NAME") or os.environ.get("ZELLIJ"):
-        return "zellij"
-    if os.environ.get("TMUX"):
+    """tmux, si corre o está instalado; "" si no."""
+    if os.environ.get("TMUX") or shutil.which("tmux"):
         return "tmux"
-    # con los dos instalados gana tmux: es la implementación de referencia, la que
-    # sabe mover paneles entre hilos y la única a la que se le puede apuntar un cliente
-    for nombre in ("tmux", *MULTIPLEXORES):
-        if shutil.which(nombre):
-            return nombre
     return ""
 
 

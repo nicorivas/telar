@@ -99,7 +99,7 @@ class Ficha:
 class Hilo:
     """Un tab del multiplexor, con lo que telar sabe de él.
 
-    `id` es la llave del multiplexor (`@3` en tmux, el id del tab en zellij): la
+    `id` es la llave del multiplexor (`@3` en tmux): la
     usan las órdenes, y es lo que permite seguir un tab cuando lo renombran. `nombre` es lo que se muestra.
     """
 

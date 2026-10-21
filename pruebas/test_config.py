@@ -41,10 +41,15 @@ class ConArchivo(Prueba):
         ruta.write_text(texto, encoding="utf-8")
         return ruta
 
+    def test_zellij_ya_no_se_acepta_y_lo_dice(self):
+        with self.assertRaises(cfg.ErrorDeConfig) as e:
+            cfg.cargar(self.escribir('multiplexor = "zellij"\n'))
+        self.assertIn("dejó de soportar", str(e.exception))
+
     def test_lee_lo_que_dice_el_archivo(self):
         ruta = self.escribir(
             """
-            multiplexor = "zellij"
+            multiplexor = "tmux"
             sesion = "taller"
             raiz = "~/trabajo"
 
@@ -60,7 +65,7 @@ class ConArchivo(Prueba):
             """
         )
         c = cfg.cargar(ruta)
-        self.assertEqual(c.multiplexor, "zellij")
+        self.assertEqual(c.multiplexor, "tmux")
         self.assertEqual(c.sesion, "taller")
         self.assertEqual(c.raiz, Path.home() / "trabajo")
         self.assertEqual(c.intervalos.refresco, 2.5)

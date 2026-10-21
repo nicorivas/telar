@@ -229,7 +229,6 @@ def panel_del_entorno(multiplexor: str = "", entorno: Mapping[str, str] | None =
 
 #: Cómo llama cada multiplexor al panel actual en el entorno, y cómo se escribe su id.
 PANELES: dict[str, tuple[str, str]] = {
-    "zellij": ("ZELLIJ_PANE_ID", "terminal_{}"),
     "tmux": ("TMUX_PANE", "{}"),
 }
 
@@ -241,9 +240,8 @@ def hilo_del_panel(mux, panel: str) -> str:
     verdad: al abrir una conversación. Los eventos que se disparan a cada rato
     (`sigue`, `empieza`) se resuelven con lo que ya está anotado.
 
-    Aguanta las dos formas que hay hoy de listar paneles —objetos `Pane` y los
-    diccionarios crudos de zellij— y ante cualquier tropiezo devuelve vacío: no saber
-    en qué tab está un panel no es motivo para tumbar un gancho.
+    Ante cualquier tropiezo devuelve vacío: no saber en qué tab está un panel no es
+    motivo para tumbar un gancho.
     """
     if mux is None or not panel:
         return ""
@@ -260,28 +258,7 @@ def hilo_del_panel(mux, panel: str) -> str:
                     return tabs.get(str(getattr(p, "tab", "")), "")
         except Exception:  # noqa: BLE001
             return ""
-
-    crudos = getattr(mux, "paneles", None)
-    if callable(crudos):
-        try:
-            for p in crudos():
-                if not isinstance(p, dict):
-                    continue
-                if panel in _ids_de_panel(p):
-                    nombre = str(p.get("tab_name") or "")
-                    return nombre or tabs.get(str(p.get("tab_id", "")), "")
-        except Exception:  # noqa: BLE001
-            return ""
     return ""
-
-
-def _ids_de_panel(panel: dict) -> tuple[str, ...]:
-    """Las formas en que se puede escribir el id de un panel crudo de zellij."""
-    crudo = panel.get("id")
-    if crudo is None:
-        return ()
-    prefijo = "plugin" if panel.get("is_plugin") else "terminal"
-    return (str(crudo), f"{prefijo}_{crudo}")
 
 
 def resolver_hilo(

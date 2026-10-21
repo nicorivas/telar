@@ -59,7 +59,6 @@ red).
   por dentro y leen su salida, en vez de ser servicios.
 - **Claves viejas que se aceptan sin usarse** en `config.py` (`[enlace] no_leer`, `correo_archivo`): avisar
   primero y retirarlas en una versión.
-- **zellij**: un segundo multiplexor que se mantiene sin uso. Decidir si sigue.
 
 ## Funcionalidades que faltan para cualquiera
 

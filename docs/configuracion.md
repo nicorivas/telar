@@ -18,7 +18,7 @@ error; el archivo por defecto puede faltar sin que pase nada.
 ## El archivo entero
 
 ```toml
-# Qué multiplexor de terminal hay debajo: "tmux" o "zellij".
+# Qué multiplexor de terminal hay debajo: "tmux", el único.
 multiplexor = "tmux"
 
 # El nombre de la sesión que telar teje. Una sesión, un telar.
@@ -193,7 +193,7 @@ Una dirección iCal secreta es una llave: quien la tiene ve la agenda. Por eso
 
 | Clave | Tipo | Por defecto | Qué es |
 |---|---|---|---|
-| `multiplexor` | `"tmux"` \| `"zellij"` | `"tmux"` | quién maneja los tabs de verdad |
+| `multiplexor` | `"tmux"` | `"tmux"` | quién maneja los tabs de verdad (zellij se dejó de soportar en la 0.3) |
 | `sesion` | texto | `"telar"` | la sesión del multiplexor que telar teje |
 | `raiz` | ruta | la carpeta actual | el repositorio de trabajo |
 | `estado` | ruta | `~/.local/state/telar` | estado derivado; se puede borrar sin perder nada ([qué guarda](estado.md)) |

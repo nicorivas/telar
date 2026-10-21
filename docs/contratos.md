@@ -259,7 +259,7 @@ Las reglas valen para todas:
 }
 ```
 
-`id` es la llave del multiplexor (`@3` en tmux y el id del tab en zellij, estables mientras la sesión viva) y es lo
+`id` es la llave del multiplexor (`@3` en tmux, estable mientras la sesión viva) y es lo
 que reciben las órdenes. `nombre` es lo que se muestra **y la llave del estado**:
 el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dice
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
@@ -344,8 +344,7 @@ el bus, vacío si todo bien; sin bus o con el bus caído, `hilos` sigue valiendo
 `clientes` son los pids de las terminales enganchadas a la sesión: los procesos del
 multiplexor que la están mostrando. Sirven para encontrar desde afuera cuál terminal
 mira la sesión (la extensión de VS Code busca aquel terminal cuya shell es antepasado de
-uno de ellos, y le da el foco). Vacío si la sesión no está viva o el multiplexor no lo
-dice; zellij, hoy, no lo dice.
+uno de ellos, y le da el foco). Vacío si la sesión no está viva.
 
 `aviso` trae, en prosa, por qué no se pudo hablar con el multiplexor (no está
 instalado, no responde); con `aviso` no vacío, `viva` es `false` y los hilos son

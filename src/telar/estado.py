@@ -827,8 +827,8 @@ class Estado:
         El estado se guarda por NOMBRE, que es lo único que sobrevive a cerrar la sesión;
         pero el nombre lo cambia cualquiera con dos teclas (`prefix ,` en tmux), y entonces
         el vínculo, la prioridad y la atención se quedaban colgando del nombre viejo, que
-        además aparecía como un hilo fantasma. El id del multiplexor (`@3` en tmux, el id
-        del tab en zellij) sí es estable mientras la sesión vive: recordarlo permite ver el
+        además aparecía como un hilo fantasma. El id del multiplexor (`@3` en tmux) sí es
+        estable mientras la sesión vive: recordarlo permite ver el
         renombre y mover el estado detrás. Devuelve los cambios que hizo.
         """
         vistos = {h.id: h.nombre for h in hilos if h.id and h.nombre and h.id != h.nombre}

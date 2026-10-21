@@ -82,7 +82,7 @@ class Tab:
     """Un tab del multiplexor, tal como el multiplexor lo ve.
 
     `id` es la llave con la que se le habla: en tmux el identificador de ventana
-    (`@3`) y en zellij el id del tab, los dos estables mientras la sesión viva. `posicion`
+    (`@3`), estable mientras la sesión viva. `posicion`
     es el lugar en la barra, empezando por donde empiece el programa (tmux respeta su
     `base-index`), y sirve para ordenar y para mostrar, nunca para identificar.
     """
@@ -124,7 +124,7 @@ class Pane:
     #: el directorio de trabajo del panel, si el multiplexor lo expone.
     ruta: Path | None = None
     foco: bool = False
-    #: flotante por encima del resto (zellij); tmux no tiene paneles flotantes.
+    #: flotante por encima del resto; tmux no tiene paneles flotantes (era de zellij, que ya no está).
     flotante: bool = False
     #: el programa terminó y el panel quedó en pantalla.
     terminado: bool = False
@@ -148,7 +148,7 @@ class MultiplexorBase(ABC):
         del otro lado hay un agente trabajando y la última palabra es de la persona.
     """
 
-    #: el nombre con que se declara en la configuración ("tmux", "zellij").
+    #: el nombre con que se declara en la configuración ("tmux").
     nombre: str = ""
 
     # ── la sesión ────────────────────────────────────────────────────────────────

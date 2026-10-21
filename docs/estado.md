@@ -32,8 +32,8 @@ se rompe, telar dice cuál es y se borra.
 Todos estos archivos están indexados por el **nombre** del hilo. `paneles.json` es
 la excepción: lo está por el panel del multiplexor.
 
-Podría estarlo por el `id`, que es estable mientras la sesión viva (`@3` en tmux, el
-id del tab en zellij; ninguno es posicional). No lo está porque el id **no sobrevive a
+Podría estarlo por el `id`, que es estable mientras la sesión viva (`@3` en tmux, que no
+es posicional). No lo está porque el id **no sobrevive a
 cerrar la sesión**: al volver a levantarla, los mismos proyectos traen ids nuevos y el
 estado quedaría huérfano entero. El nombre sí sobrevive, es lo que pusiste tú y lo que
 reconoces.
