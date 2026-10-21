@@ -342,6 +342,28 @@ class LaFichaYSusAcciones(Prueba):
         self.assertNotIn("dueño:", (self.dir / "T84.md").read_text())
 
 
+    def test_esperar_y_prioridad_tienen_rol(self):
+        self.servicio.accion(self.ctx, "T84", rol="espera", texto="Marcelo")
+        self.assertIn("espera: Marcelo", (self.dir / "T84.md").read_text())
+        self.servicio.accion(self.ctx, "T84", rol="espera", texto="none")
+        self.assertIn("estado: activa", (self.dir / "T84.md").read_text())
+        roles = {a.get("rol"): a for a in self.servicio.ficha(self.ctx, "T84").model_dump()["acciones"] if a.get("rol")}
+        self.assertEqual(roles["prioridad"]["opciones"], ["P0", "P1", "P2", "P3"])
+        self.assertIn("Marcelo", roles["espera"]["opciones"])
+        self.servicio.accion(self.ctx, "T84", rol="prioridad", texto="P1")
+        self.assertIn("prioridad: 1", (self.dir / "T84.md").read_text())
+        from telar.servicios import ErrorDeServicio
+        with self.assertRaises(ErrorDeServicio):
+            self.servicio.accion(self.ctx, "T84", rol="prioridad", texto="urgente")
+
+    def test_el_tope_no_cuenta_las_que_tienen_rol(self):
+        from telar.proveedores.tareas import _recortar
+        acciones = [{"nombre": f"a{i}"} for i in range(12)] + [{"nombre": f"r{i}", "rol": f"r{i}"} for i in range(6)]
+        self.assertEqual(len(_recortar(acciones, 12)), 18)
+        self.assertEqual([a["nombre"] for a in _recortar(acciones + [{"nombre": "sobra"}], 12)][-1], "r5")
+        self.assertNotIn("sobra", [a["nombre"] for a in _recortar(acciones + [{"nombre": "sobra"}], 12)])
+
+
 class CrearYLasAccionesQueFaltaban(Prueba):
     """Crear una tarea (el número lo elige quien escribe), borrarla, y las acciones que la CLI de tareas
     tenía y el tipo no: la secuela de un cierre, una conexión del grafo, quitar la fecha."""

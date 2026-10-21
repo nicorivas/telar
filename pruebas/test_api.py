@@ -414,3 +414,18 @@ class TiposTarea(Prueba):
         self.assertEqual(self.c.post("/tipos/tarea/T9/completar", json={}).status_code, 404)
         self.assertEqual(self.c.post("/tipos/tarea/T1/volar", json={}).status_code, 422)
         self.assertEqual(self.c.post("/tipos/tarea/T1/reagendar", json={"params": {"cuando": "mañana"}}).status_code, 422)
+
+@unittest.skipIf(api is None, "sin fastapi")
+class VerUnHtml(Prueba):
+    def test_un_html_se_entrega_dibujado_y_aislado(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            (raiz / "lamina.html").write_text("<h1>hola</h1>")
+            (raiz / "nota.md").write_text("# no")
+            api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=SimpleNamespace(raiz=raiz, apps=()))
+            self.addCleanup(api.app.dependency_overrides.clear)
+            r = TestClient(api.app).get("/archivos/ver", params={"ruta": "lamina.html"})
+            self.assertEqual((r.status_code, r.text), (200, "<h1>hola</h1>"))
+            self.assertTrue(r.headers["content-type"].startswith("text/html"))
+            self.assertTrue(r.headers["content-security-policy"].startswith("sandbox"))
+            self.assertEqual(TestClient(api.app).get("/archivos/ver", params={"ruta": "nota.md"}).status_code, 415)

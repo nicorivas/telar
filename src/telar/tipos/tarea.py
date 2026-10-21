@@ -573,6 +573,12 @@ def editar(t: Tarea, *, reloj=None, **campos) -> Tarea:
     raros = set(campos) - permitidos
     if raros:
         raise ErrorDeAccion(f"editar no cambia {', '.join(sorted(raros))}: para eso hay una acción")
+    if isinstance(campos.get("prioridad"), str):
+        # escrita: «P1» o «1» (lo que manda la ficha)
+        m = re.fullmatch(r"\s*[Pp]?([0-3])\s*", campos["prioridad"])
+        if not m:
+            raise ErrorDeAccion(f"prioridad «{campos['prioridad']}»: va de P0 (la más alta) a P3")
+        campos["prioridad"] = int(m.group(1))
     cambios = {k: v for k, v in campos.items() if getattr(t, k) != v}
     if not cambios:
         return t

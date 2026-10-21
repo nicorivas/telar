@@ -835,7 +835,10 @@ class DeTipo(_Base):
                                  "pide": f"qué le dices a {escribir_a}", "mensaje": escribir.replace("{id}", t.id), "al_hilo": True})
             acciones.append({**accion("nota", "anotar", texto="{texto}"), "pide": "la nota"})
             acciones.append({**accion("nueva fecha…", "reagendar", fecha="{texto}"), "pide": "la nueva fecha (AAAA-MM-DD o +Nd)", "rol": "fecha"})
-            acciones.append({**accion("esperar a…", "esperar", quien="{texto}"), "pide": "a quién"})
+            acciones.append({**accion("esperar a…", "esperar", quien="{texto}"), "pide": "a quién («none»: deja de esperar)",
+                             "rol": "espera", "opciones": self._personas()})
+            acciones.append({**accion("prioridad…", "editar", prioridad="{texto}"), "pide": "la prioridad (P0 la más alta, P3)",
+                             "rol": "prioridad", "opciones": [f"P{n}" for n in range(4)]})
             acciones.append({**accion("responsable…", "asignar", persona="{texto}"), "pide": "quién la hace («none»: sin asignar)",
                              "rol": "dueno", "opciones": self._personas()})
             for etiqueta, rol, si, no in (("estrella", "estrella", "★ quitar la estrella", "☆ marcar con estrella"),
@@ -908,9 +911,10 @@ def _propuesta(t) -> dict | None:
 
 
 def _recortar(acciones: list[dict], tope: int) -> list[dict]:
-    """Las primeras `tope`, sin perder las que tienen `rol` ni la principal: sobran las últimas sin rol."""
+    """Las primeras `tope` sin `rol`, sin perder la principal: sobran las últimas sin rol. Las que tienen `rol`
+    no cuentan: la ficha las pone donde se ven (la fecha, el dueño, la estrella), no en la lista numerada."""
     salida = list(acciones)
-    while len(salida) > tope:
+    while sum(1 for a in salida if not a.get("rol")) > tope:
         sin_rol = [i for i, a in enumerate(salida) if not a.get("rol") and not a.get("principal")]
         if not sin_rol:
             break

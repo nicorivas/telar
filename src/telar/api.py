@@ -675,6 +675,19 @@ class PedidoArchivo(BaseModel):
     texto: str
 
 
+@app.get("/archivos/ver")
+def get_ver(ruta: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Un .html para verlo dibujado (en un iframe de la página), de esta máquina o de otra (como GET /archivos).
+    Va con `sandbox`: corre sus scripts en un origen propio, sin la llave de la página ni su API."""
+    from fastapi.responses import HTMLResponse
+
+    a = servicio_archivos.leer_en(ctx, ruta, maquina)
+    if not a.ruta.lower().endswith((".html", ".htm")):
+        raise ErrorDeServicio(f"{a.ruta}: solo un .html se ve dibujado", 415)
+    return HTMLResponse(a.texto, headers={"Content-Security-Policy": "sandbox allow-scripts allow-popups",
+                                          "X-Content-Type-Options": "nosniff"})
+
+
 @app.get("/archivos/bajar")
 def get_bajar(ruta: str, ctx: Contexto = Depends(contexto)):
     """Un archivo entero, para bajarlo (lo que la página no muestra)."""

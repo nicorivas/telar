@@ -24,6 +24,9 @@ extension shared the version number.
 
 ### Changed
 
+- A task's actions: «esperar a…» has role `espera` and offers people (`none` stops waiting); a new «prioridad…»
+  (role `prioridad`, P0 to P3). The cap of 12 actions counts only those without a role, so «descartar» is no
+  longer dropped.
 - The dashboard's tabs are a group of the thread bar (DASHBOARD, first and open, a row per tab with its key), and
   the dashboard lost its own top bar (brand, date, shortcuts) and its row of tabs. «telar», with its moving
   colors, sits at the top left of the page; settings are the ⚙ at the top right, next to the version.
