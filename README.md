@@ -8,7 +8,7 @@ turns those tabs into **threads**: a tab, a folder, and whatever that folder say
 about itself, held together across restarts.
 
 **telar does not decide what a project is.** That is the point. Your work
-repository declares it, in a `telar-perfil.yaml` that ships with the repo — which
+repository declares it, in a `.telar/perfil.yaml` that ships with the repo — which
 folders are units of work, which file is their face, which sections of that file
 can be read, and which actions the repo offers. Any telar that opens the repo
 weaves the same thing.
@@ -104,7 +104,7 @@ from a temporary virtualenv, say. The six events are in
 | Piece | Whose | Where |
 |---|---|---|
 | Configuration — multiplexer, session, working root, providers | yours, per machine | `~/.config/telar/config.toml` ([docs](docs/configuracion.md)) |
-| Profile — what a unit of work is, and what can be read from it | the work repository's, versioned with it | `telar-perfil.yaml` ([docs](docs/perfil.md)) |
+| Profile — what a unit of work is, and what can be read from it | the work repository's, versioned with it | `.telar/perfil.yaml` ([docs](docs/perfil.md)) |
 | Threads, fichas, attention | derived, disposable | `~/.local/state/telar` |
 
 ## What it will not do

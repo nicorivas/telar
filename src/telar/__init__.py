@@ -4,7 +4,7 @@ Cada hilo es una unidad de trabajo viva: un tab del multiplexor de terminal, una
 carpeta del repositorio donde se trabaja, y lo que esa carpeta dice de sí misma.
 
 telar NO decide qué es un proyecto. Eso lo declara el repositorio de trabajo en su
-`telar-perfil.yaml` (ver `telar.perfil`); telar solo sabe tejer lo declarado.
+`.telar/perfil.yaml` (ver `telar.perfil`); telar solo sabe tejer lo declarado.
 
 Los módulos, y qué le toca a cada uno:
 

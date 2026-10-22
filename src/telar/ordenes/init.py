@@ -7,7 +7,7 @@ este es un atajo, no un requisito.
 
     telar init                      escribir la configuración por defecto
     telar init --multiplexor tmux   forzar uno
-    telar init --perfil             además, un telar-perfil.yaml mínimo en la raíz
+    telar init --perfil             además, un perfil mínimo en la raíz (.telar/perfil.yaml)
     telar init --forzar             sobrescribir lo que ya exista
 
 El perfil es lo único que se escribe DENTRO del repositorio de trabajo, y por eso
@@ -62,7 +62,7 @@ foco_maximo = {foco_maximo:g}
 """
 
 PLANTILLA_PERFIL = """\
-# telar-perfil.yaml — lo que este repositorio declara de sí mismo.
+# .telar/perfil.yaml — lo que este repositorio declara de sí mismo.
 #
 # telar no sabe qué es un proyecto aquí: lo dice este archivo, viaja con el
 # repositorio, y cualquier telar que lo abra teje lo mismo. Esquema: docs/perfil.md
@@ -233,6 +233,7 @@ def main(argv: list[str], ctx) -> int:
         else:
             _arq, _mirado = _arquetipos_del_repo(Path(cfg.raiz))
             try:
+                ruta_perfil.parent.mkdir(parents=True, exist_ok=True)
                 ruta_perfil.write_text(
                     PLANTILLA_PERFIL.format(
                         nombre=Path(cfg.raiz).name or "trabajo",

@@ -36,7 +36,7 @@ class Minimo(Prueba):
 
     def test_un_perfil_pedido_a_mano_que_no_existe_es_un_error(self):
         with self.assertRaises(p.ErrorDePerfil):
-            p.cargar(EJEMPLO, ruta=Path("/no/existe/telar-perfil.yaml"))
+            p.cargar(EJEMPLO, ruta=Path("/no/existe/.telar/perfil.yaml"))
 
 
 class Ejemplo(Prueba):
@@ -131,6 +131,63 @@ class Quejas(Prueba):
 
     def test_una_clave_que_telar_no_conoce_se_rechaza(self):
         self.assertIn("inventada", self.malo(self.base(inventada=1)))
+
+
+class LaCarpetaTelar(Prueba):
+    """El perfil vive en `.telar/perfil.yaml`; `.telar/local.yaml`, de cada persona, se lee encima."""
+
+    PERFIL = """version: 1
+nombre: equipo
+arquetipos:
+  proyecto:
+    ruta: "proyectos/*/"
+    etiqueta: proyecto
+  deal:
+    ruta: "deals/*/"
+"""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.raiz = Path(self.tmp.name)
+        (self.raiz / ".telar").mkdir()
+        (self.raiz / ".telar" / "perfil.yaml").write_text(self.PERFIL, encoding="utf-8")
+
+    def test_el_perfil_se_lee_de_la_carpeta(self):
+        perfil = p.cargar(self.raiz)
+        self.assertEqual(perfil.nombre, "equipo")
+        self.assertEqual(perfil.origen, self.raiz / ".telar" / "perfil.yaml")
+
+    def test_el_archivo_de_antes_ya_no_cuenta(self):
+        (self.raiz / ".telar" / "perfil.yaml").unlink()
+        (self.raiz / "telar-perfil.yaml").write_text(self.PERFIL, encoding="utf-8")
+        self.assertIs(p.cargar(self.raiz), p.PERFIL_MINIMO)
+
+    def test_lo_local_se_mezcla_encima(self):
+        (self.raiz / ".telar" / "local.yaml").write_text(
+            "nombre: el mío\narquetipos:\n  proyecto:\n    etiqueta: mío\n  deal: null\n", encoding="utf-8")
+        perfil = p.cargar(self.raiz)
+        self.assertEqual(perfil.nombre, "el mío")
+        por_nombre = {a.nombre: a for a in perfil.arquetipos}
+        self.assertEqual(set(por_nombre), {"proyecto"})  # el null quita el deal
+        self.assertEqual(por_nombre["proyecto"].etiqueta, "mío")  # se mezcla: la ruta sigue siendo la del equipo
+        self.assertEqual(por_nombre["proyecto"].ruta, "proyectos/*/")
+
+    def test_un_perfil_pedido_a_mano_no_lee_lo_local(self):
+        otro = self.raiz / "otro.yaml"
+        otro.write_text(self.PERFIL, encoding="utf-8")
+        (self.raiz / ".telar" / "local.yaml").write_text("nombre: el mío\n", encoding="utf-8")
+        self.assertEqual(p.cargar(self.raiz, ruta=otro).nombre, "equipo")
+
+    def test_un_local_que_no_es_un_mapa_es_un_error(self):
+        (self.raiz / ".telar" / "local.yaml").write_text("- una lista\n", encoding="utf-8")
+        with self.assertRaises(p.ErrorDePerfil):
+            p.cargar(self.raiz)
+
+    def test_mezclar(self):
+        self.assertEqual(p.mezclar({"a": 1, "b": {"c": 2, "d": 3}, "e": [1]}, {"b": {"c": 9, "d": None}, "e": [2], "f": 4}),
+                         {"a": 1, "b": {"c": 9}, "e": [2], "f": 4})
 
 
 if __name__ == "__main__":

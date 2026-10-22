@@ -329,7 +329,7 @@ class Repo:
     nombre: str
     #: la carpeta del repositorio, absoluta (con `~` expandida)
     ruta: Path
-    #: el archivo de su perfil, si no es `telar-perfil.yaml` en su carpeta
+    #: el archivo de su perfil, si no es `.telar/perfil.yaml` en su carpeta
     perfil: str = ""
 
 
@@ -406,7 +406,7 @@ class Config:
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
-    #: el `telar-perfil.yaml`; por defecto, el de la raíz.
+    #: el perfil (`.telar/perfil.yaml`); por defecto, el de la raíz.
     perfil: Path | None = None
     #: proveedores encendidos, por nombre.
     proveedores: dict[str, Proveedor] = field(default_factory=dict)
@@ -461,7 +461,9 @@ class Config:
     @property
     def ruta_perfil(self) -> Path:
         """El perfil declarado, o el que se espera en la raíz del repositorio."""
-        return self.perfil or (self.raiz / "telar-perfil.yaml")
+        from telar.perfil import NOMBRE_ARCHIVO
+
+        return self.perfil or (self.raiz / NOMBRE_ARCHIVO)
 
     def proveedores_activos(self) -> tuple[Proveedor, ...]:
         return tuple(p for p in self.proveedores.values() if p.activo)

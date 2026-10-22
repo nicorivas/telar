@@ -34,9 +34,11 @@ class Repos(Prueba):
             (self.raiz / carpeta).mkdir(parents=True)
             (self.raiz / carpeta / "README.md").write_text("# " + carpeta.rsplit("/", 1)[1] + "\n")
         # el perfil de vida también nombra las carpetas del equipo, como antes de separarlos
-        (self.raiz / "telar-perfil.yaml").write_text(
+        for donde in (self.raiz, self.raiz / "equipo"):
+            (donde / ".telar").mkdir(parents=True, exist_ok=True)
+        (self.raiz / ".telar" / "perfil.yaml").write_text(
             PERFIL.format(nombre="vida", ruta="*/proyectos/*/", etiqueta="vida"))
-        (self.raiz / "equipo" / "telar-perfil.yaml").write_text(
+        (self.raiz / "equipo" / ".telar" / "perfil.yaml").write_text(
             PERFIL.format(nombre="equipo", ruta="proyectos/*/", etiqueta="equipo"))
 
     def config(self, *repos):

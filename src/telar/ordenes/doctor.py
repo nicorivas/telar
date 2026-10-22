@@ -22,7 +22,7 @@ from telar.config import ruta_config
 from telar.mux import ErrorDeMux
 from telar.mux import obtener as obtener_mux
 from telar.ordenes import _comun
-from telar.perfil import NOMBRE_ARCHIVO, carpeta_de_repo
+from telar.perfil import NOMBRE_ARCHIVO, NOMBRE_LOCAL, carpeta_de_repo, ruta_de_repo
 from telar.proveedores import REGISTRO
 
 AYUDA = "Revisar multiplexor, sesión, perfil, proveedores y ganchos."
@@ -44,6 +44,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _raiz(ctx)
     revisiones += _multiplexor(ctx)
     revisiones += _perfil(ctx)
+    revisiones += _carpeta_telar(ctx)
     revisiones += _repos(ctx)
     revisiones += _modulos(ctx)
     revisiones += _vistas(ctx)
@@ -276,6 +277,27 @@ def _perfil(ctx) -> list[dict]:
         )
     else:
         salida.append(_r("documentos", OK, "todos traen sus secciones requeridas"))
+    return salida
+
+
+def _carpeta_telar(ctx) -> list[dict]:
+    """La carpeta `.telar/` de la raíz y de cada repo: un `telar-perfil.yaml` suelto ya no se lee (se movió a
+    `.telar/perfil.yaml`), y `local.yaml` es de cada persona: no va en git."""
+    import subprocess
+
+    carpetas = [Path(ctx.config.raiz).expanduser(), *(ruta_de_repo(ctx.config, r) for r in getattr(ctx.config, "repos", ()) or ())]
+    salida = []
+    for carpeta in dict.fromkeys(carpetas):
+        viejo, nuevo, local = carpeta / "telar-perfil.yaml", carpeta / NOMBRE_ARCHIVO, carpeta / NOMBRE_LOCAL
+        if viejo.is_file() and not nuevo.is_file():
+            salida.append(_r("carpeta .telar", FALLA, f"{viejo} ya no se lee: el perfil vive en {NOMBRE_ARCHIVO}",
+                             f"cd {carpeta} && mkdir -p .telar && git mv telar-perfil.yaml {NOMBRE_ARCHIVO}"))
+        if local.is_file():
+            r = subprocess.run(["git", "-C", str(carpeta), "ls-files", "--error-unmatch", NOMBRE_LOCAL],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                salida.append(_r("carpeta .telar", AVISO, f"{local} está en git, y es de cada persona",
+                                 f"cd {carpeta} && git rm --cached {NOMBRE_LOCAL} && echo {NOMBRE_LOCAL} >> .gitignore"))
     return salida
 
 

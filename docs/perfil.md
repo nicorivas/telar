@@ -4,7 +4,7 @@
 es una carpeta con README, en otro es un archivo, en otro es una fila de una tabla.
 Un programa que lo decida por todos sirve para uno solo.
 
-Lo decide el repositorio de trabajo, en un `telar-perfil.yaml` en su raíz. El perfil
+Lo decide el repositorio de trabajo, en su carpeta `.telar/`: `.telar/perfil.yaml`, en su raíz. El perfil
 viaja con el repositorio, se versiona con él, y cualquier telar que lo abra teje lo
 mismo. Sin perfil, rige la [convención mínima](#sin-perfil-la-convención-mínima).
 
@@ -55,7 +55,7 @@ acciones:
     confirmar: false                 # si es true, la interfaz pregunta antes
 ```
 
-Hay uno completo y comentado en [`ejemplo/telar-perfil.yaml`](../ejemplo/telar-perfil.yaml).
+Hay uno completo y comentado en [`ejemplo/.telar/perfil.yaml`](../ejemplo/.telar/perfil.yaml).
 
 ## Arquetipos
 
@@ -161,6 +161,23 @@ pide explícita: `["sh", "-c", "…"]`, a la vista.
 Marcadores que telar reemplaza en cada palabra: `{ruta}` (la carpeta del hilo),
 `{hilo}` (su nombre), `{documento}` (el archivo parseado).
 
+## La carpeta `.telar/`
+
+Lo que un repositorio le dice a telar vive en una carpeta, `.telar/`, en su raíz, como `.github/` o `.claude/`:
+
+| archivo | qué es | en git |
+| --- | --- | --- |
+| `perfil.yaml` | este perfil: lo del equipo, igual para todos | sí |
+| `local.yaml` | lo de cada persona, encima del perfil | no: agrégalo a `.gitignore` |
+
+`local.yaml` tiene la misma forma que el perfil y se lee encima de él: un valor suyo reemplaza al del perfil,
+un mapa se mezcla clave por clave (cambiar la `etiqueta` de un arquetipo no borra su `ruta`), y un `null`
+quita la clave (`deal: null` esconde ese arquetipo solo para esa persona). Un perfil pedido a mano
+(`[repos.<nombre>] perfil`, `[telar] perfil`) se lee solo, sin `local.yaml`.
+
+`telar doctor` avisa si encuentra un `telar-perfil.yaml` suelto en la raíz, que telar ya no lee (el arreglo:
+`git mv telar-perfil.yaml .telar/perfil.yaml`), y si `local.yaml` quedó en git.
+
 ## Varios repositorios
 
 Con `[repos]` en la configuración, cada repositorio trae su propio perfil, con rutas relativas a sí mismo, y
@@ -171,7 +188,7 @@ necesita repetirlas. Las acciones se suman; con el mismo nombre, gana la del rep
 
 ## Sin perfil: la convención mínima
 
-Un repositorio sin `telar-perfil.yaml` no queda fuera: rige el **perfil de casa**, que
+Un repositorio sin `.telar/perfil.yaml` no queda fuera: rige el **perfil de casa**, que
 cubre las tres formas en que la gente guarda su trabajo, sin pedirle que declare nada.
 
 ```yaml

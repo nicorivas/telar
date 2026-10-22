@@ -34,7 +34,7 @@ raiz = "~/trabajo"
 # Por defecto, $XDG_STATE_HOME/telar o ~/.local/state/telar.
 estado = "~/.local/state/telar"
 
-# El telar-perfil.yaml, si no es el de la raíz. Rara vez hace falta.
+# El perfil, si no es el de la raíz (.telar/perfil.yaml). Rara vez hace falta.
 perfil = "~/trabajo/perfiles/otro.yaml"
 
 [intervalos]
@@ -203,7 +203,7 @@ Una dirección iCal secreta es una llave: quien la tiene ve la agenda. Por eso
 | `sesion` | texto | `"telar"` | la sesión del multiplexor que telar teje |
 | `raiz` | ruta | la carpeta actual | el repositorio de trabajo |
 | `estado` | ruta | `~/.local/state/telar` | estado derivado; se puede borrar sin perder nada ([qué guarda](estado.md)) |
-| `perfil` | ruta | `raiz/telar-perfil.yaml` | el perfil del repositorio |
+| `perfil` | ruta | `raiz/.telar/perfil.yaml` | el perfil del repositorio |
 | `intervalos.refresco` | segundos > 0 | `1.0` | cada cuánto se relee el multiplexor |
 | `intervalos.ficha` | segundos > 0 | `60.0` | cada cuánto se recompila una ficha |
 | `intervalos.proveedores` | segundos > 0 | `300.0` | cada cuánto se consulta la red |
@@ -248,7 +248,7 @@ configuración a medias es peor que ninguna, porque se nota tres días después.
 
 Lo que es del **repositorio** y no de la máquina: qué carpetas son proyectos, qué
 se lee de un README, qué acciones hay. Eso lo declara el propio repositorio en su
-[`telar-perfil.yaml`](perfil.md), y viaja con él.
+[`.telar/perfil.yaml`](perfil.md), y viaja con él.
 
 ## `[agente]` — qué se abre en cada hilo
 
@@ -541,11 +541,11 @@ ruta = "~/vida"
 ruta = "~/vida/trabajo"           # puede estar dentro de otro
 [repos.telar]
 ruta = "~/vida/proyectos/telar"
-perfil = "~/notas/telar-perfil.yaml"   # opcional: si su perfil no está en su carpeta
+perfil = "~/notas/perfil.yaml"   # opcional: si su perfil no está en su carpeta
 ```
 
 Una `ruta` relativa se lee desde `raiz`, no desde el directorio donde se corre la orden, y así, absoluta, la
-dan `telar config --json` y `TELAR_REPOS` (lo que reciben los módulos). Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
+dan `telar config --json` y `TELAR_REPOS` (lo que reciben los módulos). Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`.telar/perfil.yaml` en su
 carpeta): qué es ahí una unidad de trabajo. telar los junta en uno (`docs/perfil.md`, «Varios repositorios»).
 Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo del equipo dentro del
 de vida describe lo suyo. Un repo sin perfil no aporta nada, y uno fuera de `raiz` todavía no se suma. Sin

@@ -26,7 +26,7 @@ class SinArchivo(Prueba):
 
     def test_el_perfil_por_defecto_es_el_de_la_raiz(self):
         c = cfg.cargar()
-        self.assertEqual(c.ruta_perfil, c.raiz / "telar-perfil.yaml")
+        self.assertEqual(c.ruta_perfil, c.raiz / ".telar" / "perfil.yaml")
 
     def test_una_ruta_pedida_a_mano_que_no_existe_es_un_error(self):
         with self.assertRaises(cfg.ErrorDeConfig):

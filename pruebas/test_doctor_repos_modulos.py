@@ -11,6 +11,7 @@ import contextlib
 import io
 import os
 import tempfile
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -28,7 +29,8 @@ PERFIL = "version: 1\nnombre: {nombre}\narquetipos:\n  {arquetipo}:\n    ruta: \
 
 
 def _perfil(carpeta: Path, nombre: str, ruta: str = "*/", arquetipo: str = "proyecto") -> None:
-    (carpeta / "telar-perfil.yaml").write_text(PERFIL.format(nombre=nombre, ruta=ruta, arquetipo=arquetipo),
+    (carpeta / ".telar").mkdir(parents=True, exist_ok=True)
+    (carpeta / ".telar" / "perfil.yaml").write_text(PERFIL.format(nombre=nombre, ruta=ruta, arquetipo=arquetipo),
                                                encoding="utf-8")
 
 
@@ -147,7 +149,8 @@ class ReposDeDoctor(_ConRaiz):
         self.assertIn("no existe", revisiones[0]["dice"])
 
     def test_arquetipos_del_mismo_repo_no_son_dos_repos(self):
-        (self.equipo / "telar-perfil.yaml").write_text(
+        (self.equipo / ".telar").mkdir(parents=True, exist_ok=True)
+        (self.equipo / ".telar" / "perfil.yaml").write_text(
             'version: 1\nnombre: equipo\narquetipos:\n  a:\n    ruta: "*/"\n  b:\n    ruta: "molino/"\n',
             encoding="utf-8")
         self.assertEqual(doctor.pisadas(self.ctx(Repo(nombre="equipo", ruta=self.equipo)).perfil, self.raiz), {})
@@ -286,6 +289,30 @@ class ModulosDeDoctor(Prueba):
         cfg = mod_config.cargar(tolerar_modulos=True)
         self.assertEqual(cfg.modulos_rotos, ())
         self.assertEqual(doctor._modulos(Contexto(config=cfg)), [])
+
+
+class LaCarpetaTelarEnDoctor(Prueba):
+    def test_el_perfil_de_antes_y_lo_local_en_git(self):
+        import subprocess
+
+        from telar.ordenes import doctor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            subprocess.run(["git", "init", "-q", str(raiz)], check=True)
+            (raiz / "telar-perfil.yaml").write_text("version: 1\n")
+            ctx = SimpleNamespace(config=SimpleNamespace(raiz=raiz, repos=()))
+            [r] = doctor._carpeta_telar(ctx)
+            self.assertEqual(r["estado"], doctor.FALLA)
+            self.assertIn("git mv telar-perfil.yaml .telar/perfil.yaml", r["arreglo"])
+            (raiz / ".telar").mkdir()
+            (raiz / "telar-perfil.yaml").rename(raiz / ".telar" / "perfil.yaml")
+            (raiz / ".telar" / "local.yaml").write_text("nombre: mío\n")
+            self.assertEqual(doctor._carpeta_telar(ctx), [])  # sin commitear, nada que decir
+            subprocess.run(["git", "-C", str(raiz), "add", ".telar/local.yaml"], check=True)
+            [r] = doctor._carpeta_telar(ctx)
+            self.assertEqual(r["estado"], doctor.AVISO)
+            self.assertIn("git rm --cached .telar/local.yaml", r["arreglo"])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""El perfil que publica el repositorio de trabajo: `telar-perfil.yaml`.
+"""El perfil que publica el repositorio de trabajo: `.telar/perfil.yaml`.
 
 Este es el límite de telar. telar sabe tejer hilos, leer documentos y llamar
 órdenes; **no sabe qué es un proyecto**. Eso lo declara cada repositorio en su
@@ -14,6 +14,10 @@ Sin perfil, rige una convención mínima que casi cualquier README cumple:
   * el título es el primer encabezado;
   * el estado es el primer párrafo;
   * los pendientes son la primera lista de casillas.
+
+Lo que un repositorio le dice a telar vive en su carpeta `.telar/`, como `.github/` o `.claude/`: el perfil
+(`perfil.yaml`) y, de cada persona y fuera de git, `local.yaml`, que se lee encima del perfil (un valor suyo
+reemplaza al del equipo, un mapa se mezcla clave por clave y un `null` quita la clave).
 
 El esquema entero está en `docs/perfil.md`, y esa página manda.
 """
@@ -35,10 +39,15 @@ __all__ = [
     "desde_dict",
     "ErrorDePerfil",
     "NOMBRE_ARCHIVO",
+    "NOMBRE_LOCAL",
+    "CARPETA",
 ]
 
-#: El archivo que telar busca en la raíz del repositorio de trabajo.
-NOMBRE_ARCHIVO = "telar-perfil.yaml"
+#: la carpeta de telar en un repositorio, y lo que telar busca en ella
+CARPETA = ".telar"
+NOMBRE_ARCHIVO = f"{CARPETA}/perfil.yaml"
+#: lo de cada persona, encima del perfil del equipo; no va en git
+NOMBRE_LOCAL = f"{CARPETA}/local.yaml"
 
 #: Versión del esquema que este módulo entiende.
 VERSION = 1
@@ -397,27 +406,49 @@ def cargar(raiz: Path, *, ruta: Path | None = None) -> Perfil:
     """
     explicita = ruta is not None
     destino = Path(ruta) if ruta is not None else Path(raiz) / NOMBRE_ARCHIVO
+    local = None if explicita else Path(raiz) / NOMBRE_LOCAL
 
     if not destino.exists():
         if explicita:
             raise ErrorDePerfil(f"no existe el perfil: {destino}")
         return PERFIL_MINIMO
 
+    datos = _yaml(destino)
+    if local is not None and local.exists():
+        datos = mezclar(datos, _yaml(local))
+    return desde_dict(datos, origen=destino)
+
+
+def _yaml(destino: Path) -> dict:
     try:
         import yaml
     except ModuleNotFoundError as e:  # pragma: no cover - depende del entorno
         raise ErrorDePerfil(
             f"{destino} existe pero falta PyYAML para leerlo (pip install PyYAML)"
         ) from e
-
     try:
         datos = yaml.safe_load(destino.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError as e:
         raise ErrorDePerfil(f"{destino}: YAML mal formado: {e}") from e
     except OSError as e:
         raise ErrorDePerfil(f"{destino}: no se pudo leer: {e}") from e
+    if not isinstance(datos, dict):
+        raise ErrorDePerfil(f"{destino}: se esperaba un mapa (clave: valor) arriba de todo")
+    return datos
 
-    return desde_dict(datos, origen=destino)
+
+def mezclar(base: dict, encima: dict) -> dict:
+    """`encima` sobre `base`: un mapa se mezcla clave por clave, cualquier otro valor reemplaza, y `null` quita
+    la clave. Es lo que hace `local.yaml` sobre el perfil del equipo."""
+    salida = dict(base)
+    for clave, valor in encima.items():
+        if valor is None:
+            salida.pop(clave, None)
+        elif isinstance(valor, dict) and isinstance(salida.get(clave), dict):
+            salida[clave] = mezclar(salida[clave], valor)
+        else:
+            salida[clave] = valor
+    return salida
 
 
 def cargar_todos(config) -> Perfil:

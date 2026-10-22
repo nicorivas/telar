@@ -31,7 +31,7 @@ propio. Las claves de cada pieza están en [configuracion.md](configuracion.md);
  │ agentes,      │             ▼            ▼
  │ scripts       │  ┌───────────────────┐ ┌──────────────────────────────┐
  └───────────────┘  │ tu repositorio    │ │ lo tuyo, enchufado           │
-                    │ + telar-perfil    │ │ · proveedores (tareas,       │
+                    │ + .telar/perfil   │ │ · proveedores (tareas,       │
                     │ (qué es un        │ │   calendario, lo que sea)    │
                     │ proyecto)         │ │ · tipos (objetos en archivos)│
                     └───────────────────┘ │ · módulos (modulo.toml)      │
@@ -45,7 +45,7 @@ Tres reglas sostienen el dibujo:
    ([contratos.md](contratos.md)). La página no tiene lógica de datos propia: pide a la API y dibuja.
    Cualquier cosa que telar muestra, un script o un agente la puede pedir igual (`telar … --json`).
 2. **telar no sabe qué es un proyecto, ni cómo son tus tareas.** Lo dice tu repositorio
-   (`telar-perfil.yaml`) y lo traen tus proveedores. telar sabe de hilos, de mensajes y de máquinas.
+   (`.telar/perfil.yaml`) y lo traen tus proveedores. telar sabe de hilos, de mensajes y de máquinas.
 3. **Nada se hace a escondidas.** Los comandos son listas de palabras (sin shell), los proveedores
    no salen a la red salvo que se les pida, y una acción solo corre si el proveedor la ofreció.
 
@@ -56,7 +56,7 @@ Tres reglas sostienen el dibujo:
 | **hilo** | una ventana de tmux con un agente, vinculada a una carpeta. telar recuerda su conversación, su atención y su prioridad | la sesión de tmux; el estado en `~/.local/state/telar/` ([estado.md](estado.md)) |
 | **agente** | el programa que corre dentro del hilo. telar no lo pilota: lo reconoce por sus ganchos | [agentes.md](agentes.md) |
 | **agente residente** | un hilo que siempre existe, con su carpeta, su memoria y su casilla; recibe encargos | `[agentes] carpeta` |
-| **perfil** | lo que tu repositorio dice de sí mismo: qué carpetas son unidades de trabajo, qué archivo es su cara, qué secciones se leen | `telar-perfil.yaml`, en la raíz del repo ([perfil.md](perfil.md)) |
+| **perfil** | lo que tu repositorio dice de sí mismo: qué carpetas son unidades de trabajo, qué archivo es su cara, qué secciones se leen | `.telar/perfil.yaml`, en la raíz del repo ([perfil.md](perfil.md)) |
 | **configuración** | lo de esta máquina: dónde está el repo, qué proveedores hay, qué se muestra | `~/.config/telar/config.toml` |
 | **proveedor** | un programa que le trae a telar datos de afuera, en un JSON conocido: tareas, agenda, cualquier lista | `[proveedores.*]` |
 | **tipo** | objetos guardados como archivos de texto, con un modelo y acciones; telar los lee y los escribe él mismo. Hoy hay uno: `tarea` | `telar.tipos`, `[tipos.*]` |
@@ -446,7 +446,7 @@ primer mensaje. Con ✓, corre la acción «hecha» que el proveedor ofreció.
 
 | quiero… | se hace con | sin escribir código |
 |---|---|---|
-| que telar entienda mis proyectos | el perfil (`telar-perfil.yaml`) | sí |
+| que telar entienda mis proyectos | el perfil (`.telar/perfil.yaml`) | sí |
 | ver mis tareas | `[proveedores.tareas]`: `markdown`, `tipo` o `comando` | sí, con `markdown` o `tipo` |
 | ver mi agenda | `[proveedores.calendario]`: iCal o `gws` | sí |
 | una pestaña propia en el dashboard | `[vistas.x]` con `aparece = "pestana"`: un comando que imprime una página (antes `[bloques]`, que se sigue leyendo) | no: un script |

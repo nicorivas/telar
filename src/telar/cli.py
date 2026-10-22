@@ -100,7 +100,7 @@ Cada orden explica lo suyo con --help, y lo que imprime con --json es un contrat
 está escrito en docs/contratos.md.
 
 telar no decide qué es un proyecto: eso lo declara el repositorio de trabajo en su
-telar-perfil.yaml. Ver docs/perfil.md.
+.telar/perfil.yaml. Ver docs/perfil.md.
 """
 
 

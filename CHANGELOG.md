@@ -131,6 +131,9 @@ extension shared the version number.
 
 ### Changed
 
+- A repository's profile lives in its `.telar/` folder, `.telar/perfil.yaml`, and `telar-perfil.yaml` is no
+  longer read (`telar doctor` says how to move it). `.telar/local.yaml`, per person and out of git, is read on top
+  of the profile: a value replaces, a map merges key by key, `null` removes.
 - A thread on another machine carries its machine in its address everywhere (`hilo:Faro@servidor`); a message to
   `hilo:X@machine` is refused (404) if that machine has no thread X, instead of waiting in a mailbox nobody reads.
 - A `[repos]` path is given absolute everywhere (`telar config --json`, `TELAR_REPOS`): a relative one, read from

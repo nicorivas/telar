@@ -24,7 +24,7 @@ it, came from there.
 Dependencies
 
 PyYAML — MIT License. https://pyyaml.org/
-    Used to read the work repository's telar-perfil.yaml.
+    Used to read the work repository's .telar/perfil.yaml.
 
 Everything else telar uses is in the Python standard library.
 

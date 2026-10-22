@@ -2,7 +2,7 @@
 
 Es la frontera de telar puesta por escrito: qué carpetas son unidades de trabajo,
 qué archivo es su cara, qué se lee de ese archivo y qué acciones ofrece. Sin
-`telar-perfil.yaml` rige la convención mínima, y esta orden lo dice en la primera
+`.telar/perfil.yaml` rige la convención mínima, y esta orden lo dice en la primera
 línea para que nadie crea que su perfil se está leyendo cuando no.
 
     telar perfil                 lo declarado
@@ -75,7 +75,7 @@ def main(argv: list[str], ctx) -> int:
         )
 
     if perfil.minimo:
-        print(_comun.fuerte("convención mínima") + _comun.tenue(f"  ·  no hay telar-perfil.yaml en {raiz}"))
+        print(_comun.fuerte("convención mínima") + _comun.tenue(f"  ·  no hay .telar/perfil.yaml en {raiz}"))
         print(_comun.tenue("  el título es el primer encabezado; el estado, el primer párrafo;"))
         print(_comun.tenue("  los pendientes, la primera lista de casillas. Ver docs/perfil.md."))
     else:

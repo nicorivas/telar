@@ -18,8 +18,8 @@ env/
 .coverage
 htmlcov/
 
-# Estado derivado: se puede borrar sin perder nada (ver docs/configuracion.md)
-.telar/
+# lo de cada persona en la carpeta de telar de un repositorio (docs/perfil.md, «La carpeta .telar/»)
+.telar/local.yaml
 *.local.toml
 
 # Lo que deja el ejemplo al correr sus acciones

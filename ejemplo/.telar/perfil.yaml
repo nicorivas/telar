@@ -1,4 +1,4 @@
-# telar-perfil.yaml — lo que este repositorio declara de sí mismo.
+# .telar/perfil.yaml — lo que este repositorio declara de sí mismo.
 #
 # Es un workspace inventado, para probar telar sin datos de nadie. Un repositorio
 # de verdad se ve igual: dice qué carpetas son unidades de trabajo, qué archivo es
