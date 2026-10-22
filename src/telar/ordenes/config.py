@@ -122,9 +122,10 @@ def main(argv: list[str], ctx) -> int:
     for r in cuerpo.get("repos") or []:
         perfil = f" · perfil {r['perfil']}" if r["perfil"] else ""
         print(f"  {'repo':<13} {r['nombre']} {_comun.tenue(r['ruta'] + perfil)}")
+    from telar import modulos as mod_modulos
+
     for m in cuerpo.get("modulos") or []:
-        de = f"{m['fuente']} @ {m['version']}" if m["instalado"] else "(a mano)"
-        print(f"  {'modulo':<13} {m['nombre']} {_comun.tenue(de)}")
+        print(f"  {'modulo':<13} {m['nombre']} {_comun.tenue(mod_modulos.linea_procedencia(m))}")
     if pisadas:
         print()
         print(_comun.tenue("pisado por el entorno: " + ", ".join(f"{k}={v}" for k, v in pisadas.items())))

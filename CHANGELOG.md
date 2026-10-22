@@ -58,6 +58,8 @@ extension shared the version number.
 - `telar config --json` (and `GET /config`) lists the repositories of `[repos]` in a new `repos` field (name,
   path, profile), and each module now says where it came from: `instalado`, `fuente`, `version` and `enlazado`,
   from what `telar modulo` wrote down (empty for one declared by hand). No other field changes.
+- A module's `fuente` no longer shows the `user:password@` part of a URL in `telar config` (nor in `GET /config`),
+  and `telar config` and `telar modulos` no longer end the line with a dangling `@` when no version was recorded.
 
 ## [0.3.0] — 2026-10-21
 

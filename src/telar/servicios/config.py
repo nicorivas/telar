@@ -154,20 +154,19 @@ def resuelta(ctx) -> ConfigResuelta:
 
 def _modulos(cfg) -> list[dict]:
     """Los módulos, con lo que anotó `telar modulo` de los instalados: de dónde vienen (`fuente`), en qué
-    versión y si están enlazados a una carpeta. Uno declarado a mano trae `instalado` falso y lo demás vacío."""
+    versión y si están enlazados a una carpeta (`telar.modulos.procedencia`). Uno declarado a mano trae
+    `instalado` falso y lo demás vacío."""
     from telar import modulos as mod_modulos
 
     try:
         instalados = mod_modulos.leer_instalados(mod_modulos.ruta_instalados(cfg.origen)) if cfg.origen else {}
     except mod_modulos.ErrorDeModulo:
-        instalados = {}  # la configuración ya lo habría dicho; aquí solo falta el detalle
-    lista = []
-    for m in cfg.modulos:
-        d = instalados.get(m.nombre, {})
-        lista.append({"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
-                      "instalado": bool(d), "fuente": str(d.get("fuente") or ""), "version": str(d.get("version") or ""),
-                      "enlazado": bool(d.get("enlazado"))})
-    return lista
+        # cargar la configuración ya lo habría dicho; esto pasa si modulos.toml se rompe después, con
+        # `telar serve` andando: aquí solo falta el detalle
+        instalados = {}
+    # la fuente sale sin credenciales: esto también lo entrega `GET /config`, más allá de esta máquina
+    return [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
+             **mod_modulos.procedencia(instalados.get(m.nombre))} for m in cfg.modulos]
 
 
 def _equipo(cfg) -> str:

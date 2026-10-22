@@ -758,11 +758,12 @@ proveedores y sin ganchos, solo hace menos.
 `config` devuelve la configuración resuelta, con `origen` (de qué archivo salió,
 vacío si son puros valores por defecto) y `entorno` (qué clave pisó cada variable
 `TELAR_*`). `repos` son los repositorios de `[repos]`, cada uno con `nombre`, `ruta`
-(absoluta, con `~` expandida) y `perfil` (vacío si es el de su carpeta), igual que `TELAR_REPOS`;
-sin `[repos]` la lista viene vacía. Cada módulo de `modulos` trae, además de `nombre`, `carpeta`,
-`descripcion` y `aporta`, de dónde vino: `instalado` (si lo anotó `telar modulo` en `modulos.toml`),
-`fuente` (el repositorio o la carpeta de donde se instaló), `version` y `enlazado`; uno declarado a
-mano trae `instalado: false` y lo demás vacío. `GET /config` entrega lo mismo.
+(como está escrita en `[repos]`, con `~` expandida; una relativa sale tal cual) y `perfil` (vacío
+si es el de su carpeta), igual que `TELAR_REPOS`; sin `[repos]` la lista viene vacía. Cada módulo
+de `modulos` trae, además de `nombre`, `carpeta`, `descripcion` y `aporta`, de dónde vino:
+`instalado` (si lo anotó `telar modulo` en `modulos.toml`), `fuente` (el repositorio o la carpeta
+de donde se instaló, sin la parte `usuario:clave@` de una URL), `version` y `enlazado`; uno
+declarado a mano trae `instalado: false` y lo demás vacío. `GET /config` entrega lo mismo.
 
 ```json
 { "repos": [ { "nombre": "equipo", "ruta": "/casa/equipo", "perfil": "" } ],

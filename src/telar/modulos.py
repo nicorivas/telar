@@ -319,6 +319,42 @@ def leer_instalados(ruta: Path) -> dict:
     return {k: v for k, v in datos.items() if isinstance(v, dict)}
 
 
+def sin_credenciales(fuente: str) -> str:
+    """La fuente sin la parte `usuario:clave@` de una URL: se ve de dónde viene, no con qué se entra.
+
+    `telar modulo instalar https://ana:token@host/…` deja esa URL en `modulos.toml` (y `git remote
+    get-url origin` la devuelve igual). Una carpeta o una dirección `git@host:…` quedan como están."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        partes = urlsplit(fuente)
+    except ValueError:
+        return fuente
+    if not partes.scheme or "@" not in partes.netloc:
+        return fuente
+    return urlunsplit(partes._replace(netloc=partes.netloc.rsplit("@", 1)[1]))
+
+
+def procedencia(anotado: dict | None) -> dict:
+    """De dónde vino un módulo, de lo que anotó `telar modulo` en `modulos.toml` (`anotado`, su tabla, o
+    None si se declaró a mano): `instalado`, `fuente` (sin credenciales), `version` y `enlazado`.
+
+    El archivo no se edita a mano, pero si alguien lo hace no se le cree cualquier cosa: `enlazado` es
+    verdadero solo si dice `true` (el texto "false" no lo es)."""
+    d = anotado if isinstance(anotado, dict) else {}
+    version = d.get("version")
+    return {"instalado": bool(d), "fuente": sin_credenciales(str(d.get("fuente") or "")),
+            "version": version if isinstance(version, str) else "", "enlazado": d.get("enlazado") is True}
+
+
+def linea_procedencia(p: dict) -> str:
+    """Lo de `procedencia` para leer: «fuente @ version», «fuente» si no hay versión anotada (uno enlazado
+    fuera de git), o «(a mano)»."""
+    if not p["instalado"]:
+        return "(a mano)"
+    return " @ ".join(x for x in (p["fuente"], p["version"]) if x) or "(sin fuente anotada)"
+
+
 def _escribir_instalados(ruta: Path, instalados: dict) -> None:
     lineas = ["# Los módulos que instaló `telar modulo`. Lo escribe esa orden: no lo edites a mano.", ""]
     for nombre, d in sorted(instalados.items()):

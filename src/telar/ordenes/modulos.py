@@ -49,9 +49,8 @@ def main(argv: list[str], ctx) -> int:
     if not modulos:
         print(_comun.tenue("no hay módulos: telar modulos instalar <repo>, o [modulos.<nombre>] carpeta = \"…\" a mano"))
     for m in modulos:
-        d = instalados.get(m.nombre, {})
-        de = f"  {d.get('fuente', '')} @ {d.get('version', '')}" if d else "  (a mano)"
-        print(f"{m.nombre}  " + _comun.tenue(str(m.carpeta) + de))
+        de = mod_modulos.linea_procedencia(mod_modulos.procedencia(instalados.get(m.nombre)))
+        print(f"{m.nombre}  " + _comun.tenue(f"{m.carpeta}  {de}"))
         if m.descripcion:
             print(f"    {m.descripcion}")
         print(_comun.tenue("    aporta: " + (", ".join(m.aporta) or "nada")))

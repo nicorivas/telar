@@ -76,6 +76,11 @@ class ConfigConReposYModulos(Prueba):
         self.assertFalse(ruta.startswith("~"))
         self.assertEqual(ruta, str(Path("~/en-casa").expanduser()))
 
+    def test_una_ruta_relativa_sale_tal_cual(self):
+        """Como en `TELAR_REPOS`: el contrato no promete resolverla."""
+        self.config.write_text('[repos.rel]\nruta = "equipo"\n', encoding="utf-8")
+        self.assertEqual(self.json_config()["repos"], [{"nombre": "rel", "ruta": "equipo", "perfil": ""}])
+
     def test_sin_repos_la_lista_viene_vacia(self):
         self.config.write_text("", encoding="utf-8")
         (Path(self.tmp.name) / "modulos.toml").unlink()
@@ -105,6 +110,35 @@ class ConfigConReposYModulos(Prueba):
         molino = next(m for m in self.json_config()["modulos"] if m["nombre"] == "molino")
         self.assertEqual((molino["instalado"], molino["enlazado"], molino["fuente"]), (True, True, str(self.instalado)))
 
+    def test_la_fuente_sale_sin_credenciales(self):
+        (Path(self.tmp.name) / "modulos.toml").write_text(
+            f'[molino]\ncarpeta = "{self.instalado}"\nfuente = "https://ana:secreto@ejemplo.org/molino.git"\n'
+            f'version = "a1b2c3d"\n', encoding="utf-8")
+        molino = next(m for m in self.json_config()["modulos"] if m["nombre"] == "molino")
+        self.assertEqual(molino["fuente"], "https://ejemplo.org/molino.git")
+        codigo, salida, error = self.correr("config")
+        self.assertEqual(codigo, 0, error)
+        self.assertNotIn("secreto", salida)
+        self.assertIn("https://ejemplo.org/molino.git @ a1b2c3d", salida)
+
+    def test_enlazado_solo_si_dice_true(self):
+        """El texto "false" escrito a mano no es verdadero; una versión que no es texto no se inventa."""
+        (Path(self.tmp.name) / "modulos.toml").write_text(
+            f'[molino]\ncarpeta = "{self.instalado}"\nfuente = "{self.instalado}"\nenlazado = "false"\nversion = 7\n',
+            encoding="utf-8")
+        molino = next(m for m in self.json_config()["modulos"] if m["nombre"] == "molino")
+        self.assertEqual((molino["enlazado"], molino["version"]), (False, ""))
+
+    def test_sin_version_no_queda_la_arroba_colgando(self):
+        (Path(self.tmp.name) / "modulos.toml").write_text(
+            f'[molino]\ncarpeta = "{self.instalado}"\nfuente = "/otra/molino"\nenlazado = true\n', encoding="utf-8")
+        for argv in (("config",), ("modulos",)):
+            codigo, salida, error = self.correr(*argv)
+            self.assertEqual(codigo, 0, error)
+            linea = next(x for x in salida.splitlines() if "molino" in x)
+            self.assertIn("/otra/molino", linea)
+            self.assertNotIn("@", linea)
+
     def test_la_salida_para_leer_los_nombra(self):
         codigo, salida, error = self.correr("config")
         self.assertEqual(codigo, 0, error)
@@ -120,7 +154,12 @@ class ConfigConReposYModulos(Prueba):
         api.app.dependency_overrides[api.contexto] = lambda: Contexto(config=cargar(self.config))
         self.addCleanup(api.app.dependency_overrides.clear)
         d = TestClient(api.app).get("/config").json()
-        self.assertEqual(d["repos"], self.json_config()["repos"])
+        # contra lo esperado, no contra la CLI: las dos salen de la misma función
+        self.assertEqual([r["nombre"] for r in d["repos"]], ["vida", "equipo"])
+        self.assertEqual(d["repos"][1], {"nombre": "equipo", "ruta": str(self.equipo), "perfil": "perfiles/equipo.yaml"})
+        molino = next(m for m in d["modulos"] if m["nombre"] == "molino")
+        self.assertEqual((molino["instalado"], molino["fuente"], molino["version"], molino["enlazado"]),
+                         (True, "https://ejemplo.org/molino.git", "a1b2c3d", False))
         self.assertEqual(d["modulos"], self.json_config()["modulos"])
 
 
