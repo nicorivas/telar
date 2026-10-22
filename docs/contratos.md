@@ -302,9 +302,13 @@ existe, falta una sección requerida). Ver [el estado de un hilo](#el-estado-de-
   "ref": "faro:2", "texto": "Ajustar la velocidad de giro",
   "hecho": false, "en_curso": true, "id": "", "origen": "pendientes", "dueno": "Ana Pérez",
   "hilo": "faro", "ruta": "proyectos/faro",
-  "proveedor": "", "clase": "", "cuando": null, "url": "", "direccion": ""
+  "proveedor": "", "clase": "", "cuando": null, "url": "", "direccion": "", "repetida": null
 }
 ```
+
+`repetida` está en las filas de casillas de un documento: si otras casillas de ese documento dicen lo mismo,
+cuál es esta entre ellas, `{"cual": 2, "de": 2}` (desde 1, en el orden del documento); `null` si es la única
+con ese texto. Es lo que deja escribirle a una de dos casillas iguales sin id (`telar pendiente`).
 
 `direccion` es la dirección de objeto, la que abre `telar objeto`: la de una tarea del tipo (`tarea:T84`, la de
 un proveedor con `tipo = "tipo"`), o la de una casilla de un documento que ya tiene id (`pendiente:c-1a2b3c`:
@@ -424,7 +428,9 @@ dirección (`pendiente:T84`). Un mismo id en dos documentos es un 409 que dice d
 (`--hecho`, `--responsable`), si su línea no tiene `<!-- id: … -->`, telar le agrega uno al final, único en
 ese documento; `direccion` dice cuál. Desde ahí se la encuentra por el id aunque el documento cambie. Un
 id que ya está no se reescribe, ninguna otra línea cambia, y si el documento no se puede escribir, queda como
-estaba (un 409, como cuando la casilla ya no está o hay dos iguales). `--linea` no escribe: `direccion` es
+estaba (un 409, como cuando la casilla ya no está). Dos casillas iguales sin id son dos filas, y cada una
+recibe su propio id: se escribe la que dice `repetida`, si el documento sigue teniendo tantas casillas con ese
+texto; si cambió cuántas, un 409. `--linea` no escribe: `direccion` es
 `""` si la casilla todavía no tiene id.
 
 ### `telar hoy --json`

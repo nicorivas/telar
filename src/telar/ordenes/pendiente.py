@@ -329,18 +329,21 @@ def en_su_documento(ctx, ref: str, *, hecho: bool = False, responsable: str | No
     if esperado.strip() and esperado.strip() != fila["texto"]:
         raise ErrorDeServicio(f"«{fila['ref']}» ya no dice «{esperado.strip()[:60]}»: el documento cambió, vuelve a mirarlo", 409)
     # con id, la casilla se busca por él (no se mueve con el documento); sin id, por su texto, y al escribirla
-    # recibe uno (telar.vinetas): desde ahí su dirección es `pendiente:<id>`
+    # recibe uno (telar.vinetas): desde ahí su dirección es `pendiente:<id>`. Sin id y con otras que dicen lo
+    # mismo, la fila dice cuál es de ellas (`repetida`), y se le escribe a esa
     ident = id_casilla(fila)
+    lugar = lugar_casilla(fila)
     try:
         if linea:
-            que, n = "", vinetas.linea(documento, texto, id=ident)
+            que, n = "", vinetas.linea(documento, texto, id=ident, **lugar)
         elif hecho:
             que = "marcada hecha"
-            n, ident = vinetas.escribir(documento, vinetas.hecha, texto=texto, id=ident)
+            n, ident = vinetas.escribir(documento, vinetas.hecha, texto=texto, id=ident, **lugar)
         else:
             nombre = (responsable or "").strip()
             que = "sin responsable" if nombre.lower() in ("", "none") else f"responsable: {nombre}"
-            n, ident = vinetas.escribir(documento, lambda l: vinetas.con_responsable(l, nombre), texto=texto, id=ident)
+            n, ident = vinetas.escribir(documento, lambda l: vinetas.con_responsable(l, nombre), texto=texto,
+                                        id=ident, **lugar)
     except (vinetas.ErrorDeVineta, OSError) as e:
         raise ErrorDeServicio(str(e), 409) from e
     from telar import objetos
@@ -349,6 +352,18 @@ def en_su_documento(ctx, ref: str, *, hecho: bool = False, responsable: str | No
     direccion = objetos.direccion_de("pendiente", ident) if ident else ""
     return ({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa, "linea": n, "hecho": que,
              "direccion": direccion}, f"{relativa}:{n}" + (f" · {que}" if que else ""))
+
+
+def lugar_casilla(fila: dict) -> dict:
+    """Cuál es la casilla de la fila entre las de su documento que dicen lo mismo, como lo piden
+    telar.vinetas.escribir y linea (`cual`, `de`); vacío si es la única, o si la fila no dice."""
+    repetida = fila.get("repetida") or {}
+    if fila.get("proveedor") or not isinstance(repetida, dict):
+        return {}
+    try:
+        return {"cual": int(repetida["cual"]), "de": int(repetida["de"])}
+    except (KeyError, TypeError, ValueError):
+        return {}
 
 
 def id_casilla(fila: dict) -> str:

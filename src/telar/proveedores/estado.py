@@ -583,10 +583,12 @@ class Documento:
         return ""
 
     def _pendientes(self, valores: dict[str, object], origenes: tuple[str, ...]) -> list[Pendiente]:
-        """Los orígenes se suman en orden; un mismo texto en dos secciones va una vez. Una casilla con id
-        (telar.vinetas) es ella misma aunque otra diga lo mismo: se la encuentra por el id, y no puede faltar.
-        Una sin id que dice lo mismo que una con id es la misma de antes de tener id (la otra sección que la
-        repite) y no va, venga antes o después: así lo que se ve no depende del orden de las secciones."""
+        """Los orígenes se suman en orden; una misma casilla en dos secciones (una sección se queda con sus
+        subsecciones) va una vez. Leída del documento, cada casilla sabe cuál es entre las que dicen lo mismo
+        (`cual`, telar.lectura), y eso la distingue: dos casillas iguales son dos filas, y se le puede escribir
+        a cada una (telar.vinetas). Sin eso (un ítem que no salió de leer el documento), un mismo texto va una
+        vez; una casilla con id es ella misma aunque otra diga lo mismo, y una sin id que dice lo mismo que una
+        con id es la misma de antes de tener id y no va, venga antes o después."""
         todos: list[Pendiente] = []
         for origen in origenes:
             valor = valores.get(origen)
@@ -596,12 +598,20 @@ class Documento:
                 pendiente = self._pendiente(item, origen)
                 if pendiente is not None:
                     todos.append(pendiente)
-        con_id_textos = {p.texto for p in todos if p.id_casilla}
+        # lo que dice una casilla con id o con lugar: un ítem sin ninguno de los dos que dice eso mismo es esa
+        # casilla, leída por otra sección (una `lista` también ve las casillas)
+        con_id_textos = {p.texto for p in todos if p.id_casilla or getattr(p, "cual", 0)}
         salida: list[Pendiente] = []
         vistos: set[str] = set()
         con_id: set[tuple[str, str]] = set()
+        lugares: set[tuple[str, int]] = set()
         for pendiente in todos:
-            if pendiente.id_casilla:
+            if getattr(pendiente, "cual", 0):
+                lugar = (pendiente.texto, pendiente.cual)
+                if lugar in lugares:
+                    continue
+                lugares.add(lugar)
+            elif pendiente.id_casilla:
                 clave = (pendiente.texto, pendiente.id_casilla)
                 if clave in con_id:
                     continue

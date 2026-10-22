@@ -73,8 +73,8 @@ class ElIdDeUnaCasilla(Prueba):
 
     def test_nuevo_id_no_repite_uno_del_documento(self):
         # `nuevo_id` sobre lo que ya hay: dos líneas iguales a las que se les pone id quedan con ids distintos.
-        # Por `telar pendiente` dos casillas iguales sin id no llegan aquí: no se sabe cuál es, y no se escribe
-        # (ver LoQueEncontraronLosRevisoresEnLasOrdenes.test_dos_casillas_iguales_sin_id_no_se_adivinan)
+        # Por `telar pendiente`, el camino de punta a punta está en
+        # LoQueEncontraronLosRevisoresEnLasOrdenes.test_dos_casillas_iguales_sin_id_son_dos_y_cada_una_recibe_su_id
         lineas = ["- [ ] Llamar\n", "- [ ] Llamar\n"]
         for i in range(2):
             lineas[i] = vinetas.con_id(lineas[i], vinetas.nuevo_id("".join(lineas)))
@@ -371,19 +371,111 @@ class LoQueEncontraronLosRevisoresEnLasOrdenes(SobreElEjemplo):
         # sin un proveedor que la tenga, el id solo todavía encuentra la casilla
         self.assertEqual(self.json_de("pendiente", "T84", "--linea", "--json")["direccion"], "pendiente:T84")
 
-    def test_dos_casillas_iguales_sin_id_no_se_adivinan(self):
-        # sin id, una casilla se busca por su texto; dos iguales en el mismo documento son una fila en `telar
-        # pendientes`, y escribirla no puede saber cuál es: no escribe nada (ninguna recibe id) y lo dice.
-        # Para distinguirlas, alguien les pone un id a mano (o cambia el texto de una).
+    def test_dos_casillas_iguales_sin_id_son_dos_y_cada_una_recibe_su_id(self):
+        # sin id, una casilla se busca por su texto; dos iguales en el mismo documento son dos filas en `telar
+        # pendientes`, cada una sabe cuál es de las dos (`repetida`), y escribirla toca esa y le da su propio id
         molino = self.raiz / "proyectos" / "molino" / "README.md"
         molino.write_text(molino.read_text().replace("- [ ] Rearmar las dos aspas", "- [ ] Conseguir madera seca"))
+
+        def filas():
+            return [f for f in self.json_de("pendientes", "--repo", "--hechos", "--json")["pendientes"]
+                    if f["texto"] == "Conseguir madera seca"]
+
+        dos = filas()
+        self.assertEqual([f["repetida"] for f in dos], [{"cual": 1, "de": 2}, {"cual": 2, "de": 2}])
+        self.assertEqual(len({f["ref"] for f in dos}), 2)
+        # la segunda primero: le toca a la segunda línea, no a la primera que calza
+        codigo, salida, error = self.correr("pendiente", dos[1]["ref"], "--responsable", "Ana", "--json")
+        self.assertEqual(codigo, 0, salida + error)
+        lineas = molino.read_text().splitlines()
+        self.assertEqual(lineas[-2], "- [ ] Conseguir madera seca")
+        segunda = ID.search(lineas[-1]).group(1)
+        self.assertEqual(lineas[-1], f"- [ ] Conseguir madera seca @owner(Ana) <!-- id: {segunda} -->")
+        self.assertEqual(json.loads(salida)["direccion"], f"pendiente:{segunda}")
+        # la otra se sigue alcanzando por su fila, y recibe un id distinto
+        otra = next(f for f in filas() if not f["direccion"])
+        codigo, salida, error = self.correr("pendiente", otra["ref"], "--hecho", "--json")
+        self.assertEqual(codigo, 0, salida + error)
+        lineas = molino.read_text().splitlines()
+        primera = ID.search(lineas[-2]).group(1)
+        self.assertNotEqual(primera, segunda)
+        self.assertEqual(lineas[-2], f"- [x] Conseguir madera seca <!-- id: {primera} -->")
+        self.assertEqual(lineas[-1], f"- [ ] Conseguir madera seca @owner(Ana) <!-- id: {segunda} -->")
+        # y desde ahí cada una tiene su dirección
+        self.assertEqual(sorted(f["direccion"] for f in filas()), sorted([f"pendiente:{primera}", f"pendiente:{segunda}"]))
+
+    def test_si_cambio_cuantas_dicen_lo_mismo_no_se_adivina(self):
+        # la fila dijo «la 2 de 2»; si alguien agregó una tercera igual, la 2 ya puede ser otra: no se escribe
+        molino = self.raiz / "proyectos" / "molino" / "README.md"
+        molino.write_text(molino.read_text().replace("- [ ] Rearmar las dos aspas", "- [ ] Conseguir madera seca"))
+        fila = [f for f in self.json_de("pendientes", "--repo", "--json")["pendientes"]
+                if f["texto"] == "Conseguir madera seca"][1]
+        molino.write_text(molino.read_text().replace("## Pendientes\n\n", "## Pendientes\n\n- [ ] Conseguir madera seca\n"))
         antes = molino.read_bytes()
-        filas = [f for f in self.json_de("pendientes", "--repo", "--json")["pendientes"] if f["texto"] == "Conseguir madera seca"]
-        self.assertEqual(len(filas), 1)
-        codigo, salida, error = self.correr("pendiente", filas[0]["ref"], "--responsable", "Ana", "--json")
-        self.assertNotEqual(codigo, 0)
-        self.assertIn("hay 2 casillas", salida + error)
+        from telar.cli import Contexto
+        from telar.config import cargar as cargar_config
+        from telar.ordenes import pendiente
+        from telar.servicios import ErrorDeServicio
+
+        with self.assertRaises(ErrorDeServicio) as e:
+            pendiente.en_su_documento(Contexto(config=cargar_config(None)), fila["ref"], hecho=True, fila=fila)
+        self.assertEqual(e.exception.codigo, 409)
+        self.assertIn("ahora hay 3", str(e.exception))
         self.assertEqual(molino.read_bytes(), antes)
+
+
+class DosCasillasIguales(Prueba):
+    """Dos casillas que dicen lo mismo, sin id: la lectura dice cuál es cada una, y la escritura toca esa."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.doc = Path(self.tmp.name) / "README.md"
+
+    def test_la_lectura_dice_cual_es_de_cuantas(self):
+        texto = "## Pendientes\n\n- [ ] Llamar\n- [x] Llamar @owner(Ana)\n- [ ] Otra\n\n### Más\n\n- [ ] Llamar\n"
+        p = lectura._casillas(lectura._con_lugar(texto.splitlines()), 0, "pendientes")
+        self.assertEqual([(x.texto, x.cual, x.de) for x in p],
+                         [("Llamar", 1, 3), ("Llamar", 2, 3), ("Otra", 1, 1), ("Llamar", 3, 3)])
+        # sin lugar (líneas sueltas), como antes
+        self.assertEqual({(x.cual, x.de) for x in lectura._casillas(texto.splitlines(), 0, "p")}, {(0, 0)})
+
+    def test_la_misma_linea_en_dos_secciones_va_una_vez_y_dos_iguales_van_dos(self):
+        from telar.perfil import Arquetipo, Seccion
+        from telar.proveedores.estado import Documento
+
+        # «Pendientes» se queda con su subsección «Más», y la convención lee las casillas sueltas también
+        texto = "# Faro\n\n## Pendientes\n\n- [ ] Llamar\n\n### Más\n\n- [ ] Llamar\n- [ ] Otra\n"
+        arq = Arquetipo(nombre="p", ruta="*.md", secciones=(Seccion(nombre="pendientes", tipo="casillas", encabezado="Pendientes"),
+                                               Seccion(nombre="mas", tipo="casillas", encabezado="Más")))
+        doc = Documento.__new__(Documento)
+        doc.marcas = {}
+        ficha = lectura.parsear(texto, arq)
+        valores = {"pendientes": ficha.pendientes, "mas": ficha.secciones["mas"]}
+        salida = doc._pendientes(valores, ("pendientes", "mas"))
+        self.assertEqual([(x.texto, x.cual) for x in salida], [("Llamar", 1), ("Llamar", 2), ("Otra", 1)])
+
+    def test_escribir_la_segunda_de_dos(self):
+        self.doc.write_text("- [ ] Llamar\n- [ ] Llamar\n")
+        n, ident = vinetas.escribir(self.doc, vinetas.hecha, texto="Llamar", cual=2, de=2)
+        self.assertEqual(n, 2)
+        self.assertEqual(self.doc.read_text(), f"- [ ] Llamar\n- [x] Llamar <!-- id: {ident} -->\n")
+        n, otro = vinetas.escribir(self.doc, vinetas.hecha, texto="Llamar", cual=1, de=2)
+        self.assertEqual(n, 1)
+        self.assertNotEqual(otro, ident)
+        self.assertEqual(vinetas.linea(self.doc, "Llamar", cual=1, de=2), 1)
+        # ya hecha, no se vuelve a marcar
+        with self.assertRaises(vinetas.ErrorDeVineta):
+            vinetas.escribir(self.doc, vinetas.hecha, texto="Llamar", cual=1, de=2)
+
+    def test_si_cambio_cuantas_son_no_escribe(self):
+        self.doc.write_text("- [ ] Llamar\n- [ ] Llamar\n- [ ] Llamar\n")
+        antes = self.doc.read_bytes()
+        for cual, de in ((2, 2), (4, 4), (0, 2)):
+            with self.subTest(cual=cual, de=de), self.assertRaises(vinetas.ErrorDeVineta):
+                vinetas.escribir(self.doc, vinetas.hecha, texto="Llamar", cual=cual, de=de)
+        self.assertEqual(self.doc.read_bytes(), antes)
 
 
 class LaListaNoDependeDelOrden(Prueba):

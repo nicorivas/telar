@@ -322,7 +322,7 @@ class Pendiente(Tipo):
     def _objeto(self, tel, fila: dict) -> Objeto:
         from telar import vinetas
         from telar.ordenes import _comun
-        from telar.ordenes.pendiente import id_casilla
+        from telar.ordenes.pendiente import id_casilla, lugar_casilla
 
         ident = id_casilla(fila)
         unidad = tel.unidades.get(fila.get("ruta", ""))
@@ -330,9 +330,9 @@ class Pendiente(Tipo):
         if unidad is not None:
             documento = _comun.ruta_relativa(unidad[1], tel.raiz)
             try:
-                linea = vinetas.linea(unidad[1], fila["texto"], id=ident)
+                linea = vinetas.linea(unidad[1], fila["texto"], id=ident, **lugar_casilla(fila))
             except (vinetas.ErrorDeVineta, OSError):
-                linea = 0  # dos casillas iguales sin id, o el documento cambió: no se adivina
+                linea = 0  # el documento cambió, o un mismo id dos veces: no se adivina
         estado = "hecha" if fila["hecho"] else "en curso" if fila["en_curso"] else "abierta"
         campos = {k: v for k, v in (("texto", fila["texto"]), ("documento", documento), ("linea", linea),
                                      ("responsable", fila.get("dueno", "")), ("ref", fila["ref"]),

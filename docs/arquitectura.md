@@ -250,8 +250,10 @@ Dos casillas con el mismo id no se adivinan: en un documento, se dice, y alguien
 dos documentos (una línea copiada a otro proyecto, un README de plantilla), la dirección es un 409 que dice
 dónde está cada una, y cada una se sigue alcanzando por su `ref`. El id solo, sin `pendiente:`, nombra una
 casilla si tiene la forma de telar (`c-1a2b3c`); uno puesto a mano (`T84`) no le gana a la tarea T84 de un
-proveedor: se lo nombra con su dirección, `pendiente:T84`. Dos casillas iguales sin id son una fila en `telar
-pendientes`, y escribirla falla (no se sabe cuál es): ninguna recibe id hasta que alguien las distinga.
+proveedor: se lo nombra con su dirección, `pendiente:T84`. Dos casillas iguales sin id son dos filas en `telar
+pendientes`: la lectura dice cuál es cada una entre las que dicen lo mismo (la primera o la segunda de dos, en
+el orden del documento; `repetida` en la fila), y se le escribe a esa, que recibe su propio id. Si entretanto
+cambió cuántas casillas dicen eso (alguien agregó o borró una igual), no se adivina: un 409, y nada cambia.
 
 ## La página
 

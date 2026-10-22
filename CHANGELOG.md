@@ -45,6 +45,10 @@ extension shared the version number.
   the same process no longer share a temporary file or overwrite each other.
 - A fifth built-in object type, `pendiente` (`pendiente:<id>`, or `pendiente:<ref>` for one without an id): a
   document checkbox with its text, state, document, line and owner, and the actions `hecho` and `responsable`.
+- Two identical checkboxes without an id in one document are now two rows in `telar pendientes` (they used to
+  be one, and writing it failed), each with a new `repetida` field (`{"cual": 2, "de": 2}`, `null` when the text
+  is unique). `telar pendiente` writes the one the row names and gives it its own id; if the number of
+  checkboxes with that text changed meanwhile, it is a 409 and nothing is written.
 
 ## [0.3.0] — 2026-10-21
 

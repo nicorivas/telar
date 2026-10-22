@@ -2,8 +2,10 @@
 
 Una viñeta nace sin id: su referencia (`faro:2`) es su lugar en el documento, que cambia cuando el
 documento cambia. Por eso, mientras no tenga id, se la busca por su texto —el que mostró quien pide el
-cambio, ya limpio de marcas— y se toca solo si hay exactamente una casilla abierta con ese texto. Si el
-documento cambió y ya no está, o hay dos iguales, no se escribe nada y se dice.
+cambio, ya limpio de marcas— y se toca solo si hay exactamente una casilla abierta con ese texto. Si hay
+varias que dicen lo mismo, la lectura dijo cuál era (la `cual`-ésima de `de`, telar.lectura): se toca esa,
+si el documento sigue teniendo `de` casillas con ese texto. Si el documento cambió y ya no está, o cambió
+cuántas lo dicen, o hay dos iguales y nadie dijo cuál, no se escribe nada y se dice.
 
 La primera vez que telar escribe una casilla le deja un id al final de la línea, `<!-- id: c-1a2b3c -->`
 (`nuevo_id`), y desde ahí se la busca por ese id: su dirección, `pendiente:c-1a2b3c` (telar.objetos), sigue
@@ -76,8 +78,19 @@ def _abierta(linea: str) -> bool:
     return lectura._VINETA.match(_partir(linea)[0]).group(1).lower() != "x"
 
 
-def buscar(lineas: list[str], texto: str, *, abierta: bool = True) -> int:
-    """El índice de la única casilla (abierta, salvo que se diga) cuyo texto es `texto`."""
+def buscar(lineas: list[str], texto: str, *, abierta: bool = True, cual: int = 0, de: int = 0) -> int:
+    """El índice de la única casilla (abierta, salvo que se diga) cuyo texto es `texto`. Con `cual` y `de` (dos
+    o más casillas dicen lo mismo), la `cual`-ésima de las que lo dicen, abiertas o no, como las cuenta la
+    lectura; si ahora son otras tantas que `de`, el documento cambió y no se adivina cuál era."""
+    if cual and de > 1:
+        iguales = [i for i, linea in enumerate(lineas) if _texto(linea) == texto]
+        if len(iguales) != de or not 1 <= cual <= de:
+            raise ErrorDeVineta(f"había {de} casillas con el texto «{texto[:60]}» y ahora hay {len(iguales)}: "
+                                "el documento cambió, vuelve a mirarlo")
+        i = iguales[cual - 1]
+        if abierta and not _abierta(lineas[i]):
+            raise ErrorDeVineta(f"la casilla «{texto[:60]}» ({cual} de {de}) ya está hecha")
+        return i
     hallados = []
     for i, linea in enumerate(lineas):
         if _texto(linea) != texto:
@@ -204,12 +217,12 @@ def _guardar(documento: Path, contenido: str) -> None:
 
 
 def escribir(documento: Path, cambio, *, texto: str = "", id: str = "", abierta: bool = True,
-             estable: bool = True) -> tuple[int, str]:
+             estable: bool = True, cual: int = 0, de: int = 0) -> tuple[int, str]:
     """Aplica `cambio` (línea → línea) a una casilla de `documento` y lo guarda. (número de línea desde 1,
     id de la casilla, o "" si no tiene).
 
     Con `id`, la casilla es la que tiene ese id, y si se da `texto` tiene que seguir diciendo eso; sin `id`,
-    la única con ese `texto`. Con `estable`, una casilla sin id que se cambia recibe uno (`nuevo_id`), en la
+    la única con ese `texto` (o la `cual`-ésima de `de`, `buscar`). Con `estable`, una casilla sin id que se cambia recibe uno (`nuevo_id`), en la
     misma escritura. Si el cambio no cambia nada, no se escribe (ni se pone el id)."""
     documento = documento.resolve()  # un enlace se escribe en su destino, no se reemplaza por un archivo
     with _ESCRIBIENDO:
@@ -220,7 +233,7 @@ def escribir(documento: Path, cambio, *, texto: str = "", id: str = "", abierta:
             if texto and _texto(lineas[i]) != texto:
                 raise ErrorDeVineta(f"la casilla {id} ya no dice «{texto[:60]}»: el documento cambió, vuelve a mirarlo")
         else:
-            i = buscar(lineas, texto, abierta=abierta)
+            i = buscar(lineas, texto, abierta=abierta, cual=cual, de=de)
         # el cambio se le aplica a la casilla; lo que sigue en la línea (tras un U+2028, el final) va tal cual
         casilla, resto = _partir(lineas[i])
         nueva = cambio(casilla)
@@ -239,9 +252,9 @@ def cambiar(documento: Path, texto: str, cambio, *, abierta: bool = True) -> int
     return escribir(documento, cambio, texto=texto, abierta=abierta, estable=False)[0]
 
 
-def linea(documento: Path, texto: str, *, id: str = "") -> int:
+def linea(documento: Path, texto: str, *, id: str = "", cual: int = 0, de: int = 0) -> int:
     """El número de línea (desde 1) de la casilla `texto` (o la del id `id`), abierta o hecha."""
     lineas = _lineas(_leer(documento))
     if id:
         return buscar_id(lineas, id, abierta=False) + 1
-    return buscar(lineas, texto, abierta=False) + 1
+    return buscar(lineas, texto, abierta=False, cual=cual, de=de) + 1

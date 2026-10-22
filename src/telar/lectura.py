@@ -71,6 +71,35 @@ def _sin_front(texto: str) -> str:
     return _FRONT.sub("", texto, count=1)
 
 
+class _Linea(str):
+    """Una línea del documento que sabe, si es una casilla, cuál es entre las que dicen lo mismo: la `cual`-ésima
+    de `de` (desde 1, en el orden del documento). Las secciones se reparten las líneas (y una sección se queda
+    con sus subsecciones, así que la misma línea puede estar en dos), y sin esto dos casillas iguales sin id
+    serían una sola: no se sabría a cuál escribirle (telar.vinetas.buscar)."""
+
+    cual: int = 0
+    de: int = 0
+
+
+def _con_lugar(lineas: list[str]) -> list[str]:
+    """Las líneas, con `cual` y `de` en las que son casillas (`_Linea`); el resto, tal cual."""
+    por_texto: dict[str, list[_Linea]] = {}
+    salida: list[str] = []
+    for linea in lineas:
+        m = _VINETA.match(linea)
+        valor = marcas(limpiar(m.group(2)))[0] if m and m.group(1) is not None else ""
+        if not valor:
+            salida.append(linea)
+            continue
+        propia = _Linea(linea)
+        por_texto.setdefault(valor, []).append(propia)
+        salida.append(propia)
+    for iguales in por_texto.values():
+        for i, propia in enumerate(iguales, 1):
+            propia.cual, propia.de = i, len(iguales)
+    return salida
+
+
 def _bloques(lineas: list[str]) -> list[tuple[int, str, list[str]]]:
     """(nivel, línea del encabezado, cuerpo) por cada sección, más el preámbulo.
 
@@ -213,6 +242,8 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
                 dueno=dueno,
                 vence=vence,
                 id_casilla=ident.group(1) if ident else "",
+                cual=getattr(linea, "cual", 0),
+                de=getattr(linea, "de", 0),
             )
         )
     if not maximo:
@@ -307,7 +338,7 @@ def parsear(
     leida: datetime | None = None,
 ) -> Ficha:
     """Arma la `Ficha` de un texto según las secciones que declara el arquetipo."""
-    bloques = _bloques(_sin_front(texto).splitlines())
+    bloques = _bloques(_con_lugar(_sin_front(texto).splitlines()))
 
     titulo, estado = "", ""
     pendientes: tuple[Pendiente, ...] = ()

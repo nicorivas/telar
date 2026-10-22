@@ -71,6 +71,10 @@ def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
     # que no cambia aunque el documento cambie. Sin id, ninguna: `ref` sirve para el minuto siguiente, no para guardarla
     ident = getattr(pendiente, "id_casilla", "")
     cuerpo["direccion"] = objetos.direccion_de("pendiente", ident) if ident else ""
+    # si otras casillas del documento dicen lo mismo, cuál es de ellas (telar.lectura): con eso se le escribe
+    # a esta y no a otra. None si es la única con ese texto
+    de = getattr(pendiente, "de", 0)
+    cuerpo["repetida"] = {"cual": pendiente.cual, "de": de} if de > 1 else None
     # la fecha límite que dice la viñeta (`@deadline(…)`): así vence como una tarea
     cuerpo["cuando"] = f"{pendiente.vence}T00:00" if getattr(pendiente, "vence", "") else None
     cuerpo["url"] = ""

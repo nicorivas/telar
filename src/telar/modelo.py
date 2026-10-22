@@ -69,6 +69,12 @@ class Pendiente:
     #: el id estable de una casilla de un documento (`<!-- id: c-1a2b3c -->`, telar.vinetas); "" si su línea
     #: no lo tiene todavía. No es `id`: ese es el de un proveedor, y con él se llenan las plantillas.
     id_casilla: str = ""
+    #: cuál es entre las casillas de su documento que dicen lo mismo: la `cual`-ésima de `de`, desde 1 y en el
+    #: orden del documento (telar.lectura). Así dos casillas iguales sin id son dos, y se puede escribirle a
+    #: una (telar.vinetas.buscar). 0 si no salió de leer un documento. Dice dónde está, no qué es: no cuenta
+    #: al comparar, y la forma JSON del contrato de estado no lo lleva (un proveedor `comando` no lo sabe).
+    cual: int = field(default=0, compare=False)
+    de: int = field(default=0, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
