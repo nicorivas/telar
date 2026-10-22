@@ -16,7 +16,7 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const salida = path.join(mkdtempSync(path.join(tmpdir(), 'enlaces-')), 'enlaces.cjs');
 await build({ entryPoints: [path.join(aqui, '..', 'src', 'web', 'enlaces.ts')], bundle: true,
     platform: 'node', format: 'cjs', outfile: salida, logLevel: 'warning' });
-const { hallar } = require(salida);
+const { hallar, usarTipos } = require(salida);
 
 const COLS = 60;
 /** Una pantalla nueva con estas filas, cada una con su salto (como las escribe Ink); o con `crudo`, tal cual. */
@@ -89,6 +89,30 @@ const larga = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c25
     filas[filas.length - 1] += ' Y después otra cosa';
     const term = await pantalla(filas);
     assert.deepEqual(en(term, 1).map(h => h.split(' ').slice(0, 2).join(' ')), [`web ${larga}`]);
+}
+
+// 8. la dirección de un objeto: sin el punto de la frase; la de una web que la contiene no cuenta, ni una pegada a
+// una palabra
+{
+    const term = await pantalla(['  ver tarea:T366. y hilo:Telar@telar, o https://x.cl/tarea:T1 y subtarea:T2']);
+    assert.deepEqual(en(term, 1).map(h => h.split(' ').slice(0, 2).join(' ')),
+        ['direccion hilo:Telar@telar', 'direccion tarea:T366', 'web https://x.cl/tarea:T1']);
+}
+
+// 9. una dirección larga partida por Ink, como una ruta: entera
+{
+    const dir = 'archivo:telar:brinca/operacion/programas/programa-ia/r07-comparacion-mapa-lorena.md';
+    const filas = partir(dir, COLS - 4, '  ');
+    const term = await pantalla(filas);
+    assert.deepEqual(en(term, 2).map(h => h.split(' ').slice(0, 2).join(' ')), [`direccion ${dir}`]);
+}
+
+// 10. los tipos de un módulo, cuando la página los sabe
+{
+    const term = await pantalla(['correo:abc123 llegó']);
+    assert.deepEqual(en(term, 1), [], 'sin saber el tipo, no es una dirección');
+    usarTipos(['archivo', 'hilo', 'proyecto', 'tarea', 'correo']);
+    assert.deepEqual(en(term, 1).map(h => h.split(' ').slice(0, 2).join(' ')), ['direccion correo:abc123']);
 }
 
 console.log('enlaces: bien');

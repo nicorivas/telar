@@ -248,26 +248,29 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   núcleo lo que dice `vistas/dashboard/pantalla.ts`: una pantalla nueva es un archivo más. Todo se pinta en
   `vistas/dashboard/vista.ts`, que filtra, ordena y atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
   de afuera (el buscador de la barra, una terminal).
-- **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la
-  lectura (⌥L, solo la respuesta final del agente, con un renderizador por fuente; la conversación la
-  deja el mod de telar en la casilla, y sin él se lee del registro del agente) y la conversación
-  (⌥C). Una vista nueva es una entrada del registro, con su `montar`: se dibuja en un elemento de la página
-  y se cierra cuando ya no hace falta (de las terminales quedan abiertas las ocho últimas). La carpeta de un
-  hilo y «compartir» se dibujan igual (`web/carpeta.ts`, `web/compartir.ts`). En las tres vistas, las rutas de
-  archivo que escribe el agente son enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del
-  hilo. Una relativa es de donde arrancó el agente, que según `[agente] carpeta` es la carpeta del hilo o la
-  raíz: se prueba primero la del hilo y después la raíz, y se abre la que existe. Una de otra máquina va como
-  `máquina:ruta`, que el visor lee sola por `/api/archivos`. Una dirección web (texto, un enlace, o un
-  hipervínculo OSC 8 de la terminal) abre una pestaña nueva en el navegador de la persona. En la terminal, una
-  ruta o una dirección que llegó partida en varias filas se encuentra entera (`web/enlaces.ts`): Claude Code corta
-  él sus líneas al ancho de su caja, con saltos de verdad, así que una fila que llega al borde derecho sigue en la
-  de abajo si lo que cruza el corte es más largo que una fila. Un `.html` el visor lo muestra dibujado, en un
-  iframe aislado (`/api/archivos/ver`, con `sandbox`: sus scripts no ven la llave ni la API de la página), con su
-  código a un clic. Al lado del archivo, sus conexiones en el grafo (`/api/modulos/grafo/vecinos`, si la máquina
-  del archivo tiene el módulo): se piden después de mostrarlo, porque el grafo lee el repositorio entero. Lo que
-  muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ …» vuelve al documento anterior (el visor
-  anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋: `navegador/app.ts`
-  recuerda de dónde se vino.
+- **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la lectura (⌥L,
+  solo la respuesta final del agente, con un renderizador por fuente; la conversación la deja el mod de telar en
+  la casilla, y sin él se lee del registro del agente) y la conversación (⌥C). Una vista nueva es una entrada del
+  registro, con su `montar`: se dibuja en un elemento de la página y se cierra cuando ya no hace falta (de las
+  terminales quedan abiertas las ocho últimas). La carpeta de un hilo y «compartir» se dibujan igual
+  (`web/carpeta.ts`, `web/compartir.ts`). En las tres vistas, las rutas de archivo que escribe el agente son
+  enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del hilo. Una relativa es de donde arrancó
+  el agente, que según `[agente] carpeta` es la carpeta del hilo o la raíz: se prueba primero la del hilo y
+  después la raíz, y se abre la que existe. Una de otra máquina va como `máquina:ruta`, que el visor lee sola por
+  `/api/archivos`. Una dirección web (texto, un enlace, o un hipervínculo OSC 8 de la terminal) abre una pestaña
+  nueva en el navegador de la persona. En la terminal, una ruta o una dirección que llegó partida en varias filas
+  se encuentra entera (`web/enlaces.ts`): Claude Code corta él sus líneas al ancho de su caja, con saltos de
+  verdad, así que una fila que llega al borde derecho sigue en la de abajo si lo que cruza el corte es más largo
+  que una fila. La dirección de un objeto (`tipo:id[@máquina]`: `tarea:T366`, `hilo:Telar`, y los tipos de los
+  módulos, que dice `/api/objetos/tipos`) también es un enlace: `navegador/app.ts` abre una tarea en su ficha, un
+  archivo o un proyecto en el visor y un hilo como la barra, y cualquier otra en la vista del objeto
+  (`web/objeto.ts`: `/api/objetos/<dirección>`, con sus enlaces y sus acciones). Un `.html` el visor lo muestra
+  dibujado, en un iframe aislado (`/api/archivos/ver`, con `sandbox`: sus scripts no ven la llave ni la API de la
+  página), con su código a un clic. Al lado del archivo, sus conexiones en el grafo (`/api/modulos/grafo/vecinos`,
+  si la máquina del archivo tiene el módulo): se piden después de mostrarlo, porque el grafo lee el repositorio
+  entero. Lo que muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ …» vuelve al documento
+  anterior (el visor anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋:
+  `navegador/app.ts` recuerda de dónde se vino.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un texto largo con a quién va, un

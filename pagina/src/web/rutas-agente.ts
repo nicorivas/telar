@@ -4,16 +4,29 @@
 // o la raíz (un agente residente, la suya). Como la página no lo sabe, prueba las dos. La de un hilo de otra
 // máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
 // su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz. Una dirección web (`https://…`) se abre
-// en una pestaña nueva de este navegador, que es el de la persona, viva donde viva el hilo.
+// en una pestaña nueva de este navegador, que es el de la persona, viva donde viva el hilo. La dirección de un objeto
+// de telar (`tarea:T366`, `hilo:Telar`, la de un tipo de un módulo) la abre la página donde se ve ese objeto.
 
 import type { IDisposable, ILink, Terminal } from '@xterm/xterm';
 
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
-import { hallar, RUTA } from './enlaces';
+import { buscar, hallar, RUTA, usarTipos } from './enlaces';
 import * as ui from './ui';
 import type { RutasVista } from './vistas-hilo';
+
+/** Los tipos de dirección que sabe esta máquina (los de sus módulos también): se piden una vez, y mientras no
+ *  llegan valen los de telar. */
+let tiposPedidos = false;
+function pedirTipos(): void {
+    if (tiposPedidos) return;
+    tiposPedidos = true;
+    void fetch('/api/objetos/tipos', { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() as Promise<{ tipos?: { tipo: string }[] }> : undefined))
+        .then(j => { if (j?.tipos) usarTipos(j.tipos.map(t => t.tipo)); })
+        .catch(() => undefined);
+}
 
 /** Un hipervínculo que llegó a la terminal por OSC 8 (el texto va aparte de la dirección): una web, en una pestaña
  *  nueva; un `file://`, en el visor, en la máquina del hilo; otro, nada. */
@@ -58,11 +71,13 @@ async function existe(ruta: string): Promise<boolean> {
     catch { return false; }
 }
 
-/** Las rutas de un texto ya dibujado (`raiz`), como enlaces `a.ruta[data-ruta]`: en los nodos de texto que no
- *  están ya en un enlace. Uno que el markdown hizo de una ruta (`README.md` parece un dominio de Moldavia, y el
+/** Las rutas y las direcciones de objetos de un texto ya dibujado (`raiz`), como enlaces `a.ruta[data-ruta]` y
+ *  `a.ruta[data-direccion]` (con `rutas` en false, solo las direcciones): en los nodos de texto que no están ya en
+ *  un enlace. Uno que el markdown hizo de una ruta (`README.md` parece un dominio de Moldavia, y el
  *  linkify lo vuelve `http://README.md`) también pasa a ser de la ruta. */
-export function enlazar(raiz: HTMLElement): void {
-    for (const a of raiz.querySelectorAll<HTMLAnchorElement>('a[href^="http://"]')) {
+export function enlazar(raiz: HTMLElement, rutas = true): void {
+    pedirTipos();
+    if (rutas) for (const a of raiz.querySelectorAll<HTMLAnchorElement>('a[href^="http://"]')) {
         const t = a.textContent ?? '';
         if (a.getAttribute('href') === `http://${t}` && new RegExp(`^${RUTA.source}$`, 'u').test(t)) {
             a.removeAttribute('href'); a.classList.add('ruta'); a.dataset.ruta = t;
@@ -75,16 +90,18 @@ export function enlazar(raiz: HTMLElement): void {
     for (let n = caminante.nextNode(); n; n = caminante.nextNode()) nodos.push(n as Text);
     for (const nodo of nodos) {
         const texto = nodo.data;
-        const hallados = [...texto.matchAll(RUTA)];
+        // las webs de un texto ya las hizo enlaces el markdown
+        const hallados = buscar(texto).filter(h => h.tipo === 'direccion' || (rutas && h.tipo === 'ruta'));
         if (!hallados.length) continue;
         const trozos = document.createDocumentFragment();
         let desde = 0;
-        for (const m of hallados) {
-            trozos.append(texto.slice(desde, m.index));
+        for (const h of hallados) {
+            trozos.append(texto.slice(desde, h.i));
             const a = document.createElement('a');
-            a.className = 'ruta'; a.dataset.ruta = m[0]; a.textContent = m[0]; a.title = `abrir ${m[0]}`;
+            a.className = 'ruta'; a.textContent = h.texto; a.title = `abrir ${h.texto}`;
+            if (h.tipo === 'direccion') a.dataset.direccion = h.texto; else a.dataset.ruta = h.texto;
             trozos.append(a);
-            desde = m.index + m[0].length;
+            desde = h.j;
         }
         trozos.append(texto.slice(desde));
         nodo.replaceWith(trozos);
@@ -92,11 +109,13 @@ export function enlazar(raiz: HTMLElement): void {
 }
 
 /** Un clic en una ruta de `raiz` (las de `enlazar`, y un enlace relativo del markdown: `[la guía](docs/x.md)`)
- *  la abre en el visor en vez de navegar la página; uno a una web, en una pestaña nueva (no se va de la página). */
+ *  la abre en el visor en vez de navegar la página; uno a una web, en una pestaña nueva (no se va de la página); una
+ *  dirección, donde se ve su objeto. */
 export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
     raiz.addEventListener('click', e => {
         const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a');
         if (!a || !raiz.contains(a)) return;
+        if (a.dataset.direccion) { e.preventDefault(); void ui.abrirDireccion(a.dataset.direccion); return; }
         const href = a.getAttribute('href') ?? '';
         if (/^https?:\/\//i.test(href)) { e.preventDefault(); void ui.abrirExterno(href); return; }
         const ruta = a.dataset.ruta ?? (href && !href.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(href) ? decodeURIComponent(href.split('#')[0]) : '');
@@ -106,14 +125,16 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
     });
 }
 
-/** Las rutas y las direcciones web de la terminal de un hilo, como enlaces de xterm (subrayadas al pasar; un clic
- *  las abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
+/** Las rutas, las direcciones web y las de objetos de la terminal de un hilo, como enlaces de xterm (subrayadas al
+ *  pasar; un clic las abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
 export function enlazarTerminal(term: Terminal, vista: RutasVista): IDisposable {
+    pedirTipos();
+    const abrir = (h: { tipo: string; texto: string }) => (h.tipo === 'web' ? ui.abrirExterno(h.texto)
+        : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto) : abrirRuta(h.texto, vista));
     return term.registerLinkProvider({
         provideLinks(y, listo) {
             const enlaces = hallar(term.buffer.active, term.cols, y).map((h): ILink => ({
-                range: { start: h.desde, end: h.hasta }, text: h.texto,
-                activate: () => void (h.tipo === 'web' ? ui.abrirExterno(h.texto) : abrirRuta(h.texto, vista)),
+                range: { start: h.desde, end: h.hasta }, text: h.texto, activate: () => void abrir(h),
             }));
             listo(enlaces.length ? enlaces : undefined);
         },

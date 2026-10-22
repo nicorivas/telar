@@ -258,6 +258,9 @@ export class PantallaTareas implements Pantalla {
     /** de qué pestaña se abrió la ficha: ⎋ vuelve ahí, y ahí queda marcada. `pestana:<n>` es
      *  la de un proveedor con pestaña propia (un feed); `bloque:<clave>:<ítem>`, un ítem de un bloque */
     private fichaDesde = 'revisar';
+    /** con `fichaDesde` en 'fuera': la ficha se abrió desde otra vista de la página (la dirección de una tarea en una
+     *  conversación), y «‹» vuelve allá */
+    private fuera: { nombre: string; ir: () => void } | null = null;
     /** la pestaña de proveedor abierta (`pestana` del proveedor: «leer») */
     private pestana = '';
     /** fichas ya pedidas: una pestaña de proveedor puede estar lejos (el feed se pide por ssh
@@ -348,9 +351,10 @@ export class PantallaTareas implements Pantalla {
         if (this.t.pantalla === 'revisar') this.pintarLista();
     }
 
-    /** ⎋ en la ficha: a la lista, el feed o el ítem de donde se abrió; si no, a «ahora». */
+    /** ⎋ en la ficha: a la lista, el feed o el ítem de donde se abrió, o a la vista de afuera; si no, a «ahora». */
     private async volver(): Promise<void> {
-        if (this.fichaDesde === 'revisar') await this.abrirRevisar();
+        if (this.fichaDesde === 'fuera' && this.fuera) this.fuera.ir();
+        else if (this.fichaDesde === 'revisar') await this.abrirRevisar();
         else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
         else if (this.fichaDesde.startsWith('bloque:')) {
             const [, clave, item] = this.fichaDesde.split(':');
@@ -360,9 +364,11 @@ export class PantallaTareas implements Pantalla {
     }
 
     /** La ficha de una tarea: leerla y decidir sin abrir un agente. La arma el proveedor
-     *  (`telar tarea`): su propuesta arriba, el contexto, la historia y los botones. */
-    async abrirTarea(valor: string): Promise<void> {
+     *  (`telar tarea`): su propuesta arriba, el contexto, la historia y los botones. `desde`: la vista de afuera
+     *  del dashboard de donde se abrió (una conversación), adonde vuelve «‹». */
+    async abrirTarea(valor: string, desde?: { nombre: string; ir: () => void }): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
+        if (this.fichaDesde === 'fuera') this.fichaDesde = 'revisar';
         // desde la barra el dashboard puede existir tapado por otra pestaña: se trae al frente,
         // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         this.t.alFrente();
@@ -370,6 +376,7 @@ export class PantallaTareas implements Pantalla {
         // desde un ítem de un bloque (un correo): al cerrar la ficha se vuelve a ese ítem
         if (this.t.pantalla === 'bloque') this.fichaDesde = `bloque:${this.t.bloqueAbierto()}`;
         if (this.t.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
+        if (desde) { this.fichaDesde = 'fuera'; this.fuera = desde; }
         this.t.ir('tarea');
         this.ficha = { proveedor, id, ref };
         const guardada = this.fichas.get(`${proveedor}:${id}`);
@@ -628,7 +635,8 @@ export class PantallaTareas implements Pantalla {
     /** La ficha en su marco: arriba, volver a la lista de donde se abrió (lo mismo que ⎋) y pasar a otra propuesta;
      *  abajo, en un recuadro, todo lo de la tarea. Igual mientras se lee y si no se pudo leer. */
     private marcoFicha(cuerpo: string[], color = '', donde = ''): string[] {
-        const origen = this.t.nombrePestana(this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1'));
+        const origen = this.fichaDesde === 'fuera' && this.fuera ? this.fuera.nombre
+            : this.t.nombrePestana(this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1'));
         return [`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
             volver('volver-ficha', origen, donde, `volver a ${origen} (⎋)`), recuadro(cuerpo.join('\n')), '</div>'];
     }
@@ -748,7 +756,8 @@ export class PantallaTareas implements Pantalla {
         const sigueViva = !this.fichaDesde.startsWith('pestana:') && !!releida.datos?.bloques.some(b => b.destacado);
         olvidarDia();
         void this.t.actualizar(true);
-        if (eraPropuesta && !sigueViva) {
+        // abierta desde afuera, no se pasa a la siguiente propuesta: se queda en esta
+        if (eraPropuesta && !sigueViva && this.fichaDesde !== 'fuera') {
             this.decididas.add(f.id);
             if (await this.otraPropuesta(1)) return;
             // era la última: de vuelta a la lista de donde se vino, que ahora dice «nada que decidir»

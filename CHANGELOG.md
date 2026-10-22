@@ -47,6 +47,13 @@ extension shared the version number.
   scripts run in an origin of their own, without the page's key or its API; «código» next to its path shows the
   source, and «dibujado» goes back. What the page loads by a relative path (images, styles) is not resolved: it
   is for self-contained pages, like a slide.
+- An object's address (`tarea:T366`, `hilo:Telar`, `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, and
+  the types a module brings, from `/api/objetos/tipos`) is a link wherever an agent writes it: the terminal
+  (whole, even split over several rows), the reading view and the conversation. A task opens in its card, whose
+  «‹» goes back to where the link was; a file or a project, in the viewer (the project, its folder); a thread, the
+  thread, as a click in the bar. Any other type opens in a view of the object, in the same box with «‹»: its
+  title, state, summary and fields, its links (addresses too) and its actions, which ask for their parameters (or
+  a confirmation, if they take none) and run on the version being looked at.
 - The document viewer shows a file's connections in the knowledge graph next to it (below it on a narrow
   screen), when the file's machine has the `grafo` module: the ones that go out (type, where, and why) and the
   ones that come in, grouped by the other document. Each one opens that document in the same viewer. They

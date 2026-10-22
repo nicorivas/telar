@@ -1,4 +1,5 @@
-// Dónde hay rutas de archivo y direcciones web en un texto, y en lo que muestra la terminal de un hilo. Una línea
+// Dónde hay rutas de archivo, direcciones web y direcciones de objetos (`tarea:T366`) en un texto, y en lo que
+// muestra la terminal de un hilo. Una línea
 // larga llega a la terminal partida en filas de dos maneras: la parte la terminal al llegar al borde (xterm marca la
 // fila de abajo `isWrapped`), o la parte el programa antes de escribirla, con saltos de línea de verdad. Claude Code
 // hace lo segundo: su Ink corta el texto al ancho de la caja, y una palabra más larga que la caja (una dirección,
@@ -15,6 +16,21 @@ export const RUTA = new RegExp(String.raw`(?<![\p{L}\p{N}_/.~:@+-])(?:~?\/)?(?:[
 
 /** Una dirección web escrita como texto. Lo que la cierra en una frase no es suyo: lo quita `sinCola`. */
 const WEB = /\bhttps?:\/\/[^\s<>"'`]+/g;
+
+/** Los tipos de objeto de una dirección (`tipo:id`, /api/objetos/tipos): los de telar hasta que la página sabe los
+ *  de su máquina, que pueden traer más (los de sus módulos: `usarTipos`). */
+let DIRECCION = direccion(['archivo', 'hilo', 'proyecto', 'tarea']);
+
+/** La dirección de un objeto: un tipo conocido, «:» y su id hasta un espacio, una comilla, un paréntesis o una coma
+ *  (con `@máquina`, quizás, al final). No pegada detrás de una letra, `/`, `.` o `@`: ni `subtarea:x` ni lo de una
+ *  web (`https://x:y`). El punto que cierra la frase no es suyo (lo quita `buscar`). */
+function direccion(tipos: string[]): RegExp {
+    const nombres = [...tipos].sort((a, b) => b.length - a.length).map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    return new RegExp(String.raw`(?<![\p{L}\p{N}_/.@-])(?:${nombres}):[^\s"'()<>,\[\]{}\x60]+`, 'gu');
+}
+
+/** Los tipos de dirección que sabe la máquina de la página. */
+export function usarTipos(tipos: string[]): void { if (tipos.length) DIRECCION = direccion(tipos); }
 
 /** Una dirección sin la puntuación que la sigue en la frase: un punto, una coma, una comilla, o un paréntesis de
  *  cierre que no abrió adentro (el de `…/Borges_(escritor)` sí es suyo). */
@@ -39,7 +55,7 @@ export interface Pantalla {
 export interface Celda { x: number; y: number }
 
 /** Una ruta o una dirección de la pantalla, y las celdas donde empieza y termina. */
-export interface Hallazgo { tipo: 'ruta' | 'web'; texto: string; desde: Celda; hasta: Celda }
+export interface Hallazgo { tipo: 'ruta' | 'web' | 'direccion'; texto: string; desde: Celda; hasta: Celda }
 
 /** Cuántas columnas puede dejar libres a la derecha una fila que sigue en la de abajo: la caja de Ink puede tener
  *  margen. */
@@ -76,15 +92,23 @@ function junta(a: Tira, b: Tira, cols: number): { fin: number; ini: number; anch
     return { fin, ini, ancho: a.celdas[fin - 1].x - b.celdas[ini].x + 1 };
 }
 
-/** Las rutas y direcciones de un texto, con sus posiciones en él. */
-function buscar(texto: string): { tipo: Hallazgo['tipo']; texto: string; i: number; j: number }[] {
-    return [
+/** Las rutas y direcciones (web y de objetos) de un texto, con sus posiciones en él. Si dos se pisan, queda la más
+ *  larga. */
+export function buscar(texto: string): { tipo: Hallazgo['tipo']; texto: string; i: number; j: number }[] {
+    const todas = [
         ...[...texto.matchAll(RUTA)].map(m => ({ tipo: 'ruta' as const, texto: m[0], i: m.index, j: m.index + m[0].length })),
         ...[...texto.matchAll(WEB)].map(m => {
             const url = sinCola(m[0]);
             return { tipo: 'web' as const, texto: url, i: m.index, j: m.index + url.length };
         }),
-    ];
+        ...[...texto.matchAll(DIRECCION)].map(m => {
+            const d = m[0].replace(/[.;:!?…»”’]+$/u, '');
+            return { tipo: 'direccion' as const, texto: d, i: m.index, j: m.index + d.length };
+        }).filter(h => !h.texto.endsWith(':') && h.texto.indexOf(':') < h.texto.length - 1),
+    ].sort((a, b) => (b.j - b.i) - (a.j - a.i));
+    const quedan: typeof todas = [];
+    for (const h of todas) if (!quedan.some(q => h.i < q.j && q.i < h.j)) quedan.push(h);
+    return quedan.sort((a, b) => a.i - b.i);
 }
 
 /** Las rutas y direcciones que tocan la fila `y` (desde 1) de la pantalla, de `cols` columnas. Primero las de su

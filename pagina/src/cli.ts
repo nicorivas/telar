@@ -348,6 +348,28 @@ export async function accionTarea(id: string, proveedor: string, n: number, text
     return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto, ...(version ? { version } : {}), ...(hilo ? { hilo } : {}) });
 }
 
+/** Un objeto de telar por su dirección (`tipo:id[@máquina]`, GET /objetos/<dirección>): lo que muestra la vista
+ *  de un objeto (web/objeto.ts). */
+export interface JsonObjeto {
+    direccion: string; tipo: string; id: string; titulo: string; estado?: string; resumen?: string;
+    campos?: Record<string, unknown>; enlaces?: string[];
+    acciones?: { nombre: string; descripcion?: string; params?: Record<string, string> }[];
+    version?: string; maquina?: string;
+}
+
+/** Una dirección en la ruta de la API: con sus `:`, `/` y `@` a la vista, lo demás escapado. */
+const enRuta = (direccion: string) => encodeURIComponent(direccion).replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%40/g, '@');
+
+export async function objeto(direccion: string): Promise<Respuesta<JsonObjeto>> {
+    return await deServe<JsonObjeto>(`/objetos/${enRuta(direccion)}`, 20000);
+}
+
+/** Correr una acción de un objeto con sus parámetros, sobre la versión que se está mirando (si cambió, 409). */
+export async function accionObjeto(direccion: string, accion: string, params: Record<string, string>, version = ''): Promise<Respuesta<{ objeto?: JsonObjeto | null; resultado?: unknown }>> {
+    return await aServe<{ objeto?: JsonObjeto | null; resultado?: unknown }>('POST', `/objetos/${enRuta(direccion)}/acciones/${encodeURIComponent(accion)}`,
+        40000, { params, ...(version ? { version } : {}) });
+}
+
 /** Los procesos periódicos (`telar periodicos`), de esta máquina o de `[periodicos] en`. */
 export interface JsonPeriodico {
     nombre: string; cuando: string; tipo: 'comando' | 'mensaje'; comando: string; mensaje: string; hilo: string;

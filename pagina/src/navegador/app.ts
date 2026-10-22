@@ -16,6 +16,7 @@ import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
 import { montar as montarCarpeta, type Vuelta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
+import { montar as montarObjeto, partir as partirDireccion } from '../web/objeto';
 import * as ui from '../web/ui';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
@@ -61,7 +62,7 @@ const guardado: Guardado = {
  *  ⌥L, ⌥C) cambian. */
 const modo: Record<string, string> = {};
 const angosto = () => document.body.classList.contains('angosto');
-const esHilo = (que: string) => !(que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:'));
+const esHilo = (que: string) => !(que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:') || que.startsWith('obj:'));
 function forma(que: string): string {
     if (!esHilo(que)) return '';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
@@ -76,26 +77,46 @@ function cerrarVista(llave: string): void {
     vistas().find(x => x.dataset.p === llave)?.remove();
 }
 
-/** De dónde se vino al visor de un archivo o a la carpeta de un hilo: lo que se veía antes (un hilo, en la vista que
- *  tenía; el dashboard), adonde vuelve su «‹ …». Pasar de un archivo a otro no la cambia. */
+/** De dónde se vino al visor de un archivo, a la carpeta de un hilo o a la vista de un objeto: lo que se veía antes
+ *  (un hilo, en la vista que tenía; el dashboard), adonde vuelve su «‹ …». Pasar de un archivo a otro no la cambia. */
 let origen = '';
-const esDocumento = (que: string) => que.startsWith('doc:') || que.startsWith('arch:');
+const esDocumento = (que: string) => que.startsWith('doc:') || que.startsWith('arch:') || que.startsWith('obj:');
 
-/** La vuelta del visor (web/carpeta.ts): «‹ Telar · conversación», «‹ dashboard». */
-function vuelta(): Vuelta | null {
-    const o = origen;
+/** La vuelta del visor (web/carpeta.ts) y de la vista de un objeto: «‹ Telar · conversación», «‹ dashboard». */
+const vuelta = (): Vuelta | null => vueltaA(origen);
+function vueltaA(o: string): Vuelta | null {
     if (!o || esDocumento(o)) return null;
     const como = forma(o), nombre = o.startsWith('rem:') ? o.slice(4) : o;
     return { nombre: como ? `${nombre} · ${vista(como)?.nombre ?? como}` : nombre, ir: () => mostrar(o) };
 }
 
+/** Una dirección (`tipo:id[@máquina]`) en la vista de siempre de su objeto: una tarea, en su ficha (con «‹» de vuelta
+ *  a lo que se veía); un archivo o un proyecto, en el visor (el proyecto, su carpeta); un hilo de la lista (en esa
+ *  máquina, si la dice), el hilo, como un clic en la barra. Si no es de esas, o es un hilo que la lista no tiene,
+ *  false: la vista del objeto (web/objeto.ts), que dice si existe y deja escribirle. */
+function abrirDireccion(direccion: string): boolean {
+    const { tipo, id, maquina } = partirDireccion(direccion);
+    const alla = maquina && maquina !== modelo.aqui ? maquina : '';
+    if (!id) return false;
+    if (tipo === 'tarea') { void hoy.abrirTarea(JSON.stringify(['tareas', id, id]), vueltaA(actual) ?? undefined); return true; }
+    if (tipo === 'archivo' || tipo === 'proyecto') { mostrar(`arch:${alla ? `${alla}:` : ''}${id}`); return true; }
+    if (tipo === 'hilo') {
+        const de = (x: { remoto?: string }) => (x.remoto && x.remoto !== '?' ? x.remoto : modelo.aqui);
+        const h = modelo.hilos.find(x => x.nombre === id && (!alla || de(x) === alla));
+        if (h) { void ui.orden(h.vivo && !h.archivado ? 'telar.ir' : 'telar.retomar', { hilo: id }); return true; }
+    }
+    return false;
+}
+
 /** A la derecha: «dashboard» («config»: el dashboard en su configuración, el ⚙ de la cabecera), un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
- *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
+ *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento), «arch:<ruta>» (un
+ *  archivo), «obj:<dirección>» (un objeto: `abrirDireccion`, o su vista) o «compartir» (lo
  *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
 function mostrar(que: string): void {
     if (!que) return;
     // el ⚙ de la cabecera: la configuración, en el dashboard
     if (que === 'config') { void hoy.irAPestana('config'); return; }
+    if (que.startsWith('obj:') && abrirDireccion(que.slice(4))) return;
     if (esDocumento(que) && !esDocumento(actual)) origen = actual;
     actual = que;
     let f: HTMLElement | undefined;
@@ -105,9 +126,10 @@ function mostrar(que: string): void {
     } else {
         const como = forma(que), llave = como ? `${como}:${que}` : que;
         f = vistas().find(x => x.dataset.p === llave);
-        if (que.startsWith('doc:') || que.startsWith('arch:') || que === 'compartir') {
+        if (esDocumento(que) || que === 'compartir') {
             f ??= nuevaVista(llave);
             if (que === 'compartir') montarCompartir(f, location.search);
+            else if (que.startsWith('obj:')) void montarObjeto(f, que.slice(4), ui.markdown, vuelta());
             else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), ui.markdown, vuelta());
             else void montarCarpeta(f, que.slice(4), '', ui.markdown, vuelta());
         } else if (!f) {
@@ -133,7 +155,7 @@ function mostrar(que: string): void {
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
     const nombre = remoto ? remoto
         : que.startsWith('doc:') ? `${que.slice(4)} · carpeta`
-        : que.startsWith('arch:') ? relativa(que.slice(5)) : que;
+        : que.startsWith('arch:') ? relativa(que.slice(5)) : que.startsWith('obj:') ? que.slice(4) : que;
     window.telar?.donde?.(que === 'dashboard' ? null : { texto: nombre, otraMaquina: !!remoto });
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
     document.body.classList.remove('en-lista');

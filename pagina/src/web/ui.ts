@@ -89,7 +89,7 @@ export const markdown = (texto: string): string => md.render(texto);
 // ── mostrar algo a la derecha: lo sabe la página (src/navegador/app.ts) ──
 
 interface Navegacion {
-    /** «dashboard», un hilo, «rem:<máquina>:<hilo>», «doc:<hilo>», «arch:<ruta>» */
+    /** «dashboard», un hilo, «rem:<máquina>:<hilo>», «doc:<hilo>», «arch:<ruta>», «obj:<dirección>» */
     mostrar(que: string): void;
     /** las órdenes `telar.*` (web/ordenes.ts) */
     ordenes: Record<string, (...args: any[]) => unknown>;
@@ -101,6 +101,10 @@ export function usarNavegacion(n: Navegacion): void { nav = n; }
  *  enlace para bajarlo. */
 export async function abrirArchivo(ruta: string): Promise<void> { nav?.mostrar(`arch:${ruta}`); }
 export const mostrarCarpeta = abrirArchivo;
+
+/** La dirección de un objeto de telar (`tarea:T366`, `hilo:Telar`, `archivo:x.md`, la de un tipo de un módulo): la
+ *  página decide dónde se ve (navegador/app.ts). */
+export async function abrirDireccion(direccion: string): Promise<void> { nav?.mostrar(`obj:${direccion}`); }
 
 /** Ir a un hilo: telar lo crea o lo revive si hace falta (`POST /ir`), y la página lo muestra a la derecha. */
 export async function irAHilo(hilo: string, crear = false, remoto = ''): Promise<void> {

@@ -1,0 +1,50 @@
+/* La vista de un objeto por su dirección (web/objeto.ts): su título, su estado y su dirección, el resumen, los
+   campos en dos columnas, sus enlaces y sus acciones. scripts/navegador.mjs la junta en src/telar/web/marco.css. */
+
+@scope (.v-objeto) {
+  :scope { padding: var(--e-2) var(--h-2) var(--e-3); }
+
+  h1 {
+    margin: 0 0 var(--e-1);
+    font-size: var(--t-mayor);
+  }
+
+  h2 {
+    margin: var(--e-3) 0 var(--e-1);
+    color: var(--amarillo);
+    font-size: var(--t-normal);
+  }
+
+  .donde,
+  .nada { color: var(--dim); }
+  .donde { font-size: var(--t-menor); }
+  code { color: var(--cian); font: inherit; }
+
+  .resumen {
+    max-width: 90ch;
+    margin-top: var(--e-2);
+    overflow-wrap: anywhere;
+  }
+
+  .campos {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0 var(--h-2);
+    margin: var(--e-2) 0 0;
+
+    & dt { color: var(--dim); }
+    & dd { margin: 0; overflow-wrap: anywhere; }
+  }
+
+  .enlaces {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .acciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1) var(--h-2);
+  }
+}

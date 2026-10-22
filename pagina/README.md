@@ -28,7 +28,8 @@ npm run lint:css
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
   `rutas-agente.ts` vuelve enlaces al visor las rutas de archivo que escribe un agente (en la terminal, la
   lectura y la conversación), en la máquina de su hilo, y abre en una pestaña nueva las direcciones web.
-  Dónde están en lo que muestra la terminal (también las que llegan partidas en varias filas) lo dice `enlaces.ts`.
+  Dónde están en lo que muestra la terminal (también las que llegan partidas en varias filas) lo dice `enlaces.ts`,
+  que reconoce además las direcciones de objetos (`tarea:T366`); `objeto.ts` es la vista de uno sin vista propia.
 - `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`, y las piezas que
   comparten (el recuadro con borde, la fila de volver) en `componentes.css`, sin `@scope`.
 - `scripts/navegador.mjs` — el empaquetado.

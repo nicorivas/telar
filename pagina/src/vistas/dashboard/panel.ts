@@ -290,7 +290,7 @@ export class Dashboard implements Tablero {
     abrirSeccion(clave: string): Promise<void> { return this.secciones.abrir(clave); }
 
     /** La ficha de una tarea (la abre una orden de la barra, `telar.tarea`). */
-    abrirTarea(valor: string): Promise<void> { return this.tareas.abrirTarea(valor); }
+    abrirTarea(valor: string, desde?: { nombre: string; ir: () => void }): Promise<void> { return this.tareas.abrirTarea(valor, desde); }
 
     dia(): Dia | undefined { return this.datos; }
     async diaLeido(): Promise<Dia> { return this.datos ??= await dia(); }
