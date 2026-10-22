@@ -77,6 +77,34 @@ def registro_de(nombre: str, vinculos, archivados) -> dict:
     return {"vinculo": vinculos.get(nombre, ""), "archivado": nombre in archivados}
 
 
+def _en_hilo_suelto(funcion, *args, nombre: str = "") -> asyncio.Future:
+    """`funcion(*args)` en un hilo daemon, como un futuro del loop: lo que `run_in_executor`, pero sin un hilo que
+    Python espere al salir. Si el loop ya cerró cuando termina, el resultado se pierde: nadie lo esperaba."""
+    import threading
+
+    loop = asyncio.get_running_loop()
+    futuro = loop.create_future()
+
+    def fijar(resultado=None, error=None):
+        if futuro.done():
+            return
+        if error is not None:
+            futuro.set_exception(error)
+        else:
+            futuro.set_result(resultado)
+
+    def correr():
+        try:
+            r, e = funcion(*args), None
+        except Exception as x:  # noqa: BLE001 - vuelve al que espera, que decide
+            r, e = None, x
+        with contextlib.suppress(RuntimeError):  # el loop ya cerró
+            loop.call_soon_threadsafe(fijar, r, e)
+
+    threading.Thread(target=correr, name=nombre or None, daemon=True).start()
+    return futuro
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("nodo", AYUDA)
     p.epilog = __doc__
@@ -908,16 +936,14 @@ class Nodo:
             t.add_done_callback(self.disparos.discard)
 
     async def _correr_disparador(self, d) -> None:
-        """Uno de cambio, corrido como un periódico (telar.periodicos.correr), en los hilos de los disparadores:
-        un comando largo no deja al nodo sin hilos para sus vueltas."""
-        from concurrent.futures import ThreadPoolExecutor
-
+        """Uno de cambio, corrido como un periódico (telar.periodicos.correr), en un hilo suyo: un comando largo no
+        deja al nodo sin hilos para sus vueltas. El hilo es daemon, y no de un ThreadPoolExecutor: Python espera a
+        los de un grupo al salir, y un `sleep 600` hacía esperar diez minutos al detener el nodo. Cuántos corren a
+        la vez ya lo cuida el despacho (`disparadores.A_LA_VEZ`)."""
         from telar import disparadores
 
-        if getattr(self, "hilos_disparos", None) is None:
-            self.hilos_disparos = ThreadPoolExecutor(max_workers=disparadores.A_LA_VEZ, thread_name_prefix="disparador")
         try:
-            r = await asyncio.get_running_loop().run_in_executor(self.hilos_disparos, disparadores.correr, self.ctx, d)
+            r = await _en_hilo_suelto(disparadores.correr, self.ctx, d, nombre=f"disparador-{d.nombre}")
             self.anotar(f"disparador «{d.nombre}» ({d.al}): {r.get('resultado', '')}")
         except Exception as e:  # noqa: BLE001 - uno que falla no tumba el nodo
             self.anotar(f"disparador «{d.nombre}» ({d.al}): {type(e).__name__}: {e}")
@@ -935,7 +961,7 @@ class Nodo:
         sin_sesion = deseado.residentes_sin_sesion(locales)
         for linea in self.residentes.mirar(sin_sesion):
             self.anotar(linea)
-        deseado.escribir(self.config, self.yo, sin_sesion)
+        deseado.escribir(self.config, self.yo, sin_sesion, residentes=deseado.residentes(locales))
 
     async def _proveedor(self, m) -> None:
         """Lo que da un proveedor de esta máquina, para otra que lo declara `en` esta (telar.alla)."""

@@ -219,7 +219,11 @@ def de_cambio(config, maquina: str = "") -> list[Disparador]:
     """Los de cambio activos que despacha el nodo de esta máquina."""
     if not corren_aqui(config, maquina):
         return []
-    return [d for d in getattr(config, "disparadores", ()) if d.tipo == "cambio" and d.activo]
+    from telar import periodicos
+
+    # el que se llama como un periódico queda fuera (telar.periodicos.choques; lo dice `telar doctor`)
+    chocan = {nombre for nombre, _ in periodicos.choques_aqui(config)}
+    return [d for d in getattr(config, "disparadores", ()) if d.tipo == "cambio" and d.activo and d.nombre not in chocan]
 
 
 def correr(ctx, d: Disparador) -> dict:

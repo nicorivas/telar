@@ -518,7 +518,7 @@ def _agentes(ctx) -> list[dict]:
 def _disparadores(ctx) -> list[dict]:
     """Los `[disparadores]` (telar.disparadores, docs/propuestas/disparadores.md): por cada `[atajos.x]` declarado a
     mano, el disparador que da lo mismo, en TOML para copiar; los de reloj que no están en el crontab (lo declarado
-    que no corre); los de cambio sin bus, que nadie oye. En otra máquina que la de los periódicos, que allá corren.
+    que no corre); los de cambio sin bus, que nadie oye; los que se llaman como un periódico, que no corren. En otra máquina que la de los periódicos, que allá corren.
     Sin disparadores ni atajos, nada."""
     from telar import disparadores as mod_disparadores
     from telar.config import _valor_toml, clave_toml
@@ -543,7 +543,14 @@ def _disparadores(ctx) -> list[dict]:
                          " con la configuración de allá: los de aquí no corren"))
         return salida
     from telar import bus as mod_bus
+    from telar import periodicos
 
+    # el que se llama como un periódico no corre (telar.periodicos.choques): es lo declarado que no hace nada
+    chocan = periodicos.choques_aqui(cfg)
+    for nombre, donde in chocan:
+        salida.append(_r("disparadores", FALLA, f"[disparadores.{nombre}] se llama como un proceso de {donde}: no corre"
+                         " (los demás sí)", "cámbiale el nombre a uno de los dos"))
+    solos = [d for d in solos if d.nombre not in dict(chocan)]
     de_cambio = [d for d in solos if d.tipo == "cambio"]
     if de_cambio and not mod_bus.hay_bus(cfg):
         salida.append(_r("disparadores", AVISO, f"{', '.join(d.nombre for d in de_cambio)}: esperan un cambio, y sin bus no"
@@ -587,6 +594,8 @@ def _deseado(ctx) -> list[dict]:
     if datos is None:
         return []
     faltan = datos["residentes_sin_sesion"]
+    if datos.get("residentes") == []:  # un deseado.json de antes no lo trae: no se sabe si hay
+        return [_r("deseado", OK, "aquí no vive ningún residente")]
     if not faltan:
         return [_r("deseado", OK, "los residentes de aquí tienen sesión")]
     return [_r("deseado", OK, f"residentes sin sesión: {', '.join(faltan)} (se les abre cuando les llegue algo)")]

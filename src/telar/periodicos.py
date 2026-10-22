@@ -273,21 +273,40 @@ def con_modulos(a: Archivo, config) -> Archivo:
 
 def con_disparadores(a: Archivo, config) -> Archivo:
     """El archivo con los `[disparadores]` de reloj de la configuración al final (telar.disparadores). Solo en la
-    máquina donde corren los periódicos: en otra, su configuración no es la que lee el crontab. Un nombre que ya
-    está en periodicos.toml o en un módulo es un error, y también el de un disparador de cambio: los dos anotan su
-    última corrida en `<estado>/periodicos/<nombre>.json`."""
+    máquina donde corren los periódicos: en otra, su configuración no es la que lee el crontab. Uno de reloj o de
+    cambio que se llama como un proceso de periodicos.toml o de un módulo queda fuera, él solo: los dos anotarían
+    su última corrida en `<estado>/periodicos/<nombre>.json`. Antes era un error, y tumbaba todos los periódicos
+    de la máquina (cada línea del crontab pasa por aquí); ahora lo dice `telar doctor` (`choques`)."""
     from telar import disparadores as mod_disparadores
 
     for d in getattr(config, "disparadores", ()):
-        if d.tipo == "tecla":
+        if d.tipo == "tecla" or a.por_nombre(d.nombre) is not None:
             continue
-        previo = a.por_nombre(d.nombre)
-        if previo is not None:
-            donde = f"el módulo {previo.modulo}" if previo.modulo else "periodicos.toml"
-            raise ErrorDePeriodicos(f"[disparadores.{d.nombre}] se llama como un proceso de {donde}: cambia uno de los dos")
         if d.tipo == "reloj" and mod_disparadores.corren_aqui(config):
             a.procesos.append(d.proceso())
     return a
+
+
+def choques(a: Archivo, config) -> list[tuple[str, str]]:
+    """Los `[disparadores]` de reloj o de cambio que se llaman como un proceso de `a` (periodicos.toml y los
+    módulos, sin los disparadores): (nombre, dónde está el otro). No corren hasta que se cambie uno de los dos."""
+    salida = []
+    for d in getattr(config, "disparadores", ()):
+        previo = a.por_nombre(d.nombre) if d.tipo != "tecla" else None
+        if previo is not None and not previo.disparador:
+            salida.append((d.nombre, f"el módulo {previo.modulo}" if previo.modulo else "periodicos.toml"))
+    return salida
+
+
+def choques_aqui(config) -> list[tuple[str, str]]:
+    """`choques` con el periodicos.toml de esta configuración y sus módulos. Si no se pueden leer, ninguno: eso ya
+    lo dice `telar periodicos`."""
+    if not getattr(config, "disparadores", ()):
+        return []
+    try:
+        return choques(con_modulos(leer(ruta(getattr(config, "origen", None))), config), config)
+    except ErrorDePeriodicos:
+        return []
 
 
 def completo(a: Archivo, config) -> Archivo:
@@ -454,6 +473,18 @@ def _entorno() -> dict:
     return entorno
 
 
+def _preparar_entorno() -> list[str]:
+    """El PATH y el LANG de `_entorno` en el entorno de este proceso, para lo que lanza tmux o el agente sin pasar
+    `env`. Solo se escribe lo que cambia: en cron es una vez por proceso, pero el nodo corre los disparadores de
+    cambio desde sus hilos, una y otra vez, y escribir `os.environ` mientras otro hilo lanza un subproceso es una
+    carrera. Desde la segunda corrida ya no cambia nada, y no se escribe. Devuelve las claves que cambió."""
+    quiere = _entorno()
+    cambia = [k for k in ("PATH", "LANG") if os.environ.get(k) != quiere[k]]
+    for k in cambia:
+        os.environ[k] = quiere[k]
+    return cambia
+
+
 def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
     """Corre un proceso una vez y anota cómo salió. Devuelve lo anotado."""
     ahora = ahora or datetime.now().astimezone()
@@ -491,7 +522,7 @@ def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
 
 def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
     """El prompt, encargado al agente residente: su hilo de siempre, no uno nuevo."""
-    os.environ.update({k: v for k, v in _entorno().items() if k in ("PATH", "LANG")})
+    _preparar_entorno()
     from telar import agentes as mod_agentes
     from telar import encargos
 
@@ -554,7 +585,7 @@ def cerrar_viejos(config, abiertos, ahora: datetime) -> list[str]:
 
 def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, str, str]:
     """Un hilo nuevo con el agente y el prompt, si no hay ya `max_abiertos` de este proceso."""
-    os.environ.update({k: v for k, v in _entorno().items() if k in ("PATH", "LANG")})
+    _preparar_entorno()
     from telar import movil as mod_movil
     from telar.agente import ErrorDeAgente, lanzar
     from telar import agente as mod_agente

@@ -222,7 +222,16 @@ def _aqui(ctx, o) -> int:
     elif o.verbo == "nuevo":
         if not o.nombre:
             return _comun.queja("¿cómo se llama? telar periodicos nuevo <nombre> --cuando … --comando …")
-        if archivo.por_nombre(o.nombre):
+        # el nombre de un disparador de reloj o de cambio tampoco: anotarían su corrida en el mismo archivo
+        # (telar.periodicos.choques), y el de cambio no está en `archivo`
+        de_config = next((d for d in getattr(ctx.config, "disparadores", ()) if d.nombre == o.nombre and d.tipo != "tecla"), None)
+        if de_config is not None:
+            return _comun.queja(f"«{o.nombre}» ya es [disparadores.{o.nombre}] en {ctx.config.origen or 'config.toml'}:"
+                                " elige otro nombre")
+        previo = archivo.por_nombre(o.nombre)
+        if previo is not None and previo.modulo:
+            return _comun.queja(f"«{o.nombre}» ya lo trae el módulo {previo.modulo}: elige otro nombre")
+        if previo is not None:
             return _comun.queja(f"ya hay un proceso «{o.nombre}»: telar periodicos editar {o.nombre}")
         p = mod.Proceso(nombre=o.nombre, cuando=o.cuando or "", comando=o.comando or "", mensaje=o.mensaje or "",
                         agente=o.agente or "",

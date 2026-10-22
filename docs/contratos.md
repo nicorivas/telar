@@ -849,11 +849,13 @@ cada agente cuyo `nombre` declarado no tiene conversación anotada y el de antes
 La revisión `disparadores` (docs/propuestas/disparadores.md) es un `aviso` por cada `[atajos.x]` declarado a
 mano, con el `[disparadores.x]` que lo reemplaza en `arreglo` (TOML para copiar, una clave por línea); un `aviso`
 si un disparador de reloj activo no tiene su línea en el bloque de telar del crontab (`arreglo`: `telar
-periodicos aplicar`), y otro si hay disparadores de cambio sin `[bus]`. En una máquina que no es la de los
+periodicos aplicar`), otro si hay disparadores de cambio sin `[bus]`, y una `falla` por cada disparador de reloj
+o de cambio que se llama como un proceso de `periodicos.toml` o de un módulo (ese no corre). En una máquina que no es la de los
 periódicos, un `ok` que dice dónde corren. Sin nada de eso y con disparadores, un `ok` con cuántos hay de cada
 tipo; sin disparadores ni atajos, ninguna. La revisión `deseado` es lo que dejó el nodo en `<estado>/deseado.json`
 en los últimos diez minutos: un `ok` con los residentes de aquí sin sesión (no es un aviso: se les abre cuando les
-llega algo), o que todos la tienen; si el nodo no corre, ninguna.
+llega algo), que todos la tienen, o que aquí no vive ninguno (si el nodo anotó `residentes`, que un nodo de antes
+no anota); si el nodo no corre, ninguna.
 La revisión `sesiones` dice si quedan sesiones tmux propias por hilo de las versiones de
 antes (`telar-…`) vivas en esta máquina, o hilos remotos anotados con una dirección de ese
 tipo (un `aviso`, con sus nombres); sin ninguna, `ok`. Si tmux está y no se le pudo

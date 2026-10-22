@@ -196,7 +196,7 @@ Cada una con la opción que tomé por ahora y por qué.
 - Que el nodo relea la configuración sin reiniciar (decisión 9).
 - Arreglar además de avisar: residentes siempre vivos (decisión 7), el crontab al día (decisión 8), los módulos en
   su versión.
-- `GET /disparadores` y una vista en la página (hoy la página ve los de reloj en su lista de periódicos, donde
-  editarlos devuelve el error que dice dónde se cambian).
+- `GET /disparadores` y una vista en la página (hoy la página ve los de reloj en su lista de periódicos, con
+  «correr ahora» y dónde se cambian, sin pausar, editar ni borrar).
 - Fundir `telar atajo` en `telar mensaje` y los disparadores (primitivas.md, «Cómo quedan las órdenes»).
 - Retirar `[atajos]`, con aviso en el CHANGELOG, después de que doctor lleve un tiempo sugiriendo el cambio.

@@ -14,6 +14,7 @@ nodo de la máquina donde corren los periódicos.
 from __future__ import annotations
 
 from telar import disparadores as mod
+from telar import periodicos
 from telar.ordenes import _comun
 
 AYUDA = "Lo que corre o manda algo solo: por un reloj, una tecla o un cambio."
@@ -37,6 +38,10 @@ def main(argv: list[str], ctx) -> int:
             return _comun.queja(f"no hay un disparador «{o.nombre}» (hay: {hay})")
         if d.tipo == "tecla":
             return _comun.queja(f"«{d.nombre}» es la tecla «{d.tecla}»: telar atajo {d.tecla}")
+        choca = dict(periodicos.choques_aqui(ctx.config)).get(d.nombre)
+        if choca:
+            return _comun.queja(f"[disparadores.{d.nombre}] se llama como un proceso de {choca}, y no corre hasta que"
+                                " cambies uno de los dos (anotarían su corrida en el mismo archivo)")
         r = mod.correr(ctx, d)
         if o.json:
             return _comun.escribir_json({"nombre": d.nombre, **r})
@@ -70,7 +75,6 @@ def main(argv: list[str], ctx) -> int:
 def lista(ctx, todos) -> dict:
     """Lo que imprime `telar disparadores --json`."""
     from telar import bus as mod_bus
-    from telar import periodicos
 
     try:
         zona = periodicos.leer(periodicos.ruta(ctx.config.origen)).zona

@@ -190,18 +190,25 @@ export const periodicos: FabricaSeccion = ctx => {
         if (!abierto || !p) { abierto = undefined; pintarLista(); return; }
         const [marca, color, dice] = estadoPeriodico(p);
         const args = (a: string[]) => esc(JSON.stringify(a));
+        // el de un módulo o de un [disparadores.x] se cambia allá: pausarlo, editarlo o borrarlo aquí era un 409
+        const deAfuera = p.disparador ? `[disparadores.${p.nombre}] en la configuración` : p.modulo ? `el modulo.toml de ${p.modulo}` : '';
         const botones = [
             `<a class="atajo principal" data-accion="per-orden" data-valor="${args(['ahora', p.nombre])}"><kbd>⏎</kbd><span>correr ahora</span></a>`,
-            `<a class="atajo" data-accion="per-orden" data-valor="${args([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? '⏸ pausar' : '▶ activar'}</span></a>`,
-            `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>✎ editar</span></a>`,
-            `<a class="atajo" data-accion="per-orden" data-valor="${args(['borrar', p.nombre])}"><kbd>3</kbd><span>✕ borrar</span></a>`,
+            ...(deAfuera ? [] : [
+                `<a class="atajo" data-accion="per-orden" data-valor="${args([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? '⏸ pausar' : '▶ activar'}</span></a>`,
+                `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>✎ editar</span></a>`,
+                `<a class="atajo" data-accion="per-orden" data-valor="${args(['borrar', p.nombre])}"><kbd>3</kbd><span>✕ borrar</span></a>`,
+            ]),
             `<a class="atajo" data-accion="periodicos"><kbd>⎋</kbd><span>volver</span></a>`,
         ];
         ctx.teclas.set('⏎', () => orden(['ahora', p.nombre]));
-        ctx.teclas.set('1', () => orden([p.activo ? 'pausar' : 'activar', p.nombre]));
-        ctx.teclas.set('2', () => editar(p.nombre));
-        ctx.teclas.set('3', () => orden(['borrar', p.nombre]));
+        if (!deAfuera) {
+            ctx.teclas.set('1', () => orden([p.activo ? 'pausar' : 'activar', p.nombre]));
+            ctx.teclas.set('2', () => editar(p.nombre));
+            ctx.teclas.set('3', () => orden(['borrar', p.nombre]));
+        }
         const filas: [string, string][] = [
+            ...(deAfuera ? [['se cambia en', deAfuera] as [string, string]] : []),
             ['cuándo', `${p.cuando}${p.proxima ? ` · la próxima ${p.proxima.slice(5, 16).replace('T', ' ')} (en ${enCuanto(p.proxima)})` : ''}`],
             p.tipo === 'mensaje' ? ['prompt', p.mensaje] : ['comando', p.comando],
             ...(p.tipo === 'mensaje' ? [['hilo', `${p.hilo || p.nombre} · hasta ${p.max_abiertos} abierto(s)`] as [string, string]] : []),

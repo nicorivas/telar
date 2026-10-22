@@ -18,7 +18,12 @@ extension shared the version number.
   them and `telar disparadores correr <name>` runs one. `telar doctor` has a `disparadores` check (the trigger
   that replaces each `[atajos]` entry, clock triggers missing from the crontab, change triggers without a bus)
   and a `deseado` check: the node now notes, without fixing anything, the resident agents of its machine that
-  have no session (one log line when that changes, and `<state>/deseado.json`).
+  have no session (one log line when that changes, and `<state>/deseado.json`, which also lists the residents so
+  doctor can tell "none here" from "all alive"). A clock or change trigger named like a process of
+  `periodicos.toml` or of a module does not run, and `telar doctor` reports it as a failure; the other periodic
+  processes keep running. `telar periodicos nuevo` (and the dashboard) refuses a trigger's name. The dashboard
+  shows no pause, edit or delete buttons for a periodic process that a trigger or a module declares. A change
+  trigger runs on a daemon thread, so a long command does not hold up stopping the node.
 - `[vistas.<key>]` in the configuration: what is shown (`comando`, `archivo`, `url`, or `carpeta`/`en` for a
   daily result) and where it appears (`aparece = "pestana" | "plan" | "apps" | "hilos" | "dia"`). It replaces
   `[bloques]`, `[apps]`, `[secciones]` and `[resultados]`, which are still read: each view is translated to its

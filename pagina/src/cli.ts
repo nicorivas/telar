@@ -376,6 +376,8 @@ export interface JsonPeriodico {
     max_abiertos: number; argumentos: string[]; carpeta: string; descripcion: string; activo: boolean;
     proxima: string;
     ultima: { inicio?: string; fin?: string; codigo?: number; resultado?: string; corriendo?: boolean; hilo?: string };
+    /** el módulo que lo trae, o si lo declara un `[disparadores.x]`: no se cambia desde aquí, sino allá */
+    modulo?: string; disparador?: boolean;
 }
 export interface JsonPeriodicos { maquina: string; archivo: string; zona: string; procesos: JsonPeriodico[] }
 

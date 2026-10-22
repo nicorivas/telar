@@ -404,7 +404,9 @@ Un disparador dice **cuándo** con una sola de tres claves, y **qué** con un `c
 | `al` | `"cambio:<tema>"`: un `telar cambio <tema>` de cualquier máquina | lo mismo que `cuando` |
 
 El nombre (la clave de la tabla) va en el crontab y en el archivo de su última corrida: minúsculas, números, `-`
-y `_`, y no puede ser el de un proceso de `periodicos.toml` o de un módulo.
+y `_`, y no puede ser el de un proceso de `periodicos.toml` o de un módulo (salvo el de una tecla, que no anota
+corridas). Si lo es, el disparador no corre (el proceso sí, y los demás también) y `telar doctor` lo marca como
+falla; `telar periodicos nuevo` no acepta el nombre de un disparador.
 
 - **Un reloj** es un proceso más de `telar periodicos`: se lista, corre y anota igual, pero no se escribe en
   `periodicos.toml` ni se cambia con `editar`, `pausar` o `borrar` (se cambia aquí). Después de agregarlo,

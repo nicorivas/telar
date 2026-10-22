@@ -128,12 +128,17 @@ class ElRelojEsUnPeriodico(Prueba):
         periodicos.escribir(self.ruta, a)
         self.assertEqual([p.nombre for p in periodicos.leer(self.ruta).procesos], ["eco"])
 
-    def test_un_nombre_en_dos_lados_es_un_error(self):
-        self.ruta.write_text('[resumen]\ncuando = "0 8 * * *"\ncomando = "echo"\n')
+    def test_un_nombre_en_dos_lados_deja_fuera_solo_al_disparador(self):
+        # antes era un error en `completo`, y por ahí pasa cada línea del crontab: un choque apagaba todos
+        self.ruta.write_text('[resumen]\ncuando = "0 8 * * *"\ncomando = "echo"\n[otro]\ncuando = "@daily"\ncomando = "b"\n')
         for cuerpo in ('cuando = "@daily"\ncomando = "a"\n', 'al = "cambio:tareas"\ncomando = "a"\n'):
-            c = cfg("[disparadores.resumen]\n" + cuerpo)
-            with self.assertRaisesRegex(periodicos.ErrorDePeriodicos, r"\[disparadores\.resumen\] .*periodicos\.toml"):
-                periodicos.completo(periodicos.leer(self.ruta), c)
+            c = cfg("[disparadores.resumen]\n" + cuerpo, origen=Path(self.tmp.name) / "config.toml")
+            a = periodicos.completo(periodicos.leer(self.ruta), c)
+            self.assertEqual([(p.nombre, p.comando, p.disparador) for p in a.procesos],
+                             [("resumen", "echo", False), ("otro", "b", False)])
+            self.assertEqual(periodicos.choques_aqui(c), [("resumen", "periodicos.toml")])
+        self.assertEqual(periodicos.choques_aqui(cfg('[disparadores.x]\ncuando = "@daily"\ncomando = "a"\n',
+                                                     origen=Path(self.tmp.name) / "config.toml")), [])
 
     def test_en_otra_maquina_que_la_de_los_periodicos_no_corre(self):
         c = cfg('[disparadores.resumen]\ncuando = "@daily"\ncomando = "a"\n[bus]\nmaquina = "laptop"\n',
@@ -144,10 +149,19 @@ class ElRelojEsUnPeriodico(Prueba):
         self.assertTrue(mod.corren_aqui(replace(c, periodicos_en="laptop")))
 
     def test_el_path_no_crece_en_cada_corrida(self):
-        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}):
+        # con las carpetas de más «existentes»: en una máquina sin ellas la prueba no probaría nada
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}), mock.patch("os.path.isdir", return_value=True):
             uno = periodicos._entorno()["PATH"]
+            self.assertNotEqual(uno, "/usr/bin")
             with mock.patch.dict(os.environ, {"PATH": uno}):
                 self.assertEqual(periodicos._entorno()["PATH"], uno)
+
+    def test_el_entorno_del_proceso_se_escribe_una_vez(self):
+        # el nodo lo prepara desde los hilos de los disparadores, una y otra vez: después de la primera, nada
+        with mock.patch.dict(os.environ, {"PATH": "/usr/bin"}, clear=True), mock.patch("os.path.isdir", return_value=True):
+            self.assertEqual(periodicos._preparar_entorno(), ["PATH", "LANG"])
+            self.assertEqual(os.environ["LANG"], "C.UTF-8")
+            self.assertEqual(periodicos._preparar_entorno(), [])
 
 
 class LaOrdenPeriodicos(Prueba):
@@ -161,7 +175,10 @@ class LaOrdenPeriodicos(Prueba):
                   mock.patch.object(periodicos, "aplicar", return_value="")):
             p.start()
             self.addCleanup(p.stop)
-        c = cfg('[disparadores.resumen]\ncuando = "30 8 * * 1-5"\ncomando = "~/bin/resumen"\n')
+        c = cfg('[disparadores.resumen]\ncuando = "30 8 * * 1-5"\ncomando = "~/bin/resumen"\n'
+                '[disparadores.tablero]\nal = "cambio:tareas"\ncomando = "rehacer"\n'
+                '[disparadores.correo]\ntecla = "m"\nmensaje = "/correo"\n')
+        self.base = base
         self.ctx = SimpleNamespace(config=replace(c, raiz=base, estado=base / "estado", origen=base / "config.toml"))
 
     def orden(self, *argv):
@@ -185,6 +202,26 @@ class LaOrdenPeriodicos(Prueba):
             codigo, _ = self.orden("correr", "resumen")
         self.assertEqual(codigo, 0)
         self.assertEqual(correr.call_args.args[1].comando, "~/bin/resumen")
+
+    def test_nuevo_no_toma_el_nombre_de_un_disparador(self):
+        for nombre in ("tablero", "resumen"):  # el de cambio no está en la lista; el de reloj no se edita aquí
+            codigo, salida = self.orden("nuevo", nombre, "--cuando", "@daily", "--comando", "echo x")
+            self.assertNotEqual(codigo, 0)
+            self.assertIn(f"[disparadores.{nombre}]", salida)
+            self.assertNotIn("periodicos editar", salida)
+        self.assertFalse((self.base / "periodicos.toml").exists())
+        # el de una tecla no anota corridas: su nombre queda libre
+        self.assertEqual(self.orden("nuevo", "correo", "--cuando", "@daily", "--comando", "echo x")[0], 0)
+
+    def test_un_choque_escrito_a_mano_no_apaga_a_los_demas(self):
+        (self.base / "periodicos.toml").write_text('[tablero]\ncuando = "@daily"\ncomando = "a"\n'
+                                                   '[otro]\ncuando = "@daily"\ncomando = "b"\n')
+        with mock.patch.object(periodicos, "correr", return_value={"codigo": 0, "resultado": "ok"}) as correr:
+            self.assertEqual(self.orden("correr", "otro", "--en", "aqui")[0], 0)
+            self.assertEqual(self.orden("correr", "tablero", "--en", "aqui")[0], 0)
+        self.assertEqual([c.args[1].comando for c in correr.call_args_list], ["b", "a"])  # el de periodicos.toml
+        codigo, salida = self.orden("ver", "--json")
+        self.assertEqual((codigo, [p["nombre"] for p in json.loads(salida)["procesos"]]), (0, ["tablero", "otro", "resumen"]))
 
 
 class ElFreno(Prueba):
@@ -230,6 +267,14 @@ class ElFreno(Prueba):
                 '[disparadores.c]\ncuando = "@daily"\ncomando = "x"\n[bus]\nmaquina = "laptop"\n')
         self.assertEqual([d.nombre for d in mod.de_cambio(c, "laptop")], ["a"])
         self.assertEqual(mod.de_cambio(replace(c, periodicos_en="servidor"), "laptop"), [])
+
+    def test_el_que_se_llama_como_un_periodico_no_se_despacha(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "periodicos.toml").write_text('[a]\ncuando = "@daily"\ncomando = "y"\n')
+            c = cfg('[disparadores.a]\nal = "cambio:tareas"\ncomando = "x"\n'
+                    '[disparadores.b]\nal = "cambio:tareas"\ncomando = "x"\n[bus]\nmaquina = "laptop"\n',
+                    origen=Path(tmp) / "config.toml")
+            self.assertEqual([d.nombre for d in mod.de_cambio(c, "laptop")], ["b"])
 
 
 def nodo(config):
@@ -293,6 +338,14 @@ class ElNodoDespacha(Prueba):
         with mock.patch.object(mod, "correr", side_effect=correr):
             asyncio.run(todo())
         self.assertEqual(corridos, ["tablero", "tablero"])
+
+    def test_corre_en_un_hilo_que_no_retiene_la_salida(self):
+        # Python espera a los hilos de un ThreadPoolExecutor al salir: un `sleep 600` retenía el reinicio del nodo
+        n = nodo(self.config('[disparadores.tablero]\nal = "cambio:tareas"\ncomando = "rehacer"\n'))
+        vistos = []
+        self.cambios(n, ["tareas"], lambda ctx, d: vistos.append(threading.current_thread().daemon) or {"resultado": "ok"})
+        self.assertEqual(vistos, [True])
+        self.assertIn("disparador «tablero» (cambio:tareas): ok", n.anotado)
 
     def test_uno_que_falla_no_tumba_el_nodo(self):
         n = nodo(self.config('[disparadores.tablero]\nal = "cambio:tareas"\ncomando = "rehacer"\n'))
@@ -362,9 +415,21 @@ class LosResidentesSinSesion(Prueba):
         self.assertEqual(doctor._deseado(SimpleNamespace(config=self.config)), [])
         deseado.escribir(self.config, "laptop", ["Faro"], cuando=datetime.now().astimezone() - timedelta(hours=1))
         self.assertEqual(doctor._deseado(SimpleNamespace(config=self.config)), [])
-        deseado.escribir(self.config, "laptop", [])
+        deseado.escribir(self.config, "laptop", [])  # como lo escribía antes: sin `residentes`
         self.assertEqual(doctor._deseado(SimpleNamespace(config=self.config))[0]["dice"],
                          "los residentes de aquí tienen sesión")
+
+    def test_sin_residentes_aqui_no_dice_que_tienen_sesion(self):
+        from telar.ordenes import doctor
+
+        n = nodo(self.config)
+        n.mirar_deseado({"T84": {"residente": "", "vivo": True}})
+        self.assertEqual(doctor._deseado(SimpleNamespace(config=self.config))[0]["dice"], "aquí no vive ningún residente")
+        n.mirar_deseado({**self.LOCALES, "Faro": {"residente": "faro", "vivo": True}})
+        self.assertEqual(json.loads(deseado.ruta(self.config).read_text())["residentes"], ["Faro", "Molino"])
+        self.assertEqual(doctor._deseado(SimpleNamespace(config=self.config))[0]["dice"],
+                         "los residentes de aquí tienen sesión")
+        self.assertEqual(list(Path(self.tmp.name).glob("*.tmp")), [])
 
 
 class Doctor(Prueba):
@@ -415,6 +480,16 @@ class Doctor(Prueba):
     def test_sin_nada_nada(self):
         self.assertEqual(self.revisar(mod_config.Config()), [])
 
+    def test_el_que_se_llama_como_un_periodico_es_una_falla(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "periodicos.toml").write_text('[resumen]\ncuando = "@daily"\ncomando = "y"\n')
+            c = cfg('[disparadores.resumen]\ncuando = "@daily"\ncomando = "a"\n', origen=Path(tmp) / "config.toml")
+            bloque = "\n".join([periodicos.MARCA_INICIO, "0 0 * * * telar periodicos correr resumen --en aqui",
+                                periodicos.MARCA_FIN])
+            r = self.revisar(c, bloque)
+        self.assertEqual([x["estado"] for x in r], ["falla"])
+        self.assertIn("[disparadores.resumen] se llama como un proceso de periodicos.toml", r[0]["dice"])
+
 
 class LaOrden(Prueba):
     def setUp(self):
@@ -455,6 +530,14 @@ class LaOrden(Prueba):
         self.assertNotEqual(codigo, 0)
         self.assertIn("telar atajo m", salida)
         self.assertNotEqual(self.orden("correr", "nada")[0], 0)
+
+    def test_no_corre_el_que_se_llama_como_un_periodico(self):
+        (self.ctx.config.origen.parent / "periodicos.toml").write_text('[tablero]\ncuando = "@daily"\ncomando = "y"\n')
+        with mock.patch.object(periodicos, "correr") as correr:
+            codigo, salida = self.orden("correr", "tablero")
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("periodicos.toml", salida)
+        correr.assert_not_called()
 
     def test_esta_en_la_ayuda(self):
         from telar import cli
