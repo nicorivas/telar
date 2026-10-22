@@ -169,6 +169,7 @@ Lo que un repositorio le dice a telar vive en una carpeta, `.telar/`, en su raí
 | --- | --- | --- |
 | `perfil.yaml` | este perfil: lo del equipo, igual para todos | sí |
 | `local.yaml` | lo de cada persona, encima del perfil | no: agrégalo a `.gitignore` |
+| `equipo.yaml` | el equipo que trabaja en este repositorio: su bus, quién aprueba a las personas nuevas, sus módulos y los programas que hacen falta (`telar instalar --unirse`, docs/arquitectura.md, «Entre máquinas: el bus») | sí |
 
 `local.yaml` tiene la misma forma que el perfil y se lee encima de él: un valor suyo reemplaza al del perfil,
 un mapa se mezcla clave por clave (cambiar la `etiqueta` de un arquetipo no borra su `ruta`), y un `null`
@@ -177,6 +178,20 @@ quita la clave (`deal: null` esconde ese arquetipo solo para esa persona). Un pe
 
 `telar doctor` avisa si encuentra un `telar-perfil.yaml` suelto en la raíz, que telar ya no lee (el arreglo:
 `git mv telar-perfil.yaml .telar/perfil.yaml`), y si `local.yaml` quedó en git.
+
+Un `equipo.yaml`:
+
+```yaml
+nombre: faro                      # el equipo (minúsculas)
+administra: ana                   # quién aprueba a las personas nuevas: su nombre en el bus
+bus: nats://100.64.0.10:4222      # el bus del equipo
+puerta: http://100.64.0.10:8780   # opcional: dónde se pide entrar; por defecto, la página de la máquina del bus
+modulos:                          # opcional: los que instala quien se une
+  grafo: https://github.com/alguien/telar-grafo
+requiere: [tmux, claude, tailscale, git]
+```
+
+Nada secreto ni personal va ahí: cada persona genera su secreto en su máquina.
 
 ## Varios repositorios
 

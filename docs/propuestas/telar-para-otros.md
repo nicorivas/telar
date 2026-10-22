@@ -62,8 +62,9 @@ red).
 
 ## Funcionalidades que faltan para cualquiera
 
-- **Registrarse en el bus desde la CLI** (decidido el 20-oct-2026 como el camino, para cuando telar salga de
-  Brinca). La persona corre `telar instalar --unirse <servidor>`: su secreto se genera en su máquina y al
+- **Registrarse en el bus desde la CLI** (decidido el 20-oct-2026; **hecho para una red de Tailscale** el
+  22-oct-2026: `telar instalar --unirse`, `.telar/equipo.yaml`, la puerta `POST /unirse` y `telar bus pedidos |
+  aprobar | rechazar`, en telar.unirse; falta el aviso en el dashboard y el caso del bus en internet). La persona corre `telar instalar --unirse <servidor>`: su secreto se genera en su máquina y al
   servidor viaja solo su hash; quien administra el bus aprueba (`telar bus pedidos`, `telar bus aprobar`, o
   un aviso en el dashboard, quizás automático por dominio) y el bus suma la cuenta y se recarga solo. Quién
   pide se sabe de dos maneras, que pueden convivir:

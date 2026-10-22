@@ -12,6 +12,10 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
     GET  /maquinas.json     esta máquina y las del bus que sirven su página, cada una con su enlace para entrar
     GET  /entrar?…          entrar con un boleto de otra máquina (sin la llave de esta): ver `boleto`
     GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
+    POST /unirse            sin llave: una persona nueva pide entrar al bus (telar.unirse). Solo en la máquina
+                            del bus, solo desde la red de Tailscale, con quién es según Tailscale y con tope
+                            por hora; no da acceso: queda pendiente hasta `telar bus aprobar`
+    GET  /unirse/<id>       en qué va ese pedido, solo para la máquina que lo hizo
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
     WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí;
                             &maquina=… la de un hilo de otra máquina: se reenvía al /pty de su página (la
@@ -23,6 +27,7 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 from pathlib import Path
@@ -171,7 +176,8 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
     @app.middleware("http")
     async def con_llave(request: Request, siguiente):
         ruta = request.url.path
-        if ruta in LIBRES:
+        if ruta in LIBRES or ruta == "/unirse" or ruta.startswith("/unirse/"):
+            # la puerta para pedir entrar al bus (telar.unirse) no lleva llave: se cuida sola
             return await siguiente(request)
         dada = request.query_params.get("k", "")
         if dada and secrets.compare_digest(dada, clave):
@@ -208,6 +214,68 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
         r = RedirectResponse("/", status_code=302)
         r.set_cookie(COOKIE, clave, httponly=True, samesite="lax", max_age=31536000, path="/")
         return r
+
+    tope_unirse = None
+
+    @app.post("/unirse")
+    async def unirse_pedir(request: Request):
+        """Un pedido de entrada al bus (telar.unirse): sin llave, pero solo desde la red de Tailscale, con quién
+        es según Tailscale y con tope por hora. No da acceso: queda pendiente hasta que se aprueba."""
+        import asyncio
+
+        from telar import unirse
+
+        nonlocal tope_unirse
+        ip = request.client.host if request.client else ""
+        if not unirse.administra_aqui():
+            return JSONResponse({"detail": "esta máquina no tiene las cuentas del bus"}, status_code=404)
+        if not unirse.de_tailscale(ip):
+            return JSONResponse({"detail": "solo desde la red de Tailscale"}, status_code=403)
+        tope_unirse = tope_unirse or unirse.Tope()
+        if not tope_unirse.pasa(ip):
+            return JSONResponse({"detail": "demasiados pedidos desde esta máquina: prueba en una hora"}, status_code=429)
+        cuerpo = await request.body()
+        if len(cuerpo) > 4096:
+            return JSONResponse({"detail": "el pedido es demasiado largo"}, status_code=413)
+        try:
+            datos = json.loads(cuerpo or b"{}")
+            if not isinstance(datos, dict):
+                raise ValueError("no es un objeto")
+            quien = await asyncio.to_thread(unirse.quien_es, ip)
+            r = await asyncio.to_thread(unirse.recibir, datos, ip, quien)
+        except ValueError:
+            return JSONResponse({"detail": "el pedido no es JSON"}, status_code=422)
+        except Exception as e:  # noqa: BLE001 - ErrorDeUnirse y ErrorDeCuentas: lo que falta, para quien pide
+            return JSONResponse({"detail": str(e)}, status_code=422)
+        if config is not None:
+            # que quien administra se entere: un aviso en la pantalla de sus otras máquinas (si no llega, el pedido
+            # igual queda en `telar bus pedidos`)
+            texto = (f"{datos.get('persona')} pide entrar al bus ({quien['cuenta']}, desde {quien['maquina']}): "
+                     f"telar bus aprobar {r['id']}")
+
+            def avisar() -> None:
+                from telar import entrega
+
+                try:
+                    entrega.aviso(config, texto, titulo="telar: alguien pide entrar")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            asyncio.get_running_loop().run_in_executor(None, avisar)
+        return JSONResponse(r)
+
+    @app.get("/unirse/{pid}")
+    def unirse_estado(pid: str, request: Request):
+        """En qué va un pedido de entrada, solo para la máquina que lo hizo."""
+        from telar import unirse
+
+        ip = request.client.host if request.client else ""
+        if not unirse.administra_aqui() or not unirse.de_tailscale(ip):
+            return JSONResponse({"detail": "no"}, status_code=404)
+        try:
+            return JSONResponse(unirse.estado(pid, ip))
+        except unirse.ErrorDeUnirse as e:
+            return JSONResponse({"detail": str(e)}, status_code=404)
 
     @app.get("/maquinas")
     def maquinas():

@@ -8,6 +8,11 @@ extension shared the version number.
 
 ### Added
 
+- Joining a team: `telar instalar --unirse`, run from a clone of the team's repository, reads its
+  `.telar/equipo.yaml` (bus, who approves, modules, required programs), generates the bus secret locally and asks
+  the bus machine to let the person in (`POST /unirse`, the only thing telar accepts without the page key: only on
+  the bus machine, only from the Tailscale network, identified by `tailscale whois`, rate limited). Nothing is
+  granted until the admin runs `telar bus aprobar` (`telar bus pedidos` lists them, `rechazar` declines).
 - A module can declare what it asks for outside its folder in `[permisos]` of its `modulo.toml` (paths it reads
   and writes, network, telar commands it runs). `telar modulos instalar` shows it before asking, and says that telar
   does not enforce it yet; `telar modulos` lists it (`permisos` in `--json`) and `actualizar` says when it changed since what was shown at

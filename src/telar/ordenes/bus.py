@@ -4,6 +4,9 @@
     telar bus persona NOMBRE --secreto RUTA   con el secreto de ese archivo (el tuyo: tu `[bus] token`)
     telar bus personas                        quiénes tienen cuenta
     telar bus quitar NOMBRE                   cerrarle la cuenta
+    telar bus pedidos [--todos]               quiénes pidieron entrar (`telar instalar --unirse`, telar.unirse)
+    telar bus aprobar ID                      darle la cuenta que pidió: su hash entra y el bus se recarga
+    telar bus rechazar ID                     no dársela
 
 Se corre en la máquina del bus, como la persona que lo administra. Cada persona tiene una cuenta propia:
 lo suyo (casillas, estado de sus hilos, la foto de sus máquinas, los pedidos a sus nodos) no lo ve nadie
@@ -32,13 +35,16 @@ AYUDA = "Las cuentas del bus: una por persona, que el servidor hace cumplir."
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("bus", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", choices=["persona", "personas", "quitar"])
+    p.add_argument("verbo", choices=["persona", "personas", "quitar", "pedidos", "aprobar", "rechazar"])
+    p.add_argument("--todos", action="store_true", help="en pedidos: también los ya decididos")
     p.add_argument("nombre", nargs="?", default="")
     p.add_argument("--secreto", default="", help="el archivo con el secreto de esa persona")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
     base = cuentas.carpeta()
+    if o.verbo in ("pedidos", "aprobar", "rechazar"):
+        return _pedidos(o)
     try:
         personas = cuentas.leer(base)
         if o.verbo == "personas":
@@ -61,6 +67,41 @@ def main(argv: list[str], ctx) -> int:
         return _persona(ctx, base, personas, nombre, o.secreto)
     except cuentas.ErrorDeCuentas as e:
         return _comun.queja(str(e))
+
+
+def _pedidos(o) -> int:
+    """Los pedidos de entrada que llegaron a la puerta de esta máquina (telar.unirse), y decidirlos."""
+    import time
+
+    from telar import unirse
+
+    try:
+        if o.verbo == "pedidos":
+            pedidos = unirse.leer_pedidos()
+            vistos = [(pid, p) for pid, p in sorted(pedidos.items(), key=lambda x: x[1]["cuando"])
+                      if o.todos or p["estado"] == "pendiente"]
+            for pid, p in vistos:
+                cuando = time.strftime("%d-%m %H:%M", time.localtime(p["cuando"]))
+                print(f"{pid}  {p['persona']:<12} {p['estado']:<10} {cuando}  "
+                      + _comun.tenue(f"{p['tailscale']} · {p['nodo'] or p['ip']} · {p['equipo'] or 'sin equipo'}"))
+            if not vistos:
+                print(_comun.tenue("nadie pidió entrar" if not pedidos else "nada pendiente (--todos: también los decididos)"))
+            return 0
+        if not o.nombre:
+            return _comun.queja(f"¿cuál? telar bus {o.verbo} ID (telar bus pedidos los lista)")
+        p = unirse.decidir(o.nombre, o.verbo == "aprobar")
+    except (unirse.ErrorDeUnirse, cuentas.ErrorDeCuentas) as e:
+        return _comun.queja(str(e))
+    if o.verbo == "rechazar":
+        print(f"{p['persona']}: pedido rechazado.")
+        return 0
+    falta = unirse.recargar_bus()
+    print(f"{p['persona']}: cuenta nueva en el bus ({p['tailscale']}, desde {p['nodo'] or p['ip']}).")
+    if falta:
+        print(_comun.tenue(f"falta recargar el bus: {falta}"))
+    else:
+        print(_comun.tenue("el bus ya la conoce: su telar se conecta solo"))
+    return 0
 
 
 def _persona(ctx, base: Path, personas: dict[str, str], nombre: str, secreto_ruta: str) -> int:

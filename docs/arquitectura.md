@@ -133,6 +133,16 @@ Por el bus viajan:
 | el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
 | los cambios | `cambio.<persona>.<tema>`, sin guardar | `telar cambio <tema>`: que el dashboard de cada máquina relea, y los disparadores «al cambiar» |
 
+**Entrar al bus de un equipo.** Una persona nueva corre `telar instalar --unirse` desde el clon del repositorio
+del equipo, que lo declara en `.telar/equipo.yaml` (el bus, quién aprueba, los módulos, los programas que hacen
+falta: telar.unirse). Su secreto se genera en su máquina y a la máquina del bus viaja solo su hash, a la
+**puerta**: `POST /unirse` en la página de esa máquina, lo único que telar recibe sin la llave. La puerta atiende
+solo en la máquina que tiene las cuentas del bus, solo desde la red de Tailscale, sabe quién pide por `tailscale
+whois` y acepta pocos pedidos por hora de una misma dirección. Un pedido no da acceso: queda pendiente hasta que
+quien administra lo aprueba (`telar bus pedidos`, `telar bus aprobar <id>`; le llega un aviso a sus otras
+máquinas). Al aprobar, el hash entra a las cuentas y el bus se recarga; el nodo de la persona, que mientras
+tanto intentaba conectarse, entra solo.
+
 Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
 hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
 

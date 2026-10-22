@@ -31,6 +31,11 @@ telar instalar                       # config, page key, the `telar serve` servi
 what is missing. To join the bus of your other machines: `telar instalar --bus nats://host:4222` (the
 secret comes from `telar bus persona` on the bus machine). Then open the page it prints.
 
+To join a team, run it from your clone of the team's repository (the one with a `.telar/equipo.yaml`):
+`telar instalar --unirse`. It checks what the team needs, generates your bus secret on your machine, asks the
+team's bus to let you in (only a hash travels), and adds the repository and the team's modules to your config;
+whoever runs the bus approves you with `telar bus aprobar`.
+
 Python 3.11+ and tmux 3.5+ (3.4 has a server crash that takes every thread with it). The VS Code
 extension is deprecated: the web page does everything it did.
 
