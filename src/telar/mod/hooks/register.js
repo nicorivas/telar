@@ -143,6 +143,7 @@ async function vuelta($) {
 
 export function register(on) {
   on('session.start', async ($, e, next) => {
+    if (e.isInteractive === false) return next(e)  // un claude -p: no es un hilo, aunque herede TELAR_HILO
     await resolver($)
     $.clock.every(CADA_MS, () => vuelta($))
     return next(e)

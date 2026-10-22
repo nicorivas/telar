@@ -134,3 +134,14 @@ test('deja la conversación ya estructurada, aparte de los mensajes pendientes',
     { role: 'assistant', text: 'Miro.', tools: [{ tool: 'Bash', input: { command: 'git status' } }] },
   ])
 })
+
+test('en un claude -p no hace nada, aunque herede el hilo', async ($, on) => {
+  const clock = mock.clock(on)
+  const ll = telarFalso(on, { archivos: [{ name: 'a.json', kind: 'file' }], aviso: '↯ mensaje nuevo' })
+  await $.session.start({ surface: 'terminal', isInteractive: false, cwd: '/w' })
+  await $.turn.start({ text: 'hola', turnId: 't1' })
+  await clock.advance(5000)
+  expect(ll.enviados).toEqual([])
+  expect(ll.avisos).toEqual([])
+  expect(Object.keys(ll.escritos)).toEqual([])
+})
