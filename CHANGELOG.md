@@ -20,9 +20,12 @@ extension shared the version number.
   `GET /tareas/{id}`) and what `telar tipo tarea` returns. No other field changes.
 - An id that would break an address is escaped like a URL (`hilo:Faro%40casa`, `hilo:◌%20a%20solas`), so an
   `@` in a name is not read as the machine and a name with spaces is found in a text.
-- `telar doctor` warns when a repo of `[repos]` is outside `raiz` (its profile is not added), and when the
-  profiles of two repos recognise the same folders (and says which wins: the deepest). It also loads when a
-  declared module cannot be read, which stops every other command, and reports which one and why, as a failure.
+- `telar doctor` warns when a repo of `[repos]` does not exist or is outside `raiz` (its profile is not added),
+  and when the profiles of two repos recognise the same folders (and says which wins: the deepest). It also
+  loads when a declared module cannot be read, which stops every other command, and reports which one and why,
+  as a failure in its `módulos` check (so does the `telar doctor` at the end of `telar instalar`).
+- A module whose `modulo.toml` brings an invalid `[pestana]`, `[app]` or `[resultado]` is now an error that
+  names the module and the section (`modulos.faro: la [pestana] de su modulo.toml no vale: …`).
 - `telar doctor` warns when a provider with `tipo = "tipo"` reads another folder than `[tipos.tarea]`, or
   there is no `[tipos.tarea]`: its `tarea:<id>` addresses would open another task, or none.
 - Message templates that take `{id}` also take `{direccion}`, the object's address (`tarea:T84`): `[agente]

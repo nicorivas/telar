@@ -510,43 +510,67 @@ def _con_modulos(datos: dict, rotos: list | None = None) -> tuple[dict, tuple]:
     `[resultados.x]` que vive donde corren los periódicos. Los periódicos no van aquí: los suma
     `telar.periodicos` al leer `periodicos.toml`. Un nombre que ya está declarado es un error.
 
-    Un módulo cuyo manifiesto no se puede leer es un error, salvo que llegue `rotos`: entonces se deja
-    fuera y se anota ahí (nombre, por qué), para que `telar doctor` lo diga."""
-    from telar import modulos as mod_modulos
-
+    Un módulo que no se puede leer (su entrada en `[modulos]` está mal, su manifiesto no se lee, o lo que
+    aporta no vale o choca con algo declarado a mano) es un error, salvo que llegue `rotos`: entonces se
+    deja fuera y se anota ahí (nombre, por qué), para que `telar doctor` lo diga."""
     if "modulos" not in datos:
         return datos, ()
     datos = {k: (dict(v) if isinstance(v, dict) else v) for k, v in datos.items()}
     lista = []
     for nombre, cuerpo in _tabla(datos.pop("modulos"), "modulos").items():
-        cuerpo = _tabla(cuerpo, f"modulos.{nombre}")
-        sobra = set(cuerpo) - {"carpeta", "activo"}
-        if sobra:
-            raise ErrorDeConfig(f"modulos.{nombre}.{sorted(sobra)[0]}: no existe")
-        if not isinstance(cuerpo.get("carpeta"), str) or not cuerpo["carpeta"].strip():
-            raise ErrorDeConfig(f"modulos.{nombre}.carpeta: se esperaba la carpeta del módulo")
-        if not isinstance(cuerpo.get("activo", True), bool):
-            raise ErrorDeConfig(f"modulos.{nombre}.activo: true o false")
-        if not cuerpo.get("activo", True):
-            continue
         try:
-            m = mod_modulos.leer(nombre, Path(cuerpo["carpeta"]))
-        except mod_modulos.ErrorDeModulo as e:
+            m, aportes = _un_modulo(nombre, cuerpo, datos)
+        except ErrorDeConfig as e:
             if rotos is None:
-                raise ErrorDeConfig(f"modulos.{e}") from None
+                raise
             rotos.append((nombre, str(e)))
             continue
-        en = datos.get("periodicos", {}).get("en", "") if isinstance(datos.get("periodicos"), dict) else ""
-        for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
-                              ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
-            if not aporte:
-                continue
-            destino = datos.setdefault(tabla, {})
-            if nombre in destino:
-                raise ErrorDeConfig(f"modulos.{nombre}: ya hay un [{tabla}.{nombre}] declarado a mano")
-            destino[nombre] = aporte
+        if m is None:
+            continue
+        for tabla, aporte in aportes.items():
+            datos.setdefault(tabla, {})[nombre] = aporte
         lista.append(m)
     return datos, tuple(lista)
+
+
+#: la sección de `modulo.toml` que se vuelve cada tabla de la configuración, para nombrarla en un error
+_SECCION_DEL_MODULO = {"bloques": "pestana", "apps": "app", "resultados": "resultado"}
+
+
+def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
+    """Un `[modulos.x]`: (el módulo, lo que aporta por tabla), o (None, {}) si está apagado. Lo que aporta
+    se valida aquí, solo, para que un error nombre al módulo y la sección de su `modulo.toml` (y no un
+    `[bloques.x]` que nadie escribió); lo que choca con otro módulo lo ve recién la validación de todo."""
+    from telar import modulos as mod_modulos
+
+    cuerpo = _tabla(cuerpo, f"modulos.{nombre}")
+    sobra = set(cuerpo) - {"carpeta", "activo"}
+    if sobra:
+        raise ErrorDeConfig(f"modulos.{nombre}.{sorted(sobra)[0]}: no existe")
+    if not isinstance(cuerpo.get("carpeta"), str) or not cuerpo["carpeta"].strip():
+        raise ErrorDeConfig(f"modulos.{nombre}.carpeta: se esperaba la carpeta del módulo")
+    if not isinstance(cuerpo.get("activo", True), bool):
+        raise ErrorDeConfig(f"modulos.{nombre}.activo: true o false")
+    if not cuerpo.get("activo", True):
+        return None, {}
+    try:
+        m = mod_modulos.leer(nombre, Path(cuerpo["carpeta"]))
+    except mod_modulos.ErrorDeModulo as e:
+        raise ErrorDeConfig(f"modulos.{e}") from None
+    en = datos.get("periodicos", {}).get("en", "") if isinstance(datos.get("periodicos"), dict) else ""
+    aportes = {}
+    for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
+                          ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
+        if not aporte:
+            continue
+        if isinstance(datos.get(tabla), dict) and nombre in datos[tabla]:
+            raise ErrorDeConfig(f"modulos.{nombre}: ya hay un [{tabla}.{nombre}] declarado a mano")
+        try:
+            desde_dict({tabla: {nombre: aporte}})
+        except ErrorDeConfig as e:
+            raise ErrorDeConfig(f"modulos.{nombre}: la [{_SECCION_DEL_MODULO[tabla]}] de su modulo.toml no vale: {e}") from None
+        aportes[tabla] = aporte
+    return m, aportes
 
 
 def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None) -> Config:
@@ -1095,7 +1119,11 @@ def _con_instalados(datos: dict, destino: Path, rotos: list | None = None) -> di
     juntos = dict(a_mano)
     for nombre, d in instalados.items():
         if nombre in a_mano:
-            raise ErrorDeConfig(f"modulos.{nombre}: está en la configuración y también instalado con telar modulo")
+            mensaje = f"modulos.{nombre}: está en la configuración y también instalado con telar modulo"
+            if rotos is None:
+                raise ErrorDeConfig(mensaje)
+            rotos.append((nombre, mensaje))  # queda el de a mano
+            continue
         juntos[nombre] = {"carpeta": str(d.get("carpeta", ""))}
     return {**datos, "modulos": juntos}
 

@@ -77,7 +77,8 @@ def main(argv: list[str], ctx) -> int:
     from telar import config as mod_config
     from telar.ordenes import doctor
 
-    ctx.config = mod_config.cargar(ruta if ruta.exists() else None)
+    # como la orden `telar doctor`: un módulo que no se lee se deja fuera, para que doctor lo diga
+    ctx.config = mod_config.cargar(ruta if ruta.exists() else None, tolerar_modulos=True)
     print()
     return doctor.main([], ctx)
 

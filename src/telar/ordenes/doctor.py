@@ -253,6 +253,10 @@ def _repos(ctx) -> list[dict]:
     salida = []
     fuera = []
     for repo in repos:
+        if not Path(repo.ruta).expanduser().is_dir():
+            salida.append(_r("repos", AVISO, f"«{repo.nombre}» ({repo.ruta}) no existe: no aporta nada",
+                             "corrige su `ruta` en [repos], o sácalo"))
+            continue
         try:
             Path(repo.ruta).expanduser().resolve().relative_to(raiz.resolve())
         except (ValueError, OSError):
@@ -272,8 +276,12 @@ def pisadas(perfil, raiz: Path, nombre_raiz: str = "") -> dict[str, list[str]]:
     Gana el primero que la reconoce en el perfil junto (telar.lectura.indice), y cargar_todos pone primero
     los más hondos: este orden es el de verdad, no uno calculado aparte. Los arquetipos de la raíz no son
     de ningún repo (`repo` vacío) y cuentan solo si la raíz está declarada en `[repos]` (`nombre_raiz`):
-    que el perfil de la raíz también nombre las carpetas de un repo de adentro es lo previsto.
+    que el perfil de la raíz también nombre las carpetas de un repo de adentro es lo previsto. Y si la
+    raíz no tiene perfil, los suyos son los del perfil mínimo, que no escribió nadie: tampoco cuentan
+    (cargar_todos descarta por lo mismo el mínimo de un repo).
     """
+    if perfil.minimo:
+        nombre_raiz = ""
     vistos: dict[str, list[str]] = {}
     for arquetipo in perfil.arquetipos:
         repo = arquetipo.repo or nombre_raiz
@@ -296,8 +304,9 @@ def _pisadas(ctx, repos, raiz: Path) -> list[dict]:
     try:
         base = raiz.resolve()
         nombre_raiz = next((r.nombre for r in repos if Path(r.ruta).expanduser().resolve() == base), "")
+        hondura = {r.nombre: len(Path(r.ruta).expanduser().resolve().parts) for r in repos}
     except OSError:  # pragma: no cover
-        nombre_raiz = ""
+        nombre_raiz, hondura = "", {}
     choques: dict[tuple[str, ...], list[str]] = {}
     for carpeta, de_quien in pisadas(ctx.perfil, raiz, nombre_raiz).items():
         choques.setdefault(tuple(de_quien), []).append(carpeta)
@@ -305,8 +314,11 @@ def _pisadas(ctx, repos, raiz: Path) -> list[dict]:
     for (gana, *pierden), carpetas in choques.items():
         muestra = ", ".join(carpetas[:3]) + (" …" if len(carpetas) > 3 else "")
         otros = ", ".join(f"«{x}»" for x in pierden)
+        # a la misma hondura (dos repos en la misma carpeta) cargar_todos deja el orden de [repos]
+        por_que = ("el primero de [repos], a la misma hondura" if any(hondura.get(x) == hondura.get(gana) for x in pierden)
+                   else "el más hondo")
         salida.append(_r("perfiles", AVISO,
-                         f"«{gana}» y {otros} reconocen {_comun.plural(len(carpetas), 'carpeta')} ({muestra}): gana «{gana}», el más hondo",
+                         f"«{gana}» y {otros} reconocen {_comun.plural(len(carpetas), 'carpeta')} ({muestra}): gana «{gana}», {por_que}",
                          f"quita esas carpetas del perfil de {otros}, si no las quiere describir"))
     return salida
 
@@ -327,7 +339,8 @@ def _modulos(ctx) -> list[dict]:
             salida.append(_r("módulos", FALLA, f"no se puede leer {por_que}",
                              "arregla ese archivo (lo escribe telar modulos): hasta entonces las demás órdenes no arrancan"))
             continue
-        salida.append(_r("módulo", FALLA, f"«{nombre}» no se puede leer: {por_que.removeprefix(f'{nombre}: ')}",
+        por_que = por_que.removeprefix(f"modulos.{nombre}: ").removeprefix(f"{nombre}: ")
+        salida.append(_r("módulos", FALLA, f"«{nombre}» no se puede leer: {por_que}",
                          "arregla su carpeta o su modulo.toml, o sácalo de [modulos] (o de modulos.toml, si lo instaló"
                          " telar modulos): hasta entonces las demás órdenes no arrancan"))
     if leidos and not rotos:

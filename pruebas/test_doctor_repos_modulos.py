@@ -113,6 +113,29 @@ class ReposDeDoctor(_ConRaiz):
         self.assertIn("gana «equipo»", avisos[0]["dice"])
         self.assertIn("«vida»", avisos[0]["dice"])
 
+    def test_la_raiz_en_repos_pero_sin_perfil_no_cuenta(self):
+        """Sin perfil en la raíz rige el mínimo, que nadie escribió: no es un perfil «vida» que se pise."""
+        _perfil(self.equipo, "equipo")
+        ctx = self.ctx(Repo(nombre="vida", ruta=self.raiz), Repo(nombre="equipo", ruta=self.equipo))
+        self.assertTrue(ctx.perfil.minimo)
+        self.assertEqual(self.por_nombre(doctor._repos(ctx), "perfiles"), [])
+
+    def test_dos_repos_en_la_misma_carpeta_gana_el_primero_declarado(self):
+        _perfil(self.equipo, "equipo")
+        ctx = self.ctx(Repo(nombre="uno", ruta=self.equipo), Repo(nombre="dos", ruta=self.equipo))
+        avisos = self.por_nombre(doctor._repos(ctx), "perfiles")
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("gana «uno», el primero de [repos]", avisos[0]["dice"])
+        self.assertNotIn("el más hondo", avisos[0]["dice"])
+        arquetipo, _ = lectura.indice(ctx.perfil, self.raiz)["equipo/molino"]
+        self.assertEqual(arquetipo.repo, "uno")
+
+    def test_un_repo_que_no_existe_avisa(self):
+        revisiones = doctor._repos(self.ctx(Repo(nombre="taller", ruta=self.raiz / "no-esta")))
+        self.assertEqual([(r["nombre"], r["estado"]) for r in revisiones], [("repos", doctor.AVISO)])
+        self.assertIn("«taller»", revisiones[0]["dice"])
+        self.assertIn("no existe", revisiones[0]["dice"])
+
     def test_arquetipos_del_mismo_repo_no_son_dos_repos(self):
         (self.equipo / "telar-perfil.yaml").write_text(
             'version: 1\nnombre: equipo\narquetipos:\n  a:\n    ruta: "*/"\n  b:\n    ruta: "molino/"\n',
@@ -169,7 +192,7 @@ class ModulosDeDoctor(Prueba):
             codigo, _, error = self.correr("doctor")
         self.assertEqual(codigo, 0, error)
         revisiones = doctor._modulos(llego["ctx"])
-        self.assertEqual([(r["nombre"], r["estado"]) for r in revisiones], [("módulo", doctor.FALLA)])
+        self.assertEqual([(r["nombre"], r["estado"]) for r in revisiones], [("módulos", doctor.FALLA)])
         self.assertIn("«molino» no se puede leer", revisiones[0]["dice"])
         self.assertNotIn("molino: ", revisiones[0]["dice"])
         self.assertIn("no arrancan", revisiones[0]["arreglo"])
@@ -192,6 +215,60 @@ class ModulosDeDoctor(Prueba):
         self.assertEqual([(r["nombre"], r["estado"], r["dice"]) for r in doctor._modulos(Contexto(config=cfg))],
                          [("módulos", doctor.OK, "faro")])
         self.assertEqual(doctor._modulos(Contexto(config=Config(raiz=self.raiz))), [])
+
+    def tolera(self, nombre: str) -> str:
+        """Carga con y sin tolerancia: sin, es un error; con, `nombre` queda fuera. Devuelve el por qué."""
+        with self.assertRaises(ErrorDeConfig):
+            mod_config.cargar()
+        cfg = mod_config.cargar(tolerar_modulos=True)
+        self.assertIn(nombre, [n for n, _ in cfg.modulos_rotos])
+        self.assertNotIn(nombre, [m.nombre for m in cfg.modulos])
+        return dict(cfg.modulos_rotos)[nombre]
+
+    def test_una_entrada_sin_carpeta_tambien(self):
+        self.config.write_text(f'[modulos.faro]\ncarpeta = "{self.bueno}"\n[modulos.molino]\nfuente = "x"\n',
+                               encoding="utf-8")
+        self.assertIn("molino.fuente", self.tolera("molino"))
+        self.config.write_text(f'[modulos.faro]\ncarpeta = "{self.bueno}"\n[modulos.molino]\nactivo = true\n',
+                               encoding="utf-8")
+        self.assertIn("carpeta", self.tolera("molino"))
+        self.assertEqual([m.nombre for m in mod_config.cargar(tolerar_modulos=True).modulos], ["faro"])
+
+    def test_una_pestana_que_no_vale_nombra_al_modulo(self):
+        (self.bueno / "modulo.toml").write_text('[pestana]\ncomando = ["echo"]\nzzz = 3\n', encoding="utf-8")
+        self.config.write_text(f'[modulos.faro]\ncarpeta = "{self.bueno}"\n', encoding="utf-8")
+        por_que = self.tolera("faro")
+        self.assertIn("[pestana]", por_que)
+        self.assertIn("zzz", por_que)
+        cfg = mod_config.cargar(tolerar_modulos=True)
+        self.assertEqual(cfg.bloques, ())
+        revisiones = doctor._modulos(Contexto(config=cfg))
+        self.assertEqual([(r["nombre"], r["estado"]) for r in revisiones], [("módulos", doctor.FALLA)])
+        self.assertIn("«faro» no se puede leer: la [pestana]", revisiones[0]["dice"])
+
+    def test_una_pestana_que_choca_con_un_bloque_a_mano(self):
+        (self.bueno / "modulo.toml").write_text('[pestana]\ncomando = ["echo"]\n', encoding="utf-8")
+        self.config.write_text(f'[bloques.faro]\ncomando = ["true"]\n[modulos.faro]\ncarpeta = "{self.bueno}"\n',
+                               encoding="utf-8")
+        self.assertIn("a mano", self.tolera("faro"))
+        cfg = mod_config.cargar(tolerar_modulos=True)
+        self.assertEqual([b.comando for b in cfg.bloques], [("true",)])
+
+    def test_instalar_tambien_deja_que_doctor_lo_diga(self):
+        """`telar instalar` termina con doctor: recarga la configuración tolerando, como la orden."""
+        from telar.ordenes import instalar
+
+        llego = {}
+
+        def main(argv, ctx):
+            llego["ctx"] = ctx
+            return 0
+
+        with mock.patch.object(instalar, "_plan", lambda *a: []), mock.patch.object(doctor, "main", main), \
+                contextlib.redirect_stdout(io.StringIO()):
+            codigo = instalar.main(["--si"], Contexto(config=Config(raiz=self.raiz)))
+        self.assertEqual(codigo, 0)
+        self.assertEqual([n for n, _ in llego["ctx"].config.modulos_rotos], ["molino"])
 
     def test_uno_apagado_no_se_lee_ni_se_avisa(self):
         self.config.write_text(f'[modulos.molino]\ncarpeta = "{self.raiz / "no-esta"}"\nactivo = false\n',

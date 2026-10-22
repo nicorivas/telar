@@ -808,8 +808,8 @@ por la entrada, con `TELAR_CONSULTA=1`, y devuelve un objeto JSON; corre en la c
 30 s), y con `&maquina=<m>` la responde el telar de esa máquina, por el bus, con el módulo instalado allá.
 Las dos reciben `TELAR_RAIZ`, `TELAR_REPOS` (los de `[repos]`, en JSON), `TELAR_MAQUINA` y `TELAR_MODULO`.
 Un módulo corre aparte: si se cae, telar sigue. Lo que sí detiene a telar es un módulo declarado que no se puede
-leer (su carpeta o su `modulo.toml` no están, o el manifiesto está mal): la configuración es un error y las
-órdenes no arrancan. `telar doctor` arranca igual, sin él, y dice cuál es y por qué (una falla).
+leer (su entrada en `[modulos]` está mal, su carpeta o su `modulo.toml` no están, el manifiesto está mal, o lo
+que aporta choca con algo declarado a mano): la configuración es un error y las órdenes no arrancan. `telar doctor` arranca igual, sin él, y dice cuál es y por qué (una falla).
 
 Un módulo también puede decirle algo al agente de cada hilo, al arrancar, junto a lo que telar ya le dice
 (qué hilo es, su casilla): `[contexto] texto = "…"`, hasta 600 caracteres, porque entra en cada sesión.

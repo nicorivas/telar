@@ -754,9 +754,12 @@ falla, con 0 si no: un aviso no es una falla, telar funciona sin perfil, sin
 proveedores y sin ganchos, solo hace menos.
 
 doctor carga la configuración aunque un módulo declarado no se pueda leer (las demás
-órdenes salen con 2): lo deja fuera y lo dice en una revisión `módulo` con `falla`.
-Los repos de `[repos]` traen revisiones `repos` (uno fuera de `raiz`, un `aviso`) y
-`perfiles` (las carpetas que reconocen dos repos y cuál gana, un `aviso`).
+órdenes salen con 2): lo deja fuera y lo dice en una revisión `módulos` con `falla`,
+una por módulo (su entrada en `[modulos]`, su carpeta, su `modulo.toml` o lo que aporta
+no valen) y una si `modulos.toml` no se lee. Con todos legibles, una sola `módulos` con
+`ok` y sus nombres; sin módulos, ninguna. Los repos de `[repos]` traen revisiones
+`repos` (uno que no existe o queda fuera de `raiz`, un `aviso`) y `perfiles` (las
+carpetas que reconocen dos repos y cuál gana, un `aviso`).
 
 ### `telar config --json` y `telar perfil --json`
 
