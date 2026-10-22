@@ -45,7 +45,25 @@ class Contexto(ConEstado):
         self.assertIn("Eres el hilo «Faro» de telar (vinculado a proyectos/faro).", texto)
         self.assertIn("no tiene casilla", texto)
         self.assertIn("skill /hilos", texto)
-        self.assertLessEqual(len(texto.splitlines()), 6)  # se carga en cada sesión: corto
+        self.assertLessEqual(len(texto.splitlines()), 7)  # se carga en cada sesión: corto
+
+    def test_sabe_nombrar_las_cosas_por_su_direccion(self):
+        lineas = [l for l in self.contexto().splitlines() if "telar objeto <dirección>" in l]
+        self.assertEqual(len(lineas), 1)  # una sola línea, corta
+        linea = lineas[0]
+        self.assertIn("`tipo:id`", linea)
+        self.assertIn("`tarea:T84`", linea)
+        self.assertIn("`hilo:Faro`", linea)
+        self.assertIn("acciones", linea)
+        self.assertIn("nombra las cosas por su dirección", linea)
+        self.assertLessEqual(len(linea), 250)
+
+    def test_la_linea_de_direcciones_va_con_y_sin_bus(self):
+        from telar import bus as mod_bus
+
+        for hay in (True, False):
+            with self.subTest(bus=hay), mock.patch.object(mod_bus, "hay_bus", return_value=hay):
+                self.assertIn("telar objeto <dirección>", self.contexto())
 
     def test_con_cartero_dice_su_direccion(self):
         texto = self.contexto(hilo="Faro Norte", cartero=True)
@@ -85,6 +103,16 @@ class SkillHilos(ConEstado):
         self.assertEqual(mod_skill.instalar(carpeta_config())[1], "al día")
         self.assertEqual(mod_skill.desinstalar(carpeta_config())[1], "quitada")
         self.assertFalse(ruta.exists())
+
+    def test_la_skill_explica_las_direcciones(self):
+        texto = mod_skill.SKILL
+        self.assertIn("## Nombrar las cosas: direcciones", texto)
+        for trozo in ("`tipo:id`", "`tarea:T84`", "`hilo:Faro`", "`telar objeto <dirección> --json`",
+                      "`telar objeto --tipos`", "`telar objeto --buscar", "nombra las cosas por su dirección",
+                      "`hilo:Faro%40casa`"):
+            self.assertIn(trozo, texto)
+        # las llaves del ejemplo salen simples: la skill es un f-string
+        self.assertIn("--params '{\"texto\": \"…\"}'", texto)
 
     def test_una_skill_hilos_ajena_no_se_toca(self):
         ruta = mod_skill.ruta(carpeta_config())

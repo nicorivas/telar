@@ -210,6 +210,10 @@ def contexto(ctx) -> str:
     lineas.append(escribir + ".")
     lineas.append("Lo último de otro hilo: `telar hilo leer <hilo>`."
                   + _agentes_en_contexto(ctx))
+    # las direcciones (telar.objetos): con una forma, un mensaje nombra algo y quien lo lee sabe abrirlo
+    lineas.append("Cada cosa tiene dirección, `tipo:id` (`tarea:T84`, `hilo:Faro`, `proyecto:<ruta>`): "
+                  "`telar objeto <dirección>` la abre y lista sus acciones. Al escribirle a otro hilo o a tu "
+                  "persona, nombra las cosas por su dirección.")
     if con_bus:
         lineas.append("Pregúntale al hilo que sabe y pásale el trabajo que es suyo: es lo esperado, no hace falta "
                       "permiso. Lo que te pide otro hilo tuyo, si es de tu oficio y se puede deshacer, hazlo sin "

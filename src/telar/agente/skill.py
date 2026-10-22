@@ -1,6 +1,6 @@
 """La skill `/hilos` que telar le deja al agente: cómo encontrar, leer y escribirle a otros hilos.
 
-El contexto de inicio (`telar agente contexto`) son cinco líneas que se cargan siempre. Esto
+El contexto de inicio (`telar agente contexto`) son unas pocas líneas que se cargan siempre. Esto
 es lo largo, y el agente lo abre solo cuando le hace falta: la descripción es lo único que
 tiene a la vista todo el tiempo.
 
@@ -18,7 +18,7 @@ MARCA = "<!-- instalada por `telar agente instalar`; `telar agente desinstalar` 
 
 SKILL = f"""---
 name: hilos
-description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, leer lo que pasó en otra, escribirles (mensaje nativo o correo entre agentes), encargarle algo a un agente residente y responder un correo que llegó. Úsala cuando haya que hablar con "otra sesión", "otro hilo", "otro agente", "escríbele a", "pregúntale a", "encárgale a", "qué hilos hay", "de qué trata ese hilo", "qué dijo ese hilo", o cuando llegue un "[correo de agente]".
+description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, leer lo que pasó en otra, escribirles (mensaje nativo o correo entre agentes), encargarle algo a un agente residente, responder un correo que llegó y nombrar o abrir algo por su dirección (tarea:T84, hilo:Faro). Úsala cuando haya que hablar con "otra sesión", "otro hilo", "otro agente", "escríbele a", "pregúntale a", "encárgale a", "qué hilos hay", "de qué trata ese hilo", "qué dijo ese hilo", o cuando llegue un "[correo de agente]".
 ---
 
 {MARCA}
@@ -93,6 +93,22 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
   `[correo de agente]` que te llega trae el id y el comando con `mail`.
 - Sin bus, un hilo del laptop no tiene casilla: solo recibe mensajes nativos de su misma
   máquina. No le prometas a nadie que le va a llegar un correo.
+
+## Nombrar las cosas: direcciones
+
+Todo lo que telar conoce tiene una dirección con una sola forma, `tipo:id`, y `@máquina` cuando
+importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:docs/notas.md`,
+`hilo:Faro@servidor`. Las salidas JSON que nombran algo la traen en el campo `direccion`.
+
+- `telar objeto <dirección> --json` lo abre: título, estado, sus campos, las direcciones a las que
+  enlaza y las **acciones** que acepta, con sus parámetros. `telar objeto <dirección> <acción>
+  --params '{{…}}'` aplica una (por ejemplo `telar objeto hilo:Faro mensaje --params '{{"texto": "…"}}'`).
+  `telar objeto --tipos` dice qué tipos hay (los de fábrica y los de los módulos).
+- **Al escribirle a otro hilo o a tu persona, nombra las cosas por su dirección**: «revisa
+  `tarea:T84`», no «la tarea de los permisos». Quien lo lee la abre con `telar objeto` sin
+  adivinar, y `telar objeto --buscar "<texto>"` encuentra las direcciones de un mensaje que te llega.
+- Un id con `@`, espacios u otros signos va escapado como en una URL (`hilo:Faro%40casa`,
+  `hilo:Faro%20Norte`): copia la dirección de la salida JSON en vez de armarla a mano.
 
 ## Las reglas
 

@@ -25,6 +25,9 @@ extension shared the version number.
 - Message templates that take `{id}` also take `{direccion}`, the object's address (`tarea:T84`): `[agente]
   pendiente` and `pendiente_nuevo`, and a task provider's `mensaje_procesar` and `mensaje_escribir`. A pending
   item without an address (a checkbox in a document) falls back to `{texto}`, as with `{id}`. Defaults are unchanged.
+- Agents know about addresses: the start-up context of each thread's agent has one more line (an object is
+  named `type:id`, `telar objeto <address>` opens it and lists its actions, and messages should name things by
+  their address), and the `/hilos` skill that telar installs explains it in a new section.
 
 ## [0.3.0] — 2026-10-21
 
