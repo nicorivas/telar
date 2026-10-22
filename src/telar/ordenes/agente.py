@@ -187,7 +187,7 @@ def contexto(ctx) -> str:
     elif cartero:
         ext = mod_correo.extension(hilo)
         direccion = f"{getpass.getuser()}+{ext}@{servidor}" if ext else ""
-        lineas.append(f"Tu correo: {direccion}. Solo te despierta un correo a esa dirección." if direccion
+        lineas.append(f"Tu correo: {direccion}. Solo te despierta un correo a esa casilla." if direccion
                       else "Tu nombre no da una dirección de correo: no te pueden escribir por correo.")
     else:
         lineas.append("Este hilo no tiene casilla: solo le llegan mensajes nativos (SendMessage) de sesiones de esta máquina.")
@@ -211,7 +211,11 @@ def contexto(ctx) -> str:
     lineas.append("Lo último de otro hilo: `telar hilo leer <hilo>`."
                   + _agentes_en_contexto(ctx))
     # las direcciones (telar.objetos): con una forma, un mensaje nombra algo y quien lo lee sabe abrirlo
-    lineas.append("Cada cosa tiene dirección, `tipo:id` (`tarea:T84`, `hilo:Faro`, `proyecto:<ruta>`): "
+    # el proyecto, con el de este hilo si tiene: la ruta es la carpeta relativa a la raíz, la misma del vínculo
+    from telar.objetos import direccion_de
+
+    proyecto = direccion_de("proyecto", vinculo) if vinculo else "proyecto:<carpeta relativa a la raíz>"
+    lineas.append(f"Cada cosa tiene dirección, `tipo:id` (`tarea:T84`, `hilo:Faro`, `{proyecto}`): "
                   "`telar objeto <dirección>` la abre y lista sus acciones. Al escribirle a otro hilo o a tu "
                   "persona, nombra las cosas por su dirección.")
     if con_bus:

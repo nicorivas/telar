@@ -187,11 +187,14 @@ telar agente ver                   # qué hay puesto, y qué sabe telar de este 
 
 Además de los seis, `instalar` pone un **segundo `SessionStart`** que llama a `telar agente
 contexto claude-code`. Su salida entra al contexto del agente al empezar (y tras `/clear` y
-al retomar): cinco líneas sobre quién es, cómo le escriben y cómo escribirles a los otros
-hilos. El aviso no puede hacer eso porque su regla es no imprimir nada. Sin `$TELAR_HILO` no
-dice nada, y se apaga con `[agente] contexto = false`. Y deja la skill **`/hilos`** en
-`~/.claude/skills/hilos/`, lo largo de lo mismo, que el agente abre cuando le hace falta;
-una `/hilos` que no sea de telar no se toca. `desinstalar` quita las dos cosas.
+al retomar): unas pocas líneas sobre quién es, cómo le escriben, cómo escribirles a los otros
+hilos y cómo se nombran las cosas (cada objeto tiene una dirección `tipo:id`, como `tarea:T84`,
+que `telar objeto` abre), más lo que pida cada módulo instalado. El aviso no puede hacer
+eso porque su regla es no imprimir nada. Sin `$TELAR_HILO` no dice nada, y se apaga con
+`[agente] contexto = false`. Y deja la skill **`/hilos`** en `~/.claude/skills/hilos/`, lo
+largo de lo mismo, que el agente abre cuando le hace falta: ahí están también las
+direcciones, con sus ejemplos y la excepción de `telar directorio` (su `direccion` es un
+correo). Una `/hilos` que no sea de telar no se toca. `desinstalar` quita las dos cosas.
 
 El instalador **se mete en casa ajena y se porta como tal**: mezcla con los ganchos que
 ya estaban y solo reemplaza los suyos (se reconocen por su comando), deja un respaldo

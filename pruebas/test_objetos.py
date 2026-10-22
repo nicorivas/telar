@@ -88,14 +88,37 @@ class LosTiposDeFabrica(Prueba):
         with self.assertRaises(ErrorDeServicio):
             objetos.hacer(self.ctx, "hilo:Faro", "volar", {})
 
-    def test_un_hilo_de_otra_maquina_es_el_de_alla(self):
+    def test_un_hilo_con_maquina_es_el_de_esa_maquina(self):
+        # un «Faro» aquí y otro en el servidor: `hilo:Faro@servidor` abre el del servidor, no el local
+        from telar import bus as mod_bus
+        from telar import espejo
+        from telar.ordenes import _comun
+
+        aqui = SimpleNamespace(nombre="Faro", id="@1", remoto="")
+        tel = SimpleNamespace(hilos=[aqui])
+        fotos = [{"nombre": "laptop", "hilos": [{"nombre": "Faro", "relativa": "otra"}]},
+                 {"nombre": "servidor", "hilos": [{"nombre": "Faro", "relativa": "proyectos/faro", "atencion": "trabajando"}]}]
+        with mock.patch.object(mod_bus, "hay_bus", return_value=True), \
+                mock.patch.object(mod_bus, "maquina", return_value="laptop"), \
+                mock.patch.object(espejo, "leer_todos", return_value=fotos), \
+                mock.patch.object(_comun, "tejer", return_value=tel), \
+                mock.patch.object(_comun, "json_hilo", return_value={"nombre": "Faro", "relativa": "aqui"}):
+            o = objetos.ver(self.ctx, "hilo:Faro@servidor")
+            self.assertEqual((o.maquina, o.campos["relativa"], o.estado), ("servidor", "proyectos/faro", "trabajando"))
+            self.assertEqual(objetos.ver(self.ctx, "hilo:Faro@laptop").campos["relativa"], "aqui")  # la de aquí
+            self.assertEqual(objetos.ver(self.ctx, "hilo:Faro").campos["relativa"], "aqui")  # sin máquina, el local
+            with self.assertRaises(ErrorDeServicio) as e:
+                objetos.ver(self.ctx, "hilo:Faro@otra")
+            self.assertEqual(e.exception.codigo, 404)
+
+    def test_un_hilo_de_otra_maquina_lleva_su_maquina_en_la_direccion(self):
         from telar import bus, espejo
 
         fotos = [{"nombre": "servidor", "hilos": [{"nombre": "Faro", "atencion": "trabajando", "relativa": "proyectos/faro"}]}]
         with mock.patch.object(bus, "hay_bus", return_value=True), mock.patch.object(bus, "maquina", return_value="laptop"), \
                 mock.patch.object(espejo, "leer_todos", return_value=fotos):
             o = objetos.ver(self.ctx, "hilo:Faro@servidor")
-            self.assertEqual((o.direccion, o.maquina, o.estado), ("hilo:Faro@servidor", "servidor", "trabajando"))
+            self.assertEqual((o.direccion, o.maquina), ("hilo:Faro@servidor", "servidor"))
             with self.assertRaises(ErrorDeServicio) as e:  # allá no hay uno así: no se cae al de aquí
                 objetos.ver(self.ctx, "hilo:Telar@servidor")
             self.assertEqual(e.exception.codigo, 404)

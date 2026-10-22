@@ -180,11 +180,11 @@ class Hilo(Tipo):
         from telar import bus as mod_bus
         from telar.ordenes import _comun
 
+        # `hilo:Faro@servidor`: el de esa máquina, aunque aquí haya otro «Faro» (como `telar hilo leer --maquina`)
         if d.maquina and mod_bus.hay_bus(ctx.config) and d.maquina != mod_bus.maquina(ctx.config):
-            # el de esa máquina, según su foto; si allá no hay uno con ese nombre, no es el de aquí
-            remoto = _hilo_remoto(ctx, d.id, d.maquina)
+            remoto = _hilo_remoto(ctx, d.id, maquina=d.maquina)
             if remoto is None:
-                raise ErrorDeServicio(f"{d.maquina} no tiene un hilo «{d.id}»", 404)
+                raise ErrorDeServicio(f"no hay ningún hilo «{d.id}» en {d.maquina} (según lo último que publicó)", 404)
             return self._objeto(*remoto)
         tel = _comun.tejer(ctx)
         h = next((x for x in tel.hilos if x.nombre == d.id or x.id == d.id), None)
@@ -228,8 +228,9 @@ class Hilo(Tipo):
 
 
 def _hilo_remoto(ctx, nombre: str, maquina: str = ""):
-    """(su JSON, su máquina) de un hilo que vive en otra máquina (en `maquina`, si se dice), según la foto de su
-    espejo; None si no."""
+    """(su JSON, su máquina) de un hilo que vive en otra máquina, según la foto de su espejo; None si no.
+
+    Con `maquina`, solo en esa."""
     from telar import bus as mod_bus
     from telar import espejo
 

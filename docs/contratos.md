@@ -639,6 +639,10 @@ valor por defecto). Una acción que cambia el objeto lo devuelve en `objeto`; un
 a un hilo) dice lo que pasó en `resultado`. Los errores, como en `telar tipo`: `{"error", "codigo"}` (404: no
 hay ese tipo, ese objeto o esa acción; 409: cambió; 422: el pedido no sirve).
 
+En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
+en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`
+no mira la máquina: la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten.
+
 ### `telar agente conversacion <id> --json`
 
 ```json

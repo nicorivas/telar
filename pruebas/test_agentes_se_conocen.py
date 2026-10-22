@@ -68,6 +68,13 @@ class Contexto(ConEstado):
     def test_con_cartero_dice_su_direccion(self):
         texto = self.contexto(hilo="Faro Norte", cartero=True)
         self.assertRegex(texto, r"Tu correo: \S+\+faro-norte@\S+\.")
+        # «dirección», en el contexto, es la de un objeto (`tipo:id`): el correo no se llama así
+        self.assertNotIn("a esa dirección", texto)
+
+    def test_el_proyecto_de_ejemplo_es_el_suyo(self):
+        self.est.vincular("Faro", "proyectos/faro")
+        self.assertIn("`proyecto:proyectos/faro`", self.contexto())
+        self.assertIn("`proyecto:<carpeta relativa a la raíz>`", self.contexto(hilo="Brisa"))
 
 
 class GanchoDeContexto(ConEstado):
@@ -113,6 +120,24 @@ class SkillHilos(ConEstado):
             self.assertIn(trozo, texto)
         # las llaves del ejemplo salen simples: la skill es un f-string
         self.assertIn("--params '{\"texto\": \"…\"}'", texto)
+
+    def test_el_campo_direccion_de_directorio_es_un_correo(self):
+        # `telar directorio` llama `direccion` al correo del hilo: la skill no puede decir que todo
+        # campo `direccion` es un `tipo:id` sin nombrar la excepción
+        texto = mod_skill.SKILL
+        self.assertIn("correo (`usuario+hilo@servidor`, en el campo `direccion`)", texto)
+        self.assertIn("salvo\n`telar directorio`: ahí `direccion` es el correo del hilo", texto)
+
+    def test_la_skill_no_promete_un_mensaje_por_maquina(self):
+        # la casilla es del nombre (bus.tema_casilla): `hilo:Faro@servidor mensaje` no elige máquina
+        self.assertIn("Un `mensaje` va a la casilla del nombre, no de la máquina", mod_skill.SKILL)
+
+    def test_el_documento_de_los_agentes_dice_lo_que_trae_el_contexto(self):
+        from pathlib import Path
+
+        doc = (Path(__file__).resolve().parents[1] / "docs" / "agentes.md").read_text(encoding="utf-8")
+        self.assertNotIn("cinco líneas", doc)  # son más, y depende de la configuración y los módulos
+        self.assertIn("`telar objeto` abre", doc)
 
     def test_una_skill_hilos_ajena_no_se_toca(self):
         ruta = mod_skill.ruta(carpeta_config())

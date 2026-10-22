@@ -39,7 +39,8 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
 - `ListAgents`: las sesiones de agente de **esta máquina y esta persona**, con el nombre al
   que se les escribe con SendMessage.
 - `telar directorio`: los hilos de **otras personas** en las máquinas compartidas, con su
-  dirección, a qué carpeta están vinculados y el título de su documento.
+  correo (`usuario+hilo@servidor`, en el campo `direccion`), a qué carpeta están vinculados y el
+  título de su documento.
 
 ## Saber de qué trata uno
 
@@ -98,7 +99,8 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
 
 Todo lo que telar conoce tiene una dirección con una sola forma, `tipo:id`, y `@máquina` cuando
 importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:docs/notas.md`,
-`hilo:Faro@servidor`. Las salidas JSON que nombran algo la traen en el campo `direccion`.
+`hilo:Faro@servidor`. Las salidas JSON que nombran algo la traen en el campo `direccion`, salvo
+`telar directorio`: ahí `direccion` es el correo del hilo, no una dirección `tipo:id`.
 
 - `telar objeto <dirección> --json` lo abre: título, estado, sus campos, las direcciones a las que
   enlaza y las **acciones** que acepta, con sus parámetros. `telar objeto <dirección> <acción>
@@ -107,6 +109,9 @@ importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:do
 - **Al escribirle a otro hilo o a tu persona, nombra las cosas por su dirección**: «revisa
   `tarea:T84`», no «la tarea de los permisos». Quien lo lee la abre con `telar objeto` sin
   adivinar, y `telar objeto --buscar "<texto>"` encuentra las direcciones de un mensaje que te llega.
+- En un hilo, `@máquina` elige cuál abre `telar objeto` (y de cuál lee `leer`) cuando dos máquinas
+  tienen uno con el mismo nombre. Un `mensaje` va a la casilla del nombre, no de la máquina: dos
+  hilos tuyos que se llaman igual la comparten, así que ponles nombres distintos.
 - Un id con `@`, espacios u otros signos va escapado como en una URL (`hilo:Faro%40casa`,
   `hilo:Faro%20Norte`): copia la dirección de la salida JSON en vez de armarla a mano.
 

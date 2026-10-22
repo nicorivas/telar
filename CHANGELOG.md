@@ -28,6 +28,9 @@ extension shared the version number.
 - Agents know about addresses: the start-up context of each thread's agent has one more line (an object is
   named `type:id`, `telar objeto <address>` opens it and lists its actions, and messages should name things by
   their address), and the `/hilos` skill that telar installs explains it in a new section.
+- `telar objeto hilo:<name>@<machine>` opens that machine's thread even when a thread with the same name lives
+  here (it used to return the local one). The `/hilos` skill now says that `telar directorio`'s `direccion` is an
+  email, not a `type:id` address, and that a `mensaje` goes to the name's mailbox whatever the machine.
 
 ## [0.3.0] — 2026-10-21
 
