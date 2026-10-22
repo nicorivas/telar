@@ -163,6 +163,9 @@ equipo           = ["Ana", "Marcelo"]          # a quién se puede asignar (más
 gmail            = { personal = "yo@gmail.com", "*" = "yo@trabajo.com" }   # cómo se abre un origen gmail:
 ```
 
+En `mensaje_escribir` y `mensaje_procesar`, `{id}` es el de la tarea (`T84`) y `{direccion}` su dirección
+(`tarea:T84`); `{texto}` es lo que se escribe al apretar el botón.
+
 `telar serve` las tiene en memoria (un índice que se mantiene al día con los archivos) y las sirve en
 `/tipos/tarea`; las acciones (`POST /tipos/tarea/{id}/completar`, `…/reagendar`…) llevan la versión que se
 leyó y las escribe solo ese proceso. Declárala en la máquina donde viven las tareas.
@@ -307,8 +310,10 @@ pantalla, según la `etiqueta` del perfil), `{ruta}` (relativa a la raíz), `{ca
 (clic en la lista de tareas, o `telar pendiente <ref>`). Si el proyecto ya tiene su hilo,
 se le **escribe** `pendiente` y no se envía: Enter es de la persona. Si hay que abrir uno,
 el agente nace con `pendiente_nuevo` como primer mensaje, que sí se envía, porque no hay
-a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}` y `{id}` (el id del
-proveedor, como `T84`); un pendiente sin id, como los de los documentos, usa `{texto}`.
+a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}`, `{id}` (el id del
+proveedor, como `T84`) y `{direccion}` (la del objeto, como `tarea:T84`: ver `telar objeto`);
+un pendiente sin id, como los de los documentos, usa `{texto}`, y lo mismo con `{direccion}`
+uno sin dirección (una casilla de un documento, o el ítem de un proveedor que no es del tipo).
 Con la skill de flow: `pendiente = "Veamos {id}"` y `pendiente_nuevo = "/tarea {id}"`.
 
 Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando

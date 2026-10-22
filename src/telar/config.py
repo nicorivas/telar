@@ -120,7 +120,8 @@ class Agente:
     #: pantalla), {ruta} (relativa a la raíz), {carpeta} y {documento} (absolutas).
     proyecto: str = PROYECTO_POR_DEFECTO
     #: al llevar un pendiente a un hilo con su agente ya corriendo: se escribe y no se
-    #: envía. Marcadores: {texto} {ref} {id}; con {id} y un pendiente sin id, rige {texto}.
+    #: envía. Marcadores: {texto} {ref} {id} {direccion}; con {id} y un pendiente sin id, o
+    #: {direccion} y uno sin dirección, rige {texto}.
     pendiente: str = PENDIENTE_POR_DEFECTO
     #: al llevarlo a un hilo que hay que abrir: es el primer mensaje del agente, y ese sí
     #: se envía (no hay a quién escribirle hasta que arranca). Mismos marcadores.

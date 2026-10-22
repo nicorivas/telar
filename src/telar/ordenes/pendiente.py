@@ -101,6 +101,7 @@ def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: st
         # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
         alla = _destino_remoto(ctx, fila) if destino is None and not nuevo else None
     agente = ctx.config.agente
+    fila = _con_direccion(ctx, fila)
     primero = texto or mensaje(agente.pendiente_nuevo, fila)
     texto = texto or mensaje(agente.pendiente, fila)
 
@@ -248,12 +249,27 @@ def _destino_remoto(ctx, fila: dict) -> tuple[str, str] | None:
     return _por_enlace(candidatos, fila.get("url", ""))
 
 
+def _con_direccion(ctx, fila: dict) -> dict:
+    """La fila con su dirección: la que trae, o la de su tarea si es de un proveedor del tipo `tarea` y
+    llegó sin ella (la armó una máquina de antes, o quien la pasa entera, como la API)."""
+    if fila.get("direccion") or not fila.get("id") or not fila.get("proveedor"):
+        return fila
+    from telar import objetos
+
+    if any(p.nombre == fila["proveedor"] and p.opciones.get("tipo") == "tipo" for p in ctx.config.proveedores_activos()):
+        return {**fila, "direccion": objetos.direccion_de("tarea", fila["id"])}
+    return fila
+
+
 def mensaje(plantilla: str, fila: dict) -> str:
     """La plantilla llena. Un pendiente sin id (los de los documentos) no tiene con qué
-    llenar {id}: para ese, el texto, que es lo único que lo nombra sin ambigüedad."""
-    if "{id}" in plantilla and not fila.get("id"):
+    llenar {id}: para ese, el texto, que es lo único que lo nombra sin ambigüedad. Lo mismo
+    con {direccion} (`tarea:T84`, telar.objetos) para uno sin dirección: una casilla de un
+    documento, o el ítem de un proveedor que no es del tipo `tarea`."""
+    if ("{id}" in plantilla and not fila.get("id")) or ("{direccion}" in plantilla and not fila.get("direccion")):
         plantilla = "{texto}"
-    valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", "")}
+    valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", ""),
+               "direccion": fila.get("direccion", "")}
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
 
 

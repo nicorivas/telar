@@ -749,7 +749,7 @@ class DeTipo(_Base):
         """(la página de la tarea, su versión): la propuesta del agente arriba, el contexto, los enlaces, las
         conexiones y la historia; y las acciones que le tocan, como acciones del tipo (`accion` y `params`).
         Lo propio de una casa va en las opciones: `agente` (quién propone), `escribir_a` (a quién se le
-        escribe en un hilo), `mensaje_procesar` y `mensaje_escribir` (qué recibe el hilo; `{id}`, `{texto}`),
+        escribe en un hilo), `mensaje_procesar` y `mensaje_escribir` (qué recibe el hilo; `{id}`, `{direccion}`, `{texto}`),
         y `equipo` (a quién se puede asignar)."""
         from telar.tipos import tarea as tipo
         from telar.tipos.indice import compartido
@@ -798,6 +798,7 @@ class DeTipo(_Base):
                  "acciones": _recortar(self._acciones(t, prop, agente), 12), "version": version}, version)
 
     def _acciones(self, t, prop, agente: str) -> list[dict]:
+        from telar import objetos
         from telar.tipos import tarea as tipo
 
         procesar = self._opcion("mensaje_procesar")
@@ -805,13 +806,17 @@ class DeTipo(_Base):
         escribir_a = self._opcion("escribir_a", "el agente")
         cerrada = t.estado in tipo.TERMINALES
 
+        def llenar(plantilla: str) -> str:
+            # {id} y {direccion} (`tarea:T84`) son de la tarea; {texto} queda para lo que se escriba
+            return plantilla.replace("{id}", t.id).replace("{direccion}", objetos.direccion_de("tarea", t.id))
+
         def accion(nombre: str, que: str, **params) -> dict:
             return {"nombre": nombre, "accion": que, "params": params}
 
         def y_procesar(a: dict) -> dict:
             # que sus secuelas se hagan ya, en el hilo donde se trabaja la tarea (el de su proyecto o el
             # agente de lo que no tiene proyecto), no en uno nuevo que no sabe nada del proyecto
-            return {**a, "mensaje": procesar.replace("{id}", t.id), "al_hilo": True}
+            return {**a, "mensaje": llenar(procesar), "al_hilo": True}
 
         acciones: list[dict] = []
         if prop and prop["estado"] == "cerrar" and prop["como"] in tipo.TERMINALES:
@@ -835,7 +840,7 @@ class DeTipo(_Base):
             if escribir:
                 # queda anotado en la tarea, y va al hilo donde se trabaja
                 acciones.append({**accion(f"↩ escribirle a {escribir_a}", "anotar", texto=f"le escribí a {escribir_a} en un hilo: {{texto}}"),
-                                 "pide": f"qué le dices a {escribir_a}", "mensaje": escribir.replace("{id}", t.id), "al_hilo": True})
+                                 "pide": f"qué le dices a {escribir_a}", "mensaje": llenar(escribir), "al_hilo": True})
             acciones.append({**accion("nota", "anotar", texto="{texto}"), "pide": "la nota"})
             acciones.append({**accion("nueva fecha…", "reagendar", fecha="{texto}"), "pide": "la nueva fecha (AAAA-MM-DD o +Nd)", "rol": "fecha"})
             acciones.append({**accion("esperar a…", "esperar", quien="{texto}"), "pide": "a quién («none»: deja de esperar)",

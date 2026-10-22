@@ -22,6 +22,9 @@ extension shared the version number.
   `@` in a name is not read as the machine and a name with spaces is found in a text.
 - `telar doctor` warns when a provider with `tipo = "tipo"` reads another folder than `[tipos.tarea]`, or
   there is no `[tipos.tarea]`: its `tarea:<id>` addresses would open another task, or none.
+- Message templates that take `{id}` also take `{direccion}`, the object's address (`tarea:T84`): `[agente]
+  pendiente` and `pendiente_nuevo`, and a task provider's `mensaje_procesar` and `mensaje_escribir`. A pending
+  item without an address (a checkbox in a document) falls back to `{texto}`, as with `{id}`. Defaults are unchanged.
 
 ## [0.3.0] — 2026-10-21
 
