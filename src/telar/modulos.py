@@ -337,7 +337,7 @@ def preparar(fuente: str, *, nombre: str = "", enlazar: bool = False) -> tuple[M
         carpeta = local.resolve()
         nombre = nombre or _manifiesto_nombre(carpeta) or _nombre_de_fuente(str(carpeta))
         version = _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip()
-        return leer(nombre, carpeta), {"carpeta": str(carpeta), "fuente": str(carpeta), "version": version,
+        return leer(nombre, carpeta), {"carpeta": str(carpeta), "fuente": _fuente_de(carpeta), "version": version,
                                        "instalado": date.today().isoformat(), "enlazado": True}
     origen = str(local.resolve()) if local.is_dir() else fuente
     provisorio = _datos() / f".bajando-{os.getpid()}"
@@ -409,6 +409,16 @@ def confirmar_instalacion(ruta: Path, m: Modulo, anotar: dict) -> Path:
     return carpeta
 
 
+def _fuente_de(carpeta: Path) -> str:
+    """El repositorio remoto de la carpeta si el módulo es ese repositorio entero; si no, la carpeta."""
+    raiz_git = _git(carpeta, "rev-parse", "--show-toplevel").stdout.strip()
+    if raiz_git and Path(raiz_git).resolve() == carpeta:
+        remoto = _git(carpeta, "remote", "get-url", "origin").stdout.strip()
+        if remoto:
+            return remoto
+    return str(carpeta)
+
+
 def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
     """Un módulo declarado a mano (`[modulos.<nombre>]` en la configuración) pasa a `modulos.toml`, enlazado
     a la carpeta donde está: desde ahí se actualiza y se quita como los demás. Su bloque sale de la
@@ -424,10 +434,7 @@ def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
     instalados = leer_instalados(ruta)
     if nombre in instalados:
         raise ErrorDeModulo(f"«{nombre}» ya está en {ruta}")
-    # la fuente es su repositorio solo si el módulo es ese repositorio entero; si vive dentro de otro, su carpeta
-    raiz_git = _git(carpeta, "rev-parse", "--show-toplevel").stdout.strip()
-    remoto = _git(carpeta, "remote", "get-url", "origin").stdout.strip() if raiz_git and Path(raiz_git).resolve() == carpeta else ""
-    instalados[nombre] = {"carpeta": str(carpeta), "fuente": remoto or str(carpeta), "enlazado": True,
+    instalados[nombre] = {"carpeta": str(carpeta), "fuente": _fuente_de(carpeta), "enlazado": True,
                           "version": _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip(),
                           "instalado": date.today().isoformat()}
     # el bloque, de su cabecera hasta la siguiente tabla (con los comentarios que lo preceden pegados)
