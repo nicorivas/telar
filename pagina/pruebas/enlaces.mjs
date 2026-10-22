@@ -101,7 +101,7 @@ const larga = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c25
 
 // 9. una dirección larga partida por Ink, como una ruta: entera
 {
-    const dir = 'archivo:telar:brinca/operacion/programas/programa-ia/r07-comparacion-mapa-lorena.md';
+    const dir = 'archivo:servidor:empresa/operacion/programas/faro/comparacion-del-mapa-de-cargos.md';
     const filas = partir(dir, COLS - 4, '  ');
     const term = await pantalla(filas);
     assert.deepEqual(en(term, 2).map(h => h.split(' ').slice(0, 2).join(' ')), [`direccion ${dir}`]);
