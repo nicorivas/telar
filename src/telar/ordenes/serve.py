@@ -4,7 +4,8 @@
     telar serve --socket RUTA       en otro socket
     telar serve --puerto 8771       en TCP, solo en 127.0.0.1 (para probar; en una máquina compartida,
                                     cualquier usuario de ella alcanzaría el puerto)
-    telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto
+    telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto;
+                                    sin nadie en [equipo.personas], avisa y arranca sin ella
     telar serve --web               además, la página de telar (telar.api_web) en la IP de Tailscale, puerto
                                     8780 (--web-puerto), con la llave de la página (~/.config/telar/panel.llave);
                                     con --dev, la página se recarga sola al cambiar sus archivos (scripts/dev.py)
@@ -24,6 +25,7 @@ máquina); a mano, `servidor/telar-serve.service` y `servidor/telar-serve.plist`
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from telar.ordenes import _comun
@@ -57,15 +59,21 @@ def main(argv: list[str], ctx) -> int:
         from telar import api_equipo
         from telar.ordenes.equipo import ip_de_tailscale
 
+        # la página del equipo es un extra: si no se puede servir, se avisa y el resto arranca igual (sacar a
+        # la última persona de [equipo.personas] no puede botar el servicio de la máquina)
         try:
             eq = mod_equipo.cargar()
         except ValueError as e:
-            return _comun.queja(f"--equipo: {e}")
-        if not eq.personas:
-            return _comun.queja("--equipo: no hay nadie en [equipo.personas] (`telar equipo token ramiro` da una llave)")
-        host = ip_de_tailscale() or "127.0.0.1"
-        equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
-        print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
+            eq = None
+            print(f"telar serve: sin la página del equipo: {e}", file=sys.stderr, flush=True)
+        if eq is not None and not eq.personas:
+            eq = None
+            print("telar serve: sin la página del equipo: no hay nadie en [equipo.personas] "
+                  "(`telar equipo token ramiro` da una llave)", file=sys.stderr, flush=True)
+        if eq is not None:
+            host = ip_de_tailscale() or "127.0.0.1"
+            equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
+            print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)
     otros = [equipo] if equipo else []
     url_web = ""
     if o.web:
