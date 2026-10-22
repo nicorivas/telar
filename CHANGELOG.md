@@ -52,6 +52,9 @@ extension shared the version number.
 - Documented and tested how the task model evolves: task files never carry a `version` field; the reader
   understands the old form and the new one and both give the same task (an omitted field is its default, the
   checkbox's two dialects and key synonyms), and a key the format does not know is kept byte for byte.
+- Task files: `dueno` (without ñ) is read as `dueño` and rewritten under its own name, as is a key written in NFD;
+  a leading BOM no longer hides the header (an action used to prepend a second one), CRLF files stay CRLF
+  when an action writes them, and a repeated key the format does not know is no longer reported as duplicated.
 
 ## [0.3.0] — 2026-10-21
 

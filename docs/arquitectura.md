@@ -207,22 +207,6 @@ sus **acciones** y sus **formatos** (lentes que leen el texto y lo editan al mí
 
 Leer y escribir sin cambios da los mismos bytes; una acción toca solo sus líneas.
 
-**Cuando el modelo cambie, ningún archivo lleva un campo `version`: el lector entiende la forma vieja y la
-nueva**, y las dos dan la misma tarea. Un campo `version` obligaría a reescribir cientos de archivos (o a
-dejarlos a medias), haría que una tarea escrita a mano o por otra herramienta sin el campo no supiera qué es, y
-pondría una línea que nadie lee en cada diff. Leer las dos formas no cuesta eso: el archivo de antes sigue
-siendo válido tal como está, y se reescribe solo lo que una acción toca. Así ya se lee hoy:
-
-- un campo que el archivo no dice vale su valor por defecto, que es lo que significaba no decirlo (`estado:
-  activa`, `prioridad: 2`, `area: personal`): un campo nuevo entra así;
-- una línea de la historia, con hora o sin ella;
-- la casilla, en sus dos dialectos y con los sinónimos de cada clave (`@owner`, `@dueño`, `@responsable`,
-  `@para` o «@Ana:» al comienzo): una clave que cambie de nombre se agrega como sinónimo, y una línea se
-  reescribe en el nombre que ya tenía.
-
-Una clave que el formato no conoce (`version: 2`, la de otra herramienta) no entra al modelo y queda tal cual:
-leer y escribir no la tocan. Lo fijan las pruebas de `pruebas/test_tarea_dos_formas.py`.
-
 - **Las acciones** (`completar`, `cerrar`, `reabrir`, `algun_dia`, `esperar`, `reagendar`, `asignar`,
   `anotar`, `proponer`, `responder`, `editar`, `secuela`, `conectar`) son funciones sobre el modelo,
   cada una con su precondición y su línea en la historia.
@@ -238,6 +222,26 @@ Hay dos cáscaras: `telar tipo tarea <verbo>` y las rutas `/tipos/tarea` (una ve
 Desde una máquina con `[tipos.tarea] en`, la orden va por el bus a la que las tiene: hay un solo
 escritor. Quien escribe commitea y sube el archivo (`telar commit`). El proveedor `tipo = "tipo"` le
 da esas tareas a `telar hoy` y al dashboard, con su ficha y sus botones.
+
+**Cuando el modelo cambie, ningún archivo lleva un campo `version`: el lector entiende la forma vieja y la
+nueva**, y las dos dan la misma tarea. (La versión de la carpeta, de arriba, es otra cosa: la huella del
+archivo al leerlo, que nadie escribe en él.) Un campo `version` obligaría a reescribir cientos de archivos (o a
+dejarlos a medias), haría que una tarea escrita a mano o por otra herramienta sin el campo no supiera qué es, y
+pondría una línea que nadie lee en cada diff. Leer las dos formas no cuesta eso: el archivo de antes sigue
+siendo válido tal como está, y se reescribe solo lo que una acción toca. Así ya se lee hoy:
+
+- un campo que el archivo no dice vale su valor por defecto, que es lo que significaba no decirlo (`estado:
+  activa`, `prioridad: 2`, `area: personal`): un campo nuevo entra así;
+- una línea de la historia, con hora o sin ella;
+- la casilla, en sus dos dialectos y con los sinónimos de cada clave (`@owner`, `@dueño`, `@responsable`,
+  `@para` o «@Ana:» al comienzo);
+- el archivo propio, con los sinónimos de sus claves (`dueno`, sin ñ, es `dueño`) y la clave escrita con la
+  tilde aparte.
+
+Una clave que cambie de nombre se agrega como sinónimo, en los dos formatos, y una línea se reescribe en el
+nombre que ya tenía. Una clave que el formato no conoce (`version: 2`, la de otra herramienta) no entra al
+modelo y queda tal cual: leer y escribir no la tocan. Un BOM al comienzo o los finales CRLF tampoco cambian
+lo que se lee, y al escribir se conservan. Lo fijan las pruebas de `pruebas/test_tarea_dos_formas.py`.
 
 ### Las casillas de los documentos
 

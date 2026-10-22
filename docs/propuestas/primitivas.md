@@ -153,9 +153,13 @@ Cada uno deja todo funcionando.
    preguntas del tipo `tarea` quedaron cerradas: una casilla de un documento recibe un id estable
    (`<!-- id: c-1a2b3c -->`) la primera vez que telar la escribe, y su dirección es `pendiente:c-1a2b3c`;
    y cuando el modelo cambie no habrá un campo `version` en cada archivo, sino un lector que entienda la
-   forma vieja y la nueva y dé la misma tarea (la regla y por qué, en [arquitectura.md](../arquitectura.md),
-   «Los tipos»). Quedó para después: que la página abra una dirección (`tarea:T366` en una conversación, un
-   enlace) y use el id de las casillas en vez de su lugar.
+   forma vieja y la nueva y dé la misma tarea. Porque un campo así obligaría a reescribir todos los archivos,
+   dejaría sin saber qué es a una tarea escrita a mano o por otra herramienta, y ensuciaría cada diff; un
+   campo nuevo entra con su valor por defecto y una clave renombrada, como sinónimo (el detalle, en
+   [arquitectura.md](../arquitectura.md), «Los tipos»). Quedó para después: que la página abra una dirección
+   (`tarea:T366` en una conversación, un enlace) y use el id de las casillas en vez de su lugar, y que las
+   conexiones de una tarea nombren a la otra por su dirección (hoy son un enlace a su archivo,
+   `[T228](T228.md)`). Los mensajes ya las usan: las plantillas y el contexto de cada agente.
 3. **El agente como definición**: `agente.toml` en cada residente; el hilo guarda su agente, su
    conversación y su lugar por separado.
 4. **Mensajes con modos y el Encargo**: `mensaje --modo aviso|pedido|encargo|consulta`, el objeto Encargo

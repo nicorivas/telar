@@ -47,6 +47,18 @@ def version_de(texto: str) -> str:
     return hashlib.sha1(texto.encode("utf-8")).hexdigest()[:16]
 
 
+# los bytes como están: sin traducir los finales de línea (un archivo CRLF se lee y se escribe en CRLF; el
+# formato decide qué hacer con ellos)
+def _leer(archivo: Path) -> str:
+    with open(archivo, encoding="utf-8", newline="") as f:
+        return f.read()
+
+
+def _escribir(archivo: Path, texto: str) -> None:
+    with open(archivo, "w", encoding="utf-8", newline="") as f:
+        f.write(texto)
+
+
 class Carpeta:
     """Los objetos de una carpeta, un archivo `<id>.md` cada uno, leídos y escritos con un formato."""
 
@@ -65,7 +77,7 @@ class Carpeta:
         """(el objeto, su versión)."""
         archivo = self._archivo(id)
         try:
-            texto = archivo.read_text(encoding="utf-8")
+            texto = _leer(archivo)
         except FileNotFoundError as e:
             raise NoExiste(f"no hay {id}") from e
         return self.formato.leer(texto, id), version_de(texto)
@@ -91,12 +103,12 @@ class Carpeta:
                 raise ErrorDeFormato(f"{id}: lo escrito no se relee igual; no se escribió")
             archivo = self._archivo(id)
             temporal = archivo.with_suffix(".md.tmp")
-            temporal.write_text(texto, encoding="utf-8")
+            _escribir(temporal, texto)
             # sin pisar: si el archivo apareció (alguien lo escribió sin el candado), no se reemplaza
             try:
                 os.link(temporal, archivo)
             except FileExistsError as e:
-                raise ErrorDeVersion(id, "nuevo", version_de(archivo.read_text(encoding="utf-8"))) from e
+                raise ErrorDeVersion(id, "nuevo", version_de(_leer(archivo))) from e
             finally:
                 temporal.unlink(missing_ok=True)
             return releido, version_de(texto)
@@ -107,7 +119,7 @@ class Carpeta:
         with open(self.ruta / ".telar-escribe.lock", "w") as candado:
             fcntl.flock(candado, fcntl.LOCK_EX)
             try:
-                texto = archivo.read_text(encoding="utf-8")
+                texto = _leer(archivo)
             except FileNotFoundError as e:
                 raise NoExiste(f"no hay {id}") from e
             if version is not None and version != version_de(texto):
@@ -124,7 +136,7 @@ class Carpeta:
         with open(self.ruta / ".telar-escribe.lock", "w") as candado:
             fcntl.flock(candado, fcntl.LOCK_EX)
             try:
-                texto = archivo.read_text(encoding="utf-8")
+                texto = _leer(archivo)
             except FileNotFoundError as e:
                 raise NoExiste(f"no hay {id}") from e
             actual = version_de(texto)
@@ -141,6 +153,6 @@ class Carpeta:
             if releido.model_dump(exclude={"duplicadas", *ignora}) != despues.model_dump(exclude={"duplicadas", *ignora}):
                 raise ErrorDeFormato(f"{id}: lo escrito no se relee igual; no se escribió")
             temporal = archivo.with_suffix(".md.tmp")
-            temporal.write_text(nuevo, encoding="utf-8")
+            _escribir(temporal, nuevo)
             os.replace(temporal, archivo)
             return releido, version_de(nuevo)

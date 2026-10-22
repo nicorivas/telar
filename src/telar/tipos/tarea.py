@@ -24,16 +24,23 @@ entenderá la forma vieja y la nueva, y las dos darán la misma tarea. Así ya s
 - una línea de la historia con hora o sin ella (`- 2026-10-01 [creada] a mano`);
 - en la casilla, dos dialectos a la vez (`@deadline(…)` y `vence:…`, `@prioridad(P1)` y `!alta`) y los
   sinónimos de cada clave (`@owner`, `@dueño`, `@responsable`, `@para`, «@Ana:» al comienzo; `@deadline` y
-  `@vence`; `@prioridad` y `@priority`). Una clave que cambie de nombre se agrega así, como sinónimo, y se
-  reescribe en el nombre que ya tenía la línea.
+  `@vence`; `@prioridad` y `@priority`);
+- en el archivo propio, los sinónimos de una clave (`SINONIMOS`: `dueno`, sin ñ, dice lo mismo que `dueño`;
+  `FormatoArchivo(sinonimos=…)` para otros), y la clave escrita con la tilde aparte (NFD).
+
+Una clave que cambie de nombre se agrega así, como sinónimo, en los dos formatos, y una línea se reescribe
+en el nombre que ya tenía. Si un archivo dice las dos, es una clave repetida: vale la última.
 
 Una clave que el formato no conoce (`version: 2`, la de otra herramienta) no entra al modelo y se conserva
-tal cual: leer y escribir no la tocan (pruebas/test_tarea_dos_formas.py).
+tal cual: leer y escribir no la tocan, y repetida no se avisa (no se lee ningún valor de ella). Tampoco
+rompen la lectura un BOM al comienzo ni los finales CRLF, que se conservan al escribir
+(pruebas/test_tarea_dos_formas.py).
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from pydantic import BaseModel, Field
 
@@ -93,6 +100,10 @@ CLAVES = {
     "trabajo": "trabajo", "creada": "creada", "cerrada": "cerrada", "avance": "avance",
 }
 
+#: campo del modelo → otras claves que lo dicen en el archivo (una que cambió de nombre, o la que se escribe
+#: sin ñ): se leen como la suya y una línea se reescribe con el nombre que ya tenía
+SINONIMOS = {"dueno": ("dueno",)}
+
 CLAVE_RE = re.compile(r"^([a-zñ_]+):[ \t]?(.*)$")
 HIST_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))? \[([\w-]+)\] ?(.*)$")
 SECCIONES = ("Conexiones", "Historia")
@@ -106,21 +117,26 @@ def _limpio(v: object) -> str:
 class _Lectura:
     """El texto partido en piezas con posición: dónde está cada clave y cada sección."""
 
-    def __init__(self, texto: str, claves: dict[str, str]) -> None:
+    def __init__(self, texto: str, claves: dict[str, str], sinonimos: dict[str, str] | None = None) -> None:
         self.lineas = texto.split("\n")
         self.claves = claves
+        sinonimos = sinonimos or {}
         self.fm: tuple[int, int] | None = None          # (línea de apertura, línea de cierre)
         self.donde: dict[str, list[int]] = {}           # clave del archivo → líneas donde aparece
         self.valores: dict[str, str] = {}
-        if self.lineas and self.lineas[0].strip() == "---":
+        # un BOM al comienzo (lo deja algún editor) no esconde el bloque de claves
+        if self.lineas and self.lineas[0].lstrip("\ufeff").strip() == "---":
             for i, l in enumerate(self.lineas[1:], 1):
                 if l.strip() == "---":
                     self.fm = (0, i)
                     break
-                m = CLAVE_RE.match(l)
+                # la clave en NFC: «dueño» con la tilde aparte (NFD) es la misma clave
+                clave, dos, resto = l.partition(":")
+                m = CLAVE_RE.match(unicodedata.normalize("NFC", clave) + dos + resto)
                 if m:
-                    self.donde.setdefault(m.group(1), []).append(i)
-                    self.valores[m.group(1)] = m.group(2).strip()
+                    k = sinonimos.get(m.group(1), m.group(1))
+                    self.donde.setdefault(k, []).append(i)
+                    self.valores[k] = m.group(2).strip()
         self.cuerpo_desde = self.fm[1] + 1 if self.fm else 0
         # las secciones: (nombre, línea del título); el contexto va hasta la primera
         self.secciones: list[tuple[str, int]] = []
@@ -142,14 +158,25 @@ class _Lectura:
 class FormatoArchivo:
     """Una tarea por archivo: líneas `clave: valor` entre `---`, el contexto y las secciones."""
 
-    def __init__(self, claves: dict[str, str] | None = None) -> None:
+    def __init__(self, claves: dict[str, str] | None = None, sinonimos: dict[str, tuple[str, ...]] | None = None) -> None:
         self.claves = dict(claves or CLAVES)
+        # los sinónimos de fábrica son los de las claves de fábrica: otro idioma trae los suyos
+        sinonimos = SINONIMOS if sinonimos is None and claves is None else (sinonimos or {})
+        #: clave sinónima → la clave del campo
+        self.sinonimos = {otra: self.claves[campo] for campo, otras in sinonimos.items() for otra in otras}
+
+    def _lectura(self, texto: str) -> _Lectura:
+        return _Lectura(texto, self.claves, self.sinonimos)
 
     # ── leer ──
     def leer(self, texto: str, id: str = "") -> Tarea:
-        L = _Lectura(texto, self.claves)
+        # CRLF (un editor de Windows) se lee como LF; escribir conserva los finales del archivo
+        L = self._lectura(texto.replace("\r\n", "\n"))
         v = {campo: L.valores.get(clave, "") for campo, clave in self.claves.items()}
-        duplicadas = [k for k, ls in L.donde.items() if len({L.lineas[i].split(":", 1)[1].strip() for i in ls}) > 1]
+        # solo las claves del formato: de una que no conoce no se lee ningún valor que pueda valer
+        conocidas = set(self.claves.values())
+        duplicadas = [k for k, ls in L.donde.items()
+                      if k in conocidas and len({L.lineas[i].split(":", 1)[1].strip() for i in ls}) > 1]
         pri = v["prioridad"] or "2"
         cuerpo = L.lineas[L.cuerpo_desde:]
         primera = L.secciones[0][1] - L.cuerpo_desde if L.secciones else len(cuerpo)
@@ -198,7 +225,10 @@ class FormatoArchivo:
         for campo in self.NO_GUARDA:
             if getattr(despues, campo) != getattr(antes, campo):
                 raise ErrorDeFormato(f"una tarea en su archivo no guarda «{campo}»")
-        L = _Lectura(texto, self.claves)
+        if "\r\n" in texto and texto.count("\r\n") == texto.count("\n"):
+            # todo en CRLF: se edita en LF y vuelve a CRLF entero (si estaba mezclado, queda como estaba)
+            return self.escribir(texto.replace("\r\n", "\n"), antes, despues).replace("\n", "\r\n")
+        L = self._lectura(texto)
         lineas = list(L.lineas)
         orden = list(self.claves)
 
@@ -206,9 +236,9 @@ class FormatoArchivo:
         if despues.historia != antes.historia:
             lineas = self._historia(lineas, L, antes.historia, despues.historia)
         if despues.conexiones != antes.conexiones:
-            lineas = self._seccion(lineas, _Lectura("\n".join(lineas), self.claves), "Conexiones", despues.conexiones)
+            lineas = self._seccion(lineas, self._lectura("\n".join(lineas)), "Conexiones", despues.conexiones)
         if despues.contexto != antes.contexto:
-            lineas = self._contexto(lineas, _Lectura("\n".join(lineas), self.claves), despues.contexto)
+            lineas = self._contexto(lineas, self._lectura("\n".join(lineas)), despues.contexto)
 
         # 2) las claves de arriba
         cambiados = [c for c in orden if self._valor(despues, c) != self._valor(antes, c)]
@@ -216,14 +246,16 @@ class FormatoArchivo:
             if L.fm is None:
                 lineas = ["---", "---", *lineas]
             for campo in cambiados:
-                L2 = _Lectura("\n".join(lineas), self.claves)
+                L2 = self._lectura("\n".join(lineas))
                 clave, nuevo = self.claves[campo], self._valor(despues, campo)
                 if "\n" in nuevo:
                     raise ErrorDeFormato(f"{campo}: un valor de una sola línea")
                 donde = L2.donde.get(clave, [])
                 if donde and nuevo:
-                    # la última es la que vale; las repetidas de antes quedan como estaban
-                    lineas[donde[-1]] = f"{clave}: {nuevo}"
+                    # la última es la que vale; las repetidas de antes quedan como estaban. Con el nombre
+                    # que ya tenía la línea: un sinónimo sigue siéndolo
+                    propia = lineas[donde[-1]].split(":", 1)[0]
+                    lineas[donde[-1]] = f"{propia}: {nuevo}"
                 elif donde:
                     for i in reversed(donde):
                         del lineas[i]
