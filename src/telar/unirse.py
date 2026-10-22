@@ -73,6 +73,11 @@ class Equipo:
     repo: Path | None = None
 
     @property
+    def host(self) -> str:
+        """La máquina del bus, como la nombra `bus` (casi siempre su IP de Tailscale)."""
+        return urlparse(self.bus).hostname or ""
+
+    @property
     def url_puerta(self) -> str:
         """Dónde se pide entrar: la que dice el manifiesto, o la página (puerto 8780) de la máquina del bus."""
         if self.puerta:
@@ -133,6 +138,47 @@ def buscar(desde: Path | None = None) -> Equipo | None:
     raiz = Path(r.stdout.strip()) if r.returncode == 0 and r.stdout.strip() else desde
     manifiesto = raiz / NOMBRE_EQUIPO
     return leer(manifiesto) if manifiesto.is_file() else None
+
+
+def host_de_ssh(destino: str) -> str:
+    """La máquina a la que va un destino de ssh (`usuario@host` o un alias de ~/.ssh/config), como la resuelve ssh."""
+    try:
+        r = subprocess.run(["ssh", "-G", destino], capture_output=True, text=True, timeout=5)
+        for linea in r.stdout.splitlines():
+            if linea.startswith("hostname "):
+                return linea.split(" ", 1)[1].strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return destino.rsplit("@", 1)[-1]
+
+
+def remotos_viejos(equipo: Equipo, remotos, persona: str) -> list:
+    """Los `[remotos.<nombre>]` que entran por ssh a la máquina del bus de un equipo que administra otra persona: son
+    del sistema de antes (una cuenta en el servidor); con el bus, lo de esa máquina llega por él y la cuenta ya no
+    existe. Los de quien administra el bus no: esa máquina es suya."""
+    if not equipo.host or (equipo.administra and equipo.administra == persona):
+        return []
+    return [r for r in remotos if host_de_ssh(r.destino) == equipo.host]
+
+
+def quitar_tabla(texto: str, nombre: str) -> str:
+    """El TOML sin la tabla `[nombre]` ni sus subtablas (`[nombre.x]`), con los comentarios pegados encima."""
+    import re
+
+    lineas = texto.splitlines(keepends=True)
+    fuera, dentro = [], False
+    cabecera = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
+    for linea in lineas:
+        m = cabecera.match(linea)
+        if m:
+            clave = m.group(1).replace('"', "").replace(" ", "")
+            dentro = clave == nombre or clave.startswith(nombre + ".")
+            if dentro:
+                while fuera and fuera[-1].lstrip().startswith("#"):
+                    fuera.pop()  # su comentario se va con ella
+        if not dentro:
+            fuera.append(linea)
+    return "".join(fuera)
 
 
 #: dónde suelen estar los clones, bajo la carpeta de la persona: ahí busca `buscar_cerca` (y en la carpeta misma)
@@ -217,8 +263,11 @@ def _tocar(pedido, equipo: Equipo, ya_estaba: bool) -> dict:
             return {"id": "", "estado": "ya tiene cuenta"}
         raise ErrorDeUnirse(f"la puerta del equipo no lo aceptó ({e.code}): {detalle or e.reason}") from None
     except (urllib.error.URLError, OSError) as e:
-        raise ErrorDeUnirse(f"no llego a la puerta del equipo ({equipo.url_puerta}): {e}. ¿Estás en su red de "
-                            f"Tailscale? Pídele a quien administra que te invite.") from None
+        raise ErrorDeUnirse(f"no llego a la puerta del equipo ({equipo.url_puerta}): {e}. Dos causas posibles: no "
+                            f"estás en su red de Tailscale (pídele a {equipo.administra or 'quien administra'} que te "
+                            f"comparta la máquina del bus), o la regla de acceso de esa red no abre sus puertos 4222 y "
+                            f"8780 para ti (en la consola de Tailscale, Access controls: autogroup:shared → "
+                            f"{equipo.host}, tcp:4222 y tcp:8780)") from None
 
 
 # ── la máquina del bus: los pedidos ──────────────────────────────────────────────────

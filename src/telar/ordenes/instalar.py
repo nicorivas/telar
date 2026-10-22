@@ -302,6 +302,10 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
         bloque = instalacion.bloque_bus(equipo.bus, o.token, persona, equipo.administra)
         pasos.append((lambda: _agregar(ruta, bloque), f"unirse al bus {equipo.bus}"))
         hay_bus = True
+    for viejo in unirse.remotos_viejos(equipo, getattr(ctx.config, "remotos", ()) or (), persona):
+        pasos.append((lambda n=viejo.nombre: _quitar_remoto(ruta, n),
+                      f"quitar [remotos.{viejo.nombre}] ({viejo.destino}): es del sistema de antes, por ssh a la máquina "
+                      f"del bus; ahora lo de allá llega por el bus (respaldo en {ruta.name}.antes-unirse)"))
     if not any(r.nombre == equipo.nombre for r in getattr(ctx.config, "repos", ()) or ()):
         bloque_repo = (f"\n# el repositorio del equipo {equipo.nombre} (lo escribió `telar instalar --unirse`)\n"
                        f"[repos.{equipo.nombre}]\nruta = {json.dumps(str(equipo.repo))}\n")
@@ -318,6 +322,30 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
         if nombre not in instalados:
             pasos.append((lambda f=fuente: _modulo(ctx, f), f"instalar el módulo {nombre} del equipo ({fuente})"))
     return hay_bus
+
+
+def _quitar_remoto(ruta: Path, nombre: str) -> None:
+    import shutil as _sh
+
+    from telar import unirse
+
+    respaldo = ruta.with_name(ruta.name + ".antes-unirse")
+    if not respaldo.exists():
+        _sh.copy2(ruta, respaldo)
+    texto = ruta.read_text(encoding="utf-8")
+    nuevo = unirse.quitar_tabla(texto, f"remotos.{nombre}")
+    if nuevo == texto:
+        raise ValueError(f"no encontré [remotos.{nombre}] en {ruta}: quítalo a mano")
+    ruta.write_text(nuevo, encoding="utf-8")
+    from telar import config as mod_config
+
+    try:
+        mod_config.cargar(ruta, tolerar_modulos=True)
+    except Exception as e:  # noqa: BLE001 - otra parte la nombra: se deja como estaba
+        ruta.write_text(texto, encoding="utf-8")
+        raise ValueError(f"sin [remotos.{nombre}] la configuración no se lee ({e}); la dejé como estaba: "
+                         f"quítalo a mano junto con lo que lo nombra") from None
+    print(f"quité [remotos.{nombre}]; lo de antes quedó en {respaldo}")
 
 
 def _sin_error(hacer) -> None:

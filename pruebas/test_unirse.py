@@ -309,5 +309,34 @@ class AlInstalar(Prueba):
         self.assertEqual(unirse.buscar_cerca(casa / "suelto"), [])
 
 
+    def test_el_remoto_viejo_a_la_maquina_del_bus_se_quita(self):
+        from telar.config import Remoto
+
+        equipo = unirse.leer(self.repo / ".telar" / "equipo.yaml")
+        remotos = (Remoto("servidor", "beto@servidor"), Remoto("otro", "beto@otra-maquina"))
+        with mock.patch.object(unirse, "host_de_ssh", side_effect=lambda d: d.rsplit("@", 1)[-1]):
+            self.assertEqual([r.nombre for r in unirse.remotos_viejos(equipo, remotos, "beto")], ["servidor"])
+            self.assertEqual(unirse.remotos_viejos(equipo, remotos, "ana"), [])  # quien administra: es suya
+        texto = ('[bus]\nurl = "x"\n\n# el servidor de antes\n[remotos.servidor]\ndestino = "beto@servidor"\n'
+                 '[remotos.servidor.extra]\na = 1\n\n[remotos.otro]\ndestino = "beto@otra"\n')
+        quedo = unirse.quitar_tabla(texto, "remotos.servidor")
+        self.assertNotIn("servidor", quedo)
+        self.assertIn("[remotos.otro]", quedo)
+        self.assertIn("[bus]", quedo)
+
+    def test_quitar_el_remoto_que_otra_parte_nombra_lo_deja_como_estaba(self):
+        from telar.ordenes import instalar
+
+        self.conf.write_text('[remotos.servidor]\ndestino = "beto@servidor"\n\n[periodicos]\nen = "servidor"\n')
+        antes = self.conf.read_text()
+        try:
+            instalar._quitar_remoto(self.conf, "servidor")
+        except ValueError:
+            self.assertEqual(self.conf.read_text(), antes)
+        else:  # si la configuración se lee igual sin él, quedó fuera
+            self.assertNotIn("[remotos.servidor]", self.conf.read_text())
+        self.assertTrue(self.conf.with_name("config.toml.antes-unirse").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

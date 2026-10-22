@@ -6,6 +6,17 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-10-22
+
+### Changed
+
+- `telar instalar --unirse` removes a `[remotos.<name>]` that reaches the team's bus machine by ssh when someone
+  else administers it: it belonged to the system of before (an account on the server), and that machine's things
+  now arrive by the bus. It keeps a backup (`config.toml.antes-unirse`) and puts the block back if the
+  configuration doesn't read without it.
+- When the door can't be reached, the message names both causes: not being in the team's Tailscale network, or its
+  access rule not opening ports 4222 and 8780 for shared users.
+
 ## [0.4.2] — 2026-10-22
 
 ### Changed
