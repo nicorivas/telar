@@ -9,7 +9,13 @@ aunque esté en el mismo bus, y no por convención de nombres sino porque el ser
 El servidor guarda de cada clave solo su hash (bcrypt), en un archivo por persona:
 
     ~/.config/telar/bus/personas/<persona>.hash     lo escribe `telar bus persona`
+    ~/.config/telar/bus/roles.json                  quién es el dueño del bus y quiénes lo administran con él
     ~/.config/telar/bus/servidor.conf               la configuración de nats-server, armada de esos hashes
+
+Los roles (telar.personas): el **dueño** es quien corre el bus; un **admin** aprueba pedidos y maneja cuentas
+como él, salvo la del dueño; un **miembro** solo tiene su cuenta. Que un admin alcance la gestión no es una
+convención: la cuenta del dueño exporta su servicio `admin.<dueño>` solo a las cuentas admin, y el servidor no
+deja que otra lo pida.
 
 Este módulo es puro salvo `escribir`: arma el texto de la configuración y valida los nombres.
 """
@@ -70,16 +76,53 @@ def leer(base: Path) -> dict[str, str]:
 #: directorio (un tema: la lista de sus hilos, que publica su nodo)
 CORREO = "correo.{}"
 DIRECTORIO = "directorio.{}"
+#: el servicio de gestión de personas del dueño del bus (telar.personas): lo atiende el nodo de la máquina del
+#: bus, y fuera de su cuenta solo lo alcanzan las cuentas admin
+ADMIN = "admin.{}"
+
+#: los roles: el dueño (quien corre el bus, uno solo), admin (administra con él) y miembro (lo de siempre)
+DUENO, ADMINISTRA, MIEMBRO = "dueño", "admin", "miembro"
+ROLES = (DUENO, ADMINISTRA, MIEMBRO)
 
 
-def configuracion(personas: dict[str, str]) -> str:
+def leer_roles(base: Path) -> dict[str, str]:
+    """{persona: rol} de `roles.json`, sin los miembros (lo que no está, es miembro)."""
+    import json
+
+    ruta = base / "roles.json"
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        raise ErrorDeCuentas(f"{ruta}: no se puede leer: {e}") from None
+    if not isinstance(datos, dict) or not all(isinstance(k, str) and v in (DUENO, ADMINISTRA) for k, v in datos.items()):
+        raise ErrorDeCuentas(f"{ruta}: se esperaba {{persona: \"{DUENO}\" | \"{ADMINISTRA}\"}}")
+    if list(datos.values()).count(DUENO) > 1:
+        raise ErrorDeCuentas(f"{ruta}: el bus tiene un solo dueño")
+    return dict(datos)
+
+
+def escribir_roles(base: Path, roles: dict[str, str]) -> None:
+    import json
+
+    _escribir_privado(base / "roles.json", json.dumps(
+        {k: v for k, v in sorted(roles.items()) if v in (DUENO, ADMINISTRA)}, ensure_ascii=False, indent=1) + "\n")
+
+
+def configuracion(personas: dict[str, str], roles: dict[str, str] | None = None) -> str:
     """La configuración de nats-server: una cuenta por persona, con JetStream y un solo usuario.
 
     Entre cuentas cruza solo lo que se exporta: `correo.<persona>` (un servicio: otra persona le deja un
     mensaje a un hilo suyo y su nodo responde si lo guardó) y `directorio.<persona>` (sus hilos, para que
     otra persona sepa a quién escribirle). Cada cuenta importa los de todas las demás, y el correo con
     `share`: quien recibe ve de qué cuenta vino, y nadie escribe a nombre de otro.
+    Con `roles`, la cuenta del dueño exporta además `admin.<dueño>` solo a las cuentas admin, que lo importan
+    con `share` (telar.personas).
     La dirección, el puerto y la carpeta de datos van en la línea de órdenes (telar-bus.service)."""
+    roles = roles or {}
+    dueno = next((n for n, r in roles.items() if r == DUENO and n in personas), "")
+    admins = sorted(n for n, r in roles.items() if r == ADMINISTRA and n in personas and n != dueno) if dueno else []
     lineas = [
         "# La escribe `telar bus persona`; no se edita a mano.",
         "# Una cuenta por persona: lo de una (temas, streams, almacenes) no lo ve otra, salvo lo que exporta.",
@@ -94,8 +137,11 @@ def configuracion(personas: dict[str, str]) -> str:
             "    exports: [",
             f'      {{ service: "{CORREO.format(nombre)}" }}',
             f'      {{ stream: "{DIRECTORIO.format(nombre)}" }}',
-            "    ]",
         ]
+        if nombre == dueno and admins:
+            cuentas_admin = ", ".join(f'"{a}"' for a in admins)
+            lineas.append(f'      {{ service: "{ADMIN.format(dueno)}", accounts: [ {cuentas_admin} ] }}')
+        lineas.append("    ]")
         if otras:
             lineas.append("    imports: [")
             for o in otras:
@@ -103,6 +149,8 @@ def configuracion(personas: dict[str, str]) -> str:
                     f'      {{ service: {{ account: "{o}", subject: "{CORREO.format(o)}" }}, share: true }}',
                     f'      {{ stream: {{ account: "{o}", subject: "{DIRECTORIO.format(o)}" }} }}',
                 ]
+            if nombre in admins:
+                lineas.append(f'      {{ service: {{ account: "{dueno}", subject: "{ADMIN.format(dueno)}" }}, share: true }}')
             lineas.append("    ]")
         lineas.append("  }")
     lineas.append("}")
@@ -119,16 +167,21 @@ def _escribir_privado(ruta: Path, texto: str) -> None:
 
 
 def escribir(base: Path, personas: dict[str, str]) -> Path:
-    """Escribe el hash de cada persona y la configuración del servidor. Devuelve la ruta de la configuración."""
+    """Escribe el hash de cada persona y la configuración del servidor, con los roles de `roles.json` (el rol de
+    quien ya no tiene cuenta se va con ella). Devuelve la ruta de la configuración."""
     (base / "personas").mkdir(parents=True, exist_ok=True, mode=0o700)
     base.chmod(0o700)
+    roles = leer_roles(base)
+    if any(n not in personas for n in roles):
+        roles = {n: r for n, r in roles.items() if n in personas}
+        escribir_roles(base, roles)
     for f in (base / "personas").glob("*.hash"):
         if f.stem not in personas:
             f.unlink()
     for nombre, h in personas.items():
         _escribir_privado(base / "personas" / f"{nombre}.hash", h + "\n")
     conf = base / "servidor.conf"
-    _escribir_privado(conf, configuracion(personas))
+    _escribir_privado(conf, configuracion(personas, roles))
     return conf
 
 

@@ -387,6 +387,12 @@ class Nodo:
         await self._suscribir(nc, cuentas.CORREO.format(self.persona), self._correo, en_fila=True, queue="correo")
         await self._suscribir(nc, cuentas.DIRECTORIO.format("*"), self._directorio, aparte=False)
         await self._suscribir(nc, mod_bus.tema_cambio(self.config, "*"), self._cambio, aparte=False)
+        # en la máquina del bus, la gestión de personas (telar.personas): la piden las otras máquinas de esta persona
+        # y, por la importación que solo tienen ellas, las cuentas admin
+        from telar import unirse
+
+        if unirse.administra_aqui():
+            await self._suscribir(nc, cuentas.ADMIN.format(self.persona), self._admin, en_fila=True)
         for verbo, cb in (("leer", self._leer), ("resultado", self._resultado),
                           ("resultado-comentar", self._resultado_comentar), ("proveedor", self._proveedor),
                           ("tarea", self._tarea), ("tipo", self._tipo), ("periodicos", self._periodicos),
@@ -833,6 +839,15 @@ class Nodo:
         except Exception as e:  # noqa: BLE001 - quien escribe se entera; el nodo sigue
             respuesta = {"ok": False, "error": f"{type(e).__name__}: {e}"}
         await m.respond(json.dumps(respuesta, ensure_ascii=False).encode())
+
+    async def _admin(self, m) -> None:
+        """Una acción de gestión de personas (telar.personas), de esta persona o de un admin."""
+        from telar import personas
+
+        r = await asyncio.to_thread(personas.atender_pedido_del_bus, self.persona, m.data, m.headers)
+        if r.get("hecho"):
+            self.anotar(f"personas: {r['hecho']} (lo pidió {r.get('quien') or self.persona})")
+        await m.respond(json.dumps(r, ensure_ascii=False).encode())
 
     async def _hilo_existe(self, ext: str) -> bool | None:
         """Si esta persona tiene un hilo con esa palabra (en el estado del bus, de cualquier máquina suya).

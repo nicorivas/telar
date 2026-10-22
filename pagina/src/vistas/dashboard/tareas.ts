@@ -441,10 +441,11 @@ export class PantallaTareas implements Pantalla {
         const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
         const ficha = !!p.fila.ficha;
         const proy = this.t.proyectos.deFila(p.fila);
-        // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo
-        // («Brinca» o «Interno» como cliente no dice nada: ahí va el nombre sin ese prefijo)
-        const interno = !proy?.cliente || /^(brinca|interno)$/i.test(proy.cliente);
-        const proyCorto = !proy ? '' : interno ? proy.nombre.replace(/^(brinca|interno)\s*·\s*/i, '') : proy.cliente!;
+        // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo. Un cliente que es la casa
+        // misma (`internos` del perfil: el servidor lo marca `interno`) no dice nada: ahí va el nombre sin él
+        const interno = !proy?.cliente || (proy.interno ?? false);
+        const proyCorto = !proy ? '' : !interno ? proy.cliente!
+            : proy.cliente && proy.nombre.startsWith(proy.cliente) ? proy.nombre.slice(proy.cliente.length).replace(/^\s*·\s*/, '') : proy.nombre;
         const buscable = normalizar([p.ref, p.texto, p.hilo, p.fila.ruta ?? '', p.fila.proyecto ?? '', proy?.nombre ?? '', p.fila.avance ?? '', p.fila.dueno ?? ''].join(' '));
         const accion = ficha ? `data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir"`
             : `data-accion="pendiente" data-valor="${esc(p.ref)}" title="clic: ${p.hilo ? `llevarlo a «${esc(p.hilo)}»` : 'abrir un hilo donde trabajarlo'}"`;

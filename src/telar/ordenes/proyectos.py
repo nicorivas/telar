@@ -84,6 +84,7 @@ def listar(ctx, tel) -> list[dict]:
     vinculos = tel.estado.vinculos()
     hilo_de = {ruta: hilo for hilo, ruta in vinculos.items()}
     fuente = _comun.fuente_ficha(ctx.config)
+    internos = {x.casefold() for x in ctx.perfil.internos}
     salida = []
     for relativa, (arquetipo, documento) in unidades.items():
         ficha = _comun.leer_ficha(documento, arquetipo, fuente)
@@ -92,13 +93,16 @@ def listar(ctx, tel) -> list[dict]:
         estado = str(campos.get("Estado") or campos.get("Etapa") or "").strip()
         mtime = reciente(raiz / relativa)
         hilo = hilo_de.get(relativa, "")
+        cliente = lectura.etiqueta("{campo:Cliente}", ficha) if "{campo:Cliente}" in (arquetipo.etiqueta or "") else ""
         salida.append({
             "ruta": relativa,
             # su dirección de objeto (telar.objetos): `telar objeto proyecto:<ruta>`
             "direccion": objetos.direccion_de("proyecto", relativa),
             "nombre": nombre,
             # el cliente, si el nombre lo lleva adelante («Cliente · título»): el dashboard lo destaca
-            "cliente": lectura.etiqueta("{campo:Cliente}", ficha) if "{campo:Cliente}" in (arquetipo.etiqueta or "") else "",
+            "cliente": cliente,
+            # sin cliente, o con uno que es la casa misma (`internos` del perfil): el dashboard muestra el nombre
+            "interno": not cliente or cliente.casefold() in internos,
             # el Estado (o la Etapa, en un deal) de su tabla de campos: corto, y entero aparte
             "estado": corto(estado),
             "estado_completo": estado,

@@ -55,6 +55,23 @@ class Repos(Prueba):
         self.assertEqual((mapa["equipo/proyectos/faro"][0].repo, mapa["equipo/proyectos/faro"][0].etiqueta), ("equipo", "equipo"))
         self.assertEqual(mapa["ana/proyectos/hondo"][0].repo, "")
 
+    def test_las_areas_y_los_internos_se_juntan_los_del_repo_primero(self):
+        (self.raiz / "equipo" / ".telar" / "perfil.yaml").write_text(
+            PERFIL.format(nombre="equipo", ruta="proyectos/*/", etiqueta="equipo")
+            + "areas: [Norte, Sur]\ninternos: [Equipo, Interno]\n")
+        (self.raiz / ".telar" / "perfil.yaml").write_text(
+            PERFIL.format(nombre="vida", ruta="*/proyectos/*/", etiqueta="vida") + "areas: [Casa, Sur]\ninternos: [Interno]\n")
+        p = mp.cargar_todos(self.config(cfg.Repo("vida", self.raiz), cfg.Repo("equipo", self.raiz / "equipo")))
+        self.assertEqual(p.areas, ("Norte", "Sur", "Casa"))
+        self.assertEqual(p.internos, ("Equipo", "Interno"))
+
+    def test_areas_e_internos_que_no_sirven(self):
+        for malo in ("areas: PIA\n", "internos: [1]\n", "areas: ['']\n"):
+            (self.raiz / ".telar" / "perfil.yaml").write_text(
+                PERFIL.format(nombre="vida", ruta="*/proyectos/*/", etiqueta="vida") + malo)
+            with self.assertRaises(mp.ErrorDePerfil, msg=malo):
+                mp.cargar(self.raiz)
+
     def test_un_repo_sin_perfil_no_aporta(self):
         p = mp.cargar_todos(self.config(cfg.Repo("suelto", self.raiz / "suelto")))
         self.assertEqual([a.repo for a in p.arquetipos], [""])

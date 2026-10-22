@@ -25,7 +25,8 @@ La **puerta** es `POST /unirse` en la página de la máquina del bus. Es lo úni
 la página, y por eso pide tres cosas: que venga de la red de Tailscale (la página solo escucha ahí, y además se
 mira la dirección), que Tailscale diga quién es (`tailscale whois`: no se puede hacer pasar por otro), y no más
 de unos pocos pedidos por hora desde una misma dirección. Un pedido no da acceso: queda pendiente hasta que
-quien administra lo aprueba (`telar bus pedidos`, `telar bus aprobar <id>`), y recién ahí su hash entra a las
+quien administra lo aprueba (`telar bus pedidos`, `telar bus aprobar <id>`, o ⚙ personas en la página: el
+dueño del bus o un admin, telar.personas), y recién ahí su hash entra a las
 cuentas del bus (telar.cuentas) y el bus se recarga. Mientras tanto, el nodo de la persona intenta conectarse
 y espera.
 """
@@ -277,8 +278,9 @@ def estado(pid: str, ip: str) -> dict:
     return {"id": pid, "estado": p["estado"], "persona": p["persona"]}
 
 
-def decidir(pid: str, aprobar: bool) -> dict:
-    """Aprueba (su hash entra a las cuentas del bus) o rechaza un pedido pendiente. Devuelve el pedido."""
+def decidir(pid: str, aprobar: bool, *, por: str = "") -> dict:
+    """Aprueba (su hash entra a las cuentas del bus) o rechaza un pedido pendiente; `por`, quién lo decidió.
+    Devuelve el pedido."""
     from telar import cuentas
 
     pedidos = leer_pedidos()
@@ -295,6 +297,8 @@ def decidir(pid: str, aprobar: bool) -> dict:
         cuentas.escribir(cuentas.carpeta(), personas)
     p["estado"] = "aprobado" if aprobar else "rechazado"
     p["decidido"] = int(time.time())
+    if por:
+        p["por"] = por
     _guardar_pedidos(pedidos)
     return {"id": pid, **p}
 

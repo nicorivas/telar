@@ -1,106 +1,120 @@
-"""`telar bus` — las cuentas del bus: una por persona, que el servidor NATS hace cumplir.
+"""`telar bus` — las cuentas del bus: una por persona, que el servidor NATS hace cumplir, y quién las administra.
 
-    telar bus persona NOMBRE                  darle una cuenta (o una clave nueva) a una persona
-    telar bus persona NOMBRE --secreto RUTA   con el secreto de ese archivo (el tuyo: tu `[bus] token`)
-    telar bus personas                        quiénes tienen cuenta
-    telar bus quitar NOMBRE                   cerrarle la cuenta
+    telar bus personas                        quiénes tienen cuenta, con su rol (dueño, admin, miembro)
     telar bus pedidos [--todos]               quiénes pidieron entrar (`telar instalar --unirse`, telar.unirse)
-    telar bus aprobar ID                      darle la cuenta que pidió: su hash entra y el bus se recarga
+    telar bus aprobar ID [--rol admin]        darle la cuenta que pidió: su hash entra y el bus se recarga
     telar bus rechazar ID                     no dársela
+    telar bus quitar NOMBRE                   cerrarle la cuenta
+    telar bus rol NOMBRE admin|miembro        cambiarle el rol
+    telar bus persona NOMBRE                  darle una cuenta (o una clave nueva) a mano, con un secreto de aquí
+    telar bus persona NOMBRE --secreto RUTA   con el secreto de ese archivo (el tuyo: tu `[bus] token`)
 
-Se corre en la máquina del bus, como la persona que lo administra. Cada persona tiene una cuenta propia:
-lo suyo (casillas, estado de sus hilos, la foto de sus máquinas, los pedidos a sus nodos) no lo ve nadie
-más, porque el servidor no lo deja. Su usuario es su nombre en el bus (`[bus] persona`, o su usuario del
-sistema) y su clave es el secreto de `[bus] token`, el mismo en todas sus máquinas: con él también entra
-una máquina suya a la terminal o la página de otra (`/pty?maquina=`, los boletos de `/maquinas`), y no
-la de otra persona.
+Todas menos `persona` se corren desde cualquier máquina: en la del bus se hacen ahí mismo, y desde otra se le
+piden a su nodo (telar.personas). Las puede pedir el dueño del bus (quien lo corre) y los admin; un miembro
+no tiene por dónde. Desde la máquina de un admin, `[bus] administra` dice quién es el dueño (lo escribe
+`telar instalar --unirse`). Lo mismo se hace en la página, en ⚙ personas.
 
-Sin `--secreto`, para ti se usa tu `[bus] token`; para otra persona se genera uno nuevo en
-`~/.config/telar/bus/secretos/NOMBRE.token`, que hay que pasarle (a su `~/.config/telar/bus.token`) y
-después borrar de aquí. El servidor guarda solo su hash. Después de cada cambio:
+Cada persona tiene una cuenta propia: lo suyo (casillas, estado de sus hilos, la foto de sus máquinas, los
+pedidos a sus nodos) no lo ve nadie más, porque el servidor no lo deja. Su usuario es su nombre en el bus
+(`[bus] persona`, o su usuario del sistema) y su clave es el secreto de `[bus] token`, el mismo en todas sus
+máquinas: con él también entra una máquina suya a la terminal o la página de otra (`/pty?maquina=`, los
+boletos de `/maquinas`), y no la de otra persona.
+
+`persona` se corre en la máquina del bus. Sin `--secreto`, para ti se usa tu `[bus] token`; para otra persona
+se genera uno nuevo en `~/.config/telar/bus/secretos/NOMBRE.token`, que hay que pasarle (a su
+`~/.config/telar/bus.token`) y después borrar de aquí. El servidor guarda solo su hash. Después:
 
     systemctl --user reload telar-bus
+
+(las demás recargan el bus solas). Lo de siempre para alguien nuevo es `telar instalar --unirse`, que no
+mueve ningún secreto.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from telar import cuentas
 from telar.ordenes import _comun
 
-AYUDA = "Las cuentas del bus: una por persona, que el servidor hace cumplir."
+AYUDA = "Las cuentas del bus: una por persona, que el servidor hace cumplir, y quién las administra."
+
+#: los verbos que van por telar.personas (desde cualquier máquina)
+GESTION = ("personas", "pedidos", "aprobar", "rechazar", "quitar", "rol")
 
 
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("bus", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", choices=["persona", "personas", "quitar", "pedidos", "aprobar", "rechazar"])
-    p.add_argument("--todos", action="store_true", help="en pedidos: también los ya decididos")
+    p.add_argument("verbo", choices=["persona", *GESTION])
     p.add_argument("nombre", nargs="?", default="")
-    p.add_argument("--secreto", default="", help="el archivo con el secreto de esa persona")
+    p.add_argument("rol_nuevo", nargs="?", default="", metavar="ROL")
+    p.add_argument("--todos", action="store_true", help="en pedidos: también los ya decididos")
+    p.add_argument("--rol", default="", help="en aprobar: admin o miembro (miembro si no se dice)")
+    p.add_argument("--secreto", default="", help="en persona: el archivo con el secreto de esa persona")
+    p.add_argument("--json", action="store_true", help="lo que hay, en JSON (telar.personas)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    if o.verbo in GESTION:
+        return _gestion(ctx, o)
     base = cuentas.carpeta()
-    if o.verbo in ("pedidos", "aprobar", "rechazar"):
-        return _pedidos(o)
     try:
-        personas = cuentas.leer(base)
-        if o.verbo == "personas":
-            for n in personas:
-                print(n)
-            if not personas:
-                print(_comun.tenue("nadie tiene cuenta en el bus todavía: telar bus persona NOMBRE"))
-            return 0
         if not o.nombre:
-            return _comun.queja(f"¿quién? telar bus {o.verbo} NOMBRE")
-        nombre = cuentas.validar(o.nombre)
-        if o.verbo == "quitar":
-            if nombre not in personas:
-                return _comun.queja(f"{nombre} no tiene cuenta en el bus")
-            del personas[nombre]
-            conf = cuentas.escribir(base, personas)
-            print(f"{nombre}: sin cuenta en el bus ({conf}).")
-            print(_comun.tenue("falta: systemctl --user reload telar-bus"))
-            return 0
-        return _persona(ctx, base, personas, nombre, o.secreto)
+            return _comun.queja("¿quién? telar bus persona NOMBRE")
+        return _persona(ctx, base, cuentas.leer(base), cuentas.validar(o.nombre), o.secreto)
     except cuentas.ErrorDeCuentas as e:
         return _comun.queja(str(e))
 
 
-def _pedidos(o) -> int:
-    """Los pedidos de entrada que llegaron a la puerta de esta máquina (telar.unirse), y decidirlos."""
-    import time
+def _gestion(ctx, o) -> int:
+    """Lo que va por telar.personas: mirar y decidir, aquí o en la máquina del bus."""
+    import json
 
-    from telar import unirse
+    from telar import personas
 
-    try:
-        if o.verbo == "pedidos":
-            pedidos = unirse.leer_pedidos()
-            vistos = [(pid, p) for pid, p in sorted(pedidos.items(), key=lambda x: x[1]["cuando"])
-                      if o.todos or p["estado"] == "pendiente"]
-            for pid, p in vistos:
-                cuando = time.strftime("%d-%m %H:%M", time.localtime(p["cuando"]))
-                print(f"{pid}  {p['persona']:<12} {p['estado']:<10} {cuando}  "
-                      + _comun.tenue(f"{p['tailscale']} · {p['nodo'] or p['ip']} · {p['equipo'] or 'sin equipo'}"))
-            if not vistos:
-                print(_comun.tenue("nadie pidió entrar" if not pedidos else "nada pendiente (--todos: también los decididos)"))
-            return 0
+    pedido: dict = {"accion": "ver"}
+    if o.verbo in ("aprobar", "rechazar"):
         if not o.nombre:
             return _comun.queja(f"¿cuál? telar bus {o.verbo} ID (telar bus pedidos los lista)")
-        p = unirse.decidir(o.nombre, o.verbo == "aprobar")
-    except (unirse.ErrorDeUnirse, cuentas.ErrorDeCuentas) as e:
+        pedido = {"accion": o.verbo, "pedido": o.nombre, "rol": o.rol}
+    elif o.verbo == "quitar":
+        if not o.nombre:
+            return _comun.queja("¿a quién? telar bus quitar NOMBRE")
+        pedido = {"accion": "quitar", "nombre": o.nombre}
+    elif o.verbo == "rol":
+        if not o.nombre or not o.rol_nuevo:
+            return _comun.queja("telar bus rol NOMBRE admin|miembro")
+        pedido = {"accion": "rol", "nombre": o.nombre, "rol": o.rol_nuevo}
+    try:
+        r = personas.pedir(ctx.config, pedido)
+    except (personas.ErrorDePersonas, cuentas.ErrorDeCuentas) as e:
         return _comun.queja(str(e))
-    if o.verbo == "rechazar":
-        print(f"{p['persona']}: pedido rechazado.")
+    if o.json:
+        print(json.dumps(r, ensure_ascii=False))
         return 0
-    falta = unirse.recargar_bus()
-    print(f"{p['persona']}: cuenta nueva en el bus ({p['tailscale']}, desde {p['nodo'] or p['ip']}).")
-    if falta:
-        print(_comun.tenue(f"falta recargar el bus: {falta}"))
-    else:
-        print(_comun.tenue("el bus ya la conoce: su telar se conecta solo"))
+    if r.get("hecho"):
+        print(f"{r['hecho']}.")
+        if r.get("falta"):
+            print(_comun.tenue(f"falta recargar el bus en su máquina: {r['falta']}"))
+        elif o.verbo == "aprobar":
+            print(_comun.tenue("el bus ya la conoce: su telar se conecta solo"))
+        return 0
+    if o.verbo == "personas":
+        for x in r["personas"]:
+            print(f"{x['nombre']:<16} {x['rol']}")
+        if not r["personas"]:
+            print(_comun.tenue("nadie tiene cuenta en el bus todavía"))
+        return 0
+    vistos = [x for x in sorted(r["pedidos"], key=lambda x: x["cuando"]) if o.todos or x["estado"] == "pendiente"]
+    for x in vistos:
+        cuando = time.strftime("%d-%m %H:%M", time.localtime(x["cuando"]))
+        por = f" por {x['por']}" if x.get("por") else ""
+        print(f"{x['id']}  {x['persona']:<12} {x['estado'] + por:<20} {cuando}  "
+              + _comun.tenue(f"{x['tailscale']} · {x['desde']} · {x['equipo'] or 'sin equipo'}"))
+    if not vistos:
+        print(_comun.tenue("nadie pidió entrar" if not r["pedidos"] else "nada pendiente (--todos: también los decididos)"))
     return 0
 
 

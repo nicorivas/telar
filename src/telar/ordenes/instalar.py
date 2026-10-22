@@ -183,7 +183,7 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool) -> bool:
 
         pasos.append((lambda: _sin_error(pedir), f"pedir entrar al bus de «{equipo.nombre}» como «{persona}» "
                                                  f"(el secreto se genera aquí, en {o.token}; viaja solo su hash)"))
-        bloque = instalacion.bloque_bus(equipo.bus, o.token, persona)
+        bloque = instalacion.bloque_bus(equipo.bus, o.token, persona, equipo.administra)
         pasos.append((lambda: _agregar(ruta, bloque), f"unirse al bus {equipo.bus}"))
         hay_bus = True
     if not any(r.nombre == equipo.nombre for r in getattr(ctx.config, "repos", ()) or ()):

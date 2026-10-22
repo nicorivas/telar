@@ -795,6 +795,7 @@ url = "nats://<IP privada de la máquina que no se apaga>:4222"
 token = "~/.config/telar/bus.token"   # tu secreto: el mismo archivo en todas tus máquinas
 persona = "ana"                        # tu cuenta en el bus (por defecto, tu usuario del sistema)
 maquina = "laptop"                     # cómo se llama esta en el bus (por defecto, su nombre de red)
+administra = "ana"                     # quién corre el bus, si no eres tú (lo escribe `telar instalar --unirse`)
 ```
 
 Con `[bus]`, cada máquina corre `telar nodo` (`servidor/telar-nodo.service` en Linux,
@@ -805,10 +806,15 @@ a la conversación por los ganchos del agente (`telar agente instalar`), sin tec
 usa el bus si lo hay. El estado de cada hilo (máquina, atención) se publica y se escucha al instante.
 Diseño: `docs/arquitectura.md`, «Entre máquinas: el bus».
 
-El servidor del bus tiene **una cuenta por persona**: lo de una no lo ve otra. Se administran en la
-máquina del bus con `telar bus persona NOMBRE` (una cuenta nueva o una clave nueva; para ti, con tu
-`[bus] token`; para otra persona genera un secreto que hay que pasarle), `telar bus personas` y `telar bus
-quitar NOMBRE`, y después `systemctl --user reload telar-bus`. Un bus de antes, con un solo token para
+El servidor del bus tiene **una cuenta por persona**: lo de una no lo ve otra. Alguien nuevo pide la suya
+con `telar instalar --unirse` y quien administra la aprueba: en la página (⚙ personas) o con `telar bus
+pedidos` y `telar bus aprobar ID`. Cada cuenta tiene un rol: el **dueño** es quien corre el bus; un
+**admin** aprueba y rechaza pedidos, quita cuentas y cambia roles como él (salvo lo del dueño); un
+**miembro** solo tiene su cuenta. `telar bus personas`, `quitar NOMBRE` y `rol NOMBRE admin|miembro` hacen el
+resto, desde cualquier máquina del dueño o de un admin: se le piden al nodo de la máquina del bus, y el
+servidor solo deja llegar ahí a esas cuentas (telar.personas). Recargan el bus solas. A mano, en la máquina
+del bus, `telar bus persona NOMBRE` da una cuenta o una clave nueva (para ti, con tu `[bus] token`; para otra
+persona genera un secreto que hay que pasarle), y después `systemctl --user reload telar-bus`. Un bus de antes, con un solo token para
 todos (`nats-server --auth`), se sigue aceptando hasta la 0.3; para pasarlo a cuentas, ver
 `servidor/telar-bus.service`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
 

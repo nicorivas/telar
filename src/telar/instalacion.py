@@ -124,11 +124,13 @@ def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "") -> tu
     return ruta_servicio(), unidad_systemd(telar, args, path, esperar_tailscale=bool(shutil.which("tailscale")))
 
 
-def bloque_bus(url: str, token: str, persona: str = "") -> str:
+def bloque_bus(url: str, token: str, persona: str = "", administra: str = "") -> str:
     lineas = ["", "# el bus entre tus máquinas (lo escribió `telar instalar --bus`)", "[bus]", f'url = "{url}"',
               f'token = "{token}"']
     if persona:
         lineas.append(f'persona = "{persona}"')
+    if administra and administra != persona:
+        lineas.append(f'administra = "{administra}"')
     return "\n".join(lineas) + "\n"
 
 

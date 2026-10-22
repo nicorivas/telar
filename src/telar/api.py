@@ -666,6 +666,34 @@ def post_decision(ident: str, decision: str, pedido: PedidoDecision, ctx: Contex
     return servicio_equipo.decidir(ctx, ident, decision, nota=pedido.nota, tarea=pedido.tarea, maquina=pedido.maquina)
 
 
+# ── la gestión de personas del bus (telar.personas) ───────────────────────────────
+
+from telar.servicios import personas as servicio_personas
+
+
+@app.get("/personas", response_model=servicio_personas.Personas)
+def get_personas(ctx: Contexto = Depends(contexto)):
+    """Quién tiene cuenta en el bus y con qué rol, y quién pidió entrar (`telar bus personas|pedidos`). Solo para el
+    dueño del bus y los admin."""
+    return servicio_personas.ver(ctx)
+
+
+class PedidoPersonas(BaseModel):
+    #: con aprobar y rechazar: el id del pedido
+    pedido: str = ""
+    #: con quitar y rol: su nombre en el bus
+    nombre: str = ""
+    #: con rol: admin o miembro; con aprobar, el rol con que entra (miembro si no se dice)
+    rol: str = ""
+
+
+@app.post("/personas/{accion}", response_model=servicio_personas.Personas)
+def post_personas(accion: str, pedido: PedidoPersonas, ctx: Contexto = Depends(contexto)):
+    """Aprobar o rechazar un pedido, quitar una cuenta o cambiarle el rol (`telar bus aprobar|rechazar|quitar|rol`).
+    Devuelve lo que hay después, con `hecho`."""
+    return servicio_personas.hacer(ctx, accion, pedido=pedido.pedido, nombre=pedido.nombre, rol=pedido.rol)
+
+
 # ── archivos de esta máquina, para la página (telar.servicios.archivos) ───────────
 
 

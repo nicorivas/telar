@@ -16,6 +16,7 @@ Hoy los permisos están repartidos en lugares que no se conocen entre sí:
 | lo que puede hacer el agente de un hilo | el `settings.json` del motor (Claude Code), más los flags de `[agentes.<carpeta>] argumentos` y lo que dice la prosa de cada `CLAUDE.md` | la persona, a mano, en cada máquina |
 | lo que un agente corre sin preguntar para hablar con otros hilos | `PERMISOS` de `telar.agente.claude_code`, que `telar agente instalar` agrega a `permissions.allow` | telar, fijo |
 | lo que alcanza una persona en el bus | su cuenta de NATS (`telar bus persona`): un espacio aparte que el servidor hace cumplir | quien administra el bus |
+| quién administra el bus | su rol (dueño, admin, miembro: telar.personas): la gestión solo la alcanzan las cuentas admin, porque el servidor solo a ellas les exporta el servicio | el dueño o un admin (⚙ personas, `telar bus rol`) |
 | lo que ve y pide alguien del equipo | `telar serve --equipo`: su llave y lo que la página del equipo deja | la persona, al dar la llave |
 | lo que hace un módulo | nada: corre con los permisos de quien lo instaló | nadie |
 

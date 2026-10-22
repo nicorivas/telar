@@ -467,13 +467,18 @@ esperan, después los que terminaron, al final los que trabajan.
 { "raiz": "/…/trabajo",
   "proyectos": [
     { "ruta": "proyectos/faro", "direccion": "proyecto:proyectos/faro", "nombre": "Faro", "arquetipo": "proyecto",
-      "modificado": "2026-09-18T12:04:31+00:00", "hilo": "faro", "vivo": true } ] }
+      "cliente": "", "interno": true, "estado": "", "estado_completo": "", "area": "Norte",
+      "modificado": "2026-09-18T12:04:31+00:00", "hilo": "faro", "vivo": true } ],
+  "areas": ["Norte", "Sur"] }
 ```
 
 Todas las unidades del perfil, tengan hilo o no, ordenadas por `nombre`. `modificado` es
 el archivo más reciente de la carpeta sin contar las ocultas (`null` si no hay ninguno).
 `hilo` es el que está vinculado a esa unidad, o `""`; `vivo`, si ese hilo tiene tab. `direccion` es
-`proyecto:<ruta>` (la ruta sin barras en los bordes), la que abre `telar objeto`.
+`proyecto:<ruta>` (la ruta sin barras en los bordes), la que abre `telar objeto`. `cliente` es el del nombre
+(«Cliente · título», `""` si no lo lleva) e `interno`, si no tiene o es uno de los `internos` del perfil (la casa
+misma: el dashboard muestra el nombre en su lugar). `area` es la del frontmatter (`""` si no tiene) y `areas`, el
+orden en que se muestran, el `areas` del perfil ([perfil.md](perfil.md)).
 
 `telar proyectos abrir <ruta> --json` devuelve `{ "hilo", "ruta", "mensaje", "hecho" }`:
 `hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
@@ -1033,6 +1038,26 @@ configuración: esos dos se listan y corren, pero `editar`, `pausar`, `activar` 
 corre. `codigo` distinto de 0 es que falló (un comando que salió mal, un hilo que no se pudo abrir); un
 `mensaje` saltado por `max_abiertos` es 0 con `resultado` «saltado: …». Las órdenes que cambian algo
 responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
+
+## `telar bus … --json` y `/personas` — quién entra al bus
+
+`telar bus personas|pedidos --json` y `GET /personas` dan lo mismo; `telar bus aprobar|rechazar|quitar|rol --json`
+y `POST /personas/<accion>` (cuerpo `{"pedido", "nombre", "rol"}`, lo que cada una use), lo que queda después,
+con `hecho` (qué se hizo, en una línea) y `falta` (qué correr si el bus no se pudo recargar, o `""`):
+
+```json
+{"dueno": "ana", "quien": "ana", "rol": "dueño", "roles": ["dueño", "admin", "miembro"],
+ "personas": [{"nombre": "ana", "rol": "dueño"}, {"nombre": "beto", "rol": "admin"}, {"nombre": "carla", "rol": "miembro"}],
+ "pedidos": [{"id": "1a2b3c4d", "persona": "dani", "estado": "pendiente", "cuando": 1792700000, "decidido": null, "por": "",
+              "tailscale": "dani@example.com", "desde": "mac-de-dani", "maquina": "mac", "equipo": "faro"}]}
+```
+
+`personas` va con el dueño primero, después los admin, después el resto. `pedidos`, del más nuevo al más viejo:
+los pendientes y los decididos de las últimas dos semanas, con `por` (quién lo decidió). `cuando` y `decidido`
+son segundos desde 1970. Lo pueden pedir el dueño del bus y los admin (telar.personas): a un miembro se le
+contesta 403. Los errores son los de siempre de la API (`detail`): 403 si quien pide no administra, 404 si no
+hay esa cuenta o no hay bus, 409 si no se puede (el dueño no se toca, uno no se quita a sí mismo, un pedido ya
+decidido), 422 si falta algo o el rol no existe, 502 si la máquina del bus no responde.
 
 ## `telar modulos --json` — los módulos
 

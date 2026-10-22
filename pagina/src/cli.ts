@@ -198,13 +198,16 @@ export interface JsonProyecto {
     ruta: string; nombre: string; arquetipo: string; modificado: string | null; hilo: string; vivo: boolean;
     /** el cliente, si el nombre lo lleva adelante («Cliente · título»); "" si no */
     cliente?: string;
+    /** sin cliente, o con uno que es la casa misma (`internos` del perfil): se muestra el nombre, no el cliente */
+    interno?: boolean;
     /** el Estado (o la Etapa) de su tabla de campos, corto; y entero */
     estado?: string; estado_completo?: string;
     /** el área que declara su frontmatter («area: PIA»); "" si no la tiene */
     area?: string;
 }
 
-export const proyectos = async () => await deServe<{ raiz: string; proyectos: JsonProyecto[] }>('/proyectos', 30000);
+/** Las unidades, y `areas`: el orden en que se muestran las áreas (`areas` del perfil). */
+export const proyectos = async () => await deServe<{ raiz: string; proyectos: JsonProyecto[]; areas?: string[] }>('/proyectos', 30000);
 
 /** Los pendientes de los documentos de todas las unidades, tengan hilo o no (sin proveedores: rápido). */
 export const pendientesRepo = async () => await deServe<{ pendientes: JsonFila[] }>('/pendientes?repo=true', 30000);
@@ -507,6 +510,24 @@ export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensa
 /** `telar mensaje --soltar <id>`: la persona deja pasar un mensaje retenido. */
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
+
+/** Una cuenta del bus y su rol (`telar bus personas`, telar.personas). */
+export interface JsonCuenta { nombre: string; rol: 'dueño' | 'admin' | 'miembro' }
+/** Un pedido de entrada al bus (`telar instalar --unirse`): pendiente, o decidido hace poco (`por`, quién). */
+export interface JsonPedidoEntrada {
+    id: string; persona: string; estado: 'pendiente' | 'aprobado' | 'rechazado'; cuando: number;
+    decidido?: number | null; por?: string; tailscale: string; desde: string; maquina?: string; equipo?: string;
+}
+/** La gestión de personas del bus (`GET /personas`): quién la pide (`quien`, `rol`), las cuentas y los pedidos;
+ *  después de una acción, `hecho` y `falta` (si el bus no se pudo recargar). */
+export interface JsonPersonas {
+    dueno: string; quien: string; rol: string; personas: JsonCuenta[]; pedidos: JsonPedidoEntrada[];
+    hecho?: string; falta?: string;
+}
+export const personas = async () => await deServe<JsonPersonas>('/personas', 40000);
+/** Aprobar o rechazar un pedido (`pedido`, y el `rol` con que entra), quitar una cuenta o cambiarle el rol (`nombre`, `rol`). */
+export const personasAccion = async (accion: 'aprobar' | 'rechazar' | 'quitar' | 'rol', datos: { pedido?: string; nombre?: string; rol?: string }) =>
+    await aServe<JsonPersonas>('POST', `/personas/${accion}`, 40000, datos);
 
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {

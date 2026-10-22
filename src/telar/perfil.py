@@ -183,6 +183,11 @@ class Perfil:
     version: int = VERSION
     arquetipos: tuple[Arquetipo, ...] = ()
     acciones: tuple[Accion, ...] = ()
+    #: las áreas en el orden en que se muestran (el `area:` del frontmatter); una que no esté va después
+    areas: tuple[str, ...] = ()
+    #: los clientes que son la casa misma («Interno», el nombre del equipo): en el dashboard no dicen nada, y va
+    #: el nombre del proyecto en su lugar
+    internos: tuple[str, ...] = ()
     #: de qué archivo salió; None si es el perfil mínimo.
     origen: Path | None = None
 
@@ -373,7 +378,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Perfil:
     """Arma un `Perfil` desde el YAML ya parseado, validando lo que llegó."""
     datos = _mapa(datos, "el perfil")
 
-    sobra = set(datos) - {"version", "nombre", "arquetipos", "acciones"}
+    sobra = set(datos) - {"version", "nombre", "arquetipos", "acciones", "areas", "internos"}
     if sobra:
         raise ErrorDePerfil(f"claves que telar no conoce: {', '.join(sorted(sobra))}")
 
@@ -394,8 +399,17 @@ def desde_dict(datos: dict, *, origen: Path | None = None) -> Perfil:
         version=version,
         arquetipos=tuple(_arquetipo(n, c) for n, c in arquetipos.items()),
         acciones=tuple(_accion(c, i) for i, c in enumerate(acciones)),
+        areas=_nombres(datos.get("areas", []), "areas"),
+        internos=_nombres(datos.get("internos", []), "internos"),
         origen=origen,
     )
+
+
+def _nombres(valor, contexto: str) -> tuple[str, ...]:
+    """Una lista de nombres (las áreas, los clientes internos), sin repetidos y en su orden."""
+    if not isinstance(valor, list) or not all(isinstance(v, str) and v.strip() for v in valor):
+        raise ErrorDePerfil(f"{contexto}: se esperaba una lista de nombres")
+    return tuple(dict.fromkeys(v.strip() for v in valor))
 
 
 def cargar(raiz: Path, *, ruta: Path | None = None) -> Perfil:
@@ -484,7 +498,11 @@ def cargar_todos(config) -> Perfil:
         if a.nombre not in vistas:
             vistas.add(a.nombre)
             acciones.append(a)
-    return replace(base, arquetipos=(*arquetipos, *base.arquetipos), acciones=tuple(acciones))
+    # las áreas y los clientes internos de todos, los de los repos más profundos primero
+    areas = tuple(dict.fromkeys(x for p in [*(p for _, _, p in partes), base] for x in p.areas))
+    internos = tuple(dict.fromkeys(x for p in [*(p for _, _, p in partes), base] for x in p.internos))
+    return replace(base, arquetipos=(*arquetipos, *base.arquetipos), acciones=tuple(acciones), areas=areas,
+                   internos=internos)
 
 
 def ruta_de_repo(config, repo) -> Path:

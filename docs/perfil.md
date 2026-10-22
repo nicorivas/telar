@@ -53,7 +53,15 @@ acciones:
     tecla: r                         # sugerencia para la interfaz; opcional
     donde: hilo                      # hilo (la carpeta del hilo) | raiz
     confirmar: false                 # si es true, la interfaz pregunta antes
+
+areas: [Norte, Sur, Interno]         # el orden de las áreas (el `area:` del frontmatter) en el dashboard
+internos: [Taller, Interno]          # los «clientes» que son la casa misma: en el dashboard va el nombre
 ```
+
+`areas` y `internos` son opcionales. Un área que `areas` no nombra va después, por cuántos proyectos tiene. Un
+proyecto cuyo cliente (el `{campo:Cliente}` de su etiqueta) está en `internos`, o que no tiene, se muestra por su
+nombre sin ese prefijo: «Taller · Plan anual» es «Plan anual», no «Taller». Con varios repositorios, se juntan
+las de todos, las del repo más profundo primero.
 
 Hay uno completo y comentado en [`ejemplo/.telar/perfil.yaml`](../ejemplo/.telar/perfil.yaml).
 

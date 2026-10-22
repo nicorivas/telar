@@ -48,9 +48,6 @@ export const esCerrado = (p: cli.JsonProyecto): boolean => /cerrad/i.test(p.arqu
 /** De qué carpeta de la raíz es una unidad: la primera de su ruta (brinca, nico, consultoria…). */
 export const raizDe = (ruta: string): string => ruta.split('/')[0] || ruta;
 
-/** Las áreas en el orden en que se muestran; una que no esté aquí va después, por cuántas tiene. */
-const AREAS = ['PIA', 'EIC', 'GT', 'Upskill', 'Brinca', 'Otro'];
-
 /** El área que declara su documento (`area:` en el frontmatter), o «sin área». */
 export const areaDe = (p: cli.JsonProyecto): string => p.area || 'sin área';
 
@@ -81,7 +78,7 @@ function contar(xs: string[]): Map<string, number> {
 
 /** La lista de la izquierda. Buscar, ordenar y mostrar los cerrados ocurre en la página
  *  (`aplicarProyectos`, vista.ts); elegir una fila pide su detalle. */
-export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuentas?: Map<string, number>): string[] {
+export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuentas?: Map<string, number>, areas: string[] = []): string[] {
     const cerrados = lista.filter(esCerrado).length;
     const conHilo = lista.filter(p => p.hilo).length;
     const conPend = cuentas ? lista.filter(p => (cuentas.get(p.ruta) ?? 0) > 0).length : 0;
@@ -91,8 +88,9 @@ export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuent
         + (cerrados ? `<button id="ver-cerrados" title="mostrar u ocultar los proyectos cerrados">cerrados ${cerrados}</button>` : '')
         + '</span></div>',
     filtro('raiz', 'todas las carpetas', contar(lista.map(p => raizDe(p.ruta)))),
-    // el área que declara cada documento: aparece cuando hay al menos dos distintas
-    filtro('area', 'todas las áreas', contar(lista.map(areaDe)), [...AREAS, 'sin área']),
+    // el área que declara cada documento: aparece cuando hay al menos dos distintas; en el orden del perfil
+    // (`areas`), y las que no nombra, después, por cuántas tienen
+    filtro('area', 'todas las áreas', contar(lista.map(areaDe)), [...areas, 'sin área']),
     filtro('tipo', 'todos los tipos', contar(lista.map(p => p.arquetipo))),
     '<div class="titulo-tareas areas-t"><span class="modos">'
         + `<button data-pf="hilo" data-pv="1" title="solo los que tienen un hilo (● abierto, · dormido)">con hilo ${conHilo}</button>`
@@ -181,6 +179,8 @@ export class PantallaProyectos implements Pantalla {
     readonly conReloj = [] as const;
     /** todas las unidades del perfil (`telar proyectos`), y el aviso si no llegaron */
     lista?: cli.JsonProyecto[];
+    /** el orden de las áreas (`areas` del perfil) */
+    private areas: string[] = [];
     private aviso = '';
     /** el proyecto elegido en la lista, y lo que se muestra de él a la derecha */
     private sel = '';
@@ -208,7 +208,7 @@ export class PantallaProyectos implements Pantalla {
     async asegurar(): Promise<boolean> {
         if (this.lista) return false;
         const r = await cli.proyectos();
-        if (r.datos) this.lista = r.datos.proyectos;
+        if (r.datos) { this.lista = r.datos.proyectos; this.areas = r.datos.areas ?? []; }
         return !!r.datos;
     }
 
@@ -237,7 +237,7 @@ export class PantallaProyectos implements Pantalla {
             if (this.sel) void this.ver(this.sel, false);
         });
         const r = await cli.proyectos();
-        if (r.datos) this.lista = r.datos.proyectos;
+        if (r.datos) { this.lista = r.datos.proyectos; this.areas = r.datos.areas ?? []; }
         else this.aviso = r.error ?? 'telar proyectos no contestó';
         if (this.sel && !this.lista?.some(p => p.ruta === this.sel)) { this.sel = ''; this.det = undefined; }
         if (this.t.pantalla === 'proyectos') this.pintar();
@@ -462,7 +462,7 @@ export class PantallaProyectos implements Pantalla {
             + '</div>'];
         if (this.aviso) h.push(`<div class="fila falla">${esc(this.aviso)}</div>`);
         if (cargando) { h.push(`<div class="fila dim">${esc(cargando)}</div>`); this.t.pintar(h); return; }
-        h.push('<div class="proy-dos"><div class="proy-lista">', ...htmlListaProyectos(lista, this.sel, this.cuentasPendientes()),
+        h.push('<div class="proy-dos"><div class="proy-lista">', ...htmlListaProyectos(lista, this.sel, this.cuentasPendientes(), this.areas),
             `</div><div id="proy-det">${htmlDetalleProyecto(this.sel ? this.det : undefined)}</div></div>`);
         this.t.pintar(h);
     }

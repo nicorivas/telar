@@ -258,6 +258,9 @@ class Bus:
     entrada: str = ""
     #: cómo se llama esta máquina en el bus; vacío es su nombre de red, corto.
     maquina: str = ""
+    #: quién administra el bus (su nombre en él): a esa persona van los pedidos de gestión de personas
+    #: (telar.personas); vacío, esta misma persona
+    administra: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1155,7 +1158,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
 
     if "bus" in datos:
         cuerpo = _tabla(datos["bus"], "bus")
-        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "no_leer", "entrada"}
+        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "administra", "no_leer", "entrada"}
         if sobra:
             raise ErrorDeConfig(f"bus.{sorted(sobra)[0]}: no existe")
         valores = {}
@@ -1167,7 +1170,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         if not isinstance(entrada_bus, str):
             raise ErrorDeConfig(f"bus.entrada: se esperaba una carpeta, llegó {entrada_bus!r}")
         valores["entrada"] = entrada_bus.strip()
-        for clave in ("url", "token", "persona", "maquina"):
+        for clave in ("url", "token", "persona", "maquina", "administra"):
             v = cuerpo.get(clave, "")
             if not isinstance(v, str):
                 raise ErrorDeConfig(f"bus.{clave}: se esperaba un texto, llegó {v!r}")

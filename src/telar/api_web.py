@@ -253,7 +253,7 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
             # que quien administra se entere: un aviso en la pantalla de sus otras máquinas (si no llega, el pedido
             # igual queda en `telar bus pedidos`)
             texto = (f"{datos.get('persona')} pide entrar al bus ({quien['cuenta']}, desde {quien['maquina']}): "
-                     f"telar bus aprobar {r['id']}")
+                     f"⚙ personas en la página, o telar bus aprobar {r['id']}")
 
             def avisar() -> None:
                 from telar import entrega

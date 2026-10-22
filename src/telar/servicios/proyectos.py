@@ -20,6 +20,8 @@ class Proyecto(BaseModel):
 class Proyectos(BaseModel):
     raiz: str
     proyectos: list[Proyecto] = Field(default_factory=list)
+    #: las áreas en el orden en que se muestran (`areas` del perfil)
+    areas: list[str] = Field(default_factory=list)
 
 
 def lista(ctx) -> Proyectos:
@@ -27,4 +29,4 @@ def lista(ctx) -> Proyectos:
     from telar.ordenes.proyectos import listar
 
     tel = _comun.tejer(ctx, con_ficha=False)
-    return Proyectos(raiz=str(ctx.config.raiz), proyectos=listar(ctx, tel))
+    return Proyectos(raiz=str(ctx.config.raiz), proyectos=listar(ctx, tel), areas=list(ctx.perfil.areas))

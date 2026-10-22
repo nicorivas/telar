@@ -527,6 +527,8 @@ class Proyectos(Orden):
         self.assertTrue(faro["modificado"])
         self.assertEqual(faro["hilo"], "")
         self.assertFalse(faro["vivo"])
+        self.assertTrue(faro["interno"])  # sin cliente: se muestra su nombre
+        self.assertEqual(datos["areas"], [])  # el perfil del ejemplo no ordena áreas
 
     def test_dice_que_hilo_tiene_cada_una(self):
         self.vincular_faro()
