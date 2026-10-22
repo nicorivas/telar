@@ -305,6 +305,9 @@ class LaCarpetaTelarEnDoctor(Prueba):
             [r] = doctor._carpeta_telar(ctx)
             self.assertEqual(r["estado"], doctor.FALLA)
             self.assertIn("git mv telar-perfil.yaml .telar/perfil.yaml", r["arreglo"])
+            # pedido a mano en la configuración ([telar] perfil, [repos] perfil): se lee a propósito, no es un olvido
+            self.assertEqual(doctor._carpeta_telar(SimpleNamespace(config=SimpleNamespace(
+                raiz=raiz, repos=(), perfil=raiz / "telar-perfil.yaml"))), [])
             (raiz / ".telar").mkdir()
             (raiz / "telar-perfil.yaml").rename(raiz / ".telar" / "perfil.yaml")
             (raiz / ".telar" / "local.yaml").write_text("nombre: mío\n")

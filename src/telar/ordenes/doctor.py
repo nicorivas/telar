@@ -285,11 +285,15 @@ def _carpeta_telar(ctx) -> list[dict]:
     `.telar/perfil.yaml`), y `local.yaml` es de cada persona: no va en git."""
     import subprocess
 
-    carpetas = [Path(ctx.config.raiz).expanduser(), *(ruta_de_repo(ctx.config, r) for r in getattr(ctx.config, "repos", ()) or ())]
+    repos = getattr(ctx.config, "repos", ()) or ()
+    # (carpeta, si su perfil está pedido a mano): entonces lee ese archivo, y uno viejo ahí no es un olvido
+    carpetas = {Path(ctx.config.raiz).expanduser(): bool(getattr(ctx.config, "perfil", None))}
+    for r in repos:
+        carpetas[ruta_de_repo(ctx.config, r)] = bool(r.perfil)
     salida = []
-    for carpeta in dict.fromkeys(carpetas):
+    for carpeta, a_mano in carpetas.items():
         viejo, nuevo, local = carpeta / "telar-perfil.yaml", carpeta / NOMBRE_ARCHIVO, carpeta / NOMBRE_LOCAL
-        if viejo.is_file() and not nuevo.is_file():
+        if viejo.is_file() and not nuevo.is_file() and not a_mano:
             salida.append(_r("carpeta .telar", FALLA, f"{viejo} ya no se lee: el perfil vive en {NOMBRE_ARCHIVO}",
                              f"cd {carpeta} && mkdir -p .telar && git mv telar-perfil.yaml {NOMBRE_ARCHIVO}"))
         if local.is_file():
