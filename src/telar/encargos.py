@@ -15,6 +15,9 @@ antes las que llevan más rato ociosas y sin nadie mirando (`liberar`). Su conve
 y se retoma cuando haga falta: cerrar una sesión ociosa es liberar memoria, no perder nada.
 
 La cola vive en `<estado>/encargos/<agente>.jsonl`; lo que pasó, en `<estado>/encargos.log`.
+
+No es el Encargo como objeto (`encargo:e-…`, el de `telar mensaje --modo encargo`): ese está en telar.encargo, y
+docs/propuestas/mensajes-con-modos.md cuenta cómo se funden los dos.
 """
 
 from __future__ import annotations

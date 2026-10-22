@@ -276,7 +276,8 @@ def _mod(o, ctx) -> int:
             d = casilla.carpeta(ctx.config, hilo)
             d.mkdir(parents=True, exist_ok=True)
             salida.update(hilo=hilo, casilla=str(d))
-            if casilla.pendientes(ctx.config, hilo):
+            # un aviso (modo «aviso») no despierta: espera al próximo turno sin que el mod lo mande
+            if casilla.despiertan(ctx.config, hilo):
                 salida["aviso"] = casilla.aviso(ctx.config, hilo)
     except Exception:  # noqa: BLE001 - el mod pregunta cada pocos segundos: nunca le falla
         pass

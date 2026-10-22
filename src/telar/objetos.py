@@ -4,7 +4,7 @@ Un **objeto** es cualquier cosa con dirección, tipo y estado: una tarea, un hil
 que traiga un módulo (un correo, un evento). Su **dirección** tiene una sola forma:
 
     tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:nico/proyectos/telar · archivo:telar:docs/x.md
-                            pendiente:c-1a2b3c
+                            pendiente:c-1a2b3c · encargo:e-1a2b3c4d
 
 `@máquina` va solo cuando importa (un hilo o un objeto de un módulo que vive en otra máquina); el `id` es
 lo que el tipo entiende, y puede llevar `:` (un archivo es `máquina:ruta`). Lo que en un id rompería la
@@ -14,7 +14,8 @@ decir «revisa `tarea:T366`» y cualquiera sabe abrirlo: `telar objeto tarea:T36
 
 Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones** con sus parámetros. Los de
 fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo,
-pendiente (una casilla de un documento, telar.vinetas) y agente (un residente, con lo que declara su agente.toml).
+pendiente (una casilla de un documento, telar.vinetas), agente (un residente, con lo que declara su agente.toml)
+y encargo (un pedido con estado y resultado, telar.encargo).
 Un módulo agrega los suyos en su `modulo.toml`:
 
     [objetos.correo]
@@ -207,8 +208,8 @@ class Hilo(Tipo):
         enlaces = [direccion_de("proyecto", j["relativa"])] if j.get("relativa") and j.get("relativa") not in (".", "") else []
         return Objeto(direccion=direccion_de("hilo", j["nombre"], maquina), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
-                      acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva)",
-                                       params={"texto": ""}),
+                      acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva); "
+                                       "modo: aviso (no lo despierta), pedido o encargo", params={"texto": "", "modo": "'pedido'"}),
                                 Accion(nombre="leer", descripcion="lo último que pasó en su conversación",
                                        params={"ultimos": "5"})])
 
@@ -219,7 +220,7 @@ class Hilo(Tipo):
             texto = str(params.get("texto", "")).strip()
             if not texto:
                 raise ErrorDeServicio("mensaje: ¿qué le dices? params {\"texto\": …}", 422)
-            r = mensajes.enviar(ctx, d.id, texto)
+            r = mensajes.enviar(ctx, d.id, texto, modo=str(params.get("modo") or "pedido"), plazo=str(params.get("plazo") or ""))
             return Hecho(direccion=str(d), accion=accion, resultado=r.model_dump(mode="json"))
         if accion == "leer":
             from telar.servicios import historias
@@ -435,7 +436,97 @@ class Agente(Tipo):
         return Hecho(direccion=str(d), accion=accion, resultado=r.model_dump(mode="json"))
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente())
+class Encargo(Tipo):
+    """Un encargo (telar.encargo): `encargo:e-1a2b3c4d`. Vive en la máquina de quien lo hace; desde otra se le pide
+    a esa (el pedido `encargo` del nodo), que es la de su `@máquina`, la de la nota de quien lo mandó o la del hilo
+    al que se mandó. Mientras no llega, quien lo mandó lo ve en camino, con lo que anotó al mandarlo."""
+
+    nombre = "encargo"
+    descripcion = "un encargo a un hilo (telar mensaje --modo encargo): quién lo pidió, en qué va y cómo terminó"
+
+    def _objeto(self, ctx, e: dict, maquina: str = "", en_camino: bool = False) -> Objeto:
+        from telar import encargo
+
+        campos = {k: e[k] for k in ("de", "para", "responder_a", "plazo", "resultado", "rechazado", "creado",
+                                     "actualizado", "historia", "mensaje") if e.get(k) not in (None, "", [], False)}
+        if encargo.vencido(e):
+            campos["vencido"] = True
+        if en_camino:
+            campos["en_camino"] = True
+        enlaces = [direccion_de("hilo", x) for x in dict.fromkeys((e.get("para", ""), e.get("responder_a", ""))) if x]
+        enlaces += [str(x) for x in buscar(ctx, str(e.get("texto", ""))) if x.tipo != "encargo"][:10]
+        acciones = [] if en_camino else [
+            Accion(nombre=n, descripcion=encargo.ACCIONES[n][0], params=dict(encargo.ACCIONES[n][1]))
+            for n in encargo.acciones_de(e)]
+        texto = " ".join(str(e.get("texto", "")).split())
+        return Objeto(direccion=direccion_de("encargo", e["id"]), tipo="encargo", id=e["id"], titulo=texto[:80],
+                      estado=str(e.get("estado", "pedido")), resumen=texto[:400], campos=campos, enlaces=enlaces,
+                      acciones=acciones, version="" if en_camino else encargo.version(e),
+                      maquina=maquina or str(e.get("maquina", "")))
+
+    def _donde(self, ctx, d: Direccion) -> tuple[str, dict | None]:
+        """(la máquina donde buscarlo, la nota de quien lo mandó) de uno que no está aquí."""
+        from telar import bus as mod_bus
+        from telar import encargo
+
+        nota = encargo.enviado(ctx.config, d.id)
+        maquina = d.maquina or (nota or {}).get("maquina", "")
+        if not maquina and nota and nota.get("para") and mod_bus.hay_bus(ctx.config):
+            maquina = mod_bus.maquina_de(ctx.config, nota["para"])
+        return maquina, nota
+
+    def _de_otra(self, ctx, d: Direccion, pedido: dict):
+        """Lo que responde la máquina donde vive: (respuesta, máquina, nota), o levanta ErrorDeServicio. La
+        respuesta es None si allá no está (todavía) y hay nota de quien lo mandó."""
+        from telar import bus as mod_bus
+
+        aqui = mod_bus.maquina(ctx.config) if mod_bus.hay_bus(ctx.config) else ""
+        maquina, nota = self._donde(ctx, d)
+        if not maquina or maquina == aqui or not mod_bus.hay_bus(ctx.config):
+            if nota is not None:
+                return None, maquina, nota
+            raise ErrorDeServicio(f"no hay un encargo {d.id} aquí, ni se sabe de qué máquina es (encargo:{d.id}@máquina)", 404)
+        r = mod_bus.pedir(ctx.config, maquina, "encargo", {"id": d.id, **pedido}, espera=20)
+        if r.get("ok"):
+            return r, maquina, nota
+        if r.get("codigo") == 404 and nota is not None and not pedido.get("accion"):
+            return None, maquina, nota  # todavía no lo recoge su nodo
+        raise ErrorDeServicio(r.get("error") or f"{maquina} no respondió", int(r.get("codigo") or 502))
+
+    def ver(self, ctx, d):
+        from telar import encargo
+
+        e = encargo.leer(ctx.config, d.id) if encargo.FORMA_ID.fullmatch(d.id) else None
+        if e is None and not encargo.FORMA_ID.fullmatch(d.id):
+            raise ErrorDeServicio(f"«{d.id}» no es el id de un encargo: e- y ocho cifras hex (encargo:e-1a2b3c4d)", 404)
+        if e is not None:
+            return self._objeto(ctx, e)
+        r, maquina, nota = self._de_otra(ctx, d, {})
+        if r is None:
+            # en camino: lo que anotó quien lo mandó
+            return self._objeto(ctx, {**nota, "estado": "pedido"}, maquina, en_camino=True)
+        return self._objeto(ctx, r["encargo"], maquina)
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        from telar import encargo
+        from telar.ordenes.mensaje import remitente
+
+        quien = remitente(ctx)
+        if encargo.leer(ctx.config, d.id) is not None:
+            try:
+                e = encargo.hacer(ctx, d.id, accion, params, version_leida=version, quien=quien)
+            except encargo.ErrorDeEncargo as ex:
+                raise ErrorDeServicio(str(ex), ex.codigo) from ex
+            return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, e))
+        if not encargo.FORMA_ID.fullmatch(d.id):
+            raise ErrorDeServicio(f"«{d.id}» no es el id de un encargo: e- y ocho cifras hex (encargo:e-1a2b3c4d)", 404)
+        r, maquina, _ = self._de_otra(ctx, d, {"accion": accion, "params": params, "version": version, "quien": quien})
+        if r is None:
+            raise ErrorDeServicio(f"encargo:{d.id} todavía no llega a su máquina: no se le puede {accion}", 409)
+        return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, r["encargo"], maquina))
+
+
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

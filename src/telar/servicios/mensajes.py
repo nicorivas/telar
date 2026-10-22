@@ -32,19 +32,70 @@ class Enviado(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "") -> Enviado:
-    """Un mensaje para un hilo o un agente, por el bus. `de` vacío: el hilo de quien escribe o la persona."""
+def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", modo: str = "pedido",
+           plazo: str = "") -> Enviado:
+    """Un mensaje para un hilo o un agente, por el bus. `de` vacío: el hilo de quien escribe o la persona.
+    `modo`: aviso, pedido (el de siempre) o encargo, que trae `encargo` y su `direccion`; la consulta no se
+    manda (`consultar`)."""
     from telar import bus as mod_bus
     from telar.ordenes.mensaje import enviar as mandar
 
     if not para.strip():
         raise ErrorDeServicio("¿para quién? telar mensaje <hilo> \"texto\"", 422)
+    if modo == "consulta":
+        raise ErrorDeServicio("una consulta no se manda: se lee (telar mensaje <hilo> --modo consulta, "
+                              "GET /mensajes/consulta?para=…)", 422)
     if not texto.strip():
         raise ErrorDeServicio("¿qué le digo? el texto está vacío", 422)
     try:
-        return Enviado(**mandar(ctx, para, texto, tipo=tipo, de=de))
+        # el modo, solo si no es el de siempre: un pedido se manda exactamente como antes
+        con_modo = {k: v for k, v in (("modo", modo), ("plazo", plazo)) if v and v != "pedido"}
+        return Enviado(**mandar(ctx, para, texto, tipo=tipo, de=de, **con_modo))
+    except ValueError as e:
+        raise ErrorDeServicio(str(e), 422) from e
     except mod_bus.ErrorDeBus as e:
         raise ErrorDeServicio(str(e), 502) from e
+
+
+class Consulta(BaseModel):
+    """`--modo consulta`: el hilo como objeto (`hilo:<nombre>`, telar.objetos) y lo último de su conversación
+    (`telar hilo leer`), o `problema` si eso no se pudo leer. No le llega nada al hilo."""
+
+    modo: str = "consulta"
+    para: str
+    objeto: dict
+    ultimos: dict | None = None
+    problema: str = ""
+
+
+#: cuántos turnos trae una consulta
+TURNOS_CONSULTA = 3
+
+
+def consultar(ctx, para: str) -> Consulta:
+    """En qué anda un hilo (o el de un agente, por su carpeta o su nombre), sin entrar a su conversación: lo que
+    hacen `telar ficha` y `telar hilo leer`, juntos."""
+    from telar import agentes as mod_agentes
+    from telar import bus as mod_bus
+    from telar import objetos
+    from telar.ordenes.mensaje import _por_nombre
+    from telar.servicios import historias
+
+    if not para.strip():
+        raise ErrorDeServicio("¿de quién? telar mensaje <hilo> --modo consulta", 422)
+    try:
+        nombre = _por_nombre(ctx, para.strip())
+    except mod_bus.ErrorDeBus as e:
+        raise ErrorDeServicio(str(e), 404) from e
+    agente = next((a for a in mod_agentes.descubrir(ctx.config) if nombre in (a.clave, a.nombre)), None)
+    nombre = agente.nombre if agente is not None else nombre
+    objeto = objetos.ver(ctx, objetos.direccion_de("hilo", nombre))
+    ultimos, problema = None, ""
+    try:
+        ultimos = historias.leer(ctx, objeto.id, ultimos=TURNOS_CONSULTA, maquina=objeto.maquina).model_dump(mode="json")
+    except ErrorDeServicio as e:
+        problema = str(e)
+    return Consulta(para=objeto.id, objeto=objeto.model_dump(mode="json"), ultimos=ultimos, problema=problema)
 
 
 def soltar(ctx, mid: str) -> Enviado:

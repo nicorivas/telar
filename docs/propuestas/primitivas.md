@@ -166,7 +166,12 @@ Cada uno deja todo funcionando.
    el `agente.toml` de cada residente y usa `nombre`, `para`, `modelo` y `residente`; `telar agentes` y
    `agente:<carpeta>` muestran lo declarado. Falta que el hilo guarde su agente y usar los demás campos.
 4. **Mensajes con modos y el Encargo**: `mensaje --modo aviso|pedido|encargo|consulta`, el objeto Encargo
-   y la tabla de intenciones. Con eso se le puede encargar a un hilo de proyecto, no solo a un residente.
+   y la tabla de intenciones. Con eso se le puede encargar a un hilo de proyecto, no solo a un residente. El
+   diseño, las decisiones abiertas y lo que falta están en [mensajes-con-modos.md](mensajes-con-modos.md).
+   Primer paso hecho (22-oct-2026): los cuatro modos en `telar mensaje` y en la casilla (`pedido` por defecto;
+   el aviso espera sin despertar), y el Encargo como tipo de objeto (`encargo:e-1a2b3c4d`), guardado en la
+   máquina de quien lo hace, con `aceptar`, `rechazar` y `cerrar`, y el resultado de vuelta a quien lo pidió.
+   Falta la tabla de intenciones, el estado por destinatario y fundir `telar encargar`.
    Antes, las fallas del bus: ~~los `nats: timeout`, el «Slow Consumer» del laptop, el registro del nodo
    que crece sin tope~~: hecho (22-oct-2026). Las fallas son una línea y el registro tiene tope; los
    pedidos se atienden aparte, el vigía no se atrasa y las lecturas y los envíos se repiten una vez. Lo que

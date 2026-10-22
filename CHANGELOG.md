@@ -8,6 +8,14 @@ extension shared the version number.
 
 ### Added
 
+- Messages have a mode: `telar mensaje --modo aviso|pedido|encargo|consulta` (also `modo` in `POST /mensajes`).
+  `pedido`, the default, is what a message always was. An `aviso` waits in the thread's inbox without waking
+  it (no «↯», no session opened, no longer turn) and comes in with its next turn. An `encargo` creates a task
+  object, `encargo:<id>`, kept on the receiver's machine, that it accepts, rejects or closes with a result
+  (`telar objeto encargo:<id> aceptar|rechazar|cerrar`); closing it sends the result back to the thread that
+  asked, and it can be opened from any machine (a new `encargo` request to that machine's node). A `consulta`
+  sends nothing: it returns the thread's card and its last turns (also `GET /mensajes/consulta`). `telar
+  encargar` is unchanged.
 - Addresses and objects (`telar.objetos`). Anything has one address, `type:id[@machine]` (`tarea:T366`,
   `hilo:Telar`, `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`), and `telar objeto <address>
   [action]` (also `GET /objetos/<address>` and `POST /objetos/<address>/acciones/<action>`) shows it, with its

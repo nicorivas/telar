@@ -18,6 +18,9 @@ el primer paso sin hacer de la primera propuesta.
    El paso 3, el agente como definición, tiene su diseño aparte:
    **[agente-como-definicion.md](agente-como-definicion.md)** (`agente.toml`: qué es, cómo convive con lo de
    hoy y las decisiones que faltan). Su primer paso está hecho.
+   El paso 4, los mensajes con modos y el Encargo, también:
+   **[mensajes-con-modos.md](mensajes-con-modos.md)** (aviso, pedido, encargo y consulta; el Encargo como
+   objeto; cómo se funde `telar encargar`). Su primer paso está hecho.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
    que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
 4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores

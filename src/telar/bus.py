@@ -82,14 +82,20 @@ def tema_rpc(config, quien_maquina: str, verbo: str, quien: str = "") -> str:
 
 
 def mensaje(texto: str, *, de: str, para: str, tipo: str = "mensaje", mid: str = "", persona: str = "",
-            saltos: int = 0) -> dict:
+            saltos: int = 0, modo: str = "pedido", extra: dict | None = None) -> dict:
     """`persona`: de quién es el hilo que lo manda. `saltos`: cuántos mensajes entre hilos lleva la
-    cadena sin que la persona hablara (0: lo empezó ella, o un periódico)."""
+    cadena sin que la persona hablara (0: lo empezó ella, o un periódico). `modo` (telar.casilla): va en el
+    mensaje solo si no es `pedido`, así un pedido queda como siempre; `extra`, lo que lleva un modo (el id del
+    encargo, su plazo, a quién responder)."""
     from telar import casilla
 
-    return {"id": mid or casilla.nuevo_id(), "de": de, "para": para, "tipo": tipo, "texto": texto,
-            "persona": persona, "saltos": saltos,
-            "creado": datetime.now().astimezone().isoformat(timespec="seconds")}
+    m = {"id": mid or casilla.nuevo_id(), "de": de, "para": para, "tipo": tipo, "texto": texto,
+         "persona": persona, "saltos": saltos,
+         "creado": datetime.now().astimezone().isoformat(timespec="seconds")}
+    if modo and modo != "pedido":
+        m["modo"] = modo
+    m.update({k: v for k, v in (extra or {}).items() if k not in m and v not in ("", None)})
+    return m
 
 
 def _token(config) -> str:
@@ -303,14 +309,15 @@ async def asegurar(js) -> None:
 
 
 def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", quien: str = "", saltos: int = 0,
-           mid: str = "", retener: str = "") -> dict:
+           mid: str = "", retener: str = "", modo: str = "pedido", extra: dict | None = None) -> dict:
     """Publica un mensaje para el hilo `para` (de esta persona, o de `quien`). Devuelve el mensaje.
 
     Con `retener` (el motivo) no va a la casilla: queda solo en el registro, retenido, hasta que la
-    persona lo suelte (`telar mensaje --soltar`)."""
+    persona lo suelte (`telar mensaje --soltar`). `modo` y `extra`, como en `mensaje`."""
     if not hay_bus(config):
         raise ErrorDeBus("no hay bus: [bus] url en la configuración")
-    m = mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona=persona(config), saltos=saltos)
+    m = mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona=persona(config), saltos=saltos, modo=modo,
+                extra=extra)
     #: cuántas veces se alcanzó a pedir la publicación en la casilla (la del reintento incluida)
     publicaciones = []
 

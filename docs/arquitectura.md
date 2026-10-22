@@ -128,7 +128,7 @@ Por el bus viajan:
 | los mensajes | stream `TELAR_CASILLAS`, tema `casilla.<persona>.<hilo>` | esperan hasta que los recoja la máquina donde vive el hilo; el mismo id no se guarda dos veces |
 | el estado | almacén `TELAR_HILOS`, clave `<persona>.<hilo>` | dónde vive cada hilo, en qué anda, su conversación, su vínculo y si está archivado; cada máquina publica los suyos y se entera de los demás al instante |
 | la foto | almacén `TELAR_ESPEJO`, cada 30 s | los hilos de cada máquina y la dirección de su página |
-| los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo |
+| los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo, un encargo que vive allá |
 | el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
 
 Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
@@ -155,6 +155,17 @@ aviso («↯ mensaje nuevo · …», nunca el contenido), y el gancho `UserPromp
 - sin el mod (o con esa señal vieja de más de 30 s), el nodo teclea el aviso en la terminal del hilo.
 
 Un hilo cerrado se abre retomando su conversación.
+
+**El modo de un mensaje** (`telar mensaje --modo`, docs/propuestas/mensajes-con-modos.md) dice qué espera
+quien lo manda. Sin modo es un `pedido`: lo de arriba. Un `aviso` espera aparte (`<casilla>/avisos/`): el
+nodo no lo avisa, el mod no lo ve y el gancho `Stop` no alarga el turno por él; entra con el próximo turno
+del hilo, junto a lo que llegue. Un `encargo` despierta como un pedido y, al dejarlo en la casilla, crea su
+**Encargo** (`telar.encargo`, `<estado>/encargos/objetos/<id>.json`): un objeto `encargo:<id>` con estado
+(`pedido → aceptado → hecho | falló | cancelado`), quién lo pidió, plazo y resultado, que el hilo acepta y
+cierra (`telar objeto encargo:<id> cerrar`); al cerrarlo, a quien lo pidió le llega un mensaje con el
+resultado. Quien lo manda guarda una nota (`<estado>/encargos/enviados/<id>.json`) para abrirlo después desde
+su máquina, con el pedido `encargo` al nodo de allá. Una `consulta` no viaja: es la ficha del hilo y sus
+últimos turnos. `telar encargar` sigue aparte, con su cola (`telar.encargos`).
 
 **Entre hilos de una misma persona no hay aprobación.** El mensaje de un hilo propio llega como pedido
 de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay frenos: cada mensaje

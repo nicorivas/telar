@@ -305,6 +305,12 @@ def get_mensajes(n: int = 40, retenidos: bool = False, ctx: Contexto = Depends(c
     return servicio_mensajes.registro(ctx, n, retenidos=retenidos)
 
 
+@app.get("/mensajes/consulta", response_model=servicio_mensajes.Consulta)
+def get_consulta(para: str, ctx: Contexto = Depends(contexto)):
+    """En qué anda un hilo, sin mandarle nada (`telar mensaje <hilo> --modo consulta --json`)."""
+    return servicio_mensajes.consultar(ctx, para)
+
+
 @app.get("/conversaciones/{sid}", response_model=servicio_conversaciones.Conversacion)
 def get_conversacion(sid: str, ctx: Contexto = Depends(contexto)):
     """Una conversación del agente, entera (`telar agente conversacion <id> --json`)."""
@@ -319,12 +325,17 @@ class PedidoMensaje(BaseModel):
     tipo: str = "mensaje"
     #: quién lo manda; vacío, la persona (el panel escribe como ella: «persona»)
     de: str = ""
+    #: aviso, pedido (el de siempre) o encargo (docs/propuestas/mensajes-con-modos.md)
+    modo: str = "pedido"
+    #: con modo encargo: para cuándo (2026-10-24)
+    plazo: str = ""
 
 
 @app.post("/mensajes", response_model=servicio_mensajes.Enviado)
 def post_mensaje(pedido: PedidoMensaje, ctx: Contexto = Depends(contexto)):
     """Un mensaje para un hilo o un agente de cualquier máquina, por el bus (`telar mensaje`)."""
-    return servicio_mensajes.enviar(ctx, pedido.para, pedido.texto, tipo=pedido.tipo, de=pedido.de)
+    return servicio_mensajes.enviar(ctx, pedido.para, pedido.texto, tipo=pedido.tipo, de=pedido.de, modo=pedido.modo,
+                                    plazo=pedido.plazo)
 
 
 @app.post("/mensajes/{mid}/soltar", response_model=servicio_mensajes.Enviado)

@@ -18,7 +18,7 @@ MARCA = "<!-- instalada por `telar agente instalar`; `telar agente desinstalar` 
 
 SKILL = f"""---
 name: hilos
-description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, leer lo que pasó en otra, escribirles (mensaje nativo o correo entre agentes), encargarle algo a un agente residente, responder un correo que llegó y nombrar o abrir algo por su dirección (tarea:T84, hilo:Faro). Úsala cuando haya que hablar con "otra sesión", "otro hilo", "otro agente", "escríbele a", "pregúntale a", "encárgale a", "qué hilos hay", "de qué trata ese hilo", "qué dijo ese hilo", o cuando llegue un "[correo de agente]".
+description: Relacionarse con otros hilos de telar y otras sesiones de agente — saber qué sesiones hay, de qué trata cada una, leer lo que pasó en otra, escribirles (mensaje nativo o correo entre agentes), encargarle algo a un agente residente, responder un correo que llegó, nombrar o abrir algo por su dirección (tarea:T84, hilo:Faro) y encargarle algo a un hilo con resultado (--modo encargo) o avisarle sin despertarlo. Úsala cuando haya que hablar con "otra sesión", "otro hilo", "otro agente", "escríbele a", "pregúntale a", "encárgale a", "qué hilos hay", "de qué trata ese hilo", "qué dijo ese hilo", o cuando llegue un "[correo de agente]".
 ---
 
 {MARCA}
@@ -95,6 +95,24 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
   `[correo de agente]` que te llega trae el id y el comando con `mail`.
 - Sin bus, un hilo del laptop no tiene casilla: solo recibe mensajes nativos de su misma
   máquina. No le prometas a nadie que le va a llegar un correo.
+
+## Qué esperas: el modo
+
+`telar mensaje` (con bus) dice qué esperas con `--modo`; sin él es un pedido, lo de siempre.
+
+- `--modo aviso`: para que lo sepa, sin interrumpirlo. Espera en su casilla y le entra con su
+  próximo turno; no lo despierta ni abre a un agente cerrado.
+- `--modo pedido`: lo despierta y no esperas respuesta (o la contesta con otro mensaje).
+- `--modo encargo [--plazo 2026-10-24]`: algo que tiene que hacer y del que quieres saber cómo
+  terminó. Crea un encargo con dirección (`encargo:e-1a2b3c4d`, en la salida) que el otro acepta y
+  cierra con un resultado; al cerrarlo te llega un mensaje con lo que pasó. `telar objeto
+  encargo:<id>` dice en qué va, desde cualquier máquina.
+- `--modo consulta` (sin texto): en qué anda, sin entrar a su conversación (su ficha y lo último
+  que pasó). No le llega nada.
+- **Si te llega un encargo** («[encargo `encargo:…` de …]»): tómalo con `telar objeto encargo:<id>
+  aceptar`, o recházalo diciendo por qué (`rechazar --params '{{"motivo": "…"}}'`). Al terminar,
+  ciérralo con el resultado: `telar objeto encargo:<id> cerrar --params '{{"resultado": "…"}}'`
+  (con `"estado": "falló"` si no se pudo). Sin cerrarlo, quien te lo pidió no se entera.
 
 ## Nombrar las cosas: direcciones
 

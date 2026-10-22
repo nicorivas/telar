@@ -687,6 +687,47 @@ Un agente residente es `agente:<carpeta>` (`agente:faro`; también vale su nombr
 En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
 en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`
 no mira la máquina: la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten.
+Su acción `mensaje` acepta además `modo` (`aviso`, `pedido` o `encargo`; la de `telar mensaje --modo`).
+
+Un encargo es `encargo:<id>` (`encargo:e-1a2b3c4d`, telar.encargo): lo crea `telar mensaje --modo encargo` al
+llegar a su destinatario, y vive en la máquina de quien lo hace. Su `estado` es `pedido`, `aceptado`,
+`corriendo`, `hecho`, `falló` o `cancelado`; su `titulo` y su `resumen`, el texto. `campos`: `de` (quién lo
+pidió), `para` (el hilo que lo hace), `responder_a` (el hilo al que se le avisa al cerrarlo), `plazo`,
+`vencido` (si el plazo pasó y no está cerrado), `resultado`, `rechazado`, `creado`, `actualizado`, `mensaje`
+(el id del mensaje que lo trajo) e `historia` (`[{hora, estado, quien, nota?}]`), los que tenga. Enlaza a sus
+hilos y a las direcciones que nombra su texto. Sus acciones, mientras no esté cerrado: `aceptar` (solo en
+`pedido`), `rechazar` (`{"motivo": …}`: queda `cancelado`, con `rechazado: true` y el motivo como resultado) y
+`cerrar` (`{"resultado": …, "estado": "hecho" | "falló"}`); rechazar y cerrar le mandan a `responder_a` un
+mensaje con el resultado. Desde otra máquina se abre igual: se le pide a la suya (el pedido `encargo` de su
+nodo), que es la de `@máquina`, la de la nota que guardó quien lo mandó o la del hilo al que se mandó. Mientras
+no llega, quien lo mandó lo ve con `en_camino: true`, en `pedido` y sin acciones. Una máquina con un telar de
+antes no atiende `encargo` (502, «no atiende»).
+
+### `telar mensaje <hilo> "…" --json`
+
+Un mensaje para un hilo o un agente, por el bus (también `POST /mensajes`, cuerpo `{para, texto, tipo, de, modo,
+plazo}`). Responde el mensaje como quedó:
+
+```json
+{"id": "20261022101500-1a2b3c4d", "de": "Molino", "para": "Faro", "tipo": "mensaje", "texto": "…",
+ "persona": "ana", "saltos": 1, "creado": "…", "secuencia": 812, "duplicado": false}
+```
+
+y `"estado": "retenido"` con su `motivo` si se retuvo (sale con 3). `--modo` dice qué espera quien manda
+(docs/propuestas/mensajes-con-modos.md):
+
+- `pedido`, el de siempre: despierta. El mensaje no lleva `modo`, y queda igual que antes.
+- `aviso`: `"modo": "aviso"`. Espera en la casilla (`<casilla>/avisos/`) y entra con el próximo turno del hilo;
+  no lo despierta ni abre a un agente cerrado.
+- `encargo`: `"modo": "encargo"`, más `encargo` (el id), `direccion` (`encargo:<id>`), `plazo` si se dio
+  (`--plazo 2026-10-24`, o fecha y hora ISO) y `responder_a` (el hilo que lo manda, si lo manda un hilo). El
+  Encargo se crea al llegar (arriba, en `telar objeto`).
+- `consulta` (sin texto; también `GET /mensajes/consulta?para=…`): no manda nada. Responde
+  `{"modo": "consulta", "para", "objeto": {…}, "ultimos": {…} o null, "problema"}`: `objeto` es el hilo como en
+  `telar objeto hilo:<nombre>`, `ultimos`, sus últimos tres turnos como en `telar hilo leer --json`, y `problema`
+  dice por qué no se pudo leer su conversación.
+
+Un modo que no se conoce, un plazo sin `--modo encargo` o un plazo que no es fecha: 2 en la CLI, 422 en la API.
 
 ### `telar agentes [agente] --json`
 

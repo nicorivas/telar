@@ -12,7 +12,15 @@ Teclear contenido en un panel lo cortaba y no confirmaba nada; aquí el texto nu
 Cada mensaje tiene id: llegar dos veces no lo duplica, y al entregarlo queda marcado.
 
     <estado>/casillas/<hilo>/<id>.json             pendiente
+    <estado>/casillas/<hilo>/avisos/<id>.json      pendiente, de los que no despiertan (modo «aviso»)
     <estado>/casillas/<hilo>/entregados/<id>.json  ya entró a la conversación
+
+Cada mensaje tiene un **modo** (docs/propuestas/mensajes-con-modos.md); sin él, `pedido`, lo de siempre:
+
+    aviso      espera aparte y no despierta: el nodo no teclea el «↯», el mod no lo ve y `Stop` no alarga el
+               turno por él. Entra con el próximo turno del hilo (su persona le escribe, o llega un pedido)
+    pedido     despierta, como siempre
+    encargo    despierta, y al dejarlo aquí se crea su Encargo (telar.encargo), que el hilo acepta y cierra
 """
 
 from __future__ import annotations
@@ -58,13 +66,30 @@ def aviso(config, hilo: str) -> str:
     mensajes = pendientes(config, hilo)
     if not mensajes:
         return AVISO
-    m = mensajes[0]
+    # el resumen, de lo que despierta: un aviso que esperaba no es lo que lo trae
+    m = next((x for x in mensajes if despierta(x)), mensajes[0])
     tipo = {"encargo": "encargo", "persona": "tu persona"}.get(m.get("tipo", ""), "mensaje")
+    if modo_de(m) == "encargo" and tipo == "mensaje":
+        tipo = "encargo"
     primera = " ".join(str(m.get("texto", "")).split())
     primera = re.sub(r"[^\w\s/«».,:;¿?¡!()@-]", "", primera)[:70]
     resumen = f"{tipo} de {m.get('de') or 'alguien'}: {primera}" if tipo != "tu persona" else f"tu persona: {primera}"
     otros = f" (+{len(mensajes) - 1})" if len(mensajes) > 1 else ""
     return f"{AVISO} · {resumen}{otros}"
+
+
+#: los modos que viajan en un mensaje («consulta» no viaja: lee sin dejar nada)
+MODOS = ("aviso", "pedido", "encargo")
+
+
+def modo_de(m: dict) -> str:
+    """El modo de un mensaje: sin el campo (o con uno que no se conoce), `pedido`, lo de siempre."""
+    modo = str(m.get("modo") or "pedido")
+    return modo if modo in MODOS else "pedido"
+
+
+def despierta(m: dict) -> bool:
+    return modo_de(m) != "aviso"
 
 
 def nuevo_id() -> str:
@@ -73,18 +98,55 @@ def nuevo_id() -> str:
     return f"{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:8]}"
 
 
+#: dónde espera un aviso: aparte, para que el mod (que mira solo los .json de la casilla) no lo tome por un
+#: mensaje que despierta
+AVISOS = "avisos"
+
+
+def _archivo(config, hilo: str, mid: str) -> Path | None:
+    """Dónde está un mensaje pendiente (con los demás, o entre los avisos); None si no está."""
+    d = carpeta(config, hilo)
+    for f in (d / f"{mid}.json", d / AVISOS / f"{mid}.json"):
+        if f.exists():
+            return f
+    return None
+
+
 def dejar(config, hilo: str, mensaje: dict) -> bool:
-    """Deja un mensaje en la casilla. False si ya estaba (pendiente o entregado): no se duplica."""
+    """Deja un mensaje en la casilla. False si ya estaba (pendiente o entregado): no se duplica.
+
+    Un aviso, aparte (`avisos/`). Un encargo crea aquí su Encargo (telar.encargo), una sola vez: el mismo
+    mensaje dos veces no lo duplica."""
     mid = re.sub(r"[^\w.-]+", "_", str(mensaje.get("id") or nuevo_id()))
     d = carpeta(config, hilo)
-    if (d / f"{mid}.json").exists() or (d / "entregados" / f"{mid}.json").exists():
+    if _archivo(config, hilo, mid) is not None or (d / "entregados" / f"{mid}.json").exists():
         return False
-    d.mkdir(parents=True, exist_ok=True)
+    destino = d if despierta(mensaje) else d / AVISOS
+    destino.mkdir(parents=True, exist_ok=True)
     cuerpo = {"id": mid, "hilo": hilo, "llego": datetime.now().isoformat(timespec="seconds"), **mensaje}
-    tmp = d / f".{mid}.tmp"
+    if modo_de(cuerpo) == "encargo":
+        _crear_encargo(config, cuerpo)
+    tmp = destino / f".{mid}.tmp"
     tmp.write_text(json.dumps(cuerpo, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, d / f"{mid}.json")
+    os.replace(tmp, destino / f"{mid}.json")
     return True
+
+
+def _crear_encargo(config, cuerpo: dict) -> None:
+    """El Encargo de un mensaje `modo = "encargo"`, antes de dejarlo: cuando el hilo lo lea, ya existe. Si no se
+    puede escribir, el mensaje llega igual (con la dirección del encargo en lo que se le entrega)."""
+    from telar import encargo
+
+    try:
+        from telar import bus as mod_bus
+
+        maquina = mod_bus.maquina(config)
+    except Exception:  # noqa: BLE001 - sin saber el nombre de la máquina, el encargo se crea igual
+        maquina = ""
+    try:
+        encargo.recibir(config, cuerpo, maquina)
+    except (OSError, encargo.ErrorDeEncargo):
+        pass
 
 
 #: la señal de vida del mod de Claude Code (telar/mod/): un archivo en la casilla que el mod toca cada
@@ -105,14 +167,21 @@ def mod_vivo(config, hilo: str, ahora: float | None = None) -> bool:
 
 
 def pendientes(config, hilo: str) -> list[dict]:
+    """Lo que espera en la casilla, los avisos incluidos, en el orden en que llegó (el id empieza por la hora)."""
     d = carpeta(config, hilo)
+    archivos = [*d.glob("*.json"), *(d / AVISOS).glob("*.json")] if d.is_dir() else []
     salida = []
-    for f in sorted(d.glob("*.json")) if d.is_dir() else []:
+    for f in sorted(archivos, key=lambda f: f.name):
         try:
             salida.append(json.loads(f.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             continue
     return salida
+
+
+def despiertan(config, hilo: str) -> list[dict]:
+    """Lo pendiente que despierta al hilo: todo menos los avisos."""
+    return [m for m in pendientes(config, hilo) if despierta(m)]
 
 
 def mudar(config, viejo: str, nuevo: str) -> int:
@@ -124,8 +193,10 @@ def mudar(config, viejo: str, nuevo: str) -> int:
     for m in pendientes(config, viejo):
         dejar(config, nuevo, {**m, "hilo": nuevo})
         try:
-            (carpeta(config, viejo) / f"{m['id']}.json").unlink()
-            pasados += 1
+            archivo = _archivo(config, viejo, str(m["id"]))
+            if archivo is not None:
+                archivo.unlink()
+                pasados += 1
         except (OSError, KeyError):
             pass
     return pasados
@@ -135,8 +206,10 @@ def marcar_entregados(config, hilo: str, ids: list[str]) -> None:
     d = carpeta(config, hilo)
     (d / "entregados").mkdir(parents=True, exist_ok=True)
     for mid in ids:
+        archivo = _archivo(config, hilo, mid)
         try:
-            os.replace(d / f"{mid}.json", d / "entregados" / f"{mid}.json")
+            if archivo is not None:
+                os.replace(archivo, d / "entregados" / f"{mid}.json")
         except OSError:
             pass
 
@@ -147,7 +220,8 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
     Lo de un hilo de la misma persona es de un colega: se atiende sin consultarla, salvo lo que sale
     al mundo o no se puede deshacer. Lo de otra persona sigue siendo solo un mensaje."""
     partes, ids, largo = [], [], 0
-    propios = ajenos = colegas = False
+    propios = ajenos = colegas = avisos = False
+    encargados = []
     for m in mensajes:
         de = m.get("de") or "alguien"
         cuando = str(m.get("creado", ""))[:16].replace("T", " ")
@@ -157,12 +231,20 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
             bloque = f"[tu persona te escribe desde {de}, {cuando}]\n{m.get('texto', '').strip()}"
         else:
             tipo = "encargo" if m.get("tipo") == "encargo" else "mensaje"
+            plazo = ""
+            if modo_de(m) == "aviso":
+                tipo, avisos = "aviso", True
+            elif modo_de(m) == "encargo" and m.get("encargo"):
+                # la dirección va en la cabecera: con ella el hilo lo acepta y lo cierra
+                tipo = f"encargo `encargo:{m['encargo']}`"
+                plazo = f", plazo {m['plazo']}" if m.get("plazo") else ""
+                encargados.append(str(m["encargo"]))
             otra = bool(persona and m.get("persona") and m["persona"] != persona)
             ajenos |= otra
             colegas |= not otra
             cadena = f", salto {m.get('saltos', 0)} de {TOPE_SALTOS}" if m.get("saltos") else ""
             ajena = f" (otra persona: {m['persona']})" if otra else ""
-            bloque = f"[{tipo} de {de}{ajena}, {cuando}, id {m['id']}{cadena}]\n{m.get('texto', '').strip()}"
+            bloque = f"[{tipo} de {de}{ajena}, {cuando}, id {m['id']}{plazo}{cadena}]\n{m.get('texto', '').strip()}"
         if partes and largo + len(bloque) > MAX_ENTREGA:
             break
         partes.append(bloque)
@@ -185,6 +267,15 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
                           "díselo a tu persona y espera.")
     if propios:
         encabezado.append("Lo marcado «tu persona te escribe» es de ella.")
+    if avisos:
+        encabezado.append("Lo marcado «aviso» es para que lo sepas: no pide nada ni espera respuesta.")
+    if encargados:
+        e = f"encargo:{encargados[0]}"
+        encabezado.append(
+            f"Lo marcado «encargo `encargo:…`» espera respuesta y queda registrado: tómalo con `telar objeto {e} "
+            f"aceptar` (o `rechazar --params '{{\"motivo\": \"…\"}}'` si no te corresponde) y, al terminar, "
+            f"ciérralo con `telar objeto {e} cerrar --params '{{\"resultado\": \"…\"}}'` (con "
+            "`\"estado\": \"falló\"` si no se pudo): eso le avisa a quien lo pidió.")
     return "\n".join(encabezado) + "\n\n" + "\n\n".join(partes), ids
 
 
@@ -219,6 +310,8 @@ def para_gancho(config, hilo: str, evento: str, prompt: str = "", persona: str =
     if evento == "UserPromptSubmit" and prompt.strip() and not prompt.strip().startswith(AVISO):
         anotar_cadena(config, hilo, 0)
     todos = pendientes(config, hilo)
+    if evento == "Stop" and not any(despierta(m) for m in todos):
+        return ""  # solo avisos: esperan al próximo turno, no alargan este
     texto, ids = como_texto(todos, persona)
     if not ids:
         return ""

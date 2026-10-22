@@ -360,7 +360,7 @@ class Nodo:
                           ("hilo", self._hilo), ("equipo", self._equipo), ("aviso", self._aviso),
                           ("archivo", self._archivo), ("archivo-leer", self._archivo_leer), ("modulo", self._modulo),
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
-                          ("serie-recordar", self._serie_recordar)):
+                          ("serie-recordar", self._serie_recordar), ("encargo", self._encargo)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
@@ -464,18 +464,27 @@ class Nodo:
                 self.anotar(f"«{viejo}» ahora es «{nuevo}»: {pasados} mensaje(s) de su casilla vieja pasan a la nueva")
         caminos = [(n, n) for n in locales] + list(renombrados.items())
         nuevos: dict[str, int] = {}
+        callados: dict[str, int] = {}
         encargos: set[str] = set()
         for (fuente, nombre), msgs in zip(caminos, await asyncio.gather(*(pedir(f) for f, _ in caminos))):
             for m in msgs:
                 try:
                     datos = json.loads(m.data)
                     if await asyncio.to_thread(casilla.dejar, self.config, nombre, datos):
-                        nuevos[nombre] = nuevos.get(nombre, 0) + 1
-                        if isinstance(datos, dict) and datos.get("tipo") == "encargo":
+                        if isinstance(datos, dict) and not casilla.despierta(datos):
+                            # un aviso: queda en su casilla, sin despertarlo ni abrir su sesión
+                            callados[nombre] = callados.get(nombre, 0) + 1
+                        else:
+                            nuevos[nombre] = nuevos.get(nombre, 0) + 1
+                        # un encargo explícito (`telar encargar`, un periódico, `--modo encargo`) abre a un agente
+                        # aunque no sea residente
+                        if isinstance(datos, dict) and (datos.get("tipo") == "encargo" or casilla.modo_de(datos) == "encargo"):
                             encargos.add(nombre)
                 except ValueError:
                     self.anotar(f"«{fuente}»: un mensaje que no es JSON, descartado")
                 await m.ack()
+        for nombre, cuantos in callados.items():
+            self.anotar(f"«{nombre}»: {cuantos} aviso(s) en su casilla, sin despertarlo")
         for nombre, cuantos in nuevos.items():
             dicho = await asyncio.to_thread(self.avisar, nombre, locales[nombre], nombre in encargos)
             self.anotar(f"«{nombre}»: {cuantos} mensaje(s) · {dicho}")
@@ -872,6 +881,13 @@ class Nodo:
             return alla.tarea_aqui(argv)
 
         await self._responder(m, correr)
+
+    async def _encargo(self, m) -> None:
+        """Un encargo que vive aquí (telar.encargo), pedido desde otra máquina: `{id}` lo devuelve, y con `accion`
+        se la aplica (aceptar, rechazar, cerrar). En fila: una acción lee y reescribe su archivo."""
+        from telar import encargo
+
+        await self._responder(m, lambda p: encargo.atender(self.ctx, p))
 
     async def _tipo(self, m) -> None:
         """`telar tipo …` corrido aquí, para otra máquina: leer, crear o cambiar los objetos de un tipo que
