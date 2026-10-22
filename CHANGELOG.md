@@ -8,6 +8,11 @@ extension shared the version number.
 
 ### Added
 
+- `[vistas.<key>]` in the configuration: what is shown (`comando`, `archivo`, `url`, or `carpeta`/`en` for a
+  daily result) and where it appears (`aparece = "pestana" | "plan" | "apps" | "hilos" | "dia"`). It replaces
+  `[bloques]`, `[apps]`, `[secciones]` and `[resultados]`, which are still read: each view is translated to its
+  old table when the configuration is loaded, so nothing else changes. A name declared in both forms is an
+  error, and `telar doctor` has a new `vistas` check that suggests the view for each old table.
 - Messages have a mode: `telar mensaje --modo aviso|pedido|encargo|consulta` (also `modo` in `POST /mensajes`).
   `pedido`, the default, is what a message always was. An `aviso` waits in the thread's inbox without waking
   it (no «↯», no session opened, no longer turn) and comes in with its next turn. An `encargo` creates a task

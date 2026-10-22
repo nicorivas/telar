@@ -179,7 +179,11 @@ Cada uno deja todo funcionando.
    [arquitectura.md](../arquitectura.md), «Cuando el bus falla».
 5. ~~El lugar y los worktrees~~: aplazado (arriba, «Git y los repositorios»).
 6. **Vistas**: `[vistas]` reemplaza a `[secciones]`, `[bloques]`, `[apps]` y `[resultados]`, que se siguen
-   leyendo un tiempo.
+   leyendo un tiempo. El diseño, las decisiones abiertas y lo que falta están en [vistas.md](vistas.md).
+   Primer paso hecho (22-oct-2026): la configuración lee `[vistas.<clave>]` (una fuente y `aparece`: pestana,
+   plan, apps, hilos o dia) y la traduce al leerla a la tabla de antes, así el resto de telar no cambia; un
+   nombre en las dos formas es un error, y `telar doctor` sugiere la vista de cada tabla de antes. Faltan las
+   vistas de un objeto, los módulos, `telar vista` y la forma nueva en `/config`.
 7. **Disparadores y estado deseado**: periódicos, teclas y «al cambiar» en `[disparadores]`; el nodo
    reconcilia residentes, periódicos y módulos.
 8. **Permisos**: sujetos con permisos, la solicitud de permiso como objeto, los manifiestos con lo que piden.

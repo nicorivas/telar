@@ -372,7 +372,75 @@ clican.
 | `"<clave>"` | el título del bloque `[bloques.<clave>]`, en su pestaña |
 | `"seccion:<clave>"` | el título de la pestaña de esa sección |
 
+## `[vistas]` — qué se muestra y dónde aparece
+
+```toml
+[vistas.correo]                      # una pestaña del dashboard
+aparece = "pestana"
+comando = ["/ruta/a/mi-correo", "--json"]
+color = "rojo"
+tecla = "e"
+
+[vistas.retro]                       # arriba del plan del día, solo cuando trae algo
+aparece = "plan"
+comando = ["/ruta/a/mi-retro"]
+
+[vistas.vivero]                      # una app: un HTML autocontenido
+archivo = "~/proyectos/plantas/dist-app/vivero.html"
+memoria = "~/.local/state/vivero.json"
+
+[vistas.atlas]                       # una app: una página servida
+url = "http://servidor:8790"
+
+[vistas.juego]                       # una app que arma un comando
+aparece = "apps"
+comando = ["/ruta/juego/casa"]
+
+[vistas.diario]                      # un grupo en la lista de hilos, con su página
+hilos = ["notas", "◌ rato*"]
+comando = ["/ruta/a/mi-home", "--json"]
+
+[vistas.plan]                        # lo que una skill deja por día
+carpeta = "~/notas/planes"
+en = "servidor"
+comentar = ["~/bin/plan-comentario"]
+```
+
+Una vista es una **fuente** y un **lugar**. La fuente es una sola de `comando` (imprime el JSON de una
+página, el contrato de `telar seccion`), `archivo` (un `.html` autocontenido), `url` (una página servida) o
+`carpeta`/`en` (un `AAAA-MM-DD.json` por día; `en` es la máquina donde vive). El lugar es `aparece`:
+
+| `aparece` | qué es | claves, además de `nombre` | antes era |
+|---|---|---|---|
+| `pestana` | una pestaña del dashboard | `comando` (obligatorio), `color`, `tecla` | `[bloques.x]` |
+| `plan` | arriba del plan del día | las mismas | `[bloques.x]` con `en = "plan"` |
+| `apps` | una fila bajo **APPS** | una de `comando`, `archivo` o `url`; `descripcion`; `memoria` (solo con `archivo`) | `[apps.x]` (`comando` era `pagina`) |
+| `hilos` | un grupo en la lista de hilos | `hilos`; `comando` si tiene página | `[secciones.x]` (`comando` era `home`) |
+| `dia` | lo que la página pide por su clave (el plan pide `plan`) | `carpeta` y/o `en`, `comentar` | `[resultados.x]` |
+
+`aparece` se puede callar cuando las claves dejan un solo lugar: `archivo` o `url` son una app, `hilos` es un
+grupo, `carpeta` o `en` es un resultado por día. Con `comando` solo, que sirve en cuatro lugares, hay que
+decirlo. Cada valor se valida igual que en su tabla de antes (los colores, la tecla, las rutas), y los errores
+nombran la vista: `vistas.correo.color: …`. `en` es siempre la máquina, como en `[tipos]` o `[notas]`; el plan
+se dice con `aparece = "plan"`.
+
+La clave es el nombre de siempre: un atajo la nombra igual (`[atajos.m] en = "correo"`, `en =
+"seccion:diario"`), y las órdenes también (`telar bloque correo`, `telar app vivero`, `telar seccion diario`,
+`telar resultado plan`).
+
+**Las tablas de antes se siguen leyendo.** `[bloques]`, `[apps]`, `[secciones]` y `[resultados]` valen como
+siempre, y al leer la configuración cada vista se traduce a la suya, así que lo demás (las órdenes, la API, la
+página, `telar config --json`) es lo mismo con una forma que con la otra. Se pueden mezclar mientras se
+cambia: en cada lugar van primero las de antes, después las vistas en el orden del archivo, y al final lo que
+aportan los módulos. Un mismo nombre en las dos formas (`[vistas.correo]` y `[bloques.correo]`) es un error,
+y también un módulo que se llama como una vista. `telar doctor` dice cuáles quedan de antes y la vista que
+las reemplaza. Los módulos siguen declarando `[pestana]`, `[app]` y `[resultado]` en su `modulo.toml`.
+
+El diseño y lo que falta están en [propuestas/vistas.md](propuestas/vistas.md).
+
 ## `[bloques]` — pestañas del dashboard que llena un comando
+
+La forma nueva es `[vistas.<clave>]` con `aparece = "pestana"` o `"plan"` (arriba); esta se sigue leyendo.
 
 ```toml
 [bloques.correo]
@@ -707,6 +775,8 @@ desde otra máquina, se le pide a la que tiene las tareas por el bus. En la pág
 
 ## `[secciones]` — grupos propios en la lista de hilos
 
+La forma nueva es `[vistas.<clave>]` con `hilos` (y `comando` en lugar de `home`); esta se sigue leyendo.
+
 ```toml
 [secciones.diario]
 nombre = "Diario"
@@ -724,6 +794,9 @@ retomarla en su hilo. `telar seccion` lista las declaradas y `telar seccion <cla
 muestra la página en la terminal.
 
 ## `[apps]` — lo que se abre en el panel y no es un hilo
+
+La forma nueva es `[vistas.<clave>]` con `aparece = "apps"` (`comando` en lugar de `pagina`); esta se sigue
+leyendo.
 
 ```toml
 [apps.babel]

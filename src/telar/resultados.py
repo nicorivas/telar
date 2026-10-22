@@ -12,6 +12,9 @@ cual y quien lo muestra decide cómo.
 Con `en` y bus, se le pide a esa máquina (su nodo lee su propia carpeta): la sincronización entre
 máquinas es frágil, y el resultado vive donde se escribió. Si esa máquina no responde, o no hay
 bus, se lee la carpeta de aquí, y se dice.
+
+La forma nueva es `[vistas.<clave>]` con las mismas claves (`aparece = "dia"`, docs/propuestas/vistas.md);
+la configuración la traduce a esta al leerla.
 """
 
 from __future__ import annotations

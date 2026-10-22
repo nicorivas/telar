@@ -46,6 +46,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _perfil(ctx)
     revisiones += _repos(ctx)
     revisiones += _modulos(ctx)
+    revisiones += _vistas(ctx)
     revisiones += _agentes(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
@@ -388,6 +389,28 @@ def _modulos(ctx) -> list[dict]:
     salida.extend(_tapados(ctx, leidos))
     if leidos and not rotos and len(salida) == 0:
         salida.append(_r("módulos", OK, ", ".join(m.nombre for m in leidos)))
+    return salida
+
+
+def _vistas(ctx) -> list[dict]:
+    """Lo declarado a mano en las tablas que `[vistas]` reemplaza (`[bloques]`, `[apps]`, `[secciones]`,
+    `[resultados]`): telar lo sigue leyendo, y aquí se sugiere la `[vistas.x]` que da lo mismo
+    (docs/propuestas/vistas.md). Un aviso por cada una; sin ninguna y con vistas, un ok. Sin nada, nada."""
+    from telar.config import _valor_toml, como_vista
+
+    cfg = ctx.config
+    de_antes = tuple(getattr(cfg, "vistas_de_antes", ()) or ())
+    salida = []
+    for tabla, clave in de_antes:
+        cosa = next((c for c in getattr(cfg, tabla) if c.clave == clave), None)
+        if cosa is None:
+            continue
+        vista = como_vista(tabla, cosa)
+        claves = ", ".join(f"{k} = {_valor_toml(v)}" for k, v in vista.items())
+        salida.append(_r("vistas", AVISO, f"[{tabla}.{clave}] es de la forma de antes: telar la sigue leyendo",
+                         f"cámbiala por [vistas.{clave}] con {claves}"))
+    if not salida and getattr(cfg, "vistas", ()):
+        salida.append(_r("vistas", OK, f"{_comun.plural(len(cfg.vistas), 'vista')} en [vistas], ninguna de antes"))
     return salida
 
 

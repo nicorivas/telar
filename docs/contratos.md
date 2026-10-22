@@ -839,6 +839,10 @@ no valen) y una si `modulos.toml` no se lee. Con todos legibles, una sola `módu
 `ok` y sus nombres; sin módulos, ninguna. Los repos de `[repos]` traen revisiones
 `repos` (uno que no existe o queda fuera de `raiz`, un `aviso`) y `perfiles` (las
 carpetas que reconocen dos repos y cuál gana, un `aviso`).
+La revisión `vistas` es un `aviso` por cada `[bloques.x]`, `[apps.x]`, `[secciones.x]` o `[resultados.x]`
+declarado a mano (lo de un módulo no cuenta): `dice` nombra la tabla, y `arreglo` trae la `[vistas.x]` que da
+la misma configuración, con sus claves en una línea (`cámbiala por [vistas.correo] con aparece = "pestana",
+comando = ["mi-correo"]`). Sin ninguna de antes y con `[vistas]`, un `ok`; sin nada de eso, ninguna.
 Con `[agentes] carpeta`, la revisión `agentes` es un `aviso` por cada problema de un `agente.toml` y por
 cada agente cuyo `nombre` declarado no tiene conversación anotada y el de antes sí (el arreglo es el
 `telar hilo renombrar` que la lleva); sin nada de eso, un `ok` con sus nombres. Sin agentes, ninguna.

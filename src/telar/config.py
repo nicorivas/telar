@@ -428,6 +428,12 @@ class Config:
     secciones: tuple[Seccion, ...] = ()
     #: lo que se abre en el panel y no es un hilo (`[apps.x]`), en el orden del archivo.
     apps: tuple[App, ...] = ()
+    #: las claves de `[vistas.x]`, en el orden del archivo. Cada una ya está traducida a su bloque, app,
+    #: sección o resultado (ver `_con_vistas`); esto solo dice cuáles se declararon en la forma nueva.
+    vistas: tuple[str, ...] = ()
+    #: lo declarado a mano en las tablas que `[vistas]` reemplaza, como (tabla, clave): `telar doctor` sugiere
+    #: la forma nueva. Lo que aporta un módulo no está aquí.
+    vistas_de_antes: tuple[tuple[str, str], ...] = ()
     #: los módulos instalados (`[modulos.x]`, ver telar.modulos); lo que aportan ya está sumado a
     #: los bloques, las apps y los resultados.
     modulos: tuple = ()
@@ -564,6 +570,8 @@ def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
         if not aporte:
             continue
         if isinstance(datos.get(tabla), dict) and nombre in datos[tabla]:
+            if isinstance(datos.get("vistas"), dict) and nombre in datos["vistas"]:
+                raise ErrorDeConfig(f"modulos.{nombre}: ya hay una [vistas.{nombre}] declarada a mano")
             raise ErrorDeConfig(f"modulos.{nombre}: ya hay un [{tabla}.{nombre}] declarado a mano")
         try:
             desde_dict({tabla: {nombre: aporte}})
@@ -573,13 +581,163 @@ def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
     return m, aportes
 
 
+# ── las vistas (`[vistas.<clave>]`) ─────────────────────────────────────────────────
+
+#: las tablas que `[vistas]` reemplaza (docs/propuestas/vistas.md). Se siguen leyendo; `telar doctor` sugiere
+#: la forma nueva.
+TABLAS_DE_ANTES = ("bloques", "apps", "secciones", "resultados")
+
+#: dónde puede aparecer una vista (`aparece`) y a qué tabla de antes se traduce
+LUGARES_DE_VISTA = {"pestana": "bloques", "plan": "bloques", "apps": "apps", "hilos": "secciones",
+                    "dia": "resultados"}
+
+#: las claves que acepta una vista en cada lugar, además de `aparece` y `nombre`
+_CLAVES_DE_VISTA = {
+    "pestana": {"comando", "color", "tecla"},
+    "plan": {"comando", "color", "tecla"},
+    "apps": {"comando", "archivo", "url", "memoria", "descripcion"},
+    "hilos": {"hilos", "comando"},
+    "dia": {"carpeta", "en", "comentar"},
+}
+
+#: las claves que dejan un solo lugar posible: con una de ellas, `aparece` se puede callar. `comando` no está
+#: porque sirve en cuatro lugares (docs/propuestas/vistas.md, decisión 2), ni `color` y `tecla`, que sirven en dos.
+_LUGAR_POR_FUENTE = {"archivo": "apps", "url": "apps", "memoria": "apps", "descripcion": "apps",
+                     "hilos": "hilos", "carpeta": "dia", "en": "dia", "comentar": "dia"}
+
+
+def _lugar_de_vista(clave: str, cuerpo: dict) -> str:
+    """Dónde aparece una vista: lo que dice `aparece`, o el único lugar que deja su fuente."""
+    if "aparece" in cuerpo:
+        aparece = cuerpo["aparece"]
+        if aparece not in LUGARES_DE_VISTA:
+            raise ErrorDeConfig(f"vistas.{clave}.aparece: pestana, plan, apps, hilos o dia; llegó {aparece!r}")
+        return aparece
+    lugares = sorted({_LUGAR_POR_FUENTE[k] for k in cuerpo if k in _LUGAR_POR_FUENTE})
+    if len(lugares) == 1:
+        return lugares[0]
+    if len(lugares) > 1:
+        raise ErrorDeConfig(f"vistas.{clave}: sus claves son de lugares distintos ({' y '.join(lugares)}): "
+                            "di cuál con aparece")
+    if "comando" in cuerpo:
+        raise ErrorDeConfig(f"vistas.{clave}.aparece: con comando, di dónde aparece: pestana, plan, apps o hilos")
+    raise ErrorDeConfig(f"vistas.{clave}: falta qué muestra (comando, archivo, url, hilos o carpeta)")
+
+
+def _traducir_vista(clave: str, cuerpo: object) -> tuple[str, dict]:
+    """Una `[vistas.x]` como la entrada de la tabla de antes que la reemplaza: (tabla, cuerpo). Solo se copian
+    las claves que vinieron, así los valores por defecto son los de esa tabla. La validación de cada valor es
+    la de la tabla de antes (en `desde_dict`); aquí, lo que es propio de la vista."""
+    cuerpo = _tabla(cuerpo, f"vistas.{clave}")
+    lugar = _lugar_de_vista(clave, cuerpo)
+    validas = _CLAVES_DE_VISTA[lugar] | {"aparece", "nombre"}
+    sobra = sorted(set(cuerpo) - validas)
+    if sobra:
+        todas = set().union(*_CLAVES_DE_VISTA.values()) | {"aparece", "nombre"}
+        if sobra[0] in todas:
+            raise ErrorDeConfig(f"vistas.{clave}.{sobra[0]}: no va con aparece = \"{lugar}\"")
+        raise ErrorDeConfig(f"vistas.{clave}.{sobra[0]}: no existe")
+    if "comando" in cuerpo:
+        comando = cuerpo["comando"]
+        if not isinstance(comando, list) or not comando or not all(isinstance(x, str) and x.strip() for x in comando):
+            raise ErrorDeConfig(f"vistas.{clave}.comando: se esperaba una lista de palabras, llegó {comando!r}")
+    elif lugar in ("pestana", "plan"):
+        raise ErrorDeConfig(f"vistas.{clave}: falta comando, el que imprime la página")
+    if lugar == "apps":
+        fuentes = [f for f in ("comando", "archivo", "url") if cuerpo.get(f)]
+        if len(fuentes) != 1:
+            raise ErrorDeConfig(f"vistas.{clave}: se esperaba una sola de comando, archivo o url"
+                                + (f", llegaron {' y '.join(fuentes)}" if fuentes else ""))
+    copia = {k: v for k, v in cuerpo.items() if k != "aparece"}
+    if lugar == "plan":
+        copia["en"] = "plan"
+    elif lugar == "apps" and "comando" in copia:
+        copia["pagina"] = copia.pop("comando")
+    elif lugar == "hilos" and "comando" in copia:
+        copia["home"] = copia.pop("comando")
+    return LUGARES_DE_VISTA[lugar], copia
+
+
+def _con_vistas(datos: dict) -> tuple[dict, tuple[str, ...]]:
+    """Las `[vistas.x]`, traducidas a las tablas de antes (`[bloques]`, `[apps]`, `[secciones]`,
+    `[resultados]`) para que el resto de telar no cambie: (los datos con ellas sumadas, sus claves). En cada
+    tabla van después de lo declarado ahí a mano, en el orden del archivo. Un nombre que está en las dos
+    formas es un error. `datos["vistas"]` se deja: así un módulo que choca con una vista lo dice
+    (`_un_modulo`)."""
+    if "vistas" not in datos:
+        return datos, ()
+    tabla = _tabla(datos["vistas"], "vistas")
+    datos = {k: (dict(v) if isinstance(v, dict) else v) for k, v in datos.items()}
+    for clave, cuerpo in tabla.items():
+        for antes in TABLAS_DE_ANTES:
+            if isinstance(datos.get(antes), dict) and clave in datos[antes]:
+                raise ErrorDeConfig(f"vistas.{clave}: también está declarada como [{antes}.{clave}]: deja una sola"
+                                    f" (la forma nueva es [vistas.{clave}])")
+    for clave, cuerpo in tabla.items():
+        destino, traducida = _traducir_vista(clave, cuerpo)
+        try:
+            desde_dict({destino: {clave: traducida}})
+        except ErrorDeConfig as e:
+            raise ErrorDeConfig(str(e).replace(f"{destino}.{clave}", f"vistas.{clave}", 1)) from None
+        if not isinstance(datos.get(destino), dict):
+            datos[destino] = {}
+        datos[destino][clave] = traducida
+    return datos, tuple(tabla)
+
+
+def como_vista(tabla: str, cosa) -> dict:
+    """La `[vistas.x]` que reemplaza a un bloque, una app, una sección o un resultado ya leídos: lo que
+    `telar doctor` sugiere. Solo trae lo que no es el valor por defecto; leída de vuelta, da lo mismo."""
+    d: dict = {}
+    if tabla == "bloques":
+        d["aparece"] = "plan" if cosa.en == "plan" else "pestana"
+        d["comando"] = list(cosa.comando)
+        if cosa.color != "cian":
+            d["color"] = cosa.color
+        if cosa.tecla:
+            d["tecla"] = cosa.tecla
+    elif tabla == "apps":
+        d["aparece"] = "apps"
+        if cosa.pagina:
+            d["comando"] = list(cosa.pagina)
+        for campo in ("archivo", "url", "memoria", "descripcion"):
+            if getattr(cosa, campo):
+                d[campo] = getattr(cosa, campo)
+    elif tabla == "secciones":
+        d["aparece"] = "hilos"
+        d["hilos"] = list(cosa.hilos)
+        if cosa.home:
+            d["comando"] = list(cosa.home)
+    elif tabla == "resultados":
+        d["aparece"] = "dia"
+        for campo in ("carpeta", "en"):
+            if getattr(cosa, campo):
+                d[campo] = getattr(cosa, campo)
+        if cosa.comentar:
+            d["comentar"] = list(cosa.comentar)
+    else:
+        raise ValueError(f"[{tabla}] no es una de las tablas que reemplaza [vistas]")
+    if cosa.nombre and cosa.nombre != cosa.clave:
+        d = {"nombre": cosa.nombre, **d}
+    return d
+
+
+def vista_en_toml(clave: str, vista: dict) -> str:
+    """Una `[vistas.x]` escrita en TOML, para copiarla a la configuración."""
+    cabeza = f"[vistas.{clave}]" if re.fullmatch(r"[A-Za-z0-9_-]+", clave) else f"[vistas.{_cadena_toml(clave)}]"
+    return "\n".join([cabeza, *(f"{k} = {_valor_toml(v)}" for k, v in vista.items())])
+
+
 def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None) -> Config:
     """Arma una `Config` desde el TOML ya parseado, validando lo que llegó. Con `rotos`, un módulo que no se
     puede leer se deja fuera y se anota en `modulos_rotos` en vez de ser un error (ver `cargar`)."""
     base = Config()
     rotos = None if rotos is None else list(rotos)
+    de_antes = tuple((t, k) for t in TABLAS_DE_ANTES if isinstance(datos.get(t), dict) for k in datos[t])
+    datos, vistas = _con_vistas(datos)
     datos, modulos = _con_modulos(datos, rotos)
-    cambios: dict[str, object] = {"origen": origen, "modulos": modulos, "modulos_rotos": tuple(rotos or ())}
+    cambios: dict[str, object] = {"origen": origen, "modulos": modulos, "modulos_rotos": tuple(rotos or ()),
+                                  "vistas": vistas, "vistas_de_antes": de_antes}
 
     if "multiplexor" in datos:
         mux = datos["multiplexor"]
@@ -1043,7 +1201,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
-        "tipos", "repos",
+        "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
