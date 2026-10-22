@@ -18,8 +18,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
+from telar import objetos
 from telar.servicios import ErrorDeServicio
 from telar.tipos import ErrorDeFormato
 from telar.tipos import tarea as tipo_tarea
@@ -34,6 +35,12 @@ class TareaConVersion(tipo_tarea.Tarea):
 
     version: str
 
+    @computed_field
+    @property
+    def direccion(self) -> str:
+        """Su dirección de objeto, `tarea:<id>` (telar.objetos): sale en el JSON, no se guarda en el archivo."""
+        return objetos.direccion_de("tarea", self.id)
+
 
 class Tareas(BaseModel):
     tareas: list[TareaConVersion]
@@ -42,6 +49,8 @@ class Tareas(BaseModel):
 
 class Borrada(BaseModel):
     id: str
+    #: la dirección que tenía (`tarea:<id>`)
+    direccion: str = ""
     borrada: bool = True
 
 
@@ -194,8 +203,10 @@ def crear(ctx, params: dict, *, clave: str = "tarea") -> TareaConVersion:
 def borrar(ctx, id: str, *, version: str | None = None, clave: str = "tarea") -> Borrada:
     t = _tipo(ctx, clave)
     if (en := _alla(ctx, t)):
-        return Borrada(**_pedir_alla(ctx, en, [clave, "borrar", id, *(["--version", version] if version else [])]))
+        hecho = Borrada(**_pedir_alla(ctx, en, [clave, "borrar", id, *(["--version", version] if version else [])]))
+        # la máquina donde viven puede ser de antes de las direcciones
+        return hecho.model_copy(update={"direccion": hecho.direccion or objetos.direccion_de(clave, hecho.id)})
     ind = indice(ctx, clave)
     _errores(lambda: ind.borrar(id, version=version), "borrar")
     subir(Path(ind.carpeta.ruta) / f"{id}.md", f"tareas: {id} rm")
-    return Borrada(id=id)
+    return Borrada(id=id, direccion=objetos.direccion_de(clave, id))

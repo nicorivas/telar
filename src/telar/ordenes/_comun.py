@@ -27,6 +27,7 @@ from pathlib import Path
 from telar import estado as mod_estado
 from telar import lectura
 from telar import movil as mod_movil
+from telar import objetos
 from telar import salida as mod_salida
 from telar.modelo import Atencion, Ficha, Hilo, Item, Pendiente, Prioridad
 from telar.mux import ErrorDeMux, Multiplexor
@@ -562,6 +563,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
     cuerpo = {
         "id": hilo.id,
         "nombre": hilo.nombre,
+        # su dirección de objeto (telar.objetos): `telar objeto hilo:<nombre>` lo abre, viva donde viva
+        "direccion": objetos.direccion_de("hilo", hilo.nombre),
         "vivo": tel.vivo(hilo),
         "propio": tel.propio(hilo),
         "activo": hilo.activo,

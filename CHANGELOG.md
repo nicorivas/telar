@@ -14,6 +14,10 @@ extension shared the version number.
   fields, the addresses it links to and its actions, or runs one of them. Four types ship with telar (task,
   thread, project, file); a module brings its own with `[objetos.<type>]`, whose `ver` and actions are its
   queries. `telar objeto --buscar` finds the addresses in a text.
+- The JSON outputs that name an object carry its address in a new `direccion` field: each thread in `telar
+  hilos` and `telar ficha` (`hilo:<name>`), each unit in `telar proyectos` (`proyecto:<path>`), each row of
+  `telar pendientes` that is a task of the type (`tarea:<id>`, `""` otherwise), a task's page (`telar tarea`,
+  `GET /tareas/{id}`) and what `telar tipo tarea` returns. No other field changes.
 
 ## [0.3.0] — 2026-10-21
 

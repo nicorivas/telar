@@ -45,6 +45,15 @@ class Direccion(NamedTuple):
         return f"{self.tipo}:{self.id}" + (f"@{self.maquina}" if self.maquina else "")
 
 
+def direccion_de(tipo: str, id: str, maquina: str = "") -> str:
+    """La dirección de un objeto, como la escriben sus tipos y la llevan las salidas JSON que lo nombran
+    (`telar hilos`, `telar proyectos`, `telar pendientes`, `telar tipo tarea`): `hilo:Faro`, `tarea:T84`.
+    Un proyecto va por su ruta sin barras en los bordes, que es como lo encuentra `ver`."""
+    if tipo == "proyecto":
+        id = id.strip("/")
+    return str(Direccion(tipo, id, maquina))
+
+
 class Accion(BaseModel):
     nombre: str
     descripcion: str = ""
@@ -128,12 +137,12 @@ class Tarea(Tipo):
         from telar.tipos import tarea as tipo
 
         campos = {k: v for k, v in t.model_dump(mode="json").items()
-                  if k not in ("id", "titulo", "estado", "historia", "version", "duplicadas", "contexto")
+                  if k not in ("id", "direccion", "titulo", "estado", "historia", "version", "duplicadas", "contexto")
                   and v not in ("", [], None, False)}
         enlaces = [f"proyecto:{t.proyecto}"] if t.proyecto else []
         acciones = [Accion(nombre=n, descripcion=(fn.__doc__ or "").strip().split("\n")[0], params=_params_de(fn))
                     for n, fn in tipo.ACCIONES.items()]
-        return Objeto(direccion=f"tarea:{t.id}", tipo="tarea", id=t.id, titulo=t.titulo, estado=t.estado,
+        return Objeto(direccion=direccion_de("tarea", t.id), tipo="tarea", id=t.id, titulo=t.titulo, estado=t.estado,
                       resumen=" ".join(t.contexto.split())[:400], campos=campos, enlaces=enlaces,
                       acciones=acciones, version=getattr(t, "version", ""))
 
@@ -180,7 +189,7 @@ class Hilo(Tipo):
     def _objeto(self, j: dict, maquina: str) -> Objeto:
         campos = {k: j[k] for k in ("relativa", "arquetipo", "vivo", "actividad", "atencion_desde") if j.get(k) not in (None, "", False)}
         enlaces = [f"proyecto:{j['relativa']}"] if j.get("relativa") and j.get("relativa") not in (".", "") else []
-        return Objeto(direccion=f"hilo:{j['nombre']}" + (f"@{maquina}" if maquina else ""), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
+        return Objeto(direccion=direccion_de("hilo", j["nombre"]) + (f"@{maquina}" if maquina else ""), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
                       acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva)",
                                        params={"texto": ""}),
@@ -235,10 +244,10 @@ class Proyecto(Tipo):
         if p is None:
             raise ErrorDeServicio(f"el perfil no tiene una unidad «{d.id}» (telar proyectos)", 404)
         ruta = (p.get("ruta") or ruta).strip("/")
-        campos = {k: v for k, v in p.items() if k not in ("nombre", "ruta", "hilo", "estado", "estado_completo")
+        campos = {k: v for k, v in p.items() if k not in ("nombre", "ruta", "direccion", "hilo", "estado", "estado_completo")
                   and v not in ("", None, [], {})}
         enlaces = [f"hilo:{p['hilo']}"] if p.get("hilo") else []
-        return Objeto(direccion=f"proyecto:{ruta}", tipo="proyecto", id=ruta, titulo=p.get("nombre") or ruta,
+        return Objeto(direccion=direccion_de("proyecto", ruta), tipo="proyecto", id=ruta, titulo=p.get("nombre") or ruta,
                       estado=str(p.get("estado") or ""), resumen=str(p.get("estado_completo") or ""), campos=campos,
                       enlaces=enlaces)
 

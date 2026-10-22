@@ -791,7 +791,10 @@ class DeTipo(_Base):
                     for c in reversed(t.historia) if c.fecha]
         if historia:
             bloques.append({"titulo": "historia", "items": historia})
-        return ({"titulo": f"{id} · {t.titulo}", "subtitulo": " · ".join(partes), "bloques": bloques,
+        from telar import objetos
+
+        return ({"titulo": f"{id} · {t.titulo}", "direccion": objetos.direccion_de("tarea", t.id),
+                 "subtitulo": " · ".join(partes), "bloques": bloques,
                  "acciones": _recortar(self._acciones(t, prop, agente), 12), "version": version}, version)
 
     def _acciones(self, t, prop, agente: str) -> list[dict]:

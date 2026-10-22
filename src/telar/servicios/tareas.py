@@ -85,7 +85,25 @@ def _de_tipo(ctx, proveedor: str):
 
 def ficha(ctx, id: str, proveedor: str = "tareas") -> Pagina:
     """La ficha de la tarea: la arma el proveedor del tipo `tarea` (con la versión del archivo), o la
-    imprime el `detalle` de un proveedor `comando`."""
+    imprime el `detalle` de un proveedor `comando`. La de una tarea del tipo trae su `direccion`
+    (`tarea:<id>`, telar.objetos), la arme quien la arme."""
+    pagina = _ficha(ctx, id, proveedor)
+    if _del_tipo(ctx, proveedor) and not getattr(pagina, "direccion", ""):
+        from telar import objetos
+
+        # una página nueva y no un atributo puesto: la API la entrega sin lo que no se puso (exclude_unset)
+        pagina = Pagina(**pagina.model_dump(exclude_unset=True), direccion=objetos.direccion_de("tarea", id))
+    return pagina
+
+
+def _del_tipo(ctx, proveedor: str) -> bool:
+    """Si las tareas de ese proveedor son las del tipo `tarea` (`tipo = "tipo"`), con ficha propia o con `detalle`."""
+    config = getattr(ctx, "config", None)
+    p = next((x for x in config.proveedores_activos() if x.nombre == proveedor), None) if config else None
+    return p is not None and p.opciones.get("tipo") == "tipo"
+
+
+def _ficha(ctx, id: str, proveedor: str) -> Pagina:
     from telar.ordenes.seccion import correr
 
     en = _alla(ctx, proveedor)

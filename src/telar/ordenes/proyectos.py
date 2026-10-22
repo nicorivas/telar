@@ -23,7 +23,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from telar import lectura
+from telar import lectura, objetos
 from telar.agente import lanzar
 from telar.ordenes import _comun
 
@@ -94,6 +94,8 @@ def listar(ctx, tel) -> list[dict]:
         hilo = hilo_de.get(relativa, "")
         salida.append({
             "ruta": relativa,
+            # su dirección de objeto (telar.objetos): `telar objeto proyecto:<ruta>`
+            "direccion": objetos.direccion_de("proyecto", relativa),
             "nombre": nombre,
             # el cliente, si el nombre lo lleva adelante («Cliente · título»): el dashboard lo destaca
             "cliente": lectura.etiqueta("{campo:Cliente}", ficha) if "{campo:Cliente}" in (arquetipo.etiqueta or "") else "",

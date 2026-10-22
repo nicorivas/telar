@@ -400,7 +400,7 @@ class TiposTarea(Prueba):
     def test_borrar_con_version(self):
         v = self.c.get("/tipos/tarea/T1").json()["version"]
         self.assertEqual(self.c.delete("/tipos/tarea/T1", params={"version": "0" * 16}).status_code, 409)
-        self.assertEqual(self.c.delete("/tipos/tarea/T1", params={"version": v}).json(), {"id": "T1", "borrada": True})
+        self.assertEqual(self.c.delete("/tipos/tarea/T1", params={"version": v}).json(), {"id": "T1", "direccion": "tarea:T1", "borrada": True})
         self.assertFalse((self.dir / "T1.md").exists())
 
     def test_una_accion_que_no_cambia_nada_no_commitea(self):

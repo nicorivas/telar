@@ -249,7 +249,7 @@ Las reglas valen para todas:
 
 ```json
 {
-  "id": "@3", "nombre": "faro", "vivo": true, "propio": false, "activo": false,
+  "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "propio": false, "activo": false,
   "archivado": false, "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
@@ -260,7 +260,8 @@ Las reglas valen para todas:
 ```
 
 `id` es la llave del multiplexor (`@3` en tmux, estable mientras la sesión viva) y es lo
-que reciben las órdenes. `nombre` es lo que se muestra **y la llave del estado**:
+que reciben las órdenes. `direccion` es su dirección de objeto, `hilo:<nombre>`: la que abre
+`telar objeto`, viva donde viva. `nombre` es lo que se muestra **y la llave del estado**:
 el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dice
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
 que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer. `propio` es `true`
@@ -301,9 +302,13 @@ existe, falta una sección requerida). Ver [el estado de un hilo](#el-estado-de-
   "ref": "faro:2", "texto": "Ajustar la velocidad de giro",
   "hecho": false, "en_curso": true, "id": "", "origen": "pendientes", "dueno": "Ana Pérez",
   "hilo": "faro", "ruta": "proyectos/faro",
-  "proveedor": "", "clase": "", "cuando": null, "url": ""
+  "proveedor": "", "clase": "", "cuando": null, "url": "", "direccion": ""
 }
 ```
+
+`direccion` es la dirección de objeto de una tarea del tipo (`tarea:T84`, la de un proveedor con
+`tipo = "tipo"`), la que abre `telar objeto`; `""` en todo lo demás (una casilla de un documento, un evento,
+la tarea de un proveedor `comando`).
 
 `clase` la pone el proveedor que lo trajo: `"evento"` si ocupa una hora del día y
 `"tarea"` si pide hacerse; vacío en los pendientes que salen de un documento. Es lo que
@@ -336,7 +341,7 @@ que se la llevaría. La vista de proyectos del dashboard junta por `proyecto`.
 ```
 
 Con `--red` suma tres claves, que se piden y no cambian las demás: `otras_maquinas`
-(`[{ "nombre", "maquina", "vivo", "atencion", "atencion_desde", "residente", "actualizado" }]`: los hilos que el
+(`[{ "nombre", "direccion", "maquina", "vivo", "atencion", "atencion_desde", "residente", "actualizado" }]`: los hilos que el
 registro del bus tiene en máquinas distintas de esta, vivos o no), `maquinas` (`[{ "nombre", "en_linea",
 "edad" }]`, de los espejos: una máquina sin señal muestra lo último que dijo) y `aviso_red` (por qué no se leyó
 el bus, vacío si todo bien; sin bus o con el bus caído, `hilos` sigue valiendo y `otras_maquinas` va vacío).
@@ -428,13 +433,14 @@ esperan, después los que terminaron, al final los que trabajan.
 ```json
 { "raiz": "/…/trabajo",
   "proyectos": [
-    { "ruta": "proyectos/faro", "nombre": "Faro", "arquetipo": "proyecto",
+    { "ruta": "proyectos/faro", "direccion": "proyecto:proyectos/faro", "nombre": "Faro", "arquetipo": "proyecto",
       "modificado": "2026-09-18T12:04:31+00:00", "hilo": "faro", "vivo": true } ] }
 ```
 
 Todas las unidades del perfil, tengan hilo o no, ordenadas por `nombre`. `modificado` es
 el archivo más reciente de la carpeta sin contar las ocultas (`null` si no hay ninguno).
-`hilo` es el que está vinculado a esa unidad, o `""`; `vivo`, si ese hilo tiene tab.
+`hilo` es el que está vinculado a esa unidad, o `""`; `vivo`, si ese hilo tiene tab. `direccion` es
+`proyecto:<ruta>` (la ruta sin barras en los bordes), la que abre `telar objeto`.
 
 `telar proyectos abrir <ruta> --json` devuelve `{ "hilo", "ruta", "mensaje", "hecho" }`:
 `hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
@@ -547,7 +553,7 @@ el contrato de una página de sección y tres cosas más. Un bloque puede ser `d
 `acciones`, hasta nueve:
 
 ```json
-{ "titulo": "T203 · Mandar el alcance al cliente", "subtitulo": "activa · P0 · vence 2026-09-22",
+{ "titulo": "T203 · Mandar el alcance al cliente", "direccion": "tarea:T203", "subtitulo": "activa · P0 · vence 2026-09-22",
   "bloques": [ { "titulo": "el agente · cerrar (caducó)", "texto": "…", "destacado": true, "color": "cian" } ],
   "acciones": [
     { "nombre": "✓ de acuerdo: caducó", "principal": true, "comando": ["todo", "caduco", "T203"] },
@@ -556,6 +562,9 @@ el contrato de una página de sección y tres cosas más. Un bloque puede ser `d
     { "nombre": "abrir lo preparado", "tipo": "abrir", "enlace": "/ruta/borrador.md" },
     { "nombre": "descartar", "comando": ["todo", "descarta", "T203"], "confirmar": true } ] }
 ```
+
+La ficha de una tarea del tipo (un proveedor con `tipo = "tipo"`, la arme él o su `detalle`) trae su
+`direccion`, `tarea:<id>`; la de otro proveedor no la trae.
 
 | campo | qué es |
 | --- | --- |
@@ -588,16 +597,17 @@ proveedor use). Con más de un área, las listas de tareas ofrecen un filtro por
 Los objetos de un tipo (telar.tipos), con su `version` (la huella del archivo):
 
 ```
-telar tipo tarea lista [--todas]                  {"tareas": [{…tarea, "version": "…"}], "fallas": {}}
-telar tipo tarea ver T84                          {…tarea, "version": "…"}
+telar tipo tarea lista [--todas]                  {"tareas": [{…tarea, "version": "…", "direccion": "tarea:T84"}], "fallas": {}}
+telar tipo tarea ver T84                          {…tarea, "version": "…", "direccion": "tarea:T84"}
 telar tipo tarea crear --params '{"titulo": "…"}' la tarea nueva, con su número
 telar tipo tarea <acción> T84 --params '{…}' [--version V]
-telar tipo tarea borrar T84 [--version V]         {"id": "T84", "borrada": true}
+telar tipo tarea borrar T84 [--version V]         {"id": "T84", "direccion": "tarea:T84", "borrada": true}
 ```
 
 Una tarea es el modelo de `telar.tipos.tarea.Tarea`: `id`, `titulo`, `estado`, `prioridad`, `vence`,
 `espera`, `dueno`, `proyecto`, `area`, `etiquetas`, `origen`, `trabajo`, `creada`, `cerrada`, `avance`,
-`contexto`, `conexiones`, `historia` (`[{fecha, hora, tipo, texto}]`). Las acciones y sus parámetros son
+`contexto`, `conexiones`, `historia` (`[{fecha, hora, tipo, texto}]`); la salida le suma `version` y
+`direccion` (`tarea:<id>`, la de `telar objeto`), que el archivo no guarda. Las acciones y sus parámetros son
 las de `telar.tipos.tarea.ACCIONES`. Si no se pudo, la salida es `{"error": "…", "codigo": N}` (409: la
 tarea cambió, y entonces trae su `version` de ahora, o la acción no se puede; 404: no existe; 422: el
 pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con error.

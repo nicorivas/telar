@@ -37,6 +37,8 @@ class Hilo(BaseModel):
 
     id: str
     nombre: str
+    #: su dirección de objeto, `hilo:<nombre>` (telar.objetos)
+    direccion: str = ""
     vivo: bool = False
     propio: bool = False
     activo: bool = False
@@ -62,6 +64,8 @@ class OtroHilo(BaseModel):
 
     nombre: str
     maquina: str
+    #: su dirección de objeto, `hilo:<nombre>`, como la da `telar objeto` (lo busca en el bus por el nombre)
+    direccion: str = ""
     vivo: bool = False
     atencion: str = "ninguna"
     atencion_desde: str = ""
@@ -146,6 +150,7 @@ def _red(ctx) -> tuple[list[dict], list[dict], str]:
     """
     from telar import bus as mod_bus
     from telar import espejo as mod_espejo
+    from telar import objetos
 
     if not ctx.config.bus.url:
         return [], [], "no hay bus ([bus] en la configuración): solo se ven los hilos de esta máquina"
@@ -155,7 +160,8 @@ def _red(ctx) -> tuple[list[dict], list[dict], str]:
         return [], [], f"{e}; se muestran solo los hilos de esta máquina"
     yo = mod_bus.maquina(ctx.config)
     otras = [
-        {"nombre": d.get("nombre") or n, "maquina": d.get("maquina", ""), "vivo": bool(d.get("vivo")),
+        {"nombre": d.get("nombre") or n, "direccion": objetos.direccion_de("hilo", d.get("nombre") or n),
+         "maquina": d.get("maquina", ""), "vivo": bool(d.get("vivo")),
          "atencion": d.get("atencion", "ninguna"), "atencion_desde": d.get("desde", ""),
          "residente": d.get("residente", ""), "actualizado": d.get("actualizado", "")}
         for n, d in sorted(registro.items(), key=lambda x: (x[1].get("maquina", ""), x[0].lower()))

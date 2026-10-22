@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import shutil
 
+from telar import objetos
 from telar.ordenes import _comun
 
 AYUDA = "Lo que está por hacer, junto y con su hilo al lado."
@@ -66,6 +67,8 @@ def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
     cuerpo["hilo"] = hilo  # vacío si la unidad no tiene hilo abierto: la clave va igual
     cuerpo["ruta"] = ruta
     cuerpo["proveedor"] = ""
+    # una casilla de un documento no es un objeto con dirección (todavía: docs/propuestas/primitivas.md)
+    cuerpo["direccion"] = ""
     # la fecha límite que dice la viñeta (`@deadline(…)`): así vence como una tarea
     cuerpo["cuando"] = f"{pendiente.vence}T00:00" if getattr(pendiente, "vence", "") else None
     cuerpo["url"] = ""
@@ -118,6 +121,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
     # tarea la abre en vez de ir al hilo
     con_ficha = {p.nombre for p in ctx.config.proveedores_activos()
                  if p.opciones.get("detalle") or p.opciones.get("tipo") == "tipo"}
+    # los del tipo `tarea` dan objetos con dirección (`tarea:T84`, telar.objetos); los demás, ítems sueltos
+    del_tipo = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("tipo") == "tipo"}
     # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)
     pestanas = {p.nombre: str(p.opciones.get("pestana") or "") for p in ctx.config.proveedores_activos()}
     filas = []
@@ -131,6 +136,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "id": item.id,
                 "origen": item.proveedor,
                 "ref": item.id or f"{item.proveedor}:{item.titulo[:24]}",
+                "direccion": objetos.direccion_de("tarea", item.id) if item.proveedor in del_tipo and item.id else "",
                 "hilo": destino.nombre if destino else "",
                 "ruta": _comun.ruta_relativa(destino.ruta, tel.raiz) if destino else "",
                 # la carpeta que la tarea dice que es su proyecto, haya o no un hilo ahí (la vista de proyectos)
