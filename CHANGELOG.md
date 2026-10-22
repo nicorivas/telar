@@ -55,6 +55,9 @@ extension shared the version number.
 - Task files: `dueno` (without ñ) is read as `dueño` and rewritten under its own name, as is a key written in NFD;
   a leading BOM no longer hides the header (an action used to prepend a second one), CRLF files stay CRLF
   when an action writes them, and a repeated key the format does not know is no longer reported as duplicated.
+- `telar config --json` (and `GET /config`) lists the repositories of `[repos]` in a new `repos` field (name,
+  path, profile), and each module now says where it came from: `instalado`, `fuente`, `version` and `enlazado`,
+  from what `telar modulo` wrote down (empty for one declared by hand). No other field changes.
 
 ## [0.3.0] — 2026-10-21
 

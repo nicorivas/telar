@@ -119,6 +119,12 @@ def main(argv: list[str], ctx) -> int:
             print(f"  {'proveedor':<13} {nombre} ({marca}) {_comun.tenue(opciones)}")
     else:
         print(f"  {'proveedores':<13} " + _comun.tenue("ninguno: telar no sale a la red"))
+    for r in cuerpo.get("repos") or []:
+        perfil = f" · perfil {r['perfil']}" if r["perfil"] else ""
+        print(f"  {'repo':<13} {r['nombre']} {_comun.tenue(r['ruta'] + perfil)}")
+    for m in cuerpo.get("modulos") or []:
+        de = f"{m['fuente']} @ {m['version']}" if m["instalado"] else "(a mano)"
+        print(f"  {'modulo':<13} {m['nombre']} {_comun.tenue(de)}")
     if pisadas:
         print()
         print(_comun.tenue("pisado por el entorno: " + ", ".join(f"{k}={v}" for k, v in pisadas.items())))

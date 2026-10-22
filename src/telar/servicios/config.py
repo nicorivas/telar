@@ -65,6 +65,8 @@ class ConfigResuelta(BaseModel):
     agenda: list[dict[str, Any]] = Field(default_factory=list)
     secciones: list[dict[str, Any]] = Field(default_factory=list)
     dashboard: dict[str, list[str]] = Field(default_factory=dict)
+    #: los repositorios de trabajo de `[repos]`: nombre, ruta y perfil, como en `TELAR_REPOS`
+    repos: list[dict[str, str]] = Field(default_factory=list)
     modulos: list[dict[str, Any]] = Field(default_factory=list)
     apps: list[dict[str, Any]] = Field(default_factory=list)
     atajos: list[dict[str, Any]] = Field(default_factory=list)
@@ -123,8 +125,9 @@ def resuelta(ctx) -> ConfigResuelta:
             for s in cfg.secciones
         ] + _agentes(cfg),
         "dashboard": {"orden": list(cfg.dashboard_orden), "ocultas": list(cfg.dashboard_ocultas)},
-        "modulos": [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta}
-                    for m in cfg.modulos],
+        "repos": [{"nombre": r.nombre, "ruta": str(Path(r.ruta).expanduser()), "perfil": str(r.perfil or "")}
+                  for r in cfg.repos],
+        "modulos": _modulos(cfg),
         "apps": [{"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente,
                   **({"url": a.url} if a.url else {})} for a in cfg.apps],
         "atajos": [
@@ -147,6 +150,24 @@ def resuelta(ctx) -> ConfigResuelta:
         # la bandeja del equipo: la página en el navegador la lee de aquí (en VS Code, el ajuste equipoRemoto)
         "equipo": _equipo(cfg),
     })
+
+
+def _modulos(cfg) -> list[dict]:
+    """Los módulos, con lo que anotó `telar modulo` de los instalados: de dónde vienen (`fuente`), en qué
+    versión y si están enlazados a una carpeta. Uno declarado a mano trae `instalado` falso y lo demás vacío."""
+    from telar import modulos as mod_modulos
+
+    try:
+        instalados = mod_modulos.leer_instalados(mod_modulos.ruta_instalados(cfg.origen)) if cfg.origen else {}
+    except mod_modulos.ErrorDeModulo:
+        instalados = {}  # la configuración ya lo habría dicho; aquí solo falta el detalle
+    lista = []
+    for m in cfg.modulos:
+        d = instalados.get(m.nombre, {})
+        lista.append({"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
+                      "instalado": bool(d), "fuente": str(d.get("fuente") or ""), "version": str(d.get("version") or ""),
+                      "enlazado": bool(d.get("enlazado"))})
+    return lista
 
 
 def _equipo(cfg) -> str:

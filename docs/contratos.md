@@ -757,7 +757,21 @@ proveedores y sin ganchos, solo hace menos.
 
 `config` devuelve la configuración resuelta, con `origen` (de qué archivo salió,
 vacío si son puros valores por defecto) y `entorno` (qué clave pisó cada variable
-`TELAR_*`). `perfil` devuelve lo que el repositorio declara: `minimo` dice si rige
+`TELAR_*`). `repos` son los repositorios de `[repos]`, cada uno con `nombre`, `ruta`
+(absoluta, con `~` expandida) y `perfil` (vacío si es el de su carpeta), igual que `TELAR_REPOS`;
+sin `[repos]` la lista viene vacía. Cada módulo de `modulos` trae, además de `nombre`, `carpeta`,
+`descripcion` y `aporta`, de dónde vino: `instalado` (si lo anotó `telar modulo` en `modulos.toml`),
+`fuente` (el repositorio o la carpeta de donde se instaló), `version` y `enlazado`; uno declarado a
+mano trae `instalado: false` y lo demás vacío. `GET /config` entrega lo mismo.
+
+```json
+{ "repos": [ { "nombre": "equipo", "ruta": "/casa/equipo", "perfil": "" } ],
+  "modulos": [ { "nombre": "molino", "carpeta": "/casa/.local/share/telar/modulos/molino",
+                 "descripcion": "…", "aporta": ["pestaña"], "instalado": true,
+                 "fuente": "https://ejemplo.org/molino.git", "version": "a1b2c3d", "enlazado": false } ] }
+```
+
+`perfil` devuelve lo que el repositorio declara: `minimo` dice si rige
 la convención mínima, y cada arquetipo trae sus `secciones` y los `documentos` que
 alcanza hoy, relativos a la raíz.
 
