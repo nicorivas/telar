@@ -3,23 +3,26 @@
 // se abre tal cual; una relativa es de donde arrancó su agente, que según `[agente] carpeta` es la carpeta del hilo
 // o la raíz (un agente residente, la suya). Como la página no lo sabe, prueba las dos. La de un hilo de otra
 // máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
-// su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz.
+// su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz. Una dirección web (`https://…`) se abre
+// en una pestaña nueva de este navegador, que es el de la persona, viva donde viva el hilo.
 
 import type { IDisposable, ILink, Terminal } from '@xterm/xterm';
 
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
+import { hallar, RUTA } from './enlaces';
 import * as ui from './ui';
 import type { RutasVista } from './vistas-hilo';
 
-/** Las extensiones que se reconocen: las de los archivos de texto que el visor muestra. */
-const EXTENSIONES = 'md|markdown|txt|toml|ya?ml|json|py|ts|js|mjs|sh|css|html|csv';
-
-/** Una ruta a un archivo de texto: `/…`, `~/…` o relativa, con letras con tilde (`métodos/`), y quizás con
- *  `:línea` o `:línea:columna` detrás (se ignoran). No la de una dirección (`https://…/x.md`): lo de antes no puede
- *  ser parte de una ruta ni `:`. */
-export const RUTA = new RegExp(String.raw`(?<![\p{L}\p{N}_/.~:@+-])(?:~?\/)?(?:[\p{L}\p{N}_.@+-]+\/)*[\p{L}\p{N}_@+-][\p{L}\p{N}_.@+-]*\.(?:${EXTENSIONES})(?::\d+){0,2}(?![\p{L}\p{N}_/-])`, 'gu');
+/** Un hipervínculo que llegó a la terminal por OSC 8 (el texto va aparte de la dirección): una web, en una pestaña
+ *  nueva; un `file://`, en el visor, en la máquina del hilo; otro, nada. */
+export function abrirHipervinculo(uri: string, vista: RutasVista): void {
+    let u: URL;
+    try { u = new URL(uri); } catch { return; }
+    if (u.protocol === 'http:' || u.protocol === 'https:') void ui.abrirExterno(u.href);
+    else if (u.protocol === 'file:') void abrirRuta(decodeURIComponent(u.pathname), vista);
+}
 
 /** Dónde vive lo que escribe un hilo: su máquina ('' esta) y su carpeta (aquí, absoluta; en otra máquina,
  *  relativa a su raíz). Se averigua al abrir, no al dibujar: la lista de hilos puede no haber llegado. */
@@ -89,12 +92,13 @@ export function enlazar(raiz: HTMLElement): void {
 }
 
 /** Un clic en una ruta de `raiz` (las de `enlazar`, y un enlace relativo del markdown: `[la guía](docs/x.md)`)
- *  la abre en el visor en vez de navegar la página. */
+ *  la abre en el visor en vez de navegar la página; uno a una web, en una pestaña nueva (no se va de la página). */
 export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
     raiz.addEventListener('click', e => {
         const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a');
         if (!a || !raiz.contains(a)) return;
         const href = a.getAttribute('href') ?? '';
+        if (/^https?:\/\//i.test(href)) { e.preventDefault(); void ui.abrirExterno(href); return; }
         const ruta = a.dataset.ruta ?? (href && !href.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(href) ? decodeURIComponent(href.split('#')[0]) : '');
         if (!ruta) return;
         e.preventDefault();
@@ -102,35 +106,15 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
     });
 }
 
-/** Las rutas de la terminal de un hilo, como enlaces de xterm (subrayadas al pasar; un clic las abre). Se
- *  buscan en la línea lógica: una ruta larga se parte al ancho de la terminal, y sus pedazos se juntan. */
+/** Las rutas y las direcciones web de la terminal de un hilo, como enlaces de xterm (subrayadas al pasar; un clic
+ *  las abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
 export function enlazarTerminal(term: Terminal, vista: RutasVista): IDisposable {
     return term.registerLinkProvider({
         provideLinks(y, listo) {
-            const buf = term.buffer.active;
-            let ini = y - 1, fin = y - 1;
-            while (ini > 0 && buf.getLine(ini)?.isWrapped) ini--;
-            while (buf.getLine(fin + 1)?.isWrapped) fin++;
-            // el texto de esas filas, con la celda de cada letra (una letra ancha ocupa dos celdas)
-            let texto = '';
-            const celdas: { x: number; y: number }[] = [];
-            for (let fila = ini; fila <= fin; fila++) {
-                const linea = buf.getLine(fila);
-                if (!linea) continue;
-                for (let x = 0; x < linea.length; x++) {
-                    const c = linea.getCell(x);
-                    if (!c || c.getWidth() === 0) continue;
-                    const letras = c.getChars() || ' ';
-                    texto += letras;
-                    for (let k = 0; k < letras.length; k++) celdas.push({ x: x + 1, y: fila + 1 });
-                }
-            }
-            const enlaces: ILink[] = [];
-            for (const m of texto.matchAll(RUTA)) {
-                const start = celdas[m.index], end = celdas[m.index + m[0].length - 1];
-                if (!start || !end || start.y > y || end.y < y) continue;
-                enlaces.push({ range: { start, end }, text: m[0], activate: () => void abrirRuta(m[0], vista) });
-            }
+            const enlaces = hallar(term.buffer.active, term.cols, y).map((h): ILink => ({
+                range: { start: h.desde, end: h.hasta }, text: h.texto,
+                activate: () => void (h.tipo === 'web' ? ui.abrirExterno(h.texto) : abrirRuta(h.texto, vista)),
+            }));
             listo(enlaces.length ? enlaces : undefined);
         },
     });

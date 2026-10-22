@@ -15,6 +15,7 @@ npm run tipos             # que los tipos cierren
 npm run navegador         # compilar a src/telar/web/ (lo que se commitea)
 npm run navegador:watch   # y de nuevo con cada cambio; scripts/dev.py lo usa (docs/desarrollar.md)
 npm run prueba:eco        # la prueba del eco de la terminal
+npm run prueba:enlaces    # la de las rutas y direcciones de la terminal, también las partidas en filas
 npm run lint:css
 ```
 
@@ -26,7 +27,8 @@ npm run lint:css
   pinta en `vista.ts`; la configuración (⚙) está en `config/`.
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
   `rutas-agente.ts` vuelve enlaces al visor las rutas de archivo que escribe un agente (en la terminal, la
-  lectura y la conversación), en la máquina de su hilo.
+  lectura y la conversación), en la máquina de su hilo, y abre en una pestaña nueva las direcciones web.
+  Dónde están en lo que muestra la terminal (también las que llegan partidas en varias filas) lo dice `enlaces.ts`.
 - `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`, y las piezas que
   comparten (el recuadro con borde, la fila de volver) en `componentes.css`, sin `@scope`.
 - `scripts/navegador.mjs` — el empaquetado.

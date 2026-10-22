@@ -10,7 +10,7 @@ import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 
 import { conEco } from '../navegador/eco/entrada';
-import { enlazarTerminal } from './rutas-agente';
+import { abrirHipervinculo, enlazarTerminal } from './rutas-agente';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 declare global {
@@ -89,8 +89,10 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // los colores, de los tokens (media/css/tokens.css): los mismos del resto de la página
     const css = getComputedStyle(document.documentElement);
     const t = (nombre: string) => css.getPropertyValue(`--${nombre}`).trim();
-    // sin parpadeo: Claude Code dibuja su propio cursor, y uno que además parpadea molesta al escribir
+    // sin parpadeo: Claude Code dibuja su propio cursor, y uno que además parpadea molesta al escribir. Un hipervínculo
+    // (OSC 8) a una web abre una pestaña nueva, sin el confirm() que xterm pone de fábrica; uno file://, el visor
     const term = new window.Terminal!({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: false, allowProposedApi: false,
+        linkHandler: { activate: (_e, uri) => abrirHipervinculo(uri, rutas), allowNonHttpProtocols: true },
         theme: { background: t('bg'), foreground: t('fg'), cursor: t('cursor'), selectionBackground: t('negro'),
             black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
             brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });

@@ -71,7 +71,9 @@ export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: s
     return i === undefined ? undefined : opciones[i];
 }
 
-export async function abrirExterno(url: string): Promise<void> { window.open(url, '_blank', 'noopener'); }
+/** Una dirección de afuera, en una pestaña nueva: sin acceso a esta página (`noopener`) ni la dirección de esta, que
+ *  puede traer la llave (`noreferrer`). */
+export async function abrirExterno(url: string): Promise<void> { window.open(url, '_blank', 'noopener,noreferrer'); }
 
 export async function copiar(texto: string): Promise<void> {
     try { await navigator.clipboard.writeText(texto); } catch { /* sin permiso */ }

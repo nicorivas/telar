@@ -20,6 +20,11 @@ extension shared the version number.
   scripts run in an origin of their own, without the page's key or its API; «código» next to its path shows the
   source, and «dibujado» goes back. What the page loads by a relative path (images, styles) is not resolved: it
   is for self-contained pages, like a slide.
+- Web addresses open in a new tab of the browser being used, wherever the thread lives. In the terminal, an
+  `https://…` written as text is a link (without the punctuation that ends the sentence, and whole even when
+  Claude Code split it over several rows), and an OSC 8 hyperlink opens without xterm's confirm (a `file://`
+  one, in the viewer). In the reading view and the conversation, a link to a web opens a new tab instead of
+  taking the page away. New tabs get neither the page (`noopener`) nor its address (`noreferrer`).
 - Several working repositories (`[repos.<name>] ruta = "…"`, optional `perfil`). Each brings its own
   `telar-perfil.yaml`, and telar merges them into one (`perfil.cargar_todos`): each repo's archetypes become
   relative to the root and carry which repo they come from; when two profiles match the same folder, the
@@ -43,6 +48,9 @@ extension shared the version number.
   provider's priorities, and «espera a …» the people picker, with «nadie» to stop waiting. Both leave the card's
   list; «esperar a…» stays in it while the task waits for nobody. The task list's ⋯ menu uses the same pickers,
   and the people picker for who does it, where it asked for a name.
+- The document viewer (a file, or a thread's folder) sits inside the same bordered box as a task's card, with
+  «‹ <thread> · <view>» (or «‹ dashboard») above it: a click on it, or ⎋, goes back to where the link was
+  clicked. A file opened from inside another keeps it.
 - In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
   does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,
@@ -91,6 +99,11 @@ extension shared the version number.
 
 ### Fixed
 
+- A file path in the terminal that Claude Code split over several rows (a long one, or a narrow screen) is one
+  link to the whole path, not to its first piece. Claude Code breaks its lines itself, at the width of its box,
+  so the terminal never knew they were one line: now a row that reaches the right edge goes on in the next one,
+  when what crosses the break is longer than a row (`pagina/src/web/enlaces.ts`, tested by `npm run
+  prueba:enlaces`).
 - The dashboard's task table can be sorted by deadline, and now it shows: each column header has its name
   (código, proyecto, responsable, tarea, fecha), «fecha» sits over the dates (it was an unlabeled ↕ at the
   right edge), and the column that sorts is blue. A click on «fecha» puts the most overdue first and the

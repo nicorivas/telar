@@ -14,7 +14,7 @@ import { modelo } from '../modelo';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
-import { montar as montarCarpeta } from '../web/carpeta';
+import { montar as montarCarpeta, type Vuelta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
 import * as ui from '../web/ui';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
@@ -76,6 +76,19 @@ function cerrarVista(llave: string): void {
     vistas().find(x => x.dataset.p === llave)?.remove();
 }
 
+/** De dónde se vino al visor de un archivo o a la carpeta de un hilo: lo que se veía antes (un hilo, en la vista que
+ *  tenía; el dashboard), adonde vuelve su «‹ …». Pasar de un archivo a otro no la cambia. */
+let origen = '';
+const esDocumento = (que: string) => que.startsWith('doc:') || que.startsWith('arch:');
+
+/** La vuelta del visor (web/carpeta.ts): «‹ Telar · conversación», «‹ dashboard». */
+function vuelta(): Vuelta | null {
+    const o = origen;
+    if (!o || esDocumento(o)) return null;
+    const como = forma(o), nombre = o.startsWith('rem:') ? o.slice(4) : o;
+    return { nombre: como ? `${nombre} · ${vista(como)?.nombre ?? como}` : nombre, ir: () => mostrar(o) };
+}
+
 /** A la derecha: «dashboard» («config»: el dashboard en su configuración, el ⚙ de la cabecera), un hilo de aquí (su terminal o su conversación), «rem:<máquina>:<hilo>» (uno de
  *  otra máquina: su terminal reenviada, o su conversación por el bus), «doc:<hilo>» (su carpeta y su documento) o «compartir» (lo
  *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
@@ -83,6 +96,7 @@ function mostrar(que: string): void {
     if (!que) return;
     // el ⚙ de la cabecera: la configuración, en el dashboard
     if (que === 'config') { void hoy.irAPestana('config'); return; }
+    if (esDocumento(que) && !esDocumento(actual)) origen = actual;
     actual = que;
     let f: HTMLElement | undefined;
     if (que === 'dashboard') {
@@ -94,8 +108,8 @@ function mostrar(que: string): void {
         if (que.startsWith('doc:') || que.startsWith('arch:') || que === 'compartir') {
             f ??= nuevaVista(llave);
             if (que === 'compartir') montarCompartir(f, location.search);
-            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), ui.markdown);
-            else void montarCarpeta(f, que.slice(4), '', ui.markdown);
+            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), ui.markdown, vuelta());
+            else void montarCarpeta(f, que.slice(4), '', ui.markdown, vuelta());
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');

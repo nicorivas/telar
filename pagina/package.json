@@ -13,7 +13,8 @@
     "navegador": "tsc -p . && node scripts/navegador.mjs --min",
     "navegador:watch": "node scripts/navegador.mjs --watch --min",
     "lint:css": "stylelint \"media/css/*.css\"",
-    "prueba:eco": "node pruebas/eco.mjs"
+    "prueba:eco": "node pruebas/eco.mjs",
+    "prueba:enlaces": "node pruebas/enlaces.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

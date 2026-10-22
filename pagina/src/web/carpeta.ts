@@ -2,12 +2,14 @@
 // (`arch:<ruta>`): la lista de archivos arriba, y el elegido abajo. Una ruta de otra máquina («servidor:docs/x.md»)
 // o con `~` se lee sola, sin su carpeta (`/api/archivos`, que se la pide a esa máquina por el bus). Un .html se ve
 // dibujado, en un iframe aislado (`/api/archivos/ver`: sus scripts corren en un origen propio, sin la llave ni la
-// API de la página), con su código a un clic. Solo lee. Se dibuja en un elemento de la página; sus estilos, en
-// media/css/documento.css (con @scope, en `.v-documento`).
+// API de la página), con su código a un clic. Todo va en un recuadro, y arriba «‹ …» vuelve a la vista de donde se
+// vino (la conversación, la lectura o la terminal de un hilo, el dashboard), como en la ficha de una tarea. Solo
+// lee. Se dibuja en un elemento de la página; sus estilos, en media/css/documento.css (con @scope, en `.v-documento`).
 
-import { esc } from '../estilo';
+import { esc, recuadro, volver } from '../estilo';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
+import { teclaParaLaVista } from './vistas-hilo';
 
 /** La carpeta de un hilo y uno de sus archivos, como la da `/api/hilos/documento`. */
 export interface Documento {
@@ -26,12 +28,19 @@ export interface Documento {
 
 const ES_HTML = /\.html?$/i;
 
+/** Adónde vuelve el visor: cómo se nombra («Telar · conversación») y cómo se va. */
+export interface Vuelta { nombre: string; ir: () => void }
+
+/** La vuelta de cada visor dibujado: la pone `montar` cuando la página lo muestra, y un archivo abierto desde otro
+ *  (un clic adentro) se queda con la que había. */
+const vueltas = new WeakMap<HTMLElement, Vuelta | null>();
+
 /** La máquina delante de una ruta («servidor:» en «servidor:docs/x.md»), como la entiende `/api/archivos`. */
 const MAQUINA = /^[A-Za-z0-9][\w-]*:(?!\/\/)/;
 
-/** El HTML de la carpeta y su archivo. Los enlaces a otro archivo (o a la carpeta de arriba) llevan su hilo y
- *  su ruta en `data-*`: los atiende `montar`, sin navegar. */
-function html(d: Documento): string {
+/** El HTML de la carpeta y su archivo, en un recuadro con la vuelta arriba. Los enlaces a otro archivo (o a la
+ *  carpeta de arriba) llevan su hilo y su ruta en `data-*`: los atiende `montar`, sin navegar. */
+function html(d: Documento, vuelta: Vuelta | null | undefined): string {
     const enlace = (ruta: string, texto: string, clase = '') =>
         `<a class="${clase}" data-hilo="${esc(d.hilo)}" data-archivo="${esc(ruta)}">${esc(texto)}</a>`;
     const cuerpo = d.error ? `<p class="nada">${esc(d.error)}</p>`
@@ -45,20 +54,30 @@ function html(d: Documento): string {
                     : d.html ? `<div class="md">${d.html}</div>` : `<pre>${esc(d.texto ?? '')}</pre>`)
                 + (d.descarga ? `<p><a href="/api/archivos/bajar?ruta=${encodeURIComponent(d.descarga)}" download>bajar ${esc(d.archivo.split('/').pop() ?? '')}</a></p>` : '')
                 + '</article>' : '');
-    return `<h1>${esc(d.titulo)}</h1>${cuerpo}`;
+    return (vuelta ? volver('volver-doc', vuelta.nombre, '', `volver a ${vuelta.nombre} (⎋)`) : '')
+        + recuadro(`<h1>${esc(d.titulo)}</h1>${cuerpo}`);
 }
 
 /** Lee la carpeta (de `hilo`) o el archivo y la dibuja en `el`; un clic en otro archivo la vuelve a leer ahí.
- *  `markdown`: cómo se convierte un .md a HTML. */
-export async function montar(el: HTMLElement, hilo: string, archivo: string, markdown: (texto: string) => string): Promise<void> {
+ *  `markdown`: cómo se convierte un .md a HTML. `vuelta`: adónde lleva «‹ …» (y ⎋); null, a ninguna parte (no se
+ *  vino de una vista); sin ella, la que ya tenía. */
+export async function montar(el: HTMLElement, hilo: string, archivo: string, markdown: (texto: string) => string,
+    vuelta?: Vuelta | null): Promise<void> {
     el.classList.add('v-documento');
     el.dataset.hilo = hilo;
     el.dataset.archivo = archivo;
+    if (vuelta !== undefined) vueltas.set(el, vuelta);
     if (!el.dataset.atendido) {
         el.dataset.atendido = '1';
+        window.addEventListener('keydown', e => {
+            if (e.key !== 'Escape' || !teclaParaLaVista(e, el)) return;
+            const v = vueltas.get(el);
+            if (v) { e.preventDefault(); v.ir(); }
+        });
         el.addEventListener('click', e => {
             const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a');
             if (!a) return;
+            if (a.dataset.accion === 'volver-doc') { e.preventDefault(); vueltas.get(el)?.ir(); return; }
             // un .html: dibujado o su código
             if (a.classList.contains('alternar')) {
                 e.preventDefault();
@@ -104,7 +123,7 @@ export async function montar(el: HTMLElement, hilo: string, archivo: string, mar
         d.ver = !hilo || MAQUINA.test(d.archivo) ? d.archivo : rutas.unir(modelo.porNombre(hilo)?.ruta ?? '', d.archivo);
     // desde dónde se resuelven los enlaces relativos del documento: el archivo que se muestra, como lo dice la API
     el.dataset.archivo = d.archivo ?? archivo;
-    el.innerHTML = html(d);
+    el.innerHTML = html(d, vueltas.get(el));
     el.scrollTop = 0;
 }
 

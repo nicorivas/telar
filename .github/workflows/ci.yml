@@ -73,6 +73,8 @@ jobs:
           git diff --exit-code src/telar/web || { echo "::error::src/telar/web no es lo que sale de compilar pagina/: npm run navegador y commitear"; exit 1; }
       - run: npm run prueba:eco
         working-directory: pagina
+      - run: npm run prueba:enlaces
+        working-directory: pagina
 
   mod:
     # El mod de telar para Claude Code (src/telar/mod/): que Claude Code lo lea como se debe y que sus
