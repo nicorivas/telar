@@ -47,6 +47,15 @@ class ElMensajeDeUnPendiente(Prueba):
         # una fila de antes, sin la clave
         self.assertEqual(mensaje("Veamos {direccion}", {"id": "T84", "texto": "algo", "ref": "T84"}), "algo")
 
+    def test_con_id_y_direccion_falta_una_y_cae_entera(self):
+        # el ítem de un proveedor `comando` tiene id pero no dirección: no se llena a medias («/tarea X1 ()»)
+        from telar.ordenes.pendiente import mensaje
+
+        suelto = {"id": "X1", "texto": "leer", "ref": "X1", "direccion": ""}
+        self.assertEqual(mensaje("/tarea {id} ({direccion})", suelto), "leer")
+        casilla = {"id": "", "texto": "revisar", "ref": "faro:2", "direccion": "tarea:T84"}
+        self.assertEqual(mensaje("/tarea {id} ({direccion})", casilla), "revisar")
+
     def test_los_valores_por_defecto_no_cambian(self):
         from telar import config as mod_config
 
@@ -79,6 +88,20 @@ class LaFilaQueLlegaSinDireccion(Prueba):
         self.assertNotIn("direccion", _con_direccion(ctx, {"id": "X1", "proveedor": "otro", "texto": "a"}))
         self.assertNotIn("direccion", _con_direccion(ctx, {"id": "", "proveedor": "tareas", "texto": "a"}))
         self.assertEqual(_con_direccion(ctx, {"id": "", "proveedor": "", "direccion": ""})["direccion"], "")
+
+    def test_de_un_proveedor_que_aqui_no_esta_no(self):
+        # la foto de otra máquina con un telar de antes: su proveedor del tipo no está declarado aquí, o lo está
+        # pero apagado. Sin con qué saber si es del tipo, se queda sin dirección y la plantilla cae a {texto}
+        from telar.config import Agente, Config, Proveedor
+        from telar.ordenes.pendiente import _con_direccion, mensaje
+
+        fila = {"id": "T84", "proveedor": "tareas-servidor", "texto": "llamar a Ana", "ref": "T84"}
+        self.assertNotIn("direccion", _con_direccion(self.ctx(), fila))
+        apagado = Proveedor(nombre="tareas-servidor", activo=False, opciones={"tipo": "tipo", "carpeta": "/no"})
+        ctx = SimpleNamespace(config=Config(raiz=Path("/no"), estado=Path("/no/e"), agente=Agente(),
+                                            proveedores={"tareas-servidor": apagado}))
+        self.assertNotIn("direccion", _con_direccion(ctx, fila))
+        self.assertEqual(mensaje("Veamos {direccion}", _con_direccion(ctx, fila)), "llamar a Ana")
 
     def test_llevar_la_usa_en_la_plantilla(self):
         from telar.ordenes import _comun, pendiente

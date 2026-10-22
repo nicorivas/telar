@@ -159,7 +159,7 @@ agente           = "Ada"                       # quién deja las propuestas («A
 escribir_a       = "Claude"                    # «↩ escribirle a Claude»: a quién se le escribe en un hilo
 mensaje_escribir = "/tarea {id} {texto}"       # qué recibe ese hilo (sin esto, no hay botón)
 mensaje_procesar = "/avanzar {id}"             # «✓ hecha y procesar ahora» (sin esto, no hay botón)
-equipo           = ["Ana", "Marcelo"]          # a quién se puede asignar (más quien ya sea dueño de alguna)
+equipo           = ["Ana", "Beto"]             # a quién se puede asignar (más quien ya sea dueño de alguna)
 gmail            = { personal = "yo@gmail.com", "*" = "yo@trabajo.com" }   # cómo se abre un origen gmail:
 ```
 
@@ -314,6 +314,10 @@ a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}`, `{id}` (e
 proveedor, como `T84`) y `{direccion}` (la del objeto, como `tarea:T84`: ver `telar objeto`);
 un pendiente sin id, como los de los documentos, usa `{texto}`, y lo mismo con `{direccion}`
 uno sin dirección (una casilla de un documento, o el ítem de un proveedor que no es del tipo).
+Una plantilla con los dos cae entera a `{texto}` si falta cualquiera: `"/tarea {id} ({direccion})"`
+con el ítem de un proveedor `comando` (tiene id, no dirección) da su texto, no `/tarea X1 ()`. Una fila
+que llega sin dirección (la foto de otra máquina con un telar de antes) la gana aquí solo si su
+proveedor está declarado y activo en esta máquina con `tipo = "tipo"`; si no, también cae a `{texto}`.
 Con la skill de flow: `pendiente = "Veamos {id}"` y `pendiente_nuevo = "/tarea {id}"`.
 
 Con un agente declarado, `telar tejer` abre cada hilo con el agente adentro, retomando
@@ -407,11 +411,11 @@ la extensión de VS Code.)
 
 ```toml
 [repos.vida]
-ruta = "~/Life"
-[repos.brinca]
-ruta = "~/Life/brinca"            # puede estar dentro de otro
+ruta = "~/vida"
+[repos.trabajo]
+ruta = "~/vida/trabajo"           # puede estar dentro de otro
 [repos.telar]
-ruta = "~/Life/nico/proyectos/telar"
+ruta = "~/vida/proyectos/telar"
 perfil = "~/notas/telar-perfil.yaml"   # opcional: si su perfil no está en su carpeta
 ```
 
@@ -660,12 +664,12 @@ todos (`nats-server --auth`), se sigue aceptando hasta la 0.3; para pasarlo a cu
 
 ```toml
 [equipo]
-tareas   = "~/Life/nico/proyectos/tareas"   # una tarea por archivo con front-matter (T123.md)
-todo     = "~/Life/nico/proyectos/todo"     # el CLI que cambia la prioridad al aceptar
+tareas   = "~/vida/tareas"                  # una tarea por archivo con front-matter (T123.md)
+todo     = "~/vida/bin/todo"                # el CLI que cambia la prioridad al aceptar
 etiqueta = "equipo"                         # solo se comparten las tareas con esta etiqueta
 puerto   = 8766
 [equipo.personas]
-marcelo  = "…"                              # `telar equipo token marcelo` da una llave
+beto     = "…"                              # `telar equipo token beto` da una llave
 ```
 
 Se comparte solo el título, estado, prioridad, fecha, proyecto y `avance` de cada tarea etiquetada

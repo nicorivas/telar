@@ -265,7 +265,8 @@ def mensaje(plantilla: str, fila: dict) -> str:
     """La plantilla llena. Un pendiente sin id (los de los documentos) no tiene con qué
     llenar {id}: para ese, el texto, que es lo único que lo nombra sin ambigüedad. Lo mismo
     con {direccion} (`tarea:T84`, telar.objetos) para uno sin dirección: una casilla de un
-    documento, o el ítem de un proveedor que no es del tipo `tarea`."""
+    documento, o el ítem de un proveedor que no es del tipo `tarea`. Con los dos, basta que falte uno: no
+    se llena a medias (`/tarea X1 ()`)."""
     if ("{id}" in plantilla and not fila.get("id")) or ("{direccion}" in plantilla and not fila.get("direccion")):
         plantilla = "{texto}"
     valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", ""),
