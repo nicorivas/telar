@@ -8,6 +8,8 @@ extension shared the version number.
 
 ### Added
 
+- A module can tell the agent of every thread something when it starts (`[contexto] texto`, up to 600
+  characters), after what telar already tells it: how a module makes its agents know it is there and when to use it.
 - A task action that sends its message to a thread takes `hilo` (`POST /tareas/{id}/accion`, `telar tarea --hilo`):
   the message goes to that thread or agent, here or on another machine, instead of the task's; a name that is
   no thread is a 404 before anything runs. A multi-line text reaches a thread whole: it is pasted at once

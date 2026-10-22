@@ -26,6 +26,13 @@ class Contexto(ConEstado):
                 mock.patch.object(orden_agente, "_cartero_aqui", return_value=cartero):
             return orden_agente.contexto(SimpleNamespace(config=cfg))
 
+    def test_lo_que_dice_un_modulo_entra_al_final(self):
+        from telar.modulos import Modulo
+
+        m = Modulo(nombre="grafo", carpeta=self.config.raiz, contexto="Explora con `telar grafo vecinos`.")
+        self.config = replace(self.config, modulos=(m,))
+        self.assertTrue(self.contexto().endswith("Explora con `telar grafo vecinos`."))
+
     def test_sin_hilo_no_dice_nada(self):
         self.assertEqual(self.contexto(hilo=""), "")
 

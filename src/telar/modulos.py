@@ -34,6 +34,9 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [instalar]                     # lo que corre al instalarlo y al actualizarlo, en su carpeta
     comando = ["python3", "-m", "venv", ".venv"]
 
+    [contexto]                     # lo que el agente de cada hilo sabe del módulo al arrancar
+    texto = "La temperatura del mar: `telar nino34 medir`."
+
 Las rutas relativas son de la carpeta del módulo, y sus periódicos corren en ella. Todo lo que
 aporta toma el nombre del módulo: la pestaña es el bloque `nino34`, el resultado `nino34`, y un
 periódico `nino34-bajar` (o `nino34` si se llama como el módulo). El resultado se lee donde corren
@@ -66,7 +69,8 @@ from pathlib import Path
 
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
-_RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar"}
+_RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto"}
+TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
 ESPERA_CONSULTA = 30
 
 
@@ -88,13 +92,16 @@ class Modulo:
     ordenes: dict = field(default_factory=dict)
     #: lo que corre al instalarlo y al actualizarlo
     instalar: tuple = ()
+    #: lo que el agente de cada hilo sabe del módulo al arrancar (`[contexto] texto`)
+    contexto: str = ""
 
     @property
     def aporta(self) -> list[str]:
         """Lo que trae, en palabras: «pestaña», «app», «periódico nino34», «resultado», «orden medir»."""
         return ([*(["pestaña"] if self.pestana else []), *(["app"] if self.app else []),
                  *[f"periódico {n}" for n in self.periodicos], *(["resultado"] if self.resultado else []),
-                 *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()]])
+                 *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
+                 *(["contexto del agente"] if self.contexto else [])])
 
 
 def _ruta(carpeta: Path, valor: str) -> str:
@@ -126,7 +133,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     sobra = set(datos) - _RAIZ
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
-    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar"):
+    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -174,12 +181,19 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     if instalar and (not isinstance(instalar.get("comando"), list) or not instalar["comando"]):
         raise ErrorDeModulo(f"{nombre}: [instalar] comando: se esperaba una lista de palabras")
 
+    contexto = datos.get("contexto", {}).get("texto", "")
+    if not isinstance(contexto, str):
+        raise ErrorDeModulo(f"{nombre}: [contexto] texto: se esperaba un texto")
+    contexto = " ".join(contexto.split())
+    if len(contexto) > TOPE_CONTEXTO:
+        raise ErrorDeModulo(f"{nombre}: [contexto] texto: hasta {TOPE_CONTEXTO} caracteres (entra en cada sesión)")
+
     descripcion = datos.get("descripcion", "")
     if not isinstance(descripcion, str):
         raise ErrorDeModulo(f"{nombre}: descripcion: se esperaba un texto")
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
-                  instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else ())
+                  instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto)
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────

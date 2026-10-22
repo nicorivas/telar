@@ -134,6 +134,13 @@ class LosModulosComoPlugins(Prueba):
         modulos.quitar(self.instalados, "eco")
         self.assertTrue(self.repo.exists())
 
+    def test_el_contexto_del_agente_va_en_una_linea_y_con_tope(self):
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[contexto]\ntexto = """Hay un grafo:\n  úsalo."""\n')
+        self.assertEqual(modulos.leer("eco", self.repo).contexto, "Hay un grafo: úsalo.")
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + f'\n[contexto]\ntexto = "{"x" * 700}"\n')
+        with self.assertRaises(modulos.ErrorDeModulo):
+            modulos.leer("eco", self.repo)
+
     def test_un_manifiesto_roto_no_queda_a_medias(self):
         (self.repo / "modulo.toml").write_text('[ordenes.decir]\ncomando = "bin/eco"\n')
         git(self.repo, "commit", "-qam", "roto")

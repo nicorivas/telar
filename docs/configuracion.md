@@ -794,6 +794,10 @@ por la entrada, con `TELAR_CONSULTA=1`, y devuelve un objeto JSON; corre en la c
 Las dos reciben `TELAR_RAIZ`, `TELAR_REPOS` (los de `[repos]`, en JSON), `TELAR_MAQUINA` y `TELAR_MODULO`.
 Un módulo corre aparte: si se cae, telar sigue.
 
+Un módulo también puede decirle algo al agente de cada hilo, al arrancar, junto a lo que telar ya le dice
+(qué hilo es, su casilla): `[contexto] texto = "…"`, hasta 600 caracteres, porque entra en cada sesión.
+Es lo que hace que un agente sepa que el módulo está y cuándo usarlo.
+
 ### Instalar un módulo desde un repositorio
 
 ```
