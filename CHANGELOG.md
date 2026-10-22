@@ -18,6 +18,10 @@ extension shared the version number.
   hilos` and `telar ficha` (`hilo:<name>`), each unit in `telar proyectos` (`proyecto:<path>`), each row of
   `telar pendientes` that is a task of the type (`tarea:<id>`, `""` otherwise), a task's page (`telar tarea`,
   `GET /tareas/{id}`) and what `telar tipo tarea` returns. No other field changes.
+- An id that would break an address is escaped like a URL (`hilo:Faro%40casa`, `hilo:◌%20a%20solas`), so an
+  `@` in a name is not read as the machine and a name with spaces is found in a text.
+- `telar doctor` warns when a provider with `tipo = "tipo"` reads another folder than `[tipos.tarea]`, or
+  there is no `[tipos.tarea]`: its `tarea:<id>` addresses would open another task, or none.
 
 ## [0.3.0] — 2026-10-21
 

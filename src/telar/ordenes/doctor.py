@@ -51,6 +51,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _ganchos_vivos(ctx)
     revisiones += _ficha(ctx)
     revisiones += _proveedores(ctx)
+    revisiones += _tareas_del_tipo(ctx)
     revisiones += _ganchos(ctx, abiertos)
     revisiones += _remotos(ctx)
 
@@ -445,6 +446,30 @@ def _proveedores(ctx) -> list[dict]:
             alcance = "no supo decir qué toca"
         lineas.append(_r("proveedor", OK, f"{pr.nombre}: {alcance}"))
     return [*_atajos(ctx), *lineas]
+
+
+def _tareas_del_tipo(ctx) -> list[dict]:
+    """Que un proveedor con `tipo = "tipo"` lea la carpeta de `[tipos.tarea]`: sus filas de `telar pendientes`
+    llevan `tarea:<id>`, y `telar objeto` abre esa dirección en la carpeta del tipo. Si son otras, la dirección
+    abre otra tarea con el mismo id, o ninguna. Es un aviso: los pendientes se ven igual."""
+    t = next((x for x in getattr(ctx.config, "tipos", ()) if x.clave == "tarea"), None)
+    salida = []
+    for p in ctx.config.proveedores_activos():
+        if p.opciones.get("tipo") != "tipo" or not isinstance(p.opciones.get("carpeta"), str):
+            continue
+        if t is None:
+            salida.append(_r("tareas", AVISO, f"{p.nombre} lee tareas del tipo y no hay [tipos.tarea]: "
+                             "sus direcciones (tarea:<id>) no se abren con telar objeto",
+                             "declara [tipos.tarea] carpeta, la misma del proveedor"))
+            continue
+        if not t.carpeta:
+            continue  # viven en otra máquina (`en`): allá se abren, y esta no puede comparar carpetas
+        suya, del_tipo = (Path(c).expanduser().resolve() for c in (p.opciones["carpeta"], t.carpeta))
+        if suya != del_tipo:
+            salida.append(_r("tareas", AVISO, f"{p.nombre} lee {suya} y [tipos.tarea] es {del_tipo}: "
+                             "telar objeto tarea:<id> abriría otra tarea, o ninguna",
+                             f"pon en [proveedores.{p.nombre}] carpeta la misma de [tipos.tarea]"))
+    return salida
 
 
 def _atajos(ctx) -> list[dict]:

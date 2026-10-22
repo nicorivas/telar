@@ -91,8 +91,9 @@ def ficha(ctx, id: str, proveedor: str = "tareas") -> Pagina:
     if _del_tipo(ctx, proveedor) and not getattr(pagina, "direccion", ""):
         from telar import objetos
 
-        # una página nueva y no un atributo puesto: la API la entrega sin lo que no se puso (exclude_unset)
-        pagina = Pagina(**pagina.model_dump(exclude_unset=True), direccion=objetos.direccion_de("tarea", id))
+        # una página nueva y no un atributo puesto: la API la entrega sin lo que no se puso (exclude_unset).
+        # Un `detalle` puede haberla traído vacía ("" o null): se pisa, no se pasa dos veces
+        pagina = Pagina(**{**pagina.model_dump(exclude_unset=True), "direccion": objetos.direccion_de("tarea", id)})
     return pagina
 
 

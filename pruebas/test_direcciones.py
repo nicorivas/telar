@@ -86,6 +86,46 @@ class LaDireccionNoEsUnCampoDelObjeto(Prueba):
         self.assertNotIn("direccion", o.campos)
 
 
+class LaFormaDeLaDireccion(Prueba):
+    """Lo que un id no puede llevar tal cual va escapado, y `leer` y `buscar` devuelven el id como era."""
+
+    def test_un_proyecto_va_sin_barras_en_los_bordes(self):
+        self.assertEqual(objetos.direccion_de("proyecto", "/proyectos/faro/"), "proyecto:proyectos/faro")
+
+    def test_un_nombre_con_arroba_no_se_lee_como_la_maquina(self):
+        d = objetos.direccion_de("hilo", "Faro@casa")
+        self.assertEqual(d, "hilo:Faro%40casa")
+        self.assertEqual(objetos.leer(d), ("hilo", "Faro@casa", ""))
+        # con la máquina de verdad, también
+        self.assertEqual(objetos.leer(objetos.direccion_de("hilo", "Faro@casa", "servidor")),
+                         ("hilo", "Faro@casa", "servidor"))
+        # la de siempre sigue diciendo lo mismo
+        self.assertEqual(objetos.leer("hilo:Faro@casa"), ("hilo", "Faro", "casa"))
+
+    def test_un_nombre_con_espacios_se_encuentra_en_un_texto(self):
+        d = objetos.direccion_de("hilo", "◌ a solas")
+        self.assertEqual(d, "hilo:◌%20a%20solas")
+        ctx = SimpleNamespace(config=SimpleNamespace(modulos=()))
+        self.assertEqual(objetos.buscar(ctx, f"mira {d} y tarea:T84."), [("hilo", "◌ a solas", ""), ("tarea", "T84", "")])
+
+    def test_el_escape_mismo_va_escapado(self):
+        d = objetos.direccion_de("tarea", "100%")
+        self.assertEqual(d, "tarea:100%25")
+        self.assertEqual(objetos.leer(d).id, "100%")
+
+    def test_los_ids_de_siempre_no_cambian(self):
+        for tipo, id in (("tarea", "T84"), ("proyecto", "proyectos/faro"), ("archivo", "telar:docs/x.md"), ("hilo", "Faro")):
+            self.assertEqual(objetos.direccion_de(tipo, id), f"{tipo}:{id}")
+
+    def test_un_hilo_con_arroba_en_telar_hilos(self):
+        from telar.modelo import Hilo
+        from telar.ordenes import _comun
+
+        h = Hilo(id="@1", nombre="Faro@casa", ruta=Path("/x"))
+        j = _comun.json_hilo(h, _comun.Telar(hilos=[h], raiz=Path("/x")), con_ficha=False)
+        self.assertEqual(objetos.leer(j["direccion"]).id, "Faro@casa")
+
+
 class LosHilosDeOtrasMaquinas(Prueba):
     def test_traen_su_direccion(self):
         from telar import bus as mod_bus
@@ -143,6 +183,21 @@ class LasTareasDelTipo(_ConTareas):
 
         self.assertEqual(tareas.ficha(self.ctx, "T84").model_dump()["direccion"], "tarea:T84")
 
+    def test_la_pone_el_proveedor_del_tipo(self):
+        # el servicio la completa si falta: aquí se fija que el proveedor ya la trae
+        from telar.proveedores import tareas as mod_prov
+
+        pagina, _ = mod_prov.DeTipo(self.cfg.proveedores["tareas"]).ficha("T84")
+        self.assertEqual(pagina["direccion"], "tarea:T84")
+
+    def test_en_la_ficha_que_la_trae_vacia(self):
+        # un `detalle` que imprime "direccion": "" (o null) no tumba la ficha: se pisa
+        from telar.servicios import Pagina, tareas
+
+        for vacia in ("", None):
+            with mock.patch.object(tareas, "_ficha", return_value=Pagina(titulo="T84", direccion=vacia)):
+                self.assertEqual(tareas.ficha(self.ctx, "T84").model_dump()["direccion"], "tarea:T84")
+
     def test_en_la_ficha_que_da_otra_maquina_de_antes(self):
         # una máquina de antes de las direcciones da la ficha sin ella: se le pone aquí
         from telar.servicios import tareas
@@ -190,6 +245,42 @@ class LasTareasDelTipo(_ConTareas):
         with mock.patch.object(mod_bus, "pedir", return_value={"ok": True, "codigo": 0,
                                                                "salida": '{"id": "T90", "borrada": true}'}):
             self.assertEqual(self.correr_tipo("tarea", "borrar", "T90")["direccion"], "tarea:T90")
+
+
+class DoctorAvisa(_ConTareas):
+    """Las direcciones `tarea:<id>` de los pendientes se abren en la carpeta de [tipos.tarea]."""
+
+    def avisos(self):
+        from telar.ordenes import doctor
+
+        return doctor._tareas_del_tipo(self.ctx)
+
+    def test_la_misma_carpeta_no_avisa(self):
+        self.assertEqual(self.avisos(), [])
+
+    def test_otra_carpeta_avisa(self):
+        from telar.config import Config, Tipo
+
+        otra = self.dir / "otra"
+        otra.mkdir()
+        self.ctx = SimpleNamespace(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores=self.cfg.proveedores,
+                                                 tipos=(Tipo(clave="tarea", carpeta=str(otra)),)))
+        avisos = self.avisos()
+        self.assertEqual([a["nombre"] for a in avisos], ["tareas"])
+        self.assertIn(str(otra), avisos[0]["dice"])
+
+    def test_sin_tipos_tarea_avisa(self):
+        from telar.config import Config
+
+        self.ctx = SimpleNamespace(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores=self.cfg.proveedores))
+        self.assertEqual(len(self.avisos()), 1)
+
+    def test_si_viven_en_otra_maquina_no_compara(self):
+        from telar.config import Config, Tipo
+
+        self.ctx = SimpleNamespace(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores=self.cfg.proveedores,
+                                                 tipos=(Tipo(clave="tarea", en="servidor"),)))
+        self.assertEqual(self.avisos(), [])
 
 
 try:

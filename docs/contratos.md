@@ -618,6 +618,11 @@ Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea
 `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, o uno de los tipos que trae un módulo. Es
 también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
 
+Lo que un id no puede llevar tal cual va escapado como en una URL: `%40` por `@` (si no, se leería como la
+máquina), `%20` por un espacio, `%25` por `%`, y lo mismo con `` ` ' " < > ( ) [ ] { } , ; ``. Un hilo
+«Faro@casa» es `hilo:Faro%40casa`; uno «◌ a solas», `hilo:◌%20a%20solas`. El `id` de la salida va sin
+escapar. En `GET /objetos/<dirección>` la dirección va además codificada como cualquier tramo de una URL.
+
 ```
 telar objeto tarea:T366            {"direccion", "tipo", "id", "titulo", "estado", "resumen", "campos": {…},
                                     "enlaces": ["proyecto:…"], "acciones": [{"nombre", "descripcion", "params"}],

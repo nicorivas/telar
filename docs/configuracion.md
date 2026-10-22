@@ -146,6 +146,9 @@ carpeta = "~/notas/tareas"     # la misma de [tipos.tarea]
 en      = "servidor"           # opcional: en la máquina donde viven, por el bus
 ```
 
+Tiene que ser la misma carpeta: sus pendientes llevan la dirección `tarea:<id>`, y `telar objeto` la abre
+en la de `[tipos.tarea]`. Si son distintas, o falta `[tipos.tarea]`, `telar doctor` lo avisa.
+
 Sin `detalle`, el proveedor arma él mismo la **ficha** de cada tarea (la propuesta del agente, el contexto,
 los enlaces, la historia) y sus botones son acciones del tipo: se corren sobre el archivo con la versión
 que mostraba la ficha, y el archivo se commitea y se sube (`telar commit`). Lo propio de cada casa va en sus

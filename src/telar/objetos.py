@@ -6,7 +6,9 @@ que traiga un módulo (un correo, un evento). Su **dirección** tiene una sola f
     tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:nico/proyectos/telar · archivo:telar:docs/x.md
 
 `@máquina` va solo cuando importa (un hilo o un objeto de un módulo que vive en otra máquina); el `id` es
-lo que el tipo entiende, y puede llevar `:` (un archivo es `máquina:ruta`). Con una forma, un mensaje puede
+lo que el tipo entiende, y puede llevar `:` (un archivo es `máquina:ruta`). Lo que en un id rompería la
+forma va escapado como en una URL (`%40` por `@`, `%20` por un espacio: `hilo:Faro%40casa`, `hilo:◌%20a%20solas`),
+para que `@` no se lea como la máquina y un texto la encuentre entera. Con una forma, un mensaje puede
 decir «revisa `tarea:T366`» y cualquiera sabe abrirlo: `telar objeto tarea:T366`, `GET /objetos/tarea:T366`.
 
 Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones** con sus parámetros. Los de
@@ -26,6 +28,7 @@ from __future__ import annotations
 import inspect
 import re
 from typing import NamedTuple
+from urllib.parse import unquote
 
 from pydantic import BaseModel, Field
 
@@ -36,19 +39,30 @@ _DIRECCION = re.compile(r"(?<![\w/@.-])(?P<tipo>[a-z][a-z0-9-]*):(?P<id>[^\s`'\"
                         r"(?=$|[\s`'\"<>()\[\]{},;]|[.:!?](?:\s|$))")
 
 
+#: lo que un id no puede llevar tal cual: `@` (se leería como la máquina), `%` (el escape mismo), los
+#: espacios y lo que corta una dirección dentro de un texto (`buscar`)
+_ESCAPAR = re.compile(r"[%@\s`'\"<>()\[\]{},;]")
+
+
+def _escapar(id: str) -> str:
+    return _ESCAPAR.sub(lambda m: "".join(f"%{b:02X}" for b in m.group().encode()), id)
+
+
 class Direccion(NamedTuple):
+    #: el id va tal cual (`◌ a solas`); escapado, solo en el texto de la dirección
     tipo: str
     id: str
     maquina: str = ""
 
     def __str__(self) -> str:
-        return f"{self.tipo}:{self.id}" + (f"@{self.maquina}" if self.maquina else "")
+        return f"{self.tipo}:{_escapar(self.id)}" + (f"@{self.maquina}" if self.maquina else "")
 
 
 def direccion_de(tipo: str, id: str, maquina: str = "") -> str:
     """La dirección de un objeto, como la escriben sus tipos y la llevan las salidas JSON que lo nombran
     (`telar hilos`, `telar proyectos`, `telar pendientes`, `telar tipo tarea`): `hilo:Faro`, `tarea:T84`.
-    Un proyecto va por su ruta sin barras en los bordes, que es como lo encuentra `ver`."""
+    Un proyecto va por su ruta sin barras en los bordes, que es como lo encuentra `ver`. Lo que el id no puede
+    llevar tal cual va escapado (`hilo:Faro%40casa`); `leer` y `buscar` lo devuelven a como era."""
     if tipo == "proyecto":
         id = id.strip("/")
     return str(Direccion(tipo, id, maquina))
@@ -90,7 +104,7 @@ def leer(texto: str) -> Direccion:
     m = re.fullmatch(r"(?P<tipo>[a-z][a-z0-9-]*):(?P<id>.+?)(?:@(?P<maquina>[a-z0-9][\w-]*))?", t)
     if not m or not m.group("id"):
         raise ErrorDeServicio(f"«{texto}» no es una dirección: se escribe tipo:id, como tarea:T366", 422)
-    return Direccion(m.group("tipo"), m.group("id"), m.group("maquina") or "")
+    return Direccion(m.group("tipo"), unquote(m.group("id")), m.group("maquina") or "")
 
 
 def buscar(ctx, texto: str) -> list[Direccion]:
@@ -98,7 +112,7 @@ def buscar(ctx, texto: str) -> list[Direccion]:
     conocidos = set(tipos(ctx))
     vistas, salida = set(), []
     for m in _DIRECCION.finditer(texto):
-        d = Direccion(m.group("tipo"), m.group("id"), m.group("maquina") or "")
+        d = Direccion(m.group("tipo"), unquote(m.group("id")), m.group("maquina") or "")
         if d.tipo in conocidos and str(d) not in vistas:
             vistas.add(str(d))
             salida.append(d)
@@ -139,7 +153,7 @@ class Tarea(Tipo):
         campos = {k: v for k, v in t.model_dump(mode="json").items()
                   if k not in ("id", "direccion", "titulo", "estado", "historia", "version", "duplicadas", "contexto")
                   and v not in ("", [], None, False)}
-        enlaces = [f"proyecto:{t.proyecto}"] if t.proyecto else []
+        enlaces = [direccion_de("proyecto", t.proyecto)] if t.proyecto else []
         acciones = [Accion(nombre=n, descripcion=(fn.__doc__ or "").strip().split("\n")[0], params=_params_de(fn))
                     for n, fn in tipo.ACCIONES.items()]
         return Objeto(direccion=direccion_de("tarea", t.id), tipo="tarea", id=t.id, titulo=t.titulo, estado=t.estado,
@@ -188,8 +202,8 @@ class Hilo(Tipo):
 
     def _objeto(self, j: dict, maquina: str) -> Objeto:
         campos = {k: j[k] for k in ("relativa", "arquetipo", "vivo", "actividad", "atencion_desde") if j.get(k) not in (None, "", False)}
-        enlaces = [f"proyecto:{j['relativa']}"] if j.get("relativa") and j.get("relativa") not in (".", "") else []
-        return Objeto(direccion=direccion_de("hilo", j["nombre"]) + (f"@{maquina}" if maquina else ""), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
+        enlaces = [direccion_de("proyecto", j["relativa"])] if j.get("relativa") and j.get("relativa") not in (".", "") else []
+        return Objeto(direccion=direccion_de("hilo", j["nombre"], maquina), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
                       acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva)",
                                        params={"texto": ""}),
@@ -246,7 +260,7 @@ class Proyecto(Tipo):
         ruta = (p.get("ruta") or ruta).strip("/")
         campos = {k: v for k, v in p.items() if k not in ("nombre", "ruta", "direccion", "hilo", "estado", "estado_completo")
                   and v not in ("", None, [], {})}
-        enlaces = [f"hilo:{p['hilo']}"] if p.get("hilo") else []
+        enlaces = [direccion_de("hilo", p["hilo"])] if p.get("hilo") else []
         return Objeto(direccion=direccion_de("proyecto", ruta), tipo="proyecto", id=ruta, titulo=p.get("nombre") or ruta,
                       estado=str(p.get("estado") or ""), resumen=str(p.get("estado_completo") or ""), campos=campos,
                       enlaces=enlaces)
@@ -262,7 +276,7 @@ class Archivo(Tipo):
         a = archivos.leer_en(ctx, d.id, d.maquina)
         titulo = next((l[2:].strip() for l in a.texto.splitlines() if l.startswith("# ")), a.ruta.rsplit("/", 1)[-1])
         lede = next((l.lstrip("> ").strip() for l in a.texto.splitlines() if l.startswith(">")), "")
-        return Objeto(direccion=f"archivo:{d.id}" + (f"@{d.maquina}" if d.maquina else ""), tipo="archivo", id=d.id,
+        return Objeto(direccion=direccion_de("archivo", d.id, d.maquina), tipo="archivo", id=d.id,
                       titulo=titulo, resumen=lede[:400], campos={"ruta": a.ruta, "mtime": a.mtime, "recortado": a.recortado},
                       maquina=a.maquina)
 
