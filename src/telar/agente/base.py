@@ -524,6 +524,11 @@ class AgenteBase(ABC):
         palabras = self.nuevo()
         return ([*palabras, mensaje] if mensaje else palabras), ""
 
+    def con_modelo(self, modelo: str) -> list[str]:
+        """Las palabras que eligen el modelo de la sesión (`modelo` de un agente.toml), para ir después
+        del prompt. El agente que no sepa elegirlo devuelve [] y el modelo se ignora."""
+        return []
+
     def con_mensaje(self, mensaje: str) -> list[str]:
         """Una conversación nueva que arranca diciendo `mensaje`. Sin correrla.
 

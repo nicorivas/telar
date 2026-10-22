@@ -190,7 +190,8 @@ class Nodo:
             if (a.en or self.config.agentes_en) not in ("", "aqui"):
                 continue
             actual = salida.get(a.nombre) or ficha_de(a.nombre, False)
-            actual["residente"] = a.clave
+            # `residente = false` en su agente.toml: no se le abre la sesión sola cuando le llega algo (avisar)
+            actual["residente"] = a.clave if a.residente else ""
             salida[a.nombre] = actual
         return salida
 

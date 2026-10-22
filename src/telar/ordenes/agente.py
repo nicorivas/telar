@@ -320,12 +320,15 @@ def _agentes_en_contexto(ctx) -> str:
     try:
         from telar import agentes as mod_agentes
 
-        nombres = [a.nombre for a in mod_agentes.descubrir(ctx.config)]
+        todos = mod_agentes.descubrir(ctx.config)
     except Exception:  # noqa: BLE001 - el contexto de arranque no se cae por esto
         return ""
-    if not nombres:
+    if not todos:
         return ""
-    return f" Agentes residentes ({', '.join(nombres)}): encárgales con `telar encargar <agente> \"…\"`."
+    # el `para` de cada uno no va aquí (son líneas que carga cada sesión): solo dónde leerlo
+    para = "; para qué es cada uno: `telar agentes`" if any(a.para for a in todos) else ""
+    return (f" Agentes residentes ({', '.join(a.nombre for a in todos)}): encárgales con "
+            f"`telar encargar <agente> \"…\"`{para}.")
 
 
 # ── leer una conversación ───────────────────────────────────────────────────────

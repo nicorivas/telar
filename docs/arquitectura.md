@@ -225,6 +225,13 @@ ser de paso (se abre para algo y se archiva) o **residente**: siempre existe, re
 su conversación cuando pesa. Un residente vive en una carpeta bajo `[agentes] carpeta`, con su
 `CLAUDE.md`, `README.md`, `memoria/` y `bitacora.md`.
 
+Su **definición** es un `agente.toml` al lado de su `CLAUDE.md`, opcional: un agente es el programa y el
+hilo, el proceso. Hoy telar usa de ahí `nombre`, `para`, `modelo` y `residente`, y muestra el resto
+(`telar agentes`, `agente:<carpeta>`). La definición es del repositorio y vale en todas las máquinas; la
+configuración de cada una (`[agentes.<carpeta>]`) gana donde se cruzan. Un archivo con errores se lee en
+blando: lo que está mal se ignora y se avisa, porque `telar.agentes.descubrir` corre dentro del nodo y un
+error no puede callar al agente. El diseño y lo que falta: [agente-como-definicion.md](propuestas/agente-como-definicion.md).
+
 Cada agente arranca en su carpeta, para que Claude Code cargue su `CLAUDE.md` desde el comienzo: Claude
 lee los `CLAUDE.md` desde la carpeta de arranque hasta la raíz del repositorio, así que lo común a
 todos los agentes va en el `CLAUDE.md` de la carpeta que los contiene. Un `@import` fuera de la carpeta

@@ -15,6 +15,9 @@ el primer paso sin hacer de la primera propuesta.
 2. **[primitivas.md](primitivas.md)**: pocas piezas de las que se arma todo (objetos con dirección,
    mensajes con modos, el encargo, el lugar y los worktrees, vistas, disparadores, permisos), y
    `telar commit` en todas partes.
+   El paso 3, el agente como definición, tiene su diseño aparte:
+   **[agente-como-definicion.md](agente-como-definicion.md)** (`agente.toml`: qué es, cómo convive con lo de
+   hoy y las decisiones que faltan). Su primer paso está hecho.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
    que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
 4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores

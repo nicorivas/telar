@@ -73,6 +73,7 @@ ORDENES: dict[str, str] = {
     "proyectos": "Todas las unidades del perfil, y abrir un hilo cargando una.",
     "atencion": "Qué dice el agente de cada hilo: trabajando, espera, terminó.",
     "agente": "El agente que corre en un hilo: sus ganchos, sus conversaciones.",
+    "agentes": "Los agentes residentes y lo que declara cada uno en su agente.toml.",
     "tiempo": "Cuánto estuvo arriba cada hilo, medido por el foco.",
     "accion": "Correr una acción declarada por el perfil.",
     "config": "Mostrar la configuración resuelta y de dónde salió.",

@@ -81,6 +81,13 @@ extension shared the version number.
   there, no bus, or the local node off). In `sesiones`, the owner's conversation comes first and the earlier
   ones known here follow. `telar doctor` gains a `sesiones` check that lists the old per-thread tmux sessions
   (`telar-…`) still alive, and warns when it could not ask tmux.
+- A resident agent can be defined in an `agente.toml` next to its `CLAUDE.md`: `nombre` (overrides the README
+  title), `para` (when to hand it work), `modelo` (passed as `--model` when its session or thread opens; a
+  `--model` in `[agentes.<folder>] argumentos` wins) and `residente` (`false`: the node does not open its
+  session by itself when something arrives). Other fields are accepted and shown, not yet used; a broken file
+  or field is ignored with a warning, never disabling the agent. Without the file nothing changes. New `telar
+  agentes [agent] [--json]` lists what each declares, a new `agente:<folder>` object type shows it and hands it
+  work (`encargar`), `telar doctor` gains an `agentes` check, and the example workspace has a resident.
 
 ### Fixed
 

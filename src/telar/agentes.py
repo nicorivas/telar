@@ -17,12 +17,24 @@ home` es un comando que imprime una página (docs/contratos.md): sus bloques van
 arma telar. El nombre del agente es el título del README de su carpeta, o el de la carpeta.
 
 Un agente parte en su carpeta, no donde diga `[agente] carpeta`: así carga su CLAUDE.md al arrancar.
+
+Su definición, si la tiene, es un `agente.toml` al lado de su CLAUDE.md (docs/propuestas/agente-como-definicion.md):
+
+    nombre = "Faro"          pisa el título del README
+    para = "…"               cuándo encargarle algo, en una o dos frases
+    modelo = "opus"          el modelo de su sesión, si el motor sabe elegirlo (`argumentos_de`)
+    residente = false        el nodo no le abre la sesión solo cuando le llega algo (por defecto, true)
+
+`instrucciones`, `memoria`, `capacidades`, `politica` y `lugar` se aceptan y se muestran, todavía sin uso.
+Sin el archivo todo es como antes. Uno con errores no apaga al agente: lo que no se lee se ignora y queda
+en `problemas`, que muestran `telar agentes` y `telar doctor`.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
 
 #: el prefijo de la clave de sección de un agente: `agente:gestion`
@@ -32,6 +44,14 @@ ENTRADAS = 40
 CUERPO = 1200
 
 _ENTRADA = re.compile(r"^(?:#{2,3}\s+|-\s+)?(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?\s*[—–-]\s*(.+?)\s*$")
+#: el archivo de su definición, al lado de su CLAUDE.md
+DEFINICION = "agente.toml"
+#: los campos que telar usa hoy, y los que acepta y muestra sin usarlos todavía (primitivas.md, «Qué es un agente»)
+USADOS = ("nombre", "para", "modelo", "residente")
+SIN_USO = ("instrucciones", "memoria", "capacidades", "politica", "lugar")
+#: «una o dos frases»: más que esto se acepta, con aviso
+PARA_LARGO = 300
+
 _RECUERDO = re.compile(r"^\s*[-*]\s+\[([^\]]+)\]\(([^)]+)\)\s*(?:[—–-]\s*(.*))?$")
 
 
@@ -45,6 +65,17 @@ class Agente:
     argumentos: tuple[str, ...] = ()
     #: dónde vive, si no es donde dice `[agentes] en` (ver config.AgenteExtra.en)
     en: str = ""
+    # lo que dice su agente.toml (`definicion`, si lo tiene); sin él, los valores de siempre
+    para: str = ""
+    modelo: str = ""
+    residente: bool = True
+    definicion: Path | None = None
+    #: el nombre que tendría sin agente.toml (el del README o la carpeta): si difiere, se renombró
+    nombre_de_antes: str = ""
+    #: los campos declarados que telar todavía no usa, tal cual
+    sin_uso: dict = field(default_factory=dict, compare=False, hash=False)
+    #: lo que no se pudo leer o se ignoró de su agente.toml, una frase por cosa
+    problemas: tuple[str, ...] = ()
 
     @property
     def seccion(self) -> str:
@@ -68,6 +99,59 @@ def _nombre(carpeta: Path) -> str:
     return nombre if nombre and nombre.lower() != carpeta.name.lower() else carpeta.name.capitalize()
 
 
+def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
+    """Lo válido de su agente.toml (campo → valor, solo los que vienen bien) y los problemas. ({}, ()) sin archivo.
+
+    Blando a propósito: esto corre en el nodo, y una coma de más no puede callar al agente en todas las
+    máquinas. Un TOML que no se lee se ignora entero; un campo mal, solo; una clave desconocida, con aviso."""
+    ruta = carpeta / DEFINICION
+    if not ruta.is_file():
+        return {}, ()
+    try:
+        datos = tomllib.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+        return {}, (f"{DEFINICION} no se lee ({e}): se ignora entero",)
+    valido: dict = {}
+    problemas: list[str] = []
+    for clave, valor in datos.items():
+        if clave == "nombre":
+            if isinstance(valor, str) and valor.strip() and "\n" not in valor and len(valor.strip()) <= 60:
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"nombre: se esperaba un texto de una línea (hasta 60), llegó {valor!r}: se ignora")
+        elif clave == "para":
+            if isinstance(valor, str):
+                valido[clave] = " ".join(valor.split())
+                if len(valido[clave]) > PARA_LARGO:
+                    problemas.append(f"para: {len(valido[clave])} caracteres; se pensó para una o dos frases")
+            else:
+                problemas.append(f"para: se esperaba un texto, llegó {valor!r}: se ignora")
+        elif clave == "modelo":
+            # libre: los nombres de los modelos cambian más rápido que telar. Solo que no parezca una bandera
+            if isinstance(valor, str) and valor.strip() and not valor.strip().startswith("-") and not re.search(r"\s", valor.strip()):
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"modelo: se esperaba un nombre sin espacios, llegó {valor!r}: se ignora")
+        elif clave == "residente":
+            if isinstance(valor, bool):
+                valido[clave] = valor
+            else:
+                problemas.append(f"residente: se esperaba true o false, llegó {valor!r}: se ignora")
+        elif clave == "instrucciones":
+            if isinstance(valor, str):
+                valido[clave] = valor
+            else:
+                problemas.append(f"instrucciones: se esperaba la ruta de un archivo, llegó {valor!r}: se ignora")
+        elif clave in SIN_USO:
+            if isinstance(valor, dict):
+                valido[clave] = valor
+            else:
+                problemas.append(f"{clave}: se esperaba una tabla ([{clave}]), llegó {valor!r}: se ignora")
+        else:
+            problemas.append(f"{clave}: no lo conozco (¿de un telar más nuevo?): se ignora")
+    return valido, tuple(problemas)
+
+
 def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
     """Los agentes del repositorio. `vinculos` (hilo → carpeta relativa a la raíz) suma sus hilos."""
     b = base(config)
@@ -76,10 +160,19 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
     extras = {s.clave: s for s in getattr(config, "agentes_extra", ())}
     raiz = Path(config.raiz)
     salida = []
-    for d in sorted(b.iterdir(), key=lambda x: x.name):
-        if not d.is_dir() or d.name.startswith(("_", ".")) or not (d / "CLAUDE.md").is_file():
-            continue
-        nombre = _nombre(d)
+    carpetas = [d for d in sorted(b.iterdir(), key=lambda x: x.name)
+                if d.is_dir() and not d.name.startswith(("_", ".")) and (d / "CLAUDE.md").is_file()]
+    de_siempre = {d.name: _nombre(d) for d in carpetas}
+    for d in carpetas:
+        de_antes = de_siempre[d.name]
+        definido, problemas = leer_definicion(d)
+        nombre = definido.get("nombre", de_antes)
+        tomados = {x for a in salida for x in (a.nombre, a.clave)} | \
+                  {x for c, n in de_siempre.items() if c != d.name for x in (n, c)}
+        if nombre != de_antes and nombre in tomados:
+            # dos con el mismo nombre serían un solo hilo: el segundo se queda con el suyo de antes
+            problemas = (*problemas, f"nombre: «{nombre}» ya es de otro agente; se queda con «{de_antes}»")
+            nombre = de_antes
         extra = extras.get(d.name)
         hilos = [nombre, *(extra.hilos if extra else ())]
         real = d.resolve()
@@ -93,8 +186,39 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
                 hilos.append(hilo)
         salida.append(Agente(clave=d.name, nombre=nombre, carpeta=d, hilos=tuple(hilos),
                              home=tuple(extra.home) if extra else (), argumentos=tuple(extra.argumentos) if extra else (),
-                             en=extra.en if extra else ""))
+                             en=extra.en if extra else "",
+                             para=definido.get("para", ""), modelo=definido.get("modelo", ""),
+                             residente=definido.get("residente", True),
+                             definicion=d / DEFINICION if (d / DEFINICION).is_file() else None,
+                             nombre_de_antes=de_antes,
+                             sin_uso={k: v for k, v in definido.items() if k in SIN_USO},
+                             problemas=problemas))
     return salida
+
+
+def argumentos_de(a: Agente, motor=None, *, con_config: bool = True) -> list[str]:
+    """Lo que va después del prompt al abrir su sesión: el modelo que declara (si el motor sabe elegirlo)
+    y los `argumentos` de esta máquina. Donde se pisan gana la máquina: si `argumentos` ya trae la
+    bandera del modelo, la del agente.toml no se agrega. Sin `con_config`, solo el modelo."""
+    propios = list(a.argumentos) if con_config else []
+    modelo = list(motor.con_modelo(a.modelo)) if (motor is not None and a.modelo) else []
+    if modelo and modelo[0] in a.argumentos:
+        modelo = []
+    return [*modelo, *propios]
+
+
+def como_json(a: Agente) -> dict:
+    """Lo que `telar agentes --json` dice de un agente (docs/contratos.md)."""
+    import json
+
+    from telar.objetos import direccion_de
+
+    # lo que no se usa va tal cual, salvo lo que el JSON no tiene (una fecha de TOML): como texto
+    sin_uso = json.loads(json.dumps(a.sin_uso, default=str))
+    return {"clave": a.clave, "nombre": a.nombre, "direccion": direccion_de("agente", a.clave),
+            "carpeta": str(a.carpeta), "definicion": str(a.definicion) if a.definicion else "",
+            "para": a.para, "modelo": a.modelo, "residente": a.residente, "hilos": list(a.hilos),
+            "en": a.en, "sin_uso": sin_uso, "problemas": list(a.problemas)}
 
 
 def de_carpeta(config, carpeta: Path | None) -> Agente | None:
@@ -191,6 +315,9 @@ def pagina(a: Agente) -> dict:
     quien = _quien(a.carpeta)
     if quien and not a.home:
         bloques.insert(0, {"texto": quien})
+    if a.para:
+        # lo que declara su agente.toml: cuándo encargarle algo, arriba de todo
+        bloques.insert(0, {"titulo": "para", "texto": a.para})
     entradas = bitacora(a.carpeta)
     bloques.append({"titulo": f"bitácora · {len(entradas)}" if entradas else "bitácora",
                     **({"items": entradas} if entradas else {"texto": "todavía nada: una línea por encargo en bitacora.md"})})
@@ -198,6 +325,7 @@ def pagina(a: Agente) -> dict:
     bloques.append({"titulo": f"memoria · {len(recuerdos)}" if recuerdos else "memoria",
                     **({"items": recuerdos} if recuerdos else {"texto": "su índice, memoria/MEMORY.md, está vacío"})})
     archivos = [(n, a.carpeta / r) for n, r in (("CLAUDE.md: quién es", "CLAUDE.md"), ("README.md: su mapa", "README.md"),
-                                                ("bitácora", "bitacora.md"), ("índice de su memoria", "memoria/MEMORY.md"))]
+                                                ("bitácora", "bitacora.md"), ("índice de su memoria", "memoria/MEMORY.md"),
+                                                ("agente.toml: su definición", DEFINICION))]
     bloques.append({"titulo": "archivos", "items": [{"titulo": n, "enlace": str(r)} for n, r in archivos if r.exists()]})
     return {"titulo": a.nombre, "subtitulo": subtitulo or str(a.carpeta), "bloques": bloques}

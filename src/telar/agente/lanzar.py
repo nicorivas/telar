@@ -95,6 +95,13 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -
         principal = conversaciones[0].id if conversaciones else ""
         palabras, nueva = agente.nuevo_con_id(mensaje, id=principal)
         vacia = bool(principal) and nueva == principal
+    # el hilo de un residente con `modelo` en su agente.toml abre con ese modelo (sus `argumentos` van solo
+    # con los encargos, como antes: docs/propuestas/agente-como-definicion.md)
+    from telar import agentes as mod_agentes
+
+    residente = mod_agentes.de_carpeta(config, carpeta_hilo)
+    if residente is not None and residente.modelo:
+        palabras = [*palabras, *mod_agentes.argumentos_de(residente, agente, con_config=False)]
     return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
                        retoma=retoma, nueva=nueva, vacia=vacia)
 

@@ -647,8 +647,8 @@ pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con
 ### `telar objeto <dirección> [acción] --json`
 
 Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea:T366`, `hilo:Telar`,
-`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, o uno de los tipos que trae
-un módulo. Es
+`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, `agente:faro`, o uno de los
+tipos que trae un módulo. Es
 también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
 
 Lo que un id no puede llevar tal cual va escapado como en una URL: `%40` por `@` (si no, se leería como la
@@ -679,9 +679,36 @@ es `abierta`, `en curso` o `hecha`. Sus acciones, mientras no esté hecha: `hech
 (`{"nombre": …}`; vacío o `none` lo quita), las de `telar pendiente`, que no tocan nada fuera del documento.
 Escribirla le pone id, así que `objeto` vuelve con la dirección nueva.
 
+Un agente residente es `agente:<carpeta>` (`agente:faro`; también vale su nombre). Su `titulo` es su nombre,
+`estado` es `residente` o `no residente`, `resumen` es su `para`, y `campos` trae lo demás de `telar agentes
+--json` que no esté vacío (carpeta, definición, modelo, hilos, en, sin_uso, problemas). Enlaza a su hilo
+(`hilo:<nombre>`). Su acción es `encargar` (`{"texto": …}`), la de `telar encargar`: `resultado` es el encargo.
+
 En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
 en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`
 no mira la máquina: la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten.
+
+### `telar agentes [agente] --json`
+
+Los agentes residentes (`[agentes] carpeta`) y lo que declara cada uno en su `agente.toml`
+(docs/propuestas/agente-como-definicion.md). Sin agente, `{"agentes": [ … ]}`, ordenados por carpeta; con
+uno (su carpeta o su nombre), ese solo, sin envolver.
+
+```json
+{ "agentes": [ { "clave": "faro", "nombre": "Faro", "direccion": "agente:faro",
+                 "carpeta": "/…/agentes/faro", "definicion": "/…/agentes/faro/agente.toml",
+                 "para": "La lámpara y el turno de noche.", "modelo": "opus", "residente": true,
+                 "hilos": ["Faro", "◌ guardia*"], "en": "",
+                 "sin_uso": { "politica": { "permisos": "acceptEdits" } },
+                 "problemas": [] } ] }
+```
+
+Sin `agente.toml`, `definicion`, `para` y `modelo` vienen `""`, `residente` es `true` y `nombre` es el título
+del README de su carpeta, como siempre. `sin_uso` son los campos declarados que telar todavía no usa
+(`instrucciones`, `memoria`, `capacidades`, `politica`, `lugar`), tal cual. `problemas` dice, una frase por
+cosa, lo que no se pudo leer y se ignoró (el archivo entero si no es TOML, o un campo con el tipo equivocado)
+y las claves que no conoce. `en` es `[agentes.<carpeta>] en` de esta máquina. Un agente que no existe sale
+con 2 y la lista de los que hay.
 
 ### `telar agente conversacion <id> --json`
 
@@ -767,6 +794,9 @@ no valen) y una si `modulos.toml` no se lee. Con todos legibles, una sola `módu
 `ok` y sus nombres; sin módulos, ninguna. Los repos de `[repos]` traen revisiones
 `repos` (uno que no existe o queda fuera de `raiz`, un `aviso`) y `perfiles` (las
 carpetas que reconocen dos repos y cuál gana, un `aviso`).
+Con `[agentes] carpeta`, la revisión `agentes` es un `aviso` por cada problema de un `agente.toml` y por
+cada agente cuyo `nombre` declarado no tiene conversación anotada y el de antes sí (el arreglo es el
+`telar hilo renombrar` que la lleva); sin nada de eso, un `ok` con sus nombres. Sin agentes, ninguna.
 La revisión `sesiones` dice si quedan sesiones tmux propias por hilo de las versiones de
 antes (`telar-…`) vivas en esta máquina, o hilos remotos anotados con una dirección de ese
 tipo (un `aviso`, con sus nombres); sin ninguna, `ok`. Si tmux está y no se le pudo

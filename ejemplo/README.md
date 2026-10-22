@@ -1,7 +1,7 @@
 # El taller
 
 Un repositorio de trabajo inventado, para probar telar sin datos de nadie. Tres
-proyectos, una nota y un `telar-perfil.yaml` que los declara.
+proyectos, una nota, un agente residente y un `telar-perfil.yaml` que los declara.
 
 Sirve para dos cosas: que las pruebas de humo tengan contra qué correr, y que
 alguien que llega vea en un minuto qué forma tiene un repositorio tejible.
@@ -9,12 +9,14 @@ alguien que llega vea en un minuto qué forma tiene un repositorio tejible.
 ```sh
 telar --raiz ejemplo perfil    # qué declara este taller y qué documentos alcanza
 telar --raiz ejemplo hilos     # los hilos, cuando haya sesión
+telar --raiz ejemplo agentes   # el agente residente, con [agentes] carpeta = "agentes" en la configuración
 ```
 
 | Carpeta | Qué hay |
 |---|---|
 | `proyectos/` | Un encargo por carpeta, con `README.md`. Arquetipo `proyecto`. |
 | `notas/` | Notas sueltas; el archivo es la unidad. Arquetipo `nota`. |
+| `agentes/` | Un agente residente por carpeta: `vigia` tiene su `CLAUDE.md`, su `agente.toml` (nombre, para qué es, modelo), su bitácora y su memoria. |
 | `telar-perfil.yaml` | Lo que este repositorio declara de sí mismo. |
 
 Los tres proyectos están escritos a propósito de formas distintas: `faro` usa

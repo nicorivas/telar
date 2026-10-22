@@ -46,6 +46,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _perfil(ctx)
     revisiones += _repos(ctx)
     revisiones += _modulos(ctx)
+    revisiones += _agentes(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
     revisiones += _gemelos(ctx)
@@ -386,6 +387,38 @@ def _modulos(ctx) -> list[dict]:
                          " telar modulos): hasta entonces las demás órdenes no arrancan"))
     if leidos and not rotos:
         salida.append(_r("módulos", OK, ", ".join(m.nombre for m in leidos)))
+    return salida
+
+
+def _agentes(ctx) -> list[dict]:
+    """Los agentes residentes y su agente.toml (telar.agentes): lo que no se pudo leer, y un nombre declarado
+    que dejó su conversación anotada con el nombre de antes. Sin `[agentes] carpeta`, nada."""
+    from telar import agentes as mod_agentes
+
+    try:
+        todos = mod_agentes.descubrir(ctx.config)
+    except OSError as e:
+        return [_r("agentes", AVISO, f"no pude leer la carpeta de los agentes: {e}")]
+    if not todos:
+        return []
+    try:
+        sesiones = mod_estado.abrir(ctx.config).sesiones()
+    except Exception:  # noqa: BLE001 - sin estado no hay conversaciones que revisar
+        sesiones = {}
+    salida = []
+    for a in todos:
+        for problema in a.problemas:
+            salida.append(_r("agentes", AVISO, f"{a.clave}/{mod_agentes.DEFINICION}: {problema}",
+                             f"arréglalo en {a.definicion or a.carpeta / mod_agentes.DEFINICION}: mientras, vale lo de siempre"))
+        if a.nombre != a.nombre_de_antes and sesiones.get(a.nombre_de_antes) and not sesiones.get(a.nombre):
+            salida.append(_r("agentes", AVISO,
+                             f"{a.clave}: su agente.toml lo llama «{a.nombre}», pero su conversación está anotada como "
+                             f"«{a.nombre_de_antes}»: su próxima sesión empezaría de cero",
+                             f"telar hilo renombrar {shlex.quote(a.nombre)} --hilo {shlex.quote(a.nombre_de_antes)}"))
+    if not salida:
+        con = sum(1 for a in todos if a.definicion)
+        salida.append(_r("agentes", OK, ", ".join(a.nombre for a in todos)
+                         + (f" ({con} con agente.toml)" if con else "")))
     return salida
 
 

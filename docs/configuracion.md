@@ -616,6 +616,25 @@ cada archivo para abrirlo. Un hilo vinculado a la carpeta del agente **arranca a
 `[agente] carpeta` diga otra cosa: así Claude carga el `CLAUDE.md` del agente (y los de las carpetas de
 arriba) desde el comienzo.
 
+**Su definición: `agente.toml`.** Al lado de su `CLAUDE.md`, opcional (sin él, todo es como se dice arriba).
+`telar agentes` muestra lo que declara cada uno.
+
+```toml
+# agentes/faro/agente.toml
+nombre = "Faro"                      # pisa el título del README: es el nombre de su hilo
+para = "La lámpara y el turno de noche: encárgale lo que tenga que ver con la luz."
+modelo = "opus"                      # el de su sesión (Claude Code: --model); un motor que no sabe elegirlo lo ignora
+residente = false                    # el nodo no le abre la sesión solo cuando le llega algo (por defecto, true)
+```
+
+`modelo` va al abrir su sesión por un encargo o un periódico, y al abrir su hilo (`telar tejer`, `abrir`);
+si `[agentes.<carpeta>] argumentos` ya trae `--model`, gana el de la máquina. `para` sale en su home, en
+`telar agentes` y en `agente:<carpeta>`. Con `residente = false`, lo que le llega espera en su casilla hasta
+que alguien abra su hilo; `telar encargar` lo abre igual. `instrucciones`, `memoria`, `capacidades`,
+`politica` y `lugar` se aceptan y se muestran, todavía sin uso. Un archivo con errores no apaga al agente:
+lo que no se lee se ignora, y lo dicen `telar agentes` y `telar doctor`. Cambiarle el `nombre` cambia el de su
+hilo: doctor avisa si su conversación quedó anotada con el de antes.
+
 **Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` le escribe
 a su hilo de siempre si está libre, lo deja en cola si está trabajando (el gancho `Stop` le entrega el
 siguiente al terminar) o abre su sesión retomando su conversación. Si esa conversación pesa más de

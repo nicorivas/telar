@@ -161,7 +161,10 @@ Cada uno deja todo funcionando.
    conexiones de una tarea nombren a la otra por su dirección (hoy son un enlace a su archivo,
    `[T228](T228.md)`). Los mensajes ya las usan: las plantillas y el contexto de cada agente.
 3. **El agente como definición**: `agente.toml` en cada residente; el hilo guarda su agente, su
-   conversación y su lugar por separado.
+   conversación y su lugar por separado. El diseño, las decisiones abiertas y lo que falta están en
+   [agente-como-definicion.md](agente-como-definicion.md). Primer paso hecho (22-oct-2026): telar lee y valida
+   el `agente.toml` de cada residente y usa `nombre`, `para`, `modelo` y `residente`; `telar agentes` y
+   `agente:<carpeta>` muestran lo declarado. Falta que el hilo guarde su agente y usar los demás campos.
 4. **Mensajes con modos y el Encargo**: `mensaje --modo aviso|pedido|encargo|consulta`, el objeto Encargo
    y la tabla de intenciones. Con eso se le puede encargar a un hilo de proyecto, no solo a un residente.
    Antes, las fallas del bus: ~~los `nats: timeout`, el «Slow Consumer» del laptop, el registro del nodo

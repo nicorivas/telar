@@ -58,7 +58,8 @@ pediste, o en qué quedó, antes de preguntarle. Un hilo de otra máquina se lee
 ## Encargarle algo a un agente residente
 
 Los agentes residentes (`[agentes]` en la configuración; salen bajo «Agentes» en la lista) tienen
-un hilo de siempre. Para pedirles algo no abras otro: `telar encargar <agente> "texto"` se lo
+un hilo de siempre. Cuál es para qué: `telar agentes` (su `para`, el que declara su `agente.toml`).
+Para pedirles algo no abras otro: `telar encargar <agente> "texto"` se lo
 escribe si está libre, lo deja en cola si está trabajando, o abre su sesión retomando su
 conversación. `telar encargar <agente> --cola` muestra lo que espera. Pídele que deje el
 resultado en el registro (la tarea, el estado del proyecto), no solo en su conversación.

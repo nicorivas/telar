@@ -310,6 +310,10 @@ class ClaudeCode(AgenteBase):
         palabras = [self.binario, "--session-id", sid]
         return ([*palabras, mensaje] if mensaje else palabras), sid
 
+    def con_modelo(self, modelo: str) -> list[str]:
+        """`--model`, que vale igual al abrir una conversación nueva y al retomarla."""
+        return ["--model", modelo] if modelo else []
+
     @property
     def binario(self) -> str:
         return os.environ.get(VARIABLE_BINARIO) or "claude"

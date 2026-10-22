@@ -13,8 +13,8 @@ para que `@` no se lea como la máquina y un texto la encuentre entera. Con una 
 decir «revisa `tarea:T366`» y cualquiera sabe abrirlo: `telar objeto tarea:T366`, `GET /objetos/tarea:T366`.
 
 Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones** con sus parámetros. Los de
-fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo y
-pendiente (una casilla de un documento, telar.vinetas).
+fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo,
+pendiente (una casilla de un documento, telar.vinetas) y agente (un residente, con lo que declara su agente.toml).
 Un módulo agrega los suyos en su `modulo.toml`:
 
     [objetos.correo]
@@ -400,7 +400,42 @@ class DeModulo(Tipo):
         return Hecho(direccion=str(d), accion=accion, resultado=r)
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente())
+class Agente(Tipo):
+    """Un agente residente (telar.agentes): `agente:<carpeta>`, o su nombre. Lo que ve es lo que declara su
+    agente.toml (o lo de siempre, sin él); su acción es encargarle algo, como `telar encargar`."""
+
+    nombre = "agente"
+    descripcion = "un agente residente: para qué es, su modelo, sus hilos; encargarle algo"
+
+    def ver(self, ctx, d):
+        from telar import agentes as mod_agentes
+
+        a = next((x for x in mod_agentes.descubrir(ctx.config) if d.id in (x.clave, x.nombre)), None)
+        if a is None:
+            hay = ", ".join(x.clave for x in mod_agentes.descubrir(ctx.config)) or "ninguno"
+            raise ErrorDeServicio(f"no hay un agente «{d.id}» (hay: {hay})", 404)
+        j = mod_agentes.como_json(a)
+        campos = {k: v for k, v in j.items() if k not in ("clave", "nombre", "direccion", "para")
+                  and v not in ("", [], {}, None)}
+        return Objeto(direccion=j["direccion"], tipo="agente", id=a.clave, titulo=a.nombre,
+                      estado="residente" if a.residente else "no residente", resumen=a.para, campos=campos,
+                      enlaces=[direccion_de("hilo", a.nombre)],
+                      acciones=[Accion(nombre="encargar", descripcion="pedirle algo, en su hilo de siempre (telar encargar)",
+                                       params={"texto": ""})])
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        if accion != "encargar":
+            raise ErrorDeServicio(f"un agente no tiene la acción «{accion}»: encargar", 404)
+        from telar.servicios import encargos
+
+        texto = str(params.get("texto", "")).strip()
+        if not texto:
+            raise ErrorDeServicio("encargar: ¿qué le encargas? params {\"texto\": …}", 422)
+        r = encargos.encargar(ctx, self.ver(ctx, d).id, texto)
+        return Hecho(direccion=str(d), accion=accion, resultado=r.model_dump(mode="json"))
+
+
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

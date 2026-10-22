@@ -1,0 +1,7 @@
+# agente.toml — la definición de este agente (docs/propuestas/agente-como-definicion.md).
+# Todo es opcional: sin este archivo, el nombre sale del README y el modelo de la configuración.
+
+nombre = "Vigía"
+para = "Revisar cómo van los proyectos del taller y avisar lo que se atrasó. No escribe en ellos."
+modelo = "sonnet"
+residente = true

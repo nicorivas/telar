@@ -222,7 +222,11 @@ def _abrir(ctx, agente, texto: str) -> dict:
         palabras = [*ag.retomar(mod_agente.Conversacion(id=retoma, hilo=hilo)), texto]
     else:
         palabras, nueva = ag.nuevo_con_id(texto)
-    palabras = [*palabras, *agente.argumentos]  # después del prompt: hay banderas que se tragan lo que sigue
+    # después del prompt: hay banderas que se tragan lo que sigue. El modelo de su agente.toml, y los
+    # `argumentos` de esta máquina, que ganan si ya traen el modelo
+    from telar import agentes as mod_agentes
+
+    palabras = [*palabras, *mod_agentes.argumentos_de(agente, ag)]
     if getattr(ctx.config, "agentes_abrir", "sesion") == "tab":
         # un hilo más de la lista (el laptop): se ve y se entra como a cualquiera
         from telar.mux import ErrorDeMux
