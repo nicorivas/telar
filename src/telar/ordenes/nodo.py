@@ -216,6 +216,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "aviso"), cb=self._aviso)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo"), cb=self._archivo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo-leer"), cb=self._archivo_leer)
+        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "modulo"), cb=self._modulo)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
@@ -675,6 +676,12 @@ class Nodo:
         from telar.servicios import archivos
 
         await self._responder(m, lambda p: archivos.leer_para_otra(self.ctx, p))
+
+    async def _modulo(self, m) -> None:
+        """Una consulta a un módulo instalado aquí, que pide otra máquina (telar.servicios.modulos)."""
+        from telar.servicios import modulos
+
+        await self._responder(m, lambda p: modulos.para_otra(self.ctx, p))
 
     async def _notas(self, m) -> None:
         from telar import notas

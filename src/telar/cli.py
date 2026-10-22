@@ -181,6 +181,10 @@ def main(argv: list[str] | None = None) -> int:
 
     orden, argumentos = resto[0], resto[1:]
     if orden not in ORDENES:
+        # la de un módulo instalado: `telar <modulo> <verbo> …` (telar.modulos)
+        externo = _de_un_modulo(orden, argumentos, opciones)
+        if externo is not None:
+            return externo
         parecidas = [n for n in ORDENES if n.startswith(orden[:2])]
         pista = f" ¿Quisiste decir {' o '.join(parecidas)}?" if parecidas else ""
         return _error(f"no conozco la orden '{orden}'.{pista}\nPrueba: telar --help")
@@ -209,6 +213,25 @@ def main(argv: list[str] | None = None) -> int:
     except (ErrorDeConfig, ErrorDePerfil) as e:
         return _error(str(e))
     except KeyboardInterrupt:  # pragma: no cover - depende de la terminal
+        return 130
+
+
+def _de_un_modulo(orden: str, argumentos: list[str], opciones: dict) -> int | None:
+    """Corre la orden de un módulo que se llama `orden`; None si no hay un módulo así."""
+    from telar import modulos as mod_modulos
+
+    try:
+        config = cargar_config(Path(opciones["config"]) if "config" in opciones else None)
+    except ErrorDeConfig:
+        return None
+    m = mod_modulos.buscar(config, orden)
+    if m is None or not m.ordenes:
+        return None
+    try:
+        return mod_modulos.correr_orden(config, m, argumentos)
+    except mod_modulos.ErrorDeModulo as e:
+        return _error(str(e))
+    except KeyboardInterrupt:  # pragma: no cover
         return 130
 
 

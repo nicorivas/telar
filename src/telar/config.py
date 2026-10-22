@@ -1055,7 +1055,26 @@ def cargar(ruta: Path | None = None) -> Config:
     except OSError as e:
         raise ErrorDeConfig(f"{destino}: no se pudo leer: {e}") from e
 
-    return _entorno(desde_dict(datos, origen=destino))
+    return _entorno(desde_dict(_con_instalados(datos, destino), origen=destino))
+
+
+def _con_instalados(datos: dict, destino: Path) -> dict:
+    """Los módulos que instaló `telar modulo` (`modulos.toml`, al lado), junto a los `[modulos]` a mano."""
+    from telar import modulos as mod_modulos
+
+    try:
+        instalados = mod_modulos.leer_instalados(destino.parent / mod_modulos.INSTALADOS)
+    except mod_modulos.ErrorDeModulo as e:
+        raise ErrorDeConfig(str(e)) from None
+    if not instalados:
+        return datos
+    a_mano = datos.get("modulos", {}) if isinstance(datos.get("modulos"), dict) else {}
+    juntos = dict(a_mano)
+    for nombre, d in instalados.items():
+        if nombre in a_mano:
+            raise ErrorDeConfig(f"modulos.{nombre}: está en la configuración y también instalado con telar modulo")
+        juntos[nombre] = {"carpeta": str(d.get("carpeta", ""))}
+    return {**datos, "modulos": juntos}
 
 
 # ── escribir el calendario ─────────────────────────────────────────────────────────

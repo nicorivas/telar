@@ -10,6 +10,11 @@ extension shared the version number.
 
 - `telar archivo` sends files up to 25 MB between machines: anything over 700 KB goes in chunks over the bus and
   the receiving node joins them (both machines need this version; small files work as before).
+- Modules as plugins. A module declares its own commands (`[ordenes.<verb>]`: `telar <module> <verb>`) and
+  queries (`consulta = true`: JSON in, JSON out, by `GET /modulos/<module>/<verb>` and, with `maquina`, from
+  another machine over the bus), and installs from a git repository: `telar modulos instalar <repo>`,
+  `actualizar`, `quitar`, with `--enlazar` to develop one in place. Installed modules are recorded in
+  `modulos.toml`, next to the configuration, which telar leaves to its author.
 - The page reads files on other machines. `GET /archivos` takes `maquina` (or a `machine:path` route), and
   that machine's node reads the file over the bus with its own limits. Files under the `[repos]` folders can be
   read too, not only those under the root.

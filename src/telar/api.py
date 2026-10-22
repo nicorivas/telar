@@ -688,6 +688,16 @@ def get_ver(ruta: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
                                           "X-Content-Type-Options": "nosniff"})
 
 
+@app.get("/modulos/{modulo}/{verbo}")
+def get_modulo(modulo: str, verbo: str, request: Request, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Una consulta a un módulo (una orden suya con `consulta = true`): los parámetros de la dirección van
+    como un objeto JSON a su entrada, y vuelve el objeto JSON que da. Con `maquina`, al de esa máquina."""
+    from telar.servicios import modulos as servicio_modulos
+
+    params = {k: v for k, v in request.query_params.items() if k != "maquina"}
+    return servicio_modulos.consultar(ctx, modulo, verbo, params, maquina)
+
+
 @app.get("/archivos/bajar")
 def get_bajar(ruta: str, ctx: Contexto = Depends(contexto)):
     """Un archivo entero, para bajarlo (lo que la página no muestra)."""

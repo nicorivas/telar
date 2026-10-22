@@ -774,6 +774,41 @@ crontab. Sus periódicos se ven en `telar periodicos` como los demás, pero no s
 `periodicos.toml` ni se cambian con `editar`, `pausar` o `borrar`: se cambian en su `modulo.toml`.
 `telar modulos` lista los instalados y lo que trae cada uno; ⚙ configuración, en la página, también.
 
+### Órdenes y consultas de un módulo
+
+```toml
+[ordenes.vecinos]            # telar <modulo> vecinos …
+descripcion = "las conexiones de un documento"
+comando = ["bin/grafo", "vecinos"]
+consulta = true              # también desde la página, la API y otra máquina
+
+[instalar]                   # corre al instalarlo y al actualizarlo, en su carpeta
+comando = ["python3", "-m", "venv", ".venv"]
+```
+
+Cada `[ordenes.<verbo>]` es una orden de telar: `telar <modulo> <verbo> [args…]` corre su `comando` con
+los argumentos detrás, donde estás, con la terminal. Con `consulta = true` también se le pregunta sin
+terminal: `GET /modulos/<modulo>/<verbo>?…` (los parámetros de la dirección le llegan como un objeto JSON
+por la entrada, con `TELAR_CONSULTA=1`, y devuelve un objeto JSON; corre en la carpeta del módulo, hasta
+30 s), y con `&maquina=<m>` la responde el telar de esa máquina, por el bus, con el módulo instalado allá.
+Las dos reciben `TELAR_RAIZ`, `TELAR_REPOS` (los de `[repos]`, en JSON), `TELAR_MAQUINA` y `TELAR_MODULO`.
+Un módulo corre aparte: si se cae, telar sigue.
+
+### Instalar un módulo desde un repositorio
+
+```
+telar modulos instalar https://github.com/alguien/telar-grafo   # o la carpeta de un repositorio git
+telar modulos actualizar grafo                                  # git pull y su [instalar] de nuevo
+telar modulos quitar grafo
+```
+
+`instalar` clona el repositorio en `~/.local/share/telar/modulos/<nombre>`, muestra lo que trae y, con tu
+sí (`--si` para no preguntar), corre su `[instalar]` y lo anota en `modulos.toml`, al lado de la
+configuración. Ese archivo es solo de `telar modulos`; la configuración la sigue escribiendo quien la
+escribe, y un mismo nombre en los dos es un error. El nombre sale de `nombre` en el manifiesto, o del
+repositorio sin `telar-` (`--nombre` lo cambia). `--enlazar` usa la carpeta donde está, sin copiarla,
+para desarrollar un módulo.
+
 ## `[dashboard]` — qué pestañas se ven y en qué orden
 
 ```toml
