@@ -37,6 +37,12 @@ extension shared the version number.
   "pendiente:c-1a2b3c"`, and `telar pendiente` takes the id or the address as well as the `ref`. An id already on
   the line is never rewritten, no other line changes (CRLF and unicode included), and a document that cannot be
   written stays as it was. Writing a checkbox also keeps CRLF line endings now (it used to turn them into LF).
+  Only a comment that ends the line and is not inside a code span counts as the id; the same id in two documents
+  is a 409 that names both (it used to pick one), and a bare id written by hand (`T84`) does not win over a
+  provider's task with that id: name it `pendiente:T84`.
+- Writing a checkbox no longer replaces a read-only file (renaming used to go around the permission), keeps a
+  hard-linked document linked, keeps the line's trailing spaces (a markdown line break), and two writes from
+  the same process no longer share a temporary file or overwrite each other.
 - A fifth built-in object type, `pendiente` (`pendiente:<id>`, or `pendiente:<ref>` for one without an id): a
   document checkbox with its text, state, document, line and owner, and the actions `hecho` and `responsable`.
 

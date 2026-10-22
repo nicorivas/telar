@@ -294,7 +294,7 @@ class Pendiente(Tipo):
     descripcion = "una casilla de un documento («- [ ] …»): su texto, dónde está y quién la hace; marcarla hecha o cambiar quién"
 
     def _fila(self, ctx, d: Direccion):
-        from telar.ordenes import _comun, pendientes
+        from telar.ordenes import _comun, pendiente, pendientes
 
         if d.maquina:
             from telar import bus as mod_bus
@@ -303,8 +303,10 @@ class Pendiente(Tipo):
                 raise ErrorDeServicio(f"una casilla se abre en la máquina de su documento: aquí no es {d.maquina}", 404)
         tel = _comun.tejer(ctx)
         filas = pendientes.juntar(ctx, tel, repo=True, hechos=True)
-        estable = direccion_de("pendiente", d.id)
-        fila = next((f for f in filas if f["direccion"] == estable), None) or next((f for f in filas if f["ref"] == d.id), None)
+        # por el id primero (dos documentos con el mismo id son un 409, no la primera que aparezca), y si no,
+        # por su lugar
+        fila = pendiente.por_direccion(filas, direccion_de("pendiente", d.id)) \
+            or next((f for f in filas if f["ref"] == d.id), None)
         if fila is None:
             raise ErrorDeServicio(f"no hay ninguna casilla «{d.id}» en los documentos (`telar pendientes --repo --json` "
                                   "las lista con su ref y su dirección)", 404)

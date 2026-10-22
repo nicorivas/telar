@@ -42,8 +42,18 @@ _FILA = re.compile(r"^\s*\|(.+)\|\s*$")
 _SEPARADOR = re.compile(r"^[\s|:-]+$")
 _FRONT = re.compile(r"\A---\n.*?\n---\n", re.S)
 #: el id estable de una casilla, en un comentario al final de su línea: `<!-- id: c-1a2b3c -->` (telar.vinetas
-#: lo pone la primera vez que escribe la casilla; el proveedor `markdown` y telar.tipos.tarea leen el mismo)
-ID_CASILLA = re.compile(r"<!--\s*id:\s*([^\s<>]+?)\s*-->", re.I)
+#: lo pone la primera vez que escribe la casilla; el proveedor `markdown` y telar.tipos.tarea leen el mismo).
+#: Solo cuenta el que cierra la línea: uno en medio es texto (una nota, un ejemplo), y se lee con `id_en`
+ID_CASILLA = re.compile(r"<!--\s*id:\s*([^\s<>]+?)\s*-->(?=\s*$)", re.I)
+
+
+def id_en(texto: str) -> re.Match | None:
+    """El `<!-- id: … -->` que cierra el texto de una casilla, o None. Uno dentro de un `código` (una casilla
+    que habla de la sintaxis) no es su id: el comentario no se ve como comentario ahí, se ve como texto."""
+    m = ID_CASILLA.search(texto)
+    if m is None or texto[:m.start()].count("`") % 2:
+        return None
+    return m
 
 
 def limpiar(texto: str) -> str:
@@ -193,7 +203,7 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
         valor, dueno, vence = marcas(limpiar(m.group(2)))
         if not valor:
             continue
-        ident = ID_CASILLA.search(m.group(2))
+        ident = id_en(m.group(2))
         salida.append(
             Pendiente(
                 texto=valor,

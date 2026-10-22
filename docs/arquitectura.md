@@ -238,9 +238,20 @@ La lectura (`telar.lectura`) reconoce el id y no lo muestra en el texto. Mirar o
 no le pone id: solo escribirla.
 
 Las reglas de esa escritura: un id que ya está (de telar, de una tarea, o puesto a mano) no se reescribe;
-se cambia una línea y el resto del archivo queda byte a byte (`\r\n`, unicode, el final sin salto); se escribe
-a un temporal y se renombra, así que si no se puede escribir el documento queda como estaba. Dos casillas con
-el mismo id (una línea copiada con su comentario) no se adivinan: se dice, y alguien le borra el id a la copia.
+solo cuenta como id el comentario que cierra la línea, fuera de un `código` (una casilla que habla de la
+sintaxis no lo toma por suyo). Se cambia una línea y el resto del archivo queda byte a byte (`\r\n`, unicode,
+el final sin salto, los espacios del final de esa línea); se escribe a un temporal y se renombra, así que si no
+se puede escribir el documento queda como estaba, y un archivo de solo lectura no se toca aunque la carpeta
+se pueda escribir. Un documento con otro nombre (un enlace duro) se escribe en su lugar, sin temporal, para
+no separarlo del otro nombre. La casilla es lo que ve la lectura: si la línea tiene un U+2028 o un salto de
+página, la casilla llega hasta ahí, y el id va antes de ese carácter.
+
+Dos casillas con el mismo id no se adivinan: en un documento, se dice, y alguien le borra el id a la copia; en
+dos documentos (una línea copiada a otro proyecto, un README de plantilla), la dirección es un 409 que dice
+dónde está cada una, y cada una se sigue alcanzando por su `ref`. El id solo, sin `pendiente:`, nombra una
+casilla si tiene la forma de telar (`c-1a2b3c`); uno puesto a mano (`T84`) no le gana a la tarea T84 de un
+proveedor: se lo nombra con su dirección, `pendiente:T84`. Dos casillas iguales sin id son una fila en `telar
+pendientes`, y escribirla falla (no se sabe cuál es): ninguna recibe id hasta que alguien las distinga.
 
 ## La página
 

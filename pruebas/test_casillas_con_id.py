@@ -71,7 +71,10 @@ class ElIdDeUnaCasilla(Prueba):
         vinetas.escribir(self.doc, lambda l: vinetas.con_responsable(l, "none"), id="T84")
         self.assertEqual(self.doc.read_text(), "- [ ] Revisar el NDA <!-- id: T84 -->\n")
 
-    def test_dos_casillas_iguales_reciben_ids_distintos(self):
+    def test_nuevo_id_no_repite_uno_del_documento(self):
+        # `nuevo_id` sobre lo que ya hay: dos líneas iguales a las que se les pone id quedan con ids distintos.
+        # Por `telar pendiente` dos casillas iguales sin id no llegan aquí: no se sabe cuál es, y no se escribe
+        # (ver LoQueEncontraronLosRevisoresEnLasOrdenes.test_dos_casillas_iguales_sin_id_no_se_adivinan)
         lineas = ["- [ ] Llamar\n", "- [ ] Llamar\n"]
         for i in range(2):
             lineas[i] = vinetas.con_id(lineas[i], vinetas.nuevo_id("".join(lineas)))
@@ -103,7 +106,8 @@ class ElIdDeUnaCasilla(Prueba):
         antes_l, despues_l = crudo.split(b"\n"), despues.split(b"\n")
         self.assertEqual(len(antes_l), len(despues_l))
         self.assertEqual([x for i, x in enumerate(antes_l) if i != 3], [x for i, x in enumerate(despues_l) if i != 3])
-        self.assertEqual(despues_l[3], f"- [x] Revisar el **NDA** 🧾 @deadline(2026-10-30) <!-- id: {ident} -->\r".encode())
+        # los espacios del final se quedan al final (dos son un salto en markdown): el id va antes
+        self.assertEqual(despues_l[3], f"- [x] Revisar el **NDA** 🧾 @deadline(2026-10-30) <!-- id: {ident} -->   \r".encode())
 
     def test_si_no_se_puede_escribir_todo_queda_como_estaba(self):
         if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -133,8 +137,8 @@ class ElIdDeUnaCasilla(Prueba):
         self.assertEqual(self.doc.read_text(), "- [x] Revisar el NDA\n")
 
 
-class EnLasOrdenes(Orden):
-    """`telar pendiente`, `telar pendientes` y `telar objeto pendiente:…` sobre una copia del ejemplo."""
+class SobreElEjemplo(Orden):
+    """Una copia del ejemplo, para escribir en sus documentos."""
 
     def setUp(self):
         super().setUp()
@@ -148,6 +152,10 @@ class EnLasOrdenes(Orden):
 
     def fila(self, texto: str) -> dict:
         return next(f for f in self.json_de("pendientes", "--repo", "--json")["pendientes"] if f["texto"] == texto)
+
+
+class EnLasOrdenes(SobreElEjemplo):
+    """`telar pendiente`, `telar pendientes` y `telar objeto pendiente:…` sobre una copia del ejemplo."""
 
     def test_marcarla_hecha_le_da_id_y_direccion(self):
         antes = self.doc.read_bytes()
@@ -204,6 +212,200 @@ class EnLasOrdenes(Orden):
         self.assertIn("pendiente", tipos)
         self.assertEqual(self.json_de("objeto", "--buscar", "revisa pendiente:c-1a2b3c, porfa", "--json")["direcciones"],
                          ["pendiente:c-1a2b3c"])
+
+
+class LoQueEncontraronLosRevisores(Prueba):
+    """Los casos borde de la escritura que no estaban cubiertos (revisión de 30761ed)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.doc = Path(self.tmp.name) / "README.md"
+
+    def test_un_separador_unicode_en_la_linea_no_la_esconde(self):
+        # la lectura parte en U+2028 (splitlines) y ve «Medir el alcance»: la escritura tiene que encontrar esa
+        self.doc.write_text("- [ ] Medir el alcance\u2028real\n- [ ] Otra\n", encoding="utf-8")
+        lineas = self.doc.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(lectura._casillas(lineas, 0, "pendientes")[0].texto, "Medir el alcance")
+        n, ident = vinetas.escribir(self.doc, vinetas.hecha, texto="Medir el alcance")
+        self.assertEqual(n, 1)
+        # el id queda donde la lectura lo ve: en la parte que es la casilla, antes del separador
+        self.assertEqual(self.doc.read_text(encoding="utf-8"),
+                         f"- [x] Medir el alcance <!-- id: {ident} -->\u2028real\n- [ ] Otra\n")
+        p = lectura._casillas(self.doc.read_text(encoding="utf-8").splitlines(), 0, "pendientes")[0]
+        self.assertEqual((p.texto, p.id_casilla, p.hecho), ("Medir el alcance", ident, True))
+        self.assertEqual(vinetas.linea(self.doc, "", id=ident), 1)
+
+    def test_los_espacios_del_final_se_quedan(self):
+        # dos espacios al final son un salto de línea en markdown: no son de telar
+        self.doc.write_bytes(b"- [ ] Revisar   \r\n")
+        _, ident = vinetas.escribir(self.doc, vinetas.hecha, texto="Revisar")
+        self.assertEqual(self.doc.read_bytes(), f"- [x] Revisar <!-- id: {ident} -->   \r\n".encode())
+        vinetas.escribir(self.doc, lambda l: vinetas.con_responsable(l, "Ana"), id=ident, abierta=False)
+        self.assertEqual(self.doc.read_bytes(), f"- [x] Revisar @owner(Ana) <!-- id: {ident} -->   \r\n".encode())
+
+    def test_un_id_dentro_de_un_codigo_no_es_el_suyo(self):
+        for linea in ("- [ ] documentar el `<!-- id: T84 -->` en la skill",
+                      "- [ ] documentar `<!-- id: c-bbbbbb -->`"):
+            p = lectura._casillas([linea], 0, "pendientes")[0]
+            self.assertEqual(p.id_casilla, "", linea)
+            self.assertEqual(vinetas.id_de(linea + "\n"), "", linea)
+        # y al escribirla recibe uno propio, al final
+        self.doc.write_text("- [ ] documentar el `<!-- id: T84 -->` en la skill\n")
+        _, ident = vinetas.escribir(self.doc, vinetas.hecha, texto="documentar el `` en la skill")
+        self.assertRegex(ident, vinetas.FORMA_ID)
+        self.assertEqual(self.doc.read_text(), f"- [x] documentar el `<!-- id: T84 -->` en la skill <!-- id: {ident} -->\n")
+
+    def test_un_id_que_no_cierra_la_linea_no_es_su_id(self):
+        # telar lo pone al final; uno en medio es texto (un ejemplo, una nota)
+        self.assertEqual(lectura._casillas(["- [ ] ver <!-- id: c-0a0a0a --> y seguir"], 0, "p")[0].id_casilla, "")
+        self.assertEqual(lectura._casillas(["- [ ] ver <!-- id: c-0a0a0a -->  "], 0, "p")[0].id_casilla, "c-0a0a0a")
+
+    def test_un_comentario_abierto_no_se_traga_el_id(self):
+        # «<!-- nota» que cierra en la línea siguiente: un id agregado quedaría adentro del comentario
+        self.assertEqual(vinetas.con_id("- [x] tarea <!-- nota\n", "c-0a0a0a"), "- [x] tarea <!-- nota\n")
+        self.assertEqual(vinetas.con_id("- [x] tarea <!-- nota --> y más\n", "c-0a0a0a"),
+                         "- [x] tarea <!-- nota --> y más <!-- id: c-0a0a0a -->\n")
+
+    def test_un_archivo_de_solo_lectura_no_se_reemplaza(self):
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("como root se escribe igual")
+        self.doc.write_text("- [ ] Revisar el NDA\n")
+        os.chmod(self.doc, 0o444)
+        self.addCleanup(os.chmod, self.doc, 0o644)
+        with self.assertRaises(OSError):
+            vinetas.escribir(self.doc, vinetas.hecha, texto="Revisar el NDA")
+        self.assertEqual(self.doc.read_text(), "- [ ] Revisar el NDA\n")
+        self.assertEqual(sorted(p.name for p in self.doc.parent.iterdir()), ["README.md"])
+
+    def test_un_enlace_duro_sigue_siendo_el_mismo_archivo(self):
+        self.doc.write_text("- [ ] Revisar el NDA\n")
+        otro = self.doc.with_name("OTRO.md")
+        os.link(self.doc, otro)
+        _, ident = vinetas.escribir(self.doc, vinetas.hecha, texto="Revisar el NDA")
+        self.assertEqual(otro.read_text(), f"- [x] Revisar el NDA <!-- id: {ident} -->\n")
+        self.assertTrue(os.path.samefile(self.doc, otro))
+
+    def test_si_falla_el_renombre_no_queda_el_temporal(self):
+        crudo = b"- [ ] Revisar el NDA\n"
+        self.doc.write_bytes(crudo)
+        with mock.patch.object(vinetas.os, "replace", side_effect=OSError("disco lleno")):
+            with self.assertRaises(OSError):
+                vinetas.escribir(self.doc, vinetas.hecha, texto="Revisar el NDA")
+        self.assertEqual(self.doc.read_bytes(), crudo)
+        self.assertEqual(sorted(p.name for p in self.doc.parent.iterdir()), ["README.md"])
+
+    def test_dos_escrituras_a_la_vez_no_comparten_temporal_ni_se_pisan(self):
+        import threading
+
+        self.doc.write_text("".join(f"- [ ] Casilla {i}\n" for i in range(8)))
+        errores = []
+
+        def marcar(i):
+            try:
+                vinetas.escribir(self.doc, vinetas.hecha, texto=f"Casilla {i}")
+            except Exception as e:  # noqa: BLE001
+                errores.append(e)
+
+        hilos = [threading.Thread(target=marcar, args=(i,)) for i in range(8)]
+        for h in hilos:
+            h.start()
+        for h in hilos:
+            h.join()
+        self.assertEqual(errores, [])
+        texto = self.doc.read_text()
+        self.assertEqual(texto.count("- [x] "), 8, texto)
+        self.assertEqual(len(set(ID.findall(texto))), 8)
+
+
+class LoQueEncontraronLosRevisoresEnLasOrdenes(SobreElEjemplo):
+    def poner_id(self, doc: Path, texto: str, ident: str) -> None:
+        contenido = doc.read_text()
+        self.assertIn(f"- [ ] {texto}\n", contenido)
+        doc.write_text(contenido.replace(f"- [ ] {texto}\n", f"- [ ] {texto} <!-- id: {ident} -->\n", 1))
+
+    def test_un_mismo_id_en_dos_documentos_no_se_adivina(self):
+        arboleda = self.raiz / "proyectos" / "arboleda" / "README.md"
+        self.poner_id(self.doc, "Medir el alcance real en una noche de niebla", "c-abcabc")
+        self.poner_id(arboleda, "Encargar treinta álamos", "c-abcabc")
+        antes = (self.doc.read_bytes(), arboleda.read_bytes())
+        for argv in (("pendiente", "c-abcabc", "--hecho", "--json"), ("pendiente", "pendiente:c-abcabc", "--hecho", "--json"),
+                     ("objeto", "pendiente:c-abcabc", "--json"), ("objeto", "pendiente:c-abcabc", "hecho", "--json")):
+            codigo, salida, error = self.correr(*argv)
+            self.assertNotEqual(codigo, 0, argv)
+            self.assertIn("proyectos/arboleda", salida + error, argv)
+            self.assertIn("proyectos/faro", salida + error, argv)
+            self.assertEqual((self.doc.read_bytes(), arboleda.read_bytes()), antes, argv)
+        self.assertEqual(json.loads(self.correr("objeto", "pendiente:c-abcabc", "--json")[1])["codigo"], 409)
+        # por su lugar sí se llega a cada una, y la escritura cae en la de ese documento
+        fila = self.fila("Medir el alcance real en una noche de niebla")
+        r = self.json_de("pendiente", fila["ref"], "--hecho", "--json")
+        self.assertEqual(r["relativa"], "proyectos/faro/README.md")
+        self.assertIn("- [x] Medir el alcance real en una noche de niebla <!-- id: c-abcabc -->", self.doc.read_text())
+        self.assertEqual(arboleda.read_bytes(), antes[1])
+
+    def test_un_id_puesto_a_mano_no_le_gana_a_una_tarea(self):
+        # `<!-- id: T84 -->` a mano en una casilla: `telar pendiente T84` sigue llegando a la tarea T84 del
+        # proveedor, como antes de que las casillas tuvieran id; la casilla se nombra con `pendiente:T84`
+        from types import SimpleNamespace
+
+        from telar import config as mod_config
+        from telar.ordenes import pendientes as orden_pendientes
+
+        self.poner_id(self.doc, "Medir el alcance real en una noche de niebla", "T84")
+        tarea = {"texto": "Revisar el NDA", "hecho": False, "en_curso": False, "id": "T84", "origen": "tareas",
+                 "ref": "T84", "direccion": "tarea:T84", "hilo": "", "ruta": "", "proveedor": "tareas", "url": ""}
+
+        def de_proveedores(ctx, tel, dia, *, solo=None):
+            return ([dict(tarea)] if solo is None or "tareas" in solo else []), []
+
+        proveedor = SimpleNamespace(nombre="tareas", opciones={}, activo=True)
+        with mock.patch.object(orden_pendientes, "de_proveedores", de_proveedores), \
+                mock.patch.object(mod_config.Config, "proveedores_activos", lambda self: (proveedor,)):
+            codigo, salida, error = self.correr("pendiente", "T84", "--linea", "--json")
+            self.assertNotEqual(codigo, 0)
+            self.assertIn("es de tareas", salida + error)  # llegó a la tarea, no a la casilla
+            r = self.json_de("pendiente", "pendiente:T84", "--linea", "--json")
+            self.assertEqual((r["relativa"], r["direccion"]), ("proyectos/faro/README.md", "pendiente:T84"))
+        # sin un proveedor que la tenga, el id solo todavía encuentra la casilla
+        self.assertEqual(self.json_de("pendiente", "T84", "--linea", "--json")["direccion"], "pendiente:T84")
+
+    def test_dos_casillas_iguales_sin_id_no_se_adivinan(self):
+        # sin id, una casilla se busca por su texto; dos iguales en el mismo documento son una fila en `telar
+        # pendientes`, y escribirla no puede saber cuál es: no escribe nada (ninguna recibe id) y lo dice.
+        # Para distinguirlas, alguien les pone un id a mano (o cambia el texto de una).
+        molino = self.raiz / "proyectos" / "molino" / "README.md"
+        molino.write_text(molino.read_text().replace("- [ ] Rearmar las dos aspas", "- [ ] Conseguir madera seca"))
+        antes = molino.read_bytes()
+        filas = [f for f in self.json_de("pendientes", "--repo", "--json")["pendientes"] if f["texto"] == "Conseguir madera seca"]
+        self.assertEqual(len(filas), 1)
+        codigo, salida, error = self.correr("pendiente", filas[0]["ref"], "--responsable", "Ana", "--json")
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("hay 2 casillas", salida + error)
+        self.assertEqual(molino.read_bytes(), antes)
+
+
+class LaListaNoDependeDelOrden(Prueba):
+    """Una casilla sin id que dice lo mismo que una con id no aparece, venga antes o después."""
+
+    def test_el_duplicado_sin_id_se_esconde_en_los_dos_ordenes(self):
+        from telar.modelo import Pendiente
+        from telar.proveedores.estado import Documento
+
+        con = Pendiente(texto="Llamar", origen="p", id_casilla="c-0a0a0a")
+        sin = Pendiente(texto="Llamar", origen="p")
+        otra = Pendiente(texto="Otra", origen="p")
+        doc = Documento.__new__(Documento)
+        doc.marcas = None
+        for orden in ([con, sin, otra], [sin, con, otra]):
+            with mock.patch.object(Documento, "_pendiente", lambda self, item, origen: item):
+                salida = doc._pendientes({"p": orden}, ("p",))
+            self.assertEqual([(p.texto, p.id_casilla) for p in salida], [("Llamar", "c-0a0a0a"), ("Otra", "")], orden)
+        # dos con ids distintos son dos, aunque digan lo mismo
+        dos = Pendiente(texto="Llamar", origen="p", id_casilla="c-0b0b0b")
+        with mock.patch.object(Documento, "_pendiente", lambda self, item, origen: item):
+            self.assertEqual(len(doc._pendientes({"p": [con, dos, sin]}, ("p",))), 2)
 
 
 class ElMensajeNoCambia(Prueba):

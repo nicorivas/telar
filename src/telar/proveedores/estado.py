@@ -584,25 +584,33 @@ class Documento:
 
     def _pendientes(self, valores: dict[str, object], origenes: tuple[str, ...]) -> list[Pendiente]:
         """Los orígenes se suman en orden; un mismo texto en dos secciones va una vez. Una casilla con id
-        (telar.vinetas) es ella misma aunque otra diga lo mismo: se la encuentra por el id, y no puede faltar."""
-        salida: list[Pendiente] = []
-        vistos: set[str] = set()
-        con_id: set[tuple[str, str]] = set()
+        (telar.vinetas) es ella misma aunque otra diga lo mismo: se la encuentra por el id, y no puede faltar.
+        Una sin id que dice lo mismo que una con id es la misma de antes de tener id (la otra sección que la
+        repite) y no va, venga antes o después: así lo que se ve no depende del orden de las secciones."""
+        todos: list[Pendiente] = []
         for origen in origenes:
             valor = valores.get(origen)
             if not isinstance(valor, (tuple, list)):
                 continue
             for item in valor:
                 pendiente = self._pendiente(item, origen)
-                if pendiente is None:
-                    continue
+                if pendiente is not None:
+                    todos.append(pendiente)
+        con_id_textos = {p.texto for p in todos if p.id_casilla}
+        salida: list[Pendiente] = []
+        vistos: set[str] = set()
+        con_id: set[tuple[str, str]] = set()
+        for pendiente in todos:
+            if pendiente.id_casilla:
                 clave = (pendiente.texto, pendiente.id_casilla)
-                repetida = (clave in con_id) if pendiente.id_casilla else (pendiente.texto in vistos)
-                if repetida:
+                if clave in con_id:
+                    continue
+                con_id.add(clave)
+            else:
+                if pendiente.texto in vistos or pendiente.texto in con_id_textos:
                     continue
                 vistos.add(pendiente.texto)
-                con_id.add(clave)
-                salida.append(pendiente)
+            salida.append(pendiente)
         # sin tope: cortar una lista de pendientes esconde trabajo (y contaba los hechos, que llenaban el
         # tope antes de llegar a los abiertos). Quien la muestra en poco espacio la corta él
         return salida

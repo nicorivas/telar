@@ -181,13 +181,15 @@ def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | 
     directo = next((f for f in filas if f["ref"] == ref), None)
     if directo is not None:
         return directo
-    # una casilla con id, por su dirección (`pendiente:c-1a2b3c`) o por el id solo (`c-1a2b3c`)
-    from telar import objetos
+    # una casilla con id, por su dirección (`pendiente:c-1a2b3c`) o por el id solo, si tiene la forma de los
+    # que pone telar (`c-1a2b3c`): uno puesto a mano (`<!-- id: T84 -->`) no le gana a la tarea T84 de un
+    # proveedor; se lo nombra con su dirección, o se llega a él al final, si ningún proveedor lo tiene
+    from telar import vinetas
 
-    estable = {ref, objetos.direccion_de("pendiente", ref)}
-    pordireccion = next((f for f in filas if f.get("direccion") and f["direccion"] in estable), None)
-    if pordireccion is not None:
-        return pordireccion
+    if ref.startswith("pendiente:") or vinetas.FORMA_ID.fullmatch(ref):
+        pordireccion = por_direccion(filas, ref)
+        if pordireccion is not None:
+            return pordireccion
     porid = next((f for f in filas if f["id"] and f["id"].casefold() == ref.casefold()), None)
     if porid is not None:
         return porid
@@ -198,7 +200,24 @@ def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | 
         hallado = next((f for f in externos if calza(f)), None)
         if hallado is not None:
             return hallado
-    return None
+    return por_direccion(filas, ref)
+
+
+def por_direccion(filas: list[dict], ref: str) -> dict | None:
+    """La fila de la casilla con id que nombra `ref` (su dirección, `pendiente:c-1a2b3c`, o el id solo); None
+    si no hay. El id es único dentro de un documento, no entre documentos: una línea copiada con su comentario
+    a otro proyecto (o un README de plantilla) deja dos con el mismo. Esas no se adivinan —escribir la primera
+    que aparece podía marcar la del documento equivocado—: `ErrorDeServicio` 409, con dónde está cada una."""
+    from telar import objetos
+    from telar.servicios import ErrorDeServicio
+
+    estable = ref if ref.startswith("pendiente:") else objetos.direccion_de("pendiente", ref)
+    halladas = [f for f in filas if f.get("direccion") and not f.get("proveedor") and f["direccion"] == estable]
+    if len(halladas) > 1:
+        donde = ", ".join(sorted({f.get("ruta") or f["ref"] for f in halladas}))
+        raise ErrorDeServicio(f"hay {len(halladas)} casillas con la dirección {estable} (en {donde}): el id se copió "
+                              "con la línea. Nómbrala por su ref (`telar pendientes --repo`) o bórrale el id a la copia", 409)
+    return halladas[0] if halladas else None
 
 
 def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:

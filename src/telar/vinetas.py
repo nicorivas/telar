@@ -10,15 +10,23 @@ La primera vez que telar escribe una casilla le deja un id al final de la línea
 sirviendo aunque el documento cambie alrededor. Un id que ya está no se reescribe nunca, sea de telar o no.
 
 Se cambia una línea y nada más; el resto del archivo queda byte a byte como estaba (los finales de
-línea `\\r\\n` también). Si no se puede escribir, el documento queda como estaba.
+línea `\\r\\n` también, y los espacios del final de la línea que cambia: dos son un salto en markdown).
+Si no se puede escribir (la carpeta o el archivo son de solo lectura), el documento queda como estaba.
+
+Una «línea» aquí es lo que hay entre dos `\\n`, que es lo que numera un editor; pero la casilla es lo que
+ve la lectura (telar.lectura parte con `splitlines`, que también corta en U+2028 o en el salto de página):
+el comienzo de la línea hasta el primero de esos caracteres (`_partir`). Lo que viene después no se toca.
 """
 
 from __future__ import annotations
 
+import errno
 import os
 import re
 import secrets
 import shutil
+import tempfile
+import threading
 from pathlib import Path
 
 from telar import lectura
@@ -34,23 +42,38 @@ class ErrorDeVineta(Exception):
 #: cifras son 16 millones: dentro de un documento, `nuevo_id` evita las que ya están.
 FORMA_ID = re.compile(r"c-[0-9a-f]{6}")
 
+#: cualquier `<!-- id: … -->` del documento, cierre o no su línea: los que `nuevo_id` no repite
+_CUALQUIER_ID = re.compile(r"<!--\s*id:\s*([^\s<>]+?)\s*-->", re.I)
+
+#: las escrituras de un mismo proceso (un servidor con hilos) van de a una: leer, cambiar y guardar es un
+#: solo paso, y la segunda lee lo que dejó la primera en vez de pisarlo
+_ESCRIBIENDO = threading.Lock()
+
+
+def _partir(linea: str) -> tuple[str, str]:
+    """(la casilla, lo que sigue): la casilla es la línea hasta su primer corte de `splitlines` (`\\r\\n`, `\\n`,
+    U+2028, el salto de página…), que es lo que ve la lectura; lo que sigue va tal cual, final incluido."""
+    partes = linea.splitlines()
+    casilla = partes[0] if partes else ""
+    return casilla, linea[len(casilla):]
+
 
 def _texto(linea: str) -> str | None:
     """El texto de una línea con casilla, como lo muestra telar; None si no es una casilla."""
-    m = lectura._VINETA.match(linea.rstrip("\r\n"))  # el `\r` de un final `\r\n` no es del texto
+    m = lectura._VINETA.match(_partir(linea)[0])
     if not m or m.group(1) is None:
         return None
     return lectura.marcas(lectura.limpiar(m.group(2)))[0]
 
 
 def id_de(linea: str) -> str:
-    """El id de una casilla (`<!-- id: … -->`), o "" si su línea no tiene."""
-    m = lectura.ID_CASILLA.search(linea)
+    """El id de una casilla (el `<!-- id: … -->` que cierra su texto, `lectura.id_en`), o "" si no tiene."""
+    m = lectura.id_en(_partir(linea)[0])
     return m.group(1) if m else ""
 
 
 def _abierta(linea: str) -> bool:
-    return lectura._VINETA.match(linea).group(1).lower() != "x"
+    return lectura._VINETA.match(_partir(linea)[0]).group(1).lower() != "x"
 
 
 def buscar(lineas: list[str], texto: str, *, abierta: bool = True) -> int:
@@ -84,7 +107,7 @@ def buscar_id(lineas: list[str], ident: str, *, abierta: bool = True) -> int:
 
 def nuevo_id(contenido: str) -> str:
     """Un id de casilla (`FORMA_ID`) que no esté ya en `contenido`, en ninguna línea."""
-    usados = {x.lower() for x in lectura.ID_CASILLA.findall(contenido)}
+    usados = {x.lower() for x in _CUALQUIER_ID.findall(contenido)}
     while True:
         ident = f"c-{secrets.token_hex(3)}"
         if ident not in usados:
@@ -92,11 +115,14 @@ def nuevo_id(contenido: str) -> str:
 
 
 def con_id(linea: str, ident: str) -> str:
-    """La misma línea con `<!-- id: … -->` al final (antes del salto de línea). Si ya tiene uno, tal cual."""
-    if id_de(linea):
+    """La misma línea con `<!-- id: … -->` al final de la casilla (antes de los espacios del final y del salto
+    de línea, que se quedan). Si ya tiene uno, tal cual; también si la casilla deja abierto un comentario
+    («<!-- nota» que cierra más abajo): el id quedaría adentro, y lo cerraría antes de tiempo."""
+    casilla, resto = _partir(linea)
+    if id_de(casilla) or casilla.rfind("<!--") > casilla.rfind("-->"):
         return linea
-    fin = linea[len(linea.rstrip("\r\n")):]
-    return linea.rstrip("\r\n").rstrip(" \t") + f" <!-- id: {ident} -->" + fin
+    cuerpo = casilla.rstrip(" \t")
+    return cuerpo + f" <!-- id: {ident} -->" + casilla[len(cuerpo):] + resto
 
 
 def hecha(linea: str) -> str:
@@ -112,12 +138,13 @@ def con_responsable(linea: str, nombre: str) -> str:
     """La misma línea diciendo que la hace `nombre` (`@owner(nombre)` al final, antes del id de la casilla
     y del salto de línea), sin lo que decía antes: ni otro `@owner(…)`, ni `@para(…)`, ni «@Nombre:» al
     comienzo. `nombre` vacío o «none» la deja sin responsable."""
-    fin = linea[len(linea.rstrip("\r\n")):]
-    cuerpo = linea.rstrip("\r\n")
+    casilla, resto = _partir(linea)
+    cuerpo = casilla.rstrip(" \t")
+    blancos = casilla[len(cuerpo):]  # los espacios del final se quedan al final
     # el id, si cierra la línea, se queda cerrándola: no se mueve ni se reescribe
     cola = ""
-    if (i := lectura.ID_CASILLA.search(cuerpo)) and not cuerpo[i.end():].strip():
-        cuerpo, cola = cuerpo[:i.start()], " " + cuerpo[i.start():].rstrip()
+    if i := lectura.id_en(cuerpo):
+        cuerpo, cola = cuerpo[:i.start()], " " + cuerpo[i.start():]
     cuerpo = _QUIEN_MARCA.sub("", cuerpo)
     m = lectura._VINETA.match(cuerpo)
     if m and m.group(2):
@@ -128,7 +155,7 @@ def con_responsable(linea: str, nombre: str) -> str:
     nombre = nombre.strip()
     if nombre and nombre.lower() != "none":
         cuerpo += f" @owner({nombre})"
-    return cuerpo + cola + fin
+    return cuerpo + cola + blancos + resto
 
 
 def _leer(documento: Path) -> str:
@@ -148,10 +175,23 @@ def _lineas(contenido: str) -> list[str]:
 
 def _guardar(documento: Path, contenido: str) -> None:
     """Escribe a un temporal al lado y lo renombra: un corte no deja medio archivo, y si algo falla el
-    documento queda como estaba (y el temporal no queda)."""
-    tmp = documento.with_name(f".{documento.name}.{os.getpid()}.tmp")
+    documento queda como estaba (y el temporal no queda).
+
+    Renombrar reemplaza el archivo aunque sea de solo lectura (basta con poder escribir la carpeta), así que
+    eso se mira antes: un documento que alguien protegió no se toca. Y un documento con otro nombre (un enlace
+    duro) se escribe en el mismo archivo, sin temporal: renombrar lo separaría del otro nombre, que se quedaría
+    con lo de antes. Ahí un corte a medio escribir sí puede dejarlo a medias; es el precio de no romper el enlace."""
+    if not os.access(documento, os.W_OK):
+        raise PermissionError(errno.EACCES, f"{documento.name} es de solo lectura: no lo toco", str(documento))
+    if documento.stat().st_nlink > 1:
+        with open(documento, "w", encoding="utf-8", newline="") as f:
+            f.write(contenido)
+        return
+    # un nombre propio por escritura (no por proceso): dos hilos no comparten el temporal
+    fd, nombre = tempfile.mkstemp(dir=documento.parent, prefix=f".{documento.name}.", suffix=".tmp")
+    tmp = Path(nombre)
     try:
-        with open(tmp, "w", encoding="utf-8", newline="") as f:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
             f.write(contenido)
         try:
             shutil.copymode(documento, tmp)
@@ -172,22 +212,25 @@ def escribir(documento: Path, cambio, *, texto: str = "", id: str = "", abierta:
     la única con ese `texto`. Con `estable`, una casilla sin id que se cambia recibe uno (`nuevo_id`), en la
     misma escritura. Si el cambio no cambia nada, no se escribe (ni se pone el id)."""
     documento = documento.resolve()  # un enlace se escribe en su destino, no se reemplaza por un archivo
-    contenido = _leer(documento)
-    lineas = _lineas(contenido)
-    if id:
-        i = buscar_id(lineas, id, abierta=abierta)
-        if texto and _texto(lineas[i]) != texto:
-            raise ErrorDeVineta(f"la casilla {id} ya no dice «{texto[:60]}»: el documento cambió, vuelve a mirarlo")
-    else:
-        i = buscar(lineas, texto, abierta=abierta)
-    nueva = cambio(lineas[i])
-    ident = id_de(lineas[i])
-    if nueva != lineas[i]:
-        if estable and not ident:
-            ident = nuevo_id(contenido)
-            nueva = con_id(nueva, ident)
-        lineas[i] = nueva
-        _guardar(documento, "".join(lineas))
+    with _ESCRIBIENDO:
+        contenido = _leer(documento)
+        lineas = _lineas(contenido)
+        if id:
+            i = buscar_id(lineas, id, abierta=abierta)
+            if texto and _texto(lineas[i]) != texto:
+                raise ErrorDeVineta(f"la casilla {id} ya no dice «{texto[:60]}»: el documento cambió, vuelve a mirarlo")
+        else:
+            i = buscar(lineas, texto, abierta=abierta)
+        # el cambio se le aplica a la casilla; lo que sigue en la línea (tras un U+2028, el final) va tal cual
+        casilla, resto = _partir(lineas[i])
+        nueva = cambio(casilla)
+        ident = id_de(casilla)
+        if nueva != casilla:
+            if estable and not ident:
+                nueva = con_id(nueva, nuevo_id(contenido))
+                ident = id_de(nueva)  # "" si no se pudo poner (un comentario abierto)
+            lineas[i] = nueva + resto
+            _guardar(documento, "".join(lineas))
     return i + 1, ident
 
 

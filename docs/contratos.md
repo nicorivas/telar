@@ -418,7 +418,9 @@ Con `--hecho`, `--responsable` o `--linea`, una casilla de un documento:
   "linea": 24, "hecho": "marcada hecha", "direccion": "pendiente:c-1a2b3c" }
 ```
 
-`<ref>` es la de `telar pendientes`, el id de la casilla (`c-1a2b3c`) o su dirección. Al escribirla
+`<ref>` es la de `telar pendientes`, el id de la casilla (`c-1a2b3c`) o su dirección. Un id puesto a mano que
+no tiene esa forma (`T84`) se busca después de los proveedores, para no tapar una tarea: se lo nombra con su
+dirección (`pendiente:T84`). Un mismo id en dos documentos es un 409 que dice dónde está cada una. Al escribirla
 (`--hecho`, `--responsable`), si su línea no tiene `<!-- id: … -->`, telar le agrega uno al final, único en
 ese documento; `direccion` dice cuál. Desde ahí se la encuentra por el id aunque el documento cambie. Un
 id que ya está no se reescribe, ninguna otra línea cambia, y si el documento no se puede escribir, queda como
