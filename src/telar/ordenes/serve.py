@@ -78,6 +78,11 @@ def main(argv: list[str], ctx) -> int:
         url_web = f"http://{host}:{o.web_puerto}" if host != "127.0.0.1" else ""
         print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
     equipo = otros
+    # el registro de este servicio, con tope al arrancar (bajo launchd es un archivo que nadie rota; el nodo,
+    # si va, lo sigue recortando cada tanto)
+    from telar import salida
+
+    salida.recortar_registro()
     nodo = None
     if o.nodo:
         from telar import bus as mod_bus

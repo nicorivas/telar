@@ -25,8 +25,11 @@ que no entra.
 from __future__ import annotations
 
 import codecs
+import os
+import stat
 import sys
 import unicodedata
+from datetime import datetime
 
 __all__ = ["MANEJADOR", "RESERVA", "alcanza", "empobrecer", "preparar"]
 
@@ -132,3 +135,70 @@ def alcanza(texto: str, flujo=None) -> bool:
     except (LookupError, UnicodeEncodeError):
         return False
     return True
+
+
+# ── el registro de un servicio ───────────────────────────────────────────────
+#
+# Bajo launchd, `telar serve` escribe su salida y sus errores a un archivo (`StandardOutPath`,
+# ~/Library/Logs/telar-serve.log) que nadie rota: crece mientras el servicio viva. systemd los manda a
+# journald, que sí tiene tope, y ahí la salida no es un archivo y no hay nada que hacer.
+
+#: desde qué tamaño se recorta el registro del servicio; se deja la última mitad
+MAX_REGISTRO = 4 * 1024 * 1024
+
+
+def _ruta_de(fd: int) -> str:
+    """La ruta del archivo abierto en `fd`: F_GETPATH en macOS, /proc en Linux. "" si no se sabe."""
+    import fcntl
+
+    if hasattr(fcntl, "F_GETPATH"):
+        try:
+            return os.fsdecode(fcntl.fcntl(fd, fcntl.F_GETPATH, bytes(1024)).split(b"\0", 1)[0])
+        except OSError:
+            return ""
+    try:
+        return os.readlink(f"/proc/self/fd/{fd}")
+    except OSError:
+        return ""
+
+
+def recortar_registro(fd: int | None = None, maximo: int = MAX_REGISTRO) -> bool:
+    """Si la salida estándar es un archivo de registro que pasó de `maximo`, lo deja con su última mitad
+    (desde un salto de línea), como telar.periodicos hace con los suyos. Devuelve si recortó.
+
+    Solo si es un archivo abierto para agregar al final (O_APPEND, lo que hacen launchd y `>>`): ahí, después
+    de vaciarlo, cada escritura sigue al final del archivo nuevo. Uno abierto sin O_APPEND (`>`) seguiría
+    escribiendo en su posición vieja y dejaría un hueco: no se toca, ni una terminal, una tubería o journald.
+    Lo que se escriba entre leer la cola y vaciarlo se pierde; son milisegundos de un registro. Nunca falla."""
+    try:
+        import fcntl
+
+        if fd is None:
+            for flujo in (sys.stdout, sys.stderr):
+                try:
+                    flujo.flush()
+                except (AttributeError, OSError, ValueError):
+                    pass
+            fd = sys.stdout.fileno()
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_size <= maximo:
+            return False
+        if not fcntl.fcntl(fd, fcntl.F_GETFL) & os.O_APPEND:
+            return False
+        ruta = _ruta_de(fd)
+        if not ruta:
+            return False
+        actual = os.stat(ruta)
+        if (actual.st_dev, actual.st_ino) != (st.st_dev, st.st_ino):
+            return False  # la ruta que dio no es la de este archivo: no se recorta uno ajeno
+        with open(ruta, "rb") as f:
+            f.seek(max(0, actual.st_size - maximo // 2))
+            cola = f.read()
+        cola = cola[cola.find(b"\n") + 1:]
+        os.ftruncate(fd, 0)
+        datos = f"── {datetime.now():%Y-%m-%d %H:%M:%S} · registro recortado: queda lo último ──\n".encode() + cola
+        while datos:
+            datos = datos[os.write(fd, datos):]
+        return True
+    except (ImportError, OSError, ValueError, AttributeError):
+        return False

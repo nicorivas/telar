@@ -27,6 +27,7 @@ import asyncio
 import getpass
 import json
 import socket
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -108,6 +109,58 @@ async def _callar(_e) -> None:
     """Sin esto, nats-py imprime la traza de cada falla de conexión; la falla la cuenta ErrorDeBus."""
 
 
+#: cada cuánto se repite en el registro del nodo una misma falla del bus (segundos): en el medio, se cuenta
+AVISO_CADA = 600
+
+
+class Avisador:
+    """Las fallas del bus que cuenta nats-py en una conexión que no se rinde (la del nodo), una línea cada
+    una. Sin esto, nats-py imprime la traza entera de cada una (unas cuarenta líneas), y con el laptop
+    dormido o sin red son cientos por hora: el registro de `telar serve` llegó a 100 mil líneas, casi todas
+    `nats: timeout` al reintentar el vigía del estado y conexiones rechazadas. La misma falla (su tipo y su
+    texto) se escribe una vez cada `AVISO_CADA` segundos; las de en medio se cuentan y salen con la
+    siguiente. Una «slow consumer» se agrupa por su tema, no por el número de la suscripción."""
+
+    MAX_DISTINTAS = 200
+
+    def __init__(self, escribir=None, *, cada: float = AVISO_CADA, reloj=time.monotonic):
+        self.escribir = escribir or (lambda t: print(f"{datetime.now():%Y-%m-%d %H:%M:%S} {t}", flush=True))
+        self.cada, self.reloj = cada, reloj
+        #: (tipo, texto) → [cuándo se escribió, cuántas se callaron desde entonces]
+        self.vistas: dict[tuple[str, str], list] = {}
+
+    @staticmethod
+    def clave(e: BaseException) -> tuple[str, str]:
+        nombre = type(e).__name__
+        if "SlowConsumer" in nombre:
+            return nombre, f"se descartaron mensajes de {getattr(e, 'subject', '') or '?'} (el nodo no alcanzó a atenderlos)"
+        return nombre, (str(e) or nombre)[:160]
+
+    def anotar(self, e: BaseException) -> bool:
+        """Si la escribió (True) o la contó para después (False)."""
+        clave, ahora = self.clave(e), self.reloj()
+        vista = self.vistas.get(clave)
+        if vista is not None and ahora - vista[0] < self.cada:
+            vista[1] += 1
+            return False
+        if len(self.vistas) >= self.MAX_DISTINTAS:
+            self.vistas.clear()  # muchas distintas: se empieza de nuevo antes que crecer sin fin
+        calladas = vista[1] if vista else 0
+        self.vistas[clave] = [ahora, 0]
+        extra = f" (y {calladas} igual{'es' if calladas > 1 else ''} desde la anterior)" if calladas else ""
+        self.escribir(f"bus: {clave[0]}: {clave[1]}{extra}")
+        return True
+
+    async def __call__(self, e) -> None:
+        self.anotar(e)
+
+    async def cortado(self) -> None:
+        self.escribir("bus: se cortó la conexión; reintentando")
+
+    async def de_vuelta(self) -> None:
+        self.escribir("bus: conectado de nuevo")
+
+
 async def _modo(config, nats, token: str) -> str:
     """Si este bus tiene una cuenta por persona (`telar bus persona`) o un solo token para todos
     (`nats-server --auth`, el de antes). Se prueba una vez por proceso. El token se acepta mientras se pasa
@@ -143,7 +196,10 @@ async def conectar(config, *, para_siempre: bool = False):
         else:
             opciones["token"] = token
     if para_siempre:
-        opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True)
+        # las fallas, en una línea cada una y sin repetirse (Avisador), no con su traza entera
+        avisos = Avisador()
+        opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True,
+                        error_cb=avisos, disconnected_cb=avisos.cortado, reconnected_cb=avisos.de_vuelta)
     else:
         opciones.update(max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
     try:
@@ -162,6 +218,27 @@ async def conectar(config, *, para_siempre: bool = False):
             except Exception:  # noqa: BLE001 - se cuenta la primera falla
                 pass
         raise ErrorDeBus(f"el bus ({config.bus.url}) no responde: {e}") from e
+
+
+def _es_plazo(e: BaseException) -> bool:
+    """Si es un plazo que se agotó con la conexión ya abierta (un pedido al bus que no volvió a tiempo).
+    `nats.errors.TimeoutError` hereda del de asyncio; una falla al conectar es ErrorDeBus y no cuenta."""
+    return not isinstance(e, ErrorDeBus) and (isinstance(e, asyncio.TimeoutError) or "Timeout" in type(e).__name__)
+
+
+def _con_reintento(fabrica, plazo: float, intentos: int = 2):
+    """`asyncio.run` de la corrutina que arma `fabrica`, con `plazo` segundos, y otra vez si se agotó un
+    plazo con el bus ya conectado: un pedido que se perdió en la red (el laptop por Tailscale, un hotspot)
+    suele salir a la segunda. Solo para lo que se puede repetir sin efecto doble: leer, o publicar con
+    `Nats-Msg-Id` (el bus descarta el repetido). Si no conectó, no se insiste: el bus no está, y esperar
+    otra vez solo demora el aviso."""
+    for intento in range(intentos):
+        try:
+            return asyncio.run(asyncio.wait_for(fabrica(), plazo))
+        except Exception as e:  # noqa: BLE001 - lo que no es un plazo sube tal cual
+            if intento + 1 < intentos and _es_plazo(e):
+                continue
+            raise
 
 
 async def asegurar(js) -> None:
@@ -194,8 +271,10 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
     if not hay_bus(config):
         raise ErrorDeBus("no hay bus: [bus] url en la configuración")
     m = mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona=persona(config), saltos=saltos)
+    intentos = []
 
     async def _enviar():
+        intentos.append(1)
         nc = await conectar(config)
         try:
             js = nc.jetstream()
@@ -205,19 +284,24 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
             if not retener:
                 ack = await js.publish(tema_casilla(config, para, quien), json.dumps(m, ensure_ascii=False).encode(),
                                        headers={"Nats-Msg-Id": m["id"]}, timeout=ESPERA)
+            # con id también la copia, para que un reintento no la deje dos veces; con su estado, porque soltar
+            # un retenido publica otra copia del mismo mensaje («enviado»), que no es repetida
             await js.publish(f"registro.{quien or persona(config)}", json.dumps(copia, ensure_ascii=False).encode(),
-                             timeout=ESPERA)
+                             headers={"Nats-Msg-Id": f"{m['id']}.{copia['estado']}"}, timeout=ESPERA)
             return ack
         finally:
             await nc.close()
 
     try:
-        ack = asyncio.run(asyncio.wait_for(_enviar(), ESPERA + 5))
+        # un reintento si el bus no confirmó a tiempo: con el mismo id, si el primero sí llegó, el bus lo descarta
+        ack = _con_reintento(_enviar, ESPERA + 5)
     except ErrorDeBus:
         raise
     except Exception as e:  # noqa: BLE001
         raise ErrorDeBus(f"el bus no recibió el mensaje: {e}") from e
-    return {**m, "secuencia": getattr(ack, "seq", None), "duplicado": bool(getattr(ack, "duplicate", False)),
+    # repetido en el reintento es que el primero sí había llegado: no lo había mandado nadie antes
+    duplicado = bool(getattr(ack, "duplicate", False)) and len(intentos) == 1
+    return {**m, "secuencia": getattr(ack, "seq", None), "duplicado": duplicado,
             **({"estado": "retenido", "motivo": retener} if retener else {})}
 
 
@@ -294,7 +378,7 @@ def registro(config, n: int = 100) -> list[dict]:
             await nc.close()
 
     try:
-        return asyncio.run(asyncio.wait_for(_leer(), ESPERA + 10))
+        return _con_reintento(_leer, ESPERA + 10)
     except ErrorDeBus:
         raise
     except Exception as e:  # noqa: BLE001
@@ -316,7 +400,7 @@ def maquina_de(config, hilo: str) -> str:
             await nc.close()
 
     try:
-        return asyncio.run(asyncio.wait_for(_leer(), ESPERA))
+        return _con_reintento(_leer, ESPERA)
     except Exception:  # noqa: BLE001 - sin bus, no se sabe
         return ""
 
@@ -366,7 +450,7 @@ def estados(config) -> dict:
             await nc.close()
 
     try:
-        return asyncio.run(asyncio.wait_for(_leer(), ESPERA + 5))
+        return _con_reintento(_leer, ESPERA + 5)
     except ErrorDeBus:
         raise
     except Exception as e:  # noqa: BLE001

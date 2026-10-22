@@ -25,6 +25,7 @@ Necesita `[bus] url` en la configuración y el extra «bus» de telar (nats-py).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import sys
 
@@ -40,6 +41,21 @@ VUELTA = 2.0
 ESPEJO_CADA = 15
 #: un «trabajando» sin cambios por más de esto se da por pegado y se avisa igual (segundos)
 TRABAJANDO_VIEJO = 45 * 60
+#: los pedidos con respuesta que se atienden a la vez, y cuántos pueden esperar turno: pasado eso se
+#: contesta «ocupada» al tiro, en vez de dejar que el que pidió espere hasta agotar su plazo
+PEDIDOS_A_LA_VEZ = 4
+PEDIDOS_EN_ESPERA = 64
+#: los pedidos que solo leen: varios del mismo verbo a la vez. Los demás escriben algo aquí (el registro de un
+#: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
+#: el mismo archivo a la vez podrían perder uno de los cambios
+SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer")
+#: lo que puede esperar en cada suscripción antes de que nats-py descarte (y avise «slow consumer»): el
+#: de fábrica es medio millón de mensajes o 128 MB, que es memoria sin tope si una se queda pegada
+PENDIENTES_MSGS = 2_000
+PENDIENTES_BYTES = 32 * 1024 * 1024
+#: cuánto espera el nodo cada pedido a JetStream (poner el estado, abrir una casilla). El de nats-py es 5 s,
+#: corto para el laptop por un hotspot: cada vuelta que se pasaba quedaba en el registro como `nats: timeout`
+ESPERA_JS = 10
 #: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
 #: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
 #: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
@@ -106,6 +122,11 @@ class Nodo:
         self.vigia = None
         #: el registro de los hilos de aquí en la última vuelta: (vínculos, archivados, remotos)
         self.registro: tuple[dict, set, dict] = ({}, set(), {})
+        #: lo que el vigía recibió y falta atender (anotar la atención, la ventana): lo último de cada clave
+        self.por_atender: dict[str, dict] = {}
+        #: los pedidos con respuesta en curso o esperando turno (ver `_aparte`)
+        self.atendiendo: set = set()
+        self.turnos: asyncio.Semaphore | None = None
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -208,42 +229,57 @@ class Nodo:
 
     # ── el bucle ─────────────────────────────────────────────────────────────────
 
+    async def _suscribir(self, nc, tema: str, cb, *, aparte: bool = True, en_fila: bool = False, **opciones):
+        """Una suscripción del nodo, con tope de lo que puede esperar (PENDIENTES_*). `aparte`: un pedido con
+        respuesta, que se atiende en su propia tarea (`_aparte`) para que uno lento no atrase a los demás;
+        `en_fila`: los de este tema, de a uno y en orden."""
+        if aparte:
+            cb = self._aparte(cb, asyncio.Lock() if en_fila else None)
+        return await nc.subscribe(tema, cb=cb, pending_msgs_limit=PENDIENTES_MSGS,
+                                  pending_bytes_limit=PENDIENTES_BYTES, **opciones)
+
+    def _aparte(self, cb, fila: asyncio.Lock | None = None):
+        """El callback de una suscripción, en una tarea suya. nats-py llama los de una misma suscripción de a
+        uno, dentro de su lectura: un `telar hilo` que tarda diez segundos dejaba a todo lo que llegaba a ese
+        tema esperando en la cola de nats-py, y a los pedidos siguientes del mismo verbo esperando hasta pasarse
+        de su plazo (`nats: timeout` del lado del que pedía). Así nats-py nunca espera: se atienden hasta
+        PEDIDOS_A_LA_VEZ a la vez, con `fila` de a uno por tema (los que escriben), y con PEDIDOS_EN_ESPERA en
+        curso o esperando se contesta que está ocupada."""
+        async def atender(m) -> None:
+            if self.turnos is None:
+                self.turnos = asyncio.Semaphore(PEDIDOS_A_LA_VEZ)
+            if len(self.atendiendo) >= PEDIDOS_EN_ESPERA:
+                if getattr(m, "reply", ""):
+                    await m.respond(json.dumps({"ok": False, "ocupada": True, "error": (
+                        f"{self.yo} está ocupada: {len(self.atendiendo)} pedidos en curso; prueba en un rato")},
+                        ensure_ascii=False).encode())
+                return
+
+            async def con_turno() -> None:
+                async with fila or contextlib.nullcontext(), self.turnos:
+                    try:
+                        await cb(m)
+                    except Exception as e:  # noqa: BLE001 - uno que falla no tumba a los demás
+                        self.anotar(f"pedido en {getattr(m, 'subject', '?')}: {type(e).__name__}: {e}")
+
+            t = asyncio.create_task(con_turno())
+            self.atendiendo.add(t)
+            t.add_done_callback(self.atendiendo.discard)
+
+        return atender
+
     async def correr(self, *, una_vez: bool = False) -> None:
         nc = await mod_bus.conectar(self.config, para_siempre=not una_vez)
         # los pedidos al bus de este proceso (la API, en `telar serve --nodo`) van por esta conexión
         mod_bus.registrar_conexion(nc, asyncio.get_running_loop())
-        js = nc.jetstream()
+        js = nc.jetstream(timeout=ESPERA_JS)
         await mod_bus.asegurar(js)
         kv = await js.key_value(mod_bus.ESTADO)
         self.kv, self.js = kv, js
         self.espejo = await js.key_value(mod_bus.ESPEJO)
         self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "ping"), cb=self._ping)
-        # entre personas (telar.entre_personas): el correo que le escriben a esta persona (lo atiende un
-        # solo nodo suyo: cola «correo») y los directorios de las demás
-        from telar import cuentas
-
         self.nc = nc
-        await nc.subscribe(cuentas.CORREO.format(self.persona), queue="correo", cb=self._correo)
-        await nc.subscribe(cuentas.DIRECTORIO.format("*"), cb=self._directorio)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "leer"), cb=self._leer)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado"), cb=self._resultado)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "resultado-comentar"), cb=self._resultado_comentar)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "proveedor"), cb=self._proveedor)
-        await nc.subscribe(mod_bus.tema_cambio(self.config, "*"), cb=self._cambio)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tarea"), cb=self._tarea)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "tipo"), cb=self._tipo)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "periodicos"), cb=self._periodicos)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "hilo"), cb=self._hilo)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "equipo"), cb=self._equipo)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "aviso"), cb=self._aviso)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo"), cb=self._archivo)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "archivo-leer"), cb=self._archivo_leer)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "modulo"), cb=self._modulo)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "notas"), cb=self._notas)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
-        await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie-recordar"), cb=self._serie_recordar)
+        await self.suscribirse(nc)
         vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
@@ -261,6 +297,29 @@ class Nodo:
                     t.cancel()
             mod_bus.registrar_conexion(None, None)
             await nc.close()
+
+    async def suscribirse(self, nc) -> None:
+        """Lo que atiende el nodo. Los pedidos con respuesta, cada uno en su tarea (`_aparte`): los que solo
+        leen, varios a la vez; los que escriben, de a uno por verbo. El ping no, para que conteste aunque el nodo
+        esté ocupado. Los avisos sin respuesta (cambios, directorios), de a uno y en orden: son cortos, y uno
+        viejo no debe pisar a uno nuevo."""
+        rpc = lambda verbo: mod_bus.tema_rpc(self.config, self.yo, verbo)  # noqa: E731
+        await self._suscribir(nc, rpc("ping"), self._ping, aparte=False)
+        # entre personas (telar.entre_personas): el correo que le escriben a esta persona (lo atiende un
+        # solo nodo suyo: cola «correo») y los directorios de las demás
+        from telar import cuentas
+
+        await self._suscribir(nc, cuentas.CORREO.format(self.persona), self._correo, queue="correo")
+        await self._suscribir(nc, cuentas.DIRECTORIO.format("*"), self._directorio, aparte=False)
+        await self._suscribir(nc, mod_bus.tema_cambio(self.config, "*"), self._cambio, aparte=False)
+        for verbo, cb in (("leer", self._leer), ("resultado", self._resultado),
+                          ("resultado-comentar", self._resultado_comentar), ("proveedor", self._proveedor),
+                          ("tarea", self._tarea), ("tipo", self._tipo), ("periodicos", self._periodicos),
+                          ("hilo", self._hilo), ("equipo", self._equipo), ("aviso", self._aviso),
+                          ("archivo", self._archivo), ("archivo-leer", self._archivo_leer), ("modulo", self._modulo),
+                          ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
+                          ("serie-recordar", self._serie_recordar)):
+            await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
         from telar import casilla
@@ -350,53 +409,99 @@ class Nodo:
                 await asyncio.to_thread(self.conciliar)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"conciliar las ventanas: {type(e).__name__}: {e}")
+            # y el registro de este proceso, con tope (bajo launchd es un archivo que nadie rota)
+            await asyncio.to_thread(self.recortar_registro)
+
+    def recortar_registro(self) -> bool:
+        from telar import salida
+
+        if salida.recortar_registro():
+            self.anotar(f"el registro pasaba de {salida.MAX_REGISTRO // (1024 * 1024)} MB: quedó la última mitad")
+            return True
+        return False
 
     async def _vigilar(self, kv) -> None:
-        """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia."""
+        """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia.
+
+        El vigía solo recibe: guarda lo último de cada hilo y se lo deja a `_atender_vistos`, que anota la
+        atención y mira su ventana (tmux, archivos) en otra tarea. Antes lo hacía aquí mismo, evento por
+        evento: con varios hilos cambiando de atención, el vigía se atrasaba, su cola se llenaba y nats-py
+        dejaba de leer el consumidor del estado, que perdía sus latidos y se rehacía (`nats: timeout` en
+        `recreate_consumer`). Una ráfaga de cambios de un mismo hilo se atiende una vez, con el último."""
+        hay = asyncio.Event()
+        self.por_atender, self.por_atender_fin = {}, False
+        trabajador = asyncio.create_task(self._atender_vistos(hay))
+        try:
+            vigia = await kv.watch(f"{self.persona}.>")
+            async for e in vigia:
+                if e is None:
+                    # lo que había en el bus ya llegó entero: recién ahora `ajenos.json` tiene a todos (antes,
+                    # escribirlo con cada clave lo dejaría un rato con una parte, y el resto volvería a la copia)
+                    self.ajenos_listos = True
+                    await self._espejar()
+                    continue
+                if not e.value:
+                    self.vistos.pop(e.key, None)  # borrado: ese hilo ya no está en ninguna parte
+                    self.por_atender.pop(e.key, None)
+                    await self._espejar()
+                    continue
+                try:
+                    d = json.loads(e.value)
+                except ValueError:
+                    continue
+                if d.get("maquina") == self.yo:
+                    self.vistos.pop(e.key, None)
+                    self.por_atender.pop(e.key, None)
+                    await self._espejar()
+                    continue
+                self.vistos[e.key] = d
+                await self._espejar()
+                self.por_atender.pop(e.key, None)  # al final de la fila: el orden es el de los cambios
+                self.por_atender[e.key] = d
+                hay.set()
+            # el vigía terminó (en una prueba; en el bus no termina): lo que quedó se atiende antes de irse
+            self.por_atender_fin = True
+            hay.set()
+            await trabajador
+        finally:
+            trabajador.cancel()
+
+    async def _atender_vistos(self, hay: asyncio.Event) -> None:
+        """Lo que dejó el vigía, de a un hilo, con lo último que publicó cada uno."""
+        while True:
+            await hay.wait()
+            hay.clear()
+            while self.por_atender:
+                await self._atender_visto(self.por_atender.pop(next(iter(self.por_atender))))
+            if getattr(self, "por_atender_fin", False):
+                return
+
+    async def _atender_visto(self, d: dict) -> None:
+        """Lo de un hilo de otra máquina que cambió: su atención, anotada aquí, y su ventana."""
         from datetime import datetime
 
         from telar import estado as mod_estado
         from telar.modelo import Atencion
 
-        vigia = await kv.watch(f"{self.persona}.>")
-        async for e in vigia:
-            if e is None:
-                # lo que había en el bus ya llegó entero: recién ahora `ajenos.json` tiene a todos (antes,
-                # escribirlo con cada clave lo dejaría un rato con una parte, y el resto volvería a la copia)
-                self.ajenos_listos = True
-                await self._espejar()
-                continue
-            if not e.value:
-                self.vistos.pop(e.key, None)  # borrado: ese hilo ya no está en ninguna parte
-                await self._espejar()
-                continue
+        def anotar_aqui():
+            est = mod_estado.abrir(self.config)
+            if d.get("nombre") not in est.remotos():
+                return
             try:
-                d = json.loads(e.value)
+                atencion = Atencion(d.get("atencion") or "ninguna")
+                desde = datetime.fromisoformat(d["desde"]) if d.get("desde") else None
             except ValueError:
-                continue
-            if d.get("maquina") == self.yo:
-                self.vistos.pop(e.key, None)
-                await self._espejar()
-                continue
-            self.vistos[e.key] = d
-            await self._espejar()
+                return
+            est.anotar_atencion(d["nombre"], atencion, desde)
 
-            def anotar_aqui():
-                est = mod_estado.abrir(self.config)
-                if d.get("nombre") not in est.remotos():
-                    return
-                try:
-                    atencion = Atencion(d.get("atencion") or "ninguna")
-                    desde = datetime.fromisoformat(d["desde"]) if d.get("desde") else None
-                except ValueError:
-                    return
-                est.anotar_atencion(d["nombre"], atencion, desde)
-
+        try:
             await asyncio.to_thread(anotar_aqui)
-            try:
-                await asyncio.to_thread(self.ventana_de, d)
-            except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
-                self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
+        except Exception as e:  # noqa: BLE001 - un estado que no se pudo escribir no tumba al vigía
+            self.anotar(f"«{d.get('nombre')}»: la atención no se anotó: {type(e).__name__}: {e}")
+        try:
+            await asyncio.to_thread(self.ventana_de, d)
+        except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
+            self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
 
     async def _espejar(self) -> None:
         """`espejar_ajenos` desde el vigía, cuando ya llegó lo del arranque. Un archivo que no se pudo

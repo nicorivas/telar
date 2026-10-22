@@ -82,6 +82,25 @@ extension shared the version number.
   ones known here follow. `telar doctor` gains a `sesiones` check that lists the old per-thread tmux sessions
   (`telar-…`) still alive, and warns when it could not ask tmux.
 
+### Fixed
+
+- The node's log no longer grows without bound: a bus failure (`nats: timeout`, a refused connection, a slow
+  consumer) is one line instead of a full traceback, the same failure is written once every ten minutes with a
+  count of the ones in between, losing and regaining the bus is one line each, and `telar serve` trims its
+  log file to its last half past 4 MB (only a regular file opened for appending, as launchd does; journald and
+  terminals are left alone).
+- A slow request to a node no longer holds up what arrives behind it: each request runs in its own task, four
+  at a time; the ones that only read (`leer`, `resultado`, `proveedor`, `notas`, `serie`, `archivo-leer`) run
+  side by side, the ones that write still go one at a time per verb, in order; with 64 in progress or waiting
+  the node answers `{"ok": false, "ocupada": true}` at once. Every subscription of the node has a cap on what can
+  wait (2000 messages, 32 MB) instead of nats-py's half a million.
+- The node's watcher of the threads' state no longer opens tmux and files event by event: it keeps the latest
+  of each thread and another task handles it, so a burst of attention changes is handled once and the watcher
+  keeps up with the bus. A state that cannot be written no longer stops the watcher.
+- Reading from the bus (`telar mensaje --registro`, `telar nodo estado`, where a thread lives) is retried once
+  when a request times out after connecting, and so is sending a message: the copy in the log now carries an
+  id too, so a retry never stores anything twice. The node waits 10 s for JetStream instead of 5.
+
 ## [0.3.0] — 2026-10-21
 
 ### Added

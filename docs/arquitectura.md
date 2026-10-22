@@ -174,6 +174,37 @@ hilo y responde; el servidor dice de qué cuenta vino, así que nadie escribe a 
 persona+hilo@…` va por ahí si esa persona tiene nodo en el bus; si no, por el correo del servidor (el
 `cartero`, en [servidor/](../servidor/README.md)), que sigue mientras otras personas lo usen.
 
+**Cuando el bus falla.** La conexión del nodo no se rinde: reconecta cada 2 s mientras haga falta, y
+cada falla que cuenta nats-py (un `nats: timeout`, una conexión rechazada, una «slow consumer») queda en el
+registro de `telar serve` en una línea, la misma una vez cada diez minutos con cuántas hubo en medio
+(`telar.bus.Avisador`). Bajo launchd ese registro es un archivo (`~/Library/Logs/telar-serve.log`) que
+nadie rota: `telar serve` lo deja en su última mitad al pasar de 4 MB (`telar.salida.recortar_registro`);
+con systemd va a journald, que tiene su propio tope. Los pedidos con respuesta se atienden cada uno en su
+tarea, cuatro a la vez, para que uno lento no deje esperando a lo que llega detrás: los que solo leen,
+varios del mismo verbo juntos; los que escriben, de a uno por verbo y en orden, como antes. Con 64 en
+curso o esperando, el nodo contesta que está ocupado. Cada suscripción tiene tope de lo que espera
+(2000 mensajes, 32 MB). El vigía del estado solo recibe y guarda lo último de cada hilo; anotar su
+atención y mirar su ventana lo hace otra tarea, una vez por ráfaga. Lo que se lee del bus, y el envío de
+un mensaje (que lleva id, también su copia en el registro), se repite una vez si un pedido no volvió a
+tiempo con el bus ya conectado; si no conectó, no se insiste.
+
+Lo que no se puede arreglar desde aquí sin probar contra el bus real:
+
+- **La «slow consumer» del servidor.** La que cuenta `nats-server` en su registro (`Slow Consumer
+  Detected`) es suya: no alcanzó a escribirle al laptop dentro de su `write_deadline` (por defecto, 10 s) y
+  le cortó la conexión. Pasa cuando el laptop duerme o la red se traba (un hotspot) mientras el servidor
+  le sigue mandando el estado de cada hilo y las fotos de cada máquina cada 30 s. El nodo reconecta
+  solo; para que pase menos, habría que subir `write_deadline` en el servidor o mandar menos (la foto
+  solo si cambió, sin perder que la página la usa para saber si la máquina está en línea), y medirlo con
+  `nats-server` delante.
+- **Un laptop dormido no responde, pero sigue suscrito.** Hasta que el servidor da su conexión por
+  muerta (`ping_interval`, 2 min por defecto, y dos pings sin respuesta), un pedido a esa máquina se
+  queda sin respuesta hasta su plazo en vez de volver al tiro con «nadie atiende». Por eso los pedidos
+  (`telar.bus.pedir`) no se reintentan: repetirlo duplicaría la espera sin llegar a nadie. Bajar el
+  `ping_interval` del servidor lo acortaría; hay que probarlo con el bus real.
+- **El consumidor del vigía se rehace después de cada corte** (`recreate_consumer`); mientras no hay red
+  falla, y esas fallas ahora son una línea cada diez minutos, pero siguen pasando.
+
 Git sigue siendo para el contenido: los archivos se sincronizan con `pull` y `push`, a su ritmo, y un
 hilo vinculado a una carpeta que la otra máquina todavía no tiene se ve sin ficha hasta el próximo pull.
 

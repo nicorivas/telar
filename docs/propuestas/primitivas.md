@@ -164,8 +164,11 @@ Cada uno deja todo funcionando.
    conversación y su lugar por separado.
 4. **Mensajes con modos y el Encargo**: `mensaje --modo aviso|pedido|encargo|consulta`, el objeto Encargo
    y la tabla de intenciones. Con eso se le puede encargar a un hilo de proyecto, no solo a un residente.
-   Antes, las fallas del bus: los `nats: timeout`, el «Slow Consumer» del laptop, el registro del nodo que
-   crece sin tope.
+   Antes, las fallas del bus: ~~los `nats: timeout`, el «Slow Consumer» del laptop, el registro del nodo
+   que crece sin tope~~: hecho (22-oct-2026). Las fallas son una línea y el registro tiene tope; los
+   pedidos se atienden aparte, el vigía no se atrasa y las lecturas y los envíos se repiten una vez. Lo que
+   pide el bus real (el `write_deadline` y el `ping_interval` del servidor) está en
+   [arquitectura.md](../arquitectura.md), «Cuando el bus falla».
 5. ~~El lugar y los worktrees~~: aplazado (arriba, «Git y los repositorios»).
 6. **Vistas**: `[vistas]` reemplaza a `[secciones]`, `[bloques]`, `[apps]` y `[resultados]`, que se siguen
    leyendo un tiempo.
