@@ -17,10 +17,20 @@ def consultar(ctx, modulo: str, verbo: str, params: dict, maquina: str = "") -> 
         r = mod_bus.pedir(ctx.config, maquina, "modulo", {"modulo": modulo, "verbo": verbo, "params": params},
                           espera=mod_modulos.ESPERA_CONSULTA + 10)
         if not r.get("ok"):
-            raise ErrorDeServicio(r.get("error") or f"{maquina} no pudo", int(r.get("codigo") or 502))
+            # una máquina que no atiende consultas de módulos es como una sin el módulo: 404, no una falla
+            raise ErrorDeServicio(r.get("error") or f"{maquina} no pudo", 404 if r.get("sin_servicio") else int(r.get("codigo") or 502))
         return r.get("respuesta") or {}
+    config = ctx.config
+    if mod_modulos.buscar(config, modulo) is None and getattr(config, "origen", None):
+        # instalado después de que arrancó telar serve: se relee la configuración, sin reiniciarlo
+        from telar import config as mod_config
+
+        try:
+            config = mod_config.cargar(config.origen)
+        except mod_config.ErrorDeConfig:
+            pass
     try:
-        return mod_modulos.consultar(ctx.config, modulo, verbo, params)
+        return mod_modulos.consultar(config, modulo, verbo, params)
     except mod_modulos.ErrorDeModulo as e:
         texto = str(e)
         raise ErrorDeServicio(texto, 404 if texto.startswith("aquí no está") or "no tiene la consulta" in texto else 502) from None

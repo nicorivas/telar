@@ -456,5 +456,9 @@ def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30
         return {"ok": False, "error": str(e)}
     except Exception as e:  # noqa: BLE001 - sin respuesta a tiempo, o una que no es JSON
         nombre = type(e).__name__
-        motivo = "no respondió a tiempo (¿está apagada o sin su nodo?)" if "Timeout" in nombre or "NoResponders" in nombre else f"{nombre}: {e}"
+        if "NoResponders" in nombre:
+            # nadie escucha ese tema: o la máquina no tiene su nodo, o su telar no conoce ese pedido
+            return {"ok": False, "sin_servicio": True,
+                    "error": f"{a_maquina} no atiende «{verbo}» (¿sin su nodo, o con un telar más viejo?)"}
+        motivo = "no respondió a tiempo (¿está apagada o sin su nodo?)" if "Timeout" in nombre else f"{nombre}: {e}"
         return {"ok": False, "error": f"{a_maquina} {motivo}"[:300]}

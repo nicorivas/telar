@@ -141,6 +141,13 @@ class LosModulosComoPlugins(Prueba):
             modulos.preparar(str(self.repo))
         self.assertEqual([p for p in (Path(self.tmp.name) / "datos" / "telar" / "modulos").iterdir()], [])
 
+    def test_uno_instalado_despues_de_arrancar_se_encuentra(self):
+        from telar.servicios import modulos as servicio
+
+        ctx = SimpleNamespace(config=self.config())  # como telar serve: leída antes de instalarlo
+        self.instalar()
+        self.assertEqual(servicio.consultar(ctx, "eco", "decir", {"texto": "b"})["dijo"], "b")
+
     def test_la_api_y_el_bus(self):
         self.instalar()
         from telar.servicios import modulos as servicio
