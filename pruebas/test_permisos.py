@@ -83,6 +83,24 @@ class LoQuePideUnModulo(Prueba):
         with self.assertRaises(modulos.ErrorDeModulo):
             self.leer(BASE + '\npermisos = "todo"\n')
 
+    def test_telar_solo_no_es_una_orden(self):
+        with self.assertRaises(modulos.ErrorDeModulo) as e:
+            self.leer(BASE + '\n[permisos]\nordenes = ["telar"]\n')
+        self.assertIn("«telar» no es una orden", str(e.exception))
+
+    def test_lo_mismo_en_otro_orden_pide_lo_mismo(self):
+        # las mismas rutas en otro orden, o ningún sitio contra `false`, se leen igual (y actualizar no avisa)
+        a = self.leer(BASE + '\n[permisos]\nleer = ["~/b", "~/a"]\nred = []\n')
+        b = self.leer(BASE + '\n[permisos]\nleer = ["~/a", "~/b", "~/a"]\nred = false\n')
+        self.assertEqual(a.permisos, b.permisos)
+        self.assertEqual(a.pide, ["leer ~/a, ~/b"])
+
+    def test_un_caracter_de_control_no_tapa_la_linea_del_si(self):
+        # un ESC en lo que pide podría borrar la línea «pide:» antes de dar el sí: se muestra escapado
+        m = self.leer(BASE + '\n[permisos]\nleer = ["\\u001b[2K\\u001b[1Aoculto"]\n"\\u001bclave" = 1\n')
+        self.assertTrue(all("\x1b" not in x for x in m.pide), m.pide)
+        self.assertIn("leer \\x1b[2K\\x1b[1Aoculto", m.pide)
+
     def test_una_clave_que_no_se_entiende_se_muestra_y_no_rompe(self):
         # un módulo escrito para un telar más nuevo se instala igual, y lo que pide no se calla
         m = self.leer(BASE + '\n[permisos]\nleer = ["~/a"]\nsecretos = ["gmail"]\ndesde = 2026-10-22\n')
@@ -164,6 +182,35 @@ class InstalarLoMuestra(Prueba):
         self.assertIn("red: cualquier sitio", linea)
         self.assertIn("(antes: ", linea)
         self.assertIn("red: psl.noaa.gov", linea)
+        self.assertNotIn("pide", modulos.actualizar(self.instalados, "eco"))  # se compara con lo último que se vio
+
+    def test_actualizar_no_avisa_lo_que_se_lee_igual(self):
+        (self.repo / "modulo.toml").write_text(BASE + "\n[permisos]\nleer = [\"~/b\", \"~/a\"]\nred = false\n")
+        git(self.repo, "commit", "-qam", "así")
+        self.orden("instalar", str(self.repo), "--si")
+        (self.repo / "modulo.toml").write_text(BASE + "\n[permisos]\nleer = [\"~/a\", \"~/b\"]\nred = []\n")
+        git(self.repo, "commit", "-qam", "lo mismo, escrito de otra forma")
+        self.assertNotIn("pide", modulos.actualizar(self.instalados, "eco"))
+
+    def test_actualizar_uno_enlazado_tambien_avisa(self):
+        # sin pull, la carpeta de antes y la de después son la misma: se compara con lo que se vio al instalarlo
+        self.orden("instalar", str(self.repo), "--enlazar", "--si")
+        self.assertTrue(modulos.leer_instalados(self.instalados)["eco"]["enlazado"])
+        (self.repo / "modulo.toml").write_text(PIDE.replace('red = ["psl.noaa.gov"]', "red = true"))
+        linea = modulos.actualizar(self.instalados, "eco")
+        self.assertIn("lo que pide cambió: ", linea)
+        self.assertIn("(antes: leer ~/datos/oceano", linea)
+
+    def test_uno_anotado_por_un_telar_de_antes_compara_con_su_manifiesto(self):
+        # modulos.toml de antes, sin `pide`: vale el manifiesto de antes del pull, y desde ahí queda anotado
+        self.orden("instalar", str(self.repo), "--si")
+        texto = self.instalados.read_text()
+        self.instalados.write_text("\n".join(l for l in texto.split("\n") if not l.startswith("pide = ")))
+        self.assertNotIn("pide", modulos.leer_instalados(self.instalados)["eco"])
+        (self.repo / "modulo.toml").write_text(PIDE.replace('red = ["psl.noaa.gov"]', "red = true"))
+        git(self.repo, "commit", "-qam", "más red")
+        self.assertIn("lo que pide cambió", modulos.actualizar(self.instalados, "eco"))
+        self.assertIn("red: cualquier sitio", modulos.leer_instalados(self.instalados)["eco"]["pide"])
 
 
 class LaEsperaDeUnHilo(Prueba):
@@ -219,6 +266,42 @@ class LaEsperaDeUnHilo(Prueba):
         self.est.olvidar("molino")
         self.assertIsNone(self.est.espera("molino"))
         self.assertNotIn("molino", json.loads((self.carpeta / "estado" / "esperas.json").read_text()))
+
+    def test_sin_desde_no_se_sabe_de_cual_espera(self):
+        # un atencion.json viejo o escrito a mano, sin `desde`: lo anotado puede ser de cualquier espera anterior
+        (self.carpeta / "estado").mkdir(parents=True, exist_ok=True)
+        (self.carpeta / "estado" / "atencion.json").write_text('{"faro": {"atencion": "espera"}}')
+        self.est.anotar_espera("faro", "viejo", "permiso", datetime(2020, 1, 1))
+        self.assertEqual(self.est.espera("faro"), {"desde": None, "pide": "", "clase": ""})
+
+    def test_lo_que_pide_es_una_linea_corta_y_sin_control(self):
+        ahora = datetime.now().replace(microsecond=0)
+        self.est.anotar_atencion("faro", Atencion.ESPERA, ahora)
+        self.est.anotar_espera("faro", "x" * 1000, "permiso", ahora)
+        self.assertEqual(len(self.est.espera("faro")["pide"]), mod_estado.TOPE_PIDE)
+        self.est.anotar_espera("faro", "¿borro\x1b[2K la rama?", "permiso", ahora)
+        self.assertEqual(self.est.espera("faro")["pide"], "¿borro\\x1b[2K la rama?")
+
+    def test_un_esperas_roto_no_tumba_nada(self):
+        # es un dato de más: roto, la espera sale sin el texto, y renombrar u olvidar el hilo siguen enteros
+        ahora = datetime.now().replace(microsecond=0)
+        self.est.anotar_atencion("faro", Atencion.ESPERA, ahora)
+        roto = self.carpeta / "estado" / "esperas.json"
+        roto.write_text("{roto")
+        self.assertEqual(self.est.espera("faro"), {"desde": ahora, "pide": "", "clase": ""})
+        self.est.renombrar("faro", "molino")
+        self.assertIsNotNone(self.est.espera("molino"))
+        self.assertIn("molino", json.loads((self.carpeta / "estado" / "atencion.json").read_text()))
+        roto.write_text("{roto")
+        self.est.olvidar("molino")
+        self.assertIsNone(self.est.espera("molino"))
+        roto.write_text("{roto")
+        self.est.anotar_espera("ana", "¿subo?", "permiso", ahora)  # la siguiente escritura lo rehace
+        self.assertEqual(json.loads(roto.read_text())["ana"]["pide"], "¿subo?")
+        # los demás archivos del estado siguen avisando si están rotos
+        (self.carpeta / "estado" / "atencion.json").write_text("{roto")
+        with self.assertRaises(mod_estado.ErrorDeEstado):
+            self.est.espera("ana")
 
     def test_el_aviso_lo_anota_aunque_avise_el_mod(self):
         from telar import casilla
@@ -285,6 +368,14 @@ class ElObjetoPermiso(Prueba):
             o = objetos.ver(self.ctx, "permiso:Faro")
         self.assertEqual((o.titulo, o.resumen), ("«Faro» te espera", ""))
         self.assertNotIn("pide", o.campos)
+
+    def test_una_pregunta_sin_texto(self):
+        self.est.anotar_atencion("Faro", Atencion.ESPERA, datetime(2026, 10, 22, 10, 0, 0))
+        self.est.anotar_espera("Faro", "", "pregunta", datetime(2026, 10, 22, 10, 0, 0))
+        a, b = self.hilo("espera")
+        with a, b:
+            o = objetos.ver(self.ctx, "permiso:Faro")
+        self.assertEqual((o.titulo, o.resumen, o.campos["clase"]), ("«Faro» te pregunta algo", "", "pregunta"))
 
     def test_un_hilo_que_no_espera_no_tiene_permiso(self):
         a, b = self.hilo("trabajando")

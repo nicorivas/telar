@@ -31,7 +31,7 @@ import sys
 import unicodedata
 from datetime import datetime
 
-__all__ = ["MANEJADOR", "RESERVA", "alcanza", "empobrecer", "preparar"]
+__all__ = ["MANEJADOR", "RESERVA", "alcanza", "empobrecer", "preparar", "visible"]
 
 #: El nombre con que se registra el manejador de errores de codificación.
 MANEJADOR = "telar"
@@ -80,6 +80,15 @@ def empobrecer(texto: str) -> str:
     lo vuelve a codificar, y una reserva que tampoco quepa sería un ciclo.
     """
     return "".join(_ascii(c) for c in texto)
+
+
+def visible(texto: str) -> str:
+    """El texto con sus caracteres de control a la vista: un ESC, un retorno o un NUL salen como `\\x1b`.
+
+    Para lo que escribe otro y se muestra donde se decide algo (lo que pide un módulo antes de instalarlo, lo
+    que pide un agente): una secuencia de la terminal (`\\x1b[2K`, `\\x1b[1A`, `\\r`) podría borrar o tapar
+    la línea de al lado. Se escapan en vez de quitarse, para que se vea que estaban."""
+    return "".join(f"\\x{ord(c):02x}" if unicodedata.category(c) == "Cc" else c for c in texto)
 
 
 def _ascii(caracter: str) -> str:

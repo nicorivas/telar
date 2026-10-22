@@ -709,7 +709,8 @@ telar de antes no atiende `encargo` (502, «no atiende»).
 Lo que un hilo espera de la persona es `permiso:<hilo>` (`permiso:Faro`, `permiso:Faro@servidor`): existe mientras
 su atención es `espera`, y si no, 404. Es de solo lectura (sin acciones: se contesta en el hilo). Su `estado` es
 `pendiente`; su `titulo` y su `resumen`, lo que pide si su agente lo dijo (si no, el `titulo` es «"Faro" te
-espera» y el `resumen` va vacío); su `version`, desde cuándo espera. `campos`: `hilo`, `desde` (ISO), `pide`,
+espera», o «"Faro" te pregunta algo» si su `clase` es `pregunta`, y el `resumen` va vacío); su `version`, desde
+cuándo espera. `campos`: `hilo`, `desde` (ISO), `pide`,
 `clase` (`permiso` o `pregunta`, la de un MCP) y `contestar` (cómo: `telar ir <hilo>`), los que tenga. Enlaza a su
 hilo y a su proyecto, y el hilo que espera enlaza a él. Lo que pide lo anota el gancho del agente en su máquina
 (el texto de la notificación de Claude Code, o `telar agente aviso --evento espera --pide "…"`): de un hilo de

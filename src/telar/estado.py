@@ -16,6 +16,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     archivados.json   lista de hilos archivados
     atencion.json     hilo → {"atencion": …, "desde": ISO}
     esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
+                      (un dato de más: roto, cuenta como vacío; ver DE_MAS)
     sesiones.json     hilo → [id de conversación, …], la principal primero
     ajenos.json       hilo de otra máquina → lo último que su dueño publicó en el bus
     paneles.json      panel del multiplexor → conversación que corre ahí ahora
@@ -63,6 +64,7 @@ from pathlib import Path
 
 from telar.config import Config
 from telar.modelo import Atencion, Hilo, Marca, Prioridad
+from telar.salida import visible
 
 __all__ = [
     "Estado",
@@ -118,6 +120,10 @@ CANDADO = ".candado"
 #: lo refresca cada 30 s mientras vigila el bus, y uno apagado (o sin `[bus]`) deja una foto vieja.
 #: Pasado este tiempo vale la copia de aquí, como sin bus
 AJENOS_CADUCA = 120
+
+#: los archivos que solo traen un dato de más: si están rotos (o no se leen) cuentan como vacíos y la siguiente
+#: escritura los rehace, en vez de tumbar lo que los toca de paso (renombrar, olvidar)
+DE_MAS = frozenset({"esperas"})
 
 #: lo que se guarda del texto con que un agente pide algo (`anotar_espera`): es una línea, no un documento
 TOPE_PIDE = 400
@@ -416,10 +422,12 @@ class Estado:
             return defecto
         try:
             datos = json.loads(ruta.read_text(encoding="utf-8") or "null")
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, OSError) as e:
+            if nombre in DE_MAS:
+                return defecto
+            if isinstance(e, OSError):
+                raise ErrorDeEstado(f"{ruta}: no se pudo leer: {e}") from e
             raise ErrorDeEstado(f"{ruta}: JSON roto ({e}). Bórralo: es derivado.") from e
-        except OSError as e:
-            raise ErrorDeEstado(f"{ruta}: no se pudo leer: {e}") from e
         if datos is None or type(datos) is not type(defecto):
             return defecto
         return datos
@@ -708,7 +716,8 @@ class Estado:
         """Lo que el agente de un hilo dijo al pedirle algo a la persona («Claude needs your permission to use
         Bash»), para `permiso:<hilo>`. Una por hilo: la siguiente la reemplaza. No es la atención: esa la
         escribe quien avisa (el gancho, el mod), y esto solo lo sabe el gancho que trae el texto."""
-        cuerpo = {"pide": " ".join(pide.split())[:TOPE_PIDE], "clase": clase,
+        # en una línea y sin caracteres de control: se muestra en una terminal, y un ESC podría tapar lo de al lado
+        cuerpo = {"pide": visible(" ".join(pide.split()))[:TOPE_PIDE], "clase": clase,
                   "cuando": (cuando or datetime.now()).replace(tzinfo=None).isoformat(timespec="seconds")}
         self._actualizar("esperas", lambda d: d.__setitem__(hilo, cuerpo), {})
 
@@ -717,15 +726,15 @@ class Estado:
 
         `pide` y `clase` van solo si lo anotado es de esta espera y no de una anterior: anotado desde poco antes
         de que empezara (`ESPERA_HOLGURA`; el gancho y el mod avisan casi a la vez, en cualquier orden) en
-        adelante. Si no, van vacíos: se sabe que espera, no qué."""
+        adelante. Si no, van vacíos: se sabe que espera, no qué. Tampoco van si la espera no dice desde cuándo
+        (un atencion.json viejo o escrito a mano): no hay cómo saber si lo anotado es de ella."""
         atencion, desde = self.atenciones().get(hilo, (Atencion.NINGUNA, None))
         if atencion is not Atencion.ESPERA:
             return None
         salida = {"desde": desde, "pide": "", "clase": ""}
         cuerpo = self._leer("esperas", {}).get(hilo)
         cuando = _fecha(cuerpo.get("cuando")) if isinstance(cuerpo, dict) else None
-        if cuando and (desde is None or cuando.replace(tzinfo=None)
-                       >= desde.replace(tzinfo=None) - timedelta(seconds=ESPERA_HOLGURA)):
+        if cuando and desde and cuando.replace(tzinfo=None) >= desde.replace(tzinfo=None) - timedelta(seconds=ESPERA_HOLGURA):
             salida.update(pide=str(cuerpo.get("pide") or ""), clase=str(cuerpo.get("clase") or ""))
         return salida
 

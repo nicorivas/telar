@@ -1013,7 +1013,10 @@ ordenes = ["mensaje", "tipo tarea"]   # las órdenes de telar que corre («telar
 ```
 
 `telar modulos instalar` lo muestra antes de preguntar («pide: leer ~/datos/oceano; red: psl.noaa.gov; …»),
-`telar modulos` lo lista (y `--json`, en `permisos`), y `actualizar` dice si cambió desde la versión de antes.
+`telar modulos` lo lista (y `--json`, en `permisos`), y `actualizar` dice si cambió desde lo que se vio al instalarlo
+(o en la actualización anterior: queda anotado en `modulos.toml`, también para uno `--enlazar`). Lo que se lee igual
+es lo mismo: las rutas en otro orden, o `red = []` y `red = false`. Un carácter de control en lo que pide (un ESC) se
+muestra escapado, para que no borre la línea antes del sí.
 **telar todavía no lo hace cumplir**: un módulo corre con los permisos de quien lo instaló, lo declare o no, y la
 instalación lo dice. Es el primer paso de los permisos ([propuestas/permisos.md](propuestas/permisos.md)): que
 quien instala sepa lo que el autor dice que el módulo hace. Sin la tabla, el módulo «no dice qué pide», que no es

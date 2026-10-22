@@ -88,14 +88,17 @@ servidor. Los permisos van encima, dentro de lo que una persona ya alcanza.
   telar anterior no conoce la sección y no lee el módulo que la trae (como con cualquier sección nueva).
 - La espera sigue siendo la atención `espera`, escrita por los mismos ganchos y el mod. Lo nuevo es que el gancho
   `Notification` guarda además el texto de lo que pide en `<estado>/esperas.json`, y que `permiso:<hilo>` lo
-  junta. Nada lee `esperas.json` más que ese tipo: si falta o está roto, la solicitud sale sin el texto.
+  junta. Nada lee `esperas.json` más que ese tipo: si falta o está roto, la solicitud sale sin el texto, y renombrar u
+  olvidar un hilo no se cortan por él (cuenta como vacío y la siguiente anotación lo rehace). Sin `desde` en la
+  atención (un `atencion.json` viejo) tampoco sale el texto: no hay cómo saber si es de esta espera.
 - Nadie contesta nada todavía: la solicitud no tiene acciones, y el diálogo de la terminal es el de siempre.
 
 ## El primer paso (hecho)
 
 1. **Lo que pide un módulo.** `telar.modulos` lee y valida `[permisos]` (`Modulo.permisos`, y `Modulo.pide` en
    palabras). `telar modulos instalar` dice «pide: …» antes de preguntar, y que telar todavía no lo hace cumplir;
-   `telar modulos` lo lista (y `--json`, en `permisos`); `actualizar` dice si cambió desde la versión de antes.
+   `telar modulos` lo lista (y `--json`, en `permisos`); `actualizar` dice si cambió desde lo que se vio al instalarlo (anotado en `modulos.toml`), después de
+   correr el `[instalar]` de la versión nueva, como siempre: decir antes y preguntar es lo que queda (abajo).
    No lo hace cumplir.
 2. **La espera como objeto.** El tipo `permiso` de fábrica en `telar.objetos`: `permiso:<hilo>` existe mientras su
    atención es `espera`, con `hilo`, `desde`, `pide` y `clase` (`permiso` o `pregunta`), y enlaza a su hilo y a su

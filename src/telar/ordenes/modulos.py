@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from telar.ordenes import _comun
+from telar.salida import visible
 
 AYUDA = "Los módulos (una carpeta con modulo.toml): la lista, e instalarlos desde un repositorio."
 VERBOS = ("instalar", "actualizar", "quitar", "adoptar")
@@ -54,7 +55,7 @@ def main(argv: list[str], ctx) -> int:
         de = mod_modulos.linea_procedencia(mod_modulos.procedencia(instalados.get(m.nombre)))
         print(f"{m.nombre}  " + _comun.tenue(f"{m.carpeta}  {de}"))
         if m.descripcion:
-            print(f"    {m.descripcion}")
+            print(f"    {visible(m.descripcion)}")
         print(_comun.tenue("    aporta: " + (", ".join(m.aporta) or "nada")))
         print(_comun.tenue("    pide: " + "; ".join(m.pide)))
     return 0
@@ -112,11 +113,12 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
     try:
         if verbo == "instalar":
             m, anotar = mod_modulos.preparar(o.fuente, nombre=o.nombre, enlazar=o.enlazar)
-            print(f"{m.nombre}" + (f" — {m.descripcion}" if m.descripcion else ""))
+            # lo escribe el módulo y se lee antes del sí: sus caracteres de control a la vista (telar.salida.visible)
+            print(f"{m.nombre}" + (f" — {visible(m.descripcion)}" if m.descripcion else ""))
             print(_comun.tenue(f"    de {anotar['fuente']} @ {anotar.get('version') or '?'}"))
             print("    trae: " + (", ".join(m.aporta) or "nada"))
             if m.instalar:
-                print("    al instalarse corre: " + " ".join(m.instalar))
+                print("    al instalarse corre: " + visible(" ".join(m.instalar)))
             print("    pide: " + "; ".join(m.pide))
             print(_comun.tenue("    (telar todavía no lo hace cumplir: corre con tus permisos, lo declare o no)"))
             if not _si(f"¿instalar {m.nombre}?", o.si):

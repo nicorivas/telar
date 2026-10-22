@@ -86,6 +86,8 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from telar.salida import visible
+
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
@@ -159,7 +161,8 @@ def palabras_permisos(p: dict | None) -> list[str]:
     if p.get("ordenes"):
         salida.append("órdenes de telar: " + ", ".join(p["ordenes"]))
     salida += [f"«{k}» (esta versión de telar no lo entiende: {v!r})" for k, v in p.get("otros", {}).items()]
-    return salida or ["nada fuera de su carpeta"]
+    # lo escribe el módulo y se lee antes de dar el sí: un carácter de control no borra ni tapa la línea
+    return [visible(x) for x in salida] or ["nada fuera de su carpeta"]
 
 
 def _permisos(nombre: str, datos) -> dict | None:
@@ -169,22 +172,30 @@ def _permisos(nombre: str, datos) -> dict | None:
         return None
 
     def lista(clave: str) -> tuple:
+        # ordenadas y sin repetir: las mismas rutas en otro orden piden lo mismo (y `actualizar` no lo cuenta
+        # como un cambio)
         v = datos.get(clave, [])
         if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
             raise ErrorDeModulo(f"{nombre}: [permisos] {clave}: se esperaba una lista de textos")
-        return tuple(x.strip() for x in v)
+        return tuple(sorted({x.strip() for x in v}))
 
     red = datos.get("red", False)
     if isinstance(red, bool):
         pass
     elif isinstance(red, list) and all(isinstance(x, str) and x.strip() for x in red):
-        red = tuple(x.strip() for x in red)
+        red = tuple(sorted({x.strip() for x in red})) or False  # ningún sitio es lo mismo que `false`
     else:
         raise ErrorDeModulo(f"{nombre}: [permisos] red: true, false o una lista de sitios")
-    # «telar mensaje» y «mensaje» son lo mismo: la orden, sin el programa
-    ordenes = tuple(dict.fromkeys(" ".join(x.split()).removeprefix("telar ") for x in lista("ordenes")))
-    return {"leer": lista("leer"), "escribir": lista("escribir"), "red": red, "ordenes": ordenes,
-            "otros": {k: v for k, v in datos.items() if k not in PERMISOS}}
+    # «telar mensaje» y «mensaje» son lo mismo: la orden, sin el programa. «telar» solo no es ninguna orden
+    ordenes = []
+    for x in lista("ordenes"):
+        palabras = x.split()
+        palabras = palabras[1:] if palabras[0] == "telar" else palabras
+        if not palabras:
+            raise ErrorDeModulo(f"{nombre}: [permisos] ordenes: «{x}» no es una orden de telar (como «mensaje»)")
+        ordenes.append(" ".join(palabras))
+    return {"leer": lista("leer"), "escribir": lista("escribir"), "red": red,
+            "ordenes": tuple(sorted(set(ordenes))), "otros": {k: v for k, v in datos.items() if k not in PERMISOS}}
 
 
 def permisos_json(p: dict | None) -> dict | None:
@@ -440,6 +451,10 @@ def _escribir_instalados(ruta: Path, instalados: dict) -> None:
                 lineas.append(f"{k} = {json.dumps(str(d[k]), ensure_ascii=False)}")
         if d.get("enlazado"):
             lineas.append("enlazado = true")
+        if isinstance(d.get("pide"), list):
+            # lo que pedía cuando se instaló (o se actualizó por última vez), en palabras: contra eso compara
+            # `actualizar`. Una lista de JSON de textos es TOML válido
+            lineas.append(f"pide = {json.dumps([str(x) for x in d['pide']], ensure_ascii=False)}")
         lineas.append("")
     ruta.parent.mkdir(parents=True, exist_ok=True)
     tmp = ruta.with_suffix(".tmp")
@@ -535,7 +550,7 @@ def confirmar_instalacion(ruta: Path, m: Modulo, anotar: dict) -> Path:
         if not anotar.get("enlazado"):
             shutil.rmtree(carpeta, ignore_errors=True)
         raise
-    instalados[m.nombre] = anotar
+    instalados[m.nombre] = {**anotar, "pide": m.pide}  # lo que se mostró antes del sí
     _escribir_instalados(ruta, instalados)
     return carpeta
 
@@ -567,7 +582,7 @@ def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
         raise ErrorDeModulo(f"«{nombre}» ya está en {ruta}")
     instalados[nombre] = {"carpeta": str(carpeta), "fuente": _fuente_de(carpeta), "enlazado": True,
                           "version": _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip(),
-                          "instalado": date.today().isoformat()}
+                          "instalado": date.today().isoformat(), "pide": m.pide}
     # el bloque, de su cabecera hasta la siguiente tabla (con los comentarios que lo preceden pegados)
     lineas = texto.split("\n")
     i = next(k for k, l in enumerate(lineas) if l.strip() == f"[modulos.{nombre}]")
@@ -591,10 +606,15 @@ def actualizar(ruta: Path, nombre: str) -> str:
         raise ErrorDeModulo(f"«{nombre}» no lo instaló telar modulo")
     carpeta = Path(d["carpeta"])
     antes = d.get("version", "")
-    try:
-        pedia = leer(nombre, carpeta).permisos
-    except ErrorDeModulo:
-        pedia = False  # el de antes no se leía: no hay con qué comparar
+    # lo que pedía: lo anotado al instalarlo (o en la última actualización), que es lo que se vio. Uno anotado
+    # por un telar de antes no lo tiene: vale el manifiesto de antes del pull (en uno enlazado no hay pull, y
+    # entonces no hay con qué comparar hasta la próxima vez)
+    pedia = d.get("pide")
+    if not (isinstance(pedia, list) and all(isinstance(x, str) for x in pedia)):
+        try:
+            pedia = leer(nombre, carpeta).pide
+        except ErrorDeModulo:
+            pedia = None  # el de antes no se leía: no hay con qué comparar
     if not d.get("enlazado"):
         r = _git(carpeta, "pull", "-q", "--ff-only")
         if r.returncode != 0:
@@ -602,13 +622,13 @@ def actualizar(ruta: Path, nombre: str) -> str:
     ahora = _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip()
     m = leer(nombre, carpeta)
     _correr_instalar(m, carpeta)
-    instalados[nombre] = {**d, "version": ahora}
+    instalados[nombre] = {**d, "version": ahora, "pide": m.pide}
     _escribir_instalados(ruta, instalados)
     linea = f"{nombre}: {antes} → {ahora}" if antes != ahora else f"{nombre}: ya estaba al día ({ahora})"
-    if pedia is not False and pedia != m.permisos:
-        # no se pregunta (actualizar nunca preguntó), pero se dice: lo que pide ahora no es lo que se vio al instalarlo
-        linea += "\n    lo que pide cambió: " + "; ".join(m.pide) + (
-            "\n    (antes: " + "; ".join(palabras_permisos(pedia)) + ")")
+    if pedia is not None and pedia != m.pide:
+        # no se pregunta (actualizar nunca preguntó), pero se dice: lo que pide ahora no es lo que se vio. Sale
+        # después de su [instalar], que ya corrió con la versión nueva
+        linea += "\n    lo que pide cambió: " + "; ".join(m.pide) + "\n    (antes: " + "; ".join(pedia) + ")"
     return linea
 
 
