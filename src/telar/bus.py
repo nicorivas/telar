@@ -123,11 +123,16 @@ class Avisador:
 
     MAX_DISTINTAS = 200
 
-    def __init__(self, escribir=None, *, cada: float = AVISO_CADA, reloj=time.monotonic):
+    def __init__(self, escribir=None, *, cada: float = AVISO_CADA, reloj=time.monotonic, prefijo: str = "bus"):
         self.escribir = escribir or (lambda t: print(f"{datetime.now():%Y-%m-%d %H:%M:%S} {t}", flush=True))
-        self.cada, self.reloj = cada, reloj
+        self.cada, self.reloj, self.prefijo = cada, reloj, prefijo
         #: (tipo, texto) → [cuándo se escribió, cuántas se callaron desde entonces]
         self.vistas: dict[tuple[str, str], list] = {}
+        #: la conexión que avisa (la pone `conectar`): un cierre ordenado también llama a `cortado`
+        self.nc = None
+        #: desde cuándo está cortada (None: conectada), y si ese corte se calló
+        self.cortada_desde: float | None = None
+        self.corte_callado = False
 
     @staticmethod
     def clave(e: BaseException) -> tuple[str, str]:
@@ -138,7 +143,11 @@ class Avisador:
 
     def anotar(self, e: BaseException) -> bool:
         """Si la escribió (True) o la contó para después (False)."""
-        clave, ahora = self.clave(e), self.reloj()
+        clave = self.clave(e)
+        return self._anotar(clave, f"{clave[0]}: {clave[1]}")
+
+    def _anotar(self, clave: tuple[str, str], texto: str) -> bool:
+        ahora = self.reloj()
         vista = self.vistas.get(clave)
         if vista is not None and ahora - vista[0] < self.cada:
             vista[1] += 1
@@ -148,17 +157,31 @@ class Avisador:
         calladas = vista[1] if vista else 0
         self.vistas[clave] = [ahora, 0]
         extra = f" (y {calladas} igual{'es' if calladas > 1 else ''} desde la anterior)" if calladas else ""
-        self.escribir(f"bus: {clave[0]}: {clave[1]}{extra}")
+        self.escribir(f"{self.prefijo}: {texto}{extra}")
         return True
 
     async def __call__(self, e) -> None:
         self.anotar(e)
 
+    #: una vuelta que tarda menos que esto después de un corte callado también se calla (segundos)
+    CORTE_BREVE = 60
+
     async def cortado(self) -> None:
-        self.escribir("bus: se cortó la conexión; reintentando")
+        """nats-py llama a esto al perder la conexión, y también al cerrarla en orden (`nc.close()`, al
+        apagar el nodo): esa no es un corte. Un hotspot que se cae y vuelve seguido daría dos líneas cada
+        vez: el corte va con el mismo tope que una falla, y su vuelta se calla con él si fue breve."""
+        if getattr(self.nc, "is_closed", False):
+            return
+        self.cortada_desde = self.reloj()
+        self.corte_callado = not self._anotar(("corte", ""), "se cortó la conexión; reintentando")
 
     async def de_vuelta(self) -> None:
-        self.escribir("bus: conectado de nuevo")
+        desde, self.cortada_desde = self.cortada_desde, None
+        duro = self.reloj() - desde if desde is not None else 0
+        if self.corte_callado and duro < self.CORTE_BREVE:
+            return  # el corte tampoco se escribió: va contado en el próximo
+        self.corte_callado = False
+        self.escribir(f"{self.prefijo}: conectado de nuevo" + (f" (tras {duro:.0f} s)" if duro >= 1 else ""))
 
 
 async def _modo(config, nats, token: str) -> str:
@@ -203,7 +226,10 @@ async def conectar(config, *, para_siempre: bool = False):
     else:
         opciones.update(max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
     try:
-        return await nats.connect(config.bus.url, **opciones)
+        nc = await nats.connect(config.bus.url, **opciones)
+        if para_siempre:
+            avisos.nc = nc  # para que un cierre ordenado no se anote como corte
+        return nc
     except Exception as e:  # noqa: BLE001 - cualquier falla de conexión es «el bus no responde»
         if token and not para_siempre and "authorization" in str(e).lower():
             # el bus cambió de modo (de un solo token a cuentas, o al revés; ver _modo): el otro, y se recuerda
@@ -226,19 +252,33 @@ def _es_plazo(e: BaseException) -> bool:
     return not isinstance(e, ErrorDeBus) and (isinstance(e, asyncio.TimeoutError) or "Timeout" in type(e).__name__)
 
 
+#: lo que tiene que quedar del plazo para intentar otra vez (segundos): conectar y un pedido por Tailscale
+REINTENTO_MINIMO = 1.0
+
+
 def _con_reintento(fabrica, plazo: float, intentos: int = 2):
     """`asyncio.run` de la corrutina que arma `fabrica`, con `plazo` segundos, y otra vez si se agotó un
     plazo con el bus ya conectado: un pedido que se perdió en la red (el laptop por Tailscale, un hotspot)
     suele salir a la segunda. Solo para lo que se puede repetir sin efecto doble: leer, o publicar con
     `Nats-Msg-Id` (el bus descarta el repetido). Si no conectó, no se insiste: el bus no está, y esperar
-    otra vez solo demora el aviso."""
-    for intento in range(intentos):
-        try:
-            return asyncio.run(asyncio.wait_for(fabrica(), plazo))
-        except Exception as e:  # noqa: BLE001 - lo que no es un plazo sube tal cual
-            if intento + 1 < intentos and _es_plazo(e):
-                continue
-            raise
+    otra vez solo demora el aviso.
+
+    El reintento va dentro del mismo `plazo`, con lo que quedó: quien espera (`telar hilos`, la página)
+    nunca espera más que sin él. Por eso solo se intenta otra vez si un pedido de adentro se agotó antes
+    (el de nats-py, de cinco a ocho segundos) y queda al menos REINTENTO_MINIMO; si el que se cumplió es el
+    plazo entero (conectando, o un pedido que no volvió nunca), no queda nada y sube tal cual."""
+    async def correr():
+        reloj = asyncio.get_running_loop().time
+        fin = reloj() + plazo
+        for intento in range(intentos):
+            try:
+                return await asyncio.wait_for(fabrica(), max(0.0, fin - reloj()))
+            except Exception as e:  # noqa: BLE001 - lo que no es un plazo sube tal cual
+                if intento + 1 < intentos and _es_plazo(e) and fin - reloj() >= REINTENTO_MINIMO:
+                    continue
+                raise
+
+    return asyncio.run(correr())
 
 
 async def asegurar(js) -> None:
@@ -271,10 +311,10 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
     if not hay_bus(config):
         raise ErrorDeBus("no hay bus: [bus] url en la configuración")
     m = mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona=persona(config), saltos=saltos)
-    intentos = []
+    #: cuántas veces se alcanzó a pedir la publicación en la casilla (la del reintento incluida)
+    publicaciones = []
 
     async def _enviar():
-        intentos.append(1)
         nc = await conectar(config)
         try:
             js = nc.jetstream()
@@ -282,6 +322,7 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
             copia = {**m, "estado": "retenido", "motivo": retener} if retener else {**m, "estado": "enviado"}
             ack = None
             if not retener:
+                publicaciones.append(1)
                 ack = await js.publish(tema_casilla(config, para, quien), json.dumps(m, ensure_ascii=False).encode(),
                                        headers={"Nats-Msg-Id": m["id"]}, timeout=ESPERA)
             # con id también la copia, para que un reintento no la deje dos veces; con su estado, porque soltar
@@ -299,8 +340,11 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
         raise
     except Exception as e:  # noqa: BLE001
         raise ErrorDeBus(f"el bus no recibió el mensaje: {e}") from e
-    # repetido en el reintento es que el primero sí había llegado: no lo había mandado nadie antes
-    duplicado = bool(getattr(ack, "duplicate", False)) and len(intentos) == 1
+    # repetido en el reintento, si el primero alcanzó a pedir la publicación, es que ese sí había llegado. Si
+    # el primero se agotó antes (conectando a JetStream, asegurando el stream), el repetido es de antes: el
+    # mismo id ya se había mandado. Lo que no se distingue: un id repetido de antes, con un primer intento
+    # que también lo publicó; se cuenta como no repetido
+    duplicado = bool(getattr(ack, "duplicate", False)) and len(publicaciones) == 1
     return {**m, "secuencia": getattr(ack, "seq", None), "duplicado": duplicado,
             **({"estado": "retenido", "motivo": retener} if retener else {})}
 

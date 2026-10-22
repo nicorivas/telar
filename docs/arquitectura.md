@@ -177,16 +177,26 @@ persona+hilo@…` va por ahí si esa persona tiene nodo en el bus; si no, por el
 **Cuando el bus falla.** La conexión del nodo no se rinde: reconecta cada 2 s mientras haga falta, y
 cada falla que cuenta nats-py (un `nats: timeout`, una conexión rechazada, una «slow consumer») queda en el
 registro de `telar serve` en una línea, la misma una vez cada diez minutos con cuántas hubo en medio
-(`telar.bus.Avisador`). Bajo launchd ese registro es un archivo (`~/Library/Logs/telar-serve.log`) que
-nadie rota: `telar serve` lo deja en su última mitad al pasar de 4 MB (`telar.salida.recortar_registro`);
-con systemd va a journald, que tiene su propio tope. Los pedidos con respuesta se atienden cada uno en su
-tarea, cuatro a la vez, para que uno lento no deje esperando a lo que llega detrás: los que solo leen,
-varios del mismo verbo juntos; los que escriben, de a uno por verbo y en orden, como antes. Con 64 en
-curso o esperando, el nodo contesta que está ocupado. Cada suscripción tiene tope de lo que espera
-(2000 mensajes, 32 MB). El vigía del estado solo recibe y guarda lo último de cada hilo; anotar su
-atención y mirar su ventana lo hace otra tarea, una vez por ráfaga. Lo que se lee del bus, y el envío de
-un mensaje (que lleva id, también su copia en el registro), se repite una vez si un pedido no volvió a
-tiempo con el bus ya conectado; si no conectó, no se insiste.
+(`telar.bus.Avisador`); el corte y la vuelta también, y una vuelta breve tras un corte callado se cuenta
+con el siguiente. Un cierre ordenado (al apagar el nodo) no se anota como corte. Una vuelta del nodo que
+falla (con el bus caído, todas) es una línea cada diez minutos de la misma forma. Bajo launchd ese
+registro es un archivo (`~/Library/Logs/telar-serve.log`) que nadie rota: `telar serve` lo deja en su
+última mitad al pasar de 4 MB (`telar.salida.recortar_registro`) al arrancar y cada 30 s, aunque las
+vueltas fallen; con systemd va a journald, que tiene su propio tope. Los pedidos con respuesta se
+atienden cada uno en su tarea, para que uno lento no deje esperando a lo que llega detrás, con turnos
+por verbo, como cuando cada suscripción iba por su cuenta: cuatro a la vez de cada uno, y los lentos de
+un verbo no dejan sin turno a los de otro. Los que solo leen, varios del mismo verbo juntos; los que
+escriben (y el correo de otra persona), de a uno por verbo y en orden, como antes. Con 64 de un verbo en
+curso o esperando, el nodo le contesta a ese verbo que está ocupado. Las suscripciones de pedidos y
+avisos tienen tope de lo que espera (2000 mensajes, 32 MB); las dos de `kv.watch` (el vigía del estado
+y el del espejo) las arma nats-py con sus límites de fábrica, que telar no puede cambiar, y por eso los
+dos solo reciben: guardan lo último de cada hilo o máquina, y anotar la atención, mirar la ventana o
+guardar la foto lo hace otra tarea, una vez por ráfaga. En cada vuelta, las casillas de los hilos de
+aquí se piden todas a la vez (hasta 1 s) y cada mensaje se deja en su archivo fuera del bucle. Lo que se
+lee del bus, y el envío de un mensaje (que lleva id, también su copia en el registro, y la del correo de
+otra persona), se repite una vez si un pedido no volvió a tiempo con el bus ya conectado, dentro del
+mismo plazo de antes: el reintento usa lo que quedó, si queda al menos un segundo. Si no conectó, o el
+plazo se cumplió entero, no se insiste.
 
 Lo que no se puede arreglar desde aquí sin probar contra el bus real:
 

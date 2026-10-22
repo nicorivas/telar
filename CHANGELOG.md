@@ -86,20 +86,31 @@ extension shared the version number.
 
 - The node's log no longer grows without bound: a bus failure (`nats: timeout`, a refused connection, a slow
   consumer) is one line instead of a full traceback, the same failure is written once every ten minutes with a
-  count of the ones in between, losing and regaining the bus is one line each, and `telar serve` trims its
-  log file to its last half past 4 MB (only a regular file opened for appending, as launchd does; journald and
-  terminals are left alone).
+  count of the ones in between, losing and regaining the bus is one line each (a drop that comes back within a
+  minute is counted with the next one written, so a flapping hotspot is not two lines per drop), a clean
+  shutdown is no longer logged as a lost connection, and `telar serve` trims its log file to its last half past
+  4 MB (only a regular file opened for appending, as launchd does; journald and terminals are left alone).
+- A node loop that fails (`vuelta con error`, every 2 s while the bus is down) is written once every ten minutes
+  with a count, and the log is trimmed every 30 s even while every loop fails.
 - A slow request to a node no longer holds up what arrives behind it: each request runs in its own task, four
-  at a time; the ones that only read (`leer`, `resultado`, `proveedor`, `notas`, `serie`, `archivo-leer`) run
-  side by side, the ones that write still go one at a time per verb, in order; with 64 in progress or waiting
-  the node answers `{"ok": false, "ocupada": true}` at once. Every subscription of the node has a cap on what can
-  wait (2000 messages, 32 MB) instead of nats-py's half a million.
+  at a time per verb, so slow requests of one verb never delay another; the ones that only read (`leer`,
+  `resultado`, `proveedor`, `notas`, `serie`, `archivo-leer`) run side by side, the ones that write (and mail
+  from another person) still go one at a time per verb, in order; with 64 of one verb in progress or waiting
+  the node answers that verb `{"ok": false, "ocupada": true}` at once. Every request and notice subscription of
+  the node has a cap on what can wait (2000 messages, 32 MB) instead of nats-py's half a million (the two
+  key-value watchers keep nats-py's own, which telar cannot set).
 - The node's watcher of the threads' state no longer opens tmux and files event by event: it keeps the latest
   of each thread and another task handles it, so a burst of attention changes is handled once and the watcher
-  keeps up with the bus. A state that cannot be written no longer stops the watcher.
+  keeps up with the bus. A state that cannot be written no longer stops the watcher. The watcher of the other
+  machines' snapshots does the same: it only receives, and the latest snapshot of each machine is saved apart.
+- Each loop of the node asks all its threads' mailboxes at once, waiting up to 1 s, instead of one after the
+  other at 0.3 s each, and stores each message outside the event loop.
 - Reading from the bus (`telar mensaje --registro`, `telar nodo estado`, where a thread lives) is retried once
-  when a request times out after connecting, and so is sending a message: the copy in the log now carries an
-  id too, so a retry never stores anything twice. The node waits 10 s for JetStream instead of 5.
+  when a request times out after connecting, and so is sending a message, always within the same deadline as
+  before (the retry only uses the time left, at least 1 s): the copy in the log now carries an id too, so a
+  retry never stores anything twice, and so does the copy of a mail from another person. A message whose id
+  had already been sent is still reported `duplicado` when the first try failed before publishing. The node
+  waits 10 s for JetStream instead of 5.
 
 ## [0.3.0] — 2026-10-21
 

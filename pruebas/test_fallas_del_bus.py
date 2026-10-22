@@ -340,7 +340,7 @@ class ElEnvioSeRepiteSinDuplicar(Prueba):
 def nodo():
     n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
     n.config, n.yo, n.persona = config_con_bus(), "laptop", "ana"
-    n.atendiendo, n.turnos = set(), None
+    n.atendiendo = set()
     n.anotado = []
     n.anotar = n.anotado.append
     return n
@@ -562,8 +562,8 @@ class ElVigiaNoSeAtrasa(Prueba):
             vistas.append((d["nombre"], d["atencion"]))
 
         vigia_ref = []
-        eventos = [evento("Faro", atencion="trabajando"), evento("Faro", atencion="esperando"),
-                   evento("Faro", atencion="inactivo"), evento("Molino", atencion="trabajando")]
+        eventos = [evento("Faro", atencion="trabajando"), evento("Faro", atencion="espera"),
+                   evento("Faro", atencion="termino"), evento("Molino", atencion="trabajando")]
         n = nodo()
         n.vistos, n.ajenos_listos, n.ajenos_escritos = {}, False, None
         n.ventana_de = ventana_de
@@ -576,9 +576,9 @@ class ElVigiaNoSeAtrasa(Prueba):
         with mock.patch("telar.estado.abrir", return_value=SimpleNamespace(remotos=lambda: {})):
             asyncio.run(n._vigilar(SimpleNamespace(watch=watch)))
         # la primera, después lo último de Faro (la del medio se la saltó), y Molino
-        self.assertEqual(vistas, [("Faro", "trabajando"), ("Faro", "inactivo"), ("Molino", "trabajando")])
+        self.assertEqual(vistas, [("Faro", "trabajando"), ("Faro", "termino"), ("Molino", "trabajando")])
         # y lo que el nodo sabe de cada uno es lo último, al instante
-        self.assertEqual(n.vistos["ana.faro"]["atencion"], "inactivo")
+        self.assertEqual(n.vistos["ana.faro"]["atencion"], "termino")
         self.assertEqual(n.por_atender, {})
 
     def test_un_hilo_que_se_borro_antes_de_atenderlo_no_se_atiende(self):
@@ -619,6 +619,453 @@ class ElVigiaNoSeAtrasa(Prueba):
             asyncio.run(n._vigilar(SimpleNamespace(watch=watch)))
         self.assertEqual(sorted(vistas), ["Faro", "Molino"])
         self.assertTrue(any("disco lleno" in x for x in n.anotado))
+
+
+# ── lo que encontró la revisión ──────────────────────────────────────────────
+
+
+class ElCorteYLaVuelta(Prueba):
+    def avisador(self):
+        lineas, ahora = [], [1000.0]
+        a = mod_bus.Avisador(lineas.append, cada=600, reloj=lambda: ahora[0])
+        return a, lineas, ahora
+
+    def test_un_cierre_ordenado_no_dice_que_se_corto(self):
+        # nats-py llama al mismo aviso al cerrar la conexión (`nc.close()` al apagar el nodo)
+        a, lineas, _ = self.avisador()
+        a.nc = SimpleNamespace(is_closed=True)
+        asyncio.run(a.cortado())
+        self.assertEqual(lineas, [])
+
+    def test_la_conexion_del_nodo_queda_en_su_avisador(self):
+        falso = FalsoNats()
+        with mock.patch.dict(sys.modules, {"nats": falso}):
+            nc = asyncio.run(mod_bus.conectar(config_con_bus(), para_siempre=True))
+        self.assertIs(falso.llamadas[-1]["error_cb"].nc, nc)
+
+    def test_cortes_seguidos_se_cuentan_y_quedan_en_pares(self):
+        a, lineas, ahora = self.avisador()
+        for _ in range(3):
+            asyncio.run(a.cortado())
+            ahora[0] += 5
+            asyncio.run(a.de_vuelta())
+        self.assertEqual(lineas, ["bus: se cortó la conexión; reintentando", "bus: conectado de nuevo (tras 5 s)"])
+        ahora[0] += 601
+        asyncio.run(a.cortado())
+        self.assertIn("y 2 iguales desde la anterior", lineas[-1])
+        asyncio.run(a.de_vuelta())
+        self.assertTrue(lineas[-1].startswith("bus: conectado de nuevo"))
+
+    def test_una_vuelta_despues_de_un_corte_largo_se_escribe_aunque_el_corte_se_callara(self):
+        a, lineas, ahora = self.avisador()
+        asyncio.run(a.cortado())
+        asyncio.run(a.de_vuelta())
+        ahora[0] += 10
+        asyncio.run(a.cortado())  # callado: el anterior fue hace diez segundos
+        ahora[0] += 300
+        asyncio.run(a.de_vuelta())
+        self.assertEqual(len(lineas), 3)
+        self.assertEqual(lineas[-1], "bus: conectado de nuevo (tras 300 s)")
+
+    def test_con_otro_prefijo(self):
+        lineas = []
+        a = mod_bus.Avisador(lineas.append, prefijo="vuelta con error")
+        a.anotar(FalsoTimeoutError("nats: timeout"))
+        self.assertEqual(lineas, ["vuelta con error: FalsoTimeoutError: nats: timeout"])
+
+
+class ElReintentoDentroDelPlazo(Prueba):
+    def test_el_reintento_no_pasa_del_plazo_de_antes(self):
+        intentos = []
+
+        async def leer():
+            intentos.append(1)
+            if len(intentos) == 1:
+                await asyncio.sleep(0.3)
+                raise FalsoTimeoutError("nats: timeout")
+            await asyncio.sleep(10)
+
+        import time
+
+        reloj = time.monotonic
+        with mock.patch.object(mod_bus, "REINTENTO_MINIMO", 0.05, create=True):
+            antes = reloj()
+            with self.assertRaises(asyncio.TimeoutError):
+                mod_bus._con_reintento(leer, 0.5)
+        self.assertEqual(len(intentos), 2)
+        self.assertLess(reloj() - antes, 0.7)
+
+    def test_sin_tiempo_para_otro_no_se_intenta(self):
+        intentos = []
+
+        async def leer():
+            intentos.append(1)
+            await asyncio.sleep(0.3)
+            raise FalsoTimeoutError("nats: timeout")
+
+        with self.assertRaises(FalsoTimeoutError):
+            mod_bus._con_reintento(leer, 0.5)  # quedan 0,2 s: menos que REINTENTO_MINIMO
+        self.assertEqual(len(intentos), 1)
+
+    def test_si_el_plazo_se_cumplio_conectando_no_se_insiste(self):
+        intentos = []
+
+        async def leer():
+            intentos.append(1)
+            await asyncio.sleep(10)  # conectando: el plazo de afuera se cumple antes
+
+        with self.assertRaises(asyncio.TimeoutError):
+            mod_bus._con_reintento(leer, 0.2)
+        self.assertEqual(len(intentos), 1)
+
+
+class Lote:
+    """Lo que devuelve `fetch` en las lecturas del bus: un registro, y nada más pendiente."""
+
+    def __init__(self, datos: dict, tema: str):
+        self.data, self.subject, self.headers = json.dumps(datos).encode(), tema, {}
+        self.metadata = SimpleNamespace(num_pending=0)
+
+
+class LasLecturasSeRepiten(Prueba):
+    def leer(self, funcion, falla_en: str, lote: Lote):
+        pedidos = []
+
+        class Sub:
+            async def fetch(self, batch, timeout):
+                return [lote]
+
+            async def unsubscribe(self):
+                pass
+
+        class Js:
+            async def _falla(self, que):
+                pedidos.append(que)
+                if que == falla_en and pedidos.count(que) == 1:
+                    raise FalsoTimeoutError("nats: timeout")
+
+            async def key_value(self, nombre):
+                await self._falla("key_value")
+
+            async def stream_info(self, nombre):
+                await self._falla("stream_info")
+                return SimpleNamespace(state=SimpleNamespace(last_seq=3, first_seq=1))
+
+            async def pull_subscribe(self, *a, **kw):
+                await self._falla("pull_subscribe")
+                return Sub()
+
+        class Nc:
+            def jetstream(self):
+                return Js()
+
+            async def close(self):
+                pass
+
+        async def conectar(_config):
+            return Nc()
+
+        async def asegurar(_js):
+            return None
+
+        # lo que se importa de nats-py (que las pruebas no necesitan instalado)
+        import types
+
+        api = types.ModuleType("nats.js.api")
+        api.AckPolicy = SimpleNamespace(NONE="none")
+        api.DeliverPolicy = SimpleNamespace(LAST_PER_SUBJECT="last_per_subject", BY_START_SEQUENCE="by_start_sequence")
+        api.ConsumerConfig = lambda **kw: SimpleNamespace(**kw)
+        falsos = {"nats": types.ModuleType("nats"), "nats.js": types.ModuleType("nats.js"), "nats.js.api": api}
+        with mock.patch.object(mod_bus, "conectar", conectar), mock.patch.object(mod_bus, "asegurar", asegurar), \
+                mock.patch.dict(sys.modules, falsos):
+            r = funcion(config_con_bus())
+        return r, pedidos
+
+    def test_el_estado_se_pide_otra_vez(self):
+        r, pedidos = self.leer(mod_bus.estados, "key_value",
+                               Lote({"nombre": "Faro", "maquina": "servidor"}, f"$KV.{mod_bus.ESTADO}.ana.faro"))
+        self.assertEqual(r, {"Faro": {"nombre": "Faro", "maquina": "servidor"}})
+        self.assertEqual(pedidos.count("key_value"), 2)
+
+    def test_el_registro_se_pide_otra_vez(self):
+        r, pedidos = self.leer(mod_bus.registro, "stream_info", Lote({"id": "m1", "texto": "hola"}, "registro.ana"))
+        self.assertEqual(r, [{"id": "m1", "texto": "hola"}])
+        self.assertEqual(pedidos.count("stream_info"), 2)
+
+
+class UnDuplicadoDeVerdad(Prueba):
+    def test_si_el_primero_no_alcanzo_a_publicar_el_duplicado_es_de_antes(self):
+        # el mismo id ya se había mandado (otro `telar mensaje` con ese --id): el reintento no lo esconde
+        asegurados = []
+
+        class Js:
+            async def publish(self, tema, datos, headers=None, timeout=None):
+                return SimpleNamespace(seq=7, duplicate=True)
+
+        class Nc:
+            def jetstream(self):
+                return Js()
+
+            async def close(self):
+                pass
+
+        async def conectar(_config):
+            return Nc()
+
+        async def asegurar(_js):
+            asegurados.append(1)
+            if len(asegurados) == 1:
+                raise FalsoTimeoutError("nats: timeout")  # antes de publicar nada
+
+        with mock.patch.object(mod_bus, "conectar", conectar), mock.patch.object(mod_bus, "asegurar", asegurar):
+            r = mod_bus.enviar(config_con_bus(), "Faro", "hola", de="Ana", mid="m-7")
+        self.assertEqual(len(asegurados), 2)
+        self.assertTrue(r["duplicado"])
+
+
+def esperar_todos(n):
+    async def esperar():
+        while n.atendiendo:
+            await asyncio.gather(*list(n.atendiendo))
+
+    return esperar()
+
+
+class UnVerboNoFrenaAOtro(Prueba):
+    def test_los_lentos_de_otros_verbos_no_atrasan_una_lectura(self):
+        n, hechos = nodo(), []
+
+        async def correr():
+            suelta = asyncio.Event()
+
+            async def lento(m):
+                await suelta.wait()
+                hechos.append(m.subject)
+
+            async def leer(m):
+                hechos.append(m.subject)
+
+            for verbo in ("tarea", "tipo", "hilo", "equipo", "periodicos"):
+                setattr(n, f"_{verbo}", lento)
+            n._leer = leer
+            nc = FalsaConexion()
+            await n.suscribirse(nc)
+            cbs = {tema: cb for tema, cb, _ in nc.suscritas}
+            for verbo in ("tarea", "tipo", "hilo", "equipo", "periodicos"):
+                await cbs[f"rpc.ana.laptop.{verbo}"](Pedido(subject=f"rpc.ana.laptop.{verbo}"))
+            await cbs["rpc.ana.laptop.leer"](Pedido(subject="rpc.ana.laptop.leer"))
+            for _ in range(20):
+                await asyncio.sleep(0.005)
+            leido = list(hechos)
+            suelta.set()
+            await esperar_todos(n)
+            return leido
+
+        self.assertEqual(asyncio.run(correr()), ["rpc.ana.laptop.leer"])
+        self.assertEqual(len(hechos), 6)
+
+    def test_un_verbo_con_la_fila_llena_no_ocupa_a_los_demas(self):
+        n, tareas = nodo(), []
+        hilo, tarea = "rpc.ana.laptop.hilo", "rpc.ana.laptop.tarea"
+
+        async def correr():
+            suelta = asyncio.Event()
+
+            async def lento(m):
+                await suelta.wait()
+
+            async def hacer_tarea(m):
+                tareas.append("hecha")
+
+            n._hilo, n._tarea = lento, hacer_tarea
+            nc = FalsaConexion()
+            await n.suscribirse(nc)
+            cbs = {tema: cb for tema, cb, _ in nc.suscritas}
+            for i in range(mod_nodo.PEDIDOS_EN_ESPERA):
+                await cbs[hilo](Pedido(i, subject=hilo))
+            de_mas, otro = Pedido(99, subject=hilo), Pedido(subject=tarea)
+            await cbs[hilo](de_mas)
+            await cbs[tarea](otro)
+            for _ in range(10):
+                await asyncio.sleep(0.005)
+            hecho_antes = list(tareas)
+            suelta.set()
+            await esperar_todos(n)
+            return de_mas, otro, hecho_antes
+
+        de_mas, otro, hecho_antes = asyncio.run(correr())
+        self.assertTrue(de_mas.respuestas[0]["ocupada"])
+        self.assertEqual(otro.respuestas, [])  # no le contestó «ocupada»
+        self.assertEqual(hecho_antes, ["hecha"])  # y se hizo sin esperar a los del otro verbo
+
+
+class ElCorreoEntrePersonas(Prueba):
+    def correos(self, demoras):
+        """Dos correos seguidos de Beto a hilos de Ana; el primero tarda más en saber si el hilo existe."""
+        n, publicados = nodo(), []
+        pendientes = list(demoras)
+
+        class Kv:
+            async def get(self, clave):
+                await asyncio.sleep(pendientes.pop(0))
+
+        class Js:
+            async def publish(self, tema, datos, headers=None, timeout=None):
+                publicados.append((tema, json.loads(datos), dict(headers or {})))
+
+        n.kv, n.js = Kv(), Js()
+
+        class Correo(Pedido):
+            def __init__(self, texto):
+                super().__init__(subject="correo.ana")
+                self.data = json.dumps({"para": "faro", "texto": texto}).encode()
+                self.headers = {"Nats-Request-Info": json.dumps({"acc": "beto"})}
+
+        async def correr():
+            nc = FalsaConexion()
+            await n.suscribirse(nc)
+            from telar import cuentas
+
+            cb = {tema: cb for tema, cb, _ in nc.suscritas}[cuentas.CORREO.format("ana")]
+            primero, segundo = Correo("uno"), Correo("dos")
+            await cb(primero)
+            await cb(segundo)
+            await esperar_todos(n)
+            return primero, segundo
+
+        primero, segundo = asyncio.run(correr())
+        return publicados, primero, segundo
+
+    def test_dos_correos_seguidos_quedan_en_orden(self):
+        publicados, primero, segundo = self.correos([0.1, 0.0])
+        casillas = [d["texto"] for t, d, _ in publicados if t.startswith("casilla.")]
+        self.assertEqual(casillas, ["uno", "dos"])
+        self.assertTrue(primero.respuestas[0]["ok"] and segundo.respuestas[0]["ok"])
+
+    def test_la_copia_del_registro_lleva_id(self):
+        publicados, primero, _ = self.correos([0.0, 0.0])
+        registro = [(d, h) for t, d, h in publicados if t == "registro.ana"]
+        self.assertEqual(registro[0][1]["Nats-Msg-Id"], f"{primero.respuestas[0]['id']}.enviado")
+
+
+class LasVueltasDelNodo(Prueba):
+    def girar(self, vuelta, vueltas: int):
+        n, recortes, hechas = nodo(), [], []
+
+        async def _vuelta(js, kv):
+            hechas.append(1)
+            if len(hechas) > vueltas:
+                raise asyncio.CancelledError
+            await vuelta()
+
+        n._vuelta = _vuelta
+        n.recortar_registro = lambda: recortes.append(1) or False
+        with mock.patch.object(mod_nodo, "VUELTA", 0):
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(n._girar(None, None))
+        return n, recortes
+
+    def test_con_el_bus_caido_el_registro_se_recorta_igual(self):
+        async def falla():
+            raise FalsoTimeoutError("nats: timeout")
+
+        _, recortes = self.girar(falla, mod_nodo.ESPEJO_CADA * 3)
+        self.assertEqual(len(recortes), 3)
+
+    def test_la_misma_falla_de_cada_vuelta_es_una_linea(self):
+        async def falla():
+            raise FalsoTimeoutError("nats: timeout")
+
+        n, _ = self.girar(falla, 40)
+        self.assertEqual(n.anotado, ["vuelta con error: FalsoTimeoutError: nats: timeout"])
+
+
+class LasCasillasDeUnaVuelta(Prueba):
+    def test_se_piden_a_la_vez_y_se_dejan_fuera_del_bucle(self):
+        n, hilos_de_dejar = nodo(), []
+        n.ctx = None
+        principal = threading.current_thread()
+
+        class Sub:
+            def __init__(self, nombre):
+                self.nombre = nombre
+
+            async def fetch(self, cuantos, timeout):
+                await asyncio.sleep(0.2)
+                return [SimpleNamespace(data=json.dumps({"id": self.nombre}).encode(), ack=_ack)]
+
+        async def _ack():
+            pass
+
+        def dejar(config, nombre, datos):
+            hilos_de_dejar.append(threading.current_thread() is not principal)
+            return True
+
+        n.subs = {mod_bus.ficha(x): Sub(x) for x in ("Faro", "Molino", "Puente")}
+        n.avisar = lambda nombre, info: "avisado"
+
+        async def correr():
+            reloj = asyncio.get_running_loop().time
+            antes = reloj()
+            await n._recoger({"Faro": {}, "Molino": {}, "Puente": {}})
+            return reloj() - antes
+
+        with mock.patch("telar.casilla.dejar", dejar):
+            demora = asyncio.run(correr())
+        self.assertLess(demora, 0.45)  # una tras otra serían 0,6 s
+        self.assertEqual(hilos_de_dejar, [True, True, True])
+        self.assertEqual(len([x for x in n.anotado if "1 mensaje(s)" in x]), 3)
+
+
+class LaAtencionDeUnHiloAjeno(Prueba):
+    def test_el_vigia_anota_la_ultima_atencion_de_un_hilo_ajeno(self):
+        anotadas = []
+        est = SimpleNamespace(remotos=lambda: {"Faro": "servidor"},
+                              anotar_atencion=lambda nombre, at, desde: anotadas.append((nombre, at, desde)))
+        n = nodo()
+        n.vistos, n.ajenos_listos, n.ajenos_escritos = {}, False, None
+        n.ventana_de = lambda d: None
+        vigia = Vigia([evento("Faro", atencion="espera", desde="2026-10-22T10:00:00-03:00"),
+                       evento("Molino", atencion="trabajando")])
+
+        async def watch(_):
+            return vigia
+
+        with mock.patch("telar.estado.abrir", return_value=est):
+            asyncio.run(n._vigilar(SimpleNamespace(watch=watch)))
+        from telar.modelo import Atencion
+
+        self.assertEqual(len(anotadas), 1)  # Molino no es de los remotos de aquí
+        nombre, atencion, desde = anotadas[0]
+        self.assertEqual((nombre, atencion), ("Faro", Atencion.ESPERA))
+        self.assertEqual(desde.hour, 10)
+
+
+class ElVigiaDelEspejo(Prueba):
+    def test_una_foto_lenta_no_frena_al_vigia_y_queda_la_ultima_de_cada_maquina(self):
+        guardadas = []
+
+        def guardar(config, de, valor):
+            if not guardadas:
+                self.assertTrue(vigia.entregados.wait(5), "el vigía esperó a la foto")
+            guardadas.append((de, json.loads(valor)["n"]))
+
+        def foto(de, i):
+            return SimpleNamespace(key=f"ana.{de}", value=json.dumps({"n": i}).encode())
+
+        vigia = Vigia([foto("servidor", 1), foto("servidor", 2), foto("servidor", 3), foto("laptop", 9),
+                       foto("oficina", 4)])
+        n = nodo()
+
+        async def watch(_):
+            return vigia
+
+        n.espejo = SimpleNamespace(watch=watch)
+        with mock.patch("telar.espejo.guardar", guardar):
+            asyncio.run(n._vigilar_espejo())
+        # la primera, después la última del servidor (la del medio se la saltó), y la de oficina; la propia no
+        self.assertEqual(guardadas, [("servidor", 1), ("servidor", 3), ("oficina", 4)])
+
 
 
 if __name__ == "__main__":

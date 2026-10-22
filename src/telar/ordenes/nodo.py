@@ -41,10 +41,14 @@ VUELTA = 2.0
 ESPEJO_CADA = 15
 #: un «trabajando» sin cambios por más de esto se da por pegado y se avisa igual (segundos)
 TRABAJANDO_VIEJO = 45 * 60
-#: los pedidos con respuesta que se atienden a la vez, y cuántos pueden esperar turno: pasado eso se
-#: contesta «ocupada» al tiro, en vez de dejar que el que pidió espere hasta agotar su plazo
+#: los pedidos con respuesta de un mismo verbo que se atienden a la vez, y cuántos de ese verbo pueden
+#: esperar turno: pasado eso se contesta «ocupada» al tiro, en vez de dejar que el que pidió espere hasta
+#: agotar su plazo. Cada verbo tiene los suyos: cuatro `telar hilo` lentos no atrasan un `leer`
 PEDIDOS_A_LA_VEZ = 4
 PEDIDOS_EN_ESPERA = 64
+#: cuánto espera cada casilla en una vuelta lo que tenga (segundos). Se piden todas a la vez: la vuelta
+#: tarda esto, no esto por hilo. Lo que no alcanza a llegar no se pierde: JetStream lo entrega de nuevo
+CASILLA_ESPERA = 1.0
 #: los pedidos que solo leen: varios del mismo verbo a la vez. Los demás escriben algo aquí (el registro de un
 #: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
 #: el mismo archivo a la vez podrían perder uno de los cambios
@@ -124,9 +128,8 @@ class Nodo:
         self.registro: tuple[dict, set, dict] = ({}, set(), {})
         #: lo que el vigía recibió y falta atender (anotar la atención, la ventana): lo último de cada clave
         self.por_atender: dict[str, dict] = {}
-        #: los pedidos con respuesta en curso o esperando turno (ver `_aparte`)
+        #: los pedidos con respuesta en curso o esperando turno, de todos los verbos (ver `_aparte`)
         self.atendiendo: set = set()
-        self.turnos: asyncio.Semaphore | None = None
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -244,27 +247,32 @@ class Nodo:
         tema esperando en la cola de nats-py, y a los pedidos siguientes del mismo verbo esperando hasta pasarse
         de su plazo (`nats: timeout` del lado del que pedía). Así nats-py nunca espera: se atienden hasta
         PEDIDOS_A_LA_VEZ a la vez, con `fila` de a uno por tema (los que escriben), y con PEDIDOS_EN_ESPERA en
-        curso o esperando se contesta que está ocupada."""
+        curso o esperando se contesta que está ocupada.
+
+        Los turnos y la cuenta de los que esperan son de esta suscripción, no del nodo: como antes, cuando
+        cada una iba por su cuenta, los lentos de un verbo (un `resultado-comentar`, un `tarea` que corre un
+        proceso) no dejan sin turno a los de otro (un `leer`, un correo)."""
+        turnos, suyos = asyncio.Semaphore(PEDIDOS_A_LA_VEZ), set()
+
         async def atender(m) -> None:
-            if self.turnos is None:
-                self.turnos = asyncio.Semaphore(PEDIDOS_A_LA_VEZ)
-            if len(self.atendiendo) >= PEDIDOS_EN_ESPERA:
+            if len(suyos) >= PEDIDOS_EN_ESPERA:
                 if getattr(m, "reply", ""):
                     await m.respond(json.dumps({"ok": False, "ocupada": True, "error": (
-                        f"{self.yo} está ocupada: {len(self.atendiendo)} pedidos en curso; prueba en un rato")},
+                        f"{self.yo} está ocupada: {len(suyos)} pedidos en curso; prueba en un rato")},
                         ensure_ascii=False).encode())
                 return
 
             async def con_turno() -> None:
-                async with fila or contextlib.nullcontext(), self.turnos:
+                async with fila or contextlib.nullcontext(), turnos:
                     try:
                         await cb(m)
                     except Exception as e:  # noqa: BLE001 - uno que falla no tumba a los demás
                         self.anotar(f"pedido en {getattr(m, 'subject', '?')}: {type(e).__name__}: {e}")
 
             t = asyncio.create_task(con_turno())
-            self.atendiendo.add(t)
-            t.add_done_callback(self.atendiendo.discard)
+            for en in (suyos, self.atendiendo):
+                en.add(t)
+                t.add_done_callback(en.discard)
 
         return atender
 
@@ -283,20 +291,36 @@ class Nodo:
         vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
-            while True:
-                try:
-                    await self._vuelta(js, kv)
-                except Exception as e:  # noqa: BLE001 - una vuelta que falla no tumba el nodo
-                    self.anotar(f"vuelta con error: {type(e).__name__}: {e}")
-                if una_vez:
-                    break
-                await asyncio.sleep(VUELTA)
+            await self._girar(js, kv, una_vez=una_vez)
         finally:
             for t in (vigia, vigia_espejo):
                 if t:
                     t.cancel()
             mod_bus.registrar_conexion(None, None)
             await nc.close()
+
+    async def _girar(self, js, kv, *, una_vez: bool = False) -> None:
+        """Las vueltas del nodo, cada VUELTA segundos. Una que falla no tumba el nodo, y su falla va al
+        registro en una línea, la misma una vez cada diez minutos (con el bus caído fallan todas: eran
+        cientos de `vuelta con error: TimeoutError` por hora). El registro de este proceso se recorta cada
+        ESPEJO_CADA vueltas aunque fallen: es justo cuando más crece."""
+        fallas = mod_bus.Avisador(self.anotar, prefijo="vuelta con error")
+        giros = 0
+        while True:
+            try:
+                await self._vuelta(js, kv)
+            except Exception as e:  # noqa: BLE001 - una vuelta que falla no tumba el nodo
+                fallas.anotar(e)
+            giros += 1
+            if giros % ESPEJO_CADA == 0:
+                # el registro de este proceso, con tope (bajo launchd es un archivo que nadie rota)
+                try:
+                    await asyncio.to_thread(self.recortar_registro)
+                except Exception as e:  # noqa: BLE001 - nunca debería; si pasa, que no pare las vueltas
+                    self.anotar(f"recortar el registro: {type(e).__name__}: {e}")
+            if una_vez:
+                break
+            await asyncio.sleep(VUELTA)
 
     async def suscribirse(self, nc) -> None:
         """Lo que atiende el nodo. Los pedidos con respuesta, cada uno en su tarea (`_aparte`): los que solo
@@ -309,7 +333,8 @@ class Nodo:
         # solo nodo suyo: cola «correo») y los directorios de las demás
         from telar import cuentas
 
-        await self._suscribir(nc, cuentas.CORREO.format(self.persona), self._correo, queue="correo")
+        # en fila: escribe en la casilla, y dos correos seguidos al mismo hilo tienen que quedar en su orden
+        await self._suscribir(nc, cuentas.CORREO.format(self.persona), self._correo, en_fila=True, queue="correo")
         await self._suscribir(nc, cuentas.DIRECTORIO.format("*"), self._directorio, aparte=False)
         await self._suscribir(nc, mod_bus.tema_cambio(self.config, "*"), self._cambio, aparte=False)
         for verbo, cb in (("leer", self._leer), ("resultado", self._resultado),
@@ -322,8 +347,6 @@ class Nodo:
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
-        from telar import casilla
-
         locales = await asyncio.to_thread(self.locales)
         # casillas: una suscripción durable por hilo que vive aquí
         for nombre in locales:
@@ -333,24 +356,7 @@ class Nodo:
                                                        durable=f"c-{self.persona}-{f}", stream=mod_bus.STREAM)
         for f in [f for f in self.subs if f not in {mod_bus.ficha(n) for n in locales}]:
             del self.subs[f]  # se fue a otra máquina: que lo recoja aquella
-        for nombre, info in locales.items():
-            sub = self.subs[mod_bus.ficha(nombre)]
-            try:
-                msgs = await sub.fetch(20, timeout=0.3)
-            except Exception:  # noqa: BLE001 - sin mensajes, fetch termina por tiempo
-                continue
-            nuevos = 0
-            for m in msgs:
-                try:
-                    datos = json.loads(m.data)
-                    if casilla.dejar(self.config, nombre, datos):
-                        nuevos += 1
-                except ValueError:
-                    self.anotar(f"«{nombre}»: un mensaje que no es JSON, descartado")
-                await m.ack()
-            if nuevos:
-                dicho = await asyncio.to_thread(self.avisar, nombre, info)
-                self.anotar(f"«{nombre}»: {nuevos} mensaje(s) · {dicho}")
+        await self._recoger(locales)
         # estado: solo lo que cambió, y que dejó de estar vivo lo que ya no está aquí
         from datetime import datetime
 
@@ -409,8 +415,6 @@ class Nodo:
                 await asyncio.to_thread(self.conciliar)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"conciliar las ventanas: {type(e).__name__}: {e}")
-            # y el registro de este proceso, con tope (bajo launchd es un archivo que nadie rota)
-            await asyncio.to_thread(self.recortar_registro)
 
     def recortar_registro(self) -> bool:
         from telar import salida
@@ -419,6 +423,33 @@ class Nodo:
             self.anotar(f"el registro pasaba de {salida.MAX_REGISTRO // (1024 * 1024)} MB: quedó la última mitad")
             return True
         return False
+
+    async def _recoger(self, locales: dict) -> None:
+        """Lo que llegó a la casilla de cada hilo de aquí: se deja en su archivo y se le avisa. Las casillas
+        se piden todas a la vez (antes, una tras otra: 0,3 s por hilo en cada vuelta, y con un hotspot lento
+        no alcanzaba), y dejar cada mensaje, que escribe un archivo, va fuera del bucle."""
+        from telar import casilla
+
+        async def pedir(nombre):
+            try:
+                return await self.subs[mod_bus.ficha(nombre)].fetch(20, timeout=CASILLA_ESPERA)
+            except Exception:  # noqa: BLE001 - sin mensajes, fetch termina por tiempo
+                return []
+
+        nombres = list(locales)
+        for nombre, msgs in zip(nombres, await asyncio.gather(*(pedir(n) for n in nombres))):
+            nuevos = 0
+            for m in msgs:
+                try:
+                    datos = json.loads(m.data)
+                    if await asyncio.to_thread(casilla.dejar, self.config, nombre, datos):
+                        nuevos += 1
+                except ValueError:
+                    self.anotar(f"«{nombre}»: un mensaje que no es JSON, descartado")
+                await m.ack()
+            if nuevos:
+                dicho = await asyncio.to_thread(self.avisar, nombre, locales[nombre])
+                self.anotar(f"«{nombre}»: {nuevos} mensaje(s) · {dicho}")
 
     async def _vigilar(self, kv) -> None:
         """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia.
@@ -652,20 +683,48 @@ class Nodo:
             return None
 
     async def _vigilar_espejo(self) -> None:
-        """Las fotos de las otras máquinas, guardadas donde las lee el panel (telar.espejo)."""
+        """Las fotos de las otras máquinas, guardadas donde las lee el panel (telar.espejo).
+
+        Como el vigía del estado, solo recibe: guardar cada foto (un archivo) lo hace otra tarea, con la
+        última de cada máquina. Una cola de nats-py que se atrasa es la de `kv.watch`, que nats-py arma con
+        sus límites de fábrica y que telar no puede cambiar: lo que la mantiene corta es vaciarla al tiro."""
         from telar import espejo
 
-        vigia = await self.espejo.watch(f"{self.persona}.>")
-        async for e in vigia:
-            if e is None or not e.value:
-                continue
-            de = e.key.split(".", 1)[-1]
-            if de == self.yo:
-                continue
-            try:
-                await asyncio.to_thread(espejo.guardar, self.config, de, e.value.decode())
-            except Exception as x:  # noqa: BLE001 - una foto rota se ignora: el espejo queda con la anterior
-                self.anotar(f"la foto de {de} no se guardó: {x}")
+        por_guardar: dict[str, str] = {}
+        hay, fin = asyncio.Event(), []
+
+        async def guardar() -> None:
+            while True:
+                await hay.wait()
+                hay.clear()
+                while por_guardar:
+                    de = next(iter(por_guardar))
+                    valor = por_guardar.pop(de)
+                    try:
+                        await asyncio.to_thread(espejo.guardar, self.config, de, valor)
+                    except Exception as x:  # noqa: BLE001 - una foto rota se ignora: el espejo queda con la anterior
+                        self.anotar(f"la foto de {de} no se guardó: {x}")
+                if fin:
+                    return
+
+        trabajador = asyncio.create_task(guardar())
+        try:
+            vigia = await self.espejo.watch(f"{self.persona}.>")
+            async for e in vigia:
+                if e is None or not e.value:
+                    continue
+                de = e.key.split(".", 1)[-1]
+                if de == self.yo:
+                    continue
+                por_guardar.pop(de, None)  # al final de la fila: el orden es el de los cambios
+                por_guardar[de] = e.value.decode()
+                hay.set()
+            # el vigía terminó (en una prueba; en el bus no termina): lo que quedó se guarda antes de irse
+            fin.append(True)
+            hay.set()
+            await trabajador
+        finally:
+            trabajador.cancel()
 
     # ── pedidos con respuesta ────────────────────────────────────────────────────
 
@@ -683,8 +742,10 @@ class Nodo:
             msg = mod_bus.mensaje(c["texto"], de=c["de"], para=c["para"], tipo="correo", persona=c["persona"])
             await self.js.publish(mod_bus.tema_casilla(self.config, c["para"]),
                                   json.dumps(msg, ensure_ascii=False).encode(), headers={"Nats-Msg-Id": msg["id"]})
+            # con id, como la de `telar mensaje` (telar.bus.enviar): si se repite, el bus la descarta
             await self.js.publish(f"registro.{self.persona}", json.dumps({**msg, "estado": "enviado"},
-                                                                          ensure_ascii=False).encode())
+                                                                          ensure_ascii=False).encode(),
+                                  headers={"Nats-Msg-Id": f"{msg['id']}.enviado"})
             self.anotar(f"correo de {c['persona']} para «{c['para']}» ({msg['id']})")
             respuesta = {"ok": True, "id": msg["id"]}
         except (entre_personas.CorreoInvalido, ValueError) as e:
