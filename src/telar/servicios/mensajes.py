@@ -38,6 +38,8 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
     `modo`: aviso, pedido (el de siempre) o encargo, que trae `encargo` y su `direccion`; la consulta no se
     manda (`consultar`)."""
     from telar import bus as mod_bus
+    from telar import casilla
+    from telar import encargo
     from telar.ordenes.mensaje import enviar as mandar
 
     if not para.strip():
@@ -47,12 +49,19 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
                               "GET /mensajes/consulta?para=…)", 422)
     if not texto.strip():
         raise ErrorDeServicio("¿qué le digo? el texto está vacío", 422)
+    # el modo y el plazo se validan aquí: lo que pide quien manda es un 422; un ValueError de más adentro, un 500
+    if modo not in casilla.MODOS:
+        raise ErrorDeServicio(f"el modo «{modo}» no se manda: {', '.join(casilla.MODOS)} (la consulta no viaja)", 422)
+    if plazo and modo != "encargo":
+        raise ErrorDeServicio("el plazo es de un encargo: --modo encargo --plazo …", 422)
+    try:
+        plazo = encargo.plazo_valido(plazo)
+    except ValueError as e:
+        raise ErrorDeServicio(str(e), 422) from e
     try:
         # el modo, solo si no es el de siempre: un pedido se manda exactamente como antes
         con_modo = {k: v for k, v in (("modo", modo), ("plazo", plazo)) if v and v != "pedido"}
         return Enviado(**mandar(ctx, para, texto, tipo=tipo, de=de, **con_modo))
-    except ValueError as e:
-        raise ErrorDeServicio(str(e), 422) from e
     except mod_bus.ErrorDeBus as e:
         raise ErrorDeServicio(str(e), 502) from e
 

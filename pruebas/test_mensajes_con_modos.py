@@ -61,6 +61,10 @@ class ConBusFalso(ConEstado):
         p = mock.patch.object(mensaje, "_por_nombre", side_effect=lambda ctx, para: para)
         p.start()
         self.addCleanup(p.stop)
+        # los hilos viven en el servidor, según el bus
+        p = mock.patch.object(mod_bus, "maquina_de", return_value="servidor")
+        p.start()
+        self.addCleanup(p.stop)
 
 
 class ElMensaje(Prueba):
@@ -136,9 +140,10 @@ class LaCasilla(ConEstado):
         casilla.dejar(self.config, "Faro", {"id": "m1", "de": "Molino", "texto": "revisa", "modo": "encargo",
                                             "encargo": "e-1a2b3c4d", "plazo": "2026-10-24"})
         razon = json.loads(casilla.para_gancho(self.config, "Faro", "Stop"))["reason"]
-        self.assertIn("[encargo `encargo:e-1a2b3c4d` de Molino", razon)
+        # con la máquina donde quedó: el hilo lo encuentra aunque se mude
+        self.assertIn("[encargo `encargo:e-1a2b3c4d@laptop` de Molino", razon)
         self.assertIn("plazo 2026-10-24", razon)
-        self.assertIn("telar objeto encargo:e-1a2b3c4d aceptar", razon)
+        self.assertIn("telar objeto encargo:e-1a2b3c4d@laptop aceptar", razon)
         self.assertIn("cerrar --params", razon)
 
     def test_un_aviso_se_muda_con_su_agente(self):
@@ -506,6 +511,159 @@ class LaOrden(ConBusFalso):
             h = objetos.hacer(self.ctx, "hilo:Faro", "mensaje", {"texto": "ya está", "modo": "aviso"})
         self.assertEqual(h.resultado["modo"], "aviso")
         self.assertEqual(casilla.despiertan(self.config, "Faro"), [])
+
+
+class LoQueEncontroLaRevision(ConBusFalso):
+    """Lo que encontraron los revisores en los modos y el Encargo."""
+
+    def _encargo(self, eid="e-1a2b3c4d", para="Faro", **extra):
+        casilla.dejar(self.config, para, {"id": "m1", "de": "Molino", "texto": "revisa", "modo": "encargo",
+                                          "encargo": eid, "responder_a": "Molino", **extra})
+        return eid
+
+    def test_la_nota_de_quien_manda_guarda_la_maquina_del_hilo(self):
+        with mock.patch.dict(os.environ, {"TELAR_HILO": "Molino"}):
+            r = mensaje.enviar(self.ctx, "Faro", "revisa", modo="encargo")
+        self.assertEqual(encargo.enviado(self.config, r["encargo"])["maquina"], "servidor")
+        # si Faro se muda (o su estado se borra del bus), se le sigue pidiendo al servidor
+        aqui = mod_config.Config(raiz=self.raiz, estado=self.raiz / "estado",
+                                 bus=mod_config.Bus(url="nats://127.0.0.1:1", persona="ana", maquina="laptop"))
+        os.remove(Path(self.config.estado) / "encargos" / "objetos" / f"{r['encargo']}.json")
+        pedidos = []
+        with mock.patch.object(mod_bus, "maquina_de", return_value="laptop"), \
+                mock.patch.object(mod_bus, "pedir", side_effect=lambda c, m, v, d, espera=30: pedidos.append(m) or
+                                  {"ok": False, "codigo": 404, "error": "no está"}):
+            objetos.ver(SimpleNamespace(config=aqui), r["direccion"])
+        self.assertEqual(pedidos, ["servidor"])
+
+    def test_retenido_no_se_ve_en_camino_y_al_soltarlo_si(self):
+        with mock.patch.dict(os.environ, {"TELAR_HILO": "Molino"}), \
+                mock.patch.object(casilla, "cadena", return_value=casilla.TOPE_SALTOS):
+            r = mensaje.enviar(self.ctx, "Faro", "revisa", modo="encargo")
+        self.assertEqual(r["estado"], "retenido")
+        with mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "codigo": 404, "error": "no está"}):
+            o = objetos.ver(self.ctx, r["direccion"])
+        self.assertIn("tope", o.campos["retenido"])
+        self.assertNotIn("en_camino", o.campos)
+        retenido = {**self.enviados[-1], "estado": "retenido"}
+        with mock.patch.object(mod_bus, "registro", return_value=[retenido]):
+            mensaje.soltar(self.ctx, retenido["id"])
+        self.assertNotIn("retenido", encargo.enviado(self.config, r["encargo"]))
+
+    def test_rechazar_pide_el_motivo(self):
+        eid = self._encargo()
+        for params in ({}, {"motivo": "  "}):
+            with self.assertRaises(encargo.ErrorDeEncargo) as cm:
+                encargo.hacer(self.ctx, eid, "rechazar", params)
+            self.assertEqual(cm.exception.codigo, 422)
+        self.assertEqual(encargo.leer(self.config, eid)["estado"], "pedido")
+
+    def test_cerrar_con_falló_descompuesto(self):
+        import unicodedata
+
+        eid = self._encargo()
+        e = encargo.hacer(self.ctx, eid, "cerrar", {"resultado": "r", "estado": unicodedata.normalize("NFD", "falló")})
+        self.assertEqual(e["estado"], "falló")
+
+    def test_lo_que_pasa_mientras_se_avisa_no_se_pisa(self):
+        eid = self._encargo()
+
+        def avisar(ctx, para, texto, **kw):
+            encargo.mudar(self.config, eid, "Lámpara")  # otra escritura, mientras el bus tarda
+            return {"id": "r1", "para": para}
+
+        with mock.patch.object(mensaje, "enviar", side_effect=avisar):
+            encargo.hacer(self.ctx, eid, "cerrar", {"resultado": "listo"})
+        e = encargo.leer(self.config, eid)
+        self.assertEqual((e["para"], e["estado"], e["historia"][-1]["quien"]), ("Lámpara", "hecho", "telar"))
+
+    def test_dos_cerrar_a_la_vez_pasa_uno(self):
+        import threading
+        import time
+
+        eid = self._encargo()
+        leer = encargo._leer
+
+        def lento(ruta):
+            datos = leer(ruta)
+            time.sleep(0.2)  # los dos leen antes de que el otro escriba, sin candado
+            return datos
+
+        avisos, errores = [], []
+
+        def cerrar():
+            try:
+                encargo.hacer(self.ctx, eid, "cerrar", {"resultado": "listo"})
+            except encargo.ErrorDeEncargo as ex:
+                errores.append(ex.codigo)
+
+        with mock.patch.object(encargo, "_leer", side_effect=lento), \
+                mock.patch.object(mensaje, "enviar", side_effect=lambda ctx, para, texto, **kw: avisos.append(para) or {"id": "r"}):
+            hilos = [threading.Thread(target=cerrar) for _ in range(2)]
+            for h in hilos:
+                h.start()
+            for h in hilos:
+                h.join()
+        self.assertEqual((errores, avisos), ([409], ["Molino"]))
+
+    def test_el_plazo_en_forma_basica_vence_al_final_del_dia(self):
+        self.assertEqual(encargo.plazo_valido("20261024"), "2026-10-24")
+        self.assertEqual(encargo.plazo_valido("2026-10-24T18:00"), "2026-10-24T18:00")
+        self.assertEqual(encargo.plazo_valido("20261024T1800"), "2026-10-24T18:00:00")
+        # uno guardado así antes de este cambio, también
+        self.assertFalse(encargo.vencido({"plazo": "20261024", "estado": "pedido"}, datetime(2026, 10, 24, 18, 0)))
+        self.assertTrue(encargo.vencido({"plazo": "20261024", "estado": "pedido"}, datetime(2026, 10, 25, 0, 1)))
+
+    def test_un_aviso_de_la_persona_dice_que_es_un_aviso(self):
+        casilla.dejar(self.config, "Faro", {"id": "1", "tipo": "persona", "modo": "aviso", "de": "el panel",
+                                            "texto": "hola"})
+        self.assertEqual(casilla.para_gancho(self.config, "Faro", "Stop"), "")
+        texto = json.loads(casilla.para_gancho(self.config, "Faro", "UserPromptSubmit", prompt="sigue"))[
+            "hookSpecificOutput"]["additionalContext"]
+        self.assertIn("[aviso: tu persona te escribe desde el panel", texto)
+        self.assertIn("no pide nada", texto)
+
+    def test_mudar_la_casilla_muda_quien_hace_el_encargo(self):
+        eid = self._encargo(para="Viejo")
+        encargo.hacer(self.ctx, eid, "aceptar")
+        casilla.mudar(self.config, "Viejo", "Nuevo")
+        e = encargo.leer(self.config, eid)
+        self.assertEqual((e["para"], e["estado"]), ("Nuevo", "aceptado"))
+
+    def test_un_hilo_renombrado_avisa_con_su_nombre_de_hoy(self):
+        from telar import estado as mod_estado
+
+        eid = self._encargo()
+        mod_estado.abrir(self.config).renombrar("Faro", "Lámpara")
+        avisos = []
+        with mock.patch.object(mensaje, "enviar", side_effect=lambda ctx, para, texto, **kw: avisos.append((texto, kw)) or {"id": "r"}):
+            e = encargo.hacer(self.ctx, eid, "cerrar", {"resultado": "listo"})
+        self.assertEqual(e["para"], "Lámpara")
+        self.assertEqual(avisos[0][1]["de"], "Lámpara")
+        self.assertIn("«Lámpara» terminó", avisos[0][0])
+
+    def test_el_mensaje_del_hilo_declara_el_plazo(self):
+        o = objetos.Hilo()._objeto({"nombre": "Faro"}, "")
+        self.assertEqual(next(a for a in o.acciones if a.nombre == "mensaje").params,
+                         {"texto": "", "modo": "'pedido'", "plazo": "''"})
+
+    def test_un_valueerror_ajeno_no_es_un_422(self):
+        from telar.servicios import mensajes as servicio
+
+        with self.assertRaises(ErrorDeServicio) as cm:
+            servicio.enviar(self.ctx, "Faro", "x", plazo="mañana", modo="encargo")
+        self.assertEqual(cm.exception.codigo, 422)
+        with mock.patch.object(mensaje, "enviar", side_effect=ValueError("otra cosa")):
+            with self.assertRaises(ValueError) as cm:
+                servicio.enviar(self.ctx, "Faro", "x")
+        self.assertNotIsInstance(cm.exception, ErrorDeServicio)
+
+    def test_la_cifra_de_la_linea_cuenta_lo_que_pide(self):
+        casilla.dejar(self.config, "Faro", {"id": "1-a", "de": "Molino", "texto": "para que sepas", "modo": "aviso"})
+        casilla.dejar(self.config, "Faro", {"id": "2-b", "de": "Molino", "texto": "esto sí"})
+        self.assertTrue(casilla.aviso(self.config, "Faro").endswith("mensaje de Molino: esto sí (1 aviso)"))
+        casilla.dejar(self.config, "Faro", {"id": "3-c", "de": "Molino", "texto": "y esto"})
+        self.assertTrue(casilla.aviso(self.config, "Faro").endswith("esto sí (+1, 1 aviso)"))
 
 
 if HAY_FASTAPI:

@@ -209,7 +209,8 @@ class Hilo(Tipo):
         return Objeto(direccion=direccion_de("hilo", j["nombre"], maquina), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
                       acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva); "
-                                       "modo: aviso (no lo despierta), pedido o encargo", params={"texto": "", "modo": "'pedido'"}),
+                                       "modo: aviso (no lo despierta), pedido o encargo (con plazo, si se quiere)",
+                                       params={"texto": "", "modo": "'pedido'", "plazo": "''"}),
                                 Accion(nombre="leer", descripcion="lo último que pasó en su conversación",
                                        params={"ultimos": "5"})])
 
@@ -451,7 +452,10 @@ class Encargo(Tipo):
                                      "actualizado", "historia", "mensaje") if e.get(k) not in (None, "", [], False)}
         if encargo.vencido(e):
             campos["vencido"] = True
-        if en_camino:
+        if en_camino and e.get("retenido"):
+            # no salió: no va en camino hasta que la persona lo suelte (telar mensaje --soltar)
+            campos["retenido"] = str(e["retenido"])
+        elif en_camino:
             campos["en_camino"] = True
         enlaces = [direccion_de("hilo", x) for x in dict.fromkeys((e.get("para", ""), e.get("responder_a", ""))) if x]
         enlaces += [str(x) for x in buscar(ctx, str(e.get("texto", ""))) if x.tipo != "encargo"][:10]

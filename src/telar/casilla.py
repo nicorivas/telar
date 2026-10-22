@@ -67,15 +67,19 @@ def aviso(config, hilo: str) -> str:
     if not mensajes:
         return AVISO
     # el resumen, de lo que despierta: un aviso que esperaba no es lo que lo trae
-    m = next((x for x in mensajes if despierta(x)), mensajes[0])
+    lo_que_despierta = [x for x in mensajes if despierta(x)]
+    m = (lo_que_despierta or mensajes)[0]
     tipo = {"encargo": "encargo", "persona": "tu persona"}.get(m.get("tipo", ""), "mensaje")
     if modo_de(m) == "encargo" and tipo == "mensaje":
         tipo = "encargo"
     primera = " ".join(str(m.get("texto", "")).split())
     primera = re.sub(r"[^\w\s/«».,:;¿?¡!()@-]", "", primera)[:70]
     resumen = f"{tipo} de {m.get('de') or 'alguien'}: {primera}" if tipo != "tu persona" else f"tu persona: {primera}"
-    otros = f" (+{len(mensajes) - 1})" if len(mensajes) > 1 else ""
-    return f"{AVISO} · {resumen}{otros}"
+    # la cifra, de lo que pide algo; los avisos que esperan, aparte
+    otros = [f"+{len(lo_que_despierta) - 1}"] if len(lo_que_despierta) > 1 else []
+    if lo_que_despierta and (avisos := len(mensajes) - len(lo_que_despierta)):
+        otros.append(f"{avisos} aviso{'s' if avisos > 1 else ''}")
+    return f"{AVISO} · {resumen}" + (f" ({', '.join(otros)})" if otros else "")
 
 
 #: los modos que viajan en un mensaje («consulta» no viaja: lee sin dejar nada)
@@ -147,6 +151,10 @@ def _crear_encargo(config, cuerpo: dict) -> None:
         encargo.recibir(config, cuerpo, maquina)
     except (OSError, encargo.ErrorDeEncargo):
         pass
+    if maquina:
+        # en qué máquina quedó: la dirección que se le entrega la lleva (`encargo:e-…@máquina`), y el hilo lo
+        # encuentra aunque después se mude a otra
+        cuerpo["encargo_en"] = maquina
 
 
 #: la señal de vida del mod de Claude Code (telar/mod/): un archivo en la casilla que el mod toca cada
@@ -192,6 +200,14 @@ def mudar(config, viejo: str, nuevo: str) -> int:
     pasados = 0
     for m in pendientes(config, viejo):
         dejar(config, nuevo, {**m, "hilo": nuevo})
+        if modo_de(m) == "encargo" and m.get("encargo"):
+            # su Encargo ya existe (dejar no lo vuelve a crear): que lo haga el nombre nuevo
+            from telar import encargo
+
+            try:
+                encargo.mudar(config, str(m["encargo"]), nuevo)
+            except OSError:
+                pass
         try:
             archivo = _archivo(config, viejo, str(m["id"]))
             if archivo is not None:
@@ -228,17 +244,24 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
         if m.get("tipo") == "persona":
             # lo escribió tu persona desde otra parte (la web, el celular): es suyo, como si lo tecleara
             propios = True
-            bloque = f"[tu persona te escribe desde {de}, {cuando}]\n{m.get('texto', '').strip()}"
+            if modo_de(m) == "aviso":
+                # suyo, y para que lo sepas: no pide nada
+                avisos = True
+                bloque = f"[aviso: tu persona te escribe desde {de}, {cuando}]\n{m.get('texto', '').strip()}"
+            else:
+                bloque = f"[tu persona te escribe desde {de}, {cuando}]\n{m.get('texto', '').strip()}"
         else:
             tipo = "encargo" if m.get("tipo") == "encargo" else "mensaje"
             plazo = ""
             if modo_de(m) == "aviso":
                 tipo, avisos = "aviso", True
             elif modo_de(m) == "encargo" and m.get("encargo"):
-                # la dirección va en la cabecera: con ella el hilo lo acepta y lo cierra
-                tipo = f"encargo `encargo:{m['encargo']}`"
+                # la dirección va en la cabecera: con ella el hilo lo acepta y lo cierra (con su máquina, si se
+                # sabe: así lo encuentra aunque el hilo se mude)
+                direccion = f"encargo:{m['encargo']}" + (f"@{m['encargo_en']}" if m.get("encargo_en") else "")
+                tipo = f"encargo `{direccion}`"
                 plazo = f", plazo {m['plazo']}" if m.get("plazo") else ""
-                encargados.append(str(m["encargo"]))
+                encargados.append(direccion)
             otra = bool(persona and m.get("persona") and m["persona"] != persona)
             ajenos |= otra
             colegas |= not otra
@@ -252,7 +275,7 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
         largo += len(bloque)
     if not partes:
         return "", []
-    if propios and len(partes) == 1:
+    if propios and len(partes) == 1 and not avisos:
         return partes[0], ids
     encabezado = []
     if colegas:
@@ -270,7 +293,7 @@ def como_texto(mensajes: list[dict], persona: str = "") -> tuple[str, list[str]]
     if avisos:
         encabezado.append("Lo marcado «aviso» es para que lo sepas: no pide nada ni espera respuesta.")
     if encargados:
-        e = f"encargo:{encargados[0]}"
+        e = encargados[0]
         encabezado.append(
             f"Lo marcado «encargo `encargo:…`» espera respuesta y queda registrado: tómalo con `telar objeto {e} "
             f"aceptar` (o `rechazar --params '{{\"motivo\": \"…\"}}'` si no te corresponde) y, al terminar, "

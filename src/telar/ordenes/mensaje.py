@@ -231,9 +231,13 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
     if hilo and not retener:
         _anotar_envio(ctx.config, hilo)
     if eid:
+        # la máquina donde vive el hilo ahora, que es donde se creará el encargo: si el hilo se muda después o su
+        # estado se borra del bus, la nota sigue sabiendo dónde buscarlo
+        donde = mod_bus.maquina_de(ctx.config, nombre) if mod_bus.hay_bus(ctx.config) else ""
         try:
-            mod_encargo.anotar_enviado(ctx.config, eid, para=nombre, texto=texto.strip(), plazo=plazo,
-                                       de=remitente(ctx, de))
+            mod_encargo.anotar_enviado(ctx.config, eid, para=nombre, maquina=donde, texto=texto.strip(), plazo=plazo,
+                                       de=remitente(ctx, de),
+                                       retenido=str(r.get("motivo") or "retenido") if r.get("estado") == "retenido" else "")
         except OSError:
             pass  # sin la nota, se lo busca en la máquina donde vive su hilo
         r = {**r, "encargo": eid, "direccion": f"encargo:{eid}"}
@@ -255,8 +259,16 @@ def soltar(ctx, mid: str) -> dict:
     con_modo = {}
     if m.get("modo") and m["modo"] != "pedido":
         con_modo = {"modo": m["modo"], "extra": {k: m[k] for k in ("encargo", "plazo", "responder_a") if m.get(k)}}
-    return mod_bus.enviar(ctx.config, m["para"], m["texto"], de=m["de"], tipo=m.get("tipo") or "mensaje", mid=m["id"],
-                          **con_modo)
+    r = mod_bus.enviar(ctx.config, m["para"], m["texto"], de=m["de"], tipo=m.get("tipo") or "mensaje", mid=m["id"],
+                       **con_modo)
+    if m.get("encargo"):
+        from telar import encargo as mod_encargo
+
+        try:
+            mod_encargo.soltado(ctx.config, str(m["encargo"]))
+        except (OSError, mod_encargo.ErrorDeEncargo):
+            pass  # la nota es de la máquina de quien lo mandó: si no está aquí, allá seguirá diciendo retenido
+    return r
 
 
 def _envios(config) -> Path:

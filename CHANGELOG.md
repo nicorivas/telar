@@ -106,6 +106,12 @@ extension shared the version number.
 
 ### Fixed
 
+- Encargos (`--modo encargo`) are found after their thread moves: the sender's note keeps the machine the
+  thread lived on, and the address the thread receives carries it (`encargo:<id>@<machine>`). Rejecting one
+  needs a reason; two actions at once on the same encargo no longer overwrite each other; a renamed thread
+  closes it under its new name; a held encargo shows `retenido` instead of `en_camino`; a basic-format
+  deadline (`20261024`) is stored as `2026-10-24`; an `aviso` from the person says it is one; the wake-up
+  line counts the waiting avisos apart.
 - The node's log no longer grows without bound: a bus failure (`nats: timeout`, a refused connection, a slow
   consumer) is one line instead of a full traceback, the same failure is written once every ten minutes with a
   count of the ones in between, losing and regaining the bus is one line each (a drop that comes back within a

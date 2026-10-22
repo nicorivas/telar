@@ -19,12 +19,15 @@ sigue igual.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import re
+import unicodedata
 import uuid
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import date, datetime
 from pathlib import Path
 
 ESTADOS = ("pedido", "aceptado", "corriendo", "hecho", "falló", "cancelado")
@@ -47,15 +50,27 @@ def nuevo_id() -> str:
 
 def plazo_valido(texto: str) -> str:
     """El plazo como se guarda: una fecha (`2026-10-24`) o fecha y hora ISO, tal cual. "" si no hay. ValueError
-    si no se entiende."""
+    si no se entiende. La forma ISO básica (`20261024`, que Python también lee) se guarda en la extendida: así
+    una fecha sola se reconoce como fecha y vence al final del día, como `2026-10-24`."""
     texto = (texto or "").strip()
     if not texto:
         return ""
+    if _solo_fecha(texto):
+        return date.fromisoformat(texto).isoformat()
     try:
-        datetime.fromisoformat(texto)
+        cuando = datetime.fromisoformat(texto)
     except ValueError:
         raise ValueError(f"el plazo «{texto}» no es una fecha: 2026-10-24, o 2026-10-24T18:00") from None
-    return texto
+    return texto if re.match(r"\d{4}-\d{2}-\d{2}[T ]", texto) else cuando.isoformat()
+
+
+def _solo_fecha(texto: str) -> bool:
+    """Si el plazo es una fecha sin hora, en la forma que sea (`2026-10-24`, `20261024`)."""
+    try:
+        date.fromisoformat(texto)
+    except ValueError:
+        return False
+    return True
 
 
 def vencido(e: dict, ahora: datetime | None = None) -> bool:
@@ -68,7 +83,7 @@ def vencido(e: dict, ahora: datetime | None = None) -> bool:
     except ValueError:
         return False
     ahora = ahora or datetime.now().astimezone()
-    if len(texto) == 10:  # solo la fecha: vale hasta el final del día
+    if _solo_fecha(texto):  # solo la fecha: vale hasta el final del día
         return ahora.date() > plazo.date()
 
     def local(t: datetime) -> datetime:
@@ -103,6 +118,28 @@ def _leer(ruta: Path) -> dict | None:
     return datos if isinstance(datos, dict) else None
 
 
+@contextmanager
+def _candado(ruta: Path):
+    """De a uno sobre un encargo: la CLI (o la API) y el nodo pueden hacerle una acción a la vez, y la segunda
+    leería lo de antes de la primera y la pisaría (dos `cerrar` pasarían los dos y se avisaría dos veces)."""
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    with open(ruta.with_name(f".{ruta.name}.lock"), "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        yield
+
+
+def _nombre_de_hoy(config, hilo: str) -> str:
+    """El nombre que tiene hoy el hilo que lo hace, si se renombró después de recibirlo."""
+    if not hilo:
+        return hilo
+    try:
+        from telar import estado as mod_estado
+
+        return mod_estado.abrir(config).nombre_actual(hilo)
+    except Exception:  # noqa: BLE001 - sin estado legible, el nombre con que llegó
+        return hilo
+
+
 def _ahora() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -128,6 +165,22 @@ def recibir(config, mensaje: dict, maquina: str = "") -> bool:
         "resultado": "", "maquina": maquina, "creado": str(mensaje.get("creado") or ahora), "actualizado": ahora,
         "historia": [{"hora": ahora, "estado": "pedido", "quien": str(mensaje.get("de", ""))}],
     })
+    return True
+
+
+def mudar(config, eid: str, nuevo: str) -> bool:
+    """Lo hace otro nombre (su agente se renombró y la casilla se mudó, telar.casilla.mudar): el aviso al
+    cerrarlo y sus enlaces lo nombran como se llama ahora. False si no está aquí."""
+    try:
+        ruta = _ruta(config, "objetos", eid)
+    except ErrorDeEncargo:
+        return False
+    with _candado(ruta):
+        e = _leer(ruta)
+        if e is None or e.get("para") == nuevo:
+            return False
+        e["para"] = nuevo
+        _escribir(ruta, e)
     return True
 
 
@@ -177,39 +230,50 @@ def hacer(ctx, eid: str, accion: str, params: dict | None = None, *, version_lei
     if accion not in ACCIONES:
         raise ErrorDeEncargo(f"un encargo no tiene la acción «{accion}»: {', '.join(ACCIONES)}", 404)
     ruta = _ruta(ctx.config, "objetos", eid)
-    e = _leer(ruta)
-    if e is None:
-        raise ErrorDeEncargo(f"no hay un encargo {eid} en esta máquina", 404)
-    if version_leida and version_leida != version(e):
-        raise ErrorDeEncargo(f"encargo:{eid} cambió desde que se leyó: vuelve a mirarlo", 409)
-    if accion not in acciones_de(e):
-        raise ErrorDeEncargo(f"encargo:{eid} está {e.get('estado')}: no se puede {accion}", 409)
-    nota = ""
-    if accion == "aceptar":
-        nuevo = "aceptado"
-    elif accion == "rechazar":
-        nuevo, nota = "cancelado", str(params.get("motivo") or "").strip()
-        e["rechazado"], e["resultado"] = True, nota
-    else:
-        resultado = str(params.get("resultado") or "").strip()
-        if not resultado:
-            raise ErrorDeEncargo("cerrar: ¿cómo terminó? params {\"resultado\": …}", 422)
-        nuevo = str(params.get("estado") or "hecho").strip()
-        if nuevo not in ("hecho", "falló", "fallo"):
-            raise ErrorDeEncargo(f"cerrar: el estado es hecho o falló, no «{nuevo}»", 422)
-        nuevo = "falló" if nuevo == "fallo" else nuevo
-        e["resultado"] = nota = resultado
-    ahora = _ahora()
-    e["estado"], e["actualizado"] = nuevo, ahora
-    paso = {"hora": ahora, "estado": nuevo, "quien": quien}
-    if nota:
-        paso["nota"] = nota
-    e.setdefault("historia", []).append(paso)
-    _escribir(ruta, e)
-    if accion != "aceptar" and e.get("responder_a"):
-        avisado = _avisar(ctx, e)
-        e["historia"].append({"hora": _ahora(), "estado": nuevo, "quien": "telar", "nota": avisado})
+    # leer, comprobar y escribir, bajo candado: dos acciones a la vez no pasan las dos
+    with _candado(ruta):
+        e = _leer(ruta)
+        if e is None:
+            raise ErrorDeEncargo(f"no hay un encargo {eid} en esta máquina", 404)
+        if version_leida and version_leida != version(e):
+            raise ErrorDeEncargo(f"encargo:{eid} cambió desde que se leyó: vuelve a mirarlo", 409)
+        if accion not in acciones_de(e):
+            raise ErrorDeEncargo(f"encargo:{eid} está {e.get('estado')}: no se puede {accion}", 409)
+        nota = ""
+        if accion == "aceptar":
+            nuevo = "aceptado"
+        elif accion == "rechazar":
+            nota = str(params.get("motivo") or "").strip()
+            if not nota:
+                raise ErrorDeEncargo("rechazar: ¿por qué no? params {\"motivo\": …}", 422)
+            nuevo = "cancelado"
+            e["rechazado"], e["resultado"] = True, nota
+        else:
+            resultado = str(params.get("resultado") or "").strip()
+            if not resultado:
+                raise ErrorDeEncargo("cerrar: ¿cómo terminó? params {\"resultado\": …}", 422)
+            # en NFC: un «falló» escrito en macOS puede llegar descompuesto (la o y el acento aparte)
+            nuevo = unicodedata.normalize("NFC", str(params.get("estado") or "hecho").strip())
+            if nuevo not in ("hecho", "falló", "fallo"):
+                raise ErrorDeEncargo(f"cerrar: el estado es hecho o falló, no «{nuevo}»", 422)
+            nuevo = "falló" if nuevo == "fallo" else nuevo
+            e["resultado"] = nota = resultado
+        # si el hilo que lo hace se renombró, el aviso y los enlaces lo nombran como se llama ahora
+        e["para"] = _nombre_de_hoy(ctx.config, str(e.get("para") or ""))
+        ahora = _ahora()
+        e["estado"], e["actualizado"] = nuevo, ahora
+        paso = {"hora": ahora, "estado": nuevo, "quien": quien}
+        if nota:
+            paso["nota"] = nota
+        e.setdefault("historia", []).append(paso)
         _escribir(ruta, e)
+    if accion != "aceptar" and e.get("responder_a"):
+        # el aviso, fuera del candado (el bus puede tardar); lo que pasó se agrega sobre lo que haya entonces
+        avisado = _avisar(ctx, e)
+        with _candado(ruta):
+            e = _leer(ruta) or e
+            e.setdefault("historia", []).append({"hora": _ahora(), "estado": nuevo, "quien": "telar", "nota": avisado})
+            _escribir(ruta, e)
     return e
 
 
@@ -258,11 +322,22 @@ def atender(ctx, pedido: dict) -> dict:
 # ── en la máquina de quien lo mandó ─────────────────────────────────────────────
 
 def anotar_enviado(config, eid: str, *, para: str, maquina: str = "", texto: str = "", plazo: str = "",
-                   de: str = "") -> None:
+                   de: str = "", retenido: str = "") -> None:
     """La nota de quien lo mandó: con ella `telar objeto encargo:<id>` sabe dónde buscarlo, y lo muestra en camino
-    mientras el nodo de allá no lo recoge."""
-    _escribir(_ruta(config, "enviados", eid), {"id": eid, "para": para, "maquina": maquina, "texto": texto,
-                                               "plazo": plazo, "de": de, "creado": _ahora()})
+    mientras el nodo de allá no lo recoge. `maquina`: donde vivía su hilo al mandarlo (si se muda después, o su
+    estado se borra del bus, el encargo sigue en esa). `retenido`: el motivo, si el mensaje no salió; en camino
+    no va hasta que la persona lo suelte."""
+    datos = {"id": eid, "para": para, "maquina": maquina, "texto": texto, "plazo": plazo, "de": de, "creado": _ahora()}
+    if retenido:
+        datos["retenido"] = retenido
+    _escribir(_ruta(config, "enviados", eid), datos)
+
+
+def soltado(config, eid: str) -> None:
+    """El mensaje retenido de un encargo salió: su nota, si está aquí, deja de decir retenido."""
+    nota = enviado(config, eid)
+    if nota is not None and nota.pop("retenido", None) is not None:
+        _escribir(_ruta(config, "enviados", eid), nota)
 
 
 def enviado(config, eid: str) -> dict | None:

@@ -687,7 +687,8 @@ Un agente residente es `agente:<carpeta>` (`agente:faro`; también vale su nombr
 En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
 en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`
 no mira la máquina: la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten.
-Su acción `mensaje` acepta además `modo` (`aviso`, `pedido` o `encargo`; la de `telar mensaje --modo`).
+Su acción `mensaje` acepta además `modo` (`aviso`, `pedido` o `encargo`; la de `telar mensaje --modo`) y, con
+`encargo`, `plazo`.
 
 Un encargo es `encargo:<id>` (`encargo:e-1a2b3c4d`, telar.encargo): lo crea `telar mensaje --modo encargo` al
 llegar a su destinatario, y vive en la máquina de quien lo hace. Su `estado` es `pedido`, `aceptado`,
@@ -696,12 +697,14 @@ pidió), `para` (el hilo que lo hace), `responder_a` (el hilo al que se le avisa
 `vencido` (si el plazo pasó y no está cerrado), `resultado`, `rechazado`, `creado`, `actualizado`, `mensaje`
 (el id del mensaje que lo trajo) e `historia` (`[{hora, estado, quien, nota?}]`), los que tenga. Enlaza a sus
 hilos y a las direcciones que nombra su texto. Sus acciones, mientras no esté cerrado: `aceptar` (solo en
-`pedido`), `rechazar` (`{"motivo": …}`: queda `cancelado`, con `rechazado: true` y el motivo como resultado) y
-`cerrar` (`{"resultado": …, "estado": "hecho" | "falló"}`); rechazar y cerrar le mandan a `responder_a` un
-mensaje con el resultado. Desde otra máquina se abre igual: se le pide a la suya (el pedido `encargo` de su
-nodo), que es la de `@máquina`, la de la nota que guardó quien lo mandó o la del hilo al que se mandó. Mientras
-no llega, quien lo mandó lo ve con `en_camino: true`, en `pedido` y sin acciones. Una máquina con un telar de
-antes no atiende `encargo` (502, «no atiende»).
+`pedido`), `rechazar` (`{"motivo": …}`, obligatorio: queda `cancelado`, con `rechazado: true` y el motivo
+como resultado) y `cerrar` (`{"resultado": …, "estado": "hecho" | "falló"}`); rechazar y cerrar le mandan a
+`responder_a` un mensaje con el resultado. Desde otra máquina se abre igual: se le pide a la suya (el pedido `encargo` de su
+nodo), que es la de `@máquina`, la de la nota que guardó quien lo mandó (donde vivía el hilo al mandarlo) o la
+del hilo al que se mandó; el hilo lo recibe con su máquina (`encargo:e-1a2b3c4d@servidor`), así lo encuentra
+aunque se mude. Mientras no llega, quien lo mandó lo ve con `en_camino: true`, en `pedido` y sin acciones; si el
+mensaje se retuvo, con `retenido` (el motivo) en vez de `en_camino`, hasta que se suelte. Una máquina con un
+telar de antes no atiende `encargo` (502, «no atiende»).
 
 ### `telar mensaje <hilo> "…" --json`
 
@@ -720,8 +723,9 @@ y `"estado": "retenido"` con su `motivo` si se retuvo (sale con 3). `--modo` dic
 - `aviso`: `"modo": "aviso"`. Espera en la casilla (`<casilla>/avisos/`) y entra con el próximo turno del hilo;
   no lo despierta ni abre a un agente cerrado.
 - `encargo`: `"modo": "encargo"`, más `encargo` (el id), `direccion` (`encargo:<id>`), `plazo` si se dio
-  (`--plazo 2026-10-24`, o fecha y hora ISO) y `responder_a` (el hilo que lo manda, si lo manda un hilo). El
-  Encargo se crea al llegar (arriba, en `telar objeto`).
+  (`--plazo 2026-10-24`, o fecha y hora ISO; la forma básica, `20261024`, se guarda como `2026-10-24`) y
+  `responder_a` (el hilo que lo manda, si lo manda un hilo). El Encargo se crea al llegar (arriba, en `telar
+  objeto`).
 - `consulta` (sin texto; también `GET /mensajes/consulta?para=…`): no manda nada. Responde
   `{"modo": "consulta", "para", "objeto": {…}, "ultimos": {…} o null, "problema"}`: `objeto` es el hilo como en
   `telar objeto hilo:<nombre>`, `ultimos`, sus últimos tres turnos como en `telar hilo leer --json`, y `problema`
