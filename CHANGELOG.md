@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- Addresses and objects (`telar.objetos`). Anything has one address, `type:id[@machine]` (`tarea:T366`,
+  `hilo:Telar`, `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`), and `telar objeto <address>
+  [action]` (also `GET /objetos/<address>` and `POST /objetos/<address>/acciones/<action>`) shows it, with its
+  fields, the addresses it links to and its actions, or runs one of them. Four types ship with telar (task,
+  thread, project, file); a module brings its own with `[objetos.<type>]`, whose `ver` and actions are its
+  queries. `telar objeto --buscar` finds the addresses in a text.
+
 ## [0.3.0] — 2026-10-21
 
 ### Added

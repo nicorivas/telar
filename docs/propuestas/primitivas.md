@@ -144,8 +144,11 @@ Cada uno deja todo funcionando.
 
 1. ~~`telar commit` en todas partes, y `[calientes]` en el perfil~~: lo primero está hecho; lo segundo se
    descartó (arriba).
-2. **Direcciones y objetos.** El registro de tipos suma correo, evento, reunión y proyecto, y `telar objeto
-   <dirección> [--accion …]`, con `tarea` como alias. Dos preguntas del tipo `tarea` por cerrar: a una
+2. **Direcciones y objetos.** Hecho el primer paso (21-oct-2026, `telar.objetos`): la dirección
+   `tipo:id[@máquina]`, `telar objeto <dirección> [acción]` y `/objetos/…` en la API, con cuatro tipos de
+   fábrica (tarea, hilo, proyecto, archivo) y los que trae un módulo (`[objetos.<tipo>]`): correo, evento y
+   reunión llegan así, como módulos. Falta: que la página abra una dirección (`tarea:T366` en una conversación,
+   un enlace) y que los mensajes y las tareas las usen en vez de las formas de hoy. Dos preguntas del tipo `tarea` por cerrar: a una
    casilla sin `<!-- id: … -->` (se reconoce por su texto, que cambia), ¿se le pone un id al escribirla
    la primera vez?; y cuando el modelo cambie, ¿un campo `version` en cada archivo o un lector que entienda
    las dos formas?

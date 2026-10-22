@@ -690,6 +690,37 @@ def get_ver(ruta: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
                                           "X-Content-Type-Options": "nosniff"})
 
 
+class PedidoObjeto(BaseModel):
+    params: dict = {}
+    #: la versión que se leyó: si el objeto cambió desde entonces, 409 y no se hace
+    version: str = ""
+
+
+@app.get("/objetos/tipos")
+def get_objetos_tipos(ctx: Contexto = Depends(contexto)):
+    """Los tipos de objeto que hay: los de fábrica y los de los módulos instalados."""
+    from telar import objetos
+
+    return {"tipos": [{"tipo": n, "descripcion": t.descripcion, "modulo": getattr(t, "modulo", "")}
+                      for n, t in sorted(objetos.tipos(ctx).items())]}
+
+
+@app.get("/objetos/{direccion:path}")
+def get_objeto(direccion: str, ctx: Contexto = Depends(contexto)):
+    """Un objeto por su dirección (`tarea:T366`, `hilo:Telar`…): sus campos, enlaces y acciones."""
+    from telar import objetos
+
+    return objetos.ver(ctx, direccion)
+
+
+@app.post("/objetos/{direccion:path}/acciones/{accion}")
+def post_objeto_accion(direccion: str, accion: str, pedido: PedidoObjeto, ctx: Contexto = Depends(contexto)):
+    """Una acción sobre un objeto, con sus parámetros y la versión que se leyó."""
+    from telar import objetos
+
+    return objetos.hacer(ctx, direccion, accion, pedido.params, pedido.version)
+
+
 @app.get("/modulos/{modulo}/{verbo}")
 def get_modulo(modulo: str, verbo: str, request: Request, maquina: str = "", ctx: Contexto = Depends(contexto)):
     """Una consulta a un módulo (una orden suya con `consulta = true`): los parámetros de la dirección van

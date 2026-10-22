@@ -40,6 +40,10 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [requiere]                     # lo que tiene que haber en la máquina: se mira al instalarlo
     programas = ["uv"]
 
+    [objetos.medicion]             # un tipo de objeto (telar.objetos): medicion:<id>, con sus consultas
+    ver = "medir"                  # recibe {"id": …} y da el objeto
+    acciones = []                  # otras consultas: reciben {"id": …, …parámetros}
+
 Las rutas relativas son de la carpeta del módulo, y sus periódicos corren en ella. Todo lo que
 aporta toma el nombre del módulo: la pestaña es el bloque `nino34`, el resultado `nino34`, y un
 periódico `nino34-bajar` (o `nino34` si se llama como el módulo). El resultado se lee donde corren
@@ -73,7 +77,7 @@ from pathlib import Path
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
-         "requiere"}
+         "requiere", "objetos"}
 TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
 ESPERA_CONSULTA = 30
 
@@ -100,6 +104,8 @@ class Modulo:
     contexto: str = ""
     #: los programas que tiene que haber en el PATH (`[requiere] programas`)
     requiere: tuple = ()
+    #: los tipos de objeto que trae (`[objetos.<tipo>]`): tipo → {ver, acciones, descripcion}
+    objetos: dict = field(default_factory=dict)
 
     def faltan(self) -> list[str]:
         """Los programas de `[requiere]` que esta máquina no tiene."""
@@ -113,6 +119,7 @@ class Modulo:
         return ([*(["pestaña"] if self.pestana else []), *(["app"] if self.app else []),
                  *[f"periódico {n}" for n in self.periodicos], *(["resultado"] if self.resultado else []),
                  *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
+                 *[f"objetos {t}:" for t in self.objetos],
                  *(["contexto del agente"] if self.contexto else [])])
 
 
@@ -145,7 +152,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     sobra = set(datos) - _RAIZ
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
-    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere"):
+    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -204,13 +211,25 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     if not isinstance(requiere, list) or not all(isinstance(x, str) and x.strip() for x in requiere):
         raise ErrorDeModulo(f"{nombre}: [requiere] programas: se esperaba una lista de nombres de programa")
 
+    objetos = {}
+    for tipo, cuerpo in datos.get("objetos", {}).items():
+        if not NOMBRE.fullmatch(tipo) or not isinstance(cuerpo, dict):
+            raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}]: el tipo va en minúsculas, y es una tabla")
+        acciones = cuerpo.get("acciones", [])
+        if not isinstance(acciones, list) or not all(isinstance(a, str) for a in acciones):
+            raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}] acciones: una lista de órdenes del módulo")
+        for verbo in [cuerpo.get("ver"), *acciones]:
+            if not isinstance(verbo, str) or verbo not in ordenes or not ordenes[verbo]["consulta"]:
+                raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}]: «{verbo}» tiene que ser una de sus [ordenes] con consulta = true")
+        objetos[tipo] = {"ver": cuerpo["ver"], "acciones": tuple(acciones), "descripcion": str(cuerpo.get("descripcion", ""))}
+
     descripcion = datos.get("descripcion", "")
     if not isinstance(descripcion, str):
         raise ErrorDeModulo(f"{nombre}: descripcion: se esperaba un texto")
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
                   instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
-                  requiere=tuple(x.strip() for x in requiere))
+                  requiere=tuple(x.strip() for x in requiere), objetos=objetos)
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────

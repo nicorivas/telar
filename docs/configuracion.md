@@ -818,6 +818,20 @@ actualizarlo, adoptarlo o quitarlo deja el crontab al día; en otra, telar dice 
 instalarlo. Lo que el módulo necesita en la máquina (un programa en el PATH) lo declara `[requiere]
 programas = ["uv"]`, y se mira antes de instalar.
 
+Un módulo puede traer **tipos de objeto** (telar.objetos), que se ven y se actúan por su dirección como los de
+fábrica (`telar objeto correo:1a2b`):
+
+```toml
+[objetos.correo]
+ver = "correo-ver"         # una de sus [ordenes] con consulta = true: recibe {"id": …} y da el objeto
+acciones = ["archivar"]    # otras consultas suyas: reciben {"id": …, más los parámetros}
+descripcion = "un correo"
+```
+
+El `ver` devuelve un objeto JSON con lo que tenga de `titulo`, `estado`, `resumen`, `campos`, `enlaces` y
+`acciones`; telar pone la dirección. Un módulo no puede pisar un tipo de fábrica (tarea, hilo, proyecto,
+archivo).
+
 `telar modulos adoptar <nombre>` pasa uno declarado a mano en la configuración (`[modulos.<nombre>]`) a
 `modulos.toml`, enlazado a su carpeta: saca su bloque de la configuración (que queda respaldada al lado) y
 desde ahí se actualiza y se quita como los demás.

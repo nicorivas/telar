@@ -602,6 +602,28 @@ las de `telar.tipos.tarea.ACCIONES`. Si no se pudo, la salida es `{"error": "…
 tarea cambió, y entonces trae su `version` de ahora, o la acción no se puede; 404: no existe; 422: el
 pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con error.
 
+### `telar objeto <dirección> [acción] --json`
+
+Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea:T366`, `hilo:Telar`,
+`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, o uno de los tipos que trae un módulo. Es
+también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
+
+```
+telar objeto tarea:T366            {"direccion", "tipo", "id", "titulo", "estado", "resumen", "campos": {…},
+                                    "enlaces": ["proyecto:…"], "acciones": [{"nombre", "descripcion", "params"}],
+                                    "version", "maquina"}
+telar objeto tarea:T366 completar --params '{"nota": "…"}' [--version V]
+                                   {"direccion", "accion", "objeto": {…} o null, "resultado": {…}}
+telar objeto --tipos               {"tipos": [{"tipo", "descripcion", "modulo"}]}
+telar objeto --buscar "texto"      {"direcciones": ["tarea:T366", …]}
+```
+
+`campos` es lo propio de cada tipo; `enlaces` son direcciones de otros objetos (el proyecto de una tarea, el
+hilo de un proyecto). `params` dice, por nombre, lo que pide cada acción ("" si es obligatorio; si no, su
+valor por defecto). Una acción que cambia el objeto lo devuelve en `objeto`; una que hace otra cosa (escribirle
+a un hilo) dice lo que pasó en `resultado`. Los errores, como en `telar tipo`: `{"error", "codigo"}` (404: no
+hay ese tipo, ese objeto o esa acción; 409: cambió; 422: el pedido no sirve).
+
 ### `telar agente conversacion <id> --json`
 
 ```json
