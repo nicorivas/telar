@@ -564,9 +564,16 @@ class Tmux(MultiplexorBase):
                     "escribir sin enviar no admite saltos de línea: el salto ES el ↩. "
                     "Con enviar=True el texto se manda entero."
                 )
-            # `-l` manda el texto tal cual, sin buscarle nombres de tecla: un texto con la
-            # palabra «Enter» adentro no puede convertirse en un ↩.
-            self._tmux("send-keys", "-t", objetivo, "-l", "--", texto)
+            if "\n" in texto or "\r" in texto:
+                # varias líneas: pegadas de una vez (bracketed paste, -p), para que cada salto no sea un ↩
+                # que manda la primera línea sola; el ↩ de enviar va después, una vez
+                buffer = f"telar-{os.getpid()}"
+                self._tmux("set-buffer", "-b", buffer, "--", texto)
+                self._tmux("paste-buffer", "-p", "-d", "-b", buffer, "-t", objetivo)
+            else:
+                # `-l` manda el texto tal cual, sin buscarle nombres de tecla: un texto con la
+                # palabra «Enter» adentro no puede convertirse en un ↩.
+                self._tmux("send-keys", "-t", objetivo, "-l", "--", texto)
         if enviar:
             self._tmux("send-keys", "-t", objetivo, "Enter")
 

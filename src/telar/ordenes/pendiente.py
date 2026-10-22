@@ -84,16 +84,22 @@ def _encontrar(ctx, tel, ref: str, proveedor: str, fila: dict | None) -> dict:
 
 
 def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: str = "", enviar: bool = False,
-           proveedor: str = "", fila: dict | None = None) -> tuple[dict, str]:
+           proveedor: str = "", fila: dict | None = None, a: str = "") -> tuple[dict, str]:
     """Lleva el pendiente al hilo donde se trabaja (o solo dice adónde, con `donde`). (lo que pasó, en el
-    contrato de `--json`; y en una línea, para la terminal). `ErrorDeServicio` si no se pudo."""
+    contrato de `--json`; y en una línea, para la terminal). `ErrorDeServicio` si no se pudo.
+
+    Con `a`, a ese hilo o agente (su nombre exacto, de esta máquina o de otra) y no al de la tarea."""
     from telar.servicios import ErrorDeServicio
 
     tel = _comun.tejer(ctx)
     fila = _encontrar(ctx, tel, ref, proveedor, fila)
-    destino = _destino(tel, fila)
-    # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
-    alla = _destino_remoto(ctx, fila) if destino is None and not nuevo else None
+    elegido = None
+    if a:
+        destino, alla, elegido = destino_elegido(ctx, tel, a)
+    else:
+        destino = _destino(tel, fila)
+        # sin hilo aquí, el de otra máquina (la foto de su espejo): se le escribe por el bus
+        alla = _destino_remoto(ctx, fila) if destino is None and not nuevo else None
     agente = ctx.config.agente
     primero = texto or mensaje(agente.pendiente_nuevo, fila)
     texto = texto or mensaje(agente.pendiente, fila)
@@ -112,7 +118,7 @@ def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: st
         return ({"ref": fila["ref"], "texto": texto, "destino": nombre, "maquina": maquina, "creado": False,
                  "enviado": True, "id": m["id"]}, f"{fila['ref']} → «{nombre}» en {maquina}: en su casilla (bus)")
 
-    general = _agente_general(ctx) if destino is None and not nuevo else None
+    general = elegido if a else _agente_general(ctx) if destino is None and not nuevo else None
     if donde:
         datos = {"ref": fila["ref"], "texto": texto, "destino": destino.nombre if destino else "",
                  "vivo": bool(destino and tel.vivo(destino)), "ruta": fila.get("ruta", ""),
@@ -364,6 +370,28 @@ def _retomar(ctx, tel: _comun.Telar, destino: Hilo, primero: str) -> tuple[Hilo 
     tel.estado.desarchivar(destino.nombre)
     revivido = next((h for h in tel.mux.hilos() if h.nombre == destino.nombre), None)
     return (revivido, "") if revivido is not None else (None, f"retomé «{destino.nombre}» pero no lo veo en la sesión")
+
+
+def destino_elegido(ctx, tel: _comun.Telar, nombre: str):
+    """(hilo de aquí, (hilo, máquina) de otra, agente residente) para un nombre que eligió la persona: uno de
+    los tres, los otros None. `ErrorDeServicio` 404 si no hay ningún hilo ni agente que se llame así."""
+    from telar import agentes as mod_agentes
+    from telar.servicios import ErrorDeServicio
+
+    agente = next((x for x in mod_agentes.descubrir(ctx.config) if nombre in (x.clave, x.nombre)), None)
+    if agente is not None:
+        return None, None, agente
+    aqui = next((h for h in tel.hilos if h.nombre == nombre), None)
+    if aqui is not None and not aqui.remoto:
+        return aqui, None, None
+    from telar import bus as mod_bus
+    from telar import espejo
+
+    if mod_bus.hay_bus(ctx.config):
+        for foto in espejo.leer_todos(ctx.config):
+            if any(h.get("nombre") == nombre and not h.get("remoto") for h in foto.get("hilos", [])):
+                return None, (nombre, foto["nombre"]), None
+    raise ErrorDeServicio(f"no hay ningún hilo ni agente que se llame «{nombre}»", 404)
 
 
 def _agente_general(ctx):

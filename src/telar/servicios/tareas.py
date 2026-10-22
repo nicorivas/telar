@@ -109,9 +109,11 @@ def ficha(ctx, id: str, proveedor: str = "tareas") -> Pagina:
 
 
 def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol: str = "", texto: str = "",
-           version: str | None = None) -> AccionHecha:
+           version: str | None = None, hilo: str = "") -> AccionHecha:
     """Corre una acción de la ficha, por su número (`n`) o por su `rol`. El comando sale de la ficha que
-    vuelve a dar el proveedor, nunca de quien pide."""
+    vuelve a dar el proveedor, nunca de quien pide. Con `hilo`, el mensaje de una acción que lo lleva a un
+    hilo va a ese (por su nombre, de aquí o de otra máquina, o un agente) y no al de la tarea: se comprueba
+    que exista antes de correr nada."""
     from telar.ordenes import _comun
     from telar.ordenes.seccion import ESPERA
 
@@ -120,7 +122,8 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     en = _alla(ctx, proveedor)
     if en:
         argv = [id, "--proveedor", proveedor, *(["--rol", rol] if rol else ["--accion", str(n)]),
-                *(["--texto", texto] if texto else []), *(["--version", version] if version else [])]
+                *(["--texto", texto] if texto else []), *(["--version", version] if version else []),
+                *(["--hilo", hilo] if hilo else [])]
         return AccionHecha(**_pedir_alla(ctx, en, argv))
     pagina = ficha(ctx, id, proveedor).model_dump()
     acciones = pagina.get("acciones") or []
@@ -136,8 +139,12 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     if tipo != "comando":
         return AccionHecha(tipo=tipo, enlace=a.get("enlace", ""))
     texto = texto.strip()
+    if hilo and a.get("mensaje") and a.get("al_hilo"):
+        _hilo_existe(ctx, hilo)  # antes de correr nada: que no quede a medio hacer
+    elif hilo:
+        hilo = ""  # la acción no lleva mensaje a un hilo: no hay adónde mandarlo
     if "accion" in a:
-        return _accion_del_tipo(ctx, id, proveedor, a, texto, version)
+        return _accion_del_tipo(ctx, id, proveedor, a, texto, version, hilo)
     if a.get("pide") and not texto and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
         raise ErrorDeServicio(f"«{a['nombre']}» pide texto")
     palabras = [w.replace("{texto}", texto) for w in a["comando"]]
@@ -156,7 +163,7 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
         raise ErrorDeServicio(f"«{a['nombre']}» salió con {r.returncode}: {r.stderr.strip()[-300:]}", 502)
     hecho = AccionHecha(tipo="comando", hecho=a["nombre"], salida=r.stdout.strip()[-500:])
     if a.get("mensaje") and a.get("al_hilo"):
-        hecho.hilo = _al_hilo(ctx, id, proveedor, a["mensaje"].replace("{texto}", texto), fila, a["nombre"])
+        hecho.hilo = _al_hilo(ctx, id, proveedor, a["mensaje"].replace("{texto}", texto), fila, a["nombre"], hilo)
     elif a.get("mensaje"):
         import datetime as dt
 
@@ -170,7 +177,7 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     return hecho
 
 
-def _accion_del_tipo(ctx, id: str, proveedor: str, a: dict, texto: str, version: str | None) -> AccionHecha:
+def _accion_del_tipo(ctx, id: str, proveedor: str, a: dict, texto: str, version: str | None, hilo: str = "") -> AccionHecha:
     """Una acción de la ficha del tipo `tarea`: la acción del tipo sobre su archivo (con la versión, si
     vino), el commit de ese archivo, y después el mensaje al hilo si la acción lo lleva."""
     from telar.tipos import ErrorDeFormato
@@ -211,7 +218,7 @@ def _accion_del_tipo(ctx, id: str, proveedor: str, a: dict, texto: str, version:
     _subir(proveedor_tipo.carpeta / f"{id}.md", f"tareas: {id} {a['accion']}")
     hecho = AccionHecha(tipo="comando", hecho=a["nombre"])
     if a.get("mensaje") and a.get("al_hilo"):
-        hecho.hilo = _al_hilo(ctx, id, proveedor, a["mensaje"].replace("{texto}", texto), fila, a["nombre"])
+        hecho.hilo = _al_hilo(ctx, id, proveedor, a["mensaje"].replace("{texto}", texto), fila, a["nombre"], hilo)
     return hecho
 
 
@@ -221,13 +228,20 @@ def _subir(archivo, mensaje: str) -> None:
     subir(archivo, mensaje)
 
 
-def _al_hilo(ctx, id: str, proveedor: str, mensaje: str, fila, nombre: str) -> str:
+def _hilo_existe(ctx, hilo: str) -> None:
+    from telar.ordenes import _comun
+    from telar.ordenes import pendiente
+
+    pendiente.destino_elegido(ctx, _comun.tejer(ctx, con_ficha=False), hilo)
+
+
+def _al_hilo(ctx, id: str, proveedor: str, mensaje: str, fila, nombre: str, hilo: str = "") -> str:
     """Al hilo donde se trabaja la tarea, no a uno nuevo: el de su proyecto (retomándolo si duerme) o,
-    sin proyecto, el agente de `[agentes] sin_proyecto` (ver `telar pendiente`)."""
+    sin proyecto, el agente de `[agentes] sin_proyecto` (ver `telar pendiente`). Con `hilo`, a ese."""
     from telar.ordenes import pendiente
 
     try:
-        datos, _ = pendiente.llevar(ctx, id, texto=mensaje, enviar=True, proveedor=proveedor, fila=fila)
+        datos, _ = pendiente.llevar(ctx, id, texto=mensaje, enviar=True, proveedor=proveedor, fila=fila, a=hilo)
     except ErrorDeServicio as e:
         raise ErrorDeServicio(f"«{nombre}» se anotó, pero no pude llevarlo a su hilo: {e}", 502) from e
     return datos.get("destino", "")

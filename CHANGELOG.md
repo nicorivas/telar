@@ -8,6 +8,10 @@ extension shared the version number.
 
 ### Added
 
+- A task action that sends its message to a thread takes `hilo` (`POST /tareas/{id}/accion`, `telar tarea --hilo`):
+  the message goes to that thread or agent, here or on another machine, instead of the task's; a name that is
+  no thread is a 404 before anything runs. A multi-line text reaches a thread whole: it is pasted at once
+  (bracketed paste) instead of typed, so a line break no longer sends the first line alone.
 - `telar archivo` sends files up to 25 MB between machines: anything over 700 KB goes in chunks over the bus and
   the receiving node joins them (both machines need this version; small files work as before).
 - Modules as plugins. A module declares its own commands (`[ordenes.<verb>]`: `telar <module> <verb>`) and

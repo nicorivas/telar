@@ -572,9 +572,14 @@ class Escribir(Prueba):
                 self.assertEqual(m.ordenes("send-keys"), [])
 
     def test_con_enviar_el_texto_entero_si_puede_llevar_saltos(self):
+        # pegado de una vez (bracketed paste): tecleado, cada salto sería un ↩ que manda la primera línea sola
         m = TmuxFalso()
         m.escribir_pane("%7", "dos\nlineas", enviar=True)
-        self.assertEqual(m.ordenes("send-keys")[0][-1], "dos\nlineas")
+        self.assertEqual(m.una("set-buffer")[-1], "dos\nlineas")
+        pegar = m.una("paste-buffer")
+        self.assertIn("-p", pegar)
+        self.assertEqual(pegar[-2:], ["-t", "%7"])
+        self.assertEqual(m.ordenes("send-keys"), [["send-keys", "-t", "%7", "Enter"]])
 
 
 class AbrirUnPanel(Prueba):

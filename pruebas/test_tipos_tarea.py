@@ -335,6 +335,36 @@ class LaFichaYSusAcciones(Prueba):
         self.assertIn("estado: activa", (self.dir / "T84.md").read_text())
         self.subir.assert_not_called()
 
+    def test_escribirle_a_otro_hilo(self):
+        from telar.config import Config, Proveedor
+        from telar.ordenes import pendiente
+        from telar.servicios import ErrorDeServicio
+
+        prov = Proveedor(nombre="tareas", opciones={"tipo": "tipo", "carpeta": str(self.dir), "agente": "Ada",
+                                                    "mensaje_escribir": "/tarea {id} {texto}"})
+        self.ctx = type(self.ctx)(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores={"tareas": prov}))
+        acciones = self.servicio.ficha(self.ctx, "T84").model_dump()["acciones"]
+        n = next(i for i, a in enumerate(acciones) if a.get("al_hilo") and "anotar" == a.get("accion"))
+        antes = (self.dir / "T84.md").read_text()
+        no_hay = ErrorDeServicio("no hay ningún hilo ni agente que se llame «Nadie»", 404)
+        from telar.ordenes import _comun
+
+        tejer = self.mock.patch.object(_comun, "tejer")
+        tejer.start()
+        self.addCleanup(tejer.stop)
+        with self.mock.patch.object(pendiente, "destino_elegido", side_effect=no_hay):
+            with self.assertRaises(ErrorDeServicio) as e:
+                self.servicio.accion(self.ctx, "T84", n=n, texto="mira esto", hilo="Nadie")
+        self.assertEqual(e.exception.codigo, 404)
+        self.assertEqual((self.dir / "T84.md").read_text(), antes)  # antes de correr nada
+        with self.mock.patch.object(pendiente, "destino_elegido", return_value=(None, None, object())), \
+                self.mock.patch.object(pendiente, "_buscar", return_value={"ref": "T84", "id": "T84"}), \
+                self.mock.patch.object(pendiente, "llevar", return_value=({"destino": "Faro"}, "")) as llevar:
+            h = self.servicio.accion(self.ctx, "T84", n=n, texto="mira esto", hilo="Faro")
+        self.assertEqual(h.hilo, "Faro")
+        self.assertEqual(llevar.call_args.kwargs["a"], "Faro")
+        self.assertEqual(llevar.call_args.kwargs["texto"], "/tarea T84 mira esto")
+
     def test_none_deja_sin_dueno(self):
         self.servicio.accion(self.ctx, "T84", rol="dueno", texto="Marcelo")
         self.assertIn("dueño: Marcelo", (self.dir / "T84.md").read_text())

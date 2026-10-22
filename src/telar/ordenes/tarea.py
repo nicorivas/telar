@@ -39,6 +39,8 @@ def main(argv: list[str], ctx) -> int:
                    help="correr la acción con ese `rol` (hecha, fecha…), sin saber su número: un viaje en vez de dos")
     p.add_argument("--texto", default="", help="lo escrito, para una acción que lo pide")
     p.add_argument("--version", default=None, help="la versión que se leyó (la de la ficha): si la tarea cambió, no se hace")
+    p.add_argument("--hilo", default="", metavar="NOMBRE",
+                   help="el mensaje de la acción, a ese hilo o agente (de aquí o de otra máquina) y no al de la tarea")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -52,7 +54,8 @@ def main(argv: list[str], ctx) -> int:
             for i, a in enumerate(getattr(pagina, "acciones", None) or []):
                 print(f"  {i}  {a['nombre']}")
             return 0
-        hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto, version=o.version)
+        hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto, version=o.version,
+                                hilo=o.hilo)
     except ErrorDeServicio as e:
         if o.json:
             # con su código, para quien la pidió desde otra máquina (409: la tarea cambió; 404: no existe)
