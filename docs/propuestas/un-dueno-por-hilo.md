@@ -47,17 +47,28 @@ las ventanas de aquí contra el estado de los hilos de las otras máquinas.
      archiva o se vincula después, salvo que otra máquina ya lo publique (se mudó).
    - El nodo de cada máquina deja lo último que publicó cada hilo de las otras en `ajenos.json`, entero
      y reemplazado en cada cambio: es la foto del bus en disco, no una copia que se parcha con eventos.
+     Guarda solo lo que se lee de ahí (máquina, conversación, vínculo, archivado), así que un cambio de
+     atención no lo reescribe, y lo escribe recién cuando el bus terminó de entregarle lo que había al
+     arrancar: antes quedaría con una parte de los hilos. Mientras vigila el bus lo refresca cada 30 s; si
+     pasan dos minutos sin que lo toque (el nodo apagado, sin `[bus]`), caduca y no se lee.
    - `Estado.vinculos()`, `archivados()` y `sesiones()` toman de ahí lo de un hilo ajeno, así que la
-     lista, la página, `telar proyectos`, `retomar` y el nodo leen lo del dueño sin cambiar nada más.
+     lista, la página, `telar proyectos`, `retomar` y el nodo leen lo del dueño sin cambiar nada más. La
+     conversación del dueño va primera en `sesiones`, y las anteriores que se sabían aquí siguen detrás. Un
+     vínculo que sube con `..` no se toma.
      Ajeno es el hilo que tiene ventana o dirección aquí (`remotos.json`) **y** cuyo dueño, según el bus,
      es otra máquina: un hilo de aquí que se llama igual que uno de allá no toma lo de aquel.
-   - `telar hilo vincular|desvincular|archivar|desarchivar` de un hilo ajeno ya no escribe aquí: se lo
-     pide al dueño y listo. `retomar` le pide `desarchivar` si estaba archivado y no anota aquí la
-     conversación que encontró allá. `conciliar` y «revivir» usan el `archivado` del dueño.
-   - Compatibilidad: un estado de antes con copias de hilos ajenos se sigue leyendo. Mientras el dueño no
-     publique un campo (sin bus, con el nodo apagado o con un telar de antes allá), vale la copia de aquí;
-     en cuanto lo publica, gana el dueño. Las copias no se borran ni se migran: son derivadas y quedan sin
-     uso. Sin bus, todo funciona como antes (los hilos remotos por ssh siguen guardando su registro aquí).
+   - `telar hilo vincular|desvincular|archivar|desarchivar` de un hilo ajeno se lo pide al dueño. Si allá
+     sale bien, anota el cambio en `ajenos.json` (lo que el nodo recoja después lo reemplaza), para que la
+     respuesta y la página lo muestren ya, y escribe también la copia de aquí. `retomar` le pide
+     `desarchivar` si estaba archivado. `conciliar` usa el `archivado` del dueño, y «revivir» también,
+     salvo para un hilo que aquí se llama distinto («Faro · 2»), que no cruza con lo que publica y sigue con
+     su copia.
+   - Compatibilidad: mientras el dueño no publique un campo (un telar de antes allá, sin bus, o con el nodo
+     de aquí apagado y `ajenos.json` caducado), vale la copia de aquí; en cuanto lo publica, gana el dueño.
+     Por eso la copia se sigue escribiendo cuando el dueño acepta un cambio: no se lee mientras él publica,
+     y es lo que vale cuando deja de publicar, o cuando el hilo vuelve a esta máquina (lo que se cambió
+     allá directamente, sin pasar por aquí, no llega a esta copia, como antes). Sin bus, todo funciona como
+     antes (los hilos remotos por ssh siguen guardando su registro aquí).
 
    Lo que sigue copiándose, a propósito: la **prioridad** (no estaba en este paso; va al dueño y se anota
    aquí, y la foto del espejo la trae), la **atención** (el nodo la anota al instante para el semáforo), y

@@ -769,7 +769,8 @@ no valen) y una si `modulos.toml` no se lee. Con todos legibles, una sola `módu
 carpetas que reconocen dos repos y cuál gana, un `aviso`).
 La revisión `sesiones` dice si quedan sesiones tmux propias por hilo de las versiones de
 antes (`telar-…`) vivas en esta máquina, o hilos remotos anotados con una dirección de ese
-tipo (un `aviso`, con sus nombres); sin ninguna, `ok`.
+tipo (un `aviso`, con sus nombres); sin ninguna, `ok`. Si tmux está y no se le pudo
+preguntar, un `aviso` que lo dice (sin tmux instalado, `ok`).
 
 ### `telar config --json` y `telar perfil --json`
 

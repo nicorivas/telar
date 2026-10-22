@@ -92,13 +92,18 @@ def _sesiones_propias(ctx) -> list[dict]:
     """Las sesiones tmux propias por hilo (`telar-…`, de las versiones de antes) que siguen vivas aquí, y
     los hilos remotos anotados con una dirección de ese tipo. telar ya no abre ninguna: todo hilo nuevo
     es una ventana de la sesión del telar. Las de antes se siguen leyendo mientras existan, y lo que las
-    lee se podrá quitar cuando no quede ninguna (docs/propuestas/un-dueno-por-hilo.md). Sin tmux, nada."""
+    lee se podrá quitar cuando no quede ninguna (docs/propuestas/un-dueno-por-hilo.md). Sin tmux instalado
+    no hay ninguna; si está y no se le pudo preguntar, no se sabe, y se dice: esta revisión es la que
+    dice cuándo es seguro quitarlas."""
     from telar import movil
 
     try:
         vivas = sorted(movil.propios())
-    except (OSError, RuntimeError):
-        vivas = []
+    except FileNotFoundError:
+        vivas = []  # sin tmux en esta máquina: ninguna sesión, ni de antes
+    except (OSError, RuntimeError) as e:
+        return [_r("sesiones", AVISO, f"no pude revisar las sesiones de tmux: {e}",
+                   "con tmux respondiendo, `telar doctor` de nuevo")]
     try:
         viejas = sorted(h for h, r in mod_estado.abrir(ctx.config).remotos().items()
                         if r.get("sesion") and not r["sesion"].startswith("@"))

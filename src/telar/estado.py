@@ -111,6 +111,11 @@ ORDEN = "orden"
 #: El candado de la carpeta entera, para lo que toca varios archivos a la vez.
 CANDADO = ".candado"
 
+#: `ajenos.json` sin tocar por más de esto (segundos) ya no dice lo del dueño: el nodo que lo escribe
+#: lo refresca cada 30 s mientras vigila el bus, y uno apagado (o sin `[bus]`) deja una foto vieja.
+#: Pasado este tiempo vale la copia de aquí, como sin bus
+AJENOS_CADUCA = 120
+
 
 class ErrorDeEstado(Exception):
     """No se pudo leer o escribir el estado (permisos, disco, JSON roto)."""
@@ -489,17 +494,26 @@ class Estado:
     # aquí de un hilo ajeno sale de ahí, y no se copia en los archivos de aquí: una copia que se mantiene
     # con eventos queda distinta en cuanto se pierde uno.
     #
-    # Un estado de antes trae copias de esos hilos en `vinculos.json`, `archivados.json` y `sesiones.json`:
-    # se siguen leyendo mientras el dueño no publique el campo (sin bus, con el nodo apagado, o un telar de
-    # antes allá), y en cuanto lo publica, lo suyo gana. No se borran: son derivados y no estorban.
+    # La copia de aquí (`vinculos.json`, `archivados.json`, `sesiones.json`) se sigue leyendo mientras el
+    # dueño no publique el campo: un telar de antes allá, sin bus, o con el nodo de aquí apagado
+    # (`ajenos.json` caduca, `AJENOS_CADUCA`). En cuanto lo publica, lo suyo gana. Por eso `telar hilo`
+    # la sigue escribiendo cuando el dueño acepta un cambio: es el respaldo para esos casos y para cuando
+    # el hilo vuelve a esta máquina, y no estorba mientras el dueño publica.
 
     def ajenos(self) -> dict[str, dict]:
-        """hilo → lo último que publicó su dueño (máquina, vínculo, archivado, conversación…), como lo
-        dejó el nodo. Solo hilos de otras máquinas; vacío sin bus o sin nodo."""
+        """hilo → lo último que publicó su dueño (máquina, vínculo, archivado, conversación), como lo
+        dejó el nodo. Solo hilos de otras máquinas; vacío sin bus, sin nodo o si el nodo dejó de
+        refrescarlo hace más de `AJENOS_CADUCA`."""
+        import time
+
         salida = {}
         try:
+            if time.time() - self.ruta("ajenos").stat().st_mtime > AJENOS_CADUCA:
+                return {}  # el nodo no lo refresca: es una foto vieja, no lo que publica el dueño
             datos = self._leer("ajenos", {})
-        except ErrorDeEstado:
+        except FileNotFoundError:
+            return {}
+        except (ErrorDeEstado, OSError):
             return {}  # roto: es derivado, el nodo lo reescribe en la vuelta siguiente
         for hilo, valor in datos.items():
             if isinstance(hilo, str) and isinstance(valor, dict) and isinstance(valor.get("maquina"), str) and valor["maquina"]:
@@ -510,6 +524,36 @@ class Estado:
         """Reemplaza entero lo que se sabe de los hilos ajenos (lo llama el nodo)."""
         with _candado(self.ruta("ajenos").with_suffix(".lock")):
             self._escribir("ajenos", {k: dict(v) for k, v in sorted(ajenos.items())})
+
+    def refrescar_ajenos(self) -> None:
+        """El nodo sigue vigilando el bus: lo de `ajenos.json` sigue valiendo aunque no haya cambiado."""
+        try:
+            os.utime(self.ruta("ajenos"))
+        except OSError:
+            pass  # todavía no existe, o no se puede tocar: caduca y vale la copia de aquí
+
+    def adelantar_ajeno(self, hilo: str, **campos) -> None:
+        """Lo que el dueño de `hilo` acaba de aceptar (`telar hilo archivar` de un hilo ajeno), anotado ya
+        en `ajenos.json` para que la respuesta y la página lo muestren sin esperar a que el nodo recoja lo
+        que el dueño vuelve a publicar, que reemplaza esto entero. Solo un hilo que ya está ahí, y sin
+        renovar la fecha del archivo: adelantar no hace vigente una foto que el nodo dejó de refrescar."""
+        ruta = self.ruta("ajenos")
+        if not ruta.exists():
+            return
+        with _candado(ruta.with_suffix(".lock")):
+            try:
+                cuando = ruta.stat()
+                datos = self._leer("ajenos", {})
+            except (OSError, ErrorDeEstado):
+                return
+            if not isinstance(datos.get(hilo), dict):
+                return
+            datos[hilo] = {**datos[hilo], **campos}
+            self._escribir("ajenos", datos)
+            try:
+                os.utime(ruta, ns=(cuando.st_atime_ns, cuando.st_mtime_ns))
+            except OSError:
+                pass
 
     def registro_ajeno(self) -> dict[str, dict]:
         """Los hilos ajenos que esta máquina muestra (los que tienen ventana o dirección aquí, en
@@ -529,7 +573,10 @@ class Estado:
             limpio: dict = {"maquina": r["maquina"]}
             if isinstance(r.get("vinculo"), str):
                 crudo = r["vinculo"].strip()
-                limpio["vinculo"] = "/" + crudo.strip("/") if crudo.startswith("/") else crudo.strip("/")
+                vinculo = "/" + crudo.strip("/") if crudo.startswith("/") else crudo.strip("/")
+                # uno que sube con «..» no es una carpeta de la raíz: no se toma (vale lo de aquí)
+                if ".." not in vinculo.split("/"):
+                    limpio["vinculo"] = vinculo
             if isinstance(r.get("archivado"), bool):
                 limpio["archivado"] = r["archivado"]
             if isinstance(r.get("conversacion"), str):
@@ -655,12 +702,13 @@ class Estado:
             ids = _ids(valor)
             if ids:
                 salida[hilo] = ids
-        # la de un hilo de otra máquina es la que publica su dueño (ver `registro_ajeno`)
+        # la principal de un hilo de otra máquina es la que publica su dueño (ver `registro_ajeno`); las
+        # anteriores que se sabían aquí siguen detrás, como las de cualquier hilo
         for hilo, r in self.registro_ajeno().items():
             if "conversacion" not in r:
                 continue
             if r["conversacion"]:
-                salida[hilo] = (r["conversacion"],)
+                salida[hilo] = (r["conversacion"], *(s for s in salida.get(hilo, ()) if s != r["conversacion"]))
             else:
                 salida.pop(hilo, None)
         return salida

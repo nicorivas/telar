@@ -134,21 +134,24 @@ def main(argv: list[str], ctx) -> int:
     # si es un hilo remoto, lo que le pase cambia lo que su máquina publica en el directorio
     remoto_antes = est.remotos().get(hilo.nombre, {}).get("remoto", "")
     # un hilo de otra máquina: el cambio lo hace su dueño, y su registro (vínculo, archivo) lo guarda él:
-    # aquí se lee de lo que publica (telar.estado, «hilos ajenos»), no se copia. Lo de aquí que sí es de
-    # aquí (la ventana que lo mira, su nombre en ella) se ajusta después, si allá salió bien
+    # aquí se lee de lo que publica (telar.estado, «hilos ajenos»). Si allá salió bien, lo de aquí se
+    # ajusta igual: la ventana que lo mira, su nombre en ella, y la copia de su registro, que es lo que
+    # vale mientras el dueño no publique ese campo (un telar de antes allá, el nodo de aquí apagado)
     dueno = _dueno(ctx, hilo) if o.verbo in AL_DUENO else ""
     if dueno:
         problema = _al_dueno(ctx, dueno, o, hilo.nombre)
         if problema:
             return _comun.queja(problema)
+        # lo que el dueño ya aceptó, en lo que se lee de él: la respuesta (--json) y la página lo
+        # muestran ya, sin esperar a que el nodo recoja lo que el dueño vuelve a publicar
+        _adelantar(est, o, hilo.nombre, ctx.config.raiz)
     if o.verbo == "ver":
         pass
     elif o.verbo == "vincular":
         relativa, problema = _ruta_en_raiz(o.valor or ".", ctx.config.raiz)
         if relativa is None:
             return _comun.queja(problema)
-        if not dueno:
-            est.vincular(hilo.nombre, relativa)
+        est.vincular(hilo.nombre, relativa)
         arquetipo, _ = lectura.ubicar(ctx.perfil, ctx.config.raiz, relativa, mapa=tel.unidades)
         print(f"«{hilo.nombre}» → {relativa}")
         if arquetipo is None:
@@ -161,8 +164,7 @@ def main(argv: list[str], ctx) -> int:
         else:
             print(_comun.tenue(f"  arquetipo: {arquetipo.nombre}"))
     elif o.verbo == "desvincular":
-        if not dueno:
-            est.desvincular(hilo.nombre)
+        est.desvincular(hilo.nombre)
         print(f"«{hilo.nombre}» queda sin carpeta")
     elif o.verbo == "renombrar":
         if not o.valor:
@@ -199,16 +201,14 @@ def main(argv: list[str], ctx) -> int:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
     elif o.verbo == "archivar":
-        if not dueno:
-            est.archivar(hilo.nombre)
+        est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
         if o.cerrar and not dueno:
             salida = _cerrar(ctx, tel, hilo)
         else:
             print(_comun.tenue("  sigue abierto; --cerrar además lo cierra en el multiplexor"))
     elif o.verbo == "desarchivar":
-        if not dueno:
-            est.desarchivar(hilo.nombre)
+        est.desarchivar(hilo.nombre)
         print(f"de vuelta en la lista «{hilo.nombre}»")
     elif o.verbo == "retomar":
         salida = _retomar(ctx, tel, hilo)
@@ -406,6 +406,19 @@ def _dueno(ctx, hilo) -> str:
         return ""
     maquina = mod_bus.maquina_de(ctx.config, hilo.nombre) or hilo.remoto
     return "" if maquina == mod_bus.maquina(ctx.config) else maquina
+
+
+def _adelantar(est, o, nombre: str, raiz) -> None:
+    """Anota en lo que se lee del dueño (`ajenos.json`) el cambio que acaba de aceptar, si ese campo lo
+    publica: lo que el nodo recoja después lo reemplaza entero. Un campo que no publica se lee de la
+    copia de aquí, que la orden escribe igual."""
+    publica = est.registro_ajeno().get(nombre, {})
+    if o.verbo in ("archivar", "desarchivar") and "archivado" in publica:
+        est.adelantar_ajeno(nombre, archivado=o.verbo == "archivar")
+    elif o.verbo in ("vincular", "desvincular") and "vinculo" in publica:
+        relativa = _ruta_en_raiz(o.valor or ".", raiz)[0] if o.verbo == "vincular" else ""
+        if relativa is not None:
+            est.adelantar_ajeno(nombre, vinculo=relativa)
 
 
 def _al_dueno(ctx, dueno: str, o, nombre: str) -> str:
@@ -671,14 +684,17 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
     de pedirle a nadie que busque el id y lo escriba. Si el hilo sigue vivo, solo se va a él.
     """
     est = tel.estado
-    # el de otra máquina lo desarchiva su dueño: aquí no se guarda su archivo (telar.estado, «hilos ajenos»)
+    # el de otra máquina lo desarchiva su dueño (telar.estado, «hilos ajenos»), y aquí la copia, que es
+    # lo que vale si el dueño no publica su archivo (un telar de antes allá)
     dueno = _dueno(ctx, hilo) if est.es_ajeno(hilo.nombre) else ""
-    if not dueno:
-        est.desarchivar(hilo.nombre)
-    elif hilo.archivado:
-        problema = _al_dueno(ctx, dueno, SimpleNamespace(verbo="desarchivar", valor="", cerrar=False, json=True), hilo.nombre)
+    if dueno and hilo.archivado:
+        o = SimpleNamespace(verbo="desarchivar", valor="", cerrar=False, json=True)
+        problema = _al_dueno(ctx, dueno, o, hilo.nombre)
         if problema:
-            print(_comun.tenue(f"  sigue archivado: {problema}"))
+            print(_comun.tenue(f"  sigue archivado allá: {problema}"))
+        else:
+            _adelantar(est, o, hilo.nombre, ctx.config.raiz)
+    est.desarchivar(hilo.nombre)
     if tel.mux is None or not tel.viva:
         return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
     try:
@@ -697,8 +713,9 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
             if conversacion is None:
                 print(_comun.tenue(f"  no pude preguntar allá qué conversación retomar ({problema}): uso la anotada aquí"))
                 conversacion = hilo.sesiones[0] if hilo.sesiones else ""
-            elif conversacion and conversacion != (hilo.sesiones[0] if hilo.sesiones else "") and not dueno:
-                # la de un hilo ajeno la publica su dueño cuando su agente la abre: aquí no se copia
+            elif conversacion and conversacion != (hilo.sesiones[0] if hilo.sesiones else ""):
+                # la de un hilo ajeno la publica su dueño cuando su agente la abre; la de aquí es el
+                # respaldo mientras no la publique
                 est.anotar_sesion(hilo.nombre, conversacion, revivir=False)
             elif not conversacion and hilo.sesiones:
                 print(_comun.tenue("  allá no hay archivo de ninguna de sus conversaciones: se abre una nueva"))

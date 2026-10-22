@@ -137,11 +137,11 @@ hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
 **Un hilo tiene un solo dueño**, la máquina donde corre ([propuesta](propuestas/un-dueno-por-hilo.md)).
 Su vínculo, su archivo y su conversación los guarda él y los publica en `TELAR_HILOS`; el nodo de las
 otras máquinas deja lo último que publicó en `ajenos.json` (en la carpeta del estado, entero y
-reemplazado cada vez), y la lista y la página de allá lo leen de ahí. Allá no se copia: vincular o
-archivar un hilo ajeno se le pide a su dueño, y lo de allá cambia cuando él lo vuelve a publicar. Lo
-único que la otra máquina guarda de un hilo ajeno es lo suyo: la ventana que lo mira (`remotos.json`).
-Un estado de antes, con copias en `vinculos.json`, `archivados.json` o `sesiones.json`, se sigue
-leyendo mientras el dueño no publique ese campo (sin bus, con el nodo apagado, o un telar de antes allá).
+reemplazado cada vez, y caducado si el nodo deja de refrescarlo), y la lista y la página de allá lo
+leen de ahí. Vincular o archivar un hilo ajeno se le pide a su dueño, y lo que se lee cambia cuando él
+lo vuelve a publicar. La copia de allá (`vinculos.json`, `archivados.json`, `sesiones.json`) se sigue
+escribiendo cuando el dueño acepta un cambio, pero solo se lee mientras el dueño no publique ese campo
+(sin bus, con el nodo apagado, o un telar de antes allá).
 
 **Cómo llega un mensaje.** El nodo de la máquina del hilo lo deja en su casilla local
 (`telar.casilla`). Los ganchos `Stop` y `UserPromptSubmit` del agente (`telar agente casilla`) se lo

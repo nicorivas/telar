@@ -40,9 +40,10 @@ VUELTA = 2.0
 ESPEJO_CADA = 15
 #: un «trabajando» sin cambios por más de esto se da por pegado y se avisa igual (segundos)
 TRABAJANDO_VIEJO = 45 * 60
-#: lo que se guarda en `ajenos.json` de cada hilo de otra máquina (lo demás —su ventana, su sesión
-#: tmux— es para traer la ventana, y lo usa el nodo de lo que tiene en memoria)
-CAMPOS_AJENOS = ("maquina", "vivo", "atencion", "desde", "conversacion", "vinculo", "archivado", "residente", "actualizado")
+#: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
+#: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
+#: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
+CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado")
 
 
 def registro_de(nombre: str, vinculos, archivados) -> dict:
@@ -99,6 +100,10 @@ class Nodo:
         self.vistos: dict[str, dict] = {}
         #: lo último que se dejó en `ajenos.json`, para no reescribirlo si no cambió
         self.ajenos_escritos: dict | None = None
+        #: si el vigía ya recibió lo que había en el bus al arrancar: antes, `vistos` está a medias
+        self.ajenos_listos = False
+        #: la tarea que vigila el bus: mientras viva, `ajenos.json` se refresca (ver `AJENOS_CADUCA`)
+        self.vigia = None
         #: el registro de los hilos de aquí en la última vuelta: (vínculos, archivados, remotos)
         self.registro: tuple[dict, set, dict] = ({}, set(), {})
 
@@ -239,7 +244,7 @@ class Nodo:
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "nota"), cb=self._nota)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie"), cb=self._serie)
         await nc.subscribe(mod_bus.tema_rpc(self.config, self.yo, "serie-recordar"), cb=self._serie_recordar)
-        vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
+        vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
         try:
             while True:
@@ -317,6 +322,10 @@ class Nodo:
         if self.vueltas % 15 == 0:
             vivos = [n for n, i in locales.items() if i.get("vivo")]
             await asyncio.to_thread(lambda: mod_estado.abrir(self.config).anotar_vivos(vivos))
+            # y lo de los hilos ajenos sigue valiendo mientras se vigila el bus: sin esto, caduca
+            vigia = getattr(self, "vigia", None)
+            if vigia is not None and not vigia.done() and getattr(self, "ajenos_listos", False):
+                await asyncio.to_thread(lambda: mod_estado.abrir(self.config).refrescar_ajenos())
         for nombre, info in actuales.items():
             valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
             clave = mod_bus.clave_estado(self.config, nombre)
@@ -352,10 +361,14 @@ class Nodo:
         vigia = await kv.watch(f"{self.persona}.>")
         async for e in vigia:
             if e is None:
+                # lo que había en el bus ya llegó entero: recién ahora `ajenos.json` tiene a todos (antes,
+                # escribirlo con cada clave lo dejaría un rato con una parte, y el resto volvería a la copia)
+                self.ajenos_listos = True
+                await self._espejar()
                 continue
             if not e.value:
                 self.vistos.pop(e.key, None)  # borrado: ese hilo ya no está en ninguna parte
-                await asyncio.to_thread(self.espejar_ajenos)
+                await self._espejar()
                 continue
             try:
                 d = json.loads(e.value)
@@ -363,10 +376,10 @@ class Nodo:
                 continue
             if d.get("maquina") == self.yo:
                 self.vistos.pop(e.key, None)
-                await asyncio.to_thread(self.espejar_ajenos)
+                await self._espejar()
                 continue
             self.vistos[e.key] = d
-            await asyncio.to_thread(self.espejar_ajenos)
+            await self._espejar()
 
             def anotar_aqui():
                 est = mod_estado.abrir(self.config)
@@ -384,6 +397,16 @@ class Nodo:
                 await asyncio.to_thread(self.ventana_de, d)
             except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
                 self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
+
+    async def _espejar(self) -> None:
+        """`espejar_ajenos` desde el vigía, cuando ya llegó lo del arranque. Un archivo que no se pudo
+        escribir no lo tumba: se anota, y el evento siguiente lo intenta de nuevo."""
+        if not self.ajenos_listos:
+            return
+        try:
+            await asyncio.to_thread(self.espejar_ajenos)
+        except Exception as e:  # noqa: BLE001 - disco lleno, permisos: el vigía sigue
+            self.anotar(f"ajenos.json: {type(e).__name__}: {e}")
 
     def espejar_ajenos(self) -> bool:
         """Deja en `ajenos.json` lo último que publicó cada hilo de las otras máquinas (lo que hay en
@@ -495,8 +518,10 @@ class Nodo:
         from datetime import datetime
 
         est = tel.estado
-        if isinstance(d.get("archivado"), bool):
-            return  # su dueño publica si está archivado (y lo desarchiva allá cuando su agente vuelve)
+        if "archivado" in est.registro_ajeno().get(aqui, {}):
+            # su dueño publica si está archivado (y lo desarchiva allá cuando su agente vuelve). Solo si lo
+            # de aquí se lee de eso: uno que aquí se llama distinto («Faro · 2») sigue con su copia
+            return
         if aqui not in est.archivados():
             return
         try:

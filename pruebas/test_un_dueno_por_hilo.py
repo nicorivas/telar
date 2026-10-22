@@ -1,15 +1,18 @@
 """Un dueño por hilo, «dejar de copiar»: el vínculo, el archivo y la conversación de un hilo de otra máquina
-se leen de lo que publica su dueño (`ajenos.json`, que escribe el nodo), y aquí no se copian.
+se leen de lo que publica su dueño (`ajenos.json`, que escribe el nodo), no de la copia de aquí.
 
-Un estado de antes, con copias de esos hilos en los archivos de aquí, se sigue leyendo mientras el dueño no
-publique el campo. Nada de esto toca el bus ni tmux: el nodo se arma sin conectarse y el bus es un falso.
+La copia de aquí se sigue leyendo mientras el dueño no publique el campo (un telar de antes allá, sin bus, o
+con el nodo de aquí apagado y `ajenos.json` caducado), y por eso `telar hilo` la sigue escribiendo cuando el
+dueño acepta un cambio. Nada de esto toca el bus ni tmux: el nodo se arma sin conectarse y el bus es un falso.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,7 +61,7 @@ class LoLeeDeSuDueno(ConEstado):
         self.assertTrue(self.est.es_ajeno("Faro"))
         self.assertEqual(self.est.vinculos()["Faro"], "proyectos/faro")
         self.assertNotIn("Faro", self.est.archivados())
-        self.assertEqual(self.est.sesiones()["Faro"], ("s-nueva",))
+        self.assertEqual(self.est.sesiones()["Faro"], ("s-nueva", "s-vieja"))
         # lo de los hilos de aquí no cambia
         self.assertEqual(self.est.vinculos()["Ana"], "proyectos/ana")
         self.assertEqual(self.est.sesiones()["Ana"], ("s-ana",))
@@ -71,11 +74,45 @@ class LoLeeDeSuDueno(ConEstado):
         self.assertIn("Faro", self.est.archivados())
         self.assertNotIn("Faro", self.est.sesiones())
 
+    def test_las_conversaciones_anteriores_siguen_detras_de_la_del_dueno(self):
+        escribir(self.carpeta, "sesiones.json", {"Faro": ["s-vieja", "s-anterior"]})
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "conversacion": "s-nueva"}})
+        self.assertEqual(self.est.sesiones()["Faro"], ("s-nueva", "s-vieja", "s-anterior"))
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "conversacion": "s-anterior"}})
+        self.assertEqual(self.est.sesiones()["Faro"], ("s-anterior", "s-vieja"))
+
+    def test_una_foto_que_el_nodo_dejo_de_refrescar_no_manda(self):
+        # el nodo apagado, o sin [bus]: lo último que dejó es viejo, y vale la copia de aquí
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "vinculo": "proyectos/faro", "archivado": False}})
+        viejo = time.time() - mod_estado.AJENOS_CADUCA - 5
+        os.utime(self.carpeta / "ajenos.json", (viejo, viejo))
+        self.assertEqual(self.est.ajenos(), {})
+        self.assertEqual(self.est.vinculos()["Faro"], "proyectos/copia-vieja")
+        self.assertIn("Faro", self.est.archivados())
+        # el nodo que sigue vigilando lo refresca: vuelve a valer
+        self.est.refrescar_ajenos()
+        self.assertEqual(self.est.vinculos()["Faro"], "proyectos/faro")
+
+    def test_adelantar_no_renueva_una_foto_vieja(self):
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "archivado": False}})
+        viejo = time.time() - mod_estado.AJENOS_CADUCA - 5
+        os.utime(self.carpeta / "ajenos.json", (viejo, viejo))
+        self.est.adelantar_ajeno("Faro", archivado=True)
+        self.assertEqual(self.est.ajenos(), {})
+        self.est.adelantar_ajeno("T84", archivado=True)  # uno que no está: nada
+        self.assertNotIn("T84", json.loads((self.carpeta / "ajenos.json").read_text()))
+
+    def test_un_vinculo_que_sube_con_puntos_no_se_toma(self):
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "vinculo": "../../etc"}})
+        self.assertEqual(self.est.vinculos()["Faro"], "proyectos/copia-vieja")
+        self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "vinculo": "proyectos/../../etc"}})
+        self.assertEqual(self.est.vinculos()["Faro"], "proyectos/copia-vieja")
+
     def test_un_dueno_de_antes_que_no_publica_el_campo_deja_lo_de_aqui(self):
         self.est.guardar_ajenos({"Faro": {"maquina": "servidor", "conversacion": "s-nueva"}})
         self.assertEqual(self.est.vinculos()["Faro"], "proyectos/copia-vieja")
         self.assertIn("Faro", self.est.archivados())
-        self.assertEqual(self.est.sesiones()["Faro"], ("s-nueva",))
+        self.assertEqual(self.est.sesiones()["Faro"], ("s-nueva", "s-vieja"))
 
     def test_un_hilo_de_aqui_que_se_llama_igual_no_toma_lo_de_alla(self):
         # Ana no tiene ventana ni dirección de otra máquina aquí: es de aquí, aunque el bus traiga una Ana
@@ -101,7 +138,7 @@ class LoLeeDeSuDueno(ConEstado):
         (faro,) = mod_estado.vestir([Hilo(id="@1", nombre="Faro")], raiz=Path("/raiz"), **foto)
         self.assertEqual(faro.vinculo, Path("/raiz/proyectos/faro"))
         self.assertFalse(faro.archivado)
-        self.assertEqual(faro.sesiones, ("s-nueva",))
+        self.assertEqual(faro.sesiones, ("s-nueva", "s-vieja"))
         self.assertEqual(faro.remoto, "servidor")
 
 
@@ -111,7 +148,54 @@ class ElNodoEspeja(ConEstado):
         n.config = SimpleNamespace(estado=self.carpeta, bus=SimpleNamespace(persona="ana", maquina="laptop"))
         n.yo, n.vistos, n.ajenos_escritos, n.publicado, n.ausentes = "laptop", {}, None, {}, {}
         n.registro, n.vueltas, n.subs = ({}, set(), {}), 5, {}
+        n.ajenos_listos, n.vigia = False, None
         return n
+
+    def test_espeja_recien_cuando_llego_lo_del_arranque(self):
+        # el vigía entrega las claves de a una y después la marca (None): antes de ella, el archivo
+        # quedaría con una parte de los hilos ajenos y los demás volverían a la copia
+        n = self.nodo()
+        n.persona, n.anotado = "ana", []
+        n.anotar = n.anotado.append
+        n.ventana_de = lambda d: None
+        eventos = [SimpleNamespace(key=f"ana.{x}", value=json.dumps({"nombre": x, "maquina": "servidor",
+                                                                     "archivado": False}).encode())
+                   for x in ("Faro", "T84")]
+        escritos = []
+        guardar = mod_estado.Estado.guardar_ajenos
+
+        def espiar(est, ajenos):
+            escritos.append(sorted(ajenos))
+            guardar(est, ajenos)
+
+        class Vigia:
+            def __init__(self, lista):
+                self.lista = list(lista)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if not self.lista:
+                    raise StopAsyncIteration
+                return self.lista.pop(0)
+
+        cambio = SimpleNamespace(key="ana.Faro", value=json.dumps(
+            {"nombre": "Faro", "maquina": "servidor", "archivado": False, "atencion": "trabajando"}).encode())
+        kv = SimpleNamespace(watch=lambda _: _devolver(Vigia([*eventos, None, cambio])))
+        with mock.patch.object(mod_estado.Estado, "guardar_ajenos", espiar):
+            asyncio.run(n._vigilar(kv))
+        # una sola vez, con los dos; y un cambio de atención no lo reescribe
+        self.assertEqual(escritos, [["Faro", "T84"]])
+
+    def test_un_archivo_que_no_se_puede_escribir_no_tumba_al_vigia(self):
+        n = self.nodo()
+        n.ajenos_listos, n.anotado = True, []
+        n.anotar = n.anotado.append
+        with mock.patch.object(n, "espejar_ajenos", side_effect=mod_estado.ErrorDeEstado("disco lleno")):
+            asyncio.run(n._espejar())
+        self.assertEqual(len(n.anotado), 1)
+        self.assertIn("disco lleno", n.anotado[0])
 
     def test_deja_lo_ultimo_de_cada_hilo_ajeno_y_no_reescribe_si_no_cambio(self):
         n = self.nodo()
@@ -167,6 +251,10 @@ async def _nada():
     return None
 
 
+async def _devolver(x):
+    return x
+
+
 def _async(_):
     return _nada()
 
@@ -195,13 +283,29 @@ class ConciliaConLoDelDueno(Prueba):
     def test_revivir_lo_decide_el_dueno_si_publica_su_archivo(self):
         n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
         est = mock.Mock()
+        est.registro_ajeno.return_value = {"Faro": {"maquina": "servidor", "archivado": True}}
         n._revivir(SimpleNamespace(estado=est), "Faro", {"archivado": True, "desde": "2026-10-22T10:00:00"}, "servidor")
         est.desarchivar.assert_not_called()
         est.archivados.assert_not_called()
 
+    def test_revivir_un_hilo_que_aqui_se_llama_distinto_usa_su_copia(self):
+        # «Faro · 2» (renombrado por choque) no cruza con lo que publica «Faro»: su archivo es la copia de
+        # aquí, y se desarchiva cuando su agente vuelve a trabajar, como antes
+        from datetime import datetime
 
-class NoSeCopiaAlCambiarlo(Orden):
-    """`telar hilo vincular|archivar…` de un hilo ajeno: se lo pide a su dueño y aquí no escribe nada."""
+        n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
+        n.anotar = lambda texto: None
+        est = mock.Mock()
+        est.registro_ajeno.return_value = {"Faro": {"maquina": "servidor", "archivado": False}}
+        est.archivados.return_value = {"Faro · 2"}
+        est.archivado_en.return_value = datetime(2026, 10, 22, 9, 0)
+        n._revivir(SimpleNamespace(estado=est), "Faro · 2", {"archivado": False, "desde": "2026-10-22T10:00:00"}, "servidor")
+        est.desarchivar.assert_called_once_with("Faro · 2")
+
+
+class AlCambiarloVaAlDueno(Orden):
+    """`telar hilo vincular|archivar…` de un hilo ajeno: se lo pide a su dueño, y si allá salió bien deja
+    aquí la copia de respaldo (lo que vale mientras el dueño no publique el campo) y adelanta lo del dueño."""
 
     def setUp(self):
         super().setUp()
@@ -214,15 +318,68 @@ class NoSeCopiaAlCambiarlo(Orden):
         return {n: (self.carpeta / n).read_text() if (self.carpeta / n).exists() else None
                 for n in ("vinculos.json", "archivados.json", "archivados_en.json", "sesiones.json")}
 
-    def test_vincular_archivar_y_desvincular_van_solo_al_dueno(self):
+    def al_dueno(self, *argv, codigo_esperado=0, problema=""):
+        with mock.patch.object(orden_hilo, "_dueno", return_value="servidor"), \
+                mock.patch.object(orden_hilo, "_al_dueno", return_value=problema) as al_dueno:
+            codigo, salida, error = self.correr("hilo", *argv, "--hilo", "Faro")
+        self.assertEqual(codigo, codigo_esperado, error)
+        self.assertEqual(al_dueno.call_count, 1)
+        return salida
+
+    def estado(self):
+        return mod_estado.Estado(self.carpeta)
+
+    def test_van_al_dueno_y_lo_suyo_manda(self):
+        self.al_dueno("vincular", "proyectos/faro")
+        self.al_dueno("archivar")
+        est = self.estado()
+        # lo que se lee es lo del dueño, adelantado mientras el nodo no recoge lo que vuelve a publicar
+        self.assertEqual(est.vinculos()["Faro"], "proyectos/faro")
+        self.assertIn("Faro", est.archivados())
+        self.al_dueno("desarchivar")
+        self.al_dueno("desvincular")
+        self.assertNotIn("Faro", self.estado().archivados())
+        self.assertNotIn("Faro", self.estado().vinculos())
+
+    def test_si_el_dueno_no_acepta_aqui_no_cambia_nada(self):
         antes = self.archivos()
+        self.al_dueno("archivar", codigo_esperado=2, problema="en servidor: no")
+        self.assertEqual(self.archivos(), antes)
+
+    def test_la_respuesta_json_ya_trae_el_cambio(self):
+        # el JSON va en la última línea (antes, lo que la orden dice en texto)
+        salida = self.al_dueno("archivar", "--json")
+        self.assertTrue(json.loads(salida.splitlines()[-1])["hilo"]["archivado"])
+        salida = self.al_dueno("vincular", "proyectos", "--json")
+        self.assertEqual(json.loads(salida.splitlines()[-1])["hilo"]["relativa"], "proyectos")
+
+    def test_con_un_dueno_de_antes_se_ve_aqui(self):
+        # el dueño corre un telar que no publica vínculo ni archivo: vale la copia de aquí, que se escribe
+        escribir(self.carpeta, "ajenos.json", {"Faro": {"maquina": "servidor", "conversacion": "s1"}})
+        self.al_dueno("vincular", "proyectos/faro")
+        self.al_dueno("archivar")
+        est = self.estado()
+        self.assertEqual(est.vinculos()["Faro"], "proyectos/faro")
+        self.assertIn("Faro", est.archivados())
+
+    def test_con_el_nodo_apagado_se_ve_aqui(self):
+        (self.carpeta / "ajenos.json").unlink()
+        self.al_dueno("vincular", "proyectos/faro")
+        self.al_dueno("archivar")
+        self.assertEqual(self.estado().vinculos()["Faro"], "proyectos/faro")
+        self.assertIn("Faro", self.estado().archivados())
+        datos = self.json_de("hilos", "--json")
+        faro = next(h for h in datos["hilos"] if h["nombre"] == "Faro")
+        self.assertTrue(faro["archivado"])
+
+    def test_retomar_con_un_dueno_de_antes_lo_desarchiva_aqui(self):
+        escribir(self.carpeta, "ajenos.json", {"Faro": {"maquina": "servidor", "conversacion": "s1"}})
+        escribir(self.carpeta, "archivados.json", ["Faro"])
         with mock.patch.object(orden_hilo, "_dueno", return_value="servidor"), \
                 mock.patch.object(orden_hilo, "_al_dueno", return_value="") as al_dueno:
-            for argv in (["vincular", "proyectos/faro"], ["archivar"], ["desarchivar"], ["desvincular"]):
-                codigo, _, error = self.correr("hilo", *argv, "--hilo", "Faro")
-                self.assertEqual(codigo, 0, error)
-        self.assertEqual(al_dueno.call_count, 4)
-        self.assertEqual(self.archivos(), antes)
+            self.correr("hilo", "retomar", "--hilo", "Faro")  # sin multiplexor falla después: da igual
+        self.assertEqual(al_dueno.call_count, 1)
+        self.assertNotIn("Faro", self.estado().archivados())
 
     def test_sin_dueno_ajeno_se_escribe_aqui_como_siempre(self):
         with mock.patch.object(orden_hilo, "_dueno", return_value=""):
@@ -258,9 +415,18 @@ class LasSesionesPropiasSeRevisan(ConEstado):
 
     def test_sin_tmux_no_dice_nada_raro(self):
         ctx = SimpleNamespace(config=SimpleNamespace(estado=self.carpeta))
-        with mock.patch("telar.movil.propios", side_effect=OSError("sin tmux")):
+        escribir(self.carpeta, "remotos.json", {})
+        with mock.patch("telar.movil.propios", side_effect=FileNotFoundError("tmux")):
             (r,) = doctor._sesiones_propias(ctx)
         self.assertEqual(r["estado"], doctor.OK)
+
+    def test_si_no_pudo_mirar_tmux_no_dice_que_no_hay(self):
+        # esta revisión es la que dice cuándo se pueden quitar las sesiones propias: no saber no es «ninguna»
+        ctx = SimpleNamespace(config=SimpleNamespace(estado=self.carpeta))
+        with mock.patch("telar.movil.propios", side_effect=OSError("permiso denegado")):
+            (r,) = doctor._sesiones_propias(ctx)
+        self.assertEqual(r["estado"], doctor.AVISO)
+        self.assertIn("no pude revisar", r["dice"])
 
 
 if __name__ == "__main__":

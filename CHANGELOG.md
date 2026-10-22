@@ -72,12 +72,15 @@ extension shared the version number.
   from what `telar modulo` wrote down (empty for one declared by hand). No other field changes.
 - A module's `fuente` no longer shows the `user:password@` part of a URL in `telar config` (nor in `GET /config`),
   and `telar config` and `telar modulos` no longer end the line with a dangling `@` when no version was recorded.
-- One owner per thread: a machine no longer keeps its own copy of the link, the archived flag and the
-  conversation of a thread that lives on another machine. Each node publishes them with its threads' state
-  (new `vinculo` and `archivado` fields in `TELAR_HILOS`), the other nodes keep the latest in `ajenos.json`,
-  and the list and the page read them from there; changing them goes to the owner, as before. Copies left by
-  an older state are still read while the owner does not publish the field. `telar doctor` gains a `sesiones`
-  check that lists the old per-thread tmux sessions (`telar-…`) still alive.
+- One owner per thread: the link, the archived flag and the conversation of a thread that lives on another
+  machine are read from what its owner publishes, not from a local copy. Each node publishes them with its
+  threads' state (new `vinculo` and `archivado` fields in `TELAR_HILOS`), the other nodes keep the latest in
+  `ajenos.json` (ignored once the node stops refreshing it for two minutes), and the list and the page read
+  them from there; changing them goes to the owner, as before, and `--json` already shows the change. The
+  local copy is still written and is what counts while the owner does not publish a field (an older telar
+  there, no bus, or the local node off). In `sesiones`, the owner's conversation comes first and the earlier
+  ones known here follow. `telar doctor` gains a `sesiones` check that lists the old per-thread tmux sessions
+  (`telar-…`) still alive, and warns when it could not ask tmux.
 
 ## [0.3.0] — 2026-10-21
 

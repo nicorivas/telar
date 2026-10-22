@@ -20,6 +20,9 @@ class FalsoEstado:
     def archivado_en(self, hilo):
         return self._cuando
 
+    def registro_ajeno(self):
+        return {}  # un dueño que no publica su archivo: vale el de aquí
+
     def desarchivar(self, hilo):
         self._a.discard(hilo)
 
