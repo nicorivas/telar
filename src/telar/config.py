@@ -565,13 +565,15 @@ def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
         raise ErrorDeConfig(f"modulos.{e}") from None
     en = datos.get("periodicos", {}).get("en", "") if isinstance(datos.get("periodicos"), dict) else ""
     aportes = {}
+    vistas = datos.get("vistas") if isinstance(datos.get("vistas"), dict) else {}
     for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
                           ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
         if not aporte:
             continue
+        # una vista con su nombre choca aunque esté en otro lugar: serían dos cosas llamadas igual
+        if nombre in vistas:
+            raise ErrorDeConfig(f"modulos.{nombre}: ya hay una [vistas.{nombre}] declarada a mano")
         if isinstance(datos.get(tabla), dict) and nombre in datos[tabla]:
-            if isinstance(datos.get("vistas"), dict) and nombre in datos["vistas"]:
-                raise ErrorDeConfig(f"modulos.{nombre}: ya hay una [vistas.{nombre}] declarada a mano")
             raise ErrorDeConfig(f"modulos.{nombre}: ya hay un [{tabla}.{nombre}] declarado a mano")
         try:
             desde_dict({tabla: {nombre: aporte}})
@@ -610,9 +612,14 @@ def _lugar_de_vista(clave: str, cuerpo: dict) -> str:
     """Dónde aparece una vista: lo que dice `aparece`, o el único lugar que deja su fuente."""
     if "aparece" in cuerpo:
         aparece = cuerpo["aparece"]
-        if aparece not in LUGARES_DE_VISTA:
+        if not isinstance(aparece, str) or aparece not in LUGARES_DE_VISTA:
             raise ErrorDeConfig(f"vistas.{clave}.aparece: pestana, plan, apps, hilos o dia; llegó {aparece!r}")
         return aparece
+    # sin `aparece`, `en` la haría un resultado por día y el error culparía a la fuente (decisión 8)
+    fuente = next((f for f in ("comando", "archivo", "url") if f in cuerpo), None)
+    if "en" in cuerpo and fuente:
+        raise ErrorDeConfig(f"vistas.{clave}.en: no va con {fuente}: en es la máquina donde vive la fuente, y un"
+                            f" {fuente} todavía no puede vivir en otra")
     lugares = sorted({_LUGAR_POR_FUENTE[k] for k in cuerpo if k in _LUGAR_POR_FUENTE})
     if len(lugares) == 1:
         return lugares[0]
@@ -637,11 +644,9 @@ def _traducir_vista(clave: str, cuerpo: object) -> tuple[str, dict]:
         if sobra[0] in todas:
             raise ErrorDeConfig(f"vistas.{clave}.{sobra[0]}: no va con aparece = \"{lugar}\"")
         raise ErrorDeConfig(f"vistas.{clave}.{sobra[0]}: no existe")
-    if "comando" in cuerpo:
-        comando = cuerpo["comando"]
-        if not isinstance(comando, list) or not comando or not all(isinstance(x, str) and x.strip() for x in comando):
-            raise ErrorDeConfig(f"vistas.{clave}.comando: se esperaba una lista de palabras, llegó {comando!r}")
-    elif lugar in ("pestana", "plan"):
+    # lo que vale en `comando` lo dice la tabla de antes (`comando`, `pagina` o `home`), así una forma y la otra
+    # aceptan lo mismo; su error se renombra en `_con_vistas`
+    if "comando" not in cuerpo and lugar in ("pestana", "plan"):
         raise ErrorDeConfig(f"vistas.{clave}: falta comando, el que imprime la página")
     if lugar == "apps":
         fuentes = [f for f in ("comando", "archivo", "url") if cuerpo.get(f)]
@@ -678,7 +683,10 @@ def _con_vistas(datos: dict) -> tuple[dict, tuple[str, ...]]:
         try:
             desde_dict({destino: {clave: traducida}})
         except ErrorDeConfig as e:
-            raise ErrorDeConfig(str(e).replace(f"{destino}.{clave}", f"vistas.{clave}", 1)) from None
+            dice = str(e)
+            for antes in ("pagina", "home"):  # las claves que la traducción renombró
+                dice = dice.replace(f"{destino}.{clave}.{antes}:", f"{destino}.{clave}.comando:", 1)
+            raise ErrorDeConfig(dice.replace(f"{destino}.{clave}", f"vistas.{clave}", 1)) from None
         if not isinstance(datos.get(destino), dict):
             datos[destino] = {}
         datos[destino][clave] = traducida
@@ -703,6 +711,9 @@ def como_vista(tabla: str, cosa) -> dict:
         for campo in ("archivo", "url", "memoria", "descripcion"):
             if getattr(cosa, campo):
                 d[campo] = getattr(cosa, campo)
+        for campo in ("archivo", "memoria"):  # al leerla se expandió `~`: se devuelve, así no queda atada a esta máquina
+            if campo in d:
+                d[campo] = _con_tilde(d[campo])
     elif tabla == "secciones":
         d["aparece"] = "hilos"
         d["hilos"] = list(cosa.hilos)
@@ -717,15 +728,28 @@ def como_vista(tabla: str, cosa) -> dict:
             d["comentar"] = list(cosa.comentar)
     else:
         raise ValueError(f"[{tabla}] no es una de las tablas que reemplaza [vistas]")
-    if cosa.nombre and cosa.nombre != cosa.clave:
+    # un resultado no cae a su clave cuando no tiene nombre (queda ""), así que ahí el nombre se dice siempre
+    if cosa.nombre and (cosa.nombre != cosa.clave or tabla == "resultados"):
         d = {"nombre": cosa.nombre, **d}
     return d
 
 
+def _con_tilde(ruta: str) -> str:
+    """Una ruta bajo la carpeta del usuario, escrita con `~`."""
+    casa = str(Path.home())
+    if ruta == casa or ruta.startswith(casa.rstrip("/") + "/"):
+        return "~" + ruta[len(casa.rstrip("/")):]
+    return ruta
+
+
 def vista_en_toml(clave: str, vista: dict) -> str:
     """Una `[vistas.x]` escrita en TOML, para copiarla a la configuración."""
-    cabeza = f"[vistas.{clave}]" if re.fullmatch(r"[A-Za-z0-9_-]+", clave) else f"[vistas.{_cadena_toml(clave)}]"
-    return "\n".join([cabeza, *(f"{k} = {_valor_toml(v)}" for k, v in vista.items())])
+    return "\n".join([f"[vistas.{clave_toml(clave)}]", *(f"{k} = {_valor_toml(v)}" for k, v in vista.items())])
+
+
+def clave_toml(clave: str) -> str:
+    """Una clave como va en la cabeza de una tabla TOML: tal cual si es simple, entre comillas si no."""
+    return clave if re.fullmatch(r"[A-Za-z0-9_-]+", clave) else _cadena_toml(clave)
 
 
 def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None) -> Config:

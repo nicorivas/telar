@@ -96,9 +96,16 @@ dice siempre.
   `cfg.apps`, `cfg.secciones` y `cfg.resultados` no cambian, así que el resto de telar (las órdenes, la API, la
   página, `telar config --json`) no se entera. Las pruebas comparan cada forma de antes con su equivalente.
 - **Las tablas de antes se siguen leyendo**, sin aviso al cargar. `telar doctor` dice cuáles quedan y escribe
-  la `[vistas.x]` que las reemplaza.
+  la `[vistas.x]` que las reemplaza, en TOML que se copia tal cual (con la clave entre comillas si lleva un
+  punto o un espacio, y las rutas con `~` como se escribieron).
+- **Una clave en dos tablas de antes** (`[bloques.x]` y `[apps.x]`, lo que hace un módulo con pestaña y app)
+  no cabe en una vista: una vista es una fuente en un lugar. Se queda en la forma de antes, y `telar doctor`
+  lo dice sin aviso, porque no tiene arreglo. Cuando una vista pueda aparecer en más de un lugar (o un módulo
+  declare las suyas), esto se vuelve a mirar.
 - **Un nombre en las dos formas es un error**: `[vistas.correo]` y `[bloques.correo]` no se juntan ni se
-  adivina cuál gana. Lo mismo un módulo que aporta algo con el nombre de una vista.
+  adivina cuál gana. Lo mismo un módulo que aporta algo con el nombre de una vista, aunque lo aporte a otro
+  lugar (una pestaña `faro` del módulo y una `[vistas.faro]` que es una app). Al revés, `[vistas.x]` choca con
+  cualquier tabla de antes que tenga una `x`, vaya la vista adonde vaya.
 - **El orden.** En cada lugar van primero las de antes, después las vistas, en el orden del archivo, y al final
   lo de los módulos. Quien pasa todo a `[vistas]` tiene el orden de sus vistas.
 - **Los errores nombran la vista** (`vistas.correo.color: …`), no la tabla a la que se tradujo.
@@ -127,7 +134,9 @@ Cada una con la opción que tomé por ahora y por qué.
    pestañas de un hilo en la página (`vistas-hilo.ts`). Lo dejé así porque es la palabra del plan y en la
    configuración no hay confusión, pero los documentos tendrán que decir cuál de las tres.
 6. **El orden cuando se mezclan.** Primero las de antes y después las vistas. La otra opción era el orden en
-   que aparecen en el archivo, mezclando tablas, pero `tomllib` no guarda el orden entre tablas distintas.
+   que aparecen en el archivo, mezclando tablas, pero eso no se puede reconstruir: `tomllib` guarda el orden de
+   las tablas y el de las subtablas dentro de cada una, pero no cómo se intercalan `[vistas.a]`, `[bloques.b]`
+   y `[vistas.c]` entre sí.
 7. **Cuánto se leen las tablas de antes.** Sin fecha: hasta una versión que lo anuncie en el CHANGELOG, después
    de que `telar doctor` lleve un tiempo avisando. Retirarlas antes rompería configuraciones de gente que
    instaló desde PyPI.

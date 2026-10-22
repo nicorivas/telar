@@ -12,7 +12,9 @@ extension shared the version number.
   daily result) and where it appears (`aparece = "pestana" | "plan" | "apps" | "hilos" | "dia"`). It replaces
   `[bloques]`, `[apps]`, `[secciones]` and `[resultados]`, which are still read: each view is translated to its
   old table when the configuration is loaded, so nothing else changes. A name declared in both forms is an
-  error, and `telar doctor` has a new `vistas` check that suggests the view for each old table.
+  error, and so is a module named like a view. `telar doctor` has a new `vistas` check that writes, as TOML
+  ready to paste, the view for each old table; a key declared in two old tables (`[bloques.x]` and
+  `[apps.x]`) cannot be one view and is left as it is.
 - Messages have a mode: `telar mensaje --modo aviso|pedido|encargo|consulta` (also `modo` in `POST /mensajes`).
   `pedido`, the default, is what a message always was. An `aviso` waits in the thread's inbox without waking
   it (no «↯», no session opened, no longer turn) and comes in with its next turn. An `encargo` creates a task

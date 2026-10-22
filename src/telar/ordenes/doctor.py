@@ -70,7 +70,8 @@ def main(argv: list[str], ctx) -> int:
     for r in revisiones:
         print(f"  {MARCA[r['estado']]} {r['nombre']:<14} {_comun.recortar(r['dice'], ancho - 20)}")
         if r["arreglo"] and r["estado"] != OK:
-            print(_comun.tenue(f"      → {r['arreglo']}"))
+            # un arreglo de varias líneas (el TOML que hay que copiar) va sangrado bajo la flecha
+            print(_comun.tenue(f"      → {r['arreglo']}".replace("\n", "\n        ")))
     print()
     if fallas:
         print(_comun.fuerte(_comun.plural(len(fallas), "falla")))
@@ -394,21 +395,30 @@ def _modulos(ctx) -> list[dict]:
 
 def _vistas(ctx) -> list[dict]:
     """Lo declarado a mano en las tablas que `[vistas]` reemplaza (`[bloques]`, `[apps]`, `[secciones]`,
-    `[resultados]`): telar lo sigue leyendo, y aquí se sugiere la `[vistas.x]` que da lo mismo
-    (docs/propuestas/vistas.md). Un aviso por cada una; sin ninguna y con vistas, un ok. Sin nada, nada."""
-    from telar.config import _valor_toml, como_vista
+    `[resultados]`): telar lo sigue leyendo, y aquí se sugiere la `[vistas.x]` que da lo mismo, escrita en TOML
+    para copiarla tal cual (docs/propuestas/vistas.md). Un aviso por cada una; sin ninguna y con vistas, un ok.
+    Sin nada, nada. Una clave declarada en dos tablas de antes (`[bloques.x]` y `[apps.x]`) no cabe en una
+    vista, que es una sola cosa: se dice que se queda como está, sin aviso, porque no tiene arreglo."""
+    from telar.config import clave_toml, como_vista, vista_en_toml
 
     cfg = ctx.config
     de_antes = tuple(getattr(cfg, "vistas_de_antes", ()) or ())
-    salida = []
+    tablas_de: dict[str, list[str]] = {}
     for tabla, clave in de_antes:
+        tablas_de.setdefault(clave, []).append(tabla)
+    salida, compartidas = [], []
+    for tabla, clave in de_antes:
+        if len(tablas_de[clave]) > 1:
+            if tablas_de[clave][0] == tabla:
+                compartidas.append(" y ".join(f"[{t}.{clave_toml(clave)}]" for t in tablas_de[clave]))
+            continue
         cosa = next((c for c in getattr(cfg, tabla) if c.clave == clave), None)
         if cosa is None:
             continue
-        vista = como_vista(tabla, cosa)
-        claves = ", ".join(f"{k} = {_valor_toml(v)}" for k, v in vista.items())
-        salida.append(_r("vistas", AVISO, f"[{tabla}.{clave}] es de la forma de antes: telar la sigue leyendo",
-                         f"cámbiala por [vistas.{clave}] con {claves}"))
+        salida.append(_r("vistas", AVISO, f"[{tabla}.{clave_toml(clave)}] es de la forma de antes: telar la sigue leyendo",
+                         "cámbiala por:\n" + vista_en_toml(clave, como_vista(tabla, cosa))))
+    for cuales in compartidas:
+        salida.append(_r("vistas", OK, f"{cuales} comparten clave: quedan en la forma de antes"))
     if not salida and getattr(cfg, "vistas", ()):
         salida.append(_r("vistas", OK, f"{_comun.plural(len(cfg.vistas), 'vista')} en [vistas], ninguna de antes"))
     return salida

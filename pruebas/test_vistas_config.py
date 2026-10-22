@@ -158,6 +158,26 @@ class LosErrores(Prueba):
                 with self.assertRaisesRegex(ErrorDeConfig, patron):
                     leer(texto)
 
+    def test_aparece_que_no_es_un_texto(self):
+        for valor in ('["apps"]', '{ a = 1 }', "3"):
+            with self.subTest(valor):
+                with self.assertRaisesRegex(ErrorDeConfig, r"^vistas\.x\.aparece: pestana, plan, apps, hilos o dia"):
+                    leer(f'[vistas.x]\naparece = {valor}\nurl = "https://a.org"\n')
+
+    def test_en_con_una_fuente_que_no_corre_en_otra_maquina(self):
+        # sin aparece, `en` haría de la vista un resultado por día y el error culparía al comando
+        for fuente in ('comando = ["a"]', 'url = "https://a.org"', 'archivo = "/a.html"'):
+            with self.subTest(fuente):
+                nombre = fuente.split(" ")[0]
+                with self.assertRaisesRegex(ErrorDeConfig, rf"^vistas\.x\.en: no va con {nombre}"):
+                    leer(f'[vistas.x]\n{fuente}\nen = "srv"\n')
+
+    def test_el_comando_traducido_se_nombra_como_comando(self):
+        for vista in ('[vistas.j]\naparece = "apps"\ncomando = [" "]\n', '[vistas.j]\nhilos = ["j"]\ncomando = [" "]\n'):
+            with self.subTest(vista):
+                with self.assertRaisesRegex(ErrorDeConfig, r"^vistas\.j\.comando: "):
+                    leer(vista)
+
     def test_un_nombre_en_las_dos_formas(self):
         for tabla, cuerpo in (("bloques", 'comando = ["a"]'), ("apps", 'url = "https://a.org"'),
                               ("secciones", 'hilos = ["a"]'), ("resultados", 'carpeta = "/a"')):
@@ -198,11 +218,50 @@ class LoQueSugiereDoctor(Prueba):
         r = revisiones[0]
         self.assertEqual((r["nombre"], r["estado"]), ("vistas", doctor.AVISO))
         self.assertIn("[bloques.correo] es de la forma de antes", r["dice"])
-        self.assertTrue(r["arreglo"].startswith("cámbiala por [vistas.correo] con "))
-        # lo que sugiere, escrito como TOML, da la misma configuración
-        claves = r["arreglo"].removeprefix("cámbiala por [vistas.correo] con ")
-        texto = "[vistas.correo]\n" + "\n".join(_partir(claves)) + "\n"
+        self.assertTrue(r["arreglo"].startswith("cámbiala por:\n[vistas.correo]\n"))
+        # lo que sugiere es TOML que se copia tal cual y da la misma configuración
+        texto = r["arreglo"].removeprefix("cámbiala por:\n")
         self.assertEqual(sin_marcas(leer(texto)).bloques, cfg.bloques)
+
+    def test_doctor_escribe_la_vista_entera_y_con_comillas(self):
+        # la sugerencia es TOML que se copia tal cual, también con una clave que lleva un punto o un espacio
+        for antes in ('[bloques."mi correo"]\ncomando = ["a"]\ncolor = "rojo"\n', '[apps."a.b"]\nurl = "http://x"\n'):
+            with self.subTest(antes):
+                cfg = leer(antes)
+                (r,) = doctor._vistas(Contexto(config=cfg))
+                self.assertTrue(r["arreglo"].startswith("cámbiala por:\n"))
+                texto = r["arreglo"].removeprefix("cámbiala por:\n")
+                self.assertEqual(sin_marcas(leer(texto)), sin_marcas(cfg))
+
+    def test_doctor_con_la_misma_clave_en_dos_tablas_de_antes(self):
+        # una vista es una sola cosa: [bloques.x] y [apps.x] no caben en una [vistas.x], y sugerir dos daría un
+        # TOML que no se lee. Se dice que se quedan como están, sin aviso que no tenga arreglo.
+        cfg = leer('[bloques.x]\ncomando = ["a"]\n[apps.x]\nurl = "https://a.org"\n[bloques.y]\ncomando = ["y"]\n')
+        revisiones = doctor._vistas(Contexto(config=cfg))
+        avisos = [r for r in revisiones if r["estado"] == doctor.AVISO]
+        self.assertEqual([r["dice"] for r in avisos], ["[bloques.y] es de la forma de antes: telar la sigue leyendo"])
+        otros = [r for r in revisiones if r["estado"] != doctor.AVISO]
+        self.assertEqual(len(otros), 1)
+        self.assertEqual(otros[0]["estado"], doctor.OK)
+        self.assertIn("[bloques.x] y [apps.x]", otros[0]["dice"])
+
+    def test_la_sugerencia_de_un_resultado_con_nombre(self):
+        cfg = leer('[resultados.x]\nen = "srv"\nnombre = "x"\n')
+        texto = vista_en_toml("x", como_vista("resultados", cfg.resultados[0]))
+        self.assertEqual(leer(texto).resultados, cfg.resultados)
+
+    def test_la_sugerencia_no_queda_atada_a_la_carpeta_de_esta_maquina(self):
+        cfg = leer('[apps.x]\narchivo = "~/a.html"\nmemoria = "~/a.json"\n')
+        vista = como_vista("apps", cfg.apps[0])
+        self.assertEqual((vista["archivo"], vista["memoria"]), ("~/a.html", "~/a.json"))
+        self.assertEqual(leer(vista_en_toml("x", vista)).apps, cfg.apps)
+
+    def test_un_comando_que_bloques_acepta_tambien_vale_como_vista(self):
+        cfg = leer('[bloques.x]\ncomando = ["echo", " "]\n[secciones.y]\nhilos = ["y"]\nhome = []\n')
+        for tabla, cosa in (("bloques", cfg.bloques[0]), ("secciones", cfg.secciones[0])):
+            with self.subTest(tabla):
+                self.assertEqual(getattr(leer(vista_en_toml(cosa.clave, como_vista(tabla, cosa))), tabla), (cosa,))
+        self.assertEqual(leer('[vistas.y]\nhilos = ["y"]\ncomando = []\n').secciones, cfg.secciones)
 
     def test_doctor_sin_nada_de_antes(self):
         cfg = leer(PARES["app de una url"][1])
@@ -212,20 +271,6 @@ class LoQueSugiereDoctor(Prueba):
 
     def test_doctor_corre_la_revision(self):
         self.assertIn("revisiones += _vistas(ctx)", Path(doctor.__file__).read_text(encoding="utf-8"))
-
-
-def _partir(claves: str) -> list[str]:
-    """«a = "x", b = ["y", "z"]» en sus líneas: las comas de adentro de una lista no parten."""
-    lineas, hondura, actual = [], 0, ""
-    for c in claves:
-        hondura += c == "["
-        hondura -= c == "]"
-        if c == "," and hondura == 0:
-            lineas.append(actual.strip())
-            actual = ""
-            continue
-        actual += c
-    return lineas + [actual.strip()]
 
 
 class ConModulos(Prueba):
@@ -254,6 +299,14 @@ class ConModulos(Prueba):
                          rotos=rotos)
         self.assertEqual([b.comando for b in cfg.bloques], [("otro",)])
         self.assertIn("[vistas.faro]", cfg.modulos_rotos[0][1])
+
+
+    def test_un_modulo_que_se_llama_como_una_vista_de_otro_lugar(self):
+        # el módulo aporta una pestaña y la vista es una app o un grupo de hilos: igual son dos cosas llamadas faro
+        for vista in ('url = "https://a.org"', 'hilos = ["Faro*"]'):
+            with self.subTest(vista):
+                with self.assertRaisesRegex(ErrorDeConfig, r"modulos\.faro: ya hay una \[vistas\.faro\]"):
+                    leer(self.modulo + f'[vistas.faro]\n{vista}\n')
 
 
 class DePuntaAPunta(Prueba):

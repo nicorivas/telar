@@ -433,8 +433,10 @@ siempre, y al leer la configuración cada vista se traduce a la suya, así que l
 página, `telar config --json`) es lo mismo con una forma que con la otra. Se pueden mezclar mientras se
 cambia: en cada lugar van primero las de antes, después las vistas en el orden del archivo, y al final lo que
 aportan los módulos. Un mismo nombre en las dos formas (`[vistas.correo]` y `[bloques.correo]`) es un error,
-y también un módulo que se llama como una vista. `telar doctor` dice cuáles quedan de antes y la vista que
-las reemplaza. Los módulos siguen declarando `[pestana]`, `[app]` y `[resultado]` en su `modulo.toml`.
+y también un módulo que se llama como una vista, aporte a donde aporte. `telar doctor` dice cuáles quedan de
+antes y escribe la vista que las reemplaza, lista para copiar. Una clave declarada en dos tablas de antes
+(`[bloques.x]` y `[apps.x]`, como las arma un módulo) no cabe en una vista, que es una sola cosa: se queda
+como está. Los módulos siguen declarando `[pestana]`, `[app]` y `[resultado]` en su `modulo.toml`.
 
 El diseño y lo que falta están en [propuestas/vistas.md](propuestas/vistas.md).
 
