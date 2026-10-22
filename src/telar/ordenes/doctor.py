@@ -56,6 +56,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _tareas_del_tipo(ctx)
     revisiones += _ganchos(ctx, abiertos)
     revisiones += _remotos(ctx)
+    revisiones += _sesiones_propias(ctx)
 
     fallas = [r for r in revisiones if r["estado"] == FALLA]
 
@@ -85,6 +86,36 @@ def _remotos(ctx) -> list[dict]:
         for bien, dice in mod_remoto.revisar(r):
             salida.append(_r(f"remoto {r.nombre}", OK if bien else FALLA, dice))
     return salida
+
+
+def _sesiones_propias(ctx) -> list[dict]:
+    """Las sesiones tmux propias por hilo (`telar-…`, de las versiones de antes) que siguen vivas aquí, y
+    los hilos remotos anotados con una dirección de ese tipo. telar ya no abre ninguna: todo hilo nuevo
+    es una ventana de la sesión del telar. Las de antes se siguen leyendo mientras existan, y lo que las
+    lee se podrá quitar cuando no quede ninguna (docs/propuestas/un-dueno-por-hilo.md). Sin tmux, nada."""
+    from telar import movil
+
+    try:
+        vivas = sorted(movil.propios())
+    except (OSError, RuntimeError):
+        vivas = []
+    try:
+        viejas = sorted(h for h, r in mod_estado.abrir(ctx.config).remotos().items()
+                        if r.get("sesion") and not r["sesion"].startswith("@"))
+    except mod_estado.ErrorDeEstado:
+        viejas = []
+    if not vivas and not viejas:
+        return [_r("sesiones", OK, "ninguna sesión propia por hilo: todos son ventanas de la sesión del telar")]
+    partes = []
+    if vivas:
+        partes.append(f"{_comun.plural(len(vivas), 'sesión propia', 'sesiones propias')} de antes, viva"
+                      f"{'s' if len(vivas) > 1 else ''}: {', '.join(vivas[:5])}{' …' if len(vivas) > 5 else ''}")
+    if viejas:
+        partes.append(f"{_comun.plural(len(viejas), 'hilo remoto', 'hilos remotos')} con dirección de antes: "
+                      f"{', '.join(viejas[:5])}{' …' if len(viejas) > 5 else ''}")
+    return [_r("sesiones", AVISO, "; ".join(partes),
+               "telar las sigue leyendo; para pasar uno a ventana, `telar hilo archivar --cerrar` y "
+               "`telar hilo retomar`. Cuando no quede ninguna en ninguna máquina, telar puede dejar de leerlas")]
 
 
 def _r(nombre: str, estado: str, dice: str, arreglo: str = "") -> dict:

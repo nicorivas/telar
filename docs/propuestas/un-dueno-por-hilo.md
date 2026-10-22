@@ -1,8 +1,9 @@
 # Un dueño por hilo: cada máquina muestra, solo una manda
 
-Estado: **en parte construida**. Una sesión por máquina, las vistas agrupadas y la dirección marcada de
-cada ventana ya son como funciona telar ([arquitectura](../arquitectura.md), «Los hilos y tmux»). Falta
-que el registro de un hilo viva en un solo lugar.
+Estado: **casi construida**. Una sesión por máquina, las vistas agrupadas y la dirección marcada de
+cada ventana ya son como funciona telar ([arquitectura](../arquitectura.md), «Los hilos y tmux»), y el
+registro de un hilo (vínculo, archivo, conversación) vive en su dueño y las otras máquinas lo leen del
+bus. Falta quitar las sesiones propias de antes, cuando no quede ninguna (paso 2).
 
 ## Por qué
 
@@ -36,6 +37,54 @@ Hechos: los cambios a un hilo ajeno los aplica su dueño (`telar hilo` se los pi
 a su nodo, y solo si allá sale bien ajusta lo de aquí), y el nodo concilia en cada vuelta de la foto (30 s)
 las ventanas de aquí contra el estado de los hilos de las otras máquinas.
 
-1. **Dejar de copiar**: la máquina deja de guardar vínculos, sesiones y archivados de los hilos ajenos;
-   la lista y el dashboard los leen del bus.
-2. **Quitar las sesiones propias por hilo** del código, cuando no quede ninguna.
+1. ~~**Dejar de copiar**~~ (hecho): la máquina deja de guardar vínculos, sesiones y archivados de los hilos
+   ajenos; la lista y el dashboard los leen del bus.
+
+   Cómo quedó:
+
+   - El dueño publica en `TELAR_HILOS`, además de la conversación que ya iba, `vinculo` (relativo a la
+     raíz, "" sin carpeta) y `archivado`. Un hilo ya publicado como muerto se vuelve a publicar si se
+     archiva o se vincula después, salvo que otra máquina ya lo publique (se mudó).
+   - El nodo de cada máquina deja lo último que publicó cada hilo de las otras en `ajenos.json`, entero
+     y reemplazado en cada cambio: es la foto del bus en disco, no una copia que se parcha con eventos.
+   - `Estado.vinculos()`, `archivados()` y `sesiones()` toman de ahí lo de un hilo ajeno, así que la
+     lista, la página, `telar proyectos`, `retomar` y el nodo leen lo del dueño sin cambiar nada más.
+     Ajeno es el hilo que tiene ventana o dirección aquí (`remotos.json`) **y** cuyo dueño, según el bus,
+     es otra máquina: un hilo de aquí que se llama igual que uno de allá no toma lo de aquel.
+   - `telar hilo vincular|desvincular|archivar|desarchivar` de un hilo ajeno ya no escribe aquí: se lo
+     pide al dueño y listo. `retomar` le pide `desarchivar` si estaba archivado y no anota aquí la
+     conversación que encontró allá. `conciliar` y «revivir» usan el `archivado` del dueño.
+   - Compatibilidad: un estado de antes con copias de hilos ajenos se sigue leyendo. Mientras el dueño no
+     publique un campo (sin bus, con el nodo apagado o con un telar de antes allá), vale la copia de aquí;
+     en cuanto lo publica, gana el dueño. Las copias no se borran ni se migran: son derivadas y quedan sin
+     uso. Sin bus, todo funciona como antes (los hilos remotos por ssh siguen guardando su registro aquí).
+
+   Lo que sigue copiándose, a propósito: la **prioridad** (no estaba en este paso; va al dueño y se anota
+   aquí, y la foto del espejo la trae), la **atención** (el nodo la anota al instante para el semáforo), y
+   la conversación que se anota al abrir un hilo nuevo allá desde aquí (`telar ir --remoto`), que sirve de
+   respaldo hasta que el dueño la publique y entonces queda sin uso. `desarchivar` de un hilo ajeno desde
+   otros caminos (llevarle un pendiente) toca solo la copia de aquí: si allá estaba archivado, se
+   desarchiva cuando su agente vuelve a trabajar, como cualquier hilo.
+
+2. **Quitar las sesiones propias por hilo** del código, cuando no quede ninguna. **Todavía no**: no es
+   seguro.
+
+   Dónde se crean: ya en ninguna parte en la práctica. `movil.crear` abre una sesión propia solo sin
+   `principal`, y todos los que lo llaman (encargos, periódicos) le pasan `[sesion]`, que no puede ser
+   vacía; `remoto.crear_alla` abre ventanas. Lo único que todavía puede crear una es `tmux new-session -A`
+   al mirar desde otra máquina un hilo anotado con una dirección vieja (`telar-…`), y eso solo si sigue vivo.
+
+   Dónde se leen: `movil.propios()` (de ahí `Telar.propios`, `tel.propio()` y la columna «propio» de la
+   lista), el nodo (`locales`, que publica `sesion_tmux` para que otra máquina las mire), `encargos`
+   (escribirle a un agente que vive en una), `telar hilo cerrar` (`_cerrar_sesion`) y `remoto.comando` (el
+   `new-session -A` para una dirección vieja guardada en `remotos.json`).
+
+   Por qué no se quita ahora: (a) que no quede ninguna no se puede ver desde el código; hay que mirarlo en
+   cada máquina, y una sesión de antes vive mientras su servidor tmux no se reinicie; (b) telar se publica
+   en PyPI, y quien actualice con un agente vivo en una sesión de antes lo perdería de la lista (sin casilla,
+   sin cerrar, sin poder mirarlo desde otra máquina); (c) `remotos.json` de un estado de hoy puede traer
+   direcciones viejas que se siguen siguiendo. Para verlo, `telar doctor` tiene una revisión `sesiones`:
+   lista las sesiones propias vivas y los hilos remotos con dirección vieja. Cuando dé `ok` en todas las
+   máquinas, y tras una versión que lo avise, se puede quitar: `movil.propios`, la rama sin `principal` de
+   `movil.crear`, `Telar.propios`/`propio`, `_cerrar_sesion`, `sesion_tmux` y la rama de `remoto.comando`
+   para direcciones sin `@`.

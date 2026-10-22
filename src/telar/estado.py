@@ -16,6 +16,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     archivados.json   lista de hilos archivados
     atencion.json     hilo → {"atencion": …, "desde": ISO}
     sesiones.json     hilo → [id de conversación, …], la principal primero
+    ajenos.json       hilo de otra máquina → lo último que su dueño publicó en el bus
     paneles.json      panel del multiplexor → conversación que corre ahí ahora
     orden             una palabra: cómo se ordena la lista de hilos
     foco.log          una línea `ISO<TAB>hilo` por cambio de foco
@@ -95,6 +96,8 @@ ARCHIVOS = {
     "paneles": "paneles.json",
     "ids": "ids.json",
     "remotos": "remotos.json",
+    #: hilo de otra máquina → lo último que su dueño publicó de él en el bus (lo escribe el nodo, entero)
+    "ajenos": "ajenos.json",
     #: nombre viejo → nombre nuevo, de cada renombre: un agente que ya corría sigue diciendo el viejo
     "alias": "alias.json",
 }
@@ -441,9 +444,19 @@ class Estado:
     # ── vínculos: hilo → carpeta del repositorio ───────────────────────────────
 
     def vinculos(self) -> dict[str, str]:
-        """hilo → ruta relativa a la raíz. Las claves con `_` delante se ignoran."""
+        """hilo → ruta relativa a la raíz. Las claves con `_` delante se ignoran.
+
+        El de un hilo de otra máquina es el que publica su dueño (ver `registro_ajeno`)."""
         d = self._leer("vinculos", {})
-        return {k: str(v) for k, v in d.items() if not k.startswith("_") and isinstance(v, str)}
+        salida = {k: str(v) for k, v in d.items() if not k.startswith("_") and isinstance(v, str)}
+        for hilo, r in self.registro_ajeno().items():
+            if "vinculo" not in r:
+                continue  # su dueño todavía no lo publica (un telar de antes): vale lo de aquí
+            if r["vinculo"]:
+                salida[hilo] = r["vinculo"]
+            else:
+                salida.pop(hilo, None)
+        return salida
 
     def vinculo(self, hilo: str) -> str:
         return self.vinculos().get(hilo, "")
@@ -467,6 +480,66 @@ class Estado:
 
     def anotar_remoto(self, hilo: str, remoto: str, sesion: str) -> None:
         self._actualizar("remotos", lambda d: d.__setitem__(hilo, {"remoto": remoto, "sesion": sesion}), {})
+
+    # ── hilos ajenos: lo que publica su dueño ─────────────────────────────────
+    #
+    # Un hilo tiene un solo dueño, la máquina donde corre (docs/propuestas/un-dueno-por-hilo.md). Su
+    # vínculo, su archivo y su conversación los guarda allá y los publica en el bus; el nodo de aquí deja
+    # en `ajenos.json` lo último que publicó, entero y reemplazado cada vez, sin parchar nada. Lo que se lee
+    # aquí de un hilo ajeno sale de ahí, y no se copia en los archivos de aquí: una copia que se mantiene
+    # con eventos queda distinta en cuanto se pierde uno.
+    #
+    # Un estado de antes trae copias de esos hilos en `vinculos.json`, `archivados.json` y `sesiones.json`:
+    # se siguen leyendo mientras el dueño no publique el campo (sin bus, con el nodo apagado, o un telar de
+    # antes allá), y en cuanto lo publica, lo suyo gana. No se borran: son derivados y no estorban.
+
+    def ajenos(self) -> dict[str, dict]:
+        """hilo → lo último que publicó su dueño (máquina, vínculo, archivado, conversación…), como lo
+        dejó el nodo. Solo hilos de otras máquinas; vacío sin bus o sin nodo."""
+        salida = {}
+        try:
+            datos = self._leer("ajenos", {})
+        except ErrorDeEstado:
+            return {}  # roto: es derivado, el nodo lo reescribe en la vuelta siguiente
+        for hilo, valor in datos.items():
+            if isinstance(hilo, str) and isinstance(valor, dict) and isinstance(valor.get("maquina"), str) and valor["maquina"]:
+                salida[hilo] = valor
+        return salida
+
+    def guardar_ajenos(self, ajenos: Mapping[str, Mapping]) -> None:
+        """Reemplaza entero lo que se sabe de los hilos ajenos (lo llama el nodo)."""
+        with _candado(self.ruta("ajenos").with_suffix(".lock")):
+            self._escribir("ajenos", {k: dict(v) for k, v in sorted(ajenos.items())})
+
+    def registro_ajeno(self) -> dict[str, dict]:
+        """Los hilos ajenos que esta máquina muestra (los que tienen ventana o dirección aquí, en
+        `remotos.json`), con lo que publica su dueño. Pedir las dos cosas evita que un hilo de aquí que
+        se llama igual que uno de allá tome lo de aquel.
+
+        Cada valor trae solo los campos que el dueño publicó, ya limpios: `vinculo` (texto), `archivado`
+        (bool) y `conversacion` (texto). El que falta no está: quien lee usa entonces lo de aquí."""
+        ajenos = self.ajenos()
+        if not ajenos:
+            return {}
+        salida = {}
+        for hilo in self.remotos():
+            r = ajenos.get(hilo)
+            if r is None:
+                continue
+            limpio: dict = {"maquina": r["maquina"]}
+            if isinstance(r.get("vinculo"), str):
+                crudo = r["vinculo"].strip()
+                limpio["vinculo"] = "/" + crudo.strip("/") if crudo.startswith("/") else crudo.strip("/")
+            if isinstance(r.get("archivado"), bool):
+                limpio["archivado"] = r["archivado"]
+            if isinstance(r.get("conversacion"), str):
+                limpio["conversacion"] = r["conversacion"]
+            salida[hilo] = limpio
+        return salida
+
+    def es_ajeno(self, hilo: str) -> bool:
+        """¿Lo de este hilo lo guarda su dueño en otra máquina (y aquí no se escribe)?"""
+        return hilo in self.registro_ajeno()
 
     def desvincular(self, hilo: str) -> None:
         self._actualizar("vinculos", lambda d: d.pop(hilo, None), {})
@@ -493,7 +566,12 @@ class Estado:
     # ── archivados ─────────────────────────────────────────────────────────────
 
     def archivados(self) -> set[str]:
-        return {h for h in self._leer("archivados", []) if isinstance(h, str)}
+        """Los hilos archivados. El de un hilo de otra máquina lo dice su dueño (ver `registro_ajeno`)."""
+        salida = {h for h in self._leer("archivados", []) if isinstance(h, str)}
+        for hilo, r in self.registro_ajeno().items():
+            if "archivado" in r:
+                (salida.add if r["archivado"] else salida.discard)(hilo)
+        return salida
 
     def archivar(self, hilo: str) -> None:
         def cambio(lista):
@@ -577,6 +655,14 @@ class Estado:
             ids = _ids(valor)
             if ids:
                 salida[hilo] = ids
+        # la de un hilo de otra máquina es la que publica su dueño (ver `registro_ajeno`)
+        for hilo, r in self.registro_ajeno().items():
+            if "conversacion" not in r:
+                continue
+            if r["conversacion"]:
+                salida[hilo] = (r["conversacion"],)
+            else:
+                salida.pop(hilo, None)
         return salida
 
     def hilo_de(self, sesion: str) -> str:

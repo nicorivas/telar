@@ -126,13 +126,22 @@ Por el bus viajan:
 | qué | dónde | para qué |
 |---|---|---|
 | los mensajes | stream `TELAR_CASILLAS`, tema `casilla.<persona>.<hilo>` | esperan hasta que los recoja la máquina donde vive el hilo; el mismo id no se guarda dos veces |
-| el estado | almacén `TELAR_HILOS`, clave `<persona>.<hilo>` | dónde vive cada hilo y en qué anda; cada máquina publica los suyos y se entera de los demás al instante |
+| el estado | almacén `TELAR_HILOS`, clave `<persona>.<hilo>` | dónde vive cada hilo, en qué anda, su conversación, su vínculo y si está archivado; cada máquina publica los suyos y se entera de los demás al instante |
 | la foto | almacén `TELAR_ESPEJO`, cada 30 s | los hilos de cada máquina y la dirección de su página |
 | los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo |
 | el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
 
 Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
 hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
+
+**Un hilo tiene un solo dueño**, la máquina donde corre ([propuesta](propuestas/un-dueno-por-hilo.md)).
+Su vínculo, su archivo y su conversación los guarda él y los publica en `TELAR_HILOS`; el nodo de las
+otras máquinas deja lo último que publicó en `ajenos.json` (en la carpeta del estado, entero y
+reemplazado cada vez), y la lista y la página de allá lo leen de ahí. Allá no se copia: vincular o
+archivar un hilo ajeno se le pide a su dueño, y lo de allá cambia cuando él lo vuelve a publicar. Lo
+único que la otra máquina guarda de un hilo ajeno es lo suyo: la ventana que lo mira (`remotos.json`).
+Un estado de antes, con copias en `vinculos.json`, `archivados.json` o `sesiones.json`, se sigue
+leyendo mientras el dueño no publique ese campo (sin bus, con el nodo apagado, o un telar de antes allá).
 
 **Cómo llega un mensaje.** El nodo de la máquina del hilo lo deja en su casilla local
 (`telar.casilla`). Los ganchos `Stop` y `UserPromptSubmit` del agente (`telar agente casilla`) se lo

@@ -13,9 +13,10 @@ Cada dos segundos:
    confirma. Después avisa: a un hilo inactivo se le teclea «↯ mensaje nuevo» (el gancho le entrega el
    contenido); a uno que trabaja, nada (el gancho Stop se lo entrega al terminar el turno); a un agente
    residente sin sesión, se le abre con ese aviso como primer mensaje.
-3. **Su estado**: publica de cada uno la máquina, la atención, desde cuándo y su conversación, solo si
-   cambió. Y escucha el de los demás: la atención de un hilo que vive en otra máquina se anota aquí al
-   instante, sin sondeo.
+3. **Su estado**: publica de cada uno la máquina, la atención, desde cuándo, su conversación, su vínculo
+   y si está archivado, solo si cambió. Y escucha el de los demás: lo que publica el dueño de un hilo
+   que vive en otra máquina queda aquí en `ajenos.json` (telar.estado, «hilos ajenos»), de donde lo leen
+   la lista y la página, y su atención se anota aquí al instante, sin sondeo.
 
 También atiende pedidos con respuesta: `leer` (los últimos turnos de un hilo de aquí) y `ping`.
 Necesita `[bus] url` en la configuración y el extra «bus» de telar (nats-py).
@@ -39,6 +40,15 @@ VUELTA = 2.0
 ESPEJO_CADA = 15
 #: un «trabajando» sin cambios por más de esto se da por pegado y se avisa igual (segundos)
 TRABAJANDO_VIEJO = 45 * 60
+#: lo que se guarda en `ajenos.json` de cada hilo de otra máquina (lo demás —su ventana, su sesión
+#: tmux— es para traer la ventana, y lo usa el nodo de lo que tiene en memoria)
+CAMPOS_AJENOS = ("maquina", "vivo", "atencion", "desde", "conversacion", "vinculo", "archivado", "residente", "actualizado")
+
+
+def registro_de(nombre: str, vinculos, archivados) -> dict:
+    """Lo que el dueño de un hilo publica de su registro: su vínculo (relativo a la raíz, "" si no
+    tiene) y si está archivado."""
+    return {"vinculo": vinculos.get(nombre, ""), "archivado": nombre in archivados}
 
 
 def main(argv: list[str], ctx) -> int:
@@ -87,6 +97,10 @@ class Nodo:
         self.espejo = None
         #: el último estado de cada hilo de las otras máquinas, por su clave del bus (lo llena `_vigilar`)
         self.vistos: dict[str, dict] = {}
+        #: lo último que se dejó en `ajenos.json`, para no reescribirlo si no cambió
+        self.ajenos_escritos: dict | None = None
+        #: el registro de los hilos de aquí en la última vuelta: (vínculos, archivados, remotos)
+        self.registro: tuple[dict, set, dict] = ({}, set(), {})
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -103,6 +117,8 @@ class Nodo:
         remotos = est.remotos()
         atenciones = est.atenciones()
         sesiones = est.sesiones()
+        vinculos, archivados = est.vinculos(), est.archivados()
+        self.registro = (vinculos, archivados, remotos)
         salida: dict[str, dict] = {}
 
         from telar import movil
@@ -124,6 +140,8 @@ class Nodo:
                     "atencion": atencion.value if atencion else "ninguna",
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
+                    # el registro del hilo, que las otras máquinas leen de aquí en vez de copiarlo
+                    **registro_de(nombre, vinculos, archivados),
                     # dónde mirarlo desde otra máquina: su ventana en la sesión del telar, o la sesión
                     # tmux propia de antes (remotos)
                     "ventana": ventana,
@@ -283,6 +301,16 @@ class Nodo:
                     actuales[previo["nombre"]] = previo
                     continue
                 actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": "", "ventana": ""}
+            elif previo["nombre"] not in actuales:
+                # ya publicado como muerto: si aquí se archivó o se vinculó después (lo pidió otra
+                # máquina), se vuelve a publicar con lo nuevo. Salvo que ya lo publique otra máquina
+                # (se mudó): pisarle su estado lo traería de vuelta
+                vinculos, archivados, remotos = self.registro
+                if clave in self.vistos or previo["nombre"] in remotos:
+                    continue
+                nuevo = {**previo, **registro_de(previo["nombre"], vinculos, archivados)}
+                if nuevo != previo:
+                    actuales[previo["nombre"]] = nuevo
         for nombre in locales:
             self.ausentes.pop(nombre, None)
         # cada 30 s, quiénes están vivos aquí: si tmux se cae, `telar hilo caidos` sabe qué reabrir
@@ -327,6 +355,7 @@ class Nodo:
                 continue
             if not e.value:
                 self.vistos.pop(e.key, None)  # borrado: ese hilo ya no está en ninguna parte
+                await asyncio.to_thread(self.espejar_ajenos)
                 continue
             try:
                 d = json.loads(e.value)
@@ -334,8 +363,10 @@ class Nodo:
                 continue
             if d.get("maquina") == self.yo:
                 self.vistos.pop(e.key, None)
+                await asyncio.to_thread(self.espejar_ajenos)
                 continue
             self.vistos[e.key] = d
+            await asyncio.to_thread(self.espejar_ajenos)
 
             def anotar_aqui():
                 est = mod_estado.abrir(self.config)
@@ -354,6 +385,22 @@ class Nodo:
             except Exception as e:  # noqa: BLE001 - una ventana que no se pudo abrir o cerrar no tumba al vigía
                 self.anotar(f"«{d.get('nombre')}»: {type(e).__name__}: {e}")
 
+    def espejar_ajenos(self) -> bool:
+        """Deja en `ajenos.json` lo último que publicó cada hilo de las otras máquinas (lo que hay en
+        `vistos`), entero: la lista y la página leen de ahí el vínculo, el archivo y la conversación de un
+        hilo ajeno, sin copia que mantener. Devuelve si escribió."""
+        ajenos = {}
+        for d in self.vistos.values():
+            nombre = d.get("nombre")
+            if not isinstance(nombre, str) or not nombre or not d.get("maquina"):
+                continue
+            ajenos[nombre] = {k: d[k] for k in CAMPOS_AJENOS if k in d}
+        if ajenos == self.ajenos_escritos:
+            return False
+        mod_estado.abrir(self.config).guardar_ajenos(ajenos)
+        self.ajenos_escritos = ajenos
+        return True
+
     def conciliar(self) -> list[str]:
         """Las ventanas de aquí de los hilos que viven en otras máquinas, contra su estado en el bus (lo que
         `_vigilar` va guardando en `vistos`): se trae la de uno vivo allá que aquí no está (salvo archivado),
@@ -369,7 +416,9 @@ class Nodo:
             nombre = d.get("nombre", "")
             h = tel.por_nombre(nombre)
             viva = h is not None and tel.vivo(h)
-            falta = bool(d.get("vivo")) and not viva and nombre not in archivados
+            # archivado: lo que publica su dueño; si no lo publica (un telar de antes), lo de aquí
+            archivado = d["archivado"] if isinstance(d.get("archivado"), bool) else nombre in archivados
+            falta = bool(d.get("vivo")) and not viva and not archivado
             sobra = not d.get("vivo") and viva and (anotados.get(nombre) or {}).get("remoto") == d.get("maquina")
             if falta or sobra:
                 self.ventana_de(d)
@@ -446,6 +495,8 @@ class Nodo:
         from datetime import datetime
 
         est = tel.estado
+        if isinstance(d.get("archivado"), bool):
+            return  # su dueño publica si está archivado (y lo desarchiva allá cuando su agente vuelve)
         if aqui not in est.archivados():
             return
         try:

@@ -767,6 +767,9 @@ no valen) y una si `modulos.toml` no se lee. Con todos legibles, una sola `módu
 `ok` y sus nombres; sin módulos, ninguna. Los repos de `[repos]` traen revisiones
 `repos` (uno que no existe o queda fuera de `raiz`, un `aviso`) y `perfiles` (las
 carpetas que reconocen dos repos y cuál gana, un `aviso`).
+La revisión `sesiones` dice si quedan sesiones tmux propias por hilo de las versiones de
+antes (`telar-…`) vivas en esta máquina, o hilos remotos anotados con una dirección de ese
+tipo (un `aviso`, con sus nombres); sin ninguna, `ok`.
 
 ### `telar config --json` y `telar perfil --json`
 

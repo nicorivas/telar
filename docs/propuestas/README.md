@@ -16,7 +16,7 @@ el primer paso sin hacer de la primera propuesta.
    mensajes con modos, el encargo, el lugar y los worktrees, vistas, disparadores, permisos), y
    `telar commit` en todas partes.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
-   que guarda su registro; las demás lo leen del bus.
+   que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
 4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).

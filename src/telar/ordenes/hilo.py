@@ -42,8 +42,8 @@ arriba» le toca al hilo equivocado más seguido de lo que parece.
 from __future__ import annotations
 
 import sys
-
 from pathlib import Path
+from types import SimpleNamespace
 
 from telar import lectura
 from telar.modelo import Hilo, Prioridad
@@ -133,8 +133,9 @@ def main(argv: list[str], ctx) -> int:
     salida = 0
     # si es un hilo remoto, lo que le pase cambia lo que su máquina publica en el directorio
     remoto_antes = est.remotos().get(hilo.nombre, {}).get("remoto", "")
-    # un hilo de otra máquina: el cambio lo hace su dueño. Lo de aquí (la copia de su registro, la ventana
-    # que lo mira) se ajusta después, si allá salió bien
+    # un hilo de otra máquina: el cambio lo hace su dueño, y su registro (vínculo, archivo) lo guarda él:
+    # aquí se lee de lo que publica (telar.estado, «hilos ajenos»), no se copia. Lo de aquí que sí es de
+    # aquí (la ventana que lo mira, su nombre en ella) se ajusta después, si allá salió bien
     dueno = _dueno(ctx, hilo) if o.verbo in AL_DUENO else ""
     if dueno:
         problema = _al_dueno(ctx, dueno, o, hilo.nombre)
@@ -146,7 +147,8 @@ def main(argv: list[str], ctx) -> int:
         relativa, problema = _ruta_en_raiz(o.valor or ".", ctx.config.raiz)
         if relativa is None:
             return _comun.queja(problema)
-        est.vincular(hilo.nombre, relativa)
+        if not dueno:
+            est.vincular(hilo.nombre, relativa)
         arquetipo, _ = lectura.ubicar(ctx.perfil, ctx.config.raiz, relativa, mapa=tel.unidades)
         print(f"«{hilo.nombre}» → {relativa}")
         if arquetipo is None:
@@ -159,7 +161,8 @@ def main(argv: list[str], ctx) -> int:
         else:
             print(_comun.tenue(f"  arquetipo: {arquetipo.nombre}"))
     elif o.verbo == "desvincular":
-        est.desvincular(hilo.nombre)
+        if not dueno:
+            est.desvincular(hilo.nombre)
         print(f"«{hilo.nombre}» queda sin carpeta")
     elif o.verbo == "renombrar":
         if not o.valor:
@@ -196,14 +199,16 @@ def main(argv: list[str], ctx) -> int:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
     elif o.verbo == "archivar":
-        est.archivar(hilo.nombre)
+        if not dueno:
+            est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
         if o.cerrar and not dueno:
             salida = _cerrar(ctx, tel, hilo)
         else:
             print(_comun.tenue("  sigue abierto; --cerrar además lo cierra en el multiplexor"))
     elif o.verbo == "desarchivar":
-        est.desarchivar(hilo.nombre)
+        if not dueno:
+            est.desarchivar(hilo.nombre)
         print(f"de vuelta en la lista «{hilo.nombre}»")
     elif o.verbo == "retomar":
         salida = _retomar(ctx, tel, hilo)
@@ -666,7 +671,14 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
     de pedirle a nadie que busque el id y lo escriba. Si el hilo sigue vivo, solo se va a él.
     """
     est = tel.estado
-    est.desarchivar(hilo.nombre)
+    # el de otra máquina lo desarchiva su dueño: aquí no se guarda su archivo (telar.estado, «hilos ajenos»)
+    dueno = _dueno(ctx, hilo) if est.es_ajeno(hilo.nombre) else ""
+    if not dueno:
+        est.desarchivar(hilo.nombre)
+    elif hilo.archivado:
+        problema = _al_dueno(ctx, dueno, SimpleNamespace(verbo="desarchivar", valor="", cerrar=False, json=True), hilo.nombre)
+        if problema:
+            print(_comun.tenue(f"  sigue archivado: {problema}"))
     if tel.mux is None or not tel.viva:
         return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
     try:
@@ -685,7 +697,8 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
             if conversacion is None:
                 print(_comun.tenue(f"  no pude preguntar allá qué conversación retomar ({problema}): uso la anotada aquí"))
                 conversacion = hilo.sesiones[0] if hilo.sesiones else ""
-            elif conversacion and conversacion != (hilo.sesiones[0] if hilo.sesiones else ""):
+            elif conversacion and conversacion != (hilo.sesiones[0] if hilo.sesiones else "") and not dueno:
+                # la de un hilo ajeno la publica su dueño cuando su agente la abre: aquí no se copia
                 est.anotar_sesion(hilo.nombre, conversacion, revivir=False)
             elif not conversacion and hilo.sesiones:
                 print(_comun.tenue("  allá no hay archivo de ninguna de sus conversaciones: se abre una nueva"))
