@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-22
+
 ### Added
 
 - Joining a team: `telar instalar --unirse`, run from a clone of the team's repository, reads its
@@ -1439,7 +1441,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nicorivas/telar/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nicorivas/telar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nicorivas/telar/compare/v0.1.13...v0.2.0
 [0.1.13]: https://github.com/nicorivas/telar/compare/v0.1.12...v0.1.13
