@@ -61,8 +61,8 @@ export class Modelo {
     get activo(): cli.JsonHilo | undefined { return this.hilos.find(h => h.activo); }
     /** Los hilos con ventana (aquí, o la de otra máquina). Uno sin ventana que no se archivó a propósito
      *  no queda en un limbo gris bajo los activos: va al archivo con los demás, que es lo que es. */
-    get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado && (h.vivo || h.propio)); }
-    get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || (!h.vivo && !h.propio)); }
+    get enLista(): cli.JsonHilo[] { return this.hilos.filter(h => !h.archivado && h.vivo); }
+    get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || !h.vivo); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
 
     /** dónde vive la bandeja del equipo, vista desde aquí («aqui», otra máquina, o vacío: sin equipo). La pone

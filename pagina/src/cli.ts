@@ -63,8 +63,6 @@ export interface JsonFicha {
 
 export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
-    /** vive en una sesión tmux propia de esta máquina (no es un tab): está vivo aunque `vivo` no lo cuente */
-    propio?: boolean;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
