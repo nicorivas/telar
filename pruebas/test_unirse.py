@@ -338,5 +338,26 @@ class AlInstalar(Prueba):
         self.assertTrue(self.conf.with_name("config.toml.antes-unirse").exists())
 
 
+    def test_al_final_dice_la_direccion_de_la_pagina(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from telar.ordenes import instalar
+
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": self.tmp.name}):
+            (Path(self.tmp.name) / "telar").mkdir(exist_ok=True)
+            (Path(self.tmp.name) / "telar" / "panel.llave").write_text("llave-de-prueba\n")
+            with mock.patch("telar.ordenes.equipo.ip_de_tailscale", return_value="100.70.1.2"):
+                self.assertEqual(instalar.direccion_pagina(),
+                                 ("http://100.70.1.2:8780", "http://100.70.1.2:8780/?k=llave-de-prueba"))
+                salida = io.StringIO()
+                with redirect_stdout(salida):
+                    instalar._decir_pagina(SimpleNamespace(sin_servicio=True))
+            self.assertIn("http://100.70.1.2:8780/?k=llave-de-prueba", salida.getvalue())
+            self.assertIn("telar serve --web", salida.getvalue())
+            with mock.patch("telar.ordenes.equipo.ip_de_tailscale", return_value=""):
+                self.assertEqual(instalar.direccion_pagina()[0], "http://127.0.0.1:8780")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -115,8 +115,39 @@ def main(argv: list[str], ctx) -> int:
     for x in AL_FINAL:
         print()
         print(f"  {_comun.amarillo('→')} {x}")
+    _decir_pagina(o)
     print()
     return codigo
+
+
+def direccion_pagina() -> tuple[str, str]:
+    """(la dirección de la página de esta máquina, la misma con la llave para entrar la primera vez). Donde la sirve
+    `telar serve --web`: la IP de Tailscale, o 127.0.0.1 sin ella, en el puerto de siempre."""
+    from telar import api_web
+    from telar.ordenes.equipo import ip_de_tailscale
+
+    base = f"http://{ip_de_tailscale() or '127.0.0.1'}:{PUERTO_PAGINA}"
+    try:
+        llave = api_web.ruta_llave().read_text(encoding="utf-8").strip()
+    except OSError:
+        llave = ""
+    return base, f"{base}/?k={llave}" if llave else base
+
+
+#: el puerto de la página (`telar serve --web`, su --web-puerto por defecto)
+PUERTO_PAGINA = 8780
+
+
+def _decir_pagina(o) -> None:
+    """Al final, dónde está la página: con la llave, que el navegador guarda en una cookie la primera vez."""
+    base, con_llave = direccion_pagina()
+    print()
+    print(f"  {_comun.verde('→')} {_comun.fuerte('Tu página:')} {con_llave}")
+    detalle = (f"la primera vez entra con la llave; después basta {base}, desde esta máquina o desde tu celular "
+               f"con Tailscale")
+    if o.sin_servicio:
+        detalle += ". Sin el servicio, antes corre: telar serve --web"
+    print(f"    {_comun.tenue(detalle)}")
 
 
 #: lo que la persona tiene que hacer después, dicho al final (después de doctor), donde se ve

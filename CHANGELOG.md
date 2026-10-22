@@ -6,6 +6,13 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-10-22
+
+### Changed
+
+- `telar instalar` ends with the address of this machine's page, with the key to enter the first time (the browser
+  keeps it in a cookie) and the plain address for after.
+
 ## [0.4.3] — 2026-10-22
 
 ### Changed
