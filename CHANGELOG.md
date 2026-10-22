@@ -48,6 +48,10 @@ extension shared the version number.
 
 ### Changed
 
+- In a task's card, «↩ escribirle a Claude» opens a box of several lines (⏎ is a new line, ⌘⏎ sends) with the
+  thread it goes to on top: the general agent (Gestión) by default, the task's thread, or any thread in the list,
+  also one on another machine (`hilo` in `POST /tareas/{id}/accion`). What was written stays as the task's draft
+  until it is sent, so ⎋ or a click outside doesn't lose it, and a send that failed is retried to the same thread.
 - A task's actions: «esperar a…» has role `espera` and offers people (`none` stops waiting); a new «prioridad…»
   (role `prioridad`, P0 to P3). The cap of 12 actions counts only those without a role, so «descartar» is no
   longer dropped.

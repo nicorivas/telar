@@ -65,6 +65,9 @@ export async function campo(o: PedidoCampo): Promise<string | undefined> {
     }
 }
 
+/** Un texto largo y a quién mandarlo (web/interfaz.ts, `escribir`): lo escrito y el destino, o undefined. */
+export const escribir = (o: interfaz.PedidoEscrito): Promise<{ texto: string; destino: string } | undefined> => interfaz.escribir(o);
+
 /** Un menú para elegir uno: el ítem elegido, o undefined. */
 export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: string; placeholder?: string } = {}): Promise<T | undefined> {
     const i = await interfaz.elegir(opciones, menu);

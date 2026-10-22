@@ -32,6 +32,35 @@
 
   & .problema { min-height: 1lh; margin-top: .3lh; color: var(--rojo); }
 
+  /* un texto largo para mandar (`escribir`): a quién, arriba, y un área que crece hasta media pantalla */
+  & .destino { display: flex; gap: 1ch; align-items: baseline; margin-bottom: .6lh; color: var(--dim); }
+
+  & select {
+    border: 0;
+    border-bottom: 1px solid var(--azul);
+    border-radius: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: inherit;
+  }
+
+  & textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 8lh;
+    max-height: 50vh;
+    padding: .3lh 1ch;
+    border: 1px solid var(--linea);
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    resize: vertical;
+
+    &:focus { border-color: var(--azul); }
+  }
+
   & .botones {
     display: flex;
     gap: var(--h-2);

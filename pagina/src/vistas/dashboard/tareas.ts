@@ -268,6 +268,9 @@ export class PantallaTareas implements Pantalla {
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído (los bloques
      *  tampoco las muestran vivas) */
     readonly decididas = new Set<string>();
+    /** lo que se le estaba escribiendo a Claude sobre cada tarea y no se mandó, y a quién si ya se intentó (ver
+     *  `escribirA`) */
+    private readonly borradores = new Map<string, { texto: string; destino?: string }>();
 
     readonly acciones: Record<string, Accion> = {
         'revisar': () => this.abrirRevisar(),
@@ -659,6 +662,30 @@ export class PantallaTareas implements Pantalla {
         return texto;
     }
 
+    /** Lo que se le escribe a Claude sobre la tarea abierta, en varias líneas, y a qué hilo: de entrada el agente
+     *  general (Gestión); también el hilo de la tarea y cualquiera de la lista. Lo escrito queda como borrador de
+     *  la tarea hasta que se manda, y si un envío falló, también a quién iba: se reintenta al mismo. */
+    private async escribirA(a: cli.JsonAccionPagina): Promise<{ texto: string; destino: string } | undefined> {
+        const f = this.ficha;
+        if (!f) return undefined;
+        const d = this.t.dia();
+        const suyo = (d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id) : undefined)?.hilo ?? '';
+        const general = this.t.general();
+        const destinos: { valor: string; nombre: string }[] = [];
+        const sumar = (valor: string, nombre: string) => { if (valor && !destinos.some(x => x.valor === valor)) destinos.push({ valor, nombre }); };
+        if (general) sumar(general.nombre, `${general.nombre} · el agente general`);
+        if (suyo) sumar(suyo, `${suyo} · el hilo de la tarea`);
+        for (const h of modelo.enLista) sumar(h.nombre, h.remoto ? `${h.nombre} · en ${h.remoto}` : h.nombre);
+        const b = this.borradores.get(f.id);
+        const escrito = await ui.escribir({
+            titulo: `${a.nombre} · ${nombreTarea(f.id, f.pagina?.titulo)}`, ayuda: a.pide,
+            destinos, destino: destinos.some(x => x.valor === b?.destino) ? b?.destino : destinos[0]?.valor,
+            valor: b?.texto ?? '', borrador: texto => this.borradores.set(f.id, { ...this.borradores.get(f.id), texto }),
+        });
+        if (escrito) this.borradores.set(f.id, escrito);
+        return escrito;
+    }
+
     private async accionTarea(k: number): Promise<void> {
         const f = this.ficha;
         const a = f?.pagina?.acciones?.[k];
@@ -667,11 +694,18 @@ export class PantallaTareas implements Pantalla {
         if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
         let texto = '';
+        let hilo = '';
         // la fecha, quién la hace, a quién espera, la prioridad: con su selector, no un campo de texto
         const elegido = await elegirPorRol(a, nombreTarea(f.id, f.pagina?.titulo), f.pagina?.subtitulo ?? '');
         if (elegido === undefined) return;
         if (elegido !== null) {
             texto = elegido;
+        } else if (a.pide && a.mensaje && a.al_hilo) {
+            // un mensaje a un hilo («escribirle a Claude»): puede ser largo, y se elige a quién
+            const escrito = await this.escribirA(a);
+            if (!escrito) return;
+            texto = escrito.texto;
+            hilo = escrito.destino;
         } else if (a.pide) {
             const escrito = await ui.campo({ ayuda: `${f.id} · ${a.nombre}`, placeholder: a.pide });
             if (escrito === undefined) return;
@@ -686,8 +720,9 @@ export class PantallaTareas implements Pantalla {
         const version = f.pagina?.version ?? '';
         const r = a.mensaje
             ? await ui.progreso({ titulo: `telar: ${a.nombre} · ${f.id}…` },
-                () => cli.accionTarea(f.id, f.proveedor, k, texto, version))
-            : await cli.accionTarea(f.id, f.proveedor, k, texto, version);
+                () => cli.accionTarea(f.id, f.proveedor, k, texto, version, hilo))
+            : await cli.accionTarea(f.id, f.proveedor, k, texto, version, hilo);
+        if (r.datos && hilo) this.borradores.delete(f.id);
         if (!r.datos) {
             // la tarea cambió mientras se miraba: la ficha guardada ya no sirve, y se vuelve a leer
             if (/cambió desde que se leyó/.test(r.error ?? '')) this.fichas.delete(f.id);

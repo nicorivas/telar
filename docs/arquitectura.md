@@ -270,10 +270,10 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   recuerda de dónde se vino.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
-- **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso
-  con botones) los pone la página misma, encima de todo (`pagina/src/web/interfaz.ts`): se ven mire uno lo
-  que mire, también la lista en el celular. El dashboard, la barra y las órdenes `telar.*` los piden a
-  `web/ui.ts`, que también sabe abrir un enlace, mostrar un hilo o una carpeta, y correr una orden.
+- **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un texto largo con a quién va, un
+  menú para elegir, un aviso con botones) los pone la página misma, encima de todo (`pagina/src/web/interfaz.ts`):
+  se ven mire uno lo que mire, también la lista en el celular. El dashboard, la barra y las órdenes `telar.*` los
+  piden a `web/ui.ts`, que también sabe abrir un enlace, mostrar un hilo o una carpeta, y correr una orden.
 - **En el celular** es una app instalable (manifiesto y service worker en `web/app/`), y la hoja
   «compartir» del teléfono lleva un enlace o un texto a un hilo (`/compartir`).
 

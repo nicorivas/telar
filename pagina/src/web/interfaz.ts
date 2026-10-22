@@ -58,6 +58,36 @@ export function campo(o: PedidoCampo): Promise<string | undefined> {
     });
 }
 
+export interface PedidoEscrito {
+    titulo?: string; ayuda?: string; placeholder?: string; valor?: string;
+    /** a quién va, para elegir arriba (sin opciones no se pregunta), y el que viene elegido */
+    destinos?: { valor: string; nombre: string }[]; destino?: string;
+    /** lo escrito a medida que se escribe: quien pide lo guarda, y un ⎋ o un clic afuera no lo pierde */
+    borrador?: (texto: string) => void;
+}
+
+/** Un texto largo para mandar, y a quién: un área de varias líneas (⏎ es un salto, ⌘⏎ o ⌃⏎ envía) y, con
+ *  `destinos`, un selector arriba. Lo escrito y el destino elegido, o undefined si se canceló. */
+export function escribir(o: PedidoEscrito): Promise<{ texto: string; destino: string } | undefined> {
+    return caja<{ texto: string; destino: string }>(o.titulo ?? '', o.ayuda ?? '', (c, responder) => {
+        const sel = el('select');
+        for (const d of o.destinos ?? []) { const op = el('option', '', d.nombre); op.value = d.valor; sel.appendChild(op); }
+        if (o.destino) sel.value = o.destino;
+        if (o.destinos?.length) { const fila = el('label', 'destino', 'a'); fila.appendChild(sel); c.appendChild(fila); }
+        const area = el('textarea');
+        area.value = o.valor ?? ''; area.placeholder = o.placeholder ?? '';
+        const enviar = () => { if (area.value.trim()) responder({ texto: area.value, destino: sel.value }); };
+        area.addEventListener('input', () => o.borrador?.(area.value));
+        area.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); enviar(); } });
+        const bot = el('div', 'botones');
+        const si = el('a', '', '⌘⏎ enviar'); si.addEventListener('click', enviar);
+        const no = el('a', '', 'cancelar'); no.addEventListener('click', () => responder(undefined));
+        bot.append(si, no);
+        c.append(area, bot);
+        c.showModal(); area.focus();
+    });
+}
+
 export interface OpcionMenu { label: string; description?: string; detail?: string; separador?: boolean }
 
 const norm = (t: string | undefined) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

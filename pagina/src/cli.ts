@@ -343,8 +343,9 @@ export async function tarea(id: string, proveedor: string): Promise<Respuesta<Js
 export async function accionPorRol(id: string, proveedor: string, rol: string): Promise<Respuesta<{ tipo: string; hecho: string; salida?: string; hilo?: string }>> {
     return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol });
 }
-export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
-    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto, ...(version ? { version } : {}) });
+/** `hilo`: con una acción que lleva su mensaje a un hilo (`al_hilo`), a cuál; sin él, al de la tarea. */
+export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = '', hilo = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto, ...(version ? { version } : {}), ...(hilo ? { hilo } : {}) });
 }
 
 /** Los procesos periódicos (`telar periodicos`), de esta máquina o de `[periodicos] en`. */
