@@ -66,6 +66,18 @@ class ReposDeDoctor(_ConRaiz):
         revisiones = doctor._repos(self.ctx(Repo(nombre="equipo", ruta=self.equipo)))
         self.assertEqual([(r["nombre"], r["estado"]) for r in revisiones], [("repos", doctor.OK)])
 
+    def test_una_ruta_relativa_se_lee_desde_la_raiz_y_avisa(self):
+        """Desde otro directorio de trabajo, `equipo` sigue siendo el de la raíz: ni «no existe» ni «fuera»."""
+        _perfil(self.equipo, "equipo")
+        previo = os.getcwd()
+        self.addCleanup(os.chdir, previo)
+        os.chdir(self.tmp.name)
+        avisos = self.por_nombre(doctor._repos(self.ctx(Repo(nombre="equipo", ruta=Path("equipo")))), "repos")
+        self.assertEqual(len(avisos), 1, avisos)
+        self.assertEqual(avisos[0]["estado"], doctor.AVISO)
+        self.assertIn("relativa", avisos[0]["dice"])
+        self.assertIn(str(self.equipo), avisos[0]["arreglo"])
+
     def test_un_repo_fuera_de_la_raiz_avisa(self):
         afuera = Path(self.tmp.name).resolve() / "afuera"
         afuera.mkdir()

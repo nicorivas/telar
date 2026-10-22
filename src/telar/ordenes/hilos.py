@@ -73,8 +73,9 @@ def _imprimir(r: servicio.Hilos, red: bool) -> None:
         print(_comun.tenue("  ninguno todavía. `telar tejer` levanta la sesión."))
         return
 
-    # la columna del repo, solo si la lista abarca más de uno: con uno solo (o sin [repos]) no dice nada
-    repos = len({h.repo for h in r.hilos if h.ruta}) > 1
+    # la columna del repo, solo si la lista abarca más de uno: con uno solo (o sin [repos]) no dice nada.
+    # «ninguno» no cuenta como un repo más: un hilo fuera de todos junto a los de uno solo no la abre
+    repos = len({h.repo for h in r.hilos if h.ruta and h.repo}) > 1
     for hilo in vivos:
         print(_linea(hilo, ancho, repos))
     if sin_ventana:

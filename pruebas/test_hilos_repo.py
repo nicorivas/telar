@@ -110,6 +110,44 @@ class HilosConRepo(Prueba):
         self.assertEqual(codigo, 0, error)
         self.assertNotIn("vida", salida)
 
+    def test_un_hilo_fuera_de_todo_repo_no_abre_la_columna(self):
+        """Un solo repo declarado en juego: «ninguno» no es un repo más, así que la línea queda igual."""
+        self.escribir_config(f'[repos.vida]\nruta = "{EJEMPLO}"\n')
+        self.vincular("proyectos/faro", "Faro")
+        self.vincular(str(self.afuera), "Afuera")
+        self.assertEqual(self.repos(), {"Faro": "vida", "Afuera": ""})
+        codigo, salida, error = self.correr("hilos")
+        self.assertEqual(codigo, 0, error)
+        self.assertNotIn("vida", salida)
+        afuera = next(l for l in salida.splitlines() if "Afuera" in l)
+        self.assertNotIn("—", afuera)
+
+    def test_una_ruta_relativa_se_lee_desde_la_raiz(self):
+        """`[repos.taller].ruta` relativa: el mismo repo, se corra desde la raíz o desde otra carpeta."""
+        self.escribir_config(f'[repos.vida]\nruta = "{EJEMPLO}"\n[repos.taller]\nruta = "proyectos/molino"\n')
+        self.vincular("proyectos/molino", "Molino")
+        previo = os.getcwd()
+        self.addCleanup(os.chdir, previo)
+        for cwd in (EJEMPLO, self.afuera):
+            os.chdir(cwd)
+            self.assertEqual(self.repos(), {"Molino": "taller"}, f"desde {cwd}")
+
+    @unittest.skipUnless(HAY_FASTAPI, "sin el extra «serve»")
+    def test_get_hilos_con_repos_reales(self):
+        """GET /hilos con la configuración que lee el servidor y sin simular el servicio: pasa por `_con_repo`."""
+        from fastapi.testclient import TestClient
+
+        from telar import api
+
+        self.vincular("proyectos/molino", "Molino")
+        self.vincular(str(self.afuera), "Afuera")
+        # un contexto nuevo, el mismo que arma el servidor: el del módulo puede traer la config de otra prueba
+        api.app.dependency_overrides[api.contexto] = api._Contexto()
+        self.addCleanup(api.app.dependency_overrides.clear)
+        with mock.patch.object(api, "_refrescar", mock.AsyncMock()):
+            datos = TestClient(api.app).get("/hilos").json()
+        self.assertEqual({h["nombre"]: h["repo"] for h in datos["hilos"]}, {"Molino": "taller", "Afuera": ""})
+
     def test_la_linea_sin_repos_es_la_de_siempre(self):
         hilo = servicio.Hilo(id="@1", nombre="Faro", vivo=True, relativa="proyectos/faro",
                              ruta="/r/proyectos/faro", repo="vida")

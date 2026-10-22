@@ -110,9 +110,11 @@ def _bajo_repos(ctx, p: Path) -> bool:
     """Bajo la raíz o bajo la carpeta de uno de `[repos]`: lo que se puede leer (escribir, solo bajo la raíz)."""
     if _bajo_raiz(ctx, p):
         return True
+    from telar.perfil import carpeta_de_repo
+
     for r in getattr(ctx.config, "repos", ()) or ():
         try:
-            p.relative_to(Path(r.ruta).expanduser().resolve())
+            p.relative_to(carpeta_de_repo(ctx.config, r))
             return True
         except ValueError:
             continue

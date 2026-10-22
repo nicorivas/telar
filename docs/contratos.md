@@ -357,7 +357,8 @@ Cada `hilo` de esta lista trae además `repo`: el nombre del repositorio de `[re
 pertenece su carpeta (`telar.perfil.repo_de`: el más hondo que la contiene), o `""` si no es de
 ninguno, si no hay `[repos]` o si el hilo no tiene carpeta. Solo lo trae esta lista (y `GET /hilos`):
 la pieza `hilo` de las demás salidas no cambia. La salida para leer lo muestra, tenue, cuando los
-hilos con carpeta abarcan más de un repo.
+hilos con carpeta abarcan más de un repo declarado: los que no son de ninguno no cuentan para eso
+(uno de «vida» y otro fuera de todo no abren la columna), y cuando se muestra van con «—».
 
 `clientes` son los pids de las terminales enganchadas a la sesión: los procesos del
 multiplexor que la están mostrando. Sirven para encontrar desde afuera cuál terminal
@@ -772,7 +773,7 @@ carpetas que reconocen dos repos y cuál gana, un `aviso`).
 `config` devuelve la configuración resuelta, con `origen` (de qué archivo salió,
 vacío si son puros valores por defecto) y `entorno` (qué clave pisó cada variable
 `TELAR_*`). `repos` son los repositorios de `[repos]`, cada uno con `nombre`, `ruta`
-(como está escrita en `[repos]`, con `~` expandida; una relativa sale tal cual) y `perfil` (vacío
+(como está escrita en `[repos]`, con `~` expandida; una relativa sale tal cual, aunque telar la lee desde la raíz) y `perfil` (vacío
 si es el de su carpeta), igual que `TELAR_REPOS`; sin `[repos]` la lista viene vacía. Cada módulo
 de `modulos` trae, además de `nombre`, `carpeta`, `descripcion` y `aporta`, de dónde vino:
 `instalado` (si lo anotó `telar modulo` en `modulos.toml`), `fuente` (el repositorio o la carpeta

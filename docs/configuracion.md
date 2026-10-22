@@ -420,7 +420,8 @@ ruta = "~/vida/proyectos/telar"
 perfil = "~/notas/telar-perfil.yaml"   # opcional: si su perfil no está en su carpeta
 ```
 
-Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
+Una `ruta` relativa se lee desde `raiz`, no desde el directorio donde se corre la orden; pero un módulo la recibe
+tal cual en `TELAR_REPOS`, y por eso `telar doctor` pide escribirla absoluta. Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
 carpeta): qué es ahí una unidad de trabajo. telar los junta en uno (`docs/perfil.md`, «Varios repositorios»).
 Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo del equipo dentro del
 de vida describe lo suyo. Un repo sin perfil no aporta nada, y uno fuera de `raiz` todavía no se suma. Sin

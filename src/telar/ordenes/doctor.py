@@ -22,7 +22,7 @@ from telar.config import ruta_config
 from telar.mux import ErrorDeMux
 from telar.mux import obtener as obtener_mux
 from telar.ordenes import _comun
-from telar.perfil import NOMBRE_ARCHIVO
+from telar.perfil import NOMBRE_ARCHIVO, carpeta_de_repo
 from telar.proveedores import REGISTRO
 
 AYUDA = "Revisar multiplexor, sesión, perfil, proveedores y ganchos."
@@ -253,12 +253,17 @@ def _repos(ctx) -> list[dict]:
     salida = []
     fuera = []
     for repo in repos:
-        if not Path(repo.ruta).expanduser().is_dir():
+        if not carpeta_de_repo(ctx.config, repo).is_dir():
             salida.append(_r("repos", AVISO, f"«{repo.nombre}» ({repo.ruta}) no existe: no aporta nada",
                              "corrige su `ruta` en [repos], o sácalo"))
             continue
+        if not Path(repo.ruta).expanduser().is_absolute():
+            # telar la lee desde la raíz, pero un módulo la recibe tal cual en TELAR_REPOS y no sabe desde dónde
+            salida.append(_r("repos", AVISO, f"«{repo.nombre}» tiene la ruta relativa «{repo.ruta}»: telar la lee "
+                             f"desde la raíz, pero los módulos la reciben tal cual",
+                             f"escríbela absoluta: ruta = \"{carpeta_de_repo(ctx.config, repo)}\""))
         try:
-            Path(repo.ruta).expanduser().resolve().relative_to(raiz.resolve())
+            carpeta_de_repo(ctx.config, repo).relative_to(raiz.resolve())
         except (ValueError, OSError):
             fuera.append(repo)
     for repo in fuera:
@@ -303,8 +308,8 @@ def _pisadas(ctx, repos, raiz: Path) -> list[dict]:
     """El aviso de los perfiles que se pisan, uno por par de repos (el que gana, el que pierde)."""
     try:
         base = raiz.resolve()
-        nombre_raiz = next((r.nombre for r in repos if Path(r.ruta).expanduser().resolve() == base), "")
-        hondura = {r.nombre: len(Path(r.ruta).expanduser().resolve().parts) for r in repos}
+        nombre_raiz = next((r.nombre for r in repos if carpeta_de_repo(ctx.config, r) == base), "")
+        hondura = {r.nombre: len(carpeta_de_repo(ctx.config, r).parts) for r in repos}
     except OSError:  # pragma: no cover
         nombre_raiz, hondura = "", {}
     choques: dict[tuple[str, ...], list[str]] = {}

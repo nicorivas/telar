@@ -436,12 +436,12 @@ def cargar_todos(config) -> Perfil:
     partes: list[tuple[str, str, Perfil]] = []
     for repo in getattr(config, "repos", ()) or ():
         try:
-            relativa = Path(repo.ruta).expanduser().resolve().relative_to(raiz.resolve()).as_posix()
+            relativa = carpeta_de_repo(config, repo).relative_to(raiz.resolve()).as_posix()
         except (ValueError, OSError):
             continue  # fuera de la raíz: todavía no (telar doctor lo dice)
         if relativa in ("", "."):
             continue  # es la raíz misma: su perfil es el de la base
-        perfil = cargar(Path(repo.ruta), ruta=Path(repo.perfil).expanduser() if repo.perfil else None)
+        perfil = cargar(carpeta_de_repo(config, repo), ruta=Path(repo.perfil).expanduser() if repo.perfil else None)
         if not perfil.minimo:
             partes.append((repo.nombre, relativa, perfil))
     if not partes:
@@ -456,6 +456,16 @@ def cargar_todos(config) -> Perfil:
     return replace(base, arquetipos=(*arquetipos, *base.arquetipos), acciones=tuple(acciones))
 
 
+def carpeta_de_repo(config, repo) -> Path:
+    """La carpeta de un repo de `[repos]`, absoluta y resuelta. Una `ruta` relativa se lee desde la raíz y
+    no desde el directorio de trabajo: si no, el repo de un hilo cambiaría según desde dónde se corra la
+    orden o el servidor. `telar config --json` y `TELAR_REPOS` la siguen dando como está escrita."""
+    ruta = Path(repo.ruta).expanduser()
+    if not ruta.is_absolute():
+        ruta = Path(config.raiz).expanduser() / ruta
+    return ruta.resolve()
+
+
 def repo_de(config, ruta: str | Path) -> str:
     """De qué repositorio de `[repos]` es una carpeta (relativa a la raíz o absoluta): el más profundo que la
     contiene. "" si de ninguno declarado (es de la raíz)."""
@@ -464,7 +474,7 @@ def repo_de(config, ruta: str | Path) -> str:
     camino = (camino if camino.is_absolute() else raiz / camino).resolve()
     mejor, largo = "", -1
     for repo in getattr(config, "repos", ()) or ():
-        base = Path(repo.ruta).expanduser().resolve()
+        base = carpeta_de_repo(config, repo)
         if camino == base or base in camino.parents:
             if len(base.parts) > largo:
                 mejor, largo = repo.nombre, len(base.parts)

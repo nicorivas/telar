@@ -22,7 +22,10 @@ extension shared the version number.
   `@` in a name is not read as the machine and a name with spaces is found in a text.
 - Each thread in `telar hilos --json` (and `GET /hilos`) carries `repo`, the name of the `[repos]` repository
   its folder belongs to (`""` if none). The plain `telar hilos` shows it, dimmed, when the threads span more
-  than one repo.
+  than one declared repo (a thread outside every repo does not count as one).
+- A relative `[repos.<name>].ruta` is read from `raiz`, not from the directory the command runs in, so a
+  thread's `repo` no longer depends on where `telar hilos` or the server was started; `telar doctor` suggests
+  writing it absolute (modules still get it as written in `TELAR_REPOS`, as does `telar config --json`).
 - `telar doctor` warns when a repo of `[repos]` does not exist or is outside `raiz` (its profile is not added),
   and when the profiles of two repos recognise the same folders (and says which wins: the deepest). It also
   loads when a declared module cannot be read, which stops every other command, and reports which one and why,
