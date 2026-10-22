@@ -144,14 +144,18 @@ Cada uno deja todo funcionando.
 
 1. ~~`telar commit` en todas partes, y `[calientes]` en el perfil~~: lo primero está hecho; lo segundo se
    descartó (arriba).
-2. **Direcciones y objetos.** Hecho el primer paso (21-oct-2026, `telar.objetos`): la dirección
-   `tipo:id[@máquina]`, `telar objeto <dirección> [acción]` y `/objetos/…` en la API, con cuatro tipos de
-   fábrica (tarea, hilo, proyecto, archivo) y los que trae un módulo (`[objetos.<tipo>]`): correo, evento y
-   reunión llegan así, como módulos. Falta: que la página abra una dirección (`tarea:T366` en una conversación,
-   un enlace) y que los mensajes y las tareas las usen en vez de las formas de hoy. Dos preguntas del tipo `tarea` por cerrar: a una
-   casilla sin `<!-- id: … -->` (se reconoce por su texto, que cambia), ¿se le pone un id al escribirla
-   la primera vez?; y cuando el modelo cambie, ¿un campo `version` en cada archivo o un lector que entienda
-   las dos formas?
+2. ~~**Direcciones y objetos**~~: hecho (21 y 22-oct-2026, `telar.objetos`). La dirección
+   `tipo:id[@máquina]` (con el id escapado como en una URL), `telar objeto <dirección> [acción]` y
+   `/objetos/…` en la API, con cinco tipos de fábrica (tarea, hilo, proyecto, archivo y pendiente) y los que
+   trae un módulo (`[objetos.<tipo>]`): correo, evento y reunión llegan así, como módulos. Las salidas JSON
+   que nombran un objeto traen su `direccion`; las plantillas de mensajes aceptan `{direccion}`; el contexto
+   de arranque de cada agente y la skill /hilos les enseñan a nombrar las cosas por su dirección. Las dos
+   preguntas del tipo `tarea` quedaron cerradas: una casilla de un documento recibe un id estable
+   (`<!-- id: c-1a2b3c -->`) la primera vez que telar la escribe, y su dirección es `pendiente:c-1a2b3c`;
+   y cuando el modelo cambie no habrá un campo `version` en cada archivo, sino un lector que entienda la
+   forma vieja y la nueva y dé la misma tarea (la regla y por qué, en [arquitectura.md](../arquitectura.md),
+   «Los tipos»). Quedó para después: que la página abra una dirección (`tarea:T366` en una conversación, un
+   enlace) y use el id de las casillas en vez de su lugar.
 3. **El agente como definición**: `agente.toml` en cada residente; el hilo guarda su agente, su
    conversación y su lugar por separado.
 4. **Mensajes con modos y el Encargo**: `mensaje --modo aviso|pedido|encargo|consulta`, el objeto Encargo

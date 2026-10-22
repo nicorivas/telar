@@ -49,6 +49,9 @@ extension shared the version number.
   be one, and writing it failed), each with a new `repetida` field (`{"cual": 2, "de": 2}`, `null` when the text
   is unique). `telar pendiente` writes the one the row names and gives it its own id; if the number of
   checkboxes with that text changed meanwhile, it is a 409 and nothing is written.
+- Documented and tested how the task model evolves: task files never carry a `version` field; the reader
+  understands the old form and the new one and both give the same task (an omitted field is its default, the
+  checkbox's two dialects and key synonyms), and a key the format does not know is kept byte for byte.
 
 ## [0.3.0] — 2026-10-21
 

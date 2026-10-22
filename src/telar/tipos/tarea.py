@@ -14,6 +14,21 @@ repositorio en inglés puede decir `status` y `due` donde este dice `estado` y `
 Leer es tolerante: una clave repetida vale la última, una línea que no es `clave: valor` se conserva, una
 línea de historia que no calza es una nota. Escribir es mínimo: un campo que cambia reescribe su línea, uno
 nuevo se agrega en su lugar del orden, uno que se vacía se quita; lo demás queda byte por byte.
+
+**Cómo cambia el modelo.** Ningún archivo lleva un campo `version`: cuando el modelo cambie, el lector
+entenderá la forma vieja y la nueva, y las dos darán la misma tarea. Así ya se lee hoy:
+
+- un campo que el archivo no dice vale su valor por defecto, que es lo que significaba no decirlo
+  (`estado: activa`, `prioridad: 2`, `area: personal`): un campo nuevo entra así, sin tocar los archivos
+  de antes;
+- una línea de la historia con hora o sin ella (`- 2026-10-01 [creada] a mano`);
+- en la casilla, dos dialectos a la vez (`@deadline(…)` y `vence:…`, `@prioridad(P1)` y `!alta`) y los
+  sinónimos de cada clave (`@owner`, `@dueño`, `@responsable`, `@para`, «@Ana:» al comienzo; `@deadline` y
+  `@vence`; `@prioridad` y `@priority`). Una clave que cambie de nombre se agrega así, como sinónimo, y se
+  reescribe en el nombre que ya tenía la línea.
+
+Una clave que el formato no conoce (`version: 2`, la de otra herramienta) no entra al modelo y se conserva
+tal cual: leer y escribir no la tocan (pruebas/test_tarea_dos_formas.py).
 """
 
 from __future__ import annotations
