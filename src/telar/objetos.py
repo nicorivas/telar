@@ -3,7 +3,7 @@
 Un **objeto** es cualquier cosa con dirección, tipo y estado: una tarea, un hilo, un proyecto, un archivo, o lo
 que traiga un módulo (un correo, un evento). Su **dirección** tiene una sola forma:
 
-    tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:nico/proyectos/telar · archivo:telar:docs/x.md
+    tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:proyectos/faro · archivo:telar:docs/x.md
                             pendiente:c-1a2b3c · encargo:e-1a2b3c4d · permiso:Faro
 
 `@máquina` va solo cuando importa (un hilo o un objeto de un módulo que vive en otra máquina); el `id` es

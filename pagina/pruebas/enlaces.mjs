@@ -69,7 +69,7 @@ const larga = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c25
 
 // 5. una ruta más larga que la fila (en el teléfono), partida por Ink con sangría
 {
-    const ruta = '/Users/nico/Life/nico/proyectos/telar/pagina/src/web/rutas-agente.ts:12';
+    const ruta = '/Users/ana/proyectos/faro/pagina/src/web/rutas-agente.ts:12';
     const filas = partir(ruta, COLS - 30, '  ').map(f => f.padStart(COLS, ' '));
     // la sangría deja cada pedazo pegado al borde derecho, como si la caja fuera angosta y estuviera a la derecha
     const term = await pantalla(filas);

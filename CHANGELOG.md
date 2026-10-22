@@ -47,8 +47,13 @@ extension shared the version number.
   asked, and it can be opened from any machine (a new `encargo` request to that machine's node). A `consulta`
   sends nothing: it returns the thread's card and its last turns (also `GET /mensajes/consulta`). `telar
   encargar` is unchanged.
+  An encargo is found after its thread moves: the sender's note keeps the machine the thread lived on, and the
+  address the thread receives carries it (`encargo:<id>@<machine>`). Rejecting one needs a reason; two actions
+  at once on the same encargo do not overwrite each other; a renamed thread closes it under its new name; a
+  held encargo shows `retenido`, not `en_camino`; a basic-format deadline (`20261024`) is stored as
+  `2026-10-24`; an `aviso` from the person says it is one; the wake-up line counts the waiting avisos apart.
 - Addresses and objects (`telar.objetos`). Anything has one address, `type:id[@machine]` (`tarea:T366`,
-  `hilo:Telar`, `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`), and `telar objeto <address>
+  `hilo:Telar`, `proyecto:proyectos/faro`, `archivo:telar:docs/x.md`), and `telar objeto <address>
   [action]` (also `GET /objetos/<address>` and `POST /objetos/<address>/acciones/<action>`) shows it, with its
   fields, the addresses it links to and its actions, or runs one of them. Four types ship with telar (task,
   thread, project, file); a module brings its own with `[objetos.<type>]`, whose `ver` and actions are its
@@ -62,9 +67,6 @@ extension shared the version number.
 - Each thread in `telar hilos --json` (and `GET /hilos`) carries `repo`, the name of the `[repos]` repository
   its folder belongs to (`""` if none). The plain `telar hilos` shows it, dimmed, when the threads span more
   than one declared repo (a thread outside every repo does not count as one).
-- A relative `[repos.<name>].ruta` is read from `raiz`, not from the directory the command runs in, so a
-  thread's `repo` no longer depends on where `telar hilos` or the server was started; `telar doctor` suggests
-  writing it absolute (modules still get it as written in `TELAR_REPOS`, as does `telar config --json`).
 - `telar doctor` warns when a repo of `[repos]` does not exist or is outside `raiz` (its profile is not added),
   and when the profiles of two repos recognise the same folders (and says which wins: the deepest). It also
   loads when a declared module cannot be read, which stops every other command, and reports which one and why,
@@ -79,9 +81,8 @@ extension shared the version number.
 - Agents know about addresses: the start-up context of each thread's agent has one more line (an object is
   named `type:id`, `telar objeto <address>` opens it and lists its actions, and messages should name things by
   their address), and the `/hilos` skill that telar installs explains it in a new section.
-- `telar objeto hilo:<name>@<machine>` opens that machine's thread even when a thread with the same name lives
-  here (it used to return the local one). The `/hilos` skill now says that `telar directorio`'s `direccion` is an
-  email, not a `type:id` address, and that a `mensaje` goes to the name's mailbox whatever the machine.
+- The `/hilos` skill says that `telar directorio`'s `direccion` is an email, not a `type:id` address, and that a
+  `mensaje` goes to the name's mailbox whatever the machine.
 - A checkbox in a document gets a stable id the first time telar writes it (`telar pendiente --hecho` or
   `--responsable`): `<!-- id: c-1a2b3c -->` at the end of its line, unique in that document. From then on it is
   found by that id even when the document changes, its row in `telar pendientes` carries `direccion:
@@ -96,16 +97,9 @@ extension shared the version number.
   the same process no longer share a temporary file or overwrite each other.
 - A fifth built-in object type, `pendiente` (`pendiente:<id>`, or `pendiente:<ref>` for one without an id): a
   document checkbox with its text, state, document, line and owner, and the actions `hecho` and `responsable`.
-- Two identical checkboxes without an id in one document are now two rows in `telar pendientes` (they used to
-  be one, and writing it failed), each with a new `repetida` field (`{"cual": 2, "de": 2}`, `null` when the text
-  is unique). `telar pendiente` writes the one the row names and gives it its own id; if the number of
-  checkboxes with that text changed meanwhile, it is a 409 and nothing is written.
 - Documented and tested how the task model evolves: task files never carry a `version` field; the reader
   understands the old form and the new one and both give the same task (an omitted field is its default, the
   checkbox's two dialects and key synonyms), and a key the format does not know is kept byte for byte.
-- Task files: `dueno` (without ñ) is read as `dueño` and rewritten under its own name, as is a key written in NFD;
-  a leading BOM no longer hides the header (an action used to prepend a second one), CRLF files stay CRLF
-  when an action writes them, and a repeated key the format does not know is no longer reported as duplicated.
 - `telar config --json` (and `GET /config`) lists the repositories of `[repos]` in a new `repos` field (name,
   path, profile), and each module now says where it came from: `instalado`, `fuente`, `version` and `enlazado`,
   from what `telar modulo` wrote down (empty for one declared by hand). No other field changes.
@@ -135,14 +129,23 @@ extension shared the version number.
 - `telar doctor` warns, in its `módulos` check, when a module is named like a telar command (`telar <name>`
   runs the command, not the module) or brings an `[objetos.<type>]` of a type telar already ships (telar's wins).
 
+### Changed
+
+- A relative `[repos.<name>].ruta` is read from `raiz`, not from the directory the command runs in, so a
+  thread's `repo` no longer depends on where `telar hilos` or the server was started; `telar doctor` suggests
+  writing it absolute (modules still get it as written in `TELAR_REPOS`, as does `telar config --json`).
+- `telar objeto hilo:<name>@<machine>` opens that machine's thread even when a thread with the same name lives
+  here (it used to return the local one).
+- Two identical checkboxes without an id in one document are now two rows in `telar pendientes` (they used to
+  be one, and writing it failed), each with a new `repetida` field (`{"cual": 2, "de": 2}`, `null` when the text
+  is unique). `telar pendiente` writes the one the row names and gives it its own id; if the number of
+  checkboxes with that text changed meanwhile, it is a 409 and nothing is written.
+- Task files: `dueno` (without ñ) is read as `dueño` and rewritten under its own name, as is a key written in NFD.
+
 ### Fixed
 
-- Encargos (`--modo encargo`) are found after their thread moves: the sender's note keeps the machine the
-  thread lived on, and the address the thread receives carries it (`encargo:<id>@<machine>`). Rejecting one
-  needs a reason; two actions at once on the same encargo no longer overwrite each other; a renamed thread
-  closes it under its new name; a held encargo shows `retenido` instead of `en_camino`; a basic-format
-  deadline (`20261024`) is stored as `2026-10-24`; an `aviso` from the person says it is one; the wake-up
-  line counts the waiting avisos apart.
+- Task files: a leading BOM no longer hides the header (an action used to prepend a second one), CRLF files stay
+  CRLF when an action writes them, and a repeated key the format does not know is no longer reported as duplicated.
 - The node's log no longer grows without bound: a bus failure (`nats: timeout`, a refused connection, a slow
   consumer) is one line instead of a full traceback, the same failure is written once every ten minutes with a
   count of the ones in between, losing and regaining the bus is one line each (a drop that comes back within a

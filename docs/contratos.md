@@ -647,7 +647,7 @@ pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con
 ### `telar objeto <dirección> [acción] --json`
 
 Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea:T366`, `hilo:Telar`,
-`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, `agente:faro`, `permiso:Faro`, o
+`proyecto:proyectos/faro`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, `agente:faro`, `permiso:Faro`, o
 uno de los tipos que trae un módulo. Es
 también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
 
@@ -992,6 +992,11 @@ documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 
 aviso salió o el motivo si no. `telar archivo <ruta> --a M --json` da `{"ruta": "<dónde quedó allá>",
 "bytes": N}`. Los pedidos del bus son `aviso` (`{titulo, texto}`) y `archivo` (`{nombre, datos}` en base64).
 
+Cualquier pedido a un nodo (estos, `leer`, `resultado`, `encargo`…) puede volver como `{"ok": false, "ocupada":
+true, "error": "<máquina> está ocupada: …"}`: ese nodo ya tiene 64 pedidos de ese verbo en curso o esperando y
+contesta al tiro, en vez de dejar que el plazo se cumpla. No se hizo nada; se puede volver a probar en un rato
+(en [arquitectura.md](arquitectura.md), «Cuando el bus falla»).
+
 ## `telar commit --json` — commitear solo unas rutas y subirlas
 
 ```json
@@ -1024,6 +1029,24 @@ configuración: esos dos se listan y corren, pero `editar`, `pausar`, `activar` 
 corre. `codigo` distinto de 0 es que falló (un comando que salió mal, un hilo que no se pudo abrir); un
 `mensaje` saltado por `max_abiertos` es 0 con `resultado` «saltado: …». Las órdenes que cambian algo
 responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
+
+## `telar modulos --json` — los módulos
+
+```json
+{"modulos": [{"nombre": "nino34", "carpeta": "/home/ana/.local/share/telar/modulos/nino34",
+  "descripcion": "El índice del Niño, cada mañana.", "aporta": ["pestaña", "periódico nino34", "orden medir"],
+  "fuente": "https://ejemplo.org/nino34.git", "version": "a1b2c3d",
+  "permisos": {"leer": ["~/datos/oceano"], "escribir": ["~/.local/state/nino34"], "red": ["psl.noaa.gov"],
+               "ordenes": ["mensaje", "tipo tarea"], "otros": {}}}]}
+```
+
+Uno por módulo, instalado o declarado a mano (`[modulos.<nombre>]`), en el orden de la configuración. `aporta` es
+lo que trae, en palabras (lo mismo que la lista sin `--json`). `fuente` y `version` son lo que anotó `telar modulos
+instalar` en `modulos.toml`: vacíos en uno declarado a mano. `permisos` es su `[permisos]` (en
+[configuracion.md](configuracion.md), «Lo que pide un módulo»): `leer`, `escribir` y `ordenes` son listas
+ordenadas y sin repetir, `red` es `true`, `false` o la lista de sitios, y `otros` trae tal cual las claves que esta
+versión no entiende. `null` si el módulo no trae la tabla («no dice qué pide»), que no es lo mismo que una tabla
+vacía (todo vacío y `red: false`). telar todavía no hace cumplir nada de eso.
 
 ## `telar disparadores --json` — lo que corre o manda algo solo
 

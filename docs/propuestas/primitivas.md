@@ -1,8 +1,10 @@
 # Las primitivas de telar
 
 Estado: **por construir, en pasos**. Hechos: `telar serve` (la API que se queda corriendo), `telar
-commit` como orden, y el primer tipo (`tarea`, en [arquitectura](../arquitectura.md), «Los tipos»). Lo que
-sigue va encima de la API, no de la CLI suelta.
+commit` como orden, el primer tipo (`tarea`, en [arquitectura](../arquitectura.md), «Los tipos») y las
+direcciones y los objetos (`telar objeto`, el paso 2). Con su primer paso hecho: el agente como definición,
+los mensajes con modos y el Encargo, las vistas, los disparadores y los permisos (los pasos 3, 4, 6, 7 y 8,
+en «Los pasos que faltan»). Lo que sigue va encima de la API, no de la CLI suelta.
 
 ## Por qué
 
@@ -105,7 +107,7 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
 - **Quedan**: `hilos`, `hilo`, `ficha` (como consulta), `vincular`, `ir`, `mirar`, `tejer`, `mensaje`,
   `agente`, `atencion` y `tiempo` (la entrada de los ganchos de agentes y multiplexores ajenos), `hoy`,
   `cambio`, `modulos`, `periodicos`, `proyectos`, `imagen`, `directorio`, `persona`, `equipo`, `config`,
-  `perfil`, `doctor`, `init`, `serve`, `commit`, `tipo`.
+  `perfil`, `doctor`, `init`, `serve`, `commit`, `tipo`, `objeto`, `agentes` y `disparadores`.
 
 ## Git y los repositorios
 

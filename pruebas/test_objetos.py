@@ -25,7 +25,7 @@ class LasDirecciones(Prueba):
         self.assertEqual(objetos.leer("tarea:T366"), ("tarea", "T366", ""))
         self.assertEqual(objetos.leer("hilo:Telar frontend@telar"), ("hilo", "Telar frontend", "telar"))
         self.assertEqual(objetos.leer("archivo:telar:docs/x.md"), ("archivo", "telar:docs/x.md", ""))
-        self.assertEqual(str(objetos.leer(" proyecto:nico/proyectos/telar ")), "proyecto:nico/proyectos/telar")
+        self.assertEqual(str(objetos.leer(" proyecto:proyectos/faro ")), "proyecto:proyectos/faro")
         for malo in ("T366", "tarea:", "Tarea:T1", ":x"):
             with self.assertRaises(ErrorDeServicio):
                 objetos.leer(malo)

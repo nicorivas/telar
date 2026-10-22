@@ -8,7 +8,7 @@
     telar objeto --buscar "revisa tarea:T366 y hilo:Faro"   las direcciones que hay en un texto
 
 Una dirección es `tipo:id`, y `@máquina` cuando importa: `tarea:T366`, `hilo:Telar`,
-`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`. Con `--json`, la salida es el objeto (o lo que
+`proyecto:proyectos/faro`, `archivo:telar:docs/x.md`. Con `--json`, la salida es el objeto (o lo que
 hizo la acción); si no se pudo, `{"error": …, "codigo": …}` (404: no existe; 409: cambió; 422: el pedido no
 sirve).
 """

@@ -52,6 +52,30 @@ Para los cuatro del medio, `telar atencion set trabajando|espera|termino|ninguna
 lo mismo y se lee mejor. `abre` es el que de verdad conviene mandar: es lo que después
 permite `telar agente retomar`.
 
+Con `espera` conviene decir además qué le pide el agente a la persona, en una línea:
+
+```sh
+telar agente aviso --evento espera --pide "¿Puedo borrar la carpeta borradores/?"
+```
+
+Eso llena el objeto `permiso:<hilo>` (`telar objeto permiso:Faro`): desde cuándo espera
+ese hilo y qué pide, para quien lo mire desde otra terminal o desde la página. Sin `--pide`
+la espera se anota igual, solo que sin el qué. El adaptador de Claude Code no lo necesita:
+lo toma del texto de su notificación.
+
+### Cómo le entran los mensajes
+
+Lo que otros hilos le escriben a uno queda en su casilla, y entra a la conversación por
+los ganchos `Stop` y `UserPromptSubmit` (`telar agente casilla`, con la carga de Claude
+Code por la entrada estándar). Si el agente está ocioso, telar lo despierta con una línea
+(«↯ mensaje nuevo · …», nunca el contenido) y el gancho le agrega los mensajes al turno que
+eso abre. El detalle está en [arquitectura.md](arquitectura.md), «Cómo llega un mensaje».
+
+Un mensaje en modo **`aviso`** (`telar mensaje Faro "…" --modo aviso`) es la excepción: no
+despierta al hilo ni alarga su turno. Espera en la casilla y entra con su próximo turno,
+cuando su persona le escriba o cuando llegue un mensaje que sí despierta. Un agente que
+solo enganche `Stop` no lo verá hasta que haya otro motivo para seguir: es lo esperado.
+
 ### Cómo sabe telar en qué hilo pasó
 
 En este orden, y **nunca por el foco**:

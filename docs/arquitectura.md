@@ -209,7 +209,9 @@ atienden cada uno en su tarea, para que uno lento no deje esperando a lo que lle
 por verbo, como cuando cada suscripción iba por su cuenta: cuatro a la vez de cada uno, y los lentos de
 un verbo no dejan sin turno a los de otro. Los que solo leen, varios del mismo verbo juntos; los que
 escriben (y el correo de otra persona), de a uno por verbo y en orden, como antes. Con 64 de un verbo en
-curso o esperando, el nodo le contesta a ese verbo que está ocupado. Las suscripciones de pedidos y
+curso o esperando, el nodo le contesta a ese verbo al tiro que está ocupado, `{"ok": false, "ocupada": true,
+"error": "<máquina> está ocupada: …"}`, en vez de dejar que quien pidió espere hasta su plazo; quien pide lo
+toma como cualquier `ok: false` y puede volver a probar en un rato. Las suscripciones de pedidos y
 avisos tienen tope de lo que espera (2000 mensajes, 32 MB); las dos de `kv.watch` (el vigía del estado
 y el del espejo) las arma nats-py con sus límites de fábrica, que telar no puede cambiar, y por eso los
 dos solo reciben: guardan lo último de cada hilo o máquina, y anotar la atención, mirar la ventana o
@@ -445,9 +447,10 @@ primer mensaje. Con ✓, corre la acción «hecha» que el proveedor ofreció.
 | que telar entienda mis proyectos | el perfil (`telar-perfil.yaml`) | sí |
 | ver mis tareas | `[proveedores.tareas]`: `markdown`, `tipo` o `comando` | sí, con `markdown` o `tipo` |
 | ver mi agenda | `[proveedores.calendario]`: iCal o `gws` | sí |
-| una pestaña propia en el dashboard | `[bloques]`: un comando que imprime una página | no: un script |
-| una app (un juego, un visor) | `[apps]`: una página, un archivo o una URL | depende |
-| algo que corra solo | `telar periodicos crear …` | sí |
+| una pestaña propia en el dashboard | `[vistas.x]` con `aparece = "pestana"`: un comando que imprime una página (antes `[bloques]`, que se sigue leyendo) | no: un script |
+| una app (un juego, un visor) | `[vistas.x]`: una página, un archivo o una URL (antes `[apps]`) | depende |
+| algo que corra solo | `[disparadores.x]`: un reloj (`cuando`), una tecla o un cambio; o `telar periodicos crear …` | sí |
+| un agente residente | su carpeta con `CLAUDE.md` y, si se quiere, un `agente.toml` (nombre, para qué, modelo) | sí |
 | empaquetar todo lo anterior | un módulo con `modulo.toml` | — |
 | que otro agente o script use telar | la CLI con `--json` o la API ([contratos.md](contratos.md)) | — |
 | integrar otro agente | sus ganchos, con los seis eventos ([agentes.md](agentes.md)) | casi |
