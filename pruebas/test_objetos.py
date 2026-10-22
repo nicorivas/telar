@@ -123,6 +123,28 @@ class LosTiposDeFabrica(Prueba):
                 objetos.ver(self.ctx, "hilo:Telar@servidor")
             self.assertEqual(e.exception.codigo, 404)
 
+    def test_un_mensaje_a_un_hilo_de_otra_maquina_mira_que_alla_exista(self):
+        from telar import bus, espejo
+        from telar.ordenes import mensaje
+
+        fotos = [{"nombre": "servidor", "hilos": [{"nombre": "Faro"}]}]
+        ctx = SimpleNamespace(config=SimpleNamespace(bus=SimpleNamespace(url="nats://x")))
+        with mock.patch.object(bus, "hay_bus", return_value=True), mock.patch.object(bus, "maquina", return_value="laptop"), \
+                mock.patch.object(espejo, "leer_todos", return_value=fotos):
+            self.assertEqual(mensaje._por_nombre(ctx, "hilo:Faro@servidor"), "Faro")
+            self.assertEqual(mensaje._por_nombre(ctx, "hilo:Faro"), "Faro")  # sin máquina: el nombre, como siempre
+            with self.assertRaises(mensaje.NoHayHilo):
+                mensaje._por_nombre(ctx, "hilo:Telar@servidor")
+            with self.assertRaises(mensaje.NoHayHilo):
+                mensaje._por_nombre(ctx, "hilo:Faro@otra")
+        # y por el servicio, un 404 (no una falla del bus)
+        from telar.servicios import mensajes
+
+        with mock.patch.object(mensaje, "_por_direccion", side_effect=mensaje.NoHayHilo("servidor no tiene un hilo «X»")):
+            with self.assertRaises(ErrorDeServicio) as e:
+                mensajes.enviar(ctx, "hilo:X@servidor", "hola")
+        self.assertEqual(e.exception.codigo, 404)
+
     def test_un_tipo_que_no_hay(self):
         with self.assertRaises(ErrorDeServicio) as e:
             objetos.ver(self.ctx, "correo:abc")

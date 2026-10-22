@@ -456,10 +456,17 @@ def cargar_todos(config) -> Perfil:
     return replace(base, arquetipos=(*arquetipos, *base.arquetipos), acciones=tuple(acciones))
 
 
+def ruta_de_repo(config, repo) -> Path:
+    """La ruta de un repo de `[repos]` como la entregan las salidas (`telar config --json`, `TELAR_REPOS`):
+    absoluta, con una relativa leída desde la raíz, pero sin resolver enlaces (`~/vida/equipo` sigue siéndolo)."""
+    ruta = Path(repo.ruta).expanduser()
+    return ruta if ruta.is_absolute() else Path(config.raiz).expanduser() / ruta
+
+
 def carpeta_de_repo(config, repo) -> Path:
     """La carpeta de un repo de `[repos]`, absoluta y resuelta. Una `ruta` relativa se lee desde la raíz y
     no desde el directorio de trabajo: si no, el repo de un hilo cambiaría según desde dónde se corra la
-    orden o el servidor. `telar config --json` y `TELAR_REPOS` la siguen dando como está escrita."""
+    orden o el servidor. Así la dan también `telar config --json` y `TELAR_REPOS`, la de los módulos."""
     ruta = Path(repo.ruta).expanduser()
     if not ruta.is_absolute():
         ruta = Path(config.raiz).expanduser() / ruta

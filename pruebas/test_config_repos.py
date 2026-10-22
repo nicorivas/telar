@@ -76,10 +76,13 @@ class ConfigConReposYModulos(Prueba):
         self.assertFalse(ruta.startswith("~"))
         self.assertEqual(ruta, str(Path("~/en-casa").expanduser()))
 
-    def test_una_ruta_relativa_sale_tal_cual(self):
-        """Como en `TELAR_REPOS`: el contrato no promete resolverla."""
+    def test_una_ruta_relativa_sale_absoluta_desde_la_raiz(self):
+        """Como en `TELAR_REPOS`: absoluta, leída desde la raíz (no desde donde se corre la orden)."""
         self.config.write_text('[repos.rel]\nruta = "equipo"\n', encoding="utf-8")
-        self.assertEqual(self.json_config()["repos"], [{"nombre": "rel", "ruta": "equipo", "perfil": ""}])
+        [repo] = self.json_config()["repos"]
+        self.assertEqual((repo["nombre"], repo["perfil"]), ("rel", ""))
+        self.assertTrue(Path(repo["ruta"]).is_absolute())
+        self.assertEqual(Path(repo["ruta"]).name, "equipo")
 
     def test_sin_repos_la_lista_viene_vacia(self):
         self.config.write_text("", encoding="utf-8")

@@ -229,7 +229,8 @@ class Hilo(Tipo):
             texto = str(params.get("texto", "")).strip()
             if not texto:
                 raise ErrorDeServicio("mensaje: ¿qué le dices? params {\"texto\": …}", 422)
-            r = mensajes.enviar(ctx, d.id, texto, modo=str(params.get("modo") or "pedido"), plazo=str(params.get("plazo") or ""))
+            # la dirección entera: con @máquina, se comprueba que esa máquina lo tenga (telar.ordenes.mensaje)
+            r = mensajes.enviar(ctx, str(d) if d.maquina else d.id, texto, modo=str(params.get("modo") or "pedido"), plazo=str(params.get("plazo") or ""))
             return Hecho(direccion=str(d), accion=accion, resultado=r.model_dump(mode="json"))
         if accion == "leer":
             from telar.servicios import historias

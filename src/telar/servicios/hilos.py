@@ -172,7 +172,7 @@ def _red(ctx) -> tuple[list[dict], list[dict], str]:
         return [], [], f"{e}; se muestran solo los hilos de esta máquina"
     yo = mod_bus.maquina(ctx.config)
     otras = [
-        {"nombre": d.get("nombre") or n, "direccion": objetos.direccion_de("hilo", d.get("nombre") or n),
+        {"nombre": d.get("nombre") or n, "direccion": objetos.direccion_de("hilo", d.get("nombre") or n, d.get("maquina", "")),
          "maquina": d.get("maquina", ""), "vivo": bool(d.get("vivo")),
          "atencion": d.get("atencion", "ninguna"), "atencion_desde": d.get("desde", ""),
          "residente": d.get("residente", ""), "actualizado": d.get("actualizado", "")}

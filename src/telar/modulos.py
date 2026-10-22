@@ -325,7 +325,10 @@ def entorno(config, m: Modulo) -> dict:
     """Lo que un módulo sabe de telar, en su entorno."""
     from telar import bus as mod_bus
 
-    repos = [{"nombre": r.nombre, "ruta": str(Path(r.ruta).expanduser()), "perfil": str(r.perfil or "")}
+    from telar.perfil import ruta_de_repo
+
+    # la ruta absoluta (una relativa, desde la raíz): el módulo no sabe desde dónde se escribió
+    repos = [{"nombre": r.nombre, "ruta": str(ruta_de_repo(config, r)), "perfil": str(r.perfil or "")}
              for r in getattr(config, "repos", ()) or ()]
     maquina = mod_bus.maquina(config) if getattr(config, "bus", None) is not None else ""
     return {**os.environ, "TELAR_RAIZ": str(Path(config.raiz).expanduser()), "TELAR_REPOS": json.dumps(repos),

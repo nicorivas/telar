@@ -298,11 +298,7 @@ def _repos(ctx) -> list[dict]:
             salida.append(_r("repos", AVISO, f"«{repo.nombre}» ({repo.ruta}) no existe: no aporta nada",
                              "corrige su `ruta` en [repos], o sácalo"))
             continue
-        if not Path(repo.ruta).expanduser().is_absolute():
-            # telar la lee desde la raíz, pero un módulo la recibe tal cual en TELAR_REPOS y no sabe desde dónde
-            salida.append(_r("repos", AVISO, f"«{repo.nombre}» tiene la ruta relativa «{repo.ruta}»: telar la lee "
-                             f"desde la raíz, pero los módulos la reciben tal cual",
-                             f"escríbela absoluta: ruta = \"{carpeta_de_repo(ctx.config, repo)}\""))
+
         try:
             carpeta_de_repo(ctx.config, repo).relative_to(raiz.resolve())
         except (ValueError, OSError):

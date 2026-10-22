@@ -139,7 +139,7 @@ class LosHilosDeOtrasMaquinas(Prueba):
                 mock.patch.object(mod_espejo, "leer_todos", return_value=[]):
             otras, _, aviso = hilos._red(ctx)
         self.assertEqual(aviso, "")
-        self.assertEqual(hilos.OtroHilo(**otras[0]).direccion, "hilo:Faro")
+        self.assertEqual(hilos.OtroHilo(**otras[0]).direccion, "hilo:Faro@servidor")  # de otra máquina, con la suya
 
 
 class _ConTareas(Prueba):

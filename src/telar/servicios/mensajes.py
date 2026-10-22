@@ -63,7 +63,9 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
         con_modo = {k: v for k, v in (("modo", modo), ("plazo", plazo)) if v and v != "pedido"}
         return Enviado(**mandar(ctx, para, texto, tipo=tipo, de=de, **con_modo))
     except mod_bus.ErrorDeBus as e:
-        raise ErrorDeServicio(str(e), 502) from e
+        from telar.ordenes.mensaje import NoHayHilo
+
+        raise ErrorDeServicio(str(e), 404 if isinstance(e, NoHayHilo) else 502) from e
 
 
 class Consulta(BaseModel):

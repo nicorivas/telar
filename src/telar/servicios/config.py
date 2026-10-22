@@ -19,6 +19,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from telar.config import MULTIPLEXORES, PROYECTO_POR_DEFECTO, REUNION_POR_DEFECTO
+from telar.perfil import ruta_de_repo
 from telar.proveedores.calendario import tapar
 
 __all__ = ["ConfigResuelta", "resuelta", "ENTORNO"]
@@ -125,7 +126,8 @@ def resuelta(ctx) -> ConfigResuelta:
             for s in cfg.secciones
         ] + _agentes(cfg),
         "dashboard": {"orden": list(cfg.dashboard_orden), "ocultas": list(cfg.dashboard_ocultas)},
-        "repos": [{"nombre": r.nombre, "ruta": str(Path(r.ruta).expanduser()), "perfil": str(r.perfil or "")}
+        # la ruta absoluta, como la lee telar (una relativa, desde la raíz): la misma que reciben los módulos
+        "repos": [{"nombre": r.nombre, "ruta": str(ruta_de_repo(cfg, r)), "perfil": str(r.perfil or "")}
                   for r in cfg.repos],
         "modulos": _modulos(cfg),
         "apps": [{"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente,

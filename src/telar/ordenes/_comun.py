@@ -563,8 +563,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
     cuerpo = {
         "id": hilo.id,
         "nombre": hilo.nombre,
-        # su dirección de objeto (telar.objetos): `telar objeto hilo:<nombre>` lo abre, viva donde viva
-        "direccion": objetos.direccion_de("hilo", hilo.nombre),
+        # su dirección de objeto (telar.objetos), con `@máquina` si vive en otra: `telar objeto` la abre
+        "direccion": objetos.direccion_de("hilo", hilo.nombre, hilo.remoto if hilo.remoto and hilo.remoto != "?" else ""),
         "vivo": tel.vivo(hilo),
         "propio": tel.propio(hilo),
         "activo": hilo.activo,

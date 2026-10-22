@@ -173,6 +173,8 @@ def _por_nombre(ctx, para: str) -> str:
     La casilla se llama como el hilo, no como su id: un `@144` tal cual iba a una casilla «144» que
     nadie lee, y el mensaje salía como entregado. Un id que no es de un hilo de esta máquina se
     rechaza: el hilo de otra máquina se nombra, no se numera."""
+    if para.strip().startswith("hilo:"):
+        return _por_direccion(ctx, para.strip())
     if not _ID_DE_HILO.match(para.strip()):
         return para
     ref = "@" + para.strip().lstrip("@")
@@ -181,6 +183,32 @@ def _por_nombre(ctx, para: str) -> str:
     if hilo is None:
         raise mod_bus.ErrorDeBus(f"no hay ningún hilo con id {ref} en esta máquina: escribe su nombre")
     return hilo.nombre
+
+
+class NoHayHilo(mod_bus.ErrorDeBus):
+    """La máquina de `hilo:X@máquina` no tiene un hilo X: un 404, no una falla del bus."""
+
+
+def _por_direccion(ctx, para: str) -> str:
+    """El nombre del hilo de una dirección (`hilo:Faro`, `hilo:Faro@servidor`). Con `@máquina`, esa máquina
+    tiene que tener un hilo así (aquí, o según la foto que publicó en el bus): la casilla es del nombre, y un
+    mensaje para un hilo que allá no existe quedaría en una casilla que nadie lee, dado por entregado."""
+    from telar import objetos
+    from telar.servicios import ErrorDeServicio
+
+    try:
+        d = objetos.leer(para)
+    except ErrorDeServicio as e:
+        raise mod_bus.ErrorDeBus(str(e)) from None
+    if not d.maquina or not mod_bus.hay_bus(ctx.config):
+        return d.id
+    if d.maquina == mod_bus.maquina(ctx.config):
+        tel = _comun.tejer(ctx, con_ficha=False)
+        if not any(h.nombre == d.id and not h.remoto for h in tel.hilos):
+            raise NoHayHilo(f"{d.maquina} (esta máquina) no tiene un hilo «{d.id}»")
+    elif objetos._hilo_remoto(ctx, d.id, d.maquina) is None:
+        raise NoHayHilo(f"{d.maquina} no tiene un hilo «{d.id}» (según lo último que publicó en el bus)")
+    return d.id
 
 
 #: los modos de `--modo`: los que viajan (telar.casilla.MODOS) y la consulta, que no viaja
