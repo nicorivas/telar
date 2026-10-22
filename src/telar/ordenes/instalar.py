@@ -174,6 +174,9 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool) -> bool:
 
         def pedir() -> None:
             r = unirse.pedir(equipo, persona, maquina, token)
+            if r.get("estado") == "ya tiene cuenta":
+                print(f"  «{persona}» ya está en el bus y aquí está su clave: esta máquina entra con esa cuenta.")
+                return
             quien = equipo.administra or "quien administra el bus"
             print(f"  pedido {r.get('id', '?')}: {r.get('estado', '?')}. Avísale a {quien} para que lo apruebe "
                   f"(telar bus aprobar {r.get('id', '?')}); tu telar se conecta solo cuando lo haga.")
@@ -187,6 +190,13 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool) -> bool:
         bloque_repo = (f"\n# el repositorio del equipo {equipo.nombre} (lo escribió `telar instalar --unirse`)\n"
                        f"[repos.{equipo.nombre}]\nruta = {json.dumps(str(equipo.repo))}\n")
         pasos.append((lambda: _agregar(ruta, bloque_repo), f"agregar el repositorio {equipo.repo} como «{equipo.nombre}»"))
+    tiene_agente = ruta.exists() and re.search(r"^\[agente\]", ruta.read_text(encoding="utf-8"), re.M)
+    if equipo.agente and not tiene_agente:
+        lineas = [f"{k} = {json.dumps(v)}" for k, v in equipo.agente.items()]
+        bloque_agente = (f"\n# el agente de cada hilo, como lo usa el equipo {equipo.nombre} (lo escribió `telar instalar "
+                         f"--unirse`)\n[agente]\n" + "\n".join(lineas) + "\n")
+        pasos.append((lambda: _agregar(ruta, bloque_agente),
+                      "el agente de cada hilo: " + ", ".join(f"{k} {v}" for k, v in equipo.agente.items())))
     instalados = {m.nombre for m in getattr(ctx.config, "modulos", ())}
     for nombre, fuente in equipo.modulos.items():
         if nombre not in instalados:

@@ -9,13 +9,17 @@ Un equipo se declara en el repositorio que comparte, en `.telar/equipo.yaml`:
     modulos:                       # opcional: los módulos que usa el equipo
       grafo: https://github.com/alguien/telar-grafo
     requiere: [tmux, claude, tailscale]
+    agente:                        # opcional: el [agente] de quien se une, si no tiene uno
+      nombre: claude-code
+      carpeta: raiz                # Claude se abre en la raíz del repositorio (su CLAUDE.md, sus skills)
 
 `telar instalar --unirse`, desde el clon del repositorio, lee eso y:
 
 1. revisa que estén los programas que el equipo pide;
 2. genera el secreto de la persona **en su máquina** (`~/.config/telar/bus.token`) y manda a la puerta solo su
    hash (bcrypt): el secreto no viaja;
-3. deja en su configuración el bus, el repositorio (`[repos.<equipo>]`) y los módulos del equipo.
+3. deja en su configuración el bus, el repositorio (`[repos.<equipo>]`), los módulos del equipo y, si no tenía,
+   su `[agente]`.
 
 La **puerta** es `POST /unirse` en la página de la máquina del bus. Es lo único que telar recibe sin la llave de
 la página, y por eso pide tres cosas: que venga de la red de Tailscale (la página solo escucha ahí, y además se
@@ -50,6 +54,10 @@ class ErrorDeUnirse(Exception):
     """Lo que no se pudo; el mensaje es para la persona."""
 
 
+class YaTieneCuenta(ErrorDeUnirse):
+    """Esa persona ya está en el bus: la puerta contesta 409, y quien ya tenía la clave es otra máquina suya."""
+
+
 @dataclass(frozen=True)
 class Equipo:
     nombre: str
@@ -58,6 +66,8 @@ class Equipo:
     puerta: str = ""
     modulos: dict = field(default_factory=dict)
     requiere: tuple = ()
+    #: el [agente] que se le propone a quien se une: {nombre, carpeta}
+    agente: dict = field(default_factory=dict)
     #: la carpeta del repositorio que lo declara
     repo: Path | None = None
 
@@ -83,7 +93,7 @@ def leer(ruta: Path) -> Equipo:
         raise ErrorDeUnirse(f"{ruta}: YAML mal formado: {e}") from None
     if not isinstance(datos, dict):
         raise ErrorDeUnirse(f"{ruta}: se esperaba un mapa (clave: valor)")
-    sobra = set(datos) - {"nombre", "administra", "bus", "puerta", "modulos", "requiere"}
+    sobra = set(datos) - {"nombre", "administra", "bus", "puerta", "modulos", "requiere", "agente"}
     if sobra:
         raise ErrorDeUnirse(f"{ruta}: no conozco «{sorted(sobra)[0]}»")
     nombre, bus = str(datos.get("nombre") or ""), str(datos.get("bus") or "")
@@ -106,8 +116,12 @@ def leer(ruta: Path) -> Equipo:
     requiere = datos.get("requiere") or []
     if not isinstance(requiere, list) or not all(isinstance(x, str) and x for x in requiere):
         raise ErrorDeUnirse(f"{ruta}: `requiere` es una lista de programas")
+    agente = datos.get("agente") or {}
+    if not isinstance(agente, dict) or set(agente) - {"nombre", "carpeta"} \
+            or not all(isinstance(v, str) and v for v in agente.values()):
+        raise ErrorDeUnirse(f"{ruta}: `agente` lleva nombre (como claude-code) y carpeta (hilo, raiz o una ruta)")
     return Equipo(nombre=nombre, bus=bus, administra=administra, puerta=puerta, modulos=dict(modulos),
-                  requiere=tuple(requiere), repo=ruta.parent.parent)
+                  requiere=tuple(requiere), agente=dict(agente), repo=ruta.parent.parent)
 
 
 def buscar(desde: Path | None = None) -> Equipo | None:
@@ -137,7 +151,8 @@ def pedir(equipo: Equipo, persona: str, maquina: str, ruta_secreto: Path) -> dic
     from telar import cuentas
 
     cuentas.validar(persona)
-    if ruta_secreto.exists():
+    ya_estaba = ruta_secreto.exists()
+    if ya_estaba:
         secreto = ruta_secreto.read_text(encoding="utf-8").strip()
     else:
         secreto = cuentas.secreto_nuevo()
@@ -147,6 +162,19 @@ def pedir(equipo: Equipo, persona: str, maquina: str, ruta_secreto: Path) -> dic
     pedido = urllib.request.Request(f"{equipo.url_puerta}/unirse", data=cuerpo, method="POST",
                                     headers={"Content-Type": "application/json"})
     try:
+        return _tocar(pedido, equipo, ya_estaba)
+    except ErrorDeUnirse:
+        if not ya_estaba:
+            # la clave recién hecha no sirvió para nada: que no quede, o la próxima vez parecería de antes
+            ruta_secreto.unlink(missing_ok=True)
+        raise
+
+
+def _tocar(pedido, equipo: Equipo, ya_estaba: bool) -> dict:
+    import urllib.error
+    import urllib.request
+
+    try:
         with urllib.request.urlopen(pedido, timeout=20) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
@@ -154,6 +182,10 @@ def pedir(equipo: Equipo, persona: str, maquina: str, ruta_secreto: Path) -> dic
             detalle = json.loads(e.read() or b"{}").get("detail", "")
         except ValueError:
             detalle = ""
+        if e.code == 409 and ya_estaba:
+            # otra máquina de una persona que ya está en el bus, con su clave copiada: entra con esa cuenta (si la
+            # clave no es la suya, el bus no la deja conectarse; la puerta no da nada)
+            return {"id": "", "estado": "ya tiene cuenta"}
         raise ErrorDeUnirse(f"la puerta del equipo no lo aceptó ({e.code}): {detalle or e.reason}") from None
     except (urllib.error.URLError, OSError) as e:
         raise ErrorDeUnirse(f"no llego a la puerta del equipo ({equipo.url_puerta}): {e}. ¿Estás en su red de "
@@ -221,7 +253,8 @@ def recibir(datos: dict, ip: str, quien: dict, *, ahora: float | None = None) ->
         raise ErrorDeUnirse("el pedido no trae un hash de su secreto")
     pedidos = leer_pedidos()
     if persona in cuentas.leer(cuentas.carpeta()):
-        raise ErrorDeUnirse(f"«{persona}» ya tiene cuenta en el bus: si es otra persona, elige otro nombre")
+        raise YaTieneCuenta(f"«{persona}» ya tiene cuenta en el bus: si es otra persona, elige otro nombre; si es "
+                            f"otra máquina tuya, copia aquí tu clave (~/.config/telar/bus.token) y vuelve a correrlo")
     for pid, p in list(pedidos.items()):
         if p["estado"] == "pendiente" and p["persona"] == persona:
             if p["tailscale"] != quien["cuenta"]:

@@ -245,6 +245,8 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
             r = await asyncio.to_thread(unirse.recibir, datos, ip, quien)
         except ValueError:
             return JSONResponse({"detail": "el pedido no es JSON"}, status_code=422)
+        except unirse.YaTieneCuenta as e:
+            return JSONResponse({"detail": str(e)}, status_code=409)
         except Exception as e:  # noqa: BLE001 - ErrorDeUnirse y ErrorDeCuentas: lo que falta, para quien pide
             return JSONResponse({"detail": str(e)}, status_code=422)
         if config is not None:

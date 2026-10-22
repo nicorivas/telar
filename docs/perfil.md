@@ -189,9 +189,13 @@ puerta: http://100.64.0.10:8780   # opcional: dónde se pide entrar; por defecto
 modulos:                          # opcional: los que instala quien se une
   grafo: https://github.com/alguien/telar-grafo
 requiere: [tmux, claude, tailscale, git]
+agente:                           # opcional: el [agente] de quien se une, si no tiene uno
+  nombre: claude-code
+  carpeta: raiz                   # Claude en la raíz del repositorio: su CLAUDE.md y sus skills
 ```
 
-Nada secreto ni personal va ahí: cada persona genera su secreto en su máquina.
+Quien se une desde otra máquina suya (su servidor) copia antes su clave (`~/.config/telar/bus.token`): la puerta
+dice que ya tiene cuenta, y esa máquina entra con ella sin pedido nuevo. Nada secreto ni personal va ahí: cada persona genera su secreto en su máquina.
 
 ## Varios repositorios
 

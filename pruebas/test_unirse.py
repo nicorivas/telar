@@ -21,6 +21,9 @@ bus: nats://servidor:4222
 modulos:
   grafo: https://example.com/telar-grafo
 requiere: [git]
+agente:
+  nombre: claude-code
+  carpeta: raiz
 """
 
 QUIEN = {"cuenta": "beto@example.com", "maquina": "laptop-de-beto"}
@@ -55,7 +58,8 @@ class ElManifiesto(Prueba):
     def test_un_manifiesto_que_no_sirve(self):
         for malo in ("nombre: Faro Grande\nbus: nats://s:4222\n", "nombre: faro\nbus: http://s\n",
                      "nombre: faro\nbus: nats://s:4222\notra: 1\n", "nombre: faro\nbus: nats://s:4222\nrequiere: tmux\n",
-                     "- una\n- lista\n", "nombre: faro\nbus: nats://s:4222\npuerta: ftp://x\n"):
+                     "- una\n- lista\n", "nombre: faro\nbus: nats://s:4222\npuerta: ftp://x\n",
+                     "nombre: faro\nbus: nats://s:4222\nagente: {modelo: x}\n"):
             (self.repo / ".telar" / "equipo.yaml").write_text(malo, encoding="utf-8")
             with self.assertRaises(unirse.ErrorDeUnirse, msg=malo):
                 unirse.buscar(self.repo)
@@ -117,7 +121,7 @@ class LaPuerta(Prueba):
         self.assertEqual(unirse.leer_pedidos()[r2["id"]]["estado"], "rechazado")
 
     def test_nombres_que_ya_estan(self):
-        with self.assertRaises(unirse.ErrorDeUnirse):  # ya tiene cuenta
+        with self.assertRaises(unirse.YaTieneCuenta):  # ya tiene cuenta
             self.pedir(persona="ana")
         r1 = self.pedir()
         r2 = self.pedir()  # la misma persona lo intenta de nuevo: reemplaza al pendiente
@@ -179,6 +183,8 @@ class LaPuertaEnLaPagina(LaPuerta):
             self.assertEqual(self.cliente("100.70.1.2").get("/api/hilos").status_code, 403)  # lo demás sigue con llave
         with mock.patch.object(unirse, "quien_es", side_effect=unirse.ErrorDeUnirse("Tailscale no sabe")):
             self.assertEqual(self.cliente("100.70.1.4").post("/unirse", json=cuerpo).status_code, 422)
+        with mock.patch.object(unirse, "quien_es", return_value=QUIEN):  # una que ya está: 409, distinto de un error
+            self.assertEqual(self.cliente("100.70.1.5").post("/unirse", json={**cuerpo, "persona": "ana"}).status_code, 409)
         (cuentas.carpeta() / "servidor.conf").unlink()
         self.assertEqual(self.cliente("100.70.1.2").post("/unirse", json=cuerpo).status_code, 404)
 
@@ -189,6 +195,29 @@ class LaPuertaEnLaPagina(LaPuerta):
             codigos = [c.post("/unirse", json=cuerpo).status_code for _ in range(unirse.TOPE_POR_HORA + 1)]
         self.assertEqual(codigos[-1], 429)
         self.assertEqual(set(codigos[:-1]), {200})
+
+
+class OtraMaquinaDeLaMismaPersona(Prueba):
+    """Quien ya está en el bus y copió su clave a otra máquina: la puerta dice 409 y esa máquina entra igual; sin
+    la clave, el 409 es un error (es otra persona con ese nombre)."""
+
+    def test_con_la_clave_copiada_entra_sin_pedido(self):
+        import io
+        import urllib.error
+
+        equipo = unirse.Equipo(nombre="faro", bus="nats://servidor:4222")
+        with tempfile.TemporaryDirectory() as tmp:
+            clave = Path(tmp) / "bus.token"
+            error = urllib.error.HTTPError("http://servidor:8780/unirse", 409, "Conflict", {},
+                                           io.BytesIO(b'{"detail": "ya tiene cuenta"}'))
+            with mock.patch("urllib.request.urlopen", side_effect=error), \
+                    mock.patch.object(cuentas, "hashear", return_value=HASH_BETO):
+                with self.assertRaises(unirse.ErrorDeUnirse):  # sin clave de antes: es otra persona
+                    unirse.pedir(equipo, "beto", "mac", clave)
+                self.assertFalse(clave.exists())  # la que se generó no sirvió: no queda, o la próxima vez parecería de antes
+                clave.write_text("la clave de beto, copiada de su otra máquina\n")
+                error.fp = io.BytesIO(b'{"detail": "ya tiene cuenta"}')
+                self.assertEqual(unirse.pedir(equipo, "beto", "mac", clave)["estado"], "ya tiene cuenta")
 
 
 class AlInstalar(Prueba):
@@ -226,6 +255,7 @@ class AlInstalar(Prueba):
         self.assertTrue(any("unirse al bus nats://servidor:4222" in q for q in pasos), pasos)
         self.assertTrue(any("como «faro»" in q for q in pasos), pasos)
         self.assertTrue(any("instalar el módulo grafo" in q for q in pasos), pasos)
+        self.assertTrue(any("el agente de cada hilo: nombre claude-code, carpeta raiz" in q for q in pasos), pasos)
 
     def test_lo_que_ya_esta_no_se_repite(self):
         from telar import api_web
@@ -233,7 +263,7 @@ class AlInstalar(Prueba):
         config = SimpleNamespace(bus=SimpleNamespace(url="nats://servidor:4222", persona="beto"),
                                  repos=(SimpleNamespace(nombre="faro"),), modulos=(SimpleNamespace(nombre="grafo"),))
         with mock.patch.object(api_web, "ruta_llave", return_value=self.conf):
-            self.conf.write_text("")
+            self.conf.write_text('[agente]\nnombre = "codex"\n')  # el agente que ya eligió no se toca
             self.assertEqual(self.plan(config=config), [])
 
     def test_lo_que_no_se_puede(self):
