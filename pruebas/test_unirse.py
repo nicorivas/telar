@@ -282,5 +282,32 @@ class AlInstalar(Prueba):
             self.plan("persona", "beto")
 
 
+    def test_fuera_del_repo_avisa_y_sigue(self):
+        from telar import api_web
+
+        avisos: list[str] = []
+        with mock.patch.object(api_web, "ruta_llave", return_value=self.conf), \
+                mock.patch.object(unirse, "buscar", return_value=None), \
+                mock.patch.object(unirse, "buscar_cerca", return_value=[]):
+            self.conf.write_text("")
+            from telar.ordenes import instalar
+
+            o = SimpleNamespace(bus="", token=str(Path(self.tmp.name) / "bus.token"), persona="beto", sin_servicio=True,
+                                sin_agente=True, unirse="", si=True, seco=False)
+            config = SimpleNamespace(bus=SimpleNamespace(url="", persona=""), repos=(), modulos=())
+            pasos = instalar._plan(SimpleNamespace(config=config), o, self.conf, avisos)
+        self.assertEqual(pasos, [])  # nada del equipo, y no se detiene
+        self.assertIn("no encontré el repositorio del equipo", avisos[0])
+
+    def test_fuera_del_repo_encuentra_el_clon_de_la_casa(self):
+        casa = Path(self.tmp.name) / "casa"
+        (casa / "Code").mkdir(parents=True)
+        (self.repo).rename(casa / "Code" / "faro")
+        (casa / "suelto").mkdir()
+        hallados = unirse.buscar_cerca(casa)
+        self.assertEqual([(e.nombre, e.repo) for e in hallados], [("faro", casa / "Code" / "faro")])
+        self.assertEqual(unirse.buscar_cerca(casa / "suelto"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

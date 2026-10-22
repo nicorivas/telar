@@ -6,6 +6,16 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-10-22
+
+### Changed
+
+- `telar instalar` shows its plan as numbered steps and then each step as it runs: a spinner, ✓ or ✗, how long it
+  took and, dimmed, what it said; what to do next (an approval to ask for) goes last, after `telar doctor`.
+- `telar instalar --unirse` outside the team's repository no longer fails: it looks for the clone where clones
+  usually are (`~/Code`, `~/Documents`…) and joins that one if there is exactly one; otherwise it warns and
+  installs the rest. A folder given explicitly (`--unirse PATH`) without a team is still an error.
+
 ## [0.4.1] — 2026-10-22
 
 ### Added

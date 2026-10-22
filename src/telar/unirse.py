@@ -135,6 +135,34 @@ def buscar(desde: Path | None = None) -> Equipo | None:
     return leer(manifiesto) if manifiesto.is_file() else None
 
 
+#: dónde suelen estar los clones, bajo la carpeta de la persona: ahí busca `buscar_cerca` (y en la carpeta misma)
+CARPETAS_DE_CLONES = ("", "Code", "code", "Developer", "Projects", "projects", "Proyectos", "proyectos", "repos", "src",
+                      "git", "GitHub", "github", "Documents", "Documentos", "Desktop", "Escritorio")
+
+
+def buscar_cerca(casa: Path | None = None) -> list[Equipo]:
+    """Los equipos de los clones que están donde suelen estar (`CARPETAS_DE_CLONES`, un nivel adentro de cada una),
+    para cuando `--unirse` se corre fuera del repositorio. Uno por equipo; uno que no se lee se salta."""
+    casa = Path(casa or Path.home())
+    hallados: dict[str, Equipo] = {}
+    for sub in CARPETAS_DE_CLONES:
+        base = casa / sub if sub else casa
+        try:
+            hijos = sorted(base.iterdir()) if base.is_dir() else []
+        except OSError:
+            continue
+        for hijo in hijos:
+            manifiesto = hijo / NOMBRE_EQUIPO
+            try:
+                if not manifiesto.is_file():
+                    continue
+                e = leer(manifiesto)
+            except (OSError, ErrorDeUnirse):
+                continue
+            hallados.setdefault(e.nombre, e)
+    return list(hallados.values())
+
+
 def faltan(equipo: Equipo) -> list[str]:
     import shutil
 

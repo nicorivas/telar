@@ -119,6 +119,18 @@ def fuerte(texto: str) -> str:
     return f"\x1b[1m{texto}\x1b[0m" if _color() else texto
 
 
+def verde(texto: str) -> str:
+    return f"\x1b[32m{texto}\x1b[0m" if _color() else texto
+
+
+def rojo(texto: str) -> str:
+    return f"\x1b[31m{texto}\x1b[0m" if _color() else texto
+
+
+def amarillo(texto: str) -> str:
+    return f"\x1b[33m{texto}\x1b[0m" if _color() else texto
+
+
 #: Cómo se dibuja cada atención en una línea de terminal.
 SIMBOLO = {
     Atencion.NINGUNA: " ",
