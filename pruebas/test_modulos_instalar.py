@@ -141,6 +141,46 @@ class LosModulosComoPlugins(Prueba):
         with self.assertRaises(modulos.ErrorDeModulo):
             modulos.leer("eco", self.repo)
 
+    def test_adoptar_uno_declarado_a_mano(self):
+        conf = self.conf / "config.toml"
+        conf.write_text(conf.read_text() + f'\n# los módulos\n[modulos.eco]\ncarpeta = "{self.repo}"\n\n# lo que sigue\n[dashboard]\norden = ["ahora"]\n')
+        self.assertIsNotNone(modulos.buscar(self.config(), "eco"))
+        hecho = modulos.adoptar(self.instalados, conf, "eco")
+        self.assertIn("adoptado", hecho)
+        texto = conf.read_text()
+        self.assertNotIn("[modulos.eco]", texto)
+        self.assertIn("# lo que sigue\n[dashboard]", texto)
+        self.assertTrue((self.conf / "config.toml.antes-adoptar-eco").exists())
+        d = modulos.leer_instalados(self.instalados)["eco"]
+        self.assertEqual((d["carpeta"], d["enlazado"]), (str(self.repo.resolve()), True))
+        self.assertEqual(modulos.buscar(self.config(), "eco").carpeta, self.repo.resolve())  # sigue ahí
+        with self.assertRaises(modulos.ErrorDeModulo):
+            modulos.adoptar(self.instalados, conf, "eco")
+
+    def test_lo_que_requiere_se_mira_antes_de_instalar(self):
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[requiere]\nprogramas = ["no-existe-este-programa"]\n')
+        git(self.repo, "commit", "-qam", "requiere")
+        with self.assertRaises(modulos.ErrorDeModulo) as e:
+            self.instalar()
+        self.assertIn("no-existe-este-programa", str(e.exception))
+        self.assertNotIn("eco", modulos.leer_instalados(self.instalados))
+        self.assertEqual(list((Path(self.tmp.name) / "datos" / "telar" / "modulos").iterdir()), [])
+
+    def test_instalar_uno_con_periodicos_deja_el_crontab_al_dia(self):
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[periodicos.medir]\ncuando = "0 7 * * *"\ncomando = "bin/eco"\n')
+        git(self.repo, "commit", "-qam", "periodico")
+        from telar import periodicos as mod_periodicos
+        from telar.ordenes import modulos as orden
+
+        with mock.patch.object(mod_periodicos, "aplicar") as aplicar, mock.patch("sys.stdout"):
+            codigo = orden.main(["instalar", str(self.repo), "--si"], SimpleNamespace(config=self.config()))
+        self.assertEqual(codigo, 0)
+        archivo = aplicar.call_args.args[0]
+        self.assertIn("eco-medir", [x.nombre for x in archivo.procesos])
+        with mock.patch.object(mod_periodicos, "aplicar") as aplicar, mock.patch("sys.stdout"):
+            orden.main(["quitar", "eco", "--si"], SimpleNamespace(config=self.config()))
+        self.assertNotIn("eco-medir", [x.nombre for x in aplicar.call_args.args[0].procesos])
+
     def test_un_manifiesto_roto_no_queda_a_medias(self):
         (self.repo / "modulo.toml").write_text('[ordenes.decir]\ncomando = "bin/eco"\n')
         git(self.repo, "commit", "-qam", "roto")

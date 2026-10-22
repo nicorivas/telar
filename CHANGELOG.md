@@ -8,6 +8,9 @@ extension shared the version number.
 
 ### Added
 
+- Modules keep their own crontab: installing, updating, adopting or removing one with scheduled jobs updates
+  the crontab on the machine where jobs run (and says so on another). `[requiere] programas` is checked before
+  installing. `telar modulos adoptar <name>` moves a module declared by hand into `modulos.toml`.
 - A module can tell the agent of every thread something when it starts (`[contexto] texto`, up to 600
   characters), after what telar already tells it: how a module makes its agents know it is there and when to use it.
 - A task action that sends its message to a thread takes `hilo` (`POST /tareas/{id}/accion`, `telar tarea --hilo`):

@@ -811,7 +811,16 @@ sí (`--si` para no preguntar), corre su `[instalar]` y lo anota en `modulos.tom
 configuración. Ese archivo es solo de `telar modulos`; la configuración la sigue escribiendo quien la
 escribe, y un mismo nombre en los dos es un error. El nombre sale de `nombre` en el manifiesto, o del
 repositorio sin `telar-` (`--nombre` lo cambia). `--enlazar` usa la carpeta donde está, sin copiarla,
-para desarrollar un módulo.
+para desarrollar un módulo, o para uno que vive dentro de otro repositorio.
+
+Un módulo con periódicos no pide nada más: en la máquina donde corren (`[periodicos] en`), instalarlo,
+actualizarlo, adoptarlo o quitarlo deja el crontab al día; en otra, telar dice que allá también hay que
+instalarlo. Lo que el módulo necesita en la máquina (un programa en el PATH) lo declara `[requiere]
+programas = ["uv"]`, y se mira antes de instalar.
+
+`telar modulos adoptar <nombre>` pasa uno declarado a mano en la configuración (`[modulos.<nombre>]`) a
+`modulos.toml`, enlazado a su carpeta: saca su bloque de la configuración (que queda respaldada al lado) y
+desde ahí se actualiza y se quita como los demás.
 
 ## `[dashboard]` — qué pestañas se ven y en qué orden
 

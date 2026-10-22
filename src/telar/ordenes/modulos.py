@@ -5,12 +5,14 @@
     telar modulos instalar <repo git o carpeta> [--nombre N] [--enlazar] [--si]
     telar modulos actualizar <nombre>          git pull y su [instalar] de nuevo
     telar modulos quitar <nombre> [--si]       lo desanota y borra la carpeta que bajó telar
+    telar modulos adoptar <nombre>             uno declarado a mano en la configuración pasa a los instalados
 
 Un módulo es una carpeta con un `modulo.toml` (ver telar.modulos y docs/configuracion.md, `[modulos]`). Instalar clona el
 repositorio en `~/.local/share/telar/modulos/<nombre>`, muestra lo que trae (pestaña, órdenes,
 periódicos…) y, con tu sí, corre su `[instalar]` y lo anota en `modulos.toml`, al lado de la
 configuración. `--enlazar` usa la carpeta donde está, sin copiarla: para desarrollar un módulo. Se instala
-en cada máquina que lo usa. Si trae periódicos, `telar periodicos aplicar` los pone en el crontab.
+en cada máquina que lo usa. Si trae periódicos y esta es la máquina donde corren (`[periodicos] en`),
+instalar, actualizar, adoptar y quitar dejan el crontab al día solos; si corren en otra, lo dice.
 
 También se puede declarar uno a mano en la configuración, `[modulos.<nombre>] carpeta = "…"`.
 """
@@ -18,11 +20,12 @@ También se puede declarar uno a mano en la configuración, `[modulos.<nombre>] 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from telar.ordenes import _comun
 
 AYUDA = "Los módulos (una carpeta con modulo.toml): la lista, e instalarlos desde un repositorio."
-VERBOS = ("instalar", "actualizar", "quitar")
+VERBOS = ("instalar", "actualizar", "quitar", "adoptar")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -55,6 +58,30 @@ def main(argv: list[str], ctx) -> int:
     return 0
 
 
+def _periodicos(ctx, hay: bool) -> None:
+    """Si el módulo trae (o traía) periódicos: en la máquina donde corren, el crontab al día con la
+    configuración de ahora; en otra, el aviso de que allá también hay que instalarlo."""
+    if not hay:
+        return
+    from telar import bus as mod_bus
+    from telar import config as mod_config
+    from telar import periodicos as mod_periodicos
+
+    en = ctx.config.periodicos_en
+    if en and en not in ("aqui", mod_bus.maquina(ctx.config)):
+        print(_comun.tenue(f"    sus periódicos corren en {en}: instálalo (o actualízalo, o quítalo) allá también"))
+        return
+    try:
+        config = mod_config.cargar(ctx.config.origen) if ctx.config.origen else mod_config.cargar()
+        archivo = mod_periodicos.con_modulos(mod_periodicos.leer(mod_periodicos.ruta(ctx.config.origen)), config)
+        from telar.ordenes.periodicos import _telar
+
+        mod_periodicos.aplicar(archivo, _telar())
+        print(_comun.tenue("    crontab al día con sus periódicos"))
+    except (mod_config.ErrorDeConfig, mod_periodicos.ErrorDePeriodicos) as e:
+        print(f"telar: el crontab no quedó al día ({e}): telar periodicos aplicar", file=sys.stderr)
+
+
 def _si(pregunta: str, si: bool) -> bool:
     if si:
         return True
@@ -74,7 +101,7 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
         p.add_argument("--enlazar", action="store_true", help="usar la carpeta donde está, sin copiarla")
     else:
         p.add_argument("nombre")
-    if verbo != "actualizar":
+    if verbo in ("instalar", "quitar"):
         p.add_argument("--si", action="store_true", help="sin preguntar")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -96,17 +123,22 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
                 return 1
             carpeta = mod_modulos.confirmar_instalacion(ruta, m, anotar)
             print(f"instalado {m.nombre} en {carpeta}")
-            if m.periodicos:
-                print(_comun.tenue("    trae periódicos: telar periodicos aplicar, donde corren"))
             if m.ordenes:
                 print(_comun.tenue(f"    sus órdenes: telar {m.nombre} <{'|'.join(m.ordenes)}>"))
+            _periodicos(ctx, bool(m.periodicos))
             return 0
+        tenia = bool(getattr(mod_modulos.buscar(ctx.config, o.nombre), "periodicos", None))
         if verbo == "actualizar":
             print(mod_modulos.actualizar(ruta, o.nombre))
-            return 0
-        if not _si(f"¿quitar {o.nombre}?", o.si):
-            return 1
-        print(mod_modulos.quitar(ruta, o.nombre))
+        elif verbo == "adoptar":
+            from telar.config import ruta_config
+
+            print(mod_modulos.adoptar(ruta, Path(ctx.config.origen or ruta_config()), o.nombre))
+        else:
+            if not _si(f"¿quitar {o.nombre}?", o.si):
+                return 1
+            print(mod_modulos.quitar(ruta, o.nombre))
+        _periodicos(ctx, tenia)
         return 0
     except mod_modulos.ErrorDeModulo as e:
         print(f"telar: {e}", file=sys.stderr)

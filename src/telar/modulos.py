@@ -37,6 +37,9 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [contexto]                     # lo que el agente de cada hilo sabe del módulo al arrancar
     texto = "La temperatura del mar: `telar nino34 medir`."
 
+    [requiere]                     # lo que tiene que haber en la máquina: se mira al instalarlo
+    programas = ["uv"]
+
 Las rutas relativas son de la carpeta del módulo, y sus periódicos corren en ella. Todo lo que
 aporta toma el nombre del módulo: la pestaña es el bloque `nino34`, el resultado `nino34`, y un
 periódico `nino34-bajar` (o `nino34` si se llama como el módulo). El resultado se lee donde corren
@@ -69,7 +72,8 @@ from pathlib import Path
 
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
-_RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto"}
+_RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
+         "requiere"}
 TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
 ESPERA_CONSULTA = 30
 
@@ -94,6 +98,14 @@ class Modulo:
     instalar: tuple = ()
     #: lo que el agente de cada hilo sabe del módulo al arrancar (`[contexto] texto`)
     contexto: str = ""
+    #: los programas que tiene que haber en el PATH (`[requiere] programas`)
+    requiere: tuple = ()
+
+    def faltan(self) -> list[str]:
+        """Los programas de `[requiere]` que esta máquina no tiene."""
+        import shutil
+
+        return [p for p in self.requiere if not shutil.which(p)]
 
     @property
     def aporta(self) -> list[str]:
@@ -133,7 +145,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     sobra = set(datos) - _RAIZ
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
-    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto"):
+    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -188,12 +200,17 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     if len(contexto) > TOPE_CONTEXTO:
         raise ErrorDeModulo(f"{nombre}: [contexto] texto: hasta {TOPE_CONTEXTO} caracteres (entra en cada sesión)")
 
+    requiere = datos.get("requiere", {}).get("programas", [])
+    if not isinstance(requiere, list) or not all(isinstance(x, str) and x.strip() for x in requiere):
+        raise ErrorDeModulo(f"{nombre}: [requiere] programas: se esperaba una lista de nombres de programa")
+
     descripcion = datos.get("descripcion", "")
     if not isinstance(descripcion, str):
         raise ErrorDeModulo(f"{nombre}: descripcion: se esperaba un texto")
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
-                  instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto)
+                  instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
+                  requiere=tuple(x.strip() for x in requiere))
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────
@@ -371,6 +388,10 @@ def confirmar_instalacion(ruta: Path, m: Modulo, anotar: dict) -> Path:
     if m.nombre in instalados:
         shutil.rmtree(anotar.get("provisorio", ""), ignore_errors=True) if anotar.get("provisorio") else None
         raise ErrorDeModulo(f"ya está instalado «{m.nombre}»: telar modulo actualizar {m.nombre}, o quitar")
+    if m.faltan():
+        if anotar.get("provisorio"):
+            shutil.rmtree(anotar["provisorio"], ignore_errors=True)
+        raise ErrorDeModulo(f"{m.nombre} necesita {', '.join(m.faltan())}, y esta máquina no lo tiene en el PATH")
     carpeta = Path(anotar["carpeta"])
     if anotar.get("provisorio"):
         if carpeta.exists():
@@ -386,6 +407,41 @@ def confirmar_instalacion(ruta: Path, m: Modulo, anotar: dict) -> Path:
     instalados[m.nombre] = anotar
     _escribir_instalados(ruta, instalados)
     return carpeta
+
+
+def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
+    """Un módulo declarado a mano (`[modulos.<nombre>]` en la configuración) pasa a `modulos.toml`, enlazado
+    a la carpeta donde está: desde ahí se actualiza y se quita como los demás. Su bloque sale de la
+    configuración, que queda respaldada al lado (`config.toml.antes-adoptar-<nombre>`)."""
+    from datetime import date
+
+    texto = config_ruta.read_text(encoding="utf-8")
+    datos = tomllib.loads(texto).get("modulos", {}).get(nombre)
+    if not isinstance(datos, dict) or not isinstance(datos.get("carpeta"), str):
+        raise ErrorDeModulo(f"«{nombre}» no está declarado a mano en {config_ruta}")
+    carpeta = Path(datos["carpeta"]).expanduser().resolve()
+    m = leer(nombre, carpeta)
+    instalados = leer_instalados(ruta)
+    if nombre in instalados:
+        raise ErrorDeModulo(f"«{nombre}» ya está en {ruta}")
+    remoto = _git(carpeta, "remote", "get-url", "origin").stdout.strip()
+    instalados[nombre] = {"carpeta": str(carpeta), "fuente": remoto or str(carpeta), "enlazado": True,
+                          "version": _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip(),
+                          "instalado": date.today().isoformat()}
+    # el bloque, de su cabecera hasta la siguiente tabla (con los comentarios que lo preceden pegados)
+    lineas = texto.split("\n")
+    i = next(k for k, l in enumerate(lineas) if l.strip() == f"[modulos.{nombre}]")
+    j = next((k for k in range(i + 1, len(lineas)) if lineas[k].lstrip().startswith("[")), len(lineas))
+    while j > i + 1 and (not lineas[j - 1].strip() or lineas[j - 1].lstrip().startswith("#")):
+        j -= 1  # los comentarios y blancos del final son de la tabla siguiente
+    respaldo = config_ruta.with_name(f"{config_ruta.name}.antes-adoptar-{nombre}")
+    respaldo.write_text(texto, encoding="utf-8")
+    nuevo = "\n".join(lineas[:i] + lineas[j:]).replace("\n\n\n\n", "\n\n")
+    _escribir_instalados(ruta, instalados)
+    tmp = config_ruta.with_suffix(".tmp")
+    tmp.write_text(nuevo, encoding="utf-8")
+    tmp.replace(config_ruta)
+    return f"{m.nombre}: adoptado, enlazado a {carpeta} (la configuración de antes, en {respaldo.name})"
 
 
 def actualizar(ruta: Path, nombre: str) -> str:
