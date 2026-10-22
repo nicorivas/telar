@@ -110,9 +110,9 @@ class LaConexionDelNodo(Prueba):
 
     def test_la_del_nodo_cuenta_sus_fallas_con_el_avisador(self):
         opciones = self.conectar(para_siempre=True)
-        self.assertIsInstance(opciones["error_cb"], mod_bus.Avisador)
-        self.assertEqual(opciones["disconnected_cb"], opciones["error_cb"].cortado)
-        self.assertEqual(opciones["reconnected_cb"], opciones["error_cb"].de_vuelta)
+        self.assertIsInstance(opciones["error_cb"].__self__, mod_bus.Avisador)
+        self.assertEqual(opciones["disconnected_cb"], opciones["error_cb"].__self__.cortado)
+        self.assertEqual(opciones["reconnected_cb"], opciones["error_cb"].__self__.de_vuelta)
         self.assertEqual(opciones["max_reconnect_attempts"], -1)
 
     def test_la_de_una_orden_sigue_callada(self):
@@ -641,7 +641,7 @@ class ElCorteYLaVuelta(Prueba):
         falso = FalsoNats()
         with mock.patch.dict(sys.modules, {"nats": falso}):
             nc = asyncio.run(mod_bus.conectar(config_con_bus(), para_siempre=True))
-        self.assertIs(falso.llamadas[-1]["error_cb"].nc, nc)
+        self.assertIs(falso.llamadas[-1]["error_cb"].__self__.nc, nc)
 
     def test_cortes_seguidos_se_cuentan_y_quedan_en_pares(self):
         a, lineas, ahora = self.avisador()
@@ -1068,5 +1068,19 @@ class ElVigiaDelEspejo(Prueba):
 
 
 
-if __name__ == "__main__":
-    unittest.main()
+class LosAvisosLosAceptaNats(Prueba):
+    """nats-py rechaza al conectar un callback que no sea una función async (inspect.iscoroutinefunction): un
+    objeto con __call__ async no pasa, y el nodo no arrancaba («callbacks must be coroutine functions»)."""
+
+    def test_los_callbacks_que_recibe_conectar_son_funciones_async(self):
+        import inspect
+
+        from telar import bus
+
+        avisos = bus.Avisador()
+        for cb in (avisos.__call__, avisos.cortado, avisos.de_vuelta):
+            self.assertTrue(inspect.iscoroutinefunction(cb), cb)
+        self.assertFalse(inspect.iscoroutinefunction(avisos))  # el objeto no: por eso va avisos.__call__
+        fuente = inspect.getsource(bus.conectar)
+        self.assertIn("error_cb=avisos.__call__", fuente)
+        self.assertNotIn("error_cb=avisos,", fuente)

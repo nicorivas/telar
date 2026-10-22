@@ -228,7 +228,8 @@ async def conectar(config, *, para_siempre: bool = False):
         # las fallas, en una línea cada una y sin repetirse (Avisador), no con su traza entera
         avisos = Avisador()
         opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True,
-                        error_cb=avisos, disconnected_cb=avisos.cortado, reconnected_cb=avisos.de_vuelta)
+                        error_cb=avisos.__call__, disconnected_cb=avisos.cortado,
+                        reconnected_cb=avisos.de_vuelta)  # nats-py exige funciones async: un objeto llamable no le sirve
     else:
         opciones.update(max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
     try:
