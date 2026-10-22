@@ -131,6 +131,12 @@ extension shared the version number.
 
 ### Changed
 
+- A thread on another machine carries its machine in its address everywhere (`hilo:Faro@servidor`); a message to
+  `hilo:X@machine` is refused (404) if that machine has no thread X, instead of waiting in a mailbox nobody reads.
+- A `[repos]` path is given absolute everywhere (`telar config --json`, `TELAR_REPOS`): a relative one, read from
+  the root.
+- A document checkbox with an id is named by it (`faro:c-1a2b3c`) instead of its place, and fills `{direccion}` in
+  message templates with its own (`pendiente:c-1a2b3c`); an old place reference still finds it.
 - A relative `[repos.<name>].ruta` is read from `raiz`, not from the directory the command runs in, so a
   thread's `repo` no longer depends on where `telar hilos` or the server was started; `telar doctor` suggests
   writing it absolute (modules still get it as written in `TELAR_REPOS`, as does `telar config --json`).

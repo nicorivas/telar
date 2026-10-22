@@ -167,10 +167,15 @@ class EnLasOrdenes(SobreElEjemplo):
         self.assertEqual(self.doc.read_text().count("<!-- id:"), 1)
         cambiadas = [i for i, (a, b) in enumerate(zip(antes.split(b"\n"), self.doc.read_bytes().split(b"\n"))) if a != b]
         self.assertEqual(cambiadas, [r["linea"] - 1])
-        # la lista la trae con su dirección, y la referencia de lugar sigue igual
+        # la lista la trae con su dirección, y su referencia pasa a ser la del id (no la de su lugar)
         fila2 = next(f for f in self.json_de("pendientes", "--repo", "--json", "--hechos")["pendientes"]
                      if f["texto"] == fila["texto"])
-        self.assertEqual((fila2["direccion"], fila2["ref"], fila2["hecho"]), (r["direccion"], fila["ref"], True))
+        lugar = fila["ref"].rsplit(":", 1)[0]
+        self.assertEqual((fila2["direccion"], fila2["ref"], fila2["hecho"]), (r["direccion"], f"{lugar}:{ident}", True))
+        # y la referencia de lugar de antes la sigue encontrando (alguien que la guardó, la página abierta)
+        r2 = self.json_de("pendiente", fila["ref"], "--linea", "--json")
+        self.assertEqual((r2["linea"], r2["direccion"]), (r["linea"], r["direccion"]))
+        self.assertEqual(self.doc.read_text().count("<!-- id:"), 1)
 
     def test_la_direccion_sigue_sirviendo_despues_de_insertar_lineas_arriba(self):
         fila = self.fila("Entregar el informe a la municipalidad")
@@ -501,13 +506,15 @@ class LaListaNoDependeDelOrden(Prueba):
 
 
 class ElMensajeNoCambia(Prueba):
-    def test_una_casilla_con_id_sigue_cayendo_al_texto(self):
+    def test_una_casilla_con_id_llena_la_direccion(self):
         from telar.ordenes.pendiente import mensaje
 
-        casilla = {"id": "", "texto": "revisar el contrato", "ref": "faro:2", "direccion": "pendiente:c-1a2b3c",
+        casilla = {"id": "", "texto": "revisar el contrato", "ref": "faro:c-1a2b3c", "direccion": "pendiente:c-1a2b3c",
                    "proveedor": ""}
-        self.assertEqual(mensaje("Veamos {direccion}", casilla), "revisar el contrato")
-        self.assertEqual(mensaje("{texto} ({ref})", casilla), "revisar el contrato (faro:2)")
+        self.assertEqual(mensaje("Veamos {direccion}", casilla), "Veamos pendiente:c-1a2b3c")
+        self.assertEqual(mensaje("{texto} ({ref})", casilla), "revisar el contrato (faro:c-1a2b3c)")
+        sin_id = {**casilla, "direccion": "", "ref": "faro:2"}
+        self.assertEqual(mensaje("Veamos {direccion}", sin_id), "revisar el contrato")  # sin id, cae al texto
 
 
 if __name__ == "__main__":

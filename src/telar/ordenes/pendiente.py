@@ -181,6 +181,12 @@ def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | 
     directo = next((f for f in filas if f["ref"] == ref), None)
     if directo is not None:
         return directo
+    # una ref por lugar (`faro:2`) de una casilla que desde entonces tiene id, y por eso se llama `faro:c-1a2b3c`:
+    # la que sigue estando en ese lugar del documento (las filas vienen en su orden, hechas incluidas)
+    if (m := re.fullmatch(r"(.+):(\d+)", ref)):
+        de_ahi = [f for f in filas if not f.get("proveedor") and f["ref"].rsplit(":", 1)[0] == m.group(1)]
+        if 0 < int(m.group(2)) <= len(de_ahi):
+            return de_ahi[int(m.group(2)) - 1]
     # una casilla con id, por su dirección (`pendiente:c-1a2b3c`) o por el id solo, si tiene la forma de los
     # que pone telar (`c-1a2b3c`): uno puesto a mano (`<!-- id: T84 -->`) no le gana a la tarea T84 de un
     # proveedor; se lo nombra con su dirección, o se llega a él al final, si ningún proveedor lo tiene
@@ -299,11 +305,9 @@ def mensaje(plantilla: str, fila: dict) -> str:
     documento, o el ítem de un proveedor que no es del tipo `tarea`. Con los dos, basta que falte uno: no
     se llena a medias (`/tarea X1 ()`).
 
-    Una casilla con id tiene dirección (`pendiente:c-1a2b3c`), pero no la usa aquí: sigue cayendo a {texto},
-    como antes de tener id. Una plantilla como «/tarea {direccion}» está escrita para tareas."""
+    Una casilla con id llena {direccion} con la suya (`pendiente:c-1a2b3c`): quien recibe el mensaje la abre
+    con `telar objeto`. Sin id, no tiene, y la plantilla cae a {texto}."""
     direccion = fila.get("direccion", "")
-    if direccion.startswith("pendiente:") and not fila.get("proveedor"):
-        direccion = ""
     if ("{id}" in plantilla and not fila.get("id")) or ("{direccion}" in plantilla and not direccion):
         plantilla = "{texto}"
     valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", ""),

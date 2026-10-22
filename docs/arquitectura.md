@@ -333,7 +333,9 @@ cuando el documento cambia. Mientras no tenga id se la busca por su texto, y se 
 
 La primera vez que telar la **escribe** le agrega un id al final de la línea, `<!-- id: c-1a2b3c -->`: `c-` y
 seis cifras hexadecimales, único en ese documento, con una forma que no se confunde con la de una tarea
-(`T84`). Desde ahí se la busca por ese id, y su dirección es `pendiente:c-1a2b3c` (`telar objeto`, que la
+(`T84`). Desde ahí se la busca por ese id, su referencia pasa a nombrarlo (`faro:c-1a2b3c`, en vez de su
+lugar; la de lugar de antes la sigue encontrando, en el lugar donde esté) y su dirección es
+`pendiente:c-1a2b3c` (`telar objeto`, que la
 ve con su texto, su estado, su documento, su línea y su responsable, y le aplica `hecho` y `responsable`).
 La lectura (`telar.lectura`) reconoce el id y no lo muestra en el texto. Mirar o llevar una casilla a su hilo
 no le pone id: solo escribirla.

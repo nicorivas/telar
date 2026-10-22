@@ -314,7 +314,8 @@ con ese texto. Es lo que deja escribirle a una de dos casillas iguales sin id (`
 un proveedor con `tipo = "tipo"`), o la de una casilla de un documento que ya tiene id (`pendiente:c-1a2b3c`:
 telar se lo pone la primera vez que la escribe, ver `telar pendiente`). `""` en todo lo demás (una casilla que
 nadie ha escrito, un evento, la tarea de un proveedor `comando`). En una casilla, `id` sigue vacío: el suyo va
-en la dirección.
+en la dirección, y en su `ref`: una casilla con id se nombra `faro:c-1a2b3c` (no cambia si el documento cambia);
+una sin id, por su lugar, `faro:2`. Una `ref` de lugar de antes sigue encontrando la casilla que está ahí.
 
 `clase` la pone el proveedor que lo trajo: `"evento"` si ocupa una hora del día y
 `"tarea"` si pide hacerse; vacío en los pendientes que salen de un documento. Es lo que
@@ -686,7 +687,10 @@ Un agente residente es `agente:<carpeta>` (`agente:faro`; también vale su nombr
 
 En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
 en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`
-no mira la máquina: la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten.
+con `@máquina` comprueba que esa máquina tenga el hilo (si no, error: no queda en una casilla que nadie lee);
+la casilla es del nombre, y dos hilos de una persona que se llaman igual la comparten. También `telar mensaje
+hilo:Faro@servidor "…"`. La `direccion` de un hilo que vive en otra máquina lleva siempre su `@máquina`
+(`telar hilos`, `ficha`, la lista de las otras máquinas).
 Su acción `mensaje` acepta además `modo` (`aviso`, `pedido` o `encargo`; la de `telar mensaje --modo`) y, con
 `encargo`, `plazo`.
 
@@ -876,7 +880,7 @@ preguntar, un `aviso` que lo dice (sin tmux instalado, `ok`).
 `config` devuelve la configuración resuelta, con `origen` (de qué archivo salió,
 vacío si son puros valores por defecto) y `entorno` (qué clave pisó cada variable
 `TELAR_*`). `repos` son los repositorios de `[repos]`, cada uno con `nombre`, `ruta`
-(como está escrita en `[repos]`, con `~` expandida; una relativa sale tal cual, aunque telar la lee desde la raíz) y `perfil` (vacío
+(absoluta: con `~` expandida, y una relativa leída desde la raíz; sin resolver enlaces) y `perfil` (vacío
 si es el de su carpeta), igual que `TELAR_REPOS`; sin `[repos]` la lista viene vacía. Cada módulo
 de `modulos` trae, además de `nombre`, `carpeta`, `descripcion` y `aporta`, de dónde vino:
 `instalado` (si lo anotó `telar modulo` en `modulos.toml`), `fuente` (el repositorio o la carpeta

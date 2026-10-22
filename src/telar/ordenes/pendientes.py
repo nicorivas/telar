@@ -63,13 +63,17 @@ def juntar(ctx, tel: _comun.Telar, *, repo: bool = False, hechos: bool = False) 
 
 
 def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
+    # una casilla con id (telar.vinetas) se nombra por él y no por su lugar: `faro:c-1a2b3c` sigue siendo la
+    # misma aunque se agreguen casillas arriba; sin id, su lugar en el documento (`faro:2`), como siempre
+    ident = getattr(pendiente, "id_casilla", "")
+    if ident:
+        ref = f"{ref.rsplit(':', 1)[0]}:{ident}"
     cuerpo = _comun.json_pendiente(pendiente, ref=ref)
     cuerpo["hilo"] = hilo  # vacío si la unidad no tiene hilo abierto: la clave va igual
     cuerpo["ruta"] = ruta
     cuerpo["proveedor"] = ""
-    # una casilla de un documento tiene dirección desde que telar le puso id (telar.vinetas): `pendiente:c-1a2b3c`,
-    # que no cambia aunque el documento cambie. Sin id, ninguna: `ref` sirve para el minuto siguiente, no para guardarla
-    ident = getattr(pendiente, "id_casilla", "")
+    # y su dirección, `pendiente:c-1a2b3c`, que no cambia aunque el documento cambie. Sin id, ninguna: su `ref`
+    # sirve para el minuto siguiente, no para guardarla
     cuerpo["direccion"] = objetos.direccion_de("pendiente", ident) if ident else ""
     # si otras casillas del documento dicen lo mismo, cuál es de ellas (telar.lectura): con eso se le escribe
     # a esta y no a otra. None si es la única con ese texto

@@ -313,8 +313,9 @@ el agente nace con `pendiente_nuevo` como primer mensaje, que sí se envía, por
 a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}`, `{id}` (el id del
 proveedor, como `T84`) y `{direccion}` (la del objeto, como `tarea:T84`: ver `telar objeto`);
 un pendiente sin id, como los de los documentos, usa `{texto}`, y lo mismo con `{direccion}`
-uno sin dirección (una casilla de un documento, o el ítem de un proveedor que no es del tipo). Una
-casilla que ya tiene id (`pendiente:c-1a2b3c`) también cae a `{texto}`: estas plantillas son para tareas.
+uno sin dirección (una casilla que nadie ha escrito, o el ítem de un proveedor que no es del tipo). Una
+casilla que ya tiene id llena `{direccion}` con la suya (`pendiente:c-1a2b3c`), que quien recibe el mensaje
+abre con `telar objeto`.
 Una plantilla con los dos cae entera a `{texto}` si falta cualquiera: `"/tarea {id} ({direccion})"`
 con el ítem de un proveedor `comando` (tiene id, no dirección) da su texto, no `/tarea X1 ()`. Una fila
 que llega sin dirección (la foto de otra máquina con un telar de antes) la gana aquí solo si su
@@ -543,8 +544,8 @@ ruta = "~/vida/proyectos/telar"
 perfil = "~/notas/telar-perfil.yaml"   # opcional: si su perfil no está en su carpeta
 ```
 
-Una `ruta` relativa se lee desde `raiz`, no desde el directorio donde se corre la orden; pero un módulo la recibe
-tal cual en `TELAR_REPOS`, y por eso `telar doctor` pide escribirla absoluta. Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
+Una `ruta` relativa se lee desde `raiz`, no desde el directorio donde se corre la orden, y así, absoluta, la
+dan `telar config --json` y `TELAR_REPOS` (lo que reciben los módulos). Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su perfil (`telar-perfil.yaml` en su
 carpeta): qué es ahí una unidad de trabajo. telar los junta en uno (`docs/perfil.md`, «Varios repositorios»).
 Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo del equipo dentro del
 de vida describe lo suyo. Un repo sin perfil no aporta nada, y uno fuera de `raiz` todavía no se suma. Sin
