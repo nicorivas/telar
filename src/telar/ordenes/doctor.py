@@ -44,6 +44,8 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _raiz(ctx)
     revisiones += _multiplexor(ctx)
     revisiones += _perfil(ctx)
+    revisiones += _repos(ctx)
+    revisiones += _modulos(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
     revisiones += _gemelos(ctx)
@@ -233,6 +235,103 @@ def _perfil(ctx) -> list[dict]:
         )
     else:
         salida.append(_r("documentos", OK, "todos traen sus secciones requeridas"))
+    return salida
+
+
+def _repos(ctx) -> list[dict]:
+    """Los repositorios de `[repos]`: que estén dentro de la raíz, y que sus perfiles no se pisen.
+
+    Un repo fuera de la raíz no suma su perfil (telar.perfil.cargar_todos todavía no los junta): sus
+    carpetas no son unidades, y sus hilos quedan sin ficha. Y si dos repos reconocen la misma carpeta,
+    la describe uno solo, el más hondo: el otro la nombra en vano, y quizá con otro arquetipo. Las dos
+    cosas son avisos: telar funciona igual, con lo que dice el perfil que gana.
+    """
+    repos = tuple(getattr(ctx.config, "repos", ()) or ())
+    if not repos:
+        return []
+    raiz = Path(ctx.config.raiz).expanduser()
+    salida = []
+    fuera = []
+    for repo in repos:
+        try:
+            Path(repo.ruta).expanduser().resolve().relative_to(raiz.resolve())
+        except (ValueError, OSError):
+            fuera.append(repo)
+    for repo in fuera:
+        salida.append(_r("repos", AVISO, f"«{repo.nombre}» ({repo.ruta}) queda fuera de la raíz {raiz}: su perfil no se suma",
+                         "múdalo dentro de la raíz, o pon en `raiz` una carpeta que lo contenga"))
+    salida += _pisadas(ctx, repos, raiz)
+    if not salida:
+        salida.append(_r("repos", OK, f"{_comun.plural(len(repos), 'repo')} dentro de la raíz, sin carpetas que se pisen"))
+    return salida
+
+
+def pisadas(perfil, raiz: Path, nombre_raiz: str = "") -> dict[str, list[str]]:
+    """Las carpetas que reconocen arquetipos de dos o más repos: carpeta → repos, el que gana primero.
+
+    Gana el primero que la reconoce en el perfil junto (telar.lectura.indice), y cargar_todos pone primero
+    los más hondos: este orden es el de verdad, no uno calculado aparte. Los arquetipos de la raíz no son
+    de ningún repo (`repo` vacío) y cuentan solo si la raíz está declarada en `[repos]` (`nombre_raiz`):
+    que el perfil de la raíz también nombre las carpetas de un repo de adentro es lo previsto.
+    """
+    vistos: dict[str, list[str]] = {}
+    for arquetipo in perfil.arquetipos:
+        repo = arquetipo.repo or nombre_raiz
+        if not repo:
+            continue
+        for documento in arquetipo.documentos(raiz):
+            unidad = arquetipo.carpeta_de(documento) if arquetipo.por_carpeta else documento
+            try:
+                clave = unidad.relative_to(raiz).as_posix()
+            except ValueError:  # pragma: no cover - el glob no sale de la raíz
+                continue
+            de_quien = vistos.setdefault(clave, [])
+            if repo not in de_quien:
+                de_quien.append(repo)
+    return {clave: repos for clave, repos in sorted(vistos.items()) if len(repos) > 1}
+
+
+def _pisadas(ctx, repos, raiz: Path) -> list[dict]:
+    """El aviso de los perfiles que se pisan, uno por par de repos (el que gana, el que pierde)."""
+    try:
+        base = raiz.resolve()
+        nombre_raiz = next((r.nombre for r in repos if Path(r.ruta).expanduser().resolve() == base), "")
+    except OSError:  # pragma: no cover
+        nombre_raiz = ""
+    choques: dict[tuple[str, ...], list[str]] = {}
+    for carpeta, de_quien in pisadas(ctx.perfil, raiz, nombre_raiz).items():
+        choques.setdefault(tuple(de_quien), []).append(carpeta)
+    salida = []
+    for (gana, *pierden), carpetas in choques.items():
+        muestra = ", ".join(carpetas[:3]) + (" …" if len(carpetas) > 3 else "")
+        otros = ", ".join(f"«{x}»" for x in pierden)
+        salida.append(_r("perfiles", AVISO,
+                         f"«{gana}» y {otros} reconocen {_comun.plural(len(carpetas), 'carpeta')} ({muestra}): gana «{gana}», el más hondo",
+                         f"quita esas carpetas del perfil de {otros}, si no las quiere describir"))
+    return salida
+
+
+def _modulos(ctx) -> list[dict]:
+    """Los módulos declarados (`[modulos]` y los de `telar modulos instalar`): que se puedan leer.
+
+    Uno que no se lee no deja arrancar a las demás órdenes (la configuración es un error), así que es una
+    falla. doctor carga igual, sin él (telar.cli.TOLERAN_MODULOS_ROTOS), para poder decirlo aquí.
+    """
+    from telar import modulos as mod_modulos
+
+    rotos = tuple(getattr(ctx.config, "modulos_rotos", ()) or ())
+    leidos = tuple(getattr(ctx.config, "modulos", ()) or ())
+    salida = []
+    for nombre, por_que in rotos:
+        if nombre == mod_modulos.INSTALADOS:
+            salida.append(_r("módulos", FALLA, f"no se puede leer {por_que}",
+                             "arregla ese archivo (lo escribe telar modulos): hasta entonces las demás órdenes no arrancan"))
+            continue
+        salida.append(_r("módulo", FALLA, f"«{nombre}» no se puede leer: {por_que.removeprefix(f'{nombre}: ')}",
+                         "arregla su carpeta o su modulo.toml, o sácalo de [modulos] (o de modulos.toml, si lo instaló"
+                         " telar modulos): hasta entonces las demás órdenes no arrancan"))
+    if leidos and not rotos:
+        salida.append(_r("módulos", OK, ", ".join(m.nombre for m in leidos)))
     return salida
 
 

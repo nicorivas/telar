@@ -424,7 +424,9 @@ Los hilos trabajan en carpetas de uno u otro repositorio, y cada uno trae su per
 carpeta): qué es ahí una unidad de trabajo. telar los junta en uno (`docs/perfil.md`, «Varios repositorios»).
 Si dos perfiles reconocen la misma carpeta, gana el del repo más profundo: el de un repo del equipo dentro del
 de vida describe lo suyo. Un repo sin perfil no aporta nada, y uno fuera de `raiz` todavía no se suma. Sin
-`[repos]`, solo cuenta `raiz`, como siempre.
+`[repos]`, solo cuenta `raiz`, como siempre. `telar doctor` avisa de las dos cosas: el repo que queda fuera de
+`raiz`, y las carpetas que reconocen los perfiles de dos repos, con el que gana (el perfil de `raiz` cuenta
+solo si `raiz` misma está en `[repos]`: que nombre las carpetas de un repo de adentro es lo previsto).
 
 ## `[remotos]` — máquinas donde pueden vivir hilos
 
@@ -805,7 +807,9 @@ terminal: `GET /modulos/<modulo>/<verbo>?…` (los parámetros de la dirección 
 por la entrada, con `TELAR_CONSULTA=1`, y devuelve un objeto JSON; corre en la carpeta del módulo, hasta
 30 s), y con `&maquina=<m>` la responde el telar de esa máquina, por el bus, con el módulo instalado allá.
 Las dos reciben `TELAR_RAIZ`, `TELAR_REPOS` (los de `[repos]`, en JSON), `TELAR_MAQUINA` y `TELAR_MODULO`.
-Un módulo corre aparte: si se cae, telar sigue.
+Un módulo corre aparte: si se cae, telar sigue. Lo que sí detiene a telar es un módulo declarado que no se puede
+leer (su carpeta o su `modulo.toml` no están, o el manifiesto está mal): la configuración es un error y las
+órdenes no arrancan. `telar doctor` arranca igual, sin él, y dice cuál es y por qué (una falla).
 
 Un módulo también puede decirle algo al agente de cada hilo, al arrancar, junto a lo que telar ya le dice
 (qué hilo es, su casilla): `[contexto] texto = "…"`, hasta 600 caracteres, porque entra en cada sesión.

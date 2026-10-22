@@ -120,6 +120,11 @@ class Contexto:
         return self.config.raiz
 
 
+#: las órdenes que arrancan aunque un módulo declarado no se pueda leer (lo dejan fuera y lo anotan en
+#: `Config.modulos_rotos`); las demás se niegan, como siempre.
+TOLERAN_MODULOS_ROTOS = frozenset({"doctor"})
+
+
 def _error(mensaje: str) -> int:
     print(f"telar: {mensaje}", file=sys.stderr)
     return 2
@@ -191,7 +196,9 @@ def main(argv: list[str] | None = None) -> int:
         return _error(f"no conozco la orden '{orden}'.{pista}\nPrueba: telar --help")
 
     try:
-        config = cargar_config(Path(opciones["config"]) if "config" in opciones else None)
+        # doctor carga aunque un módulo no se lea: es la orden que tiene que decirlo
+        config = cargar_config(Path(opciones["config"]) if "config" in opciones else None,
+                               tolerar_modulos=orden in TOLERAN_MODULOS_ROTOS)
         if "raiz" in opciones:
             from dataclasses import replace
 

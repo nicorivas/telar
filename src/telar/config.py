@@ -431,6 +431,10 @@ class Config:
     #: los módulos instalados (`[modulos.x]`, ver telar.modulos); lo que aportan ya está sumado a
     #: los bloques, las apps y los resultados.
     modulos: tuple = ()
+    #: los módulos declarados que no se pudieron leer, como (nombre, por qué). Solo se llena al cargar con
+    #: `tolerar_modulos=True`, que es lo que hace `telar doctor` para poder decirlo; las demás órdenes no
+    #: arrancan con un módulo así (ErrorDeConfig), y aquí queda vacío.
+    modulos_rotos: tuple[tuple[str, str], ...] = ()
     #: las pestañas del dashboard: en qué orden van (`orden`) y cuáles no se muestran (`ocultas`).
     #: Las que no se nombran van después, en su orden de siempre.
     dashboard_orden: tuple[str, ...] = ()
@@ -500,11 +504,14 @@ def _tabla(valor: object, contexto: str) -> dict:
     return valor
 
 
-def _con_modulos(datos: dict) -> tuple[dict, tuple]:
+def _con_modulos(datos: dict, rotos: list | None = None) -> tuple[dict, tuple]:
     """Lo que aportan los módulos (`[modulos.x]`), sumado a lo declarado a mano, para que pase por
     la misma validación: la pestaña es un `[bloques.x]`, la app un `[apps.x]`, el resultado un
     `[resultados.x]` que vive donde corren los periódicos. Los periódicos no van aquí: los suma
-    `telar.periodicos` al leer `periodicos.toml`. Un nombre que ya está declarado es un error."""
+    `telar.periodicos` al leer `periodicos.toml`. Un nombre que ya está declarado es un error.
+
+    Un módulo cuyo manifiesto no se puede leer es un error, salvo que llegue `rotos`: entonces se deja
+    fuera y se anota ahí (nombre, por qué), para que `telar doctor` lo diga."""
     from telar import modulos as mod_modulos
 
     if "modulos" not in datos:
@@ -525,7 +532,10 @@ def _con_modulos(datos: dict) -> tuple[dict, tuple]:
         try:
             m = mod_modulos.leer(nombre, Path(cuerpo["carpeta"]))
         except mod_modulos.ErrorDeModulo as e:
-            raise ErrorDeConfig(f"modulos.{e}") from None
+            if rotos is None:
+                raise ErrorDeConfig(f"modulos.{e}") from None
+            rotos.append((nombre, str(e)))
+            continue
         en = datos.get("periodicos", {}).get("en", "") if isinstance(datos.get("periodicos"), dict) else ""
         for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
                               ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
@@ -539,11 +549,13 @@ def _con_modulos(datos: dict) -> tuple[dict, tuple]:
     return datos, tuple(lista)
 
 
-def desde_dict(datos: dict, *, origen: Path | None = None) -> Config:
-    """Arma una `Config` desde el TOML ya parseado, validando lo que llegó."""
+def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None) -> Config:
+    """Arma una `Config` desde el TOML ya parseado, validando lo que llegó. Con `rotos`, un módulo que no se
+    puede leer se deja fuera y se anota en `modulos_rotos` en vez de ser un error (ver `cargar`)."""
     base = Config()
-    datos, modulos = _con_modulos(datos)
-    cambios: dict[str, object] = {"origen": origen, "modulos": modulos}
+    rotos = None if rotos is None else list(rotos)
+    datos, modulos = _con_modulos(datos, rotos)
+    cambios: dict[str, object] = {"origen": origen, "modulos": modulos, "modulos_rotos": tuple(rotos or ())}
 
     if "multiplexor" in datos:
         mux = datos["multiplexor"]
@@ -1034,11 +1046,15 @@ def _entorno(cfg: Config) -> Config:
     return replace(cfg, **cambios) if cambios else cfg  # type: ignore[arg-type]
 
 
-def cargar(ruta: Path | None = None) -> Config:
+def cargar(ruta: Path | None = None, *, tolerar_modulos: bool = False) -> Config:
     """Lee la configuración. Sin archivo, devuelve los valores por defecto.
 
     `ruta` explícita manda sobre `$TELAR_CONFIG`; si esa ruta no existe, es un
     error, porque alguien la pidió a propósito.
+
+    Un módulo declarado que no se puede leer (su carpeta o su `modulo.toml` no están, o el manifiesto
+    está mal, o `modulos.toml` no se lee) es un error. Con `tolerar_modulos`, se deja fuera y queda
+    anotado en `modulos_rotos`: así carga `telar doctor`, que tiene que poder decir qué está mal.
     """
     explicita = ruta is not None
     destino = Path(ruta).expanduser() if ruta is not None else ruta_config()
@@ -1056,17 +1072,23 @@ def cargar(ruta: Path | None = None) -> Config:
     except OSError as e:
         raise ErrorDeConfig(f"{destino}: no se pudo leer: {e}") from e
 
-    return _entorno(desde_dict(_con_instalados(datos, destino), origen=destino))
+    rotos: list | None = [] if tolerar_modulos else None
+    datos = _con_instalados(datos, destino, rotos)
+    return _entorno(desde_dict(datos, origen=destino, rotos=rotos))
 
 
-def _con_instalados(datos: dict, destino: Path) -> dict:
-    """Los módulos que instaló `telar modulo` (`modulos.toml`, al lado), junto a los `[modulos]` a mano."""
+def _con_instalados(datos: dict, destino: Path, rotos: list | None = None) -> dict:
+    """Los módulos que instaló `telar modulo` (`modulos.toml`, al lado), junto a los `[modulos]` a mano.
+    Con `rotos`, un `modulos.toml` que no se lee se anota ahí (y quedan solo los de a mano)."""
     from telar import modulos as mod_modulos
 
     try:
         instalados = mod_modulos.leer_instalados(destino.parent / mod_modulos.INSTALADOS)
     except mod_modulos.ErrorDeModulo as e:
-        raise ErrorDeConfig(str(e)) from None
+        if rotos is None:
+            raise ErrorDeConfig(str(e)) from None
+        rotos.append((mod_modulos.INSTALADOS, str(e)))
+        instalados = {}
     if not instalados:
         return datos
     a_mano = datos.get("modulos", {}) if isinstance(datos.get("modulos"), dict) else {}
