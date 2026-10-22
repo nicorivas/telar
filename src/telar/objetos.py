@@ -4,6 +4,7 @@ Un **objeto** es cualquier cosa con dirección, tipo y estado: una tarea, un hil
 que traiga un módulo (un correo, un evento). Su **dirección** tiene una sola forma:
 
     tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:nico/proyectos/telar · archivo:telar:docs/x.md
+                            pendiente:c-1a2b3c
 
 `@máquina` va solo cuando importa (un hilo o un objeto de un módulo que vive en otra máquina); el `id` es
 lo que el tipo entiende, y puede llevar `:` (un archivo es `máquina:ruta`). Lo que en un id rompería la
@@ -12,7 +13,8 @@ para que `@` no se lea como la máquina y un texto la encuentre entera. Con una 
 decir «revisa `tarea:T366`» y cualquiera sabe abrirlo: `telar objeto tarea:T366`, `GET /objetos/tarea:T366`.
 
 Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones** con sus parámetros. Los de
-fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil) y archivo.
+fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo y
+pendiente (una casilla de un documento, telar.vinetas).
 Un módulo agrega los suyos en su `modulo.toml`:
 
     [objetos.correo]
@@ -282,6 +284,96 @@ class Archivo(Tipo):
                       maquina=a.maquina)
 
 
+class Pendiente(Tipo):
+    """Una casilla de un documento («- [ ] …», la sección `pendientes` del perfil). `pendiente:c-1a2b3c` es la
+    que tiene ese id (telar.vinetas se lo pone la primera vez que la escribe) y no cambia con el documento;
+    `pendiente:faro:2` la nombra por su lugar (`ref` de `telar pendientes`), que sirve para el minuto siguiente.
+    Sus acciones son las de `telar pendiente --hecho/--responsable`, y no tocan nada fuera del documento."""
+
+    nombre = "pendiente"
+    descripcion = "una casilla de un documento («- [ ] …»): su texto, dónde está y quién la hace; marcarla hecha o cambiar quién"
+
+    def _fila(self, ctx, d: Direccion):
+        from telar.ordenes import _comun, pendientes
+
+        if d.maquina:
+            from telar import bus as mod_bus
+
+            if d.maquina != mod_bus.maquina(ctx.config):
+                raise ErrorDeServicio(f"una casilla se abre en la máquina de su documento: aquí no es {d.maquina}", 404)
+        tel = _comun.tejer(ctx)
+        filas = pendientes.juntar(ctx, tel, repo=True, hechos=True)
+        estable = direccion_de("pendiente", d.id)
+        fila = next((f for f in filas if f["direccion"] == estable), None) or next((f for f in filas if f["ref"] == d.id), None)
+        if fila is None:
+            raise ErrorDeServicio(f"no hay ninguna casilla «{d.id}» en los documentos (`telar pendientes --repo --json` "
+                                  "las lista con su ref y su dirección)", 404)
+        return tel, fila
+
+    @staticmethod
+    def _version(fila: dict) -> str:
+        import hashlib
+
+        huella = "\0".join([fila["texto"], str(fila["hecho"]), str(fila["en_curso"]), fila.get("dueno", "")])
+        return hashlib.sha1(huella.encode()).hexdigest()[:12]
+
+    def _objeto(self, tel, fila: dict) -> Objeto:
+        from telar import vinetas
+        from telar.ordenes import _comun
+        from telar.ordenes.pendiente import id_casilla
+
+        ident = id_casilla(fila)
+        unidad = tel.unidades.get(fila.get("ruta", ""))
+        documento, linea = "", 0
+        if unidad is not None:
+            documento = _comun.ruta_relativa(unidad[1], tel.raiz)
+            try:
+                linea = vinetas.linea(unidad[1], fila["texto"], id=ident)
+            except (vinetas.ErrorDeVineta, OSError):
+                linea = 0  # dos casillas iguales sin id, o el documento cambió: no se adivina
+        estado = "hecha" if fila["hecho"] else "en curso" if fila["en_curso"] else "abierta"
+        campos = {k: v for k, v in (("texto", fila["texto"]), ("documento", documento), ("linea", linea),
+                                     ("responsable", fila.get("dueno", "")), ("ref", fila["ref"]),
+                                     ("vence", (fila.get("cuando") or "")[:10])) if v not in ("", 0)}
+        enlaces = ([direccion_de("proyecto", fila["ruta"])] if fila.get("ruta") else []) \
+            + ([direccion_de("hilo", fila["hilo"])] if fila.get("hilo") else [])
+        acciones = [] if fila["hecho"] else [
+            Accion(nombre="hecho", descripcion="marcarla hecha en su documento ([ ] → [x])"),
+            Accion(nombre="responsable", descripcion="decir quién la hace (@owner); vacío o «none» lo quita",
+                   params={"nombre": ""}),
+        ]
+        return Objeto(direccion=fila["direccion"] or direccion_de("pendiente", fila["ref"]), tipo="pendiente",
+                      id=ident or fila["ref"], titulo=fila["texto"], estado=estado, campos=campos, enlaces=enlaces,
+                      acciones=acciones, version=self._version(fila))
+
+    def ver(self, ctx, d):
+        tel, fila = self._fila(ctx, d)
+        return self._objeto(tel, fila)
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        from telar.ordenes import pendiente
+
+        if accion not in ("hecho", "responsable"):
+            raise ErrorDeServicio(f"una casilla no tiene la acción «{accion}»: hecho o responsable", 404)
+        if accion == "responsable" and "nombre" not in params:
+            raise ErrorDeServicio("responsable: ¿quién? params {\"nombre\": …} (vacío lo quita)", 422)
+        tel, fila = self._fila(ctx, d)
+        if version and version != self._version(fila):
+            raise ErrorDeServicio(f"«{d}» cambió desde que se leyó: vuelve a mirarla", 409)
+        if fila["hecho"]:
+            raise ErrorDeServicio(f"«{d}» ya está hecha", 409)
+        if accion == "hecho":
+            datos, _ = pendiente.en_su_documento(ctx, fila["ref"], hecho=True, fila=fila)
+        else:
+            datos, _ = pendiente.en_su_documento(ctx, fila["ref"], responsable=str(params["nombre"] or ""), fila=fila)
+        # después de escribirla tiene id: se la vuelve a leer por él (el lugar pudo cambiar de dueño)
+        try:
+            objeto = self.ver(ctx, leer(datos["direccion"]) if datos.get("direccion") else d)
+        except ErrorDeServicio:
+            objeto = None
+        return Hecho(direccion=str(d), accion=accion, objeto=objeto, resultado=datos)
+
+
 class DeModulo(Tipo):
     """Un tipo que trae un módulo: `ver` y sus acciones son consultas suyas (telar.servicios.modulos)."""
 
@@ -306,7 +398,7 @@ class DeModulo(Tipo):
         return Hecho(direccion=str(d), accion=accion, resultado=r)
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo())
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

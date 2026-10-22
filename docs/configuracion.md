@@ -313,7 +313,8 @@ el agente nace con `pendiente_nuevo` como primer mensaje, que sí se envía, por
 a quién escribirle hasta que arranca. Marcadores: `{texto}`, `{ref}`, `{id}` (el id del
 proveedor, como `T84`) y `{direccion}` (la del objeto, como `tarea:T84`: ver `telar objeto`);
 un pendiente sin id, como los de los documentos, usa `{texto}`, y lo mismo con `{direccion}`
-uno sin dirección (una casilla de un documento, o el ítem de un proveedor que no es del tipo).
+uno sin dirección (una casilla de un documento, o el ítem de un proveedor que no es del tipo). Una
+casilla que ya tiene id (`pendiente:c-1a2b3c`) también cae a `{texto}`: estas plantillas son para tareas.
 Una plantilla con los dos cae entera a `{texto}` si falta cualquiera: `"/tarea {id} ({direccion})"`
 con el ítem de un proveedor `comando` (tiene id, no dirección) da su texto, no `/tarea X1 ()`. Una fila
 que llega sin dirección (la foto de otra máquina con un telar de antes) la gana aquí solo si su
@@ -842,7 +843,7 @@ descripcion = "un correo"
 
 El `ver` devuelve un objeto JSON con lo que tenga de `titulo`, `estado`, `resumen`, `campos`, `enlaces` y
 `acciones`; telar pone la dirección. Un módulo no puede pisar un tipo de fábrica (tarea, hilo, proyecto,
-archivo).
+archivo, pendiente).
 
 `telar modulos adoptar <nombre>` pasa uno declarado a mano en la configuración (`[modulos.<nombre>]`) a
 `modulos.toml`, enlazado a su carpeta: saca su bloque de la configuración (que queda respaldada al lado) y

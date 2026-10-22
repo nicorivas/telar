@@ -223,6 +223,25 @@ Desde una máquina con `[tipos.tarea] en`, la orden va por el bus a la que las t
 escritor. Quien escribe commitea y sube el archivo (`telar commit`). El proveedor `tipo = "tipo"` le
 da esas tareas a `telar hoy` y al dashboard, con su ficha y sus botones.
 
+### Las casillas de los documentos
+
+Un pendiente de un documento (una casilla `- [ ] …` de la sección `pendientes` del perfil) no es una tarea
+del tipo: vive en su documento, y telar solo le cambia la marca o el responsable (`telar pendiente
+--hecho/--responsable`, `telar.vinetas`). Nace sin id, y su referencia (`faro:2`) es su lugar, que cambia
+cuando el documento cambia. Mientras no tenga id se la busca por su texto, y se toca solo si hay una.
+
+La primera vez que telar la **escribe** le agrega un id al final de la línea, `<!-- id: c-1a2b3c -->`: `c-` y
+seis cifras hexadecimales, único en ese documento, con una forma que no se confunde con la de una tarea
+(`T84`). Desde ahí se la busca por ese id, y su dirección es `pendiente:c-1a2b3c` (`telar objeto`, que la
+ve con su texto, su estado, su documento, su línea y su responsable, y le aplica `hecho` y `responsable`).
+La lectura (`telar.lectura`) reconoce el id y no lo muestra en el texto. Mirar o llevar una casilla a su hilo
+no le pone id: solo escribirla.
+
+Las reglas de esa escritura: un id que ya está (de telar, de una tarea, o puesto a mano) no se reescribe;
+se cambia una línea y el resto del archivo queda byte a byte (`\r\n`, unicode, el final sin salto); se escribe
+a un temporal y se renombra, así que si no se puede escribir el documento queda como estaba. Dos casillas con
+el mismo id (una línea copiada con su comentario) no se adivinan: se dice, y alguien le borra el id a la copia.
+
 ## La página
 
 Se escribe en TypeScript (`pagina/src/`) y se empaqueta con esbuild (`pagina/scripts/navegador.mjs`)

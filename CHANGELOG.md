@@ -31,6 +31,14 @@ extension shared the version number.
 - `telar objeto hilo:<name>@<machine>` opens that machine's thread even when a thread with the same name lives
   here (it used to return the local one). The `/hilos` skill now says that `telar directorio`'s `direccion` is an
   email, not a `type:id` address, and that a `mensaje` goes to the name's mailbox whatever the machine.
+- A checkbox in a document gets a stable id the first time telar writes it (`telar pendiente --hecho` or
+  `--responsable`): `<!-- id: c-1a2b3c -->` at the end of its line, unique in that document. From then on it is
+  found by that id even when the document changes, its row in `telar pendientes` carries `direccion:
+  "pendiente:c-1a2b3c"`, and `telar pendiente` takes the id or the address as well as the `ref`. An id already on
+  the line is never rewritten, no other line changes (CRLF and unicode included), and a document that cannot be
+  written stays as it was. Writing a checkbox also keeps CRLF line endings now (it used to turn them into LF).
+- A fifth built-in object type, `pendiente` (`pendiente:<id>`, or `pendiente:<ref>` for one without an id): a
+  document checkbox with its text, state, document, line and owner, and the actions `hecho` and `responsable`.
 
 ## [0.3.0] — 2026-10-21
 

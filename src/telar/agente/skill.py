@@ -99,6 +99,7 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
 
 Todo lo que telar conoce tiene una dirección con una sola forma, `tipo:id`, y `@máquina` cuando
 importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:docs/notas.md`,
+`pendiente:c-1a2b3c` (una casilla `- [ ]` de un documento, por el id que telar le puso al escribirla),
 `hilo:Faro@servidor`. Las salidas JSON que nombran algo la traen en el campo `direccion`, salvo
 `telar directorio`: ahí `direccion` es el correo del hilo, no una dirección `tipo:id`.
 

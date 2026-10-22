@@ -67,8 +67,10 @@ def _fila(pendiente, *, ref: str, hilo: str, ruta: str) -> dict:
     cuerpo["hilo"] = hilo  # vacío si la unidad no tiene hilo abierto: la clave va igual
     cuerpo["ruta"] = ruta
     cuerpo["proveedor"] = ""
-    # una casilla de un documento no es un objeto con dirección (todavía: docs/propuestas/primitivas.md)
-    cuerpo["direccion"] = ""
+    # una casilla de un documento tiene dirección desde que telar le puso id (telar.vinetas): `pendiente:c-1a2b3c`,
+    # que no cambia aunque el documento cambie. Sin id, ninguna: `ref` sirve para el minuto siguiente, no para guardarla
+    ident = getattr(pendiente, "id_casilla", "")
+    cuerpo["direccion"] = objetos.direccion_de("pendiente", ident) if ident else ""
     # la fecha límite que dice la viñeta (`@deadline(…)`): así vence como una tarea
     cuerpo["cuando"] = f"{pendiente.vence}T00:00" if getattr(pendiente, "vence", "") else None
     cuerpo["url"] = ""

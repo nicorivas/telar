@@ -66,6 +66,9 @@ class Pendiente:
     dueno: str = ""
     #: la fecha límite que dice la viñeta («@deadline(2026-10-14)»), AAAA-MM-DD; "" si no.
     vence: str = ""
+    #: el id estable de una casilla de un documento (`<!-- id: c-1a2b3c -->`, telar.vinetas); "" si su línea
+    #: no lo tiene todavía. No es `id`: ese es el de un proveedor, y con él se llenan las plantillas.
+    id_casilla: str = ""
 
 
 @dataclass(frozen=True, slots=True)

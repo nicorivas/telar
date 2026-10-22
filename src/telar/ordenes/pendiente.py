@@ -12,6 +12,7 @@ enviarla**: quien decide apretar Enter es la persona.
     telar pendiente faro:2 --hecho              marca la casilla en su documento ([ ] → [x])
     telar pendiente faro:2 --responsable "Ana"  dice quién la hace (@owner(Ana)); «none» lo quita
     telar pendiente faro:2 --linea              en qué archivo y línea está
+    telar pendiente c-1a2b3c --hecho            una casilla con id, por su id (o `pendiente:c-1a2b3c`)
 
 Abrir siempre un hilo nuevo dejaba dos agentes trabajando el mismo proyecto sin
 saber uno del otro. Esa es la razón de que el destino se busque antes de crear
@@ -19,6 +20,10 @@ nada. Si el hilo del proyecto está dormido (archivado, o sin ventana), se **ret
 conversación y la frase como primer mensaje, aquí o en la máquina donde vive; y un pendiente
 sin proyecto, con `[agentes] sin_proyecto = "gestion"`, se le encarga a ese agente residente
 (`telar encargar`) en vez de abrir un hilo.
+
+La primera vez que telar escribe una casilla (`--hecho`, `--responsable`) le pone un id al final de la línea,
+`<!-- id: c-1a2b3c -->` (telar.vinetas): desde ahí se la encuentra por ese id aunque el documento cambie, y
+su dirección es `pendiente:c-1a2b3c` (`telar objeto`).
 """
 
 from __future__ import annotations
@@ -176,6 +181,13 @@ def _buscar(ctx, tel: _comun.Telar, ref: str, *, proveedor: str = "") -> dict | 
     directo = next((f for f in filas if f["ref"] == ref), None)
     if directo is not None:
         return directo
+    # una casilla con id, por su dirección (`pendiente:c-1a2b3c`) o por el id solo (`c-1a2b3c`)
+    from telar import objetos
+
+    estable = {ref, objetos.direccion_de("pendiente", ref)}
+    pordireccion = next((f for f in filas if f.get("direccion") and f["direccion"] in estable), None)
+    if pordireccion is not None:
+        return pordireccion
     porid = next((f for f in filas if f["id"] and f["id"].casefold() == ref.casefold()), None)
     if porid is not None:
         return porid
@@ -266,11 +278,17 @@ def mensaje(plantilla: str, fila: dict) -> str:
     llenar {id}: para ese, el texto, que es lo único que lo nombra sin ambigüedad. Lo mismo
     con {direccion} (`tarea:T84`, telar.objetos) para uno sin dirección: una casilla de un
     documento, o el ítem de un proveedor que no es del tipo `tarea`. Con los dos, basta que falte uno: no
-    se llena a medias (`/tarea X1 ()`)."""
-    if ("{id}" in plantilla and not fila.get("id")) or ("{direccion}" in plantilla and not fila.get("direccion")):
+    se llena a medias (`/tarea X1 ()`).
+
+    Una casilla con id tiene dirección (`pendiente:c-1a2b3c`), pero no la usa aquí: sigue cayendo a {texto},
+    como antes de tener id. Una plantilla como «/tarea {direccion}» está escrita para tareas."""
+    direccion = fila.get("direccion", "")
+    if direccion.startswith("pendiente:") and not fila.get("proveedor"):
+        direccion = ""
+    if ("{id}" in plantilla and not fila.get("id")) or ("{direccion}" in plantilla and not direccion):
         plantilla = "{texto}"
     valores = {"texto": fila.get("texto", ""), "ref": fila.get("ref", ""), "id": fila.get("id", ""),
-               "direccion": fila.get("direccion", "")}
+               "direccion": direccion}
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
 
 
@@ -291,20 +309,37 @@ def en_su_documento(ctx, ref: str, *, hecho: bool = False, responsable: str | No
     texto = esperado.strip() or fila["texto"]
     if esperado.strip() and esperado.strip() != fila["texto"]:
         raise ErrorDeServicio(f"«{fila['ref']}» ya no dice «{esperado.strip()[:60]}»: el documento cambió, vuelve a mirarlo", 409)
+    # con id, la casilla se busca por él (no se mueve con el documento); sin id, por su texto, y al escribirla
+    # recibe uno (telar.vinetas): desde ahí su dirección es `pendiente:<id>`
+    ident = id_casilla(fila)
     try:
         if linea:
-            que, n = "", vinetas.linea(documento, texto)
+            que, n = "", vinetas.linea(documento, texto, id=ident)
         elif hecho:
-            que, n = "marcada hecha", vinetas.cambiar(documento, texto, vinetas.hecha)
+            que = "marcada hecha"
+            n, ident = vinetas.escribir(documento, vinetas.hecha, texto=texto, id=ident)
         else:
             nombre = (responsable or "").strip()
             que = "sin responsable" if nombre.lower() in ("", "none") else f"responsable: {nombre}"
-            n = vinetas.cambiar(documento, texto, lambda l: vinetas.con_responsable(l, nombre))
+            n, ident = vinetas.escribir(documento, lambda l: vinetas.con_responsable(l, nombre), texto=texto, id=ident)
     except (vinetas.ErrorDeVineta, OSError) as e:
         raise ErrorDeServicio(str(e), 409) from e
+    from telar import objetos
+
     relativa = _comun.ruta_relativa(documento, tel.raiz)
-    return ({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa, "linea": n, "hecho": que},
-            f"{relativa}:{n}" + (f" · {que}" if que else ""))
+    direccion = objetos.direccion_de("pendiente", ident) if ident else ""
+    return ({"ref": fila["ref"], "archivo": str(documento), "relativa": relativa, "linea": n, "hecho": que,
+             "direccion": direccion}, f"{relativa}:{n}" + (f" · {que}" if que else ""))
+
+
+def id_casilla(fila: dict) -> str:
+    """El id de la casilla de una fila de documento, si tiene (lo dice su dirección, `pendiente:c-1a2b3c`); ""."""
+    direccion = fila.get("direccion") or ""
+    if fila.get("proveedor") or not direccion.startswith("pendiente:"):
+        return ""
+    from telar import objetos
+
+    return objetos.leer(direccion).id
 
 
 def _llevar(

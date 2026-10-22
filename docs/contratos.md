@@ -306,9 +306,11 @@ existe, falta una sección requerida). Ver [el estado de un hilo](#el-estado-de-
 }
 ```
 
-`direccion` es la dirección de objeto de una tarea del tipo (`tarea:T84`, la de un proveedor con
-`tipo = "tipo"`), la que abre `telar objeto`; `""` en todo lo demás (una casilla de un documento, un evento,
-la tarea de un proveedor `comando`).
+`direccion` es la dirección de objeto, la que abre `telar objeto`: la de una tarea del tipo (`tarea:T84`, la de
+un proveedor con `tipo = "tipo"`), o la de una casilla de un documento que ya tiene id (`pendiente:c-1a2b3c`:
+telar se lo pone la primera vez que la escribe, ver `telar pendiente`). `""` en todo lo demás (una casilla que
+nadie ha escrito, un evento, la tarea de un proveedor `comando`). En una casilla, `id` sigue vacío: el suyo va
+en la dirección.
 
 `clase` la pone el proveedor que lo trajo: `"evento"` si ocupa una hora del día y
 `"tarea"` si pide hacerse; vacío en los pendientes que salen de un documento. Es lo que
@@ -319,7 +321,8 @@ por eso es una reunión.
 pendiente salió del documento de un hilo, `<ruta>:<n>` si salió de una unidad sin
 hilo abierto, y el id del proveedor si vino de afuera. La `n` es la posición en el
 documento, y **cambia si el documento cambia**: sirve para el minuto siguiente, no
-para guardarla. `hilo` puede ser `""` (nadie lo está trabajando todavía).
+para guardarla; lo que se guarda es la `direccion` de una casilla con id, que no cambia. `hilo` puede ser
+`""` (nadie lo está trabajando todavía).
 
 `dueno` es quién lo hace: en una viñeta, lo que dice `@owner(Ana Pérez)` (en cualquier parte) o
 `@Ana Pérez:` (al comienzo), y `""` si no dice nadie («sin responsable»); `@deadline(AAAA-MM-DD)` llega
@@ -407,6 +410,20 @@ Sin `--donde`, lo que pasó:
 
 `enviado` es `false` salvo que se pida `--enviar`: telar **escribe** la frase en la
 entrada del agente y no la manda. Apretar Enter es de la persona.
+
+Con `--hecho`, `--responsable` o `--linea`, una casilla de un documento:
+
+```json
+{ "ref": "faro:2", "archivo": "/…/proyectos/faro/README.md", "relativa": "proyectos/faro/README.md",
+  "linea": 24, "hecho": "marcada hecha", "direccion": "pendiente:c-1a2b3c" }
+```
+
+`<ref>` es la de `telar pendientes`, el id de la casilla (`c-1a2b3c`) o su dirección. Al escribirla
+(`--hecho`, `--responsable`), si su línea no tiene `<!-- id: … -->`, telar le agrega uno al final, único en
+ese documento; `direccion` dice cuál. Desde ahí se la encuentra por el id aunque el documento cambie. Un
+id que ya está no se reescribe, ninguna otra línea cambia, y si el documento no se puede escribir, queda como
+estaba (un 409, como cuando la casilla ya no está o hay dos iguales). `--linea` no escribe: `direccion` es
+`""` si la casilla todavía no tiene id.
 
 ### `telar hoy --json`
 
@@ -615,7 +632,8 @@ pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con
 ### `telar objeto <dirección> [acción] --json`
 
 Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea:T366`, `hilo:Telar`,
-`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, o uno de los tipos que trae un módulo. Es
+`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, o uno de los tipos que trae
+un módulo. Es
 también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
 
 Lo que un id no puede llevar tal cual va escapado como en una URL: `%40` por `@` (si no, se leería como la
@@ -638,6 +656,13 @@ hilo de un proyecto). `params` dice, por nombre, lo que pide cada acción ("" si
 valor por defecto). Una acción que cambia el objeto lo devuelve en `objeto`; una que hace otra cosa (escribirle
 a un hilo) dice lo que pasó en `resultado`. Los errores, como en `telar tipo`: `{"error", "codigo"}` (404: no
 hay ese tipo, ese objeto o esa acción; 409: cambió; 422: el pedido no sirve).
+
+Una casilla de un documento es `pendiente:<id>` (`pendiente:c-1a2b3c`, la que tiene ese id) o, si todavía no
+tiene id, `pendiente:<ref>` (`pendiente:faro:2`, por su lugar: sirve para el minuto siguiente). Sus `campos`:
+`texto`, `documento` (relativo a la raíz), `linea`, `responsable`, `ref` y `vence`, los que tenga; `estado`
+es `abierta`, `en curso` o `hecha`. Sus acciones, mientras no esté hecha: `hecho` y `responsable`
+(`{"nombre": …}`; vacío o `none` lo quita), las de `telar pendiente`, que no tocan nada fuera del documento.
+Escribirla le pone id, así que `objeto` vuelve con la dirección nueva.
 
 En un hilo, `@máquina` dice cuál: `hilo:Faro@servidor` abre el «Faro» del servidor (según la foto que publicó
 en el bus) aunque aquí haya otro, y `leer` lee el de esa máquina; sin `@máquina`, primero el de aquí. `mensaje`

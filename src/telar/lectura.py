@@ -41,6 +41,9 @@ _VINETA = re.compile(r"^\s*[-*+]\s+(?:\[([ xX>~])\]\s*)?(.*)$")
 _FILA = re.compile(r"^\s*\|(.+)\|\s*$")
 _SEPARADOR = re.compile(r"^[\s|:-]+$")
 _FRONT = re.compile(r"\A---\n.*?\n---\n", re.S)
+#: el id estable de una casilla, en un comentario al final de su línea: `<!-- id: c-1a2b3c -->` (telar.vinetas
+#: lo pone la primera vez que escribe la casilla; el proveedor `markdown` y telar.tipos.tarea leen el mismo)
+ID_CASILLA = re.compile(r"<!--\s*id:\s*([^\s<>]+?)\s*-->", re.I)
 
 
 def limpiar(texto: str) -> str:
@@ -190,6 +193,7 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
         valor, dueno, vence = marcas(limpiar(m.group(2)))
         if not valor:
             continue
+        ident = ID_CASILLA.search(m.group(2))
         salida.append(
             Pendiente(
                 texto=valor,
@@ -198,6 +202,7 @@ def _casillas(cuerpo: list[str], maximo: int, origen: str) -> tuple[Pendiente, .
                 origen=origen,
                 dueno=dueno,
                 vence=vence,
+                id_casilla=ident.group(1) if ident else "",
             )
         )
     if not maximo:
