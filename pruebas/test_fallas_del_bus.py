@@ -1002,7 +1002,7 @@ class LasCasillasDeUnaVuelta(Prueba):
             return True
 
         n.subs = {mod_bus.ficha(x): Sub(x) for x in ("Faro", "Molino", "Puente")}
-        n.avisar = lambda nombre, info: "avisado"
+        n.avisar = lambda nombre, info, encargo=False: "avisado"
 
         async def correr():
             reloj = asyncio.get_running_loop().time

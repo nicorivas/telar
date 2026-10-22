@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,6 +52,19 @@ USADOS = ("nombre", "para", "modelo", "residente")
 SIN_USO = ("instrucciones", "memoria", "capacidades", "politica", "lugar")
 #: «una o dos frases»: más que esto se acepta, con aviso
 PARA_LARGO = 300
+
+def _con_control(texto: str) -> bool:
+    """Si trae caracteres de control (un NUL, un ESC, un tabulador): llegan por los escapes de TOML
+    (`\\u0000`) y terminarían en el argv de su sesión, en el nombre de su ventana o crudos en la terminal."""
+    return any(unicodedata.category(c) == "Cc" for c in texto)
+
+
+def ficha(nombre: str) -> str:
+    """El nombre como lo ven el bus y la casilla (bus.ficha): «FARO», «Faro.» y «faro» son el mismo."""
+    from telar import casilla
+
+    return casilla.nombre_de_carpeta(nombre)
+
 
 _RECUERDO = re.compile(r"^\s*[-*]\s+\[([^\]]+)\]\(([^)]+)\)\s*(?:[—–-]\s*(.*))?$")
 
@@ -108,19 +122,24 @@ def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
     if not ruta.is_file():
         return {}, ()
     try:
-        datos = tomllib.loads(ruta.read_text(encoding="utf-8"))
+        # utf-8-sig: algunos editores lo guardan con BOM, y sin esto el TOML entero no se leería
+        datos = tomllib.loads(ruta.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
         return {}, (f"{DEFINICION} no se lee ({e}): se ignora entero",)
     valido: dict = {}
     problemas: list[str] = []
     for clave, valor in datos.items():
         if clave == "nombre":
-            if isinstance(valor, str) and valor.strip() and "\n" not in valor and len(valor.strip()) <= 60:
+            if isinstance(valor, str) and valor.strip() and not _con_control(valor.strip()) and len(valor.strip()) <= 60:
                 valido[clave] = valor.strip()
             else:
-                problemas.append(f"nombre: se esperaba un texto de una línea (hasta 60), llegó {valor!r}: se ignora")
+                problemas.append(f"nombre: se esperaba un texto de una línea (hasta 60, sin caracteres de control), "
+                                 f"llegó {valor!r}: se ignora")
         elif clave == "para":
-            if isinstance(valor, str):
+            if isinstance(valor, str) and _con_control(" ".join(valor.split())):
+                # los saltos de línea y los tabuladores ya se volvieron espacios: lo que queda (un ESC) pintaría la terminal
+                problemas.append(f"para: trae caracteres de control, llegó {valor!r}: se ignora")
+            elif isinstance(valor, str):
                 valido[clave] = " ".join(valor.split())
                 if len(valido[clave]) > PARA_LARGO:
                     problemas.append(f"para: {len(valido[clave])} caracteres; se pensó para una o dos frases")
@@ -128,7 +147,8 @@ def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
                 problemas.append(f"para: se esperaba un texto, llegó {valor!r}: se ignora")
         elif clave == "modelo":
             # libre: los nombres de los modelos cambian más rápido que telar. Solo que no parezca una bandera
-            if isinstance(valor, str) and valor.strip() and not valor.strip().startswith("-") and not re.search(r"\s", valor.strip()):
+            if isinstance(valor, str) and valor.strip() and not valor.strip().startswith("-") \
+                    and not re.search(r"\s", valor.strip()) and not _con_control(valor):
                 valido[clave] = valor.strip()
             else:
                 problemas.append(f"modelo: se esperaba un nombre sin espacios, llegó {valor!r}: se ignora")
@@ -138,7 +158,7 @@ def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
             else:
                 problemas.append(f"residente: se esperaba true o false, llegó {valor!r}: se ignora")
         elif clave == "instrucciones":
-            if isinstance(valor, str):
+            if isinstance(valor, str) and not _con_control(valor):
                 valido[clave] = valor
             else:
                 problemas.append(f"instrucciones: se esperaba la ruta de un archivo, llegó {valor!r}: se ignora")
@@ -167,10 +187,12 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
         de_antes = de_siempre[d.name]
         definido, problemas = leer_definicion(d)
         nombre = definido.get("nombre", de_antes)
-        tomados = {x for a in salida for x in (a.nombre, a.clave)} | \
-                  {x for c, n in de_siempre.items() if c != d.name for x in (n, c)}
-        if nombre != de_antes and nombre in tomados:
-            # dos con el mismo nombre serían un solo hilo: el segundo se queda con el suyo de antes
+        # por su ficha, no por el texto: el bus y la casilla ven «FARO», «Faro.» y «faro» como el mismo hilo
+        tomados = {ficha(x) for a in salida for x in (a.nombre, a.clave)} | \
+                  {ficha(x) for c, n in de_siempre.items() if c != d.name for x in (n, c)}
+        if nombre != de_antes and ficha(nombre) in tomados:
+            # dos con el mismo nombre serían un solo hilo (una casilla, una clave en el bus): el segundo se
+            # queda con el suyo de antes
             problemas = (*problemas, f"nombre: «{nombre}» ya es de otro agente; se queda con «{de_antes}»")
             nombre = de_antes
         extra = extras.get(d.name)
@@ -199,10 +221,12 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
 def argumentos_de(a: Agente, motor=None, *, con_config: bool = True) -> list[str]:
     """Lo que va después del prompt al abrir su sesión: el modelo que declara (si el motor sabe elegirlo)
     y los `argumentos` de esta máquina. Donde se pisan gana la máquina: si `argumentos` ya trae la
-    bandera del modelo, la del agente.toml no se agrega. Sin `con_config`, solo el modelo."""
+    bandera del modelo (`--model opus` o `--model=opus`), la del agente.toml no se agrega. Sin `con_config`,
+    solo el modelo. Un motor sin `con_modelo` (uno de afuera, que cumple solo el Protocol) no elige modelo."""
     propios = list(a.argumentos) if con_config else []
-    modelo = list(motor.con_modelo(a.modelo)) if (motor is not None and a.modelo) else []
-    if modelo and modelo[0] in a.argumentos:
+    con_modelo = getattr(motor, "con_modelo", None) if motor is not None else None
+    modelo = list(con_modelo(a.modelo)) if (con_modelo is not None and a.modelo) else []
+    if modelo and any(x == modelo[0] or x.startswith(modelo[0] + "=") for x in a.argumentos):
         modelo = []
     return [*modelo, *propios]
 

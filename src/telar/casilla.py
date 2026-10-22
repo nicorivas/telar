@@ -115,6 +115,22 @@ def pendientes(config, hilo: str) -> list[dict]:
     return salida
 
 
+def mudar(config, viejo: str, nuevo: str) -> int:
+    """Pasa lo pendiente de la casilla de `viejo` a la de `nuevo` (un agente que su agente.toml renombró):
+    sin esto esperaría en una casilla que ya nadie lee. Lo entregado se queda, es historia. Cuántos pasó."""
+    if nombre_de_carpeta(viejo) == nombre_de_carpeta(nuevo):
+        return 0
+    pasados = 0
+    for m in pendientes(config, viejo):
+        dejar(config, nuevo, {**m, "hilo": nuevo})
+        try:
+            (carpeta(config, viejo) / f"{m['id']}.json").unlink()
+            pasados += 1
+        except (OSError, KeyError):
+            pass
+    return pasados
+
+
 def marcar_entregados(config, hilo: str, ids: list[str]) -> None:
     d = carpeta(config, hilo)
     (d / "entregados").mkdir(parents=True, exist_ok=True)

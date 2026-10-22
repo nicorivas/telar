@@ -385,8 +385,30 @@ def _modulos(ctx) -> list[dict]:
         salida.append(_r("módulos", FALLA, f"«{nombre}» no se puede leer: {por_que}",
                          "arregla su carpeta o su modulo.toml, o sácalo de [modulos] (o de modulos.toml, si lo instaló"
                          " telar modulos): hasta entonces las demás órdenes no arrancan"))
-    if leidos and not rotos:
+    salida.extend(_tapados(ctx, leidos))
+    if leidos and not rotos and len(salida) == 0:
         salida.append(_r("módulos", OK, ", ".join(m.nombre for m in leidos)))
+    return salida
+
+
+def _tapados(ctx, leidos) -> list[dict]:
+    """Lo de un módulo que telar tapa sin decirlo: un módulo que se llama como una orden de telar (`telar
+    <nombre>` es la orden, no él) y un `[objetos.<tipo>]` de un tipo que ya trae telar (gana el de fábrica).
+    Pasa cuando telar suma una orden o un tipo que un módulo ya tenía."""
+    from telar import objetos
+    from telar.cli import ORDENES
+
+    de_fabrica = {t.nombre for t in objetos.DE_FABRICA}
+    salida = []
+    for m in leidos:
+        if m.nombre in ORDENES:
+            salida.append(_r("módulos", AVISO, f"«{m.nombre}» se llama como una orden de telar: `telar {m.nombre}` es la"
+                             " de telar, y sus órdenes no se alcanzan",
+                             "dale otro nombre en [modulos] (o al instalarlo con telar modulos)"))
+        for tipo in sorted(set(getattr(m, "objetos", {}) or {}) & de_fabrica):
+            salida.append(_r("módulos", AVISO, f"«{m.nombre}» trae [objetos.{tipo}], pero «{tipo}» ya es un tipo de telar:"
+                             f" `telar objeto {tipo}:…` usa el de telar",
+                             f"cámbiale el nombre al tipo en el modulo.toml de «{m.nombre}»"))
     return salida
 
 
@@ -401,20 +423,56 @@ def _agentes(ctx) -> list[dict]:
         return [_r("agentes", AVISO, f"no pude leer la carpeta de los agentes: {e}")]
     if not todos:
         return []
+    from telar import casilla
+
     try:
-        sesiones = mod_estado.abrir(ctx.config).sesiones()
+        est = mod_estado.abrir(ctx.config)
+        sesiones = est.sesiones()
     except Exception:  # noqa: BLE001 - sin estado no hay conversaciones que revisar
-        sesiones = {}
+        est, sesiones = None, {}
+    try:
+        vinculos = est.vinculos() if est is not None else {}
+    except Exception:  # noqa: BLE001 - sin vínculos no hay proyectos con los que chocar
+        vinculos = {}
+    raiz = Path(ctx.config.raiz)
     salida = []
     for a in todos:
         for problema in a.problemas:
             salida.append(_r("agentes", AVISO, f"{a.clave}/{mod_agentes.DEFINICION}: {problema}",
                              f"arréglalo en {a.definicion or a.carpeta / mod_agentes.DEFINICION}: mientras, vale lo de siempre"))
-        if a.nombre != a.nombre_de_antes and sesiones.get(a.nombre_de_antes) and not sesiones.get(a.nombre):
+        renombrado = a.nombre != a.nombre_de_antes
+        if renombrado and sesiones.get(a.nombre_de_antes) and not sesiones.get(a.nombre):
             salida.append(_r("agentes", AVISO,
                              f"{a.clave}: su agente.toml lo llama «{a.nombre}», pero su conversación está anotada como "
                              f"«{a.nombre_de_antes}»: su próxima sesión empezaría de cero",
                              f"telar hilo renombrar {shlex.quote(a.nombre)} --hilo {shlex.quote(a.nombre_de_antes)}"))
+        elif renombrado and sesiones.get(a.nombre_de_antes):
+            # le llegó algo antes de correr doctor y abrió una conversación nueva con el nombre de ahora
+            salida.append(_r("agentes", AVISO,
+                             f"{a.clave}: tiene conversaciones con los dos nombres, «{a.nombre_de_antes}» (el de antes de su"
+                             f" agente.toml) y «{a.nombre}»: la de antes quedó aparte, y si su ventana vieja sigue"
+                             " abierta corren dos sesiones suyas",
+                             f"cierra la ventana vieja y telar hilo adoptar {shlex.quote(a.nombre_de_antes)}"
+                             f" --hilo {shlex.quote(a.nombre)}"))
+        if renombrado and (esperan := len(casilla.pendientes(ctx.config, a.nombre_de_antes))) \
+                and casilla.nombre_de_carpeta(a.nombre_de_antes) != casilla.nombre_de_carpeta(a.nombre):
+            salida.append(_r("agentes", AVISO,
+                             f"{a.clave}: {esperan} mensaje(s) esperan en la casilla de «{a.nombre_de_antes}», su nombre"
+                             " de antes",
+                             f"telar nodo los pasa a la de «{a.nombre}» en su próxima vuelta (también lo que llegue por"
+                             " el bus con el nombre de antes)"))
+        destino = vinculos.get(a.nombre)
+        if destino:
+            try:
+                otro = (raiz / destino).resolve() != a.carpeta.resolve()
+            except OSError:
+                otro = False
+            if otro:
+                salida.append(_r("agentes", AVISO,
+                                 f"{a.clave}: «{a.nombre}» ya es un hilo vinculado a {destino}: lo que se le encargue"
+                                 " cae en la ventana de ese hilo",
+                                 f"dale otro nombre en {a.definicion or a.carpeta / mod_agentes.DEFINICION}, o renombra"
+                                 " ese hilo"))
     if not salida:
         con = sum(1 for a in todos if a.definicion)
         salida.append(_r("agentes", OK, ", ".join(a.nombre for a in todos)

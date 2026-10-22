@@ -83,11 +83,18 @@ extension shared the version number.
   (`telar-…`) still alive, and warns when it could not ask tmux.
 - A resident agent can be defined in an `agente.toml` next to its `CLAUDE.md`: `nombre` (overrides the README
   title), `para` (when to hand it work), `modelo` (passed as `--model` when its session or thread opens; a
-  `--model` in `[agentes.<folder>] argumentos` wins) and `residente` (`false`: the node does not open its
-  session by itself when something arrives). Other fields are accepted and shown, not yet used; a broken file
-  or field is ignored with a warning, never disabling the agent. Without the file nothing changes. New `telar
-  agentes [agent] [--json]` lists what each declares, a new `agente:<folder>` object type shows it and hands it
-  work (`encargar`), `telar doctor` gains an `agentes` check, and the example workspace has a resident.
+  `--model` or `--model=…` in `[agentes.<folder>] argumentos` wins) and `residente` (`false`: the node does not
+  open its session by itself when a message arrives, but an `encargo` from `telar encargar` or a periodic job
+  still opens it, with or without a bus). Other fields are accepted and shown, not yet used; a broken file or
+  field (control characters included) is ignored with a warning, never disabling the agent, and a file saved
+  with a BOM reads fine. A declared `nombre` that the bus would see as another agent's (`FARO` next to `Faro`)
+  keeps the old one. After a rename the node keeps collecting the old name's mailbox into the new one, and
+  `telar doctor` warns about messages waiting under the old name, conversations under both names, and a name
+  that is already a project thread's. Without the file nothing changes. New `telar agentes [agent] [--json]`
+  lists what each declares, a new `agente:<folder>` object type shows it and hands it work (`encargar`), `telar
+  doctor` gains an `agentes` check, and the example workspace has a resident.
+- `telar doctor` warns, in its `módulos` check, when a module is named like a telar command (`telar <name>`
+  runs the command, not the module) or brings an `[objetos.<type>]` of a type telar already ships (telar's wins).
 
 ### Fixed
 

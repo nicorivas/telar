@@ -439,7 +439,8 @@ DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente())
 
 
 def tipos(ctx) -> dict[str, Tipo]:
-    """Los tipos que hay: los de fábrica y los de los módulos instalados (un módulo no pisa uno de fábrica)."""
+    """Los tipos que hay: los de fábrica y los de los módulos instalados (un módulo no pisa uno de fábrica;
+    `telar doctor` avisa del que queda tapado, `doctor._tapados`)."""
     salida = {t.nombre: t for t in DE_FABRICA}
     for m in getattr(ctx.config, "modulos", ()):
         for nombre, o in getattr(m, "objetos", {}).items():

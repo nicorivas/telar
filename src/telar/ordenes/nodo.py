@@ -130,6 +130,9 @@ class Nodo:
         self.por_atender: dict[str, dict] = {}
         #: los pedidos con respuesta en curso o esperando turno, de todos los verbos (ver `_aparte`)
         self.atendiendo: set = set()
+        #: el nombre de antes de cada agente de aquí que su agente.toml renombró → el de ahora: su casilla
+        #: vieja se sigue recogiendo, hacia la nueva (lo llena `locales`)
+        self.renombrados: dict[str, str] = {}
 
     def anotar(self, texto: str) -> None:
         from datetime import datetime
@@ -139,8 +142,6 @@ class Nodo:
     # ── qué vive aquí (sincrónico: tmux, archivos) ──────────────────────────────
 
     def locales(self) -> dict[str, dict]:
-        from telar import agentes as mod_agentes
-
         tel = _comun.tejer(self.ctx, con_ficha=False)
         est = tel.estado
         remotos = est.remotos()
@@ -186,17 +187,27 @@ class Nodo:
         for nombre in propias:
             if nombre not in salida and nombre not in remotos:
                 salida[nombre] = ficha_de(nombre, True)
-        for a in mod_agentes.descubrir(self.config):
-            if (a.en or self.config.agentes_en) not in ("", "aqui"):
-                continue
+        renombrados = {}
+        for a in self._agentes_de_aqui():
             actual = salida.get(a.nombre) or ficha_de(a.nombre, False)
             # `residente = false` en su agente.toml: no se le abre la sesión sola cuando le llega algo (avisar)
             actual["residente"] = a.clave if a.residente else ""
             salida[a.nombre] = actual
+            if a.nombre_de_antes not in (a.nombre, "") and mod_bus.ficha(a.nombre_de_antes) != mod_bus.ficha(a.nombre):
+                renombrados[a.nombre_de_antes] = a.nombre
+        # un hilo vivo con el nombre de antes (su ventana vieja) sigue teniendo su casilla: esa no se le quita
+        self.renombrados = {viejo: nuevo for viejo, nuevo in renombrados.items() if viejo not in salida}
         return salida
 
-    def avisar(self, nombre: str, info: dict) -> str:
-        """Que el hilo se entere de lo que llegó a su casilla, sin teclear el contenido."""
+    def _agentes_de_aqui(self) -> list:
+        from telar import agentes as mod_agentes
+
+        return [a for a in mod_agentes.descubrir(self.config) if (a.en or self.config.agentes_en) in ("", "aqui")]
+
+    def avisar(self, nombre: str, info: dict, encargo: bool = False) -> str:
+        """Que el hilo se entere de lo que llegó a su casilla, sin teclear el contenido. Un residente sin
+        sesión se abre con cualquier mensaje; uno con `residente = false`, solo si llegó un `encargo` (de
+        `telar encargar` o de un periódico: es pedirlo explícito, como sin bus)."""
         from telar import agentes as mod_agentes
         from telar import casilla, encargos
         from telar import estado as mod_estado
@@ -217,6 +228,11 @@ class Nodo:
             if agente is not None:
                 encargos._abrir(self.ctx, agente, casilla.aviso(self.config, nombre))
                 return "abierto"
+        elif encargo:
+            agente = next((a for a in self._agentes_de_aqui() if a.nombre == nombre and not a.residente), None)
+            if agente is not None:
+                encargos._abrir(self.ctx, agente, casilla.aviso(self.config, nombre))
+                return "abierto (un encargo, aunque no es residente)"
         return "en su casilla, hasta que se abra"
 
     @staticmethod
@@ -349,13 +365,15 @@ class Nodo:
 
     async def _vuelta(self, js, kv) -> None:
         locales = await asyncio.to_thread(self.locales)
-        # casillas: una suscripción durable por hilo que vive aquí
-        for nombre in locales:
+        # casillas: una suscripción durable por hilo que vive aquí, y la del nombre de antes de un agente
+        # renombrado (lo que le mandó una máquina que todavía no tiene su agente.toml nuevo)
+        renombrados = getattr(self, "renombrados", {})
+        for nombre in [*locales, *renombrados]:
             f = mod_bus.ficha(nombre)
             if f not in self.subs:
                 self.subs[f] = await js.pull_subscribe(mod_bus.tema_casilla(self.config, nombre),
                                                        durable=f"c-{self.persona}-{f}", stream=mod_bus.STREAM)
-        for f in [f for f in self.subs if f not in {mod_bus.ficha(n) for n in locales}]:
+        for f in [f for f in self.subs if f not in {mod_bus.ficha(n) for n in [*locales, *renombrados]}]:
             del self.subs[f]  # se fue a otra máquina: que lo recoja aquella
         await self._recoger(locales)
         # estado: solo lo que cambió, y que dejó de estar vivo lo que ya no está aquí
@@ -437,20 +455,30 @@ class Nodo:
             except Exception:  # noqa: BLE001 - sin mensajes, fetch termina por tiempo
                 return []
 
-        nombres = list(locales)
-        for nombre, msgs in zip(nombres, await asyncio.gather(*(pedir(n) for n in nombres))):
-            nuevos = 0
+        # de qué casilla del bus a cuál de aquí: la de cada hilo a la suya, y la del nombre de antes de un
+        # agente renombrado a la de su nombre de ahora
+        renombrados = {v: n for v, n in getattr(self, "renombrados", {}).items() if n in locales}
+        for viejo, nuevo in renombrados.items():
+            # lo que ya había bajado a la casilla de aquí con el nombre de antes, también
+            if pasados := await asyncio.to_thread(casilla.mudar, self.config, viejo, nuevo):
+                self.anotar(f"«{viejo}» ahora es «{nuevo}»: {pasados} mensaje(s) de su casilla vieja pasan a la nueva")
+        caminos = [(n, n) for n in locales] + list(renombrados.items())
+        nuevos: dict[str, int] = {}
+        encargos: set[str] = set()
+        for (fuente, nombre), msgs in zip(caminos, await asyncio.gather(*(pedir(f) for f, _ in caminos))):
             for m in msgs:
                 try:
                     datos = json.loads(m.data)
                     if await asyncio.to_thread(casilla.dejar, self.config, nombre, datos):
-                        nuevos += 1
+                        nuevos[nombre] = nuevos.get(nombre, 0) + 1
+                        if isinstance(datos, dict) and datos.get("tipo") == "encargo":
+                            encargos.add(nombre)
                 except ValueError:
-                    self.anotar(f"«{nombre}»: un mensaje que no es JSON, descartado")
+                    self.anotar(f"«{fuente}»: un mensaje que no es JSON, descartado")
                 await m.ack()
-            if nuevos:
-                dicho = await asyncio.to_thread(self.avisar, nombre, locales[nombre])
-                self.anotar(f"«{nombre}»: {nuevos} mensaje(s) · {dicho}")
+        for nombre, cuantos in nuevos.items():
+            dicho = await asyncio.to_thread(self.avisar, nombre, locales[nombre], nombre in encargos)
+            self.anotar(f"«{nombre}»: {cuantos} mensaje(s) · {dicho}")
 
     async def _vigilar(self, kv) -> None:
         """La atención de los hilos que viven en otra máquina, anotada aquí apenas cambia.

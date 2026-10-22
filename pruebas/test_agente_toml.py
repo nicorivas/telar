@@ -115,6 +115,34 @@ class LoQueDeclara(ConAgentes):
         self.assertIn("ya es de otro agente", cronista.problemas[0])
 
 
+    def test_dos_que_el_bus_veria_como_el_mismo_tampoco(self):
+        # el bus y la casilla los ven por su ficha: «FARO», «faro!» y «Faro» son la misma casilla
+        for declarado in ("FARO", "faro!", "Faro.", "FÁRO"):
+            self.definir("cronista", f'nombre = "{declarado}"\n')
+            cronista = self.agente("cronista")
+            self.assertEqual(cronista.nombre, "Cronista", declarado)
+            self.assertIn("ya es de otro agente", cronista.problemas[0])
+        # y uno propio que solo cambia en mayúsculas no choca consigo mismo
+        self.definir("faro", 'nombre = "FARO"\n')
+        self.assertEqual((self.agente("faro").nombre, self.agente("faro").problemas), ("FARO", ()))
+
+    def test_los_caracteres_de_control_se_ignoran_con_aviso(self):
+        self.definir("faro", 'nombre = "Lu\\u001bz"\nmodelo = "op\\u0000us"\npara = "La \\u001b[31mluz"\n'
+                             'instrucciones = "a\\u0000b"\n')
+        faro = self.agente("faro")
+        self.assertEqual((faro.nombre, faro.modelo, faro.para, faro.sin_uso), ("Faro", "", "", {}))
+        self.assertEqual(sorted(x.split(":")[0] for x in faro.problemas), ["instrucciones", "modelo", "nombre", "para"])
+        self.assertEqual(m.argumentos_de(faro, ClaudeCode(self.config)), [])
+        # un salto de línea o un tabulador en `para` no son control: se vuelven espacios
+        self.definir("faro", 'para = "La luz\\ty el\\nturno."\n')
+        self.assertEqual((self.agente("faro").para, self.agente("faro").problemas), ("La luz y el turno.", ()))
+
+    def test_un_archivo_con_bom_se_lee(self):
+        (self.raiz / "agentes" / "faro" / "agente.toml").write_bytes(b'\xef\xbb\xbfnombre = "Luz"\n')
+        faro = self.agente("faro")
+        self.assertEqual((faro.nombre, faro.problemas), ("Luz", ()))
+
+
 class ElModelo(ConAgentes):
     def test_claude_code_lo_pasa_con_model_y_un_motor_que_no_sabe_lo_ignora(self):
         self.definir("faro", 'modelo = "opus"\n')
@@ -133,6 +161,19 @@ class ElModelo(ConAgentes):
         cfg = mod_config.Config(raiz=self.raiz, agentes_carpeta="agentes", agentes_extra=(extra,))
         self.assertEqual(m.argumentos_de(self.agente("faro", cfg), ClaudeCode(cfg)), ["--model", "haiku"])
         self.assertEqual(m.argumentos_de(self.agente("faro", cfg), ClaudeCode(cfg), con_config=False), [])
+
+    def test_la_bandera_con_igual_tambien_cuenta_como_la_de_la_maquina(self):
+        self.definir("faro", 'modelo = "opus"\n')
+        extra = mod_config.AgenteExtra(clave="faro", argumentos=("--model=haiku",))
+        cfg = mod_config.Config(raiz=self.raiz, agentes_carpeta="agentes", agentes_extra=(extra,))
+        self.assertEqual(m.argumentos_de(self.agente("faro", cfg), ClaudeCode(cfg)), ["--model=haiku"])
+
+    def test_un_motor_de_afuera_sin_con_modelo_no_revienta(self):
+        # uno registrado con `registrar` que cumple solo el Protocol: no sabe elegir modelo
+        self.definir("faro", 'modelo = "opus"\n')
+        extra = mod_config.AgenteExtra(clave="faro", argumentos=("--rapido",))
+        cfg = mod_config.Config(raiz=self.raiz, agentes_carpeta="agentes", agentes_extra=(extra,))
+        self.assertEqual(m.argumentos_de(self.agente("faro", cfg), SimpleNamespace(nombre="otro")), ["--rapido"])
 
     def _lanzar(self, carpeta):
         motor = SimpleNamespace(conversaciones=lambda hilo: [],
@@ -178,6 +219,95 @@ class Residente(ConAgentes):
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
                 mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
             return n.locales()
+
+    def _nodo(self):
+        from telar.ordenes import nodo as mod_nodo
+
+        n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
+        n.ctx, n.config, n.yo, n.subs, n.renombrados = SimpleNamespace(config=self.config), self.config, "laptop", {}, {}
+        n.anotado = []
+        n.anotar = n.anotado.append
+        return n
+
+    def _avisar(self, n, nombre, info, encargo):
+        abiertos = []
+        with mock.patch("telar.encargos._donde", return_value=None), \
+                mock.patch("telar.encargos._abrir", side_effect=lambda ctx, a, aviso: abiertos.append(a.clave)):
+            dicho = n.avisar(nombre, info, encargo)
+        return dicho, abiertos
+
+    def test_un_encargo_abre_al_no_residente_y_un_mensaje_no(self):
+        # con bus, `telar encargar` y un periódico llegan por la casilla: tienen que abrirlo igual que sin bus
+        self.definir("faro", "residente = false\n")
+        n = self._nodo()
+        self.assertEqual(self._avisar(n, "Faro", {"residente": ""}, True), ("abierto (un encargo, aunque no es residente)", ["faro"]))
+        self.assertEqual(self._avisar(n, "Faro", {"residente": ""}, False), ("en su casilla, hasta que se abra", []))
+        # un residente se abre con cualquier cosa, como antes
+        self.assertEqual(self._avisar(n, "Cronista", {"residente": "cronista"}, False), ("abierto", ["cronista"]))
+        # y un hilo que no es de un agente no se abre por un encargo
+        self.assertEqual(self._avisar(n, "Molino", {"residente": ""}, True)[1], [])
+
+    def _recoger(self, n, locales, por_ficha):
+        import asyncio
+
+        async def _ack():
+            pass
+
+        class Sub:
+            def __init__(self, datos):
+                self.datos = datos
+
+            async def fetch(self, cuantos, timeout):
+                d, self.datos = self.datos, []
+                return [SimpleNamespace(data=json.dumps(x).encode(), ack=_ack) for x in d]
+
+        from telar import bus as mod_bus
+
+        n.subs = {mod_bus.ficha(k): Sub(v) for k, v in por_ficha.items()}
+        avisos = []
+        n.avisar = lambda nombre, info, encargo=False: avisos.append((nombre, encargo)) or "avisado"
+        asyncio.run(n._recoger(locales))
+        return avisos
+
+    def test_recoger_le_dice_a_avisar_si_llego_un_encargo(self):
+        n = self._nodo()
+        avisos = self._recoger(n, {"Faro": {}, "Cronista": {}},
+                               {"Faro": [{"id": "a1", "tipo": "encargo", "texto": "x"}, {"id": "a2", "texto": "y"}],
+                                "Cronista": [{"id": "b1", "texto": "z"}]})
+        self.assertEqual(sorted(avisos), [("Cronista", False), ("Faro", True)])
+
+    def test_un_agente_renombrado_sigue_recibiendo_lo_de_su_nombre_de_antes(self):
+        from telar import casilla
+
+        self.definir("faro", 'nombre = "Lámpara"\n')
+        n = self._nodo()
+        with mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace(estado=SimpleNamespace(
+                remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {}, vinculos=lambda: {},
+                archivados=lambda: set()), hilos=[])), \
+                mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
+            locales = n.locales()
+        self.assertEqual(n.renombrados, {"Faro": "Lámpara"})
+        self.assertNotIn("Faro", locales)
+        # lo que ya había bajado a la casilla de aquí con el nombre de antes, y lo que llega por el bus a ella
+        casilla.dejar(self.config, "Faro", {"id": "viejo", "texto": "de antes"})
+        avisos = self._recoger(n, locales, {"Faro": [{"id": "bus", "tipo": "encargo", "texto": "por el bus"}],
+                                            "Lámpara": [], "Cronista": []})
+        self.assertEqual(avisos, [("Lámpara", True)])
+        self.assertEqual(sorted(x["id"] for x in casilla.pendientes(self.config, "Lámpara")), ["bus", "viejo"])
+        self.assertEqual(casilla.pendientes(self.config, "Faro"), [])
+
+    def test_si_la_ventana_vieja_sigue_viva_su_casilla_es_suya(self):
+        self.definir("faro", 'nombre = "Lámpara"\n')
+        n = self._nodo()
+        hilo = SimpleNamespace(nombre="Faro", id="@1")
+        tel = SimpleNamespace(estado=SimpleNamespace(remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {},
+                                                     vinculos=lambda: {}, archivados=lambda: set()),
+                              hilos=[hilo], vivo=lambda h: True, propio=lambda h: False)
+        with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
+                mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
+            locales = n.locales()
+        self.assertIn("Faro", locales)
+        self.assertEqual(n.renombrados, {})
 
     def test_el_nodo_publica_residente_solo_si_lo_es(self):
         self.definir("faro", "residente = false\n")
@@ -302,6 +432,55 @@ class ElDoctor(ConAgentes):
         self.assertEqual([x["estado"] for x in r], ["aviso"])
         self.assertEqual(r[0]["arreglo"], f"telar hilo renombrar {shlex.quote('Lámpara')} --hilo Faro")
         self.assertEqual([x["estado"] for x in self._revisar({"Lámpara": ["s1"]})], ["ok"])
+
+
+class ElDoctorDespuesDeRenombrar(ConAgentes):
+    def _revisar(self, sesiones=None, vinculos=None):
+        from telar.ordenes import doctor
+
+        est = SimpleNamespace(sesiones=lambda: sesiones or {}, vinculos=lambda: vinculos or {})
+        with mock.patch("telar.ordenes.doctor.mod_estado.abrir", return_value=est):
+            return doctor._agentes(SimpleNamespace(config=self.config))
+
+    def test_conversaciones_con_los_dos_nombres(self):
+        # le llegó algo antes de correr doctor: abrió una conversación nueva y la vieja quedó aparte
+        self.definir("faro", 'nombre = "Lámpara"\n')
+        r = self._revisar({"Faro": ["s1"], "Lámpara": ["s2"]})
+        self.assertEqual([x["estado"] for x in r], ["aviso"])
+        self.assertIn("los dos nombres", r[0]["dice"])
+        self.assertIn(f"telar hilo adoptar Faro --hilo {shlex.quote('Lámpara')}", r[0]["arreglo"])
+
+    def test_mensajes_que_esperan_en_la_casilla_del_nombre_de_antes(self):
+        from telar import casilla
+
+        self.definir("faro", 'nombre = "Lámpara"\n')
+        casilla.dejar(self.config, "Faro", {"id": "m1", "texto": "x"})
+        r = self._revisar()
+        self.assertEqual([x["estado"] for x in r], ["aviso"])
+        self.assertIn("1 mensaje(s) esperan en la casilla de «Faro»", r[0]["dice"])
+
+    def test_un_nombre_que_ya_es_de_un_hilo_de_proyecto(self):
+        (self.raiz / "proyectos" / "ana").mkdir(parents=True)
+        self.definir("faro", 'nombre = "Ana"\n')
+        r = self._revisar(vinculos={"Ana": "proyectos/ana"})
+        self.assertEqual([x["estado"] for x in r], ["aviso"])
+        self.assertIn("ya es un hilo vinculado a proyectos/ana", r[0]["dice"])
+        # vinculado a su propia casa es él mismo
+        self.assertEqual([x["estado"] for x in self._revisar(vinculos={"Ana": "agentes/faro"})], ["ok"])
+
+
+class LoQueUnModuloTapa(Prueba):
+    def test_un_modulo_que_se_llama_como_una_orden_o_trae_un_tipo_de_fabrica(self):
+        from telar.ordenes import doctor
+
+        modulos = (SimpleNamespace(nombre="agentes", objetos={}), SimpleNamespace(nombre="mareas", objetos={"agente": {}, "ola": {}}))
+        r = doctor._modulos(SimpleNamespace(config=SimpleNamespace(modulos=modulos, modulos_rotos=())))
+        self.assertEqual([x["estado"] for x in r], ["aviso", "aviso"])
+        self.assertIn("«agentes» se llama como una orden de telar", r[0]["dice"])
+        self.assertIn("[objetos.agente]", r[1]["dice"])
+        bien = (SimpleNamespace(nombre="mareas", objetos={"ola": {}}),)
+        r = doctor._modulos(SimpleNamespace(config=SimpleNamespace(modulos=bien, modulos_rotos=())))
+        self.assertEqual([(x["estado"], x["dice"]) for x in r], [("ok", "mareas")])
 
 
 class ElEjemplo(Prueba):

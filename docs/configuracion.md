@@ -629,11 +629,12 @@ residente = false                    # el nodo no le abre la sesión solo cuando
 
 `modelo` va al abrir su sesión por un encargo o un periódico, y al abrir su hilo (`telar tejer`, `abrir`);
 si `[agentes.<carpeta>] argumentos` ya trae `--model`, gana el de la máquina. `para` sale en su home, en
-`telar agentes` y en `agente:<carpeta>`. Con `residente = false`, lo que le llega espera en su casilla hasta
-que alguien abra su hilo; `telar encargar` lo abre igual. `instrucciones`, `memoria`, `capacidades`,
+`telar agentes` y en `agente:<carpeta>`. Con `residente = false`, un mensaje que le llega espera en su casilla
+hasta que alguien abra su hilo; un encargo (`telar encargar`, un periódico) lo abre igual, con bus o sin él. `instrucciones`, `memoria`, `capacidades`,
 `politica` y `lugar` se aceptan y se muestran, todavía sin uso. Un archivo con errores no apaga al agente:
 lo que no se lee se ignora, y lo dicen `telar agentes` y `telar doctor`. Cambiarle el `nombre` cambia el de su
-hilo: doctor avisa si su conversación quedó anotada con el de antes.
+hilo y su casilla: el nodo sigue recogiendo lo que llegue con el de antes, y doctor avisa si su conversación
+quedó anotada con el de antes o si hay mensajes esperando con él.
 
 **Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` le escribe
 a su hilo de siempre si está libre, lo deja en cola si está trabajando (el gancho `Stop` le entrega el

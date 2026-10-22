@@ -41,7 +41,7 @@ instrucciones = "CLAUDE.md"
 | `nombre` | pisa el título del README: es el nombre del hilo, de la sección y el que acepta `telar encargar` |
 | `para` | una o dos frases de cuándo encargarle algo: `telar agentes`, su home, `agente:<carpeta>`; el contexto de arranque de los demás dice que existe |
 | `modelo` | al abrir su sesión (un encargo, un periódico, su hilo al tejer) el lanzador lo pasa al motor: `--model` en Claude Code; un motor que no sabe elegir modelo lo ignora |
-| `residente` | `true` (por defecto) es lo de hoy; con `false` el nodo no lo publica como residente y lo que le llega espera en su casilla hasta que alguien lo abra. `telar encargar` lo sigue abriendo: es pedirlo explícito |
+| `residente` | `true` (por defecto) es lo de hoy; con `false` el nodo no lo publica como residente y un mensaje que le llega espera en su casilla hasta que alguien lo abra. Un encargo (`telar encargar`, un periódico) lo sigue abriendo, con bus o sin él: es pedirlo explícito |
 | `instrucciones`, `memoria`, `capacidades`, `politica`, `lugar` | se aceptan y se muestran como «declarado, sin uso todavía» |
 
 ## Qué reemplaza y cómo convive con lo de hoy
@@ -57,8 +57,17 @@ instrucciones = "CLAUDE.md"
   nuevo). Todo eso queda en `problemas`, que muestran `telar agentes` y la revisión `agentes` de
   `telar doctor`.
 - **Dos agentes con el mismo `nombre`**: el segundo (por orden de carpeta) se queda con el de antes, y se avisa.
-- **Cambiar el nombre** cambia el nombre de su hilo. Su conversación está anotada con el nombre viejo: doctor
-  avisa si el nombre declarado no tiene conversación y el de antes sí (`telar hilo renombrar` la lleva).
+  Se comparan como los ve el bus (`bus.ficha`: sin mayúsculas, acentos ni símbolos), porque «FARO» y «Faro»
+  serían la misma casilla. Un nombre o un modelo con caracteres de control se ignora con aviso.
+- **Cambiar el nombre** cambia el nombre de su hilo y de su casilla. Su conversación está anotada con el nombre
+  viejo: doctor avisa si el nombre declarado no tiene conversación y el de antes sí (`telar hilo renombrar` la
+  lleva), y si ya hay conversaciones con los dos (llegó algo antes de correr doctor: `telar hilo adoptar`). El
+  nodo sigue recogiendo la casilla del nombre de antes y la pasa a la nueva (lo que mandó una máquina que todavía
+  no tiene el `agente.toml` nuevo), salvo que un hilo vivo siga con ese nombre; doctor avisa de lo que espera ahí.
+  Al revés (manda una máquina con el archivo nuevo y la del agente todavía no lo tiene) espera en la casilla
+  nueva hasta que esa máquina se ponga al día.
+- **Un nombre que ya es de un hilo de proyecto** (vinculado a otra carpeta): doctor avisa, porque un encargo
+  caería en la ventana de ese hilo.
 
 ## Las decisiones abiertas
 
@@ -81,7 +90,8 @@ Cada una con lo que elegí por ahora y por qué; todas se pueden cambiar sin rom
    línea de los residentes dice que `telar agentes` cuenta para qué es cada uno. ¿Basta, o se quiere el `para`
    de cada uno ahí, recortado?
 6. **El nombre de la orden.** Elegí `telar agentes` (plural, como `hilos` y `proyectos`); `telar agente` ya es
-   del motor que corre en un hilo. Un módulo que se llamara `agentes` queda tapado.
+   del motor que corre en un hilo. Un módulo que se llamara `agentes` queda tapado, como uno que trajera
+   `[objetos.agente]`: doctor avisa de los dos.
 7. **La forma de `memoria`, `capacidades`, `politica` y `lugar`.** No la elegí: se aceptan como tablas (o
    texto, `instrucciones`) sin mirar adentro. Propuesta para discutir:
    - `memoria`: `propia = "memoria"`, `lee = ["../../memory"]` (las compartidas).
