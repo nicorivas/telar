@@ -107,7 +107,7 @@ class HilosYConfig(Prueba):
         from telar.ordenes import config as orden
         from telar.servicios import config as sc
 
-        r = sc.ConfigResuelta(multiplexor="tmux", sesion="s", raiz="/r", estado="/e", persona="nico")
+        r = sc.ConfigResuelta(multiplexor="tmux", sesion="s", raiz="/r", estado="/e", persona="ana")
         with mock.patch.object(sc, "resuelta", return_value=r):
             salida = io.StringIO()
             with redirect_stdout(salida):
@@ -219,7 +219,7 @@ class LoQueEscribe(Prueba):
     def test_una_nota_y_las_pestanas(self):
         from telar import notas
         with mock.patch.object(notas, "agregar", return_value={"ok": True, "dia": "2026-10-19"}) as ag:
-            r = self.c.post("/notas", json={"evento": "e1", "texto": "llevar el deck", "de": "Nico", "dia": "2026-10-19"})
+            r = self.c.post("/notas", json={"evento": "e1", "texto": "llevar el deck", "de": "Ana", "dia": "2026-10-19"})
         self.assertEqual(r.json(), {"ok": True, "dia": "2026-10-19"})
         self.assertEqual(ag.call_args.args[1:], ("2026-10-19", "e1", "llevar el deck"))
         with tempfile.TemporaryDirectory() as d:

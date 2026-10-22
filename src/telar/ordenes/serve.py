@@ -62,7 +62,7 @@ def main(argv: list[str], ctx) -> int:
         except ValueError as e:
             return _comun.queja(f"--equipo: {e}")
         if not eq.personas:
-            return _comun.queja("--equipo: no hay nadie en [equipo.personas] (`telar equipo token marcelo` da una llave)")
+            return _comun.queja("--equipo: no hay nadie en [equipo.personas] (`telar equipo token ramiro` da una llave)")
         host = ip_de_tailscale() or "127.0.0.1"
         equipo = uvicorn.Config(api_equipo.crear(eq), host=host, port=eq.puerto, log_level="warning")
         print(f"telar serve: equipo en http://{host}:{eq.puerto} · {', '.join(sorted(eq.personas))}", flush=True)

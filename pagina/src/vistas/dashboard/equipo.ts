@@ -5,7 +5,7 @@ import * as ui from '../../web/ui';
 import * as cli from '../../cli';
 import { esc, fechaCorta } from '../../estilo';
 import { modelo } from '../../modelo';
-import { atajo } from './dia';
+import { atajo, miNombre } from './dia';
 import type { Pantalla, Tablero } from './pantalla';
 
 type Sugerencia = cli.JsonSugerencia;
@@ -16,7 +16,7 @@ const fecha = (iso: string) => iso.replace('T', ' ').slice(0, 16);
 export function encargoParaGestion(x: Sugerencia): string {
     const parecidas = (x.similares ?? []).map(t => `  · ${t.id} «${t.titulo}» (${t.estado}${t.prioridad === null ? '' : `, P${t.prioridad}`}${t.vence ? `, vence ${t.vence}` : ''}${t.compartida ? '' : ', no compartida'})`);
     return [
-        `[del equipo, a pedido de Nico] ${x.persona} le pide a Nico una tarea. Entrada ${x.id} de la bandeja (\`telar equipo sugerencias\`):`,
+        `[del equipo, a pedido de ${miNombre()}] ${x.persona} le pide a ${miNombre()} una tarea. Entrada ${x.id} de la bandeja (\`telar equipo sugerencias\`):`,
         `  Pide: «${x.titulo}»${x.vence ? ` · para el ${x.vence}` : ''}`,
         ...(x.motivo ? [`  Contexto que dio: ${x.motivo}`] : []),
         ...(parecidas.length ? ['Tareas que el sistema ve parecidas:', ...parecidas] : []),
@@ -27,8 +27,8 @@ export function encargoParaGestion(x: Sugerencia): string {
         `   · es nueva → \`telar equipo aceptar ${x.id}\` (la agrega como tarea, P2, etiquetada equipo). Si conviene otra prioridad, cámbiala después con \`todo edit\`.`,
         `   · ya existe y el pedido aporta algo (fecha, contexto, urgencia) → actualiza esa tarea (\`todo nota\`, \`todo edit --due\`…) y cierra la entrada con \`telar equipo existe ${x.id} --tarea T123 --nota "…"\`.`,
         `   · ya existe y no hay nada que agregar → solo \`telar equipo existe ${x.id} --tarea T123 --nota "…"\`.`,
-        `   · no corresponde (no es de Nico, no es accionable, es de otro hilo) → \`telar equipo rechazar ${x.id} --nota "motivo"\`.`,
-        `3. La nota la lee ${x.persona}: escribe solo estado y lo que sirva para su pedido, sin detalles privados de Nico ni de otras personas.`,
+        `   · no corresponde (no es de ${miNombre()}, no es accionable, es de otro hilo) → \`telar equipo rechazar ${x.id} --nota "motivo"\`.`,
+        `3. La nota la lee ${x.persona}: escribe solo estado y lo que sirva para su pedido, sin detalles privados de ${miNombre()} ni de otras personas.`,
         '4. Contéstame en una línea qué decidiste y por qué.',
     ].join('\n');
 }

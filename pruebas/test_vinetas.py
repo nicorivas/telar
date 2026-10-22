@@ -18,9 +18,9 @@ class Lineas(unittest.TestCase):
 
     def test_el_responsable_reemplaza_lo_que_decia(self):
         con = vinetas.con_responsable
-        self.assertEqual(con("- [ ] Agendar -> @para(Nico) @deadline(2026-09-05)\n", "Marcelo"),
-                         "- [ ] Agendar @deadline(2026-09-05) @owner(Marcelo)\n")
-        self.assertEqual(con("- [ ] @Francisco Martínez: el levantamiento", "Ana Pérez"),
+        self.assertEqual(con("- [ ] Agendar -> @para(Ana) @deadline(2026-09-05)\n", "Ramiro"),
+                         "- [ ] Agendar @deadline(2026-09-05) @owner(Ramiro)\n")
+        self.assertEqual(con("- [ ] @Tomás Herrera: el levantamiento", "Ana Pérez"),
                          "- [ ] el levantamiento @owner(Ana Pérez)")
         self.assertEqual(con("- [ ] Revisar @owner(Ana)", "none"), "- [ ] Revisar")
 
@@ -32,14 +32,14 @@ class EnElDocumento(Prueba):
         self.addCleanup(self.tmp.cleanup)
         self.doc = Path(self.tmp.name) / "README.md"
         self.doc.write_text("# Faro\n\n## Pendientes\n\n- [ ] **Mandar** la propuesta @deadline(2026-10-14)\n"
-                            "- [ ] Revisar el NDA -> @para(Nico)\n- [x] Algo hecho\n\nFin.\n")
+                            "- [ ] Revisar el NDA -> @para(Ana)\n- [x] Algo hecho\n\nFin.\n")
 
     def test_solo_cambia_la_linea_de_esa_casilla(self):
         antes = self.doc.read_text().splitlines()
         n = vinetas.cambiar(self.doc, "Revisar el NDA", vinetas.hecha)
         despues = self.doc.read_text().splitlines()
         self.assertEqual(n, 6)
-        self.assertEqual(despues[5], "- [x] Revisar el NDA -> @para(Nico)")
+        self.assertEqual(despues[5], "- [x] Revisar el NDA -> @para(Ana)")
         self.assertEqual([a for i, a in enumerate(antes) if i != 5], [d for i, d in enumerate(despues) if i != 5])
 
     def test_se_busca_por_el_texto_que_muestra_telar(self):

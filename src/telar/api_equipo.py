@@ -40,8 +40,8 @@ textarea,input{font:inherit;color:inherit;background:transparent;border:1px soli
 .ok{color:var(--verde)}.mal{color:var(--rojo)}
 </style></head><body>
 <h1>equipo</h1><div class="dim" id="quien"></div><div id="msg"></div>
-<div class="t" id="pedir"><b>pedirle algo a Nico</b> <span class="dim">(una tarea nueva; él decide si la agrega)</span><br>
-<input id="p-titulo" maxlength="150" placeholder="qué necesitas que haga (ej. hacer la sesión 5 de GOA)">
+<div class="t" id="pedir"><b>pedirle algo a {{DUENO}}</b> <span class="dim">(una tarea nueva; decide si la agrega)</span><br>
+<input id="p-titulo" maxlength="150" placeholder="qué necesitas que haga (ej. preparar la sesión 5 del curso)">
 <textarea id="p-contexto" rows="2" maxlength="500" placeholder="contexto (opcional): por qué, para quién, qué depende de esto"></textarea>
 <input id="p-vence" type="date" aria-label="para cuándo (opcional)"> <button id="p-enviar">enviar pedido</button></div>
 <div id="pedidos"></div><div id="lista"></div>
@@ -59,7 +59,7 @@ async function cargar() {
   const r = await fetch('api/tareas', { headers: hdr() });
   if (r.status === 401) { try { localStorage.removeItem('equipo.token'); } catch (e) {} token = ''; $('msg').innerHTML = '<span class="mal">llave inválida</span>'; return; }
   const d = await r.json();
-  $('quien').textContent = d.quien + ' · lo que el equipo ve de las tareas de Nico';
+  $('quien').textContent = d.quien + ' · lo que el equipo ve de las tareas de {{DUENO}}';
   const mias = d.sugerencias;
   $('pedidos').innerHTML = '';
   for (const x of mias.filter((y) => y.tipo === 'tarea').slice(-5).reverse()) {
@@ -89,7 +89,7 @@ function formulario(div, t, b) {
   go.onclick = async () => {
     const r = await fetch('api/sugerir', { method: 'POST', headers: hdr(), body: JSON.stringify({ tarea: t.id, motivo: ta.value }) });
     const d = await r.json();
-    $('msg').innerHTML = d.ok ? '<span class="ok">sugerencia enviada: Nico la verá</span>' : '<span class="mal"></span>';
+    $('msg').innerHTML = d.ok ? '<span class="ok">sugerencia enviada: {{DUENO}} la verá</span>' : '<span class="mal"></span>';
     if (!d.ok) $('msg').firstChild.textContent = d.error;
     cargar();
   };
@@ -103,11 +103,11 @@ function yaExiste(lista) {
 }
 $('p-enviar').onclick = () => enviarPedido(false);
 async function enviarPedido(insistir) {
-  $('msg').innerHTML = '<span class="dim">revisando si Nico ya tiene algo sobre esto…</span>';
+  $('msg').innerHTML = '<span class="dim">revisando si {{DUENO}} ya tiene algo sobre esto…</span>';
   const r = await fetch('api/pedir', { method: 'POST', headers: hdr(), body: JSON.stringify({ titulo: $('p-titulo').value, contexto: $('p-contexto').value, vence: $('p-vence').value, aunque_exista: insistir }) });
   const d = await r.json();
   if (r.status === 409 && d.existe) { yaExiste(d.existe); return; }
-  $('msg').innerHTML = d.ok ? '<span class="ok">pedido enviado: Nico lo verá y decide</span>' : '<span class="mal"></span>';
+  $('msg').innerHTML = d.ok ? '<span class="ok">pedido enviado: {{DUENO}} lo verá y decide</span>' : '<span class="mal"></span>';
   if (!d.ok) $('msg').firstChild.textContent = d.error; else { $('p-titulo').value = ''; $('p-contexto').value = ''; $('p-vence').value = ''; }
   cargar();
 }
@@ -134,7 +134,9 @@ def crear(eq: mod_equipo.Equipo) -> FastAPI:
 
     @app.get("/")
     def pagina():
-        return HTMLResponse(PAGINA, headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
+        import html
+
+        return HTMLResponse(PAGINA.replace("{{DUENO}}", html.escape(eq.dueno)), headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     @app.get("/api/tareas")
     def tareas(request: Request):
@@ -198,7 +200,7 @@ def crear(eq: mod_equipo.Equipo) -> FastAPI:
                 return responder(request, 429, {"ok": False, "error": "más despacio"}, persona)
             else:
                 ultimo_chequeo[persona] = ahora
-        # antes de molestar a Nico: ¿ya hay una tarea sobre esto (por palabras o por sentido)? Si el equipo la ve, se le contesta su estado
+        # antes de molestar a quien comparte: ¿ya hay una tarea sobre esto (por palabras o por sentido)? Si el equipo la ve, se le contesta su estado
         parecidas = mod_equipo.parecidas(eq, pedido[0], pedido[1])
         ya = [t for t in parecidas if t["compartida"]]
         if ya and not insistir:

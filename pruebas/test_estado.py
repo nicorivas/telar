@@ -441,11 +441,11 @@ class AliasDeUnRenombre(unittest.TestCase):
         self.est = e.Estado(Path(self.tmp.name))
 
     def test_el_nombre_viejo_lleva_al_nuevo_y_encadena(self):
-        self.est.vincular("santander-gob", "proyectos/santander")
-        self.est.renombrar("santander-gob", "Santander")
-        self.assertEqual(self.est.nombre_actual("santander-gob"), "Santander")
-        self.est.renombrar("Santander", "Banco")
-        self.assertEqual(self.est.nombre_actual("santander-gob"), "Banco")
+        self.est.vincular("banco-gob", "proyectos/banco")
+        self.est.renombrar("banco-gob", "Banco")
+        self.assertEqual(self.est.nombre_actual("banco-gob"), "Banco")
+        self.est.renombrar("Banco", "Banco")
+        self.assertEqual(self.est.nombre_actual("banco-gob"), "Banco")
         self.assertEqual(self.est.nombre_actual("otro"), "otro")
 
     def test_volver_al_nombre_de_antes_no_hace_un_ciclo(self):
@@ -462,9 +462,9 @@ class AliasDeUnRenombre(unittest.TestCase):
     def test_el_gancho_de_un_agente_que_ya_corria_escribe_en_el_hilo_renombrado(self):
         from telar.agente.base import Aviso, Evento, resolver_hilo
 
-        self.est.renombrar("santander-gob", "Santander")
+        self.est.renombrar("banco-gob", "Banco")
         aviso = Aviso(evento=Evento.ESPERA)
-        self.assertEqual(resolver_hilo(self.est, aviso, entorno={"TELAR_HILO": "santander-gob"}), "Santander")
+        self.assertEqual(resolver_hilo(self.est, aviso, entorno={"TELAR_HILO": "banco-gob"}), "Banco")
 
 
 class Actividad(ConCarpeta):

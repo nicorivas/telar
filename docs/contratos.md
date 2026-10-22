@@ -964,7 +964,7 @@ La foto (versión 1):
 
 ```json
 {
-  "version": 1, "maquina": "macbook-nico", "telar": "0.1.9",
+  "version": 1, "maquina": "laptop-de-ana", "telar": "0.1.9",
   "publicado": "2026-09-30T10:20:00-03:00", "sesion": "faro",
   "hilos": [
     {"nombre": "Faro", "atencion": "espera", "vivo": true, "activo": false, "prioridad": 1,
@@ -982,7 +982,7 @@ documento del hilo. Una foto de otra versión, sin lista de hilos o con más de 
 
 ```json
 {"vigente": 120.0,
- "espejos": [{"nombre": "macbook-nico", "en_linea": true, "edad": 12.3, "recibido": 1790000000.1,
+ "espejos": [{"nombre": "laptop-de-ana", "en_linea": true, "edad": 12.3, "recibido": 1790000000.1,
               "publicado": "2026-09-30T10:20:00-03:00", "telar": "0.1.9", "sesion": "faro",
               "hilos": []},
              {"nombre": "roto", "error": "no se pudo leer: …", "en_linea": false, "edad": null, "hilos": []}]}

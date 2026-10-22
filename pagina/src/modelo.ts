@@ -46,7 +46,7 @@ export class Modelo {
     secciones: cli.JsonSeccion[] = [];
     /** las apps de la configuración (`[apps]`), en su orden */
     apps: cli.JsonApp[] = [];
-    /** lo que el equipo sugiere y Nico no ha decidido (`telar equipo`); vacío si la función está apagada */
+    /** lo que el equipo sugiere y la persona no ha decidido (`telar equipo`); vacío si la función está apagada */
     sugerencias: cli.JsonSugerencia[] = [];
     private sugerenciasVistas: Set<string> | undefined;
     hayRemotos = false;

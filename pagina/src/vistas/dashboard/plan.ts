@@ -5,7 +5,7 @@
 import * as cli from '../../cli';
 import { esc } from '../../estilo';
 import * as ui from '../../web/ui';
-import { Dia, diaDe, seccion } from './dia';
+import { Dia, diaDe, miNombre, seccion } from './dia';
 import type { Accion, Pantalla, Tablero } from './pantalla';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
@@ -479,13 +479,13 @@ export class PantallaPlan implements Pantalla {
         let proyecto = '';
         if (!e.soloPlan) {
             const r = await cli.reunion(e.titulo, hm(e.inicio), e.url, e.id, { asistentes: e.asistentes, preguntar: true, donde: true });
-            if (r.datos?.destino && r.datos.destino !== 'gestion') proyecto = `Proyecto: ${r.datos.destino}${r.datos.recordado ? ' (elegido por Nico para esta serie)' : ' (deducido)'}.`;
+            if (r.datos?.destino && r.datos.destino !== 'gestion') proyecto = `Proyecto: ${r.datos.destino}${r.datos.recordado ? ` (elegido por ${miNombre()} para esta serie)` : ' (deducido)'}.`;
             else if (r.datos?.candidatos?.length) proyecto = `Proyecto: no está claro; candidatos: ${r.datos.candidatos.slice(0, 3).map(c => `${c.ruta} (${c.motivos.join(', ')})`).join('; ')}.`;
             else proyecto = 'Proyecto: ninguno deducido.';
         }
         const notas = notasDe(e, this.notas).map(n => `${n.de}: ${n.texto}`);
         const lineas = [
-            `[Nico, desde el calendario del dashboard] ${texto.trim()}`,
+            `[${miNombre()}, desde el calendario del dashboard] ${texto.trim()}`,
             '',
             `Contexto. La reunión: «${e.titulo}», ${d.fecha} de ${hm(e.inicio)} a ${hm(e.fin)}${e.lugar ? `, ${e.lugar}` : ''}${e.soloPlan ? ' (bloque del plan del día, no está en el calendario)' : ''}.`,
             e.asistentes.length ? `Asistentes: ${e.asistentes.join(', ')}.` : '',
@@ -499,7 +499,7 @@ export class PantallaPlan implements Pantalla {
             () => cli.encargar(general.clave, lineas.join('\n')));
         if (!r.datos) { void ui.falla(`telar: no llegó a ${general.nombre}: ${r.error ?? 'sin respuesta'}`); return; }
         // queda constancia en el evento: lo que se pidió y a quién
-        await cli.notaEvento(e.id, `A ${general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha);
+        await cli.notaEvento(e.id, `A ${general.nombre}: ${texto.trim()}`, e.titulo, hm(e.inicio), d.fecha, miNombre());
         const n = await cli.notasEventos(d.fecha);
         if (n.datos?.ok) this.notas = n.datos;
         this.eventoSel = id;
@@ -512,7 +512,7 @@ export class PantallaPlan implements Pantalla {
         const [id, titulo, inicio, fecha] = JSON.parse(valor) as string[];
         const texto = await ui.campo({ titulo: `Nota para «${titulo}»`, ayuda: 'Se guarda junto al evento y la ven las skills' });
         if (!texto?.trim()) return;
-        const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha);
+        const r = await cli.notaEvento(id, texto.trim(), titulo, inicio, fecha, miNombre());
         if (!r.datos?.ok) { void ui.falla(`telar: la nota no se guardó: ${r.datos?.error ?? r.error ?? 'sin respuesta'}`); return; }
         this.eventoSel = id;
         const notas = await cli.notasEventos(fecha);

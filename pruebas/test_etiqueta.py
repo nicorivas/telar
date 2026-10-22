@@ -18,8 +18,8 @@ def ficha(titulo="", **campos):
 
 class LaEtiqueta(Prueba):
     def test_cliente_y_titulo(self):
-        self.assertEqual(etiqueta(PLANTILLA, ficha("Adopción IA", Cliente="Grupo Anasac")),
-                         "Grupo Anasac · Adopción IA")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Adopción IA", Cliente="Grupo Agrosur")),
+                         "Grupo Agrosur · Adopción IA")
 
     def test_sin_parentesis_ni_lo_que_sigue_a_una_raya_o_coma(self):
         self.assertEqual(etiqueta(PLANTILLA, ficha("Reportes", Cliente="Aguas Pacífico (agua desalada; Quintero)")),

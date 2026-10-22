@@ -163,8 +163,9 @@ export interface JsonNotas {
     eventos: Record<string, { titulo: string; inicio: string; notas: JsonNota[] }>;
 }
 export const notasEventos = async (dia = '') => await deServe<JsonNotas>(`/notas${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`, 30000);
-export const notaEvento = async (evento: string, texto: string, titulo: string, inicio: string, dia = '') =>
-    await aServe<{ ok: boolean; error?: string }>('POST', '/notas', 30000, { evento, texto, de: 'Nico', titulo, inicio, dia });
+/** `de`: quién la escribe, la persona de esta máquina (`yo.persona` del dashboard). */
+export const notaEvento = async (evento: string, texto: string, titulo: string, inicio: string, dia = '', de = '') =>
+    await aServe<{ ok: boolean; error?: string }>('POST', '/notas', 30000, { evento, texto, de, titulo, inicio, dia });
 
 /** El día. La agenda es `null` cuando no se consultó a nadie (`--local`) o cuando no hay
  *  ningún proveedor declarado: son dos silencios distintos, y los dos se dicen. */

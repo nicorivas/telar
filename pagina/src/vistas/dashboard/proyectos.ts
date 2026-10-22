@@ -11,7 +11,7 @@ import { disco } from '../../disco';
 import { esc, haceCorto, limpiarMd, normalizar } from '../../estilo';
 import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
-import { Dia, Pendiente, olvidarDia, pendientes, plazo, yo } from './dia';
+import { Dia, Pendiente, miNombre, olvidarDia, pendientes, plazo, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 import { elegirDueno, llevarPendiente } from './tareas';
 
@@ -430,7 +430,7 @@ export class PantallaProyectos implements Pantalla {
         if (!texto?.trim()) return;
         const pend = this.pendientesDe(p.ruta) ?? [];
         const lineas = [
-            `[Nico, desde los proyectos del dashboard] ${texto.trim()}`,
+            `[${miNombre()}, desde los proyectos del dashboard] ${texto.trim()}`,
             '',
             `Contexto. El proyecto: «${p.nombre}» (${p.arquetipo}${p.estado_completo ? `, estado: ${p.estado_completo}` : ''}), en ${p.ruta}; su README es ${p.ruta}/README.md.`,
             p.hilo ? `Tiene un hilo: «${p.hilo}»${p.vivo ? ' (abierto)' : ' (dormido)'}; si el trabajo es suyo, pásaselo con telar mensaje.` : 'No tiene hilo abierto.',

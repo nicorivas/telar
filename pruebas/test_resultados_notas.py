@@ -111,10 +111,10 @@ class Notas(Prueba):
     def test_una_nota_se_guarda_por_evento_y_se_lee(self):
         r = notas.agregar_local(self.cfg, "2026-10-07", "ev1", "Llevar el deck", de="planear", titulo="Comité", inicio="10:00")
         self.assertTrue(r["ok"])
-        notas.agregar_local(self.cfg, "2026-10-07", "ev1", "Preguntar por el precio", de="Nico")
+        notas.agregar_local(self.cfg, "2026-10-07", "ev1", "Preguntar por el precio", de="Ana")
         e = notas.leer_local(self.cfg, "2026-10-07")["eventos"]["ev1"]
         self.assertEqual((e["titulo"], e["inicio"]), ("Comité", "10:00"))
-        self.assertEqual([n["de"] for n in e["notas"]], ["planear", "Nico"])
+        self.assertEqual([n["de"] for n in e["notas"]], ["planear", "Ana"])
 
     def test_sin_evento_o_sin_texto_no_se_guarda(self):
         self.assertFalse(notas.agregar_local(self.cfg, "2026-10-07", "", "x", de="a")["ok"])

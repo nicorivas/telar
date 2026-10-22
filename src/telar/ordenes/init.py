@@ -288,7 +288,7 @@ def _dentro(hijo: Path, padre: Path) -> bool:
 
 def _atajo(ruta: Path) -> str:
     """`~` en vez del hogar: una configuración que se puede leer y copiar."""
-    # por componente y no por prefijo de texto: /Users/nicolas empieza con /Users/nico
+    # por componente y no por prefijo de texto: /Users/anabel empieza con /Users/ana
     try:
         return "~/" + ruta.relative_to(Path.home()).as_posix()
     except ValueError:

@@ -1,10 +1,10 @@
 """`telar persona` — quién entra a este servidor y con qué permisos.
 
     telar persona                          las personas dadas de alta, y el perfil de cada una
-    telar persona crear marcelo --llave "ssh-ed25519 AAAA… marcelo@x"
+    telar persona crear ramiro --llave "ssh-ed25519 AAAA… ramiro@x"
                                            su cuenta, su ssh, su tope de recursos, su correo y su telar propio
     telar persona crear … --seco           el plan, sin escribir nada
-    telar persona quitar marcelo           cerrarle el acceso (su home se conserva; --borrar-home lo borra)
+    telar persona quitar ramiro           cerrarle el acceso (su home se conserva; --borrar-home lo borra)
 
 Crear y quitar tocan usuarios, sshd y systemd, que son de root. Con sudo se ejecutan; sin él,
 telar escribe el plan como un guion (cada paso se puede repetir) y dice cómo correrlo:

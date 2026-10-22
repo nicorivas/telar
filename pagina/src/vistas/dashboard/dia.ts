@@ -193,8 +193,13 @@ export function pista(tecla: string, nombre: string): string {
  *  asignada a su nombre también. La pone la vista al leer la configuración. */
 export const yo = { persona: '', nombres: [] as string[] };
 
-/** ¿Es mía? Sin dueño, o con uno de mis nombres: la primera palabra basta («Nico» y «Nico Rivas»,
- *  «Nicolás» con el nombre de git «Nicolás Rivas»), pero entera («Nicole» no es «Nico»). */
+/** Cómo se nombra la persona de esta máquina en lo que la página les escribe a los agentes y en sus notas: su
+ *  primer nombre («Ana», de git o de `[persona] nombre`), o su nombre en el bus con mayúscula. */
+export const miNombre = (): string =>
+    yo.nombres.find(Boolean)?.split(' ')[0] ?? (yo.persona ? yo.persona[0].toUpperCase() + yo.persona.slice(1) : 'la persona');
+
+/** ¿Es mía? Sin dueño, o con uno de mis nombres: la primera palabra basta («Ana» y «Ana Pérez»,
+ *  «Anabel» con el nombre de git «Anabel Pérez»), pero entera («Anastasia» no es «Ana»). */
 export function esMia(dueno: string): boolean {
     if (!dueno.trim()) return true;
     const primera = (t: string) => normalizar(t).split(/\s+/)[0] ?? '';

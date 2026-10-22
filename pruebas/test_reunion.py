@@ -13,26 +13,26 @@ from telar.config import REUNION_POR_DEFECTO, ErrorDeConfig, escribir_clave
 from telar.ordenes import reunion
 
 UNIDADES = [
-    "operacion/proyectos/anasac-adopcion-ia",
-    "operacion/proyectos/valgesta-adopcion-ia",
-    "conocimiento/proyectos/anasac-diagnostico",
+    "operacion/proyectos/agrosur-adopcion-ia",
+    "operacion/proyectos/cordillera-adopcion-ia",
+    "conocimiento/proyectos/agrosur-diagnostico",
     "negocio/pipeline/walmart-c3",
 ]
 
 
 class ElProyecto(Prueba):
     def test_la_palabra_del_titulo_encuentra_la_carpeta(self):
-        self.assertEqual(reunion.proyecto_para("coordinación interna valgesta", UNIDADES),
-                         "operacion/proyectos/valgesta-adopcion-ia")
+        self.assertEqual(reunion.proyecto_para("coordinación interna cordillera", UNIDADES),
+                         "operacion/proyectos/cordillera-adopcion-ia")
 
     def test_entre_empates_gana_la_primera_del_perfil(self):
-        self.assertEqual(reunion.proyecto_para("Coordinación interna ANASAC", UNIDADES),
-                         "operacion/proyectos/anasac-adopcion-ia")
+        self.assertEqual(reunion.proyecto_para("Coordinación interna AGROSUR", UNIDADES),
+                         "operacion/proyectos/agrosur-adopcion-ia")
 
     def test_y_antes_la_que_tiene_hilo_vivo(self):
         self.assertEqual(
-            reunion.proyecto_para("ANASAC", UNIDADES, {"anasac-diagnostico"}),
-            "conocimiento/proyectos/anasac-diagnostico",
+            reunion.proyecto_para("AGROSUR", UNIDADES, {"agrosur-diagnostico"}),
+            "conocimiento/proyectos/agrosur-diagnostico",
         )
 
     def test_las_palabras_de_siempre_no_encuentran_nada(self):
@@ -63,7 +63,7 @@ class ElMensaje(Prueba):
 
 class ElNombreDelTab(Prueba):
     def test_se_queda_con_lo_que_distingue(self):
-        self.assertEqual(reunion.nombre_del_tab("Coordinación interna ANASAC", "12:00"), "◷ 12:00 ANASAC")
+        self.assertEqual(reunion.nombre_del_tab("Coordinación interna AGROSUR", "12:00"), "◷ 12:00 AGROSUR")
 
     def test_si_no_queda_nada_usa_el_titulo(self):
         self.assertEqual(reunion.nombre_del_tab("Daily", "9:00"), "◷ 9:00 Daily")

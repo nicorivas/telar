@@ -176,16 +176,16 @@ class MarcasDeUnaViñeta(unittest.TestCase):
     def test_para_tambien_dice_quien_y_la_flecha_no_queda(self):
         from telar.lectura import marcas
 
-        self.assertEqual(marcas("Agendar con Pontoni la reunión -> @para(Nico) @desde(2026-09-01)"),
-                         ("Agendar con Pontoni la reunión", "Nico", ""))
+        self.assertEqual(marcas("Agendar con Rivera la reunión -> @para(Ana) @desde(2026-09-01)"),
+                         ("Agendar con Rivera la reunión", "Ana", ""))
 
     def test_quien_al_comienzo_hasta_los_dos_puntos(self):
         from telar.lectura import marcas
 
-        self.assertEqual(marcas("@Francisco Martínez: el levantamiento por escrito"),
-                         ("el levantamiento por escrito", "Francisco Martínez", ""))
+        self.assertEqual(marcas("@Tomás Herrera: el levantamiento por escrito"),
+                         ("el levantamiento por escrito", "Tomás Herrera", ""))
         # el @owner explícito manda sobre el del comienzo
-        self.assertEqual(marcas("@Marcelo: subir el deck @owner(Ignacia)")[1:], ("Ignacia", ""))
+        self.assertEqual(marcas("@Ramiro: subir el deck @owner(Inés)")[1:], ("Inés", ""))
 
     def test_una_mencion_en_minuscula_o_en_medio_no_es_responsable(self):
         from telar.lectura import marcas

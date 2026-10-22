@@ -472,7 +472,7 @@ def hilo_o_nombre(tel: Telar, referencia: str) -> tuple[Hilo | None, str]:
         return exacto, ""
     # a propósito NO se busca por prefijo ni por subcadena: esto lo usan las órdenes que
     # escriben, y un nombre nuevo que resulta ser parte de otro le cambiaría la carpeta al
-    # hilo equivocado («Gobernanza» calzaba con «santander-gobernanza-ia»). Para navegar
+    # hilo equivocado («Gobernanza» calzaba con «banco-gobernanza-ia»). Para navegar
     # —`ir`, `ficha`— sí vale aproximar: ahí no se anota nada.
     return Hilo(id=referencia, nombre=referencia), f"«{referencia}» no estaba en la lista"
 

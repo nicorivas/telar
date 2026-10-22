@@ -136,6 +136,10 @@ extension shared the version number.
 
 ### Changed
 
+- Nothing of the author's own life ships in telar any more: real people, clients and the resident agent's name
+  left the tests, examples and docs for invented ones; the page signs notes and its messages to agents with the
+  person's own name instead of a fixed one; the team page names whoever shares the tasks (`[equipo] dueno`, or
+  `[persona] nombre`); and a colleague created with `telar persona` wakes no thread by default.
 - A repository's profile lives in its `.telar/` folder, `.telar/perfil.yaml`, and `telar-perfil.yaml` is no
   longer read (`telar doctor` says how to move it). `.telar/local.yaml`, per person and out of git, is read on top
   of the profile: a value replaces, a map merges key by key, `null` removes.
@@ -220,7 +224,7 @@ extension shared the version number.
   scripts run in an origin of their own, without the page's key or its API; «código» next to its path shows the
   source, and «dibujado» goes back. What the page loads by a relative path (images, styles) is not resolved: it
   is for self-contained pages, like a slide.
-- An object's address (`tarea:T366`, `hilo:Telar`, `proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, and
+- An object's address (`tarea:T366`, `hilo:Telar`, `proyecto:proyectos/faro`, `archivo:telar:docs/x.md`, and
   the types a module brings, from `/api/objetos/tipos`) is a link wherever an agent writes it: the terminal
   (whole, even split over several rows), the reading view and the conversation. A task opens in its card, whose
   «‹» goes back to where the link was; a file or a project, in the viewer (the project, its folder); a thread, the
@@ -465,7 +469,7 @@ extension shared the version number.
 - The browser page's header says, in the middle, which machine serves it and what you are looking at:
   `telar › Gestión` for a thread of that machine, `telar ⇢ laptop:Telar` for one of another (forwarded). A
   thread of another machine is named `máquina:hilo`, like `scp máquina:ruta` (with the person it would be
-  `nico@laptop:Telar`). The machine is its name on the bus, or its hostname without one, from `/salud` (which
+  `ana@laptop:Faro`). The machine is its name on the bus, or its hostname without one, from `/salud` (which
   now also returns `maquina` and `host`): every machine serves its own page, so with any number of them you
   know which one you are on.
 - Local echo in the browser terminal, like mosh: what you type appears at once, dim, without waiting for the
@@ -776,7 +780,7 @@ extension shared the version number.
   clears a framed «« t e l a r »» in the middle (tap to skip; off with «reduce motion»).
 - `telar web`: the installed app is an Android share target (`share_target` in the manifest): «compartir» → telar opens a
   screen to pick which threads receive the link (plus «lecturas», the reading feed) with an optional note; nothing is sent until
-  you tap «enviar». New `/api/lectura` (`kichoro/bin/lecturas dejar`).
+  you tap «enviar». New `/api/lectura` (a script that leaves a reading).
 - A provider can live on another machine (`[proveedores.<x>] en = "<machine>"`): it is queried there over the bus,
   and `telar tarea` runs its card and actions there — the tasks are files on that machine, and reading the copy
   synced by git showed hours-old data while an action run here changed the copy. If that machine doesn't answer,

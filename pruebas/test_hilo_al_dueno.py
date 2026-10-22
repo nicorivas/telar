@@ -12,7 +12,7 @@ from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar.ordenes import hilo as orden
 
-CTX = SimpleNamespace(config=SimpleNamespace(bus=SimpleNamespace(url="nats://x:4222", maquina="laptop", persona="nico")))
+CTX = SimpleNamespace(config=SimpleNamespace(bus=SimpleNamespace(url="nats://x:4222", maquina="laptop", persona="ana")))
 
 
 class QuienEsElDueno(Prueba):
@@ -78,10 +78,10 @@ class Conciliar(Prueba):
         return n, tel
 
     def test_trae_lo_que_falta_y_cierra_lo_que_sobra(self):
-        vistos = {"nico.faro": {"nombre": "Faro", "vivo": True, "maquina": "telar"},
-                  "nico.viejo": {"nombre": "Viejo", "vivo": False, "maquina": "telar"},
-                  "nico.al-dia": {"nombre": "Al día", "vivo": True, "maquina": "telar"},
-                  "nico.guardado": {"nombre": "Guardado", "vivo": True, "maquina": "telar"}}
+        vistos = {"ana.faro": {"nombre": "Faro", "vivo": True, "maquina": "telar"},
+                  "ana.viejo": {"nombre": "Viejo", "vivo": False, "maquina": "telar"},
+                  "ana.al-dia": {"nombre": "Al día", "vivo": True, "maquina": "telar"},
+                  "ana.guardado": {"nombre": "Guardado", "vivo": True, "maquina": "telar"}}
         n, tel = self.nodo(vistos, ventanas={"Viejo", "Al día"}, archivados={"Guardado"},
                            anotados={"Viejo": {"remoto": "telar"}})
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel):
@@ -89,7 +89,7 @@ class Conciliar(Prueba):
         self.assertEqual(sorted(tocados), ["Faro", "Viejo"])
 
     def test_una_ventana_que_no_es_de_ese_remoto_no_se_cierra(self):
-        vistos = {"nico.faro": {"nombre": "Faro", "vivo": False, "maquina": "telar"}}
+        vistos = {"ana.faro": {"nombre": "Faro", "vivo": False, "maquina": "telar"}}
         n, tel = self.nodo(vistos, ventanas={"Faro"}, anotados={})
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel):
             self.assertEqual(n.conciliar(), [])

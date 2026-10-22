@@ -15,16 +15,16 @@ from telar.tipos import ErrorDeFormato
 from telar.tipos.tarea import ARCHIVO, CASILLA, Cambio, FormatoArchivo
 
 TAREA = """---
-titulo: Watts: volver con Ignacia por el contrato
+titulo: Lácteos: volver con Inés por el contrato
 estado: activa
 prioridad: 1
 vence: 2026-10-30
 area: trabajo
-etiquetas: watts, contratos
+etiquetas: lacteos, contratos
 creada: 2026-10-01
 avance: pregunta 2026-10-15
 ---
-Volver con Ignacia: el contrato quedó en la cláusula 7.
+Volver con Inés: el contrato quedó en la cláusula 7.
 
 ## Historia
 - 2026-10-01 [creada] a mano
@@ -39,9 +39,9 @@ def lineas_tocadas(a: str, b: str) -> list[str]:
 class ArchivoPropio(Prueba):
     def test_lee_lo_que_no_es_yaml_y_su_historia(self):
         t = ARCHIVO.leer(TAREA, "T84")
-        self.assertEqual(t.titulo, "Watts: volver con Ignacia por el contrato")  # un «:» sin comillas
-        self.assertEqual((t.estado, t.prioridad, t.vence, t.etiquetas), ("activa", 1, "2026-10-30", ["watts", "contratos"]))
-        self.assertEqual(t.contexto, "Volver con Ignacia: el contrato quedó en la cláusula 7.")
+        self.assertEqual(t.titulo, "Lácteos: volver con Inés por el contrato")  # un «:» sin comillas
+        self.assertEqual((t.estado, t.prioridad, t.vence, t.etiquetas), ("activa", 1, "2026-10-30", ["lacteos", "contratos"]))
+        self.assertEqual(t.contexto, "Volver con Inés: el contrato quedó en la cláusula 7.")
         self.assertEqual([(c.fecha, c.hora, c.tipo) for c in t.historia], [("2026-10-01", "", "creada"), ("2026-10-15", "22:43", "avance")])
 
     def test_sin_cambios_los_mismos_bytes(self):
@@ -50,12 +50,12 @@ class ArchivoPropio(Prueba):
 
     def test_completar_toca_solo_sus_lineas_y_cada_una_en_su_lugar(self):
         t = ARCHIVO.leer(TAREA, "T84")
-        hecha = t.model_copy(update=dict(estado="hecha", cerrada="2026-10-19", avance="", dueno="marcelo",
+        hecha = t.model_copy(update=dict(estado="hecha", cerrada="2026-10-19", avance="", dueno="ramiro",
                                          historia=t.historia + [Cambio(fecha="2026-10-19", hora="10:00", tipo="cierre", texto="hecha")]))
         salida = ARCHIVO.escribir(TAREA, t, hecha)
         self.assertEqual(ARCHIVO.leer(salida, "T84").model_dump(), hecha.model_dump())
         self.assertEqual(lineas_tocadas(TAREA, salida), [
-            "- estado: activa", "+ estado: hecha", "+ dueño: marcelo", "- avance: pregunta 2026-10-15",
+            "- estado: activa", "+ estado: hecha", "+ dueño: ramiro", "- avance: pregunta 2026-10-15",
             "+ cerrada: 2026-10-19", "+ - 2026-10-19 10:00 [cierre] hecha"])
         # cada clave nueva va en su lugar del orden del formato: dueño después de vence, cerrada después de creada
         claves = [l.split(":")[0] for l in salida.split("---")[1].strip().split("\n")]
@@ -77,17 +77,17 @@ class ArchivoPropio(Prueba):
 
     def test_las_conexiones_van_antes_de_la_historia_y_el_contexto_se_reemplaza(self):
         t = ARCHIVO.leer(TAREA, "T84")
-        salida = ARCHIVO.escribir(TAREA, t, t.model_copy(update={"conexiones": ["- [[contrato-watts]]"], "contexto": "Ya le escribí."}))
+        salida = ARCHIVO.escribir(TAREA, t, t.model_copy(update={"conexiones": ["- [[contrato-lacteos]]"], "contexto": "Ya le escribí."}))
         self.assertLess(salida.index("## Conexiones"), salida.index("## Historia"))
         self.assertEqual(ARCHIVO.leer(salida, "T84").contexto, "Ya le escribí.")
 
     def test_a_quien_se_espera_vale_solo_mientras_espera(self):
         t = ARCHIVO.leer(TAREA, "T84")
-        espera = ARCHIVO.escribir(TAREA, t, t.model_copy(update={"estado": "espera", "espera": "ignacia"}))
-        self.assertIn("espera: ignacia", espera)
+        espera = ARCHIVO.escribir(TAREA, t, t.model_copy(update={"estado": "espera", "espera": "ines"}))
+        self.assertIn("espera: ines", espera)
         t2 = ARCHIVO.leer(espera, "T84")
         de_vuelta = ARCHIVO.escribir(espera, t2, t2.model_copy(update={"estado": "activa"}))
-        self.assertNotIn("espera: ignacia", de_vuelta)
+        self.assertNotIn("espera: ines", de_vuelta)
 
     def test_lo_que_no_guarda_es_un_error_y_no_una_perdida(self):
         t = ARCHIVO.leer(TAREA, "T84")
@@ -123,8 +123,8 @@ class Casilla(Prueba):
     def test_un_campo_se_reescribe_en_su_dialecto_y_su_lugar(self):
         linea = "- [ ] @Ana Pérez: revisar  vence:2026-06-30  !alta"
         t = CASILLA.leer(linea)
-        salida = CASILLA.escribir(linea, t, t.model_copy(update={"dueno": "Marcelo", "vence": "2026-07-15", "prioridad": 3}))
-        self.assertEqual(salida, "- [ ] @Marcelo: revisar  vence:2026-07-15  !baja")
+        salida = CASILLA.escribir(linea, t, t.model_copy(update={"dueno": "Ramiro", "vence": "2026-07-15", "prioridad": 3}))
+        self.assertEqual(salida, "- [ ] @Ramiro: revisar  vence:2026-07-15  !baja")
 
     def test_quitar_un_campo_quita_su_marca(self):
         linea = "- [ ] Revisar el NDA @owner(Ana) @deadline(2026-10-30)"
@@ -182,8 +182,8 @@ class Acciones(Prueba):
             T.reagendar(self.t, "el lunes", reloj=reloj)
 
     def test_esperar_y_volver(self):
-        e = T.esperar(self.t, "@ignacia", reloj=reloj)
-        self.assertEqual((e.estado, e.espera, e.historia[-1].texto), ("espera", "ignacia", "espera a ignacia"))
+        e = T.esperar(self.t, "@ines", reloj=reloj)
+        self.assertEqual((e.estado, e.espera, e.historia[-1].texto), ("espera", "ines", "espera a ines"))
         v = T.esperar(e, "", reloj=reloj)
         self.assertEqual((v.estado, v.espera), ("activa", ""))
         self.assertEqual(T.algun_dia(e, reloj=reloj).espera, "")  # a algún día: ya no espera a nadie
@@ -261,8 +261,8 @@ class ElProveedorTipo(Prueba):
     def test_entran_las_abiertas_con_su_prioridad_y_a_quien_esperan(self):
         items = {i.id: i for i in self.prov.consultar(_dt.date(2026, 10, 19))}
         self.assertEqual(sorted(items), ["T1", "T2"])
-        self.assertEqual(items["T1"].titulo, "Watts: volver con Ignacia por el contrato")
-        self.assertEqual(items["T1"].datos["etiquetas"], ["watts", "contratos"])
+        self.assertEqual(items["T1"].titulo, "Lácteos: volver con Inés por el contrato")
+        self.assertEqual(items["T1"].datos["etiquetas"], ["lacteos", "contratos"])
         self.assertEqual((items["T2"].datos["espera"], items["T2"].datos["destacada"]), ("@ana", True))
 
     def test_un_cambio_en_el_archivo_se_ve_en_la_siguiente_consulta(self):
@@ -293,7 +293,7 @@ class LaFichaYSusAcciones(Prueba):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         (self.dir / "T84.md").write_text(TAREA, encoding="utf-8")
         prov = Proveedor(nombre="tareas", opciones={"tipo": "tipo", "carpeta": str(self.dir), "agente": "Ada",
-                                                    "equipo": ["Marcelo"]})
+                                                    "equipo": ["Ramiro"]})
         self.ctx = SimpleNamespace(config=Config(raiz=self.dir, estado=self.dir / "e", proveedores={"tareas": prov}))
         sube = mock.patch.object(servicio, "_subir")
         self.subir = sube.start()
@@ -301,12 +301,12 @@ class LaFichaYSusAcciones(Prueba):
 
     def test_la_ficha_trae_la_propuesta_la_version_y_los_botones_del_tipo(self):
         p = self.servicio.ficha(self.ctx, "T84").model_dump()
-        self.assertEqual(p["titulo"], "T84 · Watts: volver con Ignacia por el contrato")
+        self.assertEqual(p["titulo"], "T84 · Lácteos: volver con Inés por el contrato")
         self.assertTrue(p["bloques"][0]["titulo"].startswith("Ada · pregunta"))
         self.assertEqual(len(p["version"]), 16)
         roles = {a.get("rol"): a for a in p["acciones"] if a.get("rol")}
         self.assertEqual(roles["hecha"]["accion"], "completar")
-        self.assertIn("Marcelo", roles["dueno"]["opciones"])
+        self.assertIn("Ramiro", roles["dueno"]["opciones"])
 
     def test_en_la_lista_un_clic_abre_su_ficha(self):
         # sin `detalle`: la ficha la arma el tipo, y la lista lo dice (si no, el clic la manda al hilo)
@@ -366,20 +366,20 @@ class LaFichaYSusAcciones(Prueba):
         self.assertEqual(llevar.call_args.kwargs["texto"], "/tarea T84 mira esto")
 
     def test_none_deja_sin_dueno(self):
-        self.servicio.accion(self.ctx, "T84", rol="dueno", texto="Marcelo")
-        self.assertIn("dueño: Marcelo", (self.dir / "T84.md").read_text())
+        self.servicio.accion(self.ctx, "T84", rol="dueno", texto="Ramiro")
+        self.assertIn("dueño: Ramiro", (self.dir / "T84.md").read_text())
         self.servicio.accion(self.ctx, "T84", rol="dueno", texto="none")
         self.assertNotIn("dueño:", (self.dir / "T84.md").read_text())
 
 
     def test_esperar_y_prioridad_tienen_rol(self):
-        self.servicio.accion(self.ctx, "T84", rol="espera", texto="Marcelo")
-        self.assertIn("espera: Marcelo", (self.dir / "T84.md").read_text())
+        self.servicio.accion(self.ctx, "T84", rol="espera", texto="Ramiro")
+        self.assertIn("espera: Ramiro", (self.dir / "T84.md").read_text())
         self.servicio.accion(self.ctx, "T84", rol="espera", texto="none")
         self.assertIn("estado: activa", (self.dir / "T84.md").read_text())
         roles = {a.get("rol"): a for a in self.servicio.ficha(self.ctx, "T84").model_dump()["acciones"] if a.get("rol")}
         self.assertEqual(roles["prioridad"]["opciones"], ["P0", "P1", "P2", "P3"])
-        self.assertIn("Marcelo", roles["espera"]["opciones"])
+        self.assertIn("Ramiro", roles["espera"]["opciones"])
         self.servicio.accion(self.ctx, "T84", rol="prioridad", texto="P1")
         self.assertIn("prioridad: 1", (self.dir / "T84.md").read_text())
         from telar.servicios import ErrorDeServicio
@@ -438,7 +438,7 @@ class CrearYLasAccionesQueFaltaban(Prueba):
             self.carpeta.leer("T9")
 
     def test_secuela_conexion_y_sin_fecha(self):
-        t, _ = self.carpeta.aplicar("T84", self.tipo.secuela, "avisé a Marcelo", reloj=self.reloj)
+        t, _ = self.carpeta.aplicar("T84", self.tipo.secuela, "avisé a Ramiro", reloj=self.reloj)
         self.assertEqual(t.historia[-1].tipo, "secuela")
         t, _ = self.carpeta.aplicar("T84", self.tipo.conectar, "bloquea", "[T9](T9.md)", "sin el contrato no hay pago")
         self.assertEqual(t.conexiones, ["- `bloquea` [T9](T9.md) · sin el contrato no hay pago"])

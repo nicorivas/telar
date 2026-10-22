@@ -37,27 +37,27 @@ class Revivir(unittest.TestCase):
     def corre(self, estado, desde):
         n = self.nodo()
         d = {"vivo": True, "desde": desde.isoformat(timespec="seconds") if desde else ""}
-        n._revivir(N(estado=estado), "T380 Anglo", d, "telar")
+        n._revivir(N(estado=estado), "T380 Minera", d, "telar")
         return n.lineas
 
     def test_actividad_posterior_al_archivo_lo_desarchiva(self):
         arch = datetime(2026, 10, 20, 15, 42)
-        est = FalsoEstado({"T380 Anglo"}, arch)
+        est = FalsoEstado({"T380 Minera"}, arch)
         lineas = self.corre(est, arch + timedelta(hours=1))
-        self.assertNotIn("T380 Anglo", est.archivados())
+        self.assertNotIn("T380 Minera", est.archivados())
         self.assertIn("lo desarchivé", lineas[0])
 
     def test_sin_actividad_nueva_sigue_archivado_y_lo_dice(self):
         arch = datetime(2026, 10, 20, 15, 42)
-        est = FalsoEstado({"T380 Anglo"}, arch)
+        est = FalsoEstado({"T380 Minera"}, arch)
         lineas = self.corre(est, arch - timedelta(hours=1))
-        self.assertIn("T380 Anglo", est.archivados())
+        self.assertIn("T380 Minera", est.archivados())
         self.assertIn("sigue archivado", lineas[0])
 
     def test_sin_fecha_de_archivo_no_se_reabre_y_lo_dice(self):
-        est = FalsoEstado({"T380 Anglo"}, None)
+        est = FalsoEstado({"T380 Minera"}, None)
         lineas = self.corre(est, datetime(2026, 10, 20, 16, 52))
-        self.assertIn("T380 Anglo", est.archivados())
+        self.assertIn("T380 Minera", est.archivados())
         self.assertIn("sin fecha de archivo", lineas[0])
 
     def test_un_hilo_que_no_esta_archivado_no_se_toca(self):

@@ -31,7 +31,7 @@ def montar(tmp: Path, tareas: dict[str, dict]) -> mod.Equipo:
     todo = tmp / "todo"
     todo.write_text("#!/bin/sh\necho \"$@\" >> " + str(tmp / "todo.log") + "\n", encoding="utf-8")
     todo.chmod(todo.stat().st_mode | stat.S_IXUSR)
-    return mod.Equipo(tareas=carpeta, todo=todo, personas={"marcelo": "secreto"}, bandeja=tmp / "est" / "sug.jsonl", semantica="")
+    return mod.Equipo(tareas=carpeta, todo=todo, personas={"ramiro": "secreto"}, bandeja=tmp / "est" / "sug.jsonl", semantica="")
 
 
 class Visibles(unittest.TestCase):
@@ -55,20 +55,20 @@ class Sugerencias(unittest.TestCase):
     def test_sugerir_y_duplicado(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {"T1": {"titulo": "x"}, "T2": {"titulo": "y", "pri": 0}, "T3": {"titulo": "z", "tags": "otra"}})
-            r, p = mod.sugerir(eq, "marcelo", "T1", "bloquea al equipo")
+            r, p = mod.sugerir(eq, "ramiro", "T1", "bloquea al equipo")
             self.assertEqual(p, "")
             self.assertEqual(r["estado"], "pendiente")
-            self.assertIsNone(mod.sugerir(eq, "marcelo", "T1", "otra vez por favor")[0])
-            self.assertIn("más alta", mod.sugerir(eq, "marcelo", "T2", "motivo largo")[1])
-            self.assertIn("no está entre", mod.sugerir(eq, "marcelo", "T3", "motivo largo")[1])
-            self.assertIn("motivo", mod.sugerir(eq, "marcelo", "T1", "no")[1])
+            self.assertIsNone(mod.sugerir(eq, "ramiro", "T1", "otra vez por favor")[0])
+            self.assertIn("más alta", mod.sugerir(eq, "ramiro", "T2", "motivo largo")[1])
+            self.assertIn("no está entre", mod.sugerir(eq, "ramiro", "T3", "motivo largo")[1])
+            self.assertIn("motivo", mod.sugerir(eq, "ramiro", "T1", "no")[1])
 
     def test_aceptar_sube_un_nivel_y_rechazar_no_toca(self):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             eq = montar(tmp, {"T1": {"titulo": "x"}, "T4": {"titulo": "w"}})
-            a = mod.sugerir(eq, "marcelo", "T1", "bloquea al equipo")[0]
-            b = mod.sugerir(eq, "marcelo", "T4", "no urge tanto")[0]
+            a = mod.sugerir(eq, "ramiro", "T1", "bloquea al equipo")[0]
+            b = mod.sugerir(eq, "ramiro", "T4", "no urge tanto")[0]
             r, _ = mod.resolver(eq, a["id"], "aceptar")
             self.assertEqual((r["estado"], r["prioridad_nueva"]), ("aceptada", 1))
             self.assertIn("edit T1 --pri 1", (tmp / "todo.log").read_text())
@@ -83,19 +83,19 @@ class Pedidos(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {})
             hoy = datetime.datetime(2026, 10, 14, 9, 0)
-            r, p = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-10-20", ahora=hoy)
+            r, p = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-10-20", ahora=hoy)
             self.assertEqual((p, r["tipo"], r["estado"], r["vence"]), ("", "tarea", "pendiente", "2026-10-20"))
-            self.assertIn("ya tienes", mod.pedir(eq, "marcelo", "hacer la SESIÓN 5 de goa", ahora=hoy)[1])
-            self.assertIn("de 5 a", mod.pedir(eq, "marcelo", "no", ahora=hoy)[1])
-            self.assertIn("AAAA-MM-DD", mod.pedir(eq, "marcelo", "otra cosa distinta", vence="mañana", ahora=hoy)[1])
-            self.assertIn("ya pasó", mod.pedir(eq, "marcelo", "otra cosa distinta", vence="2026-10-01", ahora=hoy)[1])
+            self.assertIn("ya tienes", mod.pedir(eq, "ramiro", "hacer la SESIÓN 5 de goa", ahora=hoy)[1])
+            self.assertIn("de 5 a", mod.pedir(eq, "ramiro", "no", ahora=hoy)[1])
+            self.assertIn("AAAA-MM-DD", mod.pedir(eq, "ramiro", "otra cosa distinta", vence="mañana", ahora=hoy)[1])
+            self.assertIn("ya pasó", mod.pedir(eq, "ramiro", "otra cosa distinta", vence="2026-10-01", ahora=hoy)[1])
 
     def test_tope_de_pendientes_por_persona(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {})
             for i in range(mod.MAX_PENDIENTES):
-                self.assertTrue(mod.pedir(eq, "marcelo", f"pedido número {i} largo")[0])
-            self.assertIn("esperando", mod.pedir(eq, "marcelo", "uno más que sobra")[1])
+                self.assertTrue(mod.pedir(eq, "ramiro", f"pedido número {i} largo")[0])
+            self.assertIn("esperando", mod.pedir(eq, "ramiro", "uno más que sobra")[1])
             self.assertTrue(mod.pedir(eq, "ana", "pedido de otra persona")[0])
 
     def test_aceptar_agrega_la_tarea_con_el_cli(self):
@@ -103,19 +103,19 @@ class Pedidos(unittest.TestCase):
             tmp = Path(d)
             eq = montar(tmp, {})
             (tmp / "todo").write_text("#!/bin/sh\necho \"$@\" >> " + str(tmp / "todo.log") + "\necho 'añadida: T412  hacer algo'\n")
-            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-12-31")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-12-31")[0]
             hecho, _ = mod.resolver(eq, r["id"], "aceptar", "ok")
             self.assertEqual((hecho["estado"], hecho["tarea"]), ("aceptada", "T412"))
             log = (tmp / "todo.log").read_text()
             self.assertIn("add Hacer la sesión 5 de GOA", log)
             self.assertIn("--tag equipo", log)
             self.assertIn("--due 2026-12-31", log)
-            self.assertIn("equipo:marcelo", log)
+            self.assertIn("equipo:ramiro", log)
 
     def test_revisando_marca_sin_resolver(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {})
-            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
             marcada, _ = mod.marcar_revision(eq, r["id"], "gestion")
             self.assertEqual((marcada["estado"], marcada["revisando"]["quien"]), ("pendiente", "gestion"))
             self.assertEqual(mod.leer_bandeja(eq)[0]["revisando"]["quien"], "gestion")
@@ -125,7 +125,7 @@ class Pedidos(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             eq = montar(tmp, {})
-            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
             self.assertEqual(mod.resolver(eq, r["id"], "rechazar", "no esta semana")[0]["estado"], "rechazada")
             self.assertFalse((tmp / "todo.log").exists())
 
@@ -147,19 +147,19 @@ class Existentes(unittest.TestCase):
     def test_el_pedido_guarda_las_parecidas_solo_para_nico(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {"T2": {"titulo": "Preparar la sesión 5 de GOA con el cliente", "tags": "privada"}})
-            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
             self.assertEqual([t["id"] for t in r["similares"]], ["T2"])
 
     def test_existe_contesta_con_el_estado(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {"T1": {"titulo": "GOA: dictar la sesión 5", "pri": 1, "extra": "vence: 2026-10-22\navance: preparado 2026-10-13\n"}})
-            r = mod.pedir(eq, "marcelo", "Hacer la sesión 5 de GOA")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
             hecho, p = mod.resolver(eq, r["id"], "existe", "va para el jueves", "T1")
             self.assertEqual((p, hecho["estado"], hecho["tarea"]), ("", "ya existía", "T1"))
             self.assertIn("T1 «GOA: dictar la sesión 5» · en curso · P1 · vence 2026-10-22 · avance: preparado 2026-10-13", hecho["nota"])
             self.assertTrue(hecho["nota"].endswith("va para el jueves"))
             self.assertNotIn("CUERPO", hecho["nota"])
-            self.assertIn("T123", mod.resolver(eq, mod.pedir(eq, "marcelo", "Otro pedido distinto")[0]["id"], "existe", "", "")[1])
+            self.assertIn("T123", mod.resolver(eq, mod.pedir(eq, "ramiro", "Otro pedido distinto")[0]["id"], "existe", "", "")[1])
 
 
 class Semantica(unittest.TestCase):
@@ -168,7 +168,7 @@ class Semantica(unittest.TestCase):
     def montar(self, tmp):
         eq = montar(tmp, {
             "T1": {"titulo": "Programa de otoño del cliente GOA", "tags": "equipo", "extra": "creada: 2026-10-10\n"},
-            "T2": {"titulo": "Cierre de contrato con Anasac", "tags": "privada", "extra": "creada: 2026-10-12\n"},
+            "T2": {"titulo": "Cierre de contrato con Agrosur", "tags": "privada", "extra": "creada: 2026-10-12\n"},
             "T3": {"titulo": "Tarea vieja sin relación", "extra": "creada: 2026-08-01\n"},
         })
         # el cuerpo de T1 dice de qué trata de verdad; el de T3 no debería viajar (tiene 2 meses)
@@ -238,7 +238,7 @@ class Servidor(unittest.TestCase):
 
     def test_ve_y_sugiere(self):
         c, d = self.pedir("/api/tareas")
-        self.assertEqual((c, d["quien"], [t["id"] for t in d["tareas"]]), (200, "marcelo", ["T1"]))
+        self.assertEqual((c, d["quien"], [t["id"] for t in d["tareas"]]), (200, "ramiro", ["T1"]))
         c, d = self.pedir("/api/sugerir", cuerpo={"tarea": "T1", "motivo": "bloquea al equipo"})
         self.assertTrue(d["ok"], d)
         self.assertEqual(self.pedir("/api/tareas")[1]["sugerencias"][0]["estado"], "pendiente")
@@ -258,7 +258,7 @@ class Servidor(unittest.TestCase):
         self.assertEqual(c, 409)
         self.assertIn("T9", d["existe"][0]["resumen"])
         self.assertNotIn("CUERPO", json.dumps(d))
-        self.assertEqual(mod.leer_bandeja(self.eq), [])  # no molestó a Nico
+        self.assertEqual(mod.leer_bandeja(self.eq), [])  # no molestó a Ana
         c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA", "aunque_exista": True})
         self.assertTrue(d["ok"], d)
 
@@ -277,7 +277,28 @@ class Servidor(unittest.TestCase):
     def test_la_pagina(self):
         r = self.c.get("/")
         self.assertEqual((r.status_code, r.headers["x-content-type-options"]), (200, "nosniff"))
-        self.assertIn("pedirle algo a Nico", r.text)
+        self.assertIn("pedirle algo a quien las comparte", r.text)  # sin nombre: genérico
+        from dataclasses import replace
+
+        from fastapi.testclient import TestClient
+
+        from telar import api_equipo
+
+        r = TestClient(api_equipo.crear(replace(self.eq, dueno="Ana <b>"))).get("/")
+        self.assertIn("pedirle algo a Ana &lt;b&gt;", r.text)  # el nombre de quien comparte, escapado
+        self.assertNotIn("{{DUENO}}", r.text)
+
+
+class ElDueno(unittest.TestCase):
+    def test_de_donde_sale_el_nombre(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "config.toml"
+            conf.write_text('[equipo]\ntareas = "~/t"\ndueno = "Ana"\n')
+            self.assertEqual(mod.cargar(conf).dueno, "Ana")
+            conf.write_text('[persona]\nnombre = "Inés Ruiz"\n[equipo]\ntareas = "~/t"\n')
+            self.assertEqual(mod.cargar(conf).dueno, "Inés")
 
 
 if __name__ == "__main__":
@@ -298,7 +319,7 @@ class LaBandejaDelDueno(unittest.TestCase):
     def test_aqui_lee_y_marca_y_lo_que_no_hay_es_409(self):
         from telar.servicios import ErrorDeServicio
         from telar.servicios import equipo as servicio
-        mod.sugerir(self.eq, "marcelo", "T1", "bloquea al equipo")
+        mod.sugerir(self.eq, "ramiro", "T1", "bloquea al equipo")
         with mock.patch.object(mod, "cargar", return_value=self.eq):
             b = servicio.bandeja(self.ctx)
             self.assertEqual([r["tarea"] for r in b.sugerencias], ["T1"])

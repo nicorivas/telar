@@ -2,7 +2,7 @@
 (telar.ordenes.seccion, telar.ordenes.app). telar las valida contra el contrato y las entrega como vienen.
 
     from telar.servicios import paginas
-    p = paginas.seccion(ctx, "correo")          # o "agente:Kichoro"
+    p = paginas.seccion(ctx, "correo")          # o "agente:Vigía"
     p = paginas.app(ctx, "lecturas")
     r = paginas.apps(ctx)
 

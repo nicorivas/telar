@@ -55,7 +55,7 @@ def carpeta_remota(config, remoto: Remoto, relativa: str = "") -> str:
     """Dónde arranca el agente allá: lo mismo que `[agente] carpeta` dice para aquí.
 
     «hilo» es la carpeta del hilo traducida a la raíz de allá; «raiz», la raíz de allá; una
-    ruta dentro del hogar de aquí (`~/Life`, `/Users/ana/Life`) es la misma bajo el hogar de
+    ruta dentro del hogar de aquí (`~/vida`, `/Users/ana/vida`) es la misma bajo el hogar de
     allá. Importa porque hay agentes cuya memoria cuelga de dónde arrancan.
     """
     from pathlib import Path

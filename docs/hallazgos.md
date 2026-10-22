@@ -163,7 +163,7 @@ Comando.leer() llama subprocess.run(...) sin `stdin=subprocess.DEVNULL` y sin `e
 ## [menor] _atajo() abrevia el hogar por prefijo de texto, no por componente de ruta — **arreglado**
 **Dónde:** src/telar/ordenes/init.py:204-208 (usado en :120-121)
 
-`return "~" + texto[len(hogar):] if texto.startswith(hogar) else texto`. En una máquina donde otra ruta empiece con el string del hogar, el config.toml que escribe `telar init` sale corrupto. Verificado con Path.home() = /Users/nico: '/Users/nicolas/trabajo' → '~las/trabajo' y '/Users/nico2/repo' → '~2/repo'. Path('~las/trabajo').expanduser() no expande nada, así que raiz o estado quedan como una ruta relativa literal y doctor después dice «la raíz no existe». Pasa en cualquier caja multiusuario (/home/nico y /home/nico2) o con un usuario cuyo nombre sea prefijo de otro directorio hermano.
+`return "~" + texto[len(hogar):] if texto.startswith(hogar) else texto`. En una máquina donde otra ruta empiece con el string del hogar, el config.toml que escribe `telar init` sale corrupto. Verificado con Path.home() = /Users/ana: '/Users/anabel/trabajo' → '~bel/trabajo' y '/Users/ana2/repo' → '~2/repo'. Path('~las/trabajo').expanduser() no expande nada, así que raiz o estado quedan como una ruta relativa literal y doctor después dice «la raíz no existe». Pasa en cualquier caja multiusuario (/home/ana y /home/ana2) o con un usuario cuyo nombre sea prefijo de otro directorio hermano.
 
 **Arreglo propuesto:** Usar `ruta.relative_to(Path.home())` dentro de try/ValueError, en vez de comparar strings.
 

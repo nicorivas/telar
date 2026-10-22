@@ -7,7 +7,7 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo renombrar «Faro»            renombrarlo, y mover con él lo que telar sabía
     telar hilo adoptar [«faro»]            recoger el estado que quedó en otro nombre
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
-    telar hilo mudar «Anasac»               llevarse este panel (y su conversación) a ese hilo
+    telar hilo mudar «Agrosur»               llevarse este panel (y su conversación) a ese hilo
     telar hilo cerrar                      cerrar su tab (y lo que corra adentro) y
                                            olvidarlo: sale de la lista. Para guardarlo
                                            está `archivar`

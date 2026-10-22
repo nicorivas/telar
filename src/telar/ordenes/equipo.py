@@ -5,7 +5,7 @@
     telar equipo sugerencias --remoto telar        la misma bandeja, leída por ssh desde otra máquina
     telar equipo aceptar ID [--nota "…"]           una sugerencia: sube la prioridad un nivel · un pedido: lo agrega como tarea
     telar equipo rechazar ID [--nota "…"]          cerrarla; la nota la ve quien la hizo
-    telar equipo revisando ID [--quien gestion]    anotar que alguien la está revisando (la lista de Nico lo muestra)
+    telar equipo revisando ID [--quien gestion]    anotar que alguien la está revisando (tu lista lo muestra)
     telar equipo existe ID --tarea T123            un pedido que ya existe: quien lo hizo recibe el estado de esa tarea
     telar equipo token PERSONA                     un token nuevo para pegar en `[equipo.personas]`
 
@@ -79,7 +79,7 @@ def main(argv: list[str], ctx) -> int:
         return codigo
     if o.verbo == "token":
         if not o.valor:
-            return _comun.queja("¿de quién? telar equipo token marcelo")
+            return _comun.queja("¿de quién? telar equipo token ramiro")
         print(f'{o.valor.lower()} = "{secrets.token_urlsafe(24)}"   # pégalo en [equipo.personas]')
         return 0
     if o.remoto and o.verbo != "servir":
@@ -126,7 +126,7 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(str(e))
     if o.verbo == "servir":
         if not eq.personas:
-            return _comun.queja("no hay nadie en [equipo.personas]: `telar equipo token marcelo` da una llave")
+            return _comun.queja("no hay nadie en [equipo.personas]: `telar equipo token ramiro` da una llave")
         try:
             import uvicorn
 

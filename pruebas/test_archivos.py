@@ -98,7 +98,7 @@ class LosArchivos(Prueba):
         from telar import bus
 
         self.ctx.config.bus = SimpleNamespace(url="nats://x", maquina="laptop")
-        lejos = {"ruta": "/home/n/Life/docs/x.md", "texto": "lejos", "mtime": 1.0, "recortado": False}
+        lejos = {"ruta": "/home/n/vida/docs/x.md", "texto": "lejos", "mtime": 1.0, "recortado": False}
         with mock.patch.object(bus, "hay_bus", return_value=True), \
                 mock.patch.object(bus, "pedir", return_value={"ok": True, "archivo": lejos}) as pedir:
             a = archivos.leer_en(self.ctx, "servidor:docs/x.md")

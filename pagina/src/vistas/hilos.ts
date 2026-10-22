@@ -409,7 +409,7 @@ export class BarraHilos {
             for (const x of suyos) h.push(this.fila(x, 'hilo'));
         }
 
-        // lo que el equipo le pide a Nico; pinchar una fila abre sus acciones
+        // lo que el equipo le pide a la persona; pinchar una fila abre sus acciones
         if (modelo.equipoRemoto) {
             const pend = modelo.sugerencias;
             if (cabecera('__equipo', 'EQUIPO', pend.length, false, 'lo que el equipo te pide')) {

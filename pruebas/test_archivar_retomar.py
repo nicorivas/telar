@@ -35,15 +35,15 @@ class ElIdSeSabeAlAbrir(Prueba):
 
 class DeQueCarpetas(Prueba):
     UNIDADES = {u: (None, None) for u in [
-        "operacion/proyectos/anasac", "operacion/proyectos/copec",
+        "operacion/proyectos/agrosur", "operacion/proyectos/energica",
         "negocio/pipeline/aguas", "negocio/pipeline/roche", "conocimiento/ia",
     ]}
 
     def test_por_turnos_en_el_orden_en_que_se_nombran(self):
         self.assertEqual(
             tejer._de_directorios(self.UNIDADES, ("negocio/pipeline", "operacion/proyectos"), 10),
-            ["negocio/pipeline/aguas", "operacion/proyectos/anasac",
-             "negocio/pipeline/roche", "operacion/proyectos/copec"],
+            ["negocio/pipeline/aguas", "operacion/proyectos/agrosur",
+             "negocio/pipeline/roche", "operacion/proyectos/energica"],
         )
 
     def test_la_segunda_carpeta_aparece_aunque_la_primera_llene_el_tope(self):

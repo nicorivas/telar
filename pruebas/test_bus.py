@@ -126,10 +126,10 @@ class ContraUnServidor(Prueba):
         from telar.ordenes import mensaje
 
         ctx = SimpleNamespace(config=self.config)
-        tel = SimpleNamespace(hilos=[SimpleNamespace(id="@144", nombre="Coca-Cola System HR")])
+        tel = SimpleNamespace(hilos=[SimpleNamespace(id="@144", nombre="Bebidas RRHH")])
         with mock.patch.object(mensaje._comun, "tejer", return_value=tel):
-            self.assertEqual(mensaje._por_nombre(ctx, "@144"), "Coca-Cola System HR")
-            self.assertEqual(mensaje._por_nombre(ctx, "144"), "Coca-Cola System HR")
+            self.assertEqual(mensaje._por_nombre(ctx, "@144"), "Bebidas RRHH")
+            self.assertEqual(mensaje._por_nombre(ctx, "144"), "Bebidas RRHH")
             self.assertEqual(mensaje._por_nombre(ctx, "Gestión"), "Gestión")  # un nombre no se toca
             with self.assertRaises(m.ErrorDeBus):
                 mensaje._por_nombre(ctx, "@999")

@@ -16,44 +16,44 @@ HASH = "$2b$11$" + "a" * 53
 
 class LasCuentas(Prueba):
     def test_nombres(self):
-        self.assertEqual(cuentas.validar("marcelo"), "marcelo")
-        for malo in ("", "Nico", "1nico", "ni co", "ni.co", "a" * 33, "$G"):
+        self.assertEqual(cuentas.validar("ramiro"), "ramiro")
+        for malo in ("", "Ana", "1ana", "a na", "a.na", "a" * 33, "$G"):
             with self.subTest(malo=malo), self.assertRaises(cuentas.ErrorDeCuentas):
                 cuentas.validar(malo)
 
     def test_configuracion_una_cuenta_por_persona(self):
-        conf = cuentas.configuracion({"nico": HASH, "marcelo": HASH})
-        self.assertLess(conf.index("marcelo: {"), conf.index("nico: {"))
+        conf = cuentas.configuracion({"ana": HASH, "ramiro": HASH})
+        self.assertLess(conf.index("ana: {"), conf.index("ramiro: {"))
         self.assertEqual(conf.count("jetstream: enabled"), 2)
-        self.assertIn(f'users: [ {{ user: "nico", password: "{HASH}" }} ]', conf)
+        self.assertIn(f'users: [ {{ user: "ana", password: "{HASH}" }} ]', conf)
 
     def test_entre_cuentas_cruzan_solo_el_correo_y_el_directorio(self):
-        conf = cuentas.configuracion({"nico": HASH, "marcelo": HASH, "pablo": HASH})
-        self.assertIn('{ service: "correo.nico" }', conf)
-        self.assertIn('{ stream: "directorio.nico" }', conf)
+        conf = cuentas.configuracion({"ana": HASH, "ramiro": HASH, "pedro": HASH})
+        self.assertIn('{ service: "correo.ana" }', conf)
+        self.assertIn('{ stream: "directorio.ana" }', conf)
         # cada una importa los de las demás, el correo con share (quien recibe sabe de qué cuenta viene)
-        self.assertIn('{ service: { account: "marcelo", subject: "correo.marcelo" }, share: true }', conf)
+        self.assertIn('{ service: { account: "ramiro", subject: "correo.ramiro" }, share: true }', conf)
         self.assertEqual(conf.count("share: true"), 6)
         self.assertEqual(conf.count("exports: ["), 3)
         # una sola persona: nada que importar
-        self.assertNotIn("imports", cuentas.configuracion({"nico": HASH}))
+        self.assertNotIn("imports", cuentas.configuracion({"ana": HASH}))
 
     def test_escribir_y_leer(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp) / "bus"
-            conf = cuentas.escribir(base, {"nico": HASH, "pablo": HASH})
-            self.assertEqual(cuentas.leer(base), {"nico": HASH, "pablo": HASH})
+            conf = cuentas.escribir(base, {"ana": HASH, "pedro": HASH})
+            self.assertEqual(cuentas.leer(base), {"ana": HASH, "pedro": HASH})
             self.assertEqual(stat.S_IMODE(conf.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(base.stat().st_mode), 0o700)
-            self.assertEqual(stat.S_IMODE((base / "personas" / "nico.hash").stat().st_mode), 0o600)
-            cuentas.escribir(base, {"nico": HASH})  # quitar a una persona borra su hash
-            self.assertEqual(cuentas.leer(base), {"nico": HASH})
-            self.assertNotIn("pablo", conf.read_text())
+            self.assertEqual(stat.S_IMODE((base / "personas" / "ana.hash").stat().st_mode), 0o600)
+            cuentas.escribir(base, {"ana": HASH})  # quitar a una persona borra su hash
+            self.assertEqual(cuentas.leer(base), {"ana": HASH})
+            self.assertNotIn("pedro", conf.read_text())
 
     def test_leer_rechaza_lo_que_no_es_un_hash(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "personas").mkdir()
-            (Path(tmp) / "personas" / "nico.hash").write_text("secreto-en-claro\n")
+            (Path(tmp) / "personas" / "ana.hash").write_text("secreto-en-claro\n")
             with self.assertRaises(cuentas.ErrorDeCuentas):
                 cuentas.leer(Path(tmp))
 

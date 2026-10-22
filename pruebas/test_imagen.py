@@ -16,9 +16,9 @@ class Subir(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "a.png"
             f.write_bytes(b"\x89PNG")
-            with mock.patch("subprocess.run", return_value=N(returncode=0, stdout="/home/nico/telar-entrada/a.png\n", stderr="")) as run:
-                ruta, problema = imagen.subir(N(destino="nico@telar"), f, "a.png")
-        self.assertEqual((ruta, problema), ("/home/nico/telar-entrada/a.png", ""))
+            with mock.patch("subprocess.run", return_value=N(returncode=0, stdout="/home/ana/telar-entrada/a.png\n", stderr="")) as run:
+                ruta, problema = imagen.subir(N(destino="ana@servidor"), f, "a.png")
+        self.assertEqual((ruta, problema), ("/home/ana/telar-entrada/a.png", ""))
         orden = run.call_args.args[0]
         self.assertEqual(orden[:2], ["ssh", "-o"])
         self.assertIn("bash -lc", orden[-1])
@@ -34,7 +34,7 @@ class Subir(unittest.TestCase):
 
 class Main(unittest.TestCase):
     def ctx(self, *nombres):
-        return N(config=N(remotos=[N(nombre=n, destino=f"nico@{n}") for n in nombres]))
+        return N(config=N(remotos=[N(nombre=n, destino=f"ana@{n}") for n in nombres]))
 
     def test_rechaza_lo_que_no_es_imagen(self):
         with tempfile.TemporaryDirectory() as d:

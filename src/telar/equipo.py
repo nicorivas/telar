@@ -1,7 +1,7 @@
 """El equipo: lo que una persona de confianza puede ver de tus tareas y pedirte.
 
-Marcelo (u otra persona) mira el estado de las tareas que marcaste para el equipo y puede hacer
-dos cosas: **sugerir** subir una prioridad, o **pedirte** algo nuevo («Nico tiene que hacer la
+Ramiro (u otra persona) mira el estado de las tareas que marcaste para el equipo y puede hacer
+dos cosas: **sugerir** subir una prioridad, o **pedirte** algo nuevo («Ana tiene que hacer la
 sesión 5 de GOA»). Nada más: no escribe en tus archivos ni habla con tus agentes. Ambas quedan
 en una bandeja (un JSONL) que tú decides: aceptar una sugerencia cambia la prioridad con el CLI
 de tareas; aceptar un pedido lo agrega como tarea tuya; rechazar cierra la entrada con una nota
@@ -14,13 +14,14 @@ el cuerpo ni la historia de la tarea: ahí está el contexto privado.
 Se configura en `~/.config/telar/config.toml`:
 
     [equipo]
-    tareas   = "~/Life/nico/proyectos/tareas"     # una tarea por archivo, con front-matter
-    todo     = "~/Life/nico/proyectos/todo"       # el CLI que acepta una sugerencia
+    tareas   = "~/notas/tareas"     # una tarea por archivo, con front-matter
+    todo     = "~/notas/todo"       # el CLI que acepta una sugerencia
+    dueno    = "Ana"                # opcional: cómo te nombra la página (si no, [persona] nombre o tu usuario)
     etiqueta = "equipo"
     semantica = "haiku"                           # modelo que compara el sentido de un pedido con tus tareas ("" = solo palabras)
     puerto   = 8766
     [equipo.personas]
-    marcelo = "un-token-largo"                    # quién entra y con qué llave
+    ramiro = "un-token-largo"                    # quién entra y con qué llave
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from pathlib import Path
 from telar import config as mod_config
 
 PUERTO = 8766
-#: tareas cerradas que siguen a la vista (días), para que Marcelo vea que se hizo lo que preguntó
+#: tareas cerradas que siguen a la vista (días), para que Ramiro vea que se hizo lo que preguntó
 RECIENTES = 14
 MAX_MOTIVO = 500
 MAX_TITULO = 150
@@ -62,6 +63,9 @@ class Equipo:
     semantica: str = "haiku"
     #: cuántos días de actividad cuentan como «reciente» para esa comparación
     dias: int = 14
+    #: cómo se llama quien comparte sus tareas, en lo que lee el equipo: `[equipo] dueno`, si no `[persona]
+    #: nombre` (su primer nombre), si no su usuario con mayúscula
+    dueno: str = "quien las comparte"
 
 
 def cargar(ruta: Path | None = None, *, estado: Path | None = None) -> Equipo:
@@ -85,7 +89,20 @@ def cargar(ruta: Path | None = None, *, estado: Path | None = None) -> Equipo:
         bandeja=raiz_estado / "equipo" / "sugerencias.jsonl",
         semantica=str(tabla.get("semantica", "haiku")).strip(),
         dias=int(tabla.get("dias", 14)),
+        dueno=_dueno(tabla, datos),
     )
+
+
+def _dueno(tabla: dict, datos: dict) -> str:
+    import getpass
+
+    nombre = str(tabla.get("dueno") or "").strip()
+    if not nombre and isinstance(datos.get("persona"), dict):
+        nombre = str(datos["persona"].get("nombre") or "").strip().split(" ")[0]
+    if not nombre:
+        usuario = getpass.getuser()
+        nombre = usuario[:1].upper() + usuario[1:]
+    return nombre
 
 
 def quien(eq: Equipo, token: str) -> str:
@@ -184,7 +201,7 @@ def sugerir(eq: Equipo, persona: str, tarea: str, motivo: str, *, ahora: datetim
     if any(r["persona"] == persona and r["tarea"] == tarea and r["estado"] == "pendiente" for r in registros):
         return None, "ya hay una sugerencia tuya pendiente para esa tarea"
     if sum(1 for r in registros if r["persona"] == persona and r["estado"] == "pendiente") >= MAX_PENDIENTES:
-        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a Nico: espera a que decida"
+        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a {eq.dueno}: espera a que decida"
     ahora = ahora or datetime.datetime.now()
     registro = {
         "id": secrets.token_hex(4), "cuando": ahora.isoformat(timespec="seconds"), "persona": persona,
@@ -264,7 +281,7 @@ def resolver(eq: Equipo, ident: str, decision: str, nota: str = "", existente: s
 
 _PALABRAS_VACIAS = {"de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "que", "con", "para", "por", "en", "y", "o",
                     "al", "a", "se", "su", "sus", "lo", "le", "les", "es", "ser", "hacer", "tiene", "tengo", "tener", "debe",
-                    "nico", "favor", "necesito", "necesita", "sobre", "como", "este", "esta", "ese", "esa"}
+                    "favor", "necesito", "necesita", "sobre", "como", "este", "esta", "ese", "esa"}
 #: cuánto de lo que dice el más corto de los dos títulos debe estar en el otro
 UMBRAL_PARECIDO = 0.6
 #: cuántos días se sigue contando una tarea cerrada: pedir algo que se hizo ayer es pedir algo que ya existe
@@ -289,7 +306,7 @@ def parecido(a: str, b: str) -> bool:
 
 
 def duplicadas(eq: Equipo, titulo: str, hoy: datetime.date | None = None) -> list[dict]:
-    """Las tareas de Nico (abiertas, o cerradas hace poco) cuyo título habla de lo mismo; `compartida` dice si el equipo la ve."""
+    """Las tareas de quien las comparte (abiertas, o cerradas hace poco) cuyo título habla de lo mismo; `compartida` dice si el equipo la ve."""
     hoy = hoy or datetime.date.today()
     salida: list[dict] = []
     if not eq.tareas.is_dir():
@@ -385,7 +402,7 @@ def _juez(eq: Equipo, titulo: str, contexto: str, candidatas: list[dict]) -> set
         'Responde SOLO con JSON: {"ids": ["T123"]} o {"ids": []}.\n\n'
         f"PEDIDO NUEVO ({marca}):\n{titulo}\n{contexto}\n({marca})\n\nTAREAS EXISTENTES:\n{lista}")
     try:
-        with tempfile.TemporaryDirectory() as vacio:  # fuera de ~/Life: que no cargue ningún CLAUDE.md
+        with tempfile.TemporaryDirectory() as vacio:  # fuera del repositorio de trabajo: que no cargue ningún CLAUDE.md
             r = subprocess.run(["claude", "-p", prompt, "--model", eq.semantica, "--tools", "", "--no-session-persistence",
                                 "--setting-sources", "", "--disable-slash-commands"],
                                capture_output=True, text=True, timeout=40, cwd=vacio,
@@ -443,7 +460,7 @@ def resumen_de(t: dict) -> str:
 
 def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str = "",
           *, ahora: datetime.datetime | None = None, similares: list[dict] | None = None) -> tuple[dict | None, str]:
-    """Anota que `persona` le pide a Nico una tarea nueva. (registro, "") o (None, por qué no)."""
+    """Anota que `persona` le pide una tarea nueva a quien comparte las suyas. (registro, "") o (None, por qué no)."""
     titulo = " ".join(titulo.split())
     contexto = " ".join(contexto.split())
     if not 5 <= len(titulo) <= MAX_TITULO:
@@ -463,12 +480,12 @@ def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str 
            and r["titulo"].lower() == titulo.lower() for r in registros):
         return None, "ya tienes ese pedido pendiente"
     if sum(1 for r in registros if r["persona"] == persona and r["estado"] == "pendiente") >= MAX_PENDIENTES:
-        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a Nico: espera a que decida"
+        return None, f"ya tienes {MAX_PENDIENTES} cosas esperando a {eq.dueno}: espera a que decida"
     registro = {
         "id": secrets.token_hex(4), "cuando": ahora.isoformat(timespec="seconds"), "persona": persona, "tipo": "tarea",
         "tarea": "", "titulo": titulo, "prioridad": None, "motivo": contexto, "vence": vence or None,
         "estado": "pendiente", "nota": "",
-        # solo para Nico: tareas suyas que parecen lo mismo (el equipo no ve las que no compartió)
+        # solo para quien comparte: tareas suyas que parecen lo mismo (el equipo no ve las que no compartió)
         "similares": [{k: t[k] for k in ("id", "titulo", "estado", "prioridad", "vence", "avance", "compartida", "via") if k in t}
                       for t in (similares if similares is not None else parecidas(eq, titulo, contexto, ahora.date()))],
     }
@@ -478,7 +495,7 @@ def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str 
 
 
 def marcar_revision(eq: Equipo, ident: str, quien: str = "gestion") -> tuple[dict | None, str]:
-    """Anota que alguien (Gestión) está revisando una entrada: sigue pendiente, pero la lista de Nico lo muestra."""
+    """Anota que alguien (Gestión) está revisando una entrada: sigue pendiente, pero su lista lo muestra."""
     registros = leer_bandeja(eq)
     r = next((x for x in registros if x["id"] == ident and x["estado"] == "pendiente"), None)
     if r is None:

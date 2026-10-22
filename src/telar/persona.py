@@ -39,7 +39,8 @@ class ErrorDePersona(ValueError):
 PERFILES: dict[str, dict] = {
     "colega": {
         "descripcion": "shell por ssh con su propio telar y Claude Code; despierta solo a los hilos que se le dicen",
-        "correo": ["kichoro"],
+        # ninguno por defecto: los hilos que puede despertar se dicen al crearla (--correo)
+        "correo": [],
         "memoria": "2500M",
         "cpu": "100%",
     },

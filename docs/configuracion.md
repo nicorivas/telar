@@ -793,7 +793,7 @@ final; su conversación queda en disco y se retoma cuando haga falta.
 [bus]
 url = "nats://<IP privada de la máquina que no se apaga>:4222"
 token = "~/.config/telar/bus.token"   # tu secreto: el mismo archivo en todas tus máquinas
-persona = "nico"                       # tu cuenta en el bus (por defecto, tu usuario del sistema)
+persona = "ana"                        # tu cuenta en el bus (por defecto, tu usuario del sistema)
 maquina = "laptop"                     # cómo se llama esta en el bus (por defecto, su nombre de red)
 ```
 

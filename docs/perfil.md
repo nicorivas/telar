@@ -90,7 +90,7 @@ si está archivado— y por eso es el de la carpeta: estable y sin espacios. Lo 
 ```yaml
 proyecto:
   ruta: "operacion/proyectos/*/"
-  etiqueta: "{campo:Cliente} · {titulo}"    # «Grupo Anasac · Adopción IA»
+  etiqueta: "{campo:Cliente} · {titulo}"    # «Grupo Agrosur · Adopción IA»
 ```
 
 De un campo queda solo el nombre: sin lo que va entre paréntesis y cortado en la

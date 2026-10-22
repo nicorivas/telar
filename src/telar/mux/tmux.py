@@ -438,7 +438,7 @@ class Tmux(MultiplexorBase):
         """Quien corre el comando es un agente (`$TELAR_HILO`), no una persona.
 
         El foco es de la persona: dentro de tmux, `switch-client` mueve al cliente que mira el panel
-        del agente, que es la terminal de Nico en el hilo de ese agente. Gestión delegando un pendiente
+        del agente, que es la terminal de la persona en el hilo de ese agente. Gestión delegando un pendiente
         le cambiaba esa terminal por la del hilo nuevo, y Gestión parecía muerta."""
         return bool(os.environ.get("TELAR_HILO", "").strip())
 

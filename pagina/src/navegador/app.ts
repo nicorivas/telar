@@ -151,7 +151,7 @@ function mostrar(que: string): void {
     // ya a la vista: la terminal toma el teclado, la lectura y la conversación se releen
     if (f && forma(que)) montadas.get(f.dataset.p ?? '')?.mostrada?.();
     // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
-    // `scp máquina:ruta`; con la persona sería «nico@laptop:Telar»). Lo muestra la cabecera (indice.html)
+    // `scp máquina:ruta`; con la persona sería «ana@laptop:Faro»). Lo muestra la cabecera (indice.html)
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
     const nombre = remoto ? remoto
         : que.startsWith('doc:') ? `${que.slice(4)} · carpeta`

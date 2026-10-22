@@ -12,8 +12,8 @@ Capas de seguridad:
      puede poner cualquiera) y no se miran. Sin esa cabecera, no se entrega.
   2. Lista de permitidos: ~/.cartero-permitidos (un usuario por línea). Quien no está, queda
      en el Maildir sin despertar a nadie. Una línea `usuario` lo deja despertar a cualquiera de
-     tus hilos; `usuario: kichoro, gestion` solo a los hilos que nombra (por su extensión de
-     dirección: `usuario+kichoro@servidor`). Un correo para otro hilo queda en el Maildir.
+     tus hilos; `usuario: faro, gestion` solo a los hilos que nombra (por su extensión de
+     dirección: `usuario+faro@servidor`). Un correo para otro hilo queda en el Maildir.
   3. Tope de entregas por remitente y hora: corta bucles de agentes que se responden solos.
   Solo se despierta al hilo cuya dirección es esta (usuario+hilo@servidor, por el @telar_hilo
   de su sesión tmux): ni una sesión de nombre parecido, ni la más reciente. Sin hilo, o con

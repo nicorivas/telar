@@ -19,26 +19,26 @@ class ElDirectorio(Prueba):
              "atencion": "espera", "tiempo": 99},
             {"nombre": "De otra máquina", "remoto": "laptop"},
         ]}
-        d = ep.directorio(foto, "nico")
-        self.assertEqual((d["persona"], d["maquina"]), ("nico", "telar"))
+        d = ep.directorio(foto, "ana")
+        self.assertEqual((d["persona"], d["maquina"]), ("ana", "telar"))
         self.assertEqual(d["hilos"], [{"nombre": "T42 Faro Norte", "ext": "t42-faro-norte", "vivo": True,
                                        "carpeta": "proyectos/faro", "resumen": "va bien"}])
 
     def test_guardar_y_leer_por_persona_y_maquina(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = SimpleNamespace(estado=tmp)
-            ep.guardar(config, "marcelo", {"maquina": "telar", "hilos": [{"nombre": "Faro"}, "basura"]})
-            ep.guardar(config, "marcelo", {"maquina": "laptop", "hilos": []})
+            ep.guardar(config, "ramiro", {"maquina": "telar", "hilos": [{"nombre": "Faro"}, "basura"]})
+            ep.guardar(config, "ramiro", {"maquina": "laptop", "hilos": []})
             todos = ep.leer(config)
-            self.assertEqual(sorted(todos["marcelo"]), ["laptop", "telar"])
-            self.assertEqual(todos["marcelo"]["telar"]["hilos"], [{"nombre": "Faro"}])
+            self.assertEqual(sorted(todos["ramiro"]), ["laptop", "telar"])
+            self.assertEqual(todos["ramiro"]["telar"]["hilos"], [{"nombre": "Faro"}])
 
 
 class ElCorreoQueLlega(Prueba):
     def test_de_quien_lo_dice_el_bus_no_el_mensaje(self):
         pedido = {"para": "Faro Norte", "texto": " hola ", "de": "Gestión", "asunto": "una duda", "persona": "otro"}
-        c = ep.correo(pedido, "marcelo")
-        self.assertEqual((c["para"], c["de"], c["persona"]), ("faro-norte", "marcelo:Gestión", "marcelo"))
+        c = ep.correo(pedido, "ramiro")
+        self.assertEqual((c["para"], c["de"], c["persona"]), ("faro-norte", "ramiro:Gestión", "ramiro"))
         self.assertEqual(c["texto"], "Asunto: una duda" + chr(10) * 2 + "hola")
 
     def test_lo_que_no_se_acepta(self):

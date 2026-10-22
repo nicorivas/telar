@@ -30,7 +30,7 @@ class Repos(Prueba):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.raiz = Path(self.tmp.name) / "vida"
-        for carpeta in ("equipo/proyectos/faro", "equipo/proyectos/molino", "nico/proyectos/hondo", "suelto/x"):
+        for carpeta in ("equipo/proyectos/faro", "equipo/proyectos/molino", "ana/proyectos/hondo", "suelto/x"):
             (self.raiz / carpeta).mkdir(parents=True)
             (self.raiz / carpeta / "README.md").write_text("# " + carpeta.rsplit("/", 1)[1] + "\n")
         # el perfil de vida también nombra las carpetas del equipo, como antes de separarlos
@@ -51,9 +51,9 @@ class Repos(Prueba):
     def test_gana_el_perfil_del_repo_mas_profundo(self):
         p = mp.cargar_todos(self.config(cfg.Repo("vida", self.raiz), cfg.Repo("equipo", self.raiz / "equipo")))
         mapa = lectura.indice(p, self.raiz)
-        self.assertEqual(sorted(mapa), ["equipo/proyectos/faro", "equipo/proyectos/molino", "nico/proyectos/hondo"])
+        self.assertEqual(sorted(mapa), ["ana/proyectos/hondo", "equipo/proyectos/faro", "equipo/proyectos/molino"])
         self.assertEqual((mapa["equipo/proyectos/faro"][0].repo, mapa["equipo/proyectos/faro"][0].etiqueta), ("equipo", "equipo"))
-        self.assertEqual(mapa["nico/proyectos/hondo"][0].repo, "")
+        self.assertEqual(mapa["ana/proyectos/hondo"][0].repo, "")
 
     def test_un_repo_sin_perfil_no_aporta(self):
         p = mp.cargar_todos(self.config(cfg.Repo("suelto", self.raiz / "suelto")))
@@ -62,7 +62,7 @@ class Repos(Prueba):
     def test_de_que_repo_es_una_carpeta(self):
         c = self.config(cfg.Repo("vida", self.raiz), cfg.Repo("equipo", self.raiz / "equipo"))
         self.assertEqual(mp.repo_de(c, "equipo/proyectos/faro"), "equipo")
-        self.assertEqual(mp.repo_de(c, self.raiz / "nico/proyectos/hondo"), "vida")
+        self.assertEqual(mp.repo_de(c, self.raiz / "ana/proyectos/hondo"), "vida")
         self.assertEqual(mp.repo_de(c, "/otra/parte"), "")
 
     def test_la_configuracion(self):
