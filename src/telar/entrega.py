@@ -17,12 +17,15 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 
 #: un aviso, en caracteres
 MAX_AVISO = 500
 #: un archivo por el bus, en bytes: un mensaje de NATS lleva hasta 1 MB, y en base64 el archivo crece un tercio
-MAX_ARCHIVO = 700 * 1024
+MAX_ARCHIVO = 700 * 1024            # lo que cabe en un mensaje del bus: el tamaño de un trozo
+MAX_TOTAL = 25 * 1024 * 1024        # un archivo entero, mandado en trozos
 
 
 class ErrorDeEntrega(Exception):
@@ -116,12 +119,18 @@ def archivo(config, ruta: Path, *, a: str, nombre: str = "") -> dict:
     from telar import bus as mod_bus
 
     datos = Path(ruta).expanduser().read_bytes()
-    if len(datos) > MAX_ARCHIVO:
-        raise ErrorDeEntrega(f"por el bus va hasta {MAX_ARCHIVO // 1024} KB; para más, git o el panel")
-    r = mod_bus.pedir(config, a, "archivo", {"nombre": nombre or Path(ruta).name,
-                                             "datos": base64.b64encode(datos).decode("ascii")}, espera=30)
-    if not r.get("ok"):
-        raise ErrorDeEntrega(f"{a}: {r.get('error', 'no respondió')}")
+    if len(datos) > MAX_TOTAL:
+        raise ErrorDeEntrega(f"por el bus va hasta {MAX_TOTAL // 1024 // 1024} MB; para más, git o el panel")
+    nombre = nombre or Path(ruta).name
+    trozos = [datos[i:i + MAX_ARCHIVO] for i in range(0, len(datos), MAX_ARCHIVO)] or [b""]
+    carga = {"nombre": nombre}
+    if len(trozos) > 1:
+        carga.update(id=uuid.uuid4().hex, total=len(trozos), bytes=len(datos))
+    r: dict = {}
+    for n, t in enumerate(trozos):
+        r = mod_bus.pedir(config, a, "archivo", {**carga, "parte": n, "datos": base64.b64encode(t).decode("ascii")}, espera=30)
+        if not r.get("ok"):
+            raise ErrorDeEntrega(f"{a}: {r.get('error', 'no respondió')}")
     return {"ruta": r.get("ruta", ""), "bytes": len(datos)}
 
 
@@ -134,10 +143,42 @@ def recibir_aviso(p: dict) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def _parcial(config, p: dict, trozo: bytes) -> bytes | None:
+    """Junta los trozos de un archivo grande; devuelve el archivo entero con el último, y None antes."""
+    ident = str(p.get("id", ""))
+    if not re.fullmatch(r"[0-9a-f]{32}", ident):
+        raise ErrorDeEntrega("trozo sin identificador válido")
+    parte, total = int(p.get("parte", 0)), int(p.get("total", 1))
+    if not 0 <= parte < total or total * MAX_ARCHIVO > MAX_TOTAL + MAX_ARCHIVO:
+        raise ErrorDeEntrega("trozo fuera de rango")
+    carpeta = carpeta_de_entrada(config) / ".parciales"
+    carpeta.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ahora = time.time()
+    for viejo in carpeta.glob("*.parte"):  # lo abandonado hace más de una hora
+        if ahora - viejo.stat().st_mtime > 3600:
+            viejo.unlink(missing_ok=True)
+    archivo_parcial = carpeta / f"{ident}.parte"
+    if parte == 0:
+        archivo_parcial.write_bytes(b"")
+    elif not archivo_parcial.exists() or archivo_parcial.stat().st_size != parte * MAX_ARCHIVO:
+        raise ErrorDeEntrega("faltó un trozo anterior; se manda de nuevo")
+    with open(archivo_parcial, "ab") as f:
+        f.write(trozo)
+    if parte < total - 1:
+        return None
+    datos = archivo_parcial.read_bytes()
+    archivo_parcial.unlink(missing_ok=True)
+    return datos
+
+
 def recibir_archivo(config, p: dict) -> dict:
     try:
         datos = base64.b64decode(str(p.get("datos", "")), validate=True)
-        destino = guardar_archivo(config, str(p.get("nombre", "archivo")), datos)
+        if p.get("id"):
+            datos = _parcial(config, p, datos)
+            if datos is None:
+                return {"ok": True, "parcial": True}
+        destino = guardar_archivo(config, str(p.get("nombre", "archivo")), datos, tope=MAX_TOTAL)
     except (ErrorDeEntrega, ValueError, OSError) as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, "ruta": str(destino), "bytes": len(datos)}

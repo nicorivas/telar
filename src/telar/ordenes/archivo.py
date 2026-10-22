@@ -2,7 +2,7 @@
 
     telar archivo foto.png --a laptop           queda en `[bus] entrada` de esa máquina (nunca pisa otro)
 
-Hasta 700 KB (lo que cabe en un mensaje del bus); para más, git o el panel.
+Hasta 25 MB: lo grande va en trozos de 700 KB (lo que cabe en un mensaje del bus) y se junta allá; para más, git o el panel.
 """
 
 from __future__ import annotations

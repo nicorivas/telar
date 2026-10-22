@@ -526,7 +526,7 @@ puerta se retiró (`[enlaces]` y `[enlace] verbos` se aceptan y no se usan):
 | escribirle | `telar mensaje <hilo> "…"` |
 | encargarle algo a un agente de otra máquina | `telar encargar <agente> "…"` |
 | un aviso en su pantalla | `telar aviso "…" [--a <máquina>]` (sin `--a`, a las otras en línea) |
-| un archivo a su carpeta de entrada (hasta 700 KB) | `telar archivo <ruta> --a <máquina>` |
+| un archivo a su carpeta de entrada (hasta 25 MB, en trozos) | `telar archivo <ruta> --a <máquina>` |
 
 ```toml
 [bus]

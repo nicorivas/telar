@@ -8,6 +8,8 @@ extension shared the version number.
 
 ### Added
 
+- `telar archivo` sends files up to 25 MB between machines: anything over 700 KB goes in chunks over the bus and
+  the receiving node joins them (both machines need this version; small files work as before).
 - The page reads files on other machines. `GET /archivos` takes `maquina` (or a `machine:path` route), and
   that machine's node reads the file over the bus with its own limits. Files under the `[repos]` folders can be
   read too, not only those under the root.
