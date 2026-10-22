@@ -1,8 +1,8 @@
 """Encargos a un agente residente: escribirle a su hilo de siempre en vez de abrir uno nuevo.
 
 Un encargo es un prompt para un agente (`telar encargar gestion "/avanzar"`, o un proceso periódico
-con `agente = "gestion"`). Su hilo es una sesión propia de esta máquina (`telar-…` con
-`@telar_hilo` = el nombre del agente):
+con `agente = "gestion"`). Su hilo es una ventana de la sesión del telar de esta máquina, con el nombre
+del agente:
 
     vivo y libre        se le escribe el encargo, como si se tecleara
     vivo y trabajando   el encargo espera en una cola; cuando el agente termina su turno, el gancho
@@ -10,9 +10,9 @@ con `agente = "gestion"`). Su hilo es una sesión propia de esta máquina (`tela
     sin sesión          se abre retomando su última conversación con el encargo como primer mensaje;
                         si esa conversación pesa más de `[agentes] rotar_mb`, se empieza una nueva
 
-Abrir una sesión respeta `[agente] max_vivos`: si ya hay tantas sesiones propias vivas, se cierran
-antes las que llevan más rato ociosas y sin nadie mirando (`liberar`). Su conversación queda en disco
-y se retoma cuando haga falta: cerrar una sesión ociosa es liberar memoria, no perder nada.
+Abrir un hilo respeta `[agente] max_vivos`: si ya hay tantos hilos vivos, se cierran antes los que
+llevan más rato ociosos y sin nadie mirando (`liberar`). Su conversación queda en disco y se retoma
+cuando haga falta: cerrar un hilo ocioso es liberar memoria, no perder nada.
 
 La cola vive en `<estado>/encargos/<agente>.jsonl`; lo que pasó, en `<estado>/encargos.log`.
 
@@ -112,7 +112,7 @@ def _una_linea(texto: str, config=None, hilo: str = "") -> str:
 # ── el tope de sesiones vivas ─────────────────────────────────────────────────
 
 def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[str]:
-    """Cierra sesiones propias ociosas hasta que quepan `nuevas` bajo `[agente] max_vivos`.
+    """Cierra hilos ociosos hasta que quepan `nuevas` bajo `[agente] max_vivos`.
 
     Ociosa es sin nadie mirando y sin el agente trabajando. Primero las de paso, después los
     residentes (los de `cuidar`), y de cada grupo la que lleva más rato quieta. Devuelve los hilos
@@ -140,7 +140,7 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     cerrados = []
     for _, _, h in candidatos[:sobran]:
         try:
-            movil._tmux("kill-window" if h.ventana else "kill-session", "-t", h.objetivo)
+            movil._tmux("kill-window", "-t", h.objetivo)
         except Exception as e:  # noqa: BLE001 - una que no se deja cerrar no tumba al resto
             _anotar(config, f"no pude cerrar «{h.nombre}» ({h.direccion}): {e}")
             continue
@@ -155,8 +155,7 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
 def _donde(ctx, hilo: str):
     """Cómo escribirle al hilo vivo de un agente: una función (texto) → None, o None si no está vivo.
 
-    Primero un hilo de la lista (un tab, como en el laptop); si no, una sesión propia (servidor)."""
-    from telar import movil
+    Su hilo es uno de la lista: un tab en el laptop, una ventana de la sesión del telar en un servidor."""
     from telar.ordenes import _comun
 
     try:
@@ -164,11 +163,8 @@ def _donde(ctx, hilo: str):
         h = tel.por_nombre(hilo)
         if h is not None and tel.mux is not None and tel.vivo(h):
             return lambda texto: tel.mux.escribir(h.id, texto, enviar=True)
-    except Exception:  # noqa: BLE001 - sin multiplexor se busca la sesión propia
+    except Exception:  # noqa: BLE001 - sin multiplexor no hay hilo vivo al que escribirle
         pass
-    sesion = movil.propios().get(hilo)
-    if sesion:
-        return lambda texto: movil.escribir(sesion, texto, enviar=True)
     return None
 
 

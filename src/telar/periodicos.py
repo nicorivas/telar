@@ -31,8 +31,8 @@ línea por proceso activo, y no toca nada fuera de él. Cada línea llama a `tel
 `<nombre>.log`: de ahí sale lo que muestra el dashboard (la última corrida, si salió bien, el log).
 Cambiar el archivo desde telar guarda la versión anterior en `periodicos.toml.anterior`.
 
-Los hilos que abre un proceso con `mensaje` son sesiones tmux `telar-…` con `@telar_hilo`, la misma
-convención de los hilos remotos: otra máquina los trae a su lista (su nodo, al verlos en el bus).
+Los hilos que abre un proceso con `mensaje` son ventanas de la sesión del telar, como cualquier hilo:
+otra máquina los trae a su lista (su nodo, al verlos en el bus).
 """
 
 from __future__ import annotations
@@ -575,7 +575,7 @@ def cerrar_viejos(config, abiertos, ahora: datetime) -> list[str]:
         if atencion == Atencion.TRABAJANDO and desde is not None and ahora.timestamp() - desde.timestamp() < TRABAJANDO_VIEJO.total_seconds():
             continue
         try:
-            mod_movil._tmux("kill-window" if h.ventana else "kill-session", "-t", h.objetivo)
+            mod_movil._tmux("kill-window", "-t", h.objetivo)
         except (RuntimeError, OSError):
             continue
         est.anotar_atencion(h.nombre, Atencion.NINGUNA)

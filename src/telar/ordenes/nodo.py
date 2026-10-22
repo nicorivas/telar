@@ -187,10 +187,6 @@ class Nodo:
         from telar import movil
 
         try:
-            propias = movil.propios()
-        except Exception:  # noqa: BLE001 - sin tmux no hay sesiones propias
-            propias = {}
-        try:
             # la dirección de cada ventana de la sesión del telar («@338/marca»): con ella otra máquina
             # la mira (telar.remoto.guion_ver). Listarlas también les pone marca a las que no tienen
             direcciones = {v.ventana: v.direccion for v in movil.ventanas(self.config.sesion)}
@@ -205,21 +201,14 @@ class Nodo:
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
                     # el registro del hilo, que las otras máquinas leen de aquí en vez de copiarlo
                     **registro_de(nombre, vinculos, archivados),
-                    # dónde mirarlo desde otra máquina: su ventana en la sesión del telar, o la sesión
-                    # tmux propia de antes (remotos)
-                    "ventana": ventana,
-                    "sesion_tmux": propias.get(nombre, "")}
+                    # dónde mirarlo desde otra máquina: su ventana en la sesión del telar
+                    "ventana": ventana}
 
         for h in tel.hilos:
             if h.nombre in remotos:
                 continue  # su ventana está aquí, pero vive en otra máquina: lo publica esa
-            if tel.vivo(h) or tel.propio(h):
-                salida[h.nombre] = ficha_de(h.nombre, True, ventana=direcciones.get(h.id, "") if tel.vivo(h) else "")
-        # una sesión propia que telar todavía no registró (la abrió un periódico, el celular, otra
-        # máquina) también vive aquí: sin esto, la otra máquina no se entera de que nació
-        for nombre in propias:
-            if nombre not in salida and nombre not in remotos:
-                salida[nombre] = ficha_de(nombre, True)
+            if tel.vivo(h):
+                salida[h.nombre] = ficha_de(h.nombre, True, ventana=direcciones.get(h.id, ""))
         renombrados = {}
         for a in self._agentes_de_aqui():
             actual = salida.get(a.nombre) or ficha_de(a.nombre, False)
@@ -432,7 +421,7 @@ class Nodo:
                 if self.ausentes[previo["nombre"]] < 2:
                     actuales[previo["nombre"]] = previo
                     continue
-                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "sesion_tmux": "", "ventana": ""}
+                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "ventana": ""}
             elif previo["nombre"] not in actuales:
                 # ya publicado como muerto: si aquí se archivó o se vinculó después (lo pidió otra
                 # máquina), se vuelve a publicar con lo nuevo. Salvo que ya lo publique otra máquina
@@ -681,7 +670,7 @@ class Nodo:
         tel = _comun.tejer(self.ctx, con_ficha=False)
         if tel.mux is None or not tel.viva:
             return
-        nombre, sesion = d.get("nombre", ""), d.get("ventana") or d.get("sesion_tmux", "")
+        nombre, sesion = d.get("nombre", ""), d.get("ventana", "")
         anotados = tel.estado.remotos()
         if d.get("vivo"):
             for aqui in {nombre, *(n for n, x in anotados.items() if sesion and x.get("sesion") == sesion)}:
@@ -711,8 +700,8 @@ class Nodo:
                 return
             previo = anotados.get(nombre) or {}
             if previo.get("remoto") == remoto.nombre and previo.get("sesion"):
-                # el mismo hilo en otra dirección: pasó de sesión propia a ventana, o se reabrió allá. Se
-                # sigue a la dirección nueva en vez de traerlo otra vez como «· 2»
+                # el mismo hilo en otra dirección: se reabrió allá. Se sigue a la dirección nueva en vez de
+                # traerlo otra vez como «· 2»
                 if hilo is not None and tel.vivo(hilo):
                     tel.mux.cerrar(hilo.id)
                 if nombre in tel.estado.archivados():

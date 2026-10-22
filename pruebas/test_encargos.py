@@ -32,14 +32,19 @@ class ConEstado(Prueba):
         self.agente = Agente(clave="gestion", nombre="Gestión", carpeta=base / "agentes" / "gestion",
                              argumentos=("--permission-mode", "acceptEdits"))
 
-    def movil(self, propios=None, hilos=()):
+    def movil(self, vivos=None, hilos=()):
+        """`vivos`: nombre → id de los hilos vivos en la lista (su ventana). Lo que se les escribe queda en
+        `escritos`, lo que se abre en `creados` y lo que se cierra en `matados`."""
         escritos, creados, matados = [], [], []
+        vivos = dict(vivos or {})
+        mux = SimpleNamespace(escribir=lambda i, t, enviar=False: escritos.append((i, t, enviar)))
+        tel = SimpleNamespace(mux=mux, vivo=lambda h: True,
+                              por_nombre=lambda n: SimpleNamespace(id=vivos[n], nombre=n) if n in vivos else None)
         parches = [
-            mock.patch("telar.movil.propios", return_value=dict(propios or {})),
+            mock.patch("telar.ordenes._comun.tejer", return_value=tel),
             mock.patch("telar.movil.hilos", return_value=list(hilos)),
-            mock.patch("telar.movil.escribir", side_effect=lambda s, t, enviar=False: escritos.append((s, t, enviar))),
-            mock.patch("telar.movil.crear", side_effect=lambda n, c, p, principal="": creados.append((n, c, p)) or HiloMovil(
-                sesion=principal or "telar-nuevo", nombre=n, ventana="@9" if principal else "", marca="m" if principal else "")),
+            mock.patch("telar.movil.crear", side_effect=lambda n, c, p, principal: creados.append((n, c, p)) or HiloMovil(
+                sesion=principal, nombre=n, ventana="@9", marca="m")),
             mock.patch("telar.movil._tmux", side_effect=lambda *a, **k: matados.append(a) or ""),
         ]
         for p in parches:
@@ -50,19 +55,19 @@ class ConEstado(Prueba):
 
 class Encargar(ConEstado):
     def test_libre_se_le_escribe_en_una_linea(self):
-        escritos, creados, _ = self.movil({"Gestión": "telar-g"})
+        escritos, creados, _ = self.movil({"Gestión": "@4"})
         r = m.encargar(self.ctx, self.agente, "/avanzar\nT84")
-        self.assertEqual((r["estado"], escritos, creados), ("entregado", [("telar-g", "/avanzar T84", True)], []))
+        self.assertEqual((r["estado"], escritos, creados), ("entregado", [("@4", "/avanzar T84", True)], []))
         self.assertEqual(self.est.atencion("Gestión"), Atencion.TRABAJANDO)
 
     def test_trabajando_queda_en_cola_y_al_terminar_se_reparte(self):
-        escritos, _, _ = self.movil({"Gestión": "telar-g"})
+        escritos, _, _ = self.movil({"Gestión": "@4"})
         self.est.anotar_atencion("Gestión", Atencion.TRABAJANDO)
         self.assertEqual(m.encargar(self.ctx, self.agente, "/correo")["estado"], "en cola")
         self.assertEqual(m.encargar(self.ctx, self.agente, "/lecturas")["en_cola"], 2)
         self.assertEqual(escritos, [])
         self.assertTrue(m.repartir(self.ctx, "Gestión"))
-        self.assertEqual(escritos, [("telar-g", "/correo", True)])
+        self.assertEqual(escritos, [("@4", "/correo", True)])
         self.assertEqual([x["texto"] for x in m.pendientes(self.config, "Gestión")], ["/lecturas"])
 
     def test_sin_sesion_retoma_su_conversacion_con_el_encargo_y_sus_argumentos(self):
@@ -94,8 +99,8 @@ class Encargar(ConEstado):
 
 class ElTope(ConEstado):
     def test_cierra_las_ociosas_mas_viejas_y_respeta_a_quien_mira_o_trabaja(self):
-        h = lambda n, s, c=0: HiloMovil(nombre=n, sesion=s, clientes=c)  # noqa: E731
-        hilos = [h("▶ vieja", "t1"), h("▶ nueva", "t2"), h("mirada", "t3", 1), h("ocupada", "t4"), h("Gestión", "t5")]
+        h = lambda n, v, c=0: HiloMovil(nombre=n, sesion="telar", ventana=v, marca="m" + v, clientes=c)  # noqa: E731
+        hilos = [h("▶ vieja", "@1"), h("▶ nueva", "@2"), h("mirada", "@3", 1), h("ocupada", "@4"), h("Gestión", "@5")]
         _, _, matados = self.movil(hilos=hilos)
         self.est.anotar_atencion("▶ vieja", Atencion.TERMINO, cuando=__import__("datetime").datetime(2026, 1, 1))
         self.est.anotar_atencion("▶ nueva", Atencion.TERMINO, cuando=__import__("datetime").datetime(2026, 1, 2))

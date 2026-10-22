@@ -249,7 +249,7 @@ Las reglas valen para todas:
 
 ```json
 {
-  "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "propio": false, "activo": false,
+  "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "activo": false,
   "archivado": false, "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
@@ -264,10 +264,7 @@ que reciben las órdenes. `direccion` es su dirección de objeto, `hilo:<nombre>
 `telar objeto`, viva donde viva. `nombre` es lo que se muestra **y la llave del estado**:
 el id se corre cuando alguien abre un tab al principio, el nombre no. `vivo` dice
 si el multiplexor lo está mostrando ahora; un hilo archivado, o uno de una sesión
-que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer. `propio` es `true`
-para un hilo que no es tab del multiplexor pero vive en una sesión tmux propia de esta máquina (los
-que abrían versiones viejas y los periódicos): `vivo` sigue siendo `false` —`ir`, `cerrar`
-y el resto operan sobre tabs—, pero se le puede escribir con `enviar`.
+que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
 `tiempo` son los segundos con el foco **en el día en curso**. `ficha` puede ser
 `null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
 es aquí, un nombre es una máquina de `[remotos]`, y `"?"` es una ventana que corre mosh,

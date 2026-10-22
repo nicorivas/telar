@@ -12,10 +12,8 @@ Crear el hilo es un paso aparte, por ssh, que devuelve su dirección.
 La dirección de un hilo remoto es `@338/1a2b3c4d`: la ventana de tmux allá y su marca
 (`@telar_id`). tmux reusa los `@N` al reiniciarse; la marca no, y el guion no mira una ventana
 cuya marca no coincide. Se guarda en el estado (`remotos.json`), así que renombrar el hilo no la
-pierde. Cerrar la ventana local deja vivo el hilo de allá; cerrarlo desde telar mata los dos.
-
-Los hilos de antes, con sesión tmux propia allá (`telar-<8 hex>`), se siguen mirando con
-`tmux new-session -A -s <sesion>` mientras existan. Ver docs/propuestas/un-dueno-por-hilo.md.
+pierde. Cerrar la ventana local deja vivo el hilo de allá; cerrarlo desde telar mata los dos. Un hilo
+anotado sin dirección (vacía) está muerto allá: abrirlo abre una ventana nueva.
 """
 
 from __future__ import annotations
@@ -24,7 +22,6 @@ import platform
 import re
 import shlex
 import subprocess
-import uuid
 from pathlib import PurePosixPath
 
 from telar.config import Remoto
@@ -33,10 +30,6 @@ from telar.config import Remoto
 ESPERA = 15
 SEP_FORMATO = "\x1f"
 
-
-def sesion_nueva() -> str:
-    """Un nombre de sesión tmux para un hilo remoto nuevo: sin `.` ni `:`, que tmux no admite."""
-    return f"telar-{uuid.uuid4().hex[:8]}"
 
 
 def ruta_remota(remoto: Remoto, relativa: str = "") -> str:
@@ -171,33 +164,17 @@ def _cd(ruta: str) -> str:
     return f"cd {shlex.quote(ruta)}"
 
 
-def linea(ruta: str, palabras: list[str] | None, hilo: str, *, marcar: bool = True) -> str:
+def linea(ruta: str, palabras: list[str] | None, hilo: str) -> str:
     """Lo que corre el hilo: ir a la carpeta, el agente, y una shell al salir.
 
     La shell del final es para que el hilo no muera si el agente termina: se vuelve a ella y
-    sigue ahí. `marcar` es para una sesión propia (las de antes); en una ventana de la sesión del
-    telar no va: `set-option` desde adentro le pondría el nombre a la sesión del telar entera.
+    sigue ahí.
     """
-    # lo primero: la sesión se anota su propio nombre (`@telar_hilo`). Desde adentro no hace
-    # falta objetivo ni otra conexión; encadenarlo en la línea de tmux no sobrevivía a mosh.
-    partes = [f"tmux set-option {OPCION_HILO} {shlex.quote(hilo)} 2>/dev/null"] if marcar else []
-    partes += [f"{_cd(ruta)} 2>/dev/null", f"export TELAR_HILO={shlex.quote(hilo)}"]
+    partes = [f"{_cd(ruta)} 2>/dev/null", f"export TELAR_HILO={shlex.quote(hilo)}"]
     if palabras:
         partes.append(shlex.join(palabras))
     partes.append("exec bash -l")
     return "; ".join(partes)
-
-
-#: la opción de sesión tmux, allá, con el nombre del hilo: la leen el cartero (para entregar
-#: el correo de `usuario+hilo@servidor` a esta sesión) y la web (para mostrar nombres).
-OPCION_HILO = "@telar_hilo"
-
-
-def es_ventana(direccion: str) -> bool:
-    """¿La dirección es una ventana de la sesión del telar de allá («@338/marca»), o una sesión propia?"""
-    from telar import movil
-
-    return bool(movil.partir_direccion(direccion)[0])
 
 
 def vista(direccion: str) -> str:
@@ -235,13 +212,10 @@ def guion_ver(direccion: str, nombre: str) -> str:
     ])
 
 
-def comando(remoto: Remoto, sesion: str, linea_remota: str, nombre: str = "") -> list[str]:
+def comando(remoto: Remoto, direccion: str, nombre: str = "") -> list[str]:
     """El comando de la ventana local: el transporte hasta la otra máquina, y allá, mirar la ventana
-    del hilo (`sesion` es su dirección) o, si es una sesión propia de antes, engancharse a ella."""
-    if es_ventana(sesion):
-        remoto_cmd = ["bash", "-lc", guion_ver(sesion, nombre or sesion)]
-    else:
-        remoto_cmd = ["tmux", "new-session", "-A", "-s", sesion, "bash", "-lc", linea_remota]
+    del hilo (`direccion`, «@338/marca»)."""
+    remoto_cmd = ["bash", "-lc", guion_ver(direccion, nombre or direccion)]
     if remoto.transporte == "ssh":
         # ssh junta sus argumentos en una sola línea para la shell remota: va citada entera
         return ["ssh", "-t", remoto.destino, shlex.join(remoto_cmd)]
@@ -287,59 +261,44 @@ def vive(remoto: Remoto, direccion: str) -> bool | None:
     from telar import movil
 
     ventana, marca = movil.partir_direccion(direccion)
-    if ventana:
-        guion = f"tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null"
-        codigo, salida, _ = _ssh(remoto, guion)
-        if codigo == 255:
-            return None
-        return salida.strip() == marca
-    codigo, _, _ = _ssh(remoto, f"tmux has-session -t {shlex.quote('=' + direccion)} 2>/dev/null")
-    return None if codigo == 255 else codigo == 0
+    if not ventana:
+        return False  # sin dirección: no hay nada vivo allá que mirar
+    guion = f"tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null"
+    codigo, salida, _ = _ssh(remoto, guion)
+    if codigo == 255:
+        return None
+    return salida.strip() == marca
 
 
-def matar(remoto: Remoto, sesion: str) -> str:
-    """Termina la sesión remota de un hilo. Devuelve "" si salió bien, o por qué no.
+def matar(remoto: Remoto, direccion: str) -> str:
+    """Cierra allá la ventana de un hilo. Devuelve "" si salió bien, o por qué no.
 
-    Una sesión que ya no existe cuenta como bien: el objetivo era que no estuviera. Una ventana
-    solo se cierra si su marca es la de la dirección: un `@N` reusado es otro hilo.
+    Una ventana que ya no existe (o un hilo sin dirección) cuenta como bien: el objetivo era que no
+    estuviera. Solo se cierra si su marca es la de la dirección: un `@N` reusado es otro hilo.
     """
     from telar import movil
 
-    ventana, marca = movil.partir_direccion(sesion)
-    if ventana:
-        guion = (f"[ \"$(tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null)\" = {marca} ] "
-                 f"&& tmux kill-window -t {ventana}; true")
-        codigo, _, error = _ssh(remoto, guion, ESPERA + 5)
-        return "" if codigo == 0 else (error.strip() or f"ssh salió con {codigo}")[-300:]
-    orden = ["ssh", "-o", "BatchMode=yes", "-o", f"ConnectTimeout={ESPERA}", remoto.destino,
-             shlex.join(["tmux", "kill-session", "-t", f"={sesion}"])]
-    try:
-        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA + 5)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return f"no pude hablar con {remoto.destino}: {e}"
-    if r.returncode == 0 or "can't find session" in r.stderr or "no server running" in r.stderr:
+    ventana, marca = movil.partir_direccion(direccion)
+    if not ventana:
         return ""
-    return (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+    guion = (f"[ \"$(tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null)\" = {marca} ] "
+             f"&& tmux kill-window -t {ventana}; true")
+    codigo, _, error = _ssh(remoto, guion, ESPERA + 5)
+    return "" if codigo == 0 else (error.strip() or f"ssh salió con {codigo}")[-300:]
 
 
-def nombrar(remoto: Remoto, sesion: str, hilo: str) -> str:
-    """Le pone el nombre nuevo al hilo de allá (al renombrarlo aquí): a su ventana, o el
-    `@telar_hilo` de su sesión propia. "" si salió bien."""
+def nombrar(remoto: Remoto, direccion: str, hilo: str) -> str:
+    """Le pone el nombre nuevo a la ventana del hilo allá (al renombrarlo aquí). "" si salió bien, o si
+    el hilo no tiene dirección (no hay ventana que nombrar)."""
     from telar import movil
 
-    ventana, marca = movil.partir_direccion(sesion)
-    if ventana:
-        guion = (f"[ \"$(tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null)\" = {marca} ] "
-                 f"&& tmux rename-window -t {ventana} {shlex.quote(hilo)}")
-        codigo, _, error = _ssh(remoto, guion)
-        return "" if codigo == 0 else (error.strip() or "la ventana de allá ya no es ese hilo")[-300:]
-    orden = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
-             shlex.join(["tmux", "set-option", "-t", f"={sesion}:", OPCION_HILO, hilo])]
-    try:
-        r = subprocess.run(orden, capture_output=True, text=True, timeout=ESPERA)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return f"no pude hablar con {remoto.destino}: {e}"
-    return "" if r.returncode == 0 else (r.stderr.strip() or f"ssh salió con {r.returncode}")[-300:]
+    ventana, marca = movil.partir_direccion(direccion)
+    if not ventana:
+        return ""
+    guion = (f"[ \"$(tmux display -p -t {ventana} '#{{{movil.OPCION_ID}}}' 2>/dev/null)\" = {marca} ] "
+             f"&& tmux rename-window -t {ventana} {shlex.quote(hilo)}")
+    codigo, _, error = _ssh(remoto, guion)
+    return "" if codigo == 0 else (error.strip() or "la ventana de allá ya no es ese hilo")[-300:]
 
 
 def revisar(remoto: Remoto) -> list[tuple[bool, str]]:
@@ -394,9 +353,8 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
         else:
             palabras, sid = agente.nuevo_con_id(aviso)
             lanz = lanzar.Lanzamiento(comando=[], carpeta=None, nueva=sid)
-    sesion = crear_alla(ctx.config, remoto, nombre,
-                        linea(carpeta_remota(ctx.config, remoto, relativa), palabras, nombre, marcar=False))
-    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "", nombre), foco=True)
+    sesion = crear_alla(ctx.config, remoto, nombre, linea(carpeta_remota(ctx.config, remoto, relativa), palabras, nombre))
+    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, nombre), foco=True)
     hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
     if hilo is not None:
         tel.mux.marcar_remoto(hilo.id, remoto.nombre)
@@ -429,7 +387,7 @@ def nuevas(conocidas: set[str], de_alla: list[tuple[str, str]], nombres: set[str
 def traer(tel, remoto: Remoto, sesion: str, nombre: str, *, foco: bool = False) -> None:
     """Abre aquí la ventana de un hilo que vive allá (su dirección en `sesion`), sin quitarle el
     foco a nadie salvo que se pida. Allá no corre nada nuevo: solo se lo mira."""
-    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, "exec bash -l", nombre), foco=foco)
+    tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, nombre), foco=foco)
     hilo = next((h for h in tel.mux.hilos() if h.nombre == nombre), None)
     if hilo is not None:
         tel.mux.marcar_remoto(hilo.id, remoto.nombre)

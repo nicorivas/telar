@@ -235,32 +235,30 @@ class Resolver(ConEstado):
 class HiloDeCasilla(ConEstado):
     """El gancho de la casilla sabe su hilo aunque el agente se haya abierto sin `$TELAR_HILO`."""
 
-    def _resolver(self, datos: dict, entorno: dict, propio: str = "") -> str:
+    def _resolver(self, datos: dict, entorno: dict) -> str:
         from types import SimpleNamespace
         from unittest import mock
 
-        from telar import movil
         from telar.ordenes import agente as orden
 
         with mock.patch.dict(os.environ, entorno, clear=True), \
-                mock.patch.object(movil, "hilo_de_panel", return_value=propio), \
                 mock.patch.object(orden, "obtener_mux", return_value=MuxFalso()):
             return orden._hilo_de_casilla(SimpleNamespace(config=self.config), datos)
 
     def test_la_variable_manda(self):
         self.est.anotar_sesion("molino", "s1")
-        self.assertEqual(self._resolver({"session_id": "s1"}, {"TELAR_HILO": "faro"}, "otro"), "faro")
+        self.assertEqual(self._resolver({"session_id": "s1"}, {"TELAR_HILO": "faro"}), "faro")
 
     def test_sin_variable_la_conversacion_anotada(self):
         self.est.anotar_sesion("molino", "s1")
-        self.assertEqual(self._resolver({"session_id": "s1"}, {"TMUX_PANE": "%0"}, "faro"), "molino")
+        self.assertEqual(self._resolver({"session_id": "s1"}, {"TMUX_PANE": "%7"}), "molino")
 
-    def test_sin_nada_anotado_la_marca_de_su_sesion_propia(self):
-        # el caso que lo motivó: un claude lanzado a mano en la sesión tmux de un agente
-        self.assertEqual(self._resolver({"session_id": "s9"}, {"TMUX_PANE": "%0"}, "Faro"), "Faro")
+    def test_sin_nada_anotado_el_tab_de_su_panel(self):
+        # el caso que lo motivó: un claude lanzado a mano dentro del tab de un hilo
+        self.assertEqual(self._resolver({"session_id": "s9"}, {"TMUX_PANE": "%7"}), "faro")
 
     def test_sin_panel_no_hay_hilo(self):
-        self.assertEqual(self._resolver({"session_id": "s9"}, {}, "Faro"), "")
+        self.assertEqual(self._resolver({"session_id": "s9"}, {}), "")
 
 # ── el adaptador de Claude Code ─────────────────────────────────────────────────
 
@@ -733,30 +731,3 @@ class SkillsDelAgente(unittest.TestCase):
                     os.environ.pop("CLAUDE_CONFIG_DIR")
                 else:
                     os.environ["CLAUDE_CONFIG_DIR"] = antes
-
-
-class AvisoEnSesionPropia(ConEstado):
-    """El gancho de aviso encuentra su hilo por la marca de su sesión propia, sin $TELAR_HILO."""
-
-    def test_sin_variable_usa_la_marca_de_la_sesion(self):
-        import io
-        import json as _json
-        from contextlib import redirect_stdout
-        from types import SimpleNamespace
-        from unittest import mock
-
-        from telar import movil
-        from telar.ordenes import agente as orden
-
-        carga = _json.dumps({"hook_event_name": "Stop", "session_id": "s-nueva"})
-        o = SimpleNamespace(json=True, panel="%7", olvidar=False, evento="", agente="claude-code", sesion="", hilo="")
-        ctx = SimpleNamespace(config=self.config)
-        with mock.patch.dict(os.environ, {"TMUX_PANE": "%7"}, clear=True), \
-                mock.patch.object(movil, "hilo_de_panel", return_value="Faro"), \
-                mock.patch.object(orden, "_mux_si_hace_falta", return_value=None), \
-                mock.patch("sys.stdin", io.StringIO(carga)):
-            salida = io.StringIO()
-            with redirect_stdout(salida):
-                orden._aviso(o, ctx)
-        r = _json.loads(salida.getvalue())
-        self.assertEqual(r.get("hilo"), "Faro", r)

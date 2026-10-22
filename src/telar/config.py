@@ -129,8 +129,8 @@ class Agente:
     #: si el agente recibe al empezar unas líneas sobre su hilo y cómo hablar con los otros
     #: (el gancho SessionStart de `telar agente contexto`).
     contexto: bool = True
-    #: cuántas sesiones propias (hilos que no son tabs: periódicos, encargos, el celular) pueden
-    #: estar vivas a la vez en esta máquina; 0 es sin tope. Al abrir otra se cierran las ociosas.
+    #: cuántos hilos pueden estar vivos a la vez en esta máquina, si nadie mira su sesión del telar directo
+    #: (un servidor); 0 es sin tope. Al abrir otro (un periódico, un encargo) se cierran los ociosos.
     max_vivos: int = 0
     #: la sordina (telar/sordina/): en Claude Code, una línea gris por archivo editado y por comando, sin
     #: diffs ni salida. La pone `telar agente instalar`; con false, no.

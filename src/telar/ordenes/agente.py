@@ -294,7 +294,7 @@ def _hilo_de_casilla(ctx, datos: dict) -> str:
 
     `$TELAR_HILO` primero. Un agente que se abrió sin ella (un `claude` lanzado a mano dentro del
     tab) recibía el «↯» y nunca sus mensajes; por eso después vienen la conversación ya anotada y el
-    panel: la marca `@telar_hilo` de su sesión propia, o el tab del multiplexor.
+    tab del multiplexor donde está su panel.
     """
     hilo = os.environ.get(VARIABLE_HILO, "").strip()
     if hilo:
@@ -308,12 +308,6 @@ def _hilo_de_casilla(ctx, datos: dict) -> str:
     panel = panel_del_entorno(ctx.config.multiplexor)
     if not panel:
         return ""
-    if ctx.config.multiplexor == "tmux":
-        from telar import movil
-
-        propio = movil.hilo_de_panel(panel)
-        if propio:
-            return propio
     try:
         return hilo_del_panel(obtener_mux(ctx.config), panel)
     except ErrorDeMux:
@@ -434,13 +428,6 @@ def _aviso(o, ctx) -> int:
             mux=_mux_si_hace_falta(ctx, est, aviso, panel),
             multiplexor=ctx.config.multiplexor,
         )
-        if not hilo and panel and ctx.config.multiplexor == "tmux":
-            # un agente abierto sin $TELAR_HILO en una sesión propia (un agente residente, el
-            # celular): ni la conversación ni el tab lo nombran, pero su sesión lleva @telar_hilo.
-            # Sin esto su semáforo se quedaba pegado y el nodo nunca le entregaba la casilla
-            from telar import movil
-
-            hilo = movil.hilo_de_panel(panel) or hilo
         if aviso.evento is Evento.ESPERA and hilo and aviso.datos.get("pide"):
             # antes de mirar si avisa el mod: él dice «espera», pero el texto de lo que pide solo lo trae esta carga
             try:

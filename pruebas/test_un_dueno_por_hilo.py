@@ -24,7 +24,6 @@ from test_ordenes import Orden
 
 from telar import estado as mod_estado
 from telar.modelo import Hilo
-from telar.ordenes import doctor
 from telar.ordenes import hilo as orden_hilo
 from telar.ordenes import nodo as mod_nodo
 
@@ -392,41 +391,6 @@ class AlCambiarloVaAlDueno(Orden):
         faro = next(h for h in datos["hilos"] if h["nombre"] == "Faro")
         self.assertEqual(faro["relativa"], "proyectos/faro")
         self.assertFalse(faro["archivado"])
-
-
-class LasSesionesPropiasSeRevisan(ConEstado):
-    def revisar(self, propias):
-        ctx = SimpleNamespace(config=SimpleNamespace(estado=self.carpeta))
-        with mock.patch("telar.movil.propios", return_value=propias):
-            (r,) = doctor._sesiones_propias(ctx)
-        return r
-
-    def test_sin_ninguna_esta_bien(self):
-        r = self.revisar({})
-        self.assertEqual(r["estado"], doctor.OK)
-
-    def test_las_de_antes_se_avisan_vivas_o_anotadas(self):
-        escribir(self.carpeta, "remotos.json", {"Faro": {"remoto": "servidor", "sesion": "telar-1a2b3c4d"}})
-        r = self.revisar({"T84": "telar-9f8e7d6c"})
-        self.assertEqual(r["estado"], doctor.AVISO)
-        self.assertIn("T84", r["dice"])
-        self.assertIn("Faro", r["dice"])
-        self.assertIn("retomar", r["arreglo"])
-
-    def test_sin_tmux_no_dice_nada_raro(self):
-        ctx = SimpleNamespace(config=SimpleNamespace(estado=self.carpeta))
-        escribir(self.carpeta, "remotos.json", {})
-        with mock.patch("telar.movil.propios", side_effect=FileNotFoundError("tmux")):
-            (r,) = doctor._sesiones_propias(ctx)
-        self.assertEqual(r["estado"], doctor.OK)
-
-    def test_si_no_pudo_mirar_tmux_no_dice_que_no_hay(self):
-        # esta revisión es la que dice cuándo se pueden quitar las sesiones propias: no saber no es «ninguna»
-        ctx = SimpleNamespace(config=SimpleNamespace(estado=self.carpeta))
-        with mock.patch("telar.movil.propios", side_effect=OSError("permiso denegado")):
-            (r,) = doctor._sesiones_propias(ctx)
-        self.assertEqual(r["estado"], doctor.AVISO)
-        self.assertIn("no pude revisar", r["dice"])
 
 
 if __name__ == "__main__":

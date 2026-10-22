@@ -40,15 +40,14 @@ class Configuracion(Prueba):
 
 
 class Comando(Prueba):
-    def test_mosh_lleva_el_tmux_de_alla_como_palabras(self):
-        c = r.comando(CASA, "telar-1234abcd", "cd ~; exec bash -l")
-        self.assertEqual(c, ["mosh", "usuario@servidor", "--", "tmux", "new-session", "-A", "-s",
-                             "telar-1234abcd", "bash", "-lc", "cd ~; exec bash -l"])
+    def test_mosh_lleva_el_guion_de_alla_como_palabras(self):
+        c = r.comando(CASA, "@12/1234abcd", "faro")
+        self.assertEqual(c, ["mosh", "usuario@servidor", "--", "bash", "-lc", r.guion_ver("@12/1234abcd", "faro")])
 
     def test_ssh_lo_cita_entero_porque_junta_sus_argumentos(self):
-        c = r.comando(Remoto("casa", "usuario@servidor", "ssh"), "telar-1", "echo 'a b'")
+        c = r.comando(Remoto("casa", "usuario@servidor", "ssh"), "@12/1234abcd", "el faro")
         self.assertEqual(c[:3], ["ssh", "-t", "usuario@servidor"])
-        self.assertEqual(shlex.split(c[3])[-1], "echo 'a b'")
+        self.assertEqual(shlex.split(c[3]), ["bash", "-lc", r.guion_ver("@12/1234abcd", "el faro")])
 
     def test_el_vinculo_se_traduce_a_la_raiz_de_alla(self):
         self.assertEqual(r.ruta_remota(CASA, "proyectos/faro"), "~/repo/proyectos/faro")
@@ -58,16 +57,10 @@ class Comando(Prueba):
 
     def test_la_linea_deja_la_tilde_para_la_shell_de_alla(self):
         l = r.linea("~/repo/el faro", ["claude", "--session-id", "x"], "faro")
-        self.assertIn("; cd ~/'repo/el faro' 2>/dev/null;", l)
+        self.assertTrue(l.startswith("cd ~/'repo/el faro' 2>/dev/null;"), l)
         self.assertIn("export TELAR_HILO=faro", l)
         self.assertIn("claude --session-id x", l)
         self.assertTrue(l.endswith("exec bash -l"))
-
-    def test_la_sesion_sirve_para_tmux(self):
-        s = r.sesion_nueva()
-        self.assertTrue(s.startswith("telar-"))
-        self.assertNotIn(".", s)
-        self.assertNotIn(":", s)
 
 
 class Reconocer(Prueba):
@@ -94,10 +87,10 @@ class Estado(Prueba):
         self.est = mod_estado.abrir(Config(estado=Path(self.tmp.name)))
 
     def test_se_anota_se_renombra_y_se_olvida(self):
-        self.est.anotar_remoto("faro", "casa", "telar-1")
-        self.assertEqual(self.est.remotos(), {"faro": {"remoto": "casa", "sesion": "telar-1"}})
+        self.est.anotar_remoto("faro", "casa", "@1/ab12cd34")
+        self.assertEqual(self.est.remotos(), {"faro": {"remoto": "casa", "sesion": "@1/ab12cd34"}})
         self.est.renombrar("faro", "Faro norte")
-        self.assertEqual(self.est.remotos(), {"Faro norte": {"remoto": "casa", "sesion": "telar-1"}})
+        self.assertEqual(self.est.remotos(), {"Faro norte": {"remoto": "casa", "sesion": "@1/ab12cd34"}})
         self.est.olvidar("Faro norte")
         self.assertEqual(self.est.remotos(), {})
 
@@ -136,11 +129,11 @@ class SesionesQueNacieronAlla(unittest.TestCase):
     def test_solo_las_nuevas_y_sin_pisar_nombres(self):
         from telar import remoto
 
-        de_alla = [("telar-aaaa0001", "Faro"), ("telar-bbbb0002", "▶ pasada 09/26 07:00"),
-                   ("telar-cccc0003", "Faro")]
-        nuevas = remoto.nuevas({"telar-aaaa0001"}, de_alla, {"Faro"})
-        self.assertEqual(nuevas, [("telar-bbbb0002", "▶ pasada 09/26 07:00", "▶ pasada 09/26 07:00"),
-                                  ("telar-cccc0003", "Faro", "Faro · 2")])
+        de_alla = [("@1/aaaa0001", "Faro"), ("@2/bbbb0002", "▶ pasada 09/26 07:00"),
+                   ("@3/cccc0003", "Faro")]
+        nuevas = remoto.nuevas({"@1/aaaa0001"}, de_alla, {"Faro"})
+        self.assertEqual(nuevas, [("@2/bbbb0002", "▶ pasada 09/26 07:00", "▶ pasada 09/26 07:00"),
+                                  ("@3/cccc0003", "Faro", "Faro · 2")])
 
 class QueConversacionRetomarAlla(Prueba):
     """El id anotado aquí al abrir puede no tener archivo allá: un `/resume` dentro de

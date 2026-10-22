@@ -31,29 +31,37 @@ HAY_TMUX = shutil.which("tmux") is not None and shutil.which("script") is not No
 
 
 class Direcciones(unittest.TestCase):
-    def test_una_ventana_se_nombra_con_su_marca_y_una_sesion_con_su_nombre(self):
+    def test_una_ventana_se_nombra_con_su_marca(self):
         v = movil.HiloMovil(sesion="telar", nombre="faro", ventana="@12", marca="ab12cd34")
         self.assertEqual((v.direccion, v.objetivo), ("@12/ab12cd34", "@12"))
-        s = movil.HiloMovil(sesion="telar-1a2b3c4d", nombre="faro")
-        self.assertEqual((s.direccion, s.objetivo), ("telar-1a2b3c4d", "=telar-1a2b3c4d:"))
         self.assertEqual(movil.partir_direccion("@12/ab12cd34"), ("@12", "ab12cd34"))
+        # lo que no es «@ventana/marca» (una sesión de las de antes, o vacío) no es una dirección
         self.assertEqual(movil.partir_direccion("telar-1a2b3c4d"), ("", ""))
+        self.assertEqual(movil.partir_direccion(""), ("", ""))
 
-    def test_el_comando_local_mira_la_ventana_o_se_engancha_a_la_sesion_de_antes(self):
+    def test_el_comando_local_mira_la_ventana(self):
         r = mod_config.Remoto(nombre="srv", destino="yo@srv")
-        ventana = mod_remoto.comando(r, "@12/ab12cd34", "", "faro")
+        ventana = mod_remoto.comando(r, "@12/ab12cd34", "faro")
         self.assertEqual(ventana[:5], ["mosh", "yo@srv", "--", "bash", "-lc"])
         self.assertIn("@12", ventana[-1])
         self.assertIn("ab12cd34", ventana[-1])
-        antes = mod_remoto.comando(r, "telar-1a2b3c4d", "exec bash -l")
-        self.assertEqual(antes[3:8], ["tmux", "new-session", "-A", "-s", "telar-1a2b3c4d"])
-        por_ssh = mod_remoto.comando(mod_config.Remoto(nombre="srv", destino="yo@srv", transporte="ssh"), "@12/ab", "", "faro")
+        por_ssh = mod_remoto.comando(mod_config.Remoto(nombre="srv", destino="yo@srv", transporte="ssh"), "@12/ab", "faro")
         self.assertEqual(por_ssh[:3], ["ssh", "-t", "yo@srv"])
         self.assertTrue(por_ssh[3].startswith("bash -lc "))
 
     def test_la_linea_de_una_ventana_no_le_pone_nombre_a_la_sesion_del_telar(self):
-        self.assertNotIn("set-option", mod_remoto.linea("~/x", ["claude"], "faro", marcar=False))
-        self.assertIn("set-option", mod_remoto.linea("~/x", ["claude"], "faro"))
+        self.assertNotIn("set-option", mod_remoto.linea("~/x", ["claude"], "faro"))
+
+    def test_un_hilo_sin_direccion_no_se_busca_alla(self):
+        # sin «@ventana/marca» no hay nada vivo allá: ni se pregunta por ssh ni hay ventana que cerrar o nombrar
+        from unittest import mock
+
+        r = mod_config.Remoto(nombre="srv", destino="yo@srv")
+        with mock.patch.object(mod_remoto, "_ssh", side_effect=AssertionError("no debía hablar con allá")):
+            self.assertIs(mod_remoto.vive(r, ""), False)
+            self.assertIs(mod_remoto.vive(r, "telar-1a2b3c4d"), False)
+            self.assertEqual(mod_remoto.matar(r, "telar-1a2b3c4d"), "")
+            self.assertEqual(mod_remoto.nombrar(r, "", "faro"), "")
 
     def test_la_configuracion_del_remoto_lleva_su_sesion(self):
         with tempfile.TemporaryDirectory() as d:
@@ -119,9 +127,10 @@ class ContraTmuxAparte(unittest.TestCase):
         self.assertEqual(listadas["faro"].direccion, h.direccion)
         self.assertIn("uno", listadas)  # una ventana sin marca la recibe al listarse
         self.assertTrue(listadas["uno"].marca)
-        # la sesión del telar no es un hilo ella misma, aunque alguna vez la hayan marcado
-        self.tmux("set-option", "-t", "=telar", "@telar_hilo", "faro")
+        # solo las ventanas son hilos: una sesión aparte, aunque se llame como uno, no
+        self.tmux("new-session", "-d", "-s", "telar-1a2b3c4d", "sleep", "300")
         self.assertEqual(sum(1 for v in movil.hilos("telar") if v.nombre == "faro"), 1)
+        self.assertNotIn("telar-1a2b3c4d", {v.nombre for v in movil.hilos("telar")})
         self.assertTrue(movil.sin_mirar("telar"))
 
     def test_la_vista_queda_fija_y_suelta_cuando_su_ventana_muere(self):

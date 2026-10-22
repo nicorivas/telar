@@ -3,8 +3,7 @@
 Lo usan `mirar`, la web, los periódicos, los encargos y las otras máquinas (el nombre viene de la
 primera que lo usó, la vista del celular que hoy hace la web). Los hilos de esta máquina son
 las ventanas de la sesión del telar, cada una marcada con un id propio (`@telar_id`): el `@338`
-de tmux se reusa cuando su servidor se reinicia, la marca no. Las sesiones propias de antes
-(`telar-1a2b3c4d`, con su nombre en `@telar_hilo`) se siguen viendo mientras queden.
+de tmux se reusa cuando su servidor se reinicia, la marca no.
 
 Mirar una ventana desde afuera (el celular, otra máquina) es engancharse a una **sesión agrupada**
 con la del telar, fija en esa ventana: comparte las ventanas pero elige la suya, así que dos que
@@ -31,7 +30,6 @@ from dataclasses import dataclass
 PREFIJO = "movil-"
 #: las sesiones que solo miran una ventana desde otra máquina: no son hilos
 PREFIJO_VER = "ver-"
-OPCION_HILO = "@telar_hilo"
 #: la marca de una ventana-hilo (opción de ventana): sobrevive a que tmux reuse su `@N`
 OPCION_ID = "@telar_id"
 SEP = "\x1f"
@@ -43,23 +41,23 @@ class HiloMovil:
     nombre: str
     clientes: int = 0
     ventanas: int = 1
-    #: «@338» si el hilo es una ventana de la sesión del telar; "" si es una sesión propia
+    #: la ventana de la sesión del telar («@338») y su marca
     ventana: str = ""
     marca: str = ""
 
     @property
     def objetivo(self) -> str:
-        """A qué apuntar `send-keys` o `kill-*`: la ventana, o la sesión exacta."""
-        return self.ventana or f"={self.sesion}:"
+        """A qué apuntar `send-keys` o `kill-*`: la ventana."""
+        return self.ventana
 
     @property
     def direccion(self) -> str:
-        """Cómo la nombra otra máquina: «@338/1a2b3c4d» (ventana y marca) o el nombre de la sesión."""
-        return f"{self.ventana}/{self.marca}" if self.ventana else self.sesion
+        """Cómo la nombra otra máquina: «@338/1a2b3c4d», la ventana y su marca."""
+        return f"{self.ventana}/{self.marca}"
 
 
 def partir_direccion(direccion: str) -> tuple[str, str]:
-    """«@338/1a2b3c4d» → ("@338", "1a2b3c4d"); una sesión → ("", "")."""
+    """«@338/1a2b3c4d» → ("@338", "1a2b3c4d"); lo que no es una dirección → ("", "")."""
     if direccion.startswith("@") and "/" in direccion:
         ventana, _, marca = direccion.partition("/")
         return ventana, marca
@@ -123,78 +121,9 @@ def sin_mirar(principal: str) -> bool:
 
 
 def hilos(principal: str = "") -> list[HiloMovil]:
-    """Los hilos de esta máquina: las ventanas de la sesión del telar (`principal`) y las sesiones
-    propias de antes (las que tienen `@telar_hilo` o se llaman `telar-…`). Las del celular
-    (`movil-…`) y las que solo miran una ventana (`ver-…`) no cuentan."""
-    sep = SEP
-    salida = _tmux("list-sessions", "-F", sep.join(
-        ["#{session_name}", f"#{{{OPCION_HILO}}}", "#{session_attached}", "#{session_windows}"]), tolerante=True)
-    lista = []
-    for renglon in salida.splitlines():
-        # algunos tmux devuelven el separador como texto octal (ver telar.mux.tmux.SEP_EN_OCTAL)
-        partes = (renglon if sep in renglon else renglon.replace("\\037", sep)).split(sep)
-        if len(partes) != 4:
-            continue
-        sesion, nombre, clientes, n_ventanas = partes
-        if (sesion.startswith((PREFIJO, PREFIJO_VER)) or sesion == principal
-                or not (nombre or sesion.startswith("telar-"))):
-            continue
-        lista.append(HiloMovil(sesion=sesion, nombre=nombre or sesion,
-                               clientes=int(clientes) if clientes.isdigit() else 0,
-                               ventanas=int(n_ventanas) if n_ventanas.isdigit() else 1))
-    lista += ventanas(principal)
-    lista.sort(key=lambda h: h.nombre.casefold())
-    return lista
-
-
-def hilo_de_panel(panel: str) -> str:
-    """El hilo de un panel tmux que vive en una sesión propia (su `@telar_hilo`). Vacío si no.
-
-    Las ventanas de la sesión del telar no llevan la marca, así que un panel de ahí da vacío y
-    quien pregunta sigue con el multiplexor."""
-    if not panel.startswith("%"):
-        return ""
-    try:
-        return _tmux("display-message", "-p", "-t", panel, f"#{{{OPCION_HILO}}}", tolerante=True).strip()
-    except OSError:
-        return ""
-
-
-def propios() -> dict[str, str]:
-    """nombre del hilo → sesión tmux, de los hilos que viven en una sesión propia de esta máquina.
-
-    Son los que abrían versiones viejas y los periódicos: no son ventanas de la sesión
-    del telar, así que el multiplexor no los ve, pero están vivos y se les puede escribir. Si dos
-    sesiones se llaman igual, gana la que tiene a alguien mirando.
-    """
-    salida: dict[str, HiloMovil] = {}
-    for h in hilos():
-        if h.nombre not in salida or h.clientes > salida[h.nombre].clientes:
-            salida[h.nombre] = h
-    return {nombre: h.sesion for nombre, h in salida.items()}
-
-
-def escribir(sesion: str, texto: str, enviar: bool = False) -> None:
-    """Le escribe a un hilo de esta máquina: su sesión propia o su ventana («@338»).
-
-    `-l` manda el texto tal cual (la palabra «Enter» adentro no se vuelve un ↩). `=sesion:` es el
-    nombre exacto: sin el `=`, tmux aceptaría un prefijo y podría escribirle a otro hilo.
-    """
-    objetivo = sesion if sesion.startswith("@") else f"={sesion}:"
-    if texto:
-        _tmux("send-keys", "-t", objetivo, "-l", "--", texto)
-    if enviar:
-        _tmux("send-keys", "-t", objetivo, "Enter")
-
-
-def ordenes_nuevo(sesion: str, nombre: str, carpeta: str, palabras: list[str] | None) -> list[str]:
-    """El comando tmux que abre un hilo nuevo en esta máquina, igual que los que abre el laptop
-    en ella (`telar ir --remoto`): la sesión se anota su nombre, va a su carpeta y corre el
-    agente, con una shell al final para que no muera si el agente termina. Puro: se prueba sin tmux."""
-    from telar import remoto as mod_remoto
-
-    return ["new-session", "-d", "-s", sesion, "-c", carpeta,
-            "bash", "-lc", mod_remoto.linea(carpeta, palabras, nombre)]
+    """Los hilos de esta máquina: las ventanas de la sesión del telar (`principal`), por nombre. Las
+    sesiones del celular (`movil-…`) y las que solo miran una ventana (`ver-…`) no son hilos."""
+    return sorted(ventanas(principal), key=lambda h: h.nombre.casefold())
 
 
 def ordenes_ventana(principal: str, nombre: str, carpeta: str, palabras: list[str] | None,
@@ -203,7 +132,7 @@ def ordenes_ventana(principal: str, nombre: str, carpeta: str, palabras: list[st
     nadie (`-d`); si la sesión no existe, nace con esa ventana. Puro: se prueba sin tmux."""
     from telar import remoto as mod_remoto
 
-    linea = mod_remoto.linea(carpeta, palabras, nombre, marcar=False)
+    linea = mod_remoto.linea(carpeta, palabras, nombre)
     donde = ["-c", carpeta] if carpeta else []  # sin carpeta: la línea hace el `cd` (allá, `~` lo expande bash)
     if viva:
         return ["new-window", "-d", "-P", "-F", "#{window_id}", "-t", f"={principal}:", "-n", nombre,
@@ -212,20 +141,14 @@ def ordenes_ventana(principal: str, nombre: str, carpeta: str, palabras: list[st
             *donde, "bash", "-lc", linea]
 
 
-def crear(nombre: str, carpeta: str, palabras: list[str] | None, principal: str = "") -> HiloMovil:
-    """Abre un hilo nuevo en esta máquina: una ventana de la sesión del telar (`principal`), que
-    otra máquina mira con una sesión agrupada; sin `principal`, una sesión propia como antes."""
-    from telar import remoto as mod_remoto
-
-    if principal:
-        viva = subprocess.run(["tmux", "has-session", "-t", f"={principal}"], capture_output=True).returncode == 0
-        ventana = _tmux(*ordenes_ventana(principal, nombre, carpeta, palabras, viva=viva)).strip()
-        marca = marca_nueva()
-        _tmux("set-option", "-w", "-t", ventana, OPCION_ID, marca)
-        return HiloMovil(sesion=principal, nombre=nombre, ventana=ventana, marca=marca)
-    sesion = mod_remoto.sesion_nueva()
-    _tmux(*ordenes_nuevo(sesion, nombre, carpeta, palabras))
-    return HiloMovil(sesion=sesion, nombre=nombre)
+def crear(nombre: str, carpeta: str, palabras: list[str] | None, principal: str) -> HiloMovil:
+    """Abre un hilo nuevo en esta máquina: una ventana de la sesión del telar (`principal`), que otra
+    máquina mira con una sesión agrupada. Si la sesión no existe, nace con esa ventana."""
+    viva = subprocess.run(["tmux", "has-session", "-t", f"={principal}"], capture_output=True).returncode == 0
+    ventana = _tmux(*ordenes_ventana(principal, nombre, carpeta, palabras, viva=viva)).strip()
+    marca = marca_nueva()
+    _tmux("set-option", "-w", "-t", ventana, OPCION_ID, marca)
+    return HiloMovil(sesion=principal, nombre=nombre, ventana=ventana, marca=marca)
 
 
 def ordenes_ver(grupo: str, vista: str, ventana: str) -> list[list[str]]:

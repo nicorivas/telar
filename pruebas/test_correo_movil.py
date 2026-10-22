@@ -6,7 +6,6 @@ from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import correo as c
 from telar import movil as m
-from telar import remoto as r
 from telar.config import Remoto
 
 CASA = Remoto(nombre="casa", destino="usuario@servidor")
@@ -35,23 +34,17 @@ class Direcciones(Prueba):
 
 
 class MovilNuevoHilo(Prueba):
-    def test_el_hilo_nuevo_nace_como_los_remotos(self):
-        orden = m.ordenes_nuevo("telar-9f9f9f9f", "Kinross", "/home/n/Life", ["claude", "--session-id", "x"])
-        self.assertEqual(orden[:6], ["new-session", "-d", "-s", "telar-9f9f9f9f", "-c", "/home/n/Life"])
+    def test_el_hilo_nuevo_es_una_ventana_de_la_sesion_del_telar(self):
+        orden = m.ordenes_ventana("telar", "Kinross", "/home/n/Life", ["claude", "--session-id", "x"], viva=True)
+        self.assertEqual(orden[:8], ["new-window", "-d", "-P", "-F", "#{window_id}", "-t", "=telar:", "-n"])
         linea = orden[-1]
-        # se anota su nombre (lo leen el cartero y la lista), va a su carpeta y abre el agente
-        self.assertIn("@telar_hilo Kinross", linea)
+        # va a su carpeta, sabe su hilo y abre el agente; con una shell al final para no morir con él
         self.assertIn("export TELAR_HILO=Kinross", linea)
         self.assertIn("claude --session-id x", linea)
         self.assertTrue(linea.endswith("exec bash -l"))
-
-
-class NombreEnLaSesionRemota(Prueba):
-    def test_la_sesion_de_alla_se_anota_su_nombre_desde_adentro(self):
-        linea = r.linea("~/repo", None, "Pizza Ñandú")
-        self.assertTrue(linea.startswith(f"tmux set-option {r.OPCION_HILO} 'Pizza Ñandú'"))
-        # y el comando que viaja por mosh no encadena nada
-        self.assertNotIn(";", r.comando(CASA, "telar-1a2b", linea))
+        self.assertNotIn("set-option", linea)
+        # sin la sesión del telar, nace con ella
+        self.assertEqual(m.ordenes_ventana("telar", "Kinross", "", None, viva=False)[:2], ["new-session", "-d"])
 
 
 class Enviar(Prueba):

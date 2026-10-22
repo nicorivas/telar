@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Removed
+
+- The per-thread tmux sessions of before (`telar-…` with `@telar_hilo`): telar no longer opens, lists, watches or
+  writes to them. Every thread is a window of the machine's telar session, addressed `@window/mark`. Gone with
+  them: the `propio` field of a thread in `--json`, `sesion_tmux` in what a node publishes, and the `sesiones`
+  check of `telar doctor`. A remote thread recorded with an address that is not `@window/mark` (empty, or one of
+  before) counts as dead over there: opening it opens a new window. Before upgrading, `telar doctor` of 0.4.0
+  should say `sesiones ok` on every machine.
+
 ## [0.4.0] — 2026-10-22
 
 ### Added

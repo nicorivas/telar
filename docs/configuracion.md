@@ -709,8 +709,7 @@ activo = false                       # pausado
 `log` muestra su salida. En el crontab, telar maneja **solo un bloque entre marcas** (`# >>> telar
 periodicos` … `# <<< telar periodicos`), al final, y no toca lo de afuera. Cada línea llama a
 `telar periodicos correr <nombre>`, que anota la corrida en `<estado>/periodicos/`. Un `mensaje`
-abre una sesión `telar-…` con `@telar_hilo`, como los hilos remotos, así que otra máquina la trae a
-su lista. Cada cambio guarda la versión anterior en `periodicos.toml.anterior`.
+abre una ventana de la sesión del telar, como cualquier hilo, así que otra máquina la trae a su lista. Cada cambio guarda la versión anterior en `periodicos.toml.anterior`.
 
 Lo mismo se puede declarar en la configuración, `[disparadores.x]` con `cuando` (arriba): se ve y corre aquí
 igual, pero se cambia en la configuración. `periodicos.toml` se sigue leyendo y es lo que escriben `telar
@@ -773,7 +772,7 @@ en `[agentes.<carpeta>] argumentos`.
 
 ```toml
 [agente]
-max_vivos = 4                        # sesiones propias vivas a la vez en esta máquina (0: sin tope)
+max_vivos = 4                        # hilos vivos a la vez en esta máquina, si es un servidor (0: sin tope)
 
 [agentes]
 carpeta = "agentes"
@@ -783,9 +782,11 @@ rotar_mb = 8
 argumentos = ["--permission-mode", "acceptEdits"]
 ```
 
-`max_vivos` cuenta las sesiones propias (las de los periódicos, los encargos y el celular). Antes de
-abrir otra, telar cierra las ociosas que nadie está mirando, la más quieta primero y los residentes al
-final; su conversación queda en disco y se retoma cuando haga falta.
+`max_vivos` cuenta las ventanas de la sesión del telar donde nadie mira esa sesión directo (un servidor: sus
+hilos se miran desde otras máquinas); en el laptop, donde la sesión del telar es lo que la persona mira, no
+cierra nada. Antes de abrir otro hilo (un periódico, un encargo), telar cierra los ociosos que nadie está
+mirando, el más quieto primero y los residentes al final; su conversación queda en disco y se retoma cuando
+haga falta.
 
 ## `[bus]` — mensajes y estado entre varias máquinas
 

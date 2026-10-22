@@ -3,7 +3,7 @@
 Estado: **casi construida**. Una sesión por máquina, las vistas agrupadas y la dirección marcada de
 cada ventana ya son como funciona telar ([arquitectura](../arquitectura.md), «Los hilos y tmux»), y el
 registro de un hilo (vínculo, archivo, conversación) vive en su dueño y las otras máquinas lo leen del
-bus. Falta quitar las sesiones propias de antes, cuando no quede ninguna (paso 2).
+bus. Las sesiones propias de antes ya no existen en el código (paso 2, 22-oct-2026).
 
 ## Por qué
 
@@ -77,25 +77,13 @@ las ventanas de aquí contra el estado de los hilos de las otras máquinas.
    otros caminos (llevarle un pendiente) toca solo la copia de aquí: si allá estaba archivado, se
    desarchiva cuando su agente vuelve a trabajar, como cualquier hilo.
 
-2. **Quitar las sesiones propias por hilo** del código, cuando no quede ninguna. **Todavía no**: no es
-   seguro.
-
-   Dónde se crean: ya en ninguna parte en la práctica. `movil.crear` abre una sesión propia solo sin
-   `principal`, y todos los que lo llaman (encargos, periódicos) le pasan `[sesion]`, que no puede ser
-   vacía; `remoto.crear_alla` abre ventanas. Lo único que todavía puede crear una es `tmux new-session -A`
-   al mirar desde otra máquina un hilo anotado con una dirección vieja (`telar-…`), y eso solo si sigue vivo.
-
-   Dónde se leen: `movil.propios()` (de ahí `Telar.propios`, `tel.propio()` y la columna «propio» de la
-   lista), el nodo (`locales`, que publica `sesion_tmux` para que otra máquina las mire), `encargos`
-   (escribirle a un agente que vive en una), `telar hilo cerrar` (`_cerrar_sesion`) y `remoto.comando` (el
-   `new-session -A` para una dirección vieja guardada en `remotos.json`).
-
-   Por qué no se quita ahora: (a) que no quede ninguna no se puede ver desde el código; hay que mirarlo en
-   cada máquina, y una sesión de antes vive mientras su servidor tmux no se reinicie; (b) telar se publica
-   en PyPI, y quien actualice con un agente vivo en una sesión de antes lo perdería de la lista (sin casilla,
-   sin cerrar, sin poder mirarlo desde otra máquina); (c) `remotos.json` de un estado de hoy puede traer
-   direcciones viejas que se siguen siguiendo. Para verlo, `telar doctor` tiene una revisión `sesiones`:
-   lista las sesiones propias vivas y los hilos remotos con dirección vieja. Cuando dé `ok` en todas las
-   máquinas, y tras una versión que lo avise, se puede quitar: `movil.propios`, la rama sin `principal` de
-   `movil.crear`, `Telar.propios`/`propio`, `_cerrar_sesion`, `sesion_tmux` y la rama de `remoto.comando`
-   para direcciones sin `@`.
+2. ~~**Quitar las sesiones propias por hilo**~~ (hecho, 22-oct-2026): telar ya no abre, lista, mira ni
+   escribe a una sesión tmux propia por hilo (`telar-…` con `@telar_hilo`); todo hilo es una ventana de la
+   sesión del telar con su dirección `@ventana/marca`. Se fueron `movil.propios`, `hilo_de_panel`,
+   `ordenes_nuevo`, `escribir` y la rama sin `principal` de `movil.crear`; `Telar.propios`/`propio` (y el campo
+   `propio` del JSON de un hilo); `_cerrar_sesion`; `sesion_tmux` en lo que publica el nodo; `remoto.sesion_nueva`
+   y las ramas de `remoto.comando`, `vive`, `matar` y `nombrar` para direcciones sin `@`; y la revisión
+   `sesiones` de `telar doctor`, que fue la que dijo cuándo era seguro: dio `ok` en las dos máquinas, después de
+   dejar sin dirección los tres hilos que el laptop todavía anotaba con una de antes. Una dirección que no es
+   `@ventana/marca` (vacía, o una de antes en un `remotos.json` viejo) cuenta como hilo muerto allá: abrirlo
+   abre una ventana nueva.

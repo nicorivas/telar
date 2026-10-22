@@ -217,7 +217,7 @@ class Residente(ConAgentes):
                                  vinculos=lambda: {}, archivados=lambda: set())
         tel = SimpleNamespace(estado=estado, hilos=[])
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
-                mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
+                mock.patch("telar.movil.ventanas", return_value=[]):
             return n.locales()
 
     def _nodo(self):
@@ -284,7 +284,7 @@ class Residente(ConAgentes):
         with mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace(estado=SimpleNamespace(
                 remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {}, vinculos=lambda: {},
                 archivados=lambda: set()), hilos=[])), \
-                mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
+                mock.patch("telar.movil.ventanas", return_value=[]):
             locales = n.locales()
         self.assertEqual(n.renombrados, {"Faro": "Lámpara"})
         self.assertNotIn("Faro", locales)
@@ -302,9 +302,9 @@ class Residente(ConAgentes):
         hilo = SimpleNamespace(nombre="Faro", id="@1")
         tel = SimpleNamespace(estado=SimpleNamespace(remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {},
                                                      vinculos=lambda: {}, archivados=lambda: set()),
-                              hilos=[hilo], vivo=lambda h: True, propio=lambda h: False)
+                              hilos=[hilo], vivo=lambda h: True)
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
-                mock.patch("telar.movil.propios", return_value={}), mock.patch("telar.movil.ventanas", return_value=[]):
+                mock.patch("telar.movil.ventanas", return_value=[]):
             locales = n.locales()
         self.assertIn("Faro", locales)
         self.assertEqual(n.renombrados, {})
