@@ -73,12 +73,14 @@ def _imprimir(r: servicio.Hilos, red: bool) -> None:
         print(_comun.tenue("  ninguno todavía. `telar tejer` levanta la sesión."))
         return
 
+    # la columna del repo, solo si la lista abarca más de uno: con uno solo (o sin [repos]) no dice nada
+    repos = len({h.repo for h in r.hilos if h.ruta}) > 1
     for hilo in vivos:
-        print(_linea(hilo, ancho))
+        print(_linea(hilo, ancho, repos))
     if sin_ventana:
         print(_comun.tenue(f"sin ventana ({len(sin_ventana)})"))
         for hilo in sin_ventana:
-            print(_linea(hilo, ancho))
+            print(_linea(hilo, ancho, repos))
         if r.viva:
             # el caso que muerde: renombrar un tab desde el multiplexor deja aquí el nombre viejo, con
             # su vínculo y su prioridad, y el tab vivo sin nada
@@ -87,7 +89,7 @@ def _imprimir(r: servicio.Hilos, red: bool) -> None:
     if archivados:
         print(_comun.tenue(f"archivados ({len(archivados)})"))
         for hilo in archivados:
-            print(_linea(hilo, ancho))
+            print(_linea(hilo, ancho, repos))
     if red:
         _imprimir_red(r)
 
@@ -108,13 +110,19 @@ def _imprimir_red(r: servicio.Hilos) -> None:
             print(_comun.tenue(f"  y {len(suyos) - len(vivos)} cerrados o archivados"))
 
 
-def _linea(hilo: servicio.Hilo, ancho: int) -> str:
-    """Una fila: atención, id, nombre, carpeta, tiempo de hoy y la línea de estado."""
+def _linea(hilo: servicio.Hilo, ancho: int, repos: bool = False) -> str:
+    """Una fila: atención, id, nombre, carpeta, tiempo de hoy y la línea de estado. Con `repos`, entre
+    el tiempo y el estado va el repo de su carpeta, tenue como el estado («—» si no es de ninguno)."""
     marca = _comun.SIMBOLO.get(_comun.Atencion(hilo.atencion), " ") if hilo.vivo else "·"
     prioridad = str(hilo.prioridad) if hilo.prioridad else " "
     carpeta = hilo.relativa or "—"
     tiempo = _comun.duracion(hilo.tiempo)
     izquierda = f"{marca} {prioridad} {hilo.id:>3}  {hilo.nombre[:18]:<18}  {carpeta[:26]:<26} {tiempo:>5}  "
     estado = (hilo.ficha.estado or hilo.ficha.nota) if hilo.ficha else ""
-    resto = max(ancho - len(izquierda) - 1, 12)
-    return izquierda + _comun.tenue(estado[:resto])
+    if repos:
+        repo = (hilo.repo or ("—" if hilo.ruta else ""))[:12]
+        izquierda_repo = f"{repo:<12}  "
+    else:
+        izquierda_repo = ""
+    resto = max(ancho - len(izquierda) - len(izquierda_repo) - 1, 12)
+    return izquierda + _comun.tenue(izquierda_repo + estado[:resto])

@@ -344,7 +344,7 @@ que se la llevaría. La vista de proyectos del dashboard junta por `proyecto`.
 ```json
 { "sesion": "telar", "viva": true, "raiz": "/casa/trabajo",
   "multiplexor": "tmux", "aviso": "", "orden": "mux", "clientes": [ 85579 ],
-  "hilos": [ hilo, … ] }
+  "hilos": [ { …hilo, "repo": "vida" }, … ] }
 ```
 
 Con `--red` suma tres claves, que se piden y no cambian las demás: `otras_maquinas`
@@ -352,6 +352,12 @@ Con `--red` suma tres claves, que se piden y no cambian las demás: `otras_maqui
 registro del bus tiene en máquinas distintas de esta, vivos o no), `maquinas` (`[{ "nombre", "en_linea",
 "edad" }]`, de los espejos: una máquina sin señal muestra lo último que dijo) y `aviso_red` (por qué no se leyó
 el bus, vacío si todo bien; sin bus o con el bus caído, `hilos` sigue valiendo y `otras_maquinas` va vacío).
+
+Cada `hilo` de esta lista trae además `repo`: el nombre del repositorio de `[repos]` al que
+pertenece su carpeta (`telar.perfil.repo_de`: el más hondo que la contiene), o `""` si no es de
+ninguno, si no hay `[repos]` o si el hilo no tiene carpeta. Solo lo trae esta lista (y `GET /hilos`):
+la pieza `hilo` de las demás salidas no cambia. La salida para leer lo muestra, tenue, cuando los
+hilos con carpeta abarcan más de un repo.
 
 `clientes` son los pids de las terminales enganchadas a la sesión: los procesos del
 multiplexor que la están mostrando. Sirven para encontrar desde afuera cuál terminal

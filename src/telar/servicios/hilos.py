@@ -47,6 +47,8 @@ class Hilo(BaseModel):
     ruta: str = ""
     relativa: str = ""
     arquetipo: str = ""
+    #: el repositorio de `[repos]` al que pertenece su carpeta (telar.perfil.repo_de); "" si ninguno
+    repo: str = ""
     prioridad: int | None = None
     atencion: str = "ninguna"
     atencion_desde: str | None = None
@@ -121,12 +123,22 @@ def hilos(ctx, *, vivos: bool = False, red: bool = False, con_ficha: bool = True
         "aviso": tel.aviso,
         "orden": orden,
         "clientes": _clientes(tel),
-        "hilos": [_comun.json_hilo(h, tel, con_ficha=con_ficha) for h in lista],
+        "hilos": [_con_repo(_comun.json_hilo(h, tel, con_ficha=con_ficha), h, ctx.config) for h in lista],
     }
     if red:
         otras, maquinas, aviso_red = _red(ctx)
         datos.update(otras_maquinas=otras, maquinas=maquinas, aviso_red=aviso_red)
     return Hilos(**datos)
+
+
+def _con_repo(cuerpo: dict, hilo, config) -> dict:
+    """Le suma al hilo el nombre del repo de `[repos]` donde vive su carpeta. Va aquí y no en
+    `json_hilo`: es lo que se ve en la lista, y las demás salidas del hilo quedan como estaban. Un
+    hilo sin carpeta no es de ningún repo, aunque la raíz misma esté declarada en `[repos]`."""
+    from telar import perfil
+
+    cuerpo["repo"] = perfil.repo_de(config, hilo.ruta) if hilo.ruta else ""
+    return cuerpo
 
 
 def _clientes(tel) -> list[int]:
