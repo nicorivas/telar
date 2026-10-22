@@ -424,7 +424,9 @@ def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
     instalados = leer_instalados(ruta)
     if nombre in instalados:
         raise ErrorDeModulo(f"«{nombre}» ya está en {ruta}")
-    remoto = _git(carpeta, "remote", "get-url", "origin").stdout.strip()
+    # la fuente es su repositorio solo si el módulo es ese repositorio entero; si vive dentro de otro, su carpeta
+    raiz_git = _git(carpeta, "rev-parse", "--show-toplevel").stdout.strip()
+    remoto = _git(carpeta, "remote", "get-url", "origin").stdout.strip() if raiz_git and Path(raiz_git).resolve() == carpeta else ""
     instalados[nombre] = {"carpeta": str(carpeta), "fuente": remoto or str(carpeta), "enlazado": True,
                           "version": _git(carpeta, "rev-parse", "--short", "HEAD").stdout.strip(),
                           "instalado": date.today().isoformat()}
