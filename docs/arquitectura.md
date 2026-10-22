@@ -263,8 +263,11 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   él sus líneas al ancho de su caja, con saltos de verdad, así que una fila que llega al borde derecho sigue en la
   de abajo si lo que cruza el corte es más largo que una fila. Un `.html` el visor lo muestra dibujado, en un
   iframe aislado (`/api/archivos/ver`, con `sandbox`: sus scripts no ven la llave ni la API de la página), con su
-  código a un clic. Lo que muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ hilo · vista» (o
-  ⎋) vuelve a donde se apretó el enlace: `navegador/app.ts` recuerda de dónde se vino.
+  código a un clic. Al lado del archivo, sus conexiones en el grafo (`/api/modulos/grafo/vecinos`, si la máquina
+  del archivo tiene el módulo): se piden después de mostrarlo, porque el grafo lee el repositorio entero. Lo que
+  muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ …» vuelve al documento anterior (el visor
+  anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋: `navegador/app.ts`
+  recuerda de dónde se vino.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un menú para elegir, un aviso

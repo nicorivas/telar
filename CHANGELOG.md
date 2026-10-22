@@ -27,6 +27,10 @@ extension shared the version number.
   scripts run in an origin of their own, without the page's key or its API; «código» next to its path shows the
   source, and «dibujado» goes back. What the page loads by a relative path (images, styles) is not resolved: it
   is for self-contained pages, like a slide.
+- The document viewer shows a file's connections in the knowledge graph next to it (below it on a narrow
+  screen), when the file's machine has the `grafo` module: the ones that go out (type, where, and why) and the
+  ones that come in, grouped by the other document. Each one opens that document in the same viewer. They
+  arrive after the file, so they never delay it; without the module, or without connections, nothing shows.
 - Web addresses open in a new tab of the browser being used, wherever the thread lives. In the terminal, an
   `https://…` written as text is a link (without the punctuation that ends the sentence, and whole even when
   Claude Code split it over several rows), and an OSC 8 hyperlink opens without xterm's confirm (a `file://`
@@ -57,7 +61,7 @@ extension shared the version number.
   and the people picker for who does it, where it asked for a name.
 - The document viewer (a file, or a thread's folder) sits inside the same bordered box as a task's card, with
   «‹ <thread> · <view>» (or «‹ dashboard») above it: a click on it, or ⎋, goes back to where the link was
-  clicked. A file opened from inside another keeps it.
+  clicked. A file opened from inside another (a link, the folder, a connection) goes back to that one first.
 - In a task's card, the due date («vence 2026-10-12») is a button: a click opens the date picker, as the date
   does in the task list. Without a date, «sin fecha» goes at the end of the line, also clickable.
 - Settings have a vertical menu of sections, each in its own module: tabs, calendar, threads, agent prompts,

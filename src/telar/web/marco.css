@@ -882,10 +882,14 @@ body.angosto.en-detalle #barra { display: none; }
 }
 
 /* La carpeta de un hilo y su documento (web/carpeta.ts): los archivos arriba, como una lista corta, y el
-   elegido abajo. scripts/navegador.mjs la junta en src/telar/web/marco.css. */
+   elegido abajo, con sus conexiones del grafo al lado (o debajo, si no caben). scripts/navegador.mjs la junta en
+   src/telar/web/marco.css. */
 
 @scope (.v-documento) {
-  :scope { padding: var(--e-2) var(--h-2) var(--e-3); }
+  :scope {
+    padding: var(--e-2) var(--h-2) var(--e-3);
+    container-type: inline-size;
+  }
 
   h1 {
     margin: 0 0 var(--e-2);
@@ -935,6 +939,64 @@ body.angosto.en-detalle #barra { display: none; }
     }
 
     & iframe[hidden] { display: none; }
+  }
+
+  /* el archivo y sus conexiones: lado a lado si hay ancho; si no, las conexiones abajo */
+  .cuerpo:has(> .conexiones:not([hidden])) {
+    display: grid;
+    gap: 0 var(--h-2);
+  }
+
+  .conexiones {
+    margin-top: var(--e-3);
+    padding-top: var(--e-2);
+    border-top: var(--borde);
+    font-size: var(--t-menor);
+
+    & h2 {
+      margin: 0 0 var(--e-1);
+      color: var(--amarillo);
+      font-size: var(--t-normal);
+    }
+
+    & h3 {
+      margin: var(--e-2) 0 var(--e-1);
+      color: var(--dim);
+      font-size: inherit;
+      font-weight: inherit;
+    }
+
+    & ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    & li { margin-bottom: var(--e-2); }
+    & .arista { margin-top: var(--e-1); }
+    & code { color: var(--cian); font: inherit; }
+    & .locus,
+    & .porque,
+    & .n { color: var(--dim); }
+    & .porque p { margin: 0; }
+    & .roto { color: var(--rojo); text-decoration: line-through; }
+  }
+
+  @container (min-width: 120ch) {
+    .cuerpo:has(> .conexiones:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(32ch, 42ch); }
+
+    /* al lado, con su línea a la izquierda; al bajar por un documento largo, siguen a la vista */
+    .conexiones {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      margin-top: 0;
+      padding-left: var(--h-2);
+      overflow-y: auto;
+      border-top: 0;
+      border-left: var(--borde);
+    }
   }
 
   .md {
