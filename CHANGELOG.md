@@ -6,6 +6,26 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-22
+
+### Added
+
+- Roles on the bus: the **owner** (who runs it), **admins** (approve and decline join requests, remove accounts and
+  change roles, except the owner's) and **members** (their account, as before). The bus server enforces it: the
+  owner's account exports `admin.<owner>` only to admin accounts, and the bus machine's node serves it knowing who
+  asks (`Nats-Request-Info`). `telar bus personas|pedidos|aprobar|rechazar|quitar` now work from any machine of the
+  owner or of an admin, reload the bus by themselves, and there is `telar bus rol NAME admin|miembro` and `aprobar
+  ID --rol admin`. The same in the page, ⚙ personas, and in the API, `GET /personas` and `POST /personas/<action>`.
+  `[bus] administra` names the owner on an admin's machines; `telar instalar --unirse` writes it.
+- `areas` and `internos` in a profile: the order of areas in the dashboard and the clients that are the house
+  itself (shown by the project's name instead). `telar proyectos --json` gives `areas` and marks each project
+  `interno`. They used to be fixed in the page's code.
+
+### Changed
+
+- `telar serve --equipo` with nobody in `[equipo.personas]` (or a broken `[equipo]`) warns and starts without the
+  team page, instead of not starting at all.
+
 ### Removed
 
 - The per-thread tmux sessions of before (`telar-…` with `@telar_hilo`): telar no longer opens, lists, watches or
