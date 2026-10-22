@@ -62,6 +62,7 @@ ORDENES: dict[str, str] = {
     "imagen": "Llevar una imagen del portapapeles (o un archivo) a la máquina donde corre el hilo.",
     "serve": "La API de telar: los mismos datos que la CLI, por HTTP, desde un proceso que se queda.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",
+    "disparadores": "Lo que corre o manda algo solo: por un reloj, una tecla o un cambio.",
     "encargar": "Pedirle algo a un agente residente, en su hilo de siempre.",
     "mensaje": "Un mensaje para un hilo o un agente, en la máquina que sea, por el bus.",
     "compartir": "Llevar algo de afuera (un enlace, un texto) a un hilo, a un agente o a un proveedor que lo recibe.",

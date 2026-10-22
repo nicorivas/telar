@@ -72,7 +72,7 @@ def _periodicos(ctx, hay: bool) -> None:
         return
     try:
         config = mod_config.cargar(ctx.config.origen) if ctx.config.origen else mod_config.cargar()
-        archivo = mod_periodicos.con_modulos(mod_periodicos.leer(mod_periodicos.ruta(ctx.config.origen)), config)
+        archivo = mod_periodicos.completo(mod_periodicos.leer(mod_periodicos.ruta(ctx.config.origen)), config)
         from telar.ordenes.periodicos import _telar
 
         mod_periodicos.aplicar(archivo, _telar())

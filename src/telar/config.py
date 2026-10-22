@@ -420,6 +420,10 @@ class Config:
     hilos: Hilos = field(default_factory=Hilos)
     #: las teclas del dashboard que abren un hilo con el agente haciendo algo (`[atajos.m]`).
     atajos: tuple[Atajo, ...] = ()
+    #: lo que corre o manda algo solo (`[disparadores.x]`, telar.disparadores), en el orden del archivo: por un
+    #: reloj, una tecla o un cambio. Los de tecla ya están sumados a `atajos`; los de reloj los suma
+    #: `telar.periodicos` a lo de periodicos.toml, y los de cambio los despacha el nodo.
+    disparadores: tuple = ()
     #: secciones del día llenadas por un comando (`[bloques.<clave>]`), en el orden del archivo.
     bloques: tuple[Bloque, ...] = ()
     #: qué abre cada tipo de evento de la agenda (`[agenda.<clave>]`), en el orden del archivo.
@@ -693,6 +697,37 @@ def _con_vistas(datos: dict) -> tuple[dict, tuple[str, ...]]:
     return datos, tuple(tabla)
 
 
+def _con_disparadores(datos: dict) -> tuple[dict, tuple]:
+    """Los `[disparadores.x]`, leídos (telar.disparadores), y los de tecla traducidos a `[atajos.<tecla>]` para que
+    el resto de telar no cambie: (los datos con ellos sumados, todos los disparadores). Van después de los atajos
+    declarados a mano. Una tecla en las dos formas es un error; los errores nombran el disparador."""
+    if "disparadores" not in datos:
+        return datos, ()
+    from telar import disparadores as mod_disparadores
+
+    lista = mod_disparadores.leer(datos["disparadores"])
+    teclas = [d for d in lista if d.tipo == "tecla" and d.activo]
+    if not teclas:
+        return datos, lista
+    datos = dict(datos)
+    atajos = dict(_tabla(datos.get("atajos", {}), "atajos"))
+    for d in teclas:
+        if d.tecla in atajos:
+            raise ErrorDeConfig(f"disparadores.{d.nombre}.tecla: «{d.tecla}» también está en [atajos.{d.tecla}]: deja"
+                                f" una sola (la forma nueva es [disparadores.{d.nombre}])")
+        cuerpo = d.atajo()
+        try:
+            desde_dict({"atajos": {d.tecla: cuerpo}})
+        except ErrorDeConfig as e:
+            dice = str(e)
+            for antes, ahora in (("en", "aparece"), ("nombre", "hilo")):  # las claves que la traducción renombró
+                dice = dice.replace(f"atajos.{d.tecla}.{antes}:", f"atajos.{d.tecla}.{ahora}:", 1)
+            raise ErrorDeConfig(dice.replace(f"atajos.{d.tecla}", f"disparadores.{d.nombre}", 1)) from None
+        atajos[d.tecla] = cuerpo
+    datos["atajos"] = atajos
+    return datos, lista
+
+
 def como_vista(tabla: str, cosa) -> dict:
     """La `[vistas.x]` que reemplaza a un bloque, una app, una sección o un resultado ya leídos: lo que
     `telar doctor` sugiere. Solo trae lo que no es el valor por defecto; leída de vuelta, da lo mismo."""
@@ -760,8 +795,9 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
     de_antes = tuple((t, k) for t in TABLAS_DE_ANTES if isinstance(datos.get(t), dict) for k in datos[t])
     datos, vistas = _con_vistas(datos)
     datos, modulos = _con_modulos(datos, rotos)
+    datos, disparadores = _con_disparadores(datos)
     cambios: dict[str, object] = {"origen": origen, "modulos": modulos, "modulos_rotos": tuple(rotos or ()),
-                                  "vistas": vistas, "vistas_de_antes": de_antes}
+                                  "vistas": vistas, "vistas_de_antes": de_antes, "disparadores": disparadores}
 
     if "multiplexor" in datos:
         mux = datos["multiplexor"]
@@ -1226,6 +1262,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
         "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
+        "disparadores",  # leídos por _con_disparadores
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

@@ -372,6 +372,57 @@ clican.
 | `"<clave>"` | el título del bloque `[bloques.<clave>]`, en su pestaña |
 | `"seccion:<clave>"` | el título de la pestaña de esa sección |
 
+`[atajos]` es la forma de antes: un `[disparadores.x]` con `tecla` da lo mismo (abajo), y `telar doctor` escribe
+el que reemplaza a cada atajo. Se sigue leyendo.
+
+## `[disparadores]` — lo que corre o manda algo solo: por un reloj, una tecla o un cambio
+
+```toml
+[disparadores.resumen]               # un reloj: como un proceso de periodicos.toml
+cuando = "30 8 * * 1-5"
+comando = "~/bin/resumen --corto"
+descripcion = "el resumen de la mañana"
+
+[disparadores.correo]                # una tecla del dashboard: como un [atajos.m]
+tecla = "m"
+mensaje = "/correo"
+hilo = "⚑ correo"                    # el nombre del hilo; por defecto, el del disparador
+aparece = "correo"                   # dónde se muestra: "hoy" (por defecto), la clave de una vista o "seccion:<clave>"
+
+[disparadores.tablero]               # al cambiar: cuando alguna máquina anuncia `telar cambio tareas`
+al = "cambio:tareas"
+comando = "~/bin/tablero --rehacer"
+```
+
+Un disparador dice **cuándo** con una sola de tres claves, y **qué** con un `comando` (una línea de bash) o un
+`mensaje` (un prompt: abre un hilo con el agente, o se le encarga a `agente`, un residente):
+
+| cuándo | es | acepta además |
+| --- | --- | --- |
+| `cuando` | un horario cron, como en `periodicos.toml` | `agente`, `hilo`, `max_abiertos`, `argumentos`, `carpeta`, `descripcion`, `activo` |
+| `tecla` | un carácter: la tecla del dashboard, como en `[atajos]` | solo `mensaje`, y `agente`, `hilo`, `descripcion`, `aparece`, `activo` |
+| `al` | `"cambio:<tema>"`: un `telar cambio <tema>` de cualquier máquina | lo mismo que `cuando` |
+
+El nombre (la clave de la tabla) va en el crontab y en el archivo de su última corrida: minúsculas, números, `-`
+y `_`, y no puede ser el de un proceso de `periodicos.toml` o de un módulo.
+
+- **Un reloj** es un proceso más de `telar periodicos`: se lista, corre y anota igual, pero no se escribe en
+  `periodicos.toml` ni se cambia con `editar`, `pausar` o `borrar` (se cambia aquí). Después de agregarlo,
+  `telar periodicos aplicar` lo pone en el crontab; `telar doctor` avisa si falta ahí.
+- **Una tecla** es un atajo: `telar atajo`, `/atajos` y el dashboard la ven igual que un `[atajos.x]`. Una tecla
+  en las dos formas, o en dos disparadores, es un error. Con `activo = false` la tecla no existe.
+- **Un cambio** lo corre el nodo (`telar serve --nodo` o `telar nodo`), así que pide el bus: sin él no hay quién
+  lo oiga, y `telar doctor` lo dice. Corre como un periódico (su última corrida se ve en `telar disparadores` y
+  en `<estado>/periodicos/<nombre>.json`), con freno: uno a la vez por disparador, y lo que llega mientras corre
+  deja **una** corrida pendiente; 30 s entre corridas; 12 por hora como mucho (pasado eso se frena hasta que la
+  hora corra, y el registro del nodo lo dice una vez). El nodo lee los disparadores al arrancar: uno nuevo pide
+  reiniciarlo.
+
+Los de reloj y los de cambio corren en la máquina donde corren los periódicos (`[periodicos] en`, o esta si no
+dice), con la configuración de esa máquina. `telar disparadores` los lista (`--json`, en
+[contratos.md](contratos.md)) y `telar disparadores correr <nombre>` corre uno ya, para probarlo. El diseño y lo
+que falta están en [propuestas/disparadores.md](propuestas/disparadores.md).
+
 ## `[vistas]` — qué se muestra y dónde aparece
 
 ```toml
@@ -657,6 +708,10 @@ periodicos` … `# <<< telar periodicos`), al final, y no toca lo de afuera. Cad
 `telar periodicos correr <nombre>`, que anota la corrida en `<estado>/periodicos/`. Un `mensaje`
 abre una sesión `telar-…` con `@telar_hilo`, como los hilos remotos, así que otra máquina la trae a
 su lista. Cada cambio guarda la versión anterior en `periodicos.toml.anterior`.
+
+Lo mismo se puede declarar en la configuración, `[disparadores.x]` con `cuando` (arriba): se ve y corre aquí
+igual, pero se cambia en la configuración. `periodicos.toml` se sigue leyendo y es lo que escriben `telar
+periodicos` y la página.
 
 En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la orden y la sección
 «periódicos» de ⚙ configuración (tecla `o` en el dashboard) los ven y los cambian allá, por ssh:

@@ -17,7 +17,9 @@ Al editar, `--arg` se repite (con `=` si el valor empieza con guion: `--arg=--pe
 `--sin-args` los quita todos, y `--activo si|no` pausa o activa en la misma orden.
 
 Se definen en `periodicos.toml`, al lado de config.toml, en la máquina que los corre; ver
-`telar.periodicos`. Todo cambio hecho por aquí reescribe el crontab al tiro (`aplicar`).
+`telar.periodicos`. Todo cambio hecho por aquí reescribe el crontab al tiro (`aplicar`). Los de un
+módulo y los `[disparadores.x]` con `cuando` de la configuración (telar.disparadores) también se listan
+y corren aquí, pero se cambian donde se declaran.
 
 Con `--en <remoto>` (o `[periodicos] en = "<remoto>"` en la config de esta máquina) la orden
 corre en esa máquina de [remotos], por ssh: así el laptop ve y cambia los del servidor.
@@ -127,7 +129,7 @@ def _telar() -> str:
 
 def _aqui(ctx, o) -> int:
     destino = mod.ruta()
-    archivo = mod.con_modulos(mod.leer(destino), ctx.config)
+    archivo = mod.completo(mod.leer(destino), ctx.config)
 
     if o.verbo == "ver":
         datos = mod.resumen(ctx, archivo)
@@ -206,6 +208,9 @@ def _aqui(ctx, o) -> int:
 
     # lo que cambia el archivo; un proceso de un módulo se cambia en su modulo.toml
     de_modulo = archivo.por_nombre(o.nombre) if o.verbo in ("editar", "pausar", "activar", "borrar") and o.nombre else None
+    if de_modulo and de_modulo.disparador:
+        return _comun.queja(f"«{o.nombre}» lo declara la configuración ([disparadores.{o.nombre}] en "
+                            f"{ctx.config.origen or 'config.toml'}): se cambia ahí (y después `telar periodicos aplicar`)")
     if de_modulo and de_modulo.modulo:
         m = next((x for x in ctx.config.modulos if x.nombre == de_modulo.modulo), None)
         return _comun.queja(f"«{o.nombre}» lo trae el módulo {de_modulo.modulo}: se cambia en "

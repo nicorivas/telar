@@ -78,6 +78,9 @@ class Proceso:
     #: el módulo que lo declara (`telar.modulos`); "" si vive en periodicos.toml. Los de un módulo
     #: no se escriben en periodicos.toml ni se cambian desde aquí: se cambian en su modulo.toml.
     modulo: str = ""
+    #: si lo declara un `[disparadores.x]` de la configuración (telar.disparadores): tampoco se escribe en
+    #: periodicos.toml ni se cambia desde aquí, sino en la configuración.
+    disparador: bool = False
 
     @property
     def tipo(self) -> str:
@@ -268,6 +271,30 @@ def con_modulos(a: Archivo, config) -> Archivo:
     return a
 
 
+def con_disparadores(a: Archivo, config) -> Archivo:
+    """El archivo con los `[disparadores]` de reloj de la configuración al final (telar.disparadores). Solo en la
+    máquina donde corren los periódicos: en otra, su configuración no es la que lee el crontab. Un nombre que ya
+    está en periodicos.toml o en un módulo es un error, y también el de un disparador de cambio: los dos anotan su
+    última corrida en `<estado>/periodicos/<nombre>.json`."""
+    from telar import disparadores as mod_disparadores
+
+    for d in getattr(config, "disparadores", ()):
+        if d.tipo == "tecla":
+            continue
+        previo = a.por_nombre(d.nombre)
+        if previo is not None:
+            donde = f"el módulo {previo.modulo}" if previo.modulo else "periodicos.toml"
+            raise ErrorDePeriodicos(f"[disparadores.{d.nombre}] se llama como un proceso de {donde}: cambia uno de los dos")
+        if d.tipo == "reloj" and mod_disparadores.corren_aqui(config):
+            a.procesos.append(d.proceso())
+    return a
+
+
+def completo(a: Archivo, config) -> Archivo:
+    """Lo que corre en esta máquina: periodicos.toml, los módulos y los `[disparadores]` de reloj."""
+    return con_disparadores(con_modulos(a, config), config)
+
+
 def _toml(valor) -> str:
     if isinstance(valor, bool):
         return "true" if valor else "false"
@@ -284,8 +311,8 @@ def texto(a: Archivo) -> str:
     if a.zona:
         lineas += [f"zona = {_toml(a.zona)}", ""]
     for p in a.procesos:
-        if p.modulo:
-            continue   # lo declara su módulo
+        if p.modulo or p.disparador:
+            continue   # lo declara su módulo, o la configuración
         lineas.append(f"[{p.nombre}]")
         por_defecto = Proceso(nombre=p.nombre, cuando="")
         for clave in CLAVES:
@@ -418,7 +445,11 @@ def _entorno() -> dict:
     """cron corre con un PATH mínimo y sin idioma: sin UTF-8, tmux cambia los glifos por «_»."""
     entorno = dict(os.environ)
     extra = [os.path.expanduser("~/.local/bin"), "/usr/local/bin", "/opt/homebrew/bin"]
-    entorno["PATH"] = os.pathsep.join([*[d for d in extra if os.path.isdir(d)], entorno.get("PATH", "/usr/bin:/bin")])
+    camino = entorno.get("PATH", "/usr/bin:/bin")
+    # las que ya están no se repiten: el nodo corre los disparadores de cambio con esto, una y otra vez, en el
+    # mismo proceso, y el PATH crecería en cada corrida
+    ya = set(camino.split(os.pathsep))
+    entorno["PATH"] = os.pathsep.join([*[d for d in extra if os.path.isdir(d) and d not in ya], camino])
     entorno.setdefault("LANG", "C.UTF-8")
     return entorno
 
@@ -559,6 +590,6 @@ def resumen(ctx, a: Archivo, ahora: datetime | None = None) -> list[dict]:
                        "comando": p.comando, "mensaje": p.mensaje, "agente": p.agente, "hilo": p.hilo,
                        "max_abiertos": p.max_abiertos,
                        "argumentos": list(p.argumentos), "carpeta": p.carpeta, "descripcion": p.descripcion,
-                       "activo": p.activo, "modulo": p.modulo, "proxima": sig.isoformat(timespec="minutes") if sig else "",
+                       "activo": p.activo, "modulo": p.modulo, "disparador": p.disparador, "proxima": sig.isoformat(timespec="minutes") if sig else "",
                        "ultima": ultima(ctx.config, p.nombre)})
     return salida

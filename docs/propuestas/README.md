@@ -23,6 +23,9 @@ el primer paso sin hacer de la primera propuesta.
    objeto; cómo se funde `telar encargar`). Su primer paso está hecho.
    El paso 6, las vistas, también: **[vistas.md](vistas.md)** (`[vistas]`: qué se muestra y dónde aparece, qué
    tablas reemplaza y cómo conviven). Su primer paso está hecho.
+   El paso 7, los disparadores y el estado deseado, también: **[disparadores.md](disparadores.md)**
+   (`[disparadores]`: un reloj, una tecla o un cambio; qué reconciliaría el nodo y por qué por ahora solo avisa).
+   Su primer paso está hecho.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
    que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
 4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores

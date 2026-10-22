@@ -185,7 +185,12 @@ Cada uno deja todo funcionando.
    nombre en las dos formas es un error, y `telar doctor` sugiere la vista de cada tabla de antes. Faltan las
    vistas de un objeto, los módulos, `telar vista` y la forma nueva en `/config`.
 7. **Disparadores y estado deseado**: periódicos, teclas y «al cambiar» en `[disparadores]`; el nodo
-   reconcilia residentes, periódicos y módulos.
+   reconcilia residentes, periódicos y módulos. El diseño, las decisiones abiertas y lo que falta están en
+   [disparadores.md](disparadores.md). Primer paso hecho (22-oct-2026): la configuración lee
+   `[disparadores.<nombre>]` con `cuando` (un cron), `tecla` o `al = "cambio:<tema>"`; el reloj se suma a `telar
+   periodicos` y la tecla a `[atajos]` al leerlos, y el cambio lo corre el nodo con freno; el nodo avisa (no
+   arregla) cuando un residente no tiene sesión, y `telar doctor` dice lo declarado que no corre. Faltan los
+   filtros de un cambio, que `telar periodicos` escriba `[disparadores]`, los módulos y arreglar además de avisar.
 8. **Permisos**: sujetos con permisos, la solicitud de permiso como objeto, los manifiestos con lo que piden.
 
 **Las CLI sueltas** (aparte, junto al paso 2). El repo de vida tiene decenas de CLI propias; seis tocan

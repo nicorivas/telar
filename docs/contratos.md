@@ -846,6 +846,14 @@ comando = ["mi-correo"]`). Sin ninguna de antes y con `[vistas]`, un `ok`; sin n
 Con `[agentes] carpeta`, la revisión `agentes` es un `aviso` por cada problema de un `agente.toml` y por
 cada agente cuyo `nombre` declarado no tiene conversación anotada y el de antes sí (el arreglo es el
 `telar hilo renombrar` que la lleva); sin nada de eso, un `ok` con sus nombres. Sin agentes, ninguna.
+La revisión `disparadores` (docs/propuestas/disparadores.md) es un `aviso` por cada `[atajos.x]` declarado a
+mano, con el `[disparadores.x]` que lo reemplaza en `arreglo` (TOML para copiar, una clave por línea); un `aviso`
+si un disparador de reloj activo no tiene su línea en el bloque de telar del crontab (`arreglo`: `telar
+periodicos aplicar`), y otro si hay disparadores de cambio sin `[bus]`. En una máquina que no es la de los
+periódicos, un `ok` que dice dónde corren. Sin nada de eso y con disparadores, un `ok` con cuántos hay de cada
+tipo; sin disparadores ni atajos, ninguna. La revisión `deseado` es lo que dejó el nodo en `<estado>/deseado.json`
+en los últimos diez minutos: un `ok` con los residentes de aquí sin sesión (no es un aviso: se les abre cuando les
+llega algo), o que todos la tienen; si el nodo no corre, ninguna.
 La revisión `sesiones` dice si quedan sesiones tmux propias por hilo de las versiones de
 antes (`telar-…`) vivas en esta máquina, o hilos remotos anotados con una dirección de ese
 tipo (un `aviso`, con sus nombres); sin ninguna, `ok`. Si tmux está y no se le pudo
@@ -997,10 +1005,29 @@ mismos campos, más `fecha` y `mensaje`, en `<estado>/commits.log`.
               "tipo": "mensaje", "segundos": 0.8, "hilo": "✉ correo 10/02 09:00"}}]}
 ```
 
+`modulo` es el módulo que lo trae ("" si no) y `disparador` es `true` si lo declara un `[disparadores.x]` de la
+configuración: esos dos se listan y corren, pero `editar`, `pausar`, `activar` y `borrar` los rechazan.
 `proxima` va vacía si está pausado. `ultima` está vacía si nunca corrió, y trae `corriendo: true` mientras
 corre. `codigo` distinto de 0 es que falló (un comando que salió mal, un hilo que no se pudo abrir); un
 `mensaje` saltado por `max_abiertos` es 0 con `resultado` «saltado: …». Las órdenes que cambian algo
 responden `{"ok": true, "hecho": "…"}`; `log` responde `{"nombre", "log"}`.
+
+## `telar disparadores --json` — lo que corre o manda algo solo
+
+```json
+{"maquina": "servidor", "corren_aqui": true,
+ "disparadores": [{"nombre": "tablero", "tipo": "cambio", "cuando": "", "tecla": "", "al": "cambio:tareas",
+   "tema": "tareas", "comando": "~/bin/tablero --rehacer", "mensaje": "", "agente": "", "hilo": "",
+   "max_abiertos": 1, "argumentos": [], "carpeta": "", "descripcion": "", "aparece": "", "activo": true,
+   "proxima": "", "ultima": {"inicio": "2026-10-22T10:00:01-03:00", "codigo": 0, "resultado": "ok", "…": "…"}}]}
+```
+
+Uno por cada `[disparadores.x]` de la configuración de esta máquina, en su orden. `tipo` es `reloj` (con
+`cuando`), `tecla` (con `tecla` y `aparece`) o `cambio` (con `al` y su `tema`). `proxima` es la próxima corrida de
+uno de reloj ("" los demás y los pausados). `ultima` es la de `telar periodicos` (arriba), vacía en una tecla o si
+nunca corrió. `corren_aqui` es `false` en una máquina que no es la de los periódicos (`[periodicos] en`): ahí los
+de reloj y de cambio no corren. `telar disparadores correr <nombre> --json` corre uno de reloj o de cambio y
+responde `{nombre, …}` con lo mismo que su `ultima`; con una tecla, sale con 1 y dice el `telar atajo` que la corre.
 
 ## `telar hilo leer --json` — lo último de un hilo
 

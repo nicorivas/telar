@@ -63,6 +63,7 @@ Tres reglas sostienen el dibujo:
 | **módulo** | una carpeta con un `modulo.toml` que aporta de una vez una pestaña, una app, un proceso periódico o un resultado | `[modulos]` |
 | **mensaje** | texto para un hilo o un agente, en cualquier máquina; llega aunque el hilo esté cerrado | `telar mensaje`; viaja por el bus |
 | **periódico** | algo que corre solo cada cierto tiempo, a veces abriendo un hilo con un agente | `telar periodicos` (cron) |
+| **disparador** | lo que corre un comando o manda un mensaje solo: por un reloj (un periódico), una tecla (un atajo) o un cambio (`telar cambio`) | `[disparadores]`; el de cambio lo corre el nodo |
 | **nodo** | la parte de `telar serve` que habla con el bus: recibe los mensajes, avisa a los hilos, publica qué hay vivo | `telar serve --nodo` |
 | **la página** | lo que se ve: la barra de hilos, el dashboard y cada hilo; también es la app del celular | `telar serve --web`; su código, en `pagina/` |
 
@@ -130,6 +131,7 @@ Por el bus viajan:
 | la foto | almacén `TELAR_ESPEJO`, cada 30 s | los hilos de cada máquina y la dirección de su página |
 | los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo, un encargo que vive allá |
 | el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
+| los cambios | `cambio.<persona>.<tema>`, sin guardar | `telar cambio <tema>`: que el dashboard de cada máquina relea, y los disparadores «al cambiar» |
 
 Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
 hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
@@ -166,6 +168,15 @@ cierra (`telar objeto encargo:<id> cerrar`); al cerrarlo, a quien lo pidió le l
 resultado. Quien lo manda guarda una nota (`<estado>/encargos/enviados/<id>.json`) para abrirlo después desde
 su máquina, con el pedido `encargo` al nodo de allá. Una `consulta` no viaja: es la ficha del hilo y sus
 últimos turnos. `telar encargar` sigue aparte, con su cola (`telar.encargos`).
+
+**Los disparadores** (`[disparadores.x]`, `telar.disparadores`, docs/propuestas/disparadores.md) juntan lo que
+pasa solo. El de reloj se suma a los procesos de `telar periodicos` y corre desde el crontab; el de tecla se suma
+a `[atajos]`. El de cambio (`al = "cambio:<tema>"`) lo corre el nodo de la máquina de los periódicos cuando le
+llega ese tema, igual que un periódico (`telar.periodicos.correr`), en dos hilos propios para no quitarle hilos a
+las vueltas, y con freno: uno a la vez por disparador, una sola corrida pendiente por ráfaga, 30 s entre corridas
+y 12 por hora. Cada 30 s el nodo mira además el **estado deseado** (`telar.deseado`): los residentes de aquí sin
+sesión van a su registro (una línea cuando cambia) y a `<estado>/deseado.json`, que lee `telar doctor`. Solo
+avisa: un residente se abre cuando le llega algo, y `[agente] max_vivos` cierra a los ociosos.
 
 **Entre hilos de una misma persona no hay aprobación.** El mensaje de un hilo propio llega como pedido
 de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay frenos: cada mensaje

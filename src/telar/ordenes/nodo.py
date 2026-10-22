@@ -18,6 +18,11 @@ Cada dos segundos:
    que vive en otra máquina queda aquí en `ajenos.json` (telar.estado, «hilos ajenos»), de donde lo leen
    la lista y la página, y su atención se anota aquí al instante, sin sondeo.
 
+Y lo que oye de las demás: un `telar cambio <tema>` se anota aquí para que el dashboard relea, y si un
+`[disparadores.x] al = "cambio:<tema>"` lo espera (en la máquina de los periódicos), se corre con freno
+(telar.disparadores). Cada 30 s mira el estado deseado (telar.deseado): avisa, sin arreglar, del residente
+que no tiene sesión.
+
 También atiende pedidos con respuesta: `leer` (los últimos turnos de un hilo de aquí) y `ping`.
 Necesita `[bus] url` en la configuración y el extra «bus» de telar (nats-py).
 """
@@ -364,6 +369,10 @@ class Nodo:
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
+        # los disparadores de cambio que quedaron esperando su pausa salen cuando se cumple
+        despacho = self._despacho()
+        if despacho and despacho.pendientes:
+            self._disparar(despacho.listos(asyncio.get_running_loop().time()))
         locales = await asyncio.to_thread(self.locales)
         # casillas: una suscripción durable por hilo que vive aquí, y la del nombre de antes de un agente
         # renombrado (lo que le mandó una máquina que todavía no tiene su agente.toml nuevo)
@@ -406,6 +415,11 @@ class Nodo:
         if self.vueltas % 15 == 0:
             vivos = [n for n, i in locales.items() if i.get("vivo")]
             await asyncio.to_thread(lambda: mod_estado.abrir(self.config).anotar_vivos(vivos))
+            # y el estado deseado: el residente sin sesión se avisa, no se abre (telar.deseado)
+            try:
+                await asyncio.to_thread(self.mirar_deseado, locales)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"el estado deseado: {type(e).__name__}: {e}")
             # y lo de los hilos ajenos sigue valiendo mientras se vigila el bus: sin esto, caduca
             vigia = getattr(self, "vigia", None)
             if vigia is not None and not vigia.done() and getattr(self, "ajenos_listos", False):
@@ -857,12 +871,71 @@ class Nodo:
             self.config, str(p.get("clave", "")), str(p.get("dia", "")), str(p.get("texto", ""))))
 
     async def _cambio(self, m) -> None:
-        """Algo cambió en alguna máquina (`telar cambio`): se anota aquí para que el dashboard lo relea."""
+        """Algo cambió en alguna máquina (`telar cambio`): se anota aquí para que el dashboard lo relea, y salen
+        los disparadores que lo esperan (telar.disparadores)."""
         from telar.ordenes import cambio
 
         tema = m.subject.rsplit(".", 1)[-1]
         if tema and tema.replace("-", "").isalnum():
             await asyncio.to_thread(cambio.anotar, self.config, tema)
+            despacho = self._despacho()
+            if despacho:
+                self._disparar(despacho.llego(tema, asyncio.get_running_loop().time()))
+
+    # ── los disparadores de cambio y el estado deseado ──────────────────────────
+
+    def _despacho(self):
+        """El despacho de los disparadores de cambio de esta máquina, armado la primera vez (con lo que dice la
+        configuración al arrancar: uno nuevo pide reiniciar el nodo)."""
+        despacho = getattr(self, "despacho", None)
+        if despacho is None:
+            from telar import disparadores
+
+            despacho = self.despacho = disparadores.Despacho(disparadores.de_cambio(self.config, getattr(self, "yo", "")))
+        return despacho
+
+    def _disparar(self, salen) -> None:
+        """Corre cada disparador que salió, en su tarea, y anota lo que el freno tenga que decir."""
+        despacho = self._despacho()
+        for aviso in despacho.avisos:
+            self.anotar(aviso)
+        despacho.avisos.clear()
+        if not hasattr(self, "disparos"):
+            self.disparos = set()
+        for d in salen:
+            t = asyncio.create_task(self._correr_disparador(d))
+            self.disparos.add(t)
+            t.add_done_callback(self.disparos.discard)
+
+    async def _correr_disparador(self, d) -> None:
+        """Uno de cambio, corrido como un periódico (telar.periodicos.correr), en los hilos de los disparadores:
+        un comando largo no deja al nodo sin hilos para sus vueltas."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        from telar import disparadores
+
+        if getattr(self, "hilos_disparos", None) is None:
+            self.hilos_disparos = ThreadPoolExecutor(max_workers=disparadores.A_LA_VEZ, thread_name_prefix="disparador")
+        try:
+            r = await asyncio.get_running_loop().run_in_executor(self.hilos_disparos, disparadores.correr, self.ctx, d)
+            self.anotar(f"disparador «{d.nombre}» ({d.al}): {r.get('resultado', '')}")
+        except Exception as e:  # noqa: BLE001 - uno que falla no tumba el nodo
+            self.anotar(f"disparador «{d.nombre}» ({d.al}): {type(e).__name__}: {e}")
+        finally:
+            self._despacho().termino(d.nombre)
+            # lo que quedó pendiente mientras corría sale ahora, sin esperar la vuelta
+            self._disparar(self._despacho().listos(asyncio.get_running_loop().time()))
+
+    def mirar_deseado(self, locales: dict) -> None:
+        """Los residentes de aquí sin sesión: una línea al registro cuando cambia, y `deseado.json` para doctor."""
+        from telar import deseado
+
+        if getattr(self, "residentes", None) is None:
+            self.residentes = deseado.Residentes()
+        sin_sesion = deseado.residentes_sin_sesion(locales)
+        for linea in self.residentes.mirar(sin_sesion):
+            self.anotar(linea)
+        deseado.escribir(self.config, self.yo, sin_sesion)
 
     async def _proveedor(self, m) -> None:
         """Lo que da un proveedor de esta máquina, para otra que lo declara `en` esta (telar.alla)."""

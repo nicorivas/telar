@@ -8,6 +8,17 @@ extension shared the version number.
 
 ### Added
 
+- `[disparadores.<name>]` in the configuration: something that runs a command or sends a message by itself, on a
+  clock (`cuando`, a cron schedule), a dashboard key (`tecla`) or a change (`al = "cambio:<topic>"`, announced by
+  `telar cambio <topic>` on any machine). A clock trigger becomes one more process of `telar periodicos` (listed
+  and run there, but changed in the configuration) and a key trigger one more `[atajos]` entry, both translated
+  when read, so `periodicos.toml` and `[atajos]` keep working as before. A change trigger is run by the node of the
+  machine where the periodic processes run, like a periodic process, with a brake: one run at a time per trigger,
+  one pending run per burst, 30 s between runs and at most 12 an hour. New `telar disparadores [--json]` lists
+  them and `telar disparadores correr <name>` runs one. `telar doctor` has a `disparadores` check (the trigger
+  that replaces each `[atajos]` entry, clock triggers missing from the crontab, change triggers without a bus)
+  and a `deseado` check: the node now notes, without fixing anything, the resident agents of its machine that
+  have no session (one log line when that changes, and `<state>/deseado.json`).
 - `[vistas.<key>]` in the configuration: what is shown (`comando`, `archivo`, `url`, or `carpeta`/`en` for a
   daily result) and where it appears (`aparece = "pestana" | "plan" | "apps" | "hilos" | "dia"`). It replaces
   `[bloques]`, `[apps]`, `[secciones]` and `[resultados]`, which are still read: each view is translated to its

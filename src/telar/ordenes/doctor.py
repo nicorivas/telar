@@ -48,6 +48,8 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _modulos(ctx)
     revisiones += _vistas(ctx)
     revisiones += _agentes(ctx)
+    revisiones += _disparadores(ctx)
+    revisiones += _deseado(ctx)
     revisiones += _estado(ctx)
     revisiones += _vinculos(ctx, abiertos)
     revisiones += _gemelos(ctx)
@@ -511,6 +513,83 @@ def _agentes(ctx) -> list[dict]:
         salida.append(_r("agentes", OK, ", ".join(a.nombre for a in todos)
                          + (f" ({con} con agente.toml)" if con else "")))
     return salida
+
+
+def _disparadores(ctx) -> list[dict]:
+    """Los `[disparadores]` (telar.disparadores, docs/propuestas/disparadores.md): por cada `[atajos.x]` declarado a
+    mano, el disparador que da lo mismo, en TOML para copiar; los de reloj que no están en el crontab (lo declarado
+    que no corre); los de cambio sin bus, que nadie oye. En otra máquina que la de los periódicos, que allá corren.
+    Sin disparadores ni atajos, nada."""
+    from telar import disparadores as mod_disparadores
+    from telar.config import _valor_toml, clave_toml
+
+    cfg = ctx.config
+    todos = tuple(getattr(cfg, "disparadores", ()))
+    de_tecla = {d.tecla for d in todos if d.tipo == "tecla" and d.activo}
+    salida = []
+    ocupados = {d.nombre for d in todos}
+    for atajo in getattr(cfg, "atajos", ()):
+        if atajo.tecla in de_tecla:
+            continue
+        nombre = mod_disparadores.nombre_para(atajo, ocupados)
+        ocupados.add(nombre)
+        cuerpo = mod_disparadores.como_disparador(atajo)
+        toml = "\n".join([f"[disparadores.{clave_toml(nombre)}]", *(f"{k} = {_valor_toml(v)}" for k, v in cuerpo.items())])
+        salida.append(_r("disparadores", AVISO, f"[atajos.{clave_toml(atajo.tecla)}] es de la forma de antes: telar lo sigue leyendo",
+                         "cámbialo por:\n" + toml))
+    solos = [d for d in todos if d.tipo != "tecla" and d.activo]
+    if solos and not mod_disparadores.corren_aqui(cfg):
+        salida.append(_r("disparadores", OK, f"los de reloj y de cambio corren en {cfg.periodicos_en} ([periodicos] en),"
+                         " con la configuración de allá: los de aquí no corren"))
+        return salida
+    from telar import bus as mod_bus
+
+    de_cambio = [d for d in solos if d.tipo == "cambio"]
+    if de_cambio and not mod_bus.hay_bus(cfg):
+        salida.append(_r("disparadores", AVISO, f"{', '.join(d.nombre for d in de_cambio)}: esperan un cambio, y sin bus no"
+                         " hay nodo que lo oiga", "[bus] url en la configuración, y telar serve --nodo (o telar nodo)"))
+    faltan = _fuera_del_crontab([d for d in solos if d.tipo == "reloj"])
+    if faltan:
+        salida.append(_r("disparadores", AVISO, f"{', '.join(faltan)}: declarados con cuando, pero no están en el crontab",
+                         "telar periodicos aplicar"))
+    if todos and not salida:
+        cuantos = {t: sum(1 for d in todos if d.tipo == t) for t in ("reloj", "tecla", "cambio")}
+        salida.append(_r("disparadores", OK, ", ".join(f"{n} de {t}" for t, n in cuantos.items() if n)))
+    return salida
+
+
+def _fuera_del_crontab(de_reloj) -> list[str]:
+    """Los disparadores de reloj activos que no tienen su línea en el bloque de telar del crontab. Sin `crontab`, o
+    si no se puede leer, ninguno: no se sabe."""
+    if not de_reloj or not shutil.which("crontab"):
+        return []
+    from telar import periodicos
+
+    try:
+        lineas = periodicos.crontab_actual().splitlines()
+    except (periodicos.ErrorDePeriodicos, OSError):
+        return []
+    if periodicos.MARCA_INICIO in lineas and periodicos.MARCA_FIN in lineas:
+        lineas = lineas[lineas.index(periodicos.MARCA_INICIO):lineas.index(periodicos.MARCA_FIN)]
+    else:
+        lineas = []
+    activos = [ln for ln in lineas if not ln.lstrip().startswith("#")]
+    return [d.nombre for d in de_reloj if not any(f" periodicos correr {d.nombre} " in ln for ln in activos)]
+
+
+def _deseado(ctx) -> list[dict]:
+    """Lo que el nodo vio del estado deseado (telar.deseado): los residentes de aquí sin sesión. No es un aviso:
+    hoy un residente se abre cuando le llega algo, y `[agente] max_vivos` cierra a los ociosos. Si el nodo no
+    corre (no dejó nada en los últimos minutos), nada."""
+    from telar import deseado
+
+    datos = deseado.leer(ctx.config)
+    if datos is None:
+        return []
+    faltan = datos["residentes_sin_sesion"]
+    if not faltan:
+        return [_r("deseado", OK, "los residentes de aquí tienen sesión")]
+    return [_r("deseado", OK, f"residentes sin sesión: {', '.join(faltan)} (se les abre cuando les llegue algo)")]
 
 
 def _estado(ctx) -> list[dict]:
