@@ -120,20 +120,19 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
 
    Conviene en el código y en los proyectos; no en el estado compartido (memoria, tareas, bitácoras),
    que los demás tienen que ver al tiro.
-2. **Los archivos calientes tienen un solo escritor** (un nodo); las demás máquinas los cambian por el
-   bus, como ya pasa con las tareas.
 
-   ```toml
-   [calientes]
-   escritor = "telar"
-   rutas = ["memory/**", "nico/proyectos/tareas/**", "agentes/*/bitacora.md"]
-   ```
+   **Aplazado (21-oct-2026).** Está escrito y probado (rama `aplazado/lugar`, local), pero los hilos
+   viven semanas: con integrar a mano o al cerrar, pasarían semanas sin subir lo suyo, y la rama se
+   alejaría de la principal. Integrar en cada commit lo arreglaría, pero se vuelve engorroso para lo que
+   resuelve hoy. Se retoma cuando los choques entre hilos vuelvan a ser un problema grave.
+2. **Los archivos calientes con un solo escritor** (`[calientes]`: memoria, tareas y bitácoras escritas por
+   un nodo, y las demás máquinas pidiéndoselo por el bus). **Descartado (21-oct-2026)**: las tareas ya
+   tienen un escritor, y para el resto `telar commit` basta mientras los choques sean raros.
 3. **`telar commit -m "…" -- rutas`** (hecho como orden): solo esas rutas, incluidas las nuevas; integra
    sin autostash y se detiene si choca; reintenta el push en una carrera; nunca `git add -A`; respeta
-   `skip-worktree`. Falta que lo usen las skills y las instrucciones de los agentes, y que mande una ruta
-   caliente a su escritor.
+   `skip-worktree`. Ya lo usan las skills y las instrucciones de los agentes.
 4. **Qué es de quién.** El núcleo sabe de hilos, mensajes, objetos, nodos, lugares y git; el perfil de
-   cada repo, de sus unidades, campos, áreas, agente para lo que no tiene proyecto, calientes y worktrees;
+   cada repo, de sus unidades, campos, áreas, agente para lo que no tiene proyecto y worktrees;
    los módulos traen lo propio de una vida. Lo que hoy está fijo y debería salir del perfil o la
    configuración: la lista de áreas (`vistas/dashboard/proyectos.ts`), los clientes propios que no se muestran
    (`vistas/dashboard/tareas.ts`), el agente «gestion» por nombre, «Nico» en `--de` y en los textos (`[persona]
@@ -143,7 +142,8 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
 
 Cada uno deja todo funcionando.
 
-1. **`telar commit` en todas partes**, y `[calientes]` en el perfil.
+1. ~~`telar commit` en todas partes, y `[calientes]` en el perfil~~: lo primero está hecho; lo segundo se
+   descartó (arriba).
 2. **Direcciones y objetos.** El registro de tipos suma correo, evento, reunión y proyecto, y `telar objeto
    <dirección> [--accion …]`, con `tarea` como alias. Dos preguntas del tipo `tarea` por cerrar: a una
    casilla sin `<!-- id: … -->` (se reconoce por su texto, que cambia), ¿se le pone un id al escribirla
@@ -155,7 +155,7 @@ Cada uno deja todo funcionando.
    y la tabla de intenciones. Con eso se le puede encargar a un hilo de proyecto, no solo a un residente.
    Antes, las fallas del bus: los `nats: timeout`, el «Slow Consumer» del laptop, el registro del nodo que
    crece sin tope.
-5. **El lugar y los worktrees**: `[lugar]` en el perfil; integrar y descartar como acciones del hilo.
+5. ~~El lugar y los worktrees~~: aplazado (arriba, «Git y los repositorios»).
 6. **Vistas**: `[vistas]` reemplaza a `[secciones]`, `[bloques]`, `[apps]` y `[resultados]`, que se siguen
    leyendo un tiempo.
 7. **Disparadores y estado deseado**: periódicos, teclas y «al cambiar» en `[disparadores]`; el nodo
@@ -170,8 +170,4 @@ lo genérico (un proveedor de Gmail sin nada de nadie) puede vivir en `telar/mod
 
 ## Lo que queda abierto
 
-- **Integrar al cerrar o a mano.** Solo es cómodo, pero mete lo que nadie revisó; a mano deja ramas que se
-  alejan.
-- **Los calientes por git o por el bus.** Por git sigue legible y es más lento; por el bus es inmediato y
-  sale de git. Se parte por git con un escritor.
 - **El nombre de la dirección.** `tarea:T366` para escribir, `telar://telar/tarea/T366` para enlazar.
