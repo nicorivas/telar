@@ -65,6 +65,9 @@ class LosTiposDeFabrica(Prueba):
         self.assertEqual(o.enlaces, ["proyecto:proyectos/faro"])
         reagendar = next(a for a in o.acciones if a.nombre == "reagendar")
         self.assertIn("fecha", reagendar.params)
+        # los valores por defecto, tal cual: la página los pone en el campo («hecha», no «'hecha'»)
+        cerrar = next(a for a in o.acciones if a.nombre == "cerrar")
+        self.assertEqual((cerrar.params["como"], cerrar.params["nota"]), ("hecha", ""))
         hecha = t.model_copy(update={"estado": "hecha", "version": "def"})
         with mock.patch.object(servicio, "aplicar", return_value=hecha) as aplicar:
             h = objetos.hacer(self.ctx, "tarea:T9", "completar", {"nota": "listo"}, "abc")
@@ -84,6 +87,18 @@ class LosTiposDeFabrica(Prueba):
             objetos.hacer(self.ctx, "hilo:Faro", "mensaje", {})
         with self.assertRaises(ErrorDeServicio):
             objetos.hacer(self.ctx, "hilo:Faro", "volar", {})
+
+    def test_un_hilo_de_otra_maquina_es_el_de_alla(self):
+        from telar import bus, espejo
+
+        fotos = [{"nombre": "servidor", "hilos": [{"nombre": "Faro", "atencion": "trabajando", "relativa": "proyectos/faro"}]}]
+        with mock.patch.object(bus, "hay_bus", return_value=True), mock.patch.object(bus, "maquina", return_value="laptop"), \
+                mock.patch.object(espejo, "leer_todos", return_value=fotos):
+            o = objetos.ver(self.ctx, "hilo:Faro@servidor")
+            self.assertEqual((o.direccion, o.maquina, o.estado), ("hilo:Faro@servidor", "servidor", "trabajando"))
+            with self.assertRaises(ErrorDeServicio) as e:  # allá no hay uno así: no se cae al de aquí
+                objetos.ver(self.ctx, "hilo:Telar@servidor")
+            self.assertEqual(e.exception.codigo, 404)
 
     def test_un_tipo_que_no_hay(self):
         with self.assertRaises(ErrorDeServicio) as e:

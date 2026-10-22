@@ -115,7 +115,8 @@ def _params_de(fn) -> dict[str, str]:
     for i, (nombre, p) in enumerate(inspect.signature(fn).parameters.items()):
         if i == 0 or nombre == "reloj" or p.kind in (p.VAR_KEYWORD, p.VAR_POSITIONAL):
             continue
-        salida[nombre] = "" if p.default is p.empty else repr(p.default)
+        # el valor por defecto tal cual (sin las comillas de repr): la página lo pone en el campo
+        salida[nombre] = "" if p.default in (p.empty, None) else str(p.default)
     return salida
 
 
@@ -153,8 +154,15 @@ class Hilo(Tipo):
     descripcion = "un hilo de telar: dónde trabaja, en qué anda; escribirle o leer lo último"
 
     def ver(self, ctx, d):
+        from telar import bus as mod_bus
         from telar.ordenes import _comun
 
+        if d.maquina and mod_bus.hay_bus(ctx.config) and d.maquina != mod_bus.maquina(ctx.config):
+            # el de esa máquina, según su foto; si allá no hay uno con ese nombre, no es el de aquí
+            remoto = _hilo_remoto(ctx, d.id, d.maquina)
+            if remoto is None:
+                raise ErrorDeServicio(f"{d.maquina} no tiene un hilo «{d.id}»", 404)
+            return self._objeto(*remoto)
         tel = _comun.tejer(ctx)
         h = next((x for x in tel.hilos if x.nombre == d.id or x.id == d.id), None)
         # una ventana de aquí de un hilo que vive en otra máquina: lo que vale es lo que publica esa máquina
@@ -167,9 +175,12 @@ class Hilo(Tipo):
             j, maquina = remoto
         else:
             j, maquina = _comun.json_hilo(h, tel), (h.remoto if h.remoto and h.remoto != "?" else "")
+        return self._objeto(j, maquina)
+
+    def _objeto(self, j: dict, maquina: str) -> Objeto:
         campos = {k: j[k] for k in ("relativa", "arquetipo", "vivo", "actividad", "atencion_desde") if j.get(k) not in (None, "", False)}
         enlaces = [f"proyecto:{j['relativa']}"] if j.get("relativa") and j.get("relativa") not in (".", "") else []
-        return Objeto(direccion=f"hilo:{j['nombre']}", tipo="hilo", id=j["nombre"], titulo=j["nombre"],
+        return Objeto(direccion=f"hilo:{j['nombre']}" + (f"@{maquina}" if maquina else ""), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
                       acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva)",
                                        params={"texto": ""}),
@@ -193,14 +204,17 @@ class Hilo(Tipo):
         raise ErrorDeServicio(f"un hilo no tiene la acción «{accion}»: mensaje o leer", 404)
 
 
-def _hilo_remoto(ctx, nombre: str):
-    """(su JSON, su máquina) de un hilo que vive en otra máquina, según la foto de su espejo; None si no."""
+def _hilo_remoto(ctx, nombre: str, maquina: str = ""):
+    """(su JSON, su máquina) de un hilo que vive en otra máquina (en `maquina`, si se dice), según la foto de su
+    espejo; None si no."""
     from telar import bus as mod_bus
     from telar import espejo
 
     if not mod_bus.hay_bus(ctx.config):
         return None
     for foto in espejo.leer_todos(ctx.config):
+        if maquina and foto.get("nombre") != maquina:
+            continue
         for h in foto.get("hilos", []):
             if h.get("nombre") == nombre and not h.get("remoto"):
                 return h, foto["nombre"]
