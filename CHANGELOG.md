@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-21
+
 ### Added
 
 - Modules keep their own crontab: installing, updating, adopting or removing one with scheduled jobs updates
@@ -50,6 +52,19 @@ extension shared the version number.
   relative to the root and carry which repo they come from; when two profiles match the same folder, the
   deepest repo wins, so a team repo inside a personal one describes its own folders. A repo without a profile
   adds nothing; one outside `raiz` is not merged yet. Without `[repos]`, only `raiz` counts, as before.
+- Mail between people over the bus (`telar.entre_personas`). Each bus account exports `correo.<person>`, a
+  service another person uses to leave a message for one of their threads (their node puts it in the thread's
+  mailbox, durable like any message; the server tells which account it came from, so nobody writes as someone
+  else), and `directorio.<person>`, the list of their threads that their node publishes every 30 s. `telar
+  correo enviar person+thread@…` goes over the bus when that person has a node there, and falls back to the
+  server's mail otherwise; `telar directorio` also shows what arrives over the bus. Run `telar bus persona` again
+  on the bus machine to regenerate its accounts with these exports and imports.
+- `POST /reunion`: prepare a meeting, or take its minutes, from the API (`telar reunion … --json`), so the web
+  page no longer needs the CLI for it.
+- `POST /hilo/llevar`: take a thread to another machine from the API. It runs in its own process, since copying
+  a large conversation takes minutes: if it ends within 20 s the answer is what it said (409 with its complaint,
+  such as unpushed work that needs `si`), otherwise it answers `en_curso` and keeps going, with its output in
+  `<estado>/llevar/<hilo>.log`.
 
 ### Changed
 
@@ -85,31 +100,6 @@ extension shared the version number.
   machine adjusts its own copy only if that worked. And every 30 s the node reconciles this machine's windows of
   other machines' threads against their state on the bus: it brings back one that is alive there and missing here
   (unless archived), and closes one that no longer lives there.
-
-### Removed
-
-- zellij as a multiplexer. What telar is built on (the terminal in the browser, grouped views, threads on another
-  machine, the single session) only works with tmux, so zellij gave a half telar. A config with `multiplexor =
-  "zellij"` now fails with a clear message: use tmux.
-
-### Added
-
-- Mail between people over the bus (`telar.entre_personas`). Each bus account exports `correo.<person>`, a
-  service another person uses to leave a message for one of their threads (their node puts it in the thread's
-  mailbox, durable like any message; the server tells which account it came from, so nobody writes as someone
-  else), and `directorio.<person>`, the list of their threads that their node publishes every 30 s. `telar
-  correo enviar person+thread@…` goes over the bus when that person has a node there, and falls back to the
-  server's mail otherwise; `telar directorio` also shows what arrives over the bus. Run `telar bus persona` again
-  on the bus machine to regenerate its accounts with these exports and imports.
-- `POST /reunion`: prepare a meeting, or take its minutes, from the API (`telar reunion … --json`), so the web
-  page no longer needs the CLI for it.
-- `POST /hilo/llevar`: take a thread to another machine from the API. It runs in its own process, since copying
-  a large conversation takes minutes: if it ends within 20 s the answer is what it said (409 with its complaint,
-  such as unpushed work that needs `si`), otherwise it answers `en_curso` and keeps going, with its output in
-  `<estado>/llevar/<hilo>.log`.
-
-### Changed
-
 - An `[atajos]` key the dashboard already uses no longer stops the config from loading: the tab wins, the
   shortcut is shown without its key and runs with a click, and `telar doctor` warns about it.
 - The web page no longer carries the shape of the VS Code extension. Every screen (the thread bar, the
@@ -146,6 +136,12 @@ extension shared the version number.
 - The dashboard no longer shows yesterday after midnight or after the laptop wakes: the saved day and agenda
   remember their date and are reread when it is another day, and a failed read no longer passes yesterday off as
   today.
+
+### Removed
+
+- zellij as a multiplexer. What telar is built on (the terminal in the browser, grouped views, threads on another
+  machine, the single session) only works with tmux, so zellij gave a half telar. A config with `multiplexor =
+  "zellij"` now fails with a clear message: use tmux.
 
 ## [0.2.0] — 2026-10-20
 
@@ -1250,7 +1246,8 @@ First release. Everything below is new.
   is their face, which sections it has) and actions (what the repository offers to run
   on a thread). An example profile ships in `ejemplo/`.
 
-[Unreleased]: https://github.com/nicorivas/telar/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/nicorivas/telar/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nicorivas/telar/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nicorivas/telar/compare/v0.1.13...v0.2.0
 [0.1.13]: https://github.com/nicorivas/telar/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/nicorivas/telar/compare/v0.1.11...v0.1.12
