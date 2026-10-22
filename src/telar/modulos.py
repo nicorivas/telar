@@ -44,6 +44,12 @@ El manifiesto (`<carpeta>/modulo.toml`):
     ver = "medir"                  # recibe {"id": …} y da el objeto
     acciones = []                  # otras consultas: reciben {"id": …, …parámetros}
 
+    [permisos]                     # lo que pide fuera de su carpeta: se muestra antes de instalarlo
+    leer = ["~/datos/oceano"]      # rutas que lee
+    escribir = ["~/.local/state/nino34"]
+    red = ["psl.noaa.gov"]         # los sitios a los que se conecta (true: cualquiera; false: ninguno)
+    ordenes = ["mensaje"]          # las órdenes de telar que corre (`telar mensaje`)
+
 Las rutas relativas son de la carpeta del módulo, y sus periódicos corren en ella. Todo lo que
 aporta toma el nombre del módulo: la pestaña es el bloque `nino34`, el resultado `nino34`, y un
 periódico `nino34-bajar` (o `nino34` si se llama como el módulo). El resultado se lee donde corren
@@ -57,6 +63,12 @@ el bus): recibe los parámetros como un objeto JSON por la entrada, corre en la 
 devuelve un objeto JSON por la salida. Las dos reciben en el entorno lo que el módulo necesita saber de
 telar: `TELAR_RAIZ`, `TELAR_REPOS` (los repos de `[repos]`, en JSON: nombre, ruta y perfil),
 `TELAR_MAQUINA` y `TELAR_MODULO` (su carpeta). Un módulo es un programa aparte: si se cae, telar sigue.
+
+**Permisos.** `[permisos]` dice lo que el módulo pide fuera de su carpeta: rutas que lee y que escribe, la
+red y las órdenes de telar que corre. `telar modulos instalar` lo muestra antes de preguntar, y `actualizar`
+dice si cambió. telar **todavía no lo hace cumplir**: un módulo corre con los permisos de quien lo instaló,
+lo declare o no (docs/propuestas/permisos.md). Sin la tabla, el módulo «no dice qué pide», que no es lo
+mismo que no pedir nada (`[permisos]` vacía).
 
 **Instalados.** `telar modulo instalar <repo git o carpeta>` lo clona en `<datos>/modulos/<nombre>`
 (`~/.local/share/telar`), corre su `[instalar]` y lo anota en `modulos.toml`, al lado de la
@@ -77,7 +89,9 @@ from pathlib import Path
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
-         "requiere", "objetos"}
+         "requiere", "objetos", "permisos"}
+#: lo que entiende `[permisos]`; una clave que no está aquí se muestra como no entendida, no se calla
+PERMISOS = ("leer", "escribir", "red", "ordenes")
 TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
 ESPERA_CONSULTA = 30
 
@@ -106,6 +120,9 @@ class Modulo:
     requiere: tuple = ()
     #: los tipos de objeto que trae (`[objetos.<tipo>]`): tipo → {ver, acciones, descripcion}
     objetos: dict = field(default_factory=dict)
+    #: lo que pide (`[permisos]`): leer, escribir y ordenes son tuplas, red es una tupla de sitios o un
+    #: bool, y `otros` lo que esta versión no entiende. None si el manifiesto no lo dice. No se hace cumplir
+    permisos: dict | None = None
 
     def faltan(self) -> list[str]:
         """Los programas de `[requiere]` que esta máquina no tiene."""
@@ -121,6 +138,63 @@ class Modulo:
                  *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
                  *[f"objetos {t}:" for t in self.objetos],
                  *(["contexto del agente"] if self.contexto else [])])
+
+    @property
+    def pide(self) -> list[str]:
+        """Lo que pide, en palabras, una cosa por elemento: «leer ~/datos», «red: psl.noaa.gov», «órdenes de
+        telar: mensaje». Sin `[permisos]`, lo dice; con la tabla vacía, «nada fuera de su carpeta»."""
+        return palabras_permisos(self.permisos)
+
+
+def palabras_permisos(p: dict | None) -> list[str]:
+    if p is None:
+        return ["no dice qué pide (sin [permisos] en su modulo.toml)"]
+    salida = [f"{verbo} {', '.join(p[clave])}" for clave, verbo in (("leer", "leer"), ("escribir", "escribir"))
+              if p.get(clave)]
+    red = p.get("red")
+    if red is True:
+        salida.append("red: cualquier sitio")
+    elif red:
+        salida.append("red: " + ", ".join(red))
+    if p.get("ordenes"):
+        salida.append("órdenes de telar: " + ", ".join(p["ordenes"]))
+    salida += [f"«{k}» (esta versión de telar no lo entiende: {v!r})" for k, v in p.get("otros", {}).items()]
+    return salida or ["nada fuera de su carpeta"]
+
+
+def _permisos(nombre: str, datos) -> dict | None:
+    """`[permisos]` validado. Una clave que esta versión no conoce no rompe el módulo (uno escrito para un telar
+    más nuevo se sigue instalando), pero queda en `otros` y se muestra: lo que pide no se calla."""
+    if datos is None:
+        return None
+
+    def lista(clave: str) -> tuple:
+        v = datos.get(clave, [])
+        if not isinstance(v, list) or not all(isinstance(x, str) and x.strip() for x in v):
+            raise ErrorDeModulo(f"{nombre}: [permisos] {clave}: se esperaba una lista de textos")
+        return tuple(x.strip() for x in v)
+
+    red = datos.get("red", False)
+    if isinstance(red, bool):
+        pass
+    elif isinstance(red, list) and all(isinstance(x, str) and x.strip() for x in red):
+        red = tuple(x.strip() for x in red)
+    else:
+        raise ErrorDeModulo(f"{nombre}: [permisos] red: true, false o una lista de sitios")
+    # «telar mensaje» y «mensaje» son lo mismo: la orden, sin el programa
+    ordenes = tuple(dict.fromkeys(" ".join(x.split()).removeprefix("telar ") for x in lista("ordenes")))
+    return {"leer": lista("leer"), "escribir": lista("escribir"), "red": red, "ordenes": ordenes,
+            "otros": {k: v for k, v in datos.items() if k not in PERMISOS}}
+
+
+def permisos_json(p: dict | None) -> dict | None:
+    """`[permisos]` como va en `telar modulos --json`: listas, y `red` como lista o bool."""
+    if p is None:
+        return None
+    salida = {k: (list(v) if isinstance(v, tuple) else v) for k, v in p.items() if k != "otros"}
+    # lo que no se entiende va tal cual, salvo lo que JSON no sabe escribir (una fecha de TOML), como texto
+    salida["otros"] = json.loads(json.dumps(p.get("otros", {}), ensure_ascii=False, default=str))
+    return salida
 
 
 def _ruta(carpeta: Path, valor: str) -> str:
@@ -152,7 +226,8 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     sobra = set(datos) - _RAIZ
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
-    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos"):
+    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos",
+                  "permisos"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -229,7 +304,8 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
                   instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
-                  requiere=tuple(x.strip() for x in requiere), objetos=objetos)
+                  requiere=tuple(x.strip() for x in requiere), objetos=objetos,
+                  permisos=_permisos(nombre, datos.get("permisos")))
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────
@@ -515,6 +591,10 @@ def actualizar(ruta: Path, nombre: str) -> str:
         raise ErrorDeModulo(f"«{nombre}» no lo instaló telar modulo")
     carpeta = Path(d["carpeta"])
     antes = d.get("version", "")
+    try:
+        pedia = leer(nombre, carpeta).permisos
+    except ErrorDeModulo:
+        pedia = False  # el de antes no se leía: no hay con qué comparar
     if not d.get("enlazado"):
         r = _git(carpeta, "pull", "-q", "--ff-only")
         if r.returncode != 0:
@@ -524,7 +604,12 @@ def actualizar(ruta: Path, nombre: str) -> str:
     _correr_instalar(m, carpeta)
     instalados[nombre] = {**d, "version": ahora}
     _escribir_instalados(ruta, instalados)
-    return f"{nombre}: {antes} → {ahora}" if antes != ahora else f"{nombre}: ya estaba al día ({ahora})"
+    linea = f"{nombre}: {antes} → {ahora}" if antes != ahora else f"{nombre}: ya estaba al día ({ahora})"
+    if pedia is not False and pedia != m.permisos:
+        # no se pregunta (actualizar nunca preguntó), pero se dice: lo que pide ahora no es lo que se vio al instalarlo
+        linea += "\n    lo que pide cambió: " + "; ".join(m.pide) + (
+            "\n    (antes: " + "; ".join(palabras_permisos(pedia)) + ")")
+    return linea
 
 
 def quitar(ruta: Path, nombre: str) -> str:

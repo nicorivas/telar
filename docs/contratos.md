@@ -647,8 +647,8 @@ pedido no sirve; 502: la máquina donde viven no respondió) y la orden sale con
 ### `telar objeto <dirección> [acción] --json`
 
 Cualquier objeto por su dirección, `tipo:id[@máquina]` (telar.objetos): `tarea:T366`, `hilo:Telar`,
-`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, `agente:faro`, o uno de los
-tipos que trae un módulo. Es
+`proyecto:nico/proyectos/telar`, `archivo:telar:docs/x.md`, `pendiente:c-1a2b3c`, `agente:faro`, `permiso:Faro`, o
+uno de los tipos que trae un módulo. Es
 también `GET /objetos/<dirección>` y `POST /objetos/<dirección>/acciones/<acción>` (cuerpo `{params, version}`).
 
 Lo que un id no puede llevar tal cual va escapado como en una URL: `%40` por `@` (si no, se leería como la
@@ -705,6 +705,15 @@ del hilo al que se mandó; el hilo lo recibe con su máquina (`encargo:e-1a2b3c4
 aunque se mude. Mientras no llega, quien lo mandó lo ve con `en_camino: true`, en `pedido` y sin acciones; si el
 mensaje se retuvo, con `retenido` (el motivo) en vez de `en_camino`, hasta que se suelte. Una máquina con un
 telar de antes no atiende `encargo` (502, «no atiende»).
+
+Lo que un hilo espera de la persona es `permiso:<hilo>` (`permiso:Faro`, `permiso:Faro@servidor`): existe mientras
+su atención es `espera`, y si no, 404. Es de solo lectura (sin acciones: se contesta en el hilo). Su `estado` es
+`pendiente`; su `titulo` y su `resumen`, lo que pide si su agente lo dijo (si no, el `titulo` es «"Faro" te
+espera» y el `resumen` va vacío); su `version`, desde cuándo espera. `campos`: `hilo`, `desde` (ISO), `pide`,
+`clase` (`permiso` o `pregunta`, la de un MCP) y `contestar` (cómo: `telar ir <hilo>`), los que tenga. Enlaza a su
+hilo y a su proyecto, y el hilo que espera enlaza a él. Lo que pide lo anota el gancho del agente en su máquina
+(el texto de la notificación de Claude Code, o `telar agente aviso --evento espera --pide "…"`): de un hilo de
+otra máquina se sabe que espera y desde cuándo, no qué pide.
 
 ### `telar mensaje <hilo> "…" --json`
 
@@ -907,7 +916,8 @@ Cuatro formas, una por orden. Todas son de una línea, como el resto.
 ```
 
 Cuando el aviso no se pudo aplicar, la línea es `{"aplicado": false, "problema": "…"}` y
-nada más. Un gancho nunca falla por esto: devuelve 0 igual, porque del otro lado hay un
+nada más. Con `--evento espera`, `--pide "…"` dice además qué le pide a la persona, en una línea: lo muestra
+`telar objeto permiso:<hilo>` (el gancho de Claude Code lo toma del texto de su notificación, sin `--pide`). Un gancho nunca falla por esto: devuelve 0 igual, porque del otro lado hay un
 agente esperando y un semáforo que miente un rato es el problema menor.
 
 `instalar`, `desinstalar` y `--seco` — qué archivo se tocó y con qué:

@@ -354,6 +354,19 @@ pendientes`: la lectura dice cuál es cada una entre las que dicen lo mismo (la 
 el orden del documento; `repetida` en la fila), y se le escribe a esa, que recibe su propio id. Si entretanto
 cambió cuántas casillas dicen eso (alguien agregó o borró una igual), no se adivina: un 409, y nada cambia.
 
+### Lo que un hilo espera
+
+Cuando el agente de un hilo necesita a la persona (un diálogo de permiso, la pregunta de un MCP), su atención
+pasa a `espera`, y eso es todo lo que telar sabía. Ahora la espera es además un objeto, `permiso:<hilo>`, de
+solo lectura: qué hilo espera, desde cuándo y, si su agente lo dijo, qué pide. El texto lo trae el gancho
+`Notification` de Claude Code (su `message`) o `telar agente aviso --evento espera --pide "…"`, y queda en
+`<estado>/esperas.json`, uno por hilo. Vale para la espera que empezó cerca de cuando se anotó (unos segundos:
+el gancho y el mod de telar avisan casi a la vez y en cualquier orden); uno de una espera anterior no se
+muestra. Por eso lo anota también el gancho clásico cuando el mod está vivo, aunque ahí la atención la escriba
+el mod. De un hilo de otra máquina se sabe que espera y desde cuándo (lo publica su dueño), no qué pide.
+
+No se contesta desde aquí: eso es lo que sigue ([propuestas/permisos.md](propuestas/permisos.md)).
+
 ## La página
 
 Se escribe en TypeScript (`pagina/src/`) y se empaqueta con esbuild (`pagina/scripts/navegador.mjs`)

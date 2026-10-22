@@ -15,6 +15,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     prioridades.json  hilo → 1, 2 o 3
     archivados.json   lista de hilos archivados
     atencion.json     hilo → {"atencion": …, "desde": ISO}
+    esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
     sesiones.json     hilo → [id de conversación, …], la principal primero
     ajenos.json       hilo de otra máquina → lo último que su dueño publicó en el bus
     paneles.json      panel del multiplexor → conversación que corre ahí ahora
@@ -56,7 +57,7 @@ import os
 import tempfile
 from collections import defaultdict
 from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
@@ -92,6 +93,8 @@ ARCHIVOS = {
     #: hilo → cuándo se archivó (ISO, hora local): para saber si su agente volvió a vivir después
     "archivados_en": "archivados_en.json",
     "atencion": "atencion.json",
+    #: hilo → lo que su agente dijo la última vez que pidió algo (el texto de su aviso): lo lee `permiso:<hilo>`
+    "esperas": "esperas.json",
     "sesiones": "sesiones.json",
     "paneles": "paneles.json",
     "ids": "ids.json",
@@ -115,6 +118,14 @@ CANDADO = ".candado"
 #: lo refresca cada 30 s mientras vigila el bus, y uno apagado (o sin `[bus]`) deja una foto vieja.
 #: Pasado este tiempo vale la copia de aquí, como sin bus
 AJENOS_CADUCA = 120
+
+#: lo que se guarda del texto con que un agente pide algo (`anotar_espera`): es una línea, no un documento
+TOPE_PIDE = 400
+
+#: segundos: lo anotado de una espera vale para la que empezó hasta este tanto después. El gancho clásico (que
+#: trae el texto) y el mod (que solo dice «espera») avisan casi a la vez y en cualquier orden, y `desde` va al
+#: segundo; una espera anterior, ya contestada, quedó más atrás que esto
+ESPERA_HOLGURA = 3
 
 
 class ErrorDeEstado(Exception):
@@ -691,6 +702,33 @@ class Estado:
         cuerpo = {"atencion": atencion.value, "desde": marca}
         self._actualizar("atencion", lambda d: d.__setitem__(hilo, cuerpo), {})
 
+    # ── la espera: qué pidió el agente, si lo dijo ─────────────────────────────
+
+    def anotar_espera(self, hilo: str, pide: str, clase: str = "", cuando: datetime | None = None) -> None:
+        """Lo que el agente de un hilo dijo al pedirle algo a la persona («Claude needs your permission to use
+        Bash»), para `permiso:<hilo>`. Una por hilo: la siguiente la reemplaza. No es la atención: esa la
+        escribe quien avisa (el gancho, el mod), y esto solo lo sabe el gancho que trae el texto."""
+        cuerpo = {"pide": " ".join(pide.split())[:TOPE_PIDE], "clase": clase,
+                  "cuando": (cuando or datetime.now()).replace(tzinfo=None).isoformat(timespec="seconds")}
+        self._actualizar("esperas", lambda d: d.__setitem__(hilo, cuerpo), {})
+
+    def espera(self, hilo: str) -> dict | None:
+        """La espera de ahora de un hilo: {desde, pide, clase}, o None si su agente no está esperando.
+
+        `pide` y `clase` van solo si lo anotado es de esta espera y no de una anterior: anotado desde poco antes
+        de que empezara (`ESPERA_HOLGURA`; el gancho y el mod avisan casi a la vez, en cualquier orden) en
+        adelante. Si no, van vacíos: se sabe que espera, no qué."""
+        atencion, desde = self.atenciones().get(hilo, (Atencion.NINGUNA, None))
+        if atencion is not Atencion.ESPERA:
+            return None
+        salida = {"desde": desde, "pide": "", "clase": ""}
+        cuerpo = self._leer("esperas", {}).get(hilo)
+        cuando = _fecha(cuerpo.get("cuando")) if isinstance(cuerpo, dict) else None
+        if cuando and (desde is None or cuando.replace(tzinfo=None)
+                       >= desde.replace(tzinfo=None) - timedelta(seconds=ESPERA_HOLGURA)):
+            salida.update(pide=str(cuerpo.get("pide") or ""), clase=str(cuerpo.get("clase") or ""))
+        return salida
+
     # ── sesiones de agente, y en qué panel corre cada una ──────────────────────
 
     def sesiones(self) -> dict[str, tuple[str, ...]]:
@@ -1038,7 +1076,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "actividad", "vivos", "remotos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -1075,7 +1113,7 @@ class Estado:
         debería cambiar porque se cerró un tab.
         """
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "sesiones", "remotos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
 

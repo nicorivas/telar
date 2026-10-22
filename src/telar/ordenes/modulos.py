@@ -10,7 +10,8 @@
 Un módulo es una carpeta con un `modulo.toml` (ver telar.modulos y docs/configuracion.md, `[modulos]`). Instalar clona el
 repositorio en `~/.local/share/telar/modulos/<nombre>`, muestra lo que trae (pestaña, órdenes,
 periódicos…) y, con tu sí, corre su `[instalar]` y lo anota en `modulos.toml`, al lado de la
-configuración. `--enlazar` usa la carpeta donde está, sin copiarla: para desarrollar un módulo. Se instala
+configuración. Antes de preguntar dice también lo que el módulo pide fuera de su carpeta (`[permisos]`: rutas,
+red, órdenes de telar); telar todavía no lo hace cumplir, y lo dice. `--enlazar` usa la carpeta donde está, sin copiarla: para desarrollar un módulo. Se instala
 en cada máquina que lo usa. Si trae periódicos y esta es la máquina donde corren (`[periodicos] en`),
 instalar, actualizar, adoptar y quitar dejan el crontab al día solos; si corren en otra, lo dice.
 
@@ -44,7 +45,8 @@ def main(argv: list[str], ctx) -> int:
     if o.json:
         return _comun.escribir_json({"modulos": [
             {"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
-             "fuente": instalados.get(m.nombre, {}).get("fuente", ""), "version": instalados.get(m.nombre, {}).get("version", "")}
+             "fuente": instalados.get(m.nombre, {}).get("fuente", ""), "version": instalados.get(m.nombre, {}).get("version", ""),
+             "permisos": mod_modulos.permisos_json(m.permisos)}
             for m in modulos]})
     if not modulos:
         print(_comun.tenue("no hay módulos: telar modulos instalar <repo>, o [modulos.<nombre>] carpeta = \"…\" a mano"))
@@ -54,6 +56,7 @@ def main(argv: list[str], ctx) -> int:
         if m.descripcion:
             print(f"    {m.descripcion}")
         print(_comun.tenue("    aporta: " + (", ".join(m.aporta) or "nada")))
+        print(_comun.tenue("    pide: " + "; ".join(m.pide)))
     return 0
 
 
@@ -114,6 +117,8 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
             print("    trae: " + (", ".join(m.aporta) or "nada"))
             if m.instalar:
                 print("    al instalarse corre: " + " ".join(m.instalar))
+            print("    pide: " + "; ".join(m.pide))
+            print(_comun.tenue("    (telar todavía no lo hace cumplir: corre con tus permisos, lo declare o no)"))
             if not _si(f"¿instalar {m.nombre}?", o.si):
                 if anotar.get("provisorio"):
                     import shutil

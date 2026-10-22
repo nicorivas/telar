@@ -4,7 +4,7 @@ Un **objeto** es cualquier cosa con dirección, tipo y estado: una tarea, un hil
 que traiga un módulo (un correo, un evento). Su **dirección** tiene una sola forma:
 
     tipo:id[@máquina]       tarea:T366 · hilo:Telar · proyecto:nico/proyectos/telar · archivo:telar:docs/x.md
-                            pendiente:c-1a2b3c · encargo:e-1a2b3c4d
+                            pendiente:c-1a2b3c · encargo:e-1a2b3c4d · permiso:Faro
 
 `@máquina` va solo cuando importa (un hilo o un objeto de un módulo que vive en otra máquina); el `id` es
 lo que el tipo entiende, y puede llevar `:` (un archivo es `máquina:ruta`). Lo que en un id rompería la
@@ -14,8 +14,9 @@ decir «revisa `tarea:T366`» y cualquiera sabe abrirlo: `telar objeto tarea:T36
 
 Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones** con sus parámetros. Los de
 fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo,
-pendiente (una casilla de un documento, telar.vinetas), agente (un residente, con lo que declara su agente.toml)
-y encargo (un pedido con estado y resultado, telar.encargo).
+pendiente (una casilla de un documento, telar.vinetas), agente (un residente, con lo que declara su agente.toml),
+encargo (un pedido con estado y resultado, telar.encargo) y permiso (lo que un hilo espera de la persona, solo
+lectura).
 Un módulo agrega los suyos en su `modulo.toml`:
 
     [objetos.correo]
@@ -180,6 +181,10 @@ class Hilo(Tipo):
     descripcion = "un hilo de telar: dónde trabaja, en qué anda; escribirle o leer lo último"
 
     def ver(self, ctx, d):
+        return self._objeto(*self.buscar(ctx, d))
+
+    def buscar(self, ctx, d: Direccion) -> tuple[dict, str]:
+        """(su JSON, como `telar hilos --json`; la máquina donde vive, "" si es de aquí). 404 si no está."""
         from telar import bus as mod_bus
         from telar.ordenes import _comun
 
@@ -188,7 +193,7 @@ class Hilo(Tipo):
             remoto = _hilo_remoto(ctx, d.id, maquina=d.maquina)
             if remoto is None:
                 raise ErrorDeServicio(f"no hay ningún hilo «{d.id}» en {d.maquina} (según lo último que publicó)", 404)
-            return self._objeto(*remoto)
+            return remoto
         tel = _comun.tejer(ctx)
         h = next((x for x in tel.hilos if x.nombre == d.id or x.id == d.id), None)
         # una ventana de aquí de un hilo que vive en otra máquina: lo que vale es lo que publica esa máquina
@@ -201,11 +206,14 @@ class Hilo(Tipo):
             j, maquina = remoto
         else:
             j, maquina = _comun.json_hilo(h, tel), (h.remoto if h.remoto and h.remoto != "?" else "")
-        return self._objeto(j, maquina)
+        return j, maquina
 
     def _objeto(self, j: dict, maquina: str) -> Objeto:
         campos = {k: j[k] for k in ("relativa", "arquetipo", "vivo", "actividad", "atencion_desde") if j.get(k) not in (None, "", False)}
         enlaces = [direccion_de("proyecto", j["relativa"])] if j.get("relativa") and j.get("relativa") not in (".", "") else []
+        if j.get("atencion") == "espera":
+            # lo que espera es un objeto aparte: se abre ahí (desde cuándo, qué pide)
+            enlaces.append(direccion_de("permiso", j["nombre"], maquina))
         return Objeto(direccion=direccion_de("hilo", j["nombre"], maquina), tipo="hilo", id=j["nombre"], titulo=j["nombre"],
                       estado=str(j.get("atencion", "")), campos=campos, enlaces=enlaces, maquina=maquina,
                       acciones=[Accion(nombre="mensaje", descripcion="escribirle (llega a su casilla, viva donde viva); "
@@ -378,6 +386,45 @@ class Pendiente(Tipo):
         return Hecho(direccion=str(d), accion=accion, objeto=objeto, resultado=datos)
 
 
+class Permiso(Tipo):
+    """Lo que un hilo espera de la persona (su atención en «espera»): `permiso:<hilo>`, de solo lectura.
+
+    Es la solicitud de permiso de primitivas.md («Permiso»), en su primer paso: dice qué hilo espera, desde
+    cuándo y, si su agente lo dijo, qué pide (Estado.espera, que anota el gancho del agente). Todavía no se
+    contesta desde aquí: se contesta en el hilo (`telar ir <hilo>`), y por eso no tiene acciones. Su id es el
+    del hilo, porque un hilo espera una cosa a la vez; cuando haya una solicitud con su propio id y su
+    decisión, `permiso:<hilo>` seguirá siendo «la que espera ahora» (docs/propuestas/permisos.md)."""
+
+    nombre = "permiso"
+    descripcion = "lo que un hilo espera de la persona (un permiso, una pregunta): desde cuándo y qué pide; solo lectura"
+
+    def ver(self, ctx, d):
+        from telar import estado as mod_estado
+
+        j, maquina = Hilo().buscar(ctx, Direccion("hilo", d.id, d.maquina))
+        nombre = j["nombre"]
+        if j.get("atencion") != "espera":
+            estado = {"trabajando": "está trabajando", "termino": "terminó su turno"}.get(str(j.get("atencion")), "no está esperando")
+            raise ErrorDeServicio(f"«{nombre}» no espera nada de nadie: {estado} (telar objeto hilo:{_escapar(nombre)})", 404)
+        desde, pide, clase = str(j.get("atencion_desde") or ""), "", ""
+        if not maquina:
+            # lo que pide lo anota el gancho de esta máquina; de un hilo de otra, se sabe que espera y desde cuándo
+            e = mod_estado.abrir(ctx.config).espera(nombre) or {}
+            pide, clase = e.get("pide", ""), e.get("clase", "")
+        campos = {k: v for k, v in (("hilo", nombre), ("desde", desde), ("pide", pide), ("clase", clase),
+                                     ("contestar", f"en el hilo: telar ir {nombre}")) if v}
+        enlaces = [direccion_de("hilo", nombre, maquina)]
+        if j.get("relativa") and j.get("relativa") not in (".", ""):
+            enlaces.append(direccion_de("proyecto", j["relativa"]))
+        titulo = pide or (f"«{nombre}» te espera" if clase != "pregunta" else f"«{nombre}» te pregunta algo")
+        return Objeto(direccion=direccion_de("permiso", nombre, maquina), tipo="permiso", id=nombre, titulo=titulo,
+                      estado="pendiente", resumen=pide, campos=campos, enlaces=enlaces, version=desde,
+                      maquina=maquina)
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        raise ErrorDeServicio(f"«{d}» todavía no se contesta desde aquí: en su hilo (telar ir {d.id})", 404)
+
+
 class DeModulo(Tipo):
     """Un tipo que trae un módulo: `ver` y sus acciones son consultas suyas (telar.servicios.modulos)."""
 
@@ -530,7 +577,7 @@ class Encargo(Tipo):
         return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, r["encargo"], maquina))
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo())
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo(), Permiso())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

@@ -31,6 +31,8 @@ mano y no hace falta adaptador ninguno:
 
     telar agente aviso --evento abre --sesion 4f21     arrancó esta conversación aquí
     telar agente aviso --evento espera                 hay algo que decidir
+    telar agente aviso --evento espera --pide "¿borro la rama vieja?"
+                                                       …y qué (lo muestra `telar objeto permiso:<hilo>`)
 
 Es el único verbo que corre seguido —cada vez que el agente arranca, pide permiso o
 termina— y por eso tiene tres reglas propias:
@@ -92,6 +94,8 @@ def main(argv: list[str], ctx) -> int:
                    help="con aviso: decir el evento en vez de leerlo de la carga")
     p.add_argument("--sesion", default="", help="con aviso: el id de la conversación")
     p.add_argument("--panel", default="", help="con aviso: el panel donde corre el agente")
+    p.add_argument("--pide", default="", help="con aviso --evento espera: qué le pide a la persona, en una línea "
+                   "(lo muestra `telar objeto permiso:<hilo>`)")
     p.add_argument("--ajustes", default="", help="el archivo de configuración del agente")
     p.add_argument("--ejecutable", default="", help="con qué comando llamar a telar desde el gancho")
     p.add_argument("--seco", action="store_true", help="decir qué haría, sin escribir nada")
@@ -437,6 +441,12 @@ def _aviso(o, ctx) -> int:
             from telar import movil
 
             hilo = movil.hilo_de_panel(panel) or hilo
+        if aviso.evento is Evento.ESPERA and hilo and aviso.datos.get("pide"):
+            # antes de mirar si avisa el mod: él dice «espera», pero el texto de lo que pide solo lo trae esta carga
+            try:
+                est.anotar_espera(hilo, str(aviso.datos["pide"]), str(aviso.datos.get("clase") or ""), aviso.cuando)
+            except Exception:  # noqa: BLE001 - lo que pide es un dato de más: no tumba el aviso
+                pass
         if not o.evento and aviso.evento in DEL_MOD and hilo:
             from telar import casilla
 
@@ -486,6 +496,7 @@ def _leer(o, ctx) -> Aviso:
             hilo=o.hilo,
             panel=o.panel,
             cuando=datetime.now(),
+            datos={"pide": o.pide} if o.pide and o.evento == Evento.ESPERA.value else {},
         )
     agente = _construir(o.agente, ctx.config)
     aviso = agente.leer_aviso(_carga())

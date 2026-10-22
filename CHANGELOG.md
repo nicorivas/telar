@@ -8,6 +8,12 @@ extension shared the version number.
 
 ### Added
 
+- A module can declare what it asks for outside its folder in `[permisos]` of its `modulo.toml` (paths it reads
+  and writes, network, telar commands it runs). `telar modulos instalar` shows it before asking, and says that telar
+  does not enforce it yet; `telar modulos` lists it (`permisos` in `--json`) and `actualizar` says when it changed.
+  A module without the table installs and runs as before. A thread waiting for its person is now a read-only
+  object, `permiso:<thread>` (`telar objeto permiso:Faro`): since when it waits and, if its agent said so, what it
+  asks for, taken from Claude Code's notification or from the new `telar agente aviso --evento espera --pide`.
 - `[disparadores.<name>]` in the configuration: something that runs a command or sends a message by itself, on a
   clock (`cuando`, a cron schedule), a dashboard key (`tecla`) or a change (`al = "cambio:<topic>"`, announced by
   `telar cambio <topic>` on any machine). A clock trigger becomes one more process of `telar periodicos` (listed

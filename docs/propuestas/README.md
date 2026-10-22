@@ -26,6 +26,9 @@ el primer paso sin hacer de la primera propuesta.
    El paso 7, los disparadores y el estado deseado, también: **[disparadores.md](disparadores.md)**
    (`[disparadores]`: un reloj, una tecla o un cambio; qué reconciliaría el nodo y por qué por ahora solo avisa).
    Su primer paso está hecho.
+   El paso 8, los permisos, también: **[permisos.md](permisos.md)** (sujetos, la solicitud de permiso como objeto,
+   `[permisos]` en el manifiesto de un módulo; quién contesta y qué se hace cumplir, por decidir). Su primer paso
+   está hecho.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
    que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
 4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores

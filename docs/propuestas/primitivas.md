@@ -191,7 +191,13 @@ Cada uno deja todo funcionando.
    periodicos` y la tecla a `[atajos]` al leerlos, y el cambio lo corre el nodo con freno; el nodo avisa (no
    arregla) cuando un residente no tiene sesión, y `telar doctor` dice lo declarado que no corre. Faltan los
    filtros de un cambio, que `telar periodicos` escriba `[disparadores]`, los módulos y arreglar además de avisar.
-8. **Permisos**: sujetos con permisos, la solicitud de permiso como objeto, los manifiestos con lo que piden.
+8. **Permisos**: sujetos con permisos, la solicitud de permiso como objeto, los manifiestos con lo que piden. El
+   diseño, las decisiones abiertas y lo que falta están en [permisos.md](permisos.md). Primer paso hecho
+   (22-oct-2026), sin cambiar lo que se permite: un módulo declara lo que pide en `[permisos]` de su
+   `modulo.toml` (rutas que lee y escribe, red, órdenes de telar) y `telar modulos instalar` lo muestra antes de
+   preguntar, sin hacerlo cumplir; la espera de un hilo es el objeto `permiso:<hilo>`, de solo lectura (desde
+   cuándo y qué pide, si su agente lo dijo). Faltan contestar una solicitud desde fuera de la terminal, la
+   política de cada sujeto y hacer cumplir lo que un módulo pide.
 
 **Las CLI sueltas** (aparte, junto al paso 2). El repo de vida tiene decenas de CLI propias; seis tocan
 el correo y cuatro las tareas. Lo que se centraliza es la entrada y el contrato, no el código: un módulo

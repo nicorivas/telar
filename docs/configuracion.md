@@ -1000,7 +1000,26 @@ descripcion = "un correo"
 
 El `ver` devuelve un objeto JSON con lo que tenga de `titulo`, `estado`, `resumen`, `campos`, `enlaces` y
 `acciones`; telar pone la dirección. Un módulo no puede pisar un tipo de fábrica (tarea, hilo, proyecto,
-archivo, pendiente).
+archivo, pendiente, agente, encargo, permiso).
+
+### Lo que pide un módulo
+
+```toml
+[permisos]                       # lo que pide fuera de su carpeta
+leer = ["~/datos/oceano"]        # rutas que lee
+escribir = ["~/.local/state/nino34"]
+red = ["psl.noaa.gov"]           # los sitios a los que se conecta; true: cualquiera; false o nada: ninguno
+ordenes = ["mensaje", "tipo tarea"]   # las órdenes de telar que corre («telar mensaje» vale igual)
+```
+
+`telar modulos instalar` lo muestra antes de preguntar («pide: leer ~/datos/oceano; red: psl.noaa.gov; …»),
+`telar modulos` lo lista (y `--json`, en `permisos`), y `actualizar` dice si cambió desde la versión de antes.
+**telar todavía no lo hace cumplir**: un módulo corre con los permisos de quien lo instaló, lo declare o no, y la
+instalación lo dice. Es el primer paso de los permisos ([propuestas/permisos.md](propuestas/permisos.md)): que
+quien instala sepa lo que el autor dice que el módulo hace. Sin la tabla, el módulo «no dice qué pide», que no es
+lo mismo que no pedir nada (`[permisos]` vacía). Una clave que esta versión no entiende no impide instalarlo: se
+muestra tal cual, como no entendida. Un telar anterior a esta tabla no la conoce y no lee el módulo que la trae
+(como con cualquier sección nueva del manifiesto).
 
 `telar modulos adoptar <nombre>` pasa uno declarado a mano en la configuración (`[modulos.<nombre>]`) a
 `modulos.toml`, enlazado a su carpeta: saca su bloque de la configuración (que queda respaldada al lado) y

@@ -91,6 +91,12 @@ NOTIFICACIONES: dict[str, Evento] = {
     "auth_success": Evento.SIGUE,
 }
 
+#: Qué clase de espera es cada `notification_type` que espera (lo dice `permiso:<hilo>`).
+CLASES_DE_ESPERA: dict[str, str] = {
+    "permission_prompt": "permiso",
+    "elicitation_dialog": "pregunta",
+}
+
 #: Los ganchos que instala telar. `PostToolUse` se dispara a cada rato: tope corto.
 GANCHOS: tuple[Gancho, ...] = (
     Gancho(Evento.ABRE, "SessionStart"),
@@ -337,13 +343,19 @@ class ClaudeCode(AgenteBase):
                 f" los que conozco: {conocidos}"
             )
         cwd = str(crudo.get("cwd") or "")
+        datos = {"nativo": nativo, "transcripcion": str(crudo.get("transcript_path") or "")}
+        if nativo == "Notification" and elegido is Evento.ESPERA:
+            # lo que pide, en sus palabras («Claude needs your permission to use Bash»): telar lo guarda para
+            # `permiso:<hilo>` (Estado.anotar_espera); `clase` dice si es un permiso o una pregunta de un MCP
+            datos["pide"] = str(crudo.get("message") or "")
+            datos["clase"] = CLASES_DE_ESPERA.get(str(crudo.get("notification_type") or ""), "")
         return Aviso(
             evento=elegido,
             agente=self.nombre,
             sesion=str(crudo.get("session_id") or ""),
             ruta=Path(cwd) if cwd else None,
             cuando=datetime.now(),
-            datos={"nativo": nativo, "transcripcion": str(crudo.get("transcript_path") or "")},
+            datos=datos,
         )
 
     def comandos_instalados(self) -> tuple[str, ...]:
