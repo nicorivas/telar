@@ -9,6 +9,7 @@ es un falso (los módulos `nats` y la conexión), y el nodo se arma sin conectar
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest import mock
 
@@ -119,6 +121,61 @@ class LaConexionDelNodo(Prueba):
         opciones = self.conectar()
         self.assertIs(opciones["error_cb"], mod_bus._callar)
         self.assertNotIn("disconnected_cb", opciones)
+
+
+class NatsQueRechazaPrimero(FalsoNats):
+    """Un bus que rechaza las primeras `n` conexiones como el servidor a una cuenta sin aprobar."""
+
+    def __init__(self, n: int, motivo: str = "nats: 'Authorization Violation'"):
+        super().__init__()
+        self.n, self.motivo = n, motivo
+
+    async def connect(self, url, **opciones):
+        self.llamadas.append(opciones)
+        if len(self.llamadas) <= self.n:
+            raise Exception(self.motivo)
+        return SimpleNamespace(url=url)
+
+
+class LaPrimeraConexion(Prueba):
+    """El demonio no se rinde tampoco en la primera conexión: con la cuenta todavía sin aprobar, o el bus caído,
+    reintenta con esperas que crecen y entra cuando puede (antes, el nodo moría callado y no volvía)."""
+
+    def config(self):
+        import tempfile
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        token = Path(tmp.name) / "bus.token"
+        token.write_text("secreto-de-ana\n")
+        return SimpleNamespace(bus=SimpleNamespace(url="nats://bus", persona="ana", maquina="laptop", token=str(token)))
+
+    def correr(self, falso, **kw):
+        esperas = []
+
+        async def dormir(s):
+            esperas.append(s)
+
+        with mock.patch.dict(sys.modules, {"nats": falso}), redirect_stdout(io.StringIO()):
+            nc = asyncio.run(mod_bus.conectar(self.config(), dormir=dormir, **kw))
+        return nc, esperas
+
+    def test_reintenta_hasta_que_la_aprueban(self):
+        falso = NatsQueRechazaPrimero(7)
+        nc, esperas = self.correr(falso, para_siempre=True)
+        self.assertEqual(nc.url, "nats://bus")
+        self.assertEqual(len(falso.llamadas), 8)
+        self.assertEqual(esperas, [2, 5, 10, 30, 60, 60, 60])  # crecen y se quedan en el tope
+        # siempre con la cuenta: un rechazo no la cambia por el token de antes
+        self.assertTrue(all(o.get("user") == "ana" and o.get("password") == "secreto-de-ana" and "token" not in o
+                            for o in falso.llamadas))
+
+    def test_una_orden_no_espera(self):
+        falso = NatsQueRechazaPrimero(1)
+        with mock.patch.dict(sys.modules, {"nats": falso}):
+            with self.assertRaises(mod_bus.ErrorDeBus):
+                asyncio.run(mod_bus.conectar(self.config()))
+        self.assertEqual(len(falso.llamadas), 1)
 
 
 class ElRegistroConTope(Prueba):

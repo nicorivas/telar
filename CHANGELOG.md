@@ -6,6 +6,18 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-10-22
+
+### Fixed
+
+- A node whose first connection to the bus failed (the bus down, or an account not yet approved after `telar
+  instalar --unirse`) died quietly while `telar serve` kept running, and never came back. It now retries the first
+  connection too, with waits that grow to a minute, and enters as soon as it can.
+
+### Removed
+
+- The single-token bus of before (`nats-server --auth`): telar connects only with the person's account.
+
 ## [0.4.4] — 2026-10-22
 
 ### Changed

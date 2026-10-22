@@ -39,9 +39,14 @@ class ContraUnServidor(Prueba):
         self.addCleanup(self.tmp.cleanup)
         puerto = _puerto_libre()
         token = Path(self.tmp.name) / "token"
-        token.write_text("secreto")
+        token.write_text("secreto-de-ana-0123456789abcdef")
+        # una cuenta por persona, como el bus de verdad (telar.cuentas)
+        from telar import cuentas
+
+        conf = Path(self.tmp.name) / "servidor.conf"
+        conf.write_text(cuentas.configuracion({"ana": cuentas.hashear("secreto-de-ana-0123456789abcdef")}))
         self.proc = subprocess.Popen([BINARIO, "-a", "127.0.0.1", "-p", str(puerto), "--js", "--store_dir",
-                                      str(Path(self.tmp.name) / "datos"), "--auth", "secreto"],
+                                      str(Path(self.tmp.name) / "datos"), "-c", str(conf)],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(self.proc.kill)
         time.sleep(0.5)

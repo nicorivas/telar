@@ -107,10 +107,6 @@ def _token(config) -> str:
         raise ErrorDeBus(f"no puedo leer el token del bus ({config.bus.token}): {e}") from e
 
 
-#: cómo se entra a cada bus en este proceso: "cuenta" (usuario y clave) o "token" (un bus de antes)
-_MODO: dict[str, str] = {}
-
-
 async def _callar(_e) -> None:
     """Sin esto, nats-py imprime la traza de cada falla de conexión; la falla la cuenta ErrorDeBus."""
 
@@ -190,67 +186,56 @@ class Avisador:
         self.escribir(f"{self.prefijo}: conectado de nuevo" + (f" (tras {duro:.0f} s)" if duro >= 1 else ""))
 
 
-async def _modo(config, nats, token: str) -> str:
-    """Si este bus tiene una cuenta por persona (`telar bus persona`) o un solo token para todos
-    (`nats-server --auth`, el de antes). Se prueba una vez por proceso. El token se acepta mientras se pasa
-    a las cuentas; se retira en la 0.3."""
-    url = config.bus.url
-    if url not in _MODO:
-        try:
-            nc = await nats.connect(url, user=persona(config), password=token, connect_timeout=5,
-                                    max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
-            await nc.close()
-            _MODO[url] = "cuenta"
-        except Exception as e:  # noqa: BLE001
-            if "authorization" not in str(e).lower():
-                return "cuenta"            # no responde: no se sabe todavía; se prueba la próxima vez
-            _MODO[url] = "token"
-    return _MODO[url]
+#: la espera entre intentos de la primera conexión del demonio: crece del primero al último y se queda ahí
+ESPERAS_PRIMERA = (2, 5, 10, 30, 60)
 
 
-async def conectar(config, *, para_siempre: bool = False):
-    """Una conexión al bus. `para_siempre`: reconecta sin rendirse (el demonio); si no, falla rápido."""
+async def conectar(config, *, para_siempre: bool = False, dormir=None):
+    """Una conexión al bus, con la cuenta de esta persona (telar.cuentas: su nombre y su secreto).
+    `para_siempre`: no se rinde nunca (el demonio). Tampoco en la primera conexión: nats-py reconecta una
+    conexión que ya tuvo, pero si la primera falla, se rinde; aquí se reintenta con esperas que crecen
+    (`ESPERAS_PRIMERA`). Así un nodo que arranca con el bus caído, o con una cuenta que todavía no se aprueba
+    (`telar instalar --unirse`), entra solo cuando puede. Sin `para_siempre`, falla rápido."""
     try:
         import nats
     except ImportError as e:
         raise ErrorDeBus("falta el cliente del bus: instala telar con el extra «bus» (nats-py)") from e
     opciones = {"name": f"telar-{maquina(config)}", "connect_timeout": 5}
     token = _token(config)
-    # el demonio reconecta para siempre, también ante una clave rechazada: antes se prueba cómo se entra
-    modo = await _modo(config, nats, token) if token and para_siempre else _MODO.get(config.bus.url, "cuenta")
     if token:
-        if modo == "cuenta":
-            # la cuenta de esta persona (telar.cuentas): su nombre y su secreto
-            opciones.update(user=persona(config), password=token)
-        else:
-            opciones["token"] = token
-    if para_siempre:
-        # las fallas, en una línea cada una y sin repetirse (Avisador), no con su traza entera
-        avisos = Avisador()
-        opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True,
-                        error_cb=avisos.__call__, disconnected_cb=avisos.cortado,
-                        reconnected_cb=avisos.de_vuelta)  # nats-py exige funciones async: un objeto llamable no le sirve
-    else:
+        opciones.update(user=persona(config), password=token)
+    if not para_siempre:
         opciones.update(max_reconnect_attempts=0, allow_reconnect=False, error_cb=_callar)
-    try:
-        nc = await nats.connect(config.bus.url, **opciones)
-        if para_siempre:
-            avisos.nc = nc  # para que un cierre ordenado no se anote como corte
+        try:
+            return await nats.connect(config.bus.url, **opciones)
+        except Exception as e:  # noqa: BLE001 - cualquier falla de conexión es «el bus no responde»
+            raise ErrorDeBus(f"el bus ({config.bus.url}) no responde: {e}") from e
+    # las fallas, en una línea cada una y sin repetirse (Avisador), no con su traza entera
+    avisos = Avisador()
+    opciones.update(max_reconnect_attempts=-1, reconnect_time_wait=2, allow_reconnect=True,
+                    error_cb=avisos.__call__, disconnected_cb=avisos.cortado,
+                    reconnected_cb=avisos.de_vuelta)  # nats-py exige funciones async: un objeto llamable no le sirve
+    dormir = dormir or asyncio.sleep
+    intento = 0
+    while True:
+        try:
+            nc = await nats.connect(config.bus.url, **opciones)
+        except Exception as e:  # noqa: BLE001 - se reintenta: el bus o la cuenta pueden llegar después
+            espera = ESPERAS_PRIMERA[min(intento, len(ESPERAS_PRIMERA) - 1)]
+            if "authorization" in str(e).lower():
+                avisos._anotar(("primera", "clave"), f"el bus ({config.bus.url}) no acepta la cuenta "
+                               f"«{persona(config)}» todavía (¿un pedido sin aprobar, o otra clave?): reintento "
+                               f"cada {ESPERAS_PRIMERA[-1]} s")
+            else:
+                avisos._anotar(("primera", type(e).__name__), f"el bus ({config.bus.url}) no responde ({e}): "
+                               f"reintento cada {ESPERAS_PRIMERA[-1]} s")
+            intento += 1
+            await dormir(espera)
+            continue
+        avisos.nc = nc  # para que un cierre ordenado no se anote como corte
+        if intento:
+            avisos.escribir(f"bus: conectado, al intento {intento + 1}")
         return nc
-    except Exception as e:  # noqa: BLE001 - cualquier falla de conexión es «el bus no responde»
-        if token and not para_siempre and "authorization" in str(e).lower():
-            # el bus cambió de modo (de un solo token a cuentas, o al revés; ver _modo): el otro, y se recuerda
-            otro = "token" if modo == "cuenta" else "cuenta"
-            for k in ("user", "password", "token"):
-                opciones.pop(k, None)
-            opciones.update(token=token) if otro == "token" else opciones.update(user=persona(config), password=token)
-            try:
-                nc = await nats.connect(config.bus.url, **opciones)
-                _MODO[config.bus.url] = otro
-                return nc
-            except Exception:  # noqa: BLE001 - se cuenta la primera falla
-                pass
-        raise ErrorDeBus(f"el bus ({config.bus.url}) no responde: {e}") from e
 
 
 def _es_plazo(e: BaseException) -> bool:

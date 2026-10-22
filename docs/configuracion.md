@@ -815,9 +815,7 @@ pedidos` y `telar bus aprobar ID`. Cada cuenta tiene un rol: el **dueño** es qu
 resto, desde cualquier máquina del dueño o de un admin: se le piden al nodo de la máquina del bus, y el
 servidor solo deja llegar ahí a esas cuentas (telar.personas). Recargan el bus solas. A mano, en la máquina
 del bus, `telar bus persona NOMBRE` da una cuenta o una clave nueva (para ti, con tu `[bus] token`; para otra
-persona genera un secreto que hay que pasarle), y después `systemctl --user reload telar-bus`. Un bus de antes, con un solo token para
-todos (`nats-server --auth`), se sigue aceptando hasta la 0.3; para pasarlo a cuentas, ver
-`servidor/telar-bus.service`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
+persona genera un secreto que hay que pasarle), y después `systemctl --user reload telar-bus`. Sin `[bus]`, todo sigue en una sola máquina, como siempre.
 
 ## `[equipo]` — que alguien de confianza vea tus tareas y te sugiera prioridades
 
