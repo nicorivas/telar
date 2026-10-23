@@ -10,6 +10,9 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
     GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
     GET  /maquinas          la página madre: tus máquinas, para elegir en cuál abrir la página
     GET  /maquinas.json     esta máquina y las del bus que sirven su página, cada una con su enlace para entrar
+    GET  /alojamiento.json  los servidores tipo mainframe del bus y cómo va mi pedido de un lugar (y, si administro,
+                            los de todos); POST /alojamiento/<pedir|aprobar|rechazar|quitar> los pide o decide
+                            (telar.alojamiento: el secreto del bus lo pone esta máquina, nunca la página)
     GET  /entrar?…          entrar con un boleto de otra máquina (sin la llave de esta): ver `boleto`
     GET  /manifest.webmanifest, /sw.js, /icono-….png   lo que deja instalarla como app (sin llave: web/app)
     POST /unirse            sin llave: una persona nueva pide entrar al bus (telar.unirse). Solo en la máquina
@@ -302,6 +305,51 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
                     "url": boleto(token, aqui, x["nombre"], web) if web and token and x["en_linea"] else "",
                 })
         return {"aqui": aqui, "maquinas": lista}
+
+    @app.get("/alojamiento.json")
+    async def alojamiento_json():
+        """Los servidores mainframe que el bus ofrece (el servicio `alojar.<dueño>`) y mi lugar en cada uno. Si nadie
+        atiende, o no hay bus, la lista va vacía: no es un error."""
+        import asyncio
+
+        from telar import alojamiento
+
+        if config is None or not getattr(config.bus, "url", ""):
+            return {"servidores": []}
+        try:
+            r = await asyncio.to_thread(alojamiento.pedir, config, {"accion": "estado"})
+        except alojamiento.ErrorDeAlojamiento as e:
+            if e.codigo in (403, 404, 502):
+                return {"servidores": [], "nota": str(e)}
+            return JSONResponse({"detail": str(e)}, status_code=e.codigo)
+        return {"servidores": [{"nombre": r.get("servidor") or r.get("dueno", ""), "dueno": r.get("dueno", ""), "quien": r.get("quien", ""),
+                                "administra": bool(r.get("administra")), "alojamientos": r.get("alojamientos", [])}]}
+
+    @app.post("/alojamiento/{accion}")
+    async def alojamiento_accion(accion: str, request: Request):
+        import asyncio
+
+        from telar import alojamiento
+
+        if config is None or accion not in ("pedir", "aprobar", "rechazar", "quitar"):
+            return JSONResponse({"detail": "no"}, status_code=404)
+        cuerpo = await request.body()
+        if len(cuerpo) > 4096:
+            return JSONResponse({"detail": "el pedido es demasiado largo"}, status_code=413)
+        try:
+            datos = json.loads(cuerpo or b"{}")
+            if not isinstance(datos, dict):
+                raise ValueError("no es un objeto")
+            pedido = {"accion": accion, "persona": str(datos.get("persona") or "")}
+            if accion == "pedir":
+                # el secreto sale de esta máquina, no de la página
+                pedido.update(await asyncio.to_thread(alojamiento.datos_de_pedir, config, str(datos.get("llave") or "")))
+            r = await asyncio.to_thread(alojamiento.pedir, config, pedido)
+        except ValueError as e:
+            return JSONResponse({"detail": str(e)}, status_code=422)
+        except alojamiento.ErrorDeAlojamiento as e:
+            return JSONResponse({"detail": str(e)}, status_code=e.codigo)
+        return r
 
     @app.get("/")
     @app.get("/compartir")

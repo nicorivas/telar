@@ -272,6 +272,12 @@ Un alojamiento pasa `pendiente → preparando → activo`, o `falló` (se reinte
 `quitado`, y se guarda en `~/.config/telar/bus/alojamientos.json`, privado. Cada alojado recibe el siguiente puerto
 de página libre desde el 8781 (`telar instalar --web-puerto`); el 8780 es el de quien administra.
 
+**En la página**, la vista de máquinas (`/maquinas`) lista debajo de las tuyas los servidores mainframe que ofrece el
+bus (`GET /alojamiento.json`, que pregunta `estado` al servicio `alojar.<dueño>`; si nadie atiende, la lista va vacía)
+con cómo va tu pedido, y «pedir un lugar» (con una llave ssh opcional) lo manda por `POST /alojamiento/pedir`. El
+secreto del bus lo pone la máquina que sirve la página, nunca el navegador. Quien administra ve ahí mismo los pedidos
+de todos y los aprueba, rechaza o quita.
+
 **Lo que necesita root, sin darle root al nodo.** El nodo corre sin privilegios y con `NoNewPrivileges`: no hay
 sudo. Deja un pedido en una carpeta de buzón (`/var/spool/telar-alojar/pendientes/`), que `telar-alojar.path` vigila
 y despierta a `telar-alojar.service` (root, una vez por vez); éste deja el resultado en `resultados/` y el nodo lo

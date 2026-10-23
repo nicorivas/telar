@@ -357,6 +357,7 @@ class AlInstalar(Prueba):
             self.assertIn("telar serve --web", salida.getvalue())
             with mock.patch("telar.ordenes.equipo.ip_de_tailscale", return_value=""):
                 self.assertEqual(instalar.direccion_pagina()[0], "http://127.0.0.1:8780")
+                self.assertEqual(instalar.direccion_pagina(8782)[0], "http://127.0.0.1:8782")
 
 
 if __name__ == "__main__":

@@ -19,9 +19,8 @@ from __future__ import annotations
 
 import json
 import time
-from pathlib import Path
 
-from telar import alojamiento, cuentas
+from telar import alojamiento
 from telar import bus as mod_bus
 from telar.ordenes import _comun
 
@@ -75,22 +74,7 @@ def main(argv: list[str], ctx) -> int:
 
 
 def _datos_de_pedir(config, llave: str) -> dict:
-    """Lo que se manda al pedir: el secreto de esta persona en el bus, el nombre de esta máquina y su llave ssh."""
-    if not config.bus.url:
-        raise ValueError("no hay bus ([bus] url): primero `telar instalar --unirse`")
-    if not config.bus.token:
-        raise ValueError("no encuentro tu secreto del bus ([bus] token)")
-    ruta = Path(config.bus.token).expanduser()
-    try:
-        secreto = ruta.read_text(encoding="utf-8").strip()
-    except OSError as e:
-        raise ValueError(f"no puedo leer tu secreto del bus ({ruta}): {e}") from None
-    datos = {"secreto": secreto, "maquina": mod_bus.maquina(config)}
-    if llave:
-        p = Path(llave).expanduser()
-        texto = p.read_text(encoding="utf-8").strip().splitlines()[0] if len(llave) < 200 and p.is_file() else llave
-        datos["llave"] = texto
-    return datos
+    return alojamiento.datos_de_pedir(config, llave)
 
 
 def _mostrar(r: dict, *, todos: bool, propio: bool, yo: str) -> None:

@@ -198,15 +198,26 @@ def _admin(quien: str, dueno: str) -> None:
         raise ErrorDeAlojamiento(f"«{quien or 'nadie'}» no administra este servidor: eso lo hace {dueno} o un admin", 403)
 
 
-def ver(quien: str, dueno: str, *, ahora: float | None = None) -> dict:
-    """Todos los alojamientos para quien administra; el propio, para cualquiera."""
+def nombre_del_servidor(config) -> str:
+    """Cómo se llama esta máquina en el bus (la del mainframe, vista desde quien le pide un lugar)."""
+    from telar import bus as mod_bus
+
+    try:
+        return mod_bus.maquina(config) if config is not None else ""
+    except Exception:  # noqa: BLE001 - sin nombre, la lista lo omite
+        return ""
+
+
+def ver(quien: str, dueno: str, *, ahora: float | None = None, servidor: str = "") -> dict:
+    """Todos los alojamientos para quien administra; el propio, para cualquiera. `servidor`: el nombre de esta
+    máquina en el bus, para que quien pide sepa a qué servidor le habla."""
     from telar import personas
 
     datos = leer()
     _caducar(datos, ahora)
     es_admin = quien == dueno or personas._roles(dueno).get(quien) == "admin"
     mios = {p: a for p, a in datos.items() if es_admin or p == quien}
-    return {"dueno": dueno, "quien": quien, "administra": es_admin,
+    return {"dueno": dueno, "quien": quien, "administra": es_admin, "servidor": servidor,
             "alojamientos": [publico(a, p) for p, a in sorted(mios.items(), key=lambda x: -x[1].get("cuando", 0))]}
 
 
@@ -229,6 +240,7 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
     que el ayudante termine (las pruebas); `ayuda`: cómo hablarle (las pruebas)."""
     from telar import unirse
 
+    sv = nombre_del_servidor(config)
     accion = str(pedido.get("accion") or "estado")
     if accion not in ACCIONES:
         raise ErrorDeAlojamiento(f"«{accion}» no es una acción: {', '.join(ACCIONES)}", 422)
@@ -240,9 +252,9 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         _admin(quien, dueno)
     if accion == "pedir":
         hecho = pedir_aqui(quien, pedido, dueno)
-        return {**ver(quien, dueno), **hecho}
+        return {**ver(quien, dueno, servidor=sv), **hecho}
     if accion in ("estado", "ver"):
-        return ver(quien, dueno)
+        return ver(quien, dueno, servidor=sv)
     persona = validar_nombre(str(pedido.get("persona") or pedido.get("nombre") or ""))
     a = leer().get(persona)
     if a is None:
@@ -251,7 +263,7 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         if a["estado"] not in ("pendiente", "falló"):
             raise ErrorDeAlojamiento(f"el pedido de {persona} está {a['estado']}: no se rechaza")
         _cambiar(persona, estado="rechazado", decidido=int(time.time()), por=quien, secreto=None)
-        return {**ver(quien, dueno), "hecho": f"{persona}: pedido rechazado"}
+        return {**ver(quien, dueno, servidor=sv), "hecho": f"{persona}: pedido rechazado"}
     ayuda = ayuda or ayudante
     if accion == "aprobar":
         if a["estado"] not in ("pendiente", "falló"):
@@ -272,7 +284,7 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         else:
             threading.Thread(target=_terminar, args=(persona, pedido_root, ayuda), daemon=True,
                              name=f"alojar-{persona}").start()
-        return {**ver(quien, dueno), "hecho": f"{persona}: preparando su lugar en el servidor (tarda unos minutos)"}
+        return {**ver(quien, dueno, servidor=sv), "hecho": f"{persona}: preparando su lugar en el servidor (tarda unos minutos)"}
     # quitar
     if a["estado"] not in ("activo", "falló", "preparando"):
         raise ErrorDeAlojamiento(f"{persona} no tiene un lugar que quitar ({a['estado']})")
@@ -280,7 +292,7 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
     if not r.get("ok"):
         raise ErrorDeAlojamiento(f"no se pudo cerrar el lugar de {persona}: {r.get('error', '?')}", 502)
     _cambiar(persona, estado="quitado", decidido=int(time.time()), por=quien, secreto=None, error=None)
-    return {**ver(quien, dueno), "hecho": f"{persona}: lugar cerrado (su carpeta se conserva)"}
+    return {**ver(quien, dueno, servidor=sv), "hecho": f"{persona}: lugar cerrado (su carpeta se conserva)"}
 
 
 def _terminar(persona: str, pedido_root: dict, ayuda: Callable[[dict], dict]) -> None:
@@ -316,6 +328,32 @@ def atender_pedido_del_bus(persona: str, datos: bytes, cabeceras: dict | None, c
 
 
 # ── desde cualquier máquina ──────────────────────────────────────────────────────────
+
+def datos_de_pedir(config, llave: str = "") -> dict:
+    """Lo que se manda al pedir un lugar: el secreto de esta persona en el bus, el nombre de esta máquina y, si se da,
+    su llave ssh (el texto o el archivo). ValueError si no se puede armar."""
+    from telar import bus as mod_bus
+
+    if not config.bus.url:
+        raise ValueError("no hay bus ([bus] url): primero `telar instalar --unirse`")
+    if not config.bus.token:
+        raise ValueError("no encuentro tu secreto del bus ([bus] token)")
+    ruta = Path(config.bus.token).expanduser()
+    try:
+        secreto = ruta.read_text(encoding="utf-8").strip()
+    except OSError as e:
+        raise ValueError(f"no puedo leer tu secreto del bus ({ruta}): {e}") from None
+    datos = {"secreto": secreto, "maquina": mod_bus.maquina(config)}
+    llave = (llave or "").strip()
+    if llave:
+        p = Path(llave).expanduser()
+        try:
+            es_archivo = len(llave) < 200 and p.is_file()
+        except OSError:
+            es_archivo = False
+        datos["llave"] = p.read_text(encoding="utf-8").strip().splitlines()[0] if es_archivo else llave
+    return datos
+
 
 def pedir(config, pedido: dict) -> dict:
     """Una acción de alojamiento: aquí mismo si esta es la máquina del bus; si no, al nodo que la tiene, por el bus."""

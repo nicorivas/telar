@@ -142,7 +142,7 @@ PUERTO_PAGINA = 8780
 
 def _decir_pagina(o) -> None:
     """Al final, dónde está la página: con la llave, que el navegador guarda en una cookie la primera vez."""
-    base, con_llave = direccion_pagina(o.web_puerto)
+    base, con_llave = direccion_pagina(getattr(o, "web_puerto", 0))
     print()
     print(f"  {_comun.verde('→')} {_comun.fuerte('Tu página:')} {con_llave}")
     detalle = (f"la primera vez entra con la llave; después basta {base}, desde esta máquina o desde tu celular "

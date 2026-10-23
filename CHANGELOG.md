@@ -15,6 +15,9 @@ extension shared the version number.
   bus service, `alojar.<owner>`, exported to every account (`telar.alojamiento`). What needs root is done by
   `servidor/telar-alojar`, a root systemd service that watches a spool folder: the node never gets sudo. See
   `docs/arquitectura.md`, «El servidor como mainframe».
+- The machines view (`/maquinas`) lists the mainframe servers of the bus with the state of your request and a
+  «pedir un lugar» button; whoever administers approves, rejects or removes from the same view
+  (`GET /alojamiento.json`, `POST /alojamiento/<action>`).
 - `telar instalar --web-puerto N`: the page of a machine on a port other than 8780 (a server that hosts several
   people gives each their own).
 
