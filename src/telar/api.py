@@ -666,6 +666,31 @@ def post_decision(ident: str, decision: str, pedido: PedidoDecision, ctx: Contex
     return servicio_equipo.decidir(ctx, ident, decision, nota=pedido.nota, tarea=pedido.tarea, maquina=pedido.maquina)
 
 
+# ── los hilos de las otras personas, y escribirles (telar.entre_personas) ─────────
+
+from telar.servicios import directorio as servicio_directorio
+
+
+@app.get("/directorio", response_model=servicio_directorio.Directorio)
+def get_directorio(ctx: Contexto = Depends(contexto)):
+    """Los hilos que publican las otras personas del bus (`telar directorio`): nombre, si vive, carpeta, una línea."""
+    return servicio_directorio.ver(ctx)
+
+
+class PedidoEscribir(BaseModel):
+    persona: str
+    #: la palabra del hilo (`ext` en el directorio)
+    hilo: str
+    texto: str
+    asunto: str = ""
+
+
+@app.post("/directorio/escribir", response_model=servicio_directorio.Escrito)
+def post_directorio_escribir(pedido: PedidoEscribir, ctx: Contexto = Depends(contexto)):
+    """Un mensaje a un hilo de otra persona, a su casilla (`telar correo enviar persona+hilo@…`)."""
+    return servicio_directorio.escribir(ctx, pedido.persona, pedido.hilo, pedido.texto, asunto=pedido.asunto)
+
+
 # ── la gestión de personas del bus (telar.personas) ───────────────────────────────
 
 from telar.servicios import personas as servicio_personas

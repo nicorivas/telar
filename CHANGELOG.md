@@ -6,6 +6,14 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.6] — 2026-10-23
+
+### Added
+
+- COLEGAS in the page's sidebar: the threads the other people of the bus publish (name, whether it lives, its
+  folder and a line; never its conversation), by person and machine, and a click on one to leave it a message in
+  its inbox. `GET /directorio` and `POST /directorio/escribir`.
+
 ## [0.4.5] — 2026-10-22
 
 ### Fixed

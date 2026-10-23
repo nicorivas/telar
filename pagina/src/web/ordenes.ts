@@ -124,6 +124,18 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.archivo': () => c.barra.alternarArchivo(),
         // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa
         'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
+        // escribirle a un hilo de otra persona (la sección COLEGAS de la barra): a su casilla, por el bus
+        'telar.escribirColega': async (id?: string) => {
+            const [persona, ext, nombre] = JSON.parse(String(id ?? '[]')) as string[];
+            if (!persona || !ext) return;
+            const escrito = await ui.escribir({ titulo: `a ${persona} · ${nombre ?? ext}`,
+                ayuda: `le llega a la casilla de ese hilo, como un correo tuyo (${persona}+${ext}). ⌘⏎ envía.`,
+                placeholder: '¿qué le dices?' });
+            if (!escrito?.texto.trim()) return;
+            const r = await cli.escribirColega(persona, ext, escrito.texto);
+            if (!r.datos) void ui.falla(`telar: no le llegó a ${persona}: ${r.error ?? 'sin respuesta'}`);
+            else void ui.estado(`telar: en la casilla de «${nombre ?? ext}», de ${persona}`, 5000);
+        },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
         'telar.conectarCalendario': async () => {

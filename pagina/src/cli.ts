@@ -509,6 +509,19 @@ export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensa
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
 
+/** Un hilo de otra persona, como lo publica su nodo (telar.entre_personas): nunca su conversación. */
+export interface JsonHiloColega { nombre: string; ext: string; vivo: boolean; carpeta: string; resumen: string }
+/** Los hilos de las otras personas del bus (`GET /directorio`), por persona y máquina; `al_dia`: si su nodo
+ *  publicó hace poco (si no, la lista puede estar vieja). */
+export interface JsonDirectorio {
+    yo: string;
+    personas: { persona: string; maquinas: { maquina: string; publicado: string; visto: string; al_dia: boolean; hilos: JsonHiloColega[] }[] }[];
+}
+export const directorio = async () => await deServe<JsonDirectorio>('/directorio', 20000);
+/** Un mensaje a la casilla de un hilo de otra persona (`telar correo enviar persona+hilo@…`). */
+export const escribirColega = async (persona: string, hilo: string, texto: string) =>
+    await aServe<{ id: string; persona: string; hilo: string }>('POST', '/directorio/escribir', 40000, { persona, hilo, texto });
+
 /** Una cuenta del bus y su rol (`telar bus personas`, telar.personas). */
 export interface JsonCuenta { nombre: string; rol: 'dueño' | 'admin' | 'miembro' }
 /** Un pedido de entrada al bus (`telar instalar --unirse`): pendiente, o decidido hace poco (`por`, quién). */

@@ -804,6 +804,12 @@ Una persona con `error` no se pudo leer o no es quien dice ser. `telar directori
 --json` devuelve `{"publicado": {"casa": ""}}`, con el error de cada máquina o `""`.
 `telar correo enviar … --json` devuelve `{"enviado": true, "a": "…", "via": "usuario@casa"}`.
 
+`GET /directorio` da lo mismo que llegó por el bus, para la página (la sección COLEGAS de la barra): `{"yo",
+"personas": [{"persona", "maquinas": [{"maquina", "publicado", "visto", "al_dia", "hilos": [{"nombre", "ext", "vivo",
+"carpeta", "resumen"}]}]}]}`, sin la persona que mira, con los hilos vivos primero; `al_dia` es si su nodo publicó
+en los últimos 15 minutos. `POST /directorio/escribir` (`{"persona", "hilo", "texto", "asunto"}`, `hilo` es el `ext`)
+deja un mensaje en la casilla de ese hilo, como `telar correo enviar`, y devuelve `{"id", "persona", "hilo"}`.
+
 ### `telar atencion get --json`
 
 Con un hilo:

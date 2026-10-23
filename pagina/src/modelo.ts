@@ -65,6 +65,19 @@ export class Modelo {
     get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || !h.vivo); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
 
+    /** los hilos de las otras personas del bus (`/directorio`), para la sección «colegas» de la barra */
+    colegas: cli.JsonDirectorio['personas'] = [];
+
+    /** Lee el directorio de las otras personas; sin bus, o si no contesta, queda lo que había. */
+    async leerColegas(): Promise<void> {
+        if (!this.hayRemotos) { this.colegas = []; return; }
+        const r = await cli.directorio();
+        if (!r.datos) return;
+        const antes = JSON.stringify(this.colegas);
+        this.colegas = r.datos.personas;
+        if (JSON.stringify(this.colegas) !== antes) { this.firma = ''; this.cambio.fire(); }
+    }
+
     /** dónde vive la bandeja del equipo, vista desde aquí («aqui», otra máquina, o vacío: sin equipo). La pone
      *  la página con lo que dice `/config`. */
     equipoRemoto = '';
@@ -131,6 +144,7 @@ export class Modelo {
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
                 }
                 void this.leerEquipo();
+                void this.leerColegas();
                 this.ultimaFicha = Date.now();
                 this.fichas = new Map(d.hilos.map(h => [h.nombre, h.ficha ?? null]));
             }

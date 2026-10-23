@@ -207,6 +207,7 @@ export class BarraHilos {
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
                 break;
             case 'equipo': void ui.orden('telar.equipoVer', m.id); break;
+            case 'colega': if (m.id) void ui.orden('telar.escribirColega', m.id); break;
             case 'home': if (m.id) void ui.orden('telar.seccion', m.id); break;
             case 'app': if (m.id) void ui.orden('telar.app', m.id); break;
             case 'ver-maquina':
@@ -419,6 +420,24 @@ export class BarraHilos {
                     h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
                         + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
                         + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
+                }
+            }
+        }
+
+        // los hilos de las otras personas del bus: lo que publica su nodo, de solo lectura; pinchar uno es escribirle
+        const colegas = modelo.colegas.filter(p => p.maquinas.some(m => m.hilos.length));
+        if (colegas.length && cabecera('__colegas', 'COLEGAS', colegas.length, false,
+            'los hilos de las otras personas del bus: lo que publican, no su conversación; clic en uno para escribirle')) {
+            for (const p of colegas) {
+                for (const m of p.maquinas) {
+                    if (!m.hilos.length) continue;
+                    h.push(`<div class="fila dim" title="${esc(`publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar viejo'}`)}">`
+                        + `<span class="prio"> </span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
+                    for (const x of m.hilos) {
+                        const ayuda = [x.resumen, x.carpeta, `${p.persona}+${x.ext}`, 'clic: escribirle'].filter(Boolean).join('\n');
+                        h.push(`<div class="fila colega" data-accion="colega" data-id="${esc(JSON.stringify([p.persona, x.ext, x.nombre]))}" title="${esc(ayuda)}">`
+                            + `<span class="prio${x.vivo ? '' : ' dim'}">${x.vivo ? '●' : '·'}</span><span class="nombre${x.vivo ? '' : ' dim'}">${esc(x.nombre)}</span></div>`);
+                    }
                 }
             }
         }
