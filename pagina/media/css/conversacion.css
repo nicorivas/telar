@@ -57,7 +57,7 @@
         overflow-x: auto;
         white-space: pre;
         padding: .5em;
-        background: var(--fondo-2, rgb(128 128 128 / .12));
+        background: var(--fondo-2, rgb(128 128 128 / 12%));
       }
       & code { font-size: .92em; }
       & table { display: block; overflow-x: auto; border-collapse: collapse; }
