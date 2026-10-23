@@ -17,6 +17,7 @@ npm run navegador:watch   # y de nuevo con cada cambio; scripts/dev.py lo usa (d
 npm run prueba:eco        # la prueba del eco de la terminal
 npm run prueba:enlaces    # la de las rutas y direcciones de la terminal, también las partidas en filas
 npm run prueba:semana     # la de la semana del calendario: qué es cada evento y cómo se cuenta la jornada
+npm run prueba:arrastre   # la de lo que se lee de un archivo arrastrado (sus rutas, citarlas, su tamaño)
 npm run lint:css
 ```
 
@@ -33,6 +34,8 @@ npm run lint:css
   lectura y la conversación), en la máquina de su hilo, y abre en una pestaña nueva las direcciones web.
   Dónde están en lo que muestra la terminal (también las que llegan partidas en varias filas) lo dice `enlaces.ts`,
   que reconoce además las direcciones de objetos (`tarea:T366`); `objeto.ts` es la vista de uno sin vista propia.
+  Un archivo arrastrado a la terminal deja su ruta en el chat (`terminal.ts`, que lo sube o lo copia a la máquina
+  del hilo cuando hace falta); qué rutas trae un arrastre, cómo se citan y el tamaño legible, en `arrastre.ts`.
 - `media/css/` — los estilos, sobre los tokens de `tokens.css`; cada pantalla con su `@scope`, y las piezas que
   comparten (el recuadro con borde, la fila de volver) en `componentes.css`, sin `@scope`.
 - `scripts/navegador.mjs` — el empaquetado.
