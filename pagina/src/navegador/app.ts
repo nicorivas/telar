@@ -19,6 +19,7 @@ import { montar as montarCompartir } from '../web/compartir';
 import { montar as montarObjeto, partir as partirDireccion } from '../web/objeto';
 import * as ui from '../web/ui';
 import * as version from '../web/version';
+import * as lado from '../web/lado';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
@@ -149,6 +150,8 @@ function mostrar(que: string): void {
     }
     for (const x of vistas()) x.hidden = x !== f;
     pintarAcciones(que);
+    // a la derecha, la ficha del agente, si lo que se ve es el hilo de uno (web/lado.ts)
+    void lado.mostrar(que, !!forma(que));
     // ya a la vista: la terminal toma el teclado, la lectura y la conversación se releen
     if (f && forma(que)) montadas.get(f.dataset.p ?? '')?.mostrada?.();
     // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
@@ -193,6 +196,7 @@ modelo.cambio.event(() => barra.refrescar());
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la
 // columna ancha
 // una versión nueva de telar, arriba (web/version.ts): un clic la instala; si no se puede desde aquí, ⚙ versión
+lado.montar();
 version.vigilar(() => { mostrar('dashboard'); void hoy.irAPestana('config', 'version'); });
 
 void fetch('/api/salud', { cache: 'no-store' }).then(r => r.json()).then((s: { maquina?: string }) => {

@@ -115,8 +115,8 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     """Cierra hilos ociosos hasta que quepan `nuevas` bajo `[agente] max_vivos`.
 
     Ociosa es sin nadie mirando y sin el agente trabajando. Primero las de paso, después los
-    residentes (los de `cuidar`), y de cada grupo la que lleva más rato quieta. Devuelve los hilos
-    cerrados."""
+    residentes (todos los agentes residentes, y los de `cuidar`), y de cada grupo la que lleva más rato
+    quieta. Devuelve los hilos cerrados."""
     tope = getattr(config.agente, "max_vivos", 0)
     if not tope:
         return []
@@ -130,6 +130,14 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
         return []
     est = mod_estado.abrir(config)
     atenciones = est.atenciones()
+    # los residentes, al final: un periódico que abre algo de paso no cierra a Gestión para hacerse lugar
+    from telar import agentes as mod_agentes
+
+    try:
+        residentes = {h for a in mod_agentes.descubrir(config, est.vinculos()) if a.residente for h in a.hilos}
+    except Exception:  # noqa: BLE001 - sin poder leerlos, al menos los de `cuidar`
+        residentes = set()
+    cuidar = (*cuidar, *residentes)
     candidatos = []
     for h in vivos:
         atencion, desde = atenciones.get(h.nombre, (Atencion.NINGUNA, None))
@@ -205,18 +213,23 @@ def _abrir(ctx, agente, texto: str) -> dict:
         ag = mod_agente.obtener(ctx.config.agente.nombre, ctx.config)
     except ErrorDeAgente as e:
         raise ErrorDeEncargo(str(e)) from e
+    from telar import rotacion
+
     est = mod_estado.abrir(ctx.config)
-    rotar = getattr(ctx.config, "agentes_rotar_mb", 0) * 1024 * 1024
     retoma, nueva = "", ""
     for sid in est.sesiones().get(hilo, ()):
         archivo = ag.archivo_de(sid)
         if archivo is None or not Path(archivo).exists():
             continue
-        if rotar and Path(archivo).stat().st_size > rotar:
-            _anotar(ctx.config, f"«{hilo}»: su conversación {sid[:8]} pasó de {rotar // (1024 * 1024)} MB; empiezo otra")
+        if rotacion.pesada(ctx.config, archivo):
+            # en frío: otra conversación, que empieza leyendo su último relevo (telar.rotacion)
+            _anotar(ctx.config, f"«{hilo}»: su conversación {sid[:8]} pasó de "
+                                f"{rotacion.tope(ctx.config) // (1024 * 1024)} MB; empiezo otra, con su relevo")
+            texto = rotacion.con_relevo(ctx.config, agente.clave, texto)
             break
         retoma = sid
         break
+    est.anotar_agente(hilo, agente.clave)
     if retoma:
         palabras = [*ag.retomar(mod_agente.Conversacion(id=retoma, hilo=hilo)), texto]
     else:

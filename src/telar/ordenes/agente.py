@@ -260,6 +260,12 @@ def _casilla(ctx) -> int:
 
         persona = mod_bus.persona(ctx.config) if mod_bus.hay_bus(ctx.config) else ""
         salida = casilla.para_gancho(ctx.config, hilo, evento, str(datos.get("prompt") or ""), persona)
+        if not salida and evento == "Stop":
+            # sin nada en la casilla: si es un residente cuya conversación pesa demasiado, rotarla con relevo
+            from telar import rotacion
+
+            salida = rotacion.al_terminar(ctx.config, hilo, str(datos.get("session_id") or ""),
+                                          str(datos.get("transcript_path") or ""))
         if salida:
             print(salida)
     except Exception:  # noqa: BLE001 - un gancho nunca tumba el turno del agente

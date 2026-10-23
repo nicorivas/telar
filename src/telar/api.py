@@ -692,6 +692,18 @@ def post_directorio_escribir(pedido: PedidoEscribir, ctx: Contexto = Depends(con
     return servicio_directorio.escribir(ctx, pedido.persona, pedido.hilo, pedido.texto, asunto=pedido.asunto)
 
 
+# ── la ficha de un agente, para la barra de la derecha (telar.servicios.agentes) ──
+
+from telar.servicios import agentes as servicio_agentes
+
+
+@app.get("/agentes/del-hilo", response_model=servicio_agentes.FichaAgente)
+def get_agente_del_hilo(hilo: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """El agente residente del que es ese hilo: su definición, su CLAUDE.md, su último relevo y el peso de su
+    conversación. 404 si el hilo no es de un agente."""
+    return servicio_agentes.del_hilo(ctx, hilo, maquina=maquina)
+
+
 # ── la gestión de personas del bus (telar.personas) ───────────────────────────────
 
 from telar.servicios import personas as servicio_personas

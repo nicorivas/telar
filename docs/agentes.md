@@ -195,9 +195,9 @@ permiso (`PermissionRequest`), un pedido de un servidor MCP o una pregunta (`Ask
 `sigue` cuando se contesta. Mientras el mod vive (su señal en la casilla, de menos de 30 s), los
 ganchos clásicos de esos cuatro no avisan nada; `abre` y `cierra` siguen siendo suyos.
 
-Son siete momentos y **seis** ganchos: `SubagentStop` se entiende si llega, pero no se
-engancha —un subagente que termina no cambia en qué está la conversación—, así que en tu
-`settings.json` vas a contar seis. Los seis apuntan al **mismo** comando —`telar agente aviso
+Son siete ganchos de aviso: los seis momentos de arriba más `StopFailure` (el turno que cae por un
+error de la API también termina). `SubagentStop` se entiende si llega, pero no se engancha —un
+subagente que termina no cambia en qué está la conversación—. Los siete apuntan al **mismo** comando —`telar agente aviso
 claude-code`— y cuál fue viene en el JSON que Claude Code le manda por la entrada
 estándar (`hook_event_name`). Una sola línea que mantener.
 
@@ -240,8 +240,12 @@ nombre, que es el id.
 
 ## Qué NO hace telar con el agente
 
-* no lo lanza ni lo mata: abrir un panel y correr algo ahí es del multiplexor;
+* no lanza ni mata al agente de un hilo cualquiera: abrir un panel y correr algo ahí es del
+  multiplexor. Los residentes son la excepción: telar abre la sesión de uno cuando le llega un encargo
+  sin que esté abierto, cierra los ociosos que pasan del tope de `[agente] max_vivos` (los residentes al
+  final) y, al rotar su conversación con relevo, le teclea `/clear` y después qué leer;
 * no lee sus conversaciones —sabe dónde están, y nada más—;
 * no le manda nada por la red, ni le cuenta a nadie qué se hizo;
 * no le escribe en la entrada sin que se lo pidan: `escribir` deja el texto puesto y la
-  última palabra es siempre de la persona.
+  última palabra es siempre de la persona. Salvo a un residente: el aviso de su casilla («↯ mensaje
+  nuevo») y la rotación con relevo.

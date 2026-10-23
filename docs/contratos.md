@@ -1066,6 +1066,14 @@ contesta 403. Los errores son los de siempre de la API (`detail`): 403 si quien 
 hay esa cuenta o no hay bus, 409 si no se puede (el dueño no se toca, uno no se quita a sí mismo, un pedido ya
 decidido), 422 si falta algo o el rol no existe, 502 si la máquina del bus no responde.
 
+## `/agentes/del-hilo` — la ficha de un agente, para la barra de la derecha
+
+`GET /agentes/del-hilo?hilo=Faro[&maquina=servidor]`: `{"agente": {lo de telar agentes --json}, "claude_md",
+"definicion_texto", "aqui", "relevo": {"texto", "ruta", "cuando"} | null, "conversacion": {"id", "peso", "tope"} |
+null, "rotacion"}`. `peso` y `tope` en bytes (`tope` 0: sin `rotar_mb`, no rota); `rotacion` es la fase si está
+rotando con relevo (`relevo`, `limpiar`, `retomar`) o `""`. Con `maquina` de otra (el agente vive allá), `aqui` es
+false y el relevo y la conversación son null: son de su máquina. 404 si el hilo no es de un agente.
+
 ## `/version` y `/actualizar` — versiones nuevas
 
 `GET /version` (`?forzar=true` le pregunta a PyPI ya; si no, a lo más una vez por hora):

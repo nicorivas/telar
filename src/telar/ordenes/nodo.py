@@ -257,6 +257,31 @@ class Nodo:
                 return "abierto (un encargo, aunque no es residente)"
         return "en su casilla, hasta que se abra"
 
+    def rotar_relevos(self) -> None:
+        """El paso de cada residente que está rotando su conversación (telar.rotacion): cuando quedó quieto tras
+        escribir su relevo, el /clear en su ventana; cuando la conversación nueva ya está anotada, que lo lea."""
+        from telar import encargos, rotacion
+        from telar import estado as mod_estado
+        from telar.modelo import Atencion
+
+        pendientes = rotacion.leer(self.config)
+        if not pendientes:
+            return
+        est = mod_estado.abrir(self.config)
+        for hilo in pendientes:
+            escribir = encargos._donde(self.ctx, hilo)
+            if escribir is None:
+                # su ventana no está aquí (se cerró): solo se abandona cuando vence
+                linea = rotacion.avanzar(self.config, hilo, quieto=False, sesion_actual="", escribir=lambda _t: None)
+            else:
+                quieto = est.atencion(hilo) != Atencion.TRABAJANDO or self.atencion_vieja(est, hilo)
+                sesion = (est.sesiones().get(hilo) or ("",))[0]
+                linea = rotacion.avanzar(self.config, hilo, quieto=quieto, sesion_actual=sesion, escribir=escribir)
+                if linea and "conversación nueva" in linea:
+                    est.anotar_atencion(hilo, Atencion.TRABAJANDO)
+            if linea:
+                self.anotar(linea)
+
     @staticmethod
     def atencion_vieja(est, nombre: str) -> bool:
         """Un «trabajando» que lleva más de TRABAJANDO_VIEJO sin cambiar es un estado que quedó pegado
@@ -434,6 +459,12 @@ class Nodo:
                     actuales[previo["nombre"]] = nuevo
         for nombre in locales:
             self.ausentes.pop(nombre, None)
+        # cada 6 s, los residentes que rotan su conversación con relevo (telar.rotacion): el /clear y el aviso
+        if self.vueltas % 3 == 0:
+            try:
+                await asyncio.to_thread(self.rotar_relevos)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"la rotación con relevo: {type(e).__name__}: {e}")
         # cada 30 s, quiénes están vivos aquí: si tmux se cae, `telar hilo caidos` sabe qué reabrir
         if self.vueltas % 15 == 0:
             vivos = [n for n, i in locales.items() if i.get("vivo")]

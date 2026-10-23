@@ -48,6 +48,8 @@ class Lanzamiento:
     retoma: str = ""  # el id de la conversación que retoma, o vacío si es nueva
     nueva: str = ""   # el id que se le dio a la conversación nueva, para anotarlo al abrirla
     vacia: bool = False  # el hilo tenía conversación, pero sin mensajes: se abre con su mismo id
+    agente: str = ""  # la clave del agente residente del que es el hilo, para anotarlo al abrirlo
+    rotada: str = ""  # la conversación que no se retomó por pesar demasiado (telar.rotacion), si hubo
 
 
 def carpeta(config, carpeta_hilo: Path | None) -> Path | None:
@@ -72,14 +74,25 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -
     nombre = config.agente.nombre
     if not nombre:
         return None
+    from telar import agentes as mod_agentes
+    from telar import rotacion
+
     agente = mod_agente.obtener(nombre, config)
+    # el de su casa; un hilo sin carpeta, el que se anotó al abrirlo (un proyecto en una subcarpeta suya no es él)
+    residente = mod_agentes.de_carpeta(config, carpeta_hilo) or (
+        mod_agentes.del_hilo(config, hilo) if carpeta_hilo is None else None)
     palabras: list[str] | None = None
-    retoma = ""
+    retoma, rotada = "", ""
     conversaciones = agente.conversaciones(hilo)
     for conversacion in conversaciones:
         archivo = agente.archivo_de(conversacion)
         if archivo is None or not Path(archivo).exists():
             continue
+        if residente is not None and rotacion.pesada(config, archivo):
+            # la de un residente que pesa demasiado no se retoma: otra, que empieza leyendo su último relevo
+            rotada = conversacion.id
+            mensaje = rotacion.con_relevo(config, residente.clave, mensaje or "Retoma tu trabajo.")
+            break
         try:
             palabras = agente.retomar(conversacion)
         except ErrorDeAgente:
@@ -92,18 +105,16 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -
     if palabras is None:
         # Claude escribe la conversación en disco recién con el primer mensaje: si la
         # principal no tiene archivo, estaba vacía, y se abre con su mismo id
-        principal = conversaciones[0].id if conversaciones else ""
+        principal = conversaciones[0].id if conversaciones and not rotada else ""
         palabras, nueva = agente.nuevo_con_id(mensaje, id=principal)
         vacia = bool(principal) and nueva == principal
     # el hilo de un residente con `modelo` en su agente.toml abre con ese modelo (sus `argumentos` van solo
     # con los encargos, como antes: docs/propuestas/agente-como-definicion.md)
-    from telar import agentes as mod_agentes
-
-    residente = mod_agentes.de_carpeta(config, carpeta_hilo)
     if residente is not None and residente.modelo:
         palabras = [*palabras, *mod_agentes.argumentos_de(residente, agente, con_config=False)]
     return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
-                       retoma=retoma, nueva=nueva, vacia=vacia)
+                       retoma=retoma, nueva=nueva, vacia=vacia, agente=residente.clave if residente else "",
+                       rotada=rotada)
 
 
 def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None) -> None:
@@ -115,6 +126,13 @@ def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None) -> None:
     Con `mux` se anota además en qué panel quedó corriendo. Eso es lo que después permite
     mudarla de hilo sin adivinar cuál de las conversaciones de un hilo es la de este panel.
     """
+    if lanz is not None and lanz.agente:
+        from telar import estado as mod_estado
+
+        try:
+            mod_estado.abrir(config).anotar_agente(hilo, lanz.agente)
+        except Exception:  # noqa: BLE001 - anotarlo es un extra: el hilo se abre igual
+            pass
     if lanz is None or not lanz.nueva or not config.agente.nombre:
         return
     agente = mod_agente.obtener(config.agente.nombre, config)

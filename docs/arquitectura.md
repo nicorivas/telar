@@ -276,7 +276,12 @@ ganchos se escriben con ruta fija.
 
 - sesión viva y libre: se le escribe el encargo;
 - viva y trabajando: va a la cola, y el gancho `Stop` le entrega el siguiente al terminar su turno;
-- sin sesión: se abre retomando su última conversación, o una nueva si pasó de `[agentes] rotar_mb`.
+- sin sesión: se abre retomando su última conversación, o una nueva —que empieza leyendo su último relevo— si
+  pasó de `[agentes] rotar_mb`. Una viva que pasa del tope rota con relevo al terminar un turno
+  (telar.rotacion: le pide el relevo, `/clear`, y que lo lea).
+
+Telar anota de qué agente es cada hilo que abre para uno (`de_agente.json`): un hilo renombrado sigue siendo
+suyo.
 
 El resultado se deja en el registro (la tarea, el estado del proyecto, la bitácora), no en la
 conversación. `[agente] max_vivos` limita los hilos vivos de una máquina: antes de abrir otro, telar

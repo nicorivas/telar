@@ -15,6 +15,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     prioridades.json  hilo → 1, 2 o 3
     archivados.json   lista de hilos archivados
     publicos.json     lista de hilos públicos: los que van en el directorio que ven las otras personas
+    de_agente.json    hilo → la carpeta del agente residente del que es (telar.agentes)
     atencion.json     hilo → {"atencion": …, "desde": ISO}
     esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
                       (un dato de más: roto, cuenta como vacío; ver DE_MAS)
@@ -95,6 +96,8 @@ ARCHIVOS = {
     "archivados": "archivados.json",
     #: los hilos que esta persona hizo públicos: los únicos que publica su directorio (telar.entre_personas)
     "publicos": "publicos.json",
+    #: hilo → la clave (carpeta) del agente del que es: lo anota quien abre su hilo, y gana sobre adivinarlo
+    "de_agente": "de_agente.json",
     #: hilo → cuándo se archivó (ISO, hora local): para saber si su agente volvió a vivir después
     "archivados_en": "archivados_en.json",
     "atencion": "atencion.json",
@@ -668,6 +671,15 @@ class Estado:
 
         self._actualizar("publicos", cambio, [])
 
+    # ── de qué agente es un hilo ────────────────────────────────────────────────
+
+    def de_agente(self) -> dict[str, str]:
+        """hilo → la clave del agente del que es, para los hilos que abrió telar como de un agente."""
+        return {h: c for h, c in self._leer("de_agente", {}).items() if isinstance(h, str) and isinstance(c, str) and c}
+
+    def anotar_agente(self, hilo: str, clave: str) -> None:
+        self._actualizar("de_agente", lambda d: d.__setitem__(hilo, clave), {})
+
     def archivar(self, hilo: str) -> None:
         def cambio(lista):
             if hilo not in lista:
@@ -1115,7 +1127,7 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -1153,7 +1165,7 @@ class Estado:
         debería cambiar porque se cerró un tab.
         """
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
             self.privar(hilo)

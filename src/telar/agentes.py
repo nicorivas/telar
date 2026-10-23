@@ -183,6 +183,7 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
     carpetas = [d for d in sorted(b.iterdir(), key=lambda x: x.name)
                 if d.is_dir() and not d.name.startswith(("_", ".")) and (d / "CLAUDE.md").is_file()]
     de_siempre = {d.name: _nombre(d) for d in carpetas}
+    anotados = _anotados(config)
     for d in carpetas:
         de_antes = de_siempre[d.name]
         definido, problemas = leer_definicion(d)
@@ -196,7 +197,7 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
             problemas = (*problemas, f"nombre: «{nombre}» ya es de otro agente; se queda con «{de_antes}»")
             nombre = de_antes
         extra = extras.get(d.name)
-        hilos = [nombre, *(extra.hilos if extra else ())]
+        hilos = [nombre, *(extra.hilos if extra else ()), *(h for h, c in anotados.items() if c == d.name)]
         real = d.resolve()
         for hilo, rel in (vinculos or {}).items():
             try:
@@ -206,7 +207,7 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
             # solo el vínculo a su casa: un proyecto que vive en una subcarpeta suya no es él
             if destino == real and hilo not in hilos:
                 hilos.append(hilo)
-        salida.append(Agente(clave=d.name, nombre=nombre, carpeta=d, hilos=tuple(hilos),
+        salida.append(Agente(clave=d.name, nombre=nombre, carpeta=d, hilos=tuple(dict.fromkeys(hilos)),
                              home=tuple(extra.home) if extra else (), argumentos=tuple(extra.argumentos) if extra else (),
                              en=extra.en if extra else "",
                              para=definido.get("para", ""), modelo=definido.get("modelo", ""),
@@ -216,6 +217,35 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
                              sin_uso={k: v for k, v in definido.items() if k in SIN_USO},
                              problemas=problemas))
     return salida
+
+
+def _anotados(config) -> dict[str, str]:
+    """hilo → agente, lo que anotó telar al abrir sus hilos (telar.estado `de_agente`): un hilo que se renombró, o
+    uno de un agente que no está vinculado a su carpeta, sigue siendo suyo."""
+    if not getattr(config, "estado", None):
+        return {}
+    try:
+        from telar import estado as mod_estado
+
+        return mod_estado.abrir(config).de_agente()
+    except Exception:  # noqa: BLE001 - sin estado legible, se adivina como antes
+        return {}
+
+
+def del_hilo(config, hilo: str) -> Agente | None:
+    """El agente del que es un hilo: el que lo tiene entre sus hilos (su nombre, `hilos` de la configuración, lo
+    que se anotó al abrirlo o el vínculo a su carpeta). None si no es de ninguno."""
+    vinculos = {}
+    try:
+        from telar import estado as mod_estado
+
+        vinculos = mod_estado.abrir(config).vinculos()
+    except Exception:  # noqa: BLE001
+        pass
+    for a in descubrir(config, vinculos):
+        if hilo in a.hilos or hilo == a.clave:
+            return a
+    return None
 
 
 def argumentos_de(a: Agente, motor=None, *, con_config: bool = True) -> list[str]:

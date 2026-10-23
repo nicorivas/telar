@@ -513,6 +513,22 @@ export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensa
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
 
+/** Un agente residente, como lo da `telar agentes --json` (docs/contratos.md). */
+export interface JsonAgente {
+    clave: string; nombre: string; direccion: string; carpeta: string; definicion: string; para: string; modelo: string;
+    residente: boolean; hilos: string[]; en: string; problemas: string[];
+}
+/** La ficha de un agente para la barra de la derecha (`GET /agentes/del-hilo`): su definición, su CLAUDE.md, su
+ *  último relevo y el peso de su conversación (`aqui`: si vive en esta máquina; si no, esas dos no se saben). */
+export interface JsonFichaAgente {
+    agente: JsonAgente; claude_md: string; definicion_texto: string; aqui: boolean;
+    relevo: { texto: string; ruta: string; cuando: string } | null;
+    conversacion: { id: string; peso: number; tope: number } | null;
+    rotacion: string;
+}
+export const fichaAgente = async (hilo: string, maquina = '') =>
+    await deServe<JsonFichaAgente>(`/agentes/del-hilo?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`, 15000);
+
 /** La versión de telar (`GET /version`): la que corre, la última en PyPI y si un clic la instala (`puede`: solo
  *  una instalación de `uv tool`); `a_mano`, qué hacer si no; `progreso`, la actualización en curso o la última. */
 export interface JsonVersion {

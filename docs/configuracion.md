@@ -765,8 +765,15 @@ quedó anotada con el de antes o si hay mensajes esperando con él.
 
 **Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` le escribe
 a su hilo de siempre si está libre, lo deja en cola si está trabajando (el gancho `Stop` le entrega el
-siguiente al terminar) o abre su sesión retomando su conversación. Si esa conversación pesa más de
-`[agentes] rotar_mb` (MB), empieza una nueva. Un proceso periódico con `agente = "<carpeta>"` y un
+siguiente al terminar) o abre su sesión retomando su conversación.
+
+**Rotar con relevo.** Si la conversación de un residente pasa de `[agentes] rotar_mb` (MB), al terminar un
+turno con la casilla vacía telar le pide su **relevo**: que escriba en `<estado>/relevos/<carpeta>.md` en qué
+estaba, qué queda y qué tiene que saber la siguiente. Al terminar ese turno, el nodo le teclea `/clear` (otra
+conversación, en la misma ventana) y le dice que lea su relevo. Si se la abre en frío (un encargo, `telar
+tejer`, `retomar`) con la conversación ya pasada del tope, empieza otra cuyo primer mensaje dice dónde está su
+último relevo. Sin `rotar_mb`, no rota (telar.rotacion). El relevo y el peso de su conversación se ven en la
+barra de la derecha de la página, al ver su hilo. Un proceso periódico con `agente = "<carpeta>"` y un
 `mensaje` es un encargo. Los argumentos para el agente al abrir su sesión (permisos, herramientas) van
 en `[agentes.<carpeta>] argumentos`.
 
@@ -785,8 +792,8 @@ argumentos = ["--permission-mode", "acceptEdits"]
 `max_vivos` cuenta las ventanas de la sesión del telar donde nadie mira esa sesión directo (un servidor: sus
 hilos se miran desde otras máquinas); en el laptop, donde la sesión del telar es lo que la persona mira, no
 cierra nada. Antes de abrir otro hilo (un periódico, un encargo), telar cierra los ociosos que nadie está
-mirando, el más quieto primero y los residentes al final; su conversación queda en disco y se retoma cuando
-haga falta.
+mirando, el más quieto primero y los residentes al final (todos los agentes con `residente = true`, no solo el
+que se abre); su conversación queda en disco y se retoma cuando haga falta.
 
 ## `[bus]` — mensajes y estado entre varias máquinas
 

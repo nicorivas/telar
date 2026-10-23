@@ -96,11 +96,50 @@ body > header .config:hover { color: var(--fg); text-decoration: none; }
 #marcos {
   display: grid;
   grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
 }
 
+/* a la derecha de un hilo de agente: su ficha (pagina/src/web/lado.ts), plegable */
+#lado {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  width: 46ch;
+  max-width: 40vw;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--e-1) var(--h-2);
+  border-left: var(--borde);
+  background: var(--bg-barra);
+
+  &[hidden] { display: none; }
+  &.plegado { width: auto; padding: var(--e-1) var(--h-1); overflow: hidden; }
+
+  & .lado-cab { display: flex; gap: var(--h-1); align-items: baseline; }
+  & .lado-pliegue { margin-left: auto; color: var(--dim); cursor: pointer; text-decoration: none; }
+  & .lado-pliegue:hover { color: var(--fg); }
+  & .lado-vertical { writing-mode: vertical-rl; color: var(--dim); cursor: pointer; margin-top: var(--e-1); }
+  & .lado-vertical:hover { color: var(--fg); }
+  & .lado-para { color: var(--fg); margin: var(--e-1) 0; }
+  & .lado-datos { display: grid; grid-template-columns: max-content 1fr; gap: 0 var(--h-1); margin: var(--e-1) 0; }
+  & .lado-datos dt { color: var(--dim); }
+  & .lado-datos dd { margin: 0; overflow-wrap: anywhere; }
+  & .lado-peso { display: grid; gap: 2px; margin: var(--e-1) 0; color: var(--dim); }
+  & .barra-peso { display: block; height: 3px; background: var(--linea); }
+  & .barra-peso > span { display: block; height: 100%; background: var(--verde); }
+  & .barra-peso > span.lleno { background: var(--amarillo); }
+  & .lado-rota { color: var(--amarillo); margin: var(--e-1) 0; }
+  & .lado-sec { margin: var(--e-1) 0; border-top: var(--borde); padding-top: var(--e-1); }
+  & .lado-sec > summary { cursor: pointer; color: var(--violeta); }
+  & pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
+
+body.angosto #lado { display: none; }
+
 #acciones {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   gap: var(--h-2);
   align-items: baseline;
@@ -120,6 +159,7 @@ body > header .config:hover { color: var(--fg); text-decoration: none; }
 /* en su fila aunque la barra de acciones esté escondida (el dashboard): si no, cae en la de arriba, que
    mide lo que su contenido, y con los marcos en posición absoluta eso es 0 */
 #vistas {
+  grid-column: 1;
   grid-row: 2;
   position: relative;
   min-width: 0;

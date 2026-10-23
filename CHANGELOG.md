@@ -6,6 +6,27 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.9] — 2026-10-23
+
+### Added
+
+- Rotating with a relay: when a resident agent's conversation passes `[agentes] rotar_mb`, at the end of a turn
+  with its inbox empty telar asks it to write its relay (`<estado>/relevos/<agent>.md`: where it was, what's left,
+  what the next conversation needs), then the node types `/clear` in its window and tells the new conversation to
+  read it. Opened cold (an errand, `telar tejer`, `retomar`) with a conversation already past the limit, the new
+  one starts by reading the last relay. Before, rotation happened only when an errand opened it, and cold.
+- The page's right sidebar, when viewing an agent's thread: what it's for, model, whether it's resident, where it
+  lives, its conversation's weight against the rotation limit, its last relay and its CLAUDE.md, readable; it
+  folds and remembers. `GET /agentes/del-hilo`.
+- A thread remembers which agent it belongs to (`de_agente.json`, written when telar opens it for one): renamed,
+  it's still the agent's.
+
+### Fixed
+
+- `liberar` (the `[agente] max_vivos` limit) closes the passing threads first and every resident last, not only
+  the one being opened: a periodic process no longer closes an agent to make room.
+- The docs on agents: seven hooks (with `StopFailure`), and what telar does launch and type for residents.
+
 ## [0.4.8] — 2026-10-23
 
 ### Added
