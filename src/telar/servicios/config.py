@@ -61,6 +61,8 @@ class ConfigResuelta(BaseModel):
     hilos: dict[str, Any] = Field(default_factory=dict)
     agente: dict[str, Any] = Field(default_factory=dict)
     remotos: list[dict[str, Any]] = Field(default_factory=list)
+    #: el bus de esta persona (`[bus]`): url, persona y máquina; vacío si no hay (todo en una máquina)
+    bus: dict[str, str] = Field(default_factory=dict)
     bloques: list[dict[str, Any]] = Field(default_factory=list)
     pestanas: list[dict[str, Any]] = Field(default_factory=list)
     agenda: list[dict[str, Any]] = Field(default_factory=list)
@@ -116,6 +118,7 @@ def resuelta(ctx) -> ConfigResuelta:
             {"nombre": r.nombre, "destino": r.destino, "transporte": r.transporte, "raiz": r.raiz}
             for r in cfg.remotos
         ],
+        "bus": _bus(cfg),
         "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla} for b in cfg.bloques],
         # las pestañas de proveedor (un feed) y su tecla, para el dashboard
         "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
@@ -382,3 +385,11 @@ def calendario(ctx, valor: str) -> Escrito:
     except ErrorDeConfig as e:
         raise ErrorDeServicio(str(e), 422) from e
     return Escrito(calendario="conectado", archivo=str(destino))
+
+
+def _bus(cfg) -> dict[str, str]:
+    from telar import bus as mod_bus
+
+    if not mod_bus.hay_bus(cfg):
+        return {}
+    return {"url": cfg.bus.url, "persona": mod_bus.persona(cfg), "maquina": mod_bus.maquina(cfg)}

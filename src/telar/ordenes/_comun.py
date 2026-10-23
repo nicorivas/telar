@@ -566,6 +566,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "vivo": tel.vivo(hilo),
         "activo": hilo.activo,
         "archivado": hilo.archivado,
+        # si lo ven las otras personas del bus (su directorio); por defecto, privado
+        "publico": hilo.publico,
         "vinculado": hilo.vinculado,
         "ruta": str(hilo.ruta) if hilo.ruta else "",
         "relativa": ruta_relativa(hilo.ruta, tel.raiz),

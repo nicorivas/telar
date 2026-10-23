@@ -14,6 +14,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     vinculos.json     hilo → carpeta, relativa a la raíz del repositorio
     prioridades.json  hilo → 1, 2 o 3
     archivados.json   lista de hilos archivados
+    publicos.json     lista de hilos públicos: los que van en el directorio que ven las otras personas
     atencion.json     hilo → {"atencion": …, "desde": ISO}
     esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
                       (un dato de más: roto, cuenta como vacío; ver DE_MAS)
@@ -92,6 +93,8 @@ ARCHIVOS = {
     "vinculos": "vinculos.json",
     "prioridades": "prioridades.json",
     "archivados": "archivados.json",
+    #: los hilos que esta persona hizo públicos: los únicos que publica su directorio (telar.entre_personas)
+    "publicos": "publicos.json",
     #: hilo → cuándo se archivó (ISO, hora local): para saber si su agente volvió a vivir después
     "archivados_en": "archivados_en.json",
     "atencion": "atencion.json",
@@ -288,6 +291,7 @@ def vestir(
     vinculos: Mapping[str, str] | None = None,
     prioridades: Mapping[str, Prioridad] | None = None,
     archivados: Iterable[str] = (),
+    publicos: Iterable[str] = (),
     atenciones: Mapping[str, Atencion] | None = None,
     sesiones: Mapping[str, Sequence[str]] | None = None,
     tiempos: Mapping[str, float] | None = None,
@@ -304,6 +308,7 @@ def vestir(
     """
     vinculos = vinculos or {}
     archivados = set(archivados)
+    publicos = set(publicos)
     vestidos: list[Hilo] = []
     for hilo in hilos:
         nombre = hilo.nombre
@@ -320,6 +325,7 @@ def vestir(
                 arquetipo=hilo.arquetipo,
                 activo=hilo.activo,
                 archivado=nombre in archivados,
+                publico=nombre in publicos,
                 prioridad=(prioridades or {}).get(nombre, hilo.prioridad),
                 atencion=(atenciones or {}).get(nombre, hilo.atencion),
                 visto=(vistos or {}).get(nombre, hilo.visto),
@@ -598,6 +604,8 @@ class Estado:
                     limpio["vinculo"] = vinculo
             if isinstance(r.get("archivado"), bool):
                 limpio["archivado"] = r["archivado"]
+            if isinstance(r.get("publico"), bool):
+                limpio["publico"] = r["publico"]
             if isinstance(r.get("conversacion"), str):
                 limpio["conversacion"] = r["conversacion"]
             salida[hilo] = limpio
@@ -638,6 +646,27 @@ class Estado:
             if "archivado" in r:
                 (salida.add if r["archivado"] else salida.discard)(hilo)
         return salida
+
+    # ── públicos: lo que ven las otras personas ─────────────────────────────────
+
+    def publicos(self) -> set[str]:
+        """Los hilos públicos (los demás son privados: no salen en el directorio). El de un hilo de otra máquina
+        lo dice su dueño, como el archivo."""
+        salida = {h for h in self._leer("publicos", []) if isinstance(h, str)}
+        for hilo, r in self.registro_ajeno().items():
+            if "publico" in r:
+                (salida.add if r["publico"] else salida.discard)(hilo)
+        return salida
+
+    def publicar(self, hilo: str) -> None:
+        self._actualizar("publicos", lambda lista: None if hilo in lista else lista.append(hilo), [])
+
+    def privar(self, hilo: str) -> None:
+        def cambio(lista):
+            while hilo in lista:
+                lista.remove(hilo)
+
+        self._actualizar("publicos", cambio, [])
 
     def archivar(self, hilo: str) -> None:
         def cambio(lista):
@@ -980,6 +1009,7 @@ class Estado:
                 "vinculos": self.vinculos(),
                 "prioridades": self.prioridades(),
                 "archivados": self.archivados(),
+                "publicos": self.publicos(),
                 "atenciones": {h: a for h, (a, _) in self.atenciones().items()},
                 "sesiones": self.sesiones(),
                 "tiempos": tiempo_por_hilo(
@@ -1089,6 +1119,7 @@ class Estado:
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
+            self._actualizar("publicos", mover_archivados, [])
 
             # el agente que ya corría en el hilo heredó `$TELAR_HILO` con el nombre viejo y un proceso
             # vivo no lo cambia: sus ganchos seguirían escribiendo en un hilo fantasma. El alias los
@@ -1125,6 +1156,7 @@ class Estado:
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
+            self.privar(hilo)
 
 
 def _fecha(valor: object) -> datetime | None:

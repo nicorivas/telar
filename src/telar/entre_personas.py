@@ -33,10 +33,11 @@ class CorreoInvalido(ValueError):
 
 def directorio(foto: dict, persona: str) -> dict:
     """Lo que se publica de los hilos propios: nombre, la palabra para escribirle, si vive, su carpeta y una
-    línea. Nada más: lo ve otra persona."""
+    línea. Nada más: lo ve otra persona. Y solo de los que la persona hizo públicos (`telar hilo publicar`):
+    por defecto, un hilo es privado y no sale."""
     hilos = [{"nombre": h.get("nombre", ""), "ext": casilla.extension(h.get("nombre", "")),
               "vivo": bool(h.get("vivo")), "carpeta": h.get("relativa") or "", "resumen": h.get("resumen") or ""}
-             for h in foto.get("hilos", []) if h.get("nombre") and not h.get("remoto")]
+             for h in foto.get("hilos", []) if h.get("nombre") and not h.get("remoto") and h.get("publico") is True]
     return {"persona": persona, "maquina": foto.get("maquina", ""), "hilos": hilos,
             "publicado": datetime.now().astimezone().isoformat(timespec="seconds")}
 

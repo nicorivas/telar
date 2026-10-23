@@ -85,7 +85,7 @@ export const personas: FabricaSeccion = ctx => {
             return n ? `personas (${n})` : 'personas';
         },
         ayuda: 'quién tiene cuenta en el bus, con qué rol, y quién pidió entrar',
-        visible: () => modelo.hayRemotos && administra !== false,
+        visible: () => modelo.hayBus && administra !== false,
         abrir: () => leer(),
         pintar(): void {
             const h = [`<div class="fila"><span class="dim">${datos ? `el bus de ${esc(datos.dueno)} · tú eres ${esc(datos.rol)}` : ''}</span>`

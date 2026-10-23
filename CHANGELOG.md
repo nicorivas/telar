@@ -6,6 +6,19 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.7] — 2026-10-23
+
+### Changed
+
+- Threads are private by default: the directory the other people of the bus see lists only the ones made public
+  (`telar hilo publicar`, `privar`; in the page, ⋯ → hacer público, and ◇ marks a public one). A private thread
+  receives no mail from other people, and is answered as if it didn't exist. On upgrading, every thread becomes
+  private until its person publishes it.
+- `/config` says whether there is a bus (`bus`), and the page uses that, not `[remotos]`, for what crosses machines
+  and people: COLEGAS, ⚙ agentes and ⚙ personas no longer hide for someone who joined by `--unirse`.
+- `telar instalar` restarts the service when the version it runs is not the one installed (after `uv tool install
+  --force`, the service kept the old code).
+
 ## [0.4.6] — 2026-10-23
 
 ### Added

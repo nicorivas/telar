@@ -250,7 +250,7 @@ Las reglas valen para todas:
 ```json
 {
   "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "activo": false,
-  "archivado": false, "vinculado": true,
+  "archivado": false, "publico": false, "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
   "visto": "2026-09-18T09:12:44", "tiempo": 4320.0,
@@ -269,6 +269,10 @@ que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
 `null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
 es aquí, un nombre es una máquina de `[remotos]`, y `"?"` es una ventana que corre mosh,
 ssh o et sin que telar la haya armado (se sabe que es remota, no adónde).
+`publico` dice si las otras personas del bus lo ven en su directorio (`telar hilo publicar`, `privar`; en la
+página, ⋯ → hacer público). Por defecto es `false`: un hilo es privado, no sale en el directorio de nadie y no le
+llega correo de otra persona (se le contesta como a uno que no existe). El de un hilo de otra máquina lo dice su
+dueño, como `archivado`.
 
 ### `ficha`
 
@@ -804,7 +808,7 @@ Una persona con `error` no se pudo leer o no es quien dice ser. `telar directori
 --json` devuelve `{"publicado": {"casa": ""}}`, con el error de cada máquina o `""`.
 `telar correo enviar … --json` devuelve `{"enviado": true, "a": "…", "via": "usuario@casa"}`.
 
-`GET /directorio` da lo mismo que llegó por el bus, para la página (la sección COLEGAS de la barra): `{"yo",
+`GET /directorio` da lo mismo que llegó por el bus (solo los hilos que cada persona hizo públicos), para la página (la sección COLEGAS de la barra): `{"yo",
 "personas": [{"persona", "maquinas": [{"maquina", "publicado", "visto", "al_dia", "hilos": [{"nombre", "ext", "vivo",
 "carpeta", "resumen"}]}]}]}`, sin la persona que mira, con los hilos vivos primero; `al_dia` es si su nodo publicó
 en los últimos 15 minutos. `POST /directorio/escribir` (`{"persona", "hilo", "texto", "asunto"}`, `hilo` es el `ext`)

@@ -68,13 +68,13 @@ ESPERA_JS = 10
 #: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
 #: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
 #: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
-CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado")
+CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico")
 
 
-def registro_de(nombre: str, vinculos, archivados) -> dict:
+def registro_de(nombre: str, vinculos, archivados, publicos=()) -> dict:
     """Lo que el dueño de un hilo publica de su registro: su vínculo (relativo a la raíz, "" si no
-    tiene) y si está archivado."""
-    return {"vinculo": vinculos.get(nombre, ""), "archivado": nombre in archivados}
+    tiene), si está archivado y si es público."""
+    return {"vinculo": vinculos.get(nombre, ""), "archivado": nombre in archivados, "publico": nombre in publicos}
 
 
 def _en_hilo_suelto(funcion, *args, nombre: str = "") -> asyncio.Future:
@@ -158,7 +158,7 @@ class Nodo:
         #: la tarea que vigila el bus: mientras viva, `ajenos.json` se refresca (ver `AJENOS_CADUCA`)
         self.vigia = None
         #: el registro de los hilos de aquí en la última vuelta: (vínculos, archivados, remotos)
-        self.registro: tuple[dict, set, dict] = ({}, set(), {})
+        self.registro: tuple[dict, set, dict, set] = ({}, set(), {}, set())
         #: lo que el vigía recibió y falta atender (anotar la atención, la ventana): lo último de cada clave
         self.por_atender: dict[str, dict] = {}
         #: los pedidos con respuesta en curso o esperando turno, de todos los verbos (ver `_aparte`)
@@ -180,8 +180,8 @@ class Nodo:
         remotos = est.remotos()
         atenciones = est.atenciones()
         sesiones = est.sesiones()
-        vinculos, archivados = est.vinculos(), est.archivados()
-        self.registro = (vinculos, archivados, remotos)
+        vinculos, archivados, publicos = est.vinculos(), est.archivados(), est.publicos()
+        self.registro = (vinculos, archivados, remotos, publicos)
         salida: dict[str, dict] = {}
 
         from telar import movil
@@ -200,7 +200,7 @@ class Nodo:
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
                     # el registro del hilo, que las otras máquinas leen de aquí en vez de copiarlo
-                    **registro_de(nombre, vinculos, archivados),
+                    **registro_de(nombre, vinculos, archivados, publicos),
                     # dónde mirarlo desde otra máquina: su ventana en la sesión del telar
                     "ventana": ventana}
 
@@ -426,10 +426,10 @@ class Nodo:
                 # ya publicado como muerto: si aquí se archivó o se vinculó después (lo pidió otra
                 # máquina), se vuelve a publicar con lo nuevo. Salvo que ya lo publique otra máquina
                 # (se mudó): pisarle su estado lo traería de vuelta
-                vinculos, archivados, remotos = self.registro
+                vinculos, archivados, remotos, publicos = self.registro
                 if clave in self.vistos or previo["nombre"] in remotos:
                     continue
-                nuevo = {**previo, **registro_de(previo["nombre"], vinculos, archivados)}
+                nuevo = {**previo, **registro_de(previo["nombre"], vinculos, archivados, publicos)}
                 if nuevo != previo:
                     actuales[previo["nombre"]] = nuevo
         for nombre in locales:
@@ -839,13 +839,17 @@ class Nodo:
         await m.respond(json.dumps(r, ensure_ascii=False).encode())
 
     async def _hilo_existe(self, ext: str) -> bool | None:
-        """Si esta persona tiene un hilo con esa palabra (en el estado del bus, de cualquier máquina suya).
-        None si no se pudo saber: entonces se acepta, y espera en la casilla."""
+        """Si esta persona tiene un hilo **público** con esa palabra (en el estado del bus, de cualquier máquina
+        suya): a uno privado no le llega correo de otra persona, y se contesta lo mismo que si no existiera, para
+        que no se sepa que está. None si no se pudo saber: entonces se acepta, y espera en la casilla."""
         try:
-            await self.kv.get(f"{self.persona}.{ext}")
-            return True
+            entrada = await self.kv.get(f"{self.persona}.{ext}")
         except Exception as e:  # noqa: BLE001
             return False if type(e).__name__ in ("KeyNotFoundError", "KeyDeletedError") else None
+        try:
+            return json.loads(entrada.value or b"{}").get("publico") is True
+        except (ValueError, AttributeError):
+            return False
 
     async def _directorio(self, m) -> None:
         """El directorio que publicó otra persona: se guarda, para `telar directorio` y para escribirle."""

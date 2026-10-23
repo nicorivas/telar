@@ -60,6 +60,10 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             ...(h.vinculado ? [{ label: 'ver su carpeta y documento', description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
             { label: 'vincular a un proyecto', description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
             ...(h.vinculado ? [{ label: 'desvincular', description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
+            ...(modelo.hayBus ? [h.publico
+                ? { label: 'hacer privado', description: 'hoy es público: las otras personas lo ven en COLEGAS; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
+                : { label: 'hacer público', description: 'que las otras personas del bus lo vean en COLEGAS y le escriban (su nombre y carpeta; nunca la conversación)',
+                    hacer: () => sobreHilo(hilo, 'publicar') }] : []),
             { label: 'prioridad', separador: true },
             prioridad('1', 'alta'), prioridad('2', 'media'), prioridad('3', 'baja'), prioridad('ninguna', 'ninguna'),
             { label: 'guardar o cerrar', separador: true },

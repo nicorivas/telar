@@ -965,6 +965,8 @@ class ElCorreoEntrePersonas(Prueba):
         class Kv:
             async def get(self, clave):
                 await asyncio.sleep(pendientes.pop(0))
+                # el hilo existe y es público: a uno privado no le llega correo de otra persona
+                return SimpleNamespace(value=b'{"publico": true}')
 
         class Js:
             async def publish(self, tema, datos, headers=None, timeout=None):

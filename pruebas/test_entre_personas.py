@@ -16,8 +16,11 @@ class ElDirectorio(Prueba):
     def test_publica_solo_nombre_palabra_carpeta_y_resumen(self):
         foto = {"maquina": "telar", "hilos": [
             {"nombre": "T42 Faro Norte", "vivo": True, "relativa": "proyectos/faro", "resumen": "va bien",
-             "atencion": "espera", "tiempo": 99},
-            {"nombre": "De otra máquina", "remoto": "laptop"},
+             "atencion": "espera", "tiempo": 99, "publico": True},
+            {"nombre": "De otra máquina", "remoto": "laptop", "publico": True},
+            # privado (lo de siempre, si nadie lo hizo público): no sale
+            {"nombre": "Privado", "vivo": True, "relativa": "nico/diario"},
+            {"nombre": "Privado explícito", "vivo": True, "publico": False},
         ]}
         d = ep.directorio(foto, "ana")
         self.assertEqual((d["persona"], d["maquina"]), ("ana", "telar"))

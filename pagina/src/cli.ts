@@ -63,6 +63,8 @@ export interface JsonFicha {
 
 export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
+    /** si las otras personas del bus lo ven en su directorio (COLEGAS); por defecto, no */
+    publico?: boolean;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
@@ -251,7 +253,9 @@ export type JsonConfig = {
     /** las pestañas del dashboard: su orden y las que no se muestran (`[dashboard]`) */
     dashboard?: { orden: string[]; ocultas: string[] };
     /** los módulos instalados (`[modulos]`) y lo que aporta cada uno */
-    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[] }[]; remotos?: JsonRemoto[]; bloques?: JsonBloque[];
+    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[] }[]; remotos?: JsonRemoto[];
+    /** el bus de esta persona: url, persona y máquina; vacío sin bus */
+    bus?: { url?: string; persona?: string; maquina?: string }; bloques?: JsonBloque[];
     pestanas?: JsonPestana[];
     /** el agente que recibe lo que no tiene proyecto (`[agentes] sin_proyecto`); vacío si no hay */
     agente_general?: { clave?: string; nombre?: string };

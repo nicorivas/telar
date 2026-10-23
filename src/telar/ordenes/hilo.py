@@ -13,6 +13,9 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            está `archivar`
     telar hilo archivar [--cerrar]         sacarlo de la lista sin perderlo
     telar hilo desarchivar
+    telar hilo publicar                    que las otras personas del bus lo vean en su directorio (por
+                                           defecto, un hilo es privado: no sale)
+    telar hilo privar                      volver a privado
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
                                            la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
@@ -67,6 +70,8 @@ VERBOS = (
     "cerrar",
     "archivar",
     "desarchivar",
+    "publicar",
+    "privar",
     "retomar",
     "olvidar",
     "llevar",
@@ -77,10 +82,11 @@ VERBOS = (
 
 #: los verbos que cambian el registro de un hilo: sobre uno que vive en otra máquina, se le piden a su
 #: dueño por el bus (docs/propuestas/un-dueno-por-hilo.md), que los aplica y los vuelve a publicar
-AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "archivar", "desarchivar", "cerrar", "olvidar")
+AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "archivar", "desarchivar", "publicar", "privar",
+            "cerrar", "olvidar")
 
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
-SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "retomar", "olvidar")
+SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -209,6 +215,13 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "desarchivar":
         est.desarchivar(hilo.nombre)
         print(f"de vuelta en la lista «{hilo.nombre}»")
+    elif o.verbo == "publicar":
+        est.publicar(hilo.nombre)
+        print(f"«{hilo.nombre}» es público: las otras personas del bus lo ven en su directorio (su nombre, su carpeta "
+              f"y una línea; nunca la conversación) y pueden escribirle")
+    elif o.verbo == "privar":
+        est.privar(hilo.nombre)
+        print(f"«{hilo.nombre}» es privado: sale del directorio de las otras personas")
     elif o.verbo == "retomar":
         salida = _retomar(ctx, tel, hilo)
     elif o.verbo == "llevar":
@@ -414,6 +427,8 @@ def _adelantar(est, o, nombre: str, raiz) -> None:
     publica = est.registro_ajeno().get(nombre, {})
     if o.verbo in ("archivar", "desarchivar") and "archivado" in publica:
         est.adelantar_ajeno(nombre, archivado=o.verbo == "archivar")
+    elif o.verbo in ("publicar", "privar") and "publico" in publica:
+        est.adelantar_ajeno(nombre, publico=o.verbo == "publicar")
     elif o.verbo in ("vincular", "desvincular") and "vinculo" in publica:
         relativa = _ruta_en_raiz(o.valor or ".", raiz)[0] if o.verbo == "vincular" else ""
         if relativa is not None:

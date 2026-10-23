@@ -246,7 +246,7 @@ export class Dashboard implements Tablero {
             o: () => this.abrirConfig('periodicos'), d: () => this.planes.abrirPlan(''), a: () => this.planes.abrirCalendario(), n: () => this.ahora.abrir(),
             ...Object.fromEntries(this.pestanasCfg.filter(x => x.tecla).map(x => [x.tecla, () => this.tareas.abrirPestana(x.nombre)])),
             ...Object.fromEntries(this.bloques.declarados.filter(b => !b.en && b.tecla).map(b => [b.tecla!, () => this.bloques.abrir(b.clave)])),
-            ...(modelo.hayRemotos ? { c: () => this.abrirConfig('agentes') } : {}),
+            ...(modelo.hayBus ? { c: () => this.abrirConfig('agentes') } : {}),
         };
     }
 

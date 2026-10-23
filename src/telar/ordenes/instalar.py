@@ -257,6 +257,14 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
         if not donde.exists() or donde.read_text(encoding="utf-8") != texto:
             que = "instalar" if not donde.exists() else "actualizar"
             pasos.append((lambda: _servicio(donde, texto), f"{que} el servicio de telar serve ({donde})"))
+        else:
+            from telar import __version__
+
+            corre = version_corriendo()
+            if corre and corre != __version__:
+                # se actualizó telar (uv tool install --force) y el servicio sigue con el código de antes
+                pasos.append((lambda: _servicio(donde, texto),
+                              f"reiniciar el servicio de telar serve: corre la {corre} y está instalada la {__version__}"))
     if not o.sin_agente and not _ganchos_puestos(ctx):
         from telar.ordenes import agente
 
@@ -377,6 +385,29 @@ def _quitar_remoto(ruta: Path, nombre: str) -> None:
         raise ValueError(f"sin [remotos.{nombre}] la configuración no se lee ({e}); la dejé como estaba: "
                          f"quítalo a mano junto con lo que lo nombra") from None
     print(f"quité [remotos.{nombre}]; lo de antes quedó en {respaldo}")
+
+
+def version_corriendo() -> str:
+    """La versión del `telar serve` que está corriendo (su `/salud`, por el socket de siempre); "" si no contesta."""
+    import http.client
+    import json
+    import socket
+
+    from telar import api
+
+    class _PorSocket(http.client.HTTPConnection):
+        def connect(self):
+            self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            self.sock.settimeout(3)
+            self.sock.connect(str(api.socket_por_defecto()))
+
+    try:
+        c = _PorSocket("telar", timeout=3)
+        c.request("GET", "/salud")
+        r = c.getresponse()
+        return str(json.loads(r.read() or b"{}").get("version") or "") if r.status == 200 else ""
+    except (OSError, ValueError, http.client.HTTPException):
+        return ""
 
 
 def _sin_error(hacer) -> None:

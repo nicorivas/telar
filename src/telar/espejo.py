@@ -39,7 +39,8 @@ MAXIMO = 2 * 1024 * 1024
 NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 #: qué campos de cada hilo viajan (el resto —ruta absoluta, sesiones, conversaciones— se queda allá)
-CAMPOS = ("nombre", "atencion", "vivo", "activo", "prioridad", "tiempo", "visto", "relativa", "arquetipo", "remoto")
+CAMPOS = ("nombre", "atencion", "vivo", "activo", "prioridad", "tiempo", "visto", "relativa", "arquetipo", "remoto",
+          "publico")
 
 
 class ErrorDeEspejo(ValueError):

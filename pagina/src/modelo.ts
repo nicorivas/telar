@@ -50,6 +50,9 @@ export class Modelo {
     sugerencias: cli.JsonSugerencia[] = [];
     private sugerenciasVistas: Set<string> | undefined;
     hayRemotos = false;
+    /** si esta persona está en un bus (`[bus]`): lo que cruza entre máquinas y personas (los colegas, el
+     *  registro de mensajes, la gestión de personas) depende de esto, no de `[remotos]` */
+    hayBus = false;
 
     readonly cambio = new Emisor();
 
@@ -70,7 +73,7 @@ export class Modelo {
 
     /** Lee el directorio de las otras personas; sin bus, o si no contesta, queda lo que había. */
     async leerColegas(): Promise<void> {
-        if (!this.hayRemotos) { this.colegas = []; return; }
+        if (!this.hayBus) { this.colegas = []; return; }
         const r = await cli.directorio();
         if (!r.datos) return;
         const antes = JSON.stringify(this.colegas);
@@ -142,6 +145,7 @@ export class Modelo {
                     this.secciones = c.datos.secciones ?? [];
                     this.apps = c.datos.apps ?? [];
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
+                    this.hayBus = !!c.datos.bus?.url;
                 }
                 void this.leerEquipo();
                 void this.leerColegas();

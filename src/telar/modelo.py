@@ -123,6 +123,8 @@ class Hilo:
     arquetipo: str = ""
     activo: bool = False
     archivado: bool = False
+    #: si sale en el directorio que ven las otras personas del bus (por defecto, no: privado)
+    publico: bool = False
     prioridad: Prioridad | None = None
     atencion: Atencion = Atencion.NINGUNA
     #: última vez que el hilo tuvo el foco.

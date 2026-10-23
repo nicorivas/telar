@@ -146,7 +146,7 @@ class ElNodoEspeja(ConEstado):
         n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
         n.config = SimpleNamespace(estado=self.carpeta, bus=SimpleNamespace(persona="ana", maquina="laptop"))
         n.yo, n.vistos, n.ajenos_escritos, n.publicado, n.ausentes = "laptop", {}, None, {}, {}
-        n.registro, n.vueltas, n.subs = ({}, set(), {}), 5, {}
+        n.registro, n.vueltas, n.subs = ({}, set(), {}, set()), 5, {}
         n.ajenos_listos, n.vigia = False, None
         return n
 
@@ -213,8 +213,9 @@ class ElNodoEspeja(ConEstado):
 
     def test_el_registro_que_publica_el_dueno(self):
         self.assertEqual(mod_nodo.registro_de("Faro", {"Faro": "proyectos/faro"}, {"Faro"}),
-                         {"vinculo": "proyectos/faro", "archivado": True})
-        self.assertEqual(mod_nodo.registro_de("Ana", {}, set()), {"vinculo": "", "archivado": False})
+                         {"vinculo": "proyectos/faro", "archivado": True, "publico": False})
+        self.assertTrue(mod_nodo.registro_de("Faro", {}, set(), {"Faro"})["publico"])
+        self.assertEqual(mod_nodo.registro_de("Ana", {}, set()), {"vinculo": "", "archivado": False, "publico": False})
 
     def vuelta(self, n, previo, registro):
         clave = "ana.faro"
@@ -229,21 +230,25 @@ class ElNodoEspeja(ConEstado):
 
     def test_un_hilo_muerto_que_se_archivo_despues_se_vuelve_a_publicar(self):
         n = self.nodo()
-        previo = {"nombre": "Faro", "maquina": "laptop", "vivo": False, "vinculo": "proyectos/faro", "archivado": False}
-        puestos = self.vuelta(n, previo, ({"Faro": "proyectos/faro"}, {"Faro"}, {}))
+        previo = {"nombre": "Faro", "maquina": "laptop", "vivo": False, "vinculo": "proyectos/faro", "archivado": False,
+                  "publico": False}
+        puestos = self.vuelta(n, previo, ({"Faro": "proyectos/faro"}, {"Faro"}, {}, set()))
         self.assertEqual(len(puestos), 1)
         self.assertTrue(puestos[0][1]["archivado"])
         # sin cambios, nada
-        self.assertEqual(self.vuelta(n, {**previo, "archivado": True}, ({"Faro": "proyectos/faro"}, {"Faro"}, {})), [])
+        self.assertEqual(self.vuelta(n, {**previo, "archivado": True}, ({"Faro": "proyectos/faro"}, {"Faro"}, {}, set())), [])
+        # hacerlo público también se vuelve a publicar
+        puestos = self.vuelta(n, {**previo, "archivado": True}, ({"Faro": "proyectos/faro"}, {"Faro"}, {}, {"Faro"}))
+        self.assertTrue(puestos[0][1]["publico"])
 
     def test_no_se_pisa_el_estado_de_un_hilo_que_ya_publica_otra_maquina(self):
         n = self.nodo()
         previo = {"nombre": "Faro", "maquina": "laptop", "vivo": False, "vinculo": "", "archivado": False}
         n.vistos = {"ana.faro": {"nombre": "Faro", "maquina": "servidor"}}
         with mock.patch.object(n, "espejar_ajenos"):
-            self.assertEqual(self.vuelta(n, previo, ({}, {"Faro"}, {})), [])
+            self.assertEqual(self.vuelta(n, previo, ({}, {"Faro"}, {}, set())), [])
         n.vistos = {}
-        self.assertEqual(self.vuelta(n, previo, ({}, {"Faro"}, {"Faro": {"remoto": "servidor"}})), [])
+        self.assertEqual(self.vuelta(n, previo, ({}, {"Faro"}, {"Faro": {"remoto": "servidor"}}, set())), [])
 
 
 async def _nada():
