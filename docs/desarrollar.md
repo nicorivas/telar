@@ -28,6 +28,7 @@ Para probar la terminal con la latencia de una red lejana sin depender de ella:
 la mitad a la vuelta; ahí mismo, `__eco.estado()` dice si el eco de la terminal que se mira se está mostrando
 y la latencia que mide. El eco tiene su prueba, contra un Claude Code falso: `npm run prueba:eco` en `pagina/`.
 Las rutas y direcciones que se vuelven enlaces en la terminal, también: `npm run prueba:enlaces`.
+Lo que se lee de un archivo arrastrado a la terminal (sus rutas, cómo se citan): `npm run prueba:arrastre`.
 
 Las pruebas de Python se corren como el CI: con telar instalado con `pip install -e '.[serve,bus,pruebas]'`
 (sin los extras, las de la API y el bus se saltan), `python -m unittest discover -s pruebas` (escritas como

@@ -20,6 +20,15 @@ extension shared the version number.
   (`GET /alojamiento.json`, `POST /alojamiento/<action>`).
 - `telar instalar --web-puerto N`: the page of a machine on a port other than 8780 (a server that hosts several
   people gives each their own).
+- The page: drag a file onto a thread's terminal and its path lands in the chat, like VS Code's terminal: at the
+  cursor if dropped on the box below, pasted without ⏎ if dropped on the terminal (quoted when it has spaces). If
+  the drag carries the path (VS Code, a terminal, Safari from the Finder) it is used as is; if it carries only the
+  file (Chrome from the Finder, Windows), the page asks before uploading it. The browser no longer navigates to a
+  dropped file.
+- `POST /archivos/entrada`: a file for a thread, in the inbox folder of the thread's machine. Uploaded
+  (multipart) or named by its path on this machine; for a thread on another machine it is copied over ssh with
+  `telar imagen`'s `subir`, which no longer overwrites a file with the same name (`-2`, `-3`…). Up to 200 MB. The
+  `serve` extra now includes `python-multipart`.
 
 ### Changed
 
