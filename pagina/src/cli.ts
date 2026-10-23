@@ -21,14 +21,16 @@ export interface Respuesta<T> { datos?: T; error?: string; cuerpo?: Record<strin
 // ───────────────────────── la API (`telar serve`) ─────────────────────────
 
 /** Un pedido a la API. Una ruta que la API no tiene (un telar más viejo que la página) se dice así, como
- *  un error: no hay otro camino por el que pedirlo. */
+ *  un error: no hay otro camino por el que pedirlo. El cuerpo va como JSON; un FormData, como multipart (el
+ *  navegador pone el tipo, con su separador). */
 async function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T>> {
     let r: Response;
+    const formulario = cuerpo instanceof FormData;
     try {
         r = await fetch(`/api${ruta}`, {
             method: metodo, cache: 'no-store', signal: AbortSignal.timeout(timeout),
-            headers: cuerpo === undefined ? {} : { 'Content-Type': 'application/json' },
-            body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+            headers: cuerpo === undefined || formulario ? {} : { 'Content-Type': 'application/json' },
+            body: cuerpo === undefined ? undefined : formulario ? cuerpo : JSON.stringify(cuerpo),
         });
     } catch (e) {
         return { error: `la API no respondió: ${(e as Error).message}` };
@@ -196,6 +198,19 @@ export const reunion = (titulo: string, hora: string, enlace = '', evento = '',
     opciones: { asistentes?: string[]; proyecto?: string; preguntar?: boolean; donde?: boolean } = {}) =>
     aServe<JsonReunion>('POST', '/reunion', 60000, { titulo, hora, enlace, evento, asistentes: opciones.asistentes ?? [],
         proyecto: opciones.proyecto ?? '', preguntar: !!opciones.preguntar, donde: !!opciones.donde });
+
+/** Dónde quedó un archivo arrastrado a un hilo: su ruta en la máquina del hilo ('' es la de aquí). */
+export interface JsonEntrada { ruta: string; maquina: string; bytes: number }
+/** Un archivo arrastrado a un hilo, en la carpeta de entrada de su máquina (servicios/archivos.py, `POST
+ *  /archivos/entrada`): uno de esta máquina nombrado por su ruta (se copia por ssh a la del hilo), o uno que se
+ *  sube entero. Con tiempo: puede ser grande y la red, lenta. */
+export const entradaPorRuta = (hilo: string, maquina: string, ruta: string) =>
+    aServe<JsonEntrada>('POST', '/archivos/entrada', 10 * 60 * 1000, { hilo, maquina, ruta });
+export function entradaSubida(hilo: string, maquina: string, archivo: File): Promise<Respuesta<JsonEntrada>> {
+    const f = new FormData();
+    f.append('hilo', hilo); f.append('maquina', maquina); f.append('archivo', archivo, archivo.name);
+    return aServe<JsonEntrada>('POST', '/archivos/entrada', 10 * 60 * 1000, f);
+}
 
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {

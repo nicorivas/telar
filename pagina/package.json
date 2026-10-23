@@ -15,7 +15,8 @@
     "lint:css": "stylelint \"media/css/*.css\"",
     "prueba:eco": "node pruebas/eco.mjs",
     "prueba:enlaces": "node pruebas/enlaces.mjs",
-    "prueba:semana": "node pruebas/semana.mjs"
+    "prueba:semana": "node pruebas/semana.mjs",
+    "prueba:arrastre": "node pruebas/arrastre.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

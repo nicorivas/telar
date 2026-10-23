@@ -76,6 +76,7 @@ jobs:
       - run: npm run prueba:enlaces
         working-directory: pagina
       - run: npm run prueba:semana
+      - run: npm run prueba:arrastre
         working-directory: pagina
 
   mod:

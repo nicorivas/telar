@@ -193,6 +193,14 @@ barra.pestanasDashboard = () => hoy.pestanas();
 hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.appActiva = hoy.appActual; barra.refrescar(); };
 modelo.cambio.event(() => barra.refrescar());
 
+// un archivo soltado donde nadie lo recibe (lo recibe la terminal de un hilo: web/terminal.ts) no hace nada: de
+// fábrica, el navegador navega al archivo y la página se pierde
+window.addEventListener('dragover', e => {
+    if (e.defaultPrevented || !e.dataTransfer?.types.includes('Files')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'none';
+});
+window.addEventListener('drop', e => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault(); });
+
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la
 // columna ancha
 // una versión nueva de telar, arriba (web/version.ts): un clic la instala; si no se puede desde aquí, ⚙ versión

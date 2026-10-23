@@ -37,13 +37,21 @@ export function abrirHipervinculo(uri: string, vista: RutasVista): void {
     else if (u.protocol === 'file:') void abrirRuta(decodeURIComponent(u.pathname), vista);
 }
 
+/** La máquina donde corre el agente de un hilo: '' si es esta. Un hilo de otra máquina (rem:), o uno de la lista
+ *  cuyo agente vive en otra (Gestión, en el servidor). Se pregunta al usarla, no al dibujar: la lista de hilos
+ *  puede no haber llegado. */
+export function maquinaDe({ hilo, maquina }: RutasVista): string {
+    if (maquina) return maquina;
+    const h = modelo.porNombre(hilo);
+    return h?.remoto && h.remoto !== '?' && h.remoto !== modelo.aqui ? h.remoto : '';
+}
+
 /** Dónde vive lo que escribe un hilo: su máquina ('' esta) y su carpeta (aquí, absoluta; en otra máquina,
  *  relativa a su raíz). Se averigua al abrir, no al dibujar: la lista de hilos puede no haber llegado. */
-async function lugarDe({ hilo, maquina }: RutasVista): Promise<{ maquina: string; carpeta: string }> {
-    const h = maquina ? undefined : modelo.porNombre(hilo);
-    // un hilo de otra máquina (rem:), o uno de la lista cuyo agente vive en otra (Gestión, en el servidor)
-    const alla = maquina || (h?.remoto && h.remoto !== '?' && h.remoto !== modelo.aqui ? h.remoto : '');
-    if (!alla) return { maquina: '', carpeta: h?.ruta ?? '' };
+async function lugarDe(vista: RutasVista): Promise<{ maquina: string; carpeta: string }> {
+    const { hilo } = vista;
+    const alla = maquinaDe(vista);
+    if (!alla) return { maquina: '', carpeta: modelo.porNombre(hilo)?.ruta ?? '' };
     // su carpeta, de la foto que publica esa máquina: la lista de aquí no la sabe (dice «/»)
     const r = await cli.espejos();
     const x = r.datos?.espejos.find(e => e.nombre === alla)?.hilos.find(y => y.nombre === hilo);
