@@ -14,7 +14,8 @@
     "navegador:watch": "node scripts/navegador.mjs --watch --min",
     "lint:css": "stylelint \"media/css/*.css\"",
     "prueba:eco": "node pruebas/eco.mjs",
-    "prueba:enlaces": "node pruebas/enlaces.mjs"
+    "prueba:enlaces": "node pruebas/enlaces.mjs",
+    "prueba:arrastre": "node pruebas/arrastre.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
