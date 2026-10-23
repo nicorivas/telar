@@ -1,0 +1,9 @@
+[Unit]
+Description=telar-alojar: hay pedidos de alojamiento
+
+[Path]
+DirectoryNotEmpty=/var/spool/telar-alojar/pendientes
+MakeDirectory=no
+
+[Install]
+WantedBy=multi-user.target

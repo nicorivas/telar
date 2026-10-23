@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""telar-alojar: el ayudante de root del alojamiento (telar.alojamiento). Se instala en /usr/local/sbin.
+
+El nodo de telar corre sin privilegios y no puede hacer sudo (su servicio lleva NoNewPrivileges). Para crear o
+cerrar el lugar de una persona en el servidor deja un pedido en una carpeta de quien corre el bus:
+
+    /var/spool/telar-alojar/pendientes/<id>.json     lo escribe el nodo
+    /var/spool/telar-alojar/resultados/<id>.json     lo escribe este programa: {"ok": true} o {"ok": false, "error": …}
+
+y `telar-alojar.path` despierta a este programa (`telar-alojar.service`, root, uno por vez) cuando hay algo.
+
+Este programa no importa nada de telar ni de la carpeta de nadie: solo la biblioteca estándar. Y no se fía del
+pedido, que viene de un proceso que no es root: cada campo se valida aquí con una expresión estricta, el archivo
+tiene que ser un archivo común del dueño de la carpeta, y nada se arma con texto del pedido que no haya pasado
+por su expresión. Lo peor que puede conseguir un pedido es un usuario nuevo, de nombre válido, con tope de
+recursos. Lo que toca los archivos de ese usuario (su secreto, su llave ssh) lo hace *como ese usuario*, para que
+un enlace simbólico que ponga en su carpeta no lo lleve a escribir donde no debe.
+
+    telar-alojar            atiende los pedidos que haya y sale
+    telar-alojar --seco     imprime los pasos de cada pedido sin hacer nada (y no los consume)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import pwd
+import re
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+SPOOL = Path(os.environ.get("TELAR_ALOJAR_SPOOL") or "/var/spool/telar-alojar")
+REGISTRO = Path("/etc/telar/alojados.d")
+REPOSITORIO = "git+https://github.com/nicorivas/telar"
+TOPE_PEDIDO = 64 * 1024
+
+NOMBRE = re.compile(r"[a-z][a-z0-9_-]{1,30}")
+LLAVE = re.compile(r"ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( [^\n]*)?")
+BUS = re.compile(r"nats://[A-Za-z0-9.-]+:[0-9]{2,5}")
+TOPE = re.compile(r"[1-9][0-9]*[KMG]")
+CPU = re.compile(r"[1-9][0-9]*%")
+SECRETO = re.compile(r"[A-Za-z0-9_-]{24,128}")
+RESERVADOS = frozenset({
+    "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy", "www-data",
+    "backup", "list", "irc", "gnats", "nobody", "systemd-network", "systemd-resolve", "sshd", "ubuntu", "admin",
+    "agentes", "archivo", "postfix", "tailscale", "telar", "operator", "adm", "wheel", "sudo", "staff", "users"})
+ARCHIVO = re.compile(r"[0-9a-f]{16}\.json")
+
+
+class Rechazo(Exception):
+    """El pedido no sirve; el mensaje se le devuelve al nodo."""
+
+
+# ── validar ──────────────────────────────────────────────────────────────────────────
+
+def validar(p: dict) -> dict:
+    accion = p.get("accion")
+    if accion not in ("crear", "quitar"):
+        raise Rechazo(f"acción desconocida: {accion!r}")
+    nombre = p.get("nombre")
+    if not isinstance(nombre, str) or not NOMBRE.fullmatch(nombre) or nombre in RESERVADOS:
+        raise Rechazo("nombre de usuario no válido")
+    if accion == "quitar":
+        return {"accion": accion, "nombre": nombre}
+    llave = p.get("llave") or ""
+    secreto, bus = p.get("secreto"), p.get("bus")
+    puerto, memoria, cpu = p.get("puerto"), p.get("memoria"), p.get("cpu")
+    if not isinstance(llave, str) or (llave and not LLAVE.fullmatch(llave.strip())):
+        raise Rechazo("la llave ssh no es válida")
+    if not isinstance(secreto, str) or not SECRETO.fullmatch(secreto):
+        raise Rechazo("el secreto del bus no es válido")
+    if not isinstance(bus, str) or not BUS.fullmatch(bus):
+        raise Rechazo("la dirección del bus no es válida")
+    if not isinstance(puerto, int) or isinstance(puerto, bool) or not 1024 <= puerto <= 65535:
+        raise Rechazo("el puerto no es válido")
+    if not isinstance(memoria, str) or not TOPE.fullmatch(memoria) or not isinstance(cpu, str) or not CPU.fullmatch(cpu):
+        raise Rechazo("los topes de recursos no son válidos")
+    return {"accion": accion, "nombre": nombre, "llave": llave.strip(), "secreto": secreto, "bus": bus,
+            "puerto": puerto, "memoria": memoria, "cpu": cpu}
+
+
+# ── el plan: pasos puros, con {uid} y {hogar} por llenar cuando exista el usuario ────────
+
+class Paso:
+    def __init__(self, texto: str, argv: list[str] | None = None, *, stdin: str | None = None,
+                 archivo: tuple[str, str, int] | None = None, tolerar: bool = False) -> None:
+        self.texto, self.argv, self.stdin, self.archivo, self.tolerar = texto, argv, stdin, archivo, tolerar
+
+
+def como(nombre: str, *orden: str) -> list[str]:
+    """Una orden corrida *como* ese usuario, con un entorno limpio y su HOME (`runuser -u` sin más deja el de root)."""
+    return ["runuser", "-u", nombre, "--", "env", "-i", "HOME={hogar}", f"USER={nombre}", f"LOGNAME={nombre}",
+            "PATH=/usr/local/bin:/usr/bin:/bin", *orden]
+
+
+INSTALAR = r"""set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash
+uv tool install --force 'telar[serve,bus] @ __REPO__'
+grep -q '.local/bin' "$HOME/.profile" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
+telar instalar --bus '__BUS__' --persona '__NOMBRE__' --token "$HOME/.config/telar/bus.token" --web-puerto __PUERTO__ --si
+"""
+
+
+def plan(p: dict) -> list[Paso]:
+    n = p["nombre"]
+    if p["accion"] == "quitar":
+        return [
+            Paso(f"bloquear a {n}, quitarle la llave y cerrar sus sesiones y procesos",
+                 ["usermod", "-L", "-s", "/usr/sbin/nologin", n]),
+            Paso("quitar su llave ssh", ["rm", "-f", "{hogar}/.ssh/authorized_keys"]),
+            Paso("cerrar sus sesiones", ["loginctl", "terminate-user", n], tolerar=True),
+            Paso("quitar su regla de sshd", ["rm", "-f", f"/etc/ssh/sshd_config.d/61-telar-alojado-{n}.conf"]),
+            Paso("recargar sshd", ["systemctl", "reload", "ssh"], tolerar=True),
+            Paso("quitar su tope de recursos", ["rm", "-f", "/etc/systemd/system/user-{uid}.slice.d/50-telar-alojar.conf"]),
+            Paso("recargar systemd", ["systemctl", "daemon-reload"]),
+            Paso("quitar su lugar del registro", ["rm", "-f", str(REGISTRO / f"{n}.json")]),
+        ]
+    instalar = (INSTALAR.replace("__REPO__", REPOSITORIO).replace("__BUS__", p["bus"])
+                .replace("__NOMBRE__", n).replace("__PUERTO__", str(p["puerto"])))
+    pasos = [
+        Paso(f"el usuario {n}, sin grupos extra", ["useradd", "-m", "-s", "/bin/bash", "-c", f"telar: {n}", n]),
+        Paso("su carpeta de telar", como(n, "mkdir", "-p", "-m", "700", "{hogar}/.config/telar")),
+        Paso("su secreto del bus (como él, 0600)", como(n, "sh", "-c", "umask 077; cat > \"$HOME/.config/telar/bus.token\""),
+             stdin=p["secreto"] + "\n"),
+    ]
+    if p["llave"]:
+        pasos += [
+            Paso("su llave ssh (como él)", como(n, "sh", "-c",
+                 "umask 077; mkdir -p \"$HOME/.ssh\"; cat >> \"$HOME/.ssh/authorized_keys\""), stdin=p["llave"] + "\n"),
+            Paso("sshd: sin contraseña, sin túneles ni reenvíos", archivo=(
+                f"/etc/ssh/sshd_config.d/61-telar-alojado-{n}.conf",
+                f"Match User {n}\n    PasswordAuthentication no\n    AllowTcpForwarding no\n    X11Forwarding no\n"
+                f"    AllowAgentForwarding no\n    PermitTunnel no\n", 0o644)),
+            Paso("comprobar y recargar sshd", ["sh", "-c", "sshd -t && systemctl reload ssh"]),
+        ]
+    pasos += [
+        Paso(f"tope de recursos: {p['memoria']} de memoria y {p['cpu']} de CPU", archivo=(
+            "/etc/systemd/system/user-{uid}.slice.d/50-telar-alojar.conf",
+            f"[Slice]\nMemoryHigh={p['memoria']}\nMemoryMax={p['memoria']}\nCPUQuota={p['cpu']}\nTasksMax=400\n", 0o644)),
+        Paso("recargar systemd", ["systemctl", "daemon-reload"]),
+        Paso("que su sesión de systemd viva sin que entre", ["loginctl", "enable-linger", n]),
+        Paso("arrancar su systemd de usuario", ["systemctl", "start", "user@{uid}.service"]),
+        Paso("su propio uv, Claude Code y telar, y su nodo en el bus (tarda)", como(n, "bash", "-l", "-s"), stdin=instalar),
+        Paso("anotarlo en el registro", archivo=(
+            str(REGISTRO / f"{n}.json"), json.dumps({"nombre": n, "puerto": p["puerto"], "bus": p["bus"],
+                                                      "cuando": int(time.time())}) + "\n", 0o644)),
+    ]
+    return pasos
+
+
+# ── ejecutar ─────────────────────────────────────────────────────────────────────────
+
+def correr(pasos: list[Paso], nombre: str, *, seco: bool) -> None:
+    ctx = {"uid": "", "hogar": ""}
+    for paso in pasos:
+        if not seco and not ctx["uid"]:
+            try:
+                u = pwd.getpwnam(nombre)
+                ctx.update(uid=str(u.pw_uid), hogar=u.pw_dir)
+            except KeyError:
+                pass
+        llenar = lambda s: s.replace("{uid}", ctx["uid"]).replace("{hogar}", ctx["hogar"])  # noqa: E731
+        if seco:
+            if paso.archivo:
+                print(f"== {paso.texto}\n   escribir {paso.archivo[0]}")
+            else:
+                print(f"== {paso.texto}\n   $ {' '.join(paso.argv)}" + ("   (con entrada)" if paso.stdin else ""))
+            continue
+        print(f"== {paso.texto}", flush=True)
+        if paso.archivo:
+            ruta, contenido, modo = (llenar(paso.archivo[0]), paso.archivo[1], paso.archivo[2])
+            Path(ruta).parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, modo)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(contenido)
+            continue
+        r = subprocess.run([llenar(a) for a in paso.argv], input=paso.stdin, text=True, capture_output=True)
+        if r.returncode != 0 and not paso.tolerar:
+            cola = (r.stderr or r.stdout or "").strip().splitlines()[-6:]
+            raise Rechazo(f"«{paso.texto}» falló ({r.returncode}): {' | '.join(cola)}"[:600])
+    return None
+
+
+def atender(pedido: dict, *, seco: bool) -> dict:
+    p = validar(pedido)
+    n = p["nombre"]
+    existe = True
+    try:
+        pwd.getpwnam(n)
+    except KeyError:
+        existe = False
+    registrado = (REGISTRO / f"{n}.json").exists()
+    if p["accion"] == "crear" and existe and not registrado and not seco:
+        raise Rechazo(f"ya hay un usuario del sistema «{n}» que no es de un alojado: no lo toco")
+    if p["accion"] == "quitar" and not existe and not seco:
+        raise Rechazo(f"no hay un usuario «{n}»")
+    if p["accion"] == "quitar" and existe and not registrado and not seco:
+        raise Rechazo(f"«{n}» no es un alojado de telar: no lo cierro")
+    pasos = plan(p)
+    if existe:
+        pasos = [x for x in pasos if not (x.argv and x.argv[0] == "useradd")]
+    correr(pasos, n, seco=seco)
+    return {"ok": True}
+
+
+# ── la carpeta de pedidos ────────────────────────────────────────────────────────────
+
+def leer_pedido(ruta: Path, dueno_uid: int) -> dict:
+    st = ruta.lstat()
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != dueno_uid or st.st_size > TOPE_PEDIDO:
+        raise Rechazo("el pedido no es un archivo común del dueño de la carpeta")
+    fd = os.open(ruta, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, encoding="utf-8") as f:
+        d = json.load(f)
+    if not isinstance(d, dict):
+        raise Rechazo("el pedido no es un objeto JSON")
+    return d
+
+
+def responder(resultados: Path, ident: str, r: dict, dueno_uid: int) -> None:
+    tmp = resultados / f".{ident}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(r, f, ensure_ascii=False)
+    os.chown(tmp, dueno_uid, -1)
+    os.replace(tmp, resultados / f"{ident}.json")
+
+
+def main(argv: list[str]) -> int:
+    seco = "--seco" in argv
+    pendientes, resultados = SPOOL / "pendientes", SPOOL / "resultados"
+    try:
+        dueno_uid = SPOOL.lstat().st_uid
+        if not SPOOL.is_dir() or SPOOL.is_symlink() or stat.S_IMODE(SPOOL.lstat().st_mode) & 0o077:
+            print(f"{SPOOL}: tiene que ser una carpeta, no un enlace, y privada (700)", file=sys.stderr)
+            return 2
+        if dueno_uid == 0:
+            print(f"{SPOOL}: tiene que ser de quien corre el bus, no de root", file=sys.stderr)
+            return 2
+    except OSError as e:
+        print(f"{SPOOL}: {e}", file=sys.stderr)
+        return 2
+    for d in (pendientes, resultados):
+        if d.is_symlink() or not d.is_dir() or d.lstat().st_uid != dueno_uid:
+            print(f"{d}: tiene que ser una carpeta de quien corre el bus, no un enlace", file=sys.stderr)
+            return 2
+    hubo_falla = False
+    for ruta in sorted(pendientes.iterdir()):
+        if not ARCHIVO.fullmatch(ruta.name):
+            # algo ajeno en la carpeta: se quita, o el vigía lo vería siempre y volvería a despertarnos
+            if not seco and not ruta.is_dir():
+                ruta.unlink(missing_ok=True)
+            continue
+        ident = ruta.stem
+        try:
+            r = atender(leer_pedido(ruta, dueno_uid), seco=seco)
+        except Rechazo as e:
+            r = {"ok": False, "error": str(e)}
+        except Exception as e:  # noqa: BLE001 - un pedido roto no detiene a los otros
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:400]}
+        print(f"{ident}: {'ok' if r['ok'] else 'FALLÓ: ' + r['error']}", flush=True)
+        hubo_falla |= not r["ok"]
+        if not seco:
+            responder(resultados, ident, r, dueno_uid)
+            ruta.unlink(missing_ok=True)
+    return 1 if hubo_falla else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

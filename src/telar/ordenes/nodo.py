@@ -410,6 +410,8 @@ class Nodo:
 
         if unirse.administra_aqui():
             await self._suscribir(nc, cuentas.ADMIN.format(self.persona), self._admin, en_fila=True)
+            # y el alojamiento (telar.alojamiento): cualquier persona del bus pide un lugar en este servidor
+            await self._suscribir(nc, cuentas.ALOJAR.format(self.persona), self._alojar, en_fila=True)
         for verbo, cb in (("leer", self._leer), ("resultado", self._resultado),
                           ("resultado-comentar", self._resultado_comentar), ("proveedor", self._proveedor),
                           ("tarea", self._tarea), ("tipo", self._tipo), ("periodicos", self._periodicos),
@@ -871,6 +873,16 @@ class Nodo:
         r = await asyncio.to_thread(personas.atender_pedido_del_bus, self.persona, m.data, m.headers)
         if r.get("hecho"):
             self.anotar(f"personas: {r['hecho']} (lo pidió {r.get('quien') or self.persona})")
+        await m.respond(json.dumps(r, ensure_ascii=False).encode())
+
+    async def _alojar(self, m) -> None:
+        """Una acción de alojamiento (telar.alojamiento): una persona del bus pide un lugar en este servidor, o
+        quien lo administra decide."""
+        from telar import alojamiento
+
+        r = await asyncio.to_thread(alojamiento.atender_pedido_del_bus, self.persona, m.data, m.headers, self.config)
+        if r.get("hecho"):
+            self.anotar(f"alojamiento: {r['hecho']} (lo pidió {r.get('quien') or self.persona})")
         await m.respond(json.dumps(r, ensure_ascii=False).encode())
 
     async def _hilo_existe(self, ext: str) -> bool | None:

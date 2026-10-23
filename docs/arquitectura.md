@@ -252,6 +252,40 @@ Lo que no se puede arreglar desde aquí sin probar contra el bus real:
 Git sigue siendo para el contenido: los archivos se sincronizan con `pull` y `push`, a su ritmo, y un
 hilo vinculado a una carpeta que la otra máquina todavía no tiene se ve sin ficha hasta el próximo pull.
 
+## El servidor como mainframe
+
+Además de ser la máquina de quien lo corre y alojar el bus, un servidor puede **alojar a otras personas**
+([propuesta](propuestas/servidor-mainframe.md): lo que falta). Alguien que ya tiene cuenta en el bus pide un lugar
+(`telar servidor pedir`), quien administra lo aprueba (`telar servidor aprobar`), y el servidor le arma lo que una
+persona necesita para tener una máquina propia: un usuario Linux sin grupos extra y con tope de memoria y CPU, su
+uv, su Claude Code y su telar, y **su propio nodo** (`telar serve --nodo --web`) conectado a **su cuenta** del bus,
+con su secreto y su puerto de página. Desde ahí el servidor es una máquina más *de esa persona*: sus hilos viven
+aquí, y los ve, los abre y les escribe desde su laptop por el bus como a los de cualquier otra máquina suya. No hay
+un tipo nuevo de hilo, ni sesiones compartidas: lo de cada persona lo separan el sistema (usuarios, permisos) y el
+bus (una cuenta por persona), y cada hilo sigue teniendo un solo dueño.
+
+El pedido va por el bus al servicio `alojar.<dueño>` (`telar.alojamiento`): la cuenta del dueño lo exporta a todas
+y todas lo importan (`telar.cuentas`); el servidor NATS dice de qué cuenta viene (`Nats-Request-Info`), así que
+nadie pide a nombre de otro. Lo atiende el nodo de la máquina del bus. `pedir` y `estado` son de cualquiera del bus,
+sobre lo suyo; `ver`, `aprobar`, `rechazar` y `quitar`, del dueño y de los admin (los roles de `telar.personas`).
+Un alojamiento pasa `pendiente → preparando → activo`, o `falló` (se reintenta aprobando de nuevo), `rechazado` o
+`quitado`, y se guarda en `~/.config/telar/bus/alojamientos.json`, privado. Cada alojado recibe el siguiente puerto
+de página libre desde el 8781 (`telar instalar --web-puerto`); el 8780 es el de quien administra.
+
+**Lo que necesita root, sin darle root al nodo.** El nodo corre sin privilegios y con `NoNewPrivileges`: no hay
+sudo. Deja un pedido en una carpeta de buzón (`/var/spool/telar-alojar/pendientes/`), que `telar-alojar.path` vigila
+y despierta a `telar-alojar.service` (root, una vez por vez); éste deja el resultado en `resultados/` y el nodo lo
+lee. `servidor/telar-alojar` solo usa la biblioteca estándar y no se fía del pedido: cada campo pasa por una
+expresión estricta, el archivo tiene que ser común, del dueño de la carpeta y chico, no toca usuarios que no creó él
+(`/etc/telar/alojados.d/`), y lo que escribe en la carpeta de la persona (su secreto, su llave) lo escribe *como
+ella*, con entorno limpio, para que un enlace simbólico suyo no lo lleve a escribir en otro lado.
+
+**El secreto viaja una vez.** El telar de una persona usa el mismo secreto en todas sus máquinas (con él se abren las
+terminales de una máquina a otra y se firman los boletos), así que el servidor necesita el suyo para su nodo. Va
+dentro del pedido, por el bus; el nodo comprueba contra el hash de la cuenta que es el verdadero, lo guarda en un
+archivo privado hasta aprobar, y lo borra al dejarlo en el `bus.token` del usuario nuevo. No sale en ninguna
+respuesta.
+
 ## Los agentes residentes
 
 No hay dos clases de hilo. Un hilo es siempre una conversación con una casa (una carpeta), y puede

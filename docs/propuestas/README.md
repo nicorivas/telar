@@ -31,7 +31,10 @@ el primer paso sin hacer de la primera propuesta.
    está hecho.
 3. **[un-dueno-por-hilo.md](un-dueno-por-hilo.md)**: que la máquina donde corre un hilo sea la única
    que guarda su registro; las demás lo leen del bus. Hecho, salvo quitar las sesiones propias de antes.
-4. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
+4. **[servidor-mainframe.md](servidor-mainframe.md)**: que una persona del bus pida un lugar en el servidor y tenga ahí sus
+   hilos, como una máquina más suya. Construida; falta probarla con un alojado real, la sección en la página y
+   `telar doctor`.
+5. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).
 

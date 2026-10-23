@@ -37,7 +37,7 @@ def ruta_path(buscar=shutil.which) -> str:
     return ":".join(dict.fromkeys(carpetas))
 
 
-def argumentos(*, web: bool = True, nodo: bool = False, equipo: bool = False) -> list[str]:
+def argumentos(*, web: bool = True, nodo: bool = False, equipo: bool = False, web_puerto: int = 0) -> list[str]:
     a = ["serve"]
     if equipo:
         a.append("--equipo")
@@ -45,6 +45,8 @@ def argumentos(*, web: bool = True, nodo: bool = False, equipo: bool = False) ->
         a.append("--nodo")
     if web:
         a.append("--web")
+        if web_puerto:
+            a += ["--web-puerto", str(web_puerto)]
     return a
 
 
@@ -113,11 +115,12 @@ def ruta_servicio() -> Path:
     return base / "systemd" / "user" / "telar-serve.service"
 
 
-def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "") -> tuple[Path, str]:
-    """(dónde, qué) del servicio de esta máquina."""
+def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "", web_puerto: int = 0) -> tuple[Path, str]:
+    """(dónde, qué) del servicio de esta máquina. `web_puerto`: el de la página, si no es el de siempre (en un
+    servidor que aloja a varias personas, cada una tiene el suyo)."""
     telar = telar or ejecutable()
     path = path or ruta_path()
-    args = argumentos(nodo=nodo, equipo=equipo)
+    args = argumentos(nodo=nodo, equipo=equipo, web_puerto=web_puerto)
     if sys.platform == "darwin":
         log = str(Path.home() / "Library" / "Logs" / "telar-serve.log")
         return ruta_servicio(), plist_launchd(telar, args, path, log)

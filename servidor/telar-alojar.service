@@ -1,0 +1,9 @@
+[Unit]
+Description=telar-alojar: crea y cierra el lugar de las personas alojadas en este servidor (root)
+Documentation=https://github.com/nicorivas/telar
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/telar-alojar
+# un pedido tarda minutos (instala uv, Claude Code y telar): que no lo corte el reloj de systemd
+TimeoutStartSec=45min
