@@ -5,11 +5,15 @@
 // Se dibuja en un elemento de la página; sus estilos, en media/css/conversacion.css (con @scope, en
 // `.v-conversacion`).
 
+import MarkdownIt from 'markdown-it';
 import { atenderClics, enlazar } from './rutas-agente';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 interface Mensaje { quien: string; texto?: string }
 interface Leido { error?: string; fuente?: string; texto?: string; turnos?: Mensaje[][]; total_turnos?: number; recortado?: boolean }
+
+/** el markdown del agente (el HTML que traiga se escapa) */
+const md = new MarkdownIt({ html: false, linkify: true });
 
 const QUIEN: Record<string, string> = { usuario: 'tú', agente: 'agente', herramienta: '·' };
 /** las teclas de abajo: lo que mandan a la terminal */
@@ -61,7 +65,9 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
                 for (const m of turno) {
                     const f = el('div', `msj ${m.quien}`);
                     if (m.quien !== 'herramienta') f.appendChild(el('span', 'quien', QUIEN[m.quien] ?? m.quien));
-                    f.appendChild(el('div', 'cuerpo', m.texto ?? ''));
+                    const cuerpo = el('div', m.quien === 'agente' ? 'cuerpo md' : 'cuerpo', m.quien === 'agente' ? undefined : m.texto ?? '');
+                    if (m.quien === 'agente') cuerpo.innerHTML = md.render(m.texto ?? '');
+                    f.appendChild(cuerpo);
                     t.appendChild(f);
                 }
                 turnos.appendChild(t);
