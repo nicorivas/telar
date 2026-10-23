@@ -53,8 +53,6 @@
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & .ayuda {

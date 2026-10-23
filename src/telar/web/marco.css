@@ -262,6 +262,9 @@ body.angosto #lado { display: none; }
   & a:hover { color: var(--fg); }
   & a.si { color: var(--violeta); }
   & .tecla { color: var(--dim); font-size: var(--t-chica); }
+
+  /* en una pantalla táctil no hay ⌥: los atajos sobran */
+  @media (pointer: coarse) { & .tecla { display: none; } }
   & .lleno { flex: 1; }
 }
 
@@ -1476,9 +1479,6 @@ body.angosto.en-detalle #barra { display: none; }
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & button {
@@ -1550,8 +1550,6 @@ body.angosto.en-detalle #barra { display: none; }
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & .ayuda {

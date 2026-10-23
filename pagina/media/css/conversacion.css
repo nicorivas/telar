@@ -129,9 +129,6 @@
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & button {
