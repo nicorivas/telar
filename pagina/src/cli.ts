@@ -63,8 +63,10 @@ export interface JsonFicha {
 
 export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
-    /** si las otras personas del bus lo ven en su directorio (COLEGAS); por defecto, no */
+    /** si las otras personas del bus lo ven en su directorio (EQUIPO); por defecto, no */
     publico?: boolean;
+    /** el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno */
+    agente?: string; icono?: string;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
@@ -517,11 +519,30 @@ export const soltarMensaje = async (id: string) =>
 export interface JsonAgente {
     clave: string; nombre: string; direccion: string; carpeta: string; definicion: string; para: string; modelo: string;
     residente: boolean; hilos: string[]; en: string; problemas: string[];
+    /** siempre (lo mantiene abierto el nodo), a-pedido (se abre cuando le llega algo) o no */
+    presencia?: 'siempre' | 'a-pedido' | 'no';
+    publico?: boolean;
+    /** uno o dos caracteres que la lista pone junto a cada hilo suyo */
+    icono?: string;
+    politica?: { permite?: string[]; pregunta?: string[]; niega?: string[] };
 }
+/** Un encargo, en corto (telar.encargo): su estado va pedido → corriendo → hecho | falló | cancelado. */
+export interface JsonEncargoCorto { id: string; estado: string; texto: string; de?: string; creado?: string; actualizado?: string; resultado?: string }
+/** Un agente en la vista de agentes (`GET /agentes`): su definición y su estado donde vive. */
+export interface JsonEstadoAgente {
+    agente: JsonAgente; maquina: string; aqui: boolean; vivo: boolean; atencion: string;
+    conversacion: { id: string; peso: number; tope: number } | null; rotacion: string;
+    relevo: { cuando: string } | null; encargos: JsonEncargoCorto[]; sin_noticias?: boolean;
+}
+export const agentes = async () => await deServe<{ agentes: JsonEstadoAgente[]; problemas: string[] }>('/agentes', 40000);
+/** Rotar ya la conversación de un agente, con relevo (`POST /agentes/rotar`). */
+export const rotarAgente = async (hilo: string, maquina = '') =>
+    await aServe<{ hecho?: string }>('POST', '/agentes/rotar', 30000, { hilo, maquina });
 /** La ficha de un agente para la barra de la derecha (`GET /agentes/del-hilo`): su definición, su CLAUDE.md, su
  *  último relevo y el peso de su conversación (`aqui`: si vive en esta máquina; si no, esas dos no se saben). */
 export interface JsonFichaAgente {
     agente: JsonAgente; claude_md: string; definicion_texto: string; aqui: boolean;
+    encargos?: JsonEncargoCorto[];
     relevo: { texto: string; ruta: string; cuando: string } | null;
     conversacion: { id: string; peso: number; tope: number } | null;
     rotacion: string;

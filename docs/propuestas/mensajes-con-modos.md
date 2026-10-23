@@ -3,7 +3,10 @@
 Estado: **primer paso hecho** (22-oct-2026): `telar mensaje --modo aviso|pedido|encargo|consulta`, el aviso que
 espera en la casilla sin despertar, y el Encargo como objeto (`encargo:e-1a2b3c4d`), guardado en la máquina de
 quien lo hace, con sus acciones `aceptar`, `rechazar` y `cerrar`. **Por decidir**: las preguntas de abajo, la
-tabla de intenciones y cómo se funde `telar encargar`. Es el paso 4 de [primitivas.md](primitivas.md).
+tabla de intenciones y cómo se funde `telar encargar`. Es el paso 4 de [primitivas.md](primitivas.md). **Fundido** (23-oct-2026, telar 0.5): `telar encargar` también hace
+un Encargo (con bus y sin él; la cola `.jsonl` se fue), que queda `corriendo` cuando su casilla se lo entrega, se le
+recuerda cerrarlo una vez al terminar el turno, y quien lo pidió lo puede `cancelar`. La página los lista por agente
+(≡ en AGENTES) y en la barra de la derecha de su hilo.
 
 ## Por qué
 

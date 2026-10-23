@@ -6,6 +6,38 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-23
+
+### Added
+
+- The whole agent in its `agente.toml`: `hilos`, `lugar` (where it lives; the machine's `en` still wins), `publico`
+  (its threads public without publishing them one by one), `icono` (shown next to each of its threads) and a
+  `[politica]` (`permite`, `pregunta`, `niega`: permission rules of the engine), passed to its session as
+  `--settings` without touching anyone's settings.json. The machine's `[agentes.<folder>]` overrides what it needs.
+- `residente` has three values: `siempre` (the node keeps it open: opens it at start and when it closes, and
+  `max_vivos` never closes it), `a-pedido` (opened when something arrives: what `true` was) and `no` (what `false`
+  was).
+- Every errand is an Errand object: `telar encargar` (and a periodic process with `agente`) makes an
+  `encargo:e-…`, with or without bus. It turns `corriendo` when its inbox delivers it, the agent is reminded once to
+  close it if it ends a turn without doing so, and whoever asked can `cancelar` it (out of the inbox if it hadn't
+  arrived; a message to stop if it was running).
+- The agents page (≡ in AGENTES, in the sidebar): every agent with its icon, presence, whether it lives and what it
+  does, its conversation's weight, its rotation and its errands (cancel the open ones), and buttons to hand it an
+  errand, rotate it with a relay now and go to its thread. `GET /agentes`, `POST /agentes/rotar`. The right sidebar
+  of an agent's thread gets its errands and the same buttons.
+- An agent's thread starts knowing who it is (`para`), where its memory's index is and its last relay.
+- Threads carry their agent (`agente`, `icono` in `telar hilos --json`), and the sidebar shows the icon; an agent's
+  other threads go in HILOS with it.
+- EQUIPO (formerly COLEGAS) lists every person connected to the bus, even without public threads.
+
+### Changed
+
+- ⚙ agentes is now ⚙ mensajes (it was always the bus's message log).
+
+### Removed
+
+- The errand queue (`<estado>/encargos/<agent>.jsonl`, `telar encargar --cola`): errands wait in the agent's inbox.
+
 ## [0.4.9] — 2026-10-23
 
 ### Added

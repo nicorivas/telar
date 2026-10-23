@@ -180,7 +180,10 @@ class Nodo:
         remotos = est.remotos()
         atenciones = est.atenciones()
         sesiones = est.sesiones()
-        vinculos, archivados, publicos = est.vinculos(), est.archivados(), est.publicos()
+        vinculos, archivados = est.vinculos(), est.archivados()
+        from telar import agentes as mod_agentes
+
+        publicos = est.publicos() | mod_agentes.publicos(self.config, vinculos)
         self.registro = (vinculos, archivados, remotos, publicos)
         salida: dict[str, dict] = {}
 
@@ -413,7 +416,8 @@ class Nodo:
                           ("hilo", self._hilo), ("equipo", self._equipo), ("aviso", self._aviso),
                           ("archivo", self._archivo), ("archivo-leer", self._archivo_leer), ("modulo", self._modulo),
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
-                          ("serie-recordar", self._serie_recordar), ("encargo", self._encargo)):
+                          ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
+                          ("agentes", self._agentes)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
@@ -1001,6 +1005,37 @@ class Nodo:
         for linea in self.residentes.mirar(sin_sesion):
             self.anotar(linea)
         deseado.escribir(self.config, self.yo, sin_sesion, residentes=deseado.residentes(locales))
+        # los que están para siempre (`residente = "siempre"`) se abren: al arrancar la máquina, o si se cerraron
+        self.abrir_los_de_siempre(sin_sesion)
+
+    #: cuánto se espera para volver a abrir a uno que está para siempre y se cerró (segundos): uno que se cae al
+    #: abrirse no se reabre en bucle
+    REABRIR_CADA = 10 * 60
+
+    def abrir_los_de_siempre(self, sin_sesion, ahora: float | None = None) -> list[str]:
+        """Abre, retomando callada su conversación, a los residentes de aquí con `residente = "siempre"` que no
+        tienen sesión. A lo más uno cada REABRIR_CADA por agente. Devuelve los que abrió."""
+        import time
+
+        from telar import encargos
+
+        ahora = ahora if ahora is not None else time.time()
+        if not hasattr(self, "abiertos_siempre"):
+            self.abiertos_siempre: dict[str, float] = {}
+        abiertos = []
+        for a in self._agentes_de_aqui():
+            if a.presencia != "siempre" or a.nombre not in sin_sesion:
+                continue
+            if ahora - self.abiertos_siempre.get(a.clave, 0) < self.REABRIR_CADA:
+                continue
+            self.abiertos_siempre[a.clave] = ahora
+            try:
+                encargos._abrir(self.ctx, a, "")
+                abiertos.append(a.nombre)
+                self.anotar(f"«{a.nombre}» está para siempre y no tenía sesión: abierto")
+            except Exception as e:  # noqa: BLE001 - la próxima vez se intenta de nuevo
+                self.anotar(f"«{a.nombre}» está para siempre y no pude abrirlo: {e}")
+        return abiertos
 
     async def _proveedor(self, m) -> None:
         """Lo que da un proveedor de esta máquina, para otra que lo declara `en` esta (telar.alla)."""
@@ -1026,6 +1061,22 @@ class Nodo:
         from telar import encargo
 
         await self._responder(m, lambda p: encargo.atender(self.ctx, p))
+
+    async def _agentes(self, m) -> None:
+        """Los agentes que viven aquí con su estado (telar.servicios.agentes), para la página de otra máquina; con
+        `rotar`, rotar ya la conversación de uno."""
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import agentes as servicio
+
+        def hacer(p):
+            try:
+                if p.get("rotar"):
+                    return servicio.rotar_aqui(self.ctx, str(p["rotar"]))
+                return {"ok": True, "agentes": servicio.estado_local(self.ctx)}
+            except ErrorDeServicio as e:
+                return {"ok": False, "error": str(e), "codigo": e.codigo}
+
+        await self._responder(m, hacer)
 
     async def _tipo(self, m) -> None:
         """`telar tipo …` corrido aquí, para otra máquina: leer, crear o cambiar los objetos de un tipo que

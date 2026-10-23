@@ -22,6 +22,7 @@ import { Configuracion } from './config/configuracion';
 import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 import { type MensajeDia, montarDia, type VistaDia } from './vista';
 import { PantallaEquipo } from './equipo';
+import { PantallaAgentes } from './agentes';
 import { Paginas } from './pagina';
 import { PantallaTareas } from './tareas';
 import { PantallaBloques } from './bloques';
@@ -55,6 +56,7 @@ export class Dashboard implements Tablero {
     readonly teclas = new Map<string, () => Promise<unknown> | unknown>();
     /** las pantallas que viven en su archivo, con sus acciones (pantalla.ts) */
     private readonly equipo = new PantallaEquipo(this);
+    private readonly agentesVista = new PantallaAgentes(this);
     readonly planes: PantallaPlan = new PantallaPlan(this);
     readonly proyectos: PantallaProyectos = new PantallaProyectos(this);
     /** cómo se dibuja una página de bloques (una sección, una app, la ficha de una tarea), con sus lienzos */
@@ -66,7 +68,7 @@ export class Dashboard implements Tablero {
     private readonly secciones = new PantallaSecciones(this);
     /** «ahora», donde abre el dashboard */
     private readonly ahora = new PantallaAhora(this);
-    private get modulos(): Pantalla[] { return [this.ahora, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo]; }
+    private get modulos(): Pantalla[] { return [this.ahora, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo, this.agentesVista]; }
     private tablaAcciones?: Record<string, Accion>;
     /** las acciones de todas, por nombre: cada nombre es de una sola (si dos lo reclaman, falla al tiro) */
     private acciones(): Record<string, Accion> {
@@ -285,6 +287,9 @@ export class Dashboard implements Tablero {
 
     /** La página de una entrada del equipo (la abre su fila en la barra). */
     abrirEquipo(id: string): Promise<void> { return this.equipo.abrir(id); }
+
+    /** Todos los agentes, con su estado y sus encargos (≡ en AGENTES, en la barra). */
+    abrirAgentes(): Promise<void> { return this.agentesVista.abrir(); }
 
     /** La página de una sección o un agente (la abre su fila en la barra). */
     abrirSeccion(clave: string): Promise<void> { return this.secciones.abrir(clave); }

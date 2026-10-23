@@ -44,8 +44,8 @@ export const agentes: FabricaSeccion = ctx => {
 
     const seccion = {
         clave: 'agentes',
-        nombre: 'agentes',
-        ayuda: 'lo que se dicen los agentes de los hilos por el bus, y lo retenido',
+        nombre: 'mensajes',
+        ayuda: 'lo que se dicen los hilos por el bus, y lo retenido (los agentes residentes: ≡ en AGENTES, en la barra)',
         visible: () => modelo.hayBus,
         abrir: () => leer(),
         pintar(): void {

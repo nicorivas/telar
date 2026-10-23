@@ -1,8 +1,7 @@
 """`telar encargar` — pedirle algo a un agente residente, en su hilo de siempre.
 
-    telar encargar gestion "/avanzar T84"    se lo escribe si está libre, lo deja en cola si trabaja,
-                                             o abre su sesión retomando su conversación
-    telar encargar gestion --cola            lo que espera en su cola
+    telar encargar gestion "/avanzar T84"    un encargo (`encargo:e-…`) en su casilla: se entera si está libre,
+                                             se lo entrega su gancho si trabaja, o se abre su sesión
     telar encargar --liberar                 cerrar sesiones ociosas hasta caber bajo [agente] max_vivos
 
 El agente es la carpeta de `[agentes] carpeta` (gestion) o su nombre (Gestión). Con `[agentes] en`
@@ -26,7 +25,6 @@ def main(argv: list[str], ctx) -> int:
     p.epilog = __doc__
     p.add_argument("agente", nargs="?", default="", help="su carpeta o su nombre")
     p.add_argument("texto", nargs="*", help="el encargo (o «-» para leerlo de la entrada)")
-    p.add_argument("--cola", action="store_true", help="ver lo que espera en su cola")
     p.add_argument("--liberar", action="store_true", help="cerrar sesiones ociosas hasta caber bajo el tope")
     p.add_argument("--en", default=None, metavar="REMOTO", help="hacerlo en esa máquina de [remotos]; «aqui» para esta")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
@@ -35,7 +33,7 @@ def main(argv: list[str], ctx) -> int:
         return codigo
     # con bus, el encargo va a la casilla del agente y lo recoge su máquina, esté donde esté. Si el
     # bus no responde, por el camino de siempre (y se dice)
-    if o.en is None and not o.cola and not o.liberar and o.agente and o.texto:
+    if o.en is None and not o.liberar and o.agente and o.texto:
         from telar import bus as mod_bus
 
         if mod_bus.hay_bus(ctx.config):
@@ -54,7 +52,7 @@ def main(argv: list[str], ctx) -> int:
                     return 3
                 if o.json:
                     return _comun.escribir_json(r.model_dump(mode="json"))
-                print(f"{r.hilo}: en su casilla (bus) · id {r.id}")
+                print(f"{r.hilo}: en su casilla (bus) · {getattr(r, 'direccion', '') or 'id ' + r.id}")
                 return 0
             except servicio.BusCaido as e:
                 print(f"telar: {e}; voy por el camino de siempre", file=sys.stderr)
@@ -83,16 +81,6 @@ def main(argv: list[str], ctx) -> int:
     if agente is None:
         hay = ", ".join(a.clave for a in todos) or "ninguno: [agentes] carpeta en la configuración"
         return _comun.queja(f"no hay un agente «{o.agente}» (hay: {hay})")
-    if o.cola:
-        cola = encargos.pendientes(ctx.config, agente.nombre)
-        if o.json:
-            return _comun.escribir_json({"agente": agente.clave, "cola": cola})
-        for x in cola:
-            print(f"{x.get('desde', '')[5:16].replace('T', ' ')}  {x.get('texto', '')}")
-        if not cola:
-            print(_comun.tenue(f"{agente.nombre} no tiene nada en cola"))
-        return 0
-
     texto = sys.stdin.read() if o.texto == ["-"] else " ".join(o.texto)
     try:
         r = encargos.encargar(ctx, agente, texto)
@@ -100,6 +88,6 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(str(e))
     if o.json:
         return _comun.escribir_json(r)
-    print(f"{agente.nombre}: {r['estado']}" + (f" ({r['en_cola']} en cola)" if r.get("en_cola") else "")
+    print(f"{agente.nombre}: {r['estado']} · {r.get('direccion', '')}"
           + (f" · cerré {', '.join(r['cerrados'])}" if r.get("cerrados") else ""))
     return 0

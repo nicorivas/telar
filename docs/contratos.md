@@ -250,7 +250,7 @@ Las reglas valen para todas:
 ```json
 {
   "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "activo": false,
-  "archivado": false, "publico": false, "vinculado": true,
+  "archivado": false, "publico": false, "agente": "", "icono": "", "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
   "visto": "2026-09-18T09:12:44", "tiempo": 4320.0,
@@ -272,7 +272,8 @@ ssh o et sin que telar la haya armado (se sabe que es remota, no adónde).
 `publico` dice si las otras personas del bus lo ven en su directorio (`telar hilo publicar`, `privar`; en la
 página, ⋯ → hacer público). Por defecto es `false`: un hilo es privado, no sale en el directorio de nadie y no le
 llega correo de otra persona (se le contesta como a uno que no existe). El de un hilo de otra máquina lo dice su
-dueño, como `archivado`.
+dueño, como `archivado`. `agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
+`icono`, el suyo: la barra lo pone junto al nombre.
 
 ### `ficha`
 
@@ -763,17 +764,27 @@ uno (su carpeta o su nombre), ese solo, sin envolver.
 { "agentes": [ { "clave": "faro", "nombre": "Faro", "direccion": "agente:faro",
                  "carpeta": "/…/agentes/faro", "definicion": "/…/agentes/faro/agente.toml",
                  "para": "La lámpara y el turno de noche.", "modelo": "opus", "residente": true,
-                 "hilos": ["Faro", "◌ guardia*"], "en": "",
-                 "sin_uso": { "politica": { "permisos": "acceptEdits" } },
+                 "presencia": "a-pedido", "publico": false, "icono": "☼",
+                 "politica": { "permite": ["Edit"], "pregunta": [], "niega": ["Read(~/.ssh/**)"] },
+                 "hilos": ["Faro", "◌ guardia*"], "en": "servidor",
+                 "sin_uso": { "memoria": { "desde": "2026-10-01" } },
                  "problemas": [] } ] }
 ```
 
-Sin `agente.toml`, `definicion`, `para` y `modelo` vienen `""`, `residente` es `true` y `nombre` es el título
-del README de su carpeta, como siempre. `sin_uso` son los campos declarados que telar todavía no usa
-(`instrucciones`, `memoria`, `capacidades`, `politica`, `lugar`), tal cual. `problemas` dice, una frase por
-cosa, lo que no se pudo leer y se ignoró (el archivo entero si no es TOML, o un campo con el tipo equivocado)
-y las claves que no conoce. `en` es `[agentes.<carpeta>] en` de esta máquina. Un agente que no existe sale
-con 2 y la lista de los que hay.
+Sin `agente.toml`, `definicion`, `para` y `modelo` vienen `""`, `presencia` es `"a-pedido"` y `nombre` es el título
+del README de su carpeta, como siempre. `presencia` es `siempre` (el nodo lo mantiene abierto), `a-pedido` (se abre
+cuando le llega algo) o `no`; `residente` es si no es `no`. `icono` es el suyo, o la inicial de su nombre. `en` es
+dónde vive: `[agentes.<carpeta>] en` de esta máquina, y si no, su `lugar`. `sin_uso` son los campos declarados que
+telar todavía no usa (`instrucciones`, `memoria`, `capacidades`), tal cual. `problemas` dice, una frase por cosa, lo
+que no se pudo leer y se ignoró (el archivo entero si no es TOML, o un campo con el tipo equivocado) y las claves
+que no conoce. Un agente que no existe sale con 2 y la lista de los que hay.
+
+`GET /agentes` da todos, cada uno con su estado donde vive: `{"agentes": [{"agente": {lo de arriba}, "maquina",
+"aqui", "vivo", "atencion", "conversacion": {"id", "peso", "tope"} | null, "rotacion", "relevo": {"cuando"} | null,
+"encargos": [{"id", "estado", "texto", "de", "creado", "actualizado", "resultado"}], "sin_noticias"?}],
+"problemas": [...]}`. Los de otra máquina se le piden a esa por el bus (su nodo, el pedido `agentes`); si no
+responde, salen con lo de su definición y `sin_noticias`, y la máquina en `problemas`. `POST /agentes/rotar`
+(`{"hilo", "maquina"}`) le pide su relevo ya y rota al terminar ese turno, aunque no pase del tope.
 
 ### `telar agente conversacion <id> --json`
 
@@ -808,7 +819,7 @@ Una persona con `error` no se pudo leer o no es quien dice ser. `telar directori
 --json` devuelve `{"publicado": {"casa": ""}}`, con el error de cada máquina o `""`.
 `telar correo enviar … --json` devuelve `{"enviado": true, "a": "…", "via": "usuario@casa"}`.
 
-`GET /directorio` da lo mismo que llegó por el bus (solo los hilos que cada persona hizo públicos), para la página (la sección COLEGAS de la barra): `{"yo",
+`GET /directorio` da lo mismo que llegó por el bus (solo los hilos que cada persona hizo públicos), para la página (la sección EQUIPO de la barra, con cada persona aunque no publique ningún hilo): `{"yo",
 "personas": [{"persona", "maquinas": [{"maquina", "publicado", "visto", "al_dia", "hilos": [{"nombre", "ext", "vivo",
 "carpeta", "resumen"}]}]}]}`, sin la persona que mira, con los hilos vivos primero; `al_dia` es si su nodo publicó
 en los últimos 15 minutos. `POST /directorio/escribir` (`{"persona", "hilo", "texto", "asunto"}`, `hilo` es el `ext`)

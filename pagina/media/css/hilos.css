@@ -56,3 +56,6 @@
     .fila .menu-hilo { padding-inline: 1ch; }
   }
 }
+
+/* el ícono del agente residente del que es un hilo (su agente.toml `icono`, o su inicial) */
+.ic-agente { color: var(--violeta); }

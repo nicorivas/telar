@@ -301,6 +301,14 @@ class ClaudeCode(AgenteBase):
         """Una conversación nueva. La carpeta la pone el panel donde se abra, no una bandera."""
         return [self.binario]
 
+    def con_politica(self, politica: dict) -> list[str]:
+        """La `[politica]` de un agente (permite, pregunta, niega) como permisos de esta sesión: `--settings` con un
+        JSON, que Claude Code suma a los de su settings.json sin que telar lo toque."""
+        from telar.agentes import POLITICA
+
+        permisos = {POLITICA[k]: list(v) for k, v in politica.items() if k in POLITICA and v}
+        return ["--settings", json.dumps({"permissions": permisos}, ensure_ascii=False)] if permisos else []
+
     def nuevo_con_id(self, mensaje: str = "", id: str = "") -> tuple[list[str], str]:
         """Claude Code acepta `--session-id`: el id lo elige telar, y queda guardado desde ya.
 

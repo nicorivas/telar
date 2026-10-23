@@ -61,8 +61,8 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             { label: 'vincular a un proyecto', description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
             ...(h.vinculado ? [{ label: 'desvincular', description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
             ...(modelo.hayBus ? [h.publico
-                ? { label: 'hacer privado', description: 'hoy es público: las otras personas lo ven en COLEGAS; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
-                : { label: 'hacer público', description: 'que las otras personas del bus lo vean en COLEGAS y le escriban (su nombre y carpeta; nunca la conversación)',
+                ? { label: 'hacer privado', description: 'hoy es público: las otras personas lo ven en EQUIPO; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
+                : { label: 'hacer público', description: 'que las otras personas del bus lo vean en EQUIPO y le escriban (su nombre y carpeta; nunca la conversación)',
                     hacer: () => sobreHilo(hilo, 'publicar') }] : []),
             { label: 'prioridad', separador: true },
             prioridad('1', 'alta'), prioridad('2', 'media'), prioridad('3', 'baja'), prioridad('ninguna', 'ninguna'),
@@ -128,7 +128,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.archivo': () => c.barra.alternarArchivo(),
         // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa
         'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
-        // escribirle a un hilo de otra persona (la sección COLEGAS de la barra): a su casilla, por el bus
+        // escribirle a un hilo de otra persona (la sección EQUIPO de la barra): a su casilla, por el bus
         'telar.escribirColega': async (id?: string) => {
             const [persona, ext, nombre] = JSON.parse(String(id ?? '[]')) as string[];
             if (!persona || !ext) return;
@@ -140,6 +140,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             if (!r.datos) void ui.falla(`telar: no le llegó a ${persona}: ${r.error ?? 'sin respuesta'}`);
             else void ui.estado(`telar: en la casilla de «${nombre ?? ext}», de ${persona}`, 5000);
         },
+        'telar.agentesVer': async () => { c.mostrar('dashboard'); await c.hoy.abrirAgentes(); },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
         'telar.conectarCalendario': async () => {

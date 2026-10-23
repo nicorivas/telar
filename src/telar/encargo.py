@@ -11,10 +11,11 @@ llegue). Su estado va
 
     pedido → aceptado → corriendo → hecho | falló | cancelado
 
-`aceptar`, `rechazar` (lo deja cancelado, con el motivo como resultado) y `cerrar` (hecho o falló, con el
-resultado) son sus acciones; rechazar o cerrar le avisa a quien lo pidió, si fue un hilo. `corriendo` todavía
-no lo pone nadie: llegará con el turno como cambio. No es la cola de `telar encargar` (telar.encargos), que
-sigue igual.
+`aceptar`, `rechazar` (lo deja cancelado, con el motivo como resultado), `cerrar` (hecho o falló, con el
+resultado) y `cancelar` (lo pide quien lo mandó: si no le había llegado, sale de su casilla; si ya corría, se le
+dice que pare) son sus acciones; rechazar o cerrar le avisa a quien lo pidió, si fue un hilo. Queda `corriendo`
+cuando su casilla se lo entrega al hilo (el gancho), y si el hilo termina el turno sin cerrarlo, el gancho `Stop`
+le recuerda cerrarlo, una vez (`sin_cerrar`). `telar encargar` también hace un encargo así (telar.encargos).
 """
 
 from __future__ import annotations
@@ -208,6 +209,8 @@ def version(e: dict) -> str:
 #: las acciones y sus parámetros, por nombre ("" obligatorio; si no, su valor por defecto)
 ACCIONES = {
     "aceptar": ("tomarlo: queda aceptado", {}),
+    "cancelar": ("ya no hace falta (lo pide quien lo mandó): si no le llegó, sale de su casilla; si corría, se le "
+                 "dice que pare", {"motivo": "''"}),
     "rechazar": ("no hacerlo, y decir por qué: queda cancelado y se le avisa a quien lo pidió", {"motivo": ""}),
     "cerrar": ("terminarlo con su resultado (hecho, o falló): se le avisa a quien lo pidió",
                {"resultado": "", "estado": "'hecho'"}),
@@ -218,7 +221,7 @@ def acciones_de(e: dict) -> list[str]:
     """Las acciones que tiene en su estado: ninguna, si ya se cerró."""
     if e.get("estado") in CERRADOS:
         return []
-    return ["aceptar", "rechazar", "cerrar"] if e.get("estado") == "pedido" else ["rechazar", "cerrar"]
+    return ["aceptar", "rechazar", "cerrar", "cancelar"] if e.get("estado") == "pedido" else ["rechazar", "cerrar", "cancelar"]
 
 
 def hacer(ctx, eid: str, accion: str, params: dict | None = None, *, version_leida: str = "", quien: str = "") -> dict:
@@ -240,8 +243,13 @@ def hacer(ctx, eid: str, accion: str, params: dict | None = None, *, version_lei
         if accion not in acciones_de(e):
             raise ErrorDeEncargo(f"encargo:{eid} está {e.get('estado')}: no se puede {accion}", 409)
         nota = ""
+        antes = e.get("estado")
         if accion == "aceptar":
             nuevo = "aceptado"
+        elif accion == "cancelar":
+            nuevo = "cancelado"
+            nota = str(params.get("motivo") or "").strip() or "ya no hace falta"
+            e["cancelado_por"], e["resultado"] = quien, nota
         elif accion == "rechazar":
             nota = str(params.get("motivo") or "").strip()
             if not nota:
@@ -267,6 +275,14 @@ def hacer(ctx, eid: str, accion: str, params: dict | None = None, *, version_lei
             paso["nota"] = nota
         e.setdefault("historia", []).append(paso)
         _escribir(ruta, e)
+    if accion == "cancelar":
+        avisado = _cancelado(ctx.config, e, antes)
+        if avisado:
+            with _candado(ruta):
+                e = _leer(ruta) or e
+                e.setdefault("historia", []).append({"hora": _ahora(), "estado": "cancelado", "quien": "telar", "nota": avisado})
+                _escribir(ruta, e)
+        return e
     if accion != "aceptar" and e.get("responder_a"):
         # el aviso, fuera del candado (el bus puede tardar); lo que pasó se agrega sobre lo que haya entonces
         avisado = _avisar(ctx, e)
@@ -275,6 +291,83 @@ def hacer(ctx, eid: str, accion: str, params: dict | None = None, *, version_lei
             e.setdefault("historia", []).append({"hora": _ahora(), "estado": nuevo, "quien": "telar", "nota": avisado})
             _escribir(ruta, e)
     return e
+
+
+def _cancelado(config, e: dict, antes: str) -> str:
+    """Lo que hace cancelar en la casilla de quien lo hace: si no le había llegado, el mensaje sale de ahí; si ya
+    corría, se le deja un pedido de que pare. Lo que pasó, en una frase."""
+    from telar import casilla
+
+    hilo, mid = str(e.get("para") or ""), str(e.get("mensaje") or "")
+    if antes in ("pedido", "aceptado") and hilo and mid:
+        ruta = casilla._archivo(config, hilo, mid)
+        if ruta is not None:
+            try:
+                ruta.unlink()
+                return "no le había llegado: salió de su casilla"
+            except OSError:
+                pass
+    if antes in ("aceptado", "corriendo", "pedido") and hilo:
+        from telar import bus as mod_bus
+
+        texto = (f"[telar] `encargo:{e['id']}` se canceló ({e.get('resultado') or 'ya no hace falta'}): deja lo que "
+                 f"estés haciendo por él. Lo que pidió: {' '.join(str(e.get('texto', '')).split())[:160]}")
+        casilla.dejar(config, hilo, mod_bus.mensaje(texto, de="telar", para=hilo))
+        return "ya le había llegado: se le dijo que pare"
+    return ""
+
+
+def empezar(config, eid: str, quien: str = "") -> bool:
+    """Lo deja `corriendo`: su casilla se lo acaba de entregar al hilo. False si no está aquí o ya no estaba por
+    empezar (aceptado, o pedido)."""
+    try:
+        ruta = _ruta(config, "objetos", eid)
+    except ErrorDeEncargo:
+        return False
+    with _candado(ruta):
+        e = _leer(ruta)
+        if e is None or e.get("estado") not in ("pedido", "aceptado"):
+            return False
+        ahora = _ahora()
+        e["estado"], e["actualizado"] = "corriendo", ahora
+        e.setdefault("historia", []).append({"hora": ahora, "estado": "corriendo", "quien": quien or str(e.get("para") or "")})
+        _escribir(ruta, e)
+    return True
+
+
+def sin_cerrar(config, hilo: str) -> list[dict]:
+    """Los encargos de `hilo` que corren y no se le recordó cerrar: el gancho `Stop` se lo recuerda una vez
+    (`recordar`)."""
+    return [e for e in lista(config) if e.get("estado") == "corriendo" and e.get("para") == hilo and not e.get("recordado")]
+
+
+def recordar(config, eid: str) -> None:
+    try:
+        ruta = _ruta(config, "objetos", eid)
+    except ErrorDeEncargo:
+        return
+    with _candado(ruta):
+        e = _leer(ruta)
+        if e is not None:
+            e["recordado"] = True
+            _escribir(ruta, e)
+
+
+def recordatorio(encargos: list[dict]) -> str:
+    """Lo que el gancho `Stop` le dice al hilo que termina un turno con encargos sin cerrar."""
+    lineas = [f"- `encargo:{e['id']}`: {' '.join(str(e.get('texto', '')).split())[:120]}" for e in encargos]
+    ejemplo = encargos[0]["id"]
+    return ("[telar] Terminas el turno con encargos sin cerrar:\n" + "\n".join(lineas) + "\n"
+            f"Si ya están, ciérralos con su resultado (lo recibe quien los pidió): `telar objeto encargo:{ejemplo} cerrar "
+            "--params '{\"resultado\": \"…\"}'` (o con \"estado\": \"falló\"). Si siguen en curso, dilo en una línea y "
+            "termina: no se vuelve a recordar.")
+
+
+def de_hilo(config, hilo: str = "", *, abiertos: bool = False) -> list[dict]:
+    """Los encargos de esta máquina para `hilo` (o todos), del más nuevo al más viejo; `abiertos`, solo los que no se
+    cerraron."""
+    return [e for e in reversed(lista(config)) if (not hilo or e.get("para") == hilo)
+            and (not abiertos or e.get("estado") not in CERRADOS)]
 
 
 def texto_del_aviso(e: dict) -> str:
@@ -303,6 +396,10 @@ def _avisar(ctx, e: dict) -> str:
 def atender(ctx, pedido: dict) -> dict:
     """El pedido `encargo` del nodo, desde otra máquina: `{id}` lo devuelve; `{id, accion, params, version,
     quien}` le aplica la acción. Siempre `{ok, …}`: `encargo` y su `version`, o `error` y `codigo`."""
+    if "lista" in pedido:
+        # los de un hilo de aquí, para la página de otra máquina (su vista de agentes)
+        return {"ok": True, "encargos": de_hilo(ctx.config, str(pedido.get("lista") or ""),
+                                                abiertos=bool(pedido.get("abiertos")))[:50]}
     eid = str(pedido.get("id") or "")
     accion = str(pedido.get("accion") or "")
     try:

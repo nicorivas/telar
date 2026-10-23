@@ -143,3 +143,13 @@ class LaFichaDeLaBarra(ConUnResidente):
         self.assertEqual((f["aqui"], f["relevo"]), (False, None))
         with self.assertRaises(ErrorDeServicio):
             servicio.del_hilo(ctx, "Proyecto X")
+
+
+class RotarYa(ConUnResidente):
+    def test_la_persona_la_pide_aunque_no_haya_tope(self):
+        cfg = replace(self.config, agentes_rotar_mb=0)
+        texto = rotacion.forzar(cfg, "Faro", "faro", "s1")
+        self.assertIn(str(rotacion.ruta_relevo(cfg, "faro")), texto)
+        # al terminar el turno en que lo escribió, queda para el /clear del nodo
+        self.assertEqual(rotacion.al_terminar(cfg, "Faro", "s1", self.pesa(0.1)), "")
+        self.assertEqual(rotacion.leer(cfg)["Faro"]["fase"], "limpiar")

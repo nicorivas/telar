@@ -23,9 +23,21 @@ Su definición, si la tiene, es un `agente.toml` al lado de su CLAUDE.md (docs/p
     nombre = "Faro"          pisa el título del README
     para = "…"               cuándo encargarle algo, en una o dos frases
     modelo = "opus"          el modelo de su sesión, si el motor sabe elegirlo (`argumentos_de`)
-    residente = false        el nodo no le abre la sesión solo cuando le llega algo (por defecto, true)
+    residente = "a-pedido"   siempre (el nodo lo mantiene abierto y lo reabre), a-pedido (se abre cuando le llega
+                             algo: el de siempre) o no (lo que le llega espera; un encargo explícito lo abre).
+                             true es a-pedido y false es no, como antes
+    hilos = ["Faro *"]       otros hilos que son suyos (un nombre, o un prefijo que termina en *)
+    lugar = "servidor"       la máquina donde vive (aqui, o el nombre de un remoto): lo que antes era `en`
+    publico = true           sus hilos salen en el directorio de las otras personas y reciben su correo
+    icono = "☼"              uno o dos caracteres: la lista lo pone junto a cada hilo suyo
+    [politica]               lo que su sesión puede hacer sin preguntar, lo que pregunta y lo que no:
+    permite = ["Bash(git status:*)", "Edit"]      reglas de permiso del motor (las de Claude Code), que telar
+    pregunta = ["Bash(git push:*)"]               le pasa al abrir su sesión (`--settings`), sin tocar el
+    niega = ["Read(~/.ssh/**)"]                   settings.json de nadie
 
-`instrucciones`, `memoria`, `capacidades`, `politica` y `lugar` se aceptan y se muestran, todavía sin uso.
+La configuración de la máquina (`[agentes.<carpeta>]`) pisa lo que haga falta ahí: su `en` gana sobre `lugar`, y
+sus `hilos` y `argumentos` se suman. `instrucciones`, `memoria` y `capacidades` se aceptan y se muestran, todavía
+sin uso.
 Sin el archivo todo es como antes. Uno con errores no apaga al agente: lo que no se lee se ignora y queda
 en `problemas`, que muestran `telar agentes` y `telar doctor`.
 """
@@ -48,8 +60,13 @@ _ENTRADA = re.compile(r"^(?:#{2,3}\s+|-\s+)?(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{
 #: el archivo de su definición, al lado de su CLAUDE.md
 DEFINICION = "agente.toml"
 #: los campos que telar usa hoy, y los que acepta y muestra sin usarlos todavía (primitivas.md, «Qué es un agente»)
-USADOS = ("nombre", "para", "modelo", "residente")
-SIN_USO = ("instrucciones", "memoria", "capacidades", "politica", "lugar")
+USADOS = ("nombre", "para", "modelo", "residente", "hilos", "lugar", "publico", "politica", "icono")
+SIN_USO = ("instrucciones", "memoria", "capacidades")
+#: cómo está un residente (docs/propuestas/disparadores.md, decisión 7): siempre vivo, abierto cuando le llega
+#: algo (el de siempre), o esperando a que lo abra la persona
+PRESENCIAS = ("siempre", "a-pedido", "no")
+#: las listas de su `[politica]`, y cómo se llaman en los permisos de Claude Code
+POLITICA = {"permite": "allow", "pregunta": "ask", "niega": "deny"}
 #: «una o dos frases»: más que esto se acepta, con aviso
 PARA_LARGO = 300
 
@@ -82,7 +99,14 @@ class Agente:
     # lo que dice su agente.toml (`definicion`, si lo tiene); sin él, los valores de siempre
     para: str = ""
     modelo: str = ""
-    residente: bool = True
+    #: siempre, a-pedido o no (PRESENCIAS)
+    presencia: str = "a-pedido"
+    #: si sus hilos son públicos: salen en el directorio de las otras personas y les llega su correo
+    publico: bool = False
+    #: uno o dos caracteres que la lista pone junto a cada hilo suyo; sin él, la inicial de su nombre
+    icono: str = ""
+    #: su `[politica]`: {permite, pregunta, niega} → reglas de permiso del motor
+    politica: dict = field(default_factory=dict, compare=False, hash=False)
     definicion: Path | None = None
     #: el nombre que tendría sin agente.toml (el del README o la carpeta): si difiere, se renombró
     nombre_de_antes: str = ""
@@ -94,6 +118,11 @@ class Agente:
     @property
     def seccion(self) -> str:
         return PREFIJO + self.clave
+
+    @property
+    def residente(self) -> bool:
+        """Si el nodo le abre la sesión cuando le llega algo (siempre o a-pedido): lo de antes de las presencias."""
+        return self.presencia != "no"
 
 
 def base(config) -> Path | None:
@@ -154,9 +183,47 @@ def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
                 problemas.append(f"modelo: se esperaba un nombre sin espacios, llegó {valor!r}: se ignora")
         elif clave == "residente":
             if isinstance(valor, bool):
+                valido["presencia"] = "a-pedido" if valor else "no"
+            elif isinstance(valor, str) and valor.strip() in PRESENCIAS:
+                valido["presencia"] = valor.strip()
+            else:
+                problemas.append(f"residente: se esperaba {', '.join(PRESENCIAS)} (o true, false), llegó {valor!r}: "
+                                 f"se ignora")
+        elif clave == "hilos":
+            if isinstance(valor, list) and all(isinstance(x, str) and x.strip() and not _con_control(x) for x in valor):
+                valido[clave] = tuple(x.strip() for x in valor)
+            else:
+                problemas.append(f"hilos: se esperaba una lista de nombres, llegó {valor!r}: se ignora")
+        elif clave == "lugar":
+            if isinstance(valor, str) and valor.strip() and not re.search(r"\s", valor.strip()) and not _con_control(valor):
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"lugar: se esperaba el nombre de una máquina (aqui, o un remoto), llegó {valor!r}: "
+                                 f"se ignora")
+        elif clave == "icono":
+            if isinstance(valor, str) and valor.strip() and len(valor.strip()) <= 4 and not _con_control(valor) \
+                    and not re.search(r"\s", valor.strip()):
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"icono: se esperaba uno o dos caracteres, llegó {valor!r}: se ignora")
+        elif clave == "publico":
+            if isinstance(valor, bool):
                 valido[clave] = valor
             else:
-                problemas.append(f"residente: se esperaba true o false, llegó {valor!r}: se ignora")
+                problemas.append(f"publico: se esperaba true o false, llegó {valor!r}: se ignora")
+        elif clave == "politica":
+            if not isinstance(valor, dict):
+                problemas.append(f"politica: se esperaba una tabla ([politica]), llegó {valor!r}: se ignora")
+                continue
+            politica = {}
+            for k, v in valor.items():
+                if k not in POLITICA:
+                    problemas.append(f"politica.{k}: no lo conozco ({', '.join(POLITICA)}): se ignora")
+                elif isinstance(v, list) and all(isinstance(x, str) and x.strip() and not _con_control(x) for x in v):
+                    politica[k] = tuple(x.strip() for x in v)
+                else:
+                    problemas.append(f"politica.{k}: se esperaba una lista de reglas, llegó {v!r}: se ignora")
+            valido[clave] = politica
         elif clave == "instrucciones":
             if isinstance(valor, str) and not _con_control(valor):
                 valido[clave] = valor
@@ -197,7 +264,8 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
             problemas = (*problemas, f"nombre: «{nombre}» ya es de otro agente; se queda con «{de_antes}»")
             nombre = de_antes
         extra = extras.get(d.name)
-        hilos = [nombre, *(extra.hilos if extra else ()), *(h for h, c in anotados.items() if c == d.name)]
+        hilos = [nombre, *definido.get("hilos", ()), *(extra.hilos if extra else ()),
+                 *(h for h, c in anotados.items() if c == d.name)]
         real = d.resolve()
         for hilo, rel in (vinculos or {}).items():
             try:
@@ -209,9 +277,12 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
                 hilos.append(hilo)
         salida.append(Agente(clave=d.name, nombre=nombre, carpeta=d, hilos=tuple(dict.fromkeys(hilos)),
                              home=tuple(extra.home) if extra else (), argumentos=tuple(extra.argumentos) if extra else (),
-                             en=extra.en if extra else "",
+                             # dónde vive: lo que diga esta máquina, y si no, su agente.toml
+                             en=(extra.en if extra and extra.en else "") or definido.get("lugar", ""),
                              para=definido.get("para", ""), modelo=definido.get("modelo", ""),
-                             residente=definido.get("residente", True),
+                             presencia=definido.get("presencia", "a-pedido"), publico=definido.get("publico", False),
+                             politica=definido.get("politica", {}),
+                             icono=definido.get("icono", "") or (nombre[:1].upper() if nombre else "◆"),
                              definicion=d / DEFINICION if (d / DEFINICION).is_file() else None,
                              nombre_de_antes=de_antes,
                              sin_uso={k: v for k, v in definido.items() if k in SIN_USO},
@@ -230,6 +301,14 @@ def _anotados(config) -> dict[str, str]:
         return mod_estado.abrir(config).de_agente()
     except Exception:  # noqa: BLE001 - sin estado legible, se adivina como antes
         return {}
+
+
+def publicos(config, vinculos: dict[str, str] | None = None) -> set[str]:
+    """Los hilos de los agentes con `publico = true` en su agente.toml: públicos sin que nadie los publique."""
+    try:
+        return {h for a in descubrir(config, vinculos) if a.publico for h in a.hilos}
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, ninguno de ellos es público por esto
+        return set()
 
 
 def del_hilo(config, hilo: str) -> Agente | None:
@@ -258,7 +337,10 @@ def argumentos_de(a: Agente, motor=None, *, con_config: bool = True) -> list[str
     modelo = list(con_modelo(a.modelo)) if (con_modelo is not None and a.modelo) else []
     if modelo and any(x == modelo[0] or x.startswith(modelo[0] + "=") for x in a.argumentos):
         modelo = []
-    return [*modelo, *propios]
+    # su `[politica]`, en los permisos del motor, para esta sesión
+    con_politica = getattr(motor, "con_politica", None) if motor is not None else None
+    politica = list(con_politica(a.politica)) if (con_politica is not None and any(a.politica.values())) else []
+    return [*modelo, *politica, *propios]
 
 
 def como_json(a: Agente) -> dict:
@@ -271,7 +353,8 @@ def como_json(a: Agente) -> dict:
     sin_uso = json.loads(json.dumps(a.sin_uso, default=str))
     return {"clave": a.clave, "nombre": a.nombre, "direccion": direccion_de("agente", a.clave),
             "carpeta": str(a.carpeta), "definicion": str(a.definicion) if a.definicion else "",
-            "para": a.para, "modelo": a.modelo, "residente": a.residente, "hilos": list(a.hilos),
+            "para": a.para, "modelo": a.modelo, "residente": a.residente, "presencia": a.presencia,
+            "publico": a.publico, "icono": a.icono, "politica": {k: list(v) for k, v in a.politica.items()}, "hilos": list(a.hilos),
             "en": a.en, "sin_uso": sin_uso, "problemas": list(a.problemas)}
 
 

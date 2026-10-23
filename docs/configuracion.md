@@ -763,9 +763,15 @@ lo que no se lee se ignora, y lo dicen `telar agentes` y `telar doctor`. Cambiar
 hilo y su casilla: el nodo sigue recogiendo lo que llegue con el de antes, y doctor avisa si su conversación
 quedó anotada con el de antes o si hay mensajes esperando con él.
 
-**Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` le escribe
-a su hilo de siempre si está libre, lo deja en cola si está trabajando (el gancho `Stop` le entrega el
-siguiente al terminar) o abre su sesión retomando su conversación.
+**Encargos.** A un residente no se le abre una sesión por tarea: `telar encargar <agente> "…"` deja un encargo
+(`encargo:e-…`) en la casilla de su hilo de siempre: si está libre se le avisa, si trabaja se lo entrega el gancho
+`Stop` al terminar, y si no tiene sesión se abre retomando su conversación. El encargo queda `corriendo` cuando le
+llega, el agente lo cierra con su resultado (y si termina el turno sin cerrarlo, se le recuerda una vez), y quien lo
+pidió recibe el resultado o lo cancela.
+
+**Presencia.** `residente` en su `agente.toml`: `siempre` (el nodo de su máquina lo mantiene abierto: lo abre al
+arrancar y si se cerró, y `max_vivos` nunca lo cierra), `a-pedido` (el de siempre: se abre cuando le llega algo) o
+`no` (lo que le llega espera; un encargo explícito lo abre igual).
 
 **Rotar con relevo.** Si la conversación de un residente pasa de `[agentes] rotar_mb` (MB), al terminar un
 turno con la casilla vacía telar le pide su **relevo**: que escriba en `<estado>/relevos/<carpeta>.md` en qué

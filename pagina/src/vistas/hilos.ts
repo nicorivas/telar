@@ -258,7 +258,7 @@ export class BarraHilos {
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${remoto}<span class="nombre">${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (COLEGAS); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${alFinal}`
+            + `${glifo}${remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
@@ -351,13 +351,14 @@ export class BarraHilos {
             }
         }
 
-        // los agentes residentes: uno por línea, como cualquier hilo, con su home al final de la línea.
-        // Un agente sin hilo abierto sale igual, tenue, y su línea lleva a su home
+        // los agentes residentes: uno por línea (su hilo de siempre, el de su nombre), con su home al final. Un agente
+        // sin hilo abierto sale igual, tenue, y su línea lleva a su home. Sus otros hilos van en HILOS, con su ícono
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
-        if (agentes.length && cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes')) {
+        const verTodos = '<span class="icono ver-agentes" data-accion="cmd" data-id="telar.agentesVer" title="todos los agentes: su estado, sus encargos, encargar y rotar">≡</span>';
+        if (agentes.length && cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes', verTodos)) {
             for (const a of agentes) {
                 const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
-                const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(a, x.nombre)));
+                const suyos = vivosPrimero(modelo.enLista.filter(x => x.nombre === a.nombre));
                 if (!suyos.length) {
                     // sin hilo vivo: si telar recuerda uno (cerrado o archivado), la línea lo retoma;
                     // si nunca existió, lleva a su home
@@ -377,7 +378,9 @@ export class BarraHilos {
         // los hilos abiertos que no reclama nadie: los de esta máquina y, después, los de las otras (de su foto,
         // solo los vivos; un hilo que la lista ya trae, uno de [remotos], no se repite). Cada uno dice dónde vive
         const ordenH = this.ordenDe('hilos');
-        const sueltos = ordenar(vivosPrimero(modelo.enLista.filter(y => !modelo.seccionDe(y.nombre))), ordenH);
+        // (los de un agente que no son su hilo de siempre también van aquí, con su ícono: son trabajo como cualquiera)
+        const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
+        const sueltos = ordenar(vivosPrimero(modelo.enLista.filter(deAgente)), ordenH);
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
         const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
@@ -414,7 +417,7 @@ export class BarraHilos {
         // lo que el equipo le pide a la persona; pinchar una fila abre sus acciones
         if (modelo.equipoRemoto) {
             const pend = modelo.sugerencias;
-            if (cabecera('__equipo', 'EQUIPO', pend.length, false, 'lo que el equipo te pide')) {
+            if (cabecera('__equipo', 'PEDIDOS', pend.length, false, 'lo que el equipo te pide en su página')) {
                 if (!pend.length) h.push('<div class="fila dim"><span class="prio"> </span>nada esperando</div>');
                 for (const x of pend) {
                     const pedido = x.tipo === 'tarea';
@@ -425,15 +428,16 @@ export class BarraHilos {
             }
         }
 
-        // los hilos de las otras personas del bus: lo que publica su nodo, de solo lectura; pinchar uno es escribirle
-        const colegas = modelo.colegas.filter(p => p.maquinas.some(m => m.hilos.length));
-        if (colegas.length && cabecera('__colegas', 'COLEGAS', colegas.length, false,
-            'los hilos de las otras personas del bus: lo que publican, no su conversación; clic en uno para escribirle')) {
+        // las otras personas del bus, todas las que se conectan (aunque no tengan hilos públicos), con los hilos que
+        // publican: de solo lectura; pinchar uno es escribirle
+        const colegas = modelo.colegas;
+        if (colegas.length && cabecera('__colegas', 'EQUIPO', colegas.length, false,
+            'las otras personas del bus y sus hilos públicos (no su conversación); clic en uno para escribirle')) {
             for (const p of colegas) {
                 for (const m of p.maquinas) {
-                    if (!m.hilos.length) continue;
-                    h.push(`<div class="fila dim" title="${esc(`publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar viejo'}`)}">`
-                        + `<span class="prio"> </span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
+                    h.push(`<div class="fila${m.al_dia ? '' : ' dim'}" title="${esc(`${p.persona} en ${m.maquina} · publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar desconectado'}`)}">`
+                        + `<span class="prio">${m.al_dia ? '●' : '·'}</span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
+                    if (!m.hilos.length) h.push('<div class="fila dim"><span class="prio"> </span>  sin hilos públicos</div>');
                     for (const x of m.hilos) {
                         const ayuda = [x.resumen, x.carpeta, `${p.persona}+${x.ext}`, 'clic: escribirle'].filter(Boolean).join('\n');
                         h.push(`<div class="fila colega" data-accion="colega" data-id="${esc(JSON.stringify([p.persona, x.ext, x.nombre]))}" title="${esc(ayuda)}">`

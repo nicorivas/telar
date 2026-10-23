@@ -116,12 +116,15 @@ def al_terminar(config, hilo: str, sesion: str, transcripcion: str = "", *, arch
     deja parar), o "" si no hay nada que hacer (o si ya lo escribió: entonces queda para el /clear del nodo)."""
     from telar import agentes as mod_agentes
 
-    if not tope(config) or not hilo:
+    if not hilo:
+        return ""
+    r = leer(config).get(hilo)
+    # una que ya va (también una que pidió la persona, sin tope) sigue aunque no haya tope
+    if r is None and not tope(config):
         return ""
     agente = mod_agentes.del_hilo(config, hilo)
     if agente is None:
         return ""
-    r = leer(config).get(hilo)
     if r is not None:
         vencida = time.time() - float(r.get("cuando", 0)) > PLAZO
         if r["fase"] == "relevo" and r.get("sesion") == sesion and not vencida:
@@ -160,3 +163,13 @@ def avanzar(config, hilo: str, *, quieto: bool, sesion_actual: str, escribir) ->
         _quitar(config, hilo)
         return f"«{hilo}»: conversación nueva ({sesion_actual[:8]}), con su relevo"
     return ""
+
+
+def forzar(config, hilo: str, clave: str, sesion: str) -> str:
+    """Rotar ya, aunque no pase del tope (lo pide la persona desde la página): el pedido de relevo, como mensaje
+    para su casilla, y la fase anotada; al terminar ese turno sigue como cualquier rotación. Devuelve el texto."""
+    _poner(config, hilo, fase="relevo", sesion=sesion, agente=clave, peso=0)
+    return (f"[telar] Tu persona pidió rotar tu conversación ahora: la siguiente empieza sin lo que llevas en la "
+            f"cabeza. Antes, escribe tu relevo en {ruta_relevo(config, clave)} (reemplaza el anterior): en qué estabas, "
+            f"qué queda pendiente y para quién, qué decidiste y por qué. Corto y en prosa. Cuando lo hayas escrito, "
+            f"termina el turno sin hacer nada más.")

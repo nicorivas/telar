@@ -1,5 +1,5 @@
 """Los hilos de las otras personas del bus y escribirles (telar.entre_personas): `GET /directorio` y
-`POST /directorio/escribir`, para la sección «colegas» de la barra de la página.
+`POST /directorio/escribir`, para la sección EQUIPO de la barra de la página.
 
 Lo que se ve de otra persona es lo que su nodo publica (nombre, si vive, su carpeta y una línea), nunca su
 conversación; escribirle deja un mensaje en la casilla de ese hilo, como `telar correo enviar`.

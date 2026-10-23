@@ -536,16 +536,22 @@ def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
         # por el bus: espera en su casilla y lo recoge el nodo de la máquina donde vive el agente, que
         # lo abre o lo avisa; el contenido entra por sus ganchos, sin teclearlo
         try:
-            r = mod_bus.enviar(ctx.config, agente.nombre, p.mensaje, de=f"periódico {p.nombre}", tipo="encargo")
-            return 0, f"encargado a «{agente.nombre}» por el bus · id {r['id']}", agente.nombre
+            from telar import encargo as mod_encargo
+
+            eid = mod_encargo.nuevo_id()
+            r = mod_bus.enviar(ctx.config, agente.nombre, p.mensaje, de=f"periódico {p.nombre}", tipo="encargo",
+                               modo="encargo", extra={"encargo": eid})
+            mod_encargo.anotar_enviado(ctx.config, eid, para=agente.nombre, texto=p.mensaje, de=f"periódico {p.nombre}")
+            return 0, f"encargado a «{agente.nombre}» por el bus · encargo:{eid}", agente.nombre
         except mod_bus.ErrorDeBus as e:
             problema_bus = f"el bus no lo recibió ({e}); "
     try:
-        r = encargos.encargar(ctx, agente, p.mensaje)
+        r = encargos.encargar(ctx, agente, p.mensaje, de=f"periódico {p.nombre}")
     except encargos.ErrorDeEncargo as e:
         return 1, f"no se pudo encargar a {agente.nombre}: {e}", ""
-    dice = {"entregado": "le escribí", "en cola": f"quedó en cola ({r.get('en_cola')})", "abierto": "abrí su sesión"}
-    return 0, f"{problema_bus}encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])}", agente.nombre
+    dice = {"avisado": "le avisé", "en su casilla": "espera en su casilla (trabajaba)", "abierto": "abrí su sesión"}
+    return 0, (f"{problema_bus}encargado a «{agente.nombre}»: {dice.get(r['estado'], r['estado'])} · "
+               f"{r.get('direccion', '')}"), agente.nombre
 
 
 #: un «trabajando» sin cambios por más de esto es un agente pegado, no uno que trabaja

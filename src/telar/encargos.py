@@ -1,30 +1,25 @@
 """Encargos a un agente residente: escribirle a su hilo de siempre en vez de abrir uno nuevo.
 
-Un encargo es un prompt para un agente (`telar encargar gestion "/avanzar"`, o un proceso periódico
-con `agente = "gestion"`). Su hilo es una ventana de la sesión del telar de esta máquina, con el nombre
-del agente:
+Un encargo es un pedido para un agente (`telar encargar gestion "/avanzar"`, o un proceso periódico con
+`agente = "gestion"`). Es siempre un Encargo como objeto (`encargo:e-…`, telar.encargo): queda en la casilla
+del agente y tiene estado (pedido → corriendo → hecho | falló | cancelado), lo cierra el agente con su
+resultado y ese resultado le llega a quien lo pidió. Con bus, el mensaje va por el bus a la casilla del agente
+(telar.servicios.encargos); sin bus, aquí (`encargar`). Y entonces:
 
-    vivo y libre        se le escribe el encargo, como si se tecleara
-    vivo y trabajando   el encargo espera en una cola; cuando el agente termina su turno, el gancho
-                        `telar agente aviso` le entrega el siguiente
-    sin sesión          se abre retomando su última conversación con el encargo como primer mensaje;
-                        si esa conversación pesa más de `[agentes] rotar_mb`, se empieza una nueva
+    vivo y libre        se le teclea el aviso de su casilla («↯ mensaje nuevo»), salvo que su mod lo avise
+    vivo y trabajando   espera en su casilla: el gancho `Stop` se lo entrega al terminar el turno
+    sin sesión          se abre retomando su última conversación, con el aviso como primer mensaje; si esa
+                        conversación pesa más de `[agentes] rotar_mb`, otra, que empieza leyendo su relevo
 
-Abrir un hilo respeta `[agente] max_vivos`: si ya hay tantos hilos vivos, se cierran antes los que
-llevan más rato ociosos y sin nadie mirando (`liberar`). Su conversación queda en disco y se retoma
-cuando haga falta: cerrar un hilo ocioso es liberar memoria, no perder nada.
-
-La cola vive en `<estado>/encargos/<agente>.jsonl`; lo que pasó, en `<estado>/encargos.log`.
-
-No es el Encargo como objeto (`encargo:e-…`, el de `telar mensaje --modo encargo`): ese está en telar.encargo, y
-docs/propuestas/mensajes-con-modos.md cuenta cómo se funden los dos.
+Abrir un hilo respeta `[agente] max_vivos`: si ya hay tantos hilos vivos, se cierran antes los que llevan más
+rato ociosos y sin nadie mirando (`liberar`), los residentes al final y los de `residente = "siempre"` nunca.
+Su conversación queda en disco y se retoma cuando haga falta: cerrar un hilo ocioso es liberar memoria, no
+perder nada. Lo que pasó, en `<estado>/encargos.log`.
 """
 
 from __future__ import annotations
 
-import json
 import os
-import re
 from datetime import datetime
 from pathlib import Path
 
@@ -35,14 +30,6 @@ class ErrorDeEncargo(Exception):
     """Un encargo que no se pudo hacer. El mensaje es para la persona."""
 
 
-def _carpeta(config) -> Path:
-    return Path(config.estado) / "encargos"
-
-
-def _cola(config, hilo: str) -> Path:
-    return _carpeta(config) / (re.sub(r"[^\w-]+", "_", hilo, flags=re.UNICODE).strip("_") + ".jsonl")
-
-
 def _anotar(config, texto: str) -> None:
     try:
         ruta = Path(config.estado) / "encargos.log"
@@ -51,62 +38,6 @@ def _anotar(config, texto: str) -> None:
             f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {texto}\n")
     except OSError:
         pass
-
-
-def pendientes(config, hilo: str) -> list[dict]:
-    try:
-        lineas = _cola(config, hilo).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    salida = []
-    for l in lineas:
-        try:
-            salida.append(json.loads(l))
-        except ValueError:
-            continue
-    return salida
-
-
-def _encolar(config, hilo: str, texto: str) -> int:
-    ruta = _cola(config, hilo)
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    with open(ruta, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"hilo": hilo, "texto": texto, "desde": datetime.now().isoformat(timespec="seconds")},
-                           ensure_ascii=False) + "\n")
-    return len(pendientes(config, hilo))
-
-
-def _sacar(config, hilo: str) -> dict | None:
-    lista = pendientes(config, hilo)
-    if not lista:
-        return None
-    primero, resto = lista[0], lista[1:]
-    ruta = _cola(config, hilo)
-    if resto:
-        tmp = ruta.with_suffix(".tmp")
-        tmp.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in resto), encoding="utf-8")
-        os.replace(tmp, ruta)
-    else:
-        ruta.unlink(missing_ok=True)
-    return primero
-
-
-#: desde qué largo un encargo no se teclea: se deja en un archivo y se escribe una línea que lo apunta
-LARGO_TECLEADO = 600
-
-
-def _una_linea(texto: str, config=None, hilo: str = "") -> str:
-    """Lo que se teclea en una sesión: un salto de línea sería un ↩ que manda el encargo a medias, y un
-    texto largo pegado de una vez puede perder el comienzo. Ese va entero a un archivo."""
-    plano = " ".join(texto.split())
-    if config is None or len(plano) <= LARGO_TECLEADO:
-        return plano
-    carpeta = _carpeta(config) / "textos"
-    carpeta.mkdir(parents=True, exist_ok=True)
-    nombre = re.sub(r"[^\w-]+", "_", hilo, flags=re.UNICODE).strip("_") or "encargo"
-    ruta = carpeta / f"{nombre}-{datetime.now():%Y%m%d-%H%M%S}.md"
-    ruta.write_text(texto.strip() + "\n", encoding="utf-8")
-    return f"[encargo de {len(plano)} caracteres: léelo entero en {ruta}]"
 
 
 # ── el tope de sesiones vivas ─────────────────────────────────────────────────
@@ -130,18 +61,21 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
         return []
     est = mod_estado.abrir(config)
     atenciones = est.atenciones()
-    # los residentes, al final: un periódico que abre algo de paso no cierra a Gestión para hacerse lugar
+    # los residentes, al final: un periódico que abre algo de paso no cierra a Gestión para hacerse lugar. Y los
+    # que están para siempre (`residente = "siempre"`), nunca: el nodo los volvería a abrir
     from telar import agentes as mod_agentes
 
     try:
-        residentes = {h for a in mod_agentes.descubrir(config, est.vinculos()) if a.residente for h in a.hilos}
+        agentes = mod_agentes.descubrir(config, est.vinculos())
     except Exception:  # noqa: BLE001 - sin poder leerlos, al menos los de `cuidar`
-        residentes = set()
+        agentes = []
+    residentes = {h for a in agentes if a.residente for h in a.hilos}
+    siempre = {h for a in agentes if a.presencia == "siempre" for h in a.hilos}
     cuidar = (*cuidar, *residentes)
     candidatos = []
     for h in vivos:
         atencion, desde = atenciones.get(h.nombre, (Atencion.NINGUNA, None))
-        if h.clientes or atencion == Atencion.TRABAJANDO:
+        if h.clientes or atencion == Atencion.TRABAJANDO or h.nombre in siempre:
             continue
         candidatos.append((h.nombre in cuidar, desde.isoformat() if desde else "", h))
     candidatos.sort(key=lambda x: (x[0], x[1]))
@@ -178,26 +112,39 @@ def _donde(ctx, hilo: str):
 
 # ── encargar y repartir ───────────────────────────────────────────────────────
 
-def encargar(ctx, agente, texto: str) -> dict:
-    """Le hace llegar `texto` al hilo de `agente` (un `telar.agentes.Agente`), en esta máquina."""
+def encargar(ctx, agente, texto: str, *, de: str = "") -> dict:
+    """Le encarga `texto` al hilo de `agente` (un `telar.agentes.Agente`) en esta máquina, sin bus: el Encargo en
+    su casilla, y que se entere (o abrir su sesión). Devuelve {hilo, estado, encargo, direccion}."""
+    from telar import bus as mod_bus
+    from telar import casilla
+    from telar import encargo as mod_encargo
     from telar import estado as mod_estado
 
     texto = texto.strip()
     if not texto:
         raise ErrorDeEncargo("un encargo sin texto")
     hilo = agente.nombre
+    quien = de or os.environ.get("TELAR_HILO", "").strip()
+    eid = mod_encargo.nuevo_id()
+    m = mod_bus.mensaje(texto, de=quien or mod_bus.persona(ctx.config), para=hilo, tipo="encargo", modo="encargo",
+                        extra={"encargo": eid, "responder_a": quien})
+    casilla.dejar(ctx.config, hilo, m)
+    mod_encargo.anotar_enviado(ctx.config, eid, para=hilo, texto=texto, de=quien)
+    salida = {"hilo": hilo, "encargo": eid, "direccion": f"encargo:{eid}", "id": m["id"]}
     est = mod_estado.abrir(ctx.config)
     escribir = _donde(ctx, hilo)
     if escribir is not None:
-        if est.atencion(hilo) == Atencion.TRABAJANDO or pendientes(ctx.config, hilo):
-            n = _encolar(ctx.config, hilo, texto)
-            _anotar(ctx.config, f"«{hilo}» trabajando: en cola ({n}) · {texto[:80]}")
-            return {"hilo": hilo, "estado": "en cola", "en_cola": n}
-        escribir(_una_linea(texto, ctx.config, hilo))
+        if est.atencion(hilo) == Atencion.TRABAJANDO:
+            _anotar(ctx.config, f"«{hilo}» trabajando: en su casilla (encargo:{eid}) · {texto[:80]}")
+            return {**salida, "estado": "en su casilla"}
+        if casilla.mod_vivo(ctx.config, hilo):
+            _anotar(ctx.config, f"«{hilo}» libre: lo avisa su mod (encargo:{eid}) · {texto[:80]}")
+            return {**salida, "estado": "avisado"}
+        escribir(casilla.aviso(ctx.config, hilo))
         est.anotar_atencion(hilo, Atencion.TRABAJANDO)
-        _anotar(ctx.config, f"«{hilo}» libre: entregado · {texto[:80]}")
-        return {"hilo": hilo, "estado": "entregado"}
-    return _abrir(ctx, agente, texto)
+        _anotar(ctx.config, f"«{hilo}» libre: avisado (encargo:{eid}) · {texto[:80]}")
+        return {**salida, "estado": "avisado"}
+    return {**_abrir(ctx, agente, casilla.aviso(ctx.config, hilo)), **salida}
 
 
 def _abrir(ctx, agente, texto: str) -> dict:
@@ -231,7 +178,8 @@ def _abrir(ctx, agente, texto: str) -> dict:
         break
     est.anotar_agente(hilo, agente.clave)
     if retoma:
-        palabras = [*ag.retomar(mod_agente.Conversacion(id=retoma, hilo=hilo)), texto]
+        # sin texto (el nodo abre a uno que está para siempre): retoma callado, sin pedirle nada
+        palabras = [*ag.retomar(mod_agente.Conversacion(id=retoma, hilo=hilo)), *([texto] if texto else [])]
     else:
         palabras, nueva = ag.nuevo_con_id(texto)
     # después del prompt: hay banderas que se tragan lo que sigue. El modelo de su agente.toml, y los
@@ -255,7 +203,7 @@ def _abrir(ctx, agente, texto: str) -> dict:
             lanzar.anotar(ctx.config, hilo, lanzar.Lanzamiento(comando=[], carpeta=agente.carpeta, nueva=nueva), tel.mux)
         tel.estado.vincular(hilo, _comun.ruta_relativa(agente.carpeta, tel.raiz))
         tel.estado.desarchivar(hilo)
-        est.anotar_atencion(hilo, Atencion.TRABAJANDO)
+        est.anotar_atencion(hilo, Atencion.TRABAJANDO if texto else Atencion.NINGUNA)
         _anotar(ctx.config, f"«{hilo}» sin hilo: abierto en la lista ({'retoma ' + retoma[:8] if retoma else 'conversación nueva'}) · {texto[:80]}")
         return {"hilo": hilo, "estado": "abierto", "retoma": retoma, "cerrados": []}
     cerrados = liberar(ctx.config, 1, cuidar=(hilo,))
@@ -265,26 +213,7 @@ def _abrir(ctx, agente, texto: str) -> dict:
         raise ErrorDeEncargo(f"no pude abrir el hilo de {hilo}: {e}") from e
     if nueva:
         lanzar.anotar(ctx.config, hilo, lanzar.Lanzamiento(comando=[], carpeta=agente.carpeta, nueva=nueva))
-    est.anotar_atencion(hilo, Atencion.TRABAJANDO)
+    est.anotar_atencion(hilo, Atencion.TRABAJANDO if texto else Atencion.NINGUNA)
     _anotar(ctx.config, f"«{hilo}» sin sesión: abierto ({'retoma ' + retoma[:8] if retoma else 'conversación nueva'})"
                         f"{' · cerré ' + ', '.join(cerrados) if cerrados else ''} · {texto[:80]}")
     return {"hilo": hilo, "estado": "abierto", "sesion": h.direccion, "retoma": retoma, "cerrados": cerrados}
-
-
-def repartir(ctx, hilo: str) -> bool:
-    """Si `hilo` tiene encargos en cola, le entrega el siguiente. Lo llama el gancho cuando el agente
-    termina un turno; tiene que ser rápido y no fallar nunca."""
-    if not hilo or not _cola(ctx.config, hilo).exists():
-        return False
-    from telar import estado as mod_estado
-
-    escribir = _donde(ctx, hilo)
-    if escribir is None:
-        return False
-    siguiente = _sacar(ctx.config, hilo)
-    if siguiente is None:
-        return False
-    escribir(_una_linea(siguiente["texto"], ctx.config, hilo))
-    mod_estado.abrir(ctx.config).anotar_atencion(hilo, Atencion.TRABAJANDO)
-    _anotar(ctx.config, f"«{hilo}» terminó: le entregué el siguiente de la cola · {siguiente['texto'][:80]}")
-    return True

@@ -13,7 +13,7 @@ import type { PantallaTareas } from './tareas';
 import type { MensajeDia, VistaDia } from './vista';
 
 /** Qué se ve en el dashboard. */
-export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'tarea'
+export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'agentes' | 'tarea'
     | 'revisar' | 'pestana' | 'plan' | 'calendario';
 
 /** Una acción de una página (`data-accion`): su valor (`data-valor`) y el mensaje entero (⌘, lo escrito). */

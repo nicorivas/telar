@@ -68,7 +68,7 @@ export class Modelo {
     get archivados(): cli.JsonHilo[] { return this.hilos.filter(h => h.archivado || !h.vivo); }
     get esperan(): number { return this.enLista.filter(h => h.atencion === 'espera').length; }
 
-    /** los hilos de las otras personas del bus (`/directorio`), para la sección «colegas» de la barra */
+    /** los hilos de las otras personas del bus (`/directorio`), para la sección EQUIPO de la barra */
     colegas: cli.JsonDirectorio['personas'] = [];
 
     /** Lee el directorio de las otras personas; sin bus, o si no contesta, queda lo que había. */

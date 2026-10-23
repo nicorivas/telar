@@ -46,16 +46,18 @@ def por_el_bus(ctx, agente: str, texto: str) -> Encargo:
 
     _agente(ctx, agente)
     try:
-        r = mensaje.enviar(ctx, agente, texto, tipo="encargo")
+        r = mensaje.enviar(ctx, agente, texto, tipo="encargo", modo="encargo")
     except mod_bus.ErrorDeBus as e:
         raise BusCaido(f"el bus no recibió el encargo ({e})", 502) from e
     if r.get("estado") == "retenido":
-        return Encargo(hilo=r["para"], estado="retenido", motivo=r["motivo"], id=r["id"])
-    return Encargo(hilo=r["para"], estado="en su casilla (bus)", id=r["id"])
+        return Encargo(hilo=r["para"], estado="retenido", motivo=r["motivo"], id=r["id"],
+                       encargo=r.get("encargo", ""), direccion=r.get("direccion", ""))
+    return Encargo(hilo=r["para"], estado="en su casilla (bus)", id=r["id"], encargo=r.get("encargo", ""),
+                   direccion=r.get("direccion", ""))
 
 
 def aqui(ctx, agente: str, texto: str) -> Encargo:
-    """En esta máquina: el agente lo recibe en su hilo (o en su cola, si está ocupado)."""
+    """En esta máquina, sin bus: el encargo en su casilla, y que se entere (telar.encargos)."""
     from telar import encargos
 
     a = _agente(ctx, agente)

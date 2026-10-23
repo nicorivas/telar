@@ -545,7 +545,7 @@ class LasSuscripcionesDelNodo(Prueba):
         verbos = {t.rsplit(".", 1)[-1] for t in suscritas if t.startswith("rpc.ana.laptop.")}
         self.assertEqual(verbos, {"ping", "leer", "resultado", "resultado-comentar", "proveedor", "tarea", "tipo",
                                   "periodicos", "hilo", "equipo", "aviso", "archivo", "archivo-leer", "modulo",
-                                  "notas", "nota", "serie", "serie-recordar", "encargo"})
+                                  "notas", "nota", "serie", "serie-recordar", "encargo", "agentes"})
         self.assertIn("cambio.ana.*", suscritas)
         from telar import cuentas
 

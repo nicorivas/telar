@@ -158,6 +158,33 @@ def _cartero_aqui() -> bool:
         return False
 
 
+def _como_agente(ctx, hilo: str) -> list[str]:
+    """Lo que el hilo de un agente residente sabe al arrancar, además de su CLAUDE.md (que carga el motor): para qué
+    es, dónde está el índice de su memoria y su último relevo, si tiene. Vacío si no es de un agente."""
+    from datetime import datetime
+
+    from telar import agentes as mod_agentes
+    from telar import rotacion
+
+    try:
+        a = mod_agentes.del_hilo(ctx.config, hilo)
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, el contexto de siempre
+        return []
+    if a is None:
+        return []
+    quien = f"Eres el agente residente «{a.nombre}» (agente:{a.clave})" + (f": {a.para}" if a.para else "")
+    lineas = [quien if quien.endswith((".", "!", "?")) else quien + "."]
+    memoria = a.carpeta / "memoria" / "MEMORY.md"
+    if memoria.is_file():
+        lineas.append(f"Tu memoria: el índice está en {memoria}; léelo antes de afirmar lo que ya sabías.")
+    relevo = rotacion.ruta_relevo(ctx.config, a.clave)
+    if relevo.is_file():
+        cuando = datetime.fromtimestamp(relevo.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+        lineas.append(f"Tu último relevo (de {cuando}), lo que dejó escrito la conversación anterior al rotar: "
+                      f"{relevo}. Si retomas trabajo, léelo primero.")
+    return lineas
+
+
 def contexto(ctx) -> str:
     """Unas pocas líneas para el agente de un hilo: quién es, cómo le escriben, cómo escribir.
 
@@ -182,6 +209,8 @@ def contexto(ctx) -> str:
 
     lineas = [f"Eres el hilo «{hilo}» de telar" + (f" (vinculado a {vinculo})" if vinculo else "")
               + (f", en la máquina {servidor}" if cartero else "") + "."]
+    # el hilo de un agente residente: quién es, su memoria y su último relevo, para no arrancar en frío
+    lineas.extend(_como_agente(ctx, hilo))
     from telar import bus as mod_bus
 
     con_bus = mod_bus.hay_bus(ctx.config)
@@ -261,7 +290,16 @@ def _casilla(ctx) -> int:
         persona = mod_bus.persona(ctx.config) if mod_bus.hay_bus(ctx.config) else ""
         salida = casilla.para_gancho(ctx.config, hilo, evento, str(datos.get("prompt") or ""), persona)
         if not salida and evento == "Stop":
-            # sin nada en la casilla: si es un residente cuya conversación pesa demasiado, rotarla con relevo
+            # sin nada en la casilla: un encargo que corre y no cerró, se le recuerda (una vez)
+            from telar import encargo
+
+            abiertos = encargo.sin_cerrar(ctx.config, hilo)
+            if abiertos:
+                for e in abiertos:
+                    encargo.recordar(ctx.config, e["id"])
+                salida = json.dumps({"decision": "block", "reason": encargo.recordatorio(abiertos)}, ensure_ascii=False)
+        if not salida and evento == "Stop":
+            # y si es un residente cuya conversación pesa demasiado, rotarla con relevo
             from telar import rotacion
 
             salida = rotacion.al_terminar(ctx.config, hilo, str(datos.get("session_id") or ""),
@@ -451,14 +489,6 @@ def _aviso(o, ctx) -> int:
                     _comun.escribir_json(salida)
                 return 0
         efecto = aplicar(est, aviso, hilo=hilo, panel=panel, olvidar_al_cerrar=o.olvidar)
-        if efecto.atencion in (Atencion.ESPERA, Atencion.TERMINO):
-            # terminó su turno: si es un agente con encargos en cola, el siguiente (ver telar.encargos)
-            try:
-                from telar import encargos
-
-                encargos.repartir(ctx, efecto.hilo)
-            except Exception:  # noqa: BLE001 - repartir nunca tumba el gancho
-                pass
         salida = {
             "aplicado": not efecto.vacio,
             "evento": aviso.evento.value,

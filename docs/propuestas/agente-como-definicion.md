@@ -1,9 +1,10 @@
 # El agente como definición: `agente.toml`
 
-Estado: **primer paso hecho** (22-oct-2026): telar lee el `agente.toml` de cada residente, lo valida y usa
-`nombre`, `para`, `modelo` y `residente`; `telar agentes` y `agente:<carpeta>` muestran lo declarado.
-**Por decidir**: la forma de `memoria`, `capacidades`, `politica` y `lugar`, y las preguntas de abajo.
-Es el paso 3 de [primitivas.md](primitivas.md).
+Estado: **hecho en lo principal** (23-oct-2026, telar 0.5). El `agente.toml` dice `nombre`, `para`, `modelo`,
+`residente` (siempre, a-pedido o no; `true` y `false` siguen valiendo), `hilos`, `lugar`, `publico`, `icono` y una
+`[politica]` (permite, pregunta, niega) que telar le pasa a su sesión como permisos del motor (`--settings`). La
+máquina pisa lo suyo: su `en` gana sobre `lugar`, y sus `hilos` y `argumentos` se suman. El hilo anota de qué agente
+es (`de_agente.json`). Quedan sin uso `instrucciones`, `memoria` y `capacidades`.
 
 ## Por qué
 

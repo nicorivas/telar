@@ -74,13 +74,13 @@ class SinArchivo(ConAgentes):
 class LoQueDeclara(ConAgentes):
     def test_nombre_para_modelo_residente_y_lo_que_no_se_usa_todavia(self):
         self.definir("faro", 'nombre = "Lámpara"\npara = """La luz y\n  el turno de noche."""\nmodelo = "opus"\n'
-                             'residente = false\ninstrucciones = "CLAUDE.md"\n[politica]\npermisos = "acceptEdits"\n')
+                             'residente = false\ninstrucciones = "CLAUDE.md"\n[capacidades]\nweb = true\n')
         faro = self.agente("faro")
         self.assertEqual((faro.nombre, faro.para, faro.modelo, faro.residente),
                          ("Lámpara", "La luz y el turno de noche.", "opus", False))
         self.assertEqual(faro.hilos[0], "Lámpara")
         self.assertEqual(faro.nombre_de_antes, "Faro")
-        self.assertEqual(faro.sin_uso, {"instrucciones": "CLAUDE.md", "politica": {"permisos": "acceptEdits"}})
+        self.assertEqual(faro.sin_uso, {"instrucciones": "CLAUDE.md", "capacidades": {"web": True}})
         self.assertEqual(faro.problemas, ())
 
     def test_un_toml_que_no_se_lee_se_ignora_entero_y_el_agente_sigue(self):
@@ -338,7 +338,7 @@ class LaOrden(ConAgentes):
         self.assertEqual((codigo, json.loads(salida)["sin_uso"]), (0, {"memoria": {"desde": "2026-10-01"}}))
 
     def test_uno_entero_y_uno_que_no_existe(self):
-        self.definir("faro", 'nombre = "Lámpara"\n[lugar]\npor_defecto = "."\n')
+        self.definir("faro", 'nombre = "Lámpara"\n[memoria]\npor_defecto = "."\n')
         codigo, salida, _ = _cli(self.config, "agentes", "Lámpara")
         self.assertEqual(codigo, 0)
         self.assertIn("sin agente.toml sería «Faro»", salida)
@@ -401,6 +401,23 @@ class LoQueVenLosDemas(ConAgentes):
         self.assertIn("Agentes residentes (Cronista, Faro)", linea)
         self.assertIn("para qué es cada uno: `telar agentes`", linea)
         self.assertNotIn("La luz.", linea)
+
+    def test_el_hilo_de_un_agente_arranca_sabiendo_quien_es_su_memoria_y_su_relevo(self):
+        from telar import rotacion
+        from telar.ordenes import agente as orden
+
+        ctx = SimpleNamespace(config=self.config)
+        self.assertEqual(orden._como_agente(ctx, "Un proyecto"), [])
+        self.definir("faro", 'para = "La luz."\n')
+        self.assertEqual(orden._como_agente(ctx, "Faro"), ["Eres el agente residente «Faro» (agente:faro): La luz."])
+        (self.raiz / "agentes" / "faro" / "memoria").mkdir()
+        (self.raiz / "agentes" / "faro" / "memoria" / "MEMORY.md").write_text("- [x](x.md)\n")
+        relevo = rotacion.ruta_relevo(self.config, "faro")
+        relevo.parent.mkdir(parents=True)
+        relevo.write_text("iba en la lámpara")
+        lineas = orden._como_agente(ctx, "Faro")
+        self.assertIn("MEMORY.md", lineas[1])
+        self.assertIn(str(relevo), lineas[2])
 
 
 class ElDoctor(ConAgentes):

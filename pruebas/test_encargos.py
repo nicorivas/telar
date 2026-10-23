@@ -54,23 +54,34 @@ class ConEstado(Prueba):
 
 
 class Encargar(ConEstado):
-    def test_libre_se_le_escribe_en_una_linea(self):
+    def test_libre_queda_en_su_casilla_como_encargo_y_se_le_avisa(self):
+        from telar import casilla, encargo
+
         escritos, creados, _ = self.movil({"Gestión": "@4"})
         r = m.encargar(self.ctx, self.agente, "/avanzar\nT84")
-        self.assertEqual((r["estado"], escritos, creados), ("entregado", [("@4", "/avanzar T84", True)], []))
+        self.assertEqual((r["estado"], creados), ("avisado", []))
+        self.assertTrue(r["direccion"].startswith("encargo:e-"))
+        # se le teclea el aviso de su casilla, no el encargo: el contenido entra por sus ganchos
+        self.assertEqual(escritos, [("@4", casilla.aviso(self.config, "Gestión"), True)])
+        pendiente = casilla.pendientes(self.config, "Gestión")[0]
+        self.assertEqual((pendiente["texto"], pendiente["encargo"]), ("/avanzar\nT84", r["encargo"]))
+        self.assertEqual(encargo.leer(self.config, r["encargo"])["estado"], "pedido")
         self.assertEqual(self.est.atencion("Gestión"), Atencion.TRABAJANDO)
 
-    def test_trabajando_queda_en_cola_y_al_terminar_se_reparte(self):
+    def test_trabajando_espera_en_su_casilla_y_su_gancho_se_lo_entrega(self):
+        from telar import casilla, encargo
+
         escritos, _, _ = self.movil({"Gestión": "@4"})
         self.est.anotar_atencion("Gestión", Atencion.TRABAJANDO)
-        self.assertEqual(m.encargar(self.ctx, self.agente, "/correo")["estado"], "en cola")
-        self.assertEqual(m.encargar(self.ctx, self.agente, "/lecturas")["en_cola"], 2)
-        self.assertEqual(escritos, [])
-        self.assertTrue(m.repartir(self.ctx, "Gestión"))
-        self.assertEqual(escritos, [("@4", "/correo", True)])
-        self.assertEqual([x["texto"] for x in m.pendientes(self.config, "Gestión")], ["/lecturas"])
+        r = m.encargar(self.ctx, self.agente, "/correo")
+        self.assertEqual((r["estado"], escritos), ("en su casilla", []))
+        salida = casilla.para_gancho(self.config, "Gestión", "Stop")
+        self.assertIn("/correo", salida)
+        self.assertEqual(encargo.leer(self.config, r["encargo"])["estado"], "corriendo")
 
-    def test_sin_sesion_retoma_su_conversacion_con_el_encargo_y_sus_argumentos(self):
+    def test_sin_sesion_retoma_su_conversacion_con_el_aviso_y_sus_argumentos(self):
+        from telar import casilla
+
         _, creados, _ = self.movil()
         archivo = Path(self.tmp.name) / "conv.jsonl"
         archivo.write_text("{}\n")
@@ -81,7 +92,8 @@ class Encargar(ConEstado):
         with mock.patch("telar.agente.obtener", return_value=falso):
             r = m.encargar(self.ctx, self.agente, "/avanzar")
         self.assertEqual((r["estado"], r["retoma"]), ("abierto", "abc"))
-        self.assertIn("claude --resume abc /avanzar --permission-mode acceptEdits", creados[0][2][-1])
+        aviso = __import__("shlex").quote(casilla.aviso(self.config, "Gestión"))
+        self.assertIn(f"claude --resume abc {aviso} --permission-mode acceptEdits", creados[0][2][-1])
 
     def test_una_conversacion_que_pesa_demasiado_se_rota(self):
         _, creados, _ = self.movil()
@@ -124,3 +136,46 @@ class ElTope(ConEstado):
     def test_sin_tope_no_cierra_nada(self):
         cfg = mod_config.Config(raiz=self.config.raiz, estado=self.config.estado)
         self.assertEqual(m.liberar(cfg, 5), [])
+
+
+class ElCicloDeUnEncargo(ConEstado):
+    """Lo que la 0.5 le agrega al Encargo: corriendo al entregarse, el recordatorio de cerrarlo y cancelarlo."""
+
+    def test_corriendo_recordado_una_vez_y_cerrado(self):
+        from telar import casilla, encargo
+
+        self.movil({"Gestión": "@4"})
+        self.est.anotar_atencion("Gestión", Atencion.TRABAJANDO)
+        eid = m.encargar(self.ctx, self.agente, "/correo")["encargo"]
+        casilla.para_gancho(self.config, "Gestión", "Stop")
+        self.assertEqual([e["id"] for e in encargo.sin_cerrar(self.config, "Gestión")], [eid])
+        texto = encargo.recordatorio(encargo.sin_cerrar(self.config, "Gestión"))
+        self.assertIn(f"encargo:{eid}", texto)
+        encargo.recordar(self.config, eid)
+        self.assertEqual(encargo.sin_cerrar(self.config, "Gestión"), [])  # una vez
+        self.assertEqual([e["id"] for e in encargo.de_hilo(self.config, "Gestión", abiertos=True)], [eid])
+
+    def test_cancelar_antes_de_que_llegue_lo_saca_de_su_casilla(self):
+        from telar import casilla, encargo
+
+        self.movil({"Gestión": "@4"})
+        self.est.anotar_atencion("Gestión", Atencion.TRABAJANDO)
+        eid = m.encargar(self.ctx, self.agente, "/correo")["encargo"]
+        e = encargo.hacer(self.ctx, eid, "cancelar", {"motivo": "ya lo hice yo"}, quien="Nico")
+        self.assertEqual((e["estado"], e["resultado"]), ("cancelado", "ya lo hice yo"))
+        self.assertEqual(casilla.pendientes(self.config, "Gestión"), [])
+        self.assertIn("salió de su casilla", e["historia"][-1]["nota"])
+
+    def test_cancelar_uno_que_corre_le_dice_que_pare(self):
+        from telar import casilla, encargo
+
+        self.movil({"Gestión": "@4"})
+        self.est.anotar_atencion("Gestión", Atencion.TRABAJANDO)
+        eid = m.encargar(self.ctx, self.agente, "/correo")["encargo"]
+        casilla.para_gancho(self.config, "Gestión", "Stop")
+        encargo.hacer(self.ctx, eid, "cancelar", {}, quien="Nico")
+        pide = casilla.pendientes(self.config, "Gestión")
+        self.assertEqual(len(pide), 1)
+        self.assertIn("se canceló", pide[0]["texto"])
+        with self.assertRaises(encargo.ErrorDeEncargo):
+            encargo.hacer(self.ctx, eid, "cerrar", {"resultado": "x"})  # ya está cerrado

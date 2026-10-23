@@ -237,6 +237,8 @@ body > header .config:hover { color: var(--fg); text-decoration: none; }
   & .barra-peso > span { display: block; height: 100%; background: var(--verde); }
   & .barra-peso > span.lleno { background: var(--amarillo); }
   & .lado-rota { color: var(--amarillo); margin: var(--e-1) 0; }
+  & .lado-acciones { margin: var(--e-1) 0; }
+  & .lado-acciones a, & .lado-sec a { cursor: pointer; }
   & .lado-sec { margin: var(--e-1) 0; border-top: var(--borde); padding-top: var(--e-1); }
   & .lado-sec > summary { cursor: pointer; color: var(--violeta); }
   & pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -473,6 +475,9 @@ body.angosto.en-detalle #barra { display: none; }
     .fila .menu-hilo { padding-inline: 1ch; }
   }
 }
+
+/* el ícono del agente residente del que es un hilo (su agente.toml `icono`, o su inicial) */
+.ic-agente { color: var(--violeta); }
 
 /* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios (vistas/dashboard/:
    dia.ts, panel.ts, vista.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en

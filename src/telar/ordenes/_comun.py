@@ -212,6 +212,8 @@ class Telar:
     estado: mod_estado.Estado | None = None
     #: ruta relativa → (arquetipo, documento) de las unidades que declara el perfil
     unidades: dict[str, tuple[Arquetipo, Path]] = field(default_factory=dict)
+    #: hilo → (clave, icono) del agente residente del que es: la lista lo marca con su ícono
+    de_agente: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     def por_nombre(self, nombre: str) -> Hilo | None:
         return next((h for h in self.hilos if h.nombre == nombre), None)
@@ -280,6 +282,16 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         # sin multiplexor, el id es el nombre: es la única llave que hay
         crudos += [Hilo(id=nombre, nombre=nombre) for nombre in conocidos]
 
+    # los agentes: los hilos de uno con `publico = true` en su agente.toml son públicos aunque nadie los haya
+    # publicado, y cada hilo de un agente lleva su clave y su ícono
+    from telar import agentes as mod_agentes
+
+    try:
+        agentes = mod_agentes.descubrir(config, foto.get("vinculos"))
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, la lista de siempre
+        agentes = []
+    foto["publicos"] = set(foto.get("publicos") or ()) | {h for a in agentes if a.publico for h in a.hilos}
+    de_agente = {h: (a.clave, a.icono) for a in agentes for h in a.hilos}
     hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
@@ -299,6 +311,7 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         aviso=aviso,
         estado=est,
         unidades=unidades,
+        de_agente=de_agente,
     )
 
 
@@ -568,6 +581,9 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "archivado": hilo.archivado,
         # si lo ven las otras personas del bus (su directorio); por defecto, privado
         "publico": hilo.publico,
+        # el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno
+        "agente": tel.de_agente.get(hilo.nombre, ("", ""))[0],
+        "icono": tel.de_agente.get(hilo.nombre, ("", ""))[1],
         "vinculado": hilo.vinculado,
         "ruta": str(hilo.ruta) if hilo.ruta else "",
         "relativa": ruta_relativa(hilo.ruta, tel.raiz),

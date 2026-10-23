@@ -344,6 +344,15 @@ def para_gancho(config, hilo: str, evento: str, prompt: str = "", persona: str =
     else:
         anotar_cadena(config, hilo, max(cadena(config, hilo), *(int(m.get("saltos") or 0) for m in entregados)))
     marcar_entregados(config, hilo, ids)
+    # los encargos que llegan, corriendo: ya los tiene el hilo
+    for m in entregados:
+        if modo_de(m) == "encargo" and m.get("encargo"):
+            from telar import encargo
+
+            try:
+                encargo.empezar(config, str(m["encargo"]), hilo)
+            except Exception:  # noqa: BLE001 - un encargo que no se marca no tumba la entrega
+                pass
     if evento == "Stop":
         return json.dumps({"decision": "block", "reason": texto}, ensure_ascii=False)
     return json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": texto}},

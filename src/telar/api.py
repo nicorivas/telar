@@ -697,6 +697,24 @@ def post_directorio_escribir(pedido: PedidoEscribir, ctx: Contexto = Depends(con
 from telar.servicios import agentes as servicio_agentes
 
 
+@app.get("/agentes", response_model=servicio_agentes.Agentes)
+def get_agentes(ctx: Contexto = Depends(contexto)):
+    """Todos los agentes residentes con su estado: vivo, atención, el peso de su conversación, si rota y sus
+    encargos. Los de otra máquina se le piden a esa por el bus."""
+    return servicio_agentes.lista(ctx)
+
+
+class PedidoRotar(BaseModel):
+    hilo: str
+    maquina: str = ""
+
+
+@app.post("/agentes/rotar")
+def post_agentes_rotar(pedido: PedidoRotar, ctx: Contexto = Depends(contexto)) -> dict:
+    """Rotar ya la conversación de un agente, con relevo: se le pide escribirlo, y al terminar ese turno rota."""
+    return servicio_agentes.rotar(ctx, pedido.hilo, pedido.maquina)
+
+
 @app.get("/agentes/del-hilo", response_model=servicio_agentes.FichaAgente)
 def get_agente_del_hilo(hilo: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
     """El agente residente del que es ese hilo: su definición, su CLAUDE.md, su último relevo y el peso de su

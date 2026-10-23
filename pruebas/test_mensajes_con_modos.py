@@ -314,7 +314,7 @@ class ElObjeto(ConEstado):
     def test_ver_y_sus_acciones(self):
         o = objetos.ver(self.ctx, "encargo:e-1a2b3c4d")
         self.assertEqual((o.direccion, o.tipo, o.estado, o.maquina), ("encargo:e-1a2b3c4d", "encargo", "pedido", "laptop"))
-        self.assertEqual([a.nombre for a in o.acciones], ["aceptar", "rechazar", "cerrar"])
+        self.assertEqual([a.nombre for a in o.acciones], ["aceptar", "rechazar", "cerrar", "cancelar"])
         self.assertEqual(next(a for a in o.acciones if a.nombre == "cerrar").params, {"resultado": "", "estado": "'hecho'"})
         self.assertTrue(o.campos["vencido"])
         self.assertEqual((o.campos["de"], o.campos["para"]), ("Molino", "Faro"))
@@ -421,8 +421,9 @@ class LaOrden(ConBusFalso):
         # a Faro le llega con la dirección
         razon = json.loads(casilla.para_gancho(self.config, "Faro", "Stop"))["reason"]
         self.assertIn(f"encargo:{eid}", razon)
+        # entregado: ya corre (lo tiene Faro), y ya no se acepta
+        self.assertEqual(encargo.leer(self.config, eid)["estado"], "corriendo")
         with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
-            objetos.hacer(self.ctx, f"encargo:{eid}", "aceptar")
             h = objetos.hacer(self.ctx, f"encargo:{eid}", "cerrar", {"resultado": "faltan dos casillas"})
         self.assertEqual(h.objeto.estado, "hecho")
         # y a Molino, el resultado, como un pedido que despierta

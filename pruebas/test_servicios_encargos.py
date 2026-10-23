@@ -28,9 +28,14 @@ class Encargar(Prueba):
         self.addCleanup(p.stop)
 
     def test_por_el_bus_y_retenido(self):
-        with mock.patch("telar.ordenes.mensaje.enviar", return_value={"para": "Gestión", "id": "m1", "estado": "enviado"}):
+        enviado = {"para": "Gestión", "id": "m1", "estado": "enviado", "encargo": "e-1a2b3c4d",
+                   "direccion": "encargo:e-1a2b3c4d"}
+        with mock.patch("telar.ordenes.mensaje.enviar", return_value=enviado) as enviar:
             r = encargos.encargar(_ctx(), "gestion", "ordena el roadmap")
-        self.assertEqual(r.model_dump(), {"hilo": "Gestión", "estado": "en su casilla (bus)", "id": "m1"})
+        # siempre un Encargo como objeto: con su dirección
+        self.assertEqual(enviar.call_args.kwargs["modo"], "encargo")
+        self.assertEqual(r.model_dump(), {"hilo": "Gestión", "estado": "en su casilla (bus)", "id": "m1",
+                                          "encargo": "e-1a2b3c4d", "direccion": "encargo:e-1a2b3c4d"})
         retenido = {"para": "Gestión", "id": "m2", "estado": "retenido", "motivo": "cadena larga"}
         with mock.patch("telar.ordenes.mensaje.enviar", return_value=retenido):
             self.assertEqual(encargos.encargar(_ctx(), "Gestión", "x").estado, "retenido")
