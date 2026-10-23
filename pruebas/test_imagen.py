@@ -31,6 +31,29 @@ class Subir(unittest.TestCase):
             with mock.patch("subprocess.run", return_value=N(returncode=255, stdout="", stderr="Permission denied")):
                 self.assertEqual(imagen.subir(N(destino="x"), f, "a.png"), ("", "Permission denied"))
 
+    def test_no_pisa_lo_que_ya_estaba(self):
+        # el guion de verdad, con bash en esta máquina en vez de ssh, y un HOME de prueba
+        import os
+        import subprocess
+
+        real = subprocess.run
+
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "origen"
+            f.write_bytes(b"x")
+
+            def aqui(argv, **kw):
+                return real(["bash", "-c", argv[-1]], env={**os.environ, "HOME": d}, **kw)
+
+            with mock.patch("subprocess.run", side_effect=aqui):
+                rutas = [imagen.subir(N(destino="x"), f, "mi informe.tar.gz")[0] for _ in range(3)]
+            self.assertEqual([Path(r).name for r in rutas], ["mi informe.tar.gz", "mi informe.tar-2.gz", "mi informe.tar-3.gz"])
+            self.assertEqual(Path(rutas[1]).read_bytes(), b"x")
+
+    def test_con_sufijo(self):
+        self.assertEqual(imagen.con_sufijo("a.png", 2), "a-2.png")
+        self.assertEqual(imagen.con_sufijo("LEEME", 3), "LEEME-3")
+
 
 class Main(unittest.TestCase):
     def ctx(self, *nombres):
