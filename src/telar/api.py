@@ -841,6 +841,49 @@ def put_archivo(pedido: PedidoArchivo, ctx: Contexto = Depends(contexto)):
     return servicio_archivos.escribir(ctx, pedido.ruta, pedido.texto)
 
 
+class PedidoEntrada(BaseModel):
+    #: para qué hilo (se anota); la máquina del hilo ('' o la de aquí: esta) y la ruta del archivo, en esta
+    hilo: str = ""
+    maquina: str = ""
+    ruta: str
+
+
+@app.post("/archivos/entrada", response_model=servicio_archivos.Entrada)
+async def post_entrada(request: Request, ctx: Contexto = Depends(contexto)):
+    """Un archivo arrastrado a un hilo, en `~/telar-entrada/` de la máquina del hilo (servicios/archivos.py). Con
+    JSON `{hilo, maquina, ruta}`, un archivo de esta máquina que se copia por ssh a la del hilo; con
+    multipart (`hilo`, `maquina` y `archivo`), lo que subió la página, hasta 200 MB. Responde dónde quedó."""
+    from starlette.concurrency import run_in_threadpool
+
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        try:
+            pedido = PedidoEntrada.model_validate(await request.json())
+        except ValueError as e:
+            raise ErrorDeServicio("se espera {hilo, maquina, ruta} o un archivo (multipart)", 422) from e
+        log.info("entrada para %s: %s → %s", pedido.hilo or "?", pedido.ruta, pedido.maquina or "aquí")
+        return await run_in_threadpool(servicio_archivos.desde_ruta, ctx, pedido.maquina, pedido.ruta)
+    # el tope, antes de leer nada: el cuerpo trae además los campos y los separadores, de ahí el margen
+    largo = request.headers.get("content-length", "")
+    if not largo.isdigit():
+        raise ErrorDeServicio("falta el largo del pedido (Content-Length)", 411)
+    if int(largo) > servicio_archivos.TOPE_ENTRADA + 1024 * 1024:
+        raise ErrorDeServicio(f"pasa de {servicio_archivos.TOPE_ENTRADA // (1024 * 1024)} MB", 413)
+    try:
+        formulario = await request.form(max_files=1, max_fields=4)
+    except AssertionError as e:  # starlette sin python-multipart (el extra «serve» de antes no lo traía)
+        raise ErrorDeServicio("esta máquina no sabe recibir archivos: falta python-multipart "
+                              "(pip install 'telar[serve]' de nuevo)", 501) from e
+    try:
+        archivo = formulario.get("archivo")
+        if archivo is None or isinstance(archivo, str):
+            raise ErrorDeServicio("¿qué archivo? (el campo «archivo»)", 422)
+        maquina, hilo = str(formulario.get("maquina") or ""), str(formulario.get("hilo") or "")
+        log.info("entrada para %s: %s (subido) → %s", hilo or "?", archivo.filename, maquina or "aquí")
+        return await run_in_threadpool(servicio_archivos.desde_bytes, ctx, maquina, archivo.filename or "", archivo.file)
+    finally:
+        await formulario.close()
+
+
 # ── versiones nuevas (telar.actualizar) ───────────────────────────────────────────
 
 
