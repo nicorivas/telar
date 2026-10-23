@@ -416,6 +416,52 @@ class TiposTarea(Prueba):
         self.assertEqual(self.c.post("/tipos/tarea/T1/reagendar", json={"params": {"cuando": "mañana"}}).status_code, 422)
 
 @unittest.skipIf(api is None, "sin fastapi")
+class LaEntrada(Prueba):
+    """`POST /archivos/entrada`: lo que se arrastra a un hilo, subido (multipart) o nombrado por su ruta (JSON)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.entrada = Path(self.tmp.name) / "entrada"
+        config = SimpleNamespace(bus=SimpleNamespace(maquina="laptop", entrada=str(self.entrada)),
+                                 puerta=SimpleNamespace(entrada=""),
+                                 remotos=[SimpleNamespace(nombre="servidor", destino="ana@servidor")])
+        api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=config)
+        self.addCleanup(api.app.dependency_overrides.clear)
+        self.c = TestClient(api.app)
+
+    def test_subido_queda_en_la_entrada_de_aqui(self):
+        r = self.c.post("/archivos/entrada", data={"hilo": "Faro", "maquina": ""},
+                        files={"archivo": ("captura de pantalla.png", b"\x89PNG", "image/png")})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json(), {"ruta": str(self.entrada / "captura de pantalla.png"), "maquina": "", "bytes": 4})
+        self.assertEqual((self.entrada / "captura de pantalla.png").read_bytes(), b"\x89PNG")
+        sin = self.c.post("/archivos/entrada", data={"hilo": "Faro"})
+        self.assertEqual(sin.status_code, 422)
+
+    def test_una_ruta_va_a_la_otra_maquina(self):
+        from telar.ordenes import imagen
+
+        f = Path(self.tmp.name) / "notas.md"
+        f.write_text("# notas")
+        with mock.patch.object(imagen, "subir", return_value=("/home/ana/telar-entrada/notas.md", "")) as subir:
+            r = self.c.post("/archivos/entrada", json={"hilo": "Faro", "maquina": "servidor", "ruta": str(f)})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["ruta"], "/home/ana/telar-entrada/notas.md")
+        self.assertEqual(subir.call_args.args[2], "notas.md")
+        self.assertEqual(self.c.post("/archivos/entrada", json={"hilo": "Faro"}).status_code, 422)
+
+    def test_sin_python_multipart_se_dice_y_no_se_cae(self):
+        import starlette.requests
+
+        with mock.patch.object(starlette.requests, "parse_options_header", None):
+            r = self.c.post("/archivos/entrada", data={"hilo": "Faro"}, files={"archivo": ("a.txt", b"a", "text/plain")})
+        self.assertEqual(r.status_code, 501)
+        self.assertIn("python-multipart", r.json()["detail"])
+
+
+@unittest.skipIf(api is None, "sin fastapi")
 class VerUnHtml(Prueba):
     def test_un_html_se_entrega_dibujado_y_aislado(self):
         with tempfile.TemporaryDirectory() as tmp:
