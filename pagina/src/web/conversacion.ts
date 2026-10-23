@@ -43,8 +43,6 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
     const $ = <T extends HTMLElement>(s: string) => raiz.querySelector<T>(s)!;
     const turnos = $('.turnos'), texto = $<HTMLTextAreaElement>('textarea'), dijo = $('.dijo'), form = $<HTMLFormElement>('.escribir');
     const teclas = $('.teclas');
-    texto.placeholder = porMensaje ? `escríbele al hilo (en ${maquina}, por el bus; ⏎ envía, ⇧⏎ línea nueva)`
-        : 'escríbele al hilo (⏎ envía, ⇧⏎ línea nueva)';
     teclas.hidden = porMensaje;
 
     atenderClics(turnos, { hilo, maquina });
