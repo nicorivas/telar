@@ -21,6 +21,7 @@ import datetime as dt
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Request
@@ -808,6 +809,45 @@ def get_bajar(ruta: str, ctx: Contexto = Depends(contexto)):
 def put_archivo(pedido: PedidoArchivo, ctx: Contexto = Depends(contexto)):
     """La memoria de un lienzo: un .json de la raíz o declarado por una app."""
     return servicio_archivos.escribir(ctx, pedido.ruta, pedido.texto)
+
+
+# ── versiones nuevas (telar.actualizar) ───────────────────────────────────────────
+
+
+@app.get("/version")
+def get_version(forzar: bool = False, ctx: Contexto = Depends(contexto)) -> dict:
+    """Qué versión corre, cuál es la última en PyPI y si un clic la instala (`puede`). La última se pregunta a lo
+    más una vez por hora; `forzar` pregunta ya."""
+    from telar import actualizar
+
+    return actualizar.ver(ctx.config, forzar=forzar)
+
+
+class PedidoActualizar(BaseModel):
+    #: la versión que se anunció: se instala esa exacta, y solo si es la última y más nueva que la que corre
+    version: str
+
+
+@app.post("/actualizar")
+def post_actualizar(pedido: PedidoActualizar, ctx: Contexto = Depends(contexto)) -> dict:
+    """Instalar la versión nueva y reiniciar el servicio, en un proceso aparte. Devuelve su progreso; después,
+    `GET /actualizar` dice en qué va (y `/salud`, qué versión contesta)."""
+    from telar import actualizar
+
+    try:
+        return actualizar.empezar(ctx.config, pedido.version)
+    except actualizar.ErrorDeActualizar as e:
+        raise ErrorDeServicio(str(e), 409) from e
+    except (OSError, subprocess.SubprocessError) as e:
+        raise ErrorDeServicio(f"no pude lanzar la actualización: {e}", 500) from e
+
+
+@app.get("/actualizar")
+def get_actualizar(ctx: Contexto = Depends(contexto)) -> dict:
+    """En qué va la última actualización: {version, estado: corriendo|listo|fallo, desde, hasta, error, log}."""
+    from telar import actualizar
+
+    return actualizar.progreso(ctx.config)
 
 
 @app.get("/salud")

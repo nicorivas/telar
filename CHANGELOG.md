@@ -6,6 +6,16 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.4.8] — 2026-10-23
+
+### Added
+
+- A new version in the page's top bar («↑ 0.4.9»): a click installs it from PyPI (that exact version) and restarts
+  the service, in a separate process, and the page reloads by itself when the new one answers. Only for an
+  installation of `uv tool install`; one from the repository (editable) is told to `git pull`. ⚙ versión shows what
+  runs, the latest one and when it was asked, with «buscar ahora» to ask PyPI without waiting (it's asked at most
+  once an hour) and how the last update went. `GET /version`, `POST /actualizar`, `GET /actualizar`.
+
 ## [0.4.7] — 2026-10-23
 
 ### Changed

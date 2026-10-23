@@ -18,6 +18,7 @@ import { montar as montarCarpeta, type Vuelta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
 import { montar as montarObjeto, partir as partirDireccion } from '../web/objeto';
 import * as ui from '../web/ui';
+import * as version from '../web/version';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
@@ -191,6 +192,9 @@ modelo.cambio.event(() => barra.refrescar());
 
 // los hilos de otras máquinas (sus fotos): en HILOS, cada uno con su máquina; y el nombre de esta, para la
 // columna ancha
+// una versión nueva de telar, arriba (web/version.ts): un clic la instala; si no se puede desde aquí, ⚙ versión
+version.vigilar(() => { mostrar('dashboard'); void hoy.irAPestana('config', 'version'); });
+
 void fetch('/api/salud', { cache: 'no-store' }).then(r => r.json()).then((s: { maquina?: string }) => {
     barra.aqui = modelo.aqui = s.maquina ?? ''; barra.refrescar(true);
 }).catch(() => undefined);

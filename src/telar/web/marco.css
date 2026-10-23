@@ -186,6 +186,11 @@ body > header {
   .logo { animation: none; }
 }
 
+/* una versión nueva de telar: un clic la instala (pagina/src/web/version.ts) */
+#version { color: var(--amarillo); }
+#version[hidden] { display: none; }
+#version.trabajando { color: var(--dim); }
+
 /* el ⚙, junto a la versión: la configuración (en el dashboard) */
 body > header .config { color: var(--dim); }
 body > header .config:hover { color: var(--fg); text-decoration: none; }

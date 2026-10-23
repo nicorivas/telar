@@ -513,6 +513,19 @@ export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensa
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
 
+/** La versión de telar (`GET /version`): la que corre, la última en PyPI y si un clic la instala (`puede`: solo
+ *  una instalación de `uv tool`); `a_mano`, qué hacer si no; `progreso`, la actualización en curso o la última. */
+export interface JsonVersion {
+    corre: string; ultima: string; hay_nueva: boolean; como: 'uv' | 'repo' | 'otro'; puede: boolean;
+    consultado?: number | null; notas?: string; error?: string; a_mano?: string; progreso?: JsonProgreso;
+}
+export interface JsonProgreso { version?: string; estado?: 'corriendo' | 'listo' | 'fallo'; desde?: number; hasta?: number; error?: string; log?: string }
+export const version = async (forzar = false) => await deServe<JsonVersion>(`/version${forzar ? '?forzar=true' : ''}`, 20000);
+export const actualizar = async (v: string) => await aServe<JsonProgreso>('POST', '/actualizar', 30000, { version: v });
+export const progresoActualizar = async () => await deServe<JsonProgreso>('/actualizar', 10000);
+/** La versión que contesta el servicio ahora (`/salud`): cambia cuando la actualización lo reinició. */
+export const versionCorriendo = async () => (await deServe<{ version?: string }>('/salud', 5000)).datos?.version ?? '';
+
 /** Un hilo de otra persona, como lo publica su nodo (telar.entre_personas): nunca su conversación. */
 export interface JsonHiloColega { nombre: string; ext: string; vivo: boolean; carpeta: string; resumen: string }
 /** Los hilos de las otras personas del bus (`GET /directorio`), por persona y máquina; `al_dia`: si su nodo

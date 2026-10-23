@@ -1066,6 +1066,22 @@ contesta 403. Los errores son los de siempre de la API (`detail`): 403 si quien 
 hay esa cuenta o no hay bus, 409 si no se puede (el dueño no se toca, uno no se quita a sí mismo, un pedido ya
 decidido), 422 si falta algo o el rol no existe, 502 si la máquina del bus no responde.
 
+## `/version` y `/actualizar` — versiones nuevas
+
+`GET /version` (`?forzar=true` le pregunta a PyPI ya; si no, a lo más una vez por hora):
+
+```json
+{"corre": "0.4.7", "ultima": "0.4.8", "hay_nueva": true, "como": "uv", "puede": true, "consultado": 1792763012.2,
+ "notas": "https://github.com/nicorivas/telar/releases/tag/v0.4.8"}
+```
+
+`como` es `uv` (instalado con `uv tool install`: un clic lo actualiza, `puede`), `repo` (desde el repositorio,
+editable: con `git pull`) u `otro`; sin `puede`, `a_mano` dice qué hacer. `error` si no se pudo preguntar (queda la
+última que se supo). `progreso`, si hubo una actualización. `POST /actualizar` (`{"version"}`: la que se anunció,
+y solo esa) la instala y reinicia el servicio en un proceso aparte (telar.actualizar); `GET /actualizar` dice en qué
+va: `{"version", "estado": "corriendo" | "listo" | "fallo", "desde", "hasta", "error", "log"}`. 409 si no se puede
+(no es la última, no es de uv, ya hay una corriendo).
+
 ## `telar modulos --json` — los módulos
 
 ```json
