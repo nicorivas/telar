@@ -23,7 +23,18 @@ document.querySelector('header').addEventListener('click', (e) => {
   const p = e.target.dataset?.p;
   if (p && window.telar.mostrar) window.telar.mostrar(p);
 });
-$('#volver').addEventListener('click', () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); });
+const aLista = () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); };
+// el «atrás» de Android: en un celular, entrar a un hilo (o a lo que sea del detalle) es un paso del historial,
+// y volver lo deshace —a la lista—, en vez de sacar de la app
+let enHistorial = false;
+$('#volver').addEventListener('click', () => { if (enHistorial) history.back(); else aLista(); });
+window.addEventListener('popstate', () => { enHistorial = false; if (document.body.classList.contains('angosto')) aLista(); });
+new MutationObserver(() => {
+  const b = document.body;
+  if (b.classList.contains('angosto') && b.classList.contains('en-detalle') && !enHistorial) {
+    try { history.pushState({ telar: 'detalle' }, ''); enHistorial = true; } catch { /* sin historial */ }
+  } else if (b.classList.contains('en-lista') && enHistorial) enHistorial = false;
+}).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 const angosto = window.matchMedia('(max-width: 700px)');
 const ajustar = () => document.body.classList.toggle('angosto', angosto.matches);
 angosto.addEventListener('change', ajustar); ajustar();

@@ -79,6 +79,9 @@ DIRECTORIO = "directorio.{}"
 #: el servicio de gestión de personas del dueño del bus (telar.personas): lo atiende el nodo de la máquina del
 #: bus, y fuera de su cuenta solo lo alcanzan las cuentas admin
 ADMIN = "admin.{}"
+#: el servicio de alojamiento del dueño (telar.alojamiento): cualquier persona del bus pide un lugar en su
+#: servidor; quién pide lo dice el servidor NATS (`Nats-Request-Info`), y lo que puede cada una lo decide el nodo
+ALOJAR = "alojar.{}"
 
 #: los roles: el dueño (quien corre el bus, uno solo), admin (administra con él) y miembro (lo de siempre)
 DUENO, ADMINISTRA, MIEMBRO = "dueño", "admin", "miembro"
@@ -118,7 +121,7 @@ def configuracion(personas: dict[str, str], roles: dict[str, str] | None = None)
     otra persona sepa a quién escribirle). Cada cuenta importa los de todas las demás, y el correo con
     `share`: quien recibe ve de qué cuenta vino, y nadie escribe a nombre de otro.
     Con `roles`, la cuenta del dueño exporta además `admin.<dueño>` solo a las cuentas admin, que lo importan
-    con `share` (telar.personas).
+    con `share` (telar.personas), y `alojar.<dueño>` a todas, que lo importan con `share` (telar.alojamiento).
     La dirección, el puerto y la carpeta de datos van en la línea de órdenes (telar-bus.service)."""
     roles = roles or {}
     dueno = next((n for n, r in roles.items() if r == DUENO and n in personas), "")
@@ -141,6 +144,8 @@ def configuracion(personas: dict[str, str], roles: dict[str, str] | None = None)
         if nombre == dueno and admins:
             cuentas_admin = ", ".join(f'"{a}"' for a in admins)
             lineas.append(f'      {{ service: "{ADMIN.format(dueno)}", accounts: [ {cuentas_admin} ] }}')
+        if nombre == dueno:
+            lineas.append(f'      {{ service: "{ALOJAR.format(dueno)}" }}')
         lineas.append("    ]")
         if otras:
             lineas.append("    imports: [")
@@ -151,6 +156,8 @@ def configuracion(personas: dict[str, str], roles: dict[str, str] | None = None)
                 ]
             if nombre in admins:
                 lineas.append(f'      {{ service: {{ account: "{dueno}", subject: "{ADMIN.format(dueno)}" }}, share: true }}')
+            if dueno and nombre != dueno:
+                lineas.append(f'      {{ service: {{ account: "{dueno}", subject: "{ALOJAR.format(dueno)}" }}, share: true }}')
             lineas.append("    ]")
         lineas.append("  }")
     lineas.append("}")
@@ -183,6 +190,18 @@ def escribir(base: Path, personas: dict[str, str]) -> Path:
     conf = base / "servidor.conf"
     _escribir_privado(conf, configuracion(personas, roles))
     return conf
+
+
+def verificar(secreto: str, hash_: str) -> bool:
+    """Si `secreto` es el de ese hash (el de la cuenta): así se sabe que quien lo manda es quien dice."""
+    try:
+        import bcrypt
+    except ImportError as e:
+        raise ErrorDeCuentas("falta bcrypt: instala telar con el extra «bus»") from e
+    try:
+        return bcrypt.checkpw(secreto.encode(), hash_.encode())
+    except ValueError:
+        return False
 
 
 def guardar_secreto(ruta: Path, secreto: str) -> None:

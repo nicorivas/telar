@@ -59,6 +59,7 @@ ORDENES: dict[str, str] = {
     "espejo": "Los hilos de otra máquina, vistos desde esta.",
     "equipo": "Que una persona de confianza vea tus tareas del equipo y te sugiera prioridades.",
     "persona": "Las personas de este servidor: darles de alta con un perfil, verlas, cerrarles el acceso.",
+    "servidor": "Un lugar para ti en el servidor, que alberga hilos de varias personas.",
     "imagen": "Llevar una imagen del portapapeles (o un archivo) a la máquina donde corre el hilo.",
     "serve": "La API de telar: los mismos datos que la CLI, por HTTP, desde un proceso que se queda.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",

@@ -155,6 +155,9 @@ body.angosto #lado { display: none; }
   & a:hover { color: var(--fg); }
   & a.si { color: var(--violeta); }
   & .tecla { color: var(--dim); font-size: var(--t-chica); }
+
+  /* en una pantalla táctil no hay ⌥: los atajos sobran */
+  @media (pointer: coarse) { & .tecla { display: none; } }
   & .lleno { flex: 1; }
 }
 

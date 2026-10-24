@@ -10,6 +10,7 @@ para el correo entre personas, hasta que el bus las cruce
 | archivo | qué hace | se instala en |
 | --- | --- | --- |
 | *(`telar persona`)* | dar de alta a un colega: usuario, ssh, tope de recursos, correo y su propio telar y Claude Code. Es una orden de telar, no un archivo de esta carpeta | `telar persona crear NOMBRE --llave …` |
+| `telar-alojar`, `telar-alojar.service`, `telar-alojar.path` | el ayudante de root del alojamiento: crea y cierra el lugar de quien pide uno por el bus (más abajo) | `/usr/local/sbin/telar-alojar`, `/etc/systemd/system/` |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
 
@@ -118,3 +119,27 @@ los hilos que se le digan (`--correo faro`), y su `uv`, Claude Code y telar inst
 home. `--seco` muestra el plan; sin root, deja un guion para `sudo bash`. Quedan para quien
 administra: abrir el puerto 22 en Tailscale para su nodo, y que la persona haga `claude login`
 con su cuenta. Ver `telar persona --help`.
+
+
+## Alojar a otras personas (el servidor como mainframe)
+
+Quien ya está en el bus puede pedir un lugar en el servidor (`telar servidor pedir`) y, aprobado, tiene ahí su
+usuario, su telar y su nodo, con sus hilos visibles desde su laptop. El diseño está en
+[`docs/arquitectura.md`](../docs/arquitectura.md), «El servidor como mainframe». Lo único que se instala a mano,
+una vez, en la máquina del bus (el nodo de telar no tiene root ni sudo, y no lo necesita):
+
+```
+sudo install -m 755 telar-alojar /usr/local/sbin/telar-alojar
+sudo install -m 644 telar-alojar.service telar-alojar.path /etc/systemd/system/
+sudo install -d -o <quien corre el bus> -m 700 /var/spool/telar-alojar /var/spool/telar-alojar/pendientes /var/spool/telar-alojar/resultados
+sudo systemctl daemon-reload && sudo systemctl enable --now telar-alojar.path
+sudo /usr/local/sbin/telar-alojar --seco    # imprime los pasos de lo que haya pendiente, sin hacerlos
+```
+
+Después hay que reiniciar el nodo de la máquina del bus (para que atienda `alojar.<dueño>`) y recargar el bus, para
+que su cuenta exporte el servicio: `systemctl --user reload telar-bus` (la configuración se reescribe con cualquier
+cambio de cuentas, p. ej. `telar bus rol`). Cada alojado es un usuario Linux con el nombre de su cuenta del bus; el
+ayudante no toca un usuario que no creó él (queda anotado en `/etc/telar/alojados.d/`). Cada uno recibe un puerto de
+página desde el 8781: en una red de Tailscale con reglas de acceso, ábrelos para quienes alojes. Para cerrar un
+lugar: `telar servidor quitar PERSONA` (bloquea la cuenta y conserva la carpeta; `userdel -r` a mano si hay que
+borrarla).

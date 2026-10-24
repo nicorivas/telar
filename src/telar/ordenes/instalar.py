@@ -58,6 +58,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--persona", default="", help="con --bus: tu nombre en el bus, si no es tu usuario")
     p.add_argument("--unirse", nargs="?", const="", default=None, metavar="CARPETA",
                    help="unirse al equipo del repositorio de aquí (o de CARPETA): su .telar/equipo.yaml")
+    p.add_argument("--web-puerto", dest="web_puerto", type=int, default=0, metavar="N",
+                   help="el puerto de la página de esta máquina, si no es el 8780 (un servidor que aloja a varias personas)")
     p.add_argument("--sin-servicio", action="store_true", help="no instalar el servicio")
     p.add_argument("--sin-agente", action="store_true", help="no instalar los ganchos del agente")
     o, codigo = _comun.parsear(p, argv)
@@ -120,13 +122,13 @@ def main(argv: list[str], ctx) -> int:
     return codigo
 
 
-def direccion_pagina() -> tuple[str, str]:
+def direccion_pagina(puerto: int = 0) -> tuple[str, str]:
     """(la dirección de la página de esta máquina, la misma con la llave para entrar la primera vez). Donde la sirve
     `telar serve --web`: la IP de Tailscale, o 127.0.0.1 sin ella, en el puerto de siempre."""
     from telar import api_web
     from telar.ordenes.equipo import ip_de_tailscale
 
-    base = f"http://{ip_de_tailscale() or '127.0.0.1'}:{PUERTO_PAGINA}"
+    base = f"http://{ip_de_tailscale() or '127.0.0.1'}:{puerto or PUERTO_PAGINA}"
     try:
         llave = api_web.ruta_llave().read_text(encoding="utf-8").strip()
     except OSError:
@@ -140,7 +142,7 @@ PUERTO_PAGINA = 8780
 
 def _decir_pagina(o) -> None:
     """Al final, dónde está la página: con la llave, que el navegador guarda en una cookie la primera vez."""
-    base, con_llave = direccion_pagina()
+    base, con_llave = direccion_pagina(getattr(o, "web_puerto", 0))
     print()
     print(f"  {_comun.verde('→')} {_comun.fuerte('Tu página:')} {con_llave}")
     detalle = (f"la primera vez entra con la llave; después basta {base}, desde esta máquina o desde tu celular "
@@ -253,7 +255,7 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
         hay_bus = _unirse(ctx, o, ruta, pasos, hay_bus, avisos)
 
     if not o.sin_servicio:
-        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta))
+        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta), web_puerto=o.web_puerto)
         if not donde.exists() or donde.read_text(encoding="utf-8") != texto:
             que = "instalar" if not donde.exists() else "actualizar"
             pasos.append((lambda: _servicio(donde, texto), f"{que} el servicio de telar serve ({donde})"))

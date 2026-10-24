@@ -262,6 +262,9 @@ body.angosto #lado { display: none; }
   & a:hover { color: var(--fg); }
   & a.si { color: var(--violeta); }
   & .tecla { color: var(--dim); font-size: var(--t-chica); }
+
+  /* en una pantalla táctil no hay ⌥: los atajos sobran */
+  @media (pointer: coarse) { & .tecla { display: none; } }
   & .lleno { flex: 1; }
 }
 
@@ -1388,6 +1391,33 @@ body.angosto.en-detalle #barra { display: none; }
       overflow-wrap: anywhere;
     }
 
+    /* el markdown del agente: ya viene en bloques, no hay que respetar los saltos del texto */
+    & .cuerpo.md {
+      white-space: normal;
+
+      & > :first-child { margin-top: 0; }
+      & > :last-child { margin-bottom: 0; }
+      & p,
+      & ul,
+      & ol,
+      & pre,
+      & blockquote,
+      & table { margin: .5em 0; }
+      & ul,
+      & ol { padding-left: 2ch; }
+      & pre {
+        overflow-x: auto;
+        white-space: pre;
+        padding: .5em;
+        background: var(--fondo-2, rgb(128 128 128 / 12%));
+      }
+      & code { font-size: .92em; }
+      & table { display: block; overflow-x: auto; border-collapse: collapse; }
+      & th,
+      & td { padding: .2em .6em; border: var(--borde); }
+      & blockquote { padding-left: 1ch; border-left: 2px solid var(--dim); color: var(--dim); }
+    }
+
     &.usuario .quien,
     &.usuario .cuerpo { color: var(--azul); }
 
@@ -1451,9 +1481,6 @@ body.angosto.en-detalle #barra { display: none; }
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      /* en una pantalla táctil, bajo 16 px el iPhone agranda la página al escribir */
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & button {
@@ -1525,8 +1552,6 @@ body.angosto.en-detalle #barra { display: none; }
 
       &:focus { border-left-color: var(--azul); }
       &::placeholder { color: var(--dim); }
-
-      @media (pointer: coarse) { font-size: max(16px, 1em); }
     }
 
     & .ayuda {

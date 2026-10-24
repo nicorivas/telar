@@ -6,6 +6,26 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- The server as a mainframe: anyone already on the bus can ask for a place on the server (`telar servidor pedir`),
+  whoever administers it approves (`telar servidor pedidos | aprobar | rechazar | quitar`), and the server sets up
+  a Linux user with resource limits, its own telar, Claude Code and node on the person's own bus account, so their
+  threads live there and show up on their other machines like any machine of theirs. The request goes to a new
+  bus service, `alojar.<owner>`, exported to every account (`telar.alojamiento`). What needs root is done by
+  `servidor/telar-alojar`, a root systemd service that watches a spool folder: the node never gets sudo. See
+  `docs/arquitectura.md`, «El servidor como mainframe».
+- The machines view (`/maquinas`) lists the mainframe servers of the bus with the state of your request and a
+  «pedir un lugar» button; whoever administers approves, rejects or removes from the same view
+  (`GET /alojamiento.json`, `POST /alojamiento/<action>`).
+- `telar instalar --web-puerto N`: the page of a machine on a port other than 8780 (a server that hosts several
+  people gives each their own).
+
+### Changed
+
+- `telar.personas.por_el_bus`: the request/response to a bus service, factored out of `personas.pedir` so the new
+  service uses it too. Same behavior.
+
 ## [0.5.1] — 2026-10-24
 
 ### Added

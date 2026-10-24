@@ -160,9 +160,6 @@ def dueno_del_bus(config) -> str:
 
 def pedir(config, pedido: dict) -> dict:
     """Una acción de gestión: aquí mismo si esta es la máquina del bus; si no, a su nodo, por el bus."""
-    import asyncio
-    import json
-
     from telar import bus as mod_bus
     from telar import cuentas, unirse
 
@@ -171,11 +168,23 @@ def pedir(config, pedido: dict) -> dict:
         return atender(yo, yo, pedido)
     if not mod_bus.hay_bus(config):
         raise ErrorDePersonas("no hay bus: la gestión de personas vive en la máquina del bus", 404)
-    tema = cuentas.ADMIN.format(dueno_del_bus(config))
+    return por_el_bus(config, cuentas.ADMIN.format(dueno_del_bus(config)), pedido,
+                      sin_respuesta="no administras el bus, o su máquina no está atendiendo (¿sin su nodo, o con un "
+                                    "telar más viejo?)")
+
+
+def por_el_bus(config, tema: str, pedido: dict, *, plazo: float = ESPERA, sin_respuesta: str = "") -> dict:
+    """Un pedido con respuesta a un servicio del bus (`tema`), con el JSON que contesta su nodo: `ok: false` es un
+    ErrorDePersonas con su código. Por la conexión del nodo si esta máquina tiene una viva; si no, por una propia."""
+    import asyncio
+    import json
+
+    from telar import bus as mod_bus
+
     cuerpo = json.dumps(pedido, ensure_ascii=False).encode()
 
     async def _por(nc):
-        r = await nc.request(tema, cuerpo, timeout=ESPERA)
+        r = await nc.request(tema, cuerpo, timeout=plazo)
         return json.loads(r.data)
 
     async def _pedir():
@@ -189,15 +198,14 @@ def pedir(config, pedido: dict) -> dict:
         viva = mod_bus._conexion_viva()
         if viva is not None:
             nc, bucle = viva
-            r = asyncio.run_coroutine_threadsafe(asyncio.wait_for(_por(nc), ESPERA + 5), bucle).result(ESPERA + 10)
+            r = asyncio.run_coroutine_threadsafe(asyncio.wait_for(_por(nc), plazo + 5), bucle).result(plazo + 10)
         else:
-            r = asyncio.run(asyncio.wait_for(_pedir(), ESPERA + 5))
+            r = asyncio.run(asyncio.wait_for(_pedir(), plazo + 5))
     except mod_bus.ErrorDeBus as e:
         raise ErrorDePersonas(str(e), 502) from None
     except Exception as e:  # noqa: BLE001 - nadie atiende, o no a tiempo
         if "NoResponders" in type(e).__name__:
-            raise ErrorDePersonas("no administras el bus, o su máquina no está atendiendo (¿sin su nodo, o con un "
-                                  "telar más viejo?)", 403) from None
+            raise ErrorDePersonas(sin_respuesta or "nadie atiende ese servicio del bus", 403) from None
         raise ErrorDePersonas(f"la máquina del bus no respondió: {type(e).__name__}", 502) from None
     if not isinstance(r, dict):
         raise ErrorDePersonas("la máquina del bus no devolvió JSON", 502)

@@ -137,6 +137,58 @@ class LasMaquinas(Prueba):
         c.cookies.clear()
         self.assertEqual(c.get("/maquinas.json").status_code, 403, "la lista, solo con la llave")
 
+    def _app_con_bus(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        config = SimpleNamespace(bus=SimpleNamespace(url="nats://100.1.1.1:4222", persona="pablo", administra="nico",
+                                                     token="", maquina="laptop"))
+        c = TestClient(api_web.crear(FastAPI(), clave="llave", config=config), base_url="http://otra:8780")
+        c.cookies.set(api_web.COOKIE, "llave")
+        c.headers["Origin"] = "http://otra:8780"
+        return c
+
+    def test_los_servidores_mainframe_salen_con_mi_lugar(self):
+        from telar import alojamiento
+
+        respuesta = {"dueno": "nico", "quien": "pablo", "administra": False, "servidor": "telar",
+                     "alojamientos": [{"persona": "pablo", "estado": "pendiente"}]}
+        with mock.patch.object(alojamiento, "pedir", return_value=respuesta) as pedir:
+            d = self._app_con_bus().get("/alojamiento.json").json()
+        pedir.assert_called_once()
+        self.assertEqual(d["servidores"], [{"nombre": "telar", "dueno": "nico", "quien": "pablo", "administra": False,
+                                            "alojamientos": [{"persona": "pablo", "estado": "pendiente"}]}])
+
+    def test_sin_nadie_que_atienda_no_hay_servidores_y_no_es_un_error(self):
+        from telar import alojamiento
+
+        with mock.patch.object(alojamiento, "pedir", side_effect=alojamiento.ErrorDeAlojamiento("nadie atiende", 403)):
+            r = self._app_con_bus().get("/alojamiento.json")
+        self.assertEqual((r.status_code, r.json()["servidores"]), (200, []))
+
+    def test_pedir_un_lugar_pone_el_secreto_aqui_y_no_viene_de_la_pagina(self):
+        from telar import alojamiento
+
+        c = self._app_con_bus()
+        with mock.patch.object(alojamiento, "datos_de_pedir", return_value={"secreto": "S", "maquina": "laptop"}) as datos, \
+                mock.patch.object(alojamiento, "pedir", return_value={"ok": True, "hecho": "anotado"}) as pedir:
+            r = c.post("/alojamiento/pedir", json={"llave": "ssh-ed25519 AAA", "secreto": "robado", "accion": "quitar"})
+        self.assertEqual(r.json()["hecho"], "anotado")
+        datos.assert_called_once()
+        self.assertEqual(datos.call_args.args[1], "ssh-ed25519 AAA")
+        self.assertEqual(pedir.call_args.args[1], {"accion": "pedir", "persona": "", "secreto": "S", "maquina": "laptop"})
+
+    def test_decidir_y_los_errores_con_su_codigo(self):
+        from telar import alojamiento
+
+        c = self._app_con_bus()
+        with mock.patch.object(alojamiento, "pedir", side_effect=alojamiento.ErrorDeAlojamiento("no administras", 403)):
+            r = c.post("/alojamiento/aprobar", json={"persona": "carla"})
+        self.assertEqual((r.status_code, r.json()["detail"]), (403, "no administras"))
+        self.assertEqual(c.post("/alojamiento/borrar", json={}).status_code, 404)
+        c.headers["Origin"] = "http://ajena"
+        self.assertEqual(c.post("/alojamiento/pedir", json={}).status_code, 403, "desde otra página, no")
+
 
 class LaTerminal(Prueba):
     """`/pty`: la terminal de un hilo. Sin la llave o desde otra página, ni se abre; con las dos, va y vuelve.
