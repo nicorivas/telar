@@ -3,14 +3,23 @@
 // para escribirle sin el viaje de ida y vuelta de cada tecla (lo escrito va entero al apretar ⏎). Se dibuja en un
 // elemento de la página; sus estilos, en media/css/terminal.css (con @scope, en `.v-terminal`).
 //
+// Un archivo arrastrado y soltado aquí deja su ruta en el chat, como en la terminal de VS Code: en la caja, donde
+// está el cursor; en la terminal, pegada, sin ⏎. Si el hilo es de otra máquina, o el arrastre no trae la ruta (solo
+// el archivo), el archivo va antes a la carpeta de entrada de la máquina del hilo y se escribe la ruta de allá
+// (`recibirArrastres`; lo que se lee del arrastre, en web/arrastre.ts).
+//
 // xterm.js lo sirve telar.api_web en `/estatico/xterm` (copiado de node_modules, y guardado una semana en el
 // navegador): se carga una vez, la primera vez que se abre una terminal.
 
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 
+import * as cli from '../cli';
+import { modelo } from '../modelo';
 import { conEco } from '../navegador/eco/entrada';
-import { abrirHipervinculo, enlazarTerminal } from './rutas-agente';
+import { insertar, juntar, rutasDe, tamano, traeArchivos } from './arrastre';
+import { abrirHipervinculo, enlazarTerminal, maquinaDe } from './rutas-agente';
+import * as ui from './ui';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 declare global {
@@ -52,7 +61,7 @@ function enchufe(ruta: string): string {
 export function montar(raiz: HTMLElement, rutas: RutasVista): Vista {
     raiz.classList.add('v-terminal');
     raiz.innerHTML = '<div class="caja"><canvas class="fondo" aria-hidden="true"></canvas><div class="t"></div></div>'
-        + '<form class="escribir"><textarea rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea>'
+        + '<form class="escribir"><div class="soltar" hidden></div><textarea rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea>'
         + '<span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>';
     let cerrada = false;
     let deshacer: (() => void)[] = [];
@@ -197,10 +206,99 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
             e.preventDefault(); teclear(e.key === 'ArrowUp' ? '\u001b[A' : '\u001b[B');
         }
     });
+    // un archivo soltado: en la caja, la ruta donde está el cursor (se sigue escribiendo y se manda con ⏎); en la
+    // terminal, como un pegado pero sin el ⏎ (quien escribe decide cuándo mandarlo), con un espacio para seguir
+    deshacer.push(recibirArrastres(raiz, rutas, {
+        caja: s => {
+            const r = insertar(texto.value, texto.selectionStart, texto.selectionEnd, s);
+            texto.value = r.valor; texto.setSelectionRange(r.cursor, r.cursor); crecer(); texto.focus();
+        },
+        terminal: s => { teclear(`\u001b[200~${s} \u001b[201~`); term.focus(); },
+    }));
     const observador = new ResizeObserver(ajustar);
     observador.observe(caja);
     deshacer.push(() => observador.disconnect());
     return { term, eco, deshacer };
+}
+
+/** Lo que se arrastra a la vista y se suelta. Si el arrastre trae la ruta, se usa; si no, se pregunta y se sube;
+ *  nunca se adivina una ruta ni se navega al archivo (lo que el navegador hace de fábrica). La ruta va a `caja` si
+ *  se soltó sobre la caja de abajo, y a `terminal` si sobre la terminal. Con el hilo en otra máquina, la ruta de
+ *  aquí no le sirve: el archivo se copia a su carpeta de entrada (`POST /api/archivos/entrada`) y se escribe la de
+ *  allá. El aviso (lo que se copia, o la pregunta de si subir) va en una franja sobre la caja. Devuelve cómo
+ *  dejar de escuchar. */
+function recibirArrastres(raiz: HTMLElement, rutas: RutasVista, a: { caja(s: string): void; terminal(s: string): void }): () => void {
+    const form = raiz.querySelector<HTMLFormElement>('form.escribir')!;
+    const franja = raiz.querySelector<HTMLElement>('.soltar')!;
+    // mientras copia o sube, otro archivo soltado espera (una pregunta sin contestar, en cambio, la reemplaza el nuevo)
+    let ocupada = false;
+    const avisar = (html: string, tenue: boolean) => {
+        franja.innerHTML = html; franja.classList.toggle('tenue', tenue); franja.hidden = false;
+    };
+    const cerrar = () => { franja.hidden = true; franja.textContent = ''; ocupada = false; };
+    const esc = (t: string) => t.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+    /** Las rutas de allá de cada archivo, en orden; si uno falla, se dice y se sigue con los demás. */
+    const llevar = async (pedidos: (() => Promise<cli.Respuesta<cli.JsonEntrada>>)[]): Promise<string[]> => {
+        const hechas: string[] = [];
+        for (const pedir of pedidos) {
+            const r = await pedir();
+            if (r.datos) hechas.push(r.datos.ruta);
+            else void ui.falla(`no se copió: ${r.error ?? 'sin respuesta'}`);
+        }
+        return hechas;
+    };
+
+    const sobre = (e: DragEvent) => {
+        if (!e.dataTransfer || !traeArchivos(e.dataTransfer.types)) return;
+        e.preventDefault();   // sin esto no hay drop, y el navegador abre el archivo
+        e.dataTransfer.dropEffect = 'copy';
+    };
+    const soltar = (e: DragEvent) => {
+        const dt = e.dataTransfer;
+        if (!dt) return;
+        const enCaja = form.contains(e.target as Node);
+        const dar = enCaja ? a.caja : a.terminal;
+        const traidas = rutasDe(dt), archivos = [...dt.files];
+        if (!traidas.length && !archivos.length) {
+            // un texto o un enlace, no un archivo: en la caja lo pone el navegador; en la terminal, pegado (y no se
+            // navega al enlace)
+            if (enCaja) return;
+            e.preventDefault();
+            const t = dt.getData('text/plain').trim();
+            if (t) dar(t);
+            return;
+        }
+        e.preventDefault();
+        if (ocupada) { void ui.aviso('todavía estoy con lo anterior: suéltalo de nuevo cuando termine'); return; }
+        const maquina = maquinaDe(rutas), alla = maquina && maquina !== modelo.aqui ? maquina : '';
+        if (traidas.length && !alla) { dar(juntar(traidas)); return; }
+        if (traidas.length) {
+            ocupada = true;
+            // la ruta es de aquí y el hilo, de otra máquina: se copia allá, y mientras, un aviso tenue
+            const nombres = traidas.map(r => r.split(/[\\/]/).pop()).join(', ');
+            avisar(`copiando ${esc(nombres)} a ~/telar-entrada de ${esc(alla)}…`, true);
+            void llevar(traidas.map(r => () => cli.entradaPorRuta(rutas.hilo, alla, r)))
+                .then(hechas => { if (hechas.length) dar(juntar(hechas)); }).finally(cerrar);
+            return;
+        }
+        // solo el archivo, sin su ruta: se pregunta antes de subirlo (puede ser grande, y queda guardado allá)
+        const destino = `~/telar-entrada de ${alla || modelo.aqui || 'esta máquina'}`;
+        const total = archivos.reduce((n, f) => n + f.size, 0);
+        const que = archivos.length === 1 ? esc(archivos[0].name) : `${archivos.length} archivos (${esc(archivos.map(f => f.name).join(', '))})`;
+        avisar(`<span>¿guardar ${que} · ${tamano(total)} en ${esc(destino)}?</span>`
+            + '<button type="button" class="si">guardar</button><button type="button" class="no">no</button>', false);
+        franja.querySelector<HTMLButtonElement>('.si')!.focus();
+        franja.querySelector('.no')!.addEventListener('click', cerrar);
+        franja.querySelector('.si')!.addEventListener('click', () => {
+            ocupada = true;
+            avisar(`subiendo ${que} a ${esc(destino)}…`, true);
+            void llevar(archivos.map(f => () => cli.entradaSubida(rutas.hilo, alla, f)))
+                .then(hechas => { if (hechas.length) dar(juntar(hechas)); }).finally(cerrar);
+        });
+    };
+    raiz.addEventListener('dragover', sobre);
+    raiz.addEventListener('drop', soltar);
+    return () => { raiz.removeEventListener('dragover', sobre); raiz.removeEventListener('drop', soltar); };
 }
 
 /** Alrededor de la terminal, un telar muy tenue: la urdimbre quieta y, de vez en cuando, un hilo de trama que

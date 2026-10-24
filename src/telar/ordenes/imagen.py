@@ -59,13 +59,28 @@ def del_portapapeles(destino: Path) -> str:
     return ""
 
 
-def subir(remoto, ruta: Path, nombre: str) -> tuple[str, str]:
-    """Copia `ruta` a ~/telar-entrada/<nombre> en la otra máquina. (ruta allá, "") o ("", por qué no)."""
-    guion = f"mkdir -p ~/{CARPETA} && cat > ~/{CARPETA}/{shlex.quote(nombre)} && echo \"$HOME/{CARPETA}/\"{shlex.quote(nombre)}"
+def con_sufijo(nombre: str, n: int) -> str:
+    """`informe.pdf` con su sufijo `n`: `informe-2.pdf`. Lo que se usa cuando ya hay uno con ese nombre."""
+    p = Path(nombre)
+    return f"{p.stem}-{n}{p.suffix}"
+
+
+def subir(remoto, ruta: Path, nombre: str, espera: float = 60) -> tuple[str, str]:
+    """Copia `ruta` a ~/telar-entrada/<nombre> en la otra máquina, sin pisar uno que ya esté ahí: si el nombre
+    está tomado, `con_sufijo` (-2, -3…). (ruta allá, "") o ("", por qué no). `espera`: los segundos que puede
+    tardar la copia entera (un archivo grande por una red lenta tarda más que una captura)."""
+    p = Path(nombre)
+    # el archivo se crea con noclobber (set -C): crearlo y ver que no existía es una sola operación, así dos
+    # copias a la vez no eligen el mismo nombre
+    guion = (f"mkdir -p ~/{CARPETA} && cd ~/{CARPETA} && n={shlex.quote(nombre)} && i=2 && "
+             f"until (set -C; : > \"$n\") 2>/dev/null; do "
+             f"[ $i -le 999 ] || {{ echo 'no hay un nombre libre en ~/{CARPETA}' >&2; exit 1; }}; "
+             f"n={shlex.quote(p.stem)}-$i{shlex.quote(p.suffix)}; i=$((i+1)); done && "
+             f"cat > \"$n\" && echo \"$HOME/{CARPETA}/$n\"")
     try:
         with ruta.open("rb") as f:
             r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", remoto.destino,
-                                shlex.join(["bash", "-lc", guion])], stdin=f, capture_output=True, text=True, timeout=60)
+                                shlex.join(["bash", "-lc", guion])], stdin=f, capture_output=True, text=True, timeout=espera)
     except (OSError, subprocess.TimeoutExpired) as e:
         return "", f"no pude hablar con {remoto.destino}: {e}"
     if r.returncode != 0:

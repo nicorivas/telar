@@ -473,7 +473,12 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   si la máquina del archivo tiene el módulo): se piden después de mostrarlo, porque el grafo lee el repositorio
   entero. Lo que muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ …» vuelve al documento
   anterior (el visor anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋:
-  `navegador/app.ts` recuerda de dónde se vino.
+  `navegador/app.ts` recuerda de dónde se vino. Un archivo arrastrado a la terminal deja su ruta en el chat: en la
+  caja de abajo, donde está el cursor; sobre la terminal, pegada sin ⏎. Si el arrastre trae la ruta (VS Code, una
+  terminal, Safari con el Finder), se usa; si trae solo el archivo (Chrome con el Finder, Windows), la página
+  pregunta y lo sube. Para un hilo de otra máquina, o para lo subido, el archivo va antes a la carpeta de entrada
+  de la máquina del hilo (`POST /api/archivos/entrada`: a otra máquina, por ssh como `telar imagen`; hasta 200 MB, sin pisar nada)
+  y se escribe la ruta de allá. Lo que se lee del arrastre está en `web/arrastre.ts`; nunca se navega al archivo.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un texto largo con a quién va, un

@@ -118,3 +118,111 @@ class LosArchivos(Prueba):
         self.assertTrue(archivos.leer_para_otra(self.ctx, {"ruta": "proyectos/faro/README.md"})["ok"])
         r = archivos.leer_para_otra(self.ctx, {"ruta": str(self.afuera)})
         self.assertEqual((r["ok"], r["codigo"]), (False, 403))
+
+
+class LaEntrada(Prueba):
+    """Lo que se arrastra a un hilo y queda en la carpeta de entrada de su máquina: aquí se escribe; a otra máquina
+    se copia con `imagen.subir`, que en las pruebas es un doble (nada de ssh)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.entrada = base / "entrada"
+        self.ctx = SimpleNamespace(config=SimpleNamespace(
+            bus=SimpleNamespace(maquina="laptop", entrada=str(self.entrada)), puerta=SimpleNamespace(entrada=""),
+            remotos=[SimpleNamespace(nombre="servidor", destino="ana@servidor")]))
+        self.archivo = base / "informe final.pdf"
+        self.archivo.write_bytes(b"%PDF-1.7")
+
+    def test_el_nombre_queda_en_su_ultimo_tramo(self):
+        self.assertEqual(archivos.nombre_seguro("../../etc/passwd"), "passwd")
+        self.assertEqual(archivos.nombre_seguro("C:\\Users\\ana\\informe final.pdf"), "informe final.pdf")
+        self.assertEqual(archivos.nombre_seguro("año\x07 2026.txt"), "año 2026.txt")
+        largo = archivos.nombre_seguro("a" * 300 + ".pdf")
+        self.assertTrue(largo.endswith(".pdf"))
+        self.assertLessEqual(len(largo.encode()), archivos.LARGO_NOMBRE)
+        for malo in ("", "..", ".", "  ", "carpeta/", "\x00"):
+            with self.assertRaises(ErrorDeServicio, msg=repr(malo)) as e:
+                archivos.nombre_seguro(malo)
+            self.assertEqual(e.exception.codigo, 422)
+
+    def test_aqui_se_escribe_sin_pisar_el_que_ya_estaba(self):
+        import io
+
+        uno = archivos.desde_bytes(self.ctx, "", "nota.txt", io.BytesIO(b"uno"))
+        dos = archivos.desde_bytes(self.ctx, "laptop", "../nota.txt", io.BytesIO(b"dos"))
+        tres = archivos.desde_bytes(self.ctx, "", "nota.txt", io.BytesIO(b"tres"))
+        self.assertEqual([Path(x.ruta).name for x in (uno, dos, tres)], ["nota.txt", "nota-2.txt", "nota-3.txt"])
+        self.assertEqual((self.entrada / "nota.txt").read_bytes(), b"uno")
+        self.assertEqual((self.entrada / "nota-2.txt").read_bytes(), b"dos")
+        self.assertEqual((uno.maquina, uno.bytes), ("", 3))
+        # sin temporales que queden atrás
+        self.assertEqual(sorted(p.name for p in self.entrada.iterdir()), ["nota-2.txt", "nota-3.txt", "nota.txt"])
+
+    def test_lo_que_pasa_del_tope_no_queda(self):
+        import io
+        from unittest import mock
+
+        with mock.patch.object(archivos, "TOPE_ENTRADA", 10):
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.desde_bytes(self.ctx, "", "grande.bin", io.BytesIO(b"x" * 11))
+            self.assertEqual(e.exception.codigo, 413)
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.desde_ruta(self.ctx, "servidor", str(self.archivo.with_name("grande.bin")))
+            self.assertEqual(e.exception.codigo, 404)
+            (Path(self.tmp.name) / "grande.bin").write_bytes(b"x" * 11)
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.desde_ruta(self.ctx, "servidor", str(Path(self.tmp.name) / "grande.bin"))
+            self.assertEqual(e.exception.codigo, 413)
+        self.assertEqual(list(self.entrada.iterdir()), [])
+
+    def test_a_otra_maquina_se_copia_con_subir(self):
+        import io
+        from unittest import mock
+
+        from telar.ordenes import imagen
+
+        vistos = []
+
+        def subir(remoto, ruta, nombre, espera=60):
+            vistos.append((remoto.destino, Path(ruta).read_bytes(), nombre))
+            return f"/home/ana/telar-entrada/{nombre}", ""
+
+        with mock.patch.object(imagen, "subir", side_effect=subir):
+            r = archivos.desde_ruta(self.ctx, "servidor", str(self.archivo))
+            s = archivos.desde_bytes(self.ctx, "servidor", "captura.png", io.BytesIO(b"\x89PNG"))
+        self.assertEqual((r.ruta, r.maquina, r.bytes), ("/home/ana/telar-entrada/informe final.pdf", "servidor", 8))
+        self.assertEqual(s.ruta, "/home/ana/telar-entrada/captura.png")
+        self.assertEqual(vistos, [("ana@servidor", b"%PDF-1.7", "informe final.pdf"),
+                                  ("ana@servidor", b"\x89PNG", "captura.png")])
+        self.assertFalse(self.entrada.exists())   # nada quedó aquí
+
+    def test_una_copia_que_falla_lo_dice(self):
+        from unittest import mock
+
+        from telar.ordenes import imagen
+
+        with mock.patch.object(imagen, "subir", return_value=("", "Permission denied")):
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.desde_ruta(self.ctx, "servidor", str(self.archivo))
+        self.assertEqual(e.exception.codigo, 502)
+        self.assertIn("Permission denied", str(e.exception))
+
+    def test_lo_que_no_se_puede_copiar(self):
+        from unittest import mock
+
+        from telar.ordenes import imagen
+
+        with mock.patch.object(imagen, "subir") as subir:
+            for maquina, ruta, codigo in (("nadie", str(self.archivo), 404),           # no está en [remotos]
+                                          ("servidor", "informe.pdf", 422),            # sin la ruta entera
+                                          ("servidor", self.tmp.name, 404),            # una carpeta
+                                          ("servidor", str(self.archivo) + "x", 404)):  # no existe
+                with self.assertRaises(ErrorDeServicio, msg=(maquina, ruta)) as e:
+                    archivos.desde_ruta(self.ctx, maquina, ruta)
+                self.assertEqual(e.exception.codigo, codigo, (maquina, ruta))
+        subir.assert_not_called()
+        # para un hilo de esta máquina no hay nada que copiar: la ruta, tal cual
+        self.assertEqual(archivos.desde_ruta(self.ctx, "laptop", str(self.archivo)).ruta, str(self.archivo.resolve()))

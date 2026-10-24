@@ -1529,6 +1529,7 @@ body.angosto.en-detalle #barra { display: none; }
 
   .escribir {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--h-1);
     align-items: flex-end;
     padding: var(--e-1) var(--h-1);
@@ -1558,6 +1559,35 @@ body.angosto.en-detalle #barra { display: none; }
       color: var(--dim);
       font-size: var(--t-chica);
       white-space: nowrap;
+    }
+
+    /* un archivo soltado (web/terminal.ts, recibirArrastres): una línea entera sobre la caja, con la pregunta y sus
+       botones; tenue mientras se copia */
+    & .soltar {
+      display: flex;
+      flex-basis: 100%;
+      flex-wrap: wrap;
+      gap: var(--h-1);
+      align-items: baseline;
+      padding: 0 var(--h-1);
+      border-left: 2px solid var(--amarillo);
+
+      &[hidden] { display: none; }
+      &.tenue { border-left-color: var(--linea); color: var(--dim); }
+
+      & span { min-width: 0; overflow-wrap: anywhere; }
+
+      & button {
+        padding: 0 var(--h-1);
+        border: var(--borde);
+        background: transparent;
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+
+        &:hover, &:focus-visible { background: var(--hover); }
+        &.si { border-color: var(--amarillo); color: var(--amarillo); }
+      }
     }
   }
 }

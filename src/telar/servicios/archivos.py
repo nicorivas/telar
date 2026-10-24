@@ -15,8 +15,16 @@ preparación de una reunión, la página y la memoria de un lienzo). En el naveg
 - **En otra máquina**: `leer_en` con `maquina` se lo pide al nodo de esa máquina por el bus, que lo lee con
   sus propios límites (su raíz, sus repos, sus apps): el visor de la página abre `servidor:docs/x.md` sin
   copiarlo antes.
+- **Dejar en la entrada**: lo que se arrastra a la terminal de un hilo (web/terminal.ts) y el hilo no puede
+  leer donde está. Va a la carpeta de entrada de la máquina del hilo: aquí, la de `[bus] entrada` (por
+  defecto `~/telar-entrada`); en otra, `~/telar-entrada`, la de `telar imagen`. Son los bytes que sube la
+  página (`desde_bytes`), o un archivo de esta máquina nombrado por su ruta (`desde_ruta`), que a un hilo de
+  otra máquina se le copia por ssh (`imagen.subir`, con el `destino` de `[remotos]`). Del nombre
+  queda solo el último tramo, sin separadores ni caracteres de control; si ya hay uno igual, `-2`, `-3`…:
+  nunca se pisa nada. Hasta 200 MB.
 
-Lo usan `GET /archivos`, `GET /archivos/md` y `PUT /archivos` de la API; detrás de la llave de la página.
+Lo usan `GET /archivos`, `GET /archivos/md`, `PUT /archivos` y `POST /archivos/entrada` de la API; detrás de la
+llave de la página (y las escrituras, del mismo origen).
 """
 
 from __future__ import annotations
@@ -24,7 +32,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
+from typing import BinaryIO
 
 from pydantic import BaseModel
 
@@ -32,6 +42,9 @@ from telar.servicios import ErrorDeServicio
 
 TOPE_LEER = 2 * 1024 * 1024
 TOPE_ESCRIBIR = 4_000_000
+TOPE_ENTRADA = 200 * 1024 * 1024
+#: el nombre más largo que se deja en la entrada, en bytes (los sistemas de archivos aceptan 255)
+LARGO_NOMBRE = 200
 NO_ENTRAR = {"node_modules", "assets"}
 
 #: los lienzos (página y memoria) que nombraron las páginas que entregó esta API: se pueden leer, y su
@@ -207,3 +220,126 @@ def escribir(ctx, ruta: str, texto: str) -> Escrito:
     tmp.write_text(texto, encoding="utf-8")
     os.replace(tmp, p)
     return Escrito(ruta=str(p), bytes=len(texto.encode("utf-8")))
+
+
+# ── dejar en la entrada: lo que se arrastra a un hilo, en ~/telar-entrada/ de su máquina ─────────────────────
+
+
+class Entrada(BaseModel):
+    """Dónde quedó lo que se dejó en la entrada: su ruta en la máquina del hilo ('' es esta)."""
+
+    ruta: str
+    maquina: str = ""
+    bytes: int
+
+
+def nombre_seguro(nombre: str) -> str:
+    """El nombre de un archivo para dejarlo en la entrada: solo su último tramo (sin `/` ni `\\`), sin
+    caracteres de control y no más largo que LARGO_NOMBRE bytes (se corta el nombre, no la extensión). Uno
+    vacío, `.` o `..` no sirve."""
+    n = (nombre or "").replace("\\", "/").rsplit("/", 1)[-1]
+    n = "".join(c for c in n if c.isprintable()).strip()
+    if n in ("", ".", ".."):
+        raise ErrorDeServicio(f"«{nombre}» no sirve como nombre de archivo", 422)
+    if len(n.encode("utf-8")) > LARGO_NOMBRE:
+        p = Path(n)
+        sufijo = p.suffix if len(p.suffix.encode("utf-8")) < 20 else ""
+        tronco = (p.stem if sufijo else n).encode("utf-8")[: LARGO_NOMBRE - len(sufijo.encode("utf-8"))]
+        n = tronco.decode("utf-8", "ignore") + sufijo
+    return n
+
+
+def _dejar(tmp: Path, carpeta: Path, nombre: str) -> Path:
+    """Pone `tmp` en `carpeta` como `nombre`, o con su sufijo (-2, -3…) si ya hay uno: el mismo criterio que
+    `imagen.subir` allá. Con un enlace duro, que falla si el nombre está tomado: elegir y escribir es una sola
+    operación, y dos a la vez no se pisan."""
+    from telar.ordenes.imagen import con_sufijo
+
+    for n in range(1, 1000):
+        destino = carpeta / (nombre if n == 1 else con_sufijo(nombre, n))
+        try:
+            os.link(tmp, destino)
+        except FileExistsError:
+            continue
+        os.unlink(tmp)
+        return destino
+    raise ErrorDeServicio(f"no hay un nombre libre para {nombre} en {carpeta}", 409)
+
+
+def _remoto(ctx, maquina: str):
+    """La máquina del hilo: None si es esta; si es otra, su `[remotos]` (por ahí se llega por ssh)."""
+    from telar import bus as mod_bus
+
+    if not maquina or maquina == mod_bus.maquina(ctx.config):
+        return None
+    r = next((r for r in getattr(ctx.config, "remotos", ()) or () if r.nombre == maquina), None)
+    if r is None:
+        raise ErrorDeServicio(f"{maquina} no está en [remotos] de esta máquina: no sé cómo llevarle el archivo", 404)
+    return r
+
+
+def _espera(bytes_: int) -> float:
+    """Cuánto puede tardar la copia por ssh: un minuto, y más si es grande (a 512 KB/s, una red lenta)."""
+    return max(60.0, bytes_ / (512 * 1024))
+
+
+def _a_otra(remoto, origen: Path, nombre: str, bytes_: int) -> Entrada:
+    from telar.ordenes import imagen
+
+    ruta, problema = imagen.subir(remoto, origen, nombre, espera=_espera(bytes_))
+    if problema:
+        raise ErrorDeServicio(f"no se copió a {remoto.nombre}: {problema}", 502)
+    return Entrada(ruta=ruta, maquina=remoto.nombre, bytes=bytes_)
+
+
+def desde_bytes(ctx, maquina: str, nombre: str, datos: BinaryIO) -> Entrada:
+    """Lo que sube la página (un archivo soltado sin su ruta), en la entrada de la máquina del hilo. En esta, se
+    escribe de una vez (un temporal, que después toma su nombre); en otra, se junta en un temporal y se copia
+    por ssh."""
+    from telar.entrega import carpeta_de_entrada
+
+    nombre = nombre_seguro(nombre)
+    remoto = _remoto(ctx, maquina)
+    # aquí, la entrada de esta máquina (`[bus] entrada`, por defecto ~/telar-entrada); el temporal, a su lado,
+    # para que el enlace del final no cruce de disco
+    carpeta = carpeta_de_entrada(ctx.config) if remoto is None else Path(tempfile.gettempdir())
+    carpeta.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(prefix=".telar-entrada-", suffix=".tmp", dir=carpeta)
+    try:
+        total = 0
+        with os.fdopen(fd, "wb") as f:
+            while trozo := datos.read(1024 * 1024):
+                total += len(trozo)
+                if total > TOPE_ENTRADA:
+                    raise ErrorDeServicio(f"{nombre} pasa de {TOPE_ENTRADA // (1024 * 1024)} MB", 413)
+                f.write(trozo)
+        if remoto is not None:
+            return _a_otra(remoto, Path(tmp), nombre, total)
+        return Entrada(ruta=str(_dejar(Path(tmp), carpeta, nombre)), bytes=total)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def desde_ruta(ctx, maquina: str, ruta: str) -> Entrada:
+    """Un archivo de esta máquina, nombrado por su ruta (el arrastre la trajo), copiado a la entrada de la
+    máquina del hilo. Para un hilo de esta máquina no hace falta: la página escribe la ruta tal cual."""
+    if not ruta or "\x00" in ruta:
+        raise ErrorDeServicio("¿qué archivo?", 422)
+    p = Path(ruta).expanduser()
+    if not p.is_absolute():
+        raise ErrorDeServicio(f"{ruta}: hace falta la ruta entera", 422)
+    p = p.resolve()
+    if not p.is_file():
+        raise ErrorDeServicio(f"{ruta}: no es un archivo de esta máquina", 404)
+    if not os.access(p, os.R_OK):
+        raise ErrorDeServicio(f"{ruta}: no se puede leer", 403)
+    bytes_ = p.stat().st_size
+    if bytes_ > TOPE_ENTRADA:
+        raise ErrorDeServicio(f"{p.name} pasa de {TOPE_ENTRADA // (1024 * 1024)} MB", 413)
+    remoto = _remoto(ctx, maquina)
+    if remoto is None:
+        # el hilo es de aquí: ya lo puede leer donde está (la página no lo pide, pero si alguien lo pide, se dice)
+        return Entrada(ruta=str(p), bytes=bytes_)
+    # con el nombre que se arrastró (si era un enlace simbólico, el suyo y no el de su destino)
+    return _a_otra(remoto, p, nombre_seguro(Path(ruta).name), bytes_)
