@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-10-24
+
+### Added
+
+- Who opened a thread: when another thread opens a new one (the command runs with `$TELAR_HILO`), or a periodic
+  process does, telar notes it once (`abierto_por` in `telar hilos --json`: the thread or process, and its agent if
+  it was an agent's). The sidebar marks it with the agent's icon, dimmed ("it started it", not "it's its"); the
+  agents page lists what each agent opened, with a button to archive the live ones at once.
+
 ## [0.5.0] — 2026-10-23
 
 ### Added

@@ -611,7 +611,7 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
         palabras, sid = mod_agente.obtener(ctx.config.agente.nombre, ctx.config).nuevo_con_id(p.mensaje)
         palabras = [*palabras, *p.argumentos]  # después del prompt: hay banderas que se tragan lo que sigue
         mod_movil.crear(nombre, str(carpeta), lanzar.envolver(palabras, nombre), ctx.config.sesion)
-        lanzar.anotar(ctx.config, nombre, lanzar.Lanzamiento(comando=[], carpeta=carpeta, nueva=sid))
+        lanzar.anotar(ctx.config, nombre, lanzar.Lanzamiento(comando=[], carpeta=carpeta, nueva=sid), por=f"periódico {p.nombre}")
     except (ErrorDeAgente, RuntimeError, OSError) as e:
         return 1, f"no pude abrir el hilo: {e}", ""
     cerre = f" (cerré {', '.join(f'«{v}»' for v in viejos)}: de otro día y quietos)" if viejos else ""

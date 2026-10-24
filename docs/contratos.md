@@ -274,6 +274,9 @@ página, ⋯ → hacer público). Por defecto es `false`: un hilo es privado, no
 llega correo de otra persona (se le contesta como a uno que no existe). El de un hilo de otra máquina lo dice su
 dueño, como `archivado`. `agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
 `icono`, el suyo: la barra lo pone junto al nombre.
+`abierto_por` es quién lo abrió, si no fue la persona: `{"por", "agente", "icono", "cuando"}`, con `por` el hilo que
+corrió la orden (`$TELAR_HILO`) o el periódico (`"periódico <nombre>"`) y `agente` la carpeta del agente si ese hilo
+era de uno. Se anota una vez, al abrirlo nuevo (retomarlo no lo cambia); `null` si lo abrió la persona.
 
 ### `ficha`
 
@@ -781,7 +784,8 @@ que no conoce. Un agente que no existe sale con 2 y la lista de los que hay.
 
 `GET /agentes` da todos, cada uno con su estado donde vive: `{"agentes": [{"agente": {lo de arriba}, "maquina",
 "aqui", "vivo", "atencion", "conversacion": {"id", "peso", "tope"} | null, "rotacion", "relevo": {"cuando"} | null,
-"encargos": [{"id", "estado", "texto", "de", "creado", "actualizado", "resultado"}], "sin_noticias"?}],
+"encargos": [{"id", "estado", "texto", "de", "creado", "actualizado", "resultado"}], "abrio": [{"hilo", "vivo",
+"archivado", "cuando"}], "sin_noticias"?}],
 "problemas": [...]}`. Los de otra máquina se le piden a esa por el bus (su nodo, el pedido `agentes`); si no
 responde, salen con lo de su definición y `sin_noticias`, y la máquina en `problemas`. `POST /agentes/rotar`
 (`{"hilo", "maquina"}`) le pide su relevo ya y rota al terminar ese turno, aunque no pase del tope.

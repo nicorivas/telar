@@ -67,6 +67,8 @@ export interface JsonHilo {
     publico?: boolean;
     /** el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno */
     agente?: string; icono?: string;
+    /** quién lo abrió, si no fue la persona: el hilo (o el periódico) que lo abrió, y su agente y su ícono si era de uno */
+    abierto_por?: { por: string; agente?: string; icono?: string; cuando?: string } | null;
     vinculado: boolean; ruta: string; relativa: string; arquetipo: string;
     prioridad: number | null; atencion: string; visto: string | null; tiempo: number;
     /** desde cuándo está en ese semáforo: lo último que hizo su agente */
@@ -533,6 +535,8 @@ export interface JsonEstadoAgente {
     agente: JsonAgente; maquina: string; aqui: boolean; vivo: boolean; atencion: string;
     conversacion: { id: string; peso: number; tope: number } | null; rotacion: string;
     relevo: { cuando: string } | null; encargos: JsonEncargoCorto[]; sin_noticias?: boolean;
+    /** los hilos que abrió (no los suyos): para verlos, o archivarlos de una vez */
+    abrio?: { hilo: string; vivo: boolean; archivado: boolean; cuando: string }[];
 }
 export const agentes = async () => await deServe<{ agentes: JsonEstadoAgente[]; problemas: string[] }>('/agentes', 40000);
 /** Rotar ya la conversación de un agente, con relevo (`POST /agentes/rotar`). */

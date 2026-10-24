@@ -258,7 +258,8 @@ export class BarraHilos {
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${alFinal}`
+            + `${glifo}${remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
+                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
@@ -296,6 +297,7 @@ export class BarraHilos {
         if (h.remoto) datos.push(h.remoto === '?' ? '⇄ en otra máquina' : `⇄ remoto: ${h.remoto}`);
         if (!h.vivo) datos.push('no vivo');
         if (h.publico) datos.push('◇ público');
+        if (h.abierto_por) datos.push(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente}` : `«${h.abierto_por.por}»`}`);
         if (GLIFO[h.atencion]) datos.push(`${GLIFO[h.atencion]} ${NOMBRE_ATENCION[h.atencion] ?? h.atencion}`);
         if (h.prioridad) datos.push(`prioridad ${PRIORIDAD[h.prioridad]} ${['', 'alta', 'media', 'baja'][h.prioridad]}`);
         if (h.tiempo >= 60) datos.push(`hoy ${duracion(h.tiempo)}`);

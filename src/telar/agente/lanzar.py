@@ -117,7 +117,23 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -
                        rotada=rotada)
 
 
-def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None) -> None:
+def anotar_origen(config, hilo: str, lanz: Lanzamiento | None, por: str = "") -> None:
+    """Quién abrió `hilo`, si fue otro hilo (el que corre la orden: `$TELAR_HILO`) o un periódico (`por`), y solo si
+    es un hilo nuevo: retomar uno no lo cambia. Si quien lo abrió es el hilo de un agente, también el agente."""
+    quien = por or os.environ.get("TELAR_HILO", "").strip()
+    if not quien or quien == hilo or lanz is None or lanz.retoma or lanz.vacia or not lanz.nueva:
+        return
+    from telar import agentes as mod_agentes
+    from telar import estado as mod_estado
+
+    try:
+        agente = "" if por else (getattr(mod_agentes.del_hilo(config, quien), "clave", "") or "")
+        mod_estado.abrir(config).anotar_abierto_por(hilo, quien, agente)
+    except Exception:  # noqa: BLE001 - anotarlo es un extra: el hilo se abre igual
+        pass
+
+
+def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None, *, por: str = "") -> None:
     """Guarda junto al hilo el id de la conversación que se acaba de abrir en él.
 
     Se llama después de abrir el tab, no antes: anotar una conversación en un hilo que el
@@ -126,6 +142,7 @@ def anotar(config, hilo: str, lanz: Lanzamiento | None, mux=None) -> None:
     Con `mux` se anota además en qué panel quedó corriendo. Eso es lo que después permite
     mudarla de hilo sin adivinar cuál de las conversaciones de un hilo es la de este panel.
     """
+    anotar_origen(config, hilo, lanz, por)
     if lanz is not None and lanz.agente:
         from telar import estado as mod_estado
 

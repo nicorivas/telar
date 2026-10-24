@@ -28,6 +28,7 @@ export class PantallaAgentes implements Pantalla {
         'agente-ir': v => v && this.ir(v),
         'encargo-cancelar': v => v && this.cancelar(v),
         'encargo-ver': v => v && ui.abrirDireccion(v),
+        'agente-archivar-abiertos': v => v && this.archivarAbiertos(v),
     };
 
     constructor(private readonly t: Tablero) {}
@@ -80,6 +81,24 @@ export class PantallaAgentes implements Pantalla {
         await ui.irAHilo(x.agente.nombre, false, x.aqui ? '' : x.maquina);
     }
 
+    /** Archivar (cerrando su tab) los hilos vivos que abrió un agente: su conversación queda, y se retoman cuando
+     *  haga falta. */
+    private async archivarAbiertos(clave: string): Promise<void> {
+        const x = this.de(clave);
+        const vivos = (x?.abrio ?? []).filter(h => h.vivo && !h.archivado);
+        if (!x || !vivos.length) return;
+        const si = await ui.aviso(`¿Archivar los ${vivos.length} hilos que abrió ${x.agente.nombre}? ${vivos.map(h => `«${h.hilo}»`).join(', ')}. `
+            + 'Se cierra su tab y queda su conversación, para retomarlos.', 'Archivar');
+        if (si !== 'Archivar') return;
+        let mal = 0;
+        for (const h of vivos) {
+            const r = await cli.hilo('archivar', h.hilo, undefined, ['--cerrar']);
+            if (!r.ok) mal++;
+        }
+        void (mal ? ui.falla(`telar: ${mal} no se pudieron archivar`) : ui.estado(`telar: archivados ${vivos.length}`, 4000));
+        await this.leer();
+    }
+
     private async cancelar(valor: string): Promise<void> {
         const [direccion, texto] = valor.split('|');
         const si = await ui.aviso(`¿Cancelar ${direccion}? «${(texto ?? '').slice(0, 120)}»`, 'Cancelar el encargo');
@@ -100,6 +119,15 @@ export class PantallaAgentes implements Pantalla {
             + (abierto ? ` · <a data-accion="encargo-cancelar" data-valor="${esc(`${direccion}|${texto}`)}" title="ya no hace falta">cancelar</a>` : '')
             + '</span></div>'
             + (!abierto && e.resultado ? `<div class="fila dim" style="padding-left:2ch">→ ${esc(e.resultado.slice(0, 160))}</div>` : '');
+    }
+
+    private abiertos(x: cli.JsonEstadoAgente): string {
+        const abrio = x.abrio ?? [];
+        if (!abrio.length) return '';
+        const vivos = abrio.filter(h => h.vivo && !h.archivado);
+        return `<div class="fila dim">abrió ${abrio.length}: ${abrio.map(h => `${h.vivo && !h.archivado ? '●' : '·'} ${esc(h.hilo)}`).join(', ')}`
+            + (vivos.length ? ` · <a data-accion="agente-archivar-abiertos" data-valor="${esc(x.agente.clave)}" title="cerrar sus tabs y guardar su conversación">archivar los ${vivos.length} vivos</a>` : '')
+            + '</div>';
     }
 
     pintar(): void {
@@ -124,6 +152,7 @@ export class PantallaAgentes implements Pantalla {
                 + ` · <a data-accion="agente-ir" data-valor="${esc(a.clave)}">ir a su hilo</a>`
                 + (x.vivo ? ` · <a data-accion="agente-rotar" data-valor="${esc(a.clave)}" title="que escriba su relevo y empiece otra conversación">rotar con relevo</a>` : '')
                 + '</div>'
+                + this.abiertos(x)
                 + x.encargos.map(e => this.encargo(x, e)).join('')
                 + '</div>');
         }

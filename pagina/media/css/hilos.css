@@ -59,3 +59,5 @@
 
 /* el ícono del agente residente del que es un hilo (su agente.toml `icono`, o su inicial) */
 .ic-agente { color: var(--violeta); }
+/* el de un hilo que abrió un agente (no es suyo: es trabajo que empezó él), más apagado */
+.ic-agente.abierto { color: var(--dim); }

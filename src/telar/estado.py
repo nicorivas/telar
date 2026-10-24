@@ -16,6 +16,7 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     archivados.json   lista de hilos archivados
     publicos.json     lista de hilos públicos: los que van en el directorio que ven las otras personas
     de_agente.json    hilo → la carpeta del agente residente del que es (telar.agentes)
+    abierto_por.json  hilo → quién lo abrió (otro hilo, el de un agente, o un periódico) y cuándo
     atencion.json     hilo → {"atencion": …, "desde": ISO}
     esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
                       (un dato de más: roto, cuenta como vacío; ver DE_MAS)
@@ -98,6 +99,8 @@ ARCHIVOS = {
     "publicos": "publicos.json",
     #: hilo → la clave (carpeta) del agente del que es: lo anota quien abre su hilo, y gana sobre adivinarlo
     "de_agente": "de_agente.json",
+    #: hilo → {por, agente, cuando}: quién lo abrió, si no fue la persona (el hilo de un agente, un periódico)
+    "abierto_por": "abierto_por.json",
     #: hilo → cuándo se archivó (ISO, hora local): para saber si su agente volvió a vivir después
     "archivados_en": "archivados_en.json",
     "atencion": "atencion.json",
@@ -680,6 +683,17 @@ class Estado:
     def anotar_agente(self, hilo: str, clave: str) -> None:
         self._actualizar("de_agente", lambda d: d.__setitem__(hilo, clave), {})
 
+    # ── quién abrió un hilo ─────────────────────────────────────────────────────
+
+    def abiertos_por(self) -> dict[str, dict]:
+        """hilo → {por, agente, cuando}: los hilos que abrió otro hilo (el de un agente) o un periódico, no la persona."""
+        return {h: r for h, r in self._leer("abierto_por", {}).items() if isinstance(r, dict) and r.get("por")}
+
+    def anotar_abierto_por(self, hilo: str, por: str, agente: str = "") -> None:
+        """Anota quién abrió `hilo`, si no se sabía ya: abrirlo de nuevo (retomarlo) no cambia quién lo empezó."""
+        cuando = datetime.now().isoformat(timespec="seconds")
+        self._actualizar("abierto_por", lambda d: d.setdefault(hilo, {"por": por, "agente": agente, "cuando": cuando}), {})
+
     def archivar(self, hilo: str) -> None:
         def cambio(lista):
             if hilo not in lista:
@@ -1127,7 +1141,8 @@ class Estado:
         # vínculo con un nombre y la prioridad con el otro. `paneles.json` no se toca:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente",
+                           "abierto_por"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -1165,7 +1180,8 @@ class Estado:
         debería cambiar porque se cerró un tab.
         """
         with self.bajo_candado():
-            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente"):
+            for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente",
+                           "abierto_por"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
             self.privar(hilo)

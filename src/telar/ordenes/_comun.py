@@ -214,6 +214,8 @@ class Telar:
     unidades: dict[str, tuple[Arquetipo, Path]] = field(default_factory=dict)
     #: hilo → (clave, icono) del agente residente del que es: la lista lo marca con su ícono
     de_agente: dict[str, tuple[str, str]] = field(default_factory=dict)
+    #: hilo → {por, agente, icono, cuando}: quién lo abrió, si no fue la persona
+    abierto_por: dict[str, dict] = field(default_factory=dict)
 
     def por_nombre(self, nombre: str) -> Hilo | None:
         return next((h for h in self.hilos if h.nombre == nombre), None)
@@ -292,6 +294,12 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         agentes = []
     foto["publicos"] = set(foto.get("publicos") or ()) | {h for a in agentes if a.publico for h in a.hilos}
     de_agente = {h: (a.clave, a.icono) for a in agentes for h in a.hilos}
+    iconos = {a.clave: a.icono for a in agentes}
+    try:
+        abierto_por = {h: {**r, "icono": iconos.get(r.get("agente") or "", "")}
+                       for h, r in (est.abiertos_por() if est is not None else {}).items()}
+    except Exception:  # noqa: BLE001 - sin poder leerlo, nadie abrió nada
+        abierto_por = {}
     hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
@@ -312,6 +320,7 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         estado=est,
         unidades=unidades,
         de_agente=de_agente,
+        abierto_por=abierto_por,
     )
 
 
@@ -584,6 +593,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         # el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno
         "agente": tel.de_agente.get(hilo.nombre, ("", ""))[0],
         "icono": tel.de_agente.get(hilo.nombre, ("", ""))[1],
+        # quién lo abrió, si no fue la persona: {por (el hilo o el periódico), agente, icono, cuando}; null si ella
+        "abierto_por": tel.abierto_por.get(hilo.nombre),
         "vinculado": hilo.vinculado,
         "ruta": str(hilo.ruta) if hilo.ruta else "",
         "relativa": ruta_relativa(hilo.ruta, tel.raiz),

@@ -153,3 +153,32 @@ class RotarYa(ConUnResidente):
         # al terminar el turno en que lo escribió, queda para el /clear del nodo
         self.assertEqual(rotacion.al_terminar(cfg, "Faro", "s1", self.pesa(0.1)), "")
         self.assertEqual(rotacion.leer(cfg)["Faro"]["fase"], "limpiar")
+
+
+class QuienAbrioUnHilo(ConUnResidente):
+    """Un hilo que abrió el hilo de un agente (o un periódico) lo dice: no es suyo, lo empezó él."""
+
+    def test_lo_anota_solo_si_es_nuevo_y_no_lo_abrio_la_persona(self):
+        import os
+
+        from telar.agente import lanzar
+
+        est = mod_estado.abrir(self.config)
+        nuevo = lanzar.Lanzamiento(comando=[], carpeta=None, nueva="s9")
+        with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
+            lanzar.anotar_origen(self.config, "Proyecto X", nuevo)
+            # retomar uno no cambia quién lo empezó, ni se anota uno que ya existía
+            lanzar.anotar_origen(self.config, "Viejo", lanzar.Lanzamiento(comando=[], carpeta=None, retoma="s1"))
+            lanzar.anotar_origen(self.config, "Faro", nuevo)  # se abrió a sí mismo: no
+        with mock.patch.dict(os.environ, {"TELAR_HILO": ""}):
+            lanzar.anotar_origen(self.config, "De la persona", nuevo)
+        lanzar.anotar_origen(self.config, "Del periódico", nuevo, por="periódico correo")
+        abiertos = est.abiertos_por()
+        self.assertEqual(set(abiertos), {"Proyecto X", "Del periódico"})
+        self.assertEqual((abiertos["Proyecto X"]["por"], abiertos["Proyecto X"]["agente"]), ("Faro", "faro"))
+        self.assertEqual(abiertos["Del periódico"]["agente"], "")
+        # se mueve con el renombre, y se va al olvidarlo
+        est.renombrar("Proyecto X", "Proyecto Y")
+        self.assertIn("Proyecto Y", est.abiertos_por())
+        est.olvidar("Proyecto Y")
+        self.assertNotIn("Proyecto Y", est.abiertos_por())

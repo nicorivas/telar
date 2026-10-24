@@ -478,6 +478,8 @@ body.angosto.en-detalle #barra { display: none; }
 
 /* el ícono del agente residente del que es un hilo (su agente.toml `icono`, o su inicial) */
 .ic-agente { color: var(--violeta); }
+/* el de un hilo que abrió un agente (no es suyo: es trabajo que empezó él), más apagado */
+.ic-agente.abierto { color: var(--dim); }
 
 /* El día y lo que comparten sus pestañas: secciones, tareas, filas, formularios (vistas/dashboard/:
    dia.ts, panel.ts, vista.ts). scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en

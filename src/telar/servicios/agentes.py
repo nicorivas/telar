@@ -105,7 +105,12 @@ def estado_local(ctx) -> list[dict]:
         abiertos = [e for e in todos if e.get("estado") not in mod_encargo.CERRADOS]
         cerrados = [e for e in todos if e.get("estado") in mod_encargo.CERRADOS][:5]
         resumen = lambda e: {k: e.get(k) for k in ("id", "estado", "texto", "de", "creado", "actualizado", "resultado")}  # noqa: E731
-        salida.append({"agente": f["agente"], "maquina": "", "aqui": True,
+        # los hilos que abrió (no los suyos: los que empezó para otra cosa), los que telar todavía conoce
+        abrio = [{"hilo": n, "vivo": bool(tel.por_nombre(n) and tel.vivo(tel.por_nombre(n))),
+                  "archivado": bool(tel.por_nombre(n) and tel.por_nombre(n).archivado), "cuando": r.get("cuando", "")}
+                 for n, r in (tel.estado.abiertos_por() if tel.estado else {}).items()
+                 if r.get("agente") == a.clave and tel.por_nombre(n) is not None]
+        salida.append({"agente": f["agente"], "maquina": "", "aqui": True, "abrio": abrio,
                        "vivo": bool(h and tel.vivo(h)), "atencion": h.atencion.value if h else "ninguna",
                        "conversacion": f["conversacion"], "rotacion": f["rotacion"],
                        "relevo": {"cuando": f["relevo"]["cuando"]} if f["relevo"] else None,
