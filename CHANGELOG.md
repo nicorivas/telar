@@ -6,6 +6,21 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-10-26
+
+### Added
+
+- The page: the tasks table shows each task's priority in its own column, with the threads' icons (● P1, ◐ P2,
+  ○ P3; P0, urgent, a red ●). A click lowers it one level (● → ◐ → ○ → ●); P0 is set from ⋯. The ● header sorts
+  by priority alone. Task rows carry `prioridad` (0–3, or null), from the task's own P0–P3. In-progress tasks now
+  show their code in blue, where that column used to show a blue ●.
+
+### Changed
+
+- The page: the tasks table's default order is priority first, with the date only breaking ties (overdue first,
+  undated last within each priority). Before, it sorted by date alone. A row without priority, like a bullet in a
+  document, counts as P2. What an agent left ready to decide still goes on top.
+
 ## [0.6.2] — 2026-10-26
 
 ### Added

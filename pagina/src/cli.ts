@@ -126,6 +126,8 @@ export interface JsonFila {
     destacada?: boolean;
     /** la persona la marcó con estrella */
     estrella?: boolean;
+    /** su prioridad, de 0 (P0, la más alta) a 3; null si el proveedor no la dice */
+    prioridad?: number | null;
     /** las etiquetas de la tarea; «equipo» es la que la comparte con el equipo (`telar equipo`) */
     etiquetas?: string[];
     /** de un proveedor: la carpeta que la tarea dice que es su proyecto, haya o no hilo ahí */
@@ -365,8 +367,8 @@ export async function tarea(id: string, proveedor: string): Promise<Respuesta<Js
     return await deServe<JsonPagina>(`/tareas/${encodeURIComponent(id)}?proveedor=${encodeURIComponent(proveedor)}`, 40000);
 }
 /** Correr la acción de una tarea por su `rol` (hecha…): un solo viaje, sin leer la ficha antes. */
-export async function accionPorRol(id: string, proveedor: string, rol: string): Promise<Respuesta<{ tipo: string; hecho: string; salida?: string; hilo?: string }>> {
-    return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol });
+export async function accionPorRol(id: string, proveedor: string, rol: string, texto = ''): Promise<Respuesta<{ tipo: string; hecho: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol, ...(texto ? { texto } : {}) });
 }
 /** `hilo`: con una acción que lleva su mensaje a un hilo (`al_hilo`), a cuál; sin él, al de la tarea. */
 export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = '', hilo = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {

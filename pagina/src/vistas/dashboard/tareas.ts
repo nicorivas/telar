@@ -5,7 +5,7 @@
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
-import { esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
+import { PRIORIDAD, esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
 import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
@@ -203,6 +203,32 @@ async function alternarPorRol(valor: string, rol: string, queEs: string): Promis
     return true;
 }
 
+/** La prioridad de una tarea en su fila, con los íconos de la prioridad de los hilos (● alta, ◐ media, ○ baja; P0, la
+ *  urgente, es ● en rojo). Con ficha es un botón: el clic la baja un nivel (● → ◐ → ○ → ●); P0 se pone desde ⋯. */
+export function iconoPrioridad(fila: cli.JsonFila, ref: string, ficha: boolean): string {
+    const n = fila.prioridad ?? null;
+    const icono = n === null ? '·' : n === 0 ? '●' : PRIORIDAD[n] ?? '·';
+    const nombre = n === null ? 'sin prioridad' : `P${n} · ${['urgente', 'alta', 'media', 'baja'][n]}`;
+    if (!ficha) return `<span class="pri pt${n ?? ''}"${n === null ? '' : ` title="${esc(nombre)}"`}>${n === null ? '' : icono}</span>`;
+    const valor = esc(JSON.stringify([fila.proveedor, fila.id || ref, n ?? '']));
+    return `<span class="pri pt${n ?? ''} clic" data-accion="prioridad-tarea" data-valor="${valor}"`
+        + ` title="${esc(`${nombre}\nclic: ${n === null ? 'P1 alta' : `P${siguientePrioridad(n)} ${['', 'alta', 'media', 'baja'][siguientePrioridad(n)]}`}${n === 0 ? '' : '\nP0 (urgente): desde ⋯'}`)}">${icono}</span>`;
+}
+
+/** El clic sobre la prioridad: un nivel más abajo, y de la más baja vuelve a la alta. P0 baja a P1. */
+const siguientePrioridad = (n: number | null): number => n === null || n >= 3 ? 1 : n + 1;
+
+/** Cambiar la prioridad desde la fila: la acción del proveedor con `rol: prioridad`, en un viaje. */
+export async function cambiarPrioridad(valor: string): Promise<number | null> {
+    const [proveedor, id, actual] = JSON.parse(valor) as [string, string, number | ''];
+    const nueva = siguientePrioridad(actual === '' ? null : actual);
+    const r = await cli.accionPorRol(id, proveedor, 'prioridad', `P${nueva}`);
+    olvidarDia();
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude cambiar la prioridad de ${id}`}`); return null; }
+    ui.estado(`${id} → P${nueva} ${['', 'alta', 'media', 'baja'][nueva]}`, 3000);
+    return nueva;
+}
+
 /** Poner o quitar la estrella de una tarea: la acción del proveedor con `rol: estrella`. */
 export const alternarEstrella = (valor: string) => alternarPorRol(valor, 'estrella', 'la estrella');
 
@@ -323,6 +349,7 @@ export class PantallaTareas implements Pantalla {
         'reagendar': async v => { if (v && await reagendar(v)) await this.releer(); },
         'equipo-tarea': async v => { if (v && await alternarEquipo(v)) await this.releer(); },
         'estrella-tarea': async v => { if (v && await alternarEstrella(v)) await this.releer(); },
+        'prioridad-tarea': async v => { if (v && await cambiarPrioridad(v) !== null) await this.releer(); },
         'dueno-tarea': async v => {
             if (!v) return;
             const [proveedor, id, ref, actual] = JSON.parse(v) as string[];
@@ -459,13 +486,13 @@ export class PantallaTareas implements Pantalla {
                 + ` title="${esc(dueno ? `responsable: ${dueno}\nclic: cambiarlo` : `sin asignar: es tuya por defecto\nclic: asignarla`)}">${esc(dueno || persona)}</span>`;
         return `<div class="tarea${p.enCurso ? ' encurso' : ''}" ${accion} data-area="${esc(p.fila.area ?? '')}"${datosDueno(dueno, ficha || !!p.fila.proveedor)}`
             + ` data-rev="${esRev(p) ? 1 : 0}" data-dias="${p.dias ?? ''}" data-encurso="${p.enCurso ? 1 : 0}" data-texto="${esc(buscable)}"`
-            + ` data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
+            + ` data-pri="${p.fila.prioridad ?? ''}" data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
             + ` data-orden="${p.urgencia}" data-ref="${esc(p.ref)}" data-alfa="${esc(normalizar(limpiarMd(p.texto)))}"`
             + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
             + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
             // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
             + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? '★' : '☆'}</span>` : '<span></span>')
-            + `<span class="pri">${p.enCurso ? '●' : ''}</span>`
+            + iconoPrioridad(p.fila, p.ref, ficha)
             + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
                 : '<span class="proy-t dim">—</span>') + resp
             + `<span class="desc">${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
@@ -527,7 +554,7 @@ export class PantallaTareas implements Pantalla {
         // siempre (urgencia). La fecha va sobre las fechas: la cabecera repite la grilla de lo que hay a la derecha
         const col = (k: string, nombre: string, por: string) =>
             `<span data-orden-c="${k}" title="${esc(`ordenar por ${por} (otra vez: por urgencia)`)}">${nombre}</span>`;
-        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', '★', 'estrella')}<span></span>`
+        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', '★', 'estrella')}${col('pri', '●', 'prioridad, la más alta arriba')}`
             + `${col('proy', 'proyecto', 'proyecto')}${col('resp', 'responsable', 'responsable')}${col('alfa', 'tarea', 'el texto, alfabético')}`
             + `<span class="meta">${col('dias', 'fecha', 'fecha límite: lo más vencido arriba, lo sin fecha al final')}<span></span><span></span><span></span></span></div>`);
         h.push('<div id="tareas-t">');

@@ -83,6 +83,9 @@ class Tarea:
     id: str
     texto: str
     prioridad: Prioridad | None = None
+    #: la prioridad como la escribió la persona, de P0 (la más alta) a P3, si el proveedor la tiene así: `prioridad`
+    #: junta P0 y P1 en ALTA, y la página muestra las cuatro
+    nivel: int | None = None
     vence: date | None = None
     etiquetas: tuple[str, ...] = ()
     enlace: str = ""
@@ -125,6 +128,7 @@ class Tarea:
             url=self.enlace,
             datos={
                 "prioridad": self.prioridad.value if self.prioridad else None,
+                "nivel": self.nivel if self.nivel is not None else _NIVEL_DE.get(self.prioridad),
                 "etiquetas": list(self.etiquetas),
                 "espera": self.espera,
                 "hecha": self.hecha,
@@ -170,6 +174,9 @@ class FuenteDeTareas(Protocol):
 #: Prioridad → cuánto suma al peso. El nivel es una distancia desde lo más urgente,
 #: no el número de la prioridad: así `Prioridad.ALTA` no paga nada.
 NIVELES: dict[Prioridad, int] = {Prioridad.ALTA: 0, Prioridad.MEDIA: 1, Prioridad.BAJA: 2}
+
+#: Prioridad → P1, P2 o P3, para un proveedor que no distingue P0 (`Tarea.nivel`).
+_NIVEL_DE: dict[Prioridad | None, int] = {Prioridad.ALTA: 1, Prioridad.MEDIA: 2, Prioridad.BAJA: 3}
 
 #: Lo que suma una tarea sin prioridad declarada: una más que la más baja.
 SIN_PRIORIDAD = 3
@@ -894,6 +901,7 @@ class DeTipo(_Base):
             salida.append(Tarea(
                 id=t.id, texto=t.titulo.strip() or t.id,
                 prioridad=_prioridad({0: "alta", 1: "alta", 2: "media", 3: "baja"}.get(t.prioridad), f"{t.id}.prioridad"),
+                nivel=t.prioridad if t.prioridad in (0, 1, 2, 3) else None,
                 vence=_fecha(t.vence or None, f"{t.id}.vence"),
                 etiquetas=etiquetas,
                 # en la lista, el enlace como está escrito (el de la ficha se abre: `_enlace`)

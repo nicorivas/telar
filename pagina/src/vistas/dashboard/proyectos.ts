@@ -13,7 +13,7 @@ import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
 import { Dia, Pendiente, miNombre, olvidarDia, pendientes, plazo, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
-import { elegirDueno, llevarPendiente } from './tareas';
+import { elegirDueno, iconoPrioridad, llevarPendiente } from './tareas';
 
 
 /** El color del estado según de qué tipo es: en marcha, por ganar, trabado o terminado. */
@@ -135,7 +135,7 @@ export function filaPendiente(t: Pendiente): string {
         : `data-accion="pendiente" data-valor="${esc(t.ref)}"`;
     const ref = t.fila.proveedor ? t.ref : '·';
     return `<div class="tarea${t.enCurso ? ' encurso' : ''}" ${accion} data-completo="${esc(`${t.ref} · ${limpiarMd(t.texto)}`)}">`
-        + `<span class="id">${esc(ref)}</span><span class="pri">${t.enCurso ? '●' : ''}</span>`
+        + `<span class="id">${esc(ref)}</span>${iconoPrioridad(t.fila, t.ref, !!t.fila.ficha)}`
         + `<span class="desc">${t.fila.dueno ? `<span class="dueno">→ ${esc(t.fila.dueno)}</span>` : ''}${esc(limpiarMd(t.texto))}</span>`
         + `<span class="meta">${plazo(t.dias)}${t.fila.proveedor ? '<span></span>'
             : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([t.ref, t.texto, t.hilo, t.fila.dueno ?? '']))}" title="acciones de este pendiente">⋯</span>`}</span></div>`;

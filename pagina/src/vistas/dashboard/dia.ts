@@ -136,11 +136,11 @@ export interface Pendiente {
 
 /** Lo que está por hacer, lo más urgente arriba.
  *
- *  El contrato de `pendientes` no trae prioridad —un pendiente es una viñeta de un
- *  documento, no una tarea de un gestor—, así que la urgencia es la fecha: lo vencido
- *  primero (días negativos), después lo que vence pronto, y lo que no tiene fecha al final,
- *  como si venciera en un mes. Lo que está en curso se adelanta medio día dentro de su
- *  grupo: ya se empezó, y dejarlo a medias cuesta más que no haberlo empezado. */
+ *  Primero la prioridad (P0 arriba, P3 abajo; lo que no la dice, como una viñeta de un documento, cuenta como
+ *  P2, la de una tarea a la que nadie se la puso) y, a igual prioridad, la fecha: lo vencido primero (días
+ *  negativos), después lo que vence pronto, y lo que no tiene fecha al final de su prioridad. Lo que está en
+ *  curso se adelanta medio día: ya se empezó, y dejarlo a medias cuesta más que no haberlo empezado. Lo que un
+ *  agente dejó listo para decidir va arriba de todo. */
 export function pendientes(d: Dia, pestana = ''): Pendiente[] {
     const hoy = Date.parse(`${d.fecha || new Date().toISOString().slice(0, 10)}T00:00:00`);
     // lo de un proveedor con pestaña propia (un feed) no es un pendiente: va a su pestaña
@@ -155,7 +155,9 @@ export function pendientes(d: Dia, pestana = ''): Pendiente[] {
             const avance = (f.avance ?? '').split(' ')[0].split(':')[0];
             return {
                 fila: f, ref: f.ref || f.id, texto: f.texto, hilo: f.hilo ?? '', cuando, dias, enCurso, avance,
-                urgencia: avance ? -1000 + (dias ?? 0) / 1000 : (dias ?? 30) - (enCurso ? 0.5 : 0),
+                // la prioridad manda (de a 100.000 días); la fecha solo desempata dentro de ella
+                urgencia: avance ? -1e9 + (dias ?? 0) / 1000
+                    : (f.prioridad ?? 2) * 1e5 + (dias === null ? 5e4 : Math.max(-4e4, Math.min(4e4, dias))) - (enCurso ? 0.5 : 0),
                 urgente: avance ? true : dias !== null ? dias <= 7 : enCurso,
             };
         })

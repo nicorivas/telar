@@ -135,7 +135,12 @@
   .tarea { display: grid; grid-template-columns: 6ch 1ch minmax(0, 1fr) auto; gap: 1ch; align-items: baseline; padding: 0 1ch; cursor: pointer; }
   .tarea.compacta { grid-template-columns: 5ch 1ch minmax(0, 1fr) auto; padding: 0; }
   .tarea .id { width: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
-  .tarea.encurso .pri { color: var(--azul); }
+  /* la prioridad, con los íconos de los hilos: ● alta, ◐ media, ○ baja; P0, urgente, en rojo. En curso, el código en azul */
+  .tarea .pri.pt0 { color: var(--rojo); font-weight: bold; } .tarea .pri.pt1 { color: var(--fg); }
+  .tarea .pri.pt2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .tarea .pri.pt3 { color: var(--dim); }
+  .tarea .pri.clic { cursor: pointer; } .tarea .pri.clic:hover { color: var(--azul); }
+  .tarea .pri.clic.pt:not(:hover) { opacity: 0; } .tarea:hover .pri.clic.pt { opacity: 1; }
+  .tarea.encurso .id { color: var(--azul); }
   .tarea:hover .marcar::after { content: '✓'; color: var(--dim); }
   .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
   .tarea .dueno { color: var(--magenta); margin-right: 1ch; }
