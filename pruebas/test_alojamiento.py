@@ -362,6 +362,12 @@ class ElProgramaDeRoot(Prueba):
     def valido(self, **cambios):
         return self.m.validar({**self.crear, **cambios})
 
+    def test_el_comentario_del_usuario_no_lleva_dos_puntos(self):
+        # el campo de /etc/passwd se separa con «:»: useradd rechaza un comentario que los traiga (le pasó a Pablo)
+        useradd = next(p.argv for p in self.m.plan(self.valido()) if p.argv and p.argv[0] == "useradd")
+        comentario = useradd[useradd.index("-c") + 1]
+        self.assertNotIn(":", comentario)
+
     def test_acepta_un_pedido_bueno(self):
         v = self.valido()
         self.assertEqual((v["nombre"], v["puerto"]), ("pablo", 8781))

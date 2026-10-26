@@ -125,7 +125,7 @@ def plan(p: dict) -> list[Paso]:
     instalar = (INSTALAR.replace("__REPO__", REPOSITORIO).replace("__BUS__", p["bus"])
                 .replace("__NOMBRE__", n).replace("__PUERTO__", str(p["puerto"])))
     pasos = [
-        Paso(f"el usuario {n}, sin grupos extra", ["useradd", "-m", "-s", "/bin/bash", "-c", f"telar: {n}", n]),
+        Paso(f"el usuario {n}, sin grupos extra", ["useradd", "-m", "-s", "/bin/bash", "-c", f"telar {n}", n]),
         Paso("su carpeta de telar", como(n, "mkdir", "-p", "-m", "700", "{hogar}/.config/telar")),
         Paso("su secreto del bus (como él, 0600)", como(n, "sh", "-c", "umask 077; cat > \"$HOME/.config/telar/bus.token\""),
              stdin=p["secreto"] + "\n"),
