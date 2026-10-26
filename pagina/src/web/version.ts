@@ -21,6 +21,14 @@ function pintar(): void {
     const b = boton();
     if (!b) return;
     const v = ultima;
+    if (!v?.hay_nueva && v?.puerta?.atras) {
+        // la puerta del servidor quedó atrás de telar: se actualiza a mano, con root; el clic dice cómo
+        b.hidden = false;
+        b.classList.remove('trabajando');
+        b.textContent = `↑ puerta ${v.puerta.telar}`;
+        b.title = `la puerta del servidor va en la ${v.puerta.version || '?'} y telar en la ${v.puerta.telar}. Clic: cómo actualizarla`;
+        return;
+    }
     if (!v?.hay_nueva) { b.hidden = true; return; }
     b.hidden = false;
     b.classList.remove('trabajando');
@@ -40,6 +48,13 @@ export async function revisar(forzar = false): Promise<cli.JsonVersion | undefin
 /** Instalar la versión nueva: preguntar, lanzar, mostrar en qué va y recargar cuando conteste la nueva. */
 export async function actualizar(): Promise<void> {
     const v = ultima ?? await revisar();
+    if (!v?.hay_nueva && v?.puerta?.atras) {
+        const orden = v.puerta.actualizar ?? 'sudo sh servidor/telar-puerta-instalar …';
+        try { await navigator.clipboard.writeText(orden); } catch { /* sin portapapeles: se lee en el aviso */ }
+        void ui.info(`La puerta del servidor va en la ${v.puerta.version || '?'}; telar, en la ${v.puerta.telar}. Se actualiza `
+            + `con root, en el servidor, desde la carpeta del repositorio de telar (quedó copiada): ${orden}`);
+        return;
+    }
     if (!v?.hay_nueva) { void ui.info('telar: ya corre la última versión'); return; }
     if (!v.puede) { alAbrirConfig?.(); return; }
     const si = await ui.aviso(`¿Instalar telar ${v.ultima}? Corre la ${v.corre}. Se instala desde PyPI y se reinicia el `

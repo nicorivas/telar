@@ -44,6 +44,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CONFIG = Path("/etc/telar/puerta.toml")
+#: donde `servidor/telar-puerta-instalar` deja el telar de la puerta (un venv propio): se actualiza a mano, con root
+INSTALADA = Path("/opt/telar-puerta")
 ALOJADOS = Path("/etc/telar/alojados.d")
 #: la carpeta de los sockets: `<SOCKETS>/<usuario>/web.sock` el de cada persona, `<SOCKETS>/puerta/puerta.sock` la puerta
 SOCKETS = Path("/run/telar")
@@ -121,6 +123,49 @@ def leer_tabla(config: Path = CONFIG, alojados: Path = ALOJADOS) -> Tabla:
         else:
             t.problemas.append(f"la cuenta {cuenta} aparece con varios usuarios ({', '.join(sorted(usuarios))}): no entra")
     return t
+
+
+def version_instalada(base: Path = INSTALADA) -> str:
+    """La versión de telar instalada para la puerta ('' si no está): de los metadatos de su venv, sin correrla."""
+    for meta in sorted(base.glob("lib/python*/site-packages/telar-*.dist-info/METADATA")):
+        try:
+            for linea in meta.read_text(encoding="utf-8").splitlines():
+                if linea.startswith("Version:"):
+                    return linea.split(":", 1)[1].strip()
+                if not linea.strip():
+                    break
+        except OSError:
+            continue
+    return ""
+
+
+def _tupla(v: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except ValueError:
+        return ()
+
+
+def estado(usuario: str, *, config: Path = CONFIG, base: Path = INSTALADA) -> dict | None:
+    """La puerta de esta máquina vista por `usuario`: None si no hay puerta. `administra`: si es la persona de la
+    configuración de la puerta (quien la instaló: la puede actualizar); `atras`: si su versión es más vieja que la
+    de este telar; `actualizar`: la orden para ponerla al día."""
+    from telar import __version__
+
+    if not config.exists():
+        return None
+    try:
+        datos = tomllib.loads(config.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        datos = {}
+    cuentas = [c for c, u in (datos.get("personas") or {}).items() if u == usuario]
+    v = version_instalada(base)
+    salida = {"version": v, "url": str(datos.get("url") or "").rstrip("/"), "administra": bool(cuentas),
+              "atras": bool(v) and _tupla(v) < _tupla(__version__), "telar": __version__}
+    if cuentas:
+        salida["actualizar"] = (f"sudo sh servidor/telar-puerta-instalar --dueno {usuario} --cuenta {cuentas[0]} "
+                                f"--version {__version__}")
+    return salida
 
 
 def cliente(cabeceras: dict[str, str]) -> str:

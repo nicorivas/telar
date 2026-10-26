@@ -6,6 +6,18 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.2] — 2026-10-26
+
+### Added
+
+- The page tells whoever administers the server's door when it falls behind telar (`↑ puerta X` at the top); a
+  click copies the command that updates it. The door is updated by hand, as root, so the page only says how.
+  `GET /version` carries it as `puerta` (`telar.puerta.estado`, which reads the version from its venv without
+  running it).
+- `telar doctor` on a server that hosts people: the root helper and its mailbox, the door (its service, its
+  version, and that the owner's telar listens for it) and, for each active hosted person, that the registry has
+  their Tailscale account and their socket folder exists.
+
 ## [0.7.1] — 2026-10-26
 
 ### Fixed

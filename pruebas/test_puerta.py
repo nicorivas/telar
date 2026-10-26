@@ -333,3 +333,100 @@ class AlojarConPuerta(Prueba):
     def test_quitar_borra_su_carpeta_de_la_puerta(self):
         pasos = self.m.plan(self.m.validar({"accion": "quitar", "nombre": "pablo"}))
         self.assertTrue(any(p.argv and "/run/telar/pablo" in p.argv for p in pasos))
+
+
+class LaVersionDeLaPuerta(Prueba):
+    """Si la puerta quedó atrás de telar: la página se lo avisa a quien la administra, y doctor también."""
+
+    def setUp(self):
+        super().setUp()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self._tmp.name)
+        self.conf = self.d / "puerta.toml"
+        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"nico@x.com" = "nico"\n')
+        self.base = self.d / "opt"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        super().tearDown()
+
+    def instalar(self, version: str) -> None:
+        meta = self.base / "lib" / "python3.12" / "site-packages" / f"telar-{version}.dist-info"
+        meta.mkdir(parents=True)
+        (meta / "METADATA").write_text(f"Metadata-Version: 2.1\nName: telar\nVersion: {version}\n\nlo demás\n")
+
+    def test_lee_la_version_sin_correrla(self):
+        self.assertEqual(puerta.version_instalada(self.base), "")
+        self.instalar("0.7.0")
+        self.assertEqual(puerta.version_instalada(self.base), "0.7.0")
+
+    def test_atras_y_la_orden_solo_para_quien_administra(self):
+        self.instalar("0.0.1")
+        e = puerta.estado("nico", config=self.conf, base=self.base)
+        self.assertTrue(e["administra"] and e["atras"])
+        self.assertIn("--dueno nico --cuenta nico@x.com --version", e["actualizar"])
+        otro = puerta.estado("pablo", config=self.conf, base=self.base)
+        self.assertFalse(otro["administra"])
+        self.assertNotIn("actualizar", otro)
+        self.assertIsNone(puerta.estado("nico", config=self.d / "no-hay.toml", base=self.base))
+
+    def test_al_dia_no_avisa(self):
+        from telar import __version__
+
+        self.instalar(__version__)
+        self.assertFalse(puerta.estado("nico", config=self.conf, base=self.base)["atras"])
+
+
+class DoctorEnElServidor(Prueba):
+    def setUp(self):
+        super().setUp()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self._tmp.name)
+        (self.d / "registro").mkdir()
+        (self.d / "run" / "nico").mkdir(parents=True)
+        (self.d / "run" / "pablo").mkdir()
+        self.conf = self.d / "puerta.toml"
+        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"nico@x.com" = "nico"\n')
+        spool = self.d / "spool"
+        for x in ("pendientes", "resultados"):
+            (spool / x).mkdir(parents=True)
+        spool.chmod(0o700)
+        self.spool = spool
+        (self.d / "telar-alojar").write_text("#!/bin/sh\n")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        super().tearDown()
+
+    def revisar(self, alojados=None, **kw):
+        from telar import alojamiento, unirse
+        from telar.ordenes import doctor
+
+        with mock.patch.object(puerta, "CONFIG", self.conf), \
+                mock.patch.object(puerta, "estado", lambda u: {"version": "0.7.1", "telar": "0.7.1", "atras": False,
+                                                               "administra": u == "nico", "url": "https://telar.x.ts.net"}), \
+                mock.patch.object(alojamiento, "leer", return_value=alojados or {}), \
+                mock.patch.object(unirse, "administra_aqui", return_value=True):
+            return doctor._servidor(None, spool=self.spool, ayudante=self.d / "telar-alojar", registro=self.d / "registro",
+                                    sockets=self.d / "run", usuario="nico", activo=lambda u: True, **kw)
+
+    def test_todo_en_su_sitio(self):
+        (self.d / "run" / "nico" / "web.sock").write_text("")
+        (self.d / "registro" / "pablo.json").write_text(json.dumps({"nombre": "pablo", "tailscale": "pablo@x.com"}))
+        r = self.revisar({"pablo": {"estado": "activo"}})
+        self.assertEqual([x["estado"] for x in r], ["ok", "ok", "ok"], r)
+
+    def test_sin_mi_socket_y_un_alojado_sin_cuenta(self):
+        (self.d / "registro" / "pablo.json").write_text(json.dumps({"nombre": "pablo", "puerto": 8781}))
+        r = self.revisar({"pablo": {"estado": "activo"}})
+        fallas = [x["dice"] for x in r if x["estado"] == "falla"]
+        self.assertTrue(any("no escucha para la puerta" in x for x in fallas), r)
+        self.assertTrue(any("cuenta de Tailscale" in x for x in fallas), r)
+
+    def test_sin_el_ayudante_con_alojados_es_falla(self):
+        (self.d / "telar-alojar").unlink()
+        (self.d / "run" / "nico" / "web.sock").write_text("")
+        r = self.revisar({})
+        self.assertEqual(r[0]["estado"], "aviso")
+        r = self.revisar({"pablo": {"estado": "activo"}})
+        self.assertEqual(r[0]["estado"], "falla")

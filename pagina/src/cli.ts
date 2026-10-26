@@ -597,6 +597,8 @@ export const fichaAgente = async (hilo: string, maquina = '') =>
 export interface JsonVersion {
     corre: string; ultima: string; hay_nueva: boolean; como: 'uv' | 'repo' | 'otro'; puede: boolean;
     consultado?: number | null; notas?: string; error?: string; a_mano?: string; progreso?: JsonProgreso;
+    /** en un servidor con puerta, a quien la administra: su versión, si va atrás de telar y la orden para ponerla al día */
+    puerta?: { version: string; atras: boolean; telar: string; url: string; actualizar?: string };
 }
 export interface JsonProgreso { version?: string; estado?: 'corriendo' | 'listo' | 'fallo'; desde?: number; hasta?: number; error?: string; log?: string }
 export const version = async (forzar = false) => await deServe<JsonVersion>(`/version${forzar ? '?forzar=true' : ''}`, 20000);

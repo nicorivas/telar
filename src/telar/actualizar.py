@@ -122,6 +122,18 @@ def ver(config, *, forzar: bool = False, leer=None) -> dict:
     p = progreso(config)
     if p:
         salida["progreso"] = p
+    # en un servidor con puerta (telar.puerta), a quien la administra: si quedó atrás de este telar. Se actualiza
+    # a mano, con root, así que la página solo lo avisa y dice cómo
+    try:
+        import getpass
+
+        from telar import puerta
+
+        pu = puerta.estado(getpass.getuser())
+    except Exception:  # noqa: BLE001 - un aviso de más no puede botar la versión
+        pu = None
+    if pu and pu["administra"]:
+        salida["puerta"] = pu
     return salida
 
 

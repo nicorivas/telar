@@ -11,6 +11,7 @@ ganchos, solo hace menos.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import shlex
 import shutil
@@ -61,6 +62,7 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _tareas_del_tipo(ctx)
     revisiones += _ganchos(ctx, abiertos)
     revisiones += _remotos(ctx)
+    revisiones += _servidor(ctx)
 
     fallas = [r for r in revisiones if r["estado"] == FALLA]
 
@@ -90,6 +92,111 @@ def _remotos(ctx) -> list[dict]:
     for r in ctx.config.remotos:
         for bien, dice in mod_remoto.revisar(r):
             salida.append(_r(f"remoto {r.nombre}", OK if bien else FALLA, dice))
+    return salida
+
+
+def _activo(unidad: str) -> bool | None:
+    """Si un servicio de sistema está activo; None si no se puede saber (sin systemctl)."""
+    import subprocess
+
+    if not shutil.which("systemctl"):
+        return None
+    try:
+        r = subprocess.run(["systemctl", "is-active", "--quiet", unidad], timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.returncode == 0
+
+
+def _servidor(ctx, *, spool: Path | None = None, ayudante: Path = Path("/usr/local/sbin/telar-alojar"),
+              registro: Path = Path("/etc/telar/alojados.d"), sockets: Path | None = None, usuario: str = "",
+              activo=None) -> list[dict]:
+    """En el servidor que aloja a otras personas (telar.alojamiento, telar.puerta): el ayudante de root y su buzón,
+    la puerta (su servicio, su versión, el socket de quien administra) y que cada alojado activo esté en el registro
+    con su cuenta de Tailscale. En una máquina que no administra el bus ni tiene puerta, nada."""
+    import getpass
+
+    from telar import alojamiento, puerta, unirse
+
+    activo = activo or _activo
+    sockets = sockets or puerta.SOCKETS
+    usuario = usuario or getpass.getuser()
+    hay_puerta = puerta.CONFIG.exists()
+    try:
+        alojados = {n: a for n, a in alojamiento.leer().items() if a.get("estado") == "activo"}
+    except alojamiento.ErrorDeAlojamiento as e:
+        return [_r("alojamiento", FALLA, str(e))]
+    if not unirse.administra_aqui() and not hay_puerta:
+        return []
+    salida: list[dict] = []
+
+    # el ayudante de root: sin él, aprobar un lugar queda esperando para siempre
+    spool = spool or alojamiento.SPOOL
+    if not ayudante.exists():
+        salida.append(_r("ayudante", FALLA if alojados else AVISO, f"no está instalado ({ayudante}): aprobar un lugar no hace nada",
+                         "servidor/README.md, «Alojar a otras personas»"))
+    else:
+        malo = ""
+        try:
+            st = spool.stat()
+            if st.st_uid != os.getuid() or st.st_mode & 0o077:
+                malo = f"{spool} tiene que ser tuya y privada (700)"
+            elif not (spool / "pendientes").is_dir() or not (spool / "resultados").is_dir():
+                malo = f"faltan {spool}/pendientes o {spool}/resultados"
+        except OSError:
+            malo = f"no existe {spool}"
+        vigia = activo("telar-alojar.path")
+        if malo:
+            salida.append(_r("ayudante", FALLA, malo, "servidor/README.md, «Alojar a otras personas»"))
+        elif vigia is False:
+            salida.append(_r("ayudante", FALLA, "telar-alojar.path no está activo: nadie atiende los pedidos",
+                             "sudo systemctl enable --now telar-alojar.path"))
+        else:
+            salida.append(_r("ayudante", OK, f"instalado, con su buzón en {spool}"))
+
+    if not hay_puerta:
+        if alojados:
+            salida.append(_r("puerta", AVISO, "sin puerta: cada alojado tiene su propio puerto de página",
+                             "servidor/README.md, «La puerta: una dirección para todos»"))
+        return salida
+
+    # la puerta: su servicio, su versión, y que quien administra también esté detrás de ella
+    est = puerta.estado(usuario) or {}
+    if activo("telar-puerta") is False:
+        salida.append(_r("puerta", FALLA, "el servicio telar-puerta no está activo: nadie entra por la dirección del servidor",
+                         "sudo systemctl restart telar-puerta · journalctl -u telar-puerta -n 30"))
+    elif not est.get("version"):
+        salida.append(_r("puerta", FALLA, f"no está instalada en {puerta.INSTALADA}", "sudo sh servidor/telar-puerta-instalar …"))
+    elif est.get("atras"):
+        salida.append(_r("puerta", AVISO, f"va en la {est['version']} y telar en la {est['telar']}",
+                         est.get("actualizar") or "sudo sh servidor/telar-puerta-instalar …"))
+    else:
+        salida.append(_r("puerta", OK, f"{est.get('url') or puerta.CONFIG} · {est['version']}"))
+    tabla = puerta.leer_tabla(puerta.CONFIG, registro)
+    for x in tabla.problemas:
+        salida.append(_r("puerta", AVISO, x))
+    if est.get("administra"):
+        sock = puerta.socket_de(usuario, sockets)
+        if not sock.exists():
+            salida.append(_r("puerta", FALLA, f"tu telar no escucha para la puerta ({sock}): entras y no hay nadie",
+                             f"telar instalar --web-socket {sock} --si (y reiniciar telar-serve)"))
+
+    # cada alojado activo: en el registro, con la cuenta con que la puerta lo reconoce, y su carpeta del socket
+    for n in sorted(alojados):
+        try:
+            d = json.loads((registro / f"{n}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            salida.append(_r(f"alojado {n}", FALLA, f"no está en {registro}: el ayudante no lo terminó de armar",
+                             f"telar servidor aprobar {n} (retoma lo que quedó a medias)"))
+            continue
+        if not d.get("tailscale"):
+            salida.append(_r(f"alojado {n}", FALLA, "sin su cuenta de Tailscale en el registro: la puerta no lo deja entrar",
+                             f"agregar \"tailscale\": \"<su cuenta>\" en {registro / (n + '.json')} (root)"))
+        elif not (sockets / n).is_dir():
+            salida.append(_r(f"alojado {n}", FALLA, f"no existe {sockets / n}: su telar no tiene dónde escuchar",
+                             f"sudo systemd-tmpfiles --create /etc/tmpfiles.d/telar-alojado-{n}.conf"))
+        else:
+            salida.append(_r(f"alojado {n}", OK, f"{d['tailscale']} → {n}"))
     return salida
 
 
