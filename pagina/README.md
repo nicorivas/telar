@@ -16,6 +16,7 @@ npm run navegador         # compilar a src/telar/web/ (lo que se commitea)
 npm run navegador:watch   # y de nuevo con cada cambio; scripts/dev.py lo usa (docs/desarrollar.md)
 npm run prueba:eco        # la prueba del eco de la terminal
 npm run prueba:enlaces    # la de las rutas y direcciones de la terminal, también las partidas en filas
+npm run prueba:semana     # la de la semana del calendario: qué es cada evento y cómo se cuenta la jornada
 npm run lint:css
 ```
 
@@ -24,7 +25,9 @@ npm run lint:css
   núcleo: lee la configuración y el día, lleva las pestañas y las teclas, y le pasa cada acción a la pantalla que
   la declara. Cada pantalla (`ahora.ts`, `tareas.ts`, `bloques.ts`, `proyectos.ts`, `plan.ts`, `secciones.ts`,
   `equipo.ts`) tiene su estado, su HTML y sus acciones, y recibe del núcleo lo que dice `pantalla.ts`. Todo se
-  pinta en `vista.ts`; la configuración (⚙) está en `config/`.
+  pinta en `vista.ts`; la configuración (⚙) está en `config/`. El calendario (en `plan.ts`) tiene el día y la
+  semana (`semana.ts`); los eventos de un día cruzados con su plan están en `eventos.ts`, y qué es cada uno (una
+  cita, un bloque propio de qué clase, la rutina) en `clases.ts`.
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
   `rutas-agente.ts` vuelve enlaces al visor las rutas de archivo que escribe un agente (en la terminal, la
   lectura y la conversación), en la máquina de su hilo, y abre en una pestaña nueva las direcciones web.

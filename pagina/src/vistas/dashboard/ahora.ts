@@ -11,37 +11,12 @@ import { esc, normalizar } from '../../estilo';
 import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
 import { Dia, Pendiente, diaDe, pendientes, seccion } from './dia';
-import { EventoCal, Plan, columnaCalendario, eventosDelDia } from './plan';
+import { NOMBRE, claseDe } from './clases';
+import { type EventoCal, eventosDelDia } from './eventos';
+import { type Plan, columnaCalendario } from './plan';
 import { esServicio, filaPendiente } from './proyectos';
 import type { Accion, Pantalla, Tablero } from './pantalla';
 import { prepararReunion } from './reuniones';
-
-export type Clase = 'reunion' | 'estrategico' | 'comercial' | 'correo' | 'reserva' | 'almuerzo' | 'cierre' | 'personal' | 'bloque';
-
-const NOMBRE: Record<Clase, string> = {
-    reunion: 'reunión', estrategico: 'estratégico', comercial: 'comercial', correo: 'correo y mensajes', reserva: 'reserva',
-    almuerzo: 'almuerzo', cierre: 'cierre', personal: 'personal', bloque: 'bloque',
-};
-
-/** De qué clase es un bloque: lo que dice el plan (`clase`), o se deduce del tipo y del título
- *  («Estratégico: …», «Comercial: …», «Correo y mensajes», «Reserva»). Lo del calendario es reunión. */
-export function claseDe(e: EventoCal): Clase {
-    const p: Plan = e.plan ?? {};
-    const dicha = String(p.clase ?? '').toLowerCase();
-    if (['estrategico', 'comercial', 'correo', 'reserva', 'personal', 'cierre'].includes(dicha)) return dicha as Clase;
-    if (!e.soloPlan && p.tipo !== 'bloque' && p.tipo !== 'almuerzo' && p.tipo !== 'cierre') return 'reunion';
-    if (p.tipo === 'almuerzo') return 'almuerzo';
-    if (p.tipo === 'cierre') return 'cierre';
-    if (p.estrategico) return 'estrategico';
-    const t = normalizar(e.titulo);
-    if (t.startsWith('estrateg')) return 'estrategico';
-    if (t.startsWith('comercial')) return 'comercial';
-    if (t.startsWith('correo')) return 'correo';
-    if (t.startsWith('reserva')) return 'reserva';
-    if (t.startsWith('almuerzo')) return 'almuerzo';
-    if (t.startsWith('cierre')) return 'cierre';
-    return p.tipo === 'reunion' ? 'reunion' : 'bloque';
-}
 
 /** El bloque que toca: el que contiene la hora; si no hay, el próximo; si el día terminó, el último.
  *  Entre dos que se pisan, el que empezó más tarde (la reunión que corta un bloque propio). */

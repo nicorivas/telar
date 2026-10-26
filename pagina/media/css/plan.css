@@ -14,20 +14,128 @@
   .cal-nav a { color: var(--dim); }
   .cal-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
   .cal-nav .cal-fecha { min-width: 14ch; text-align: center; }
+  .cal-vistas { display: flex; margin-right: 2ch; border: 1px solid var(--linea); }
+  .cal-vistas a { padding: 0 1.2ch; color: var(--dim); }
+  .cal-vistas a.on { color: var(--bg); background: var(--azul); }
+  .cal-vistas a.on:hover { color: var(--bg); background: var(--azul); }
   .cal-dos { display: grid; grid-template-columns: minmax(28ch, 1fr) minmax(32ch, 1.2fr); gap: 2ch; align-items: start; }
   .cal { position: relative; margin: 1lh 0 1lh 6ch; border-left: 1px solid var(--linea); }
   .cal-hora { position: absolute; left: -6ch; width: 5ch; text-align: right; color: var(--dim); font-size: var(--t-chica); transform: translateY(-.6em); }
   .cal-linea { position: absolute; left: 0; right: 0; border-top: 1px solid var(--linea); }
   .cal-ahora { position: absolute; left: 0; right: 0; border-top: 2px solid var(--rojo); z-index: 3; }
+
+  /* De qué es cada cosa, por su color (clases.ts): la cita, cada clase de bloque, la rutina y lo libre. */
+  .c-reunion { --c: var(--azul); }
+  .c-estrategico { --c: var(--amarillo); }
+  .c-comercial { --c: var(--verde); }
+  .c-correo { --c: var(--cian); }
+  .c-reserva { --c: var(--violeta); }
+  .c-personal { --c: var(--magenta); }
+  .c-bloque { --c: var(--blanco-claro); }
+  .c-almuerzo, .c-cierre, .c-traslado, .c-rutina { --c: var(--dim); }
+  .c-libre { --c: var(--linea); }
+
+  /* Un evento: la cita va llena (no se mueve sola); el bloque propio, rayado (es tiempo reservado, se puede mover);
+     la rutina, una línea; la cita sin aceptar, solo su borde. Pisado: una cita le quitó ese tiempo. */
   .cal-ev { position: absolute; box-sizing: border-box; padding: 2px 6px; overflow: hidden; cursor: pointer;
-            background: color-mix(in srgb, var(--azul) 22%, transparent); border-left: 3px solid var(--azul); }
-  .cal-ev:hover { background: color-mix(in srgb, var(--azul) 34%, transparent); }
-  .cal-ev.plan { background: transparent; border: 1px dashed var(--amarillo); border-left: 3px solid var(--amarillo); }
-  .cal-ev.pasado { opacity: .55; }
-  .cal-ev.sel { outline: 2px solid var(--fg); z-index: 2; }
+            color: var(--fg); border-left: 3px solid var(--c); }
+  .cal-ev.t-cita { background: color-mix(in srgb, var(--c) 26%, var(--bg)); }
+  .cal-ev.t-cita:hover { background: color-mix(in srgb, var(--c) 38%, var(--bg)); }
+  .cal-ev.t-cita.pendiente { background: var(--bg); border: 1px dashed var(--c); border-left: 3px dashed var(--c); color: var(--blanco-claro); }
+  .cal-ev.t-bloque { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--c) 20%, var(--bg)) 0 5px, var(--bg) 5px 10px);
+                   border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); border-left: 3px solid var(--c); }
+  .cal-ev.t-bloque:hover { background: color-mix(in srgb, var(--c) 24%, var(--bg)); }
+  /* lo estratégico es lo que más cuesta proteger: con todo su borde */
+  .cal-ev.t-bloque.c-estrategico { border-color: var(--c); }
+  .cal-ev.t-rutina { background: var(--bg); border-left: 1px solid var(--dim); color: var(--dim); }
+  .cal-ev.pisado { border-color: var(--rojo); }
+  .cal-ev.pisado::after { content: '⚠'; position: absolute; top: 1px; right: 4px; color: var(--rojo); }
+  .cal-ev.pasado { filter: brightness(.72) saturate(.6); }
+  .cal-ev.sel { outline: 2px solid var(--fg); z-index: 2; opacity: 1; }
   .cal-ev .h { color: var(--dim); font-size: var(--t-chica); } .cal-ev .t { display: block; }
   .cal-ev.corto { white-space: nowrap; text-overflow: ellipsis; } .cal-ev.corto .t { display: inline; margin-left: .5ch; }
   .cal-ev .marca-nota { color: var(--amarillo); }
+  /* lo que no dura (el cierre del día): una raya con su nombre */
+  .sem-raya { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--dim); cursor: pointer; }
+  .sem-raya span { position: absolute; top: 1px; right: 2px; padding: 0 .5ch; color: var(--dim); }
+
+  /* La semana (semana.ts): arriba el balance, debajo cinco columnas con el detalle al lado; en angosto, una lista. */
+  .sem { container-type: inline-size; margin-top: .6lh; }
+  .sem-balance { margin: 0 0 1.2lh 6ch; }
+  .sem-balance .b-titulo { display: flex; flex-wrap: wrap; gap: 0 2ch; align-items: baseline; }
+  .barra { display: flex; gap: 1px; height: 5px; margin: .3lh 0; }
+  .barra.grande { height: 1lh; margin: .4lh 0 .5lh; }
+  .barra .seg { min-width: 2px; }
+  .seg.t-cita, .ley.t-cita i, .sem-fila.t-cita i { background: var(--c); }
+  .seg.t-bloque, .ley.t-bloque i, .sem-fila.t-bloque i { background: repeating-linear-gradient(-45deg, var(--c) 0 2px, color-mix(in srgb, var(--c) 30%, var(--bg)) 2px 5px); }
+  .seg.t-rutina, .ley.t-rutina i, .sem-fila.t-rutina i { background: color-mix(in srgb, var(--dim) 55%, var(--bg)); }
+  .seg.t-libre, .ley.t-libre i { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 30%, transparent); }
+  .sem-fila.pendiente i { background: transparent; box-shadow: inset 0 0 0 1px var(--c); }
+  .leyenda { display: flex; flex-wrap: wrap; gap: .15lh 2.5ch; color: var(--dim); }
+  .ley i { display: inline-block; width: 2ch; height: .9em; margin-right: .8ch; vertical-align: -.1em; }
+  .ley b { font-weight: normal; color: var(--fg); }
+  .b-est { display: grid; grid-template-columns: 13ch minmax(0, 1fr); gap: 1ch; margin-top: .6lh; }
+  .b-est .k { color: var(--amarillo); }
+  .b-est .v { display: flex; flex-wrap: wrap; gap: .15lh 2.5ch; align-items: baseline; }
+  .b-est .est { color: var(--fg); }
+  .b-est .est.pisado, .b-est .sin-est { color: var(--rojo); }
+  .b-nota { margin-top: .4lh; }
+  /* cómo leer la semana: el relleno dice si se mueve */
+  .b-clave { display: flex; flex-wrap: wrap; gap: .15lh 2.5ch; margin-top: .6lh; }
+  .b-clave i { display: inline-block; width: 2ch; height: .9em; margin-right: .8ch; vertical-align: -.1em; }
+  .b-clave i.t-cita { background: var(--c); }
+  .b-clave i.t-bloque { background: repeating-linear-gradient(-45deg, var(--c) 0 2px, color-mix(in srgb, var(--c) 30%, var(--bg)) 2px 5px); }
+  .b-clave i.pendiente { box-shadow: inset 0 0 0 1px var(--c); }
+  .b-clave .rojo { color: var(--rojo); }
+  .sem-fila-cab, .sem-cuerpo { display: grid; grid-template-columns: 6ch repeat(5, minmax(0, 1fr)); column-gap: 3px; }
+  .sem-cuerpo { margin: .3lh 0 1lh; }
+  .sem-dia { display: flex; flex-direction: column; min-width: 0; padding: .3lh .6ch .4lh; border-top: 2px solid var(--linea); color: var(--fg); cursor: pointer; }
+  .sem-dia:hover { background: var(--hover); text-decoration: none; }
+  .sem-dia .uno { display: flex; justify-content: space-between; gap: 0 1ch; overflow: hidden; white-space: nowrap; }
+  .sem-dia .uno.cifras { flex-wrap: wrap; }
+  .sem-dia .n { font-weight: bold; }
+  .sem-dia .tipo, .sem-dia .cifras { overflow: hidden; color: var(--dim); text-overflow: ellipsis; }
+  .sem-dia .cifras .sin-est { color: var(--rojo); }
+  .sem-dia.hoy { border-top-color: var(--rojo); }
+  .sem-dia.hoy .n { color: var(--rojo); }
+  .sem-dia.pasado { filter: brightness(.72) saturate(.6); }
+  .sem-fila-cab.completos { margin-top: .2lh; }
+  .sem-completo { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .sem-completo span { overflow: hidden; padding: 0 .5ch; white-space: nowrap; text-overflow: ellipsis; background: var(--hover); }
+  .sem-reloj { position: relative; }
+  .sem-reloj .cal-hora { left: 0; }
+  .sem-col { position: relative; border-left: 1px solid var(--linea); }
+  .sem-col .fuera { position: absolute; left: 0; right: 0; background: var(--bg-barra); }
+  .sem .cal-ev { padding: 1px 4px; line-height: 1.25; }
+  .sem .cal-ev .h { margin-right: .3ch; }
+  .sem .cal-ev.encima { z-index: 1; box-shadow: -2px 0 0 var(--bg); }
+  .sem .cal-ev.corto .t { margin-left: 0; }
+  /* el detalle del evento elegido, junto a su día; en la lista, debajo */
+  .sem-globo { grid-row: 1; z-index: 4; align-self: start; padding: .5lh 1.5ch .8lh; background: var(--bg-barra);
+               border: 1px solid var(--linea); box-shadow: 0 4px 16px rgb(0 0 0 / 45%); }
+  .sem-globo .cerrar { float: right; margin-left: 1ch; color: var(--dim); }
+  .sem-globo .cerrar:hover { color: var(--fg); text-decoration: none; }
+  .sem-globo h3 { margin: 0 0 .3lh; }
+  .sem-globo .cal-meta { color: var(--dim); margin-bottom: .5lh; }
+  .sem-globo .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
+  .sem-det-lista { display: none; }
+  .sem-lista { display: none; }
+  .sem-fila { display: grid; grid-template-columns: 12ch 2ch minmax(0, 1fr); gap: 1ch; align-items: center; padding: .1lh .6ch; cursor: pointer; }
+  .sem-fila:hover { background: var(--hover); }
+  .sem-fila i { height: 1em; }
+  .sem-fila .h { color: var(--dim); }
+  .sem-fila.t-rutina { color: var(--dim); }
+  .sem-fila.pasado { filter: brightness(.72) saturate(.6); }
+  .sem-fila.sel { background: var(--sel); }
+  .sem-fila.pisado .t { color: var(--rojo); }
+  .sem-lista .sem-dia { margin-top: .8lh; }
+
+  @container (max-width: 80ch) {
+    .sem-balance { margin-left: 0; }
+    .sem-fila-cab, .sem-cuerpo { display: none; }
+    .sem-lista, .sem-det-lista { display: block; }
+    .sem-det-lista { margin-top: 1lh; padding-top: .5lh; border-top: 1px solid var(--linea); }
+  }
   .cal-dia-completo { padding: .2lh 1ch; color: var(--dim); }
   .cal-det { position: sticky; top: 4lh; padding: .5lh 1ch; border-left: 1px solid var(--linea); text-align: left; }
   .cal-det h3 { margin: 0 0 .3lh; }

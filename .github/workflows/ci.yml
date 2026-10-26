@@ -75,6 +75,8 @@ jobs:
         working-directory: pagina
       - run: npm run prueba:enlaces
         working-directory: pagina
+      - run: npm run prueba:semana
+        working-directory: pagina
 
   mod:
     # El mod de telar para Claude Code (src/telar/mod/): que Claude Code lo lea como se debe y que sus

@@ -20,6 +20,16 @@ extension shared the version number.
   (`GET /alojamiento.json`, `POST /alojamiento/<action>`).
 - `telar instalar --web-puerto N`: the page of a machine on a port other than 8780 (a server that hosts several
   people gives each their own).
+- The dashboard calendar has two tabs, the day and the week (Monday to Friday; on a weekend, the week ahead). Both
+  draw what each thing is: a meeting with other people is filled, a block the person reserved is hatched in the
+  color of its class (strategic, commercial, mail, reserve, personal), lunch and travel are a thin line, a meeting
+  not yet accepted is only its outline, one the person organizes carries a ◇ (they can move it), and what overlaps
+  is marked: a block under an accepted meeting, two accepted meetings, two blocks reserved at once. What a thing is
+  comes from the day's plan, or else from the event itself (guests or a call link make it a meeting). On top of the
+  week, where its working day (08:30 to 18:00) goes: the hours of meetings, of each class of block and free, and the
+  strategic blocks one by one, with what meetings and other blocks take from them. A click on an event opens its
+  detail and notes next to it; on a narrow screen the week is a list by day. The tab key of the calendar (`a`)
+  switches between the two, and the browser remembers the last one.
 
 ### Changed
 

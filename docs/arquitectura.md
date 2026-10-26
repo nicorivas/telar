@@ -450,7 +450,11 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   el calendario, las secciones, el equipo) vive en su archivo con su estado, su HTML y sus acciones, y recibe del
   núcleo lo que dice `vistas/dashboard/pantalla.ts`: una pantalla nueva es un archivo más. Todo se pinta en
   `vistas/dashboard/vista.ts`, que filtra, ordena y atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
-  de afuera (el buscador de la barra, una terminal).
+  de afuera (el buscador de la barra, una terminal). El calendario tiene dos vistas, el día y la semana de lunes a
+  viernes (`vistas/dashboard/semana.ts`), con el mismo dibujo: una cita (con otras personas) va llena, un bloque
+  propio va rayado y del color de su clase, la rutina es una línea, y lo que se cruza se marca. Qué es cada
+  evento lo decide `clases.ts`, con lo que dice el plan del día o, si no hay, con sus invitados y su título. La
+  semana dice además en qué se va su jornada: las horas por clase, lo libre y lo estratégico bloque por bloque.
 - **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la lectura (⌥L,
   solo la respuesta final del agente, con un renderizador por fuente; la conversación la deja el mod de telar en
   la casilla, y sin él se lee del registro del agente) y la conversación (⌥C). Una vista nueva es una entrada del
