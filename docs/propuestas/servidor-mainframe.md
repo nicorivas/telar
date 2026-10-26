@@ -1,9 +1,10 @@
 # El servidor como mainframe: lo que falta
 
-Estado: **construida, sin probar en el servidor real** (23-oct-2026). Cómo es —el pedido por el bus, el ayudante de
-root, el secreto, los puertos— está en [../arquitectura.md](../arquitectura.md), «El servidor como mainframe». Las
-pruebas cubren el protocolo, los permisos y el plan del ayudante en seco (`pruebas/test_alojamiento.py`); lo que no se
-pudo ejercitar sin crear un usuario de verdad es el script de instalación de `servidor/telar-alojar`.
+Estado: **en uso** (26-oct-2026). Pablo Ferreiro tiene su lugar en el servidor y entra, como todos, por la puerta
+(`https://telar.tail22505a.ts.net`). Cómo es —el pedido por el bus, el ayudante de root, el secreto, la puerta— está
+en [../arquitectura.md](../arquitectura.md), «El servidor como mainframe». Las pruebas cubren el protocolo, los
+permisos, el plan del ayudante en seco (`pruebas/test_alojamiento.py`) y la puerta (`pruebas/test_puerta.py`). Falta
+que Pablo la pruebe desde su laptop.
 
 Nació de que Pablo Ferreiro quiere hilos en el servidor: hasta ahora darle un lugar era a mano (`telar persona
 crear`, una llave ssh, un guion con sudo) y fuera del bus, así que no veía sus hilos del servidor desde su laptop como
@@ -33,8 +34,10 @@ laptop: `telar servidor pedir --llave ~/.ssh/id_ed25519.pub`; en el servidor, `t
 
 ## Lo que falta
 
-1. Probarlo de punta a punta con un alojado real (Pablo), y ajustar el script de instalación a lo que salga: es lo
-   único que no se pudo ejercitar sin crear un usuario de verdad.
+1. Que Pablo pruebe la puerta desde su laptop: su página, no la de Nico, y la terminal. Lo demás de punta a punta ya
+   se hizo con él (su usuario, su nodo en el bus, su telar detrás de la puerta).
 2. El aviso de pedido nuevo, y elegir los topes al aprobar.
-3. `telar doctor`: que el servidor diga si el ayudante está instalado y su carpeta de pedidos bien puesta.
+3. `telar doctor` en el servidor: que diga si el ayudante y la puerta están instalados, si la versión de la puerta
+   va atrás de la de telar (se actualiza a mano: `servidor/telar-puerta-instalar`), y si cada alojado tiene su
+   socket.
 4. Un alojado que quiera migrar sus hilos de otra máquina: hoy nace de cero.

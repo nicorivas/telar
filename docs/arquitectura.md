@@ -258,8 +258,8 @@ Además de ser la máquina de quien lo corre y alojar el bus, un servidor puede 
 ([propuesta](propuestas/servidor-mainframe.md): lo que falta). Alguien que ya tiene cuenta en el bus pide un lugar
 (`telar servidor pedir`), quien administra lo aprueba (`telar servidor aprobar`), y el servidor le arma lo que una
 persona necesita para tener una máquina propia: un usuario Linux sin grupos extra y con tope de memoria y CPU, su
-uv, su Claude Code y su telar, y **su propio nodo** (`telar serve --nodo --web`) conectado a **su cuenta** del bus,
-con su secreto y su puerto de página. Desde ahí el servidor es una máquina más *de esa persona*: sus hilos viven
+uv, su Claude Code y su telar, y **su propio nodo** (`telar serve --nodo`) conectado a **su cuenta** del bus,
+con su secreto, y su página detrás de la puerta del servidor (abajo). Desde ahí el servidor es una máquina más *de esa persona*: sus hilos viven
 aquí, y los ve, los abre y les escribe desde su laptop por el bus como a los de cualquier otra máquina suya. No hay
 un tipo nuevo de hilo, ni sesiones compartidas: lo de cada persona lo separan el sistema (usuarios, permisos) y el
 bus (una cuenta por persona), y cada hilo sigue teniendo un solo dueño.
@@ -269,8 +269,24 @@ y todas lo importan (`telar.cuentas`); el servidor NATS dice de qué cuenta vien
 nadie pide a nombre de otro. Lo atiende el nodo de la máquina del bus. `pedir` y `estado` son de cualquiera del bus,
 sobre lo suyo; `ver`, `aprobar`, `rechazar` y `quitar`, del dueño y de los admin (los roles de `telar.personas`).
 Un alojamiento pasa `pendiente → preparando → activo`, o `falló` (se reintenta aprobando de nuevo), `rechazado` o
-`quitado`, y se guarda en `~/.config/telar/bus/alojamientos.json`, privado. Cada alojado recibe el siguiente puerto
-de página libre desde el 8781 (`telar instalar --web-puerto`); el 8780 es el de quien administra.
+`quitado`, y se guarda en `~/.config/telar/bus/alojamientos.json`, privado. Un servidor sin puerta (abajo) le da a
+cada alojado el siguiente puerto de página libre desde el 8781 (`telar instalar --web-puerto`); con puerta, ninguno.
+
+**La puerta: una dirección para todos** (`telar.puerta`, desde la 0.7.0). Cada persona tiene su propio `telar serve`,
+que corre con sus permisos; lo que no tiene es un puerto propio en la red. Todos entran por la dirección del
+servidor, `https://<máquina>.<red>.ts.net`, como a un servidor web normal: `tailscale serve` le pasa cada pedido a la
+puerta por un socket (`/run/telar/puerta/puerta.sock`) al que solo llega él, y la puerta sabe de quién es por
+Tailscale: `tailscale whois` de la dirección que `tailscale serve` pone en `X-Forwarded-For` (y que pisa, como el
+`X-Forwarded-Host`, así que el navegador no la inventa). La cuenta se busca en su tabla (`/etc/telar/puerta.toml`, la
+de quien administra, y la cuenta de cada alojado en `/etc/telar/alojados.d/`, que anota el ayudante de root con la
+que usó al unirse al bus) y el pedido, HTTP o la terminal por WebSocket, sigue al socket de esa persona,
+`/run/telar/<usuario>/web.sock`. Ahí su telar sirve la página sin llave (`telar serve --web-socket`): la carpeta del
+socket (2750, de la persona y del grupo `telar-puerta`) deja pasar solo a ella y a la puerta. Un pedido que viene del
+servidor mismo no entra: llegaría desde la dirección del servidor, que `whois` da como la de quien administra. Sin
+llave ni puerto por persona, ni prefijo en la dirección: la página es la misma y la dirección también; cambia quién
+la pide. La puerta corre como el usuario de sistema `telar-puerta`, con su telar en `/opt/telar-puerta`, y se
+instala con `servidor/telar-puerta-instalar`. Quien administra conserva además su página directa (`--web`, en el
+8780 y con llave), que es la que usan sus otras máquinas.
 
 **En la página**, la vista de máquinas (`/maquinas`) lista debajo de las tuyas los servidores mainframe que ofrece el
 bus (`GET /alojamiento.json`, que pregunta `estado` al servicio `alojar.<dueño>`; si nadie atiende, la lista va vacía)

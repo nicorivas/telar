@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-10-26
+
 ### Fixed
 
 - The page: the HILOS sort now covers the threads of other machines too (the ones that come from their snapshot).
