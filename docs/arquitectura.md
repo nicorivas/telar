@@ -479,7 +479,9 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   anterior (el visor anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋:
   `navegador/app.ts` recuerda de dónde se vino.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
-  al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta.
+  al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta. Lo que un programa de
+  la terminal manda al portapapeles (OSC 52) pasa al de la persona: así se copia de un hilo de otra máquina, donde
+  el mouse lo tiene el tmux de allá. Nada de la terminal puede leer el portapapeles.
 - **Los avisos y diálogos** (un aviso que se va solo, un campo para escribir, un texto largo con a quién va, un
   menú para elegir, un aviso con botones) los pone la página misma, encima de todo (`pagina/src/web/interfaz.ts`):
   se ven mire uno lo que mire, también la lista en el celular. El dashboard, la barra y las órdenes `telar.*` los

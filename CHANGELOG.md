@@ -31,6 +31,16 @@ extension shared the version number.
   detail and notes next to it; on a narrow screen the week is a list by day. The tab key of the calendar (`a`)
   switches between the two, and the browser remembers the last one.
 
+### Fixed
+
+- Copying from the terminal of a thread on another machine. There the mouse belongs to that machine's tmux (or to
+  Claude Code, which selects by itself and hands the text to tmux): what is selected by dragging stays over there,
+  and comes back with OSC 52, which the page ignored. The page now writes it to the person's clipboard. On a page
+  served over http the browser allows that only a few seconds after the click that started the drag, and a long
+  selection plus the trip to the server can take longer: then a box asks, with a «Copiar» button (a new click, so it
+  can), and meanwhile ⌘C in the terminal copies it too. It never answers a query for the clipboard. ⌥ and drag also
+  selects in the page itself, even when tmux has the mouse.
+
 ### Changed
 
 - `telar.personas.por_el_bus`: the request/response to a bus service, factored out of `personas.pedir` so the new

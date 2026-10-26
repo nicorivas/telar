@@ -11,6 +11,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 
 import { conEco } from '../navegador/eco/entrada';
 import { abrirHipervinculo, enlazarTerminal } from './rutas-agente';
+import * as ui from './ui';
 import type { RutasVista, Vista } from './vistas-hilo';
 
 declare global {
@@ -78,6 +79,35 @@ export function montar(raiz: HTMLElement, rutas: RutasVista): Vista {
     return vista;
 }
 
+/** Lo que un programa de la terminal manda al portapapeles con OSC 52 («c;<base64>»): el texto, o nada si es una
+ *  consulta («?»). Las consultas no se contestan: nada de lo que corre en la terminal lee el portapapeles. */
+export function textoOsc52(datos: string): string | undefined {
+    const b64 = datos.slice(datos.indexOf(';') + 1);
+    if (!datos.includes(';') || !b64 || b64 === '?') return undefined;
+    try { return new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); } catch { return undefined; }
+}
+
+/** Escribe en el portapapeles de la persona. La página suele servirse por http (no es un «contexto seguro»), y ahí
+ *  el navegador no da `navigator.clipboard`: se copia como lo haría ⌘C, desde un campo escondido, lo que el
+ *  navegador permite solo poco después de un clic o una tecla de la persona. */
+async function alPortapapeles(texto: string): Promise<boolean> {
+    if (window.isSecureContext && navigator.clipboard) {
+        try { await navigator.clipboard.writeText(texto); return true; } catch { /* sigue con el campo */ }
+    }
+    const antes = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const campo = document.createElement('textarea');
+    campo.value = texto;
+    campo.setAttribute('readonly', '');
+    campo.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+    document.body.appendChild(campo);
+    campo.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    campo.remove();
+    antes?.focus();
+    return ok;
+}
+
 /** La terminal ya con xterm cargado: su tamaño, su conexión, la caja de abajo y el fondo. Devuelve lo que hay
  *  que deshacer al cerrarla. */
 function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: ReturnType<typeof conEco>; deshacer: (() => void)[] } {
@@ -90,8 +120,10 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const css = getComputedStyle(document.documentElement);
     const t = (nombre: string) => css.getPropertyValue(`--${nombre}`).trim();
     // sin parpadeo: Claude Code dibuja su propio cursor, y uno que además parpadea molesta al escribir. Un hipervínculo
-    // (OSC 8) a una web abre una pestaña nueva, sin el confirm() que xterm pone de fábrica; uno file://, el visor
+    // (OSC 8) a una web abre una pestaña nueva, sin el confirm() que xterm pone de fábrica; uno file://, el visor.
+    // ⌥ y arrastrar selecciona aquí aunque el programa (el tmux de otra máquina) tenga el mouse
     const term = new window.Terminal!({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: false, allowProposedApi: false,
+        macOptionClickForcesSelection: true,
         linkHandler: { activate: (_e, uri) => abrirHipervinculo(uri, rutas), allowNonHttpProtocols: true },
         theme: { background: t('bg'), foreground: t('fg'), cursor: t('cursor'), selectionBackground: t('negro'),
             black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
@@ -107,6 +139,44 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // las rutas que escribe el agente, como enlaces al visor (en la máquina del hilo)
     const enlaces = enlazarTerminal(term, rutas);
     deshacer.push(() => enlaces.dispose());
+
+    // lo que copia el programa de la terminal, al portapapeles de la persona. En un hilo de otra máquina el mouse lo
+    // tiene el tmux de allá (o Claude Code, que selecciona él): lo que se selecciona arrastrando queda allá, y vuelve
+    // con OSC 52. Si el navegador no deja copiarlo (por http, solo unos segundos después del clic que empezó a
+    // arrastrar, y un párrafo largo más el viaje al servidor tarda más), se pregunta con un botón: apretarlo es un
+    // clic nuevo, y entonces sí. Mientras, también vale ⌘C en la terminal
+    let porCopiar = '', preguntando = false;
+    const copiado = (texto: string) => ui.estado(`copiado: ${texto.length} ${texto.length === 1 ? 'carácter' : 'caracteres'}`, 2500);
+    const preguntar = async () => {
+        if (preguntando) return;
+        preguntando = true;
+        const muestra = porCopiar.replace(/\s+/g, ' ').trim();
+        const r = await ui.info(`Lo que seleccionaste (${porCopiar.length} caracteres) no pasó solo al portapapeles: el navegador`
+            + ` solo deja copiar justo después de un clic.\n«${muestra.length > 70 ? `${muestra.slice(0, 70)}…` : muestra}»`, 'Copiar');
+        preguntando = false;
+        if (r === 'Copiar' && porCopiar && await alPortapapeles(porCopiar)) { copiado(porCopiar); porCopiar = ''; }
+        term.focus();
+    };
+    const osc52 = term.parser.registerOscHandler(52, datos => {
+        const texto = textoOsc52(datos);
+        if (!texto) return true;
+        void alPortapapeles(texto).then(ok => {
+            if (ok) { porCopiar = ''; copiado(texto); return; }
+            porCopiar = texto;
+            void preguntar();
+        });
+        return true;
+    });
+    deshacer.push(() => osc52.dispose());
+    const alCopiar = (e: ClipboardEvent) => {
+        if (!porCopiar || term.hasSelection() || !e.clipboardData) return;
+        e.clipboardData.setData('text/plain', porCopiar);
+        e.preventDefault(); e.stopImmediatePropagation();
+        porCopiar = '';
+        ui.estado('copiado', 2500);
+    };
+    marco.addEventListener('copy', alCopiar, true);
+    deshacer.push(() => marco.removeEventListener('copy', alCopiar, true));
 
     // el tamaño: todo el alto, y de ancho lo que quepa hasta COLUMNAS (más ancho se lee mal), centrada. La ventana
     // del hilo toma este tamaño (la vista se lo da a tmux), así que no sobra nada que rellenar
