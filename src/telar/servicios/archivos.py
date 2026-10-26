@@ -17,9 +17,10 @@ preparación de una reunión, la página y la memoria de un lienzo). En el naveg
   copiarlo antes.
 - **Dejar en la entrada**: lo que se arrastra a la terminal de un hilo (web/terminal.ts) y el hilo no puede
   leer donde está. Va a la carpeta de entrada de la máquina del hilo: aquí, la de `[bus] entrada` (por
-  defecto `~/telar-entrada`); en otra, `~/telar-entrada`, la de `telar imagen`. Son los bytes que sube la
-  página (`desde_bytes`), o un archivo de esta máquina nombrado por su ruta (`desde_ruta`), que a un hilo de
-  otra máquina se le copia por ssh (`imagen.subir`, con el `destino` de `[remotos]`). Del nombre
+  defecto `~/telar-entrada`); en otra, su entrada. Son los bytes que sube la página (`desde_bytes`), o un
+  archivo de esta máquina nombrado por su ruta (`desde_ruta`), que a un hilo de otra máquina se le lleva por
+  el bus (`telar archivo`, hasta 25 MB: llega a cualquier máquina de la persona) o, si no hay bus o es más
+  grande, por ssh (`imagen.subir`, con el `destino` de `[remotos]`). Del nombre
   queda solo el último tramo, sin separadores ni caracteres de control; si ya hay uno igual, `-2`, `-3`…:
   nunca se pisa nada. Hasta 200 MB.
 
@@ -267,15 +268,17 @@ def _dejar(tmp: Path, carpeta: Path, nombre: str) -> Path:
 
 
 def _remoto(ctx, maquina: str):
-    """La máquina del hilo: None si es esta; si es otra, su `[remotos]` (por ahí se llega por ssh)."""
+    """La máquina del hilo: None si es esta; si es otra, `(su [remotos] o None, si hay bus)`: por el bus se le
+    llega a cualquier máquina de la persona (`telar archivo`), por ssh solo a una de `[remotos]`."""
     from telar import bus as mod_bus
 
     if not maquina or maquina == mod_bus.maquina(ctx.config):
         return None
     r = next((r for r in getattr(ctx.config, "remotos", ()) or () if r.nombre == maquina), None)
-    if r is None:
-        raise ErrorDeServicio(f"{maquina} no está en [remotos] de esta máquina: no sé cómo llevarle el archivo", 404)
-    return r
+    hay_bus = mod_bus.hay_bus(ctx.config)
+    if r is None and not hay_bus:
+        raise ErrorDeServicio(f"{maquina}: sin bus y sin [remotos] para ella, no sé cómo llevarle el archivo", 404)
+    return (maquina, r, hay_bus, ctx.config)
 
 
 def _espera(bytes_: int) -> float:
@@ -283,13 +286,28 @@ def _espera(bytes_: int) -> float:
     return max(60.0, bytes_ / (512 * 1024))
 
 
-def _a_otra(remoto, origen: Path, nombre: str, bytes_: int) -> Entrada:
+def _a_otra(destino, origen: Path, nombre: str, bytes_: int) -> Entrada:
+    """A la entrada de la otra máquina: por el bus si lo hay y cabe (`telar archivo`, hasta 25 MB), si no por ssh
+    a su `[remotos]` (`imagen.subir`)."""
+    from telar import entrega
+
+    maquina, remoto, hay_bus, config = destino
+    if hay_bus and bytes_ <= entrega.MAX_TOTAL:
+        try:
+            r = entrega.archivo(config, origen, a=maquina, nombre=nombre)
+            return Entrada(ruta=str(r.get("ruta", "")), maquina=maquina, bytes=int(r.get("bytes", bytes_)))
+        except entrega.ErrorDeEntrega as e:
+            if remoto is None:
+                raise ErrorDeServicio(f"no se copió a {maquina} por el bus: {e}", 502) from e
+    if remoto is None:
+        raise ErrorDeServicio(f"{nombre} pasa de {entrega.MAX_TOTAL // (1024 * 1024)} MB, lo más que lleva el bus, y "
+                              f"{maquina} no está en [remotos] para copiarlo por ssh", 413)
     from telar.ordenes import imagen
 
     ruta, problema = imagen.subir(remoto, origen, nombre, espera=_espera(bytes_))
     if problema:
-        raise ErrorDeServicio(f"no se copió a {remoto.nombre}: {problema}", 502)
-    return Entrada(ruta=ruta, maquina=remoto.nombre, bytes=bytes_)
+        raise ErrorDeServicio(f"no se copió a {maquina}: {problema}", 502)
+    return Entrada(ruta=ruta, maquina=maquina, bytes=bytes_)
 
 
 def desde_bytes(ctx, maquina: str, nombre: str, datos: BinaryIO) -> Entrada:

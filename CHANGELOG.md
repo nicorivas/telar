@@ -14,8 +14,10 @@ extension shared the version number.
   file (Chrome from the Finder, Windows), the page asks before uploading it. The browser no longer navigates to a
   dropped file.
 - `POST /archivos/entrada`: a file for a thread, in the inbox folder of the thread's machine. Uploaded
-  (multipart) or named by its path on this machine; for a thread on another machine it is copied over ssh with
-  `telar imagen`'s `subir`, which no longer overwrites a file with the same name (`-2`, `-3`…). Up to 200 MB. The
+  (multipart) or named by its path on this machine; for a thread on another machine it goes by the bus
+  (`telar archivo`, up to 25 MB, to any machine of the person), or over ssh with `telar imagen`'s `subir` for a
+  `[remotos]` machine without bus or a bigger file. `subir` no longer overwrites a file with the same name (`-2`,
+  `-3`…). Up to 200 MB. The
   `serve` extra now includes `python-multipart`. (Pablo Ferreiro, PR #3)
 
 ### Changed

@@ -199,6 +199,34 @@ class LaEntrada(Prueba):
                                   ("ana@servidor", b"\x89PNG", "captura.png")])
         self.assertFalse(self.entrada.exists())   # nada quedó aquí
 
+    def test_con_bus_va_por_el_bus_aunque_no_este_en_remotos(self):
+        """Quien se unió a un equipo no tiene [remotos] (su lugar en el servidor es otra máquina suya, por el bus):
+        lo arrastrado le llega igual, con `telar archivo`; lo que pasa de lo que lleva el bus, por ssh si hay cómo."""
+        import io
+        from unittest import mock
+
+        from telar import entrega
+        from telar.ordenes import imagen
+
+        self.ctx.config.bus.url = "nats://bus:4222"
+        self.ctx.config.remotos = []
+        mandados = []
+
+        def archivo(config, ruta, *, a, nombre=""):
+            mandados.append((a, Path(ruta).read_bytes(), nombre))
+            return {"ruta": f"/home/ana/telar-entrada/{nombre}", "bytes": Path(ruta).stat().st_size}
+
+        with mock.patch.object(entrega, "archivo", side_effect=archivo), \
+                mock.patch.object(imagen, "subir", side_effect=AssertionError("no por ssh")):
+            r = archivos.desde_bytes(self.ctx, "servidor", "captura.png", io.BytesIO(b"\x89PNG"))
+        self.assertEqual((r.ruta, r.maquina, r.bytes), ("/home/ana/telar-entrada/captura.png", "servidor", 4))
+        self.assertEqual(mandados, [("servidor", b"\x89PNG", "captura.png")])
+        # más grande que lo que lleva el bus, y sin [remotos]: lo dice
+        with mock.patch.object(entrega, "MAX_TOTAL", 2), mock.patch.object(entrega, "archivo", side_effect=archivo):
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.desde_bytes(self.ctx, "servidor", "captura.png", io.BytesIO(b"\x89PNG"))
+        self.assertEqual(e.exception.codigo, 413)
+
     def test_una_copia_que_falla_lo_dice(self):
         from unittest import mock
 
