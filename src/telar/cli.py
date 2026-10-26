@@ -61,6 +61,7 @@ ORDENES: dict[str, str] = {
     "persona": "Las personas de este servidor: darles de alta con un perfil, verlas, cerrarles el acceso.",
     "servidor": "Un lugar para ti en el servidor, que alberga hilos de varias personas.",
     "imagen": "Llevar una imagen del portapapeles (o un archivo) a la máquina donde corre el hilo.",
+    "puerta": "La puerta de un servidor con alojados: una sola dirección, y cada persona a su telar.",
     "serve": "La API de telar: los mismos datos que la CLI, por HTTP, desde un proceso que se queda.",
     "periodicos": "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos.",
     "disparadores": "Lo que corre o manda algo solo: por un reloj, una tecla o un cambio.",

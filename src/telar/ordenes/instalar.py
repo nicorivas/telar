@@ -60,6 +60,10 @@ def main(argv: list[str], ctx) -> int:
                    help="unirse al equipo del repositorio de aquí (o de CARPETA): su .telar/equipo.yaml")
     p.add_argument("--web-puerto", dest="web_puerto", type=int, default=0, metavar="N",
                    help="el puerto de la página de esta máquina, si no es el 8780 (un servidor que aloja a varias personas)")
+    p.add_argument("--web-socket", dest="web_socket", default="", metavar="RUTA",
+                   help="la página también en este socket, para la puerta de un servidor con alojados (telar.puerta)")
+    p.add_argument("--web-url", dest="web_url", default="", metavar="URL",
+                   help="con --web-socket: la dirección de la puerta; la página va solo por ella, sin puerto propio")
     p.add_argument("--sin-servicio", action="store_true", help="no instalar el servicio")
     p.add_argument("--sin-agente", action="store_true", help="no instalar los ganchos del agente")
     o, codigo = _comun.parsear(p, argv)
@@ -142,6 +146,11 @@ PUERTO_PAGINA = 8780
 
 def _decir_pagina(o) -> None:
     """Al final, dónde está la página: con la llave, que el navegador guarda en una cookie la primera vez."""
+    if getattr(o, "web_url", ""):
+        # detrás de la puerta del servidor: una sola dirección para todos, y sin llave (la puerta sabe quién es)
+        print()
+        print(f"  {_comun.verde('→')} {_comun.fuerte('Tu página:')} {o.web_url}")
+        return
     base, con_llave = direccion_pagina(getattr(o, "web_puerto", 0))
     print()
     print(f"  {_comun.verde('→')} {_comun.fuerte('Tu página:')} {con_llave}")
@@ -255,7 +264,8 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
         hay_bus = _unirse(ctx, o, ruta, pasos, hay_bus, avisos)
 
     if not o.sin_servicio:
-        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta), web_puerto=o.web_puerto)
+        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta), web_puerto=o.web_puerto,
+                                            web_socket=o.web_socket, web_url=o.web_url)
         if not donde.exists() or donde.read_text(encoding="utf-8") != texto:
             que = "instalar" if not donde.exists() else "actualizar"
             pasos.append((lambda: _servicio(donde, texto), f"{que} el servicio de telar serve ({donde})"))

@@ -34,6 +34,10 @@ from pathlib import Path
 
 SPOOL = Path(os.environ.get("TELAR_ALOJAR_SPOOL") or "/var/spool/telar-alojar")
 REGISTRO = Path("/etc/telar/alojados.d")
+#: la puerta del servidor (telar.puerta, `servidor/telar-puerta-instalar`): si está, el alojado no tiene puerto propio;
+#: su página va por /run/telar/<nombre>/web.sock y entra por la dirección de la puerta, que lo reconoce por su cuenta
+PUERTA = Path(os.environ.get("TELAR_ALOJAR_PUERTA") or "/etc/telar/puerta.toml")
+GRUPO_PUERTA = "telar-puerta"
 REPOSITORIO = "git+https://github.com/nicorivas/telar"
 TOPE_PEDIDO = 64 * 1024
 
@@ -43,6 +47,8 @@ BUS = re.compile(r"nats://[A-Za-z0-9.-]+:[0-9]{2,5}")
 TOPE = re.compile(r"[1-9][0-9]*[KMG]")
 CPU = re.compile(r"[1-9][0-9]*%")
 SECRETO = re.compile(r"[A-Za-z0-9_-]{24,128}")
+CUENTA = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,190}")
+URL = re.compile(r"https://[A-Za-z0-9.-]{1,200}(:[0-9]{2,5})?")
 RESERVADOS = frozenset({
     "root", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy", "www-data",
     "backup", "list", "irc", "gnats", "nobody", "systemd-network", "systemd-resolve", "sshd", "ubuntu", "admin",
@@ -74,12 +80,34 @@ def validar(p: dict) -> dict:
         raise Rechazo("el secreto del bus no es válido")
     if not isinstance(bus, str) or not BUS.fullmatch(bus):
         raise Rechazo("la dirección del bus no es válida")
-    if not isinstance(puerto, int) or isinstance(puerto, bool) or not 1024 <= puerto <= 65535:
-        raise Rechazo("el puerto no es válido")
     if not isinstance(memoria, str) or not TOPE.fullmatch(memoria) or not isinstance(cpu, str) or not CPU.fullmatch(cpu):
         raise Rechazo("los topes de recursos no son válidos")
-    return {"accion": accion, "nombre": nombre, "llave": llave.strip(), "secreto": secreto, "bus": bus,
-            "puerto": puerto, "memoria": memoria, "cpu": cpu}
+    hecho = {"accion": accion, "nombre": nombre, "llave": llave.strip(), "secreto": secreto, "bus": bus,
+             "memoria": memoria, "cpu": cpu}
+    url = url_de_la_puerta()
+    if url is not None:
+        cuenta = p.get("tailscale")
+        if not isinstance(cuenta, str) or not CUENTA.fullmatch(cuenta):
+            raise Rechazo("con la puerta, el pedido trae la cuenta de Tailscale de la persona")
+        return {**hecho, "tailscale": cuenta, "url": url}
+    if not isinstance(puerto, int) or isinstance(puerto, bool) or not 1024 <= puerto <= 65535:
+        raise Rechazo("el puerto no es válido")
+    return {**hecho, "puerto": puerto}
+
+
+def url_de_la_puerta() -> str | None:
+    """La dirección de la puerta del servidor, si está instalada (su `url`); None si no hay puerta."""
+    if not PUERTA.exists():
+        return None
+    import tomllib
+
+    try:
+        url = str(tomllib.loads(PUERTA.read_text(encoding="utf-8")).get("url") or "")
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise Rechazo(f"{PUERTA}: no se puede leer ({e})") from None
+    if not URL.fullmatch(url):
+        raise Rechazo(f"{PUERTA}: su url no es una dirección https://… válida")
+    return url
 
 
 # ── el plan: pasos puros, con {uid} y {hogar} por llenar cuando exista el usuario ────────
@@ -113,7 +141,7 @@ uv tool install --force 'telar[serve,bus] @ __REPO__'
 grep -q '.local/bin' "$HOME/.profile" 2>/dev/null || echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/bus" ] && break; sleep 1; done
-telar instalar --bus '__BUS__' --persona '__NOMBRE__' --token "$HOME/.config/telar/bus.token" --web-puerto __PUERTO__ --si
+telar instalar --bus '__BUS__' --persona '__NOMBRE__' --token "$HOME/.config/telar/bus.token" __PAGINA__ --si
 """
 
 
@@ -129,10 +157,15 @@ def plan(p: dict) -> list[Paso]:
             Paso("recargar sshd", ["systemctl", "reload", "ssh"], tolerar=True),
             Paso("quitar su tope de recursos", ["rm", "-f", "/etc/systemd/system/user-{uid}.slice.d/50-telar-alojar.conf"]),
             Paso("recargar systemd", ["systemctl", "daemon-reload"]),
+            Paso("quitar su carpeta de la puerta", ["rm", "-rf", f"/etc/tmpfiles.d/telar-alojado-{n}.conf", f"/run/telar/{n}"]),
             Paso("quitar su lugar del registro", ["rm", "-f", str(REGISTRO / f"{n}.json")]),
         ]
+    if "url" in p:
+        pagina = f"--web-socket /run/telar/{n}/web.sock --web-url '{p['url']}'"
+    else:
+        pagina = f"--web-puerto {p['puerto']}"
     instalar = (INSTALAR.replace("__REPO__", REPOSITORIO).replace("__BUS__", p["bus"])
-                .replace("__NOMBRE__", n).replace("__PUERTO__", str(p["puerto"])))
+                .replace("__NOMBRE__", n).replace("__PAGINA__", pagina))
     pasos = [
         Paso(f"el usuario {n}, sin grupos extra", ["useradd", "-m", "-s", "/bin/bash", "-c", COMENTARIO.format(n), n]),
         Paso("su carpeta de telar", como(n, "mkdir", "-p", "-m", "700", "{hogar}/.config/telar")),
@@ -158,10 +191,20 @@ def plan(p: dict) -> list[Paso]:
         Paso("recargar systemd", ["systemctl", "daemon-reload"]),
         Paso("que su sesión de systemd viva sin que entre", ["loginctl", "enable-linger", n]),
         Paso("arrancar su systemd de usuario", ["systemctl", "start", "user@{uid}.service"]),
+    ]
+    if "url" in p:
+        # su carpeta en /run (se borra al reiniciar: tmpfiles la vuelve a crear), de él y del grupo de la puerta, con
+        # setgid para que su socket quede del grupo: la cruzan él y la puerta, nadie más
+        conf = f"/etc/tmpfiles.d/telar-alojado-{n}.conf"
+        pasos += [
+            Paso("su carpeta para la puerta (/run/telar/…)", archivo=(conf, f"d /run/telar/{n} 2750 {n} {GRUPO_PUERTA} -\n", 0o644)),
+            Paso("crearla ya", ["systemd-tmpfiles", "--create", conf]),
+        ]
+    registro = {"nombre": n, "bus": p["bus"], "cuando": int(time.time())}
+    registro.update({"tailscale": p["tailscale"]} if "url" in p else {"puerto": p["puerto"]})
+    pasos += [
         Paso("su propio uv, Claude Code y telar, y su nodo en el bus (tarda)", como(n, "bash", "-l", "-s"), stdin=instalar),
-        Paso("anotarlo en el registro", archivo=(
-            str(REGISTRO / f"{n}.json"), json.dumps({"nombre": n, "puerto": p["puerto"], "bus": p["bus"],
-                                                      "cuando": int(time.time())}) + "\n", 0o644)),
+        Paso("anotarlo en el registro", archivo=(str(REGISTRO / f"{n}.json"), json.dumps(registro) + "\n", 0o644)),
     ]
     return pasos
 

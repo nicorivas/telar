@@ -6,6 +6,29 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-10-26
+
+### Added
+
+- **The door** (`telar.puerta`, `telar puerta servir|tabla|quien`): on a server that hosts several people, everyone
+  enters through the server's address (`https://<machine>.<tailnet>.ts.net`), like a normal web server. Tailscale
+  says whose device each request comes from (`tailscale whois` of the address `tailscale serve` puts in
+  `X-Forwarded-For`, which it overwrites), and the door passes it, HTTP and terminal WebSockets, to that person's
+  own `telar serve` over `/run/telar/<user>/web.sock`. No port per person, no page key, no path prefix. Requests
+  from the server itself are refused (they would look like the owner's). It runs as the system user
+  `telar-puerta`; `servidor/telar-puerta-instalar` sets it up (`/opt/telar-puerta`, `/etc/telar/puerta.toml`,
+  tmpfiles, `telar-puerta.service`).
+- `telar serve --web-socket PATH [--web-url URL]`: the page also on a socket for the door, without the key (the
+  socket's folder, 2750 with the `telar-puerta` group, is what protects it). With `--web-url` the page goes only
+  through the door and the node publishes that address. `telar instalar` takes the same two flags.
+
+### Changed
+
+- Hosting with the door installed: approving a place assigns no port. The root helper creates the person's folder
+  in `/run/telar` and records their Tailscale account (from their `telar instalar --unirse` request) in
+  `/etc/telar/alojados.d/`, which is how the door recognizes them. Without the door, it works as before.
+- The `serve` extra now includes `httpx` (the door's client) and needs `websockets>=13`.
+
 ## [0.6.3] — 2026-10-26
 
 ### Added

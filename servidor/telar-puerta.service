@@ -1,0 +1,34 @@
+# La puerta del servidor (telar.puerta): una sola dirección para todas las personas, y cada pedido al telar de
+# quien lo hace. La instala `servidor/telar-puerta-instalar` en /etc/systemd/system; corre como telar-puerta, sin
+# casa y sin escribir nada salvo su socket.
+#
+# Ver cómo va:  systemctl status telar-puerta   ·   journalctl -u telar-puerta -f
+# Quién entra:  sudo -u telar-puerta /opt/telar-puerta/bin/telar puerta tabla
+
+[Unit]
+Description=telar puerta: la dirección del servidor, y cada persona a su telar
+After=network-online.target tailscaled.service systemd-tmpfiles-setup.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telar-puerta
+Group=telar-puerta
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/nonexistent
+ExecStart=/opt/telar-puerta/bin/telar puerta servir
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/telar/puerta
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -117,6 +117,29 @@ def publico(a: dict, persona: str) -> dict:
     return {"persona": persona, **{k: v for k, v in a.items() if k != "secreto"}}
 
 
+def hay_puerta() -> bool:
+    """Si el servidor tiene su puerta (telar.puerta): entonces los alojados entran todos por la misma dirección y
+    no tienen puerto propio."""
+    from telar import puerta
+
+    return puerta.CONFIG.exists()
+
+
+def cuenta_tailscale(persona: str) -> str:
+    """La cuenta de Tailscale con que la persona pidió entrar al bus (telar.unirse): la puerta la reconoce por ella.
+    '' si no se unió así."""
+    from telar import unirse
+
+    try:
+        pedidos = unirse.leer_pedidos()
+    except Exception:  # noqa: BLE001 - sin pedidos legibles, no se sabe
+        return ""
+    suyos = [p for p in pedidos.values() if isinstance(p, dict) and p.get("persona") == persona
+             and p.get("estado") == "aprobado" and p.get("tailscale")]
+    suyos.sort(key=lambda p: p.get("decidido") or p.get("cuando") or 0)
+    return str(suyos[-1]["tailscale"]) if suyos else ""
+
+
 def puerto_libre(datos: dict[str, dict]) -> int:
     usados = {a.get("puerto") for a in datos.values() if a.get("estado") in ("preparando", "activo", "falló")}
     for p in range(PRIMER_PUERTO, ULTIMO_PUERTO + 1):
@@ -273,11 +296,21 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         bus = getattr(getattr(config, "bus", None), "url", "") or ""
         if not re.match(r"^nats://[^\s/]+:\d+$", bus):
             raise ErrorDeAlojamiento("este nodo no sabe su dirección del bus ([bus] url): sin ella el alojado no se conecta", 500)
-        puerto = a.get("puerto") or puerto_libre(leer())
+        pedido_root = {"accion": "crear", "nombre": persona, "llave": a.get("llave") or "", "secreto": a["secreto"],
+                       "bus": bus, "memoria": MEMORIA, "cpu": CPU}
+        if hay_puerta():
+            # con la puerta, la persona entra por la dirección del servidor: la reconoce por su cuenta de Tailscale
+            cuenta = cuenta_tailscale(persona)
+            if not cuenta:
+                raise ErrorDeAlojamiento(f"no sé la cuenta de Tailscale de {persona} (no entró al bus con `telar "
+                                         f"instalar --unirse`): sin ella la puerta no la deja entrar", 409)
+            puerto = None
+            pedido_root["tailscale"] = cuenta
+        else:
+            puerto = a.get("puerto") or puerto_libre(leer())
+            pedido_root["puerto"] = puerto
         _cambiar(persona, estado="preparando", empezo=int(time.time()), decidido=int(time.time()), por=quien,
                  puerto=puerto, error=None)
-        pedido_root = {"accion": "crear", "nombre": persona, "llave": a.get("llave") or "", "secreto": a["secreto"],
-                       "puerto": puerto, "bus": bus, "memoria": MEMORIA, "cpu": CPU}
         _EN_CURSO.add(persona)
         if sincrono:
             _terminar(persona, pedido_root, ayuda)

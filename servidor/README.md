@@ -10,6 +10,7 @@ para el correo entre personas, hasta que el bus las cruce
 | archivo | qué hace | se instala en |
 | --- | --- | --- |
 | *(`telar persona`)* | dar de alta a un colega: usuario, ssh, tope de recursos, correo y su propio telar y Claude Code. Es una orden de telar, no un archivo de esta carpeta | `telar persona crear NOMBRE --llave …` |
+| `telar-puerta-instalar`, `telar-puerta.service` | la puerta: una sola dirección para todas las personas del servidor, y cada pedido al telar de quien lo hace (telar.puerta; más abajo) | `/opt/telar-puerta`, `/etc/telar/puerta.toml`, `/etc/systemd/system/` |
 | `telar-alojar`, `telar-alojar.service`, `telar-alojar.path` | el ayudante de root del alojamiento: crea y cierra el lugar de quien pide uno por el bus (más abajo) | `/usr/local/sbin/telar-alojar`, `/etc/systemd/system/` |
 | `cartero` | entrega cada correo que llega a un usuario a la sesión de Claude Code de su hilo, y la despierta | `/usr/local/bin/cartero` |
 | `archivar` | guarda una copia de todo el correo de la máquina en la casilla común | `/usr/local/bin/archivar` |
@@ -143,3 +144,21 @@ ayudante no toca un usuario que no creó él (queda anotado en `/etc/telar/aloja
 página desde el 8781: en una red de Tailscale con reglas de acceso, ábrelos para quienes alojes. Para cerrar un
 lugar: `telar servidor quitar PERSONA` (bloquea la cuenta y conserva la carpeta; `userdel -r` a mano si hay que
 borrarla).
+
+## La puerta: una dirección para todos
+
+Con alojados, cada persona tiene su propio `telar serve`. La puerta (`telar.puerta`) los pone a todos detrás de la
+dirección del servidor, `https://<máquina>.<red>.ts.net`: Tailscale dice de quién es cada pedido (`tailscale whois`
+de la dirección que `tailscale serve` pone en `X-Forwarded-For`) y la puerta lo pasa al socket de esa persona,
+`/run/telar/<usuario>/web.sock`. Sin puertos por persona, sin llaves de página.
+
+```sh
+sudo ./telar-puerta-instalar --dueno nico --cuenta nicorivas@gmail.com    # una vez; de nuevo para actualizarla
+telar instalar --web-socket /run/telar/nico/web.sock --si                 # como quien administra: su telar, también detrás
+sudo tailscale serve --bg --https=443 unix:/run/telar/puerta/puerta.sock  # la dirección del servidor, a la puerta
+sudo -u telar-puerta /opt/telar-puerta/bin/telar puerta tabla             # quién entra y a qué usuario va
+```
+
+Los alojados nuevos nacen detrás de ella: `telar-alojar` ve `/etc/telar/puerta.toml`, crea su carpeta en `/run/telar`
+y anota su cuenta de Tailscale en `/etc/telar/alojados.d/`.
+

@@ -14,8 +14,8 @@ los de cualquier otra máquina suya.
 - **Iniciar sesión en Claude.** Es de la persona, con su cuenta: la primera vez que abre un hilo en el servidor,
   Claude se lo pide en esa misma terminal.
 - **Sus repositorios.** El lugar nace vacío; clonar el de su equipo lo hace ella (`telar instalar --unirse`, o git).
-- **Abrir el puerto 22 en Tailscale**, si la red lo restringe, y los puertos 8781+ para su página: es de quien
-  administra la red.
+- **Abrir el puerto 22 en Tailscale**, si la red lo restringe: es de quien administra la red. La página ya no pide
+  puertos: con la puerta (`telar.puerta`, desde la 0.7.0) todos entran por la dirección del servidor.
 - **Crecer.** Con 8 GB (CX33), tres o cuatro alojados con tope de 2,5 GB se pelean la memoria; subir a CX43 antes.
   El tope por persona está en `alojamiento.MEMORIA` y `CPU`, y todavía no se elige al aprobar.
 - **El flujo viejo** (`telar persona crear`, correo por cartero, remotos por ssh) sigue: es para quien no tiene bus.

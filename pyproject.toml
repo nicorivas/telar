@@ -31,8 +31,9 @@ dependencies = ["PyYAML>=6.0", "pydantic>=2.6"]
 # el bus entre máquinas (docs/arquitectura.md, «Entre máquinas: el bus»): sin esto, telar funciona en una sola máquina
 bus = ["nats-py>=2.6", "bcrypt>=4"]
 # la API (`telar serve`): los mismos datos que la CLI, por HTTP, con caché (docs/arquitectura.md); python-multipart,
-# para recibir lo que se arrastra a un hilo (POST /archivos/entrada)
-serve = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=12", "python-multipart>=0.0.9"]
+# para recibir lo que se arrastra a un hilo (POST /archivos/entrada); httpx, para que la puerta de un servidor con
+# alojados (telar.puerta) le pase cada pedido al telar de su persona
+serve = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=13", "python-multipart>=0.0.9", "httpx>=0.25"]
 # lo que piden las pruebas, además de lo de arriba: el cliente de pruebas de la API (starlette.testclient)
 pruebas = ["httpx>=0.25"]
 

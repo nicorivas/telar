@@ -37,16 +37,23 @@ def ruta_path(buscar=shutil.which) -> str:
     return ":".join(dict.fromkeys(carpetas))
 
 
-def argumentos(*, web: bool = True, nodo: bool = False, equipo: bool = False, web_puerto: int = 0) -> list[str]:
+def argumentos(*, web: bool = True, nodo: bool = False, equipo: bool = False, web_puerto: int = 0,
+               web_socket: str = "", web_url: str = "") -> list[str]:
+    """Los de `telar serve`. Con `web_url` (la de la puerta de un servidor con alojados, telar.puerta) la página va
+    solo por `web_socket`, detrás de la puerta: sin puerto propio en la red."""
     a = ["serve"]
     if equipo:
         a.append("--equipo")
     if nodo:
         a.append("--nodo")
-    if web:
+    if web and not web_url:
         a.append("--web")
         if web_puerto:
             a += ["--web-puerto", str(web_puerto)]
+    if web_socket:
+        a += ["--web-socket", web_socket]
+    if web_url:
+        a += ["--web-url", web_url]
     return a
 
 
@@ -115,12 +122,13 @@ def ruta_servicio() -> Path:
     return base / "systemd" / "user" / "telar-serve.service"
 
 
-def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "", web_puerto: int = 0) -> tuple[Path, str]:
-    """(dónde, qué) del servicio de esta máquina. `web_puerto`: el de la página, si no es el de siempre (en un
-    servidor que aloja a varias personas, cada una tiene el suyo)."""
+def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "", web_puerto: int = 0,
+             web_socket: str = "", web_url: str = "") -> tuple[Path, str]:
+    """(dónde, qué) del servicio de esta máquina. `web_puerto`: el de la página, si no es el de siempre.
+    `web_socket` y `web_url`: la página detrás de la puerta de un servidor con alojados (`argumentos`)."""
     telar = telar or ejecutable()
     path = path or ruta_path()
-    args = argumentos(nodo=nodo, equipo=equipo, web_puerto=web_puerto)
+    args = argumentos(nodo=nodo, equipo=equipo, web_puerto=web_puerto, web_socket=web_socket, web_url=web_url)
     if sys.platform == "darwin":
         log = str(Path.home() / "Library" / "Logs" / "telar-serve.log")
         return ruta_servicio(), plist_launchd(telar, args, path, log)

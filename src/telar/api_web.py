@@ -153,9 +153,11 @@ def _token_del_bus(config) -> str:
         return ""
 
 
-def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> FastAPI:
+def crear(api_app, clave: str | None = None, dev: bool = False, config=None, puerta: bool = False) -> FastAPI:
     """La página. `config` (la de `telar serve`) da el token del bus y las fotos de las otras máquinas: sin
-    ella, las terminales son solo de esta."""
+    ella, las terminales son solo de esta. `puerta`: la que se sirve detrás de la puerta del servidor
+    (telar.puerta, `telar serve --web-socket`), que ya sabe quién es: no se pide la llave, porque a su socket solo
+    llegan la puerta y la persona misma (lo cuida su carpeta). Lo demás (el origen al escribir) se mira igual."""
     clave = clave or llave()
     token = _token_del_bus(config)
     def nombre_aqui() -> str:
@@ -183,12 +185,12 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
             # la puerta para pedir entrar al bus (telar.unirse) no lleva llave: se cuida sola
             return await siguiente(request)
         dada = request.query_params.get("k", "")
-        if dada and secrets.compare_digest(dada, clave):
+        if not puerta and dada and secrets.compare_digest(dada, clave):
             # la llave en la dirección se cambia por una cookie, y la dirección queda limpia
             r = RedirectResponse(ruta if ruta != "/" else "/", status_code=302)
             r.set_cookie(COOKIE, clave, httponly=True, samesite="lax", max_age=31536000, path="/")
             return r
-        if not secrets.compare_digest(request.cookies.get(COOKIE, ""), clave):
+        if not puerta and not secrets.compare_digest(request.cookies.get(COOKIE, ""), clave):
             return PlainTextResponse(
                 "telar: falta la llave. Ábrela una vez con ?k=<llave> al final de la dirección: es la de "
                 "~/.config/telar/panel.llave en esta máquina (la misma del panel). Después queda en una cookie.",
@@ -370,7 +372,7 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None) -> 
         # máquina de la persona (su página, reenviando) entra con el token del bus, que un navegador no
         # puede poner en un WebSocket
         origen = ws.headers.get("origin", "")
-        navegador = (secrets.compare_digest(ws.cookies.get(COOKIE, ""), clave) and bool(origen)
+        navegador = ((puerta or secrets.compare_digest(ws.cookies.get(COOKIE, ""), clave)) and bool(origen)
                      and urlsplit(origen).netloc == ws.headers.get("host", ""))
         otra_maquina = bool(token) and secrets.compare_digest(ws.headers.get("authorization", ""), f"Bearer {token}")
         if not (navegador or otra_maquina) or not hilo:

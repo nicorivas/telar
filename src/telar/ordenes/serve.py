@@ -9,6 +9,10 @@
     telar serve --web               además, la página de telar (telar.api_web) en la IP de Tailscale, puerto
                                     8780 (--web-puerto), con la llave de la página (~/.config/telar/panel.llave);
                                     con --dev, la página se recarga sola al cambiar sus archivos (scripts/dev.py)
+    telar serve --web-socket RUTA   además, la página en ese socket Unix, para la puerta de un servidor con alojados
+                                    (telar.puerta): sin llave, porque la cuida la carpeta del socket
+                                    (/run/telar/<usuario>/, de la persona y del grupo telar-puerta). Con
+                                    --web-url, la dirección que el nodo publica como la de su página
     telar serve --nodo              además, el nodo del bus (lo que hace `telar nodo`), en el mismo proceso:
                                     una máquina, un proceso; y los pedidos al bus de la API van por su
                                     conexión, que queda abierta
@@ -42,6 +46,10 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--nodo", action="store_true", help="además, el nodo del bus (`telar nodo`), en el mismo proceso")
     p.add_argument("--web", action="store_true", help="además, la página de telar en el navegador, en Tailscale")
     p.add_argument("--web-puerto", dest="web_puerto", type=int, default=8780, help="con --web: el puerto")
+    p.add_argument("--web-socket", dest="web_socket", default="",
+                   help="además, la página en este socket Unix, para la puerta del servidor (sin llave)")
+    p.add_argument("--web-url", dest="web_url", default="",
+                   help="la dirección de la página que publica el nodo (la de la puerta del servidor)")
     p.add_argument("--dev", action="store_true",
                    help="con --web: la página se recarga sola cuando cambian sus archivos (scripts/dev.py)")
     o, codigo = _comun.parsear(p, argv)
@@ -85,6 +93,23 @@ def main(argv: list[str], ctx) -> int:
                                     log_level="warning"))
         url_web = f"http://{host}:{o.web_puerto}" if host != "127.0.0.1" else ""
         print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
+    if o.web_socket:
+        from telar import api_web
+
+        ws_sock = Path(o.web_socket).expanduser()
+        # su carpeta la crea root (2750, de la persona y del grupo de la puerta: `servidor/telar-puerta-instalar`): no
+        # se le cambian los permisos aquí, porque son ellos los que dejan pasar solo a la puerta
+        if not ws_sock.parent.is_dir():
+            print(f"telar serve: sin la página para la puerta: no existe {ws_sock.parent} "
+                  "(la crea root al instalar la puerta)", file=sys.stderr, flush=True)
+        else:
+            if ws_sock.exists():
+                ws_sock.unlink()
+            otros.append(uvicorn.Config(api_web.crear(api.app, config=ctx.config, puerta=True), uds=str(ws_sock),
+                                        log_level="warning"))
+            print(f"telar serve: la página para la puerta en {ws_sock}", flush=True)
+    if o.web_url:
+        url_web = o.web_url.rstrip("/")
     equipo = otros
     # el registro de este servicio, con tope al arrancar (bajo launchd es un archivo que nadie rota; el nodo,
     # si va, lo sigue recortando cada tanto)
