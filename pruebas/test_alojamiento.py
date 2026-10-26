@@ -362,6 +362,12 @@ class ElProgramaDeRoot(Prueba):
     def valido(self, **cambios):
         return self.m.validar({**self.crear, **cambios})
 
+    def test_instala_desde_su_casa_y_no_desde_la_carpeta_del_servicio(self):
+        # runuser deja la carpeta del servicio (/): sin el cd, `telar instalar` tomaba / como su raíz (le pasó a Pablo)
+        instalar = next(p for p in self.m.plan(self.valido()) if "uv, Claude Code" in p.texto)
+        guion = instalar.stdin or " ".join(instalar.argv)
+        self.assertLess(guion.index('cd "$HOME"'), guion.index("telar instalar"))
+
     def test_el_comentario_del_usuario_no_lleva_dos_puntos(self):
         # el campo de /etc/passwd se separa con «:»: useradd rechaza un comentario que los traiga (le pasó a Pablo)
         useradd = next(p.argv for p in self.m.plan(self.valido()) if p.argv and p.argv[0] == "useradd")
