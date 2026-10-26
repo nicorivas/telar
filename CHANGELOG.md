@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-26
+
 ### Added
 
 - The page: drag a file onto a thread's terminal and its path lands in the chat, like VS Code's terminal: at the
@@ -29,6 +31,11 @@ extension shared the version number.
   items, and a click on one pasted it into the thread. (Pablo Ferreiro, PR #1)
 
 ### Fixed
+
+- The server as a mainframe, setting up a place: `useradd` rejected the user's comment (it had a `:`); the person's
+  telar was installed from `/` and took it as its root, walking the whole disk; with their home as root, `telar
+  doctor` failed because telar's state was inside it. Their root is now `~/trabajo`. A place that failed halfway is
+  resumed when approved again (the user carries telar's comment), and the ssh key is not added twice.
 
 - Reopening a remote thread's window no longer opens it several times. When a laptop woke up, the node and the
   page's poll reopened the same thread at once and each one saw «no window» before the other created it: six
