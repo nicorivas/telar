@@ -45,7 +45,12 @@ echo "== telar en /opt/telar-puerta"
 if [ -n "$DESDE" ]; then
   /opt/telar-puerta/bin/pip install --quiet --upgrade --force-reinstall "$DESDE[serve]"
 else
-  /opt/telar-puerta/bin/pip install --quiet --upgrade "telar[serve]${VERSION:+==$VERSION}"
+  # recién publicada, el índice de PyPI tarda un poco en verla (y pip guarda el de antes): sin caché, y unos intentos
+  for i in 1 2 3 4 5 6; do
+    PIP_NO_CACHE_DIR=1 /opt/telar-puerta/bin/pip install --quiet --upgrade "telar[serve]${VERSION:+==$VERSION}" && break
+    [ "$i" = 6 ] && exit 1
+    echo "   todavía no está en PyPI: reintento en 10 s"; sleep 10
+  done
 fi
 /opt/telar-puerta/bin/telar --version
 
