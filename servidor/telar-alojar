@@ -101,8 +101,11 @@ def como(nombre: str, *orden: str) -> list[str]:
 
 
 INSTALAR = r"""set -euo pipefail
-# en su casa: runuser deja la carpeta del servicio (/), y telar tomaría / como su raíz y recorrería el disco entero
-cd "$HOME"
+# en su carpeta de trabajo, que es la raíz de su telar (ahí clona sus repositorios): runuser deja la carpeta del
+# servicio (/), y telar tomaría / como raíz y recorrería el disco entero; y su casa tampoco sirve, porque el estado
+# de telar (~/.local/state) quedaría dentro de la raíz
+mkdir -p "$HOME/trabajo"
+cd "$HOME/trabajo"
 export PATH="$HOME/.local/bin:$PATH"
 command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
 command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash

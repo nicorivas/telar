@@ -366,7 +366,7 @@ class ElProgramaDeRoot(Prueba):
         # runuser deja la carpeta del servicio (/): sin el cd, `telar instalar` tomaba / como su raíz (le pasó a Pablo)
         instalar = next(p for p in self.m.plan(self.valido()) if "uv, Claude Code" in p.texto)
         guion = instalar.stdin or " ".join(instalar.argv)
-        self.assertLess(guion.index('cd "$HOME"'), guion.index("telar instalar"))
+        self.assertLess(guion.index('cd "$HOME/trabajo"'), guion.index("telar instalar"))
 
     def test_uno_a_medias_se_retoma_y_uno_ajeno_no_se_toca(self):
         from types import SimpleNamespace
