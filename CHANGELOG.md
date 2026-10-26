@@ -6,6 +6,12 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Fixed
+
+- The page: the HILOS sort now covers the threads of other machines too (the ones that come from their snapshot).
+  They were added after the sorted list, so on the server's page the laptop's threads ignored the sort. With the
+  priority sort, priority goes first for all of them, live or not, from this machine or another.
+
 ## [0.7.0] — 2026-10-26
 
 ### Added

@@ -47,16 +47,28 @@ function leerBuscado(): Record<string, string> {
  *  no es trabajo. */
 const ultimaDe = (h: cli.JsonHilo): string => h.actividad || h.atencion_desde || '';
 
-function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
+/** Lo que el orden mira de un hilo, sea de la lista de esta máquina o de la foto de otra. */
+interface Ordenable { prioridad?: number | null; atencion?: string; nombre: string; ultima: string }
+
+/** Ordenar `l` según `orden`, mirando cada uno por `ver`. Con «urgencia», la prioridad manda sobre todo lo demás
+ *  (esté vivo o no, sea de esta máquina o de otra); a igual prioridad, el que te espera y después el más reciente. */
+function ordenarPor<T>(l: T[], orden: Orden, ver: (x: T) => Ordenable): T[] {
     if (!orden) return l;
-    const reciente = (a: cli.JsonHilo, b: cli.JsonHilo) => ultimaDe(b).localeCompare(ultimaDe(a));
-    const cmp: Record<Exclude<Orden, ''>, (a: cli.JsonHilo, b: cli.JsonHilo) => number> = {
+    const reciente = (a: Ordenable, b: Ordenable) => b.ultima.localeCompare(a.ultima);
+    const cmp: Record<Exclude<Orden, ''>, (a: Ordenable, b: Ordenable) => number> = {
         urgencia: (a, b) => ((a.prioridad || 9) - (b.prioridad || 9))
             || (Number(b.atencion === 'espera') - Number(a.atencion === 'espera')) || reciente(a, b),
-        nombre: (a, b) => cli.nombreVisible(a).localeCompare(cli.nombreVisible(b), 'es', { sensitivity: 'base' }),
+        nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }),
         reciente,
     };
-    return [...l].sort(cmp[orden]);
+    return l.map(x => [x, ver(x)] as const).sort((a, b) => cmp[orden](a[1], b[1])).map(([x]) => x);
+}
+
+const deLista = (h: cli.JsonHilo): Ordenable =>
+    ({ prioridad: h.prioridad, atencion: h.atencion, nombre: cli.nombreVisible(h), ultima: ultimaDe(h) });
+
+function ordenar(l: cli.JsonHilo[], orden: Orden): cli.JsonHilo[] {
+    return ordenarPor(l, orden, deLista);
 }
 
 /** Donde se guarda lo que se recuerda entre sesiones (la página: el localStorage del navegador). */
@@ -388,17 +400,23 @@ export class BarraHilos {
         const ordenH = this.ordenDe('hilos');
         // (los de un agente que no son su hilo de siempre también van aquí, con su ícono: son trabajo como cualquiera)
         const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
-        const sueltos = ordenar(vivosPrimero(modelo.enLista.filter(deAgente)), ordenH);
+        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente));
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
+        // los de esta máquina y los de las otras, en una sola lista: el orden elegido vale para todos (en la página
+        // del servidor, los del laptop vienen de su foto, y antes quedaban al final sin ordenar)
+        type FilaH = { aqui: cli.JsonHilo } | { m: (typeof deOtras)[number]['m']; x: HiloDeFoto };
+        const todos = ordenarPor<FilaH>([...sueltos.map(aqui => ({ aqui })), ...deOtras], ordenH, f => 'aqui' in f ? deLista(f.aqui)
+            : { prioridad: f.x.prioridad, atencion: f.x.atencion, nombre: f.x.nombre, ultima: '' });
         const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
         this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
         // + abre un hilo nuevo (ordenes.ts: pide el nombre y la máquina)
         const nuevo = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
         if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras', nuevo)) {
             h.push(this.herramientas('hilos', ordenH));
-            for (const x of sueltos) h.push(this.fila(x, 'hilo', '', 'hilos'));
-            for (const { m, x } of deOtras) {
+            for (const f of todos) {
+                if ('aqui' in f) { h.push(this.fila(f.aqui, 'hilo', '', 'hilos')); continue; }
+                const { m, x } = f;
                 const at = x.atencion ?? 'ninguna';
                 const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
                 h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
