@@ -1,6 +1,6 @@
-// Los módulos: dos pestañas. «Instalados»: cada uno con lo que aporta, dónde está su carpeta, de dónde vino (su
+// Los módulos, en una página: arriba los disponibles que no tienes, abajo los instalados. Instalados: cada uno con lo que aporta, dónde está su carpeta, de dónde vino (su
 // repositorio y versión, el catálogo, o «a mano»/«enlazado»), lo que pide, y encenderlo, apagarlo, actualizarlo o
-// quitarlo. «Disponibles»: lo que hay en los catálogos (el oficial, el del equipo, otros), para buscar e instalar.
+// quitarlo. Disponibles: lo que hay en los catálogos (el oficial, el del equipo, otros), para buscar e instalar.
 // Desde aquí se instala solo lo de un catálogo revisado o del equipo; uno sin revisar, desde la terminal.
 
 import * as cli from '../../../cli';
@@ -15,7 +15,6 @@ const CONFIANZA: Record<string, [string, string]> = {
 };
 
 export const modulos: FabricaSeccion = ctx => {
-    let pestana: 'instalados' | 'disponibles' = 'instalados';
     let instalados: cli.JsonModuloInstalado[] | undefined;
     let disponibles: cli.JsonModuloDisponible[] | undefined;
     let problemas: string[] = [];
@@ -107,25 +106,27 @@ export const modulos: FabricaSeccion = ctx => {
         ayuda: 'los instalados (encender, apagar, de dónde vienen) y los disponibles en los catálogos',
         abrir: () => { seccion.pintar(); return leer(); },
         pintar(): void {
-            const tab = (k: typeof pestana, nombre: string, n?: number) =>
-                `<a class="${pestana === k ? 'si' : ''}" data-accion="mod-pestana" data-valor="${k}">${nombre}${n !== undefined ? ` ${n}` : ''}</a>`;
-            const h = [`<div class="fila modos-mod">${tab('instalados', 'instalados', instalados?.length)} · ${tab('disponibles', 'disponibles', disponibles?.filter(x => !x.instalado).length)}`
+            // una sola página, sin pestañas: primero lo que se puede instalar (es lo que no se ve si no se busca),
+            // después lo instalado. Con pestañas, quien abría ⚙ módulos veía sus instalados y no sabía que había más
+            const t = buscar.trim().toLowerCase();
+            const porInstalar = (disponibles ?? []).filter(x => !x.instalado);
+            const lista = porInstalar.filter(x => !t || [x.nombre, x.descripcion, x.autor, ...x.etiquetas].join(' ').toLowerCase().includes(t));
+            const h = [`<div class="fila"><b>para instalar</b>${disponibles ? ` <span class="dim">${porInstalar.length}</span>` : ''}`
                 + '<span class="der"><a data-accion="mod-leer" title="volver a leer, y bajar los catálogos ahora">↻ buscar ahora</a></span></div>'];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
-            if (pestana === 'instalados') {
-                if (!instalados) h.push('<div class="fila dim">leyendo…</div>');
-                else if (!instalados.length) h.push('<div class="fila dim">ninguno instalado: mira los disponibles</div>');
-                for (const m of instalados ?? []) h.push(filaInstalado(m));
-            } else {
+            if (porInstalar.length > 4 || buscar) {
                 h.push(`<div class="fila"><input id="buscar-mod" type="text" placeholder="buscar por nombre, descripción o etiqueta" value="${esc(buscar)}" spellcheck="false" autocomplete="off"></div>`);
-                const t = buscar.trim().toLowerCase();
-                const lista = (disponibles ?? []).filter(x => !t || [x.nombre, x.descripcion, x.autor, ...x.etiquetas].join(' ').toLowerCase().includes(t));
-                if (!disponibles) h.push('<div class="fila dim">leyendo los catálogos…</div>');
-                else if (!lista.length) h.push(`<div class="fila dim">${t ? 'nada calza' : 'los catálogos están vacíos'}</div>`);
-                for (const x of lista) h.push(filaDisponible(x));
-                for (const p of problemas) h.push(`<div class="fila dim">! ${esc(p)}</div>`);
-                h.push('<div class="fila dim">para escribir y publicar uno: <code>telar modulos nuevo</code>, y la skill /modulos</div>');
             }
+            if (!disponibles) h.push('<div class="fila dim">leyendo los catálogos…</div>');
+            else if (!lista.length) h.push(`<div class="fila dim">${t ? 'nada calza' : porInstalar.length < disponibles.length ? 'ya tienes todo lo de los catálogos' : 'los catálogos están vacíos'}</div>`);
+            for (const x of lista) h.push(filaDisponible(x));
+            for (const p of problemas) h.push(`<div class="fila dim">! ${esc(p)}</div>`);
+            h.push('<div class="fila dim">para escribir y publicar uno: <code>telar modulos nuevo</code>, y la skill /modulos</div>');
+            h.push('<div class="sep-pag"></div>');
+            h.push(`<div class="fila"><b>instalados</b>${instalados ? ` <span class="dim">${instalados.length}</span>` : ''}</div>`);
+            if (!instalados) h.push('<div class="fila dim">leyendo…</div>');
+            else if (!instalados.length) h.push('<div class="fila dim">ninguno todavía</div>');
+            for (const m of instalados ?? []) h.push(filaInstalado(m));
             ctx.pintar(h);
             const campo = document.getElementById('buscar-mod') as HTMLInputElement | null;
             campo?.addEventListener('input', () => {
@@ -139,7 +140,6 @@ export const modulos: FabricaSeccion = ctx => {
         },
         async accion(accion: string, valor: string): Promise<boolean> {
             switch (accion) {
-                case 'mod-pestana': pestana = valor === 'disponibles' ? 'disponibles' : 'instalados'; seccion.pintar(); return true;
                 case 'mod-leer': await leer(true); return true;
                 case 'mod-activar': await hacer('activar', valor); return true;
                 case 'mod-desactivar': await hacer('desactivar', valor); return true;

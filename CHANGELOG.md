@@ -6,6 +6,22 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-10-26
+
+### Added
+
+- `telar agentes nuevo "Faro" [--para "…"] [--icono ☼]` and `POST /agentes/nuevo`: a resident agent's folder
+  (`CLAUDE.md` with a starting template, `agente.toml`, `README.md`, `bitacora.md`, `memoria/MEMORY.md`). If
+  `[agentes] carpeta` is missing it is written: `agentes` in the root, or `~/agentes` when the root is a team
+  repository (`.telar/equipo.yaml`), so a person's agents don't land in the shared repo.
+
+### Changed
+
+- The page: the AGENTES section is always in the sidebar, with **+ nuevo**. Without agents it says so and offers
+  to create one; before, it was hidden until `[agentes] carpeta` existed, so nobody learned agents existed.
+- ⚙ módulos is one page instead of two tabs: first the modules from the catalogs you don't have (with search
+  when there are more than four), then the installed ones. With tabs, the available ones went unseen.
+
 ## [0.6.1] — 2026-10-26
 
 ### Added

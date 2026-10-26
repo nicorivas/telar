@@ -141,6 +141,22 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             else void ui.estado(`telar: en la casilla de «${nombre ?? ext}», de ${persona}`, 5000);
         },
         'telar.agentesVer': async () => { c.mostrar('dashboard'); await c.hoy.abrirAgentes(); },
+        // un agente residente nuevo: su carpeta con CLAUDE.md y agente.toml (lo mismo que `telar agentes nuevo`)
+        'telar.agenteNuevo': async () => {
+            const nombre = (await ui.campo({
+                titulo: 'Agente nuevo', placeholder: 'Faro',
+                ayuda: 'Un agente residente: vive en su carpeta, con su memoria y su bitácora, y le encargas cosas.',
+            }))?.trim();
+            if (!nombre) return;
+            const para = (await ui.campo({
+                titulo: `Para qué es «${nombre}»`, placeholder: 'Revisar cómo van los proyectos y avisar lo que se atrasó.',
+                ayuda: 'En una o dos frases: cuándo encargarle algo. Se puede dejar vacío y escribirlo después en su agente.toml.',
+            }))?.trim() ?? '';
+            const r = await cli.nuevoAgente(nombre, para);
+            if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
+            avisar(`Agente ${r.datos.nombre} en ${r.datos.carpeta}. Escribe en su CLAUDE.md qué hace.`, 'info');
+            await modelo.sondear(true);
+        },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },
         // conectar el calendario: la dirección privada iCal (se escribe sin mostrarla: es secreta)
         'telar.conectarCalendario': async () => {

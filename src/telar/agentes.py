@@ -466,3 +466,108 @@ def pagina(a: Agente) -> dict:
                                                 ("agente.toml: su definición", DEFINICION))]
     bloques.append({"titulo": "archivos", "items": [{"titulo": n, "enlace": str(r)} for n, r in archivos if r.exists()]})
     return {"titulo": a.nombre, "subtitulo": subtitulo or str(a.carpeta), "bloques": bloques}
+
+
+# ── un agente nuevo (`telar agentes nuevo`, POST /agentes/nuevo) ───────────────────────────────
+
+CLAUDE_NUEVO = """# {nombre}
+
+{para_o_ayuda}
+
+## Quién eres
+
+Eres {nombre}, un agente residente de telar: vives en esta carpeta y tu conversación dura (cuando pesa demasiado,
+telar te pide un relevo y empiezas otra que lo lee). Te llegan encargos de tu persona y de otros hilos
+(`telar encargar {clave} "…"`): hazlos y ciérralos con su resultado (`telar objeto encargo:<id> cerrar`).
+
+## Cómo trabajas
+
+- Lee tu memoria (`memoria/MEMORY.md`) antes de afirmar lo que ya sabías, y anota ahí lo que valga la pena recordar.
+- Deja en `bitacora.md` una línea por encargo: cuándo, qué, cómo terminó.
+- Lo que sale al mundo (correos, mensajes a otras personas, publicar) y lo que no se puede deshacer, pregúntalo antes.
+
+## Lo que haces
+
+(escribe aquí qué hace este agente, con qué herramientas, y qué no hace)
+"""
+
+
+def _clave(nombre: str) -> str:
+    plano = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", plano).strip("-")[:32]
+
+
+def carpeta_por_defecto(config) -> Path:
+    """Dónde van los agentes si la configuración no lo dice: en la raíz (`agentes/`), salvo que la raíz sea el
+    repositorio de un equipo (`.telar/equipo.yaml`): los agentes son de la persona, no se suben al repo de todos."""
+    raiz = Path(config.raiz).expanduser()
+    if (raiz / ".telar" / "equipo.yaml").is_file():
+        return Path.home() / "agentes"
+    return raiz / "agentes"
+
+
+def configurar_carpeta(ruta_config: Path, carpeta: Path) -> bool:
+    """Escribe `[agentes] carpeta` en la configuración si no estaba. True si la escribió."""
+    texto = ruta_config.read_text(encoding="utf-8") if ruta_config.exists() else ""
+    linea = f'carpeta = "{carpeta}"'
+    m = re.search(r"(?m)^\[agentes\]\s*$", texto)
+    if m:
+        fin = re.search(r"(?m)^\[", texto[m.end():])
+        tabla = texto[m.end(): m.end() + fin.start()] if fin else texto[m.end():]
+        if re.search(r"(?m)^\s*carpeta\s*=", tabla):
+            return False
+        texto = texto[: m.end()] + "\n" + linea + texto[m.end():]
+    else:
+        texto = texto.rstrip("\n") + f"\n\n# los agentes residentes: una carpeta por agente (lo escribió `telar agentes nuevo`)\n[agentes]\n{linea}\n"
+    ruta_config.parent.mkdir(parents=True, exist_ok=True)
+    ruta_config.write_text(texto, encoding="utf-8")
+    return True
+
+
+def crear(config, ruta_config: Path, nombre: str, *, para: str = "", icono: str = "") -> dict:
+    """Un agente residente nuevo: su carpeta (CLAUDE.md, agente.toml, README, bitácora y memoria) en `[agentes]
+    carpeta`, que se configura si faltaba. Devuelve {clave, nombre, carpeta, configurado}. ValueError si no se puede."""
+    nombre = " ".join(str(nombre).split())
+    if not nombre or len(nombre) > 60 or _con_control(nombre):
+        raise ValueError("el nombre: un texto de una línea, hasta 60 caracteres")
+    clave = _clave(nombre)
+    if not clave:
+        raise ValueError(f"«{nombre}» no da una carpeta: usa letras o números")
+    para = " ".join(str(para).split())
+    if _con_control(para) or _con_control(icono) or len(icono) > 4:
+        raise ValueError("el para o el ícono traen caracteres que no sirven")
+    b = base(config)
+    configurado = False
+    if b is None:
+        b = carpeta_por_defecto(config)
+        raiz = Path(config.raiz).expanduser()
+        escrita = (b.relative_to(raiz) if b.is_relative_to(raiz)
+                   else Path("~") / b.relative_to(Path.home()) if b.is_relative_to(Path.home()) else b)
+        configurado = configurar_carpeta(Path(ruta_config), escrita)
+    if any(ficha(x) == ficha(nombre) for a in descubrir(config) for x in (a.nombre, a.clave)):
+        raise ValueError(f"ya hay un agente «{nombre}»")
+    d = b / clave
+    if d.exists():
+        raise ValueError(f"{d} ya existe")
+    (d / "memoria").mkdir(parents=True)
+    toml = [f"nombre = {_toml_texto(nombre)}"]
+    if para:
+        toml.append(f"para = {_toml_texto(para)}")
+    toml.append('residente = "a-pedido"   # siempre, a-pedido o no')
+    if icono:
+        toml.append(f"icono = {_toml_texto(icono)}")
+    (d / DEFINICION).write_text("# agente.toml — lo que este agente dice de sí (docs/propuestas/agente-como-definicion.md)\n"
+                                + "\n".join(toml) + "\n", encoding="utf-8")
+    (d / "CLAUDE.md").write_text(CLAUDE_NUEVO.format(
+        nombre=nombre, clave=clave, para_o_ayuda=para or "(en una o dos frases: para qué encargarle algo)"), encoding="utf-8")
+    (d / "README.md").write_text(f"# {nombre}\n\n{para}\n" if para else f"# {nombre}\n", encoding="utf-8")
+    (d / "bitacora.md").write_text(f"# Bitácora de {nombre}\n", encoding="utf-8")
+    (d / "memoria" / "MEMORY.md").write_text(f"# Memoria de {nombre}\n\nUna línea por recuerdo: `- [título](archivo.md) — de qué trata`.\n",
+                                             encoding="utf-8")
+    return {"clave": clave, "nombre": nombre, "carpeta": str(d), "configurado": configurado}
+
+
+def _toml_texto(v: str) -> str:
+    import json
+
+    return json.dumps(v, ensure_ascii=False)

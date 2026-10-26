@@ -743,6 +743,11 @@ cada archivo para abrirlo. Un hilo vinculado a la carpeta del agente **arranca a
 `[agente] carpeta` diga otra cosa: así Claude carga el `CLAUDE.md` del agente (y los de las carpetas de
 arriba) desde el comienzo.
 
+El primero se arma con `telar agentes nuevo "Faro" [--para "…"]` (o **+ nuevo** en AGENTES, en la página): crea
+su carpeta con `CLAUDE.md`, `agente.toml`, `README.md`, `bitacora.md` y `memoria/MEMORY.md`, y si falta escribe
+`[agentes] carpeta`: `agentes` en la raíz o, si la raíz es el repositorio de un equipo (tiene
+`.telar/equipo.yaml`), `~/agentes`, para que los agentes de cada persona no vayan al repositorio de todos.
+
 **Su definición: `agente.toml`.** Al lado de su `CLAUDE.md`, opcional (sin él, todo es como se dice arriba).
 `telar agentes` muestra lo que declara cada uno.
 

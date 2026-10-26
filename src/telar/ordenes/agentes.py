@@ -3,6 +3,7 @@
     telar agentes              uno por línea: nombre, carpeta, modelo, para qué es
     telar agentes faro         uno entero: lo que declara, lo que todavía no se usa y lo que no se pudo leer
     telar agentes --json       el contrato (docs/contratos.md)
+    telar agentes nuevo "Faro" [--para "…"] [--icono ☼]   uno nuevo: su carpeta, y [agentes] carpeta si faltaba
 
 Un residente es una carpeta de `[agentes] carpeta` con su `CLAUDE.md`; su definición, si la tiene, es un
 `agente.toml` al lado (telar.agentes, docs/propuestas/agente-como-definicion.md). Sin él vale lo de
@@ -19,6 +20,8 @@ AYUDA = "Los agentes residentes y lo que declara cada uno en su agente.toml."
 
 
 def main(argv: list[str], ctx) -> int:
+    if argv and argv[0] == "nuevo":
+        return _nuevo(argv[1:], ctx)
     p = _comun.analizador("agentes", AYUDA)
     p.epilog = __doc__
     p.add_argument("agente", nargs="?", default="", help="uno solo: su carpeta o su nombre")
@@ -45,7 +48,7 @@ def main(argv: list[str], ctx) -> int:
     if o.json:
         return _comun.escribir_json({"agentes": [mod_agentes.como_json(a) for a in todos]})
     if not todos:
-        print(_comun.tenue("no hay agentes residentes: [agentes] carpeta = \"agentes\" y una carpeta con su CLAUDE.md"))
+        print(_comun.tenue("no hay agentes residentes: telar agentes nuevo \"Nombre\" arma uno"))
         return 0
     ancho = max(len(a.nombre) for a in todos)
     for a in todos:
@@ -77,3 +80,28 @@ def _uno(a) -> None:
         print(f"  {clave:<12} {valor} " + _comun.tenue("(declarado, sin uso todavía)"))
     for problema in a.problemas:
         print(f"  ! {problema}")
+
+
+def _nuevo(argv: list[str], ctx) -> int:
+    from telar.config import ruta_config
+
+    p = _comun.analizador("agentes nuevo", "Un agente residente nuevo: su carpeta y [agentes] carpeta si faltaba.")
+    p.add_argument("nombre")
+    p.add_argument("--para", default="", help="para qué encargarle algo, en una o dos frases")
+    p.add_argument("--icono", default="", help="uno o dos caracteres para la lista")
+    p.add_argument("--json", action="store_true")
+    o, codigo = _comun.parsear(p, argv)
+    if o is None:
+        return codigo
+    try:
+        r = mod_agentes.crear(ctx.config, ctx.config.origen or ruta_config(), o.nombre, para=o.para,
+                              icono=o.icono)
+    except (ValueError, OSError) as e:
+        return _comun.queja(str(e))
+    if o.json:
+        return _comun.escribir_json(r)
+    print(f"agente {r['nombre']} en {r['carpeta']}")
+    if r["configurado"]:
+        print(_comun.tenue(f"    [agentes] carpeta quedó en la configuración"))
+    print(_comun.tenue(f"    escribe en su CLAUDE.md qué hace; encárgale algo: telar encargar {r['clave']} \"…\""))
+    return 0

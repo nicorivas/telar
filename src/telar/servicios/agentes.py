@@ -180,3 +180,15 @@ def rotar(ctx, hilo: str, maquina: str = "") -> dict:
     if not r.get("ok"):
         raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
     return r
+
+
+def nuevo(ctx, nombre: str, para: str = "", icono: str = "") -> dict:
+    """Un agente residente nuevo aquí (telar.agentes.crear); 409 si no se puede."""
+    from telar import agentes as mod_agentes
+    from telar.config import ruta_config
+
+    try:
+        return {"ok": True, **mod_agentes.crear(ctx.config, ctx.config.origen or ruta_config(), nombre, para=para,
+                                                icono=icono)}
+    except (ValueError, OSError) as e:
+        raise ErrorDeServicio(str(e), 409) from e

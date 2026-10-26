@@ -719,6 +719,18 @@ def post_agentes_rotar(pedido: PedidoRotar, ctx: Contexto = Depends(contexto)) -
     return servicio_agentes.rotar(ctx, pedido.hilo, pedido.maquina)
 
 
+class PedidoAgenteNuevo(BaseModel):
+    nombre: str
+    para: str = ""
+    icono: str = ""
+
+
+@app.post("/agentes/nuevo")
+def post_agentes_nuevo(pedido: PedidoAgenteNuevo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Un agente residente nuevo, en esta máquina: su carpeta en `[agentes] carpeta` (que se configura si faltaba)."""
+    return servicio_agentes.nuevo(ctx, pedido.nombre, pedido.para, pedido.icono)
+
+
 @app.get("/agentes/del-hilo", response_model=servicio_agentes.FichaAgente)
 def get_agente_del_hilo(hilo: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
     """El agente residente del que es ese hilo: su definición, su CLAUDE.md, su último relevo y el peso de su

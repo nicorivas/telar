@@ -575,6 +575,9 @@ export const agentes = async () => await deServe<{ agentes: JsonEstadoAgente[]; 
 /** Rotar ya la conversación de un agente, con relevo (`POST /agentes/rotar`). */
 export const rotarAgente = async (hilo: string, maquina = '') =>
     await aServe<{ hecho?: string }>('POST', '/agentes/rotar', 30000, { hilo, maquina });
+/** Un agente residente nuevo en esta máquina (`POST /agentes/nuevo`): su carpeta, y `[agentes] carpeta` si faltaba. */
+export const nuevoAgente = async (nombre: string, para = '') =>
+    await aServe<{ clave: string; nombre: string; carpeta: string; configurado: boolean }>('POST', '/agentes/nuevo', 30000, { nombre, para });
 /** La ficha de un agente para la barra de la derecha (`GET /agentes/del-hilo`): su definición, su CLAUDE.md, su
  *  último relevo y el peso de su conversación (`aqui`: si vive en esta máquina; si no, esas dos no se saben). */
 export interface JsonFichaAgente {

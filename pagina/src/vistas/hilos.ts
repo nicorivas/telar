@@ -357,7 +357,13 @@ export class BarraHilos {
         // sin hilo abierto sale igual, tenue, y su línea lleva a su home. Sus otros hilos van en HILOS, con su ícono
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
         const verTodos = '<span class="icono ver-agentes" data-accion="cmd" data-id="telar.agentesVer" title="todos los agentes: su estado, sus encargos, encargar y rotar">≡</span>';
-        if (agentes.length && cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes', verTodos)) {
+        const crear = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.agenteNuevo" title="un agente residente nuevo: su carpeta con CLAUDE.md y agente.toml">+ nuevo</span>';
+        // la sección sale aunque no haya ninguno: es donde se aprende que existen y se arma el primero
+        if (cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes', crear + verTodos)) {
+            if (!agentes.length) {
+                h.push('<div class="fila agente muerto" data-accion="cmd" data-id="telar.agenteNuevo" title="un agente vive en su carpeta, con su memoria y su bitácora, y le encargas cosas">'
+                    + '<span class="prio"> </span><span class="nombre">no tienes agentes residentes · <a>crear uno</a></span></div>');
+            }
             for (const a of agentes) {
                 const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
                 const suyos = vivosPrimero(modelo.enLista.filter(x => x.nombre === a.nombre));
