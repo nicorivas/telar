@@ -368,6 +368,22 @@ class ElProgramaDeRoot(Prueba):
         guion = instalar.stdin or " ".join(instalar.argv)
         self.assertLess(guion.index('cd "$HOME"'), guion.index("telar instalar"))
 
+    def test_uno_a_medias_se_retoma_y_uno_ajeno_no_se_toca(self):
+        from types import SimpleNamespace
+
+        def usuario(comentario):
+            return mock.patch.object(self.m.pwd, "getpwnam", return_value=SimpleNamespace(pw_gecos=comentario, pw_uid=1001,
+                                                                                         pw_dir="/home/pablo"))
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self.m, "REGISTRO", Path(d)):
+            with usuario("Pablo de verdad"):
+                with self.assertRaises(self.m.Rechazo):
+                    self.m.atender(self.crear, seco=False)
+            # uno que dejó este programa a medias (falló un paso después de useradd): se sigue, sin crearlo de nuevo
+            with usuario(self.m.COMENTARIO.format("pablo")), mock.patch.object(self.m, "correr", return_value=None) as correr:
+                self.m.atender(self.crear, seco=False)
+            hechos = [x.argv[0] for x in correr.call_args.args[0] if x.argv]
+            self.assertNotIn("useradd", hechos)
+
     def test_el_comentario_del_usuario_no_lleva_dos_puntos(self):
         # el campo de /etc/passwd se separa con «:»: useradd rechaza un comentario que los traiga (le pasó a Pablo)
         useradd = next(p.argv for p in self.m.plan(self.valido()) if p.argv and p.argv[0] == "useradd")
