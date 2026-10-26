@@ -1105,23 +1105,34 @@ y solo esa) la instala y reinicia el servicio en un proceso aparte (telar.actual
 va: `{"version", "estado": "corriendo" | "listo" | "fallo", "desde", "hasta", "error", "log"}`. 409 si no se puede
 (no es la última, no es de uv, ya hay una corriendo).
 
-## `telar modulos --json` — los módulos
+## `telar modulos --json` y `/modulos` — los módulos y el catálogo
+
+`telar modulos --json` y `GET /modulos` (este, con `nueva` según el catálogo):
 
 ```json
-{"modulos": [{"nombre": "nino34", "carpeta": "/home/ana/.local/share/telar/modulos/nino34",
+{"modulos": [{"nombre": "nino34", "activo": true, "carpeta": "/home/ana/.local/share/telar/modulos/nino34",
   "descripcion": "El índice del Niño, cada mañana.", "aporta": ["pestaña", "periódico nino34", "orden medir"],
-  "fuente": "https://ejemplo.org/nino34.git", "version": "a1b2c3d",
-  "permisos": {"leer": ["~/datos/oceano"], "escribir": ["~/.local/state/nino34"], "red": ["psl.noaa.gov"],
-               "ordenes": ["mensaje", "tipo tarea"], "otros": {}}}]}
+  "fuente": "https://github.com/nicorivas/telar-nino34", "version": "a1b2c3d", "ref": "v0.1.0", "catalogo": "oficial",
+  "confianza": "oficial", "nueva": "v0.2.0", "enlazado": false, "instalado": "2026-10-26", "a_mano": false,
+  "pide": ["red: psl.noaa.gov"],
+  "permisos": {"leer": [], "escribir": ["~/.local/state/nino34"], "red": ["psl.noaa.gov"], "ordenes": [], "otros": {}}}]}
 ```
 
-Uno por módulo, instalado o declarado a mano (`[modulos.<nombre>]`), en el orden de la configuración. `aporta` es
-lo que trae, en palabras (lo mismo que la lista sin `--json`). `fuente` y `version` son lo que anotó `telar modulos
-instalar` en `modulos.toml`: vacíos en uno declarado a mano. `permisos` es su `[permisos]` (en
-[configuracion.md](configuracion.md), «Lo que pide un módulo»): `leer`, `escribir` y `ordenes` son listas
-ordenadas y sin repetir, `red` es `true`, `false` o la lista de sitios, y `otros` trae tal cual las claves que esta
-versión no entiende. `null` si el módulo no trae la tabla («no dice qué pide»), que no es lo mismo que una tabla
-vacía (todo vacío y `red: false`). telar todavía no hace cumplir nada de eso.
+Uno por módulo: los activos (los que carga la configuración) y después los apagados (`activo: false`, con lo que se
+anotó al instalarlos). `ref` es la etiqueta o el commit de un catálogo (`""` si se instaló suelto), `catalogo` de
+cuál vino, `confianza` (`oficial`, `equipo` o `sin revisar`) y `nueva`, la versión que el catálogo trae si no es la
+instalada. `a_mano`: declarado en la configuración (`[modulos.<nombre>]`), no instalado. `permisos` es su
+`[permisos]` (`leer`, `escribir`, `ordenes` ordenadas, `red` true/false/lista, `otros` lo que esta versión no
+entiende), o `null` si no trae la tabla.
+
+`telar modulos catalogo --json` y `GET /modulos/catalogo` (`?forzar=true` baja los catálogos ya; `buscar`):
+`{"disponibles": [{"nombre", "descripcion", "fuente", "version", "autor", "etiquetas", "telar", "permisos",
+"catalogo", "confianza", "instalado", "le_sirve"}], "catalogos": [{"nombre", "ubicacion", "confianza", "problema"}],
+"problemas": [...]}`. El formato de un catálogo, en [modulos.md](modulos.md).
+
+`POST /modulos/<accion>` (`{"nombre"}`): `instalar` (solo de un catálogo oficial o del equipo: uno sin revisar
+contesta 403 y se instala desde la terminal), `actualizar`, `activar`, `desactivar`, `quitar`. Devuelve
+`{"accion", "nombre", "salida", "codigo"}`; 409 si no se pudo, con la última línea de lo que dijo.
 
 ## `telar disparadores --json` — lo que corre o manda algo solo
 

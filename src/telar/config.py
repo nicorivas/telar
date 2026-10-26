@@ -400,6 +400,9 @@ class Config:
     bus: Bus = field(default_factory=Bus)
     #: en qué máquina de [remotos] viven los procesos periódicos (`[periodicos] en`); "" es esta.
     periodicos_en: str = ""
+    #: `[catalogos]` (telar.catalogo): si se lee el oficial, y otros catálogos (URL o ruta), «sin revisar»
+    catalogos_oficial: bool = True
+    catalogos_fuentes: tuple[str, ...] = ()
     #: lo que dejan las skills por día, para verlo en el dashboard (`[resultados.<clave>]`).
     resultados: tuple[Resultado, ...] = ()
     #: dónde viven los objetos de cada tipo (`[tipos.<clave>]`): las tareas, por ejemplo.
@@ -1179,6 +1182,20 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             raise ErrorDeConfig(f"bus.url: se esperaba nats://host:puerto, llegó {valores['url']!r}")
         cambios["bus"] = Bus(**valores)
 
+    if "catalogos" in datos:
+        cuerpo = _tabla(datos["catalogos"], "catalogos")
+        sobra = set(cuerpo) - {"oficial", "fuentes"}
+        if sobra:
+            raise ErrorDeConfig(f"catalogos.{sorted(sobra)[0]}: no existe")
+        oficial = cuerpo.get("oficial", True)
+        if not isinstance(oficial, bool):
+            raise ErrorDeConfig(f"catalogos.oficial: true o false, llegó {oficial!r}")
+        fuentes_cat = cuerpo.get("fuentes", [])
+        if not isinstance(fuentes_cat, list) or not all(isinstance(x, str) and x.strip() for x in fuentes_cat):
+            raise ErrorDeConfig(f"catalogos.fuentes: una lista de URL o rutas a un catalogo.toml, llegó {fuentes_cat!r}")
+        cambios["catalogos_oficial"] = oficial
+        cambios["catalogos_fuentes"] = tuple(x.strip() for x in fuentes_cat)
+
     if "periodicos" in datos:
         cuerpo = _tabla(datos["periodicos"], "periodicos")
         sobra = set(cuerpo) - {"en"}
@@ -1342,6 +1359,8 @@ def _con_instalados(datos: dict, destino: Path, rotos: list | None = None) -> di
     a_mano = datos.get("modulos", {}) if isinstance(datos.get("modulos"), dict) else {}
     juntos = dict(a_mano)
     for nombre, d in instalados.items():
+        if d.get("activo") is False:
+            continue  # apagado (telar modulos desactivar): instalado, pero no aporta nada
         if nombre in a_mano:
             mensaje = f"modulos.{nombre}: está en la configuración y también instalado con telar modulo"
             if rotos is None:

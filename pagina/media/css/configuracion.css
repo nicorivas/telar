@@ -64,3 +64,8 @@
     .config-titulo { width: 100%; }
   }
 }
+
+/* ⚙ módulos: las dos pestañas (instalados, disponibles) */
+.modos-mod a { cursor: pointer; color: var(--dim); }
+.modos-mod a.si { color: var(--violeta); }
+#buscar-mod { width: 100%; }

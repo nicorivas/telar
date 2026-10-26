@@ -73,7 +73,10 @@ mismo que no pedir nada (`[permisos]` vacía).
 **Instalados.** `telar modulo instalar <repo git o carpeta>` lo clona en `<datos>/modulos/<nombre>`
 (`~/.local/share/telar`), corre su `[instalar]` y lo anota en `modulos.toml`, al lado de la
 configuración: ese archivo es solo de `telar modulo` (la configuración sigue siendo de quien la escribe).
-`--enlazar` usa la carpeta donde está, sin copiarla, para desarrollarlo.
+`--enlazar` usa la carpeta donde está, sin copiarla, para desarrollarlo. Desde un catálogo (telar.catalogo),
+`telar modulos instalar <nombre>` lo baja en la versión que dice el catálogo (una etiqueta o un commit) y anota de
+cuál vino; actualizarlo es ir a la versión que el catálogo diga después. `activo = false` lo deja instalado sin
+cargarlo (`telar modulos desactivar`): no aporta nada hasta que se active de nuevo.
 """
 
 from __future__ import annotations
@@ -449,11 +452,13 @@ def _escribir_instalados(ruta: Path, instalados: dict) -> None:
     lineas = ["# Los módulos que instaló `telar modulo`. Lo escribe esa orden: no lo edites a mano.", ""]
     for nombre, d in sorted(instalados.items()):
         lineas.append(f"[{nombre}]")
-        for k in ("carpeta", "fuente", "version", "instalado"):
+        for k in ("carpeta", "fuente", "version", "ref", "catalogo", "instalado"):
             if d.get(k):
                 lineas.append(f"{k} = {json.dumps(str(d[k]), ensure_ascii=False)}")
         if d.get("enlazado"):
             lineas.append("enlazado = true")
+        if d.get("activo") is False:
+            lineas.append("activo = false")
         if isinstance(d.get("pide"), list):
             # lo que pedía cuando se instaló (o se actualizó por última vez), en palabras: contra eso compara
             # `actualizar`. Una lista de JSON de textos es TOML válido
@@ -474,9 +479,27 @@ def _nombre_de_fuente(fuente: str) -> str:
     return re.sub(r"[^a-z0-9_-]", "-", base.removeprefix("telar-")) or "modulo"
 
 
-def preparar(fuente: str, *, nombre: str = "", enlazar: bool = False) -> tuple[Modulo, dict]:
+def _bajar_ref(origen: str, destino: Path, ref: str) -> None:
+    """Un clon en `ref` (una etiqueta o una rama: --branch; un commit: el clon entero y checkout)."""
+    r = _git(None, "clone", "-q", "--depth", "1", "--branch", ref, origen, str(destino))
+    if r.returncode == 0:
+        return
+    import shutil
+
+    shutil.rmtree(destino, ignore_errors=True)
+    r = _git(None, "clone", "-q", origen, str(destino))
+    if r.returncode != 0:
+        raise ErrorDeModulo(f"git clone {origen}: {(r.stderr or r.stdout).strip()[-300:]}")
+    c = _git(destino, "checkout", "-q", ref)
+    if c.returncode != 0:
+        shutil.rmtree(destino, ignore_errors=True)
+        raise ErrorDeModulo(f"{origen} no tiene «{ref}» (ni etiqueta, ni rama, ni commit)")
+
+
+def preparar(fuente: str, *, nombre: str = "", enlazar: bool = False, ref: str = "") -> tuple[Modulo, dict]:
     """Baja (o ubica, con `enlazar`) el módulo y lee su manifiesto, sin anotarlo todavía: lo que se va a
-    instalar, para mostrarlo antes. Devuelve el módulo y lo que se anotaría."""
+    instalar, para mostrarlo antes. Devuelve el módulo y lo que se anotaría. `ref`: en esa etiqueta o commit
+    (la de un catálogo), no en la rama de siempre."""
     from datetime import date
 
     local = Path(fuente).expanduser()
@@ -495,9 +518,12 @@ def preparar(fuente: str, *, nombre: str = "", enlazar: bool = False) -> tuple[M
 
         shutil.rmtree(provisorio)
     provisorio.parent.mkdir(parents=True, exist_ok=True)
-    r = _git(None, "clone", "-q", "--depth", "1", origen, str(provisorio))
-    if r.returncode != 0:
-        raise ErrorDeModulo(f"git clone {origen}: {(r.stderr or r.stdout).strip()[-300:]}")
+    if ref:
+        _bajar_ref(origen, provisorio, ref)
+    else:
+        r = _git(None, "clone", "-q", "--depth", "1", origen, str(provisorio))
+        if r.returncode != 0:
+            raise ErrorDeModulo(f"git clone {origen}: {(r.stderr or r.stdout).strip()[-300:]}")
     nombre = nombre or _manifiesto_nombre(provisorio) or _nombre_de_fuente(origen)
     try:
         m = leer(nombre, provisorio)
@@ -507,7 +533,7 @@ def preparar(fuente: str, *, nombre: str = "", enlazar: bool = False) -> tuple[M
         shutil.rmtree(provisorio, ignore_errors=True)
         raise
     version = _git(provisorio, "rev-parse", "--short", "HEAD").stdout.strip()
-    return m, {"carpeta": str(_datos() / nombre), "fuente": origen, "version": version,
+    return m, {"carpeta": str(_datos() / nombre), "fuente": origen, "version": version, "ref": ref,
                "instalado": date.today().isoformat(), "provisorio": str(provisorio)}
 
 
@@ -602,7 +628,22 @@ def adoptar(ruta: Path, config_ruta: Path, nombre: str) -> str:
     return f"{m.nombre}: adoptado, enlazado a {carpeta} (la configuración de antes, en {respaldo.name})"
 
 
-def actualizar(ruta: Path, nombre: str) -> str:
+def activar(ruta: Path, nombre: str, si: bool) -> str:
+    """Lo enciende o lo apaga sin desinstalarlo: apagado, la configuración no lo carga (no aporta nada)."""
+    instalados = leer_instalados(ruta)
+    d = instalados.get(nombre)
+    if d is None:
+        raise ErrorDeModulo(f"«{nombre}» no lo instaló telar modulo (uno declarado a mano se apaga quitándolo de la "
+                            "configuración)")
+    if (d.get("activo") is not False) == si:
+        return f"{nombre}: ya estaba {'activo' if si else 'apagado'}"
+    instalados[nombre] = {**{k: v for k, v in d.items() if k != "activo"}, **({} if si else {"activo": False})}
+    _escribir_instalados(ruta, instalados)
+    return f"{nombre}: {'activo' if si else 'apagado (sigue instalado: telar modulos activar ' + nombre + ')'}"
+
+
+def actualizar(ruta: Path, nombre: str, *, ref: str = "") -> str:
+    """git pull y su [instalar] de nuevo; uno de un catálogo (con `ref`), a la versión que diga ahora (`ref`)."""
     instalados = leer_instalados(ruta)
     d = instalados.get(nombre)
     if d is None:
@@ -618,7 +659,20 @@ def actualizar(ruta: Path, nombre: str) -> str:
             pedia = leer(nombre, carpeta).pide
         except ErrorDeModulo:
             pedia = None  # el de antes no se leía: no hay con qué comparar
-    if not d.get("enlazado"):
+    if not d.get("enlazado") and (ref or d.get("ref")):
+        # de un catálogo: a esa etiqueta o commit, no a la punta de la rama
+        objetivo = ref or d["ref"]
+        f = _git(carpeta, "fetch", "-q", "--tags", "origin")
+        if f.returncode != 0:
+            raise ErrorDeModulo(f"git fetch en {carpeta}: {(f.stderr or f.stdout).strip()[-300:]}")
+        c = _git(carpeta, "checkout", "-q", objetivo)
+        if c.returncode != 0:
+            _git(carpeta, "fetch", "-q", "--unshallow")
+            c = _git(carpeta, "checkout", "-q", objetivo)
+            if c.returncode != 0:
+                raise ErrorDeModulo(f"{nombre}: no encuentro «{objetivo}» en su repositorio")
+        d = {**d, "ref": objetivo}
+    elif not d.get("enlazado"):
         r = _git(carpeta, "pull", "-q", "--ff-only")
         if r.returncode != 0:
             raise ErrorDeModulo(f"git pull en {carpeta}: {(r.stderr or r.stdout).strip()[-300:]}")

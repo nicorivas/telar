@@ -1073,6 +1073,11 @@ body.angosto.en-detalle #barra { display: none; }
   }
 }
 
+/* ⚙ módulos: las dos pestañas (instalados, disponibles) */
+.modos-mod a { cursor: pointer; color: var(--dim); }
+.modos-mod a.si { color: var(--violeta); }
+#buscar-mod { width: 100%; }
+
 /* La carpeta de un hilo y su documento (web/carpeta.ts): los archivos arriba, como una lista corta, y el
    elegido abajo, con sus conexiones del grafo al lado (o debajo, si no caben). scripts/navegador.mjs la junta en
    src/telar/web/marco.css. */

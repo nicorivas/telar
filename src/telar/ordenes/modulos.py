@@ -2,10 +2,18 @@
 
     telar modulos                              la lista: nombre, carpeta, lo que trae y de dónde vino
     telar modulos --json
-    telar modulos instalar <repo git o carpeta> [--nombre N] [--enlazar] [--si]
-    telar modulos actualizar <nombre>          git pull y su [instalar] de nuevo
+    telar modulos catalogo [--buscar X] [--forzar] [--json]   los que hay en los catálogos (telar.catalogo)
+    telar modulos instalar <nombre>            uno del catálogo, en la versión que dice el catálogo
+    telar modulos instalar <repo git o carpeta> [--nombre N] [--enlazar] [--si]   uno suelto (sin revisar)
+    telar modulos actualizar <nombre>          a la versión nueva del catálogo, o git pull; y su [instalar]
+    telar modulos activar|desactivar <nombre>  encenderlo o apagarlo sin desinstalarlo
     telar modulos quitar <nombre> [--si]       lo desanota y borra la carpeta que bajó telar
     telar modulos adoptar <nombre>             uno declarado a mano en la configuración pasa a los instalados
+    telar modulos nuevo <nombre> [--carpeta C] arma la carpeta de un módulo nuevo, para escribirlo
+    telar modulos revisar [carpeta]            lo que le falta para publicarlo (y `--catalogo F`: revisar un catálogo)
+    telar modulos publicar [carpeta] --version vX.Y [--catalogo oficial|<repo>] [--seco]   al catálogo, con un PR
+
+Escribir, probar, publicar y mantener un módulo, con su criterio: la skill /modulos (`telar agente instalar`).
 
 Un módulo es una carpeta con un `modulo.toml` (ver telar.modulos y docs/configuracion.md, `[modulos]`). Instalar clona el
 repositorio en `~/.local/share/telar/modulos/<nombre>`, muestra lo que trae (pestaña, órdenes,
@@ -27,7 +35,8 @@ from telar.ordenes import _comun
 from telar.salida import visible
 
 AYUDA = "Los módulos (una carpeta con modulo.toml): la lista, e instalarlos desde un repositorio."
-VERBOS = ("instalar", "actualizar", "quitar", "adoptar")
+VERBOS = ("instalar", "actualizar", "quitar", "adoptar", "activar", "desactivar", "catalogo", "nuevo", "revisar",
+          "publicar")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -44,11 +53,10 @@ def main(argv: list[str], ctx) -> int:
     modulos = ctx.config.modulos
     instalados = mod_modulos.leer_instalados(mod_modulos.ruta_instalados(ctx.config.origen))
     if o.json:
-        return _comun.escribir_json({"modulos": [
-            {"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
-             "fuente": instalados.get(m.nombre, {}).get("fuente", ""), "version": instalados.get(m.nombre, {}).get("version", ""),
-             "permisos": mod_modulos.permisos_json(m.permisos)}
-            for m in modulos]})
+        from telar.servicios import modulos as servicio
+
+        return _comun.escribir_json(servicio.instalados(ctx).model_dump(mode="json"))
+    apagados = [n for n, d in instalados.items() if d.get("activo") is False]
     if not modulos:
         print(_comun.tenue("no hay módulos: telar modulos instalar <repo>, o [modulos.<nombre>] carpeta = \"…\" a mano"))
     for m in modulos:
@@ -58,6 +66,8 @@ def main(argv: list[str], ctx) -> int:
             print(f"    {visible(m.descripcion)}")
         print(_comun.tenue("    aporta: " + (", ".join(m.aporta) or "nada")))
         print(_comun.tenue("    pide: " + "; ".join(m.pide)))
+    for n in apagados:
+        print(f"{n}  " + _comun.tenue(f"apagado · {instalados[n].get('carpeta', '')} · telar modulos activar {n}"))
     return 0
 
 
@@ -97,9 +107,13 @@ def _si(pregunta: str, si: bool) -> bool:
 def _verbo(verbo: str, argv: list[str], ctx) -> int:
     from telar import modulos as mod_modulos
 
+    if verbo in ("catalogo", "nuevo", "revisar", "publicar"):
+        from telar.ordenes import modulos_publicar
+
+        return modulos_publicar.main(verbo, argv, ctx)
     p = _comun.analizador(f"modulos {verbo}", AYUDA)
     if verbo == "instalar":
-        p.add_argument("fuente", help="un repositorio git (URL o carpeta) con un modulo.toml")
+        p.add_argument("fuente", help="su nombre en un catálogo, o un repositorio git (URL o carpeta) con un modulo.toml")
         p.add_argument("--nombre", default="", help="con otro nombre que el del manifiesto o el repositorio")
         p.add_argument("--enlazar", action="store_true", help="usar la carpeta donde está, sin copiarla")
     else:
@@ -111,11 +125,43 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
         return codigo
     ruta = mod_modulos.ruta_instalados(ctx.config.origen)
     try:
+        if verbo in ("activar", "desactivar"):
+            tenia = bool(getattr(mod_modulos.buscar(ctx.config, o.nombre), "periodicos", None))
+            print(mod_modulos.activar(ruta, o.nombre, verbo == "activar"))
+            if verbo == "activar":
+                # con la configuración de ahora, ya cargado: sus periódicos, si trae
+                from telar import config as mod_config
+
+                ctx.config = mod_config.cargar(ctx.config.origen) if ctx.config.origen else mod_config.cargar()
+                tenia = bool(getattr(mod_modulos.buscar(ctx.config, o.nombre), "periodicos", None))
+            _periodicos(ctx, tenia)
+            return 0
         if verbo == "instalar":
-            m, anotar = mod_modulos.preparar(o.fuente, nombre=o.nombre, enlazar=o.enlazar)
+            del_catalogo = None
+            if mod_modulos.NOMBRE.fullmatch(o.fuente) and not o.enlazar and not Path(o.fuente).expanduser().exists():
+                from telar import __version__, catalogo
+
+                del_catalogo = catalogo.buscar(ctx.config, o.fuente)
+                if del_catalogo is None:
+                    print(f"telar: «{o.fuente}» no está en ningún catálogo (telar modulos catalogo): dale la URL de su "
+                          "repositorio para instalarlo suelto", file=sys.stderr)
+                    return 1
+                if not catalogo.le_sirve(del_catalogo, __version__):
+                    print(f"telar: {o.fuente} pide telar {del_catalogo.telar} y este es el {__version__}: actualiza telar",
+                          file=sys.stderr)
+                    return 1
+            if del_catalogo is not None:
+                m, anotar = mod_modulos.preparar(del_catalogo.fuente, nombre=o.nombre or del_catalogo.nombre,
+                                                 ref=del_catalogo.version)
+                anotar["catalogo"] = del_catalogo.catalogo
+            else:
+                m, anotar = mod_modulos.preparar(o.fuente, nombre=o.nombre, enlazar=o.enlazar)
             # lo escribe el módulo y se lee antes del sí: sus caracteres de control a la vista (telar.salida.visible)
             print(f"{m.nombre}" + (f" — {visible(m.descripcion)}" if m.descripcion else ""))
-            print(_comun.tenue(f"    de {anotar['fuente']} @ {anotar.get('version') or '?'}"))
+            print(_comun.tenue(f"    de {anotar['fuente']} @ {anotar.get('ref') or anotar.get('version') or '?'}"))
+            confianza = {"oficial": "del catálogo de telar: revisado", "equipo": "del catálogo de tu equipo"}
+            print(("    " + confianza[del_catalogo.confianza]) if del_catalogo is not None and del_catalogo.confianza in confianza
+                  else _comun.amarillo("    sin revisar: no viene de un catálogo revisado; lee lo que corre y lo que pide"))
             print("    trae: " + (", ".join(m.aporta) or "nada"))
             if m.instalar:
                 print("    al instalarse corre: " + visible(" ".join(m.instalar)))
@@ -135,7 +181,14 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
             return 0
         tenia = bool(getattr(mod_modulos.buscar(ctx.config, o.nombre), "periodicos", None))
         if verbo == "actualizar":
-            print(mod_modulos.actualizar(ruta, o.nombre))
+            anotado = mod_modulos.leer_instalados(ruta).get(o.nombre, {})
+            ref = ""
+            if anotado.get("catalogo"):
+                from telar import catalogo
+
+                e = catalogo.buscar(ctx.config, o.nombre, forzar=True)
+                ref = e.version if e is not None else ""
+            print(mod_modulos.actualizar(ruta, o.nombre, ref=ref))
         elif verbo == "adoptar":
             from telar.config import ruta_config
 

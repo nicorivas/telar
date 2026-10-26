@@ -644,17 +644,19 @@ def _instalar(agente, o) -> int:
 
 
 def _skill(agente, *, quitar: bool = False, seco: bool = False) -> None:
-    """La skill /hilos, que va con los ganchos: cómo relacionarse con los otros hilos."""
+    """Las skills de telar, que van con los ganchos: /hilos (cómo relacionarse con los otros hilos) y /modulos
+    (cómo escribir y publicar un módulo)."""
     if agente.nombre != "claude-code":
         return
     from telar.agente import skill as mod_skill
     from telar.agente.claude_code import carpeta_config
 
-    ruta, estado = (mod_skill.desinstalar if quitar else mod_skill.instalar)(carpeta_config(), seco=seco)
-    if estado == "ajena":
-        print(_comun.tenue(f"  {_corta(ruta)} es de otro, no la toqué: la skill /hilos de telar no quedó"))
-    elif estado not in ("al día", "no estaba"):
-        print(f"  skill /hilos {estado}: {_corta(ruta)}")
+    for nombre in mod_skill.SKILLS:
+        ruta, estado = (mod_skill.desinstalar if quitar else mod_skill.instalar)(carpeta_config(), seco=seco, nombre=nombre)
+        if estado == "ajena":
+            print(_comun.tenue(f"  {_corta(ruta)} es de otro, no la toqué: la skill /{nombre} de telar no quedó"))
+        elif estado not in ("al día", "no estaba"):
+            print(f"  skill /{nombre} {estado}: {_corta(ruta)}")
 
 
 def _diferencia(hecho) -> list[str]:

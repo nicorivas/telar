@@ -49,18 +49,22 @@ REFRESCO = 240.0
 
 
 class _Contexto:
-    """La configuración de esta máquina, leída una vez y de nuevo cuando el archivo cambia."""
+    """La configuración de esta máquina, leída una vez y de nuevo cuando el archivo (o `modulos.toml`) cambia."""
 
     def __init__(self) -> None:
         self._config = None
-        self._marca: float | None = None
+        self._marca: list | None = None
 
     def __call__(self) -> Contexto:
         ruta = ruta_config()
-        try:
-            marca = ruta.stat().st_mtime
-        except OSError:
-            marca = None
+        # la configuración y los módulos instalados (`modulos.toml`, al lado): instalar, activar o quitar uno desde la
+        # página cambia el segundo, y la configuración se relee igual
+        marca = []
+        for archivo in (ruta, ruta.parent / "modulos.toml"):
+            try:
+                marca.append(archivo.stat().st_mtime)
+            except OSError:
+                marca.append(None)
         if self._config is None or marca != self._marca:
             self._config, self._marca = cargar_config(), marca
         return Contexto(config=self._config)
@@ -814,6 +818,36 @@ def post_objeto_accion(direccion: str, accion: str, pedido: PedidoObjeto, ctx: C
     from telar import objetos
 
     return objetos.hacer(ctx, direccion, accion, pedido.params, pedido.version)
+
+
+# ── los módulos: los instalados, el catálogo y sus acciones (telar.servicios.modulos) ──
+
+@app.get("/modulos")
+def get_modulos(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los módulos instalados, activos y apagados, con de dónde vienen y si el catálogo trae una versión nueva."""
+    from telar.servicios import modulos as servicio_modulos
+
+    return servicio_modulos.instalados(ctx, con_catalogo=True).model_dump(mode="json")
+
+
+@app.get("/modulos/catalogo")
+def get_modulos_catalogo(forzar: bool = False, buscar: str = "", ctx: Contexto = Depends(contexto)) -> dict:
+    """Lo que hay en los catálogos (el oficial, los del equipo, los de `[catalogos] fuentes`): `forzar` los baja ya."""
+    from telar.servicios import modulos as servicio_modulos
+
+    return servicio_modulos.catalogo(ctx, forzar=forzar, buscar=buscar).model_dump(mode="json")
+
+
+class PedidoModulo(BaseModel):
+    nombre: str
+
+
+@app.post("/modulos/{accion}")
+def post_modulos(accion: str, pedido: PedidoModulo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Instalar (solo del catálogo oficial o del equipo), actualizar, activar, desactivar o quitar un módulo."""
+    from telar.servicios import modulos as servicio_modulos
+
+    return servicio_modulos.hacer(ctx, accion, pedido.nombre).model_dump(mode="json")
 
 
 @app.get("/modulos/{modulo}/{verbo}")

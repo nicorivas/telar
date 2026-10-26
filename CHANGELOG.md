@@ -6,7 +6,37 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-26
+
 ### Added
+
+- The module catalog: a file with a fixed name and format, `.telar/catalogo.toml`, in any repository: the official
+  one (`nicorivas/telar-modulos`, «revisado»), a team's own (read from each repo of `[repos]`, «del equipo») and
+  others in `[catalogos] fuentes` («sin revisar»). Each entry pins a tag or commit, so what installs is what was
+  reviewed. `telar modulos catalogo [--buscar]`, `telar modulos instalar <name>` (from the catalog, in its
+  version), `actualizar` to the catalog's new version. The format, in `docs/modulos.md`.
+- Turn a module off without uninstalling it: `telar modulos activar|desactivar` (`activo = false` in
+  `modulos.toml`): the configuration doesn't load it, so it brings nothing until it's turned on again.
+- Writing and publishing a module: `telar modulos nuevo <name>` scaffolds one; `telar modulos revisar` says what it
+  lacks to be published (`[permisos]`, a description, a name that doesn't clash with a telar command, commands that
+  exist, a repository with an origin), and `--catalogo F --resolver` reviews a catalog by fetching each module at its
+  version and comparing what it asks for; `telar modulos publicar --version vX.Y.Z` tags, pushes and opens the PR to
+  the catalog with `gh`, showing the previous entry if there was one.
+- The `/modulos` skill, installed by `telar agente instalar` next to `/hilos`: the judgment for writing, testing,
+  publishing and maintaining a module (what to ask for, naming, versions). `telar instalar` adds a skill that's new
+  or changed.
+- ⚙ módulos in the page: installed (what each brings, its folder, its origin with repository, version and catalog,
+  what it asks for; turn on, off, update, remove) and available (search the catalogs and install from the official
+  or the team's one; an unreviewed one shows the command to run). `GET /modulos`, `GET /modulos/catalogo`,
+  `POST /modulos/<action>`.
+
+### Changed
+
+- `telar modulos --json` gives, for each module, also `activo`, `ref`, `catalogo`, `confianza`, `a_mano`, `pide` and
+  the turned-off ones.
+- The API rereads the configuration when `modulos.toml` changes, not only `config.toml`.
+
+### Added — the server as a mainframe, and the page
 
 - The server as a mainframe: anyone already on the bus can ask for a place on the server (`telar servidor pedir`),
   whoever administers it approves (`telar servidor pedidos | aprobar | rechazar | quitar`), and the server sets up

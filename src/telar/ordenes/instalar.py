@@ -456,6 +456,13 @@ def _ganchos_puestos(ctx) -> bool:
             hecho = obtener_agente(n, ctx.config).instalar(seco=True)
             if hecho.texto != hecho.antes:
                 return False
+        # y las skills (/hilos, /modulos): una nueva de esta versión de telar, o una que cambió, se pone
+        from telar.agente import skill as mod_skill
+        from telar.agente.claude_code import carpeta_config
+
+        if "claude-code" in INCLUIDOS and any(
+                mod_skill.instalar(carpeta_config(), seco=True, nombre=n)[1] in ("nueva", "actualizada") for n in mod_skill.SKILLS):
+            return False
         return True
     except Exception:  # noqa: BLE001 - si no se puede saber, se instala (instalar respeta lo que hay)
         return False

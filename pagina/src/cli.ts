@@ -517,6 +517,24 @@ export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensa
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
 
+/** Un módulo instalado (`GET /modulos`): activo o apagado, su carpeta y de dónde vino. */
+export interface JsonModuloInstalado {
+    nombre: string; activo: boolean; carpeta: string; descripcion: string; aporta: string[];
+    fuente: string; version: string; ref: string; catalogo: string; enlazado: boolean; instalado: string;
+    a_mano: boolean; pide: string[]; confianza: string; nueva: string;
+}
+/** Uno de un catálogo (`GET /modulos/catalogo`): `confianza` es oficial, equipo o sin revisar. */
+export interface JsonModuloDisponible {
+    nombre: string; descripcion: string; fuente: string; version: string; autor: string; etiquetas: string[];
+    telar: string; permisos: Record<string, unknown> | null; catalogo: string; confianza: string;
+    instalado: boolean; le_sirve: boolean;
+}
+export const modulosInstalados = async () => await deServe<{ modulos: JsonModuloInstalado[] }>('/modulos', 30000);
+export const modulosCatalogo = async (forzar = false) =>
+    await deServe<{ disponibles: JsonModuloDisponible[]; problemas: string[] }>(`/modulos/catalogo${forzar ? '?forzar=true' : ''}`, 30000);
+export const modulosAccion = async (accion: string, nombre: string) =>
+    await aServe<{ salida: string }>('POST', `/modulos/${encodeURIComponent(accion)}`, 600000, { nombre });
+
 /** Un agente residente, como lo da `telar agentes --json` (docs/contratos.md). */
 export interface JsonAgente {
     clave: string; nombre: string; direccion: string; carpeta: string; definicion: string; para: string; modelo: string;

@@ -1,11 +1,12 @@
-"""La skill `/hilos` que telar le deja al agente: cómo encontrar, leer y escribirle a otros hilos.
+"""Las skills que telar le deja al agente: `/hilos` (cómo encontrar, leer y escribirle a otros hilos) y `/modulos`
+(cómo escribir, probar, publicar y mantener un módulo de telar).
 
 El contexto de inicio (`telar agente contexto`) son unas pocas líneas que se cargan siempre. Esto
 es lo largo, y el agente lo abre solo cuando le hace falta: la descripción es lo único que
 tiene a la vista todo el tiempo.
 
-`telar agente instalar` la escribe en `<config del agente>/skills/hilos/SKILL.md`, y
-`desinstalar` la quita. Solo toca una skill con la marca de telar: si ya hay una `/hilos`
+`telar agente instalar` las escribe en `<config del agente>/skills/<nombre>/SKILL.md`, y
+`desinstalar` las quita. Solo toca una skill con la marca de telar: si ya hay una `/hilos`
 de otro, la deja como está.
 """
 
@@ -160,31 +161,95 @@ importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:do
 """
 
 
-def ruta(carpeta_config: Path) -> Path:
-    return Path(carpeta_config) / "skills" / "hilos" / "SKILL.md"
+SKILL_MODULOS = f"""---
+name: modulos
+description: Escribir, probar, publicar y mantener un módulo de telar (lo que se instala con `telar modulos
+  instalar`: órdenes, una pestaña, periódicos, contexto para los agentes). Úsala cuando haya que crear un
+  módulo, arreglarlo, sacarle una versión nueva o ponerlo en un catálogo.
+---
+
+{MARCA}
+
+# Módulos de telar
+
+Un módulo es un repositorio con un `modulo.toml` que dice lo que aporta. El formato entero, con cada sección, está en
+`docs/modulos.md` del repositorio de telar (y en `telar modulos --help`); el catálogo, en `.telar/catalogo.toml`.
+Lo mecánico lo hacen las órdenes; lo que sigue es el criterio.
+
+## El ciclo
+
+1. **Crear**: `telar modulos nuevo <nombre>` arma la carpeta (manifiesto con una orden de ejemplo, `[permisos]`
+   vacío, README, git). El nombre es el de su orden (`telar <nombre> …`): corto, en minúsculas, que diga qué es.
+2. **Escribir**: elige la pieza que le calza. Una **orden** si es algo que se pide; con `consulta = true` si
+   devuelve datos (JSON por la entrada y la salida: así la usan la página y otra máquina). Una **pestaña** si se
+   mira todos los días. Un **periódico** si tiene que correr solo (con su `cuando`, como cron). **Contexto** si los
+   agentes tienen que saber que existe: una o dos líneas, no un manual.
+3. **Probar en vivo**: `telar modulos instalar --enlazar <carpeta>` lo usa desde donde está, sin copiarlo; cada
+   cambio se ve en el momento. Pruébalo desde la terminal y desde la página.
+4. **Revisar**: `telar modulos revisar <carpeta>` dice lo que falta. No publiques con una falla.
+5. **Publicar**: `telar modulos publicar <carpeta> --version v0.1.0 [--catalogo oficial|<repo>]` etiqueta, sube y
+   abre el PR al catálogo. `--seco` primero, para ver la entrada.
+6. **Mantener**: cada versión nueva es otra etiqueta y otro `publicar`; el PR muestra qué cambió en lo que pide.
+
+## Lo que pide (`[permisos]`)
+
+- Declara **todo** lo que toca fuera de su carpeta: rutas que lee y escribe, los sitios de la red, las órdenes de
+  telar que corre. Lo que no se declara es una sorpresa para quien lo instaló: telar todavía no lo hace cumplir, así
+  que la tabla es una promesa.
+- Pide **lo mínimo**: una carpeta, no la casa; un sitio, no `red = true`.
+- **Nada de secretos** en el repositorio: una clave se lee de un archivo de la persona (y esa ruta va en `leer`).
+- Si una versión nueva pide más que la anterior, dilo en el PR y en el CHANGELOG: quien actualiza lo va a ver.
+
+## Las versiones
+
+- Etiquetas `vX.Y.Z`. Sube la **Z** si arreglas algo, la **Y** si agregas algo, la **X** si cambia lo que ya
+  hacía (una orden que se renombra, una salida distinta) o si pide más.
+- El catálogo apunta a una etiqueta, no a la rama: lo que se instala es lo que se revisó.
+- Pide la versión de telar que necesitas (`telar = ">=0.6"` en la entrada): `publicar` pone la de ahora.
+
+## El catálogo
+
+- **Oficial** (`nicorivas/telar-modulos`): lo revisa quien mantiene telar; sale «revisado» en la página.
+- **Del equipo**: el `.telar/catalogo.toml` del repositorio del equipo; lo decide quien lo administra.
+- Uno suelto (`telar modulos instalar <url>`) es «sin revisar»: solo desde la terminal.
+
+## Lo que no hacer
+
+- No llames al módulo como una orden de telar (`revisar` lo dice).
+- No escribas en carpetas de otros módulos ni en la configuración de telar.
+- No publiques en un catálogo ajeno sin que lo pida la persona: publicar sale al mundo.
+"""
+
+#: las skills que pone telar: nombre → texto
+SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS}
 
 
-def instalar(carpeta_config: Path, *, seco: bool = False) -> tuple[Path, str]:
+def ruta(carpeta_config: Path, nombre: str = "hilos") -> Path:
+    return Path(carpeta_config) / "skills" / nombre / "SKILL.md"
+
+
+def instalar(carpeta_config: Path, *, seco: bool = False, nombre: str = "hilos") -> tuple[Path, str]:
     """Escribe la skill. Devuelve (ruta, qué pasó): «nueva», «al día», «actualizada» o «ajena»."""
-    destino = ruta(carpeta_config)
+    destino = ruta(carpeta_config, nombre)
+    texto = SKILLS[nombre]
     if destino.exists():
         actual = destino.read_text(encoding="utf-8", errors="replace")
         if MARCA not in actual:
             return destino, "ajena"
-        if actual == SKILL:
+        if actual == texto:
             return destino, "al día"
         estado = "actualizada"
     else:
         estado = "nueva"
     if not seco:
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_text(SKILL, encoding="utf-8")
+        destino.write_text(texto, encoding="utf-8")
     return destino, estado
 
 
-def desinstalar(carpeta_config: Path, *, seco: bool = False) -> tuple[Path, str]:
+def desinstalar(carpeta_config: Path, *, seco: bool = False, nombre: str = "hilos") -> tuple[Path, str]:
     """Quita la skill si la puso telar. Devuelve (ruta, «quitada» | «no estaba» | «ajena»)."""
-    destino = ruta(carpeta_config)
+    destino = ruta(carpeta_config, nombre)
     if not destino.exists():
         return destino, "no estaba"
     if MARCA not in destino.read_text(encoding="utf-8", errors="replace"):

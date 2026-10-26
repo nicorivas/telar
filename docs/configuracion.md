@@ -918,6 +918,18 @@ Una `[secciones.x]` que solo tenía `home` y ningún hilo era una app con otro n
 
 ## `[modulos]` — lo que se instala de una vez
 
+Lo de siempre es instalarlo de un catálogo: `telar modulos catalogo` muestra lo que hay (el oficial, el de tu
+equipo, otros) y `telar modulos instalar <nombre>` lo baja en la versión que dice el catálogo; en la página, ⚙ →
+módulos. Encenderlo o apagarlo sin desinstalarlo, `telar modulos activar|desactivar`. Escribir y publicar uno: la
+skill `/modulos` y [modulos.md](modulos.md), que es también el formato del manifiesto y del catálogo
+(`.telar/catalogo.toml`). Los catálogos que se leen, además del oficial y el de cada repo:
+
+```toml
+[catalogos]
+oficial = true                                     # false: no leer el de telar
+fuentes = ["https://example.org/.telar/catalogo.toml", "~/catalogos/mio.toml"]   # «sin revisar»
+```
+
 ```toml
 [modulos.nino34]
 carpeta = "~/proyectos/nino34"     # una carpeta con modulo.toml
