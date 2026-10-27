@@ -64,13 +64,18 @@ class Rechazo(Exception):
 
 def validar(p: dict) -> dict:
     accion = p.get("accion")
-    if accion not in ("crear", "quitar"):
+    if accion not in ("crear", "quitar", "topes"):
         raise Rechazo(f"acción desconocida: {accion!r}")
     nombre = p.get("nombre")
     if not isinstance(nombre, str) or not NOMBRE.fullmatch(nombre) or nombre in RESERVADOS:
         raise Rechazo("nombre de usuario no válido")
     if accion == "quitar":
         return {"accion": accion, "nombre": nombre}
+    if accion == "topes":
+        memoria, cpu = p.get("memoria"), p.get("cpu")
+        if not isinstance(memoria, str) or not TOPE.fullmatch(memoria) or not isinstance(cpu, str) or not CPU.fullmatch(cpu):
+            raise Rechazo("los topes de recursos no son válidos")
+        return {"accion": accion, "nombre": nombre, "memoria": memoria, "cpu": cpu}
     llave = p.get("llave") or ""
     secreto, bus = p.get("secreto"), p.get("bus")
     puerto, memoria, cpu = p.get("puerto"), p.get("memoria"), p.get("cpu")
@@ -145,8 +150,22 @@ telar instalar --bus '__BUS__' --persona '__NOMBRE__' --token "$HOME/.config/tel
 """
 
 
+def _slice(p: dict) -> Paso:
+    return Paso(f"tope de recursos: {p['memoria']} de memoria y {p['cpu']} de CPU", archivo=(
+        "/etc/systemd/system/user-{uid}.slice.d/50-telar-alojar.conf",
+        f"[Slice]\nMemoryHigh={p['memoria']}\nMemoryMax={p['memoria']}\nCPUQuota={p['cpu']}\nTasksMax=400\n", 0o644))
+
+
 def plan(p: dict) -> list[Paso]:
     n = p["nombre"]
+    if p["accion"] == "topes":
+        # el archivo queda para los arranques que vengan; set-property --runtime los aplica ya, sin cortar nada suyo
+        return [
+            _slice(p),
+            Paso("recargar systemd", ["systemctl", "daemon-reload"]),
+            Paso("aplicarlos ya", ["systemctl", "set-property", "--runtime", "user-{uid}.slice",
+                                   f"MemoryHigh={p['memoria']}", f"MemoryMax={p['memoria']}", f"CPUQuota={p['cpu']}"]),
+        ]
     if p["accion"] == "quitar":
         return [
             Paso(f"bloquear a {n}, quitarle la llave y cerrar sus sesiones y procesos",
@@ -185,9 +204,7 @@ def plan(p: dict) -> list[Paso]:
             Paso("comprobar y recargar sshd", ["sh", "-c", "sshd -t && systemctl reload ssh"]),
         ]
     pasos += [
-        Paso(f"tope de recursos: {p['memoria']} de memoria y {p['cpu']} de CPU", archivo=(
-            "/etc/systemd/system/user-{uid}.slice.d/50-telar-alojar.conf",
-            f"[Slice]\nMemoryHigh={p['memoria']}\nMemoryMax={p['memoria']}\nCPUQuota={p['cpu']}\nTasksMax=400\n", 0o644)),
+        _slice(p),
         Paso("recargar systemd", ["systemctl", "daemon-reload"]),
         Paso("que su sesión de systemd viva sin que entre", ["loginctl", "enable-linger", n]),
         Paso("arrancar su systemd de usuario", ["systemctl", "start", "user@{uid}.service"]),
@@ -254,12 +271,14 @@ def atender(pedido: dict, *, seco: bool) -> dict:
     registrado = (REGISTRO / f"{n}.json").exists()
     if p["accion"] == "crear" and existe and not registrado and not a_medias and not seco:
         raise Rechazo(f"ya hay un usuario del sistema «{n}» que no es de un alojado: no lo toco")
+    if p["accion"] == "topes" and (not existe or not registrado) and not seco:
+        raise Rechazo(f"«{n}» no es un alojado de telar: no le cambio los topes")
     if p["accion"] == "quitar" and not existe and not seco:
         raise Rechazo(f"no hay un usuario «{n}»")
     if p["accion"] == "quitar" and existe and not registrado and not seco:
         raise Rechazo(f"«{n}» no es un alojado de telar: no lo cierro")
     pasos = plan(p)
-    if existe:
+    if existe and p["accion"] == "crear":
         pasos = [x for x in pasos if not (x.argv and x.argv[0] == "useradd")]
     correr(pasos, n, seco=seco)
     return {"ok": True}

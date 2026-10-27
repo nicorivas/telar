@@ -638,6 +638,21 @@ export const personas = async () => await deServe<JsonPersonas>('/personas', 400
 export const personasAccion = async (accion: 'aprobar' | 'rechazar' | 'quitar' | 'rol', datos: { pedido?: string; nombre?: string; rol?: string }) =>
     await aServe<JsonPersonas>('POST', `/personas/${accion}`, 40000, datos);
 
+/** Un lugar en el servidor (telar.alojamiento), como lo ve quien lo administra. */
+export interface JsonAlojado {
+    persona: string; estado: string; maquina?: string; cuando?: number; listo?: number; error?: string | null;
+    memoria?: string; cpu?: string;
+}
+export interface JsonAlojamiento {
+    dueno: string; quien: string; administra: boolean; servidor: string; alojamientos: JsonAlojado[];
+    topes?: { memoria: string; cpu: string }; hecho?: string;
+}
+/** Los alojados del servidor y los topes de los nuevos (`GET /alojamiento`): solo para quien lo administra. */
+export const alojamiento = async () => await deServe<JsonAlojamiento>('/alojamiento', 40000);
+/** Cambiar los topes de un alojado (se aplican ya) o, con `persona` vacía, los de los nuevos. */
+export const alojamientoTopes = async (persona: string, memoria: string, cpu: string) =>
+    await aServe<JsonAlojamiento>('POST', '/alojamiento/topes', 60000, { persona, memoria, cpu });
+
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {
     id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;

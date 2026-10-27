@@ -93,10 +93,15 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
 
     /** Llevar un hilo a otra máquina de [remotos]: si aquí hay trabajo sin subir, se pregunta antes. */
     async function llevarWeb(hilo: string): Promise<void> {
-        const remotos = (await cli.config()).datos?.remotos ?? [];
-        if (!remotos.length) { avisar('telar: no hay máquinas en [remotos]', 'aviso'); return; }
-        const elegida = remotos.length === 1 ? remotos[0]
-            : (await ui.elegir(remotos.map(x => ({ label: x.nombre, description: x.destino, x })), { titulo: `¿A qué máquina llevo «${hilo}»?` }))?.x;
+        // las de [remotos] (por ssh) y las otras tuyas que se ven en el bus, en línea (por el bus: telar.mudanza)
+        const remotos = ((await cli.config()).datos?.remotos ?? []).map(x => ({ nombre: x.nombre, destino: `${x.destino} · por ssh` }));
+        const delBus = ((await cli.espejos()).datos?.espejos ?? [])
+            .filter(e => e.en_linea && !e.error && !remotos.some(r => r.nombre === e.nombre))
+            .map(e => ({ nombre: e.nombre, destino: 'tuya, por el bus' }));
+        const destinos = [...remotos, ...delBus];
+        if (!destinos.length) { avisar('telar: no hay otra máquina: ni en [remotos] ni en línea en el bus', 'aviso'); return; }
+        const elegida = destinos.length === 1 ? destinos[0]
+            : (await ui.elegir(destinos.map(x => ({ label: x.nombre, description: x.destino, x })), { titulo: `¿A qué máquina llevo «${hilo}»?` }))?.x;
         if (!elegida) return;
         avisar(`llevando «${hilo}» a ${elegida.nombre}…`, 'info', 4000);
         let r = await cli.llevar(hilo, elegida.nombre);

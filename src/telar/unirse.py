@@ -406,6 +406,35 @@ class Tope:
         return True
 
 
+def ficha_del_servidor(config) -> dict:
+    """Lo que este servidor dice de sí a quien lo agrega a mano (`GET /unirse/servidor`, telar.servidores): con eso
+    se arma el pedido de entrada, como con el `equipo.yaml` de un repositorio. Nada secreto: la dirección del bus
+    ya la conoce quien está en la red."""
+    from telar import __version__
+    from telar import bus as mod_bus
+    from telar import personas
+
+    salida = {"telar": __version__, "servidor": "", "bus": "", "administra": "", "aloja": False, "puerta": ""}
+    if config is not None:
+        try:
+            salida["servidor"] = mod_bus.maquina(config)
+        except Exception:  # noqa: BLE001
+            pass
+        salida["bus"] = str(getattr(getattr(config, "bus", None), "url", "") or "")
+        try:
+            salida["administra"] = personas.dueno_del_bus(config)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        from telar import puerta
+
+        salida["aloja"] = Path("/usr/local/sbin/telar-alojar").exists()
+        salida["puerta"] = puerta.leer_tabla().url if puerta.CONFIG.exists() else ""
+    except Exception:  # noqa: BLE001
+        pass
+    return salida
+
+
 def nombre_de_maquina() -> str:
     import socket
 

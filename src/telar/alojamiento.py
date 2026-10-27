@@ -59,9 +59,12 @@ RESERVADOS = frozenset({
     "agentes", "archivo", "postfix", "tailscale", "telar", "operator", "adm", "wheel", "sudo", "staff", "users"})
 NOMBRE = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")
 LLAVE = re.compile(r"^ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( [^\n]*)?$")
-ACCIONES = ("pedir", "estado", "ver", "aprobar", "rechazar", "quitar")
+ACCIONES = ("pedir", "estado", "ver", "aprobar", "rechazar", "quitar", "topes")
 #: las que son de quien administra
-DE_ADMIN = frozenset({"ver", "aprobar", "rechazar", "quitar"})
+DE_ADMIN = frozenset({"ver", "aprobar", "rechazar", "quitar", "topes"})
+#: los topes que se aceptan: memoria en K, M o G (de 256M a 64G) y CPU en % de un núcleo (de 10% a 800%)
+TOPE_MEMORIA = re.compile(r"^[1-9][0-9]*[KMG]$")
+TOPE_CPU = re.compile(r"^[1-9][0-9]*%$")
 
 
 class ErrorDeAlojamiento(Exception):
@@ -110,6 +113,42 @@ def _cambiar(persona: str, **campos) -> dict:
                 a[k] = v
         _guardar(datos)
         return dict(a)
+
+
+def _archivo_topes() -> Path:
+    from telar import cuentas
+
+    return cuentas.carpeta() / "alojamiento-topes.json"
+
+
+def topes_por_defecto() -> dict:
+    """Los topes con que nace un alojado: los que fijó quien administra (⚙ servidor), o MEMORIA y CPU."""
+    try:
+        d = json.loads(_archivo_topes().read_text(encoding="utf-8"))
+        return {"memoria": validar_memoria(d["memoria"]), "cpu": validar_cpu(d["cpu"])}
+    except (OSError, ValueError, KeyError, TypeError, ErrorDeAlojamiento):
+        return {"memoria": MEMORIA, "cpu": CPU}
+
+
+def _megas(memoria: str) -> float:
+    n, unidad = int(memoria[:-1]), memoria[-1]
+    return n * {"K": 1 / 1024, "M": 1, "G": 1024}[unidad]
+
+
+def validar_memoria(v: object) -> str:
+    v = str(v or "").strip().upper()
+    if not TOPE_MEMORIA.match(v) or not 256 <= _megas(v) <= 64 * 1024:
+        raise ErrorDeAlojamiento("la memoria va como 2500M o 4G, entre 256M y 64G", 422)
+    return v
+
+
+def validar_cpu(v: object) -> str:
+    v = str(v or "").strip()
+    if v.isdigit():
+        v += "%"
+    if not TOPE_CPU.match(v) or not 10 <= int(v[:-1]) <= 800:
+        raise ErrorDeAlojamiento("la CPU va en % de un núcleo, entre 10% y 800% (100% es un núcleo entero)", 422)
+    return v
 
 
 def publico(a: dict, persona: str) -> dict:
@@ -240,8 +279,11 @@ def ver(quien: str, dueno: str, *, ahora: float | None = None, servidor: str = "
     _caducar(datos, ahora)
     es_admin = quien == dueno or personas._roles(dueno).get(quien) == "admin"
     mios = {p: a for p, a in datos.items() if es_admin or p == quien}
-    return {"dueno": dueno, "quien": quien, "administra": es_admin, "servidor": servidor,
-            "alojamientos": [publico(a, p) for p, a in sorted(mios.items(), key=lambda x: -x[1].get("cuando", 0))]}
+    salida = {"dueno": dueno, "quien": quien, "administra": es_admin, "servidor": servidor,
+              "alojamientos": [publico(a, p) for p, a in sorted(mios.items(), key=lambda x: -x[1].get("cuando", 0))]}
+    if es_admin:
+        salida["topes"] = topes_por_defecto()
+    return salida
 
 
 def _caducar(datos: dict, ahora: float | None) -> None:
@@ -278,6 +320,8 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         return {**ver(quien, dueno, servidor=sv), **hecho}
     if accion in ("estado", "ver"):
         return ver(quien, dueno, servidor=sv)
+    if accion == "topes":
+        return {**topes(quien, dueno, pedido, ayuda or ayudante), **{"servidor": sv}}
     persona = validar_nombre(str(pedido.get("persona") or pedido.get("nombre") or ""))
     a = leer().get(persona)
     if a is None:
@@ -297,7 +341,7 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         if not re.match(r"^nats://[^\s/]+:\d+$", bus):
             raise ErrorDeAlojamiento("este nodo no sabe su dirección del bus ([bus] url): sin ella el alojado no se conecta", 500)
         pedido_root = {"accion": "crear", "nombre": persona, "llave": a.get("llave") or "", "secreto": a["secreto"],
-                       "bus": bus, "memoria": MEMORIA, "cpu": CPU}
+                       "bus": bus, **topes_por_defecto()}
         if hay_puerta():
             # con la puerta, la persona entra por la dirección del servidor: la reconoce por su cuenta de Tailscale
             cuenta = cuenta_tailscale(persona)
@@ -328,6 +372,27 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
     return {**ver(quien, dueno, servidor=sv), "hecho": f"{persona}: lugar cerrado (su carpeta se conserva)"}
 
 
+def topes(quien: str, dueno: str, pedido: dict, ayuda: Callable[[dict], dict]) -> dict:
+    """Cambiar topes. Sin persona, los de los alojados nuevos (un archivo de quien administra); con una, los de esa
+    persona ya alojada: el ayudante de root reescribe su slice y los aplica ya, sin reiniciar nada suyo."""
+    from telar import cuentas
+
+    memoria, cpu = validar_memoria(pedido.get("memoria")), validar_cpu(pedido.get("cpu"))
+    persona = str(pedido.get("persona") or "").strip()
+    if not persona:
+        cuentas._escribir_privado(_archivo_topes(), json.dumps({"memoria": memoria, "cpu": cpu}))
+        return {**ver(quien, dueno), "hecho": f"los alojados nuevos nacen con {memoria} de memoria y {cpu} de CPU"}
+    persona = validar_nombre(persona)
+    a = leer().get(persona)
+    if a is None or a.get("estado") != "activo":
+        raise ErrorDeAlojamiento(f"{persona} no tiene un lugar activo: sus topes se fijan al aprobarlo", 409)
+    r = ayuda({"accion": "topes", "nombre": persona, "memoria": memoria, "cpu": cpu})
+    if not r.get("ok"):
+        raise ErrorDeAlojamiento(f"no se pudieron cambiar los topes de {persona}: {r.get('error', '?')}", 502)
+    _cambiar(persona, memoria=memoria, cpu=cpu)
+    return {**ver(quien, dueno), "hecho": f"{persona}: {memoria} de memoria y {cpu} de CPU, desde ya"}
+
+
 def _terminar(persona: str, pedido_root: dict, ayuda: Callable[[dict], dict]) -> None:
     """Lo que pasa después de aprobar: el ayudante crea el lugar y el alojamiento queda activo, o fallido."""
     try:
@@ -337,7 +402,8 @@ def _terminar(persona: str, pedido_root: dict, ayuda: Callable[[dict], dict]) ->
     finally:
         _EN_CURSO.discard(persona)
     if r.get("ok"):
-        _cambiar(persona, estado="activo", usuario=persona, secreto=None, error=None, listo=int(time.time()))
+        _cambiar(persona, estado="activo", usuario=persona, secreto=None, error=None, listo=int(time.time()),
+                 memoria=pedido_root.get("memoria"), cpu=pedido_root.get("cpu"))
     else:
         _cambiar(persona, estado="falló", error=str(r.get("error") or "falló sin decir por qué")[:500])
 

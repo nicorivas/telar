@@ -61,6 +61,8 @@ if [ ! -e /etc/telar/puerta.toml ]; then
 # La puerta del servidor (telar.puerta): su dirección, y quién entra además de los alojados
 # (los alojados están en /etc/telar/alojados.d/, con su cuenta de Tailscale).
 url = "$URL"
+# a su telar van los pedidos para entrar de quien todavía no tiene lugar (/unirse)
+dueno = "$DUENO"
 
 [personas]
 # cuenta de Tailscale = usuario del servidor

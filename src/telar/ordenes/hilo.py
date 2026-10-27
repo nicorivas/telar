@@ -23,9 +23,11 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            estaban vivos en esta máquina y ya no tienen ventana
                                            (tmux se cayó, la máquina se reinició). Los cuenta el
                                            nodo cada 30 s; --horas, qué tan reciente (6)
-    telar hilo llevar [remoto] [--sesion ID]   pasar su conversación a otra máquina de [remotos]:
-                                           se cierra aquí y sigue allá, retomada. Con --sesion,
-                                           esa conversación aunque telar no la tenga anotada
+    telar hilo llevar [máquina] [--sesion ID]  pasar su conversación a otra máquina: una de [remotos]
+                                           (por ssh) o una tuya del bus, como tu lugar en un
+                                           servidor (por el bus, telar.mudanza). Se cierra aquí y
+                                           sigue allá, retomada. Con --sesion, esa conversación
+                                           aunque telar no la tenga anotada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
     telar hilo leer [«Faro»] [--ultimos N] [--maquina M]   lo último que pasó en ese hilo (de esa máquina, por el bus): lo que se le pidió y
                                            lo que respondió su agente (5 turnos si no se dice)
@@ -519,11 +521,15 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
 
     if hilo.remoto:
         return _comun.queja(f"«{hilo.nombre}» ya vive en otra máquina ({hilo.remoto})")
+    from telar import mudanza
+
     remotos = ctx.config.remotos
     remoto = next((r for r in remotos if r.nombre == valor), None) if valor else (remotos[0] if len(remotos) == 1 else None)
-    if remoto is None:
-        nombres = ", ".join(r.nombre for r in remotos) or "ninguna declarada"
-        return _comun.queja(f"¿a qué máquina? telar hilo llevar <remoto> ({nombres})")
+    # una máquina del bus (otra tuya, como tu lugar en un servidor): la conversación va por el bus (telar.mudanza)
+    del_bus = mudanza.maquinas_del_bus(ctx.config) if remoto is None else []
+    if remoto is None and valor not in del_bus:
+        nombres = ", ".join([*(r.nombre for r in remotos), *del_bus]) or "ninguna: ni en [remotos] ni en el bus"
+        return _comun.queja(f"¿a qué máquina? telar hilo llevar <máquina> ({nombres})")
     # con --sesion, esa y no las anotadas: para cuando los ganchos no la dejaron escrita
     sesiones = (sesion,) if sesion else tuple(hilo.sesiones)
     if not ctx.config.agente.nombre or not sesiones:
@@ -540,7 +546,8 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     # la carpeta del agente, la del hilo y la raíz de trabajo: en la raíz está casi todo lo
     # que se hace, aunque el agente arranque en otra parte y el hilo no esté vinculado
     carpetas = {lanzar.carpeta(ctx.config, hilo.ruta), Path(ctx.config.raiz)} | ({hilo.ruta} if hilo.ruta else set())
-    carpetas |= {Path(x).expanduser() for x in remoto.repos}  # los que viven en las dos máquinas
+    if remoto is not None:
+        carpetas |= {Path(x).expanduser() for x in remoto.repos}  # los que viven en las dos máquinas
     avisos = sorted({a for c in carpetas if c for a in [_sin_subir(Path(c))] if a})
     if avisos:
         print("la conversación viaja, los archivos no. Aquí hay trabajo que allá no va a estar:")
@@ -555,6 +562,8 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
                 return 1
 
     relativa = tel.estado.vinculos().get(hilo.nombre, "")
+    if remoto is None:
+        return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa)
     carpeta = mod_remoto.carpeta_remota(ctx.config, remoto, relativa)
     if relativa.startswith("/"):
         # vinculado fuera de la raíz: allá no hay traducción de esa carpeta. Si no existe en
@@ -592,6 +601,28 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
     print(f"«{hilo.nombre}» sigue en {remoto.destino}, retomando la conversación {sid[:8]}")
     print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"))
+    return 0
+
+
+def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, archivo, relativa: str) -> int:
+    """Lo de `_llevar` hacia una máquina del bus (telar.mudanza): se cierra aquí, la conversación viaja por el bus y
+    allá se abre retomándola. Aquí el hilo queda archivado, con su copia de como estaba al irse."""
+    from telar import mudanza
+
+    if tel.mux is not None and tel.vivo(hilo):
+        try:
+            tel.mux.cerrar(hilo.id)
+        except ErrorDeMux as e:
+            return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
+    try:
+        r = mudanza.enviar(ctx, hilo.nombre, maquina, sid, Path(archivo), relativa)
+    except mudanza.ErrorDeMudanza as e:
+        return _comun.queja(f"{e}. Aquí quedó cerrada; `telar hilo retomar` la reabre en esta máquina.")
+    tel.estado.archivar(hilo.nombre)
+    print(f"«{hilo.nombre}» sigue en {maquina}, retomando la conversación {sid[:8]}")
+    if r.get("aviso"):
+        print(_comun.tenue(f"  {r['aviso']}"))
+    print(_comun.tenue(f"  allá: {r.get('carpeta', '?')}; aquí queda archivado, con la copia de como estaba al irse"))
     return 0
 
 

@@ -24,6 +24,8 @@ De qué se fía y por qué:
 - El telar de cada persona confía en lo que le llega por su socket de la puerta (`telar serve --web-socket`): no pide
   la llave de su página. Lo que lo cuida es la carpeta del socket, `/run/telar/<usuario>/` (2750, de esa persona y
   del grupo telar-puerta): solo ella y la puerta la cruzan.
+- Quien todavía no tiene lugar solo llega a `/unirse` (pedir entrar al bus, y `/unirse/servidor`, quién es este
+  servidor): eso va al telar de quien administra (`dueno`), que comprueba por su cuenta de dónde viene.
 - Escribir desde otra página no: un pedido que cambia algo tiene que venir con `Origin` igual a la dirección pedida,
   como en la página de siempre. A un socket, `tailscale serve` le manda `Host: localhost` y la dirección de verdad
   en `X-Forwarded-Host` (que pisa, como el `X-Forwarded-For`): la puerta la usa, y se la pasa a cada telar como su
@@ -76,6 +78,9 @@ class Tabla:
 
     personas: dict[str, str] = field(default_factory=dict)
     url: str = ""
+    #: el usuario de quien administra el servidor: a su telar van los pedidos para entrar (`/unirse`) de quien la
+    #: puerta todavía no conoce (`dueno` en la configuración; si no está, la primera persona de `[personas]`)
+    dueno: str = ""
     problemas: list[str] = field(default_factory=list)
 
 
@@ -105,6 +110,8 @@ def leer_tabla(config: Path = CONFIG, alojados: Path = ALOJADOS) -> Tabla:
     t.url = str(datos.get("url") or "").rstrip("/")
     for cuenta, usuario in (datos.get("personas") or {}).items():
         anotar(cuenta, usuario, str(config))
+    dueno = datos.get("dueno") or next(iter((datos.get("personas") or {}).values()), "")
+    t.dueno = dueno if isinstance(dueno, str) and USUARIO.fullmatch(dueno) else ""
     try:
         archivos = sorted(alojados.glob("*.json"))
     except OSError:
@@ -315,7 +322,11 @@ def crear(tabla: Tabla | None = None, *, identificar: Identificar | None = None,
         try:
             usuario, cuenta = await de_quien(cab)
         except ErrorDePuerta as e:
-            return error(str(e), e.codigo, html)
+            # quien todavía no tiene lugar puede pedir entrar al bus: eso lo atiende el telar de quien administra,
+            # que mira por su cuenta de dónde viene (la dirección que puso tailscale serve)
+            if not (request.url.path == "/unirse" or request.url.path.startswith("/unirse/")) or not estado["tabla"].dueno:
+                return error(str(e), e.codigo, html)
+            usuario = estado["tabla"].dueno
         origen, pedido_a = cab.get("origin", ""), host(cab)
         if request.method not in ("GET", "HEAD", "OPTIONS") and origen and urlsplit(origen).netloc != pedido_a:
             return error("desde otra página, no", 403, False)

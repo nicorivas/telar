@@ -31,7 +31,7 @@ CUENTAS = {NICO: "nicorivas@gmail.com", PABLO: "pablo.ferre@gmail.com", SERVIDOR
 
 def tabla(**personas) -> puerta.Tabla:
     return puerta.Tabla(personas=personas or {"nicorivas@gmail.com": "nico", "pablo.ferre@gmail.com": "pablo"},
-                        url="https://telar.ejemplo.ts.net")
+                        url="https://telar.ejemplo.ts.net", dueno="nico")
 
 
 def identificar(t: puerta.Tabla | None = None, **kw) -> puerta.Identificar:
@@ -208,6 +208,11 @@ class LaPuertaPasaCadaPedido(Prueba):
         self.assertEqual(r.status_code, 403)
         self.assertIn("telar servidor pedir", r.text)
         self.assertEqual(self.get(SERVIDOR).status_code, 403)
+
+    def test_quien_no_tiene_lugar_solo_llega_a_unirse_y_va_al_de_quien_administra(self):
+        r = self.get("100.99.0.1", "/unirse/servidor")
+        self.assertEqual(r.json()["quien"], "nico")
+        self.assertEqual(self.get("100.99.0.1", "/unirses").status_code, 403)
 
     def test_escribir_desde_otra_pagina_no(self):
         h = {"x-forwarded-for": NICO, "origin": "https://malo.example"}

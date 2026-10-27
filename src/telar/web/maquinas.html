@@ -46,6 +46,7 @@ h2 { margin: var(--e-2) 0 var(--e-1); font-size: var(--t-chica); font-weight: no
   <h1>telar <small>tus máquinas</small></h1>
   <div id="lista"><div class="pie">leyendo…</div></div>
   <div id="servidores"></div>
+  <div id="agregados"></div>
   <div class="pie">1–9 abre · ⎋ vuelve · cada máquina sirve su página; se entra a otra con un boleto que vence en un minuto</div>
 </main>
 <script>
@@ -131,6 +132,70 @@ const vueltaServidores = () => abierto !== null ? Promise.resolve()
   : leerServidores().then((s) => { servidores = s; pintarServidores(); }).catch(() => {});
 vueltaServidores(); setInterval(vueltaServidores, 5000);
 
+// ── servidores agregados a mano (telar.servidores): su dirección, ver que hay un telar, y pedir entrar a su bus ──
+const ENTRAR = {
+  'sin-pedir': ['no has pedido entrar', ''], pidiendo: ['pidiendo entrar… (tu telar se reinicia un momento)', ''],
+  pendiente: ['pediste entrar: espera que te apruebe quien lo administra', ''], rechazado: ['no te aprobaron', 'mal'],
+  'falló': ['el pedido no se hizo: lo que pasó, en servidor-entrar.log', 'mal'],
+  'en-su-bus': ['estás en su bus', 'bien'], 'otro-bus': ['estás en otro bus: un telar se conecta a uno solo', 'mal'],
+};
+let agregados = [], personaSugerida = '', agregando = false, entrando = null, avisoA = '';
+function pintarAgregados() {
+  const cont = document.getElementById('agregados');
+  const filas = agregados.map((s, i) => {
+    let [texto, clase] = ENTRAR[s.estado] || [s.estado, ''];
+    if (s.estado === 'pendiente' && s.administra) texto = `pediste entrar como ${s.persona || '?'}: espera que ${s.administra} te apruebe`;
+    if (s.estado === 'en-su-bus' && s.aloja) texto = 'estás en su bus: pide un lugar arriba, en «servidores»';
+    const puede = ['sin-pedir', 'rechazado', 'falló'].includes(s.estado);
+    const boton = puede && entrando !== i ? `<button data-entrar="${i}">pedir entrar</button>` : '';
+    const form = entrando === i
+      ? `<input id="persona-${i}" value="${esc(s.persona || personaSugerida)}" placeholder="tu nombre en el bus (minúsculas)" autocomplete="off">
+         <div class="estado" style="margin-top:var(--e-1)">tu secreto se genera aquí y viaja solo su hash<button data-pedir-entrar="${i}">pedir</button><button data-cancelar-a>cancelar</button></div>` : '';
+    return `<div class="servidor"><div class="fila"><span class="nombre">⌂ ${esc(s.nombre)} <span class="estado">· ${esc(s.url)}${s.administra ? ` · de ${esc(s.administra)}` : ''}</span></span>`
+      + `<span>${boton}<button data-olvidar="${i}" title="olvidarlo aquí (en el servidor no cambia nada)">×</button></span></div>`
+      + `<div class="estado ${clase}">${esc(texto)}</div>${form}</div>`;
+  }).join('');
+  const agregar = agregando
+    ? `<div class="servidor"><input id="direccion" placeholder="la IP de Tailscale del servidor, su nombre, o su https://…" autocomplete="off">
+       <div class="estado" style="margin-top:var(--e-1)"><button data-buscar>buscar</button><button data-cancelar-a>cancelar</button></div></div>`
+    : '<div class="servidor"><button data-agregar>＋ agregar un servidor</button></div>';
+  cont.innerHTML = `<h2>otros servidores · por su dirección</h2>${filas}${agregar}` + (avisoA ? `<div class="pie">${esc(avisoA)}</div>` : '');
+}
+async function accionAgregados(accion, cuerpo) {
+  avisoA = 'un momento…'; pintarAgregados();
+  const r = await fetch(`/servidores/${accion}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+  const d = await r.json().catch(() => ({}));
+  avisoA = !r.ok ? (d.detail || `no se pudo (${r.status})`) : (d.hecho || '');
+  if (r.ok) { agregando = false; entrando = null; }
+  await vueltaAgregados(true);
+}
+document.getElementById('agregados').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.agregar !== undefined) { agregando = true; pintarAgregados(); document.getElementById('direccion')?.focus(); }
+  else if (b.dataset.cancelarA !== undefined) { agregando = false; entrando = null; pintarAgregados(); }
+  else if (b.dataset.buscar !== undefined) accionAgregados('agregar', { direccion: document.getElementById('direccion').value.trim() });
+  else if (b.dataset.entrar !== undefined) { entrando = Number(b.dataset.entrar); pintarAgregados(); document.getElementById(`persona-${entrando}`)?.focus(); }
+  else if (b.dataset.pedirEntrar !== undefined) {
+    const s = agregados[Number(b.dataset.pedirEntrar)];
+    accionAgregados('entrar', { url: s.url, persona: document.getElementById(`persona-${b.dataset.pedirEntrar}`).value.trim() });
+  } else if (b.dataset.olvidar !== undefined) accionAgregados('quitar', { url: agregados[Number(b.dataset.olvidar)].url });
+});
+document.getElementById('agregados').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.stopPropagation();
+  if (e.target.id === 'direccion') accionAgregados('agregar', { direccion: e.target.value.trim() });
+  else if (e.target.id?.startsWith('persona-')) {
+    const i = Number(e.target.id.slice(8));
+    accionAgregados('entrar', { url: agregados[i].url, persona: e.target.value.trim() });
+  }
+});
+// no pisar lo que se escribe; mientras se pide entrar, el servicio se reinicia: los errores de red se callan
+const vueltaAgregados = (forzar = false) => (!forzar && (agregando || entrando !== null)) ? Promise.resolve()
+  : fetch('/servidores.json', { cache: 'no-store' }).then((r) => r.json())
+    .then((d) => { agregados = d.servidores || []; personaSugerida = d.persona || ''; pintarAgregados(); }).catch(() => {});
+vueltaAgregados(); setInterval(vueltaAgregados, 5000);
+
 // a otra máquina se entra con un boleto nuevo (vence en un minuto): se pide al momento de ir
 async function ir(i) {
   const m = maquinas[i];
@@ -150,6 +215,7 @@ document.getElementById('lista').addEventListener('click', (e) => {
   ir(Number(a.dataset.i));
 });
 document.addEventListener('keydown', (e) => {
+  if (e.target.closest?.('input')) return;
   if (e.key === 'Escape') { location.href = '/'; return; }
   if (/^[1-9]$/.test(e.key)) ir(Number(e.key) - 1);
 });

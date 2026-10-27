@@ -222,6 +222,26 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
 
     tope_unirse = None
 
+    def ip_de(request) -> str:
+        """Quién pide: la dirección de la conexión o, detrás de la puerta del servidor (que solo llega por su socket),
+        la que puso `tailscale serve` (telar.puerta.cliente)."""
+        if puerta:
+            from telar import puerta as mod_puerta
+
+            return mod_puerta.cliente({k.lower(): v for k, v in request.headers.items()})
+        return request.client.host if request.client else ""
+
+    @app.get("/unirse/servidor")
+    def unirse_servidor(request: Request):
+        """Quién es este servidor, para quien lo agrega a mano en «máquinas» antes de pedir entrar (telar.servidores):
+        su nombre, su bus, quién lo administra y si aloja a otras personas. Sin llave, solo desde la red de Tailscale,
+        y solo en la máquina del bus."""
+        from telar import unirse
+
+        if not unirse.administra_aqui() or not unirse.de_tailscale(ip_de(request)):
+            return JSONResponse({"detail": "no"}, status_code=404)
+        return JSONResponse(unirse.ficha_del_servidor(config))
+
     @app.post("/unirse")
     async def unirse_pedir(request: Request):
         """Un pedido de entrada al bus (telar.unirse): sin llave, pero solo desde la red de Tailscale, con quién
@@ -231,7 +251,7 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
         from telar import unirse
 
         nonlocal tope_unirse
-        ip = request.client.host if request.client else ""
+        ip = ip_de(request)
         if not unirse.administra_aqui():
             return JSONResponse({"detail": "esta máquina no tiene las cuentas del bus"}, status_code=404)
         if not unirse.de_tailscale(ip):
@@ -276,7 +296,7 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
         """En qué va un pedido de entrada, solo para la máquina que lo hizo."""
         from telar import unirse
 
-        ip = request.client.host if request.client else ""
+        ip = ip_de(request)
         if not unirse.administra_aqui() or not unirse.de_tailscale(ip):
             return JSONResponse({"detail": "no"}, status_code=404)
         try:
@@ -326,6 +346,47 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
             return JSONResponse({"detail": str(e)}, status_code=e.codigo)
         return {"servidores": [{"nombre": r.get("servidor") or r.get("dueno", ""), "dueno": r.get("dueno", ""), "quien": r.get("quien", ""),
                                 "administra": bool(r.get("administra")), "alojamientos": r.get("alojamientos", [])}]}
+
+    @app.get("/servidores.json")
+    async def servidores_json():
+        """Los servidores agregados a mano (telar.servidores), con en qué va el pedido para entrar a cada uno, y el
+        nombre que se le propone a quien pide (el suyo en el bus, o el de su usuario)."""
+        import asyncio
+
+        from telar import servidores, unirse
+
+        lista = await asyncio.to_thread(servidores.lista, config)
+        persona = str(getattr(getattr(config, "bus", None), "persona", "") or "") if config is not None else ""
+        return {"servidores": lista, "persona": persona or unirse.persona_por_defecto()}
+
+    @app.post("/servidores/{accion}")
+    async def servidores_accion(accion: str, request: Request):
+        """Agregar un servidor por su dirección (se le pregunta quién es), pedir entrar a su bus u olvidarlo."""
+        import asyncio
+
+        from telar import servidores
+
+        if config is None or accion not in ("agregar", "entrar", "quitar"):
+            return JSONResponse({"detail": "no"}, status_code=404)
+        cuerpo = await request.body()
+        if len(cuerpo) > 4096:
+            return JSONResponse({"detail": "el pedido es demasiado largo"}, status_code=413)
+        try:
+            datos = json.loads(cuerpo or b"{}")
+            if not isinstance(datos, dict):
+                raise ValueError("no es un objeto")
+            if accion == "agregar":
+                s = await asyncio.to_thread(servidores.agregar, config, str(datos.get("direccion") or ""))
+                return {"hecho": f"{s['nombre']}: un servidor de telar, de {s['administra'] or '?'}", "servidor": s}
+            if accion == "quitar":
+                servidores.quitar(str(datos.get("url") or ""))
+                return {"hecho": "olvidado (en el servidor no cambia nada)"}
+            s = await asyncio.to_thread(servidores.entrar, config, str(datos.get("url") or ""), str(datos.get("persona") or ""))
+            return {"hecho": f"pidiendo entrar a {s.get('nombre')}: tu telar se reinicia un momento", "servidor": s}
+        except ValueError as e:
+            return JSONResponse({"detail": str(e)}, status_code=422)
+        except servidores.ErrorDeServidores as e:
+            return JSONResponse({"detail": str(e)}, status_code=e.codigo)
 
     @app.post("/alojamiento/{accion}")
     async def alojamiento_accion(accion: str, request: Request):

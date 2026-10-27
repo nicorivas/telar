@@ -6,6 +6,27 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.3] — 2026-10-27
+
+### Added
+
+- ⚙ servidor (for whoever administers the server): each hosted person with their memory and CPU caps, and the caps
+  new places start with; «cambiar» changes them. A hosted person's new caps apply at once (the root helper rewrites
+  their slice and runs `systemctl set-property --runtime`), without restarting anything of theirs. Also `telar
+  servidor topes [PERSONA] --memoria 4G --cpu 200%`, `GET /alojamiento` and `POST /alojamiento/topes`.
+- «máquinas»: **add a server by its address** (its Tailscale IP, its name or its `https://…`). telar asks it who it
+  is (`GET /unirse/servidor`, open only from Tailscale, on the bus machine: name, bus, owner, whether it hosts
+  people) and keeps it in `~/.config/telar/servidores.json`; «pedir entrar» runs `telar instalar --servidor
+  DIRECCION`, which is `--unirse` with the team taken from the server instead of a repo's `equipo.yaml`. The list
+  shows each one's state: not asked, asking, pending approval, rejected, in its bus, on another bus. Also `telar
+  servidor agregar|agregados`. The door lets `/unirse` through to the owner's telar for people it doesn't know
+  yet, so the address can be the door's.
+- **Move a thread to another machine of yours over the bus** (`telar.mudanza`): `telar hilo llevar <hilo>
+  <máquina>` (and «llevar a otra máquina» in the page) now also takes your machines on the bus, like your place on
+  a server, not only `[remotos]` over ssh. The conversation travels compressed (up to 25 MB) and the other machine
+  opens the thread resuming it (node verb `hilo-llegar`); here it stays archived. Files don't travel: without the
+  thread's folder there, it opens in the root and says so.
+
 ## [0.7.2] — 2026-10-26
 
 ### Added

@@ -12,12 +12,13 @@ import { carpetas } from './carpetas';
 import { modulos } from './modulos';
 import { periodicos } from './periodicos';
 import { personas } from './personas';
+import { servidor } from './servidor';
 import { versionSeccion } from './version';
 import { pestanas } from './pestanas';
 import type { Contexto, FabricaSeccion, Seccion } from './seccion';
 
 /** Las secciones, en el orden del menú. */
-const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, agente, periodicos, agentes, modulos, personas, versionSeccion];
+const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, agente, periodicos, agentes, modulos, personas, servidor, versionSeccion];
 
 /** Lo que la configuración necesita del dashboard: dónde dibujar y lo que sus secciones miran. */
 export type Base = Pick<Contexto, 'parcial' | 'teclas' | 'dashboard'> & { pintar(h: string[]): void };

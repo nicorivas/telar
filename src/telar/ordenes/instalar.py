@@ -58,6 +58,9 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--persona", default="", help="con --bus: tu nombre en el bus, si no es tu usuario")
     p.add_argument("--unirse", nargs="?", const="", default=None, metavar="CARPETA",
                    help="unirse al equipo del repositorio de aquí (o de CARPETA): su .telar/equipo.yaml")
+    p.add_argument("--servidor", default="", metavar="DIRECCION",
+                   help="pedir entrar al bus de un servidor por su dirección (su IP de Tailscale, su nombre o su https://…), "
+                        "sin el repositorio de su equipo")
     p.add_argument("--web-puerto", dest="web_puerto", type=int, default=0, metavar="N",
                    help="el puerto de la página de esta máquina, si no es el 8780 (un servidor que aloja a varias personas)")
     p.add_argument("--web-socket", dest="web_socket", default="", metavar="RUTA",
@@ -260,7 +263,7 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
             pasos.append((lambda: _agregar(ruta, bloque), f"unirse al bus {o.bus}"))
             hay_bus = True
 
-    if o.unirse is not None:
+    if o.unirse is not None or o.servidor:
         hay_bus = _unirse(ctx, o, ruta, pasos, hay_bus, avisos)
 
     if not o.sin_servicio:
@@ -297,7 +300,18 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
 
     from telar import unirse
 
+    servidor = getattr(o, "servidor", "")
     try:
+        if servidor:
+            # un servidor agregado por su dirección: el equipo sale de lo que dice de sí (telar.servidores)
+            from telar import servidores
+
+            try:
+                url = servidores.agregar(ctx.config, servidor)["url"]
+            except servidores.ErrorDeServidores as e:
+                raise ErrorDeUso(str(e)) from None
+            equipo = servidores.equipo_de(url)
+            return _unirse_a(ctx, o, ruta, pasos, hay_bus, avisos, equipo, url)
         equipo = unirse.buscar(Path(o.unirse).expanduser() if o.unirse else None)
         if equipo is None and o.unirse:
             raise ErrorDeUso(f"en {o.unirse} no hay un equipo (falta {unirse.NOMBRE_EQUIPO}): dale la carpeta del clon "
@@ -320,6 +334,16 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
                 return hay_bus
     except unirse.ErrorDeUnirse as e:
         raise ErrorDeUso(str(e)) from None
+    return _unirse_a(ctx, o, ruta, pasos, hay_bus, avisos, equipo, "")
+
+
+def _unirse_a(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str], equipo, servidor: str) -> bool:
+    """Los pasos de unirse a un equipo ya encontrado (de su repositorio, o de un servidor agregado: `servidor` es su
+    dirección, y ahí se anota el pedido)."""
+    import json
+
+    from telar import unirse
+
     faltan = unirse.faltan(equipo)
     if faltan:
         raise ErrorDeUso("falta instalar " + "; ".join(f"{x} ({PISTAS.get(x, 'instálalo')})" for x in faltan)
@@ -339,6 +363,11 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
 
         def pedir() -> None:
             r = unirse.pedir(equipo, persona, maquina, token)
+            if servidor:
+                from telar import servidores
+
+                servidores.anotar_pedido(servidor, pedido=str(r.get("id") or ""), persona=persona,
+                                         estado=str(r.get("estado") or "pendiente"))
             if r.get("estado") == "ya tiene cuenta":
                 print(f"«{persona}» ya está en el bus y aquí está su clave: esta máquina entra con esa cuenta.")
                 return
@@ -357,7 +386,7 @@ def _unirse(ctx, o, ruta: Path, pasos: list, hay_bus: bool, avisos: list[str]) -
         pasos.append((lambda n=viejo.nombre: _quitar_remoto(ruta, n),
                       f"quitar [remotos.{viejo.nombre}] ({viejo.destino}): es del sistema de antes, por ssh a la máquina "
                       f"del bus; ahora lo de allá llega por el bus (respaldo en {ruta.name}.antes-unirse)"))
-    if not any(r.nombre == equipo.nombre for r in getattr(ctx.config, "repos", ()) or ()):
+    if equipo.repo is not None and not any(r.nombre == equipo.nombre for r in getattr(ctx.config, "repos", ()) or ()):
         bloque_repo = (f"\n# el repositorio del equipo {equipo.nombre} (lo escribió `telar instalar --unirse`)\n"
                        f"[repos.{equipo.nombre}]\nruta = {json.dumps(str(equipo.repo))}\n")
         pasos.append((lambda: _agregar(ruta, bloque_repo), f"agregar el repositorio {equipo.repo} como «{equipo.nombre}»"))

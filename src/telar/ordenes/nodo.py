@@ -419,7 +419,7 @@ class Nodo:
                           ("archivo", self._archivo), ("archivo-leer", self._archivo_leer), ("modulo", self._modulo),
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
-                          ("agentes", self._agentes)):
+                          ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     async def _vuelta(self, js, kv) -> None:
@@ -1131,6 +1131,13 @@ class Nodo:
             return alla.tarea_aqui(argv, "hilo")
 
         await self._responder(m, correr)
+
+    async def _hilo_llegar(self, m) -> None:
+        """Un hilo que otra máquina de esta persona trae aquí (`telar hilo llevar`, por el bus): su conversación ya
+        llegó a la carpeta de entrada; se deja donde el agente la busca y el hilo se abre retomándola (telar.mudanza)."""
+        from telar import mudanza
+
+        await self._responder(m, lambda p: mudanza.llegar(self.ctx, p))
 
     async def _equipo(self, m) -> None:
         """`telar equipo …` corrido aquí, para otra máquina: la bandeja del equipo vive donde están las tareas.

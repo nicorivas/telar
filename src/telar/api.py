@@ -738,6 +738,38 @@ def get_agente_del_hilo(hilo: str, maquina: str = "", ctx: Contexto = Depends(co
     return servicio_agentes.del_hilo(ctx, hilo, maquina=maquina)
 
 
+# ── el alojamiento del servidor, para quien lo administra (telar.alojamiento) ──────────
+
+
+class PedidoTopes(BaseModel):
+    #: a quién (vacío: los topes con que nacen los alojados nuevos)
+    persona: str = ""
+    memoria: str
+    cpu: str
+
+
+def _alojamiento(ctx, pedido: dict) -> dict:
+    from telar import alojamiento
+
+    try:
+        return alojamiento.pedir(ctx.config, pedido)
+    except alojamiento.ErrorDeAlojamiento as e:
+        raise ErrorDeServicio(str(e), e.codigo) from None
+
+
+@app.get("/alojamiento")
+def get_alojamiento(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los alojados del servidor, con sus topes, y los topes con que nacen los nuevos. Solo para quien lo administra:
+    desde la máquina que sea, por el bus."""
+    return _alojamiento(ctx, {"accion": "ver"})
+
+
+@app.post("/alojamiento/topes")
+def post_alojamiento_topes(pedido: PedidoTopes, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar los topes de memoria y CPU de un alojado (se aplican ya), o los de los nuevos (sin `persona`)."""
+    return _alojamiento(ctx, {"accion": "topes", "persona": pedido.persona, "memoria": pedido.memoria, "cpu": pedido.cpu})
+
+
 # ── la gestión de personas del bus (telar.personas) ───────────────────────────────
 
 from telar.servicios import personas as servicio_personas
