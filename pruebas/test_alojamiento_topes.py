@@ -61,3 +61,56 @@ class ElAyudanteCambiaTopes(Prueba):
         for malo in ({"memoria": "4G; reboot"}, {"cpu": "200"}, {"memoria": None}):
             with self.assertRaises(self.m.Rechazo, msg=str(malo)):
                 self.m.validar({"accion": "topes", "nombre": "pablo", "memoria": "4G", "cpu": "200%", **malo})
+
+
+class Actualizar(base.EnLaMaquinaDelBus):
+    def actualizar(self, por="ana", resultado=None, **pedido):
+        return alojamiento.atender("ana", por, {"accion": "actualizar", **pedido}, self.config, sincrono=True,
+                                   ayuda=self.ayuda(resultado))
+
+    def test_a_la_version_del_servidor_y_queda_anotada(self):
+        from telar import __version__
+
+        self.pedir()
+        self.aprobar(ayuda=self.ayuda({"ok": True, "version": "0.0.9"}))
+        self.assertEqual(alojamiento.leer()["pablo"]["version"], "0.0.9")
+        r = self.actualizar(persona="pablo", resultado={"ok": True, "version": __version__})
+        self.assertEqual(self.pedidos_al_ayudante[-1], {"accion": "actualizar", "nombre": "pablo", "version": __version__})
+        a = alojamiento.leer()["pablo"]
+        self.assertEqual((a["version"], a.get("actualizando")), (__version__, None))
+        self.assertEqual(r["telar"], __version__)
+
+    def test_si_falla_queda_el_error(self):
+        self.pedir()
+        self.aprobar(ayuda=self.ayuda())
+        self.actualizar(persona="pablo", version="9.9.9", resultado={"ok": False, "error": "no hay esa etiqueta"})
+        self.assertIn("no hay esa etiqueta", alojamiento.leer()["pablo"]["error"])
+
+    def test_solo_quien_administra_a_un_activo_y_una_version(self):
+        self.pedir()
+        with self.assertRaises(alojamiento.ErrorDeAlojamiento) as e:
+            self.actualizar(por="pablo", persona="pablo")
+        self.assertEqual(e.exception.codigo, 403)
+        with self.assertRaises(alojamiento.ErrorDeAlojamiento):
+            self.actualizar(persona="pablo")  # todavía pendiente
+        self.aprobar(ayuda=self.ayuda())
+        with self.assertRaises(alojamiento.ErrorDeAlojamiento):
+            self.actualizar(persona="pablo", version="main; reboot")
+
+
+class ElAyudanteActualiza(Prueba):
+    def setUp(self):
+        super().setUp()
+        self.m = base._cargar_ayudante()
+
+    def test_instala_de_la_etiqueta_y_reinicia_sin_reescribir_el_servicio(self):
+        [paso] = self.m.plan(self.m.validar({"accion": "actualizar", "nombre": "pablo", "version": "0.7.5"}))
+        self.assertEqual(paso.argv[:4], ["runuser", "-u", "pablo", "--"])
+        self.assertIn("@ git+https://github.com/nicorivas/telar@v0.7.5'", paso.stdin)
+        self.assertIn("systemctl --user restart telar-serve", paso.stdin)
+        self.assertNotIn("telar instalar", paso.stdin)
+
+    def test_valida_la_version(self):
+        for mala in ("main", "0.7", "0.7.5; reboot", None):
+            with self.assertRaises(self.m.Rechazo, msg=str(mala)):
+                self.m.validar({"accion": "actualizar", "nombre": "pablo", "version": mala})

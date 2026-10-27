@@ -642,9 +642,13 @@ export const personasAccion = async (accion: 'aprobar' | 'rechazar' | 'quitar' |
 export interface JsonAlojado {
     persona: string; estado: string; maquina?: string; cuando?: number; listo?: number; error?: string | null;
     memoria?: string; cpu?: string;
+    /** la versión de su telar (la que dijo el ayudante al crearlo o actualizarlo); `actualizando`, a cuál va */
+    version?: string | null; actualizando?: string | null;
 }
 export interface JsonAlojamiento {
     dueno: string; quien: string; administra: boolean; servidor: string; alojamientos: JsonAlojado[];
+    /** la versión del telar del servidor: a la que se actualiza un alojado */
+    telar?: string;
     topes?: { memoria: string; cpu: string }; hecho?: string;
 }
 /** Los alojados del servidor y los topes de los nuevos (`GET /alojamiento`): solo para quien lo administra. */
@@ -652,6 +656,10 @@ export const alojamiento = async () => await deServe<JsonAlojamiento>('/alojamie
 /** Cambiar los topes de un alojado (se aplican ya) o, con `persona` vacía, los de los nuevos. */
 export const alojamientoTopes = async (persona: string, memoria: string, cpu: string) =>
     await aServe<JsonAlojamiento>('POST', '/alojamiento/topes', 60000, { persona, memoria, cpu });
+
+/** Actualizar el telar de un alojado a la versión del servidor (corre aparte; `alojamiento()` dice cuándo terminó). */
+export const alojamientoActualizar = async (persona: string) =>
+    await aServe<JsonAlojamiento>('POST', '/alojamiento/actualizar', 60000, { persona });
 
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {

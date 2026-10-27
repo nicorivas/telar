@@ -59,9 +59,9 @@ RESERVADOS = frozenset({
     "agentes", "archivo", "postfix", "tailscale", "telar", "operator", "adm", "wheel", "sudo", "staff", "users"})
 NOMBRE = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")
 LLAVE = re.compile(r"^ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( [^\n]*)?$")
-ACCIONES = ("pedir", "estado", "ver", "aprobar", "rechazar", "quitar", "topes")
+ACCIONES = ("pedir", "estado", "ver", "aprobar", "rechazar", "quitar", "topes", "actualizar")
 #: las que son de quien administra
-DE_ADMIN = frozenset({"ver", "aprobar", "rechazar", "quitar", "topes"})
+DE_ADMIN = frozenset({"ver", "aprobar", "rechazar", "quitar", "topes", "actualizar"})
 #: los topes que se aceptan: memoria en K, M o G (de 256M a 64G) y CPU en % de un núcleo (de 10% a 800%)
 TOPE_MEMORIA = re.compile(r"^[1-9][0-9]*[KMG]$")
 TOPE_CPU = re.compile(r"^[1-9][0-9]*%$")
@@ -279,7 +279,9 @@ def ver(quien: str, dueno: str, *, ahora: float | None = None, servidor: str = "
     _caducar(datos, ahora)
     es_admin = quien == dueno or personas._roles(dueno).get(quien) == "admin"
     mios = {p: a for p, a in datos.items() if es_admin or p == quien}
-    salida = {"dueno": dueno, "quien": quien, "administra": es_admin, "servidor": servidor,
+    from telar import __version__
+
+    salida = {"dueno": dueno, "quien": quien, "administra": es_admin, "servidor": servidor, "telar": __version__,
               "alojamientos": [publico(a, p) for p, a in sorted(mios.items(), key=lambda x: -x[1].get("cuando", 0))]}
     if es_admin:
         salida["topes"] = topes_por_defecto()
@@ -322,6 +324,8 @@ def atender(dueno: str, quien: str, pedido: dict, config=None, *, sincrono: bool
         return ver(quien, dueno, servidor=sv)
     if accion == "topes":
         return {**topes(quien, dueno, pedido, ayuda or ayudante), **{"servidor": sv}}
+    if accion == "actualizar":
+        return {**actualizar(quien, dueno, pedido, ayuda or ayudante, sincrono=sincrono), **{"servidor": sv}}
     persona = validar_nombre(str(pedido.get("persona") or pedido.get("nombre") or ""))
     a = leer().get(persona)
     if a is None:
@@ -393,6 +397,41 @@ def topes(quien: str, dueno: str, pedido: dict, ayuda: Callable[[dict], dict]) -
     return {**ver(quien, dueno), "hecho": f"{persona}: {memoria} de memoria y {cpu} de CPU, desde ya"}
 
 
+def actualizar(quien: str, dueno: str, pedido: dict, ayuda: Callable[[dict], dict], *, sincrono: bool = False) -> dict:
+    """El telar de un alojado, a la versión de este (o a `version`): el ayudante de root la instala como esa persona,
+    de su etiqueta en el repositorio, y reinicia su servicio. Tarda un par de minutos: corre aparte, y mientras tanto
+    el alojamiento dice `actualizando`; al terminar queda su `version`, o el error."""
+    from telar import __version__
+
+    persona = validar_nombre(str(pedido.get("persona") or ""))
+    version = str(pedido.get("version") or __version__)
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
+        raise ErrorDeAlojamiento(f"«{version}» no es una versión", 422)
+    a = leer().get(persona)
+    if a is None or a.get("estado") != "activo":
+        raise ErrorDeAlojamiento(f"{persona} no tiene un lugar activo", 409)
+    if a.get("actualizando") and time.time() - float(a.get("actualizando_desde") or 0) < ESPERA_AYUDANTE:
+        raise ErrorDeAlojamiento(f"{persona} ya se está actualizando a la {a['actualizando']}", 409)
+    _cambiar(persona, actualizando=version, actualizando_desde=int(time.time()), error=None)
+
+    def hacer() -> None:
+        try:
+            r = ayuda({"accion": "actualizar", "nombre": persona, "version": version})
+        except Exception as e:  # noqa: BLE001 - el hilo no puede morir callado
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        if r.get("ok"):
+            _cambiar(persona, actualizando=None, actualizando_desde=None, version=r.get("version") or version)
+        else:
+            _cambiar(persona, actualizando=None, actualizando_desde=None,
+                     error=f"no se pudo actualizar: {str(r.get('error') or '?')[:400]}")
+
+    if sincrono:
+        hacer()
+    else:
+        threading.Thread(target=hacer, daemon=True, name=f"actualizar-{persona}").start()
+    return {**ver(quien, dueno), "hecho": f"{persona}: actualizando su telar a la {version} (un par de minutos)"}
+
+
 def _terminar(persona: str, pedido_root: dict, ayuda: Callable[[dict], dict]) -> None:
     """Lo que pasa después de aprobar: el ayudante crea el lugar y el alojamiento queda activo, o fallido."""
     try:
@@ -403,7 +442,7 @@ def _terminar(persona: str, pedido_root: dict, ayuda: Callable[[dict], dict]) ->
         _EN_CURSO.discard(persona)
     if r.get("ok"):
         _cambiar(persona, estado="activo", usuario=persona, secreto=None, error=None, listo=int(time.time()),
-                 memoria=pedido_root.get("memoria"), cpu=pedido_root.get("cpu"))
+                 memoria=pedido_root.get("memoria"), cpu=pedido_root.get("cpu"), version=r.get("version"))
     else:
         _cambiar(persona, estado="falló", error=str(r.get("error") or "falló sin decir por qué")[:500])
 

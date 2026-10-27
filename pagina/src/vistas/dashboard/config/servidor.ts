@@ -1,5 +1,5 @@
-// El servidor que aloja a otras personas (telar.alojamiento): cada alojado con sus topes de memoria y CPU, y los
-// topes con que nacen los nuevos; «cambiar» los cambia (los de un alojado se aplican ya, sin cortar nada suyo).
+// El servidor que aloja a otras personas (telar.alojamiento): cada alojado con sus topes de memoria y CPU y la
+// versión de su telar («actualizar» le instala la del servidor), y los topes con que nacen los nuevos; «cambiar» los cambia (los de un alojado se aplican ya, sin cortar nada suyo).
 // Solo para quien administra el bus: a los demás la API les dice que no y la sección se esconde. Aprobar, rechazar
 // y quitar lugares sigue en «máquinas»; en la terminal, `telar servidor …`.
 
@@ -23,7 +23,7 @@ export const servidor: FabricaSeccion = ctx => {
     const leer = async () => {
         if (!datos) ctx.pintar(['<div class="fila dim">leyendo…</div>']);
         const r = await cli.alojamiento();
-        if (r.datos) { datos = r.datos; error = ''; administra = r.datos.administra; }
+        if (r.datos) { datos = r.datos; error = ''; administra = r.datos.administra; if (r.datos.alojamientos.some(a => a.actualizando)) vigilar(); }
         else {
             error = r.error ?? 'no pude leer el servidor';
             if (/no administra|no hay bus|nadie atiende|no es el servidor/.test(error)) administra = false;
@@ -55,14 +55,45 @@ export const servidor: FabricaSeccion = ctx => {
         if (ctx.seVe('servidor')) seccion.pintar();
     };
 
+    const actualizar = async (persona: string) => {
+        trabajando = `act:${persona}`;
+        seccion.pintar();
+        const r = await cli.alojamientoActualizar(persona);
+        trabajando = '';
+        if (!r.datos) void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`);
+        else { datos = r.datos; void ui.estado(`telar: ${r.datos.hecho ?? 'actualizando'}`, 6000); vigilar(); }
+        if (ctx.seVe('servidor')) seccion.pintar();
+    };
+
+    // mientras alguno se actualiza, se relee cada 5 s para ver cuándo termina
+    let reloj: number | undefined;
+    const vigilar = () => {
+        if (reloj !== undefined) return;
+        reloj = window.setInterval(async () => {
+            if (!ctx.seVe('servidor') || !datos?.alojamientos.some(a => a.actualizando)) {
+                window.clearInterval(reloj); reloj = undefined; return;
+            }
+            await leer();
+        }, 5000);
+    };
+
+    const atras = (a: cli.JsonAlojado) => !!datos?.telar && a.version !== datos.telar;
+
     const alojado = (a: cli.JsonAlojado) => {
         const activo = a.estado === 'activo';
         const accion = trabajando === a.persona ? '<span class="dim">…</span>'
             : activo ? `<a data-accion="servidor-topes" data-valor="${esc(a.persona)}" title="cambiar su memoria y su CPU: se aplica ya">cambiar</a>` : '';
+        const version = !activo ? ''
+            : a.actualizando ? `<div class="fila dim">telar ${esc(a.version ?? '?')} · actualizando a la ${esc(a.actualizando)}…</div>`
+            : `<div class="fila"><span class="${atras(a) ? '' : 'dim'}">telar ${esc(a.version ?? '?')}</span>`
+                + (atras(a) ? `<span class="der">${trabajando === `act:${a.persona}` ? '<span class="dim">…</span>'
+                    : `<a data-accion="servidor-actualizar" data-valor="${esc(a.persona)}" title="instalarle la ${esc(datos?.telar ?? '')} y reiniciar su servicio (sus hilos siguen)">actualizar a ${esc(datos?.telar ?? '')}</a>`}</span>` : '')
+                + '</div>';
         return `<div class="item-pag"><div class="fila"><b>${esc(a.persona)}</b><span class="dim"> · ${esc(ESTADO[a.estado] ?? a.estado)}</span>`
             + `<span class="der">${accion}</span></div>`
             + (activo ? `<div class="fila">${esc(a.memoria ?? '2500M')} de memoria · ${esc(a.cpu ?? '100%')} de CPU`
                 + `${a.memoria ? '' : '<span class="dim"> (los de fábrica)</span>'}</div>` : '')
+            + version
             + `<div class="fila dim">${a.maquina ? `pidió desde ${esc(a.maquina)} · ` : ''}${a.listo ? `desde ${esc(fechaCorta(new Date(a.listo * 1000).toISOString()))}` : ''}`
             + `${a.error ? ` · <span class="falla">${esc(a.error)}</span>` : ''}</div></div>`;
     };
@@ -94,6 +125,7 @@ export const servidor: FabricaSeccion = ctx => {
             switch (accion) {
                 case 'servidor-leer': await leer(); return true;
                 case 'servidor-topes': await cambiar(valor); return true;
+                case 'servidor-actualizar': if (valor) await actualizar(valor); return true;
             }
             return false;
         },

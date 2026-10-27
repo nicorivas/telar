@@ -770,6 +770,19 @@ def post_alojamiento_topes(pedido: PedidoTopes, ctx: Contexto = Depends(contexto
     return _alojamiento(ctx, {"accion": "topes", "persona": pedido.persona, "memoria": pedido.memoria, "cpu": pedido.cpu})
 
 
+class PedidoActualizarAlojado(BaseModel):
+    persona: str
+    #: vacía: la de este telar
+    version: str = ""
+
+
+@app.post("/alojamiento/actualizar")
+def post_alojamiento_actualizar(pedido: PedidoActualizarAlojado, ctx: Contexto = Depends(contexto)) -> dict:
+    """Actualizar el telar de un alojado (a la versión de este, si no se dice): corre aparte, un par de minutos;
+    `GET /alojamiento` dice cuándo terminó."""
+    return _alojamiento(ctx, {"accion": "actualizar", "persona": pedido.persona, "version": pedido.version})
+
+
 # ── la gestión de personas del bus (telar.personas) ───────────────────────────────
 
 from telar.servicios import personas as servicio_personas

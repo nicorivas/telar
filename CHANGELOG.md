@@ -6,6 +6,16 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.5] — 2026-10-27
+
+### Added
+
+- ⚙ servidor: each hosted person's telar version, and «actualizar a X» when it is behind the server's. The root
+  helper installs that exact version as the person, from its git tag (PyPI takes a few minutes to offer a fresh
+  release), and restarts their service without rewriting it (it keeps the door socket and address); their threads
+  keep running in their tmux. It runs in the background (`actualizando`) and records the resulting `version`, or the
+  error. The helper also reports the version when it creates a place. `POST /alojamiento/actualizar`.
+
 ## [0.7.4] — 2026-10-27
 
 ### Fixed
