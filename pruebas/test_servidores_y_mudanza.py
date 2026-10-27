@@ -108,6 +108,7 @@ class LaMudanzaAlLlegar(_ConCarpeta):
         (self.entrada / f"{self.SID}.jsonl.gz").write_bytes(gzip.compress(self.conversacion))
         self.ctx = SimpleNamespace(config=SimpleNamespace(agente=SimpleNamespace(nombre="claude"), raiz=str(self.raiz)))
         self.estado = mock.Mock()
+        self.estado.remotos.return_value = {}
         self.mux = mock.Mock()
         self.tel = SimpleNamespace(mux=self.mux, viva=True, vivos=set(), estado=self.estado, aviso="")
 
@@ -158,3 +159,45 @@ class LaMudanzaAlLlegar(_ConCarpeta):
                 self.assertIn(palabra, self.llegar(**cambio)["error"])
         self.tel.vivos.add("Faro")
         self.assertIn("ya hay un hilo", self.llegar()["error"])
+
+
+class Traer(LaMudanzaAlLlegar):
+    def test_el_dueno_corre_llevar_hacia_quien_pide(self):
+        from types import SimpleNamespace as NS
+
+        with mock.patch("subprocess.run", return_value=NS(returncode=0, stdout="«Faro» sigue en laptop", stderr="")) as run:
+            r = mudanza.traer_aqui(self.ctx, {"hilo": "Faro", "a": "nicolss-macbook-air", "si": True})
+        self.assertEqual((r["ok"], r["codigo"]), (True, 0))
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[-6:], ["hilo", "llevar", "nicolss-macbook-air", "--hilo", "Faro", "--si"])
+
+    def test_sin_sesion_la_levanta_y_el_hilo_es_el_primero(self):
+        from telar.ordenes import _comun
+
+        dormida = SimpleNamespace(mux=self.mux, viva=False, vivos=set(), estado=self.estado, aviso="")
+        with mock.patch.object(_comun, "tejer", side_effect=[dormida, self.tel]):
+            from telar import entrega
+            from telar.agente import lanzar
+
+            lanz = SimpleNamespace(carpeta=self.raiz, comando=["claude"], retoma=self.SID)
+            with mock.patch.object(entrega, "carpeta_de_entrada", return_value=self.entrada), \
+                    mock.patch.object(lanzar, "carpeta", side_effect=lambda c, h: h or Path(c.raiz)), \
+                    mock.patch.object(lanzar, "para_hilo", return_value=lanz), mock.patch.object(lanzar, "anotar"), \
+                    mock.patch.object(Path, "home", return_value=self.casa):
+                r = mudanza.llegar(self.ctx, {"hilo": "Faro", "sesion": self.SID, "relativa": "repo",
+                                              "archivo": f"{self.SID}.jsonl.gz", "bytes": len(self.conversacion)})
+        self.assertTrue(r["ok"], r)
+        self.mux.tejer.assert_called_once()
+
+    def test_no_acepta_una_maquina_rara(self):
+        for a in ("", "a b", "x;reboot", "-rf"):
+            self.assertFalse(mudanza.traer_aqui(self.ctx, {"hilo": "Faro", "a": a})["ok"], a)
+
+    def test_al_llegar_cierra_la_ventana_que_solo_lo_miraba(self):
+        self.tel.vivos.add("Faro")
+        self.estado.remotos.return_value = {"Faro": {"remoto": "telar", "sesion": "telar:3"}}
+        self.mux.hilos.return_value = [SimpleNamespace(nombre="Faro", id="@7")]
+        r = self.llegar()
+        self.assertTrue(r["ok"], r)
+        self.mux.cerrar.assert_called_once_with("@7")
+        self.estado.olvidar_remoto.assert_called_once_with("Faro")

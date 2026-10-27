@@ -65,3 +65,24 @@ def llevar(ctx, hilo: str, maquina: str = "", si: bool = False, espera: float = 
         linea = queja.removeprefix("telar: ")
         raise ErrorDeServicio(linea, 409, {"salida": texto, "codigo": proc.returncode})
     return Llevado(codigo=0, salida=texto, registro=str(registro))
+
+
+def traer(ctx, hilo: str, maquina: str, si: bool = False) -> Llevado:
+    """«Traer a esta máquina» un hilo que vive en `maquina`, otra de la persona: se le pide por el bus que lo lleve
+    aquí (telar.mudanza.traer_aqui). Espera hasta que termine: la conversación viaja comprimida por el bus."""
+    from telar import bus as mod_bus
+
+    if not hilo.strip() or not maquina.strip():
+        raise ErrorDeServicio("¿qué hilo, y de qué máquina?", 422)
+    if not mod_bus.hay_bus(ctx.config):
+        raise ErrorDeServicio("sin bus no se trae un hilo de otra máquina", 409)
+    aqui = mod_bus.maquina(ctx.config)
+    r = mod_bus.pedir(ctx.config, maquina, "hilo-traer", {"hilo": hilo, "a": aqui, "si": si}, espera=600)
+    if not r.get("ok"):
+        raise ErrorDeServicio(f"{maquina}: {r.get('error', 'no respondió')}", 502)
+    texto = str(r.get("salida") or "")
+    if int(r.get("codigo") or 0) != 0:
+        lineas = texto.strip().splitlines()
+        queja = next((l for l in reversed(lineas) if l.startswith("telar: ")), lineas[-1] if lineas else "no se trajo")
+        raise ErrorDeServicio(queja.removeprefix("telar: "), 409, {"salida": texto, "codigo": r.get("codigo")})
+    return Llevado(codigo=0, salida=texto)

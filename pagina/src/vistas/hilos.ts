@@ -214,6 +214,7 @@ export class BarraHilos {
             case 'archivo': void ui.orden('telar.archivo'); break;
             case 'menu': if (m.id) void ui.orden('telar.menuHilo', { hilo: m.id }); break;
             case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
+            case 'menu-remoto': if (m.id) void ui.orden('telar.menuRemoto', m.id); break;
             case 'seccion':
                 if (m.id === '__archivo') { void ui.orden('telar.archivo'); break; }
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
@@ -425,7 +426,9 @@ export class BarraHilos {
                     + `<span class="prio p${x.prioridad ?? 0}">${PRIORIDAD[x.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
                     + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${GLIFO[at] ?? ' '}</span>`
                     + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
-                    + `<span class="nombre">${esc(x.nombre)}</span></div>`);
+                    + `<span class="nombre">${esc(x.nombre)}</span>`
+                    // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
+                    + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">⋯</span></span></div>`);
             }
         }
 

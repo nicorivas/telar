@@ -496,6 +496,13 @@ def post_hilo_llevar(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)
     return servicio_llevar.llevar(ctx, pedido.hilo, pedido.maquina, pedido.si)
 
 
+@app.post("/hilo/traer", response_model=servicio_llevar.Llevado)
+def post_hilo_traer(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)):
+    """Traer a esta máquina un hilo que vive en otra de la persona (`maquina`): esa lo lleva aquí por el bus. Con
+    trabajo sin subir allá, 409 hasta que `si`."""
+    return servicio_llevar.traer(ctx, pedido.hilo, pedido.maquina, pedido.si)
+
+
 @app.post("/hilo/{verbo}", response_model=en_proceso.Corrida)
 def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto)):
     """Vincular, renombrar, priorizar, archivar, cerrar… un hilo (`telar hilo <verbo> [valor] --hilo <hilo>`)."""

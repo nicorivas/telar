@@ -6,6 +6,20 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.6] — 2026-10-27
+
+### Added
+
+- «traer a esta máquina»: from the page of the machine you want it on, a thread that lives on another machine of
+  yours (a `[remotos]` one, or one seen on the bus, which now has a ⋯ menu) is brought here. Its owner runs `telar
+  hilo llevar` toward the machine asking (node verb `hilo-traer`, `POST /hilo/traer`); if there was a window here
+  only watching it, it's closed. With unpushed work over there, it asks first, as when sending.
+
+### Fixed
+
+- A thread sent to a machine whose tmux session isn't up (a new place on a server nobody opened yet) failed with
+  «aquí la sesión no está viva»; now the session is raised empty and the thread is its first.
+
 ## [0.7.5] — 2026-10-27
 
 ### Added

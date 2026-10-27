@@ -698,6 +698,9 @@ export interface JsonLlevado { codigo: number; salida: string; error: string; en
  *  Con trabajo sin subir aquí, falla (409, con la lista en `cuerpo.salida`) hasta que `si`. */
 export const llevar = (hilo: string, maquina: string, si = false) =>
     aServe<JsonLlevado>('POST', '/hilo/llevar', 60000, { hilo, maquina, si });
+/** Traer a esta máquina un hilo que vive en `maquina` (otra tuya): esa lo lleva aquí por el bus. Espera a que termine. */
+export const traer = (hilo: string, maquina: string, si = false) =>
+    aServe<JsonLlevado>('POST', '/hilo/traer', 620000, { hilo, maquina, si });
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */

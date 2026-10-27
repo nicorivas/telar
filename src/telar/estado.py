@@ -517,6 +517,10 @@ class Estado:
     def anotar_remoto(self, hilo: str, remoto: str, sesion: str) -> None:
         self._actualizar("remotos", lambda d: d.__setitem__(hilo, {"remoto": remoto, "sesion": sesion}), {})
 
+    def olvidar_remoto(self, hilo: str) -> None:
+        """Ya no vive en otra máquina (se trajo aquí: telar.mudanza)."""
+        self._actualizar("remotos", lambda d: d.pop(hilo, None), {})
+
     # ── hilos ajenos: lo que publica su dueño ─────────────────────────────────
     #
     # Un hilo tiene un solo dueño, la máquina donde corre (docs/propuestas/un-dueno-por-hilo.md). Su

@@ -6,6 +6,9 @@ otra máquina de la misma persona, como su lugar en un servidor (telar.alojamien
     enviar(ctx, hilo, maquina, sid, archivo, relativa)        de este lado: la manda y le pide retomarla
     llegar(ctx, pedido)                                       del otro (el nodo, verbo `hilo-llegar`): la deja donde
                                                               el agente la busca y abre el hilo retomándola
+    traer_aqui(ctx, pedido)                                   el dueño del hilo, cuando otra máquina lo pide
+                                                              (verbo `hilo-traer`, «traer a esta máquina»): lo
+                                                              lleva a la que pide, con `telar hilo llevar`
 
 La conversación va comprimida por el mismo camino que un archivo (telar.entrega.archivo: en trozos, hasta 25 MB
 comprimida) y llega a la carpeta de entrada de allá; `hilo-llegar` la saca de ahí. Los archivos no viajan: si la
@@ -95,10 +98,30 @@ def llegar(ctx, p: dict) -> dict:
             return {"ok": False, "error": f"llegaron {len(datos)} de {p.get('bytes')} bytes: no la retomo cortada"}
 
     tel = _comun.tejer(ctx, con_ficha=False)
-    if tel.mux is None or not tel.viva:
-        return {"ok": False, "error": tel.aviso or "aquí la sesión no está viva"}
-    if hilo in tel.vivos:
+    if tel.mux is None:
+        return {"ok": False, "error": tel.aviso or "aquí no hay multiplexor"}
+    if not tel.viva:
+        # sin sesión (un lugar recién creado en un servidor, que nadie abrió todavía): se levanta vacía, como
+        # `telar tejer --vacia`, y el hilo que llega es el primero
+        try:
+            tel.mux.tejer()
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": f"aquí la sesión no está viva y no pude levantarla: {e}"}
+        tel = _comun.tejer(ctx, con_ficha=False)
+        if not tel.viva:
+            return {"ok": False, "error": tel.aviso or "aquí la sesión no está viva"}
+    remoto = tel.estado.remotos().get(hilo)
+    if hilo in tel.vivos and remoto is None:
         return {"ok": False, "error": f"aquí ya hay un hilo «{hilo}» abierto"}
+    if remoto is not None:
+        # aquí había una ventana que solo miraba el hilo de allá: se cierra, y desde ahora vive aquí
+        viejo = next((h for h in tel.mux.hilos() if h.nombre == hilo), None)
+        if viejo is not None:
+            try:
+                tel.mux.cerrar(viejo.id)
+            except Exception:  # noqa: BLE001 - si no se cierra, queda una ventana de más, nada se pierde
+                pass
+        tel.estado.olvidar_remoto(hilo)
     carpeta_hilo = Path(ctx.config.raiz) / relativa if relativa and not relativa.startswith("/") else (
         Path(relativa) if relativa else None)
     aviso = ""
@@ -139,3 +162,24 @@ def llegar(ctx, p: dict) -> dict:
     if sid and lanz is not None and retoma != sid:
         aviso = (aviso + "; " if aviso else "") + "se abrió, pero no retomando esa conversación"
     return {"ok": True, "carpeta": str(inicio), "conversacion": str(ruta) if ruta else "", "aviso": aviso}
+
+
+MAQUINA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def traer_aqui(ctx, p: dict, *, espera: float = 900) -> dict:
+    """Lo que corre el dueño de un hilo cuando otra máquina de la persona lo pide para sí («traer a esta máquina»):
+    `telar hilo llevar <la que pide> --hilo <hilo>`, que la manda por el bus como siempre. `si`: aunque haya trabajo
+    sin subir (sin él, falla diciéndolo, y quien pide pregunta). Devuelve {ok, codigo, salida}."""
+    import subprocess
+    import sys
+
+    hilo, a = str(p.get("hilo") or "").strip(), str(p.get("a") or "").strip()
+    if not hilo or not MAQUINA.match(a):
+        return {"ok": False, "error": "falta el hilo o a qué máquina"}
+    argv = [sys.executable, "-m", "telar", "hilo", "llevar", a, "--hilo", hilo, *(["--si"] if p.get("si") else [])]
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=espera, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "error": f"telar hilo llevar no terminó: {e}"}
+    return {"ok": True, "codigo": r.returncode, "salida": (r.stdout or "") + (r.stderr or "")}

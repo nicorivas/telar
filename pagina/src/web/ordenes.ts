@@ -70,7 +70,8 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             ...(h.archivado ? [{ label: 'desarchivar', description: 'volver a la lista sin abrirlo', hacer: () => sobreHilo(hilo, 'desarchivar') }]
                 : [{ label: 'archivar', description: 'cierra el tab y guarda su conversación', hacer: () => sobreHilo(hilo, 'archivar', ['--cerrar']) }]),
             ...(h.vivo ? [{ label: 'cerrar', description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
-            ...(!h.remoto ? [{ label: 'llevar a otra máquina', description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }] : []),
+            ...(!h.remoto ? [{ label: 'llevar a otra máquina', description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
+                : [{ label: 'traer a esta máquina', description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
             { label: 'olvidar', description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
                 const si = await ui.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, 'Olvidar');
                 if (si === 'Olvidar') await sobreHilo(hilo, 'olvidar');
@@ -92,6 +93,25 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
     }
 
     /** Llevar un hilo a otra máquina de [remotos]: si aquí hay trabajo sin subir, se pregunta antes. */
+    /** Traer a esta máquina un hilo que vive en otra tuya: aquella lo lleva por el bus (telar.mudanza). Con trabajo
+     *  sin subir allá, se pregunta, como al llevar. */
+    async function traerWeb(hilo: string, maquina: string): Promise<void> {
+        if (!hilo || !maquina) return;
+        avisar(`trayendo «${hilo}» desde ${maquina}… (una conversación larga tarda)`, 'info', 6000);
+        let r = await cli.traer(hilo, maquina);
+        if (r.error && /sin subir/.test(r.error)) {
+            const salida = String(r.cuerpo?.salida ?? '');
+            const lista = salida.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
+            const si = await ui.aviso(`La conversación de «${hilo}» viaja, los archivos no. En ${maquina} hay trabajo que aquí no va a estar:\n${lista}`, 'Traer igual');
+            if (si !== 'Traer igual') return;
+            r = await cli.traer(hilo, maquina, true);
+        }
+        if (r.error) { avisar(`telar: ${r.error}`, 'falla'); return; }
+        avisar(`«${hilo}» ya está aquí`, 'info', 5000);
+        modelo.invalidar();
+        await modelo.sondear();
+    }
+
     async function llevarWeb(hilo: string): Promise<void> {
         // las de [remotos] (por ssh) y las otras tuyas que se ven en el bus, en línea (por el bus: telar.mudanza)
         const remotos = ((await cli.config()).datos?.remotos ?? []).map(x => ({ nombre: x.nombre, destino: `${x.destino} · por ssh` }));
@@ -122,6 +142,18 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
     return {
         'telar.menuHilo': a => menuHilo(a),
         // un hilo de otra máquina: se lee como conversación y se le escribe por el bus (aquí no hay su terminal)
+        // el ⋯ de un hilo de otra máquina (de su foto): verlo, o traerlo a esta
+        'telar.menuRemoto': async (id?: string) => {
+            const [maq, ...resto] = String(id ?? '').split('|');
+            const hilo = resto.join('|');
+            if (!maq || !hilo) return;
+            const e = await ui.elegir([
+                { label: 'ver', description: 'su conversación, y escribirle por el bus', id: 'ver' },
+                { label: 'traer a esta máquina', description: `vive en ${maq}: su conversación viaja aquí; los archivos no`, id: 'traer' },
+            ], { titulo: `${hilo} · en ${maq}` });
+            if (e?.id === 'ver') c.mostrar(`rem:${maq}:${hilo}`);
+            else if (e?.id === 'traer') await traerWeb(hilo, maq);
+        },
         'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) c.mostrar(`rem:${maq}:${resto.join('|')}`); },
         // en la web, ir a un hilo es mostrar su terminal a la derecha (no mover la ventana de tmux de nadie)
         'telar.ir': a => c.mostrar(hiloDe(a)),
