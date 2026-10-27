@@ -81,7 +81,9 @@ def llegar(ctx, p: dict) -> dict:
     # sin `sesion`: un hilo sin mensajes todavía, que se abre aquí con una conversación nueva
     if not hilo or (sid and not SID.match(sid)):
         return {"ok": False, "error": "falta el hilo, o su conversación no es un id"}
-    if sid and ctx.config.agente.nombre != "claude":
+    from telar.agente import claude_code
+
+    if sid and ctx.config.agente.nombre != claude_code.NOMBRE:
         return {"ok": False, "error": f"aquí el agente es «{ctx.config.agente.nombre or 'ninguno'}»: solo se retoma una de Claude"}
     datos, gz = b"", None
     if sid:

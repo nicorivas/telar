@@ -20,5 +20,5 @@ Los módulos, y qué le toca a cada uno:
   `telar.cli`          el despachador; cada orden vive en `telar.ordenes.<nombre>`.
 """
 
-__version__ = "0.7.6"
+__version__ = "0.7.7"
 __all__ = ["__version__"]

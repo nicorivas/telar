@@ -106,7 +106,7 @@ class LaMudanzaAlLlegar(_ConCarpeta):
         self.casa = self.dir / "casa"
         self.conversacion = b'{"type":"user"}\n' * 50
         (self.entrada / f"{self.SID}.jsonl.gz").write_bytes(gzip.compress(self.conversacion))
-        self.ctx = SimpleNamespace(config=SimpleNamespace(agente=SimpleNamespace(nombre="claude"), raiz=str(self.raiz)))
+        self.ctx = SimpleNamespace(config=SimpleNamespace(agente=SimpleNamespace(nombre="claude-code"), raiz=str(self.raiz)))
         self.estado = mock.Mock()
         self.estado.remotos.return_value = {}
         self.mux = mock.Mock()

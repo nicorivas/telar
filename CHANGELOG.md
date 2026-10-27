@@ -6,6 +6,14 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.7] — 2026-10-27
+
+### Fixed
+
+- Receiving a thread over the bus refused to resume it («aquí el agente es «claude-code»: solo se retoma una de
+  Claude»): it compared the agent's name with «claude», but the registered name is `claude-code`
+  (`telar.agente.claude_code.NOMBRE`).
+
 ## [0.7.6] — 2026-10-27
 
 ### Added
