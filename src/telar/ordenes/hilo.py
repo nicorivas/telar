@@ -539,8 +539,12 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     # la primera anotada que exista en disco, como al retomar: una anotada puede no tener
     # archivo (vacía, o de un agente que no era la conversación del hilo)
     sid, archivo = next(((s, a) for s in sesiones for a in [agente.archivo_de(s)] if a is not None), ("", None))
+    if archivo is None and sesion:
+        return _comun.queja(f"no encuentro en disco la conversación {sesion}")
     if archivo is None:
-        return _comun.queja(f"no encuentro en disco ninguna de sus conversaciones ({', '.join(sesiones)})")
+        # Claude escribe la conversación recién con el primer mensaje: un hilo sin mensajes no tiene qué llevar,
+        # y allá se abre con una nueva (lo que le pasó a Pablo con un hilo «prueba» recién abierto)
+        print(_comun.tenue("  su conversación está vacía (sin mensajes): allá se abre con una nueva"))
 
     # lo que la otra máquina no va a tener
     # la carpeta del agente, la del hilo y la raíz de trabajo: en la raíz está casi todo lo
@@ -584,14 +588,14 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
             tel.mux.cerrar(hilo.id)
         except ErrorDeMux as e:
             return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
-    # 2. llevar la conversación
-    destino, problema = mod_remoto.copiar_conversacion(remoto, archivo, sid, carpeta)
+    # 2. llevar la conversación (si tiene: una vacía no se copia, y allá se abre una nueva)
+    destino, problema = mod_remoto.copiar_conversacion(remoto, archivo, sid, carpeta) if archivo is not None else ("", "")
     if problema:
         return _comun.queja(f"no se llevó la conversación: {problema}. Aquí quedó cerrada; "
                             f"`telar hilo retomar` la reabre en esta máquina.")
     # 3. abrirla allá, retomándola
     try:
-        mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa, conversacion=sid)
+        mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa, conversacion=sid if archivo is not None else "")
     except (ErrorDeMux, ErrorDeAgente) as e:
         return _comun.queja(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir "
                             f"el hilo: {e}. `telar hilo retomar` lo intenta de nuevo.")
@@ -599,8 +603,11 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     from telar import directorio as mod_directorio
 
     mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
-    print(f"«{hilo.nombre}» sigue en {remoto.destino}, retomando la conversación {sid[:8]}")
-    print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"))
+    if archivo is None:
+        print(f"«{hilo.nombre}» sigue en {remoto.destino}, con una conversación nueva")
+    else:
+        print(f"«{hilo.nombre}» sigue en {remoto.destino}, retomando la conversación {sid[:8]}")
+        print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"))
     return 0
 
 
@@ -615,11 +622,13 @@ def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, arc
         except ErrorDeMux as e:
             return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
     try:
-        r = mudanza.enviar(ctx, hilo.nombre, maquina, sid, Path(archivo), relativa)
+        r = mudanza.enviar(ctx, hilo.nombre, maquina, sid if archivo is not None else "",
+                           Path(archivo) if archivo is not None else None, relativa)
     except mudanza.ErrorDeMudanza as e:
         return _comun.queja(f"{e}. Aquí quedó cerrada; `telar hilo retomar` la reabre en esta máquina.")
     tel.estado.archivar(hilo.nombre)
-    print(f"«{hilo.nombre}» sigue en {maquina}, retomando la conversación {sid[:8]}")
+    print(f"«{hilo.nombre}» sigue en {maquina}, " + (f"retomando la conversación {sid[:8]}" if archivo is not None
+                                                       else "con una conversación nueva"))
     if r.get("aviso"):
         print(_comun.tenue(f"  {r['aviso']}"))
     print(_comun.tenue(f"  allá: {r.get('carpeta', '?')}; aquí queda archivado, con la copia de como estaba al irse"))

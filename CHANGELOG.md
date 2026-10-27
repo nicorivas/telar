@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.4] — 2026-10-27
+
+### Fixed
+
+- `telar hilo llevar` (and «llevar a otra máquina») with a thread that has no messages yet: Claude writes the
+  conversation only after the first one, so there was nothing on disk and it refused («no encuentro en disco
+  ninguna de sus conversaciones»). Now it closes here and opens there with a new conversation, by ssh and over the
+  bus. A conversation named with `--sesion` that doesn't exist is still an error.
+
 ## [0.7.3] — 2026-10-27
 
 ### Added

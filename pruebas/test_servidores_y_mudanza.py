@@ -144,6 +144,13 @@ class LaMudanzaAlLlegar(_ConCarpeta):
         self.assertIn("no existe aquí", r["aviso"])
         self.estado.vincular.assert_not_called()
 
+    def test_un_hilo_sin_mensajes_se_abre_con_una_nueva(self):
+        r = self.llegar(sesion="", archivo="", bytes=0)
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["conversacion"], "")
+        self.estado.anotar_sesion.assert_not_called()
+        self.mux.crear_tab.assert_called_once()
+
     def test_lo_que_no_se_acepta(self):
         for cambio, palabra in (({"sesion": "../../x"}, "falta"), ({"archivo": "otra.txt"}, "carpeta de entrada"),
                                 ({"bytes": 3}, "cortada")):
