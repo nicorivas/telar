@@ -8,6 +8,10 @@ extension shared the version number.
 
 ### Added
 
+- The page: the left sidebar folds, like an agent's card on the right: «‹» at the end of its first header leaves a
+  narrow strip with «›» and «hilos» written vertically, and a click on the strip opens it again. It stays as you left
+  it (per browser). Not on a phone, where the sidebar is its own screen.
+
 - How a thread's terminal looks is configurable (`[terminal]`, and ⚙ terminal in the page): its maximum width in
   columns (`columnas`, 40–400, or 0 for the full width; it was 130 fixed, or a `localStorage` key), its position
   when there is room (`posicion`: izquierda, centro, derecha; it was always centered) and its background (`fondo`:

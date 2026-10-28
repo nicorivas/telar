@@ -125,6 +125,9 @@ body {
   height: 100dvh;
 }
 
+/* plegada (vistas/hilos.ts): la columna de la barra se angosta a su franja; en el celular no se pliega */
+body.barra-plegada:not(.angosto) { grid-template-columns: auto 1fr; }
+
 #barra {
   min-width: 0;
   min-height: 0;
@@ -426,6 +429,16 @@ body.angosto.en-detalle #barra { display: none; }
 
 @scope (#barra) {
   #lista { padding: .5em 0 1.5em; user-select: none; }
+
+  /* plegarla: el «‹» al final de la primera cabecera; plegada, una franja con «›» y «hilos» en vertical */
+  .pliegue-barra { padding-left: 1ch; color: var(--dim); font-weight: normal; cursor: pointer; }
+  .pliegue-barra:hover { color: var(--fg); }
+  /* a la derecha de la cabecera; si ya hay un «+ nuevo» empujando a la derecha, va pegado a lo que tenga */
+  .fila.cab > .pliegue-barra { margin-left: auto; }
+  .fila.cab > .nuevo-hilo ~ .pliegue-barra { margin-left: 0; }
+  .plegada { display: flex; flex-direction: column; align-items: center; gap: .5em; padding: 0 1ch; cursor: pointer; }
+  .plegada .vertical { writing-mode: vertical-rl; color: var(--dim); }
+  .plegada:hover .vertical, .plegada:hover .pliegue-barra { color: var(--fg); }
   .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
   .fila:hover { background: var(--hover); }
   .fila.activa { background: var(--sel); }

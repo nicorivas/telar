@@ -18,6 +18,9 @@ body {
   height: 100dvh;
 }
 
+/* plegada (vistas/hilos.ts): la columna de la barra se angosta a su franja; en el celular no se pliega */
+body.barra-plegada:not(.angosto) { grid-template-columns: auto 1fr; }
+
 #barra {
   min-width: 0;
   min-height: 0;

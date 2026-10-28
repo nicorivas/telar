@@ -38,6 +38,12 @@ const ORDENES: [Orden, string, string][] = [
     ['reciente', '◷', 'última modificación: el último prompt a su agente, lo más reciente arriba'],
 ];
 
+/** Si la barra está plegada (a una franja con «›»): queda así para la próxima vez, como la ficha de un agente. */
+const CLAVE_PLEGADA = 'telar.barra.plegada';
+function leerPlegada(): boolean {
+    try { return localStorage.getItem(CLAVE_PLEGADA) === '1'; } catch { return false; }
+}
+
 function leerBuscado(): Record<string, string> {
     try { return JSON.parse(localStorage.getItem('telar.barra.buscado') ?? '{}') ?? {}; } catch { return {}; }
 }
@@ -83,6 +89,8 @@ export class BarraHilos {
     private lista?: HTMLElement;
     /** lo escrito en cada buscador: sobrevive a los redibujos (llegan varios por minuto) y a recargar */
     private buscado: Record<string, string> = leerBuscado();
+    /** plegada: una franja angosta con «›» y «hilos» en vertical; un clic la abre (en el celular no se pliega) */
+    private plegada = leerPlegada();
     private ultimoHtml = '';
     private ultimoActivo?: string;
     /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
@@ -215,6 +223,8 @@ export class BarraHilos {
             case 'menu': if (m.id) void ui.orden('telar.menuHilo', { hilo: m.id }); break;
             case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
             case 'menu-remoto': if (m.id) void ui.orden('telar.menuRemoto', m.id); break;
+            case 'plegar-barra': this.plegar(true); break;
+            case 'abrir-barra': this.plegar(false); break;
             case 'seccion':
                 if (m.id === '__archivo') { void ui.orden('telar.archivo'); break; }
                 if (m.id) { this.alternar(m.id); this.refrescar(true); }
@@ -242,9 +252,20 @@ export class BarraHilos {
         this.refrescar(true);
     }
 
+    /** Plegarla o abrirla, y recordarlo. La terminal que se ve se mide de nuevo sola (su ResizeObserver). */
+    private plegar(si: boolean): void {
+        this.plegada = si;
+        try { localStorage.setItem(CLAVE_PLEGADA, si ? '1' : '0'); } catch { /* sin almacén: solo esta vez */ }
+        this.refrescar(true);
+    }
+
     refrescar(forzar = false): void {
         if (!this.lista) return;
-        const html = this.html();
+        document.body.classList.toggle('barra-plegada', this.plegada);
+        const html = this.plegada
+            ? '<div class="plegada" data-accion="abrir-barra" title="mostrar la barra de hilos">'
+                + '<span class="pliegue-barra">›</span><span class="vertical">hilos</span></div>'
+            : this.html();
         const activo = this.dashboardActivo ? '\u0000dashboard' : this.mostrado ?? modelo.activo?.nombre;
         const seMovio = activo !== this.ultimoActivo;
         if (!forzar && !seMovio && html === this.ultimoHtml) return;
@@ -349,6 +370,8 @@ export class BarraHilos {
         const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, extra = ''): boolean => {
             const abierta = this.abierta(clave, porDefecto);
             if (!primera) h.push('<div class="sep"></div>');
+            // la primera cabecera lleva, al final, el «‹» que pliega la barra
+            if (primera) extra += '<span class="pliegue-barra" data-accion="plegar-barra" title="plegar la barra de hilos">‹</span>';
             primera = false;
             h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
                 + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
