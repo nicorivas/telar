@@ -6,6 +6,21 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-10-28
+
+### Added
+
+- **Sub-tabs** (`[bloques.x] dentro`, a module's `[pestana] dentro`, or a view with `aparece = "pestana"`): a block
+  can live inside one of the fixed dashboard tabs (ahora, tareas, proyectos, plan, calendario) instead of being a
+  tab of its own. That tab gets a row with its name and each sub-tab's («proyectos · gantt»); the sidebar keeps
+  marking the fixed tab, and the sub-tab's command runs only when it is opened, not every five minutes. `en` and
+  `dentro` don't go together. A module that uses `dentro` needs this version: an older telar refuses the key.
+- **Fonts in a lienzo**: its content policy allows `font-src data:`, so a lienzo can carry its own font inline (an
+  icon font cut down to the glyphs it uses, a couple of KB). Still no network.
+- **Proposal: dates** (docs/propuestas/fechas.md): one format for anything with a day, sources that are documents
+  read through declarative maps (Unicode date patterns) or commands, gathered in `telar fechas`, and edited where
+  they live (dragging a bar in a Gantt writes the cell it came from).
+
 ## [0.7.9] — 2026-10-27
 
 ### Added

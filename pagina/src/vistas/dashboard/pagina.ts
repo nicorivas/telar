@@ -34,8 +34,9 @@ export function mdSimple(texto: string): string {
     }).join('');
 }
 
-/** Lo que puede un lienzo: sus scripts y estilos en línea, e imágenes; ni red, ni `<script src>`, ni `eval`. */
-const POLITICA_LIENZO = "default-src 'none'; img-src https: data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
+/** Lo que puede un lienzo: sus scripts y estilos en línea, imágenes y letras en línea (`data:`, una letra de íconos);
+ *  ni red, ni `<script src>`, ni `eval`. */
+const POLITICA_LIENZO = "default-src 'none'; img-src https: data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 
 /** El alto de un lienzo o un marco: píxeles, o «lleno» (lo que queda del panel, por la clase). */
 function estiloAlto(alto: number | 'lleno' | undefined): string {

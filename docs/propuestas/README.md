@@ -36,7 +36,10 @@ el primer paso sin hacer de la primera propuesta.
    que el alojado la pruebe desde su laptop, el aviso de pedido nuevo y `telar doctor`.
 5. **[modos.md](modos.md)**: modos de la página (estándar, foco…), un nombre con valores para la disposición, la
    terminal y los avisos, que se cambian de una vez. El primer paso, en construcción; el resto, en su hoja de ruta.
-6. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
+6. **[fechas.md](fechas.md)**: un formato único para lo que tiene día (actividades, hitos, sesiones) y fuentes
+   intercambiables (secciones de cronograma en los documentos, comandos, las tareas), juntadas en `telar fechas`;
+   un Gantt o el calendario las dibujan sin saber de qué equipo son. Nada construido.
+7. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).
 

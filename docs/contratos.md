@@ -519,8 +519,9 @@ El lienzo entra como `srcdoc` (su contenido, no su ruta): su página la lee tela
 sirve. Eso trae tres consecuencias para quien lo escribe:
 
 - tiene que ser **autocontenido**: sus rutas relativas no resuelven, y no hay red;
-- lleva su propia política de contenido: el `<script>` y el estilo en línea corren, y las imágenes (https,
-  `data:`) se ven, pero un `<script src>` externo, un `eval` o una conexión a la red no;
+- lleva su propia política de contenido: el `<script>` y el estilo en línea corren, las imágenes (https,
+  `data:`) se ven y una letra en `data:` carga (una de íconos, recortada a los que usa: el Gantt de Brinca
+  trae los suyos de Nerd Fonts en 2 KB), pero un `<script src>` externo, un `eval` o una conexión a la red no;
 - los params llegan por `location.search` (telar reescribe la URL a `about:srcdoc?…` antes
   de que corra nada) y también en `window.lienzo.params`. Un bloque puede ser solo un lienzo, o lienzo con título,
 texto e ítems.
