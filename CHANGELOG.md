@@ -6,6 +6,19 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- **The search bar** (⌘K, Ctrl+K outside the Mac; `web/buscador.ts`): a window over everything, like Spotlight,
+  to go anywhere by typing part of its name. It filters as you type, ranked by how well each result matches (the
+  name counts more than the detail, the start more than the middle; letters in order also match), grouped by
+  source: threads (live, archived and those of your other machines), agents, the dashboard (its tabs and the ⚙
+  sections), modes and a few commands (new thread, new agent, machines). ↑↓, ⏎ and ⎋; it works in «foco», where
+  there is no sidebar or header. What it searches comes from sources registered from outside, so adding tasks,
+  projects or documents is registering another source. Each kind has its color (threads blue, agents violet, the
+  dashboard cyan, modes yellow, commands green). Behind it, the page darkens under a faint `░` texture, like a
+  text-mode window's shadow; the box sits on that texture's grid (the page font's cell), so its edges never cut a
+  cell in half.
+
 ## [0.7.8] — 2026-10-27
 
 ### Added

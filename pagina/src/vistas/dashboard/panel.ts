@@ -210,6 +210,9 @@ export class Dashboard implements Tablero {
         return this.pestanasVisibles().map(([clave, accion, valor, nombre, tecla]) => ({ clave, accion, valor, nombre, tecla }));
     }
 
+    /** Las secciones de ⚙ que se ven (para el buscador). */
+    seccionesConfig(): { clave: string; nombre: string; ayuda: string }[] { return this.configuracion.lista(); }
+
     /** ⚙: la configuración, en la sección `clave` (o en la última que se miró). */
     private async abrirConfig(clave = ''): Promise<void> {
         this.montar();

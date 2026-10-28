@@ -21,6 +21,7 @@ import * as ui from '../web/ui';
 import * as version from '../web/version';
 import * as lado from '../web/lado';
 import * as modos from '../web/modos';
+import * as buscador from '../web/buscador';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
@@ -207,6 +208,74 @@ window.addEventListener('drop', e => { if (e.dataTransfer?.types.includes('Files
 // una versión nueva de telar, arriba (web/version.ts): un clic la instala; si no se puede desde aquí, ⚙ versión
 lado.montar();
 version.vigilar(() => { mostrar('dashboard'); void hoy.irAPestana('config', 'version'); });
+// el buscador (⌘K): sus fuentes. Cada una da lo suyo y cómo abrirlo; el buscador solo filtra y muestra
+// (web/buscador.ts). Abrir algo estando en foco lo abre ahí mismo, sin barra ni cabecera
+const recencia = (iso?: string | null) => {
+    const t = iso ? Date.parse(iso) : NaN;
+    return Number.isNaN(t) ? 0 : Math.max(0, 100 - (Date.now() - t) / 3600000);   // 100 recién, 0 hace 4 días o más
+};
+buscador.registrar({
+    clave: 'hilos', nombre: 'hilos', orden: 1, color: 'azul',
+    resultados: () => {
+        // (sin los de un agente, que van en «agentes», y sin una carpeta que desde aquí se ve como «../..»)
+        const deAgentes = new Set(modelo.secciones.filter(x => x.grupo === 'agentes').map(x => x.nombre));
+        const legible = (r?: string) => (r && !r.startsWith('..') ? r : '');
+        const aqui = modelo.hilos.filter(h => !deAgentes.has(h.nombre) && (!h.agente || cli.nombreVisible(h) !== h.agente)).map(h => ({
+            titulo: cli.nombreVisible(h), icono: h.archivado ? '▫' : h.vivo ? '●' : '○',
+            detalle: [legible(h.relativa), h.remoto ? `en ${h.remoto}` : '', h.archivado ? 'archivado' : !h.vivo ? 'sin ventana' : ''].filter(Boolean).join(' · '),
+            claves: h.nombre, peso: (h.archivado ? 0 : h.vivo ? 50 : 20) + recencia(h.actividad || h.atencion_desde) / 2,
+            abrir: () => (h.archivado || !h.vivo ? ui.orden('telar.retomar', { hilo: h.nombre }) : mostrar(h.nombre)),
+        }));
+        // los de las otras máquinas, de su foto: se leen y se les escribe por el bus
+        const ya = new Set(modelo.hilos.map(h => `${h.remoto ?? ''}|${h.nombre}`));
+        const otras = barra.otras.flatMap(m => m.hilos.filter(x => x.vivo && !ya.has(`${m.nombre}|${x.nombre}`) && !deAgentes.has(x.nombre)).map(x => ({
+            titulo: x.nombre, icono: '⇄', detalle: [legible(x.relativa), `en ${m.nombre}`].filter(Boolean).join(' · '), peso: 35,
+            abrir: () => ui.orden('telar.irRemoto', `${m.nombre}|${x.nombre}`),
+        })));
+        return [...aqui, ...otras];
+    },
+});
+buscador.registrar({
+    clave: 'agentes', nombre: 'agentes', orden: 2, color: 'violeta',
+    resultados: () => modelo.secciones.filter(s => s.grupo === 'agentes').map(s => {
+        const suyo = modelo.hilos.find(h => h.nombre === s.nombre);
+        return {
+            titulo: s.nombre, icono: '◈', detalle: suyo?.vivo ? 'su hilo, abierto' : 'su casa', peso: suyo?.vivo ? 60 : 30,
+            abrir: () => (suyo?.vivo ? mostrar(s.nombre) : ui.orden('telar.seccion', s.clave)),
+        };
+    }),
+});
+buscador.registrar({
+    clave: 'dashboard', nombre: 'dashboard', orden: 3, color: 'cian',
+    resultados: () => [
+        ...hoy.pestanas().map((p, i) => ({
+            titulo: p.nombre, icono: '▦', detalle: p.tecla ? `pestaña · ${p.tecla}` : 'pestaña', claves: p.clave, peso: 40 - i,
+            abrir: () => { mostrar('dashboard'); return hoy.irAPestana(p.accion, p.valor); },
+        })),
+        ...hoy.seccionesConfig().map(c => ({
+            titulo: `⚙ ${c.nombre}`, icono: '⚙', detalle: c.ayuda, claves: `configuracion ${c.clave}`, peso: 5,
+            abrir: () => { mostrar('dashboard'); return hoy.irAPestana('config', c.clave); },
+        })),
+    ],
+});
+buscador.registrar({
+    clave: 'modos', nombre: 'modos', orden: 4, color: 'amarillo',
+    resultados: () => modos.lista().map(m => ({
+        titulo: `modo ${m.nombre}`, icono: '◧', detalle: m.clave === modos.puesto().clave ? 'puesto' : '', claves: m.clave,
+        peso: m.clave === modos.puesto().clave ? 0 : 10, abrir: () => modos.cambiar(m.clave),
+    })),
+});
+buscador.registrar({
+    clave: 'ordenes', nombre: 'órdenes', orden: 5, color: 'verde',
+    resultados: () => [
+        { titulo: 'hilo nuevo', icono: '+', detalle: 'un tab con su agente', claves: 'nuevo crear abrir', abrir: () => ui.orden('telar.nuevo') },
+        { titulo: 'agente nuevo', icono: '+', detalle: 'un agente residente: su carpeta', claves: 'nuevo crear', abrir: () => ui.orden('telar.agenteNuevo') },
+        { titulo: 'máquinas', icono: '⌂', detalle: 'tus máquinas y los servidores', claves: 'servidores maquinas', abrir: () => { location.href = '/maquinas'; } },
+        { titulo: 'actualizar la lista', icono: '↻', detalle: 'volver a leer los hilos', claves: 'refrescar', abrir: () => ui.orden('telar.actualizar') },
+    ],
+});
+buscador.montar();
+
 // los modos (estándar, foco…): lo de este navegador al tiro, y el selector de la cabecera, «◧ estándar»
 modos.montar();
 const selectorModo = document.getElementById('modos-sel');

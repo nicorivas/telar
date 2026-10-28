@@ -227,3 +227,54 @@ body.angosto.en-detalle .logo { display: none; }
 
 body.angosto.en-lista #marcos,
 body.angosto.en-detalle #barra { display: none; }
+
+/* el buscador (⌘K, web/buscador.ts): una caja arriba y al centro, sobre todo lo demás; lo escrito filtra al tiro */
+dialog.buscador {
+  /* dónde y de qué tamaño, lo pone web/buscador.ts en celdas enteras de la trama de atrás */
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: var(--borde);
+  color: var(--fg);
+  background: var(--bg-barra);
+  overflow: hidden;
+
+  /* lo de atrás, oscurecido y con una trama de ░, como la sombra de una ventana en una interfaz de texto: un
+     carácter por celda (un dibujo SVG que se repite; el color va escrito, el del texto del tema, muy tenue) */
+  /* el dibujo se estira a la celda de la letra de la página (--celda-w, --celda-h, de web/buscador.ts): la caja se
+     pone en esa misma cuadrícula */
+  &::backdrop {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 16' preserveAspectRatio='none'%3E%3Ctext x='0' y='12.5' font-family='Menlo,monospace' font-size='13' fill='%23cdd6f4' fill-opacity='.16'%3E%E2%96%91%3C/text%3E%3C/svg%3E")
+        0 0 / var(--celda-w, 8px) var(--celda-h, 16px),
+      color-mix(in srgb, var(--bg) 80%, transparent);
+  }
+
+  & input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--e-1) var(--h-2);
+    border: 0;
+    border-bottom: var(--borde);
+    outline: none;
+    color: var(--fg);
+    background: transparent;
+    font: inherit;
+  }
+
+  & .b-lista { flex: 1; min-height: 0; overflow: auto; padding: var(--e-1) 0; }
+  /* una sola letra, de un solo tamaño; cada tipo de cosa, su color (el del grupo y el de sus íconos: --b-color) */
+  & .b-grupo { padding: var(--e-1) var(--h-2) 0; color: var(--b-color, var(--dim)); }
+  & .b-fila { display: flex; gap: var(--h-1); align-items: baseline; padding: 0 var(--h-2); cursor: pointer; white-space: nowrap; }
+  & .b-fila.sel { background: var(--sel); }
+  & .b-ic { flex: none; width: 1ch; color: var(--b-color, var(--dim)); }
+  & .b-t { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+  & .b-d { min-width: 0; overflow: hidden; color: var(--dim); text-overflow: ellipsis; }
+  & .b-vacio { padding: var(--e-1) var(--h-2); color: var(--dim); }
+  & .b-pie { padding: 0 var(--h-2) var(--e-1); color: var(--dim); }
+}

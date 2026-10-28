@@ -45,6 +45,10 @@ export class Configuracion {
     }
 
     private visibles(): Seccion[] { return this.secciones.filter(s => s.visible?.() ?? true); }
+    /** Las secciones que se ven, con su nombre (para el buscador: web/buscador.ts). */
+    lista(): { clave: string; nombre: string; ayuda: string }[] {
+        return this.visibles().map(s => ({ clave: s.clave, nombre: s.nombre, ayuda: s.ayuda }));
+    }
     private seccion(): Seccion | undefined { return this.visibles().find(s => s.clave === this.actual); }
 
     /** Entrar a ⚙: a `clave`, si se da (y existe); si no, a la última que se miró, o a la primera. */
