@@ -269,7 +269,8 @@ def entrada(carpeta: Path, version: str, etiquetas: list[str]) -> dict:
         origen = "https://github.com/" + origen.split(":", 1)[1]
     autor = subprocess.run(["git", "-C", str(carpeta), "config", "user.name"], capture_output=True, text=True).stdout.strip()
     permisos = {k: v for k, v in (mod_modulos.permisos_json(m.permisos) or {}).items() if k != "otros"}
-    menor = ".".join(__version__.split(".")[:2])
+    # la versión entera con que se publica: un módulo puede usar algo que llegó en un parche (telar fechas, en 0.8.1)
+    menor = __version__
     return {"nombre": m.nombre, "descripcion": m.descripcion, "fuente": re.sub(r"\.git$", "", origen), "version": version,
             "autor": autor, "etiquetas": etiquetas, "telar": f">={menor}", "permisos": permisos}
 

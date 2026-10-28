@@ -122,6 +122,22 @@ def ruta_servicio() -> Path:
     return base / "systemd" / "user" / "telar-serve.service"
 
 
+def pagina_actual(texto: str) -> dict[str, str]:
+    """Cómo sirve su página el servicio que ya está escrito (su `ExecStart`, o los `<string>` del plist): `web_socket`,
+    `web_url` y `web_puerto`, los que tenga. Volver a correr `telar instalar` sin esas banderas no las pierde: un telar
+    alojado detrás de la puerta de un servidor (telar.puerta) no puede pasar a escuchar en un puerto propio, que es el
+    de la página de la persona dueña del servidor."""
+    import re
+
+    palabras = re.findall(r"<string>([^<]*)</string>", texto) if "<plist" in texto else \
+        next((l.split("=", 1)[1].split() for l in texto.splitlines() if l.startswith("ExecStart=")), [])
+    salida = {}
+    for bandera, clave in (("--web-socket", "web_socket"), ("--web-url", "web_url"), ("--web-puerto", "web_puerto")):
+        if bandera in palabras and palabras.index(bandera) + 1 < len(palabras):
+            salida[clave] = palabras[palabras.index(bandera) + 1].strip("'\"")
+    return salida
+
+
 def servicio(*, nodo: bool, equipo: bool, telar: str = "", path: str = "", web_puerto: int = 0,
              web_socket: str = "", web_url: str = "") -> tuple[Path, str]:
     """(dónde, qué) del servicio de esta máquina. `web_puerto`: el de la página, si no es el de siempre.

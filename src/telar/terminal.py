@@ -183,7 +183,10 @@ async def reenviar(ws, web: str, hilo: str, maquina: str, columnas, filas, token
             await ws.close()
 
     if not web:
-        await decir(f"«{maquina}» no está en línea o no sirve su página (telar serve --web): ábrelo como conversación")
+        # sin página que ofrezca: su telar no corre allá (su servicio cayó), o corre sin página. Abrirlo como
+        # conversación no lo arregla; lo que lo arregla es su servicio
+        await decir(f"«{maquina}» no da su página: su telar serve no está corriendo allá, o corre sin --web. Revisa su"
+                    " servicio (systemctl --user status telar-serve); mientras, la conversación se lee igual")
         return
     if not token:
         await decir("sin el token del bus no puedo pedirle la terminal a otra máquina")

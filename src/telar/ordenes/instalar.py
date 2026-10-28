@@ -267,8 +267,14 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
         hay_bus = _unirse(ctx, o, ruta, pasos, hay_bus, avisos)
 
     if not o.sin_servicio:
-        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta), web_puerto=o.web_puerto,
-                                            web_socket=o.web_socket, web_url=o.web_url)
+        # lo que no se dice ahora se queda como estaba: un telar detrás de la puerta sigue detrás de la puerta
+        antes = instalacion.pagina_actual(instalacion.ruta_servicio().read_text(encoding="utf-8")) \
+            if instalacion.ruta_servicio().exists() else {}
+        web_socket = o.web_socket or antes.get("web_socket", "")
+        web_url = o.web_url or antes.get("web_url", "")
+        web_puerto = o.web_puerto or (int(antes["web_puerto"]) if antes.get("web_puerto", "").isdigit() else 0)
+        donde, texto = instalacion.servicio(nodo=hay_bus, equipo=_hay_equipo(ruta), web_puerto=web_puerto,
+                                            web_socket=web_socket, web_url=web_url)
         if not donde.exists() or donde.read_text(encoding="utf-8") != texto:
             que = "instalar" if not donde.exists() else "actualizar"
             pasos.append((lambda: _servicio(donde, texto), f"{que} el servicio de telar serve ({donde})"))

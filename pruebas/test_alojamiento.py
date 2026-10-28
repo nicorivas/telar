@@ -13,6 +13,7 @@ import os
 import tempfile
 import threading
 import time
+import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
@@ -498,3 +499,19 @@ class ElPuertoDeLaPagina(Prueba):
         with mock.patch.object(instalacion.sys, "platform", "linux"):
             _, texto = instalacion.servicio(nodo=True, equipo=False, telar="/x/telar", path="/bin", web_puerto=8782)
         self.assertIn("ExecStart=/x/telar serve --nodo --web --web-puerto 8782", texto)
+
+
+class LaPaginaDeUnAlojadoSeQueda(unittest.TestCase):
+    """`telar instalar` de nuevo, sin banderas, no saca a un alojado de detrás de la puerta: si pasara a `--web`,
+    escucharía en el puerto de la persona dueña del servidor, y su servicio no arrancaría."""
+
+    def test_lee_como_sirve_su_pagina_del_servicio_escrito(self):
+        from telar import instalacion
+
+        texto = instalacion.unidad_systemd("/x/telar", instalacion.argumentos(
+            nodo=True, web_socket="/run/telar/ana/web.sock", web_url="https://telar.ejemplo.ts.net"), "/bin", esperar_tailscale=True)
+        self.assertEqual(instalacion.pagina_actual(texto),
+                         {"web_socket": "/run/telar/ana/web.sock", "web_url": "https://telar.ejemplo.ts.net"})
+        plist = instalacion.plist_launchd("/x/telar", instalacion.argumentos(nodo=True, web_puerto=8790), "/bin", "/log")
+        self.assertEqual(instalacion.pagina_actual(plist), {"web_puerto": "8790"})
+        self.assertEqual(instalacion.pagina_actual("[Service]\nExecStart=/x/telar serve --nodo --web\n"), {})

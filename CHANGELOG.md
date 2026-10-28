@@ -6,6 +6,17 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-10-28
+
+### Fixed
+
+- **`telar instalar` run again keeps how the page is served.** Without `--web-socket`, `--web-url` or `--web-puerto`, it
+  keeps the ones the service already had. Before, it rewrote the service with `--web`: a telar hosted behind a
+  server's door then tried to listen on the owner's port and restarted in a loop.
+- **The terminal of a thread on another machine** says what is wrong when that machine gives no page: its `telar
+  serve` isn't running there (or runs without a page), and where to look.
+- **`telar modulos publicar`** writes the full telar version as the minimum (`>=0.8.1`, not `>=0.8`).
+
 ## [0.8.1] — 2026-10-28
 
 ### Added
