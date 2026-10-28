@@ -6,6 +6,37 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-10-28
+
+### Added
+
+- **Dates** (`telar fechas`, `GET /fechas`, `telar.fechas`; docs/contratos.md and docs/propuestas/fechas.md): anything
+  with a day (activities, milestones, sessions), in one format, from wherever it lives. Each unit's `## Cronograma`
+  table is read by column name with nothing to declare; providers with `como = "fechas"` add other documents
+  (`markdown`, with `rutas`) or a program that prints dates (`comando`). Rows that look like a date and can't be
+  read are reported with file and line; a source that fails is reported and the rest still arrives.
+- **Date maps** (`.telar/fechas.yaml`, `telar.mapas`, docs/perfil.md): read a schedule that doesn't have the default
+  shape. A map says which sections are schedules and where each field comes from: a column (with a Unicode date
+  pattern such as `EEE d-MMM`, a language, a range separator, the year when the cell has none, its own vocabulary),
+  a template over columns, or a constant; `buscar` finds the project by a frontmatter key. A document can name its
+  map in its frontmatter (`fechas: <map>`). In a shared document, a row belongs to the unit its link points to.
+  `telar fechas probar <file>` shows which rows were read and which were skipped, and why.
+- **Dates from modules and tasks**: a module brings a dates source in its `modulo.toml` (`[fechas] comando`, run in
+  its folder), and tasks with a due date from the task providers join the stream as `clase: "tarea"`.
+- **Editing dates where they live** (`telar fecha <id> --inicio/--fin`, `POST /fecha`): a schedule row changes only
+  its date cells, in their own shape (the map's pattern, or the cell's), gets an id comment the first time
+  (`<!-- id: f-… -->`) and is found by it afterwards; a task moves with its provider's date action; a program's date
+  with its source's `escribir`. `--version` refuses a change over someone else's (409). Each date says what can be
+  written (`editable`).
+- **A module's page can ask telar to act** (`window.lienzo.pedir(orden, datos)`, `POST /lienzo/pedir`): only orders
+  the module declared in `[permisos] ordenes` and the person granted. The page asks the first time (always, just
+  this once, no); grants live in telar (`telar.concesiones`, `GET/POST /permisos`) and are listed and revoked with
+  `telar modulos permisos`. The first order is `fecha`.
+- **The date class `plazo`**: a project's own span, its bar in a Gantt.
+- **Unicode date patterns** (`telar.patrones`): read and write a date with an LDML pattern, both ways (the weekday
+  is recalculated when writing). Month and day names for Spanish and English are built in; other languages with
+  Babel installed.
+
 ## [0.8.0] — 2026-10-28
 
 ### Added

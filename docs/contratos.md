@@ -489,6 +489,78 @@ orden en que se muestran, el `areas` del perfil ([perfil.md](perfil.md)).
 `hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
 no hay agente o si el hilo ya estaba).
 
+### `telar fechas --json`
+
+Lo que tiene día, venga de donde venga ([propuestas/fechas.md](propuestas/fechas.md)). `--proyecto <ruta>` deja las
+de esa unidad y lo que tiene adentro; `--desde` y `--hasta` (`AAAA-MM-DD`), las que tocan ese intervalo. La API es
+`GET /fechas`, con los mismos parámetros.
+
+```json
+{ "fechas": [
+    { "id": "proyectos/faro/README.md:58", "titulo": "Ajustar el giro",
+      "inicio": "2026-10-11", "fin": "2026-10-20", "hora": "", "clase": "actividad",
+      "proyecto": "proyectos/faro", "estado": "en-curso", "responsable": "Ana Pérez",
+      "depende": ["proyectos/faro/README.md:57"], "fuente": "proyectos/faro/README.md:58", "enlace": "",
+      "editable": [], "version": "3f2a9c1b0d4e" } ],
+  "saltadas": ["proyectos/molino/README.md:40: «6 a 10 de julio» no es una fecha que se entienda"],
+  "fallas": ["gestion: no respondió en 20 s"] }
+```
+
+Ordenadas por `inicio`. Cada una:
+
+| Campo | Qué es |
+|---|---|
+| `id` | estable dentro de su fuente. Una fila de un documento se nombra por su lugar (`archivo:línea`), que sirve para el minuto siguiente; la primera vez que telar la escribe le pone un id (`<!-- id: f-1a2b3c -->` al final de la fila) y desde ahí se nombra por él (`archivo#f-1a2b3c`), aunque el documento cambie. Una tarea, `<proveedor>:<id>` |
+| `inicio`, `fin` | `AAAA-MM-DD`; un día solo, con los dos iguales |
+| `hora` | `HH:MM` o `""` |
+| `clase` | `actividad` (dura días: una barra), `plazo` (el del proyecto mismo, de su inicio a su fin: su barra en un Gantt), `hito`, `sesion`, `entrega`, `evento` (un día) o `tarea` |
+| `proyecto` | la unidad (su ruta relativa a la raíz), la misma que trae una tarea; `""` si no está dentro de ninguna |
+| `estado` | `pendiente`, `en-curso`, `hecho` o `cancelado` |
+| `depende` | ids de otras fechas de la misma fuente |
+| `fuente` | dónde se cambia: `archivo:línea`, o lo que diga un programa (`pmo:98`) |
+| `editable`, `version` | los campos que su fuente sabe escribir (`["inicio", "fin"]`; `[]`, de solo lectura) y lo que cambia si la fecha cambia (ver `telar fecha`) |
+| `bloqueo` | por qué no se puede mover, en palabras («la celda es un mes entero (2026-01)», «su fuente «pmo» es de solo lectura»); `""` si se puede. Un programa lo puede decir en su JSON |
+
+**De dónde salen.** De la sección `## Cronograma` (o `###`, `####`) del documento de cada unidad, siempre y sin
+declarar nada. Su tabla se lee por el **nombre** de cada columna, no por su lugar: Actividad (o Tarea, Hito, Sesión,
+Nombre), Inicio (o Fecha, Desde), Fin (o Hasta, Término), Responsable (o Quién), Depende de (los títulos de otras
+filas, separados por comas), Estado (✅ 🔄 ⬜ ❌, o en palabras) y Clase. Las fechas, como las lee el proveedor
+`documento` (`AAAA-MM-DD`, `DD-MM-AAAA`, `DD-mes`), y un mes entero (`2026-08`) va del primero al último. Sin
+`Fin`, un día; sin `Clase`, `actividad` si dura más de un día y `evento` si no. Una celda de fecha sin números («por
+definir») todavía no es una fecha y se calla; una con números que no se entiende («6 a 10 de julio») va a
+`saltadas`, con su archivo y su línea, igual que una tabla de cronograma sin columna de fecha.
+
+Un cronograma con otra forma se lee con un **mapa** (`.telar/fechas.yaml`, [perfil.md](perfil.md#mapas-de-fechas-telarfechasyaml)),
+y los documentos que nombra se suman a los de las unidades. `telar fechas probar <archivo> --json` dice cómo se lee
+uno: `{ "archivo", "mapa", "fechas", "saltadas", "fallas" }` (`mapa` es `""` sin mapa).
+
+Además, lo que traigan los proveedores con `como = "fechas"` ([configuración](configuracion.md#las-fechas)): otros
+documentos (`tipo = "markdown"`, con `rutas`) o un programa que las imprime (`tipo = "comando"`): una lista JSON, un
+objeto con la clave `fechas`, o una por línea, con los campos de arriba (`titulo` e `inicio` obligatorios). Una que
+no se entiende va a `saltadas`; un proveedor que no contesta, a `fallas`, y lo demás llega igual. Las fechas no son
+pendientes del día: no aparecen en `telar hoy` ni en `telar pendientes`. Un módulo trae su fuente en su
+`modulo.toml` (`[fechas] comando`). Y las tareas con fecha de vencimiento de los proveedores de tareas (aquí o en
+la máquina de su `en`) entran como `clase: "tarea"`, de la unidad que dice su origen, con `id` y `fuente`
+`<proveedor>:<id>`.
+
+### `telar fecha <id> --json`
+
+Cambia una fecha donde vive: `--inicio` la corre (su fin se corre lo mismo), `--fin` cambia solo su fin; con
+`--version` (la que traía), solo si no cambió desde que se leyó. La API es `POST /fecha` (`{id, inicio, fin,
+version}`). Devuelve la fecha como quedó, con la forma de `telar fechas`.
+
+- **Una fila de un documento**: telar escribe esas celdas y nada más del documento, con la forma que tenían (el
+  `formato` de su mapa, o la de la celda: `AAAA-MM-DD`, `DD-MM-AAAA`, `DD/MM/AAAA` o `5-oct`, con su día de la
+  semana recalculado), sin tocar lo que rodea a la fecha en la celda (`2026-08-12 10:00`, `~2026-11-03`, una nota
+  entre paréntesis), y le pone su id si no lo tenía. Lo que sale de una plantilla, una constante, un rango o un
+  vocabulario propio (`valores`), una celda con dos fechas o un mes entero («2026-08») no se escribe: su `bloqueo`
+  dice por qué. Queda sin commitear.
+- **Una tarea**: con la acción de `rol: fecha` de su proveedor (las que tienen ficha).
+- **La de un programa**: con el `escribir` de su fuente, que recibe por la entrada `{"id", "version", "inicio",
+  "fin"}` (solo lo que cambia) y responde con la fecha como quedó; si sale con 9, cambió desde que se leyó.
+
+Lo que no se puede: 404 (no está), 409 (cambió), 422 (no se escribe); con `--json`, `{"error", "codigo"}`.
+
 ### `telar seccion <clave> --json`
 
 Lo que imprime el comando `home` de una sección, tal cual, después de comprobar su forma:
@@ -520,7 +592,7 @@ sirve. Eso trae tres consecuencias para quien lo escribe:
 
 - tiene que ser **autocontenido**: sus rutas relativas no resuelven, y no hay red;
 - lleva su propia política de contenido: el `<script>` y el estilo en línea corren, las imágenes (https,
-  `data:`) se ven y una letra en `data:` carga (una de íconos, recortada a los que usa: el Gantt de Brinca
+  `data:`) se ven y una letra en `data:` carga (una de íconos, recortada a los que usa: el módulo gantt
   trae los suyos de Nerd Fonts en 2 KB), pero un `<script src>` externo, un `eval` o una conexión a la red no;
 - los params llegan por `location.search` (telar reescribe la URL a `about:srcdoc?…` antes
   de que corra nada) y también en `window.lienzo.params`. Un bloque puede ser solo un lienzo, o lienzo con título,
@@ -538,6 +610,15 @@ El lienzo recibe lo último guardado en `window.lienzo.memoria` (`null` la prime
 archivo no es JSON) y guarda con `window.lienzo.guardar(objeto)`, que reemplaza el archivo
 entero. El lienzo nunca nombra la ruta: el panel le da una llave al pintarlo y escribe solo el
 archivo que declaró la página, hasta 4 MB.
+
+La página de un **módulo** (la de su pestaña o su app) puede además pedirle a telar que haga algo por ella:
+`window.lienzo.pedir(orden, datos)` devuelve una promesa con lo que quedó, o falla con el porqué. telar lo hace solo
+si el módulo declaró la orden en su `[permisos] ordenes` y la persona se la concedió: la primera vez la página le
+pregunta (permitir siempre, solo esta vez, no), y lo decidido queda en telar (`telar modulos permisos`, que también
+lo revoca). Hoy se puede pedir `fecha` (`{id, inicio, fin, version}`, como `telar fecha`). Por la API es `POST
+/lienzo/pedir` (`{origen: "bloque:<clave>" | "app:<clave>", orden, datos}`): sin la concesión, un 403 con
+`permiso: {modulo, orden, descripcion, decision}`; `POST /permisos` (`{modulo, orden, decision}`: concedido, negado u
+olvidar) anota lo decidido y `GET /permisos` lo lista.
 
 Todo es opcional salvo `titulo` en la página y en cada ítem. `texto` admite párrafos,
 `**negrita**`, `*cursiva*`, `` `código` `` y listas con `- `; lo demás se muestra como

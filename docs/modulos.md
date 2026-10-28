@@ -37,6 +37,10 @@ nombre = "saludo"
 comando = ["bin/saludo", "pagina"]
 # dentro = "proyectos"                  # o una subpestaña de una fija: ahora, tareas, proyectos, plan, calendario
 
+[fechas]                                # una fuente de fechas (telar fechas): imprime fechas en JSON, corre aquí
+comando = ["bin/saludo", "fechas"]
+# escribir = ["bin/saludo", "mover"]    # opcional: cómo cambia una (recibe el cambio en JSON; telar fecha)
+
 [app]                                   # algo que se abre en el panel: pagina, archivo o url
 archivo = "dist/app.html"
 

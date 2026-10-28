@@ -339,6 +339,12 @@ export class Dashboard implements Tablero {
      *  que la declara; aquí quedan las de todas (ir a un hilo, ⚙, un atajo, abrir un enlace). */
     private async mensaje(m: MensajeDia): Promise<void> {
         if (m.tipo === 'lienzo-guardar') { this.paginas.guardar(m.valor ?? '', m.datos ?? ''); return; }
+        if (m.tipo === 'lienzo-pedir') {
+            const { id, datos } = JSON.parse(m.datos ?? '{}') as { id: string; datos: unknown };
+            const respuesta = await this.paginas.pedir(m.valor ?? '', m.accion ?? '', datos);
+            this.panel?.responderLienzo(id, respuesta);
+            return;
+        }
         // lo de una sección de ⚙ (sus acciones, sus formularios) lo atiende ella
         if (this.pantalla === 'config' && m.tipo !== 'tecla' && m.tipo !== 'listo' && await this.configuracion.atender(m)) return;
         if (m.tipo === 'listo') {

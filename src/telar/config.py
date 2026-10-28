@@ -608,7 +608,7 @@ def _con_modulos(datos: dict, rotos: list | None = None) -> tuple[dict, tuple]:
 
 
 #: la sección de `modulo.toml` que se vuelve cada tabla de la configuración, para nombrarla en un error
-_SECCION_DEL_MODULO = {"bloques": "pestana", "apps": "app", "resultados": "resultado"}
+_SECCION_DEL_MODULO = {"bloques": "pestana", "apps": "app", "resultados": "resultado", "proveedores": "fechas"}
 
 
 def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
@@ -635,7 +635,10 @@ def _un_modulo(nombre: str, cuerpo: object, datos: dict) -> tuple[object, dict]:
     aportes = {}
     vistas = datos.get("vistas") if isinstance(datos.get("vistas"), dict) else {}
     for tabla, aporte in (("bloques", m.pestana), ("apps", {"descripcion": m.descripcion, **m.app} if m.app else {}),
-                          ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {})):
+                          ("resultados", {"nombre": m.nombre, **m.resultado, **({"en": en} if en else {})} if m.resultado else {}),
+                          # su fuente de fechas es un proveedor `fechas` de tipo `comando`, que corre en su carpeta
+                          ("proveedores", {"como": "fechas", "tipo": "comando", "donde": str(m.carpeta), **m.fechas}
+                           if m.fechas else {})):
         if not aporte:
             continue
         # una vista con su nombre choca aunque esté en otro lugar: serían dos cosas llamadas igual

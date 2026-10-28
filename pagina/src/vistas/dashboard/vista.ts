@@ -20,6 +20,8 @@ export interface VistaDia {
     cuentasProyectos(cuentas: Record<string, number>): void;
     /** se ve (es lo que está a la derecha, y la pestaña del navegador está al frente) */
     readonly visible: boolean;
+    /** la respuesta a lo que pidió un lienzo (`window.lienzo.pedir`), a ese lienzo y a ningún otro */
+    responderLienzo(id: string, respuesta: { ok: boolean; datos?: unknown; error?: string }): void;
 }
 
 interface Estado {
@@ -234,6 +236,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
 
     // el globo: el texto entero de una tarea al detenerse sobre ella, cuando la fila lo corta. Va dentro del
     // dashboard, que es su contenedor (container-type: size, en dia.css): su posición, relativa a él
+    /** lo que pidieron los lienzos y espera respuesta: a qué iframe va, y con qué id suyo */
+    const esperanLienzo = new Map<string, { fuente: Window; suyo: string }>();
     const globo = document.createElement('div'); globo.id = 'globo'; globo.hidden = true; raiz.appendChild(globo);
     let globoEspera = 0;
     const esconderGlobo = () => { clearTimeout(globoEspera); globo.hidden = true; };
@@ -256,10 +260,16 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
 
     // un lienzo que pide guardar su memoria: solo se acepta de un iframe de lienzo de este dashboard, y el Dashboard
     // decide el archivo (el que declaró la página), nunca el lienzo
+    // un lienzo que pide algo (`window.lienzo.pedir`): igual, solo de un lienzo de aquí; la respuesta vuelve a ese iframe
     window.addEventListener('message', e => {
-        const d = e.data as { lienzo?: string; llave?: unknown; datos?: unknown } | null;
-        if (!d || d.lienzo !== 'guardar' || typeof d.llave !== 'string' || typeof d.datos !== 'string') return;
-        if (todos<HTMLIFrameElement>('iframe.lienzo').some(f => f.contentWindow === e.source)) enviar({ tipo: 'lienzo-guardar', valor: d.llave, datos: d.datos });
+        const d = e.data as { lienzo?: string; llave?: unknown; datos?: unknown; id?: unknown; orden?: unknown } | null;
+        if (!d || typeof d.llave !== 'string' || !todos<HTMLIFrameElement>('iframe.lienzo').some(f => f.contentWindow === e.source)) return;
+        if (d.lienzo === 'guardar' && typeof d.datos === 'string') enviar({ tipo: 'lienzo-guardar', valor: d.llave, datos: d.datos });
+        if (d.lienzo === 'pedir' && typeof d.id === 'string' && typeof d.orden === 'string') {
+            const id = `${d.llave}:${d.id}`;
+            esperanLienzo.set(id, { fuente: e.source as Window, suyo: d.id });
+            enviar({ tipo: 'lienzo-pedir', valor: d.llave, accion: d.orden, datos: JSON.stringify({ id, datos: d.datos }) });
+        }
     });
 
     // ── el formulario de un proceso periódico ──
@@ -445,6 +455,12 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
 
     const vista: VistaDia = {
         get visible() { return visible(); },
+        responderLienzo(id, respuesta) {
+            const quien = esperanLienzo.get(id);
+            if (!quien) return;
+            esperanLienzo.delete(id);
+            quien.fuente.postMessage({ lienzo: 'respuesta', id: quien.suyo, ...respuesta }, '*');
+        },
         pintar(html) {
             esconderGlobo();
             const activo = document.activeElement as HTMLInputElement | null;

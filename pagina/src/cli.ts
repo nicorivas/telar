@@ -262,6 +262,17 @@ export async function bloqueItem(clave: string, id: string): Promise<Respuesta<{
     return await deServe<{ texto: string }>(`/bloques/${encodeURIComponent(clave)}/items/${encodeURIComponent(id)}`, 70000);
 }
 
+/** `window.lienzo.pedir`: lo que la página de un módulo pide que telar haga por ella (telar.servicios.lienzos). Sin la
+ *  concesión, un error con `cuerpo.permiso` (qué preguntarle a la persona). */
+export async function lienzoPedir(origen: string, orden: string, datos: unknown): Promise<Respuesta<{ orden: string; datos: unknown }>> {
+    return await aServe<{ orden: string; datos: unknown }>('POST', '/lienzo/pedir', 60000, { origen, orden, datos });
+}
+
+/** Anotar lo que la persona decidió sobre lo que pide un módulo (telar.concesiones). */
+export async function conceder(modulo: string, orden: string, decision: 'concedido' | 'negado' | 'olvidar'): Promise<Respuesta<unknown>> {
+    return await aServe<unknown>('POST', '/permisos', 15000, { modulo, orden, decision });
+}
+
 /** `telar bloque <clave>`: la página que imprime su comando. */
 export async function bloque(clave: string): Promise<Respuesta<JsonPagina>> {
     return await deServe<JsonPagina>(`/bloques/${encodeURIComponent(clave)}`, 90000);

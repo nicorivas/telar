@@ -117,6 +117,32 @@ de la ficha. Ver [contratos](contratos.md#telar-tarea-id---json). Las tareas que
 `avance` (lo último que dejó un agente trabajando solo) van primero en la lista, con esa
 palabra en color, y el modo «propuestas» las junta para revisarlas con ← →.
 
+
+### Las fechas
+
+Los cronogramas de los documentos de las unidades (`## Cronograma`) se leen siempre, sin declarar nada
+(`telar fechas`, [contratos](contratos.md#telar-fechas---json)). Un proveedor con `como = "fechas"` suma otras
+fuentes, con la misma maquinaria que las tareas:
+
+```toml
+[proveedores.fechas]
+tipo  = "markdown"
+rutas = ["equipo/calendario.md", "operacion/*/seguimiento.md"]   # globs desde la raíz, sin «..»
+
+[proveedores.gestion]
+como          = "fechas"
+tipo          = "comando"
+comando       = ["bin/fechas-de-la-gestion"]   # corre en la raíz e imprime fechas en JSON
+tiempo_maximo = 20
+escribir      = ["bin/fechas-de-la-gestion", "mover"]   # opcional: cómo cambia una (telar fecha)
+editables     = ["inicio", "fin"]                     # con escribir: qué campos sabe cambiar
+```
+
+Las de `markdown` son de la unidad que contiene su documento. Las de un comando, de la que diga su `proyecto`, o
+de la que contiene su `fuente`. Un módulo trae la suya en su `modulo.toml` (`[fechas] comando`): es un proveedor
+como estos, con el nombre del módulo, que corre en su carpeta. Las tareas con fecha de vencimiento de los proveedores
+de tareas entran solas, con `clase = "tarea"`.
+
 ### Los tipos: objetos sobre archivos (`[tipos]`)
 
 Dónde viven los objetos de un tipo, un archivo por objeto (ver `docs/arquitectura.md`, «Los tipos»). Por ahora,

@@ -2,7 +2,8 @@
 // (`telar tarea`)— en HTML: texto, ítems, lienzos y marcos. La dibujan las pantallas que la muestran; los lienzos
 // guardan su memoria por aquí.
 
-import type * as cli from '../../cli';
+import * as cli from '../../cli';
+import * as ui from '../../web/ui';
 import { disco } from '../../disco';
 import { esc, llaveAlAzar } from '../../estilo';
 
@@ -56,6 +57,8 @@ export class Paginas {
     /** las memorias de los lienzos pintados: una llave al azar por lienzo → el archivo que declaró
      *  su página. El lienzo solo escribe ese archivo, y lo nombra con la llave, nunca con una ruta. */
     private readonly memorias = new Map<string, string>();
+    /** de dónde es cada lienzo pintado («bloque:gantt», «app:x»), por su llave: lo que pide lo pide en nombre de eso */
+    private readonly origenes = new Map<string, string>();
 
     /** La página y la memoria de los lienzos de una página, leídas del disco (o de la API, en el navegador)
      *  antes de dibujarla: el HTML se arma sin esperar. */
@@ -68,11 +71,11 @@ export class Paginas {
     }
 
     /** Los bloques de una página, en HTML. */
-    html(bloques: cli.JsonPagina['bloques']): string[] {
+    html(bloques: cli.JsonPagina['bloques'], origen = ''): string[] {
         const h: string[] = [];
         this.memorias.clear();   // los iframes de antes se reemplazan: sus llaves ya no valen
         bloques.forEach((b, i) => {
-            if (b.lienzo) h.push(this.lienzo(b.lienzo));
+            if (b.lienzo) h.push(this.lienzo(b.lienzo, origen));
             if (b.marco) h.push(htmlMarco(b.marco));
             if (b.destacado) h.push(`<div class="prop" style="--c: var(--${esc(b.color ?? 'azul')})">`);
             if (b.titulo) h.push(`<h2>${esc(b.titulo)}</h2>`);
@@ -97,7 +100,7 @@ export class Paginas {
      *  srcdoc no tiene query string, un script previo deja los params en la URL (`about:srcdoc?…`) y en
      *  `window.lienzo`. El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar la página, y su
      *  política de contenido (POLITICA_LIENZO), sin red: lo que promete docs/contratos.md. */
-    lienzo(l: cli.JsonLienzo): string {
+    lienzo(l: cli.JsonLienzo, origen = ''): string {
         // lo que necesita (su página y su memoria) se leyó antes, al llegar la página (precargar)
         let doc = this.lienzos.get(l.archivo);
         if (doc === undefined) return `<div class="fila falla">no pude leer ${esc(l.archivo)}</div>`;
@@ -107,15 +110,24 @@ export class Paginas {
         // con `memoria`, el lienzo recibe lo que guardó la vez anterior y una función para guardar:
         // el iframe no tiene almacenamiento propio (sandbox sin allow-same-origin)
         let memoria = '';
+        // la llave nombra a este lienzo en lo que manda: su memoria, y lo que pide (`pedir`)
+        const llave = llaveAlAzar();
+        if (origen) this.origenes.set(llave, origen);
+        // `pedir(orden, datos)`: que telar haga algo por él (cambiar una fecha). Devuelve una promesa con lo que quedó, o
+        // falla con el porqué; la página pregunta a la persona la primera vez (telar.servicios.lienzos)
+        const pedir = !origen ? '' : `var n=0,esperan={};window.addEventListener('message',function(e){var d=e.data;`
+            + `if(!d||d.lienzo!=='respuesta'||!esperan[d.id])return;var p=esperan[d.id];delete esperan[d.id];`
+            + `if(d.ok)p[0](d.datos);else p[1](new Error(d.error||'no se pudo'))});`
+            + `window.lienzo.pedir=function(orden,datos){return new Promise(function(si,no){var id=String(++n);esperan[id]=[si,no];`
+            + `parent.postMessage({lienzo:'pedir',llave:${JSON.stringify(llave)},id:id,orden:orden,datos:datos},'*')})};`;
         if (l.memoria) {
-            const llave = llaveAlAzar();
             this.memorias.set(llave, l.memoria);
             let leida = 'null';
             try { const t = this.lienzos.get(l.memoria); if (t !== undefined) { JSON.parse(t); leida = t; } } catch { /* todavía no guardó nada */ }
             memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
                 + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
         }
-        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}"><script>(function(){var p=${datos};window.lienzo={params:p};${memoria}`
+        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}"><script>(function(){var p=${datos};window.lienzo={params:p};${memoria}${pedir}`
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
         doc = previo + doc;
@@ -125,6 +137,28 @@ export class Paginas {
     /** Lo que un lienzo pide guardar (`window.lienzo.guardar`), en el archivo que declaró su página: solo el de su
      *  llave, y si es JSON. Se escribe entero (temporal y rename): un corte a medias no deja un JSON roto que el
      *  lienzo no pueda leer. */
+    /** Lo que pide un lienzo (`window.lienzo.pedir`), en nombre de su origen: se lo pide a telar y, si telar dice que
+     *  falta el permiso, le pregunta a la persona (siempre, esta vez, no) y vuelve a pedir. Devuelve la respuesta para
+     *  el lienzo. */
+    async pedir(llave: string, orden: string, datos: unknown): Promise<{ ok: boolean; datos?: unknown; error?: string }> {
+        const origen = this.origenes.get(llave);
+        if (!origen) return { ok: false, error: 'este lienzo no puede pedir órdenes' };
+        let r = await cli.lienzoPedir(origen, orden, datos);
+        const permiso = r.cuerpo?.permiso as { modulo: string; orden: string; descripcion: string; decision: string } | undefined;
+        if (!r.datos && permiso && permiso.decision !== 'negado') {
+            const eleccion = await ui.aviso(`El módulo «${permiso.modulo}» pide ${permiso.descripcion}.`, 'Permitir siempre', 'Solo esta vez', 'No',
+                { detalle: `Lo que telar le concede queda anotado; se revoca con: telar modulos permisos ${permiso.modulo} --quitar ${permiso.orden}` });
+            if (eleccion === 'Permitir siempre' || eleccion === 'Solo esta vez') {
+                await cli.conceder(permiso.modulo, permiso.orden, 'concedido');
+                r = await cli.lienzoPedir(origen, orden, datos);
+                if (eleccion === 'Solo esta vez') void cli.conceder(permiso.modulo, permiso.orden, 'olvidar');
+            } else if (eleccion === 'No') {
+                await cli.conceder(permiso.modulo, permiso.orden, 'negado');
+            }
+        }
+        return r.datos ? { ok: true, datos: r.datos.datos } : { ok: false, error: r.error ?? 'no se pudo' };
+    }
+
     guardar(llave: string, datos: string): void {
         const ruta = this.memorias.get(llave);
         if (!ruta || datos.length > 4_000_000) return;

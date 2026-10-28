@@ -38,6 +38,10 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [contexto]                     # lo que el agente de cada hilo sabe del módulo al arrancar
     texto = "La temperatura del mar: `telar nino34 medir`."
 
+    [fechas]                       # una fuente de fechas (telar fechas): un programa que las imprime en JSON
+    comando = ["bin/nino34", "fechas"]
+    escribir = ["bin/nino34", "mover"]   # opcional: cómo cambia una (recibe el cambio en JSON por la entrada)
+
     [requiere]                     # lo que tiene que haber en la máquina: se mira al instalarlo
     programas = ["uv"]
 
@@ -95,7 +99,7 @@ from telar.salida import visible
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
-         "requiere", "objetos", "permisos", "fondo"}
+         "requiere", "objetos", "permisos", "fondo", "fechas"}
 #: lo que entiende `[permisos]`; una clave que no está aquí se muestra como no entendida, no se calla
 PERMISOS = ("leer", "escribir", "red", "ordenes")
 TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
@@ -132,6 +136,9 @@ class Modulo:
     #: un fondo para la terminal de los hilos (`[fondo] archivo`): una página que se dibuja detrás de ella, aislada
     #: (`[terminal] fondo = "<módulo>"`). {archivo, nombre}; vacío si no trae
     fondo: dict = field(default_factory=dict)
+    #: una fuente de fechas (`[fechas] comando`): un programa que las imprime en JSON, como un proveedor `fechas` de
+    #: tipo `comando` (telar.proveedores.fechas). {comando, tiempo_maximo}; vacío si no trae
+    fechas: dict = field(default_factory=dict)
 
     def faltan(self) -> list[str]:
         """Los programas de `[requiere]` que esta máquina no tiene."""
@@ -146,7 +153,8 @@ class Modulo:
                  *[f"periódico {n}" for n in self.periodicos], *(["resultado"] if self.resultado else []),
                  *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
                  *[f"objetos {t}:" for t in self.objetos],
-                 *(["contexto del agente"] if self.contexto else []), *(["fondo de la terminal"] if self.fondo else [])])
+                 *(["contexto del agente"] if self.contexto else []), *(["fondo de la terminal"] if self.fondo else []),
+                 *(["fechas"] if self.fechas else [])])
 
     @property
     def pide(self) -> list[str]:
@@ -245,7 +253,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
     for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos",
-                  "permisos", "fondo"):
+                  "permisos", "fondo", "fechas"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -328,11 +336,26 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
             raise ErrorDeModulo(f"{nombre}: [fondo] archivo: una página .html de su carpeta")
         fondo = {"archivo": str(_ruta(carpeta, fondo["archivo"])), "nombre": str(fondo.get("nombre") or nombre)}
 
+    fechas = dict(datos.get("fechas", {}))
+    if fechas:
+        sobra = set(fechas) - {"comando", "tiempo_maximo", "escribir", "editables"}
+        if sobra:
+            raise ErrorDeModulo(f"{nombre}: [fechas] no conoce «{sorted(sobra)[0]}»")
+        if not isinstance(fechas.get("comando"), list) or not fechas["comando"] \
+                or not all(isinstance(w, str) and w for w in fechas["comando"]):
+            raise ErrorDeModulo(f"{nombre}: [fechas] comando: se esperaba una lista de palabras")
+        fechas["comando"] = _comando(carpeta, fechas["comando"])
+        if "escribir" in fechas:
+            if not isinstance(fechas["escribir"], list) or not fechas["escribir"] \
+                    or not all(isinstance(w, str) and w for w in fechas["escribir"]):
+                raise ErrorDeModulo(f"{nombre}: [fechas] escribir: se esperaba una lista de palabras")
+            fechas["escribir"] = _comando(carpeta, fechas["escribir"])
+
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app, fondo=fondo,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
                   instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
                   requiere=tuple(x.strip() for x in requiere), objetos=objetos,
-                  permisos=_permisos(nombre, datos.get("permisos")))
+                  permisos=_permisos(nombre, datos.get("permisos")), fechas=fechas)
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────

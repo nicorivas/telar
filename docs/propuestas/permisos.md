@@ -57,6 +57,13 @@ ordenes = ["mensaje", "tipo tarea"]  # las órdenes de telar que corre («telar 
 Su carpeta no se declara: es suya. Sin la tabla, el módulo «no dice qué pide», que no es lo mismo que no pedir
 nada (la tabla vacía).
 
+**Lo que se le concede** (hecho, 28-oct-2026, para las órdenes que pide la página de un módulo): la primera vez que
+su lienzo pide una orden declarada (`window.lienzo.pedir`), la página le pregunta a la persona (siempre, solo esta
+vez, no), y lo decidido queda en `telar.concesiones` (`<estado>/concesiones.json`), que telar hace cumplir en `POST
+/lienzo/pedir`. `telar modulos permisos [módulo] [--quitar orden]` lo lista y lo revoca. Es la primera concesión que
+telar hace cumplir; las demás puertas (las órdenes que corre un módulo desde su propio proceso, las rutas, la red)
+pueden usar el mismo registro.
+
 **Un sujeto** (por construir). Un agente, en la `politica` de su `agente.toml`; una persona, en la configuración
 de quien la deja entrar. La forma que se propone es la misma para los dos:
 

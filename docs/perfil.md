@@ -177,6 +177,7 @@ Lo que un repositorio le dice a telar vive en una carpeta, `.telar/`, en su raí
 | --- | --- | --- |
 | `perfil.yaml` | este perfil: lo del equipo, igual para todos | sí |
 | `local.yaml` | lo de cada persona, encima del perfil | no: agrégalo a `.gitignore` |
+| `fechas.yaml` | los mapas de fechas: cómo se leen los cronogramas que no tienen la forma de por defecto (abajo, «Mapas de fechas») | sí |
 | `equipo.yaml` | el equipo que trabaja en este repositorio: su bus, quién aprueba a las personas nuevas, sus módulos y los programas que hacen falta (`telar instalar --unirse`, docs/arquitectura.md, «Entre máquinas: el bus») | sí |
 
 `local.yaml` tiene la misma forma que el perfil y se lee encima de él: un valor suyo reemplaza al del perfil,
@@ -204,6 +205,54 @@ agente:                           # opcional: el [agente] de quien se une, si no
 
 Quien se une desde otra máquina suya (su servidor) copia antes su clave (`~/.config/telar/bus.token`): la puerta
 dice que ya tiene cuenta, y esa máquina entra con ella sin pedido nuevo. Nada secreto ni personal va ahí: cada persona genera su secreto en su máquina.
+
+## Mapas de fechas: `.telar/fechas.yaml`
+
+`telar fechas` ([contratos](contratos.md#telar-fechas---json)) lee sin que nadie lo diga la tabla `## Cronograma` de
+cada unidad, por el nombre de cada columna. Un cronograma con otra forma (otras secciones, otros nombres de
+columna, fechas escritas de otra manera, su propio vocabulario de estados, el proyecto nombrado por un código) se lee
+con un **mapa**: dice qué secciones son cronogramas y de dónde sale cada campo. Lo que el mapa no dice se busca
+por el nombre de la columna, como sin mapa.
+
+```yaml
+version: 1
+mapas:
+  sesiones:
+    secciones: '^##\s+(Junio|Julio|Agosto)\s*$'   # una expresión, o una lista; «## Sesiones» vale tal cual
+    campos:
+      clase: sesion                                  # un valor: igual en todas las filas
+      inicio: { columna: Fecha, formato: "EEE d-MMM", año: "frontmatter:actualizado" }
+      hora: { columna: Hora, formato: "HH:mm", rango: "–" }
+      titulo: "{Cliente} · {Programa}"               # una plantilla sobre las columnas
+      responsable: { columna: Relator }
+      estado: { columna: Estado, valores: { dictado: hecho, confirmado: pendiente } }
+      proyecto: { columna: Proyecto, buscar: codigo } # 70 → la unidad cuyo frontmatter dice «codigo: 70»
+documentos:                                          # qué documentos se leen con qué mapa (globs desde aquí)
+  - { ruta: equipo/calendario.md, mapa: sesiones }
+```
+
+Un documento también puede decir su mapa en su frontmatter, `fechas: sesiones`, que manda sobre `documentos:`
+(o el mapa entero ahí mismo, o `{ mapa: sesiones, secciones: "## Otra" }` para cambiarle algo). Los documentos que
+nombra `documentos:` se leen además de los de las unidades.
+
+| En un campo | Qué hace |
+| --- | --- |
+| `columna` | de qué columna sale (por su nombre, sin tildes ni mayúsculas; si no calza entero, por su comienzo) |
+| `formato` | el patrón de fecha de Unicode (LDML, el de CLDR e `Intl`): `d-MMM` «17-nov», `EEE d-MMM` «mar 17-nov», `dd/MM/yyyy`, `d 'de' MMMM`, `HH:mm`. Sin él, `AAAA-MM-DD`, `DD-MM-AAAA`, `DD-mes` o un mes entero (`2026-08`) |
+| `idioma` | el de los nombres de meses y días (`es` por defecto; `en`; otros con Babel instalado) |
+| `rango` | el separador de una celda que trae inicio y fin («10:00–12:00», «3 al 5-jun»: lo que le falta a la primera mitad lo pone la segunda) |
+| `año` | el de una fecha que no lo trae: un número, o `frontmatter:<clave>` (el año de esa clave del documento); si no, el año en curso |
+| `valores` | lo que dice la celda → lo que significa (`dictado: hecho`), sin tildes ni mayúsculas |
+| `buscar` | con `proyecto`: la clave del frontmatter de las unidades que dice ese valor |
+
+Un `patron:` en el mapa lee listas en vez de tablas: cada línea de la sección que calza es una fila, y sus grupos con
+nombre son sus columnas (`'^- (?P<inicio>\S+): (?P<titulo>.+)$'`). De qué proyecto es una fila sin `proyecto` en el
+mapa: en un documento que no es el de una unidad, la de su enlace (`[Faro](../faro/README.md)`); si no, la que
+contiene el documento.
+
+`telar fechas probar <archivo>` dice con qué mapa se lee un documento, qué filas leyó y cuáles saltó y por qué. Un
+`fechas.yaml` mal escrito no se lleva a los demás: va a las `fallas` de `telar fechas`. Con `[repos]`, cada repositorio
+trae el suyo, con sus rutas relativas a sí mismo.
 
 ## Varios repositorios
 

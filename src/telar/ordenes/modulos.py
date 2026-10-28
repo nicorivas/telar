@@ -12,6 +12,7 @@
     telar modulos nuevo <nombre> [--carpeta C] arma la carpeta de un módulo nuevo, para escribirlo
     telar modulos revisar [carpeta]            lo que le falta para publicarlo (y `--catalogo F`: revisar un catálogo)
     telar modulos publicar [carpeta] --version vX.Y [--catalogo oficial|<repo>] [--seco]   al catálogo, con un PR
+    telar modulos permisos [nombre] [--quitar [orden]]   lo que su página pidió y se le concedió o negó; olvidarlo
 
 Escribir, probar, publicar y mantener un módulo, con su criterio: la skill /modulos (`telar agente instalar`).
 
@@ -36,7 +37,7 @@ from telar.salida import visible
 
 AYUDA = "Los módulos (una carpeta con modulo.toml): la lista, e instalarlos desde un repositorio."
 VERBOS = ("instalar", "actualizar", "quitar", "adoptar", "activar", "desactivar", "catalogo", "nuevo", "revisar",
-          "publicar")
+          "publicar", "permisos")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -111,6 +112,8 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
         from telar.ordenes import modulos_publicar
 
         return modulos_publicar.main(verbo, argv, ctx)
+    if verbo == "permisos":
+        return _permisos(argv, ctx)
     p = _comun.analizador(f"modulos {verbo}", AYUDA)
     if verbo == "instalar":
         p.add_argument("fuente", help="su nombre en un catálogo, o un repositorio git (URL o carpeta) con un modulo.toml")
@@ -202,3 +205,34 @@ def _verbo(verbo: str, argv: list[str], ctx) -> int:
     except mod_modulos.ErrorDeModulo as e:
         print(f"telar: {e}", file=sys.stderr)
         return 1
+
+
+def _permisos(argv: list[str], ctx) -> int:
+    """`telar modulos permisos [módulo] [--quitar orden]`: lo que la persona le concedió o negó a cada módulo cuando su
+    página lo pidió (telar.concesiones), y olvidarlo para que se vuelva a preguntar."""
+    from telar import concesiones
+
+    p = _comun.analizador("modulos permisos", "Lo concedido o negado a cada módulo, y olvidarlo.")
+    p.add_argument("nombre", nargs="?", default="")
+    p.add_argument("--quitar", nargs="?", const="*", default="", help="olvidar una orden (o todas): se vuelve a preguntar")
+    p.add_argument("--json", action="store_true")
+    o, codigo = _comun.parsear(p, argv)
+    if o is None:
+        return codigo
+    if o.quitar:
+        if not o.nombre:
+            return _comun.queja("¿de qué módulo? telar modulos permisos <módulo> --quitar [orden]")
+        hubo = concesiones.quitar(ctx.config, o.nombre, "" if o.quitar == "*" else o.quitar)
+        print(f"{o.nombre}: olvidado; la próxima vez se pregunta" if hubo else f"{o.nombre}: no había nada que olvidar")
+        return 0
+    datos = concesiones.leer(ctx.config)
+    if o.nombre:
+        datos = {o.nombre: datos.get(o.nombre, {})}
+    if o.json:
+        return _comun.escribir_json(datos)
+    if not any(datos.values()):
+        print(_comun.tenue("ningún módulo ha pedido nada todavía"))
+    for modulo, ordenes in datos.items():
+        for orden, d in ordenes.items():
+            print(f"{modulo}  {orden}  {d.get('decision', '')}  " + _comun.tenue(str(d.get("desde", ""))))
+    return 0

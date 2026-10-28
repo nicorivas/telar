@@ -239,6 +239,8 @@ def post_tarea_accion(id: str, accion: str, pedido: PedidoTarea, ctx: Contexto =
 
 from telar.servicios import espejos as servicio_espejos
 from telar.servicios import pendientes as servicio_pendientes
+from telar.servicios import fechas as servicio_fechas
+from telar.servicios import lienzos as servicio_lienzos
 from telar.servicios import proyectos as servicio_proyectos
 
 
@@ -252,6 +254,47 @@ def get_espejos(ctx: Contexto = Depends(contexto)):
 def get_proyectos(ctx: Contexto = Depends(contexto)):
     """Las unidades del repositorio y si tienen hilo (`telar proyectos --json`)."""
     return servicio_proyectos.lista(ctx)
+
+
+@app.post("/lienzo/pedir")
+def post_lienzo_pedir(pedido: servicio_lienzos.Pedido, ctx: Contexto = Depends(contexto)):
+    """Lo que la página de un módulo pide que telar haga por ella (`window.lienzo.pedir`): solo lo que el módulo declaró
+    y la persona le concedió; si falta la concesión, un 403 con `permiso` (telar.servicios.lienzos)."""
+    return servicio_lienzos.pedir(ctx, pedido.origen, pedido.orden, pedido.datos)
+
+
+@app.get("/permisos")
+def get_permisos(ctx: Contexto = Depends(contexto)):
+    """Lo que la persona le concedió o negó a cada módulo (telar.concesiones)."""
+    from telar import concesiones
+
+    return concesiones.leer(ctx.config)
+
+
+@app.post("/permisos")
+def post_permisos(c: servicio_lienzos.Concesion, ctx: Contexto = Depends(contexto)):
+    """Anotar lo que la persona decidió sobre lo que pide un módulo: «concedido» o «negado»."""
+    return servicio_lienzos.conceder(ctx, c.modulo, c.orden, c.decision)
+
+
+class CambioDeFecha(BaseModel):
+    id: str
+    inicio: dt.date | None = None
+    fin: dt.date | None = None
+    version: str = ""
+
+
+@app.post("/fecha", response_model=servicio_fechas.Fecha)
+def post_fecha(cambio: CambioDeFecha, ctx: Contexto = Depends(contexto)):
+    """Cambiar una fecha donde vive (`telar fecha <id> --inicio … --json`)."""
+    return servicio_fechas.escribir(ctx, cambio.id, inicio=cambio.inicio, fin=cambio.fin, version=cambio.version)
+
+
+@app.get("/fechas", response_model=servicio_fechas.Fechas)
+def get_fechas(proyecto: str = "", desde: dt.date | None = None, hasta: dt.date | None = None,
+               ctx: Contexto = Depends(contexto)):
+    """Lo que tiene día, venga de donde venga (`telar fechas --json`)."""
+    return servicio_fechas.lista(ctx, proyecto=proyecto, desde=desde, hasta=hasta)
 
 
 @app.get("/pendientes", response_model=servicio_pendientes.Pendientes)

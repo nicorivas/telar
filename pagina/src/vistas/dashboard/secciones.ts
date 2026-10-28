@@ -86,7 +86,7 @@ export class PantallaSecciones implements Pantalla {
                 .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>↗</span> ${esc(a.nombre)}</a>`).join('')
             + '<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>↻</span></a>'
             + '</span></div>'];
-        h.push(...this.t.paginas.html(p.bloques));
+        h.push(...this.t.paginas.html(p.bloques, this.clave.startsWith('app:') ? this.clave : ''));
         this.t.pintar(h);
     }
 

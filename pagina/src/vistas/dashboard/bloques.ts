@@ -120,7 +120,7 @@ export class PantallaBloques implements Pantalla {
             else {
                 // un bloque puede traer, además de filas, un lienzo (un gráfico) y texto, como una página
                 for (const x of leido.pagina?.bloques ?? []) {
-                    if (x.lienzo) h.push(this.t.paginas.lienzo(x.lienzo));
+                    if (x.lienzo) h.push(this.t.paginas.lienzo(x.lienzo, `bloque:${b.clave}`));
                     if (x.texto) h.push(`<div class="md-pag">${mdSimple(x.texto)}</div>`);
                 }
                 const items = (leido.pagina?.bloques ?? []).flatMap(x => x.items ?? []);

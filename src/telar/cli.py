@@ -37,6 +37,8 @@ ORDENES: dict[str, str] = {
     "ficha": "Lo que el documento de un hilo dice de sí mismo.",
     "ir": "Poner el foco en un hilo.",
     "vincular": "Asociar un hilo a una carpeta del repositorio.",
+    "fecha": "Cambiar una fecha (su inicio, su fin) donde vive: la celda de su documento, su tarea, su programa.",
+    "fechas": "Lo que tiene día (actividades, hitos, sesiones), venga de donde venga.",
     "pendientes": "Lo que está por hacer, junto y con su hilo al lado.",
     "pendiente": "Llevar un pendiente al hilo donde se trabaja.",
     "tarea": "La ficha de una tarea de un proveedor, y correr una de sus acciones.",
