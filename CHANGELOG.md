@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.9] — 2026-10-27
+
 ### Added
 
 - **The search bar** (⌘K, Ctrl+K outside the Mac; `web/buscador.ts`): a window over everything, like Spotlight,
