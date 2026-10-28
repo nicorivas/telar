@@ -15,6 +15,7 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [pestana]                      # una pestaña del dashboard: un bloque (`[bloques]`)
     nombre = "niño 3.4"
     comando = ["bin/nino34", "pagina"]
+    dentro = "plan"                # opcional: una subpestaña de una fija (ahora, tareas, proyectos, plan, calendario)
 
     [app]                          # algo que se abre en el panel (`[apps]`): pagina, archivo o url
     archivo = "dist/app.html"

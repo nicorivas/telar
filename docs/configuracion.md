@@ -466,7 +466,7 @@ página, el contrato de `telar seccion`), `archivo` (un `.html` autocontenido), 
 
 | `aparece` | qué es | claves, además de `nombre` | antes era |
 |---|---|---|---|
-| `pestana` | una pestaña del dashboard | `comando` (obligatorio), `color`, `tecla` | `[bloques.x]` |
+| `pestana` | una pestaña del dashboard | `comando` (obligatorio), `color`, `tecla`, `dentro` | `[bloques.x]` |
 | `plan` | arriba del plan del día | las mismas | `[bloques.x]` con `en = "plan"` |
 | `apps` | una fila bajo **APPS** | una de `comando`, `archivo` o `url`; `descripcion`; `memoria` (solo con `archivo`) | `[apps.x]` (`comando` era `pagina`) |
 | `hilos` | un grupo en la lista de hilos | `hilos`; `comando` si tiene página | `[secciones.x]` (`comando` era `home`) |
@@ -509,11 +509,19 @@ tecla = "e"           # opcional: la tecla de su pestaña
 nombre = "retro"
 comando = ["/ruta/a/mi-retro"]
 en = "plan"           # opcional: arriba de la pestaña del plan, y solo cuando trae algo
+
+[bloques.gantt]
+nombre = "gantt"
+comando = ["/ruta/a/gantt", "pagina"]
+dentro = "proyectos"  # opcional: una subpestaña de «proyectos», no una pestaña propia
 ```
 
 Cada bloque es una pestaña del dashboard, después de «tareas», con su nombre; con `en = "plan"`
 va en cambio arriba del plan del día, y no se muestra mientras no traiga nada (una retro que
-aparece a la tarde). El comando imprime
+aparece a la tarde). Con `dentro = "<pestaña>"` es una subpestaña de una de las fijas (`ahora`, `tareas`,
+`proyectos`, `plan` o `calendario`): arriba de esa pestaña aparece una fila con su nombre y el de cada
+subpestaña («proyectos · gantt»), la barra de la izquierda sigue marcando la fija, y su comando corre solo
+cuando se abre (un Gantt no se recalcula cada 5 minutos para nadie). `en` y `dentro` no van juntos. El comando imprime
 una página con el contrato de `telar seccion` (ver [contratos](contratos.md#telar-bloque-clave---json))
 y el dashboard muestra sus ítems como filas: marca, hora, `texto` y `titulo`; los bloques de la
 página que traen `lienzo` (un gráfico) o `texto` se muestran arriba de las filas, como en una página. Se pide con el
@@ -990,7 +998,7 @@ Puede vivir en cualquier parte: dentro de otro proyecto, o en un repositorio pro
 # <carpeta>/modulo.toml
 descripcion = "la temperatura del mar en Niño 3.4"
 
-[pestana]                    # como un [bloques.x]: nombre, comando, color, tecla, en
+[pestana]                    # como un [bloques.x]: nombre, comando, color, tecla, en o dentro
 nombre = "niño 3.4"
 comando = ["bin/nino34", "pagina"]
 

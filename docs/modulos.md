@@ -35,6 +35,7 @@ consulta = true                         # también sin terminal: un objeto JSON 
 [pestana]                               # una pestaña del dashboard: un comando que imprime una página
 nombre = "saludo"
 comando = ["bin/saludo", "pagina"]
+# dentro = "proyectos"                  # o una subpestaña de una fija: ahora, tareas, proyectos, plan, calendario
 
 [app]                                   # algo que se abre en el panel: pagina, archivo o url
 archivo = "dist/app.html"

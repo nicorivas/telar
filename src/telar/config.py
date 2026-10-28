@@ -186,7 +186,8 @@ class Bloque:
     """Una sección del dashboard que llena un comando (`[bloques.<clave>]`): los correos de hoy,
     la retro del día. El comando imprime el mismo JSON que una página de sección
     (docs/contratos.md); telar lo pide con el ritmo de la red. Cada bloque es su propia pestaña,
-    salvo que `en` lo ponga dentro de otra («plan»)."""
+    salvo que `en` lo ponga arriba de otra («plan») o `dentro` lo haga una subpestaña de una de las
+    fijas (el Gantt, dentro de «proyectos»)."""
 
     clave: str
     nombre: str
@@ -197,6 +198,12 @@ class Bloque:
     en: str = ""
     #: la tecla de su pestaña en el dashboard, si tiene una
     tecla: str = ""
+    #: "" es una pestaña propia; una de `DENTRO_DE`, una subpestaña de esa: se ve al lado de su nombre, arriba
+    dentro: str = ""
+
+
+#: las pestañas fijas del dashboard que aceptan subpestañas (`[bloques.x] dentro`)
+DENTRO_DE = ("ahora", "tareas", "proyectos", "plan", "calendario")
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,7 +663,7 @@ LUGARES_DE_VISTA = {"pestana": "bloques", "plan": "bloques", "apps": "apps", "hi
 
 #: las claves que acepta una vista en cada lugar, además de `aparece` y `nombre`
 _CLAVES_DE_VISTA = {
-    "pestana": {"comando", "color", "tecla"},
+    "pestana": {"comando", "color", "tecla", "dentro"},
     "plan": {"comando", "color", "tecla"},
     "apps": {"comando", "archivo", "url", "memoria", "descripcion"},
     "hilos": {"hilos", "comando"},
@@ -796,6 +803,8 @@ def como_vista(tabla: str, cosa) -> dict:
             d["color"] = cosa.color
         if cosa.tecla:
             d["tecla"] = cosa.tecla
+        if cosa.dentro:
+            d["dentro"] = cosa.dentro
     elif tabla == "apps":
         d["aparece"] = "apps"
         if cosa.pagina:
@@ -993,7 +1002,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         bloques = []
         for clave, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"bloques.{clave}")
-            sobra = set(cuerpo) - {"nombre", "comando", "color", "en", "tecla"}
+            sobra = set(cuerpo) - {"nombre", "comando", "color", "en", "tecla", "dentro"}
             if sobra:
                 raise ErrorDeConfig(f"bloques.{clave}.{sorted(sobra)[0]}: no existe")
             comando = cuerpo.get("comando", [])
@@ -1011,8 +1020,13 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             tecla = cuerpo.get("tecla", "")
             if not isinstance(tecla, str) or len(tecla) > 1:
                 raise ErrorDeConfig(f"bloques.{clave}.tecla: se esperaba una letra, llegó {tecla!r}")
+            dentro = cuerpo.get("dentro", "")
+            if dentro not in ("", *DENTRO_DE):
+                raise ErrorDeConfig(f"bloques.{clave}.dentro: {', '.join(DENTRO_DE[:-1])} o {DENTRO_DE[-1]}; llegó {dentro!r}")
+            if dentro and en:
+                raise ErrorDeConfig(f"bloques.{clave}: en o dentro, no los dos (arriba de una pestaña, o una subpestaña)")
             bloques.append(Bloque(clave=clave, nombre=nombre.strip(), comando=tuple(comando), color=color,
-                                  en=en, tecla=tecla))
+                                  en=en, tecla=tecla, dentro=dentro))
         cambios["bloques"] = tuple(bloques)
 
     if "agenda" in datos:

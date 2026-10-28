@@ -19,7 +19,7 @@ import { PantallaPlan } from './plan';
 import { PantallaProyectos } from './proyectos';
 import { PantallaAhora } from './ahora';
 import { Configuracion } from './config/configuracion';
-import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
+import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace, PESTANA_DE_SECCION, SECCION_DE_PANTALLA } from './pantalla';
 import { type MensajeDia, montarDia, type VistaDia } from './vista';
 import { PantallaEquipo } from './equipo';
 import { PantallaAgentes } from './agentes';
@@ -168,8 +168,8 @@ export class Dashboard implements Tablero {
             ['ahora', 'ahora', '', 'ahora', 'n'],
             // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde
             ['revisar', 'revisar', '', 'tareas', 'v'],
-            // cada bloque sin `en` es su propia pestaña (el correo de hoy)
-            ...this.bloques.declarados.filter(b => !b.en).map(b =>
+            // cada bloque sin `en` ni `dentro` es su propia pestaña (el correo de hoy)
+            ...this.bloques.declarados.filter(b => !b.en && !b.dentro).map(b =>
                 [`bloque:${b.clave}`, 'bloque', b.clave, b.nombre, b.tecla ?? ''] as Pestana),
             ...deProveedores,
             ['proyectos', 'proyectos', '', 'proyectos', 'p'],
@@ -316,8 +316,23 @@ export class Dashboard implements Tablero {
     config(): cli.JsonConfig | undefined { return this.cfg; }
 
     pintar(h: string[]): void {
-        this.panel?.pintar(this.nav() + h.join('\n'));
+        this.panel?.pintar(this.nav() + this.subpestanas() + h.join('\n'));
         this.alPintar?.();
+    }
+
+    /** La fila de subpestañas de la pestaña fija que se ve, si algún bloque dice `dentro` de ella («proyectos ·
+     *  gantt»): la fija con su nombre y cada bloque con el suyo, marcada la que se ve. Solo en la pantalla de la
+     *  pestaña o de uno de sus bloques: la ficha de una tarea abierta desde ahí no la lleva. */
+    private subpestanas(): string {
+        const seccion = this.actual === 'bloque' ? this.bloques.dentroDelAbierto() : SECCION_DE_PANTALLA[this.actual] ?? '';
+        const suyos = seccion ? this.bloques.declarados.filter(b => b.dentro === seccion) : [];
+        if (!suyos.length) return '';
+        const fija = PESTANA_DE_SECCION[seccion];
+        const abierto = this.actual === 'bloque' ? this.bloques.abierto().split(':')[0] : '';
+        const tab = (accion: string, valor: string, nombre: string, sel: boolean) =>
+            `<a class="${sel ? 'sel' : ''}" data-accion="${accion}" data-valor="${esc(valor)}">${esc(nombre)}</a>`;
+        return `<div class="subpest">${tab(fija, '', seccion, !abierto)}`
+            + suyos.map(b => tab('bloque', b.clave, b.nombre, b.clave === abierto)).join('') + '</div>';
     }
 
     /** Lo que manda la página: teclas, clics (acciones) y lo que guarda un lienzo. Cada acción es de la pantalla

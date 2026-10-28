@@ -8,7 +8,7 @@ import { esc } from '../../estilo';
 import { modelo } from '../../modelo';
 import { pendientes, seccion } from './dia';
 import { mdSimple } from './pagina';
-import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
+import { type Accion, type Pantalla, type Tablero, abrirEnlace, pestanaDeSeccion } from './pantalla';
 
 const alternar = (s: Set<string>, k: string) => { if (s.has(k)) s.delete(k); else s.add(k); };
 
@@ -58,7 +58,11 @@ export class PantallaBloques implements Pantalla {
     /** El bloque y el ítem que se ven («<clave>:<ítem>»): la ficha de una tarea vuelve ahí. */
     abierto(): string { return `${this.sel}:${this.item ?? ''}`; }
 
-    pestanaMarcada(): string { return `bloque:${this.sel}`; }
+    /** La fila de la barra que se marca: la del bloque, o la de la pestaña fija si es una subpestaña suya. */
+    pestanaMarcada(): string { const d = this.dentroDelAbierto(); return d ? pestanaDeSeccion(d) : `bloque:${this.sel}`; }
+
+    /** La pestaña fija de la que el bloque que se ve es subpestaña (`dentro`), o "". */
+    dentroDelAbierto(): string { return this.declarados.find(b => b.clave === this.sel)?.dentro ?? ''; }
 
     /** Un bloque (`[bloques.x]`) en su pestaña: lo que imprime su comando, con sus atajos. */
     pintar(): void {
@@ -179,6 +183,8 @@ export class PantallaBloques implements Pantalla {
         await Promise.all(this.declarados.map(async b => {
             const antes = this.leidos.get(b.clave);
             if (!forzar && antes && ahora - antes.hora < 5 * 60 * 1000) return;
+            // una subpestaña (el Gantt) no se ve de paso, como el plan ve sus bloques: se pide cuando se abre
+            if (b.dentro && !(this.t.pantalla === 'bloque' && this.sel === b.clave)) return;
             const r = await cli.bloque(b.clave);
             await this.t.paginas.precargar(r.datos?.bloques);
             this.leidos.set(b.clave, { pagina: r.datos, error: r.datos ? '' : (r.error ?? 'no contestó'), hora: Date.now() });

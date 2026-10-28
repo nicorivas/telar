@@ -69,6 +69,11 @@
   .lienzo { display: block; width: 100%; border: 0; margin: 0 0 1lh; background: transparent; color-scheme: normal; }
   /* una app a todo el panel: lo que queda bajo la barra y la cabecera */
   .lienzo.lleno { height: calc(100cqh - 6.5lh); min-height: 320px; margin: 0; }
+  /* las subpestañas de una pestaña fija («proyectos · gantt», `[bloques.x] dentro`): una línea más arriba */
+  .subpest { display: flex; gap: 0 3ch; margin: 0 0 1lh; padding-bottom: .5lh; border-bottom: 1px solid var(--linea); }
+  .subpest a { color: var(--dim); cursor: pointer; } .subpest a:hover { color: var(--violeta); }
+  .subpest a.sel { color: var(--fg); font-weight: bold; }
+  .subpest ~ .lienzo.lleno { height: calc(100cqh - 8.5lh); }
   .sep-pag { border-top: 1px solid var(--linea); margin: 1lh 0; }
   .item-pag { padding: 0 1ch; margin: 0; border-left: 2px solid var(--linea); }
   .item-pag.clic { cursor: pointer; } .item-pag.clic:hover { background: var(--hover); border-left-color: var(--azul); }

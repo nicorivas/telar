@@ -254,7 +254,8 @@ export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; des
 
 /** Una sección del día que llena un comando (`[bloques.<clave>]`). */
 /** `en`: "" es una pestaña propia del dashboard; «plan», arriba del plan. `tecla`: la de su pestaña. */
-export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string }
+/** `en`: arriba de otra pestaña («plan»); `dentro`: una subpestaña de una de las fijas («proyectos») */
+export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string; dentro?: string }
 
 /** `telar bloque <clave> --item <id>`: el detalle de un ítem (el cuerpo de un correo), al abrirlo. */
 export async function bloqueItem(clave: string, id: string): Promise<Respuesta<{ texto: string }>> {

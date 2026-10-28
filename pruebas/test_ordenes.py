@@ -830,6 +830,17 @@ class Bloques(Orden):
             with self.assertRaises(ErrorDeConfig, msg=mal):
                 mod_config.desde_dict({"bloques": {"c": mal}})
 
+    def test_un_bloque_puede_ser_subpestana_de_una_fija(self):
+        from telar import config as mod_config
+        from telar.config import ErrorDeConfig
+
+        b = mod_config.desde_dict({"bloques": {"g": {"comando": ["x"], "dentro": "proyectos"}}}).bloques[0]
+        self.assertEqual((b.dentro, b.en), ("proyectos", ""))
+        self.assertEqual(mod_config.como_vista("bloques", b)["dentro"], "proyectos")
+        for mal in ({"comando": ["x"], "dentro": "correo"}, {"comando": ["x"], "dentro": "plan", "en": "plan"}):
+            with self.assertRaises(ErrorDeConfig, msg=mal):
+                mod_config.desde_dict({"bloques": {"c": mal}})
+
     def test_lo_mal_declarado_es_un_error(self):
         from telar import config as mod_config
         from telar.config import ErrorDeConfig

@@ -122,7 +122,7 @@ def resuelta(ctx) -> ConfigResuelta:
             for r in cfg.remotos
         ],
         "bus": _bus(cfg),
-        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla} for b in cfg.bloques],
+        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla, "dentro": b.dentro} for b in cfg.bloques],
         # las pestañas de proveedor (un feed) y su tecla, para el dashboard
         "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
                      for p in cfg.proveedores_activos() if p.opciones.get("pestana")],

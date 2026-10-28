@@ -16,6 +16,16 @@ import type { MensajeDia, VistaDia } from './vista';
 export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'agentes' | 'tarea'
     | 'revisar' | 'pestana' | 'plan' | 'calendario';
 
+/** De qué pestaña fija (`dentro` de un bloque, config.DENTRO_DE) es cada pantalla, y con qué acción se vuelve a ella. */
+export const SECCION_DE_PANTALLA: Partial<Record<NombrePantalla, string>> = {
+    ahora: 'ahora', revisar: 'tareas', proyectos: 'proyectos', plan: 'plan', calendario: 'calendario',
+};
+export const PESTANA_DE_SECCION: Record<string, string> = {
+    ahora: 'ahora', tareas: 'revisar', proyectos: 'proyectos', plan: 'plan', calendario: 'calendario',
+};
+/** La clave de la pestaña fija de una sección (`dentro`): la barra marca esa fila mientras se ve una subpestaña. */
+export const pestanaDeSeccion = (seccion: string): string => PESTANA_DE_SECCION[seccion] ?? seccion;
+
 /** Una acción de una página (`data-accion`): su valor (`data-valor`) y el mensaje entero (⌘, lo escrito). */
 export type Accion = (valor: string, m: MensajeDia) => unknown;
 
