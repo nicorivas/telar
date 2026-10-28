@@ -58,6 +58,8 @@ class ConfigResuelta(BaseModel):
     ruta_perfil: str = ""
     intervalos: dict[str, float] = Field(default_factory=dict)
     calendario: dict[str, Any] = Field(default_factory=dict)
+    #: cómo se ve la terminal de un hilo (`[terminal]`): columnas, posicion, fondo
+    terminal: dict[str, Any] = Field(default_factory=dict)
     hilos: dict[str, Any] = Field(default_factory=dict)
     agente: dict[str, Any] = Field(default_factory=dict)
     remotos: list[dict[str, Any]] = Field(default_factory=list)
@@ -102,6 +104,7 @@ def resuelta(ctx) -> ConfigResuelta:
             "foco_maximo": cfg.intervalos.foco_maximo,
         },
         "calendario": _calendario(cfg),
+        "terminal": {"columnas": cfg.terminal.columnas, "posicion": cfg.terminal.posicion, "fondo": cfg.terminal.fondo},
         "hilos": {"directorios": list(cfg.hilos.directorios), "tope": cfg.hilos.tope},
         "agente": {
             "nombre": cfg.agente.nombre,

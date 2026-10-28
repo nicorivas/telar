@@ -49,6 +49,10 @@ carpeta = "~/.local/state/saludo"
 [instalar]                              # lo que corre al instalarlo y al actualizarlo, en su carpeta
 comando = ["python3", "-m", "venv", ".venv"]
 
+[fondo]                                 # un fondo para la terminal de los hilos (⚙ terminal, [terminal] fondo)
+archivo = "web/fondo.html"              # una página de su carpeta: se dibuja detrás de la terminal, aislada (un iframe
+nombre = "estrellas"                    # sin el origen de la página: no la ve, ni a la API) y sin clics
+
 [contexto]                              # lo que el agente de cada hilo sabe de él al arrancar: una o dos líneas
 texto = "El módulo saludo: `telar saludo hola`."
 

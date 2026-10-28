@@ -661,6 +661,16 @@ export const alojamientoTopes = async (persona: string, memoria: string, cpu: st
 export const alojamientoActualizar = async (persona: string) =>
     await aServe<JsonAlojamiento>('POST', '/alojamiento/actualizar', 60000, { persona });
 
+/** Los fondos que se pueden elegir para la terminal, y cómo se ve ahora (`GET /terminal/fondos`). */
+export interface JsonFondos {
+    fondos: { valor: string; nombre: string; descripcion: string; tipo: 'propio' | 'modulo' }[];
+    actual: { columnas: number; posicion: 'izquierda' | 'centro' | 'derecha'; fondo: string };
+}
+export const fondosTerminal = async () => await deServe<JsonFondos>('/terminal/fondos', 15000);
+/** Cambiar un ajuste de `[terminal]`: columnas (0: todo), posicion o fondo. */
+export const ajusteTerminal = async (clave: 'columnas' | 'posicion' | 'fondo', valor: string | number) =>
+    await aServe<{ ok: boolean; clave: string; valor: string | number }>('PUT', `/config/terminal/${clave}`, 15000, { valor });
+
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {
     id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;

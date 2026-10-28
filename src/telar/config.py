@@ -291,6 +291,51 @@ class Tipo:
     en: str = ""
 
 
+#: dónde va la terminal dentro de su vista
+POSICIONES_TERMINAL = ("izquierda", "centro", "derecha")
+#: el ancho de la terminal: entre estas columnas, o 0 (todo lo que quepa)
+COLUMNAS_TERMINAL = (40, 400)
+
+
+@dataclass(frozen=True, slots=True)
+class Terminal:
+    """Cómo se ve la terminal de un hilo en la página (`[terminal]`).
+
+    `columnas`: hasta cuántas columnas de ancho (0: todo lo que quepa); `posicion`: izquierda, centro o derecha;
+    `fondo`: lo que va alrededor: «telar» (el de siempre, un telar tenue), «ninguno», un color («#1e1e2e»), una
+    imagen («imagen:~/fondos/a.jpg» o «imagen:https://…») o el nombre de un módulo que trae un `[fondo]`."""
+
+    columnas: int = 130
+    posicion: str = "centro"
+    fondo: str = "telar"
+
+
+def validar_terminal(clave: str, valor: object) -> object:
+    """Un valor de `[terminal]`, normalizado; ErrorDeConfig si no sirve."""
+    if clave == "columnas":
+        if isinstance(valor, str) and valor.strip().isdigit():
+            valor = int(valor.strip())
+        if isinstance(valor, str) and valor.strip().lower() in ("todo", "todas", "0"):
+            valor = 0
+        if not isinstance(valor, int) or isinstance(valor, bool) or (valor and not COLUMNAS_TERMINAL[0] <= valor <= COLUMNAS_TERMINAL[1]):
+            raise ErrorDeConfig(f"terminal.columnas: un número de {COLUMNAS_TERMINAL[0]} a {COLUMNAS_TERMINAL[1]}, o 0 "
+                                f"(todo el ancho); llegó {valor!r}")
+        return valor
+    if clave == "posicion":
+        v = str(valor or "").strip().lower()
+        if v not in POSICIONES_TERMINAL:
+            raise ErrorDeConfig(f"terminal.posicion: {', '.join(POSICIONES_TERMINAL)}; llegó {valor!r}")
+        return v
+    if clave == "fondo":
+        v = str(valor or "").strip()
+        if not v or re.search(r"[\x00-\x1f]", v):
+            raise ErrorDeConfig(f"terminal.fondo: telar, ninguno, un color #rrggbb, imagen:… o un módulo; llegó {valor!r}")
+        if v.startswith("#") and not re.fullmatch(r"#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?", v):
+            raise ErrorDeConfig(f"terminal.fondo: un color va como #rgb o #rrggbb; llegó {v!r}")
+        return v
+    raise ErrorDeConfig(f"terminal.{clave}: no existe (columnas, posicion, fondo)")
+
+
 @dataclass(frozen=True, slots=True)
 class Notas:
     """Las notas que las skills y la persona le dejan a los eventos del día (`[notas]`, telar.notas)."""
@@ -409,6 +454,8 @@ class Config:
     tipos: tuple[Tipo, ...] = ()
     #: las notas de los eventos del día (`[notas]`).
     notas: Notas = field(default_factory=Notas)
+    #: cómo se ve la terminal de un hilo en la página (`[terminal]`).
+    terminal: Terminal = field(default_factory=Terminal)
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -1279,12 +1326,17 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             valores[campo] = v.strip()
         cambios["notas"] = Notas(**valores)
 
+    if "terminal" in datos:
+        cuerpo = _tabla(datos["terminal"], "terminal")
+        cambios["terminal"] = Terminal(**{k: validar_terminal(k, v) for k, v in cuerpo.items()})
+
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
         "ficha", "agente", "hilos", "atajos", "secciones", "apps", "dashboard", "remotos", "bloques", "agenda",
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
         "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
         "disparadores",  # leídos por _con_disparadores
+        "terminal",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

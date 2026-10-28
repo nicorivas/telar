@@ -723,6 +723,19 @@ En **la otra máquina** (el laptop), `[periodicos] en` dice dónde viven, y la o
 en = "servidor"                      # el nombre de un [remotos.<nombre>]
 ```
 
+## `[terminal]` — cómo se ve la terminal de un hilo en la página
+
+```toml
+[terminal]
+columnas = 130          # hasta cuántas columnas de ancho (40 a 400), o 0: todo lo que quepa
+posicion = "centro"     # izquierda, centro o derecha, si sobra espacio
+fondo = "telar"         # telar (el de siempre), ninguno, un color "#11111b", "imagen:~/fondos/a.jpg" o "imagen:https://…",
+                        # o el nombre de un módulo que trae [fondo] (docs/modulos.md)
+```
+
+Lo mismo, en la página: ⚙ → terminal, que lo escribe aquí y lo aplica al tiro a las terminales abiertas. La ventana
+del hilo toma el ancho de la terminal (la vista se lo da a tmux). Es de la máquina que sirve la página.
+
 ## `[agentes]` — agentes residentes, cada uno en su carpeta
 
 ```toml

@@ -6,6 +6,17 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- How a thread's terminal looks is configurable (`[terminal]`, and ⚙ terminal in the page): its maximum width in
+  columns (`columnas`, 40–400, or 0 for the full width; it was 130 fixed, or a `localStorage` key), its position
+  when there is room (`posicion`: izquierda, centro, derecha; it was always centered) and its background (`fondo`:
+  the faint loom as before, none, a color, an image from this machine or a URL, or a module). Changes apply at once
+  to the open terminals.
+- A module can be a terminal background: `[fondo] archivo = "fondo.html"` in its `modulo.toml`. Its page is drawn
+  behind the terminal in a sandboxed iframe (no access to the page or the API, no clicks); its files are served
+  from `/api/terminal/fondo/…`. `GET /terminal/fondos`, `PUT /config/terminal/{clave}`, `GET /terminal/imagen`.
+
 ## [0.7.7] — 2026-10-27
 
 ### Fixed

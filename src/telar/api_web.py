@@ -181,7 +181,8 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
     @app.middleware("http")
     async def con_llave(request: Request, siguiente):
         ruta = request.url.path
-        if ruta in LIBRES or ruta == "/unirse" or ruta.startswith("/unirse/"):
+        if ruta in LIBRES or ruta == "/unirse" or ruta.startswith("/unirse/") or ruta.startswith("/api/terminal/fondo/"):
+            # (el fondo de la terminal que es un módulo: sus archivos, pedidos desde un iframe aislado, sin cookie)
             # la puerta para pedir entrar al bus (telar.unirse) no lleva llave: se cuida sola
             return await siguiente(request)
         dada = request.query_params.get("k", "")

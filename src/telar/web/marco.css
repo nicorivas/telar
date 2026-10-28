@@ -1626,7 +1626,8 @@ body.angosto.en-detalle #barra { display: none; }
     overflow: hidden;
   }
 
-  /* la terminal centrada, del ancho de sus columnas (lo pone la página); alrededor, el fondo (un telar tenue) */
+  /* la terminal del ancho de sus columnas, a la izquierda, al centro o a la derecha (`[terminal]`: lo pone la
+     página); alrededor, el fondo: un telar tenue, nada, un color, una imagen o la página de un módulo */
   .caja {
     position: relative;
     display: flex;
@@ -1636,12 +1637,14 @@ body.angosto.en-detalle #barra { display: none; }
     overflow: hidden;
   }
 
-  .fondo { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .fondo { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
 
+  /* a su derecha, la misma línea gris que separa las partes de la página */
   .t {
     position: relative;
     height: 100%;
     padding: var(--e-1) 0 0 var(--h-1);
+    border-right: var(--borde);
     background: var(--bg);
   }
 

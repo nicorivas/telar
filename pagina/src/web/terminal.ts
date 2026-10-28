@@ -11,6 +11,7 @@
 // xterm.js lo sirve telar.api_web en `/estatico/xterm` (copiado de node_modules, y guardado una semana en el
 // navegador): se carga una vez, la primera vez que se abre una terminal.
 
+import { alCambiar, aspecto, fondoDe, leer } from './aspecto-terminal';
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 
@@ -60,7 +61,7 @@ function enchufe(ruta: string): string {
 
 export function montar(raiz: HTMLElement, rutas: RutasVista): Vista {
     raiz.classList.add('v-terminal');
-    raiz.innerHTML = '<div class="caja"><canvas class="fondo" aria-hidden="true"></canvas><div class="t"></div></div>'
+    raiz.innerHTML = '<div class="caja"><div class="t"></div></div>'
         + '<form class="escribir"><div class="soltar" hidden></div><textarea rows="1" placeholder="escríbele al hilo · ⏎ envía, ⇧⏎ línea nueva"></textarea>'
         + '<span class="ayuda" title="con la caja vacía, ⏎ ⎋ ↑ ↓ van directo a la terminal; un clic en la terminal teclea en ella">vacía: ⏎ ⎋ ↑↓ directo</span></form>';
     let cerrada = false;
@@ -186,10 +187,10 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     marco.addEventListener('copy', alCopiar, true);
     deshacer.push(() => marco.removeEventListener('copy', alCopiar, true));
 
-    // el tamaño: todo el alto, y de ancho lo que quepa hasta COLUMNAS (más ancho se lee mal), centrada. La ventana
-    // del hilo toma este tamaño (la vista se lo da a tmux), así que no sobra nada que rellenar
-    let COLUMNAS = 130;
-    try { COLUMNAS = Number(localStorage.getItem('telar.columnas')) || COLUMNAS; } catch { /* sin almacén */ }
+    // el tamaño: todo el alto, y de ancho lo que quepa hasta las columnas de `[terminal]` (130 de fábrica: más ancho
+    // se lee mal; 0, todo), donde diga su posición. La ventana del hilo toma este tamaño (la vista se lo da a tmux),
+    // así que no sobra nada que rellenar
+    const columnas = () => aspecto().columnas || 10000;
     const celda = () => {
         const d = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } } } })._core?._renderService?.dimensions;
         const c = d?.css?.cell;
@@ -205,7 +206,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         const c = celda();
         if (!c) return;
         const arriba = parseFloat(getComputedStyle(marco).paddingTop) || 0, barra = 14;
-        const cols = Math.max(20, Math.min(COLUMNAS, Math.floor((caja.clientWidth - barra - 2 * c.width) / c.width)));
+        const cols = Math.max(20, Math.min(columnas(), Math.floor((caja.clientWidth - barra - 2 * c.width) / c.width)));
         const rows = Math.max(5, Math.floor((caja.clientHeight - arriba) / c.height));
         marco.style.width = `${Math.ceil(cols * c.width + barra)}px`;
         if (cols !== term.cols || rows !== term.rows) {
@@ -216,7 +217,42 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         }
     };
     ajustar();
-    deshacer.push(fondo(raiz, raiz.querySelector<HTMLCanvasElement>('.fondo')!, t));
+    // la posición y el fondo, de `[terminal]`; cuando ⚙ terminal los cambia, se vuelven a aplicar aquí mismo
+    let pararFondo: (() => void) | undefined;
+    let dibujado = '';
+    const aplicar = () => {
+        const a = aspecto();
+        caja.style.justifyContent = { izquierda: 'flex-start', centro: 'center', derecha: 'flex-end' }[a.posicion] ?? 'center';
+        const f = fondoDe(a);
+        const clave = `${f.tipo}|${f.valor}`;
+        if (clave !== dibujado) {
+            dibujado = clave;
+            pararFondo?.(); pararFondo = undefined;
+            caja.querySelector('.fondo')?.remove();
+            caja.style.background = '';
+            if (f.tipo === 'telar') {
+                const lienzo = document.createElement('canvas');
+                lienzo.className = 'fondo'; lienzo.setAttribute('aria-hidden', 'true');
+                caja.prepend(lienzo);
+                pararFondo = fondo(raiz, lienzo, t);
+            } else if (f.tipo === 'color') {
+                caja.style.background = f.valor;
+            } else if (f.tipo === 'imagen') {
+                caja.style.background = `center / cover no-repeat url("${f.valor.replace(/"/g, '%22')}")`;
+            } else if (f.tipo === 'modulo') {
+                // la página de un módulo, aislada: sin el origen de esta (no ve la página ni la API) y sin clics
+                const hoja = document.createElement('iframe');
+                hoja.className = 'fondo'; hoja.setAttribute('aria-hidden', 'true'); hoja.tabIndex = -1;
+                hoja.setAttribute('sandbox', 'allow-scripts');
+                hoja.src = f.valor;
+                caja.prepend(hoja);
+            }
+        }
+        ajustar();
+    };
+    aplicar();
+    deshacer.push(alCambiar(aplicar), () => pararFondo?.());
+    void leer();
 
     // cada conexión abre una vista nueva del hilo, con el tamaño de ahora
     const direccion = () => enchufe(`/pty?hilo=${encodeURIComponent(hilo)}&cols=${term.cols}&rows=${term.rows}`

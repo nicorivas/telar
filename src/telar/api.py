@@ -585,6 +585,89 @@ def put_ajuste(ajuste: str, pedido: PedidoAjuste, ctx: Contexto = Depends(contex
     raise ErrorDeServicio(f"no hay un ajuste «{ajuste}»: directorios, reunion, proyecto, calendario o pestanas", 404)
 
 
+# ── la terminal de los hilos: su ancho, su posición y su fondo (`[terminal]`) ───────────────
+
+#: los fondos de siempre, además de un color, una imagen o un módulo
+FONDOS = (("telar", "telar", "el de siempre: un telar tenue que teje"), ("ninguno", "ninguno", "nada: el fondo de la página"))
+IMAGENES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+            ".svg": "image/svg+xml"}
+
+
+def _modulo_fondo(ctx, nombre: str):
+    return next((m for m in getattr(ctx.config, "modulos", ()) if m.nombre == nombre and m.fondo), None)
+
+
+@app.get("/terminal/fondos")
+def get_terminal_fondos(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los fondos que se pueden elegir para la terminal: los de siempre y los de los módulos que traen `[fondo]`;
+    además vale un color (#rrggbb) o una imagen (imagen:ruta o imagen:https://…)."""
+    salida = [{"valor": v, "nombre": n, "descripcion": d, "tipo": "propio"} for v, n, d in FONDOS]
+    salida += [{"valor": m.nombre, "nombre": m.fondo.get("nombre") or m.nombre, "descripcion": m.descripcion,
+                "tipo": "modulo"} for m in getattr(ctx.config, "modulos", ()) if m.fondo]
+    t = ctx.config.terminal
+    return {"fondos": salida, "actual": {"columnas": t.columnas, "posicion": t.posicion, "fondo": t.fondo}}
+
+
+class PedidoTerminal(BaseModel):
+    valor: str | int
+
+
+@app.put("/config/terminal/{clave}")
+def put_terminal(clave: str, pedido: PedidoTerminal, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar cómo se ve la terminal: `columnas` (40–400, o 0: todo el ancho), `posicion` (izquierda, centro,
+    derecha) o `fondo` (telar, ninguno, #rrggbb, imagen:…, o un módulo con `[fondo]`). Se escribe en `[terminal]`."""
+    from telar import config as mod_config
+
+    try:
+        valor = mod_config.validar_terminal(clave, pedido.valor)
+        if clave == "fondo" and isinstance(valor, str) and valor not in ("telar", "ninguno") \
+                and not valor.startswith(("#", "imagen:")) and _modulo_fondo(ctx, valor) is None:
+            raise mod_config.ErrorDeConfig(f"no hay un módulo «{valor}» con [fondo]: telar, ninguno, #rrggbb, imagen:… "
+                                           f"o uno de GET /terminal/fondos")
+        if clave == "fondo" and isinstance(valor, str) and valor.startswith("imagen:") and "://" not in valor:
+            ruta = Path(valor[len("imagen:"):]).expanduser()
+            if ruta.suffix.lower() not in IMAGENES or not ruta.is_file():
+                raise mod_config.ErrorDeConfig(f"{ruta}: no es una imagen de esta máquina ({', '.join(IMAGENES)})")
+        mod_config.escribir_clave("terminal", clave, valor, ctx.config.origen)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return {"ok": True, "clave": clave, "valor": valor}
+
+
+@app.get("/terminal/imagen")
+def get_terminal_imagen(ctx: Contexto = Depends(contexto)):
+    """La imagen de esta máquina que es el fondo de la terminal (`fondo = "imagen:<ruta>"`)."""
+    from fastapi.responses import FileResponse
+
+    f = ctx.config.terminal.fondo
+    if not f.startswith("imagen:") or "://" in f:
+        raise ErrorDeServicio("el fondo no es una imagen de esta máquina", 404)
+    ruta = Path(f[len("imagen:"):]).expanduser()
+    tipo = IMAGENES.get(ruta.suffix.lower())
+    if tipo is None or not ruta.is_file():
+        raise ErrorDeServicio(f"no encuentro {ruta}", 404)
+    return FileResponse(ruta, media_type=tipo, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/terminal/fondo/{ruta:path}")
+def get_terminal_fondo(ruta: str, ctx: Contexto = Depends(contexto)):
+    """El módulo que es el fondo de la terminal: su página (`/terminal/fondo/`) y lo que ella pida de su carpeta.
+    Se dibuja aislado (un iframe sin el origen de la página): no ve la página ni la API. Sin llave en la página
+    (web/api_web.py), porque desde ese iframe el navegador no manda la cookie: son los archivos del módulo."""
+    from fastapi.responses import FileResponse
+
+    m = _modulo_fondo(ctx, ctx.config.terminal.fondo)
+    if m is None:
+        raise ErrorDeServicio("el fondo de la terminal no es un módulo", 404)
+    principal = Path(m.fondo["archivo"]).resolve()
+    carpeta = principal.parent
+    destino = principal if not ruta else (carpeta / ruta).resolve()
+    if not destino.is_relative_to(carpeta) or not destino.is_file():
+        raise ErrorDeServicio("no hay eso en el fondo", 404)
+    return FileResponse(destino, headers={"Cache-Control": "no-cache",
+                                          "Content-Security-Policy": "sandbox allow-scripts"})
+
+
 @app.get("/compartir/destinos", response_model=servicio_compartir.Destinos)
 def get_destinos(ctx: Contexto = Depends(contexto)):
     """Los proveedores que reciben algo compartido (`telar compartir --destinos`)."""
