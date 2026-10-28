@@ -209,13 +209,34 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         const cols = Math.max(20, Math.min(columnas(), Math.floor((caja.clientWidth - barra - 2 * c.width) / c.width)));
         const rows = Math.max(5, Math.floor((caja.clientHeight - arriba) / c.height));
         marco.style.width = `${Math.ceil(cols * c.width + barra)}px`;
+        // una línea en cada lado donde entre la terminal y lo de al lado hay fondo: pegada a la barra de hilos, a la
+        // ficha o al borde, no (la barra y la ficha ya traen la suya, y dos líneas juntas se ven gruesas)
+        const izq = marco.offsetLeft > 1, der = marco.offsetLeft + marco.offsetWidth < caja.clientWidth - 1;
+        marco.classList.toggle('borde-izq', izq);
+        marco.classList.toggle('borde-der', der);
         if (cols !== term.cols || rows !== term.rows) {
             term.resize(cols, rows);
             if (ws?.readyState === 1) ws.send(JSON.stringify({ r: [cols, rows] }));
         } else {
             term.refresh(0, term.rows - 1);   // vuelve a verse con el mismo tamaño: se redibuja igual
+            // y se le recuerda a tmux, por si otra vista del mismo hilo lo dejó en otro tamaño
+            if (reenviar && ws?.readyState === 1) ws.send(JSON.stringify({ r: [cols, rows] }));
         }
+        reenviar = false;
     };
+    // medir de nuevo cuando la disposición se asienta: en el cuadro siguiente y otra vez un poco después. La caja
+    // avisa sola cuando cambia de tamaño (su ResizeObserver), pero no siempre llega: la pestaña estaba atrás cuando
+    // apareció la barra de Chrome, o el modo cambió varias cosas a la vez
+    let reenviar = false, cuadro = 0;
+    const asentar = () => {
+        reenviar = true;
+        cancelAnimationFrame(cuadro);
+        cuadro = requestAnimationFrame(() => { ajustar(); setTimeout(() => { reenviar = true; ajustar(); }, 250); });
+    };
+    escuchar(window, 'resize', asentar);
+    if (window.visualViewport) escuchar(window.visualViewport, 'resize', asentar);
+    escuchar(document, 'visibilitychange', () => { if (!document.hidden) asentar(); });
+    escuchar(document, 'fullscreenchange', asentar);
     ajustar();
     // la posición y el fondo, de `[terminal]`; cuando ⚙ terminal los cambia, se vuelven a aplicar aquí mismo
     let pararFondo: (() => void) | undefined;
@@ -251,7 +272,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         ajustar();
     };
     aplicar();
-    deshacer.push(alCambiar(aplicar), () => pararFondo?.());
+    deshacer.push(alCambiar(() => { aplicar(); asentar(); }), () => pararFondo?.());
     void leer();
 
     // cada conexión abre una vista nueva del hilo, con el tamaño de ahora

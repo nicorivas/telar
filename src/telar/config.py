@@ -456,6 +456,8 @@ class Config:
     notas: Notas = field(default_factory=Notas)
     #: cómo se ve la terminal de un hilo en la página (`[terminal]`).
     terminal: Terminal = field(default_factory=Terminal)
+    #: los modos de la página definidos o cambiados aquí (`[modos.<n>]`, telar.modos): clave → {nombre, valores}
+    modos: dict = field(default_factory=dict)
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -1329,6 +1331,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
     if "terminal" in datos:
         cuerpo = _tabla(datos["terminal"], "terminal")
         cambios["terminal"] = Terminal(**{k: validar_terminal(k, v) for k, v in cuerpo.items()})
+    if "modos" in datos:
+        from telar import modos as mod_modos
+
+        cambios["modos"] = {k: mod_modos.validar(k, v) for k, v in _tabla(datos["modos"], "modos").items()}
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
@@ -1336,7 +1342,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
         "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
         "disparadores",  # leídos por _con_disparadores
-        "terminal",
+        "terminal", "modos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))

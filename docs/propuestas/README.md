@@ -34,7 +34,9 @@ el primer paso sin hacer de la primera propuesta.
 4. **[servidor-mainframe.md](servidor-mainframe.md)**: que una persona del bus pida un lugar en el servidor y tenga ahí sus
    hilos, como una máquina más suya. En uso desde el 26-oct-2026, con la puerta (una dirección para todos); falta
    que el alojado la pruebe desde su laptop, el aviso de pedido nuevo y `telar doctor`.
-5. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
+5. **[modos.md](modos.md)**: modos de la página (estándar, foco…), un nombre con valores para la disposición, la
+   terminal y los avisos, que se cambian de una vez. El primer paso, en construcción; el resto, en su hoja de ruta.
+6. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).
 

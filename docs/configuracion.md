@@ -736,6 +736,32 @@ fondo = "telar"         # telar (el de siempre), ninguno, un color "#11111b", "i
 Lo mismo, en la página: ⚙ → terminal, que lo escribe aquí y lo aplica al tiro a las terminales abiertas. La ventana
 del hilo toma el ancho de la terminal (la vista se lo da a tmux). Es de la máquina que sirve la página.
 
+## `[modos]` — modos de la página: estándar, foco y los propios
+
+Un modo es un nombre con valores para la disposición de la página, la terminal y los avisos; cambiar de modo los
+aplica todos de una vez ([propuestas/modos.md](propuestas/modos.md)). Vienen dos de fábrica, «estandar» y «foco»
+(solo la terminal, al centro, sin nada alrededor); una tabla con el nombre de uno de ellos lo cambia, y una con otro
+nombre suma uno. Lo que un modo no dice, lo toma de «estandar»; la terminal de «estandar», de `[terminal]`.
+
+```toml
+[modos.lectura]
+nombre = "lectura"
+barra = "plegada"          # abierta, plegada u oculta
+lado = "abierto"           # la ficha de un agente: abierto, plegado u oculto
+cabecera = "visible"       # visible u oculta (oculta: un ◧ arriba a la derecha vuelve al modo de antes)
+acciones = "visible"       # la barra del hilo: visible u oculta
+escribir = "visible"       # la caja bajo la terminal: visible u oculta
+pantalla_completa = "no"   # no o si
+columnas = 100             # como en [terminal]
+posicion = "izquierda"
+fondo = "ninguno"
+avisos = "urgentes"        # todos, urgentes (no los informativos) o ninguno
+aviso_version = "oculto"   # visible u oculto
+```
+
+Cuál está puesto es de cada navegador. En la página: «◧» en la cabecera, ⌥⇧F (foco y vuelta), ⌥⇧M (el siguiente) y
+⚙ → modos, donde un clic cambia un ajuste a mano en el modo puesto y «guardar en este modo» lo escribe aquí.
+
 ## `[agentes]` — agentes residentes, cada uno en su carpeta
 
 ```toml

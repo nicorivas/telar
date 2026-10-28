@@ -15,6 +15,9 @@ let avisos: HTMLElement | undefined;
 
 /** Un aviso abajo a la derecha, que se va solo. */
 export function avisar(texto: string, nivel: Nivel = 'info', ms = 6000): void {
+    // el modo puesto dice cuáles (web/modos.ts, `data-avisos` en body): todos, urgentes (no los «info») o ninguno
+    const cuales = document.body.dataset.avisos;
+    if (cuales === 'ninguno' || (cuales === 'urgentes' && nivel === 'info')) return;
     if (!avisos?.isConnected) { avisos = el('div', 'web-avisos'); document.body.appendChild(avisos); }
     const a = el('div', `web-aviso ${nivel}`, texto);
     avisos.appendChild(a);

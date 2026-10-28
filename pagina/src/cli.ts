@@ -671,6 +671,19 @@ export const fondosTerminal = async () => await deServe<JsonFondos>('/terminal/f
 export const ajusteTerminal = async (clave: 'columnas' | 'posicion' | 'fondo', valor: string | number) =>
     await aServe<{ ok: boolean; clave: string; valor: string | number }>('PUT', `/config/terminal/${clave}`, 15000, { valor });
 
+/** Los modos de la página y el catálogo de ajustes (`GET /modos`, telar.modos). */
+export interface JsonModos {
+    catalogo: { clave: string; grupo: string; nombre: string; opciones: string[]; ayuda: string }[];
+    modos: { clave: string; nombre: string; valores: Record<string, string | number>; de_fabrica: boolean; cambiado: boolean }[];
+}
+export const modos = async () => await deServe<JsonModos>('/modos', 15000);
+/** Crear o cambiar un modo: `[modos.<clave>]` con esos valores. */
+export const guardarModo = async (clave: string, valores: Record<string, string | number>, nombre = '') =>
+    await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('PUT', `/modos/${encodeURIComponent(clave)}`, 15000, { valores, nombre });
+/** Quitar `[modos.<clave>]`: uno propio desaparece; uno de fábrica vuelve a ser el de fábrica. */
+export const borrarModo = async (clave: string) =>
+    await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('DELETE', `/modos/${encodeURIComponent(clave)}`, 15000, {});
+
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {
     id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;

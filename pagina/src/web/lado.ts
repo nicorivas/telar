@@ -1,12 +1,13 @@
 // La barra de la derecha (#lado), al ver el hilo de un agente residente: quién es (para, modelo, si es residente,
 // dónde vive), cuánto pesa su conversación contra el tope de rotación, su último relevo y su CLAUDE.md, para leer.
-// Se pliega con ›/‹ (y queda plegada o abierta para la próxima vez); con otro hilo, o en el celular, no está.
+// Se pliega con ›/‹ (un cambio en el modo puesto, web/modos.ts); el modo también la oculta. Con otro hilo, o en el
+// celular, no está.
 
 import * as cli from '../cli';
 import { esc, fechaCorta } from '../estilo';
+import * as modos from './modos';
 import * as ui from './ui';
 
-const CLAVE_PLEGADO = 'telar.lado.plegado';
 /** cada cuánto se relee la ficha mientras se ve el mismo hilo */
 const CADA = 30 * 1000;
 
@@ -18,13 +19,11 @@ let leida = 0;
 
 const lado = () => document.getElementById('lado') as HTMLElement | null;
 
-function plegado(): boolean {
-    try { return localStorage.getItem(CLAVE_PLEGADO) === '1'; } catch { return false; }
-}
+/** Plegada, abierta u oculta: lo dice el modo puesto (web/modos.ts); plegarla a mano es un cambio en él. */
+const plegado = (): boolean => modos.valor('lado') === 'plegado';
 
 function plegar(si: boolean): void {
-    try { localStorage.setItem(CLAVE_PLEGADO, si ? '1' : '0'); } catch { /* sin almacenamiento: solo esta vez */ }
-    pintar();
+    modos.poner('lado', si ? 'plegado' : 'abierto');   // avisa, y alCambiar la redibuja
 }
 
 const mb = (b: number) => `${(b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 1 : 0).replace('.', ',')} MB`;
@@ -32,7 +31,7 @@ const mb = (b: number) => `${(b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 
 function pintar(): void {
     const el = lado();
     if (!el) return;
-    if (!ficha) { el.hidden = true; return; }
+    if (!ficha || modos.valor('lado') === 'oculto') { el.hidden = true; return; }
     el.hidden = false;
     const p = plegado();
     el.classList.toggle('plegado', p);
@@ -147,6 +146,7 @@ async function cancelar(direccion: string): Promise<void> {
 
 /** Los clics de la barra (plegar, abrir, encargar, rotar, cancelar). Una vez, al arrancar. */
 export function montar(): void {
+    modos.alCambiar(() => pintar());
     lado()?.addEventListener('click', e => {
         const a = (e.target as HTMLElement).closest<HTMLElement>('[data-lado]');
         if (!a) return;

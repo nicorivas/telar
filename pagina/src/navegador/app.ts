@@ -20,6 +20,7 @@ import { montar as montarObjeto, partir as partirDireccion } from '../web/objeto
 import * as ui from '../web/ui';
 import * as version from '../web/version';
 import * as lado from '../web/lado';
+import * as modos from '../web/modos';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
 
 
@@ -206,6 +207,23 @@ window.addEventListener('drop', e => { if (e.dataTransfer?.types.includes('Files
 // una versión nueva de telar, arriba (web/version.ts): un clic la instala; si no se puede desde aquí, ⚙ versión
 lado.montar();
 version.vigilar(() => { mostrar('dashboard'); void hoy.irAPestana('config', 'version'); });
+// los modos (estándar, foco…): lo de este navegador al tiro, y el selector de la cabecera, «◧ estándar»
+modos.montar();
+const selectorModo = document.getElementById('modos-sel');
+const nombrarModo = () => { if (selectorModo) selectorModo.textContent = `◧ ${modos.puesto().nombre}`; };
+nombrarModo();
+modos.alCambiar(nombrarModo);
+selectorModo?.addEventListener('click', async e => {
+    e.preventDefault();
+    const filas = [
+        ...modos.lista().map(m => ({ label: m.nombre, description: m.clave === modos.puesto().clave ? '← puesto' : '', id: m.clave })),
+        { label: 'editar los modos…', description: '⚙ modos: qué dice cada uno, guardar lo cambiado, uno nuevo', id: '__editar' },
+    ];
+    const elegido = await ui.elegir(filas, { titulo: 'modo de la página', placeholder: '⌥⇧F foco y vuelta · ⌥⇧M el siguiente' });
+    if (!elegido) return;
+    if (elegido.id === '__editar') { mostrar('dashboard'); void hoy.irAPestana('config', 'modos'); }
+    else modos.cambiar(elegido.id);
+});
 
 void fetch('/api/salud', { cache: 'no-store' }).then(r => r.json()).then((s: { maquina?: string }) => {
     barra.aqui = modelo.aqui = s.maquina ?? ''; barra.refrescar(true);

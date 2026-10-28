@@ -8,6 +8,31 @@ extension shared the version number.
 
 ### Added
 
+- **Modes for the page** (`telar.modos`, `[modos.<n>]`, docs/propuestas/modos.md): a mode is a name with values for
+  a fixed catalog of settings: the threads sidebar (open, folded, hidden), an agent's card, the header, the thread's
+  action bar, the box under the terminal, full screen, the terminal's width, position and background, and which
+  notices show. Two come built in: «estándar» (as before) and «foco» (only the terminal, centered, nothing around
+  it; a ◧ at the top right goes back). Switch with «◧» in the header, ⌥⇧F (foco and back), ⌥⇧M (the next one) or
+  ⚙ modos. Which mode is on, and changes made by hand while in it (folding the sidebar, another background), belong
+  to the browser; «guardar en este modo» writes them into the config, and «nuevo modo…» saves what's on screen
+  under a new name. `GET /modos`, `PUT /modos/{clave}`, `DELETE /modos/{clave}`. Folding the sidebar or the card is
+  now a change in the current mode (the old per-browser keys are carried over once). The roadmap for the rest
+  (font and theme, sidebar sections, automatic modes by device or trigger, a thread's mode, modules bringing
+  modes) is in that proposal.
+
+### Changed
+
+- The box under a thread's terminal («escríbele al hilo») is hidden by default, in «estándar» and «foco»: one
+  writes in the terminal itself. On a phone it stays, since typing into the terminal doesn't work well there.
+- The terminal draws its gray edge line only on the sides where there is background between it and what's next
+  to it: centered, on both; against the sidebar or an agent's card, which bring their own line, not.
+
+### Fixed
+
+- The terminal re-measures itself, and tells tmux its size again, when the window changes size (Chrome's bar
+  appearing), when the tab becomes visible, on entering or leaving full screen, and after a mode switch once the
+  layout settles; before, it relied only on its box's ResizeObserver, which sometimes didn't fire.
+
 - The page: the left sidebar folds, like an agent's card on the right: «‹» at the end of its first header leaves a
   narrow strip with «›» and «hilos» written vertically, and a click on the strip opens it again. It stays as you left
   it (per browser). Not on a phone, where the sidebar is its own screen.

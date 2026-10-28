@@ -20,6 +20,7 @@ import * as ui from '../web/ui';
 
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
+import * as modos from '../web/modos';
 import { modelo } from '../modelo';
 
 /** Una pestaña del dashboard (su lista y su orden los decide el dashboard, vistas/dashboard/panel.ts): una fila del grupo
@@ -37,12 +38,6 @@ const ORDENES: [Orden, string, string][] = [
     ['nombre', 'a-z', 'nombre, alfabético'],
     ['reciente', '◷', 'última modificación: el último prompt a su agente, lo más reciente arriba'],
 ];
-
-/** Si la barra está plegada (a una franja con «›»): queda así para la próxima vez, como la ficha de un agente. */
-const CLAVE_PLEGADA = 'telar.barra.plegada';
-function leerPlegada(): boolean {
-    try { return localStorage.getItem(CLAVE_PLEGADA) === '1'; } catch { return false; }
-}
 
 function leerBuscado(): Record<string, string> {
     try { return JSON.parse(localStorage.getItem('telar.barra.buscado') ?? '{}') ?? {}; } catch { return {}; }
@@ -89,8 +84,9 @@ export class BarraHilos {
     private lista?: HTMLElement;
     /** lo escrito en cada buscador: sobrevive a los redibujos (llegan varios por minuto) y a recargar */
     private buscado: Record<string, string> = leerBuscado();
-    /** plegada: una franja angosta con «›» y «hilos» en vertical; un clic la abre (en el celular no se pliega) */
-    private plegada = leerPlegada();
+    /** plegada: una franja angosta con «›» y «hilos» en vertical; un clic la abre (en el celular no se pliega). Lo
+     *  dice el modo puesto (web/modos.ts); plegarla a mano es un cambio en él */
+    private get plegada(): boolean { return modos.valor('barra') === 'plegada'; }
     private ultimoHtml = '';
     private ultimoActivo?: string;
     /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
@@ -163,6 +159,7 @@ export class BarraHilos {
             e.preventDefault();
             this.mensaje({ tipo: 'menu', id: f.dataset.hilo });
         });
+        modos.alCambiar(() => this.refrescar(true));
         this.refrescar(true);
     }
 
@@ -254,14 +251,11 @@ export class BarraHilos {
 
     /** Plegarla o abrirla, y recordarlo. La terminal que se ve se mide de nuevo sola (su ResizeObserver). */
     private plegar(si: boolean): void {
-        this.plegada = si;
-        try { localStorage.setItem(CLAVE_PLEGADA, si ? '1' : '0'); } catch { /* sin almacén: solo esta vez */ }
-        this.refrescar(true);
+        modos.poner('barra', si ? 'plegada' : 'abierta');   // avisa, y alCambiar la redibuja
     }
 
     refrescar(forzar = false): void {
         if (!this.lista) return;
-        document.body.classList.toggle('barra-plegada', this.plegada);
         const html = this.plegada
             ? '<div class="plegada" data-accion="abrir-barra" title="mostrar la barra de hilos">'
                 + '<span class="pliegue-barra">›</span><span class="vertical">hilos</span></div>'

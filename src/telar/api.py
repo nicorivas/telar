@@ -668,6 +668,51 @@ def get_terminal_fondo(ruta: str, ctx: Contexto = Depends(contexto)):
                                           "Content-Security-Policy": "sandbox allow-scripts"})
 
 
+# ── los modos de la página (telar.modos) ──────────────────────────────────────────
+
+
+class PedidoModo(BaseModel):
+    valores: dict = {}
+    nombre: str = ""
+
+
+@app.get("/modos")
+def get_modos(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los modos de la página (de fábrica y los de `[modos]`), cada uno con todos sus valores, y el catálogo de
+    ajustes que un modo puede decir. Cuál está puesto lo sabe el navegador."""
+    from telar import modos
+
+    return {"catalogo": modos.catalogo(), "modos": modos.todos(ctx.config)}
+
+
+@app.put("/modos/{clave}")
+def put_modo(clave: str, pedido: PedidoModo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Crear o cambiar un modo: escribe `[modos.<clave>]` con esos valores (lo que no diga, de «estándar»)."""
+    from telar import config as mod_config
+    from telar import modos
+
+    try:
+        modos.guardar(ctx.config.origen, clave, pedido.valores, pedido.nombre)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
+
+
+@app.delete("/modos/{clave}")
+def delete_modo(clave: str, ctx: Contexto = Depends(contexto)) -> dict:
+    """Quitar `[modos.<clave>]`: uno propio desaparece; uno de fábrica vuelve a ser el de fábrica."""
+    from telar import config as mod_config
+    from telar import modos
+
+    try:
+        hubo = modos.borrar(ctx.config.origen, clave)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    if not hubo:
+        raise ErrorDeServicio(f"no hay [modos.{clave}] en la configuración", 404)
+    return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
+
+
 @app.get("/compartir/destinos", response_model=servicio_compartir.Destinos)
 def get_destinos(ctx: Contexto = Depends(contexto)):
     """Los proveedores que reciben algo compartido (`telar compartir --destinos`)."""

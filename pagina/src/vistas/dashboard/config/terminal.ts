@@ -5,6 +5,7 @@
 import * as cli from '../../../cli';
 import { esc } from '../../../estilo';
 import * as aspectoTerminal from '../../../web/aspecto-terminal';
+import * as modos from '../../../web/modos';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
 
@@ -22,11 +23,20 @@ export const terminal: FabricaSeccion = ctx => {
     };
 
     const poner = async (clave: 'columnas' | 'posicion' | 'fondo', valor: string | number) => {
+        // en otro modo que estándar, el modo manda sobre `[terminal]`: el cambio es de ese modo (a mano, hasta
+        // cambiar de modo; ⚙ modos lo guarda en él)
+        if (modos.puesto().clave !== 'estandar') {
+            modos.poner(clave, valor);
+            void ui.estado(`telar: en «${modos.puesto().nombre}», hasta cambiar de modo (⚙ modos lo guarda en él)`, 5000);
+            if (ctx.seVe('terminal')) seccion.pintar();
+            return;
+        }
         const r = await cli.ajusteTerminal(clave, valor);
         if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
         const actual = { ...aspectoTerminal.aspecto(), [clave]: r.datos.valor } as aspectoTerminal.Aspecto;
         aspectoTerminal.cambiar(actual);
         if (datos) datos.actual = actual;
+        void modos.leer();   // «estándar» toma la terminal de `[terminal]`
         void ui.estado('telar: listo, ya se ve en las terminales', 3000);
         if (ctx.seVe('terminal')) seccion.pintar();
     };
@@ -65,7 +75,7 @@ export const terminal: FabricaSeccion = ctx => {
         ayuda: 'el ancho de la terminal de los hilos, dónde va y qué hay alrededor',
         abrir: () => { seccion.pintar(); return leer(); },
         pintar(): void {
-            const a = datos?.actual ?? aspectoTerminal.aspecto();
+            const a = aspectoTerminal.aspecto();
             const h: string[] = [];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             h.push('<h2>ancho<small>cuánto se abre la terminal; la ventana del hilo toma ese tamaño</small></h2>');

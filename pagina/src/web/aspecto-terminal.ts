@@ -4,6 +4,7 @@
 // cambia y avisa, y cada terminal abierta lo vuelve a aplicar sin cerrarse.
 
 import * as cli from '../cli';
+import * as modos from './modos';
 
 export interface Aspecto { columnas: number; posicion: 'izquierda' | 'centro' | 'derecha'; fondo: string }
 
@@ -12,8 +13,20 @@ let actual: Aspecto = { ...DE_FABRICA };
 let leido: Promise<void> | undefined;
 const oyentes = new Set<() => void>();
 
-/** Lo de ahora (de fábrica hasta que se lea la configuración). */
-export const aspecto = (): Aspecto => actual;
+/** Lo de ahora: lo del modo puesto (telar.modos, que para «estándar» trae `[terminal]`), o mientras no llegan los
+ *  modos, lo de la configuración (de fábrica hasta que se lea). */
+export function aspecto(): Aspecto {
+    if (!modos.listos()) return actual;
+    const c = modos.valor('columnas'), p = modos.valor('posicion'), f = modos.valor('fondo');
+    return {
+        columnas: typeof c === 'number' ? c : actual.columnas,
+        posicion: (p === 'izquierda' || p === 'centro' || p === 'derecha') ? p : actual.posicion,
+        fondo: typeof f === 'string' && f ? f : actual.fondo,
+    };
+}
+
+// cambiar de modo (o un cambio a mano) también cambia la terminal
+modos.alCambiar(() => { for (const f of oyentes) f(); });
 
 /** Leerlo de la configuración, una vez; avisa a las terminales cuando llega. */
 export function leer(): Promise<void> {
