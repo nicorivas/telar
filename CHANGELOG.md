@@ -6,6 +6,8 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.7.8] — 2026-10-27
+
 ### Added
 
 - **Modes for the page** (`telar.modos`, `[modos.<n>]`, docs/propuestas/modos.md): a mode is a name with values for
