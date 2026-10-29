@@ -151,7 +151,8 @@ def _detras(sock: Path, quien: str) -> _Servidor:
         try:
             while True:
                 m = await ws.receive_text()
-                await ws.send_text(f"{quien}:{m}:{ws.headers.get('origin', '')}")
+                auth = ws.headers.get("authorization", "")
+                await ws.send_text(f"{quien}:{m}:{ws.headers.get('origin', '')}" + (f"|{auth}" if auth else ""))
         except WebSocketDisconnect:
             pass
 
@@ -240,6 +241,25 @@ class LaPuertaPasaCadaPedido(Prueba):
                 return await asyncio.wait_for(ws.recv(), 5)
 
         self.assertEqual(asyncio.run(hablar()), "pablo:hola:https://telar.ejemplo.ts.net")
+
+    def test_la_terminal_que_pide_otra_maquina_lleva_su_llave_del_bus(self):
+        # la página del laptop de Pablo reenvía la terminal de un hilo que vive en el servidor: sin navegador (sin
+        # origen), con la llave del bus; si la puerta se la quitaba, su telar la rechazaba (InvalidStatus)
+        import asyncio
+
+        from websockets.asyncio.client import unix_connect
+
+        sock = self.base / "puerta.sock"
+        servidor = _Servidor(puerta.crear(tabla(), identificar=identificar(), sockets=self.base), sock)
+        self.addCleanup(servidor.parar)
+
+        async def hablar():
+            cab = {"x-forwarded-for": PABLO, "x-forwarded-host": "telar.ejemplo.ts.net", "authorization": "Bearer secreto"}
+            async with unix_connect(str(sock), "ws://localhost/pty?hilo=x", additional_headers=cab) as ws:
+                await ws.send("hola")
+                return await asyncio.wait_for(ws.recv(), 5)
+
+        self.assertEqual(asyncio.run(hablar()), "pablo:hola:|Bearer secreto")
 
     def test_una_terminal_de_quien_no_tiene_lugar_no_abre(self):
         import asyncio

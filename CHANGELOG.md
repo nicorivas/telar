@@ -6,6 +6,16 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.4] — 2026-10-29
+
+### Fixed
+
+- **The terminal of a thread hosted behind a server's door, opened from the person's laptop.** The door passed a
+  terminal's WebSocket on with its origin but without its `Authorization`, so the laptop's page (which forwards the
+  terminal with the bus key, not as a browser) was refused by the hosted telar: «no pude abrir la terminal en
+  telar: InvalidStatus». The door now passes the bus key along, and the hosted telar checks it as without a door.
+  The door has to be reinstalled (`servidor/telar-puerta-instalar --version 0.8.4`).
+
 ## [0.8.3] — 2026-10-28
 
 ### Added

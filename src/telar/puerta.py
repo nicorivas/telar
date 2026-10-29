@@ -359,7 +359,9 @@ def crear(tabla: Tabla | None = None, *, identificar: Identificar | None = None,
             return
         pedido_a = host(cab) or "telar"
         destino = ws.url.path + (f"?{ws.url.query}" if ws.url.query else "")
-        extra = {k: v for k, v in cab.items() if k in ("origin", "user-agent")}
+        # el origen (un navegador) o la llave del bus (otra máquina de la persona: su página, reenviando la terminal de
+        # un hilo que vive aquí, telar.terminal.reenviar): su telar decide con eso, como sin puerta
+        extra = {k: v for k, v in cab.items() if k in ("origin", "user-agent", "authorization")}
         extra["x-telar-persona"] = usuario
         try:
             otro = await unix_connect(str(socket_de(usuario, sockets)), f"ws://{pedido_a}{destino}",
