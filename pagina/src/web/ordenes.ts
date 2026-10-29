@@ -2,6 +2,9 @@
 // sección…): las piden la barra y el dashboard (`ui.orden`), y las cumple esta página, con su interfaz
 // (web/ui.ts) y lo que muestra a la derecha (src/navegador/app.ts).
 
+import { PRIORIDAD } from '../estilo';
+import { C, I } from './iconos';
+import * as entidades from './entidades';
 import * as ui from './ui';
 import type { Opcion } from './ui';
 import * as cli from '../cli';
@@ -44,42 +47,46 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
     /** El menú de un hilo (el ⋯ de su fila): lo que se puede hacer con él, según esté
      *  vivo, archivado o vinculado. Cada acción es una orden `telar hilo …`. */
     async function menuHilo(a: unknown): Promise<void> {
-        const hilo = hiloDe(a);
+        await entidades.menuDe(`hilo:${hiloDe(a)}`, (a as { donde?: { x: number; y: number } } | undefined)?.donde);
+    }
+
+    // lo que se puede hacer con un hilo, para su menú (web/entidades.ts): según esté vivo, archivado o vinculado
+    entidades.registrar('hilo', async hilo => {
         const h = modelo.porNombre(hilo);
-        if (!hilo || !h) return;
-        type Fila = Opcion & { hacer?: () => Promise<unknown> };
+        if (!hilo || !h) return undefined;
+        type Fila = entidades.AccionEntidad;
         const prioridad = (n: string, nombre: string): Fila => ({ label: `prioridad ${nombre}`, description: String(h.prioridad ?? '') === n ? 'la que tiene' : '',
+            icono: PRIORIDAD[Number(n) || 0], color: C.cambiar,
             hacer: () => sobreHilo(hilo, 'prioridad', [], n) });
         const filas: Fila[] = [
-            { label: h.archivado || !h.vivo ? 'retomar' : 'ver', description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
+            { label: h.archivado || !h.vivo ? 'retomar' : 'ver', icono: h.archivado || !h.vivo ? I.retomar : I.ver, color: C.ir, description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
                 hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) c.mostrar(hilo); } else c.mostrar(hilo); } },
-            { label: 'renombrar', description: 'se mueve con él lo que telar sabía', hacer: async () => {
+            { label: 'renombrar', icono: I.renombrar, color: C.cambiar, description: 'se mueve con él lo que telar sabía', hacer: async () => {
                 const nombre = await ui.campo({ titulo: `Nombre nuevo para «${hilo}»`, valor: hilo });
                 if (nombre && nombre !== hilo) await sobreHilo(hilo, 'renombrar', [], nombre);
             } },
-            ...(h.vinculado ? [{ label: 'ver su carpeta y documento', description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
-            { label: 'vincular a un proyecto', description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
-            ...(h.vinculado ? [{ label: 'desvincular', description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
+            ...(h.vinculado ? [{ label: 'ver su carpeta y documento', icono: I.carpeta, color: C.ir, description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
+            { label: 'vincular a un proyecto', icono: I.vincular, color: C.cambiar, description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
+            ...(h.vinculado ? [{ label: 'desvincular', icono: I.desvincular, color: C.cambiar, description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
             ...(modelo.hayBus ? [h.publico
-                ? { label: 'hacer privado', description: 'hoy es público: las otras personas lo ven en EQUIPO; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
-                : { label: 'hacer público', description: 'que las otras personas del bus lo vean en EQUIPO y le escriban (su nombre y carpeta; nunca la conversación)',
+                ? { label: 'hacer privado', icono: I.privado, color: C.cambiar, description: 'hoy es público: las otras personas lo ven en EQUIPO; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
+                : { label: 'hacer público', icono: I.publico, color: C.cambiar, description: 'que las otras personas del bus lo vean en EQUIPO y le escriban (su nombre y carpeta; nunca la conversación)',
                     hacer: () => sobreHilo(hilo, 'publicar') }] : []),
             { label: 'prioridad', separador: true },
             prioridad('1', 'alta'), prioridad('2', 'media'), prioridad('3', 'baja'), prioridad('ninguna', 'ninguna'),
             { label: 'guardar o cerrar', separador: true },
-            ...(h.archivado ? [{ label: 'desarchivar', description: 'volver a la lista sin abrirlo', hacer: () => sobreHilo(hilo, 'desarchivar') }]
-                : [{ label: 'archivar', description: 'cierra el tab y guarda su conversación', hacer: () => sobreHilo(hilo, 'archivar', ['--cerrar']) }]),
-            ...(h.vivo ? [{ label: 'cerrar', description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
-            ...(!h.remoto ? [{ label: 'llevar a otra máquina', description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
-                : [{ label: 'traer a esta máquina', description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
-            { label: 'olvidar', description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
+            ...(h.archivado ? [{ label: 'desarchivar', icono: I.desarchivar, color: C.ir, description: 'volver a la lista sin abrirlo', hacer: () => sobreHilo(hilo, 'desarchivar') }]
+                : [{ label: 'archivar', icono: I.archivar, color: C.quitar, description: 'cierra el tab y guarda su conversación', hacer: () => sobreHilo(hilo, 'archivar', ['--cerrar']) }]),
+            ...(h.vivo ? [{ label: 'cerrar', icono: I.cerrar, color: C.quitar, description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
+            ...(!h.remoto ? [{ label: 'llevar a otra máquina', icono: I.llevar, color: C.otro, description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
+                : [{ label: 'traer a esta máquina', icono: I.traer, color: C.otro, description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
+            { label: 'olvidar', icono: I.olvidar, color: C.quitar, description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
                 const si = await ui.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, 'Olvidar');
                 if (si === 'Olvidar') await sobreHilo(hilo, 'olvidar');
             } },
         ];
-        const elegida = await ui.elegir(filas, { titulo: hilo });
-        await elegida?.hacer?.();
-    }
+        return { titulo: hilo, acciones: filas };
+    });
 
     /** Vincular desde la web: se elige entre los proyectos del perfil, o se escribe una ruta. */
     async function vincularWeb(hilo: string): Promise<void> {

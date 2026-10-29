@@ -117,8 +117,10 @@ def listar(ctx, tel) -> list[dict]:
     return salida
 
 
-def abrir(ctx, tel, relativa: str) -> dict:
-    """Ir al hilo de esa unidad o abrirle uno. Devuelve {hilo, ruta, mensaje, hecho}."""
+def abrir(ctx, tel, relativa: str, *, texto: str = "") -> dict:
+    """Ir al hilo de esa unidad o abrirle uno. Devuelve {hilo, ruta, mensaje, hecho}. Con `texto`, un hilo nuevo
+    arranca con eso en vez del mensaje de `[agente] proyecto` (telar actuar: lo que se le pide sobre la unidad); a
+    uno que ya estaba no se le escribe aquí."""
     raiz = Path(ctx.config.raiz)
     unidades = lectura.indice(ctx.perfil, raiz)
     relativa = relativa.strip().strip("/")
@@ -136,7 +138,7 @@ def abrir(ctx, tel, relativa: str) -> dict:
 
     ficha = _comun.leer_ficha(documento, arquetipo, _comun.fuente_ficha(ctx.config))
     carpeta = raiz / relativa
-    texto = mensaje(
+    texto = texto or mensaje(
         ctx.config.agente.proyecto,
         nombre=lectura.etiqueta(arquetipo.etiqueta, ficha) or Path(relativa).name,
         ruta=relativa,

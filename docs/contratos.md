@@ -561,6 +561,23 @@ version}`). Devuelve la fecha como quedó, con la forma de `telar fechas`.
 
 Lo que no se puede: 404 (no está), 409 (cambió), 422 (no se escribe); con `--json`, `{"error", "codigo"}`.
 
+### `telar actuar <dirección> --json`
+
+Le manda a un hilo o a un agente un prompt sobre una entidad: `--skill` (opcional), `--nota` (lo que se pide; hace
+falta uno de los dos), `--a` (el hilo o el agente; sin él, el hilo de la entidad: el de un proyecto, que se abre con
+el prompt si no está) y `--escribir` (dejarlo escrito en la entrada del hilo, sin mandarlo). La API es `POST /actuar`
+(`{direccion, a, skill, nota, escribir}`).
+
+```json
+{ "destino": "faro", "como": "enviado", "prompt": "/pm revisa el plan [contexto: Faro · proyecto:proyectos/faro · carpeta proyectos/faro · estado en curso; más con `telar objeto proyecto:proyectos/faro`]", "maquina": "" }
+```
+
+`como` es `encargado` (a un agente), `enviado` o `escrito` (a un hilo de aquí), `abierto` (un hilo nuevo que arrancó
+con el prompt) o `por el bus` (un hilo de otra máquina, a su casilla). El prompt es una línea: la skill, lo pedido y
+el contexto, con la dirección de la entidad para que el agente la abra si necesita más. Sin skill ni nota, sin un
+destino para algo que no tiene hilo propio: 422; un destino que no existe: 404. `GET /skills?carpeta=<ruta>` da las
+skills de un hilo nuevo en esa carpeta (las del hilo de un proyecto que todavía no está abierto).
+
 ### `telar seccion <clave> --json`
 
 Lo que imprime el comando `home` de una sección, tal cual, después de comprobar su forma:
@@ -615,7 +632,9 @@ La página de un **módulo** (la de su pestaña o su app) puede además pedirle 
 `window.lienzo.pedir(orden, datos)` devuelve una promesa con lo que quedó, o falla con el porqué. telar lo hace solo
 si el módulo declaró la orden en su `[permisos] ordenes` y la persona se la concedió: la primera vez la página le
 pregunta (permitir siempre, solo esta vez, no), y lo decidido queda en telar (`telar modulos permisos`, que también
-lo revoca). Hoy se puede pedir `fecha` (`{id, inicio, fin, version}`, como `telar fecha`). Por la API es `POST
+lo revoca). Hoy se puede pedir `fecha` (`{id, inicio, fin, version}`, como `telar fecha`), y `menu`
+(`{direccion, x, y}`): el menú de esa entidad, junto al punto del lienzo donde se hizo clic. `menu` no pide permiso
+ni llega al servidor, porque solo muestra: lo que se elige ahí, se elige en la página. Por la API es `POST
 /lienzo/pedir` (`{origen: "bloque:<clave>" | "app:<clave>", orden, datos}`): sin la concesión, un 403 con
 `permiso: {modulo, orden, descripcion, decision}`; `POST /permisos` (`{modulo, orden, decision}`: concedido, negado u
 olvidar) anota lo decidido y `GET /permisos` lo lista.

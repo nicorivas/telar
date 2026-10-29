@@ -516,7 +516,14 @@ export interface JsonSkill {
     usada: number;
 }
 type JsonSkills = { hilo: string; conversacion: string; remoto: boolean; skills: JsonSkill[] };
-export const skills = async (hilo: string) => await deServe<JsonSkills>(`/skills?hilo=${encodeURIComponent(hilo)}`, 30000);
+export const skills = async (hilo: string, carpeta = '') => await deServe<JsonSkills>(
+    `/skills?hilo=${encodeURIComponent(hilo)}${carpeta ? `&carpeta=${encodeURIComponent(carpeta)}` : ''}`, 30000);
+
+/** `telar actuar`: mandarle a un hilo o a un agente un prompt sobre una entidad (docs/propuestas/acciones.md). */
+export interface JsonActuado { destino: string; como: string; prompt: string; maquina?: string }
+export async function actuar(direccion: string, a: string, skill: string, nota: string, escribir: boolean): Promise<Respuesta<JsonActuado>> {
+    return await aServe<JsonActuado>('POST', '/actuar', 60000, { direccion, a, skill, nota, escribir });
+}
 
 /** Lo último de un hilo (`telar hilo leer`), de esta máquina o de otra por el bus: el JSON tal cual. */
 export async function leerHilo(hilo: string, ultimos: string, maquina = ''): Promise<Salida> {

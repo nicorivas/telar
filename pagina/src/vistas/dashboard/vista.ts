@@ -7,8 +7,12 @@
 // Las teclas: el dashboard comparte la página con la barra y las vistas de los hilos, así que sus atajos solo
 // valen mientras se ve, y nunca mientras se escribe en un campo de afuera (el buscador de la barra, la terminal).
 
+import * as entidades from '../../web/entidades';
+
 /** Lo que la vista le pide al Dashboard (`Dashboard.mensaje`, panel.ts). */
-export interface MensajeDia { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string }
+export interface MensajeDia { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string;
+    /** dónde se hizo clic: un menú se abre ahí (web/entidades.ts) */
+    donde?: { x: number; y: number } }
 
 /** La vista ya montada: el Dashboard le manda lo que hay que dibujar. */
 export interface VistaDia {
@@ -268,7 +272,12 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         if (d.lienzo === 'pedir' && typeof d.id === 'string' && typeof d.orden === 'string') {
             const id = `${d.llave}:${d.id}`;
             esperanLienzo.set(id, { fuente: e.source as Window, suyo: d.id });
-            enviar({ tipo: 'lienzo-pedir', valor: d.llave, accion: d.orden, datos: JSON.stringify({ id, datos: d.datos }) });
+            // lo que el lienzo dice en sus coordenadas (dónde se hizo clic, para un menú) pasa a las de la página
+            const marco = todos<HTMLIFrameElement>('iframe.lienzo').find(f => f.contentWindow === e.source)?.getBoundingClientRect();
+            const datos = d.datos as { x?: unknown; y?: unknown } | undefined;
+            const donde = marco && typeof datos?.x === 'number' && typeof datos?.y === 'number'
+                ? { x: marco.left + datos.x, y: marco.top + datos.y } : undefined;
+            enviar({ tipo: 'lienzo-pedir', valor: d.llave, accion: d.orden, datos: JSON.stringify({ id, datos: d.datos }), donde });
         }
     });
 
@@ -377,8 +386,19 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         // un botón que manda lo escrito en un campo (el de escribirle al agente sobre una reunión)
         const campo = a?.dataset.campo ? $<HTMLTextAreaElement>(a.dataset.campo) : null;
         if (campo && !campo.value.trim()) { campo.focus(); return; }
-        if (a) enviar({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey, datos: campo ? campo.value : undefined });
+        if (a) enviar({ tipo: 'accion', accion: a.dataset.accion, valor: a.dataset.valor, nuevo: e.metaKey || e.ctrlKey, datos: campo ? campo.value : undefined,
+            donde: entidades.dondeDe(e, a) });
         if (campo) campo.value = '';
+    });
+
+    // el clic derecho sobre una fila que tiene menú (su ⋯: un proyecto, una tarea, un pendiente) lo abre ahí mismo
+    raiz.addEventListener('contextmenu', e => {
+        const fila = (e.target as HTMLElement).closest('.proy, .tarea, .fila');
+        const menu = fila?.querySelector<HTMLElement>('.menu-fila[data-accion]');
+        if (!menu?.dataset.accion) return;
+        e.preventDefault();
+        if (fila?.classList.contains('proy')) elegirProy(fila as HTMLElement);
+        enviar({ tipo: 'accion', accion: menu.dataset.accion, valor: menu.dataset.valor, donde: entidades.dondeDe(e) });
     });
 
     // las teclas: solo mientras el dashboard se ve, y no si se escribe en un campo de afuera (la barra, una terminal)

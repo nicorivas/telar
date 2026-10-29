@@ -6,6 +6,34 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.3] — 2026-10-28
+
+### Added
+
+- **«Acción…» and `telar actuar`** (`POST /actuar`, docs/propuestas/acciones.md): at the top of every entity's menu,
+  a panel to ask a thread or an agent something about it. It shows the entity's context (from `telar objeto`), a box
+  for what you want, an optional skill (searchable, the destination's skills, most used first) and the destination
+  (the entity's own thread, already chosen, which opens with the prompt if it isn't open; the resident agents; the
+  threads). ⌘⏎ sends one line: the skill, the request, and the context with the entity's address. An agent gets it
+  as a task; a local thread in its input (or left written, unsent); a thread on another machine by the bus.
+  `GET /skills?carpeta=` lists the skills of a new thread in a folder. The panel opens at once from what the page
+  already has (threads and agents); the entity's context and the destination's skills arrive after, and are kept a
+  few minutes so opening it again is instant. A click outside closes it.
+
+### Changed
+
+- **One menu for every entity, where you click** (`web/entidades.ts`, docs/propuestas/acciones.md): right-click a
+  thread in the sidebar, a project in «proyectos», a task or a checkbox, or press its ⋯, and its menu opens next to
+  the pointer (↑ ↓ ⏎ ⎋, type to filter), not as a box in the middle of the screen. Each page registers what it can
+  do with a type of entity; a type the page doesn't know (a module's) gets the actions the server gives
+  (`telar objeto`); every menu ends with «copiar su dirección». While a menu is open the dashboard's letter
+  shortcuts stay off. A module's page opens an entity's menu at its click point with
+  `window.lienzo.pedir("menu", {direccion, x, y})`, with no permission asked (it only shows).
+- **Icons in the page** (`web/iconos.ts`, `media/css/iconos.css`): Codicons from Nerd Fonts, cut down to the ones
+  used (`pagina/scripts/iconos.py`, about 3 KB) and loaded as the page font's fallback. Menu actions carry an icon
+  and a color for what they do (go/look blue, change yellow, agent violet, done green, remove red), all at the same
+  font size: separators and descriptions are no longer smaller.
+
 ## [0.8.2] — 2026-10-28
 
 ### Fixed

@@ -81,6 +81,7 @@ ORDENES: dict[str, str] = {
     "agentes": "Los agentes residentes y lo que declara cada uno en su agente.toml.",
     "tiempo": "Cuánto estuvo arriba cada hilo, medido por el foco.",
     "accion": "Correr una acción declarada por el perfil.",
+    "actuar": "Mandarle a un hilo o a un agente un prompt sobre una entidad, con su contexto (y una skill).",
     "config": "Mostrar la configuración resuelta y de dónde salió.",
     "perfil": "Mostrar el perfil del repositorio y qué documentos alcanza.",
 }

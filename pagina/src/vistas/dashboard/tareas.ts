@@ -2,6 +2,7 @@
 // la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz va a la página (web/ui.ts).
 // Abajo, PantallaTareas: la pestaña «tareas», la ficha de una tarea y las pestañas de proveedor.
 
+import { C, I } from '../../web/iconos';
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
@@ -318,7 +319,7 @@ export class PantallaTareas implements Pantalla {
         },
         'tarea-siguiente': () => this.otraPropuesta(1),
         'tarea-anterior': () => this.otraPropuesta(-1),
-        'menu-tarea': v => v && this.menuTarea(v),
+        'menu-tarea': (v, m) => v && this.menuTarea(v, m.donde),
         // las de una fila, sin abrir la ficha
         'pendiente': (v, m) => v && llevarPendiente(v, !!m.nuevo),
         'hilo-fila': v => {
@@ -800,18 +801,23 @@ export class PantallaTareas implements Pantalla {
 
     /** Las acciones de una tarea en un menú, desde la lista: se corren sin abrir la ficha. Si después
      *  la tarea ya no tiene una propuesta esperando, se da por decidida y sale de «revisar». */
-    private async menuTarea(valor: string): Promise<void> {
+    private async menuTarea(valor: string, donde?: { x: number; y: number }): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
         const guardada = this.fichas.get(`${proveedor}:${id}`);
         const pagina = guardada?.pagina ?? (await ui.progreso({ discreto: true, titulo: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
         const acciones = pagina?.acciones ?? [];
         if (!acciones.length) { void ui.aviso(`telar: ${id} no tiene acciones`); return; }
+        // el ícono y el color, por lo que hace: su rol (hecha, fecha, dueño) o su tipo (un hilo, un enlace)
+        const iconoDe = (a: typeof acciones[number]): [string, string] => a.rol === 'hecha' ? [I.hecha, C.hecho]
+            : a.rol === 'fecha' ? [I.fecha, C.cambiar] : a.rol === 'dueno' ? [I.persona, C.cambiar]
+            : a.tipo === 'hilo' ? [I.agente, C.agente] : a.tipo === 'abrir' ? [I.enlace, C.ir]
+            : a.mensaje ? [I.escribir, C.agente] : a.confirmar ? [I.cerrar, C.quitar] : [I.abrir, C.otro];
         const items = acciones.map((a, k) => ({
-            label: a.nombre, k,
+            label: a.nombre, k, icono: iconoDe(a)[0], color: iconoDe(a)[1],
             description: [a.rol === 'fecha' ? 'elige la fecha' : a.opciones?.length ? 'elige de una lista' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
                 a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
         }));
-        const elegida = await ui.elegir(items, { titulo: nombreTarea(id, pagina?.titulo), placeholder: 'qué hacer con esta tarea' });
+        const elegida = await ui.menu(items, donde, nombreTarea(id, pagina?.titulo));
         if (!elegida) return;
         const a = acciones[elegida.k];
         const tipo = a.tipo ?? 'comando';

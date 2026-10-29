@@ -239,6 +239,7 @@ def post_tarea_accion(id: str, accion: str, pedido: PedidoTarea, ctx: Contexto =
 
 from telar.servicios import espejos as servicio_espejos
 from telar.servicios import pendientes as servicio_pendientes
+from telar.servicios import actuar as servicio_actuar
 from telar.servicios import fechas as servicio_fechas
 from telar.servicios import lienzos as servicio_lienzos
 from telar.servicios import proyectos as servicio_proyectos
@@ -275,6 +276,20 @@ def get_permisos(ctx: Contexto = Depends(contexto)):
 def post_permisos(c: servicio_lienzos.Concesion, ctx: Contexto = Depends(contexto)):
     """Anotar lo que la persona decidió sobre lo que pide un módulo: «concedido» o «negado»."""
     return servicio_lienzos.conceder(ctx, c.modulo, c.orden, c.decision)
+
+
+class PedidoActuar(BaseModel):
+    direccion: str
+    a: str = ""
+    skill: str = ""
+    nota: str = ""
+    escribir: bool = False
+
+
+@app.post("/actuar", response_model=servicio_actuar.Actuado)
+def post_actuar(p: PedidoActuar, ctx: Contexto = Depends(contexto)):
+    """Mandarle a un hilo o a un agente un prompt sobre una entidad, con su contexto (`telar actuar`)."""
+    return servicio_actuar.actuar(ctx, p.direccion, a=p.a, skill=p.skill, nota=p.nota, escribir=p.escribir)
 
 
 class CambioDeFecha(BaseModel):
@@ -792,9 +807,10 @@ def get_documento(hilo: str = "", archivo: str = "", ctx: Contexto = Depends(con
 
 
 @app.get("/skills", response_model=servicio_skills.Skills)
-def get_skills(hilo: str = "", ctx: Contexto = Depends(contexto)):
-    """Las skills del agente de un hilo, y cuántas veces usó cada una (`telar agente skills --json`)."""
-    return servicio_skills.skills(ctx, hilo)
+def get_skills(hilo: str = "", carpeta: str = "", ctx: Contexto = Depends(contexto)):
+    """Las skills del agente de un hilo, y cuántas veces usó cada una (`telar agente skills --json`); con `carpeta`
+    y sin hilo, las de un hilo nuevo ahí."""
+    return servicio_skills.skills(ctx, hilo, carpeta)
 
 
 # ── los procesos periódicos: aquí, o en la máquina de `[periodicos] en` por el bus ───

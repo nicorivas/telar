@@ -4,6 +4,8 @@
 // repintar la lista, que es larga y no debe perder ni el scroll ni lo buscado.
 // Arriba se dibuja; abajo, PantallaProyectos, el estado y las acciones.
 
+import { C, I } from '../../web/iconos';
+import * as entidades from '../../web/entidades';
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
@@ -196,13 +198,15 @@ export class PantallaProyectos implements Pantalla {
         'proyecto': v => v && this.abrirProyecto(v),
         'proy-sel': v => v && this.ver(v),
         'proy-ir': v => { if (v) { this.sel = v; return this.abrir(); } },
-        'proy-menu': v => v && this.menu(v),
+        'proy-menu': (v, m) => v && entidades.menuDe(`proyecto:${v}`, m.donde),
         'proy-consolidar': v => v && this.consolidar(v),
         'proy-enlace': (v, m) => v && this.enlaceReadme(v, String(m.datos ?? '')),
-        'menu-vineta': v => v && this.menuVineta(v),
+        'menu-vineta': (v, m) => v && this.menuVineta(v, m.donde),
     };
 
-    constructor(private readonly t: Tablero) {}
+    constructor(private readonly t: Tablero) {
+        entidades.registrar('proyecto', ruta => this.accionesDe(ruta));
+    }
 
     /** La lista, si todavía no se leyó: true si se leyó ahora (quien la pidió repinta). */
     async asegurar(): Promise<boolean> {
@@ -321,7 +325,7 @@ export class PantallaProyectos implements Pantalla {
 
     /** El ⋯ de una casilla de un documento (un README): llevarla a su hilo, abrirla donde está,
      *  marcarla hecha o decir quién la hace. Lo que cambia el documento cambia esa línea y nada más. */
-    private async menuVineta(valor: string): Promise<void> {
+    private async menuVineta(valor: string, donde?: { x: number; y: number }): Promise<void> {
         const [ref, texto, hilo, dueno] = JSON.parse(valor) as string[];
         type Item = Opcion & { hacer: () => Promise<unknown> };
         const despues = async (r: { datos?: cli.JsonVineta; error?: string }) => {
@@ -334,23 +338,23 @@ export class PantallaProyectos implements Pantalla {
             else if (this.t.pantalla === 'proyectos') await this.abrir();
         };
         const items: Item[] = [
-            { label: hilo ? `Llevarla a «${hilo}»` : 'Llevarla a un hilo', description: 'escrita y sin enviar', hacer: () => llevarPendiente(ref, false) },
-            { label: 'Un hilo nuevo para ella', hacer: () => llevarPendiente(ref, true) },
-            { label: 'Abrir el README en esa línea', hacer: async () => {
+            { label: hilo ? `Llevarla a «${hilo}»` : 'Llevarla a un hilo', icono: I.agente, color: C.agente, description: 'escrita y sin enviar', hacer: () => llevarPendiente(ref, false) },
+            { label: 'Un hilo nuevo para ella', icono: I.nuevo, color: C.agente, hacer: () => llevarPendiente(ref, true) },
+            { label: 'Abrir el README en esa línea', icono: I.documento, color: C.ir, hacer: async () => {
                 const r = await cli.vineta(ref, texto, ['--linea']);
                 if (!r.datos) { void ui.falla(`telar: ${r.error ?? 'no la encontré'}`); return; }
                 await ui.abrirArchivo(r.datos.archivo);
             } },
-            { label: 'Marcar hecha', description: '[ ] → [x] en el README', hacer: async () => {
+            { label: 'Marcar hecha', icono: I.hecha, color: C.hecho, description: '[ ] → [x] en el README', hacer: async () => {
                 const si = await ui.aviso(`¿Marcar hecha? ${texto.slice(0, 90)}`, 'Marcar hecha');
                 if (si === 'Marcar hecha') await despues(await cli.vineta(ref, texto, ['--hecho']));
             } },
-            { label: 'Responsable…', description: dueno ? `ahora: ${dueno}` : 'ahora: sin responsable', hacer: async () => {
+            { label: 'Responsable…', icono: I.persona, color: C.cambiar, description: dueno ? `ahora: ${dueno}` : 'ahora: sin responsable', hacer: async () => {
                 const quien = await elegirDueno(texto.slice(0, 80), dueno, await this.personasConocidas(), yo.persona, true);
                 if (quien) await despues(await cli.vineta(ref, texto, ['--responsable', quien]));
             } },
         ];
-        const e = await ui.elegir(items, { titulo: texto.slice(0, 100), placeholder: 'qué hacer con este pendiente' });
+        const e = await ui.menu(items, donde, texto.slice(0, 100));
         if (e) await e.hacer();
     }
 
@@ -381,35 +385,37 @@ export class PantallaProyectos implements Pantalla {
         void ui.estado(`telar: ${general.nombre} consolida ${p?.nombre ?? ruta} (${r.datos.estado ?? ''})`, 8000);
     }
 
-    /** El ⋯ de un proyecto: lo que se puede hacer con él sin abrirlo. */
-    private async menu(ruta: string): Promise<void> {
+    /** Lo que se puede hacer con un proyecto sin abrirlo: su menú (web/entidades.ts), desde su fila, el Gantt o donde
+     *  se lo nombre. */
+    private async accionesDe(ruta: string): Promise<{ titulo: string; acciones: entidades.AccionEntidad[] } | undefined> {
         const general = this.t.general();
+        await this.asegurar();
         const p = this.lista?.find(x => x.ruta === ruta);
-        if (!p) return;
+        if (!p) return undefined;
         const carpeta = modelo.raiz ? rutas.unir(modelo.raiz, ruta) : '';
         type Item = Opcion & { hacer: () => Promise<unknown> | unknown };
         const items: Item[] = [
-            { label: p.vivo ? 'Ir a su hilo' : p.hilo ? 'Retomar su hilo' : 'Abrir con el agente',
+            { label: p.vivo ? 'Ir a su hilo' : p.hilo ? 'Retomar su hilo' : 'Abrir con el agente', icono: I.agente, color: C.agente,
               description: p.hilo ? `«${p.hilo}»` : 'un hilo nuevo cargando el proyecto', hacer: () => this.abrirProyecto(ruta) },
         ];
         if (general) {
-            items.push({ label: 'Consolidar sus pendientes', description: `${general.nombre} marca lo hecho con su prueba (/consolidar)`,
+            items.push({ label: 'Consolidar sus pendientes', icono: I.consolidar, color: C.hecho, description: `${general.nombre} marca lo hecho con su prueba (/consolidar)`,
                          hacer: () => this.consolidar(ruta) });
-            items.push({ label: `Escribirle a ${general.nombre} sobre este proyecto…`, description: 'le llega con el proyecto y lo pendiente',
+            items.push({ label: `Escribirle a ${general.nombre} sobre este proyecto…`, icono: I.escribir, color: C.agente, description: 'le llega con el proyecto y lo pendiente',
                          hacer: () => this.escribirSobre(p) });
         }
         if (carpeta) {
             items.push(
-                { label: 'Abrir el README', description: `${ruta}/README.md`, hacer: () => abrirEnlace(rutas.unir(carpeta, 'README.md')) },
-                { label: 'Mostrar la carpeta en el explorador', hacer: () => ui.mostrarCarpeta(carpeta) },
+                { label: 'Abrir el README', icono: I.documento, color: C.ir, description: `${ruta}/README.md`, hacer: () => abrirEnlace(rutas.unir(carpeta, 'README.md')) },
+                { label: 'Mostrar la carpeta en el explorador', icono: I.carpeta, color: C.ir, hacer: () => ui.mostrarCarpeta(carpeta) },
             );
         }
-        items.push({ label: 'Copiar la ruta', description: ruta, hacer: async () => {
+        items.push({ label: 'Copiar la ruta', icono: I.copiar, color: C.otro, description: ruta, hacer: async () => {
             await ui.copiar(ruta);
             void ui.estado(`telar: copiado ${ruta}`, 3000);
         } });
         if (p.hilo) {
-            items.push({ label: 'Archivar su hilo', description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
+            items.push({ label: 'Archivar su hilo', icono: I.archivar, color: C.quitar, description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
                 const si = await ui.aviso(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, 'Archivar');
                 if (si !== 'Archivar') return;
                 const r = await cli.hilo('archivar', p.hilo, undefined, ['--cerrar']);
@@ -417,8 +423,7 @@ export class PantallaProyectos implements Pantalla {
                 await this.abrir();
             } });
         }
-        const elegida = await ui.elegir(items, { titulo: p.nombre, placeholder: 'qué hacer con este proyecto' });
-        if (elegida) await elegida.hacer();
+        return { titulo: p.nombre, acciones: items };
     }
 
     /** Lo que la persona le escribe al agente general sobre un proyecto, con lo que necesita para no

@@ -85,12 +85,65 @@
   &.sel, &:hover { background: var(--sel); }
 }
 
-.web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); font-size: var(--t-menor); }
+.web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); }
+
+/* una opción con ícono y color (las de un menú de una entidad, web/entidades.ts): todo del mismo tamaño; lo que
+   distingue es el color de lo que hace (`--c`) y el ícono */
+.web-op .ico { width: 2ch; flex: none; text-align: center; color: var(--c, var(--dim)); font-family: iconos, var(--letra), monospace; }
+.web-op .ico:empty { display: none; }
+.web-op .l { color: var(--c, var(--fg)); }
+.web-lista:has(.ico:not(:empty)) .web-sep { padding-left: calc(var(--h-1) + 2ch + var(--h-2)); }
+
+/* el menú junto al puntero (clic derecho o ⋯ sobre una entidad): sin fondo detrás, con la sombra de una ventana de
+   terminal como el globo del Gantt */
+dialog.web-menu {
+  position: fixed;
+  z-index: 50;
+  inset: auto;
+  min-width: 28ch;
+  max-width: min(60ch, calc(100vw - 2ch));
+  margin: 0;
+  padding: .3lh 0;
+  color: var(--fg);
+  background: var(--bg-barra);
+  border: var(--borde);
+  box-shadow: 1ch .6lh 0 rgb(0 0 0 / 55%);
+
+  & .titulo { padding: 0 var(--h-1) .2lh; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  & .filtro { display: block; width: calc(100% - 2 * var(--h-1)); margin: 0 var(--h-1) .2lh; padding: 0; color: var(--fg);
+    background: transparent; border: 0; border-bottom: var(--borde); font: inherit; outline: none; }
+  & .web-lista { max-height: 60vh; margin: 0; }
+  /* todo del mismo tamaño: lo que distingue es el color (el de lo que hace, `--c`) y el ícono */
+  & .web-op { white-space: nowrap; }
+  & .web-op .d { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* «Acción…» (web/actuar.ts): tres secciones, todas del mismo tamaño; los títulos de sección, apagados */
+dialog.web-actuar {
+  width: min(80ch, calc(100vw - 4ch));
+
+  & section { margin-top: .6lh; }
+  & h4 { margin: 0 0 .2lh; color: var(--dim); font-size: inherit; font-weight: normal; }
+  & .campos { padding-left: calc(2ch + var(--h-2) + var(--h-1)); color: var(--dim); }
+  & textarea { box-sizing: border-box; width: 100%; margin-top: .3lh; padding: var(--e-1) var(--h-1); color: var(--fg);
+    background: var(--bg); border: var(--borde); font: inherit; resize: vertical; }
+  & input:not([type]) { box-sizing: border-box; width: 100%; padding: 0 var(--h-1); color: var(--fg); background: transparent;
+    border: 0; border-bottom: var(--borde); font: inherit; outline: none; }
+  & .web-lista { max-height: 22vh; }
+  /* una línea por opción: lo que no cabe se corta, y entero se lee al pasar el puntero */
+  & .web-op { white-space: nowrap; }
+  & .web-op .l { flex: none; }
+  & .web-op .d { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .web-op.sel { background: var(--sel); }
+  & .botones { align-items: center; }
+  & .botones .solo { display: flex; flex: 1; align-items: center; gap: 1ch; white-space: nowrap; color: var(--dim); cursor: pointer; }
+  & .botones .solo input { margin: 0; accent-color: var(--azul); }
+}
 
 /* en un celular, cada opción en dos renglones: el nombre, y debajo para qué sirve */
 @media (width <= 700px) {
   .web-op { flex-direction: column; gap: 0; padding-block: .15lh; }
-  .web-op .d { font-size: var(--t-chica); }
+  .web-op .d { color: var(--dim); }
 }
 
 /* los avisos: abajo a la derecha, se van solos */

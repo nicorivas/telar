@@ -16,6 +16,7 @@
 // rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
 // estilos, en media/css/hilos.css.
 
+import * as entidades from '../web/entidades';
 import * as ui from '../web/ui';
 
 import * as cli from '../cli';
@@ -149,7 +150,7 @@ export class BarraHilos {
         lista.addEventListener('click', e => {
             const f = (e.target as HTMLElement).closest<HTMLElement>('[data-hilo],[data-accion]');
             if (!f) return;
-            if (f.dataset.accion) this.mensaje({ tipo: f.dataset.accion, id: f.dataset.id });
+            if (f.dataset.accion) this.mensaje({ tipo: f.dataset.accion, id: f.dataset.id, donde: entidades.dondeDe(e, f) });
             else this.mensaje({ tipo: 'ir', hilo: f.dataset.hilo });
         });
         // el clic derecho abre el menú del hilo (⋯)
@@ -157,7 +158,7 @@ export class BarraHilos {
             const f = (e.target as HTMLElement).closest<HTMLElement>('[data-hilo]');
             if (!f) return;
             e.preventDefault();
-            this.mensaje({ tipo: 'menu', id: f.dataset.hilo });
+            this.mensaje({ tipo: 'menu', id: f.dataset.hilo, donde: entidades.dondeDe(e) });
         });
         modos.alCambiar(() => this.refrescar(true));
         this.refrescar(true);
@@ -204,7 +205,7 @@ export class BarraHilos {
         if (mostrar) { const el = lista.querySelector<HTMLElement>(mostrar); if (el && !el.hidden) el.scrollIntoView({ block: 'nearest' }); }
     }
 
-    mensaje(m: { tipo: string; hilo?: string; id?: string }): void {
+    mensaje(m: { tipo: string; hilo?: string; id?: string; donde?: { x: number; y: number } }): void {
         switch (m.tipo) {
             case 'ir': {
                 if (!m.hilo) break;
@@ -217,7 +218,7 @@ export class BarraHilos {
             case 'retomar': if (m.id) void ui.orden('telar.retomar', { hilo: m.id }); break;
             case 'cerrar': if (m.id) void ui.orden('telar.cerrar', { hilo: m.id }); break;
             case 'archivo': void ui.orden('telar.archivo'); break;
-            case 'menu': if (m.id) void ui.orden('telar.menuHilo', { hilo: m.id }); break;
+            case 'menu': if (m.id) void entidades.menuDe(`hilo:${m.id}`, m.donde); break;
             case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
             case 'menu-remoto': if (m.id) void ui.orden('telar.menuRemoto', m.id); break;
             case 'plegar-barra': this.plegar(true); break;

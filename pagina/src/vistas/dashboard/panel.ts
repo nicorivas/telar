@@ -9,6 +9,7 @@
 // quién te espera, y lo que está por hacer. Nada más. Lo que saldría de un proveedor que no
 // está declarado no aparece porque no existe, y eso se dice en vez de dejar un hueco.
 
+import * as entidades from '../../web/entidades';
 import * as ui from '../../web/ui';
 import * as cli from '../../cli';
 import { esc, hace } from '../../estilo';
@@ -341,6 +342,13 @@ export class Dashboard implements Tablero {
         if (m.tipo === 'lienzo-guardar') { this.paginas.guardar(m.valor ?? '', m.datos ?? ''); return; }
         if (m.tipo === 'lienzo-pedir') {
             const { id, datos } = JSON.parse(m.datos ?? '{}') as { id: string; datos: unknown };
+            // el menú de una entidad no se le pide a telar ni pide permiso: solo muestra; lo que se elige, se elige aquí
+            if (m.accion === 'menu') {
+                const direccion = String((datos as { direccion?: unknown } | undefined)?.direccion ?? '');
+                this.panel?.responderLienzo(id, direccion ? { ok: true } : { ok: false, error: 'falta la dirección' });
+                if (direccion) await entidades.menuDe(direccion, m.donde);
+                return;
+            }
             const respuesta = await this.paginas.pedir(m.valor ?? '', m.accion ?? '', datos);
             this.panel?.responderLienzo(id, respuesta);
             return;

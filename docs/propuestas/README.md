@@ -39,7 +39,9 @@ el primer paso sin hacer de la primera propuesta.
 6. **[fechas.md](fechas.md)**: un formato único para lo que tiene día (actividades, hitos, sesiones) y fuentes
    intercambiables (secciones de cronograma en los documentos, comandos, las tareas), juntadas en `telar fechas`;
    un Gantt o el calendario las dibujan sin saber de qué equipo son. Casi todo hecho: `telar fechas`, mapas, editar donde viven, el Gantt general; falta publicarlo y los eventos.
-7. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
+7. **[acciones.md](acciones.md)**: un solo menú para toda entidad (clic derecho, donde está) y «Acción…»: mandarle a un
+   hilo o a un agente un prompt con el contexto de la entidad, con una skill o sin ella. El menú y «Acción…» (`telar actuar`), hechos.
+8. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).
 

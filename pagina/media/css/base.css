@@ -9,7 +9,7 @@ body {
 body {
   margin: 0;
   color: var(--fg);
-  font-family: var(--letra), monospace;
+  font-family: var(--letra), iconos, monospace;
   font-size: var(--tam);
   font-weight: var(--peso);
   line-height: var(--alto);

@@ -21,7 +21,9 @@ class Skills(BaseModel):
     skills: list[dict]
 
 
-def skills(ctx, hilo: str = "") -> Skills:
+def skills(ctx, hilo: str = "", carpeta: str = "") -> Skills:
+    """Las del agente del hilo; o, con `carpeta` (relativa a la raíz) y sin hilo, las que tendría un hilo nuevo ahí
+    (telar actuar: el hilo de un proyecto que todavía no está abierto)."""
     from telar.agente import ErrorDeAgente
     from telar.ordenes import _comun
     from telar.ordenes.agente import _construir
@@ -38,9 +40,15 @@ def skills(ctx, hilo: str = "") -> Skills:
         h, aviso = _comun.hilo_o_nombre(tel, hilo)
         if h is None:
             raise ErrorDeServicio(aviso, 404)
-    else:
+    elif not carpeta:
         h = _comun.hilo_actual(tel)
-    carpeta = h.ruta if h is not None and h.ruta else Path(ctx.config.raiz)
+    if carpeta and h is None:
+        donde = (Path(ctx.config.raiz) / carpeta.strip("/")).resolve()
+        if not donde.is_relative_to(Path(ctx.config.raiz).resolve()):
+            raise ErrorDeServicio(f"{carpeta}: fuera de la raíz", 400)
+        carpeta = donde
+    else:
+        carpeta = h.ruta if h is not None and h.ruta else Path(ctx.config.raiz)
     remoto = bool(h is not None and tel.estado.remotos().get(h.nombre))
     conversacion = h.sesiones[0] if h is not None and h.sesiones else ""
     usadas = agente.usadas(conversacion) if conversacion and not remoto else {}

@@ -27,7 +27,7 @@
     gap: 1em;
     margin-bottom: 2rem;
     color: var(--dim);
-    font-family: var(--letra), monospace;
+    font-family: var(--letra), iconos, monospace;
     font-size: var(--t-chica);
   }
 
@@ -44,7 +44,7 @@
   .herramientas {
     margin: 1.2rem 0;
     color: var(--dim);
-    font-family: var(--letra), monospace;
+    font-family: var(--letra), iconos, monospace;
     font-size: var(--t-chica);
   }
 
@@ -70,7 +70,7 @@
       padding: 0 .25em;
       background: var(--bg-barra);
       color: var(--cian);
-      font-family: var(--letra), monospace;
+      font-family: var(--letra), iconos, monospace;
       font-size: .82em;
     }
 
@@ -102,6 +102,6 @@
 
   .nada {
     color: var(--dim);
-    font-family: var(--letra), monospace;
+    font-family: var(--letra), iconos, monospace;
   }
 }

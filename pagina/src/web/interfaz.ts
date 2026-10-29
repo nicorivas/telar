@@ -91,7 +91,9 @@ export function escribir(o: PedidoEscrito): Promise<{ texto: string; destino: st
     });
 }
 
-export interface OpcionMenu { label: string; description?: string; detail?: string; separador?: boolean }
+export interface OpcionMenu { label: string; description?: string; detail?: string; separador?: boolean;
+    /** un ícono de la letra de la página (web/iconos.ts) y el color que distingue lo que hace (azul, verde…) */
+    icono?: string; color?: string }
 
 const norm = (t: string | undefined) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -108,7 +110,10 @@ export function elegir(opciones: OpcionMenu[], o: { titulo?: string; placeholder
             opciones.forEach((op, i) => {
                 if (op.separador) { if (!q) lista.appendChild(el('div', 'web-sep', op.label)); return; }
                 if (q && !norm(`${op.label} ${op.description ?? ''} ${op.detail ?? ''}`).includes(q)) return;
-                const f = el('div', 'web-op'); f.appendChild(el('span', '', op.label));
+                const f = el('div', 'web-op');
+                if (op.color) f.style.setProperty('--c', `var(--${op.color})`);
+                f.appendChild(el('span', 'i ico', op.icono ?? ''));
+                f.appendChild(el('span', 'l', op.label));
                 if (op.description) f.appendChild(el('span', 'd', op.description));
                 f.addEventListener('click', () => responder(i));
                 vis.push([f, i]); lista.appendChild(f);
@@ -123,6 +128,70 @@ export function elegir(opciones: OpcionMenu[], o: { titulo?: string; placeholder
             if (e.key === 'Enter') { e.preventDefault(); if (vis[sel]) responder(vis[sel][1]); }
         });
         pintar(); c.showModal(); filtro.focus();
+    });
+}
+
+/** Un menú junto a donde se hizo clic (el clic derecho sobre una entidad, o su ⋯): las opciones, con ↑ ↓ ⏎ ⎋ y
+ *  escribir para filtrar. Es un <dialog> abierto sin fondo (`show`, no `showModal`): mientras está, las teclas del
+ *  dashboard callan (miran `dialog[open]`). Se cierra al elegir, con ⎋ o con un clic afuera. El índice de la opción
+ *  elegida, o undefined. */
+export function menu(opciones: OpcionMenu[], donde: { x: number; y: number }, o: { titulo?: string } = {}): Promise<number | undefined> {
+    return new Promise(listo => {
+        const c = el('dialog', 'web-menu');
+        if (o.titulo) c.appendChild(el('div', 'titulo', o.titulo));
+        const filtro = el('input'); filtro.placeholder = 'filtrar'; filtro.className = 'filtro';
+        const lista = el('div', 'web-lista');
+        c.append(filtro, lista);
+        document.body.appendChild(c);
+        let hecho = false;
+        const afuera = (e: MouseEvent) => { if (!c.contains(e.target as Node)) responder(undefined); };
+        const responder = (i: number | undefined) => {
+            if (hecho) return;
+            hecho = true;
+            document.removeEventListener('mousedown', afuera, true);
+            window.removeEventListener('blur', cerrar);
+            c.close(); c.remove();
+            listo(i);
+        };
+        const cerrar = () => responder(undefined);
+        let vis: [HTMLElement, number][] = [], sel = 0;
+        const pintar = () => {
+            lista.replaceChildren(); vis = [];
+            const q = norm(filtro.value);
+            opciones.forEach((op, i) => {
+                if (op.separador) { if (!q) lista.appendChild(el('div', 'web-sep', op.label)); return; }
+                if (q && !norm(`${op.label} ${op.description ?? ''} ${op.detail ?? ''}`).includes(q)) return;
+                const f = el('div', 'web-op');
+                if (op.color) f.style.setProperty('--c', `var(--${op.color})`);
+                f.appendChild(el('span', 'i ico', op.icono ?? ''));
+                f.appendChild(el('span', 'l', op.label));
+                if (op.description) f.appendChild(el('span', 'd', op.description));
+                f.addEventListener('click', () => responder(i));
+                f.addEventListener('mousemove', () => { const k = vis.findIndex(([x]) => x === f); if (k !== sel) { sel = k; marcar(); } });
+                vis.push([f, i]); lista.appendChild(f);
+            });
+            sel = Math.min(sel, Math.max(0, vis.length - 1));
+            marcar();
+        };
+        const marcar = () => vis.forEach(([f], k) => f.classList.toggle('sel', k === sel));
+        filtro.addEventListener('input', () => { sel = 0; pintar(); });
+        filtro.addEventListener('keydown', e => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, vis.length - 1); marcar(); vis[sel]?.[0].scrollIntoView({ block: 'nearest' }); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); marcar(); vis[sel]?.[0].scrollIntoView({ block: 'nearest' }); }
+            if (e.key === 'Enter') { e.preventDefault(); if (vis[sel]) responder(vis[sel][1]); }
+            if (e.key === 'Escape') { e.preventDefault(); responder(undefined); }
+            e.stopPropagation();
+        });
+        c.addEventListener('cancel', e => { e.preventDefault(); responder(undefined); });
+        pintar();
+        c.show();
+        // donde se hizo clic, sin salirse de la ventana: si no cabe abajo, arriba; si no cabe a la derecha, a la izquierda
+        const r = c.getBoundingClientRect();
+        c.style.left = `${Math.max(4, Math.min(donde.x, innerWidth - r.width - 8))}px`;
+        c.style.top = `${donde.y + r.height + 8 <= innerHeight ? donde.y : Math.max(4, donde.y - r.height)}px`;
+        filtro.focus();
+        // el clic que lo abrió no lo cierra: la escucha va en el turno siguiente
+        setTimeout(() => { document.addEventListener('mousedown', afuera, true); window.addEventListener('blur', cerrar); }, 0);
     });
 }
 

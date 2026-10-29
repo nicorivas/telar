@@ -12,6 +12,9 @@ import * as interfaz from './interfaz';
 export interface Opcion {
     label: string;
     description?: string;
+    /** en un menú junto al puntero: su ícono (web/iconos.ts) y el color de lo que hace (web/iconos.ts, `C`) */
+    icono?: string;
+    color?: string;
     detail?: string;
     separador?: boolean;
 }
@@ -67,6 +70,14 @@ export async function campo(o: PedidoCampo): Promise<string | undefined> {
 
 /** Un texto largo y a quién mandarlo (web/interfaz.ts, `escribir`): lo escrito y el destino, o undefined. */
 export const escribir = (o: interfaz.PedidoEscrito): Promise<{ texto: string; destino: string } | undefined> => interfaz.escribir(o);
+
+/** El menú de una entidad junto a donde se hizo clic (web/interfaz.ts, `menu`); sin `donde` (una tecla, un comando),
+ *  el menú con buscador en el centro, como siempre. El ítem elegido, o undefined. */
+export async function menu<T extends Opcion>(opciones: T[], donde?: { x: number; y: number }, titulo = ''): Promise<T | undefined> {
+    if (!donde) return elegir(opciones, { titulo });
+    const i = await interfaz.menu(opciones, donde, { titulo });
+    return i === undefined ? undefined : opciones[i];
+}
 
 /** Un menú para elegir uno: el ítem elegido, o undefined. */
 export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: string; placeholder?: string } = {}): Promise<T | undefined> {
