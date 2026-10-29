@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.5] — 2026-10-29
+
+### Fixed
+
+- **`telar instalar` declares the agent of each thread** (`[agente] nombre = "claude-code"`) when Claude Code is
+  installed and the configuration names none. Without it, a thread opened a plain shell and a thread moved to that
+  machine was refused («aquí el agente es «ninguno»: solo se retoma una de Claude»): it happened on a hosted telar,
+  set up with `telar instalar`. An agent already declared is left as it is; `--sin-agente` skips it.
+
 ## [0.8.4] — 2026-10-29
 
 ### Fixed

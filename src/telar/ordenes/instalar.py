@@ -290,6 +290,14 @@ def _plan(ctx, o, ruta: Path, avisos: list[str] | None = None) -> list[tuple]:
         from telar.ordenes import agente
 
         pasos.append((lambda: agente.main(["instalar", "--si"], ctx), "poner los ganchos, la skill y el mod de Claude Code"))
+    # sin `[agente]`, los hilos abren una shell y no se puede retomar ni recibir una conversación (llevar un hilo a esta
+    # máquina falla con «aquí el agente es ninguno»): con Claude Code instalado, se lo declara, una vez y si nadie lo dijo
+    texto_config = ruta.read_text(encoding="utf-8") if ruta.exists() else ""
+    if not o.sin_agente and shutil.which("claude") and not re.search(r"^\[agente\]", texto_config, re.M):
+        from telar.agente import claude_code
+
+        bloque = f'\n# el agente de cada hilo (lo escribió `telar instalar`: Claude Code está instalado)\n[agente]\nnombre = "{claude_code.NOMBRE}"\n'
+        pasos.append((lambda: _agregar(ruta, bloque), f"el agente de cada hilo: {claude_code.NOMBRE}"))
     return pasos
 
 

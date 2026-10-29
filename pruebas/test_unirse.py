@@ -362,3 +362,34 @@ class AlInstalar(Prueba):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ElAgenteDeCadaHilo(Prueba):
+    """`telar instalar` sin `[agente]` y con Claude Code instalado lo declara: si no, un hilo que llega a esta máquina
+    no se puede retomar («aquí el agente es ninguno»), que le pasó a un telar alojado en un servidor."""
+
+    def plan(self, texto: str):
+        from telar.ordenes import instalar
+
+        conf = Path(self.tmp.name) / "config.toml"
+        conf.write_text(texto, encoding="utf-8")
+        o = SimpleNamespace(bus="", token="", persona="", sin_servicio=True, sin_agente=False, unirse=None, servidor="",
+                            si=True, seco=False, web_puerto=0, web_socket="", web_url="")
+        config = SimpleNamespace(bus=SimpleNamespace(url="", persona=""), repos=(), modulos=())
+        from telar import api_web
+
+        with mock.patch.object(instalar, "_ganchos_puestos", return_value=True), \
+                mock.patch.object(api_web, "ruta_llave", return_value=conf), \
+                mock.patch.object(instalar.shutil, "which", side_effect=lambda p: "/x/claude" if p == "claude" else None):
+            return [que for _, que in instalar._plan(SimpleNamespace(config=config), o, conf)]
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_sin_agente_declarado_y_con_claude_lo_declara(self):
+        self.assertIn("el agente de cada hilo: claude-code", self.plan(""))
+
+    def test_si_ya_hay_un_agente_no_lo_toca(self):
+        self.assertNotIn("el agente de cada hilo: claude-code", self.plan('[agente]\nnombre = "otro"\n'))
