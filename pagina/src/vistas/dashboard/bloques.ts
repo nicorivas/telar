@@ -121,7 +121,11 @@ export class PantallaBloques implements Pantalla {
             // con tareas en sus filas (los correos), un interruptor: solo las que tienen alguna pendiente
             const filtro = !conTareasB ? '' : `<a class="solo-pend${solo ? ' si' : ''}" data-accion="solo-pendientes" data-valor="${esc(b.clave)}"`
                 + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? '☑' : '☐'} con tareas pendientes</a>`;
-            const suyos = this.t.atajosEn(b.clave) + filtro;
+            // con muchas filas (la bandeja), un buscador: filtra lo que se ve sin repintar (dashboard/vista.ts)
+            const buscador = itemsB.length < 8 ? '' : `<span class="buscar-c-caja"><input class="buscar-c" data-bloque="${esc(b.clave)}"`
+                + ` type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off" title="de quién, el asunto o el código de una tarea">`
+                + '<span class="buscar-c-cuenta"></span></span>';
+            const suyos = buscador + this.t.atajosEn(b.clave) + filtro;
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
             if (!leido) h.push('<div class="vacio">leyendo…</div>');
             else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
@@ -144,7 +148,10 @@ export class PantallaBloques implements Pantalla {
                 const pendiente = (t: { proveedor: string; id: string; estado?: string }) =>
                     vivas ? vivas.has(`${t.proveedor}:${t.id}`) : !/^(hecha|cerrada|descartada|cancelada)$/.test(t.estado ?? '');
                 // un ítem es una fila; un clic lo muestra con sus tareas (procesarlo en un hilo es un botón de ahí)
-                type Extra = { hijo?: boolean; cuantos?: number; abierta?: boolean; llave?: string; ts?: NonNullable<cli.JsonPaginaItem['tareas']>; nuevo?: boolean; marca?: string };
+                type Extra = { hijo?: boolean; cuantos?: number; abierta?: boolean; llave?: string; ts?: NonNullable<cli.JsonPaginaItem['tareas']>; nuevo?: boolean; marca?: string; busca?: string };
+                // lo que encuentra el buscador en una fila: de quién, el asunto y sus tareas (en una conversación
+                // plegada, los de todos sus correos)
+                const textoDe = (y: cli.JsonPaginaItem) => `${y.texto ?? ''} ${y.titulo} ${(y.tareas ?? []).map(t => t.id).join(' ')}`;
                 const fila = (x: cli.JsonPaginaItem, i: number, e: Extra = {}) => {
                     const clic = x.mensaje || x.tareas?.length ? ` data-accion="ver-item" data-valor="${esc(b.clave)}:${i}"` : '';
                     const ts = e.ts ?? x.tareas ?? [];
@@ -155,7 +162,8 @@ export class PantallaBloques implements Pantalla {
                     const plegar = e.cuantos ? `<span class="plegar" data-accion="grupo-item" data-valor="${esc(e.llave!)}" title="${e.abierta ? 'plegar' : `ver los ${e.cuantos} de esta conversación`}">${e.abierta ? '▾' : '▸'}${e.cuantos}</span> ` : '';
                     const nuevo = e.nuevo ?? x.destacado;
                     const sel = i === marcado && b.clave === this.sel;
-                    return `<div class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}${sel ? ' sel' : ''}"${clic}`
+                    const busca = (e.busca ?? textoDe(x)).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                    return `<div data-texto="${esc(busca)}" class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}${sel ? ' sel' : ''}"${clic}`
                         + ` title="${esc(clic ? `clic: ${x.tareas?.length ? 'sus tareas' : 'verlo'}${x.mensaje ? ', y procesarlo en un hilo' : ''}` : x.titulo)}"><span class="mk">${esc(e.marca ?? x.marca ?? '·')}</span>`
                         + `<span class="hora" title="${esc((x.fecha ?? '').replace('T', ' '))}">${esc(cuandoCorto(x.fecha ?? ''))}</span>`
                         + `<span class="de">${esc(conTareas ? (x.texto ?? '').replace(/ · tareas: .*$/, '') : x.texto ?? '')}</span><span class="que">${plegar}${esc(x.titulo)}</span>${tareas}</div>`;
@@ -176,7 +184,7 @@ export class PantallaBloques implements Pantalla {
                     const ts = [...new Map(todos.flatMap(y => y.tareas ?? []).map(t => [t.id, t])).values()];
                     // la conversación está sin procesar si alguno de sus correos lo está
                     const nuevo = todos.some(y => y.destacado);
-                    h.push(fila(x, idx[0], { cuantos: idx.length, abierta, llave, ts, nuevo, marca: nuevo ? (todos.find(y => y.destacado)?.marca ?? x.marca) : x.marca }));
+                    h.push(fila(x, idx[0], { cuantos: idx.length, abierta, llave, ts, nuevo, busca: todos.map(textoDe).join(' '), marca: nuevo ? (todos.find(y => y.destacado)?.marca ?? x.marca) : x.marca }));
                     if (abierta) idx.slice(1).forEach(k => h.push(fila(items[k], k, { hijo: true })));
                 }
                 if (solo && items.length && !mostrados) h.push('<div class="vacio">ningún correo con tareas pendientes</div>');

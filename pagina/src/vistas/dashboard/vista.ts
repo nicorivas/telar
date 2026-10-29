@@ -30,7 +30,7 @@ export interface VistaDia {
 
 interface Estado {
     modo: string; q: string; todas: boolean; pq: string; po: string; to: string; area: string; dueno: string;
-    pc: boolean; pf: Record<string, string>; ordenP: string; ordenC?: string; tm?: string; tq?: string; tmv?: number; pfv?: number;
+    pc: boolean; pf: Record<string, string>; ordenP: string; ordenC?: string; tm?: string; tq?: string; cq?: Record<string, string>; tmv?: number; pfv?: number;
 }
 
 const LLAVE = 'telar.dashboard.estado';
@@ -143,6 +143,18 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         }
         return Number(a.dataset.orden) - Number(b.dataset.orden);
     };
+    // el buscador de un bloque con muchas filas (la bandeja de correo): esconde las que no tienen todas las palabras
+    function aplicarCorreo(): void {
+        for (const i of todos<HTMLInputElement>('input.buscar-c')) {
+            const sec = i.closest('section'); if (!sec) continue;
+            const partes = norm(estado.cq?.[i.dataset.bloque ?? ''] || '').split(/\s+/).filter(Boolean);
+            const filas = [...sec.querySelectorAll<HTMLElement>('.cr')];
+            let n = 0;
+            for (const f of filas) { f.hidden = !conTodas(partes)(f); if (!f.hidden) n += 1; }
+            const cuenta = i.parentElement?.querySelector('.buscar-c-cuenta');
+            if (cuenta) cuenta.textContent = partes.length ? `${n} de ${filas.length}` : '';
+        }
+    }
     function aplicarTareas(): void {
         const c = $('tareas-t'); if (!c) return;
         const lasDeTodas = [...c.querySelectorAll<HTMLElement>('.tarea')];
@@ -303,6 +315,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         if (t.id === 'per-skill-filtro') { filtrarSkills(); return; }
         if (t.id === 'buscar-p') { estado.pq = t.value; guardar(); aplicarProyectos(); return; }
         if (t.id === 'buscar-t') { estado.tq = t.value; guardar(); aplicarTareas(); return; }
+        if (t.classList.contains('buscar-c')) { estado.cq = { ...estado.cq, [t.dataset.bloque ?? '']: t.value }; guardar(); aplicarCorreo(); return; }
         if (t.id !== 'buscar') return;
         estado.q = t.value; estado.todas = false; guardar(); aplicar();
     });
@@ -455,6 +468,16 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             e.preventDefault(); enviar({ tipo: 'accion', accion: 'cal-dia', valor: e.key === 'ArrowLeft' ? '-1' : '1' }); return;
         }
         // en «tareas»: escribir en la búsqueda; ⏎ abre la primera que se ve; / va a buscar
+        // el buscador de la bandeja: ⎋ lo vacía, y otra vez lo suelta; / lo enfoca
+        const bc = raiz.querySelector<HTMLInputElement>('input.buscar-c');
+        if (bc && activo instanceof HTMLInputElement && activo.classList.contains('buscar-c')) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (activo.value) { activo.value = ''; estado.cq = { ...estado.cq, [activo.dataset.bloque ?? '']: '' }; guardar(); aplicarCorreo(); } else activo.blur();
+            }
+            return;
+        }
+        if (bc && e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !escribiendoEn(activo)) { e.preventDefault(); bc.focus(); return; }
         const bt = $<HTMLInputElement>('buscar-t');
         if (bt && activo === bt) {
             if (e.key === 'Escape') { e.preventDefault(); if (bt.value) { bt.value = ''; estado.tq = ''; guardar(); aplicarTareas(); } else bt.blur(); return; }
@@ -489,7 +512,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             // el foco se recupera solo si estaba en el dashboard: si no, es de la barra o de un hilo
             const adentro = !!activo && raiz.contains(activo);
             const id = adentro ? activo!.id : '';
-            const pos = id === 'buscar' || id === 'buscar-p' || id === 'buscar-t' ? activo!.selectionStart ?? 0 : 0;
+            const enCorreo = adentro && activo!.classList.contains('buscar-c') ? activo!.dataset.bloque ?? '' : undefined;
+            const pos = id === 'buscar' || id === 'buscar-p' || id === 'buscar-t' || enCorreo !== undefined ? activo!.selectionStart ?? 0 : 0;
             // lo que se está escribiendo sobre una reunión sobrevive al repintado de cada minuto
             const ta = $<HTMLTextAreaElement>('ev-texto');
             const previo = ta ? { ev: ta.dataset.evento, v: ta.value, foco: (activo as Element | null) === ta, s: ta.selectionStart } : null;
@@ -504,7 +528,11 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             // en proyectos, el buscador toma el foco al llegar (si nadie más lo tiene: la barra, un hilo)
             const libre = adentro || !activo || activo === document.body;
             if (np) { np.value = estado.pq; if (libre && (id === 'buscar-p' || id !== 'buscar') && visible()) { np.focus(); np.setSelectionRange(pos || np.value.length, pos || np.value.length); } }
-            aplicar(); aplicarProyectos();
+            for (const i of todos<HTMLInputElement>('input.buscar-c')) {
+                i.value = estado.cq?.[i.dataset.bloque ?? ''] ?? '';
+                if (enCorreo !== undefined && i.dataset.bloque === enCorreo) { i.focus(); i.setSelectionRange(pos, pos); }
+            }
+            aplicar(); aplicarProyectos(); aplicarCorreo();
         },
         parcial(id, html) {
             const el = $(id);
