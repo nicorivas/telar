@@ -121,12 +121,14 @@ export class PantallaBloques implements Pantalla {
             // con tareas en sus filas (los correos), un interruptor: solo las que tienen alguna pendiente
             const filtro = !conTareasB ? '' : `<a class="solo-pend${solo ? ' si' : ''}" data-accion="solo-pendientes" data-valor="${esc(b.clave)}"`
                 + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? '☑' : '☐'} con tareas pendientes</a>`;
-            // con muchas filas (la bandeja), un buscador: filtra lo que se ve sin repintar (dashboard/vista.ts)
-            const buscador = itemsB.length < 8 ? '' : `<span class="buscar-c-caja"><input class="buscar-c" data-bloque="${esc(b.clave)}"`
-                + ` type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off" title="de quién, el asunto o el código de una tarea">`
-                + '<span class="buscar-c-cuenta"></span></span>';
-            const suyos = buscador + this.t.atajosEn(b.clave) + filtro;
+            const suyos = this.t.atajosEn(b.clave) + filtro;
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
+            // con muchas filas (la bandeja), un buscador en su línea: filtra lo que se ve sin repintar (dashboard/vista.ts)
+            if (itemsB.length >= 8) {
+                h.push(`<div class="buscar-c-caja"><input class="buscar-c" data-bloque="${esc(b.clave)}" type="text" placeholder="/ buscar"`
+                    + ' spellcheck="false" autocomplete="off" title="por nombre, dirección de correo, asunto o código de tarea">'
+                    + '<span class="buscar-c-cuenta"></span></div>');
+            }
             if (!leido) h.push('<div class="vacio">leyendo…</div>');
             else if (leido.error) h.push(`<div class="vacio falla">${esc(leido.error)}</div>`);
             else {
@@ -149,9 +151,9 @@ export class PantallaBloques implements Pantalla {
                     vivas ? vivas.has(`${t.proveedor}:${t.id}`) : !/^(hecha|cerrada|descartada|cancelada)$/.test(t.estado ?? '');
                 // un ítem es una fila; un clic lo muestra con sus tareas (procesarlo en un hilo es un botón de ahí)
                 type Extra = { hijo?: boolean; cuantos?: number; abierta?: boolean; llave?: string; ts?: NonNullable<cli.JsonPaginaItem['tareas']>; nuevo?: boolean; marca?: string; busca?: string };
-                // lo que encuentra el buscador en una fila: de quién, el asunto y sus tareas (en una conversación
-                // plegada, los de todos sus correos)
-                const textoDe = (y: cli.JsonPaginaItem) => `${y.texto ?? ''} ${y.titulo} ${(y.tareas ?? []).map(t => t.id).join(' ')}`;
+                // lo que encuentra el buscador en una fila: de quién, el asunto, su `busca` (las direcciones y los
+                // nombres de un correo) y sus tareas (en una conversación plegada, los de todos sus correos)
+                const textoDe = (y: cli.JsonPaginaItem) => `${y.texto ?? ''} ${y.titulo} ${y.busca ?? ''} ${(y.tareas ?? []).map(t => t.id).join(' ')}`;
                 const fila = (x: cli.JsonPaginaItem, i: number, e: Extra = {}) => {
                     const clic = x.mensaje || x.tareas?.length ? ` data-accion="ver-item" data-valor="${esc(b.clave)}:${i}"` : '';
                     const ts = e.ts ?? x.tareas ?? [];

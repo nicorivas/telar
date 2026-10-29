@@ -559,6 +559,10 @@ cada una abre su ficha, y al cerrarla se vuelve al ítem) y, si trae `mensaje`, 
 hilo nuevo con el agente para esa fila, como un atajo pero para un solo correo.
 Los ítems con el mismo `grupo` (los correos de una conversación) van anidados bajo el primero de la
 lista, con ▸ y cuántos son; el clic en ▸ despliega los demás.
+Con 8 filas o más, el bloque lleva un buscador en una línea bajo su título: filtra mientras se escribe, por `texto`,
+`titulo`, los códigos de sus `tareas` y `busca`, un texto que no se muestra (las direcciones y los nombres de quienes
+escriben y reciben un correo). Cada palabra tiene que estar; una conversación plegada aparece si alguno de sus ítems
+calza.
 Un ítem con `id` muestra además su detalle al abrirlo (el cuerpo de un correo, cinco líneas y «ver
 todo»): el dashboard corre `telar bloque <clave> --item <id>`, que llama al comando del bloque con
 `--item <id>` al final; el comando imprime `{"texto": "…"}`. Se pide al abrir el ítem, no en cada

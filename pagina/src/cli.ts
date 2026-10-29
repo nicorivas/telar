@@ -333,6 +333,8 @@ export interface JsonPaginaItem {
     tareas?: { proveedor: string; id: string; estado?: string }[];
     /** los ítems con el mismo `grupo` (los correos de una conversación) van anidados bajo el más reciente */
     grupo?: string;
+    /** más texto para el buscador del bloque, que no se muestra (las direcciones y los nombres de un correo) */
+    busca?: string;
     /** su id en el bloque: con él, el dashboard pide su detalle (el cuerpo de un correo) al abrirlo */
     id?: string;
     /** con `enlace`: un texto que identifica una pestaña ya abierta del navegador (su título o su

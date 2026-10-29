@@ -6,13 +6,24 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.9] — 2026-10-29
+
+### Fixed
+
+- **A thread can come back to the machine it left.** Bringing a thread back (from the server to the laptop where it
+  started) was refused: «aquí ya está esa conversación… el hilo ya llegó antes». That copy is the one left behind
+  when it went away. Now the check before moving doesn't count it, and on arrival the conversation that comes
+  replaces it when it continues it. If the local one was continued separately, it's kept aside
+  (`<id>.antes-<fecha>.jsonl.bak`) and the move says so.
+
 ### Changed
 
 - **A mail opens to the right of the list.** Clicking an item of a block (a mail) shows it beside the list instead of
   replacing it: the list stays in view with the open one marked, another click switches it, and ✕ or ⎋ closes it.
   On a narrow screen it still opens alone.
-- **A search box for the mail.** A block with many rows (the inbox) gets a search box in its title: it filters by
-  sender, subject or task code as you type (every word must match; a folded conversation matches by any of its
+- **A search box for the mail.** A block with many rows (the inbox) gets a search box on its own line under the
+  title: it filters by sender, subject, task code or the item's new `busca` field (text that isn't shown: the names
+  and addresses of who sent and received a mail) as you type (every word must match; a folded conversation matches by any of its
   mails), says how many are left, and survives opening a mail. `/` focuses it, ⎋ clears it.
 
 ## [0.8.8] — 2026-10-29

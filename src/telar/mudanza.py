@@ -21,6 +21,7 @@ from __future__ import annotations
 import gzip
 import re
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 #: el verbo del nodo que recibe
@@ -64,7 +65,7 @@ def progreso(config, hilo: str, paso: str, **datos) -> None:
 def revisar(ctx, p: dict) -> dict:
     """Del lado que recibiría, sin mover nada: lo que haría fallar la llegada de este hilo (`graves`: no se lleva) y lo
     que haría que llegue a medias (`avisos`: se pregunta). Lo que ya falló en un telar alojado: sin agente declarado,
-    sin `claude` en el PATH del servicio, la carpeta del hilo sin clonar, o la conversación ya llegada."""
+    sin `claude` en el PATH del servicio, la carpeta del hilo sin clonar."""
     import shutil
 
     from telar.agente import claude_code
@@ -85,11 +86,9 @@ def revisar(ctx, p: dict) -> dict:
     if relativa and not relativa.startswith("/") and not (Path(ctx.config.raiz) / relativa).is_dir():
         avisos.append(f"su carpeta ({relativa}) no existe aquí: se abriría en la raíz, sin sus archivos"
                       " (¿falta clonar su repositorio?)")
-    if sid:
-        conocida = list((Path.home() / ".claude" / "projects").glob(f"*/{sid}.jsonl"))
-        if conocida:
-            graves.append(f"aquí ya está esa conversación ({conocida[0].parent.name}): el hilo ya llegó antes; ábrelo"
-                          " desde la lista de hilos de esta máquina")
+    # la conversación ya escrita aquí no impide nada: es la copia de cuando el hilo se fue de esta máquina (traerlo de
+    # vuelta), y al llegar se reemplaza por la de allá (`llegar`). Lo que sí impediría, un hilo vivo con ese nombre,
+    # ya se revisó arriba
     return {"ok": True, "graves": graves, "avisos": avisos}
 
 
@@ -201,8 +200,15 @@ def llegar(ctx, p: dict) -> dict:
         destino = Path.home() / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(inicio))
         destino.mkdir(parents=True, exist_ok=True)
         ruta = destino / f"{sid}.jsonl"
+        # ya hay una aquí: la copia de cuando el hilo se fue de esta máquina, y vuelve. Si la que llega la continúa
+        # (empieza igual), es la misma, más larga: se reemplaza. Si no (se siguió aquí también), la de aquí queda
+        # aparte, con su fecha, y se dice: nada se pierde
         if ruta.exists():
-            return {"ok": False, "error": f"aquí ya hay una conversación con ese id ({ruta})"}
+            antes = ruta.read_bytes()
+            if not datos.startswith(antes):
+                aparte = ruta.with_name(f"{sid}.antes-{datetime.now():%Y%m%d-%H%M%S}.jsonl.bak")
+                ruta.replace(aparte)
+                aviso = (aviso + "; " if aviso else "") + f"la conversación de aquí se había seguido por su lado: quedó en {aparte.name}"
         tmp = ruta.with_suffix(".tmp")
         tmp.write_bytes(datos)
         tmp.chmod(0o600)

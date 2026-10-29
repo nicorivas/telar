@@ -139,6 +139,30 @@ class LaMudanzaAlLlegar(_ConCarpeta):
         self.estado.anotar_sesion.assert_called_once_with("Faro", self.SID)
         self.mux.crear_tab.assert_called_once()
 
+    def test_de_vuelta_reemplaza_la_copia_de_cuando_se_fue(self):
+        # el hilo se fue de aquí y vuelve: aquí quedó su conversación de entonces, y la que llega la continúa
+        import re as _re
+        carpeta = self.casa / ".claude" / "projects" / _re.sub(r"[^A-Za-z0-9]", "-", str((self.raiz / "repo").resolve()))
+        carpeta.mkdir(parents=True)
+        (carpeta / f"{self.SID}.jsonl").write_bytes(self.conversacion[:160])
+        r = self.llegar()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((carpeta / f"{self.SID}.jsonl").read_bytes(), self.conversacion)
+        self.assertEqual(list(carpeta.glob("*.bak")), [])
+
+    def test_si_aqui_se_siguio_por_su_lado_queda_aparte(self):
+        import re as _re
+        carpeta = self.casa / ".claude" / "projects" / _re.sub(r"[^A-Za-z0-9]", "-", str((self.raiz / "repo").resolve()))
+        carpeta.mkdir(parents=True)
+        (carpeta / f"{self.SID}.jsonl").write_bytes(b'{"type":"otra"}\n')
+        r = self.llegar()
+        self.assertTrue(r["ok"], r)
+        self.assertEqual((carpeta / f"{self.SID}.jsonl").read_bytes(), self.conversacion)
+        aparte = list(carpeta.glob("*.bak"))
+        self.assertEqual(len(aparte), 1)
+        self.assertEqual(aparte[0].read_bytes(), b'{"type":"otra"}\n')
+        self.assertIn("por su lado", r["aviso"])
+
     def test_sin_su_carpeta_se_abre_en_la_raiz_y_lo_dice(self):
         r = self.llegar(relativa="otro-repo")
         self.assertTrue(r["ok"], r)
@@ -226,10 +250,10 @@ class LaRevisionAntesDeLlevar(LaMudanzaAlLlegar):
         self.tel.vivos.add("Faro")
         self.assertIn("ya hay un hilo", self.revisar()["graves"][0])
         self.tel.vivos.clear()
+        # la conversación ya escrita aquí no es grave: es la copia de cuando se fue, y el hilo vuelve
         (self.casa / ".claude" / "projects" / "x").mkdir(parents=True)
         (self.casa / ".claude" / "projects" / "x" / f"{self.SID}.jsonl").write_text("{}")
-        self.assertIn("ya llegó antes", self.revisar()["graves"][0])
-        self.assertEqual(self.revisar(sesion="")["graves"], [])  # sin conversación, eso no importa
+        self.assertEqual(self.revisar()["graves"], [])
 
     def test_su_carpeta_sin_clonar_es_un_aviso(self):
         r = self.revisar(relativa="otro/repo")

@@ -1000,10 +1000,10 @@ dialog.mudanza {
               width: 20ch; padding: 0 1ch; outline: none; }
   #buscar-t:focus { border-bottom-color: var(--azul); }
   #tareas-t-cuenta { color: var(--dim); }
-  /* el buscador de la bandeja (un bloque con muchas filas), en su título */
-  .buscar-c-caja { display: inline-flex; gap: 1ch; align-items: baseline; }
+  /* el buscador de la bandeja (un bloque con muchas filas), en su línea bajo el título */
+  .buscar-c-caja { display: flex; gap: 2ch; align-items: baseline; margin: 0 0 .5lh; }
   .buscar-c { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea);
-              width: 20ch; padding: 0 1ch; outline: none; text-transform: none; }
+              flex: 1; max-width: 60ch; padding: 0 1ch; outline: none; }
   .buscar-c:focus { border-bottom-color: var(--c, var(--azul)); }
   .buscar-c-cuenta { color: var(--dim); }
   .modos button.vacio-m { opacity: .5; }
