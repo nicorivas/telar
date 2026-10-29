@@ -218,6 +218,23 @@ class TraerNoDuplica(Prueba):
         self.assertEqual([v["id"] for v in self.ventanas], ["@1"])
         self.assertEqual(self.ventanas[0]["remoto"], "casa")
 
+    def test_llevar_no_abre_otra_si_el_nodo_ya_la_trajo(self):
+        # al llevar un hilo, nace allá y el nodo de aquí se entera por el bus y trae su ventana antes de que
+        # `abrir` cree la suya: quedaban dos «Wharton» iguales en la lista
+        from types import SimpleNamespace
+        from unittest import mock
+
+        ctx = SimpleNamespace(config=SimpleNamespace(agente=SimpleNamespace(nombre="")))
+
+        def nace_y_el_nodo_la_trae(*_a, **_k):
+            r.traer(self.tel, CASA, "telar-aaaa0001", "obs-demo")
+            return "telar-aaaa0001"
+        with mock.patch.object(r, "crear_alla", side_effect=nace_y_el_nodo_la_trae), \
+                mock.patch.object(r, "carpeta_remota", return_value="~"), \
+                mock.patch("telar.agente.lanzar.anotar"):
+            r.abrir(ctx, self.tel, "obs-demo", CASA)
+        self.assertEqual([v["id"] for v in self.ventanas], ["@1"])
+
     def test_marca_la_ventana_que_abrio_y_no_otra_con_el_mismo_nombre(self):
         # una ventana local (sin marca) que se llama igual no cuenta como la del hilo remoto
         self.ventanas.append({"id": "@50", "nombre": "obs-demo", "remoto": ""})

@@ -20,6 +20,22 @@
     overflow: hidden;
   }
 
+  /* la terminal que no se pudo abrir: el motivo, una vez y quieto, con lo que suele arreglarlo */
+  .no-abre {
+    position: absolute;
+    inset: var(--e-3) var(--h-2) auto;
+    padding: var(--e-2) var(--h-2);
+    border: 1px solid var(--rojo);
+    background: var(--bg);
+    box-shadow: 0 0 0 1ch color-mix(in srgb, var(--bg) 85%, transparent);
+  }
+
+  .no-abre .titulo { color: var(--rojo); }
+  .no-abre .motivo { margin-top: var(--e-1); color: var(--fg); }
+  .no-abre .botones { display: flex; gap: 2ch; margin-top: var(--e-2); }
+  .no-abre .botones a { color: var(--c); cursor: pointer; }
+  .no-abre .botones a:hover { text-decoration: underline; }
+
   .fondo { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
 
   /* la misma línea gris que separa las partes de la página, en cada lado donde hay fondo entre la terminal y lo de

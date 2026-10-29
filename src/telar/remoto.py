@@ -354,12 +354,18 @@ def abrir(ctx, tel, nombre: str, remoto: Remoto, *, relativa: str = "", sesion: 
             palabras, sid = agente.nuevo_con_id(aviso)
             lanz = lanzar.Lanzamiento(comando=[], carpeta=None, nueva=sid)
     sesion = crear_alla(ctx.config, remoto, nombre, linea(carpeta_remota(ctx.config, remoto, relativa), palabras, nombre))
-    tab = tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, nombre), foco=True)
-    # por id, no por nombre: si ya hay otra ventana con ese nombre, la marca y el foco irían a ella
-    tel.mux.marcar_remoto(tab.id, remoto.nombre)
-    tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
+    # apenas nace allá, el nodo de aquí puede enterarse por el bus y traer su ventana (`traer`) antes que esta línea:
+    # bajo el mismo candado, y si ya está, se usa esa (si no, quedaban dos ventanas iguales del mismo hilo)
+    with tel.estado.bajo_candado():
+        abierta = ventana_abierta(tel, nombre)
+        if abierta is None:
+            tab = tel.mux.crear_tab(nombre, comando=comando(remoto, sesion, nombre), foco=True)
+            # por id, no por nombre: si ya hay otra ventana con ese nombre, la marca y el foco irían a ella
+            tel.mux.marcar_remoto(tab.id, remoto.nombre)
+            abierta = tab.id
+        tel.estado.anotar_remoto(nombre, remoto.nombre, sesion)
     lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
-    tel.mux.ir(tab.id)
+    tel.mux.ir(abierta)
     return sesion
 
 

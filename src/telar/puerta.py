@@ -403,7 +403,12 @@ def crear(tabla: Tabla | None = None, *, identificar: Identificar | None = None,
         # si cerró el de atrás (su telar), se le cierra al navegador; si cerró el navegador, ya está
         if tareas[1] in hecho:
             try:
-                await ws.close()
+                # el motivo de una terminal que no se pudo abrir (telar.terminal.NO_SE_PUDO) pasa tal cual
+                codigo = getattr(otro, "close_code", None)
+                if codigo is not None and 4000 <= codigo < 5000:
+                    await ws.close(code=codigo, reason=getattr(otro, "close_reason", "") or "")
+                else:
+                    await ws.close()
             except (RuntimeError, ConnectionClosed):
                 pass
 

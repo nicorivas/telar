@@ -20,6 +20,7 @@ import { modelo } from '../modelo';
 import { conEco } from '../navegador/eco/entrada';
 import { insertar, juntar, rutasDe, tamano, traeArchivos } from './arrastre';
 import { abrirHipervinculo, enlazarTerminal, maquinaDe } from './rutas-agente';
+import { C, I } from './iconos';
 import * as ui from './ui';
 import type { RutasVista, Vista } from './vistas-hilo';
 
@@ -282,6 +283,38 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // después cada vez más espaciado, hasta cada 15 s; al volver a la pestaña o a la red, al tiro
     const esperas = [1000, 2000, 5000, 10000, 15000];
     let intento = 0, pendiente = 0, conectada = false, cerrada = false;
+    // si la terminal no se pudo abrir (el servidor cierra con 4001 y el motivo: el hilo no existe aquí, no tiene
+    // ventana…), reconectar no lo arregla: se dice en un cuadro, una vez, en vez de que el error aparezca y se
+    // borre cada segundo. Un telar de antes no manda el código: dos cierres seguidos al poco de abrir
+    // cuentan igual (lo último que escribió es el motivo)
+    let abierta = 0, rapidas = 0, cola = '';
+    let aviso: HTMLElement | undefined;
+    const quitarAviso = () => { aviso?.remove(); aviso = undefined; };
+    const mostrarFalla = (motivo: string) => {
+        quitarAviso();
+        term.reset(); eco.reiniciar();
+        aviso = document.createElement('div');
+        aviso.className = 'no-abre';
+        const titulo = document.createElement('div');
+        titulo.className = 'titulo';
+        const ico = document.createElement('span'); ico.className = 'i'; ico.textContent = I.alerta;
+        titulo.append(ico, document.createTextNode(` no se pudo abrir «${hilo}»${maquina ? ` en ${maquina}` : ''}`));
+        const que = document.createElement('div'); que.className = 'motivo'; que.textContent = motivo;
+        const botones = document.createElement('div'); botones.className = 'botones';
+        const boton = (nombre: string, icono: string, color: string, hacer: () => void) => {
+            const a = document.createElement('a');
+            a.style.setProperty('--c', `var(--${color})`);
+            const i = document.createElement('span'); i.className = 'i'; i.textContent = icono;
+            a.append(i, document.createTextNode(` ${nombre}`));
+            a.addEventListener('click', hacer);
+            botones.appendChild(a);
+        };
+        boton('reintentar', I.retomar, C.ir, () => { quitarAviso(); intento = 0; rapidas = 0; conectar(); });
+        // lo que suele arreglarlo: retomarlo (si está dormido aquí) o volver a la lista, donde está lo que sí existe
+        if (!maquina) boton('retomar', I.ver, C.hecho, () => { quitarAviso(); void ui.orden('telar.retomar', hilo); });
+        aviso.append(titulo, que, botones);
+        caja.appendChild(aviso);
+    };
     // para desarrollar (docs/desarrollar.md): localStorage['telar.latencia'] = ms simula esa latencia, la mitad a la
     // ida y la mitad a la vuelta (probar el eco sin depender de la red)
     let simulada = 0;
@@ -295,20 +328,34 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         nuevo.onopen = () => {
             // la vista nueva redibuja la pantalla entera: lo de antes se borra para que no quede mezclado
             if (intento) { term.reset(); eco.reiniciar(); }
-            intento = 0; conectada = true;
+            intento = 0; conectada = true; abierta = Date.now(); cola = '';
         };
-        nuevo.onmessage = e => { luego(() => eco.escribir(e.data as string)); };
-        nuevo.onclose = () => {
+        nuevo.onmessage = e => {
+            const d = e.data as string;
+            if (Date.now() - abierta < 3000) cola = (cola + d).slice(-600);
+            luego(() => eco.escribir(d));
+        };
+        nuevo.onclose = e => {
             if (ws !== nuevo || cerrada) return;
-            if (conectada) term.write('\r\n\x1b[2m[se cortó la conexión con la terminal: reconectando…]\x1b[0m');
+            const breve = conectada && Date.now() - abierta < 3000;
+            rapidas = breve ? rapidas + 1 : 0;
+            if (e.code === 4001 || rapidas >= 2) {
+                conectada = false;
+                // eslint-disable-next-line no-control-regex
+                const ultima = cola.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).pop() ?? '';
+                mostrarFalla((e.reason || ultima || 'la terminal se cerró al abrirse').replace(/^telar: /, ''));
+                return;
+            }
+            // la primera vez que se cierra al tiro no se escribe nada: si vuelve a pasar es una falla, no un corte
+            if (conectada && !breve) term.write('\r\n\x1b[2m[se cortó la conexión con la terminal: reconectando…]\x1b[0m');
             conectada = false;
             pendiente = window.setTimeout(conectar, esperas[Math.min(intento++, esperas.length - 1)]);
         };
     };
     conectar();
-    deshacer.push(() => { cerrada = true; clearTimeout(pendiente); ws?.close(); ws = null; });
-    escuchar(document, 'visibilitychange', () => { if (!document.hidden && !conectada) { intento = 0; conectar(); } });
-    escuchar(window, 'online', () => { if (!conectada) { intento = 0; conectar(); } });
+    deshacer.push(() => { cerrada = true; clearTimeout(pendiente); ws?.close(); ws = null; quitarAviso(); });
+    escuchar(document, 'visibilitychange', () => { if (!document.hidden && !conectada && !aviso) { intento = 0; conectar(); } });
+    escuchar(window, 'online', () => { if (!conectada && !aviso) { intento = 0; conectar(); } });
     const teclear = (d: string) => { luego(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ d })); }); };
     term.onData(d => { eco.tecleado(d); teclear(d); });
 

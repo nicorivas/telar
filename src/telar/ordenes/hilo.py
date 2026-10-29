@@ -568,6 +568,16 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     relativa = tel.estado.vinculos().get(hilo.nombre, "")
     if remoto is None:
         return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa, si=si)
+    from telar import mudanza
+
+    # los pasos, para la página (telar.mudanza.progreso), como por el bus; aquí no hay revisión allá
+    mudanza.progreso(ctx.config, hilo.nombre, "revisar", maquina=remoto.nombre,
+                     bytes=Path(archivo).stat().st_size if archivo is not None else 0, error="", avisos=[])
+
+    def falla(texto: str) -> int:
+        mudanza.progreso(ctx.config, hilo.nombre, "falla", error=texto)
+        return _comun.queja(texto)
+
     carpeta = mod_remoto.carpeta_remota(ctx.config, remoto, relativa)
     if relativa.startswith("/"):
         # vinculado fuera de la raíz: allá no hay traducción de esa carpeta. Si no existe en
@@ -578,27 +588,31 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
                   "la conversación pero no tendrá esos archivos (clónalos allá primero)")
             if not si:
                 if not sys.stdin.isatty():
-                    return _comun.queja(f"{faltante} no existe en {remoto.destino}; --si para llevarla igual")
+                    return falla(f"{faltante} no existe en {remoto.destino}; --si para llevarla igual")
                 if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
                     print("no se movió nada")
                     return 1
     # 1. cerrar aquí: desde ahora la conversación sigue solo allá
+    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
     if tel.mux is not None and tel.vivo(hilo):
         try:
             tel.mux.cerrar(hilo.id)
         except ErrorDeMux as e:
-            return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
+            return falla(f"no pude cerrar el hilo aquí: {e}")
+    mudanza.progreso(ctx.config, hilo.nombre, "copiar")
     # 2. llevar la conversación (si tiene: una vacía no se copia, y allá se abre una nueva)
     destino, problema = mod_remoto.copiar_conversacion(remoto, archivo, sid, carpeta) if archivo is not None else ("", "")
     if problema:
-        return _comun.queja(f"no se llevó la conversación: {problema}. Aquí quedó cerrada; "
-                            f"`telar hilo retomar` la reabre en esta máquina.")
+        return falla(f"no se llevó la conversación: {problema}. Aquí quedó cerrada; "
+                     f"`telar hilo retomar` la reabre en esta máquina.")
     # 3. abrirla allá, retomándola
+    mudanza.progreso(ctx.config, hilo.nombre, "abrir")
     try:
         mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa, conversacion=sid if archivo is not None else "")
     except (ErrorDeMux, ErrorDeAgente) as e:
-        return _comun.queja(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir "
-                            f"el hilo: {e}. `telar hilo retomar` lo intenta de nuevo.")
+        return falla(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir "
+                     f"el hilo: {e}. `telar hilo retomar` lo intenta de nuevo.")
+    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=str(carpeta))
     tel.estado.desarchivar(hilo.nombre)
     from telar import directorio as mod_directorio
 

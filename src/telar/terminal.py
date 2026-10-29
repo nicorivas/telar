@@ -32,6 +32,23 @@ JUNTAR = 0.008
 COLUMNAS = (20, 400)
 FILAS = (5, 200)
 
+#: el código con que se cierra la terminal cuando no se pudo abrir (`mirar` terminó solo, con error: el hilo no
+#: existe aquí, no tiene ventana…): la página no reconecta, y muestra el motivo, que va en el cierre
+NO_SE_PUDO = 4001
+
+
+def motivo(texto: str) -> str:
+    """Lo que dijo `mirar` al fallar, en una línea que quepa en el cierre de un WebSocket (123 bytes): la última
+    línea con algo, sin colores ni el «telar: » del comienzo."""
+    import re
+
+    limpio = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", texto).replace("\r", "")
+    linea = next((x.strip() for x in reversed(limpio.split("\n")) if x.strip()), "no se pudo abrir")
+    linea = linea.removeprefix("telar: ")
+    while len(linea.encode("utf-8")) > 120:
+        linea = linea[:-2] + "…"
+    return linea
+
 
 def _medida(valor, limites: tuple[int, int], defecto: int) -> int:
     try:
@@ -104,6 +121,8 @@ async def puente(ws, hilo: str, columnas, filas) -> None:
         salida.put_nowait(datos)
 
     bucle.add_reader(fd, legible)
+    # lo último que salió (para decir por qué, si `mirar` termina solo) y si terminó solo
+    visto = {"cola": "", "solo": False}
 
     async def hacia_la_pagina() -> None:
         # un decodificador incremental: una letra de varios bytes puede venir partida entre dos lecturas
@@ -125,7 +144,10 @@ async def puente(ws, hilo: str, columnas, filas) -> None:
                     fin = True
                     break
                 partes.append(siguiente)
-            await ws.send_text(texto.decode(b"".join(partes)))
+            trozo = texto.decode(b"".join(partes))
+            visto["cola"] = (visto["cola"] + trozo)[-600:]
+            await ws.send_text(trozo)
+        visto["solo"] = True
 
     async def desde_la_pagina() -> None:
         with contextlib.suppress(WebSocketDisconnect):
@@ -165,8 +187,13 @@ async def puente(ws, hilo: str, columnas, filas) -> None:
         if proceso.returncode is None:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(proceso.pid, signal.SIGKILL)
+        # `mirar` terminó solo y con error: no es un corte, no tiene sentido reconectar
+        fallo = visto["solo"] and proceso.returncode not in (0, None)
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):
-            await ws.close()
+            if fallo:
+                await ws.close(code=NO_SE_PUDO, reason=motivo(visto["cola"]))
+            else:
+                await ws.close()
 
 
 async def reenviar(ws, web: str, hilo: str, maquina: str, columnas, filas, token: str) -> None:
@@ -179,8 +206,7 @@ async def reenviar(ws, web: str, hilo: str, maquina: str, columnas, filas, token
 
     async def decir(texto: str) -> None:
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):
-            await ws.send_text(f"\r\n\x1b[2m[{texto}]\x1b[0m\r\n")
-            await ws.close()
+            await ws.close(code=NO_SE_PUDO, reason=motivo(texto))
 
     if not web:
         # sin página que ofrezca: su telar no corre allá (su servicio cayó), o corre sin página. Abrirlo como
@@ -222,5 +248,10 @@ async def reenviar(ws, web: str, hilo: str, maquina: str, columnas, filas, token
             t.cancel()
         with contextlib.suppress(Exception):
             await alla.close()
+        # lo que no se pudo abrir allá se dice igual aquí: su código y su motivo pasan tal cual
+        codigo = getattr(alla, "close_code", None)
         with contextlib.suppress(RuntimeError, WebSocketDisconnect):
-            await ws.close()
+            if codigo == NO_SE_PUDO:
+                await ws.close(code=codigo, reason=getattr(alla, "close_reason", "") or "")
+            else:
+                await ws.close()

@@ -6,6 +6,19 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.8] — 2026-10-29
+
+### Fixed
+
+- **A thread moved to a machine in `[remotos]` showed twice in the list.** The window there was born, the node here
+  heard of it on the bus and brought its window, and then the move opened another one. Now the move takes the same
+  lock and uses the window if it's already there. That path also reports its steps to the page's panel now.
+- **A thread's terminal that can't open says so once, instead of blinking.** When `telar mirar` fails (the thread no
+  longer exists here, it has no window…), the server closes the connection with code 4001 and the reason, also
+  through another machine and the door. The page stops reconnecting and shows a box with the reason and two
+  buttons, «reintentar» and «retomar». Before, the error was printed, wiped and printed again every second. An
+  older telar that doesn't send the code is detected by two closes in a row right after opening.
+
 ## [0.8.7] — 2026-10-29
 
 ### Changed
