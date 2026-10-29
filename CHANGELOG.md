@@ -6,6 +6,12 @@ extension shared the version number.
 
 ## [Unreleased]
 
+### Changed
+
+- **A mail opens to the right of the list.** Clicking an item of a block (a mail) shows it beside the list instead of
+  replacing it: the list stays in view with the open one marked, another click switches it, and ✕ or ⎋ closes it.
+  On a narrow screen it still opens alone.
+
 ## [0.8.8] — 2026-10-29
 
 ### Fixed

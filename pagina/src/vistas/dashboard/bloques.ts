@@ -1,6 +1,7 @@
 // Los bloques del día (`[bloques.<clave>]`): lo que imprime el comando de cada uno (`telar bloque`), en su pestaña
-// (el correo de hoy) o arriba de otra (`en = "plan"`, la retro de la tarde). Un ítem se abre solo, con su cuerpo
-// y las tareas que nacieron de él.
+// (el correo de hoy) o arriba de otra (`en = "plan"`, la retro de la tarde). Un ítem se abre a la derecha de la
+// lista, con su cuerpo y las tareas que nacieron de él: la lista sigue a la vista y otro clic cambia el que se lee
+// (en una pantalla angosta, solo, en vez de la lista).
 
 import * as ui from '../../web/ui';
 import * as cli from '../../cli';
@@ -70,7 +71,14 @@ export class PantallaBloques implements Pantalla {
         const b = this.declarados.find(x => x.clave === this.sel);
         const leido = b ? this.leidos.get(b.clave) : undefined;
         const item = this.item !== undefined ? (leido?.pagina?.bloques ?? []).flatMap(x => x.items ?? [])[this.item] : undefined;
-        if (b && item) { this.pintado = ''; this.t.pintar(this.htmlItem(b, item, this.item!)); return; }
+        if (b && item) {
+            this.pintado = '';
+            if (document.body.classList.contains('angosto')) { this.t.pintar(this.htmlItem(b, item, this.item!)); return; }
+            // ⎋ lo cierra y deja la lista sola (dashboard/vista.ts)
+            this.t.pintar(['<div class="dividido"><div class="lista">', ...this.html([b], false, this.item),
+                '</div><aside class="detalle">', ...this.htmlItem(b, item, this.item!, true), '</aside></div>']);
+            return;
+        }
         // un bloque con lienzo no se repinta si no cambió: el refresco de cada minuto rehace el
         // iframe (el gráfico parpadea y pierde el mouse). Sin lienzo, sí, para que el reloj avance
         const firma = `${this.sel}:${leido?.hora ?? 0}`;
@@ -102,7 +110,7 @@ export class PantallaBloques implements Pantalla {
     /** Los bloques del día (`[bloques.<clave>]`): una sección cada uno, con su color, su cuenta
      *  y en el título los atajos que dicen `en = "<clave>"`. Lo que muestran lo pide
      *  `leer`, aparte y con el ritmo de la red: un comando lento no frena el día. */
-    html(cuales: cli.JsonBloque[], soloConAlgo = false): string[] {
+    html(cuales: cli.JsonBloque[], soloConAlgo = false, marcado?: number): string[] {
         const h: string[] = [];
         for (const b of cuales) {
             const leido = this.leidos.get(b.clave);
@@ -146,7 +154,8 @@ export class PantallaBloques implements Pantalla {
                     // una conversación: ▸ con cuántos son, que la despliega
                     const plegar = e.cuantos ? `<span class="plegar" data-accion="grupo-item" data-valor="${esc(e.llave!)}" title="${e.abierta ? 'plegar' : `ver los ${e.cuantos} de esta conversación`}">${e.abierta ? '▾' : '▸'}${e.cuantos}</span> ` : '';
                     const nuevo = e.nuevo ?? x.destacado;
-                    return `<div class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}"${clic}`
+                    const sel = i === marcado && b.clave === this.sel;
+                    return `<div class="cr${conTareas ? ' con-t' : ''}${e.hijo ? ' hijo' : ''}${nuevo ? ' nuevo' : ''}${clic ? ' clic' : ''}${sel ? ' sel' : ''}"${clic}`
                         + ` title="${esc(clic ? `clic: ${x.tareas?.length ? 'sus tareas' : 'verlo'}${x.mensaje ? ', y procesarlo en un hilo' : ''}` : x.titulo)}"><span class="mk">${esc(e.marca ?? x.marca ?? '·')}</span>`
                         + `<span class="hora" title="${esc((x.fecha ?? '').replace('T', ' '))}">${esc(cuandoCorto(x.fecha ?? ''))}</span>`
                         + `<span class="de">${esc(conTareas ? (x.texto ?? '').replace(/ · tareas: .*$/, '') : x.texto ?? '')}</span><span class="que">${plegar}${esc(x.titulo)}</span>${tareas}</div>`;
@@ -194,10 +203,13 @@ export class PantallaBloques implements Pantalla {
 
     /** Un ítem de un bloque, solo: lo que dice, las tareas que nacieron de él (cada una abre su
      *  ficha) y, si trae `mensaje`, el botón para procesarlo en un hilo. */
-    private htmlItem(b: cli.JsonBloque, x: cli.JsonPaginaItem, i: number): string[] {
+    private htmlItem(b: cli.JsonBloque, x: cli.JsonPaginaItem, i: number, alLado = false): string[] {
         // el título lleva al original (la conversación en Gmail), en su pestaña si ya está abierta
         const titulo = x.enlace ? `<a class="titulo-item" data-accion="item-enlace" data-valor="${esc(b.clave)}:${i}" title="${esc(`abrirlo: ${x.enlace}`)}"><b>${esc(x.titulo)}</b> ↗</a>` : `<b>${esc(x.titulo)}</b>`;
-        const h = [`<div class="subcab"><a data-accion="item-volver" title="volver a la lista">‹ ${esc(b.nombre)}</a>&nbsp; ${titulo}`
+        // al lado de la lista, se cierra con ✕ (o ⎋); solo, se vuelve a la lista
+        const volver = alLado ? `<a class="cerrar-item" data-accion="item-volver" title="cerrarlo (⎋)">✕</a>`
+            : `<a data-accion="item-volver" title="volver a la lista">‹ ${esc(b.nombre)}</a>&nbsp; `;
+        const h = [`<div class="subcab">${alLado ? '' : volver}${titulo}${alLado ? volver : ''}`
             + `<span class="dim">${esc((x.texto ?? '').replace(/ · tareas: .*$/, ''))}${x.fecha ? ` · ${esc(x.fecha.slice(0, 16).replace('T', ' '))}` : ''}</span></div>`];
         // el cuerpo: cinco líneas, y «ver todo» lo despliega
         if (x.id) {

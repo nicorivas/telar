@@ -237,6 +237,17 @@
   /* el cuerpo de un ítem abierto (un correo): cinco líneas, y entero al desplegarlo */
   .cuerpo { white-space: pre-wrap; overflow-wrap: anywhere; margin: .5lh 0 .25lh; padding-left: 1ch; box-shadow: inset 2px 0 0 var(--linea); }
   .cuerpo.plegado { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+  /* un ítem abierto (un correo), a la derecha de la lista: la lista sigue a la vista y el detalle queda quieto
+     mientras ella se recorre */
+  #dia:has(.dividido) { max-width: none; }
+  .dividido { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3ch; align-items: start; }
+  .dividido .detalle { position: sticky; top: 0; max-height: calc(100dvh - 4lh); overflow: auto; padding-left: 3ch;
+                       box-shadow: inset 1px 0 0 var(--linea); }
+  .dividido .cr { grid-template-columns: 1ch 6ch 14ch minmax(0, 1fr); }
+  .dividido .cr.con-t { grid-template-columns: 1ch 6ch 14ch minmax(0, 1fr) 10ch; }
+  .cr.sel { background: var(--sel); color: var(--fg); box-shadow: inset 2px 0 0 var(--c); }
+  .detalle .subcab .cerrar-item { margin-left: auto; color: var(--dim); }
+  .detalle .subcab .cerrar-item:hover { color: var(--rojo); text-decoration: none; }
   .cr .plegar { color: var(--c); cursor: pointer; margin-right: .5ch; } .cr .plegar:hover { color: var(--fg); }
   .cr.hijo .que { padding-left: 3ch; } .cr.hijo .de { padding-left: 1ch; }
   .cr .tar .cerrada { color: var(--dim); opacity: .6; } .cr .tar .abierta { color: var(--cian); }

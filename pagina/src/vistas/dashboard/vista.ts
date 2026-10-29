@@ -469,6 +469,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         // lo que queda (una letra, ⎋) es un atajo del dashboard: no si se está escribiendo en otro campo suyo
         if (escribiendoEn(activo)) return;
         if (e.key === '/') { e.preventDefault(); b?.focus(); return; }
+        // un correo abierto al lado de la lista: ⎋ lo cierra y deja la lista
+        if (e.key === 'Escape' && raiz.querySelector('.dividido')) { enviar({ tipo: 'accion', accion: 'item-volver' }); return; }
         if (e.key === 'Escape') { enviar({ tipo: 'accion', accion: 'volver' }); return; }
         if (e.key.length === 1) { e.preventDefault(); enviar({ tipo: 'tecla', k: e.key }); }
     }
