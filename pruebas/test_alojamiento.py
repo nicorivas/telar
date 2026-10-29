@@ -515,3 +515,18 @@ class LaPaginaDeUnAlojadoSeQueda(unittest.TestCase):
         plist = instalacion.plist_launchd("/x/telar", instalacion.argumentos(nodo=True, web_puerto=8790), "/bin", "/log")
         self.assertEqual(instalacion.pagina_actual(plist), {"web_puerto": "8790"})
         self.assertEqual(instalacion.pagina_actual("[Service]\nExecStart=/x/telar serve --nodo --web\n"), {})
+
+
+class ElPathDelServicio(unittest.TestCase):
+    def test_lleva_la_carpeta_de_uv_y_de_claude_aunque_no_esten_en_el_path(self):
+        import tempfile
+        from unittest import mock
+
+        from telar import instalacion
+
+        with tempfile.TemporaryDirectory() as casa:
+            (Path(casa) / ".local" / "bin").mkdir(parents=True)
+            with mock.patch.object(instalacion.Path, "home", return_value=Path(casa)):
+                ruta = instalacion.ruta_path(buscar=lambda p: None)
+        self.assertIn(str(Path(casa) / ".local" / "bin"), ruta.split(":"))
+        self.assertTrue(ruta.endswith("/usr/local/bin:/usr/bin:/bin"))

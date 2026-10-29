@@ -31,6 +31,12 @@ def ruta_path(buscar=shutil.which) -> str:
         r = buscar(prog)
         if r:
             carpetas.append(str(Path(r).parent))
+    # donde los instalan uv y el instalador de Claude Code, aunque quien corre `telar instalar` no los tenga en su PATH
+    # (por ssh, sin el .profile): sin ellas el servicio no encuentra `claude` y un hilo no se abre («no pude abrir el
+    # hilo»), que le pasó a un telar alojado en un servidor
+    for carpeta in (Path.home() / ".local" / "bin", Path(sys.argv[0]).resolve().parent if sys.argv and sys.argv[0] else None):
+        if carpeta is not None and carpeta.is_dir():
+            carpetas.append(str(carpeta))
     if sys.platform == "darwin":
         carpetas.append("/opt/homebrew/bin")
     carpetas += BASICOS

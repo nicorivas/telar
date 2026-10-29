@@ -6,6 +6,15 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.6] — 2026-10-29
+
+### Fixed
+
+- **The service's PATH always has `~/.local/bin`** (where uv and the Claude Code installer put their programs) and the
+  folder of the running telar. `telar instalar` run over ssh, without the `.profile`, wrote a PATH without them, and
+  the service couldn't find `claude`: a thread moved to that machine arrived but didn't open («no pude abrir el
+  hilo»). It happened on a hosted telar.
+
 ## [0.8.5] — 2026-10-29
 
 ### Fixed
