@@ -740,6 +740,10 @@ export interface JsonLlevado { codigo: number; salida: string; error: string; en
  *  Con trabajo sin subir aquí, falla (409, con la lista en `cuerpo.salida`) hasta que `si`. */
 export const llevar = (hilo: string, maquina: string, si = false) =>
     aServe<JsonLlevado>('POST', '/hilo/llevar', 60000, { hilo, maquina, si });
+/** En qué va la mudanza de un hilo (telar.mudanza.progreso): {} si no hay ninguna. */
+export interface JsonMudanza { hilo?: string; paso?: string; maquina?: string; bytes?: number; error?: string;
+    avisos?: string[]; aviso?: string; carpeta?: string; hora?: number }
+export const mudanza = (hilo: string) => deServe<JsonMudanza>(`/mudanza?hilo=${encodeURIComponent(hilo)}`, 5000);
 /** Traer a esta máquina un hilo que vive en `maquina` (otra tuya): esa lo lleva aquí por el bus. Espera a que termine. */
 export const traer = (hilo: string, maquina: string, si = false) =>
     aServe<JsonLlevado>('POST', '/hilo/traer', 620000, { hilo, maquina, si });

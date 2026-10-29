@@ -9,7 +9,7 @@ export const I = {
     archivar: '\u{ea98}', desarchivar: '\u{eb09}', cerrar: '\u{ea76}', llevar: '\u{eac3}', traer: '\u{eac2}',
     olvidar: '\u{ea81}', agente: '\u{ea85}', consolidar: '\u{eab3}', escribir: '\u{ea6b}', documento: '\u{eaa4}',
     copiar: '\u{ebcc}', hecha: '\u{eab2}', fecha: '\u{eab0}', persona: '\u{ea67}', enlace: '\u{eb14}', nuevo: '\u{ea60}',
-    accion: '\u{ebcf}', direccion: '\u{eb15}',
+    accion: '\u{ebcf}', direccion: '\u{eb15}', viaja: '\u{ea77}', alerta: '\u{ea6c}',
 } as const;
 
 /** Los colores con que se distingue una acción en un menú, por lo que hace: ir y mirar, cambiar, el agente, hecho,

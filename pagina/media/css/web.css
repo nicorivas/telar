@@ -140,6 +140,52 @@ dialog.web-actuar {
   & .botones .solo input { margin: 0; accent-color: var(--azul); }
 }
 
+/* la mudanza de un hilo a otra máquina (web/mudanza.ts): el nombre de la máquina en letras grandes de █, una barra de
+   carga y los pasos. Todo del mismo tamaño de letra (las letras grandes son caracteres, no letra más grande); lo que
+   distingue es el color: viajando cian, listo verde, falla rojo. Detrás, la trama de ░ del buscador */
+dialog.mudanza {
+  box-sizing: border-box;
+  width: min(72ch, calc(100vw - 4ch));
+  padding: 1.2lh 3ch 1lh;
+  color: var(--fg);
+  background: var(--bg-barra);
+  border: var(--borde);
+  box-shadow: 1ch .6lh 0 rgb(0 0 0 / 55%);
+
+  &::backdrop {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 16' preserveAspectRatio='none'%3E%3Ctext x='0' y='12.5' font-family='Menlo,monospace' font-size='13' fill='%23cdd6f4' fill-opacity='.16'%3E%E2%96%91%3C/text%3E%3C/svg%3E")
+        0 0 / var(--celda-w, 8px) var(--celda-h, 16px),
+      color-mix(in srgb, var(--bg) 82%, transparent);
+  }
+
+  & .arriba { color: var(--dim); }
+  & pre { margin: 0; font: inherit; line-height: 1.05; white-space: pre; overflow: hidden; }
+  & .letras { margin: .6lh 0 .8lh; color: var(--cian); text-shadow: 0 0 6px color-mix(in srgb, var(--cian) 35%, transparent); }
+  & .letras[data-estado="listo"] { color: var(--verde); text-shadow: 0 0 6px color-mix(in srgb, var(--verde) 35%, transparent); }
+  & .letras[data-estado="falla"] { color: var(--rojo); text-shadow: none; }
+  & .barra { line-height: inherit; color: var(--cian); }
+  & .barra[data-estado="listo"] { color: var(--verde); }
+  & .barra[data-estado="falla"] { color: var(--rojo); }
+  & .barra[data-estado="pregunta"] { color: var(--amarillo); }
+  & .pasos { display: flex; flex-wrap: wrap; gap: 0 2.5ch; margin-top: .5lh; color: var(--dim); }
+  & .paso .ico { margin-right: 1ch; font-family: iconos, var(--letra), monospace; }
+  & .paso.hecho { color: var(--verde); }
+  & .paso.ahora { color: var(--cian); }
+  & .paso.ahora.falla { color: var(--rojo); }
+  & .paso.ahora.pregunta { color: var(--amarillo); }
+  & .linea { min-height: 1lh; margin-top: .6lh; color: var(--dim); white-space: pre-wrap; }
+  & .botones { display: flex; gap: 3ch; justify-content: flex-end; margin-top: .6lh; }
+  & .botones a { cursor: pointer; }
+  & .botones a:hover { text-decoration: underline; }
+}
+
+/* la fila de un hilo que está viajando: su ícono gira, en cian */
+.fila .viaja { display: inline-block; width: 1ch; color: var(--cian); animation: viaja 1.2s linear infinite; }
+.fila .doble { color: var(--amarillo); margin-left: 0.5ch; }
+
+@keyframes viaja { to { transform: rotate(360deg); } }
+
 /* en un celular, cada opción en dos renglones: el nombre, y debajo para qué sirve */
 @media (width <= 700px) {
   .web-op { flex-direction: column; gap: 0; padding-block: .15lh; }

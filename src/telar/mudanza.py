@@ -25,10 +25,72 @@ from pathlib import Path
 
 #: el verbo del nodo que recibe
 VERBO = "hilo-llegar"
+#: el que pregunta antes, sin mover nada, si allá se puede recibir (`revisar`)
+VERBO_REVISAR = "hilo-revisar"
+#: los pasos de una mudanza, en orden: lo que la página muestra mientras ocurre (`progreso`)
+PASOS = ("revisar", "cerrar", "copiar", "abrir", "listo")
 
 
 class ErrorDeMudanza(Exception):
     pass
+
+
+def ruta_progreso(config, hilo: str) -> Path:
+    from telar import casilla
+
+    d = Path(config.estado) / "llevar"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{casilla.nombre_de_carpeta(hilo)}.json"
+
+
+def progreso(config, hilo: str, paso: str, **datos) -> None:
+    """Deja escrito en qué va la mudanza de `hilo` (`<estado>/llevar/<hilo>.json`): el paso (de `PASOS`, o «falla»),
+    a qué máquina, cuánto pesa la conversación y lo que haya que decir. La página lo lee mientras ocurre (GET
+    /hilo/llevar/progreso) para dibujar la transición. Un error al escribirlo no detiene la mudanza."""
+    import json
+    import time
+
+    try:
+        ruta = ruta_progreso(config, hilo)
+        antes = json.loads(ruta.read_text(encoding="utf-8")) if ruta.exists() and paso != "revisar" else {}
+        antes.update(datos, paso=paso, hilo=hilo, hora=time.time())
+        tmp = ruta.with_suffix(".tmp")
+        tmp.write_text(json.dumps(antes, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(ruta)
+    except (OSError, ValueError):
+        pass
+
+
+def revisar(ctx, p: dict) -> dict:
+    """Del lado que recibiría, sin mover nada: lo que haría fallar la llegada de este hilo (`graves`: no se lleva) y lo
+    que haría que llegue a medias (`avisos`: se pregunta). Lo que ya falló en un telar alojado: sin agente declarado,
+    sin `claude` en el PATH del servicio, la carpeta del hilo sin clonar, o la conversación ya llegada."""
+    import shutil
+
+    from telar.agente import claude_code
+    from telar.ordenes import _comun
+
+    hilo, sid = str(p.get("hilo") or "").strip(), str(p.get("sesion") or "")
+    relativa = str(p.get("relativa") or "")
+    graves, avisos = [], []
+    if sid and ctx.config.agente.nombre != claude_code.NOMBRE:
+        graves.append(f"aquí el agente de los hilos es «{ctx.config.agente.nombre or 'ninguno'}»: una conversación de"
+                      f" Claude no se retoma ([agente] nombre = \"{claude_code.NOMBRE}\" en su configuración)")
+    if sid and not shutil.which("claude"):
+        graves.append("aquí el servicio de telar no encuentra `claude` en su PATH (falta ~/.local/bin en su servicio:"
+                      " telar instalar lo arregla)")
+    tel = _comun.tejer(ctx, con_ficha=False)
+    if hilo in tel.vivos and tel.estado.remotos().get(hilo) is None:
+        graves.append(f"aquí ya hay un hilo «{hilo}» abierto")
+    if relativa and not relativa.startswith("/") and not (Path(ctx.config.raiz) / relativa).is_dir():
+        avisos.append(f"su carpeta ({relativa}) no existe aquí: se abriría en la raíz, sin sus archivos"
+                      " (¿falta clonar su repositorio?)")
+    if sid:
+        conocida = list((Path.home() / ".claude" / "projects").glob(f"*/{sid}.jsonl"))
+        if conocida:
+            graves.append(f"aquí ya está esa conversación ({conocida[0].parent.name}): el hilo ya llegó antes; ábrelo"
+                          " desde la lista de hilos de esta máquina")
+    return {"ok": True, "graves": graves, "avisos": avisos}
 
 
 def maquinas_del_bus(config) -> list[str]:
@@ -41,7 +103,7 @@ def maquinas_del_bus(config) -> list[str]:
         return []
 
 
-def enviar(ctx, hilo: str, maquina: str, sid: str, archivo: Path | None, relativa: str) -> dict:
+def enviar(ctx, hilo: str, maquina: str, sid: str, archivo: Path | None, relativa: str, al_abrir=None) -> dict:
     """Manda la conversación `sid` (su `.jsonl`) a `maquina` y le pide abrir ahí el hilo retomándola. Devuelve lo
     que contestó allá: {ok, carpeta, aviso}. ErrorDeMudanza si no se pudo."""
     from telar import bus as mod_bus
@@ -58,6 +120,8 @@ def enviar(ctx, hilo: str, maquina: str, sid: str, archivo: Path | None, relativ
             except entrega.ErrorDeEntrega as e:
                 raise ErrorDeMudanza(f"la conversación no llegó a {maquina}: {e}") from None
     # sin conversación (un hilo sin mensajes todavía): allá se abre con una nueva
+    if al_abrir is not None:
+        al_abrir()  # la conversación ya está allá: lo que sigue es abrir el hilo
     r = mod_bus.pedir(ctx.config, maquina, VERBO, {"hilo": hilo, "sesion": sid if archivo is not None else "",
                                                    "relativa": relativa, "archivo": r.get("ruta", ""),
                                                    "bytes": len(datos)}, espera=60)

@@ -201,3 +201,96 @@ class Traer(LaMudanzaAlLlegar):
         self.assertTrue(r["ok"], r)
         self.mux.cerrar.assert_called_once_with("@7")
         self.estado.olvidar_remoto.assert_called_once_with("Faro")
+
+
+class LaRevisionAntesDeLlevar(LaMudanzaAlLlegar):
+    """`hilo-revisar`: del lado que recibiría, lo que haría fallar la llegada (no se lleva) y lo que la dejaría a
+    medias (se pregunta), sin mover nada."""
+
+    def revisar(self, **p):
+        from telar.ordenes import _comun
+
+        pedido = {"hilo": "Faro", "sesion": self.SID, "relativa": "repo", **p}
+        with mock.patch.object(_comun, "tejer", return_value=self.tel), \
+                mock.patch("shutil.which", return_value="/usr/bin/claude"), \
+                mock.patch.object(Path, "home", return_value=self.casa):
+            return mudanza.revisar(self.ctx, pedido)
+
+    def test_todo_en_orden(self):
+        self.assertEqual(self.revisar(), {"ok": True, "graves": [], "avisos": []})
+
+    def test_lo_grave(self):
+        self.ctx.config.agente.nombre = ""
+        self.assertIn("ninguno", self.revisar()["graves"][0])
+        self.ctx.config.agente.nombre = "claude-code"
+        self.tel.vivos.add("Faro")
+        self.assertIn("ya hay un hilo", self.revisar()["graves"][0])
+        self.tel.vivos.clear()
+        (self.casa / ".claude" / "projects" / "x").mkdir(parents=True)
+        (self.casa / ".claude" / "projects" / "x" / f"{self.SID}.jsonl").write_text("{}")
+        self.assertIn("ya llegó antes", self.revisar()["graves"][0])
+        self.assertEqual(self.revisar(sesion="")["graves"], [])  # sin conversación, eso no importa
+
+    def test_su_carpeta_sin_clonar_es_un_aviso(self):
+        r = self.revisar(relativa="otro/repo")
+        self.assertEqual(r["graves"], [])
+        self.assertIn("clonar", r["avisos"][0])
+
+
+class ElProgresoDeLaMudanza(_ConCarpeta):
+    def test_cada_paso_se_suma_y_revisar_empieza_de_nuevo(self):
+        config = SimpleNamespace(estado=str(self.dir / "estado"))
+        mudanza.progreso(config, "Faro/uno", "revisar", maquina="telar", bytes=10)
+        mudanza.progreso(config, "Faro/uno", "copiar")
+        d = json.loads(mudanza.ruta_progreso(config, "Faro/uno").read_text())
+        self.assertEqual((d["paso"], d["maquina"], d["bytes"], d["hilo"]), ("copiar", "telar", 10, "Faro/uno"))
+        mudanza.progreso(config, "Faro/uno", "revisar", maquina="otra")
+        self.assertNotIn("bytes", json.loads(mudanza.ruta_progreso(config, "Faro/uno").read_text()))
+
+
+class LlevarPorElBus(_ConCarpeta):
+    """Llevar un hilo a otra máquina: lo grave allá no mueve nada, y si allá no se abre, se vuelve a abrir aquí."""
+
+    def llevar(self, revision, enviar):
+        from telar import bus as mod_bus
+        from telar.ordenes import _comun
+        from telar.ordenes import hilo as orden
+
+        self.ctx = SimpleNamespace(config=SimpleNamespace(estado=str(self.dir / "estado")))
+        self.hilo = SimpleNamespace(nombre="Faro", id="@3")
+        self.mux = mock.Mock()
+        self.tel = mock.Mock(mux=self.mux)
+        self.tel.vivo.return_value = True
+        nuevo = SimpleNamespace(hilos=[SimpleNamespace(nombre="Faro")])
+        archivo = self.dir / "c.jsonl"
+        archivo.write_text("{}")
+        with mock.patch.object(mod_bus, "pedir", side_effect=revision if callable(revision) else lambda *a, **k: revision), \
+                mock.patch.object(mudanza, "enviar", side_effect=enviar), \
+                mock.patch.object(_comun, "tejer", return_value=nuevo), \
+                mock.patch.object(orden, "_retomar", return_value=0) as retomar, \
+                mock.patch.object(_comun, "queja", side_effect=lambda t: (self.quejas.append(t), 1)[1]):
+            self.quejas = []
+            r = orden._llevar_por_el_bus(self.ctx, self.tel, self.hilo, "telar", "sid", archivo, "repo", si=True)
+        self.retomar = retomar
+        return r, json.loads(mudanza.ruta_progreso(self.ctx.config, "Faro").read_text())
+
+    def test_lo_grave_no_mueve_nada(self):
+        r, prog = self.llevar({"graves": ["sin claude"]}, enviar=AssertionError("no debía enviarse"))
+        self.assertEqual(r, 1)
+        self.mux.cerrar.assert_not_called()
+        self.assertEqual(prog["paso"], "falla")
+        self.assertIn("No se movió nada", prog["error"])
+
+    def test_si_alla_no_se_abre_vuelve_aqui(self):
+        r, prog = self.llevar({}, enviar=mudanza.ErrorDeMudanza("telar no abrió el hilo"))
+        self.assertEqual(r, 1)
+        self.mux.cerrar.assert_called_once_with("@3")
+        self.retomar.assert_called_once()
+        self.tel.estado.archivar.assert_not_called()
+        self.assertIn("Se volvió a abrir aquí", prog["error"])
+
+    def test_al_llegar_queda_archivado_aqui(self):
+        r, prog = self.llevar({}, enviar=lambda *a, al_abrir=None, **k: (al_abrir(), {"carpeta": "/x"})[1])
+        self.assertEqual(r, 0)
+        self.tel.estado.archivar.assert_called_once_with("Faro")
+        self.assertEqual((prog["paso"], prog["carpeta"], prog["maquina"]), ("listo", "/x", "telar"))

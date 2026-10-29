@@ -16,6 +16,7 @@
 // rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
 // estilos, en media/css/hilos.css.
 
+import { I } from '../web/iconos';
 import * as entidades from '../web/entidades';
 import * as ui from '../web/ui';
 
@@ -109,6 +110,9 @@ export class BarraHilos {
     private conMaquina(): boolean { return !!this.estado?.get<boolean>('telar.hilos.maquina'); }
     /** el ancho de esa columna con los nombres: el del nombre más largo, hasta 12 */
     private anchoMaquina = 1;
+    /** los hilos vivos en otra máquina, por nombre → la máquina (una fila [remotos] o de su foto): lo que se llevó
+     *  allá no se repite aquí en el ARCHIVO, y uno abierto en las dos lo dice */
+    private enOtra = new Map<string, string>();
     private irAlArchivo = false;
     /** dónde guardar el orden elegido de cada grupo */
     estado?: Guardado;
@@ -284,11 +288,14 @@ export class BarraHilos {
         const der = haceCorto(ultima);
         const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
         const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
+        // abierto aquí y también en otra máquina: dos conversaciones que se separan (una mudanza a medias)
+        const otra = !h.remoto && h.vivo ? this.enOtra.get(h.nombre) : undefined;
+        const doble = otra ? `<span class="i doble" title="${esc(`también abierto en ${otra}: son dos conversaciones; cierra una`)}">${I.alerta}</span>` : '';
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
-                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${alFinal}`
+            + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="i viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${I.viaja}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
+                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${doble}${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
@@ -346,6 +353,10 @@ export class BarraHilos {
                 + `<a data-accion="cmd" data-id="telar.actualizar">reintentar</a></div>`;
         }
         const h: string[] = [];
+        this.enOtra = new Map([
+            ...this.otras.flatMap(m => m.hilos.filter(x => x.vivo).map(x => [x.nombre, m.nombre] as [string, string])),
+            ...modelo.hilos.filter(x => x.remoto && x.remoto !== '?' && x.vivo).map(x => [x.nombre, x.remoto!] as [string, string]),
+        ]);
         if (modelo.aviso) h.push(`<div class="nota">(${esc(modelo.aviso)})</div>`);
         if (!modelo.viva && !modelo.hilos.length) {
             return h.join('') + `<div class="aviso">la sesión «${esc(modelo.sesion)}» no está tejida.<br><br>`
@@ -495,7 +506,8 @@ export class BarraHilos {
         }
 
         const ordenA = this.ordenDe('archivo');
-        const archivados = ordenar(modelo.archivados, ordenA);
+        // lo que se llevó a otra máquina y vive allá no se repite aquí: su fila es la de allá
+        const archivados = ordenar(modelo.archivados.filter(x => x.remoto || !this.enOtra.has(x.nombre)), ordenA);
         if (archivados.length && cabecera('__archivo', 'ARCHIVO', archivados.length, false, 'los hilos archivados')) {
             h.push(this.herramientas('archivo', ordenA));
             for (const x of archivados) h.push(this.fila(x, 'archivado', '', 'archivo'));

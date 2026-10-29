@@ -130,21 +130,13 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         const elegida = destinos.length === 1 ? destinos[0]
             : (await ui.elegir(destinos.map(x => ({ label: x.nombre, description: x.destino, x })), { titulo: `¿A qué máquina llevo «${hilo}»?` }))?.x;
         if (!elegida) return;
-        avisar(`llevando «${hilo}» a ${elegida.nombre}…`, 'info', 4000);
-        let r = await cli.llevar(hilo, elegida.nombre);
-        if (r.error && /sin subir/.test(r.error)) {
-            const salida = String(r.cuerpo?.salida ?? '');
-            const lista = salida.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
-            const si = await ui.aviso(`La conversación de «${hilo}» viaja, los archivos no. Aquí hay trabajo que allá no va a estar:\n${lista}`, 'Llevar igual');
-            if (si !== 'Llevar igual') return;
-            r = await cli.llevar(hilo, elegida.nombre, true);
-        }
-        if (r.error) { avisar(`telar: ${r.error}`, 'falla'); return; }
-        // una conversación grande sigue copiándose: la API ya respondió, y el hilo aparece allá al terminar
-        if (r.datos?.en_curso) avisar(`«${hilo}» sigue viajando a ${elegida.nombre}: aparece allá al terminar`, 'info', 8000);
-        modelo.invalidar();
-        await modelo.sondear();
+        // la transición a la vista (web/mudanza.ts): letras grandes, barra, pasos; al llegar, a su terminal allá
+        const { llevar } = await import('./mudanza');
+        // al llegar: el hilo de una máquina del bus se mira desde aquí (su terminal allá); uno de [remotos] sigue en su tab
+        const porElBus = delBus.some(x => x.nombre === elegida.nombre);
+        await llevar(hilo, elegida.nombre, () => { c.mostrar(porElBus ? `rem:${elegida.nombre}:${hilo}` : hilo); });
     }
+
 
     return {
         'telar.menuHilo': a => menuHilo(a),

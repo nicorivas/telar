@@ -6,6 +6,23 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.8.7] — 2026-10-29
+
+### Changed
+
+- **Moving a thread to another machine is shown as it happens.** The page opens a panel with the machine's name in
+  big letters, a loading bar and the steps (check there, close here, copy the conversation, open there, done); the
+  thread's row shows it's travelling. What would make it arrive half-done (its folder not cloned there) is asked in
+  the panel; a failure says why there instead of a terminal error. `window.telar.ensayoMudanza()` plays it without
+  moving anything.
+- **Before closing anything, the other machine is asked whether it can receive the thread** (bus verb
+  `hilo-revisar`): no Claude agent, no `claude` on the service's PATH, a thread with that name already open, or the
+  conversation already there stop the move with nothing moved.
+- **If the thread doesn't open there, it reopens here** with its conversation; it's archived here only once it
+  arrived. Progress is in `<estado>/llevar/<hilo>.json` and `GET /mudanza`.
+- **One row per thread in the sidebar**: a thread that now lives on another machine no longer shows again in this
+  one's ARCHIVO, and one open on both machines is flagged (two conversations that drift apart).
+
 ## [0.8.6] — 2026-10-29
 
 ### Fixed

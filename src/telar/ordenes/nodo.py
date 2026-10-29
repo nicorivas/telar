@@ -57,7 +57,7 @@ CASILLA_ESPERA = 1.0
 #: los pedidos que solo leen: varios del mismo verbo a la vez. Los demás escriben algo aquí (el registro de un
 #: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
 #: el mismo archivo a la vez podrían perder uno de los cambios
-SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer")
+SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar")
 #: lo que puede esperar en cada suscripción antes de que nats-py descarte (y avise «slow consumer»): el
 #: de fábrica es medio millón de mensajes o 128 MB, que es memoria sin tope si una se queda pegada
 PENDIENTES_MSGS = 2_000
@@ -420,6 +420,7 @@ class Nodo:
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
+                          ("hilo-revisar", self._hilo_revisar),
                           ("hilo-traer", self._hilo_traer)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
@@ -1139,6 +1140,13 @@ class Nodo:
         from telar import mudanza
 
         await self._responder(m, lambda p: mudanza.llegar(self.ctx, p))
+
+    async def _hilo_revisar(self, m) -> None:
+        """Otra máquina de esta persona pregunta, antes de traer un hilo aquí, si se puede: qué fallaría y qué llegaría
+        a medias (telar.mudanza.revisar). No mueve nada."""
+        from telar import mudanza
+
+        await self._responder(m, lambda p: mudanza.revisar(self.ctx, p))
 
     async def _hilo_traer(self, m) -> None:
         """Otra máquina de esta persona pide para sí un hilo que vive aquí («traer a esta máquina»): se le lleva con

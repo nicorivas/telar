@@ -567,7 +567,7 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
 
     relativa = tel.estado.vinculos().get(hilo.nombre, "")
     if remoto is None:
-        return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa)
+        return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa, si=si)
     carpeta = mod_remoto.carpeta_remota(ctx.config, remoto, relativa)
     if relativa.startswith("/"):
         # vinculado fuera de la raíz: allá no hay traducción de esa carpeta. Si no existe en
@@ -611,21 +611,66 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
     return 0
 
 
-def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, archivo, relativa: str) -> int:
-    """Lo de `_llevar` hacia una máquina del bus (telar.mudanza): se cierra aquí, la conversación viaja por el bus y
-    allá se abre retomándola. Aquí el hilo queda archivado, con su copia de como estaba al irse."""
+def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, archivo, relativa: str, *,
+                       si: bool = False) -> int:
+    """Lo de `_llevar` hacia una máquina del bus (telar.mudanza). Antes de tocar nada, se le pregunta a la de allá si
+    puede recibirlo (`hilo-revisar`): lo grave no se lleva, y lo que llegaría a medias (su carpeta sin clonar) se
+    pregunta. Después se cierra aquí (la misma conversación viva en dos máquinas se bifurca), viaja por el bus y allá
+    se abre retomándola. Si allá no se abre, se vuelve a abrir aquí: el hilo no queda cerrado en ninguna parte. Cada
+    paso queda en el progreso de la mudanza (telar.mudanza.progreso), que la página dibuja."""
+    from telar import bus as mod_bus
     from telar import mudanza
 
-    if tel.mux is not None and tel.vivo(hilo):
+    pesa = Path(archivo).stat().st_size if archivo is not None else 0
+    mudanza.progreso(ctx.config, hilo.nombre, "revisar", maquina=maquina, bytes=pesa, error="", avisos=[])
+
+    def falla(texto: str) -> int:
+        mudanza.progreso(ctx.config, hilo.nombre, "falla", error=texto)
+        return _comun.queja(texto)
+
+    try:
+        revision = mod_bus.pedir(ctx.config, maquina, mudanza.VERBO_REVISAR,
+                                 {"hilo": hilo.nombre, "sesion": sid if archivo is not None else "", "relativa": relativa},
+                                 espera=15)
+    except mod_bus.ErrorDeBus:
+        revision = {}  # un telar de antes allá no sabe revisar: se sigue como antes
+    if revision.get("graves"):
+        return falla(f"en {maquina} no se puede recibir: " + "; ".join(revision["graves"]) + ". No se movió nada.")
+    if revision.get("avisos"):
+        mudanza.progreso(ctx.config, hilo.nombre, "revisar", avisos=revision["avisos"])
+        print(f"en {maquina}, el hilo llegaría a medias:")
+        for a in revision["avisos"]:
+            print(f"  · {a}")
+        if not si:
+            if not sys.stdin.isatty():
+                return falla(f"en {maquina}, " + "; ".join(revision["avisos"]) + " (--si para llevarla igual)")
+            if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
+                print("no se movió nada")
+                mudanza.progreso(ctx.config, hilo.nombre, "falla", error="no se movió nada")
+                return 1
+
+    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
+    estaba_vivo = tel.mux is not None and tel.vivo(hilo)
+    if estaba_vivo:
         try:
             tel.mux.cerrar(hilo.id)
         except ErrorDeMux as e:
-            return _comun.queja(f"no pude cerrar el hilo aquí: {e}")
+            return falla(f"no pude cerrar el hilo aquí: {e}")
+    mudanza.progreso(ctx.config, hilo.nombre, "copiar")
     try:
         r = mudanza.enviar(ctx, hilo.nombre, maquina, sid if archivo is not None else "",
-                           Path(archivo) if archivo is not None else None, relativa)
+                           Path(archivo) if archivo is not None else None, relativa,
+                           al_abrir=lambda: mudanza.progreso(ctx.config, hilo.nombre, "abrir"))
     except mudanza.ErrorDeMudanza as e:
-        return _comun.queja(f"{e}. Aquí quedó cerrada; `telar hilo retomar` la reabre en esta máquina.")
+        # allá no se abrió: aquí se vuelve a abrir, retomando la misma conversación, como si no se hubiera ido
+        vuelta = ""
+        if estaba_vivo:
+            nuevo = _comun.tejer(ctx)
+            de_nuevo = next((h for h in nuevo.hilos if h.nombre == hilo.nombre), None)
+            if de_nuevo is not None and _retomar(ctx, nuevo, de_nuevo) == 0:
+                vuelta = " Se volvió a abrir aquí, con su conversación."
+        return falla(f"{e}.{vuelta or ' Aquí quedó cerrada; `telar hilo retomar` la reabre en esta máquina.'}")
+    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=r.get("carpeta", ""), aviso=r.get("aviso", ""))
     tel.estado.archivar(hilo.nombre)
     print(f"«{hilo.nombre}» sigue en {maquina}, " + (f"retomando la conversación {sid[:8]}" if archivo is not None
                                                        else "con una conversación nueva"))

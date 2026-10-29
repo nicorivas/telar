@@ -1129,6 +1129,21 @@ true, "error": "<máquina> está ocupada: …"}`: ese nodo ya tiene 64 pedidos d
 contesta al tiro, en vez de dejar que el plazo se cumpla. No se hizo nada; se puede volver a probar en un rato
 (en [arquitectura.md](arquitectura.md), «Cuando el bus falla»).
 
+## `/mudanza` y `hilo-revisar` — llevar un hilo a otra máquina, paso a paso
+
+`telar hilo llevar <hilo> <máquina>` (por el bus) deja en `<estado>/llevar/<hilo>.json` en qué va:
+`{"paso", "hilo", "hora", "maquina", "bytes", "avisos", "error", "carpeta", "aviso"}`, con `paso` uno de `revisar`,
+`cerrar`, `copiar`, `abrir`, `listo` o `falla`. Cada mudanza empieza de nuevo en `revisar`; `hora` (segundos
+Unix) separa la de ahora de una vieja. `GET /mudanza?hilo=<hilo>` lo da tal cual (`{}` si no hay); la página lo
+lee mientras dura para dibujar la transición.
+
+Antes de cerrar nada, se le pregunta a la máquina de allá con el pedido `hilo-revisar` (`{hilo, sesion,
+relativa}`), que solo lee: contesta `{"ok": true, "graves": [...], "avisos": [...]}`. Lo grave (sin agente de
+Claude, sin `claude` en el PATH del servicio, un hilo con ese nombre ya abierto, la conversación ya llegada) no se
+lleva; lo que llegaría a medias (su carpeta sin clonar) pide `--si`. Un telar anterior que no conoce el verbo se
+salta la revisión. Si allá no se abre, el hilo se vuelve a abrir aquí, con su conversación; solo al llegar queda
+archivado aquí.
+
 ## `telar commit --json` — commitear solo unas rutas y subirlas
 
 ```json

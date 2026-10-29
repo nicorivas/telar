@@ -349,10 +349,13 @@ declare global {
         telar?: {
             mostrar?: (que: string) => void;
             donde?: (lo: { texto: string; otraMaquina: boolean } | null) => void;
+            /** la transición de una mudanza, sin mudar nada: para mirarla y afinarla (web/mudanza.ts, `ensayo`) */
+            ensayoMudanza?: (maquina?: string, falla?: boolean) => Promise<void>;
         };
     }
 }
-window.telar = { ...(window.telar ?? {}), mostrar };
+window.telar = { ...(window.telar ?? {}), mostrar,
+    ensayoMudanza: async (maquina, falla) => { const { ensayo } = await import('../web/mudanza'); await ensayo(maquina, falla); } };
 // abierta por «compartir» del teléfono (share_target del manifiesto): eso primero, también en el celular
 const compartiendo = location.pathname === '/compartir';
 mostrar(compartiendo ? 'compartir' : 'dashboard');

@@ -554,6 +554,21 @@ def post_hilo_llevar(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)
     return servicio_llevar.llevar(ctx, pedido.hilo, pedido.maquina, pedido.si)
 
 
+@app.get("/mudanza")
+def get_mudanza(hilo: str, ctx: Contexto = Depends(contexto)):
+    """En qué va la mudanza de un hilo a otra máquina (telar.mudanza.progreso): su paso, a dónde, cuánto pesa, y lo
+    que haya que decir. {} si no hay ninguna."""
+    import json
+
+    from telar import mudanza
+
+    ruta = mudanza.ruta_progreso(ctx.config, hilo)
+    try:
+        return json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 @app.post("/hilo/traer", response_model=servicio_llevar.Llevado)
 def post_hilo_traer(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)):
     """Traer a esta máquina un hilo que vive en otra de la persona (`maquina`): esa lo lleva aquí por el bus. Con

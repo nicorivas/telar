@@ -55,6 +55,8 @@ export class Modelo {
     hayBus = false;
 
     readonly cambio = new Emisor();
+    /** los hilos que están viajando a otra máquina ahora (web/mudanza.ts): hilo → máquina. La barra lo dice en su fila */
+    readonly mudando = new Map<string, string>();
 
     private fichas = new Map<string, cli.JsonFicha | null>();
     private firma = '';
