@@ -52,6 +52,24 @@ const CASILLAS: Record<Modo, Casilla[]> = {
     ],
 };
 
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+/** Los aplazamientos a un clic, junto a «nueva fecha»: un día (desde su fecha si es futura; si no, desde hoy), el
+ *  viernes de esta semana (el de la próxima si ya es viernes o fin de semana) y el lunes de la próxima.
+ *  [para qué, nombre corto, AAAA-MM-DD] */
+function aplazamientos(cuando: string): [string, string, string][] {
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    const fecha = cuando ? new Date(`${cuando.slice(0, 10)}T00:00:00`) : null;
+    const base = fecha && fecha > hoy ? fecha : hoy;
+    const unDia = new Date(base); unDia.setDate(unDia.getDate() + 1);
+    const viernes = new Date(hoy); viernes.setDate(hoy.getDate() + ((5 - hoy.getDay() + 7) % 7 || 7));
+    const lunes = new Date(hoy); lunes.setDate(hoy.getDate() + ((8 - hoy.getDay()) % 7 || 7));
+    const corto = (d: Date) => `${DIAS[d.getDay()]} ${d.getDate()}`;
+    return [['un día más', `+1 · ${corto(unDia)}`, iso(unDia)], ['el viernes', corto(viernes), iso(viernes)],
+        ['el lunes', corto(lunes), iso(lunes)]];
+}
+
 const hoyISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 export class PantallaFoco implements Pantalla {
@@ -167,8 +185,13 @@ export class PantallaFoco implements Pantalla {
             h.push(`<div class="de-cual"><span class="dim">${esc(elegida.fila.id || elegida.ref)}</span> ${esc(elegida.texto)}</div>`);
             if (this.haciendo) h.push(`<div class="haciendo"><span class="i">${I.viaja}</span> ${esc(this.haciendo)}</div>`);
             for (const c of this.accionesDe(elegida)) {
-                h.push(`<div class="casilla" data-suelta="${c.clave}" data-accion="foco-soltar" data-valor="${c.clave}" style="--c: var(--${c.color})"`
-                    + ` title="${esc(c.ayuda)}"><span class="i">${c.icono}</span> ${esc(c.nombre)}</div>`);
+                const boton = `<div class="casilla" data-suelta="${c.clave}" data-accion="foco-soltar" data-valor="${c.clave}" style="--c: var(--${c.color})"`
+                    + ` title="${esc(c.ayuda)}"><span class="i">${c.icono}</span> ${esc(c.nombre)}</div>`;
+                if (c.clave !== 'fecha') { h.push(boton); continue; }
+                // nueva fecha, y a su derecha los aplazamientos de siempre, uno sobre otro: un día, el viernes, el lunes
+                h.push(`<div class="con-rapidas">${boton}<div class="aplazar">${aplazamientos(elegida.cuando).map(([clave, nombre, fecha]) =>
+                    `<div class="aplazo" data-suelta="aplazar:${fecha}" data-accion="foco-soltar" data-valor="aplazar:${fecha}" style="--c: var(--${c.color})"`
+                    + ` title="${esc(`${clave}: ${fecha}`)}">${esc(nombre)}</div>`).join('')}</div></div>`);
             }
         }
         h.push('</div></div></div>');
@@ -178,11 +201,13 @@ export class PantallaFoco implements Pantalla {
     /** Las acciones de una tarea: las de su modo, más las que pide su situación. Una vencida, «hoy» y «mañana» a un
      *  clic (primero: o va hoy, o tiene fecha de verdad); una sin tamaño, «rápida» o «larga» (en vez de «es larga»). */
     private accionesDe(p: Fila): Casilla[] {
-        let lista = [...CASILLAS[this.modo]];
+        let lista = [{ clave: 'ver', nombre: 'ver el detalle', icono: I.documento, color: C.ir,
+            ayuda: 'su ficha entera: el contexto, la historia y todas sus acciones («‹ foco» vuelve aquí)' }, ...CASILLAS[this.modo]];
         if (p.dias !== null && p.dias < 0) {
-            lista = [{ clave: 'hoy', nombre: 'va hoy', icono: I.fecha, color: C.cambiar, ayuda: 'la haces hoy: su fecha pasa a hoy' },
-                { clave: 'manana', nombre: 'mañana', icono: I.fecha, color: C.cambiar, ayuda: 'su fecha pasa a mañana' }, ...lista];
+            lista = [lista[0], { clave: 'hoy', nombre: 'va hoy', icono: I.fecha, color: C.cambiar, ayuda: 'la haces hoy: su fecha pasa a hoy' },
+                ...lista.slice(1)];
         }
+        lista.push({ clave: 'unir', nombre: 'es la misma que…', icono: I.enlace, color: C.otro, ayuda: 'otra tarea dice lo mismo: esta se le une (su texto pasa a esa) y se descarta' });
         if (!this.tamanoDe(p)) {
             lista = lista.filter(c => c.clave !== 'larga' && c.clave !== 'rapida');
             lista.push({ clave: 'rapida', nombre: 'es rápida', icono: I.hecha, color: C.otro, ayuda: 'media hora o menos: se queda en gestión' },
@@ -224,6 +249,8 @@ export class PantallaFoco implements Pantalla {
     /** Lo que hace cada casilla con una tarea. Si se decidió, sale de la vista y entra la siguiente. */
     private async decidir(casilla: string, valor: string): Promise<void> {
         const [proveedor, id, ref] = JSON.parse(valor) as string[];
+        // ver el detalle: su ficha, la de «tareas»; «‹ foco» vuelve aquí, con la misma elegida
+        if (casilla === 'ver') { await this.t.tareas.abrirTarea(valor, { nombre: 'foco', ir: () => void this.t.accion('foco') }); return; }
         // con Claude: abrir o retomar su hilo toma segundos (a veces en el servidor, por ssh): no se espera. La tarjeta
         // se va al tiro y foco sigue con la siguiente; cuando el hilo está listo, la línea de estado lo dice
         if (casilla === 'claude' || casilla === 'empezar' || casilla === 'bloque') {
@@ -243,7 +270,7 @@ export class PantallaFoco implements Pantalla {
             });
             return;
         }
-        this.haciendo = { hecha: 'marcándola hecha…', hoy: 'moviéndola a hoy…', manana: 'moviéndola a mañana…', fecha: 'cambiando la fecha…',
+        this.haciendo = casilla.startsWith('aplazar:') ? `moviéndola al ${casilla.slice(8)}…` : { unir: 'uniéndola…', hecha: 'marcándola hecha…', hoy: 'moviéndola a hoy…', manana: 'moviéndola a mañana…', fecha: 'cambiando la fecha…',
             asignar: 'asignándola…', descartar: 'descartándola…', paso: 'creando el primer paso…', rapida: 'dándole tamaño…',
             larga: 'dándole tamaño…' }[casilla] ?? 'un momento…';
         this.pintar();
@@ -258,7 +285,11 @@ export class PantallaFoco implements Pantalla {
     private async hacer(casilla: string, valor: string, proveedor: string, id: string, ref: string): Promise<void> {
         if (casilla === 'larga' || casilla === 'rapida') { await this.ponerTamano(valor, casilla); return; }
         let hecho = false;
-        if (casilla === 'hoy' || casilla === 'manana') {
+        if (casilla.startsWith('aplazar:')) {
+            const fecha = casilla.slice(8);
+            const r = await cli.accionPorRol(id, proveedor, 'fecha', fecha);
+            if (r.datos) { ui.estado(`${id} → ${fecha}`, 4000); hecho = true; } else void ui.aviso(`telar: ${r.error ?? `no pude mover ${id}`}`);
+        } else if (casilla === 'hoy' || casilla === 'manana') {
             const d = new Date(); if (casilla === 'manana') d.setDate(d.getDate() + 1);
             const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             const r = await cli.accionPorRol(id, proveedor, 'fecha', fecha);
@@ -271,7 +302,16 @@ export class PantallaFoco implements Pantalla {
                 if (r.datos) { ui.estado(`${id} → ${fecha}`, 4000); hecho = true; } else void ui.aviso(`telar: ${r.error ?? `no pude mover ${id}`}`);
             }
         } else if (casilla === 'asignar') hecho = await asignar(JSON.stringify([proveedor, id, ref]), '', yo.persona);
-        else if (casilla === 'paso') {
+        else if (casilla === 'unir') {
+            // con cuál: las tareas de la persona que ya tiene foco (las de los dos modos), menos esta
+            const d = this.t.dia();
+            const otras = d ? pendientes(d).filter(x => x.fila.ficha && esMia(x.fila.dueno ?? '') && (x.fila.id || x.ref) !== id) : [];
+            const con = await ui.elegir(otras.map(x => ({ label: `${x.fila.id || x.ref} ${x.texto}`, valor: x.fila.id || x.ref })),
+                { titulo: `${id} es la misma que…`, placeholder: 'la que queda: escribe para buscar' });
+            if (!con) return;
+            const r = await cli.accionObjeto(`tarea:${id}`, 'unir', { con: con.valor });
+            if (r.datos) { ui.estado(`${id} se unió a ${con.valor}`, 5000); hecho = true; } else void ui.aviso(`telar: ${r.error ?? `no pude unir ${id}`}`);
+        } else if (casilla === 'paso') {
             const paso = await ui.campo({ titulo: `El primer paso · ${id}`, ayuda: 'algo que la empiece y tome media hora o menos («pedir los datos», «escribir el índice»)' });
             if (!paso?.trim()) return;
             const fila = this.t.dia() ? pendientes(this.t.dia()!).find(p => (p.fila.id || p.ref) === id) : undefined;

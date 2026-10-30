@@ -6,6 +6,28 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-10-30
+
+### Added
+
+- **Child threads of an agent.** A task with no project taken to Claude no longer queues in the agent's one thread
+  (where they all mixed): it opens its own, «Gestión › T454 Hacer el test Hogan», in the agent's folder (its
+  instructions and memory), with a fresh conversation, on the machine where the agent lives (over the bus, verb
+  `hilo-hijo`). If that task already has a live child, it writes there. In the sidebar the children hang from their
+  agent, named without its prefix (↳ T454 …), from this machine or the agent's; they no longer repeat in HILOS. Picking
+  an agent by hand in «Acción…» still hands it the task in its own thread.
+
+- **Merge two tasks that are the same.** «es la misma que…» in foco (pick the one that stays), «unir» in a task's
+  menu, or `telar tipo tarea unir T461 --params '{"con": "T467"}'`. The one that stays gets the other's text (under
+  «De T461»), its project and size if it had none, a line in its history and an `absorbe` connection; the other is
+  discarded saying where it went. It's built from each task's own actions, so it works against an older telar where
+  the tasks are written.
+- **«ver el detalle» in foco**, the first action of the chosen task: its full ficha (context, history, every action),
+  and «‹ foco» (or ⎋) comes back with the same task chosen.
+- **Quick postpones next to «nueva fecha» in foco**, one above the other: one day more (from its date if it's ahead,
+  otherwise from today), this week's Friday (next week's if it's already Friday or the weekend) and next Monday, each
+  with its day. They replace the separate «mañana» of an overdue task; «va hoy» stays.
+
 ## [0.9.1] — 2026-10-30
 
 ### Changed

@@ -420,7 +420,7 @@ class Nodo:
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
-                          ("hilo-revisar", self._hilo_revisar),
+                          ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo),
                           ("hilo-traer", self._hilo_traer)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
@@ -1147,6 +1147,20 @@ class Nodo:
         from telar import mudanza
 
         await self._responder(m, lambda p: mudanza.revisar(self.ctx, p))
+
+    async def _hilo_hijo(self, m) -> None:
+        """Otra máquina le lleva una tarea a un agente que vive aquí: un hilo hijo suyo para ella (telar.hijos)."""
+        from telar import hijos
+        from telar.servicios import ErrorDeServicio
+
+        def abrir(p):
+            try:
+                return hijos.abrir_aqui(self.ctx, str(p.get("agente") or ""), str(p.get("hilo") or ""), str(p.get("ref") or ""),
+                                        str(p.get("texto") or ""))
+            except ErrorDeServicio as e:
+                return {"ok": False, "error": str(e), "codigo": e.codigo}
+
+        await self._responder(m, abrir)
 
     async def _hilo_traer(self, m) -> None:
         """Otra máquina de esta persona pide para sí un hilo que vive aquí («traer a esta máquina»): se le lleva con

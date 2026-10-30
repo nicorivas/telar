@@ -546,7 +546,7 @@ class LasSuscripcionesDelNodo(Prueba):
         self.assertEqual(verbos, {"ping", "leer", "resultado", "resultado-comentar", "proveedor", "tarea", "tipo",
                                   "periodicos", "hilo", "equipo", "aviso", "archivo", "archivo-leer", "modulo",
                                   "notas", "nota", "serie", "serie-recordar", "encargo", "agentes", "hilo-llegar", "hilo-traer",
-                                  "hilo-revisar"})
+                                  "hilo-revisar", "hilo-hijo"})
         self.assertIn("cambio.ana.*", suscritas)
         from telar import cuentas
 

@@ -342,7 +342,7 @@
   .foco-cuerpo.concentracion .tarjeta { padding: 1lh 2ch; }
   .foco-cuerpo.concentracion .tarjeta .t { font-weight: bold; }
   .tarjeta .sin-tamano { color: var(--amarillo); }
-  .foco-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 26ch; gap: 3ch; align-items: start; }
+  .foco-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 34ch; gap: 3ch; align-items: start; }
   .tarjetas { display: flex; flex-direction: column; gap: 1ch; }
   .tarjeta { padding: .5lh 2ch; background: var(--bg-barra); border: 1px solid var(--linea); cursor: grab; }
   .tarjeta:hover { border-color: var(--dim); }
@@ -354,7 +354,13 @@
   .tarjeta .m .cuando { margin-left: auto; }
   .casillas { display: flex; flex-direction: column; gap: 1ch; position: sticky; top: 0; }
   /* mientras una acción va a telar: lo dice, y las acciones no se aprietan */
-  .casillas.ocupadas .casilla { pointer-events: none; opacity: .35; }
+  .casillas.ocupadas .casilla, .casillas.ocupadas .aplazo { pointer-events: none; opacity: .35; }
+  /* nueva fecha, con sus aplazamientos a un clic a la derecha, uno sobre otro */
+  .con-rapidas { display: flex; gap: .5ch; align-items: stretch; }
+  .con-rapidas .casilla { flex: 1; display: flex; align-items: center; }
+  .con-rapidas .aplazar { display: flex; flex-direction: column; gap: .25ch; }
+  .aplazo { padding: 0 1ch; border: 1px dashed color-mix(in srgb, var(--c) 55%, transparent); color: var(--c); cursor: pointer; white-space: nowrap; }
+  .aplazo:hover, .aplazo.encima { border-style: solid; background: color-mix(in srgb, var(--c) 14%, transparent); }
   .casillas .haciendo { color: var(--cian); animation: viaja 1.6s linear infinite; }
   /* de cuál tarea son las acciones: la elegida (la primera, si no se eligió otra) */
   .casillas .de-cual { padding: 0 0 .5lh; color: var(--fg); border-bottom: 1px solid var(--linea); overflow: hidden;

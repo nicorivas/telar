@@ -137,12 +137,23 @@ def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: st
 
     if tel.mux is None:
         raise ErrorDeServicio(tel.aviso or "no hay multiplexor con el que hablar", 409)
-    if general is not None:
+    if general is not None and a:
+        # elegido a mano («Acción…» a un agente): se le encarga, en su hilo de siempre
         from telar.servicios import encargos
 
         r = encargos.encargar_y_ir(ctx, general, primero)
         return ({"ref": fila["ref"], "texto": primero, "destino": general.nombre, "creado": r.estado == "abierto",
                  "enviado": True, "encargo": r.estado}, f"{fila['ref']} → «{general.nombre}»: encargado ({r.estado})")
+    if general is not None:
+        # sin proyecto, al agente de los pendientes: un hilo hijo suyo para esta tarea (telar.hijos), no la cola de su
+        # hilo de siempre, donde se mezclaban todas
+        from telar import hijos
+
+        r = hijos.abrir(ctx, general, fila["ref"], fila.get("texto", ""), primero)
+        donde = f" en {r['maquina']}" if r["maquina"] else ""
+        return ({"ref": fila["ref"], "texto": primero, "destino": r["hilo"], "maquina": r["maquina"], "creado": r["nuevo"],
+                 "enviado": True, "hijo_de": general.nombre},
+                f"{fila['ref']} → «{r['hilo']}»{donde}: {'hilo nuevo, hijo de ' + general.nombre if r['nuevo'] else 'su hilo, ya abierto'}")
 
     hilo, creado, problema = _llevar(ctx, tel, destino, fila, nuevo=nuevo, primero=primero)
     if hilo is None:

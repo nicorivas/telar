@@ -20,6 +20,9 @@ import { ATENCION_I, I, PRIO_I } from '../web/iconos';
 
 /** Un ícono dentro de una columna de la fila: la columna mide en letras de las de siempre (2ch), y el ícono va en
  *  la suya (`.i`) adentro; vacío, nada. */
+
+/** lo que separa a un agente del resto en el nombre de un hilo hijo suyo («Gestión › T454 …», telar.hijos) */
+const HIJO = ' › ';
 const ic = (x?: string): string => (x ? `<span class="i">${x}</span>` : '');
 import * as entidades from '../web/entidades';
 import * as ui from '../web/ui';
@@ -280,8 +283,24 @@ export class BarraHilos {
         this.pintarLista(html, mostrar);
     }
 
+    /** La fila de un hilo de otra máquina, de su foto: un clic va a su terminal allá. `clase`: «hijo» si cuelga de su
+     *  agente. */
+    private filaRemota(m: (typeof this.otras)[number], x: HiloDeFoto, clase = '', visible = ''): string {
+        const at = x.atencion ?? 'ninguna';
+        const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
+        return (`<div class="fila remota${clase ? ` ${clase}` : ''}${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
+            + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
+            + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
+            + `<span class="prio p${x.prioridad ?? 0}">${ic(PRIO_I[x.prioridad ?? 0] ?? PRIO_I[0])}</span>`
+            + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${ic(ATENCION_I[at])}</span>`
+            + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
+            + `<span class="nombre">${esc(visible || x.nombre)}</span>`
+            // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">⋯</span></span></div>`);
+    }
+
     /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
-    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = '', grupo = ''): string {
+    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = '', grupo = '', visible = ''): string {
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
@@ -302,7 +321,7 @@ export class BarraHilos {
             + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
             + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
                 : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
-                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${doble}${alFinal}`
+                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${doble}${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
@@ -430,9 +449,19 @@ export class BarraHilos {
                     h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; ${previo ? 'pincha para retomarlo' : 'su home'}">`
                         + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
                         + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${casa}</div>`);
-                    continue;
+                } else suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
+                // sus hijos: un hilo por tarea que se le llevó («Gestión › T454 …», telar.hijos), de esta máquina o de
+                // la suya, colgados de él y con el nombre sin el suyo adelante
+                const prefijo = `${a.nombre}${HIJO}`;
+                for (const x of vivosPrimero(modelo.enLista.filter(y => y.nombre.startsWith(prefijo)))) {
+                    h.push(this.fila(x, 'hilo', '', 'hilos', `↳ ${x.nombre.slice(prefijo.length)}`).replace('class="fila ', 'class="fila hijo '));
                 }
-                suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
+                const vistos = new Set(modelo.enLista.map(y => y.nombre));
+                for (const m of this.otras) {
+                    for (const x of m.hilos.filter(y => y.vivo && y.nombre.startsWith(prefijo) && !vistos.has(y.nombre))) {
+                        h.push(this.filaRemota(m, x, 'hijo', `↳ ${x.nombre.slice(prefijo.length)}`));
+                    }
+                }
             }
         }
 
@@ -441,9 +470,11 @@ export class BarraHilos {
         const ordenH = this.ordenDe('hilos');
         // (los de un agente que no son su hilo de siempre también van aquí, con su ícono: son trabajo como cualquiera)
         const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
-        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente));
+        // los hijos de un agente van colgados de él, arriba: aquí no se repiten
+        const esHijo = (n: string) => agentes.some(a => n.startsWith(`${a.nombre}${HIJO}`));
+        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre)));
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
-        const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
+        const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
         // los de esta máquina y los de las otras, en una sola lista: el orden elegido vale para todos (en la página
         // del servidor, los del laptop vienen de su foto, y antes quedaban al final sin ordenar)
         type FilaH = { aqui: cli.JsonHilo } | { m: (typeof deOtras)[number]['m']; x: HiloDeFoto };
@@ -457,18 +488,7 @@ export class BarraHilos {
             h.push(this.herramientas('hilos', ordenH));
             for (const f of todos) {
                 if ('aqui' in f) { h.push(this.fila(f.aqui, 'hilo', '', 'hilos')); continue; }
-                const { m, x } = f;
-                const at = x.atencion ?? 'ninguna';
-                const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
-                h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
-                    + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
-                    + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
-                    + `<span class="prio p${x.prioridad ?? 0}">${ic(PRIO_I[x.prioridad ?? 0] ?? PRIO_I[0])}</span>`
-                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${ic(ATENCION_I[at])}</span>`
-                    + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
-                    + `<span class="nombre">${esc(x.nombre)}</span>`
-                    // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
-                    + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">⋯</span></span></div>`);
+                h.push(this.filaRemota(f.m, f.x));
             }
         }
 

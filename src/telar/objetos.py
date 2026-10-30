@@ -162,6 +162,9 @@ class Tarea(Tipo):
         enlaces = [direccion_de("proyecto", t.proyecto)] if t.proyecto else []
         acciones = [Accion(nombre=n, descripcion=(fn.__doc__ or "").strip().split("\n")[0], params=_params_de(fn))
                     for n, fn in tipo.ACCIONES.items()]
+        if t.estado not in tipo.TERMINALES:
+            acciones.append(Accion(nombre="unir", params={"con": ""},
+                                   descripcion="es la misma que otra: se le une (su texto pasa a esa, y esta se descarta)"))
         if con_productos and t.estado not in tipo.TERMINALES:
             # una tarea que en realidad es una idea de un producto (telar.productos)
             acciones.append(Accion(nombre="al_backlog", params={"producto": ""}, opciones={"producto": con_productos},

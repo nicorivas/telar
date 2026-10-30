@@ -13,6 +13,7 @@ Lo usan la CLI (`telar tipo tarea …`) y la API (`/tipos/tarea`); el panel, por
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import subprocess
 import sys
@@ -172,6 +173,9 @@ def aplicar(ctx, id: str, accion: str, params: dict | None = None, *, version: s
     leyó: si el archivo cambió desde entonces, 409 y la versión de ahora."""
     t = _tipo(ctx, clave)
     params = dict(params or {})
+    if accion == "unir" and clave == "tarea":
+        # dos tareas: se arma con las acciones de cada una, aquí o en la máquina que las escribe
+        return unir(ctx, str(params.get("con") or ""), id, version=version)
     if (en := _alla(ctx, t)):
         return TareaConVersion(**_pedir_alla(ctx, en, [clave, accion, id, "--params", json.dumps(params, ensure_ascii=False),
                                                        *(["--version", version] if version else [])]))
@@ -183,6 +187,33 @@ def aplicar(ctx, id: str, accion: str, params: dict | None = None, *, version: s
     hecho = _errores(lambda: _con_version(ind.aplicar(id, fn, version=version, **params)), accion)
     if hecho.version != antes:
         subir(ind.carpeta.ruta / f"{id}.md", f"tareas: {id} {accion}")
+    return hecho
+
+
+def unir(ctx, queda: str, se_va: str, *, version: str | None = None) -> TareaConVersion:
+    """Dos tareas que son la misma: `se_va` se une a `queda`. La que queda suma su texto (bajo «De T461»), lo que no
+    decía (proyecto, tamaño) y una línea en su historia, y la conecta en el grafo (`absorbe`); la otra se descarta
+    diciendo adónde fue. `version` es la de `se_va`, la que se estaba mirando."""
+    queda, se_va = queda.strip().removeprefix("tarea:"), se_va.strip().removeprefix("tarea:")
+    if not queda:
+        raise ErrorDeServicio("unir: ¿con cuál? params {\"con\": \"T84\"}", 422)
+    if queda == se_va:
+        raise ErrorDeServicio("una tarea no se une consigo misma", 422)
+    a, b = obtener(ctx, queda), obtener(ctx, se_va)
+    for x in (a, b):
+        if x.estado in tipo_tarea.TERMINALES:
+            raise ErrorDeServicio(f"{x.id} ya está cerrada ({x.estado}): no se une", 409)
+    if version and version != b.version:
+        raise ErrorDeServicio(f"{b.id} cambió desde que se leyó: reléela y decide", 409, {"version": b.version})
+    hoy = f"{_dt.date.today():%Y-%m-%d}"
+    texto = "\n\n".join(x for x in [a.contexto.strip(), f"De {b.id} (unida el {hoy}): {b.titulo}"
+                                     + (f"\n\n{b.contexto.strip()}" if b.contexto.strip() else "")] if x)
+    cambios = {"contexto": texto, **({"proyecto": b.proyecto} if b.proyecto and not a.proyecto else {}),
+               **({"tamano": b.tamano} if b.tamano and not a.tamano else {})}
+    aplicar(ctx, a.id, "editar", cambios)
+    aplicar(ctx, a.id, "anotar", {"texto": f"se le unió {b.id}: {b.titulo}"})
+    hecho = aplicar(ctx, a.id, "conectar", {"tipo": "absorbe", "destino": f"[{b.id}]({b.id}.md)", "porque": "era la misma tarea"})
+    aplicar(ctx, b.id, "cerrar", {"como": "descartada", "nota": f"unida a {a.id}: sigue allá"}, version=b.version)
     return hecho
 
 
