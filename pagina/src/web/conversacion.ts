@@ -6,6 +6,9 @@
 // `.v-conversacion`).
 
 import MarkdownIt from 'markdown-it';
+import { modelo } from '../modelo';
+import { C, I } from './iconos';
+import * as ui from './ui';
 import { atenderClics, enlazar } from './rutas-agente';
 import type { RutasVista, Vista } from './vistas-hilo';
 
@@ -45,6 +48,25 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
     const teclas = $('.teclas');
     teclas.hidden = porMensaje;
 
+    // archivado o cerrado: no hay agente que lea, así que no hay caja para escribirle; en su lugar, retomarlo
+    const h = maquina ? undefined : modelo.porNombre(hilo);
+    if (h && (!h.vivo || h.archivado)) {
+        form.hidden = true;
+        teclas.hidden = true;
+        const aviso = document.createElement('div');
+        aviso.className = 'dormido';
+        const que = document.createElement('span');
+        que.textContent = `${h.archivado ? 'archivado' : 'cerrado'}: esto es lo que conversó, sin el agente abierto`;
+        const retomar = document.createElement('a');
+        retomar.style.setProperty('--c', `var(--${C.hecho})`);
+        const ic = document.createElement('span'); ic.className = 'i'; ic.textContent = I.retomar;
+        retomar.append(ic, document.createTextNode(' retomar'));
+        retomar.title = 'abre el agente con esta conversación, en su terminal';
+        retomar.addEventListener('click', () => void ui.orden('telar.retomar', { hilo }));
+        aviso.append(que, retomar);
+        form.before(aviso);
+    }
+
     atenderClics(turnos, { hilo, maquina });
     const abajo = () => turnos.scrollHeight - turnos.scrollTop - turnos.clientHeight < 40;
     let ultimo = '', leido = false;
@@ -54,7 +76,12 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
         ultimo = firma;
         const seguir = abajo() || !leido;
         turnos.textContent = '';
-        if (d.error) { turnos.appendChild(el('p', 'nada', d.error)); return; }
+        if (d.error) {
+            const sinConversacion = /no tiene conversación/.test(d.error);
+            turnos.appendChild(el('p', 'nada', sinConversacion
+                ? 'este hilo no dejó una conversación en esta máquina (se cerró sin mensajes, o la tuvo en otra)' : d.error));
+            return;
+        }
         if (d.fuente === 'panel') turnos.appendChild(el('pre', 'panel', d.texto ?? ''));
         else {
             if (d.recortado || (d.total_turnos ?? 0) > (d.turnos ?? []).length) turnos.appendChild(el('p', 'nada', 'turnos anteriores sin mostrar'));

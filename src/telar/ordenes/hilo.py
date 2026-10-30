@@ -200,8 +200,10 @@ def main(argv: list[str], ctx) -> int:
         # nombre le borraría a esa su conversación, su vínculo y su prioridad (le pasó a un
         # hilo real: cerrar su duplicado lo dejó sin conversación que llevar)
         gemelos = [h for h in tel.hilos if h.nombre == hilo.nombre and h.id != hilo.id and tel.vivo(h)]
-        # si lo cerró su dueño, la ventana de aquí la cierra el nodo al ver que ya no vive allá
-        salida = 0 if dueno else _cerrar(ctx, tel, hilo)
+        # si lo cerró su dueño, la ventana de aquí (la que solo lo miraba) se cierra ya, sin volver a pedirle nada a
+        # la otra máquina: esperar a que el nodo vea el cambio dejaba la fila viva un rato, o para siempre si el
+        # aviso del bus se perdía
+        salida = _cerrar_vista(tel, hilo) if dueno else _cerrar(ctx, tel, hilo)
         if salida == 0 and gemelos:
             print(f"cerrado; «{hilo.nombre}» sigue vivo en otra ventana y telar no lo olvida")
         elif salida == 0:
@@ -210,7 +212,9 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "archivar":
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
-        if o.cerrar and not dueno:
+        if o.cerrar and dueno:
+            salida = _cerrar_vista(tel, hilo)
+        elif o.cerrar:
             salida = _cerrar(ctx, tel, hilo)
         else:
             print(_comun.tenue("  sigue abierto; --cerrar además lo cierra en el multiplexor"))
@@ -465,6 +469,17 @@ def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
     except ErrorDeMux as e:
         return _comun.queja(f"no pude cerrarlo: {e}")
     print("  cerrado en el multiplexor")
+    return 0
+
+
+def _cerrar_vista(tel: _comun.Telar, hilo) -> int:
+    """La ventana de aquí de un hilo que su dueño ya cerró en su máquina: solo se cierra, y se olvida dónde vivía."""
+    if tel.mux is not None and tel.vivo(hilo):
+        try:
+            tel.mux.cerrar(hilo.id)
+        except ErrorDeMux:
+            pass  # si no se deja, la cierra el nodo cuando vea que allá ya no vive
+    tel.estado.olvidar_remoto(hilo.nombre)
     return 0
 
 

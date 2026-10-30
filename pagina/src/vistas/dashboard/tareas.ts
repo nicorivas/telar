@@ -39,7 +39,7 @@ export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '
  *  la ficha ni preguntar (se deshace reabriéndola). Si el proveedor no declara una, lo dice. */
 /** Una fecha nueva para una tarea: las de siempre a un clic, u otra escrita a mano. Devuelve
  *  AAAA-MM-DD (o +Nd, que el proveedor cuenta desde su fecha), o undefined si se cancela. */
-export async function elegirFecha(titulo: string): Promise<string | undefined> {
+export async function elegirFecha(titulo: string, o: { conHoy?: boolean } = {}): Promise<string | undefined> {
     const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const desde = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
     const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -47,6 +47,8 @@ export async function elegirFecha(titulo: string): Promise<string | undefined> {
     const lunes = desde(((8 - hoy.getDay()) % 7) || 7);
     const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
     const opciones: (Opcion & { valor: string })[] = [
+        // «hoy»: en foco, una vencida que sí va hoy (si no, una fecha de verdad)
+        ...(o.conHoy ? [{ label: 'hoy', description: `${dias[hoy.getDay()]} ${iso(hoy)}`, valor: iso(hoy) }] : []),
         { label: 'mañana', description: `${dias[desde(1).getDay()]} ${iso(desde(1))}`, valor: iso(desde(1)) },
         { label: 'pasado mañana', description: `${dias[desde(2).getDay()]} ${iso(desde(2))}`, valor: iso(desde(2)) },
         { label: 'el próximo lunes', description: iso(lunes), valor: iso(lunes) },

@@ -19,6 +19,8 @@ export interface Casa {
     barra: BarraHilos;
     /** a la derecha: «dashboard», un hilo, «doc:<hilo>» o «rem:<máquina>:<hilo>» */
     mostrar(que: string): void;
+    /** cierra la terminal de un hilo que ya no tiene (lo archivaron o lo cerraron): no queda reconectando escondida */
+    soltar(hilo: string): void;
 }
 
 export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknown> {
@@ -42,6 +44,37 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         modelo.invalidar();
         await modelo.sondear();
         return true;
+    }
+
+    /** Archivar o descartar un hilo desde su fila: la fila lo dice mientras va (en otra máquina va por el bus y tarda), y
+     *  si es el que se estaba mirando, al terminar se muestra lo que queda: archivado, su conversación; descartado, el
+     *  dashboard (su terminal ya no existe). Descartar es `telar hilo cerrar`: lo termina y sale de la lista (la
+     *  conversación queda en disco, sin botón para volver a ella). */
+    async function sacar(a: unknown, verbo: 'archivar' | 'cerrar' | 'olvidar', haciendo: string): Promise<void> {
+        const hilo = hiloDe(a);
+        if (!hilo || modelo.ocupados.has(hilo)) return;
+        modelo.ocupados.set(hilo, `${haciendo}…`);
+        modelo.cambio.fire();
+        try {
+            const ok = await sobreHilo(a, verbo, verbo === 'archivar' ? ['--cerrar'] : []);
+            // descartar uno archivado o dormido: deja de estar en la lista; si se lo miraba, vuelve al dashboard
+            if (ok) c.soltar(hilo);
+            if (ok && c.barra.mostrado === hilo) c.mostrar(verbo === 'archivar' ? hilo : 'dashboard');
+            if (ok) ui.estado(`«${hilo}» ${verbo === 'archivar' ? 'archivado' : 'descartado'}`, 4000);
+        } finally {
+            modelo.ocupados.delete(hilo);
+            modelo.cambio.fire();
+        }
+    }
+
+    /** Descartar un hilo: vivo, se termina y sale de la lista; archivado o dormido, sale del archivo (telar olvida su
+     *  carpeta, su prioridad y su atención), después de preguntar: no hay cómo volver a él desde la lista. */
+    async function descartar(hilo: string): Promise<void> {
+        const h = modelo.porNombre(hilo);
+        if (!h) return;
+        if (h.vivo && !h.archivado) { await sacar(hilo, 'cerrar', 'descartándolo'); return; }
+        const si = await ui.aviso(`¿Descartar «${hilo}»? Sale del archivo y telar olvida su carpeta, su prioridad y su atención (su conversación queda en disco).`, 'Descartar');
+        if (si === 'Descartar') await sacar(hilo, 'olvidar', 'descartándolo');
     }
 
     /** El menú de un hilo (el ⋯ de su fila): lo que se puede hacer con él, según esté
@@ -74,16 +107,15 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
                     hacer: () => sobreHilo(hilo, 'publicar') }] : []),
             { label: 'prioridad', separador: true },
             prioridad('1', 'alta'), prioridad('2', 'media'), prioridad('3', 'baja'), prioridad('ninguna', 'ninguna'),
-            { label: 'guardar o cerrar', separador: true },
+            { label: 'archivar o descartar', separador: true },
             ...(h.archivado ? [{ label: 'desarchivar', icono: I.desarchivar, color: C.ir, description: 'volver a la lista sin abrirlo', hacer: () => sobreHilo(hilo, 'desarchivar') }]
-                : [{ label: 'archivar', icono: I.archivar, color: C.quitar, description: 'cierra el tab y guarda su conversación', hacer: () => sobreHilo(hilo, 'archivar', ['--cerrar']) }]),
-            ...(h.vivo ? [{ label: 'cerrar', icono: I.cerrar, color: C.quitar, description: 'cierra el tab y lo saca de la lista', hacer: () => sobreHilo(hilo, 'cerrar') }] : []),
+                : [{ label: 'archivar', icono: I.archivar, color: C.cambiar, description: 'lo guarda en ARCHIVO con su conversación, para retomarlo', hacer: () => sacar(hilo, 'archivar', 'archivándolo') }]),
+            // descartar: vivo, se termina y sale de la lista; dormido o archivado, telar lo olvida (carpeta, prioridad)
+            h.vivo && !h.archivado
+                ? { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'lo termina y lo saca de la lista, sin guardarlo', hacer: () => sacar(hilo, 'cerrar', 'descartándolo') }
+                : { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'sale del archivo: telar olvida su carpeta, su prioridad y su atención', hacer: () => descartar(hilo) },
             ...(!h.remoto ? [{ label: 'llevar a otra máquina', icono: I.llevar, color: C.otro, description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
                 : [{ label: 'traer a esta máquina', icono: I.traer, color: C.otro, description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
-            { label: 'olvidar', icono: I.olvidar, color: C.quitar, description: 'telar pierde su carpeta, su prioridad y su atención', hacer: async () => {
-                const si = await ui.aviso(`¿Que telar olvide «${hilo}»? Pierde su carpeta, su prioridad y su atención.`, 'Olvidar');
-                if (si === 'Olvidar') await sobreHilo(hilo, 'olvidar');
-            } },
         ];
         return { titulo: hilo, acciones: filas };
     });
@@ -159,8 +191,11 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         // una pestaña del dashboard (el grupo DASHBOARD de la barra, el ⚙ de la cabecera)
         'telar.pestana': (accion: string, valor = '') => c.hoy.irAPestana(accion, valor),
         'telar.retomar': async a => { if (await sobreHilo(a, 'retomar')) c.mostrar(hiloDe(a)); },
-        'telar.archivar': a => sobreHilo(a, 'archivar', ['--cerrar']),
-        'telar.cerrar': a => sobreHilo(a, 'cerrar'),
+        // mostrarlo sin abrir nada: uno archivado o cerrado se ve en su conversación, con «retomar»
+        'telar.ver': a => { const h = hiloDe(a); if (h) c.mostrar(h); },
+        'telar.archivar': a => sacar(a, 'archivar', 'archivándolo'),
+        'telar.cerrar': a => sacar(a, 'cerrar', 'descartándolo'),
+        'telar.descartar': a => descartar(hiloDe(a)),
         'telar.archivo': () => c.barra.alternarArchivo(),
         // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa
         'telar.equipoVer': async (id?: string) => { const e = await elegirEntrada(id); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },

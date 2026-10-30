@@ -180,11 +180,15 @@ dialog.mudanza {
   & .botones a:hover { text-decoration: underline; }
 }
 
-/* la fila de un hilo que está viajando: su ícono gira, en cian */
-.fila .viaja { display: inline-block; width: 1ch; color: var(--cian); animation: viaja 1.2s linear infinite; }
+/* la fila de un hilo que está ocupado (viajando, archivándose, descartándose): su ícono quieto, cambiando de color */
+.fila .viaja { display: inline-block; color: var(--cian); animation: viaja 1.6s linear infinite; }
 .fila .doble { color: var(--amarillo); margin-left: 0.5ch; }
 
-@keyframes viaja { to { transform: rotate(360deg); } }
+@keyframes viaja {
+  0%, 100% { color: var(--cian); }
+  33% { color: var(--azul); }
+  66% { color: var(--violeta); }
+}
 
 /* en un celular, cada opción en dos renglones: el nombre, y debajo para qué sirve */
 @media (width <= 700px) {

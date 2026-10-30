@@ -16,7 +16,11 @@
 // rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
 // estilos, en media/css/hilos.css.
 
-import { I } from '../web/iconos';
+import { ATENCION_I, I, PRIO_I } from '../web/iconos';
+
+/** Un ícono dentro de una columna de la fila: la columna mide en letras de las de siempre (2ch), y el ícono va en
+ *  la suya (`.i`) adentro; vacío, nada. */
+const ic = (x?: string): string => (x ? `<span class="i">${x}</span>` : '');
 import * as entidades from '../web/entidades';
 import * as ui from '../web/ui';
 
@@ -213,14 +217,16 @@ export class BarraHilos {
         switch (m.tipo) {
             case 'ir': {
                 if (!m.hilo) break;
-                // un archivado no tiene tab al que ir: pincharlo es retomarlo
+                // uno archivado o cerrado no tiene tab: pincharlo lo muestra (su conversación, con «retomar»), sin
+                // abrir el agente todavía
                 const sinTab = modelo.hilos.some(x => x.nombre === m.hilo && (!x.vivo || x.archivado));
-                void ui.orden(sinTab ? 'telar.retomar' : 'telar.ir', { hilo: m.hilo });
+                void ui.orden(sinTab ? 'telar.ver' : 'telar.ir', { hilo: m.hilo });
                 break;
             }
             case 'archivar': if (m.id) void ui.orden('telar.archivar', { hilo: m.id }); break;
             case 'retomar': if (m.id) void ui.orden('telar.retomar', { hilo: m.id }); break;
             case 'cerrar': if (m.id) void ui.orden('telar.cerrar', { hilo: m.id }); break;
+            case 'descartar': if (m.id) void ui.orden('telar.descartar', { hilo: m.id }); break;
             case 'archivo': void ui.orden('telar.archivo'); break;
             case 'menu': if (m.id) void entidades.menuDe(`hilo:${m.id}`, m.donde); break;
             case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
@@ -279,7 +285,7 @@ export class BarraHilos {
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
-        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${GLIFO[h.atencion] ?? ' '}</span>`;
+        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${ic(ATENCION_I[h.atencion])}</span>`;
         // dónde vive: ⇄ si es en otra máquina y esta ventana solo lo mira (con la columna ancha, su nombre)
         const remoto = this.columnaMaquina(h.remoto === '?' ? '?' : h.remoto ?? '',
             h.remoto ? (h.remoto === '?' ? 'conectado a otra máquina' : `vive en ${h.remoto}`) : '');
@@ -293,15 +299,20 @@ export class BarraHilos {
         const doble = otra ? `<span class="i doble" title="${esc(`también abierto en ${otra}: son dos conversaciones; cierra una`)}">${I.alerta}</span>` : '';
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
         return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
-            + `<span class="prio p${h.prioridad ?? 0}">${PRIORIDAD[h.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-            + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="i viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${I.viaja}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
+            + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
+            + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
+                : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
                 : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${doble}${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (!h.vivo || seccion === 'archivado'
-                ? `<span class="icono" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: reabre el tab con su conversación">▶</span>`
-                : `<span class="icono" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: cierra el tab, guarda su conversación y lo manda al archivo">⏸</span>`
-                  + `<span class="icono" data-accion="cerrar" data-id="${esc(h.nombre)}" title="cerrar: cierra el tab y lo que corra adentro, y lo saca de la lista; para guardarlo, ⏸">✕</span>`)
+            // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
+            // después); descartar lo termina y lo saca de la lista (la conversación queda en disco, sin botón para volver)
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (modelo.ocupados.has(h.nombre) ? ''
+                : !h.vivo || seccion === 'archivado'
+                ? `<span class="icono i" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: abre el agente con su conversación">${I.retomar}</span>`
+                  + `<span class="icono i descartar" data-accion="descartar" data-id="${esc(h.nombre)}" title="descartar: sale del archivo (pregunta antes; su conversación queda en disco)">${I.descartar}</span>`
+                : `<span class="icono i" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: lo cierra y lo guarda en ARCHIVO, con su conversación, para retomarlo después">${I.archivar}</span>`
+                  + `<span class="icono i descartar" data-accion="cerrar" data-id="${esc(h.nombre)}" title="descartar: lo termina y lo saca de la lista, sin guardarlo en ARCHIVO (para guardarlo, archivar)">${I.descartar}</span>`)
             + '</span></div>';
     }
 
@@ -309,7 +320,7 @@ export class BarraHilos {
      *  ancha (el botón ⇄ junto a buscar), el nombre de la máquina de cada uno, también el de esta. */
     private columnaMaquina(maquina: string, titulo: string): string {
         const t = titulo ? ` title="${esc(titulo)}"` : '';
-        if (!this.conMaquina()) return `<span class="remoto"${t}>${maquina ? '⇄' : ' '}</span>`;
+        if (!this.conMaquina()) return `<span class="remoto"${t}>${maquina ? ic(I.remoto) : ''}</span>`;
         const nombre = maquina === '?' ? '?' : maquina || this.aqui || '·';
         return `<span class="remoto ancho${maquina ? '' : ' aqui'}" style="width: ${this.anchoMaquina}ch"${t || ` title="${esc(`vive aquí${this.aqui ? ` (${this.aqui})` : ''}`)}"`}>${esc(nombre)}</span>`;
     }
@@ -380,7 +391,7 @@ export class BarraHilos {
             if (primera) extra += '<span class="pliegue-barra" data-accion="plegar-barra" title="plegar la barra de hilos">‹</span>';
             primera = false;
             h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
-                + `<span class="prio">${abierta ? '▾' : '▸'}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
+                + `<span class="prio">${ic(abierta ? I.abierto : I.plegado)}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
             return abierta;
         };
 
@@ -452,8 +463,8 @@ export class BarraHilos {
                 h.push(`<div class="fila remota${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
                     + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
                     + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
-                    + `<span class="prio p${x.prioridad ?? 0}">${PRIORIDAD[x.prioridad ?? 0] ?? PRIORIDAD[0]}</span>`
-                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${GLIFO[at] ?? ' '}</span>`
+                    + `<span class="prio p${x.prioridad ?? 0}">${ic(PRIO_I[x.prioridad ?? 0] ?? PRIO_I[0])}</span>`
+                    + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${ic(ATENCION_I[at])}</span>`
                     + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
                     + `<span class="nombre">${esc(x.nombre)}</span>`
                     // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
@@ -480,7 +491,7 @@ export class BarraHilos {
                 for (const x of pend) {
                     const pedido = x.tipo === 'tarea';
                     h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
-                        + `<span class="prio">◆</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
+                        + `<span class="prio">${ic(I.pedido)}</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
                         + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
                 }
             }
@@ -494,12 +505,12 @@ export class BarraHilos {
             for (const p of colegas) {
                 for (const m of p.maquinas) {
                     h.push(`<div class="fila${m.al_dia ? '' : ' dim'}" title="${esc(`${p.persona} en ${m.maquina} · publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar desconectado'}`)}">`
-                        + `<span class="prio">${m.al_dia ? '●' : '·'}</span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
+                        + `<span class="prio${m.al_dia ? '' : ' dim'}">${ic(m.al_dia ? I.persona_dot : PRIO_I[0])}</span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
                     if (!m.hilos.length) h.push('<div class="fila dim"><span class="prio"> </span>  sin hilos públicos</div>');
                     for (const x of m.hilos) {
                         const ayuda = [x.resumen, x.carpeta, `${p.persona}+${x.ext}`, 'clic: escribirle'].filter(Boolean).join('\n');
                         h.push(`<div class="fila colega" data-accion="colega" data-id="${esc(JSON.stringify([p.persona, x.ext, x.nombre]))}" title="${esc(ayuda)}">`
-                            + `<span class="prio${x.vivo ? '' : ' dim'}">${x.vivo ? '●' : '·'}</span><span class="nombre${x.vivo ? '' : ' dim'}">${esc(x.nombre)}</span></div>`);
+                            + `<span class="prio${x.vivo ? '' : ' dim'}">${ic(x.vivo ? I.persona_dot : PRIO_I[0])}</span><span class="nombre${x.vivo ? '' : ' dim'}">${esc(x.nombre)}</span></div>`);
                     }
                 }
             }

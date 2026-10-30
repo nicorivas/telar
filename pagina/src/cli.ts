@@ -114,6 +114,8 @@ export interface JsonFila {
     area?: string;
     /** quién la hace, si no es la persona; vacío es suya */
     dueno?: string;
+    /** cuánto toma: «rapida» (media hora o menos) o «larga» (horas o días); vacío sin decir */
+    tamano?: string;
     /** el color de la palabra de `avance` (verde, rojo…) */
     color?: string;
     /** si su proveedor tiene pestaña propia (un feed): no es un pendiente, va a esa pestaña */
@@ -394,7 +396,9 @@ export async function accionTarea(id: string, proveedor: string, n: number, text
 export interface JsonObjeto {
     direccion: string; tipo: string; id: string; titulo: string; estado?: string; resumen?: string;
     campos?: Record<string, unknown>; enlaces?: string[];
-    acciones?: { nombre: string; descripcion?: string; params?: Record<string, string> }[];
+    acciones?: { nombre: string; descripcion?: string; params?: Record<string, string>;
+        /** los valores de un parámetro para elegir en vez de escribir (los productos, los estados) */
+        opciones?: Record<string, { valor: string; nombre: string }[]> }[];
     version?: string; maquina?: string;
 }
 
@@ -406,6 +410,11 @@ export async function objeto(direccion: string): Promise<Respuesta<JsonObjeto>> 
 }
 
 /** Correr una acción de un objeto con sus parámetros, sobre la versión que se está mirando (si cambió, 409). */
+/** Una tarea nueva (`telar tipo tarea crear`): `titulo` y lo que acepta su `nueva` (vence, proyecto, tamano…). */
+export async function crearTarea(params: Record<string, string>): Promise<Respuesta<{ id: string; titulo: string }>> {
+    return await aServe<{ id: string; titulo: string }>('POST', '/tipos/tarea', 40000, { params });
+}
+
 export async function accionObjeto(direccion: string, accion: string, params: Record<string, string>, version = ''): Promise<Respuesta<{ objeto?: JsonObjeto | null; resultado?: unknown }>> {
     return await aServe<{ objeto?: JsonObjeto | null; resultado?: unknown }>('POST', `/objetos/${enRuta(direccion)}/acciones/${encodeURIComponent(accion)}`,
         40000, { params, ...(version ? { version } : {}) });
@@ -730,7 +739,8 @@ export interface JsonRemoto { nombre: string; destino: string; transporte: strin
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
 export async function hilo(verbo: string, hilo: string, valor?: string, extra: string[] = []): Promise<Salida> {
     if (!extra.every(x => x === '--cerrar')) return { ok: false, codigo: 1, out: '', err: faltaEnLaApi(`telar hilo ${verbo} ${extra.join(' ')}`) };
-    const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', `/hilo/${encodeURIComponent(verbo)}`, 30000,
+    // un verbo sobre un hilo de otra máquina va a su dueño por el bus, que espera hasta 60 s: aquí, un poco más
+    const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', `/hilo/${encodeURIComponent(verbo)}`, 75000,
         { hilo, valor: valor ?? '', cerrar: extra.includes('--cerrar') });
     return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.salida ?? '', err: r.datos?.error ?? '' };
 }

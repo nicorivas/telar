@@ -73,6 +73,9 @@ class Tarea(BaseModel):
     prioridad: int = 2
     vence: str = ""
     espera: str = ""
+    #: cuánto toma: «rapida» (media hora o menos: se despacha entre otras cosas) o «larga» (horas o días: necesita
+    #: un bloque de concentración); "" sin decir
+    tamano: str = ""
     dueno: str = ""
     proyecto: str = ""
     area: str = "personal"
@@ -95,18 +98,28 @@ class Tarea(BaseModel):
 
 #: campo del modelo → su clave en el archivo, en el orden en que se escriben
 CLAVES = {
-    "titulo": "titulo", "estado": "estado", "prioridad": "prioridad", "vence": "vence", "espera": "espera",
+    "titulo": "titulo", "estado": "estado", "prioridad": "prioridad", "vence": "vence", "tamano": "tamaño", "espera": "espera",
     "dueno": "dueño", "proyecto": "proyecto", "area": "area", "etiquetas": "etiquetas", "origen": "origen",
     "trabajo": "trabajo", "creada": "creada", "cerrada": "cerrada", "avance": "avance",
 }
 
 #: campo del modelo → otras claves que lo dicen en el archivo (una que cambió de nombre, o la que se escribe
 #: sin ñ): se leen como la suya y una línea se reescribe con el nombre que ya tenía
-SINONIMOS = {"dueno": ("dueno",)}
+SINONIMOS = {"dueno": ("dueno",), "tamano": ("tamano",)}
 
 CLAVE_RE = re.compile(r"^([a-zñ_]+):[ \t]?(.*)$")
 HIST_RE = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}))? \[([\w-]+)\] ?(.*)$")
 SECCIONES = ("Conexiones", "Historia")
+
+
+#: cuánto toma una tarea: lo que cabe entre otras cosas, o lo que necesita un bloque propio
+TAMANOS = ("rapida", "larga")
+
+
+def _tamano(v: object) -> str:
+    """«rápida», «Rapida», «corta» → rapida; «larga», «grande» → larga; lo demás, como viene (sin decir: "")."""
+    t = unicodedata.normalize("NFD", _limpio(v)).encode("ascii", "ignore").decode().lower()
+    return {"corta": "rapida", "rapido": "rapida", "grande": "larga", "largo": "larga"}.get(t, t)
 
 
 def _limpio(v: object) -> str:
@@ -195,7 +208,7 @@ class FormatoArchivo:
         return Tarea(
             id=id, titulo=v["titulo"], estado=v["estado"] or "activa",
             prioridad=int(pri) if pri.isdigit() and int(pri) in (0, 1, 2, 3) else 2,
-            vence=v["vence"], espera=v["espera"], dueno=v["dueno"], proyecto=v["proyecto"], area=v["area"] or "personal",
+            vence=v["vence"], tamano=_tamano(v.get("tamano", "")), espera=v["espera"], dueno=v["dueno"], proyecto=v["proyecto"], area=v["area"] or "personal",
             etiquetas=[x.strip() for x in v["etiquetas"].split(",") if x.strip()], origen=v["origen"],
             trabajo=v["trabajo"], creada=v["creada"], cerrada=v["cerrada"], avance=v["avance"],
             contexto="\n".join(cuerpo[:primera]).strip(), conexiones=conexiones, historia=historia,
@@ -616,7 +629,7 @@ def responder(t: Tarea, texto: str, *, reloj=None) -> Tarea:
 
 def editar(t: Tarea, *, reloj=None, **campos) -> Tarea:
     """Cambiar campos sueltos (título, prioridad, área, proyecto, etiquetas…), con su línea en la historia."""
-    permitidos = {"titulo", "prioridad", "area", "proyecto", "origen", "trabajo", "etiquetas", "contexto"}
+    permitidos = {"titulo", "prioridad", "area", "proyecto", "origen", "trabajo", "etiquetas", "contexto", "tamano"}
     raros = set(campos) - permitidos
     if raros:
         raise ErrorDeAccion(f"editar no cambia {', '.join(sorted(raros))}: para eso hay una acción")
@@ -626,6 +639,10 @@ def editar(t: Tarea, *, reloj=None, **campos) -> Tarea:
         if not m:
             raise ErrorDeAccion(f"prioridad «{campos['prioridad']}»: va de P0 (la más alta) a P3")
         campos["prioridad"] = int(m.group(1))
+    if "tamano" in campos:
+        if _limpio(campos["tamano"]) and _tamano(campos["tamano"]) not in TAMANOS:
+            raise ErrorDeAccion(f"tamaño «{campos['tamano']}»: es rapida o larga")
+        campos["tamano"] = _tamano(campos["tamano"])
     cambios = {k: v for k, v in campos.items() if getattr(t, k) != v}
     if not cambios:
         return t
@@ -654,7 +671,7 @@ def conectar(t: Tarea, tipo: str, destino: str, porque: str, *, reloj=None) -> T
 PREFIJO = "T"
 
 
-def nueva(titulo: str, *, contexto: str = "", estado: str = "activa", prioridad: int = 2, vence: str = "",
+def nueva(titulo: str, *, contexto: str = "", estado: str = "activa", prioridad: int = 2, vence: str = "", tamano: str = "",
           dueno: str = "", proyecto: str = "", area: str = "personal", etiquetas: list[str] | tuple = (),
           origen: str = "", trabajo: str = "", desde: str = "", reloj=None) -> Tarea:
     """Una tarea que todavía no existe, sin identificador: se lo da quien la escribe (Carpeta.crear).
@@ -671,9 +688,11 @@ def nueva(titulo: str, *, contexto: str = "", estado: str = "activa", prioridad:
             vence = _dt.date.fromisoformat(vence.strip()).isoformat()
         except ValueError as e:
             raise ErrorDeAccion(f"fecha inválida: {vence} (AAAA-MM-DD)") from e
+    if _limpio(tamano) and _tamano(tamano) not in TAMANOS:
+        raise ErrorDeAccion(f"tamaño «{tamano}»: es rapida o larga")
     hoy = _ahora(reloj).date().isoformat()
     origen_txt = f"desde {_limpio(desde)}" if _limpio(desde) and _limpio(desde) != "manual" else "a mano"
-    return Tarea(titulo=titulo, contexto=contexto.strip(), estado=estado, prioridad=prioridad, vence=vence,
+    return Tarea(titulo=titulo, contexto=contexto.strip(), estado=estado, prioridad=prioridad, vence=vence, tamano=_tamano(tamano),
                  dueno=_limpio(dueno), proyecto=_limpio(proyecto), area=_limpio(area) or "personal",
                  etiquetas=[_limpio(e) for e in etiquetas if _limpio(e)], origen=_limpio(origen),
                  trabajo=_limpio(trabajo), creada=hoy, historia=[Cambio(fecha=hoy, tipo="creada", texto=origen_txt)])

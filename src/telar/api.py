@@ -312,6 +312,14 @@ def get_fechas(proyecto: str = "", desde: dt.date | None = None, hasta: dt.date 
     return servicio_fechas.lista(ctx, proyecto=proyecto, desde=desde, hasta=hasta)
 
 
+@app.get("/productos")
+def get_productos(ctx: Contexto = Depends(contexto)):
+    """Lo que se vende y sus ideas (`telar productos --json`)."""
+    from telar import productos
+
+    return productos.listar(ctx)
+
+
 @app.get("/pendientes", response_model=servicio_pendientes.Pendientes)
 def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
                    limite: int = 0, ctx: Contexto = Depends(contexto)):

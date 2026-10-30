@@ -57,6 +57,8 @@ export class Modelo {
     readonly cambio = new Emisor();
     /** los hilos que están viajando a otra máquina ahora (web/mudanza.ts): hilo → máquina. La barra lo dice en su fila */
     readonly mudando = new Map<string, string>();
+    /** los hilos que se están cerrando o archivando (la orden va, quizás por el bus): su fila lo dice */
+    readonly ocupados = new Map<string, string>();
 
     private fichas = new Map<string, cli.JsonFicha | null>();
     private firma = '';

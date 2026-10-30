@@ -159,6 +159,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "ficha": item.proveedor in con_ficha,
                 "area": str((item.datos or {}).get("area") or ""),
                 "dueno": str((item.datos or {}).get("dueno") or ""),
+                # cuánto toma: «rapida» o «larga» («foco» las separa en gestión y concentración); "" sin decir
+                "tamano": str((item.datos or {}).get("tamano") or ""),
                 # va siempre en la vista corta («esta semana»): la destaca el proveedor, o tiene estrella
                 "destacada": bool((item.datos or {}).get("destacada")),
                 "estrella": bool((item.datos or {}).get("estrella")),

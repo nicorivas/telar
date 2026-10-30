@@ -14,7 +14,7 @@ import type { MensajeDia, VistaDia } from './vista';
 
 /** Qué se ve en el dashboard. */
 export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'agentes' | 'tarea'
-    | 'revisar' | 'pestana' | 'plan' | 'calendario';
+    | 'revisar' | 'pestana' | 'plan' | 'calendario' | 'foco';
 
 /** De qué pestaña fija (`dentro` de un bloque, config.DENTRO_DE) es cada pantalla, y con qué acción se vuelve a ella. */
 export const SECCION_DE_PANTALLA: Partial<Record<NombrePantalla, string>> = {

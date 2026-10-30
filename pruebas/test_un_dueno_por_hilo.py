@@ -345,6 +345,14 @@ class AlCambiarloVaAlDueno(Orden):
         self.assertNotIn("Faro", self.estado().archivados())
         self.assertNotIn("Faro", self.estado().vinculos())
 
+    def test_cerrado_por_su_dueno_la_ventana_de_aqui_se_va_ya_sin_volver_a_pedir(self):
+        # el dueño ya lo cerró: aquí no se vuelve a pedir allá por ssh (lento, y repetido); se olvida dónde vivía
+        with mock.patch.object(orden_hilo, "_matar_remoto") as matar:
+            self.al_dueno("cerrar")
+            self.al_dueno("archivar", "--cerrar")
+        matar.assert_not_called()
+        self.assertNotIn("Faro", self.estado().remotos())
+
     def test_si_el_dueno_no_acepta_aqui_no_cambia_nada(self):
         antes = self.archivos()
         self.al_dueno("archivar", codigo_esperado=2, problema="en servidor: no")

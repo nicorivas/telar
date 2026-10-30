@@ -489,6 +489,33 @@ orden en que se muestran, el `areas` del perfil ([perfil.md](perfil.md)).
 `hecho` es `"abierto"` o `"ya estaba"`, y `mensaje` lo que se le dijo al agente (`""` si
 no hay agente o si el hilo ya estaba).
 
+### `telar productos --json`
+
+Lo que se vende y sus ideas ([perfil.md](perfil.md#productos-telarproductosyaml)); también `GET /productos`:
+
+```json
+{"declaraciones": [{"repo": "equipo", "arquetipo": "servicio", "nombre": "servicios", "campos": {"area": "{ruta:-2}"},
+                    "ideas": {"carpeta": "backlog", "estados": ["idea", "…"], "backlog": ["idea", "evaluando"],
+                              "tablero": ["priorizada", "en-curso", "lanzada"], "campos": ["valor", "…"],
+                              "opciones": {"valor": ["alto", "medio", "bajo"]}}}],
+ "productos": [{"ruta": "equipo/servicios/ia/sprint", "direccion": "proyecto:equipo/servicios/ia/sprint",
+                "repo": "equipo", "titulo": "Sprint", "campos": {"area": "ia"},
+                "ideas": [{"id": "I03", "direccion": "idea:equipo/servicios/ia/sprint/I03", "producto": "…",
+                           "version": "9e33684c598d9e6a", "titulo": "Versión de tres semanas", "estado": "idea",
+                           "campos": {"titulo": "…", "estado": "idea", "valor": "alto"}, "cuerpo": "…",
+                           "ultima": "2026-10-29 21:24 [creada]", "archivo": "equipo/servicios/ia/sprint/backlog/I03.md"}]}],
+ "fallas": []}
+```
+
+`telar productos crear <producto> "título" [--campo valor=alto] [--texto …] --json` y `telar productos cambiar
+idea:<producto>/<id> --campo estado=priorizada [--version V] [--nota …] --json` devuelven la idea como arriba. Un
+estado que no es de `estados`, o un valor fuera de `opciones`, es un error; con una `--version` que ya no es la del
+archivo, también (alguien la cambió desde que se leyó). Desde un lienzo, `window.lienzo.pedir("idea", {producto,
+titulo, campos})` crea, `{direccion, version, campos}` cambia y `{accion: "tarea", direccion, titulo}` abre una tarea
+desde la idea, si el módulo declara `idea` en sus `[permisos] ordenes`. Cada idea trae `tareas`: las abiertas que nacieron
+de ella (`[{id, titulo, estado, direccion}]`). Una acción de `telar objeto` puede traer `opciones` (`{"producto": [{"valor",
+"nombre"}]}`): los valores de un parámetro para elegir en vez de escribir.
+
 ### `telar fechas --json`
 
 Lo que tiene día, venga de donde venga ([propuestas/fechas.md](propuestas/fechas.md)). `--proyecto <ruta>` deja las

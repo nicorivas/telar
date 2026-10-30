@@ -77,6 +77,8 @@ class Accion(BaseModel):
     descripcion: str = ""
     #: los parámetros que pide, por nombre (los opcionales con su valor por defecto)
     params: dict[str, str] = Field(default_factory=dict)
+    #: los valores posibles de un parámetro, para elegir en vez de escribir: [{"valor", "nombre"}]
+    opciones: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
 
 
 class Objeto(BaseModel):
@@ -151,7 +153,7 @@ class Tarea(Tipo):
     nombre = "tarea"
     descripcion = "una tarea (telar tipo tarea): sus campos, su historia y sus acciones"
 
-    def _objeto(self, t) -> Objeto:
+    def _objeto(self, t, con_productos: list | None = None) -> Objeto:
         from telar.tipos import tarea as tipo
 
         campos = {k: v for k, v in t.model_dump(mode="json").items()
@@ -160,6 +162,10 @@ class Tarea(Tipo):
         enlaces = [direccion_de("proyecto", t.proyecto)] if t.proyecto else []
         acciones = [Accion(nombre=n, descripcion=(fn.__doc__ or "").strip().split("\n")[0], params=_params_de(fn))
                     for n, fn in tipo.ACCIONES.items()]
+        if con_productos and t.estado not in tipo.TERMINALES:
+            # una tarea que en realidad es una idea de un producto (telar.productos)
+            acciones.append(Accion(nombre="al_backlog", params={"producto": ""}, opciones={"producto": con_productos},
+                                   descripcion="llevarla al backlog de un producto: nace una idea con su texto y la tarea se descarta"))
         return Objeto(direccion=direccion_de("tarea", t.id), tipo="tarea", id=t.id, titulo=t.titulo, estado=t.estado,
                       resumen=" ".join(t.contexto.split())[:400], campos=campos, enlaces=enlaces,
                       acciones=acciones, version=getattr(t, "version", ""))
@@ -167,13 +173,87 @@ class Tarea(Tipo):
     def ver(self, ctx, d):
         from telar.servicios import tipos as servicio
 
-        return self._objeto(servicio.obtener(ctx, d.id, "tarea"))
+        return self._objeto(servicio.obtener(ctx, d.id, "tarea"), _hay_productos(ctx))
 
     def hacer(self, ctx, d, accion, params, version=""):
         from telar.servicios import tipos as servicio
 
+        if accion == "al_backlog":
+            from telar import productos
+
+            try:
+                i = productos.desde_tarea(ctx, d.id, str(params.get("producto") or ""))
+            except productos.ErrorDeProductos as e:
+                raise ErrorDeServicio(str(e), e.codigo) from e
+            return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(servicio.obtener(ctx, d.id, "tarea")),
+                         resultado={"idea": i["direccion"], "texto": f"{d.id} es ahora {i['direccion']}"})
         t = servicio.aplicar(ctx, d.id, accion, params, version=version or None, clave="tarea")
-        return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(t))
+        return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(t, _hay_productos(ctx)))
+
+
+def _hay_productos(ctx) -> list:
+    """Los productos a los que se puede llevar una tarea ([{valor, nombre}]); [] si nadie declara productos."""
+    try:
+        from telar import productos
+
+        return productos.opciones(ctx)
+    except Exception:  # noqa: BLE001 - sin productos, la tarea va sin esa acción
+        return []
+
+
+class Idea(Tipo):
+    nombre = "idea"
+    descripcion = "una idea de un producto (telar productos): su estado, valor y esfuerzo, su texto y sus tareas"
+
+    def _objeto(self, ctx, i: dict) -> Objeto:
+        from telar import productos
+
+        d = productos._declaracion_de(ctx, i["producto"])
+        campos = {k: v for k, v in i["campos"].items() if k not in ("titulo", "estado") and v}
+        enlaces = [direccion_de("proyecto", i["producto"])]
+        if i["campos"].get("origen", "").startswith("tarea:"):
+            enlaces.append(i["campos"]["origen"])
+        otros = [e for e in d.ideas.estados if e != i["estado"]]
+        acciones = [
+            Accion(nombre="mover", descripcion=f"cambiarle el estado ({', '.join(otros)})", params={"estado": ""},
+                   opciones={"estado": [{"valor": e, "nombre": e} for e in otros]}),
+            Accion(nombre="tarea", descripcion="abrir una tarea operativa desde ella (su producto, y la idea de origen)",
+                   params={"titulo": i["titulo"], "vence": ""}),
+            Accion(nombre="anotar", descripcion="una línea en su historia", params={"texto": ""}),
+        ]
+        return Objeto(direccion=i["direccion"], tipo="idea", id=f"{i['producto']}/{i['id']}", titulo=i["titulo"],
+                      estado=i["estado"], resumen=" ".join(i["cuerpo"].split())[:400], campos=campos, enlaces=enlaces,
+                      acciones=acciones, version=i["version"])
+
+    def ver(self, ctx, d):
+        from telar import productos
+
+        try:
+            return self._objeto(ctx, productos.ver(ctx, str(d)))
+        except productos.ErrorDeProductos as e:
+            raise ErrorDeServicio(str(e), e.codigo) from e
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        from telar import productos
+        from telar.tipos import registro
+
+        try:
+            if accion == "mover":
+                i = productos.cambiar(ctx, str(d), {"estado": str(params.get("estado") or "")}, version=version or None)
+            elif accion == "tarea":
+                i = productos.nueva_tarea(ctx, str(d), str(params.get("titulo") or ""), vence=str(params.get("vence") or ""))
+            elif accion == "anotar":
+                producto, id = productos.partir(str(d))
+                decl = productos._declaracion_de(ctx, producto)
+                productos._carpeta(ctx.config, producto, decl).aplicar(id, registro.anotar, str(params.get("texto") or ""),
+                                                                       version=version or None)
+                i = productos.ver(ctx, str(d))
+            else:
+                raise ErrorDeServicio(f"una idea no tiene la acción «{accion}»: mover, tarea, anotar", 404)
+        except productos.ErrorDeProductos as e:
+            raise ErrorDeServicio(str(e), e.codigo) from e
+        return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, i),
+                     resultado={"tarea": i["tarea"]} if i.get("tarea") else {})
 
 
 class Hilo(Tipo):
@@ -578,7 +658,7 @@ class Encargo(Tipo):
         return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, r["encargo"], maquina))
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo(), Permiso())
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo(), Permiso(), Idea())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

@@ -69,11 +69,21 @@ const angosto = () => document.body.classList.contains('angosto');
 const esHilo = (que: string) => !(que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:') || que.startsWith('obj:'));
 function forma(que: string): string {
     if (!esHilo(que)) return '';
+    // uno archivado o cerrado no tiene terminal: se ve su conversación, con «retomar» (web/conversacion.ts)
+    if (!que.startsWith('rem:') && modelo.hilos.some(h => h.nombre === que && (!h.vivo || h.archivado))) return 'conv';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
 const TOPE = 8;
 const usadas: string[] = [];
+/** Cierra la terminal de un hilo que ya no la tiene (archivado, cerrado). */
+function soltar(hilo: string): void {
+    const llave = `term:${hilo}`;
+    if (!montadas.has(llave)) return;
+    cerrarVista(llave);
+    const j = usadas.indexOf(llave);
+    if (j >= 0) usadas.splice(j, 1);
+}
 /** Cierra una vista de un hilo (su conexión, sus lecturas) y la saca de la página. */
 function cerrarVista(llave: string): void {
     montadas.get(llave)?.cerrar();
@@ -181,7 +191,7 @@ const barra = new BarraHilos();
 barra.estado = guardado;
 barra.dashboardActivo = true;
 barra.mostrado = '';
-ui.usarNavegacion({ mostrar, ordenes: crearOrdenes({ hoy, barra, mostrar }) });
+ui.usarNavegacion({ mostrar, ordenes: crearOrdenes({ hoy, barra, mostrar, soltar }) });
 barra.montar(document.getElementById('barra')!);
 hoy.alCambiarFoco = () => {
     const app = hoy.appActual;

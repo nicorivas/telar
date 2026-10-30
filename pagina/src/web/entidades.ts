@@ -39,13 +39,22 @@ async function delServidor(direccion: string): Promise<{ titulo: string; accione
             hacer: async () => {
                 const params: Record<string, string> = {};
                 for (const [nombre, ayuda] of Object.entries(a.params ?? {})) {
-                    const v = await ui.campo({ titulo: `${o.titulo} · ${a.nombre}`, ayuda: `${nombre}: ${ayuda}` });
+                    // con opciones (los productos, los estados), se elige de una lista; si no, se escribe
+                    const opciones = a.opciones?.[nombre];
+                    if (opciones?.length) {
+                        const elegida = await ui.elegir(opciones.map(x => ({ label: x.nombre, description: x.valor === x.nombre ? '' : x.valor, valor: x.valor })),
+                            { titulo: `${o.titulo} · ${a.nombre}: ${nombre}` });
+                        if (!elegida) return;
+                        params[nombre] = elegida.valor;
+                        continue;
+                    }
+                    const v = await ui.campo({ titulo: `${o.titulo} · ${a.nombre}`, ayuda: `${nombre}: ${ayuda}`, valor: ayuda });
                     if (v === undefined) return;
                     params[nombre] = v;
                 }
                 const hecho = await cli.accionObjeto(direccion, a.nombre, params, o.version ?? '');
                 if (!hecho.datos) void ui.falla(`telar: ${hecho.error ?? `no pude: ${a.nombre}`}`);
-                else ui.estado(`${o.titulo}: ${a.nombre}`, 4000);
+                else ui.estado(String((hecho.datos as { resultado?: { texto?: string } }).resultado?.texto ?? `${o.titulo}: ${a.nombre}`), 6000);
             },
         })),
     };

@@ -348,6 +348,37 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             m.focus(); m.setSelectionRange(m.value.length, m.value.length);
         }
     }, true);
+    // arrastrar una tarjeta (`data-arrastra`, la de «foco») a una casilla (`data-suelta`): la acción de la casilla, con
+    // «<casilla>|<tarjeta>» como valor
+    let arrastrada = '';
+    raiz.addEventListener('dragstart', e => {
+        const c = (e.target as HTMLElement).closest<HTMLElement>('[data-arrastra]');
+        if (!c) return;
+        arrastrada = c.dataset.arrastra ?? '';
+        c.classList.add('arrastrando');
+        e.dataTransfer?.setData('text/plain', arrastrada);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    });
+    raiz.addEventListener('dragend', e => {
+        (e.target as HTMLElement).closest('[data-arrastra]')?.classList.remove('arrastrando');
+        for (const x of todos('[data-suelta].encima')) x.classList.remove('encima');
+        arrastrada = '';
+    });
+    raiz.addEventListener('dragover', e => {
+        const z = (e.target as HTMLElement).closest<HTMLElement>('[data-suelta]');
+        if (!z || !arrastrada) return;
+        e.preventDefault();
+        for (const x of todos('[data-suelta].encima')) if (x !== z) x.classList.remove('encima');
+        z.classList.add('encima');
+    });
+    raiz.addEventListener('drop', e => {
+        const z = (e.target as HTMLElement).closest<HTMLElement>('[data-suelta]');
+        for (const x of todos('[data-suelta].encima')) x.classList.remove('encima');
+        if (!z || !arrastrada) return;
+        e.preventDefault();
+        enviar({ tipo: 'accion', accion: z.dataset.accion, valor: `${z.dataset.suelta}|${arrastrada}` });
+        arrastrada = '';
+    });
     raiz.addEventListener('click', e => {
         const t = e.target as HTMLElement;
         const u = t.closest<HTMLElement>('[data-url]');

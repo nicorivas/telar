@@ -178,6 +178,7 @@ Lo que un repositorio le dice a telar vive en una carpeta, `.telar/`, en su raí
 | `perfil.yaml` | este perfil: lo del equipo, igual para todos | sí |
 | `local.yaml` | lo de cada persona, encima del perfil | no: agrégalo a `.gitignore` |
 | `fechas.yaml` | los mapas de fechas: cómo se leen los cronogramas que no tienen la forma de por defecto (abajo, «Mapas de fechas») | sí |
+| `productos.yaml` | qué unidades son productos (lo que se vende) y cómo son sus ideas: el backlog y el tablero del módulo productos (abajo, «Productos») | sí |
 | `equipo.yaml` | el equipo que trabaja en este repositorio: su bus, quién aprueba a las personas nuevas, sus módulos y los programas que hacen falta (`telar instalar --unirse`, docs/arquitectura.md, «Entre máquinas: el bus») | sí |
 
 `local.yaml` tiene la misma forma que el perfil y se lee encima de él: un valor suyo reemplaza al del perfil,
@@ -253,6 +254,42 @@ contiene el documento.
 `telar fechas probar <archivo>` dice con qué mapa se lee un documento, qué filas leyó y cuáles saltó y por qué. Un
 `fechas.yaml` mal escrito no se lleva a los demás: va a las `fallas` de `telar fechas`. Con `[repos]`, cada repositorio
 trae el suyo, con sus rutas relativas a sí mismo.
+
+## Productos: `.telar/productos.yaml`
+
+Qué unidades del perfil son **productos** (lo que el equipo vende: servicios, cursos, productos de software) y cómo
+son sus **ideas**: las mejoras y expansiones que todavía no son trabajo comprometido. Lo leen `telar productos` y el
+módulo productos (una lista, un backlog y un tablero kanban):
+
+```yaml
+productos:
+  arquetipo: servicio            # las unidades de este arquetipo son productos
+  nombre: servicios              # cómo los llama este equipo
+  campos:                        # lo que se muestra de cada uno: {titulo}, {campo:X} (su tabla),
+    area: "{ruta:-2}"            #   {frontmatter:x} (el de su documento) y {ruta:N} (la parte N de su carpeta,
+    vigencia: "{frontmatter:vigencia}"   #   contada desde el repositorio; -1 es la última)
+ideas:                           # todo opcional: estos son los valores de fábrica
+  carpeta: backlog               # dentro de cada producto
+  estados: [idea, evaluando, priorizada, en-curso, lanzada, descartada]
+  backlog: [idea, evaluando]     # las sin compromiso
+  tablero: [priorizada, en-curso, lanzada]   # las columnas del tablero
+  campos: [valor, esfuerzo, origen, responsable]
+  opciones: { valor: [alto, medio, bajo], esfuerzo: [alto, medio, bajo] }
+  area_tareas: ""                # el `area` de las tareas que nacen de una idea ("" la de fábrica)
+```
+
+Cada idea es un archivo en la carpeta de su producto (`<producto>/backlog/I03.md`) con frontmatter de campos sueltos
+(`titulo`, `estado`, los de `campos`, `creada`), su texto y su `## Historia`; se puede editar a mano. telar la
+escribe con versión (no pisa un cambio ajeno) y cambia solo las líneas de los campos que cambian, más una línea en
+su historia. Al crear la primera, deja un `README.md` en la carpeta.
+
+**Ideas y tareas.** Una tarea que en realidad es una idea se lleva al backlog de un producto (en su menú, «al_backlog»,
+o `telar productos desde-tarea T84 <producto>`): nace la idea con su título y su texto (`origen: tarea:T84`) y la
+tarea queda descartada diciendo adónde fue; si la tarea no se puede cerrar, la idea no queda. Al revés, una idea
+abre tareas operativas (`telar productos tarea idea:… "título"`, o en su menú): con `proyecto` en su producto y
+`origen` en la idea, que las muestra mientras sigan abiertas y las anota en su historia. Una idea es también un
+objeto (`telar objeto idea:<producto>/I03`): moverla, abrir una tarea, anotar. No commitea: lo escrito queda en el árbol de
+trabajo del repositorio. Un `productos.yaml` mal escrito va a las `fallas` de `telar productos`.
 
 ## Varios repositorios
 

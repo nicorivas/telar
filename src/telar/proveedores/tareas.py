@@ -102,6 +102,8 @@ class Tarea:
     #: quién la hace, si no es la persona («Nataly»); vacío es suya. El dashboard filtra «mías / de otros».
     dueno: str = ""
     color: str = ""
+    #: cuánto toma: «rapida» (media hora o menos) o «larga» (horas o días); "" sin decir. «foco» las separa
+    tamano: str = ""
     #: el proveedor la destaca (la más alta prioridad, o marcada): va siempre en la vista corta
     destacada: bool = False
     #: la persona la marcó con estrella
@@ -138,6 +140,7 @@ class Tarea:
                 "area": self.area,
                 "color": self.color,
                 "dueno": self.dueno,
+                "tamano": self.tamano,
                 "destacada": self.destacada,
                 "estrella": self.estrella,
             },
@@ -856,6 +859,8 @@ class DeTipo(_Base):
                              "rol": "prioridad", "opciones": [f"P{n}" for n in range(4)]})
             acciones.append({**accion("responsable…", "asignar", persona="{texto}"), "pide": "quién la hace («none»: sin asignar)",
                              "rol": "dueno", "opciones": self._personas()})
+            acciones.append({**accion("tamaño…", "editar", tamano="{texto}"), "pide": "rapida (media hora o menos) o larga (horas o días)",
+                             "rol": "tamano", "opciones": ["rapida", "larga"]})
             for etiqueta, rol, si, no in (("estrella", "estrella", "★ quitar la estrella", "☆ marcar con estrella"),
                                           ("equipo", "equipo", "◉ dejar de compartir con el equipo", "○ compartir con el equipo")):
                 tiene = etiqueta in t.etiquetas
@@ -864,7 +869,7 @@ class DeTipo(_Base):
             acciones.append({**accion("✓ hecha", "completar"), "confirmar": True, "rol": "hecha"})
             if procesar and not (prop and prop["estado"] == "cerrar"):
                 acciones.append(y_procesar(accion("✓ hecha y procesar ahora", "completar")))
-            acciones.append({**accion("descartar", "cerrar", como="descartada"), "confirmar": True})
+            acciones.append({**accion("descartar", "cerrar", como="descartada"), "confirmar": True, "rol": "descartar"})
         return acciones
 
     def _personas(self) -> list[str]:
@@ -908,7 +913,7 @@ class DeTipo(_Base):
                 enlace=t.trabajo or t.origen,
                 espera=("@" + (t.espera or "alguien").lstrip("@")) if t.estado == "espera" else "",
                 origen=t.proyecto,
-                avance=t.avance, area=t.area, dueno=t.dueno,
+                avance=t.avance, area=t.area, dueno=t.dueno, tamano=t.tamano,
                 estrella="estrella" in etiquetas,
                 destacada=t.prioridad == 0 or "estrella" in etiquetas,
             ))

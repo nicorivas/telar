@@ -37,10 +37,30 @@ def _fecha(ctx, d: dict) -> dict:
                            version=str(d.get("version") or "")).model_dump(mode="json")
 
 
+def _idea(ctx, d: dict) -> dict:
+    """Crear una idea (con `producto` y `titulo`) o cambiar una (con `direccion` y sus `campos`): telar.productos."""
+    from telar import productos
+    from telar.servicios import ErrorDeServicio
+
+    campos = {str(k): str(v) for k, v in (d.get("campos") or {}).items()}
+    try:
+        if d.get("accion") == "tarea":
+            return productos.nueva_tarea(ctx, str(d.get("direccion") or ""), str(d.get("titulo") or ""),
+                                         vence=str(d.get("vence") or ""))
+        if d.get("direccion"):
+            return productos.cambiar(ctx, str(d["direccion"]), campos, version=str(d.get("version") or "") or None,
+                                     nota=str(d.get("nota") or ""))
+        return productos.crear(ctx, str(d.get("producto") or ""), str(d.get("titulo") or ""), campos, str(d.get("texto") or ""))
+    except productos.ErrorDeProductos as e:
+        raise ErrorDeServicio(str(e), e.codigo) from e
+
+
 #: lo que un lienzo puede pedir: la orden (como se declara en `[permisos] ordenes`) → qué hace y en palabras
 ORDENES = {
     "fecha": (_fecha, "cambiar fechas donde viven: las celdas de los cronogramas en tus documentos, la fecha de tus "
                       "tareas (telar fecha)"),
+    "idea": (_idea, "crear y mover las ideas de tus productos (un archivo por idea en la carpeta de cada producto), "
+                    "y abrir tareas desde ellas (telar productos)"),
 }
 
 

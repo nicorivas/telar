@@ -6,6 +6,56 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-10-29
+
+### Added
+
+- **«foco», a dashboard tab to decide tasks one by one** (`f`). Up to five of your own tasks as cards, and boxes on the
+  right to drop them on (or click the card, then the box): done, new date (with «hoy» for an overdue one), someone
+  else's, with Claude, discard. A card leaves and the next comes in. Overdue ones go first: they get a real date or
+  they go. Two modes: **gestión** (quick tasks, up to five) and **concentración** (long ones, two at most), whose boxes
+  are start now, block time (Claude finds a 2 to 3 hour slot in your calendar), take out the first step (a quick task
+  for today that starts it), plus the usual ones.
+- **A task's size** (`tamaño: rapida | larga` in its file, `editar tamano=…`, the ficha's «tamaño…» with role
+  `tamano`): quick is half an hour or less, long is hours or days. A task with no size goes to gestión, with
+  «¿rápida o larga?» on its card. «descartar» in the ficha now has the role `descartar`.
+
+### Changed
+
+- **Archive or discard a thread.** In the sidebar and its menu a thread has two ways out, with their own icons and
+  tooltips: *archivar* keeps it in ARCHIVO with its conversation, to take it back later; *descartar* (a trash can,
+  formerly «cerrar» ✕) ends it and drops it from the list. An archived or asleep thread has the trash can too, next to
+  «retomar»: after asking, it leaves the archive (what «olvidar» was). The CLI verbs don't change (`telar hilo cerrar`, `olvidar`). (The archive button used to be a ⏸, which read as
+  «pause».) While the order runs (by the bus, for a
+  thread on another machine) the row shows it with a spinning icon, and says when it's done.
+- **The sidebar row, on the icon font.** Priority, attention, where it lives and «busy» are icons from the page's
+  icon font, each in a 2ch column (an icon is 1.7 letters wide: in 1ch it ran over the name). The names start in
+  the same column on every row. The busy icon no longer spins (it wobbled off center): it cycles colours.
+- **An archived or closed thread opens in its conversation**, read-only, with «retomar» instead of the message box:
+  clicking it in the sidebar no longer starts the agent. Without a saved conversation it says so plainly.
+
+### Fixed
+
+- **Closing the thread you're looking at leaves its view**: archived, you see its conversation; closed, the
+  dashboard. Its terminal is closed too, instead of staying behind trying to reconnect to a window that's gone.
+- **Closing a thread that lives on another machine is faster and sure.** Once its owner closed it over the bus, the
+  window here closes right away and no longer asks the other machine again by ssh; before, it waited for the node to
+  notice, and if that notice was lost the row stayed. The page waits up to 75 s for an order that goes by the bus.
+
+### Added
+
+- **Products and their idea backlog** (`telar productos`, `GET /productos`, docs/propuestas/productos.md). A
+  repository declares in `.telar/productos.yaml` which units of its profile are products (what it sells) and what
+  its ideas look like. Each idea is a markdown file with frontmatter in its product's folder (`backlog/I03.md`),
+  written with a version and a lock, touching only the lines that change plus a line in its history (the new
+  `telar.tipos.registro` format). `telar productos crear|cambiar|ver`, and the lienzo order `idea` for a module.
+  The module `telar-productos` draws the list, the backlog and a kanban board.
+- **Tasks and ideas move between each other.** A task that is really an idea goes to a product's backlog from its
+  menu («al_backlog», picking the product) or `telar productos desde-tarea`: the idea is born with its text, its owner
+  as `responsable` and the task's history, and the task is discarded saying where it went (both or neither). An idea opens operational tasks (`telar productos
+  tarea`, its menu, or the module), which it shows while open. Ideas are objects (`idea:<producto>/I03`), and an
+  action of `telar objeto` can bring `opciones` so the page offers a list instead of a text box.
+
 ## [0.8.9] — 2026-10-29
 
 ### Fixed

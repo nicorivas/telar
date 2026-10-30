@@ -3,6 +3,12 @@
    src/telar/web/marco.css. */
 
 @scope (.v-conversacion) {
+  /* archivado o cerrado: en vez de la caja para escribirle, qué es y «retomar» */
+  .dormido { display: flex; gap: 3ch; align-items: baseline; padding: var(--e-2) var(--h-2); color: var(--dim);
+             border-top: 1px solid var(--linea); }
+  .dormido a { color: var(--c); cursor: pointer; }
+  .dormido a:hover { text-decoration: underline; }
+
   :scope {
     display: flex;
     flex-direction: column;

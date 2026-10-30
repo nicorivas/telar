@@ -18,6 +18,7 @@ import * as rutas from '../../rutas';
 import { Dia, atajo, dia, olvidarDia, pendientes, seccion, yo } from './dia';
 import { PantallaPlan } from './plan';
 import { PantallaProyectos } from './proyectos';
+import { PantallaFoco } from './foco';
 import { PantallaAhora } from './ahora';
 import { Configuracion } from './config/configuracion';
 import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace, PESTANA_DE_SECCION, SECCION_DE_PANTALLA } from './pantalla';
@@ -69,7 +70,9 @@ export class Dashboard implements Tablero {
     private readonly secciones = new PantallaSecciones(this);
     /** «ahora», donde abre el dashboard */
     private readonly ahora = new PantallaAhora(this);
-    private get modulos(): Pantalla[] { return [this.ahora, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo, this.agentesVista]; }
+    /** «foco»: lo urgente e importante, de a cinco tarjetas para decidir (foco.ts) */
+    private readonly foco = new PantallaFoco(this);
+    private get modulos(): Pantalla[] { return [this.ahora, this.foco, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo, this.agentesVista]; }
     private tablaAcciones?: Record<string, Accion>;
     /** las acciones de todas, por nombre: cada nombre es de una sola (si dos lo reclaman, falla al tiro) */
     private acciones(): Record<string, Accion> {
@@ -167,6 +170,7 @@ export class Dashboard implements Tablero {
                 this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
         const todas: Pestana[] = [  // clave, acción, valor, nombre, tecla
             ['ahora', 'ahora', '', 'ahora', 'n'],
+            ['foco', 'foco', '', 'foco', 'f'],
             // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde
             ['revisar', 'revisar', '', 'tareas', 'v'],
             // cada bloque sin `en` ni `dentro` es su propia pestaña (el correo de hoy)

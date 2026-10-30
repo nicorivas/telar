@@ -17,15 +17,17 @@
   .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
   .fila:hover { background: var(--hover); }
   .fila.activa { background: var(--sel); }
-  .prio { flex: none; width: 1ch; margin-right: 1ch; }
+  /* las columnas de íconos (prioridad, atención, dónde vive, viajando): 2ch cada una, porque un ícono de la letra
+     `iconos` es tan ancho como 1,7 letras de las otras; centrado, nunca se monta sobre el nombre. El ícono va adentro en su letra (`.i`): con la de
+     siempre, el `monospace` genérico de --letra se queda con algunos íconos (un cuadro) */
+  .prio, .at, .remoto:not(.ancho), .fila .viaja { flex: none; width: 2ch; text-align: center; overflow: hidden; }
   .prio.p0 { color: var(--dim); }
   .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
-  .nombre { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .nombre { flex: 0 1 auto; min-width: 0; padding-left: .5ch; overflow: hidden; text-overflow: ellipsis; }
   .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
-  .at { flex: none; width: 1ch; margin-right: 1ch; text-align: center; }
-  .remoto { flex: none; width: 1ch; margin-right: 1ch; color: var(--cian); }
+  .remoto { color: var(--cian); }
   /* con la columna ancha (⇄ junto a buscar): el nombre de la máquina; el ancho lo da la fila */
-  .remoto.ancho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
+  .remoto.ancho { flex: none; margin: 0 .5ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
   .remoto.ancho.aqui { color: var(--dim); }
   .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
   .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
@@ -46,6 +48,7 @@
   .fila:hover .iconos { display: flex; }
   .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
   .icono:hover { color: var(--fg); }
+  .icono.descartar:hover { color: var(--rojo); }
   /* el + de HILOS: abre un hilo nuevo */
   .nuevo-hilo { margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
   .nuevo-hilo:hover { color: var(--fg); }
@@ -58,8 +61,8 @@
   .ord { flex: none; color: var(--dim); cursor: pointer; }
   .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
   .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
-  /* en un celular (angosto: la barra sola en la pantalla) no hay hover: el ⋯ se ve siempre, y lo demás (⏸ ✕)
-     queda dentro de su menú */
+  /* en un celular (angosto: la barra sola en la pantalla) no hay hover: el ⋯ se ve siempre, y lo demás (archivar,
+     descartar) queda dentro de su menú */
   @media (width <= 700px) {
     .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
     .fila .iconos .icono:not(.menu-hilo) { display: none; }

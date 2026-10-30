@@ -44,6 +44,9 @@ el primer paso sin hacer de la primera propuesta.
 8. **[lo-que-hacen-los-otros.md](lo-que-hacen-los-otros.md)**: ideas tomadas de otros administradores
    de agentes, por decidir una a una (entregar mensajes sin teclear, permisos desde fuera, intentos por
    tarea…).
+9. **[productos.md](productos.md)**: un módulo de productos (lo que se vende) con su backlog de ideas y un tablero
+   kanban, sobre README y frontmatter declarados por cada repositorio; para que las ideas de mejora salgan de la
+   lista de tareas. Hecho (lista, backlog, tablero, ideas y tareas); queda declararlo como tipo general.
 
 ## Cómo se escribe una propuesta
 
