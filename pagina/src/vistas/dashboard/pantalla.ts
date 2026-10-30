@@ -18,7 +18,12 @@ export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'secc
 
 /** De qué pestaña fija (`dentro` de un bloque, config.DENTRO_DE) es cada pantalla, y con qué acción se vuelve a ella. */
 export const SECCION_DE_PANTALLA: Partial<Record<NombrePantalla, string>> = {
-    ahora: 'ahora', revisar: 'tareas', proyectos: 'proyectos', plan: 'plan', calendario: 'calendario',
+    ahora: 'ahora', revisar: 'tareas', foco: 'tareas', proyectos: 'proyectos', plan: 'plan', calendario: 'calendario',
+};
+/** Las subpestañas de fábrica de una sección, antes de las de los bloques (`dentro`): [acción que la abre, nombre,
+ *  pantalla]. «tareas» abre en foco (decidir de a una), y «lista» es la lista entera. */
+export const SUBPESTANAS: Record<string, [string, string, NombrePantalla][]> = {
+    tareas: [['foco', 'foco', 'foco'], ['revisar', 'lista', 'revisar']],
 };
 export const PESTANA_DE_SECCION: Record<string, string> = {
     ahora: 'ahora', tareas: 'revisar', proyectos: 'proyectos', plan: 'plan', calendario: 'calendario',

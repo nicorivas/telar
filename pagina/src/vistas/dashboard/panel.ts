@@ -21,7 +21,7 @@ import { PantallaProyectos } from './proyectos';
 import { PantallaFoco } from './foco';
 import { PantallaAhora } from './ahora';
 import { Configuracion } from './config/configuracion';
-import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace, PESTANA_DE_SECCION, SECCION_DE_PANTALLA } from './pantalla';
+import { type Accion, type NombrePantalla, type Pantalla, type Tablero, abrirEnlace, PESTANA_DE_SECCION, SECCION_DE_PANTALLA, SUBPESTANAS } from './pantalla';
 import { type MensajeDia, montarDia, type VistaDia } from './vista';
 import { PantallaEquipo } from './equipo';
 import { PantallaAgentes } from './agentes';
@@ -170,9 +170,9 @@ export class Dashboard implements Tablero {
                 this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
         const todas: Pestana[] = [  // clave, acción, valor, nombre, tecla
             ['ahora', 'ahora', '', 'ahora', 'n'],
-            ['foco', 'foco', '', 'foco', 'f'],
-            // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde
-            ['revisar', 'revisar', '', 'tareas', 'v'],
+            // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde.
+            // Abre en foco, su primera subpestaña; la lista entera es la segunda
+            ['revisar', 'foco', '', 'tareas', 'v'],
             // cada bloque sin `en` ni `dentro` es su propia pestaña (el correo de hoy)
             ...this.bloques.declarados.filter(b => !b.en && !b.dentro).map(b =>
                 [`bloque:${b.clave}`, 'bloque', b.clave, b.nombre, b.tecla ?? ''] as Pestana),
@@ -331,12 +331,16 @@ export class Dashboard implements Tablero {
     private subpestanas(): string {
         const seccion = this.actual === 'bloque' ? this.bloques.dentroDelAbierto() : SECCION_DE_PANTALLA[this.actual] ?? '';
         const suyos = seccion ? this.bloques.declarados.filter(b => b.dentro === seccion) : [];
-        if (!suyos.length) return '';
+        const propias = SUBPESTANAS[seccion] ?? [];
+        if (!suyos.length && !propias.length) return '';
         const fija = PESTANA_DE_SECCION[seccion];
         const abierto = this.actual === 'bloque' ? this.bloques.abierto().split(':')[0] : '';
         const tab = (accion: string, valor: string, nombre: string, sel: boolean) =>
             `<a class="${sel ? 'sel' : ''}" data-accion="${accion}" data-valor="${esc(valor)}">${esc(nombre)}</a>`;
-        return `<div class="subpest">${tab(fija, '', seccion, !abierto)}`
+        // las de fábrica de la sección (tareas: foco y lista), o la fija con el nombre de la sección
+        const primeras = propias.length ? propias.map(([accion, nombre, p]) => tab(accion, '', nombre, !abierto && this.actual === p)).join('')
+            : tab(fija, '', seccion, !abierto);
+        return `<div class="subpest">${primeras}`
             + suyos.map(b => tab('bloque', b.clave, b.nombre, b.clave === abierto)).join('') + '</div>';
     }
 

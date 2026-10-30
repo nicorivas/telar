@@ -334,13 +334,14 @@
   /* «foco» (foco.ts): a la izquierda, hasta cinco tarjetas; a la derecha, las casillas donde se sueltan */
   #foco .foco-cab { display: flex; gap: 3ch; align-items: baseline; margin-bottom: 1lh; }
   #foco .foco-cab .vencidas { color: var(--rojo); margin-left: auto; }
+  #foco .foco-cab .releer { margin-left: auto; color: var(--dim); cursor: pointer; }
+  #foco .foco-cab .vencidas + .releer { margin-left: 0; } #foco .foco-cab .releer:hover { color: var(--fg); }
   #foco .modo { color: var(--dim); cursor: pointer; padding: 0 1ch; } #foco .modo:hover { color: var(--fg); }
   #foco .modo.si { color: var(--bg); background: var(--azul); } #foco .modo .n { opacity: .7; }
   /* concentración: menos tarjetas, más grandes, con aire */
   .foco-cuerpo.concentracion .tarjeta { padding: 1lh 2ch; }
   .foco-cuerpo.concentracion .tarjeta .t { font-weight: bold; }
-  .tarjeta .sin-tamano { color: var(--dim); } .tarjeta .sin-tamano a { color: var(--amarillo); cursor: pointer; }
-  .tarjeta .sin-tamano a:hover { text-decoration: underline; }
+  .tarjeta .sin-tamano { color: var(--amarillo); }
   .foco-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 26ch; gap: 3ch; align-items: start; }
   .tarjetas { display: flex; flex-direction: column; gap: 1ch; }
   .tarjeta { padding: .5lh 2ch; background: var(--bg-barra); border: 1px solid var(--linea); cursor: grab; }
@@ -352,6 +353,12 @@
   .tarjeta .m { display: flex; gap: 2ch; margin-top: .25lh; }
   .tarjeta .m .cuando { margin-left: auto; }
   .casillas { display: flex; flex-direction: column; gap: 1ch; position: sticky; top: 0; }
+  /* mientras una acción va a telar: lo dice, y las acciones no se aprietan */
+  .casillas.ocupadas .casilla { pointer-events: none; opacity: .35; }
+  .casillas .haciendo { color: var(--cian); animation: viaja 1.6s linear infinite; }
+  /* de cuál tarea son las acciones: la elegida (la primera, si no se eligió otra) */
+  .casillas .de-cual { padding: 0 0 .5lh; color: var(--fg); border-bottom: 1px solid var(--linea); overflow: hidden;
+                       display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
   .casilla { padding: .75lh 2ch; border: 1px dashed color-mix(in srgb, var(--c) 55%, transparent); color: var(--c); cursor: pointer; }
   .casilla:hover, .casilla.encima { border-style: solid; background: color-mix(in srgb, var(--c) 14%, transparent); }
 }

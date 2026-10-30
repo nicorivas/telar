@@ -21,18 +21,21 @@ function nombreTarea(id: string, titulo = ''): string {
     return titulo.startsWith(id) ? titulo : `${id} ${titulo}`.trim();
 }
 
-/** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). */
-export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false): Promise<void> {
+/** `texto` y `enviar`: lo que se le dice al agente del hilo, y mandarlo (no solo escribirlo). Con `ir: false` no
+ *  se va a la terminal al terminar (foco sigue con la siguiente). Devuelve el hilo adonde fue, o undefined. */
+export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '', texto = '', enviar = false,
+    o: { ir?: boolean; fila?: cli.JsonFila } = {}): Promise<string | undefined> {
     // buscar el hilo, retomarlo o encargárselo a un agente del servidor toma unos segundos:
     // una notificación lo dice mientras tanto, para que el Enter no parezca perdido
-    const r = await ui.progreso({ titulo: `telar: llevando ${ref} a su hilo…` },
-        () => cli.pendiente(ref, nuevo, proveedor, texto, enviar));
+    const r = await ui.progreso({ titulo: `telar: llevando ${ref} a su hilo…`, discreto: o.ir === false },
+        () => cli.pendiente(ref, nuevo, proveedor, texto, enviar, o.fila));
     if (!r.datos) {
         void ui.aviso(`telar: ${r.error ?? `no pude llevar «${ref}»`}`);
-        return;
+        return undefined;
     }
     await modelo.sondear();
-    void ui.mostrarTerminal();
+    if (o.ir !== false) void ui.mostrarTerminal();
+    return (r.datos as { destino?: string }).destino || ref;
 }
 
 /** El ✓ de la lista: corre la acción que el proveedor declara con `rol: "hecha"`, sin abrir

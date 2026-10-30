@@ -763,8 +763,9 @@ export const traer = (hilo: string, maquina: string, si = false) =>
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */
 /** `proveedor`, si se sabe, evita preguntarles a todos (el calendario se baja entero): de 5 s a menos de 1. */
-export const pendiente = async (ref: string, nuevo = false, proveedor = '', texto = '', enviar = false) =>
-    await aServe<JsonPendienteIdo>('POST', '/pendiente/llevar', 90000, { ref, nuevo, proveedor, texto, enviar });
+/** `fila`: la de `telar pendientes` que ya se tiene (foco): telar no la vuelve a buscar (unos 2 s menos). */
+export const pendiente = async (ref: string, nuevo = false, proveedor = '', texto = '', enviar = false, fila?: JsonFila) =>
+    await aServe<JsonPendienteIdo>('POST', '/pendiente/llevar', 90000, { ref, nuevo, proveedor, texto, enviar, ...(fila ? { fila } : {}) });
 
 /** Una casilla en su documento: `--hecho`, `--responsable NOMBRE` o `--linea`. `esperado` es el texto
  *  que se vio: si el documento cambió y ya no dice eso, telar no toca nada. */

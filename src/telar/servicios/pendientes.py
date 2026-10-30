@@ -60,12 +60,17 @@ class Llevado(BaseModel):
 
 
 def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: str = "", enviar: bool = False,
-           proveedor: str = "") -> Llevado:
+           proveedor: str = "", fila: dict | None = None) -> Llevado:
     """Al hilo donde se trabaja: le pone el foco y le deja la frase escrita al agente, sin enviarla (salvo
     `enviar`); si duerme, lo retoma; sin proyecto, se le encarga al agente de `[agentes] sin_proyecto`."""
     from telar.ordenes import pendiente
 
-    datos, _ = pendiente.llevar(ctx, ref, nuevo=nuevo, donde=donde, texto=texto, enviar=enviar, proveedor=proveedor)
+    # la fila que trae quien pide (la página ya la tiene: es la de `telar pendientes`) ahorra buscarla, que es pedir
+    # las tareas del proveedor, a veces por el bus (~2 s). Solo si es la de ese pendiente; si no, se busca
+    if not (isinstance(fila, dict) and fila.get("ref") == ref and (not proveedor or fila.get("proveedor") == proveedor)):
+        fila = None
+    datos, _ = pendiente.llevar(ctx, ref, nuevo=nuevo, donde=donde, texto=texto, enviar=enviar, proveedor=proveedor,
+                                fila=fila)
     return Llevado(**datos)
 
 

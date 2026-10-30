@@ -7,7 +7,7 @@ export const I = {
     ver: '\u{ea70}', retomar: '\u{ead2}', abrir: '\u{eb2c}', renombrar: '\u{ea73}', carpeta: '\u{eaf7}',
     vincular: '\u{eb15}', desvincular: '\u{ead0}', publico: '\u{eb01}', privado: '\u{ea75}', prioridad: '\u{ea71}',
     archivar: '\u{ea98}', desarchivar: '\u{eb09}', cerrar: '\u{ea76}', llevar: '\u{eac3}', traer: '\u{eac2}',
-    descartar: '\u{ea81}', agente: '\u{ea85}', consolidar: '\u{eab3}', escribir: '\u{ea6b}', documento: '\u{eaa4}',
+    descartar: '\u{ea81}', releer: '\u{eb37}', agente: '\u{ea85}', consolidar: '\u{eab3}', escribir: '\u{ea6b}', documento: '\u{eaa4}',
     copiar: '\u{ebcc}', hecha: '\u{eab2}', fecha: '\u{eab0}', persona: '\u{ea67}', enlace: '\u{eb14}', nuevo: '\u{ea60}',
     accion: '\u{ebcf}', direccion: '\u{eb15}', viaja: '\u{ea77}', alerta: '\u{ea6c}',
     remoto: '\u{ebcb}', abierto: '\u{eab4}', plegado: '\u{eab6}', persona_dot: '\u{ea71}', pedido: '\u{eb9a}',

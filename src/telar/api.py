@@ -503,13 +503,15 @@ class PedidoLlevar(BaseModel):
     texto: str = ""
     enviar: bool = False
     proveedor: str = ""
+    #: la fila que ya tiene quien pide (la de `telar pendientes`): sin ella, se busca entre las del proveedor
+    fila: dict | None = None
 
 
 @app.post("/pendiente/llevar", response_model=servicio_pendientes.Llevado)
 def post_llevar(pedido: PedidoLlevar, ctx: Contexto = Depends(contexto)):
     """Llevar un pendiente al hilo donde se trabaja (`telar pendiente <ref>`)."""
     return servicio_pendientes.llevar(ctx, pedido.ref, nuevo=pedido.nuevo, donde=pedido.donde, texto=pedido.texto,
-                                      enviar=pedido.enviar, proveedor=pedido.proveedor)
+                                      enviar=pedido.enviar, proveedor=pedido.proveedor, fila=pedido.fila)
 
 
 class PedidoCasilla(BaseModel):

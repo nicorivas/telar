@@ -6,6 +6,29 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-10-30
+
+### Changed
+
+- **«foco» lives inside «tareas»**, as its first sub-tab: «tareas» (`v`) opens in foco, and the whole list is the
+  second sub-tab, «lista». A section can have its own built-in sub-tabs before the ones modules add (`SUBPESTANAS`).
+- **In foco, a click on a card shows its actions on the right**, the ones that fit that task: an overdue one gets
+  «va hoy» and «mañana» first; one with no size, «es rápida» and «es larga». The first card comes chosen, and the next
+  one is chosen when a card leaves. Dragging still works.
+- **In foco, «con Claude» no longer makes you wait.** Finding the task's thread and opening or resuming it takes
+  seconds (on the server, by ssh), so the card leaves at once, foco goes on with the next one, and the status line
+  says when Claude has it (or the card comes back if it couldn't). While any other action runs, it says what it's
+  doing and the actions can't be pressed again.
+- **Taking a task to its thread skips looking it up** when the caller already has its row (`POST /pendiente/llevar`
+  takes `fila`, the one from `telar pendientes`; foco sends it): about 2 s less, the time it took to ask for the
+  provider's tasks, sometimes over the bus. A row that isn't that task's is ignored and it's looked up as before.
+
+### Fixed
+
+- **Foco follows changes made elsewhere.** It now repaints with every read of the day (each minute, and when something
+  changed), so a task an agent closed leaves by itself; before it stayed until foco was reopened. A ↻ in its header
+  reads the tasks again right away.
+
 ## [0.9.0] — 2026-10-29
 
 ### Added
