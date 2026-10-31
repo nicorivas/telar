@@ -122,8 +122,9 @@ def al_terminar(config, hilo: str, sesion: str, transcripcion: str = "", *, arch
     # una que ya va (también una que pidió la persona, sin tope) sigue aunque no haya tope
     if r is None and not tope(config):
         return ""
-    agente = mod_agentes.del_hilo(config, hilo)
-    if agente is None:
+    # el relevo que pidió la persona con /relevo (cualquier hilo, con `ruta`): no hace falta que sea de un agente
+    agente = mod_agentes.del_hilo(config, hilo) if r is None or not r.get("ruta") else None
+    if agente is None and (r is None or not r.get("ruta")):
         return ""
     if r is not None:
         vencida = time.time() - float(r.get("cuando", 0)) > PLAZO
@@ -159,10 +160,33 @@ def avanzar(config, hilo: str, *, quieto: bool, sesion_actual: str, escribir) ->
         _poner(config, hilo, fase="retomar")
         return f"«{hilo}»: escribió su relevo; /clear para empezar otra conversación"
     if r["fase"] == "retomar" and sesion_actual and sesion_actual != r.get("sesion"):
-        escribir(aviso_de_relevo(config, r.get("agente") or hilo))
+        escribir(aviso_de_handoff(r["ruta"], r.get("tema", "")) if r.get("ruta") else aviso_de_relevo(config, r.get("agente") or hilo))
         _quitar(config, hilo)
         return f"«{hilo}»: conversación nueva ({sesion_actual[:8]}), con su relevo"
     return ""
+
+
+def ruta_handoff(config, hilo: str, relativa: str) -> Path:
+    """Dónde deja su relevo un hilo cualquiera: el `HANDOFF.md` de su carpeta si está vinculado a una (vive con el
+    proyecto, en su repositorio); si no, en el estado de esta máquina."""
+    if relativa and relativa not in (".", ""):
+        base = Path(relativa).expanduser() if relativa.startswith(("/", "~")) else Path(config.raiz).expanduser() / relativa
+        return base / "HANDOFF.md"
+    from telar import casilla
+
+    return Path(config.estado) / "relevos" / f"hilo-{casilla.nombre_de_carpeta(hilo)}.md"
+
+
+def pedir_handoff(config, hilo: str, sesion: str, ruta: Path, tema: str = "") -> None:
+    """/relevo de un hilo cualquiera: su relevo ya está escrito (en este turno); al terminar el turno el nodo teclea
+    `/clear`, y en la conversación nueva, que lo lea (y el tema nuevo, si se dio)."""
+    _poner(config, hilo, fase="limpiar", sesion=sesion, agente="", ruta=str(ruta), tema=" ".join(tema.split()))
+
+
+def aviso_de_handoff(ruta: str, tema: str = "") -> str:
+    sigue = f"Después: {tema}" if tema else "Después, sigue con lo que diga, o espera a tu persona."
+    return (f"[telar] Conversación nueva: la anterior se cerró con /relevo. Antes de seguir, lee {ruta}: ahí está en "
+            f"qué ibas, qué queda y qué leer. {sigue}")
 
 
 def forzar(config, hilo: str, clave: str, sesion: str) -> str:

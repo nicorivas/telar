@@ -6,6 +6,25 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.9.4] — 2026-10-30
+
+### Added
+
+- **`/relevo [tema nuevo]`: clear a conversation without losing the thread.** A skill telar installs (`telar agente
+  instalar`): the agent writes the thread's handoff (`HANDOFF.md` in its folder; without a folder, in telar's state),
+  moves what must last to its README or CLAUDE.md, and runs `telar hilo relevo "<tema>"`. When that turn ends the
+  node types `/clear`, and in the new conversation, that it read the handoff and go on with the topic. It's the
+  residents' rotation with a handoff, opened to any thread on demand (`telar.rotacion.pedir_handoff`).
+- **After starting or a `/clear`, a thread is told to read its folder's CLAUDE.md and HANDOFF.md** (Claude starts in
+  the root, so a project folder's CLAUDE.md wasn't read until a file there was touched), and that `/relevo` exists.
+
+### Changed
+
+- **The thread header shows its folder as a path** (with its icon; a click still opens it), instead of «carpeta».
+- **Children sit under their parent in HILOS**, indented, whatever the order chosen: a thread opened by another
+  (`abierto_por`) no longer lands far from it because it was born with priority 0. The order applies among the top
+  ones and among siblings.
+
 ## [0.9.3] — 2026-10-30
 
 ### Changed

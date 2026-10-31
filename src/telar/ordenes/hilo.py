@@ -63,6 +63,7 @@ AYUDA = "Vincular, renombrar, priorizar, archivar: actuar sobre un hilo."
 
 VERBOS = (
     "ver",
+    "relevo",
     "vincular",
     "desvincular",
     "renombrar",
@@ -111,6 +112,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     p.add_argument("--horas", type=float, default=6, help="con caidos: vistos vivos en estas últimas horas")
     p.add_argument("--seco", action="store_true", help="con caidos: solo decir cuáles reabriría")
+    p.add_argument("--ruta", action="store_true", help="con relevo: solo decir dónde va el relevo de este hilo")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -232,6 +234,23 @@ def main(argv: list[str], ctx) -> int:
         salida = _retomar(ctx, tel, hilo)
     elif o.verbo == "llevar":
         salida = _llevar(ctx, tel, hilo, o.valor, o.si, o.sesion)
+    elif o.verbo == "relevo":
+        # /relevo: dónde va el relevo de este hilo; sin --ruta, además, que al terminar el turno se limpie la
+        # conversación y la nueva lo lea (telar.rotacion: el nodo teclea /clear y después el aviso)
+        from telar import rotacion
+
+        ruta = rotacion.ruta_handoff(ctx.config, hilo.nombre, est.vinculos().get(hilo.nombre, ""))
+        if o.ruta:
+            print(ruta)
+            return 0
+        if not ruta.is_file():
+            return _comun.queja(f"primero escribe el relevo en {ruta}: es lo que leerá la conversación siguiente")
+        sesion = (est.sesiones().get(hilo.nombre) or ("",))[0]
+        if not sesion:
+            return _comun.queja(f"«{hilo.nombre}» no tiene una conversación anotada: telar no sabría cuándo empezó la nueva")
+        rotacion.pedir_handoff(ctx.config, hilo.nombre, sesion, ruta, o.valor)
+        print(f"listo: al terminar este turno, /clear; la conversación nueva leerá {ruta}"
+              + (f" y seguirá con: {o.valor}" if o.valor else ""))
     elif o.verbo == "olvidar":
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")

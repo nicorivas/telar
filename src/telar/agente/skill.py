@@ -1,5 +1,6 @@
-"""Las skills que telar le deja al agente: `/hilos` (cómo encontrar, leer y escribirle a otros hilos) y `/modulos`
-(cómo escribir, probar, publicar y mantener un módulo de telar).
+"""Las skills que telar le deja al agente: `/hilos` (cómo encontrar, leer y escribirle a otros hilos), `/modulos`
+(cómo escribir, probar, publicar y mantener un módulo de telar) y `/relevo` (limpiar la conversación sin perder el
+hilo: el relevo escrito, `/clear` y la conversación nueva que lo lee).
 
 El contexto de inicio (`telar agente contexto`) son unas pocas líneas que se cargan siempre. Esto
 es lo largo, y el agente lo abre solo cuando le hace falta: la descripción es lo único que
@@ -221,7 +222,36 @@ Lo mecánico lo hacen las órdenes; lo que sigue es el criterio.
 """
 
 #: las skills que pone telar: nombre → texto
-SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS}
+SKILL_RELEVO = f"""---
+name: relevo
+description: Limpiar la conversación de este hilo sin perder el hilo — dejar escrito en qué iba (HANDOFF.md de su carpeta), pasar lo que debe durar a su README o CLAUDE.md, y que telar haga /clear y la conversación nueva lo lea sola. Úsala cuando la persona diga "/relevo", "relevo", "haz clear", "limpia la conversación", "empecemos de nuevo", "nuevo tema", "ahorra tokens" o pida cambiar de tema sin perder el contexto. Lo que venga después de /relevo es el tema con que sigue la conversación nueva.
+---
+
+{MARCA}
+
+# Relevo (`/relevo [tema nuevo]`)
+
+La conversación de este hilo va a terminar: telar hará `/clear` al final de este turno y la conversación nueva
+empezará sin nada de lo que llevas en la cabeza. Tu trabajo ahora es que no pierda nada que necesite.
+
+1. **Dónde va el relevo:** `telar hilo relevo --ruta`. Es el `HANDOFF.md` de la carpeta del hilo (o, si el hilo no
+   tiene carpeta, uno en el estado de telar).
+2. **Escríbelo** ahí, reemplazando el anterior. Corto y en prosa, para alguien que no estuvo aquí:
+   - en qué estabas y en qué quedó (lo hecho, verificado o no);
+   - qué queda pendiente, en orden, y para quién;
+   - qué se decidió y por qué (lo que no está escrito en otra parte);
+   - qué tiene que leer primero la conversación siguiente (rutas exactas).
+3. **Lo que debe durar no va en el relevo:** una decisión, una regla o cómo funciona algo va al `README.md` o al
+   `CLAUDE.md` de su carpeta, o a la memoria si es de la persona. El relevo es estado: se reemplaza cada vez.
+4. **Agéndalo:** `telar hilo relevo "<tema nuevo>"` (sin tema si no lo dio). telar comprueba que el relevo existe y
+   anota que, al terminar este turno, haga `/clear` y le diga a la conversación nueva que lo lea y siga con el tema.
+5. **Termina el turno** sin hacer nada más: una línea a la persona con qué quedó en el relevo.
+
+Si `telar hilo relevo` falla (el hilo no tiene conversación anotada, telar no corre aquí), dilo y deja el relevo
+escrito igual: la persona puede hacer `/clear` y pedir que lo lea.
+"""
+
+SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS, "relevo": SKILL_RELEVO}
 
 
 def ruta(carpeta_config: Path, nombre: str = "hilos") -> Path:

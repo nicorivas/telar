@@ -495,10 +495,25 @@ export class BarraHilos {
         const nuevo = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
         if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras', nuevo)) {
             h.push(this.herramientas('hilos', ordenH));
-            for (const f of todos) {
-                if ('aqui' in f) { h.push(this.fila(f.aqui, 'hilo', '', 'hilos')); continue; }
-                h.push(this.filaRemota(f.m, f.x));
-            }
+            // los hijos (los que abrió otro hilo de la lista: `abierto_por`) van justo bajo su padre, sangrados, en el
+            // orden elegido entre ellos; el orden manda solo entre los de arriba. Así uno nuevo con prioridad 0 no queda
+            // lejos de quien lo abrió
+            const nombreDe = (f: FilaH) => 'aqui' in f ? f.aqui.nombre : f.x.nombre;
+            const presentes = new Set(todos.map(nombreDe));
+            const padreDe = (f: FilaH) => { const p = 'aqui' in f ? f.aqui.abierto_por?.por ?? '' : ''; return p && p !== nombreDe(f) && presentes.has(p) ? p : ''; };
+            const hijosDe = new Map<string, FilaH[]>();
+            for (const f of todos) { const p = padreDe(f); if (p) hijosDe.set(p, [...hijosDe.get(p) ?? [], f]); }
+            const puestos = new Set<string>();
+            const poner = (f: FilaH, hondo: number) => {
+                if (puestos.has(nombreDe(f))) return;
+                puestos.add(nombreDe(f));
+                if ('aqui' in f) h.push(hondo ? this.fila(f.aqui, 'hilo', '', 'hilos').replace('class="fila ', `class="fila hijo hondo${Math.min(hondo, 3)} `)
+                    : this.fila(f.aqui, 'hilo', '', 'hilos'));
+                else h.push(this.filaRemota(f.m, f.x));
+                for (const x of hijosDe.get(nombreDe(f)) ?? []) poner(x, hondo + 1);
+            };
+            for (const f of todos) if (!padreDe(f)) poner(f, 0);
+            for (const f of todos) poner(f, 1);  // lo que quedó en un ciclo de padres, al final
         }
 
         // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS

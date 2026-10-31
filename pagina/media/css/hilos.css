@@ -34,6 +34,9 @@
   /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
   .at.termino.visto { color: var(--dim); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
+  /* un hijo (lo abrió otro hilo de la lista, o es de un agente: «↳ T454 …»), sangrado bajo su padre */
+  .fila.hijo .nombre { padding-left: 2.5ch; }
+  .fila.hondo2 .nombre { padding-left: 4.5ch; } .fila.hondo3 .nombre { padding-left: 6.5ch; }
   /* uno que se está cerrando o archivando (en otra máquina tarda unos segundos en irse): el nombre apagado y
      «cerrando…» con los puntos que van apareciendo, hasta que se va */
   .fila.saliendo .nombre { color: var(--negro); }

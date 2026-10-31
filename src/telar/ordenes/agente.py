@@ -208,9 +208,21 @@ def contexto(ctx) -> str:
     remotos = ", ".join(r.nombre for r in ctx.config.remotos)
 
     lineas = [f"Eres el hilo «{hilo}» de telar" + (f" (vinculado a {vinculo})" if vinculo else "")
-              + (f", en la máquina {servidor}" if cartero else "") + "."]
+              + (f", en la máquina {servidor}" if cartero else "") + ". Para limpiar la conversación sin perder el hilo: "
+              "/relevo [tema nuevo]."]
     # el hilo de un agente residente: quién es, su memoria y su último relevo, para no arrancar en frío
     lineas.extend(_como_agente(ctx, hilo))
+    # su carpeta: Claude arranca en la raíz, y el CLAUDE.md de la carpeta del hilo no se lee solo (los de más abajo,
+    # recién al tocar un archivo de ahí); y el relevo que dejó la conversación anterior (/relevo), si hay
+    if vinculo:
+        from telar import rotacion
+
+        base = rotacion.ruta_handoff(ctx.config, hilo, vinculo).parent
+        leer = [x for x in (base / "CLAUDE.md", base / "HANDOFF.md") if x.is_file()]
+        if leer:
+            lineas.append("Antes de trabajar en lo de este hilo, lee " + " y ".join(str(x) for x in leer)
+                          + (": el HANDOFF dice en qué iba la conversación anterior" if leer[-1].name == "HANDOFF.md" else "") + ".")
+
     from telar import bus as mod_bus
 
     con_bus = mod_bus.hay_bus(ctx.config)

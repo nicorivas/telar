@@ -182,3 +182,33 @@ class QuienAbrioUnHilo(ConUnResidente):
         self.assertIn("Proyecto Y", est.abiertos_por())
         est.olvidar("Proyecto Y")
         self.assertNotIn("Proyecto Y", est.abiertos_por())
+
+
+class RelevoDeCualquierHilo(Prueba):
+    """/relevo: cualquier hilo (no solo un residente) deja su relevo en el HANDOFF.md de su carpeta, y telar hace el
+    /clear y le dice a la conversación nueva que lo lea."""
+
+    def test_dónde_va_y_cómo_avanza(self):
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        from telar import rotacion
+
+        with tempfile.TemporaryDirectory() as d:
+            config = SimpleNamespace(estado=str(Path(d) / "estado"), raiz=str(Path(d) / "raiz"), agentes_rotar_mb=0)
+            self.assertEqual(rotacion.ruta_handoff(config, "Faro", "proyectos/faro"), Path(d) / "raiz/proyectos/faro/HANDOFF.md")
+            self.assertEqual(rotacion.ruta_handoff(config, "suelto", "").parent, Path(d) / "estado/relevos")
+            ruta = rotacion.ruta_handoff(config, "Faro", "proyectos/faro")
+            rotacion.pedir_handoff(config, "Faro", "s1", ruta, "la lámpara nueva")
+            # el Stop del turno del relevo no lo detiene (aunque Faro no sea un agente y no haya tope)
+            self.assertEqual(rotacion.al_terminar(config, "Faro", "s1"), "")
+            tecleado = []
+            self.assertIn("/clear", rotacion.avanzar(config, "Faro", quieto=True, sesion_actual="s1", escribir=tecleado.append))
+            self.assertEqual(tecleado, ["/clear"])
+            # todavía la misma conversación: espera; con la nueva, el aviso con la ruta y el tema
+            self.assertEqual(rotacion.avanzar(config, "Faro", quieto=True, sesion_actual="s1", escribir=tecleado.append), "")
+            rotacion.avanzar(config, "Faro", quieto=True, sesion_actual="s2", escribir=tecleado.append)
+            self.assertIn(str(ruta), tecleado[-1])
+            self.assertIn("la lámpara nueva", tecleado[-1])
+            self.assertEqual(rotacion.leer(config), {})

@@ -193,6 +193,9 @@ body.angosto #lado { display: none; }
   /* en una pantalla táctil no hay ⌥: los atajos sobran */
   @media (pointer: coarse) { & .tecla { display: none; } }
   & .lleno { flex: 1; }
+  /* la carpeta del hilo, como ruta (un clic: su carpeta y su documento) */
+  & a.ruta { min-width: 0; max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+             text-align: left; color: var(--azul); }
 }
 
 /* en su fila aunque la barra de acciones esté escondida (el dashboard): si no, cae en la de arriba, que

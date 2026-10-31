@@ -11,6 +11,8 @@
 
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import { esc } from '../estilo';
+import { I } from '../web/iconos';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
@@ -333,7 +335,12 @@ function pintarAcciones(que: string): void {
     const local = !que.startsWith('rem:');
     barraH.innerHTML = VISTAS.map(v => `<a data-vista="${v.clave}" class="${v.clave === como ? 'si' : ''}" title="${v.ayuda}">${v.nombre} <span class="tecla">${v.atajo}</span></a>`).join('')
         + '<span class="lleno"></span>'
-        + (local ? `<a data-carpeta="1" title="la carpeta del hilo y su documento">carpeta</a>` : '');
+        + (local ? (() => {
+            // su carpeta, como ruta (relativa a la raíz si está adentro); sin vínculo, la raíz
+            const h = modelo.porNombre(que);
+            const ruta = h?.relativa && h.relativa !== '.' ? h.relativa : h?.ruta ? relativa(h.ruta) : '';
+            return `<a data-carpeta="1" class="ruta" title="${esc(`${ruta || 'la raíz'}\nclic: la carpeta del hilo y su documento`)}"><span class="i">${I.carpeta}</span> ${esc(ruta || '~')}</a>`;
+        })() : '');
 }
 
 /** Cambiar la vista del hilo que se ve (la barra de acciones, o ⌥ y su letra desde adentro de una vista). */
