@@ -493,9 +493,12 @@ class Nodo:
                 await kv.put(clave, json.dumps({**info, "actualizado": datetime.now().astimezone().isoformat(timespec="seconds")},
                                                ensure_ascii=False).encode())
                 self.publicado[clave] = valor
-        # la foto del espejo, cada tanto: la que muestra el panel en la otra máquina
+        # la foto del espejo, cada tanto: la que muestra el panel en la otra máquina. Y al tiro si cambió qué hilos
+        # hay o cuáles están vivos (uno se cerró, se archivó, nació): la otra máquina lo ve en segundos, no en 30
         self.vueltas += 1
-        if self.vueltas % ESPEJO_CADA == 1:
+        firma = sorted((n, bool(i.get("vivo"))) for n, i in locales.items())
+        if self.vueltas % ESPEJO_CADA == 1 or firma != getattr(self, "firma_foto", None):
+            self.firma_foto = firma
             foto = await asyncio.to_thread(self.foto)
             if foto is not None:
                 await self.espejo.put(f"{self.persona}.{self.yo}", json.dumps(foto, ensure_ascii=False).encode())

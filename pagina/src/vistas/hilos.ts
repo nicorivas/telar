@@ -287,6 +287,8 @@ export class BarraHilos {
      *  agente. */
     private filaRemota(m: (typeof this.otras)[number], x: HiloDeFoto, clase = '', visible = ''): string {
         const at = x.atencion ?? 'ninguna';
+        const saliendo = modelo.saliendo.get(x.nombre);
+        if (saliendo) clase = `${clase} saliendo`.trim();
         const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
         return (`<div class="fila remota${clase ? ` ${clase}` : ''}${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
             + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
@@ -295,6 +297,7 @@ export class BarraHilos {
             + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${ic(ATENCION_I[at])}</span>`
             + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
             + `<span class="nombre">${esc(visible || x.nombre)}</span>`
+            + (saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : '')
             // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
             + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">⋯</span></span></div>`);
     }
@@ -312,7 +315,8 @@ export class BarraHilos {
         const ultima = ultimaDe(h);
         const der = haceCorto(ultima);
         const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
-        const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto'].filter(Boolean).join(' ');
+        const saliendo = modelo.saliendo.get(h.nombre);
+        const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto', saliendo ? 'saliendo' : ''].filter(Boolean).join(' ');
         // abierto aquí y también en otra máquina: dos conversaciones que se separan (una mudanza a medias)
         const otra = !h.remoto && h.vivo ? this.enOtra.get(h.nombre) : undefined;
         const doble = otra ? `<span class="i doble" title="${esc(`también abierto en ${otra}: son dos conversaciones; cierra una`)}">${I.alerta}</span>` : '';
@@ -321,12 +325,12 @@ export class BarraHilos {
             + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
             + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
                 : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
-                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span><span class="der">${esc(der)}</span>${doble}${alFinal}`
+                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span>${saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : `<span class="der">${esc(der)}</span>`}${doble}${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
             // después); descartar lo termina y lo saca de la lista (la conversación queda en disco, sin botón para volver)
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (modelo.ocupados.has(h.nombre) ? ''
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (modelo.ocupados.has(h.nombre) || saliendo ? ''
                 : !h.vivo || seccion === 'archivado'
                 ? `<span class="icono i" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: abre el agente con su conversación">${I.retomar}</span>`
                   + `<span class="icono i descartar" data-accion="descartar" data-id="${esc(h.nombre)}" title="descartar: sale del archivo (pregunta antes; su conversación queda en disco)">${I.descartar}</span>`
@@ -383,6 +387,11 @@ export class BarraHilos {
                 + `<a data-accion="cmd" data-id="telar.actualizar">reintentar</a></div>`;
         }
         const h: string[] = [];
+        // «cerrando…» dura hasta que el hilo ya no se ve (aquí ni en la foto de su máquina), o se vence
+        for (const [n, x] of modelo.saliendo) {
+            const sigue = modelo.enLista.some(y => y.nombre === n) || this.otras.some(m => m.hilos.some(y => y.vivo && y.nombre === n));
+            if (!sigue || Date.now() > x.hasta) modelo.saliendo.delete(n);
+        }
         this.enOtra = new Map([
             ...this.otras.flatMap(m => m.hilos.filter(x => x.vivo).map(x => [x.nombre, m.nombre] as [string, string])),
             ...modelo.hilos.filter(x => x.remoto && x.remoto !== '?' && x.vivo).map(x => [x.nombre, x.remoto!] as [string, string]),

@@ -34,6 +34,14 @@
   /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
   .at.termino.visto { color: var(--dim); }
   .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
+  /* uno que se está cerrando o archivando (en otra máquina tarda unos segundos en irse): el nombre apagado y
+     «cerrando…» con los puntos que van apareciendo, hasta que se va */
+  .fila.saliendo .nombre { color: var(--negro); }
+  .fila.saliendo { cursor: default; }
+  .saliendo-txt { color: var(--dim); }
+  .saliendo-txt .puntos { display: inline-block; width: 3ch; overflow: hidden; vertical-align: bottom;
+                          animation: puntos 1.6s steps(4, jump-none) infinite; }
+  .saliendo-txt .puntos::after { content: "..."; }
   .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
   .cab { color: var(--amarillo); font-weight: bold; }
   /* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
@@ -74,3 +82,8 @@
 .ic-agente { color: var(--violeta); }
 /* el de un hilo que abrió un agente (no es suyo: es trabajo que empezó él), más apagado */
 .ic-agente.abierto { color: var(--dim); }
+
+@keyframes puntos {
+  from { width: 0; }
+  to { width: 3ch; }
+}

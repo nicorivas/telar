@@ -191,7 +191,7 @@ const barra = new BarraHilos();
 barra.estado = guardado;
 barra.dashboardActivo = true;
 barra.mostrado = '';
-ui.usarNavegacion({ mostrar, ordenes: crearOrdenes({ hoy, barra, mostrar, soltar }) });
+ui.usarNavegacion({ mostrar, ordenes: crearOrdenes({ hoy, barra, mostrar, soltar, releerOtras: () => otras() }) });
 barra.montar(document.getElementById('barra')!);
 hoy.alCambiarFoco = () => {
     const app = hoy.appActual;
@@ -314,7 +314,9 @@ const otras = async () => {
     if (JSON.stringify(nuevas) !== JSON.stringify(barra.otras)) { barra.otras = nuevas; barra.refrescar(true); }
 };
 void otras();
-setInterval(() => void otras(), 30 * 1000);
+// cada 6 s: es leer un archivo de aquí (el nodo guarda la foto apenas llega por el bus, y la otra máquina la publica
+// apenas cambian sus hilos)
+setInterval(() => void otras(), 6 * 1000);
 
 /** Una ruta, relativa a la raíz del repositorio si está adentro (para el título). */
 function relativa(ruta: string): string {

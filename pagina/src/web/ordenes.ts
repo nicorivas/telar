@@ -21,6 +21,8 @@ export interface Casa {
     mostrar(que: string): void;
     /** cierra la terminal de un hilo que ya no tiene (lo archivaron o lo cerraron): no queda reconectando escondida */
     soltar(hilo: string): void;
+    /** releer ya las fotos de las otras máquinas (lo que cambió allá llega en segundos) */
+    releerOtras(): Promise<void>;
 }
 
 export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknown> {
@@ -55,8 +57,19 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         if (!hilo || modelo.ocupados.has(hilo)) return;
         modelo.ocupados.set(hilo, `${haciendo}…`);
         modelo.cambio.fire();
+        // desde ya y hasta que deje de verse: «cerrando…», con el nombre apagado (allá tarda unos segundos)
+        modelo.saliendo.set(hilo, { texto: verbo === 'archivar' ? 'archivando' : 'cerrando', hasta: Date.now() + 90_000 });
         try {
             const ok = await sobreHilo(a, verbo, verbo === 'archivar' ? ['--cerrar'] : []);
+            if (!ok) modelo.saliendo.delete(hilo);
+            // lo de la otra máquina (su foto) se relee seguido hasta que el hilo ya no aparece, a lo más un minuto
+            else void (async () => {
+                for (let i = 0; i < 30 && modelo.saliendo.has(hilo); i++) {
+                    await c.releerOtras();
+                    await modelo.sondear().catch(() => undefined);
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            })();
             // descartar uno archivado o dormido: deja de estar en la lista; si se lo miraba, vuelve al dashboard
             if (ok) c.soltar(hilo);
             if (ok && c.barra.mostrado === hilo) c.mostrar(verbo === 'archivar' ? hilo : 'dashboard');

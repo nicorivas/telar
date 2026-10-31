@@ -6,6 +6,17 @@ extension shared the version number.
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-10-30
+
+### Changed
+
+- **A thread closed on another machine leaves the sidebar in seconds, not a minute.** The node publishes its foto
+  (the list of its threads) as soon as which threads exist or are alive changes, not only every 30 s; and the page
+  reads the fotos every 6 s (it reads a local file the node keeps) instead of every 30, and every 2 s right after a
+  close or an archive until the thread is gone.
+- **«cerrando…» while it goes.** From the click until the thread is really gone (here and in its machine's foto, at
+  most 90 s), its row shows the name dimmed and «cerrando» (or «archivando») with dots appearing, and no buttons.
+
 ## [0.9.2] — 2026-10-30
 
 ### Added

@@ -59,6 +59,9 @@ export class Modelo {
     readonly mudando = new Map<string, string>();
     /** los hilos que se están cerrando o archivando (la orden va, quizás por el bus): su fila lo dice */
     readonly ocupados = new Map<string, string>();
+    /** los que se mandaron a cerrar o archivar y todavía se ven (en otra máquina tarda unos segundos en llegar): su fila
+     *  dice «cerrando…» hasta que desaparece, o hasta `hasta` */
+    readonly saliendo = new Map<string, { texto: string; hasta: number }>();
 
     private fichas = new Map<string, cli.JsonFicha | null>();
     private firma = '';
