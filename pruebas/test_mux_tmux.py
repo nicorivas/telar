@@ -973,10 +973,14 @@ class ContraUnTmuxDeVerdad(Prueba):
 
     def test_los_hilos_salen_de_los_tabs_con_la_ruta_de_su_panel(self):
         uno = self.mux.crear_tab("uno", ruta=self.raiz, comando=["sh"])
+        # en Linux, `pane_current_path` es la carpeta del proceso del panel: hasta que el shell arranca, tmux
+        # da la suya (la del CI); en macOS ya sale bien al tiro
+        destino = Path(self.raiz).resolve()
+        self._esperar(lambda: self.mux.hilos()[0].ruta == destino, "el panel no llegó a su carpeta")
         hilos = self.mux.hilos()
         self.assertEqual([h.id for h in hilos], [uno.id])
         self.assertEqual(hilos[0].nombre, "uno")
-        self.assertEqual(hilos[0].ruta, Path(self.raiz).resolve())
+        self.assertEqual(hilos[0].ruta, destino)
         self.assertTrue(hilos[0].activo)
         self.assertEqual(self.mux.activo().id, uno.id)
 
