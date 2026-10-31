@@ -49,9 +49,33 @@ público (`git log -p --all | grep -inE` por rutas de la máquina, nombres de cl
 correos que no sean el de quien firma), y que la Homepage de pyproject apunte a donde va a
 estar. El árbol limpio no alcanza: lo que se borró en un commit sigue ahí.
 
+## Qué número le toca
+
+[Semantic Versioning 2.0.0](https://semver.org/lang/es/), y el CHANGELOG en el formato de
+[Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Lo que cuenta como la interfaz pública es lo que
+promete `docs/contratos.md` (la CLI y su `--json`, el estado de un hilo, los proveedores), más la configuración
+(`telar.toml`), el protocolo del bus y la API HTTP de `telar serve`. La página es la cara, no un contrato.
+
+Mientras telar esté en `0.y.z` (la interfaz todavía se mueve):
+
+| lo que trae «Unreleased» | sube | ejemplo |
+| --- | --- | --- |
+| algo que rompe: se quita o cambia un verbo, un campo del `--json`, una clave de la configuración, un mensaje del bus | `y` (minor) | 0.9.4 → 0.10.0 |
+| algo nuevo (cualquier entrada en **Added**), aunque no rompa nada | `y` (minor) | 0.9.4 → 0.10.0 |
+| solo arreglos (**Fixed**) y cambios que no agregan capacidad (aspecto de la página, textos, rendimiento) | `z` (patch) | 0.9.4 → 0.9.5 |
+
+Decide la sección más pesada de lo que se publica, no la última que se escribió. Una versión que rompe lo dice
+arriba de su entrada, en **Changed** o **Removed**, con qué hay que hacer para seguir.
+
+`y` pasa de 9 a 10, no a 1.0: el número es un contador, no una fracción. **1.0.0** es una decisión aparte,
+cuando los contratos se den por estables; desde ahí, lo que rompe sube `x` (major) y lo nuevo sube `y`.
+
+Los números ya publicados no se reescriben (PyPI no deja reusar uno): de 0.9.1 a 0.9.4 trajeron funciones
+nuevas como si fueran parches, y quedan así.
+
 ## Cada versión
 
-1. Cambiar el número: `__version__` en src/telar/\_\_init\_\_.py. El primer trabajo del workflow
+1. Elegir el número según «Qué número le toca» (arriba) y cambiarlo: `__version__` en src/telar/\_\_init\_\_.py. El primer trabajo del workflow
    no hace otra cosa que comprobar que la etiqueta y ese número coinciden.
 2. Mover lo que corresponda de «Unreleased» a la versión nueva en CHANGELOG.md.
 3. Commitear, y recién entonces etiquetar:

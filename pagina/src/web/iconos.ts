@@ -11,6 +11,7 @@ export const I = {
     copiar: '\u{ebcc}', hecha: '\u{eab2}', fecha: '\u{eab0}', persona: '\u{ea67}', enlace: '\u{eb14}', nuevo: '\u{ea60}',
     accion: '\u{ebcf}', direccion: '\u{eb15}', viaja: '\u{ea77}', alerta: '\u{ea6c}',
     remoto: '\u{ebcb}', abierto: '\u{eab4}', plegado: '\u{eab6}', persona_dot: '\u{ea71}', pedido: '\u{eb9a}',
+    terminal: '\u{ea85}', lectura: '\u{eb2f}', conversacion: '\u{eac7}',
 } as const;
 
 /** Las columnas de una fila de la barra de hilos, en la letra de íconos (un ícono ocupa 2ch: la columna es de 2ch

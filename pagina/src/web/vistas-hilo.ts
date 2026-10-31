@@ -3,6 +3,7 @@
 // Cada vista es una entrada de VISTAS: su nombre, su tecla y cómo se dibuja (en un elemento de la página). Una
 // forma nueva de mirar un hilo es una entrada más.
 import { montar as montarConversacion } from './conversacion';
+import { I } from './iconos';
 import { montar as montarLectura } from './lectura';
 import { montar as montarTerminal } from './terminal';
 
@@ -18,6 +19,8 @@ export interface Vista {
 export interface VistaDeHilo {
     clave: string;
     nombre: string;
+    /** su ícono en la barra de arriba del hilo (web/iconos.ts) */
+    icono: string;
     /** la tecla del atajo, con ⌥: el `KeyboardEvent.code` (en macOS ⌥ cambia la letra, el código no) */
     tecla: string;
     atajo: string;
@@ -27,11 +30,11 @@ export interface VistaDeHilo {
 }
 
 export const VISTAS: VistaDeHilo[] = [
-    { clave: 'term', nombre: 'terminal', tecla: 'KeyT', atajo: '⌥T', ayuda: 'la terminal del hilo, tal cual',
+    { clave: 'term', nombre: 'terminal', icono: I.terminal, tecla: 'KeyT', atajo: '⌥T', ayuda: 'la terminal del hilo, tal cual',
         montar: (el, r) => montarTerminal(el, r) },
-    { clave: 'lectura', nombre: 'lectura', tecla: 'KeyL', atajo: '⌥L', ayuda: 'la respuesta del agente, para leerla con calma (← → recorren, ⎋ vuelve)',
+    { clave: 'lectura', nombre: 'lectura', icono: I.lectura, tecla: 'KeyL', atajo: '⌥L', ayuda: 'la respuesta del agente, para leerla con calma (← → recorren, ⎋ vuelve)',
         montar: (el, r, volver) => montarLectura(el, r, volver) },
-    { clave: 'conv', nombre: 'conversación', tecla: 'KeyC', atajo: '⌥C', ayuda: 'la conversación entera, con una caja para escribirle (la del celular)',
+    { clave: 'conv', nombre: 'conversación', icono: I.conversacion, tecla: 'KeyC', atajo: '⌥C', ayuda: 'la conversación entera, con una caja para escribirle (la del celular)',
         montar: (el, r) => montarConversacion(el, r) },
 ];
 

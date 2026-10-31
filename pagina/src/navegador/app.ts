@@ -333,7 +333,7 @@ function pintarAcciones(que: string): void {
     barraH.hidden = !como;
     if (!como) return;
     const local = !que.startsWith('rem:');
-    barraH.innerHTML = VISTAS.map(v => `<a data-vista="${v.clave}" class="${v.clave === como ? 'si' : ''}" title="${v.ayuda}">${v.nombre} <span class="tecla">${v.atajo}</span></a>`).join('')
+    barraH.innerHTML = VISTAS.map(v => `<a data-vista="${v.clave}" class="${v.clave === como ? 'si' : ''}" title="${esc(`${v.nombre} (${v.atajo}): ${v.ayuda}`)}"><span class="i">${v.icono}</span></a>`).join('')
         + '<span class="lleno"></span>'
         + (local ? (() => {
             // su carpeta, como ruta (relativa a la raíz si está adentro); sin vínculo, la raíz

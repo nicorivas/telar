@@ -1,10 +1,22 @@
 # Changelog
 
-Versions follow [semantic versioning](https://semver.org). A tag `v0.2.0` releases the Python package; the
-release workflow refuses to run if the tag and `telar.__version__` disagree. Up to 0.1.13 the VS Code
-extension shared the version number.
+The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic
+Versioning 2.0.0](https://semver.org). While in 0.y.z, anything new or breaking bumps y, and only fixes and
+cosmetic changes bump z; which one, and what counts as the public interface, is in docs/publicar.md. A tag
+`v0.2.0` releases the Python package; the release workflow refuses to run if the tag and `telar.__version__`
+disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
+
+## [0.9.5] — 2026-10-30
+
+### Changed
+
+- **The bar above a thread, only icons.** Each view (terminal, lectura, conversación) is just its icon from the page's
+  icon font, in a 2ch column like the sidebar rows; its name and shortcut show on hover.
+- **Version numbers follow SemVer for real.** While in 0.y.z, anything new or breaking bumps y and only fixes and
+  cosmetic changes bump z (docs/publicar.md, «Qué número le toca»). 0.9.1 to 0.9.4 brought features as patches;
+  they stay as published.
 
 ## [0.9.4] — 2026-10-30
 
