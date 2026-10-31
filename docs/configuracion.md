@@ -786,7 +786,7 @@ nombre suma uno. Lo que un modo no dice, lo toma de «estandar»; la terminal de
 nombre = "lectura"
 barra = "plegada"          # abierta, plegada u oculta
 lado = "abierto"           # la ficha de un agente: abierto, plegado u oculto
-cabecera = "visible"       # visible u oculta (oculta: un ◧ arriba a la derecha vuelve al modo de antes)
+cabecera = "visible"       # visible u oculta (oculta: su ícono arriba a la derecha vuelve al modo de antes)
 acciones = "visible"       # la barra del hilo: visible u oculta
 escribir = "visible"       # la caja bajo la terminal: visible u oculta
 pantalla_completa = "no"   # no o si
@@ -795,10 +795,28 @@ posicion = "izquierda"
 fondo = "ninguno"
 avisos = "urgentes"        # todos, urgentes (no los informativos) o ninguno
 aviso_version = "oculto"   # visible u oculto
+etiquetas = ""             # solo los hilos con alguna de estas etiquetas, separadas por coma; "" todos
+sin_etiqueta = "se-ven"    # con etiquetas puestas, los hilos sin ninguna: se-ven o no-se-ven
 ```
 
-Cuál está puesto es de cada navegador. En la página: «◧» en la cabecera, ⌥⇧F (foco y vuelta), ⌥⇧M (el siguiente) y
-⚙ → modos, donde un clic cambia un ajuste a mano en el modo puesto y «guardar en este modo» lo escribe aquí.
+Un modo puede filtrar los hilos de la barra por sus etiquetas (`telar hilo etiquetas "trabajo, cliente"`; en la
+página, ⋯ → etiquetas…): uno de trabajo y otro personal, por ejemplo.
+
+```toml
+[modos.trabajo]
+etiquetas = "trabajo"
+sin_etiqueta = "no-se-ven"
+
+[modos.personal]
+etiquetas = "personal"
+```
+
+Filtra HILOS, las secciones propias y ARCHIVO; los agentes, el dashboard y las apps se ven siempre, y el hilo que se
+está mirando no se esconde. Con un filtro puesto, el ícono del modo en la cabecera va en violeta.
+
+Cuál está puesto es de cada navegador. En la página: su ícono en la cabecera (un clic abre la lista), ⌥⇧F (foco y
+vuelta), ⌥⇧M (el siguiente) y ⚙ → modos, donde un clic cambia un ajuste a mano en el modo puesto y «guardar en este
+modo» lo escribe aquí.
 
 ## `[agentes]` — agentes residentes, cada uno en su carpeta
 

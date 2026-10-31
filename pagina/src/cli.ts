@@ -67,6 +67,8 @@ export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
     /** si las otras personas del bus lo ven en su directorio (EQUIPO); por defecto, no */
     publico?: boolean;
+    /** sus etiquetas («trabajo», «personal»): los modos filtran la lista por ellas (`telar hilo etiquetas`) */
+    etiquetas?: string[];
     /** el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno */
     agente?: string; icono?: string;
     /** quién lo abrió, si no fue la persona: el hilo (o el periódico) que lo abrió, y su agente y su ícono si era de uno */

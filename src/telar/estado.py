@@ -66,7 +66,7 @@ from enum import Enum
 from pathlib import Path
 
 from telar.config import Config
-from telar.modelo import Atencion, Hilo, Marca, Prioridad
+from telar.modelo import Atencion, Hilo, Marca, Prioridad, normalizar_etiquetas
 from telar.salida import visible
 
 __all__ = [
@@ -97,6 +97,8 @@ ARCHIVOS = {
     "archivados": "archivados.json",
     #: los hilos que esta persona hizo públicos: los únicos que publica su directorio (telar.entre_personas)
     "publicos": "publicos.json",
+    #: hilo → sus etiquetas («trabajo», «personal»): los modos de la página filtran la lista por ellas
+    "etiquetas": "etiquetas.json",
     #: hilo → la clave (carpeta) del agente del que es: lo anota quien abre su hilo, y gana sobre adivinarlo
     "de_agente": "de_agente.json",
     #: hilo → {por, agente, cuando}: quién lo abrió, si no fue la persona (el hilo de un agente, un periódico)
@@ -298,6 +300,7 @@ def vestir(
     prioridades: Mapping[str, Prioridad] | None = None,
     archivados: Iterable[str] = (),
     publicos: Iterable[str] = (),
+    etiquetas: Mapping[str, Sequence[str]] | None = None,
     atenciones: Mapping[str, Atencion] | None = None,
     sesiones: Mapping[str, Sequence[str]] | None = None,
     tiempos: Mapping[str, float] | None = None,
@@ -332,6 +335,7 @@ def vestir(
                 activo=hilo.activo,
                 archivado=nombre in archivados,
                 publico=nombre in publicos,
+                etiquetas=tuple((etiquetas or {}).get(nombre, hilo.etiquetas)),
                 prioridad=(prioridades or {}).get(nombre, hilo.prioridad),
                 atencion=(atenciones or {}).get(nombre, hilo.atencion),
                 visto=(vistos or {}).get(nombre, hilo.visto),
@@ -618,6 +622,11 @@ class Estado:
                 limpio["publico"] = r["publico"]
             if isinstance(r.get("conversacion"), str):
                 limpio["conversacion"] = r["conversacion"]
+            if isinstance(r.get("etiquetas"), list):
+                try:
+                    limpio["etiquetas"] = list(normalizar_etiquetas(r["etiquetas"]))
+                except ValueError:
+                    pass  # unas que no sirven: valen las de aquí
             salida[hilo] = limpio
         return salida
 
@@ -677,6 +686,34 @@ class Estado:
                 lista.remove(hilo)
 
         self._actualizar("publicos", cambio, [])
+
+    # ── etiquetas: por ellas filtran los modos de la página ─────────────────────
+
+    def etiquetas(self) -> dict[str, tuple[str, ...]]:
+        """hilo → sus etiquetas. Las de un hilo de otra máquina las dice su dueño, como el archivo."""
+        salida: dict[str, tuple[str, ...]] = {}
+        for hilo, valor in self._leer("etiquetas", {}).items():
+            try:
+                if isinstance(hilo, str) and (limpias := normalizar_etiquetas(valor)):
+                    salida[hilo] = limpias
+            except ValueError:
+                continue
+        for hilo, r in self.registro_ajeno().items():
+            if "etiquetas" in r:
+                if r["etiquetas"]:
+                    salida[hilo] = tuple(r["etiquetas"])
+                else:
+                    salida.pop(hilo, None)
+        return salida
+
+    def etiquetar(self, hilo: str, etiquetas) -> tuple[str, ...]:
+        """Le pone a un hilo estas etiquetas (todas: las que tenía y no vengan, se quitan). Vacío las quita."""
+        limpias = normalizar_etiquetas(etiquetas)
+        if limpias:
+            self._actualizar("etiquetas", lambda d: d.__setitem__(hilo, list(limpias)), {})
+        else:
+            self._actualizar("etiquetas", lambda d: d.pop(hilo, None), {})
+        return limpias
 
     # ── de qué agente es un hilo ────────────────────────────────────────────────
 
@@ -1040,6 +1077,7 @@ class Estado:
                 "prioridades": self.prioridades(),
                 "archivados": self.archivados(),
                 "publicos": self.publicos(),
+                "etiquetas": self.etiquetas(),
                 "atenciones": {h: a for h, (a, _) in self.atenciones().items()},
                 "sesiones": self.sesiones(),
                 "tiempos": tiempo_por_hilo(
@@ -1146,7 +1184,7 @@ class Estado:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente",
-                           "abierto_por"):
+                           "abierto_por", "etiquetas"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             self._actualizar("archivados", mover_archivados, [])
@@ -1185,7 +1223,7 @@ class Estado:
         """
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente",
-                           "abierto_por"):
+                           "abierto_por", "etiquetas"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
             self.privar(hilo)

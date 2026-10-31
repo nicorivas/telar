@@ -8,6 +8,27 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-30
+
+### Added
+
+- **Tags on threads, and modes that filter by them.** `telar hilo etiquetas "trabajo, cliente"` (`ninguna` clears
+  them; in the page, ⋯ → etiquetas…) tags a thread; a thread on another machine is tagged by its owner, over the bus,
+  like archiving. A mode can show only the threads with some of its tags (`etiquetas = "trabajo"`) and hide or keep
+  the untagged ones (`sin_etiqueta`): a work mode and a personal one, say. It filters HILOS, custom sections and
+  ARCHIVO; agents, the dashboard and apps always show, and the thread you're looking at never hides. `telar hilos
+  --json` gives each thread its `etiquetas`.
+
+### Changed
+
+- **A provider's tab without its count.** A feed's tab («leer») is just its name, like «tareas»: how many items a
+  feed has isn't something to do.
+- **The page header, lighter.** No «dashboard» link (the dashboard is a group of the sidebar). On the right, machines
+  and settings are two icons from the icon font, next to the mode. The version that runs sits by the logo, on the
+  left, without «telar» before it, and a new version's notice (its icon and number) goes right after it.
+- **The mode is an icon too**, and a click opens the list of modes right under it (the one in use checked, and
+  «editar los modos…»). With a tag filter on, the icon turns violet.
+
 ## [0.9.5] — 2026-10-30
 
 ### Changed

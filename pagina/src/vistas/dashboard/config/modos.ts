@@ -9,7 +9,9 @@ import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
 
 const mostrarValor = (clave: string, v: modos.Valor | undefined): string => {
+    if (clave === 'etiquetas') return v ? String(v).split(',').join(', ') : 'todos los hilos';
     if (v === undefined || v === '') return '—';
+    if (clave === 'sin_etiqueta') return String(v).replace(/-/g, ' ');
     if (clave === 'columnas') return v === 0 ? 'todo el ancho' : `${v} columnas`;
     return String(v).replace(/^si$/, 'sí');
 };
@@ -18,7 +20,8 @@ const mostrarValor = (clave: string, v: modos.Valor | undefined): string => {
 const resumen = (m: modos.Modo): string => {
     const v = m.valores;
     return [`barra ${v.barra}`, `cabecera ${v.cabecera}`, `terminal ${v.columnas === 0 ? 'todo el ancho' : `${v.columnas} col`} ${v.posicion}`,
-        `fondo ${v.fondo}`, `avisos ${v.avisos}`].filter(x => !x.includes('undefined')).join(' · ');
+        `fondo ${v.fondo}`, `avisos ${v.avisos}`, ...(v.etiquetas ? [`hilos de ${String(v.etiquetas).split(',').join(', ')}`] : [])]
+        .filter(x => !x.includes('undefined')).join(' · ');
 };
 
 export const modosSeccion: FabricaSeccion = ctx => {
@@ -31,6 +34,16 @@ export const modosSeccion: FabricaSeccion = ctx => {
             const e = await ui.elegir(a.opciones.map(o => ({ label: mostrarValor(a.clave, o), description: o === actual ? '← ahora' : '', id: o })),
                 { titulo: `${a.nombre} · en «${modos.puesto().nombre}»`, placeholder: a.ayuda || 'para este modo, hasta cambiar de modo' });
             if (e) modos.poner(a.clave, e.id);
+            return;
+        }
+        if (a.clave === 'etiquetas') {
+            // separadas por coma; vacío: el modo no filtra
+            const t = await ui.campo({ titulo: `${a.nombre} · en «${modos.puesto().nombre}»`, valor: String(actual ?? '').split(',').join(', '),
+                placeholder: 'trabajo', ayuda: `${a.ayuda}. Separadas por coma; a un hilo se le ponen desde su menú (⋯ › etiquetas…)` });
+            if (t === undefined) return;
+            const lista = t.toLowerCase().split(/[,\s]+/).map(e => e.replace(/^#/, '')).filter(Boolean);
+            if (lista.some(e => !/^[a-z0-9áéíóúüñ][a-z0-9áéíóúüñ-]{0,23}$/.test(e))) { void ui.falla('telar: minúsculas, números y guiones; hasta 24 letras cada una'); return; }
+            modos.poner('etiquetas', [...new Set(lista)].join(','));
             return;
         }
         const texto = (await ui.campo({
@@ -80,7 +93,7 @@ export const modosSeccion: FabricaSeccion = ctx => {
         pintar(): void {
             const puesto = modos.puesto();
             const cambios = modos.cambiosAMano();
-            const h: string[] = ['<div class="fila dim">⌥⇧F foco y vuelta · ⌥⇧M el siguiente · ◧ arriba, para elegir</div>'];
+            const h: string[] = ['<div class="fila dim">⌥⇧F foco y vuelta · ⌥⇧M el siguiente · su ícono arriba, para elegir</div>'];
             h.push('<h2>modos<small>uno a la vez; cuál está puesto es de este navegador</small></h2>');
             for (const m of modos.lista()) {
                 const es = m.clave === puesto.clave;

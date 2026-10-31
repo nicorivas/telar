@@ -15,6 +15,7 @@ El vocabulario, de una vez:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -125,6 +126,8 @@ class Hilo:
     archivado: bool = False
     #: si sale en el directorio que ven las otras personas del bus (por defecto, no: privado)
     publico: bool = False
+    #: sus etiquetas («trabajo», «personal»…): los modos de la página filtran la lista por ellas
+    etiquetas: tuple[str, ...] = ()
     prioridad: Prioridad | None = None
     atencion: Atencion = Atencion.NINGUNA
     #: última vez que el hilo tuvo el foco.
@@ -177,3 +180,31 @@ class Item:
     #: por eso es una reunión. Vacío: quien lo dibuje decide.
     clase: str = ""
     datos: dict[str, object] = field(default_factory=dict)
+
+
+#: una etiqueta: minúsculas, letras (con tildes), números y guiones; hasta 24
+ETIQUETA = re.compile(r"^[a-z0-9áéíóúüñ][a-z0-9áéíóúüñ-]{0,23}$")
+
+
+def normalizar_etiquetas(valor: object) -> tuple[str, ...]:
+    """Las etiquetas de un texto («trabajo, Cliente») o una lista, en minúsculas, sin repetir y en su orden.
+    ValueError si alguna no sirve. «ninguna» (o nada) es ninguna."""
+    if valor is None:
+        return ()
+    if isinstance(valor, str):
+        partes = re.split(r"[,\s]+", valor)
+    elif isinstance(valor, (list, tuple, set)):
+        partes = [str(x) for x in valor]
+    else:
+        raise ValueError(f"etiquetas: se esperaba un texto o una lista, llegó {valor!r}")
+    salida: list[str] = []
+    for p in partes:
+        e = p.strip().lower().lstrip("#")
+        if not e or e in salida:
+            continue
+        if not ETIQUETA.match(e):
+            raise ValueError(f"«{p.strip()}» no sirve de etiqueta: minúsculas, números y guiones, hasta 24")
+        salida.append(e)
+    if salida == ["ninguna"]:
+        return ()
+    return tuple(salida)

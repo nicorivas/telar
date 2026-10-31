@@ -12,7 +12,7 @@
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { esc } from '../estilo';
-import { I } from '../web/iconos';
+import { C, I } from '../web/iconos';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
@@ -288,19 +288,37 @@ buscador.registrar({
 });
 buscador.montar();
 
-// los modos (estándar, foco…): lo de este navegador al tiro, y el selector de la cabecera, «◧ estándar»
+// los íconos de la cabecera (la página es estática: la letra de íconos se recorta con lo que nombra web/iconos.ts)
+for (const [id, icono] of [['ir-maquinas', I.maquinas], ['ir-config', I.config]]) {
+    const a = document.getElementById(id);
+    if (a) a.textContent = icono;
+}
+
+// los modos (estándar, foco, trabajo…): lo de este navegador al tiro, y el selector de la cabecera: su ícono, y un
+// clic abre la lista debajo
 modos.montar();
 const selectorModo = document.getElementById('modos-sel');
-const nombrarModo = () => { if (selectorModo) selectorModo.textContent = `◧ ${modos.puesto().nombre}`; };
+const nombrarModo = () => {
+    if (!selectorModo) return;
+    selectorModo.textContent = I.modo;
+    const f = modos.filtro();
+    selectorModo.title = `modo: ${modos.puesto().nombre}${f.length ? ` (hilos de ${f.join(', ')})` : ''} · clic: elegir otro · ⌥⇧F foco y vuelta · ⌥⇧M el siguiente`;
+    // con un filtro de etiquetas puesto, el ícono se nota: la lista de hilos no es la de siempre
+    selectorModo.classList.toggle('filtrando', f.length > 0);
+};
 nombrarModo();
 modos.alCambiar(nombrarModo);
 selectorModo?.addEventListener('click', async e => {
     e.preventDefault();
+    const puesto = modos.puesto().clave;
     const filas = [
-        ...modos.lista().map(m => ({ label: m.nombre, description: m.clave === modos.puesto().clave ? '← puesto' : '', id: m.clave })),
-        { label: 'editar los modos…', description: '⚙ modos: qué dice cada uno, guardar lo cambiado, uno nuevo', id: '__editar' },
+        ...modos.lista().map(m => ({ label: m.nombre, icono: m.clave === puesto ? I.hecha : ' ', color: C.ir, id: m.clave,
+            description: String(m.valores.etiquetas ?? '') ? `hilos de ${String(m.valores.etiquetas).split(',').join(', ')}` : '' })),
+        { label: '', separador: true, id: '' },
+        { label: 'editar los modos…', icono: I.config, color: C.cambiar, description: 'qué dice cada uno, uno nuevo', id: '__editar' },
     ];
-    const elegido = await ui.elegir(filas, { titulo: 'modo de la página', placeholder: '⌥⇧F foco y vuelta · ⌥⇧M el siguiente' });
+    const r = selectorModo.getBoundingClientRect();
+    const elegido = await ui.menu(filas, { x: r.left, y: r.bottom + 4 }, 'modo de la página');
     if (!elegido) return;
     if (elegido.id === '__editar') { mostrar('dashboard'); void hoy.irAPestana('config', 'modos'); }
     else modos.cambiar(elegido.id);

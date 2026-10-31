@@ -39,6 +39,9 @@ CATALOGO: tuple[Ajuste, ...] = (
     Ajuste("columnas", "terminal", "ancho", (), "columnas de 40 a 400, o 0: todo"),
     Ajuste("posicion", "terminal", "posición", ("izquierda", "centro", "derecha")),
     Ajuste("fondo", "terminal", "fondo", (), "telar, ninguno, #rrggbb, imagen:… o un módulo"),
+    Ajuste("etiquetas", "hilos", "solo con las etiquetas", (),
+           "los hilos con alguna de estas etiquetas (trabajo, personal…); vacío: todos"),
+    Ajuste("sin_etiqueta", "hilos", "los sin etiqueta", ("se-ven", "no-se-ven"), "con un filtro de etiquetas puesto"),
     Ajuste("avisos", "avisos", "avisos", ("todos", "urgentes", "ninguno"), "urgentes: solo los de algo que falló o pide atención"),
     Ajuste("aviso_version", "avisos", "aviso de versión nueva", ("visible", "oculto")),
 )
@@ -49,7 +52,8 @@ TERMINAL = ("columnas", "posicion", "fondo")
 DE_FABRICA: dict[str, dict] = {
     "estandar": {"nombre": "estándar", "valores": {
         "barra": "abierta", "lado": "abierto", "cabecera": "visible", "acciones": "visible", "escribir": "oculta",
-        "pantalla_completa": "no", "avisos": "todos", "aviso_version": "visible"}},
+        "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "avisos": "todos",
+        "aviso_version": "visible"}},
     "foco": {"nombre": "foco", "valores": {
         "barra": "oculta", "lado": "oculto", "cabecera": "oculta", "acciones": "oculta", "escribir": "oculta",
         "pantalla_completa": "no", "columnas": 110, "posicion": "centro", "fondo": "ninguno", "avisos": "urgentes",
@@ -75,7 +79,14 @@ def validar(clave: str, cuerpo: dict) -> dict:
         a = POR_CLAVE.get(k)
         if a is None:
             raise ErrorDeConfig(f"modos.{clave}.{k}: no es un ajuste ({', '.join(POR_CLAVE)})")
-        if k in TERMINAL:
+        if k == "etiquetas":
+            from telar.modelo import normalizar_etiquetas
+
+            try:
+                valores[k] = ",".join(normalizar_etiquetas(v))
+            except ValueError as e:
+                raise ErrorDeConfig(f"modos.{clave}.etiquetas: {e}") from None
+        elif k in TERMINAL:
             try:
                 valores[k] = validar_terminal(k, v)
             except ErrorDeConfig as e:

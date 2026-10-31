@@ -590,6 +590,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "archivado": hilo.archivado,
         # si lo ven las otras personas del bus (su directorio); por defecto, privado
         "publico": hilo.publico,
+        # sus etiquetas («trabajo», «personal»): los modos de la página filtran la lista por ellas
+        "etiquetas": list(hilo.etiquetas),
         # el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno
         "agente": tel.de_agente.get(hilo.nombre, ("", ""))[0],
         "icono": tel.de_agente.get(hilo.nombre, ("", ""))[1],

@@ -9,6 +9,7 @@ import * as ui from './ui';
 import type { Opcion } from './ui';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import * as modos from './modos';
 import { avisar } from './interfaz';
 import { elegirEntrada } from '../vistas/dashboard/equipo';
 import type { BarraHilos } from '../vistas/hilos';
@@ -114,6 +115,9 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             ...(h.vinculado ? [{ label: 'ver su carpeta y documento', icono: I.carpeta, color: C.ir, description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
             { label: 'vincular a un proyecto', icono: I.vincular, color: C.cambiar, description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
             ...(h.vinculado ? [{ label: 'desvincular', icono: I.desvincular, color: C.cambiar, description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
+            { label: 'etiquetas…', icono: I.etiqueta, color: C.cambiar,
+                description: h.etiquetas?.length ? `hoy: ${h.etiquetas.join(', ')}` : 'trabajo, personal…: los modos filtran la lista por ellas',
+                hacer: () => etiquetarWeb(hilo, h.etiquetas ?? []) },
             ...(modelo.hayBus ? [h.publico
                 ? { label: 'hacer privado', icono: I.privado, color: C.cambiar, description: 'hoy es público: las otras personas lo ven en EQUIPO; deja de salir', hacer: () => sobreHilo(hilo, 'privar') }
                 : { label: 'hacer público', icono: I.publico, color: C.cambiar, description: 'que las otras personas del bus lo vean en EQUIPO y le escriban (su nombre y carpeta; nunca la conversación)',
@@ -132,6 +136,21 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         ];
         return { titulo: hilo, acciones: filas };
     });
+
+    /** Las etiquetas de un hilo: se escriben todas (separadas por coma); vacío las quita. Se sugieren las que ya se
+     *  usan y las de los modos. */
+    async function etiquetarWeb(hilo: string, actuales: string[]): Promise<void> {
+        const usadas = new Set(modelo.hilos.flatMap(x => x.etiquetas ?? []));
+        for (const m of modos.lista()) for (const e of String(m.valores.etiquetas ?? '').split(',')) if (e) usadas.add(e);
+        const texto = await ui.campo({
+            titulo: `Etiquetas de «${hilo}»`, valor: actuales.join(', '), placeholder: 'trabajo, personal',
+            ayuda: `separadas por coma; vacío las quita${usadas.size ? ` · en uso: ${[...usadas].sort().join(', ')}` : ''}`,
+            validar: t => t.split(/[,\s]+/).every(e => !e || /^#?[a-z0-9áéíóúüñ][a-z0-9áéíóúüñ-]{0,23}$/i.test(e)) ? undefined
+                : 'minúsculas, números y guiones; hasta 24 letras cada una',
+        });
+        if (texto === undefined) return;
+        await sobreHilo(hilo, 'etiquetas', [], texto.trim() || 'ninguna');
+    }
 
     /** Vincular desde la web: se elige entre los proyectos del perfil, o se escribe una ruta. */
     async function vincularWeb(hilo: string): Promise<void> {

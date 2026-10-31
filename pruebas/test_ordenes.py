@@ -131,6 +131,18 @@ class UnHilo(Orden):
         self.assertEqual(hilo["prioridad"], 1)
         self.assertTrue(hilo["archivado"])
 
+    def test_las_etiquetas_se_ponen_se_ven_y_se_quitan(self):
+        self.vincular_faro()
+        codigo, salida, _ = self.correr("hilo", "etiquetas", "Trabajo, cliente", "--hilo", "faro")
+        self.assertEqual(codigo, 0)
+        self.assertIn("trabajo, cliente", salida)
+        self.assertEqual(self.json_de("hilos", "--json")["hilos"][0]["etiquetas"], ["trabajo", "cliente"])
+        codigo, _, error = self.correr("hilo", "etiquetas", "¡no!", "--hilo", "faro")
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("no sirve de etiqueta", error)
+        self.correr("hilo", "etiquetas", "ninguna", "--hilo", "faro")
+        self.assertEqual(self.json_de("hilos", "--json")["hilos"][0]["etiquetas"], [])
+
     def test_cerrar_lo_saca_de_la_lista(self):
         # cerrar es descartar: lo que se quiere guardar se archiva
         self.vincular_faro()

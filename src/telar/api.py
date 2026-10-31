@@ -535,7 +535,7 @@ def post_casilla(pedido: PedidoCasilla, ctx: Contexto = Depends(contexto)):
 from telar.servicios import en_proceso
 
 #: los verbos de `telar hilo` que se corren por la API; `llevar` (minutos, por ssh) y `leer`/`caidos` no
-VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "mudar", "cerrar",
+VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "etiquetas", "mudar", "cerrar",
                "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar")
 
 

@@ -118,9 +118,11 @@ body > header {
 #version[hidden] { display: none; }
 #version.trabajando { color: var(--dim); }
 
-/* el ⚙, junto a la versión: la configuración (en el dashboard) */
+/* a la derecha, tres íconos: el modo, las máquinas y la configuración (en el dashboard) */
 body > header .config { color: var(--dim); }
 body > header .config:hover { color: var(--fg); text-decoration: none; }
+/* el modo puesto filtra los hilos por etiquetas: la lista no es la de siempre, y el ícono lo dice */
+body > header #modos-sel.filtrando { color: var(--violeta); }
 
 #modo[hidden] { display: none; }
 #volver { display: none; }
@@ -216,7 +218,7 @@ body.angosto #lado { display: none; }
 body.angosto {
   grid-template-columns: 1fr;
 
-  & #maquina { display: none; }
+  & #corre { display: none; }
 
   /* el centro (lo que se ve) se acorta con «…» antes de pisar los botones de los lados */
   & > header { grid-template-columns: auto minmax(0, 1fr) auto; }

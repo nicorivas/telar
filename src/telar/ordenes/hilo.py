@@ -7,6 +7,8 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo renombrar «Faro»            renombrarlo, y mover con él lo que telar sabía
     telar hilo adoptar [«faro»]            recoger el estado que quedó en otro nombre
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
+    telar hilo etiquetas "trabajo, cliente"|ninguna   sus etiquetas (todas: reemplazan a las de antes); los
+                                           modos de la página filtran la lista por ellas
     telar hilo mudar «Agrosur»               llevarse este panel (y su conversación) a ese hilo
     telar hilo cerrar                      cerrar su tab (y lo que corra adentro) y
                                            olvidarlo: sale de la lista. Para guardarlo
@@ -69,6 +71,7 @@ VERBOS = (
     "renombrar",
     "adoptar",
     "prioridad",
+    "etiquetas",
     "mudar",
     "cerrar",
     "archivar",
@@ -85,7 +88,7 @@ VERBOS = (
 
 #: los verbos que cambian el registro de un hilo: sobre uno que vive en otra máquina, se le piden a su
 #: dueño por el bus (docs/propuestas/un-dueno-por-hilo.md), que los aplica y los vuelve a publicar
-AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "archivar", "desarchivar", "publicar", "privar",
+AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "etiquetas", "archivar", "desarchivar", "publicar", "privar",
             "cerrar", "olvidar")
 
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
@@ -100,7 +103,7 @@ def main(argv: list[str], ctx) -> int:
         "valor",
         nargs="?",
         default="",
-        help="la carpeta, el nombre nuevo, el hilo que se adopta o la prioridad; en los verbos sin valor, el hilo",
+        help="la carpeta, el nombre nuevo, el hilo que se adopta, la prioridad o las etiquetas; en los verbos sin valor, el hilo",
     )
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--cerrar", action="store_true", help="al archivar, cerrar además el hilo")
@@ -223,6 +226,14 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "desarchivar":
         est.desarchivar(hilo.nombre)
         print(f"de vuelta en la lista «{hilo.nombre}»")
+    elif o.verbo == "etiquetas":
+        if not o.valor.strip():
+            return _comun.queja("¿cuáles? «telar hilo etiquetas \"trabajo, cliente\"», o «ninguna» para quitarlas")
+        try:
+            puestas = est.etiquetar(hilo.nombre, o.valor)
+        except ValueError as e:
+            return _comun.queja(str(e))
+        print(f"«{hilo.nombre}»: {', '.join(puestas)}" if puestas else f"«{hilo.nombre}» sin etiquetas")
     elif o.verbo == "publicar":
         est.publicar(hilo.nombre)
         print(f"«{hilo.nombre}» es público: las otras personas del bus lo ven en su directorio (su nombre, su carpeta "
@@ -452,6 +463,13 @@ def _adelantar(est, o, nombre: str, raiz) -> None:
     publica = est.registro_ajeno().get(nombre, {})
     if o.verbo in ("archivar", "desarchivar") and "archivado" in publica:
         est.adelantar_ajeno(nombre, archivado=o.verbo == "archivar")
+    elif o.verbo == "etiquetas" and "etiquetas" in publica:
+        try:
+            from telar.modelo import normalizar_etiquetas
+
+            est.adelantar_ajeno(nombre, etiquetas=list(normalizar_etiquetas(o.valor)))
+        except ValueError:
+            pass
     elif o.verbo in ("publicar", "privar") and "publico" in publica:
         est.adelantar_ajeno(nombre, publico=o.verbo == "publicar")
     elif o.verbo in ("vincular", "desvincular") and "vinculo" in publica:

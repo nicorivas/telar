@@ -7,6 +7,7 @@
 // (media/css/marco.css). La barra, la ficha y la terminal escuchan `alCambiar` y se redibujan.
 
 import * as cli from '../cli';
+import { I } from './iconos';
 
 export type Valor = string | number;
 export interface Ajuste { clave: string; grupo: string; nombre: string; opciones: string[]; ayuda: string }
@@ -20,7 +21,7 @@ const EN_BODY = ['barra', 'lado', 'cabecera', 'acciones', 'escribir', 'avisos', 
 let modos: Modo[] = [
     { clave: 'estandar', nombre: 'estándar', de_fabrica: true, cambiado: false, valores: {
         barra: 'abierta', lado: 'abierto', cabecera: 'visible', acciones: 'visible', escribir: 'oculta',
-        pantalla_completa: 'no', avisos: 'todos', aviso_version: 'visible' } },
+        pantalla_completa: 'no', etiquetas: '', sin_etiqueta: 'se-ven', avisos: 'todos', aviso_version: 'visible' } },
     { clave: 'foco', nombre: 'foco', de_fabrica: true, cambiado: false, valores: {
         barra: 'oculta', lado: 'oculto', cabecera: 'oculta', acciones: 'oculta', escribir: 'oculta', pantalla_completa: 'no',
         columnas: 110, posicion: 'centro', fondo: 'ninguno', avisos: 'urgentes', aviso_version: 'oculto' } },
@@ -61,6 +62,18 @@ export function valor(clave: string): Valor | undefined {
     return puesto().valores[clave] ?? modos.find(m => m.clave === 'estandar')?.valores[clave];
 }
 
+/** Las etiquetas por las que filtra el modo puesto (vacío: no filtra). */
+export const filtro = (): string[] => String(valor('etiquetas') ?? '').split(',').filter(Boolean);
+
+/** Si un hilo con estas etiquetas se ve en la lista con el modo puesto: sin filtro, todos; con uno, los que tienen
+ *  alguna de sus etiquetas, y los sin ninguna si `sin_etiqueta` es «se-ven». */
+export function seVe(etiquetas: readonly string[] | undefined): boolean {
+    const f = filtro();
+    if (!f.length) return true;
+    if (!etiquetas?.length) return valor('sin_etiqueta') !== 'no-se-ven';
+    return etiquetas.some(e => f.includes(e));
+}
+
 /** Si ya llegaron de la API (antes, la terminal no tiene valores de modo: usa los suyos). */
 export const listos = (): boolean => leidos;
 
@@ -91,7 +104,8 @@ function salida(): void {
     if (!b) {
         b = document.createElement('a');
         b.id = 'salir-modo';
-        b.textContent = '◧';
+        b.className = 'i';
+        b.textContent = I.modo;
         b.addEventListener('click', () => alternarFoco());
         document.body.appendChild(b);
     }

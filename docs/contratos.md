@@ -250,7 +250,7 @@ Las reglas valen para todas:
 ```json
 {
   "id": "@3", "nombre": "faro", "direccion": "hilo:faro", "vivo": true, "activo": false,
-  "archivado": false, "publico": false, "agente": "", "icono": "", "vinculado": true,
+  "archivado": false, "publico": false, "etiquetas": ["trabajo"], "agente": "", "icono": "", "vinculado": true,
   "ruta": "/casa/trabajo/proyectos/faro", "relativa": "proyectos/faro",
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
   "visto": "2026-09-18T09:12:44", "tiempo": 4320.0,
@@ -272,7 +272,9 @@ ssh o et sin que telar la haya armado (se sabe que es remota, no adónde).
 `publico` dice si las otras personas del bus lo ven en su directorio (`telar hilo publicar`, `privar`; en la
 página, ⋯ → hacer público). Por defecto es `false`: un hilo es privado, no sale en el directorio de nadie y no le
 llega correo de otra persona (se le contesta como a uno que no existe). El de un hilo de otra máquina lo dice su
-dueño, como `archivado`. `agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
+dueño, como `archivado`. `etiquetas` son las suyas, en minúsculas (`telar hilo etiquetas "trabajo, cliente"`,
+`ninguna` las quita; en la página, ⋯ → etiquetas…): los modos de la página filtran la lista por ellas. Las de un hilo de
+otra máquina las dice su dueño. `agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
 `icono`, el suyo: la barra lo pone junto al nombre.
 `abierto_por` es quién lo abrió, si no fue la persona: `{"por", "agente", "icono", "cuando"}`, con `por` el hilo que
 corrió la orden (`$TELAR_HILO`) o el periódico (`"periódico <nombre>"`) y `agente` la carpeta del agente si ese hilo

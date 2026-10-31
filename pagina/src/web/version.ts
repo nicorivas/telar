@@ -1,9 +1,10 @@
-// Una versión nueva de telar, arriba a la derecha (#version): «↑ 0.4.8». Un clic la instala y reinicia el servicio
+// Una versión nueva de telar, arriba a la izquierda junto a la que corre (#version): su ícono y «0.4.8». Un clic la instala y reinicia el servicio
 // (telar.actualizar, en un proceso aparte) y la página se recarga sola cuando contesta la nueva. Si esta
 // instalación no se actualiza desde aquí (la del repositorio: git pull), el clic lleva a ⚙ versión, que dice qué
 // hacer y permite buscar a mano.
 
 import * as cli from '../cli';
+import { I } from './iconos';
 import * as ui from './ui';
 
 /** cada cuánto la página pregunta (el servicio le pregunta a PyPI a lo más una vez por hora) */
@@ -25,14 +26,14 @@ function pintar(): void {
         // la puerta del servidor quedó atrás de telar: se actualiza a mano, con root; el clic dice cómo
         b.hidden = false;
         b.classList.remove('trabajando');
-        b.textContent = `↑ puerta ${v.puerta.telar}`;
+        b.innerHTML = `<span class="i">${I.actualizar}</span> puerta ${v.puerta.telar}`;
         b.title = `la puerta del servidor va en la ${v.puerta.version || '?'} y telar en la ${v.puerta.telar}. Clic: cómo actualizarla`;
         return;
     }
     if (!v?.hay_nueva) { b.hidden = true; return; }
     b.hidden = false;
     b.classList.remove('trabajando');
-    b.textContent = `↑ ${v.ultima}`;
+    b.innerHTML = `<span class="i">${I.actualizar}</span> ${v.ultima}`;
     b.title = v.puede ? `hay una versión nueva de telar: la ${v.ultima} (corre la ${v.corre}). Clic: instalarla y reiniciar`
         : `hay una versión nueva de telar: la ${v.ultima} (corre la ${v.corre}). ${v.a_mano ?? ''}`;
 }
@@ -63,7 +64,7 @@ export async function actualizar(): Promise<void> {
     const r = await cli.actualizar(v.ultima);
     if (!r.datos) { void ui.falla(`telar: no pude empezar: ${r.error ?? 'sin respuesta'}`); return; }
     const b = boton();
-    if (b) { b.classList.add('trabajando'); b.textContent = `↻ ${v.ultima}…`; b.title = 'instalando la versión nueva'; }
+    if (b) { b.classList.add('trabajando'); b.innerHTML = `<span class="i">${I.viaja}</span> ${v.ultima}…`; b.title = 'instalando la versión nueva'; }
     void ui.estado(`telar: instalando la ${v.ultima}…`, 8000);
     await esperar(v.ultima);
 }

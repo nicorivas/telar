@@ -6,9 +6,9 @@
 <title>telar</title>
 <link rel="stylesheet" href="/estatico/marco.css"></head><body class="en-lista">
 <header>
-  <div class="izq"><span class="logo">telar</span><a id="volver">◀ hilos</a></div>
+  <div class="izq"><span class="logo">telar</span><span class="dim" id="corre" title="la versión de telar que corre"></span><a id="version" hidden></a><a id="volver">◀ hilos</a></div>
   <div id="donde"><b id="aqui" title="la máquina que sirve esta página">telar</b><span id="icono" hidden></span><span id="visto"></span></div>
-  <div class="der"><a data-p="dashboard">dashboard</a><a href="/maquinas" title="tus máquinas: elegir en cuál abrir la página">máquinas</a><a id="version" hidden></a><a id="modos-sel" title="el modo de la página (⌥⇧F foco, ⌥⇧M el siguiente)">◧</a><a data-p="config" class="config" title="configuración: de dónde sale la agenda, qué pestañas se ven…">⚙</a><span class="dim" id="maquina"></span></div>
+  <div class="der"><a id="modos-sel" class="config i" title="el modo de la página (⌥⇧F foco, ⌥⇧M el siguiente)"></a><a href="/maquinas" id="ir-maquinas" class="config i" title="máquinas: elegir en cuál abrir la página"></a><a data-p="config" id="ir-config" class="config i" title="configuración: de dónde sale la agenda, qué pestañas se ven…"></a></div>
 </header>
 <aside id="barra"></aside>
 <div id="marcos"><nav id="acciones" hidden></nav><div id="vistas"></div><aside id="lado" hidden></aside></div>
@@ -51,10 +51,10 @@ window.telar.donde = (lo) => {
 };
 json('/api/salud').then((s) => {
   aqui = s.maquina || s.host || location.hostname;
-  $('#maquina').textContent = `telar ${s.version}`;
+  $('#corre').textContent = s.version;
   $('#aqui').textContent = aqui;
   $('#aqui').title = `esta página la sirve ${aqui}${s.host && s.host !== aqui ? ` (${s.host})` : ''} · ${location.host}`;
-}).catch(() => { $('#maquina').textContent = 'sin API'; });
+}).catch(() => { $('#corre').textContent = 'sin API'; });
 // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 // modo desarrollo (`telar serve --web --dev`, scripts/dev.py): recargar cuando cambian los archivos de la

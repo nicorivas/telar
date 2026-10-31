@@ -37,7 +37,7 @@ import { modelo } from '../modelo';
 export interface PestanaDashboard { clave: string; accion: string; valor: string; nombre: string; tecla: string }
 
 /** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
-export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string }
+export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; etiquetas?: string[] }
 
 type Seccion = 'hilo' | 'archivado';
 /** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
@@ -481,9 +481,12 @@ export class BarraHilos {
         const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
         // los hijos de un agente van colgados de él, arriba: aquí no se repiten
         const esHijo = (n: string) => agentes.some(a => n.startsWith(`${a.nombre}${HIJO}`));
-        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre)));
+        // el modo puesto puede filtrar por etiquetas (web/modos.ts); el hilo que se está mirando no se esconde
+        const seVe = (n: string, et?: string[]) => n === this.mostrado || modos.seVe(et);
+        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre) && seVe(y.nombre, y.etiquetas)));
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
-        const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)).map(x => ({ m, x })));
+        const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)
+            && seVe(x.nombre, x.etiquetas)).map(x => ({ m, x })));
         // los de esta máquina y los de las otras, en una sola lista: el orden elegido vale para todos (en la página
         // del servidor, los del laptop vienen de su foto, y antes quedaban al final sin ordenar)
         type FilaH = { aqui: cli.JsonHilo } | { m: (typeof deOtras)[number]['m']; x: HiloDeFoto };
@@ -493,7 +496,8 @@ export class BarraHilos {
         this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
         // + abre un hilo nuevo (ordenes.ts: pide el nombre y la máquina)
         const nuevo = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
-        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, 'los hilos abiertos, de esta máquina y de las otras', nuevo)) {
+        const filtrando = modos.filtro().length ? ` · el modo «${modos.puesto().nombre}» muestra solo los de ${modos.filtro().join(', ')}` : '';
+        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, `los hilos abiertos, de esta máquina y de las otras${filtrando}`, nuevo)) {
             h.push(this.herramientas('hilos', ordenH));
             // los hijos (los que abrió otro hilo de la lista: `abierto_por`) van justo bajo su padre, sangrados, en el
             // orden elegido entre ellos; el orden manda solo entre los de arriba. Así uno nuevo con prioridad 0 no queda
@@ -518,7 +522,7 @@ export class BarraHilos {
 
         // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS
         for (const s of modelo.secciones.filter(x => x.grupo !== 'agentes')) {
-            const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre)));
+            const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre) && seVe(x.nombre, x.etiquetas)));
             if (!cabecera(s.clave, s.nombre.toUpperCase(), suyos.length, true, `la sección ${s.nombre}`)) continue;
             if (s.home) {
                 h.push(`<div class="fila hoy" data-accion="home" data-id="${esc(s.clave)}" title="la página de ${esc(s.nombre)}">`
@@ -562,7 +566,7 @@ export class BarraHilos {
 
         const ordenA = this.ordenDe('archivo');
         // lo que se llevó a otra máquina y vive allá no se repite aquí: su fila es la de allá
-        const archivados = ordenar(modelo.archivados.filter(x => x.remoto || !this.enOtra.has(x.nombre)), ordenA);
+        const archivados = ordenar(modelo.archivados.filter(x => (x.remoto || !this.enOtra.has(x.nombre)) && seVe(x.nombre, x.etiquetas)), ordenA);
         if (archivados.length && cabecera('__archivo', 'ARCHIVO', archivados.length, false, 'los hilos archivados')) {
             h.push(this.herramientas('archivo', ordenA));
             for (const x of archivados) h.push(this.fila(x, 'archivado', '', 'archivo'));

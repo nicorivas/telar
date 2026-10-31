@@ -15,7 +15,7 @@ import * as cli from '../../cli';
 import { esc, hace } from '../../estilo';
 import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
-import { Dia, atajo, dia, olvidarDia, pendientes, seccion, yo } from './dia';
+import { Dia, atajo, dia, olvidarDia, seccion, yo } from './dia';
 import { PantallaPlan } from './plan';
 import { PantallaProyectos } from './proyectos';
 import { PantallaFoco } from './foco';
@@ -96,7 +96,6 @@ export class Dashboard implements Tablero {
         dashboard: {
             dia: () => this.datos,
             actualizar: conRed => this.actualizar(conRed),
-            // el nombre sin su cuenta («leer», no «leer 17»)
             pestanas: () => this.todasLasPestanas().map(([clave]) => ({ clave, nombre: this.nombrePestana(clave) })),
             orden: () => ({ orden: this.dashOrden, ocultas: this.dashOcultas }),
             usarOrden: d => { this.dashOrden = d.orden; this.dashOcultas = d.ocultas; this.alPintar?.(); },
@@ -164,10 +163,10 @@ export class Dashboard implements Tablero {
      *  bloques y las de los proveedores. Cada una: [clave, acción, valor, nombre, tecla]. */
     private todasLasPestanas(): Pestana[] {
         const d = this.datos;
-        // las pestañas de los proveedores que las declaran (un feed), con cuántos ítems tienen
+        // las pestañas de los proveedores que las declaran (un feed), sin cuenta, como «tareas»: cuántos ítems tiene un
+        // feed no es algo que haya que hacer
         const deProveedores = [...new Set((d?.pendientes ?? []).map(f => f.pestana ?? '').filter(Boolean))]
-            .map(n => [`pestana:${n}`, 'pestana', n, `${n} ${d ? pendientes(d, n).length : ''}`.trim(),
-                this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
+            .map(n => [`pestana:${n}`, 'pestana', n, n, this.pestanasCfg.find(x => x.nombre === n)?.tecla ?? ''] as Pestana);
         const todas: Pestana[] = [  // clave, acción, valor, nombre, tecla
             ['ahora', 'ahora', '', 'ahora', 'n'],
             // sin cuenta: con los filtros de la pestaña (esta semana, por revisar, vencidas…), un número solo confunde.
@@ -210,7 +209,7 @@ export class Dashboard implements Tablero {
     }
 
     /** Las pestañas del dashboard, en el orden y sin las ocultas de `[dashboard]`: las filas del grupo DASHBOARD de
-     *  la barra. El nombre lleva su cuenta («tareas ◆45»), y la tecla es la que la abre con el dashboard a la vista. */
+     *  la barra: su nombre y la tecla que la abre con el dashboard a la vista. */
     pestanas(): { clave: string; accion: string; valor: string; nombre: string; tecla: string }[] {
         return this.pestanasVisibles().map(([clave, accion, valor, nombre, tecla]) => ({ clave, accion, valor, nombre, tecla }));
     }
@@ -310,11 +309,8 @@ export class Dashboard implements Tablero {
     async accion(accion: string, valor = ''): Promise<void> { await this.mensaje({ tipo: 'accion', accion, valor }); }
     bloqueAbierto(): string { return this.bloques.abierto(); }
     bloquesEn(en: string): string[] { return this.bloques.html(this.bloques.declarados.filter(b => b.en === en), true); }
-    /** El nombre de una pestaña sin su cuenta («leer», no «leer 17»). */
-    nombrePestana(clave: string): string {
-        const p = this.todasLasPestanas().find(x => x[0] === clave);
-        return !p ? clave : clave.startsWith('pestana:') ? p[2] : p[3];
-    }
+    /** El nombre de una pestaña. */
+    nombrePestana(clave: string): string { return this.todasLasPestanas().find(x => x[0] === clave)?.[3] ?? clave; }
     /** Los botones de los atajos que van en un bloque o una sección (`en = "<clave>"`). */
     atajosEn(en: string): string { return this.atajos.filter(a => a.en === en).map(a => this.botonAtajo(a)).join(''); }
     general(): { clave: string; nombre: string } | undefined { return this.agenteGeneral; }
