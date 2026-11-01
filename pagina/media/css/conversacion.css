@@ -75,6 +75,10 @@
     &.usuario .quien,
     &.usuario .cuerpo { color: var(--azul); }
 
+    /* lo que entró por el bus (otro hilo, un agente, un periódico): no lo escribió la persona */
+    &.bus .quien,
+    &.bus .cuerpo { color: var(--violeta); }
+
     &.herramienta {
       margin: 0;
       color: var(--dim);

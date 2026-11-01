@@ -19,6 +19,16 @@ interface Leido { error?: string; fuente?: string; texto?: string; turnos?: Mens
 const md = new MarkdownIt({ html: false, linkify: true });
 
 const QUIEN: Record<string, string> = { usuario: 'tú', agente: 'agente', herramienta: '·' };
+
+/** Un turno «tuyo» que no escribió la persona: lo que tecleó el nodo para que entrara un mensaje del bus («↯ mensaje
+ *  nuevo · mensaje de Mobile: …», telar.casilla `aviso`). Su etiqueta dice de quién vino; null si es de la persona (o
+ *  «tu persona: …», lo que ella mandó desde otra parte). */
+function delBus(texto: string): string | null {
+    if (!texto.startsWith('↯ mensaje nuevo')) return null;
+    const m = /^↯ mensaje nuevo · (?:(?:mensaje|encargo) de (.+?)|(tu persona)): /.exec(texto);
+    if (m?.[2]) return null;
+    return m?.[1] ? `↯ ${m[1]}` : '↯ mensaje';
+}
 /** las teclas de abajo: lo que mandan a la terminal */
 const TECLAS: [string, string][] = [['⏎', '\r'], ['⎋', '\u001b'], ['1', '1'], ['2', '2'], ['3', '3'], ['↑', '\u001b[A'], ['↓', '\u001b[B']];
 
@@ -88,8 +98,9 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
             for (const turno of d.turnos ?? []) {
                 const t = el('section', 'turno');
                 for (const m of turno) {
-                    const f = el('div', `msj ${m.quien}`);
-                    if (m.quien !== 'herramienta') f.appendChild(el('span', 'quien', QUIEN[m.quien] ?? m.quien));
+                    const bus = m.quien === 'usuario' ? delBus(m.texto ?? '') : null;
+                    const f = el('div', `msj ${bus ? 'bus' : m.quien}`);
+                    if (m.quien !== 'herramienta') f.appendChild(el('span', 'quien', bus ?? QUIEN[m.quien] ?? m.quien));
                     const cuerpo = el('div', m.quien === 'agente' ? 'cuerpo md' : 'cuerpo', m.quien === 'agente' ? undefined : m.texto ?? '');
                     if (m.quien === 'agente') cuerpo.innerHTML = md.render(m.texto ?? '');
                     f.appendChild(cuerpo);

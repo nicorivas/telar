@@ -17,6 +17,9 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 ### Fixed
 
 - **Trading `?k=` for the cookie keeps the rest of the address**: it used to redirect to the bare path.
+- **In the conversation view, what came over the bus isn't «tú».** The line the node types to let a message in
+  («↯ mensaje nuevo · mensaje de Mobile: …») is labelled with who sent it («↯ Mobile»), in violet; only what the
+  person wrote is «tú».
 
 ## [0.10.0] — 2026-10-30
 
