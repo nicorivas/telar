@@ -820,9 +820,27 @@ banda arriba o detrás de una pantalla, y un glifo por hilo (calculado de su nom
 ```toml
 [modos.riso]
 glifos = "si"              # el interruptor de todo: no deja la página como siempre
-iconos = "glifos"          # en la barra: simbolos (los de siempre) o glifos
+estilo = "base"            # cuál de [glifos.<estilo>]
+iconos = "glifos"          # en la barra: simbolos (los de siempre) o glifos; con glifos, también el sello en la ficha
 campo = "ahora=banda, plan=fondo 0.15, *=nada"   # por pantalla: banda, fondo o nada, y su intensidad (0.05 a 1)
 ```
+
+Cómo se ven lo dice su estilo, `[glifos.<estilo>]`: las tintas, la forma y el movimiento del campo (`paleta`, `celda`,
+`niveles`, `ciclo`, `transicion`…), su vida (`actividad`, `periodo`, `duracion`, `saltos`, `rueda`), el gesto de cada
+pieza (`gesto_cruz = "giro"`), el glifo de cada hilo (`hilo_paleta`, `hilo_tam`, `sello_tam`…) y sus estados
+(`trabajando`, `espera`, `tenue`, `ritmo`). «base» viene de fábrica; una tabla con su nombre lo cambia, y una con otro
+nombre suma un estilo que toma de «base» lo que no dice. La lista entera, con sus rangos, la da `GET /glifos`.
+
+```toml
+[glifos.tenue]
+intensidad = 0.4
+celda = 12
+gesto_cuartos = "brote"
+```
+
+Todo esto se cambia también en ⚙ glifos: lo del modo puesto (prendidos, íconos, estilo, el campo pantalla por
+pantalla con su intensidad) y el estilo, con una vista previa que se mueve con los controles; «guardar en este modo» y
+«guardar el estilo» lo escriben aquí.
 
 Las pantallas son las claves de las pestañas (las de ⚙ pestañas: `ahora`, `revisar`, `proyectos`, `pestana:leer`…) y
 las vistas de un hilo, `conversacion` y `lectura`; `*` vale para las que no se nombran. Con «reducir movimiento» en el

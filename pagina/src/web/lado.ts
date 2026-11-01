@@ -5,7 +5,9 @@
 
 import * as cli from '../cli';
 import { esc, fechaCorta } from '../estilo';
+import * as glifos from './glifos';
 import * as modos from './modos';
+import { modelo } from '../modelo';
 import * as ui from './ui';
 
 /** cada cuánto se relee la ficha mientras se ve el mismo hilo */
@@ -41,7 +43,12 @@ function pintar(): void {
             + `<div class="lado-vertical" data-lado="abrir">${esc(a.nombre)}</div>`;
         return;
     }
-    const h: string[] = [`<div class="lado-cab"><b>${esc(a.nombre)}</b><span class="dim"> · agente:${esc(a.clave)}</span>`
+    // con los glifos prendidos, su sello: el glifo del hilo, grande, con su estado (web/glifos)
+    const nombre = actual.startsWith('rem:') ? actual.slice(actual.indexOf(':', 4) + 1) : actual;
+    const at = modelo.porNombre(nombre)?.atencion ?? 'ninguna';
+    const sello = glifos.prendidos() && nombre
+        ? `<div class="lado-sello">${glifos.htmlSello(nombre, at === 'termino' || at === 'trabajando' || at === 'espera' ? at : 'ninguna')}</div>` : '';
+    const h: string[] = [`${sello}<div class="lado-cab"><b>${esc(a.nombre)}</b><span class="dim"> · agente:${esc(a.clave)}</span>`
         + '<a class="lado-pliegue" data-lado="plegar" title="plegar la ficha">›</a></div>'];
     if (a.para) h.push(`<p class="lado-para">${esc(a.para)}</p>`);
     const datos: [string, string][] = [
@@ -92,6 +99,7 @@ function pintar(): void {
         h.push(`<details class="lado-sec"><summary>agente.toml</summary><pre>${esc(ficha.definicion_texto)}</pre></details>`);
     }
     el.innerHTML = h.join('');
+    glifos.pintarEn(el);
 }
 
 /** Lo que se ve cambió: `que` es la clave de la página («Faro», «rem:telar:Gestión», «dashboard», «doc:…»). La

@@ -712,6 +712,18 @@ export const modos = async () => await deServe<JsonModos>('/modos', 15000);
 /** Crear o cambiar un modo: `[modos.<clave>]` con esos valores. */
 export const guardarModo = async (clave: string, valores: Record<string, string | number>, nombre = '') =>
     await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('PUT', `/modos/${encodeURIComponent(clave)}`, 15000, { valores, nombre });
+/** Un parámetro de los glifos (`GET /glifos`, telar.glifos): un rango (mínimo, máximo, paso) u opciones. */
+export interface ParamGlifo { clave: string; grupo: string; nombre: string; base: string | number; ayuda: string;
+    opciones?: string[]; minimo?: number; maximo?: number; paso?: number }
+/** Los estilos de los glifos, cada uno con todos sus valores, y el catálogo de parámetros. */
+export interface JsonGlifos { catalogo: ParamGlifo[]; estilos: Record<string, Record<string, string | number>> }
+export const glifos = async () => await deServe<JsonGlifos>('/glifos', 15000);
+/** Crear o cambiar un estilo: `[glifos.<estilo>]` con lo que difiere de fábrica. */
+export const guardarEstilo = async (estilo: string, valores: Record<string, string | number>) =>
+    await aServe<{ ok: boolean; estilos: JsonGlifos['estilos'] }>('PUT', `/glifos/${encodeURIComponent(estilo)}`, 15000, { valores });
+/** Quitar `[glifos.<estilo>]`: uno propio desaparece; «base» vuelve a ser el de fábrica. */
+export const borrarEstilo = async (estilo: string) =>
+    await aServe<{ ok: boolean; estilos: JsonGlifos['estilos'] }>('DELETE', `/glifos/${encodeURIComponent(estilo)}`, 15000, {});
 /** Quitar `[modos.<clave>]`: uno propio desaparece; uno de fábrica vuelve a ser el de fábrica. */
 export const borrarModo = async (clave: string) =>
     await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('DELETE', `/modos/${encodeURIComponent(clave)}`, 15000, {});

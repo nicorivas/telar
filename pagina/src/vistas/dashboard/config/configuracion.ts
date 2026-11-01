@@ -10,6 +10,7 @@ import { agentes } from './agentes';
 import { calendario } from './calendario';
 import { carpetas } from './carpetas';
 import { modulos } from './modulos';
+import { glifosSeccion } from './glifos';
 import { modosSeccion } from './modos';
 import { periodicos } from './periodicos';
 import { personas } from './personas';
@@ -20,7 +21,7 @@ import { pestanas } from './pestanas';
 import type { Contexto, FabricaSeccion, Seccion } from './seccion';
 
 /** Las secciones, en el orden del menú. */
-const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, modosSeccion, terminal, agente, periodicos, agentes, modulos, personas, servidor, versionSeccion];
+const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, modosSeccion, glifosSeccion, terminal, agente, periodicos, agentes, modulos, personas, servidor, versionSeccion];
 
 /** Lo que la configuración necesita del dashboard: dónde dibujar y lo que sus secciones miran. */
 export type Base = Pick<Contexto, 'parcial' | 'teclas' | 'dashboard'> & { pintar(h: string[]): void };

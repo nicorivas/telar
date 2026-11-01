@@ -69,3 +69,46 @@
 .modos-mod a { cursor: pointer; color: var(--dim); }
 .modos-mod a.si { color: var(--violeta); }
 #buscar-mod { width: 100%; }
+
+/* ⚙ glifos (vistas/dashboard/config/glifos.ts): el campo por pantalla, la vista previa y los parámetros del estilo */
+@scope (.v-dia) {
+  .gl-pantallas,
+  .gl-params {
+    display: grid;
+    grid-template-columns: minmax(14ch, max-content) minmax(0, 1fr) minmax(0, 18ch) 5ch;
+    gap: .15lh 2ch;
+    align-items: center;
+    margin: var(--e-1) 0 var(--e-2);
+
+    & a { cursor: pointer; color: var(--dim); }
+    & a.si { color: var(--violeta); }
+    & output { text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+    & input[type="range"] { width: 100%; margin: 0; accent-color: var(--azul); }
+  }
+
+  .gl-params {
+    grid-template-columns: minmax(18ch, max-content) minmax(0, 24ch) 5ch;
+
+    & label { color: var(--fg); }
+    & label.cambiado { color: var(--azul); }
+    & select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea); border-radius: 0; padding: 0 .5ch; }
+  }
+
+  .gl-grupo { margin-top: var(--e-2); }
+  .gl-afinado { color: var(--amarillo); }
+
+  .gl-previa {
+    margin: var(--e-1) 0 var(--e-2);
+    border: var(--borde);
+
+    & #gl-campo { display: block; width: 100%; height: 150px; background: #11111b; }
+    & .gl-estados { display: flex; flex-wrap: wrap; gap: 3ch; padding: var(--e-2) 2ch; border-top: var(--borde); }
+    & .gl-estados > div { display: grid; justify-items: center; gap: .25lh; }
+    & .gl-estados .azul { color: var(--azul); }
+    & .gl-estados .amarillo { color: var(--amarillo); }
+    & .gl-estados .verde { color: var(--verde); }
+    & .gl-estados .dim { color: var(--dim); }
+    & > .fila { padding: 0 2ch var(--e-1); }
+    & #gl-muestra { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea); width: 24ch; }
+  }
+}

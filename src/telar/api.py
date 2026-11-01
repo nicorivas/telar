@@ -796,6 +796,45 @@ def delete_modo(clave: str, ctx: Contexto = Depends(contexto)) -> dict:
     return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
 
 
+# ── los estilos de los glifos (telar.glifos) ──────────────────────────────────────
+
+
+class PedidoEstilo(BaseModel):
+    valores: dict = {}
+
+
+@app.get("/glifos")
+def get_glifos(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los estilos de los glifos de la página, cada uno con todos sus valores, y el catálogo de parámetros."""
+    from telar import glifos
+
+    return {"catalogo": glifos.catalogo(), "estilos": glifos.todos(ctx.config)}
+
+
+@app.put("/glifos/{estilo}")
+def put_glifos(estilo: str, pedido: PedidoEstilo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Crear o cambiar un estilo: escribe `[glifos.<estilo>]` con lo que difiere de fábrica."""
+    from telar import config as mod_config
+    from telar import glifos
+
+    try:
+        glifos.guardar(ctx.config.origen, estilo, pedido.valores)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return {"ok": True, "estilos": glifos.todos(mod_config.cargar(ctx.config.origen))}
+
+
+@app.delete("/glifos/{estilo}")
+def delete_glifos(estilo: str, ctx: Contexto = Depends(contexto)) -> dict:
+    """Quitar `[glifos.<estilo>]`: uno propio desaparece; «base» vuelve a ser el de fábrica."""
+    from telar import config as mod_config
+    from telar import glifos
+
+    if not glifos.borrar(ctx.config.origen, estilo):
+        raise ErrorDeServicio(f"no hay [glifos.{estilo}] en la configuración", 404)
+    return {"ok": True, "estilos": glifos.todos(mod_config.cargar(ctx.config.origen))}
+
+
 @app.get("/compartir/destinos", response_model=servicio_compartir.Destinos)
 def get_destinos(ctx: Contexto = Depends(contexto)):
     """Los proveedores que reciben algo compartido (`telar compartir --destinos`)."""

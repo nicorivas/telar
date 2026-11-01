@@ -43,6 +43,7 @@ CATALOGO: tuple[Ajuste, ...] = (
            "los hilos con alguna de estas etiquetas (trabajo, personal…); vacío: todos"),
     Ajuste("sin_etiqueta", "hilos", "los sin etiqueta", ("se-ven", "no-se-ven"), "con un filtro de etiquetas puesto"),
     Ajuste("glifos", "glifos", "glifos de risografía", ("no", "si"), "el interruptor de todo: «no» deja la página como siempre"),
+    Ajuste("estilo", "glifos", "estilo de los glifos", (), "cuál de [glifos.<estilo>]: sus tintas, su vida, sus gestos (⚙ glifos)"),
     Ajuste("iconos", "glifos", "íconos de los hilos", ("simbolos", "glifos"), "en la barra: los símbolos de siempre, o el glifo de cada hilo con su estado"),
     Ajuste("campo", "glifos", "campo de glifos", (),
            "dónde, por pantalla: «ahora=banda, plan=fondo 0.15, *=nada» (banda arriba, fondo detrás o nada; la intensidad, de 0.05 a 1)"),
@@ -56,7 +57,7 @@ TERMINAL = ("columnas", "posicion", "fondo")
 DE_FABRICA: dict[str, dict] = {
     "estandar": {"nombre": "estándar", "valores": {
         "barra": "abierta", "lado": "abierto", "cabecera": "visible", "acciones": "visible", "escribir": "oculta",
-        "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "glifos": "no", "iconos": "simbolos", "campo": "",
+        "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "glifos": "no", "estilo": "base", "iconos": "simbolos", "campo": "",
         "avisos": "todos",
         "aviso_version": "visible"}},
     "foco": {"nombre": "foco", "valores": {
@@ -91,6 +92,11 @@ def validar(clave: str, cuerpo: dict) -> dict:
                 valores[k] = ",".join(normalizar_etiquetas(v))
             except ValueError as e:
                 raise ErrorDeConfig(f"modos.{clave}.etiquetas: {e}") from None
+        elif k == "estilo":
+            v = str(v).strip() or "base"
+            if not CLAVE.match(v):
+                raise ErrorDeConfig(f"modos.{clave}.estilo: el nombre de un estilo de [glifos], en minúsculas; llegó {v!r}")
+            valores[k] = v
         elif k == "campo":
             valores[k] = _campo(clave, v)
         elif k in TERMINAL:

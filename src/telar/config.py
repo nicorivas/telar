@@ -465,6 +465,8 @@ class Config:
     terminal: Terminal = field(default_factory=Terminal)
     #: los modos de la página definidos o cambiados aquí (`[modos.<n>]`, telar.modos): clave → {nombre, valores}
     modos: dict = field(default_factory=dict)
+    #: los estilos de los glifos de la página (`[glifos.<n>]`, telar.glifos): estilo → sus valores
+    glifos: dict = field(default_factory=dict)
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -1352,6 +1354,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         from telar import modos as mod_modos
 
         cambios["modos"] = {k: mod_modos.validar(k, v) for k, v in _tabla(datos["modos"], "modos").items()}
+    if "glifos" in datos:
+        from telar import glifos as mod_glifos
+
+        cambios["glifos"] = {k: mod_glifos.validar(k, v) for k, v in _tabla(datos["glifos"], "glifos").items()}
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
@@ -1359,7 +1365,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
         "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
         "disparadores",  # leídos por _con_disparadores
-        "terminal", "modos",
+        "terminal", "modos", "glifos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
@@ -1591,9 +1597,12 @@ def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = No
 
 
 def _valor_toml(valor: object) -> str:
-    """Un valor TOML en una línea: texto, entero o lista de textos (JSON sirve para los tres)."""
+    """Un valor TOML en una línea: texto, número o lista de textos (JSON sirve para los tres)."""
     import json
+    import math
 
+    if isinstance(valor, float) and math.isfinite(valor):
+        return repr(valor)
     if isinstance(valor, bool) or not isinstance(valor, (str, int, list, tuple)):
         raise ErrorDeConfig(f"no sé escribir {valor!r} en la configuración")
     return json.dumps(list(valor) if isinstance(valor, tuple) else valor, ensure_ascii=False)
