@@ -396,8 +396,12 @@ window.telar = { ...(window.telar ?? {}), mostrar,
 // abierta por «compartir» del teléfono (share_target del manifiesto): eso primero, también en el celular
 const compartiendo = location.pathname === '/compartir';
 mostrar(compartiendo ? 'compartir' : 'dashboard');
+// `?abrir=<dirección>` (`hilo:Gestión`, `tarea:T84`): la página abre eso al cargar, en vez del dashboard o la lista. Un
+// hilo, en el celular, en su conversación (la que tiene la caja para escribir), con «◀ hilos» de vuelta a la lista.
+// Espera a la primera lectura de los hilos: hasta entonces no se sabe dónde vive
+const abrirAlCargar = compartiendo ? '' : (new URLSearchParams(location.search).get('abrir') ?? '').trim();
 // en el celular se empieza por la lista
-if (document.body.classList.contains('angosto') && !compartiendo) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
+if (document.body.classList.contains('angosto') && !compartiendo && !abrirAlCargar) { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); }
 
 setInterval(() => { if (hoy.panel && !document.hidden && actual === 'dashboard') void hoy.actualizar(); }, 60 * 1000);
 // al volver a la pestaña, el dashboard se pone al día (lo que pasó mientras no se miraba)
@@ -407,4 +411,13 @@ const sondear = async () => {
     if (!document.hidden) await modelo.sondear().catch(() => undefined);
     setTimeout(sondear, modelo.error || !modelo.viva ? 5000 : 3000);
 };
-void modelo.sondear(true).catch(() => undefined).then(sondear);
+void modelo.sondear(true).catch(() => undefined).then(() => {
+    if (!abrirAlCargar) return;
+    // un hilo dormido o archivado se muestra sin retomarlo (su conversación, con «retomar»): cargar la página no
+    // levanta su agente
+    const { tipo, id, maquina } = partirDireccion(abrirAlCargar);
+    const dormido = tipo === 'hilo' && modelo.hilos.find(x => x.nombre === id && (!maquina || maquina === modelo.aqui || x.remoto === maquina));
+    if (dormido && (!dormido.vivo || dormido.archivado)) { mostrar(id); return; }
+    // un hilo que la lista no tiene (o algo que no es de los de siempre): la vista del objeto, que dice si existe
+    if (!abrirDireccion(abrirAlCargar)) mostrar(`obj:${abrirAlCargar}`);
+}).then(sondear);

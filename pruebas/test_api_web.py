@@ -41,6 +41,9 @@ class LaLlave(Prueba):
         self.assertIn("HttpOnly", r.headers["set-cookie"])
         self.assertIn("telar_panel=llave-de-prueba", r.headers["set-cookie"])
         self.assertEqual(_app().get("/?k=otra", follow_redirects=False).status_code, 403)  # sin la cookie de recién
+        # lo demás de la dirección sigue: solo se va la llave
+        r = _app().get("/?abrir=hilo:Gesti%C3%B3n&k=llave-de-prueba", follow_redirects=False)
+        self.assertEqual((r.status_code, r.headers["location"]), (302, "/?abrir=hilo%3AGesti%C3%B3n"))
 
     def test_con_la_cookie_la_pagina_y_la_api(self):
         c = _app()

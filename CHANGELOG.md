@@ -8,6 +8,16 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- **`?abrir=<dirección>` opens something when the page loads** (`/?abrir=hilo:Gestión`, `tarea:T84`), instead of
+  the dashboard or, on a phone, the list: a thread on a phone opens in its conversation (with the box to write), and
+  «◀ hilos» goes back to the list. A sleeping or archived thread is shown, not resumed. For a phone's home screen.
+
+### Fixed
+
+- **Trading `?k=` for the cookie keeps the rest of the address**: it used to redirect to the bare path.
+
 ## [0.10.0] — 2026-10-30
 
 ### Added

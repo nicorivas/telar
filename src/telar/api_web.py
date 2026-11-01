@@ -187,8 +187,12 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
             return await siguiente(request)
         dada = request.query_params.get("k", "")
         if not puerta and dada and secrets.compare_digest(dada, clave):
-            # la llave en la dirección se cambia por una cookie, y la dirección queda limpia
-            r = RedirectResponse(ruta if ruta != "/" else "/", status_code=302)
+            # la llave en la dirección se cambia por una cookie, y la dirección queda limpia: sin la llave, con lo
+            # demás que traía (`?abrir=hilo:…`)
+            from urllib.parse import urlencode
+
+            resto = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "k"])
+            r = RedirectResponse(ruta + (f"?{resto}" if resto else ""), status_code=302)
             r.set_cookie(COOKIE, clave, httponly=True, samesite="lax", max_age=31536000, path="/")
             return r
         if not puerta and not secrets.compare_digest(request.cookies.get(COOKIE, ""), clave):
