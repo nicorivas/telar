@@ -66,3 +66,14 @@ class LosModosQueFiltran(Prueba):
         self.assertEqual((m["estandar"]["etiquetas"], m["estandar"]["sin_etiqueta"]), ("", "se-ven"))
         self.assertEqual(m["foco"]["etiquetas"], "")
         self.assertEqual((m["trabajo"]["etiquetas"], m["trabajo"]["sin_etiqueta"]), ("trabajo", "se-ven"))
+
+
+class LosGlifosEnLosModos(Prueba):
+    def test_vienen_apagados_y_el_campo_se_valida(self):
+        m = {x["clave"]: x["valores"] for x in modos.todos(config.desde_dict({}))}
+        self.assertEqual((m["estandar"]["glifos"], m["estandar"]["iconos"], m["estandar"]["campo"]), ("no", "simbolos", ""))
+        v = modos.validar("riso", {"glifos": "si", "iconos": "glifos", "campo": "ahora=banda,plan=fondo 0.15 , *=nada"})
+        self.assertEqual(v["valores"]["campo"], "ahora=banda, plan=fondo 0.15, *=nada")
+        for malo in ("ahora=arriba", "ahora", "plan=fondo 3"):
+            with self.assertRaises(config.ErrorDeConfig):
+                modos.validar("riso", {"campo": malo})

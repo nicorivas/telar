@@ -42,6 +42,10 @@ CATALOGO: tuple[Ajuste, ...] = (
     Ajuste("etiquetas", "hilos", "solo con las etiquetas", (),
            "los hilos con alguna de estas etiquetas (trabajo, personal…); vacío: todos"),
     Ajuste("sin_etiqueta", "hilos", "los sin etiqueta", ("se-ven", "no-se-ven"), "con un filtro de etiquetas puesto"),
+    Ajuste("glifos", "glifos", "glifos de risografía", ("no", "si"), "el interruptor de todo: «no» deja la página como siempre"),
+    Ajuste("iconos", "glifos", "íconos de los hilos", ("simbolos", "glifos"), "en la barra: los símbolos de siempre, o el glifo de cada hilo con su estado"),
+    Ajuste("campo", "glifos", "campo de glifos", (),
+           "dónde, por pantalla: «ahora=banda, plan=fondo 0.15, *=nada» (banda arriba, fondo detrás o nada; la intensidad, de 0.05 a 1)"),
     Ajuste("avisos", "avisos", "avisos", ("todos", "urgentes", "ninguno"), "urgentes: solo los de algo que falló o pide atención"),
     Ajuste("aviso_version", "avisos", "aviso de versión nueva", ("visible", "oculto")),
 )
@@ -52,7 +56,8 @@ TERMINAL = ("columnas", "posicion", "fondo")
 DE_FABRICA: dict[str, dict] = {
     "estandar": {"nombre": "estándar", "valores": {
         "barra": "abierta", "lado": "abierto", "cabecera": "visible", "acciones": "visible", "escribir": "oculta",
-        "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "avisos": "todos",
+        "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "glifos": "no", "iconos": "simbolos", "campo": "",
+        "avisos": "todos",
         "aviso_version": "visible"}},
     "foco": {"nombre": "foco", "valores": {
         "barra": "oculta", "lado": "oculto", "cabecera": "oculta", "acciones": "oculta", "escribir": "oculta",
@@ -86,6 +91,8 @@ def validar(clave: str, cuerpo: dict) -> dict:
                 valores[k] = ",".join(normalizar_etiquetas(v))
             except ValueError as e:
                 raise ErrorDeConfig(f"modos.{clave}.etiquetas: {e}") from None
+        elif k == "campo":
+            valores[k] = _campo(clave, v)
         elif k in TERMINAL:
             try:
                 valores[k] = validar_terminal(k, v)
@@ -99,6 +106,28 @@ def validar(clave: str, cuerpo: dict) -> dict:
                 raise ErrorDeConfig(f"modos.{clave}.{k}: {' · '.join(a.opciones)}; llegó {v!r}")
             valores[k] = v
     return {"nombre": nombre.strip(), "valores": valores}
+
+
+CAMPO = re.compile(r"^([^=\s]+)\s*=\s*(banda|fondo|nada)(?:\s+(\d*\.?\d+))?$")
+
+
+def _campo(clave: str, v) -> str:
+    """`campo`: «pantalla=lugar [intensidad]», separadas por coma (`*`, las que no se nombran). Normalizado."""
+    from telar.config import ErrorDeConfig
+
+    partes = []
+    for crudo in str(v or "").split(","):
+        crudo = crudo.strip()
+        if not crudo:
+            continue
+        m = CAMPO.match(crudo)
+        if not m:
+            raise ErrorDeConfig(f"modos.{clave}.campo: «{crudo}» no es «pantalla=banda|fondo|nada [intensidad]»")
+        pantalla, lugar, intensidad = m.groups()
+        if intensidad is not None and not 0.05 <= float(intensidad) <= 1:
+            raise ErrorDeConfig(f"modos.{clave}.campo: la intensidad va de 0.05 a 1; llegó {intensidad}")
+        partes.append(f"{pantalla}={lugar}" + (f" {intensidad}" if intensidad is not None else ""))
+    return ", ".join(partes)
 
 
 def todos(config) -> list[dict]:

@@ -30,6 +30,7 @@ import * as ui from '../web/ui';
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
 import * as modos from '../web/modos';
+import * as glifos from '../web/glifos';
 import { modelo } from '../modelo';
 
 /** Una pestaña del dashboard (su lista y su orden los decide el dashboard, vistas/dashboard/panel.ts): una fila del grupo
@@ -55,6 +56,9 @@ function leerBuscado(): Record<string, string> {
 /** La última modificación de un hilo: cuándo se le pidió algo a su agente. Si telar todavía no lo
  *  anotó (un hilo de antes), lo último que hizo su agente. Mirarlo (`visto`) nunca cuenta: un clic
  *  no es trabajo. */
+/** El estado que dibuja el glifo de un hilo: su atención, con «terminó» partido en sin ver y ya visto. */
+const estadoDe = (atencion: string, visto: boolean): glifos.Estado =>
+    atencion === 'termino' ? (visto ? 'visto' : 'termino') : atencion === 'trabajando' || atencion === 'espera' ? atencion : 'ninguna';
 const ultimaDe = (h: cli.JsonHilo): string => h.actividad || h.atencion_desde || '';
 
 /** Lo que el orden mira de un hilo, sea de la lista de esta máquina o de la foto de otra. */
@@ -207,6 +211,8 @@ export class BarraHilos {
         const foco = a && lista.contains(a) && a.classList.contains('buscar')
             ? { g: a.dataset.grupo, i: a.selectionStart, j: a.selectionEnd } : undefined;
         lista.innerHTML = html;
+        // los glifos de los hilos, si el modo los pone (web/glifos): se pintan sobre sus lienzos ya puestos
+        glifos.pintarEn(lista);
         for (const inp of lista.querySelectorAll<HTMLInputElement>('input.buscar')) inp.value = this.buscado[inp.dataset.grupo ?? ''] ?? '';
         if (foco) {
             const inp = lista.querySelector<HTMLInputElement>(`input.buscar[data-grupo="${foco.g}"]`);
@@ -294,7 +300,7 @@ export class BarraHilos {
             + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
             + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
             + `<span class="prio p${x.prioridad ?? 0}">${ic(PRIO_I[x.prioridad ?? 0] ?? PRIO_I[0])}</span>`
-            + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${ic(ATENCION_I[at])}</span>`
+            + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${glifos.enLaBarra() ? glifos.htmlHilo(x.nombre, estadoDe(at, false)) : ic(ATENCION_I[at])}</span>`
             + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
             + `<span class="nombre">${esc(visible || x.nombre)}</span>`
             + (saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : '')
@@ -307,7 +313,8 @@ export class BarraHilos {
         // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
         // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
         const visto = h.atencion === 'termino' && !h.sin_ver;
-        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">${ic(ATENCION_I[h.atencion])}</span>`;
+        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">`
+            + `${glifos.enLaBarra() ? glifos.htmlHilo(h.nombre, estadoDe(h.atencion, visto)) : ic(ATENCION_I[h.atencion])}</span>`;
         // dónde vive: ⇄ si es en otra máquina y esta ventana solo lo mira (con la columna ancha, su nombre)
         const remoto = this.columnaMaquina(h.remoto === '?' ? '?' : h.remoto ?? '',
             h.remoto ? (h.remoto === '?' ? 'conectado a otra máquina' : `vive en ${h.remoto}`) : '');

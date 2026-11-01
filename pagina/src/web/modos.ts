@@ -21,7 +21,8 @@ const EN_BODY = ['barra', 'lado', 'cabecera', 'acciones', 'escribir', 'avisos', 
 let modos: Modo[] = [
     { clave: 'estandar', nombre: 'estándar', de_fabrica: true, cambiado: false, valores: {
         barra: 'abierta', lado: 'abierto', cabecera: 'visible', acciones: 'visible', escribir: 'oculta',
-        pantalla_completa: 'no', etiquetas: '', sin_etiqueta: 'se-ven', avisos: 'todos', aviso_version: 'visible' } },
+        pantalla_completa: 'no', etiquetas: '', sin_etiqueta: 'se-ven', glifos: 'no', iconos: 'simbolos', campo: '', avisos: 'todos',
+        aviso_version: 'visible' } },
     { clave: 'foco', nombre: 'foco', de_fabrica: true, cambiado: false, valores: {
         barra: 'oculta', lado: 'oculto', cabecera: 'oculta', acciones: 'oculta', escribir: 'oculta', pantalla_completa: 'no',
         columnas: 110, posicion: 'centro', fondo: 'ninguno', avisos: 'urgentes', aviso_version: 'oculto' } },

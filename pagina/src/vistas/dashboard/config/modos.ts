@@ -10,6 +10,7 @@ import type { FabricaSeccion } from './seccion';
 
 const mostrarValor = (clave: string, v: modos.Valor | undefined): string => {
     if (clave === 'etiquetas') return v ? String(v).split(',').join(', ') : 'todos los hilos';
+    if (clave === 'campo') return v ? String(v) : 'en ninguna pantalla';
     if (v === undefined || v === '') return '—';
     if (clave === 'sin_etiqueta') return String(v).replace(/-/g, ' ');
     if (clave === 'columnas') return v === 0 ? 'todo el ancho' : `${v} columnas`;
@@ -20,7 +21,8 @@ const mostrarValor = (clave: string, v: modos.Valor | undefined): string => {
 const resumen = (m: modos.Modo): string => {
     const v = m.valores;
     return [`barra ${v.barra}`, `cabecera ${v.cabecera}`, `terminal ${v.columnas === 0 ? 'todo el ancho' : `${v.columnas} col`} ${v.posicion}`,
-        `fondo ${v.fondo}`, `avisos ${v.avisos}`, ...(v.etiquetas ? [`hilos de ${String(v.etiquetas).split(',').join(', ')}`] : [])]
+        `fondo ${v.fondo}`, `avisos ${v.avisos}`, ...(v.etiquetas ? [`hilos de ${String(v.etiquetas).split(',').join(', ')}`] : []),
+        ...(v.glifos === 'si' ? [`glifos${v.iconos === 'glifos' ? ' en la barra' : ''}${v.campo ? `, campo ${v.campo}` : ''}`] : [])]
         .filter(x => !x.includes('undefined')).join(' · ');
 };
 
@@ -44,6 +46,16 @@ export const modosSeccion: FabricaSeccion = ctx => {
             const lista = t.toLowerCase().split(/[,\s]+/).map(e => e.replace(/^#/, '')).filter(Boolean);
             if (lista.some(e => !/^[a-z0-9áéíóúüñ][a-z0-9áéíóúüñ-]{0,23}$/.test(e))) { void ui.falla('telar: minúsculas, números y guiones; hasta 24 letras cada una'); return; }
             modos.poner('etiquetas', [...new Set(lista)].join(','));
+            return;
+        }
+        if (a.clave === 'campo') {
+            // vacío: en ninguna pantalla. Las claves son las de las pestañas (⚙ pestañas) y las vistas de un hilo
+            const t = await ui.campo({ titulo: `${a.nombre} · en «${modos.puesto().nombre}»`, valor: String(actual ?? ''),
+                placeholder: 'ahora=banda, plan=fondo 0.15',
+                ayuda: `${a.ayuda}. Pantallas: ${ctx.dashboard.pestanas().map(p => p.clave).join(', ')}, conversacion, lectura; * las demás`,
+                validar: t => t.split(',').every(x => !x.trim() || /^\s*[^=\s]+\s*=\s*(banda|fondo|nada)(\s+\d*\.?\d+)?\s*$/.test(x)) ? undefined
+                    : 'cada una «pantalla=banda|fondo|nada [intensidad]», separadas por coma' });
+            if (t !== undefined) modos.poner('campo', t.split(',').map(x => x.trim()).filter(Boolean).join(', '));
             return;
         }
         const texto = (await ui.campo({

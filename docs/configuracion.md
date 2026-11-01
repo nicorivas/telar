@@ -814,6 +814,20 @@ etiquetas = "personal"
 Filtra HILOS, las secciones propias y ARCHIVO; los agentes, el dashboard y las apps se ven siempre, y el hilo que se
 está mirando no se esconde. Con un filtro puesto, el ícono del modo en la cabecera va en violeta.
 
+Los glifos de risografía también son de cada modo, y vienen apagados: un campo de glifos que cambia de escala, en una
+banda arriba o detrás de una pantalla, y un glifo por hilo (calculado de su nombre, con su estado) en la barra.
+
+```toml
+[modos.riso]
+glifos = "si"              # el interruptor de todo: no deja la página como siempre
+iconos = "glifos"          # en la barra: simbolos (los de siempre) o glifos
+campo = "ahora=banda, plan=fondo 0.15, *=nada"   # por pantalla: banda, fondo o nada, y su intensidad (0.05 a 1)
+```
+
+Las pantallas son las claves de las pestañas (las de ⚙ pestañas: `ahora`, `revisar`, `proyectos`, `pestana:leer`…) y
+las vistas de un hilo, `conversacion` y `lectura`; `*` vale para las que no se nombran. Con «reducir movimiento» en el
+sistema, se pintan una vez y no se mueven.
+
 Cuál está puesto es de cada navegador. En la página: su ícono en la cabecera (un clic abre la lista), ⌥⇧F (foco y
 vuelta), ⌥⇧M (el siguiente) y ⚙ → modos, donde un clic cambia un ajuste a mano en el modo puesto y «guardar en este
 modo» lo escribe aquí.

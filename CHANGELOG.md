@@ -10,6 +10,14 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Added
 
+- **Riso glyphs, per mode and off by default.** A field of glyphs printed like a risograph on the dark background
+  (each ink on its own layer, with grain, mixed by light) that changes scale by zones, and a glyph per thread computed
+  from its name, with its state on top (working turns in 45° steps, waiting fills a ring of yellow dots, done gets a
+  green dot, seen goes dim). A mode turns them on (`glifos = "si"`), puts the glyphs in the sidebar (`iconos =
+  "glifos"`) and places the field per screen (`campo = "ahora=banda, plan=fondo 0.15"`: a band on top, behind
+  everything, or nothing). Nothing fades: colours change at once and things appear by size, with a bounce. It
+  animates only what shows, at 30 fps at most, stops with the tab hidden and holds still with reduced motion. The
+  engine is in separate modules under `pagina/src/web/glifos/` (pieces, gestures, printing, field, thread glyph).
 - **`?abrir=<dirección>` opens something when the page loads** (`/?abrir=hilo:Gestión`, `tarea:T84`), instead of
   the dashboard or, on a phone, the list: a thread on a phone opens in its conversation (with the box to write), and
   «◀ hilos» goes back to the list. A sleeping or archived thread is shown, not resumed. For a phone's home screen.

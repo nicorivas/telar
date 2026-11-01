@@ -396,6 +396,17 @@ dialog.buscador {
   & .b-pie { padding: 0 var(--h-2) var(--e-1); color: var(--dim); }
 }
 
+/* los glifos de risografía (pagina/src/web/glifos): el campo, en una banda arriba de la pantalla que se ve o detrás
+   de todas las vistas, y el glifo de cada hilo en la barra */
+canvas.campo-glifos {
+  display: block;
+  pointer-events: none;
+
+  &[data-lugar="banda"] { flex: none; width: 100%; height: 112px; border-bottom: var(--borde); }
+  &[data-lugar="fondo"] { width: 100%; height: 100%; }
+}
+canvas.glifo-hilo { display: inline-block; vertical-align: middle; }
+
 /* Los diálogos y avisos de la página (web/interfaz.ts), encima de todo. scripts/navegador.mjs los junta en
    src/telar/web/marco.css. */
 

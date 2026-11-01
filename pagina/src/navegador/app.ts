@@ -13,6 +13,7 @@ import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { esc } from '../estilo';
 import { C, I } from '../web/iconos';
+import * as glifos from '../web/glifos';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
@@ -40,7 +41,7 @@ let actual = 'dashboard';
 
 /** Lo que se ve a la derecha: el dashboard, una vista de un hilo, su carpeta o «compartir», cada una dibujada en un
  *  elemento de la página con su clave en `data-p`. */
-const vistas = () => [...marcos().children] as HTMLElement[];
+const vistas = () => ([...marcos().children] as HTMLElement[]).filter(x => x.dataset.p);
 
 /** Las vistas de un hilo dibujadas en la página (la lectura, la conversación), por su clave: se les avisa al
  *  volver a verse. */
@@ -182,6 +183,16 @@ function mostrar(que: string): void {
     barra.dashboardActivo = que === 'dashboard';
     barra.mostrado = que === 'dashboard' ? '' : que;
     barra.refrescar(true);
+    ubicarCampo();
+}
+
+/** El campo de glifos (web/glifos), en la pantalla que se ve si su modo se lo pone: la pestaña del dashboard, o la
+ *  conversación o la lectura de un hilo (la terminal tiene su propio fondo, ⚙ terminal). */
+function ubicarCampo(): void {
+    const como = forma(actual);
+    const pantalla = actual === 'dashboard' ? hoy.pestanaActiva() : como === 'conv' ? 'conversacion' : como === 'lectura' ? 'lectura' : '';
+    const f = vistas().find(x => !x.hidden);
+    glifos.ubicar(pantalla, f, marcos());
 }
 
 // ── arrancar ──────────────────────────────────────────────────────────────────
@@ -204,7 +215,9 @@ hoy.alCambiarFoco = () => {
 // las pestañas del dashboard son un grupo de la barra: sus filas, sus cuentas y la que se ve, al día con cada pintada
 barra.pestanasDashboard = () => hoy.pestanas();
 // (también la app: al salir de ella a una pestaña, su fila dejaba de ser la que se ve y seguía marcada)
-hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.appActiva = hoy.appActual; barra.refrescar(); };
+hoy.alPintar = () => { barra.pestanaActiva = hoy.pestanaActiva(); barra.appActiva = hoy.appActual; barra.refrescar(); if (actual === 'dashboard') ubicarCampo(); };
+// cambiar de modo puede prender, apagar o mover el campo
+modos.alCambiar(() => ubicarCampo());
 modelo.cambio.event(() => barra.refrescar());
 
 // un archivo soltado donde nadie lo recibe (lo recibe la terminal de un hilo: web/terminal.ts) no hace nada: de
