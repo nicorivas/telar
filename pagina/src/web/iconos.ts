@@ -13,7 +13,7 @@ export const I = {
     remoto: '\u{ebcb}', abierto: '\u{eab4}', plegado: '\u{eab6}', persona_dot: '\u{ea71}', pedido: '\u{eb9a}',
     maquinas: '\u{eb50}', config: '\u{eb51}', actualizar: '\u{ebff}', etiqueta: '\u{ea66}', modo: '\u{ebeb}', enviar: '\u{ec0f}', reloj: '\u{ea82}',
     menu: '\u{ea7c}', pausa: '\u{ead1}', correr: '\u{ead3}', editar: '\u{ea73}', estrella: '\u{eb59}', sinEstrella: '\u{ea6a}',
-    externo: '\u{eb14}', ordenar: '\u{eb55}', asc: '\u{eb71}', desc: '\u{eb6e}', atras: '\u{eab5}', subir: '\u{eab7}',
+    externo: '\u{eb14}', ordenar: '\u{eb73}', asc: '\u{eb71}', desc: '\u{eb6e}', atras: '\u{eab5}', subir: '\u{eab7}',
     deshacer: '\u{eae2}', lista: '\u{eb84}', lleno: '\u{ea71}', vacio: '\u{ebb5}', medio: '\u{eac6}', punto: '\u{eb8a}',
     chispa: '\u{ec10}', filtro: '\u{eaf1}', ninguno: '\u{eabd}', casa: '\u{eb06}', ventana: '\u{eb7f}', compartir: '\u{eb18}',
     adelante: '\u{ea9c}', marca: '\u{eb2b}',
