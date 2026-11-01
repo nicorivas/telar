@@ -75,7 +75,7 @@
   .gl-pantallas,
   .gl-params {
     display: grid;
-    grid-template-columns: minmax(14ch, max-content) minmax(0, 1fr) minmax(0, 18ch) 5ch;
+    grid-template-columns: 24ch minmax(0, 1fr) minmax(0, 18ch) 5ch;
     gap: .15lh 2ch;
     align-items: center;
     margin: var(--e-1) 0 var(--e-2);
@@ -87,7 +87,7 @@
   }
 
   .gl-params {
-    grid-template-columns: minmax(18ch, max-content) minmax(0, 24ch) 5ch;
+    grid-template-columns: 20ch minmax(0, 24ch) 5ch;
 
     & label { color: var(--fg); }
     & label.cambiado { color: var(--azul); }

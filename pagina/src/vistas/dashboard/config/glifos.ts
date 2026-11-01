@@ -71,7 +71,7 @@ export const glifosSeccion: FabricaSeccion = ctx => {
             const m2 = partir(String(modos.valor('campo') ?? ''));
             const comodin = m2.get('*');
             const pantallas: [string, string][] = [...ctx.dashboard.pestanas().map(p => [p.clave, p.nombre] as [string, string]),
-                ['conversacion', 'conversación de un hilo'], ['lectura', 'lectura de un hilo'], ['*', 'las demás']];
+                ['config', 'configuración (⚙)'], ['conversacion', 'conversación de un hilo'], ['lectura', 'lectura de un hilo'], ['*', 'las demás']];
             h.push('<div class="fila dim">el campo, por pantalla: una banda arriba, detrás de todo, o nada; y su intensidad</div>');
             h.push('<div class="gl-pantallas">');
             for (const [clave, nombre] of pantallas) {
