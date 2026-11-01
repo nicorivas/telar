@@ -8,14 +8,15 @@ import * as ui from '../../../web/ui';
 import { atajo } from '../dia';
 import type { MensajeDia } from '../vista';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 /** La marca, el color y la frase del estado de un proceso: pausado, corriendo, falló, bien. */
 function estadoPeriodico(p: cli.JsonPeriodico): [string, string, string] {
-    if (p.ultima.corriendo) return ['◐', 'azul', 'corriendo ahora'];
-    if (!p.activo) return ['⏸', 'dim', 'pausado: no corre hasta que lo actives'];
-    if (p.ultima.codigo !== undefined && p.ultima.codigo !== 0) return ['✗', 'rojo', `la última vez: ${p.ultima.resultado ?? 'falló'}`];
-    if (p.ultima.inicio) return ['●', 'verde', `la última vez: ${p.ultima.resultado ?? 'bien'}`];
-    return ['○', 'dim', 'todavía no ha corrido'];
+    if (p.ultima.corriendo) return [I.viaja, 'azul', 'corriendo ahora'];
+    if (!p.activo) return [I.pausa, 'dim', 'pausado: no corre hasta que lo actives'];
+    if (p.ultima.codigo !== undefined && p.ultima.codigo !== 0) return [I.cerrar, 'rojo', `la última vez: ${p.ultima.resultado ?? 'falló'}`];
+    if (p.ultima.inicio) return [I.lleno, 'verde', `la última vez: ${p.ultima.resultado ?? 'bien'}`];
+    return [I.vacio, 'dim', 'todavía no ha corrido'];
 }
 
 /** «2 h 10», «35 min», «3 d»: cuánto falta hasta esa hora. */
@@ -173,7 +174,7 @@ export const periodicos: FabricaSeccion = ctx => {
         if (datos && !lista.length) h.push(`<div class="vacio">ninguno todavía · <a data-accion="per-nuevo">crear uno</a> · se guardan en ${esc(datos.archivo)}</div>`);
         for (const p of lista) {
             const [marca, color, dice] = estadoPeriodico(p);
-            const que = p.tipo === 'mensaje' ? `✦ ${p.mensaje}` : p.comando;
+            const que = p.tipo === 'mensaje' ? `${I.chispa} ${p.mensaje}` : p.comando;
             const cuando = p.activo ? (p.proxima ? `en ${enCuanto(p.proxima)}` : '—') : 'pausado';
             const ultima = p.ultima.inicio ? `hace ${haceCorto(p.ultima.inicio)}` : 'nunca';
             h.push(`<div class="fila clic per${p.activo ? '' : ' dim'}" data-accion="per-ver" data-valor="${esc(p.nombre)}" title="${esc(`${p.descripcion ? p.descripcion + '\n' : ''}${dice}\nclic: su ficha y su log`)}">`
@@ -195,9 +196,9 @@ export const periodicos: FabricaSeccion = ctx => {
         const botones = [
             `<a class="atajo principal" data-accion="per-orden" data-valor="${args(['ahora', p.nombre])}"><kbd>⏎</kbd><span>correr ahora</span></a>`,
             ...(deAfuera ? [] : [
-                `<a class="atajo" data-accion="per-orden" data-valor="${args([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? '⏸ pausar' : '▶ activar'}</span></a>`,
-                `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>✎ editar</span></a>`,
-                `<a class="atajo" data-accion="per-orden" data-valor="${args(['borrar', p.nombre])}"><kbd>3</kbd><span>✕ borrar</span></a>`,
+                `<a class="atajo" data-accion="per-orden" data-valor="${args([p.activo ? 'pausar' : 'activar', p.nombre])}"><kbd>1</kbd><span>${p.activo ? `${I.pausa} pausar` : `${I.correr} activar`}</span></a>`,
+                `<a class="atajo" data-accion="per-editar" data-valor="${esc(p.nombre)}"><kbd>2</kbd><span>${I.editar} editar</span></a>`,
+                `<a class="atajo" data-accion="per-orden" data-valor="${args(['borrar', p.nombre])}"><kbd>3</kbd><span>${I.descartar} borrar</span></a>`,
             ]),
             `<a class="atajo" data-accion="periodicos"><kbd>⎋</kbd><span>volver</span></a>`,
         ];
@@ -234,7 +235,7 @@ export const periodicos: FabricaSeccion = ctx => {
             campo('nombre', `<input id="per-nombre" value="${esc(p.nombre)}" placeholder="resumen-diario" spellcheck="false"${f.original ? ' disabled' : ''}>`,
                 f.original ? 'el nombre no se cambia' : 'minúsculas, números, - y _'),
             campo('para qué', `<input id="per-desc" value="${esc(p.descripcion)}" placeholder="en una línea, para acordarte">`),
-            campo('qué hace', `<span class="opciones"><a class="opcion-t${p.tipo === 'mensaje' ? ' activa' : ''}" data-per-tipo="mensaje">✦ prompt para el agente</a>`
+            campo('qué hace', `<span class="opciones"><a class="opcion-t${p.tipo === 'mensaje' ? ' activa' : ''}" data-per-tipo="mensaje">${I.chispa} prompt para el agente</a>`
                 + `<a class="opcion-t${p.tipo === 'comando' ? ' activa' : ''}" data-per-tipo="comando">$ comando de shell</a></span>`),
             `<div class="solo-mensaje">`,
             campo('skill', `<input id="per-skill-filtro" placeholder="buscar una skill…" spellcheck="false" autocomplete="off">`

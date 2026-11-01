@@ -7,6 +7,7 @@ import { esc, fechaCorta } from '../../../estilo';
 import { modelo } from '../../../modelo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 export const agentes: FabricaSeccion = ctx => {
     let lista: cli.JsonMensajeBus[] | undefined;
@@ -33,7 +34,7 @@ export const agentes: FabricaSeccion = ctx => {
         const abierto = abiertos.has(m.id);
         const texto = abierto ? m.texto : m.texto.split(/\s+/).join(' ').slice(0, 140);
         return `<div class="item-pag clic" data-accion="ver-msg" data-valor="${esc(m.id)}" title="clic: ${abierto ? 'acortar' : 'el texto entero'}">`
-            + `<div class="fila">${retenido ? '<span class="falla">⏸ </span>' : ''}<b>${esc(m.de)}</b><span class="dim"> → </span><b>${esc(m.para)}</b>`
+            + `<div class="fila">${retenido ? `<span class="falla">${I.pausa} </span>` : ''}<b>${esc(m.de)}</b><span class="dim"> → </span><b>${esc(m.para)}</b>`
             + `<span class="dim"> · ${esc(m.tipo)}${m.saltos ? ` · salto ${m.saltos}` : ''}</span>`
             + `<span class="der dim">${esc(fechaCorta(m.creado))}`
             + (retenido ? ` · <a data-accion="soltar-msg" data-valor="${esc(m.id)}" title="mandarlo igual: lo decides tú">soltar</a>` : '')
@@ -45,7 +46,7 @@ export const agentes: FabricaSeccion = ctx => {
     const seccion = {
         clave: 'agentes',
         nombre: 'mensajes',
-        ayuda: 'lo que se dicen los hilos por el bus, y lo retenido (los agentes residentes: ≡ en AGENTES, en la barra)',
+        ayuda: 'lo que se dicen los hilos por el bus, y lo retenido (los agentes residentes: en AGENTES, en la barra)',
         visible: () => modelo.hayBus,
         abrir: () => leer(),
         pintar(): void {
@@ -54,7 +55,7 @@ export const agentes: FabricaSeccion = ctx => {
             const retenidos = todos.filter(m => m.estado === 'retenido' && !soltados.has(m.id));
             const h = [`<div class="fila"><span class="dim">${todos.length} último${todos.length === 1 ? '' : 's'}`
                 + `${retenidos.length ? ` · ${retenidos.length} retenido${retenidos.length === 1 ? '' : 's'}` : ''}</span>`
-                + '<span class="der"><a data-accion="agentes-leer" title="volver a leer">↻</a></span></div>'];
+                + `<span class="der"><a data-accion="agentes-leer" title="volver a leer">${I.releer}</a></span></div>`];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             if (lista && !todos.length) h.push('<div class="fila dim">nada todavía</div>');
             for (const m of retenidos) h.push(fila(m, true));

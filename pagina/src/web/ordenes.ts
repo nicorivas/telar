@@ -2,8 +2,7 @@
 // sección…): las piden la barra y el dashboard (`ui.orden`), y las cumple esta página, con su interfaz
 // (web/ui.ts) y lo que muestra a la derecha (src/navegador/app.ts).
 
-import { PRIORIDAD } from '../estilo';
-import { C, I } from './iconos';
+import { C, I, PRIO_I } from './iconos';
 import * as entidades from './entidades';
 import * as ui from './ui';
 import type { Opcion } from './ui';
@@ -103,7 +102,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         if (!hilo || !h) return undefined;
         type Fila = entidades.AccionEntidad;
         const prioridad = (n: string, nombre: string): Fila => ({ label: `prioridad ${nombre}`, description: String(h.prioridad ?? '') === n ? 'la que tiene' : '',
-            icono: PRIORIDAD[Number(n) || 0], color: C.cambiar,
+            icono: PRIO_I[Number(n) || 0], color: C.cambiar,
             hacer: () => sobreHilo(hilo, 'prioridad', [], n) });
         const filas: Fila[] = [
             { label: h.archivado || !h.vivo ? 'retomar' : 'ver', icono: h.archivado || !h.vivo ? I.retomar : I.ver, color: C.ir, description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
@@ -285,7 +284,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         'telar.nuevo': async () => {
             const nombre = (await ui.campo({
                 titulo: 'Hilo nuevo', placeholder: 'faro',
-                ayuda: 'Un tab con su agente. Después se vincula a un proyecto con ⋯.',
+                ayuda: `Un tab con su agente. Después se vincula a un proyecto con ${I.menu}.`,
                 validar: t => yaEsta(t.trim()),
             }))?.trim();
             if (!nombre) return;

@@ -100,14 +100,14 @@ export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuent
         + '</span></div>',
     // un ícono sobre cada columna: el clic ordena por ella, otro clic da vuelta el orden
     '<div class="fila proy-cab">'
-        + '<span class="at" data-orden-p="hilo" title="ordenar: con hilo primero (otra vez: por estado y nombre)">↕</span>'
-        + '<span class="que" data-orden-p="nombre" title="ordenar por nombre (otra vez: por estado y nombre)">↕</span>'
-        + '<span class="estado" data-orden-p="estado" title="ordenar por estado (otra vez: por estado y nombre)">↕</span>'
-        + '<span class="tipo" data-orden-p="tipo" title="ordenar por tipo (otra vez: por estado y nombre)">↕</span>'
-        + '<span class="cuando-p" data-orden-p="fecha" title="ordenar por cuándo se tocó (otra vez: por estado y nombre)">↕</span><span class="menu-col"></span></div>',
+        + `<span class="at" data-orden-p="hilo" title="ordenar: con hilo primero (otra vez: por estado y nombre)">${I.ordenar}</span>`
+        + `<span class="que" data-orden-p="nombre" title="ordenar por nombre (otra vez: por estado y nombre)">${I.ordenar}</span>`
+        + `<span class="estado" data-orden-p="estado" title="ordenar por estado (otra vez: por estado y nombre)">${I.ordenar}</span>`
+        + `<span class="tipo" data-orden-p="tipo" title="ordenar por tipo (otra vez: por estado y nombre)">${I.ordenar}</span>`
+        + `<span class="cuando-p" data-orden-p="fecha" title="ordenar por cuándo se tocó (otra vez: por estado y nombre)">${I.ordenar}</span><span class="menu-col"></span></div>`,
     '<div id="proyectos">'];
     for (const p of lista) {
-        const marca = p.vivo ? '●' : p.hilo ? '·' : '';
+        const marca = p.vivo ? I.lleno : p.hilo ? I.punto : '';
         const texto = normalizar(`${p.nombre} ${p.ruta} ${p.arquetipo} ${p.estado ?? ''} ${p.area ?? ''}`);
         // el cliente adelante y en color; lo demás del nombre, apagado
         const cliente = p.cliente && p.nombre.startsWith(p.cliente) ? p.cliente : '';
@@ -123,7 +123,7 @@ export function htmlListaProyectos(lista: cli.JsonProyecto[], sel: string, cuent
             + `<span class="at">${marca}</span><span class="que">${nombre}</span>`
             + `<span class="estado ${claseEstado(estado)}" title="${esc(p.estado_completo || estado)}">${esc(estado)}</span>`
             + `<span class="dim tipo">${esc(p.arquetipo)}</span><span class="dim cuando-p">${esc(haceCorto(fecha))}</span>`
-            + `<span class="menu-fila menu-col" data-accion="proy-menu" data-valor="${esc(p.ruta)}" title="acciones de este proyecto">⋯</span></div>`);
+            + `<span class="menu-fila menu-col" data-accion="proy-menu" data-valor="${esc(p.ruta)}" title="acciones de este proyecto">${I.menu}</span></div>`);
     }
     h.push('<div id="proyectos-vacio" class="fila dim" hidden></div></div>');
     return h;
@@ -140,7 +140,7 @@ export function filaPendiente(t: Pendiente): string {
         + `<span class="id">${esc(ref)}</span>${iconoPrioridad(t.fila, t.ref, !!t.fila.ficha)}`
         + `<span class="desc">${t.fila.dueno ? `<span class="dueno">→ ${esc(t.fila.dueno)}</span>` : ''}${esc(limpiarMd(t.texto))}</span>`
         + `<span class="meta">${plazo(t.dias)}${t.fila.proveedor ? '<span></span>'
-            : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([t.ref, t.texto, t.hilo, t.fila.dueno ?? '']))}" title="acciones de este pendiente">⋯</span>`}</span></div>`;
+            : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([t.ref, t.texto, t.hilo, t.fila.dueno ?? '']))}" title="acciones de este pendiente">${I.menu}</span>`}</span></div>`;
 }
 
 export interface DetalleProyecto {
@@ -415,7 +415,7 @@ export class PantallaProyectos implements Pantalla {
             void ui.estado(`telar: copiado ${ruta}`, 3000);
         } });
         if (p.hilo) {
-            items.push({ label: 'Archivar su hilo', icono: I.archivar, color: C.quitar, description: `cierra «${p.hilo}» y lo guarda; ▶ lo retoma`, hacer: async () => {
+            items.push({ label: 'Archivar su hilo', icono: I.archivar, color: C.quitar, description: `cierra «${p.hilo}» y lo guarda; ${I.retomar} lo retoma`, hacer: async () => {
                 const si = await ui.aviso(`¿Archivar «${p.hilo}»? Se cierra su ventana; su conversación queda para retomarla.`, 'Archivar');
                 if (si !== 'Archivar') return;
                 const r = await cli.hilo('archivar', p.hilo, undefined, ['--cerrar']);

@@ -10,6 +10,7 @@ import { modelo } from '../../modelo';
 import { pendientes, seccion } from './dia';
 import { mdSimple } from './pagina';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace, pestanaDeSeccion } from './pantalla';
+import { I } from '../../web/iconos';
 
 const alternar = (s: Set<string>, k: string) => { if (s.has(k)) s.delete(k); else s.add(k); };
 
@@ -120,7 +121,7 @@ export class PantallaBloques implements Pantalla {
             const solo = this.soloPendientes.has(b.clave);
             // con tareas en sus filas (los correos), un interruptor: solo las que tienen alguna pendiente
             const filtro = !conTareasB ? '' : `<a class="solo-pend${solo ? ' si' : ''}" data-accion="solo-pendientes" data-valor="${esc(b.clave)}"`
-                + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? '☑' : '☐'} con tareas pendientes</a>`;
+                + ` title="${solo ? 'mostrar todos' : 'mostrar solo los que tienen alguna tarea pendiente'}">${solo ? I.hecha : I.vacio} con tareas pendientes</a>`;
             const suyos = this.t.atajosEn(b.clave) + filtro;
             h.push(seccion(b.nombre, b.color, leido?.pagina?.subtitulo ?? '', suyos));
             // con muchas filas (la bandeja), un buscador en su línea: filtra lo que se ve sin repintar (dashboard/vista.ts)
@@ -161,7 +162,7 @@ export class PantallaBloques implements Pantalla {
                     const tareas = !conTareas ? '' : `<span class="tar" title="${esc(ts.map(t => `${t.id} ${pendiente(t) ? (t.estado || 'pendiente') : 'cerrada'}`).join('\n') || 'sin tareas')}">`
                         + (ts.length ? ts.map(t => `<span class="${pendiente(t) ? 'abierta' : 'cerrada'}">${esc(t.id)}</span>`).join(', ') : '—') + '</span>';
                     // una conversación: ▸ con cuántos son, que la despliega
-                    const plegar = e.cuantos ? `<span class="plegar" data-accion="grupo-item" data-valor="${esc(e.llave!)}" title="${e.abierta ? 'plegar' : `ver los ${e.cuantos} de esta conversación`}">${e.abierta ? '▾' : '▸'}${e.cuantos}</span> ` : '';
+                    const plegar = e.cuantos ? `<span class="plegar" data-accion="grupo-item" data-valor="${esc(e.llave!)}" title="${e.abierta ? 'plegar' : `ver los ${e.cuantos} de esta conversación`}">${e.abierta ? I.abierto : I.plegado}${e.cuantos}</span> ` : '';
                     const nuevo = e.nuevo ?? x.destacado;
                     const sel = i === marcado && b.clave === this.sel;
                     const busca = (e.busca ?? textoDe(x)).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -215,9 +216,9 @@ export class PantallaBloques implements Pantalla {
      *  ficha) y, si trae `mensaje`, el botón para procesarlo en un hilo. */
     private htmlItem(b: cli.JsonBloque, x: cli.JsonPaginaItem, i: number, alLado = false): string[] {
         // el título lleva al original (la conversación en Gmail), en su pestaña si ya está abierta
-        const titulo = x.enlace ? `<a class="titulo-item" data-accion="item-enlace" data-valor="${esc(b.clave)}:${i}" title="${esc(`abrirlo: ${x.enlace}`)}"><b>${esc(x.titulo)}</b> ↗</a>` : `<b>${esc(x.titulo)}</b>`;
+        const titulo = x.enlace ? `<a class="titulo-item" data-accion="item-enlace" data-valor="${esc(b.clave)}:${i}" title="${esc(`abrirlo: ${x.enlace}`)}"><b>${esc(x.titulo)}</b> ${I.externo}</a>` : `<b>${esc(x.titulo)}</b>`;
         // al lado de la lista, se cierra con ✕ (o ⎋); solo, se vuelve a la lista
-        const volver = alLado ? `<a class="cerrar-item" data-accion="item-volver" title="cerrarlo (⎋)">✕</a>`
+        const volver = alLado ? `<a class="cerrar-item" data-accion="item-volver" title="cerrarlo (⎋)">${I.cerrar}</a>`
             : `<a data-accion="item-volver" title="volver a la lista">‹ ${esc(b.nombre)}</a>&nbsp; `;
         const h = [`<div class="subcab">${alLado ? '' : volver}${titulo}${alLado ? volver : ''}`
             + `<span class="dim">${esc((x.texto ?? '').replace(/ · tareas: .*$/, ''))}${x.fecha ? ` · ${esc(x.fecha.slice(0, 16).replace('T', ' '))}` : ''}</span></div>`];
@@ -231,7 +232,7 @@ export class PantallaBloques implements Pantalla {
                 const abierto = this.cuerposAbiertos.has(llave);
                 const largo = c.texto!.split('\n').length > 5 || c.texto!.length > 600;
                 h.push(`<div class="cuerpo${abierto || !largo ? '' : ' plegado'}">${esc(c.texto!)}</div>`);
-                if (largo) h.push(`<div class="fila"><a data-accion="cuerpo-alternar" data-valor="${esc(llave)}">${abierto ? '▴ plegar' : '▾ ver todo'}</a></div>`);
+                if (largo) h.push(`<div class="fila"><a data-accion="cuerpo-alternar" data-valor="${esc(llave)}">${abierto ? `${I.subir} plegar` : `${I.abierto} ver todo`}</a></div>`);
             }
         }
         h.push('<h2>Tareas<small>las que nacieron de este correo o de otro mensaje de su conversación</small></h2>');
@@ -251,7 +252,7 @@ export class PantallaBloques implements Pantalla {
         h.push('</div>');
         if (x.mensaje) {
             h.push('<h2>Procesar</h2>');
-            h.push(`<div class="fila"><a data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}" title="${esc(x.mensaje)}">▶ procesarlo en un hilo</a>`
+            h.push(`<div class="fila"><a data-accion="abrir-item" data-valor="${esc(b.clave)}:${i}" title="${esc(x.mensaje)}">${I.correr} procesarlo en un hilo</a>`
                 + `&nbsp;<span class="dim">abre un hilo con <code>${esc(x.mensaje)}</code></span></div>`);
         }
         return h;

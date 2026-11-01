@@ -7,6 +7,7 @@ import { esc } from '../../../estilo';
 import * as modos from '../../../web/modos';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const mostrarValor = (clave: string, v: modos.Valor | undefined): string => {
     if (clave === 'etiquetas') return v ? String(v).split(',').join(', ') : 'todos los hilos';
@@ -41,7 +42,7 @@ export const modosSeccion: FabricaSeccion = ctx => {
         if (a.clave === 'etiquetas') {
             // separadas por coma; vacío: el modo no filtra
             const t = await ui.campo({ titulo: `${a.nombre} · en «${modos.puesto().nombre}»`, valor: String(actual ?? '').split(',').join(', '),
-                placeholder: 'trabajo', ayuda: `${a.ayuda}. Separadas por coma; a un hilo se le ponen desde su menú (⋯ › etiquetas…)` });
+                placeholder: 'trabajo', ayuda: `${a.ayuda}. Separadas por coma; a un hilo se le ponen desde su menú (${I.menu} › etiquetas…)` });
             if (t === undefined) return;
             const lista = t.toLowerCase().split(/[,\s]+/).map(e => e.replace(/^#/, '')).filter(Boolean);
             if (lista.some(e => !/^[a-z0-9áéíóúüñ][a-z0-9áéíóúüñ-]{0,23}$/.test(e))) { void ui.falla('telar: minúsculas, números y guiones; hasta 24 letras cada una'); return; }

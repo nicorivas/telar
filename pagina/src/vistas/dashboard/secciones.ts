@@ -7,6 +7,7 @@ import { esc } from '../../estilo';
 import { modelo } from '../../modelo';
 import { mdSimple } from './pagina';
 import type { Accion, Pantalla, Tablero } from './pantalla';
+import { I } from '../../web/iconos';
 
 /** Una hora ISO en la hora local, HH:MM. */
 function horaLocal(iso: string): string {
@@ -83,8 +84,8 @@ export class PantallaSecciones implements Pantalla {
             + '<span class="der">' + this.t.atajosEn(`seccion:${this.clave}`)
             // los enlaces de la página (una app servida: abrirla en el navegador) van junto al ↻
             + (p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace)
-                .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>↗</span> ${esc(a.nombre)}</a>`).join('')
-            + '<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>↻</span></a>'
+                .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>${I.externo}</span> ${esc(a.nombre)}</a>`).join('')
+            + `<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>${I.releer}</span></a>`
             + '</span></div>'];
         h.push(...this.t.paginas.html(p.bloques, this.clave.startsWith('app:') ? this.clave : ''));
         this.t.pintar(h);
@@ -107,7 +108,7 @@ export class PantallaSecciones implements Pantalla {
         const h: string[] = [`<div class="subcab"><b>Conversación</b><span class="dim">${esc(c.conversacion.slice(0, 8))}`
             + `${c.hilo ? ` · ${esc(c.hilo)}` : ''} · ${c.mensajes.length} mensajes</span>`
             + '<span class="der dim">'
-            + (hilo ? `<a data-accion="retomar-charla" title="volver a esta conversación en su hilo">▶ retomar</a> · ` : '')
+            + (hilo ? `<a data-accion="retomar-charla" title="volver a esta conversación en su hilo">${I.retomar} retomar</a> · ` : '')
             + (this.clave ? '<a data-accion="volver-seccion">← ' + esc(modelo.secciones.find(x => x.clave === this.clave)?.nombre ?? 'volver') + '</a>' : '')
             + '</span></div>'];
         for (const m of c.mensajes) {

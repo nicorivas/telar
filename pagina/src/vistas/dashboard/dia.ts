@@ -15,6 +15,7 @@
 
 import * as cli from '../../cli';
 import { esc, limpiarMd, normalizar } from '../../estilo';
+import { I } from '../../web/iconos';
 
 // ───────────────────────── los datos ─────────────────────────
 
@@ -229,10 +230,10 @@ export function filtroDuenos(filas: [string, boolean][], compacto = false): stri
     if (!otros && !sin) return '';
     const mias = filas.filter(([d, v]) => mia(d, v)).length;
     return '<div class="titulo-tareas duenos-t"><span class="modos">'
-        + `<button data-dueno-filtro="" title="todas, mías y de otros">${compacto ? '∗' : 'todas'} ${duenos.length}</button>`
+        + `<button data-dueno-filtro="" title="todas, mías y de otros">${compacto ? I.lista : 'todas'} ${duenos.length}</button>`
         + `<button data-dueno-filtro="mias" title="las mías: mis tareas sin dueño y lo que está a mi nombre">${compacto ? 'yo' : 'mías'} ${mias}</button>`
         + `<button data-dueno-filtro="otros" title="de otros: a nombre de otra persona (a quién empujar)">${compacto ? '→' : 'de otros'} ${otros}</button>`
-        + `<button data-dueno-filtro="sin" title="sin responsable: pendientes de un proyecto que no dicen quién (tus tareas sin dueño son tuyas)">${compacto ? '∅' : 'sin responsable'} ${sin}</button>`
+        + `<button data-dueno-filtro="sin" title="sin responsable: pendientes de un proyecto que no dicen quién (tus tareas sin dueño son tuyas)">${compacto ? I.ninguno : 'sin responsable'} ${sin}</button>`
         + '</span></div>';
 }
 

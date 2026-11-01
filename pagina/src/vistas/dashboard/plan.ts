@@ -12,6 +12,7 @@ import { Dia, diaDe, miNombre, seccion } from './dia';
 import { type EventoCal, carriles, eventosDelDia, notasDe } from './eventos';
 import type { Accion, Pantalla, Tablero } from './pantalla';
 import { type DiaSemana, diasDe, htmlNavSemana, htmlSemana, isoDe, lunesDe } from './semana';
+import { I } from '../../web/iconos';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -217,7 +218,7 @@ export function columnaCalendario(d: Dia, evs: EventoCal[], sel: string, ahora: 
         const que = `${q.tipo === 'cita' ? 'cita' : NOMBRE[q.clase]}${q.pendiente ? ', sin aceptar' : ''}${q.organiza ? ', la organizas tú: la puedes mover' : ''}`;
         col.push(`<div class="${clases}" data-accion="${accion}" data-valor="${esc(e.id)}" title="${esc(`${que}\n${e.titulo}${pisa.length ? `\nse cruza con: ${pisa.join(', ')}` : ''}`)}"`
             + ` style="top:${y(e.inicio)}px;height:${alto}px;left:calc(${(100 * k) / n}% + 2px);width:calc(${100 / n}% - 4px)">`
-            + `<span class="h">${esc(hm)}${tieneNotas ? ' <span class="marca-nota">✎</span>' : ''}</span><span class="t">${q.organiza ? '◇ ' : ''}${esc(e.titulo)}</span></div>`);
+            + `<span class="h">${esc(hm)}${tieneNotas ? ` <span class="marca-nota">${I.editar}</span>` : ''}</span><span class="t">${q.organiza ? `${I.persona} ` : ''}${esc(e.titulo)}</span></div>`);
     }
     col.push('</div>');
     return col.join('');
@@ -243,7 +244,7 @@ function htmlDetalle(e: EventoCal, notas: cli.JsonNotas | undefined, fecha: stri
     const h: string[] = [`<h3>${esc(e.titulo)}</h3>`,
         `<div class="cal-meta">${esc(hm(e.inicio))}–${esc(hm(e.fin))}${e.lugar ? ` · ${esc(e.lugar)}` : ''}${e.soloPlan ? ' · bloque del plan' : ''}</div>`];
     const acciones: string[] = [];
-    if (e.url) acciones.push(`<a class="enlace" data-url="${esc(e.url)}" title="${esc(e.url)}">entrar ↗</a>`);
+    if (e.url) acciones.push(`<a class="enlace" data-url="${esc(e.url)}" title="${esc(e.url)}">entrar ${I.externo}</a>`);
     if (!e.soloPlan) acciones.push(`<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url, e.id, e.asistentes]))}">preparar o minuta</a>`);
     acciones.push(`<a data-accion="nota-evento" data-valor="${esc(JSON.stringify([e.id, e.titulo, hm(e.inicio), fecha]))}">+ nota</a>`);
     h.push(`<div class="acciones-ev">${acciones.join('')}</div>`);

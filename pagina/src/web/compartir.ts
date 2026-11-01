@@ -3,6 +3,7 @@
 // feed de lecturas). Lo lleva `POST /api/compartir`. Se dibuja en un elemento de la página; sus estilos, en
 // media/css/compartir.css (con @scope, en `.v-compartir`).
 
+import { I } from './iconos';
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, clase = '', texto?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
     if (clase) e.className = clase;
@@ -15,7 +16,7 @@ interface Destino { destino: string; nombre: string; tipo: string }
 /** `consulta`: lo que llegó en la dirección (`?title=…&text=…&url=…`). */
 export function montar(raiz: HTMLElement, consulta: string): void {
     raiz.classList.add('v-compartir');
-    raiz.innerHTML = '<header><a href="/">◀ telar</a><b>compartir</b></header><main>'
+    raiz.innerHTML = `<header><a href="/">${I.atras} telar</a><b>compartir</b></header><main>`
         + '<section class="que"></section>'
         + '<textarea class="nota" rows="3" placeholder="una nota, si quieres (va con lo compartido)"></textarea>'
         + '<input class="filtro" placeholder="filtrar destinos" autocomplete="off">'

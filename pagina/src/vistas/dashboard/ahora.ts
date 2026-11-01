@@ -17,6 +17,7 @@ import { type Plan, columnaCalendario } from './plan';
 import { esServicio, filaPendiente } from './proyectos';
 import type { Accion, Pantalla, Tablero } from './pantalla';
 import { prepararReunion } from './reuniones';
+import { I } from '../../web/iconos';
 
 /** El bloque que toca: el que contiene la hora; si no hay, el próximo; si el día terminó, el último.
  *  Entre dos que se pisan, el que empezó más tarde (la reunión que corta un bloque propio). */
@@ -108,7 +109,7 @@ export function htmlAhora(o: {
     const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
     const fecha = new Date(o.ahora);
     const momento = `<a class="ahora-cuando${o.simulado ? ' simulado' : ''}" data-accion="ahora-elegir" title="elegir en el calendario otro momento: qué mostraría entonces">`
-        + `${o.simulado ? `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(o.ahora)}` : 'elegir momento'} ${o.elegir !== undefined ? '▴' : '▾'}</a>`;
+        + `${o.simulado ? `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(o.ahora)}` : 'elegir momento'} ${o.elegir !== undefined ? I.subir : I.abierto}</a>`;
     // el calendario del día, desplegado bajo la barra: un clic en un bloque mueve «ahora» a ese momento
     const desplegable = o.elegir === undefined ? '' : '<div class="ahora-elegir">'
         + `<div class="cal-nav"><a data-accion="ahora-dia" data-valor="-1" title="día anterior">‹</a>`
@@ -116,14 +117,14 @@ export function htmlAhora(o: {
         + o.elegir + '</div>';
     const e = o.evs[o.i];
     if (o.cargandoDia) { h.push(`<div class="ahora-nav">${momento}</div>${desplegable}<div class="vacio">leyendo ese día…</div></section>`); return h; }
-    if (!e) { h.push(`<div class="ahora-nav">${momento}${o.simulado ? '<a data-accion="ahora-soltar">↺ volver a ahora</a>' : ''}</div>${desplegable}<div class="vacio">nada en el calendario ni en el plan de ese día</div></section>`); return h; }
+    if (!e) { h.push(`<div class="ahora-nav">${momento}${o.simulado ? `<a data-accion="ahora-soltar">${I.deshacer} volver a ahora</a>` : ''}</div>${desplegable}<div class="vacio">nada en el calendario ni en el plan de ese día</div></section>`); return h; }
     const clase = claseDe(e);
     const p: Plan = e.plan ?? {};
     h.push('<div class="ahora-nav">'
         + `<a data-accion="ahora-mover" data-valor="-1" title="el bloque anterior">‹</a>`
         + `<span class="dim">${o.i + 1} de ${o.evs.length}</span>`
         + `<a data-accion="ahora-mover" data-valor="1" title="el bloque siguiente">›</a>`
-        + (o.fijo || o.simulado ? '<a data-accion="ahora-soltar" title="volver a lo que toca ahora; la vista sigue al reloj">↺ volver a ahora</a>'
+        + (o.fijo || o.simulado ? `<a data-accion="ahora-soltar" title="volver a lo que toca ahora; la vista sigue al reloj">${I.deshacer} volver a ahora</a>`
             : '<a data-accion="ahora-fijar" title="que la vista no cambie sola al pasar al bloque siguiente">fijar</a>')
         + momento + '</div>' + desplegable);
     h.push(`<div class="ahora-bloque"><span class="clase c-${clase}">${esc(NOMBRE[clase])}</span>`
@@ -145,7 +146,7 @@ export function htmlAhora(o: {
             f.nota ? `<div class="dim">${esc(String(f.nota))}</div>` : '',
         ].join('');
         const acciones = [
-            e.url ? `<a class="enlace" data-url="${esc(e.url)}">entrar ↗</a>` : '',
+            e.url ? `<a class="enlace" data-url="${esc(e.url)}">entrar ${I.externo}</a>` : '',
             !e.soloPlan ? `<a data-accion="reunion" data-valor="${esc(JSON.stringify([e.titulo, hm(e.inicio), e.url, e.id, e.asistentes]))}">${e.fin <= o.ahora ? 'procesar la minuta' : 'preparar o minuta'}</a>` : '',
         ].filter(Boolean).join('');
         h.push(acciones ? `<div class="acciones-ev">${acciones}</div>` : '');

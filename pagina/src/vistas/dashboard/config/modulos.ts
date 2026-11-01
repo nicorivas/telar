@@ -7,6 +7,7 @@ import * as cli from '../../../cli';
 import { esc } from '../../../estilo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const CONFIANZA: Record<string, [string, string]> = {
     oficial: ['revisado', 'del catálogo de telar: lo revisó quien mantiene telar'],
@@ -112,7 +113,7 @@ export const modulos: FabricaSeccion = ctx => {
             const porInstalar = (disponibles ?? []).filter(x => !x.instalado);
             const lista = porInstalar.filter(x => !t || [x.nombre, x.descripcion, x.autor, ...x.etiquetas].join(' ').toLowerCase().includes(t));
             const h = [`<div class="fila"><b>para instalar</b>${disponibles ? ` <span class="dim">${porInstalar.length}</span>` : ''}`
-                + '<span class="der"><a data-accion="mod-leer" title="volver a leer, y bajar los catálogos ahora">↻ buscar ahora</a></span></div>'];
+                + `<span class="der"><a data-accion="mod-leer" title="volver a leer, y bajar los catálogos ahora">${I.releer} buscar ahora</a></span></div>`];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             if (porInstalar.length > 4 || buscar) {
                 h.push(`<div class="fila"><input id="buscar-mod" type="text" placeholder="buscar por nombre, descripción o etiqueta" value="${esc(buscar)}" spellcheck="false" autocomplete="off"></div>`);

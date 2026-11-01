@@ -50,7 +50,7 @@ function panel(hilo: string, maquina: string) {
             const i = PASOS.findIndex(([k]) => k === clave), j = PASOS.findIndex(([k]) => k === paso);
             const hecho = estado === 'listo' || i < j, ahora = i === j && estado !== 'listo';
             const s = el('span', `paso${hecho ? ' hecho' : ahora ? ` ahora ${estado}` : ''}`);
-            s.append(el('span', `i ico`, hecho ? I.hecha : ahora ? (estado === 'falla' ? I.cerrar : GIRA[vuelta % GIRA.length]) : '○'),
+            s.append(el('span', `i ico`, hecho ? I.hecha : ahora ? (estado === 'falla' ? I.cerrar : GIRA[vuelta % GIRA.length]) : I.vacio),
                 el('span', '', nombre));
             return s;
         }));

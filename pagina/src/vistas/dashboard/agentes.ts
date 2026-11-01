@@ -3,6 +3,7 @@
 // encargos (los abiertos, con cancelar; los últimos cerrados, con su resultado). Desde aquí se le encarga algo, se
 // rota su conversación con relevo o se va a su hilo. Los de otra máquina se le piden a esa (GET /agentes).
 
+import { ATENCION_I, I } from '../../web/iconos';
 import * as ui from '../../web/ui';
 import * as cli from '../../cli';
 import { esc, fechaCorta } from '../../estilo';
@@ -11,7 +12,8 @@ import type { Accion, Pantalla, Tablero } from './pantalla';
 const PRESENCIA: Record<string, string> = {
     siempre: 'siempre abierto', 'a-pedido': 'se abre cuando le llega algo', no: 'lo abres tú',
 };
-const ATENCION: Record<string, string> = { trabajando: '● trabajando', espera: '○ te espera', termino: '✓ terminó', ninguna: 'quieto' };
+const ATENCION: Record<string, string> = { trabajando: `${ATENCION_I.trabajando} trabajando`, espera: `${ATENCION_I.espera} te espera`,
+    termino: `${ATENCION_I.termino} terminó`, ninguna: 'quieto' };
 const mb = (b: number) => `${(b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 1 : 0).replace('.', ',')} MB`;
 
 export class PantallaAgentes implements Pantalla {
@@ -125,13 +127,13 @@ export class PantallaAgentes implements Pantalla {
         const abrio = x.abrio ?? [];
         if (!abrio.length) return '';
         const vivos = abrio.filter(h => h.vivo && !h.archivado);
-        return `<div class="fila dim">abrió ${abrio.length}: ${abrio.map(h => `${h.vivo && !h.archivado ? '●' : '·'} ${esc(h.hilo)}`).join(', ')}`
+        return `<div class="fila dim">abrió ${abrio.length}: ${abrio.map(h => `${h.vivo && !h.archivado ? I.lleno : I.punto} ${esc(h.hilo)}`).join(', ')}`
             + (vivos.length ? ` · <a data-accion="agente-archivar-abiertos" data-valor="${esc(x.agente.clave)}" title="cerrar sus tabs y guardar su conversación">archivar los ${vivos.length} vivos</a>` : '')
             + '</div>';
     }
 
     pintar(): void {
-        const h: string[] = ['<div class="subcab"><b>Agentes</b><span class="der"><a data-accion="agentes-leer" title="volver a leer">↻</a></span></div>'];
+        const h: string[] = [`<div class="subcab"><b>Agentes</b><span class="der"><a data-accion="agentes-leer" title="volver a leer">${I.releer}</a></span></div>`];
         if (this.error) h.push(`<div class="fila falla">${esc(this.error)}</div>`);
         for (const p of this.problemas) h.push(`<div class="fila dim">${esc(p)}</div>`);
         if (!this.lista) h.push('<div class="fila dim">leyendo…</div>');
@@ -142,11 +144,11 @@ export class PantallaAgentes implements Pantalla {
             const pct = c?.tope ? Math.min(100, Math.round((c.peso / c.tope) * 100)) : 0;
             h.push('<div class="item-pag">'
                 + `<div class="fila"><b>${esc(a.icono ?? '')} ${esc(a.nombre)}</b><span class="dim"> · ${esc(PRESENCIA[a.presencia ?? 'a-pedido'] ?? '')}`
-                + `${x.maquina ? ` · en ${esc(x.maquina)}` : ''}${a.publico ? ' · ◇ público' : ''}</span>`
+                + `${x.maquina ? ` · en ${esc(x.maquina)}` : ''}${a.publico ? ` · ${I.publico} público` : ''}</span>`
                 + `<span class="der">${esc(estado)}</span></div>`
                 + (a.para ? `<div class="fila dim">${esc(a.para)}</div>` : '')
                 + (c && c.peso ? `<div class="fila dim">conversación ${esc(mb(c.peso))}${c.tope ? ` de ${esc(mb(c.tope))} (${pct} %)` : ''}`
-                    + `${x.rotacion ? ` · <span style="color: var(--amarillo)">↻ rotando (${esc(x.rotacion)})</span>` : ''}`
+                    + `${x.rotacion ? ` · <span style="color: var(--amarillo)">${I.releer} rotando (${esc(x.rotacion)})</span>` : ''}`
                     + `${x.relevo ? ` · último relevo ${esc(fechaCorta(x.relevo.cuando))}` : ''}</div>` : '')
                 + `<div class="fila"><a data-accion="agente-encargar" data-valor="${esc(a.clave)}">encargar</a>`
                 + ` · <a data-accion="agente-ir" data-valor="${esc(a.clave)}">ir a su hilo</a>`

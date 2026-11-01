@@ -7,6 +7,7 @@ import { esc, fechaCorta } from '../../../estilo';
 import { modelo } from '../../../modelo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const fecha = (s: number) => fechaCorta(new Date(s * 1000).toISOString());
 
@@ -89,7 +90,7 @@ export const personas: FabricaSeccion = ctx => {
         abrir: () => leer(),
         pintar(): void {
             const h = [`<div class="fila"><span class="dim">${datos ? `el bus de ${esc(datos.dueno)} · tú eres ${esc(datos.rol)}` : ''}</span>`
-                + '<span class="der"><a data-accion="personas-leer" title="volver a leer">↻</a></span></div>'];
+                + `<span class="der"><a data-accion="personas-leer" title="volver a leer">${I.releer}</a></span></div>`];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             if (datos) {
                 const pendientes = datos.pedidos.filter(p => p.estado === 'pendiente');

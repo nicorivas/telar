@@ -6,6 +6,7 @@ import { esc } from '../../../estilo';
 import { modelo } from '../../../modelo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 export const carpetas: FabricaSeccion = ctx => {
     let aviso = '';
@@ -47,7 +48,7 @@ export const carpetas: FabricaSeccion = ctx => {
                     : 'las unidades del perfil, en su orden')
                     + '<span class="der"><a data-accion="directorios">cambiar…</a></span></div>');
                 h.push(`<div class="fila dim">Al tejer la sesión se abren hasta ${hc.tope}, repartidos por turnos: uno de cada carpeta. `
-                    + 'Los archivados no se reabren solos: ⏸ en la lista archiva uno y guarda su conversación, ▶ lo retoma.</div>');
+                    + `Los archivados no se reabren solos: ${I.archivar} en la lista archiva uno y guarda su conversación, ${I.retomar} lo retoma.</div>`);
             }
             ctx.pintar(h);
         },

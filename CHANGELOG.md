@@ -26,6 +26,11 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Changed
 
+- **The page's symbols are icons now.** What was drawn with Unicode symbols (⋯ menus, ✓ done, ↻ reload, ▶ run,
+  ⏸ pause, ✎ edit, ★ star, ↗ open outside, ▾▸ fold, ↕ sort, ● ○ ◐ states and priorities, ⇄ elsewhere, ◇ organizer,
+  the search's kinds, ◀ back…) uses the icon font, the same everywhere. Native tooltips keep the plain symbols (the
+  browser draws them, without the page's letter), and so do the key symbols (⌥ ⇧ ⌘ ⏎ ⎋) and text arrows.
+
 - **The conversation view, redone for the phone.** Room on the sides (and a reading column on a wide screen); one
   letter size everywhere, secondary things only dimmed. The box to write is a real field (square, thin border, blue
   while writing) with a send button beside it that lights up when there's something to send, and grows up to eight

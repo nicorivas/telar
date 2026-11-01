@@ -12,6 +12,7 @@ import { type Clase, NOMBRE, type Visto, cruces, vistos } from './clases';
 import type { Dia } from './dia';
 import { type EventoCal, carriles, notasDe } from './eventos';
 import type { Plan } from './plan';
+import { I } from '../../web/iconos';
 
 /** La jornada que cuenta el balance, en horas del día: lo de antes y lo de después no es tiempo libre. */
 export const JORNADA: readonly [number, number] = [8.5, 18];
@@ -173,7 +174,7 @@ function htmlBalance(dias: DiaSemana[]): string {
         + '<div class="b-clave dim"><span><i class="t-cita c-reunion"></i>lleno: una cita, no se mueve sola</span>'
         + '<span><i class="t-bloque c-bloque"></i>rayado: tiempo tuyo, se puede mover</span>'
         + '<span><i class="pendiente c-reunion"></i>solo el borde: sin aceptar</span>'
-        + '<span>◇ la organizas tú</span><span class="rojo">⚠ se cruza con una cita u otro bloque</span></div>'
+        + `<span>${I.persona} la organizas tú</span><span class="rojo">${I.alerta} se cruza con una cita u otro bloque</span></div>`
         + (sinPlan.length ? `<div class="b-nota dim">sin plan del día: ${esc(sinPlan.join(', '))}. Lo que se ve es el calendario: sus bloques propios no están</div>` : '')
         + '</div>';
 }
@@ -234,7 +235,7 @@ function htmlColumna(d: DiaSemana, i: number, desde: number, hasta: number, sel:
         h.push(`<div class="cal-ev ${clasesDe(v, t0, valor === sel, !!pis.get(v.e.id))}${alto < 30 ? ' corto' : ''}${desdeIzq ? ' encima' : ''}" data-accion="sem-evento" data-valor="${esc(valor)}"`
             + ` title="${esc(titulo(v, pis.get(v.e.id) ?? []))}"`
             + ` style="top:${y(v.e.inicio)}px;height:${alto}px;left:calc(${desdeIzq + ancho * k}% + 1px);width:calc(${ancho}% - 2px)">`
-            + `<span class="t"><span class="h">${esc(hm(v.e.inicio))}${nota ? '✎' : ''}</span> ${v.organiza ? '◇ ' : ''}${esc(v.e.titulo)}</span></div>`);
+            + `<span class="t"><span class="h">${esc(hm(v.e.inicio))}${nota ? I.editar : ''}</span> ${v.organiza ? `${I.persona} ` : ''}${esc(v.e.titulo)}</span></div>`);
     }
     h.push('</div>');
     return h.join('');
@@ -248,7 +249,7 @@ function htmlLista(dias: DiaSemana[], hoy: string, sel: string, ahora: Date): st
         const filas = vs.filter(v => v.clase !== 'cierre').map(v => {
             const valor = `${d.fecha}|${v.e.id}`;
             return `<div class="sem-fila ${clasesDe(v, ahora.getTime(), valor === sel, !!pis.get(v.e.id))}" data-accion="sem-evento" data-valor="${esc(valor)}" title="${esc(titulo(v, pis.get(v.e.id) ?? []))}">`
-                + `<span class="h">${esc(hm(v.e.inicio))}–${esc(hm(v.e.fin))}</span><i></i><span class="t">${v.organiza ? '◇ ' : ''}${esc(v.e.titulo)}</span></div>`;
+                + `<span class="h">${esc(hm(v.e.inicio))}–${esc(hm(v.e.fin))}</span><i></i><span class="t">${v.organiza ? `${I.persona} ` : ''}${esc(v.e.titulo)}</span></div>`;
         }).join('');
         return `${htmlCabeza(d, hoy)}${filas || '<div class="vacio">nada con hora</div>'}`;
     }).join('') + '</div>';

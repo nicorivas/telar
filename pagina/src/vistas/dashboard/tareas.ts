@@ -2,11 +2,11 @@
 // la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz va a la página (web/ui.ts).
 // Abajo, PantallaTareas: la pestaña «tareas», la ficha de una tarea y las pestañas de proveedor.
 
-import { C, I } from '../../web/iconos';
+import { C, I, PRIO_I } from '../../web/iconos';
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
-import { PRIORIDAD, esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
+import { esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
 import { modelo } from '../../modelo';
 import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
 import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
@@ -213,7 +213,7 @@ async function alternarPorRol(valor: string, rol: string, queEs: string): Promis
  *  urgente, es ● en rojo). Con ficha es un botón: el clic la baja un nivel (● → ◐ → ○ → ●); P0 se pone desde ⋯. */
 export function iconoPrioridad(fila: cli.JsonFila, ref: string, ficha: boolean): string {
     const n = fila.prioridad ?? null;
-    const icono = n === null ? '·' : n === 0 ? '●' : PRIORIDAD[n] ?? '·';
+    const icono = n === null ? PRIO_I[0] : n === 0 ? PRIO_I[1] : PRIO_I[n] ?? PRIO_I[0];
     const nombre = n === null ? 'sin prioridad' : `P${n} · ${['urgente', 'alta', 'media', 'baja'][n]}`;
     if (!ficha) return `<span class="pri pt${n ?? ''}"${n === null ? '' : ` title="${esc(nombre)}"`}>${n === null ? '' : icono}</span>`;
     const valor = esc(JSON.stringify([fila.proveedor, fila.id || ref, n ?? '']));
@@ -255,11 +255,11 @@ export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
     // un viaje: la acción por su rol. Un telar de antes (el de otra máquina sin actualizar) no
     // conoce --rol: entonces, como siempre, la ficha primero para saber su número
-    const directo = await ui.progreso({ discreto: true, titulo: `✓ ${id}…` },
+    const directo = await ui.progreso({ discreto: true, titulo: `${I.hecha} ${id}…` },
         () => cli.accionPorRol(id, proveedor, 'hecha'));
     if (directo.datos) {
         olvidarDia();
-        ui.estado(`✓ ${id} hecha`, 5000);
+        ui.estado(`${I.hecha} ${id} hecha`, 5000);
         return true;
     }
     if (!/--rol|unrecognized|argumentos/i.test(directo.error ?? '')) {
@@ -277,7 +277,7 @@ export async function marcarHecha(valor: string): Promise<boolean> {
     const r = await cli.accionTarea(id, proveedor, k);
     olvidarDia();
     if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
-    ui.estado(`✓ ${id} hecha`, 5000);
+    ui.estado(`${I.hecha} ${id} hecha`, 5000);
     return true;
 }
 
@@ -345,7 +345,7 @@ export class PantallaTareas implements Pantalla {
             const [ref, texto] = JSON.parse(v) as string[];
             const r = await cli.vineta(ref, texto, ['--hecho']);
             if (!r.datos) void ui.aviso(`telar: ${r.error ?? 'no pude marcarla'}`);
-            else { ui.estado(`✓ ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.t.actualizar(true); }
+            else { ui.estado(`${I.hecha} ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.t.actualizar(true); }
         },
         'hecha': async v => {
             if (!v) return;
@@ -497,7 +497,7 @@ export class PantallaTareas implements Pantalla {
             + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
             + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
             // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
-            + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? '★' : '☆'}</span>` : '<span></span>')
+            + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? I.estrella : I.sinEstrella}</span>` : '<span></span>')
             + iconoPrioridad(p.fila, p.ref, ficha)
             + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
                 : '<span class="proy-t dim">—</span>') + resp
@@ -506,8 +506,8 @@ export class PantallaTareas implements Pantalla {
             // el atraso es un botón: reagendar lo que venció sin abrir la ficha
             + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
             // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
-            + `<span class="destino"></span>${this.rapidas(p.fila, p.ref, p.texto, valor, ficha)}${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">⋯</span>`
-                : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">⋯</span>`}</span></div>`;
+            + `<span class="destino"></span>${this.rapidas(p.fila, p.ref, p.texto, valor, ficha)}${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">${I.menu}</span>`
+                : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">${I.menu}</span>`}</span></div>`;
     }
 
     /** Las acciones de todos los días, a un clic, antes del ⋯: ✓ marcarla hecha, ◉/○ compartirla con
@@ -515,16 +515,16 @@ export class PantallaTareas implements Pantalla {
      *  un README, ✓ marca su casilla. */
     private rapidas(fila: cli.JsonFila, ref: string, texto: string, valor: string, ficha: boolean): string {
         const compartida = !!fila.etiquetas?.includes('equipo');
-        const hecha = ficha ? `<span class="rap ok" data-accion="hecha-fila" data-valor="${valor}" title="marcarla hecha">✓</span>`
-            : !fila.proveedor ? `<span class="rap ok" data-accion="hecha-vineta" data-valor="${esc(JSON.stringify([ref, texto]))}" title="marcarla hecha: [ ] → [x] en su documento">✓</span>`
+        const hecha = ficha ? `<span class="rap ok" data-accion="hecha-fila" data-valor="${valor}" title="marcarla hecha">${I.hecha}</span>`
+            : !fila.proveedor ? `<span class="rap ok" data-accion="hecha-vineta" data-valor="${esc(JSON.stringify([ref, texto]))}" title="marcarla hecha: [ ] → [x] en su documento">${I.hecha}</span>`
             : '<span class="rap"></span>';
         const eq = ficha && modelo.equipoRemoto
-            ? `<span class="rap eq${compartida ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${compartida ? 'compartida con el equipo: clic para dejar de compartirla' : 'compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${compartida ? '◉' : '○'}</span>`
+            ? `<span class="rap eq${compartida ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${compartida ? 'compartida con el equipo: clic para dejar de compartirla' : 'compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${compartida ? I.compartir : PRIO_I[3]}</span>`
             : '<span class="rap"></span>';
         // una tarea con ficha va a su hilo (el de su proyecto, o el agente general) con /tarea <id>,
         // enviado: el agente la empieza con su contexto cargado. Una casilla de un README, escrita
         const hilo = `<span class="rap ir" data-accion="hilo-fila" data-valor="${esc(JSON.stringify([fila.proveedor, ref, ficha ? fila.id || ref : '']))}"`
-            + ` title="${ficha ? `trabajarla: /tarea ${esc(fila.id || ref)} en ${fila.hilo ? `«${esc(fila.hilo)}»` : 'su hilo'}` : fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">▶</span>`;
+            + ` title="${ficha ? `trabajarla: /tarea ${esc(fila.id || ref)} en ${fila.hilo ? `«${esc(fila.hilo)}»` : 'su hilo'}` : fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">${I.correr}</span>`;
         return `<span class="rapidas">${hecha}${eq}${hilo}</span>`;
     }
 
@@ -540,15 +540,15 @@ export class PantallaTareas implements Pantalla {
         const deLaSemana = (p: (typeof lista)[number]) => (p.dias !== null && p.dias <= 7) || !!p.fila.destacada
             || (esRev(p) && p.dias !== null && p.dias <= 14);
         const modos: [string, string, number][] = [
-            ['semana', 'esta semana', cuenta(deLaSemana)], ['todas', 'todas', lista.length], ['revisar', '◆ por revisar', cuenta(esRev)],
+            ['semana', 'esta semana', cuenta(deLaSemana)], ['todas', 'todas', lista.length], ['revisar', 'por revisar', cuenta(esRev)],
             ['vencidas', 'vencidas', cuenta(p => p.dias !== null && p.dias < 0)],
-            ['estrella', '★', cuenta(p => !!p.fila.estrella)],
+            ['estrella', I.estrella, cuenta(p => !!p.fila.estrella)],
             ['encurso', 'en curso', cuenta(p => p.enCurso)], ['sinfecha', 'sin fecha', cuenta(p => p.dias === null)],
         ];
         // cuándo se leyeron: el proveedor se consulta solo cada 5 minutos, y «actualizar» lo fuerza ya
         const leido = leidoProveedores();
         const hace = leido ? Math.round((Date.now() - leido) / 60000) : -1;
-        const actualizar = `<a data-accion="refrescar" title="volver a leer las tareas ahora (también r)">↻ actualizar</a>`
+        const actualizar = `<a data-accion="refrescar" title="volver a leer las tareas ahora (también r)">${I.releer} actualizar</a>`
             + `<span class="dim"> · ${hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min`}</span>`;
         const h = ['<div id="revisar">', seccion('tareas', 'cian', String(lista.length), actualizar),
             '<div class="titulo-tareas"><span class="modos">'
@@ -560,7 +560,7 @@ export class PantallaTareas implements Pantalla {
         // siempre (urgencia). La fecha va sobre las fechas: la cabecera repite la grilla de lo que hay a la derecha
         const col = (k: string, nombre: string, por: string) =>
             `<span data-orden-c="${k}" title="${esc(`ordenar por ${por} (otra vez: por urgencia)`)}">${nombre}</span>`;
-        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', '★', 'estrella')}${col('pri', '●', 'prioridad, la más alta arriba')}`
+        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', I.estrella, 'estrella')}${col('pri', PRIO_I[1], 'prioridad, la más alta arriba')}`
             + `${col('proy', 'proyecto', 'proyecto')}${col('resp', 'responsable', 'responsable')}${col('alfa', 'tarea', 'el texto, alfabético')}`
             + `<span class="meta">${col('dias', 'fecha', 'fecha límite: lo más vencido arriba, lo sin fecha al final')}<span></span><span></span><span></span></span></div>`);
         h.push('<div id="tareas-t">');
@@ -656,7 +656,9 @@ export class PantallaTareas implements Pantalla {
         const iconos = acciones.filter(({ a }) => a.rol === 'estrella' || a.rol === 'equipo').map(({ a, k }) => {
             const [glifo, ...resto] = a.nombre.split(' ');
             const on = glifo === '★' || glifo === '◉';
-            return `<a class="icono-t ${a.rol}${on ? ' on' : ''}" data-accion="accion-tarea" data-valor="${k}" title="${esc(resto.join(' '))}">${esc(glifo)}</a>`;
+            // en la página, los íconos de la letra de íconos; el proveedor los dice con sus símbolos
+            const icono = { '★': I.estrella, '☆': I.sinEstrella, '◉': I.compartir, '○': PRIO_I[3] }[glifo] ?? glifo;
+            return `<a class="icono-t ${a.rol}${on ? ' on' : ''}" data-accion="accion-tarea" data-valor="${k}" title="${esc(resto.join(' '))}">${esc(icono)}</a>`;
         });
         // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
         const color = p.bloques.find(b => b.destacado)?.color;

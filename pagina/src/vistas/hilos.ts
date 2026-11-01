@@ -44,9 +44,9 @@ type Seccion = 'hilo' | 'archivado';
 /** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
 type Orden = '' | 'urgencia' | 'nombre' | 'reciente';
 const ORDENES: [Orden, string, string][] = [
-    ['urgencia', '●', 'urgencia: prioridad alta primero; a igual prioridad, el que te espera y después el más reciente'],
+    ['urgencia', I.lleno, 'urgencia: prioridad alta primero; a igual prioridad, el que te espera y después el más reciente'],
     ['nombre', 'a-z', 'nombre, alfabético'],
-    ['reciente', '◷', 'última modificación: el último prompt a su agente, lo más reciente arriba'],
+    ['reciente', I.reloj, 'última modificación: el último prompt a su agente, lo más reciente arriba'],
 ];
 
 function leerBuscado(): Record<string, string> {
@@ -305,7 +305,7 @@ export class BarraHilos {
             + `<span class="nombre">${esc(visible || x.nombre)}</span>`
             + (saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : '')
             // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">⋯</span></span></div>`);
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">${I.menu}</span></span></div>`);
     }
 
     /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
@@ -337,7 +337,7 @@ export class BarraHilos {
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
             // después); descartar lo termina y lo saca de la lista (la conversación queda en disco, sin botón para volver)
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">⋯</span>` + (modelo.ocupados.has(h.nombre) || saliendo ? ''
+            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">${I.menu}</span>` + (modelo.ocupados.has(h.nombre) || saliendo ? ''
                 : !h.vivo || seccion === 'archivado'
                 ? `<span class="icono i" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: abre el agente con su conversación">${I.retomar}</span>`
                   + `<span class="icono i descartar" data-accion="descartar" data-id="${esc(h.nombre)}" title="descartar: sale del archivo (pregunta antes; su conversación queda en disco)">${I.descartar}</span>`
@@ -359,7 +359,7 @@ export class BarraHilos {
      *  Un clic en el orden que ya rige vuelve al de telar. En HILOS, además, ⇄: ver la máquina de cada uno. */
     private herramientas(grupo: string, orden: Orden): string {
         const maquina = grupo === 'hilos'
-            ? `<span class="ord${this.conMaquina() ? ' si' : ''}" data-accion="ver-maquina" title="${this.conMaquina() ? 'ver solo ⇄ en los hilos de otra máquina' : 'ver en qué máquina vive cada hilo'}">⇄</span>` : '';
+            ? `<span class="ord${this.conMaquina() ? ' si' : ''}" data-accion="ver-maquina" title="${this.conMaquina() ? 'ver solo ⇄ en los hilos de otra máquina' : 'ver en qué máquina vive cada hilo'}">${I.remoto}</span>` : '';
         return `<div class="herram"><input class="buscar" data-grupo="${grupo}" placeholder="buscar" spellcheck="false" title="buscar por nombre, carpeta o máquina · ⏎ abre el primero · ⎋ borra">`
             + ORDENES.map(([k, glifo, ayuda]) => `<span class="ord${k === orden ? ' si' : ''}" data-accion="orden-grupo" data-id="${grupo}:${k}" title="${esc(`ordenar por ${ayuda}${k === orden ? ' (clic: volver al orden de telar)' : ''}`)}">${glifo}</span>`).join('')
             + maquina + `</div><div class="vacia" data-grupo="${grupo}" hidden>nada calza</div>`;
@@ -444,7 +444,7 @@ export class BarraHilos {
         // los agentes residentes: uno por línea (su hilo de siempre, el de su nombre), con su home al final. Un agente
         // sin hilo abierto sale igual, tenue, y su línea lleva a su home. Sus otros hilos van en HILOS, con su ícono
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
-        const verTodos = '<span class="icono ver-agentes" data-accion="cmd" data-id="telar.agentesVer" title="todos los agentes: su estado, sus encargos, encargar y rotar">≡</span>';
+        const verTodos = `<span class="icono ver-agentes" data-accion="cmd" data-id="telar.agentesVer" title="todos los agentes: su estado, sus encargos, encargar y rotar">${I.lista}</span>`;
         const crear = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.agenteNuevo" title="un agente residente nuevo: su carpeta con CLAUDE.md y agente.toml">+ nuevo</span>';
         // la sección sale aunque no haya ninguno: es donde se aprende que existen y se arma el primero
         if (cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes', crear + verTodos)) {
@@ -460,7 +460,7 @@ export class BarraHilos {
                     // si nunca existió, lleva a su home
                     const previo = modelo.hilos.find(x => cli.enSeccion(a, x.nombre));
                     const retomar = previo
-                        ? `<span class="icono" data-accion="retomar" data-id="${esc(previo.nombre)}" title="retomar: reabre el hilo con su conversación">▶</span>` : '';
+                        ? `<span class="icono" data-accion="retomar" data-id="${esc(previo.nombre)}" title="retomar: reabre el hilo con su conversación">${I.retomar}</span>` : '';
                     const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="home" data-id="${esc(a.clave)}"`;
                     h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; ${previo ? 'pincha para retomarlo' : 'su home'}">`
                         + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'

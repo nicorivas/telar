@@ -49,7 +49,7 @@
   .cal-ev.t-bloque.c-estrategico { border-color: var(--c); }
   .cal-ev.t-rutina { background: var(--bg); border-left: 1px solid var(--dim); color: var(--dim); }
   .cal-ev.pisado { border-color: var(--rojo); }
-  .cal-ev.pisado::after { content: '⚠'; position: absolute; top: 1px; right: 4px; color: var(--rojo); }
+  .cal-ev.pisado::after { content: '\ea6c'; font-family: iconos, monospace; position: absolute; top: 1px; right: 4px; color: var(--rojo); }
   .cal-ev.pasado { filter: brightness(.72) saturate(.6); }
   .cal-ev.sel { outline: 2px solid var(--fg); z-index: 2; opacity: 1; }
   .cal-ev .h { color: var(--dim); font-size: var(--t-chica); } .cal-ev .t { display: block; }

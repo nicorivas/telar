@@ -8,6 +8,7 @@
 // valen mientras se ve, y nunca mientras se escribe en un campo de afuera (el buscador de la barra, la terminal).
 
 import * as entidades from '../../web/entidades';
+import { I } from '../../web/iconos';
 
 /** Lo que la vista le pide al Dashboard (`Dashboard.mensaje`, panel.ts). */
 export interface MensajeDia { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string;
@@ -213,7 +214,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         for (const s of todos('.proy-cab [data-orden-p]')) {
             const es = s.dataset.ordenP === k;
             s.classList.toggle('activo', es);
-            s.textContent = es ? (k === 'fecha' || k === 'hilo' ? '▼' : '▲') : '↕';
+            s.textContent = es ? (k === 'fecha' || k === 'hilo' ? I.desc : I.asc) : I.ordenar;
         }
         const vacio = $('proyectos-vacio')!;
         let n = 0;

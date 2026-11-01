@@ -6,6 +6,7 @@ import { esc } from '../../../estilo';
 import * as ui from '../../../web/ui';
 import { olvidarDia } from '../dia';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const NOMBRE: Record<string, string> = { gws: 'Google Workspace (gws)', ics: 'iCal', comando: 'un comando', ninguno: 'ninguno' };
 
@@ -43,7 +44,7 @@ export const calendario: FabricaSeccion = ctx => {
             h.push(`<div class="fila">En uso: <b>${esc(NOMBRE[c.tipo] ?? c.tipo)}</b> · <span class="${falla ? 'falla' : 'dim'}">${esc(estado)}</span></div>`);
             const opcion = (tipo: string, titulo: string, boton: string, lineas: string[]) => {
                 const activa = c.tipo === tipo;
-                h.push(`<div class="opcion${activa ? ' activa' : ''}"><div class="fila"><b>${activa ? '●' : '○'} ${titulo}</b>`
+                h.push(`<div class="opcion${activa ? ' activa' : ''}"><div class="fila"><b>${activa ? I.lleno : I.vacio} ${titulo}</b>`
                     + (activa && tipo !== 'ics' ? '' : ` <span class="der"><a data-accion="calendario" data-valor="${tipo}">${boton}</a></span>`)
                     + '</div>' + lineas.map(l => `<div class="fila dim">${l}</div>`).join('') + '</div>');
             };

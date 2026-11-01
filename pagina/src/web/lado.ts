@@ -9,6 +9,7 @@ import * as glifos from './glifos';
 import * as modos from './modos';
 import { modelo } from '../modelo';
 import * as ui from './ui';
+import { I } from './iconos';
 
 /** cada cuánto se relee la ficha mientras se ve el mismo hilo */
 const CADA = 30 * 1000;
@@ -72,7 +73,7 @@ function pintar(): void {
     }
     if (ficha.rotacion) {
         const fase: Record<string, string> = { relevo: 'escribiendo su relevo', limpiar: 'relevo listo: por empezar otra conversación', retomar: 'conversación nueva, por leer su relevo' };
-        h.push(`<div class="lado-rota">↻ rotando: ${esc(fase[ficha.rotacion] ?? ficha.rotacion)}</div>`);
+        h.push(`<div class="lado-rota">${I.releer} rotando: ${esc(fase[ficha.rotacion] ?? ficha.rotacion)}</div>`);
     }
     if (!ficha.aqui) h.push('<div class="dim">vive en otra máquina: su relevo y el peso de su conversación están allá</div>');
     h.push('<div class="lado-acciones"><a data-lado="encargar" title="un encargo: queda con su estado, y el resultado te llega">encargar</a>'

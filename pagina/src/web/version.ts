@@ -78,12 +78,12 @@ async function esperar(objetivo: string): Promise<void> {
         if (corre === objetivo) { location.reload(); return; }
         const p = await cli.progresoActualizar().catch(() => undefined);
         if (p?.datos?.estado === 'fallo') {
-            void ui.falla(`telar: no se pudo instalar la ${objetivo}: ${p.datos.error ?? ''}. Lo que pasó, en ⚙ versión.`);
+            void ui.falla(`telar: no se pudo instalar la ${objetivo}: ${p.datos.error ?? ''}. Lo que pasó, en ${I.config} versión.`);
             pintar();
             return;
         }
     }
-    void ui.falla(`telar: la ${objetivo} no contestó en ${PLAZO / 60000} minutos. Mira ⚙ versión, o reinicia el servicio a mano.`);
+    void ui.falla(`telar: la ${objetivo} no contestó en ${PLAZO / 60000} minutos. Mira ${I.config} versión, o reinicia el servicio a mano.`);
     pintar();
 }
 

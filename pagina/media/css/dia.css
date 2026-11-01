@@ -146,7 +146,7 @@
   .tarea .pri.clic { cursor: pointer; } .tarea .pri.clic:hover { color: var(--azul); }
   .tarea .pri.clic.pt:not(:hover) { opacity: 0; } .tarea:hover .pri.clic.pt { opacity: 1; }
   .tarea.encurso .id { color: var(--azul); }
-  .tarea:hover .marcar::after { content: '✓'; color: var(--dim); }
+  .tarea:hover .marcar::after { content: '\eab2'; font-family: iconos, monospace; color: var(--dim); }
   .tarea .marcar:hover::after { color: var(--verde); font-weight: bold; }
   .tarea .dueno { color: var(--magenta); margin-right: 1ch; }
   .tarea.marcada { opacity: .4; text-decoration: line-through; pointer-events: none; }

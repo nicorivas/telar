@@ -2,10 +2,11 @@
 // monoespaciada a propósito: esto se mira al lado de la terminal y tiene que leerse como una continuación
 // suya, no como otro programa. Los colores, en media/css/tokens.css.
 
-/** Cómo se dibuja cada atención. Las cuatro palabras son las de `telar atencion`. */
+/** Cada atención en texto plano, para lo que no usa la letra de la página (el `title` de un elemento, que dibuja el
+ *  navegador): en la página van los íconos de web/iconos.ts. Las cuatro palabras son las de `telar atencion`. */
 export const GLIFO: Record<string, string> = { trabajando: '●', espera: '○', termino: '✓' };
 
-/** Prioridad 1 alta, 2 media, 3 baja; 0 es sin prioridad, que también se ve. */
+/** Prioridad 1 alta, 2 media, 3 baja; 0 es sin prioridad. En texto plano, como GLIFO; en la página, PRIO_I. */
 export const PRIORIDAD: Record<number, string> = { 0: '·', 1: '●', 2: '◐', 3: '○' };
 
 export const NOMBRE_ATENCION: Record<string, string> = {

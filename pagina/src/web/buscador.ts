@@ -91,7 +91,7 @@ export async function abrir(): Promise<void> {
     if (abierto) { abierto.close(); return; }
     const caja = document.createElement('dialog');
     caja.className = 'buscador';
-    caja.innerHTML = '<input type="text" spellcheck="false" autocomplete="off" placeholder="buscar: hilos, agentes, el dashboard, ⚙, modos…">'
+    caja.innerHTML = '<input type="text" spellcheck="false" autocomplete="off" placeholder="buscar: hilos, agentes, el dashboard, la configuración, modos…">'
         + '<div class="b-lista"></div><div class="b-pie">↑↓ elegir · ⏎ abrir · ⎋ cerrar · ⌘K</div>';
     document.body.appendChild(caja);
     abierto = caja;

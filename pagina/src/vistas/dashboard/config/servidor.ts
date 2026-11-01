@@ -8,6 +8,7 @@ import { esc, fechaCorta } from '../../../estilo';
 import { modelo } from '../../../modelo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const ESTADO: Record<string, string> = {
     pendiente: 'pide un lugar', preparando: 'preparándose', activo: 'activo', 'falló': 'falló', rechazado: 'rechazado', quitado: 'quitado',
@@ -106,7 +107,7 @@ export const servidor: FabricaSeccion = ctx => {
         abrir: () => leer(),
         pintar(): void {
             const h = [`<div class="fila"><span class="dim">${datos ? `${esc(datos.servidor || 'el servidor')} · de ${esc(datos.dueno)}` : ''}</span>`
-                + '<span class="der"><a data-accion="servidor-leer" title="volver a leer">↻</a></span></div>'];
+                + `<span class="der"><a data-accion="servidor-leer" title="volver a leer">${I.releer}</a></span></div>`];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             if (datos) {
                 const t = datos.topes;

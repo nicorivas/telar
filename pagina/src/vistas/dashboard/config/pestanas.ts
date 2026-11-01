@@ -4,6 +4,7 @@
 import * as cli from '../../../cli';
 import { esc } from '../../../estilo';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 export const pestanas: FabricaSeccion = ctx => {
     let aviso = '';
@@ -43,7 +44,7 @@ export const pestanas: FabricaSeccion = ctx => {
             const h = aviso ? [`<div class="fila falla">${esc(aviso)}</div>`] : [];
             for (const { clave, nombre } of enOrden()) {
                 const ve = !ocultas.includes(clave);
-                h.push(`<div class="fila${ve ? '' : ' dim'}"><a data-accion="pest-ver" data-valor="${esc(clave)}" title="${ve ? 'ocultarla' : 'mostrarla'}">${ve ? '✓' : '·'}</a> `
+                h.push(`<div class="fila${ve ? '' : ' dim'}"><a data-accion="pest-ver" data-valor="${esc(clave)}" title="${ve ? 'ocultarla' : 'mostrarla'}">${ve ? I.hecha : I.punto}</a> `
                     + `${esc(nombre)}${deModulo.has(clave) ? ' <span class="dim">· módulo</span>' : ''}<span class="der">`
                     + `<a data-accion="pest-subir" data-valor="${esc(clave)}" title="un lugar antes">↑</a> `
                     + `<a data-accion="pest-bajar" data-valor="${esc(clave)}" title="un lugar después">↓</a></span></div>`);

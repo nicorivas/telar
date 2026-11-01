@@ -8,6 +8,7 @@ import * as aspectoTerminal from '../../../web/aspecto-terminal';
 import * as modos from '../../../web/modos';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
+import { I } from '../../../web/iconos';
 
 const POSICIONES = ['izquierda', 'centro', 'derecha'] as const;
 
@@ -27,7 +28,7 @@ export const terminal: FabricaSeccion = ctx => {
         // cambiar de modo; ⚙ modos lo guarda en él)
         if (modos.puesto().clave !== 'estandar') {
             modos.poner(clave, valor);
-            void ui.estado(`telar: en «${modos.puesto().nombre}», hasta cambiar de modo (⚙ modos lo guarda en él)`, 5000);
+            void ui.estado(`telar: en «${modos.puesto().nombre}», hasta cambiar de modo (${I.config} modos lo guarda en él)`, 5000);
             if (ctx.seVe('terminal')) seccion.pintar();
             return;
         }

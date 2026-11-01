@@ -6,7 +6,7 @@
 <title>telar</title>
 <link rel="stylesheet" href="/estatico/marco.css"></head><body class="en-lista">
 <header>
-  <div class="izq"><span class="logo">telar</span><span class="dim" id="corre" title="la versión de telar que corre"></span><a id="version" hidden></a><a id="volver">◀ hilos</a></div>
+  <div class="izq"><span class="logo">telar</span><span class="dim" id="corre" title="la versión de telar que corre"></span><a id="version" hidden></a><a id="volver"><span class="i">&#xeab5;</span> hilos</a></div>
   <div id="donde"><b id="aqui" title="la máquina que sirve esta página">telar</b><span id="icono" hidden></span><span id="visto"></span></div>
   <div class="der"><a id="modos-sel" class="config i" title="el modo de la página (⌥⇧F foco, ⌥⇧M el siguiente)"></a><a href="/maquinas" id="ir-maquinas" class="config i" title="máquinas: elegir en cuál abrir la página"></a><a data-p="config" id="ir-config" class="config i" title="configuración: de dónde sale la agenda, qué pestañas se ven…"></a></div>
 </header>
@@ -45,7 +45,7 @@ window.telar.donde = (lo) => {
   const icono = $('#icono'), visto = $('#visto');
   icono.hidden = !lo; visto.textContent = lo ? lo.texto : '';
   if (!lo) return;
-  icono.textContent = lo.otraMaquina ? '⇢' : '›';
+  icono.textContent = lo.otraMaquina ? '\uea9c' : '\ueab6';  // arrow_right · chevron_right (web/iconos.ts: adelante, plegado)
   icono.className = lo.otraMaquina ? 'otra' : '';
   icono.title = lo.otraMaquina ? `de otra máquina: llega reenviado por ${aqui || 'esta'}` : `de esta máquina${aqui ? ` (${aqui})` : ''}`;
 };
