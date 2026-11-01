@@ -22,6 +22,15 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   the dashboard or, on a phone, the list: a thread on a phone opens in its conversation (with the box to write), and
   «◀ hilos» goes back to the list. A sleeping or archived thread is shown, not resumed. For a phone's home screen.
 
+### Changed
+
+- **The conversation view, redone for the phone.** Room on the sides (and a reading column on a wide screen); one
+  letter size everywhere, secondary things only dimmed. The box to write is a real field (square, thin border, blue
+  while writing) with a send button beside it that lights up when there's something to send, and grows up to eight
+  lines. The keys above (⏎ ⎋ 1 2 3 ↑ ↓) are plain and dim, with what each does on hover. **Sending says how it goes**:
+  what you sent shows at the end, dimmed, until it appears in the conversation, and the line below says «enviando…»,
+  «llegó», «en su casilla» or why it didn't go (the text stays in the box).
+
 ### Fixed
 
 - **Trading `?k=` for the cookie keeps the rest of the address**: it used to redirect to the bare path.

@@ -15,17 +15,18 @@
     overflow: hidden;
   }
 
+  /* los turnos, con aire a los lados (también en el celular) y, en pantalla ancha, una columna de lectura */
   .turnos {
     flex: 1;
     overflow-y: auto;
-    padding: var(--e-2) var(--h-1);
+    padding: var(--e-2) max(var(--h-2), env(safe-area-inset-right)) var(--e-2) max(var(--h-2), env(safe-area-inset-left));
     overscroll-behavior: contain;
+
+    & > * { max-width: 100ch; margin-inline: auto; }
   }
 
-  .nada {
-    color: var(--dim);
-    font-size: var(--t-menor);
-  }
+  /* todo con la misma letra: lo secundario se distingue por color, nunca por tamaño */
+  .nada { color: var(--dim); }
 
   .turno {
     padding: var(--e-2) 0;
@@ -35,10 +36,7 @@
   .msj {
     margin: var(--e-1) 0;
 
-    & .quien {
-      color: var(--dim);
-      font-size: var(--t-chica);
-    }
+    & .quien { color: var(--dim); }
 
     & .cuerpo {
       white-space: pre-wrap;
@@ -65,7 +63,6 @@
         padding: .5em;
         background: var(--fondo-2, rgb(128 128 128 / 12%));
       }
-      & code { font-size: .92em; }
       & table { display: block; overflow-x: auto; border-collapse: collapse; }
       & th,
       & td { padding: .2em .6em; border: var(--borde); }
@@ -79,10 +76,12 @@
     &.bus .quien,
     &.bus .cuerpo { color: var(--violeta); }
 
+    /* lo enviado que todavía no aparece en la conversación: tenue, hasta que llega */
+    &.pendiente { opacity: .55; }
+
     &.herramienta {
       margin: 0;
       color: var(--dim);
-      font-size: var(--t-chica);
 
       & .cuerpo::before { content: "· "; }
     }
@@ -95,62 +94,90 @@
     font: inherit;
   }
 
+  /* abajo, la caja para escribirle: sobre el fondo de las barras, con una línea arriba; las teclas, la caja y el
+     botón, y debajo en qué va lo enviado */
   footer {
-    padding: var(--e-1) var(--h-1) calc(var(--e-1) + env(safe-area-inset-bottom));
+    padding: var(--e-2) max(var(--h-2), env(safe-area-inset-right)) calc(var(--e-1) + env(safe-area-inset-bottom))
+      max(var(--h-2), env(safe-area-inset-left));
     border-top: var(--borde);
-  }
+    background: var(--bg-barra);
 
-  .teclas {
-    display: flex;
-    gap: var(--h-1);
-    margin-bottom: var(--e-1);
+    & > * { max-width: 100ch; margin-inline: auto; }
   }
 
   button {
-    padding: .3em 1ch;
-    border: var(--borde);
-    background: transparent;
-    color: var(--fg);
     font: inherit;
+    color: var(--fg);
     cursor: pointer;
+  }
 
-    &:active { background: var(--sel); }
+  /* las teclas: sin caja, tenues; se iluminan al pasar o al tocarlas */
+  .teclas {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--e-1);
+
+    & button {
+      min-width: 4ch;
+      padding: .15lh 1ch;
+      border: 0;
+      background: transparent;
+      color: var(--dim);
+
+      &:hover { color: var(--fg); background: var(--hover); }
+      &:active { background: var(--sel); }
+    }
   }
 
   .escribir {
     display: flex;
-    gap: var(--h-1);
-    align-items: flex-end;
+    align-items: stretch;
 
-    /* como el prompt de una terminal: la letra de todo lo demás, sin caja; una línea a la izquierda que se
-       pone azul mientras se escribe. ⏎ envía, ⇧⏎ es una línea nueva */
+    /* un campo de verdad: fondo de la página, un borde fino y cuadrado, azul mientras se escribe */
     & textarea {
       flex: 1;
       min-width: 0;
       box-sizing: border-box;
-      padding: 0 var(--h-1);
-      border: 0;
-      border-left: 2px solid var(--linea);
+      padding: .3lh 1ch;
+      border: 1px solid var(--linea);
+      border-right: 0;
       outline: none;
-      background: transparent;
+      background: var(--bg);
       color: var(--fg);
       font: inherit;
+      line-height: inherit;
       resize: none;
+      overflow-y: auto;
 
-      &:focus { border-left-color: var(--azul); }
+      &:focus { border-color: var(--azul); }
       &::placeholder { color: var(--dim); }
     }
 
-    & button {
+    /* enviar: pegado a la caja, del mismo alto; azul cuando hay algo que mandar */
+    & button.enviar {
+      flex: none;
+      width: 5ch;
       padding: 0;
-      border: 0;
-      color: var(--azul);
+      border: 1px solid var(--linea);
+      background: var(--bg);
+      color: var(--dim);
+
+      &.listo { color: var(--azul); background: color-mix(in srgb, var(--azul) 14%, var(--bg)); border-color: var(--azul); }
+      &:active { background: var(--sel); }
     }
+
+    & textarea:focus + button.enviar { border-color: var(--azul); }
   }
 
+  /* en qué va lo último enviado */
   .dijo {
     min-height: 1lh;
     margin: var(--e-1) 0 0;
-    font-size: var(--t-chica);
+    color: var(--dim);
+
+    &.enviando { color: var(--amarillo); }
+    &.llego { color: var(--verde); }
+    &.cola { color: var(--azul); }
+    &.error { color: var(--rojo); }
   }
 }

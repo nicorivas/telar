@@ -30,7 +30,14 @@ function delBus(texto: string): string | null {
     return m?.[1] ? `↯ ${m[1]}` : '↯ mensaje';
 }
 /** las teclas de abajo: lo que mandan a la terminal */
-const TECLAS: [string, string][] = [['⏎', '\r'], ['⎋', '\u001b'], ['1', '1'], ['2', '2'], ['3', '3'], ['↑', '\u001b[A'], ['↓', '\u001b[B']];
+/** Las teclas de abajo, para lo que el agente pregunta con opciones: lo que muestran, lo que envían y su ayuda. */
+const TECLAS: [string, string, string][] = [['⏎', '\r', 'enter: acepta lo marcado'], ['⎋', '\u001b', 'escape: cancela o interrumpe'],
+    ['1', '1', 'la opción 1'], ['2', '2', 'la opción 2'], ['3', '3', 'la opción 3'], ['↑', '\u001b[A', 'subir'], ['↓', '\u001b[B', 'bajar']];
+
+/** Lo que se le escribió y todavía no aparece en la conversación: su texto y en qué va. */
+interface Pendiente { texto: string; desde: number }
+/** Para reconocer lo escrito en la conversación: sin espacios de más y sin el aviso del bus. */
+const comparable = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 60);
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, clase = '', texto?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
@@ -52,9 +59,33 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
     const porMensaje = !!maquina;
     raiz.classList.add('v-conversacion');
     raiz.innerHTML = '<main class="turnos"><p class="nada">leyendo…</p></main><footer><div class="teclas"></div>'
-        + '<form class="escribir"><textarea rows="2"></textarea><button type="submit">enviar</button></form><p class="dijo nada"></p></footer>';
+        + `<form class="escribir"><textarea rows="1" placeholder="escríbele · ⏎ envía · ⇧⏎ línea nueva"></textarea>`
+        + `<button type="submit" class="enviar" title="enviar (⏎)"><span class="i">${I.enviar}</span></button></form>`
+        + '<p class="dijo" aria-live="polite"></p></footer>';
     const $ = <T extends HTMLElement>(s: string) => raiz.querySelector<T>(s)!;
     const turnos = $('.turnos'), texto = $<HTMLTextAreaElement>('textarea'), dijo = $('.dijo'), form = $<HTMLFormElement>('.escribir');
+    const boton = $<HTMLButtonElement>('button.enviar');
+    // la caja crece con lo escrito, hasta ocho líneas; vacía, una
+    const crecer = () => { texto.style.height = 'auto'; texto.style.height = `${Math.min(texto.scrollHeight, 8 * parseFloat(getComputedStyle(texto).lineHeight || '20') + 16)}px`; };
+    texto.addEventListener('input', () => { crecer(); boton.classList.toggle('listo', !!texto.value.trim()); });
+
+    /** En qué va lo último que se envió, abajo de la caja: su ícono y su color dicen si va, si llegó o si falló. */
+    const decir = (estado: '' | 'enviando' | 'llego' | 'cola' | 'error', que = '') => {
+        dijo.className = `dijo ${estado}`;
+        dijo.textContent = '';
+        if (!estado) return;
+        const ic = el('span', 'i', { enviando: I.viaja, llego: I.hecha, cola: I.reloj, error: I.alerta }[estado]);
+        dijo.append(ic, document.createTextNode(` ${que}`));
+    };
+    let pendiente: Pendiente | null = null;
+    /** Lo enviado, al final de la conversación y tenue, hasta que aparece de verdad en ella. */
+    const ponerPendiente = () => {
+        turnos.querySelector('.msj.pendiente')?.remove();
+        if (!pendiente) return;
+        const f = el('div', 'msj usuario pendiente');
+        f.append(el('span', 'quien', 'tú · enviando'), el('div', 'cuerpo', pendiente.texto));
+        turnos.appendChild(f);
+    };
     const teclas = $('.teclas');
     teclas.hidden = porMensaje;
 
@@ -110,10 +141,18 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
             }
             if (!(d.turnos ?? []).length) turnos.appendChild(el('p', 'nada', 'todavía no hay conversación'));
         }
+        // lo enviado: si ya aparece entre lo que dijo la persona, llegó; si no, sigue abajo, tenue
+        if (pendiente) {
+            const buscado = comparable(pendiente.texto);
+            const llego = (d.turnos ?? []).some(t => t.some(m => m.quien === 'usuario' && comparable(m.texto ?? '').includes(buscado)));
+            if (llego) { pendiente = null; decir('llego', 'llegó: está en la conversación'); }
+            else if (Date.now() - pendiente.desde > 25000) decir('cola', 'enviado; todavía no aparece (si el agente está trabajando, lo lee al terminar)');
+        }
+        ponerPendiente();
         // las rutas que escribió el agente, como enlaces al visor
         enlazar(turnos);
         leido = true;
-        if (seguir) turnos.scrollTop = turnos.scrollHeight;
+        if (seguir || pendiente) turnos.scrollTop = turnos.scrollHeight;
     };
 
     let leyendo = false, pronto = 0;
@@ -141,8 +180,17 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
     const canal = () => {
         if (ws && ws.readyState <= 1) return ws;
         const nuevo = new WebSocket(enchufe(`/pty?hilo=${encodeURIComponent(hilo)}&cols=100&rows=30`));
-        nuevo.onopen = () => { for (const d of cola.splice(0)) nuevo.send(JSON.stringify({ d })); };
-        nuevo.onclose = () => { if (ws === nuevo) ws = null; };
+        let abrio = false;
+        nuevo.onopen = () => { abrio = true; for (const d of cola.splice(0)) nuevo.send(JSON.stringify({ d })); };
+        nuevo.onclose = () => {
+            if (ws === nuevo) ws = null;
+            // se cerró sin haber abierto: lo que esperaba en la cola no salió
+            if (!abrio && cola.length) {
+                cola.length = 0;
+                if (pendiente) { texto.value ||= pendiente.texto; crecer(); pendiente = null; ponerPendiente(); }
+                decir('error', 'no se pudo abrir su terminal: no se envió (quedó en la caja)');
+            }
+        };
         ws = nuevo;
         return nuevo;
     };
@@ -159,6 +207,11 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
         e.preventDefault();
         const t = texto.value.replace(/\s+$/, '');
         if (!t) return;
+        pendiente = { texto: t, desde: Date.now() };
+        texto.value = ''; crecer(); boton.classList.remove('listo');
+        decir('enviando', 'enviando…');
+        ponerPendiente();
+        turnos.scrollTop = turnos.scrollHeight;
         if (porMensaje) {
             // por el bus, como la persona; le llega al hilo al terminar su turno (o al tiro si espera)
             try {
@@ -167,22 +220,23 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
                     body: JSON.stringify({ para: hilo, texto: t, tipo: 'persona', de: 'el panel' }),
                 });
                 const d = await r.json() as { detail?: string };
-                dijo.textContent = r.ok ? 'enviado: le llega al terminar su turno, o al tiro si te espera' : (d.detail || 'no llegó');
-                if (r.ok) { texto.value = ''; pronto = Date.now() + 30000; setTimeout(() => void leer(), 3000); }
+                if (r.ok) { decir('cola', 'en su casilla: le llega al terminar su turno, o al tiro si te espera'); pronto = Date.now() + 30000; setTimeout(() => void leer(), 3000); }
+                else { texto.value = t; crecer(); pendiente = null; ponerPendiente(); decir('error', `no se envió: ${d.detail || `telar respondió ${r.status}`}`); }
             } catch {
-                dijo.textContent = 'sin conexión con telar';
+                texto.value = t; crecer(); pendiente = null; ponerPendiente();
+                decir('error', 'sin conexión con telar: no se envió (quedó en la caja)');
             }
             return;
         }
         // como un pegado (para que un salto de línea no envíe antes de tiempo), y después ⏎
         teclear(`\u001b[200~${t}\u001b[201~`);
         setTimeout(() => teclear('\r'), 120);
-        texto.value = '';
         setTimeout(() => void leer(), 1200);
     });
-    for (const [nombre, envia] of TECLAS) {
+    for (const [nombre, envia, ayuda] of TECLAS) {
         const b = el('button', '', nombre);
         b.type = 'button';
+        b.title = ayuda;
         b.addEventListener('click', () => { teclear(envia); setTimeout(() => void leer(), 800); });
         teclas.appendChild(b);
     }
