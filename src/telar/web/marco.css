@@ -1349,6 +1349,8 @@ dialog.mudanza {
   }
 
   .config-cuerpo { min-width: 0; }
+  /* la opción elegida de una fila de opciones (el motor, la posición de la terminal…) */
+  .config-cuerpo a.si { color: var(--violeta); }
 
   .config-cab {
     display: flex;
