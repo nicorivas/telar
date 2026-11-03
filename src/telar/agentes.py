@@ -571,3 +571,97 @@ def _toml_texto(v: str) -> str:
     import json
 
     return json.dumps(v, ensure_ascii=False)
+
+
+# ── eliminar un agente, y traerlo de vuelta (`telar agentes eliminar|restaurar`, POST /agentes/eliminar) ──
+
+#: adónde van los eliminados, dentro de la carpeta de los agentes: con «_» delante, `descubrir` no la mira
+ELIMINADOS = "_eliminados"
+#: lo que su máquina tenía de él en la configuración (`[agentes.<clave>]`), guardado junto a su carpeta
+CONFIG_GUARDADA = ".config-de-esta-maquina.toml"
+
+
+def buscar(config, quien: str) -> Agente | None:
+    """Un agente por su carpeta o su nombre (sin importar mayúsculas ni tildes)."""
+    return next((a for a in descubrir(config) if ficha(quien) in (ficha(a.clave), ficha(a.nombre))), None)
+
+
+def eliminar(config, ruta_config: Path, quien: str) -> dict:
+    """Saca a un agente: su carpeta pasa a `<agentes>/_eliminados/<clave>` (entera: su CLAUDE.md, su memoria, su
+    bitácora) y su `[agentes.<clave>]` de esta configuración queda guardado al lado. No toca sus hilos: eso lo hace
+    quien llama (`telar agentes eliminar` los archiva). `restaurar` lo deshace. ValueError si no existe."""
+    import shutil
+
+    from telar.unirse import quitar_tabla
+
+    a = buscar(config, quien)
+    if a is None:
+        raise ValueError(f"no hay un agente «{quien}»")
+    destino_base = a.carpeta.parent / ELIMINADOS
+    destino = destino_base / a.clave
+    if destino.exists():
+        from datetime import datetime
+
+        destino = destino_base / f"{a.clave}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    destino_base.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(a.carpeta), str(destino))
+    guardada = False
+    ruta = Path(ruta_config)
+    if ruta.exists():
+        texto = ruta.read_text(encoding="utf-8")
+        sin = quitar_tabla(texto, f"agentes.{a.clave}")
+        if sin != texto:
+            quitado = _tabla_texto(texto, f"agentes.{a.clave}")
+            (destino / CONFIG_GUARDADA).write_text(quitado, encoding="utf-8")
+            tmp = ruta.with_name(ruta.name + ".nuevo")
+            tmp.write_text(sin, encoding="utf-8")
+            tmp.replace(ruta)
+            guardada = True
+    return {"clave": a.clave, "nombre": a.nombre, "carpeta": str(destino), "hilos": list(a.hilos), "config_guardada": guardada}
+
+
+def _tabla_texto(texto: str, nombre: str) -> str:
+    """El texto de la tabla `[nombre]` y sus subtablas, tal cual (sin los comentarios de encima)."""
+    salida, dentro = [], False
+    for linea in texto.splitlines(keepends=True):
+        m = re.match(r"\s*\[+\s*([^\]]+?)\s*\]+", linea)
+        if m:
+            dentro = m.group(1) == nombre or m.group(1).startswith(nombre + ".")
+        if dentro:
+            salida.append(linea)
+    return "".join(salida)
+
+
+def eliminados(config) -> list[dict]:
+    """Los agentes eliminados que se pueden traer de vuelta: su carpeta en `_eliminados` y su nombre."""
+    b = base(config)
+    d = b / ELIMINADOS if b else None
+    if d is None or not d.is_dir():
+        return []
+    return [{"clave": x.name, "nombre": _nombre(x), "carpeta": str(x)}
+            for x in sorted(d.iterdir()) if x.is_dir() and (x / "CLAUDE.md").is_file()]
+
+
+def restaurar(config, ruta_config: Path, clave: str) -> dict:
+    """Trae de vuelta a un eliminado (su carpeta de `_eliminados/<clave>`) con lo que su máquina tenía de él en la
+    configuración. ValueError si no está o si su lugar ya lo ocupa otro."""
+    import shutil
+
+    b = base(config)
+    origen = b / ELIMINADOS / clave if b else None
+    if origen is None or not (origen / "CLAUDE.md").is_file():
+        raise ValueError(f"no hay un agente eliminado «{clave}»")
+    nombre = re.sub(r"-\d{8}-\d{6}$", "", clave)
+    destino = b / nombre
+    if destino.exists():
+        raise ValueError(f"{destino} ya existe: hay otro agente en su lugar")
+    guardada = origen / CONFIG_GUARDADA
+    texto_config = guardada.read_text(encoding="utf-8") if guardada.is_file() else ""
+    if guardada.is_file():
+        guardada.unlink()
+    shutil.move(str(origen), str(destino))
+    if texto_config.strip():
+        ruta = Path(ruta_config)
+        previo = ruta.read_text(encoding="utf-8") if ruta.exists() else ""
+        ruta.write_text(previo.rstrip("\n") + "\n\n" + texto_config.strip("\n") + "\n", encoding="utf-8")
+    return {"clave": nombre, "nombre": _nombre(destino), "carpeta": str(destino)}

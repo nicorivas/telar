@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from telar.servicios import ErrorDeServicio
 
 #: las órdenes que se pueden correr así, y nada más
-ORDENES = ("hilo", "tejer", "periodicos", "reunion")
+ORDENES = ("hilo", "tejer", "periodicos", "reunion", "agentes")
 
 _candado = threading.Lock()
 

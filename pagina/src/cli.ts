@@ -609,6 +609,22 @@ export const agentes = async () => await deServe<{ agentes: JsonEstadoAgente[]; 
 /** Rotar ya la conversación de un agente, con relevo (`POST /agentes/rotar`). */
 export const rotarAgente = async (hilo: string, maquina = '') =>
     await aServe<{ hecho?: string }>('POST', '/agentes/rotar', 30000, { hilo, maquina });
+/** Eliminar a un agente (`POST /agentes/eliminar`), en la máquina donde vive: sus hilos al archivo, su carpeta a
+ *  `_eliminados`. Nada se borra: `restaurarAgente` lo trae de vuelta. */
+export const eliminarAgente = async (agente: string, maquina = '') =>
+    await aServe<{ ok: boolean; clave: string; nombre: string; carpeta: string; archivados: string[]; sin_archivar: string[] }>(
+        'POST', '/agentes/eliminar', 120000, { agente, maquina });
+/** Abrir el hilo de un agente, retomando su conversación (`POST /agentes/abrir`), donde viva. Si quedó con una shell
+ *  (se abrió antes de elegir el motor), la reemplaza. 409 si falta el motor. */
+export const abrirAgente = async (agente: string, maquina = '') =>
+    await aServe<{ ok: boolean; hilo: string; hecho: string }>('POST', '/agentes/abrir', 60000, { agente, maquina });
+/** `telar config`, `[agente] nombre`: con qué se abren los hilos y los agentes (claude-code o ninguno). */
+export const motorAgentes = (valor: string) => ajusteConfig('motor', valor);
+/** Los agentes eliminados de esta máquina, que se pueden traer de vuelta. */
+export const agentesEliminados = async () =>
+    await deServe<{ eliminados: { clave: string; nombre: string; carpeta: string }[] }>('/agentes/eliminados', 15000);
+export const restaurarAgente = async (agente: string) =>
+    await aServe<{ codigo: number; salida: string; error: string }>('POST', '/agentes/restaurar', 30000, { agente });
 /** Un agente residente nuevo en esta máquina (`POST /agentes/nuevo`): su carpeta, y `[agentes] carpeta` si faltaba. */
 export const nuevoAgente = async (nombre: string, para = '') =>
     await aServe<{ clave: string; nombre: string; carpeta: string; configurado: boolean }>('POST', '/agentes/nuevo', 30000, { nombre, para });

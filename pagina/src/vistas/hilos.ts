@@ -249,6 +249,10 @@ export class BarraHilos {
             case 'equipo': void ui.orden('telar.equipoVer', m.id); break;
             case 'colega': if (m.id) void ui.orden('telar.escribirColega', m.id); break;
             case 'home': if (m.id) void ui.orden('telar.seccion', m.id); break;
+            case 'abrir-agente': if (m.id) {
+                const s = modelo.secciones.find(x => x.clave === m.id);
+                void ui.orden('telar.agenteAbrir', { clave: m.id, nombre: s?.nombre ?? m.id });
+            } break;
             case 'app': if (m.id) void ui.orden('telar.app', m.id); break;
             case 'ver-maquina':
                 void this.estado?.update('telar.hilos.maquina', !this.conMaquina()).then(() => this.refrescar(true));
@@ -461,10 +465,12 @@ export class BarraHilos {
                     const previo = modelo.hilos.find(x => cli.enSeccion(a, x.nombre));
                     const retomar = previo
                         ? `<span class="icono" data-accion="retomar" data-id="${esc(previo.nombre)}" title="retomar: reabre el hilo con su conversación">${I.retomar}</span>` : '';
-                    const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="home" data-id="${esc(a.clave)}"`;
-                    h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; ${previo ? 'pincha para retomarlo' : 'su home'}">`
+                    // sin hilo que retomar: se abre (con su motor; si falta, se ofrece elegirlo)
+                    const abrir = previo ? '' : `<span class="icono" data-accion="abrir-agente" data-id="${esc(a.clave)}" title="abrir su hilo">${I.correr}</span>`;
+                    const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="abrir-agente" data-id="${esc(a.clave)}"`;
+                    h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; pincha para ${previo ? 'retomarlo' : 'abrirlo'}">`
                         + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
-                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${casa}</div>`);
+                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${abrir}${casa}</div>`);
                 } else suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
                 // sus hijos: un hilo por tarea que se le llevó («Gestión › T454 …», telar.hijos), de esta máquina o de
                 // la suya, colgados de él y con el nombre sin el suyo adelante

@@ -182,6 +182,94 @@ def rotar(ctx, hilo: str, maquina: str = "") -> dict:
     return r
 
 
+def abrir_aqui(ctx, agente: str) -> dict:
+    """Abrir el hilo de un agente que vive aquí, retomando su conversación si tiene una (lo que hace el nodo con los
+    que están para siempre). Sin motor (`[agente] nombre`), 409 diciendo cómo elegirlo."""
+    from telar import agentes as mod_agentes
+    from telar import encargos
+
+    a = mod_agentes.buscar(ctx.config, agente)
+    if a is None:
+        raise ErrorDeServicio(f"no hay un agente «{agente}»", 404)
+    if not ctx.config.agente.nombre:
+        raise ErrorDeServicio("falta elegir con qué se abren los agentes (el motor): ⚙ agente › motor, "
+                              "o [agente] nombre = \"claude-code\" en la configuración", 409)
+    if encargos._donde(ctx, a.nombre) is not None:
+        # abierto, pero quizás solo con una shell: lo que queda si se abrió antes de elegir el motor. Una shell que no
+        # corre nada se reemplaza por el agente; si corre algo, se deja (puede ser él, o trabajo a medias)
+        if not _solo_shell(ctx, a.nombre):
+            return {"ok": True, "hilo": a.nombre, "hecho": "ya estaba abierto"}
+    try:
+        encargos._abrir(ctx, a, "")
+    except Exception as e:  # noqa: BLE001 - el motor no arrancó: se dice por qué
+        raise ErrorDeServicio(f"no pude abrir a {a.nombre}: {e}", 409) from e
+    return {"ok": True, "hilo": a.nombre, "hecho": "abierto"}
+
+
+def _donde_vive(ctx, agente: str) -> str:
+    """La máquina donde vive un agente ("" si aquí o no se sabe): la de encargarle (telar.servicios.encargos)."""
+    from telar.servicios import encargos as servicio_encargos
+
+    try:
+        return servicio_encargos.donde_vive(ctx, agente)
+    except ErrorDeServicio:
+        return ""
+
+
+def _solo_shell(ctx, hilo: str) -> bool:
+    """Si el tab vivo de `hilo` es una shell que no corre nada; si lo es, lo cierra (para abrir ahí al agente)."""
+    from telar.agente import lanzar
+    from telar.ordenes import _comun
+
+    try:
+        tel = _comun.tejer(ctx, con_ficha=False)
+        h = tel.por_nombre(hilo)
+        if h is None or tel.mux is None or not tel.vivo(h) or lanzar.panel_ocioso(tel.mux.panes(h.id)) is None:
+            return False
+        tel.mux.cerrar_tab(h.id)
+        return True
+    except Exception:  # noqa: BLE001 - lo que no se sabe no se cierra
+        return False
+
+
+def abrir(ctx, agente: str, maquina: str = "") -> dict:
+    """En la máquina donde vive (la que se diga, o la de su `en`)."""
+    from telar import bus as mod_bus
+
+    maquina = maquina or _donde_vive(ctx, agente)
+    if not maquina or maquina in ("aqui", "local") or (mod_bus.hay_bus(ctx.config) and maquina == mod_bus.maquina(ctx.config)):
+        return abrir_aqui(ctx, agente)
+    r = mod_bus.pedir(ctx.config, maquina, "agentes", {"abrir": agente}, espera=60)
+    if not r.get("ok"):
+        raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
+    return r
+
+
+def eliminar_aqui(ctx, agente: str) -> dict:
+    """Eliminar a un agente de aquí (`telar agentes eliminar`): sus hilos al archivo, su carpeta a `_eliminados`."""
+    import json
+
+    from telar.servicios import en_proceso
+
+    c = en_proceso.correr(ctx, "agentes", ["eliminar", agente, "--si", "--json"])
+    if c.codigo != 0:
+        raise ErrorDeServicio((c.error or c.salida).strip().splitlines()[-1] if (c.error or c.salida).strip() else "no se pudo", 409)
+    return {"ok": True, **json.loads(c.salida)}
+
+
+def eliminar(ctx, agente: str, maquina: str = "") -> dict:
+    """En la máquina donde vive (su nodo es el que lo mantiene abierto: apartarlo en otra lo dejaría vivo allá)."""
+    from telar import bus as mod_bus
+
+    maquina = maquina or _donde_vive(ctx, agente)
+    if not maquina or maquina in ("aqui", "local") or (mod_bus.hay_bus(ctx.config) and maquina == mod_bus.maquina(ctx.config)):
+        return eliminar_aqui(ctx, agente)
+    r = mod_bus.pedir(ctx.config, maquina, "agentes", {"eliminar": agente}, espera=90)
+    if not r.get("ok"):
+        raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
+    return r
+
+
 def nuevo(ctx, nombre: str, para: str = "", icono: str = "") -> dict:
     """Un agente residente nuevo aquí (telar.agentes.crear); 409 si no se puede."""
     from telar import agentes as mod_agentes

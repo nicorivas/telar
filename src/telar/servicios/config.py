@@ -378,6 +378,22 @@ def plantilla(ctx, cual: str, texto: str) -> Escrito:
     return Escrito(**{cual: valor or defecto, "archivo": str(destino)})
 
 
+def motor(ctx, valor: str) -> Escrito:
+    """Con qué agente se abren los hilos (`[agente] nombre`): uno de los que telar conoce (claude-code), o «ninguno»
+    (los hilos quedan con una shell). El nodo lo nota solo y abre a los residentes que esperaban."""
+    from telar import agente as mod_agente
+    from telar.servicios import ErrorDeServicio
+
+    v = valor.strip()
+    if v in ("", "ninguno"):
+        destino = _escribir(ctx, "agente", "nombre", None)
+        return Escrito(motor="ninguno", archivo=str(destino))
+    if v not in set(mod_agente.INCLUIDOS) | set(mod_agente.REGISTRO):
+        raise ErrorDeServicio(f"no conozco el motor «{v}»: {', '.join(sorted(mod_agente.INCLUIDOS))} o ninguno", 422)
+    destino = _escribir(ctx, "agente", "nombre", v)
+    return Escrito(motor=v, archivo=str(destino))
+
+
 def calendario(ctx, valor: str) -> Escrito:
     """De dónde sale la agenda: `gws`, `ninguno` o la dirección de un calendario iCal."""
     from telar.config import ErrorDeConfig, escribir_calendario

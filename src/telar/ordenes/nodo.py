@@ -426,7 +426,52 @@ class Nodo:
                           ("hilo-traer", self._hilo_traer)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
+    def releer_config(self) -> bool:
+        """Si la configuración cambió en el disco, la vuelve a leer (la máquina y la persona del bus no cambian con el
+        nodo andando). Elegir el motor de los agentes (`[agente] nombre`) con el nodo ya corriendo hace que los
+        residentes que están para siempre se abran ya, sin esperar su pausa. True si la releyó."""
+        from dataclasses import replace
+        from pathlib import Path
+
+        from telar import config as mod_config
+
+        ruta = getattr(self.config, "origen", None)
+        if not ruta:
+            return False  # sin archivo (todo por defecto): no hay qué releer
+        try:
+            marca = Path(ruta).stat().st_mtime
+        except OSError:
+            return False
+        if getattr(self, "marca_config", None) is None:
+            self.marca_config = marca
+            return False
+        if marca == self.marca_config:
+            return False
+        self.marca_config = marca
+        try:
+            nueva = mod_config.cargar(ruta)
+        except Exception as e:  # noqa: BLE001 - una configuración a medio escribir: sigue la de antes
+            self.anotar(f"la configuración cambió y no se pudo leer ({e}): sigo con la de antes")
+            return False
+        sin_motor = not self.config.agente.nombre
+        self.config = nueva
+        self.ctx = replace(self.ctx, config=nueva)
+        if sin_motor and nueva.agente.nombre:
+            self.abiertos_siempre = {}
+            self.anotar(f"el motor de los agentes ahora es «{nueva.agente.nombre}»: los residentes se abren con él")
+            # los que están para siempre y se abrieron sin motor tienen un tab con una shell: se abre el agente ahí
+            from telar.servicios import agentes as servicio
+
+            for a in self._agentes_de_aqui():
+                if a.presencia == "siempre":
+                    try:
+                        servicio.abrir_aqui(self.ctx, a.clave)
+                    except Exception as e:  # noqa: BLE001 - lo intenta de nuevo su vuelta de siempre
+                        self.anotar(f"«{a.nombre}»: no pude abrirlo con el motor nuevo: {e}")
+        return True
+
     async def _vuelta(self, js, kv) -> None:
+        self.releer_config()
         # los disparadores de cambio que quedaron esperando su pausa salen cuando se cumple
         despacho = self._despacho()
         if despacho and despacho.pendientes:
@@ -1083,7 +1128,7 @@ class Nodo:
 
     async def _agentes(self, m) -> None:
         """Los agentes que viven aquí con su estado (telar.servicios.agentes), para la página de otra máquina; con
-        `rotar`, rotar ya la conversación de uno."""
+        `rotar`, rotar ya la conversación de uno; con `eliminar`, eliminarlo (sus hilos al archivo, su carpeta aparte)."""
         from telar.servicios import ErrorDeServicio
         from telar.servicios import agentes as servicio
 
@@ -1091,6 +1136,10 @@ class Nodo:
             try:
                 if p.get("rotar"):
                     return servicio.rotar_aqui(self.ctx, str(p["rotar"]))
+                if p.get("abrir"):
+                    return servicio.abrir_aqui(self.ctx, str(p["abrir"]))
+                if p.get("eliminar"):
+                    return servicio.eliminar_aqui(self.ctx, str(p["eliminar"]))
                 return {"ok": True, "agentes": servicio.estado_local(self.ctx)}
             except ErrorDeServicio as e:
                 return {"ok": False, "error": str(e), "codigo": e.codigo}

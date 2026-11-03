@@ -130,6 +130,12 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             h.vivo && !h.archivado
                 ? { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'lo termina y lo saca de la lista, sin guardarlo', hacer: () => sacar(hilo, 'cerrar', 'descartándolo') }
                 : { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'sale del archivo: telar olvida su carpeta, su prioridad y su atención', hacer: () => descartar(hilo) },
+            ...(h.agente ? [{ label: 'abrir el agente', icono: I.correr, color: C.agente,
+                description: 'si quedó en una shell (se abrió antes de elegir el motor), lo abre ahí con su conversación',
+                hacer: () => ui.orden('telar.agenteAbrir', { clave: h.agente, nombre: h.nombre.split(' › ')[0], maquina: h.remoto && h.remoto !== '?' ? h.remoto : '' }) }] : []),
+            ...(h.agente ? [{ label: 'eliminar el agente', icono: I.descartar, color: C.quitar,
+                description: 'sus hilos al archivo y su carpeta aparte; no se borra nada',
+                hacer: () => ui.orden('telar.agenteEliminar', { clave: h.agente, nombre: h.nombre.split(' › ')[0], maquina: h.remoto && h.remoto !== '?' ? h.remoto : '' }) }] : []),
             ...(!h.remoto ? [{ label: 'llevar a otra máquina', icono: I.llevar, color: C.otro, description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
                 : [{ label: 'traer a esta máquina', icono: I.traer, color: C.otro, description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
         ];
@@ -257,6 +263,39 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             const r = await cli.nuevoAgente(nombre, para);
             if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
             avisar(`Agente ${r.datos.nombre} en ${r.datos.carpeta}. Escribe en su CLAUDE.md qué hace.`, 'info');
+            await modelo.sondear(true);
+        },
+        // abrir el hilo de un agente (o volver a abrirlo con su motor, si quedó en una shell). Sin motor elegido, lo
+        // dice y ofrece elegir Claude Code, y lo intenta de nuevo
+        'telar.agenteAbrir': async (a?: { clave: string; nombre: string; maquina?: string }) => {
+            if (!a?.clave) return;
+            avisar(`abriendo a ${a.nombre}…`, 'info', 3000);
+            let r = await cli.abrirAgente(a.clave, a.maquina ?? '');
+            if (!r.datos && /motor/.test(r.error ?? '')) {
+                const si = await ui.aviso(`Para abrir a ${a.nombre} falta elegir con qué se abren los agentes (el motor). `
+                    + '¿Uso Claude Code? Queda en la configuración, [agente] nombre; se cambia en ⚙ agente.', 'Usar Claude Code');
+                if (si !== 'Usar Claude Code') return;
+                const m = await cli.motorAgentes('claude-code');
+                if (!m.ok) { void ui.falla(`telar: no pude guardarlo: ${m.err}`); return; }
+                r = await cli.abrirAgente(a.clave, a.maquina ?? '');
+            }
+            if (!r.datos) { void ui.falla(`telar: ${r.error ?? `no pude abrir a ${a.nombre}`}`); return; }
+            await modelo.sondear(true);
+            c.mostrar(a.maquina ? `rem:${a.maquina}:${r.datos.hilo}` : r.datos.hilo);
+        },
+        // eliminar a un agente: sus hilos al archivo (se retoman) y su carpeta aparte (`telar agentes restaurar`)
+        'telar.agenteEliminar': async (a?: { clave: string; nombre: string; maquina?: string }) => {
+            if (!a?.clave) return;
+            const si = await ui.aviso(`¿Eliminar a ${a.nombre}? Sus hilos van al archivo, con su conversación, y su carpeta a `
+                + '_eliminados/ (no se borra nada: ⚙ agentes… o «telar agentes restaurar» lo trae de vuelta). Lo que tenga '
+                + 'encargado queda sin hacer.', 'Eliminar');
+            if (si !== 'Eliminar') return;
+            avisar(`eliminando a ${a.nombre}…`, 'info', 4000);
+            const r = await cli.eliminarAgente(a.clave, a.maquina ?? '');
+            if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
+            avisar(`${a.nombre} eliminado${r.datos.archivados.length ? `; al archivo: ${r.datos.archivados.join(', ')}` : ''}.`
+                + (r.datos.sin_archivar.length ? ` No se pudieron archivar: ${r.datos.sin_archivar.join(', ')}.` : ''), 'info', 8000);
+            modelo.invalidar();
             await modelo.sondear(true);
         },
         'telar.equipo': async () => { const e = await elegirEntrada(); if (e) { c.mostrar('dashboard'); await c.hoy.abrirEquipo(e); } },

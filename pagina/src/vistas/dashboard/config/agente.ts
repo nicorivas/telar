@@ -31,12 +31,17 @@ export const agente: FabricaSeccion = ctx => {
     const seccion = {
         clave: 'agente',
         nombre: 'agente',
-        ayuda: 'qué se le dice al agente al pinchar una reunión o abrir un proyecto',
+        ayuda: 'con qué se abren los hilos y los agentes (el motor), y qué se le dice al pinchar una reunión o abrir un proyecto',
         abrir: async () => seccion.pintar(),
         pintar(): void {
             const a = ctx.config()?.agente;
             const h = aviso ? [`<div class="fila falla">${esc(aviso)}</div>`] : [];
             if (a) {
+                h.push('<h2>Motor<small>con qué se abren los hilos y los agentes</small></h2>');
+                h.push(`<div class="fila">${['claude-code', 'ninguno'].map(m => `<a class="${(a.nombre || 'ninguno') === m ? 'si' : ''}" data-accion="motor" data-valor="${m}">${m}</a>`).join(' · ')}`
+                    + `${a.nombre ? '' : '<span class="falla"> · sin motor: los hilos quedan con una shell y los agentes no se abren</span>'}</div>`);
+                h.push('<div class="fila dim">Al elegirlo, los agentes que están para siempre se abren solos; a uno que quedó en una shell, '
+                    + '⋯ › abrir el agente lo abre ahí.</div>');
                 const propia = a.reunion !== a.reunion_por_defecto;
                 h.push('<h2>Reuniones<small>al pinchar una reunión</small></h2>');
                 h.push(`<div class="fila"><code>${esc(a.reunion)}</code>`
@@ -61,7 +66,12 @@ export const agente: FabricaSeccion = ctx => {
         async accion(accion: string, valor: string): Promise<boolean> {
             if (accion === 'plantilla') await cambiar('reunion', valor === 'restablecer');
             else if (accion === 'plantilla-proyecto') await cambiar('proyecto', valor === 'restablecer');
-            else return false;
+            else if (accion === 'motor') {
+                const r = await cli.motorAgentes(valor);
+                aviso = r.ok ? '' : (r.err.trim().split('\n').pop() || 'no pude guardar el motor');
+                await ctx.releerConfig();
+                seccion.pintar();
+            } else return false;
             return true;
         },
     };

@@ -10,6 +10,16 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Added
 
+- **Delete an agent, and bring it back.** `telar agentes eliminar faro` (in the page: ⋯ › eliminar el agente, or
+  «eliminar» in the agents page) archives its threads, with their conversation, and moves its folder to
+  `<agentes>/_eliminados/`, with what this machine's configuration had for it (`[agentes.<clave>]`). Nothing is
+  deleted: `telar agentes eliminados` lists them and `telar agentes restaurar faro` (or «traer de vuelta») brings one
+  back. It runs on the machine where the agent lives, over the bus (`POST /agentes/eliminar`).
+- **Open an agent from the page** (`POST /agentes/abrir`, on its machine): an agent with no thread opens with a click
+  (▶ in its row), resuming its conversation. With no engine chosen (`[agente] nombre`) it says so and offers Claude
+  Code; ⚙ agente › motor chooses it (`PUT /config/motor`). If its tab was left with a bare shell (opened before the
+  engine was chosen), ⋯ › abrir el agente opens it there.
+
 - **Riso glyphs, per mode and off by default.** A field of glyphs printed like a risograph on the dark background
   (each ink on its own layer, with grain, mixed by light) that changes scale by zones, and a glyph per thread computed
   from its name, with its state on top (working turns in 45° steps, waiting fills a ring of yellow dots, done gets a
@@ -39,6 +49,9 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   «llegó», «en su casilla» or why it didn't go (the text stays in the box).
 
 ### Fixed
+
+- **The node notices a configuration change** instead of keeping the one it started with: choosing the engine with the
+  node running opens the agents that are there for good right away, and replaces a tab of theirs that was only a shell.
 
 - **A number with decimals can be written to the configuration** (`escribir_clave`): it only took text, integers and
   lists.

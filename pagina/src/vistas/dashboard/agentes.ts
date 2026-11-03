@@ -22,6 +22,7 @@ export class PantallaAgentes implements Pantalla {
     private lista?: cli.JsonEstadoAgente[];
     private problemas: string[] = [];
     private error = '';
+    private eliminados: { clave: string; nombre: string; carpeta: string }[] = [];
 
     readonly acciones: Record<string, Accion> = {
         'agentes-leer': () => this.leer(),
@@ -31,6 +32,19 @@ export class PantallaAgentes implements Pantalla {
         'encargo-cancelar': v => v && this.cancelar(v),
         'encargo-ver': v => v && ui.abrirDireccion(v),
         'agente-archivar-abiertos': v => v && this.archivarAbiertos(v),
+        'agente-eliminar': async v => {
+            const x = v ? this.de(v) : undefined;
+            if (!x) return;
+            await ui.orden('telar.agenteEliminar', { clave: x.agente.clave, nombre: x.agente.nombre, maquina: x.maquina ?? '' });
+            await this.leer();
+        },
+        'agente-restaurar': async v => {
+            if (!v) return;
+            const r = await cli.restaurarAgente(v);
+            if (!r.datos || r.datos.codigo !== 0) { void ui.falla(`telar: no se pudo: ${r.error ?? r.datos?.error ?? 'sin respuesta'}`); return; }
+            void ui.estado(`telar: ${v} de vuelta; sus hilos siguen en el archivo`, 5000);
+            await this.leer();
+        },
     };
 
     constructor(private readonly t: Tablero) {}
@@ -45,6 +59,7 @@ export class PantallaAgentes implements Pantalla {
     private async leer(): Promise<void> {
         const r = await cli.agentes();
         this.lista = r.datos?.agentes ?? this.lista;
+        this.eliminados = (await cli.agentesEliminados()).datos?.eliminados ?? [];
         this.problemas = r.datos?.problemas ?? [];
         this.error = r.datos ? '' : (r.error ?? 'no pude leer los agentes');
         if (this.t.pantalla === 'agentes') this.pintar();
@@ -153,12 +168,20 @@ export class PantallaAgentes implements Pantalla {
                 + `<div class="fila"><a data-accion="agente-encargar" data-valor="${esc(a.clave)}">encargar</a>`
                 + ` · <a data-accion="agente-ir" data-valor="${esc(a.clave)}">ir a su hilo</a>`
                 + (x.vivo ? ` · <a data-accion="agente-rotar" data-valor="${esc(a.clave)}" title="que escriba su relevo y empiece otra conversación">rotar con relevo</a>` : '')
+                + `<span class="der"><a class="rojo" data-accion="agente-eliminar" data-valor="${esc(a.clave)}" title="sus hilos al archivo y su carpeta aparte; no se borra nada">${I.descartar} eliminar</a></span>`
                 + '</div>'
                 + this.abiertos(x)
                 + x.encargos.map(e => this.encargo(x, e)).join('')
                 + '</div>');
         }
         if (this.lista && !this.lista.length) h.push('<div class="fila dim">no hay agentes: [agentes] carpeta en la configuración</div>');
+        if (this.eliminados.length) {
+            h.push('<div class="subcab"><b>Eliminados</b><span class="dim"> · su carpeta, aparte; sus hilos, en el archivo</span></div>');
+            for (const e of this.eliminados) {
+                h.push(`<div class="fila dim">${esc(e.nombre)} · ${esc(e.carpeta)}<span class="der">`
+                    + `<a data-accion="agente-restaurar" data-valor="${esc(e.clave)}">${I.desarchivar} traer de vuelta</a></span></div>`);
+            }
+        }
         this.t.pintar(h);
     }
 }

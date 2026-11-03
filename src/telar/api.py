@@ -661,11 +661,13 @@ def put_ajuste(ajuste: str, pedido: PedidoAjuste, ctx: Contexto = Depends(contex
         return servicio_config.directorios(ctx, pedido.valor)
     if ajuste in ("reunion", "proyecto"):
         return servicio_config.plantilla(ctx, ajuste, pedido.valor)
+    if ajuste == "motor":
+        return servicio_config.motor(ctx, pedido.valor)
     if ajuste == "calendario":
         if not pedido.valor.strip():
             raise ErrorDeServicio("calendario: gws, ninguno o la dirección de un calendario", 422)
         return servicio_config.calendario(ctx, pedido.valor)
-    raise ErrorDeServicio(f"no hay un ajuste «{ajuste}»: directorios, reunion, proyecto, calendario o pestanas", 404)
+    raise ErrorDeServicio(f"no hay un ajuste «{ajuste}»: directorios, reunion, proyecto, motor, calendario o pestanas", 404)
 
 
 # ── la terminal de los hilos: su ancho, su posición y su fondo (`[terminal]`) ───────────────
@@ -987,6 +989,39 @@ class PedidoAgenteNuevo(BaseModel):
 def post_agentes_nuevo(pedido: PedidoAgenteNuevo, ctx: Contexto = Depends(contexto)) -> dict:
     """Un agente residente nuevo, en esta máquina: su carpeta en `[agentes] carpeta` (que se configura si faltaba)."""
     return servicio_agentes.nuevo(ctx, pedido.nombre, pedido.para, pedido.icono)
+
+
+class PedidoAgente(BaseModel):
+    agente: str
+    #: la máquina donde vive, si es otra: se le pide a ella por el bus
+    maquina: str = ""
+
+
+@app.post("/agentes/abrir")
+def post_agentes_abrir(pedido: PedidoAgente, ctx: Contexto = Depends(contexto)) -> dict:
+    """Abrir el hilo de un agente (retomando su conversación), en la máquina donde vive. 409 si falta el motor."""
+    return servicio_agentes.abrir(ctx, pedido.agente, pedido.maquina)
+
+
+@app.post("/agentes/eliminar")
+def post_agentes_eliminar(pedido: PedidoAgente, ctx: Contexto = Depends(contexto)) -> dict:
+    """Eliminar a un agente: sus hilos al archivo y su carpeta a `_eliminados` (`telar agentes eliminar`), en la
+    máquina donde vive."""
+    return servicio_agentes.eliminar(ctx, pedido.agente, pedido.maquina)
+
+
+@app.post("/agentes/restaurar", response_model=en_proceso.Corrida)
+def post_agentes_restaurar(pedido: PedidoAgente, ctx: Contexto = Depends(contexto)):
+    """Traer de vuelta a un agente eliminado (`telar agentes restaurar`)."""
+    return en_proceso.correr(ctx, "agentes", ["restaurar", pedido.agente, "--json"])
+
+
+@app.get("/agentes/eliminados")
+def get_agentes_eliminados(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los agentes eliminados que se pueden traer de vuelta."""
+    from telar import agentes as mod_agentes
+
+    return {"eliminados": mod_agentes.eliminados(ctx.config)}
 
 
 @app.get("/agentes/del-hilo", response_model=servicio_agentes.FichaAgente)
