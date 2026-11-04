@@ -219,8 +219,10 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ para: hilo, texto: t, tipo: 'persona', de: 'el panel' }),
                 });
-                const d = await r.json() as { detail?: string };
-                if (r.ok) { decir('cola', 'en su casilla: le llega al terminar su turno, o al tiro si te espera'); pronto = Date.now() + 30000; setTimeout(() => void leer(), 3000); }
+                const d = await r.json() as { detail?: string; despertado?: string; sin_despertar?: string };
+                if (r.ok) { decir('cola', d.despertado ? `estaba ${d.despertado}: lo retomé con su conversación, y lo lee ahora`
+                    : d.sin_despertar ? `en su casilla; no está abierto y no pude retomarlo (${d.sin_despertar}): le llega cuando lo retomes`
+                    : 'en su casilla: le llega al terminar su turno, o al tiro si te espera'); pronto = Date.now() + 30000; setTimeout(() => void leer(), 3000); }
                 else { texto.value = t; crecer(); pendiente = null; ponerPendiente(); decir('error', `no se envió: ${d.detail || `telar respondió ${r.status}`}`); }
             } catch {
                 texto.value = t; crecer(); pendiente = null; ponerPendiente();

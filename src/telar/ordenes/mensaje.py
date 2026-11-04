@@ -115,6 +115,10 @@ def main(argv: list[str], ctx) -> int:
     como = {"aviso": " (un aviso: no lo despierta)"}.get(o.modo, "")
     print(f"«{r['para']}»: en su casilla{como}" + (" (ya estaba: no se duplicó)" if r.get("duplicado") else "")
           + f" · id {r['id']}")
+    if r.get("despertado"):
+        print(f"  estaba {r['despertado']}: lo retomé con su conversación, y lo lee ahora")
+    elif r.get("sin_despertar"):
+        print(f"  no está abierto y no pude retomarlo ({r['sin_despertar']}): le llega cuando lo retomes", file=sys.stderr)
     if r.get("encargo"):
         print(f"  {r['direccion']}: en qué va, con telar objeto {r['direccion']}")
     return 0
@@ -258,6 +262,11 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
                        **con_modo)
     if hilo and not retener:
         _anotar_envio(ctx.config, hilo)
+    # un hilo dormido o archivado no recoge su casilla: lo que le llega esperaría hasta que alguien lo retome. Un
+    # mensaje que pide algo (no un aviso) lo despierta: se retoma, con su conversación, en la máquina donde vive. Un
+    # agente no: su nodo lo abre al llegarle algo (o espera, si así lo declara)
+    if agente is None and modo != "aviso" and r.get("estado") != "retenido":
+        r = {**r, **despertar(ctx, nombre)}
     if eid:
         # la máquina donde vive el hilo ahora, que es donde se creará el encargo: si el hilo se muda después o su
         # estado se borra del bus, la nota sigue sabiendo dónde buscarlo
@@ -270,6 +279,40 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
             pass  # sin la nota, se lo busca en la máquina donde vive su hilo
         r = {**r, "encargo": eid, "direccion": f"encargo:{eid}"}
     return r
+
+
+def despertar(ctx, hilo: str) -> dict:
+    """Si `hilo` no está vivo (dormido o archivado), retomarlo donde vive para que lea lo que le llegó. Devuelve
+    {"despertado": "archivado"|"dormido"} si lo retomó, {"sin_despertar": motivo} si no pudo, {} si estaba vivo o el
+    bus no lo conoce."""
+    if not mod_bus.hay_bus(ctx.config):
+        return {}
+    e = mod_bus.estado_de(ctx.config, hilo)
+    if not e or e.get("vivo") or e.get("residente"):
+        return {}
+    como = "archivado" if e.get("archivado") else "dormido"
+    maquina = str(e.get("maquina") or "")
+    if not maquina or maquina == mod_bus.maquina(ctx.config):
+        r = despertar_aqui(ctx, hilo)
+    else:
+        r = mod_bus.pedir(ctx.config, maquina, "hilo-despertar", {"hilo": hilo}, espera=60)
+    return {"despertado": como} if r.get("ok") else {"sin_despertar": str(r.get("error") or "no respondió")}
+
+
+def despertar_aqui(ctx, hilo: str) -> dict:
+    """Retomar aquí un hilo dormido o archivado al que le llegó un mensaje (`telar hilo retomar`)."""
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+
+    from telar.ordenes import hilo as orden_hilo
+
+    salida, errores = io.StringIO(), io.StringIO()
+    with redirect_stdout(salida), redirect_stderr(errores):
+        codigo = orden_hilo.main(["retomar", "--hilo", hilo], ctx)
+    if codigo != 0:
+        lineas = (errores.getvalue() or salida.getvalue()).strip().splitlines()
+        return {"ok": False, "error": lineas[-1] if lineas else "no se pudo"}
+    return {"ok": True}
 
 
 def retenidos(lista: list[dict]) -> list[dict]:

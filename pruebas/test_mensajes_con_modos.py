@@ -696,3 +696,36 @@ if HAY_FASTAPI:
                 r = self.c.get("/mensajes/consulta", params={"para": "Faro"})
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual(r.json()["objeto"]["estado"], "espera")
+
+
+class DespertarAlDormido(Prueba):
+    """Un mensaje que pide algo a un hilo archivado o dormido lo retoma donde vive; un aviso no."""
+
+    def ctx(self):
+        cfg = mod_config.Config(raiz=Path(tempfile.mkdtemp()), bus=mod_config.Bus(url="nats://127.0.0.1:1", persona="ana", maquina="laptop"))
+        return SimpleNamespace(config=cfg)
+
+    def test_archivado_aqui_se_retoma_aqui_y_en_otra_maquina_se_le_pide(self):
+        ctx = self.ctx()
+        with mock.patch.object(mod_bus, "estado_de", return_value={"maquina": "laptop", "vivo": False, "archivado": True}), \
+                mock.patch.object(mensaje, "despertar_aqui", return_value={"ok": True}) as aqui:
+            self.assertEqual(mensaje.despertar(ctx, "Faro"), {"despertado": "archivado"})
+            aqui.assert_called_once()
+        with mock.patch.object(mod_bus, "estado_de", return_value={"maquina": "servidor", "vivo": False}), \
+                mock.patch.object(mod_bus, "pedir", return_value={"ok": True}) as pedir:
+            self.assertEqual(mensaje.despertar(ctx, "Faro"), {"despertado": "dormido"})
+            self.assertEqual(pedir.call_args.args[1:3], ("servidor", "hilo-despertar"))
+
+    def test_vivo_residente_o_desconocido_no_se_toca(self):
+        ctx = self.ctx()
+        for e in ({"maquina": "laptop", "vivo": True}, {"maquina": "laptop", "vivo": False, "residente": "siempre"}, {}):
+            with mock.patch.object(mod_bus, "estado_de", return_value=e), \
+                    mock.patch.object(mensaje, "despertar_aqui") as aqui:
+                self.assertEqual(mensaje.despertar(ctx, "Faro"), {})
+                aqui.assert_not_called()
+
+    def test_si_no_se_puede_lo_dice(self):
+        ctx = self.ctx()
+        with mock.patch.object(mod_bus, "estado_de", return_value={"maquina": "servidor", "vivo": False}), \
+                mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "servidor no respondió"}):
+            self.assertEqual(mensaje.despertar(ctx, "Faro"), {"sin_despertar": "servidor no respondió"})

@@ -422,7 +422,7 @@ class Nodo:
                           ("notas", self._notas), ("nota", self._nota), ("serie", self._serie),
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
-                          ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo),
+                          ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo), ("hilo-despertar", self._hilo_despertar),
                           ("hilo-traer", self._hilo_traer)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
@@ -1215,6 +1215,13 @@ class Nodo:
                 return {"ok": False, "error": str(e), "codigo": e.codigo}
 
         await self._responder(m, abrir)
+
+    async def _hilo_despertar(self, m) -> None:
+        """A un hilo dormido o archivado de aquí le llegó un mensaje desde otra máquina: se retoma para que lo lea
+        (telar.ordenes.mensaje.despertar)."""
+        from telar.ordenes import mensaje
+
+        await self._responder(m, lambda p: mensaje.despertar_aqui(self.ctx, str(p.get("hilo") or "")))
 
     async def _hilo_traer(self, m) -> None:
         """Otra máquina de esta persona pide para sí un hilo que vive aquí («traer a esta máquina»): se le lleva con

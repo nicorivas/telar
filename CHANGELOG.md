@@ -10,6 +10,10 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Added
 
+- **A message wakes an archived or sleeping thread.** It used to wait in the bus until someone resumed the thread by
+  hand. Now a message that asks for something (not `--modo aviso`) resumes it, with its conversation, on the machine
+  where it lives (bus verb `hilo-despertar`), and says so: «estaba archivado: lo retomé». Agents are left to their node.
+
 - **Delete an agent, and bring it back.** `telar agentes eliminar faro` (in the page: ⋯ › eliminar el agente, or
   «eliminar» in the agents page) archives its threads, with their conversation, and moves its folder to
   `<agentes>/_eliminados/`, with what this machine's configuration had for it (`[agentes.<clave>]`). Nothing is
@@ -49,6 +53,10 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   «llegó», «en su casilla» or why it didn't go (the text stays in the box).
 
 ### Fixed
+
+- **Archiving the thread you're looking at isn't an error.** When its window goes away because it was archived or
+  closed (also from inside: «archívate»), the page moves to its conversation, with «retomar», instead of «no se pudo
+  abrir».
 
 - **The node notices a configuration change** instead of keeping the one it started with: choosing the engine with the
   node running opens the agents that are there for good right away, and replaces a tab of theirs that was only a shell.

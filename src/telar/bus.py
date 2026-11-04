@@ -424,6 +424,12 @@ def registro(config, n: int = 100) -> list[dict]:
 
 def maquina_de(config, hilo: str) -> str:
     """En qué máquina vive un hilo, según el estado que publica su nodo; "" si el bus no lo sabe."""
+    return str(estado_de(config, hilo).get("maquina") or "")
+
+
+def estado_de(config, hilo: str) -> dict:
+    """El estado que publica el nodo de la máquina donde vive un hilo (maquina, vivo, archivado…); {} si el bus no
+    lo sabe."""
     async def _leer():
         nc = await conectar(config)
         try:
@@ -431,15 +437,16 @@ def maquina_de(config, hilo: str) -> str:
             try:
                 e = await kv.get(clave_estado(config, hilo))
             except Exception:  # noqa: BLE001 - no está, o fue borrado
-                return ""
-            return str(json.loads(e.value or b"{}").get("maquina") or "")
+                return {}
+            d = json.loads(e.value or b"{}")
+            return d if isinstance(d, dict) else {}
         finally:
             await nc.close()
 
     try:
         return _con_reintento(_leer, ESPERA)
     except Exception:  # noqa: BLE001 - sin bus, no se sabe
-        return ""
+        return {}
 
 
 def estados(config) -> dict:

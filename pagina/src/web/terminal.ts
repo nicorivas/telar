@@ -290,7 +290,14 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     let abierta = 0, rapidas = 0, cola = '';
     let aviso: HTMLElement | undefined;
     const quitarAviso = () => { aviso?.remove(); aviso = undefined; };
-    const mostrarFalla = (motivo: string) => {
+    const mostrarFalla = async (motivo: string) => {
+        // archivarlo (o cerrarlo) mientras se mira, también desde adentro («archívate»), es lo de siempre, no una
+        // falla: se pasa a su conversación, que es como se ve un hilo archivado (con «retomar»)
+        if (!maquina) {
+            await modelo.sondear(true).catch(() => undefined);
+            const h = modelo.porNombre(hilo);
+            if (h && (h.archivado || !h.vivo)) { cerrada = true; void ui.orden('telar.ir', hilo); return; }
+        }
         quitarAviso();
         term.reset(); eco.reiniciar();
         aviso = document.createElement('div');
@@ -343,7 +350,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
                 conectada = false;
                 // eslint-disable-next-line no-control-regex
                 const ultima = cola.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).pop() ?? '';
-                mostrarFalla((e.reason || ultima || 'la terminal se cerró al abrirse').replace(/^telar: /, ''));
+                void mostrarFalla((e.reason || ultima || 'la terminal se cerró al abrirse').replace(/^telar: /, ''));
                 return;
             }
             // la primera vez que se cierra al tiro no se escribe nada: si vuelve a pasar es una falla, no un corte
