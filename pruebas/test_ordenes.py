@@ -131,6 +131,28 @@ class UnHilo(Orden):
         self.assertEqual(hilo["prioridad"], 1)
         self.assertTrue(hilo["archivado"])
 
+    def test_padre_cuelga_suelta_y_no_hace_circulos(self):
+        self.vincular_faro()
+        self.correr("vincular", "proyectos/faro", "--hilo", "faro-movil")
+        codigo, salida, error = self.correr("hilo", "padre", "faro", "--hilo", "faro-movil")
+        self.assertEqual(codigo, 0, error)
+        hilos = {h["nombre"]: h for h in self.json_de("hilos", "--json")["hilos"]}
+        self.assertEqual(hilos["faro-movil"]["padre"], "faro")
+        codigo, _, error = self.correr("hilo", "padre", "faro-movil", "--hilo", "faro")
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("círculo", error)
+        self.correr("hilo", "padre", "ninguno", "--hilo", "faro-movil")
+        self.assertEqual({h["nombre"]: h for h in self.json_de("hilos", "--json")["hilos"]}["faro-movil"]["padre"], "")
+
+    def test_archivar_con_hijos(self):
+        self.vincular_faro()
+        self.correr("vincular", "proyectos/faro", "--hilo", "faro-movil")
+        self.correr("hilo", "padre", "faro", "--hilo", "faro-movil")
+        codigo, _, error = self.correr("hilo", "archivar", "--con-hijos", "--hilo", "faro")
+        self.assertEqual(codigo, 0, error)
+        hilos = {h["nombre"]: h for h in self.json_de("hilos", "--json")["hilos"]}
+        self.assertTrue(hilos["faro"]["archivado"] and hilos["faro-movil"]["archivado"])
+
     def test_las_etiquetas_se_ponen_se_ven_y_se_quitan(self):
         self.vincular_faro()
         codigo, salida, _ = self.correr("hilo", "etiquetas", "Trabajo, cliente", "--hilo", "faro")

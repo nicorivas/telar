@@ -55,12 +55,23 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
     async function sacar(a: unknown, verbo: 'archivar' | 'cerrar' | 'olvidar', haciendo: string): Promise<void> {
         const hilo = hiloDe(a);
         if (!hilo || modelo.ocupados.has(hilo)) return;
+        // con hijos vivos: ¿ellos también? (archivar el proyecto suele ser cerrar sus frentes)
+        let conHijos = false;
+        if (verbo === 'archivar') {
+            const hijos = modelo.hilos.filter(x => (x.padre || x.abierto_por?.por) === hilo && x.vivo && !x.archivado);
+            if (hijos.length) {
+                const r = await ui.aviso(`«${hilo}» tiene ${hijos.length === 1 ? 'un hilo hijo abierto' : `${hijos.length} hilos hijos abiertos`}: `
+                    + `${hijos.map(x => `«${x.nombre}»`).join(', ')}. ¿Los archivo también?`, 'Con sus hijos', 'Solo él');
+                if (r === undefined) return;
+                conHijos = r === 'Con sus hijos';
+            }
+        }
         modelo.ocupados.set(hilo, `${haciendo}…`);
         modelo.cambio.fire();
         // desde ya y hasta que deje de verse: «cerrando…», con el nombre apagado (allá tarda unos segundos)
         modelo.saliendo.set(hilo, { texto: verbo === 'archivar' ? 'archivando' : 'cerrando', hasta: Date.now() + 90_000 });
         try {
-            const ok = await sobreHilo(a, verbo, verbo === 'archivar' ? ['--cerrar'] : []);
+            const ok = await sobreHilo(a, verbo, verbo === 'archivar' ? ['--cerrar', ...(conHijos ? ['--con-hijos'] : [])] : []);
             if (!ok) modelo.saliendo.delete(hilo);
             // lo de la otra máquina (su foto) se relee seguido hasta que el hilo ya no aparece, a lo más un minuto
             else void (async () => {
@@ -114,6 +125,16 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             ...(h.vinculado ? [{ label: 'ver su carpeta y documento', icono: I.carpeta, color: C.ir, description: h.relativa || h.ruta, hacer: async () => c.mostrar(`doc:${hilo}`) }] : []),
             { label: 'vincular a un proyecto', icono: I.vincular, color: C.cambiar, description: h.relativa ? `hoy: ${h.relativa}` : 'sin carpeta', hacer: () => vincularWeb(hilo) },
             ...(h.vinculado ? [{ label: 'desvincular', icono: I.desvincular, color: C.cambiar, description: 'soltar su carpeta', hacer: () => sobreHilo(hilo, 'desvincular') }] : []),
+            { label: 'hilo hijo nuevo…', icono: I.nuevo, color: C.agente, description: 'un frente de trabajo de este: cuelga de él y le avisa al terminar',
+                hacer: () => ui.orden('telar.hijoNuevo', hilo) },
+            ...(h.padre ? [{ label: `soltar de «${h.padre}»`, icono: I.desvincular, color: C.cambiar, description: 'que deje de colgar de él',
+                hacer: () => ui.orden('telar.colgar', hilo, '') }] : []),
+            { label: 'colgar de…', icono: I.vincular, color: C.cambiar, description: 'el hilo del proyecto, o el que lo encarga (también: arrastrarlo sobre él)',
+                hacer: async () => {
+                    const otros = modelo.hilos.filter(x => x.nombre !== hilo && !x.archivado).map(x => ({ label: cli.nombreVisible(x), description: x.relativa || '', nombre: x.nombre }));
+                    const e = await ui.elegir(otros, { titulo: `¿De cuál cuelga «${hilo}»?`, placeholder: 'filtrar' });
+                    if (e) await ui.orden('telar.colgar', hilo, e.nombre);
+                } },
             { label: 'etiquetas…', icono: I.etiqueta, color: C.cambiar,
                 description: h.etiquetas?.length ? `hoy: ${h.etiquetas.join(', ')}` : 'trabajo, personal…: los modos filtran la lista por ellas',
                 hacer: () => etiquetarWeb(hilo, h.etiquetas ?? []) },
@@ -264,6 +285,28 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
             avisar(`Agente ${r.datos.nombre} en ${r.datos.carpeta}. Escribe en su CLAUDE.md qué hace.`, 'info');
             await modelo.sondear(true);
+        },
+        // colgar un hilo de otro (arrastrándolo en la barra, o desde su menú); padre "" lo suelta
+        'telar.colgar': async (hijo?: string, padre?: string) => {
+            if (!hijo) return;
+            if (await sobreHilo(hijo, 'padre', [], padre || 'ninguno'))
+                void ui.estado(padre ? `«${hijo}» cuelga de «${padre}»` : `«${hijo}» suelto`, 3000);
+        },
+        // un hilo hijo de otro: su nombre, su carpeta (la del padre si no se dice) y su encargo
+        'telar.hijoNuevo': async (padre?: string) => {
+            if (!padre) return;
+            const nombre = (await ui.campo({ titulo: `Hilo hijo de «${padre}»`, placeholder: 'Mobile',
+                ayuda: 'un frente de trabajo de este hilo: cuelga de él, hereda sus etiquetas y le avisa al terminar cada turno',
+                validar: t => yaEsta(t.trim()) }))?.trim();
+            if (!nombre) return;
+            const escrito = await ui.escribir({ titulo: `Qué le encargas a «${nombre}»`, placeholder: 'el encargo: qué hacer y cuándo avisar',
+                ayuda: 'su primer mensaje (vacío: abre sin encargo) · ⌘⏎ abre' });
+            if (escrito === undefined) return;
+            const r = await cli.hiloHijo(padre, nombre, escrito.texto.trim());
+            if (!r.ok) { avisar(`telar: ${r.err.trim().split('\n').pop() || 'no pude abrirlo'}`, 'falla'); return; }
+            modelo.invalidar();
+            await modelo.sondear(true);
+            c.mostrar(nombre);
         },
         // abrir el hilo de un agente (o volver a abrirlo con su motor, si quedó en una shell). Sin motor elegido, lo
         // dice y ofrece elegir Claude Code, y lo intenta de nuevo

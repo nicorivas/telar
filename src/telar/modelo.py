@@ -128,6 +128,8 @@ class Hilo:
     publico: bool = False
     #: sus etiquetas («trabajo», «personal»…): los modos de la página filtran la lista por ellas
     etiquetas: tuple[str, ...] = ()
+    #: el hilo del que cuelga (el del proyecto, el que lo encargó); "" si de ninguno
+    padre: str = ""
     prioridad: Prioridad | None = None
     atencion: Atencion = Atencion.NINGUNA
     #: última vez que el hilo tuvo el foco.

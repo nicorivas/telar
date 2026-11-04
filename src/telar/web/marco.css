@@ -649,6 +649,9 @@ dialog.mudanza {
   .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
   .fila:hover { background: var(--hover); }
   .fila.activa { background: var(--sel); }
+  /* arrastrar un hilo para colgarlo de otro: el que se arrastra, tenue; donde caería, con una línea violeta */
+  .fila.arrastrando { opacity: .4; }
+  .fila.destino { box-shadow: inset 0 0 0 1px var(--violeta); background: color-mix(in srgb, var(--violeta) 12%, transparent); }
   /* las columnas de íconos (prioridad, atención, dónde vive, viajando): 2ch cada una, porque un ícono de la letra
      `iconos` es tan ancho como 1,7 letras de las otras; centrado, nunca se monta sobre el nombre. El ícono va adentro en su letra (`.i`): con la de
      siempre, el `monospace` genérico de --letra se queda con algunos íconos (un cuadro) */

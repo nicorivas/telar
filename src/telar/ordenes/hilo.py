@@ -7,13 +7,17 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo renombrar «Faro»            renombrarlo, y mover con él lo que telar sabía
     telar hilo adoptar [«faro»]            recoger el estado que quedó en otro nombre
     telar hilo prioridad 1|2|3|ninguna     prioridad manual, para ordenar
+    telar hilo padre «Telar»|ninguno       colgarlo de otro hilo (el del proyecto, el que lo encarga): la barra lo
+                                           anida debajo, hereda sus etiquetas, y el padre sabe de él
+    telar hilo hijo «Mobile» [--carpeta R] [--texto "…"|-]   abrir un hilo hijo de este, con su agente y un
+                                           encargo; sin --carpeta, la de este hilo
     telar hilo etiquetas "trabajo, cliente"|ninguna   sus etiquetas (todas: reemplazan a las de antes); los
                                            modos de la página filtran la lista por ellas
     telar hilo mudar «Agrosur»               llevarse este panel (y su conversación) a ese hilo
     telar hilo cerrar                      cerrar su tab (y lo que corra adentro) y
                                            olvidarlo: sale de la lista. Para guardarlo
                                            está `archivar`
-    telar hilo archivar [--cerrar]         sacarlo de la lista sin perderlo
+    telar hilo archivar [--cerrar] [--con-hijos]   sacarlo de la lista sin perderlo (y a sus hijos)
     telar hilo desarchivar
     telar hilo publicar                    que las otras personas del bus lo vean en su directorio (por
                                            defecto, un hilo es privado: no sale)
@@ -72,6 +76,8 @@ VERBOS = (
     "adoptar",
     "prioridad",
     "etiquetas",
+    "padre",
+    "hijo",
     "mudar",
     "cerrar",
     "archivar",
@@ -88,7 +94,7 @@ VERBOS = (
 
 #: los verbos que cambian el registro de un hilo: sobre uno que vive en otra máquina, se le piden a su
 #: dueño por el bus (docs/propuestas/un-dueno-por-hilo.md), que los aplica y los vuelve a publicar
-AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "etiquetas", "archivar", "desarchivar", "publicar", "privar",
+AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "etiquetas", "padre", "archivar", "desarchivar", "publicar", "privar",
             "cerrar", "olvidar")
 
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
@@ -116,6 +122,10 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--horas", type=float, default=6, help="con caidos: vistos vivos en estas últimas horas")
     p.add_argument("--seco", action="store_true", help="con caidos: solo decir cuáles reabriría")
     p.add_argument("--ruta", action="store_true", help="con relevo: solo decir dónde va el relevo de este hilo")
+    p.add_argument("--con-hijos", action="store_true", help="con archivar: también sus hilos hijos")
+    p.add_argument("--sin-avisar", action="store_true", help="con archivar: sin avisarle a su padre")
+    p.add_argument("--carpeta", default="", help="con hijo: la carpeta del hijo (por defecto, la de este hilo)")
+    p.add_argument("--texto", default="", help="con hijo: lo que se le encarga al abrirlo (o «-»: por la entrada)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -214,9 +224,27 @@ def main(argv: list[str], ctx) -> int:
         elif salida == 0:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
+    elif o.verbo == "padre":
+        valor = o.valor.strip()
+        if not valor:
+            return _comun.queja("¿de cuál? «telar hilo padre Telar», o «ninguno» para soltarlo")
+        try:
+            est.colgar(hilo.nombre, "" if valor in ("ninguno", "ninguna") else valor)
+        except ValueError as e:
+            return _comun.queja(str(e))
+        print(f"«{hilo.nombre}» cuelga de «{valor}»" if valor not in ("ninguno", "ninguna") else f"«{hilo.nombre}» suelto")
+    elif o.verbo == "hijo":
+        return _hijo(ctx, tel, hilo, o)
     elif o.verbo == "archivar":
+        # sus hijos primero (los que siguen en la lista), con lo mismo que se le pidió a él y sin avisarle a él
+        if o.con_hijos:
+            for hijo in est.hijos(hilo.nombre):
+                if hijo not in est.archivados():
+                    main(["archivar", "--con-hijos", "--sin-avisar", *(["--cerrar"] if o.cerrar else []), "--hilo", hijo], ctx)
         est.archivar(hilo.nombre)
         print(f"archivado «{hilo.nombre}»" + _sesiones(hilo))
+        if not o.sin_avisar:
+            _avisar_al_padre(ctx, est, hilo.nombre, "se archivó: terminó lo suyo, o lo dejó para después")
         if o.cerrar and dueno:
             salida = _cerrar_vista(tel, hilo)
         elif o.cerrar:
@@ -437,6 +465,81 @@ def _misma_carpeta(tel: _comun.Telar, hilo) -> list:
     ]
 
 
+def padre_de(est, hilo: str) -> str:
+    """Del que cuelga un hilo: el que se le puso o, si no, el que lo abrió."""
+    return est.padres().get(hilo) or (est.abiertos_por().get(hilo) or {}).get("por") or ""
+
+
+def _avisar_al_padre(ctx, est, hilo: str, que: str) -> None:
+    """Un aviso (no lo despierta: lo lee en su próximo turno) al padre de `hilo`, si tiene y hay bus."""
+    from telar import bus as mod_bus
+
+    padre = padre_de(est, hilo)
+    if not padre or not mod_bus.hay_bus(ctx.config):
+        return
+    try:
+        from telar.ordenes import mensaje
+
+        mensaje.enviar(ctx, padre, f"«{hilo}», tu hilo hijo, {que}.", modo="aviso", de=hilo)
+    except Exception:  # noqa: BLE001 - avisar es un extra: lo de este hilo ya está hecho
+        pass
+
+
+def _hijo(ctx, tel, padre, o) -> int:
+    """Abrir un hilo hijo de `padre` (`telar hilo hijo «Mobile»`): un tab con su agente, en su carpeta (la del padre si
+    no se dice), con el encargo como primer mensaje; cuelga del padre y hereda sus etiquetas."""
+    from telar.agente import lanzar
+
+    nombre = " ".join(o.valor.split())
+    if not nombre:
+        return _comun.queja("¿cómo se llama? telar hilo hijo «Mobile» --texto \"…\"")
+    if any(h.nombre == nombre and tel.vivo(h) for h in tel.hilos):
+        return _comun.queja(f"ya hay un hilo «{nombre}» abierto: colgarlo es `telar hilo padre {padre.nombre} --hilo {nombre}`")
+    if tel.mux is None or not tel.viva:
+        return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
+    est = tel.estado
+    texto = sys.stdin.read() if o.texto == "-" else o.texto
+    relativa = ""
+    if o.carpeta:
+        relativa, problema = _ruta_en_raiz(o.carpeta, ctx.config.raiz)
+        if relativa is None:
+            return _comun.queja(problema)
+    else:
+        relativa = est.vinculos().get(padre.nombre, "")
+    carpeta = None
+    if relativa:
+        carpeta = Path(relativa) if Path(relativa).is_absolute() else Path(ctx.config.raiz) / relativa
+        if not carpeta.is_dir():
+            return _comun.queja(f"no existe la carpeta {carpeta}")
+    encargo = texto.strip() and (f"Eres un hilo hijo de «{padre.nombre}», que te encarga esto. Cuando termines, o si "
+                                 f"necesitas que decida algo, escríbele con `telar mensaje \"{padre.nombre}\" \"…\"`.\n\n"
+                                 + texto.strip())
+    lanz = lanzar.para_hilo(ctx.config, nombre, carpeta, encargo or "")
+    try:
+        if lanz is None:
+            tel.mux.crear_tab(nombre, ruta=carpeta, foco=False)
+        else:
+            tel.mux.crear_tab(nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=False)
+    except ErrorDeMux as e:
+        return _comun.queja(f"no pude abrir «{nombre}»: {e}")
+    est.desarchivar(nombre)
+    if relativa:
+        est.vincular(nombre, relativa)
+    est.colgar(nombre, padre.nombre)
+    est.anotar_abierto_por(nombre, padre.nombre)
+    if lanz is not None:
+        lanzar.anotar(ctx.config, nombre, lanz, tel.mux)
+    heredadas = est.etiquetas().get(padre.nombre, ())
+    if heredadas and not est.etiquetas().get(nombre):
+        est.etiquetar(nombre, list(heredadas))
+    if o.json:
+        return _comun.escribir_json({"hilo": nombre, "padre": padre.nombre, "carpeta": relativa,
+                                     "agente": bool(lanz), "encargo": bool(encargo)})
+    print(f"«{nombre}», hijo de «{padre.nombre}»" + (f" · {relativa}" if relativa else "")
+          + ("" if lanz else _comun.tenue("  (sin motor de agentes: quedó una shell)")))
+    return 0
+
+
 def _resolver_ruta(ruta: Path | None) -> Path | None:
     if ruta is None:
         return None
@@ -463,6 +566,8 @@ def _adelantar(est, o, nombre: str, raiz) -> None:
     publica = est.registro_ajeno().get(nombre, {})
     if o.verbo in ("archivar", "desarchivar") and "archivado" in publica:
         est.adelantar_ajeno(nombre, archivado=o.verbo == "archivar")
+    elif o.verbo == "padre" and "padre" in publica:
+        est.adelantar_ajeno(nombre, padre="" if o.valor.strip() in ("ninguno", "ninguna") else o.valor.strip())
     elif o.verbo == "etiquetas" and "etiquetas" in publica:
         try:
             from telar.modelo import normalizar_etiquetas

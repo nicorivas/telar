@@ -69,6 +69,8 @@ export interface JsonHilo {
     publico?: boolean;
     /** sus etiquetas («trabajo», «personal»): los modos filtran la lista por ellas (`telar hilo etiquetas`) */
     etiquetas?: string[];
+    /** el hilo del que cuelga (`telar hilo padre`, o el que lo abrió); "" si de ninguno */
+    padre?: string;
     /** el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno */
     agente?: string; icono?: string;
     /** quién lo abrió, si no fue la persona: el hilo (o el periódico) que lo abrió, y su agente y su ícono si era de uno */
@@ -767,11 +769,18 @@ export const equipoResolver = async (remoto: string, verbo: 'aceptar' | 'rechaza
 export interface JsonRemoto { nombre: string; destino: string; transporte: string; raiz: string }
 
 /** `telar hilo <verbo> [valor] --hilo <hilo>`: vincular, renombrar, prioridad, archivar… */
+/** Un hilo hijo de `padre` (`telar hilo hijo`): con su agente, en la carpeta del padre, y el encargo como primer mensaje. */
+export async function hiloHijo(padre: string, nombre: string, texto: string, carpeta = ''): Promise<Salida> {
+    const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', '/hilo/hijo', 75000,
+        { hilo: padre, valor: nombre, texto, carpeta });
+    return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.salida ?? '', err: r.datos?.error ?? '' };
+}
+
 export async function hilo(verbo: string, hilo: string, valor?: string, extra: string[] = []): Promise<Salida> {
-    if (!extra.every(x => x === '--cerrar')) return { ok: false, codigo: 1, out: '', err: faltaEnLaApi(`telar hilo ${verbo} ${extra.join(' ')}`) };
+    if (!extra.every(x => x === '--cerrar' || x === '--con-hijos')) return { ok: false, codigo: 1, out: '', err: faltaEnLaApi(`telar hilo ${verbo} ${extra.join(' ')}`) };
     // un verbo sobre un hilo de otra máquina va a su dueño por el bus, que espera hasta 60 s: aquí, un poco más
     const r = await aServe<{ codigo: number; salida: string; error: string }>('POST', `/hilo/${encodeURIComponent(verbo)}`, 75000,
-        { hilo, valor: valor ?? '', cerrar: extra.includes('--cerrar') });
+        { hilo, valor: valor ?? '', cerrar: extra.includes('--cerrar'), con_hijos: extra.includes('--con-hijos') });
     return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: r.datos?.salida ?? '', err: r.datos?.error ?? '' };
 }
 

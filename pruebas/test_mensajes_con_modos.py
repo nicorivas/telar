@@ -729,3 +729,31 @@ class DespertarAlDormido(Prueba):
         with mock.patch.object(mod_bus, "estado_de", return_value={"maquina": "servidor", "vivo": False}), \
                 mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "servidor no respondió"}):
             self.assertEqual(mensaje.despertar(ctx, "Faro"), {"sin_despertar": "servidor no respondió"})
+
+
+class ElHijoLeAvisaAlPadre(Prueba):
+    """El nodo: un hilo que cuelga de otro y termina un turno le deja un aviso a su padre, a lo más cada tanto."""
+
+    def test_al_terminar_un_turno_y_no_mas_seguido_que_el_tope(self):
+        from telar import estado as mod_estado
+        from telar.ordenes import nodo as mod_nodo
+
+        raiz = Path(tempfile.mkdtemp())
+        cfg = mod_config.Config(raiz=raiz, estado=raiz / "estado")
+        est = mod_estado.abrir(cfg)
+        est.colgar("Mobile", "Telar")
+        n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
+        n.config, n.ctx, n.anotar = cfg, SimpleNamespace(config=cfg), lambda *_: None
+        n._lo_ultimo = lambda est, h: "listo el apk"
+        trabajando = {"Mobile": {"atencion": "trabajando"}, "Suelto": {"atencion": "trabajando"}}
+        termino = {"Mobile": {"atencion": "termino"}, "Suelto": {"atencion": "termino"}}
+        with mock.patch.object(mensaje, "enviar") as enviar:
+            self.assertEqual(n.avisar_padres(trabajando, ahora=1000), [])   # la primera vuelta solo mira
+            self.assertEqual(n.avisar_padres(termino, ahora=1001), ["Mobile"])
+            self.assertEqual(enviar.call_args.args[1], "Telar")
+            self.assertEqual(enviar.call_args.kwargs["modo"], "aviso")
+            self.assertIn("listo el apk", enviar.call_args.args[2])
+            n.avisar_padres(trabajando, ahora=1002)
+            self.assertEqual(n.avisar_padres(termino, ahora=1003), [])      # muy seguido
+            n.avisar_padres(trabajando, ahora=2000)
+            self.assertEqual(n.avisar_padres(termino, ahora=2001), ["Mobile"])

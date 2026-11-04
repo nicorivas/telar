@@ -592,6 +592,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "publico": hilo.publico,
         # sus etiquetas («trabajo», «personal»): los modos de la página filtran la lista por ellas
         "etiquetas": list(hilo.etiquetas),
+        # del que cuelga: el que se le puso (`telar hilo padre`) o, si no, el que lo abrió; "" si de ninguno
+        "padre": hilo.padre or ((tel.abierto_por.get(hilo.nombre) or {}).get("por") or ""),
         # el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno
         "agente": tel.de_agente.get(hilo.nombre, ("", ""))[0],
         "icono": tel.de_agente.get(hilo.nombre, ("", ""))[1],

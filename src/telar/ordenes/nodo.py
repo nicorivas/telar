@@ -68,14 +68,14 @@ ESPERA_JS = 10
 #: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
 #: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
 #: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
-CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas")
+CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas", "padre")
 
 
-def registro_de(nombre: str, vinculos, archivados, publicos=(), etiquetas=None) -> dict:
+def registro_de(nombre: str, vinculos, archivados, publicos=(), etiquetas=None, padres=None) -> dict:
     """Lo que el dueño de un hilo publica de su registro: su vínculo (relativo a la raíz, "" si no
     tiene), si está archivado, si es público y sus etiquetas."""
     return {"vinculo": vinculos.get(nombre, ""), "archivado": nombre in archivados, "publico": nombre in publicos,
-            "etiquetas": list((etiquetas or {}).get(nombre, ()))}
+            "etiquetas": list((etiquetas or {}).get(nombre, ())), "padre": (padres or {}).get(nombre, "")}
 
 
 def _en_hilo_suelto(funcion, *args, nombre: str = "") -> asyncio.Future:
@@ -159,7 +159,7 @@ class Nodo:
         #: la tarea que vigila el bus: mientras viva, `ajenos.json` se refresca (ver `AJENOS_CADUCA`)
         self.vigia = None
         #: el registro de los hilos de aquí en la última vuelta: (vínculos, archivados, remotos)
-        self.registro: tuple[dict, set, dict, set, dict] = ({}, set(), {}, set(), {})
+        self.registro: tuple[dict, set, dict, set, dict, dict] = ({}, set(), {}, set(), {}, {})
         #: lo que el vigía recibió y falta atender (anotar la atención, la ventana): lo último de cada clave
         self.por_atender: dict[str, dict] = {}
         #: los pedidos con respuesta en curso o esperando turno, de todos los verbos (ver `_aparte`)
@@ -185,8 +185,8 @@ class Nodo:
         from telar import agentes as mod_agentes
 
         publicos = est.publicos() | mod_agentes.publicos(self.config, vinculos)
-        etiquetas = est.etiquetas()
-        self.registro = (vinculos, archivados, remotos, publicos, etiquetas)
+        etiquetas, padres = est.etiquetas(), est.padres()
+        self.registro = (vinculos, archivados, remotos, publicos, etiquetas, padres)
         salida: dict[str, dict] = {}
 
         from telar import movil
@@ -205,7 +205,7 @@ class Nodo:
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
                     # el registro del hilo, que las otras máquinas leen de aquí en vez de copiarlo
-                    **registro_de(nombre, vinculos, archivados, publicos, etiquetas),
+                    **registro_de(nombre, vinculos, archivados, publicos, etiquetas, padres),
                     # dónde mirarlo desde otra máquina: su ventana en la sesión del telar
                     "ventana": ventana}
 
@@ -506,10 +506,10 @@ class Nodo:
                 # ya publicado como muerto: si aquí se archivó o se vinculó después (lo pidió otra
                 # máquina), se vuelve a publicar con lo nuevo. Salvo que ya lo publique otra máquina
                 # (se mudó): pisarle su estado lo traería de vuelta
-                vinculos, archivados, remotos, publicos, etiquetas = self.registro
+                vinculos, archivados, remotos, publicos, etiquetas, padres = self.registro
                 if clave in self.vistos or previo["nombre"] in remotos:
                     continue
-                nuevo = {**previo, **registro_de(previo["nombre"], vinculos, archivados, publicos, etiquetas)}
+                nuevo = {**previo, **registro_de(previo["nombre"], vinculos, archivados, publicos, etiquetas, padres)}
                 if nuevo != previo:
                     actuales[previo["nombre"]] = nuevo
         for nombre in locales:
@@ -520,6 +520,11 @@ class Nodo:
                 await asyncio.to_thread(self.rotar_relevos)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"la rotación con relevo: {type(e).__name__}: {e}")
+        # un hilo hijo que terminó un turno se lo cuenta a su padre (un aviso, que no lo despierta)
+        try:
+            await asyncio.to_thread(self.avisar_padres, locales)
+        except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+            self.anotar(f"avisar a los padres: {type(e).__name__}: {e}")
         # cada 30 s, quiénes están vivos aquí: si tmux se cae, `telar hilo caidos` sabe qué reabrir
         if self.vueltas % 15 == 0:
             vivos = [n for n, i in locales.items() if i.get("vivo")]
@@ -1058,6 +1063,56 @@ class Nodo:
             self._despacho().termino(d.nombre)
             # lo que quedó pendiente mientras corría sale ahora, sin esperar la vuelta
             self._disparar(self._despacho().listos(asyncio.get_running_loop().time()))
+
+    #: lo más seguido que un hijo le avisa a su padre que terminó un turno (segundos): uno que conversa con la persona
+    #: termina muchos turnos seguidos, y al padre le basta saber que avanzó
+    AVISO_PADRE_CADA = 10 * 60
+
+    def avisar_padres(self, locales: dict, ahora: float | None = None) -> list[str]:
+        """Los hilos de aquí que cuelgan de otro y acaban de terminar un turno (pasaron de trabajando a terminó o a te
+        espera): le dejan a su padre un aviso con lo último que dijeron. Devuelve a quiénes avisó."""
+        import time
+
+        ahora = ahora if ahora is not None else time.time()
+        antes = getattr(self, "atencion_antes", None)
+        self.atencion_antes = {n: str(i.get("atencion") or "") for n, i in locales.items()}
+        if antes is None:
+            return []  # la primera vuelta solo mira: un nodo que arranca no avisa de turnos viejos
+        if not hasattr(self, "avisados_padre"):
+            self.avisados_padre: dict[str, float] = {}
+        from telar.ordenes import hilo as orden_hilo
+        from telar.ordenes import mensaje
+
+        est = mod_estado.abrir(self.config)
+        avisados = []
+        for nombre, at in self.atencion_antes.items():
+            if antes.get(nombre) != "trabajando" or at not in ("termino", "espera"):
+                continue
+            padre = orden_hilo.padre_de(est, nombre)
+            if not padre or padre == nombre or ahora - self.avisados_padre.get(nombre, 0) < self.AVISO_PADRE_CADA:
+                continue
+            self.avisados_padre[nombre] = ahora
+            dijo = self._lo_ultimo(est, nombre)
+            que = "terminó un turno y te espera" if at == "espera" else "terminó un turno"
+            texto = f"«{nombre}», tu hilo hijo, {que}." + (f" Lo último que dijo:\n\n{dijo}" if dijo else "") + \
+                f"\n\n(Más: `telar hilo leer \"{nombre}\"`; escríbele con `telar mensaje \"{nombre}\" \"…\"`.)"
+            try:
+                mensaje.enviar(self.ctx, padre, texto, modo="aviso", de=nombre)
+                avisados.append(nombre)
+            except Exception as e:  # noqa: BLE001 - un aviso que no salió no frena la vuelta
+                self.anotar(f"«{nombre}» no pudo avisarle a «{padre}»: {e}")
+        return avisados
+
+    def _lo_ultimo(self, est, hilo: str, tope: int = 600) -> str:
+        """Lo último que dijo el agente de `hilo` en su conversación, recortado."""
+        from telar import conversacion
+
+        try:
+            _, mensajes, _ = conversacion.mensajes_del_hilo(self.config, list(est.sesiones().get(hilo) or ()))
+        except Exception:  # noqa: BLE001 - sin conversación que leer, el aviso va sin cita
+            return ""
+        texto = next((str(m.get("texto") or "") for m in reversed(mensajes) if m.get("quien") == "agente"), "").strip()
+        return texto if len(texto) <= tope else texto[:tope].rstrip() + "…"
 
     def mirar_deseado(self, locales: dict) -> None:
         """Los residentes de aquí sin sesión: una línea al registro cuando cambia, y `deseado.json` para doctor."""

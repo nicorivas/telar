@@ -99,6 +99,8 @@ ARCHIVOS = {
     "publicos": "publicos.json",
     #: hilo → sus etiquetas («trabajo», «personal»): los modos de la página filtran la lista por ellas
     "etiquetas": "etiquetas.json",
+    #: hilo → el hilo del que cuelga (su padre: el del proyecto, el que lo encargó): la barra lo anida debajo
+    "padres": "padres.json",
     #: hilo → la clave (carpeta) del agente del que es: lo anota quien abre su hilo, y gana sobre adivinarlo
     "de_agente": "de_agente.json",
     #: hilo → {por, agente, cuando}: quién lo abrió, si no fue la persona (el hilo de un agente, un periódico)
@@ -301,6 +303,7 @@ def vestir(
     archivados: Iterable[str] = (),
     publicos: Iterable[str] = (),
     etiquetas: Mapping[str, Sequence[str]] | None = None,
+    padres: Mapping[str, str] | None = None,
     atenciones: Mapping[str, Atencion] | None = None,
     sesiones: Mapping[str, Sequence[str]] | None = None,
     tiempos: Mapping[str, float] | None = None,
@@ -336,6 +339,7 @@ def vestir(
                 archivado=nombre in archivados,
                 publico=nombre in publicos,
                 etiquetas=tuple((etiquetas or {}).get(nombre, hilo.etiquetas)),
+                padre=(padres or {}).get(nombre, hilo.padre),
                 prioridad=(prioridades or {}).get(nombre, hilo.prioridad),
                 atencion=(atenciones or {}).get(nombre, hilo.atencion),
                 visto=(vistos or {}).get(nombre, hilo.visto),
@@ -622,6 +626,8 @@ class Estado:
                 limpio["publico"] = r["publico"]
             if isinstance(r.get("conversacion"), str):
                 limpio["conversacion"] = r["conversacion"]
+            if isinstance(r.get("padre"), str):
+                limpio["padre"] = r["padre"].strip()
             if isinstance(r.get("etiquetas"), list):
                 try:
                     limpio["etiquetas"] = list(normalizar_etiquetas(r["etiquetas"]))
@@ -714,6 +720,41 @@ class Estado:
         else:
             self._actualizar("etiquetas", lambda d: d.pop(hilo, None), {})
         return limpias
+
+    # ── el padre de un hilo: del que cuelga en la barra (el proyecto, quien lo encargó) ───────────
+
+    def padres(self) -> dict[str, str]:
+        """hilo → su padre. El de un hilo de otra máquina lo dice su dueño."""
+        salida = {h: p for h, p in self._leer("padres", {}).items() if isinstance(h, str) and isinstance(p, str) and p}
+        for hilo, r in self.registro_ajeno().items():
+            if "padre" in r:
+                if r["padre"]:
+                    salida[hilo] = r["padre"]
+                else:
+                    salida.pop(hilo, None)
+        return salida
+
+    def colgar(self, hilo: str, padre: str) -> None:
+        """`hilo` pasa a colgar de `padre`; vacío lo suelta. ValueError si haría un ciclo (padre de su propio padre)."""
+        padre = padre.strip()
+        if not padre:
+            self._actualizar("padres", lambda d: d.pop(hilo, None), {})
+            return
+        if padre == hilo:
+            raise ValueError("un hilo no cuelga de sí mismo")
+        actuales, visto, x = self.padres(), set(), padre
+        while x and x not in visto:
+            if x == hilo:
+                raise ValueError(f"«{padre}» cuelga de «{hilo}»: colgarlo debajo haría un círculo")
+            visto.add(x)
+            x = actuales.get(x, "")
+        self._actualizar("padres", lambda d: d.__setitem__(hilo, padre), {})
+
+    def hijos(self, padre: str) -> list[str]:
+        """Los hilos que cuelgan de `padre` (los que se colgaron y los que abrió), en orden."""
+        explicitos = self.padres()
+        abiertos = {h for h, r in self.abiertos_por().items() if r.get("por") == padre and h not in explicitos}
+        return sorted({h for h, p in explicitos.items() if p == padre} | abiertos)
 
     # ── de qué agente es un hilo ────────────────────────────────────────────────
 
@@ -1078,6 +1119,7 @@ class Estado:
                 "archivados": self.archivados(),
                 "publicos": self.publicos(),
                 "etiquetas": self.etiquetas(),
+                "padres": self.padres(),
                 "atenciones": {h: a for h, (a, _) in self.atenciones().items()},
                 "sesiones": self.sesiones(),
                 "tiempos": tiempo_por_hilo(
@@ -1187,6 +1229,14 @@ class Estado:
                            "abierto_por", "etiquetas"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
+            # el padre: su propia entrada, y la de sus hijos, que lo nombran
+            def mover_padres(d):
+                mover(d)
+                for k, v in list(d.items()):
+                    if v == viejo:
+                        d[k] = nuevo
+
+            self._actualizar("padres", mover_padres, {})
             self._actualizar("archivados", mover_archivados, [])
             self._actualizar("publicos", mover_archivados, [])
 
@@ -1223,7 +1273,7 @@ class Estado:
         """
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente",
-                           "abierto_por", "etiquetas"):
+                           "abierto_por", "etiquetas", "padres"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
             self.privar(hilo)

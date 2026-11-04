@@ -185,6 +185,26 @@ def _como_agente(ctx, hilo: str) -> list[str]:
     return lineas
 
 
+def _familia(est, hilo: str) -> list[str]:
+    """Una línea si cuelga de otro hilo, y una si tiene hijos, con en qué está cada uno."""
+    from telar.ordenes.hilo import padre_de
+
+    lineas = []
+    padre = padre_de(est, hilo)
+    if padre:
+        lineas.append(f"Cuelgas de «{padre}», el hilo que te encarga: cuando termines lo suyo, o si necesitas que decida "
+                      f"algo, escríbele (`telar mensaje \"{padre}\" \"…\"`). Al terminar cada turno le llega un aviso.")
+    hijos = est.hijos(hilo)
+    if hijos:
+        archivados = est.archivados()
+        atenciones = {h: a for h, (a, _) in est.atenciones().items()}
+        estado = lambda h: "archivado" if h in archivados else getattr(atenciones.get(h), "value", "") or "quieto"
+        lineas.append("Tus hilos hijos: " + ", ".join(f"«{h}» ({estado(h)})" for h in hijos)
+                      + ". Te avisan al terminar un turno; abrir otro: `telar hilo hijo «Nombre» --texto \"…\"`; "
+                      "lo último de uno: `telar hilo leer <hijo>`.")
+    return lineas
+
+
 def contexto(ctx) -> str:
     """Unas pocas líneas para el agente de un hilo: quién es, cómo le escriben, cómo escribir.
 
@@ -212,6 +232,8 @@ def contexto(ctx) -> str:
               "/relevo [tema nuevo]."]
     # el hilo de un agente residente: quién es, su memoria y su último relevo, para no arrancar en frío
     lineas.extend(_como_agente(ctx, hilo))
+    # su familia: de quién cuelga y quiénes cuelgan de él (telar hilo padre / hijo)
+    lineas.extend(_familia(est, hilo))
     # su carpeta: Claude arranca en la raíz, y el CLAUDE.md de la carpeta del hilo no se lee solo (los de más abajo,
     # recién al tocar un archivo de ahí); y el relevo que dejó la conversación anterior (/relevo), si hay
     if vinculo:

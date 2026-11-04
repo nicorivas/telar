@@ -535,7 +535,7 @@ def post_casilla(pedido: PedidoCasilla, ctx: Contexto = Depends(contexto)):
 from telar.servicios import en_proceso
 
 #: los verbos de `telar hilo` que se corren por la API; `llevar` (minutos, por ssh) y `leer`/`caidos` no
-VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "etiquetas", "mudar", "cerrar",
+VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "etiquetas", "padre", "hijo", "mudar", "cerrar",
                "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar")
 
 
@@ -544,6 +544,11 @@ class PedidoHilo(BaseModel):
     valor: str = ""
     #: con archivar: además, cerrarlo en el multiplexor
     cerrar: bool = False
+    #: con archivar: también sus hilos hijos
+    con_hijos: bool = False
+    #: con hijo: su carpeta (por defecto, la del padre) y lo que se le encarga
+    carpeta: str = ""
+    texto: str = ""
 
 
 class PedidoLlevarHilo(BaseModel):
@@ -591,7 +596,9 @@ def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto))
     """Vincular, renombrar, priorizar, archivar, cerrar… un hilo (`telar hilo <verbo> [valor] --hilo <hilo>`)."""
     if verbo not in VERBOS_HILO:
         raise ErrorDeServicio(f"«{verbo}» no se pide por aquí: uno de {', '.join(VERBOS_HILO)}", 422)
-    argv = [verbo, *([pedido.valor] if pedido.valor else []), "--hilo", pedido.hilo, *(["--cerrar"] if pedido.cerrar else [])]
+    argv = [verbo, *([pedido.valor] if pedido.valor else []), "--hilo", pedido.hilo, *(["--cerrar"] if pedido.cerrar else []),
+            *(["--con-hijos"] if pedido.con_hijos else []), *(["--carpeta", pedido.carpeta] if pedido.carpeta else []),
+            *(["--texto", pedido.texto] if pedido.texto else [])]
     return en_proceso.o_falla(en_proceso.correr(ctx, "hilo", argv), f"telar hilo {verbo}")
 
 

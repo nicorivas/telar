@@ -40,7 +40,7 @@ NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 #: qué campos de cada hilo viajan (el resto —ruta absoluta, sesiones, conversaciones— se queda allá)
 CAMPOS = ("nombre", "atencion", "vivo", "activo", "prioridad", "tiempo", "visto", "relativa", "arquetipo", "remoto",
-          "publico", "etiquetas")
+          "publico", "etiquetas", "padre")
 
 
 class ErrorDeEspejo(ValueError):
@@ -103,7 +103,7 @@ def validar(datos: object, de: str) -> dict:
         if not isinstance(h, dict) or not isinstance(h.get("nombre"), str) or not h["nombre"]:
             raise ErrorDeEspejo("un hilo de la foto no tiene nombre")
         limpio = {k: h.get(k) for k in (*CAMPOS, "resumen") if k in h}
-        for k in ("nombre", "atencion", "relativa", "arquetipo", "remoto", "resumen", "visto"):
+        for k in ("nombre", "atencion", "relativa", "arquetipo", "remoto", "resumen", "visto", "padre"):
             if limpio.get(k) is not None and not isinstance(limpio[k], str):
                 raise ErrorDeEspejo(f"el campo «{k}» de «{h['nombre']}» no es texto")
         if "etiquetas" in limpio:

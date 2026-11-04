@@ -38,7 +38,7 @@ import { modelo } from '../modelo';
 export interface PestanaDashboard { clave: string; accion: string; valor: string; nombre: string; tecla: string }
 
 /** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
-export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; etiquetas?: string[] }
+export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; etiquetas?: string[]; padre?: string }
 
 type Seccion = 'hilo' | 'archivado';
 /** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
@@ -169,6 +169,43 @@ export class BarraHilos {
             else this.mensaje({ tipo: 'ir', hilo: f.dataset.hilo });
         });
         // el clic derecho abre el menú del hilo (⋯)
+        // arrastrar un hilo sobre otro lo cuelga de él (`telar hilo padre`); sobre la cabecera de HILOS, lo suelta.
+        // Se arrastran los de esta máquina; el destino puede ser de cualquiera
+        let arrastrado = '';
+        const destinoDe = (t: EventTarget | null): { el: HTMLElement; padre: string } | null => {
+            const el = (t as HTMLElement | null)?.closest<HTMLElement>('.fila[data-hilo], .fila.remota, .fila.cab[data-id="__hilos"]');
+            if (!el) return null;
+            const padre = el.dataset.hilo ?? (el.classList.contains('cab') ? '' : (el.dataset.id ?? '').split('|').slice(1).join('|'));
+            return padre === arrastrado ? null : { el, padre };
+        };
+        lista.addEventListener('dragstart', e => {
+            const f = (e.target as HTMLElement).closest<HTMLElement>('.fila[data-hilo]');
+            if (!f?.dataset.hilo || !e.dataTransfer) return;
+            arrastrado = f.dataset.hilo;
+            e.dataTransfer.setData('text/plain', arrastrado);
+            e.dataTransfer.effectAllowed = 'move';
+            f.classList.add('arrastrando');
+        });
+        lista.addEventListener('dragend', () => {
+            arrastrado = '';
+            for (const x of lista.querySelectorAll('.arrastrando, .destino')) x.classList.remove('arrastrando', 'destino');
+        });
+        lista.addEventListener('dragover', e => {
+            if (!arrastrado) return;
+            const d = destinoDe(e.target);
+            for (const x of lista.querySelectorAll('.destino')) if (x !== d?.el) x.classList.remove('destino');
+            if (!d) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            d.el.classList.add('destino');
+        });
+        lista.addEventListener('drop', e => {
+            const d = destinoDe(e.target);
+            const hijo = arrastrado;
+            if (!d || !hijo) return;
+            e.preventDefault();
+            void ui.orden('telar.colgar', hijo, d.padre);
+        });
         lista.addEventListener('contextmenu', e => {
             const f = (e.target as HTMLElement).closest<HTMLElement>('[data-hilo]');
             if (!f) return;
@@ -332,7 +369,7 @@ export class BarraHilos {
         const otra = !h.remoto && h.vivo ? this.enOtra.get(h.nombre) : undefined;
         const doble = otra ? `<span class="i doble" title="${esc(`también abierto en ${otra}: son dos conversaciones; cierra una`)}">${I.alerta}</span>` : '';
         const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
-        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" title="${esc(this.tooltip(h))}">`
+        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" draggable="true" title=""${esc(this.tooltip(h))}">`
             + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
             + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
                 : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
@@ -494,8 +531,19 @@ export class BarraHilos {
         const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
         // los hijos de un agente van colgados de él, arriba: aquí no se repiten
         const esHijo = (n: string) => agentes.some(a => n.startsWith(`${a.nombre}${HIJO}`));
-        // el modo puesto puede filtrar por etiquetas (web/modos.ts); el hilo que se está mirando no se esconde
-        const seVe = (n: string, et?: string[]) => n === this.mostrado || modos.seVe(et);
+        // el modo puesto puede filtrar por etiquetas (web/modos.ts); el hilo que se está mirando no se esconde. Un hijo
+        // sin etiquetas propias lleva las de su padre (y así hacia arriba)
+        const padreDeNombre = new Map<string, string>([
+            ...modelo.hilos.map(y => [y.nombre, y.padre || y.abierto_por?.por || ''] as [string, string]),
+            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.padre || ''] as [string, string]))]);
+        const etiquetasDe = new Map<string, string[]>([...modelo.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]),
+            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]))]);
+        const heredadas = (n: string, propias?: string[]) => {
+            let et = propias ?? etiquetasDe.get(n) ?? [], x = n;
+            for (let i = 0; !et.length && i < 8; i++) { x = padreDeNombre.get(x) ?? ''; if (!x) break; et = etiquetasDe.get(x) ?? []; }
+            return et;
+        };
+        const seVe = (n: string, et?: string[]) => n === this.mostrado || modos.seVe(heredadas(n, et));
         const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre) && seVe(y.nombre, y.etiquetas)));
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)
@@ -517,7 +565,8 @@ export class BarraHilos {
             // lejos de quien lo abrió
             const nombreDe = (f: FilaH) => 'aqui' in f ? f.aqui.nombre : f.x.nombre;
             const presentes = new Set(todos.map(nombreDe));
-            const padreDe = (f: FilaH) => { const p = 'aqui' in f ? f.aqui.abierto_por?.por ?? '' : ''; return p && p !== nombreDe(f) && presentes.has(p) ? p : ''; };
+            // del que cuelga: el que se le puso (`telar hilo padre`, o arrastrándolo) o el que lo abrió; de aquí o de otra máquina
+            const padreDe = (f: FilaH) => { const p = 'aqui' in f ? f.aqui.padre || f.aqui.abierto_por?.por || '' : f.x.padre || ''; return p && p !== nombreDe(f) && presentes.has(p) ? p : ''; };
             const hijosDe = new Map<string, FilaH[]>();
             for (const f of todos) { const p = padreDe(f); if (p) hijosDe.set(p, [...hijosDe.get(p) ?? [], f]); }
             const puestos = new Set<string>();

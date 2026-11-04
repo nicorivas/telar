@@ -10,6 +10,15 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Added
 
+- **Threads hang from a parent: a project thread with its work streams.** `telar hilo padre Telar` (or drag a thread
+  onto another in the sidebar; onto the HILOS header to let it go; or ⋯ › colgar de…) makes it a child: it nests under
+  its parent (also across machines), takes its tags if it has none, and its agent knows it (its start context says
+  whom it hangs from, and a parent lists its children with their state). **A child that ends a turn leaves its parent
+  a notice** (it doesn't wake it) with the last thing it said, at most every 10 minutes, and another when it's
+  archived. `telar hilo hijo «Mobile» --texto "…"` (⋯ › hilo hijo nuevo…) opens a child with its agent, in the
+  parent's folder unless `--carpeta` says otherwise, with the brief as its first message. Archiving a parent asks
+  whether its children go too (`--con-hijos`). `telar hilos --json` gives each thread its `padre`.
+
 - **A message wakes an archived or sleeping thread.** It used to wait in the bus until someone resumed the thread by
   hand. Now a message that asks for something (not `--modo aviso`) resumes it, with its conversation, on the machine
   where it lives (bus verb `hilo-despertar`), and says so: «estaba archivado: lo retomé». Agents are left to their node.
