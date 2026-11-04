@@ -575,7 +575,7 @@ export class BarraHilos {
                 puestos.add(nombreDe(f));
                 if ('aqui' in f) h.push(hondo ? this.fila(f.aqui, 'hilo', '', 'hilos').replace('class="fila ', `class="fila hijo hondo${Math.min(hondo, 3)} `)
                     : this.fila(f.aqui, 'hilo', '', 'hilos'));
-                else h.push(this.filaRemota(f.m, f.x));
+                else h.push(this.filaRemota(f.m, f.x, hondo ? `hijo hondo${Math.min(hondo, 3)}` : ''));
                 for (const x of hijosDe.get(nombreDe(f)) ?? []) poner(x, hondo + 1);
             };
             for (const f of todos) if (!padreDe(f)) poner(f, 0);
