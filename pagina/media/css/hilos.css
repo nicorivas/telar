@@ -40,6 +40,8 @@
   /* un hijo (lo abrió otro hilo de la lista, o es de un agente: «↳ T454 …»), sangrado bajo su padre */
   .fila.hijo .nombre { padding-left: 2.5ch; }
   .fila.hondo2 .nombre { padding-left: 4.5ch; } .fila.hondo3 .nombre { padding-left: 6.5ch; }
+  /* la flecha de un hijo, en una columna de 2ch: viene de otra letra, y suelta corría el nombre fuera de la grilla */
+  .rama { display: inline-block; width: 2ch; }
   /* uno que se está cerrando o archivando (en otra máquina tarda unos segundos en irse): el nombre apagado y
      «cerrando…» con los puntos que van apareciendo, hasta que se va */
   .fila.saliendo .nombre { color: var(--negro); }
