@@ -42,7 +42,9 @@ class Configuracion(Prueba):
 class Comando(Prueba):
     def test_mosh_lleva_el_guion_de_alla_como_palabras(self):
         c = r.comando(CASA, "@12/1234abcd", "faro")
-        self.assertEqual(c, ["mosh", "usuario@servidor", "--", "bash", "-lc", r.guion_ver("@12/1234abcd", "faro")])
+        # con un locale que mosh-server acepte allá (macOS pone LC_CTYPE=UTF-8, que en Linux no existe)
+        self.assertEqual(c, ["env", "LC_ALL=C.UTF-8", "mosh", "usuario@servidor", "--", "bash", "-lc",
+                             r.guion_ver("@12/1234abcd", "faro")])
 
     def test_ssh_lo_cita_entero_porque_junta_sus_argumentos(self):
         c = r.comando(Remoto("casa", "usuario@servidor", "ssh"), "@12/1234abcd", "el faro")

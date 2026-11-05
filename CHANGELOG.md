@@ -63,6 +63,12 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Fixed
 
+- **Windows that look at a thread on another machine over mosh close right away no more.** mosh hands the server this
+  machine's `LANG`/`LC_*`, and macOS's bare `LC_CTYPE=UTF-8` isn't a locale on Linux: `mosh-server` refused to start
+  («needs a UTF-8 native locale»), the window closed as it opened and the node reopened it every vuelta. The command
+  now sets `LC_ALL=C.UTF-8`, which both sides have. It showed up when tmux was restarted from a shell with that
+  variable.
+
 - **Archiving the thread you're looking at isn't an error.** When its window goes away because it was archived or
   closed (also from inside: «archívate»), the page moves to its conversation, with «retomar», instead of «no se pudo
   abrir».

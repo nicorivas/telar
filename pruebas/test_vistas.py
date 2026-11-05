@@ -42,7 +42,7 @@ class Direcciones(unittest.TestCase):
     def test_el_comando_local_mira_la_ventana(self):
         r = mod_config.Remoto(nombre="srv", destino="yo@srv")
         ventana = mod_remoto.comando(r, "@12/ab12cd34", "faro")
-        self.assertEqual(ventana[:5], ["mosh", "yo@srv", "--", "bash", "-lc"])
+        self.assertEqual(ventana[:7], ["env", "LC_ALL=C.UTF-8", "mosh", "yo@srv", "--", "bash", "-lc"])
         self.assertIn("@12", ventana[-1])
         self.assertIn("ab12cd34", ventana[-1])
         por_ssh = mod_remoto.comando(mod_config.Remoto(nombre="srv", destino="yo@srv", transporte="ssh"), "@12/ab", "faro")

@@ -18,6 +18,7 @@ anotado sin dirección (vacía) está muerto allá: abrirlo abre una ventana nue
 
 from __future__ import annotations
 
+import os
 import platform
 import re
 import shlex
@@ -219,7 +220,20 @@ def comando(remoto: Remoto, direccion: str, nombre: str = "") -> list[str]:
     if remoto.transporte == "ssh":
         # ssh junta sus argumentos en una sola línea para la shell remota: va citada entera
         return ["ssh", "-t", remoto.destino, shlex.join(remoto_cmd)]
-    return ["mosh", remoto.destino, "--", *remoto_cmd]
+    return [*locale_para_mosh(), "mosh", remoto.destino, "--", *remoto_cmd]
+
+
+#: un locale de UTF-8 que existe en macOS y en un Linux: el que se le da a mosh
+LOCALE_COMUN = "C.UTF-8"
+
+
+def locale_para_mosh() -> list[str]:
+    """Lo que antecede a `mosh` para que el servidor de allá acepte el locale. mosh le pasa los `LANG`/`LC_*` de aquí, y
+    `mosh-server` se niega a arrancar si no son un UTF-8 que allá exista: macOS pone `LC_CTYPE=UTF-8` a secas, que en
+    Linux no es nada («mosh-server needs a UTF-8 native locale»), y la ventana se cerraba al abrirse (el nodo la reabría
+    sin fin). Se fija siempre, y no solo si el de este proceso no sirve: la ventana corre con el entorno del servidor de
+    tmux, que puede ser otro. Allá solo se mira una ventana de tmux: el locale de esa shell no importa."""
+    return ["env", f"LC_ALL={LOCALE_COMUN}"]
 
 
 def _ssh(remoto: Remoto, guion: str, espera: int = ESPERA) -> tuple[int, str, str]:
