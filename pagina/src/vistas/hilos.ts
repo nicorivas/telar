@@ -59,7 +59,7 @@ function leerBuscado(): Record<string, string> {
 /** Un nombre que empieza con «↳ » (un hijo): la flecha, de la letra de íconos (mide dos letras de la página, así que el
  *  nombre queda en la grilla del monoespaciado). */
 const conRama = (texto: string): string =>
-    texto.startsWith('↳ ') ? `${I.hijo}${esc(texto.slice(2))}` : esc(texto);
+    texto.startsWith('↳ ') ? `${I.hijo} ${esc(texto.slice(2))}` : esc(texto);
 
 /** El estado que dibuja el glifo de un hilo: su atención, con «terminó» partido en sin ver y ya visto. */
 const estadoDe = (atencion: string, visto: boolean): glifos.Estado =>
