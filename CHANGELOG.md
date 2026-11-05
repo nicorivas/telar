@@ -8,6 +8,8 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-04
+
 ### Added
 
 - **Threads hang from a parent: a project thread with its work streams.** `telar hilo padre Telar` (or drag a thread
@@ -68,6 +70,9 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   («needs a UTF-8 native locale»), the window closed as it opened and the node reopened it every vuelta. The command
   now sets `LC_ALL=C.UTF-8`, which both sides have. It showed up when tmux was restarted from a shell with that
   variable.
+- **A thread from another machine whose window here is being reopened waits for it.** Opening it in the page while
+  its window was down said «no tiene ventana abierta en esta máquina: retómalo primero» and stopped there; now it
+  says it's waiting and connects as soon as the node brings the window back.
 
 - **Archiving the thread you're looking at isn't an error.** When its window goes away because it was archived or
   closed (also from inside: «archívate»), the page moves to its conversation, with «retomar», instead of «no se pudo

@@ -287,7 +287,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // ventana…), reconectar no lo arregla: se dice en un cuadro, una vez, en vez de que el error aparezca y se
     // borre cada segundo. Un telar de antes no manda el código: dos cierres seguidos al poco de abrir
     // cuentan igual (lo último que escribió es el motivo)
-    let abierta = 0, rapidas = 0, cola = '';
+    let abierta = 0, rapidas = 0, cola = '', esperandoVentana = 0;
     let aviso: HTMLElement | undefined;
     const quitarAviso = () => { aviso?.remove(); aviso = undefined; };
     const mostrarFalla = async (motivo: string) => {
@@ -296,6 +296,16 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         if (!maquina) {
             await modelo.sondear(true).catch(() => undefined);
             const h = modelo.porNombre(hilo);
+            // un hilo de otra máquina sin su ventana de aquí (la que corre la conexión con allá): se cayó y el nodo la
+            // reabre en su vuelta. Se espera a que vuelva, en vez de dar por fallado algo que se arregla solo
+            if (h?.remoto && h.remoto !== '?' && !h.archivado && esperandoVentana < 30) {
+                esperandoVentana++;
+                term.reset(); eco.reiniciar();
+                term.write(`\x1b[2m[«${hilo}» vive en ${h.remoto} y su ventana de aquí se está reabriendo: esperándola…]\x1b[0m`);
+                rapidas = 0;
+                pendiente = window.setTimeout(conectar, 3000);
+                return;
+            }
             if (h && (h.archivado || !h.vivo)) { cerrada = true; void ui.orden('telar.ir', hilo); return; }
         }
         quitarAviso();
@@ -336,6 +346,8 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
             // la vista nueva redibuja la pantalla entera: lo de antes se borra para que no quede mezclado
             if (intento) { term.reset(); eco.reiniciar(); }
             intento = 0; conectada = true; abierta = Date.now(); cola = '';
+            // abrió de verdad (no se cerró al tiro): la espera de su ventana, si la hubo, terminó
+            window.setTimeout(() => { if (conectada && ws === nuevo) esperandoVentana = 0; }, 3000);
         };
         nuevo.onmessage = e => {
             const d = e.data as string;
