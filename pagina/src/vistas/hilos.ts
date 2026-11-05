@@ -56,10 +56,10 @@ function leerBuscado(): Record<string, string> {
 /** La última modificación de un hilo: cuándo se le pidió algo a su agente. Si telar todavía no lo
  *  anotó (un hilo de antes), lo último que hizo su agente. Mirarlo (`visto`) nunca cuenta: un clic
  *  no es trabajo. */
-/** Un nombre que empieza con «↳ » (un hijo): la flecha en su columna de 2ch, para que el nombre caiga en la grilla del
- *  monoespaciado (la flecha viene de otra letra y no mide lo que una letra de la página). */
+/** Un nombre que empieza con «↳ » (un hijo): la flecha, de la letra de íconos (mide dos letras de la página, así que el
+ *  nombre queda en la grilla del monoespaciado). */
 const conRama = (texto: string): string =>
-    texto.startsWith('↳ ') ? `<span class="rama">↳</span>${esc(texto.slice(2))}` : esc(texto);
+    texto.startsWith('↳ ') ? `${I.hijo}${esc(texto.slice(2))}` : esc(texto);
 
 /** El estado que dibuja el glifo de un hilo: su atención, con «terminó» partido en sin ver y ya visto. */
 const estadoDe = (atencion: string, visto: boolean): glifos.Estado =>

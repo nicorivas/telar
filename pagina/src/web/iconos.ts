@@ -16,7 +16,7 @@ export const I = {
     externo: '\u{eb14}', ordenar: '\u{eb73}', asc: '\u{eb71}', desc: '\u{eb6e}', atras: '\u{eab5}', subir: '\u{eab7}',
     deshacer: '\u{eae2}', lista: '\u{eb84}', lleno: '\u{ea71}', vacio: '\u{ebb5}', medio: '\u{eac6}', punto: '\u{eb8a}',
     chispa: '\u{ec10}', filtro: '\u{eaf1}', ninguno: '\u{eabd}', casa: '\u{eb06}', ventana: '\u{eb7f}', compartir: '\u{eb18}',
-    adelante: '\u{ea9c}', marca: '\u{eb2b}',
+    adelante: '\u{ea9c}', marca: '\u{eb2b}', hijo: '\u{f060d}',
     terminal: '\u{ea85}', lectura: '\u{eb2f}', conversacion: '\u{eac7}',
 } as const;
 
