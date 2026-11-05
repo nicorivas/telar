@@ -373,7 +373,8 @@ export class BarraHilos {
             + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
             + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
                 : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
-                : h.abierto_por ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span>${saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : `<span class="der">${esc(der)}</span>`}${doble}${alFinal}`
+                // quién lo abrió, salvo que ya cuelgue de él con su «↳» (un hijo en HILOS): no se repite
+                : h.abierto_por && !(visible.startsWith('↳') && !h.abierto_por.icono) ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${esc(h.abierto_por.icono || '↳')}</span> ` : ''}${esc(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span>${saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : `<span class="der">${esc(der)}</span>`}${doble}${alFinal}`
             // sin tab que cerrar, lo único que cabe es volver a abrirlo
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
             // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
@@ -573,9 +574,10 @@ export class BarraHilos {
             const poner = (f: FilaH, hondo: number) => {
                 if (puestos.has(nombreDe(f))) return;
                 puestos.add(nombreDe(f));
-                if ('aqui' in f) h.push(hondo ? this.fila(f.aqui, 'hilo', '', 'hilos').replace('class="fila ', `class="fila hijo hondo${Math.min(hondo, 3)} `)
+                // un hijo lleva «↳» delante, como los hijos de un agente
+                if ('aqui' in f) h.push(hondo ? this.fila(f.aqui, 'hilo', '', 'hilos', `↳ ${cli.nombreVisible(f.aqui)}`).replace('class="fila ', `class="fila hijo hondo${Math.min(hondo, 3)} `)
                     : this.fila(f.aqui, 'hilo', '', 'hilos'));
-                else h.push(this.filaRemota(f.m, f.x, hondo ? `hijo hondo${Math.min(hondo, 3)}` : ''));
+                else h.push(this.filaRemota(f.m, f.x, hondo ? `hijo hondo${Math.min(hondo, 3)}` : '', hondo ? `↳ ${f.x.nombre}` : ''));
                 for (const x of hijosDe.get(nombreDe(f)) ?? []) poner(x, hondo + 1);
             };
             for (const f of todos) if (!padreDe(f)) poner(f, 0);
