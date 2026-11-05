@@ -51,6 +51,11 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ### Changed
 
+- **Every icon is exactly two letters wide.** The icon font is monospaced, but its cell is 1 em, 1.66 letters of the
+  page's Menlo: each icon pushed what followed off the grid. `scripts/iconos.py` now gives every glyph the advance of
+  two page letters, centred, so text after an icon stays in its column anywhere. A child thread's arrow comes from the
+  icon font too, like an agent's children («G ↳ T458»).
+
 - **The page's symbols are icons now.** What was drawn with Unicode symbols (⋯ menus, ✓ done, ↻ reload, ▶ run,
   ⏸ pause, ✎ edit, ★ star, ↗ open outside, ▾▸ fold, ↕ sort, ● ○ ◐ states and priorities, ⇄ elsewhere, ◇ organizer,
   the search's kinds, ◀ back…) uses the icon font, the same everywhere. Native tooltips keep the plain symbols (the
