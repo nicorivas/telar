@@ -57,7 +57,7 @@ CASILLA_ESPERA = 1.0
 #: los pedidos que solo leen: varios del mismo verbo a la vez. Los demás escriben algo aquí (el registro de un
 #: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
 #: el mismo archivo a la vez podrían perder uno de los cambios
-SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar")
+SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar", "codigos")
 #: lo que puede esperar en cada suscripción antes de que nats-py descarte (y avise «slow consumer»): el
 #: de fábrica es medio millón de mensajes o 128 MB, que es memoria sin tope si una se queda pegada
 PENDIENTES_MSGS = 2_000
@@ -423,7 +423,7 @@ class Nodo:
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
                           ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo), ("hilo-despertar", self._hilo_despertar),
-                          ("hilo-traer", self._hilo_traer)):
+                          ("hilo-traer", self._hilo_traer), ("codigos", self._codigos)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     def releer_config(self) -> bool:
@@ -998,6 +998,12 @@ class Nodo:
         except Exception as e:  # noqa: BLE001 - un pedido roto se responde con su error
             r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
         await m.respond(json.dumps(r, ensure_ascii=False).encode())
+
+    async def _codigos(self, m) -> None:
+        """Los códigos de un hilo de aquí (telar.servicios.codigos), para la página de otra máquina."""
+        from telar.servicios import codigos
+
+        await self._responder(m, lambda p: codigos.para_otra(self.ctx, p))
 
     async def _resultado(self, m) -> None:
         from telar import resultados

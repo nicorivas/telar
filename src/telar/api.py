@@ -35,6 +35,7 @@ from telar.config import ruta_config
 from telar.servicios import archivos as servicio_archivos
 from telar.servicios import ErrorDeServicio, Pagina
 from telar.servicios import bloques as servicio_bloques
+from telar.servicios import codigos as servicio_codigos
 from telar.servicios import config as servicio_config
 from telar.servicios import hilos as servicio_hilos
 from telar.servicios import hoy as servicio_hoy
@@ -358,6 +359,13 @@ def get_app(clave: str, ctx: Contexto = Depends(contexto)):
 def get_ficha(hilo: str, ctx: Contexto = Depends(contexto)):
     """La ficha de un hilo (`telar ficha <hilo> --json`)."""
     return servicio_fichas.ficha(ctx, hilo)
+
+
+@app.get("/codigos", response_model=servicio_codigos.Codigos)
+def get_codigos(hilo: str, maquina: str = "", codigo: str = "", buscar: str = "", ctx: Contexto = Depends(contexto)):
+    """Los códigos que un hilo nombra y lo que es cada uno (`telar codigos <hilo> --json`); con `codigo`, también su
+    detalle. Con `maquina`, los de un hilo de esa máquina, por el bus."""
+    return servicio_codigos.de_hilo(ctx, hilo, maquina=maquina, codigo=codigo, buscar=buscar)
 
 
 @app.get("/notas", response_model=servicio_notas.Notas)

@@ -171,6 +171,38 @@ body > header #modos-sel.filtrando { color: var(--violeta); }
   & .lado-sec { margin: var(--e-1) 0; border-top: var(--borde); padding-top: var(--e-1); }
   & .lado-sec > summary { cursor: pointer; color: var(--violeta); }
   & pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* las dos hojas (la ficha de un agente y los códigos), cuando están las dos */
+  & .lado-hojas { display: flex; gap: var(--h-2); align-items: baseline; margin-bottom: var(--e-1); }
+  & .lado-hojas > a[data-hoja] { color: var(--dim); cursor: pointer; text-decoration: none; }
+  & .lado-hojas > a[data-hoja]:hover { color: var(--fg); }
+  & .lado-hojas > a.sel { color: var(--violeta); }
+
+  /* la hoja de códigos (web/codigos.ts): la caja de buscar, y una fila por código, con su detalle debajo */
+  & .cod-buscar { display: flex; gap: var(--h-1); align-items: center; margin: var(--e-1) 0; color: var(--dim);
+    border-bottom: var(--borde); }
+  & .cod-buscar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--fg);
+    font: inherit; padding: 2px 0; }
+  & .cod-aviso, & .cod-pie { margin: var(--e-1) 0; }
+  & .cod-sec { margin: var(--e-1) 0; }
+  & .cod-tit { color: var(--violeta); cursor: default; }
+  & summary.cod-tit { cursor: pointer; }
+  & .cod-tit b { color: var(--fg); font-weight: normal; }
+  & .cod-fila { display: flex; gap: var(--h-1); color: var(--fg); text-decoration: none; cursor: pointer; }
+  & .cod-fila:hover, & .cod-fila.sel { background: var(--linea); }
+  & .cod-c { flex: none; min-width: 8ch; color: var(--azul); }
+  & .cod-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .cod-e { flex: none; color: var(--dim); }
+  & .cod-mas { display: block; color: var(--dim); cursor: pointer; text-decoration: none; }
+  & .cod-mas:hover { color: var(--fg); }
+  & .cod-det { margin: 2px 0 var(--e-1) 2ch; padding-left: var(--h-1); border-left: var(--borde); }
+  & .cod-det a { cursor: pointer; }
+  & .cod-ir { display: inline-block; color: var(--azul); text-decoration: none; }
+  & .cod-campos { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 0 var(--h-1); margin: var(--e-1) 0; }
+  & .cod-campos dt { color: var(--dim); max-width: 12ch; overflow-wrap: anywhere; }
+  & .cod-campos dd { margin: 0; overflow-wrap: anywhere; }
+  & .cod-texto { margin: var(--e-1) 0; max-height: 24em; overflow: auto; }
+  & .cod-otras, & .cod-dijo { margin: var(--e-1) 0; overflow-wrap: anywhere; }
 }
 
 body.angosto #lado { display: none; }

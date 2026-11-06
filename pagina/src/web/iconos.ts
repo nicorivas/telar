@@ -18,6 +18,7 @@ export const I = {
     chispa: '\u{ec10}', filtro: '\u{eaf1}', ninguno: '\u{eabd}', casa: '\u{eb06}', ventana: '\u{eb7f}', compartir: '\u{eb18}',
     adelante: '\u{ea9c}', marca: '\u{eb2b}', hijo: '\u{f060d}',
     terminal: '\u{ea85}', lectura: '\u{eb2f}', conversacion: '\u{eac7}',
+    codigos: '\u{ea90}', buscar: '\u{ea6d}', irArchivo: '\u{ea94}', ficha: '\u{ea74}',
 } as const;
 
 /** Las columnas de una fila de la barra de hilos, en la letra de íconos (un ícono ocupa 2ch: la columna es de 2ch

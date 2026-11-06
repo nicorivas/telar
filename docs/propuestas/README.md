@@ -47,6 +47,9 @@ el primer paso sin hacer de la primera propuesta.
 9. **[productos.md](productos.md)**: un módulo de productos (lo que se vende) con su backlog de ideas y un tablero
    kanban, sobre README y frontmatter declarados por cada repositorio; para que las ideas de mejora salgan de la
    lista de tareas. Hecho (lista, backlog, tablero, ideas y tareas); queda declararlo como tipo general.
+10. **[codigos.md](codigos.md)**: los códigos que un hilo nombra (`H3`, `PEN-07`, `T84`) en una hoja al lado de su
+   conversación, con lo que son, para buscarlos y ver su detalle, sin que nadie los declare. Hechos el escáner y la
+   hoja; falta que sean enlaces en la terminal.
 
 ## Cómo se escribe una propuesta
 

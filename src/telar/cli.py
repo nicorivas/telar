@@ -35,6 +35,7 @@ ORDENES: dict[str, str] = {
     "hilos": "Los hilos de la sesión, con su estado.",
     "hilo": "Vincular, renombrar, priorizar, archivar: actuar sobre un hilo.",
     "ficha": "Lo que el documento de un hilo dice de sí mismo.",
+    "codigos": "Los códigos que un hilo nombra (H3, PEN-07, T84) y lo que es cada uno.",
     "ir": "Poner el foco en un hilo.",
     "vincular": "Asociar un hilo a una carpeta del repositorio.",
     "fecha": "Cambiar una fecha (su inicio, su fin) donde vive: la celda de su documento, su tarea, su programa.",

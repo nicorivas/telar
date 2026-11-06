@@ -642,6 +642,36 @@ export interface JsonFichaAgente {
 export const fichaAgente = async (hilo: string, maquina = '') =>
     await deServe<JsonFichaAgente>(`/agentes/del-hilo?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`, 15000);
 
+/** Los códigos que nombra un hilo (`GET /codigos`, docs/contratos.md «telar codigos»): los que define su carpeta y
+ *  salen de su archivo (`codigos`, por clase), y los que nombra su conversación (`conversacion`, el último primero). */
+export interface JsonCodigo {
+    codigo: string; clase: string; titulo: string; archivo: string; linea: number; forma: string;
+    definiciones: number; nombrado_en: number; resumen?: string; en_conversacion?: number;
+}
+export interface JsonCodigoNombrado {
+    codigo: string; tipo: 'codigo' | 'tarea'; veces: number; ultimo: number; extracto: string;
+    titulo?: string; estado?: string; direccion?: string; archivo?: string; linea?: number;
+}
+export interface JsonClaseCodigos { prefijo: string; nombre: string; archivo: string; cuantos: number }
+export interface JsonDefinicion {
+    codigo: string; archivo: string; linea: number; forma: string; titulo: string; seccion: string;
+    texto?: string; campos?: Record<string, string>;
+}
+export interface JsonDetalleCodigo {
+    codigo: string; tipo: 'codigo' | 'tarea'; definiciones?: JsonDefinicion[];
+    nombrado_en?: { archivo: string; lineas: number[] }[];
+    conversacion?: { veces: number; ultimo: number; extracto: string };
+    direccion?: string; titulo?: string; estado?: string;
+}
+export interface JsonCodigos {
+    hilo: string; maquina: string; carpeta: string; archivos: number; truncado: boolean;
+    clases: JsonClaseCodigos[]; codigos: JsonCodigo[]; conversacion: JsonCodigoNombrado[];
+    tareas_en: string; aviso: string; detalle?: JsonDetalleCodigo;
+}
+export const codigos = async (hilo: string, maquina = '', codigo = '') =>
+    await deServe<JsonCodigos>(`/codigos?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`
+        + (codigo ? `&codigo=${encodeURIComponent(codigo)}` : ''), 30000);
+
 /** La versión de telar (`GET /version`): la que corre, la última en PyPI y si un clic la instala (`puede`: solo
  *  una instalación de `uv tool`); `a_mano`, qué hacer si no; `progreso`, la actualización en curso o la última. */
 export interface JsonVersion {

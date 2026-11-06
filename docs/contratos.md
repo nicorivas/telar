@@ -1236,6 +1236,36 @@ null, "rotacion"}`. `peso` y `tope` en bytes (`tope` 0: sin `rotar_mb`, no rota)
 rotando con relevo (`relevo`, `limpiar`, `retomar`) o `""`. Con `maquina` de otra (el agente vive allá), `aqui` es
 false y el relevo y la conversación son null: son de su máquina. 404 si el hilo no es de un agente.
 
+## `telar codigos --json` y `/codigos` — los códigos que un hilo nombra
+
+`telar codigos [hilo] [--buscar texto] [--codigo PEN-07] [--maquina servidor] --json`, o
+`GET /codigos?hilo=Faro[&maquina=servidor][&buscar=…][&codigo=PEN-07]` (docs/propuestas/codigos.md):
+
+```json
+{"hilo": "Faro", "maquina": "", "carpeta": "~/equipo/proyectos/faro", "archivos": 214, "truncado": false,
+ "clases": [{"prefijo": "PEN-", "nombre": "Pendientes", "archivo": "README.md", "cuantos": 95}],
+ "codigos": [{"codigo": "PEN-07", "clase": "PEN-", "titulo": "Mandar el acta", "archivo": "README.md", "linea": 146,
+              "forma": "fila", "definiciones": 1, "nombrado_en": 3, "resumen": "Pendiente: Mandar el acta · Dueño: Ana",
+              "en_conversacion": 2}],
+ "conversacion": [{"codigo": "PEN-07", "tipo": "codigo", "veces": 2, "ultimo": 140, "extracto": "…cerré PEN-07…",
+                   "titulo": "Mandar el acta", "archivo": "README.md", "linea": 146},
+                  {"codigo": "T84", "tipo": "tarea", "direccion": "tarea:T84", "veces": 1, "ultimo": 97, "extracto": "…",
+                   "titulo": "Llamar a Ana", "estado": "activa"}],
+ "tareas_en": "", "aviso": ""}
+```
+
+`codigos` son los que la carpeta vinculada define y se nombran fuera de su archivo (en otro documento, o en la
+conversación), por prefijo y número; `archivo` es relativo a `carpeta`, y `forma` es `titulo`, `fila` o `viñeta`.
+`nombrado_en` es cuántos otros archivos lo nombran; `resumen`, el texto de su definición en una línea, si dice más que
+`titulo`. `conversacion` va del último nombrado al primero (`ultimo` es el índice del mensaje): solo los que la
+carpeta define y las tareas. Si las tareas viven en otra máquina, `tareas_en` la nombra y las tareas van sin `titulo`
+ni `estado` (se piden con `telar objeto tarea:T84`). Sin carpeta vinculada, o vinculado a la raíz, `carpeta` es `""` y
+`aviso` lo dice. Con `--codigo`, además `"detalle": {"codigo", "tipo", "definiciones": [{"codigo", "archivo",
+"linea", "forma", "titulo", "seccion", "texto", "campos"?}], "nombrado_en": [{"archivo", "lineas"}], "conversacion":
+{"veces", "ultimo", "extracto"}?}` (la definición que vale primero; una tarea trae su `direccion` en vez de
+definiciones); 404 si no está definido ni es una tarea. Con `maquina` de otra, lo calcula su nodo (pedido `codigos`
+por el bus) y la respuesta es la misma con `maquina`; si ese hilo está en `[bus] no_leer`, sin su conversación.
+
 ## `/version` y `/actualizar` — versiones nuevas
 
 `GET /version` (`?forzar=true` le pregunta a PyPI ya; si no, a lo más una vez por hora):

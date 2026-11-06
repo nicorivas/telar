@@ -499,6 +499,14 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   pregunta y lo sube. Para un hilo de otra máquina, o para lo subido, el archivo va antes a la carpeta de entrada
   de la máquina del hilo (`POST /api/archivos/entrada`: a otra máquina, por ssh como `telar imagen`; hasta 200 MB, sin pisar nada)
   y se escribe la ruta de allá. Lo que se lee del arrastre está en `web/arrastre.ts`; nunca se navega al archivo.
+- **La barra de la derecha** (`web/lado.ts`) acompaña a un hilo con dos hojas: la ficha de un agente residente
+  (`/api/agentes/del-hilo`) y los **códigos** que nombra el hilo (`web/codigos.ts`, `/api/codigos`: `H3`, `PEN-07`,
+  `T84`). Los códigos los calcula `telar.codigos` en la máquina del hilo (otra, por el verbo `codigos` del bus):
+  reconoce las tres formas en que un documento de la carpeta vinculada define uno (un título, una fila con el
+  código en la primera columna, una viñeta en negrita), se queda con los que se nombran fuera de su archivo o en
+  la conversación, los agrupa por prefijo con el nombre de su sección, y relee un archivo solo si cambió. La hoja
+  los muestra con una caja para buscar y el detalle de cada uno (su definición, el archivo y dónde más se nombra);
+  una tarea, con lo que da `/api/objetos`. Por qué y lo que falta: [propuestas/codigos.md](propuestas/codigos.md).
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta. Lo que un programa de
   la terminal manda al portapapeles (OSC 52) pasa al de la persona: así se copia de un hilo de otra máquina, donde

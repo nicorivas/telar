@@ -8,6 +8,18 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- **What a thread's codes mean, beside it.** A thread that runs a project names its work with codes (`H3` a
+  hypothesis, `PEN-07` a pending item, `T84` a task) and the person loses track of them. The right-hand bar now has a
+  «códigos» sheet for any thread: the codes its conversation named, latest first, and the ones its folder defines,
+  grouped by prefix and named after their section («Pendientes»), with a search box and, on click, the definition
+  (the section's text or the row's columns), its file (opens in the viewer) and where else it is named. Nobody
+  declares them: `telar.codigos` recognises the three ways a document defines a code (a heading, a table row with
+  the code in its first column, a bold bullet) and keeps only those named outside their own file. A task is shown
+  as the task. Computed on the thread's machine (bus verb `codigos`); also `telar codigos [hilo] [--buscar]
+  [--codigo]` and `GET /codigos`. An agent's thread shows its card and its codes as two sheets.
+
 ## [0.11.0] — 2026-11-04
 
 ### Added
