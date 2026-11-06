@@ -52,7 +52,14 @@ e «Hitos» en otro sin que nadie lo diga.
 reciente primero.
 
 **Las tareas** (`T458`) son objetos de telar (`tarea:T458`): si la conversación nombra un código que el proyecto no
-define y que es una tarea, va como tarea, con su título y su estado, y su detalle es el de la tarea.
+define y que es una tarea, va como tarea, con su título y su estado, y su detalle es el de la tarea. Pero las tareas
+son de todos los proyectos, y una nombrada de pasada («de paso, también está T433») no es del hilo: entra si la nombró
+la persona (o un hilo que le escribe), si el agente la nombró en al menos dos respuestas, o si el hilo se llama como
+ella («T428 Entel»).
+
+**Qué cuenta como conversación**: lo que escribe la persona y las respuestas del agente. No cuentan las líneas de sus
+herramientas (lo que hace por dentro: «Read T433»), el resumen con que sigue una conversación compactada (repite lo
+que ya contó) ni lo que llega entre etiquetas (el aviso de una tarea de fondo).
 
 ## Dónde se calcula
 
@@ -75,8 +82,10 @@ tareas: recorrer un repositorio entero no tiene sentido.
    caja de buscar y el detalle; la barra aparece en cualquier hilo con códigos, y en el de un agente comparte lugar
    con su ficha (dos hojas). Se relee cada 30 s mientras se ve.
 3. ~~**Los códigos como enlaces**~~ en la terminal, la lectura y la conversación (web/enlaces.ts, web/rutas-agente.ts):
-   un clic en `PEN-07` abre la barra en la hoja de códigos, con ese abierto. Solo los que la hoja conoce para ese hilo,
-   para no marcar `SHA-256`; y ninguno si el modo oculta la barra o en el celular, donde no tendrían dónde abrirse.
+   un clic en `PEN-07` abre la barra en la hoja de códigos, con ese abierto (en la terminal, ⌘-clic: un código es corto
+   y está por todas partes, y un clic para enfocarla no tiene que abrir uno; al pasar encima dice qué es). Solo los
+   que la hoja conoce para ese hilo, para no marcar `SHA-256`; y ninguno si el modo oculta la barra o en el celular,
+   donde no tendrían dónde abrirse.
 
 Después, si hace falta:
 

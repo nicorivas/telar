@@ -20,6 +20,8 @@ import * as lado from './lado';
 import * as ui from './ui';
 import type { RutasVista } from './vistas-hilo';
 
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+
 /** Los tipos de dirección que sabe esta máquina (los de sus módulos también): se piden una vez, y mientras no
  *  llegan valen los de telar. */
 let tiposPedidos = false;
@@ -153,18 +155,29 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
 }
 
 /** Las rutas, las direcciones web y las de objetos de la terminal de un hilo, y sus códigos, como enlaces de xterm
- *  (subrayados al pasar; un clic los abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
+ *  (subrayados al pasar; un clic los abre, y un código, ⌘-clic). Una larga que se partió en varias filas se encuentra
+ *  entera (enlaces.ts). */
 export function enlazarTerminal(term: Terminal, vista: RutasVista): IDisposable {
     pedirTipos();
     const abrir = (h: { tipo: string; texto: string }) => (h.tipo === 'web' ? ui.abrirExterno(h.texto)
         : h.tipo === 'codigo' ? lado.abrirCodigo(h.texto)
             : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto) : abrirRuta(h.texto, vista));
+    // al pasar sobre un código, qué es y cómo abrirlo (en el título de la terminal, que el navegador muestra)
+    const decir = (texto: string) => { if (term.element) term.element.title = texto; };
     return term.registerLinkProvider({
         provideLinks(y, listo) {
-            // los códigos, los que la hoja conoce para este hilo cuando se pasa por encima (se ve el hilo, y la hoja es suya)
-            const enlaces = hallar(term.buffer.active, term.cols, y, codigos.conocidos(vista.hilo)).map((h): ILink => ({
-                range: { start: h.desde, end: h.hasta }, text: h.texto, activate: () => void abrir(h),
-            }));
+            // los códigos, los que la hoja conoce para este hilo cuando se pasa por encima (se ve el hilo, y la hoja es
+            // suya). Un código se abre con ⌘-clic (Ctrl fuera del Mac): son cortos y están por todas partes, y un clic
+            // para enfocar la terminal no tiene que abrir uno
+            const enlaces = hallar(term.buffer.active, term.cols, y, codigos.conocidos(vista.hilo)).map((h): ILink => h.tipo === 'codigo'
+                ? {
+                    range: { start: h.desde, end: h.hasta }, text: h.texto,
+                    decorations: { pointerCursor: false, underline: true },
+                    hover: () => { const que = codigos.queEs(h.texto); decir(`${h.texto}${que ? `: ${que}` : ''} · ${MAC ? '⌘' : 'Ctrl'}-clic lo abre en la barra`); },
+                    leave: () => decir(''),
+                    activate: ev => { if (ev.metaKey || ev.ctrlKey) void abrir(h); },
+                }
+                : { range: { start: h.desde, end: h.hasta }, text: h.texto, activate: () => void abrir(h) });
             listo(enlaces.length ? enlaces : undefined);
         },
     });
