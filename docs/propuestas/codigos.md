@@ -52,14 +52,8 @@ e «Hitos» en otro sin que nadie lo diga.
 reciente primero.
 
 **Las tareas** (`T458`) son objetos de telar (`tarea:T458`): si la conversación nombra un código que el proyecto no
-define y que es una tarea, va como tarea, con su título y su estado, y su detalle es el de la tarea. Pero las tareas
-son de todos los proyectos, y una nombrada de pasada («de paso, también está T433») no es del hilo: entra si la nombró
-la persona (o un hilo que le escribe), si el agente la nombró en al menos dos respuestas, o si el hilo se llama como
-ella («T428 Entel»).
-
-**Qué cuenta como conversación**: lo que escribe la persona y las respuestas del agente. No cuentan las líneas de sus
-herramientas (lo que hace por dentro: «Read T433»), el resumen con que sigue una conversación compactada (repite lo
-que ya contó) ni lo que llega entre etiquetas (el aviso de una tarea de fondo).
+define y que es una tarea, va como tarea, con su título y su estado, y su detalle es el de la tarea. Salen todas las
+que la conversación nombra, aunque sea de pasada: lo que importa es poder saber qué es cada código que se lee.
 
 ## Dónde se calcula
 

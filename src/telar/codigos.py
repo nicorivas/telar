@@ -335,14 +335,11 @@ def carpeta(raiz: Path) -> Carpeta:
 @dataclass
 class Nombrado:
     codigo: str
-    #: cuántos mensajes lo nombran (de la persona y del agente), y el índice del último
+    #: cuántos mensajes lo nombran, y el índice del último
     veces: int
     ultimo: int
     #: lo que decía el último mensaje que lo nombra, alrededor del código
     extracto: str
-    #: cuántos de esos mensajes son de la persona (o de otro hilo que le escribe) y cuántos respuestas del agente
-    persona: int = 0
-    agente: int = 0
 
 
 def _extracto(texto: str, codigo: str, ancho: int = 220) -> str:
@@ -355,37 +352,15 @@ def _extracto(texto: str, codigo: str, ancho: int = 220) -> str:
     return ("…" if a else "") + t + ("…" if b < len(texto) else "")
 
 
-#: el resumen con que sigue una conversación compactada (lo escribe Claude Code como mensaje de la persona)
-_RESUMEN = "This session is being continued from a previous conversation"
-
-
-def quien_cuenta(m: dict) -> str:
-    """De quién es un mensaje para lo que se habló: «persona» (lo que escribió, o lo que le escribió otro hilo),
-    «agente» (su respuesta) o "" si no cuenta: las líneas de herramientas (lo que el agente hace por dentro: «Read
-    T433»), el resumen de una conversación compactada (repite lo de antes, y lo de antes ya contó) y lo que llega entre
-    etiquetas (el aviso de una tarea de fondo, la salida de una orden)."""
-    quien, texto = m.get("quien"), str(m.get("texto", "")).lstrip()
-    if quien == "agente":
-        return "agente"
-    if quien == "usuario" and not texto.startswith(_RESUMEN) and not texto.startswith("<"):
-        return "persona"
-    return ""
-
-
 def en_conversacion(mensajes: list[dict]) -> list[Nombrado]:
-    """Los códigos que nombra una conversación (`[{quien, texto}…]`), el último nombrado primero; solo en lo que
-    cuenta como conversación (`quien_cuenta`)."""
-    por: dict[str, Counter[str]] = defaultdict(Counter)
+    """Los códigos que nombra una conversación (`[{quien, texto}…]`), todos, el último nombrado primero."""
+    veces: Counter[str] = Counter()
     ultimo: dict[str, int] = {}
     for n, m in enumerate(mensajes):
-        quien = quien_cuenta(m)
-        if not quien:
-            continue
         for c in set(_SUELTO.findall(str(m.get("texto", "")))):
-            por[c][quien] += 1
+            veces[c] += 1
             ultimo[c] = n
-    salida = [Nombrado(c, sum(k.values()), ultimo[c], _extracto(str(mensajes[ultimo[c]].get("texto", "")), c),
-                       k["persona"], k["agente"]) for c, k in por.items()]
+    salida = [Nombrado(c, veces[c], ultimo[c], _extracto(str(mensajes[ultimo[c]].get("texto", "")), c)) for c in veces]
     return sorted(salida, key=lambda x: (-x.ultimo, x.codigo))
 
 

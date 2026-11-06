@@ -16,9 +16,6 @@ from telar.servicios import ErrorDeServicio
 
 #: cuántos códigos de la conversación se dan, a lo más (los últimos nombrados)
 MAX_CONVERSACION = 60
-#: una tarea que la persona no nombró entra si el agente la nombró en al menos estas respuestas: las tareas son de
-#: todos los proyectos, y una nombrada de pasada («también está T433») no es de este hilo
-MIN_RESPUESTAS_TAREA = 2
 
 
 class Codigos(BaseModel):
@@ -161,7 +158,7 @@ def _aqui(ctx, hilo: str, *, codigo: str, buscar: str, de_otra: bool) -> Codigos
         if n.codigo in definidos:
             d = c.principal(n.codigo)
             conv.append({**base, "tipo": "codigo", "titulo": d.titulo, "archivo": d.archivo, "linea": d.linea})
-        elif (n.persona or n.agente >= MIN_RESPUESTAS_TAREA or n.codigo in h.nombre.split()) and (t := tarea_de(n.codigo)):
+        elif (t := tarea_de(n.codigo)):
             conv.append({**base, **t})
 
     # los del proyecto: los que salen de su archivo (a otro documento, o a la conversación)

@@ -134,15 +134,6 @@ class LaCarpeta(Prueba):
 
 
 class LaConversacion(Prueba):
-    def test_cuentan_la_persona_y_las_respuestas_no_las_herramientas_ni_el_resumen(self):
-        mensajes = [{"quien": "usuario", "texto": "This session is being continued from a previous conversation. H1"},
-                    {"quien": "usuario", "texto": "<task-notification>H1 listo</task-notification>"},
-                    {"quien": "herramienta", "texto": "Read H1"},
-                    {"quien": "usuario", "texto": "¿H1?"},
-                    {"quien": "agente", "texto": "H1 va."}]
-        n = c.en_conversacion(mensajes)
-        self.assertEqual([(x.codigo, x.veces, x.persona, x.agente, x.ultimo) for x in n], [("H1", 2, 1, 1, 4)])
-
     def test_el_ultimo_nombrado_primero_con_lo_que_se_decia(self):
         mensajes = [{"quien": "usuario", "texto": "¿Cómo va PEN-01?"},
                     {"quien": "agente", "texto": "PEN-01 está listo; queda H1, que depende del piloto."},
@@ -202,16 +193,11 @@ class ElServicio(Prueba):
                         tareas=(SimpleNamespace(obtener=obtener), ""))
         self.assertEqual([(x["codigo"], x.get("titulo")) for x in r.conversacion], [("T84", "Llamar a Ana")])
 
-    def test_una_tarea_nombrada_de_pasada_no_es_del_hilo(self):
+    def test_todas_las_que_nombra_aunque_sea_de_pasada(self):
         mensajes = [{"quien": "agente", "texto": "Sigo con T84; de paso, también está T433."},
-                    {"quien": "herramienta", "texto": "Bash · Find the T433 task"},
-                    {"quien": "usuario", "texto": "This session is being continued from a previous conversation… T433, T433"},
-                    {"quien": "agente", "texto": "Cerré lo de T84."}]
+                    {"quien": "herramienta", "texto": "Bash · Find the T12 task"}]
         r = self.correr(self.carpeta, mensajes, tareas=(None, "servidor"))
-        self.assertEqual([x["codigo"] for x in r.conversacion], ["T84"])  # dos respuestas; T433, una sola
-        # la persona la nombra una vez, y basta; o el hilo se llama como ella
-        r = self.correr(self.carpeta, [*mensajes, {"quien": "usuario", "texto": "¿y T433?"}], tareas=(None, "servidor"))
-        self.assertEqual([x["codigo"] for x in r.conversacion], ["T433", "T84"])
+        self.assertEqual([x["codigo"] for x in r.conversacion], ["T12", "T433", "T84"])
 
     def test_buscar_y_el_detalle(self):
         r = self.correr(self.carpeta, buscar="adopta")

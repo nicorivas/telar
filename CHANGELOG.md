@@ -20,9 +20,7 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   as the task. Computed on the thread's machine (bus verb `codigos`); also `telar codigos [hilo] [--buscar]
   [--codigo]` and `GET /codigos`. An agent's thread shows its card and its codes as two sheets. The codes the sheet
   knows are links in the thread's terminal (⌘-click), reading and conversation views: a click opens the bar on that
-  code. Only what the person wrote and the agent answered counts as the conversation (not tool lines or a compacted
-  summary), and a task enters only if the person named it, the agent named it in two answers, or the thread is named
-  after it.
+  code.
 
 ## [0.11.0] — 2026-11-04
 
