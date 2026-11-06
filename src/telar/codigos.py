@@ -197,9 +197,10 @@ def definiciones(texto: str, archivo: str = "") -> list[Definicion]:
             pila.append((nivel, _limpio(t.group(2))[:60], bool(d)))
             i += 1
             continue
-        if (v := _DEF_VINETA.match(linea)):
+        # una viñeta que nombra varios en su negrita («**T309 y T159**: …») habla de ellos, no define uno
+        if (v := _DEF_VINETA.match(linea)) and not _SUELTO.search(v.group(3)):
             sangria = len(v.group(1))
-            corto, resto = _limpio(v.group(3)), _limpio(v.group(4))
+            corto, resto = _limpio(v.group(3)).rstrip(" :;.—–-"), _limpio(v.group(4))
             titulo = f"{corto}: {resto}" if corto and resto else (corto or resto)
             # sus líneas de continuación: las que siguen más adentro que la viñeta, hasta una línea en blanco o
             # la próxima viñeta de su nivel

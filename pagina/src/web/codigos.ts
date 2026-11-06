@@ -14,7 +14,7 @@ import * as ui from './ui';
 
 /** cada cuánto se releen mientras se ve el mismo hilo */
 const CADA = 30 * 1000;
-/** cuántas tareas de otra máquina se piden, a lo más (las últimas nombradas) */
+/** cuántas tareas de otra máquina se piden de entrada (las últimas nombradas); las demás, con «más» */
 const TAREAS_ALLA = 12;
 /** una clase con más códigos que estos empieza plegada */
 const PLEGADA_DESDE = 12;
@@ -66,14 +66,15 @@ export async function cargar(que: string, h: string, m: string): Promise<boolean
     if (clave !== que) return false;  // ya se fue a otro
     const antes = JSON.stringify(datos ?? null);
     datos = r.datos ?? undefined;
-    if (datos?.tareas_en) pedirTareas();
+    if (datos?.tareas_en) pedirTareas(todaLaConversacion ? Infinity : TAREAS_ALLA);
     return JSON.stringify(datos ?? null) !== antes;
 }
 
 /** Las tareas que nombra la conversación y viven en otra máquina: su título, de a una (`telar objeto`). */
-function pedirTareas(): void {
+function pedirTareas(cuantas = TAREAS_ALLA): void {
     const que = clave;
-    const faltan = (datos?.conversacion ?? []).filter(x => x.tipo === 'tarea' && !x.titulo && !tareas.has(x.codigo)).slice(0, TAREAS_ALLA);
+    const pendientes = (datos?.conversacion ?? []).filter(x => x.tipo === 'tarea' && !x.titulo);
+    const faltan = pendientes.slice(0, cuantas).filter(x => !tareas.has(x.codigo));
     for (const x of faltan) {
         tareas.set(x.codigo, 'cargando');
         void cli.objeto(x.direccion ?? `tarea:${x.codigo}`).then(r => {
@@ -169,20 +170,24 @@ function lista(): string {
     const h: string[] = [];
     const conv = datos.conversacion.filter(x => visible(x) && calza(x.codigo, tituloDe(x).titulo, x.extracto));
     if (conv.length) {
-        // los últimos nombrados; los demás, con «más» (al buscar, todos los que calzan)
-        const corta = !todaLaConversacion && !consulta.trim() && conv.length > CONVERSACION_VISIBLES;
+        // los últimos nombrados; los demás, con «más» (al buscar, todos los que calzan). Las tareas de otra máquina
+        // que no se pidieron todavía cuentan entre las de «más»: se piden al apretarlo
+        const sinPedir = todaLaConversacion ? 0
+            : datos.conversacion.filter(x => x.tipo === 'tarea' && !x.titulo && !tareas.has(x.codigo)).length;
+        const corta = !todaLaConversacion && !consulta.trim() && (conv.length > CONVERSACION_VISIBLES || sinPedir > 0);
         const vistos = corta ? conv.slice(0, CONVERSACION_VISIBLES) : conv;
         if (corta && abierto && !vistos.some(x => x.codigo === abierto)) {
             const x = conv.find(y => y.codigo === abierto);
             if (x) vistos.push(x);
         }
-        h.push(`<div class="cod-sec"><div class="cod-tit">${I.conversacion} en esta conversación <span class="dim">${conv.length}</span></div>`
+        const mas = conv.length - vistos.length + sinPedir;
+        h.push(`<div class="cod-sec"><div class="cod-tit">${I.conversacion} en esta conversación <span class="dim">${conv.length + sinPedir}</span></div>`
             + vistos.map(x => {
                 const t = tituloDe(x);
                 const extra = x.tipo === 'tarea' ? `<span class="cod-e">${esc(t.estado || 'tarea')}</span>` : '';
                 return fila(x.codigo, t.titulo, extra);
             }).join('')
-            + (corta ? `<a class="cod-mas" data-cod="mas">${I.abierto} ${conv.length - vistos.length} más, nombrados antes</a>` : '')
+            + (corta && mas > 0 ? `<a class="cod-mas" data-cod="mas">${I.abierto} ${mas} más, nombrados antes</a>` : '')
             + '</div>');
     }
     const nombres = new Map(datos.clases.map(k => [k.prefijo, k]));
@@ -243,6 +248,12 @@ async function abrir(codigo: string): Promise<void> {
 /** Los clics y lo que se escribe en la hoja; true si era suyo. Lo llama web/lado.ts. */
 export function atender(e: Event): boolean {
     const t = e.target as HTMLElement;
+    if (e.type === 'keydown' && (e as KeyboardEvent).key === 'Escape' && t.matches('.cod-buscar input')) {
+        // ⎋ borra la búsqueda (y si ya está vacía, suelta la caja)
+        if (consulta) { (t as HTMLInputElement).value = ''; consulta = ''; repintarLista(); } else (t as HTMLInputElement).blur();
+        e.preventDefault(); e.stopPropagation();
+        return true;
+    }
     if (e.type === 'input' && t.matches('.cod-buscar input')) {
         consulta = (t as HTMLInputElement).value;
         repintarLista();
@@ -259,7 +270,7 @@ export function atender(e: Event): boolean {
     e.preventDefault();
     const que = a.dataset.cod;
     if (que === 'ver' && a.dataset.c) void abrir(a.dataset.c);
-    else if (que === 'mas') { todaLaConversacion = true; repintarLista(); }
+    else if (que === 'mas') { todaLaConversacion = true; pedirTareas(Infinity); repintarLista(); }
     else if (que === 'archivo' && a.dataset.ruta) void ui.abrirArchivo(ruta(a.dataset.ruta));
     else if (que === 'objeto' && a.dataset.dir) void ui.abrirDireccion(a.dataset.dir);
     return true;

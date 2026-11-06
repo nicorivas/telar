@@ -41,6 +41,8 @@ Sin datos todavía.
 - **R1** — el proveedor no entrega a tiempo
   y se corre el piloto
 - **R2 — datos**: la base llega incompleta
+- **R1 y R2 (los dos)**: se miran juntos
+- **R3 con punto.**: el título no queda con dos signos
 
 ```
 ### H9 — esto es un ejemplo dentro de un bloque
@@ -52,7 +54,7 @@ Sin datos todavía.
 class LasDefiniciones(Prueba):
     def test_las_tres_formas_con_su_seccion(self):
         defs = {d.codigo: d for d in c.definiciones(PLAN, "plan.md")}
-        self.assertEqual(sorted(defs), ["H1", "H2", "PEN-01", "PEN-02", "R1", "R2"])
+        self.assertEqual(sorted(defs), ["H1", "H2", "PEN-01", "PEN-02", "R1", "R2", "R3"])  # «R1 y R2» no define
         h1 = defs["H1"]
         self.assertEqual((h1.forma, h1.titulo, h1.seccion, h1.linea), ("titulo", "El equipo adopta si el piloto le ahorra tiempo", "Hipótesis", 5))
         self.assertIn("encuesta de salida", h1.texto)
@@ -66,6 +68,7 @@ class LasDefiniciones(Prueba):
         self.assertEqual((r1.forma, r1.titulo, r1.seccion), ("viñeta", "el proveedor no entrega a tiempo", "Riesgos"))
         self.assertIn("se corre el piloto", r1.texto)
         self.assertEqual(defs["R2"].titulo, "datos: la base llega incompleta")
+        self.assertEqual(defs["R3"].titulo, "con punto: el título no queda con dos signos")
 
     def test_lo_de_un_bloque_de_codigo_no_define(self):
         self.assertFalse({"H9", "PEN-99"} & {d.codigo for d in c.definiciones(PLAN)})

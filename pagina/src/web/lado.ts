@@ -197,6 +197,7 @@ export function montar(): void {
     const el = lado();
     // lo de la hoja de códigos: sus clics, su caja de buscar y sus clases que se abren y se pliegan
     el?.addEventListener('input', e => { codigos.atender(e); });
+    el?.addEventListener('keydown', e => { codigos.atender(e); });
     el?.addEventListener('toggle', e => { codigos.atender(e); }, true);
     el?.addEventListener('click', e => {
         if (codigos.atender(e)) return;
