@@ -78,6 +78,9 @@ a {
   &:hover { text-decoration: underline; }
 }
 
+/* un código del hilo (`PEN-07`) en su conversación: se abre en la hoja de códigos (web/codigos.ts) */
+a.codigo { text-decoration: underline dotted; text-underline-offset: 3px; }
+
 .dim { color: var(--dim); }
 
 .aviso {

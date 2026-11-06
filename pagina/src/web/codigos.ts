@@ -10,6 +10,7 @@ import * as cli from '../cli';
 import { esc } from '../estilo';
 import { modelo } from '../modelo';
 import { I } from './iconos';
+import * as modos from './modos';
 import * as ui from './ui';
 
 /** cada cuánto se releen mientras se ve el mismo hilo */
@@ -67,7 +68,44 @@ export async function cargar(que: string, h: string, m: string): Promise<boolean
     const antes = JSON.stringify(datos ?? null);
     datos = r.datos ?? undefined;
     if (datos?.tareas_en) pedirTareas(todaLaConversacion ? Infinity : TAREAS_ALLA);
-    return JSON.stringify(datos ?? null) !== antes;
+    const cambio = JSON.stringify(datos ?? null) !== antes;
+    // las vistas del hilo (la conversación, la lectura) enlazan los códigos que ahora se conocen
+    if (cambio) {
+        window.dispatchEvent(new CustomEvent('telar:codigos', { detail: { hilo } }));
+        // los detalles ya leídos pueden haber cambiado: el abierto se relee (se ve el de antes mientras llega)
+        for (const k of [...detalles.keys()]) if (k !== abierto) detalles.delete(k);
+        if (abierto) void cargarDetalle(abierto, true);
+    }
+    return cambio;
+}
+
+/** Los códigos que la hoja conoce para ese hilo, para hacerlos enlaces en su terminal y su conversación
+ *  (web/rutas-agente.ts): los de su carpeta que se muestran y los de su conversación (menos las tareas que no
+ *  existen). Ninguno si la hoja es de otro hilo, si la barra está oculta por el modo o en el celular (sin barra,
+ *  un enlace no tendría dónde abrirse). */
+export function conocidos(h: string): ReadonlySet<string> | undefined {
+    if (!datos || h !== hilo || modos.valor('lado') === 'oculto' || document.body.classList.contains('angosto')) return undefined;
+    return new Set([...datos.codigos.map(c => c.codigo), ...datos.conversacion.filter(x => tareas.get(x.codigo) !== null).map(x => x.codigo)]);
+}
+
+/** Lo que es un código conocido, en una línea (para el título de su enlace). */
+export function queEs(codigo: string): string {
+    const c = datos?.codigos.find(x => x.codigo === codigo);
+    if (c) return c.titulo;
+    const x = datos?.conversacion.find(y => y.codigo === codigo);
+    return x ? tituloDe(x).titulo : '';
+}
+
+/** Abre ese código en la hoja (su enlace en la terminal o la conversación): visible aunque la búsqueda o una clase
+ *  plegada lo escondieran, con su detalle. Quien llama redibuja la barra (web/lado.ts, `abrirCodigo`). */
+export function enfocar(codigo: string): void {
+    if (!datos) return;
+    const c = datos.codigos.find(x => x.codigo === codigo);
+    const x = datos.conversacion.find(y => y.codigo === codigo);
+    if (consulta && !(c ? calza(c.codigo, c.titulo, c.resumen) : x ? calza(x.codigo, tituloDe(x).titulo, x.extracto) : false)) consulta = '';
+    if (c) aMano.set(c.clase, true);
+    abierto = codigo;
+    void cargarDetalle(codigo);
 }
 
 /** Las tareas que nombra la conversación y viven en otra máquina: su título, de a una (`telar objeto`). */
@@ -114,11 +152,17 @@ function ruta(archivo: string): string {
     return maquina ? `${maquina}:${r}` : r;
 }
 
+/** si el detalle del abierto ya se dibujó en esta pasada (un código puede estar en la conversación y en su clase:
+ *  el detalle va en la primera fila, la otra solo se marca) */
+let detalleDibujado = false;
+
 function fila(codigo: string, titulo: string, extra = ''): string {
     const sel = codigo === abierto;
+    const conDetalle = sel && !detalleDibujado;
+    if (conDetalle) detalleDibujado = true;
     return `<a class="cod-fila${sel ? ' sel' : ''}" data-cod="ver" data-c="${esc(codigo)}" title="${esc(titulo)}">`
         + `<span class="cod-c">${esc(codigo)}</span><span class="cod-t">${esc(titulo)}</span>${extra}</a>`
-        + (sel ? `<div class="cod-det">${detalle(codigo)}</div>` : '');
+        + (conDetalle ? `<div class="cod-det">${detalle(codigo)}</div>` : '');
 }
 
 /** El detalle del código abierto: lo que dice su definición, dónde está y dónde más se nombra; o la tarea. */
@@ -167,6 +211,7 @@ function detalle(codigo: string): string {
 /** La lista: los de la conversación y los de la carpeta, por clase, con lo que calza con la consulta. */
 function lista(): string {
     if (!datos) return '';
+    detalleDibujado = false;
     const h: string[] = [];
     const conv = datos.conversacion.filter(x => visible(x) && calza(x.codigo, tituloDe(x).titulo, x.extracto));
     if (conv.length) {
@@ -226,23 +271,37 @@ function repintarLista(): void {
     if (el) el.innerHTML = lista();
 }
 
+/** Un clic en su fila: lo abre, o lo cierra si ya estaba abierto. */
 async function abrir(codigo: string): Promise<void> {
     abierto = abierto === codigo ? '' : codigo;
     repintarLista();
-    if (!abierto || (detalles.has(codigo) && detalles.get(codigo) !== 'cargando')) return;
-    detalles.set(codigo, 'cargando');
+    if (abierto) await cargarDetalle(codigo);
+}
+
+/** Pide el detalle de un código si no está (una tarea, a `telar objeto`), y redibuja la lista al llegar. `releer`:
+ *  aunque esté, dejando el que hay a la vista mientras llega el nuevo. */
+async function cargarDetalle(codigo: string, releer = false): Promise<void> {
+    if (detalles.has(codigo) && !releer) return;
+    if (!detalles.has(codigo)) detalles.set(codigo, 'cargando');
     const que = clave;
     const x = datos?.conversacion.find(y => y.codigo === codigo);
     if (x?.tipo === 'tarea') {
         const r = await cli.objeto(x.direccion ?? `tarea:${codigo}`);
         if (clave !== que) return;
-        detalles.set(codigo, r.datos ?? `no pude leer la tarea: ${r.error ?? 'sin respuesta'}`);
+        poner(codigo, r.datos, `no pude leer la tarea: ${r.error ?? 'sin respuesta'}`);
     } else {
         const r = await cli.codigos(hilo, maquina, codigo);
         if (clave !== que) return;
-        detalles.set(codigo, r.datos?.detalle ?? `no pude leer ${codigo}: ${r.error ?? 'sin respuesta'}`);
+        poner(codigo, r.datos?.detalle, `no pude leer ${codigo}: ${r.error ?? 'sin respuesta'}`);
     }
     repintarLista();
+}
+
+/** El detalle que llegó, o su falla; al releer, una falla no tapa el que ya se veía. */
+function poner(codigo: string, d: cli.JsonDetalleCodigo | cli.JsonObjeto | undefined, falla: string): void {
+    const habia = detalles.get(codigo);
+    if (d) detalles.set(codigo, d);
+    else if (!habia || typeof habia === 'string') detalles.set(codigo, falla);
 }
 
 /** Los clics y lo que se escribe en la hoja; true si era suyo. Lo llama web/lado.ts. */

@@ -1,8 +1,9 @@
 # Códigos: lo que un hilo nombra con un código, a la vista
 
-Estado: **pasos 1 y 2 hechos** (6-nov-2026, sin publicar): `telar codigos`, `GET /codigos` y el verbo `codigos` del bus;
-la hoja «códigos» de la barra de la derecha. Decidido: sin declarar nada (se reconocen las tres formas de definir un
-código), solo los códigos que salen del archivo donde se definen, y en la máquina del hilo. Falta el paso 3.
+Estado: **hecho** (6-nov-2026, sin publicar): `telar codigos`, `GET /codigos` y el verbo `codigos` del bus; la hoja
+«códigos» de la barra de la derecha; los códigos como enlaces en la terminal, la lectura y la conversación. Decidido:
+sin declarar nada (se reconocen las tres formas de definir un código), solo los códigos que salen del archivo donde se
+definen, y en la máquina del hilo. Queda lo de «Después, si hace falta».
 
 ## Por qué
 
@@ -73,8 +74,9 @@ tareas: recorrer un repositorio entero no tiene sentido.
 2. ~~**La hoja en la barra de la derecha**~~ (web/codigos.ts): «en esta conversación», «del proyecto» por clase, la
    caja de buscar y el detalle; la barra aparece en cualquier hilo con códigos, y en el de un agente comparte lugar
    con su ficha (dos hojas). Se relee cada 30 s mientras se ve.
-3. **Los códigos como enlaces** en la terminal y en la conversación: un clic en `PEN-07` lo abre en la hoja. Solo los
-   códigos que la hoja conoce para ese hilo (web/enlaces.ts ya lo hace con `tarea:T366`), para no marcar `SHA-256`.
+3. ~~**Los códigos como enlaces**~~ en la terminal, la lectura y la conversación (web/enlaces.ts, web/rutas-agente.ts):
+   un clic en `PEN-07` abre la barra en la hoja de códigos, con ese abierto. Solo los que la hoja conoce para ese hilo,
+   para no marcar `SHA-256`; y ninguno si el modo oculta la barra o en el celular, donde no tendrían dónde abrirse.
 
 Después, si hace falta:
 

@@ -150,7 +150,7 @@ export function montar(raiz: HTMLElement, { hilo, maquina }: RutasVista): Vista 
         }
         ponerPendiente();
         // las rutas que escribió el agente, como enlaces al visor
-        enlazar(turnos);
+        enlazar(turnos, true, hilo);
         leido = true;
         if (seguir || pendiente) turnos.scrollTop = turnos.scrollHeight;
     };

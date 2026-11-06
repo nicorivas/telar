@@ -1,5 +1,5 @@
-// Dónde hay rutas de archivo, direcciones web y direcciones de objetos (`tarea:T366`) en un texto, y en lo que
-// muestra la terminal de un hilo. Una línea
+// Dónde hay rutas de archivo, direcciones web, direcciones de objetos (`tarea:T366`) y códigos (`PEN-07`) en un texto,
+// y en lo que muestra la terminal de un hilo. Una línea
 // larga llega a la terminal partida en filas de dos maneras: la parte la terminal al llegar al borde (xterm marca la
 // fila de abajo `isWrapped`), o la parte el programa antes de escribirla, con saltos de línea de verdad. Claude Code
 // hace lo segundo: su Ink corta el texto al ancho de la caja, y una palabra más larga que la caja (una dirección,
@@ -29,6 +29,10 @@ function direccion(tipos: string[]): RegExp {
     return new RegExp(String.raw`(?<![\p{L}\p{N}_/.@-])(?:${nombres}):[^\s"'()<>,\[\]{}\x60]+`, 'gu');
 }
 
+/** Un código (`H3`, `PEN-07`, `T84`: docs/propuestas/codigos.md), suelto: sin letras, dígitos ni guiones pegados. Es
+ *  enlace solo si es uno de los que la hoja de códigos conoce para el hilo (web/codigos.ts): `buscar` recibe cuáles. */
+const CODIGO = /(?<![\p{L}\p{N}_-])[A-Z]{1,4}-?\d{1,4}(?![\p{L}\p{N}_-])/gu;
+
 /** Los tipos de dirección que sabe la máquina de la página. */
 export function usarTipos(tipos: string[]): void { if (tipos.length) DIRECCION = direccion(tipos); }
 
@@ -55,7 +59,7 @@ export interface Pantalla {
 export interface Celda { x: number; y: number }
 
 /** Una ruta o una dirección de la pantalla, y las celdas donde empieza y termina. */
-export interface Hallazgo { tipo: 'ruta' | 'web' | 'direccion'; texto: string; desde: Celda; hasta: Celda }
+export interface Hallazgo { tipo: 'ruta' | 'web' | 'direccion' | 'codigo'; texto: string; desde: Celda; hasta: Celda }
 
 /** Cuántas columnas puede dejar libres a la derecha una fila que sigue en la de abajo: la caja de Ink puede tener
  *  margen. */
@@ -92,10 +96,12 @@ function junta(a: Tira, b: Tira, cols: number): { fin: number; ini: number; anch
     return { fin, ini, ancho: a.celdas[fin - 1].x - b.celdas[ini].x + 1 };
 }
 
-/** Las rutas y direcciones (web y de objetos) de un texto, con sus posiciones en él. Si dos se pisan, queda la más
- *  larga. */
-export function buscar(texto: string): { tipo: Hallazgo['tipo']; texto: string; i: number; j: number }[] {
+/** Las rutas y direcciones (web y de objetos) de un texto, con sus posiciones en él, y los códigos que están en
+ *  `codigos`. Si dos se pisan, queda la más larga (el `D-007` de `decisiones/D-007.md` es parte de la ruta). */
+export function buscar(texto: string, codigos?: ReadonlySet<string>): { tipo: Hallazgo['tipo']; texto: string; i: number; j: number }[] {
     const todas = [
+        ...(codigos?.size ? [...texto.matchAll(CODIGO)].filter(m => codigos.has(m[0]))
+            .map(m => ({ tipo: 'codigo' as const, texto: m[0], i: m.index, j: m.index + m[0].length })) : []),
         ...[...texto.matchAll(RUTA)].map(m => ({ tipo: 'ruta' as const, texto: m[0], i: m.index, j: m.index + m[0].length })),
         ...[...texto.matchAll(WEB)].map(m => {
             const url = sinCola(m[0]);
@@ -115,7 +121,7 @@ export function buscar(texto: string): { tipo: Hallazgo['tipo']; texto: string; 
  *  línea como la armó la terminal. Después, juntando además las filas que llegan al borde, las que cruzan una de
  *  esas juntas y son más largas que lo que cabe en la fila de abajo: Ink solo parte una palabra que no cabe en una
  *  fila entera, y si no la parte, no la cortó él. Una de esas reemplaza a las de la línea que pisa (su pedazo). */
-export function hallar(pantalla: Pantalla, cols: number, y: number): Hallazgo[] {
+export function hallar(pantalla: Pantalla, cols: number, y: number, codigos?: ReadonlySet<string>): Hallazgo[] {
     // la línea de la terminal: las filas que ella partió
     let ini = y - 1, fin = y - 1;
     while (ini > 0 && pantalla.getLine(ini)?.isWrapped) ini--;
@@ -141,12 +147,12 @@ export function hallar(pantalla: Pantalla, cols: number, y: number): Hallazgo[] 
     }
     const celdas = (t: Tira, h: ReturnType<typeof buscar>[number]): Hallazgo =>
         ({ tipo: h.tipo, texto: h.texto, desde: t.celdas[h.i], hasta: t.celdas[h.j - 1] });
-    const juntados = buscar(larga.texto).filter(h => {
+    const juntados = buscar(larga.texto, codigos).filter(h => {
         const cruza = larga.juntas.filter(j => h.i < j.en && j.en < h.j);
         return cruza.length && cruza.every(j => h.j - h.i > j.ancho);
     }).map(h => celdas(larga, h));
     const orden = (c: Celda) => c.y * 1e5 + c.x;
     const pisa = (a: Hallazgo, b: Hallazgo) => orden(a.desde) <= orden(b.hasta) && orden(b.desde) <= orden(a.hasta);
-    const sueltos = buscar(linea.texto).map(h => celdas(linea, h)).filter(h => !juntados.some(j => pisa(h, j)));
+    const sueltos = buscar(linea.texto, codigos).map(h => celdas(linea, h)).filter(h => !juntados.some(j => pisa(h, j)));
     return [...juntados, ...sueltos].filter(h => h.desde && h.hasta && h.desde.y <= y && h.hasta.y >= y);
 }

@@ -18,7 +18,8 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   declares them: `telar.codigos` recognises the three ways a document defines a code (a heading, a table row with
   the code in its first column, a bold bullet) and keeps only those named outside their own file. A task is shown
   as the task. Computed on the thread's machine (bus verb `codigos`); also `telar codigos [hilo] [--buscar]
-  [--codigo]` and `GET /codigos`. An agent's thread shows its card and its codes as two sheets.
+  [--codigo]` and `GET /codigos`. An agent's thread shows its card and its codes as two sheets. The codes the sheet
+  knows are links in the thread's terminal, reading and conversation views: a click opens the bar on that code.
 
 ## [0.11.0] — 2026-11-04
 

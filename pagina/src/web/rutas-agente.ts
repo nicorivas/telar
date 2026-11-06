@@ -5,14 +5,18 @@
 // máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
 // su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz. Una dirección web (`https://…`) se abre
 // en una pestaña nueva de este navegador, que es el de la persona, viva donde viva el hilo. La dirección de un objeto
-// de telar (`tarea:T366`, `hilo:Telar`, la de un tipo de un módulo) la abre la página donde se ve ese objeto.
+// de telar (`tarea:T366`, `hilo:Telar`, la de un tipo de un módulo) la abre la página donde se ve ese objeto. Un código
+// del hilo (`PEN-07`, `H3`: solo los que conoce la hoja de códigos, web/codigos.ts) se abre en esa hoja, en la barra
+// de la derecha.
 
 import type { IDisposable, ILink, Terminal } from '@xterm/xterm';
 
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
+import * as codigos from './codigos';
 import { buscar, hallar, RUTA, usarTipos } from './enlaces';
+import * as lado from './lado';
 import * as ui from './ui';
 import type { RutasVista } from './vistas-hilo';
 
@@ -79,11 +83,13 @@ async function existe(ruta: string): Promise<boolean> {
     catch { return false; }
 }
 
-/** Las rutas y las direcciones de objetos de un texto ya dibujado (`raiz`), como enlaces `a.ruta[data-ruta]` y
- *  `a.ruta[data-direccion]` (con `rutas` en false, solo las direcciones): en los nodos de texto que no están ya en
- *  un enlace. Uno que el markdown hizo de una ruta (`README.md` parece un dominio de Moldavia, y el
- *  linkify lo vuelve `http://README.md`) también pasa a ser de la ruta. */
-export function enlazar(raiz: HTMLElement, rutas = true): void {
+/** Las rutas, las direcciones de objetos y los códigos de un texto ya dibujado (`raiz`), como enlaces
+ *  `a.ruta[data-ruta]`, `a.ruta[data-direccion]` y `a.ruta.codigo[data-codigo]` (con `rutas` en false, sin las
+ *  rutas; los códigos, solo con `hilo`: los que la hoja de códigos conoce para él, web/codigos.ts): en los nodos de
+ *  texto que no están ya en un enlace, así que se puede volver a correr cuando llegan los códigos. Uno que el
+ *  markdown hizo de una ruta (`README.md` parece un dominio de Moldavia, y el linkify lo vuelve `http://README.md`)
+ *  también pasa a ser de la ruta. */
+export function enlazar(raiz: HTMLElement, rutas = true, hilo = ''): void {
     pedirTipos();
     if (rutas) for (const a of raiz.querySelectorAll<HTMLAnchorElement>('a[href^="http://"]')) {
         const t = a.textContent ?? '';
@@ -96,10 +102,11 @@ export function enlazar(raiz: HTMLElement, rutas = true): void {
     });
     const nodos: Text[] = [];
     for (let n = caminante.nextNode(); n; n = caminante.nextNode()) nodos.push(n as Text);
+    const conocidos = hilo ? codigos.conocidos(hilo) : undefined;
     for (const nodo of nodos) {
         const texto = nodo.data;
         // las webs de un texto ya las hizo enlaces el markdown
-        const hallados = buscar(texto).filter(h => h.tipo === 'direccion' || (rutas && h.tipo === 'ruta'));
+        const hallados = buscar(texto, conocidos).filter(h => h.tipo === 'direccion' || h.tipo === 'codigo' || (rutas && h.tipo === 'ruta'));
         if (!hallados.length) continue;
         const trozos = document.createDocumentFragment();
         let desde = 0;
@@ -107,7 +114,11 @@ export function enlazar(raiz: HTMLElement, rutas = true): void {
             trozos.append(texto.slice(desde, h.i));
             const a = document.createElement('a');
             a.className = 'ruta'; a.textContent = h.texto; a.title = `abrir ${h.texto}`;
-            if (h.tipo === 'direccion') a.dataset.direccion = h.texto; else a.dataset.ruta = h.texto;
+            if (h.tipo === 'codigo') {
+                const que = codigos.queEs(h.texto);
+                a.classList.add('codigo'); a.dataset.codigo = h.texto; a.title = que ? `${h.texto}: ${que}` : `qué es ${h.texto}`;
+            } else if (h.tipo === 'direccion') a.dataset.direccion = h.texto;
+            else a.dataset.ruta = h.texto;
             trozos.append(a);
             desde = h.j;
         }
@@ -118,11 +129,19 @@ export function enlazar(raiz: HTMLElement, rutas = true): void {
 
 /** Un clic en una ruta de `raiz` (las de `enlazar`, y un enlace relativo del markdown: `[la guía](docs/x.md)`)
  *  la abre en el visor en vez de navegar la página; uno a una web, en una pestaña nueva (no se va de la página); una
- *  dirección, donde se ve su objeto. */
+ *  dirección, donde se ve su objeto; un código, en la hoja de códigos de la barra de la derecha. Y cuando la hoja
+ *  conoce códigos nuevos del hilo (`telar:codigos`), los enlaza en lo que ya está dibujado; al cerrarse la vista
+ *  (`raiz` fuera de la página), deja de escuchar. */
 export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
+    const alLlegar = (e: Event) => {
+        if (!raiz.isConnected) { window.removeEventListener('telar:codigos', alLlegar); return; }
+        if ((e as CustomEvent<{ hilo: string }>).detail?.hilo === vista.hilo) enlazar(raiz, false, vista.hilo);
+    };
+    window.addEventListener('telar:codigos', alLlegar);
     raiz.addEventListener('click', e => {
         const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a');
         if (!a || !raiz.contains(a)) return;
+        if (a.dataset.codigo) { e.preventDefault(); lado.abrirCodigo(a.dataset.codigo); return; }
         if (a.dataset.direccion) { e.preventDefault(); void ui.abrirDireccion(a.dataset.direccion); return; }
         const href = a.getAttribute('href') ?? '';
         if (/^https?:\/\//i.test(href)) { e.preventDefault(); void ui.abrirExterno(href); return; }
@@ -133,15 +152,17 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
     });
 }
 
-/** Las rutas, las direcciones web y las de objetos de la terminal de un hilo, como enlaces de xterm (subrayadas al
- *  pasar; un clic las abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
+/** Las rutas, las direcciones web y las de objetos de la terminal de un hilo, y sus códigos, como enlaces de xterm
+ *  (subrayados al pasar; un clic los abre). Una larga que se partió en varias filas se encuentra entera (enlaces.ts). */
 export function enlazarTerminal(term: Terminal, vista: RutasVista): IDisposable {
     pedirTipos();
     const abrir = (h: { tipo: string; texto: string }) => (h.tipo === 'web' ? ui.abrirExterno(h.texto)
-        : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto) : abrirRuta(h.texto, vista));
+        : h.tipo === 'codigo' ? lado.abrirCodigo(h.texto)
+            : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto) : abrirRuta(h.texto, vista));
     return term.registerLinkProvider({
         provideLinks(y, listo) {
-            const enlaces = hallar(term.buffer.active, term.cols, y).map((h): ILink => ({
+            // los códigos, los que la hoja conoce para este hilo cuando se pasa por encima (se ve el hilo, y la hoja es suya)
+            const enlaces = hallar(term.buffer.active, term.cols, y, codigos.conocidos(vista.hilo)).map((h): ILink => ({
                 range: { start: h.desde, end: h.hasta }, text: h.texto, activate: () => void abrir(h),
             }));
             listo(enlaces.length ? enlaces : undefined);

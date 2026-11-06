@@ -73,7 +73,7 @@ export function montar(raiz: HTMLElement, rutas: { hilo: string; maquina?: strin
         caja.innerHTML = `<div class="pie-lectura"><span>${esc(rutas.hilo)} · respuesta ${i + 1} de ${n}${indice < 0 ? ' (la última)' : ''}</span>`
             + `<span>${antes}← → recorrer · ⎋ terminal</span></div>` + r.dibujar(datos, i);
         // las rutas que escribió el agente, como enlaces al visor
-        enlazar(caja);
+        enlazar(caja, true, rutas.hilo);
     }
     atenderClics(caja, { hilo: rutas.hilo, maquina: rutas.maquina ?? '' });
 

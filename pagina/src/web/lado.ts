@@ -159,6 +159,16 @@ export async function mostrar(que: string, esHilo: boolean, deFondo = false): Pr
     await deCodigos;
 }
 
+/** Un código del hilo que se ve, desde su enlace en la terminal o la conversación (web/rutas-agente.ts): la barra se
+ *  abre en la hoja de códigos (si estaba plegada, se despliega), con ese código abierto y a la vista. */
+export function abrirCodigo(codigo: string): void {
+    hoja = 'codigos';
+    codigos.enfocar(codigo);
+    if (plegado()) plegar(false);   // alCambiar la redibuja
+    else pintar();
+    requestAnimationFrame(() => document.querySelector('#lado .cod-fila.sel')?.scrollIntoView({ block: 'nearest' }));
+}
+
 async function encargar(): Promise<void> {
     if (!ficha) return;
     const a = ficha.agente;

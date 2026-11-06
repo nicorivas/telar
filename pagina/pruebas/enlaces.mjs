@@ -16,7 +16,7 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const salida = path.join(mkdtempSync(path.join(tmpdir(), 'enlaces-')), 'enlaces.cjs');
 await build({ entryPoints: [path.join(aqui, '..', 'src', 'web', 'enlaces.ts')], bundle: true,
     platform: 'node', format: 'cjs', outfile: salida, logLevel: 'warning' });
-const { hallar, usarTipos } = require(salida);
+const { hallar, usarTipos, buscar } = require(salida);
 
 const COLS = 60;
 /** Una pantalla nueva con estas filas, cada una con su salto (como las escribe Ink); o con `crudo`, tal cual. */
@@ -113,6 +113,18 @@ const larga = 'https://claude.com/cai/oauth/authorize?code=true&client_id=9d1c25
     assert.deepEqual(en(term, 1), [], 'sin saber el tipo, no es una dirección');
     usarTipos(['archivo', 'hilo', 'proyecto', 'tarea', 'correo']);
     assert.deepEqual(en(term, 1).map(h => h.split(' ').slice(0, 2).join(' ')), ['direccion correo:abc123']);
+}
+
+// 11. los códigos que la hoja conoce para el hilo: solo esos, sueltos, y no el pedazo de una ruta o de una dirección
+{
+    const conocidos = new Set(['PEN-07', 'H3', 'T84', 'D-007']);
+    const texto = 'Cerré PEN-07 y H3. Falta H4; ver decisiones/D-007-catalogo.md y tarea:T84 (aH3, H3-b, PEN-077)';
+    assert.deepEqual(buscar(texto, conocidos).map(h => `${h.tipo} ${h.texto}`),
+        ['codigo PEN-07', 'codigo H3', 'ruta decisiones/D-007-catalogo.md', 'direccion tarea:T84']);
+    assert.deepEqual(buscar('Cerré PEN-07').map(h => h.tipo), []);  // sin códigos conocidos, nada
+    const term = await pantalla(['  T84 y PEN-07, en la terminal']);
+    const h = hallar(term.buffer.active, COLS, 1, conocidos).map(x => `${x.tipo} ${x.texto} (${x.desde.x}-${x.hasta.x})`);
+    assert.deepEqual(h, ['codigo T84 (3-5)', 'codigo PEN-07 (9-14)']);
 }
 
 console.log('enlaces: bien');

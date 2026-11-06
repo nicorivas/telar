@@ -506,7 +506,10 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   código en la primera columna, una viñeta en negrita), se queda con los que se nombran fuera de su archivo o en
   la conversación, los agrupa por prefijo con el nombre de su sección, y relee un archivo solo si cambió. La hoja
   los muestra con una caja para buscar y el detalle de cada uno (su definición, el archivo y dónde más se nombra);
-  una tarea, con lo que da `/api/objetos`. Por qué y lo que falta: [propuestas/codigos.md](propuestas/codigos.md).
+  una tarea, con lo que da `/api/objetos`. Los códigos que la hoja conoce son además enlaces en la terminal, la
+  lectura y la conversación del hilo (`web/enlaces.ts`, `web/rutas-agente.ts`): un clic abre la barra en esa hoja,
+  con el código abierto; cuando llegan códigos nuevos (`telar:codigos`), las vistas enlazan lo que ya dibujaron. Por
+  qué y lo que queda: [propuestas/codigos.md](propuestas/codigos.md).
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta. Lo que un programa de
   la terminal manda al portapapeles (OSC 52) pasa al de la persona: así se copia de un hilo de otra máquina, donde
