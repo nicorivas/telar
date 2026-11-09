@@ -8,6 +8,8 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-11-09
+
 ### Added
 
 - **What a thread's codes mean, beside it.** A thread that runs a project names its work with codes (`H3` a
