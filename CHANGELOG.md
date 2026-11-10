@@ -8,6 +8,8 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-09
+
 ### Added
 
 - **A module's page can ask its own module.** `window.lienzo.pedir("consulta", {verbo, params})` runs one of the
