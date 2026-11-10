@@ -89,10 +89,18 @@ def main(argv: list[str], ctx) -> int:
         from telar.ordenes.equipo import ip_de_tailscale
 
         host = ip_de_tailscale() or "127.0.0.1"
-        otros.append(uvicorn.Config(api_web.crear(api.app, dev=o.dev, config=ctx.config), host=host, port=o.web_puerto,
-                                    log_level="warning"))
+        web = api_web.crear(api.app, dev=o.dev, config=ctx.config)
+        otros.append(uvicorn.Config(web, host=host, port=o.web_puerto, log_level="warning"))
         url_web = f"http://{host}:{o.web_puerto}" if host != "127.0.0.1" else ""
-        print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
+        aqui = ""
+        if host != "127.0.0.1":
+            # y para el navegador de esta misma máquina, en 127.0.0.1: así no pasa por Tailscale, que en macOS a
+            # veces deja de entregar lo que una máquina se manda a su propia dirección (la página cortaba con
+            # «signal timed out»). La misma página, sin repetir su arranque
+            otros.append(uvicorn.Config(web, host="127.0.0.1", port=o.web_puerto, log_level="warning", lifespan="off"))
+            aqui = f"; desde esta máquina, http://localhost:{o.web_puerto}"
+        print(f"telar serve: la página en http://{host}:{o.web_puerto}{aqui} (con la llave de {api_web.ruta_llave()})",
+              flush=True)
     if o.web_socket:
         from telar import api_web
 
