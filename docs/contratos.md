@@ -667,8 +667,8 @@ lo revoca). Hoy se puede pedir `fecha` (`{id, inicio, fin, version}`, como `tela
 (`{direccion, x, y}`): el menú de esa entidad, junto al punto del lienzo donde se hizo clic. `menu` no pide permiso
 ni llega al servidor, porque solo muestra: lo que se elige ahí, se elige en la página. Y `consulta` (`{verbo,
 params}`): una de las consultas del módulo mismo (`[ordenes.<verbo>]` con `consulta = true`), con lo que devuelve;
-tampoco pide permiso, porque es el código del módulo que ya dibujó la página y solo lee (así carga lo que no cupo al
-dibujarla). Por la API es `POST
+tampoco pide permiso, porque es el código del módulo que ya dibujó la página y lee o cambia lo suyo, no tus
+documentos (así carga lo que no cupo al dibujarla, o guarda lo que se elige en ella). Por la API es `POST
 /lienzo/pedir` (`{origen: "bloque:<clave>" | "app:<clave>", orden, datos}`): sin la concesión, un 403 con
 `permiso: {modulo, orden, descripcion, decision}`; `POST /permisos` (`{modulo, orden, decision}`: concedido, negado u
 olvidar) anota lo decidido y `GET /permisos` lo lista.

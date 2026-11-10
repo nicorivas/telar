@@ -11,8 +11,9 @@ con `permiso` dice qué preguntar; la página pregunta y la anota (`POST /permis
 
 Aparte, `consulta`: el lienzo le pregunta a **su propio módulo** una de sus consultas (`[ordenes.<verbo>]` con
 `consulta = true`), `pedir("consulta", {"verbo": "leer", "params": {…}})`. No pide permiso: es el mismo código del
-módulo que ya dibujó la página, y una consulta solo lee. Así una página carga lo que no cabía al dibujarla (los
-mensajes de un chat, el resultado de una búsqueda).
+módulo que ya dibujó la página, que lee o cambia lo suyo (su estado, no tus documentos: eso son las órdenes de telar de
+`ORDENES`, que sí lo piden). Así una página carga lo que no cabía al dibujarla (los mensajes de un chat, una
+búsqueda) o guarda lo que se elige en ella (la etiqueta de un chat).
 """
 
 from __future__ import annotations
