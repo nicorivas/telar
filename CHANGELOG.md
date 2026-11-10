@@ -8,6 +8,13 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+### Added
+
+- **A module's page can ask its own module.** `window.lienzo.pedir("consulta", {verbo, params})` runs one of the
+  module's own queries (`consulta = true`) and returns what it gives, without asking permission: it is the same
+  module's code, and a query only reads. A page can load what did not fit when it was drawn (a chat's messages, a
+  search).
+
 ## [0.12.0] — 2026-11-09
 
 ### Added

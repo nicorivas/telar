@@ -8,6 +8,11 @@ Un lienzo llama `window.lienzo.pedir(orden, datos)`; la página lo manda aquí (
 orden en su `[permisos] ordenes`, y (3) la persona se la concedió (telar.concesiones). Si falta la concesión, un 403
 con `permiso` dice qué preguntar; la página pregunta y la anota (`POST /permisos`). Lo que se puede pedir así está en
 `ORDENES`: una a una, a medida que hagan falta.
+
+Aparte, `consulta`: el lienzo le pregunta a **su propio módulo** una de sus consultas (`[ordenes.<verbo>]` con
+`consulta = true`), `pedir("consulta", {"verbo": "leer", "params": {…}})`. No pide permiso: es el mismo código del
+módulo que ya dibujó la página, y una consulta solo lee. Así una página carga lo que no cabía al dibujarla (los
+mensajes de un chat, el resultado de una búsqueda).
 """
 
 from __future__ import annotations
@@ -73,10 +78,30 @@ def modulo_de(ctx, origen: str):
     return None
 
 
+def _consulta(ctx, m, datos: dict) -> dict:
+    """Una consulta del módulo mismo del lienzo: `{"verbo": …, "params": {…}}`."""
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import modulos as servicio_modulos
+
+    verbo = str((datos or {}).get("verbo") or "")
+    params = (datos or {}).get("params") or {}
+    o = m.ordenes.get(verbo)
+    if o is None or not o["consulta"]:
+        raise ErrorDeServicio(f"el módulo «{m.nombre}» no tiene la consulta «{verbo}»", 404)
+    if not isinstance(params, dict):
+        raise ErrorDeServicio("los parámetros de una consulta van en un objeto", 422)
+    return servicio_modulos.consultar(ctx, m.nombre, verbo, params)
+
+
 def pedir(ctx, origen: str, orden: str, datos: dict) -> dict:
     from telar import concesiones
     from telar.servicios import ErrorDeServicio
 
+    if orden == "consulta":
+        m = modulo_de(ctx, origen)
+        if m is None:
+            raise ErrorDeServicio(f"{origen}: no es la página de un módulo; solo un módulo consulta lo suyo", 403)
+        return {"orden": orden, "datos": _consulta(ctx, m, datos)}
     if orden not in ORDENES:
         raise ErrorDeServicio(f"un lienzo no puede pedir «{orden}» (puede: {', '.join(sorted(ORDENES))})", 400)
     m = modulo_de(ctx, origen)

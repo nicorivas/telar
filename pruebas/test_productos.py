@@ -138,6 +138,30 @@ class DesdeUnLienzo(LosProductos):
             lienzos.pedir(ctx, "bloque:p", "idea", {"direccion": i["direccion"], "version": i["version"], "campos": {"estado": "lanzada"}})
         self.assertEqual(e.exception.codigo, 409)
 
+    def test_un_lienzo_consulta_a_su_modulo_sin_permiso(self):
+        from telar.cli import Contexto
+        from telar.config import cargar as cargar_config
+        from telar.servicios import ErrorDeServicio, lienzos
+
+        modulo = Path(self.tmp.name) / "eco"
+        (modulo / "bin").mkdir(parents=True)
+        eco = modulo / "bin" / "eco.py"
+        eco.write_text("#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps({'recibi': json.load(sys.stdin)}))\n")
+        eco.chmod(0o755)
+        (modulo / "modulo.toml").write_text('[pestana]\ncomando = ["x"]\n[ordenes.eco]\ncomando = ["bin/eco.py"]\n'
+                                            'consulta = true\n[ordenes.hola]\ncomando = ["bin/eco.py"]\n')
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(f'estado = "{Path(self.tmp.name) / "estado"}"\n[modulos.eco]\ncarpeta = "{modulo}"\n')
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        ctx = Contexto(config=cargar_config(None))
+        r = lienzos.pedir(ctx, "bloque:eco", "consulta", {"verbo": "eco", "params": {"chat": "Ana"}})
+        self.assertEqual(r["datos"], {"recibi": {"chat": "Ana"}})
+        for origen, datos, codigo in (("bloque:eco", {"verbo": "hola"}, 404),      # no es una consulta
+                                      ("bloque:otro", {"verbo": "eco"}, 403)):     # no es la página de un módulo
+            with self.assertRaises(ErrorDeServicio) as e:
+                lienzos.pedir(ctx, origen, "consulta", datos)
+            self.assertEqual(e.exception.codigo, codigo)
+
 
 class IdeasYTareas(LosProductos):
     """Una tarea que es una idea pasa al backlog; una idea abre tareas operativas."""
