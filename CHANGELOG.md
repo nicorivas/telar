@@ -8,12 +8,6 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
-### Fixed
-
-- **The page on the laptop no longer goes through Tailscale.** `telar serve --web` also listens on 127.0.0.1, so the
-  browser of the same machine opens `http://localhost:8780`: on macOS, Tailscale sometimes stops delivering what a
-  machine sends to its own address, and the page timed out («signal timed out») and reconnected over and over.
-
 ## [0.12.0] — 2026-11-09
 
 ### Added
