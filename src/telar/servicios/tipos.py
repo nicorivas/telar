@@ -35,6 +35,9 @@ class TareaConVersion(tipo_tarea.Tarea):
     """Una tarea y la versión de su archivo: la que se devuelve con una acción para no pisar a otro."""
 
     version: str
+    #: a qué parte de la vida pertenece (telar.mundos: por su `area` o, si no, por la carpeta de su `proyecto`), según
+    #: los `[mundos]` de la máquina que responde; "" si no calza en ninguno o no se declaran. No se guarda en el archivo
+    mundo: str = ""
 
     @computed_field
     @property
@@ -110,6 +113,14 @@ def _con_version(par) -> TareaConVersion:
     return TareaConVersion(**t.model_dump(), version=v)
 
 
+def _con_mundo(ctx, t: TareaConVersion) -> TareaConVersion:
+    """La tarea con su mundo según la configuración de aquí: la de otra máquina trae el de allá, o ninguno."""
+    from telar import mundos
+
+    t.mundo = mundos.de_tarea(ctx.config, t.area, t.proyecto)
+    return t
+
+
 def subir(archivo, mensaje: str) -> None:
     """Commitea ese archivo y lo sube (`telar commit`), en un proceso aparte que sobrevive a quien llamó:
     quien pidió el cambio no espera el push, y una orden suelta que termina no se lo lleva."""
@@ -140,17 +151,22 @@ def _errores(fn, accion: str = ""):
 # ── leer ──
 
 def lista(ctx, clave: str = "tarea", *, todas: bool = False, area: str = "", proyecto: str = "",
-          dueno: str | None = None, vence_hasta: str = "") -> Tareas:
-    """Los objetos, desde el índice. Por defecto las abiertas; `todas`, también las cerradas."""
+          dueno: str | None = None, vence_hasta: str = "", mundos: tuple[str, ...] = ()) -> Tareas:
+    """Los objetos, desde el índice. Por defecto las abiertas; `todas`, también las cerradas. `mundos`: solo las de
+    esos mundos de `[mundos]` (`sin-clasificar`, las que no calzan en ninguno)."""
+    from telar import mundos as mod_mundos
+
     t = _tipo(ctx, clave)
+    filtro = mod_mundos.pedidos(ctx.config, mundos)
     if (en := _alla(ctx, t)):
         argv = [clave, "lista", *(["--todas"] if todas else [])]
         r = Tareas(**_pedir_alla(ctx, en, argv))
-        return r.model_copy(update={"tareas": [x for x in r.tareas if _pasa(x, area, proyecto, dueno, vence_hasta)]})
+        tareas = [_con_mundo(ctx, x) for x in r.tareas if _pasa(x, area, proyecto, dueno, vence_hasta)]
+        return r.model_copy(update={"tareas": [x for x in tareas if mod_mundos.calza(x.mundo, filtro)]})
     ind = indice(ctx, clave)
-    return Tareas(tareas=[_con_version(x) for x in ind.consultar(
-        lambda x: (todas or not x.cerrada_ya) and _pasa(x, area, proyecto, dueno, vence_hasta))],
-        fallas=dict(ind.fallas))
+    tareas = [_con_mundo(ctx, _con_version(x)) for x in ind.consultar(
+        lambda x: (todas or not x.cerrada_ya) and _pasa(x, area, proyecto, dueno, vence_hasta))]
+    return Tareas(tareas=[x for x in tareas if mod_mundos.calza(x.mundo, filtro)], fallas=dict(ind.fallas))
 
 
 def _pasa(t, area, proyecto, dueno, vence_hasta) -> bool:
@@ -161,8 +177,8 @@ def _pasa(t, area, proyecto, dueno, vence_hasta) -> bool:
 def obtener(ctx, id: str, clave: str = "tarea") -> TareaConVersion:
     t = _tipo(ctx, clave)
     if (en := _alla(ctx, t)):
-        return TareaConVersion(**_pedir_alla(ctx, en, [clave, "ver", id]))
-    return _errores(lambda: _con_version(indice(ctx, clave).obtener(id)))
+        return _con_mundo(ctx, TareaConVersion(**_pedir_alla(ctx, en, [clave, "ver", id])))
+    return _con_mundo(ctx, _errores(lambda: _con_version(indice(ctx, clave).obtener(id))))
 
 
 # ── escribir ──
@@ -177,8 +193,9 @@ def aplicar(ctx, id: str, accion: str, params: dict | None = None, *, version: s
         # dos tareas: se arma con las acciones de cada una, aquí o en la máquina que las escribe
         return unir(ctx, str(params.get("con") or ""), id, version=version)
     if (en := _alla(ctx, t)):
-        return TareaConVersion(**_pedir_alla(ctx, en, [clave, accion, id, "--params", json.dumps(params, ensure_ascii=False),
-                                                       *(["--version", version] if version else [])]))
+        return _con_mundo(ctx, TareaConVersion(**_pedir_alla(
+            ctx, en, [clave, accion, id, "--params", json.dumps(params, ensure_ascii=False),
+                      *(["--version", version] if version else [])])))
     fn = CONOCIDOS[clave].ACCIONES.get(accion)
     if fn is None:
         raise ErrorDeServicio(f"no hay una acción «{accion}»: {', '.join(CONOCIDOS[clave].ACCIONES)}", 422)
@@ -187,7 +204,7 @@ def aplicar(ctx, id: str, accion: str, params: dict | None = None, *, version: s
     hecho = _errores(lambda: _con_version(ind.aplicar(id, fn, version=version, **params)), accion)
     if hecho.version != antes:
         subir(ind.carpeta.ruta / f"{id}.md", f"tareas: {id} {accion}")
-    return hecho
+    return _con_mundo(ctx, hecho)
 
 
 def unir(ctx, queda: str, se_va: str, *, version: str | None = None) -> TareaConVersion:
@@ -222,13 +239,14 @@ def crear(ctx, params: dict, *, clave: str = "tarea") -> TareaConVersion:
     la máquina que escribe: el que sigue al mayor."""
     t = _tipo(ctx, clave)
     if (en := _alla(ctx, t)):
-        return TareaConVersion(**_pedir_alla(ctx, en, [clave, "crear", "--params", json.dumps(params, ensure_ascii=False)]))
+        return _con_mundo(ctx, TareaConVersion(**_pedir_alla(ctx, en, [clave, "crear", "--params",
+                                                                       json.dumps(params, ensure_ascii=False)])))
     mod = CONOCIDOS[clave]
     ind = indice(ctx, clave)
     objeto = _errores(lambda: mod.nueva(**params), "crear")
     hecho = _errores(lambda: _con_version(ind.crear(objeto, prefijo=mod.PREFIJO)), "crear")
     subir(ind.carpeta.ruta / f"{hecho.id}.md", f"tareas: {hecho.id} add · {hecho.titulo[:60]}")
-    return hecho
+    return _con_mundo(ctx, hecho)
 
 
 def borrar(ctx, id: str, *, version: str | None = None, clave: str = "tarea") -> Borrada:

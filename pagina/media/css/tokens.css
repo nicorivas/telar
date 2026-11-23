@@ -1,14 +1,30 @@
-/* Los tokens: colores, tipografía y espacio. Los colores son catppuccin mocha. Todo lo demás se arma con
-   estos. */
+/* Los tokens: todo lo que decide cómo se ve la página, en tres capas.
 
-:root {
+   1. Los primitivos de un tema: su fondo, su texto y sus tintas (los 16 colores de una terminal, que también usa
+      xterm). El de fábrica, «telar», es catppuccin mocha; los demás están en temas.css.
+   2. Los semánticos: para qué es cada color (el texto tenue, el acento, lo que avisa, cada estado de un hilo). Las
+      vistas nuevas y los componentes usan estos, no las tintas: así un tema puede decir «los títulos, en rosado»
+      sin tocar el amarillo de la terminal.
+   3. Los de cada componente (--item-…): sus colores, sacados de los semánticos, y sus medidas. Un tema puede cambiar
+      cualquiera (temas.css: «riso» marca el ítem activo con una raya en vez de un fondo).
+
+   Las medidas son de la densidad, no del tema: cuánto aire lleva cada fila. La de fábrica, «compacta» (una línea
+   por fila, como la terminal), está aquí; las demás, en densidades.css. Así cualquier tema va con cualquier
+   densidad (latte amplia, riso compacta).
+
+   Los semánticos y los colores de componente se declaran en cada raíz de tema (`:root, [data-tema]`), no solo en
+   :root: una var() se resuelve donde se declara, así que un recuadro con otro tema (los de /componentes, lado a lado)
+   tiene que recalcularlos con sus propios primitivos. Las medidas, igual, en cada raíz de densidad. El tema y la
+   densidad de la página los pone el modo (`tema` y `densidad`, web/modos.ts) en <html data-tema data-densidad>. */
+
+:root,
+[data-tema="telar"] {
+  color-scheme: dark;
+
   /* colores */
   --fg: #cdd6f4;
   --bg: #1e1e2e;
   --dim: #6c7086;
-  --linea: color-mix(in srgb, var(--fg) 16%, transparent);
-  --sel: rgb(128 128 128 / 25%);
-  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
   --azul: #89b4fa;
   --amarillo: #f9e2af;
   --verde: #a6e3a1;
@@ -22,9 +38,15 @@
   --blanco-claro: #a6adc8;
   --cursor: #f5e0dc;
   --bg-barra: #181825;
+}
 
-  /* tipografía: una sola letra, monoespaciada como la de la terminal, y una escala corta */
+:root,
+[data-tema] {
+  /* tipografía: una sola letra, monoespaciada como la de la terminal, y una escala corta (--letra, --tam, --peso y
+     --alto los pone estilo.ts con los de la terminal) */
   --letra: Menlo, Consolas, monospace;
+  /* la letra para leer con calma (el modo lectura de un hilo, la ficha de una lectura): con serifa */
+  --serifa: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
   --tam: 13px;
   --peso: normal;
   --alto: 1.3;
@@ -39,5 +61,230 @@
   --e-3: 1lh;
   --h-1: 1ch;
   --h-2: 2ch;
+
+  /* lo que sale de los primitivos */
+  --linea: color-mix(in srgb, var(--fg) 16%, transparent);
+  --sel: rgb(128 128 128 / 25%);
+  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
   --borde: 1px solid var(--linea);
+
+  /* 2. semánticos */
+  --superficie: var(--bg);
+  --texto: var(--fg);
+  --texto-tenue: var(--dim);
+  /* lo que se está yendo (un hilo que se cierra): más apagado que lo tenue */
+  --texto-apagado: var(--negro);
+  /* lo seleccionado en la terminal */
+  --seleccion: var(--negro);
+  --acento: var(--azul);
+  /* los títulos de grupo (HILOS, AGENTES) y los nombres de los agentes */
+  --titulo: var(--amarillo);
+  --exito: var(--verde);
+  --atencion: var(--amarillo);
+  --peligro: var(--rojo);
+  /* lo que vive en otra máquina */
+  --remoto: var(--cian);
+  /* lo de un agente: su ícono junto a un hilo, donde cae un hilo arrastrado */
+  --agente: var(--violeta);
+  /* la atención de un hilo: su agente trabaja, te espera, terminó */
+  --estado-trabajando: var(--azul);
+  --estado-espera: var(--amarillo);
+  --estado-termino: var(--verde);
+  /* la prioridad de un hilo: alta, media, baja (y sin ella, tenue) */
+  --prioridad-alta: var(--fg);
+  --prioridad-media: color-mix(in srgb, var(--fg) 65%, var(--bg));
+  --prioridad-baja: var(--dim);
+
+  /* 3. el ítem de una lista (componentes/item.ts, item.css): la fila de la barra de hilos. Sus colores; sus
+     medidas, abajo, con la densidad */
+  --item-color: var(--texto);
+  --item-fondo: var(--superficie);
+  --item-fondo-hover: var(--hover);
+  /* la fila donde estás: la selección, con el matiz del acento (los fondos de nivel, banda y grupo, son solo luz) */
+  --item-fondo-activa: color-mix(in srgb, var(--acento) 16%, var(--superficie));
+  /* además del fondo, una marca para el activo (un box-shadow: «inset 2px 0 var(--acento)» es una raya a la izquierda) */
+  --item-marca-activa: none;
+  --item-enlace: var(--acento);
+  --item-agente: var(--titulo);
+  --item-meta: var(--texto-tenue);
+  --item-accion: var(--texto-tenue);
+  --item-accion-hover: var(--texto);
+  /* la raya que aparta las acciones del texto cuando se despliegan: apenas se ve */
+  --item-separador: color-mix(in srgb, var(--fg) 14%, transparent);
+  /* cómo se despliegan las acciones al pasar el mouse: rápido, frenando al llegar */
+  --item-despliegue: 160ms;
+  --item-curva: cubic-bezier(.2, .8, .2, 1);
+  --item-destino: var(--agente);
+  /* la tarjeta (componentes/tarjeta.ts, tarjeta.css): el título en el color del texto; el cuerpo y los datos del pie, tenues */
+  --tarjeta-titulo: var(--texto);
+  --tarjeta-cuerpo: var(--texto-tenue);
+  --tarjeta-datos: var(--texto-tenue);
+  /* el círculo (componentes/circulo.ts, circulo.css): sus tres tamaños, del ancho de los de la letra de íconos
+     (● de una prioridad es «grande», • es «punto»); su aro; dónde queda en el renglón; y cuánto dura cada cuadro de un
+     movimiento */
+  --circulo-punto: .35em;
+  --circulo-chico: .6em;
+  --circulo-grande: 1em;
+  --circulo-trazo: 1.25px;
+  --circulo-alto: middle;
+  --circulo-cuadro: 280ms;
+
+  /* el grupo de ordenar (el componente orden): un grupo con tipo, entre dos líneas cortas en púrpura tinto (en una
+     lista el fondo es de la selección: la gramática visual, «cómo se parte») */
+  --orden-linea: color-mix(in srgb, color-mix(in srgb, var(--magenta), var(--violeta)) 60%, var(--superficie));
+
+  /* el buscador (componentes/buscador.ts, buscador.css): la lupa tenue, y en el acento con el foco o con algo escrito (el
+     filtro puesto); la tecla que lo enfoca (--buscador-ayuda), la cuenta y el ✕, tenues; sin texto de ayuda dentro del campo; lo escrito, en el color del texto. Su barra, sin
+     fondo propio y con la línea de las demás, que toma el acento mientras se escribe */
+  --buscador-lupa: var(--texto-tenue);
+  --buscador-activo: var(--acento);
+  --buscador-texto: var(--texto);
+  --buscador-ayuda: var(--texto-tenue);
+  --buscador-cuenta: var(--texto-tenue);
+  --buscador-borrar: var(--texto-tenue);
+  --buscador-borrar-hover: var(--texto);
+  --buscador-linea: var(--linea);
+  --buscador-linea-foco: var(--acento);
+  --buscador-barra-fondo: transparent;
+
+  /* la ventana (componentes/ventana.ts, ventana.css): lo que se abre aparte. Es lo único con marco; su fondo, el de las barras */
+  --ventana-fondo: var(--bg-barra);
+  --ventana-borde: 1px solid var(--linea);
+  --ventana-sombra: 0 8px 32px rgb(0 0 0 / 40%);
+  --ventana-sombra-junto: 1ch .6lh 0 rgb(0 0 0 / 55%);
+  --ventana-ancho: 64ch;
+  --ventana-ancho-ancha: 80ch;
+  --ventana-ancho-chica: 32ch;
+  --ventana-lista-alto: 16lh;
+  /* el <dialog> de una ventana (web/ventana.ts): lo de atrás, oscurecido, y cuánto la aparta del borde de la pantalla */
+  --ventana-atras: rgb(0 0 0 / 45%);
+  --ventana-margen: 8px;
+  /* el botón con texto (componentes/boton.ts, boton.css: «la tecla en el pie»). El color es el de lo que hace: lo que
+     destruye, lo que hace sin destruir (o el de su clase, `color`), lo que no hace nada (cancelar) */
+  --boton-peligro: var(--peligro);
+  --boton-accion: var(--acento);
+  --boton-callado: var(--texto);
+  /* lo apagado (no se puede todavía): más tenue que lo tenue, sin llegar a desaparecer */
+  --boton-apagado: color-mix(in srgb, var(--texto-tenue) 55%, var(--ventana-fondo));
+  /* la tecla, tenue como las del pie de ⌘K */
+  --boton-tecla: var(--texto-tenue);
+  /* al pasar el mouse, el fondo del hover de una fila; con el foco, el color del botón, tenue (como la fila donde estás) */
+  --boton-hover: var(--hover);
+  --boton-foco: 18%;
+  /* el foco de lo que no hace nada (cancelar): no tiene color propio, así que toma el del foco de la página (el acento);
+     si no, con el mouse en otro, las dos marcas serían grises */
+  --boton-foco-callado: var(--acento);
+  /* el aire entre el contenido y la banda de botones (se pidió así: que no se peguen): una línea entera */
+  --boton-pie-aire: var(--e-3);
+  /* lo que ocupa una celda: el alto de una fila de la barra, y a los lados el margen de las filas */
+  --boton-celda-y: var(--e-1);
+  --boton-celda-x: var(--item-pad-x);
+
+  /* la ventana de mundos (componentes/mundos-ventana.ts, mundos.css): lo que mide cada tarjeta (un arte de 30 letras y su
+     aire), cuánto del color de su mundo lleva el arte quieto, y lo de encima: el fondo de su color, el halo, la inclinación
+     hacia el puntero, cuánto crece y el barrido. El interlineado del arte deja que los bloques (█ ▀ ▄) se toquen */
+  --mundos-tarjeta-ancho: 33ch;
+  --mundos-arte-alto: 1.17;
+  --mundos-lienzo-aire: var(--e-3);
+  --mundos-tenue: 55%;
+  --mundos-luz: 12%;
+  --mundos-luz-dura: 220ms;
+  --mundos-halo: .55em;
+  --mundos-halo-luz: 55%;
+  --mundos-inclina: 9deg;
+  --mundos-escala: 1.04;
+  --mundos-barrido-luz: 26%;
+  --mundos-barrido-dura: 750ms;
+
+  /* contestar lo que te espera (componentes/contestar.ts, contestar.css): un poco más ancha que una ventana de un campo */
+  --contestar-ancho: 72ch;
+  /* con su ficha (de qué se trata, la historia, lo que está en juego, lo relacionado): dos columnas, en el laptop */
+  --contestar-ancho-ficha: 144ch;
+
+  /* la pantalla (componentes/pantalla.ts, pantalla.css): la barra de arriba de un hilo o de una app, sus botones (la
+     vista que se ve, en violeta, como en el hilo) y lo que resume; el nombre de una app va en su tinta, o en este */
+  --pantalla-barra-fondo: var(--bg-barra);
+  --pantalla-nombre: var(--titulo);
+  --pantalla-boton: var(--texto-tenue);
+  --pantalla-boton-hover: var(--texto);
+  --pantalla-vista-si: var(--violeta);
+  --pantalla-resumen: var(--texto-tenue);
+
+  /* lo que carga el contexto de un hilo (web/carga.ts, la hoja «contexto»): el color de cada grupo, en sus partes
+     (componentes/partes.ts) y en su ícono. Lo general que se puede recortar, en tintas cálidas; lo que leyó y lo de
+     otros hilos, en frías; lo de Claude Code y la conversación, que no se recortan desde aquí, en grises */
+  --carga-claude: var(--dim);
+  --carga-inicio: var(--amarillo);
+  --carga-carpetas: var(--magenta);
+  --carga-leido: var(--azul);
+  --carga-repetido: var(--rojo);
+  --carga-hilos: var(--cian);
+  --carga-conversacion: color-mix(in srgb, var(--dim) 55%, var(--superficie));
+
+  /* el día en una línea (componentes/jornada.ts, jornada.css): la reunión en el acento (el azul de las citas del
+     calendario); lo propio (un bloque, el almuerzo), tenue; lo libre que viene, la pista; lo que ya pasó, lleno y tenue
+     (como una barra de carga); ahora, en el color del texto. En palabras: lo libre en el color de lo bueno, y en el del
+     cuidado si queda poco */
+  --jornada-reunion: var(--acento);
+  --jornada-bloque: color-mix(in srgb, var(--texto-tenue) 60%, var(--superficie));
+  --jornada-libre: var(--linea);
+  --jornada-hecho: color-mix(in srgb, var(--texto-tenue) 45%, var(--superficie));
+  --jornada-ahora: var(--texto);
+  --jornada-libre-texto: var(--exito);
+  --jornada-poco: var(--atencion);
+
+  /* la cabecera de un grupo (DASHBOARD, HILOS): su color, su peso y si va en mayúsculas. Peso normal: se distingue
+     por su color y su ícono, no por el grosor (lo usan también las cabeceras de pantalla, táctica y día) */
+  --item-cabecera: var(--titulo);
+  --item-cabecera-peso: normal;
+  --item-cabecera-letras: uppercase;
+  /* la cabecera de un submenú (ARCHIVO dentro de HILOS): una fila, en la tinta de las cabeceras */
+  --item-submenu: var(--item-cabecera);
+}
+
+/* la densidad de fábrica, «compacta»: las medidas del ítem */
+:root,
+[data-densidad] {
+  /* el alto de una fila, como el interlineado de su letra: el texto, los íconos y las acciones quedan al medio, y una
+     acción se aprieta en todo el alto. Compacta: una línea, como la terminal (--alto) */
+  --item-alto: var(--alto);
+  --item-pad-x: 1.5ch;
+  /* el ancho de una ranura de íconos: un ícono de la letra `iconos` mide 1,7 letras de las otras */
+  --item-ranura: 2ch;
+  /* entre dos íconos seguidos, el vacío mide un cuadrado del alto de la fila (la grilla, item.css). Entre dos celdas
+     cuadradas (un botón de solo un ícono), el ancho de un ícono, que es un cuadrado de la letra (1em; en `ch` no, que
+     cambia con la letra de quien lo usa): con lo que la celda deja a cada lado del suyo, suma el cuadrado. Entre dos
+     íconos sueltos, sin celda, el cuadrado entero */
+  --entre-celdas: 1em;
+  --entre-iconos: calc(var(--item-alto) * 1em);
+  /* entre los íconos del inicio y el título; y cuánto se corre el título por cada nivel de un hijo */
+  --item-texto-sangria: .5ch;
+  --item-hondo: 2ch;
+  /* entre las piezas del final (el aviso, la meta, las acciones) */
+  --item-hueco: 1ch;
+  /* a cada lado de una acción: lo que agranda dónde se aprieta */
+  --item-accion-pad: 0ch;
+  /* el aire de una pantalla: dentro de cada fila, el mismo de las filas de la barra de hilos (las líneas van de borde a
+     borde); y el alto de su barra, una fila con un cuarto de línea arriba y abajo, y su línea */
+  --pantalla-margen: var(--item-pad-x);
+  --pantalla-barra-alto: calc(1lh + 2 * var(--e-1) + 1px);
+  /* el aire a los lados de la barra de un buscador: el de una pantalla, salvo donde la caja que lo lleva tiene otro (una
+     ventana, el lado de un hilo: lo cambian ahí) */
+  --buscador-margen: var(--pantalla-margen);
+  /* entre la lupa de un buscador y el primer carácter: un carácter, el espacio de la grilla; igual en todos */
+  --buscador-lupa-hueco: 1ch;
+  /* el alto de la franja de las partes (componentes/partes.ts) */
+  --partes-alto: .5lh;
+  /* el día en una línea: lo que pide de ancho en la cabecera, el de su barra con holgura y el alto de la barra fina */
+  --jornada-ancho: 100ch;
+  --jornada-barra: 30ch;
+  --jornada-alto: .45em;
+  /* la tarjeta: el aire de adentro (arriba y abajo; holgada, más), el que la aparta de la siguiente, cuántas líneas del
+     título se ven antes del «…», el hueco entre los datos del pie, y lo que separa el cuerpo y el pie de lo de arriba */
+  --tarjeta-pad-y: .5lh;
+  --tarjeta-pad-y-holgada: 1lh;
+  --tarjeta-aire: .5lh;
+  --tarjeta-lineas: 3;
+  --tarjeta-datos-hueco: 2ch;
+  --tarjeta-pie-arriba: .25lh;
 }

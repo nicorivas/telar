@@ -1,0 +1,15 @@
+# Cómo se vuelve a generar lo compilado de este repositorio (lo que .gitattributes marca con merge=telar-compilado), y
+# de qué sale. `telar hilo fusionar` lo corre en un árbol aparte cuando la rama de un hijo toca lo compilado o sus
+# `fuentes`, y commitea en la fusión lo que cambie; `telar desplegar` lo vuelve a generar aparte y avisa si lo
+# commiteado no corresponde (docs/perfil.md, «Lo compilado»).
+comandos:
+  - carpeta: pagina
+    comando: npm run navegador
+    # lo que lee el empaquetado (pagina/scripts/navegador.mjs): el código, los estilos y las dependencias
+    fuentes:
+      - pagina/src/
+      - pagina/media/
+      - pagina/scripts/
+      - pagina/package.json
+      - pagina/package-lock.json
+      - pagina/tsconfig.json

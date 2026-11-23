@@ -21,7 +21,7 @@ configuración del usuario.
                                                para siempre)
     SessionEnd               cierra            atención: ninguna
 
-Los seis se enganchan al **mismo** comando —`telar agente aviso claude-code`— y cuál
+Los seis se enganchan al **mismo** comando —`telar agente evento claude-code`— y cuál
 fue viene en el JSON (`hook_event_name`). Una sola línea que mantener, y un solo lugar
 donde equivocarse.
 
@@ -40,14 +40,13 @@ import json
 import re
 import os
 import shlex
-import tempfile
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 
 from telar.agente import Conversacion, ErrorDeAgente, registrar
-from telar.agente.base import MARCA_AVISO, AgenteBase, Aviso, Evento, Gancho, Instalacion, comando_aviso
+from telar.agente.base import MARCAS_EVENTO, AgenteBase, Aviso, Evento, Gancho, Instalacion, comando_evento
 
 __all__ = [
     "ClaudeCode",
@@ -55,6 +54,7 @@ __all__ = [
     "EVENTOS",
     "GANCHOS",
     "MARCA",
+    "MARCA_VIEJA",
     "construir",
     "carpeta_config",
     "ruta_ajustes",
@@ -109,7 +109,11 @@ GANCHOS: tuple[Gancho, ...] = (
 )
 
 #: Con esto se reconocen los ganchos de telar dentro de un `settings.json` ajeno.
-MARCA = f"agente aviso {NOMBRE}"
+MARCA = f"agente evento {NOMBRE}"
+
+#: Los que se escribieron cuando la orden se llamaba `agente aviso`: también son de telar, para que
+#: `instalar` los reemplace (y no queden dos por evento) y `desinstalar` los saque.
+MARCA_VIEJA = f"agente aviso {NOMBRE}"
 
 #: El gancho que le da al agente, al empezar, unas líneas sobre su hilo y los otros.
 MARCA_CONTEXTO = f"agente contexto {NOMBRE}"
@@ -127,6 +131,8 @@ PERMISOS = (
     "Bash(telar ficha:*)",
     "Bash(telar hilo leer:*)",
     "Bash(telar nodo estado:*)",
+    # leer lo propio que no llegó entero (solo la línea del aviso): telar.casilla.leer
+    "Bash(telar agente casilla --leer:*)",
 )
 
 #: El nombre del primer respaldo que se deja antes de tocar la configuración del usuario.
@@ -185,6 +191,8 @@ class ClaudeCode(AgenteBase):
             lineas = archivo.read_text(encoding="utf-8", errors="replace").splitlines()
         except OSError:
             return None
+        #: las preguntas del agente (AskUserQuestion) por su id: su resultado llega después, en otro mensaje
+        preguntas: dict[str, dict] = {}
         for linea in lineas:
             try:
                 d = json.loads(linea)
@@ -199,6 +207,15 @@ class ClaudeCode(AgenteBase):
                 texto = _sin_marcas(contenido)
                 if texto:
                     salida.append({"quien": "usuario", "hora": hora, "texto": texto})
+            elif tipo == "user" and isinstance(contenido, list) and preguntas:
+                # lo que se respondió: el resultado de la herramienta, con las respuestas en `toolUseResult`
+                for x in contenido:
+                    p = preguntas.get(x.get("tool_use_id", "")) if isinstance(x, dict) and x.get("type") == "tool_result" else None
+                    if p is not None:
+                        resultado = d.get("toolUseResult") if isinstance(d.get("toolUseResult"), Mapping) else {}
+                        respuestas = resultado.get("answers") if not x.get("is_error") else None
+                        p.update(_pregunta(p["id"], [], respuestas, "respondida" if isinstance(respuestas, Mapping)
+                                           else "cancelada", preguntas=p["preguntas"]))
             elif tipo == "assistant" and isinstance(contenido, list):
                 for x in contenido:
                     if not isinstance(x, dict):
@@ -206,9 +223,19 @@ class ClaudeCode(AgenteBase):
                     if x.get("type") == "text" and str(x.get("text", "")).strip():
                         salida.append({"quien": "agente", "hora": hora, "texto": x["text"].strip()})
                     elif x.get("type") == "tool_use":
-                        salida.append({"quien": "herramienta", "hora": hora,
-                                       "texto": _herramienta(x.get("name", ""), x.get("input") or {})})
+                        entrada = x.get("input") or {}
+                        msj = {"quien": "herramienta", "hora": hora, "texto": _herramienta(x.get("name", ""), entrada)}
+                        if x.get("name") == "AskUserQuestion" and isinstance(entrada, Mapping):
+                            msj["pregunta"] = preguntas[str(x.get("id", ""))] = _pregunta(
+                                str(x.get("id", "")), entrada.get("questions"), None, "pendiente")
+                        salida.append(msj)
         return salida
+
+    def carga(self):
+        """Lo que carga el contexto de una conversación: telar.agente.carga_claude."""
+        from telar.agente.carga_claude import LectorClaude
+
+        return LectorClaude()
 
     def skills(self, carpeta: Path | None) -> list[dict]:
         """Las skills que tiene a mano un agente que trabaja en `carpeta`, con su descripción.
@@ -328,6 +355,17 @@ class ClaudeCode(AgenteBase):
         """`--model`, que vale igual al abrir una conversación nueva y al retomarla."""
         return ["--model", modelo] if modelo else []
 
+    def con_esfuerzo(self, esfuerzo: str) -> list[str]:
+        """`--effort`, que vale igual al abrir una conversación nueva y al retomarla, y gana sobre `effortLevel` de
+        settings.json."""
+        return ["--effort", esfuerzo] if esfuerzo else []
+
+    def con_carpetas(self, carpetas) -> list[str]:
+        """`--add-dir`, que vale igual al abrir y al retomar. Recibe varias carpetas seguidas: va al final, o se
+        comería el prompt."""
+        rutas = [str(c) for c in carpetas if c]
+        return ["--add-dir", *rutas] if rutas else []
+
     @property
     def binario(self) -> str:
         return os.environ.get(VARIABLE_BINARIO) or "claude"
@@ -376,7 +414,7 @@ class ClaudeCode(AgenteBase):
             for grupo in grupos if isinstance(grupos, list) else []:
                 for gancho in (grupo or {}).get("hooks", []) if isinstance(grupo, dict) else []:
                     comando = gancho.get("command", "") if isinstance(gancho, dict) else ""
-                    if MARCA_AVISO in comando and comando not in vistos:
+                    if any(m in comando for m in MARCAS_EVENTO) and comando not in vistos:
                         vistos.append(comando)
         return tuple(vistos)
 
@@ -405,21 +443,26 @@ class ClaudeCode(AgenteBase):
         """
         destino = Path(ruta).expanduser() if ruta else self.ruta_ajustes()
         datos = _leer_ajustes(destino)
-        palabras = comando_aviso(self.nombre, ejecutable=ejecutable)
+        palabras = comando_evento(self.nombre, ejecutable=ejecutable)
         nuevos, puestos, reemplazados = _mezclar(datos, self.ganchos(), shlex.join(palabras))
+        # la casilla y el contexto no pueden fallar: un gancho que Claude Code mata por pasarse del plazo deja al
+        # hilo sin su contexto, o con un mensaje que espera de más. Con la máquina cargada, arrancar Python ya se
+        # come segundos: plazo holgado (PLAZO_GANCHO). Los avisos del semáforo siguen cortos: perder uno es menor
+        from telar.casilla import PLAZO_GANCHO
+
         if getattr(getattr(self.config, "agente", None), "contexto", True):
             # un segundo SessionStart: el aviso no puede imprimir nada (su salida le habla al
             # agente), y este existe justamente para eso. También corre tras /clear y al retomar.
             contexto = [*palabras[:-3], "agente", "contexto", self.nombre]
             nuevos["hooks"]["SessionStart"].append(
-                {"hooks": [{"type": "command", "command": shlex.join(contexto), "timeout": 5}]})
+                {"hooks": [{"type": "command", "command": shlex.join(contexto), "timeout": PLAZO_GANCHO}]})
             puestos.append("SessionStart (contexto)")
         # la casilla: los mensajes de otros hilos entran por aquí, nunca tecleados (telar.casilla).
         # Al terminar un turno (Stop) y al llegar un mensaje (UserPromptSubmit, el «↯»)
         casilla = [*palabras[:-3], "agente", "casilla", self.nombre]
         for nativo in ("Stop", "UserPromptSubmit"):
             nuevos["hooks"].setdefault(nativo, []).append(
-                {"hooks": [{"type": "command", "command": shlex.join(casilla), "timeout": 5}]})
+                {"hooks": [{"type": "command", "command": shlex.join(casilla), "timeout": PLAZO_GANCHO}]})
             puestos.append(f"{nativo} (casilla)")
         # el mod de telar (telar/mod/): avisa de los mensajes sin teclearlos. Lo carga cada sesión por
         # CLAUDE_CODE_PLUGIN_DIRS; TELAR_EJECUTABLE le dice con qué llamar a telar (una lista JSON)
@@ -544,6 +587,8 @@ def _respaldar(ruta: Path, modo: int) -> Path:
 
 def _escribir(ruta: Path, texto: str) -> Path | None:
     """Deja el texto en `ruta`, con respaldo al lado y sin estados intermedios."""
+    import tempfile
+
     respaldo: Path | None = None
     try:
         ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -567,7 +612,7 @@ def _nuestro(gancho: object) -> bool:
     if not isinstance(gancho, dict):
         return False
     comando = gancho.get("command")
-    return isinstance(comando, str) and (MARCA in comando or MARCA_CONTEXTO in comando or MARCA_CASILLA in comando)
+    return isinstance(comando, str) and any(m in comando for m in (MARCA, MARCA_VIEJA, MARCA_CONTEXTO, MARCA_CASILLA))
 
 
 def _limpiar(entradas: list) -> tuple[list, int]:
@@ -728,7 +773,38 @@ def mensajes_del_mod(datos: Mapping) -> list[dict]:
             for u in m.get("tools") or []:
                 if isinstance(u, dict):
                     entrada = u.get("input") if isinstance(u.get("input"), Mapping) else {}
-                    salida.append({"quien": "herramienta", "hora": "", "texto": _herramienta(str(u.get("tool", "")), entrada)})
+                    msj = {"quien": "herramienta", "hora": "", "texto": _herramienta(str(u.get("tool", "")), entrada)}
+                    p = u.get("pregunta")
+                    if u.get("tool") == "AskUserQuestion" and isinstance(p, Mapping):
+                        msj["pregunta"] = _pregunta(str(p.get("id", "")), p.get("questions"), p.get("answers"),
+                                                    str(p.get("estado", "")))
+                        primera = (msj["pregunta"]["preguntas"] or [{}])[0].get("pregunta", "")
+                        if primera:
+                            msj["texto"] = _herramienta("AskUserQuestion", {"questions": [{"question": primera}]})
+                    salida.append(msj)
+    return salida
+
+
+#: los estados de una pregunta del agente: espera respuesta, se contestó, o se cerró sin respuesta
+ESTADOS_PREGUNTA = ("pendiente", "respondida", "cancelada")
+
+
+def _pregunta(id: str, questions, answers, estado: str, *, preguntas: list[dict] | None = None) -> dict:
+    """Una pregunta del agente (AskUserQuestion) como la lee telar: `{id, estado, preguntas: [{pregunta,
+    encabezado, varias, opciones: [{etiqueta, descripcion}]}], respuestas: {pregunta: respuesta}}` (docs/contratos.md,
+    «telar hilo leer»). Sin las vistas previas, y con topes: lo que se lee no es lo que se ejecuta."""
+    if preguntas is None:
+        preguntas = []
+        for q in (questions if isinstance(questions, list) else [])[:8]:
+            if not isinstance(q, Mapping):
+                continue
+            opciones = [{"etiqueta": str(o.get("label", ""))[:200], "descripcion": str(o.get("description") or "")[:500]}
+                        for o in (q.get("options") if isinstance(q.get("options"), list) else [])[:8] if isinstance(o, Mapping)]
+            preguntas.append({"pregunta": str(q.get("question", ""))[:1000], "encabezado": str(q.get("header") or "")[:60],
+                              "varias": bool(q.get("multiSelect")), "opciones": opciones})
+    salida = {"id": id, "estado": estado if estado in ESTADOS_PREGUNTA else "pendiente", "preguntas": preguntas}
+    if isinstance(answers, Mapping):
+        salida["respuestas"] = {str(k)[:1000]: str(v)[:2000] for k, v in answers.items()}
     return salida
 
 
@@ -745,7 +821,10 @@ def _sin_marcas(texto: str) -> str:
 
 
 def _herramienta(nombre: str, entrada: Mapping[str, object]) -> str:
-    """Una herramienta en una línea: cuál, y lo que la distingue de otra llamada igual."""
+    """Una herramienta en una línea: cuál, y lo que la distingue de otra llamada igual (de una pregunta, la primera)."""
+    preguntas = entrada.get("questions") if isinstance(entrada, Mapping) else None
+    if isinstance(preguntas, list) and preguntas and isinstance(preguntas[0], Mapping):
+        entrada = {"description": str(preguntas[0].get("question", ""))}
     for clave in ("description", "command", "file_path", "pattern", "url", "query", "prompt"):
         valor = entrada.get(clave) if isinstance(entrada, Mapping) else None
         if isinstance(valor, str) and valor.strip():

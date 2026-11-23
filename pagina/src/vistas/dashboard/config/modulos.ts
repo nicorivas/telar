@@ -1,13 +1,15 @@
 // Los módulos, en una página: arriba los disponibles que no tienes, abajo los instalados. Instalados: cada uno con lo que aporta, dónde está su carpeta, de dónde vino (su
 // repositorio y versión, el catálogo, o «a mano»/«enlazado»), lo que pide, y encenderlo, apagarlo, actualizarlo o
 // quitarlo. Disponibles: lo que hay en los catálogos (el oficial, el del equipo, otros), para buscar e instalar.
-// Desde aquí se instala solo lo de un catálogo revisado o del equipo; uno sin revisar, desde la terminal.
+// Desde aquí se instala solo lo de un catálogo revisado o del equipo; uno sin revisar, desde la terminal. Un módulo
+// con pantalla de configuración (`[configurar]`) la abre aquí mismo, con «‹ módulos» de vuelta (`modulos:<nombre>`).
 
 import * as cli from '../../../cli';
 import { esc } from '../../../estilo';
 import * as ui from '../../../web/ui';
 import type { FabricaSeccion } from './seccion';
 import { I } from '../../../web/iconos';
+import { barraBuscar } from '../../../componentes/buscador';
 
 const CONFIANZA: Record<string, [string, string]> = {
     oficial: ['revisado', 'del catálogo de telar: lo revisó quien mantiene telar'],
@@ -22,6 +24,37 @@ export const modulos: FabricaSeccion = ctx => {
     let buscar = '';
     let error = '';
     let trabajando = '';
+    /** la configuración de un módulo que se ve (su página, con su lienzo), en vez de la lista; la firma de lo pintado:
+     *  el refresco de cada minuto no rehace su lienzo */
+    let conf: { nombre: string; pagina?: cli.JsonPagina; error?: string; hora?: number } | undefined;
+    let confPintada = '';
+
+    const abrirConf = async (nombre: string) => {
+        conf = { nombre };
+        confPintada = '';
+        seccion.pintar();
+        const r = await cli.configurarModulo(nombre);
+        await ctx.paginas.precargar(r.datos?.bloques);
+        if (conf?.nombre !== nombre) return;
+        conf = { nombre, pagina: r.datos, error: r.datos ? '' : (r.error ?? 'no contestó'), hora: Date.now() };
+        if (ctx.seVe('modulos')) seccion.pintar();
+    };
+
+    const pintarConf = (c: NonNullable<typeof conf>) => {
+        const firma = `${c.nombre}:${c.hora ?? 0}`;
+        if (firma === confPintada && c.pagina) return;
+        confPintada = firma;
+        const m = instalados?.find(x => x.nombre === c.nombre) ?? ctx.config()?.modulos?.find(x => x.nombre === c.nombre);
+        const conPestana = !!m?.aporta.includes('pestaña');
+        const h = [`<div class="fila"><a data-accion="mod-volver">‹ módulos</a>&nbsp; <b>${esc(c.nombre)}</b> <span class="dim">configuración</span>`
+            + (conPestana ? `<span class="der"><a data-accion="bloque" data-valor="${esc(c.nombre)}" title="ir a su pestaña del dashboard">su pestaña ›</a></span>` : '')
+            + '</div>'];
+        if (c.pagina?.subtitulo) h.push(`<div class="fila dim">${esc(c.pagina.subtitulo)}</div>`);
+        if (!c.pagina && !c.error) h.push('<div class="fila dim">leyendo…</div>');
+        if (c.error) h.push(`<div class="fila falla">${esc(c.error)}</div>`);
+        if (c.pagina) h.push(...ctx.paginas.html(c.pagina.bloques, `config:${c.nombre}`));
+        ctx.pintar(h);
+    };
 
     const leer = async (forzar = false) => {
         const [a, b] = await Promise.all([cli.modulosInstalados(), cli.modulosCatalogo(forzar)]);
@@ -29,7 +62,7 @@ export const modulos: FabricaSeccion = ctx => {
         disponibles = b.datos?.disponibles ?? disponibles;
         problemas = b.datos?.problemas ?? [];
         error = a.datos ? '' : (a.error ?? 'no pude leer los módulos');
-        if (ctx.seVe('modulos')) seccion.pintar();
+        if (ctx.seVe('modulos') && !conf) seccion.pintar();
     };
 
     const hacer = async (accion: 'instalar' | 'actualizar' | 'activar' | 'desactivar' | 'quitar', nombre: string) => {
@@ -52,7 +85,7 @@ export const modulos: FabricaSeccion = ctx => {
     };
 
     const quitar = async (nombre: string) => {
-        const si = await ui.aviso(`¿Quitar ${nombre}? Se desanota y se borra la carpeta que bajó telar. Para dejarlo instalado sin usarlo, apágalo.`, 'Quitar');
+        const si = await ui.aviso(`¿Quitar ${nombre}? Se desanota y se borra la carpeta que bajó telar. Para dejarlo instalado sin usarlo, apágalo.`, 'Quitar', { destruye: true });
         if (si === 'Quitar') await hacer('quitar', nombre);
     };
 
@@ -66,6 +99,7 @@ export const modulos: FabricaSeccion = ctx => {
     const filaInstalado = (m: cli.JsonModuloInstalado) => {
         const ocupado = trabajando === m.nombre;
         const acciones = ocupado ? '<span class="dim">…</span>' : [
+            m.configurar && m.activo ? `<a data-accion="mod-configurar" data-valor="${esc(m.nombre)}" title="su pantalla de configuración">${I.config} configurar</a>` : '',
             m.a_mano ? '' : m.activo
                 ? `<a data-accion="mod-desactivar" data-valor="${esc(m.nombre)}" title="apagarlo sin desinstalarlo: no aporta nada hasta encenderlo">apagar</a>`
                 : `<a data-accion="mod-activar" data-valor="${esc(m.nombre)}" title="encenderlo de nuevo">encender</a>`,
@@ -105,8 +139,14 @@ export const modulos: FabricaSeccion = ctx => {
         clave: 'modulos',
         nombre: 'módulos',
         ayuda: 'los instalados (encender, apagar, de dónde vienen) y los disponibles en los catálogos',
-        abrir: () => { seccion.pintar(); return leer(); },
+        abrir: (sub?: string) => {
+            if (sub) { void leer(); return abrirConf(sub); }
+            conf = undefined;
+            seccion.pintar();
+            return leer();
+        },
         pintar(): void {
+            if (conf) { pintarConf(conf); return; }
             // una sola página, sin pestañas: primero lo que se puede instalar (es lo que no se ve si no se busca),
             // después lo instalado. Con pestañas, quien abría ⚙ módulos veía sus instalados y no sabía que había más
             const t = buscar.trim().toLowerCase();
@@ -116,7 +156,8 @@ export const modulos: FabricaSeccion = ctx => {
                 + `<span class="der"><a data-accion="mod-leer" title="volver a leer, y bajar los catálogos ahora">${I.releer} buscar ahora</a></span></div>`];
             if (error) h.push(`<div class="fila falla">${esc(error)}</div>`);
             if (porInstalar.length > 4 || buscar) {
-                h.push(`<div class="fila"><input id="buscar-mod" type="text" placeholder="buscar por nombre, descripción o etiqueta" value="${esc(buscar)}" spellcheck="false" autocomplete="off"></div>`);
+                h.push(barraBuscar({ id: 'buscar-mod', valor: buscar, placeholder: 'módulos para instalar', claseBarra: 'buscar-mod',
+                    ayuda: 'buscar por nombre, descripción o etiqueta' }));
             }
             if (!disponibles) h.push('<div class="fila dim">leyendo los catálogos…</div>');
             else if (!lista.length) h.push(`<div class="fila dim">${t ? 'nada calza' : porInstalar.length < disponibles.length ? 'ya tienes todo lo de los catálogos' : 'los catálogos están vacíos'}</div>`);
@@ -142,6 +183,8 @@ export const modulos: FabricaSeccion = ctx => {
         async accion(accion: string, valor: string): Promise<boolean> {
             switch (accion) {
                 case 'mod-leer': await leer(true); return true;
+                case 'mod-configurar': await abrirConf(valor); return true;
+                case 'mod-volver': conf = undefined; confPintada = ''; seccion.pintar(); return true;
                 case 'mod-activar': await hacer('activar', valor); return true;
                 case 'mod-desactivar': await hacer('desactivar', valor); return true;
                 case 'mod-actualizar': await hacer('actualizar', valor); return true;

@@ -222,6 +222,41 @@ class Foco(ConCarpeta):
         )
 
 
+class LoVisto(ConCarpeta):
+    """Visto: con el foco en el multiplexor, o a la vista en la página (anotar_visto). Lo más nuevo de los dos."""
+
+    def test_lo_que_muestra_la_pagina_cuenta_como_visto(self):
+        t = datetime(2026, 11, 11, 12, 0)
+        self.est.anotar_visto("faro", t)
+        self.assertEqual(self.est.vistos()["faro"], t)
+
+    def test_gana_lo_mas_nuevo_entre_el_foco_y_la_pagina(self):
+        self.est.marcar("faro", datetime(2026, 11, 11, 9, 0))
+        self.est.anotar_visto("faro", datetime(2026, 11, 11, 8, 0))
+        self.assertEqual(self.est.vistos()["faro"], datetime(2026, 11, 11, 9, 0))
+        self.est.anotar_visto("faro", datetime(2026, 11, 11, 10, 0))
+        self.assertEqual(self.est.vistos()["faro"], datetime(2026, 11, 11, 10, 0))
+
+    def test_la_foto_que_dibuja_la_lista_trae_lo_visto_en_la_pagina(self):
+        # la lista se arma con foto(): ahí es donde tiene que estar (antes solo traía las marcas de foco)
+        t = datetime(2026, 11, 11, 12, 0)
+        self.est.anotar_visto("faro", t)
+        vestido = e.vestir([Hilo(id="1", nombre="faro")], **self.est.foto(tope=HORA))[0]
+        self.assertEqual(vestido.visto, t)
+
+    def test_anotar_visto_no_cuenta_tiempo(self):
+        self.est.anotar_visto("faro")
+        self.assertEqual(self.est.marcas(), [])
+
+    def test_un_hilo_de_otra_maquina_se_queda_con_el_visto_mas_nuevo(self):
+        # lo de aquí es viejo (una marca de antes); lo que trae su máquina, nuevo: gana lo de allá, y al revés
+        viejo, nuevo = datetime(2026, 10, 19, 21, 0), datetime(2026, 11, 11, 9, 0)
+        allá = e.vestir([Hilo(id="1", nombre="faro", visto=nuevo)], vistos={"faro": viejo})[0]
+        self.assertEqual(allá.visto, nuevo)
+        aquí = e.vestir([Hilo(id="1", nombre="faro", visto=viejo)], vistos={"faro": nuevo})[0]
+        self.assertEqual(aquí.visto, nuevo)
+
+
 class ElOrden(ConCarpeta):
     def test_por_defecto_manda_el_multiplexor(self):
         self.assertIs(self.est.orden(), e.Orden.MUX)

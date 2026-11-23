@@ -6,7 +6,9 @@ quien lo hace, con sus acciones `aceptar`, `rechazar` y `cerrar`. **Por decidir*
 tabla de intenciones y cómo se funde `telar encargar`. Es el paso 4 de [primitivas.md](primitivas.md). **Fundido** (23-oct-2026, telar 0.5): `telar encargar` también hace
 un Encargo (con bus y sin él; la cola `.jsonl` se fue), que queda `corriendo` cuando su casilla se lo entrega, se le
 recuerda cerrarlo una vez al terminar el turno, y quien lo pidió lo puede `cancelar`. La página los lista por agente
-(≡ en AGENTES) y en la barra de la derecha de su hilo.
+(≡ en AGENTES) y en la barra de la derecha de su hilo. **Retirada la consulta** (17-nov-2026): repetía `telar ficha` y
+`telar hilo leer`; queda como alias que avisa ([lo-que-espera-a-la-persona.md](lo-que-espera-a-la-persona.md), «La
+poda»).
 
 ## Por qué
 

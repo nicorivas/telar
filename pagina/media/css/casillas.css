@@ -1,0 +1,70 @@
+/* Las casillas (componentes/casillas.ts): lo que se le hace a la tarjeta elegida, y donde se suelta una arrastrada.
+   Cada casilla, un ícono de la letra en el color de lo que hace (--casilla-c), sin marco; su nombre, en el globo y a la
+   vista mientras se arrastra (el navegador no muestra el globo arrastrando). Sus rápidas, al lado, a un clic. Los grupos,
+   apartados por un corte. Una banda: una fila arriba de las tarjetas, como la banda de herramientas de una lista; si no
+   cabe, sigue en la línea de abajo. */
+
+.casillas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  line-height: var(--item-alto);
+  white-space: nowrap;
+
+  & a { text-decoration: none; }
+}
+
+.casillas-grupo { display: flex; }
+
+/* una casilla y una rápida: el ícono (o la palabra) en su color; al pasar el mouse, el fondo del hover, como un ítem */
+.casilla,
+.casilla-rapida {
+  display: inline-flex;
+  align-items: baseline;
+  color: var(--casilla-c);
+  cursor: pointer;
+
+  &:hover,
+  &.hover { background: var(--item-fondo-hover); }
+
+  /* donde caería la tarjeta que se arrastra: la marca de «donde caería» del ítem (item.css, .destino), en el color de
+     la casilla */
+  &.encima {
+    background: color-mix(in srgb, var(--casilla-c) 14%, transparent);
+    box-shadow: inset 0 0 0 1px var(--casilla-c);
+  }
+}
+
+/* una casilla padre: solo dice de qué son sus rápidas (como el ícono padre del orden); no se aprieta */
+.casilla.padre {
+  cursor: default;
+
+  &:hover { background: none; }
+}
+
+/* el ícono, en su celda cuadrada del alto de la fila (la grilla: todos iguales) */
+.casilla > .i {
+  flex: none;
+  inline-size: calc(var(--item-alto) * 1em);
+  text-align: center;
+}
+
+/* el nombre: escondido (va en el globo), salvo mientras se arrastra */
+.casilla-nombre {
+  display: none;
+  padding-right: 1ch;
+  color: var(--texto);
+}
+
+.casilla-rapida { padding-inline: .5ch; }
+.casilla-con-rapidas,
+.casilla-rapidas { display: flex; }
+
+/* mientras una acción va a telar: lo dice, y no se aprietan */
+.casillas.ocupadas :is(.casilla, .casilla-rapida) { pointer-events: none; opacity: .35; }
+.casillas-haciendo { padding-left: 1ch; color: var(--texto-tenue); }
+
+/* arrastrando una tarjeta (la de la página lleva .arrastrando mientras va; el catálogo las muestra con la clase): los
+   nombres a la vista */
+.casillas.arrastrando .casilla-nombre,
+body:has([data-arrastra].arrastrando) .casillas .casilla-nombre { display: inline; }

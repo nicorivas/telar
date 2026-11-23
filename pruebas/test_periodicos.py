@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
 import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
@@ -164,7 +165,57 @@ class _ConArchivo(Prueba):
         return codigo, salida.getvalue() + err.getvalue()
 
 
+class ElCrontabSinPrivilegiosNuevos(Prueba):
+    """El nodo corre con NoNewPrivileges: el setgid de `crontab` no vale y `crontab -l` dice «Permission denied». Ahí
+    el crontab se lee y se escribe por `systemd-run --user`, que no hereda la restricción."""
+
+    def correr(self, nnp: bool, hay_systemd_run: bool = True):
+        llamadas = []
+
+        def run(orden, **kw):
+            llamadas.append((orden, kw.get("input")))
+            return subprocess.CompletedProcess(orden, 0, stdout="# lo de antes\n", stderr="")
+
+        which = {"crontab": "/usr/bin/crontab", "systemd-run": "/usr/bin/systemd-run" if hay_systemd_run else None}
+        with mock.patch.object(m, "sin_privilegios_nuevos", return_value=nnp), \
+                mock.patch.object(m.shutil, "which", side_effect=which.get), \
+                mock.patch.object(m.subprocess, "run", side_effect=run):
+            m.aplicar(m.Archivo(procesos=[m.Proceso(nombre="eco", cuando="0 9 * * *", comando="echo")]), "/bin/telar")
+        return llamadas
+
+    def test_con_no_new_privs_va_por_systemd_run(self):
+        (leer, _), (escribir, entrada) = self.correr(nnp=True)
+        previo = ["systemd-run", "--user", "--pipe", "--wait", "--quiet", "--collect"]
+        self.assertEqual(leer, [*previo, "crontab", "-l"])
+        self.assertEqual(escribir, [*previo, "crontab", "-"])
+        self.assertIn("periodicos correr eco", entrada)
+        self.assertIn("# lo de antes", entrada)
+
+    def test_sin_la_restriccion_crontab_a_secas(self):
+        self.assertEqual([o for o, _ in self.correr(nnp=False)], [["crontab", "-l"], ["crontab", "-"]])
+
+    def test_sin_systemd_run_crontab_a_secas(self):
+        self.assertEqual([o for o, _ in self.correr(nnp=True, hay_systemd_run=False)], [["crontab", "-l"], ["crontab", "-"]])
+
+    def test_lee_la_marca_del_proceso(self):
+        estado = "Name:\tpython3\nNoNewPrivs:\t1\nSeccomp:\t0\n"
+        with mock.patch("builtins.open", mock.mock_open(read_data=estado)):
+            self.assertTrue(m.sin_privilegios_nuevos())
+        with mock.patch("builtins.open", mock.mock_open(read_data=estado.replace("Privs:\t1", "Privs:\t0"))):
+            self.assertFalse(m.sin_privilegios_nuevos())
+        with mock.patch("builtins.open", side_effect=FileNotFoundError):
+            self.assertFalse(m.sin_privilegios_nuevos(), "en macOS no hay /proc")
+
+
 class LaOrden(_ConArchivo):
+    def test_si_el_crontab_no_se_deja_lo_dice_y_no_parece_hecho(self):
+        self.assertEqual(self.orden("nuevo", "eco", "--cuando", "0 9 * * *", "--comando", "echo hola")[0], 0)
+        with mock.patch.object(m, "aplicar", side_effect=m.ErrorDePeriodicos("crontab -l falló: Permission denied")):
+            codigo, salida = self.orden("pausar", "eco")
+        self.assertNotEqual(codigo, 0)
+        self.assertIn("eco: pausado en periodicos.toml, pero el crontab sigue como estaba", salida)
+        self.assertIn("telar periodicos aplicar", salida)
+
     def test_crear_cambiar_pausar_borrar(self):
         self.assertEqual(self.orden("nuevo", "eco", "--cuando", "0 9 * * *", "--comando", "echo hola")[0], 0)
         self.assertNotEqual(self.orden("nuevo", "eco", "--cuando", "0 9 * * *", "--comando", "x")[0], 0)
@@ -238,8 +289,8 @@ class ConAgente(Prueba):
                                                            bus=mod_config.Bus(url="nats://127.0.0.1:1")))
         from telar.agentes import Agente
 
-        self.agente = Agente(clave="gestion", nombre="Gestión", carpeta=base)
-        self.p = m.Proceso(nombre="avanzar", cuando="0 9 * * *", mensaje="/avanzar", agente="gestion")
+        self.agente = Agente(clave="secretaria", nombre="Secretaría", carpeta=base)
+        self.p = m.Proceso(nombre="avanzar", cuando="0 9 * * *", mensaje="/avanzar", agente="secretaria")
 
     def correr(self, enviar):
         with mock.patch("telar.agentes.descubrir", return_value=[self.agente]), \
@@ -252,7 +303,7 @@ class ConAgente(Prueba):
         r, env, tecleado = self.correr(lambda cfg, para, texto, **k: {"id": "x1"})
         self.assertEqual(r["codigo"], 0)
         self.assertIn("por el bus", r["resultado"])
-        self.assertEqual((env.call_args.args[1], env.call_args.kwargs["tipo"]), ("Gestión", "encargo"))
+        self.assertEqual((env.call_args.args[1], env.call_args.kwargs["tipo"]), ("Secretaría", "encargo"))
         tecleado.assert_not_called()
 
     def test_si_el_bus_falla_va_por_el_camino_de_siempre_y_lo_dice(self):
@@ -273,3 +324,140 @@ class LaSalidaDeCron(Prueba):
         from telar import periodicos as mod
         lineas = mod.bloque(mod.Archivo(procesos=[]), "/x/telar")
         self.assertEqual(lineas[:2], [mod.MARCA_INICIO, 'MAILTO=""'])
+
+
+class LasDependencias(_ConArchivo):
+    """`despues` (la que se declara) y el destino (la que se deduce: dos que van al mismo agente comparten su casilla)."""
+
+    def test_despues_ida_y_vuelta_y_lo_que_no_vale(self):
+        a = m.Archivo(procesos=[m.Proceso(nombre="retro", cuando="0 18 * * *", mensaje="/planear retro"),
+                                m.Proceso(nombre="plan", cuando="30 20 * * *", mensaje="/planear", despues=("retro",))])
+        m.escribir(self.ruta, a)
+        self.assertEqual(m.leer(self.ruta).procesos[1].despues, ("retro",))
+        with self.assertRaises(m.ErrorDePeriodicos):
+            m.Proceso(nombre="plan", cuando="0 9 * * *", comando="x", despues=("plan",)).validar()
+
+    def test_la_orden_lo_pone_lo_quita_y_no_acepta_uno_que_no_existe(self):
+        self.orden("nuevo", "retro", "--cuando", "0 18 * * *", "--mensaje", "/planear retro")
+        self.assertNotEqual(self.orden("nuevo", "plan", "--cuando", "30 20 * * *", "--mensaje", "/planear", "--despues", "nadie")[0], 0)
+        self.assertEqual(self.orden("nuevo", "plan", "--cuando", "30 20 * * *", "--mensaje", "/planear", "--despues", "retro")[0], 0)
+        self.assertEqual(m.leer(self.ruta).por_nombre("plan").despues, ("retro",))
+        self.assertEqual(self.orden("editar", "plan", "--sin-despues")[0], 0)
+        self.assertEqual(m.leer(self.ruta).por_nombre("plan").despues, ())
+        # el formulario los manda separados por comas
+        self.orden("nuevo", "correo", "--cuando", "0 8 * * *", "--mensaje", "/correo")
+        self.assertEqual(self.orden("editar", "plan", "--despues", "retro,correo")[0], 0)
+        self.assertEqual(m.leer(self.ruta).por_nombre("plan").despues, ("retro", "correo"))
+
+    def test_a_quien_le_llega(self):
+        agentes = [{"clave": "secretaria", "nombre": "Secretaría", "carpeta": "/x", "icono": ""}]
+        script = Path(self.tmp.name) / "pasada"
+        script.write_text('#!/bin/sh\n[ -n "$x" ] || exit 0\nexec telar encargar secretaria "/lecturas"\n')
+        casos = {
+            m.Proceso(nombre="a", cuando="* * * * *", mensaje="/avanzar", agente="secretaria"): ("agente", "secretaria", False),
+            m.Proceso(nombre="b", cuando="* * * * *", mensaje="/despertar"): ("hilo", "", False),
+            m.Proceso(nombre="c", cuando="* * * * *", comando='if true; then telar encargar Secretaría "/resumen"; fi'): ("agente", "secretaria", True),
+            m.Proceso(nombre="d", cuando="* * * * *", comando=str(script)): ("agente", "secretaria", True),
+            m.Proceso(nombre="e", cuando="* * * * *", comando="bin/bajar", carpeta=self.tmp.name): ("comando", "", False),
+        }
+        for p, (tipo, agente, inferido) in casos.items():
+            d = m.destino(p, agentes)
+            self.assertEqual((d["tipo"], d["agente"], d["inferido"]), (tipo, agente, inferido), p.nombre)
+
+    def test_ver_trae_los_agentes_y_lo_de_cada_uno(self):
+        self.orden("nuevo", "retro", "--cuando", "0 18 * * *", "--mensaje", "/planear retro", "--agente", "secretaria")
+        with mock.patch.object(m, "agentes_de", return_value=[{"clave": "secretaria", "nombre": "Secretaría", "carpeta": "/x", "icono": ""}]):
+            datos = json.loads(self.orden("ver", "--json")[1])
+        self.assertEqual(datos["agentes"][0]["clave"], "secretaria")
+        self.assertEqual((datos["procesos"][0]["destino"]["tipo"], datos["procesos"][0]["despues"]), ("agente", []))
+
+
+class ElCalendario(Prueba):
+    """Las corridas de una semana: las de su horario, con cómo salieron las que pasaron, y las de fuera de horario."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ctx = SimpleNamespace(config=mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado"))
+        self.d = m.carpeta_estado(self.ctx.config)
+        self.d.mkdir(parents=True)
+
+    def historial(self, nombre, *registros):
+        with open(self.d / f"{nombre}.historial.jsonl", "a") as f:
+            for r in registros:
+                f.write(json.dumps(r) + "\n")
+
+    def test_lo_que_paso_y_lo_que_viene(self):
+        from datetime import date
+
+        a = m.Archivo(zona="America/Santiago", procesos=[m.Proceso(nombre="x", cuando="0 9,13,18 * * *", comando="eco")])
+        self.historial("x",
+                       {"inicio": "2026-11-10T09:00:01-03:00", "codigo": 0, "resultado": "ok"},
+                       {"inicio": "2026-11-10T13:00:02-03:00", "codigo": 2, "resultado": "salió con 2"},
+                       # el 10 a las 18 no corrió; el 11 a las 9 se saltó; a las 11:20, alguien lo corrió a mano
+                       {"inicio": "2026-11-11T09:00:01-03:00", "codigo": 0, "resultado": "saltado: ya hay 1"},
+                       {"inicio": "2026-11-11T11:20:00-03:00", "codigo": 0, "resultado": "ok", "manual": True})
+        ahora = datetime(2026, 11, 11, 12, 0, tzinfo=SCL)
+        cs = m.corridas(SimpleNamespace(config=self.ctx.config), a, date(2026, 11, 9), 3, ahora)["x"]
+        estados = [(c["dia"][8:], c["min"], c["estado"], bool(c.get("manual"))) for c in cs]
+        self.assertEqual(estados, [
+            ("09", 540, "sin-registro", False), ("09", 780, "sin-registro", False), ("09", 1080, "sin-registro", False),
+            ("10", 540, "bien", False), ("10", 780, "fallo", False), ("10", 1080, "falto", False),
+            ("11", 540, "saltado", False), ("11", 680, "bien", True), ("11", 780, "proxima", False), ("11", 1080, "proxima", False),
+        ])
+
+    def test_lo_que_solo_dejo_su_log(self):
+        from datetime import date
+
+        a = m.Archivo(zona="America/Santiago", procesos=[m.Proceso(nombre="h", cuando="0 10 * * *", mensaje="/despertar")])
+        (self.d / "h.log").write_text("\n── 2026-11-10 10:00:01 · h ──\nabrí «◌ 11/10 10:00»\n"
+                                      "\n── 2026-11-11 10:00:02 · h ──\nsaltado: ya hay 3 abiertos\n")
+        with mock.patch.dict(os.environ, {"TZ": "America/Santiago"}):
+            import time
+            time.tzset()
+            self.addCleanup(time.tzset)
+            cs = m.corridas(SimpleNamespace(config=self.ctx.config), a, date(2026, 11, 10), 2, datetime(2026, 11, 12, 0, 0, tzinfo=SCL))["h"]
+        self.assertEqual([c["estado"] for c in cs], ["bien", "saltado"])
+
+    def test_correr_anota_el_historial_y_si_fue_a_mano(self):
+        m.correr(self.ctx, m.Proceso(nombre="eco", cuando="* * * * *", comando="true"), manual=True)
+        lineas = (self.d / "eco.historial.jsonl").read_text().splitlines()
+        self.assertEqual((len(lineas), json.loads(lineas[0])["manual"], json.loads(lineas[0])["codigo"]), (1, True, 0))
+
+
+class ElPadre(Prueba):
+    """Un periódico que abre hilos los cuelga de un padre (el hilo de un agente), como `telar hilo hijo`."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ctx = SimpleNamespace(config=mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado",
+                                                             agente=mod_config.Agente(nombre="claude-code")))
+
+    def test_el_hilo_que_abre_cuelga_del_padre_y_hereda_sus_etiquetas(self):
+        from telar import estado as mod_estado
+
+        est = mod_estado.abrir(self.ctx.config)
+        est.etiquetar("Cuaderno", ["personal"])
+        falso = SimpleNamespace(nuevo_con_id=lambda texto: (["claude", texto], "sid-1"))
+        p = m.Proceso(nombre="nota", cuando="0 10 * * *", mensaje="/pensar", hilo="◌ nota", padre="Cuaderno")
+        with mock.patch("telar.movil.hilos", return_value=[]), mock.patch("telar.movil.crear"), \
+                mock.patch("telar.agente.obtener", return_value=falso), mock.patch("telar.agente.lanzar.anotar"), \
+                mock.patch("telar.encargos.liberar"):
+            r = m.correr(self.ctx, p)
+        self.assertEqual(r["codigo"], 0, r["resultado"])
+        self.assertIn("hijo de «Cuaderno»", r["resultado"])
+        est = mod_estado.abrir(self.ctx.config)
+        self.assertEqual(est.padres().get(r["hilo"]), "Cuaderno")
+        self.assertEqual(tuple(est.etiquetas().get(r["hilo"], ())), ("personal",))
+
+    def test_padre_solo_con_un_hilo_nuevo(self):
+        with self.assertRaises(m.ErrorDePeriodicos):
+            m.Proceso(nombre="x", cuando="* * * * *", mensaje="/avanzar", agente="secretaria", padre="Secretaría").validar()
+        with self.assertRaises(m.ErrorDePeriodicos):
+            m.Proceso(nombre="x", cuando="* * * * *", comando="ls", padre="Secretaría").validar()
+        a = m.Archivo(procesos=[m.Proceso(nombre="x", cuando="* * * * *", mensaje="/pensar", padre="Cuaderno")])
+        # pasarlo a un agente le quita el padre (un encargo va a la sesión del agente: no abre hilos)
+        self.assertEqual(m.cambiar(a, "x", agente="secretaria").padre, "")

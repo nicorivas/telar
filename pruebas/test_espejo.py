@@ -62,6 +62,39 @@ class Validar(Prueba):
                 m.validar(malo, "laptop")
 
 
+class LoVistoViaja(ConCarpeta):
+    """Si terminó sin que la persona lo viera, y desde cuándo: viaja en la foto, para que la otra máquina lo diga igual.
+    Y lo que se vio en otra máquina de un hilo de esta vuelve en su foto: aquí también cuenta."""
+
+    def test_sin_ver_y_desde_viajan_y_se_validan(self):
+        limpia = m.validar(foto(hilo(sin_ver=True, atencion_desde="2026-11-11T09:00:00")), "laptop")
+        self.assertIs(limpia["hilos"][0]["sin_ver"], True)
+        self.assertEqual(limpia["hilos"][0]["atencion_desde"], "2026-11-11T09:00:00")
+        self.assertNotIn("sin_ver", m.validar(foto(hilo(sin_ver="sí")), "laptop")["hilos"][0])
+        with self.assertRaises(m.ErrorDeEspejo):
+            m.validar(foto(hilo(atencion_desde=3)), "laptop")
+
+    def test_lo_visto_alla_de_un_hilo_de_aqui_cuenta_aqui(self):
+        from datetime import datetime
+
+        from telar.ordenes import _comun
+
+        m.guardar(self.config, "laptop", json.dumps(foto(
+            hilo("Faro", remoto="servidor", visto="2026-11-11T11:40:00"),   # vive aquí: cuenta
+            hilo("Molino", remoto="otra", visto="2026-11-11T11:40:00"),     # vive en otra: no
+            hilo("Puente", remoto="", visto="2026-11-11T11:40:00"))))       # es de allá: no
+        aqui = {"Faro": datetime(2026, 11, 10, 9, 0)}
+        with mock.patch("telar.bus.maquina", return_value="servidor"):
+            vistos = _comun.vistos_de_otras(self.config, aqui)
+        self.assertEqual(vistos["Faro"], datetime(2026, 11, 11, 11, 40))
+        self.assertNotIn("Molino", vistos)
+        self.assertNotIn("Puente", vistos)
+        # lo de aquí más nuevo gana
+        aqui = {"Faro": datetime(2026, 11, 11, 12, 0)}
+        with mock.patch("telar.bus.maquina", return_value="servidor"):
+            self.assertEqual(_comun.vistos_de_otras(self.config, aqui)["Faro"], datetime(2026, 11, 11, 12, 0))
+
+
 class LaPaginaDeLaMaquina(ConCarpeta):
     """La foto dice dónde está la página de su máquina (para reenviarle las terminales): solo esquema, host y
     puerto, y solo mientras la foto está vigente."""
@@ -143,3 +176,31 @@ class LaFoto(Prueba):
             self.assertNotIn(prohibido, texto)
         self.assertEqual(f["hilos"][0]["resumen"], "Cliente · A")
         m.validar(f, "laptop")  # lo que sale, entra
+
+
+class SusAgentes(ConCarpeta):
+    """La foto trae los agentes residentes de su máquina (su carpeta, su nombre y el mundo que declara su agente.toml):
+    así las otras los ven, con su mundo, aunque su carpeta todavía no les haya llegado (una raíz atrasada, 23-nov-2026)."""
+
+    def test_viajan_limpios_y_lo_que_no_se_entiende_se_queda(self):
+        agentes = [{"clave": "cocina", "nombre": "Cocina", "mundo": "personal", "carpeta": "/home/x/secreto"},
+                   {"clave": "../fuera", "nombre": "Malo", "mundo": ""}, {"clave": "sin-nombre", "nombre": ""},
+                   {"clave": "secretaria", "nombre": "Secretaría", "mundo": 3}, "basura"]
+        limpia = m.validar(foto(agentes=agentes), "telar")
+        self.assertEqual(limpia["agentes"], [{"clave": "cocina", "nombre": "Cocina", "mundo": "personal"}])
+        self.assertNotIn("agentes", m.validar(foto(), "telar"), "una foto de un telar de antes no los trae")
+        m.guardar(self.config, "telar", json.dumps(foto(agentes=agentes[:1])))
+        self.assertEqual(m.leer_todos(self.config)[0]["agentes"][0]["clave"], "cocina")
+
+    def test_los_de_esta_maquina_salen_de_su_carpeta(self):
+        carpeta = self.base / "agentes" / "cocina"
+        carpeta.mkdir(parents=True)
+        (carpeta / "CLAUDE.md").write_text("# Cocina\n")
+        (carpeta / "agente.toml").write_text('nombre = "Cocina"\nmundo = "personal"\n')
+        c = mod_config.desde_dict({"raiz": str(self.base), "agentes": {"carpeta": "agentes"}})
+        self.assertEqual(m.agentes_de(c), [{"clave": "cocina", "nombre": "Cocina", "mundo": "personal",
+                                            "fuera_de_su_mundo": "al-final"}])
+        self.assertEqual(m.agentes_de(mod_config.desde_dict({"raiz": str(self.base)})), [], "sin carpeta de agentes, ninguno")
+        tel = SimpleNamespace(sesion="faro", hilos=[])
+        self.assertEqual(m.foto(tel, maquina="telar", agentes=m.agentes_de(c))["agentes"][0]["mundo"], "personal")
+        self.assertNotIn("agentes", m.foto(tel, maquina="telar"))

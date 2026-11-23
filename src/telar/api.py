@@ -24,9 +24,9 @@ import os
 import subprocess
 from pathlib import Path
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from telar import __version__
 from telar.cli import Contexto
@@ -37,6 +37,8 @@ from telar.servicios import ErrorDeServicio, Pagina
 from telar.servicios import bloques as servicio_bloques
 from telar.servicios import codigos as servicio_codigos
 from telar.servicios import config as servicio_config
+from telar.servicios import esperas as servicio_esperas
+from telar.servicios import buscar as servicio_buscar
 from telar.servicios import hilos as servicio_hilos
 from telar.servicios import hoy as servicio_hoy
 from telar.servicios import resultados as servicio_resultados
@@ -61,7 +63,10 @@ class _Contexto:
         # la configuración y los módulos instalados (`modulos.toml`, al lado): instalar, activar o quitar uno desde la
         # página cambia el segundo, y la configuración se relee igual
         marca = []
-        for archivo in (ruta, ruta.parent / "modulos.toml"):
+        # y los de la raíz (`<raiz>/.telar/temas.toml`, telar.temas; `mundos.toml`, telar.mundos_raiz): los que llegan de
+        # otra máquina con un pull
+        de_la_raiz = [getattr(self._config, a, None) for a in ("temas_archivo", "mundos_archivo")] if self._config is not None else []
+        for archivo in (ruta, ruta.parent / "modulos.toml", *(x for x in de_la_raiz if x)):
             try:
                 marca.append(archivo.stat().st_mtime)
             except OSError:
@@ -138,6 +143,8 @@ class PedidoAccion(BaseModel):
     version: str | None = None
     #: el mensaje de la acción, a este hilo o agente (su nombre) y no al de la tarea; 404 si no existe
     hilo: str = ""
+    #: las relaciones elegidas para `{conexiones}` (la ficha de una lectura): [{nota, tipo, porque, titulo}]
+    conexiones: list[dict] | None = None
 
 
 @app.get("/tareas/{id:path}", response_model=Pagina, response_model_exclude_unset=True)
@@ -151,7 +158,7 @@ def post_accion(id: str, pedido: PedidoAccion, ctx: Contexto = Depends(contexto)
     """Correr una acción de la ficha (`telar tarea <id> --accion N | --rol R`). El comando lo da el
     proveedor, nunca quien pide."""
     return servicio_tareas.accion(ctx, id, pedido.proveedor, n=pedido.n, rol=pedido.rol, texto=pedido.texto,
-                                  version=pedido.version, hilo=pedido.hilo)
+                                  version=pedido.version, hilo=pedido.hilo, conexiones=pedido.conexiones)
 
 
 # ── los bloques del día ───────────────────────────────────────────────────────
@@ -188,6 +195,19 @@ def post_comentario(clave: str, dia: str = Body(...), texto: str = Body(...), ct
     return servicio_resultados.comentar(ctx, clave, dia, texto)
 
 
+@app.get("/resultados/{clave}/visto", response_model=servicio_resultados.SinVer, response_model_exclude_unset=True)
+def get_visto(clave: str, ctx: Contexto = Depends(contexto)):
+    """Las pasadas que la persona no ha visto y hasta cuál vio, leídas donde viven (`telar resultado <clave> --sin-ver`)."""
+    return servicio_resultados.sin_ver(ctx, clave)
+
+
+@app.post("/resultados/{clave}/visto", response_model=servicio_resultados.Visto, response_model_exclude_unset=True)
+def post_visto(clave: str, id: str = Body("", embed=True), mundo: str = Body("", embed=True), ctx: Contexto = Depends(contexto)):
+    """Marcar vistas las pasadas hasta `id` (vacío: hasta la más nueva), donde viven (`telar resultado <clave> --visto`):
+    con `mundo`, lo de ese mundo y lo sin clasificar; sin él (ambos), todo."""
+    return servicio_resultados.marcar_visto(ctx, clave, id, mundo)
+
+
 # ── los tipos: objetos sobre archivos (telar.tipos), desde el índice en memoria ───────
 
 from telar.servicios import tipos as servicio_tipos
@@ -203,11 +223,11 @@ class PedidoTarea(BaseModel):
 
 @app.get("/tipos/tarea", response_model=Tareas)
 def get_tareas(abiertas: bool = True, area: str = "", proyecto: str = "", dueno: str | None = None,
-               vence_hasta: str = "", ctx: Contexto = Depends(contexto)):
+               vence_hasta: str = "", mundo: list[str] | None = Query(None), ctx: Contexto = Depends(contexto)):
     """Las tareas, desde el índice. Filtros: `abiertas` (por defecto), `area`, `proyecto`, `dueno` («» es
-    sin dueño) y `vence_hasta` (AAAA-MM-DD)."""
+    sin dueño), `vence_hasta` (AAAA-MM-DD) y `mundo` (se repite: los de `[mundos]`, o `sin-clasificar`)."""
     return servicio_tipos.lista(ctx, todas=not abiertas, area=area, proyecto=proyecto, dueno=dueno,
-                                vence_hasta=vence_hasta)
+                                vence_hasta=vence_hasta, mundos=tuple(mundo or ()))
 
 
 @app.post("/tipos/tarea", response_model=TareaConVersion)
@@ -280,17 +300,38 @@ def post_permisos(c: servicio_lienzos.Concesion, ctx: Contexto = Depends(context
 
 
 class PedidoActuar(BaseModel):
-    direccion: str
+    #: la entidad de la que se habla (su contexto va en el prompt); vacía, solo lo pedido, a quien se diga en `a`
+    direccion: str = ""
     a: str = ""
+    nuevo: bool = False
     skill: str = ""
     nota: str = ""
     escribir: bool = False
+    #: la fila de un pendiente que la página ya tiene (`telar pendientes`): ahorra buscarlo, y nombra uno sin dirección
+    fila: dict | None = None
+    #: sin entidad y con `nuevo`: cómo se llama el hilo nuevo
+    nombre: str = ""
+    #: un texto que va entero, con sus líneas, debajo de lo pedido (lo que mostraba la pestaña de un módulo): con él,
+    #: la skill y la nota son opcionales
+    contexto: servicio_actuar.ContextoLibre | None = None
+
+
+class PedidoAdonde(BaseModel):
+    direccion: str = ""
+    fila: dict | None = None
 
 
 @app.post("/actuar", response_model=servicio_actuar.Actuado)
 def post_actuar(p: PedidoActuar, ctx: Contexto = Depends(contexto)):
-    """Mandarle a un hilo o a un agente un prompt sobre una entidad, con su contexto (`telar actuar`)."""
-    return servicio_actuar.actuar(ctx, p.direccion, a=p.a, skill=p.skill, nota=p.nota, escribir=p.escribir)
+    """Una instrucción: mandarle a un hilo o a un agente lo que se pide, con el contexto de una entidad (`telar actuar`)."""
+    return servicio_actuar.actuar(ctx, p.direccion, a=p.a, nuevo=p.nuevo, skill=p.skill, nota=p.nota,
+                                  escribir=p.escribir, fila=p.fila, nombre=p.nombre, contexto=p.contexto)
+
+
+@app.post("/actuar/adonde", response_model=servicio_actuar.Adonde)
+def post_actuar_adonde(p: PedidoAdonde, ctx: Contexto = Depends(contexto)):
+    """Adónde iría una instrucción sobre una entidad sin decir a quién (su hilo), y su contexto. No manda nada."""
+    return servicio_actuar.adonde(ctx, p.direccion, fila=p.fila)
 
 
 class CambioDeFecha(BaseModel):
@@ -323,11 +364,11 @@ def get_productos(ctx: Contexto = Depends(contexto)):
 
 @app.get("/pendientes", response_model=servicio_pendientes.Pendientes)
 def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
-                   limite: int = 0, ctx: Contexto = Depends(contexto)):
+                   limite: int = 0, mundo: list[str] | None = Query(None), ctx: Contexto = Depends(contexto)):
     """Lo pendiente en los documentos (con `repo`, de todas las unidades) y, con `proveedores`, de las
-    fuentes declaradas (`telar pendientes --json`)."""
+    fuentes declaradas (`telar pendientes --json`). `mundo` (se repite): solo los de esos mundos de `[mundos]`."""
     return servicio_pendientes.pendientes(ctx, repo=repo, hechos=hechos, proveedores=proveedores, hilo=hilo,
-                                          limite=limite)
+                                          limite=limite, mundos=tuple(mundo or ()))
 
 
 # ── páginas, la ficha de un hilo y las notas del día ─────────────────────────
@@ -368,6 +409,16 @@ def get_codigos(hilo: str, maquina: str = "", codigo: str = "", buscar: str = ""
     return servicio_codigos.de_hilo(ctx, hilo, maquina=maquina, codigo=codigo, buscar=buscar)
 
 
+from telar.servicios import carga as servicio_carga
+
+
+@app.get("/contexto", response_model=servicio_carga.CargaDeHilo)
+def get_contexto(hilo: str = "", maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Lo que carga el contexto de la conversación de un hilo (`telar hilo contexto <hilo> --json`): cuánto pesa y de
+    qué está hecho, con rutas y tamaños. Con `maquina`, el de un hilo de esa máquina, por el bus."""
+    return servicio_carga.de_hilo(ctx, hilo, maquina=maquina)
+
+
 @app.get("/notas", response_model=servicio_notas.Notas)
 def get_notas(dia: str = "", ctx: Contexto = Depends(contexto)):
     """Las notas de los eventos de un día (`telar evento notas --json`)."""
@@ -384,9 +435,10 @@ def get_mensajes(n: int = 40, retenidos: bool = False, ctx: Contexto = Depends(c
     return servicio_mensajes.registro(ctx, n, retenidos=retenidos)
 
 
-@app.get("/mensajes/consulta", response_model=servicio_mensajes.Consulta)
+@app.get("/mensajes/consulta", response_model=servicio_mensajes.Consulta, include_in_schema=False)
 def get_consulta(para: str, ctx: Contexto = Depends(contexto)):
-    """En qué anda un hilo, sin mandarle nada (`telar mensaje <hilo> --modo consulta --json`)."""
+    """En qué anda un hilo, sin mandarle nada (`telar mensaje <hilo> --modo consulta --json`). Retirado: responde
+    lo mismo para quien ya lo llama, pero no se anuncia; lo nuevo pide `GET /ficha` y `GET /hilos/leer`."""
     return servicio_mensajes.consultar(ctx, para)
 
 
@@ -421,6 +473,16 @@ def post_mensaje(pedido: PedidoMensaje, ctx: Contexto = Depends(contexto)):
 def post_soltar(mid: str, ctx: Contexto = Depends(contexto)):
     """Manda un mensaje retenido (`telar mensaje --soltar`)."""
     return servicio_mensajes.soltar(ctx, mid)
+
+
+@app.post("/mensajes/{mid}/descartar", response_model=servicio_mensajes.Enviado)
+def post_descartar(mid: str, ctx: Contexto = Depends(contexto)):
+    """Que un mensaje retenido no salga (`telar mensaje --descartar`): queda en el registro como descartado, y a quien
+    lo mandó le llega un aviso. Lo descarta la persona desde la página: así queda anotado."""
+    from telar import bus as mod_bus
+
+    quien = f"{mod_bus.persona(ctx.config)}@{mod_bus.maquina(ctx.config)}" if mod_bus.hay_bus(ctx.config) else ""
+    return servicio_mensajes.descartar(ctx, mid, quien=quien)
 
 
 class PedidoNota(BaseModel):
@@ -489,6 +551,18 @@ def post_abrir_unidad(pedido: PedidoUnidad, ctx: Contexto = Depends(contexto)):
     return servicio_atajos.abrir_unidad(ctx, pedido.ruta)
 
 
+class PedidoEstado(BaseModel):
+    ruta: str
+    estado: str
+
+
+@app.post("/proyectos/estado", response_model=servicio_proyectos.EstadoCambiado)
+def post_estado_iniciativa(pedido: PedidoEstado, ctx: Contexto = Depends(contexto)):
+    """Cambiar el estado de una iniciativa en su ficha: `estado:` y `estado_desde:` de su frontmatter, con uno del
+    vocabulario de `[iniciativas]` (`telar proyectos estado <ruta> <estado>`)."""
+    return servicio_proyectos.cambiar_estado(ctx, pedido.ruta, pedido.estado)
+
+
 from telar.servicios import ir as servicio_ir
 
 
@@ -544,7 +618,7 @@ from telar.servicios import en_proceso
 
 #: los verbos de `telar hilo` que se corren por la API; `llevar` (minutos, por ssh) y `leer`/`caidos` no
 VERBOS_HILO = ("ver", "vincular", "desvincular", "renombrar", "adoptar", "prioridad", "etiquetas", "padre", "hijo", "mudar", "cerrar",
-               "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar")
+               "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar", "dormir", "despertar")
 
 
 class PedidoHilo(BaseModel):
@@ -557,6 +631,8 @@ class PedidoHilo(BaseModel):
     #: con hijo: su carpeta (por defecto, la del padre) y lo que se le encarga
     carpeta: str = ""
     texto: str = ""
+    #: con hijo: el esfuerzo con que arranca su agente (low, medium, high, xhigh); vacío, el de siempre
+    esfuerzo: str = ""
 
 
 class PedidoLlevarHilo(BaseModel):
@@ -606,8 +682,49 @@ def post_hilo(verbo: str, pedido: PedidoHilo, ctx: Contexto = Depends(contexto))
         raise ErrorDeServicio(f"«{verbo}» no se pide por aquí: uno de {', '.join(VERBOS_HILO)}", 422)
     argv = [verbo, *([pedido.valor] if pedido.valor else []), "--hilo", pedido.hilo, *(["--cerrar"] if pedido.cerrar else []),
             *(["--con-hijos"] if pedido.con_hijos else []), *(["--carpeta", pedido.carpeta] if pedido.carpeta else []),
-            *(["--texto", pedido.texto] if pedido.texto else [])]
+            *(["--texto", pedido.texto] if pedido.texto else []), *(["--esfuerzo", pedido.esfuerzo] if pedido.esfuerzo else [])]
     return en_proceso.o_falla(en_proceso.correr(ctx, "hilo", argv), f"telar hilo {verbo}")
+
+
+class PedidoMirando(BaseModel):
+    #: un id por página abierta (lo inventa la página al cargar)
+    pagina: str
+    #: el hilo que muestra ahora; "" si ninguno (el dashboard, un archivo, la página oculta)
+    hilo: str = ""
+    #: la máquina de ese hilo, si es de otra
+    maquina: str = ""
+
+
+class PedidoDespertar(BaseModel):
+    hilo: str
+    #: la máquina donde vive, si es otra (la página lo sabe por su foto); "" es aquí
+    maquina: str = ""
+    #: su primer mensaje, al despertarlo
+    texto: str = ""
+    #: lo pide un botón: despertarlo como esté (uno cerrado se retoma) y, si su máquina está fuera de línea, dejarlo en
+    #: cola para cuando vuelva. Sin esto (abrir uno que la lista dice dormido), solo si duerme y su máquina contesta
+    cola: bool = False
+
+
+@app.post("/despertar")
+def post_despertar(pedido: PedidoDespertar, ctx: Contexto = Depends(contexto)):
+    """Despertar un hilo (telar.dormir, telar.alcance): el de aquí, en su ventana; el de otra máquina, pidiéndoselo a
+    ella, o a su cola si está fuera de línea. `hecho` vacío si no dormía; `en_cola`, si quedó esperando a su máquina."""
+    from telar import dormir
+
+    try:
+        return dormir.despertar_pedido(ctx, pedido.hilo, pedido.maquina, texto=pedido.texto, cola=pedido.cola)
+    except RuntimeError as e:
+        raise ErrorDeServicio(str(e), 502) from e
+
+
+@app.post("/mirando")
+def post_mirando(pedido: PedidoMirando, ctx: Contexto = Depends(contexto)):
+    """Lo que muestra una página abierta, cada 30 s y al cambiar: lo que se mira no se duerme (telar.dormir)."""
+    from telar import dormir
+
+    dormir.anotar_mirando(ctx.config, pedido.pagina, pedido.hilo, pedido.maquina)
+    return {"ok": True}
 
 
 class PedidoReunion(BaseModel):
@@ -774,6 +891,8 @@ def get_terminal_fondo(ruta: str, ctx: Contexto = Depends(contexto)):
 class PedidoModo(BaseModel):
     valores: dict = {}
     nombre: str = ""
+    #: de uno propio, sobre cuál de los cuatro se arma (táctica si no lo dice)
+    base: str = ""
 
 
 @app.get("/modos")
@@ -782,17 +901,54 @@ def get_modos(ctx: Contexto = Depends(contexto)) -> dict:
     ajustes que un modo puede decir. Cuál está puesto lo sabe el navegador."""
     from telar import modos
 
-    return {"catalogo": modos.catalogo(), "modos": modos.todos(ctx.config)}
+    return {"catalogo": modos.catalogo(ctx.config), "modos": modos.todos(ctx.config)}
 
 
 @app.put("/modos/{clave}")
 def put_modo(clave: str, pedido: PedidoModo, ctx: Contexto = Depends(contexto)) -> dict:
-    """Crear o cambiar un modo: escribe `[modos.<clave>]` con esos valores (lo que no diga, de «estándar»)."""
+    """Crear o cambiar un modo: escribe `[modos.<clave>]` con esos valores (lo que no diga, de su base y de «táctica»)."""
     from telar import config as mod_config
     from telar import modos
 
     try:
-        modos.guardar(ctx.config.origen, clave, pedido.valores, pedido.nombre)
+        modos.guardar(ctx.config.origen, clave, pedido.valores, pedido.nombre, base=pedido.base)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
+
+
+class PedidoAjustes(BaseModel):
+    #: solo los ajustes que cambian; None quita la línea (vuelve a lo heredado)
+    valores: dict = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _todo_en_valores(cls, datos):
+        """Un ajuste suelto (`{"tema": "x"}`) se ignoraba y la respuesta decía ok sin haber cambiado nada: se niega
+        (422) y dice dónde va."""
+        if isinstance(datos, dict):
+            sueltos = sorted(k for k in datos if k != "valores")
+            if sueltos:
+                raise ValueError(f"los ajustes van dentro de «valores»: {{\"valores\": {{\"{sueltos[0]}\": …}}}}, "
+                                 f"no sueltos ({', '.join(sueltos)})")
+        return datos
+
+
+@app.patch("/modos/{clave}")
+def patch_modo(clave: str, pedido: PedidoAjustes, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar algunos ajustes de un modo sin tocar los demás (⚙ modos: qué agentes y qué pestañas se ven en cada uno):
+    escribe solo esas líneas de `[modos.<clave>]`, y lo que no dice lo sigue heredando (null quita la línea). `filas`
+    nombra pestañas que hay (o que el modo ya nombraba): una que no existe es un 422."""
+    from telar import config as mod_config
+    from telar import modos
+
+    try:
+        valores = dict(pedido.valores)
+        if valores.get("filas") is not None:
+            valores["filas"] = modos.revisar_filas(ctx.config, clave, valores["filas"])
+        modos.ajustar(ctx.config.origen, clave, valores)
+    except KeyError:
+        raise ErrorDeServicio(f"no hay un modo «{clave}»", 404) from None
     except mod_config.ErrorDeConfig as e:
         raise ErrorDeServicio(str(e), 422) from e
     return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
@@ -811,6 +967,223 @@ def delete_modo(clave: str, ctx: Contexto = Depends(contexto)) -> dict:
     if not hubo:
         raise ErrorDeServicio(f"no hay [modos.{clave}] en la configuración", 404)
     return {"ok": True, "modos": modos.todos(mod_config.cargar(ctx.config.origen))}
+
+
+# ── los mundos (`[mundos]`, telar.mundos): ⚙ mundos ─────────────────────────────
+
+
+def _mundos_ahora(ctx: Contexto, *, subir: bool = False) -> dict:
+    """Lo que muestra ⚙ mundos, leído de nuevo del archivo: lo que se acaba de escribir. Con `subir`, lo escrito en la raíz
+    (el horario, `fuera`) se commitea y se sube al rato, solo ese archivo (telar.mundos_raiz.subir_luego)."""
+    from telar import config as mod_config
+    from telar import mundos, mundos_raiz
+
+    config = mod_config.cargar(ctx.config.origen)
+    if subir:
+        mundos_raiz.subir_luego(config)
+    return {"ok": True, **mundos.para_la_configuracion(config)}
+
+
+@app.get("/mundos")
+def get_mundos(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los mundos declarados, cada uno con lo suyo (su horario, su color, su tema, sus etiquetas, áreas y rutas),
+    `fuera`, las tintas y los temas que puede llevar uno, y de qué mundo es cada agente residente y por qué (su carpeta
+    o una etiqueta de su hilo). Cuál está puesto lo sabe el navegador."""
+    from telar import mundos
+
+    return mundos.para_la_configuracion(ctx.config)
+
+
+@app.get("/arte")
+def get_arte(ctx: Contexto = Depends(contexto)) -> dict:
+    """Los artes de la raíz (`<raiz>/.telar/arte/<clave>.txt`): cada uno con su nombre y su texto tal cual, para que la
+    página los registre junto a los de fábrica (telar.arte); `carpeta`, dónde se buscan, y `errores`, los que no se
+    entregaron y por qué."""
+    from telar import arte
+
+    return arte.de_la_raiz(ctx.config)
+
+
+class PedidoFuera(BaseModel):
+    #: el mundo que rige fuera de todo horario; vacío, ambos
+    fuera: str = ""
+
+
+@app.patch("/mundos")
+def patch_mundos(pedido: PedidoFuera, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar `[mundos] fuera`: el mundo que rige fuera de todo horario (vacío, ambos). Va a la raíz, para todas las máquinas
+    (telar.mundos_raiz), y sale de la configuración de esta si estaba; sin `raiz`, a la de esta."""
+    from telar import config as mod_config
+    from telar import mundos_raiz
+
+    try:
+        mundos_raiz.cambiar_fuera(ctx.config, pedido.fuera)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return _mundos_ahora(ctx, subir=True)
+
+
+class PedidoFueraDeSuMundo(BaseModel):
+    #: qué pasa con el agente con otro mundo puesto: al-final (el de fábrica), esconder o ver (telar.agentes.FUERAS)
+    fuera_de_su_mundo: str
+
+
+@app.put("/mundos/agentes/{clave}")
+def put_agente_fuera(clave: str, pedido: PedidoFueraDeSuMundo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Qué pasa con un agente residente fuera de su mundo (⚙ mundos, la grilla de los agentes): escribe
+    `fuera_de_su_mundo` en su agente.toml (el de fábrica quita la línea; lo demás del archivo queda igual) y lo
+    commitea y lo sube al rato, solo ese archivo (telar.temas.subir_luego), para que valga en todas las máquinas. 404 si
+    no hay un agente con esa carpeta aquí; 422 con un valor que no es al-final, esconder ni ver."""
+    import socket
+
+    from telar import agentes as mod_agentes
+    from telar import temas
+
+    a = next((x for x in mod_agentes.descubrir(ctx.config) if x.clave == clave), None)
+    if a is None:
+        raise ErrorDeServicio(f"no hay un agente «{clave}» en esta máquina", 404)
+    try:
+        ruta = mod_agentes.poner_fuera(a.carpeta, pedido.fuera_de_su_mundo)
+    except ValueError as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    except OSError as e:
+        raise ErrorDeServicio(f"no pude escribir su {mod_agentes.DEFINICION}: {e}", 500) from e
+    maquina = socket.gethostname().split(".")[0]
+    temas.subir_luego(ctx.config, archivo=ruta,
+                      mensaje=f"agentes: {clave} fuera de su mundo, {pedido.fuera_de_su_mundo} (⚙ mundos, desde {maquina})")
+    return _mundos_ahora(ctx)
+
+
+@app.put("/mundos/{nombre}")
+def put_mundo(nombre: str, ctx: Contexto = Depends(contexto)) -> dict:
+    """Un mundo nuevo: `[mundos.<nombre>]`, vacío, después del último. Lo suyo se le pone después (`PATCH`)."""
+    from telar import config as mod_config
+    from telar import mundos
+
+    try:
+        mundos.crear(ctx.config.origen, nombre)
+    except FileExistsError:
+        raise ErrorDeServicio(f"ya hay un mundo «{nombre}»", 409) from None
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return _mundos_ahora(ctx)
+
+
+@app.patch("/mundos/{nombre}")
+def patch_mundo(nombre: str, pedido: PedidoAjustes, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar algunos campos de un mundo (horario, color, tema, modos, etiquetas, areas, rutas) sin tocar los demás:
+    escribe solo esas líneas de `[mundos.<nombre>]`; vacío o null quita la línea (sin modos, el mundo los tiene todos).
+    El horario va a la raíz, para todas las máquinas (`<raiz>/.telar/mundos.toml`, telar.mundos_raiz), y sale de la
+    configuración de esta si estaba. Lo que dejaría `[mundos]` sin leerse (un área, una ruta o una etiqueta que ya es de
+    otro, un tema o un modo que no existe, un horario que no se entiende) o un horario que se pisa con el de otro mundo
+    no se escribe: 422 con el porqué."""
+    from telar import config as mod_config
+    from telar import mundos_raiz
+
+    try:
+        mundos_raiz.cambiar(ctx.config, nombre, pedido.valores)
+    except KeyError:
+        raise ErrorDeServicio(f"no hay un mundo «{nombre}»", 404) from None
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return _mundos_ahora(ctx, subir="horario" in pedido.valores)
+
+
+@app.delete("/mundos/{nombre}")
+def delete_mundo(nombre: str, ctx: Contexto = Depends(contexto)) -> dict:
+    """Quitar `[mundos.<nombre>]` (y `fuera`, si era él): lo que era suyo queda sin clasificar."""
+    from telar import config as mod_config
+    from telar import mundos
+
+    try:
+        hubo = mundos.borrar(ctx.config.origen, nombre)
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    if not hubo:
+        raise ErrorDeServicio(f"no hay [mundos.{nombre}] en la configuración", 404)
+    return _mundos_ahora(ctx)
+
+
+# ── los colores principales de un tema y los temas propios (`[temas]`, telar.temas): ⚙ temas ─────────────
+
+
+def _temas_ahora(ctx: Contexto) -> dict:
+    """Lo que muestra ⚙ temas, leído de nuevo de los archivos: lo que se acaba de escribir. Y lo escrito en la raíz se
+    commitea y se sube al rato, solo ese archivo (telar.temas.subir_luego), para que llegue a las otras máquinas."""
+    from telar import config as mod_config
+    from telar import temas
+
+    config = mod_config.cargar(ctx.config.origen)
+    temas.subir_luego(config)
+    return {"ok": True, **temas.para_la_configuracion(config)}
+
+
+@app.get("/temas")
+def get_temas(ctx: Contexto = Depends(contexto)) -> dict:
+    """Cada tema que se puede elegir (los de fábrica y después los propios) con sus colores propios (`propios`: color →
+    #rrggbb; vacío, de fábrica; los de la raíz con los de esta máquina encima), su `base` (de uno propio), si es de fábrica
+    y dónde vive (`vive`: «raiz», todas las máquinas; «maquina», solo esta; «mixto»; `en_raiz` y `en_maquina`, qué color
+    está dónde), y los colores que se pueden cambiar (`fondos`, `tintas`); `raiz`, el archivo de la raíz ("" sin raíz), y
+    `maquina`, la configuración. Cuál se ve lo sabe el navegador."""
+    from telar import temas
+
+    return temas.para_la_configuracion(ctx.config)
+
+
+class PedidoTemaNuevo(BaseModel):
+    #: el tema del que parte: uno de fábrica, o uno propio (se copian su base y sus colores)
+    base: str = ""
+
+
+@app.put("/temas/{tema}")
+def put_tema(tema: str, pedido: PedidoTemaNuevo, ctx: Contexto = Depends(contexto)) -> dict:
+    """Un tema propio nuevo, en la raíz: `[temas.<tema>] base = "<base>"` (y los colores de la base, si es propia). 409 si ya
+    hay uno así; 422 si el nombre no sirve (uno de fábrica, mayúsculas, espacios…) o la base no existe."""
+    from telar import config as mod_config
+    from telar import temas
+
+    try:
+        temas.nuevo(ctx.config, tema, pedido.base)
+    except FileExistsError:
+        raise ErrorDeServicio(f"ya hay un tema «{tema}»", 409) from None
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return _temas_ahora(ctx)
+
+
+@app.patch("/temas/{tema}")
+def patch_tema(tema: str, pedido: PedidoAjustes, ctx: Contexto = Depends(contexto)) -> dict:
+    """Cambiar algunos colores de un tema sin tocar los demás: escribe solo esas líneas de `[temas.<tema>]` en la raíz (y las
+    saca de la configuración de la máquina, que las taparía); vacío o null vuelve al de fábrica (al de su base, si es
+    propio), en las dos. Un color que se lee mal se escribe igual (la página lo avisa); uno que no es un color, no: 422."""
+    from telar import config as mod_config
+    from telar import temas
+
+    try:
+        temas.cambiar(ctx.config, tema, pedido.valores)
+    except KeyError:
+        raise ErrorDeServicio(f"no hay un tema «{tema}»", 404) from None
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    return _temas_ahora(ctx)
+
+
+@app.delete("/temas/{tema}")
+def delete_tema(tema: str, ctx: Contexto = Depends(contexto)) -> dict:
+    """Quitar `[temas.<tema>]` de la raíz y de la máquina: uno de fábrica vuelve entero al de fábrica; uno propio deja de
+    existir (409 si un modo o un mundo de esta máquina lo tiene puesto, con quién)."""
+    from telar import config as mod_config
+    from telar import temas
+
+    try:
+        hubo = temas.quitar(ctx.config, tema)
+    except temas.EnUso as e:
+        raise ErrorDeServicio(str(e), 409) from e
+    except mod_config.ErrorDeConfig as e:
+        raise ErrorDeServicio(str(e), 422) from e
+    if not hubo:
+        raise ErrorDeServicio(f"no hay [temas.{tema}] en la configuración", 404)
+    return _temas_ahora(ctx)
 
 
 # ── los estilos de los glifos (telar.glifos) ──────────────────────────────────────
@@ -875,6 +1248,22 @@ def post_compartir(pedido: PedidoCompartir, ctx: Contexto = Depends(contexto)):
 def get_leer(hilo: str, ultimos: int = 0, maquina: str = "", ctx: Contexto = Depends(contexto)):
     """Lo último de un hilo, de esta máquina o de otra por el bus (`telar hilo leer <hilo> --json`)."""
     return servicio_historias.leer(ctx, hilo, ultimos=ultimos, maquina=maquina)
+
+
+class PedidoResponder(BaseModel):
+    hilo: str
+    #: el id de la pregunta (`pregunta.id` en lo que da /hilos/leer)
+    id: str
+    #: {pregunta: respuesta}, una por pregunta
+    respuestas: dict[str, str]
+    maquina: str = ""
+
+
+@app.post("/hilos/responder", response_model=servicio_historias.Respondido)
+def post_responder(pedido: PedidoResponder, ctx: Contexto = Depends(contexto)):
+    """Contestar lo que el agente de un hilo pregunta con opciones, en vez de hacerlo en su terminal: el mod de telar se
+    lo entrega al diálogo (docs/contratos.md, «telar hilo leer»)."""
+    return servicio_historias.responder(ctx, pedido.hilo, pedido.id, pedido.respuestas, maquina=pedido.maquina)
 
 
 from telar.servicios import documentos as servicio_documentos
@@ -1123,17 +1512,38 @@ def post_personas(accion: str, pedido: PedidoPersonas, ctx: Contexto = Depends(c
 
 
 
-@app.get("/archivos", response_model=servicio_archivos.Archivo)
-def get_archivo(ruta: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+@app.get("/archivos", response_model=servicio_archivos.Archivo, responses={204: {"description": "con `si_hay`: no está"}})
+def get_archivo(ruta: str, maquina: str = "", si_hay: bool = False, ctx: Contexto = Depends(contexto)):
     """Un archivo de la raíz o de un repo de `[repos]` (o declarado por una app), hasta 2 MB. Con `maquina`
-    (o una ruta `máquina:ruta`), el de otra máquina, que su nodo lee por el bus con sus propios límites."""
-    return servicio_archivos.leer_en(ctx, ruta, maquina)
+    (o una ruta `máquina:ruta`), el de otra máquina, que su nodo lee por el bus con sus propios límites. Con `si_hay`,
+    uno que no está es un 204 sin cuerpo y no un 404: para quien pregunta si hay (la memoria de un lienzo que todavía
+    no guarda nada), que no esté no es un error, y el navegador no lo anota como uno."""
+    try:
+        return servicio_archivos.leer_en(ctx, ruta, maquina)
+    except ErrorDeServicio as e:
+        if si_hay and e.codigo == 404:
+            from fastapi import Response
+
+            return Response(status_code=204)
+        raise
 
 
 @app.get("/archivos/md", response_model=servicio_archivos.Hallados)
 def get_archivos_md(carpeta: str, hondo: int = 3, ctx: Contexto = Depends(contexto)):
     """Los .md de una carpeta de la raíz, hasta `hondo` niveles, con su fecha."""
     return servicio_archivos.buscar_md(ctx, carpeta, min(max(hondo, 0), 5))
+
+
+from telar.servicios import resolver as servicio_resolver
+
+
+@app.get("/archivos/resolver", response_model=servicio_resolver.Resolucion)
+def get_archivos_resolver(ruta: str, carpeta: str = "", nombradas: list[str] | None = Query(None), maquina: str = "",
+                          ctx: Contexto = Depends(contexto)):
+    """Dónde está un archivo que nombró el agente de un hilo (`ruta`, como la escribió), con la carpeta del hilo y
+    las carpetas nombradas antes en su mensaje (`nombradas`, la más cercana primero): la ruta, si es una, o los
+    candidatos, si hay varios que se llaman así (telar.servicios.resolver). Con `maquina`, en esa máquina."""
+    return servicio_resolver.resolver_en(ctx, ruta, carpeta, nombradas or [], maquina)
 
 
 class PedidoArchivo(BaseModel):
@@ -1160,20 +1570,82 @@ class PedidoObjeto(BaseModel):
     version: str = ""
 
 
+@app.get("/esperas", response_model=servicio_esperas.Esperas)
+def get_esperas(tipo: list[str] | None = Query(None), mundo: list[str] | None = Query(None),
+                ctx: Contexto = Depends(contexto)):
+    """Lo que espera una decisión de la persona, de lo más viejo a lo más nuevo (`telar esperas --json`):
+    permisos y preguntas en vivo de los hilos, el `avance` de las tareas, los mensajes retenidos y lo de los módulos.
+    `tipo` (se repite) deja solo los de esos tipos de objeto; `mundo` (se repite), solo los de esos mundos de
+    `[mundos]` (`sin-clasificar`: los que no calzan en ninguno). Una fuente que falla va en `fallas`."""
+    return servicio_esperas.esperas(ctx, tipos=tuple(tipo or ()), mundos=tuple(mundo or ()))
+
+
+@app.get("/avisos")
+def get_avisos(ctx: Contexto = Depends(contexto)):
+    """Los avisos que vienen de un archivo (`[avisos.<clave>]`, telar.avisos) que hay que decir ahora: `aviso` o `mal`,
+    de la última hora, de esta máquina y de las otras (por el bus). {avisos: [{clave, maquina, nivel, linea, fecha,
+    informe, sugerencias, problemas, visto}], fallas: {clave: motivo}}. La franja de la página muestra los que no están
+    vistos."""
+    from telar import avisos
+
+    return avisos.de_todas(ctx.config)
+
+
+@app.post("/avisos/visto")
+def post_avisos_visto(clave: str = Body(..., embed=True), nivel: str = Body("", embed=True),
+                      problemas: list[str] | None = Body(None, embed=True), ctx: Contexto = Depends(contexto)):
+    """Dar por visto el aviso de la fuente `clave`, en la máquina donde vive su archivo (por el bus si es otra). Con
+    `nivel` y `problemas`, lo que la persona vio; sin ellos, lo que dice el archivo ahora. Sale de nuevo con un problema
+    nuevo, si sube de nivel o si pasó por ok. 404 si no hay esa fuente; 409 si no se pudo."""
+    from telar import avisos
+
+    r = avisos.marcar_visto(ctx.config, clave, nivel, problemas)
+    if not r.get("ok"):
+        no_hay = not any(f.clave == clave for f in getattr(ctx.config, "avisos", ()))
+        raise HTTPException(404 if no_hay else 409, r.get("error") or "no se pudo")
+    return r
+
+
+@app.get("/buscar", response_model=servicio_buscar.Busqueda)
+def get_buscar(q: str = "", fuente: list[str] | None = Query(None), mundo: list[str] | None = Query(None),
+               limite: int = 50, tope: float = servicio_buscar.TOPE, releer: bool = False, primero: str = "",
+               si_hay: bool = False, ctx: Contexto = Depends(contexto)):
+    """Lo que calza con `q` en todo junto (`telar buscar --json`): lo que espera, las tareas, las casillas, los hilos, los
+    proyectos, los objetos de cada tipo de un módulo que los lista y lo de cada bloque del día. `fuente` (se repite) deja
+    solo esas (`bloque:<clave>` para un bloque, `objeto:<tipo>` para los de un tipo);
+    `mundo` (se repite), solo lo de esos mundos; `limite`, cuántas de cada fuente (0: todas); `primero` (un mundo), lo
+    de ese mundo y lo sin clasificar antes en cada fuente, antes de cortar al límite (Todo pasa el puesto); `si_hay`, que
+    una `fuente` que aquí no hay se deje fuera en vez de ser un 404 (⌘K pide tres de una vez). Una fuente que falla
+    dice por qué en su `falla`. No tarda más que `tope` segundos: lo leído se guarda en este proceso, y la fuente que no
+    llega sale con lo de antes, o vacía y `tarde`; `releer` lee todas de nuevo."""
+    return servicio_buscar.buscar(ctx, q, fuentes=tuple(fuente or ()), mundos=tuple(mundo or ()), limite=limite,
+                                  tope=min(max(tope, 0.0), 120.0), releer=releer, primero=primero,
+                                  si_hay=si_hay)
+
+
+@app.post("/buscar/preparar")
+def post_buscar_preparar(ctx: Contexto = Depends(contexto)) -> dict:
+    """Que las fuentes de buscar empiecen a leerse, sin esperar a ninguna (Todo, al abrirse): `{"leyendo": [clave…]}`."""
+    return {"leyendo": servicio_buscar.preparar(ctx)}
+
+
 @app.get("/objetos/tipos")
 def get_objetos_tipos(ctx: Contexto = Depends(contexto)):
     """Los tipos de objeto que hay: los de fábrica y los de los módulos instalados."""
     from telar import objetos
 
-    return {"tipos": [{"tipo": n, "descripcion": t.descripcion, "modulo": getattr(t, "modulo", "")}
+    return {"tipos": [{"tipo": n, "descripcion": t.descripcion, "modulo": getattr(t, "modulo", ""), "listar": t.lista}
                       for n, t in sorted(objetos.tipos(ctx).items())]}
 
 
 @app.get("/objetos/{direccion:path}")
 def get_objeto(direccion: str, ctx: Contexto = Depends(contexto)):
-    """Un objeto por su dirección (`tarea:T366`, `hilo:Telar`…): sus campos, enlaces y acciones."""
+    """Un objeto por su dirección (`tarea:T366`, `hilo:Telar`…): sus campos, enlaces y acciones. Un tipo solo
+    (`tarea`, o `tarea:`) es la colección: los suyos, si el tipo sabe listarlos (`telar objeto tarea --listar`)."""
     from telar import objetos
 
+    if objetos.es_tipo(direccion):
+        return objetos.listar(ctx, direccion)
     return objetos.ver(ctx, direccion)
 
 
@@ -1193,6 +1665,14 @@ def get_modulos(ctx: Contexto = Depends(contexto)) -> dict:
     from telar.servicios import modulos as servicio_modulos
 
     return servicio_modulos.instalados(ctx, con_catalogo=True).model_dump(mode="json")
+
+
+@app.get("/configurar/{modulo}", response_model=Pagina, response_model_exclude_unset=True)
+def get_configurar(modulo: str, ctx: Contexto = Depends(contexto)):
+    """La pantalla de configuración de un módulo (`[configurar]` de su modulo.toml): una página, casi siempre un lienzo."""
+    from telar.servicios import modulos as servicio_modulos
+
+    return servicio_archivos.anotar_lienzos(servicio_modulos.configuracion(ctx, modulo))
 
 
 @app.get("/modulos/catalogo")
@@ -1323,17 +1803,21 @@ def get_actualizar(ctx: Contexto = Depends(contexto)) -> dict:
 
 
 @app.get("/salud")
-def get_salud(ctx: Contexto = Depends(contexto)) -> dict:
+def get_salud(request: Request, ctx: Contexto = Depends(contexto)) -> dict:
     """Que contesta, con qué versión y quién es: la máquina (su nombre en el bus, o su hostname) y el host.
-    La página lo muestra arriba, para saber en qué máquina se está (hay una página por máquina)."""
+    La página lo muestra arriba, para saber en qué máquina se está (hay una página por máquina). `web`: dónde sirve
+    este proceso la página (`telar serve --web`), "" si no la sirve en un puerto: así `telar desplegar` la comprueba
+    en su puerto de verdad, con la llave de esta máquina."""
     import socket
 
     from telar import bus as mod_bus
 
-    return {"ok": True, "version": __version__, "maquina": mod_bus.maquina(ctx.config), "host": socket.gethostname()}
+    return {"ok": True, "version": __version__, "maquina": mod_bus.maquina(ctx.config), "host": socket.gethostname(),
+            "web": getattr(request.app.state, "web", "")}
 
 
 def socket_por_defecto() -> Path:
-    base = os.environ.get("XDG_STATE_HOME")
     # en una carpeta propia: `telar serve` la deja solo para su dueño (0700)
-    return (Path(base) if base else Path.home() / ".local" / "state") / "telar" / "serve" / "telar.sock"
+    from telar.config import socket_serve
+
+    return socket_serve()

@@ -14,6 +14,12 @@ gente desde `P01`), no cosas del proyecto.
 Su **clase** es el prefijo (`PEN-`, `H`), con el nombre de la sección donde están la mayoría de sus definiciones
 («Pendientes»): así `H` es «Hipótesis» en un proyecto e «Hitos» en otro sin que nadie lo diga.
 
+Un proyecto se trabaja también en ramas, cada una en su copia de trabajo (`git worktree`): un entregable que todavía
+no entra a main vive solo ahí. Así que la carpeta se lee con sus **ramas** (`ramas`): de cada copia de trabajo del
+mismo repositorio que está en una rama, los documentos que esa rama cambió o agregó desde que salió (sus commits y lo
+que no ha commiteado). Lo de la carpeta manda y la rama suma lo que la carpeta no tiene (`carpeta`); lo que la rama no
+tocó es lo de la carpeta, no una versión vieja.
+
 Cada archivo se lee una vez y se vuelve a leer solo si cambió su fecha o su tamaño (`_cache`); lo de una carpeta se
 arma de eso en cada consulta. Sin red ni estado: lo usan `telar.servicios.codigos` (la orden, la API y el bus).
 """
@@ -22,13 +28,14 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import threading
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["CODIGO", "definiciones", "nombrados", "carpeta", "en_conversacion", "clase_de", "normalizar"]
+__all__ = ["CODIGO", "definiciones", "nombrados", "carpeta", "ramas", "en_conversacion", "clase_de", "normalizar"]
 
 #: un código: una a cuatro mayúsculas, quizás un guion, uno a cuatro dígitos (`H3`, `PEN-07`, `IND-020`, `T458`)
 CODIGO = r"[A-Z]{1,4}-?\d{1,4}"
@@ -275,6 +282,81 @@ def _archivos(raiz: Path) -> tuple[list[tuple[str, os.stat_result]], bool]:
     return salida, False
 
 
+@dataclass(frozen=True)
+class Rama:
+    """Una rama en que se trabaja la carpeta: su nombre, la misma carpeta en su copia de trabajo y los documentos
+    (relativos a la carpeta) que la rama cambió o agregó."""
+    nombre: str
+    raiz: Path
+    propios: frozenset[str]
+
+
+def _git(cwd: Path, *args: str) -> str | None:
+    try:
+        r = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+#: (copia, su HEAD, el HEAD de la carpeta) → de dónde salió la rama: cambia solo si se mueve una de las dos
+_bases: dict[tuple[str, str, str], str] = {}
+
+
+def _copias(raiz: Path) -> tuple[Path, str, list[tuple[Path, str, str]]] | None:
+    """El repositorio de la carpeta: (su raíz, su HEAD, [(otra copia de trabajo, su HEAD, su rama)…]). Las copias
+    sin rama (detached: una integración a medias) y las que ya no están no cuentan."""
+    lista = _git(raiz, "worktree", "list", "--porcelain")
+    top = _git(raiz, "rev-parse", "--show-toplevel")
+    if not lista or not top:
+        return None
+    top_p = Path(top.strip()).resolve()
+    principal_head, otras = "", []
+    for bloque in lista.strip().split("\n\n"):
+        campos = dict((ln.split(" ", 1) + [""])[:2] for ln in bloque.splitlines())
+        ruta = Path(campos.get("worktree", "")).resolve()
+        if ruta == top_p:
+            principal_head = campos.get("HEAD", "")
+        elif campos.get("branch") and "prunable" not in campos and ruta.is_dir():
+            otras.append((ruta, campos.get("HEAD", ""), campos["branch"].removeprefix("refs/heads/")))
+    return top_p, principal_head, otras
+
+
+def ramas(raiz: Path) -> list[Rama]:
+    """Las otras ramas en que se trabaja esa carpeta (el docstring del módulo), con lo que cada una cambió o agregó
+    en ella: los .md que difieren de donde salió (commits y cambios sin commitear) y los nuevos sin commitear."""
+    raiz = Path(raiz).resolve()
+    repo = _copias(raiz)
+    if repo is None:
+        return []
+    top, head, otras = repo
+    try:
+        rel = raiz.relative_to(top)
+    except ValueError:
+        return []
+    salida = []
+    for copia, su_head, nombre in otras:
+        carpeta_r = copia / rel
+        if not carpeta_r.is_dir() or not head or not su_head:
+            continue
+        clave = (str(copia), su_head, head)
+        base = _bases.get(clave)
+        if base is None:
+            base = (_git(copia, "merge-base", su_head, head) or "").strip()
+            if not base:
+                continue
+            _bases[clave] = base
+        cambiados = _git(carpeta_r, "diff", "--name-only", "--relative", "--diff-filter=d", base, "--", ".") or ""
+        nuevos = _git(carpeta_r, "ls-files", "--others", "--exclude-standard", "--", ".") or ""
+        propios = frozenset(
+            p for p in (cambiados + nuevos).splitlines()
+            if p.endswith(".md") and not any(x.startswith(".") or x in SALTAR for x in p.split("/")[:-1])
+            and (carpeta_r / p).is_file())
+        if propios:
+            salida.append(Rama(nombre, carpeta_r, propios))
+    return salida
+
+
 @dataclass
 class Carpeta:
     """Lo de una carpeta: por código, sus definiciones (la del archivo más reciente primero) y dónde se nombra."""
@@ -287,6 +369,9 @@ class Carpeta:
     menciones: dict[str, dict[str, list[int]]]
     #: prefijo → el archivo donde se define la mayor parte de su clase (lo calcula `principal`)
     _de_clase: dict[str, str] | None = None
+    #: lo que se leyó de una rama (`carpeta`): su clave (el archivo, o `archivo@rama` si la carpeta también lo tiene)
+    #: → (su ruta, la rama, el archivo relativo)
+    de_rama: dict[str, tuple[str, str, str]] = field(default_factory=dict)
 
     def fuera(self, codigo: str) -> dict[str, list[int]]:
         """Los archivos que lo nombran sin definirlo, con sus líneas."""
@@ -314,20 +399,59 @@ class Carpeta:
         return ds[0]
 
 
-def carpeta(raiz: Path) -> Carpeta:
+def carpeta(raiz: Path, de_ramas: list[Rama] | tuple[Rama, ...] = ()) -> Carpeta:
+    """Los códigos de la carpeta, con lo que sus ramas suman (`de_ramas`, lo que da `ramas`). Lo de la carpeta manda:
+    un documento que solo existe en una rama entra entero (si dos ramas lo agregan, el más reciente); uno que la carpeta
+    también tiene aporta, con su propio nombre (`README.md@rama`), solo las definiciones de códigos que la carpeta no
+    define y las menciones que su versión de la carpeta no hace. Así una rama vieja no tapa lo nuevo de la carpeta."""
     raiz = Path(raiz)
     lista, truncado = _archivos(raiz)
     defs: dict[str, list[tuple[int, Definicion]]] = defaultdict(list)
     menciones: dict[str, dict[str, list[int]]] = defaultdict(dict)
+
+    def sumar(clave: str, st: os.stat_result, ds, ms: dict[str, list[int]]) -> None:
+        for d in ds:
+            defs[d.codigo].append((st.st_mtime_ns, Definicion(**{**d.__dict__, "archivo": clave})))
+        for c, ls in ms.items():
+            menciones[c][clave] = ls
+
+    mencionados: dict[str, set[str]] = {}
     for ruta, st in lista:
         leido = _leer(ruta, st)
         rel = os.path.relpath(ruta, raiz)
-        for d in leido.defs:
-            defs[d.codigo].append((st.st_mtime_ns, Definicion(**{**d.__dict__, "archivo": rel})))
-        for c, ls in leido.menciones.items():
-            menciones[c][rel] = ls
+        sumar(rel, st, leido.defs, leido.menciones)
+        mencionados[rel] = set(leido.menciones)
+    definidos = set(defs)
+
+    nuevos: dict[str, tuple[str, os.stat_result, str]] = {}
+    cambiados: list[tuple[str, str, os.stat_result, str]] = []
+    for r in de_ramas:
+        for rel in sorted(r.propios):
+            p = str(r.raiz / rel)
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if rel in mencionados:
+                cambiados.append((rel, p, st, r.nombre))
+            elif rel not in nuevos or nuevos[rel][1].st_mtime_ns < st.st_mtime_ns:
+                nuevos[rel] = (p, st, r.nombre)
+    #: clave → (su ruta, la rama, el archivo relativo)
+    de_rama: dict[str, tuple[str, str, str]] = {}
+    for rel, (p, st, rama) in sorted(nuevos.items()):
+        leido = _leer(p, st)
+        sumar(rel, st, leido.defs, leido.menciones)
+        de_rama[rel] = (p, rama, rel)
+    for rel, p, st, rama in cambiados:
+        leido = _leer(p, st)
+        ds = [d for d in leido.defs if d.codigo not in definidos]
+        ms = {c: ls for c, ls in leido.menciones.items() if c not in mencionados[rel]}
+        if ds or ms:
+            clave = f"{rel}@{rama}"
+            sumar(clave, st, ds, ms)
+            de_rama[clave] = (p, rama, rel)
     ordenadas = {c: [d for _, d in sorted(xs, key=lambda x: (-x[0], x[1].archivo, x[1].linea))] for c, xs in defs.items()}
-    return Carpeta(raiz, len(lista), truncado, ordenadas, dict(menciones))
+    return Carpeta(raiz, len(lista) + len(nuevos), truncado, ordenadas, dict(menciones), de_rama=de_rama)
 
 
 # ── una conversación ───────────────────────────────────────────────────────────────────────────

@@ -63,6 +63,19 @@ proyecto cuyo cliente (el `{campo:Cliente}` de su etiqueta) está en `internos`,
 nombre sin ese prefijo: «Taller · Plan anual» es «Plan anual», no «Taller». Con varios repositorios, se juntan
 las de todos, las del repo más profundo primero.
 
+El frontmatter de cada unidad también se lee (`telar proyectos --json` lo trae, en `frontmatter`): un modo agrupa por
+uno de sus campos las unidades que llama iniciativas (`agrupar_iniciativas = "{frontmatter:programa}"`,
+[configuracion.md](configuracion.md)), con el mismo selector de `productos.yaml`. De una iniciativa se leen también
+`estado`, `estado_desde`, `estado_nota` y `estado_fuente` (el vocabulario de `[iniciativas]`, en la configuración);
+cambiar su estado desde telar escribe solo las dos primeras.
+
+**Mudar unidades de una carpeta a otra.** Se declara el arquetipo nuevo con su ruta y se mueven las carpetas de a
+poco: mientras dura, cada unidad es del arquetipo de la carpeta donde está, y una que esté en las dos (copiada y
+todavía sin borrar) es dos unidades, cada una con su dirección y su hilo. Un hilo vinculado a la carpeta vieja sigue
+vinculado a ella; la nueva se vincula aparte. Una tarea cuyo `proyecto:` apunta adentro de una unidad es de esa unidad
+(la más honda que la contiene); una que apunta a la carpeta vieja ya borrada no es de ninguna: al mudar, se cambia
+también el `proyecto:` de sus tareas.
+
 Hay uno completo y comentado en [`ejemplo/.telar/perfil.yaml`](../ejemplo/.telar/perfil.yaml).
 
 ## Arquetipos
@@ -98,13 +111,17 @@ si está archivado— y por eso es el de la carpeta: estable y sin espacios. Lo 
 ```yaml
 proyecto:
   ruta: "operacion/proyectos/*/"
-  etiqueta: "{campo:Cliente} · {titulo}"    # «Grupo Agrosur · Adopción IA»
+  etiqueta: "{campo:Cliente} · {titulo}"    # «Grupo Norte · Adopción IA»
 ```
 
 De un campo queda solo el nombre: sin lo que va entre paréntesis y cortado en la
 primera raya, coma o punto y coma. Si un valor ya está dentro de otro no se repite (con
-el título «AquaChile — Campaña de Ideas», el cliente «AquaChile» sobra), y un marcador
+el título «Molino — Campaña de Ideas», el cliente «Molino» sobra), y un marcador
 vacío se lleva su separador. Sin `etiqueta`, se muestra el título del documento.
+
+El título se lee como se ve, sin las barras con que markdown escapa la puntuación:
+`# 01\. Reconocimiento` (la barra evita que el número abra una lista) es «01.
+Reconocimiento» en todas las vistas. Dentro de un `código` las barras se quedan.
 
 ## Secciones
 
@@ -179,6 +196,9 @@ Lo que un repositorio le dice a telar vive en una carpeta, `.telar/`, en su raí
 | `local.yaml` | lo de cada persona, encima del perfil | no: agrégalo a `.gitignore` |
 | `fechas.yaml` | los mapas de fechas: cómo se leen los cronogramas que no tienen la forma de por defecto (abajo, «Mapas de fechas») | sí |
 | `productos.yaml` | qué unidades son productos (lo que se vende) y cómo son sus ideas: el backlog y el tablero del módulo productos (abajo, «Productos») | sí |
+| `compilados.yaml` | cómo se vuelve a generar lo compilado (lo que `.gitattributes` marca con `merge=telar-compilado`) y de qué fuentes sale: `telar hilo fusionar` lo corre cuando la rama de un hijo lo toca o toca sus fuentes, en vez de negarse por un choque en lo que sale de un comando, y `telar desplegar` avisa si no corresponde (abajo, «Lo compilado») | sí |
+| `despliegue.yaml` | cómo se despliega en cada máquina donde vive: qué preparar, qué servicios reiniciar, qué hacer después y qué comprobar (`telar desplegar`; abajo, «El despliegue») | sí |
+| `changelog.yaml` | que el CHANGELOG va por fragmentos: cada hijo con rama escribe su entrada en un archivo propio y `telar hilo fusionar` la pasa a `[Unreleased]` (abajo, «El CHANGELOG por fragmentos») | sí |
 | `equipo.yaml` | el equipo que trabaja en este repositorio: su bus, quién aprueba a las personas nuevas, sus módulos y los programas que hacen falta (`telar instalar --unirse`, docs/arquitectura.md, «Entre máquinas: el bus») | sí |
 
 `local.yaml` tiene la misma forma que el perfil y se lee encima de él: un valor suyo reemplaza al del perfil,
@@ -206,6 +226,105 @@ agente:                           # opcional: el [agente] de quien se une, si no
 
 Quien se une desde otra máquina suya (su servidor) copia antes su clave (`~/.config/telar/bus.token`): la puerta
 dice que ya tiene cuenta, y esa máquina entra con ella sin pedido nuevo. Nada secreto ni personal va ahí: cada persona genera su secreto en su máquina.
+
+## Lo compilado: `.telar/compilados.yaml`
+
+Un archivo que sale de un comando (un paquete de la página, un CSS armado) choca cada vez que dos ramas lo tocan, y no
+se resuelve a mano: se toma cualquiera de las dos versiones y se vuelve a generar. Un repositorio lo declara en dos
+partes. Qué es compilado, en `.gitattributes` (lo que git ya entiende):
+
+```
+src/web/app.js   merge=telar-compilado
+```
+
+Y cómo se genera, en `.telar/compilados.yaml`: cada comando, en su carpeta (desde la raíz; sin shell, como en una
+terminal), en orden, y de qué sale (`fuentes`: rutas desde la raíz, como `si_cambia` del despliegue: `*` cruza
+carpetas y `x/` es todo lo de adentro).
+
+```yaml
+comandos:
+  - carpeta: web
+    comando: npm run compilar
+    fuentes: [web/src/, web/package.json]
+```
+
+Con eso, `telar hilo fusionar` no se niega por lo compilado: si la rama de un hijo lo toca, o toca sus `fuentes`,
+fusiona en un worktree temporal, corre los comandos (con los `node_modules` de la carpeta del padre enlazados) y
+commitea la fusión con lo generado (docs/contratos.md, `telar hilo <verbo> --json`). Las fuentes importan: una rama
+que cambió el CSS y no lo compilado lo dejaría viejo en la base, y se desplegaría así. Sin `fuentes`, solo cuenta
+tocar lo compilado. Como red, `telar desplegar` lo vuelve a generar en un worktree temporal del commit que despliega
+(si lo que cambia toca las fuentes o lo compilado) y avisa si lo commiteado no corresponde (`compilados` en su
+`--json`); no niega el despliegue. Y `telar hilo hijo --rama` deja definido el driver de git
+`telar-compilado` solo para los worktrees del repositorio (en un archivo al lado de su `.git/config`, que este incluye
+con `includeIf "gitdir:…/worktrees/"`): ahí un `git merge` de la base se queda con la versión de la rama y no se
+detiene. En la carpeta principal no se define, y lo compilado sigue chocando como siempre: un `git pull` no deja un
+compilado viejo sin que nadie lo vea.
+
+## El despliegue: `.telar/despliegue.yaml`
+
+`telar desplegar` deja corriendo lo que está en la rama principal en cada máquina donde vive el repositorio (esta y
+las de `[remotos]`; docs/desarrollar.md, «Llevarlo a las máquinas»). Lo que es del repositorio lo dice él: qué hay
+que hacer con su código en una máquina para que corra. Lo que es de cada máquina (dónde está el repositorio allá, si
+usa systemd o launchd) no va aquí: sale de la configuración de quien despliega y de la máquina misma
+(docs/configuracion.md, «`telar desplegar`»). Un repositorio sin este archivo no se despliega.
+
+```yaml
+rama: main                        # opcional: la que se despliega (main por defecto)
+
+preparar:                         # antes de reiniciar, en la carpeta del repositorio de cada máquina, en orden
+  - comando: bin/compilar
+    si_cambia: [puente/]          # solo si cambió algo de esto desde lo que corre en esa máquina
+    si_corre: mi-puente           # solo donde está instalado ese servicio (uno de los de abajo)
+
+servicios:                        # lo que corre este código: se reinicia donde esté instalado (si no, se salta)
+  - systemd: mi-puente            # su unidad de usuario en Linux (systemctl --user)
+    launchd: com.ejemplo.puente   # su etiqueta en macOS (launchctl, gui/<uid>)
+    si_cambia: [puente/, bin/]
+  - systemd: telar-serve          # el de telar, para que vea las consultas nuevas de un módulo
+    launchd: com.telar.serve
+
+despues:                          # con el código nuevo ya corriendo
+  - comando: telar agente instalar --si
+    si_cambia: [agente/]
+
+comprobar:                        # que quedó: en cada máquina, también en las que ya estaban al día
+  - pagina: /pagina.json          # GET en la página de telar de esa máquina, con su llave
+    igual: firma                  # este campo de su JSON, el mismo en todas las máquinas
+  - comando: bin/estado           # o un comando, que salga con 0
+    plazo: 10                     # segundos para que conteste (30 por defecto): el servicio puede estar arrancando
+```
+
+Un comando corre con bash en la carpeta del repositorio (en otra máquina, con el PATH de una sesión: `bash -lc` por
+ssh), y uno que sale con algo distinto de 0 detiene el despliegue. `si_cambia` son rutas desde la raíz del
+repositorio, con `*` (que también cruza carpetas) o terminadas en `/` (todo lo de adentro), contra lo que cambió desde
+el último despliegue en esa máquina (`refs/telar/desplegado`); sin `si_cambia`, cualquier cambio cuenta. Una máquina
+que ya corre el commit no prepara ni reinicia nada, y una en la que nunca se desplegó con `telar desplegar` lo hace
+todo. Un servicio se nombra en uno de los dos sistemas o en los dos; `si_corre` lo nombra por cualquiera de sus
+nombres.
+
+`pagina` le pide la ruta a la página que sirve el `telar serve` de esa máquina, en su puerto de verdad (lo que dice su
+`/salud`, `web`) y con su llave (`~/.config/telar/panel.llave`), que no sale de ella: `/pagina.json` dice qué página
+sirve; `/api/…`, la API detrás de la página. El de telar mismo está en su `.telar/despliegue.yaml`.
+## El CHANGELOG por fragmentos: `.telar/changelog.yaml`
+
+Dos ramas que escriben en el CHANGELOG chocan siempre: las dos agregan arriba, en `[Unreleased]`. Un repositorio que
+declara `.telar/changelog.yaml` lo junta por fragmentos: el hijo con rama escribe su entrada en un archivo propio de la
+carpeta (`changelog.d/<rama>.md`), y `telar hilo fusionar` la pasa a `[Unreleased]` y borra el archivo, en el mismo
+commit de la fusión (docs/contratos.md, `telar hilo <verbo> --json`).
+
+```yaml
+archivo: CHANGELOG.md        # el CHANGELOG, desde la raíz
+carpeta: changelog.d         # los fragmentos: cada .md de ahí, salvo su README.md
+ancho: 120                   # opcional: el largo máximo de una línea del fragmento
+negrita: true                # opcional: cada entrada empieza con su primera oración en negrita («- **…**»)
+secciones: [Added, Changed, Deprecated, Removed, Fixed, Security]   # opcional: las que valen, en su orden
+```
+
+Un fragmento es un pedazo del CHANGELOG con una o más secciones, cada una con sus entradas: cada entrada empieza con
+`- ` y sus líneas siguientes van sangradas en dos espacios. Cada sección va arriba de la suya en `[Unreleased]`; la
+que falta se crea en el orden de `secciones`, y `[Unreleased]`, arriba de la primera versión, si tampoco está. Un
+fragmento mal formado (otra sección, texto antes de la primera, una línea que no es entrada, más ancho que `ancho`)
+hace que fusionar se niegue antes de tocar nada. Sin la declaración, fusionar hace lo de siempre.
 
 ## Mapas de fechas: `.telar/fechas.yaml`
 

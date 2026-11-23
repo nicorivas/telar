@@ -39,7 +39,7 @@ def _registro(config, hilo: str) -> Path:
 
     d = Path(config.estado) / "llevar"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{casilla.nombre_de_carpeta(hilo)}.log"
+    return d / f"{casilla.ficha(config, hilo)}.log"
 
 
 def llevar(ctx, hilo: str, maquina: str = "", si: bool = False, espera: float = ESPERA) -> Llevado:

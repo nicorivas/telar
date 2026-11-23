@@ -75,6 +75,6 @@ class ElHome(ConCasa):
 
 class SinProyecto(Prueba):
     def test_la_config_dice_que_agente_recibe_lo_general(self):
-        c = mod_config.desde_dict({"agentes": {"carpeta": "agentes", "sin_proyecto": "gestion", "en": "srv"}})
-        self.assertEqual((c.agentes_sin_proyecto, c.agentes_en), ("gestion", "srv"))
+        c = mod_config.desde_dict({"agentes": {"carpeta": "agentes", "sin_proyecto": "secretaria", "en": "srv"}})
+        self.assertEqual((c.agentes_sin_proyecto, c.agentes_en), ("secretaria", "srv"))
         self.assertEqual(mod_config.desde_dict({}).agentes_sin_proyecto, "")

@@ -10,23 +10,16 @@ import { disco } from '../../disco';
 import { esc, normalizar } from '../../estilo';
 import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
-import { Dia, Pendiente, diaDe, pendientes, seccion } from './dia';
-import { NOMBRE, claseDe } from './clases';
+import { Dia, Pendiente, cuerpo, diaDe, esDeuda, pendientes } from './dia';
+import { NOMBRE, bloqueActual, claseDe } from './clases';
 import { type EventoCal, eventosDelDia } from './eventos';
 import { type Plan, columnaCalendario } from './plan';
 import { esServicio, filaPendiente } from './proyectos';
-import type { Accion, Pantalla, Tablero } from './pantalla';
+import type { Accion, EnBarra, Pantalla, Tablero } from './pantalla';
+import type { AccionDePantalla } from '../../componentes/pantalla';
 import { prepararReunion } from './reuniones';
 import { I } from '../../web/iconos';
 
-/** El bloque que toca: el que contiene la hora; si no hay, el próximo; si el día terminó, el último.
- *  Entre dos que se pisan, el que empezó más tarde (la reunión que corta un bloque propio). */
-export function bloqueActual(evs: EventoCal[], ahora: number): number {
-    const en = evs.map((e, i) => [e, i] as const).filter(([e]) => e.inicio <= ahora && ahora < e.fin);
-    if (en.length) return en.sort((a, b) => b[0].inicio - a[0].inicio)[0][1];
-    const proximo = evs.findIndex(e => e.inicio > ahora);
-    return proximo >= 0 ? proximo : evs.length - 1;
-}
 
 /** El proyecto de un bloque propio sin `proyecto` en el plan: el que nombra su título por el cliente
  *  («Comercial: Acme 2.0» → el de Acme). Si dos calzan, ninguno. */
@@ -95,6 +88,24 @@ function proyecto(c: Contexto | undefined, cargando: boolean): string {
 }
 
 /** La pantalla entera: la barra para moverse entre bloques, y el bloque con lo suyo. */
+/** La barra de «ahora» (componentes/pantalla.ts): qué bloque se mira (n de m) y cuándo, si es otro momento; moverse
+ *  entre los bloques, fijar el que se ve o volver a lo que toca, y elegir otro momento en el calendario. */
+export function barraAhora(o: { evs: EventoCal[]; i: number; ahora: number; fijo: boolean; simulado?: boolean; cargandoDia?: boolean; elegir?: string }): EnBarra {
+    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const fecha = new Date(o.ahora);
+    const hay = !o.cargandoDia && !!o.evs[o.i];
+    const acciones: AccionDePantalla[] = hay ? [
+        { accion: 'ahora-mover', valor: '-1', icono: I.atras, ayuda: 'el bloque anterior' },
+        { accion: 'ahora-mover', valor: '1', icono: I.siguiente, ayuda: 'el bloque siguiente' },
+    ] : [];
+    if (o.fijo || o.simulado) acciones.push({ accion: 'ahora-soltar', icono: I.deshacer, tono: 'amarillo', ayuda: 'volver a lo que toca ahora: la vista sigue al reloj' });
+    else if (hay) acciones.push({ accion: 'ahora-fijar', icono: I.marca, tono: 'amarillo', ayuda: 'fijar: que la vista no cambie sola al pasar al bloque siguiente' });
+    acciones.push({ accion: 'ahora-elegir', icono: I.reloj, tono: 'azul', si: o.elegir !== undefined,
+        ayuda: 'elegir en el calendario otro momento: qué mostraría entonces' });
+    const cuando = o.simulado ? `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(o.ahora)}` : '';
+    return { resumen: [cuando, hay ? `${o.i + 1} de ${o.evs.length}` : ''].filter(Boolean).join(' · '), acciones };
+}
+
 export function htmlAhora(o: {
     evs: EventoCal[]; i: number; ahora: number; fijo: boolean; plan?: Plan; contexto?: Contexto; cargando: boolean;
     urgentes: Pendiente[]; propuestas: Pendiente[]; aviso: string;
@@ -103,30 +114,24 @@ export function htmlAhora(o: {
     /** el calendario desplegado para elegir el momento (html de la columna del día), y ese día */
     elegir?: string; fechaElegir?: string;
 }): string[] {
-    const h: string[] = [seccion('ahora', 'amarillo', '', '')];
+    const h: string[] = [cuerpo('amarillo')];
     if (o.aviso) h.push(`<div class="vacio falla">${esc(o.aviso)}</div>`);
-    // el momento que se mira: el reloj, o uno elegido en el calendario para ver qué mostraría entonces
-    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-    const fecha = new Date(o.ahora);
-    const momento = `<a class="ahora-cuando${o.simulado ? ' simulado' : ''}" data-accion="ahora-elegir" title="elegir en el calendario otro momento: qué mostraría entonces">`
-        + `${o.simulado ? `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(o.ahora)}` : 'elegir momento'} ${o.elegir !== undefined ? I.subir : I.abierto}</a>`;
     // el calendario del día, desplegado bajo la barra: un clic en un bloque mueve «ahora» a ese momento
     const desplegable = o.elegir === undefined ? '' : '<div class="ahora-elegir">'
         + `<div class="cal-nav"><a data-accion="ahora-dia" data-valor="-1" title="día anterior">‹</a>`
         + `<span class="cal-fecha">${esc(o.fechaElegir ?? '')}</span><a data-accion="ahora-dia" data-valor="1" title="día siguiente">›</a></div>`
         + o.elegir + '</div>';
     const e = o.evs[o.i];
-    if (o.cargandoDia) { h.push(`<div class="ahora-nav">${momento}</div>${desplegable}<div class="vacio">leyendo ese día…</div></section>`); return h; }
-    if (!e) { h.push(`<div class="ahora-nav">${momento}${o.simulado ? `<a data-accion="ahora-soltar">${I.deshacer} volver a ahora</a>` : ''}</div>${desplegable}<div class="vacio">nada en el calendario ni en el plan de ese día</div></section>`); return h; }
+    if (o.cargandoDia) { h.push(`${desplegable}<div class="vacio">leyendo ese día…</div></section>`); return h; }
+    if (!e) {
+        // lo que hay, si lo hay, es lo que la persona rechazó: no es en lo que está
+        const nada = o.evs.length ? 'nada que toque ese día: lo que hay en el calendario lo rechazaste' : 'nada en el calendario ni en el plan de ese día';
+        h.push(`${desplegable}<div class="vacio">${nada}</div></section>`);
+        return h;
+    }
     const clase = claseDe(e);
     const p: Plan = e.plan ?? {};
-    h.push('<div class="ahora-nav">'
-        + `<a data-accion="ahora-mover" data-valor="-1" title="el bloque anterior">‹</a>`
-        + `<span class="dim">${o.i + 1} de ${o.evs.length}</span>`
-        + `<a data-accion="ahora-mover" data-valor="1" title="el bloque siguiente">›</a>`
-        + (o.fijo || o.simulado ? `<a data-accion="ahora-soltar" title="volver a lo que toca ahora; la vista sigue al reloj">${I.deshacer} volver a ahora</a>`
-            : '<a data-accion="ahora-fijar" title="que la vista no cambie sola al pasar al bloque siguiente">fijar</a>')
-        + momento + '</div>' + desplegable);
+    h.push(desplegable);
     h.push(`<div class="ahora-bloque"><span class="clase c-${clase}">${esc(NOMBRE[clase])}</span>`
         + `<h3>${esc(e.titulo)}</h3><div class="dim">${hm(e.inicio)}–${hm(e.fin)} · ${esc(cuando(e, o.ahora))}${e.lugar ? ` · ${esc(e.lugar)}` : ''}</div>`
         + (p.nota ? `<div>${esc(String(p.nota))}</div>` : '') + '</div>');
@@ -237,6 +242,9 @@ export class PantallaAhora implements Pantalla {
         this.t.montar();
         this.t.ir('ahora');
         const d = await this.t.diaLeido();
+        // leer el día puede tardar (la primera vez, por la puerta de un servidor): si mientras tanto se fue a otra
+        // pestaña (`?abrir=pestana:…` al cargar), no se la tapa
+        if (this.t.pantalla !== 'ahora') return;
         this.pintar();
         // lo que hace falta para el contexto: el plan de hoy, los proyectos y sus pendientes
         const [plan] = await Promise.all([
@@ -338,15 +346,18 @@ export class PantallaAhora implements Pantalla {
         const ctx = e ? this.contextos.get(e.id) : undefined;
         if (e && !ctx && this.cargando !== e.id) void this.cargarContexto(e, plan);
         const todas = pendientes(d);
-        this.t.pintar(htmlAhora({
+        const o = {
             evs, i, ahora: this.sim ?? Date.now(), fijo: this.fijo, plan, contexto: ctx, cargando: !!e && !ctx,
             simulado: this.sim !== undefined, cargandoDia: this.diaSimCargando,
             elegir: this.elegir && diaVisto ? columnaCalendario(diaVisto, evs, e?.id ?? '', momento, undefined, 'ahora-evento') : undefined,
             fechaElegir: diaVisto?.fecha,
-            urgentes: todas.filter(t => t.dias !== null && t.dias <= 0 || !!t.fila.destacada),
+            // lo urgente del día: lo vencido o de hoy, y lo destacado; la deuda (vencido hace más de 30 días), no, salvo
+            // con estrella (dia.ts)
+            urgentes: todas.filter(t => (!esDeuda(t.dias) || !!t.fila.estrella) && (t.dias !== null && t.dias <= 0 || !!t.fila.destacada)),
             propuestas: todas.filter(t => t.avance && t.fila.ficha),
             aviso: plan ? '' : 'sin plan para ese día: se ve el calendario',
-        }));
+        };
+        this.t.pintar(htmlAhora(o), barraAhora(o));
     }
 
     /** Lo que se muestra de un bloque: su proyecto (el que dice el plan; el de la reunión, como lo

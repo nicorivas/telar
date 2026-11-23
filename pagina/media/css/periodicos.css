@@ -1,0 +1,135 @@
+/* Los procesos periódicos (vistas/dashboard/config/periodicos.ts y corridas.ts): el calendario de sus corridas, la
+   lista, la ficha con el log y el formulario. scripts/navegador.mjs lo junta en src/telar/web/marco.css, con @scope en
+   el dashboard (`.v-dia`). Lo que dice cada forma está en la gramática visual (componentes/gramatica.ts): cada proceso
+   es una fila con su línea, y cada corrida un círculo sobre ella («un momento»); el elegido lleva el fondo de la
+   selección, y sus dependencias, líneas de un píxel en ángulo recto. */
+
+@scope (.v-dia) {
+  #dia:has(.corridas) { max-width: none; }
+
+  /* la banda de arriba: ir a otro día, el modo, el + de crear. Los íconos, en su celda cuadrada; las palabras, en la
+     de la letra; entre los grupos, un corte */
+  .cr-banda { display: flex; align-items: center; flex-wrap: wrap; gap: 0 1ch; margin: 0 0 .5lh; line-height: var(--item-alto); }
+  .cr-banda .der { margin-left: auto; }
+  .cr-ir { display: inline-block; inline-size: calc(var(--item-alto) * 1em); text-align: center; color: var(--dim); cursor: pointer; }
+  .cr-ir:hover { color: var(--fg); text-decoration: none; }
+  .cr-fecha { min-width: 18ch; text-align: center; color: var(--fg); }
+  .cr-palabra { padding: 0 1ch; color: var(--dim); cursor: pointer; }
+  .cr-palabra:hover { color: var(--fg); text-decoration: none; }
+  .cr-palabra.si { color: var(--fg); background: var(--item-fondo-activa); }
+
+  .cr-leyenda { display: flex; flex-wrap: wrap; gap: 0 2.5ch; margin: 0 0 .5lh; color: var(--dim); font-size: var(--t-menor); }
+  .cr-leyenda .senal { display: inline-flex; inline-size: calc(var(--item-alto) * 1em); justify-content: center; }
+
+  /* el calendario: una columna con los nombres y, a su derecha, el tiempo. Cada fila, del alto de una fila de lista */
+  .corridas { --cr-et: 26ch; --cr-fila: calc(var(--item-alto) * 1em); margin: 0 0 1lh; }
+  .cr-eje, .cr-fila, .cr-grupo { display: grid; grid-template-columns: var(--cr-et) minmax(0, 1fr); }
+  .cr-eje { height: var(--cr-fila); color: var(--dim); font-size: var(--t-menor); }
+  .cr-tiempo { position: relative; }
+  .cr-marca { position: absolute; top: 0; padding-left: .5ch; white-space: nowrap; line-height: var(--cr-fila); }
+  a.cr-marca { color: var(--dim); cursor: pointer; overflow: hidden; }
+  a.cr-marca:hover { color: var(--fg); text-decoration: none; }
+  .cr-marca.hoy { color: var(--acento); }
+  .cr-cuerpo { position: relative; border-top: 1px solid var(--linea); }
+
+  .cr-et { display: flex; gap: 1ch; align-items: baseline; min-width: 0; padding-right: 1ch; overflow: hidden; white-space: nowrap; }
+  /* el nombre gana: lo que usa se corta primero */
+  .cr-n { flex: none; }
+  .cr-tras { flex: 0 1 auto; min-width: 0; color: var(--dim); overflow: hidden; text-overflow: ellipsis; font-size: var(--t-menor); }
+  .cr-tras.atencion { color: var(--atencion); }
+
+  /* la fila de un proceso: su línea al medio, y sus corridas encima */
+  .cr-fila, .cr-grupo { height: var(--cr-fila); line-height: var(--cr-fila); }
+  .cr-fila { cursor: pointer; }
+  .cr-fila:hover { background: var(--hover); }
+  .cr-fila.sel { background: var(--item-fondo-activa); }
+  .cr-fila.rel .cr-n { color: var(--acento); }
+  .cr-fila.pausado .cr-n { color: var(--dim); }
+  .cr-fila .cr-et { padding-left: calc(var(--item-alto) * 1em); }
+  .cr-linea { position: relative; }
+  .cr-linea::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--linea); }
+  .cr-fila.pausado .cr-linea::before { border-top-color: color-mix(in srgb, var(--linea) 50%, transparent); }
+  .cr-c { position: absolute; top: 50%; z-index: 2; display: flex; transform: translate(-50%, -50%); line-height: 0; }
+  .cr-c .senal { display: flex; }
+  .cr-nota { position: absolute; left: 1ch; top: 0; color: var(--dim); font-size: var(--t-menor); background: var(--bg); padding-right: 1ch; }
+
+  /* la cabecera de un grupo: una línea arriba (empieza otra parte), y en la de un agente, todo lo que le llega */
+  .cr-grupo { border-top: 1px solid var(--linea); }
+  .cr-rejilla + .cr-grupo, .cr-sobre + .cr-grupo { border-top: 0; }
+  .cr-grupo .cr-et b { color: var(--titulo); font-weight: normal; text-transform: uppercase; }
+  .cr-icono { display: inline-block; flex: none; inline-size: calc(var(--item-alto) * 1em); text-align: center; color: var(--agente); }
+  .cr-icono .i { color: var(--dim); }
+  .cr-linea.casilla::before { display: none; }
+
+  /* el fondo: cada tres horas o entre los días, apenas; ahora, en el acento. Las dependencias del elegido, encima de
+     las líneas y debajo de los círculos */
+  .cr-rejilla, .cr-sobre { position: absolute; inset: 0 0 0 var(--cr-et); pointer-events: none; }
+  .cr-rejilla { z-index: 0; }
+  .cr-sobre { z-index: 1; }
+  .cr-v { position: absolute; top: 0; bottom: 0; border-left: 1px solid color-mix(in srgb, var(--linea) 45%, transparent); }
+  .cr-v.dia { border-left-color: var(--linea); }
+  .cr-ahora { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--acento); }
+  .cr-con { position: absolute; border-color: var(--acento); border-style: solid; border-width: 0; }
+  .cr-con.v { border-left-width: 1px; }
+  .cr-con.h { border-top-width: 1px; }
+
+  /* lo que es el elegido, debajo */
+  .cr-det { margin: 0 0 1lh; }
+  .cr-det .subcab { margin: 0; }
+  .cr-acciones { display: flex; flex-wrap: wrap; gap: 0 3ch; margin: .25lh 0 .5lh; }
+  .cr-det .atajo { gap: .5ch; }
+  .cr-det .fila { white-space: normal; }
+  .cr-det .cr-k { min-width: 12ch; }
+  .cr-det .que { overflow-wrap: anywhere; }
+
+  @media (width <= 90ch) {
+    .corridas { --cr-et: 14ch; }
+    .cr-tras { display: none; }
+    .cr-banda .der { display: none; }
+    .cr-marca .num { display: none; }
+  }
+
+  /* la pestaña de procesos periódicos: una fila por proceso, y su ficha con el log */
+  .fila.per { display: grid; grid-template-columns: 2ch 22ch 16ch minmax(0, 1fr) max-content; }
+  .fila.per b, .fila.per .que, .fila.per code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila.per.dim b { color: var(--dim); }
+  #ficha-per .fila { white-space: normal; } #ficha-per .fila .que { overflow-wrap: anywhere; }
+  #ficha-per pre.log { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); max-height: 60vh; overflow: auto;
+    box-shadow: inset 2px 0 0 var(--linea); padding: 0 2ch; margin: 0; }
+  /* el formulario de un periódico: etiqueta a la izquierda, control a la derecha */
+  #form-per .campo { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 2ch; align-items: baseline; margin: .5lh 0; }
+  #form-per .etiqueta { color: var(--dim); text-align: right; }
+  #form-per .control { display: flex; flex-direction: column; gap: .25lh; min-width: 0; }
+  #form-per input:not([type="checkbox"], .buscar), #form-per textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--linea);
+    padding: 0 1ch; outline: none; width: 100%; max-width: 80ch; box-sizing: border-box; resize: vertical; }
+  #form-per input:not(.buscar):focus, #form-per textarea:focus { border-color: var(--amarillo); }
+  /* el filtro de las skills: la barra de un buscador (componentes/buscador.ts) sobre su lista, del ancho de ella */
+  #form-per .buscador-barra { max-width: 80ch; margin-inline: 0; --buscador-margen: 0; }
+  #form-per input:disabled { color: var(--dim); }
+  #form-per input[type="number"] { width: 8ch; }
+  #form-per input[type="checkbox"] { align-self: flex-start; margin: 0; accent-color: var(--amarillo); }
+  #form-per .ayuda { font-size: var(--t-menor); }
+  #form-per .opciones, #form-per .presets { display: flex; flex-wrap: wrap; gap: 0 2ch; }
+  #form-per .opcion-t, #form-per .presets a { cursor: pointer; color: var(--dim); }
+  #form-per .opcion-t.activa { color: var(--amarillo); font-weight: bold; }
+  #form-per .opcion-t:hover, #form-per .presets a:hover { color: var(--fg); }
+  #form-per.tipo-mensaje .solo-comando, #form-per.tipo-comando .solo-mensaje { display: none; }
+  #form-per .skills { max-height: 14lh; overflow: auto; max-width: 80ch; box-shadow: inset 2px 0 0 var(--linea); }
+  #form-per .skill { display: grid; grid-template-columns: 22ch minmax(0, 1fr); gap: 1ch; padding: 0 1ch; cursor: pointer; }
+  #form-per .skill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #form-per .skill:hover { background: var(--hover); }
+  /* la elegida: el fondo de la selección (aquí estás) */
+  #form-per .skill.activa { background: var(--item-fondo-activa); } #form-per .skill.activa b { color: var(--fg); }
+  #form-per .skill[hidden] { display: none; }
+  #form-per #per-error { margin: .5lh 0 0 14ch; white-space: pre-wrap; }
+  #form-per .fila-botones { grid-auto-flow: column; justify-content: start; gap: 3ch; margin-left: 14ch; }
+
+  @media (width <= 90ch) { .fila.per { grid-template-columns: 2ch minmax(0, 1fr) max-content; } .fila.per code, .fila.per .que { display: none; } }
+  /* a quién: con un agente, no hace falta el nombre del hilo, la carpeta ni los argumentos (los pone el agente) */
+  #form-per.tipo-mensaje.destino-agente .solo-hilo, #form-per.tipo-mensaje.destino-agente .solo-carpeta { display: none; }
+  #form-per .opciones.tras .opcion-t.activa { color: var(--acento); }
+  #form-per .per-dice { color: var(--dim); }
+  #form-per .per-icono { display: inline-block; inline-size: calc(var(--item-alto) * 1em); text-align: center; color: var(--agente); font-weight: normal; }
+  #form-per .per-icono.i { color: inherit; }
+  #form-per .per-dice code { color: var(--fg); }
+}

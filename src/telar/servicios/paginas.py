@@ -72,13 +72,14 @@ def apps(ctx) -> Apps:
 
 
 def app(ctx, clave: str) -> Pagina:
+    from telar.modulos import entorno_de
     from telar.ordenes import seccion as mod_seccion
     from telar.ordenes.app import pagina
 
     a = next((x for x in ctx.config.apps if x.clave == clave), None)
     if a is None:
         raise ErrorDeServicio(f"no hay app «{clave}»: `telar app` lista las que hay", 404)
-    datos, error = pagina(a)
+    datos, error = pagina(a, entorno_de(ctx.config, clave, "app"))
     if datos is None:
         raise ErrorDeServicio(error, 502)
     problema = mod_seccion.validar(datos)

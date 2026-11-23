@@ -1,0 +1,126 @@
+/* El círculo (src/componentes/circulo.ts): la firma de telar para decir cómo está algo, por su tamaño y cuánto está
+   lleno; en curso, se mueve en su lugar (se vacía, se llena o gira) de a cuartos, sin correr nada. Un aro del color de
+   su pieza, y dentro un relleno en abanico desde abajo (conic-gradient: a medias, la mitad izquierda, como ◐) hasta
+   --lleno. Sus medidas y su ritmo son tokens (tokens.css: --circulo-…), que un tema puede cambiar. Sin @scope y en la
+   capa base: lo usa cualquier vista. */
+
+/* registrado, para que un movimiento lo pueda animar (sin registrar, una variable salta de un valor al otro) */
+@property --lleno {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+
+.circulo {
+  display: inline-block;
+  width: var(--circulo-d);
+  height: var(--circulo-d);
+  border-radius: 50%;
+  background: conic-gradient(from 180deg, currentcolor var(--lleno), transparent 0);
+  box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  vertical-align: var(--circulo-alto);
+
+  &.tam-punto { --circulo-d: var(--circulo-punto); }
+  &.tam-chico { --circulo-d: var(--circulo-chico); }
+  &.tam-grande { --circulo-d: var(--circulo-grande); }
+
+  /* cinco cuadros al vaciarse o llenarse (lleno, tres cuartos, medio, un cuarto, aro) y cuatro al girar */
+  &.mov-vacia { animation: circulo-vacia calc(5 * var(--circulo-cuadro)) steps(5, jump-none) infinite; }
+  &.mov-llena { animation: circulo-llena calc(5 * var(--circulo-cuadro)) steps(5, jump-none) infinite; }
+  &.mov-gira { animation: circulo-gira calc(4 * var(--circulo-cuadro)) steps(4) infinite; }
+}
+
+/* las figuras (en prueba): varios círculos de los tres tamaños, en el lugar de uno grande. El de afuera es el elemento;
+   los otros, ::before y ::after. Al girar, gira la figura entera alrededor de su centro */
+.circulo[class*="fig-"] {
+  position: relative;
+
+  &::before,
+  &::after {
+    position: absolute;
+    border-radius: 50%;
+  }
+}
+
+/* centro, diana, doble: un aro grande y, al medio, otro más chico */
+.circulo.fig-centro,
+.circulo.fig-diana,
+.circulo.fig-doble {
+  --lleno: 0%;
+
+  &::after {
+    --adentro: var(--circulo-chico);
+
+    content: "";
+    inset: calc((var(--circulo-d) - var(--adentro)) / 2);
+  }
+}
+
+.circulo.fig-centro::after { --adentro: var(--circulo-punto); background: currentcolor; }
+.circulo.fig-diana::after { background: currentcolor; }
+.circulo.fig-doble::after { box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor; }
+
+/* satélite: un aro chico al medio y un punto afuera, arriba a la derecha (se asoma un poco del cuadro, para que no lo
+   toque); al girar, el punto da la vuelta alrededor del aro */
+.circulo.fig-satelite,
+.circulo.fig-enlace {
+  background: none;
+  box-shadow: none;
+}
+
+.circulo.fig-satelite {
+  &::before {
+    content: "";
+    inset: calc((var(--circulo-d) - var(--circulo-chico)) / 2);
+    box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  }
+
+  &::after {
+    content: "";
+    top: -.1em;
+    right: -.1em;
+    width: var(--circulo-punto);
+    height: var(--circulo-punto);
+    background: currentcolor;
+  }
+}
+
+/* enlace: dos aros chicos que se cruzan, uno a cada lado */
+.circulo.fig-enlace {
+  &::before,
+  &::after {
+    content: "";
+    top: calc((var(--circulo-d) - var(--circulo-chico)) / 2);
+    width: var(--circulo-chico);
+    height: var(--circulo-chico);
+    box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  }
+
+  &::before { left: 0; }
+  &::after { right: 0; }
+}
+
+@keyframes circulo-vacia {
+  from { --lleno: 100%; }
+  to { --lleno: 0%; }
+}
+
+@keyframes circulo-llena {
+  from { --lleno: 0%; }
+  to { --lleno: 100%; }
+}
+
+@keyframes circulo-gira {
+  to { rotate: 1turn; }
+}
+
+/* sin movimiento, a medio llenar: sigue diciendo «en curso» */
+@media (prefers-reduced-motion: reduce) {
+  .circulo.mov-vacia,
+  .circulo.mov-llena,
+  .circulo.mov-gira {
+    --lleno: 50%;
+
+    animation: none;
+  }
+}

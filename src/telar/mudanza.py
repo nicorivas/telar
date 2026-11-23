@@ -41,7 +41,7 @@ def ruta_progreso(config, hilo: str) -> Path:
 
     d = Path(config.estado) / "llevar"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{casilla.nombre_de_carpeta(hilo)}.json"
+    return d / f"{casilla.ficha(config, hilo)}.json"
 
 
 def progreso(config, hilo: str, paso: str, **datos) -> None:

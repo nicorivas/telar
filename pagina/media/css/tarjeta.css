@@ -1,0 +1,115 @@
+/* La tarjeta (src/componentes/tarjeta.ts): un ítem que no se corta, en tres partes. Lleva también `.item`, así que el
+   hover, la selección (la elegida) y el arrastre son los del ítem (item.css); aquí, sus partes y el aire. Sin marco ni
+   fondo propio: una tarjeta es una fila más alta, no una caja (la gramática visual: un marco es de lo que se abre aparte).
+   La tarjeta tiene tres columnas (inicio · contenido · acciones) y sus partes las comparten (subgrid): el cuerpo y el pie
+   empiezan donde el título, y lo que va a la derecha del pie queda bajo las acciones.
+   ┌ .tarjeta-cabecera: .item-inicio │ .tarjeta-titulo (prefijo título) │ .tarjeta-acciones ┐
+   ├ .tarjeta-cuerpo:                │ texto                                                │
+   ├ .tarjeta-pie:                   │ .tarjeta-dato …          .tarjeta-fin: aviso meta    │
+   └──────────────────────────────────────────────────────────────────────────────────────┘ */
+.item.tarjeta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  padding-block: var(--tarjeta-pad-y);
+  /* el texto se parte en líneas; el interlineado es el de la letra, no el alto de una fila de la densidad */
+  line-height: var(--alto);
+  white-space: normal;
+  &.holgada { padding-block: var(--tarjeta-pad-y-holgada); }
+}
+
+/* la cabecera: las ranuras a la altura de la primera línea, el título que se estira, las acciones arriba a la derecha */
+.tarjeta-cabecera {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: start;
+}
+.tarjeta-cabecera > .item-inicio { grid-column: 1; }
+.tarjeta-titulo {
+  display: -webkit-box;
+  grid-column: 2;
+  overflow: hidden;
+  padding-left: var(--item-texto-sangria);
+  color: var(--tarjeta-titulo);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--tarjeta-lineas);
+}
+/* holgada, sin tope: un bloque de siempre (una caja -webkit-box sin tope de líneas vuelve sus hijos cajas y se come los
+   espacios entre el prefijo y el título) */
+.item.tarjeta.holgada .tarjeta-titulo {
+  display: block;
+  -webkit-line-clamp: none;
+}
+.item.tarjeta.apagada .tarjeta-titulo { color: var(--texto-tenue); }
+.item.tarjeta.saliendo .tarjeta-titulo { color: var(--texto-apagado); }
+/* en su propia columna: el título se parte antes de llegar a ellas, no queda tapado. Entre el título y ellas, una celda
+   cuadrada vacía (entre dos grupos de una fila, una celda). Se ven al pasar el mouse y en la elegida */
+.tarjeta-acciones {
+  display: flex;
+  grid-column: 3;
+  margin-left: calc(var(--alto) * 1em);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity var(--item-despliegue) var(--item-curva), visibility var(--item-despliegue);
+}
+.item.tarjeta:hover .tarjeta-acciones,
+.item.tarjeta.hover .tarjeta-acciones,
+.item.tarjeta.activa .tarjeta-acciones {
+  visibility: visible;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tarjeta-acciones { transition: none; }
+}
+
+/* en un celular no hay mouse: el ⋯ se ve siempre, y lo demás queda en su menú */
+.angosto .tarjeta-acciones {
+  visibility: visible;
+  opacity: 1;
+  & .item-accion:not(.item-menu) { display: none; }
+}
+
+/* el cuerpo, si tiene: donde empieza el título, tenue */
+.tarjeta-cuerpo {
+  grid-column: 2 / -1;
+  margin-top: var(--tarjeta-pie-arriba);
+  padding-left: var(--item-texto-sangria);
+  color: var(--tarjeta-cuerpo);
+  overflow-wrap: anywhere;
+}
+
+/* el pie: los datos, tenues, cada uno con su color si dice algo; el aviso y la meta, pegados a la derecha, bajo las
+   acciones. Lo que no cabe se corta con «…»; el fin no se corta */
+.tarjeta-pie {
+  display: flex;
+  grid-column: 2 / -1;
+  gap: 0 var(--tarjeta-datos-hueco);
+  margin-top: var(--tarjeta-pie-arriba);
+  padding-left: var(--item-texto-sangria);
+  overflow: hidden;
+  color: var(--tarjeta-datos);
+  white-space: nowrap;
+}
+.tarjeta-dato {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tarjeta-fin {
+  display: flex;
+  flex: none;
+  gap: 0 var(--item-hueco);
+  margin-left: auto;
+  padding-left: var(--item-hueco);
+}
+
+/* varias tarjetas: una debajo de otra, apartadas con aire (lo de la misma clase se separa con lo mínimo) */
+.lista-tarjetas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tarjeta-aire);
+}

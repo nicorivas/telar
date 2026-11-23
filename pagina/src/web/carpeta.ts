@@ -1,6 +1,8 @@
-// La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), o un archivo cualquiera del repositorio
-// (`arch:<ruta>`): la lista de archivos arriba, y el elegido abajo. Una ruta de otra máquina («servidor:docs/x.md»)
-// o con `~` se lee sola, sin su carpeta (`/api/archivos`, que se la pide a esa máquina por el bus). Un .html se ve
+// La carpeta de un hilo y uno de sus archivos (`/api/hilos/documento`), o un archivo cualquiera que la página puede
+// leer (`arch:<ruta>`: de la raíz, de un repo de `[repos]` o de la carpeta de un hilo, aunque esté fuera de la raíz,
+// como el worktree de un hijo con rama): la lista de archivos arriba, y el elegido abajo, y se recorre sin salir de
+// la carpeta que lo contiene. Una ruta de otra máquina («servidor:docs/x.md») la arma esa máquina (el backend se la
+// pide por el bus) y sus rutas vuelven con la máquina delante, para seguir recorriendo allá. Un .html se ve
 // dibujado, en un iframe aislado (`/api/archivos/ver`: sus scripts corren en un origen propio, sin la llave ni la
 // API de la página), con su código a un clic. Al lado del archivo, sus conexiones en el grafo de conocimiento (el
 // módulo «grafo», si la máquina del archivo lo tiene: GRAFO.md en la raíz). Todo va en un recuadro, y arriba «‹ …»
@@ -11,6 +13,7 @@
 import { esc, recuadro, volver } from '../estilo';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
+import { ofrecidosPara } from './candidatos';
 import { teclaParaLaVista } from './vistas-hilo';
 
 /** La carpeta de un hilo y uno de sus archivos, como la da `/api/hilos/documento`. */
@@ -29,6 +32,18 @@ export interface Documento {
 }
 
 const ES_HTML = /\.html?$/i;
+
+/** El HTML de los candidatos a una ruta: cada uno con su carpeta tenue y su nombre, en una columna. */
+function htmlCandidatos(ruta: string, { candidatos, mas }: { candidatos: string[]; mas: boolean }, atras: string | null): string {
+    const nombre = ruta.slice((MAQUINA.exec(ruta)?.[0] ?? '').length);
+    const filas = candidatos.map(c => {
+        const sin = c.slice((MAQUINA.exec(c)?.[0] ?? '').length), i = sin.lastIndexOf('/');
+        return `<a data-hilo="" data-archivo="${esc(c)}" title="${esc(c)}"><span class="dir">${esc(sin.slice(0, i + 1))}</span>${esc(sin.slice(i + 1))}</a>`;
+    }).join('');
+    return (atras ? volver('volver-doc', atras, '', `volver a ${atras} (⎋)`) : '')
+        + recuadro(`<h1>${esc(nombre)}</h1><nav class="candidatos"><p class="nada">hay ${candidatos.length}${mas ? ' o más' : ''}`
+            + ` archivos que se llaman así, los más cercanos primero. ¿Cuál?</p>${filas}</nav>`);
+}
 
 /** Adónde vuelve el visor: cómo se nombra («Telar · conversación») y cómo se va. */
 export interface Vuelta { nombre: string; ir: () => void }
@@ -64,9 +79,9 @@ function html(d: Documento, atras: string | null): string {
     const enlace = (ruta: string, texto: string, clase = '') =>
         `<a class="${clase}" data-hilo="${esc(d.hilo)}" data-archivo="${esc(ruta)}">${esc(texto)}</a>`;
     const cuerpo = d.error ? `<p class="nada">${esc(d.error)}</p>`
-        : (d.archivos ? `<nav class="carpeta"><div class="donde">${esc(d.carpeta ?? '.')}</div>`
+        : (d.archivos?.length || d.subir !== undefined ? `<nav class="carpeta"><div class="donde">${esc(d.carpeta ?? '.')}</div>`
             + (d.subir !== undefined ? enlace(d.subir, '../', 'dir') : '')
-            + d.archivos.map(a => enlace(a.ruta, a.nombre, `${a.nombre.endsWith('/') ? 'dir' : ''}${a.ruta === d.archivo ? ' sel' : ''}`)).join('')
+            + (d.archivos ?? []).map(a => enlace(a.ruta, a.nombre, `${a.nombre.endsWith('/') ? 'dir' : ''}${a.ruta === d.archivo ? ' sel' : ''}`)).join('')
             + `</nav>` : '')
             + (d.aviso ? `<p class="nada">${esc(d.aviso)}</p>` : '')
             + (d.archivo ? `<div class="cuerpo"><article><div class="donde">${esc(d.archivo)}${d.ver ? '<a class="alternar" title="ver el código del .html, o de vuelta dibujado">código</a>' : ''}</div>`
@@ -148,16 +163,23 @@ export async function montar(el: HTMLElement, hilo: string, archivo: string, mar
             e.preventDefault();
             if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { window.open(href, '_blank', 'noopener'); return; }
             const destino = decodeURIComponent(href.split('#')[0]);
+            // en un documento de otra máquina, lo relativo y lo absoluto también son de allá
             const actual = el.dataset.archivo ?? '';
-            const base = actual.includes('/') ? actual.slice(0, actual.lastIndexOf('/')) : '';
-            // en un documento de otra máquina, también lo absoluto es de allá
-            const maquina = MAQUINA.exec(actual)?.[0] ?? '';
-            ir(el.dataset.hilo ?? '', destino.startsWith('/') ? maquina + destino : rutas.unir(base, destino));
+            const maquina = MAQUINA.exec(actual)?.[0] ?? '', sin = actual.slice(maquina.length);
+            const base = sin.includes('/') ? sin.slice(0, sin.lastIndexOf('/')) : '';
+            ir(el.dataset.hilo ?? '', maquina + (destino.startsWith('/') ? destino : rutas.unir(base, destino)));
         });
     }
+    // una ruta que nombró un agente y tiene varios candidatos: se elige uno, sin pedir nada
+    const ofrecido = !hilo ? ofrecidosPara(archivo) : undefined;
+    if (ofrecido) {
+        const previo = historiales.get(el)?.at(-1);
+        el.innerHTML = htmlCandidatos(archivo, ofrecido, previo ? nombreDe(previo.archivo) || previo.hilo : vueltas.get(el)?.nombre ?? null);
+        el.scrollTop = 0;
+        return;
+    }
     let d: Documento;
-    if (!hilo && (MAQUINA.test(archivo) || archivo.startsWith('~'))) d = await leerSolo(archivo, markdown);
-    else try {
+    try {
         const r = await fetch(`/api/hilos/documento?hilo=${encodeURIComponent(hilo)}&archivo=${encodeURIComponent(archivo)}`, { cache: 'no-store' });
         const j = await r.json() as Documento & { markdown?: string; detail?: string };
         d = r.ok ? { ...j, html: j.markdown ? markdown(j.markdown) : undefined, subir: j.subir ?? undefined }
@@ -165,9 +187,9 @@ export async function montar(el: HTMLElement, hilo: string, archivo: string, mar
     } catch (e) {
         d = { hilo, titulo: hilo, error: `la API no respondió: ${(e as Error).message}` };
     }
-    // la ruta del archivo desde la raíz, o absoluta (con «máquina:» si es de otra), que es como la quieren
-    // `/api/archivos/ver` y el grafo: la de uno de la carpeta de un hilo es relativa a ella. «no existe» es lo que
-    // dice la API de uno que no está
+    // la ruta del archivo desde la raíz, o entera (con `~`, o con «máquina:» si es de otra), que es como la quieren
+    // `/api/archivos/ver` y el grafo: la de uno de la carpeta de un hilo (`doc:`) es relativa a ella. «no existe» es
+    // lo que dice la API de uno que no está
     const existe = !!d.archivo && !d.error && d.texto !== 'no existe';
     const enRaiz = !d.archivo ? '' : !hilo || MAQUINA.test(d.archivo) ? d.archivo : rutas.unir(modelo.porNombre(hilo)?.ruta ?? '', d.archivo);
     // un .html que se pudo leer se ve dibujado
@@ -231,21 +253,4 @@ async function conexiones(el: HTMLElement, ruta: string, markdown: (texto: strin
     };
     aside.innerHTML = '<h2>conexiones</h2>' + lado('salen →', salen, true) + lado('llegan ←', llegan, false);
     aside.hidden = false;
-}
-
-/** Un archivo solo, sin su carpeta: el de otra máquina («servidor:docs/x.md») o uno con `~`. */
-async function leerSolo(archivo: string, markdown: (texto: string) => string): Promise<Documento> {
-    try {
-        const r = await fetch(`/api/archivos?ruta=${encodeURIComponent(archivo)}`, { cache: 'no-store' });
-        const j = await r.json() as { ruta?: string; texto?: string; recortado?: boolean; maquina?: string; detail?: string };
-        if (!r.ok) return { hilo: '', titulo: archivo, error: typeof j.detail === 'string' ? j.detail : `la API respondió ${r.status}` };
-        const ruta = j.maquina ? `${j.maquina}:${j.ruta}` : j.ruta ?? archivo;
-        const esMd = /\.(md|markdown)$/i.test(j.ruta ?? archivo);
-        const nombre = (j.ruta ?? archivo).split('/').pop() ?? archivo;
-        return { hilo: '', titulo: j.maquina ? `${nombre} · en ${j.maquina}` : nombre, archivo: ruta,
-                 html: esMd ? markdown(j.texto ?? '') : undefined, texto: esMd ? undefined : j.texto ?? '',
-                 aviso: j.recortado ? 'el archivo es más largo: se muestra hasta donde alcanza' : undefined };
-    } catch (e) {
-        return { hilo: '', titulo: archivo, error: `la API no respondió: ${(e as Error).message}` };
-    }
 }

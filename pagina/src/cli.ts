@@ -10,20 +10,22 @@
 // ahí se lee como opcional, para que una versión más nueva de telar no tire la vista.
 
 import { esAbsoluta, unir } from './rutas';
+import type { Hecho, Pendiente } from './web/alcance';
 
 /** Lo que devuelve una orden que no tiene JSON propio: si salió bien, y su salida o su error. */
 export interface Salida { ok: boolean; codigo: number; out: string; err: string }
 
 /** Una respuesta de la API: los datos, o el motivo por el que no llegaron (y, con el motivo, lo demás que
  *  traiga la respuesta: la salida de lo que falló). */
-export interface Respuesta<T> { datos?: T; error?: string; cuerpo?: Record<string, unknown> }
+/** Lo que respondió la API: los datos, o el error (con el código HTTP en `estado`, si llegó a responder). */
+export interface Respuesta<T> { datos?: T; error?: string; cuerpo?: Record<string, unknown>; estado?: number }
 
 // ───────────────────────── la API (`telar serve`) ─────────────────────────
 
 /** Un pedido a la API. Una ruta que la API no tiene (un telar más viejo que la página) se dice así, como
  *  un error: no hay otro camino por el que pedirlo. El cuerpo va como JSON; un FormData, como multipart (el
  *  navegador pone el tipo, con su separador). */
-async function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T>> {
+async function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T>> {
     let r: Response;
     const formulario = cuerpo instanceof FormData;
     try {
@@ -40,7 +42,7 @@ async function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'DELETE', ruta: string
     const detalle = (json as { detail?: unknown } | undefined)?.detail;
     if (r.ok && json !== undefined) return { datos: json as T };
     if (r.status === 404 && detalle === 'Not Found') return { error: faltaEnLaApi(`${metodo} ${ruta.split('?')[0]}`) };
-    return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}`,
+    return { error: typeof detalle === 'string' ? detalle : `la API respondió ${r.status}`, estado: r.status,
         ...(json && typeof json === 'object' ? { cuerpo: json as Record<string, unknown> } : {}) };
 }
 
@@ -65,11 +67,13 @@ export interface JsonFicha {
 
 export interface JsonHilo {
     id: string; nombre: string; vivo: boolean; activo: boolean; archivado: boolean;
+    /** su dirección (`hilo:Faro`; `hilo:Faro@telar` si su agente vive en otra máquina) */
+    direccion?: string;
     /** si las otras personas del bus lo ven en su directorio (EQUIPO); por defecto, no */
     publico?: boolean;
     /** sus etiquetas («trabajo», «personal»): los modos filtran la lista por ellas (`telar hilo etiquetas`) */
     etiquetas?: string[];
-    /** el hilo del que cuelga (`telar hilo padre`, o el que lo abrió); "" si de ninguno */
+    /** el hilo del que cuelga (`telar hilo padre`, o el que lo abrió, salvo que se haya soltado); "" si de ninguno */
     padre?: string;
     /** el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno */
     agente?: string; icono?: string;
@@ -86,6 +90,22 @@ export interface JsonHilo {
     sesiones: string[]; ficha?: JsonFicha | null;
     /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
     remoto?: string;
+    /** su rama propia, si es un hijo que trabaja en su worktree (`telar hilo hijo --rama`): la fusiona su padre */
+    rama?: { rama: string; base: string; ruta: string } | null;
+    /** si espera a la persona, qué pide y de qué clase (`permiso`, `pregunta`, `confiar`: detenido en la pregunta de
+     *  Claude Code de confiar en una carpeta, antes de arrancar), si se sabe; null si no */
+    espera?: { clase: string; pide: string } | null;
+    /** si duerme (telar.dormir): su agente se cerró por estar quieto y su ventana espera; abrirlo lo despierta. `desde`,
+     *  hora local ISO («" "» si duerme en otra máquina y no se sabe); null si no duerme */
+    dormido?: { desde: string; conversacion: string } | null;
+    /** la ventana de aquí de uno de otra máquina (`remoto`) que está fuera de línea (telar.alcance): `false`, y su atención
+     *  y si duerme son de antes de que se fuera; sin eso, no viene */
+    alcanzable?: boolean;
+    /** desde cuándo está fuera de línea su máquina (ISO), con `alcanzable: false` */
+    fuera_de_linea_desde?: string;
+    /** la parte de la vida a la que pertenece (`[mundos]`): por sus etiquetas, su carpeta, su agente o su padre; "" sin
+     *  clasificar. Sin `[mundos]` no viene */
+    mundo?: string;
 }
 
 export interface JsonHilos {
@@ -103,12 +123,18 @@ export interface JsonFichaOrden {
     hilo: JsonHilo; seguro: boolean; acciones: JsonAccion[]; perfil: string;
 }
 
+/** Lo que la persona respondió a una invitación del calendario; vacío si no aplica (un evento propio, uno que organiza
+ *  ella) o si el calendario no dice quién es ella. */
+export type RespuestaInvitacion = '' | 'aceptada' | 'rechazada' | 'tentativa' | 'sin_responder';
+
 /** Una fila de `telar pendientes` y de `telar hoy`: un pendiente de un documento, o lo que
  *  aportó un proveedor, ya enrutado al hilo donde se trabaja. `ref` es con lo que se agarra
  *  (`faro:2`, o la referencia estable del proveedor). */
 export interface JsonFila {
     texto: string; hecho: boolean; en_curso: boolean; id: string; origen: string;
     ref: string; hilo: string; ruta: string; proveedor: string;
+    /** su dirección (`tarea:T84`, `pendiente:c-1a2b3c`), si la tiene: la de su entidad (`telar objeto`) */
+    direccion?: string;
     cuando: string | null; url: string;
     /** lo último que dejó un agente que la trabajó solo: «preparado 2026-09-25» */
     avance?: string;
@@ -116,6 +142,9 @@ export interface JsonFila {
     ficha?: boolean;
     /** a qué parte de la vida pertenece («trabajo», «personal»): las listas filtran por aquí */
     area?: string;
+    /** su mundo de `[mundos]` (por su área, su proyecto o la carpeta de su documento); "" sin clasificar; sin `[mundos]`,
+     *  no viene. Con un mundo puesto, la página muestra lo suyo y lo sin clasificar (web/mundo.ts) */
+    mundo?: string;
     /** quién la hace, si no es la persona; vacío es suya */
     dueno?: string;
     /** cuánto toma: «rapida» (media hora o menos) o «larga» (horas o días); vacío sin decir */
@@ -126,6 +155,8 @@ export interface JsonFila {
     pestana?: string;
     /** un evento: cuándo termina, dónde, y si es de día completo */
     fin?: string; lugar?: string; todo_el_dia?: boolean; asistentes?: string[];
+    /** un evento: lo que la persona respondió a la invitación */
+    respuesta?: RespuestaInvitacion;
     /** «evento» o «tarea», si la trajo un proveedor */
     clase?: string;
     /** el proveedor la destaca (la más alta prioridad, o con estrella): va siempre en «esta semana» */
@@ -138,6 +169,10 @@ export interface JsonFila {
     etiquetas?: string[];
     /** de un proveedor: la carpeta que la tarea dice que es su proyecto, haya o no hilo ahí */
     proyecto?: string;
+    /** de un proveedor: quién la dejó («ana», «correo»…); en una pestaña de lectura, lo de la persona va primero */
+    de?: string;
+    /** de un proveedor: de cuándo es (AAAA-MM-DD); en una pestaña de lectura, lo más nuevo arriba */
+    fecha?: string;
 }
 
 /** Lo que dejó una skill un día (`telar resultado <clave> [día]`), leído de la máquina donde vive. */
@@ -145,6 +180,8 @@ export interface JsonResultado {
     ok: boolean; error?: string; aviso?: string; desde?: string;
     clave: string; nombre: string; dia: string; dias: string[];
     formato: 'json' | 'md' | ''; contenido: unknown;
+    /** el nombre del archivo que se leyó (`estrategia-2026-11-16.md`), si había */
+    archivo?: string;
     /** si la máquina donde vive atiende comentarios sobre un día (`[resultados.<clave>] comentar`) */
     comentable?: boolean;
 }
@@ -152,11 +189,62 @@ export async function resultado(clave: string, dia = ''): Promise<Respuesta<Json
     return await deServe<JsonResultado>(`/resultados/${encodeURIComponent(clave)}${dia ? `?dia=${encodeURIComponent(dia)}` : ''}`, 30000);
 }
 
-/** Un comentario sobre el resultado de un día: lo atiende la máquina donde vive, y dice qué abrió
- *  (`telar resultado <clave> <día> --comentar`, con el texto por la entrada estándar). */
-export async function comentarResultado(clave: string, dia: string, texto: string): Promise<{ ok: boolean; abrio?: string; error?: string }> {
-    const r = await aServe<{ ok: boolean; abrio?: string; error?: string }>('POST', `/resultados/${encodeURIComponent(clave)}/comentario`, 90000, { dia, texto });
-    return r.datos ?? { ok: false, error: r.error };
+/** Una pasada de un resultado que se llena varias veces al día (`pasadas = "pulso"`, telar.pasadas: docs/contratos.md).
+ *  Lo que no nombra el esquema viene igual (`[k: string]: unknown`). Cada cosa trae su `mundo`, el que resolvió telar
+ *  (el de su tarea, si tiene dirección; si no, el que dijo el agente; "" sin clasificar). Lo que cambió (las tareas y los
+ *  borradores) trae su causa (`JsonCausa`); lo que te espera y las vencidas sin propuesta vienen y no se muestran. */
+export interface JsonPasada {
+    /** la hora local en que empezó, «2026-11-18T13:00»: única en el día, y su día */
+    id: string; termino?: string; modo?: 'dia' | 'noche' | string; pedida?: boolean; seco?: boolean;
+    /** con `resumenes`, neutro (las cuentas); sin él (las de antes), puede nombrar lo de cualquier mundo */
+    resumen?: string;
+    /** el resumen de cada mundo: se muestran los de los mundos que se ven */
+    resumenes?: Record<string, string>;
+    /** `error`, por qué falló (sin él, o vacío, no falló); `nota`, lo que se dice de ella sin que haya fallado */
+    fuentes?: { fuente: string; llegaron: number; archivados: number; error?: string; nota?: string; mundo?: string }[];
+    tareas?: { nuevas?: JsonTareaPasada[]; avanzadas?: JsonTareaPasada[]; cerradas?: JsonTareaPasada[] };
+    te_esperan?: { id: string; pide: string; linea: string; peso: number; vence: string; mundo?: string }[];
+    /** su `enlace` es el del borrador; el de su causa no va */
+    borradores?: ({ para: string; asunto: string; enlace: string; tarea: string; mundo?: string } & Omit<JsonCausa, 'enlace'>)[];
+    /** las tareas vencidas que nadie ha propuesto cerrar ni mover, por su dirección (`tarea:T405`): pulso solo las nombra */
+    vencidas_sin_propuesta?: string[];
+    /** el mundo de cada vencida sin propuesta, por su tarea */
+    mundos_vencidas?: Record<string, string>;
+    /** los mundos de sus cosas ("" lo sin clasificar; [""] si no trae ninguna) */
+    mundos?: string[];
+    /** los de lo que cambió (tareas y borradores); [] si no cambió nada */
+    mundos_cambios?: string[];
+    /** los mundos en que tiene algo sin ver ("" lo sin clasificar): con un mundo puesto se ve si trae de ese o "" */
+    sin_ver_en?: string[];
+    [k: string]: unknown;
+}
+/** Lo que causó un cambio: `por` («correo de Beto Soto», «minuta del 17-nov»), la clave de su `fuente` (su ícono) y
+ *  su `enlace` (una dirección o una web). Una pasada de antes de la causa no lo trae. */
+export interface JsonCausa { por?: string; fuente?: string; enlace?: string }
+/** Una tarea en una pasada: su dirección (o lo que el agente puso, si todavía no existe), su línea, su causa y, si se cerró,
+ *  cómo. */
+export interface JsonTareaPasada extends JsonCausa { id: string; linea: string; como?: string; mundo?: string }
+/** Hasta cuál vio: su id, su día y cuándo se marcó. */
+export interface JsonMarcaVisto { id?: string; dia?: string; cuando?: string }
+/** Las pasadas con algo sin ver en algún mundo, la más nueva primero (hasta 40; `total`, cuántas son; `con_cambios`, cuántas
+ *  cambiaron algo; `por_mundo`, cuántas con cambios se ven con cada mundo puesto), y hasta cuál vio con ambos (`visto`) y
+ *  con cada mundo (`vistos`). */
+export interface JsonSinVer {
+    ok: boolean; error?: string; desde?: string; clave?: string; nombre?: string; esquema?: string;
+    visto?: JsonMarcaVisto; vistos?: Record<string, JsonMarcaVisto>; total?: number; con_cambios?: number; por_mundo?: Record<string, number>;
+    pasadas?: JsonPasada[];
+}
+export interface JsonVisto {
+    ok: boolean; error?: string; visto?: JsonMarcaVisto; vistos?: Record<string, JsonMarcaVisto>; movio?: boolean; mundo?: string;
+}
+/** Las pasadas sin ver de un resultado, leídas donde viven (`telar resultado <clave> --sin-ver`). */
+export async function pasadasSinVer(clave: string): Promise<Respuesta<JsonSinVer>> {
+    return await deServe<JsonSinVer>(`/resultados/${encodeURIComponent(clave)}/visto`, 20000);
+}
+/** Marcarlas vistas hasta `id` (vacío: hasta la más nueva), donde viven (`telar resultado <clave> --visto`): con `mundo`,
+ *  lo de ese mundo y lo sin clasificar; sin él (ambos), todo. */
+export async function marcarVisto(clave: string, id: string, mundo = ''): Promise<Respuesta<JsonVisto>> {
+    return await aServe<JsonVisto>('POST', `/resultados/${encodeURIComponent(clave)}/visto`, 20000, mundo ? { id, mundo } : { id });
 }
 
 /** Un mensaje que escribe la persona desde otra parte (el panel) a un hilo de cualquier máquina, por
@@ -166,9 +254,11 @@ export const escribirComoPersona = async (hilo: string, texto: string, de: strin
     return r.error ? { error: r.error } : { ok: true, id: r.datos?.id };
 };
 
-/** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`). */
-export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string }[] }
-export const espejos = async () => await deServe<{ espejos: JsonEspejo[] }>('/espejos', 15000);
+/** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`), con lo que espera en cola para cada
+ *  una y lo que se hizo de esa cola (telar.alcance). `al_dia`: el nodo de aquí está al día con el bus, así que una foto
+ *  vieja quiere decir que su máquina se fue. */
+export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string; mundo?: string }[]; cola?: Pendiente[]; hechos?: Hecho[] }
+export const espejos = async () => await deServe<{ espejos: JsonEspejo[]; al_dia?: boolean }>('/espejos', 15000);
 
 /** Una nota sobre un evento del día (`telar evento`). */
 export interface JsonNota { de: string; texto: string; creado: string }
@@ -223,6 +313,8 @@ export function entradaSubida(hilo: string, maquina: string, archivo: File): Pro
 /** Una unidad del perfil, tenga hilo o no (`telar proyectos --json`). */
 export interface JsonProyecto {
     ruta: string; nombre: string; arquetipo: string; modificado: string | null; hilo: string; vivo: boolean;
+    /** su mundo de `[mundos]`, por su carpeta; "" sin clasificar; sin `[mundos]`, no viene */
+    mundo?: string;
     /** el cliente, si el nombre lo lleva adelante («Cliente · título»); "" si no */
     cliente?: string;
     /** sin cliente, o con uno que es la casa misma (`internos` del perfil): se muestra el nombre, no el cliente */
@@ -231,10 +323,44 @@ export interface JsonProyecto {
     estado?: string; estado_completo?: string;
     /** el área que declara su frontmatter («area: PIA»); "" si no la tiene */
     area?: string;
+    /** los campos sueltos de su frontmatter, como texto (`{frontmatter:<clave>}`): con qué se agrupan y se describen las
+     *  iniciativas (`agrupar_iniciativas` del modo) */
+    frontmatter?: Record<string, string>;
+    /** su plazo (`telar fechas`, clase plazo): de cuándo a cuándo, en qué etapa va y lo que no cuadra; null si no tiene */
+    plazo?: JsonPlazo | null;
 }
 
-/** Las unidades, y `areas`: el orden en que se muestran las áreas (`areas` del perfil). */
-export const proyectos = async () => await deServe<{ raiz: string; proyectos: JsonProyecto[]; areas?: string[] }>('/proyectos', 30000);
+/** El plazo de una unidad: el de su fuente de fechas (un gestor de proyectos, su cronograma). */
+export interface JsonPlazo {
+    inicio: string; fin: string;
+    /** pendiente (por partir), en-curso, hecho o cancelado */
+    estado: string;
+    /** la etapa en palabras («desarrollo»); "" si su fuente no la dice */
+    etapa?: string;
+    /** cuánto avanzó, de 0 a 1; null si su fuente no lo sabe */
+    avance?: number | null;
+    /** lo que no cuadra («venció el 22-oct»); "" si nada */
+    aviso?: string;
+    fuente?: string; enlace?: string;
+}
+
+/** El vocabulario de estados de las iniciativas (`[iniciativas]` de la configuración). */
+export interface JsonVocabulario {
+    estados?: string[]; sinonimos?: Record<string, string>; clases?: Record<string, string>;
+    /** lo que dice `estado_fuente` en una ficha → cómo se muestra («sheet» → «Sheet») */
+    fuentes?: Record<string, string>;
+}
+
+/** Las unidades, y `areas`: el orden en que se muestran las áreas (`areas` del perfil); `fallas`, las fuentes de
+ *  fechas que no contestaron al buscar los plazos; `iniciativas`, el vocabulario de sus estados. */
+export const proyectos = async () =>
+    await deServe<{ raiz: string; proyectos: JsonProyecto[]; areas?: string[]; fallas?: string[]; iniciativas?: JsonVocabulario }>('/proyectos', 30000);
+
+/** `telar proyectos estado`: el estado de una iniciativa, en su ficha (`estado:` y `estado_desde:`), sin commitear.
+ *  `cambio`: false si ya estaba en ese estado (contando sus sinónimos), y no se escribió. */
+export const estadoIniciativa = async (ruta: string, estado: string) =>
+    await aServe<{ ruta: string; archivo: string; estado: string; estado_desde: string; antes: string; cambio: boolean }>(
+        'POST', '/proyectos/estado', 15000, { ruta, estado });
 
 /** Los pendientes de los documentos de todas las unidades, tengan hilo o no (sin proveedores: rápido). */
 export const pendientesRepo = async () => await deServe<{ pendientes: JsonFila[] }>('/pendientes?repo=true', 30000);
@@ -261,7 +387,7 @@ export interface JsonAtajo { tecla: string; nombre: string; mensaje: string; des
 /** Una sección del día que llena un comando (`[bloques.<clave>]`). */
 /** `en`: "" es una pestaña propia del dashboard; «plan», arriba del plan. `tecla`: la de su pestaña. */
 /** `en`: arriba de otra pestaña («plan»); `dentro`: una subpestaña de una de las fijas («proyectos») */
-export interface JsonBloque { clave: string; nombre: string; color: string; en?: string; tecla?: string; dentro?: string }
+export interface JsonBloque { clave: string; nombre: string; color: string; tecla?: string; dentro?: string }
 
 /** `telar bloque <clave> --item <id>`: el detalle de un ítem (el cuerpo de un correo), al abrirlo. */
 export async function bloqueItem(clave: string, id: string): Promise<Respuesta<{ texto: string }>> {
@@ -280,19 +406,27 @@ export async function conceder(modulo: string, orden: string, decision: 'concedi
 }
 
 /** `telar bloque <clave>`: la página que imprime su comando. */
+/** La pantalla de configuración de un módulo (`[configurar]`): una página, casi siempre un lienzo. */
+export async function configurarModulo(nombre: string): Promise<Respuesta<JsonPagina>> {
+    return await deServe<JsonPagina>(`/configurar/${encodeURIComponent(nombre)}`, 90000);
+}
+
 export async function bloque(clave: string): Promise<Respuesta<JsonPagina>> {
     return await deServe<JsonPagina>(`/bloques/${encodeURIComponent(clave)}`, 90000);
 }
 
-export interface JsonPestana { nombre: string; tecla: string }
+/** Una pestaña de proveedor (un feed): su tecla y cómo se ve su ficha (`vista`: «lectura», o vacío, la de una tarea). */
+export interface JsonPestana { nombre: string; tecla: string; vista?: string }
 /** La configuración resuelta (`/config`). */
 export type JsonConfig = {
     calendario: JsonCalendario; agente: JsonAgenteConfig; hilos: { directorios: string[]; tope: number };
     atajos?: JsonAtajo[]; secciones?: JsonSeccion[]; apps?: JsonApp[];
+    /** lo que dejan las skills por día; `pasadas`, el esquema si cada día es una lista de pasadas (la línea del pulso) */
+    resultados?: { clave: string; nombre: string; en: string; pasadas: string }[];
     /** las pestañas del dashboard: su orden y las que no se muestran (`[dashboard]`) */
     dashboard?: { orden: string[]; ocultas: string[] };
     /** los módulos instalados (`[modulos]`) y lo que aporta cada uno */
-    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[] }[]; remotos?: JsonRemoto[];
+    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[]; configurar?: boolean }[]; remotos?: JsonRemoto[];
     /** el bus de esta persona: url, persona y máquina; vacío sin bus */
     bus?: { url?: string; persona?: string; maquina?: string }; bloques?: JsonBloque[];
     pestanas?: JsonPestana[];
@@ -304,7 +438,26 @@ export type JsonConfig = {
     estado?: string;
     /** dónde vive la bandeja del equipo, vista desde aquí: «aqui», otra máquina, o vacío */
     equipo?: string;
+    /** la instrucción: a quién va de entrada lo que manda una pestaña (`[instruccion] destino`, y `a`, el nombre que lo
+     *  elige en la ventana) y `procesar`, la línea que le llega con un contexto libre y nada pedido */
+    instruccion?: { destino?: string; a?: string; procesar?: string };
+    /** las partes de la vida (`[mundos]`), en su orden: su color ya resuelto, su horario (los días de 0, domingo, a 6;
+     *  los minutos del día) y su tema (""; el del modo); `mundos_fuera`, el que rige fuera de todo horario ("" ambos) */
+    mundos?: JsonMundo[]; mundos_fuera?: string;
+    /** los colores propios de cada tema en esta máquina (`[temas.<tema>]`): tema → {tinta: #rrggbb}; solo los que cambian
+     *  algo (un telar de antes no lo manda) */
+    temas?: Record<string, Record<string, string>>;
 };
+export interface JsonMundo {
+    nombre: string; areas: string[]; rutas: string[]; etiquetas: string[]; color: string;
+    horario: { texto: string; dias: number[]; desde: number; hasta: number }[];
+    /** los colores de la página mientras rige (componentes/temas.ts); "" o sin él (un telar de antes), los del modo */
+    tema?: string;
+    /** los modos que tiene, en su orden (el primero es al que entra la página); vacío o sin él, todos */
+    modos?: string[];
+    /** el dibujo animado de su tarjeta en la ventana de mundos (componentes/arte.ts); "" o sin él, el que le toca */
+    arte?: string;
+}
 export async function config(): Promise<Respuesta<JsonConfig>> {
     return await deServe<JsonConfig>('/config', 20000);
 }
@@ -316,7 +469,20 @@ export const encargar = async (agente: string, texto: string) =>
 /** Un grupo propio en la lista de hilos (`[secciones.x]`). `hilos`: nombres exactos, o
  *  prefijos si terminan en `*`. `home`: si declara una página. */
 /** `grupo: 'agentes'` es un agente residente: va bajo la cabecera «Agentes», con su home armado por telar. */
-export interface JsonSeccion { clave: string; nombre: string; hilos: string[]; home: boolean; grupo?: string }
+export interface JsonSeccion {
+    clave: string; nombre: string; hilos: string[]; home: boolean; grupo?: string;
+    /** la de un agente: siempre, a-pedido o no (con siempre y a-pedido, lo que le llega por el bus lo abre si está
+     *  cerrado y lo despierta si duerme). Un telar de antes no la manda */
+    presencia?: 'siempre' | 'a-pedido' | 'no';
+    /** la de un agente, con `[mundos]`: su mundo (el de su agente.toml, la etiqueta de su hilo o su carpeta; "" sin
+     *  clasificar). Sin `[mundos]`, o un telar de antes, no viene */
+    mundo?: string;
+    /** la de un agente, con `[mundos]`: qué pasa con él con otro mundo puesto (su agente.toml; sin él, al-final) */
+    fuera_de_su_mundo?: FueraDeSuMundo;
+    /** la de un agente que vive en otra máquina y cuya carpeta todavía no está en esta (una raíz atrasada): esa máquina,
+     *  que lo trae en su foto. Sin casa aquí (`home` false); su hilo se abre allá */
+    maquina?: string;
+}
 
 export function enSeccion(s: JsonSeccion, hilo: string): boolean {
     return s.hilos.some(p => p.endsWith('*') ? hilo.startsWith(p.slice(0, -1)) : hilo === p);
@@ -359,18 +525,37 @@ export interface JsonAccionPagina {
     /** con `rol: dueno`, las personas para elegir */
     opciones?: string[];
     /** después del comando, un hilo nuevo con el agente y este mensaje (`nombre_hilo`); con `al_hilo`,
-     *  el mensaje va al hilo donde se trabaja la tarea (el de su proyecto, o Gestión) */
+     *  el mensaje va al hilo donde se trabaja la tarea (el de su proyecto, o el del agente de lo sin proyecto) */
     mensaje?: string; nombre_hilo?: string; al_hilo?: boolean;
+    /** solo su ícono (un nombre de web/iconos.ts), en la barra de la ficha, con `ayuda` al pasar el mouse */
+    icono?: string; solo_icono?: boolean; ayuda?: string;
 }
 export interface JsonPagina {
     titulo: string; subtitulo?: string;
+    /** la de la entidad que muestra (la ficha de una tarea del tipo: `tarea:T84`) */
+    direccion?: string;
+    /** la de un bloque: algo nuevo que pide mirarlo («3 chats sin leer»), un punto en su fila del dashboard; "" o sin
+     *  el campo, nada. Con el campo (aunque vacío), el bloque se relee solo cada tanto para tenerlo al día */
+    aviso?: string;
     /** la versión de lo que muestra (la ficha de una tarea del tipo): se devuelve con una acción, y si la
      *  tarea cambió desde entonces, la acción no se hace */
     version?: string;
     bloques: { titulo?: string; texto?: string; items?: JsonPaginaItem[]; lienzo?: JsonLienzo; marco?: JsonMarco;
                destacado?: boolean; color?: string }[];
     acciones?: JsonAccionPagina[];
+    /** la ficha de una lectura (una pestaña con `vista = "lectura"`, vistas/dashboard/leer.ts): sus temas (con `nota`, la
+     *  ruta de la nota de ese tema, que se abre al lado), de dónde viene, su fecha y lo que ya se respondió */
+    temas?: (string | { nombre: string; nota?: string })[];
+    fuente?: string; fecha?: string; estado?: string;
+    /** las relaciones que la lectura propone para el grafo (`elegida`: null sin decidir) y el vocabulario de sus tipos */
+    conexiones?: { nota: string; titulo?: string; tipo: string; porque?: string; ancla?: string; elegida?: boolean | null }[];
+    tipos?: JsonTipoArista[];
+    /** desde cuándo se está volviendo a procesar ("" si no): la ficha se relee sola hasta que termina */
+    procesando?: string;
 }
+
+/** Un tipo de arista del grafo: qué es (`que`), en qué se distingue del más cercano, su grupo y su color. */
+export interface JsonTipoArista { tipo: string; que?: string; distingue?: string; grupo?: string; color?: string }
 
 /** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
 export interface JsonLienzo { archivo: string; alto?: number | 'lleno'; params?: Record<string, string | number>; memoria?: string }
@@ -390,9 +575,38 @@ export async function tarea(id: string, proveedor: string): Promise<Respuesta<Js
 export async function accionPorRol(id: string, proveedor: string, rol: string, texto = ''): Promise<Respuesta<{ tipo: string; hecho: string; salida?: string; hilo?: string }>> {
     return await aServe<{ tipo: string; hecho: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, rol, ...(texto ? { texto } : {}) });
 }
-/** `hilo`: con una acción que lleva su mensaje a un hilo (`al_hilo`), a cuál; sin él, al de la tarea. */
-export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = '', hilo = ''): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
-    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000, { proveedor, n, texto, ...(version ? { version } : {}), ...(hilo ? { hilo } : {}) });
+/** Correr la acción `n` de la ficha de una tarea; `version`, la de la ficha que se miraba (si cambió, no se hace). Una
+ *  que lleva su mensaje a un hilo (`al_hilo`) va al de la tarea; a otro, por la instrucción (web/instruccion.ts). */
+export async function accionTarea(id: string, proveedor: string, n: number, texto = '', version = '', conexiones?: string): Promise<Respuesta<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>> {
+    return await aServe<{ tipo: string; hecho: string; enlace?: string; salida?: string; hilo?: string }>('POST', `/tareas/${encodeURIComponent(id)}/accion`, 40000,
+        { proveedor, n, texto, ...(version ? { version } : {}), ...(conexiones !== undefined ? { conexiones: JSON.parse(conexiones) as unknown } : {}) });
+}
+
+/** Una línea de la historia de una tarea (`telar tipo tarea ver --json`): cuándo, de qué clase (creada, nota, avance,
+ *  respuesta, mover, edita…) y lo que dice. */
+export interface JsonCambio { fecha: string; hora?: string; tipo: string; texto: string }
+
+/** Una tarea entera, como la da `GET /tipos/tarea/<id>` (telar.tipos.tarea): el contexto, la historia, de dónde salió y
+ *  dónde se trabaja, con qué se conecta y su proyecto. Lo que falta, no viene o viene vacío. */
+export interface JsonTarea {
+    id: string; titulo: string; estado: string; direccion?: string; version?: string;
+    prioridad?: number; vence?: string; tamano?: string; dueno?: string; espera?: string; avance?: string;
+    proyecto?: string; area?: string; etiquetas?: string[]; origen?: string; trabajo?: string; creada?: string;
+    /** de qué se trata y en qué va: un párrafo, o vacío */
+    contexto?: string;
+    /** «- `bloquea` [T276](T276.md) · por qué», tal cual en su archivo */
+    conexiones?: string[];
+    historia?: JsonCambio[];
+}
+
+/** Una tarea entera por su número (sin `tarea:` ni `@máquina`), aquí o en la máquina que las escribe. */
+export async function tareaEntera(id: string): Promise<Respuesta<JsonTarea>> {
+    return await deServe<JsonTarea>(`/tipos/tarea/${encodeURIComponent(id)}`, 20000);
+}
+
+/** Las tareas abiertas de un proyecto (su ruta), enteras. */
+export async function tareasDeProyecto(ruta: string): Promise<Respuesta<{ tareas: JsonTarea[]; fallas?: Record<string, string> }>> {
+    return await deServe<{ tareas: JsonTarea[]; fallas?: Record<string, string> }>(`/tipos/tarea?proyecto=${encodeURIComponent(ruta)}`, 30000);
 }
 
 /** Un objeto de telar por su dirección (`tipo:id[@máquina]`, GET /objetos/<dirección>): lo que muestra la vista
@@ -408,6 +622,117 @@ export interface JsonObjeto {
 
 /** Una dirección en la ruta de la API: con sus `:`, `/` y `@` a la vista, lo demás escapado. */
 const enRuta = (direccion: string) => encodeURIComponent(direccion).replace(/%3A/gi, ':').replace(/%2F/gi, '/').replace(/%40/g, '@');
+
+/** Algo que espera una decisión de la persona (`telar esperas --json`, docs/contratos.md): un permiso o una pregunta de
+ *  un hilo, el `avance` de una tarea, un mensaje retenido, lo que declare un módulo. */
+export interface JsonEspera {
+    direccion: string; tipo: string;
+    /** `permiso`, `pregunta`, `avance:<marca>`, `retenido` o la de un módulo */
+    clase: string;
+    /** fecha y hora (`2026-11-17T09:30:00`) o solo la fecha; vacío si no se sabe */
+    desde: string;
+    titulo: string; resumen: string;
+    /** dónde se ve o se contesta: el primero es el principal (su hilo, su proyecto) */
+    enlaces: string[];
+    maquina?: string;
+    campos?: Record<string, unknown>;
+    /** su mundo de `[mundos]`; "" sin clasificar; sin `[mundos]`, no viene */
+    mundo?: string;
+    /** el agente residente del que es (el de su hilo, el que pregunta, el de la carpeta de su proyecto si declara su
+     *  mundo); "" o sin él, de ninguno. Lo de uno que pide esconderse no se nombra fuera de su mundo (web/mundo.ts, `deAgenteAjeno`) */
+    agente?: string;
+}
+/** Una tarea que la persona contestó y que espera al agente (`telar esperas --json`, `contestadas`): su última
+ *  `[respuesta]` vino después de la última marca del agente, y no tiene un `avance` pendiente. */
+export interface JsonContestada {
+    direccion: string; titulo: string;
+    /** cuándo contestó (la última `[respuesta]`), como `desde` */
+    cuando: string;
+    /** lo que contestó, en una línea (sin los avisos de «revisar ya») */
+    respuesta: string;
+    /** cuándo se le avisó al agente que la atendiera ya (un «prompt: …»: «hazte cargo ya», «revisar ya»); "" si no */
+    encargada?: string;
+    enlaces: string[];
+    mundo?: string;
+}
+export interface JsonEsperas {
+    esperas: JsonEspera[]; fallas?: Record<string, string>; mundos?: string[];
+    /** las tareas contestadas que esperan al agente (no esperan a la persona: no son esperas) */
+    contestadas?: JsonContestada[];
+}
+
+/** Lo que espera a la persona, de lo más viejo a lo más nuevo (`GET /esperas`); con `tipos`, solo los de esos tipos. */
+/** Un aviso que viene de un archivo (`[avisos.<clave>]`, telar.avisos), de los que hay que decir: `aviso` o `mal`, de
+ *  la última hora. `maquina`, "" si el archivo vive aquí; `informe`, un `.md` para abrir en el visor ("" si no hay);
+ *  `problemas`, los ids de lo que está mal (null si el archivo no los trae); `visto`, si la persona ya lo dio por visto
+ *  y sigue siendo el mismo. */
+export interface JsonAvisoArchivo {
+    clave: string; maquina: string; nivel: 'aviso' | 'mal'; linea: string; fecha: string; informe: string;
+    sugerencias: number | null; problemas?: string[] | null; visto?: boolean;
+}
+/** `GET /avisos`: los avisos de los archivos declarados, de esta máquina y de las otras. */
+export const avisosDeArchivos = async () =>
+    await deServe<{ avisos: JsonAvisoArchivo[]; fallas: Record<string, string> }>('/avisos', 30000);
+/** `POST /avisos/visto`: dar por visto el aviso de una fuente, como se vio (su nivel y sus problemas), en la máquina
+ *  donde vive su archivo. */
+export const avisoVisto = async (clave: string, nivel: string, problemas: string[] | null | undefined) =>
+    await aServe<{ ok: boolean; error?: string }>('POST', '/avisos/visto', 20000, { clave, nivel, problemas: problemas ?? null });
+
+export async function esperas(tipos: string[] = []): Promise<Respuesta<JsonEsperas>> {
+    return await deServe<JsonEsperas>(`/esperas${tipos.length ? `?${tipos.map(t => `tipo=${encodeURIComponent(t)}`).join('&')}` : ''}`, 30000);
+}
+
+/** Una cosa que calza en una búsqueda sobre todo junto (`telar buscar`): su dirección (o lo que la agarra), su título,
+ *  dónde vive, cuándo, su estado, si ya pasó y su mundo. */
+export interface JsonHallado {
+    fuente: string; direccion: string; id: string; titulo: string; donde: string; cuando: string; estado: string;
+    pasada: boolean; mundo: string;
+    /** el agente residente del que es (un hilo suyo, lo que espera de él, lo de su carpeta si declara su mundo); "" o sin
+     *  él, de ninguno. Lo de uno que pide esconderse no sale en ⌘K ni en Todo fuera de su mundo (web/mundo.ts, `deAgenteAjeno`) */
+    agente?: string;
+    /** de la fila de un bloque: su `bloque`, y su `mensaje` y su `nombre` si los trae; de un objeto de un módulo que es
+     *  un documento (`campos.ruta_abs`), su `ruta_abs`: se abre en el visor */
+    datos?: Record<string, string>;
+}
+export interface JsonBusqueda {
+    q: string; mundos: string[];
+    /** el mundo cuyo contenido va primero en cada fuente, antes del tope ('' ninguno) */
+    primero?: string;
+    fuentes: {
+        clave: string; nombre: string; total: number; hallados: JsonHallado[]; falla: string;
+        /** no terminó de leerse a tiempo: trae lo de antes (`leida`) o nada, y sigue leyéndose en telar */
+        tarde?: boolean;
+        /** cuándo se leyó lo que trae (ISO, hora local); '' si nunca */
+        leida?: string;
+    }[];
+}
+/** Buscar sobre todo junto (`GET /buscar`): lo que espera, las tareas, las casillas, los hilos, los proyectos, los
+ *  objetos de los tipos de un módulo que los lista (`objeto:<tipo>`) y los bloques. Sin filtrar por mundo: Todo los
+ *  ordena, y con `primero` (su mundo puesto) lo de ese mundo entra primero al tope de cada fuente. Contesta en lo que
+ *  dura su tope (segundo y medio): la fuente lenta viene `tarde`, y la búsqueda siguiente la trae. `releer`: todas de
+ *  nuevo, aunque lo guardado valga. `fuentes`: solo esas (⌘K pide los proyectos, las tareas y los documentos,
+ *  `objeto:doc`); sin ninguna, todas. `siHay`: una de `fuentes` que esa máquina no tiene se deja fuera, en vez de ser un
+ *  error que tumba a las demás. */
+export async function buscar(q: string, limite = 30, releer = false, primero = '', fuentes: readonly string[] = [],
+    siHay = false): Promise<Respuesta<JsonBusqueda>> {
+    return await deServe<JsonBusqueda>(`/buscar?q=${encodeURIComponent(q)}&limite=${limite}${releer ? '&releer=true' : ''}`
+        + (primero ? `&primero=${encodeURIComponent(primero)}` : '')
+        + fuentes.map(f => `&fuente=${encodeURIComponent(f)}`).join('') + (siHay ? '&si_hay=true' : ''), 30000);
+}
+
+/** Que telar empiece a leer lo que busca (`POST /buscar/preparar`), sin esperar: mientras se escribe, se lee. */
+export async function prepararBusqueda(): Promise<Respuesta<{ leyendo: string[] }>> {
+    return await aServe<{ leyendo: string[] }>('POST', '/buscar/preparar', 5000);
+}
+
+/** Lo que dice telar al contestar la pregunta en vivo de un hilo: si el agente la tomó, o si ya la habían contestado en
+ *  su terminal (`por: "terminal"`). */
+export interface JsonRespondido { ok?: boolean; tomada?: boolean; por?: string }
+
+/** Contestar la pregunta en vivo de un hilo (`POST /hilos/responder`): `respuestas` es {pregunta: respuesta}. */
+export async function responderPregunta(hilo: string, maquina: string, id: string, respuestas: Record<string, string>): Promise<Respuesta<JsonRespondido>> {
+    return await aServe<JsonRespondido>('POST', '/hilos/responder', 30000, { hilo, maquina, id, respuestas });
+}
 
 export async function objeto(direccion: string): Promise<Respuesta<JsonObjeto>> {
     return await deServe<JsonObjeto>(`/objetos/${enRuta(direccion)}`, 20000);
@@ -432,14 +757,38 @@ export interface JsonPeriodico {
     ultima: { inicio?: string; fin?: string; codigo?: number; resultado?: string; corriendo?: boolean; hilo?: string };
     /** el módulo que lo trae, o si lo declara un `[disparadores.x]`: no se cambia desde aquí, sino allá */
     modulo?: string; disparador?: boolean;
+    /** el agente residente al que se le encarga (con `mensaje`); vacío, un hilo nuevo cada vez */
+    agente?: string;
+    /** con un hilo nuevo cada vez: el hilo del que cuelga cada uno (el de un agente) */
+    padre?: string;
+    /** los procesos cuyo resultado usa (declarado), y los que nombra pero no existen */
+    despues?: string[]; despues_falta?: string[];
+    /** a quién le llega: un agente (deducido de un comando que encarga, si `inferido`), un hilo nuevo o nadie */
+    destino?: { tipo: 'agente' | 'hilo' | 'comando'; agente: string; inferido: boolean };
+    /** con `calendario`: sus corridas en los días pedidos */
+    corridas?: JsonCorrida[];
 }
-export interface JsonPeriodicos { maquina: string; archivo: string; zona: string; procesos: JsonPeriodico[] }
+/** Una corrida de un proceso, en la zona de los periódicos: su día y su minuto (así la página no cuenta zonas). */
+export interface JsonCorrida {
+    dia: string; min: number; en: string;
+    estado: 'bien' | 'corrio' | 'fallo' | 'saltado' | 'corriendo' | 'falto' | 'sin-registro' | 'proxima' | 'pausado';
+    resultado?: string; hilo?: string;
+    /** fuera de su horario: alguien lo corrió a mano */
+    manual?: boolean;
+}
+/** Un agente residente de la máquina de los periódicos: a quién se le puede encargar uno. */
+export interface JsonAgentePer { clave: string; nombre: string; carpeta: string; icono: string }
+export interface JsonPeriodicos { maquina: string; archivo: string; zona: string; procesos: JsonPeriodico[]; agentes?: JsonAgentePer[] }
+/** `telar periodicos calendario`: lo mismo, con las corridas de `dias` días desde `desde`, y la hora de allá. */
+export interface JsonCalendarioPer extends JsonPeriodicos { desde: string; dias: number; ahora: string }
 
 /** Un verbo de `telar periodicos`, por la API (que lo pide a la máquina donde viven, por el bus). */
 async function periodicosPor<T>(argv: string[], timeout: number): Promise<Respuesta<T>> {
     return await aServe<T>('POST', '/periodicos', timeout, { argv });
 }
 export const periodicos = async () => await deServe<JsonPeriodicos>('/periodicos', 30000);
+export const periodicosCalendario = (desde: string, dias: number) =>
+    periodicosPor<JsonCalendarioPer>(['calendario', ...(desde ? ['--desde', desde] : []), '--dias', String(dias)], 30000);
 export const periodicosLog = (nombre: string) => periodicosPor<{ nombre: string; log: string }>(['log', nombre, '--lineas', '200'], 30000);
 export const periodicosHorario = (cuando: string) =>
     periodicosPor<{ valido: boolean; cuando: string; proximas: string[]; error: string }>(['horario', cuando, '--n', '3'], 30000);
@@ -458,9 +807,6 @@ export interface JsonConversacion {
 export const conversacion = async (id: string) => await deServe<JsonConversacion>(`/conversaciones/${encodeURIComponent(id)}`, 20000);
 
 /** `telar atajo <tecla>`: un hilo nuevo con el agente y el mensaje de ese atajo. */
-export async function abrirItem(clave: string, mensaje: string, nombre: string): Promise<Respuesta<{ hilo: string; mensaje: string }>> {
-    return await aServe<{ hilo: string; mensaje: string }>('POST', `/bloques/${encodeURIComponent(clave)}/abrir`, 30000, { mensaje, nombre });
-}
 export const atajo = async (tecla: string) =>
     await aServe<{ hilo: string; mensaje: string }>('POST', `/atajos/${encodeURIComponent(tecla)}`, 30000);
 
@@ -519,6 +865,20 @@ export async function hoy(local: boolean, dia = ''): Promise<Respuesta<JsonHoy>>
     return await deServe<JsonHoy>(`/hoy${q ? `?${q}` : ''}`, local ? 20000 : 60000);
 }
 
+/** Despertar un hilo (`POST /despertar`, telar.dormir, telar.alcance): el de aquí en su ventana; el de otra máquina
+ *  (`maquina`), pidiéndoselo a ella. `hecho` vacío si no dormía. Con `cola` (un botón), como esté (uno cerrado se retoma)
+ *  y, si su máquina está fuera de línea, en cola hasta que vuelva (`en_cola`); `texto`, su primer mensaje. */
+export async function despertar(hilo: string, maquina = '', o: { cola?: boolean; texto?: string } = {}):
+    Promise<Respuesta<{ hecho: string; en_cola?: boolean; aviso?: string }>> {
+    return await aServe<{ hecho: string; en_cola?: boolean; aviso?: string }>('POST', '/despertar', 60000,
+        { hilo, maquina, ...(o.cola ? { cola: true } : {}), ...(o.texto ? { texto: o.texto } : {}) });
+}
+
+/** Lo que muestra esta página (`POST /mirando`): lo que se mira no se duerme (telar.dormir). */
+export async function mirando(pagina: string, hilo: string, maquina = ''): Promise<Respuesta<{ ok: boolean }>> {
+    return await aServe<{ ok: boolean }>('POST', '/mirando', 10000, { pagina, hilo, maquina });
+}
+
 export async function ir(hilo: string, crear = false, remoto = ''): Promise<Salida> {
     const r = await aServe<{ hilo: string; hecho: string }>('POST', '/ir', remoto ? 60000 : 20000, { hilo, crear, remoto });
     return r.error ? { ok: false, codigo: 1, out: '', err: r.error } : { ok: true, codigo: 0, out: `→ «${r.datos?.hilo ?? hilo}»`, err: '' };
@@ -534,11 +894,36 @@ type JsonSkills = { hilo: string; conversacion: string; remoto: boolean; skills:
 export const skills = async (hilo: string, carpeta = '') => await deServe<JsonSkills>(
     `/skills?hilo=${encodeURIComponent(hilo)}${carpeta ? `&carpeta=${encodeURIComponent(carpeta)}` : ''}`, 30000);
 
-/** `telar actuar`: mandarle a un hilo o a un agente un prompt sobre una entidad (docs/propuestas/acciones.md). */
-export interface JsonActuado { destino: string; como: string; prompt: string; maquina?: string }
-export async function actuar(direccion: string, a: string, skill: string, nota: string, escribir: boolean): Promise<Respuesta<JsonActuado>> {
-    return await aServe<JsonActuado>('POST', '/actuar', 60000, { direccion, a, skill, nota, escribir });
+/** Una instrucción (`telar actuar`, docs/propuestas/instruccion.md): lo que se le pide a un hilo o a un agente, con el
+ *  contexto de una entidad. `a` vacío es su hilo; `nuevo`, uno nuevo para ella; sin `direccion` ni `fila`, solo lo
+ *  pedido, a quien diga `a`. `fila`: la de un pendiente que la pantalla ya tiene (ahorra buscarlo). */
+export interface PedidoInstruccion {
+    direccion?: string; a?: string; nuevo?: boolean; skill?: string; nota?: string; escribir?: boolean; fila?: FilaConocida;
+    /** sin entidad y con `nuevo`: cómo se llama el hilo nuevo */
+    nombre?: string;
+    /** un texto que va entero, con sus líneas, debajo de lo pedido (lo que mostraba la pestaña de un módulo) */
+    contexto?: ContextoLibre;
 }
+/** Un contexto que no es una entidad: un texto (un chat), cómo se llama y de dónde viene, en palabras. */
+export interface ContextoLibre { texto: string; titulo?: string; origen?: string }
+/** La fila de un pendiente, entera o lo que se sepa de ella (su ref, al menos). */
+export type FilaConocida = Partial<JsonFila> & { ref: string };
+/** `como`: encargado, enviado, escrito (sin mandar), abierto (un hilo nuevo que arrancó con ella) o «por el bus»;
+ *  `aviso`, lo que no salió aunque se mandó (no quedó en la historia de la tarea) */
+export interface JsonActuado { destino: string; como: string; prompt: string; maquina?: string; aviso?: string }
+export async function actuar(p: PedidoInstruccion): Promise<Respuesta<JsonActuado>> {
+    return await aServe<JsonActuado>('POST', '/actuar', 90000, p);
+}
+/** Adónde iría una instrucción sobre una entidad sin elegir a quién (su hilo), y su contexto (`telar actuar --donde`).
+ *  `como`: hilo, dormido (se retoma), abrir (no tiene: se le abre uno), agente (se le encarga) o bus (en otra máquina);
+ *  vacío, con `falta`, si no tiene hilo propio. */
+export interface JsonAdonde {
+    destino: string; como: string; maquina: string; carpeta: string; nuevo: boolean; contexto: string; falta: string; titulo: string;
+    /** la entidad es un hilo o un agente: a sí mismo no se le manda su contexto */
+    propio: boolean;
+}
+export const adonde = async (direccion: string, fila?: FilaConocida) =>
+    await aServe<JsonAdonde>('POST', '/actuar/adonde', 60000, { direccion, ...(fila ? { fila } : {}) });
 
 /** Lo último de un hilo (`telar hilo leer`), de esta máquina o de otra por el bus: el JSON tal cual. */
 export async function leerHilo(hilo: string, ultimos: string, maquina = ''): Promise<Salida> {
@@ -560,19 +945,27 @@ export async function compartir(a: string, url: string, texto: string, titulo: s
 /** Un mensaje entre hilos por el bus, como lo guarda su registro (`telar mensaje --registro`). */
 export interface JsonMensajeBus {
     id: string; de: string; para: string; tipo: string; texto: string; creado: string;
-    persona?: string; saltos?: number; estado?: 'enviado' | 'retenido'; motivo?: string;
+    persona?: string; saltos?: number; estado?: 'enviado' | 'retenido' | 'descartado'; motivo?: string;
+    /** si se descartó: cuándo y quién */
+    descartado?: string; descartado_por?: string;
 }
 /** Los últimos mensajes entre hilos, de todas las máquinas. Sin bus, error (y la pestaña no los muestra). */
 export const mensajesBus = async (n = 60) => await deServe<{ mensajes: JsonMensajeBus[] }>(`/mensajes?n=${n}`, 30000);
 /** `telar mensaje --soltar <id>`: la persona deja pasar un mensaje retenido. */
 export const soltarMensaje = async (id: string) =>
     await aServe<{ id: string; para: string }>('POST', `/mensajes/${encodeURIComponent(id)}/soltar`, 30000);
+/** `telar mensaje --descartar <id>`: la persona decide que un mensaje retenido no sale. Queda como descartado en el
+ *  registro, y a quien lo mandó le llega un aviso (`aviso`, su id; `sin_aviso`, por qué no salió). */
+export const descartarMensaje = async (id: string) =>
+    await aServe<{ id: string; para: string; de: string; aviso?: string; sin_aviso?: string }>('POST', `/mensajes/${encodeURIComponent(id)}/descartar`, 30000);
 
 /** Un módulo instalado (`GET /modulos`): activo o apagado, su carpeta y de dónde vino. */
 export interface JsonModuloInstalado {
     nombre: string; activo: boolean; carpeta: string; descripcion: string; aporta: string[];
     fuente: string; version: string; ref: string; catalogo: string; enlazado: boolean; instalado: string;
     a_mano: boolean; pide: string[]; confianza: string; nueva: string;
+    /** si trae pantalla de configuración (`[configurar]`): `configurarModulo` la pide */
+    configurar?: boolean;
 }
 /** Uno de un catálogo (`GET /modulos/catalogo`): `confianza` es oficial, equipo o sin revisar. */
 export interface JsonModuloDisponible {
@@ -583,6 +976,10 @@ export interface JsonModuloDisponible {
 export const modulosInstalados = async () => await deServe<{ modulos: JsonModuloInstalado[] }>('/modulos', 30000);
 export const modulosCatalogo = async (forzar = false) =>
     await deServe<{ disponibles: JsonModuloDisponible[]; problemas: string[] }>(`/modulos/catalogo${forzar ? '?forzar=true' : ''}`, 30000);
+/** Una consulta a un módulo (`GET /modulos/<módulo>/<verbo>`: una orden suya con `consulta = true`), con el JSON que da.
+ *  Sin el módulo aquí, `estado` 404. */
+export const consultaModulo = async <T>(modulo: string, verbo: string) =>
+    await deServe<T>(`/modulos/${encodeURIComponent(modulo)}/${encodeURIComponent(verbo)}`, 60000);
 export const modulosAccion = async (accion: string, nombre: string) =>
     await aServe<{ salida: string }>('POST', `/modulos/${encodeURIComponent(accion)}`, 600000, { nombre });
 
@@ -595,6 +992,8 @@ export interface JsonAgente {
     publico?: boolean;
     /** uno o dos caracteres que la lista pone junto a cada hilo suyo */
     icono?: string;
+    /** el mundo de `[mundos]` que declara su agente.toml ("" o sin él: va por su carpeta) */
+    mundo?: string;
     politica?: { permite?: string[]; pregunta?: string[]; niega?: string[] };
 }
 /** Un encargo, en corto (telar.encargo): su estado va pedido → corriendo → hecho | falló | cancelado. */
@@ -604,8 +1003,12 @@ export interface JsonEstadoAgente {
     agente: JsonAgente; maquina: string; aqui: boolean; vivo: boolean; atencion: string;
     conversacion: { id: string; peso: number; tope: number } | null; rotacion: string;
     relevo: { cuando: string } | null; encargos: JsonEncargoCorto[]; sin_noticias?: boolean;
+    /** su máquina respondió sin él: su carpeta está solo en esta. El texto dice dónde debería vivir y qué hacer */
+    solo_aqui?: string;
     /** los hilos que abrió (no los suyos): para verlos, o archivarlos de una vez */
     abrio?: { hilo: string; vivo: boolean; archivado: boolean; cuando: string }[];
+    /** su mundo de `[mundos]`, por su carpeta; "" sin clasificar; sin `[mundos]`, no viene */
+    mundo?: string;
 }
 export const agentes = async () => await deServe<{ agentes: JsonEstadoAgente[]; problemas: string[] }>('/agentes', 40000);
 /** Rotar ya la conversación de un agente, con relevo (`POST /agentes/rotar`). */
@@ -667,10 +1070,36 @@ export interface JsonCodigos {
     hilo: string; maquina: string; carpeta: string; archivos: number; truncado: boolean;
     clases: JsonClaseCodigos[]; codigos: JsonCodigo[]; conversacion: JsonCodigoNombrado[];
     tareas_en: string; aviso: string; detalle?: JsonDetalleCodigo;
+    /** las ramas que suman a la carpeta, y los documentos que vienen de una: su clave (`README.md@rama` si la carpeta
+     *  también lo tiene) → su ruta, su rama y su archivo */
+    ramas?: string[]; de_rama?: Record<string, { ruta: string; rama: string; archivo: string }>;
 }
 export const codigos = async (hilo: string, maquina = '', codigo = '') =>
     await deServe<JsonCodigos>(`/codigos?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`
         + (codigo ? `&codigo=${encodeURIComponent(codigo)}` : ''), 30000);
+
+/** Lo que carga el contexto de un hilo (`GET /contexto`, docs/contratos.md «telar hilo contexto»): cuánto pesa ahora y
+ *  desde cuándo, una cuenta por grupo (lo de Claude Code, lo que carga al empezar, al entrar a carpetas, lo que leyó,
+ *  lo que se repite, lo de otros hilos y la conversación) y cada cosa con su ruta y su tamaño, en tokens. */
+export interface JsonItemCarga {
+    grupo: string; clase: string; nombre: string; ruta?: string; veces: number; tokens: number; caracteres?: number;
+    primera?: string; ultima?: string;
+    /** lo que una compactación ya resumió */
+    antes?: { veces: number; tokens: number };
+    /** por dónde llegó: Read, Bash, al compactar, cambió afuera */
+    vias?: string[];
+    /** no está en la conversación como texto: se dedujo de lo medido */
+    deducido?: boolean;
+}
+export interface JsonGrupoCarga { clave: string; nombre: string; para: string; cuantos: number; tokens: number }
+export interface JsonCarga {
+    hilo: string; maquina: string; agente: string; conversacion: string; carpeta: string; casa: string;
+    desde: { que: string; hora: string; como?: string; antes?: number; despues?: number };
+    compactaciones: number; total: number; medido: boolean; hora: string; modelo: string; al_empezar: number | null;
+    caracteres_por_token: number; grupos: JsonGrupoCarga[]; items: JsonItemCarga[]; truncado: boolean;
+}
+export const carga = async (hilo: string, maquina = '') =>
+    await deServe<JsonCarga>(`/contexto?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`, 30000);
 
 /** La versión de telar (`GET /version`): la que corre, la última en PyPI y si un clic la instala (`puede`: solo
  *  una instalación de `uv tool`); `a_mano`, qué hacer si no; `progreso`, la actualización en curso o la última. */
@@ -754,12 +1183,19 @@ export const ajusteTerminal = async (clave: 'columnas' | 'posicion' | 'fondo', v
 /** Los modos de la página y el catálogo de ajustes (`GET /modos`, telar.modos). */
 export interface JsonModos {
     catalogo: { clave: string; grupo: string; nombre: string; opciones: string[]; ayuda: string }[];
-    modos: { clave: string; nombre: string; valores: Record<string, string | number>; de_fabrica: boolean; cambiado: boolean }[];
+    modos: { clave: string; nombre: string; valores: Record<string, string | number>; de_fabrica: boolean; cambiado: boolean;
+        /** sobre cuál de las cuatro se arma; lo que dice su tabla y a qué vuelve cada uno sin ella */
+        base?: string; propios?: string[]; heredados?: Record<string, string | number>; origenes?: Record<string, string> }[];
 }
 export const modos = async () => await deServe<JsonModos>('/modos', 15000);
-/** Crear o cambiar un modo: `[modos.<clave>]` con esos valores. */
-export const guardarModo = async (clave: string, valores: Record<string, string | number>, nombre = '') =>
-    await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('PUT', `/modos/${encodeURIComponent(clave)}`, 15000, { valores, nombre });
+/** Crear o cambiar un modo: `[modos.<clave>]` con esos valores (la tabla entera). De uno propio, `base`: sobre cuál de
+ *  los cuatro se arma (sin ella, táctica). */
+export const guardarModo = async (clave: string, valores: Record<string, string | number>, nombre = '', base = '') =>
+    await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('PUT', `/modos/${encodeURIComponent(clave)}`, 15000, { valores, nombre, base });
+/** Cambiar solo algunos ajustes de un modo (qué agentes y qué pestañas se ven): esas líneas de `[modos.<clave>]`, lo demás
+ *  lo sigue heredando; null quita la línea. */
+export const ajustarModo = async (clave: string, valores: Record<string, string | number | null>) =>
+    await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('PATCH', `/modos/${encodeURIComponent(clave)}`, 15000, { valores });
 /** Un parámetro de los glifos (`GET /glifos`, telar.glifos): un rango (mínimo, máximo, paso) u opciones. */
 export interface ParamGlifo { clave: string; grupo: string; nombre: string; base: string | number; ayuda: string;
     opciones?: string[]; minimo?: number; maximo?: number; paso?: number }
@@ -776,13 +1212,102 @@ export const borrarEstilo = async (estilo: string) =>
 export const borrarModo = async (clave: string) =>
     await aServe<{ ok: boolean; modos: JsonModos['modos'] }>('DELETE', `/modos/${encodeURIComponent(clave)}`, 15000, {});
 
+/** De qué mundo es un agente residente y qué lo pone ahí (telar.mundos.por_que_agente): una etiqueta de su hilo que
+ *  un mundo declara (`por` «etiqueta») o la ruta declarada que calza con su carpeta (`por` «ruta», `valor` como se
+ *  declaró); sin nada, `mundo` vacío: sin clasificar. */
+export interface JsonAgenteMundo { clave: string; nombre: string; carpeta: string; mundo: string; por: '' | 'ruta' | 'etiqueta' | 'agente.toml'; valor: string;
+    /** qué pasa con él con otro mundo puesto (su agente.toml); sin él, al-final */
+    fuera_de_su_mundo?: FueraDeSuMundo }
+/** Qué pasa con un agente residente con otro mundo puesto (`fuera_de_su_mundo` en su agente.toml, web/mundo.ts):
+ *  al-final (el de fábrica: la barra no lo muestra; ⌘K, la vista de agentes y la instrucción, solo en el modo todo, al
+ *  final), esconder (en ninguna parte, ni en todo; solo ⚙ lo nombra) o ver (en todos los mundos, como uno sin
+ *  clasificar). */
+export type FueraDeSuMundo = 'al-final' | 'esconder' | 'ver';
+export const FUERAS: readonly FueraDeSuMundo[] = ['al-final', 'esconder', 'ver'];
+/** Lo que muestra ⚙ mundos (`GET /mundos`): cada mundo con lo suyo y el color que declara (`color_propio`, "" si toma
+ *  uno por orden), `fuera`, las tintas que puede llevar uno y de qué mundo es cada agente. */
+/** Cómo decir la raíz en palabras: el nombre de su carpeta, sacado de uno de sus archivos (`<raiz>/.telar/temas.toml` → el
+ *  nombre de `<raiz>`), para que cada persona vea la suya; «la raíz» sin archivo. Lo mismo que telar.temas.nombre_raiz. */
+export function nombreRaiz(archivo: string | undefined): string {
+    const partes = (archivo ?? '').split(/[\\/]+/).filter(Boolean);
+    partes.pop();
+    if (partes[partes.length - 1] === '.telar') partes.pop();
+    return partes.pop() || 'la raíz';
+}
+
+/** Dónde vive algo de un mundo: en la raíz (`<raiz>/.telar/mundos.toml`, todas las máquinas), solo en esta máquina, o en ninguna. */
+export type ViveMundo = 'raiz' | 'maquina' | '';
+/** Dónde se pisan dos horarios (telar.horario.choques): los mundos, el día (0 domingo) y los minutos. */
+export interface JsonChoque { mundos: string[]; dia: number; desde: number; hasta: number }
+export interface JsonMundos {
+    mundos: (JsonMundo & { color_propio: string; horario_vive?: ViveMundo })[]; fuera: string; tintas: string[]; agentes: JsonAgenteMundo[];
+    /** de dónde sale `fuera`; el archivo de la raíz ("" sin raíz), por qué no se lee y lo suyo que esta máquina no aplica (un
+     *  telar de antes no los manda) */
+    fuera_vive?: ViveMundo;
+    raiz?: string;
+    error_raiz?: string;
+    sobran_raiz?: string[];
+    /** dónde se pisan los horarios, como están escritos */
+    choques?: JsonChoque[];
+    /** los temas que puede llevar uno (un telar de antes no los manda) */
+    temas?: string[];
+    /** los modos que puede tener uno: los de fábrica y los propios (un telar de antes no los manda) */
+    modos?: { clave: string; nombre: string }[];
+}
+/** Lo que dice un mundo y se cambia desde ⚙ mundos: vacío (o null) quita la línea. */
+export type CampoMundo = 'horario' | 'color' | 'tema' | 'arte' | 'modos' | 'etiquetas' | 'areas' | 'rutas';
+export const mundos = async () => await deServe<JsonMundos>('/mundos', 15000);
+/** Los artes de la raíz (`GET /arte`): cada `<raiz>/.telar/arte/<nombre>.txt`, con su texto tal cual (lo lee
+ *  componentes/arte.ts, `leerArteTexto`); `carpeta`, dónde se buscan ("" sin raíz); `errores`, los que no se leyeron. */
+export interface JsonArtes { carpeta: string; artes: { nombre: string; texto: string }[]; errores?: Record<string, string> }
+export const artesDeLaRaiz = async () => await deServe<JsonArtes>('/arte', 10000);
+/** Cambiar solo esos campos de `[mundos.<nombre>]`: lo demás queda como estaba (el horario, en la raíz). 422 con el porqué si
+ *  un área, una ruta o una etiqueta ya es de otro mundo, o si el horario no se entiende o se pisa con el de otro. */
+export const ajustarMundo = async (nombre: string, valores: Partial<Record<CampoMundo, string | string[] | null>>) =>
+    await aServe<JsonMundos & { ok: boolean }>('PATCH', `/mundos/${encodeURIComponent(nombre)}`, 15000, { valores });
+/** `[mundos] fuera`: el que rige fuera de todo horario ("" ambos). */
+/** Qué pasa con un agente fuera de su mundo (`PUT /mundos/agentes/<clave>`): lo escribe en su agente.toml y lo sube. */
+export const fueraDeSuMundo = async (clave: string, valor: FueraDeSuMundo) =>
+    await aServe<JsonMundos & { ok: boolean }>('PUT', `/mundos/agentes/${encodeURIComponent(clave)}`, 15000, { fuera_de_su_mundo: valor });
+export const fueraMundos = async (fuera: string) =>
+    await aServe<JsonMundos & { ok: boolean }>('PATCH', '/mundos', 15000, { fuera });
+/** Un mundo nuevo, vacío, después del último. */
+export const crearMundo = async (nombre: string) =>
+    await aServe<JsonMundos & { ok: boolean }>('PUT', `/mundos/${encodeURIComponent(nombre)}`, 15000, {});
+/** Quitar `[mundos.<nombre>]` (y `fuera`, si era él): lo suyo queda sin clasificar. */
+export const borrarMundo = async (nombre: string) =>
+    await aServe<JsonMundos & { ok: boolean }>('DELETE', `/mundos/${encodeURIComponent(nombre)}`, 15000, {});
+
+/** Lo que muestra ⚙ temas (`GET /temas`): cada tema que se puede elegir (los de fábrica y los propios), con sus colores
+ *  propios (`propios`), de qué tema de fábrica parte uno propio (`base`) y si es de fábrica; y los colores que se pueden
+ *  cambiar. */
+export interface JsonTemas {
+    /** `vive`: «raiz» (en `<raiz>/.telar/temas.toml`, todas las máquinas), «maquina» (solo esta), «mixto», "" (de fábrica);
+     *  `en_raiz` y `en_maquina`, qué color está dónde (los de la máquina pisan los de la raíz) */
+    temas: { clave: string; propios: Record<string, string>; base?: string; de_fabrica?: boolean;
+        vive?: '' | 'raiz' | 'maquina' | 'mixto'; en_raiz?: string[]; en_maquina?: string[] }[];
+    tintas: string[]; fondos?: string[];
+    /** el archivo de la raíz ("" sin raíz: todo en la máquina), la configuración de la máquina, y por qué ese archivo no se lee */
+    raiz?: string; maquina?: string; error_raiz?: string;
+}
+export const temasPropios = async () => await deServe<JsonTemas>('/temas', 15000);
+/** Cambiar solo esos colores de `[temas.<tema>]`; null vuelve al de fábrica. 422 si un color no es `#rrggbb`. */
+export const ajustarTema = async (tema: string, valores: Record<string, string | null>) =>
+    await aServe<JsonTemas & { ok: boolean }>('PATCH', `/temas/${encodeURIComponent(tema)}`, 15000, { valores });
+/** Un tema propio nuevo (`PUT /temas/<nombre>`), que parte de `base`. */
+export const crearTema = async (nombre: string, base: string) =>
+    await aServe<JsonTemas & { ok: boolean }>('PUT', `/temas/${encodeURIComponent(nombre)}`, 15000, { base });
+/** Quitar `[temas.<tema>]`: uno de fábrica vuelve al de fábrica; uno propio se borra. */
+export const temaDeFabrica = async (tema: string) =>
+    await aServe<JsonTemas & { ok: boolean }>('DELETE', `/temas/${encodeURIComponent(tema)}`, 15000, {});
+
 /** Lo que el equipo deja en tu bandeja (`telar equipo sugerencias --json`): subir una prioridad, o una tarea nueva. */
 export interface JsonSugerencia {
     id: string; cuando: string; persona: string; tarea: string; titulo: string; prioridad: number | null;
     motivo: string; estado: string; nota: string;
     /** «prioridad»: sugiere subir una tarea · «tarea»: pide una tarea nueva (aceptarla la agrega) */
     tipo?: 'prioridad' | 'tarea'; vence?: string | null;
-    /** si alguien (Gestión) la está revisando */
+    /** si alguien (un agente) la está revisando */
     revisando?: { quien: string; desde: string };
     /** de un pedido: tareas tuyas que parecen lo mismo (solo las ves tú) */
     similares?: { id: string; titulo: string; estado: string; prioridad: number | null; vence: string | null; avance: string | null; compartida: boolean }[];

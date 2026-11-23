@@ -1,7 +1,7 @@
 """Encargos a un agente residente: escribirle a su hilo de siempre en vez de abrir uno nuevo.
 
-Un encargo es un pedido para un agente (`telar encargar gestion "/avanzar"`, o un proceso periódico con
-`agente = "gestion"`). Es siempre un Encargo como objeto (`encargo:e-…`, telar.encargo): queda en la casilla
+Un encargo es un pedido para un agente (`telar encargar secretaria "/avanzar"`, o un proceso periódico con
+`agente = "secretaria"`). Es siempre un Encargo como objeto (`encargo:e-…`, telar.encargo): queda en la casilla
 del agente y tiene estado (pedido → corriendo → hecho | falló | cancelado), lo cierra el agente con su
 resultado y ese resultado le llega a quien lo pidió. Con bus, el mensaje va por el bus a la casilla del agente
 (telar.servicios.encargos); sin bus, aquí (`encargar`). Y entonces:
@@ -54,14 +54,16 @@ def liberar(config, nuevas: int = 1, *, cuidar: tuple[str, ...] = ()) -> list[st
     from telar import estado as mod_estado
     from telar import movil
 
-    # las ventanas de la sesión del telar cuentan solo donde nadie la mira directo (un servidor)
-    vivos = movil.hilos(config.sesion if movil.sin_mirar(config.sesion) else "")
+    # las ventanas de la sesión del telar cuentan solo donde nadie la mira directo (un servidor); las de los que
+    # duermen (telar.dormir) no: no tienen agente, y cerrarlas solo les quitaría su lugar en la lista
+    dormidos = mod_estado.abrir(config).dormidos()
+    vivos = [h for h in movil.hilos(config.sesion if movil.sin_mirar(config.sesion) else "") if h.nombre not in dormidos]
     sobran = len(vivos) + nuevas - tope
     if sobran <= 0:
         return []
     est = mod_estado.abrir(config)
     atenciones = est.atenciones()
-    # los residentes, al final: un periódico que abre algo de paso no cierra a Gestión para hacerse lugar. Y los
+    # los residentes, al final: un periódico que abre algo de paso no cierra a un agente residente para hacerse lugar. Y los
     # que están para siempre (`residente = "siempre"`), nunca: el nodo los volvería a abrir
     from telar import agentes as mod_agentes
 
@@ -104,7 +106,10 @@ def _donde(ctx, hilo: str):
         tel = _comun.tejer(ctx, con_ficha=False)
         h = tel.por_nombre(hilo)
         if h is not None and tel.mux is not None and tel.vivo(h):
-            return lambda texto: tel.mux.escribir(h.id, texto, enviar=True)
+            from telar import dormir
+
+            # dormido (telar.dormir), lo escrito lo despierta y le llega de primer mensaje
+            return lambda texto: dormir.escribir(getattr(ctx, "config", None), tel, h, texto, enviar=True)
     except Exception:  # noqa: BLE001 - sin multiplexor no hay hilo vivo al que escribirle
         pass
     return None

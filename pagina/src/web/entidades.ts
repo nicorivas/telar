@@ -2,7 +2,8 @@
 // dirección (`hilo:Faro`, `proyecto:operacion/faro`, `tarea:T84`); su menú se abre donde está (clic derecho, o su ⋯)
 // con `menuDe(direccion, donde)`, y se arma en capas: lo que la página sabe hacer con ese tipo (cada pantalla registra
 // lo suyo con `registrar`), o, si la página no sabe nada del tipo (el de un módulo), las acciones que da el servidor
-// (`telar objeto`); y abajo, lo de toda entidad (copiar su dirección).
+// (`telar objeto`); un tipo que la página conoce a medias (el agente) pide las dos: las suyas y, después, las del
+// servidor. Y abajo, lo de toda entidad (copiar su dirección).
 
 import { C, I } from './iconos';
 import * as cli from '../cli';
@@ -12,13 +13,20 @@ import * as ui from './ui';
 /** Una acción del menú de una entidad: lo que se ve (`label`, `description`, o un `separador`) y lo que hace. */
 export interface AccionEntidad extends Opcion { hacer?: () => Promise<unknown> | unknown }
 
-/** Lo que la página sabe hacer con una entidad de un tipo: su título y sus acciones. undefined si no la encuentra. */
-export type Proveedor = (id: string) => Promise<{ titulo: string; acciones: AccionEntidad[] } | undefined>;
+/** Lo que la página sabe hacer con una entidad de un tipo: su título y sus acciones. undefined si no la encuentra.
+ *  `alFinal` va después de lo que da el servidor (lo que quita, en rojo, cierra el menú). */
+export type Proveedor = (id: string) => Promise<{ titulo: string; acciones: AccionEntidad[]; alFinal?: AccionEntidad[] } | undefined>;
 
 const tipos = new Map<string, Proveedor>();
+/** los tipos cuyo menú suma, a lo de la página, lo que da el servidor */
+const conServidor = new Set<string>();
 
-/** Lo que una pantalla sabe hacer con las entidades de un tipo. Registrar otra vez el mismo tipo lo reemplaza. */
-export function registrar(tipo: string, proveedor: Proveedor): void { tipos.set(tipo, proveedor); }
+/** Lo que una pantalla sabe hacer con las entidades de un tipo. Registrar otra vez el mismo tipo lo reemplaza. Con
+ *  `conServidor`, su menú lleva además, después, las acciones que el servidor da para ella (`telar objeto`). */
+export function registrar(tipo: string, proveedor: Proveedor, o: { conServidor?: boolean } = {}): void {
+    tipos.set(tipo, proveedor);
+    if (o.conServidor) conServidor.add(tipo); else conServidor.delete(tipo);
+}
 
 /** El tipo y el id de una dirección (`proyecto:operacion/faro` → ["proyecto", "operacion/faro"]). */
 export function partir(direccion: string): [string, string] {
@@ -64,11 +72,18 @@ async function delServidor(direccion: string): Promise<{ titulo: string; accione
  *  toda entidad. Corre la elegida. */
 export async function menuDe(direccion: string, donde?: { x: number; y: number }): Promise<void> {
     const [tipo, id] = partir(direccion);
-    const propias = await (tipos.get(tipo)?.(id) ?? delServidor(direccion));
+    const deLaPagina = tipos.get(tipo);
+    // las dos a la vez; si el servidor no contesta, queda lo de la página
+    const [suyas, servidor] = await Promise.all([deLaPagina?.(id),
+        !deLaPagina || conServidor.has(tipo) ? delServidor(direccion).catch(() => undefined) : undefined]);
+    const propias = suyas || servidor ? {
+        titulo: suyas?.titulo ?? servidor?.titulo ?? direccion,
+        acciones: [...suyas?.acciones ?? [], ...servidor?.acciones ?? [], ...suyas?.alFinal ?? []],
+    } : undefined;
     const acciones: AccionEntidad[] = [
-        // «Acción…»: pedirle algo a un hilo o a un agente sobre ella, con su contexto (web/actuar.ts)
-        { label: 'Acción…', icono: I.accion, color: C.agente, description: 'pedirle algo a un hilo o un agente sobre esto, con su contexto',
-          hacer: async () => { const { abrir } = await import('./actuar'); await abrir(direccion); } },
+        // «instrucción…»: mandarle algo a un hilo o a un agente sobre ella, con su contexto (web/instruccion.ts)
+        { label: 'instrucción…', icono: I.instruccion, color: C.agente, description: 'mandarle a un hilo o a un agente algo sobre esto, con su contexto',
+          hacer: async () => { const { abrir } = await import('./instruccion'); await abrir({ direccion, titulo: propias?.titulo }); } },
         ...(propias?.acciones ?? []),
         { label: 'esta entidad', separador: true },
         { label: 'copiar su dirección', icono: I.direccion, color: C.otro, description: direccion, hacer: async () => { await ui.copiar(direccion); ui.estado(`copiado ${direccion}`, 3000); } },

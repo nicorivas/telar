@@ -25,11 +25,11 @@ from telar.ordenes import seccion as mod_seccion
 AYUDA = "Las apps del panel (un juego, un vivero): la lista, o la página de una."
 
 
-def pagina(app) -> tuple[dict | None, str]:
-    """La página de una app, sea cual sea su fuente. (página, error o "")."""
+def pagina(app, entorno: dict | None = None) -> tuple[dict | None, str]:
+    """La página de una app, sea cual sea su fuente. (página, error o ""). `entorno`, el de su módulo si es de uno."""
     base = {"titulo": app.nombre, **({"subtitulo": app.descripcion} if app.descripcion else {})}
     if app.pagina:
-        datos, error = mod_seccion.correr(app.pagina, f"la página de «{app.clave}»")
+        datos, error = mod_seccion.correr(app.pagina, f"la página de «{app.clave}»", entorno)
         if datos is not None:
             datos.setdefault("titulo", app.nombre)
         return datos, error

@@ -35,16 +35,16 @@ class Direcciones(Prueba):
 
 class MovilNuevoHilo(Prueba):
     def test_el_hilo_nuevo_es_una_ventana_de_la_sesion_del_telar(self):
-        orden = m.ordenes_ventana("telar", "Kinross", "/home/n/Life", ["claude", "--session-id", "x"], viva=True)
+        orden = m.ordenes_ventana("telar", "Faro", "/home/ana/vida", ["claude", "--session-id", "x"], viva=True)
         self.assertEqual(orden[:8], ["new-window", "-d", "-P", "-F", "#{window_id}", "-t", "=telar:", "-n"])
         linea = orden[-1]
         # va a su carpeta, sabe su hilo y abre el agente; con una shell al final para no morir con él
-        self.assertIn("export TELAR_HILO=Kinross", linea)
+        self.assertIn("export TELAR_HILO=Faro", linea)
         self.assertIn("claude --session-id x", linea)
         self.assertTrue(linea.endswith("exec bash -l"))
         self.assertNotIn("set-option", linea)
         # sin la sesión del telar, nace con ella
-        self.assertEqual(m.ordenes_ventana("telar", "Kinross", "", None, viva=False)[:2], ["new-session", "-d"])
+        self.assertEqual(m.ordenes_ventana("telar", "Faro", "", None, viva=False)[:2], ["new-session", "-d"])
 
 
 class Enviar(Prueba):

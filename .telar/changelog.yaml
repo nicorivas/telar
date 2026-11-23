@@ -1,0 +1,7 @@
+# El CHANGELOG por fragmentos: cada hijo con rama propia escribe su entrada en changelog.d/<rama>.md, y
+# `telar hilo fusionar` la pasa a [Unreleased] de CHANGELOG.md y borra el fragmento, en el commit de la fusión
+# (docs/perfil.md, «El CHANGELOG por fragmentos»; docs/desarrollar.md, «El CHANGELOG, por fragmentos»).
+archivo: CHANGELOG.md
+carpeta: changelog.d
+ancho: 120
+negrita: true

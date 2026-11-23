@@ -55,6 +55,7 @@ from telar.proveedores import ErrorDeProveedor
 __all__ = [
     "NOMBRE",
     "Evento",
+    "RESPUESTAS",
     "FuenteDeCalendario",
     "leer_ics",
     "eventos_del_dia",
@@ -87,6 +88,27 @@ def tapar(url: str) -> str:
     return f"{partes.scheme}://{partes.netloc}/{tramo}/…" if tramo else f"{partes.scheme}://{partes.netloc}/…"
 
 
+#: Lo que la persona respondió a una invitación: `respuesta` de un evento. Vacío cuando no aplica: un evento propio
+#: sin invitados, uno que organiza ella (cuenta como aceptado) o uno en que el calendario no dice quién es ella.
+RESPUESTAS = ("aceptada", "rechazada", "tentativa", "sin_responder")
+
+#: El PARTSTAT de iCalendar (RFC 5545) y el `responseStatus` de Google, en esas palabras. Lo que no está aquí
+#: (DELEGATED, uno inventado) queda vacío: no se adivina.
+_DE_PARTSTAT = {"ACCEPTED": "aceptada", "DECLINED": "rechazada", "TENTATIVE": "tentativa", "NEEDS-ACTION": "sin_responder"}
+_DE_GOOGLE = {"accepted": "aceptada", "declined": "rechazada", "tentative": "tentativa", "needsAction": "sin_responder"}
+
+
+def _respuesta(propia: str, organiza: bool) -> str:
+    """La respuesta de la persona, de lo que dijo ella (`propia`, ya en palabras de telar) y de si la organiza.
+
+    A la que organiza nadie la invitó: no hay respuesta que dar (vacío, cuenta como aceptada), salvo que ella misma
+    la haya rechazado (Google deja hacerlo: arma una reunión para otros y dice que no va).
+    """
+    if organiza and propia != "rechazada":
+        return ""
+    return propia
+
+
 def _zona_local() -> timezone:
     """La zona del reloj de esta máquina, ya resuelta a un offset fijo del momento."""
     return datetime.now().astimezone().tzinfo  # type: ignore[return-value]
@@ -111,6 +133,8 @@ class Evento:
     origen: str = ""
     #: quiénes están invitados: «Nombre <correo>» o solo el correo. Sirve para saber de qué proyecto es.
     asistentes: tuple[str, ...] = ()
+    #: lo que la persona respondió a la invitación: una de `RESPUESTAS`, o vacío si no aplica
+    respuesta: str = ""
 
     @property
     def duracion(self) -> timedelta | None:
@@ -132,6 +156,7 @@ class Evento:
                 "lugar": self.lugar,
                 "origen": self.origen,
                 "asistentes": list(self.asistentes),
+                "respuesta": self.respuesta,
             },
         )
 
@@ -185,6 +210,11 @@ class _Vevento:
     enlace: str = ""
     lugar: str = ""
     asistentes: list[str] = field(default_factory=list)
+    #: lo que contestó cada invitado (su correo, en minúsculas → su PARTSTAT) y quién la organiza (su correo): de
+    #: ahí sale `respuesta` cuando se sabe quién es la persona
+    contestaron: dict[str, str] = field(default_factory=dict)
+    organizador: str = ""
+    respuesta: str = ""
     cancelado: bool = False
     regla: dict[str, str] = field(default_factory=dict)
     excluidas: set[date] = field(default_factory=set)
@@ -345,6 +375,12 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
                 cn = _desescapar(params.get("CN", "")).strip().strip('"')
                 if correo or cn:
                     actual.asistentes.append(f"{cn} <{correo}>" if cn and correo and cn != correo else (correo or cn))
+                if correo:
+                    # sin PARTSTAT, el formato dice que no ha respondido (NEEDS-ACTION)
+                    actual.contestaron[correo.lower()] = params.get("PARTSTAT", "NEEDS-ACTION").upper()
+            elif nombre == "ORGANIZER":
+                correo = valor.strip()
+                actual.organizador = (correo[7:] if correo.lower().startswith("mailto:") else correo).lower()
             elif nombre == "STATUS":
                 actual.cancelado = valor.strip().upper() == "CANCELLED"
             elif nombre == "DTSTART":
@@ -371,6 +407,8 @@ def leer_ics(texto: str, *, local: timezone | None = None) -> list[_Vevento]:
     if "@" in dueno:
         for v in salida:
             v.asistentes = [a for a in v.asistentes if not (a.lower() == dueno or a.lower().endswith(f"<{dueno}>"))]
+            # lo que respondió el dueño, si lo invitaron (sin invitados, no hay a qué responder)
+            v.respuesta = _respuesta(_DE_PARTSTAT.get(v.contestaron.get(dueno, ""), ""), v.organizador == dueno)
     return salida
 
 
@@ -556,6 +594,7 @@ def eventos_del_dia(
                 todo_el_dia=v.todo_el_dia,
                 lugar=v.lugar,
                 asistentes=tuple(v.asistentes),
+                respuesta=v.respuesta,
                 origen=origen,
             )
 
@@ -593,6 +632,11 @@ class DeICS(_Base):
     se baja de nuevo. La descarga entera tiene un tope (`tiempo_maximo`, 20 s por defecto), no solo
     cada lectura: una red lenta no la estira sin fin. Si la descarga falla y hay una copia, aunque
     sea vieja, se usa esa y se dice (`aviso`), en vez de dejar el día sin agenda.
+
+    Lo que la persona respondió a cada invitación (`respuesta`) es el PARTSTAT del invitado que es ella, y para
+    saber quién es se usa el nombre del calendario (`X-WR-CALNAME`), que en Google es el correo de su dueño. Un
+    calendario que no lo trae deja la respuesta vacía. Lo rechazado se lee igual (no se descarta, como en `gws`):
+    quien dibuja decide.
     """
 
     def __init__(self, cfg: ConfigProveedor) -> None:
@@ -697,10 +741,11 @@ class DeComando(_Base):
 
         [{"id": "a1", "titulo": "Comité", "inicio": "2026-09-18T10:00:00-03:00",
           "fin": "2026-09-18T11:00:00-03:00", "enlace": "https://…",
-          "lugar": "sala 2", "todo_el_dia": false}]
+          "lugar": "sala 2", "todo_el_dia": false, "respuesta": "aceptada"}]
 
     De todo eso, solo `titulo` e `inicio` son obligatorios. Una hora sin zona se
-    entiende como la de esta máquina.
+    entiende como la de esta máquina. `respuesta`, lo que la persona contestó a la
+    invitación: una de `RESPUESTAS`, o nada si no aplica.
     """
 
     def __init__(self, cfg: ConfigProveedor) -> None:
@@ -796,6 +841,10 @@ def _evento_de_json(datos: object, origen: str, indice: int) -> Evento:
     if not isinstance(todo_el_dia, bool):
         raise ErrorDeProveedor(f"{contexto}.todo_el_dia: se esperaba true o false")
 
+    respuesta = texto_de("respuesta")
+    if respuesta and respuesta not in RESPUESTAS:
+        raise ErrorDeProveedor(f"{contexto}.respuesta: {respuesta!r} no es una de: {', '.join(RESPUESTAS)}")
+
     inicio = _hora(datos.get("inicio"), f"{contexto}.inicio", local)
     fin = _hora(datos["fin"], f"{contexto}.fin", local) if datos.get("fin") else None
     if fin is not None and fin < inicio:
@@ -810,6 +859,7 @@ def _evento_de_json(datos: object, origen: str, indice: int) -> Evento:
         todo_el_dia=todo_el_dia,
         lugar=texto_de("lugar"),
         origen=texto_de("origen") or origen,
+        respuesta=respuesta,
     )
 
 
@@ -827,7 +877,8 @@ class DeGws(_Base):
         tipo = "gws"
         calendario = "primary"   # opcional: el id de otro calendario de la cuenta
 
-    Se descartan los eventos cancelados y los que la persona rechazó: no ocupan su hora.
+    Se descartan los eventos cancelados y los que la persona rechazó: no ocupan su hora. Los demás dicen lo que
+    respondió (`respuesta`), del invitado que es ella (`self`); si ella la organiza (`organizer.self`), nada.
     """
 
     tiempo_maximo = 40.0
@@ -885,6 +936,7 @@ def eventos_de_gws(salida: str, local: timezone | None = None) -> list[Evento]:
         yo = next((a for a in e.get("attendees", []) or [] if a.get("self")), {})
         if yo.get("responseStatus") == "declined":
             continue
+        organiza = bool((e.get("organizer") or {}).get("self"))
         ini, fin = e.get("start") or {}, e.get("end") or {}
         if "dateTime" in ini:
             comienzo = datetime.fromisoformat(ini["dateTime"])
@@ -908,6 +960,7 @@ def eventos_de_gws(salida: str, local: timezone | None = None) -> list[Evento]:
             origen="gws",
             asistentes=tuple(f"{a['displayName']} <{a['email']}>" if a.get("displayName") else a.get("email", "")
                              for a in e.get("attendees", []) or [] if a.get("email") and not a.get("resource")),
+            respuesta=_respuesta(_DE_GOOGLE.get(str(yo.get("responseStatus", "")), ""), organiza),
         ))
     return sorted(eventos, key=lambda x: (x.inicio, x.titulo))
 

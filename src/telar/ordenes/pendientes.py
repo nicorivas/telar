@@ -108,8 +108,19 @@ def con_area(filas: list[dict]) -> list[dict]:
     return filas
 
 
+def con_mundo(config, filas: list[dict]) -> list[dict]:
+    """El mundo de cada fila (telar.mundos, `[mundos]`): una tarea de un proveedor, por su área y su proyecto; una
+    casilla de un documento, por la carpeta del documento. Va antes de `con_area`, que inventa un área de la ruta del
+    hilo al que se llevaría la tarea (y ese hilo sale de su título)."""
+    from telar import mundos
+
+    for f in filas:
+        f["mundo"] = mundos.de_fila(config, f)
+    return filas
+
+
 def _carpeta_de(origen: str) -> str:
-    """El origen de una tarea, si es una carpeta del repositorio («brinca/negocio/x»); "" si es otra
+    """El origen de una tarea, si es una carpeta del repositorio («trabajo/negocio/x»); "" si es otra
     cosa (un correo, una url, una ruta absoluta)."""
     origen = origen.strip().split("#")[0]
     if not origen or ":" in origen or origen.startswith(("/", ".", "~")) or " " in origen:
@@ -135,6 +146,8 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
     del_tipo = {p.nombre for p in ctx.config.proveedores_activos() if p.opciones.get("tipo") == "tipo"}
     # un proveedor con `pestana` no suma pendientes: sus ítems van a una pestaña propia (un feed)
     pestanas = {p.nombre: str(p.opciones.get("pestana") or "") for p in ctx.config.proveedores_activos()}
+    # el área de los ítems que no traen la suya (un calendario del trabajo): con ella, su mundo (`[mundos] areas`)
+    areas = {p.nombre: str(p.opciones.get("area") or "") for p in ctx.config.proveedores_activos()}
     filas = []
     for item in items:
         destino = _comun.enrutar(tel, f"{item.titulo} {item.id}", hilo=item.hilo)
@@ -157,7 +170,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "url": item.url,
                 "avance": str((item.datos or {}).get("avance") or ""),
                 "ficha": item.proveedor in con_ficha,
-                "area": str((item.datos or {}).get("area") or ""),
+                "area": str((item.datos or {}).get("area") or areas.get(item.proveedor, "")),
                 "dueno": str((item.datos or {}).get("dueno") or ""),
                 # cuánto toma: «rapida» o «larga» («foco» las separa en gestión y concentración); "" sin decir
                 "tamano": str((item.datos or {}).get("tamano") or ""),
@@ -170,10 +183,16 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "etiquetas": [str(e) for e in (item.datos or {}).get("etiquetas") or []],
                 "color": str((item.datos or {}).get("color") or ""),
                 "pestana": pestanas.get(item.proveedor, ""),
-                # un evento: cuándo termina y dónde, para dibujarlo en su alto (el calendario del dashboard)
+                # quién lo dejó y de cuándo es (AAAA-MM-DD), si el proveedor lo dice: una pestaña de lectura se ordena
+                # con ellos (lo que se mandó la persona primero, lo más nuevo arriba)
+                "de": str((item.datos or {}).get("de") or ""),
+                "fecha": str((item.datos or {}).get("fecha") or ""),
+                # un evento: cuándo termina y dónde, para dibujarlo en su alto (el calendario del dashboard), y lo que
+                # la persona respondió a la invitación («aceptada», «rechazada», «tentativa», «sin_responder»; "" si no aplica)
                 **({"fin": str((item.datos or {}).get("fin") or ""), "lugar": str((item.datos or {}).get("lugar") or ""),
                     "todo_el_dia": bool((item.datos or {}).get("todo_el_dia")),
-                    "asistentes": list((item.datos or {}).get("asistentes") or [])} if item.clase == "evento" else {}),
+                    "asistentes": list((item.datos or {}).get("asistentes") or []),
+                    "respuesta": str((item.datos or {}).get("respuesta") or "")} if item.clase == "evento" else {}),
             }
         )
     return filas, fallas
@@ -188,6 +207,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--proveedores", action="store_true", help="consultar las fuentes declaradas")
     p.add_argument("--hilo", default="", help="solo los de un hilo")
     p.add_argument("--limite", type=int, default=0, metavar="N", help="cuántos mostrar")
+    p.add_argument("--mundo", action="append", default=[], metavar="MUNDO",
+                   help="solo los de ese mundo de [mundos] (sin-clasificar: los que no calzan en ninguno); se repite")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -197,7 +218,7 @@ def main(argv: list[str], ctx) -> int:
 
     try:
         r = servicio.pendientes(ctx, repo=o.repo, hechos=o.hechos, proveedores=o.proveedores, hilo=o.hilo,
-                                limite=o.limite)
+                                limite=o.limite, mundos=tuple(o.mundo))
     except ErrorDeServicio as e:
         return _comun.queja(str(e))
     if o.json:

@@ -16,7 +16,8 @@ from telar.servicios import ErrorDeServicio
 
 class Ido(BaseModel):
     hilo: str
-    #: «foco» (ya estaba vivo), «nuevo» (se abrió aquí) o «nuevo-remoto» (se abrió en `remoto`)
+    #: «foco» (ya estaba vivo), «despierto» (estaba dormido: se despertó en su ventana), «nuevo» (se abrió aquí) o
+    #: «nuevo-remoto» (se abrió en `remoto`)
     hecho: str
     carpeta: str = ""
     remoto: str = ""
@@ -40,12 +41,19 @@ def ir(ctx, hilo: str, *, crear: bool = False, remoto: str = "") -> Ido:
         # con crear manda el nombre exacto: «Cap» abre «Cap», no va a «Capacity» por ser un prefijo
         h, problema = None, ""
     if h is not None and tel.vivo(h):
+        # uno dormido (telar.dormir) se despierta en su ventana: ir a él es abrirlo
+        from telar import dormir
+
+        try:
+            despierto = dormir.despertar_hilo(ctx, tel, h)
+        except RuntimeError as e:
+            raise ErrorDeServicio(str(e), 502) from e
         try:
             tel.mux.ir(h.id)
         except ErrorDeMux as e:
             raise ErrorDeServicio(str(e), 502) from e
         tel.estado.marcar(h.nombre)
-        return Ido(hilo=h.nombre, hecho="foco")
+        return Ido(hilo=h.nombre, hecho="despierto" if despierto else "foco", aviso=despierto)
     if not crear:
         pista = "" if h is None else " (está archivado o la sesión no lo muestra)"
         raise ErrorDeServicio(f"{problema or 'ese hilo no está vivo'}{pista}. `--crear` lo abre.", 404)

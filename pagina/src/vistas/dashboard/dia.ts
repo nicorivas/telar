@@ -16,6 +16,9 @@
 import * as cli from '../../cli';
 import { esc, limpiarMd, normalizar } from '../../estilo';
 import { I } from '../../web/iconos';
+import * as avisos from '../../web/avisos';
+import * as ui from '../../web/ui';
+import type { GrupoFiltro } from '../../componentes/filtros';
 
 // ───────────────────────── los datos ─────────────────────────
 
@@ -29,6 +32,9 @@ export interface Dia {
     declarados: string[];
     fallas: string[];
     error?: string;
+    /** de cuándo es lo leído: la generación (`olvidarDia`) con que empezó su lectura. Lo que salió de lo pendiente
+     *  después (`salio`) no lo sabe: `conLoSalido` se lo pone. Sin ella (un día de mentira), lo salido no se le pone */
+    generacion?: number;
 }
 
 const VACIO: Dia = {
@@ -46,9 +52,52 @@ let deProveedores: cli.JsonFila[] = [];
 
 const CADA_RED = 5 * 60 * 1000;
 
-/** La lectura en curso, si la hay: las dos vistas piden el día por su cuenta y una consulta
- *  a un proveedor no se hace dos veces porque dos paneles la quisieron a la vez. */
-let enCurso: Promise<Dia> | undefined;
+/** Cuántas veces se olvidó lo leído (`olvidarDia`: una acción cambió una tarea, una fecha, el calendario). Cada lectura
+ *  recuerda con cuál empezó: si al volver ya es otra, trae lo de antes de ese cambio, y no se guarda ni se entrega (una
+ *  tarea recién cerrada volvía con ella, y quedaba pegada en `deProveedores` hasta la próxima consulta a la red). */
+let generacion = 0;
+
+/** La lectura en curso, si la hay: las vistas piden el día por su cuenta, y una consulta a un proveedor no se hace dos
+ *  veces porque dos paneles la quisieron a la vez. Sirve a quien pide solo si empezó después del último cambio y trae
+ *  lo que se pide (con red, si toca la red). */
+let enCurso: { promesa: Promise<Dia>; red: boolean; generacion: number } | undefined;
+
+/** Lo que salió de lo pendiente desde esta página (una tarea marcada hecha, descartada, una viñeta tachada) y que su
+ *  proveedor ya confirmó: `proveedor\nid` → la generación en que salió. Lo leído antes no lo sabe, y lo que se ve sale
+ *  de ahí hasta que llega la relectura (con red, unos 10 s): `conLoSalido`. */
+const salidas = new Map<string, number>();
+const claveSalida = (proveedor: string, id: string): string => `${proveedor}\n${id}`;
+/** la generación de lo último que salió: lo leído desde entonces ya lo sabe todo */
+let ultimaSalida = -1;
+
+/** Una tarea salió de lo pendiente, y su proveedor ya lo dijo (`marcarHecha`, tareas.ts): lo leído hasta ahora ya no
+ *  sirve (se olvida, y la próxima lectura va a la red), y mientras llega lo nuevo, lo que se ve ya no la tiene. Una
+ *  lectura que empiece después manda: si la tarea sigue ahí (alguien la reabrió), se ve. `id`: el de su fila, o su
+ *  `ref` si no tiene (una viñeta de un documento, sin proveedor). */
+export function salio(proveedor: string, id: string): void {
+    olvidarDia();
+    salidas.set(claveSalida(proveedor, id), generacion);
+    ultimaSalida = generacion;
+}
+
+/** La generación de ahora: lo que se empiece a leer aquí ya sabe lo que salió hasta ahora (para lo que se lee aparte del
+ *  día, como las viñetas de todos los documentos de proyectos, y se le pone con `conLoSalido`). */
+export const generacionDeAhora = (): number => generacion;
+
+/** El día con lo que salió después de leerlo (`salio`) ya hecho: lo que se ve (Dashboard.dia) no la vuelve a mostrar
+ *  mientras se relee. El mismo día si no le falta nada (lo de siempre: leído después de lo último que salió). */
+export function conLoSalido(d: Dia, salido: ReadonlyMap<string, number> = salidas): Dia {
+    const de = d.generacion;
+    if (de === undefined || !salido.size || de >= (salido === salidas ? ultimaSalida : Math.max(...salido.values()))) return d;
+    const sale = (f: cli.JsonFila) => !f.hecho && (salido.get(claveSalida(f.proveedor ?? '', f.id || f.ref)) ?? -1) > de;
+    return d.pendientes.some(sale) ? { ...d, pendientes: d.pendientes.map(f => (sale(f) ? { ...f, hecho: true } : f)) } : d;
+}
+
+/** El proveedor de una tarea por su dirección (`tarea:T84`), de lo que ya se leyó (sin leer de nuevo): el de su fila
+ *  del día; si no está, «tareas», el de siempre (como abre su dirección la página: navegador/app.ts). */
+export function proveedorDe(direccion: string): string {
+    return cache?.dia.pendientes.find(f => f.direccion === direccion)?.proveedor || 'tareas';
+}
 
 /** Cuándo se consultó por última vez a los proveedores (las tareas, el calendario); 0 si nunca. */
 export function leidoProveedores(): number { return agenda.hora; }
@@ -65,12 +114,20 @@ export function dia(maxEdad = 45000, conRed = false): Promise<Dia> {
     const hoy = hoyAqui();
     const tocaRed = conRed || Date.now() - agenda.hora > CADA_RED || agenda.fecha !== hoy;
     if (!tocaRed && cache && cache.dia.fecha === hoy && Date.now() - cache.hora < maxEdad) return Promise.resolve(cache.dia);
-    if (!enCurso) enCurso = leer(tocaRed).finally(() => { enCurso = undefined; });
-    return enCurso;
+    // la que va sirve si empezó después del último cambio y trae lo que se pide; si no, otra (la de antes, al volver, se
+    // descarta y entrega esta: `leer`)
+    if (enCurso && enCurso.generacion === generacion && (enCurso.red || !tocaRed)) return enCurso.promesa;
+    const lectura = { red: tocaRed, generacion, promesa: leer(tocaRed, generacion) };
+    enCurso = lectura;
+    void lectura.promesa.finally(() => { if (enCurso === lectura) enCurso = undefined; });
+    return lectura.promesa;
 }
 
-async function leer(tocaRed: boolean): Promise<Dia> {
+async function leer(tocaRed: boolean, desde: number): Promise<Dia> {
     const r = await cli.hoy(!tocaRed);
+    // algo cambió mientras se leía (una tarea marcada hecha: olvidarDia): lo leído puede ser de antes, y guardarlo la
+    // devolvía a la lista; lo que sirve es una lectura que empezó después (la que ya va, o una nueva con red)
+    if (desde !== generacion) return dia(0, true);
     if (!r.datos) {
         // si no se pudo leer, lo de antes sirve solo si es de hoy: el día de ayer mostrado como hoy engaña
         // («ahora» marcaba el último bloque de ayer); mejor decir que no se pudo
@@ -83,6 +140,7 @@ async function leer(tocaRed: boolean): Promise<Dia> {
     if (tocaRed) {
         agenda = { filas: j.agenda ?? null, hora: Date.now(), fecha: j.fecha ?? '' };
         deProveedores = (j.pendientes ?? []).filter(f => f.proveedor);
+        avisarProveedores(j.proveedores?.fallas ?? []);
     }
     // la agenda guardada es de su fecha: en una lectura local de otro día no se mezcla
     const agendaDeHoy = agenda.fecha === (j.fecha ?? '');
@@ -96,9 +154,27 @@ async function leer(tocaRed: boolean): Promise<Dia> {
         pendientes: tocaRed || !agendaDeHoy ? (j.pendientes ?? []) : [...propios, ...deProveedores],
         declarados: j.proveedores?.declarados ?? [],
         fallas: j.proveedores?.fallas ?? [],
+        generacion: desde,
     };
     cache = { dia: d, hora: Date.now() };
     return d;
+}
+
+/** Los proveedores que no contestaron (el calendario, el correo…), en la franja de avisos (web/avisos.ts): una fuente que
+ *  falla. Solo con lo que se les preguntó (una lectura con red): la de disco no los consulta. Los que vuelven a contestar
+ *  se van. Antes, «caído · …» arriba de cada pantalla del dashboard. */
+function avisarProveedores(fallas: string[]): void {
+    const ICONO: Record<string, string> = { calendario: I.fecha, correo: I.correo };
+    avisos.soloEstos('fuente:proveedor:', fallas.map(f => {
+        const i = f.indexOf(': ');
+        const nombre = i > 0 ? f.slice(0, i) : f, motivo = i > 0 ? f.slice(i + 2) : '';
+        const calendario = nombre.startsWith('calendario');
+        return { clave: `fuente:proveedor:${nombre}`, nivel: 'falla' as const, icono: ICONO[nombre] ?? I.alerta, conConexion: true,
+            texto: `no se pudo leer ${calendario ? 'el calendario' : nombre}`,
+            detalle: `${nombre}${motivo ? `: ${motivo.replace(/[.]$/, '')}` : ''}.${calendario ? ' La agenda es la de la última vez.' : ' Lo demás del día sí se leyó.'}`,
+            hacer: `Se vuelve a pedir solo${calendario ? '; si sigue, revisa de dónde sale la agenda' : ' cada pocos minutos'}.`,
+            ir: calendario ? { texto: '⚙ calendario', hacer: () => void ui.orden('telar.pestana', 'config', 'calendario') } : undefined };
+    }));
 }
 
 /** Otro día (la agenda de esa fecha, para el calendario): se consulta a los proveedores y se guarda unos minutos. */
@@ -106,6 +182,7 @@ const otros = new Map<string, { dia: Dia; hora: number }>();
 export async function diaDe(fecha: string): Promise<Dia> {
     const guardado = otros.get(fecha);
     if (guardado && Date.now() - guardado.hora < CADA_RED) return guardado.dia;
+    const desde = generacion;
     const r = await cli.hoy(false, fecha);
     const j = r.datos;
     const d: Dia = j ? {
@@ -113,11 +190,16 @@ export async function diaDe(fecha: string): Promise<Dia> {
         agenda: j.agenda ?? null, pendientes: j.pendientes ?? [], declarados: j.proveedores?.declarados ?? [],
         fallas: j.proveedores?.fallas ?? [],
     } : { ...VACIO, fecha, error: r.error };
-    if (j) otros.set(fecha, { dia: d, hora: Date.now() });
+    // lo leído antes de un cambio no se guarda: la próxima vez se pide de nuevo
+    if (j && desde === generacion) otros.set(fecha, { dia: d, hora: Date.now() });
     return d;
 }
 
-export function olvidarDia(): void { otros.clear(); cache = undefined; agenda = { filas: null, hora: 0, fecha: '' }; deProveedores = []; }
+/** Lo leído ya no sirve (algo cambió): la próxima lectura va a la red, y la que ya iba se descarta al volver. */
+export function olvidarDia(): void {
+    generacion++;
+    otros.clear(); cache = undefined; agenda = { filas: null, hora: 0, fecha: '' }; deProveedores = [];
+}
 
 // ───────────────────────── la urgencia ─────────────────────────
 
@@ -134,6 +216,12 @@ export interface Pendiente {
     urgencia: number;
     urgente: boolean;
 }
+
+/** Cuántos días vencida pasa a ser deuda: lo que venció hace más ya no es de esta semana ni de lo urgente del día (va
+ *  junto, en el filtro «deuda» de «tareas»), y sigue en «todas» y en «vencidas». Vale para tareas y casillas. */
+export const DEUDA_DIAS = 30;
+/** Si lo que vence en `dias` (negativo: venció) es deuda. */
+export const esDeuda = (dias: number | null): boolean => dias !== null && dias < -DEUDA_DIAS;
 
 /** Lo que está por hacer, lo más urgente arriba.
  *
@@ -166,6 +254,27 @@ export function pendientes(d: Dia, pestana = ''): Pendiente[] {
         .sort((a, b) => pestana ? 0 : a.urgencia - b.urgencia || a.ref.localeCompare(b.ref));
 }
 
+/** ¿Lo dejó la persona misma? `de` con uno de sus nombres (esMia), o «yo». Vacío no: no se sabe quién. */
+export const delaPersona = (de: string | undefined): boolean => !!de?.trim() && (normalizar(de) === 'yo' || esMia(de));
+
+/** El orden de una pestaña de lectura (un feed: un proveedor con `vista = "lectura"`): primero lo que se mandó la persona
+ *  misma (`de`), después por prioridad (alta, media, baja, sin prioridad) y, dentro de cada una, lo más nuevo arriba
+ *  (`fecha`; lo que no la dice, después, en el orden del proveedor). Si ninguna fila dice quién la dejó ni su prioridad,
+ *  el orden del proveedor, tal cual. No corta nada: todo lo que el proveedor entrega. */
+export function ordenLectura(lista: Pendiente[]): Pendiente[] {
+    if (!lista.some(p => !!p.fila.de?.trim() || (p.fila.prioridad !== undefined && p.fila.prioridad !== null))) return lista;
+    const clave = (p: Pendiente) => ({
+        suya: delaPersona(p.fila.de) ? 0 : 1,
+        pri: typeof p.fila.prioridad === 'number' ? p.fila.prioridad : 9,
+        fecha: p.fila.fecha ?? '',
+    });
+    // sort es estable: a igual clave, el orden del proveedor
+    return lista.map(p => ({ p, k: clave(p) }))
+        .sort((a, b) => a.k.suya - b.k.suya || a.k.pri - b.k.pri
+            || (a.k.fecha === b.k.fecha ? 0 : !a.k.fecha ? 1 : !b.k.fecha ? -1 : b.k.fecha.localeCompare(a.k.fecha)))
+        .map(x => x.p);
+}
+
 // ───────────────────────── el dibujo ─────────────────────────
 
 /** Abre una sección del dashboard: su color, su nombre, una cuenta y, a la derecha, sus
@@ -175,6 +284,13 @@ export function seccion(nombre: string, color: string, cuenta = '', derecha = ''
     return `<section class="bloque" style="--c: var(--${color})"><h2 class="sec"><span class="marca"></span>`
         + `${esc(nombre)}${cuenta ? `<span class="cuenta">${esc(cuenta)}</span>` : ''}`
         + `${derecha ? `<span class="acciones">${derecha}</span>` : ''}</h2>`;
+}
+
+/** Abre el cuerpo de una pantalla entera: una sección sin cabecera, porque su nombre, lo que resume y sus acciones van
+ *  en la barra (componentes/pantalla.ts, la pone el núcleo). La tinta en `--c` la heredan sus filas y el hover de sus
+ *  atajos. Se cierra con `</section>`. */
+export function cuerpo(color: string): string {
+    return `<section class="bloque" style="--c: var(--${color})">`;
 }
 
 /** Un atajo: la tecla y lo que hace, clicable. El mismo en todas partes: en la cabecera, en
@@ -218,37 +334,39 @@ function mia(dueno: string, vacioEsMio: boolean): boolean {
 
 /** Los atributos de una fila para el filtro por dueño: mía y sin responsable. */
 export function datosDueno(dueno: string, vacioEsMio = true): string {
-    // «sin responsable» es lo de un documento que no dice quién: una tarea sin dueño es de la persona, no está sin responsable
-    return ` data-dueno="${esc(dueno)}" data-mia="${mia(dueno, vacioEsMio) ? 1 : 0}" data-sin="${!dueno.trim() && !vacioEsMio ? 1 : 0}"`;
+    return Object.entries(duenoDe(dueno, vacioEsMio)).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('');
 }
 
-/** El filtro por dueño de una lista: cada fila como [dueño, si vacío es mía]. */
-export function filtroDuenos(filas: [string, boolean][], compacto = false): string {
-    const duenos = filas.map(([d]) => d);
+/** Lo mismo, como los `datos` de un ítem (componentes/item.ts). */
+export function duenoDe(dueno: string, vacioEsMio = true): Record<string, string> {
+    // «sin responsable» es lo de un documento que no dice quién: una tarea sin dueño es de la persona, no está sin responsable
+    return { dueno, mia: mia(dueno, vacioEsMio) ? '1' : '0', sin: !dueno.trim() && !vacioEsMio ? '1' : '0' };
+}
+
+/** El grupo «responsable» de los filtros de una lista (componentes/filtros.ts), cada fila como [dueño, si vacío es mía]:
+ *  las mías, las de otros y las sin responsable, cada una con su cuenta. Sin «todas»: otro clic en la que rige la
+ *  suelta. Si todas son mías no hay nada que filtrar: null. */
+export function grupoDuenos(filas: [string, boolean][]): GrupoFiltro | null {
     const otros = filas.filter(([d]) => d.trim() && !esMia(d)).length;
     const sin = filas.filter(([d, v]) => !d.trim() && !v).length;
-    if (!otros && !sin) return '';
+    if (!otros && !sin) return null;
     const mias = filas.filter(([d, v]) => mia(d, v)).length;
-    return '<div class="titulo-tareas duenos-t"><span class="modos">'
-        + `<button data-dueno-filtro="" title="todas, mías y de otros">${compacto ? I.lista : 'todas'} ${duenos.length}</button>`
-        + `<button data-dueno-filtro="mias" title="las mías: mis tareas sin dueño y lo que está a mi nombre">${compacto ? 'yo' : 'mías'} ${mias}</button>`
-        + `<button data-dueno-filtro="otros" title="de otros: a nombre de otra persona (a quién empujar)">${compacto ? '→' : 'de otros'} ${otros}</button>`
-        + `<button data-dueno-filtro="sin" title="sin responsable: pendientes de un proyecto que no dicen quién (tus tareas sin dueño son tuyas)">${compacto ? I.ninguno : 'sin responsable'} ${sin}</button>`
-        + '</span></div>';
+    return { clave: 'dueno', nombre: 'responsable', activa: '', opciones: [
+        { clave: 'mias', nombre: 'mías', cuenta: mias, ayuda: 'las mías: mis tareas sin dueño y lo que está a mi nombre' },
+        { clave: 'otros', nombre: 'de otros', cuenta: otros, ayuda: 'de otros: a nombre de otra persona (a quién empujar)' },
+        { clave: 'sin', nombre: 'sin responsable', cuenta: sin,
+            ayuda: 'sin responsable: pendientes de un proyecto que no dicen quién (tus tareas sin dueño son tuyas)' },
+    ] };
 }
 
-/** El filtro por área de una lista de tareas: «todas» y cada área con su cuenta, la más
- *  grande primero. Con una sola área no hay nada que filtrar y no se dibuja. El script lo
- *  aplica a toda `.tarea` con `data-area` de la vista (hoy, revisar, la barra). */
-export function filtroAreas(areas: string[], compacto = false): string {
+/** El grupo «área» de los filtros de una lista de tareas: cada área con su cuenta, la más grande primero. Con una sola
+ *  área no hay nada que filtrar: null. El script lo aplica a toda `.tarea` con `data-area` de la vista. */
+export function grupoAreas(areas: string[]): GrupoFiltro | null {
     const cuenta = new Map<string, number>();
     for (const a of areas) if (a) cuenta.set(a, (cuenta.get(a) ?? 0) + 1);
-    if (cuenta.size < 2) return '';
-    return '<div class="titulo-tareas areas-t"><span class="modos"><button data-area-filtro="">todas</button>'
-        + [...cuenta].sort((a, b) => b[1] - a[1])
-            // en la barra, angosta, tres letras (la palabra entera queda en el globo)
-            .map(([a, n]) => `<button data-area-filtro="${esc(a)}" title="${esc(a)}">${esc(compacto ? a.slice(0, 3) : a)} ${n}</button>`).join('')
-        + '</span></div>';
+    if (cuenta.size < 2) return null;
+    return { clave: 'area', nombre: 'área', activa: '',
+        opciones: [...cuenta].sort((a, b) => b[1] - a[1]).map(([a, n]) => ({ clave: a, nombre: a, cuenta: n, ayuda: `del área «${a}»` })) };
 }
 
 /** Una fecha relativa en pocas letras: `-39d` vencida, `hoy`, `mañana`, `3d`. */

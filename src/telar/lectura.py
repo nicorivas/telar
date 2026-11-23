@@ -31,6 +31,7 @@ __all__ = [
     "leer",
     "parsear",
     "limpiar",
+    "sin_escapes",
     "indice",
     "ubicar",
     "ficha_de",
@@ -57,12 +58,33 @@ def id_en(texto: str) -> re.Match | None:
 
 
 def limpiar(texto: str) -> str:
-    """Saca el adorno de markdown que estorba para leer: negritas, enlaces, comentarios."""
+    """Saca el adorno de markdown que estorba para leer: negritas, enlaces, comentarios. Un `*` o un `_` escapado
+    (`\\*`) es el signo y no un adorno: no abre ni cierra una cursiva, y no se corta al final."""
     texto = re.sub(r"<!--.*?-->", "", texto, flags=re.S)
     texto = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", texto)
-    texto = re.sub(r"\*\*(.+?)\*\*", r"\1", texto)
-    texto = re.sub(r"(?<!\w)[_*](\S.*?\S)[_*](?!\w)", r"\1", texto)
-    return texto.strip(" \t`*_>").strip()
+    texto = re.sub(r"(?<!\\)\*\*(.+?)(?<!\\)\*\*", r"\1", texto)
+    texto = re.sub(r"(?<![\w\\])[_*](\S.*?\S)(?<!\\)[_*](?!\w)", r"\1", texto)
+    texto = re.sub(r"^[\s`*_>]+", "", texto).rstrip()
+    return re.sub(r"(?<!\\)[\s`*_>]+$", "", texto)
+
+
+#: lo que markdown escapa con una barra: la puntuación ASCII (CommonMark). `# 01\. Reconocimiento` lleva la barra
+#: para que el número no abra una lista; se lee «01. Reconocimiento»
+_ESCAPE = re.compile(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])")
+#: un `código` en la línea: adentro la barra es texto
+_CODIGO = re.compile(r"(?<!\\)(`+)(?!`).*?(?<!`)\1(?!`)")
+
+
+def sin_escapes(texto: str) -> str:
+    """El texto como se lee, sin las barras con que markdown escapa la puntuación: `01\\. Reconocimiento` es
+    «01. Reconocimiento» y `\\#3`, «#3». Se quedan las de un `código` y las que no escapan nada (`C:\\Users`).
+    Es para el título de un documento, el nombre de una unidad en todas las vistas."""
+    salida, desde = [], 0
+    for m in _CODIGO.finditer(texto):
+        salida += [_ESCAPE.sub(r"\1", texto[desde:m.start()]), m.group(0)]
+        desde = m.end()
+    salida.append(_ESCAPE.sub(r"\1", texto[desde:]))
+    return "".join(salida)
 
 
 # ── partir el documento ─────────────────────────────────────────────────────────
@@ -353,7 +375,7 @@ def parsear(
             if valor is None:
                 continue
         if seccion.nombre == "titulo":
-            titulo = valor if isinstance(valor, str) else str(valor)
+            titulo = sin_escapes(valor if isinstance(valor, str) else str(valor))
         elif seccion.nombre == "estado":
             estado = valor if isinstance(valor, str) else str(valor)
         elif seccion.nombre == "pendientes":
@@ -479,9 +501,9 @@ def etiqueta(plantilla: str, ficha) -> str:
     campos. Tres reglas, cada una contra un nombre feo que salía:
 
     - De un campo queda solo el nombre: sin paréntesis y cortado en la primera raya, coma o
-      punto y coma. «Aguas Pacífico (agua desalada; Quintero…)» es «Aguas Pacífico».
-    - Si un valor ya está dentro de otro, no se repite: con el título «AquaChile — Campaña
-      de Ideas», el cliente «AquaChile» sobra.
+      punto y coma. «Aguas del Valle (agua desalada; Puerto Sur…)» es «Aguas del Valle».
+    - Si un valor ya está dentro de otro, no se repite: con el título «Molino — Campaña
+      de Ideas», el cliente «Molino» sobra.
     - Un marcador vacío se lleva su separador: sin cliente, «{campo:Cliente} · {titulo}»
       es solo el título.
 
@@ -502,8 +524,8 @@ def etiqueta(plantilla: str, ficha) -> str:
         if marcador.startswith("campo:"):
             crudo = str(campos.get(marcador[len("campo:"):].strip(), "") or "")
             sin_parentesis = re.sub(r"\s*\([^)]*\)?", "", crudo)
-            # un campo trae a veces su explicación pegada: «AquaChile, Gerencia de…»,
-            # «Antofagasta Minerals — grupo minero». El nombre es lo de antes.
+            # un campo trae a veces su explicación pegada: «Molino, Gerencia de…»,
+            # «Minera del Norte — grupo minero». El nombre es lo de antes.
             return re.split(r"\s+[—–]\s+|;|,", sin_parentesis)[0].strip()
         return ""
 

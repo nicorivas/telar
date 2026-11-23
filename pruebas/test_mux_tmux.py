@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -31,7 +32,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from comun import Prueba  # noqa: E402  (pone src/ en el camino)
+from comun import Prueba, matar_tmux  # noqa: E402  (pone src/ en el camino)
 
 from telar.config import Config
 from telar.mux import IMPLEMENTACIONES, ErrorDeMux, Multiplexor, obtener
@@ -371,6 +372,8 @@ class TmuxFalso(t.Tmux):
     def __init__(self, sesion="taller", *, viva=True, respuestas=None):
         super().__init__(Config(sesion=sesion))
         self.llamadas: list[list[str]] = []
+        #: lo que se le pasó por la entrada (`load-buffer -`), en orden
+        self.entradas: list[str] = []
         self.viva_falsa = viva
         self.respuestas: dict[str, str] = {
             "display-message": fila_pane(),
@@ -384,8 +387,10 @@ class TmuxFalso(t.Tmux):
     def disponible(self) -> bool:
         return True
 
-    def _tmux(self, *args: str, tolerante: bool = False, entorno=None) -> str:
+    def _tmux(self, *args: str, tolerante: bool = False, entorno=None, entrada=None) -> str:
         self.llamadas.append(list(args))
+        if entrada is not None:
+            self.entradas.append(entrada)
         return self.respuestas.get(args[0], "")
 
     def _ok(self, *args: str) -> bool:
@@ -423,6 +428,28 @@ class TejerLaSesion(Prueba):
         m = TmuxFalso(viva=True)
         m.tejer()
         self.assertEqual(m.ordenes("new-session"), [])
+
+    def test_tejer_le_pone_a_la_sesion_los_ganchos_del_foco(self):
+        # que tmux cuente cuando la persona cambia de tab: con alguien mirando, `telar tiempo marcar` con el nombre del
+        # tab. De la sesión del telar (no globales: las vistas y otras sesiones no los tienen), y también si ya estaba
+        with mock.patch.object(t, "ejecutable_telar", return_value="/usr/local/bin/telar"):
+            for viva in (True, False):
+                with self.subTest(viva=viva):
+                    m = TmuxFalso(viva=viva)
+                    m.tejer()
+                    ganchos = [o for o in m.llamadas if o[0] == "set-hook"]
+                    self.assertEqual([o[3] for o in ganchos], list(t.GANCHOS_FOCO))
+                    for o in ganchos:
+                        self.assertEqual(o[1:3], ["-t", "=taller:"])
+                        self.assertIn("#{session_attached}", o[4])
+                        self.assertIn("'/usr/local/bin/telar tiempo marcar -- #{q:window_name}'", o[4])
+
+    def test_sin_telar_que_citar_no_se_ponen_ganchos(self):
+        for ruta in ("", "/con espacio/telar", "/con'comilla/telar"):
+            with self.subTest(ruta=ruta), mock.patch.object(t, "ejecutable_telar", return_value=ruta):
+                m = TmuxFalso(viva=True)
+                m.tejer()
+                self.assertEqual([o for o in m.llamadas if o[0] == "set-hook"], [])
 
     def test_tejer_una_sesion_que_no_esta_la_levanta_sin_cliente(self):
         m = TmuxFalso(viva=False)
@@ -480,7 +507,7 @@ class CambiarDeTab(Prueba):
 
     def test_un_agente_no_le_mueve_la_terminal_a_la_persona(self):
         m = self._con_tmux("/dev/ttys004")
-        os.environ["TELAR_HILO"] = "Gestión"
+        os.environ["TELAR_HILO"] = "Secretaría"
         self.addCleanup(os.environ.pop, "TELAR_HILO", None)
         m.ir_a_tab("@3")
         self.assertEqual(m.ordenes("switch-client"), [])
@@ -575,11 +602,66 @@ class Escribir(Prueba):
         # pegado de una vez (bracketed paste): tecleado, cada salto sería un ↩ que manda la primera línea sola
         m = TmuxFalso()
         m.escribir_pane("%7", "dos\nlineas", enviar=True)
-        self.assertEqual(m.una("set-buffer")[-1], "dos\nlineas")
+        # el texto entra por la entrada de tmux, no en la orden: una orden tiene tope de largo
+        cargar = m.una("load-buffer")
+        self.assertEqual(cargar[-1], "-")
+        self.assertEqual(m.entradas, ["dos\nlineas"])
         pegar = m.una("paste-buffer")
         self.assertIn("-p", pegar)
+        self.assertEqual(pegar[pegar.index("-b") + 1], cargar[cargar.index("-b") + 1])
         self.assertEqual(pegar[-2:], ["-t", "%7"])
         self.assertEqual(m.ordenes("send-keys"), [["send-keys", "-t", "%7", "Enter"]])
+
+    def test_un_texto_largo_de_una_linea_tambien_va_por_la_entrada(self):
+        # tecleado con send-keys, tmux lo rechaza («command too long») pasados unos 16 KB
+        largo = "x" * (t.LARGO_ORDEN + 1)
+        m = TmuxFalso()
+        m.escribir_pane("%7", largo)
+        self.assertEqual(m.entradas, [largo])
+        self.assertEqual(m.ordenes("send-keys"), [], "sin enviar, no va el ↩, y el texto no se teclea")
+        self.assertEqual(len(m.ordenes("paste-buffer")), 1)
+
+    def test_dos_pegados_no_comparten_el_buffer(self):
+        m = TmuxFalso()
+        m.escribir_pane("%7", "uno\ndos", enviar=True)
+        m.escribir_pane("%8", "tres\ncuatro", enviar=True)
+        nombres = [o[o.index("-b") + 1] for o in m.ordenes("load-buffer")]
+        self.assertEqual(len(set(nombres)), 2)
+
+
+class UnComandoLargo(Prueba):
+    """`_corta`: la línea de un comando que pasa del tope de una orden de tmux va en un guion que se borra solo."""
+
+    def test_una_linea_que_cabe_va_tal_cual(self):
+        linea = t._linea(["claude", "hola"])
+        self.assertEqual(t._corta(linea), linea)
+
+    def test_una_larga_va_en_un_guion_que_corre_lo_mismo_y_se_borra(self):
+        texto = "\n".join(f"{i}: una línea con «comillas», $variables y 'apóstrofes'" for i in range(800))
+        linea = t._linea(["printf", "%s", texto])
+        self.assertGreater(len(linea.encode()), t.LARGO_ORDEN)
+        corta = t._corta(linea)
+        self.assertLess(len(corta), 200)
+        guion = shlex.split(corta)[-1]
+        self.assertTrue(Path(guion).exists())
+        self.assertIn(f"exec {linea}", Path(guion).read_text(encoding="utf-8"))
+        hecho = subprocess.run(["sh", "-c", corta], capture_output=True, text=True)
+        self.assertEqual(hecho.stdout, texto)
+        self.assertFalse(Path(guion).exists(), "el guion se borra al correr")
+
+    def test_con_una_asignacion_delante_no_va_exec(self):
+        linea = "X=1 " + t._linea(["printf", "%s", "y" * (t.LARGO_ORDEN + 10)])
+        corta = t._corta(linea)
+        guion = Path(shlex.split(corta)[-1])
+        self.addCleanup(guion.unlink, missing_ok=True)
+        self.assertNotIn("exec", guion.read_text(encoding="utf-8"))
+
+    def test_crear_un_tab_con_un_comando_largo_no_lo_pone_en_la_orden(self):
+        m = TmuxFalso()
+        m.crear_tab("faro", comando=["claude", "z" * (t.LARGO_ORDEN + 1)], foco=False)
+        orden = m.una("new-window")
+        self.assertLess(len(orden[-1]), 200)
+        Path(shlex.split(orden[-1])[-1]).unlink(missing_ok=True)
 
 
 class AbrirUnPanel(Prueba):
@@ -700,7 +782,7 @@ class ContraUnTmuxDeVerdad(Prueba):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        subprocess.run(["tmux", "kill-server"], capture_output=True, text=True)
+        matar_tmux(cls.socket)
         for clave, valor in cls.entorno.items():
             if valor is None:
                 os.environ.pop(clave, None)
@@ -917,6 +999,26 @@ class ContraUnTmuxDeVerdad(Prueba):
 
         self.mux.escribir_pane(pane, "", enviar=True)
         self._esperar(marca.exists, "el ↩ no ejecutó lo que estaba escrito")
+
+    def test_un_texto_largo_de_muchas_lineas_llega_entero(self):
+        # un chat de decenas de mensajes: pasa del tope de una orden de tmux, y llega igual, línea por línea
+        tab = self.mux.crear_tab("largo", ruta=self.raiz, comando=["sh", "-c", f"cat > {self.raiz / 'llego.txt'}"])
+        pane = self.mux.pane_de(tab.id).id
+        texto = "\n".join(f"[{i:03}] alguien: un mensaje de un chat largo, con acentos y «comillas»" for i in range(500))
+        self.assertGreater(len(texto.encode()), t.LARGO_ORDEN)
+        self.mux.escribir_pane(pane, texto, enviar=True)
+        llego = self.raiz / "llego.txt"
+        self._esperar(lambda: llego.exists() and llego.read_text(encoding="utf-8").count("\n") >= 500,
+                      "el texto largo no llegó entero")
+        self.assertEqual(llego.read_text(encoding="utf-8").strip("\n").split("\n"), texto.split("\n"))
+
+    def test_un_tab_que_arranca_con_un_comando_largo(self):
+        # el primer mensaje de un agente va en la línea del comando: con un contexto largo, pasa del tope
+        texto = "\n".join(f"{i}: «uno» 'dos' $tres" for i in range(1500))
+        salida = self.raiz / "primer-mensaje.txt"
+        self.mux.crear_tab("largo", ruta=self.raiz, comando=["sh", "-c", 'printf %s "$1" > "$2"', "sh", texto, str(salida)])
+        self._esperar(lambda: salida.exists() and salida.read_text(encoding="utf-8") == texto,
+                      "el comando largo no corrió con su texto entero")
 
     def test_la_palabra_enter_no_se_vuelve_un_retorno(self):
         tab = self._tab_con_shell("faro")

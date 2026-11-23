@@ -30,6 +30,14 @@ Su definición, si la tiene, es un `agente.toml` al lado de su CLAUDE.md (docs/p
     lugar = "servidor"       la máquina donde vive (aqui, o el nombre de un remoto): lo que antes era `en`
     publico = true           sus hilos salen en el directorio de las otras personas y reciben su correo
     icono = "☼"              uno o dos caracteres: la lista lo pone junto a cada hilo suyo
+    mundo = "personal"       el de `[mundos]` del que es: solo se ve con ese mundo puesto (o ambos). Le gana a
+                             la ruta de su carpeta y a las etiquetas de su hilo, en cada máquina que declare ese
+                             mundo (`mundos.de_agente`); en una que no lo declara, sin clasificar
+    fuera_de_su_mundo = "esconder"   qué pasa con él (su hilo, sus hijos, lo que espera de él, lo de su carpeta) con
+                             otro mundo puesto: «al-final» (el de fábrica: la barra no lo muestra; ⌘K, la vista de
+                             agentes y la instrucción, solo en el modo todo, al final), «esconder» (no sale en
+                             ninguna parte, ni en todo; solo ⚙ lo nombra) o «ver» (sale en todos los mundos, como
+                             uno sin clasificar). Se cambia en ⚙ mundos (`poner_fuera`)
     [politica]               lo que su sesión puede hacer sin preguntar, lo que pregunta y lo que no:
     permite = ["Bash(git status:*)", "Edit"]      reglas de permiso del motor (las de Claude Code), que telar
     pregunta = ["Bash(git push:*)"]               le pasa al abrir su sesión (`--settings`), sin tocar el
@@ -50,7 +58,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: el prefijo de la clave de sección de un agente: `agente:gestion`
+#: el prefijo de la clave de sección de un agente: `agente:secretaria`
 PREFIJO = "agente:"
 #: cuántas entradas de bitácora muestra el home, y cuánto de cada cuerpo
 ENTRADAS = 40
@@ -60,11 +68,14 @@ _ENTRADA = re.compile(r"^(?:#{2,3}\s+|-\s+)?(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{
 #: el archivo de su definición, al lado de su CLAUDE.md
 DEFINICION = "agente.toml"
 #: los campos que telar usa hoy, y los que acepta y muestra sin usarlos todavía (primitivas.md, «Qué es un agente»)
-USADOS = ("nombre", "para", "modelo", "residente", "hilos", "lugar", "publico", "politica", "icono")
+USADOS = ("nombre", "para", "modelo", "residente", "hilos", "lugar", "publico", "politica", "icono", "mundo",
+          "fuera_de_su_mundo")
 SIN_USO = ("instrucciones", "memoria", "capacidades")
 #: cómo está un residente (docs/propuestas/disparadores.md, decisión 7): siempre vivo, abierto cuando le llega
 #: algo (el de siempre), o esperando a que lo abra la persona
 PRESENCIAS = ("siempre", "a-pedido", "no")
+#: qué pasa con un agente fuera de su mundo (`fuera_de_su_mundo`): el de fábrica primero
+FUERAS = ("al-final", "esconder", "ver")
 #: las listas de su `[politica]`, y cómo se llaman en los permisos de Claude Code
 POLITICA = {"permite": "allow", "pregunta": "ask", "niega": "deny"}
 #: «una o dos frases»: más que esto se acepta, con aviso
@@ -105,6 +116,10 @@ class Agente:
     publico: bool = False
     #: uno o dos caracteres que la lista pone junto a cada hilo suyo; sin él, la inicial de su nombre
     icono: str = ""
+    #: el mundo de `[mundos]` que declara (`mundo = "personal"`); "" si no declara ninguno (va por su carpeta)
+    mundo: str = ""
+    #: qué pasa con él con otro mundo puesto (FUERAS): al-final (el de fábrica), esconder o ver
+    fuera_de_su_mundo: str = FUERAS[0]
     #: su `[politica]`: {permite, pregunta, niega} → reglas de permiso del motor
     politica: dict = field(default_factory=dict, compare=False, hash=False)
     definicion: Path | None = None
@@ -138,7 +153,9 @@ def _nombre(carpeta: Path) -> str:
         primera = next((l for l in (carpeta / "README.md").read_text(encoding="utf-8").splitlines() if l.startswith("# ")), "")
     except OSError:
         primera = ""
-    nombre = primera[2:].strip().strip("`").rstrip("/").strip()
+    from telar.lectura import sin_escapes
+
+    nombre = sin_escapes(primera[2:].strip().strip("`").rstrip("/").strip())
     return nombre if nombre and nombre.lower() != carpeta.name.lower() else carpeta.name.capitalize()
 
 
@@ -206,6 +223,20 @@ def leer_definicion(carpeta: Path) -> tuple[dict, tuple[str, ...]]:
                 valido[clave] = valor.strip()
             else:
                 problemas.append(f"icono: se esperaba uno o dos caracteres, llegó {valor!r}: se ignora")
+        elif clave == "mundo":
+            # el nombre de un mundo, tal cual lo declara `[mundos.<nombre>]`: si esta máquina lo declara lo dice
+            # `mundos.de_agente`, que tiene la configuración
+            if isinstance(valor, str) and valor.strip() and len(valor.strip()) <= 40 and not _con_control(valor) \
+                    and not re.search(r"\s", valor.strip()):
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"mundo: se esperaba el nombre de un mundo de [mundos] (una palabra), llegó {valor!r}: "
+                                 f"se ignora")
+        elif clave == "fuera_de_su_mundo":
+            if isinstance(valor, str) and valor.strip() in FUERAS:
+                valido[clave] = valor.strip()
+            else:
+                problemas.append(f"fuera_de_su_mundo: se esperaba {', '.join(FUERAS)}, llegó {valor!r}: se ignora")
         elif clave == "publico":
             if isinstance(valor, bool):
                 valido[clave] = valor
@@ -283,6 +314,8 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
                              presencia=definido.get("presencia", "a-pedido"), publico=definido.get("publico", False),
                              politica=definido.get("politica", {}),
                              icono=definido.get("icono", "") or (nombre[:1].upper() if nombre else "◆"),
+                             mundo=definido.get("mundo", ""),
+                             fuera_de_su_mundo=definido.get("fuera_de_su_mundo", FUERAS[0]),
                              definicion=d / DEFINICION if (d / DEFINICION).is_file() else None,
                              nombre_de_antes=de_antes,
                              sin_uso={k: v for k, v in definido.items() if k in SIN_USO},
@@ -354,8 +387,32 @@ def como_json(a: Agente) -> dict:
     return {"clave": a.clave, "nombre": a.nombre, "direccion": direccion_de("agente", a.clave),
             "carpeta": str(a.carpeta), "definicion": str(a.definicion) if a.definicion else "",
             "para": a.para, "modelo": a.modelo, "residente": a.residente, "presencia": a.presencia,
-            "publico": a.publico, "icono": a.icono, "politica": {k: list(v) for k, v in a.politica.items()}, "hilos": list(a.hilos),
+            "publico": a.publico, "icono": a.icono, "mundo": a.mundo, "fuera_de_su_mundo": a.fuera_de_su_mundo,
+            "politica": {k: list(v) for k, v in a.politica.items()}, "hilos": list(a.hilos),
             "en": a.en, "sin_uso": sin_uso, "problemas": list(a.problemas)}
+
+
+def poner_fuera(carpeta: Path, valor: str) -> Path:
+    """Escribe `fuera_de_su_mundo` en el agente.toml de esa carpeta (lo crea si no hay) y devuelve su ruta. El de
+    fábrica (al-final) quita la línea. Toca solo esa línea: lo demás (los comentarios, el orden, `[politica]`) queda como
+    estaba; una nueva va después de `mundo = …`, o antes de la primera tabla, o al final. ValueError si el valor no es
+    uno de FUERAS."""
+    if valor not in FUERAS:
+        raise ValueError(f"fuera_de_su_mundo: se esperaba {', '.join(FUERAS)}, llegó {valor!r}")
+    ruta = carpeta / DEFINICION
+    lineas = ruta.read_text(encoding="utf-8-sig").splitlines() if ruta.is_file() else []
+    es = re.compile(r"^\s*fuera_de_su_mundo\s*=")
+    tabla = next((i for i, x in enumerate(lineas) if re.match(r"^\s*\[", x)), len(lineas))
+    lineas = [x for i, x in enumerate(lineas) if not (i < tabla and es.match(x))]
+    if valor != FUERAS[0]:
+        tabla = next((i for i, x in enumerate(lineas) if re.match(r"^\s*\[", x)), len(lineas))
+        mundo = next((i for i, x in enumerate(lineas[:tabla]) if re.match(r"^\s*mundo\s*=", x)), None)
+        donde = mundo + 1 if mundo is not None else tabla
+        if mundo is None and donde and not lineas[donde - 1].strip():
+            donde -= 1   # antes de la línea en blanco que separa la tabla
+        lineas.insert(donde, f'fuera_de_su_mundo = "{valor}"')
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    return ruta
 
 
 def de_carpeta(config, carpeta: Path | None) -> Agente | None:

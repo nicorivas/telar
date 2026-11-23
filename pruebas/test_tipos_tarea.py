@@ -181,6 +181,18 @@ class Acciones(Prueba):
         with self.assertRaises(T.ErrorDeAccion):
             T.reagendar(self.t, "el lunes", reloj=reloj)
 
+    def test_reagendar_no_contesta_la_propuesta(self):
+        # mover la fecha dice cuándo, no contesta lo que preguntó el agente: la propuesta sigue esperando, y la línea
+        # de la historia dice la fecha de antes y la nueva
+        p = T.proponer(self.t, "pregunta", "pide=decidir · falta: ¿el 12% o un 8%?", reloj=reloj)
+        m = T.reagendar(p, "2026-11-10", reloj=reloj)
+        self.assertEqual((m.vence, m.avance), ("2026-11-10", p.avance))
+        self.assertEqual((m.historia[-1].tipo, m.historia[-1].texto), ("mover", "2026-10-30 → 2026-11-10"))
+        self.assertEqual(T.reagendar(p, "none", reloj=reloj).avance, p.avance, "sin fecha, tampoco")
+        # lo que sí la contesta, como siempre
+        self.assertEqual(T.responder(m, "un 8%", reloj=reloj).avance, "")
+        self.assertEqual(T.esperar(m, "ines", reloj=reloj).avance, "")
+
     def test_esperar_y_volver(self):
         e = T.esperar(self.t, "@ines", reloj=reloj)
         self.assertEqual((e.estado, e.espera, e.historia[-1].texto), ("espera", "ines", "espera a ines"))

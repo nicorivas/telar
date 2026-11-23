@@ -4,6 +4,7 @@
 
 import * as cli from '../../../cli';
 import { esc } from '../../../estilo';
+import * as anchos from '../../../web/anchos';
 import * as aspectoTerminal from '../../../web/aspecto-terminal';
 import * as modos from '../../../web/modos';
 import * as ui from '../../../web/ui';
@@ -24,9 +25,12 @@ export const terminal: FabricaSeccion = ctx => {
     };
 
     const poner = async (clave: 'columnas' | 'posicion' | 'fondo', valor: string | number) => {
-        // en otro modo que estándar, el modo manda sobre `[terminal]`: el cambio es de ese modo (a mano, hasta
-        // cambiar de modo; ⚙ modos lo guarda en él)
-        if (modos.puesto().clave !== 'estandar') {
+        // el ancho elegido aquí es el de fábrica de la terminal, y arrastrar su borde lo pisa en este navegador (web/anchos.ts):
+        // cambiarlo aquí olvida lo arrastrado, para que se vea lo que se acaba de elegir
+        if (clave === 'columnas') anchos.olvidarTerminal(anchos.dePagina().almacen);
+        // en otro modo que táctica (la base de todos), el modo manda sobre `[terminal]`: el cambio es de ese modo (a
+        // mano, hasta cambiar de modo; ⚙ modos lo guarda en él)
+        if (modos.puesto().clave !== 'tactica') {
             modos.poner(clave, valor);
             void ui.estado(`telar: en «${modos.puesto().nombre}», hasta cambiar de modo (${I.config} modos lo guarda en él)`, 5000);
             if (ctx.seVe('terminal')) seccion.pintar();
@@ -37,7 +41,7 @@ export const terminal: FabricaSeccion = ctx => {
         const actual = { ...aspectoTerminal.aspecto(), [clave]: r.datos.valor } as aspectoTerminal.Aspecto;
         aspectoTerminal.cambiar(actual);
         if (datos) datos.actual = actual;
-        void modos.leer();   // «estándar» toma la terminal de `[terminal]`
+        void modos.leer();   // «táctica» toma la terminal de `[terminal]`
         void ui.estado('telar: listo, ya se ve en las terminales', 3000);
         if (ctx.seVe('terminal')) seccion.pintar();
     };
@@ -82,6 +86,11 @@ export const terminal: FabricaSeccion = ctx => {
             h.push('<h2>ancho<small>cuánto se abre la terminal; la ventana del hilo toma ese tamaño</small></h2>');
             h.push(`<div class="fila">${a.columnas ? `hasta ${a.columnas} columnas` : 'todo el ancho'}<span class="der">`
                 + '<a data-accion="terminal-ancho">cambiar</a></span></div>');
+            const pagina = anchos.dePagina(), arrastradas = anchos.columnasRecordadas(pagina.almacen, pagina.pantalla());
+            if (arrastradas !== undefined) {
+                h.push(`<div class="fila dim">en esta pantalla, arrastrando su borde: ${arrastradas ? `${arrastradas} columnas` : 'todo el ancho'}`
+                    + ' (un doble clic en el borde vuelve a lo de arriba; cambiarlo aquí lo olvida)</div>');
+            }
             h.push('<h2>posición<small>dónde va, si sobra espacio</small></h2>');
             h.push(`<div class="fila">${POSICIONES.map(p => opcion('terminal-posicion', p, p, a.posicion === p)).join(' · ')}</div>`);
             h.push('<h2>fondo<small>lo que se ve alrededor</small></h2>');

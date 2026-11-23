@@ -11,6 +11,7 @@ import { modelo } from '../modelo';
 import * as modos from './modos';
 import { avisar } from './interfaz';
 import { elegirEntrada } from '../vistas/dashboard/equipo';
+import { fueraDe, fueraDeLinea } from './alcance';
 import type { BarraHilos } from '../vistas/hilos';
 import type { Dashboard } from '../vistas/dashboard/panel';
 
@@ -58,7 +59,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         // con hijos vivos: ¿ellos también? (archivar el proyecto suele ser cerrar sus frentes)
         let conHijos = false;
         if (verbo === 'archivar') {
-            const hijos = modelo.hilos.filter(x => (x.padre || x.abierto_por?.por) === hilo && x.vivo && !x.archivado);
+            const hijos = modelo.hilos.filter(x => x.padre === hilo && x.vivo && !x.archivado);
             if (hijos.length) {
                 const r = await ui.aviso(`«${hilo}» tiene ${hijos.length === 1 ? 'un hilo hijo abierto' : `${hijos.length} hilos hijos abiertos`}: `
                     + `${hijos.map(x => `«${x.nombre}»`).join(', ')}. ¿Los archivo también?`, 'Con sus hijos', 'Solo él');
@@ -91,20 +92,49 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         }
     }
 
-    /** Descartar un hilo: vivo, se termina y sale de la lista; archivado o dormido, sale del archivo (telar olvida su
-     *  carpeta, su prioridad y su atención), después de preguntar: no hay cómo volver a él desde la lista. */
+    /** Descartar un hilo, siempre después de preguntar, con el foco en «cancelar»: no hay cómo volver a él desde la
+     *  lista. Vivo, se termina y sale de la lista (la pregunta dice que está vivo y qué se pierde); archivado o dormido,
+     *  sale del archivo. Por aquí pasan la ✕ de su fila, la del ⋯ y las órdenes `telar.cerrar` y `telar.descartar`. */
     async function descartar(hilo: string): Promise<void> {
         const h = modelo.porNombre(hilo);
         if (!h) return;
-        if (h.vivo && !h.archivado) { await sacar(hilo, 'cerrar', 'descartándolo'); return; }
-        const si = await ui.aviso(`¿Descartar «${hilo}»? Sale del archivo y telar olvida su carpeta, su prioridad y su atención (su conversación queda en disco).`, 'Descartar');
-        if (si === 'Descartar') await sacar(hilo, 'olvidar', 'descartándolo');
+        const vivo = h.vivo && !h.archivado;
+        const olvida = 'telar olvida su carpeta, su prioridad y su atención';
+        const trabajando = h.atencion === 'trabajando';
+        const si = vivo
+            ? await ui.aviso(`¿Descartar «${hilo}»? Está vivo${h.remoto && h.remoto !== '?' ? ` en ${h.remoto}` : ''}`
+                + `${trabajando ? ' y trabajando' : ''}.`, 'Descartar', {
+                detalle: `Se termina ahora${trabajando ? ' (lo que está haciendo queda a medias)' : ''} y sale de la lista sin `
+                    + `pasar por ARCHIVO: ya no se retoma con un clic y ${olvida}. Su conversación queda en disco. Para `
+                    + 'guardarlo, archívalo.',
+                destruye: true })
+            : await ui.aviso(`¿Descartar «${hilo}»? Sale del archivo y ${olvida} (su conversación queda en disco).`, 'Descartar',
+                { destruye: true });
+        if (si === 'Descartar') await sacar(hilo, vivo ? 'cerrar' : 'olvidar', 'descartándolo');
     }
 
     /** El menú de un hilo (el ⋯ de su fila): lo que se puede hacer con él, según esté
      *  vivo, archivado o vinculado. Cada acción es una orden `telar hilo …`. */
     async function menuHilo(a: unknown): Promise<void> {
         await entidades.menuDe(`hilo:${hiloDe(a)}`, (a as { donde?: { x: number; y: number } } | undefined)?.donde);
+    }
+
+    /** En el menú del hilo de un agente, lo del agente, bajo su separador: su casa (en la barra es una acción de su
+     *  fila al pasar el mouse), abrirlo si quedó en una shell y eliminarlo. */
+    function agenteDelHilo(h: cli.JsonHilo): entidades.AccionEntidad[] {
+        const nombre = h.nombre.split(' › ')[0];
+        const maquina = h.remoto && h.remoto !== '?' ? h.remoto : '';
+        return [
+            { label: 'su agente', separador: true },
+            ...(modelo.secciones.some(x => x.clave === `agente:${h.agente}`) ? [{ label: 'su casa', icono: I.casa, color: C.ir,
+                description: 'bitácora, memoria, archivos', hacer: () => ui.orden('telar.seccion', `agente:${h.agente}`) }] : []),
+            { label: 'abrir el agente', icono: I.correr, color: C.agente,
+                description: 'si quedó en una shell (se abrió antes de elegir el motor), lo abre ahí con su conversación',
+                hacer: () => ui.orden('telar.agenteAbrir', { clave: h.agente ?? '', nombre, maquina }) },
+            { label: 'eliminar el agente', icono: I.descartar, color: C.quitar,
+                description: 'sus hilos al archivo y su carpeta aparte; no se borra nada',
+                hacer: () => ui.orden('telar.agenteEliminar', { clave: h.agente ?? '', nombre, maquina }) },
+        ];
     }
 
     // lo que se puede hacer con un hilo, para su menú (web/entidades.ts): según esté vivo, archivado o vinculado
@@ -114,7 +144,11 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         type Fila = entidades.AccionEntidad;
         const prioridad = (n: string, nombre: string): Fila => ({ label: `prioridad ${nombre}`, description: String(h.prioridad ?? '') === n ? 'la que tiene' : '',
             icono: PRIO_I[Number(n) || 0], color: C.cambiar,
-            hacer: () => sobreHilo(hilo, 'prioridad', [], n) });
+            // se ve al tiro (modelo: lo local); si la orden falla, vuelve lo que había
+            hacer: async () => {
+                modelo.cambiarLocal(hilo, { prioridad: Number(n) || null });
+                if (!await sobreHilo(hilo, 'prioridad', [], n)) modelo.olvidarLocal(hilo);
+            } });
         const filas: Fila[] = [
             { label: h.archivado || !h.vivo ? 'retomar' : 'ver', icono: h.archivado || !h.vivo ? I.retomar : I.ver, color: C.ir, description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
                 hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) c.mostrar(hilo); } else c.mostrar(hilo); } },
@@ -132,7 +166,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             { label: 'colgar de…', icono: I.vincular, color: C.cambiar, description: 'el hilo del proyecto, o el que lo encarga (también: arrastrarlo sobre él)',
                 hacer: async () => {
                     const otros = modelo.hilos.filter(x => x.nombre !== hilo && !x.archivado).map(x => ({ label: cli.nombreVisible(x), description: x.relativa || '', nombre: x.nombre }));
-                    const e = await ui.elegir(otros, { titulo: `¿De cuál cuelga «${hilo}»?`, placeholder: 'filtrar' });
+                    const e = await ui.elegir(otros, { titulo: `¿De cuál cuelga «${hilo}»?`, placeholder: 'hilos' });
                     if (e) await ui.orden('telar.colgar', hilo, e.nombre);
                 } },
             { label: 'etiquetas…', icono: I.etiqueta, color: C.cambiar,
@@ -149,19 +183,36 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
                 : [{ label: 'archivar', icono: I.archivar, color: C.cambiar, description: 'lo guarda en ARCHIVO con su conversación, para retomarlo', hacer: () => sacar(hilo, 'archivar', 'archivándolo') }]),
             // descartar: vivo, se termina y sale de la lista; dormido o archivado, telar lo olvida (carpeta, prioridad)
             h.vivo && !h.archivado
-                ? { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'lo termina y lo saca de la lista, sin guardarlo', hacer: () => sacar(hilo, 'cerrar', 'descartándolo') }
+                ? { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'lo termina y lo saca de la lista, sin guardarlo', hacer: () => descartar(hilo) }
                 : { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'sale del archivo: telar olvida su carpeta, su prioridad y su atención', hacer: () => descartar(hilo) },
-            ...(h.agente ? [{ label: 'abrir el agente', icono: I.correr, color: C.agente,
-                description: 'si quedó en una shell (se abrió antes de elegir el motor), lo abre ahí con su conversación',
-                hacer: () => ui.orden('telar.agenteAbrir', { clave: h.agente, nombre: h.nombre.split(' › ')[0], maquina: h.remoto && h.remoto !== '?' ? h.remoto : '' }) }] : []),
-            ...(h.agente ? [{ label: 'eliminar el agente', icono: I.descartar, color: C.quitar,
-                description: 'sus hilos al archivo y su carpeta aparte; no se borra nada',
-                hacer: () => ui.orden('telar.agenteEliminar', { clave: h.agente, nombre: h.nombre.split(' › ')[0], maquina: h.remoto && h.remoto !== '?' ? h.remoto : '' }) }] : []),
             ...(!h.remoto ? [{ label: 'llevar a otra máquina', icono: I.llevar, color: C.otro, description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
                 : [{ label: 'traer a esta máquina', icono: I.traer, color: C.otro, description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
+            // lo de su agente, aparte de lo del hilo: su casa, abrirlo y, al final, eliminarlo
+            ...(h.agente ? agenteDelHilo(h) : []),
         ];
         return { titulo: hilo, acciones: filas };
     });
+
+    // lo que se puede hacer con un agente residente, para su menú: el ⋯ de su fila en AGENTES cuando no tiene hilo abierto
+    // (con hilo, su ⋯ es el del hilo), o el que pide un lienzo. Su casa, y abrir su hilo o retomar el que telar recuerda;
+    // después, lo que da el servidor (encargar), y al final eliminarlo, en rojo y con su pregunta
+    entidades.registrar('agente', async id => {
+        // `id` es la carpeta (`secretaria`), lo que piden las órdenes; la clave de su sección, su dirección (`agente:secretaria`)
+        const s = modelo.secciones.find(x => x.grupo === 'agentes' && x.clave === `agente:${id}`);
+        if (!s) return undefined;
+        const previo = modelo.hilos.find(x => cli.enSeccion(s, x.nombre));
+        // dónde vive: la de su hilo, si telar recuerda uno; si no, la decide el servidor (`[agentes] en`)
+        const maquina = previo?.remoto && previo.remoto !== '?' ? previo.remoto : '';
+        return { titulo: s.nombre, acciones: [
+            { label: 'su casa', icono: I.casa, color: C.ir, description: 'bitácora, memoria, archivos', hacer: () => ui.orden('telar.seccion', s.clave) },
+            previo
+                ? { label: 'retomar su hilo', icono: I.retomar, color: C.ir, description: 'reabre su hilo con su conversación', hacer: () => ui.orden('telar.retomar', { hilo: previo.nombre }) }
+                : { label: 'abrir su hilo', icono: I.correr, color: C.agente, description: 'con su motor', hacer: () => ui.orden('telar.agenteAbrir', { clave: id, nombre: s.nombre, maquina }) },
+        ], alFinal: [
+            { label: 'eliminar el agente', icono: I.descartar, color: C.quitar, description: 'sus hilos al archivo y su carpeta aparte; no se borra nada',
+                hacer: () => ui.orden('telar.agenteEliminar', { clave: id, nombre: s.nombre, maquina }) },
+        ] };
+    }, { conServidor: true });
 
     /** Las etiquetas de un hilo: se escriben todas (separadas por coma); vacío las quita. Se sugieren las que ya se
      *  usan y las de los modos. */
@@ -183,7 +234,7 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         const r = await cli.proyectos();
         const otra = { label: 'otra carpeta…', description: 'escribir su ruta', ruta: '' };
         const filas = [...(r.datos?.proyectos ?? []).map(p => ({ label: p.nombre, description: p.ruta, ruta: String(p.ruta) })), otra];
-        const elegida = await ui.elegir(filas, { titulo: `Vincular «${hilo}» a…`, placeholder: 'filtrar' });
+        const elegida = await ui.elegir(filas, { titulo: `Vincular «${hilo}» a…`, placeholder: 'proyectos' });
         if (!elegida) return;
         const ruta = elegida.ruta || await ui.campo({ titulo: `La carpeta de «${hilo}»`, ayuda: 'relativa a la raíz del repositorio, o absoluta' });
         if (ruta) await sobreHilo(hilo, 'vincular', [], ruta);
@@ -236,11 +287,22 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             const [maq, ...resto] = String(id ?? '').split('|');
             const hilo = resto.join('|');
             if (!maq || !hilo) return;
+            // su máquina fuera de línea (telar.alcance): despertarlo queda en cola, y traerlo necesita que esté
+            const fuera = fueraDe(maq, c.barra.otras);
             const e = await ui.elegir([
                 { label: 'ver', description: 'su conversación, y escribirle por el bus', id: 'ver' },
-                { label: 'traer a esta máquina', description: `vive en ${maq}: su conversación viaja aquí; los archivos no`, id: 'traer' },
+                fuera ? { label: 'despertar al volver', description: `${fueraDeLinea(fuera)}: queda en cola y se despierta cuando vuelva`, id: 'despertar' }
+                    : { label: 'despertar', description: `retomar su agente en ${maq}: el dormido en su ventana, el cerrado con su conversación`, id: 'despertar' },
+                { label: 'traer a esta máquina', description: fuera ? `necesita a ${maq} en línea: su conversación vive allá`
+                    : `vive en ${maq}: su conversación viaja aquí; los archivos no`, id: 'traer' },
             ], { titulo: `${hilo} · en ${maq}` });
             if (e?.id === 'ver') c.mostrar(`rem:${maq}:${hilo}`);
+            else if (e?.id === 'despertar') {
+                const d = await cli.despertar(hilo, maq, { cola: true });
+                if (d.datos) void ui.estado(`telar: ${d.datos.hecho || `«${hilo}» no necesitaba despertar`}${d.datos.aviso ? ` (${d.datos.aviso})` : ''}`, 8000);
+                else void ui.falla(`telar: ${d.error ?? 'sin respuesta'}`);
+                void c.releerOtras();
+            }
             else if (e?.id === 'traer') await traerWeb(hilo, maq);
         },
         'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) c.mostrar(`rem:${maq}:${resto.join('|')}`); },
@@ -252,7 +314,8 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         // mostrarlo sin abrir nada: uno archivado o cerrado se ve en su conversación, con «retomar»
         'telar.ver': a => { const h = hiloDe(a); if (h) c.mostrar(h); },
         'telar.archivar': a => sacar(a, 'archivar', 'archivándolo'),
-        'telar.cerrar': a => sacar(a, 'cerrar', 'descartándolo'),
+        // cerrar es descartar uno vivo: pregunta antes, como descartar
+        'telar.cerrar': a => descartar(hiloDe(a)),
         'telar.descartar': a => descartar(hiloDe(a)),
         'telar.archivo': () => c.barra.alternarArchivo(),
         // sin id (el aviso de «2 cosas esperan»), a elegir; con una sola, esa
@@ -312,15 +375,17 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         // dice y ofrece elegir Claude Code, y lo intenta de nuevo
         'telar.agenteAbrir': async (a?: { clave: string; nombre: string; maquina?: string }) => {
             if (!a?.clave) return;
+            // el agente es su carpeta (`secretaria`); su dirección (`agente:secretaria`, la clave de su sección) también vale
+            const clave = a.clave.replace(/^agente:/, '');
             avisar(`abriendo a ${a.nombre}…`, 'info', 3000);
-            let r = await cli.abrirAgente(a.clave, a.maquina ?? '');
+            let r = await cli.abrirAgente(clave, a.maquina ?? '');
             if (!r.datos && /motor/.test(r.error ?? '')) {
                 const si = await ui.aviso(`Para abrir a ${a.nombre} falta elegir con qué se abren los agentes (el motor). `
                     + '¿Uso Claude Code? Queda en la configuración, [agente] nombre; se cambia en ⚙ agente.', 'Usar Claude Code');
                 if (si !== 'Usar Claude Code') return;
                 const m = await cli.motorAgentes('claude-code');
                 if (!m.ok) { void ui.falla(`telar: no pude guardarlo: ${m.err}`); return; }
-                r = await cli.abrirAgente(a.clave, a.maquina ?? '');
+                r = await cli.abrirAgente(clave, a.maquina ?? '');
             }
             if (!r.datos) { void ui.falla(`telar: ${r.error ?? `no pude abrir a ${a.nombre}`}`); return; }
             await modelo.sondear(true);
@@ -331,10 +396,10 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             if (!a?.clave) return;
             const si = await ui.aviso(`¿Eliminar a ${a.nombre}? Sus hilos van al archivo, con su conversación, y su carpeta a `
                 + '_eliminados/ (no se borra nada: ⚙ agentes… o «telar agentes restaurar» lo trae de vuelta). Lo que tenga '
-                + 'encargado queda sin hacer.', 'Eliminar');
+                + 'encargado queda sin hacer.', 'Eliminar', { destruye: true });
             if (si !== 'Eliminar') return;
             avisar(`eliminando a ${a.nombre}…`, 'info', 4000);
-            const r = await cli.eliminarAgente(a.clave, a.maquina ?? '');
+            const r = await cli.eliminarAgente(a.clave.replace(/^agente:/, ''), a.maquina ?? '');
             if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
             avisar(`${a.nombre} eliminado${r.datos.archivados.length ? `; al archivo: ${r.datos.archivados.join(', ')}` : ''}.`
                 + (r.datos.sin_archivar.length ? ` No se pudieron archivar: ${r.datos.sin_archivar.join(', ')}.` : ''), 'info', 8000);

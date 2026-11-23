@@ -40,7 +40,14 @@ NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 #: qué campos de cada hilo viajan (el resto —ruta absoluta, sesiones, conversaciones— se queda allá)
 CAMPOS = ("nombre", "atencion", "vivo", "activo", "prioridad", "tiempo", "visto", "relativa", "arquetipo", "remoto",
-          "publico", "etiquetas", "padre")
+          "publico", "etiquetas", "padre", "sin_ver", "atencion_desde", "agente", "dormido")
+
+
+#: un agente residente en la foto: su carpeta (`secretaria`), su nombre y el mundo que declara su agente.toml ("" ninguno).
+#: Viaja para que las otras máquinas lo vean, con su mundo, aunque su carpeta todavía no les llegue (una raíz atrasada)
+CLAVE_AGENTE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+#: lo más que se acepta de agentes en una foto
+MAX_AGENTES = 100
 
 
 class ErrorDeEspejo(ValueError):
@@ -66,9 +73,26 @@ def nombre_valido(texto: str) -> str:
 WEB = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d{1,5})?$")
 
 
-def foto(tel, *, maquina: str, version_telar: str = "", web: str = "") -> dict:
+def agentes_de(config) -> list[dict]:
+    """Los agentes residentes de esta máquina, para su foto: [{clave, nombre, mundo, fuera_de_su_mundo}] (`mundo`, el
+    que declara su agente.toml, tal cual, "" ninguno; `fuera_de_su_mundo`, qué pasa con él con otro mundo puesto). []
+    sin `[agentes] carpeta` o si no se pudo leer."""
+    from telar import agentes as mod_agentes
+
+    try:
+        return [{"clave": a.clave, "nombre": a.nombre, "mundo": a.mundo or "", "fuera_de_su_mundo": a.fuera_de_su_mundo}
+                for a in mod_agentes.descubrir(config)][:MAX_AGENTES]
+    except Exception:  # noqa: BLE001 - sin agentes legibles, la foto de siempre
+        return []
+
+
+def foto(tel, *, maquina: str, version_telar: str = "", web: str = "", mirando: list[dict] | None = None,
+         vista: str = "", agentes: list[dict] | None = None) -> dict:
     """La foto de los hilos de este telar, lista para viajar. Sin los archivados. `web`: la dirección de su
-    página, si la sirve (las otras máquinas le reenvían por ahí las terminales de sus hilos)."""
+    página, si la sirve (las otras máquinas le reenvían por ahí las terminales de sus hilos). `mirando`: lo que se mira
+    aquí, [{maquina, hilo}] (telar.dormir: la máquina de cada uno no lo duerme); None, que no se sabe (no va). `vista`:
+    cómo se llama esta máquina en las sesiones con que mira las ventanas de otra (`ver-<n>-<vista>`). `agentes`: sus
+    agentes residentes (`agentes_de`); None, no van."""
     from telar.ordenes import _comun
 
     hilos = []
@@ -77,14 +101,22 @@ def foto(tel, *, maquina: str, version_telar: str = "", web: str = "") -> dict:
             continue
         crudo = _comun.json_hilo(h, tel, con_ficha=True)
         hilo = {k: crudo.get(k) for k in CAMPOS}
+        hilo["dormido"] = bool(crudo.get("dormido"))
         ficha = crudo.get("ficha") or {}
         hilo["resumen"] = ficha.get("etiqueta") or ficha.get("titulo") or ""
         hilos.append(hilo)
-    return {
+    salida = {
         "version": VERSION, "maquina": maquina, "telar": version_telar,
         "publicado": datetime.now().astimezone().isoformat(timespec="seconds"),
         "sesion": getattr(tel, "sesion", ""), "web": web, "hilos": hilos,
     }
+    if mirando is not None:
+        salida["mirando"] = [{"maquina": str(m["maquina"]), "hilo": str(m["hilo"])} for m in mirando]
+    if vista:
+        salida["vista"] = vista
+    if agentes is not None:
+        salida["agentes"] = agentes
+    return salida
 
 
 def validar(datos: object, de: str) -> dict:
@@ -103,18 +135,41 @@ def validar(datos: object, de: str) -> dict:
         if not isinstance(h, dict) or not isinstance(h.get("nombre"), str) or not h["nombre"]:
             raise ErrorDeEspejo("un hilo de la foto no tiene nombre")
         limpio = {k: h.get(k) for k in (*CAMPOS, "resumen") if k in h}
-        for k in ("nombre", "atencion", "relativa", "arquetipo", "remoto", "resumen", "visto", "padre"):
+        for k in ("nombre", "atencion", "relativa", "arquetipo", "remoto", "resumen", "visto", "padre", "atencion_desde",
+                  "agente"):
             if limpio.get(k) is not None and not isinstance(limpio[k], str):
                 raise ErrorDeEspejo(f"el campo «{k}» de «{h['nombre']}» no es texto")
+        for k in ("sin_ver", "dormido"):
+            if k in limpio and not isinstance(limpio[k], bool):
+                del limpio[k]
         if "etiquetas" in limpio:
             e = limpio["etiquetas"]
             limpio["etiquetas"] = [x for x in e if isinstance(x, str)][:20] if isinstance(e, list) else []
         hilos.append(limpio)
-    return {
+    limpia = {
         "version": VERSION, "maquina": de, "telar": str(datos.get("telar", ""))[:20],
         "publicado": str(datos.get("publicado", ""))[:40], "sesion": str(datos.get("sesion", ""))[:60],
         "web": datos["web"] if isinstance(datos.get("web"), str) and WEB.match(datos["web"]) else "", "hilos": hilos,
     }
+    # lo que se mira allá (telar.dormir): solo pares de textos; una foto de un telar de antes no lo trae
+    if isinstance(datos.get("mirando"), list):
+        limpia["mirando"] = [{"maquina": m["maquina"][:64], "hilo": m["hilo"][:200]} for m in datos["mirando"][:500]
+                             if isinstance(m, dict) and isinstance(m.get("maquina"), str) and isinstance(m.get("hilo"), str)]
+    if isinstance(datos.get("vista"), str) and re.fullmatch(r"[a-z0-9-]{1,20}", datos["vista"]):
+        limpia["vista"] = datos["vista"]
+    # sus agentes residentes: solo los que se entienden (una clave de carpeta, un nombre y un mundo de texto); una foto
+    # de un telar de antes no los trae
+    if isinstance(datos.get("agentes"), list):
+        from telar import agentes as mod_agentes
+
+        limpia["agentes"] = [{"clave": a["clave"], "nombre": a["nombre"][:80], "mundo": a.get("mundo", "")[:64],
+                              **({"fuera_de_su_mundo": a["fuera_de_su_mundo"]}
+                                 if a.get("fuera_de_su_mundo") in mod_agentes.FUERAS else {})}
+                             for a in datos["agentes"][:MAX_AGENTES]
+                             if isinstance(a, dict) and isinstance(a.get("clave"), str) and CLAVE_AGENTE.match(a["clave"])
+                             and isinstance(a.get("nombre"), str) and a["nombre"].strip()
+                             and isinstance(a.get("mundo", ""), str)]
+    return limpia
 
 
 def guardar(config, de: str, crudo: str) -> dict:
@@ -165,6 +220,8 @@ def leer_todos(config, ahora: float | None = None) -> list[dict]:
             "nombre": nombre, "en_linea": edad < VIGENTE, "edad": round(edad, 1),
             "recibido": recibido, "publicado": datos.get("publicado", ""), "telar": datos.get("telar", ""),
             "sesion": datos.get("sesion", ""), "web": datos.get("web", ""), "hilos": datos.get("hilos", []),
+            # lo que se mira allá y cómo se llama en las sesiones con que mira (telar.dormir); sin ellas, no vienen
+            **{k: datos[k] for k in ("mirando", "vista", "agentes") if k in datos},
         })
     return salida
 

@@ -59,7 +59,7 @@ export function diasDe(lunes: string, semanas = 0): string[] {
     return [0, 1, 2, 3, 4].map(k => { const x = new Date(f); x.setDate(f.getDate() + k); return isoDe(x); });
 }
 
-function corto(iso: string, mes = true): string {
+export function corto(iso: string, mes = true): string {
     const f = new Date(`${iso}T12:00:00`);
     return `${DIAS_CORTOS[f.getDay()]} ${f.getDate()}${mes ? ` ${MESES_CORTOS[f.getMonth()]}` : ''}`;
 }
@@ -92,14 +92,14 @@ export function balanceDia(fecha: string, vs: Visto[]): Map<Parte, number> {
 }
 
 /** De quién es cada tramo de la jornada (su momento y lo que lo ocupa, o nada). Entre dos bloques, el que empezó
- *  más tarde: corta al otro, como la reunión que cae sobre un bloque. */
+ *  más tarde: corta al otro, como la reunión que cae sobre un bloque. Una cita rechazada no ocupa nada. */
 function tramos(fecha: string, vs: Visto[]): [number, Visto | undefined][] {
     const peso = (v: Visto) => v.tipo === 'cita' ? (v.pendiente ? 1 : 3) : v.tipo === 'bloque' ? 2 : 0;
     const salida: [number, Visto | undefined][] = [];
     for (let min = JORNADA[0] * 60; min < JORNADA[1] * 60; min += PASO) {
         const t = momento(fecha, min + PASO / 2);
         let mejor: Visto | undefined;
-        for (const v of vs) if (v.e.inicio <= t && t < v.e.fin
+        for (const v of vs) if (!v.rechazada && v.e.inicio <= t && t < v.e.fin
             && (!mejor || peso(v) > peso(mejor) || (peso(v) === peso(mejor) && v.e.inicio > mejor.e.inicio))) mejor = v;
         salida.push([t, mejor]);
     }
@@ -174,6 +174,7 @@ function htmlBalance(dias: DiaSemana[]): string {
         + '<div class="b-clave dim"><span><i class="t-cita c-reunion"></i>lleno: una cita, no se mueve sola</span>'
         + '<span><i class="t-bloque c-bloque"></i>rayado: tiempo tuyo, se puede mover</span>'
         + '<span><i class="pendiente c-reunion"></i>solo el borde: sin aceptar</span>'
+        + '<span><i class="rechazada c-reunion"></i>tenue y tachada: la rechazaste, no cuenta</span>'
         + `<span>${I.persona} la organizas tú</span><span class="rojo">${I.alerta} se cruza con una cita u otro bloque</span></div>`
         + (sinPlan.length ? `<div class="b-nota dim">sin plan del día: ${esc(sinPlan.join(', '))}. Lo que se ve es el calendario: sus bloques propios no están</div>` : '')
         + '</div>';
@@ -193,13 +194,13 @@ function htmlCabeza(d: DiaSemana, hoy: string): string {
 
 /** Un evento en la columna de su día, o en la lista. */
 function clasesDe(v: Visto, ahora: number, sel: boolean, pisado: boolean): string {
-    return [`t-${v.tipo}`, `c-${v.clase}`, v.pendiente ? 'pendiente' : '', v.organiza ? 'organiza' : '', v.e.fin <= ahora ? 'pasado' : '',
+    return [`t-${v.tipo}`, `c-${v.clase}`, v.pendiente ? 'pendiente' : '', v.rechazada ? 'rechazada' : '', v.organiza ? 'organiza' : '', v.e.fin <= ahora ? 'pasado' : '',
         sel ? 'sel' : '', pisado ? 'pisado' : ''].filter(Boolean).join(' ');
 }
 
 function titulo(v: Visto, pisado: string[]): string {
     // pisado: con qué se cruza
-    return [`${hm(v.e.inicio)}–${hm(v.e.fin)} · ${v.tipo === 'cita' ? 'cita' : NOMBRE[v.clase]}${v.pendiente ? ', sin aceptar' : ''}${v.organiza ? ', la organizas tú: la puedes mover' : ''}`,
+    return [`${hm(v.e.inicio)}–${hm(v.e.fin)} · ${v.tipo === 'cita' ? 'cita' : NOMBRE[v.clase]}${v.pendiente ? ', sin aceptar' : ''}${v.rechazada ? ', rechazada: no cuenta' : ''}${v.organiza ? ', la organizas tú: la puedes mover' : ''}`,
         v.e.titulo, pisado.length ? `se cruza con: ${pisado.join(', ')}` : ''].filter(Boolean).join('\n');
 }
 
@@ -210,12 +211,13 @@ function htmlColumna(d: DiaSemana, i: number, desde: number, hasta: number, sel:
     const y = (ms: number) => ((ms - base) / 3600000 - desde) * ALTO_HORA;
     const vs = vistos(d.evs);
     const pis = new Map([...cruces(vs)].map(([id, xs]) => [id, xs.map(x => x.titulo)]));
-    // lo que no dura (el cierre del día) es una raya; lo demás, un recuadro en su carril. Los bloques y la rutina
-    // van a lo ancho; una cita que cae sobre uno se corre a la derecha y queda encima, y así se ve lo que pisa
+    // lo que no dura (el cierre del día) es una raya; lo demás, un recuadro en su carril. Los bloques, la rutina y las
+    // citas rechazadas van a lo ancho; una cita que cae sobre uno se corre a la derecha y queda encima, y así se ve lo
+    // que pisa (o, sobre una rechazada, que ese rato no se perdió)
     const conAlto = vs.filter(v => v.e.fin - v.e.inicio >= 60000 && v.clase !== 'cierre');
-    const propios = conAlto.filter(v => v.tipo !== 'cita'), citas = conAlto.filter(v => v.tipo === 'cita');
+    const propios = conAlto.filter(v => v.tipo !== 'cita' || v.rechazada), citas = conAlto.filter(v => v.tipo === 'cita' && !v.rechazada);
     const lanes = new Map([...carriles(propios.map(v => v.e)), ...carriles(citas.map(v => v.e))]);
-    const sobre = (v: Visto) => v.tipo === 'cita' && propios.some(b => b.e.inicio < v.e.fin && v.e.inicio < b.e.fin);
+    const sobre = (v: Visto) => v.tipo === 'cita' && !v.rechazada && propios.some(b => b.e.inicio < v.e.fin && v.e.inicio < b.e.fin);
     const CORRIDA = 30;
     const t0 = ahora.getTime();
     // cada día en su columna de la rejilla, fija: el globo del detalle va encima de otras dos
@@ -292,12 +294,3 @@ export function htmlSemana(dias: DiaSemana[], o: { hoy: string; ahora: Date; sel
         + '</div>';
 }
 
-/** «‹ lun 19 – vie 23 oct ›» sobre la semana, y «esta semana» para volver cuando se está en otra. */
-export function htmlNavSemana(lunes: string, estaSemana: string, cargando: boolean): string {
-    const [ini, , , , fin] = diasDe(lunes);
-    const mismoMes = ini.slice(5, 7) === fin.slice(5, 7);
-    return `<a data-accion="cal-semana" data-valor="-1" title="semana anterior ([)">‹</a>`
-        + `<span class="cal-fecha">${esc(corto(ini, !mismoMes))} – ${esc(corto(fin))}${cargando ? ' …' : ''}</span>`
-        + `<a data-accion="cal-semana" data-valor="1" title="semana siguiente (])">›</a>`
-        + (lunes !== estaSemana ? '<a data-accion="cal-semana" data-valor="hoy">esta semana</a>' : '');
-}

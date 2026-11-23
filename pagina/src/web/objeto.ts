@@ -8,6 +8,7 @@
 
 import * as cli from '../cli';
 import { esc, recuadro, volver } from '../estilo';
+import { DESTRUYE } from '../componentes/boton';
 import type { Vuelta } from './carpeta';
 import { enlazar } from './rutas-agente';
 import * as ui from './ui';
@@ -107,7 +108,8 @@ async function correr(el: HTMLElement, o: cli.JsonObjeto, nombre: string, markdo
         if (v === undefined) return;
         params[k] = v;
     }
-    if (!pide.length && await ui.aviso(`¿${a.nombre}? ${o.titulo || o.direccion}`, 'Sí') !== 'Sí') return;
+    // el botón dice la acción; si su verbo destruye (retirar, descartar…), en el de peligro con ⌘⌫
+    if (!pide.length && await ui.aviso(`¿${a.nombre}? ${o.titulo || o.direccion}`, a.nombre, { foco: 'cancelar', destruye: DESTRUYE.test(a.nombre) }) !== a.nombre) return;
     const r = await ui.progreso({ titulo: `telar: ${a.nombre} · ${o.direccion}…` },
         () => cli.accionObjeto(o.direccion, a.nombre, params, o.version ?? ''));
     if (el.dataset.direccion !== o.direccion) return;

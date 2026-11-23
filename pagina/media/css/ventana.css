@@ -1,0 +1,133 @@
+/* La ventana (componentes/ventana.ts): el marco de lo que se abre aparte, encima de la página. Tres lugares (`centrada`, `arriba`,
+   `junto`) que solo cambian dónde cae y cuánto ocupa; lo que lleva (cabecera, campo, cuerpo, pie) es lo mismo. Una ventana es lo
+   único con marco en la gramática visual (lo que se abre aparte); su fondo es el de la barra, no el de una lista. Como el
+   `<dialog>` real pone su propio lugar y su fondo de atrás, aquí se dibuja solo lo de adentro. */
+.ventana {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  max-height: 100%;
+  border: var(--ventana-borde);
+  color: var(--texto);
+  background: var(--ventana-fondo);
+  box-shadow: var(--ventana-sombra);
+  &.centrada { width: min(var(--ventana-ancho), 100%); }
+  &.arriba { width: min(var(--ventana-ancho-ancha), 100%); }
+  &.junto { width: min(var(--ventana-ancho-chica), 100%); box-shadow: var(--ventana-sombra-junto); }
+}
+.ventana-cabecera { padding: var(--item-pad-y, 0) var(--item-pad-x) 0; }
+.ventana-titulo { color: var(--titulo); font-weight: bold; }
+/* el título con íconos delante (el estado de lo que muestra) o herramientas al final (lo que se le hace) */
+.ventana-linea { display: flex; align-items: baseline; gap: 0 var(--h-1); min-width: 0; }
+.ventana-linea .ventana-titulo { flex: 1; min-width: 0; }
+.ventana-iconos, .ventana-herramientas { display: flex; flex: none; align-items: baseline; }
+.ventana-ayuda { color: var(--texto-tenue); white-space: pre-wrap; }
+/* el campo: la barra de un buscador (buscador.css), de borde a borde, con su línea abajo que lo aparta de la lista */
+.ventana-campo { --buscador-margen: var(--item-pad-x); }
+.ventana-cuerpo { flex: 1; min-height: 0; overflow: auto; }
+.ventana-lista { max-height: var(--ventana-lista-alto); overflow: auto; }
+.ventana-vacia { padding: 0 var(--item-pad-x); color: var(--texto-tenue); }
+.ventana-detalle { padding: .3em var(--item-pad-x) 0; border-top: 1px solid var(--linea); color: var(--texto-tenue); }
+.ventana-pie { display: flex; gap: var(--item-pad-x); justify-content: flex-end; padding: .3em var(--item-pad-x);
+  & a { color: var(--acento); cursor: pointer; }
+}
+
+/* Las ventanas de escribir (web/interfaz.ts: `campo`, `escribir`, `preguntar`): un campo, un área o un texto, con su pie. Lo
+   de adentro sigue el mismo aire que el campo de una paleta: línea abajo en el acento, sin marcos. */
+.ventana.ventana-texto {
+  width: min(var(--ventana-ancho), 100vw - 2 * var(--ventana-margen));
+  padding-bottom: .3em;
+  & .ventana-cabecera { padding-bottom: var(--e-1); }
+  & .ventana-cuerpo { padding: var(--e-1) var(--item-pad-x) 0; }
+  & p { margin: 0; white-space: pre-wrap; }
+  & input:not(.buscar) {
+    box-sizing: border-box;
+    width: 100%;
+    padding: .2lh 0;
+    border: 0;
+    border-bottom: 1px solid var(--acento);
+    outline: none;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+  }
+  & .problema { min-height: 1lh; margin-top: .3lh; color: var(--rojo); }
+  & .destino { display: flex; gap: 1ch; align-items: baseline; margin-bottom: .6lh; color: var(--texto-tenue); }
+  & select {
+    border: 0;
+    border-bottom: 1px solid var(--acento);
+    border-radius: 0;
+    background: var(--ventana-fondo);
+    color: var(--texto);
+    font: inherit;
+  }
+  & textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 8lh;
+    max-height: 50vh;
+    padding: .3lh 1ch;
+    border: 1px solid var(--linea);
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+    resize: vertical;
+    &:focus { border-color: var(--acento); }
+  }
+}
+
+/* La ventana de elegir (web/interfaz.ts: `elegir`): título, el filtro de un buscador y las opciones (`.web-op`, de web.css), con la
+   marcada a la vista y, si las opciones traen detalle, la entera abajo. */
+.ventana.ventana-elegir {
+  width: min(var(--ventana-ancho), 100vw - 2 * var(--ventana-margen));
+  padding-bottom: .3em;
+  & .ventana-cabecera { padding-bottom: var(--e-1); }
+  & .ventana-cuerpo { display: flex; flex-direction: column; }
+  & .web-lista { flex: 1; min-height: 0; max-height: 50vh; margin-top: .4lh; }
+  /* filas y detalle alineados con el título y el campo */
+  & .web-op, & .web-sep { padding-inline: var(--item-pad-x); }
+  & .web-detalle { padding-inline: var(--item-pad-x); border-top: var(--borde); box-shadow: none; }
+}
+
+/* La ventana de ⌘K (web/buscador.ts): una `arriba`, con la trama ░ de la página de atrás en vez del oscurecido liso (un carácter por
+   celda de la letra: --celda-w y --celda-h los pone web/buscador.ts; el color va escrito, el del texto del tema, muy tenue). Su
+   campo es la barra de un buscador; la lista, en grupos por fuente (cada una, su color: --b-color, el de su cabecera y de sus
+   íconos) con filas `item()`; las teclas, en el pie. */
+dialog.ventana-dialogo.ventana-buscador::backdrop {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 16' preserveAspectRatio='none'%3E%3Ctext x='0' y='12.5' font-family='Menlo,monospace' font-size='13' fill='%23cdd6f4' fill-opacity='.16'%3E%E2%96%91%3C/text%3E%3C/svg%3E")
+      0 0 / var(--celda-w, 8px) var(--celda-h, 16px),
+    color-mix(in srgb, var(--bg) 80%, transparent);
+}
+.ventana.ventana-buscador {
+  width: min(var(--ventana-ancho-ancha), 100vw - 2 * var(--ventana-margen));
+  & .ventana-lista { height: 16lh; max-height: none; padding-bottom: var(--e-1); }
+  & .b-grupo { padding: var(--e-1) var(--item-pad-x) 0; color: var(--b-color, var(--texto-tenue)); }
+  /* una fuente remota que sigue preguntando: lo suyo de antes se ve igual, y su grupo lo dice tenue */
+  & .b-espera { color: var(--texto-tenue); }
+  & .b-fila .item-ranura { color: var(--b-color, var(--texto-tenue)); }
+  & .b-fila .item-sufijo { color: var(--texto-tenue); }
+  & .b-pie { padding: .3em var(--item-pad-x); border-top: var(--borde); color: var(--texto-tenue); }
+}
+
+/* El menú junto al puntero (web/interfaz.ts: `menu`, el clic derecho o el ⋯ de una entidad): una `junto`, sin fondo detrás (no es modal: no
+   está en la capa de arriba, así que lleva su z-index), con la sombra dura de una ventana. El título y el campo, de borde a borde; las
+   filas, `item()`. Todo del mismo tamaño: lo que distingue es el color de lo que hace (`--c`, en la ranura y el título) y el ícono. */
+dialog.ventana-dialogo.ventana-menu {
+  z-index: 50;
+  width: auto;
+  min-width: 28ch;
+  max-width: min(60ch, calc(100vw - 2ch));
+}
+.ventana.ventana-menu {
+  width: auto;
+  padding-bottom: .3em;
+  & .ventana-cabecera { padding-bottom: var(--e-1); }
+  & .ventana-titulo { overflow: hidden; color: var(--texto-tenue); font-weight: normal; white-space: nowrap; text-overflow: ellipsis; }
+  & .ventana-lista { max-height: min(60vh, var(--ventana-lista-alto)); padding-top: var(--e-1); }
+  & .m-sep { padding: var(--e-1) var(--item-pad-x) 0; color: var(--texto-tenue); }
+  & .m-fila .item-ranura, & .m-fila .item-titulo { color: var(--c, inherit); }
+  & .m-fila .item-sufijo { color: var(--texto-tenue); }
+}

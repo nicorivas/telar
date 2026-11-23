@@ -74,6 +74,9 @@ class ConfigResuelta(BaseModel):
     repos: list[dict[str, str]] = Field(default_factory=list)
     modulos: list[dict[str, Any]] = Field(default_factory=list)
     apps: list[dict[str, Any]] = Field(default_factory=list)
+    #: lo que dejan las skills por día (`[vistas.x]` con carpeta o en): clave, nombre, en y `pasadas` (el esquema, si
+    #: cada día es una lista de pasadas: la página muestra las que no se han visto)
+    resultados: list[dict[str, str]] = Field(default_factory=list)
     atajos: list[dict[str, Any]] = Field(default_factory=list)
     proveedores: dict[str, dict[str, Any]] = Field(default_factory=dict)
     entorno: dict[str, str] = Field(default_factory=dict)
@@ -83,10 +86,26 @@ class ConfigResuelta(BaseModel):
     persona_nombres: list[str] = Field(default_factory=list)
     #: dónde vive la bandeja del equipo, vista desde aquí: «aqui», el nombre de otra máquina, o vacío
     equipo: str = ""
+    #: lo que la ventana «instrucción» necesita de aquí: a quién va de entrada lo que manda la pestaña de un módulo
+    #: (`[instruccion] destino`, como se declaró, y `a`, el nombre que lo elige en la ventana: el de un agente aunque se
+    #: haya declarado por su carpeta; sin declarar, no están) y `procesar`, la línea que le llega al agente con un
+    #: contexto libre y nada pedido
+    instruccion: dict[str, str] = Field(default_factory=dict)
+    #: las partes de la vida (`[mundos]`), en su orden: [{nombre, areas, rutas, etiquetas, color, horario, tema, modos}]
+    #: (telar.mundos, `para_la_pagina`; `modos` vacío: todos); vacío si no se declaran
+    mundos: list[dict[str, Any]] = Field(default_factory=list)
+    #: el mundo que rige fuera de todo horario (`[mundos] fuera`); "" es ambos
+    mundos_fuera: str = ""
+    #: los colores propios de cada tema en esta máquina (`[temas.<tema>]`, telar.temas): tema → {tinta: "#rrggbb"}; solo
+    #: los temas que cambian algo
+    temas: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
 def resuelta(ctx) -> ConfigResuelta:
     """La configuración con la que trabaja telar aquí, y lo que se pisó por el entorno."""
+    from telar import mundos as mod_mundos
+    from telar import temas as mod_temas
+
     cfg = ctx.config
     pisadas = {v: os.environ[k] for k, v in ENTORNO.items() if os.environ.get(k)}
     return ConfigResuelta(**{
@@ -105,7 +124,7 @@ def resuelta(ctx) -> ConfigResuelta:
         },
         "calendario": _calendario(cfg),
         "terminal": {"columnas": cfg.terminal.columnas, "posicion": cfg.terminal.posicion, "fondo": cfg.terminal.fondo},
-        "hilos": {"directorios": list(cfg.hilos.directorios), "tope": cfg.hilos.tope},
+        "hilos": {"directorios": list(cfg.hilos.directorios), "tope": cfg.hilos.tope, "dormir_tras": cfg.hilos.dormir_tras},
         "agente": {
             "nombre": cfg.agente.nombre,
             "carpeta": cfg.agente.carpeta,
@@ -122,9 +141,10 @@ def resuelta(ctx) -> ConfigResuelta:
             for r in cfg.remotos
         ],
         "bus": _bus(cfg),
-        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "en": b.en, "tecla": b.tecla, "dentro": b.dentro} for b in cfg.bloques],
-        # las pestañas de proveedor (un feed) y su tecla, para el dashboard
-        "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or "")}
+        "bloques": [{"clave": b.clave, "nombre": b.nombre, "color": b.color, "tecla": b.tecla, "dentro": b.dentro} for b in cfg.bloques],
+        # las pestañas de proveedor (un feed), su tecla y cómo se ve su ficha (`vista`: "lectura", o la de una tarea)
+        "pestanas": [{"nombre": str(p.opciones["pestana"]), "tecla": str(p.opciones.get("tecla") or ""),
+                      "vista": str(p.opciones.get("vista") or "")}
                      for p in cfg.proveedores_activos() if p.opciones.get("pestana")],
         "agenda": [{"clave": r.clave, "si": r.si, "antes": r.antes, "despues": r.despues} for r in cfg.agenda],
         "secciones": [
@@ -132,12 +152,16 @@ def resuelta(ctx) -> ConfigResuelta:
             for s in cfg.secciones
         ] + _agentes(cfg),
         "dashboard": {"orden": list(cfg.dashboard_orden), "ocultas": list(cfg.dashboard_ocultas)},
+        "mundos": mod_mundos.para_la_pagina(cfg),
+        "mundos_fuera": getattr(cfg, "mundos_fuera", ""),
+        "temas": mod_temas.para_la_pagina(cfg),
         # la ruta absoluta, como la lee telar (una relativa, desde la raíz): la misma que reciben los módulos
         "repos": [{"nombre": r.nombre, "ruta": str(ruta_de_repo(cfg, r)), "perfil": str(r.perfil or "")}
                   for r in cfg.repos],
         "modulos": _modulos(cfg),
         "apps": [{"clave": a.clave, "nombre": a.nombre, "descripcion": a.descripcion, "fuente": a.fuente,
                   **({"url": a.url} if a.url else {})} for a in cfg.apps],
+        "resultados": [{"clave": r.clave, "nombre": r.nombre or r.clave, "en": r.en, "pasadas": r.pasadas} for r in cfg.resultados],
         "atajos": [
             {"tecla": a.tecla, "nombre": a.nombre, "mensaje": a.mensaje, "descripcion": a.descripcion, "en": a.en}
             for a in cfg.atajos
@@ -153,10 +177,11 @@ def resuelta(ctx) -> ConfigResuelta:
         "agente_general": _general(ctx),
         # quién es la persona de esta máquina (`[bus] persona`, o el usuario): una tarea sin dueño es suya
         "persona": _persona(cfg),
-        # cómo más la nombran en un documento («Nicolás Rivas», de git): un pendiente a ese nombre es suyo
+        # cómo más la nombran en un documento («Ana Pérez», de git): un pendiente a ese nombre es suyo
         "persona_nombres": _nombres(cfg),
         # la bandeja del equipo: la página en el navegador la lee de aquí (en VS Code, el ajuste equipoRemoto)
         "equipo": _equipo(cfg),
+        "instruccion": _instruccion(cfg),
     })
 
 
@@ -174,7 +199,7 @@ def _modulos(cfg) -> list[dict]:
         instalados = {}
     # la fuente sale sin credenciales: esto también lo entrega `GET /config`, más allá de esta máquina
     return [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
-             **mod_modulos.procedencia(instalados.get(m.nombre))} for m in cfg.modulos]
+             "configurar": bool(m.configurar), **mod_modulos.procedencia(instalados.get(m.nombre))} for m in cfg.modulos]
 
 
 def _equipo(cfg) -> str:
@@ -266,16 +291,53 @@ def _preguntar_gws(programa: str) -> tuple[str, bool]:
 
 
 def _agentes(cfg) -> list[dict]:
-    """Los agentes residentes, como secciones del grupo «agentes»: su home lo arma telar."""
+    """Los agentes residentes, como secciones del grupo «agentes»: su home lo arma telar, y su `presencia` (siempre,
+    a-pedido o no: si escribirle lo abre cuando está cerrado). Con `[mundos]`, cada uno con
+    su `mundo` (telar.mundos.por_que_agente: lo que declara su agente.toml, la etiqueta de su hilo o su carpeta; ""
+    sin clasificar), para que la página no muestre ni un momento a uno de otro mundo mientras lee lo demás, y qué pasa
+    con él con otro mundo puesto (`fuera_de_su_mundo`: al-final, esconder o ver, de su agente.toml)."""
     from telar import agentes as mod_agentes
     from telar import estado as mod_estado
+    from telar import mundos
 
+    etiquetas: dict = {}
     try:
-        vinculos = mod_estado.abrir(cfg).vinculos()
+        est = mod_estado.abrir(cfg)
+        vinculos = est.vinculos()
+        etiquetas = est.etiquetas() if mundos.declarados(cfg) else {}
     except Exception:  # noqa: BLE001 - sin estado, los agentes salen igual, solo con sus nombres
         vinculos = {}
-    return [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes"}
+    con_mundo = bool(mundos.declarados(cfg))
+    aqui = [{"clave": a.seccion, "nombre": a.nombre, "hilos": list(a.hilos), "home": True, "grupo": "agentes",
+             "presencia": a.presencia,
+             **({"mundo": mundos.por_que_agente(cfg, a.clave, etiquetas.get(a.nombre, ()))["mundo"],
+                 "fuera_de_su_mundo": a.fuera_de_su_mundo} if con_mundo else {})}
             for a in mod_agentes.descubrir(cfg, vinculos)]
+    return aqui + _agentes_de_otras(cfg, aqui)
+
+
+def _agentes_de_otras(cfg, aqui: list[dict]) -> list[dict]:
+    """Los agentes que viven en otra máquina y cuya carpeta todavía no está en esta (una raíz atrasada: la foto de su
+    máquina los trae, telar.espejo): salen igual, con su `maquina` y su mundo (el que declaran allá, si esta máquina
+    declara ese mundo; sin `[mundos]`, no va), sin home (su casa no está aquí). Uno con el mismo nombre o la misma
+    carpeta que uno de aquí no se repite."""
+    from telar import agentes as mod_agentes
+    from telar import mundos
+
+    vistos = {s["clave"] for s in aqui} | {s["nombre"] for s in aqui}
+    nombres = set(mundos.declarados(cfg))
+    salida: list[dict] = []
+    for maquina, a in mundos.agentes_de_otras(cfg):
+        clave, nombre = mod_agentes.PREFIJO + str(a["clave"]), str(a.get("nombre") or a["clave"])
+        if not maquina or clave in vistos or nombre in vistos:
+            continue
+        vistos |= {clave, nombre}
+        mundo = str(a.get("mundo") or "")
+        fuera = str(a.get("fuera_de_su_mundo") or mod_agentes.FUERAS[0])
+        salida.append({"clave": clave, "nombre": nombre, "hilos": [nombre], "home": False, "grupo": "agentes",
+                       "maquina": maquina, **({"mundo": mundo if mundo in nombres else "", "fuera_de_su_mundo": fuera}
+                                              if nombres else {})})
+    return salida
 
 
 def _nombres(cfg) -> list[str]:
@@ -299,6 +361,28 @@ def _persona(cfg) -> str:
         return mod_bus.persona(cfg)
     except Exception:  # noqa: BLE001 - sin usuario conocido, el dashboard dice «tú»
         return ""
+
+
+def _instruccion(cfg) -> dict:
+    """`[instruccion] destino`, y el nombre que lo elige en la ventana: el de un agente (que se puede declarar por su
+    carpeta o por su nombre) o el del hilo. Un agente que no está queda con lo declarado: la ventana dice que no lo
+    encuentra. Y la línea que pide procesar un contexto libre (`telar.servicios.actuar.PROCESAR`), que la ventana
+    muestra en lo que le llega."""
+    from telar.servicios.actuar import PROCESAR
+
+    destino = getattr(cfg, "instruccion_destino", "")
+    if not destino:
+        return {"procesar": PROCESAR}
+    tipo, _, nombre = destino.partition(":")
+    if tipo == "agente":
+        from telar import agentes as mod_agentes
+
+        try:
+            a = next((x for x in mod_agentes.descubrir(cfg) if nombre in (x.clave, x.nombre)), None)
+        except Exception:  # noqa: BLE001 - sin agentes, lo declarado
+            a = None
+        nombre = a.nombre if a is not None else nombre
+    return {"destino": destino, "a": nombre, "procesar": PROCESAR}
 
 
 def _general(ctx) -> dict:

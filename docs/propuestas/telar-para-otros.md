@@ -68,7 +68,7 @@ red).
   servidor viaja solo su hash; quien administra el bus aprueba (`telar bus pedidos`, `telar bus aprobar`, o
   un aviso en el dashboard, quizás automático por dominio) y el bus suma la cuenta y se recarga solo. Quién
   pide se sabe de dos maneras, que pueden convivir:
-  - **dentro de una red de Tailscale** (lo de hoy, y lo de Brinca): `tailscale whois` de la máquina que
+  - **dentro de una red de Tailscale** (lo de hoy, y lo de un equipo): `tailscale whois` de la máquina que
     pide; la red ya cifra y ya deja entrar solo a quien se invitó (compartirle el servidor);
   - **con el bus en internet**, para quien solo quiere el bus y no la red: NATS con TLS (un dominio y un
     certificado) y un código de invitación de un solo uso (`telar bus invitar <persona>`). Sin TLS no: hoy

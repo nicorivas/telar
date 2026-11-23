@@ -90,7 +90,7 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
 **Dos reglas que las atraviesan.**
 
 - **Dirección.** Una sola forma, `tipo:id` (más el nodo cuando importa): `tarea:T366`,
-  `correo:1a13c3f7`, `agente:gestion`, `encargo:e-0412`. Hoy hay seis formas. Con una, un mensaje puede
+  `correo:1a13c3f7`, `agente:secretaria`, `encargo:e-0412`. Hoy hay seis formas. Con una, un mensaje puede
   decir «revisa `correo:1a13c3f7`» y cualquiera sabe abrirlo.
 - **Permiso.** Qué puede hacer un sujeto o un módulo: con qué tipos, qué acciones, en qué nodos, qué
   pide confirmación. Una solicitud de permiso (la «espera» de un hilo) es un objeto con su decisión, que
@@ -127,6 +127,19 @@ donde corre ahora. Un hilo de proyecto corre el **agente por defecto** (las inst
    viven semanas: con integrar a mano o al cerrar, pasarían semanas sin subir lo suyo, y la rama se
    alejaría de la principal. Integrar en cada commit lo arreglaría, pero se vuelve engorroso para lo que
    resuelve hoy. Se retoma cuando los choques entre hilos vuelvan a ser un problema grave.
+
+   **Retomado de otra forma (13-nov-2026): los hijos con rama propia.** No cada hilo, sino los hijos que un
+   hilo abre para una funcionalidad (`telar hilo hijo «X» --rama`), que duran horas o días y que el padre
+   fusiona y borra (`telar hilo fusionar`). Así se tiene a varios agentes en funcionalidades distintas del
+   mismo código: el padre reparte, revisa y fusiona. Se decidió no hacer del padre un tipo de hilo «gestor»:
+   el padre y el hijo saben lo suyo por su contexto de arranque, que sale de lo que tienen (hijos con rama),
+   no de algo declarado que puede contradecirlo; el método es una skill (`/ramas`) que se abre cuando hace
+   falta, y lo que no puede fallar (no fusionar con cambios sin commitear, no tocar la carpeta del padre si
+   choca) lo hace cumplir la orden. Si al usarlo los padres programan en vez de repartir, se olvidan de
+   fusionar o fusionan sin probar, el papel fijo iría en el agente como definición
+   ([agente-como-definicion.md](agente-como-definicion.md)), no en un tipo de hilo. Lo que hace cada orden:
+   [contratos.md](../contratos.md), «`telar hilo <verbo> --json`»; lo de este repositorio:
+   [desarrollar.md](../desarrollar.md).
 2. **Los archivos calientes con un solo escritor** (`[calientes]`: memoria, tareas y bitácoras escritas por
    un nodo, y las demás máquinas pidiéndoselo por el bus). **Descartado (21-oct-2026)**: las tareas ya
    tienen un escritor, y para el resto `telar commit` basta mientras los choques sean raros.
@@ -178,7 +191,8 @@ Cada uno deja todo funcionando.
    pedidos se atienden aparte, el vigía no se atrasa y las lecturas y los envíos se repiten una vez. Lo que
    pide el bus real (el `write_deadline` y el `ping_interval` del servidor) está en
    [arquitectura.md](../arquitectura.md), «Cuando el bus falla».
-5. ~~El lugar y los worktrees~~: aplazado (arriba, «Git y los repositorios»).
+5. ~~El lugar y los worktrees~~: aplazado para todos los hilos; hecho para los hijos de una funcionalidad
+   (13-nov-2026, arriba, «Git y los repositorios»).
 6. **Vistas**: `[vistas]` reemplaza a `[secciones]`, `[bloques]`, `[apps]` y `[resultados]`, que se siguen
    leyendo un tiempo. El diseño, las decisiones abiertas y lo que falta están en [vistas.md](vistas.md).
    Primer paso hecho (22-oct-2026): la configuración lee `[vistas.<clave>]` (una fuente y `aparece`: pestana,

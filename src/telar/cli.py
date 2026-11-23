@@ -14,6 +14,7 @@ voz alta y sale con 2: es un esqueleto, no un misterio.
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,7 @@ ORDENES: dict[str, str] = {
     "init": "Escribir la configuración y preparar el estado.",
     "doctor": "Revisar multiplexor, sesión, perfil, proveedores y ganchos.",
     "tejer": "Levantar la sesión, o reengancharla si ya está viva.",
-    "hilos": "Los hilos de la sesión, con su estado.",
+    "hilos": "Los hilos de esta máquina, con su estado; con --red, también los de las demás.",
     "hilo": "Vincular, renombrar, priorizar, archivar: actuar sobre un hilo.",
     "ficha": "Lo que el documento de un hilo dice de sí mismo.",
     "codigos": "Los códigos que un hilo nombra (H3, PEN-07, T84) y lo que es cada uno.",
@@ -49,12 +50,16 @@ ORDENES: dict[str, str] = {
     "tipo": "Los objetos de un tipo (las tareas): leerlos, crearlos y aplicarles sus acciones.",
     "cambio": "Avisar que algo cambió (las tareas), para que el dashboard lo relea ya.",
     "commit": "Commitear solo unas rutas y subirlas, sin pisar lo que otros dejaron a medias.",
+    "desplegar": "Dejar corriendo lo que está en main en todas las máquinas donde vive el repositorio.",
     "hoy": "El día en una pantalla: agenda, quién te espera, qué falta.",
     "reunion": "Preparar una reunión: un hilo con el agente ya trabajando en ella.",
     "atajo": "Una tecla del dashboard: un hilo con el agente haciendo algo recurrente.",
     "bloque": "Lo que muestra un bloque del día: corre su comando y devuelve su página.",
     "mirar": "Engancharse a la ventana de un hilo en esta terminal, sin tocar lo que ven los demás.",
     "objeto": "Cualquier objeto por su dirección (tarea:T366, hilo:Telar…): verlo y aplicarle una acción.",
+    "esperas": "Lo que espera una decisión tuya: permisos y preguntas de los hilos, propuestas en tareas, retenidos.",
+    "buscar": "Buscar en todo junto: lo que espera, las tareas, las casillas, los hilos, los proyectos, los objetos de los "
+              "módulos y los bloques.",
     "modulos": "Los módulos instalados (una carpeta con modulo.toml) y lo que aporta cada uno.",
     "app": "Las apps del panel (un juego, un vivero): la lista, o la página de una.",
     "seccion": "La página de una sección de la lista: corre su `home` y devuelve su JSON.",
@@ -85,6 +90,9 @@ ORDENES: dict[str, str] = {
     "accion": "Correr una acción declarada por el perfil.",
     "actuar": "Mandarle a un hilo o a un agente un prompt sobre una entidad, con su contexto (y una skill).",
     "config": "Mostrar la configuración resuelta y de dónde salió.",
+    "temas": "Dónde vive cada tema (en la raíz, para todas las máquinas, o solo en esta), y pasarlos a la raíz.",
+    "mundos": "Cuándo rige cada mundo y dónde vive su horario (en la raíz, para todas las máquinas, o solo en esta), y "
+              "pasarlo a la raíz.",
     "perfil": "Mostrar el perfil del repositorio y qué documentos alcanza.",
 }
 
@@ -225,8 +233,15 @@ def main(argv: list[str] | None = None) -> int:
             raise
         return _error(f"la orden '{orden}' está declarada pero todavía no implementada")
 
+    salida.SIN_ESPERAR = False
     try:
-        return int(modulo.main(argumentos, Contexto(config=config)))
+        codigo = int(modulo.main(argumentos, Contexto(config=config)))
+        if salida.SIN_ESPERAR:
+            # lo que quedó corriendo aparte ya no le sirve a nadie (salida.salir_sin_esperar)
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(codigo)
+        return codigo
     except (ErrorDeConfig, ErrorDePerfil) as e:
         return _error(str(e))
     except KeyboardInterrupt:  # pragma: no cover - depende de la terminal

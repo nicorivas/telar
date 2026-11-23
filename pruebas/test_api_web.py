@@ -60,6 +60,54 @@ class LaLlave(Prueba):
         self.assertEqual(c.post("/api/algo").status_code, 200)  # sin Origin (curl): manda la llave
 
 
+class UnaPestanaComoApp(Prueba):
+    """`/pestana/<nombre>/`: la página con solo esa pestaña, para instalarla aparte en el teléfono, con su manifiesto y el
+    ícono de su módulo. El manifiesto y el ícono, sin llave: el navegador los pide sin la cookie."""
+
+    def _con(self, modulos=()):
+        return TestClient(api_web.crear(FastAPI(), clave="llave-de-prueba", config=SimpleNamespace(modulos=modulos)),
+                          base_url="http://telar:8780")
+
+    def test_la_pagina_con_su_manifiesto_y_con_llave(self):
+        c = self._con()
+        self.assertEqual(c.get("/pestana/chats/").status_code, 403)
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        r = c.get("/pestana/chats/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('href="/pestana/chats/manifest.webmanifest"', r.text)
+        self.assertNotIn('href="/manifest.webmanifest"', r.text)
+        r = c.get("/pestana/chats", follow_redirects=False)
+        self.assertEqual((r.status_code, r.headers["location"]), (302, "/pestana/chats/"))
+
+    def test_el_manifiesto_es_de_esa_pestana_y_su_icono_el_del_modulo(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            png = Path(d) / "icono.png"
+            # un PNG de 256 x 256: basta la cabecera para saber su lado
+            png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (256).to_bytes(4, "big") * 2 + b"\x08\x06\x00\x00\x00")
+            m = SimpleNamespace(nombre="chat", pestana={"nombre": "chats"}, icono=png)
+            c = self._con((m,))
+            r = c.get("/pestana/chats/manifest.webmanifest")
+            self.assertEqual(r.status_code, 200)
+            d_ = r.json()
+            self.assertEqual((d_["name"], d_["start_url"], d_["scope"], d_["id"]),
+                             ("chats", "/pestana/chats/", "/pestana/chats/", "/pestana/chats/"))
+            self.assertEqual({(i["src"], i["sizes"], i["purpose"]) for i in d_["icons"]},
+                             {("/pestana/chats/icono.png", "256x256", "any"), ("/pestana/chats/icono.png", "256x256", "maskable")})
+            self.assertEqual(c.get("/pestana/chats/icono.png").content, png.read_bytes())
+            # por el nombre del módulo también, y la app se llama como se ve la pestaña: el módulo registro, cuya
+            # pestaña es «decisiones», instalado de antes como /pestana/registro/, sigue en su dirección con el nombre nuevo
+            self.assertEqual(c.get("/pestana/chat/icono.png").content, png.read_bytes())
+            d_ = c.get("/pestana/chat/manifest.webmanifest").json()
+            self.assertEqual((d_["name"], d_["short_name"], d_["id"]), ("chats", "chats", "/pestana/chat/"))
+        # una pestaña sin módulo (o sin ícono): los de telar
+        c = self._con()
+        self.assertEqual(c.get("/pestana/plan/manifest.webmanifest").json()["icons"][0]["src"], "/icono-192.png")
+        self.assertEqual(c.get("/pestana/plan/icono.png").status_code, 200)
+
+
 class LoQueSeGuarda(Prueba):
     """xterm se guarda en el navegador; lo demás de la página se revalida; los datos, nunca. Y va comprimido."""
 
@@ -76,6 +124,54 @@ class LoQueSeGuarda(Prueba):
         self.assertEqual(c.get("/estatico/indice.html", headers={"if-none-match": etag}).status_code, 304)
 
 
+class LaFirmaDeLaPagina(Prueba):
+    """Una página abierta sabe con qué página arrancó (la firma escrita en indice.html) y la compara con la que sirve el
+    proceso (`/pagina.json`): la de cuando arrancó, que un despliegue cambia al reiniciarlo."""
+
+    def test_la_pagina_trae_la_firma_que_dice_pagina_json(self):
+        c = _app()
+        self.assertEqual(c.get("/pagina.json").status_code, 403)
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        r = c.get("/pagina.json")
+        self.assertEqual(r.headers["cache-control"], "no-store")
+        firma = r.json()["firma"]
+        self.assertEqual(firma, api_web.firma_pagina())
+        for ruta in ("/", "/compartir", "/pestana/chats/"):
+            self.assertIn(f'<meta name="telar-pagina" content="{firma}">', c.get(ruta).text, ruta)
+
+    def test_cambia_con_el_contenido_y_se_toma_al_arrancar(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as d:
+            carpeta = Path(d)
+            for n in api_web.PAGINA:
+                (carpeta / n).write_text(f"{n} 1", encoding="utf-8")
+            antes = api_web.firma_pagina(carpeta)
+            (carpeta / "app.js").write_text("app.js 1", encoding="utf-8")  # igual, aunque cambie la hora
+            self.assertEqual(api_web.firma_pagina(carpeta), antes)
+            (carpeta / "app.js").write_text("app.js 2", encoding="utf-8")
+            self.assertNotEqual(api_web.firma_pagina(carpeta), antes)
+        # el proceso dice la de cuando arrancó, aunque los archivos cambien después (entre el pull y el reinicio)
+        with mock.patch.object(api_web, "firma_pagina", return_value="primera"):
+            c = _app()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        with mock.patch.object(api_web, "firma_pagina", return_value="otra"):
+            self.assertEqual(c.get("/pagina.json").json(), {"firma": "primera"})
+            self.assertIn('content="primera"', c.get("/").text)
+
+
+class ElCatalogo(Prueba):
+    def test_el_catalogo_de_componentes_con_la_llave(self):
+        c = _app()
+        self.assertEqual(c.get("/componentes").status_code, 403)
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        r = c.get("/componentes")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('/estatico/componentes.js', r.text)
+        self.assertEqual(c.get("/estatico/componentes.js").status_code, 200)
+
+
 class ElModoDesarrollo(Prueba):
     def test_dev_cambios_solo_con_dev(self):
         from fastapi import FastAPI
@@ -85,6 +181,17 @@ class ElModoDesarrollo(Prueba):
         self.assertEqual(c.get("/dev/cambios").status_code, 404)
         con = api_web.crear(FastAPI(), clave="llave-de-prueba", dev=True)
         self.assertIn("/dev/cambios", [getattr(r, "path", "") for r in con.routes])
+
+    def test_la_pagina_pide_dev_cambios_solo_con_dev(self):
+        # sin --dev, la página no escucha /dev/cambios (era un 404 en cada carga); con --dev, sí
+        from fastapi import FastAPI
+
+        c = _app()
+        c.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        self.assertIn('<meta name="telar-dev" content="">', c.get("/").text)
+        con = TestClient(api_web.crear(FastAPI(), clave="llave-de-prueba", dev=True), base_url="http://telar:8780")
+        con.cookies.set(api_web.COOKIE, "llave-de-prueba")
+        self.assertIn('<meta name="telar-dev" content="si">', con.get("/").text)
 
 
 class LasMaquinas(Prueba):
@@ -144,7 +251,7 @@ class LasMaquinas(Prueba):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        config = SimpleNamespace(bus=SimpleNamespace(url="nats://100.1.1.1:4222", persona="pablo", administra="nico",
+        config = SimpleNamespace(bus=SimpleNamespace(url="nats://100.1.1.1:4222", persona="bruno", administra="ana",
                                                      token="", maquina="laptop"))
         c = TestClient(api_web.crear(FastAPI(), clave="llave", config=config), base_url="http://otra:8780")
         c.cookies.set(api_web.COOKIE, "llave")
@@ -154,13 +261,13 @@ class LasMaquinas(Prueba):
     def test_los_servidores_mainframe_salen_con_mi_lugar(self):
         from telar import alojamiento
 
-        respuesta = {"dueno": "nico", "quien": "pablo", "administra": False, "servidor": "telar",
-                     "alojamientos": [{"persona": "pablo", "estado": "pendiente"}]}
+        respuesta = {"dueno": "ana", "quien": "bruno", "administra": False, "servidor": "telar",
+                     "alojamientos": [{"persona": "bruno", "estado": "pendiente"}]}
         with mock.patch.object(alojamiento, "pedir", return_value=respuesta) as pedir:
             d = self._app_con_bus().get("/alojamiento.json").json()
         pedir.assert_called_once()
-        self.assertEqual(d["servidores"], [{"nombre": "telar", "dueno": "nico", "quien": "pablo", "administra": False,
-                                            "alojamientos": [{"persona": "pablo", "estado": "pendiente"}]}])
+        self.assertEqual(d["servidores"], [{"nombre": "telar", "dueno": "ana", "quien": "bruno", "administra": False,
+                                            "alojamientos": [{"persona": "bruno", "estado": "pendiente"}]}])
 
     def test_sin_nadie_que_atienda_no_hay_servidores_y_no_es_un_error(self):
         from telar import alojamiento
@@ -292,3 +399,49 @@ class LaTerminal(Prueba):
                 visto += ws.receive_text()
         # el tamaño que pide la página se acota (hasta 400 columnas)
         self.assertEqual(self.abiertos, [("faro", 400, 40)])
+
+
+class LosAvisos(Prueba):
+    """`/eventos`: la página se entera al tiro de que cambió algo de telar («hilos») o llegó la foto de otra máquina
+    («espejos»); lo que se reescribe solo cada tanto (los vivos, los candados) no avisa."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        from pathlib import Path
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.estado = Path(self.tmp.name)
+        (self.estado / "espejos").mkdir()
+
+    def test_lo_quieto_no_cuenta_y_lo_demas_si(self):
+        (self.estado / "vivos").write_text("{}")
+        (self.estado / "atencion.json.lock").write_text("")
+        (self.estado / "commits.log").write_text("x")
+        (self.estado / ".candado").write_text("")
+        self.assertEqual(api_web._firma_carpeta(self.estado), ())
+        (self.estado / "atencion.json").write_text("{}")
+        (self.estado / "foco.log").write_text("x")
+        self.assertEqual([n for n, _ in api_web._firma_carpeta(self.estado)], ["atencion.json", "foco.log"])
+
+    def test_avisa_hilos_y_espejos_cuando_cambian(self):
+        import asyncio
+        import os
+
+        async def leer():
+            g = api_web._eventos(SimpleNamespace(estado=self.estado))
+            self.assertTrue((await g.__anext__()).startswith("retry:"))
+            (self.estado / "atencion.json").write_text("{}")
+            self.assertEqual(await g.__anext__(), "data: hilos\n\n")
+            os.utime(self.estado / "vivos", None) if (self.estado / "vivos").exists() else None
+            (self.estado / "espejos" / "otra.json").write_text("{}")
+            self.assertEqual(await g.__anext__(), "data: espejos\n\n")
+            await g.aclose()
+
+        asyncio.run(asyncio.wait_for(leer(), 5))
+
+    def test_sin_configuracion_no_hay_avisos(self):
+        c = _app()
+        c.get("/?k=llave-de-prueba")
+        self.assertEqual(c.get("/eventos").status_code, 404)

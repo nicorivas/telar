@@ -1,0 +1,100 @@
+/* El buscador (componentes/buscador.ts): la lupa, el campo sin borde, y al final la cuenta, la tecla que lo enfoca y el ✕.
+   Sin texto de ayuda adentro: su placeholder es un espacio, que no se ve y deja `:placeholder-shown`. Entre la lupa y el
+   primer carácter, --buscador-lupa-hueco (1ch). Sus estados, solo con color: vacío, la lupa tenue (y la tecla); con el foco, la lupa en el acento; con algo
+   escrito (escribiendo, o el filtro puesto sin el foco), lo escrito en el color del texto, la lupa en el acento y el ✕.
+   `.enfocado` es el foco quieto del catálogo. Todo sale de los tokens --buscador-… (tokens.css).
+
+   Como fila propia, en su barra (`.buscador-barra`): del alto de las demás (--pantalla-barra-alto, con su relleno y su
+   línea), con el aire de una pantalla (--buscador-margen, que es --pantalla-margen salvo donde la caja tiene otro: una
+   ventana) y su línea abajo de borde a borde, que toma el acento mientras se escribe. En el teléfono, del alto de una fila,
+   para el dedo. Lo que la acompaña (`.buscador-herramientas`: el orden, un botón) va a la derecha, en sus celdas. */
+
+.buscador {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  min-width: 0;
+  cursor: text;
+}
+
+/* la lupa, en la columna de una ranura; lo escrito, a un carácter de ella */
+.buscador-lupa {
+  flex: none;
+  inline-size: var(--item-ranura);
+  color: var(--buscador-lupa);
+  text-align: center;
+}
+
+.buscador > input.buscar {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 0 var(--buscador-lupa-hueco);
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--buscador-texto);
+  font: inherit;
+  line-height: inherit;
+  text-overflow: ellipsis;
+}
+
+.buscador-cuenta {
+  flex: none;
+  padding-inline: var(--h-1);
+  color: var(--buscador-cuenta);
+
+  &:empty { display: none; }
+}
+
+/* la tecla y el ✕, cada uno en su celda cuadrada, como los botones de una fila */
+.buscador-atajo,
+.buscador-borrar {
+  flex: none;
+  inline-size: calc(var(--item-alto) * 1em);
+  text-align: center;
+}
+
+.buscador-atajo { color: var(--buscador-ayuda); }
+
+.buscador-borrar {
+  color: var(--buscador-borrar);
+  cursor: pointer;
+
+  &:hover { color: var(--buscador-borrar-hover); }
+}
+
+/* sin nada escrito, no hay qué borrar; con el foco o con algo escrito, la tecla ya no hace falta */
+.buscador:has(> input.buscar:placeholder-shown) > .buscador-borrar { display: none; }
+.buscador:is(:focus-within, .enfocado, :has(> input.buscar:not(:placeholder-shown))) > .buscador-atajo { display: none; }
+.buscador:is(:focus-within, .enfocado, :has(> input.buscar:not(:placeholder-shown))) > .buscador-lupa { color: var(--buscador-activo); }
+
+/* la barra: la fila propia de un buscador. Lo de adentro, al medio y no por la línea de base: un corte (item.css) es una
+   celda vacía, y por la base quedaba arriba */
+.buscador-barra {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--pantalla-barra-alto);
+  min-width: 0;
+  padding: var(--e-1) var(--buscador-margen);
+  overflow: hidden;
+  border-bottom: 1px solid var(--buscador-linea);
+  background: var(--buscador-barra-fondo);
+  white-space: nowrap;
+
+  &:has(.buscador:is(:focus-within, .enfocado)) { border-bottom-color: var(--buscador-linea-foco); }
+}
+
+.buscador-herramientas {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.angosto .buscador-barra {
+  height: auto;
+  padding-block: 0;
+  line-height: var(--item-alto);
+}

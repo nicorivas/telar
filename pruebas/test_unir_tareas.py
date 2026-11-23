@@ -23,9 +23,9 @@ class Unir(Prueba):
 
         self.st = st
         self.ctx = Contexto(config=cargar_config(None))
-        self.a = st.crear(self.ctx, {"titulo": "Mathiesen: actualizar la propuesta", "contexto": "Lo pidió Félix."})
-        self.b = st.crear(self.ctx, {"titulo": "Mathiesen: armar la propuesta", "contexto": "Dueño: Nico.",
-                                     "proyecto": "proyectos/mathiesen", "tamano": "larga"})
+        self.a = st.crear(self.ctx, {"titulo": "Lumbre: actualizar la propuesta", "contexto": "Lo pidió Luis."})
+        self.b = st.crear(self.ctx, {"titulo": "Lumbre: armar la propuesta", "contexto": "Dueño: Ana.",
+                                     "proyecto": "proyectos/lumbre", "tamano": "larga"})
 
     def test_una_se_une_a_la_otra(self):
         from telar import objetos
@@ -34,9 +34,9 @@ class Unir(Prueba):
         a = self.st.obtener(self.ctx, self.a.id)
         self.assertEqual(h.objeto.id, self.a.id)
         self.assertIn(f"De {self.b.id}", a.contexto)
-        self.assertIn("Dueño: Nico.", a.contexto)
-        self.assertTrue(a.contexto.startswith("Lo pidió Félix."))
-        self.assertEqual((a.proyecto, a.tamano), ("proyectos/mathiesen", "larga"))
+        self.assertIn("Dueño: Ana.", a.contexto)
+        self.assertTrue(a.contexto.startswith("Lo pidió Luis."))
+        self.assertEqual((a.proyecto, a.tamano), ("proyectos/lumbre", "larga"))
         self.assertIn(f"`absorbe` [{self.b.id}]", a.conexiones[0])
         b = self.st.obtener(self.ctx, self.b.id)
         self.assertEqual(b.estado, "descartada")

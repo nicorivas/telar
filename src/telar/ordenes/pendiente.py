@@ -18,7 +18,7 @@ Abrir siempre un hilo nuevo dejaba dos agentes trabajando el mismo proyecto sin
 saber uno del otro. Esa es la razón de que el destino se busque antes de crear
 nada. Si el hilo del proyecto está dormido (archivado, o sin ventana), se **retoma** con su
 conversación y la frase como primer mensaje, aquí o en la máquina donde vive; y un pendiente
-sin proyecto, con `[agentes] sin_proyecto = "gestion"`, se le encarga a ese agente residente
+sin proyecto, con `[agentes] sin_proyecto = "secretaria"`, se le encarga a ese agente residente
 (`telar encargar`) en vez de abrir un hilo.
 
 La primera vez que telar escribe una casilla (`--hecho`, `--responsable`) le pone un id al final de la línea,
@@ -128,8 +128,9 @@ def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: st
     if donde:
         datos = {"ref": fila["ref"], "texto": texto, "destino": destino.nombre if destino else "",
                  "vivo": bool(destino and tel.vivo(destino)), "ruta": fila.get("ruta", ""),
-                 "nuevo": bool(nuevo or destino is None)}
+                 "proyecto": fila.get("proyecto", ""), "nuevo": bool(nuevo or destino is None)}
         if general is not None:
+            datos["agente"] = general.nombre
             return datos, f"{fila['ref']} → «{general.nombre}» (sin proyecto: se le encarga al agente)"
         adonde = f"«{destino.nombre}»" if destino else "un hilo nuevo"
         vivo = "" if destino and tel.vivo(destino) and not nuevo else " (habría que abrirlo)"
@@ -166,7 +167,9 @@ def llevar(ctx, ref: str, *, nuevo: bool = False, donde: bool = False, texto: st
     try:
         tel.mux.ir(hilo.id)
         if not con_agente:
-            tel.mux.escribir(hilo.id, texto, enviar=enviar)
+            from telar import dormir
+
+            dormir.escribir(getattr(ctx, "config", None), tel, hilo, texto, enviar=enviar)  # dormido, se despierta
     except ErrorDeMux as e:
         raise ErrorDeServicio(f"llegué al hilo pero no pude escribirle: {e}", 502) from e
     tel.estado.marcar(hilo.nombre)
@@ -414,6 +417,9 @@ def _llevar(
         ruta = destino.ruta
     elif fila.get("ruta"):
         ruta = tel.raiz / fila["ruta"]
+    elif fila.get("proyecto"):
+        # una tarea sin hilo que dice cuál es su proyecto: el nuevo trabaja en esa carpeta, no en la raíz
+        ruta = tel.raiz / fila["proyecto"]
     carpeta_hilo = ruta if ruta is not None and ruta.is_dir() else None
     lanz = None
     try:
@@ -492,6 +498,12 @@ def destino_elegido(ctx, tel: _comun.Telar, nombre: str):
         for foto in espejo.leer_todos(ctx.config):
             if any(h.get("nombre") == nombre and not h.get("remoto") for h in foto.get("hilos", [])):
                 return None, (nombre, foto["nombre"]), None
+        if aqui is not None:
+            # uno de esta lista cuyo agente vive en otra máquina y allá está archivado: la foto no trae los archivados,
+            # pero el bus sabe dónde vive
+            maquina = str(mod_bus.estado_de(ctx.config, nombre).get("maquina") or "")
+            if maquina and maquina != mod_bus.maquina(ctx.config):
+                return None, (nombre, maquina), None
     raise ErrorDeServicio(f"no hay ningún hilo ni agente que se llame «{nombre}»", 404)
 
 

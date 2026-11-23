@@ -246,7 +246,7 @@ export const glifosSeccion: FabricaSeccion = ctx => {
                 }
                 case 'gl-borrar': {
                     const e = cual();
-                    if (await ui.aviso(`¿Borrar el estilo «${e}»? Los modos que lo usen vuelven a «base».`, 'Borrar') !== 'Borrar') return true;
+                    if (await ui.aviso(`¿Borrar el estilo «${e}»? Los modos que lo usen vuelven a «base».`, 'Borrar', { destruye: true }) !== 'Borrar') return true;
                     const error = await estilo.borrar(e);
                     if (error) void ui.falla(`telar: no se pudo: ${error}`);
                     afinando = '';

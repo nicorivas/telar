@@ -509,9 +509,11 @@ CASILLA = FormatoCasilla()
 # ── las acciones ───────────────────────────────────────────────────────────────
 #
 # Funciones sobre el modelo, sin texto: reciben una tarea y devuelven otra (la de entrada no cambia).
-# Cada una deja su línea en la historia. Son las mismas transiciones que la CLI de tareas, con dos
+# Cada una deja su línea en la historia. Son las mismas transiciones que la CLI de tareas, con tres
 # diferencias a propósito: cerrar lo cerrado o reabrir lo abierto es un error (un doble clic dejaría la
-# historia repetida), y asignar o editar también dejan su línea.
+# historia repetida), asignar o editar también dejan su línea, y reagendar no borra la propuesta de un
+# agente (`avance`): mover la fecha dice cuándo, no contesta lo que el agente preguntó (17-nov-2026).
+# Cerrar, reabrir, esperar, a algún día y responder sí la borran, como siempre.
 
 import datetime as _dt
 
@@ -575,7 +577,8 @@ def esperar(t: Tarea, quien: str, nota: str = "", *, reloj=None) -> Tarea:
 
 def reagendar(t: Tarea, fecha: str, nota: str = "", *, reloj=None) -> Tarea:
     """Otra fecha: `AAAA-MM-DD`, o `+Nd` (N días desde la fecha que tenía si no pasó, o desde hoy); vacía
-    (o `none`), ninguna."""
+    (o `none`), ninguna. La propuesta de un agente (`avance`) sigue esperando: mover la fecha no la contesta.
+    (Ninguna marca de propuesta es sobre la fecha misma: si un día la hay, esa sí se daría por contestada.)"""
     if t.estado in TERMINALES:
         raise ErrorDeAccion(f"{t.id} está cerrada")
     hoy = _ahora(reloj).date()
@@ -583,7 +586,7 @@ def reagendar(t: Tarea, fecha: str, nota: str = "", *, reloj=None) -> Tarea:
         # sin fecha: deja de vencer
         if not t.vence:
             return t
-        return _con(t, "mover", f"{t.vence} → sin fecha", nota, reloj=reloj, vence="", avance="")
+        return _con(t, "mover", f"{t.vence} → sin fecha", nota, reloj=reloj, vence="")
     if (m := re.fullmatch(r"\+(\d+)d", fecha.strip())):
         base = _dt.date.fromisoformat(t.vence) if t.vence and t.vence >= hoy.isoformat() else hoy
         nueva = (base + _dt.timedelta(days=int(m.group(1)))).isoformat()
@@ -593,7 +596,7 @@ def reagendar(t: Tarea, fecha: str, nota: str = "", *, reloj=None) -> Tarea:
         except ValueError as e:
             raise ErrorDeAccion(f"fecha inválida: {fecha} (AAAA-MM-DD o +Nd)") from e
     texto = f"{t.vence} → {nueva}" if t.vence else f"fecha {nueva}"
-    return _con(t, "mover", texto, nota, reloj=reloj, vence=nueva, avance="",
+    return _con(t, "mover", texto, nota, reloj=reloj, vence=nueva,
                 estado="activa" if t.estado == "algun-dia" else t.estado)
 
 

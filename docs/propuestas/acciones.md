@@ -26,32 +26,20 @@ Un solo componente (`web/menu.ts`): un menú junto al puntero (clic derecho) o b
    registra las suyas).
 2. **Las acciones del tipo** que da el servidor (`GET /objetos/<dirección>`): las de un tipo de un módulo llegan
    solas.
-3. **«Acción…»**, arriba, para todo tipo (paso 2).
+3. **«instrucción…»**, arriba, para todo tipo ([instruccion.md](instruccion.md)).
 
 Lo usan la barra de hilos, la lista de proyectos, las tareas, y el Gantt (el lienzo de un módulo pide el menú de
 una entidad con `window.lienzo.pedir("menu", {direccion})`, que no pide permiso porque solo muestra: lo que se
-elige, se elige en la página).
+elige, se elige en la página). Para abrirla, sin menú, `window.lienzo.pedir("abrir", {direccion})`: lo mismo que un
+clic en un enlace a esa dirección, y tampoco pide permiso.
 
-## «Acción…»
+## «instrucción…»
 
-Un panel con tres secciones, de arriba abajo:
-
-1. **Contexto**: lo que `telar objeto` sabe de la entidad (título, estado, campos, su documento, su hilo), y una
-   caja para escribir qué se quiere.
-2. **Skill** (opcional): un buscador de las skills del agente del destino (`GET /skills`); primero las que más se han
-   usado con ese tipo. Sin skill, va el prompt solo.
-3. **Agente o hilo**: un buscador, con una lista ya armada: el hilo de la entidad (si tiene), «un hilo nuevo para
-   ella», los agentes residentes y los hilos recientes. Viene elegido el de la entidad, para que la lista de skills
-   sea la correcta desde el comienzo; cambiarlo la actualiza.
-
-**Ejecutar** arma el prompt (la skill si hay, el contexto como la dirección de la entidad y lo que se escribió) y lo
-manda: a un agente con `telar encargar`, a un hilo nuevo con `telar proyectos abrir`, a otro hilo por su casilla. Si
-el destino es el hilo que se está mirando, se deja escrito en su entrada y no se manda. La orden es
-`telar actuar <dirección> [--skill X] [--a <hilo|agente>] [--nota …] [--escribir]` (y `POST /actuar`), para que un agente también
-pueda; la plantilla del prompt se puede cambiar en la configuración.
+Lo que era «Acción…»: mandarle a un hilo o a un agente algo sobre la entidad, con su contexto. Desde el 13-nov-2026 es
+la ventana «instrucción», la misma de foco, de la ficha de una tarea y de encargarle a un agente; su diseño y lo que
+falta están en [instruccion.md](instruccion.md).
 
 ## Los pasos
 
-1. **Lo demás:** la plantilla del prompt en la configuración; detectar que el destino es el hilo que se está mirando
-   (hoy, «dejarlo escrito, sin mandar» es una casilla); recordar la última skill y el último destino por tipo; agentes y archivos; actuar sobre lo que se
-   encuentra con ⌘K.
+1. **Lo demás:** actuar sobre lo que se encuentra con ⌘K. Lo de la instrucción (la plantilla del prompt, recordar la
+   última skill y el último destino), en [instruccion.md](instruccion.md).

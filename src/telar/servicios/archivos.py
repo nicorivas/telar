@@ -3,10 +3,12 @@
 En VS Code el dashboard lee el disco directo (el README de un proyecto, la
 preparación de una reunión, la página y la memoria de un lienzo). En el navegador no hay disco: lo pide aquí.
 
-- **Leer**: un archivo bajo la raíz del repositorio (`[telar] raiz`) o de uno de `[repos]`, uno que la configuración declara
-  para una app (`[apps.*] archivo` y `memoria`), o el lienzo de una página que esta misma API entregó (el
-  programa de una app con `pagina` puede dejarlo donde quiera, p. ej. en `~/.local/state`). Nada de `..`
-  que escape, hasta 2 MB.
+- **Leer**: un archivo bajo la raíz del repositorio (`[telar] raiz`) o de uno de `[repos]`, bajo la carpeta de un
+  hilo de esta máquina (su vínculo, o el worktree de un hijo con rama: `~/worktrees/<repo>-<rama>`, que puede
+  estar fuera de la raíz), uno que la configuración declara para una app (`[apps.*] archivo` y `memoria`), o el
+  lienzo de una página que esta misma API entregó (el programa de una app con `pagina` puede dejarlo donde
+  quiera, p. ej. en `~/.local/state`). Es una lista cerrada: la página nombra un archivo, y se lee solo si cae
+  en una de esas carpetas, ya resuelto (ni `..` ni un enlace simbólico que escape). Hasta 2 MB.
 - **Buscar**: los `.md` de una carpeta de la raíz, hasta tres niveles (sin ocultos, `node_modules` ni
   `assets`), con su fecha: para encontrar la preparación o la minuta más reciente de una reunión.
 - **Escribir**: solo la memoria de un lienzo, un `.json` válido bajo la raíz, declarado como `memoria` de
@@ -120,25 +122,67 @@ def _bajo_raiz(ctx, p: Path) -> bool:
         return False
 
 
-def _bajo_repos(ctx, p: Path) -> bool:
-    """Bajo la raíz o bajo la carpeta de uno de `[repos]`: lo que se puede leer (escribir, solo bajo la raíz)."""
-    if _bajo_raiz(ctx, p):
-        return True
+def _dentro(p: Path, base: Path) -> bool:
+    return p == base or base in p.parents
+
+
+def _de_repos(ctx) -> list[Path]:
     from telar.perfil import carpeta_de_repo
 
-    for r in getattr(ctx.config, "repos", ()) or ():
-        try:
-            p.relative_to(carpeta_de_repo(ctx.config, r))
-            return True
-        except ValueError:
+    return [carpeta_de_repo(ctx.config, r) for r in getattr(ctx.config, "repos", ()) or ()]
+
+
+def carpetas_de_hilos(ctx) -> list[Path]:
+    """Las carpetas de los hilos de esta máquina que telar conoce, resueltas: la de cada vínculo y el worktree de
+    cada hijo con rama (telar.ramas). Las de un hilo de otra máquina no: esa ruta es de allá. Tampoco una que
+    abarca demasiado (la raíz del disco, la carpeta personal o una de más arriba): con ella se leería todo, las
+    credenciales también."""
+    config = ctx.config
+    if not getattr(config, "estado", None):
+        return []
+    from telar import estado as mod_estado
+
+    try:
+        est = mod_estado.abrir(config)
+        crudas = [*est.vinculos_de_aqui().values(), *(str(v.get("ruta") or "") for v in est.ramas().values())]
+    except (mod_estado.ErrorDeEstado, OSError):
+        return []
+    raiz, casa = _raiz(ctx), Path.home().resolve()
+    salida: list[Path] = []
+    for c in crudas:
+        if not c:
             continue
-    return False
+        p = Path(c).expanduser()
+        p = (p if p.is_absolute() else raiz / p).resolve()
+        if p != casa and p not in casa.parents and p not in salida:
+            salida.append(p)
+    return salida
+
+
+def base_de(ctx, p: Path) -> Path | None:
+    """La carpeta legible que contiene `p` (ya resuelta), la que el visor recorre sin salirse: la raíz; si no, uno
+    de `[repos]`; si no, la carpeta de un hilo de aquí (`carpetas_de_hilos`). De varias, la más amplia. None si
+    ninguna: escribir sigue siendo solo bajo la raíz."""
+    for grupo in (lambda: [_raiz(ctx)], lambda: _de_repos(ctx), lambda: carpetas_de_hilos(ctx)):
+        if dentro := [b for b in grupo() if _dentro(p, b)]:
+            return min(dentro, key=lambda b: len(b.parts))
+    return None
+
+
+def legible(ctx, p: Path) -> bool:
+    """Si la página puede leer `p` (ya resuelta): bajo una carpeta de `base_de`, o declarado por una app o una
+    página entregada, o el informe (`.md`) que nombra un archivo de aviso declarado (`[avisos]`, telar.avisos)."""
+    if base_de(ctx, p) is not None or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria"):
+        return True
+    from telar import avisos
+
+    return p in avisos.informes(ctx.config)
 
 
 def leer(ctx, ruta: str) -> Archivo:
     p = _resolver(ctx, ruta)
-    if not (_bajo_repos(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
-        raise ErrorDeServicio(f"{ruta}: fuera de la raíz y de las apps declaradas", 403)
+    if not legible(ctx, p):
+        raise ErrorDeServicio(f"{ruta}: fuera de la raíz, de las carpetas de los hilos y de las apps declaradas", 403)
     if not p.is_file():
         raise ErrorDeServicio(f"no hay {ruta}", 404)
     with open(p, "rb") as f:
@@ -162,7 +206,18 @@ def leer_en(ctx, ruta: str, maquina: str = "") -> Archivo:
 
 
 def leer_para_otra(ctx, pedido: dict) -> dict:
-    """Lo que responde el nodo a `archivo-leer`: el archivo, o el error con su código."""
+    """Lo que responde el nodo a `archivo-leer`: el archivo, o el error con su código. Con `documento`, lo que
+    muestra el visor (telar.servicios.documentos): el archivo o la carpeta, con los archivos de al lado. Un nodo
+    de antes no lo conoce y contesta solo el archivo: quien pide se las arregla con eso. Con `resolver`, dónde está
+    un archivo que nombró un agente (telar.servicios.resolver)."""
+    if isinstance(pedido.get("resolver"), dict):
+        from telar.servicios import resolver
+
+        return resolver.para_otra(ctx, pedido["resolver"])
+    if pedido.get("documento"):
+        from telar.servicios import documentos
+
+        return {"ok": True, "documento": documentos.de_aqui(ctx, str(pedido.get("ruta", ""))).model_dump()}
     try:
         return {"ok": True, "archivo": leer(ctx, str(pedido.get("ruta", ""))).model_dump()}
     except ErrorDeServicio as e:
@@ -171,10 +226,11 @@ def leer_para_otra(ctx, pedido: dict) -> dict:
 
 def para_bajar(ctx, ruta: str) -> Path:
     """Un archivo para bajarlo entero (lo que la página no muestra: un binario, uno grande): los mismos límites
-    que `leer` (la raíz, lo que declaran las apps, los lienzos entregados), sin tope de tamaño."""
+    que `leer` (la raíz, `[repos]`, las carpetas de los hilos, lo que declaran las apps, los lienzos entregados),
+    sin tope de tamaño."""
     p = _resolver(ctx, ruta)
-    if not (_bajo_repos(ctx, p) or p in _de_apps(ctx, "archivo") | _de_apps(ctx, "memoria")):
-        raise ErrorDeServicio(f"{ruta}: fuera de la raíz y de las apps declaradas", 403)
+    if not legible(ctx, p):
+        raise ErrorDeServicio(f"{ruta}: fuera de la raíz, de las carpetas de los hilos y de las apps declaradas", 403)
     if not p.is_file():
         raise ErrorDeServicio(f"no hay {ruta}", 404)
     return p

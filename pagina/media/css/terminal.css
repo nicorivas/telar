@@ -32,9 +32,14 @@
 
   .no-abre .titulo { color: var(--rojo); }
   .no-abre .motivo { margin-top: var(--e-1); color: var(--fg); }
-  .no-abre .botones { display: flex; gap: 2ch; margin-top: var(--e-2); }
-  .no-abre .botones a { color: var(--c); cursor: pointer; }
-  .no-abre .botones a:hover { text-decoration: underline; }
+  /* la de un hilo de una máquina fuera de línea (web/alcance.ts): no es una falla de aquí, es que no está; en el color de
+     lo que vive en otra parte, y lo que le espera en cola, tenue */
+  .no-abre.fuera { border-color: var(--remoto); }
+  .no-abre.fuera .titulo { color: var(--remoto); }
+  .no-abre .motivo.cola { color: var(--dim); }
+  /* lo que se puede hacer: la banda de botones (boton.css), con su aire y su línea, de borde a borde del aviso y hasta
+     su borde de abajo */
+  .no-abre .botonera { margin: var(--boton-pie-aire) calc(-1 * var(--h-2)) calc(-1 * var(--e-2)); }
 
   .fondo { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; }
 
@@ -49,6 +54,22 @@
     &.borde-izq { border-left: var(--borde); }
     &.borde-der { border-right: var(--borde); }
   }
+
+  /* la franja para cambiar su ancho (web/anchos.ts; la franja misma, en marco.css): sobre el borde derecho del marco, o el
+     izquierdo si la terminal va a la derecha. Mientras se arrastra, el marco recorta lo que la terminal todavía no
+     redibuja (se redibuja al soltar) y la línea de ese borde va con el acento */
+  #tirador-terminal {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+
+    &[data-borde="der"] { right: -3px; }
+    &[data-borde="izq"] { left: -3px; }
+  }
+
+  .t[data-estira] { overflow: hidden; }
+  .t[data-estira="der"] { border-right: var(--borde); border-right-color: var(--acento); }
+  .t[data-estira="izq"] { border-left: var(--borde); border-left-color: var(--acento); }
 
   .escribir {
     display: flex;
@@ -100,17 +121,11 @@
 
       & span { min-width: 0; overflow-wrap: anywhere; }
 
-      & button {
-        padding: 0 var(--h-1);
-        border: var(--borde);
-        background: transparent;
-        color: var(--fg);
-        font: inherit;
-        cursor: pointer;
-
-        &:hover, &:focus-visible { background: var(--hover); }
-        &.si { border-color: var(--amarillo); color: var(--amarillo); }
-      }
+      /* la pregunta: la banda de botones (boton.css), que ya es la franja: sin el aire que la aparta de lo de arriba ni su
+         línea (la raya amarilla de la izquierda la marca), con la pregunta a la izquierda y las celdas a la derecha */
+      &:has(> .botonera) { padding: 0; }
+      & > .botonera { flex: 1; margin-top: 0; border-top: 0; }
+      & .botonera-izq { padding-block: 0; }
     }
   }
 }

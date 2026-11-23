@@ -6,7 +6,7 @@ dirección, antes de estar en su bus.
     quitar(direccion)            olvidarlo (no cambia nada en el servidor)
     equipo_de(servidor)          el equipo (telar.unirse.Equipo) con que `telar instalar --servidor` pide entrar
 
-La dirección puede ser una IP o un nombre de Tailscale (`100.66.75.117`, `telar`: su página directa, puerto 8780) o
+La dirección puede ser una IP o un nombre de Tailscale (`100.64.0.10`, `telar`: su página directa, puerto 8780) o
 una dirección entera (`https://telar.<red>.ts.net`: su puerta, telar.puerta). Pedir entrar es lo mismo que `telar
 instalar --unirse` con el `equipo.yaml` de un repositorio, pero el equipo sale de lo que el servidor dice de sí: su
 nombre, su bus y quién lo administra. Después, como siempre, quien administra lo aprueba (⚙ personas) y el nodo se

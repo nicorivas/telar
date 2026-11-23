@@ -53,17 +53,17 @@ class LasEtiquetas(Prueba):
 
 class LosModosQueFiltran(Prueba):
     def test_un_modo_guarda_sus_etiquetas_y_que_hacer_con_los_sin_etiqueta(self):
-        v = modos.validar("trabajo", {"nombre": "trabajo", "etiquetas": "Trabajo, brinca", "sin_etiqueta": "no-se-ven"})
-        self.assertEqual(v["valores"], {"etiquetas": "trabajo,brinca", "sin_etiqueta": "no-se-ven"})
+        v = modos.validar("trabajo", {"nombre": "trabajo", "etiquetas": "Trabajo, oficina", "sin_etiqueta": "no-se-ven"})
+        self.assertEqual(v["valores"], {"etiquetas": "trabajo,oficina", "sin_etiqueta": "no-se-ven"})
         with self.assertRaises(config.ErrorDeConfig):
             modos.validar("trabajo", {"etiquetas": "¡no!"})
         with self.assertRaises(config.ErrorDeConfig):
             modos.validar("trabajo", {"sin_etiqueta": "a veces"})
 
-    def test_estandar_no_filtra_y_los_demas_lo_heredan(self):
+    def test_tactica_no_filtra_y_los_demas_lo_heredan(self):
         c = config.desde_dict({"modos": {"trabajo": {"etiquetas": "trabajo"}}})
         m = {x["clave"]: x["valores"] for x in modos.todos(c)}
-        self.assertEqual((m["estandar"]["etiquetas"], m["estandar"]["sin_etiqueta"]), ("", "se-ven"))
+        self.assertEqual((m["tactica"]["etiquetas"], m["tactica"]["sin_etiqueta"]), ("", "se-ven"))
         self.assertEqual(m["foco"]["etiquetas"], "")
         self.assertEqual((m["trabajo"]["etiquetas"], m["trabajo"]["sin_etiqueta"]), ("trabajo", "se-ven"))
 
@@ -71,7 +71,7 @@ class LosModosQueFiltran(Prueba):
 class LosGlifosEnLosModos(Prueba):
     def test_vienen_apagados_y_el_campo_se_valida(self):
         m = {x["clave"]: x["valores"] for x in modos.todos(config.desde_dict({}))}
-        self.assertEqual((m["estandar"]["glifos"], m["estandar"]["iconos"], m["estandar"]["campo"]), ("no", "simbolos", ""))
+        self.assertEqual((m["tactica"]["glifos"], m["tactica"]["iconos"], m["tactica"]["campo"]), ("no", "simbolos", ""))
         v = modos.validar("riso", {"glifos": "si", "iconos": "glifos", "campo": "ahora=banda,plan=fondo 0.15 , *=nada"})
         self.assertEqual(v["valores"]["campo"], "ahora=banda, plan=fondo 0.15, *=nada")
         for malo in ("ahora=arriba", "ahora", "plan=fondo 3"):

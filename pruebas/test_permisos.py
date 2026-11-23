@@ -303,7 +303,7 @@ class LaEsperaDeUnHilo(Prueba):
         with self.assertRaises(mod_estado.ErrorDeEstado):
             self.est.espera("ana")
 
-    def test_el_aviso_lo_anota_aunque_avise_el_mod(self):
+    def test_el_evento_lo_anota_aunque_avise_el_mod(self):
         from telar import casilla
 
         os.environ["TELAR_HILO"] = "faro"
@@ -312,17 +312,17 @@ class LaEsperaDeUnHilo(Prueba):
         (d / casilla.MOD).write_text("1")
         carga = json.dumps({"hook_event_name": "Notification", "notification_type": "permission_prompt",
                             "session_id": "s1", "message": "Claude needs your permission to use Bash"})
-        self.assertEqual(json.loads(self.correr(["aviso", "--json"], carga))["motivo"], "lo avisa el mod")
-        self.correr(["aviso", "--evento", "espera", "--sesion", "s1"])  # lo que dice el mod
+        self.assertEqual(json.loads(self.correr(["evento", "--json"], carga))["motivo"], "lo avisa el mod")
+        self.correr(["evento", "--evento", "espera", "--sesion", "s1"])  # lo que dice el mod
         self.assertEqual(self.est.espera("faro")["pide"], "Claude needs your permission to use Bash")
         self.assertEqual(self.est.espera("faro")["clase"], "permiso")
 
     def test_cualquier_agente_lo_dice_con_pide(self):
         os.environ["TELAR_HILO"] = "faro"
-        self.assertEqual(self.correr(["aviso", "--evento", "espera", "--pide", "¿subo la versión?"]), "")
+        self.assertEqual(self.correr(["evento", "--evento", "espera", "--pide", "¿subo la versión?"]), "")
         self.assertEqual(self.est.espera("faro")["pide"], "¿subo la versión?")
         # --pide con otro evento no anota nada
-        self.correr(["aviso", "--evento", "termina", "--pide", "nada"])
+        self.correr(["evento", "--evento", "termina", "--pide", "nada"])
         self.assertNotIn("nada", (self.carpeta / "estado" / "esperas.json").read_text())
 
 

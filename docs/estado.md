@@ -15,6 +15,8 @@ Eso es el estado, y vive fuera de los dos.
 ├── atencion.json            hilo → {atencion, desde}
 ├── sesiones.json            hilo → [conversación, …]
 ├── paneles.json             panel → conversación
+├── dormidos.json            hilo → {desde, panel, conversacion, atencion}: los que duermen
+├── mirando.json             página → {hilo, maquina, cuando}: lo que muestra cada página abierta
 ├── orden                    una palabra
 └── foco.log                 ISO<TAB>hilo, una línea por cambio
 ```
@@ -136,6 +138,28 @@ equivocada.
 Es el único archivo que no está indexado por hilo, y el más volátil de todos: los
 ids de panel no sobreviven a que se caiga el multiplexor. No importa; se reconstruye
 solo la próxima vez que cada agente arranque.
+
+### `dormidos.json` — los que duermen
+
+```json
+{ "faro": { "desde": "2026-11-19T14:32:10", "panel": "%412", "ventana": "@3", "conversacion": "3fca812d-…",
+            "atencion": "termino", "atencion_desde": "2026-11-19T14:01:55" } }
+```
+
+Los hilos de esta máquina cuyo agente se cerró por estar quietos (`telar.dormir`): su ventana sigue, con el panel que
+espera (`panel`). Lo escribe quien duerme o despierta, bajo el candado `dormir.lock`. `atencion` es la que tenía al
+dormirse: el gancho de cierre del agente la borra, y el nodo se la devuelve, para que la lista siga diciendo «terminó,
+sin ver». Si su ventana ya no está, o su panel ya no corre lo que espera, el nodo lo saca de aquí.
+
+### `mirando.json` — lo que muestran las páginas
+
+```json
+{ "k3j9x2qa": { "hilo": "faro", "maquina": "", "cuando": 1795107512.4 } }
+```
+
+Por página abierta (un id que inventa al cargar), lo que muestra: `hilo` vacío es nada (el dashboard, la página
+oculta), `maquina` la de un hilo de otra. Vale 90 s; la página lo repite cada 30. Lo que se lee aquí no se duerme.
+Si se rompe, cuenta como vacío.
 
 ### `orden` — cómo se ordena la lista
 

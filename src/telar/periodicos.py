@@ -14,6 +14,7 @@ que no se apaga). Cada proceso es una tabla con su nombre:
     cuando = "0 9-19/2 * * *"
     mensaje = "/correo"                # …un prompt: abre un hilo con el agente, que se puede mirar
     hilo = "✉ correo"                  # el nombre del hilo (se le agrega la fecha y la hora)
+    padre = "Secretaría"               # cuelga de ese hilo en la barra (el de un agente), y le avisa al terminar
     max_abiertos = 2                   # si ya hay tantos abiertos sin cerrar, esta vez no abre
     argumentos = ["--permission-mode", "acceptEdits"]   # para el agente, después del prompt
     carpeta = "~/trabajo"              # dónde corre (por defecto, el hogar)
@@ -22,14 +23,22 @@ que no se apaga). Cada proceso es una tabla con su nombre:
     [avanzar]
     cuando = "0 9-19/2 * * 1-5"
     mensaje = "/avanzar"
-    agente = "gestion"                 # se le encarga al agente residente (telar.encargos) en vez de
+    agente = "secretaria"              # se le encarga al agente residente (telar.encargos) en vez de
                                        # abrir un hilo nuevo cada vez: una sola sesión que dura
+    despues = ["revisar-correo"]       # usa lo que deja otro: se dibuja junto a él (no lo espera)
 
 `telar periodicos aplicar` escribe en el crontab de la máquina un bloque entre marcas con una
 línea por proceso activo, y no toca nada fuera de él. Cada línea llama a `telar periodicos correr
 <nombre>`, que anota inicio, fin y resultado en `<estado>/periodicos/<nombre>.json` y la salida en
-`<nombre>.log`: de ahí sale lo que muestra el dashboard (la última corrida, si salió bien, el log).
-Cambiar el archivo desde telar guarda la versión anterior en `periodicos.toml.anterior`.
+`<nombre>.log`, y cada corrida terminada en `<nombre>.historial.jsonl`: de ahí sale lo que muestra el
+dashboard (la última corrida, si salió bien, el log, y el calendario de lo que corrió y lo que viene:
+`corridas`). Cambiar el archivo desde telar guarda la versión anterior en `periodicos.toml.anterior`.
+
+Las dependencias son de dos clases, y el calendario dibuja las dos. Una se declara: `despues` nombra los
+procesos cuyo resultado usa este (el plan de la noche lee la retrospectiva de la tarde); es solo para
+verla, cron no espera a nadie. La otra se deduce: dos procesos que van al mismo agente comparten su
+casilla, y el que llega mientras el agente trabaja espera su turno (`destino`; el de un comando que
+encarga, `telar encargar <agente>`, se lee en el comando o en su script).
 
 Los hilos que abre un proceso con `mensaje` son ventanas de la sesión del telar, como cualquier hilo:
 otra máquina los trae a su lista (su nodo, al verlos en el bus).
@@ -55,7 +64,10 @@ MARCA_FIN = "# <<< telar periodicos"
 NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 #: el log de cada proceso no crece sin fin: al pasar de esto se queda con la mitad más nueva
 MAX_LOG = 512 * 1024
-CLAVES = ("cuando", "comando", "mensaje", "agente", "hilo", "max_abiertos", "argumentos", "carpeta", "descripcion", "activo")
+CLAVES = ("cuando", "comando", "mensaje", "agente", "hilo", "padre", "max_abiertos", "argumentos", "carpeta", "descripcion",
+          "activo", "despues")
+#: cuántas corridas guarda el historial de cada proceso; al pasar, se queda con las más nuevas
+MAX_HISTORIAL = 1000
 
 
 class ErrorDePeriodicos(Exception):
@@ -70,11 +82,15 @@ class Proceso:
     mensaje: str = ""
     agente: str = ""
     hilo: str = ""
+    #: el hilo del que cuelga cada hilo que abre (el de un agente: «Cuaderno»), como uno abierto con `telar hilo hijo`
+    padre: str = ""
     max_abiertos: int = 1
     argumentos: tuple[str, ...] = ()
     carpeta: str = ""
     descripcion: str = ""
     activo: bool = True
+    #: los procesos cuyo resultado usa este: se dibujan juntos en el calendario (cron no espera a nadie)
+    despues: tuple[str, ...] = ()
     #: el módulo que lo declara (`telar.modulos`); "" si vive en periodicos.toml. Los de un módulo
     #: no se escriben en periodicos.toml ni se cambian desde aquí: se cambian en su modulo.toml.
     modulo: str = ""
@@ -98,10 +114,19 @@ class Proceso:
             raise ErrorDePeriodicos(f"«{self.nombre}»: lleva `comando` o `mensaje`, uno de los dos")
         if self.agente and not self.mensaje.strip():
             raise ErrorDePeriodicos(f"«{self.nombre}»: `agente` va con `mensaje` (lo que se le encarga)")
+        if self.padre and (self.agente or not self.mensaje.strip()):
+            raise ErrorDePeriodicos(f"«{self.nombre}»: `padre` es de los que abren un hilo nuevo (con `mensaje` y sin `agente`)")
+        if "\n" in self.padre:
+            raise ErrorDePeriodicos(f"«{self.nombre}»: `padre` es el nombre de un hilo, en una línea")
         if self.max_abiertos < 1:
             raise ErrorDePeriodicos(f"«{self.nombre}»: max_abiertos va desde 1")
         if "\n" in self.comando or "\n" in self.cuando:
             raise ErrorDePeriodicos(f"«{self.nombre}»: el comando y el horario van en una línea")
+        for otro in self.despues:
+            if otro == self.nombre:
+                raise ErrorDePeriodicos(f"«{self.nombre}»: no va después de sí mismo")
+            if not NOMBRE.match(otro):
+                raise ErrorDePeriodicos(f"«{self.nombre}»: `despues` nombra procesos («{otro}» no es un nombre)")
 
 
 @dataclass
@@ -213,6 +238,15 @@ def ruta(config_ruta: Path | None = None) -> Path:
     return Path(config_ruta or mod_config.ruta_config()).expanduser().parent / "periodicos.toml"
 
 
+def _lista(valor) -> tuple[str, ...]:
+    """Una lista de nombres del TOML; uno solo, entre comillas, también vale."""
+    if isinstance(valor, str):
+        valor = [valor]
+    if not isinstance(valor, (list, tuple)):
+        raise ValueError("`despues` es una lista de nombres")
+    return tuple(str(x) for x in valor)
+
+
 def leer(destino: Path) -> Archivo:
     if not destino.exists():
         return Archivo()
@@ -233,11 +267,11 @@ def leer(destino: Path) -> Archivo:
         try:
             p = Proceso(nombre=nombre, cuando=str(cuerpo.get("cuando", "")), comando=str(cuerpo.get("comando", "")),
                         mensaje=str(cuerpo.get("mensaje", "")), agente=str(cuerpo.get("agente", "")),
-                        hilo=str(cuerpo.get("hilo", "")),
+                        hilo=str(cuerpo.get("hilo", "")), padre=str(cuerpo.get("padre", "")),
                         max_abiertos=int(cuerpo.get("max_abiertos", 1)),
                         argumentos=tuple(str(x) for x in cuerpo.get("argumentos", ())),
                         carpeta=str(cuerpo.get("carpeta", "")), descripcion=str(cuerpo.get("descripcion", "")),
-                        activo=bool(cuerpo.get("activo", True)))
+                        activo=bool(cuerpo.get("activo", True)), despues=_lista(cuerpo.get("despues", ())))
         except (TypeError, ValueError) as e:
             raise ErrorDePeriodicos(f"{destino}: [{nombre}]: {e}") from e
         p.validar()
@@ -259,11 +293,13 @@ def con_modulos(a: Archivo, config) -> Archivo:
             try:
                 p = Proceso(nombre=nombre, cuando=str(cuerpo.get("cuando", "")), comando=str(cuerpo.get("comando", "")),
                             mensaje=str(cuerpo.get("mensaje", "")), agente=str(cuerpo.get("agente", "")),
-                            hilo=str(cuerpo.get("hilo", "")), max_abiertos=int(cuerpo.get("max_abiertos", 1)),
+                            hilo=str(cuerpo.get("hilo", "")), padre=str(cuerpo.get("padre", "")),
+                            max_abiertos=int(cuerpo.get("max_abiertos", 1)),
                             argumentos=tuple(str(x) for x in cuerpo.get("argumentos", ())),
                             carpeta=str(cuerpo.get("carpeta") or m.carpeta),
                             descripcion=str(cuerpo.get("descripcion", "") or m.descripcion),
-                            activo=bool(cuerpo.get("activo", True)), modulo=m.nombre)
+                            activo=bool(cuerpo.get("activo", True)), despues=_lista(cuerpo.get("despues", ())),
+                            modulo=m.nombre)
             except (TypeError, ValueError) as e:
                 raise ErrorDePeriodicos(f"módulo {m.nombre}: [periodicos.{nombre}]: {e}") from e
             p.validar()
@@ -358,12 +394,16 @@ def cambiar(a: Archivo, nombre: str, **campos) -> Proceso:
     p = a.por_nombre(nombre)
     if p is None:
         raise ErrorDePeriodicos(f"no hay un proceso «{nombre}»")
-    if "argumentos" in campos:
-        campos["argumentos"] = tuple(campos["argumentos"])
+    for clave in ("argumentos", "despues"):
+        if clave in campos:
+            campos[clave] = tuple(campos[clave])
     # cambiar de comando a mensaje (o al revés) deja el otro vacío
     if campos.get("comando"):
         campos.setdefault("mensaje", "")
         campos.setdefault("agente", "")
+        campos.setdefault("padre", "")
+    if campos.get("agente"):
+        campos.setdefault("padre", "")
     if campos.get("mensaje"):
         campos.setdefault("comando", "")
     nuevo = replace(p, **campos)
@@ -402,8 +442,31 @@ def con_bloque(actual: str, nuevo: list[str]) -> str:
     return "\n".join([*lineas, *([""] if lineas else []), *nuevo]) + "\n"
 
 
+def sin_privilegios_nuevos() -> bool:
+    """Si este proceso corre con `no_new_privs` (Linux): el nodo de telar, que su servicio systemd lanza con
+    `NoNewPrivileges=yes`, y todo lo que él lanza (las órdenes que le piden por el bus y la página)."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            return any(linea.split() == ["NoNewPrivs:", "1"] for linea in f)
+    except OSError:
+        return False
+
+
+def _crontab(*args: str, entrada: str | None = None) -> subprocess.CompletedProcess:
+    """`crontab` con esos argumentos. En Linux, `crontab` lee y escribe `/var/spool/cron/crontabs` gracias a su bit
+    setgid, que `no_new_privs` anula: ahí falla con «crontabs/<usuario>/: fopen: Permission denied», y una orden que
+    llegaba por el nodo cambiaba `periodicos.toml` y dejaba el crontab como estaba. Si es el caso y hay systemd de
+    usuario, corre como una unidad pasajera suya (`systemd-run --user`), que no hereda la restricción: el mismo
+    usuario, el mismo `crontab`, sin nada más de lo que tendría desde su terminal."""
+    orden = ["crontab", *args]
+    if sin_privilegios_nuevos() and shutil.which("systemd-run"):
+        orden = ["systemd-run", "--user", "--pipe", "--wait", "--quiet", "--collect", *orden]
+    return subprocess.run(orden, input=entrada, capture_output=True, text=True,
+                          stdin=None if entrada is not None else subprocess.DEVNULL)
+
+
 def crontab_actual() -> str:
-    r = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    r = _crontab("-l")
     if r.returncode != 0:
         if "no crontab" in (r.stderr or "").lower():
             return ""
@@ -416,7 +479,7 @@ def aplicar(a: Archivo, telar: str) -> str:
     if not shutil.which("crontab"):
         raise ErrorDePeriodicos("esta máquina no tiene `crontab`")
     nuevo = con_bloque(crontab_actual(), bloque(a, telar))
-    r = subprocess.run(["crontab", "-"], input=nuevo, capture_output=True, text=True)
+    r = _crontab("-", entrada=nuevo)
     if r.returncode != 0:
         raise ErrorDePeriodicos(f"crontab no aceptó el bloque: {r.stderr.strip()[-300:]}")
     return nuevo
@@ -460,9 +523,22 @@ def _recortar_log(ruta_log: Path) -> None:
         pass
 
 
-def _entorno() -> dict:
-    """cron corre con un PATH mínimo y sin idioma: sin UTF-8, tmux cambia los glifos por «_»."""
+def _entorno(config=None, modulo: str = "") -> dict:
+    """cron corre con un PATH mínimo y sin idioma: sin UTF-8, tmux cambia los glifos por «_». El de un módulo
+    (`modulo`, si está en `config`) lleva además lo que reciben sus órdenes (`telar.modulos.entorno`: la raíz, los
+    repositorios, la máquina, su carpeta y la persona). Sin las marcas de quien lo disparó (`telar.entorno`): un
+    `telar periodicos ahora` desde la Bash de un Claude Code le pasaría su sesión al comando, y un `claude -p` adentro se
+    creería su hijo."""
+    from telar import entorno as mod_entorno
+
     entorno = dict(os.environ)
+    if modulo and config is not None:
+        from telar import modulos as mod_modulos
+
+        m = mod_modulos.buscar(config, modulo)
+        if m is not None:
+            entorno = mod_modulos.entorno(config, m)
+    entorno = mod_entorno.sin_marcas(entorno)
     extra = [os.path.expanduser("~/.local/bin"), "/usr/local/bin", "/opt/homebrew/bin"]
     camino = entorno.get("PATH", "/usr/bin:/bin")
     # las que ya están no se repiten: el nodo corre los disparadores de cambio con esto, una y otra vez, en el
@@ -485,14 +561,15 @@ def _preparar_entorno() -> list[str]:
     return cambia
 
 
-def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
-    """Corre un proceso una vez y anota cómo salió. Devuelve lo anotado."""
+def correr(ctx, p: Proceso, ahora: datetime | None = None, manual: bool = False) -> dict:
+    """Corre un proceso una vez y anota cómo salió. Devuelve lo anotado. `manual`: lo pidió alguien (`ahora`), no
+    su horario; el calendario lo dibuja aparte."""
     ahora = ahora or datetime.now().astimezone()
     d = carpeta_estado(ctx.config)
     d.mkdir(parents=True, exist_ok=True)
     ruta_log = d / f"{p.nombre}.log"
     carpeta = Path(os.path.expanduser(p.carpeta)) if p.carpeta else Path.home()
-    registro = {"inicio": ahora.isoformat(timespec="seconds"), "tipo": p.tipo}
+    registro = {"inicio": ahora.isoformat(timespec="seconds"), "tipo": p.tipo, **({"manual": True} if manual else {})}
     _anotar(ctx.config, p.nombre, {**registro, "corriendo": True})
     with open(ruta_log, "a", encoding="utf-8") as f:
         f.write(f"\n── {ahora:%Y-%m-%d %H:%M:%S} · {p.nombre} ──\n")
@@ -500,7 +577,8 @@ def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
         if p.tipo == "comando":
             try:
                 r = subprocess.run(["bash", "-lc", p.comando], cwd=carpeta if carpeta.is_dir() else None,
-                                   stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=_entorno())
+                                   stdout=f, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                   env=_entorno(ctx.config, p.modulo))
                 codigo, resultado = r.returncode, ("ok" if r.returncode == 0 else f"salió con {r.returncode}")
             except OSError as e:
                 codigo, resultado = 127, f"no corrió: {e}"
@@ -517,7 +595,24 @@ def correr(ctx, p: Proceso, ahora: datetime | None = None) -> dict:
     registro.update({"fin": fin.isoformat(timespec="seconds"), "codigo": codigo, "resultado": resultado,
                      "segundos": round((fin - ahora).total_seconds(), 1)})
     _anotar(ctx.config, p.nombre, registro)
+    _al_historial(ctx.config, p.nombre, registro)
     return registro
+
+
+def _al_historial(config, nombre: str, registro: dict) -> None:
+    """Una línea más en `<nombre>.historial.jsonl`: la corrida terminada. Al pasar de MAX_HISTORIAL, se queda con
+    las más nuevas. Si no se puede escribir, la corrida igual quedó en su .json y su log."""
+    ruta_h = carpeta_estado(config) / f"{nombre}.historial.jsonl"
+    try:
+        with open(ruta_h, "a", encoding="utf-8") as f:
+            f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+        if ruta_h.stat().st_size > MAX_HISTORIAL * 400:
+            lineas = ruta_h.read_text(encoding="utf-8").splitlines()[-MAX_HISTORIAL:]
+            tmp = ruta_h.with_name(ruta_h.name + ".tmp")
+            tmp.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+            os.replace(tmp, ruta_h)
+    except OSError:
+        pass
 
 
 def _encargar(ctx, p: Proceso) -> tuple[int, str, str]:
@@ -615,18 +710,226 @@ def _abrir_hilo(ctx, p: Proceso, carpeta: Path, ahora: datetime) -> tuple[int, s
     except (ErrorDeAgente, RuntimeError, OSError) as e:
         return 1, f"no pude abrir el hilo: {e}", ""
     cerre = f" (cerré {', '.join(f'«{v}»' for v in viejos)}: de otro día y quietos)" if viejos else ""
-    return 0, f"abrí «{nombre}»{cerre}", nombre
+    return 0, f"abrí «{nombre}»{_colgar(ctx.config, nombre, p.padre)}{cerre}", nombre
+
+
+def _colgar(config, hilo: str, padre: str) -> str:
+    """El hilo recién abierto cuelga de `padre` y hereda sus etiquetas, como uno abierto con `telar hilo hijo`: en la
+    barra va debajo, y el padre recibe el aviso de cada turno que termina. Lo que no se pudo, se dice (el hilo ya está
+    abierto igual)."""
+    if not padre:
+        return ""
+    from telar import estado as mod_estado
+
+    try:
+        est = mod_estado.abrir(config)
+        est.colgar(hilo, padre)
+        heredadas = est.etiquetas().get(padre, ())
+        if heredadas and not est.etiquetas().get(hilo):
+            est.etiquetar(hilo, list(heredadas))
+    except (ValueError, OSError) as e:
+        return f" (no pude colgarlo de «{padre}»: {e})"
+    return f", hijo de «{padre}»"
 
 
 def resumen(ctx, a: Archivo, ahora: datetime | None = None) -> list[dict]:
     """Lo que muestra `telar periodicos ver --json` y el dashboard, proceso por proceso."""
+    nombres = {p.nombre for p in a.procesos}
+    agentes = agentes_de(ctx.config)
     salida = []
     for p in a.procesos:
         sig = proxima(p, a.zona, ahora)
         salida.append({"nombre": p.nombre, "cuando": Horario(p.cuando).texto, "tipo": p.tipo,
                        "comando": p.comando, "mensaje": p.mensaje, "agente": p.agente, "hilo": p.hilo,
-                       "max_abiertos": p.max_abiertos,
+                       "padre": p.padre, "max_abiertos": p.max_abiertos,
                        "argumentos": list(p.argumentos), "carpeta": p.carpeta, "descripcion": p.descripcion,
                        "activo": p.activo, "modulo": p.modulo, "disparador": p.disparador, "proxima": sig.isoformat(timespec="minutes") if sig else "",
+                       "despues": list(p.despues), "despues_falta": [x for x in p.despues if x not in nombres],
+                       "destino": destino(p, agentes),
                        "ultima": ultima(ctx.config, p.nombre)})
+    return salida
+
+
+# ── a quién le llega: las dependencias que no se declaran ──────────────────────
+
+#: `telar encargar <agente>` en un comando o en su script: el agente al que le llega, aunque el proceso sea un comando
+_ENCARGA = re.compile(r"\btelar\s+encargar\s+(?:--?[\w-]+(?:=\S+)?\s+)*[\"']?([\w.-]+)")
+
+
+def agentes_de(config) -> list[dict]:
+    """Los agentes residentes de esta máquina, como los lista el formulario: a quién se le puede encargar."""
+    from telar import agentes as mod_agentes
+
+    try:
+        return [{"clave": x.clave, "nombre": x.nombre, "carpeta": str(x.carpeta), "icono": x.icono}
+                for x in mod_agentes.descubrir(config)]
+    except Exception:  # noqa: BLE001 - sin agentes (o con su carpeta rota) la lista igual se muestra
+        return []
+
+
+def _encarga(p: Proceso) -> str:
+    """El agente al que encarga un comando: en su texto, o en el script que corre (si es un archivo de texto chico)."""
+    m = _ENCARGA.search(p.comando)
+    if m:
+        return m.group(1)
+    try:
+        primera = shlex.split(p.comando)[0] if p.comando.strip() else ""
+    except ValueError:
+        return ""
+    if not primera or primera in ("if", "for", "while", "[", "test"):
+        return ""
+    ruta_s = Path(os.path.expanduser(primera))
+    if not ruta_s.is_absolute():
+        ruta_s = Path(os.path.expanduser(p.carpeta or "~")) / ruta_s
+    try:
+        if ruta_s.is_file() and ruta_s.stat().st_size < 64 * 1024:
+            m = _ENCARGA.search(ruta_s.read_text(encoding="utf-8", errors="replace"))
+            return m.group(1) if m else ""
+    except OSError:
+        pass
+    return ""
+
+
+def _sin_tildes(s: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFD", s.lower()) if unicodedata.category(c) != "Mn")
+
+
+def destino(p: Proceso, agentes: list[dict] | None = None) -> dict:
+    """A quién le llega cada corrida: `agente` (su clave; `inferido` si sale de un comando que encarga), `hilo` (uno
+    nuevo cada vez) o `comando` (corre solo, sin agente). Dos que van al mismo agente comparten su casilla."""
+    if p.tipo == "mensaje":
+        return {"tipo": "agente", "agente": p.agente, "inferido": False} if p.agente else \
+            {"tipo": "hilo", "agente": "", "inferido": False}
+    dice = _encarga(p)
+    if not dice:
+        return {"tipo": "comando", "agente": "", "inferido": False}
+    # el comando puede nombrarlo por su clave o por su nombre («secretaria», «Secretaría»)
+    clave = next((x["clave"] for x in agentes or () if _sin_tildes(dice) in (_sin_tildes(x["clave"]), _sin_tildes(x["nombre"]))), dice)
+    return {"tipo": "agente", "agente": clave, "inferido": True}
+
+
+# ── el calendario: lo que corrió y lo que viene ────────────────────────────────
+
+#: una corrida se reconoce en su horario si empezó hasta tanto después (cron tarda unos segundos; una máquina
+#: cargada, más) o un poco antes
+_TOLERANCIA = (timedelta(minutes=1), timedelta(minutes=10))
+_CABEZA_LOG = re.compile(r"^── (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) · (\S+) ──$")
+
+
+def _del_historial(config, nombre: str) -> list[dict]:
+    try:
+        lineas = (carpeta_estado(config) / f"{nombre}.historial.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    salida = []
+    for linea in lineas:
+        try:
+            r = json.loads(linea)
+            r["_t"] = datetime.fromisoformat(r["inicio"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        salida.append(r)
+    return salida
+
+
+def _del_log(config, nombre: str) -> list[dict]:
+    """Las corridas que solo dejó su log (las de antes del historial): cuándo empezaron y, si lo escribió (un hilo
+    que abrió o se saltó), cómo salió."""
+    try:
+        lineas = (carpeta_estado(config) / f"{nombre}.log").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    salida = []
+    for i, linea in enumerate(lineas):
+        m = _CABEZA_LOG.match(linea)
+        if not m or m.group(2) != nombre:
+            continue
+        try:
+            t = datetime.fromisoformat(m.group(1)).astimezone()   # la hora de la máquina, que la escribió
+        except ValueError:
+            continue
+        r: dict = {"_t": t, "inicio": t.isoformat(timespec="seconds")}
+        sigue = lineas[i + 1].strip() if i + 1 < len(lineas) else ""
+        if sigue.startswith("saltado"):
+            r.update(codigo=0, resultado=sigue)
+        elif sigue.startswith(("abrí ", "encargado ")):
+            r.update(codigo=0, resultado=sigue)
+        elif sigue.startswith(("no pude", "no se pudo", "no hay un agente", "un proceso con")):
+            r.update(codigo=1, resultado=sigue)
+        salida.append(r)
+    return salida
+
+
+def _estado(r: dict) -> str:
+    if r.get("corriendo"):
+        return "corriendo"
+    if "codigo" not in r:
+        return "corrio"
+    if r["codigo"] != 0:
+        return "fallo"
+    return "saltado" if str(r.get("resultado", "")).startswith("saltado") else "bien"
+
+
+def corridas(ctx, a: Archivo, desde, dias: int = 7, ahora: datetime | None = None) -> dict[str, list[dict]]:
+    """Las corridas de cada proceso en `dias` días desde `desde` (una fecha, en la zona del archivo): las de su
+    horario, con cómo salieron las que ya pasaron, y las que alguien pidió fuera de horario (`manual`).
+
+    Cada una: `dia` y `min` (el minuto del día, en la zona: así la página no hace cuentas de zona), `en` (ISO) y
+    `estado`: bien, fallo, saltado (ya había hilos abiertos), corrio (solo quedó su log: sin resultado), corriendo,
+    falto (le tocaba y no hay rastro, aunque hay registro de antes), sin-registro (antes de todo registro), proxima
+    o pausado (las que vienen)."""
+    from datetime import time as hora
+
+    tz = zona_info(a.zona)
+    ahora = (ahora or datetime.now(tz)).astimezone(tz)
+    inicio = datetime.combine(desde, hora(0), tz)
+    fin = inicio + timedelta(days=max(1, min(dias, 31)))
+    antes, despues = _TOLERANCIA
+    salida: dict[str, list[dict]] = {}
+
+    def una(t: datetime, estado: str, r: dict | None = None) -> dict:
+        t = t.astimezone(tz)
+        c = {"dia": t.date().isoformat(), "min": t.hour * 60 + t.minute, "en": t.isoformat(timespec="minutes"), "estado": estado}
+        if r:
+            for k in ("resultado", "hilo", "manual"):
+                if r.get(k):
+                    c[k] = r[k]
+        return c
+
+    for p in a.procesos:
+        hist = _del_historial(ctx.config, p.nombre)
+        desde_hist = min((r["_t"] for r in hist), default=None)
+        regs = hist + [r for r in _del_log(ctx.config, p.nombre) if desde_hist is None or r["_t"] < desde_hist - antes]
+        u = ultima(ctx.config, p.nombre)
+        if u.get("corriendo") and u.get("inicio"):
+            try:
+                regs.append({**u, "_t": datetime.fromisoformat(u["inicio"])})
+            except ValueError:
+                pass
+        primero = min((r["_t"] for r in regs), default=None)
+        regs = [r for r in regs if inicio - despues <= r["_t"] < fin + antes]
+        usados: set[int] = set()
+        lista = []
+        h = Horario(p.cuando)
+        t = h.proxima(inicio - timedelta(minutes=1))
+        while t is not None and t < fin and len(lista) < 3000:
+            cerca = [i for i, r in enumerate(regs) if i not in usados and t - antes <= r["_t"] <= t + despues]
+            if cerca:
+                i = min(cerca, key=lambda k: abs((regs[k]["_t"] - t).total_seconds()))
+                usados.add(i)
+                lista.append(una(t, _estado(regs[i]), regs[i]))
+            elif t > ahora - timedelta(minutes=2):
+                lista.append(una(t, "proxima" if p.activo else "pausado"))
+            elif p.activo and primero is not None and t >= primero:
+                lista.append(una(t, "falto"))
+            else:
+                lista.append(una(t, "sin-registro"))
+            t = h.proxima(t)
+        # las de fuera de horario: alguien la corrió a mano, o el horario era otro
+        for i, r in enumerate(regs):
+            if i not in usados and inicio <= r["_t"] < fin:
+                lista.append({**una(r["_t"], _estado(r), r), "manual": True})
+        salida[p.nombre] = sorted(lista, key=lambda c: c["en"])
     return salida

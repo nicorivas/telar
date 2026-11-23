@@ -24,8 +24,7 @@
     & .texto { white-space: pre-wrap; }
   }
 
-  textarea,
-  input {
+  textarea {
     box-sizing: border-box;
     width: 100%;
     padding: .3em .5ch;
@@ -38,6 +37,11 @@
 
     &:focus { border-color: var(--azul); }
   }
+
+  /* el filtro de los destinos: la barra de un buscador (componentes/buscador.ts), de borde a borde; su letra, de 16 px
+     como la nota (bajo 16 px, el iPhone agranda la página al escribir) */
+  .buscador-barra { margin-inline: calc(-1 * var(--h-1)); --buscador-margen: var(--h-1); }
+  .buscador > input.buscar { font-size: max(16px, 1em); }
 
   .grupo {
     margin-top: var(--e-2);

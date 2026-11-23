@@ -111,9 +111,9 @@ servidor. Los permisos van encima, dentro de lo que una persona ya alcanza.
 2. **La espera como objeto.** El tipo `permiso` de fábrica en `telar.objetos`: `permiso:<hilo>` existe mientras su
    atención es `espera`, con `hilo`, `desde`, `pide` y `clase` (`permiso` o `pregunta`), y enlaza a su hilo y a su
    proyecto; el hilo que espera enlaza a él. Lo que pide sale del `message` de la notificación de Claude Code, o de
-   `telar agente aviso --evento espera --pide "…"` para cualquier otro agente. Es de solo lectura.
+   `telar agente evento --evento espera --pide "…"` para cualquier otro agente. Es de solo lectura.
 
-El contrato está en [contratos.md](../contratos.md) (`telar objeto`, `telar agente aviso`) y la declaración en
+El contrato está en [contratos.md](../contratos.md) (`telar objeto`, `telar agente evento`) y la declaración en
 [configuracion.md](../configuracion.md) («Lo que pide un módulo»).
 
 ## Las decisiones abiertas

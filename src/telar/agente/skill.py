@@ -1,6 +1,7 @@
 """Las skills que telar le deja al agente: `/hilos` (cómo encontrar, leer y escribirle a otros hilos), `/modulos`
-(cómo escribir, probar, publicar y mantener un módulo de telar) y `/relevo` (limpiar la conversación sin perder el
-hilo: el relevo escrito, `/clear` y la conversación nueva que lo lee).
+(cómo escribir, probar, publicar y mantener un módulo de telar), `/relevo` (limpiar la conversación sin perder el
+hilo: el relevo escrito, `/clear` y la conversación nueva que lo lee) y `/ramas` (hijos que trabajan en su propia
+rama y el padre que los fusiona).
 
 El contexto de inicio (`telar agente contexto`) son unas pocas líneas que se cargan siempre. Esto
 es lo largo, y el agente lo abre solo cuando le hace falta: la descripción es lo único que
@@ -32,12 +33,15 @@ otros hilos tuyos, a veces en otra máquina, y hay hilos de otras personas.
 
 ## Encontrarlos
 
-- `telar hilos --red --json`: **todos** los hilos de esta persona, en todas las máquinas. `hilos`
-  son los de aquí (carpeta `relativa`, `vivo`, ficha); `otras_maquinas`, los de las demás, según el
-  registro del bus (`maquina`, `vivo`, `atencion`); `maquinas` dice si cada una está en línea (si
-  no, lo que muestra es lo último que alcanzó a decir). **Sin `--red`, `telar hilos` ve solo esta
-  máquina**: no lo uses para saber qué hay abierto en el laptop. (`remoto` es otra cosa: el agente
-  de un hilo de aquí que corre en otra máquina por ssh.)
+- `telar hilos --red --json`: **todos** los hilos de esta persona, en todas las máquinas, en dos
+  listas. `hilos` son los de aquí (carpeta `relativa`, `vivo`, ficha); `otras_maquinas`, los de las
+  demás, según el registro del bus (`vivo`, `atencion`). Cada hilo de las dos dice su `maquina`;
+  la `maquina` de afuera es esta. `maquinas` dice si cada una está en línea (si no, lo que muestra
+  es lo último que alcanzó a decir). **Sin `--red`, `telar hilos` ve solo esta máquina**: un hilo
+  que no está en `hilos` puede estar en otra; búscalo en `otras_maquinas` antes de concluir que no
+  existe. (Un hilo de `hilos` con `remoto` es la ventana de uno que corre en otra máquina por ssh:
+  su `maquina` es esa.)
+- `telar objeto hilo:<nombre> --json`: uno solo, esté donde esté; su `maquina` dice dónde vive (vacía: aquí).
 - `ListAgents`: las sesiones de agente de **esta máquina y esta persona**, con el nombre al
   que se les escribe con SendMessage.
 - `telar directorio`: los hilos de **otras personas** en las máquinas compartidas, con su
@@ -109,8 +113,6 @@ resultado en el registro (la tarea, el estado del proyecto), no solo en su conve
   terminó. Crea un encargo con dirección (`encargo:e-1a2b3c4d`, en la salida) que el otro acepta y
   cierra con un resultado; al cerrarlo te llega un mensaje con lo que pasó. `telar objeto
   encargo:<id>` dice en qué va, desde cualquier máquina.
-- `--modo consulta` (sin texto): en qué anda, sin entrar a su conversación (su ficha y lo último
-  que pasó). No le llega nada.
 - **Si te llega un encargo** («[encargo `encargo:…` de …]»): tómalo con `telar objeto encargo:<id>
   aceptar`, o recházalo diciendo por qué (`rechazar --params '{{"motivo": "…"}}'`). Al terminar,
   ciérralo con el resultado: `telar objeto encargo:<id> cerrar --params '{{"resultado": "…"}}'`
@@ -128,7 +130,8 @@ importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:do
 - `telar objeto <dirección> --json` lo abre: título, estado, sus campos, las direcciones a las que
   enlaza y las **acciones** que acepta, con sus parámetros. `telar objeto <dirección> <acción>
   --params '{{…}}'` aplica una (por ejemplo `telar objeto hilo:Faro mensaje --params '{{"texto": "…"}}'`).
-  `telar objeto --tipos` dice qué tipos hay (los de fábrica y los de los módulos).
+  `telar objeto --tipos` dice qué tipos hay (los de fábrica y los de los módulos), y `telar objeto
+  <tipo> --listar --json` da los de un tipo, si sabe listarlos (`tarea`, `hilo`, `proyecto`, `agente`…).
 - **Al escribirle a otro hilo o a tu persona, nombra las cosas por su dirección**: «revisa
   `tarea:T84`», no «la tarea de los permisos». Quien lo lee la abre con `telar objeto` sin
   adivinar, y `telar objeto --buscar "<texto>"` encuentra las direcciones de un mensaje que te llega.
@@ -152,9 +155,11 @@ importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:do
 - No mandes a otra persona nada privado de la tuya sin su visto bueno: el correo entre
   agentes lo puede leer cualquiera en el servidor.
 - **Los frenos** (con bus): cada mensaje lleva cuántos saltos lleva su cadena sin que tu persona
-  hablara, y pasado el tope (6) se retiene; un hilo tampoco manda más de 30 por hora. Si
+  hablara, y pasado el tope (6) se retiene; un hilo tampoco manda más de 30 por hora. Entre un
+  padre y su hijo la cuenta es aparte y vuelve a empezar con cada commit en la carpeta del hijo. Si
   `telar mensaje` dice RETENIDO, no lo intentes por otro camino: cuéntale a tu persona qué
-  querías decir y a quién. Ella lo suelta con `telar mensaje --soltar <id>`.
+  querías decir y a quién. Ella lo suelta con `telar mensaje --soltar <id>`, o lo descarta
+  (`--descartar <id>`): entonces te llega un aviso de que no se entregó.
 - Que la respuesta quede donde se va a buscar (la tarea, el estado del proyecto) y no en un ida
   y vuelta: una pregunta y una respuesta, no una conversación.
 - Un correo **retenido** (remitente no permitido, tope por hora) o **sin entregar** (el hilo
@@ -165,7 +170,7 @@ importa: `tarea:T84`, `hilo:Faro`, `proyecto:proyectos/faro`, `archivo:laptop:do
 SKILL_MODULOS = f"""---
 name: modulos
 description: Escribir, probar, publicar y mantener un módulo de telar (lo que se instala con `telar modulos
-  instalar`: órdenes, una pestaña, periódicos, contexto para los agentes). Úsala cuando haya que crear un
+  instalar` — órdenes, una pestaña, periódicos, contexto para los agentes). Úsala cuando haya que crear un
   módulo, arreglarlo, sacarle una versión nueva o ponerlo en un catálogo.
 ---
 
@@ -251,7 +256,85 @@ Si `telar hilo relevo` falla (el hilo no tiene conversación anotada, telar no c
 escrito igual: la persona puede hacer `/clear` y pedir que lo lea.
 """
 
-SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS, "relevo": SKILL_RELEVO}
+SKILL_RAMAS = f"""---
+name: ramas
+description: Varios hilos trabajando a la vez en funcionalidades distintas del mismo código, cada hijo en su propia rama y su worktree, y el padre que reparte, revisa y fusiona. Úsala antes de abrir un hijo con `telar hilo hijo --rama`, cuando un hijo con rama te avise que terminó, antes de `telar hilo fusionar` o `descartar`, y si tú trabajas en un worktree que otro fusiona (tu contexto lo dice).
+---
+
+{MARCA}
+
+# Hijos con rama propia (`/ramas`)
+
+Para que varios agentes trabajen a la vez en el mismo código sin pisarse: cada funcionalidad la hace un hilo hijo en
+su propia carpeta (un worktree de git) y su propia rama. El padre reparte, revisa y fusiona. El worktree evita que se
+pisen mientras trabajan; los choques no desaparecen, se juntan al fusionar. Lo de abajo es para que sean pocos.
+
+## Si eres el padre
+
+1. **Cuándo sí**: código, con funcionalidades que tocan archivos distintos. **Cuándo no**: lo compartido (memoria,
+   tareas, bitácoras), que los demás tienen que ver al tiro, ni documentos donde casi no hay choques: ahí una rama
+   solo atrasa. Un hijo sin rama (`telar hilo hijo` a secas) trabaja en tu carpeta.
+2. **Repartir**: una funcionalidad por hijo, para horas o pocos días. Dos que tocan los mismos archivos chocan igual:
+   dáselas al mismo hijo, o una después de la otra. El hijo sale de lo que tienes **commiteado**: lo sin commitear de
+   tu carpeta no le llega.
+3. **Abrir**: `telar hilo hijo «Calendario» --rama [nombre] --texto "…"` (el worktree queda en
+   `~/worktrees/<repo>-<rama>`). El encargo dice qué hacer, qué archivos tocar y cuáles no, cómo se prueba y qué es
+   «listo». Con `--esfuerzo low|medium|high|xhigh` su agente arranca con ese esfuerzo (sin la opción, el de siempre):
+   menos para lo mecánico y acotado, más para lo de diseño o de riesgo.
+4. **Mientras**: te avisa al terminar cada turno; `telar hilo leer «Calendario»` dice en qué va. Si dura más de un
+   día, pásale lo nuevo de tu rama: pídele `git merge <tu rama>` en su worktree.
+5. **Revisar antes de fusionar**: `git -C <su worktree> log --oneline <tu rama>..` y
+   `git -C <su worktree> diff <tu rama>...` (tres puntos: solo lo suyo), y que las pruebas pasen en su worktree: su
+   «listo» dice el commit en que pasó la suite completa; si su rama sigue ahí (`git -C <su worktree> rev-parse
+   --short HEAD`), no la repitas, y córrela una vez en tu carpeta después de fusionar. Lo que no te convence,
+   pídeselo a él: no lo arregles en tu rama.
+6. **Fusionar**: `telar hilo fusionar «Calendario» [--mensaje "…"]`. Prueba la fusión sin tocar nada: si choca, dice
+   en qué archivos y tu carpeta queda igual; pídele al hijo `git merge <tu rama>` en su worktree, que resuelva y
+   commitee, y vuelve a fusionar. Lo compilado que el repositorio declara (`merge=telar-compilado` en
+   `.gitattributes`, y cómo se genera y de qué fuentes en `.telar/compilados.yaml`) no cuenta como choque: fusionar lo
+   vuelve a generar solo, también si la rama cambió solo sus fuentes, y no hace falta pedirle nada al hijo por eso. Si
+   sale bien, lo cierra, lo archiva y borra su worktree y su rama. Con `--seguir` fusiona lo commiteado y lo deja
+   trabajando.
+7. **El CHANGELOG**: si el repositorio lo junta por fragmentos (`.telar/changelog.yaml`), la entrada viene en la
+   rama del hijo (`changelog.d/<rama>.md`) y fusionar la pasa a `[Unreleased]` en el mismo commit: no la pegues tú, y
+   revísala como el resto de su diff. Si la rama no trae, fusionar lo dice; escríbela tú o pídesela. Un fragmento mal
+   formado se niega antes de tocar nada: pídele al hijo que lo arregle. Si el repositorio no lo declara, el hijo te
+   manda la entrada en su mensaje y la escribes tú al fusionar.
+8. **Después de fusionar** es tuyo lo que el repositorio pida al integrar: compilar, las pruebas juntas, subir,
+   desplegar. Su `CLAUDE.md` o `docs/desarrollar.md` dice cómo. Si el repositorio tiene `.telar/despliegue.yaml`,
+   desplegar es `telar desplegar` desde su carpeta principal, en main (`--ver` antes dice qué haría en cada
+   máquina). Lo que sale al mundo, con permiso de la persona, como siempre.
+9. **Descartar**: `telar hilo descartar «Calendario»` se niega si hay trabajo sin fusionar. `--forzar` lo pierde:
+   pregúntale antes a la persona.
+
+## Si eres el hijo
+
+- Trabajas **solo en tu worktree** (la ruta está en tu contexto). La carpeta de la rama principal es del padre: no la
+  edites, ni para «probar algo rápido».
+- Commitea seguido en tu rama (`telar commit --local -m "…" -- rutas`, o `git add` y `git commit`). No subas, no
+  fusiones, no cambies de rama.
+- Lo que git no versiona no está en el worktree. Los `node_modules` de la carpeta del padre ya vienen enlazados
+  (`telar hilo hijo --rama` lo hace al crearlo); lo demás (el entorno de Python), el `CLAUDE.md` o
+  `docs/desarrollar.md` del repositorio dice cómo tenerlo.
+- **Las pruebas**: mientras iteras, solo las afectadas (el archivo de pruebas de lo que tocaste). La suite completa,
+  una vez, antes del «listo», con todo commiteado; y en el mensaje, el commit en que pasó (`git rev-parse --short
+  HEAD`): así el padre no la repite.
+- Lo compilado que el repositorio declara (`merge=telar-compilado` en `.gitattributes`) no es un choque tuyo: si es lo
+  único que choca con la rama del padre, no hagas `git merge` ni le pidas nada; `telar hilo fusionar` lo vuelve a
+  generar. Si traes la rama del padre por otra cosa, el driver se queda con tu versión de lo compilado: vuelve a
+  generarlo y commitea. Otro archivo generado que choque (un índice) no se resuelve a mano: se toma cualquiera de las
+  dos versiones y se vuelve a generar.
+- **Tu entrada del CHANGELOG**: si el repositorio lo junta por fragmentos (declara `.telar/changelog.yaml`; tu
+  contexto lo dice), escríbela en un archivo propio, `changelog.d/<rama>.md` (la carpeta, en la declaración; cómo es
+  uno, en su README): las secciones (`### Added`, `### Fixed`…) con sus entradas, en el formato del CHANGELOG, y
+  commitéala en tu rama. No toques el CHANGELOG ni la mandes en el mensaje: al fusionar, telar la pasa a
+  `[Unreleased]`. Si el repositorio no lo declara, mándala en tu mensaje al padre.
+- Si levantas un servidor para probar, en un puerto propio, y lo apagas al terminar.
+- **Al terminar**: todo commiteado (con tu fragmento del CHANGELOG, si va), la suite completa pasando, y un mensaje al
+  padre: qué hiciste, cómo se prueba, en qué commit pasó la suite y qué quedó afuera.
+"""
+
+SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS, "relevo": SKILL_RELEVO, "ramas": SKILL_RAMAS}
 
 
 def ruta(carpeta_config: Path, nombre: str = "hilos") -> Path:

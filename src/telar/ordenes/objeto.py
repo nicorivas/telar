@@ -5,6 +5,7 @@
     telar objeto tarea:T366 completar --params '{"nota": "listo"}' [--version V]
     telar objeto hilo:Faro mensaje --params '{"texto": "¿quedó?"}'
     telar objeto --tipos                           los tipos que hay, los de fábrica y los de los módulos
+    telar objeto tarea --listar                    los de un tipo (también «tarea:»), si el tipo sabe listarlos
     telar objeto --buscar "revisa tarea:T366 y hilo:Faro"   las direcciones que hay en un texto
 
 Una dirección es `tipo:id`, y `@máquina` cuando importa: `tarea:T366`, `hilo:Telar`,
@@ -33,6 +34,7 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--params", default="{}", help="los parámetros de la acción, en JSON")
     p.add_argument("--version", default="", help="la versión que se leyó: si cambió, no se hace")
     p.add_argument("--tipos", action="store_true", help="los tipos que hay")
+    p.add_argument("--listar", action="store_true", help="los objetos del tipo que va en lugar de la dirección")
     p.add_argument("--buscar", default=None, metavar="TEXTO", help="las direcciones que aparecen en un texto")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
@@ -40,12 +42,27 @@ def main(argv: list[str], ctx) -> int:
         return codigo
     try:
         if o.tipos:
-            lista = [{"tipo": n, "descripcion": t.descripcion, "modulo": getattr(t, "modulo", "")}
+            lista = [{"tipo": n, "descripcion": t.descripcion, "modulo": getattr(t, "modulo", ""), "listar": t.lista}
                      for n, t in sorted(objetos.tipos(ctx).items())]
             if o.json:
                 return _comun.escribir_json({"tipos": lista})
             for t in lista:
-                print(f"{t['tipo']:<12}{t['descripcion']}" + (_comun.tenue(f"  (módulo {t['modulo']})") if t["modulo"] else ""))
+                print(f"{t['tipo']:<12}{t['descripcion']}" + (_comun.tenue(f"  (módulo {t['modulo']})") if t["modulo"] else "")
+                      + (_comun.tenue("  · lista") if t["listar"] else ""))
+            return 0
+        if o.listar:
+            if not o.direccion or o.accion:
+                raise ErrorDeServicio("¿de qué tipo? telar objeto <tipo> --listar, como telar objeto tarea --listar", 422)
+            r = objetos.listar(ctx, o.direccion)
+            if o.json:
+                return _comun.escribir_json(r.model_dump(mode="json"))
+            for x in r.objetos:
+                print(f"{x.direccion}" + (f"  {x.estado}" if x.estado else "")
+                      + (f"  {x.titulo}" if x.titulo and x.titulo != x.id else ""))
+            if not r.objetos:
+                print(_comun.tenue(f"no hay ningún {r.tipo}"))
+            for f in r.fallas:
+                print(_comun.tenue(f"  no se leyó: {f}"))
             return 0
         if o.buscar is not None:
             halladas = [str(d) for d in objetos.buscar(ctx, o.buscar)]
@@ -55,6 +72,9 @@ def main(argv: list[str], ctx) -> int:
             return 0
         if not o.direccion:
             raise ErrorDeServicio("¿qué objeto? telar objeto tipo:id (telar objeto --tipos dice cuáles hay)", 422)
+        if objetos.es_tipo(o.direccion) and not o.accion:
+            raise ErrorDeServicio(f"«{o.direccion}» es un tipo, no un objeto: telar objeto {o.direccion.rstrip(':')} "
+                                  "--listar lista los suyos; uno se abre con tipo:id", 422)
         if o.accion:
             try:
                 params = json.loads(o.params)

@@ -21,8 +21,15 @@ import { conEco } from '../navegador/eco/entrada';
 import { insertar, juntar, rutasDe, tamano, traeArchivos } from './arrastre';
 import { abrirHipervinculo, enlazarTerminal, maquinaDe } from './rutas-agente';
 import { C, I } from './iconos';
+import { coloresTerminal } from '../componentes/temas';
+import * as guardado from './guardado';
+import * as avisos from './avisos';
 import * as ui from './ui';
+import * as anchos from './anchos';
 import type { RutasVista, Vista } from './vistas-hilo';
+import { boton, cancelar } from '../componentes/boton';
+import { fueraDe, panelFuera, type MaquinaAlcance } from './alcance';
+import { teclasDeBotones } from './botonera';
 
 declare global {
     interface Window {
@@ -126,7 +133,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         donde.addEventListener(evento, f);
         deshacer.push(() => donde.removeEventListener(evento, f));
     };
-    // los colores, de los tokens (media/css/tokens.css): los mismos del resto de la página
+    // los colores, de los tokens del tema puesto (componentes/temas.ts): los mismos del resto de la página
     const css = getComputedStyle(document.documentElement);
     const t = (nombre: string) => css.getPropertyValue(`--${nombre}`).trim();
     // sin parpadeo: Claude Code dibuja su propio cursor, y uno que además parpadea molesta al escribir. Un hipervínculo
@@ -135,9 +142,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const term = new window.Terminal!({ fontFamily: t('letra') || 'Menlo, monospace', fontSize: parseInt(t('tam'), 10) || 13, cursorBlink: false, allowProposedApi: false,
         macOptionClickForcesSelection: true,
         linkHandler: { activate: (_e, uri) => abrirHipervinculo(uri, rutas), allowNonHttpProtocols: true },
-        theme: { background: t('bg'), foreground: t('fg'), cursor: t('cursor'), selectionBackground: t('negro'),
-            black: t('negro'), red: t('rojo'), green: t('verde'), yellow: t('amarillo'), blue: t('azul'), magenta: t('magenta'), cyan: t('cian'), white: t('blanco'),
-            brightBlack: t('dim'), brightRed: t('rojo'), brightGreen: t('verde'), brightYellow: t('amarillo'), brightBlue: t('azul'), brightMagenta: t('magenta'), brightCyan: t('cian'), brightWhite: t('blanco-claro') } });
+        theme: coloresTerminal() });
     const fit = new window.FitAddon!.FitAddon(); term.loadAddon(fit);
     // el eco (como mosh): lo tecleado en la terminal aparece al tiro, tenue, hasta que el servidor lo muestra
     // (src/navegador/eco). Lo que llega pasa por él, y le avisa lo que se teclea
@@ -188,10 +193,13 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     marco.addEventListener('copy', alCopiar, true);
     deshacer.push(() => marco.removeEventListener('copy', alCopiar, true));
 
-    // el tamaño: todo el alto, y de ancho lo que quepa hasta las columnas de `[terminal]` (130 de fábrica: más ancho
-    // se lee mal; 0, todo), donde diga su posición. La ventana del hilo toma este tamaño (la vista se lo da a tmux),
-    // así que no sobra nada que rellenar
-    const columnas = () => aspecto().columnas || 10000;
+    // el tamaño: todo el alto, y de ancho lo que quepa hasta las columnas elegidas arrastrando su borde en esta pantalla
+    // (web/anchos.ts), o si no, las de `[terminal]` (130 de fábrica: más ancho se lee mal; 0, todo), donde diga su
+    // posición. La ventana del hilo toma este tamaño (la vista se lo da a tmux), así que no sobra nada que rellenar
+    const barra = 14;   // la de desplazamiento de xterm, dentro del marco
+    const borde = anchos.montarTerminal({ ...anchos.dePagina(), caja, marco, barra,
+        celda: () => celda()?.width ?? null, posicion: () => aspecto().posicion });
+    const columnas = () => (borde.columnas() ?? aspecto().columnas) || 10000;
     const celda = () => {
         const d = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } } } })._core?._renderService?.dimensions;
         const c = d?.css?.cell;
@@ -206,8 +214,8 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         if (!caja.clientWidth || !caja.clientHeight) return;
         const c = celda();
         if (!c) return;
-        const arriba = parseFloat(getComputedStyle(marco).paddingTop) || 0, barra = 14;
-        const cols = Math.max(20, Math.min(columnas(), Math.floor((caja.clientWidth - barra - 2 * c.width) / c.width)));
+        const arriba = parseFloat(getComputedStyle(marco).paddingTop) || 0;
+        const cols = Math.max(20, Math.min(columnas(), anchos.caben(caja.clientWidth, c.width, barra)));
         const rows = Math.max(5, Math.floor((caja.clientHeight - arriba) / c.height));
         marco.style.width = `${Math.ceil(cols * c.width + barra)}px`;
         // una línea en cada lado donde entre la terminal y lo de al lado hay fondo: pegada a la barra de hilos, a la
@@ -245,6 +253,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const aplicar = () => {
         const a = aspecto();
         caja.style.justifyContent = { izquierda: 'flex-start', centro: 'center', derecha: 'flex-end' }[a.posicion] ?? 'center';
+        borde.colocar();   // la franja del ancho, en el borde que no está pegado: el izquierdo si va a la derecha
         const f = fondoDe(a);
         const clave = `${f.tipo}|${f.valor}`;
         if (clave !== dibujado) {
@@ -273,7 +282,13 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         ajustar();
     };
     aplicar();
-    deshacer.push(alCambiar(() => { aplicar(); asentar(); }), () => pararFondo?.());
+    // otro tema (el modo puesto): los colores nuevos, sin cerrarla
+    let colores = JSON.stringify(term.options.theme);
+    deshacer.push(alCambiar(() => {
+        const nuevos = coloresTerminal();
+        if (JSON.stringify(nuevos) !== colores) { colores = JSON.stringify(nuevos); term.options.theme = nuevos; }
+        aplicar(); asentar();
+    }), () => pararFondo?.());
     void leer();
 
     // cada conexión abre una vista nueva del hilo, con el tamaño de ahora
@@ -288,6 +303,23 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // borre cada segundo. Un telar de antes no manda el código: dos cierres seguidos al poco de abrir
     // cuentan igual (lo último que escribió es el motivo)
     let abierta = 0, rapidas = 0, cola = '', esperandoVentana = 0;
+    // cortada y reconectándose: lo dice la franja de avisos (web/avisos.ts), si no volvió en unos segundos (un reinicio de
+    // telar, que dura menos, no se dice), y se va sola al volver. Sin conexión con telar no se dice: lo dice el de la
+    // conexión
+    const claveAviso = `terminal:${maquina ? `${maquina}|` : ''}${hilo}`;
+    let porAvisar = 0;
+    const avisarCorte = () => {
+        clearTimeout(porAvisar);
+        porAvisar = window.setTimeout(() => {
+            if (conectada || cerrada) return;
+            avisos.poner({ clave: claveAviso, nivel: 'falla', icono: I.desconectado, conConexion: true, cuando: 'hace',
+                texto: `la terminal de «${hilo}»${maquina ? ` (${maquina})` : ''} se cortó`,
+                detalle: 'Se reconecta sola, cada vez más espaciado (hasta cada 15 s).',
+                ir: { texto: `el hilo ${hilo}`, hacer: () => void (maquina ? ui.orden('telar.irRemoto', `${maquina}|${hilo}`) : ui.orden('telar.ir', { hilo })) },
+                acciones: [{ id: 'reconectar', texto: 'reconectar ahora', hacer: () => { intento = 0; conectar(); } }] });
+        }, 4000);
+    };
+    const yaVolvio = () => { clearTimeout(porAvisar); avisos.quitar(claveAviso); };
     let aviso: HTMLElement | undefined;
     const quitarAviso = () => { aviso?.remove(); aviso = undefined; };
     const mostrarFalla = async (motivo: string) => {
@@ -310,6 +342,9 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         }
         quitarAviso();
         term.reset(); eco.reiniciar();
+        // uno de una máquina fuera de línea (telar.alcance): no es una falla que se arregle aquí. Se dice desde cuándo, lo
+        // que le espera en cola, y lo que se puede hacer igual: despertarlo cuando vuelva, o escribirle
+        if (maquina && await mostrarFuera()) return;
         aviso = document.createElement('div');
         aviso.className = 'no-abre';
         const titulo = document.createElement('div');
@@ -317,20 +352,43 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         const ico = document.createElement('span'); ico.className = 'i'; ico.textContent = I.alerta;
         titulo.append(ico, document.createTextNode(` no se pudo abrir «${hilo}»${maquina ? ` en ${maquina}` : ''}`));
         const que = document.createElement('div'); que.className = 'motivo'; que.textContent = motivo;
-        const botones = document.createElement('div'); botones.className = 'botones';
-        const boton = (nombre: string, icono: string, color: string, hacer: () => void) => {
-            const a = document.createElement('a');
-            a.style.setProperty('--c', `var(--${color})`);
-            const i = document.createElement('span'); i.className = 'i'; i.textContent = icono;
-            a.append(i, document.createTextNode(` ${nombre}`));
-            a.addEventListener('click', hacer);
-            botones.appendChild(a);
+        // lo que se puede hacer: la banda de botones (componentes/boton.ts), con el ícono de cada uno en el lugar de la tecla
+        const botones = document.createElement('div'); botones.className = 'botonera';
+        const poner = (nombre: string, icono: string, color: string, hacer: () => void) => {
+            botones.insertAdjacentHTML('beforeend', boton({ texto: nombre, icono, color }));
+            botones.lastElementChild!.addEventListener('click', hacer);
         };
-        boton('reintentar', I.retomar, C.ir, () => { quitarAviso(); intento = 0; rapidas = 0; conectar(); });
+        poner('reintentar', I.retomar, C.ir, () => { quitarAviso(); intento = 0; rapidas = 0; conectar(); });
         // lo que suele arreglarlo: retomarlo (si está dormido aquí) o volver a la lista, donde está lo que sí existe
-        if (!maquina) boton('retomar', I.ver, C.hecho, () => { quitarAviso(); void ui.orden('telar.retomar', hilo); });
+        if (!maquina) poner('retomar', I.ver, C.hecho, () => { quitarAviso(); void ui.orden('telar.retomar', hilo); });
         aviso.append(titulo, que, botones);
         caja.appendChild(aviso);
+    };
+    /** El cuadro de una máquina fuera de línea (web/alcance.ts), si lo está: true si lo puso. */
+    const mostrarFuera = async (): Promise<boolean> => {
+        const r = await cli.espejos().catch(() => undefined);
+        const otras: MaquinaAlcance[] = (r?.datos?.espejos ?? []).map(e => ({ ...e, fuera: !e.en_linea && !!r?.datos?.al_dia }));
+        const m = fueraDe(maquina, otras);
+        if (!m || cerrada) return false;
+        quitarAviso();
+        aviso = document.createElement('div');
+        aviso.className = 'no-abre fuera';
+        aviso.innerHTML = panelFuera(hilo, m);
+        aviso.addEventListener('click', async e => {
+            const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-accion]');
+            if (!b || b.disabled) return;
+            const que = b.dataset.accion;
+            if (que === 'reintentar') { quitarAviso(); intento = 0; rapidas = 0; conectar(); return; }
+            if (que === 'escribirle') { window.telar?.vista?.('conv'); return; }
+            if (que === 'despertar') {
+                b.disabled = true;
+                const d = await cli.despertar(hilo, maquina, { cola: true });
+                ui.estado(d.datos?.hecho || d.error || 'no se pudo', 8000);
+                void mostrarFuera();
+            }
+        });
+        caja.appendChild(aviso);
+        return true;
     };
     // para desarrollar (docs/desarrollar.md): localStorage['telar.latencia'] = ms simula esa latencia, la mitad a la
     // ida y la mitad a la vuelta (probar el eco sin depender de la red)
@@ -346,6 +404,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
             // la vista nueva redibuja la pantalla entera: lo de antes se borra para que no quede mezclado
             if (intento) { term.reset(); eco.reiniciar(); }
             intento = 0; conectada = true; abierta = Date.now(); cola = '';
+            yaVolvio();
             // abrió de verdad (no se cerró al tiro): la espera de su ventana, si la hubo, terminó
             window.setTimeout(() => { if (conectada && ws === nuevo) esperandoVentana = 0; }, 3000);
         };
@@ -362,17 +421,18 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
                 conectada = false;
                 // eslint-disable-next-line no-control-regex
                 const ultima = cola.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').split(/\r?\n/).map(x => x.trim()).filter(Boolean).pop() ?? '';
+                yaVolvio();
                 void mostrarFalla((e.reason || ultima || 'la terminal se cerró al abrirse').replace(/^telar: /, ''));
                 return;
             }
-            // la primera vez que se cierra al tiro no se escribe nada: si vuelve a pasar es una falla, no un corte
-            if (conectada && !breve) term.write('\r\n\x1b[2m[se cortó la conexión con la terminal: reconectando…]\x1b[0m');
+            // la primera vez que se cierra al tiro no se dice nada: si vuelve a pasar es una falla, no un corte
+            if (conectada && !breve) avisarCorte();
             conectada = false;
             pendiente = window.setTimeout(conectar, esperas[Math.min(intento++, esperas.length - 1)]);
         };
     };
     conectar();
-    deshacer.push(() => { cerrada = true; clearTimeout(pendiente); ws?.close(); ws = null; quitarAviso(); });
+    deshacer.push(() => { cerrada = true; clearTimeout(pendiente); ws?.close(); ws = null; quitarAviso(); yaVolvio(); });
     escuchar(document, 'visibilitychange', () => { if (!document.hidden && !conectada && !aviso) { intento = 0; conectar(); } });
     escuchar(window, 'online', () => { if (!conectada && !aviso) { intento = 0; conectar(); } });
     const teclear = (d: string) => { luego(() => { if (ws?.readyState === 1) ws.send(JSON.stringify({ d })); }); };
@@ -383,6 +443,10 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const texto = raiz.querySelector<HTMLTextAreaElement>('textarea')!;
     const crecer = () => { texto.style.height = 'auto'; texto.style.height = `${texto.scrollHeight}px`; ajustar(); };
     texto.addEventListener('input', crecer);
+    // lo escrito y no mandado, de antes de recargar la página (web/guardado.ts)
+    const escrito = guardado.caja(texto, `term:${maquina}|${hilo}`);
+    deshacer.push(escrito.soltar);
+    if (texto.value) requestAnimationFrame(crecer);
     texto.addEventListener('keydown', e => {
         if (e.isComposing) return;
         const vacia = texto.value === '';
@@ -391,7 +455,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
             if (vacia) { teclear('\r'); return; }
             teclear(`\u001b[200~${texto.value.replace(/\s+$/, '')}\u001b[201~`);
             setTimeout(() => teclear('\r'), 120);
-            texto.value = ''; crecer();
+            texto.value = ''; escrito.anotar(); crecer();
         } else if (e.key === 'Escape') {
             e.preventDefault(); teclear('\u001b');
         } else if (vacia && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
@@ -403,11 +467,15 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     deshacer.push(recibirArrastres(raiz, rutas, {
         caja: s => {
             const r = insertar(texto.value, texto.selectionStart, texto.selectionEnd, s);
-            texto.value = r.valor; texto.setSelectionRange(r.cursor, r.cursor); crecer(); texto.focus();
+            texto.value = r.valor; texto.setSelectionRange(r.cursor, r.cursor); escrito.anotar(); crecer(); texto.focus();
         },
         terminal: s => { teclear(`\u001b[200~${s} \u001b[201~`); term.focus(); },
     }));
-    const observador = new ResizeObserver(ajustar);
+    // mientras se arrastra el ancho de la barra, de la ficha o de la terminal misma (web/anchos.ts) no se mide: un resize a tmux por píxel. Al
+    // soltar llega una vez anchos.EVENTO, con el ancho ya puesto, y se mide entonces (si el aviso del observador llega
+    // después, encuentra el mismo tamaño y no manda nada)
+    const observador = new ResizeObserver(() => { if (!anchos.arrastrando()) ajustar(); });
+    escuchar(window, anchos.EVENTO, ajustar);
     observador.observe(caja);
     deshacer.push(() => observador.disconnect());
     return { term, eco, deshacer };
@@ -428,6 +496,8 @@ function recibirArrastres(raiz: HTMLElement, rutas: RutasVista, a: { caja(s: str
         franja.innerHTML = html; franja.classList.toggle('tenue', tenue); franja.hidden = false;
     };
     const cerrar = () => { franja.hidden = true; franja.textContent = ''; ocupada = false; };
+    // las teclas de sus botones (⏎ el del foco, ⎋ no): la franja no es una ventana, así que ⎋ también es suyo
+    const soltarTeclas = teclasDeBotones(franja);
     const esc = (t: string) => t.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
     /** Las rutas de allá de cada archivo, en orden; si uno falla, se dice y se sigue con los demás. */
     const llevar = async (pedidos: (() => Promise<cli.Respuesta<cli.JsonEntrada>>)[]): Promise<string[]> => {
@@ -477,11 +547,13 @@ function recibirArrastres(raiz: HTMLElement, rutas: RutasVista, a: { caja(s: str
         const destino = `~/telar-entrada de ${alla || modelo.aqui || 'esta máquina'}`;
         const total = archivos.reduce((n, f) => n + f.size, 0);
         const que = archivos.length === 1 ? esc(archivos[0].name) : `${archivos.length} archivos (${esc(archivos.map(f => f.name).join(', '))})`;
-        avisar(`<span>¿guardar ${que} · ${tamano(total)} en ${esc(destino)}?</span>`
-            + '<button type="button" class="si">guardar</button><button type="button" class="no">no</button>', false);
-        franja.querySelector<HTMLButtonElement>('.si')!.focus();
-        franja.querySelector('.no')!.addEventListener('click', cerrar);
-        franja.querySelector('.si')!.addEventListener('click', () => {
+        // la pregunta, en la banda de botones (componentes/boton.ts): «⏎ guardar» con el foco, «⎋ no» al último
+        avisar(`<div class="botonera"><span class="botonera-izq">¿guardar ${que} · ${tamano(total)} en ${esc(destino)}?</span>`
+            + boton({ texto: 'guardar', datos: { soltar: 'si' }, color: C.cambiar, tecla: '⏎', ayuda: 'subirlo y dejar su ruta en el chat' })
+            + boton({ ...cancelar('no', null), datos: { soltar: 'no' } }) + '</div>', false);
+        franja.querySelector<HTMLButtonElement>('[data-soltar="si"]')!.focus();
+        franja.querySelector('[data-soltar="no"]')!.addEventListener('click', cerrar);
+        franja.querySelector('[data-soltar="si"]')!.addEventListener('click', () => {
             ocupada = true;
             avisar(`subiendo ${que} a ${esc(destino)}…`, true);
             void llevar(archivos.map(f => () => cli.entradaSubida(rutas.hilo, alla, f)))
@@ -490,7 +562,7 @@ function recibirArrastres(raiz: HTMLElement, rutas: RutasVista, a: { caja(s: str
     };
     raiz.addEventListener('dragover', sobre);
     raiz.addEventListener('drop', soltar);
-    return () => { raiz.removeEventListener('dragover', sobre); raiz.removeEventListener('drop', soltar); };
+    return () => { raiz.removeEventListener('dragover', sobre); raiz.removeEventListener('drop', soltar); soltarTeclas(); };
 }
 
 /** Alrededor de la terminal, un telar muy tenue: la urdimbre quieta y, de vez en cuando, un hilo de trama que

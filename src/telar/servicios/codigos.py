@@ -34,6 +34,10 @@ class Codigos(BaseModel):
     conversacion: list[dict] = Field(default_factory=list)
     #: dónde viven las tareas si no es aquí: sus títulos se piden aparte (`telar objeto tarea:T84`)
     tareas_en: str = ""
+    #: las ramas que sumaron algo a la carpeta (telar.codigos.ramas), y los documentos que vienen de una: su clave
+    #: (el `archivo` de las definiciones; `README.md@rama` si la carpeta también lo tiene) → {ruta, rama, archivo}
+    ramas: list[str] = Field(default_factory=list)
+    de_rama: dict[str, dict] = Field(default_factory=dict)
     aviso: str = ""
 
 
@@ -116,8 +120,11 @@ def _aqui(ctx, hilo: str, *, codigo: str, buscar: str, de_otra: bool) -> Codigos
         elif raiz is not None and v.resolve() == raiz:
             salida.aviso = "está vinculado a la raíz: solo los códigos de su conversación que son tareas"
         else:
-            c = mod.carpeta(v)
+            # con lo que suman sus ramas (un entregable que todavía no entra a main)
+            c = mod.carpeta(v, mod.ramas(v))
             salida.carpeta, salida.archivos, salida.truncado = _corta(v), c.archivos, c.truncado
+            salida.ramas = sorted({rama for _, rama, _ in c.de_rama.values()})
+            salida.de_rama = {k: {"ruta": _corta(Path(p)), "rama": rama, "archivo": rel} for k, (p, rama, rel) in c.de_rama.items()}
             if c.truncado:
                 salida.aviso = f"la carpeta tiene más de {mod.MAX_ARCHIVOS} documentos: se leyeron los primeros"
     else:

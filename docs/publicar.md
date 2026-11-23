@@ -77,7 +77,8 @@ nuevas como si fueran parches, y quedan así.
 
 1. Elegir el número según «Qué número le toca» (arriba) y cambiarlo: `__version__` en src/telar/\_\_init\_\_.py. El primer trabajo del workflow
    no hace otra cosa que comprobar que la etiqueta y ese número coinciden.
-2. Mover lo que corresponda de «Unreleased» a la versión nueva en CHANGELOG.md.
+2. Mover lo que corresponda de «Unreleased» a la versión nueva en CHANGELOG.md. Lo que siga en `changelog.d/` es de
+   ramas sin fusionar: no entra en esta versión (docs/desarrollar.md, «El CHANGELOG, por fragmentos»).
 3. Commitear, y recién entonces etiquetar:
 
    ```sh

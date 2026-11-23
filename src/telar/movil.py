@@ -23,8 +23,12 @@ el teclado del celular salvo que se configure. Al volver, la agrupada se mata; l
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from dataclasses import dataclass
+
+from telar import entorno as mod_entorno
 
 #: la tabla de teclas de las sesiones del celular: lo que se ata aquí no toca al laptop.
 PREFIJO = "movil-"
@@ -71,7 +75,10 @@ def marca_nueva() -> str:
 
 
 def _tmux(*args: str, tolerante: bool = False) -> str:
-    r = subprocess.run(["tmux", *args], capture_output=True, text=True)
+    # sin las marcas de quien pide (`telar.entorno`): si el servidor de tmux no está, `crear` lo levanta, y el servidor
+    # le da su entorno a cada panel que se abra después
+    r = subprocess.run(["tmux", *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+                       env=mod_entorno.sin_marcas(os.environ))
     if r.returncode != 0 and not tolerante:
         raise RuntimeError(r.stderr.strip() or f"tmux {args[0]} salió con {r.returncode}")
     return r.stdout
@@ -165,6 +172,34 @@ def ordenes_ver(grupo: str, vista: str, ventana: str) -> list[list[str]]:
         ["set-hook", "-t", t, "session-window-changed",
          f"if-shell -F '#{{!=:#{{window_id}},{ventana}}}' 'detach-client -s ={vista}'"],
     ]
+
+
+#: desde qué versión tmux guarda los hipervínculos (OSC 8) de lo que corre adentro y se los pasa a quien mira
+TMUX_CON_ENLACES = (3, 4)
+
+
+def rasgos_con_enlaces(version: str) -> list[str]:
+    """Las banderas de `tmux` (van antes de la orden) para quien mira con una terminal que entiende hipervínculos
+    (OSC 8): xterm.js, en la página. tmux guarda el enlace, pero solo se lo pasa a una terminal que declara
+    entenderlos (`terminal-features`), y la de la página se presenta como xterm-256color, que no lo declara: sin
+    esto, el texto llega sin su dirección. Es lo que le pasa a un enlace de markdown que escribe Claude Code dentro de
+    un tmux 3.4 o más nuevo (`[Doc](https://…)`): escribe solo «Doc», y la dirección va en el OSC 8. `-T` lo declara
+    para este cliente, sin tocar a los demás. Un tmux más viejo no guarda los enlaces (y Claude Code, ahí, escribe la
+    dirección a la vista): nada. `version`, la de `tmux -V` («tmux 3.8», «tmux next-3.6», «tmux master»)."""
+    if not version.strip():
+        return []
+    numeros = re.search(r"(\d+)\.(\d+)", version)
+    if numeros and (int(numeros[1]), int(numeros[2])) < TMUX_CON_ENLACES:
+        return []
+    return ["-T", "hyperlinks"]
+
+
+def version_tmux() -> str:
+    """Lo que dice `tmux -V` («tmux 3.8»), o '' si no contesta."""
+    try:
+        return subprocess.run(["tmux", "-V"], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
 
 
 def enganchar(vista: str, sin_tamano: bool = False) -> list[str]:

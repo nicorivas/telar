@@ -1,6 +1,8 @@
 # Modos de la página: estándar, foco y los que hagan falta
 
 Estado: **el primer paso, hecho** (27-oct-2026, sin publicar todavía). Lo demás, por hacer, en este orden.
+El orden por modos ([orden-por-modos.md](orden-por-modos.md), paso 2) los reemplaza por táctica, estrategia, foco y todo,
+con el filtro de hilos pasado al mundo; su prototipo, con la migración de lo de aquí, en `/componentes#modos-mundos`.
 
 ## Por qué
 
@@ -25,6 +27,8 @@ con valores para un catálogo fijo de ajustes; cambiar de modo los aplica todos 
 
 | Grupo | Ajuste | Valores |
 |---|---|---|
+| Aspecto | `tema` (los colores; /componentes los muestra lado a lado) | telar · latte · riso · papel |
+| | `densidad` (cuánto aire lleva cada fila) | auto · compacta · comoda · amplia |
 | Disposición | `barra` (la de hilos) | abierta · plegada · oculta |
 | | `lado` (la ficha de un agente) | abierto · plegado · oculto |
 | | `cabecera` | visible · oculta |

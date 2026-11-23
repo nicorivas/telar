@@ -48,11 +48,10 @@ export const personas: FabricaSeccion = ctx => {
     };
 
     const quitar = async (nombre: string) => {
-        const e = await ui.elegir([
-            { label: `sí, quitarle la cuenta a ${nombre}`, description: 'su telar deja de conectarse al bus; para volver, pide entrar de nuevo', id: 'si' },
-            { label: 'no', description: '', id: 'no' },
-        ], { titulo: `¿quitarle la cuenta a ${nombre}?` });
-        if (e?.id === 'si') await hacer('quitar', { nombre });
+        // lo que destruye: el foco parte en «cancelar», y quitarla es ⌘⌫ (un ⏎ distraído no le quita la cuenta a nadie)
+        const si = await ui.aviso(`¿Quitarle la cuenta a ${nombre}?`, 'Quitar la cuenta',
+            { detalle: 'Su telar deja de conectarse al bus; para volver, pide entrar de nuevo.', destruye: true });
+        if (si === 'Quitar la cuenta') await hacer('quitar', { nombre });
     };
 
     const pedido = (p: cli.JsonPedidoEntrada) => {

@@ -1,0 +1,187 @@
+/* Táctica (src/componentes/tactica.ts): la vista de partida, en tres bloques (Ahora, Decidir, Hacer) y un pie. La muestra
+   el catálogo (/componentes#tactica) y la página, en su pestaña «táctica». Cada bloque es una sección como las de la
+   barra de hilos: una línea arriba, de borde a borde, y su cabecera en la tinta de las cabeceras, con su tope tenue a la
+   derecha. Las filas son ítems y la ficha de ahora es una tarjeta: lo que dicen (la clase de una espera, por qué está
+   ahí) va en sus piezas, con su color; aquí, solo cómo se reparten.
+   Las disposiciones (.disp-…): en columna; lado a lado (Decidir y Hacer en dos columnas donde caben); y Ahora en una
+   franja de una línea, también con Decidir y Hacer lado a lado. Sin @scope: la usan el catálogo y, cuando se elija, el
+   dashboard. */
+
+.tactica {
+  container: tactica / inline-size;
+}
+/* en el dashboard, el cuerpo de la pantalla (#dia, dia.css) tiene su margen: Táctica va de borde a borde, como sus líneas */
+#dia > .tactica { margin-inline: calc(-1 * var(--pantalla-margen)); }
+
+/* un bloque: una línea arriba, de borde a borde, y aire antes (el primero, sin línea: la pone la barra de la pantalla) */
+.tac-bloque {
+  min-width: 0;
+  margin-top: var(--e-3);
+  padding-top: var(--e-1);
+  border-top: var(--borde);
+}
+.tactica > .tac-bloque:first-child {
+  margin-top: var(--e-1);
+  border-top: 0;
+}
+
+/* su cabecera: el nombre como el de un grupo de la barra (la tinta, el peso y las letras de las cabeceras), con el alto
+   de una fila; el tope, tenue y en la letra de siempre, a la derecha */
+.tac-cab {
+  display: flex;
+  gap: var(--h-1);
+  align-items: baseline;
+  padding: 0 var(--item-pad-x);
+  color: var(--item-cabecera);
+  font-weight: var(--item-cabecera-peso);
+  line-height: var(--item-alto);
+  text-transform: var(--item-cabecera-letras);
+}
+.tac-tope {
+  margin-left: auto;
+  color: var(--texto-tenue);
+  font-weight: normal;
+  text-transform: none;
+}
+
+/* Decidir y Hacer: uno debajo del otro, o lado a lado */
+.tac-par {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.tac-par > .tac-bloque { margin-top: var(--e-3); }
+
+/* Decidir, por cuenta: cada cuenta es un grupo (su cabecera, un submenú, y sus decisiones), con un poco de aire entre
+   uno y otro */
+.tac-grupo + .tac-grupo { margin-top: var(--e-1); }
+
+/* lo que hay que decidir se lee entero: hasta dos líneas antes de cortarse (lo demás, en el globo), juntas como las de
+   un párrafo aunque la fila sea alta (la densidad amplia del teléfono). La primera queda a la altura de la meta: el aire
+   que sobra de la fila, repartido arriba y abajo */
+.tac-decision .item-texto {
+  --tac-linea: min(var(--item-alto), 1.35);
+
+  display: -webkit-box;
+  overflow: hidden;
+  margin-block: calc((var(--item-alto) - var(--tac-linea)) * .5em);
+  line-height: var(--tac-linea);
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* las vías (decidir, aprobar, hacer tú, cerrar, lo sin clasificar) van una debajo de la otra, cada una un bloque. Su
+   cabecera la recorre en «Contestar» (un clic, o su tecla, a la derecha); cuántas, tenue. Una vía vacía es solo su
+   cabecera, apagada */
+.tac-vias { min-width: 0; }
+.tac-via-cab[data-accion] { cursor: pointer; }
+.tac-via-cab[data-accion]:hover .tac-nombre { color: var(--acento); }
+.tac-cuantas {
+  color: var(--texto-tenue);
+  font-weight: normal;
+  text-transform: none;
+}
+.tac-via.vacia .tac-nombre { color: var(--texto-tenue); }
+
+/* lo que va bajo una fila (sus opciones, lo que dejó hecho y qué hacer con eso, la prueba de un cierre): una línea más,
+   a la altura del texto de la fila (tras sus dos ranuras), tenue; lo que se aprieta, en el color de las acciones, y lo
+   recomendado, en el del texto */
+.tac-detalle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--h-2);
+  padding: 0 var(--item-pad-x) 0 calc(var(--item-pad-x) + 2 * var(--item-ranura) + var(--item-texto-sangria));
+  color: var(--texto-tenue);
+  line-height: min(var(--item-alto), 1.6);
+}
+.tac-accion {
+  color: var(--item-accion);
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { color: var(--acento); }
+}
+/* las opciones, una por línea (suelen ser frases): cada una se corta antes de pisar el borde; entera, en el globo */
+.tac-opciones {
+  flex-direction: column;
+  align-items: flex-start;
+
+  & .tac-accion {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .recomendada { color: var(--item-color); }
+}
+.tac-reco { color: var(--texto-apagado); }
+.tac-prueba {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* lo que contestaste y espera al agente: su cabecera como la de una vía, con la próxima pasada a la derecha (en su color
+   si importa: pasando ahora, o un cuidado si nadie va a pasar); en un ancho chico, la pasada baja a su propia línea.
+   «revisar ya» de una que ya se encargó queda apagado: no se aprieta dos veces seguidas */
+.tac-contestadas-cab { flex-wrap: wrap; }
+.tac-pasada.tono-agente { color: var(--agente); }
+.tac-pasada.tono-atencion { color: var(--atencion); }
+.tac-contestada .item-accion.tono-tenue { cursor: default; }
+
+/* lo que no cabe en el tope y lo que dice que no hay nada: tenue; «+N más» lleva a Todo */
+.tac-mas .item-titulo { color: var(--texto-tenue); }
+.tac-mas:hover .item-titulo { color: var(--acento); }
+.tac-nada .item-titulo { color: var(--texto-tenue); }
+
+/* la ficha de ahora: una tarjeta (tarjeta.css), con sus acciones siempre a la vista: es una sola, y es la de ahora */
+.tac-ficha .tarjeta-acciones {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* sus datos se parten en líneas en vez de cortarse: son pocos, y cada uno dice algo */
+.tac-ficha .tarjeta-pie { flex-wrap: wrap; }
+.tac-ficha .tarjeta-dato { flex: none; }
+
+/* Ahora en una franja: una fila (un ítem), con lo que se decide (o lo que cabe) tenue después del título */
+.tac-franja .tac-dice { color: var(--texto-tenue); }
+.tac-ahora.en-franja { padding-top: 0; }
+
+/* el pie: todo lo demás, tenue; cada fuente lleva a Todo con ella */
+.tac-pie {
+  margin-top: var(--e-3);
+  padding: var(--e-1) var(--item-pad-x);
+  border-top: var(--borde);
+  color: var(--texto-tenue);
+
+  & a { color: var(--texto-tenue); cursor: pointer; }
+  & a:hover { color: var(--acento); text-decoration: none; }
+  & .tac-ver-todo { color: var(--acento); }
+}
+
+/* el único número de la página, en la barra de la pantalla: su color lo pone su tono (te espera) */
+.tac-numero { font-weight: normal; }
+
+/* en un ancho chico (el teléfono), el título necesita el lugar: se van cuánto lleva esperando y dónde vive (siguen en
+   el globo y al abrirla) */
+@container tactica (max-width: 64ch) {
+  .tac-edad,
+  .tac-quehacer .item-sufijo { display: none; }
+}
+
+/* lado a lado, donde caben: Decidir más ancho (es lo que más filas tiene), Hacer a su derecha tras una línea; las dos
+   cabeceras a la misma altura. En el teléfono, en columna */
+@container tactica (min-width: 96ch) {
+  .disp-lado .tac-par,
+  .disp-franja .tac-par {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .disp-lado .tac-par > .tac-hacer,
+  .disp-franja .tac-par > .tac-hacer {
+    border-left: var(--borde);
+  }
+}

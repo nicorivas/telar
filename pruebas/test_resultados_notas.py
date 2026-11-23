@@ -44,6 +44,30 @@ class Resultados(Prueba):
         self.assertFalse(resultados.local(self.config(), "plan", "../../etc")["ok"])
         self.assertFalse(resultados.local(self.config(), "otro")["ok"])
 
+    def test_con_prefijo_se_leen_sus_archivos_y_ultimo_es_el_mas_reciente(self):
+        # el resumen de la semana vive en la misma carpeta que el plan: estrategia-AAAA-MM-DD.md, con la fecha de su lunes
+        (self.planes / "estrategia-2026-10-05.md").write_text("# la semana del 5")
+        (self.planes / "estrategia-2026-10-12.md").write_text("# la semana del 12")
+        (self.planes / "estrategia-borrador.md").write_text("no es un día")
+        cfg = mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado",
+                                resultados=(mod_config.Resultado(clave="estrategia", carpeta=str(self.planes), prefijo="estrategia-"),))
+        r = resultados.local(cfg, "estrategia", "ultimo")
+        self.assertEqual((r["ok"], r["dia"], r["formato"], r["contenido"], r["archivo"]),
+                         (True, "2026-10-12", "md", "# la semana del 12", "estrategia-2026-10-12.md"))
+        self.assertEqual(r["dias"], ["2026-10-12", "2026-10-05"], "solo los suyos, sin el plan ni lo que no es un día")
+        self.assertEqual(resultados.local(cfg, "estrategia", "2026-10-05")["contenido"], "# la semana del 5")
+        self.assertIsNone(resultados.local(cfg, "estrategia", "2026-10-06")["contenido"], "el plan del 6 no es suyo")
+        # sin prefijo, los del resumen no se cuelan entre los días del plan; «ultimo» también sirve
+        self.assertEqual(resultados.local(self.config(), "plan", "ultimo")["dia"], "2026-10-06")
+        self.assertEqual(resultados.local(self.config(), "plan", "2026-10-06")["dias"], ["2026-10-06", "2026-10-05"])
+        # sin ninguno, «ultimo» es hoy, vacío
+        vacia = Path(self.tmp.name) / "vacia"
+        vacia.mkdir()
+        sin = mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado",
+                                resultados=(mod_config.Resultado(clave="estrategia", carpeta=str(vacia), prefijo="estrategia-"),))
+        r = resultados.local(sin, "estrategia", "ultimo")
+        self.assertEqual((r["ok"], r["contenido"], r["dias"]), (True, None, []))
+
     def test_con_bus_se_pide_alla_y_si_no_responde_se_lee_aqui(self):
         cfg = mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "estado",
                                 bus=mod_config.Bus(url="nats://x:1", maquina="laptop"),
@@ -97,6 +121,13 @@ class Resultados(Prueba):
         self.assertEqual((cfg.resultados[0].clave, cfg.resultados[0].en, cfg.resultados[0].nombre), ("plan", "telar", "Plan del día"))
         self.assertEqual(cfg.notas.en, "telar")
         f.write_text('[resultados.plan]\nnombre = "x"\n')
+        with self.assertRaises(mod_config.ErrorDeConfig):
+            mod_config.cargar(f)
+        f.write_text('[resultados.estrategia]\ncarpeta = "~/planes"\nprefijo = "estrategia-"\n')
+        self.assertEqual(mod_config.cargar(f).resultados[0].prefijo, "estrategia-")
+        f.write_text('[vistas.estrategia]\naparece = "dia"\ncarpeta = "~/planes"\nprefijo = "estrategia-"\n')
+        self.assertEqual(mod_config.cargar(f).resultados[0].prefijo, "estrategia-", "también como vista")
+        f.write_text('[resultados.estrategia]\ncarpeta = "~/planes"\nprefijo = "../x-"\n')
         with self.assertRaises(mod_config.ErrorDeConfig):
             mod_config.cargar(f)
 

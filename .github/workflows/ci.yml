@@ -75,9 +75,61 @@ jobs:
         working-directory: pagina
       - run: npm run prueba:enlaces
         working-directory: pagina
+      - run: npm run prueba:enlazar
+        working-directory: pagina
+      - run: npm run prueba:nombre-suelto
+        working-directory: pagina
       - run: npm run prueba:semana
         working-directory: pagina
       - run: npm run prueba:arrastre
+        working-directory: pagina
+      - run: npm run prueba:componentes
+        working-directory: pagina
+      - run: npm run prueba:readme
+        working-directory: pagina
+      - run: npm run prueba:nota
+        working-directory: pagina
+      - run: npm run prueba:esperas
+        working-directory: pagina
+      - run: npm run prueba:contestar
+        working-directory: pagina
+      - run: npm run prueba:dia
+        working-directory: pagina
+      - run: npm run prueba:pestanas
+        working-directory: pagina
+      - run: npm run prueba:confirmar
+        working-directory: pagina
+      - run: npm run prueba:lienzo
+        working-directory: pagina
+      - run: npm run prueba:avisos
+        working-directory: pagina
+      - run: npm run prueba:modos
+        working-directory: pagina
+      - run: npm run prueba:mundos
+        working-directory: pagina
+      - run: npm run prueba:horario
+        working-directory: pagina
+      - run: npm run prueba:modos-mundo
+        working-directory: pagina
+      - run: npm run prueba:barra
+        working-directory: pagina
+      - run: npm run prueba:dormidos
+        working-directory: pagina
+      - run: npm run prueba:alcance
+        working-directory: pagina
+      - run: npm run prueba:anchos
+        working-directory: pagina
+      - run: npm run prueba:buscador
+        working-directory: pagina
+      - run: npm run prueba:pulso
+        working-directory: pagina
+      - run: npm run prueba:mundos-ventana
+        working-directory: pagina
+      - run: npm run prueba:leer
+        working-directory: pagina
+      - run: npm run prueba:leer-hilo
+        working-directory: pagina
+      - run: npm run prueba:temas
         working-directory: pagina
 
   mod:

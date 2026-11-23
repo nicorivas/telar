@@ -1,0 +1,20 @@
+/* La sección de lista (componentes/seccion.ts): lo que lleva un grupo de la barra entre su cabecera y sus filas. Con @scope,
+   como hilos.css: la barra y su muestra del catálogo; las listas del dashboard llevan la misma barra del buscador
+   (buscador.css), de borde a borde de su pantalla (dia.css). scripts/navegador.mjs la junta en src/telar/web/marco.css. */
+
+@scope (#barra, .barra-de-muestra) {
+  /* entre un grupo y el siguiente: el aire, bajo las filas del de arriba, y la línea de arriba de la cabecera que sigue,
+     de borde a borde y en el borde de su fondo (como la de abajo, sobre el mismo fondo: del mismo color). Tras una
+     sección plegada, nada: la línea de abajo de su cabecera ya la aparta */
+  .sep { margin-top: .4em; }
+  .sep + .item.cabecera { border-top: var(--borde); }
+  .item.cabecera + .sep { display: none; }
+  .item.cabecera + .sep + .item.cabecera { border-top: 0; }
+  /* las herramientas de un grupo (HILOS, ARCHIVO), bajo su cabecera: la barra del buscador (buscador.css), del alto de
+     las barras y con su línea abajo de borde a borde, que la aparta de las filas. La lupa, en la columna del ícono de
+     plegar de la cabecera, y lo escrito donde su título (la sangría de las filas: item.css), como «nada calza». A la
+     derecha, el grupo de ordenar, entre dos cortes en su púrpura, cada uno en su celda cuadrada, y lo que se le sume (en
+     HILOS, ver las máquinas): orden.css */
+  .herram { --buscador-margen: var(--item-pad-x); }
+  .vacia { color: var(--texto-tenue); padding: 0 var(--item-pad-x) 0 calc(var(--item-pad-x) + var(--item-ranura) + var(--item-texto-sangria)); }
+}

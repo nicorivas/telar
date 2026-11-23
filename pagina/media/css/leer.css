@@ -1,0 +1,352 @@
+/* La ficha de una lectura (vistas/dashboard/leer.ts): un ítem de una pestaña con `vista = "lectura"`, para leerlo con
+   calma. Dos registros, cada uno de un solo tamaño: el del texto (con serifa, más grande, un ancho de lectura) y el de
+   telar alrededor (la letra de la terminal, en su tamaño: de dónde viene, los rótulos, las notas, los botones). Dentro
+   de cada uno, lo que importa se distingue por color y peso, no por tamaño. Ancho, el texto y al lado, quieto, el
+   margen con sus conexiones; angosto, una columna. scripts/navegador.mjs lo junta en src/telar/web/marco.css. */
+
+@scope (.leer) {
+  :scope {
+    --tam-leer: 18px;
+    --ancho-leer: 60ch;
+    /* el aire a los lados: donde cuelga la raya de una anotación */
+    --aire-leer: clamp(.6rem, 4cqw, 3rem);
+
+    display: grid;
+    grid-template-columns: minmax(0, var(--ancho-leer)) minmax(24ch, 32ch);
+    gap: 0 5ch;
+    align-items: start;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 2.2rem var(--aire-leer) 5rem;
+    color: var(--fg);
+    font-family: var(--serifa);
+    line-height: 1.65;
+    white-space: normal;
+  }
+
+  /* el dashboard fuerza un solo tamaño (dia.css, `#dia *`, con un id): la lectura tiene el suyo, con su id */
+  :scope#leer { font-size: var(--tam-leer) !important; }
+
+  * { box-sizing: border-box; }
+
+  /* el registro de telar: la letra de la terminal, en su tamaño */
+  .rotulo,
+  .dateline,
+  .procedencia,
+  .procesando,
+  .relaciones,
+  .anotado,
+  .decidir,
+  .ayuda,
+  .seguir,
+  .fuentes,
+  .margen-leer,
+  a.nota {
+    font-family: var(--letra), iconos, monospace;
+    line-height: 1.5;
+  }
+
+  :scope#leer :is(.rotulo, .dateline, .procedencia, .procesando, .anotado, .decidir, .ayuda, .seguir, .fuentes, .margen-leer, a.nota, .prosa code, .relaciones) {
+    font-size: var(--tam) !important;
+  }
+
+  :scope#leer .seguir .que { font-size: var(--tam-leer) !important; }
+
+  .i { font-family: iconos, var(--letra), monospace; }
+  a { color: var(--acento); text-decoration: none; cursor: pointer; }
+  a:hover { text-decoration: underline; }
+
+  /* la columna de lectura: el texto, la respuesta y lo que sigue; el margen, al lado */
+  .texto-leer,
+  .respuesta-leer,
+  .seguir { grid-column: 1; }
+
+  /* arriba: el carril y los temas, el título y de dónde viene; tranquilo */
+  .cab-leer { margin-bottom: 2.4rem; }
+  .dateline { display: flex; flex-wrap: wrap; gap: 0 1.5ch; color: var(--dim); }
+  .dateline .carril { font-weight: bold; }
+  .dateline .marca { display: inline-flex; align-items: center; gap: .6ch; }
+  .dateline .tema + .tema::before { color: var(--dim); content: "· "; }
+  .dateline a.tema { color: var(--dim); text-decoration: underline dotted; }
+  .dateline a.tema:hover,
+  .dateline a.tema.abierta { color: var(--acento); }
+
+  h1 {
+    margin: .6rem 0 .5rem;
+    color: var(--fg);
+    font: inherit;
+    font-weight: 700;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+
+  .procedencia { color: var(--dim); }
+  .procedencia .original { white-space: nowrap; }
+
+  /* el texto */
+  .bloque-leer { margin: 0 0 2rem; }
+  .bloque-leer .rotulo { margin-bottom: .5rem; color: var(--dim); }
+
+  .prosa {
+    & p { margin: 0 0 1.05em; }
+    & ul { margin: 0 0 1.05em; padding-left: 1.3em; }
+    & li { margin: .25em 0; }
+    & b { font-weight: 700; }
+    & i { font-style: italic; }
+    & code { color: var(--cian); font-family: var(--letra), monospace; }
+  }
+
+  /* lo que el curador escribe para ti, con la raya de su color */
+  .anotacion {
+    position: relative;
+
+    /* la raya va en el aire de al lado, para que el texto siga alineado con el título */
+    &::before {
+      position: absolute;
+      inset: .25em auto .25em -1.4rem;
+      width: 2px;
+      background: var(--c);
+      content: "";
+    }
+
+    & .rotulo { color: var(--c); }
+  }
+
+  /* una nota de la casa que nombra el texto: se abre al lado (o, angosto, ahí mismo) */
+  a.nota {
+    padding: 0 .2em;
+    color: var(--acento);
+    background: color-mix(in srgb, var(--acento) 10%, transparent);
+  }
+
+  a.nota.abierta { color: var(--bg); background: var(--acento); }
+  /* una que no está en el repositorio (o una carpeta sin documento): se nombra, pero no se puede leer */
+  a.nota.ilegible { color: var(--atencion); text-decoration: underline dotted; background: none; }
+  a.nota:hover { text-decoration: none; background: color-mix(in srgb, var(--acento) 22%, transparent); }
+  a.nota.abierta:hover { background: var(--acento); }
+
+  .fuentes {
+    margin: 0;
+    padding: 0;
+    color: var(--dim);
+    list-style: none;
+
+    & li { overflow-wrap: anywhere; }
+    & a { color: var(--dim); }
+    & a:hover { color: var(--acento); }
+  }
+
+  /* al final, lo que se piensa después de leer: la caja del porqué y la respuesta, sin números ni apuro */
+  .respuesta-leer {
+    margin: 1rem 0 2rem;
+    padding-top: 1.4rem;
+    box-shadow: inset 0 1px 0 var(--linea);
+
+    & .rotulo { margin-bottom: .6rem; color: var(--dim); }
+  }
+
+  /* lo que ya se respondió: queda a la vista, en el color del carril */
+  .anotado { margin-bottom: .6rem; color: var(--c, var(--verde)); overflow-wrap: anywhere; }
+
+  textarea {
+    display: block;
+    width: 100%;
+    padding: .7rem .9rem;
+    border: 0;
+    border-radius: 0;
+    color: var(--fg);
+    background: var(--bg-barra);
+    font: inherit;
+    line-height: 1.55;
+    resize: vertical;
+    box-shadow: inset 2px 0 0 var(--linea);
+  }
+
+  textarea:focus { outline: none; box-shadow: inset 2px 0 0 var(--c, var(--acento)); }
+  textarea::placeholder { color: var(--dim); font-style: italic; }
+
+  .decidir { display: flex; flex-wrap: wrap; gap: .4rem 3ch; margin-top: .8rem; }
+
+  .decision {
+    color: var(--fg);
+
+    &.si { color: var(--verde); }
+    &.no { color: var(--rojo); }
+  }
+
+  .ayuda { margin: .5rem 0 0; color: var(--dim); }
+
+  /* lo que sigue: el título del próximo, para pasar cuando se quiera; respondido, en la tinta del enlace */
+  .seguir {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: .6rem 3ch;
+    padding-top: 1.4rem;
+    box-shadow: inset 0 1px 0 var(--linea);
+
+    & .rotulo { color: var(--dim); }
+    & .que { color: var(--fg); font-family: var(--serifa); }
+    & .antes { color: var(--dim); }
+    &.listo .rotulo,
+    &.listo .que { color: var(--acento); }
+  }
+
+  /* la nota de una tarjeta expandida (leer.ts, `htmlNota`), para leerla: dónde está, su comienzo en la letra de la
+     lectura (lo único de la tarjeta en ese registro: son sus palabras) y «seguir leyendo»; después, sin competir con
+     él, con qué conecta en el grafo */
+  .nota-leer {
+    margin-top: .3lh;
+
+    & .ruta-nota,
+    & .ruta-nota a { color: var(--dim); overflow-wrap: anywhere; }
+    & .rotulo { margin: 0 0 .3lh; color: var(--dim); }
+  }
+
+  :scope#leer .comienzo-nota { font-size: var(--tam-leer) !important; }
+
+  .comienzo-nota {
+    margin: .5rem 0 .3rem;
+    color: var(--fg);
+    font-family: var(--serifa);
+    line-height: 1.6;
+    overflow-wrap: break-word;
+
+    & p { margin: 0 0 .7em; }
+    & ul { margin: 0 0 .7em; padding-left: 1.2em; }
+    & li { margin: .2em 0; }
+    & b { font-weight: 700; }
+    & i { font-style: italic; }
+    & code { color: var(--cian); font-family: var(--letra), monospace; }
+  }
+
+  .seguir-leyendo { display: inline-block; margin-bottom: .2lh; }
+  .grafo-nota { margin-top: .9lh; }
+
+  .conexiones-leer {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    & li { margin: 0 0 .2lh; }
+    & .tipo { color: var(--violeta); }
+  }
+
+  .mas-conexiones { display: inline-block; margin: .3lh 0; color: var(--dim); }
+
+  /* el margen: al lado del texto, quieto mientras se lee, bajo la barra de la pantalla (que también queda arriba) */
+  .margen-leer {
+    grid-row: 1 / span 3;
+    grid-column: 2;
+    position: sticky;
+    top: 2.6rem;
+    max-height: calc(100cqh - 4rem);
+    padding: .2rem 0 1rem 2ch;
+    overflow: auto;
+    box-shadow: inset 1px 0 0 var(--linea);
+  }
+
+  /* sin nada que llevar al grafo, no hay margen: el texto solo, al centro */
+  &.sin-notas { grid-template-columns: minmax(0, var(--ancho-leer)); }
+
+  /* volviendo a procesar: arriba de todo, con el círculo que gira, en la tinta de lo que trabaja */
+  .procesando { margin-bottom: 1.4rem; color: var(--dim); }
+
+  /* «conexiones» (relaciones.ts): una tarjeta por cada una, las propuestas y las otras notas que nombra el texto;
+     ninguna entra si no se elige */
+  .relaciones {
+    margin-bottom: 1.6lh;
+
+    & > .rotulo { margin-bottom: .3lh; color: var(--dim); }
+    & .cuenta-rel { margin-left: 1ch; color: var(--fg); }
+    /* lo que le falta a una nota nombrada para entrar (su tipo, su porqué): la pregunta, en la tinta de lo apagado */
+    & .por-elegir { color: var(--dim); text-decoration: underline dotted; }
+    & a.por-elegir:hover { color: var(--acento); }
+  }
+
+  /* cada tarjeta: el círculo (lleno: entra; aro: no), el título de la nota, lo que dice (su resumen, en el color del
+     texto, hasta tres líneas: es lo que más se lee), la relación en una línea (el tipo en su color, y su porqué, tenue)
+     y los puntos. Las que nombra el texto van después de las propuestas, con más aire entre unas y otras */
+  .lista-rel {
+    & .rel:not(.nombrada) + .rel.nombrada { margin-top: var(--tarjeta-aire); }
+    /* un punto por cada conexión que la nota ya tiene: se ve cuál ya es un centro */
+    & .tarjeta-pie { color: var(--dim); }
+    & .rel.ilegible .tarjeta-titulo { color: var(--texto-tenue); }
+  }
+
+  .resumen-rel {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--fg);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+
+    & p, & ul, & li { display: inline; margin: 0; padding: 0; }
+    & code { color: inherit; }
+  }
+
+  .linea-rel { margin-top: .25lh; }
+  .linea-rel .porque-rel { color: var(--dim); }
+
+  /* una nota que no se puede leer (no está, o una carpeta sin documento): lo dice, en el color de cuidado */
+  .ilegible-rel { color: var(--atencion); }
+  .ruta-rel { color: var(--dim); overflow-wrap: anywhere; }
+
+  /* expandida, al final: la relación para crearla. Un rótulo y su valor por línea; el porqué, en su campo */
+  .detalle-rel {
+    margin-top: 1lh;
+    padding-top: .6lh;
+    box-shadow: inset 0 1px 0 var(--linea);
+
+    & .fila-rel { margin-bottom: .35lh; }
+    & .rotulo-rel { margin-right: 1ch; color: var(--dim); }
+    & .campo-rel .rotulo-rel { display: block; margin-bottom: .2lh; }
+    & .tipo-detalle { text-decoration: underline dotted; }
+    & .ancla-rel { color: var(--dim); font-style: italic; }
+  }
+
+  /* el porqué: el campo de la caja de «tu lectura», a su tamaño */
+  textarea.porque-campo {
+    min-height: calc(2lh + .8rem);
+    padding: .4rem .8ch;
+    line-height: 1.5;
+    resize: none;
+    field-sizing: content;
+  }
+
+  /* conectar: en el color de su tipo; sin tipo o sin porqué, apagado y con lo que le falta. Conectada, lo dice */
+  .accion-rel { margin-top: .5lh; }
+  .conectar-rel { color: var(--c, var(--acento)); font-weight: bold; }
+  .conectar-rel.incompleta { color: var(--dim); font-weight: normal; }
+  .falta-rel { margin-left: 1ch; color: var(--dim); }
+  .conectada { font-weight: bold; }
+  .quitar-rel { margin-left: 1ch; color: var(--dim); }
+  .quitar-rel:hover { color: var(--rojo); }
+
+  /* la frase del texto en que se apoya la relación por la que se pasa */
+  .prosa::highlight(ancla-verde) { background: color-mix(in srgb, var(--verde) 28%, transparent); }
+  .prosa::highlight(ancla-rojo) { background: color-mix(in srgb, var(--rojo) 28%, transparent); }
+  .prosa::highlight(ancla-amarillo) { background: color-mix(in srgb, var(--amarillo) 28%, transparent); }
+  .prosa::highlight(ancla-azul) { background: color-mix(in srgb, var(--azul) 28%, transparent); }
+  .prosa::highlight(ancla-cian) { background: color-mix(in srgb, var(--cian) 28%, transparent); }
+  .prosa::highlight(ancla-magenta) { background: color-mix(in srgb, var(--magenta) 28%, transparent); }
+  .prosa::highlight(ancla-violeta) { background: color-mix(in srgb, var(--violeta) 28%, transparent); }
+
+  /* angosto (el celular, o el panel chico): una columna, con el margen entre el texto y la respuesta */
+  @container (width < 820px) {
+    :scope { display: block; max-width: calc(var(--ancho-leer) + 2 * var(--aire-leer)); margin: 0 auto; }
+
+    .margen-leer {
+      position: static;
+      max-height: none;
+      padding: 1.4rem 0 0;
+      overflow: visible;
+      box-shadow: inset 0 1px 0 var(--linea);
+    }
+  }
+
+  @container (width < 520px) {
+    :scope { --tam-leer: 17px; padding-top: 1.2rem; }
+    .anotacion::before { left: -.8ch; }
+  }
+}

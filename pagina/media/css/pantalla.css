@@ -1,0 +1,74 @@
+/* La pantalla (componentes/pantalla.ts): lo que llena la columna de la derecha, un hilo o una app del dashboard. Su
+   barra arriba, de borde a borde, con el fondo de barra y una línea abajo; y su cuerpo, sin margen propio, con el aire
+   dentro de cada fila (--pantalla-margen, el mismo de las filas de la barra de hilos: el texto de las dos columnas
+   arranca igual). Sin @scope: la usan el hilo (#acciones, navegador/app.ts) y el dashboard (.v-dia).
+   La barra mide siempre --pantalla-barra-alto, como la franja de avisos de la izquierda y la barra del lado de la
+   derecha: sus líneas de abajo van a la misma altura, como una sola. (Sin el alto puesto, un ícono de la letra `iconos`
+   en la fila la estiraba un píxel: su letra trae otro interlineado.) El alto cuenta el relleno y la línea
+   (border-box, puesto aquí: el dashboard pone content-box a todo lo suyo, dia.css, y le sumaba 2 × --e-1 y la línea);
+   lo que no cabe se corta, no la estira. */
+
+.pantalla-barra {
+  display: flex;
+  align-items: baseline;
+  gap: 0 var(--h-1);
+  box-sizing: border-box;
+  height: var(--pantalla-barra-alto);
+  min-width: 0;
+  padding: var(--e-1) var(--pantalla-margen);
+  overflow: hidden;
+  border-bottom: var(--borde);
+  background: var(--pantalla-barra-fondo);
+  white-space: nowrap;
+
+  & a { text-decoration: none; }
+}
+
+/* el nombre de la app, en su tinta (style="--pantalla-c"), con el peso y las letras de una cabecera de grupo */
+.pantalla-nombre {
+  flex: none;
+  color: var(--pantalla-c, var(--pantalla-nombre));
+  font-weight: var(--item-cabecera-peso);
+  text-transform: var(--item-cabecera-letras);
+}
+
+.pantalla-vistas { display: flex; flex: none; align-items: baseline; }
+.pantalla-acciones { display: flex; flex: 0 1 auto; min-width: 0; align-items: baseline; }
+
+.pantalla-resumen {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pantalla-resumen);
+}
+
+.pantalla-lleno { flex: 1; }
+
+/* un botón de la barra: tenue, y al pasar encima, del color de lo que hace (--pantalla-tono) o del texto. Los de
+   solo un ícono, cada uno en su celda cuadrada (la gramática visual: la grilla), todos iguales, y entre dos, un
+   cuadrado vacío; los de palabra miden lo que su palabra */
+.pantalla-boton {
+  color: var(--pantalla-boton);
+  cursor: pointer;
+
+  &:hover { color: var(--pantalla-tono, var(--pantalla-boton-hover)); }
+  &.cuadrada { display: inline-block; inline-size: calc(var(--item-alto) * 1em); text-align: center; }
+  /* entre dos íconos seguidos (las vistas, las acciones), un espacio cuadrado (la grilla, item.css) */
+  &.cuadrada + &.cuadrada { margin-inline-start: var(--entre-celdas); }
+  /* uno de palabra (la carpeta de un hilo, una ruta, una vista sin ícono) es un enlace: tenue como los demás, y al
+     pasar encima en su tono (el hover de arriba; sin color propio aquí, que lo taparía), y se corta con «…» */
+  &.palabra { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-inline: var(--h-1); }
+  & kbd { font: inherit; }
+}
+
+/* la vista que se ve, y una acción encendida (un filtro puesto) */
+.pantalla-vista.si { color: var(--pantalla-vista-si); }
+.pantalla-accion.si { color: var(--pantalla-tono, var(--pantalla-boton-hover)); }
+
+/* los colores de una acción, por lo que hace (web/iconos.ts, C): al pasar encima */
+.pantalla-accion.tono-azul { --pantalla-tono: var(--azul); }
+.pantalla-accion.tono-amarillo { --pantalla-tono: var(--amarillo); }
+.pantalla-accion.tono-violeta { --pantalla-tono: var(--violeta); }
+.pantalla-accion.tono-verde { --pantalla-tono: var(--verde); }
+.pantalla-accion.tono-rojo { --pantalla-tono: var(--rojo); }
+.pantalla-accion.tono-cian { --pantalla-tono: var(--cian); }

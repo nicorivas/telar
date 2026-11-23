@@ -73,12 +73,20 @@ class Fecha:
     version: str = ""
     #: por qué no se puede mover (su inicio no es editable), en palabras; "" si se puede
     bloqueo: str = ""
+    #: en qué etapa va, en una o dos palabras («preparación», «desarrollo»); "" si su fuente no lo dice. Sobre todo
+    #: de un plazo: la etapa del proyecto
+    etapa: str = ""
+    #: cuánto avanzó, de 0 a 1; None si su fuente no lo sabe
+    avance: float | None = None
+    #: lo que no cuadra, en palabras («venció el 22-oct»); "" si nada
+    aviso: str = ""
 
     def a_json(self) -> dict:
         return {"id": self.id, "titulo": self.titulo, "inicio": self.inicio.isoformat(), "fin": self.fin.isoformat(),
                 "hora": self.hora, "clase": self.clase, "proyecto": self.proyecto, "estado": self.estado,
                 "responsable": self.responsable, "depende": list(self.depende), "fuente": self.fuente,
-                "enlace": self.enlace, "editable": list(self.editable), "version": self.version, "bloqueo": self.bloqueo}
+                "enlace": self.enlace, "editable": list(self.editable), "version": self.version, "bloqueo": self.bloqueo,
+                "etapa": self.etapa, "avance": self.avance, "aviso": self.aviso}
 
 
 @dataclass(slots=True)
@@ -491,10 +499,16 @@ def de_json(datos: object, origen: str) -> Fecha:
     if estado not in ESTADOS:
         estado = estado_de(estado)
     depende = datos.get("depende", [])
+    avance = datos.get("avance")
+    if avance is not None:
+        if isinstance(avance, bool) or not isinstance(avance, (int, float)) or not 0 <= avance <= 1:
+            raise ValueError(f"{origen}: avance es un número de 0 a 1; llegó {avance!r}")
+        avance = float(avance)
     return Fecha(id=texto("id") or origen, titulo=titulo, inicio=inicio, fin=max(inicio, fin), hora=texto("hora"),
                  clase=clase, proyecto=texto("proyecto").strip("/"), estado=estado, responsable=texto("responsable"),
                  depende=tuple(str(x) for x in depende) if isinstance(depende, list) else (),
-                 fuente=texto("fuente") or origen, enlace=texto("enlace"), bloqueo=texto("bloqueo"))
+                 fuente=texto("fuente") or origen, enlace=texto("enlace"), bloqueo=texto("bloqueo"),
+                 etapa=texto("etapa"), avance=avance, aviso=texto("aviso"))
 
 
 def unidad_de(ruta: str, unidades: list[str] | set[str]) -> str:

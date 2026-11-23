@@ -31,7 +31,7 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(str(e))
     if r.aviso:
         print(_comun.tenue(f"  {r.aviso}"))
-    if r.hecho == "foco":
+    if r.hecho in ("foco", "despierto"):
         print(f"→ «{r.hilo}»")
     elif r.hecho == "nuevo-remoto":
         print(f"→ «{r.hilo}» (nuevo, en {r.destino} · sesión {r.sesion})")

@@ -1,10 +1,8 @@
 /* El marco de la página de telar en el navegador (src/telar/web/indice.html): arriba la cabecera, de lado a
-   lado; abajo la barra de hilos a la izquierda y los marcos (el dashboard, un hilo) a la derecha. Solo
-   oscuro.
+   lado; abajo la barra de hilos a la izquierda y los marcos (el dashboard, un hilo) a la derecha. Los colores, del
+   tema puesto (tokens.css, temas.css).
    scripts/navegador.mjs lo junta con tokens.css y base.css en src/telar/web/marco.css, que la página
    carga antes que app.js: así se ve armada desde el primer momento. */
-
-:root { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 
@@ -14,12 +12,14 @@ body { height: 100%; }
 body {
   display: grid;
   grid-template-rows: auto 1fr;
-  grid-template-columns: minmax(240px, 22vw) 1fr;
+  /* la barra de hilos: la de fábrica, o la que se eligió arrastrando su línea (web/anchos.ts pone --barra-ancho) */
+  grid-template-columns: var(--barra-ancho, minmax(240px, 22vw)) 1fr;
   height: 100dvh;
 }
 
 /* los modos (web/modos.ts): cada ajuste de disposición es un data-* de body. La barra plegada se angosta a su
-   franja y oculta no está; la cabecera, las acciones del hilo, la caja de escribir y el aviso de versión se esconden.
+   franja y oculta no está; la cabecera, las acciones del hilo y la caja de escribir se esconden (el aviso de versión, en
+   la franja de avisos: web/franja.ts).
    En el celular (angosto) la barra no se pliega ni se oculta: ahí es su propia pantalla */
 body[data-barra="plegada"]:not(.angosto) { grid-template-columns: auto 1fr; }
 body[data-barra="oculta"]:not(.angosto) { grid-template-columns: 1fr; }
@@ -29,7 +29,13 @@ body[data-cabecera="oculta"] > header { display: none; }
 body[data-acciones="oculta"] #acciones { display: none; }
 /* la caja bajo la terminal: en el celular siempre, porque ahí teclear en la terminal misma no anda */
 body[data-escribir="oculta"]:not(.angosto) .v-terminal .escribir { display: none; }
-body[data-aviso_version="oculto"] #version { display: none; }
+
+/* una pestaña sola, instalada como su propia app (`/pestana/<nombre>/`): sin la cabecera ni la barra de hilos, solo el
+   dashboard en esa pestaña (indice.html pone la clase). Gana sobre los modos */
+body.solo { grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); }
+body.solo > header,
+body.solo > #barra { display: none; }
+/* sin la cabecera de la página, la pestaña es la pantalla entera: su barra y, debajo, el lienzo hasta el borde (dia.css) */
 
 /* sin cabecera, el ◧ arriba a la derecha vuelve al modo de antes */
 #salir-modo { display: none; }
@@ -48,52 +54,85 @@ body[data-cabecera="oculta"] #salir-modo {
   &:hover { color: var(--fg); }
 }
 
-/* el selector de modo, en la cabecera */
-#modos-sel { color: var(--dim); }
-#modos-sel:hover { color: var(--fg); text-decoration: none; }
-
+/* la barra: arriba la franja de avisos (web/franja.ts, franja.css), quieta, del alto de la barra de la pantalla de al
+   lado; debajo la lista de hilos, que corre. La lista de avisos se despliega sobre lo de al lado: la barra no la corta */
 #barra {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
   border-right: var(--borde);
+
+  & > #lista { flex: 1; min-height: 0; overflow: auto; }
 }
 
-/* la cabecera: al centro, la máquina que sirve esta página y lo que se ve («telar › Gestión», o
-   «telar ⇢ laptop:Telar» si es de otra máquina); a la derecha, los botones. Solo la de la página: las
-   pantallas tienen las suyas */
-body > header {
+/* la cabecera (src/telar/web/indice.html): a la izquierda la marca y la versión; al centro, la máquina que sirve esta
+   página y lo que se ve, como se escribe su dirección («laptop:Secretaría», o «laptop ⇢ servidor:Telar» si es de otra
+   máquina); a la derecha, el día en una línea (componentes/jornada.ts) y los botones. Debajo, su segundo nivel, la
+   banda: los modos (táctica, estrategia, foco, todo) y el mundo (modos.css); la línea de abajo, la de siempre, con o
+   sin mundo. Solo la de la página: las pantallas tienen las suyas. El catálogo la dibuja con las mismas clases (/componentes#jornada,
+   #modos-mundos).
+   Se adapta a su ancho: la cabecera es un contenedor (`@container cabecera`, abajo) y su fila se aprieta en orden:
+   1. la versión que corre, que se ve solo con holgura (está también en el globo de la marca y en ⚙ versión);
+   2. el día en una línea, que se resume (componentes/jornada.ts) y al final se va;
+   3. al centro, la máquina antes que lo que se ve, que se corta con «…»; con poco ancho, viendo algo, la máquina se va;
+   4. la marca, que se resume en «T»;
+   y nunca los botones de la derecha, que llevan a lo principal: miden siempre lo suyo.
+   La fila: los lados (la marca, y los botones) crecen por igual con lo que sobra, así el centro queda al medio mientras
+   quepa; el día no crece, pide su ancho y es lo primero que cede. */
+.cabecera {
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: var(--h-2);
-  align-items: baseline;
+  min-width: 0;
   padding: var(--e-1) var(--h-1);
   border-bottom: var(--borde);
   background: var(--bg-barra);
-
-  & .izq,
-  & .der { display: flex; gap: var(--h-2); align-items: baseline; min-width: 0; }
-
-  & .der { justify-content: flex-end; }
+  white-space: nowrap;
+  container: cabecera / inline-size;
 }
 
-#donde {
+.cab-fila {
   display: flex;
-  gap: var(--h-1);
+  gap: var(--cabecera-hueco);
+  align-items: baseline;
+
+  --cabecera-hueco: var(--h-2);
+}
+
+.cab-izq,
+.cab-der { display: flex; flex: 1 0 0; gap: var(--cabecera-hueco); align-items: baseline; min-width: max-content; }
+
+/* los botones: el área que se aprieta va más allá del ícono (todo el alto de la cabecera y medio hueco a cada lado),
+   sin moverlo: el margen negativo lo devuelve a su lugar */
+.cab-der { justify-content: flex-end; gap: 0; margin-right: calc(-1 * var(--h-1)); }
+.cab-der > a { flex: none; padding: var(--e-1) var(--h-1); margin-block: calc(-1 * var(--e-1)); }
+
+/* la máquina y lo que se ve, pegados por los dos puntos («laptop:Telar», como se escribe la dirección); el ⇢ de un hilo
+   de otra máquina, con aire a cada lado («laptop ⇢ servidor:Telar») */
+.cab-donde {
+  display: flex;
+  flex: 0 1 auto;
   align-items: baseline;
   min-width: 0;
-  white-space: nowrap;
+  overflow: hidden;
 
-  & #aqui { color: var(--violeta); }
-  & #icono { color: var(--dim); }
-  & #icono.otra { color: var(--amarillo); }
-  & #icono[hidden] { display: none; }
-  & #visto { overflow: hidden; text-overflow: ellipsis; }
+  /* si no cabe, se corta la máquina antes que lo que se ve (con poco ancho se va: abajo) */
+  & .cab-aqui { flex: 0 1000 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; color: var(--violeta); }
+  & .cab-icono { flex: none; color: var(--dim); }
+  & .cab-icono.otra { margin-inline: var(--h-1); color: var(--amarillo); }
+  & .cab-icono[hidden] { display: none; }
+  & .cab-visto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
+/* el día en una línea: pide su ancho (--jornada-ancho) y cede antes que todo lo demás (de ahí el factor enorme: que el
+   centro no ceda ni una fracción de píxel mientras el día pueda), hasta quedar en cuánto falta, «1h 20»; eso no lo
+   suelta. Adentro, lo que muestra lo decide su ancho (jornada.css). Sin calendario, sin reuniones o con el día
+   terminado, no está. Un clic lleva al calendario */
+.cab-jornada { flex: 0 100000 var(--jornada-ancho); min-width: 6ch; cursor: pointer; }
+.cab-jornada:empty,
+.cab-jornada[hidden] { display: none; }
+
 /* la marca, arriba a la izquierda: un hilo de colores que corre despacio (la regla bajo las pestañas del
-   dashboard es el mismo) */
+   dashboard es el mismo). Con poco ancho queda su inicial, «T» (`.logo-resto` se va) */
 .logo {
   color: transparent;
   font-weight: bold;
@@ -113,23 +152,40 @@ body > header {
   .logo { animation: none; }
 }
 
-/* una versión nueva de telar: un clic la instala (pagina/src/web/version.ts) */
-#version { color: var(--amarillo); }
-#version[hidden] { display: none; }
-#version.trabajando { color: var(--dim); }
+/* a la derecha, tres íconos: las apps (si hay), las máquinas y la configuración. Los modos y el mundo van en la banda,
+   debajo (modos.css) */
+.cabecera .config { color: var(--dim); }
+.cabecera .config:hover { color: var(--fg); text-decoration: none; }
+/* una app a la vista: el ícono de las apps lo dice, como lo decía su fila en la barra */
+.cabecera #apps-sel.si { color: var(--acento); }
 
-/* a la derecha, tres íconos: el modo, las máquinas y la configuración (en el dashboard) */
-body > header .config { color: var(--dim); }
-body > header .config:hover { color: var(--fg); text-decoration: none; }
-/* el modo puesto filtra los hilos por etiquetas: la lista no es la de siempre, y el ícono lo dice */
-body > header #modos-sel.filtrando { color: var(--violeta); }
+/* lo que la cabecera deja según su ancho (en letras: crece con la letra de la página). 185 caben en un laptop de
+   1440px, 98 en una tableta de 768 y 46 a 53 en un teléfono */
+@container cabecera (width < 120ch) {
+  .cab-corre { display: none; }
+}
+
+@container cabecera (width < 64ch) {
+  .cab-fila { --cabecera-hueco: var(--h-1); }
+
+  .logo-resto,
+  .cab-volver .txt { display: none; }
+  .logo-t { text-transform: uppercase; }
+
+  /* viendo algo, el centro es para su nombre: la máquina se va con sus dos puntos, y el ⇢ queda solo si es de otra (el
+     nombre la dice: «⇢ servidor:Telar») */
+  .cab-donde:has(.cab-visto:not(:empty)) :is(.cab-aqui, .cab-icono:not(.otra)) { display: none; }
+  .cab-donde:has(.cab-visto:not(:empty)) .cab-icono.otra { margin-inline-start: 0; }
+}
 
 #modo[hidden] { display: none; }
-#volver { display: none; }
+/* «‹ hilos», en el celular viendo un hilo (abajo): se aprieta como los botones, en todo el alto de la cabecera */
+.cab-volver { display: none; order: -1; padding: var(--e-1) var(--h-1); margin: calc(-1 * var(--e-1)) calc(-1 * var(--h-1)); }
 
 
 /* a la derecha: arriba la barra de acciones del hilo que se ve (sus vistas, su carpeta), y abajo sus vistas */
 #marcos {
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -141,8 +197,8 @@ body > header #modos-sel.filtrando { color: var(--violeta); }
 #lado {
   grid-column: 2;
   grid-row: 1 / -1;
-  width: 46ch;
-  max-width: 40vw;
+  /* la de fábrica, o la que se eligió arrastrando su línea (web/anchos.ts pone --lado-ancho) */
+  width: var(--lado-ancho, min(46ch, 40vw));
   min-height: 0;
   overflow: auto;
   padding: var(--e-1) var(--h-2);
@@ -153,6 +209,19 @@ body > header #modos-sel.filtrando { color: var(--violeta); }
   &.plegado { width: auto; padding: var(--e-1) var(--h-1); overflow: hidden; }
 
   & .lado-cab { display: flex; gap: var(--h-1); align-items: baseline; }
+  /* su barra, arriba: del alto de la de la pantalla de al lado y de la franja de avisos (--pantalla-barra-alto), con su
+     línea abajo de borde a borde (el margen deshace el relleno del lado): las líneas de las tres columnas, a la misma
+     altura, como una sola */
+  & .lado-barra {
+    box-sizing: border-box;
+    height: var(--pantalla-barra-alto);
+    margin: calc(-1 * var(--e-1)) calc(-1 * var(--h-2)) var(--e-1);
+    padding: var(--e-1) var(--h-2);
+    overflow: hidden;
+    border-bottom: var(--borde);
+    white-space: nowrap;
+  }
+  &.plegado .lado-barra { margin-inline: calc(-1 * var(--h-1)); padding-inline: var(--h-1); }
   & .lado-pliegue { margin-left: auto; color: var(--dim); cursor: pointer; text-decoration: none; }
   & .lado-pliegue:hover { color: var(--fg); }
   & .lado-vertical { writing-mode: vertical-rl; color: var(--dim); cursor: pointer; margin-top: var(--e-1); }
@@ -172,17 +241,14 @@ body > header #modos-sel.filtrando { color: var(--violeta); }
   & .lado-sec > summary { cursor: pointer; color: var(--violeta); }
   & pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-  /* las dos hojas (la ficha de un agente y los códigos), cuando están las dos */
-  & .lado-hojas { display: flex; gap: var(--h-2); align-items: baseline; margin-bottom: var(--e-1); }
-  & .lado-hojas > a[data-hoja] { color: var(--dim); cursor: pointer; text-decoration: none; }
+  /* las hojas (la ficha de un agente, los códigos, el contexto), cuando hay más de una: cada pestaña en una línea */
+  & .lado-hojas { display: flex; gap: var(--h-2); align-items: baseline; }
+  & .lado-hojas > a[data-hoja] { color: var(--dim); cursor: pointer; text-decoration: none; white-space: nowrap; }
   & .lado-hojas > a[data-hoja]:hover { color: var(--fg); }
   & .lado-hojas > a.sel { color: var(--violeta); }
 
   /* la hoja de códigos (web/codigos.ts): la caja de buscar, y una fila por código, con su detalle debajo */
-  & .cod-buscar { display: flex; gap: var(--h-1); align-items: center; margin: var(--e-1) 0; color: var(--dim);
-    border-bottom: var(--borde); }
-  & .cod-buscar input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--fg);
-    font: inherit; padding: 2px 0; }
+  & .cod-buscar { margin: 0 calc(-1 * var(--h-2)) var(--e-1); --buscador-margen: var(--h-2); }
   & .cod-aviso, & .cod-pie { margin: var(--e-1) 0; }
   & .cod-sec { margin: var(--e-1) 0; }
   & .cod-tit { color: var(--violeta); cursor: default; }
@@ -203,32 +269,59 @@ body > header #modos-sel.filtrando { color: var(--violeta); }
   & .cod-campos dd { margin: 0; overflow-wrap: anywhere; }
   & .cod-texto { margin: var(--e-1) 0; max-height: 24em; overflow: auto; }
   & .cod-otras, & .cod-dijo { margin: var(--e-1) 0; overflow-wrap: anywhere; }
+
+  /* la hoja del contexto (web/carga.ts): el total y desde cuándo, sus partes, una fila por grupo (un submenú que se
+     abre) y, debajo de cada uno, sus cosas. Las filas son ítems: van de borde a borde de la barra, como en la de hilos */
+  & .carga-total { margin: var(--e-1) 0 0; }
+  & .carga-cifra { color: var(--titulo); }
+  & .carga-nota, & .carga-pie, & .carga-aviso { margin: var(--e-1) 0; }
+  & .carga-lista { margin: var(--e-1) calc(-1 * var(--h-2)); }
 }
 
 body.angosto #lado { display: none; }
 
+/* la franja de agarre de cada línea (web/anchos.ts): 6 px invisibles a caballo de la línea, que sigue siendo la de un
+   píxel; al pasar, el cursor de cambiar el ancho, y mientras se arrastra, la línea con el acento (y ese cursor en toda
+   la página, sin seleccionar texto). La de la barra va en #marcos, sobre su borde izquierdo; la de la ficha, en la
+   columna de la ficha, sobre su borde; la de la terminal, en su marco (terminal.css). Cada una se va solo con su columna
+   plegada u oculta (la de la ficha sigue con la barra plegada), o en el teléfono (la de la terminal, solo ahí) */
+.tirador {
+  z-index: 6;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+#tirador-barra { position: absolute; top: 0; bottom: 0; left: -3px; }
+
+#tirador-lado {
+  position: relative;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  justify-self: start;
+  margin-left: -3px;
+}
+
+#lado:is([hidden], .plegado) + #tirador-lado,
+body:is([data-barra="plegada"], [data-barra="oculta"]) #tirador-barra,
+body.solo .tirador:not(#tirador-terminal),
+body.angosto .tirador { display: none; }
+
+body[data-arrastra] { cursor: col-resize; user-select: none; }
+body[data-arrastra] * { cursor: col-resize !important; }
+body[data-arrastra="barra"] #barra { border-right-color: var(--acento); }
+body[data-arrastra="lado"] #lado { border-left-color: var(--acento); }
+
+/* la barra de un hilo, arriba de sus vistas: la de una pantalla (componentes/pantalla.ts, pantalla.css), aquí solo su
+   lugar */
 #acciones {
   grid-column: 1;
   grid-row: 1;
-  display: flex;
-  gap: var(--h-2);
-  align-items: baseline;
-  padding: var(--e-1) var(--h-2);
-  border-bottom: var(--borde);
-  background: var(--bg-barra);
+  min-width: 0;
 
   &[hidden] { display: none; }
-
-  & a { color: var(--dim); text-decoration: none; white-space: nowrap; }
-  & a:hover { color: var(--fg); }
-  & a.si { color: var(--violeta); }
-  /* cada vista, solo su ícono (su nombre y su atajo, al pasar encima), en una columna de 2ch como en la barra de
-     hilos (el ícono mide 1,7 letras) */
-  & .i { display: inline-block; width: 2ch; text-align: center; }
-  & .lleno { flex: 1; }
-  /* la carpeta del hilo, como ruta (un clic: su carpeta y su documento) */
-  & a.ruta { min-width: 0; max-width: 50%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-             text-align: left; color: var(--azul); }
+  /* en el celular la ruta de la carpeta no es relevante: se esconde y el ícono de la carpeta la muestra */
+  body.angosto & [data-accion="carpeta"]:not(.abierta) .txt { display: none; }
 }
 
 /* en su fila aunque la barra de acciones esté escondida (el dashboard): si no, cae en la de arriba, que
@@ -246,74 +339,15 @@ body.angosto #lado { display: none; }
   & > [hidden] { display: none; }
 }
 
-/* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («◀ hilos» vuelve a la lista) */
-body.angosto {
-  grid-template-columns: 1fr;
-
-  & #corre { display: none; }
-
-  /* el centro (lo que se ve) se acorta con «…» antes de pisar los botones de los lados */
-  & > header { grid-template-columns: auto minmax(0, 1fr) auto; }
-  & #donde { justify-content: center; }
-}
+/* angosto (el celular): la cabecera, y abajo la lista o el detalle, de a uno («‹ hilos» vuelve a la lista) */
+body.angosto { grid-template-columns: 1fr; }
 
 /* en un celular, viendo un hilo, ese lugar es para volver a la lista */
-body.angosto.en-detalle #volver { display: inline; }
+body.angosto.en-detalle .cab-volver { display: block; }
 body.angosto.en-detalle .logo { display: none; }
 
 body.angosto.en-lista #marcos,
 body.angosto.en-detalle #barra { display: none; }
-
-/* el buscador (⌘K, web/buscador.ts): una caja arriba y al centro, sobre todo lo demás; lo escrito filtra al tiro */
-dialog.buscador {
-  /* dónde y de qué tamaño, lo pone web/buscador.ts en celdas enteras de la trama de atrás */
-  position: fixed;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  max-width: none;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: var(--borde);
-  color: var(--fg);
-  background: var(--bg-barra);
-  overflow: hidden;
-
-  /* lo de atrás, oscurecido y con una trama de ░, como la sombra de una ventana en una interfaz de texto: un
-     carácter por celda (un dibujo SVG que se repite; el color va escrito, el del texto del tema, muy tenue) */
-  /* el dibujo se estira a la celda de la letra de la página (--celda-w, --celda-h, de web/buscador.ts): la caja se
-     pone en esa misma cuadrícula */
-  &::backdrop {
-    background:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 16' preserveAspectRatio='none'%3E%3Ctext x='0' y='12.5' font-family='Menlo,monospace' font-size='13' fill='%23cdd6f4' fill-opacity='.16'%3E%E2%96%91%3C/text%3E%3C/svg%3E")
-        0 0 / var(--celda-w, 8px) var(--celda-h, 16px),
-      color-mix(in srgb, var(--bg) 80%, transparent);
-  }
-
-  & input {
-    box-sizing: border-box;
-    width: 100%;
-    padding: var(--e-1) var(--h-2);
-    border: 0;
-    border-bottom: var(--borde);
-    outline: none;
-    color: var(--fg);
-    background: transparent;
-    font: inherit;
-  }
-
-  & .b-lista { flex: 1; min-height: 0; overflow: auto; padding: var(--e-1) 0; }
-  /* una sola letra, de un solo tamaño; cada tipo de cosa, su color (el del grupo y el de sus íconos: --b-color) */
-  & .b-grupo { padding: var(--e-1) var(--h-2) 0; color: var(--b-color, var(--dim)); }
-  & .b-fila { display: flex; gap: var(--h-1); align-items: baseline; padding: 0 var(--h-2); cursor: pointer; white-space: nowrap; }
-  & .b-fila.sel { background: var(--sel); }
-  & .b-ic { flex: none; width: 1ch; color: var(--b-color, var(--dim)); }
-  & .b-t { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
-  & .b-d { min-width: 0; overflow: hidden; color: var(--dim); text-overflow: ellipsis; }
-  & .b-vacio { padding: var(--e-1) var(--h-2); color: var(--dim); }
-  & .b-pie { padding: 0 var(--h-2) var(--e-1); color: var(--dim); }
-}
 
 /* los glifos de risografía (pagina/src/web/glifos): el campo, en una banda arriba de la pantalla que se ve o detrás
    de todas las vistas, y el glifo de cada hilo en la barra */

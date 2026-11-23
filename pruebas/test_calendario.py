@@ -340,6 +340,104 @@ class Eleccion(Prueba):
         C.registrar()
 
 
+# ── lo que la persona respondió a cada invitación ───────────────────────────────
+
+def con_dueno(*veventos: str) -> str:
+    """Un calendario de Google: su nombre es el correo de su dueño."""
+    return ics("X-WR-CALNAME:yo@x.cl", *veventos)
+
+
+def invitacion(uid: str, *lineas: str) -> str:
+    return "\n".join(["BEGIN:VEVENT", f"UID:{uid}", f"SUMMARY:{uid}", "DTSTART:20260618T140000Z",
+                      "DTEND:20260618T150000Z", *lineas, "END:VEVENT"])
+
+
+class Respuesta(Prueba):
+    def respuestas(self, texto: str) -> dict[str, str]:
+        return {e.titulo: e.respuesta for e in leer(texto, date(2026, 6, 18))}
+
+    def test_el_partstat_del_dueno_dice_lo_que_respondio(self):
+        texto = con_dueno(
+            invitacion("acepto", "ATTENDEE;PARTSTAT=DECLINED:mailto:ana@y.cl", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:yo@x.cl"),
+            invitacion("rechazo", "ATTENDEE;PARTSTAT=DECLINED;CN=Yo:mailto:YO@x.cl"),
+            invitacion("quizas", "ATTENDEE;PARTSTAT=TENTATIVE:mailto:yo@x.cl"),
+            invitacion("nada", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:yo@x.cl"),
+            invitacion("sin_partstat", "ATTENDEE;CN=Yo:mailto:yo@x.cl"),
+            invitacion("delego", "ATTENDEE;PARTSTAT=DELEGATED:mailto:yo@x.cl"),
+        )
+        self.assertEqual(self.respuestas(texto), {
+            "acepto": "aceptada", "rechazo": "rechazada", "quizas": "tentativa", "nada": "sin_responder",
+            # sin PARTSTAT, el formato dice que no ha respondido; lo que no se entiende queda vacío
+            "sin_partstat": "sin_responder", "delego": "",
+        })
+
+    def test_sin_invitados_o_si_la_organiza_no_hay_respuesta(self):
+        texto = con_dueno(
+            invitacion("propio"),
+            invitacion("organiza", "ORGANIZER;CN=Yo:mailto:yo@x.cl", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:yo@x.cl",
+                       "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:ana@y.cl"),
+            invitacion("organiza_sin_estar", "ORGANIZER:mailto:yo@x.cl", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:ana@y.cl"),
+            # la arma para otros y dice que no va: rechazada igual
+            invitacion("organiza_y_no_va", "ORGANIZER:mailto:yo@x.cl", "ATTENDEE;PARTSTAT=DECLINED:mailto:yo@x.cl"),
+            invitacion("de_otro", "ORGANIZER:mailto:ana@y.cl", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:ana@y.cl"),
+        )
+        self.assertEqual(self.respuestas(texto), {
+            "propio": "", "organiza": "", "organiza_sin_estar": "", "organiza_y_no_va": "rechazada", "de_otro": "",
+        })
+
+    def test_sin_saber_quien_es_la_persona_no_se_adivina(self):
+        texto = ics(invitacion("a", "ATTENDEE;PARTSTAT=DECLINED:mailto:yo@x.cl"))
+        self.assertEqual(self.respuestas(texto), {"a": ""})
+        texto = ics("X-WR-CALNAME:Trabajo", invitacion("a", "ATTENDEE;PARTSTAT=DECLINED:mailto:yo@x.cl"))
+        self.assertEqual(self.respuestas(texto), {"a": ""})
+
+    def test_lo_rechazado_se_lee_igual_y_el_dueno_no_es_asistente(self):
+        e = leer(con_dueno(invitacion("a", "ATTENDEE;PARTSTAT=DECLINED:mailto:yo@x.cl",
+                                      "ATTENDEE;CN=Ana:mailto:ana@y.cl")), date(2026, 6, 18))[0]
+        self.assertEqual((e.respuesta, e.asistentes), ("rechazada", ("Ana <ana@y.cl>",)))
+
+    def test_la_respuesta_de_una_instancia_movida_es_la_suya(self):
+        serie = invitacion("s", "RRULE:FREQ=DAILY", "ATTENDEE;PARTSTAT=ACCEPTED:mailto:yo@x.cl").replace("DTSTART:20260618", "DTSTART:20260615")
+        serie = serie.replace("DTEND:20260618", "DTEND:20260615")
+        movida = invitacion("s", "RECURRENCE-ID:20260618T140000Z", "ATTENDEE;PARTSTAT=DECLINED:mailto:yo@x.cl")
+        self.assertEqual([e.respuesta for e in leer(con_dueno(serie, movida), date(2026, 6, 18))], ["rechazada"])
+        self.assertEqual([e.respuesta for e in leer(con_dueno(serie, movida), date(2026, 6, 17))], ["aceptada"])
+
+    def test_viaja_en_el_item(self):
+        e = leer(con_dueno(invitacion("a", "ATTENDEE;PARTSTAT=TENTATIVE:mailto:yo@x.cl")), date(2026, 6, 18))[0]
+        self.assertEqual(e.item().datos["respuesta"], "tentativa")
+
+    def test_llega_a_la_fila_de_telar_hoy(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar import alla
+        from telar.config import Config
+        from telar.ordenes import _comun
+        from telar.ordenes import pendientes as orden
+
+        e = leer(con_dueno(invitacion("a", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:yo@x.cl")), date(2026, 6, 18))[0]
+        propio = leer(ics(invitacion("b")), date(2026, 6, 18))[0]
+        with tempfile.TemporaryDirectory() as d:
+            ctx = SimpleNamespace(config=Config(raiz=Path(d), estado=Path(d) / "e"))
+            with mock.patch.object(alla, "consultar", return_value=([e.item(), propio.item()], [])):
+                filas, _ = orden.de_proveedores(ctx, _comun.Telar(hilos=[], raiz=Path(d)), date(2026, 6, 18))
+        self.assertEqual({f["texto"]: f["respuesta"] for f in filas}, {"a": "sin_responder", "b": ""})
+
+    def test_un_programa_la_puede_decir(self):
+        salida = json.dumps([{"titulo": "Uno", "inicio": "2026-06-18T10:00:00Z", "respuesta": "sin_responder"},
+                             {"titulo": "Dos", "inicio": "2026-06-18T11:00:00Z"}])
+        fuente = C.construir(cfg(tipo="comando", comando=programa(f"print({salida!r})")))
+        self.assertEqual([e.respuesta for e in fuente.eventos(date(2026, 6, 18))], ["sin_responder", ""])
+
+    def test_un_programa_que_inventa_una_respuesta_se_dice(self):
+        salida = json.dumps([{"titulo": "Uno", "inicio": "2026-06-18T10:00:00Z", "respuesta": "quizás"}])
+        fuente = C.construir(cfg(tipo="comando", comando=programa(f"print({salida!r})")))
+        with self.assertRaises(ErrorDeProveedor) as e:
+            fuente.eventos(date(2026, 6, 18))
+        self.assertIn("respuesta", str(e.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
 

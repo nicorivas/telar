@@ -1,7 +1,9 @@
 """`telar serve` — la API de telar: los mismos datos que la CLI, por HTTP, desde un proceso que se queda.
 
     telar serve                     en el socket Unix de siempre (<estado>/serve/telar.sock), solo para su dueño
-    telar serve --socket RUTA       en otro socket
+    telar serve --socket RUTA       en otro socket (hasta 103 bytes en macOS, 107 en Linux). Si su carpeta no
+                                    existe, la crea solo para su dueño; a una que ya estaba (/tmp) no le cambia
+                                    los permisos, y avisa si otros entran
     telar serve --puerto 8771       en TCP, solo en 127.0.0.1 (para probar; en una máquina compartida,
                                     cualquier usuario de ella alcanzaría el puerto)
     telar serve --equipo            además, la página del equipo ([equipo]) en la IP de Tailscale y su puerto;
@@ -61,6 +63,17 @@ def main(argv: list[str], ctx) -> int:
         from telar import api
     except ImportError as e:
         return _comun.queja(f"falta el extra «serve» ({e.name}): pip install 'telar[serve]'")
+    # los sockets, antes de arrancar nada: uno que no cabe o que pisaría un archivo se dice en una línea
+    sock = Path(o.socket).expanduser() if o.socket else api.socket_por_defecto()
+    ws_sock = Path(o.web_socket).expanduser() if o.web_socket else None
+    for ruta, quien in ((None if o.puerto else sock, "--socket" if o.socket else f"el socket de siempre ({sock})"),
+                        (ws_sock, "--web-socket")):
+        if ruta is None:
+            continue
+        if (largo := _demasiado_largo(ruta)):
+            return _comun.queja(f"{quien}: {largo}")
+        if (ruta.exists() or ruta.is_symlink()) and not ruta.is_socket():
+            return _comun.queja(f"{quien}: {ruta} ya existe y no es un socket: no lo borro (usa otra ruta)")
     equipo = None
     if o.equipo:
         from telar import equipo as mod_equipo
@@ -92,11 +105,12 @@ def main(argv: list[str], ctx) -> int:
         otros.append(uvicorn.Config(api_web.crear(api.app, dev=o.dev, config=ctx.config), host=host, port=o.web_puerto,
                                     log_level="warning"))
         url_web = f"http://{host}:{o.web_puerto}" if host != "127.0.0.1" else ""
+        # dónde contesta la página de verdad, aunque sea 127.0.0.1 (que el nodo no publica): lo dice `/salud`
+        api.app.state.web = f"http://{host}:{o.web_puerto}"
         print(f"telar serve: la página en http://{host}:{o.web_puerto} (con la llave de {api_web.ruta_llave()})", flush=True)
-    if o.web_socket:
+    if ws_sock is not None:
         from telar import api_web
 
-        ws_sock = Path(o.web_socket).expanduser()
         # su carpeta la crea root (2750, de la persona y del grupo de la puerta: `servidor/telar-puerta-instalar`): no
         # se le cambian los permisos aquí, porque son ellos los que dejan pasar solo a la puerta
         if not ws_sock.parent.is_dir():
@@ -128,16 +142,38 @@ def main(argv: list[str], ctx) -> int:
     if o.puerto:
         _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo, nodo)
         return 0
-    sock = Path(o.socket).expanduser() if o.socket else api.socket_por_defecto()
     # solo su dueño entra a la carpeta del socket: uvicorn le pone al socket mismo permisos para todos
-    # (0666), así que lo que protege es la carpeta, no el archivo
-    sock.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(sock.parent, 0o700)
-    if sock.exists():
+    # (0666), así que lo que protege es la carpeta, no el archivo. Se la cierra si es de telar: la de siempre, o una
+    # que crea ahora. A una que ya estaba (/tmp, la de otro) no se le cambian los permisos: se avisa si otros entran
+    carpeta = sock.parent
+    nueva = not carpeta.exists()
+    carpeta.mkdir(parents=True, exist_ok=True)
+    if nueva or not o.socket:
+        os.chmod(carpeta, 0o700)
+    elif carpeta.stat().st_mode & 0o077:
+        print(f"telar serve: otros usuarios de esta máquina entran a {carpeta}, y pueden usar el socket: para que sea "
+              "solo tuyo, ponlo en una carpeta que no exista (la crea, solo para ti)", file=sys.stderr, flush=True)
+    if sock.is_socket():
         sock.unlink()  # uno que quedó de una vuelta anterior
     print(f"telar serve: {sock}", flush=True)
     _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo, nodo)
     return 0
+
+
+def _largo_maximo() -> int:
+    """Lo más larga que puede ser la ruta de un socket Unix, en bytes: lo que cabe en sun_path sin el byte que la
+    cierra (103 en macOS y los BSD, 107 en Linux)."""
+    return (104 if sys.platform == "darwin" or "bsd" in sys.platform else 108) - 1
+
+
+def _demasiado_largo(sock: Path) -> str:
+    """Qué pasa si la ruta de un socket es más larga de lo que admite un socket Unix, o '' si cabe. Sin esto, uvicorn
+    se cae al abrirlo con un traceback."""
+    maximo = _largo_maximo()
+    largo = len(os.fsencode(str(sock)))
+    if largo <= maximo:
+        return ""
+    return f"la ruta es demasiado larga ({largo} bytes; un socket Unix admite hasta {maximo}): usa una más corta"
 
 
 def _correr(uvicorn, principal, equipo, nodo=None) -> None:

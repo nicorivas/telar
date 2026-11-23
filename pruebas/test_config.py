@@ -142,3 +142,40 @@ class NoLeerEnElBus(unittest.TestCase):
         self.assertEqual(historia.no_leer(c), ("Privado*", "notas"))
         with self.assertRaises(mod_config.ErrorDeConfig):
             mod_config.desde_dict({"bus": {"no_leer": "Privado"}})
+
+
+class DestinoDeLaInstruccion(unittest.TestCase):
+    """`[instruccion] destino`: a quién va, de entrada, lo que manda la pestaña de un módulo."""
+
+    def test_un_agente_o_un_hilo(self):
+        from telar import config as mod_config
+
+        self.assertEqual(mod_config.desde_dict({}).instruccion_destino, "")
+        for destino in ("agente:vigia", "hilo:Faro Norte", "  agente:Vigía "):
+            with self.subTest(destino=destino):
+                c = mod_config.desde_dict({"instruccion": {"destino": destino}})
+                self.assertEqual(c.instruccion_destino, destino.strip())
+
+    def test_lo_que_no_es_eso_se_rechaza(self):
+        from telar import config as mod_config
+
+        for malo in ({"destino": "Vigía"}, {"destino": "tarea:T84"}, {"destino": 3}, {"a": "agente:x"}):
+            with self.subTest(malo=malo), self.assertRaises(mod_config.ErrorDeConfig):
+                mod_config.desde_dict({"instruccion": malo})
+
+    def test_la_configuracion_resuelta_da_el_nombre_que_lo_elige(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from telar.servicios.config import _instruccion
+
+        from telar.servicios.actuar import PROCESAR
+
+        agente = SimpleNamespace(clave="vigia", nombre="Vigía")
+        with mock.patch("telar.agentes.descubrir", return_value=[agente]):
+            self.assertEqual(_instruccion(SimpleNamespace(instruccion_destino="agente:vigia")),
+                             {"destino": "agente:vigia", "a": "Vigía", "procesar": PROCESAR})
+            self.assertEqual(_instruccion(SimpleNamespace(instruccion_destino="agente:Nadie"))["a"], "Nadie")
+            self.assertEqual(_instruccion(SimpleNamespace(instruccion_destino="hilo:Faro"))["a"], "Faro")
+        # sin declarar, solo la línea que pide procesar
+        self.assertEqual(_instruccion(SimpleNamespace(instruccion_destino="")), {"procesar": PROCESAR})

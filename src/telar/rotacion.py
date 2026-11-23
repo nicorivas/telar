@@ -174,7 +174,7 @@ def ruta_handoff(config, hilo: str, relativa: str) -> Path:
         return base / "HANDOFF.md"
     from telar import casilla
 
-    return Path(config.estado) / "relevos" / f"hilo-{casilla.nombre_de_carpeta(hilo)}.md"
+    return Path(config.estado) / "relevos" / f"hilo-{casilla.ficha(config, hilo)}.md"
 
 
 def pedir_handoff(config, hilo: str, sesion: str, ruta: Path, tema: str = "") -> None:

@@ -99,7 +99,7 @@ class Tarea:
     #: a qué parte de la vida pertenece («trabajo», «personal»): el dashboard filtra por aquí
     area: str = ""
     #: el color de la palabra de `avance` (azul, verde, rojo…); vacío, el de fábrica
-    #: quién la hace, si no es la persona («Nataly»); vacío es suya. El dashboard filtra «mías / de otros».
+    #: quién la hace, si no es la persona («Carla»); vacío es suya. El dashboard filtra «mías / de otros».
     dueno: str = ""
     color: str = ""
     #: cuánto toma: «rapida» (media hora o menos) o «larga» (horas o días); "" sin decir. «foco» las separa
@@ -108,6 +108,11 @@ class Tarea:
     destacada: bool = False
     #: la persona la marcó con estrella
     estrella: bool = False
+    #: quién la dejó («ana», «correo», «huerto»), si el proveedor lo dice: en una pestaña de lectura, lo que se mandó
+    #: la persona misma va primero
+    de: str = ""
+    #: de cuándo es (AAAA-MM-DD), si el proveedor lo dice: en una pestaña de lectura, lo más nuevo arriba
+    fecha: str = ""
 
     @property
     def activa(self) -> bool:
@@ -143,6 +148,8 @@ class Tarea:
                 "tamano": self.tamano,
                 "destacada": self.destacada,
                 "estrella": self.estrella,
+                "de": self.de,
+                "fecha": self.fecha,
             },
         )
 
@@ -374,12 +381,14 @@ def _derivar_id(origen: str, texto: str) -> str:
 
 
 def _prioridad(valor: object, contexto: str) -> Prioridad | None:
-    """Acepta "alta"/"media"/"baja" o 1/2/3; nada más."""
+    """Acepta "alta"/"media"/"baja" o 1/2/3 (y "sin", ninguna); nada más."""
     if valor is None or valor == "":
         return None
     if isinstance(valor, str):
         nombres = {"alta": Prioridad.ALTA, "media": Prioridad.MEDIA, "baja": Prioridad.BAJA}
         clave = valor.strip().lower()
+        if clave in ("sin", "ninguna", "none"):
+            return None
         if clave in nombres:
             return nombres[clave]
         raise ErrorDeProveedor(f"{contexto}: {valor!r} no es alta, media ni baja")
@@ -578,9 +587,13 @@ class DeComando(_Base):
         [{"id": "T84", "texto": "Medir el alcance", "prioridad": "alta",
           "vence": "2026-06-30", "etiquetas": ["faro"], "enlace": "https://…",
           "espera": "@quien", "hecha": false, "en_curso": false,
-          "avance": "preparado 2026-09-25", "area": "trabajo"}]
+          "avance": "preparado 2026-09-25", "area": "trabajo",
+          "de": "ana", "fecha": "2026-11-18"}]
 
-    De todo eso, solo `texto` es obligatorio.
+    De todo eso, solo `texto` es obligatorio. `prioridad`, `de` (quién la dejó) y `fecha` (de cuándo es) pueden venir
+    también dentro de `campos` (`{"campos": {"prioridad": "alta", "de": "ana"}}`); lo del nivel de la fila manda. Sin
+    `fecha`, la de su id si empieza con una (`2026-11-18-algo`). Con ellos se ordena una pestaña de lectura (la de
+    un feed: lo que se mandó la persona, después por prioridad, y lo más nuevo arriba).
     """
 
     def __init__(self, cfg: ConfigProveedor) -> None:
@@ -680,11 +693,32 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
             raise ErrorDeProveedor(f"{contexto}.{clave}: se esperaba true o false")
         return valor
 
+    # prioridad, de y fecha: en la fila o dentro de `campos` (lo de la fila manda)
+    campos = datos.get("campos") if isinstance(datos.get("campos"), dict) else {}
+
+    def campo(clave: str) -> object:
+        valor = datos.get(clave)
+        return valor if valor not in (None, "") else campos.get(clave)
+
+    def texto_de_campo(clave: str) -> str:
+        valor = campo(clave)
+        if valor in (None, ""):
+            return ""
+        if not isinstance(valor, str):
+            raise ErrorDeProveedor(f"{contexto}.{clave}: se esperaba texto, llegó {valor!r}")
+        return valor.strip()
+
     id = texto_de("id")
+    fecha = _fecha(campo("fecha"), f"{contexto}.fecha")
+    if fecha is None and _FECHA_EN_ID.match(id):
+        try:
+            fecha = date.fromisoformat(id[:10])
+        except ValueError:
+            fecha = None
     return Tarea(
         id=id or _derivar_id(origen, texto),
         texto=texto,
-        prioridad=_prioridad(datos.get("prioridad"), f"{contexto}.prioridad"),
+        prioridad=_prioridad(campo("prioridad"), f"{contexto}.prioridad"),
         vence=_fecha(datos.get("vence"), f"{contexto}.vence"),
         etiquetas=tuple(e.lstrip("#").lower() for e in etiquetas),
         enlace=texto_de("enlace"),
@@ -698,7 +732,13 @@ def _tarea_de_json(datos: object, origen: str, indice: int) -> Tarea:
         dueno=texto_de("dueno"),
         destacada=bandera("destacada"),
         estrella=bandera("estrella"),
+        de=texto_de_campo("de"),
+        fecha=fecha.isoformat() if fecha else "",
     )
+
+
+#: un id que empieza con su fecha («2026-11-18-algo»): la del ítem, si no dice otra
+_FECHA_EN_ID = re.compile(r"^\d{4}-\d{2}-\d{2}(?!\d)")
 
 
 # ── tipo: las tareas del tipo `tarea` (telar.tipos), desde su carpeta ──────────────

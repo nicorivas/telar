@@ -83,9 +83,9 @@ class Pedidos(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {})
             hoy = datetime.datetime(2026, 10, 14, 9, 0)
-            r, p = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-10-20", ahora=hoy)
+            r, p = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO", "la pide el cliente", "2026-10-20", ahora=hoy)
             self.assertEqual((p, r["tipo"], r["estado"], r["vence"]), ("", "tarea", "pendiente", "2026-10-20"))
-            self.assertIn("ya tienes", mod.pedir(eq, "ramiro", "hacer la SESIÓN 5 de goa", ahora=hoy)[1])
+            self.assertIn("ya tienes", mod.pedir(eq, "ramiro", "hacer la SESIÓN 5 de arco", ahora=hoy)[1])
             self.assertIn("de 5 a", mod.pedir(eq, "ramiro", "no", ahora=hoy)[1])
             self.assertIn("AAAA-MM-DD", mod.pedir(eq, "ramiro", "otra cosa distinta", vence="mañana", ahora=hoy)[1])
             self.assertIn("ya pasó", mod.pedir(eq, "ramiro", "otra cosa distinta", vence="2026-10-01", ahora=hoy)[1])
@@ -103,11 +103,11 @@ class Pedidos(unittest.TestCase):
             tmp = Path(d)
             eq = montar(tmp, {})
             (tmp / "todo").write_text("#!/bin/sh\necho \"$@\" >> " + str(tmp / "todo.log") + "\necho 'añadida: T412  hacer algo'\n")
-            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA", "la pide el cliente", "2026-12-31")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO", "la pide el cliente", "2026-12-31")[0]
             hecho, _ = mod.resolver(eq, r["id"], "aceptar", "ok")
             self.assertEqual((hecho["estado"], hecho["tarea"]), ("aceptada", "T412"))
             log = (tmp / "todo.log").read_text()
-            self.assertIn("add Hacer la sesión 5 de GOA", log)
+            self.assertIn("add Hacer la sesión 5 de ARCO", log)
             self.assertIn("--tag equipo", log)
             self.assertIn("--due 2026-12-31", log)
             self.assertIn("equipo:ramiro", log)
@@ -115,48 +115,48 @@ class Pedidos(unittest.TestCase):
     def test_revisando_marca_sin_resolver(self):
         with tempfile.TemporaryDirectory() as d:
             eq = montar(Path(d), {})
-            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
-            marcada, _ = mod.marcar_revision(eq, r["id"], "gestion")
-            self.assertEqual((marcada["estado"], marcada["revisando"]["quien"]), ("pendiente", "gestion"))
-            self.assertEqual(mod.leer_bandeja(eq)[0]["revisando"]["quien"], "gestion")
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO")[0]
+            marcada, _ = mod.marcar_revision(eq, r["id"], "secretaria")
+            self.assertEqual((marcada["estado"], marcada["revisando"]["quien"]), ("pendiente", "secretaria"))
+            self.assertEqual(mod.leer_bandeja(eq)[0]["revisando"]["quien"], "secretaria")
             self.assertIsNone(mod.marcar_revision(eq, "noexiste")[0])
 
     def test_rechazar_no_crea_nada(self):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             eq = montar(tmp, {})
-            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO")[0]
             self.assertEqual(mod.resolver(eq, r["id"], "rechazar", "no esta semana")[0]["estado"], "rechazada")
             self.assertFalse((tmp / "todo.log").exists())
 
 
 class Existentes(unittest.TestCase):
     def test_parecido_distingue_numeros_y_palabras(self):
-        self.assertTrue(mod.parecido("Hacer la sesión 5 de GOA", "GOA: preparar y dictar la sesión 5"))
-        self.assertFalse(mod.parecido("Hacer la sesión 5 de GOA", "GOA sesión 6"))
-        self.assertFalse(mod.parecido("pagar la cuenta de luz", "Cerrar las 2 cuentas Enel"))
+        self.assertTrue(mod.parecido("Hacer la sesión 5 de ARCO", "ARCO: preparar y dictar la sesión 5"))
+        self.assertFalse(mod.parecido("Hacer la sesión 5 de ARCO", "ARCO sesión 6"))
+        self.assertFalse(mod.parecido("pagar la cuenta de luz", "Cerrar las 2 cuentas Lumen"))
 
     def test_duplicadas_marca_las_compartidas(self):
         with tempfile.TemporaryDirectory() as d:
-            eq = montar(Path(d), {"T1": {"titulo": "GOA: dictar la sesión 5", "tags": "equipo", "extra": "avance: preparado\n"},
-                                  "T2": {"titulo": "Preparar la sesión 5 de GOA con el cliente", "tags": "privada"},
+            eq = montar(Path(d), {"T1": {"titulo": "ARCO: dictar la sesión 5", "tags": "equipo", "extra": "avance: preparado\n"},
+                                  "T2": {"titulo": "Preparar la sesión 5 de ARCO con el cliente", "tags": "privada"},
                                   "T3": {"titulo": "otra cosa sin relación alguna"}})
-            ya = {t["id"]: t["compartida"] for t in mod.duplicadas(eq, "Hacer la sesión 5 de GOA")}
+            ya = {t["id"]: t["compartida"] for t in mod.duplicadas(eq, "Hacer la sesión 5 de ARCO")}
             self.assertEqual(ya, {"T1": True, "T2": False})
 
-    def test_el_pedido_guarda_las_parecidas_solo_para_nico(self):
+    def test_el_pedido_guarda_las_parecidas_solo_para_el_dueno(self):
         with tempfile.TemporaryDirectory() as d:
-            eq = montar(Path(d), {"T2": {"titulo": "Preparar la sesión 5 de GOA con el cliente", "tags": "privada"}})
-            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
+            eq = montar(Path(d), {"T2": {"titulo": "Preparar la sesión 5 de ARCO con el cliente", "tags": "privada"}})
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO")[0]
             self.assertEqual([t["id"] for t in r["similares"]], ["T2"])
 
     def test_existe_contesta_con_el_estado(self):
         with tempfile.TemporaryDirectory() as d:
-            eq = montar(Path(d), {"T1": {"titulo": "GOA: dictar la sesión 5", "pri": 1, "extra": "vence: 2026-10-22\navance: preparado 2026-10-13\n"}})
-            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de GOA")[0]
+            eq = montar(Path(d), {"T1": {"titulo": "ARCO: dictar la sesión 5", "pri": 1, "extra": "vence: 2026-10-22\navance: preparado 2026-10-13\n"}})
+            r = mod.pedir(eq, "ramiro", "Hacer la sesión 5 de ARCO")[0]
             hecho, p = mod.resolver(eq, r["id"], "existe", "va para el jueves", "T1")
             self.assertEqual((p, hecho["estado"], hecho["tarea"]), ("", "ya existía", "T1"))
-            self.assertIn("T1 «GOA: dictar la sesión 5» · en curso · P1 · vence 2026-10-22 · avance: preparado 2026-10-13", hecho["nota"])
+            self.assertIn("T1 «ARCO: dictar la sesión 5» · en curso · P1 · vence 2026-10-22 · avance: preparado 2026-10-13", hecho["nota"])
             self.assertTrue(hecho["nota"].endswith("va para el jueves"))
             self.assertNotIn("CUERPO", hecho["nota"])
             self.assertIn("T123", mod.resolver(eq, mod.pedir(eq, "ramiro", "Otro pedido distinto")[0]["id"], "existe", "", "")[1])
@@ -167,12 +167,12 @@ class Semantica(unittest.TestCase):
 
     def montar(self, tmp):
         eq = montar(tmp, {
-            "T1": {"titulo": "Programa de otoño del cliente GOA", "tags": "equipo", "extra": "creada: 2026-10-10\n"},
-            "T2": {"titulo": "Cierre de contrato con Agrosur", "tags": "privada", "extra": "creada: 2026-10-12\n"},
+            "T1": {"titulo": "Programa de otoño del cliente ARCO", "tags": "equipo", "extra": "creada: 2026-10-10\n"},
+            "T2": {"titulo": "Cierre de contrato con Arrayán", "tags": "privada", "extra": "creada: 2026-10-12\n"},
             "T3": {"titulo": "Tarea vieja sin relación", "extra": "creada: 2026-08-01\n"},
         })
         # el cuerpo de T1 dice de qué trata de verdad; el de T3 no debería viajar (tiene 2 meses)
-        (eq.tareas / "T1.md").write_text(TAREA.format(titulo="Programa de otoño del cliente GOA", estado="activa", pri=2, tags="equipo",
+        (eq.tareas / "T1.md").write_text(TAREA.format(titulo="Programa de otoño del cliente ARCO", estado="activa", pri=2, tags="equipo",
                                                       extra="creada: 2026-10-10\n").replace("CUERPO PRIVADO que no debe salir", "Dictar la quinta sesión del programa"), encoding="utf-8")
         return mod.Equipo(**{**eq.__dict__, "semantica": "haiku"})
 
@@ -187,7 +187,7 @@ class Semantica(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             eq = self.montar(Path(d))
             with mock.patch("subprocess.run", return_value=N(returncode=0, stdout='{"ids": ["T1", "T9"]}', stderr="")) as run:
-                ya = mod.parecidas(eq, "Hacer la sesión 5 de GOA", "", self.HOY)
+                ya = mod.parecidas(eq, "Hacer la sesión 5 de ARCO", "", self.HOY)
             self.assertEqual([(t["id"], t["via"], t["compartida"]) for t in ya], [("T1", "sentido", True)])  # T9 no era candidata
             orden = run.call_args.args[0]
             self.assertEqual(orden[0], "claude")
@@ -201,7 +201,7 @@ class Semantica(unittest.TestCase):
             eq = self.montar(Path(d))
             for falla in (N(returncode=1, stdout="", stderr="x"), N(returncode=0, stdout="no es json", stderr="")):
                 with mock.patch("subprocess.run", return_value=falla):
-                    self.assertEqual(mod.parecidas(eq, "Programa de otoño GOA", "", self.HOY)[0]["via"], "palabras")
+                    self.assertEqual(mod.parecidas(eq, "Programa de otoño ARCO", "", self.HOY)[0]["via"], "palabras")
             with mock.patch("subprocess.run", side_effect=OSError):
                 self.assertEqual(mod.parecidas(eq, "algo que no se parece a nada", "", self.HOY), [])
 
@@ -209,7 +209,7 @@ class Semantica(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             eq = mod.Equipo(**{**self.montar(Path(d)).__dict__, "semantica": ""})
             with mock.patch("subprocess.run") as run:
-                mod.parecidas(eq, "Hacer la sesión 5 de GOA", "", self.HOY)
+                mod.parecidas(eq, "Hacer la sesión 5 de ARCO", "", self.HOY)
             run.assert_not_called()
 
 
@@ -245,21 +245,21 @@ class Servidor(unittest.TestCase):
         self.assertEqual(self.pedir("/api/sugerir", cuerpo={"tarea": "T1", "motivo": "bloquea al equipo"})[0], 429)
 
     def test_pide_una_tarea(self):
-        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA", "contexto": "urge"})
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de ARCO", "contexto": "urge"})
         self.assertTrue(d["ok"], d)
         mias = self.pedir("/api/tareas")[1]["sugerencias"]
-        self.assertEqual([(x["tipo"], x["titulo"], x["estado"]) for x in mias], [("tarea", "Hacer la sesión 5 de GOA", "pendiente")])
+        self.assertEqual([(x["tipo"], x["titulo"], x["estado"]) for x in mias], [("tarea", "Hacer la sesión 5 de ARCO", "pendiente")])
         self.assertEqual(self.pedir("/api/pedir", token="mala", cuerpo={"titulo": "xxxxxx"})[0], 401)
 
     def test_pedir_algo_que_ya_existe_contesta_su_estado(self):
         mod_t = self.eq.tareas / "T9.md"
-        mod_t.write_text(TAREA.format(titulo="GOA: dictar la sesión 5", estado="activa", pri=1, tags="equipo", extra="avance: preparado\n"), encoding="utf-8")
-        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA"})
+        mod_t.write_text(TAREA.format(titulo="ARCO: dictar la sesión 5", estado="activa", pri=1, tags="equipo", extra="avance: preparado\n"), encoding="utf-8")
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de ARCO"})
         self.assertEqual(c, 409)
         self.assertIn("T9", d["existe"][0]["resumen"])
         self.assertNotIn("CUERPO", json.dumps(d))
         self.assertEqual(mod.leer_bandeja(self.eq), [])  # no molestó a Ana
-        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de GOA", "aunque_exista": True})
+        c, d = self.pedir("/api/pedir", cuerpo={"titulo": "Hacer la sesión 5 de ARCO", "aunque_exista": True})
         self.assertTrue(d["ok"], d)
 
     def test_pedido_mal_formado(self):
@@ -323,8 +323,8 @@ class LaBandejaDelDueno(unittest.TestCase):
         with mock.patch.object(mod, "cargar", return_value=self.eq):
             b = servicio.bandeja(self.ctx)
             self.assertEqual([r["tarea"] for r in b.sugerencias], ["T1"])
-            r = servicio.revisando(self.ctx, b.sugerencias[0]["id"], quien="gestion")
-            self.assertEqual(r.sugerencia["revisando"]["quien"], "gestion")
+            r = servicio.revisando(self.ctx, b.sugerencias[0]["id"], quien="secretaria")
+            self.assertEqual(r.sugerencia["revisando"]["quien"], "secretaria")
             with self.assertRaises(ErrorDeServicio) as e:
                 servicio.decidir(self.ctx, "no-hay", "rechazar")
             self.assertEqual(e.exception.codigo, 409)

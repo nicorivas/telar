@@ -100,10 +100,10 @@ class PorElBus(Prueba):
 
         fotos = [{"nombre": "laptop", "en_linea": True, "edad": 5, "hilos": [
             {"nombre": "Faro", "relativa": "trabajo/proyectos/pa", "vivo": True, "remoto": ""},
-            {"nombre": "Gestión", "relativa": "agentes/gestion", "vivo": True, "remoto": "servidor"}]}]
+            {"nombre": "Secretaría", "relativa": "agentes/secretaria", "vivo": True, "remoto": "servidor"}]}]
         with mock.patch.object(espejo, "leer_todos", return_value=fotos):
             self.assertEqual(_destino_remoto(self.ctx, {"url": "trabajo/proyectos/pa/x.md"}), ("Faro", "laptop"))
-            self.assertIsNone(_destino_remoto(self.ctx, {"url": "agentes/gestion/bitacora.md"}))
+            self.assertIsNone(_destino_remoto(self.ctx, {"url": "agentes/secretaria/bitacora.md"}))
 
     def test_un_trabajando_viejo_se_da_por_pegado(self):
         from datetime import datetime, timedelta

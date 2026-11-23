@@ -1,7 +1,9 @@
 // El modelo: lo que hay ahora mismo, leído una vez y compartido por la barra y el dashboard.
 //
 // No guarda nada propio. Si la página se cierra, no se pierde un dato: el estado vive donde
-// telar lo tenga, y aquí solo queda la última respuesta de `telar hilos --json`.
+// telar lo tenga, y aquí solo queda la última respuesta de `telar hilos --json`. Con una excepción
+// que dura segundos: lo que esta página hizo (ver un hilo, cambiarle la prioridad) se pone encima
+// de lo leído hasta que el servidor lo confirme, para que se vea al tiro y no al sondeo siguiente.
 //
 // Dos ritmos, porque leer los documentos es lo único caro de todo esto:
 //   · el rápido (cada pocos segundos, lo pide la página) trae los hilos SIN ficha: quién está vivo,
@@ -16,6 +18,11 @@ import * as ui from './web/ui';
 
 /** Cada cuánto se traen los hilos con su ficha (lo caro: leer los documentos). */
 const INTERVALO_FICHA = 60000;
+/** Cuánto vale lo que esta página hizo y el servidor todavía no cuenta (lo vio, le cambió la prioridad): pasado esto,
+ *  manda lo que diga el servidor. Lo normal es que lo confirme en el sondeo siguiente. */
+const LOCAL_MS = 60000;
+/** Cuánto tiene que durar una caída de la API para decirla: un reinicio de telar (cada instalación) tarda menos. */
+const CAIDO_MS = 15000;
 
 /** Avisar a quien escucha que algo cambió (un EventEmitter chico). */
 export class Emisor {
@@ -41,6 +48,14 @@ export class Modelo {
     aviso = '';
     /** el error de la última lectura, si la CLI no contestó */
     error = '';
+    /** desde cuándo fallan las lecturas (0: la última salió bien) */
+    fallaDesde = 0;
+    /** si alguna lectura salió bien: hay una lista que seguir mostrando cuando la API no contesta */
+    leido = false;
+    /** cuándo salió bien la última lectura (la franja de avisos lo dice, tranquila: web/franja.ts) */
+    leidoA = 0;
+    /** si el error de la última lectura lo dijo telar (el código HTTP con que contestó): entonces no es la conexión */
+    errorEstado = 0;
     hilos: cli.JsonHilo[] = [];
     /** las secciones de la configuración; se releen con el ritmo lento */
     secciones: cli.JsonSeccion[] = [];
@@ -53,6 +68,11 @@ export class Modelo {
     /** si esta persona está en un bus (`[bus]`): lo que cruza entre máquinas y personas (los colegas, el
      *  registro de mensajes, la gestión de personas) depende de esto, no de `[remotos]` */
     hayBus = false;
+    /** a quién va de entrada lo que manda la pestaña de un módulo con la instrucción (`[instruccion] destino`): el
+     *  nombre que lo elige en la ventana; vacío sin declarar */
+    instruccionA = '';
+    /** la línea que le llega al agente con un contexto libre y nada pedido (la de telar, para mostrarla tal cual) */
+    procesar = '';
 
     readonly cambio = new Emisor();
     /** los hilos que están viajando a otra máquina ahora (web/mudanza.ts): hilo → máquina. La barra lo dice en su fila */
@@ -63,9 +83,18 @@ export class Modelo {
      *  dice «cerrando…» hasta que desaparece, o hasta `hasta` */
     readonly saliendo = new Map<string, { texto: string; hasta: number }>();
 
+    /** Lo que esta página pidió y el servidor todavía no dice (`telar hilo prioridad …`): hilo → los campos y cuándo. Se
+     *  aplica sobre cada lectura, así se ve al tiro, hasta que el servidor diga lo mismo o pasen LOCAL_MS. */
+    private readonly local = new Map<string, { cambios: Partial<cli.JsonHilo>; en: number }>();
+    /** Los hilos que la página mostró, y cuándo: lo que terminó hasta entonces ya se vio, aunque el servidor (que lo
+     *  anota al abrir y al dejar su terminal) todavía no lo cuente. */
+    private readonly vistosAqui = new Map<string, number>();
+
     private fichas = new Map<string, cli.JsonFicha | null>();
     private firma = '';
     private enCurso = false;
+    /** si se pidió leer mientras se leía (llegó un aviso del servidor a medio sondeo): se lee otra vez al terminar */
+    private otraVez = false;
     private ultimaFicha = 0;
 
     get activo(): cli.JsonHilo | undefined { return this.hilos.find(h => h.activo); }
@@ -132,17 +161,19 @@ export class Modelo {
     readonly orden = 'mux';
 
     async sondear(conFicha = false): Promise<void> {
-        if (this.enCurso) return;
+        if (this.enCurso) { this.otraVez = true; return; }
         this.enCurso = true;
         try {
             const toca = conFicha || Date.now() - this.ultimaFicha > INTERVALO_FICHA;
             const r = await cli.hilos(toca, this.orden);
             if (!r.datos) {
                 this.error = r.error ?? '';
-                this.anunciar(['error', this.error]);
+                this.errorEstado = r.estado ?? 0;
+                this.fallaDesde ||= Date.now();
+                this.anunciar(['error', this.error, this.caido()]);
                 return;
             }
-            this.error = '';
+            this.error = ''; this.errorEstado = 0; this.fallaDesde = 0; this.leido = true; this.leidoA = Date.now();
             const d = r.datos;
             this.sesion = d.sesion; this.multiplexor = d.multiplexor; this.raiz = d.raiz;
             this.viva = d.viva; this.aviso = d.aviso; this.clientes = d.clientes ?? [];
@@ -153,6 +184,8 @@ export class Modelo {
                     this.apps = c.datos.apps ?? [];
                     this.hayRemotos = (c.datos.remotos ?? []).length > 0;
                     this.hayBus = !!c.datos.bus?.url;
+                    this.instruccionA = c.datos.instruccion?.a ?? '';
+                    this.procesar = c.datos.instruccion?.procesar ?? '';
                 }
                 void this.leerEquipo();
                 void this.leerColegas();
@@ -161,11 +194,17 @@ export class Modelo {
             }
             this.hilos = d.hilos.map(h => cli.conRutasAbsolutas(
                 { ...h, ficha: h.ficha ?? this.fichas.get(h.nombre) ?? null }, d.raiz));
+            this.aplicarLocal();
             this.anunciar(['ok', d.sesion, d.viva, d.aviso, this.hilos, this.secciones]);
         } finally {
             this.enCurso = false;
         }
+        if (this.otraVez) { this.otraVez = false; await this.sondear(); }
     }
+
+    /** Si la API lleva rato sin contestar (CAIDO_MS), no solo un momento: cada vez que se instala o se reinicia telar,
+     *  la página se queda unos segundos sin API, y eso no se dice. Sin ninguna lectura buena, desde la primera falla. */
+    caido(): boolean { return !!this.fallaDesde && (!this.leido || Date.now() - this.fallaDesde >= CAIDO_MS); }
 
     /** Redibujar solo si algo cambió: si no, la lista parpadea cada segundo. */
     private anunciar(estado: unknown[]): void {
@@ -177,6 +216,55 @@ export class Modelo {
 
     /** Fuerza el próximo sondeo a releer los documentos (después de actuar sobre un hilo). */
     invalidar(): void { this.ultimaFicha = 0; }
+
+    // ── lo local: lo que la página ya sabe antes que el servidor ──
+
+    /** Que la página muestra un hilo, o acaba de dejarlo: lo que terminó en él ya se vio. Se ve al tiro. */
+    ver(nombre: string): void {
+        if (!nombre) return;
+        this.vistosAqui.set(nombre, Date.now());
+        this.aplicarLocal();
+        this.firma = ''; this.cambio.fire();
+    }
+
+    /** Si un hilo (también uno de otra máquina, de su foto) se vio aquí después de que terminó (`desde`). */
+    vistoAqui(nombre: string, desde?: string | null): boolean {
+        const t = this.vistosAqui.get(nombre);
+        if (t === undefined || Date.now() - t > LOCAL_MS) return false;
+        return !desde || Date.parse(desde) <= t;
+    }
+
+    /** Un cambio que la página pidió y el servidor todavía no confirma: se ve al tiro. */
+    cambiarLocal(nombre: string, cambios: Partial<cli.JsonHilo>): void {
+        this.local.set(nombre, { cambios: { ...this.local.get(nombre)?.cambios, ...cambios }, en: Date.now() });
+        this.aplicarLocal();
+        this.firma = ''; this.cambio.fire();
+    }
+
+    /** El cambio no se pudo: se olvida, y se vuelve a leer lo que hay. */
+    olvidarLocal(nombre: string): void {
+        this.local.delete(nombre);
+        void this.sondear();
+    }
+
+    /** Pone lo local sobre lo leído; olvida lo que el servidor ya confirmó o lo que venció. */
+    private aplicarLocal(): void {
+        const ahora = Date.now();
+        for (const [n, l] of this.local) if (ahora - l.en > LOCAL_MS) this.local.delete(n);
+        for (const [n, t] of this.vistosAqui) if (ahora - t > LOCAL_MS) this.vistosAqui.delete(n);
+        if (!this.local.size && !this.vistosAqui.size) return;
+        this.hilos = this.hilos.map(h => {
+            let x = h;
+            const l = this.local.get(h.nombre);
+            if (l) {
+                const dice = h as unknown as Record<string, unknown>;
+                if (Object.entries(l.cambios).every(([k, v]) => dice[k] === v)) this.local.delete(h.nombre);
+                else x = { ...x, ...l.cambios };
+            }
+            if (x.sin_ver && this.vistoAqui(h.nombre, h.atencion_desde)) x = { ...x, sin_ver: false };
+            return x;
+        });
+    }
 }
 
 export const modelo = new Modelo();

@@ -174,8 +174,6 @@ def guardar(ruta: Path | None, estilo: str, valores: dict) -> dict:
 
 def borrar(ruta: Path | None, estilo: str) -> bool:
     """Quita `[glifos.<estilo>]`: uno propio desaparece; «base» vuelve a ser el de fábrica. True si estaba."""
-    import tomllib
-
     from telar import config as mod_config
     from telar.unirse import quitar_tabla
 
@@ -186,7 +184,7 @@ def borrar(ruta: Path | None, estilo: str) -> bool:
     nuevo = quitar_tabla(texto, f"glifos.{estilo}")
     if nuevo == texto:
         return False
-    mod_config.desde_dict(tomllib.loads(nuevo), origen=destino)  # que se siga leyendo
+    mod_config.revisar_antes_de_escribir(texto, nuevo, destino)  # que se siga leyendo
     tmp = destino.with_name(destino.name + ".nuevo")
     tmp.write_text(nuevo, encoding="utf-8")
     tmp.replace(destino)

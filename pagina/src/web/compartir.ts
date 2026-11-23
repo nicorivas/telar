@@ -4,6 +4,7 @@
 // media/css/compartir.css (con @scope, en `.v-compartir`).
 
 import { I } from './iconos';
+import { barraBuscar } from '../componentes/buscador';
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, clase = '', texto?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
     if (clase) e.className = clase;
@@ -19,7 +20,7 @@ export function montar(raiz: HTMLElement, consulta: string): void {
     raiz.innerHTML = `<header><a href="/">${I.atras} telar</a><b>compartir</b></header><main>`
         + '<section class="que"></section>'
         + '<textarea class="nota" rows="3" placeholder="una nota, si quieres (va con lo compartido)"></textarea>'
-        + '<input class="filtro" placeholder="filtrar destinos" autocomplete="off">'
+        + barraBuscar({ clase: 'filtro', placeholder: 'destinos', ayuda: 'buscar un hilo, un agente o un feed' })
         + '<div class="destinos"><p class="dim">leyendo destinos…</p></div><p class="dicho dim"></p></main>';
     const $ = <T extends HTMLElement>(s: string) => raiz.querySelector<T>(s)!;
     const q = new URLSearchParams(consulta);

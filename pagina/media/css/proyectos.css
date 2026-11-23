@@ -3,40 +3,175 @@
 
 @scope (.v-dia) {
   /* la lista se lleva más que el detalle: lo que se lee ahí es el nombre */
-  .proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) minmax(40ch, 1fr); gap: 1.5ch; align-items: start; }
+  .proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) minmax(40ch, 1fr); gap: 1.5ch; align-items: start;
+    /* la grilla (la gramática visual): las letras en su celda, la de la fuente; los íconos, los símbolos y el espacio
+       entre dos columnas, en una celda cuadrada del alto de la fila */
+    --celda-cuadrada: 1lh; }
   #dia:has(.proy-dos) { max-width: none; }
-  .proy-lista .fila { gap: .8ch; }
+  .proy-lista .fila { column-gap: var(--celda-cuadrada); }
   .proy-lista { min-width: 0; }
-  .proy.sel { background: color-mix(in srgb, var(--azul) 22%, transparent); }
-  .proy .que { overflow: hidden; text-overflow: ellipsis; }
+  /* la fila donde estás: el fondo de la selección, con el matiz del acento (la gramática visual) */
+  .proy.sel { background: var(--item-fondo-activa); }
+  .proy .que, .proy-cab .que { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .proy .cliente { color: var(--azul); }
   .proy .cliente + .resto { color: var(--dim); }
-  .proy-cab { color: var(--dim); }
-  .proy .menu-col, .proy-cab .menu-col { flex: none; width: 2ch; }
-  .proy-cab [data-orden-p] { cursor: pointer; } .proy-cab [data-orden-p]:hover { color: var(--fg); }
+  /* las columnas: la fase (un círculo en su ranura), el nombre, el estado efectivo, la etapa, el plazo, cuántos
+     pendientes, el ⋯ */
+  .proy .at, .proy-cab .at, .proy-sec-cab .at { flex: none; width: var(--celda-cuadrada); text-align: center; }
+  .proy .estado-p, .proy-cab .estado-p { flex: none; width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  /* un estado que nadie confirma (sin plazo ni uno que se entienda): más apagado */
+  .proy .estado-p.tenue { color: var(--texto-tenue); }
+  /* la etapa: un ícono en su celda (qué clase de trabajo), con la palabra al pasar */
+  .proy .etapa, .proy-cab .etapa { flex: none; width: var(--celda-cuadrada); text-align: center; overflow: hidden; color: var(--dim); }
+  .proy .cuando-p, .proy-cab .cuando-p { flex: none; width: 13ch; color: var(--dim); }
+  .proy .cuando-p.tono-atencion { color: var(--atencion); }
+  .proy .tareas-p, .proy-cab .tareas-p { flex: none; width: 6ch; text-align: right; color: var(--dim); }
+  .proy .menu-col, .proy-cab .menu-col { flex: none; width: var(--celda-cuadrada); }
+  .proy.cerrado, .proy.cerrado .cliente { color: var(--dim); }
+  /* lo que solo va en la tabla extendida */
+  .proy-lista .solo-x { display: none; }
+  /* los nombres de las columnas: el clic ordena por esa, y la que ordena va en azul (como en «tareas») */
+  .proy-cab { color: var(--texto-tenue); }
+  .proy-cab [data-orden-p] { cursor: pointer; }
+  .proy-cab [data-orden-p]:hover { color: var(--fg); }
   .proy-cab .activo { color: var(--azul); }
-  .proy-cab .estado { flex: none; width: 12ch; } .proy-cab .tipo { flex: none; width: 9ch; }
-  .proy-cab .cuando-p { flex: none; width: 4ch; text-align: right; } .proy-cab .que { flex: 1; }
-  .proy .estado { flex: none; width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-  .proy .estado.e-activo { color: var(--verde); }
-  .proy .estado.e-abierto { color: var(--amarillo); }
-  .proy .estado.e-trabado { color: var(--rojo); }
-  .proy.cerrado .cliente, .proy.cerrado .estado { color: var(--dim); }
-  .proy.cerrado { color: var(--dim); }
-  #proy-det { position: sticky; top: 1lh; max-height: calc(100cqh - 3lh); overflow-y: auto; padding: .5lh 1ch;
-    border-left: 1px solid var(--linea); min-width: 0; }
-  #proy-det h3 { margin: 0 0 .2lh; }
-  #proy-det .proy-meta { color: var(--dim); margin-bottom: .4lh; white-space: normal; }
-  #proy-det .acciones-ev { display: flex; gap: 2ch; margin: .3lh 0 .7lh; }
-  #proy-det h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+  /* cada sección, en el orden de siempre: una línea arriba y su nombre */
+  .proy-sec-cab { border-top: 1px solid var(--linea); color: var(--dim); text-transform: uppercase; margin-top: .6lh; }
+  .proy-cols + .proy-sec-cab { margin-top: 0; }
+  .proy-sec-cab .que { flex: 1; }
+  .proy-sec-n { color: var(--texto-tenue); }
+  .subcab .negocios-p { margin-left: auto; }
+  /* las iniciativas (iniciativas.ts), aparte de los proyectos: su cabecera deja la sección sola (un clic); sus columnas,
+     el peso (el círculo de Táctica), el nombre, el dueño, el estado, la próxima decisión, los pendientes y el ⋯. La que
+     encabeza un programa, en la tinta del cliente de un proyecto (para quién es); las suyas, corridas una celda */
+  .ini-sec-cab { cursor: pointer; }
+  .ini-sec-cab:hover { color: var(--fg); }
+  .ini-sec-cab > .i { flex: none; width: var(--celda-cuadrada); text-align: center; color: var(--texto-tenue); }
+  :is(.ini, .ini-cols, .ini-grupo) .que { flex: 1.6; display: flex; column-gap: 1ch; }
+  .ini-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  :is(.ini, .ini-cols) .dueno-i { flex: none; width: 8ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  /* el estado: su círculo (componentes/senales.ts, `estadoIniciativa`) y su palabra; uno fuera del vocabulario, en el
+     color de cuidado y con su ícono. Si se cambia aquí, un clic abre el vocabulario: la palabra se subraya al pasar */
+  :is(.ini, .ini-cols) .estado-p { width: var(--ini-estado, 12ch); white-space: nowrap; }
+  .ini .estado-p { color: var(--fg); }
+  .ini-cols .estado-p { color: inherit; }
+  .ini-estado .senal { margin-right: .6ch; }
+  .ini-estado .ini-fuera { margin-left: .4ch; }
+  .ini-estado.cambia { cursor: pointer; }
+  .ini-estado.cambia:hover .ini-e-txt { text-decoration: underline dotted; text-underline-offset: .2em; }
+  /* de quién es el estado, si lo manda otra fuente: una columna que solo está si alguna lo es */
+  :is(.ini, .ini-cols) .ini-fuente { display: none; flex: none; width: var(--ini-fuente, 14ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texto-tenue); }
+  .con-fuente :is(.ini, .ini-cols) .ini-fuente { display: block; }
+  :is(.ini, .ini-cols) .prox-i { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  .ini-cabeza, .ini-grupo { margin-top: .3lh; }
+  .ini-cabeza .ini-nombre { color: var(--azul); }
+  .ini-grupo .que { color: var(--dim); }
+  .ini-hija .ini-nombre { margin-left: var(--celda-cuadrada); }
+  .ini-n { flex: none; color: var(--texto-tenue); }
+  /* solas, la lista se lleva más: lo que se lee ahí es el nombre y lo próximo por decidir */
+  .proy-dos.ini-solas { grid-template-columns: minmax(56ch, 1.6fr) minmax(44ch, 1fr); }
+  .ini-salto { display: none; }
+  /* en una columna angosta (el teléfono), una columna: la lista y, debajo, el elegido. Una iniciativa, en dos líneas: el
+     peso, el nombre y cómo va arriba; quién la lleva y lo próximo por decidir debajo, bajo el nombre */
+  @container (max-width: 620px) {
+    .proy-dos, .proy-dos.ini-solas { grid-template-columns: minmax(0, 1fr); }
+    #proy-det { position: static; max-height: none; border-left: 0; border-top: 1px solid var(--linea); padding: 0; }
+    .ini { flex-wrap: wrap; row-gap: 0; }
+    .ini-salto { display: block; order: 7; flex-basis: 100%; height: 0; }
+    .ini .dueno-i { order: 8; width: auto; max-width: 12ch; margin-left: calc(2 * var(--celda-cuadrada)); }
+    .ini-hija .dueno-i { margin-left: calc(3 * var(--celda-cuadrada)); }
+    .ini .prox-i { order: 9; }
+    .con-fuente .ini .ini-fuente { order: 8; width: auto; }
+    /* sin dueño, la fuente abre la segunda línea: va bajo el nombre, como iría el dueño */
+    .ini .dueno-i:empty ~ .ini-fuente { margin-left: calc(2 * var(--celda-cuadrada)); }
+    .ini-hija .dueno-i:empty ~ .ini-fuente { margin-left: calc(3 * var(--celda-cuadrada)); }
+    .ini :is(.dueno-i, .prox-i, .ini-fuente):empty { display: none; }
+    .ini-cols :is(.dueno-i, .prox-i, .ini-fuente) { display: none; }
+    /* un proyecto: su estado ya lo dice la cabecera de su sección, y el nombre necesita el lugar */
+    :is(.proy:not(.ini), .proy-cols) .estado-p { display: none; }
+  }
+  /* la tabla extendida (el botón ↔): a lo ancho, sin el detalle, con todas las columnas y en palabras. Una grilla que
+     cada fila comparte (subgrid): cada columna mide lo que su texto más largo; el nombre se lleva lo que sobra y, si
+     no le alcanza, sigue en otra línea (el aviso, desde las 28 letras). Si ni así cabe, se corre de lado */
+  .proy-dos.extendida { grid-template-columns: minmax(0, 1fr); }
+  .proy-dos.extendida #proy-det { display: none; }
+  .proy-dos.extendida .proy-lista { overflow-x: auto; }
+  /* la primera y la última columna llevan además el margen de la fila (su 1ch a cada lado): sin él, el círculo se
+     come la mitad del espacio que lo aparta del nombre */
+  .proy-dos.extendida #proyectos { display: grid; column-gap: var(--celda-cuadrada);
+    grid-template-columns: calc(1ch + var(--celda-cuadrada)) minmax(24ch, max-content) max-content max-content max-content
+      max-content max-content fit-content(28ch) 6ch calc(var(--celda-cuadrada) + 1ch); }
+  .proy-dos.extendida #proyectos > .fila { grid-column: 1 / -1; }
+  .proy-dos.extendida #proyectos > .proy, .proy-dos.extendida #proyectos > .proy-cols { display: grid; grid-template-columns: subgrid; align-items: start; }
+  .proy-dos.extendida .solo-c { display: none; }
+  .proy-dos.extendida .solo-x { display: inline; }
+  .proy-dos.extendida :is(.que, .estado-p, .etapa, .cuando-p) { width: auto; overflow: visible; text-overflow: clip; text-align: left; white-space: nowrap; }
+  .proy-dos.extendida :is(.proy, .proy-cols) :is(.que, .aviso-p) { white-space: normal; }
+  .proy-dos.extendida :is(.inicio-p, .area-p) { color: var(--dim); white-space: nowrap; }
+  .proy-dos.extendida .proy-cab :is(.inicio-p, .area-p, .aviso-p) { color: inherit; }
+  .proy .aviso-p.tono-atencion { color: var(--atencion); }
+  /* el detalle del elegido: arriba, quedándose al bajar, el círculo y el nombre (como en la lista), cómo va, ir a su
+     hilo, sus acciones (⋯) y las pestañas; abajo, la que se ve (vista.ts, `data-ver`): el resumen, los pendientes o el
+     documento plegado por secciones */
+  #proy-det { position: sticky; top: 1lh; max-height: calc(100cqh - 3lh); overflow-y: auto; padding: 0 1ch .5lh;
+    border-left: 1px solid var(--linea); min-width: 0; white-space: normal; }
+  .det-cab { position: sticky; top: 0; z-index: 1; padding-top: .5lh; background: var(--bg); }
+  .det-titulo { display: flex; align-items: baseline; column-gap: var(--celda-cuadrada); }
+  .det-titulo h3 { flex: 1; min-width: 0; margin: 0; }
+  .det-titulo .cliente { color: var(--azul); }
+  .det-titulo .at, .det-titulo .menu-fila { flex: none; width: var(--celda-cuadrada); text-align: center; }
+  .det-titulo .menu-fila { color: var(--dim); cursor: pointer; }
+  .det-titulo .menu-fila:hover { color: var(--fg); }
+  .det-ir { flex: none; white-space: nowrap; }
+  .det-va { padding-left: calc(2 * var(--celda-cuadrada)); color: var(--dim); }
+  .det-va b { color: var(--fg); }
+  .det-va .tono-atencion { color: var(--atencion); }
+  .det-pest { margin: .5lh 0 0; padding-bottom: .2lh; display: flex; column-gap: 2ch; }
+  .det-pest a { color: var(--dim); cursor: pointer; }
+  .det-pest a.sel { color: var(--acento); }
+  .det-pest .n, .det-pane > h4 .n { color: var(--texto-tenue); text-transform: none; }
+  .det-pane { display: none; }
+  #proy-det:not([data-ver]) [data-pane="resumen"], #proy-det[data-ver="resumen"] [data-pane="resumen"],
+  #proy-det[data-ver="pendientes"] [data-pane="pendientes"], #proy-det[data-ver="documento"] [data-pane="documento"] { display: block; }
+  .det-pane > h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
+  .det-pane > h4:first-child { margin-top: .6lh; }
   #proy-det .tarea { padding: 0; }
+  .det-pane > .tarea:first-child { margin-top: .6lh; }
+  /* en el resumen, un texto largo se corta a seis líneas, sin partir ninguna (vista.ts, `cortar`); «más» lo muestra
+     entero */
+  .recorte:not(.entero) { max-height: 6lh; overflow: hidden; }
+  .mas, .det-ver { display: block; cursor: pointer; }
+  /* los datos de su ficha: el campo apagado, el valor al lado */
+  .det-datos { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--celda-cuadrada); margin: 0; }
+  .det-datos dt { color: var(--dim); }
+  .det-datos dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .det-mas > summary { color: var(--dim); cursor: pointer; list-style: none; }
+  /* una sección del documento, plegada: el chevrón en su celda, el título y lo que se lee de ella; abierta, su texto
+     corrido una celda, con las suyas también plegadas. Las vacías (la plantilla sin llenar), apagadas */
+  .det-sec > summary { display: flex; align-items: baseline; list-style: none; cursor: pointer; white-space: nowrap; }
+  .det-sec > summary::-webkit-details-marker, .det-mas > summary::-webkit-details-marker { display: none; }
+  .det-sec > summary:hover { background: var(--hover); }
+  .det-sec > summary .i { flex: none; width: var(--celda-cuadrada); text-align: center; color: var(--dim); }
+  .det-sec > summary .abierto, .det-sec[open] > summary .plegado { display: none; }
+  .det-sec[open] > summary .abierto { display: inline-block; }
+  .det-sec > summary .tit { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
+  .det-sec[open] > summary .tit { flex: 1; max-width: none; font-weight: bold; white-space: normal; }
+  .det-sec > summary .vistazo { flex: 1; min-width: 0; margin-left: var(--celda-cuadrada); overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+  .det-sec[open] > summary .vistazo { display: none; }
+  .det-sec.vacia > summary, .det-sec.vacia > summary .vistazo { color: var(--texto-tenue); }
+  .det-sec-cuerpo { padding: .2lh 0 .6lh var(--celda-cuadrada); }
+  .det-pie { margin-top: 1lh; color: var(--dim); }
+  .det-md { line-height: 1.45; }
+  .det-md table { display: block; overflow-x: auto; }
+  .det-md h5 { font-size: 1em; margin: .5lh 0 .2lh; color: var(--dim); }
   .proy-readme { white-space: normal; line-height: 1.45; border-top: 1px solid var(--linea); padding-top: .4lh; }
-  .proy-readme h1 { font-size: var(--t-mayor); margin: .6lh 0 .3lh; }
-  .proy-readme h2 { font-size: 1.05em; text-transform: none; margin: .9lh 0 .3lh; }
-  .proy-readme h3, .proy-readme h4 { font-size: 1em; margin: .7lh 0 .2lh; }
-  .proy-readme table { border-collapse: collapse; margin: .3lh 0; }
-  .proy-readme td, .proy-readme th { border: 1px solid var(--linea); padding: 0 1ch; vertical-align: top; }
-  .proy-readme pre { white-space: pre-wrap; } .proy-readme img { max-width: 100%; }
-  .proy-readme blockquote { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--linea); color: var(--dim); }
-  .proy-readme ul, .proy-readme ol { padding-left: 3ch; margin: .2lh 0; }
+  :is(.proy-readme, .det-md) h1 { font-size: var(--t-mayor); margin: .6lh 0 .3lh; }
+  :is(.proy-readme, .det-md) h2 { font-size: 1.05em; text-transform: none; margin: .9lh 0 .3lh; }
+  :is(.proy-readme, .det-md) :is(h3, h4) { font-size: 1em; margin: .7lh 0 .2lh; }
+  :is(.proy-readme, .det-md) table { border-collapse: collapse; margin: .3lh 0; }
+  :is(.proy-readme, .det-md) :is(td, th) { border: 1px solid var(--linea); padding: 0 1ch; vertical-align: top; }
+  :is(.proy-readme, .det-md) pre { white-space: pre-wrap; }
+  :is(.proy-readme, .det-md) img { max-width: 100%; }
+  :is(.proy-readme, .det-md) blockquote { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--linea); color: var(--dim); }
+  :is(.proy-readme, .det-md) :is(ul, ol) { padding-left: 3ch; margin: .2lh 0; }
 }

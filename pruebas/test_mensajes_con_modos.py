@@ -472,6 +472,18 @@ class LaOrden(ConBusFalso):
         self.assertNotEqual(codigo, 0)
         self.assertIn("no lleva texto", error)
 
+    def test_la_ayuda_ya_no_ofrece_la_consulta(self):
+        # retirada (docs/propuestas/lo-que-espera-a-la-persona.md, «La poda»): se acepta, pero no se ofrece
+        codigo, salida, error = self._cli("mensaje", "--help")
+        self.assertEqual(codigo, 0)
+        self.assertIn("--modo {aviso,pedido,encargo}", salida + error)
+        self.assertNotIn("consulta", salida + error)
+        codigo, _, error = self._cli("mensaje", "Faro", "x", "--modo", "grito")
+        self.assertEqual(codigo, 2)
+        # argparse cita las opciones hasta 3.12 ('aviso', 'pedido') y desde 3.13 ya no (aviso, pedido)
+        self.assertRegex(error, r"'?aviso'?, '?pedido'?, '?encargo'?")
+        self.assertNotIn("consulta", error)
+
     def test_la_consulta_no_manda_nada(self):
         from telar.servicios import historias
         from telar.servicios import mensajes as servicio
@@ -487,7 +499,8 @@ class LaOrden(ConBusFalso):
         with mock.patch.object(objetos, "ver", return_value=hilo) as ver, \
                 mock.patch.object(historias, "leer", side_effect=leer):
             r = servicio.consultar(self.ctx, "Faro")
-            codigo, salida, _ = self._cli("mensaje", "Faro", "--modo", "consulta")
+            codigo, salida, error = self._cli("mensaje", "Faro", "--modo", "consulta")
+            codigo_json, salida_json, error_json = self._cli("mensaje", "Faro", "--modo", "consulta", "--json")
         self.assertEqual(ver.call_args.args[1], "hilo:Faro")
         self.assertEqual(leidos[0], ("Faro", servicio.TURNOS_CONSULTA, "servidor"))
         self.assertEqual((r.modo, r.para, r.objeto["estado"]), ("consulta", "Faro", "trabajando"))
@@ -496,6 +509,13 @@ class LaOrden(ConBusFalso):
         self.assertIn("revisando T84", salida)
         self.assertEqual(self.enviados, [])
         self.assertEqual(casilla.pendientes(self.config, "Faro"), [])
+        # retirada: hace lo mismo y avisa en una línea, por stderr, qué usar en su lugar
+        self.assertEqual(error, mensaje.AVISO_CONSULTA + "\n")
+        self.assertIn("telar ficha <hilo>", error)
+        self.assertIn("telar hilo leer <hilo>", error)
+        self.assertEqual(codigo_json, 0)
+        self.assertEqual(json.loads(salida_json), r.model_dump(mode="json"))
+        self.assertEqual(error_json, mensaje.AVISO_CONSULTA + "\n")
 
     def test_la_consulta_sin_conversacion_dice_por_que(self):
         from telar.servicios import historias
@@ -696,6 +716,11 @@ if HAY_FASTAPI:
                 r = self.c.get("/mensajes/consulta", params={"para": "Faro"})
             self.assertEqual(r.status_code, 200, r.text)
             self.assertEqual(r.json()["objeto"]["estado"], "espera")
+            # retirada: responde lo mismo, pero no se anuncia
+            self.assertNotIn("/mensajes/consulta", self.c.get("/openapi.json").json()["paths"])
+            r = self.c.post("/mensajes", json={"para": "Faro", "texto": "x", "modo": "consulta"})
+            self.assertEqual(r.status_code, 422)
+            self.assertIn("telar ficha", r.json()["detail"])
 
 
 class DespertarAlDormido(Prueba):
@@ -729,6 +754,60 @@ class DespertarAlDormido(Prueba):
         with mock.patch.object(mod_bus, "estado_de", return_value={"maquina": "servidor", "vivo": False}), \
                 mock.patch.object(mod_bus, "pedir", return_value={"ok": False, "error": "servidor no respondió"}):
             self.assertEqual(mensaje.despertar(ctx, "Faro"), {"sin_despertar": "servidor no respondió"})
+
+
+class SoltarDelQueLoAbrio(Prueba):
+    """`telar hilo padre ninguno` (y «soltar» en la página) suelta a un hilo también del que lo abrió (abiertos_por),
+    no solo del padre que se le puso: deja de ser su hijo en todos lados (padre_de, hijos, el JSON de la lista, el
+    aviso al terminar un turno). Quién lo abrió se sigue sabiendo, y colgarlo de nuevo vuelve a valer."""
+
+    def setUp(self):
+        super().setUp()
+        from telar import estado as mod_estado
+
+        raiz = Path(tempfile.mkdtemp())
+        self.cfg = mod_config.Config(raiz=raiz, estado=raiz / "estado")
+        self.est = mod_estado.abrir(self.cfg)
+        self.est.anotar_abierto_por("Fuero", "Agentes")
+
+    def test_suelto_no_cuelga_ni_del_que_lo_abrio(self):
+        from telar.ordenes import hilo as orden_hilo
+
+        est = self.est
+        self.assertEqual((est.padre("Fuero"), est.hijos("Agentes")), ("Agentes", ["Fuero"]))
+        est.colgar("Fuero", "")
+        self.assertEqual(orden_hilo.padre_de(est, "Fuero"), "")
+        self.assertEqual(est.hijos("Agentes"), [])
+        self.assertEqual(est.sueltos(), {"Fuero"})
+        self.assertNotIn("Fuero", est.padres())                            # lo que publica el nodo no cambia
+        self.assertEqual(est.abiertos_por()["Fuero"]["por"], "Agentes")    # quién lo abrió no se olvida
+        est.colgar("Fuero", "Telar")
+        self.assertEqual((est.padre("Fuero"), est.hijos("Telar"), est.sueltos()), ("Telar", ["Fuero"], set()))
+        est.colgar("Fuero", "")
+        est.olvidar("Fuero")
+        self.assertEqual(est.sueltos(), set())
+
+    def test_el_json_de_la_lista_y_el_aviso_al_padre(self):
+        from telar.modelo import Hilo
+        from telar.ordenes import _comun
+        from telar.ordenes import nodo as mod_nodo
+
+        h = Hilo(id="Fuero", nombre="Fuero")
+        abierto_por = {"Fuero": {"por": "Agentes", "agente": "", "cuando": ""}}
+        colgado = _comun.Telar(hilos=(h,), abierto_por=abierto_por)
+        suelto = _comun.Telar(hilos=(h,), abierto_por=abierto_por, sueltos=frozenset({"Fuero"}))
+        self.assertEqual(_comun.json_hilo(h, colgado, con_ficha=False)["padre"], "Agentes")
+        self.assertEqual(_comun.json_hilo(h, suelto, con_ficha=False)["padre"], "")
+        self.assertEqual(_comun.json_hilo(h, suelto, con_ficha=False)["abierto_por"]["por"], "Agentes")
+
+        self.est.colgar("Fuero", "")
+        n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
+        n.config, n.ctx, n.anotar = self.cfg, SimpleNamespace(config=self.cfg), lambda *_: None
+        n._lo_ultimo = lambda est, h: "listo"
+        with mock.patch.object(mensaje, "enviar") as enviar:
+            n.avisar_padres({"Fuero": {"atencion": "trabajando"}}, ahora=1000)
+            self.assertEqual(n.avisar_padres({"Fuero": {"atencion": "termino"}}, ahora=1001), [])
+            enviar.assert_not_called()
 
 
 class ElHijoLeAvisaAlPadre(Prueba):

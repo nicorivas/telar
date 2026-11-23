@@ -1,0 +1,173 @@
+/* Los modos y los mundos (src/componentes/modos-mundos.ts) y Todo (src/componentes/todo.ts). Sin @scope: lo usan la
+   cabecera de la página (src/telar/web/indice.html) y el catálogo (/componentes#modos-mundos). Va en la capa de las
+   vistas, después del marco (marco.css).
+   · La banda: el segundo nivel de la cabecera, de borde a borde, con los modos a la izquierda y el mundo a la derecha
+     (elegido el 17-nov: la cabecera tenía demasiado). Está adentro de la cabecera: se esconde con ella (foco, una
+     pestaña sola) y la línea de abajo de la cabecera es la suya.
+   · Los modos, en una fila: cada uno su ícono (lo que lo distingue) y su nombre; el puesto en violeta, como la vista que
+     se ve en la barra de una pantalla (--pantalla-vista-si). Con poco ancho, los no puestos quedan en su ícono.
+   · El mundo: su nombre en su color (--mundo-c, que pone quien lo dibuja: la tinta del mundo); cuándo cambia, solo en su
+     ayuda (18-nov: no hacía falta verlo). Con ambos, la palabra en el color del texto. La línea bajo la banda es la de siempre, con o sin mundo: todas las
+     líneas van del mismo color, y la geometría ya dice que la banda es otro nivel. */
+
+/* ── los modos ── */
+
+.modos-fila {
+  display: inline-flex;
+  flex: none;
+  gap: 0 var(--h-1);
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.modos-modo {
+  color: var(--texto-tenue);
+  cursor: pointer;
+
+  &:hover { color: var(--texto); text-decoration: none; }
+  &.si { color: var(--pantalla-vista-si); }
+  & > .i { display: inline-block; inline-size: 2ch; text-align: center; }
+  & .txt { padding-inline-start: .5ch; }
+  & + .modos-modo { margin-inline-start: var(--h-1); }
+}
+
+/* en la cabecera (la variante A del catálogo, la que no se eligió), después de la marca; con poco ancho, los que no
+   están puestos quedan en su ícono */
+.cab-modos { margin-inline-start: var(--h-1); }
+
+@container cabecera (width < 100ch) {
+  .cab-modos .modos-modo:not(.si) .txt { display: none; }
+}
+
+/* ── la banda: el segundo nivel de la cabecera ── */
+
+/* una fila bajo la de la cabecera, separada por una línea de borde a borde (el margen negativo deshace el relleno de la
+   cabecera); abajo, el relleno y la línea de la cabecera son los suyos */
+.cab-banda {
+  display: flex;
+  gap: 0 var(--h-2);
+  align-items: baseline;
+  margin: var(--e-1) calc(-1 * var(--h-1)) 0;
+  padding: var(--e-1) var(--h-1) 0;
+  border-top: var(--borde);
+  container: banda / inline-size;
+}
+
+/* lo que se aprieta va en todo el alto de la banda, sin moverse (como los botones de la cabecera): cada modo, y el lugar
+   del mundo entero (su menú lo abre un clic en cualquier parte de él) */
+.cab-banda :is(.modos-modo, .banda-mundo) { padding-block: var(--e-1); margin-block: calc(-1 * var(--e-1)); }
+
+/* el mundo, a la derecha, cede antes que los modos: su nombre, si no cabe, se corta con «…» */
+.banda-mundo {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: auto;
+  cursor: pointer;
+
+  &[hidden] { display: none; }
+  & .mundo-boton { display: flex; flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  & .mundo-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* con poco ancho (en letras), los modos que no están puestos quedan en su ícono */
+@container banda (width < 72ch) {
+  .banda-modos .modos-modo:not(.si) .txt { display: none; }
+}
+
+/* en el teléfono, una línea que empuja lo de abajo menos que una fila de la terminal (que mide más o menos 1.15 veces
+   la letra, y una línea de la página 1.3): la banda mide justo una línea, sin la del medio, y la cabecera devuelve parte
+   de su relleno, de .25lh a .15lh arriba y abajo. Suma .8lh, unos 13.5px con la letra de 13 (la fila: 15) */
+.angosto .cabecera:has(> .cab-banda) { padding-block: .15lh; }
+.angosto .cab-banda { block-size: 1lh; margin-top: 0; padding-top: 0; border-top: 0; }
+.angosto .cab-banda :is(.modos-modo, .banda-mundo) { padding-block: .15lh; margin-block: -.15lh; }
+
+/* ── el mundo ── */
+
+.mundo-boton {
+  flex: none;
+  color: var(--mundo-c, var(--texto));
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover { text-decoration: none; }
+  &:hover .mundo-nombre { text-decoration: underline; }
+  &.ambos { color: var(--texto); }
+  /* el planeta delante del nombre, como el ícono de cada modo: en su celda de dos letras, y el nombre a media letra */
+  & > .mundo-icono { display: inline-block; flex: none; inline-size: 2ch; text-align: center; }
+  & > .mundo-icono + .mundo-nombre { padding-inline-start: .5ch; }
+}
+
+.cabecera .cab-der .mundo-boton { margin-inline-end: var(--h-1); padding: var(--e-1) var(--h-1); margin-block: calc(-1 * var(--e-1)); }
+.mundo-nombre { color: var(--mundo-c, var(--texto)); }
+
+/* ── la marca del modo y el mundo (la cabecera de la variante C) ── */
+
+.modos-marca {
+  flex: none;
+  color: var(--pantalla-vista-si);
+  cursor: pointer;
+
+  &:hover { text-decoration: none; }
+}
+.cabecera .cab-der > .modos-marca,
+.cabecera .cab-der > .mundo-boton.solo-nombre { padding: var(--e-1) var(--h-1); margin-block: calc(-1 * var(--e-1)); }
+
+@container cabecera (width < 100ch) {
+  .modos-marca .txt { display: none; }
+}
+
+/* arriba de la barra de hilos (variante C): el mundo en una fila (una raya de su color en la ranura) y los modos */
+.modos-arriba {
+  padding-block: var(--e-1);
+  border-bottom: var(--borde);
+
+  & .barra-modos { display: flex; padding: var(--e-1) var(--item-pad-x) 0; }
+  & .barra-modos .modos-modo:not(.si) .txt { display: none; }
+  & .modos-fila-mundo .mundo-nombre.ambos { color: var(--texto); }
+}
+.mundo-raya {
+  display: inline-block;
+  inline-size: 1.4ch;
+  block-size: 1px;
+  vertical-align: middle;
+  background: var(--mundo-c, var(--linea));
+}
+
+/* lo que el mundo deja afuera de la barra: la fila plegada al final de HILOS */
+.modos-otros { padding-bottom: var(--e-2); }
+
+/* ── Todo ── */
+
+.todo { container: todo / inline-size; }
+
+/* el buscador: la barra de un buscador (componentes/buscador.ts), de borde a borde (dia.css), y bajo ella los filtros */
+.todo-filtros { padding-block: var(--e-1); }
+
+/* cada grupo (una fuente, o lo de otros mundos): una sección; su cabecera trae sus líneas (como las de la barra), así
+   que entre uno y otro, solo aire. Las fuentes, sin cabecera: bajo la línea del buscador, un poco de aire */
+.todo-grupo + .todo-grupo { margin-top: var(--e-2); }
+.todo-fuentes { margin-top: var(--e-1); }
+
+.todo-icono { display: inline-block; inline-size: 2ch; text-align: center; }
+
+/* lo buscado, en el acento: el mismo largo y el mismo peso, solo el color */
+.todo-hallado { color: var(--acento); }
+
+/* el mundo de una cosa que no es el puesto: su nombre en su color; lo sin clasificar, apagado */
+.todo-mundo { color: var(--mundo-c, var(--texto-tenue)); }
+.todo-mundo.sin { color: var(--texto-apagado); }
+
+/* lo que no cabe y lo que dice que no hay: tenue; «+N más» lleva a la fuente entera */
+.todo-mas .item-titulo,
+.todo-nada .item-titulo { color: var(--texto-tenue); }
+.todo-mas:hover .item-titulo { color: var(--acento); }
+
+/* lo de otros mundos: su cabecera apagada (está, pero no es de aquí) */
+.todo-otros .todo-cab .item-titulo { color: var(--texto-tenue); }
+
+/* en un ancho chico, el título necesita el lugar: se va dónde vive (sigue en el globo) */
+@container todo (max-width: 64ch) {
+  .todo-cosa .item-sufijo,
+  .todo-fuente .item-sufijo .tono-tenue { display: none; }
+}

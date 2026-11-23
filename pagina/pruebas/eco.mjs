@@ -1,6 +1,8 @@
 // Prueba del eco de la terminal (src/navegador/eco/entrada.ts) contra un «Claude Code» falso: con cada tecla,
 // 250 ms después, vuelve a dibujar la pantalla entera (como el de verdad). Corre en Node con xterm sin
 // pantalla (@xterm/headless): npm run prueba:eco
+// Con un reloj de mentira: el tiempo pasa solo cuando la prueba espera, y cada timer corre a su hora exacta, así que lo
+// que afirma 20 ms después de teclear no depende de la carga de la máquina (con relojes de verdad fallaba con carga).
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -16,7 +18,32 @@ const salida = path.join(mkdtempSync(path.join(tmpdir(), 'eco-')), 'eco.cjs');
 await build({ entryPoints: [path.join(aqui, '..', 'src', 'navegador', 'eco', 'entrada.ts')], bundle: true,
     platform: 'node', format: 'cjs', outfile: salida, logLevel: 'warning' });
 const { conEco } = require(salida);
-const espera = ms => new Promise(r => setTimeout(r, ms));
+
+// El reloj de mentira: `setTimeout` (el de la prueba, el del Claude Code falso y el de xterm al escribir) y
+// `performance.now` (con el que el eco mide la latencia). `espera(ms)` corre, en orden, los timers que vencen en esos ms,
+// cada uno con el reloj en su hora y con lo que dejó pendiente (promesas, escrituras) resuelto antes del siguiente.
+let ahora = 0, serie = 0;
+const timers = new Map();
+globalThis.setTimeout = (fn, ms = 0, ...args) => {
+    const id = ++serie;
+    timers.set(id, { id, en: ahora + Math.max(0, Number(ms) || 0), correr: () => fn(...args) });
+    return id;
+};
+globalThis.clearTimeout = id => { timers.delete(id); };
+Object.defineProperty(performance, 'now', { value: () => ahora, configurable: true });
+const pendiente = () => new Promise(r => setImmediate(r));
+const espera = async ms => {
+    const hasta = ahora + ms;
+    for (;;) {
+        await pendiente();
+        const [t] = [...timers.values()].filter(x => x.en <= hasta).sort((a, b) => a.en - b.en || a.id - b.id);
+        if (!t) break;
+        timers.delete(t.id);
+        ahora = t.en;
+        t.correr();
+    }
+    ahora = hasta;
+};
 
 const term = new Terminal({ cols: 80, rows: 8, allowProposedApi: true });
 const eco = conEco(term);

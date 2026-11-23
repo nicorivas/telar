@@ -79,3 +79,87 @@ class UnArchivoDeLaRaiz(Prueba):
         from telar.servicios import ErrorDeServicio, archivos
         with self.assertRaises(ErrorDeServicio):
             archivos.para_bajar(self.ctx, str(self.raiz.parent / "secreto.txt"))
+
+
+class LaCarpetaDeUnHiloFueraDeLaRaiz(Prueba):
+    """Sin hilo, una ruta que escribió el agente de un hijo con rama: en su worktree, fuera de la raíz. Se muestra y
+    se recorre sin salir del worktree; las rutas vuelven enteras, para pedirlas de nuevo."""
+
+    def setUp(self):
+        super().setUp()
+        from telar import estado as mod_estado
+
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        base = Path(d.name).resolve()
+        self.raiz = base / "vida"
+        (self.raiz / "docs").mkdir(parents=True)
+        (self.raiz / "docs" / "oauth.md").write_text("el de la raíz")
+        self.wt = base / "worktrees" / "faro-base"
+        (self.wt / "docs").mkdir(parents=True)
+        (self.wt / "README.md").write_text("# Faro\n")
+        (self.wt / "docs" / "oauth.md").write_text("# OAuth\n")
+        (base / "secreto.txt").write_text("no")
+        os.symlink(base / "secreto.txt", self.wt / "docs" / "atajo.txt")
+        self.ctx = SimpleNamespace(config=SimpleNamespace(raiz=self.raiz, apps=(), estado=base / "estado"))
+        mod_estado.abrir(self.ctx.config).anotar_rama("Base", {"rama": "base", "base": "main", "ruta": str(self.wt)})
+        self.afuera = base / "secreto.txt"
+
+    def test_absoluta_o_relativa_desde_la_raiz(self):
+        for ruta in (str(self.wt / "docs" / "oauth.md"), "../worktrees/faro-base/docs/oauth.md"):
+            d = documentos.documento(self.ctx, "", ruta)
+            self.assertEqual((d.error, d.titulo, d.markdown), ("", "faro-base/docs/oauth.md", "# OAuth\n"), ruta)
+            self.assertEqual((d.carpeta, d.archivo, d.subir), (str(self.wt / "docs"), str(self.wt / "docs" / "oauth.md"), str(self.wt)))
+            self.assertEqual([a.ruta for a in d.archivos], [str(self.wt / "docs" / "atajo.txt"), str(self.wt / "docs" / "oauth.md")])
+
+    def test_se_sube_hasta_el_worktree_y_no_mas(self):
+        d = documentos.documento(self.ctx, "", str(self.wt))
+        self.assertEqual((d.titulo, d.subir, [a.nombre for a in d.archivos]), ("faro-base", None, ["docs/", "README.md"]))
+        # lo de la raíz sigue como siempre: relativo a ella
+        r = documentos.documento(self.ctx, "", "docs/oauth.md")
+        self.assertEqual((r.titulo, r.archivo, r.markdown), ("docs/oauth.md", "docs/oauth.md", "el de la raíz"))
+
+    def test_afuera_y_un_enlace_que_sale_no(self):
+        for ruta in (str(self.afuera), str(self.wt / "docs" / "atajo.txt"), str(self.wt.parent), "/"):
+            self.assertIn("fuera de la raíz", documentos.documento(self.ctx, "", ruta).error, ruta)
+
+
+class UnDocumentoDeOtraMaquina(Prueba):
+    """«servidor:ruta»: lo arma el nodo de allá, y sus rutas vuelven con la máquina delante."""
+
+    def setUp(self):
+        super().setUp()
+        self.ctx = SimpleNamespace(config=SimpleNamespace(raiz=Path("/no-existe"), apps=(),
+                                                          bus=SimpleNamespace(url="nats://x", maquina="laptop")))
+
+    def _con(self, respuesta):
+        from telar import bus
+
+        return mock.patch.object(bus, "hay_bus", return_value=True), mock.patch.object(bus, "pedir", return_value=respuesta)
+
+    def test_con_su_carpeta(self):
+        alla = documentos.Documento(hilo="", titulo="faro-base/docs/oauth.md", carpeta="~/worktrees/faro-base/docs",
+                                    archivo="~/worktrees/faro-base/docs/oauth.md", subir="~/worktrees/faro-base",
+                                    archivos=[documentos.Entrada(nombre="oauth.md", ruta="~/worktrees/faro-base/docs/oauth.md")],
+                                    markdown="# OAuth\n", descarga="/home/n/x.bin")
+        hay, pedir = self._con({"ok": True, "documento": alla.model_dump()})
+        with hay, pedir as p:
+            d = documentos.documento(self.ctx, "", "servidor:../worktrees/faro-base/docs/oauth.md")
+        self.assertEqual(p.call_args.args[1:4], ("servidor", "archivo-leer", {"ruta": "../worktrees/faro-base/docs/oauth.md", "documento": True}))
+        self.assertEqual((d.titulo, d.maquina, d.archivo, d.subir, d.descarga),
+                         ("faro-base/docs/oauth.md · en servidor", "servidor", "servidor:~/worktrees/faro-base/docs/oauth.md",
+                          "servidor:~/worktrees/faro-base", ""))
+        self.assertEqual([a.ruta for a in d.archivos], ["servidor:~/worktrees/faro-base/docs/oauth.md"])
+
+    def test_un_nodo_de_antes_da_solo_el_archivo(self):
+        hay, pedir = self._con({"ok": True, "archivo": {"ruta": "/home/n/vida/docs/x.md", "texto": "lejos", "mtime": 1.0, "recortado": True}})
+        with hay, pedir:
+            d = documentos.documento(self.ctx, "", "servidor:docs/x.md")
+        self.assertEqual((d.titulo, d.archivo, d.markdown, d.archivos, d.subir),
+                         ("x.md · en servidor", "servidor:/home/n/vida/docs/x.md", "lejos", [], None))
+        self.assertIn("más largo", d.aviso)
+
+    def test_lo_que_no_pudo_leer_lo_dice(self):
+        hay, pedir = self._con({"ok": False, "error": "fuera", "codigo": 403})
+        with hay, pedir:
+            self.assertEqual(documentos.documento(self.ctx, "", "servidor:/etc/passwd").error, "fuera")

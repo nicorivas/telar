@@ -81,9 +81,14 @@ el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos local
   servidor, `tailscale serve` le pone HTTPS). Se entra con una llave por máquina
   (`~/.config/telar/panel.llave`), que deja una cookie; además, cada pedido tiene que venir del mismo
   origen.
-- **Las terminales**: `/pty` es un WebSocket que corre `telar mirar <hilo>` en un PTY. Con
+- **Las terminales**: `/pty` es un WebSocket que corre `telar mirar <hilo> --enlaces` en un PTY. Con
   `?maquina=<otra>` reenvía a la de esa máquina: la dirección sale de la foto del espejo y se entra
-  con el secreto del bus de la persona.
+  con el secreto del bus de la persona. `--enlaces` engancha el cliente de tmux con `-T hyperlinks`: dentro de un
+  tmux 3.4 o más nuevo, Claude Code escribe un enlace de markdown (`[Doc](https://…)`) como un hipervínculo OSC 8,
+  con solo «Doc» a la vista, y tmux se lo pasa a una terminal solo si ella declara entenderlos; la de la página se
+  presenta como xterm-256color, que no lo declara, y sin esto llegaba «Doc» sin su dirección. El PTY es la terminal
+  de control de `mirar` (`terminal.con_terminal`, TIOCSCTTY): el tamaño que manda la página se le pone al PTY y el
+  núcleo se lo avisa al cliente de tmux con SIGWINCH; sin eso, la ventana del hilo quedaba del tamaño con que se abrió.
 - **Las máquinas**: `/maquinas` lista las del bus que sirven su página; se pasa a otra con un boleto
   firmado que vence en un minuto y sirve una vez.
 - **La página del equipo** (`--equipo`) es otra app, en su propio puerto: alguien de confianza ve tus
@@ -116,6 +121,13 @@ otra va sin prefijo ni barra. Pide tmux 3.5 o más: la 3.4 tiene un segfault que
 Si tmux se cae, el nodo sabe quién estaba vivo (lo anota cada 30 s) y `telar hilo caidos` los reabre
 con su conversación.
 
+Un hilo quieto se **duerme** (`telar.dormir`, `[hilos] dormir_tras`): el nodo cierra su agente y deja en su ventana
+una línea que espera, así que el hilo sigue en su lugar de la lista con un aro tenue. Abrirlo (la página, `telar
+mirar`, `ir`, `retomar`) o escribirle (un mensaje del bus, un encargo, lo que otro hilo le teclea) lo despierta: su
+panel se reemplaza por el agente retomando su conversación, en la misma ventana. Lo que se mira no se duerme: una
+terminal enganchada a su ventana, lo que muestra una página (que lo dice cada 30 s, `POST /mirando`) o lo que se mira
+desde otra máquina (su foto lo dice, `mirando`).
+
 ## Entre máquinas: el bus
 
 Las máquinas se unen por un servidor NATS con JetStream (`servidor/telar-bus.service`) en la que no se
@@ -126,12 +138,17 @@ Por el bus viajan:
 
 | qué | dónde | para qué |
 |---|---|---|
-| los mensajes | stream `TELAR_CASILLAS`, tema `casilla.<persona>.<hilo>` | esperan hasta que los recoja la máquina donde vive el hilo; el mismo id no se guarda dos veces |
-| el estado | almacén `TELAR_HILOS`, clave `<persona>.<hilo>` | dónde vive cada hilo, en qué anda, su conversación, su vínculo y si está archivado; cada máquina publica los suyos y se entera de los demás al instante |
+| los mensajes | stream `TELAR_CASILLAS`, tema `casilla.<persona>.<ficha>` | esperan hasta que los recoja la máquina donde vive el hilo; el mismo id no se guarda dos veces |
+| el estado | almacén `TELAR_HILOS`, clave `<persona>.<ficha>` | dónde vive cada hilo, en qué anda, su conversación, su vínculo y si está archivado; cada máquina publica los suyos y se entera de los demás al instante |
 | la foto | almacén `TELAR_ESPEJO`, cada 30 s | los hilos de cada máquina y la dirección de su página |
 | los pedidos | `rpc.<persona>.<maquina>.<verbo>` | leer una conversación, las tareas de otra máquina, los periódicos, la bandeja del equipo, un encargo que vive allá |
 | el registro | `TELAR_REGISTRO`, dos semanas | quién le dijo qué a quién, y los mensajes retenidos |
 | los cambios | `cambio.<persona>.<tema>`, sin guardar | `telar cambio <tema>`: que el dashboard de cada máquina relea, y los disparadores «al cambiar» |
+
+La respuesta a un pedido que pasa de lo que acepta el servidor de NATS en un mensaje (`max_payload`, 1 MB si no se
+cambió: todas las tareas de una máquina, con su texto) viaja comprimida con gzip, y quien pidió la reconoce por sus
+dos primeros bytes (`telar.bus.empacar` y `desempacar`). La que ni así cabe vuelve como un error que lo dice: antes
+no salía, y el que pidió esperaba hasta su plazo.
 
 **Entrar al bus de un equipo.** Una persona nueva corre `telar instalar --unirse` desde el clon del repositorio
 del equipo, que lo declara en `.telar/equipo.yaml` (el bus, quién aprueba, los módulos, los programas que hacen
@@ -145,6 +162,23 @@ tanto intentaba conectarse, entra solo.
 
 Las direcciones no dependen de la máquina: mudar un hilo cambia su estado, no su casilla. Cuando un
 hilo nace o muere en una máquina, la otra trae o cierra su ventana al instante.
+
+La `<ficha>` es el nombre del hilo en forma normalizada (`secretaria` por «Secretaría»), porque un tema no admite
+espacios ni puntos. Esa forma junta a los nombres que solo difieren en mayúsculas, tildes o espacios, así que
+dos hilos así compartirían casilla, tema y clave: lo de uno lo recibiría el otro. Por eso uno se queda con la
+forma (el que la lee: vivo y, entre esos, el que la tenía desde antes) y los demás se apartan (`faro_3f9a1c`, un
+sufijo que sale de su nombre exacto, el mismo en cualquier máquina; telar.casilla), y su nodo publica su estado con
+esa clave: quien le escribe por su nombre exacto o por su id la encuentra ahí antes de publicar. `telar hilo hijo` y
+`telar hilo renombrar` no aceptan un nombre que choca.
+
+El nodo publica muerto un hilo de aquí que falta dos vueltas seguidas, también si murió con el nodo
+apagado (la máquina se cayó, `telar serve` se reinició justo entonces): al arrancar parte de lo que el
+bus da vivo en esta máquina, no de cero. Lo que el bus dice de otra máquina no lo toca, y un hilo que
+otra máquina ya publica (se mudó) no lo publica muerto desde aquí. Del otro lado, la ventana de un hilo
+ajeno que se cierra sola se reabre mientras el bus lo dé por vivo, pero no más de tres veces en cinco
+minutos: a la cuarta, el registro dice «allá no contesta: no la reabro más», y la cuenta vuelve a cero
+cuando el hilo cambia de dirección o publica otra cosa. Un estado viejo en el bus, venga de donde venga,
+no se vuelve una ventana que parpadea.
 
 **Un hilo tiene un solo dueño**, la máquina donde corre ([propuesta](propuestas/un-dueno-por-hilo.md)).
 Su vínculo, su archivo y su conversación los guarda él y los publica en `TELAR_HILOS`; el nodo de las
@@ -168,6 +202,29 @@ aviso («↯ mensaje nuevo · …», nunca el contenido), y el gancho `UserPromp
 
 Un hilo cerrado se abre retomando su conversación.
 
+**Entregado es que entró, no que se imprimió.** Claude Code mata a un gancho que se pasa de su plazo y descarta
+lo que imprimió: con la máquina cargada, un gancho que alcanzó a marcar el mensaje antes de morir lo perdía. Por
+eso el gancho de la casilla no lo marca entregado: lo deja **en camino** (`<casilla>/camino/`), con la conversación
+del gancho (`transcript_path`), hasta dónde iba, su pid y cuántas veces se intentó. La corrida siguiente de un
+gancho de la casilla, y la pregunta del mod (`telar agente mod`, cada 2 s mientras haya algo en camino), lo
+revisan (`casilla.revisar`): si la cabecera del mensaje (`, id <mid>]`, que lleva todo lo que entrega la casilla,
+también lo de tu persona) aparece en lo que la conversación escribió desde entonces, pasa a `entregados/`; si no
+aparece, y el gancho que lo llevaba ya no corre y pasó la gracia (15 s), vuelve a esperar y sale en esa misma
+corrida, marcado «otra vez» (`, id <mid>, otra vez]`) para que el agente no repita lo que ya hizo. Un encargo
+queda corriendo cuando se ve entrar, y uno que se cerró entretanto no vuelve. Se busca en la cola del archivo, no
+en la conversación entera, y sin descifrar sus registros: la cabecera es nuestra y un gancho cancelado no deja su
+salida. Así un gancho cancelado puede hacer que un mensaje llegue dos veces, nunca cero; tras cinco intentos sin
+verlo entrar se da por entregado (`sin_confirmar`). Sin `transcript_path` (otro agente), se entrega al imprimir.
+
+Para que no los maten, los ganchos son livianos y tienen plazo holgado. Los que no pueden fallar (la casilla y el
+contexto de `SessionStart`) tienen 30 s (`casilla.PLAZO_GANCHO`); los del semáforo siguen cortos. Lo que corre en
+cada turno importa solo lo que usa: ni pydantic (`telar.objetos`), ni asyncio (`telar.bus`), ni `tempfile`; lo
+pesado va adentro de la función que lo necesita (`pruebas/test_casilla_en_camino.py` lo vigila). Y el mod no
+repite el aviso: `$.prompt.submit` resuelve al encolar, y el turno empieza recién cuando terminan los ganchos de
+`UserPromptSubmit`; mientras un prompt (el aviso, o uno de la persona) espera su turno, no manda otro (si en 2
+minutos no empieza, lo da por perdido). Al agente que le llegó solo la línea del aviso, `telar agente casilla
+--leer` le muestra lo pendiente entero y lo da por entregado: esa salida sí la vio.
+
 **El modo de un mensaje** (`telar mensaje --modo`, docs/propuestas/mensajes-con-modos.md) dice qué espera
 quien lo manda. Sin modo es un `pedido`: lo de arriba. Un `aviso` espera aparte (`<casilla>/avisos/`): el
 nodo no lo avisa, el mod no lo ve y el gancho `Stop` no alarga el turno por él; entra con el próximo turno
@@ -176,8 +233,9 @@ del hilo, junto a lo que llegue. Un `encargo` despierta como un pedido y, al dej
 (`pedido → aceptado → hecho | falló | cancelado`), quién lo pidió, plazo y resultado, que el hilo acepta y
 cierra (`telar objeto encargo:<id> cerrar`); al cerrarlo, a quien lo pidió le llega un mensaje con el
 resultado. Quien lo manda guarda una nota (`<estado>/encargos/enviados/<id>.json`) para abrirlo después desde
-su máquina, con el pedido `encargo` al nodo de allá. Una `consulta` no viaja: es la ficha del hilo y sus
-últimos turnos. `telar encargar` sigue aparte, con su cola (`telar.encargos`).
+su máquina, con el pedido `encargo` al nodo de allá. En qué anda un hilo no es un mensaje: lo dicen `telar ficha` y
+`telar hilo leer` (`--modo consulta`, que los juntaba, se retiró). `telar encargar` sigue aparte, con su cola
+(`telar.encargos`).
 
 **Los disparadores** (`[disparadores.x]`, `telar.disparadores`, docs/propuestas/disparadores.md) juntan lo que
 pasa solo. El de reloj se suma a los procesos de `telar periodicos` y corre desde el crontab; el de tecla se suma
@@ -191,7 +249,14 @@ avisa: un residente se abre cuando le llega algo, y `[agente] max_vivos` cierra 
 **Entre hilos de una misma persona no hay aprobación.** El mensaje de un hilo propio llega como pedido
 de un colega; el de otra persona, como mensaje. En lugar de la aprobación hay frenos: cada mensaje
 lleva `persona` y `saltos` (la cadena se corta cuando la persona habla), y pasado el tope de saltos (6)
-o de mensajes por hora de un hilo (30) se retiene en el registro hasta que la persona lo suelte.
+o de mensajes por hora de un hilo (30) se retiene en el registro hasta que la persona lo suelte o lo descarte
+(`telar mensaje --descartar`: no sale nunca, queda en el registro como `descartado` con quién y cuándo, y a quien lo
+mandó le llega un aviso de telar que no lo despierta ni corta su cadena). La
+conversación entre un padre y su hijo directo lleva su cuenta aparte (`familia`, `telar.casilla.cadena_familia`):
+no suma a la cadena de ninguno (el «listo» de un hijo no se retenía por lo que su padre habló con otros), y
+vuelve a empezar con un commit en la carpeta del hijo o cuando la persona le habla a uno de los dos; el tope
+frena ahí lo mismo, dos agentes que se contestan sin hacer nada. Lo retenido de las últimas 24 h se dice
+además en la franja de avisos de la página (`web/detenidos.ts`): quien lo mandó lo da por entregado.
 
 **Una cuenta por persona.** El servidor NATS tiene una cuenta por persona (`telar bus persona`,
 `telar.cuentas`): su usuario es su nombre en el bus y su clave, el secreto de `[bus] token`, el mismo en
@@ -231,6 +296,28 @@ lee del bus, y el envío de un mensaje (que lleva id, también su copia en el re
 otra persona), se repite una vez si un pedido no volvió a tiempo con el bus ya conectado, dentro del
 mismo plazo de antes: el reintento usa lo que quedó, si queda al menos un segundo. Si no conectó, o el
 plazo se cumplió entero, no se insiste.
+
+**Una máquina fuera de línea** (telar.alcance). Lo que el bus guarda de los hilos de una máquina es lo último que
+publicó: un laptop que se apaga no alcanza a decir nada, y su estado se queda «vivo» o «dormido». Por eso lo que se
+sabe de una máquina sale de su foto: está en línea mientras su foto tenga menos de `VIGENTE` (120 s), y si no, se da
+por fuera de línea desde la hora de la última, siempre que el nodo de aquí esté al día con el bus (deja una marca cada
+30 s mientras está conectado: sin ella, la que no tiene noticias es esta). Entonces sus hilos son **inalcanzables**:
+la lista, la barra, la franja y `telar hilos --red` dicen «laptop fuera de línea desde 14:02» y no los muestran vivos
+ni dormidos (lo que hacían cuando se fue va en la ayuda). Lo que se les pide no se pierde ni deja a nadie esperando el
+plazo del bus:
+
+- un **mensaje** espera en su casilla del bus (es durable) y su nodo lo recoge al volver;
+- **despertarlo** (`telar hilo despertar --maquina`, el botón «despertar al volver» de la página), o retomarlo para que
+  lea un mensaje si no estaba abierto, queda **en cola** en la máquina que lo pidió (`<estado>/cola/<máquina>.json`,
+  uno por hilo: lo que se pide de nuevo se suma). El nodo de esa máquina lo hace cuando la foto de la otra vuelve a
+  llegar, una vez por foto nueva y hasta tres veces sin respuesta; lo hecho queda anotado un día con su resultado, que
+  la página dice en la franja, y al hilo que lo pidió le llega un aviso.
+
+Con la máquina en línea, despertar va al nodo del dueño (`hilo-despertar`), que despierta al dormido en su ventana,
+retoma al cerrado con su conversación y deja como está al despierto (y su foco, también). Un pedido sin respuesta dice
+lo que se sabe por la foto: fuera de línea desde cuándo, o que está en línea y su telar es más viejo y no atiende ese
+verbo (`telar.bus.pedir`). Seguir un hilo en otra máquina mientras la suya está apagada no se puede todavía: su
+conversación vive allá ([propuesta](propuestas/seguir-sin-su-maquina.md)).
 
 Lo que no se puede arreglar desde aquí sin probar contra el bus real:
 
@@ -434,13 +521,93 @@ cambió cuántas casillas dicen eso (alguien agregó o borró una igual), no se 
 Cuando el agente de un hilo necesita a la persona (un diálogo de permiso, la pregunta de un MCP), su atención
 pasa a `espera`, y eso es todo lo que telar sabía. Ahora la espera es además un objeto, `permiso:<hilo>`, de
 solo lectura: qué hilo espera, desde cuándo y, si su agente lo dijo, qué pide. El texto lo trae el gancho
-`Notification` de Claude Code (su `message`) o `telar agente aviso --evento espera --pide "…"`, y queda en
+`Notification` de Claude Code (su `message`) o `telar agente evento --evento espera --pide "…"`, y queda en
 `<estado>/esperas.json`, uno por hilo. Vale para la espera que empezó cerca de cuando se anotó (unos segundos:
 el gancho y el mod de telar avisan casi a la vez y en cualquier orden); uno de una espera anterior no se
 muestra. Por eso lo anota también el gancho clásico cuando el mod está vivo, aunque ahí la atención la escriba
 el mod. De un hilo de otra máquina se sabe que espera y desde cuándo (lo publica su dueño), no qué pide.
 
-No se contesta desde aquí: eso es lo que sigue ([propuestas/permisos.md](propuestas/permisos.md)).
+Un permiso no se contesta desde aquí: eso es lo que sigue ([propuestas/permisos.md](propuestas/permisos.md)). Lo
+que el agente pregunta con opciones (AskUserQuestion), sí: el mod de telar deja la pregunta abierta en la casilla
+(`mod/pregunta.json`) y, mientras el diálogo espera en la terminal, mira si telar le dejó la respuesta
+(`mod/respuesta.json`, de `POST /hilos/responder`); la primera que llega gana, y la de afuera cierra el diálogo como si
+la hubieran elegido ahí. La vista conversación la muestra en el lugar de la caja y la contesta así, también a un hilo de
+otra máquina (pedido `responder` por el bus). El contrato, en [contratos.md](contratos.md), «telar hilo leer».
+
+### Lo que espera a la persona, junto
+
+Hay varias maneras de que algo espere una decisión de la persona, y cada una vive donde vive: el permiso o la pregunta
+en vivo de un hilo (la terminal, `esperas.json`, `mod/pregunta.json`), lo que un agente dejó para decidir en una tarea
+(su `avance`, en el archivo de la tarea), un mensaje que el freno de cadenas retuvo (el registro del bus). `telar
+esperas` (y `GET /esperas`) las junta en una sola lista, sin mover ninguna de su lugar
+([propuestas/lo-que-espera-a-la-persona.md](propuestas/lo-que-espera-a-la-persona.md)):
+
+- **El contrato es de cada tipo de objeto.** `Tipo.esperando(ctx)` (`telar.objetos`) da los suyos que esperan, una
+  `Espera` cada uno: su dirección, una clase (`permiso`, `pregunta`, `avance:<marca>`, `retenido`), desde cuándo, un
+  título, un resumen corto, sus enlaces (el hilo o el proyecto) y lo propio en `campos`. Lo saben `permiso` (los hilos
+  vivos en espera; de otra máquina, según la foto que publica, si sigue en línea), `tarea` (las abiertas con `avance`,
+  pedidas a la máquina donde viven) y `mensaje` (un tipo de solo lectura sobre el registro del bus: `mensaje:<id>`).
+  Un módulo suma los suyos con `[objetos.X] esperando = "<orden>"`, una consulta suya.
+- **El servicio las junta** (`telar.servicios.esperas`): pide a la vez a cada tipo que sabe esperar (dos esperan al
+  bus), ordena de la más vieja a la más nueva, y lo que no pudo leer de una fuente lo dice en `fallas` sin tirar las
+  demás. Es de solo lectura: nada de aquí contesta, suelta ni toca el `avance` de una tarea. Cada cosa se contesta
+  donde vive, por su dirección (`telar objeto`).
+- **Lo que cuesta, preguntado seguido.** El número de la barra la pide cada tanto, y dos fuentes cruzan la red. El
+  registro del bus se lee por partes (`bus.registro_al_dia`): `telar serve` recuerda, por secuencia del stream, lo que
+  ya leyó; al bus le pregunta hasta dónde va y le pide solo lo nuevo, sin `asegurar` los streams (unos 4 s la primera
+  vez desde el laptop; después, 1 s, casi todo conectar). Las tareas que viven en otra máquina se reusan si se leyeron
+  hace menos de 30 s (`Tarea.RECIENTE`), porque allá cada pedido corre `telar tipo tarea lista` entero.
+
+- **En la página**, es la pestaña «te esperan» del dashboard (`vistas/dashboard/esperas.ts`): los grupos por clase,
+  con los hilos que esperan ahora siempre arriba (un agente detenido en su turno) y después las decisiones que te
+  piden (la clase `decide`: las preguntas que un agente deja en un repositorio, del módulo preguntas), cada uno de lo
+  más viejo a lo más nuevo, con buscador y filtros por grupo. Su fila en DASHBOARD lleva el número de lo que pregunta
+  (los hilos que esperan, las decisiones y las preguntas en las tareas), que la pantalla relee cada minuto y medio
+  mientras la página se ve (`PestanaDashboard.cuenta`, en `vistas/hilos.ts`).
+- **También en «táctica»** (`vistas/dashboard/tactica.ts`, la vista de partida del orden por modos; por ahora una pestaña
+  más, la primera de DASHBOARD): su bloque Decidir son las mismas esperas en el orden de la urgencia
+  (`vistas/dashboard/urgencia.ts`: alguien espera > vence hoy > el plan la puso hoy > vence esta semana > antigüedad, sin
+  la marca de un agente; la deuda no entra), hasta siete filas, en lotes: las preguntas `decide` de un mismo agente, los
+  retenidos todos juntos y, de lo demás, lo de una misma clase y un mismo proyecto. Su barra lleva cuántas decisiones
+  esperan (todas, no solo las que preguntan). Un lote se contesta en la misma ventana, una tras otra. Las filas de
+  tareas (las de las vías y las de Hacer) llevan al pasar el mouse el ícono de fecha de la lista de tareas: mover la fecha
+  no contesta lo que espera, que sigue en su vía.
+- **Y la deuda, en el filtro «deuda» de tareas**: lo vencido hace más de 30 días. El modo estrategia (mirar con calma) no
+  tiene pantalla propia: abre en proyectos, con el tablero y las decisiones (módulos tablero y registro) como sus
+  otras pestañas. La pantalla «estrategia», que juntaba esas fuentes en un recorrido, se sacó el 19-nov-2026
+  (`telar.config.PESTANAS_RETIRADAS`).
+- **Se contesta en una sola ventana** (`web/contestar.ts`, que dibuja `componentes/contestar.ts` sobre `ventana()` y abre
+  `abrirVentana`, `web/ventana.ts`): un clic en la fila. Arriba el resumen, las opciones como filas que se eligen,
+  «Otra cosa…» (texto libre) y abajo «conversarlo» (la instrucción con la espera
+  como contexto; la de una pregunta de un agente va de entrada a quien preguntó) o «ir al hilo». Dos clics: uno elige y
+  el otro hace lo elegido, por el camino que ya existía: el `avance` de una tarea, `responder` (no le avisa al agente:
+  queda en su historia) o, si propone cerrarla, `cerrar` como propone; un retenido, `soltar` o `descartar` (que pregunta
+  antes, con el foco en «cancelar»); la pregunta en vivo de un
+  hilo, `POST /hilos/responder`, como la vista conversación; la de un módulo (`decide`), su acción `responder` con
+  `opcion` o con `texto`. Todo sobre la versión que se leyó: si cambió (409), la ventana relee la espera y lo dice, sin
+  mandar nada. Un permiso de la terminal no se contesta ahí: la ventana lo muestra y ofrece ir al hilo. Al pasar el
+  mouse por la fila, abrirla donde vive (su objeto, la tarea en su ficha) o ir a su hilo; de un retenido, además,
+  soltarlo (abre la ventana con «Soltarlo» elegido) o descartarlo (pregunta y lo hace), y con varios, la cabecera de su
+  grupo los descarta todos (la pregunta dice cuántos).
+- **Lo que hace recordar, a la izquierda** (`componentes/ficha-contestar.ts`): de una tarea o de una pregunta de un
+  módulo, la ventana crece y responde sin abrir otra cosa de qué se trata (el contexto entero), cómo se llegó aquí (la
+  historia, con quién: tú, el agente, lo que aplicó, una reunión; la creación y las últimas cuatro a la vista, lo del
+  medio plegado), qué está en juego (el peso, quién espera, la fecha y si es dura, lo que bloquea) y qué hay
+  relacionado (de dónde salió, dónde se trabaja, el proyecto con su estado y las otras tareas abiertas, como enlaces que
+  se abren en la página). La tarea entera se lee al abrirla (`GET /tipos/tarea/<id>`), y su proyecto (`GET /proyectos`,
+  una vez por página) y las otras del proyecto (`GET /tipos/tarea?proyecto=…`) después; lo que todavía no llega, se
+  dice. De una pregunta de un módulo, su resumen, su porqué, su detalle y su archivo. Lo que se pide y las opciones,
+  enteras, a la derecha; en el teléfono, una pantalla con las dos una debajo de la otra.
+- **La barra de la tarea, en el encabezado** (`vistas/dashboard/barra-tarea.ts`): la misma de su ficha en la vista
+  tareas, con sus íconos, colores y globos: la estrella y compartir delante del título, y al final la fecha, esperar a,
+  la prioridad, quién la hace, el tamaño, hecha y descartar, menos lo que la ventana ya hace a su manera (al cerrar, hecha
+  y descartar son sus opciones; en lo que pide hacer, hecha es «Hecho»; la instrucción es «conversarlo»). Llega con la
+  ficha de su proveedor (`GET /tareas/<id>`), y cada una corre como en la ficha (`tareas.ts`, `correrAccion`: la fecha
+  con elegirFecha), sin cerrar la ventana: la tarea se relee y lo que se conteste va sobre su versión de ahora. Mover la
+  fecha, la prioridad o el tamaño no contesta la propuesta; esperar a alguien, hecha o descartar sí, y la ventana se
+  cierra con lo hecho. Sin teclas, para no pisar las de la ventana.
+
+La forma, en [contratos.md](contratos.md), «telar esperas --json».
 
 ## La página
 
@@ -455,15 +622,19 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
 
 - **La barra de hilos**: los de esta máquina y los de las demás en una sola lista, con la máquina en
   una columna (⇄). Un hilo de otra máquina se nombra `máquina:hilo`. «+ nuevo», en la cabecera de HILOS,
-  abre uno (`POST /ir` con `crear`). Está en `pagina/src/vistas/hilos.ts`.
+  abre uno (`POST /ir` con `crear`). Está en `pagina/src/vistas/hilos.ts`. Quién se ve y cómo se anida, aparte y
+  sin la página (`vistas/hilos-familia.ts`): lo que el modo y el mundo puestos dejan ver, y lo que el mundo deja afuera
+  en una fila plegada al final de HILOS («de personal»), cada hijo bajo su padre en las dos. El hilo que se mira se ve
+  siempre, con su familia: sus padres (para quedar anidado) y sus descendientes, de esta máquina y de las otras; si es
+  el hijo de un agente, el agente.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos), que son las filas del grupo DASHBOARD de la barra. La configuración es el ⚙ de la cabecera:
-  un menú vertical de secciones (pestañas, calendario, hilos, agente, periódicos, agentes, módulos), cada una
+  un menú vertical de secciones (pestañas, calendario, hilos, modos, mundos, temas, glifos, agente, periódicos, agentes, módulos), cada una
   en su archivo de `vistas/dashboard/config/` y nombrada en su registro (`configuracion.ts`): una sección nueva
   es un archivo más.
   `vistas/dashboard/panel.ts` es el núcleo: lee la configuración y el día, lleva las pestañas y las teclas, y le
-  pasa cada acción a la pantalla que la declara. Cada pantalla (ahora, tareas, los bloques, proyectos, el plan y
-  el calendario, las secciones, el equipo) vive en su archivo con su estado, su HTML y sus acciones, y recibe del
+  pasa cada acción a la pantalla que la declara. Cada pantalla (táctica, ahora, tareas, los bloques, proyectos,
+  el calendario, las secciones, el equipo, «te esperan») vive en su archivo con su estado, su HTML y sus acciones, y recibe del
   núcleo lo que dice `vistas/dashboard/pantalla.ts`: una pantalla nueva es un archivo más. Todo se pinta en
   `vistas/dashboard/vista.ts`, que filtra, ordena y atiende los clics y las teclas. Sus atajos valen solo mientras se ve, y nunca mientras se escribe en un campo
   de afuera (el buscador de la barra, una terminal). El calendario tiene dos vistas, el día y la semana de lunes a
@@ -479,8 +650,13 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   (`web/carpeta.ts`, `web/compartir.ts`). En las tres vistas, las rutas de archivo que escribe el agente son
   enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del hilo. Una relativa es de donde arrancó
   el agente, que según `[agente] carpeta` es la carpeta del hilo o la raíz: se prueba primero la del hilo y
-  después la raíz, y se abre la que existe. Una de otra máquina va como `máquina:ruta`, que el visor lee sola por
-  `/api/archivos`. Una dirección web (texto, un enlace, o un hipervínculo OSC 8 de la terminal) abre una pestaña
+  después la raíz, y se abre la que existe. El visor lee una lista cerrada (`telar.servicios.archivos`): la raíz,
+  `[repos]`, lo que declaran las apps y la carpeta de un hilo de esa máquina aunque esté fuera de la raíz (su
+  vínculo, o el worktree de un hijo con rama), resuelta, sin un enlace que escape; y recorre la carpeta que
+  contiene el archivo sin salirse de ella. Una de otra máquina va como `máquina:ruta` (la carpeta del hilo,
+  relativa a la raíz de allá, con `../` si está fuera): el backend se la pide a esa máquina por el bus
+  (`archivo-leer`, con `documento`), que la arma con sus límites, y las rutas vuelven con la máquina delante para
+  seguir recorriendo allá. Una dirección web (texto, un enlace, o un hipervínculo OSC 8 de la terminal) abre una pestaña
   nueva en el navegador de la persona. En la terminal, una ruta o una dirección que llegó partida en varias filas
   se encuentra entera (`web/enlaces.ts`): Claude Code corta él sus líneas al ancho de su caja, con saltos de
   verdad, así que una fila que llega al borde derecho sigue en la de abajo si lo que cruza el corte es más largo
@@ -499,7 +675,7 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   pregunta y lo sube. Para un hilo de otra máquina, o para lo subido, el archivo va antes a la carpeta de entrada
   de la máquina del hilo (`POST /api/archivos/entrada`: a otra máquina, por ssh como `telar imagen`; hasta 200 MB, sin pisar nada)
   y se escribe la ruta de allá. Lo que se lee del arrastre está en `web/arrastre.ts`; nunca se navega al archivo.
-- **La barra de la derecha** (`web/lado.ts`) acompaña a un hilo con dos hojas: la ficha de un agente residente
+- **La barra de la derecha** (`web/lado.ts`) acompaña a todo hilo, con hasta tres hojas: la ficha de un agente residente
   (`/api/agentes/del-hilo`) y los **códigos** que nombra el hilo (`web/codigos.ts`, `/api/codigos`: `H3`, `PEN-07`,
   `T84`). Los códigos los calcula `telar.codigos` en la máquina del hilo (otra, por el verbo `codigos` del bus):
   reconoce las tres formas en que un documento de la carpeta vinculada define uno (un título, una fila con el
@@ -510,6 +686,14 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   lectura y la conversación del hilo (`web/enlaces.ts`, `web/rutas-agente.ts`): un clic (en la terminal, ⌘-clic)
   abre la barra en esa hoja, con el código abierto; cuando llegan códigos nuevos (`telar:codigos`), las vistas enlazan lo que ya dibujaron. Por
   qué y lo que queda: [propuestas/codigos.md](propuestas/codigos.md).
+  La tercera, **contexto** (`web/carga.ts`, `/api/contexto`), está en todo hilo: cuánto pesa ahora el contexto de su
+  conversación, desde cuándo (que empezó, el último /clear o la última compactación) y de qué está hecho, en siete
+  grupos (lo de Claude Code, lo que carga al empezar, al entrar a carpetas, lo que leyó, lo que se repite, lo de otros
+  hilos y la conversación), con las partes del total en una franja (`componentes/partes.ts`) y, al abrir un grupo, cada
+  cosa con su ruta, su tamaño y cuántas veces entró. Sirve para ver cuánto pesan los archivos generales contra lo que
+  el hilo leyó. La lee `telar.conversacion.carga`, el mismo lector de la conversación, de a poco (guarda hasta dónde
+  leyó y sigue de ahí cuando el archivo crece); qué registro dice qué lo sabe el adaptador del agente
+  (`telar.agente.carga_claude`, que junta en `telar.agente.carga`). De otra máquina, por el verbo `contexto` del bus.
 - **La terminal** es xterm.js sobre `/pty`, con un eco predictivo propio (`pagina/src/navegador/eco/`): dibuja
   al tiro lo que se escribe y lo confirma con lo que llega. Se reconecta sola si se corta. Lo que un programa de
   la terminal manda al portapapeles (OSC 52) pasa al de la persona: así se copia de un hilo de otra máquina, donde
@@ -524,7 +708,7 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
 ## Cómo se mueve una cosa
 
 **Un hilo pide atención.** El agente termina y espera respuesta. El mod de telar (o, sin él, el gancho
-clásico; los dos llaman a `telar agente aviso`) anota «te espera» en el estado; el nodo lo publica en el bus y la barra de cada máquina lo pinta.
+clásico; los dos llaman a `telar agente evento`) anota «te espera» en el estado; el nodo lo publica en el bus y la barra de cada máquina lo pinta.
 «Terminó» y no lo viste cuenta como «te espera».
 
 **Un agente le pide algo a otro.** El hilo A corre `telar mensaje B "…"`. El mensaje va al bus, el

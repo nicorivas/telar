@@ -11,7 +11,7 @@ titulo: Escribir el informe
 estado: activa
 prioridad: 2
 vence: 2026-11-03
-area: brinca
+area: trabajo
 creada: 2026-10-29
 ---
 ## Historia
@@ -28,7 +28,7 @@ class ElTamano(Prueba):
     def test_se_lee_con_tilde_o_sin_ella_y_con_sinonimos(self):
         for linea, esperado in (("tamaño: rápida", "rapida"), ("tamano: larga", "larga"), ("tamaño: Corta", "rapida"),
                                 ("tamaño: grande", "larga")):
-            t = tarea.ARCHIVO.leer(TEXTO.replace("area: brinca", f"area: brinca\n{linea}"), "T1")
+            t = tarea.ARCHIVO.leer(TEXTO.replace("area: trabajo", f"area: trabajo\n{linea}"), "T1")
             self.assertEqual(t.tamano, esperado, linea)
 
     def test_editarlo_escribe_su_linea_junto_a_la_fecha(self):

@@ -8,10 +8,10 @@ salir al mundo. Un proveedor `fechas` suma otras fuentes, con la misma maquinari
     tipo  = "markdown"
     rutas = ["equipo/calendario.md", "operacion/*/seguimiento.md"]   # globs desde la raíz
 
-    [proveedores.gestion]
+    [proveedores.hitos]
     como    = "fechas"
     tipo    = "comando"
-    comando = ["bin/fechas-de-la-gestion"]   # imprime fechas en JSON (docs/contratos.md, «telar fechas»)
+    comando = ["bin/fechas-de-los-hitos"]   # imprime fechas en JSON (docs/contratos.md, «telar fechas»)
 
 Las fechas no son pendientes del día: `consultar` no devuelve nada, y quien las quiere pide `leer`.
 """

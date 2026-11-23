@@ -9,13 +9,22 @@ con cosas a medio hacer. Lo que aquí se hace parte de eso:
   un `add` sobre ellas las borra del repositorio si no existen en el disco (pasa en un sistema de
   archivos que no acepta sus nombres).
 - **Integrar sin pisar lo ajeno.** Si lo que llega del remoto toca un archivo sin commitear de aquí
-  (de otro), no se integra y se dice. Si no lo toca, se rebasa: el autostash entonces no puede chocar,
-  porque nada de lo guardado cambió allá. Si el rebase choca con lo propio, se aborta y el commit
-  queda local.
+  (de otro), no se integra y se dice. Si no lo toca, se rebasa: lo sin commitear se aparta antes a un
+  stash con una marca propia y se devuelve después, y no puede chocar, porque nada de lo apartado
+  cambió allá. Si el rebase choca con lo propio, se aborta y el commit queda local.
+- **Lo apartado vuelve, o se dice.** No con `rebase --autostash`: si no puede devolver lo que guardó,
+  git lo deja en la lista de stash, lo avisa por stderr y sale con 0, y un `telar commit` lo daba por
+  subido con los cambios de otros fuera del árbol. Le basta que otro proceso tenga tomado el
+  `index.lock` en ese instante (cualquier `git status` de otro hilo lo toma). Aquí se devuelve con
+  `stash apply`, reintentando mientras ninguno de esos archivos tenga cambios nuevos; si alguien
+  escribió uno mientras tanto, o no hay caso, no se sube: el resultado es `apartado` y dice qué stash,
+  qué archivos y cómo devolverlos.
 - **Reintentar las carreras.** Un push que falla porque otro subió en el mismo segundo («is at … but
   expected …», «fetch first») se reintenta con espera, trayendo e integrando antes de cada intento.
 - **De a uno por repositorio** (un candado en el directorio común de git, que comparten los worktrees),
-  y **un registro único**: `<estado>/commits.log`, una línea JSON por intento.
+  y **un registro único**: `<estado>/commits.log`, una línea JSON por intento. El candado es un `flock`
+  sobre `telar-subir.lock`: el archivo queda siempre (borrarlo dejaría a dos con candados distintos), y
+  el candado se suelta solo cuando el proceso lo cierra o termina.
 """
 
 from __future__ import annotations
@@ -36,6 +45,8 @@ __all__ = ["Resultado", "commitear", "subir", "repositorio", "anotar"]
 CARRERA = ("fetch first", "non-fast-forward", "but expected", "stale info", "cannot lock ref",
            "failed to update ref", "rejected")
 ESPERAS = (1.0, 3.0, 8.0)
+#: entre los intentos de devolver lo apartado: lo que tarda otro en soltar el `index.lock`
+ESPERAS_DEVOLVER = (0.2, 0.5, 1.0, 2.0)
 
 
 @dataclass(slots=True)
@@ -48,11 +59,23 @@ class Resultado:
     commit: str = ""          # el hash nuevo, o vacío si no había nada que commitear
     subido: bool = False
     intentos: int = 0
-    estado: str = ""          # commiteado | subido | nada | choque | fallo
+    estado: str = ""          # commiteado | subido | nada | choque | apartado | fallo
     detalle: str = ""
+    stash: str = ""           # con `apartado`: el stash donde quedó lo sin commitear de otros
+    apartados: list[str] = field(default_factory=list)  # y sus archivos
 
     def json(self) -> dict:
         return asdict(self)
+
+
+@dataclass(slots=True)
+class Apartado:
+    """Lo sin commitear que se sacó del árbol para rebasar: el stash, sus archivos y, si no volvió, por qué."""
+
+    oid: str
+    archivos: list[str]
+    error: str = ""
+    pisados: list[str] = field(default_factory=list)  # los que alguien escribió mientras estaban afuera
 
 
 def _git(repo: Path, *args: str, timeout: float = 60) -> subprocess.CompletedProcess:
@@ -61,6 +84,14 @@ def _git(repo: Path, *args: str, timeout: float = 60) -> subprocess.CompletedPro
                               env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
     except subprocess.TimeoutExpired as e:
         return subprocess.CompletedProcess(e.cmd, 124, "", f"git no respondió en {timeout:.0f} s")
+
+
+def _error(r: subprocess.CompletedProcess, largo: int = 200) -> str:
+    """Lo que dijo git al fallar, desde el principio (ahí dice qué pasó: el `index.lock` tomado, el conflicto), en
+    una línea."""
+    texto = " ".join(l.strip() for l in (r.stderr or r.stdout).splitlines() if l.strip() and l.strip() != "hint:")
+    texto = texto or f"git salió con {r.returncode}"
+    return texto if len(texto) <= largo else texto[: largo - 1] + "…"
 
 
 def repositorio(ruta: Path) -> Path | None:
@@ -179,24 +210,127 @@ def _commitear(rutas: list[Path], mensaje: str, repo: Path | None) -> Resultado:
     return res
 
 
-def _integrar(repo: Path, arriba: str) -> tuple[bool, str]:
-    """Trae `arriba` y rebasa encima, sin tocar lo ajeno. (True, "") si quedó al día."""
+def _stashes(repo: Path) -> list[tuple[str, str, str]]:
+    """La lista de stash, de la más nueva a la más vieja: (`stash@{n}`, hash, asunto)."""
+    r = _git(repo, "stash", "list", "--format=%gd%x09%H%x09%gs")
+    return [tuple(l.split("\t", 2)) for l in r.stdout.splitlines() if l.count("\t") >= 2]  # type: ignore[misc]
+
+
+def _apartar(repo: Path) -> tuple[Apartado | None, str]:
+    """Saca del árbol lo sin commitear (lo rastreado: lo nuevo sin rastrear no estorba al rebase) a un stash
+    con una marca propia, para saber cuál es aunque otro guarde uno en el mismo momento. (None, "") si no
+    había nada; (None, por qué) si no se pudo."""
+    marca = f"telar commit {os.getpid()}.{time.time_ns()}: lo sin commitear, apartado mientras se integra"
+    antes = _git(repo, "rev-parse", "-q", "--verify", "refs/stash").stdout.strip()
+    r = _git(repo, "stash", "push", "-q", "-m", marca)
+    if r.returncode != 0:
+        return None, "no pude apartar lo sin commitear para integrar: " + _error(r)
+    oid = next((h for _, h, asunto in _stashes(repo) if asunto.endswith(marca)), "")
+    if not oid:
+        if _git(repo, "rev-parse", "-q", "--verify", "refs/stash").stdout.strip() == antes:
+            return None, ""  # no había nada rastreado sin commitear
+        return None, "apartar lo sin commitear dejó un stash que no reconozco; no integro (mira `git stash list`)"
+    archivos = _git(repo, "diff", "--name-only", "-z", f"{oid}^1", oid).stdout.split("\0")
+    return Apartado(oid=oid, archivos=[a for a in archivos if a]), ""
+
+
+def _esperar(segundos: float) -> None:
+    """La espera entre intentos de devolver y de abortar (las pruebas la cambian sin tocar `time.sleep`, que es de
+    todo el proceso)."""
+    time.sleep(segundos)
+
+
+def _devolver(repo: Path, ap: Apartado, esperas: tuple[float, ...] | None = None) -> bool:
+    """Devuelve lo apartado al árbol y bota su stash. Reintenta mientras ninguno de sus archivos tenga cambios
+    nuevos: lo que falla entonces es el `index.lock` tomado por otro, que dura un instante. Si alguien escribió
+    uno mientras estaba afuera, no hay caso: queda en `ap.pisados`. False si no volvió (`ap.error` dice por qué)."""
+    esperas = ESPERAS_DEVOLVER if esperas is None else esperas
+    for i in range(len(esperas) + 1):
+        r = _git(repo, "stash", "apply", "-q", ap.oid)
+        if r.returncode == 0:
+            ap.error = ""
+            ref = next((g for g, h, _ in _stashes(repo) if h == ap.oid), "")
+            if ref:
+                _git(repo, "stash", "drop", "-q", ref)
+            return True
+        ap.error = _error(r)
+        ap.pisados = sorted(set(ap.archivos) & _sucios(repo))
+        if ap.pisados or i == len(esperas):
+            return False
+        _esperar(esperas[i])
+    return False
+
+
+def _en_rebase(repo: Path) -> bool:
+    for carpeta in ("rebase-merge", "rebase-apply"):
+        r = _git(repo, "rev-parse", "--path-format=absolute", "--git-path", carpeta)
+        if r.returncode == 0 and r.stdout.strip() and Path(r.stdout.strip()).exists():
+            return True
+    return False
+
+
+def _abortar(repo: Path, esperas: tuple[float, ...] | None = None) -> str:
+    """Deshace el rebase que no pasó. Reintenta si no se pudo (otro con el `index.lock`): un rebase a medias deja
+    el HEAD suelto y nada más se puede subir. "" si quedó como antes; si no, por qué."""
+    esperas = ESPERAS_DEVOLVER if esperas is None else esperas
+    error = ""
+    for i in range(len(esperas) + 1):
+        r = _git(repo, "rebase", "--abort")
+        if not _en_rebase(repo):
+            return ""
+        error = _error(r)
+        if i < len(esperas):
+            _esperar(esperas[i])
+    return error
+
+
+def _como_devolver(repo: Path, ap: Apartado) -> str:
+    """Qué quedó afuera, dónde y cómo devolverlo, para quien lea el resultado."""
+    ref = next((g for g, h, _ in _stashes(repo) if h == ap.oid), "") or ap.oid
+    h = ap.oid[:10]
+    nombres = ", ".join(ap.archivos[:8]) + (f" y {len(ap.archivos) - 8} más" if len(ap.archivos) > 8 else "")
+    texto = (f"lo sin commitear de otros ({nombres}) quedó fuera del árbol, en {ref} ({h}), y no pude devolverlo"
+             f" ({ap.error}). ")
+    if ap.pisados:
+        resto = [a for a in ap.archivos if a not in ap.pisados]
+        texto += (f"Mientras estaba afuera alguien escribió {', '.join(ap.pisados)}: lo apartado de esos se ve con "
+                  f"`git diff {h}^1 {h} -- <archivo>` y hay que juntarlo a mano"
+                  + (f"; el resto vuelve con `git restore --source={h} -- {' '.join(resto)}`" if resto else "")
+                  + f". Con todo de vuelta, `git stash drop {ref}`")
+    else:
+        texto += f"Devuélvelo con `git stash apply {h}` y, de vuelta, `git stash drop {ref}`"
+    return texto + "; después, `telar commit --subir`."
+
+
+def _integrar(repo: Path, arriba: str) -> tuple[bool, str, Apartado | None]:
+    """Trae `arriba` y rebasa encima, sin tocar lo ajeno. (True, "", None) si quedó al día; el Apartado, si lo
+    sin commitear de otros no pudo volver al árbol."""
     remoto, _, rama = arriba.partition("/")
     f = _git(repo, "fetch", "-q", remoto, rama, timeout=30)
     if f.returncode != 0:
-        return False, f"fetch: {(f.stderr or f.stdout).strip()[-200:]}"
+        return False, f"fetch: {(f.stderr or f.stdout).strip()[-200:]}", None
     atras = _git(repo, "rev-list", "--count", f"HEAD..{arriba}").stdout.strip()
     if atras in ("", "0"):
-        return True, ""
+        return True, "", None
     llegan = set(_git(repo, "diff", "--name-only", f"HEAD...{arriba}").stdout.split("\n")) - {""}
     choques = llegan & _sucios(repo)
     if choques:
-        return False, "lo que llega toca archivos sin commitear de aquí: " + ", ".join(sorted(choques))[:300]
-    rb = _git(repo, "rebase", "-q", "--autostash", arriba, timeout=120)
+        return False, "lo que llega toca archivos sin commitear de aquí: " + ", ".join(sorted(choques))[:300], None
+    apartado, motivo = _apartar(repo)
+    if motivo:
+        return False, motivo, None
+    rb = _git(repo, "rebase", "-q", "--no-autostash", arriba, timeout=120)
     if rb.returncode != 0:
-        _git(repo, "rebase", "--abort")
-        return False, "el rebase chocó con lo propio; lo dejé como estaba: " + (rb.stderr or rb.stdout).strip()[-200:]
-    return True, ""
+        motivo = "el rebase no pasó; lo dejé como estaba: " + _error(rb)
+        error = _abortar(repo)
+        if error:  # devolver ahora sería perderlo: el `rebase --abort` de después hace un reset --hard
+            motivo = f"el rebase quedó a medias y no pude abortarlo ({error}): primero, `git rebase --abort`"
+            if apartado is not None:
+                apartado.error = "el rebase quedó a medias"
+            return False, motivo, apartado
+    if apartado is not None and not _devolver(repo, apartado):
+        return False, motivo, apartado
+    return not motivo, motivo, None
 
 
 def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
@@ -214,7 +348,13 @@ def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
     with _de_a_uno(repo):
         for i in range(len(esperas) + 1):
             res.intentos = i + 1
-            ok, motivo = _integrar(repo, arriba)
+            ok, motivo, apartado = _integrar(repo, arriba)
+            if apartado is not None:  # lo de otros quedó afuera: no se sube, y se dice dónde quedó
+                if res.commit and not motivo:  # se rebasó: el hash es otro
+                    res.commit = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
+                res.estado, res.stash, res.apartados = "apartado", apartado.oid, apartado.archivos
+                res.detalle = (motivo + "; " if motivo else "") + _como_devolver(repo, apartado)
+                return res
             if not ok:
                 res.estado, res.detalle = "choque", motivo
                 return res

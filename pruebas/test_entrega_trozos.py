@@ -2,6 +2,7 @@ import os, sys, tempfile, unittest, base64, uuid
 from pathlib import Path
 from types import SimpleNamespace
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import comun  # noqa: E402,F401  (aísla la sesión de lo vivo de quien la corre)
 from telar import entrega
 
 

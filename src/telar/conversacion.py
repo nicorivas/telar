@@ -19,6 +19,11 @@ y el verbo `leer` de la puerta (`telar.historia`, que arma los turnos) pasan por
 comparten la regla de cuál conversación es la del hilo (la primera de las suyas que tenga archivo), la
 validación de ids y el caché. Lo que cambia entre ellos es solo cuánto entregan: la web, todo por páginas y
 hasta 20 000 caracteres por mensaje; la puerta, los últimos turnos con topes más chicos, porque viaja por ssh.
+
+También es el que lee **lo que carga el contexto** de esa conversación (`carga`: qué archivos generales, qué leyó, qué
+le llegó de otros hilos, cada cosa con su tamaño; telar.agente.carga). Ahí el archivo se lee de a poco: una
+conversación solo crece, así que se guarda hasta dónde se leyó y, cuando crece, se sigue desde ahí. Lo de cada agente
+(qué registro dice qué) lo sabe su adaptador (`agente.carga()`).
 """
 
 from __future__ import annotations
@@ -36,6 +41,12 @@ MAXIMO = 500
 ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 _cache: dict[str, tuple[int, int, list[dict]]] = {}
 _candado = threading.Lock()
+
+#: lo que carga el contexto: por archivo, (fecha, tamaño, hasta dónde se leyó, el lector con lo leído)
+_cache_carga: dict[str, tuple[int, int, int, object]] = {}
+_candado_carga = threading.Lock()
+#: de a cuánto se lee un archivo largo (una conversación de 180 MB no se trae entera a la memoria)
+TROZO = 8 * 1024 * 1024
 
 
 class ErrorDeConversacion(LookupError):
@@ -100,6 +111,74 @@ def mensajes_del_hilo(config, sesiones: list[str], sesion: str = "") -> tuple[st
             continue
         return sid, mensajes, mtime
     raise ultimo or ErrorDeConversacion("este hilo no tiene conversaciones en esta máquina")
+
+
+def _elegir(config, sesiones: list[str], sesion: str = ""):
+    """(id, archivo, agente) de la conversación del hilo, como `mensajes_del_hilo` pero sin leerla: la pedida, o la
+    primera de sus `sesiones` que tenga archivo en esta máquina. Levanta `ErrorDeConversacion`."""
+    if not sesiones:
+        raise ErrorDeConversacion("este hilo no tiene conversaciones anotadas")
+    if sesion and sesion not in sesiones:
+        raise ErrorDeConversacion("esa conversación no es de este hilo")
+    agente = _agente(config)
+    for sid in [sesion] if sesion else sesiones:
+        if not ID.match(sid or ""):
+            continue
+        archivo = agente.archivo_de(sid)
+        if archivo is not None:
+            return sid, archivo, agente
+    raise ErrorDeConversacion("esa conversación no está en disco en esta máquina" if sesion
+                              else "este hilo no tiene conversaciones en esta máquina")
+
+
+def carga(config, sesiones: list[str], sesion: str = "") -> tuple[str, dict]:
+    """Lo que carga el contexto de la conversación de un hilo: `(id, resumen)` (telar.agente.carga, el JSON de
+    `telar hilo contexto`). Barato de repetir: si el archivo no cambió, lo de antes; si creció, solo lo nuevo.
+    Levanta `ErrorDeConversacion` (también si el agente no sabe leer lo que carga)."""
+    import json
+
+    sid, archivo, agente = _elegir(config, sesiones, sesion)
+    try:
+        st = archivo.stat()
+    except OSError as e:
+        raise ErrorDeConversacion(f"no se pudo leer: {e}") from e
+    clave = str(archivo)
+    with _candado_carga:
+        previo = _cache_carga.get(clave)
+        if previo and previo[0] == st.st_mtime_ns and previo[1] == st.st_size:
+            return sid, previo[3].resumen()
+        if previo and previo[2] <= st.st_size:
+            lector, desde = previo[3], previo[2]
+        else:
+            lector, desde = agente.carga(), 0
+            if lector is None:
+                raise ErrorDeConversacion(f"{getattr(agente, 'nombre', 'este agente')} no dice qué carga en su contexto")
+        hasta = desde
+        try:
+            with open(archivo, "rb") as f:
+                f.seek(desde)
+                resto = b""
+                while True:
+                    trozo = f.read(TROZO)
+                    if not trozo:
+                        break
+                    datos = resto + trozo
+                    corte = datos.rfind(b"\n") + 1  # la última línea puede estar a medio escribir: espera
+                    resto = datos[corte:]
+                    hasta += corte
+                    for linea in datos[:corte].split(b"\n"):
+                        if not linea or lector.saltar(linea):
+                            continue
+                        try:
+                            lector.registro(json.loads(linea))
+                        except ValueError:
+                            continue
+        except OSError as e:
+            raise ErrorDeConversacion(f"no se pudo leer: {e}") from e
+        _cache_carga[clave] = (st.st_mtime_ns, st.st_size, hasta, lector)
+        if len(_cache_carga) > 8:
+            _cache_carga.pop(next(iter(_cache_carga)))
+        return sid, lector.resumen()
 
 
 def aplanar(historia: dict) -> list[dict]:

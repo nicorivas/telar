@@ -2,7 +2,7 @@
 
 Un equipo se declara en el repositorio que comparte, en `.telar/equipo.yaml`:
 
-    nombre: brinca
+    nombre: faro
     administra: ana               # quién aprueba a las personas nuevas (su nombre en el bus)
     bus: nats://servidor:4222      # el bus del equipo
     puerta: http://servidor:8780   # opcional: dónde se pide entrar; por defecto, la página de la máquina del bus
@@ -104,7 +104,7 @@ def leer(ruta: Path) -> Equipo:
         raise ErrorDeUnirse(f"{ruta}: no conozco «{sorted(sobra)[0]}»")
     nombre, bus = str(datos.get("nombre") or ""), str(datos.get("bus") or "")
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", nombre):
-        raise ErrorDeUnirse(f"{ruta}: `nombre` es el nombre del equipo, en minúsculas (como «brinca»)")
+        raise ErrorDeUnirse(f"{ruta}: `nombre` es el nombre del equipo, en minúsculas (como «faro»)")
     if not re.fullmatch(r"nats://[^\s/:]+:\d+", bus):
         raise ErrorDeUnirse(f"{ruta}: `bus` va como nats://servidor:4222")
     administra = str(datos.get("administra") or "")
@@ -167,15 +167,22 @@ def quitar_tabla(texto: str, nombre: str) -> str:
 
     lineas = texto.splitlines(keepends=True)
     fuera, dentro = [], False
+    # los comentarios del final de la que se quita, pegados a la cabecera que sigue: son de esa otra
+    colgados: list[str] = []
     cabecera = re.compile(r"^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(#.*)?$")
     for linea in lineas:
         m = cabecera.match(linea)
         if m:
             clave = m.group(1).replace('"', "").replace(" ", "")
-            dentro = clave == nombre or clave.startswith(nombre + ".")
+            antes, dentro = dentro, clave == nombre or clave.startswith(nombre + ".")
             if dentro:
                 while fuera and fuera[-1].lstrip().startswith("#"):
                     fuera.pop()  # su comentario se va con ella
+            elif antes:
+                fuera.extend(colgados)
+            colgados = []
+        elif dentro:
+            colgados = [*colgados, linea] if linea.lstrip().startswith("#") else []
         if not dentro:
             fuera.append(linea)
     return "".join(fuera)

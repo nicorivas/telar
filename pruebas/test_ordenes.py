@@ -83,7 +83,7 @@ class Hilos(Orden):
     def test_el_json_trae_las_claves_del_contrato(self):
         datos = self.json_de("hilos", "--json")
         self.assertEqual(
-            set(datos), {"sesion", "viva", "raiz", "multiplexor", "aviso", "orden", "clientes", "hilos"}
+            set(datos), {"sesion", "maquina", "viva", "raiz", "multiplexor", "aviso", "orden", "clientes", "hilos"}
         )
 
     def test_sin_ficha_no_lee_documentos(self):
@@ -528,13 +528,13 @@ class HilosRed(unittest.TestCase):
         from telar import bus as mod_bus
         from telar.ordenes import hilos
         registro = {"Telar": {"nombre": "Telar", "maquina": "laptop", "vivo": True, "atencion": "espera"},
-                    "Gestión": {"nombre": "Gestión", "maquina": "telar", "vivo": True},
-                    "Roche": {"nombre": "Roche", "maquina": "laptop", "vivo": False}}
+                    "Secretaría": {"nombre": "Secretaría", "maquina": "telar", "vivo": True},
+                    "Romero": {"nombre": "Romero", "maquina": "laptop", "vivo": False}}
         with mock.patch.object(mod_bus, "estados", return_value=registro), \
                 mock.patch.object(mod_bus, "maquina", return_value="telar"):
             otras, maquinas, aviso = hilos._red(self.ctx())
-        self.assertEqual([h["nombre"] for h in otras], ["Roche", "Telar"])
-        self.assertEqual({h["nombre"]: h["vivo"] for h in otras}, {"Roche": False, "Telar": True})
+        self.assertEqual([h["nombre"] for h in otras], ["Romero", "Telar"])
+        self.assertEqual({h["nombre"]: h["vivo"] for h in otras}, {"Romero": False, "Telar": True})
         self.assertEqual(aviso, "")
 
     def test_sin_bus_o_con_el_bus_caido_avisa_y_no_revienta(self):
@@ -854,12 +854,14 @@ class Bloques(Orden):
                          [("correo", "correo", ("x", "--json"), "rojo")])
         self.assertEqual(mod_config.desde_dict({"bloques": {"c": {"nombre": "c", "comando": ["x"]}}}).bloques[0].color, "cian")
 
-    def test_un_bloque_es_su_pestana_o_va_en_el_plan(self):
+    def test_un_bloque_es_su_pestana(self):
         from telar import config as mod_config
         from telar.config import ErrorDeConfig
 
-        b = mod_config.desde_dict({"bloques": {"c": {"comando": ["x"], "tecla": "e"}, "r": {"comando": ["y"], "en": "plan"}}}).bloques
-        self.assertEqual([(x.en, x.tecla) for x in b], [("", "e"), ("plan", "")])
+        # lo que iba arriba de la pestaña del plan, que se sacó, se deja fuera (test_vistas_config, LaPestanaDelPlanSeSaco)
+        cfg = mod_config.desde_dict({"bloques": {"c": {"comando": ["x"], "tecla": "e"}, "r": {"comando": ["y"], "en": "plan"}}})
+        self.assertEqual([(x.clave, x.tecla) for x in cfg.bloques], [("c", "e")])
+        self.assertEqual(cfg.retirados, (("bloques.r", 'en = "plan"'),))
         for mal in ({"comando": ["x"], "en": "hoy"}, {"comando": ["x"], "tecla": "ee"}):
             with self.assertRaises(ErrorDeConfig, msg=mal):
                 mod_config.desde_dict({"bloques": {"c": mal}})
@@ -869,9 +871,9 @@ class Bloques(Orden):
         from telar.config import ErrorDeConfig
 
         b = mod_config.desde_dict({"bloques": {"g": {"comando": ["x"], "dentro": "proyectos"}}}).bloques[0]
-        self.assertEqual((b.dentro, b.en), ("proyectos", ""))
+        self.assertEqual(b.dentro, "proyectos")
         self.assertEqual(mod_config.como_vista("bloques", b)["dentro"], "proyectos")
-        for mal in ({"comando": ["x"], "dentro": "correo"}, {"comando": ["x"], "dentro": "plan", "en": "plan"}):
+        for mal in ({"comando": ["x"], "dentro": "correo"}, {"comando": ["x"], "dentro": "proyectos", "en": "hoy"}):
             with self.assertRaises(ErrorDeConfig, msg=mal):
                 mod_config.desde_dict({"bloques": {"c": mal}})
 
@@ -1019,6 +1021,172 @@ class FichaDeTarea(Orden):
         self.assertEqual(codigo, 2)
 
 
+class VistaDeLectura(Orden):
+    """Un proveedor con pestaña y `vista = "lectura"`: su ficha se dibuja para leer (pagina/src/vistas/dashboard/leer.ts).
+    La página sabe cuál por `/config` (pestanas[].vista), doctor revisa el valor, y la ficha puede traer cuatro campos más."""
+
+    def _config(self, cuerpo: str) -> None:
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(f'[proveedores.lecturas]\ncomo = "tareas"\ntipo = "comando"\ncomando = ["true"]\n{cuerpo}', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+
+    def test_config_dice_la_vista_de_cada_pestana(self):
+        self._config('pestana = "leer"\ntecla = "l"\nvista = "lectura"\n')
+        self.assertEqual(self.json_de("config", "--json")["pestanas"], [{"nombre": "leer", "tecla": "l", "vista": "lectura"}])
+        self._config('pestana = "leer"\n')
+        self.assertEqual(self.json_de("config", "--json")["pestanas"], [{"nombre": "leer", "tecla": "", "vista": ""}])
+
+    def test_llega_todo_con_de_fecha_y_prioridad(self):
+        """Un feed largo llega entero a `telar hoy` (telar no lo corta), cada fila con su prioridad (el nivel: alta P1,
+        media P2, baja P3), quién la dejó y su fecha; también si vienen dentro de `campos`."""
+        import sys
+
+        filas = [{"id": f"2026-11-{1 + i % 28:02d}-pieza-{i}", "texto": f"pieza {i}",
+                  **({"prioridad": ["alta", "media", "baja"][i % 3]} if i % 4 else {}),
+                  **({"campos": {"de": "ana"}} if i % 5 == 0 else {"de": "correo"})} for i in range(40)]
+        codigo_py = f"import json; print(json.dumps({filas!r}))"
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text('[proveedores.lecturas]\ncomo = "tareas"\ntipo = "comando"\n'
+                        f'comando = [{json.dumps(sys.executable)}, "-c", {json.dumps(codigo_py)}]\npestana = "leer"\nvista = "lectura"\n',
+                        encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+        leer = [f for f in self.json_de("hoy", "--json")["pendientes"] if f.get("pestana") == "leer"]
+        self.assertEqual(len(leer), 40)
+        por_id = {f["id"]: f for f in leer}
+        self.assertEqual({k: por_id["2026-11-01-pieza-0"][k] for k in ("de", "fecha", "prioridad")},
+                         {"de": "ana", "fecha": "2026-11-01", "prioridad": None})
+        self.assertEqual({k: por_id["2026-11-02-pieza-1"][k] for k in ("de", "fecha", "prioridad")},
+                         {"de": "correo", "fecha": "2026-11-02", "prioridad": 2})
+
+    def test_doctor_revisa_la_vista(self):
+        from types import SimpleNamespace
+
+        from telar import config as mod_config
+        from telar.ordenes import doctor
+
+        def revisar(opciones: dict) -> list[dict]:
+            cfg = mod_config.desde_dict({"proveedores": {"lecturas": {"como": "tareas", "tipo": "comando", "comando": ["true"], **opciones}}})
+            return [r for r in doctor._proveedores(SimpleNamespace(config=cfg)) if r["estado"] != doctor.OK]
+
+        self.assertEqual(revisar({"pestana": "leer", "vista": "lectura"}), [])
+        mal = revisar({"pestana": "leer", "vista": "revista"})
+        self.assertEqual([r["estado"] for r in mal], [doctor.FALLA])
+        self.assertIn("«revista»", mal[0]["dice"])
+        sin_pestana = revisar({"vista": "lectura"})
+        self.assertEqual([r["estado"] for r in sin_pestana], [doctor.AVISO])
+
+    def test_las_conexiones_elegidas_van_al_comando(self):
+        """`{conexiones}` en el comando de una acción: las elegidas, en JSON, solo de las que la ficha propone y con un
+        tipo de su vocabulario; sin elegidas, `[]`."""
+        import sys
+
+        salida = Path(self.tmp.name) / "salida.txt"
+        escribir = [sys.executable, "-c", f"import sys; open({str(salida)!r}, 'w').write(sys.argv[1])", "{conexiones}"]
+        pagina = {"titulo": "una lectura",
+                  "bloques": [{"texto": "Cae en `obra/c/` y conversa con `notas/a.md`.\n\n- y con\n  `notas/d.md`"},
+                              {"titulo": "de dónde salió", "items": [{"titulo": "`notas/e.md`"}]},
+                              {"texto": "notas/sin codigo.md, `una frase/con espacio`"}],
+                  "conexiones": [{"nota": "notas/a.md", "titulo": "A", "tipo": "informa", "porque": "por a", "ancla": "", "elegida": None},
+                                 {"nota": "notas/b.md", "titulo": "B", "tipo": "confirma", "porque": "por b", "ancla": "", "elegida": None}],
+                  "tipos": [{"tipo": "informa"}, {"tipo": "confirma"}, {"tipo": "tensiona"}],
+                  "acciones": [{"nombre": "guardar", "comando": escribir}]}
+        codigo_py = f"import json; print(json.dumps({pagina!r}))"
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text('[proveedores.tareas]\ntipo = "comando"\ncomando = ["true"]\n'
+                        f'detalle = [{json.dumps(sys.executable)}, "-c", {json.dumps(codigo_py)}, "{{id}}"]\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        self.addCleanup(os.environ.pop, "TELAR_CONFIG", None)
+        # las notas, en la raíz: las que no están no se conectan
+        raiz = Path(self.tmp.name) / "raiz"
+        for nota in ("notas/a.md", "notas/b.md", "notas/d.md", "obra/c/README.md", "obra/c/otra.md"):
+            (raiz / nota).parent.mkdir(parents=True, exist_ok=True)
+            (raiz / nota).write_text("# x\n", encoding="utf-8")
+        os.environ["TELAR_RAIZ"] = str(raiz)
+
+        elegidas = json.dumps([{"nota": "notas/b.md", "tipo": "tensiona", "porque": "  otro   porqué "}, {"nota": "notas/a.md"}])
+        self.assertEqual(self.json_de("tarea", "T1", "--accion", "0", "--conexiones", elegidas, "--json")["hecho"], "guardar")
+        self.assertEqual(json.loads(salida.read_text(encoding="utf-8")),
+                         [{"nota": "notas/b.md", "tipo": "tensiona", "porque": "otro porqué", "titulo": "B"},
+                          {"nota": "notas/a.md", "tipo": "informa", "porque": "por a", "titulo": "A"}])
+        self.json_de("tarea", "T1", "--accion", "0", "--json")
+        self.assertEqual(json.loads(salida.read_text(encoding="utf-8")), [])
+        # una nota que nombra el texto (no propuesta): con tipo del vocabulario y porqué; una carpeta, por su README
+        nombradas = json.dumps([{"nota": "obra/c/README.md", "tipo": "informa", "porque": "por c", "titulo": "  La C "},
+                                {"nota": "notas/d.md", "tipo": "confirma", "porque": "por d"}])
+        self.json_de("tarea", "T1", "--accion", "0", "--conexiones", nombradas, "--json")
+        self.assertEqual(json.loads(salida.read_text(encoding="utf-8")),
+                         [{"nota": "obra/c/README.md", "tipo": "informa", "porque": "por c", "titulo": "La C"},
+                          {"nota": "notas/d.md", "tipo": "confirma", "porque": "por d"}])
+        # una nombrada que no está en el repositorio: el texto la nombra, pero no hay qué conectar
+        (raiz / "notas/d.md").unlink()
+        codigo, _, error = self.correr("tarea", "T1", "--accion", "0", "--conexiones",
+                                       json.dumps([{"nota": "notas/d.md", "tipo": "confirma", "porque": "por d"}]))
+        self.assertEqual(codigo, 2)
+        self.assertIn("no está en el repositorio", error)
+        for mal in ([{"nota": "notas/otra.md"}], [{"nota": "notas/a.md", "tipo": "contiene"}], "{no es json",
+                    # una nombrada sin tipo, sin porqué, con un tipo de fuera, o la carpeta en vez de su documento
+                    [{"nota": "notas/d.md", "porque": "x"}], [{"nota": "notas/d.md", "tipo": "informa", "porque": "  "}],
+                    [{"nota": "notas/d.md", "tipo": "contiene", "porque": "x"}], [{"nota": "obra/c/", "tipo": "informa", "porque": "x"}],
+                    # una ruta que el texto escribe con espacios, o fuera de un `código`, no es una nota que nombre
+                    [{"nota": "notas/sin codigo.md", "tipo": "informa", "porque": "x"}]):
+            codigo, _, error = self.correr("tarea", "T1", "--accion", "0", "--conexiones", mal if isinstance(mal, str) else json.dumps(mal))
+            self.assertEqual(codigo, 2, error)
+
+    def test_las_notas_que_nombra_una_ficha(self):
+        """Las calcula igual que la página (leer.ts): las rutas escritas como código en el texto de los bloques, con al
+        menos una barra y sin espacios, en el orden en que aparecen, y la `nota` de los temas."""
+        from telar.servicios.tareas import documento_de, notas_nombradas
+
+        pagina = {"bloques": [{"texto": "Es tu tema (`notas/métodos/filtro.md`) y cae en `obra/ia-empleo/`;"
+                                        " no `hyp-sin-barra`, ni `dos palabras/x`, ni `https://x.y/z`.\n\n"
+                                        "- un ítem que sigue\n  en `notas/d.md`\n\notra vez `obra/ia-empleo/`"},
+                              {"titulo": "fuentes", "items": [{"titulo": "`notas/e.md`"}]},
+                              {"texto": "`~/abs/x.md` y `/abs/y.md`, `.claude/`"}],
+                  "temas": ["suelto", {"nombre": "la frontera", "nota": "notas/frontera.md"}, {"nombre": "repetido", "nota": "notas/d.md"}]}
+        # las absolutas no: no son de ningún grafo
+        self.assertEqual(notas_nombradas(pagina), ["notas/métodos/filtro.md", "obra/ia-empleo/", "notas/d.md",
+                                                   ".claude/", "notas/frontera.md"])
+        self.assertEqual(notas_nombradas({"bloques": [{"texto": None}], "temas": None}), [])
+        self.assertEqual(documento_de("notas/d.md", Path(self.tmp.name)), "notas/d.md")
+
+    def test_el_documento_de_una_carpeta(self):
+        """Una carpeta nombrada se conecta por su documento: su README.md, si no su index.md, y si no el único .md que
+        tenga; sin ninguno, o si no está, no tiene. La misma regla que la página (relaciones.ts, `documentoDeCarpeta`)."""
+        from telar.servicios.tareas import documento_de
+
+        raiz = Path(self.tmp.name)
+        for archivo in ("con-readme/README.md", "con-readme/index.md", "con-index/index.md", "con-index/b.md",
+                        "uno/draft.md", "uno/datos.csv", "uno/sub/README.md", "uno/.oculto.md", "dos/a.md", "dos/b.md",
+                        "vacia/sub/x.md"):
+            (raiz / archivo).parent.mkdir(parents=True, exist_ok=True)
+            (raiz / archivo).write_text("# x\n", encoding="utf-8")
+        self.assertEqual(documento_de("con-readme/", raiz), "con-readme/README.md")
+        self.assertEqual(documento_de("con-index/", raiz), "con-index/index.md")
+        self.assertEqual(documento_de("uno/", raiz), "uno/draft.md")
+        self.assertIsNone(documento_de("dos/", raiz))
+        self.assertIsNone(documento_de("vacia/", raiz))
+        self.assertIsNone(documento_de("no-esta/", raiz))
+
+    def test_los_campos_de_la_ficha_se_validan(self):
+        from telar.ordenes.seccion import validar
+
+        bien = {"titulo": "x", "bloques": [], "temas": ["uno", {"nombre": "dos", "nota": "notas/dos.md"}],
+                "fuente": "Alguien, una revista", "fecha": "2026-11-14", "estado": "me interesa: porque sí"}
+        self.assertEqual(validar(bien), "")
+        self.assertIn("temas", validar({**bien, "temas": "uno"}))
+        self.assertIn("temas", validar({**bien, "temas": [{"nota": "x.md"}]}))
+        self.assertIn("estado", validar({**bien, "estado": {"dijo": "sí"}}))
+        con = {**bien, "conexiones": [{"nota": "a.md", "tipo": "informa", "porque": "x", "ancla": "", "elegida": None}],
+               "tipos": [{"tipo": "informa", "que": "…", "color": "azul"}], "procesando": "21:40"}
+        self.assertEqual(validar(con), "")
+        self.assertIn("conexiones", validar({**con, "conexiones": [{"nota": "a.md"}]}))
+        self.assertIn("conexiones", validar({**con, "conexiones": [{"nota": "a.md", "tipo": "x", "elegida": "sí"}]}))
+        self.assertIn("tipos", validar({**con, "tipos": [{"tipo": "x", "color": "fucsia"}]}))
+        self.assertIn("procesando", validar({**con, "procesando": 3}))
+
+
 class AccionConMensaje(Orden):
     def test_el_mensaje_se_valida(self):
         from telar.ordenes.seccion import validar
@@ -1080,7 +1248,13 @@ class EstadoCorto(Prueba):
         self.assertEqual(corto("Cerrado (confirmado el 16-sep)"), "Cerrado")
         self.assertEqual(corto("**Prospecto**. Marco presentado"), "Prospecto")
         self.assertEqual(corto("En pausa por el cliente desde el 9-sep. Ver Notas"), "En pausa por el cliente…")
+        # la fila que escribe un gestor de proyectos: el estado, y después de qué sale
+        self.assertEqual(corto("Por partir · PMO: pista (Preparación)"), "Por partir")
+        self.assertEqual(corto("Terminado · a mano desde 2026-10-29: entregado"), "Terminado")
         self.assertEqual(corto(""), "")
+        # lo tachado ya no vale, y la fecha de adelante de una nota no es el estado
+        self.assertEqual(corto("~~Activo, sin empezar. Kick-off el 1-oct~~ **16-oct: activo, en la semana 2** (la 1 partió el 5-oct)"), "Activo")
+        self.assertEqual(corto("~~Prospecto~~ Negociación"), "Negociación")
 
 
 class AreaDelFrontmatter(Prueba):
@@ -1098,3 +1272,98 @@ class AreaDelFrontmatter(Prueba):
             f.write_text("# sin frontmatter\narea: GT\n")
             self.assertEqual(area_de(f), "")
             self.assertEqual(area_de(Path(d) / "no-existe.md"), "")
+
+
+class UnaMudanzaEntreDosArquetipos(Orden):
+    """Un repositorio que muda sus iniciativas de una carpeta a otra: mientras dura, unas siguen en la vieja (con el
+    arquetipo de antes) y otras ya están en la nueva (con el suyo), y alguna está en las dos. `telar proyectos` y los
+    mundos leen las dos sin romperse."""
+
+    PERFIL = """version: 1
+arquetipos:
+  proyecto:
+    ruta: "operacion/proyectos/*/"
+    etiqueta: "{campo:Cliente} · {titulo}"
+    secciones:
+      titulo: { tipo: linea, encabezado: '^#\\s+(.+)$' }
+      campos: { tipo: tabla, encabezado: '^##\\s+Ficha' }
+  iniciativa:
+    ruta: "operacion/iniciativas/*/"
+    secciones:
+      titulo: { tipo: linea, encabezado: '^#\\s+(.+)$' }
+internos: [Taller]
+"""
+
+    def setUp(self):
+        super().setUp()
+        raiz = Path(self.tmp.name) / "taller"
+        (raiz / ".telar").mkdir(parents=True)
+        (raiz / ".telar" / "perfil.yaml").write_text(self.PERFIL, encoding="utf-8")
+
+        def unidad(ruta: str, titulo: str, frontmatter: str = "", cliente: str = "") -> None:
+            carpeta = raiz / ruta
+            carpeta.mkdir(parents=True)
+            ficha = f"\n## Ficha\n\n| Campo | Valor |\n|---|---|\n| Cliente | {cliente} |\n" if cliente else ""
+            (carpeta / "README.md").write_text(f"---\n{frontmatter}---\n\n# {titulo}\n{ficha}", encoding="utf-8")
+
+        unidad("operacion/proyectos/muelle", "Muelle nuevo", "area: Norte\n", cliente="Puerto Sur")
+        # todavía en la carpeta vieja, con el cliente que es la casa misma
+        unidad("operacion/proyectos/club-lectura", "Club de lectura", "area: Norte\n", cliente="Taller")
+        # ya en la nueva: un programa (el conjunto, sin programa) y dos que dicen ser de él
+        unidad("operacion/iniciativas/club-lectura", "Club de lectura", "estado: en curso\npeso: alto\n")
+        unidad("operacion/iniciativas/canales", "Canales del club", "programa: club-lectura\ndueno: Ana\npeso: medio\n"
+               'proxima_decision: "¿Abrimos el canal de novedades?"\nestado: piloto\n')
+        unidad("operacion/iniciativas/boletin", "Boletín", "programa: club-lectura\n")
+        # una suelta
+        unidad("operacion/iniciativas/inventario", "Inventario anual", "dueno: Bruno\nestado: por partir\n")
+        self.raiz = raiz
+        configuracion = Path(self.tmp.name) / "config.toml"
+        configuracion.write_text('[mundos.trabajo]\nrutas = ["operacion/"]\n', encoding="utf-8")
+        os.environ["TELAR_CONFIG"] = str(configuracion)
+        os.environ["TELAR_RAIZ"] = str(raiz)
+
+    def test_lee_las_dos_carpetas_cada_una_con_su_arquetipo(self):
+        datos = self.json_de("proyectos", "--json")
+        por_ruta = {p["ruta"]: p for p in datos["proyectos"]}
+        self.assertEqual(sorted(por_ruta), [
+            "operacion/iniciativas/boletin", "operacion/iniciativas/canales", "operacion/iniciativas/club-lectura",
+            "operacion/iniciativas/inventario", "operacion/proyectos/club-lectura", "operacion/proyectos/muelle"])
+        self.assertEqual({r: p["arquetipo"] for r, p in por_ruta.items() if "/iniciativas/" in r},
+                         dict.fromkeys([r for r in por_ruta if "/iniciativas/" in r], "iniciativa"))
+        self.assertEqual(por_ruta["operacion/proyectos/club-lectura"]["arquetipo"], "proyecto")
+        # la misma iniciativa en las dos carpetas: dos unidades, cada una con su dirección
+        self.assertNotEqual(por_ruta["operacion/proyectos/club-lectura"]["direccion"],
+                            por_ruta["operacion/iniciativas/club-lectura"]["direccion"])
+        # y cada una de su mundo, por su carpeta
+        self.assertEqual({p["mundo"] for p in datos["proyectos"]}, {"trabajo"})
+
+    def test_cada_unidad_trae_su_frontmatter(self):
+        por_ruta = {p["ruta"]: p for p in self.json_de("proyectos", "--json")["proyectos"]}
+        canales = por_ruta["operacion/iniciativas/canales"]
+        self.assertEqual(canales["frontmatter"], {"programa": "club-lectura", "dueno": "Ana", "peso": "medio",
+                                                  "proxima_decision": "¿Abrimos el canal de novedades?", "estado": "piloto"})
+        self.assertEqual(por_ruta["operacion/iniciativas/club-lectura"]["frontmatter"].get("programa"), None)
+        self.assertEqual(por_ruta["operacion/proyectos/muelle"]["area"], "Norte")
+
+    def test_una_unidad_sin_cliente_se_llama_por_su_titulo_y_es_de_la_casa(self):
+        por_ruta = {p["ruta"]: p for p in self.json_de("proyectos", "--json")["proyectos"]}
+        nueva = por_ruta["operacion/iniciativas/canales"]
+        self.assertEqual((nueva["nombre"], nueva["cliente"], nueva["interno"]), ("Canales del club", "", True))
+        # en la carpeta vieja lleva el cliente de la casa: también es interna (el dashboard le quita ese prefijo)
+        vieja = por_ruta["operacion/proyectos/club-lectura"]
+        self.assertEqual((vieja["nombre"], vieja["cliente"], vieja["interno"]), ("Taller · Club de lectura", "Taller", True))
+        afuera = por_ruta["operacion/proyectos/muelle"]
+        self.assertEqual((afuera["cliente"], afuera["interno"]), ("Puerto Sur", False))
+
+    def test_un_hilo_vinculado_a_la_carpeta_vieja_sigue_y_la_nueva_se_vincula_aparte(self):
+        self.correr("hilo", "vincular", "operacion/proyectos/club-lectura", "--hilo", "club-lectura")
+        self.correr("hilo", "vincular", "operacion/iniciativas/club-lectura", "--hilo", "club-lectura-nuevo")
+        por_ruta = {p["ruta"]: p for p in self.json_de("proyectos", "--json")["proyectos"]}
+        self.assertEqual(por_ruta["operacion/proyectos/club-lectura"]["hilo"], "club-lectura")
+        self.assertEqual(por_ruta["operacion/iniciativas/club-lectura"]["hilo"], "club-lectura-nuevo")
+        # terminada la mudanza, la carpeta vieja ya no está: la lista sigue, sin ella
+        import shutil
+        shutil.rmtree(self.raiz / "operacion" / "proyectos" / "club-lectura")
+        rutas = [p["ruta"] for p in self.json_de("proyectos", "--json")["proyectos"]]
+        self.assertNotIn("operacion/proyectos/club-lectura", rutas)
+        self.assertIn("operacion/iniciativas/club-lectura", rutas)

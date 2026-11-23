@@ -162,6 +162,33 @@ class DesdeUnLienzo(LosProductos):
                 lienzos.pedir(ctx, origen, "consulta", datos)
             self.assertEqual(e.exception.codigo, codigo)
 
+    def test_su_pantalla_de_configuracion_es_una_pagina_y_su_lienzo_consulta(self):
+        from telar.cli import Contexto
+        from telar.config import cargar as cargar_config
+        from telar.servicios import ErrorDeServicio, lienzos
+        from telar.servicios import modulos as servicio_modulos
+
+        modulo = Path(self.tmp.name) / "eco"
+        (modulo / "bin").mkdir(parents=True)
+        eco = modulo / "bin" / "eco.py"
+        eco.write_text("#!/usr/bin/env python3\nimport json, sys\n"
+                       "if sys.argv[1:] == ['configurar']: print(json.dumps({'titulo': 'eco', 'bloques': [{'texto': 'hola'}]}))\n"
+                       "else: print(json.dumps({'recibi': json.load(sys.stdin)}))\n")
+        eco.chmod(0o755)
+        (modulo / "modulo.toml").write_text('[configurar]\ncomando = ["bin/eco.py", "configurar"]\n'
+                                            '[ordenes.eco]\ncomando = ["bin/eco.py"]\nconsulta = true\n')
+        ruta = Path(self.tmp.name) / "config.toml"
+        ruta.write_text(f'estado = "{Path(self.tmp.name) / "estado"}"\n[modulos.eco]\ncarpeta = "{modulo}"\n')
+        os.environ["TELAR_CONFIG"] = str(ruta)
+        ctx = Contexto(config=cargar_config(None))
+        self.assertEqual(servicio_modulos.configuracion(ctx, "eco").bloques, [{"texto": "hola"}])
+        self.assertEqual(lienzos.pedir(ctx, "config:eco", "consulta", {"verbo": "eco", "params": {"a": 1}})["datos"],
+                         {"recibi": {"a": 1}})
+        self.assertTrue(servicio_modulos.instalados(ctx).modulos[0]["configurar"])
+        with self.assertRaises(ErrorDeServicio) as e:
+            servicio_modulos.configuracion(ctx, "otro")
+        self.assertEqual(e.exception.codigo, 404)
+
 
 class IdeasYTareas(LosProductos):
     """Una tarea que es una idea pasa al backlog; una idea abre tareas operativas."""

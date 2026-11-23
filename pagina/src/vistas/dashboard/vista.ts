@@ -1,7 +1,7 @@
 // El dashboard en la página: lo que pasa en el navegador con lo que dibuja panel.ts. Filtra y ordena las listas
 // (tareas, proyectos), recuerda lo elegido (modo, búsqueda, orden), atiende los clics y las teclas, y le avisa a
 // Dashboard (`enviar`, panel.ts) lo que tiene que hacer él: abrir una tarea, cambiar de pestaña, guardar un formulario.
-// Todo queda dentro de su elemento (`.v-dia`); sus estilos, en media/css/dia.css, plan.css, proyectos.css y
+// Todo queda dentro de su elemento (`.v-dia`); sus estilos, en media/css/dia.css, plan.css (el calendario), proyectos.css y
 // ahora.css (con @scope, en `.v-dia`).
 //
 // Las teclas: el dashboard comparte la página con la barra y las vistas de los hilos, así que sus atajos solo
@@ -9,6 +9,11 @@
 
 import * as entidades from '../../web/entidades';
 import { I } from '../../web/iconos';
+import { circulo } from '../../componentes/circulo';
+import { contarFiltro, leerGrupo, marcarFiltros } from '../../componentes/filtros';
+import * as ui from '../../web/ui';
+import { armarPrompt } from './config/periodicos';
+import { esDeuda } from './dia';
 
 /** Lo que la vista le pide al Dashboard (`Dashboard.mensaje`, panel.ts). */
 export interface MensajeDia { tipo: string; accion?: string; valor?: string; nuevo?: boolean; k?: string; url?: string; datos?: string;
@@ -17,8 +22,8 @@ export interface MensajeDia { tipo: string; accion?: string; valor?: string; nue
 
 /** La vista ya montada: el Dashboard le manda lo que hay que dibujar. */
 export interface VistaDia {
-    /** la pantalla entera (lo que va dentro de `#dia`) */
-    pintar(html: string): void;
+    /** la pantalla entera: su cuerpo (lo que va dentro de `#dia`) y su barra (componentes/pantalla.ts), arriba */
+    pintar(html: string, barra?: string): void;
     /** un pedazo, sin tocar lo escrito en lo demás (el formulario de un periódico, el detalle de un proyecto) */
     parcial(id: string, html: string): void;
     /** cuántos pendientes tiene cada proyecto: llega después de la lista */
@@ -27,11 +32,13 @@ export interface VistaDia {
     readonly visible: boolean;
     /** la respuesta a lo que pidió un lienzo (`window.lienzo.pedir`), a ese lienzo y a ningún otro */
     responderLienzo(id: string, respuesta: { ok: boolean; datos?: unknown; error?: string }): void;
+    /** dejar puesto un filtro de «tareas» (`deuda`, `vencidas`…), sin lo buscado: para abrirla así desde otra pantalla */
+    filtrarTareas(modo: string): void;
 }
 
 interface Estado {
     modo: string; q: string; todas: boolean; pq: string; po: string; to: string; area: string; dueno: string;
-    pc: boolean; pf: Record<string, string>; ordenP: string; ordenC?: string; tm?: string; tq?: string; cq?: Record<string, string>; tmv?: number; pfv?: number;
+    pc: boolean; pf: Record<string, string>; px?: boolean; pd?: string; ordenP?: string; ordenC?: string; tm?: string; tq?: string; cq?: Record<string, string>; tmv?: number; pfv?: number;
 }
 
 const LLAVE = 'telar.dashboard.estado';
@@ -52,14 +59,18 @@ const escribiendoEn = (el: Element | null) => !!el && (el as HTMLElement).isCont
 
 export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): VistaDia {
     raiz.classList.add('v-dia');
-    raiz.innerHTML = '<div id="dia"><div class="aviso">leyendo el día…</div></div>';
+    // la barra de la pantalla, quieta arriba mientras el cuerpo corre (dia.css), y el cuerpo
+    raiz.innerHTML = '<div id="barra-dia"></div><div id="dia"><div class="aviso">leyendo el día…</div></div>';
     const dia = raiz.querySelector<HTMLElement>('#dia')!;
+    const barraDia = raiz.querySelector<HTMLElement>('#barra-dia')!;
+    // la barra se rehace solo si cambió: el repintado de cada minuto no le quita el mouse a un botón
+    let barraPintada = '';
     const $ = <T extends HTMLElement = HTMLElement>(id: string) => raiz.querySelector<T>(`#${id}`);
     const todos = <T extends HTMLElement = HTMLElement>(sel: string) => [...raiz.querySelectorAll<T>(sel)];
     const visible = () => !raiz.hidden && raiz.isConnected && !document.hidden;
 
-    const estado: Estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '', dueno: '', pc: false, pf: {}, ordenP: '' }, leerEstado());
-    // antes, «area» filtraba por la carpeta de la raíz (brinca, nico…); ahora es el área del documento
+    const estado: Estado = Object.assign({ modo: 'urgentes', q: '', todas: false, pq: '', po: 'fecha', to: 'urgencia', area: '', dueno: '', pc: false, pf: {} }, leerEstado());
+    // antes, «area» filtraba por la carpeta de la raíz (trabajo, personal…); ahora es el área del documento
     // «tareas» abre en «esta semana» (8-oct): lo que estaba guardado como «todas» pasa una vez a ese modo
     if (!estado.tmv) { if (!estado.tm || estado.tm === 'todas') estado.tm = 'semana'; estado.tmv = 1; }
     if (!estado.pfv) { estado.pf = { ...(estado.pf || {}) }; if (estado.pf.area) { estado.pf.raiz = estado.pf.area; estado.pf.area = ''; } estado.pfv = 2; }
@@ -86,7 +97,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
     const conTodas = (partes: string[]) => (f: HTMLElement) => partes.every(p => (f.dataset.texto ?? '').includes(p));
 
     function aplicar(): void {
-        aplicarArea();   // también en «revisar», que no tiene la lista de hoy
+        aplicarTareas();   // el área y el responsable filtran también la de «tareas», donde se eligen
         const c = $('tareas'); if (!c) return;
         // el área filtra antes que todo lo demás: lo de otra área ni se cuenta
         const lasDeHoy = filas().filter(pasa);
@@ -109,21 +120,15 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         vacio.textContent = partes.length ? 'sin resultados' : estado.modo === 'propuestas' ? 'nada que decidir' : 'nada urgente';
         for (const b of todos('[data-orden-t]')) b.classList.toggle('activo', b.dataset.ordenT === estado.to);
         for (const b of todos('[data-modo-tareas]')) b.classList.toggle('activo', !partes.length && b.dataset.modoTareas === estado.modo);
-        aplicarArea();
         const cuenta = $('tareas-cuenta');
         if (cuenta) cuenta.textContent = partes.length ? `${lista.length} de ${lasDeHoy.length}` : '';
     }
-    // el filtro por área fuera de la lista de hoy (la pestaña «revisar») y el botón activo
-    function aplicarArea(): void {
-        aplicarTareas();
-        for (const b of todos('[data-area-filtro]')) b.classList.toggle('activo', b.dataset.areaFiltro === estado.area);
-        for (const b of todos('[data-dueno-filtro]')) b.classList.toggle('activo', b.dataset.duenoFiltro === (estado.dueno || ''));
-    }
     // la pestaña «tareas»: todas, filtradas por modo (por revisar, vencidas…), área, dueño y lo buscado
     const enModo = (f: HTMLElement, modo?: string) => {
-        const m = modo || estado.tm || 'semana', d = f.dataset.dias === '' ? null : Number(f.dataset.dias);
+        const m = modo || estado.tm || 'semana', d = f.dataset.dias ? Number(f.dataset.dias) : null;  // sin fecha, el ítem no lleva data-dias
         if (m === 'revisar') return f.dataset.rev === '1';
         if (m === 'vencidas') return d !== null && d < 0;
+        if (m === 'deuda') return esDeuda(d);
         if (m === 'semana') return f.dataset.sem === '1';
         if (m === 'estrella') return f.dataset.estrella === '1';
         if (m === 'encurso') return f.dataset.encurso === '1';
@@ -158,12 +163,21 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
     }
     function aplicarTareas(): void {
         const c = $('tareas-t'); if (!c) return;
+        // el área o el responsable que rige y ya no está entre las opciones (no queda ninguna de esa área) se suelta:
+        // si no, la lista seguiría filtrada sin que se vea por qué, y sin «todas» no habría cómo soltarlo
+        const hay = (g: string, k: string) => !!$('revisar')?.querySelector(`.filtros-op[data-id="${CSS.escape(`${g}:${k}`)}"]`);
+        if (estado.area && !hay('area', estado.area)) { estado.area = ''; guardar(); }
+        if (estado.dueno && !hay('dueno', estado.dueno)) { estado.dueno = ''; guardar(); }
         const lasDeTodas = [...c.querySelectorAll<HTMLElement>('.tarea')];
         const partes = norm(estado.tq || '').split(/\s+/).filter(Boolean);
         const conTexto = conTodas(partes);
         const vacio = $('tareas-t-vacio')!;
         lasDeTodas.sort(compararColumna);
-        for (const s of todos('.tareas-cab [data-orden-c]')) s.classList.toggle('activo', s.dataset.ordenC === (estado.ordenC || ''));
+        for (const s of todos<HTMLElement>('.orden [data-id^="tareas:"]')) {
+            const k = (s.dataset.id ?? '').slice(7), si = k === (estado.ordenC || '');
+            s.classList.toggle('si', si);
+            s.title = s.title.replace(/ \(clic: volver.*\)$/, '') + (si ? ' (clic: volver al orden de telar)' : '');
+        }
         let n = 0;
         for (const f of lasDeTodas) {
             c.insertBefore(f, vacio);
@@ -180,63 +194,163 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             mas.textContent = `ver todas (${resto} más)`;
             c.appendChild(mas);
         }
-        for (const b of todos('[data-modo-t]')) b.classList.toggle('activo', b.dataset.modoT === (estado.tm || 'semana'));
-        // cada botón dice cuántas quedarían si se lo eligiera, con lo demás que está filtrado (la búsqueda y
-        // las otras filas de filtros): el del filtro activo es lo que se ve
+        const lista = $('revisar') ?? raiz;
+        marcarFiltros(lista, 'modo', estado.tm || 'semana', 'semana');
+        marcarFiltros(lista, 'area', estado.area || '');
+        marcarFiltros(lista, 'dueno', estado.dueno || '');
+        // cada opción dice cuántas quedarían si se la eligiera, con lo demás que está filtrado (la búsqueda y los
+        // otros grupos): la de la que rige es lo que se ve
         const cuantas = (cond: (f: HTMLElement) => boolean) => lasDeTodas.filter(f => conTexto(f) && cond(f)).length;
-        const poner = (b: HTMLElement, k: number) => { b.textContent = `${(b.textContent ?? '').replace(/\s*\d+$/, '')} ${k}`; b.classList.toggle('vacio-m', k === 0); };
-        for (const b of todos('#revisar [data-modo-t]')) poner(b, cuantas(f => enModo(f, b.dataset.modoT) && pasaArea(f, estado.area) && pasaDueno(f, estado.dueno)));
-        for (const b of todos('#revisar [data-area-filtro]')) poner(b, cuantas(f => enModo(f) && pasaArea(f, b.dataset.areaFiltro ?? '') && pasaDueno(f, estado.dueno)));
-        for (const b of todos('#revisar [data-dueno-filtro]')) poner(b, cuantas(f => enModo(f) && pasaArea(f, estado.area) && pasaDueno(f, b.dataset.duenoFiltro ?? '')));
+        const deja: Record<string, (f: HTMLElement, k: string) => boolean> = {
+            modo: (f, k) => enModo(f, k) && pasaArea(f, estado.area) && pasaDueno(f, estado.dueno),
+            area: (f, k) => enModo(f) && pasaArea(f, k) && pasaDueno(f, estado.dueno),
+            dueno: (f, k) => enModo(f) && pasaArea(f, estado.area) && pasaDueno(f, k),
+        };
+        for (const b of lista.querySelectorAll<HTMLElement>('.filtros-op')) {
+            const id = b.dataset.id ?? '', i = id.indexOf(':'), cumple = deja[id.slice(0, i)];
+            if (cumple) contarFiltro(b, cuantas(f => cumple(f, id.slice(i + 1))));
+        }
         for (const b of todos('[data-orden-t]')) b.classList.toggle('activo', b.dataset.ordenT === estado.to);
         const cuenta = $('tareas-t-cuenta');
         if (cuenta) cuenta.textContent = partes.length || (estado.tm || 'semana') !== 'todas' ? `${n} de ${lasDeTodas.length}` : '';
     }
-    // la pantalla de proyectos: filtrar por todas las palabras, ordenar por nombre o por fecha
-    const proyectosVisibles = () => { const c = $('proyectos'); return c ? [...c.querySelectorAll<HTMLElement>('.proy')].filter(f => !f.hidden) : []; };
-    function aplicarProyectos(): void {
-        const c = $('proyectos'); if (!c) return;
-        const lista = [...c.querySelectorAll<HTMLElement>('.proy')];
-        const partes = norm(estado.pq).split(/\s+/).filter(Boolean);
-        // por defecto: por estado (en marcha arriba, cerrado y sin estado abajo) y después por nombre. Una
-        // columna elegida ordena por ella en su sentido natural (lo reciente y lo con hilo primero); lo vacío al final
-        const k = estado.ordenP || '';
-        const porNombre = (a: HTMLElement, b: HTMLElement) => (a.dataset.nombre ?? '').localeCompare(b.dataset.nombre ?? '');
-        lista.sort((a, b) => {
-            if (!k || k === 'estado') return (Number(a.dataset.rango) - Number(b.dataset.rango)) || porNombre(a, b);
-            const x = a.dataset[k] || '', y = b.dataset[k] || '';
-            if (x !== y) {
-                if (!x || !y) return x ? -1 : 1;
-                return k === 'fecha' || k === 'hilo' ? (x < y ? 1 : -1) : x.localeCompare(y);
-            }
-            return porNombre(a, b);
-        });
-        for (const s of todos('.proy-cab [data-orden-p]')) {
-            const es = s.dataset.ordenP === k;
-            s.classList.toggle('activo', es);
-            s.textContent = es ? (k === 'fecha' || k === 'hilo' ? I.desc : I.asc) : I.ordenar;
-        }
-        const vacio = $('proyectos-vacio')!;
+    // un filtro de «tareas»: rige la opción elegida, y si ya regía se suelta. El área y el responsable filtran también
+    // la lista de hoy: `aplicar` rehace las dos
+    function elegirFiltro(id: string): void {
+        const i = id.indexOf(':'), g = id.slice(0, i), k = id.slice(i + 1);
+        if (g === 'modo') estado.tm = (estado.tm || 'semana') === k ? 'semana' : k;
+        else if (g === 'area') estado.area = estado.area === k ? '' : k;
+        else if (g === 'dueno') estado.dueno = estado.dueno === k ? '' : k;
+        else return;
+        guardar(); aplicar();
+    }
+    // un grupo plegado (el área, el responsable): sus opciones en un menú bajo él, cada una con su cuenta; la que rige,
+    // con ✓ en el acento, y elegirla la suelta
+    async function abrirFiltro(g: HTMLElement, donde: { x: number; y: number }): Promise<void> {
+        const { nombre, opciones } = leerGrupo(g);
+        const elegida = await ui.menu(opciones.map(o => ({
+            id: o.id, label: o.nombre, description: [o.cuenta ?? '', o.si ? 'clic: soltarlo' : ''].filter(x => x !== '').join(' · '),
+            // las demás, con la celda del ícono en blanco: si no, la que rige queda corrida de las otras
+            icono: o.si ? I.hecha : '\u00a0', color: o.si ? 'acento' : undefined,
+        })), donde, nombre);
+        if (elegida) elegirFiltro(elegida.id);
+    }
+    // la pantalla de proyectos: las filas llegan en su orden de siempre (`data-orden`), por estado, con la cabecera de
+    // cada sección (en ejecución, por partir…) entre ellas. Aquí se filtran por todas las palabras y por el área, los
+    // cerrados se esconden salvo que se pidan o se busquen, y se ordenan por la columna elegida: entonces van sin
+    // secciones, y lo vacío siempre al final; empatadas, en su orden de siempre
+    const proyectosVisibles = () => todos('#proyectos .proy, #iniciativas .proy').filter(f => !f.hidden);
+    const COLS_P = ['nombre', 'fase', 'plazo', 'pend'];
+    const compararProy = (k: string) => (a: HTMLElement, b: HTMLElement) => {
+        const siempre = Number(a.dataset.orden) - Number(b.dataset.orden);
+        if (!k) return siempre;
+        const x = a.dataset[k] || '', y = b.dataset[k] || '';
+        if (x === y) return siempre;
+        if (!x || !y) return x ? -1 : 1;
+        if (k === 'pend') return Number(y) - Number(x);
+        if (k === 'fase') return Number(x) - Number(y);
+        return x.localeCompare(y);
+    };
+    // las iniciativas (proyectos.ts, iniciativas.ts): lo buscado, como en los proyectos; un grupo se ve si le queda alguna,
+    // y la que lo encabeza se ve con él aunque no calce (dice de qué programa son). Devuelve [las que se ven, todas]
+    const aplicarIniciativas = (partes: string[]): [number, number] => {
+        const c = $('iniciativas'); if (!c) return [0, 0];
+        const filas = [...c.querySelectorAll<HTMLElement>('.ini')];
+        const calza = conTodas(partes);
+        const conAlguna = new Set(filas.filter(f => !f.classList.contains('ini-cabeza') && calza(f)).map(f => f.dataset.grupo ?? ''));
         let n = 0;
-        for (const f of lista) {
-            c.insertBefore(f, vacio);
-            // los cerrados se esconden salvo que se pidan, o que se los busque por nombre
-            const pf = estado.pf || {};
-            f.hidden = !conTodas(partes)(f)
-                || (f.dataset.cerrado === '1' && !estado.pc && !partes.length && pf.tipo !== f.dataset.tipo)
-                || (!!pf.raiz && f.dataset.raiz !== pf.raiz) || (!!pf.area && f.dataset.unidad !== pf.area)
-                || (!!pf.tipo && f.dataset.tipo !== pf.tipo)
-                || (!!pf.hilo && f.dataset.hilo === '0') || (!!pf.pend && !(Number(f.dataset.pend) > 0));
-            f.classList.toggle('primera', !f.hidden && n === 0 && partes.length > 0);
-            if (!f.hidden) n += 1;
+        for (const f of filas) {
+            const cabeza = f.classList.contains('ini-cabeza');
+            f.hidden = !calza(f) && !(cabeza && conAlguna.has(f.dataset.grupo ?? ''));
+            if (!f.hidden && (calza(f) || !partes.length)) n += 1;
         }
-        vacio.hidden = n > 0;
-        vacio.textContent = 'sin resultados';
+        for (const g of c.querySelectorAll<HTMLElement>('.ini-grupo')) g.hidden = !conAlguna.has(g.dataset.grupo ?? '');
+        const cols = c.querySelector<HTMLElement>('.ini-cols'); if (cols) cols.hidden = n === 0;
+        const cab = c.querySelector<HTMLElement>('.ini-sec-cab .proy-sec-n'); if (cab) cab.textContent = String(n);
+        return [n, filas.length];
+    };
+    function aplicarProyectos(): void {
+        const partes = norm(estado.pq).split(/\s+/).filter(Boolean);
+        const [ni, totalI] = aplicarIniciativas(partes);
+        const c = $('proyectos');
+        if (!c) {
+            // solo las iniciativas: lo buscado se cuenta igual
+            const cuenta = $('proyectos-cuenta'); if (cuenta) cuenta.textContent = partes.length ? `${ni} de ${totalI}` : '';
+            return;
+        }
+        const area = (estado.pf || {}).area || '';
+        const k = COLS_P.includes(estado.ordenP ?? '') ? estado.ordenP! : '';
+        const filas = [...c.querySelectorAll<HTMLElement>('.proy, .proy-sec-cab')].sort(compararProy(k));
+        const vacio = $('proyectos-vacio');
+        for (const f of filas) c.insertBefore(f, vacio);
+        for (const s of todos('.proy-cols [data-orden-p]')) s.classList.toggle('activo', s.dataset.ordenP === (k || 'estado'));
+        let n = 0, total = 0;
+        const porSec = new Map<string, number>();
+        for (const f of filas) {
+            if (!f.classList.contains('proy')) continue;
+            total += 1;
+            f.hidden = !conTodas(partes)(f) || (!!area && f.dataset.unidad !== area) || (f.dataset.sec === 'cerrado' && !estado.pc && !partes.length);
+            f.classList.toggle('primera', !f.hidden && n === 0 && partes.length > 0);
+            if (!f.hidden) { n += 1; porSec.set(f.dataset.sec ?? '', (porSec.get(f.dataset.sec ?? '') ?? 0) + 1); }
+        }
+        // la cabecera de una sección: solo en el orden de siempre, y si le queda alguna fila
+        for (const cab of filas) {
+            if (cab.classList.contains('proy')) continue;
+            const kk = porSec.get(cab.dataset.sec ?? '') ?? 0;
+            cab.hidden = !!k || kk === 0;
+            const cuenta = cab.querySelector('.proy-sec-n'); if (cuenta) cuenta.textContent = String(kk);
+        }
+        if (vacio) { vacio.hidden = n > 0 || ni > 0; vacio.textContent = 'sin resultados'; }
         const cuenta = $('proyectos-cuenta');
-        if (cuenta) cuenta.textContent = partes.length ? `${n} de ${lista.length}` : '';
+        if (cuenta) cuenta.textContent = partes.length ? `${n + ni} de ${total + totalI}` : '';
         $('ver-cerrados')?.classList.toggle('activo', !!estado.pc);
+        // la tabla extendida: a lo ancho, sin el detalle, todas las columnas en palabras (proyectos.css)
+        c.closest('.proy-dos')?.classList.toggle('extendida', !!estado.px);
+        $('ver-extendida')?.classList.toggle('activo', !!estado.px);
         for (const b of todos('[data-pf]')) b.classList.toggle('activo', ((estado.pf || {})[b.dataset.pf ?? ''] || '') === b.dataset.pv);
     }
+    // un texto del resumen de un proyecto, cortado a seis líneas sin partir ninguna: al final del último bloque que
+    // cabe, o en la última línea entera del que no cabe (un párrafo, un ítem); una tabla que no cabe queda para «más».
+    // false si cabe entero
+    const cortar = (r: HTMLElement): boolean => {
+        const lh = parseFloat(getComputedStyle(r).lineHeight) || 20;
+        const tope = 6 * lh;
+        r.style.maxHeight = '';
+        if (r.scrollHeight <= tope + 2) { r.style.maxHeight = 'none'; return false; }
+        const base = r.getBoundingClientRect().top;
+        let corte = 0;
+        const bajar = (el: Element): boolean => {
+            for (const c of el.children) {
+                const b = c.getBoundingClientRect(), arriba = b.top - base, abajo = b.bottom - base;
+                if (abajo <= tope) { corte = abajo; continue; }
+                if (arriba >= tope) return true;
+                if (/^(UL|OL|BLOCKQUOTE|DIV)$/.test(c.tagName) && c.children.length && bajar(c)) return true;
+                if (/^(P|LI|H\d|DT|DD)$/.test(c.tagName)) {
+                    const cs = getComputedStyle(c), lc = parseFloat(cs.lineHeight) || lh, pt = parseFloat(cs.paddingTop) || 0;
+                    const n = Math.floor((tope - arriba - pt) / lc);
+                    if (n > 0) corte = arriba + pt + n * lc;
+                }
+                return true;
+            }
+            return false;
+        };
+        bajar(r);
+        r.style.maxHeight = `${Math.max(corte, lh)}px`;
+        return true;
+    };
+    // el detalle de un proyecto: la pestaña que se ve (la misma al elegir otro), y «más» bajo lo recortado del
+    // resumen solo si no cabe (proyectos.ts)
+    const aplicarDetalle = () => {
+        const det = $('proy-det'); if (!det) return;
+        const pest = estado.pd === 'pendientes' || estado.pd === 'documento' ? estado.pd : 'resumen';
+        det.dataset.ver = pest;
+        for (const a of det.querySelectorAll<HTMLElement>('.det-pest [data-pest]')) a.classList.toggle('sel', a.dataset.pest === pest);
+        for (const r of det.querySelectorAll<HTMLElement>(`.det-pane[data-pane="${pest}"] .recorte:not(.entero)`)) {
+            const mas = r.nextElementSibling;
+            const corto = cortar(r);
+            if (mas instanceof HTMLElement && mas.classList.contains('mas')) mas.hidden = !corto;
+        }
+    };
     // elegir un proyecto: se marca al tiro y se pide su detalle (la derecha la cambia el Dashboard)
     const elegirProy = (f: HTMLElement | undefined) => {
         if (!f) return;
@@ -282,6 +396,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         const d = e.data as { lienzo?: string; llave?: unknown; datos?: unknown; id?: unknown; orden?: unknown } | null;
         if (!d || typeof d.llave !== 'string' || !todos<HTMLIFrameElement>('iframe.lienzo').some(f => f.contentWindow === e.source)) return;
         if (d.lienzo === 'guardar' && typeof d.datos === 'string') enviar({ tipo: 'lienzo-guardar', valor: d.llave, datos: d.datos });
+        if (d.lienzo === 'aviso' && typeof d.datos === 'string') enviar({ tipo: 'lienzo-aviso', valor: d.llave, datos: d.datos.slice(0, 120) });
         if (d.lienzo === 'pedir' && typeof d.id === 'string' && typeof d.orden === 'string') {
             const id = `${d.llave}:${d.id}`;
             esperanLienzo.set(id, { fuente: e.source as Window, suyo: d.id });
@@ -300,20 +415,39 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         const f = $<HTMLInputElement>('per-skill-filtro');
         if (!f) return;
         const q = norm(f.value || '').trim();
-        for (const x of todos('#per-skills .skill')) x.hidden = !!q && !(x.dataset.texto ?? '').includes(q);
+        // «sin skill» siempre se ve
+        for (const x of todos('#per-skills .skill')) x.hidden = !!q && !!x.dataset.skill && !(x.dataset.texto ?? '').includes(q);
     };
     const formPer = () => {
         const v = (id: string) => $<HTMLInputElement>(id)?.value ?? '';
         const form = $('form-per')!;
         return { nombre: v('per-nombre'), descripcion: v('per-desc'), tipo: form.classList.contains('tipo-comando') ? 'comando' : 'mensaje',
-            mensaje: v('per-mensaje'), comando: v('per-comando'), hilo: v('per-hilo'), max: v('per-max'), args: v('per-args'),
-            cuando: v('per-cuando'), carpeta: v('per-carpeta'), activo: !!$<HTMLInputElement>('per-activo')?.checked };
+            skill: v('per-skill'), texto: v('per-mensaje'), destino: form.dataset.destino ?? 'hilo',
+            comando: v('per-comando'), hilo: v('per-hilo'), max: v('per-max'), args: v('per-args'),
+            cuando: v('per-cuando'), carpeta: v('per-carpeta'), activo: !!$<HTMLInputElement>('per-activo')?.checked,
+            despues: todos('[data-per-tras].activa').map(x => x.dataset.perTras ?? '').filter(Boolean),
+            padre: raiz.querySelector<HTMLElement>('[data-per-padre].activa')?.dataset.perPadre ?? '' };
+    };
+    /** Lo que le va a llegar al agente: la skill y lo que va después, a la vista mientras se escribe. */
+    const decirPrompt = () => {
+        const d = $('per-dice');
+        if (d) d.textContent = armarPrompt($<HTMLInputElement>('per-skill')?.value ?? '', $<HTMLTextAreaElement>('per-mensaje')?.value ?? '') || '—';
+    };
+    /** Las skills de quien lo hace: las de la carpeta del agente elegido, o las de la carpeta del hilo nuevo. */
+    const pedirSkills = () => {
+        const f = $('form-per');
+        if (!f) return;
+        const destino = f.dataset.destino ?? 'hilo';
+        const carpeta = destino === 'hilo' ? ($<HTMLInputElement>('per-carpeta')?.value ?? '').trim()
+            : raiz.querySelector<HTMLElement>(`[data-per-destino="${CSS.escape(destino)}"]`)?.dataset.carpeta ?? '';
+        enviar({ tipo: 'per-skills', valor: carpeta, accion: destino });
     };
     const guardarPer = () => enviar({ tipo: 'accion', accion: 'per-guardar', valor: JSON.stringify(formPer()) });
     raiz.addEventListener('input', e => {
         const t = e.target as HTMLInputElement;
         if (t.id === 'per-cuando') { clearTimeout(esperaHorario); const c = t.value; esperaHorario = window.setTimeout(() => enviar({ tipo: 'per-horario', valor: c }), 350); return; }
         if (t.id === 'per-skill-filtro') { filtrarSkills(); return; }
+        if (t.id === 'per-mensaje') { decirPrompt(); return; }
         if (t.id === 'buscar-p') { estado.pq = t.value; guardar(); aplicarProyectos(); return; }
         if (t.id === 'buscar-t') { estado.tq = t.value; guardar(); aplicarTareas(); return; }
         if (t.classList.contains('buscar-c')) { estado.cq = { ...estado.cq, [t.dataset.bloque ?? '']: t.value }; guardar(); aplicarCorreo(); return; }
@@ -322,7 +456,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
     });
     raiz.addEventListener('change', e => {
         const t = e.target as HTMLInputElement;
-        if (t.id === 'per-carpeta') enviar({ tipo: 'per-skills', valor: t.value.trim() });
+        if (t.id === 'per-carpeta' && $('form-per')?.dataset.destino === 'hilo') pedirSkills();
     });
     raiz.addEventListener('click', e => {
         const t = e.target as HTMLElement;
@@ -334,18 +468,36 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             for (const x of todos('[data-per-tipo]')) x.classList.toggle('activa', x === tipo);
             return;
         }
+        // a quién: un agente (sus skills, su casilla) o un hilo nuevo (con su nombre, su carpeta y sus argumentos)
+        const destino = t.closest<HTMLElement>('[data-per-destino]');
+        if (destino) {
+            e.preventDefault();
+            const f = $('form-per')!;
+            f.dataset.destino = destino.dataset.perDestino ?? 'hilo';
+            f.classList.toggle('destino-hilo', f.dataset.destino === 'hilo');
+            f.classList.toggle('destino-agente', f.dataset.destino !== 'hilo');
+            for (const x of todos('[data-per-destino]')) x.classList.toggle('activa', x === destino);
+            pedirSkills();
+            return;
+        }
+        // de quién cuelga cada hilo que abre: uno solo (o nadie)
+        const padre = t.closest<HTMLElement>('[data-per-padre]');
+        if (padre) { e.preventDefault(); for (const x of todos('[data-per-padre]')) x.classList.toggle('activa', x === padre); return; }
+        const tras = t.closest<HTMLElement>('[data-per-tras]');
+        if (tras) { e.preventDefault(); tras.classList.toggle('activa'); return; }
         const h = t.closest<HTMLElement>('[data-per-horario]');
         if (h) { const c = $<HTMLInputElement>('per-cuando')!; c.value = h.dataset.perHorario ?? ''; enviar({ tipo: 'per-horario', valor: c.value }); return; }
         const sk = t.closest<HTMLElement>('[data-skill]');
-        if (sk) {
-            const m = $<HTMLTextAreaElement>('per-mensaje')!;
-            // la skill reemplaza a la que hubiera al principio; lo escrito después se queda
-            const resto = m.value.replace(/^\/[\w:.-]+\s*/, '');
-            m.value = `/${sk.dataset.skill} ${resto}`;
+        if (sk && $('form-per')) {
+            e.preventDefault();
+            const skill = sk.dataset.skill ?? '';
+            $<HTMLInputElement>('per-skill')!.value = skill;
             for (const x of todos('#per-skills .skill')) x.classList.toggle('activa', x === sk);
             const hilo = $<HTMLInputElement>('per-hilo'), nombre = $<HTMLInputElement>('per-nombre');
-            if (nombre && !nombre.value && !nombre.disabled) nombre.value = (sk.dataset.skill ?? '').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
-            if (hilo && !hilo.value) hilo.placeholder = sk.dataset.skill ?? '';
+            if (skill && nombre && !nombre.value && !nombre.disabled) nombre.value = skill.replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+            if (skill && hilo && !hilo.value) hilo.placeholder = skill;
+            decirPrompt();
+            const m = $<HTMLTextAreaElement>('per-mensaje')!;
             m.focus(); m.setSelectionRange(m.value.length, m.value.length);
         }
     }, true);
@@ -366,10 +518,12 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         arrastrada = '';
     });
     raiz.addEventListener('dragover', e => {
+        if (!arrastrada) return;
+        // donde caería: la casilla de abajo, y ninguna si se salió de ellas
         const z = (e.target as HTMLElement).closest<HTMLElement>('[data-suelta]');
-        if (!z || !arrastrada) return;
-        e.preventDefault();
         for (const x of todos('[data-suelta].encima')) if (x !== z) x.classList.remove('encima');
+        if (!z) return;
+        e.preventDefault();
         z.classList.add('encima');
     });
     raiz.addEventListener('drop', e => {
@@ -386,15 +540,30 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         if (u) { e.preventDefault(); e.stopPropagation(); enviar({ tipo: 'url', url: u.dataset.url }); return; }
         const ot = t.closest<HTMLElement>('[data-orden-t]');
         if (ot) { estado.to = ot.dataset.ordenT ?? ''; guardar(); aplicar(); return; }
-        const oc = t.closest<HTMLElement>('[data-orden-c]');
-        if (oc) { estado.ordenC = estado.ordenC === oc.dataset.ordenC ? '' : oc.dataset.ordenC; guardar(); aplicarTareas(); return; }
+        // el orden de «tareas» (componentes/orden.ts): la opción que rige, otra vez, vuelve a la urgencia
+        const oc = t.closest<HTMLElement>('.orden [data-accion="orden-grupo"][data-id^="tareas:"]');
+        if (oc) { const k = (oc.dataset.id ?? '').slice(7); estado.ordenC = estado.ordenC === k ? '' : k; guardar(); aplicarTareas(); return; }
         if (t.closest('#tareas-t-mas')) { estado.tm = 'todas'; guardar(); aplicarTareas(); return; }
-        const mt = t.closest<HTMLElement>('[data-modo-t]');
-        if (mt) { estado.tm = mt.dataset.modoT; guardar(); aplicarTareas(); return; }
-        const op = t.closest<HTMLElement>('[data-orden-p]');
-        // una flecha ordena por su columna; otra vez, vuelve al orden por defecto (estado y nombre)
-        if (op) { estado.ordenP = estado.ordenP === op.dataset.ordenP ? '' : op.dataset.ordenP ?? ''; guardar(); aplicarProyectos(); return; }
+        // los filtros de «tareas» (componentes/filtros.ts): uno plegado abre su menú; una opción rige, y otro clic en la
+        // que rige la suelta (el modo vuelve a «esta semana»; el área y el responsable, a ninguno)
+        const fa = t.closest<HTMLElement>('.filtros [data-accion="filtro-abrir"]');
+        if (fa) { void abrirFiltro(fa, entidades.dondeDe(e, fa)); return; }
+        const fo = t.closest<HTMLElement>('.filtros [data-accion="filtro"]');
+        if (fo) { elegirFiltro(fo.dataset.id ?? ''); return; }
         if (t.closest('#ver-cerrados')) { estado.pc = !estado.pc; guardar(); aplicarProyectos(); return; }
+        if (t.closest('#ver-extendida')) { estado.px = !estado.px; guardar(); aplicarProyectos(); return; }
+        // una pestaña del detalle de un proyecto (o «los N pendientes» del resumen): se cambia aquí, sin ir y volver
+        const pd = t.closest<HTMLElement>('#proy-det [data-pest]');
+        if (pd) { estado.pd = pd.dataset.pest; guardar(); aplicarDetalle(); const det = $('proy-det'); if (det) det.scrollTop = 0; return; }
+        const mas = t.closest<HTMLElement>('#proy-det .mas');
+        if (mas) {
+            const r = mas.previousElementSibling;
+            if (r instanceof HTMLElement) { r.classList.add('entero'); r.style.maxHeight = ''; }
+            mas.hidden = true; return;
+        }
+        // el nombre de una columna de proyectos: ordena por ella; otra vez, o «estado», vuelve al orden de siempre
+        const op = t.closest<HTMLElement>('[data-orden-p]');
+        if (op) { const k = op.dataset.ordenP ?? ''; estado.ordenP = k === 'estado' || estado.ordenP === k ? '' : k; guardar(); aplicarProyectos(); return; }
         // un filtro de la lista de proyectos: área y tipo eligen uno; «con hilo» y «con pendientes» se prenden y apagan
         const bf = t.closest<HTMLElement>('[data-pf]');
         if (bf) {
@@ -403,30 +572,30 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             estado.pf = pf; guardar(); aplicarProyectos(); return;
         }
         const fp = t.closest<HTMLElement>('.proy[data-accion="proy-sel"]');
-        // el ⋯ de una fila: la elige y abre el menú de acciones (lo manda el manejador general)
-        if (fp && t.closest('.menu-fila')) elegirProy(fp);
-        else if (fp) { e.preventDefault(); elegirProy(fp); return; }
+        // el ⋯ de una fila, o el estado de una iniciativa que se cambia aquí: la elige y abre su menú (las acciones, o el
+        // vocabulario de estados: lo manda el manejador general)
+        if (fp && t.closest('.menu-fila, .ini-estado[data-accion]')) elegirProy(fp);
+        // en la tabla extendida no se ve el detalle: elegir uno vuelve a la tabla de siempre, con su detalle al lado
+        else if (fp) { e.preventDefault(); if (estado.px) { estado.px = false; guardar(); aplicarProyectos(); } elegirProy(fp); return; }
         // un enlace del README: lo abre el Dashboard (un archivo del repositorio o una pestaña)
-        const ln = t.closest<HTMLAnchorElement>('.proy-readme a[href]');
+        const ln = t.closest<HTMLAnchorElement>(':is(.proy-readme, .det-md, .det-datos) a[href]');
         if (ln) {
             e.preventDefault();
-            const base = ln.closest<HTMLElement>('.proy-readme')?.dataset.base || '';
+            const base = ln.closest<HTMLElement>('[data-base]')?.dataset.base || '';
             enviar({ tipo: 'accion', accion: 'proy-enlace', valor: ln.getAttribute('href') ?? '', datos: base });
             return;
         }
-        const ar = t.closest<HTMLElement>('[data-area-filtro]');
-        if (ar) { estado.area = ar.dataset.areaFiltro ?? ''; guardar(); aplicar(); aplicarArea(); return; }
-        const du = t.closest<HTMLElement>('[data-dueno-filtro]');
-        if (du) { estado.dueno = du.dataset.duenoFiltro ?? ''; guardar(); aplicar(); aplicarArea(); return; }
         const m = t.closest<HTMLElement>('[data-modo-tareas]');
         if (m) { estado.modo = m.dataset.modoTareas ?? ''; estado.q = ''; estado.todas = false; guardar(); const b = $<HTMLInputElement>('buscar'); if (b) b.value = ''; aplicar(); return; }
         if (t.closest('#tareas-mas')) { estado.todas = true; guardar(); aplicar(); return; }
         const a = t.closest<HTMLElement>('[data-accion]');
-        // el ✓ tacha la fila al tiro: la lista se relee cuando el proveedor termine
-        // (también los ✓ de la columna de acciones: la fila se tacha y el ✓ gira mientras el proveedor trabaja)
+        // el ✓ tacha la fila al tiro, en cualquier lista (la de tareas, Hacer de Táctica, un bloque): hecha, sale cuando el
+        // proveedor termina (tareas.ts); si no, vuelve como estaba y se dice por qué
+        // (también los ✓ de la columna de acciones: la fila se tacha y el ✓ es un círculo que se llena mientras el
+        // proveedor trabaja: componentes/circulo.ts)
         if (a && (a.dataset.accion === 'hecha' || a.dataset.accion === 'hecha-fila' || a.dataset.accion === 'hecha-vineta')) {
-            a.closest('.tarea')?.classList.add('marcada');
-            if (a.classList.contains('rap')) a.classList.add('girando');
+            a.closest('.tarea, .item')?.classList.add('marcada');
+            if (a.classList.contains('rap') || a.classList.contains('item-accion')) { a.classList.add('girando'); a.innerHTML = circulo({ mov: 'llena' }); }
         }
         // un botón que manda lo escrito en un campo (el de escribirle al agente sobre una reunión)
         const campo = a?.dataset.campo ? $<HTMLTextAreaElement>(a.dataset.campo) : null;
@@ -438,8 +607,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
 
     // el clic derecho sobre una fila que tiene menú (su ⋯: un proyecto, una tarea, un pendiente) lo abre ahí mismo
     raiz.addEventListener('contextmenu', e => {
-        const fila = (e.target as HTMLElement).closest('.proy, .tarea, .fila');
-        const menu = fila?.querySelector<HTMLElement>('.menu-fila[data-accion]');
+        const fila = (e.target as HTMLElement).closest('.proy, .tarea, .fila, .est-u');
+        const menu = fila?.querySelector<HTMLElement>('.menu-fila[data-accion], .item-menu[data-accion]');
         if (!menu?.dataset.accion) return;
         e.preventDefault();
         if (fila?.classList.contains('proy')) elegirProy(fila as HTMLElement);
@@ -456,8 +625,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
     });
     function tecla(e: KeyboardEvent, activo: Element | null): void {
         // escribiéndole al agente sobre una reunión: las letras son del campo; ⌘⏎ envía, ⎋ sale del campo
-        if (activo && (activo.id === 'ev-texto' || activo.id === 'plan-texto')) {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); $(activo.id === 'ev-texto' ? 'ev-enviar' : 'plan-enviar')?.click(); return; }
+        if (activo?.id === 'ev-texto') {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); $('ev-enviar')?.click(); return; }
             if (e.key === 'Escape') { e.preventDefault(); (activo as HTMLElement).blur(); }
             return;
         }
@@ -486,6 +655,11 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             return;
         }
         // la ficha de una tarea: ⏎ la acción principal, ← → la propuesta anterior o siguiente, ⎋ vuelve a hoy
+        // escribiendo en la ficha (el porqué de una lectura): las teclas son del campo, y ⎋ sale de él
+        if ($('ficha-tarea') && escribiendoEn(activo) && raiz.contains(activo)) {
+            if (e.key === 'Escape') { e.preventDefault(); (activo as HTMLElement).blur(); }
+            return;
+        }
         if ($('ficha-tarea') && !e.metaKey && !e.ctrlKey && !e.altKey) {
             const acc = ({ Enter: 'tarea-principal', ArrowRight: 'tarea-siguiente', ArrowLeft: 'tarea-anterior', Escape: 'volver-ficha' } as Record<string, string>)[e.key];
             if (acc) { e.preventDefault(); enviar({ tipo: 'accion', accion: acc }); return; }
@@ -496,7 +670,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             if (e.key === 'Escape') { e.preventDefault(); enviar({ tipo: 'accion', accion: 'periodicos' }); return; }
         }
         // en el calendario, ← → cambian de día
-        if ($('cal-nav') && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        if ($('cal-dia') && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
             e.preventDefault(); enviar({ tipo: 'accion', accion: 'cal-dia', valor: e.key === 'ArrowLeft' ? '-1' : '1' }); return;
         }
         // en «tareas»: escribir en la búsqueda; ⏎ abre la primera que se ve; / va a buscar
@@ -538,8 +712,9 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             esperanLienzo.delete(id);
             quien.fuente.postMessage({ lienzo: 'respuesta', id: quien.suyo, ...respuesta }, '*');
         },
-        pintar(html) {
+        pintar(html, barra = '') {
             esconderGlobo();
+            if (barra !== barraPintada) { barraDia.innerHTML = barra; barraPintada = barra; }
             const activo = document.activeElement as HTMLInputElement | null;
             // el foco se recupera solo si estaba en el dashboard: si no, es de la barra o de un hilo
             const adentro = !!activo && raiz.contains(activo);
@@ -564,16 +739,38 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
                 i.value = estado.cq?.[i.dataset.bloque ?? ''] ?? '';
                 if (enCorreo !== undefined && i.dataset.bloque === enCorreo) { i.focus(); i.setSelectionRange(pos, pos); }
             }
-            aplicar(); aplicarProyectos(); aplicarCorreo();
+            aplicar(); aplicarProyectos(); aplicarCorreo(); aplicarDetalle();
         },
         parcial(id, html) {
             const el = $(id);
-            if (el) { el.innerHTML = html; filtrarSkills(); }
+            if (!el) return;
+            // el mismo proyecto que se repinta (llegaron sus pendientes, su README): queda abierto lo que estaba abierto,
+            // y donde se estaba leyendo; otro proyecto parte de arriba
+            const mismo = el.querySelector<HTMLElement>('[data-mismo]')?.dataset.mismo;
+            const abiertos = [...el.querySelectorAll<HTMLElement>('details[open][data-k], .entero[data-k]')].map(x => x.dataset.k ?? '');
+            const arriba = el.scrollTop;
+            el.innerHTML = html; filtrarSkills();
+            if (mismo && el.querySelector<HTMLElement>('[data-mismo]')?.dataset.mismo === mismo) {
+                for (const k of abiertos) {
+                    const x = el.querySelector<HTMLElement>(`[data-k="${CSS.escape(k)}"]`);
+                    if (x instanceof HTMLDetailsElement) x.open = true; else if (x) { x.classList.add('entero'); x.style.maxHeight = ''; }
+                }
+                el.scrollTop = arriba;
+            } else el.scrollTop = 0;
+            if (id === 'proy-det') aplicarDetalle();
+        },
+        filtrarTareas(modo) {
+            estado.tm = modo;
+            estado.tq = '';
+            guardar();
         },
         cuentasProyectos(cuentas) {
-            let n = 0;
-            for (const f of todos('.proy')) { const k = cuentas[f.dataset.valor ?? ''] || 0; f.dataset.pend = String(k); if (k) n += 1; }
-            const cp = $('cuenta-pend'); if (cp) cp.textContent = String(n);
+            // cuántos pendientes tiene cada proyecto: llegan después de la lista, a su columna
+            for (const f of todos('.proy')) {
+                const k = cuentas[f.dataset.valor ?? ''] || 0;
+                f.dataset.pend = k ? String(k) : '';
+                const celda = f.querySelector('.tareas-p'); if (celda) celda.textContent = k ? String(k) : '';
+            }
             aplicarProyectos();
         },
     };

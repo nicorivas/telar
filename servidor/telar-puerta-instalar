@@ -1,7 +1,7 @@
 #!/bin/sh
 # telar-puerta-instalar: instala la puerta del servidor (telar.puerta). Como root, una vez (y otra para actualizarla).
 #
-#   sudo servidor/telar-puerta-instalar --dueno nico --cuenta nicorivas@gmail.com [--version 0.7.0] [--url https://…]
+#   sudo servidor/telar-puerta-instalar --dueno ana --cuenta ana@example.com [--version 0.7.0] [--url https://…]
 #                                       [--desde telar-X.whl]   (de un paquete local, para probar una sin publicar)
 #
 # Qué hace:

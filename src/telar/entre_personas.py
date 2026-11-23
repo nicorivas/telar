@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -31,11 +32,17 @@ class CorreoInvalido(ValueError):
     """Un correo que llega y no se acepta. El mensaje vuelve a quien lo mandó."""
 
 
-def directorio(foto: dict, persona: str) -> dict:
+def directorio(foto: dict, persona: str, config=None) -> dict:
     """Lo que se publica de los hilos propios: nombre, la palabra para escribirle, si vive, su carpeta y una
     línea. Nada más: lo ve otra persona. Y solo de los que la persona hizo públicos (`telar hilo publicar`):
-    por defecto, un hilo es privado y no sale."""
-    hilos = [{"nombre": h.get("nombre", ""), "ext": casilla.extension(h.get("nombre", "")),
+    por defecto, un hilo es privado y no sale. La palabra de un hilo apartado (su nombre choca con el de otro:
+    telar.casilla.apartar) es su ficha apartada, para que lo que le escriban no le llegue al otro."""
+    apartados = casilla.fichas(config) if config is not None else {}
+
+    def palabra(nombre: str) -> str:
+        return apartados.get(unicodedata.normalize("NFC", nombre)) or casilla.extension(nombre)
+
+    hilos = [{"nombre": h.get("nombre", ""), "ext": palabra(h.get("nombre", "")),
               "vivo": bool(h.get("vivo")), "carpeta": h.get("relativa") or "", "resumen": h.get("resumen") or ""}
              for h in foto.get("hilos", []) if h.get("nombre") and not h.get("remoto") and h.get("publico") is True]
     return {"persona": persona, "maquina": foto.get("maquina", ""), "hilos": hilos,
@@ -75,7 +82,9 @@ def correo(pedido: dict, de_cuenta: str) -> dict:
     """Lo que se acepta de un correo que llega: para qué hilo, qué dice, de quién. Levanta CorreoInvalido."""
     if not de_cuenta:
         raise CorreoInvalido("el bus no dijo de qué cuenta viene")
-    para = casilla.extension(str(pedido.get("para") or ""))
+    para = str(pedido.get("para") or "").strip()
+    # la palabra de un hilo apartado (`faro_3f9a1c`, la que publica su directorio) va tal cual; el resto, normalizada
+    para = para if casilla.es_apartada(para) else casilla.extension(para)
     if not para:
         raise CorreoInvalido("¿para qué hilo?")
     texto = str(pedido.get("texto") or "").strip()

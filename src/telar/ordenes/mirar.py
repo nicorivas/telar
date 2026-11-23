@@ -16,6 +16,8 @@ de esa terminal y tmux rellenaba con puntos lo que sobraba en el navegador.) `--
 
 Un hilo de otra máquina se mira por su ventana de aquí (la que corre la conexión con allá): si
 no tiene, no está abierto en esta máquina, y se dice.
+
+Mirar un hilo dormido (telar.dormir) lo despierta: su agente retoma la conversación en la misma ventana, aquí o allá.
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--vista", default="", help="el nombre de la sesión que mira (uno nuevo por cada terminal)")
     p.add_argument("--sin-tamano", dest="sin_tamano", action="store_true",
                    help="no cambiarle el tamaño a la ventana (lo deja a las otras terminales que la miran)")
+    p.add_argument("--enlaces", action="store_true",
+                   help="esta terminal entiende hipervínculos (OSC 8), como la de la página: tmux le pasa los enlaces")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -48,6 +52,13 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(f"no hay un hilo «{o.hilo}»")
     if not tel.vivo(hilo):
         return _comun.queja(f"«{hilo.nombre}» no tiene ventana abierta en esta máquina: retómalo primero")
+    # mirar un hilo dormido es abrirlo: se despierta en su ventana (telar.dormir), aquí o en la máquina donde vive
+    from telar import dormir
+
+    try:
+        dormir.despertar_hilo(ctx, tel, hilo)
+    except RuntimeError as e:
+        print(_comun.tenue(f"({e})"))
     ventana = hilo.id
     vista = o.vista or f"ver-{ventana.lstrip('@')}-{os.getpid()}"
     # sin la barra de estado de tmux (la lista de todas las ventanas): la vista es de un solo hilo
@@ -57,7 +68,9 @@ def main(argv: list[str], ctx) -> int:
         if r.returncode != 0:
             subprocess.run(["tmux", "kill-session", "-t", f"={vista}"], capture_output=True)
             return _comun.queja(f"no pude armar la vista de «{hilo.nombre}»: {r.stderr.strip()}")
-    # la vista le da su tamaño a la ventana (manda la pantalla que se usó último), salvo con --sin-tamano.
+    # la vista le da su tamaño a la ventana (manda la pantalla que se usó último), salvo con --sin-tamano. Con
+    # --enlaces, tmux le pasa los hipervínculos (el texto de un enlace de markdown de Claude Code, con su dirección).
     # El attach reemplaza a este proceso: la terminal queda conectada a tmux, sin Python en medio
-    os.execvp("tmux", ["tmux", *movil.enganchar(vista, sin_tamano=o.sin_tamano)])
+    rasgos = movil.rasgos_con_enlaces(movil.version_tmux()) if o.enlaces else []
+    os.execvp("tmux", ["tmux", *rasgos, *movil.enganchar(vista, sin_tamano=o.sin_tamano)])
     return 0  # no se llega

@@ -103,10 +103,10 @@ class LaFormaDeLaDireccion(Prueba):
         self.assertEqual(objetos.leer("hilo:Faro@casa"), ("hilo", "Faro", "casa"))
 
     def test_un_nombre_con_espacios_se_encuentra_en_un_texto(self):
-        d = objetos.direccion_de("hilo", "◌ a solas")
-        self.assertEqual(d, "hilo:◌%20a%20solas")
+        d = objetos.direccion_de("hilo", "◌ un rato")
+        self.assertEqual(d, "hilo:◌%20un%20rato")
         ctx = SimpleNamespace(config=SimpleNamespace(modulos=()))
-        self.assertEqual(objetos.buscar(ctx, f"mira {d} y tarea:T84."), [("hilo", "◌ a solas", ""), ("tarea", "T84", "")])
+        self.assertEqual(objetos.buscar(ctx, f"mira {d} y tarea:T84."), [("hilo", "◌ un rato", ""), ("tarea", "T84", "")])
 
     def test_el_escape_mismo_va_escapado(self):
         d = objetos.direccion_de("tarea", "100%")

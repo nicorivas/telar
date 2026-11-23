@@ -18,18 +18,18 @@ def ficha(titulo="", **campos):
 
 class LaEtiqueta(Prueba):
     def test_cliente_y_titulo(self):
-        self.assertEqual(etiqueta(PLANTILLA, ficha("Adopción IA", Cliente="Grupo Agrosur")),
-                         "Grupo Agrosur · Adopción IA")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Adopción IA", Cliente="Grupo Arrayán")),
+                         "Grupo Arrayán · Adopción IA")
 
     def test_sin_parentesis_ni_lo_que_sigue_a_una_raya_o_coma(self):
-        self.assertEqual(etiqueta(PLANTILLA, ficha("Reportes", Cliente="Aguas Pacífico (agua desalada; Quintero)")),
-                         "Aguas Pacífico · Reportes")
-        self.assertEqual(etiqueta(PLANTILLA, ficha("Ideas", Cliente="Antofagasta Minerals — grupo minero")),
-                         "Antofagasta Minerals · Ideas")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Reportes", Cliente="Aguas del Valle (agua desalada; Puerto Sur)")),
+                         "Aguas del Valle · Reportes")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Ideas", Cliente="Minera del Norte — grupo minero")),
+                         "Minera del Norte · Ideas")
 
     def test_si_el_titulo_ya_nombra_al_cliente_va_primero_y_no_se_repite(self):
-        self.assertEqual(etiqueta(PLANTILLA, ficha("AquaChile — Campaña de Ideas", Cliente="AquaChile")),
-                         "AquaChile · Campaña de Ideas")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Molino — Campaña de Ideas", Cliente="Molino")),
+                         "Molino · Campaña de Ideas")
         self.assertEqual(etiqueta(PLANTILLA, ficha("Reportabilidad con IA — Mar Azul", Cliente="Mar Azul")),
                          "Mar Azul · Reportabilidad con IA")
 

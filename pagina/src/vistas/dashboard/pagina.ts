@@ -39,6 +39,26 @@ export function mdSimple(texto: string): string {
  *  ni red, ni `<script src>`, ni `eval`. */
 const POLITICA_LIENZO = "default-src 'none'; img-src https: data: blob:; font-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
 
+/** Los tokens de la página que recibe un lienzo (docs/contratos.md), con el valor del tema y la densidad que se ven: sus
+ *  colores, su letra y su aire. Así la página de un módulo se ve como el resto sin copiar la paleta: usa `var(--fg)`. */
+const TOKENS_LIENZO = [
+    '--fg', '--bg', '--dim', '--azul', '--amarillo', '--verde', '--rojo', '--magenta', '--cian', '--violeta', '--negro',
+    '--blanco', '--blanco-claro', '--bg-barra', '--linea', '--sel', '--hover', '--borde', '--texto', '--texto-tenue',
+    '--acento', '--titulo', '--exito', '--atencion', '--peligro', '--agente', '--letra', '--tam', '--peso', '--alto',
+    '--e-1', '--e-2', '--h-1', '--h-2', '--pantalla-margen', '--pantalla-barra-fondo',
+    // la fila de una lista y la barra de una pantalla (componentes/item.ts, pantalla.ts), con la densidad que se ve: una lista
+    // de un lienzo tiene el alto de una fila de telar (en el celular, el del dedo)
+    '--item-alto', '--item-pad-x', '--item-fondo-hover', '--item-fondo-activa', '--pantalla-vista-si',
+];
+
+/** Los tokens, como una regla que gana a la que traiga el lienzo (`:root:root` pesa más que su `:root`). */
+function tokensLienzo(): string {
+    const cs = getComputedStyle(document.documentElement);
+    const decl = TOKENS_LIENZO.map(k => [k, cs.getPropertyValue(k).trim()]).filter(([, v]) => v && !/[<>{};]/.test(v))
+        .map(([k, v]) => `${k}:${v}`).join(';');
+    return `<style>:root:root{${decl}}</style>`;
+}
+
 /** El alto de un lienzo o un marco: píxeles, o «lleno» (lo que queda del panel, por la clase). */
 function estiloAlto(alto: number | 'lleno' | undefined): string {
     return alto === 'lleno' ? '' : ` style="height:${Math.round(alto ?? 240)}px"`;
@@ -63,9 +83,10 @@ export class Paginas {
     /** La página y la memoria de los lienzos de una página, leídas del disco (o de la API, en el navegador)
      *  antes de dibujarla: el HTML se arma sin esperar. */
     async precargar(bloques: cli.JsonPagina['bloques'] | undefined): Promise<void> {
-        const rutas = (bloques ?? []).flatMap(b => b.lienzo ? [b.lienzo.archivo, ...(b.lienzo.memoria ? [b.lienzo.memoria] : [])] : []);
-        await Promise.all(rutas.map(async r => {
-            const t = await disco().leer(r);
+        // la memoria puede no estar todavía (el lienzo no ha guardado nada): se pregunta si hay, sin que falte sea un error
+        const rutas = (bloques ?? []).flatMap(b => b.lienzo ? [[b.lienzo.archivo, false], ...(b.lienzo.memoria ? [[b.lienzo.memoria, true]] : [])] as [string, boolean][] : []);
+        await Promise.all(rutas.map(async ([r, siHay]) => {
+            const t = await (siHay ? disco().leerSiHay(r) : disco().leer(r));
             if (t !== undefined) this.lienzos.set(r, t); else this.lienzos.delete(r);
         }));
     }
@@ -119,7 +140,9 @@ export class Paginas {
             + `if(!d||d.lienzo!=='respuesta'||!esperan[d.id])return;var p=esperan[d.id];delete esperan[d.id];`
             + `if(d.ok)p[0](d.datos);else p[1](new Error(d.error||'no se pudo'))});`
             + `window.lienzo.pedir=function(orden,datos){return new Promise(function(si,no){var id=String(++n);esperan[id]=[si,no];`
-            + `parent.postMessage({lienzo:'pedir',llave:${JSON.stringify(llave)},id:id,orden:orden,datos:datos},'*')})};`;
+            + `parent.postMessage({lienzo:'pedir',llave:${JSON.stringify(llave)},id:id,orden:orden,datos:datos},'*')})};`
+            // `aviso(texto)`: lo nuevo que muestra («3 chats sin leer»), al día mientras se ve: el punto de su fila
+            + `window.lienzo.aviso=function(t){parent.postMessage({lienzo:'aviso',llave:${JSON.stringify(llave)},datos:String(t||'')},'*')};`;
         if (l.memoria) {
             this.memorias.set(llave, l.memoria);
             let leida = 'null';
@@ -127,12 +150,15 @@ export class Paginas {
             memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
                 + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
         }
-        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}"><script>(function(){var p=${datos};window.lienzo={params:p};${memoria}${pedir}`
+        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}">${tokensLienzo()}<script>(function(){var p=${datos};window.lienzo={params:p};${memoria}${pedir}`
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
         doc = previo + doc;
         return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts" srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
     }
+
+    /** De dónde es un lienzo pintado («bloque:gantt»), por su llave; "" si no se sabe. */
+    origenDe(llave: string): string { return this.origenes.get(llave) ?? ''; }
 
     /** Lo que un lienzo pide guardar (`window.lienzo.guardar`), en el archivo que declaró su página: solo el de su
      *  llave, y si es JSON. Se escribe entero (temporal y rename): un corte a medias no deja un JSON roto que el
@@ -147,7 +173,8 @@ export class Paginas {
         const permiso = r.cuerpo?.permiso as { modulo: string; orden: string; descripcion: string; decision: string } | undefined;
         if (!r.datos && permiso && permiso.decision !== 'negado') {
             const eleccion = await ui.aviso(`El módulo «${permiso.modulo}» pide ${permiso.descripcion}.`, 'Permitir siempre', 'Solo esta vez', 'No',
-                { detalle: `Lo que telar le concede queda anotado; se revoca con: telar modulos permisos ${permiso.modulo} --quitar ${permiso.orden}` });
+                // el foco en «cancelar»: la caja sale sola, a veces mientras se escribe, y un ⏎ no concede nada
+                { detalle: `Lo que telar le concede queda anotado; se revoca con: telar modulos permisos ${permiso.modulo} --quitar ${permiso.orden}`, foco: 'cancelar' });
             if (eleccion === 'Permitir siempre' || eleccion === 'Solo esta vez') {
                 await cli.conceder(permiso.modulo, permiso.orden, 'concedido');
                 r = await cli.lienzoPedir(origen, orden, datos);

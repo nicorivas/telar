@@ -1,0 +1,161 @@
+/* Los temas, además del de fábrica («telar», en tokens.css). Un tema dice sus primitivos (el fondo, el texto, las
+   tintas) y, si quiere, cualquier token semántico o de componente: van después de tokens.css, así que lo suyo gana.
+   Se elige con el ajuste `tema` de un modo (⚙ modos) o de un mundo (⚙ mundos, que le gana al del modo); /componentes los
+   muestra lado a lado. Para agregar uno: su bloque aquí, su nombre en TEMAS de componentes/temas.ts y en
+   `telar.modos.TEMAS`. */
+
+/* catppuccin latte: el claro de la misma familia */
+[data-tema="latte"] {
+  color-scheme: light;
+
+  --fg: #4c4f69;
+  --bg: #eff1f5;
+  --dim: #8c8fa1;
+  --azul: #1e66f5;
+  --amarillo: #df8e1d;
+  --verde: #40a02b;
+  --rojo: #d20f39;
+  --magenta: #ea76cb;
+  --cian: #179299;
+  --violeta: #8839ef;
+  --negro: #5c5f77;
+  --blanco: #acb0be;
+  --blanco-claro: #bcc0cc;
+  --cursor: #dc8a78;
+  --bg-barra: #e6e9ef;
+  --sel: rgb(76 79 105 / 14%);
+  --seleccion: #ccd0da;
+  --texto-apagado: #bcc0cc;
+  --prioridad-media: color-mix(in srgb, var(--fg) 60%, var(--bg));
+}
+
+/* riso: tintas fluorescentes de risografía sobre papel negro (las de los glifos, web/glifos/impresion.ts). El activo
+   se marca con una raya rosada, y los títulos van en rosado */
+[data-tema="riso"] {
+  color-scheme: dark;
+
+  --fg: #f2efe6;
+  --bg: #17161b;
+  --dim: #7d7884;
+  --azul: #4d9bf5;
+  --amarillo: #ffe800;
+  --verde: #1fb874;
+  --rojo: #ff665e;
+  --magenta: #ff48b0;
+  --cian: #5ec8e5;
+  --violeta: #9d7af5;
+  --negro: #3b3842;
+  --blanco: #d8d2c4;
+  --blanco-claro: #b8b2a6;
+  --cursor: #ff48b0;
+  --bg-barra: #111014;
+  --titulo: var(--magenta);
+  --item-fondo-activa: color-mix(in srgb, var(--magenta) 10%, transparent);
+  --item-marca-activa: inset 2px 0 var(--magenta);
+  --item-enlace: var(--cian);
+}
+
+/* papel: las mismas tintas, impresas en papel claro (más oscuras, para que se lean). Las cabeceras en minúsculas */
+[data-tema="papel"] {
+  color-scheme: light;
+
+  --fg: #26232c;
+  --bg: #f2efe6;
+  --dim: #8c8579;
+  --azul: #0068b5;
+  --amarillo: #b07c00;
+  --verde: #00894b;
+  --rojo: #d43d35;
+  --magenta: #d6248a;
+  --cian: #00838a;
+  --violeta: #6a4fa3;
+  --negro: #4a4652;
+  --blanco: #d8d2c4;
+  --blanco-claro: #c9c2b4;
+  --cursor: #d6248a;
+  --bg-barra: #ebe6da;
+  --sel: rgb(38 35 44 / 10%);
+  --seleccion: #d8d2c4;
+  --texto-apagado: #c9c2b4;
+  --titulo: var(--magenta);
+  --item-marca-activa: inset 2px 0 var(--magenta);
+  --item-cabecera-letras: none;
+}
+
+/* Los de la noche: oscuros y cálidos, con poca luz azul (el fondo y el texto tiran a ámbar; el cian, apagado), para un
+   mundo que se usa de noche (`[mundos.<n>] tema`). El azul, que es el acento (los enlaces, las pestañas, la fila activa,
+   lo que trabaja), no es azul: es una salvia, un verde gris terroso, como el azul de las paletas cálidas de terminal; un
+   azul acero, aunque apagado, era lo único frío entre el café, el crema y el ámbar. Cada tinta se lee a 4,5:1 o más sobre
+   el fondo, las barras y la fila activa, las que tienen significado siguen siendo distintas entre sí (el rojo del peligro,
+   más que las otras) y el acento no se confunde con lo tenue: lo mide `npm run prueba:temas`, y /componentes › tokens ›
+   contraste lo muestra. Sus colores salen de OKLCH (claridad, croma y tono), y los primitivos van en hexadecimal como los
+   demás. Cada máquina puede cambiar cualquier tinta de un tema en ⚙ temas (`[temas.<tema>]`). */
+
+/* brasa: café oscuro y crema; el acento, en salvia. El de la noche que se recomienda */
+[data-tema="brasa"] {
+  color-scheme: dark;
+
+  --fg: #e2d7c7;
+  --bg: #1f1812;
+  --dim: #a59687;
+  --azul: #7dae9a;
+  --amarillo: #f3c46e;
+  --verde: #a2c478;
+  --rojo: #e58879;
+  --magenta: #f4afc4;
+  --cian: #8ed1ce;
+  --violeta: #c49adc;
+  --negro: #4c413a;
+  --blanco: #c9bbac;
+  --blanco-claro: #b3a799;
+  --cursor: #f1bea2;
+  --bg-barra: #18110d;
+  /* lo seleccionado (el menú de ⚙, una opción): la luz del texto, no un gris frío */
+  --sel: color-mix(in srgb, var(--fg) 15%, transparent);
+}
+
+/* rescoldo: como brasa, más suave: el fondo menos oscuro, menos contraste y las tintas más quietas */
+[data-tema="rescoldo"] {
+  color-scheme: dark;
+
+  --fg: #dacfc2;
+  --bg: #27201c;
+  --dim: #ac9f92;
+  --azul: #72a89b;
+  --amarillo: #e5bf7d;
+  --verde: #9fb984;
+  --rojo: #e18e81;
+  --magenta: #f2b2c4;
+  --cian: #93c7c3;
+  --violeta: #c1a5d2;
+  --negro: #534842;
+  --blanco: #c4b8ac;
+  --blanco-claro: #b2a79c;
+  --cursor: #deb39c;
+  --bg-barra: #201916;
+  /* lo seleccionado (el menú de ⚙, una opción): la luz del texto, no un gris frío */
+  --sel: color-mix(in srgb, var(--fg) 15%, transparent);
+}
+
+/* ámbar: el más cálido, con el texto en ámbar y casi sin luz azul */
+[data-tema="ambar"] {
+  color-scheme: dark;
+
+  --fg: #e9cca6;
+  --bg: #1e130b;
+  --dim: #aa9076;
+  --azul: #79ab99;
+  --amarillo: #f2b244;
+  --verde: #a9b86a;
+  --rojo: #e17f6d;
+  --magenta: #f8a9bc;
+  --cian: #9accc0;
+  --violeta: #c398d0;
+  --negro: #513e30;
+  --blanco: #cfb493;
+  --blanco-claro: #b9a083;
+  --cursor: #f5ab77;
+  --bg-barra: #170d06;
+  /* lo seleccionado (el menú de ⚙, una opción): la luz del texto, no un gris frío */
+  --sel: color-mix(in srgb, var(--fg) 15%, transparent);
+}

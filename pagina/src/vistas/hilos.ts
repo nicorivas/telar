@@ -4,66 +4,99 @@
 // unidad de trabajo viva, y qué cuenta como proyecto lo declara el perfil del repositorio,
 // no esta página.
 //
-//   ● faro            ●   49m   ← prioridad (· si no tiene) · nombre · atención · hoy
-//   ◐ molino               7m
-//   ▸ ARCHIVO 6 hilos         2d  ← plegado; a la derecha, hace cuánto se usó
+//   ● ●   faro                 49m   ← inicio: prioridad · atención · dónde vive; el nombre; fin: hace cuánto
+//   ◐     molino                7m
+//       ▸ archivo 6                  ← un submenú de HILOS, plegado: los archivados también son hilos
 //
-// El id del multiplexor no se muestra: para elegir un hilo basta la prioridad y el nombre.
-// Los botones de la fila (⏸ ✕ ▶) flotan sobre el borde derecho al pasar el mouse y no
-// ocupan lugar, porque si lo ocuparan correrían la columna del tiempo según cuántos hay.
+// Un solo buscador y una sola fila de herramientas, los de HILOS: lo escrito filtra los vivos y también los archivados. Si
+// algún archivado calza, ARCHIVO se muestra abierto con solo esos (y su número); al borrarlo, vuelve a como lo dejó la
+// persona.
+//
+// Cada fila es un ítem (componentes/item.ts): las ranuras de íconos al inicio, el texto y, al final, la meta, los
+// avisos y las acciones. Los botones de la fila (⋯, archivar, descartar) flotan sobre el borde derecho al pasar el
+// mouse y no ocupan lugar, porque si lo ocuparan correrían la columna del tiempo según cuántos hay. El id del
+// multiplexor no se muestra: para elegir un hilo basta la prioridad y el nombre.
 //
 // Se dibuja directo en la columna izquierda de la página (`#barra`), y solo cambia la lista, no lo que la
-// rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Sus
-// estilos, en media/css/hilos.css.
+// rodea: así no se pierde el scroll ni lo escrito en un buscador cada vez que cambia el tiempo de hoy. Lo propio de
+// la barra (el buscador, los separadores, plegarla), en media/css/hilos.css; las filas, en item.css. /componentes la
+// muestra con hilos de mentira, en cada tema.
 
-import { ATENCION_I, I, PRIO_I } from '../web/iconos';
-
-/** Un ícono dentro de una columna de la fila: la columna mide en letras de las de siempre (2ch), y el ícono va en
- *  la suya (`.i`) adentro; vacío, nada. */
-
-/** lo que separa a un agente del resto en el nombre de un hilo hijo suyo («Gestión › T454 …», telar.hijos) */
-const HIJO = ' › ';
-const ic = (x?: string): string => (x ? `<span class="i">${x}</span>` : '');
+import { I } from '../web/iconos';
+import * as S from '../componentes/senales';
+import * as A from '../componentes/acciones';
+import { item, type Accion, type Pieza, type Tono } from '../componentes/item';
+import { type OpcionOrden } from '../componentes/orden';
+import { herramientas as herramientasLista, separador } from '../componentes/seccion';
 import * as entidades from '../web/entidades';
 import * as ui from '../web/ui';
-
 import * as cli from '../cli';
 import { GLIFO, NOMBRE_ATENCION, PRIORIDAD, duracion, esc, hace, haceCorto, normalizar } from '../estilo';
 import * as modos from '../web/modos';
+import * as mundo from '../web/mundo';
 import * as glifos from '../web/glifos';
 import { modelo } from '../modelo';
+import { HIJO, anidar, repartir } from './hilos-familia';
+import { ayudaInalcanzable, fueraDe, type MaquinaAlcance } from '../web/alcance';
 
 /** Una pestaña del dashboard (su lista y su orden los decide el dashboard, vistas/dashboard/panel.ts): una fila del grupo
  *  DASHBOARD. */
-export interface PestanaDashboard { clave: string; accion: string; valor: string; nombre: string; tecla: string }
+export interface PestanaDashboard { clave: string; accion: string; valor: string; nombre: string; tecla: string;
+    /** algo nuevo en ella («3 chats sin leer», el `aviso` de un bloque): un punto al final de su fila */
+    aviso?: string;
+    /** cuántas cosas suyas te esperan («te esperan»: lo que pregunta): un número tras su nombre, si no es cero */
+    cuenta?: number; cuentaAyuda?: string }
 
 /** Un hilo de otra máquina, como viene en su foto (`telar.espejo`). */
-export interface HiloDeFoto { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; etiquetas?: string[]; padre?: string }
+export interface HiloDeFoto {
+    nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; etiquetas?: string[]; padre?: string;
+    /** si duerme allá (telar.dormir): su agente se cerró por estar quieto; abrirlo lo despierta */
+    dormido?: boolean;
+    /** si terminó y la persona no lo ha visto, y desde cuándo está así: lo dice su máquina (un telar viejo no lo manda) */
+    sin_ver?: boolean; atencion_desde?: string | null;
+    /** su mundo, derivado aquí con los `[mundos]` de esta máquina (`GET /espejos`); sin `[mundos]`, no viene */
+    mundo?: string;
+    /** el agente residente del que es, si lo dice su foto (un telar de antes no lo manda) */
+    agente?: string;
+}
 
 type Seccion = 'hilo' | 'archivado';
 /** Cómo se ordena un grupo: "" como lo da telar (el orden de ⌘⇧P «ordenar»), o uno de estos. */
 type Orden = '' | 'urgencia' | 'nombre' | 'reciente';
-const ORDENES: [Orden, string, string][] = [
-    ['urgencia', I.lleno, 'urgencia: prioridad alta primero; a igual prioridad, el que te espera y después el más reciente'],
-    ['nombre', 'a-z', 'nombre, alfabético'],
-    ['reciente', I.reloj, 'última modificación: el último prompt a su agente, lo más reciente arriba'],
+// en el grupo de ordenar (la gramática visual: un grupo dentro de la banda de herramientas), tras su ícono padre: cada
+// una un ícono en su celda cuadrada (ninguna palabra, que ocuparía otro ancho; ningún círculo, que dice un estado)
+const ORDENES: (OpcionOrden & { clave: Orden })[] = [
+    { clave: 'urgencia', icono: I.urgencia, ayuda: 'urgencia: prioridad alta primero; a igual prioridad, el que te espera y después el más reciente' },
+    { clave: 'nombre', icono: I.alfabetico, ayuda: 'nombre, alfabético' },
+    { clave: 'reciente', icono: I.reloj, ayuda: 'última modificación: el último prompt a su agente, lo más reciente arriba' },
 ];
 
 function leerBuscado(): Record<string, string> {
-    try { return JSON.parse(localStorage.getItem('telar.barra.buscado') ?? '{}') ?? {}; } catch { return {}; }
+    try {
+        const g = JSON.parse(localStorage.getItem('telar.barra.buscado') ?? '{}') ?? {};
+        // el archivo tuvo su propio buscador: lo que quedó escrito ahí ya no filtra nada
+        delete g.archivo;
+        return g;
+    } catch { return {}; }
+}
+
+/** Si una fila tiene lo buscado (`q`, ya normalizado), sin tildes ni mayúsculas. */
+const calza = (q: string, busca: string): boolean => !q || normalizar(busca).includes(q);
+
+/** El estado que dibuja el glifo de un hilo: su atención, con «terminó» partido en sin ver y ya visto. */
+const estadoDe = (atencion: string, visto: boolean): glifos.Estado =>
+    atencion === 'termino' ? (visto ? 'visto' : 'termino') : atencion === 'trabajando' || atencion === 'espera' ? atencion : 'ninguna';
+/** Lo que dice la ayuda de un hilo dormido: desde cuándo (la hora de `desde`, ISO local) y dónde, y que abrirlo lo
+ *  despierta. */
+export function ayudaDormido(sinVer: boolean, desde = '', maquina = ''): string {
+    const hora = /T(\d\d:\d\d)/.exec(desde)?.[1];
+    return `${sinVer ? 'terminó y no lo has visto · ' : ''}duerme${maquina ? ` en ${maquina}` : ''}${hora ? ` desde las ${hora}` : ''}: `
+        + 'su agente se cerró por estar quieto; abrirlo o escribirle lo despierta';
 }
 
 /** La última modificación de un hilo: cuándo se le pidió algo a su agente. Si telar todavía no lo
  *  anotó (un hilo de antes), lo último que hizo su agente. Mirarlo (`visto`) nunca cuenta: un clic
  *  no es trabajo. */
-/** Un nombre que empieza con «↳ » (un hijo): la flecha, de la letra de íconos (mide dos letras de la página, así que el
- *  nombre queda en la grilla del monoespaciado). */
-const conRama = (texto: string): string =>
-    texto.startsWith('↳ ') ? `${I.hijo} ${esc(texto.slice(2))}` : esc(texto);
-
-/** El estado que dibuja el glifo de un hilo: su atención, con «terminó» partido en sin ver y ya visto. */
-const estadoDe = (atencion: string, visto: boolean): glifos.Estado =>
-    atencion === 'termino' ? (visto ? 'visto' : 'termino') : atencion === 'trabajando' || atencion === 'espera' ? atencion : 'ninguna';
 const ultimaDe = (h: cli.JsonHilo): string => h.actividad || h.atencion_desde || '';
 
 /** Lo que el orden mira de un hilo, sea de la lista de esta máquina o de la foto de otra. */
@@ -109,7 +142,8 @@ export class BarraHilos {
     private ultimoActivo?: string;
     /** el dashboard tiene el foco: su fila va marcada, y no la del último hilo (que no es lo que se mira) */
     dashboardActivo = false;
-    /** la app que el dashboard muestra (si está al frente): su fila se marca, no la del dashboard */
+    /** la app que el dashboard muestra (si está al frente): ninguna fila del dashboard se marca (la app está en el menú
+     *  de la cabecera, no en la barra) */
     appActiva = '';
     /** las pestañas del dashboard, que pone la página (del dashboard), y la que se ve: su fila se marca */
     pestanasDashboard: () => PestanaDashboard[] = () => [];
@@ -119,7 +153,7 @@ export class BarraHilos {
     mostrado?: string;
     /** los hilos de otras máquinas que esta no ve en su multiplexor, de la foto que publica cada una
      *  (`telar espejo ver`): van en HILOS, con su máquina en la columna de dónde vive. Lo pone la página web */
-    otras: { nombre: string; en_linea: boolean; edad: number | null; hilos: HiloDeFoto[] }[] = [];
+    otras: (MaquinaAlcance & { hilos: HiloDeFoto[] })[] = [];
     /** el nombre de esta máquina (la que sirve la página): con la columna ancha, lo muestran sus hilos */
     aqui = '';
     /** la columna de dónde vive cada hilo: ⇄ (o nada, si vive aquí), o el nombre de la máquina */
@@ -127,21 +161,48 @@ export class BarraHilos {
     /** el ancho de esa columna con los nombres: el del nombre más largo, hasta 12 */
     private anchoMaquina = 1;
     /** los hilos vivos en otra máquina, por nombre → la máquina (una fila [remotos] o de su foto): lo que se llevó
-     *  allá no se repite aquí en el ARCHIVO, y uno abierto en las dos lo dice */
+     *  allá no se repite aquí en el ARCHIVO (uno abierto en las dos lo dice la franja de avisos: web/vigia.ts) */
     private enOtra = new Map<string, string>();
     private irAlArchivo = false;
+    /** ARCHIVO mientras se busca: abierto (lo que calza) salvo que la persona lo pliegue ahí mismo. No se recuerda: al
+     *  borrar lo escrito, vuelve a como lo dejó (`archivoAbierto`) */
+    private archivoBuscando?: boolean;
+    /** cuántos archivados calzan con lo escrito en el último dibujo (sin nada escrito, -1) */
+    private archivoCalza = -1;
+    /** lo escrito en el buscador de HILOS, listo para comparar */
+    private buscando(): string { return normalizar((this.buscado.hilos ?? '').trim()); }
     /** dónde guardar el orden elegido de cada grupo */
     estado?: Guardado;
     private ordenDe(grupo: string): Orden { return (this.estado?.get<string>(`telar.orden.${grupo}`) ?? '') as Orden; }
-    /** las cabeceras que el usuario dejó al revés de como empiezan (abierta una cerrada, o al revés) */
-    private invertidas = new Set<string>();
+    /** las cabeceras que la persona dejó al revés de como empiezan: clave → abierta. Se guardan en `estado` (en la página,
+     *  este navegador, también el del teléfono): al recargar, cada una sigue como la dejó */
+    private cabeceras?: Record<string, boolean>;
+    /** cómo empieza cada cabecera que ya se dibujó: para dar vuelta una que la persona no ha tocado */
+    private porDefecto = new Map<string, boolean>();
+    private recordadas(): Record<string, boolean> {
+        if (!this.cabeceras) {
+            const g = this.estado?.get<Record<string, boolean>>('telar.cabeceras');
+            this.cabeceras = g && typeof g === 'object' ? { ...g } : {};
+        }
+        return this.cabeceras;
+    }
 
-    /** El archivo es una cabecera más (`__archivo`); `archivoAbierto` lo deja ver y cambiar desde afuera. */
+    /** El archivo es un submenú de HILOS (`__archivo`); `archivoAbierto` lo deja ver y cambiar desde afuera. */
     get archivoAbierto(): boolean { return this.abierta('__archivo', false); }
     set archivoAbierto(v: boolean) { if (v !== this.archivoAbierto) this.alternar('__archivo'); }
 
-    private abierta(clave: string, porDefecto: boolean): boolean { return porDefecto !== this.invertidas.has(clave); }
-    private alternar(clave: string): void { if (this.invertidas.has(clave)) this.invertidas.delete(clave); else this.invertidas.add(clave); }
+    private abierta(clave: string, porDefecto: boolean): boolean {
+        this.porDefecto.set(clave, porDefecto);
+        const r = this.recordadas()[clave];
+        return typeof r === 'boolean' ? r : porDefecto;
+    }
+    /** Abrirla o plegarla, y recordarlo. Si vuelve a como empieza, se olvida: si cambia cómo empieza, la sigue. */
+    private alternar(clave: string): void {
+        const porDefecto = this.porDefecto.get(clave) ?? true;
+        const r = this.recordadas(), abierta = !this.abierta(clave, porDefecto);
+        if (abierta === porDefecto) delete r[clave]; else r[clave] = abierta;
+        void this.estado?.update('telar.cabeceras', r);
+    }
 
     /** La barra ya tiene dónde dibujarse: `raiz` es la columna izquierda de la página. Los clics y lo que
      *  se escribe en los buscadores se atienden ahí, sobre la lista que se redibuja. */
@@ -162,7 +223,7 @@ export class BarraHilos {
             if (e.key === 'Escape') { inp.value = ''; this.buscar(inp.dataset.grupo ?? '', ''); }
             // ⏎: al primero que se ve
             if (e.key === 'Enter') {
-                const f = lista.querySelector<HTMLElement>(`.fila[data-grupo="${inp.dataset.grupo}"]:not([hidden])`);
+                const f = lista.querySelector<HTMLElement>(`.item[data-grupo="${inp.dataset.grupo}"]:not([hidden])`);
                 if (f?.dataset.hilo) this.mensaje({ tipo: 'ir', hilo: f.dataset.hilo });
                 else if (f?.dataset.accion) this.mensaje({ tipo: f.dataset.accion, id: f.dataset.id });
             }
@@ -178,13 +239,13 @@ export class BarraHilos {
         // Se arrastran los de esta máquina; el destino puede ser de cualquiera
         let arrastrado = '';
         const destinoDe = (t: EventTarget | null): { el: HTMLElement; padre: string } | null => {
-            const el = (t as HTMLElement | null)?.closest<HTMLElement>('.fila[data-hilo], .fila.remota, .fila.cab[data-id="__hilos"]');
+            const el = (t as HTMLElement | null)?.closest<HTMLElement>('.item[data-hilo], .item.remota, .item.cabecera[data-id="__hilos"]');
             if (!el) return null;
-            const padre = el.dataset.hilo ?? (el.classList.contains('cab') ? '' : (el.dataset.id ?? '').split('|').slice(1).join('|'));
+            const padre = el.dataset.hilo ?? (el.classList.contains('cabecera') ? '' : (el.dataset.id ?? '').split('|').slice(1).join('|'));
             return padre === arrastrado ? null : { el, padre };
         };
         lista.addEventListener('dragstart', e => {
-            const f = (e.target as HTMLElement).closest<HTMLElement>('.fila[data-hilo]');
+            const f = (e.target as HTMLElement).closest<HTMLElement>('.item[data-hilo]');
             if (!f?.dataset.hilo || !e.dataTransfer) return;
             arrastrado = f.dataset.hilo;
             e.dataTransfer.setData('text/plain', arrastrado);
@@ -221,10 +282,15 @@ export class BarraHilos {
         this.refrescar(true);
     }
 
-    private buscar(grupo: string, texto: string): void {
+    /** Lo escrito en un buscador. En el de HILOS también decide qué archivados se ven: si eso cambia, la lista se
+     *  redibuja (sin mover el scroll ni perder el cursor); si no, basta esconder filas. */
+    buscar(grupo: string, texto: string): void {
         this.buscado[grupo] = texto;
+        if (!this.buscando()) this.archivoBuscando = undefined;
         try { localStorage.setItem('telar.barra.buscado', JSON.stringify(this.buscado)); } catch { /* sin almacén */ }
-        this.filtrar();
+        const antes = this.ultimoHtml;
+        this.refrescar();
+        if (this.ultimoHtml === antes) this.filtrar();
     }
 
     /** Esconde las filas de cada grupo que no tienen lo buscado (sin tildes ni mayúsculas). */
@@ -234,8 +300,8 @@ export class BarraHilos {
         for (const inp of lista.querySelectorAll<HTMLInputElement>('input.buscar')) {
             const g = inp.dataset.grupo ?? '', q = normalizar(inp.value.trim());
             let n = 0;
-            for (const f of lista.querySelectorAll<HTMLElement>(`.fila[data-grupo="${g}"]`)) {
-                const ok = !q || normalizar(f.dataset.busca ?? '').includes(q);
+            for (const f of lista.querySelectorAll<HTMLElement>(`.item[data-grupo="${g}"]`)) {
+                const ok = calza(q, f.dataset.busca ?? '');
                 f.hidden = !ok;
                 if (ok) n++;
             }
@@ -280,9 +346,10 @@ export class BarraHilos {
             case 'descartar': if (m.id) void ui.orden('telar.descartar', { hilo: m.id }); break;
             case 'archivo': void ui.orden('telar.archivo'); break;
             case 'menu': if (m.id) void entidades.menuDe(`hilo:${m.id}`, m.donde); break;
+            // la clave de la sección de un agente ya es su dirección (`agente:secretaria`)
+            case 'menu-agente': if (m.id) void entidades.menuDe(m.id.startsWith('agente:') ? m.id : `agente:${m.id}`, m.donde); break;
             case 'ir-remoto': if (m.id) void ui.orden('telar.irRemoto', m.id); break;
             case 'menu-remoto': if (m.id) void ui.orden('telar.menuRemoto', m.id); break;
-            case 'plegar-barra': this.plegar(true); break;
             case 'abrir-barra': this.plegar(false); break;
             case 'seccion':
                 if (m.id === '__archivo') { void ui.orden('telar.archivo'); break; }
@@ -292,8 +359,9 @@ export class BarraHilos {
             case 'colega': if (m.id) void ui.orden('telar.escribirColega', m.id); break;
             case 'home': if (m.id) void ui.orden('telar.seccion', m.id); break;
             case 'abrir-agente': if (m.id) {
+                // uno de otra máquina (su carpeta todavía no llega a esta), allá
                 const s = modelo.secciones.find(x => x.clave === m.id);
-                void ui.orden('telar.agenteAbrir', { clave: m.id, nombre: s?.nombre ?? m.id });
+                void ui.orden('telar.agenteAbrir', { clave: m.id, nombre: s?.nombre ?? m.id, ...(s?.maquina ? { maquina: s.maquina } : {}) });
             } break;
             case 'app': if (m.id) void ui.orden('telar.app', m.id); break;
             case 'ver-maquina':
@@ -310,7 +378,16 @@ export class BarraHilos {
     }
 
     alternarArchivo(): void {
+        // buscando, con archivados que calzan: se pliega o se abre solo mientras dure lo escrito
+        if (this.buscando() && this.archivoCalza > 0) {
+            this.archivoBuscando = !(this.archivoBuscando ?? true);
+            this.irAlArchivo = this.archivoBuscando;
+            this.refrescar(true);
+            return;
+        }
         this.archivoAbierto = !this.archivoAbierto;
+        // está dentro de HILOS: para verlo, HILOS abierta
+        if (this.archivoAbierto && !this.abierta('__hilos', true)) this.alternar('__hilos');
         this.irAlArchivo = this.archivoAbierto;
         this.refrescar(true);
     }
@@ -335,81 +412,159 @@ export class BarraHilos {
         this.pintarLista(html, mostrar);
     }
 
-    /** La fila de un hilo de otra máquina, de su foto: un clic va a su terminal allá. `clase`: «hijo» si cuelga de su
-     *  agente. */
-    private filaRemota(m: (typeof this.otras)[number], x: HiloDeFoto, clase = '', visible = ''): string {
+    /** La ranura de la prioridad (componentes/senales.ts): chica, alta llena, media a medias, baja un aro; sin ella, un punto. */
+    private ranuraPrioridad(p: number | null | undefined, archivado = false): Pieza {
+        return S.prioridad(p, archivado);
+    }
+
+    /** La ranura de la atención de uno dormido (telar.dormir): un aro tenue, o su diana tenue si terminó y no lo has
+     *  visto. O su glifo, tenue, si el modo los pone en la barra. */
+    private ranuraDormido(nombre: string, at: string, sinVer: boolean, ayuda: string): Pieza {
+        if (!glifos.enLaBarra()) return S.dormido(sinVer, ayuda);
+        return { html: glifos.htmlHilo(nombre, estadoDe(at, !sinVer)), tono: 'tenue', ayuda };
+    }
+
+    /** La ranura de la atención mientras el hilo se va (se cierra, se archiva): un círculo que se vacía. */
+    private ranuraSale(texto: string): Pieza {
+        return S.sale(`${texto}…`);
+    }
+
+    /** La ranura de la atención (componentes/senales.ts): trabajando lleno, te espera un aro, terminó con algo adentro (ya
+     *  visto, tenue); sin atención, vacía. O el glifo del hilo, si el modo los pone en la barra. */
+    private ranuraAtencion(nombre: string, at: string, visto: boolean, ayuda: string): Pieza | null {
+        if (!glifos.enLaBarra()) return S.atencion(at, visto, ayuda);
+        const tono = visto ? 'tenue' : ({ trabajando: 'trabajando', espera: 'espera', termino: 'termino' } as Record<string, Tono>)[at];
+        return { html: glifos.htmlHilo(nombre, estadoDe(at, visto)), tono, ayuda };
+    }
+
+    /** La fila de un hilo de otra máquina, de su foto: un clic va a su terminal allá. `hondo`: cuántos niveles cuelga
+     *  (bajo su agente o su padre), con «↳»; `visible`, el nombre que se muestra si no es el suyo. */
+    private filaRemota(m: (typeof this.otras)[number], x: HiloDeFoto, hondo = 0, visible = ''): string {
         const at = x.atencion ?? 'ninguna';
+        // terminó y ya se vio: lo dice su máquina; o se vio aquí recién (lo local), o es el que la página muestra
+        const visto = at === 'termino' && (x.sin_ver === false || x.nombre === this.mostrado || modelo.vistoAqui(x.nombre, x.atencion_desde));
         const saliendo = modelo.saliendo.get(x.nombre);
-        if (saliendo) clase = `${clase} saliendo`.trim();
-        const estadoM = m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
-        return (`<div class="fila remota${clase ? ` ${clase}` : ''}${m.en_linea ? '' : ' muerto'}" data-accion="ir-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}"`
-            + ` data-grupo="hilos" data-busca="${esc(`${x.nombre} ${x.relativa ?? ''} ${m.nombre}`)}"`
-            + ` title="${esc(`${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`)}">`
-            + `<span class="prio p${x.prioridad ?? 0}">${ic(PRIO_I[x.prioridad ?? 0] ?? PRIO_I[0])}</span>`
-            + `<span class="at ${esc(at)}" title="${esc(NOMBRE_ATENCION[at] ?? '')}">${glifos.enLaBarra() ? glifos.htmlHilo(x.nombre, estadoDe(at, false)) : ic(ATENCION_I[at])}</span>`
-            + this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)
-            + `<span class="nombre">${conRama(visible || x.nombre)}</span>`
-            + (saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : '')
+        // fuera de línea (telar.alcance): inalcanzable, ni vivo ni dormido; lo que dijo antes de irse va en la ayuda
+        const estadoM = m.fuera ? `\n${ayudaInalcanzable(m, x)}`
+            : m.en_linea ? '' : `\n${m.nombre} está apagado${m.edad !== null ? ` hace ${haceCorto(new Date(Date.now() - m.edad * 1000).toISOString())}` : ''}`;
+        const id = `${m.nombre}|${x.nombre}`;
+        return item({
+            clases: ['remota'], apagada: !m.en_linea, saliendo: !!saliendo, hondo,
+            accion: 'ir-remoto', id,
+            datos: { grupo: 'hilos', busca: `${x.nombre} ${x.relativa ?? ''} ${m.nombre}` },
+            ayuda: `${m.nombre}:${x.nombre}${x.relativa ? `\n${x.relativa}` : ''}${x.resumen ? `\n${x.resumen}` : ''}${estadoM}`,
+            // un hijo no dice su prioridad: hereda la de su padre (la ranura queda, vacía)
+            inicio: [hondo ? null : this.ranuraPrioridad(x.prioridad),
+                saliendo ? this.ranuraSale(saliendo.texto)
+                    : m.fuera ? S.inalcanzable(ayudaInalcanzable(m, x))
+                    : x.dormido && x.vivo ? this.ranuraDormido(x.nombre, at, at === 'termino' && !visto, ayudaDormido(at === 'termino' && !visto, '', m.nombre))
+                    : this.ranuraAtencion(x.nombre, at, visto, NOMBRE_ATENCION[at] ?? ''),
+                this.columnaMaquina(m.nombre, `vive en ${m.nombre}`)],
+            prefijo: hondo ? [{ icono: I.hijo }] : [],
+            titulo: visible || x.nombre,
+            meta: saliendo ? { texto: saliendo.texto } : undefined,
             // ⋯: lo que se hace con un hilo de otra máquina desde aquí (traerlo a esta)
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu-remoto" data-id="${esc(`${m.nombre}|${x.nombre}`)}" title="más: traerlo a esta máquina">${I.menu}</span></span></div>`);
+            menu: { accion: 'menu-remoto', id, icono: I.menu, ayuda: 'más: traerlo a esta máquina' },
+        });
     }
 
-    /** `grupo`: el buscador que la filtra («hilos», «archivo»), si alguno. */
-    private fila(h: cli.JsonHilo, seccion: Seccion, alFinal = '', grupo = '', visible = ''): string {
-        // al principio, todos los íconos, cada uno en su columna aunque esté vacía: así los nombres
-        // empiezan siempre en el mismo lugar. Prioridad · semáforo · ⇄ · nombre · última actividad
-        const visto = h.atencion === 'termino' && !h.sin_ver;
-        const glifo = `<span class="at ${esc(h.atencion)}${visto ? ' visto' : ''}" title="${esc(visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? '')}">`
-            + `${glifos.enLaBarra() ? glifos.htmlHilo(h.nombre, estadoDe(h.atencion, visto)) : ic(ATENCION_I[h.atencion])}</span>`;
-        // dónde vive: ⇄ si es en otra máquina y esta ventana solo lo mira (con la columna ancha, su nombre)
-        const remoto = this.columnaMaquina(h.remoto === '?' ? '?' : h.remoto ?? '',
-            h.remoto ? (h.remoto === '?' ? 'conectado a otra máquina' : `vive en ${h.remoto}`) : '');
-        // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
-        const ultima = ultimaDe(h);
-        const der = haceCorto(ultima);
+    /** La fila de un hilo de esta máquina (o de un [remotos] que la lista ya trae). `grupo`: el buscador que la filtra
+     *  («hilos», «archivo»), si alguno; `hondo` y `visible`, como en filaRemota; `acciones`, las suyas al pasar el mouse,
+     *  antes de las de todo hilo (la casa de un agente); `agente`: es el hilo de siempre de un agente residente (su
+     *  nombre en otro color). */
+    private fila(h: cli.JsonHilo, o: { seccion?: Seccion; grupo?: string; hondo?: number; visible?: string; acciones?: Accion[]; agente?: boolean } = {}): string {
+        const seccion = o.seccion ?? 'hilo', hondo = o.hondo ?? 0;
+        // el que la página muestra ahora está a la vista: lo que terminó ahí ya se ve
+        const visto = h.atencion === 'termino' && (!h.sin_ver || h.nombre === this.mostrado);
         const marcada = this.mostrado !== undefined ? h.nombre === this.mostrado : h.activo;
+        const archivado = !h.vivo || seccion === 'archivado';
+        // lo que está en curso lo dice un círculo que se mueve en su ranura (componentes/circulo.ts), y la meta, quieta:
+        // cerrándose o archivándose, se vacía donde va la atención; viajando a otra máquina, gira donde va el lugar
         const saliendo = modelo.saliendo.get(h.nombre);
-        const clases = [seccion, marcada && !this.dashboardActivo ? 'activa' : '', h.vivo ? '' : 'muerto', saliendo ? 'saliendo' : ''].filter(Boolean).join(' ');
-        // abierto aquí y también en otra máquina: dos conversaciones que se separan (una mudanza a medias)
-        const otra = !h.remoto && h.vivo ? this.enOtra.get(h.nombre) : undefined;
-        const doble = otra ? `<span class="i doble" title="${esc(`también abierto en ${otra}: son dos conversaciones; cierra una`)}">${I.alerta}</span>` : '';
-        const busca = grupo ? ` data-grupo="${grupo}" data-busca="${esc(`${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`)}"` : '';
-        return `<div class="fila ${clases}"${busca} data-hilo="${esc(h.nombre)}" draggable="true" title=""${esc(this.tooltip(h))}">`
-            + `<span class="prio p${h.prioridad ?? 0}">${ic(PRIO_I[h.prioridad ?? 0] ?? PRIO_I[0])}</span>`
-            + `${glifo}${modelo.mudando.has(h.nombre) ? `<span class="viaja" title="${esc(`viajando a ${modelo.mudando.get(h.nombre)}…`)}">${ic(I.viaja)}</span>`
-                : modelo.ocupados.has(h.nombre) ? `<span class="viaja" title="${esc(modelo.ocupados.get(h.nombre) ?? '')}">${ic(I.viaja)}</span>` : remoto}<span class="nombre">${h.icono ? `<span class="ic-agente" title="${esc(`de agente:${h.agente}`)}">${esc(h.icono)}</span> `
-                // quién lo abrió, salvo que ya cuelgue de él con su «↳» (un hijo en HILOS): no se repite
-                : h.abierto_por && !(visible.startsWith('↳') && !h.abierto_por.icono) ? `<span class="ic-agente abierto" title="${esc(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`}`)}">${h.abierto_por.icono ? `${esc(h.abierto_por.icono)}</span> ` : `${conRama('↳ ')}</span>`}` : ''}${conRama(visible || cli.nombreVisible(h))}${h.publico ? '<span class="dim" title="público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado"> ◇</span>' : ''}</span>${saliendo ? `<span class="der saliendo-txt">${saliendo.texto}<span class="puntos"></span></span>` : `<span class="der">${esc(der)}</span>`}${doble}${alFinal}`
-            // sin tab que cerrar, lo único que cabe es volver a abrirlo
+        const sale = saliendo?.texto ?? modelo.ocupados.get(h.nombre)?.replace(/…$/, '');
+        const viaja = modelo.mudando.get(h.nombre);
+        // dónde vive: el satélite si es en otra máquina y esta ventana solo lo mira (con la columna ancha, su nombre)
+        const lugar: Pieza | null = viaja !== undefined ? S.viaja(`viajando a ${viaja}…`)
+            : this.columnaMaquina(h.remoto === '?' ? '?' : h.remoto ?? '',
+                h.remoto ? (h.remoto === '?' ? 'conectado a otra máquina' : `vive en ${h.remoto}`) : '');
+        // antes del nombre: de qué agente es, o quién lo abrió (salvo que ya cuelgue de él con su «↳»: no se repite)
+        const prefijo: Pieza[] = [];
+        if (h.icono) prefijo.push({ texto: h.icono, tono: 'agente', ayuda: `de agente:${h.agente}` });
+        else if (h.abierto_por && !(hondo && !h.abierto_por.icono)) {
+            const quien = h.abierto_por.agente ? `agente:${h.abierto_por.agente} (desde «${h.abierto_por.por}»)` : `«${h.abierto_por.por}»`;
+            prefijo.push({ ...(h.abierto_por.icono ? { texto: h.abierto_por.icono } : { icono: I.hijo }), tono: 'tenue', ayuda: `lo abrió ${quien}` });
+        }
+        // un hijo en su propia rama: la rama en vez del «↳» (también dice que cuelga), y aunque su padre no esté a la vista
+        if (h.rama) prefijo.push({ icono: I.rama, tono: 'tenue', ayuda: `en su rama ${h.rama.rama}, que sale de ${h.rama.base}: la fusiona su padre` });
+        else if (hondo) prefijo.push({ icono: I.hijo });
+        // al pasar el mouse, dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para
+        // retomarlo después); descartar lo termina y lo saca (la conversación queda en disco, sin botón para volver). Sin
+        // tab que cerrar, lo único que cabe es volver a abrirlo. Antes, las de quien la pone (la casa de un agente), que no
+        // dependen de cómo está el hilo
+        const acciones: Accion[] = [...o.acciones ?? [], ...modelo.ocupados.has(h.nombre) || saliendo ? [] : archivado
+            ? [{ accion: 'retomar', id: h.nombre, icono: I.retomar, ayuda: 'retomar: abre el agente con su conversación' },
+                { accion: 'descartar', id: h.nombre, icono: I.descartar, peligro: true, ayuda: 'descartar: sale del archivo (pregunta antes; su conversación queda en disco)' }]
+            : [{ accion: 'archivar', id: h.nombre, icono: I.archivar, ayuda: 'archivar: lo cierra y lo guarda en ARCHIVO, con su conversación, para retomarlo después' },
+                { accion: 'cerrar', id: h.nombre, icono: I.descartar, peligro: true, ayuda: 'descartar: lo termina y lo saca de la lista, sin guardarlo en ARCHIVO (pregunta antes; para guardarlo, archivar)' }]];
+        return item({
+            variante: o.agente ? 'agente' : 'normal',
+            activa: marcada && !this.dashboardActivo, apagada: archivado, saliendo: !!saliendo, hondo,
+            datos: { hilo: h.nombre, ...(o.grupo ? { grupo: o.grupo, busca: this.buscaDe(h) } : {}) },
+            arrastrable: true,
+            ayuda: this.tooltip(h),
+            // al principio, todos los íconos, cada uno en su ranura aunque esté vacía: así los nombres empiezan siempre
+            // en el mismo lugar. Prioridad · semáforo · dónde vive. Un hijo no dice su prioridad: hereda la de su padre
+            inicio: [hondo ? null : this.ranuraPrioridad(h.prioridad, seccion === 'archivado'),
+                sale !== undefined ? this.ranuraSale(sale)
+                    : h.alcanzable === false && h.vivo ? S.inalcanzable(this.ayudaFuera(h))
+                    : h.dormido && h.vivo ? this.ranuraDormido(h.nombre, h.atencion, !!h.sin_ver && !visto,
+                        ayudaDormido(!!h.sin_ver && !visto, h.dormido.desde, h.remoto && h.remoto !== '?' ? h.remoto : ''))
+                    : this.ranuraAtencion(h.nombre, h.atencion, visto, visto ? 'terminó (ya lo viste)' : h.sin_ver ? 'terminó y no lo has visto: ⌥S' : NOMBRE_ATENCION[h.atencion] ?? ''),
+                lugar],
+            prefijo,
+            titulo: o.visible || cli.nombreVisible(h),
+            sufijo: h.publico ? [S.publico('público: lo ven las otras personas del bus (EQUIPO); ⋯ para hacerlo privado')] : [],
+            // al final, solo su última modificación: el último prompt a su agente (un clic no cuenta)
+            meta: sale !== undefined ? { texto: sale } : viaja !== undefined ? { texto: `→ ${viaja}`, ayuda: `viajando a ${viaja}…` } : { texto: haceCorto(ultimaDe(h)) },
             // ⋯ el menú del hilo (ordenes.ts): renombrar, vincular, prioridad, llevar…
-            // dos maneras de sacarlo de la lista: archivar lo guarda (en ARCHIVO, con su conversación, para retomarlo
-            // después); descartar lo termina y lo saca de la lista (la conversación queda en disco, sin botón para volver)
-            + `<span class="iconos"><span class="icono menu-hilo" data-accion="menu" data-id="${esc(h.nombre)}" title="más: renombrar, vincular, prioridad, llevar…">${I.menu}</span>` + (modelo.ocupados.has(h.nombre) || saliendo ? ''
-                : !h.vivo || seccion === 'archivado'
-                ? `<span class="icono i" data-accion="retomar" data-id="${esc(h.nombre)}" title="retomar: abre el agente con su conversación">${I.retomar}</span>`
-                  + `<span class="icono i descartar" data-accion="descartar" data-id="${esc(h.nombre)}" title="descartar: sale del archivo (pregunta antes; su conversación queda en disco)">${I.descartar}</span>`
-                : `<span class="icono i" data-accion="archivar" data-id="${esc(h.nombre)}" title="archivar: lo cierra y lo guarda en ARCHIVO, con su conversación, para retomarlo después">${I.archivar}</span>`
-                  + `<span class="icono i descartar" data-accion="cerrar" data-id="${esc(h.nombre)}" title="descartar: lo termina y lo saca de la lista, sin guardarlo en ARCHIVO (para guardarlo, archivar)">${I.descartar}</span>`)
-            + '</span></div>';
+            menu: { accion: 'menu', id: h.nombre, icono: I.menu, ayuda: 'más: renombrar, vincular, prioridad, llevar…' },
+            acciones,
+        });
     }
 
-    /** La columna de dónde vive un hilo: `maquina` vacía es esta. Angosta, ⇄ para los de otra máquina;
-     *  ancha (el botón ⇄ junto a buscar), el nombre de la máquina de cada uno, también el de esta. */
-    private columnaMaquina(maquina: string, titulo: string): string {
-        const t = titulo ? ` title="${esc(titulo)}"` : '';
-        if (!this.conMaquina()) return `<span class="remoto"${t}>${maquina ? ic(I.remoto) : ''}</span>`;
+    /** En qué busca el buscador de un hilo de esta máquina: su nombre, su carpeta y dónde vive. */
+    private buscaDe(h: cli.JsonHilo): string {
+        return `${cli.nombreVisible(h)} ${h.nombre} ${h.relativa ?? ''} ${h.remoto || this.aqui}`;
+    }
+
+    /** La ranura de dónde vive un hilo: `maquina` vacía es esta. Angosta, el satélite para los de otra máquina (vacía si
+     *  es de aquí); ancha (el botón de las máquinas junto a buscar), el nombre de la máquina de cada uno, también el de esta. */
+    private columnaMaquina(maquina: string, titulo: string): Pieza | null {
+        if (!this.conMaquina()) return maquina ? S.remoto(titulo) : null;
         const nombre = maquina === '?' ? '?' : maquina || this.aqui || '·';
-        return `<span class="remoto ancho${maquina ? '' : ' aqui'}" style="width: ${this.anchoMaquina}ch"${t || ` title="${esc(`vive aquí${this.aqui ? ` (${this.aqui})` : ''}`)}"`}>${esc(nombre)}</span>`;
+        return { texto: nombre, ancho: this.anchoMaquina, tono: maquina ? 'atencion' : 'tenue',
+            ayuda: titulo || `vive aquí${this.aqui ? ` (${this.aqui})` : ''}` };
     }
 
-    /** Bajo la cabecera de un grupo: el buscador (lo filtra la vista, sin redibujar) y los órdenes.
-     *  Un clic en el orden que ya rige vuelve al de telar. En HILOS, además, ⇄: ver la máquina de cada uno. */
-    private herramientas(grupo: string, orden: Orden): string {
-        const maquina = grupo === 'hilos'
-            ? `<span class="ord${this.conMaquina() ? ' si' : ''}" data-accion="ver-maquina" title="${this.conMaquina() ? 'ver solo ⇄ en los hilos de otra máquina' : 'ver en qué máquina vive cada hilo'}">${I.remoto}</span>` : '';
-        return `<div class="herram"><input class="buscar" data-grupo="${grupo}" placeholder="buscar" spellcheck="false" title="buscar por nombre, carpeta o máquina · ⏎ abre el primero · ⎋ borra">`
-            + ORDENES.map(([k, glifo, ayuda]) => `<span class="ord${k === orden ? ' si' : ''}" data-accion="orden-grupo" data-id="${grupo}:${k}" title="${esc(`ordenar por ${ayuda}${k === orden ? ' (clic: volver al orden de telar)' : ''}`)}">${glifo}</span>`).join('')
-            + maquina + `</div><div class="vacia" data-grupo="${grupo}" hidden>nada calza</div>`;
+    /** Bajo la cabecera de HILOS: el buscador (filtra los vivos y los archivados) y los órdenes (valen para los dos).
+     *  Un clic en el orden que ya rige vuelve al de telar. Además, ⇄: ver la máquina de cada uno. ARCHIVO no tiene los
+     *  suyos: dos buscadores en la misma sección confundían. */
+    private herramientas(orden_: Orden): string {
+        const maquina = `<span class="ord i${this.conMaquina() ? ' si' : ''}" data-accion="ver-maquina" title="${this.conMaquina() ? 'ver solo una marca en los hilos de otra máquina' : 'ver en qué máquina vive cada hilo'}">${I.maquinas}</span>`;
+        // la banda de herramientas: la barra del buscador (con su línea abajo, de borde a borde) y a su derecha el grupo de
+        // ordenar (su ícono padre y las opciones, entre dos cortes en su púrpura: orden.ts) y las máquinas
+        return herramientasLista({ grupo: 'hilos', placeholder: 'hilos',
+            ayuda: 'buscar por nombre, carpeta o máquina, también en el archivo · ⏎ abre el primero · ⎋ borra',
+            orden: { opciones: ORDENES, activa: orden_ }, extra: maquina });
+    }
+
+    /** La ayuda de la ventana de aquí de un hilo cuya máquina está fuera de línea (telar.alcance): con su foto si la
+     *  hay; si no, con lo que dice la lista. */
+    private ayudaFuera(h: cli.JsonHilo): string {
+        const desde = h.fuera_de_linea_desde ? Date.parse(h.fuera_de_linea_desde) : NaN;
+        const m: MaquinaAlcance = fueraDe(h.remoto ?? '', this.otras)
+            ?? { nombre: h.remoto ?? '', en_linea: false, fuera: true, edad: Number.isNaN(desde) ? null : (Date.now() - desde) / 1000 };
+        return ayudaInalcanzable(m, { vivo: h.vivo, dormido: h.dormido, atencion: h.atencion });
     }
 
     private tooltip(h: cli.JsonHilo): string {
@@ -418,11 +573,14 @@ export class BarraHilos {
             `${h.nombre}${h.id !== h.nombre ? ` · ${h.id}` : ''} · ${h.relativa || 'sin carpeta'}`];
         const datos: string[] = [];
         if (h.arquetipo) datos.push(h.arquetipo);
-        if (h.remoto) datos.push(h.remoto === '?' ? '⇄ en otra máquina' : `⇄ remoto: ${h.remoto}`);
+        if (h.remoto) datos.push(h.remoto === '?' ? 'en otra máquina' : `vive en ${h.remoto}`);
         if (!h.vivo) datos.push('no vivo');
-        if (h.publico) datos.push('◇ público');
+        else if (h.alcanzable === false) datos.push(this.ayudaFuera(h).replace(/\n/g, ' '));
+        else if (h.dormido) datos.push(ayudaDormido(false, h.dormido.desde, h.remoto && h.remoto !== '?' ? h.remoto : ''));
+        if (h.publico) datos.push('público');
         if (h.abierto_por) datos.push(`lo abrió ${h.abierto_por.agente ? `agente:${h.abierto_por.agente}` : `«${h.abierto_por.por}»`}`);
-        if (GLIFO[h.atencion]) datos.push(`${GLIFO[h.atencion]} ${NOMBRE_ATENCION[h.atencion] ?? h.atencion}`);
+        if (h.rama) datos.push(`rama ${h.rama.rama} (desde ${h.rama.base})`);
+        if (GLIFO[h.atencion] && h.alcanzable !== false) datos.push(`${GLIFO[h.atencion]} ${NOMBRE_ATENCION[h.atencion] ?? h.atencion}`);
         if (h.prioridad) datos.push(`prioridad ${PRIORIDAD[h.prioridad]} ${['', 'alta', 'media', 'baja'][h.prioridad]}`);
         if (h.tiempo >= 60) datos.push(`hoy ${duracion(h.tiempo)}`);
         if (h.actividad) datos.push(`último prompt hace ${hace(h.actividad)}`);
@@ -436,10 +594,9 @@ export class BarraHilos {
     }
 
     private html(): string {
-        if (modelo.error) {
-            return `<div class="aviso">${esc(modelo.error)}<br><br>`
-                + `<a data-accion="cmd" data-id="telar.actualizar">reintentar</a></div>`;
-        }
+        // sin API, la lista sigue (es lo último que se supo); la caída, la sesión y el multiplexor los dice la franja de
+        // avisos, arriba (web/vigia.ts). Sin ninguna lista leída todavía, nada que mostrar
+        if (!modelo.leido && !modelo.hilos.length) return `<div class="nota">${modelo.caido() ? 'todavía sin la lista de hilos' : 'leyendo los hilos…'}</div>`;
         const h: string[] = [];
         // «cerrando…» dura hasta que el hilo ya no se ve (aquí ni en la foto de su máquina), o se vence
         for (const [n, x] of modelo.saliendo) {
@@ -450,83 +607,142 @@ export class BarraHilos {
             ...this.otras.flatMap(m => m.hilos.filter(x => x.vivo).map(x => [x.nombre, m.nombre] as [string, string])),
             ...modelo.hilos.filter(x => x.remoto && x.remoto !== '?' && x.vivo).map(x => [x.nombre, x.remoto!] as [string, string]),
         ]);
-        if (modelo.aviso) h.push(`<div class="nota">(${esc(modelo.aviso)})</div>`);
-        if (!modelo.viva && !modelo.hilos.length) {
-            return h.join('') + `<div class="aviso">la sesión «${esc(modelo.sesion)}» no está tejida.<br><br>`
-                + `<a data-accion="cmd" data-id="telar.tejer">tejerla en un terminal</a></div>`;
-        }
+        if (!modelo.viva && !modelo.hilos.length) return '<div class="nota">sin hilos</div>';
         if (!modelo.hilos.length) {
             return h.join('') + '<div class="aviso">ningún hilo todavía.<br><br>'
                 + '<a data-accion="cmd" data-id="telar.nuevo">abrir uno</a></div>';
         }
-        if (!modelo.viva) h.push('<div class="nota">la sesión no está viva; esto es lo que telar recuerda</div>');
-        // grupos con cabecera plegable, en este orden: DASHBOARD, AGENTES, HILOS (y las secciones propias), EQUIPO,
-        // ARCHIVO y APPS. Los tres primeros empiezan abiertos (es donde se trabaja); los demás, cerrados (se miran
-        // de vez en cuando). Dentro de cada grupo, los que tienen tab primero
+        // grupos con cabecera plegable, en este orden: DASHBOARD, AGENTES, HILOS (con ARCHIVO adentro, al final: un
+        // submenú), las secciones propias y EQUIPO. Los tres primeros empiezan abiertos (es donde se trabaja); los
+        // demás y ARCHIVO, cerrados (se miran de vez en cuando). Dentro de cada grupo, los que tienen tab primero
         const vivosPrimero = (l: cli.JsonHilo[]) => [...l.filter(x => x.vivo), ...l.filter(x => !x.vivo)];
         // `extra`: lo que va al final de la cabecera, con su propia acción (el + de HILOS)
         let primera = true;
-        const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, extra = ''): boolean => {
+        // las acciones de una sección, en su cabecera y en este orden: las suyas, y el «+» de crear uno, al final (en la
+        // misma columna en todas las cabeceras: componentes/acciones.ts). El ‹ que pliega la barra entera es de la barra
+        // y no de una sección: va en su primera fila, la franja de avisos (web/franja.ts)
+        const cabecera = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, fijas: Accion[] = [], nuevo?: Accion): boolean => {
             const abierta = this.abierta(clave, porDefecto);
-            if (!primera) h.push('<div class="sep"></div>');
-            // la primera cabecera lleva, al final, el «‹» que pliega la barra
-            if (primera) extra += '<span class="pliegue-barra" data-accion="plegar-barra" title="plegar la barra de hilos">‹</span>';
+            if (!primera) h.push(separador());
+            fijas = [...fijas, ...(nuevo ? [nuevo] : [])];
             primera = false;
-            h.push(`<div${clave === '__archivo' ? ' id="archivo"' : ''} class="fila cab" data-accion="seccion" data-id="${esc(clave)}" title="${esc(ayuda)}: abrir o cerrar">`
-                + `<span class="prio">${ic(abierta ? I.abierto : I.plegado)}</span>${esc(titulo)}${cuenta ? ` <span class="dim">${cuenta}</span>` : ''}${extra}</div>`);
+            // el título va como se escribe («hilos», el nombre de una sección): las mayúsculas las pone el tema
+            h.push(item({ variante: 'cabecera', ancla: clave === '__archivo' ? 'archivo' : undefined, accion: 'seccion', id: clave,
+                ayuda: `${ayuda}: abrir o cerrar`, inicio: [{ icono: abierta ? I.abierto : I.plegado }],
+                titulo, sufijo: cuenta ? [{ texto: String(cuenta), tono: 'tenue' }] : [], fijas }));
+            return abierta;
+        };
+        // un submenú: una sección dentro de otra (ARCHIVO dentro de HILOS), con su cabecera plegable. Es una fila más de
+        // la lista (componentes/item.ts, variante «submenu»): la flecha en la ranura de dónde vive, justo antes de los
+        // nombres (con la columna de las máquinas, tan ancha como ella), y su nombre en la columna de los nombres
+        // `forzada`: abierto o plegado por otra cosa que lo recordado (ARCHIVO mientras se busca)
+        const submenu = (clave: string, titulo: string, cuenta: number, porDefecto: boolean, ayuda: string, forzada?: boolean): boolean => {
+            const abierta = forzada ?? this.abierta(clave, porDefecto);
+            const flecha: Pieza = { icono: abierta ? I.abierto : I.plegado, ...this.conMaquina() ? { ancho: this.anchoMaquina } : {} };
+            h.push(item({ variante: 'submenu', ancla: clave === '__archivo' ? 'archivo' : undefined, accion: 'seccion', id: clave,
+                ayuda: `${ayuda}: abrir o cerrar`, inicio: [null, null, flecha],
+                titulo, sufijo: cuenta ? [{ texto: String(cuenta), tono: 'tenue' }] : [] }));
             return abierta;
         };
 
         // el dashboard: una fila por pestaña (ahora, tareas, el correo…), en el orden de `[dashboard]`. Es el lugar
-        // al que se vuelve varias veces al día: encabeza la lista
-        if (cabecera('__dashboard', 'DASHBOARD', 0, true, 'el día: agenda, tareas, correo y lo que traigan los proveedores')) {
+        // al que se vuelve varias veces al día: encabeza la lista. Algo nuevo en una (el `aviso` de un bloque: chats sin
+        // leer) es un punto al final; la tecla que la abre, a la derecha
+        if (cabecera('__dashboard', 'dashboard', 0, true, 'el día: agenda, tareas, correo y lo que traigan los proveedores')) {
             for (const p of this.pestanasDashboard()) {
-                const activa = this.dashboardActivo && !this.appActiva && p.clave === this.pestanaActiva;
-                h.push(`<div class="fila hoy${activa ? ' activa' : ''}" data-accion="dash" data-id="${esc(JSON.stringify([p.accion, p.valor]))}"`
-                    + ` title="${esc(p.tecla ? `${p.nombre} · con el dashboard a la vista, la tecla ${p.tecla}` : p.nombre)}">`
-                    + `<span class="prio"> </span><span class="nombre">${esc(p.nombre)}</span>${p.tecla ? `<span class="der">${esc(p.tecla)}</span>` : ''}</div>`);
+                h.push(item({ variante: 'enlace', activa: this.dashboardActivo && !this.appActiva && p.clave === this.pestanaActiva,
+                    accion: 'dash', id: JSON.stringify([p.accion, p.valor]),
+                    ayuda: p.tecla ? `${p.nombre} · con el dashboard a la vista, la tecla ${p.tecla}` : p.nombre,
+                    inicio: [null], titulo: p.nombre,
+                    sufijo: p.cuenta ? [{ texto: String(p.cuenta), tono: 'atencion', ayuda: p.cuentaAyuda }] : [],
+                    aviso: p.aviso ? S.nuevo(p.aviso) : undefined,
+                    meta: p.tecla ? { texto: p.tecla } : undefined }));
             }
         }
 
-        // los agentes residentes: uno por línea (su hilo de siempre, el de su nombre), con su home al final. Un agente
-        // sin hilo abierto sale igual, tenue, y su línea lleva a su home. Sus otros hilos van en HILOS, con su ícono
+        // los agentes residentes: uno por línea (su hilo de siempre, el de su nombre). Su casa (bitácora, memoria,
+        // archivos) es una acción de las que aparecen al pasar el mouse, y en el teléfono está en su ⋯. Un agente sin hilo
+        // abierto sale igual, tenue, y su línea abre su hilo. Sus otros hilos van en HILOS, con su ícono
         const agentes = modelo.secciones.filter(s => s.grupo === 'agentes');
-        const verTodos = `<span class="icono ver-agentes" data-accion="cmd" data-id="telar.agentesVer" title="todos los agentes: su estado, sus encargos, encargar y rotar">${I.lista}</span>`;
-        const crear = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.agenteNuevo" title="un agente residente nuevo: su carpeta con CLAUDE.md y agente.toml">+ nuevo</span>';
+        const verTodos: Accion = { accion: 'cmd', id: 'telar.agentesVer', icono: I.lista, ayuda: 'todos los agentes: su estado, sus encargos, encargar y rotar' };
+        const crear = A.nuevo({ accion: 'cmd', id: 'telar.agenteNuevo' }, 'agente nuevo: un agente residente, su carpeta con CLAUDE.md y agente.toml');
+        // los que el modo puesto no muestra (`agentes`, ⚙ modos) no se esconden sin decirlo: la cabecera dice cuántos se
+        // ven, y si no se ve ninguno, una fila lo dice y lleva a elegirlos
+        const delModo = agentes.filter(a => modos.seVeAgente(a.clave)).length;
+        // quién se ve y dónde (vistas/hilos-familia.ts): el modo puesto puede filtrar por etiquetas (web/modos.ts; un hijo
+        // sin etiquetas propias lleva las de su padre, y así hacia arriba) y el mundo puesto (web/mundo.ts) deja ver lo
+        // suyo y lo sin clasificar. El hilo que se está mirando no se esconde, ni su familia: sus padres, para que quede
+        // anidado, y sus descendientes, que suben con él (y salen de «de personal»). En todos los modos, también en todo
+        // (`mundo.enElPuesto`): la barra está siempre a la vista, y una pantalla compartida en el trabajo no muestra
+        // lo personal; en todo, lo de otro mundo va al final, plegado (ahí el mundo ordena)
+        const padreDeNombre = new Map<string, string>([
+            ...modelo.hilos.map(y => [y.nombre, y.padre || ''] as [string, string]),
+            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.padre || ''] as [string, string]))]);
+        const etiquetasDe = new Map<string, string[]>([...modelo.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]),
+            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]))]);
+        const reparto = repartir({ mostrado: this.mostrado, padres: padreDeNombre, etiquetas: etiquetasDe,
+            agentes: agentes.map(a => a.nombre), modo: modos.seVe, mundo: mundo.enElPuesto });
+        const familia = reparto.familia;
+        const elModo = delModo < agentes.length ? ` · «${modos.puesto().nombre}» muestra ${delModo} de ${agentes.length} (⚙ modos)` : '';
         // la sección sale aunque no haya ninguno: es donde se aprende que existen y se arma el primero
-        if (cabecera('__agentes', 'AGENTES', 0, true, 'los agentes residentes', crear + verTodos)) {
+        if (cabecera('__agentes', 'agentes', 0, true, `los agentes residentes${elModo}`, [verTodos], crear)) {
             if (!agentes.length) {
-                h.push('<div class="fila agente muerto" data-accion="cmd" data-id="telar.agenteNuevo" title="un agente vive en su carpeta, con su memoria y su bitácora, y le encargas cosas">'
-                    + '<span class="prio"> </span><span class="nombre">no tienes agentes residentes · <a>crear uno</a></span></div>');
+                h.push(item({ variante: 'agente', apagada: true, accion: 'cmd', id: 'telar.agenteNuevo', inicio: [null],
+                    ayuda: 'un agente vive en su carpeta, con su memoria y su bitácora, y le encargas cosas',
+                    tituloHtml: 'no tienes agentes residentes · <a>crear uno</a>' }));
             }
+            let mostrados = 0;
             for (const a of agentes) {
-                const casa = `<span class="icono casa" data-accion="home" data-id="${esc(a.clave)}" title="la casa de ${esc(a.nombre)}: bitácora, memoria, archivos">home</span>`;
+                // uno de otra máquina cuya carpeta todavía no llega a esta (`maquina`, por la foto de allá): sin casa aquí
+                const casas: Accion[] = a.maquina ? [] : [{ accion: 'home', id: a.clave, icono: I.casa, ayuda: `la casa de ${a.nombre}: bitácora, memoria, archivos` }];
                 const suyos = vivosPrimero(modelo.enLista.filter(x => x.nombre === a.nombre));
-                if (!suyos.length) {
-                    // sin hilo vivo: si telar recuerda uno (cerrado o archivado), la línea lo retoma;
-                    // si nunca existió, lleva a su home
+                // y su hilo, si no viene en la lista de aquí, de la foto de su máquina
+                const suyoAlla = a.maquina && !suyos.length
+                    ? this.otras.find(m => m.nombre === a.maquina)?.hilos.find(y => y.vivo && y.nombre === a.nombre) : undefined;
+                // un agente cuyo hilo es de otro mundo no se ve; uno sin hilo, tampoco si es de otro mundo por su
+                // agente.toml, su carpeta o la etiqueta de su hilo (`mundo.seVeAgente`, lo que dicen las grillas de
+                // ⚙ modos y ⚙ mundos; sin saberlo, se ve). Salvo que se esté mirando su hilo o el de un hijo suyo: el mostrado no se esconde, y sus
+                // hijos se dibujan colgados de él
+                const deOtroMundo = !mundo.seVeAgente(a, suyoAlla ? [suyoAlla.mundo ?? a.mundo] : suyos.map(x => x.mundo), mundo.enElPuesto);
+                if (deOtroMundo && !familia.has(a.nombre)) continue;
+                // ni uno que el modo puesto no muestra (`agentes`, la grilla de ⚙ modos), salvo lo mismo (en el dashboard,
+                // donde está la grilla, no: lo que se marca se ve al tiro)
+                const mirado = !this.dashboardActivo && familia.has(a.nombre);
+                if (!mirado && !modos.seVeAgente(a.clave)) continue;
+                mostrados++;
+                if (suyoAlla) h.push(this.filaRemota(this.otras.find(m => m.nombre === a.maquina)!, suyoAlla, 0));
+                else if (!suyos.length) {
+                    // sin hilo vivo: si telar recuerda uno (cerrado o archivado), la línea lo retoma; si nunca existió, lo
+                    // abre (con su motor; si falta, se ofrece elegirlo)
                     const previo = modelo.hilos.find(x => cli.enSeccion(a, x.nombre));
-                    const retomar = previo
-                        ? `<span class="icono" data-accion="retomar" data-id="${esc(previo.nombre)}" title="retomar: reabre el hilo con su conversación">${I.retomar}</span>` : '';
-                    // sin hilo que retomar: se abre (con su motor; si falta, se ofrece elegirlo)
-                    const abrir = previo ? '' : `<span class="icono" data-accion="abrir-agente" data-id="${esc(a.clave)}" title="abrir su hilo">${I.correr}</span>`;
-                    const clic = previo ? `data-accion="retomar" data-id="${esc(previo.nombre)}"` : `data-accion="abrir-agente" data-id="${esc(a.clave)}"`;
-                    h.push(`<div class="fila agente muerto" ${clic} title="${esc(a.nombre)}: sin hilo abierto; pincha para ${previo ? 'retomarlo' : 'abrirlo'}">`
-                        + '<span class="prio"> </span><span class="at"> </span><span class="remoto"> </span>'
-                        + `<span class="nombre">${esc(a.nombre)}</span><span class="der"></span>${retomar}${abrir}${casa}</div>`);
-                } else suyos.forEach((x, i) => h.push(this.fila(x, 'hilo', i === 0 ? casa : '').replace('class="fila ', 'class="fila agente ')));
-                // sus hijos: un hilo por tarea que se le llevó («Gestión › T454 …», telar.hijos), de esta máquina o de
+                    const abrir: Accion = previo
+                        ? { accion: 'retomar', id: previo.nombre, icono: I.retomar, ayuda: 'retomar: reabre el hilo con su conversación' }
+                        : { accion: 'abrir-agente', id: a.clave, icono: I.correr, ayuda: 'abrir su hilo' };
+                    // quieta, el ▷ que lo abre; al pasar el mouse, su casa y el ▷ otra vez (las de a mano flotan sobre el
+                    // final y lo tapan); su ⋯, el menú del agente (web/ordenes.ts): su casa, abrir su hilo, encargarle, eliminarlo
+                    const alla = a.maquina ? ` en ${a.maquina} (su carpeta todavía no llega a esta máquina: telar doctor)` : '';
+                    h.push(item({ variante: 'agente', apagada: true, accion: abrir.accion, id: abrir.id,
+                        ayuda: `${a.nombre}: sin hilo abierto; pincha para ${previo ? 'retomarlo' : 'abrirlo'}${alla}`,
+                        inicio: [null, null, null], titulo: a.nombre, fijas: [abrir], acciones: [...casas, abrir],
+                        menu: { accion: 'menu-agente', id: a.clave, icono: I.menu, ayuda: 'más: su casa, abrir su hilo, encargarle, eliminarlo' } }));
+                } else suyos.forEach((x, i) => h.push(this.fila(x, { agente: true, acciones: i === 0 ? casas : [] })));
+                // sus hijos: un hilo por tarea que se le llevó («Secretaría › T454 …», telar.hijos), de esta máquina o de
                 // la suya, colgados de él y con el nombre sin el suyo adelante
                 const prefijo = `${a.nombre}${HIJO}`;
                 for (const x of vivosPrimero(modelo.enLista.filter(y => y.nombre.startsWith(prefijo)))) {
-                    h.push(this.fila(x, 'hilo', '', 'hilos', `↳ ${x.nombre.slice(prefijo.length)}`).replace('class="fila ', 'class="fila hijo '));
+                    h.push(this.fila(x, { grupo: 'hilos', hondo: 1, visible: x.nombre.slice(prefijo.length) }));
                 }
                 const vistos = new Set(modelo.enLista.map(y => y.nombre));
                 for (const m of this.otras) {
                     for (const x of m.hilos.filter(y => y.vivo && y.nombre.startsWith(prefijo) && !vistos.has(y.nombre))) {
-                        h.push(this.filaRemota(m, x, 'hijo', `↳ ${x.nombre.slice(prefijo.length)}`));
+                        h.push(this.filaRemota(m, x, 1, x.nombre.slice(prefijo.length)));
                     }
                 }
+            }
+            if (agentes.length && !delModo && !mostrados) {
+                h.push(item({ variante: 'agente', apagada: true, accion: 'dash', id: JSON.stringify(['config', 'modos']), inicio: [null],
+                    ayuda: 'qué agentes se ven en cada modo: ⚙ modos',
+                    tituloHtml: `ninguno en «${esc(modos.puesto().nombre)}» · <a>elegir</a>` }));
             }
         }
 
@@ -536,80 +752,94 @@ export class BarraHilos {
         // (los de un agente que no son su hilo de siempre también van aquí, con su ícono: son trabajo como cualquiera)
         const deAgente = (y: cli.JsonHilo) => { const s = modelo.seccionDe(y.nombre); return !s || (s.grupo === 'agentes' && s.nombre !== y.nombre); };
         // los hijos de un agente van colgados de él, arriba: aquí no se repiten
-        const esHijo = (n: string) => agentes.some(a => n.startsWith(`${a.nombre}${HIJO}`));
-        // el modo puesto puede filtrar por etiquetas (web/modos.ts); el hilo que se está mirando no se esconde. Un hijo
-        // sin etiquetas propias lleva las de su padre (y así hacia arriba)
-        const padreDeNombre = new Map<string, string>([
-            ...modelo.hilos.map(y => [y.nombre, y.padre || y.abierto_por?.por || ''] as [string, string]),
-            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.padre || ''] as [string, string]))]);
-        const etiquetasDe = new Map<string, string[]>([...modelo.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]),
-            ...this.otras.flatMap(m => m.hilos.map(y => [y.nombre, y.etiquetas ?? []] as [string, string[]]))]);
-        const heredadas = (n: string, propias?: string[]) => {
-            let et = propias ?? etiquetasDe.get(n) ?? [], x = n;
-            for (let i = 0; !et.length && i < 8; i++) { x = padreDeNombre.get(x) ?? ''; if (!x) break; et = etiquetasDe.get(x) ?? []; }
-            return et;
-        };
-        const seVe = (n: string, et?: string[]) => n === this.mostrado || modos.seVe(heredadas(n, et));
-        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre) && seVe(y.nombre, y.etiquetas)));
+        // (y el hilo de un agente de otra máquina sin carpeta aquí, que va en AGENTES desde la foto de allá)
+        const esHijo = (n: string) => agentes.some(a => n.startsWith(`${a.nombre}${HIJO}`) || (a.maquina && n === a.nombre));
+        // lo que el modo y el mundo puestos dejan ver (`reparto`, arriba). Lo que el mundo deja afuera no se esconde sin
+        // decirlo: va contado en una fila plegada al final de HILOS («de personal 7»), que lo abre ahí mismo
+        const seVe = (n: string, et?: string[], mu?: string) => reparto.donde(n, et, mu) === 'lista';
+        const fuera = (n: string, et?: string[], mu?: string) => reparto.donde(n, et, mu) === 'fuera';
+        const sueltos = vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre) && seVe(y.nombre, y.etiquetas, y.mundo)));
         const yaEstan = new Set(modelo.hilos.filter(x => x.remoto).map(x => `${x.remoto}|${x.nombre}`));
         const deOtras = this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)
-            && seVe(x.nombre, x.etiquetas)).map(x => ({ m, x })));
+            && seVe(x.nombre, x.etiquetas, x.mundo)).map(x => ({ m, x })));
         // los de esta máquina y los de las otras, en una sola lista: el orden elegido vale para todos (en la página
         // del servidor, los del laptop vienen de su foto, y antes quedaban al final sin ordenar)
         type FilaH = { aqui: cli.JsonHilo } | { m: (typeof deOtras)[number]['m']; x: HiloDeFoto };
-        const todos = ordenarPor<FilaH>([...sueltos.map(aqui => ({ aqui })), ...deOtras], ordenH, f => 'aqui' in f ? deLista(f.aqui)
+        const ordenarH = (l: FilaH[]) => ordenarPor<FilaH>(l, ordenH, f => 'aqui' in f ? deLista(f.aqui)
             : { prioridad: f.x.prioridad, atencion: f.x.atencion, nombre: f.x.nombre, ultima: '' });
+        const todos = ordenarH([...sueltos.map(aqui => ({ aqui })), ...deOtras]);
+        const fueraDelMundo = ordenarH([
+            ...vivosPrimero(modelo.enLista.filter(deAgente).filter(y => !esHijo(y.nombre) && fuera(y.nombre, y.etiquetas, y.mundo)))
+                .map(aqui => ({ aqui })),
+            ...this.otras.flatMap(m => m.hilos.filter(x => x.vivo && !esHijo(x.nombre) && !yaEstan.has(`${m.nombre}|${x.nombre}`)
+                && fuera(x.nombre, x.etiquetas, x.mundo)).map(x => ({ m, x }))),
+        ]);
         const nombres = [this.aqui, ...this.otras.map(m => m.nombre), ...sueltos.map(x => x.remoto ?? '')];
         this.anchoMaquina = Math.min(12, Math.max(1, ...nombres.map(n => n.length)));
         // + abre un hilo nuevo (ordenes.ts: pide el nombre y la máquina)
-        const nuevo = '<span class="nuevo-hilo" data-accion="cmd" data-id="telar.nuevo" title="hilo nuevo: un tab con su agente">+ nuevo</span>';
+        const nuevo = A.nuevo({ accion: 'cmd', id: 'telar.nuevo' }, 'hilo nuevo: un tab con su agente');
         const filtrando = modos.filtro().length ? ` · el modo «${modos.puesto().nombre}» muestra solo los de ${modos.filtro().join(', ')}` : '';
-        if (cabecera('__hilos', 'HILOS', sueltos.length + deOtras.length, true, `los hilos abiertos, de esta máquina y de las otras${filtrando}`, nuevo)) {
-            h.push(this.herramientas('hilos', ordenH));
+        this.archivoCalza = -1;
+        if (cabecera('__hilos', 'hilos', sueltos.length + deOtras.length, true, `los hilos abiertos, de esta máquina y de las otras${filtrando}`, [], nuevo)) {
+            h.push(this.herramientas(ordenH));
             // los hijos (los que abrió otro hilo de la lista: `abierto_por`) van justo bajo su padre, sangrados, en el
-            // orden elegido entre ellos; el orden manda solo entre los de arriba. Así uno nuevo con prioridad 0 no queda
-            // lejos de quien lo abrió
+            // orden elegido entre ellos; el orden manda solo entre los de arriba (vistas/hilos-familia.ts, `anidar`). Del
+            // que cuelga: el que se le puso (`telar hilo padre`, o arrastrándolo) o el que lo abrió; de aquí o de otra
+            // máquina. Igual en HILOS que en «de personal», abajo
             const nombreDe = (f: FilaH) => 'aqui' in f ? f.aqui.nombre : f.x.nombre;
-            const presentes = new Set(todos.map(nombreDe));
-            // del que cuelga: el que se le puso (`telar hilo padre`, o arrastrándolo) o el que lo abrió; de aquí o de otra máquina
-            const padreDe = (f: FilaH) => { const p = 'aqui' in f ? f.aqui.padre || f.aqui.abierto_por?.por || '' : f.x.padre || ''; return p && p !== nombreDe(f) && presentes.has(p) ? p : ''; };
-            const hijosDe = new Map<string, FilaH[]>();
-            for (const f of todos) { const p = padreDe(f); if (p) hijosDe.set(p, [...hijosDe.get(p) ?? [], f]); }
-            const puestos = new Set<string>();
-            const poner = (f: FilaH, hondo: number) => {
-                if (puestos.has(nombreDe(f))) return;
-                puestos.add(nombreDe(f));
-                // un hijo lleva «↳» delante, como los hijos de un agente
-                if ('aqui' in f) h.push(hondo ? this.fila(f.aqui, 'hilo', '', 'hilos', `↳ ${cli.nombreVisible(f.aqui)}`).replace('class="fila ', `class="fila hijo hondo${Math.min(hondo, 3)} `)
-                    : this.fila(f.aqui, 'hilo', '', 'hilos'));
-                else h.push(this.filaRemota(f.m, f.x, hondo ? `hijo hondo${Math.min(hondo, 3)}` : '', hondo ? `↳ ${f.x.nombre}` : ''));
-                for (const x of hijosDe.get(nombreDe(f)) ?? []) poner(x, hondo + 1);
+            const visibleDe = (f: FilaH) => 'aqui' in f ? cli.nombreVisible(f.aqui) : f.x.nombre;
+            const poner = (filas: FilaH[]) => {
+                for (const { fila: f, hondo, padre } of anidar(filas, nombreDe, f => 'aqui' in f ? f.aqui.padre : f.x.padre)) {
+                    // un hijo lleva «↳» delante, como los hijos de un agente. Uno que trabaja en la carpeta de su padre se
+                    // llamaría igual que él (el título de esa carpeta: «telar» bajo «telar»): va con su propio nombre
+                    const propio = padre && visibleDe(f) === visibleDe(padre) ? nombreDe(f) : '';
+                    h.push('aqui' in f ? this.fila(f.aqui, { grupo: 'hilos', hondo, visible: propio || undefined })
+                        : this.filaRemota(f.m, f.x, hondo, propio));
+                }
             };
-            for (const f of todos) if (!padreDe(f)) poner(f, 0);
-            for (const f of todos) poner(f, 1);  // lo que quedó en un ciclo de padres, al final
+            poner(todos);
+
+            // ARCHIVO, al final de HILOS: un submenú, porque los archivados también son hilos. Empieza plegado; sus filas
+            // van en la grilla de las de arriba, con el orden de HILOS. No tiene buscador propio: lo escrito arriba lo
+            // filtra también, y mientras haya algo escrito se ve abierto con solo lo que calza (y esa cuenta); si nada
+            // calza, no sale. Lo que se llevó a otra máquina y vive allá no se repite aquí: su fila es la de allá
+            const q = this.buscando();
+            const archivados = ordenar(modelo.archivados.filter(x => (x.remoto || !this.enOtra.has(x.nombre)) && seVe(x.nombre, x.etiquetas, x.mundo)
+                && calza(q, this.buscaDe(x))), ordenH);
+            this.archivoCalza = q ? archivados.length : -1;
+            const ayudaA = q ? 'los hilos archivados que calzan con lo buscado' : 'los hilos archivados';
+            if (archivados.length && submenu('__archivo', 'archivo', archivados.length, false, ayudaA, q ? this.archivoBuscando ?? true : undefined)) {
+                for (const x of archivados) h.push(this.fila(x, { seccion: 'archivado', grupo: 'hilos' }));
+            }
+
+            // lo que el mundo puesto deja afuera, al final: «de personal 7» (con un solo mundo más, su nombre en su color),
+            // plegado; abierto, sus hilos aquí mismo, sin cambiar el mundo, y cada hijo bajo su padre, como arriba
+            if (fueraDelMundo.length) {
+                const otros = mundo.declarados().filter(m => m.clave !== mundo.puesto().mundo);
+                const nombre = otros.length === 1 ? `de ${otros[0].nombre}` : 'de otros mundos';
+                if (submenu('__otros_mundos', nombre, fueraDelMundo.length, false, 'los hilos que el mundo puesto deja afuera')) poner(fueraDelMundo);
+            }
         }
 
         // las secciones propias (`[secciones]`): un grupo de hilos cada una, como HILOS
         for (const s of modelo.secciones.filter(x => x.grupo !== 'agentes')) {
             const suyos = vivosPrimero(modelo.enLista.filter(x => cli.enSeccion(s, x.nombre) && seVe(x.nombre, x.etiquetas)));
-            if (!cabecera(s.clave, s.nombre.toUpperCase(), suyos.length, true, `la sección ${s.nombre}`)) continue;
-            if (s.home) {
-                h.push(`<div class="fila hoy" data-accion="home" data-id="${esc(s.clave)}" title="la página de ${esc(s.nombre)}">`
-                    + '<span class="prio"> </span><span class="nombre">home</span></div>');
-            }
-            for (const x of suyos) h.push(this.fila(x, 'hilo'));
+            if (!cabecera(s.clave, s.nombre, suyos.length, true, `la sección ${s.nombre}`)) continue;
+            if (s.home) h.push(item({ variante: 'enlace', accion: 'home', id: s.clave, ayuda: `la página de ${s.nombre}`, inicio: [null], titulo: 'home' }));
+            for (const x of suyos) h.push(this.fila(x));
         }
 
         // lo que el equipo le pide a la persona; pinchar una fila abre sus acciones
         if (modelo.equipoRemoto) {
             const pend = modelo.sugerencias;
-            if (cabecera('__equipo', 'PEDIDOS', pend.length, false, 'lo que el equipo te pide en su página')) {
-                if (!pend.length) h.push('<div class="fila dim"><span class="prio"> </span>nada esperando</div>');
+            if (cabecera('__equipo', 'pedidos', pend.length, false, 'lo que el equipo te pide en su página')) {
+                if (!pend.length) h.push(item({ apagada: true, inicio: [null], titulo: 'nada esperando' }));
                 for (const x of pend) {
                     const pedido = x.tipo === 'tarea';
-                    h.push(`<div class="fila equipo" data-accion="equipo" data-id="${esc(x.id)}" title="${esc(`${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`)}">`
-                        + `<span class="prio">${ic(I.pedido)}</span><span class="nombre">${esc(x.persona)} · ${esc(pedido ? x.titulo : `${x.tarea}: subir`)}</span>`
-                        + `<span class="der dim">${x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '')}</span></div>`);
+                    const meta = x.revisando ? 'Gestión' : (x.similares?.length ? '¿ya existe?' : '');
+                    h.push(item({ accion: 'equipo', id: x.id, ayuda: `${x.persona}: ${x.titulo}${x.motivo ? `\n«${x.motivo}»` : ''}\nclic: acciones`,
+                        inicio: [{ icono: I.pedido }], titulo: `${x.persona} · ${pedido ? x.titulo : `${x.tarea}: subir`}`,
+                        meta: meta ? { texto: meta } : undefined }));
                 }
             }
         }
@@ -617,38 +847,26 @@ export class BarraHilos {
         // las otras personas del bus, todas las que se conectan (aunque no tengan hilos públicos), con los hilos que
         // publican: de solo lectura; pinchar uno es escribirle
         const colegas = modelo.colegas;
-        if (colegas.length && cabecera('__colegas', 'EQUIPO', colegas.length, false,
+        if (colegas.length && cabecera('__colegas', 'equipo', colegas.length, false,
             'las otras personas del bus y sus hilos públicos (no su conversación); clic en uno para escribirle')) {
             for (const p of colegas) {
                 for (const m of p.maquinas) {
-                    h.push(`<div class="fila${m.al_dia ? '' : ' dim'}" title="${esc(`${p.persona} en ${m.maquina} · publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar desconectado'}`)}">`
-                        + `<span class="prio${m.al_dia ? '' : ' dim'}">${ic(m.al_dia ? I.persona_dot : PRIO_I[0])}</span>${esc(p.persona)}<span class="dim"> · ${esc(m.maquina)}${m.al_dia ? '' : ' · sin noticias'}</span></div>`);
-                    if (!m.hilos.length) h.push('<div class="fila dim"><span class="prio"> </span>  sin hilos públicos</div>');
+                    h.push(item({ apagada: !m.al_dia,
+                        ayuda: `${p.persona} en ${m.maquina} · publicado ${m.publicado.slice(0, 16).replace('T', ' ')}${m.al_dia ? '' : ' · hace rato: puede estar desconectado'}`,
+                        inicio: [S.presente(m.al_dia)],
+                        titulo: p.persona, sufijo: [{ texto: `· ${m.maquina}${m.al_dia ? '' : ' · sin noticias'}`, tono: 'tenue' }] }));
+                    if (!m.hilos.length) h.push(item({ apagada: true, hondo: 1, inicio: [null], titulo: 'sin hilos públicos' }));
                     for (const x of m.hilos) {
-                        const ayuda = [x.resumen, x.carpeta, `${p.persona}+${x.ext}`, 'clic: escribirle'].filter(Boolean).join('\n');
-                        h.push(`<div class="fila colega" data-accion="colega" data-id="${esc(JSON.stringify([p.persona, x.ext, x.nombre]))}" title="${esc(ayuda)}">`
-                            + `<span class="prio${x.vivo ? '' : ' dim'}">${ic(x.vivo ? I.persona_dot : PRIO_I[0])}</span><span class="nombre${x.vivo ? '' : ' dim'}">${esc(x.nombre)}</span></div>`);
+                        h.push(item({ accion: 'colega', id: JSON.stringify([p.persona, x.ext, x.nombre]), apagada: !x.vivo,
+                            ayuda: [x.resumen, x.carpeta, `${p.persona}+${x.ext}`, 'clic: escribirle'].filter(Boolean).join('\n'),
+                            inicio: [S.presente(x.vivo)], titulo: x.nombre }));
                     }
                 }
             }
         }
 
-        const ordenA = this.ordenDe('archivo');
-        // lo que se llevó a otra máquina y vive allá no se repite aquí: su fila es la de allá
-        const archivados = ordenar(modelo.archivados.filter(x => (x.remoto || !this.enOtra.has(x.nombre)) && seVe(x.nombre, x.etiquetas)), ordenA);
-        if (archivados.length && cabecera('__archivo', 'ARCHIVO', archivados.length, false, 'los hilos archivados')) {
-            h.push(this.herramientas('archivo', ordenA));
-            for (const x of archivados) h.push(this.fila(x, 'archivado', '', 'archivo'));
-        }
-
-        // las apps (`[apps]`): lo que se abre en el panel y no es un hilo; una fila cada una
-        if (modelo.apps.length && cabecera('__apps', 'APPS', 0, false, 'lo que se abre en el panel')) {
-            for (const a of modelo.apps) {
-                const activa = this.dashboardActivo && this.appActiva === a.clave ? ' activa' : '';
-                h.push(`<div class="fila hoy${activa}" data-accion="app" data-id="${esc(a.clave)}" title="${esc(a.descripcion || a.nombre)}">`
-                    + `<span class="prio"> </span><span class="nombre">${esc(a.nombre)}</span></div>`);
-            }
-        }
+        // las apps (`[apps]`: juegos, visores) no van aquí, que es la barra del trabajo: están en el menú de su ícono, en
+        // la cabecera (navegador/app.ts)
         return h.join('');
     }
 }

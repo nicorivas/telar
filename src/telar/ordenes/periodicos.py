@@ -3,7 +3,8 @@
     telar periodicos                              la lista: cuándo, qué, la próxima y la última corrida
     telar periodicos log <nombre> [--lineas N]    lo que escribió en sus últimas corridas
     telar periodicos nuevo <nombre> --cuando "0 9 * * 1-5" --comando "~/bin/resumen"
-    telar periodicos nuevo <nombre> --cuando "0 */2 * * *" --mensaje "/correo" --hilo "✉ correo" [--max 2]
+    telar periodicos nuevo <nombre> --cuando "0 */2 * * *" --mensaje "/correo" --hilo "✉ correo" [--max 2] [--padre Secretaría]
+    telar periodicos nuevo <nombre> --cuando "30 20 * * 0-4" --mensaje "/planear" --agente secretaria --despues retro-dia
     telar periodicos editar <nombre> [--cuando …] [--comando …|--mensaje …] [--hilo …] [--descripcion …]
     telar periodicos pausar|activar|borrar <nombre>
     telar periodicos ahora <nombre>               correrlo ya, en segundo plano
@@ -11,10 +12,13 @@
     telar periodicos aplicar                      escribir el bloque de telar en el crontab
     telar periodicos zona America/Santiago        en qué hora se leen los horarios
     telar periodicos horario "0 9 * * 1-5" [--n 3]   si se entiende, y sus próximas corridas
+    telar periodicos calendario [--desde 2026-11-09] [--dias 7]   lo que corrió y lo que viene, día por día
     telar periodicos skills [--carpeta ~/trabajo]    las skills que tiene a mano el agente allí
 
 Al editar, `--arg` se repite (con `=` si el valor empieza con guion: `--arg=--permission-mode`),
-`--sin-args` los quita todos, y `--activo si|no` pausa o activa en la misma orden.
+`--sin-args` los quita todos, y `--activo si|no` pausa o activa en la misma orden. `--despues` también
+se repite (los procesos cuyo resultado usa este; `--sin-despues` los quita): es para verlo en el
+calendario, cron no espera a nadie.
 
 Se definen en `periodicos.toml`, al lado de config.toml, en la máquina que los corre; ver
 `telar.periodicos`. Todo cambio hecho por aquí reescribe el crontab al tiro (`aplicar`). Los de un
@@ -27,6 +31,7 @@ corre en esa máquina de [remotos], por ssh: así el laptop ve y cambia los del 
 
 from __future__ import annotations
 
+import argparse
 import shlex
 import shutil
 import subprocess
@@ -39,7 +44,7 @@ from telar.ordenes import _comun
 AYUDA = "Los procesos que corren solos cada cierto tiempo: verlos, crearlos, cambiarlos."
 
 VERBOS = ("ver", "log", "nuevo", "editar", "pausar", "activar", "borrar", "ahora", "correr", "aplicar", "zona",
-          "horario", "skills")
+          "horario", "skills", "calendario")
 
 
 def _analizador():
@@ -52,10 +57,17 @@ def _analizador():
     p.add_argument("--mensaje", default=None, help="un prompt: abre un hilo con el agente")
     p.add_argument("--agente", default=None, help="con --mensaje: encargárselo a ese agente residente (su carpeta)")
     p.add_argument("--hilo", default=None, help="con --mensaje: el nombre del hilo")
+    p.add_argument("--padre", default=None, help="con --mensaje y sin --agente: el hilo del que cuelga cada hilo que abre (vacío: ninguno)")
     p.add_argument("--max", type=int, default=None, help="con --mensaje: cuántos abiertos a la vez, como mucho")
     p.add_argument("--arg", action="append", default=None, help="con --mensaje: un argumento más para el agente")
     p.add_argument("--carpeta", default=None, help="dónde corre (por defecto, el hogar)")
     p.add_argument("--descripcion", default=None, help="para qué es, en una línea")
+    p.add_argument("--despues", action="append", default=None, metavar="PROCESO",
+                   help="usa lo que deja ese otro proceso (se repite): para verlo en el calendario")
+    p.add_argument("--sin-despues", dest="sin_despues", action="store_true", help="con editar: quitarle los --despues")
+    p.add_argument("--desde", default=None, help="con calendario: el primer día (AAAA-MM-DD; por defecto, hoy)")
+    p.add_argument("--dias", type=int, default=7, help="con calendario: cuántos días")
+    p.add_argument("--manual", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--pausado", action="store_true", help="con nuevo: crearlo sin activarlo")
     p.add_argument("--activo", choices=("si", "no"), default=None, help="con editar: activarlo o pausarlo")
     p.add_argument("--sin-args", dest="sin_args", action="store_true", help="con editar: quitarle los argumentos")
@@ -135,7 +147,7 @@ def _aqui(ctx, o) -> int:
         datos = mod.resumen(ctx, archivo)
         if o.json:
             return _comun.escribir_json({"maquina": _maquina(), "archivo": str(destino), "zona": archivo.zona,
-                                         "procesos": datos})
+                                         "procesos": datos, "agentes": mod.agentes_de(ctx.config)})
         if not datos:
             print(_comun.tenue(f"no hay procesos periódicos en {destino}"))
         for d in datos:
@@ -148,6 +160,9 @@ def _aqui(ctx, o) -> int:
                 detalle.append(f"última {ult['inicio'][5:16].replace('T', ' ')} · {ult.get('resultado', 'corriendo')}")
             print(_comun.tenue("    " + " · ".join(detalle)))
         return 0
+
+    if o.verbo == "calendario":
+        return _calendario(ctx, o, archivo, destino)
 
     if o.verbo == "horario":
         # nunca falla: dice si se entiende y, si no, por qué (el formulario lo muestra al escribir)
@@ -191,13 +206,13 @@ def _aqui(ctx, o) -> int:
 
     if o.verbo == "correr":
         p = _requerir(archivo, o.nombre)
-        r = mod.correr(ctx, p)
+        r = mod.correr(ctx, p, manual=o.manual)
         return _comun.escribir_json({"nombre": p.nombre, **r}) if o.json else (print(f"{p.nombre}: {r['resultado']}") or (0 if r["codigo"] == 0 else 1))
 
     if o.verbo == "ahora":
         p = _requerir(archivo, o.nombre)
         # suelto: quien pidió (el dashboard) no espera a que termine; lo ve en la última corrida
-        subprocess.Popen([_telar(), "periodicos", "correr", p.nombre, "--en", "aqui"], stdin=subprocess.DEVNULL,
+        subprocess.Popen([_telar(), "periodicos", "correr", p.nombre, "--en", "aqui", "--manual"], stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return _hecho(o, f"{p.nombre}: corriendo", nombre=p.nombre)
 
@@ -234,23 +249,27 @@ def _aqui(ctx, o) -> int:
         if previo is not None:
             return _comun.queja(f"ya hay un proceso «{o.nombre}»: telar periodicos editar {o.nombre}")
         p = mod.Proceso(nombre=o.nombre, cuando=o.cuando or "", comando=o.comando or "", mensaje=o.mensaje or "",
-                        agente=o.agente or "",
+                        agente=o.agente or "", padre=o.padre or "",
                         hilo=o.hilo or "", max_abiertos=o.max or 1, argumentos=tuple(o.arg or ()),
-                        carpeta=o.carpeta or "", descripcion=o.descripcion or "", activo=not o.pausado)
+                        carpeta=o.carpeta or "", descripcion=o.descripcion or "", activo=not o.pausado,
+                        despues=_despues(o.despues, archivo))
         p.validar()
         archivo.procesos.append(p)
         hecho = f"{p.nombre}: creado"
     elif o.verbo == "editar":
         _requerir(archivo, o.nombre)
         campos = {k: v for k, v in (("cuando", o.cuando), ("comando", o.comando), ("mensaje", o.mensaje), ("agente", o.agente),
-                                     ("hilo", o.hilo), ("max_abiertos", o.max), ("argumentos", o.arg),
+                                     ("hilo", o.hilo), ("padre", o.padre), ("max_abiertos", o.max), ("argumentos", o.arg),
                                      ("carpeta", o.carpeta), ("descripcion", o.descripcion)) if v is not None}
         if o.sin_args:
             campos["argumentos"] = ()
+        if o.despues is not None or o.sin_despues:
+            campos["despues"] = _despues(o.despues, archivo)
         if o.activo is not None:
             campos["activo"] = o.activo == "si"
         if not campos:
-            return _comun.queja("¿qué cambio? --cuando, --comando, --mensaje, --hilo, --max, --arg, --sin-args, --carpeta, --descripcion, --activo")
+            return _comun.queja("¿qué cambio? --cuando, --comando, --mensaje, --agente, --hilo, --padre, --max, --arg, --sin-args, --carpeta,"
+                                " --descripcion, --activo, --despues, --sin-despues")
         mod.cambiar(archivo, o.nombre, **campos)
         hecho = f"{o.nombre}: cambiado ({', '.join(campos)})"
     elif o.verbo in ("pausar", "activar"):
@@ -262,8 +281,64 @@ def _aqui(ctx, o) -> int:
         archivo.procesos.remove(p)
         hecho = f"{p.nombre}: borrado (el anterior queda en {destino.name}.anterior)"
     mod.escribir(destino, archivo)
-    mod.aplicar(archivo, _telar())
+    try:
+        mod.aplicar(archivo, _telar())
+    except mod.ErrorDePeriodicos as e:
+        # el archivo ya cambió: que no parezca hecho del todo, que cron sigue con lo de antes
+        raise mod.ErrorDePeriodicos(f"{hecho} en {destino.name}, pero el crontab sigue como estaba ({e}): "
+                                    "`telar periodicos aplicar` cuando se pueda") from e
     return _hecho(o, hecho, nombre=o.nombre)
+
+
+def _despues(nombres: list[str] | None, archivo: mod.Archivo) -> tuple[str, ...]:
+    """Los `--despues`, sin repetir y cada uno un proceso que existe (aquí o en un módulo). Separados por comas
+    también vale: así los manda el formulario."""
+    salida: list[str] = []
+    for x in nombres or ():
+        for n in (y.strip() for y in x.split(",")):
+            if n and n not in salida:
+                salida.append(n)
+    falta = [n for n in salida if archivo.por_nombre(n) is None]
+    if falta:
+        hay = ", ".join(x.nombre for x in archivo.procesos) or "ninguno"
+        raise mod.ErrorDePeriodicos(f"--despues: no hay un proceso «{falta[0]}» (hay: {hay})")
+    return tuple(salida)
+
+
+_DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+def _calendario(ctx, o, archivo: mod.Archivo, destino) -> int:
+    """Lo que corrió y lo que viene, día por día: lo que dibuja el calendario del dashboard."""
+    from datetime import date
+
+    tz = mod.zona_info(archivo.zona)
+    try:
+        desde = date.fromisoformat(o.desde) if o.desde else datetime.now(tz).date()
+    except ValueError:
+        return _comun.queja(f"--desde: «{o.desde}» no es una fecha (AAAA-MM-DD)")
+    dias = max(1, min(o.dias, 31))
+    ahora = datetime.now(tz)
+    procesos = mod.resumen(ctx, archivo, ahora)
+    de_cada = mod.corridas(ctx, archivo, desde, dias, ahora)
+    for d in procesos:
+        d["corridas"] = de_cada.get(d["nombre"], [])
+    if o.json:
+        return _comun.escribir_json({"maquina": _maquina(), "archivo": str(destino), "zona": archivo.zona,
+                                     "desde": desde.isoformat(), "dias": dias, "ahora": ahora.isoformat(timespec="minutes"),
+                                     "procesos": procesos, "agentes": mod.agentes_de(ctx.config)})
+    marcas = {"bien": "●", "corrio": "●", "fallo": "✗", "saltado": "○", "corriendo": "◐", "falto": "!", "proxima": "·",
+              "pausado": "⏸", "sin-registro": " "}
+    todas = sorted(((c, d["nombre"]) for d in procesos for c in d["corridas"]), key=lambda x: (x[0]["en"], x[1]))
+    dia = ""
+    for c, nombre in todas:
+        if c["dia"] != dia:
+            dia = c["dia"]
+            f = date.fromisoformat(dia)
+            print(f"\n{_DIAS[f.weekday()]} {f.day}/{f.month}")
+        print(f"  {c['min'] // 60:02d}:{c['min'] % 60:02d} {marcas.get(c['estado'], '?')} {nombre}"
+              + _comun.tenue(f"  {c.get('resultado', '')}"[:90] if c.get("resultado") else ""))
+    return 0
 
 
 def _requerir(archivo: mod.Archivo, nombre: str) -> mod.Proceso:

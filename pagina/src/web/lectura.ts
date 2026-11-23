@@ -11,10 +11,11 @@
 // a la terminal.
 import MarkdownIt from 'markdown-it';
 
+import { I } from './iconos';
 import { atenderClics, enlazar } from './rutas-agente';
 import { type Vista, teclaParaLaVista } from './vistas-hilo';
 
-interface Mensaje { quien: string; texto?: string }
+interface Mensaje { quien: string; texto?: string; pregunta?: { estado?: string } }
 interface Lectura { fuente?: string; turnos?: Mensaje[][]; texto?: string; total_turnos?: number; recortado?: boolean; error?: string }
 
 /** Cómo se dibuja la conversación de una fuente: cuántas respuestas hay, y el HTML de la `i`-ésima. */
@@ -70,8 +71,12 @@ export function montar(raiz: HTMLElement, rutas: { hilo: string; maquina?: strin
         if (!n) { caja.innerHTML = '<p class="nada">todavía no hay una respuesta que leer</p>'; return; }
         const i = indice < 0 || indice >= n ? n - 1 : indice;
         const antes = datos.recortado || (datos.total_turnos ?? 0) > (datos.turnos ?? []).length ? 'hay respuestas anteriores que no se leen aquí · ' : '';
+        // lo que el agente pregunta con opciones y espera respuesta: aquí no se contesta, solo se dice (con el ícono de
+        // la vista conversación, donde sí)
+        const pregunta = (datos.turnos ?? []).at(-1)?.some(m => m.pregunta?.estado === 'pendiente') && i === n - 1
+            ? `<p class="te-pregunta"><span class="i">${I.conversacion}</span> te pregunta algo: contéstalo en la conversación (⌥C)</p>` : '';
         caja.innerHTML = `<div class="pie-lectura"><span>${esc(rutas.hilo)} · respuesta ${i + 1} de ${n}${indice < 0 ? ' (la última)' : ''}</span>`
-            + `<span>${antes}← → recorrer · ⎋ terminal</span></div>` + r.dibujar(datos, i);
+            + `<span>${antes}← → recorrer · ⎋ terminal</span></div>` + r.dibujar(datos, i) + pregunta;
         // las rutas que escribió el agente, como enlaces al visor
         enlazar(caja, true, rutas.hilo);
     }

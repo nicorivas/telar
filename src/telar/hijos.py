@@ -2,9 +2,9 @@
 hilo de siempre del agente (donde se mezclaban todas y no se podía seguir ninguna).
 
     from telar import hijos
-    r = hijos.abrir(ctx, agente, "T454", "Hacer el test Hogan", "/tarea T454")   # {"hilo", "maquina", "nuevo"}
+    r = hijos.abrir(ctx, agente, "T454", "Hacer el informe Faro", "/tarea T454")   # {"hilo", "maquina", "nuevo"}
 
-El hijo se llama `«agente» › «ref» «título corto»` («Gestión › T454 Hacer el test Hogan»): con ese nombre la barra lo
+El hijo se llama `«agente» › «ref» «título corto»` («Secretaría › T454 Hacer el informe Faro»): con ese nombre la barra lo
 cuelga de su agente, en cualquier máquina, sin más registro. Nace en la carpeta del agente (sus instrucciones y su
 memoria), con una conversación nueva, y en la máquina donde vive el agente: si es otra, se le pide por el bus
 (`hilo-hijo`). Si ya hay un hijo vivo para esa tarea, se usa ese.
@@ -20,7 +20,7 @@ SEPARADOR = " › "
 
 
 def nombre(agente: str, ref: str, titulo: str) -> str:
-    """«Gestión › T454 Hacer el test Hogan»: el título corto, hasta unas 28 letras y sin cortar una palabra."""
+    """«Secretaría › T454 Hacer el informe Faro»: el título corto, hasta unas 28 letras y sin cortar una palabra."""
     corto = " ".join(re.sub(rf"^{re.escape(ref)}\s*[:·-]?\s*", "", titulo or "").split())
     if len(corto) > 28:
         corto = corto[:28].rsplit(" ", 1)[0].rstrip(",;:·-") + "…"
@@ -73,7 +73,9 @@ def abrir_aqui(ctx, clave: str, hijo: str, ref: str, texto: str) -> dict:
     previo = next((h for h in tel.hilos if tel.vivo(h) and (h.nombre == hijo or h.nombre.startswith(f"{agente.nombre}{SEPARADOR}{ref} ")
                                                              or h.nombre == f"{agente.nombre}{SEPARADOR}{ref}")), None)
     if previo is not None:
-        tel.mux.escribir(previo.id, texto, enviar=True)
+        from telar import dormir
+
+        dormir.escribir(getattr(ctx, "config", None), tel, previo, texto, enviar=True)  # dormido, se despierta con esto
         return {"ok": True, "hilo": previo.nombre, "nuevo": False}
     try:
         lanz = lanzar.para_hilo(ctx.config, hijo, agente.carpeta, mensaje=texto)

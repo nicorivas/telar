@@ -1,0 +1,23 @@
+/* Las partes (componentes/partes.ts): un total partido en lo que lo forma, en una franja del ancho de su lugar. Cada
+   parte, un rectángulo con el ancho de lo que pesa (flex-grow) y el color de lo que es (--parte); entre dos, una raya
+   del fondo. Sin esquinas: es un rectángulo partido, no una píldora. Lo que pesa tan poco que no se vería ocupa igual
+   una raya (min-width). La que está abierta abajo lleva una raya del texto debajo. */
+
+.partes {
+  display: flex;
+  gap: 1px;
+  block-size: var(--partes-alto);
+  margin-block: var(--e-1);
+
+  &.vacia { background: var(--linea); }
+}
+
+.parte {
+  flex: 1 1 0;
+  min-inline-size: 2px;
+  background: var(--parte, var(--texto-tenue));
+
+  .con-accion & { cursor: pointer; }
+  .con-accion &:hover { opacity: .75; }
+  &.activa { box-shadow: inset 0 -2px var(--texto); }
+}

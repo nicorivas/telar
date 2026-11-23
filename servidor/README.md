@@ -38,7 +38,7 @@ si no está, el correo rebota. Las direcciones son `usuario@<nombre-corto>` y
   `"|/usr/local/bin/cartero"`;
 - `~/.cartero-permitidos`: quién puede despertar a sus agentes, un usuario por línea. El
   propio también, si quiere que sus agentes de otra máquina lo despierten. Una línea `usuario`
-  lo deja despertar a cualquiera de tus hilos; `usuario: faro, gestion` solo a esos (la
+  lo deja despertar a cualquiera de tus hilos; `usuario: faro, secretaria` solo a esos (la
   extensión de la dirección: `usuario+faro@servidor`), y un correo a otro hilo queda en la
   Maildir sin despertar a nadie. Si un usuario sale dos veces, vale lo más amplio;
 - `loginctl enable-linger usuario`, para que exista `/run/user/<uid>` sin sesión abierta.
@@ -153,8 +153,8 @@ de la dirección que `tailscale serve` pone en `X-Forwarded-For`) y la puerta lo
 `/run/telar/<usuario>/web.sock`. Sin puertos por persona, sin llaves de página.
 
 ```sh
-sudo ./telar-puerta-instalar --dueno nico --cuenta nicorivas@gmail.com    # una vez; de nuevo para actualizarla
-telar instalar --web-socket /run/telar/nico/web.sock --si                 # como quien administra: su telar, también detrás
+sudo ./telar-puerta-instalar --dueno ana --cuenta ana@example.com        # una vez; de nuevo para actualizarla
+telar instalar --web-socket /run/telar/ana/web.sock --si                  # como quien administra: su telar, también detrás
 sudo tailscale serve --bg --https=443 unix:/run/telar/puerta/puerta.sock  # la dirección del servidor, a la puerta
 sudo -u telar-puerta /opt/telar-puerta/bin/telar puerta tabla             # quién entra y a qué usuario va
 ```

@@ -24,14 +24,14 @@ try:
 except ImportError:  # sin el extra «serve» y las pruebas: lo de la app se salta
     HAY_SERVE = False
 
-NICO, PABLO, SERVIDOR = "100.107.195.13", "100.80.165.37", "100.66.75.117"
-CUENTAS = {NICO: "nicorivas@gmail.com", PABLO: "pablo.ferre@gmail.com", SERVIDOR: "nicorivas@gmail.com",
+ANA, BRUNO, SERVIDOR = "100.64.0.20", "100.64.0.30", "100.64.0.10"
+CUENTAS = {ANA: "ana@example.com", BRUNO: "bruno@example.com", SERVIDOR: "ana@example.com",
            "100.99.0.1": "sin-lugar@x.com"}
 
 
 def tabla(**personas) -> puerta.Tabla:
-    return puerta.Tabla(personas=personas or {"nicorivas@gmail.com": "nico", "pablo.ferre@gmail.com": "pablo"},
-                        url="https://telar.ejemplo.ts.net", dueno="nico")
+    return puerta.Tabla(personas=personas or {"ana@example.com": "ana", "bruno@example.com": "bruno"},
+                        url="https://telar.ejemplo.ts.net", dueno="ana")
 
 
 def identificar(t: puerta.Tabla | None = None, **kw) -> puerta.Identificar:
@@ -50,13 +50,13 @@ class LaTabla(Prueba):
     def test_junta_la_configuracion_y_los_alojados(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
-            (d / "puerta.toml").write_text('url = "https://telar.x.ts.net/"\n[personas]\n"Nico@Gmail.com" = "nico"\n')
+            (d / "puerta.toml").write_text('url = "https://telar.x.ts.net/"\n[personas]\n"Ana@Example.com" = "ana"\n')
             (d / "alojados").mkdir()
-            (d / "alojados" / "pablo.json").write_text(json.dumps({"nombre": "pablo", "tailscale": "pablo@x.com"}))
+            (d / "alojados" / "bruno.json").write_text(json.dumps({"nombre": "bruno", "tailscale": "bruno@x.com"}))
             (d / "alojados" / "viejo.json").write_text(json.dumps({"nombre": "viejo", "puerto": 8782}))  # sin cuenta
             t = puerta.leer_tabla(d / "puerta.toml", d / "alojados")
         self.assertEqual(t.url, "https://telar.x.ts.net")
-        self.assertEqual(t.personas, {"nico@gmail.com": "nico", "pablo@x.com": "pablo"})
+        self.assertEqual(t.personas, {"ana@example.com": "ana", "bruno@x.com": "bruno"})
         self.assertEqual(t.problemas, [])
 
     def test_una_cuenta_con_dos_usuarios_no_entra(self):
@@ -80,14 +80,14 @@ class LaTabla(Prueba):
 class QuienEs(Prueba):
     def test_la_ultima_direccion_es_la_que_vale(self):
         # la de antes la puede escribir el navegador; la última la agrega tailscale serve
-        self.assertEqual(puerta.cliente({"x-forwarded-for": f"{NICO}, {PABLO}"}), PABLO)
+        self.assertEqual(puerta.cliente({"x-forwarded-for": f"{ANA}, {BRUNO}"}), BRUNO)
         self.assertEqual(puerta.cliente({"x-forwarded-for": "basura"}), "")
         self.assertEqual(puerta.cliente({}), "")
 
     def test_cada_cuenta_a_su_usuario(self):
         i = identificar()
-        self.assertEqual(i(NICO), ("nico", "nicorivas@gmail.com"))
-        self.assertEqual(i(PABLO), ("pablo", "pablo.ferre@gmail.com"))
+        self.assertEqual(i(ANA), ("ana", "ana@example.com"))
+        self.assertEqual(i(BRUNO), ("bruno", "bruno@example.com"))
 
     def test_desde_el_servidor_mismo_no(self):
         # un proceso del servidor que llega por Tailscale viene desde la IP del servidor, que es de quien administra
@@ -97,7 +97,7 @@ class QuienEs(Prueba):
     def test_sin_saber_las_direcciones_del_servidor_no_deja_entrar_a_nadie(self):
         i = puerta.Identificar(tabla(), quien=lambda ip: {"cuenta": CUENTAS[ip]}, propias=lambda: set())
         with self.assertRaises(puerta.ErrorDePuerta) as e:
-            i(NICO)
+            i(ANA)
         self.assertEqual(e.exception.codigo, 503)
 
     def test_fuera_de_tailscale_sin_direccion_o_sin_lugar_no(self):
@@ -109,11 +109,11 @@ class QuienEs(Prueba):
     def test_whois_se_recuerda_un_rato(self):
         reloj = [0.0]
         i = identificar(reloj=lambda: reloj[0])
-        i(NICO), i(NICO)
-        self.assertEqual(i.preguntas, [NICO])
+        i(ANA), i(ANA)
+        self.assertEqual(i.preguntas, [ANA])
         reloj[0] = puerta.MEMORIA_WHOIS + 1
-        i(NICO)
-        self.assertEqual(i.preguntas, [NICO, NICO])
+        i(ANA)
+        self.assertEqual(i.preguntas, [ANA, ANA])
 
 
 class _Servidor:
@@ -167,7 +167,7 @@ class LaPuertaPasaCadaPedido(Prueba):
         self._tmp = tempfile.TemporaryDirectory()
         base = Path(self._tmp.name)
         self.detras = []
-        for usuario in ("nico", "pablo"):
+        for usuario in ("ana", "bruno"):
             (base / usuario).mkdir()
             self.detras.append(_detras(puerta.socket_de(usuario, base), usuario))
         app = puerta.crear(tabla(), identificar=identificar(), sockets=base)
@@ -184,15 +184,15 @@ class LaPuertaPasaCadaPedido(Prueba):
         return self.c.get(ruta, headers={"x-forwarded-for": ip, **kw.pop("headers", {})}, **kw)
 
     def test_cada_persona_a_su_telar_por_la_misma_direccion(self):
-        a, b = self.get(NICO).json(), self.get(PABLO).json()
-        self.assertEqual((a["quien"], b["quien"]), ("nico", "pablo"))
+        a, b = self.get(ANA).json(), self.get(BRUNO).json()
+        self.assertEqual((a["quien"], b["quien"]), ("ana", "bruno"))
         self.assertEqual((a["ruta"], a["query"]), ("/api/eco", "x=1"))
         self.assertEqual(a["cabeceras"]["host"], "telar.ejemplo.ts.net")  # el Host pasa tal cual
-        self.assertEqual(b["cabeceras"]["x-telar-persona"], "pablo")
+        self.assertEqual(b["cabeceras"]["x-telar-persona"], "bruno")
 
     def test_detras_de_tailscale_serve_el_host_es_el_de_x_forwarded_host(self):
         # a un socket, tailscale serve le manda Host: localhost y la dirección de verdad en X-Forwarded-Host
-        h = {"x-forwarded-for": NICO, "host": "localhost", "x-forwarded-host": "telar.x.ts.net:8444"}
+        h = {"x-forwarded-for": ANA, "host": "localhost", "x-forwarded-host": "telar.x.ts.net:8444"}
         self.assertEqual(self.c.get("/api/eco", headers=h).json()["cabeceras"]["host"], "telar.x.ts.net:8444")
         h["origin"] = "https://telar.x.ts.net:8444"
         self.assertEqual(self.c.post("/api/eco", content=b"x", headers=h).status_code, 200)
@@ -200,9 +200,9 @@ class LaPuertaPasaCadaPedido(Prueba):
         self.assertEqual(self.c.post("/api/eco", content=b"x", headers=h).status_code, 403)
 
     def test_la_cookie_y_un_x_telar_persona_falso_no_pasan(self):
-        r = self.get(PABLO, headers={"cookie": "telar_panel=de-nico", "x-telar-persona": "nico"}).json()
+        r = self.get(BRUNO, headers={"cookie": "telar_panel=de-ana", "x-telar-persona": "ana"}).json()
         self.assertNotIn("cookie", r["cabeceras"])
-        self.assertEqual(r["cabeceras"]["x-telar-persona"], "pablo")
+        self.assertEqual(r["cabeceras"]["x-telar-persona"], "bruno")
 
     def test_quien_no_tiene_lugar_ve_por_que(self):
         r = self.get("100.99.0.1", headers={"accept": "text/html"})
@@ -212,11 +212,11 @@ class LaPuertaPasaCadaPedido(Prueba):
 
     def test_quien_no_tiene_lugar_solo_llega_a_unirse_y_va_al_de_quien_administra(self):
         r = self.get("100.99.0.1", "/unirse/servidor")
-        self.assertEqual(r.json()["quien"], "nico")
+        self.assertEqual(r.json()["quien"], "ana")
         self.assertEqual(self.get("100.99.0.1", "/unirses").status_code, 403)
 
     def test_escribir_desde_otra_pagina_no(self):
-        h = {"x-forwarded-for": NICO, "origin": "https://malo.example"}
+        h = {"x-forwarded-for": ANA, "origin": "https://malo.example"}
         self.assertEqual(self.c.post("/api/eco", content=b"x", headers=h).status_code, 403)
         h["origin"] = "https://telar.ejemplo.ts.net"
         r = self.c.post("/api/eco", content=b"hola", headers=h)
@@ -234,16 +234,16 @@ class LaPuertaPasaCadaPedido(Prueba):
         self.addCleanup(servidor.parar)
 
         async def hablar():
-            cab = {"x-forwarded-for": PABLO, "origin": "https://telar.ejemplo.ts.net",
+            cab = {"x-forwarded-for": BRUNO, "origin": "https://telar.ejemplo.ts.net",
                    "x-forwarded-host": "telar.ejemplo.ts.net"}
             async with unix_connect(str(sock), "ws://localhost/pty?hilo=x", additional_headers=cab) as ws:
                 await ws.send("hola")
                 return await asyncio.wait_for(ws.recv(), 5)
 
-        self.assertEqual(asyncio.run(hablar()), "pablo:hola:https://telar.ejemplo.ts.net")
+        self.assertEqual(asyncio.run(hablar()), "bruno:hola:https://telar.ejemplo.ts.net")
 
     def test_la_terminal_que_pide_otra_maquina_lleva_su_llave_del_bus(self):
-        # la página del laptop de Pablo reenvía la terminal de un hilo que vive en el servidor: sin navegador (sin
+        # la página del laptop de Bruno reenvía la terminal de un hilo que vive en el servidor: sin navegador (sin
         # origen), con la llave del bus; si la puerta se la quitaba, su telar la rechazaba (InvalidStatus)
         import asyncio
 
@@ -254,12 +254,12 @@ class LaPuertaPasaCadaPedido(Prueba):
         self.addCleanup(servidor.parar)
 
         async def hablar():
-            cab = {"x-forwarded-for": PABLO, "x-forwarded-host": "telar.ejemplo.ts.net", "authorization": "Bearer secreto"}
+            cab = {"x-forwarded-for": BRUNO, "x-forwarded-host": "telar.ejemplo.ts.net", "authorization": "Bearer secreto"}
             async with unix_connect(str(sock), "ws://localhost/pty?hilo=x", additional_headers=cab) as ws:
                 await ws.send("hola")
                 return await asyncio.wait_for(ws.recv(), 5)
 
-        self.assertEqual(asyncio.run(hablar()), "pablo:hola:|Bearer secreto")
+        self.assertEqual(asyncio.run(hablar()), "bruno:hola:|Bearer secreto")
 
     def test_una_terminal_de_quien_no_tiene_lugar_no_abre(self):
         import asyncio
@@ -281,7 +281,7 @@ class LaPuertaPasaCadaPedido(Prueba):
 
     def test_si_su_telar_no_corre_lo_dice(self):
         self.detras[1].parar()
-        r = self.get(PABLO, headers={"accept": "text/html"})
+        r = self.get(BRUNO, headers={"accept": "text/html"})
         self.assertEqual(r.status_code, 502)
         self.assertIn("no está corriendo", r.text)
 
@@ -309,12 +309,12 @@ class LaPaginaDetrasDeLaPuerta(Prueba):
 
 class InstalarDetrasDeLaPuerta(Prueba):
     def test_sin_puerto_propio(self):
-        a = instalacion.argumentos(nodo=True, web_socket="/run/telar/pablo/web.sock", web_url="https://telar.x.ts.net")
-        self.assertEqual(a, ["serve", "--nodo", "--web-socket", "/run/telar/pablo/web.sock", "--web-url", "https://telar.x.ts.net"])
+        a = instalacion.argumentos(nodo=True, web_socket="/run/telar/bruno/web.sock", web_url="https://telar.x.ts.net")
+        self.assertEqual(a, ["serve", "--nodo", "--web-socket", "/run/telar/bruno/web.sock", "--web-url", "https://telar.x.ts.net"])
 
     def test_quien_administra_sigue_con_su_puerto_y_ademas_la_puerta(self):
-        a = instalacion.argumentos(nodo=True, web_socket="/run/telar/nico/web.sock")
-        self.assertEqual(a, ["serve", "--nodo", "--web", "--web-socket", "/run/telar/nico/web.sock"])
+        a = instalacion.argumentos(nodo=True, web_socket="/run/telar/ana/web.sock")
+        self.assertEqual(a, ["serve", "--nodo", "--web", "--web-socket", "/run/telar/ana/web.sock"])
 
 
 class AlojarConPuerta(Prueba):
@@ -329,9 +329,9 @@ class AlojarConPuerta(Prueba):
         conf = Path(self._tmp.name) / "puerta.toml"
         conf.write_text('url = "https://telar.x.ts.net"\n')
         self.m.PUERTA = conf
-        self.crear = {"accion": "crear", "nombre": "pablo", "llave": "", "secreto": "s" * 48,
-                      "bus": "nats://100.66.75.117:4222", "memoria": "2500M", "cpu": "100%",
-                      "tailscale": "pablo.ferre@gmail.com"}
+        self.crear = {"accion": "crear", "nombre": "bruno", "llave": "", "secreto": "s" * 48,
+                      "bus": "nats://100.64.0.10:4222", "memoria": "2500M", "cpu": "100%",
+                      "tailscale": "bruno@example.com"}
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -340,14 +340,14 @@ class AlojarConPuerta(Prueba):
     def test_su_pagina_va_por_su_socket_y_entra_por_la_puerta(self):
         pasos = self.m.plan(self.m.validar(self.crear))
         instalar = next(p for p in pasos if "uv, Claude Code" in p.texto)
-        self.assertIn("--web-socket /run/telar/pablo/web.sock --web-url 'https://telar.x.ts.net' --si", instalar.stdin)
+        self.assertIn("--web-socket /run/telar/bruno/web.sock --web-url 'https://telar.x.ts.net' --si", instalar.stdin)
         self.assertNotIn("--web-puerto", instalar.stdin)
         carpeta = next(p for p in pasos if p.archivo and "tmpfiles" in p.archivo[0])
-        self.assertEqual(carpeta.archivo[1], "d /run/telar/pablo 2750 pablo telar-puerta -\n")
+        self.assertEqual(carpeta.archivo[1], "d /run/telar/bruno 2750 bruno telar-puerta -\n")
         # la carpeta existe antes de que arranque su telar
         self.assertLess(pasos.index(carpeta), pasos.index(instalar))
-        registro = json.loads(next(p for p in pasos if p.archivo and p.archivo[0].endswith("/pablo.json")).archivo[1])
-        self.assertEqual(registro["tailscale"], "pablo.ferre@gmail.com")
+        registro = json.loads(next(p for p in pasos if p.archivo and p.archivo[0].endswith("/bruno.json")).archivo[1])
+        self.assertEqual(registro["tailscale"], "bruno@example.com")
         self.assertNotIn("puerto", registro)
 
     def test_sin_su_cuenta_o_con_una_rara_no(self):
@@ -356,8 +356,8 @@ class AlojarConPuerta(Prueba):
                 self.m.validar({**self.crear, "tailscale": cuenta})
 
     def test_quitar_borra_su_carpeta_de_la_puerta(self):
-        pasos = self.m.plan(self.m.validar({"accion": "quitar", "nombre": "pablo"}))
-        self.assertTrue(any(p.argv and "/run/telar/pablo" in p.argv for p in pasos))
+        pasos = self.m.plan(self.m.validar({"accion": "quitar", "nombre": "bruno"}))
+        self.assertTrue(any(p.argv and "/run/telar/bruno" in p.argv for p in pasos))
 
 
 class LaVersionDeLaPuerta(Prueba):
@@ -368,7 +368,7 @@ class LaVersionDeLaPuerta(Prueba):
         self._tmp = tempfile.TemporaryDirectory()
         self.d = Path(self._tmp.name)
         self.conf = self.d / "puerta.toml"
-        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"nico@x.com" = "nico"\n')
+        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"ana@x.com" = "ana"\n')
         self.base = self.d / "opt"
 
     def tearDown(self):
@@ -387,19 +387,19 @@ class LaVersionDeLaPuerta(Prueba):
 
     def test_atras_y_la_orden_solo_para_quien_administra(self):
         self.instalar("0.0.1")
-        e = puerta.estado("nico", config=self.conf, base=self.base)
+        e = puerta.estado("ana", config=self.conf, base=self.base)
         self.assertTrue(e["administra"] and e["atras"])
-        self.assertIn("--dueno nico --cuenta nico@x.com --version", e["actualizar"])
-        otro = puerta.estado("pablo", config=self.conf, base=self.base)
+        self.assertIn("--dueno ana --cuenta ana@x.com --version", e["actualizar"])
+        otro = puerta.estado("bruno", config=self.conf, base=self.base)
         self.assertFalse(otro["administra"])
         self.assertNotIn("actualizar", otro)
-        self.assertIsNone(puerta.estado("nico", config=self.d / "no-hay.toml", base=self.base))
+        self.assertIsNone(puerta.estado("ana", config=self.d / "no-hay.toml", base=self.base))
 
     def test_al_dia_no_avisa(self):
         from telar import __version__
 
         self.instalar(__version__)
-        self.assertFalse(puerta.estado("nico", config=self.conf, base=self.base)["atras"])
+        self.assertFalse(puerta.estado("ana", config=self.conf, base=self.base)["atras"])
 
 
 class DoctorEnElServidor(Prueba):
@@ -408,10 +408,10 @@ class DoctorEnElServidor(Prueba):
         self._tmp = tempfile.TemporaryDirectory()
         self.d = Path(self._tmp.name)
         (self.d / "registro").mkdir()
-        (self.d / "run" / "nico").mkdir(parents=True)
-        (self.d / "run" / "pablo").mkdir()
+        (self.d / "run" / "ana").mkdir(parents=True)
+        (self.d / "run" / "bruno").mkdir()
         self.conf = self.d / "puerta.toml"
-        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"nico@x.com" = "nico"\n')
+        self.conf.write_text('url = "https://telar.x.ts.net"\n[personas]\n"ana@x.com" = "ana"\n')
         spool = self.d / "spool"
         for x in ("pendientes", "resultados"):
             (spool / x).mkdir(parents=True)
@@ -429,29 +429,29 @@ class DoctorEnElServidor(Prueba):
 
         with mock.patch.object(puerta, "CONFIG", self.conf), \
                 mock.patch.object(puerta, "estado", lambda u: {"version": "0.7.1", "telar": "0.7.1", "atras": False,
-                                                               "administra": u == "nico", "url": "https://telar.x.ts.net"}), \
+                                                               "administra": u == "ana", "url": "https://telar.x.ts.net"}), \
                 mock.patch.object(alojamiento, "leer", return_value=alojados or {}), \
                 mock.patch.object(unirse, "administra_aqui", return_value=True):
             return doctor._servidor(None, spool=self.spool, ayudante=self.d / "telar-alojar", registro=self.d / "registro",
-                                    sockets=self.d / "run", usuario="nico", activo=lambda u: True, **kw)
+                                    sockets=self.d / "run", usuario="ana", activo=lambda u: True, **kw)
 
     def test_todo_en_su_sitio(self):
-        (self.d / "run" / "nico" / "web.sock").write_text("")
-        (self.d / "registro" / "pablo.json").write_text(json.dumps({"nombre": "pablo", "tailscale": "pablo@x.com"}))
-        r = self.revisar({"pablo": {"estado": "activo"}})
+        (self.d / "run" / "ana" / "web.sock").write_text("")
+        (self.d / "registro" / "bruno.json").write_text(json.dumps({"nombre": "bruno", "tailscale": "bruno@x.com"}))
+        r = self.revisar({"bruno": {"estado": "activo"}})
         self.assertEqual([x["estado"] for x in r], ["ok", "ok", "ok"], r)
 
     def test_sin_mi_socket_y_un_alojado_sin_cuenta(self):
-        (self.d / "registro" / "pablo.json").write_text(json.dumps({"nombre": "pablo", "puerto": 8781}))
-        r = self.revisar({"pablo": {"estado": "activo"}})
+        (self.d / "registro" / "bruno.json").write_text(json.dumps({"nombre": "bruno", "puerto": 8781}))
+        r = self.revisar({"bruno": {"estado": "activo"}})
         fallas = [x["dice"] for x in r if x["estado"] == "falla"]
         self.assertTrue(any("no escucha para la puerta" in x for x in fallas), r)
         self.assertTrue(any("cuenta de Tailscale" in x for x in fallas), r)
 
     def test_sin_el_ayudante_con_alojados_es_falla(self):
         (self.d / "telar-alojar").unlink()
-        (self.d / "run" / "nico" / "web.sock").write_text("")
+        (self.d / "run" / "ana" / "web.sock").write_text("")
         r = self.revisar({})
         self.assertEqual(r[0]["estado"], "aviso")
-        r = self.revisar({"pablo": {"estado": "activo"}})
+        r = self.revisar({"bruno": {"estado": "activo"}})
         self.assertEqual(r[0]["estado"], "falla")

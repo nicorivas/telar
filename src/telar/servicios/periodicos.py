@@ -14,7 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from telar.servicios import ErrorDeServicio
 
 #: los verbos que se piden por la API: todos menos `correr` (espera a que el proceso termine)
-VERBOS = ("ver", "horario", "skills", "log", "ahora", "aplicar", "zona", "nuevo", "editar", "pausar", "activar", "borrar")
+VERBOS = ("ver", "horario", "skills", "log", "ahora", "aplicar", "zona", "nuevo", "editar", "pausar", "activar", "borrar",
+          "calendario")
 
 
 class Respuesta(BaseModel):

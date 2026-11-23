@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -131,6 +132,70 @@ class LaCarpeta(Prueba):
     def test_buscar_sin_tildes_ni_mayusculas(self):
         self.assertTrue(c.coincide("hipotesis tiempo", "H1", "El equipo adopta si le ahorra tiempo", "Hipótesis"))
         self.assertFalse(c.coincide("acta", "H1", "El equipo"))
+
+
+class LasRamas(Prueba):
+    """La carpeta con lo que suman sus ramas: copias de trabajo (git worktree) del mismo repositorio."""
+
+    def git(self, cwd, *args):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@a", "GIT_COMMITTER_NAME": "a",
+                            "GIT_COMMITTER_EMAIL": "a@a"})
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name).resolve()
+        self.repo, self.copia = base / "repo", base / "copia"
+        self.carpeta = self.repo / "proyectos" / "faro"
+        self.carpeta.mkdir(parents=True)
+        self.git(self.repo, "init", "-q", "-b", "main")
+        (self.carpeta / "README.md").write_text("## Pendientes\n\n| Código | Pendiente |\n|---|---|\n| PA-01 | Mandar el acta |\n")
+        (self.carpeta / "semana.md").write_text("Esta semana: PA-01.\n")
+        self.git(self.repo, "add", "-A")
+        self.git(self.repo, "commit", "-q", "-m", "uno")
+        self.git(self.repo, "worktree", "add", "-q", "-b", "faro/e4", str(self.copia))
+        # en main, después de que salió la rama: un pendiente nuevo en el README
+        (self.carpeta / "README.md").write_text(
+            "## Pendientes\n\n| Código | Pendiente |\n|---|---|\n| PA-01 | Mandar el acta |\n| PA-02 | Agendar la mesa |\n")
+        (self.carpeta / "semana.md").write_text("Esta semana: PA-01 y PA-02.\n")
+        self.git(self.repo, "commit", "-q", "-am", "dos")
+        # en la rama: el E4 (nuevo, commiteado), una fila en su README viejo y un borrador sin commitear
+        en_rama = self.copia / "proyectos" / "faro"
+        (en_rama / "e4.md").write_text("## Iniciativas\n\n| Código | Nombre |\n|---|---|\n| INI-01 | Conector |\n| INI-02 | Horas |\n")
+        (en_rama / "README.md").write_text(
+            "## Pendientes\n\n| Código | Pendiente |\n|---|---|\n| PA-01 | Mandar el acta |\n| PA-09 | Revisar el E4 |\n\nVer INI-01.\n")
+        self.git(self.copia, "add", "-A")
+        self.git(self.copia, "commit", "-q", "-m", "e4")
+        (en_rama / "borrador.md").write_text("Falta PA-09 e INI-02.\n")
+
+    def test_la_rama_con_lo_que_cambio_o_agrego(self):
+        rs = c.ramas(self.carpeta)
+        self.assertEqual([(r.nombre, sorted(r.propios)) for r in rs], [("faro/e4", ["README.md", "borrador.md", "e4.md"])])
+
+    def test_la_carpeta_manda_y_la_rama_suma(self):
+        cp = c.carpeta(self.carpeta, c.ramas(self.carpeta))
+        # lo nuevo de la rama entra: INI-01 se nombra en su README, INI-02 en el borrador sin commitear
+        self.assertLessEqual({"INI-01", "INI-02", "PA-09"}, cp.viajan())
+        self.assertEqual(cp.principal("INI-01").archivo, "e4.md")
+        # el README de la carpeta sigue siendo el de la carpeta: PA-02 (nuevo en main) no lo tapa la rama vieja
+        self.assertEqual([d.archivo for d in cp.defs["PA-02"]], ["README.md"])
+        self.assertEqual([d.archivo for d in cp.defs["PA-01"]], ["README.md"])
+        # de su README, la rama aporta solo lo que la carpeta no tiene, con su propio nombre
+        self.assertEqual([d.archivo for d in cp.defs["PA-09"]], ["README.md@faro/e4"])
+        self.assertEqual(cp.de_rama["README.md@faro/e4"][1:], ("faro/e4", "README.md"))
+        self.assertEqual(cp.de_rama["e4.md"][0], str(self.copia / "proyectos" / "faro" / "e4.md"))
+        self.assertNotIn("README.md@faro/e4", cp.menciones["PA-01"])
+
+    def test_una_copia_sin_rama_no_cuenta(self):
+        self.git(self.copia, "checkout", "-q", "--detach")
+        self.assertEqual(c.ramas(self.carpeta), [])
+
+    def test_fuera_de_un_repositorio_no_hay_ramas(self):
+        otra = Path(self.tmp.name) / "suelta"
+        otra.mkdir()
+        self.assertEqual(c.ramas(otra), [])
 
 
 class LaConversacion(Prueba):

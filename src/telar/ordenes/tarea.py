@@ -10,7 +10,9 @@ telar corre ese comando, que imprime la misma página que una sección (docs/con
 más una lista de `acciones`: correr un comando, llevar la tarea a su hilo o abrir un
 enlace. La acción se elige por su número: el comando lo vuelve a dar el proveedor, nunca
 quien pide, así que desde el dashboard solo se puede correr lo que el proveedor ofreció.
-Un `{texto}` en el comando se reemplaza por lo que se escribió (`--texto`).
+Un `{texto}` en el comando se reemplaza por lo que se escribió (`--texto`), y un `{conexiones}`, por las relaciones
+elegidas para el grafo (`--conexiones`, en JSON: de las que la ficha propone o de las notas que nombra su texto, estas
+con tipo y porqué; sin elegidas, `[]`).
 
 Una acción con `mensaje` abre además, después de su comando, un hilo nuevo con el agente y
 ese primer prompt (`nombre_hilo` es su nombre): marcar hecha y procesar las secuelas de
@@ -41,6 +43,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--version", default=None, help="la versión que se leyó (la de la ficha): si la tarea cambió, no se hace")
     p.add_argument("--hilo", default="", metavar="NOMBRE",
                    help="el mensaje de la acción, a ese hilo o agente (de aquí o de otra máquina) y no al de la tarea")
+    p.add_argument("--conexiones", default=None, metavar="JSON",
+                   help='las relaciones elegidas para una acción con {conexiones}: [{"nota", "tipo", "porque", "titulo"}]')
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -54,8 +58,18 @@ def main(argv: list[str], ctx) -> int:
             for i, a in enumerate(getattr(pagina, "acciones", None) or []):
                 print(f"  {i}  {a['nombre']}")
             return 0
+        conexiones = None
+        if o.conexiones is not None:
+            import json
+
+            try:
+                conexiones = json.loads(o.conexiones)
+            except ValueError as e:
+                raise ErrorDeServicio(f"--conexiones: no es JSON ({e})", 422) from e
+            if not isinstance(conexiones, list):
+                raise ErrorDeServicio("--conexiones: se esperaba una lista", 422)
         hecho = servicio.accion(ctx, o.id, o.proveedor, n=o.accion, rol=o.rol, texto=o.texto, version=o.version,
-                                hilo=o.hilo)
+                                hilo=o.hilo, conexiones=conexiones)
     except ErrorDeServicio as e:
         if o.json:
             # con su código, para quien la pidió desde otra máquina (409: la tarea cambió; 404: no existe)

@@ -138,7 +138,7 @@ class DelMod(Prueba):
 class Vetado(Prueba):
     def test_por_nombre_o_por_carpeta_y_lo_de_abajo(self):
         self.assertTrue(h.vetado(["diario"], "Diario", ""))
-        self.assertTrue(h.vetado(["personal"], "Finanzas", "personal/finanzas"))
+        self.assertTrue(h.vetado(["personal"], "Recetas", "personal/recetas"))
         self.assertTrue(h.vetado(["archivo*"], "x", "archivo-viejo"))
         self.assertFalse(h.vetado(["personal"], "Faro", "proyectos/faro"))
         self.assertFalse(h.vetado([], "Diario", "personal"))

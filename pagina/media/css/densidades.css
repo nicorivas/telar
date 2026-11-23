@@ -1,0 +1,28 @@
+/* Las densidades, además de la de fábrica («compacta», en tokens.css): cuánto aire lleva cada fila. Una densidad
+   dice solo medidas (--item-alto, los huecos), nunca colores: va con cualquier tema. Van después de tokens.css y de
+   temas.css, así que lo suyo gana.
+   Se elige con el ajuste `densidad` de un modo (⚙ modos); «auto» es amplia en una pantalla táctil y compacta con
+   mouse (componentes/densidades.ts). /componentes las muestra lado a lado. Para agregar una: su bloque aquí, su nombre
+   en DENSIDADES de componentes/densidades.ts y en `telar.modos.DENSIDADES`. */
+
+/* cómoda: más de media línea de aire por fila, para leer una lista larga sin apretarla */
+[data-densidad="comoda"] {
+  --item-alto: calc(var(--alto) * 1.6);
+  --item-pad-x: 2ch;
+  --item-hueco: 1.5ch;
+  --tarjeta-pad-y: .75lh;
+  --tarjeta-aire: .75lh;
+}
+
+/* amplia: para el dedo. Filas de unos 40px (lo que pide una pantalla táctil para apretar sin errar) y acciones más
+   anchas; los hijos, más corridos, para que se lean como hijos con tanto aire */
+[data-densidad="amplia"] {
+  --item-alto: calc(var(--alto) * 2.4);
+  --item-pad-x: 2ch;
+  --item-hondo: 2.5ch;
+  --item-hueco: 1ch;
+  --item-accion-pad: 1ch;
+  --tarjeta-pad-y: 1lh;
+  --tarjeta-pad-y-holgada: 1.5lh;
+  --tarjeta-aire: 1lh;
+}

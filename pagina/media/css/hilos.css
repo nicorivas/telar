@@ -1,95 +1,18 @@
-/* La barra de hilos (vistas/hilos.ts), en la columna izquierda de la página. Con @scope: sus nombres
-   (.fila, .nombre…) son solo suyos, aunque el resto de la página use los mismos.
+/* La barra de hilos (vistas/hilos.ts), en la columna izquierda de la página: lo suyo, que no es una fila. Las filas
+   (hilos, cabeceras, pestañas del dashboard) son ítems: media/css/item.css. Con @scope: sus nombres (.sep, .nota…)
+   son solo suyos, aunque el resto de la página use los mismos.
    scripts/navegador.mjs la junta en src/telar/web/marco.css. */
 
-@scope (#barra) {
-  #lista { padding: .5em 0 1.5em; user-select: none; }
+@scope (#barra, .barra-de-muestra) {
+  /* sin aire arriba: la línea de abajo de la franja de avisos es la de arriba de la primera cabecera, pegada a su fondo */
+  #lista { padding: 0 0 1.5em; user-select: none; }
 
-  /* plegarla: el «‹» al final de la primera cabecera; plegada, una franja con «›» y «hilos» en vertical */
-  .pliegue-barra { padding-left: 1ch; color: var(--dim); font-weight: normal; cursor: pointer; }
-  .pliegue-barra:hover { color: var(--fg); }
-  /* a la derecha de la cabecera; si ya hay un «+ nuevo» empujando a la derecha, va pegado a lo que tenga */
-  .fila.cab > .pliegue-barra { margin-left: auto; }
-  .fila.cab > .nuevo-hilo ~ .pliegue-barra { margin-left: 0; }
-  .plegada { display: flex; flex-direction: column; align-items: center; gap: .5em; padding: 0 1ch; cursor: pointer; }
-  .plegada .vertical { writing-mode: vertical-rl; color: var(--dim); }
-  .plegada:hover .vertical, .plegada:hover .pliegue-barra { color: var(--fg); }
-  .fila { display: flex; position: relative; white-space: pre; padding: 0 1.5ch; cursor: pointer; }
-  .fila:hover { background: var(--hover); }
-  .fila.activa { background: var(--sel); }
-  /* arrastrar un hilo para colgarlo de otro: el que se arrastra, tenue; donde caería, con una línea violeta */
-  .fila.arrastrando { opacity: .4; }
-  .fila.destino { box-shadow: inset 0 0 0 1px var(--violeta); background: color-mix(in srgb, var(--violeta) 12%, transparent); }
-  /* las columnas de íconos (prioridad, atención, dónde vive, viajando): 2ch cada una, porque un ícono de la letra
-     `iconos` es tan ancho como 1,7 letras de las otras; centrado, nunca se monta sobre el nombre. El ícono va adentro en su letra (`.i`): con la de
-     siempre, el `monospace` genérico de --letra se queda con algunos íconos (un cuadro) */
-  .prio, .at, .remoto:not(.ancho), .fila .viaja { flex: none; width: 2ch; text-align: center; overflow: hidden; }
-  .prio.p0 { color: var(--dim); }
-  .p1 { color: var(--fg); } .p2 { color: color-mix(in srgb, var(--fg) 65%, var(--bg)); } .p3 { color: var(--dim); }
-  .nombre { flex: 0 1 auto; min-width: 0; padding-left: .5ch; overflow: hidden; text-overflow: ellipsis; }
-  .muerto .nombre, .archivado .nombre, .archivado .prio { color: var(--dim); }
-  .remoto { color: var(--cian); }
-  /* con la columna ancha (⇄ junto a buscar): el nombre de la máquina; el ancho lo da la fila */
-  .remoto.ancho { flex: none; margin: 0 .5ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--amarillo); }
-  .remoto.ancho.aqui { color: var(--dim); }
-  .sobre { flex: none; width: 1ch; margin-right: 1ch; color: var(--amarillo); }
-  .at.trabajando { color: var(--azul); } .at.espera { color: var(--amarillo); } .at.termino { color: var(--verde); }
-  /* terminó y ya lo viste: tenue; el que no has visto sigue en verde (te espera) */
-  .at.termino.visto { color: var(--dim); }
-  .der { flex: none; margin-left: auto; padding-left: 1ch; color: var(--dim); }
-  /* un hijo (lo abrió otro hilo de la lista, o es de un agente: «↳ T454 …»), sangrado bajo su padre */
-  .fila.hijo .nombre { padding-left: 2.5ch; }
-  .fila.hondo2 .nombre { padding-left: 4.5ch; } .fila.hondo3 .nombre { padding-left: 6.5ch; }
-  /* uno que se está cerrando o archivando (en otra máquina tarda unos segundos en irse): el nombre apagado y
-     «cerrando…» con los puntos que van apareciendo, hasta que se va */
-  .fila.saliendo .nombre { color: var(--negro); }
-  .fila.saliendo { cursor: default; }
-  .saliendo-txt { color: var(--dim); }
-  .saliendo-txt .puntos { display: inline-block; width: 3ch; overflow: hidden; vertical-align: bottom;
-                          animation: puntos 1.6s steps(4, jump-none) infinite; }
-  .saliendo-txt .puntos::after { content: "..."; }
-  .sep { border-top: 1px solid var(--linea); margin: .4em 1.5ch; }
-  .cab { color: var(--amarillo); font-weight: bold; }
-  /* un agente: una línea como cualquier hilo, con su nombre en amarillo y su home al final */
-  .agente .nombre { color: var(--amarillo); } .agente.muerto .nombre { color: color-mix(in srgb, var(--amarillo) 55%, var(--bg)); }
-  .casa { flex: none; color: var(--azul); }
-  .hoy .nombre { color: var(--azul); }
-  .cab .dim { font-weight: normal; }
-  .nota { color: var(--dim); padding: .2em 1.5ch; white-space: pre-wrap; }
-  .iconos { position: absolute; right: 1.5ch; top: 0; bottom: 0; display: none; padding-left: 1ch;
-           background: linear-gradient(var(--hover), var(--hover)), var(--bg); }
-  .activa .iconos { background: linear-gradient(var(--sel), var(--sel)), var(--bg); }
-  .fila:hover .iconos { display: flex; }
-  .icono { margin-left: 1ch; color: var(--dim); cursor: pointer; font-variant-emoji: text; }
-  .icono:hover { color: var(--fg); }
-  .icono.descartar:hover { color: var(--rojo); }
-  /* el + de HILOS: abre un hilo nuevo */
-  .nuevo-hilo { margin-left: auto; padding-left: 1ch; color: var(--dim); font-weight: normal; }
-  .nuevo-hilo:hover { color: var(--fg); }
-  /* el buscador y los órdenes de un grupo (HILOS, ARCHIVO), bajo su cabecera */
-  .herram { display: flex; align-items: center; gap: 1ch; padding: .15em 1.5ch .3em 3.5ch; }
-  .herram input { flex: 1 1 auto; min-width: 0; font: inherit; color: var(--fg); background: transparent;
-                  border: 0; border-bottom: 1px solid var(--linea); padding: 0 0 1px; outline: none; }
-  .herram input:focus { border-bottom-color: var(--azul); }
-  .herram input::placeholder { color: var(--dim); }
-  .ord { flex: none; color: var(--dim); cursor: pointer; }
-  .ord:hover { color: var(--fg); } .ord.si { color: var(--amarillo); }
-  .vacia { color: var(--dim); padding: 0 1.5ch 0 3.5ch; }
-  /* en un celular (angosto: la barra sola en la pantalla) no hay hover: el ⋯ se ve siempre, y lo demás (archivar,
-     descartar) queda dentro de su menú */
-  @media (width <= 700px) {
-    .fila .iconos { position: static; display: flex; padding-left: 0; background: transparent; }
-    .fila .iconos .icono:not(.menu-hilo) { display: none; }
-    .fila .menu-hilo { padding-inline: 1ch; }
-  }
-}
-
-/* el ícono del agente residente del que es un hilo (su agente.toml `icono`, o su inicial) */
-.ic-agente { color: var(--violeta); }
-/* el de un hilo que abrió un agente (no es suyo: es trabajo que empezó él), más apagado */
-.ic-agente.abierto { color: var(--dim); }
-
-@keyframes puntos {
-  from { width: 0; }
-  to { width: 3ch; }
+  /* plegada: una franja con «›» y «hilos» en vertical; un clic la abre (el «‹» que la pliega va a la derecha de la
+     franja de avisos, su primera fila: web/franja.ts) */
+  .plegada { display: flex; flex-direction: column; align-items: center; gap: .5em; padding: .5em 1ch 0; cursor: pointer; }
+  .plegada .pliegue-barra { color: var(--texto-tenue); }
+  .plegada .vertical { writing-mode: vertical-rl; color: var(--texto-tenue); }
+  .plegada:hover .vertical, .plegada:hover .pliegue-barra { color: var(--texto); }
+  .nota { color: var(--texto-tenue); padding: .2em var(--item-pad-x); white-space: pre-wrap; }
+  /* el separador, la banda de herramientas y la fila «nada calza» de un grupo: componentes/seccion.ts, media/css/seccion.css */
 }

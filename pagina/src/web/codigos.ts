@@ -8,6 +8,7 @@
 
 import * as cli from '../cli';
 import { esc } from '../estilo';
+import { barraBuscar } from '../componentes/buscador';
 import { modelo } from '../modelo';
 import { I } from './iconos';
 import * as modos from './modos';
@@ -40,7 +41,7 @@ const tareas = new Map<string, { titulo: string; estado: string } | null | 'carg
 const aMano = new Map<string, boolean>();
 
 /** La máquina donde vive el hilo: la de «rem:máquina:hilo», o la de uno de la lista cuyo agente vive en otra. */
-function maquinaDe(h: string, m: string): string {
+export function maquinaDe(h: string, m: string): string {
     if (m) return m;
     const x = modelo.porNombre(h);
     return x?.remoto && x.remoto !== '?' && x.remoto !== modelo.aqui ? x.remoto : '';
@@ -146,10 +147,20 @@ function calza(...textos: (string | undefined)[]): boolean {
     return palabras.every(p => junto.includes(p));
 }
 
-/** La ruta de un archivo de la carpeta del hilo, como la abre el visor (con «máquina:» si es de otra). */
+/** La ruta de un archivo de la carpeta del hilo, como la abre el visor (con «máquina:» si es de otra). Uno que
+ *  viene de una rama se abre en su copia de trabajo. */
 function ruta(archivo: string): string {
-    const r = `${datos?.carpeta ?? ''}/${archivo}`;
+    const r = datos?.de_rama?.[archivo]?.ruta ?? `${datos?.carpeta ?? ''}/${archivo}`;
     return maquina ? `${maquina}:${r}` : r;
+}
+
+/** El nombre de un archivo para mostrarlo: el de una rama viene como «README.md@rama» si la carpeta también lo tiene. */
+const nombre = (archivo: string): string => datos?.de_rama?.[archivo]?.archivo ?? archivo;
+
+/** « · rama e3-e4», si ese archivo viene de una rama (el último tramo de su nombre; entero, al pasar encima). */
+function deRama(archivo: string): string {
+    const r = datos?.de_rama?.[archivo]?.rama;
+    return r ? ` <span class="dim" title="viene de la rama ${esc(r)}: todavía no está en la carpeta">· rama ${esc(r.split('/').pop() ?? r)}</span>` : '';
 }
 
 /** si el detalle del abierto ya se dibujó en esta pasada (un código puede estar en la conversación y en su clase:
@@ -181,8 +192,8 @@ function detalle(codigo: string): string {
     const h: string[] = [];
     const [primera, ...otras] = x.definiciones ?? [];
     if (primera) {
-        h.push(`<a class="cod-ir" data-cod="archivo" data-ruta="${esc(primera.archivo)}" title="abrirlo en el visor">${I.irArchivo} ${esc(primera.archivo)}:${primera.linea}</a>`
-            + (primera.seccion ? ` <span class="dim">· ${esc(primera.seccion)}</span>` : ''));
+        h.push(`<a class="cod-ir" data-cod="archivo" data-ruta="${esc(primera.archivo)}" title="abrirlo en el visor">${I.irArchivo} ${esc(nombre(primera.archivo))}:${primera.linea}</a>`
+            + deRama(primera.archivo) + (primera.seccion ? ` <span class="dim">· ${esc(primera.seccion)}</span>` : ''));
         if (primera.campos && Object.keys(primera.campos).length) {
             h.push('<dl class="cod-campos">' + Object.entries(primera.campos).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + '</dl>');
         } else if (primera.texto) {
@@ -191,14 +202,14 @@ function detalle(codigo: string): string {
     }
     if (otras.length) {
         h.push(`<div class="cod-otras"><span class="dim">otras definiciones:</span> ` + otras.map(o =>
-            `<a data-cod="archivo" data-ruta="${esc(o.archivo)}" title="${esc(o.titulo)}">${esc(o.archivo)}:${o.linea}</a>`).join(' · ') + '</div>');
+            `<a data-cod="archivo" data-ruta="${esc(o.archivo)}" title="${esc(o.titulo)}">${esc(nombre(o.archivo))}:${o.linea}</a>${deRama(o.archivo)}`).join(' · ') + '</div>');
     }
     if (x.nombrado_en?.length) {
         // por su nombre, con la ruta entera al pasar encima; los primeros, y cuántos más
         const vistos = x.nombrado_en.slice(0, NOMBRADO_EN_VISIBLES);
         const mas = x.nombrado_en.length - vistos.length;
         h.push(`<div class="cod-otras"><span class="dim">se nombra en:</span> ` + vistos.map(n =>
-            `<a data-cod="archivo" data-ruta="${esc(n.archivo)}" title="${esc(n.archivo)}:${n.lineas[0]}">${esc(n.archivo.split('/').pop() ?? n.archivo)}:${n.lineas[0]}</a>`).join(' · ')
+            `<a data-cod="archivo" data-ruta="${esc(n.archivo)}" title="${esc(nombre(n.archivo))}:${n.lineas[0]}">${esc(nombre(n.archivo).split('/').pop() ?? n.archivo)}:${n.lineas[0]}</a>${deRama(n.archivo)}`).join(' · ')
             + (mas > 0 ? ` <span class="dim">y ${mas}${x.nombrado_en.length >= 30 ? ' o más' : ''} más</span>` : '') + '</div>');
     }
     if (x.conversacion) {
@@ -247,7 +258,7 @@ function lista(): string {
         if (!cs?.length) continue;
         const abierta = buscando || (aMano.get(k.prefijo) ?? k.cuantos <= PLEGADA_DESDE) || cs.some(c => c.codigo === abierto);
         h.push(`<details class="cod-sec" data-clase="${esc(k.prefijo)}"${abierta ? ' open' : ''}>`
-            + `<summary class="cod-tit" title="${esc(k.archivo)}"><b>${esc(k.prefijo)}</b> ${esc(k.nombre || '')} <span class="dim">${cs.length}</span></summary>`
+            + `<summary class="cod-tit" title="${esc(nombre(k.archivo))}"><b>${esc(k.prefijo)}</b> ${esc(k.nombre || '')} <span class="dim">${cs.length}</span></summary>`
             + cs.map(c => fila(c.codigo, c.titulo)).join('') + '</details>');
     }
     if (!h.length) h.push(`<div class="dim">${buscando ? `nada calza con «${esc(consulta)}»` : 'ningún código'}</div>`);
@@ -258,9 +269,11 @@ function lista(): string {
 export function html(): string {
     if (!datos) return '';
     const pie = datos.carpeta
-        ? `<div class="cod-pie dim" title="${esc(datos.carpeta)}">${datos.codigos.length} códigos de ${datos.archivos} documentos de ${esc(datos.carpeta.split('/').pop() ?? '')}</div>`
+        ? `<div class="cod-pie dim" title="${esc(datos.carpeta)}${datos.ramas?.length ? `, con lo que cambiaron las ramas ${esc(datos.ramas.join(', '))}` : ''}">`
+            + `${datos.codigos.length} códigos de ${datos.archivos} documentos de ${esc(datos.carpeta.split('/').pop() ?? '')}`
+            + `${datos.ramas?.length ? ` y ${datos.ramas.length === 1 ? 'una rama' : `${datos.ramas.length} ramas`}` : ''}</div>`
         : '';
-    return `<div class="cod-buscar"><span class="i">${I.buscar}</span><input type="search" placeholder="código o texto" spellcheck="false" value="${esc(consulta)}"></div>`
+    return barraBuscar({ placeholder: 'códigos o texto', valor: consulta, claseBarra: 'cod-buscar', ayuda: 'buscar por el código o el texto · ⎋ borra' })
         + (datos.aviso ? `<div class="cod-aviso dim">${esc(datos.aviso)}</div>` : '')
         + `<div class="cod-lista">${lista()}</div>` + pie;
 }

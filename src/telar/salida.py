@@ -31,7 +31,20 @@ import sys
 import unicodedata
 from datetime import datetime
 
-__all__ = ["MANEJADOR", "RESERVA", "alcanza", "empobrecer", "preparar", "visible"]
+__all__ = ["MANEJADOR", "RESERVA", "alcanza", "empobrecer", "preparar", "visible", "salir_sin_esperar"]
+
+#: Una orden que deja trabajo suelto que ya no le sirve a nadie (lo pone `salir_sin_esperar`): telar.cli sale apenas
+#: termina la orden, sin esperar a que acabe.
+SIN_ESPERAR = False
+
+
+def salir_sin_esperar() -> None:
+    """Que el proceso salga apenas termine la orden, sin esperar lo que quedó corriendo aparte: las lecturas de
+    `telar buscar` que no llegaron a su tope (sus propios hilos de ejecución, y los que abran adentro) no le sirven a
+    nadie después de imprimir, y Python esperaría a que terminen antes de salir. Solo vale para el `telar` de la
+    terminal: telar.cli lo mira al terminar la orden, y lo apaga al empezar."""
+    global SIN_ESPERAR
+    SIN_ESPERAR = True
 
 #: El nombre con que se registra el manejador de errores de codificación.
 MANEJADOR = "telar"

@@ -346,7 +346,7 @@ class Instalador(ConEstado):
             ["Notification", "PostToolUse", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"],
         )
         comando = hooks["Stop"][0]["hooks"][0]["command"]
-        self.assertIn("agente aviso claude-code", comando)
+        self.assertIn("agente evento claude-code", comando)
         self.assertEqual(hooks["PostToolUse"][0]["matcher"], "*")
 
     def test_no_le_pisa_los_ganchos_a_nadie(self):
@@ -375,6 +375,44 @@ class Instalador(ConEstado):
             casillas = [g for e in self.leer()["hooks"][nativo] for g in e["hooks"] if "agente casilla" in g["command"]]
             self.assertEqual(len(casillas), 1, nativo)
 
+    def _con_los_ganchos_de_antes(self) -> str:
+        """Un settings.json como lo dejaba telar cuando la orden se llamaba `agente aviso`, con un gancho ajeno."""
+        self.agente().instalar(ruta=self.ajustes, ejecutable=["/opt/telar/bin/telar"])
+        datos = json.loads(self.ajustes.read_text(encoding="utf-8").replace("agente evento", "agente aviso"))
+        datos["hooks"]["Stop"].append({"hooks": [{"type": "command", "command": "mi-script.sh"}]})
+        texto = json.dumps(datos, indent=2)
+        self.ajustes.write_text(texto, encoding="utf-8")
+        for respaldo in self.ajustes.parent.glob("*.bak*"):
+            respaldo.unlink()
+        return texto
+
+    def test_los_ganchos_de_antes_se_reemplazan_sin_duplicarse(self):
+        viejo = self._con_los_ganchos_de_antes()
+        self.assertIn("/opt/telar/bin/telar agente aviso claude-code", viejo)
+        hecho = self.agente().instalar(ruta=self.ajustes, ejecutable=["/opt/telar/bin/telar"])
+        texto = self.ajustes.read_text(encoding="utf-8")
+        self.assertNotIn("agente aviso", texto)
+        hooks = self.leer()["hooks"]
+        for nativo in ("SessionStart", "UserPromptSubmit", "Notification", "PostToolUse", "Stop", "StopFailure",
+                       "SessionEnd"):
+            comandos = [g["command"] for e in hooks[nativo] for g in e["hooks"]]
+            self.assertEqual(comandos.count("/opt/telar/bin/telar agente evento claude-code"), 1, nativo)
+            self.assertIn(nativo, hecho.reemplazados)
+        # el contexto y la casilla, una vez cada uno; lo ajeno, intacto
+        comandos = [g["command"] for e in hooks["Stop"] for g in e["hooks"]]
+        self.assertEqual(sorted(comandos), sorted(["mi-script.sh", "/opt/telar/bin/telar agente evento claude-code",
+                                                   "/opt/telar/bin/telar agente casilla claude-code"]))
+        self.assertEqual(len([g for e in hooks["SessionStart"] for g in e["hooks"]]), 2)
+        # el respaldo es el de antes, entero
+        self.assertEqual(hecho.respaldo.read_text(encoding="utf-8"), viejo)
+
+    def test_los_ganchos_de_antes_son_de_telar_para_desinstalar_y_revisar(self):
+        self._con_los_ganchos_de_antes()
+        # doctor revisa que el comando exista: también el de antes
+        self.assertEqual(self.agente().comandos_instalados(), ("/opt/telar/bin/telar agente aviso claude-code",))
+        self.agente().desinstalar(ruta=self.ajustes)
+        self.assertEqual(self.leer()["hooks"], {"Stop": [{"hooks": [{"type": "command", "command": "mi-script.sh"}]}]})
+
     def test_deja_un_respaldo_antes_de_tocar_nada(self):
         self.ajustes.write_text(json.dumps({"modelo": "opus"}), encoding="utf-8")
         hecho = self.agente().instalar(ruta=self.ajustes)
@@ -389,7 +427,7 @@ class Instalador(ConEstado):
         self.assertNotEqual(primero, segundo)
         # el retrato de lo que había antes de telar es el que hay que poder volver a poner
         self.assertEqual(json.loads(primero.read_text(encoding="utf-8")), {"modelo": "opus"})
-        self.assertIn("agente aviso claude-code", segundo.read_text(encoding="utf-8"))
+        self.assertIn("agente evento claude-code", segundo.read_text(encoding="utf-8"))
 
     def test_desinstalar_no_se_come_el_respaldo_de_antes(self):
         self.ajustes.write_text(json.dumps({"modelo": "opus"}), encoding="utf-8")
@@ -473,7 +511,7 @@ class Instalador(ConEstado):
     def test_el_comando_se_puede_fijar_a_mano(self):
         self.agente().instalar(ruta=self.ajustes, ejecutable=["/opt/telar/bin/telar"])
         comando = self.leer()["hooks"]["Stop"][0]["hooks"][0]["command"]
-        self.assertEqual(comando, "/opt/telar/bin/telar agente aviso claude-code")
+        self.assertEqual(comando, "/opt/telar/bin/telar agente evento claude-code")
 
 
 # ── pedir permiso antes de escribir en casa ajena ───────────────────────────────
@@ -619,10 +657,10 @@ class Orden(ConEstado):
             sys.stdin = viejo
         return codigo, salida.getvalue()
 
-    def test_el_aviso_escribe_la_atencion(self):
+    def test_el_evento_escribe_la_atencion(self):
         os.environ["TELAR_HILO"] = "faro"
         carga = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1"})
-        codigo, texto = self.correr(["aviso"], carga)
+        codigo, texto = self.correr(["evento"], carga)
         self.assertEqual(codigo, 0)
         self.assertEqual(texto, "")  # callado: hay agentes que se leen la salida del gancho
         self.assertIs(self.est.atencion("faro"), Atencion.TRABAJANDO)
@@ -635,31 +673,31 @@ class Orden(ConEstado):
         d.mkdir(parents=True)
         (d / casilla.MOD).write_text("1")
         carga = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1"})
-        _, texto = self.correr(["aviso", "--json"], carga)
+        _, texto = self.correr(["evento", "--json"], carga)
         self.assertEqual(json.loads(texto)["motivo"], "lo avisa el mod")
         self.assertIsNot(self.est.atencion("faro"), Atencion.TRABAJANDO)
         # el mod mismo avisa con --evento, y eso sí se aplica
-        self.correr(["aviso", "--evento", "empieza", "--sesion", "s1"])
+        self.correr(["evento", "--evento", "empieza", "--sesion", "s1"])
         self.assertIs(self.est.atencion("faro"), Atencion.TRABAJANDO)
         # abrir y cerrar siguen siendo de los ganchos clásicos
-        self.correr(["aviso", "--panel", "p1"], json.dumps({"hook_event_name": "SessionStart", "session_id": "s1"}))
+        self.correr(["evento", "--panel", "p1"], json.dumps({"hook_event_name": "SessionStart", "session_id": "s1"}))
         self.assertEqual(self.est.hilo_de("s1"), "faro")
 
-    def test_el_aviso_anota_la_conversacion_al_abrir(self):
+    def test_el_evento_anota_la_conversacion_al_abrir(self):
         os.environ["TELAR_HILO"] = "faro"
         carga = json.dumps({"hook_event_name": "SessionStart", "session_id": "s1"})
-        self.correr(["aviso", "--panel", "p1"], carga)
+        self.correr(["evento", "--panel", "p1"], carga)
         self.assertEqual(self.est.hilo_de("s1"), "faro")
 
     def test_una_carga_rota_no_es_un_error_para_quien_llamo(self):
         os.environ["TELAR_HILO"] = "faro"
-        codigo, texto = self.correr(["aviso"], "esto no es json")
+        codigo, texto = self.correr(["evento"], "esto no es json")
         self.assertEqual(codigo, 0)
         self.assertEqual(texto, "")
 
-    def test_sin_hilo_el_aviso_se_calla_y_no_escribe(self):
+    def test_sin_hilo_el_evento_se_calla_y_no_escribe(self):
         codigo, _ = self.correr(
-            ["aviso"], json.dumps({"hook_event_name": "Stop", "session_id": "s9"})
+            ["evento"], json.dumps({"hook_event_name": "Stop", "session_id": "s9"})
         )
         self.assertEqual(codigo, 0)
         self.assertEqual(self.est.atenciones(), {})
@@ -667,16 +705,49 @@ class Orden(ConEstado):
     def test_con_json_se_puede_mirar_lo_que_hizo(self):
         os.environ["TELAR_HILO"] = "faro"
         carga = json.dumps({"hook_event_name": "Stop", "session_id": "s1"})
-        _, texto = self.correr(["aviso", "--json"], carga)
+        _, texto = self.correr(["evento", "--json"], carga)
         self.assertEqual(json.loads(texto)["atencion"], "termino")
 
     def test_un_agente_que_telar_no_conoce_avisa_sin_adaptador(self):
         os.environ["TELAR_HILO"] = "faro"
-        codigo, _ = self.correr(["aviso", "--evento", "abre", "--sesion", "z9", "--panel", "p1"])
+        codigo, _ = self.correr(["evento", "--evento", "abre", "--sesion", "z9", "--panel", "p1"])
         self.assertEqual(codigo, 0)
         self.assertEqual(self.est.hilo_de("z9"), "faro")
-        self.correr(["aviso", "--evento", "espera"])
+        self.correr(["evento", "--evento", "espera"])
         self.assertIs(self.est.atencion("faro"), Atencion.ESPERA)
+
+    def test_aviso_es_el_nombre_de_antes_y_hace_lo_mismo_sin_decir_nada(self):
+        # lo corren los ganchos ya instalados en cada máquina, hasta que se reinstalan: callado, como el gancho
+        from contextlib import redirect_stderr
+
+        salidas = {}
+        for verbo, hilo, sesion in (("evento", "faro", "s1"), ("aviso", "molino", "s2")):
+            os.environ["TELAR_HILO"] = hilo
+            errores = io.StringIO()
+            with redirect_stderr(errores):
+                _, abre = self.correr([verbo, "--json"], json.dumps({"hook_event_name": "SessionStart", "session_id": sesion}))
+                _, empieza = self.correr([verbo, "--json"],
+                                         json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": sesion}))
+                _, espera = self.correr([verbo, "--evento", "espera", "--pide", "¿sigo?", "--json"])
+            self.assertEqual(errores.getvalue(), "", verbo)
+            self.assertEqual(self.est.hilo_de(sesion), hilo)
+            self.assertIs(self.est.atencion(hilo), Atencion.ESPERA)
+            salidas[verbo] = [json.loads(x.replace(hilo, "H").replace(sesion, "S")) for x in (abre, empieza, espera)]
+        self.assertEqual(salidas["evento"], salidas["aviso"])
+
+    def test_la_ayuda_ofrece_evento_y_no_aviso(self):
+        from contextlib import redirect_stderr
+
+        errores = io.StringIO()
+        with redirect_stderr(errores):
+            codigo, texto = self.correr(["--help"])
+        self.assertEqual(codigo, 0)
+        self.assertIn("telar agente evento", texto)
+        self.assertNotIn("{ver,aviso", texto)
+        self.assertIn("{ver,evento,", texto)
+        with redirect_stderr(errores):
+            self.assertEqual(self.correr(["avisar"])[0], 2)
+        self.assertNotIn("'aviso'", errores.getvalue())
 
     def test_retomar_imprime_el_comando_y_no_lo_corre(self):
         os.environ["TELAR_HILO"] = "faro"

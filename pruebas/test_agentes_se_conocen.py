@@ -65,6 +65,18 @@ class Contexto(ConEstado):
             with self.subTest(bus=hay), mock.patch.object(mod_bus, "hay_bus", return_value=hay):
                 self.assertIn("telar objeto <dirección>", self.contexto())
 
+    def test_con_bus_los_otros_hilos_se_buscan_con_red(self):
+        """Sin `--red`, `telar hilos` es solo esta máquina: el agente del servidor que buscó ahí un hilo del
+        laptop concluyó que no existía. Con bus, el contexto le da la orden que trae todas, y dónde mirar."""
+        for hay, orden in ((True, "`telar hilos --red --json`"), (False, "`telar hilos --json`")):
+            with self.subTest(bus=hay), mock.patch.object(orden_agente, "_hay_bus", return_value=hay):
+                linea = next(l for l in self.contexto().splitlines() if l.startswith("Otros hilos"))
+                self.assertIn(orden, linea)
+                if hay:
+                    self.assertIn("`otras_maquinas`", linea)
+                    self.assertIn("`maquina`", linea)
+                self.assertLessEqual(len(linea), 300)  # se carga en cada sesión: corto
+
     def test_con_cartero_dice_su_direccion(self):
         texto = self.contexto(hilo="Faro Norte", cartero=True)
         self.assertRegex(texto, r"Tu correo: \S+\+faro-norte@\S+\.")

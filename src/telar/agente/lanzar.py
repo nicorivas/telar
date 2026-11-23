@@ -11,9 +11,11 @@ Tres decisiones, cada una contra una falla concreta:
   · **El tab sobrevive al agente.** En tmux, un panel cuyo comando termina se cierra, y
     con él el tab si era el único: salir del agente con /exit borraría el hilo entero.
     Por eso el agente corre dentro de un `sh -c` que, al terminar, deja una shell.
-  · **Ningún rastro de otro multiplexor.** Si tmux se levantó desde dentro de Zellij,
-    sus paneles heredan `ZELLIJ_*`, y los ganchos de Zellij anotarían al agente en un
-    panel ajeno. Se borran antes de arrancarlo.
+  · **Ningún rastro de otro multiplexor ni de otra sesión.** Si tmux se levantó desde dentro
+    de Zellij, sus paneles heredan `ZELLIJ_*`, y los ganchos de Zellij anotarían al agente en
+    un panel ajeno; si se levantó desde la Bash de un Claude Code, heredan las marcas de esa
+    sesión, y el agente nuevo se cree su hijo y apaga su transcript. Se borran antes de
+    arrancarlo (`telar.entorno`).
   · **`TELAR_HILO` va exportada.** Los ganchos del agente la leen para saber a qué hilo
     pertenece la conversación, sin tener que adivinarlo por el foco, que miente.
 
@@ -31,9 +33,7 @@ from pathlib import Path
 
 from telar import agente as mod_agente
 from telar.agente import ErrorDeAgente
-
-#: variables de otro multiplexor que un panel no debe heredar; ver `telar.mux.tmux.AJENAS`.
-AJENAS = ("ZELLIJ", "ZELLIJ_PANE_ID", "ZELLIJ_SESSION_NAME", "ZELLIJ_TAB_NAME")
+from telar.entorno import linea_unset
 
 #: los procesos que, si son lo único que corre en un panel, significan «aquí no hay nadie».
 SHELLS = frozenset({"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash"})
@@ -112,9 +112,39 @@ def para_hilo(config, hilo: str, carpeta_hilo: Path | None, mensaje: str = "") -
     # con los encargos, como antes: docs/propuestas/agente-como-definicion.md)
     if residente is not None and residente.modelo:
         palabras = [*palabras, *mod_agentes.argumentos_de(residente, agente, con_config=False)]
+    # el esfuerzo de su agente, si se le dio uno al abrirlo (`telar hilo hijo --esfuerzo`): también al retomarlo
+    esfuerzo = _esfuerzo(config, hilo)
+    if esfuerzo:
+        palabras = [*palabras, *getattr(agente, "con_esfuerzo", lambda _: [])(esfuerzo)]
+    # un hijo con rama propia (telar.ramas) trabaja en su worktree, fuera de donde arranca: se le suma como carpeta
+    # de trabajo, al final (con Claude Code, `--add-dir` se come lo que le sigue)
+    worktree = _worktree(config, hilo)
+    if worktree:
+        palabras = [*palabras, *getattr(agente, "con_carpetas", lambda _: [])([worktree])]
     return Lanzamiento(comando=envolver(palabras, hilo), carpeta=carpeta(config, carpeta_hilo),
                        retoma=retoma, nueva=nueva, vacia=vacia, agente=residente.clave if residente else "",
                        rotada=rotada)
+
+
+def _esfuerzo(config, hilo: str) -> str:
+    """El esfuerzo anotado para el agente de `hilo` (`Estado.esfuerzos`); "" si ninguno (el de siempre)."""
+    try:
+        from telar import estado as mod_estado
+
+        return mod_estado.abrir(config).esfuerzos().get(hilo, "")
+    except Exception:  # noqa: BLE001 - sin poder leer el estado, el lanzamiento de siempre
+        return ""
+
+
+def _worktree(config, hilo: str) -> str:
+    """El worktree de `hilo`, si es un hijo con rama propia y su carpeta existe; "" si no."""
+    try:
+        from telar import estado as mod_estado
+
+        ruta = (mod_estado.abrir(config).ramas().get(hilo) or {}).get("ruta", "")
+    except Exception:  # noqa: BLE001 - sin poder leer el estado, el lanzamiento de siempre
+        return ""
+    return ruta if ruta and Path(ruta).is_dir() else ""
 
 
 def anotar_origen(config, hilo: str, lanz: Lanzamiento | None, por: str = "") -> None:
@@ -189,11 +219,12 @@ def _programa(nombre: str) -> str:
 
 
 def envolver(palabras: list[str], hilo: str) -> list[str]:
-    """El agente dentro de un `sh -c` que exporta el hilo y deja una shell al salir."""
+    """El agente dentro de un `sh -c` que borra lo que no hereda (`telar.entorno`), exporta el hilo y deja una shell
+    al salir."""
     if palabras:
         palabras = [_programa(palabras[0]), *palabras[1:]]
     linea = (
-        f"unset {' '.join(AJENAS)}; "
+        f"{linea_unset()}; "
         f"export TELAR_HILO={shlex.quote(hilo)}; "
         f"{shlex.join(palabras)}; "
         'exec "${SHELL:-/bin/sh}" -l'

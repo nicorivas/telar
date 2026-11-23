@@ -6,16 +6,21 @@ como el laptop y el servidor sobre un mismo repositorio.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
+import io
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import git
+from telar.ordenes import commit as orden_commit
 
 
 def sh(carpeta: Path, *args: str) -> str:
@@ -108,10 +113,127 @@ class Commit(Prueba):
         (self.b / "uno.md").write_text("de b\n")
         self.commit(self.b, ["uno.md"])
         (self.a / "uno.md").write_text("de a\n")
+        (self.a / "otro.md").write_text("a medias, de otro hilo\n")
         res = self.commit(self.a, ["uno.md"])
         self.assertEqual(res.estado, "choque")
         self.assertFalse((self.a / ".git" / "rebase-merge").exists())
         self.assertEqual((self.a / "uno.md").read_text(), "de a\n")
+        self.assertEqual((self.a / "otro.md").read_text(), "a medias, de otro hilo\n")  # lo apartado volvió
+        self.assertEqual(sh(self.a, "stash", "list"), "")
+
+    # ── lo sin commitear de otros, que se aparta mientras se rebasa ──
+    #
+    # El hook post-rewrite lo corre git al terminar el rebase, justo antes de que lo apartado vuelva al árbol: ahí
+    # se hace lo que otro hilo podría hacer en ese instante.
+
+    def _otro_subio_y_aqui_hay_cosas_a_medias(self, gancho: str):
+        (self.b / "de-b.md").write_text("b\n")
+        self.commit(self.b, ["de-b.md"])
+        (self.a / "otro.md").write_text("a medias, de otro hilo\n")
+        (self.a / "uno.md").write_text("uno, a medias\n")
+        (self.a / "de-a.md").write_text("a\n")
+        h = self.a / ".git" / "hooks" / "post-rewrite"
+        h.write_text("#!/bin/sh\n" + gancho + "\n")
+        h.chmod(0o755)
+
+    def _candado_libre(self, carpeta: Path) -> bool:
+        with open(carpeta / ".git" / "telar-subir.lock", "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            fcntl.flock(f, fcntl.LOCK_UN)
+            return True
+
+    def test_si_otro_tiene_tomado_el_indice_al_devolver_se_reintenta(self):
+        # Lo que pasó: un `git status` de otro hilo tenía el index.lock cuando el `rebase --autostash` quiso
+        # devolver lo guardado; git lo dejó en la lista de stash, salió con 0, y `telar commit` dijo «subido» con
+        # los cambios de otros fuera del árbol
+        self._otro_subio_y_aqui_hay_cosas_a_medias("touch .git/index.lock")
+        esperas = []
+
+        def esperar(s):  # el otro suelta el índice mientras se espera
+            esperas.append(s)
+            (self.a / ".git" / "index.lock").unlink(missing_ok=True)
+
+        with mock.patch.object(git, "_esperar", side_effect=esperar):
+            res = self.commit(self.a, ["de-a.md"])
+        self.assertEqual((self.a / "otro.md").read_text(), "a medias, de otro hilo\n")
+        self.assertEqual((self.a / "uno.md").read_text(), "uno, a medias\n")
+        self.assertEqual(sh(self.a, "stash", "list"), "")
+        self.assertEqual((res.estado, len(esperas)), ("subido", 1))
+        self.assertEqual(sh(self.a, "status", "--porcelain").split("\n")[:2], [" M otro.md", " M uno.md"])
+
+    def test_si_no_puede_devolverlo_no_sube_y_dice_como(self):
+        self._otro_subio_y_aqui_hay_cosas_a_medias("touch .git/index.lock")  # y no lo suelta
+        with mock.patch.object(git, "ESPERAS_DEVOLVER", (0, 0)):
+            res = self.commit(self.a, ["de-a.md"])
+        self.assertEqual((res.estado, res.subido), ("apartado", False))
+        self.assertEqual(res.apartados, ["otro.md", "uno.md"])
+        self.assertEqual(sh(self.a, "stash", "list", "--format=%H").split(), [res.stash])
+        self.assertNotEqual(sh(self.a, "rev-parse", "HEAD"), sh(self.a, "rev-parse", "origin/main"))  # no subió
+        self.assertEqual(res.commit, sh(self.a, "rev-parse", "--short", "HEAD").strip())  # el rebasado
+        self.assertIn("stash@{0}", res.detalle)
+        self.assertTrue(self._candado_libre(self.a))
+        # lo que dice que haga, devuelve todo
+        (self.a / ".git" / "index.lock").unlink()
+        self.assertIn(f"git stash apply {res.stash[:10]}", res.detalle)
+        sh(self.a, "stash", "apply", "-q", res.stash[:10])
+        self.assertEqual((self.a / "otro.md").read_text(), "a medias, de otro hilo\n")
+        self.assertEqual((self.a / "uno.md").read_text(), "uno, a medias\n")
+
+    def test_si_alguien_escribio_lo_apartado_mientras_no_reintenta_y_nada_se_pierde(self):
+        self._otro_subio_y_aqui_hay_cosas_a_medias('echo "de otro hilo, mientras" > otro.md')
+        with mock.patch.object(git, "_esperar") as esperar:
+            res = self.commit(self.a, ["de-a.md"])
+        esperar.assert_not_called()  # esperar no lo arregla
+        self.assertEqual((res.estado, res.subido), ("apartado", False))
+        self.assertEqual((self.a / "otro.md").read_text(), "de otro hilo, mientras\n")  # lo nuevo no se pisa
+        self.assertEqual(sh(self.a, "show", f"{res.stash}:otro.md"), "a medias, de otro hilo\n")  # lo de antes, ahí
+        self.assertIn("alguien escribió otro.md", res.detalle)
+        # el resto vuelve como dice
+        h = res.stash[:10]
+        self.assertIn(f"git restore --source={h} -- uno.md", res.detalle)
+        sh(self.a, "restore", f"--source={h}", "--", "uno.md")
+        self.assertEqual((self.a / "uno.md").read_text(), "uno, a medias\n")
+        self.assertTrue(self._candado_libre(self.a))
+
+    def test_si_el_rebase_queda_a_medias_lo_apartado_no_vuelve_hasta_abortarlo(self):
+        # devolverlo con el rebase a medias sería perderlo: el `rebase --abort` de después hace un reset --hard
+        (self.b / "uno.md").write_text("de b\n")
+        self.commit(self.b, ["uno.md"])
+        (self.a / "uno.md").write_text("de a\n")
+        (self.a / "otro.md").write_text("a medias, de otro hilo\n")
+        real = git._git
+
+        def falso(repo, *args, **k):  # otro tiene el índice todo el rato: el abort no pasa
+            if args[:2] == ("rebase", "--abort"):
+                return subprocess.CompletedProcess(args, 128, "", "fatal: Unable to create '.git/index.lock'")
+            return real(repo, *args, **k)
+
+        with mock.patch.object(git, "_git", side_effect=falso), mock.patch.object(git, "ESPERAS_DEVOLVER", (0, 0)):
+            res = self.commit(self.a, ["uno.md"])
+        self.assertEqual((res.estado, res.apartados), ("apartado", ["otro.md"]))
+        self.assertTrue(git._en_rebase(self.a))
+        self.assertIn("primero, `git rebase --abort`", res.detalle)
+        self.assertNotIn("otro.md", sh(self.a, "status", "--porcelain"))  # sigue afuera, no se devolvió a medias
+        sh(self.a, "rebase", "--abort")
+        sh(self.a, "stash", "apply", "-q", res.stash[:10])
+        self.assertEqual((self.a / "otro.md").read_text(), "a medias, de otro hilo\n")
+        self.assertEqual((self.a / "uno.md").read_text(), "de a\n")
+
+    def test_la_orden_sale_con_3_y_no_dice_subido(self):
+        self._otro_subio_y_aqui_hay_cosas_a_medias('echo "de otro hilo, mientras" > otro.md')
+        ctx = SimpleNamespace(config=SimpleNamespace(estado=str(self.base / "estado")))
+        salida, errores = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(salida), contextlib.redirect_stderr(errores):
+            codigo = orden_commit.main(["-m", "m", "--", str(self.a / "de-a.md")], ctx)
+        self.assertEqual(codigo, 3)
+        self.assertEqual(salida.getvalue(), "")
+        self.assertIn("queda local, sin subir", errores.getvalue())
+        self.assertIn("stash@{0}", errores.getvalue())
+        self.assertNotIn("subido", errores.getvalue())
+        self.assertIn('"estado": "apartado"', (self.base / "estado" / "commits.log").read_text())
 
     def test_una_carrera_de_push_se_reintenta(self):
         (self.a / "de-a.md").write_text("a\n")

@@ -1,9 +1,12 @@
 // Las rutas de archivo que escribe el agente de un hilo (en su terminal, su respuesta, su conversación), como
 // enlaces al visor de documentos (`arch:`, web/carpeta.ts), en la máquina del hilo. Una ruta absoluta o con `~`
 // se abre tal cual; una relativa es de donde arrancó su agente, que según `[agente] carpeta` es la carpeta del hilo
-// o la raíz (un agente residente, la suya). Como la página no lo sabe, prueba las dos. La de un hilo de otra
-// máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
-// su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz. Una dirección web (`https://…`) se abre
+// o la raíz (un agente residente, la suya). Como la página no lo sabe, prueba las dos. La carpeta del hilo puede
+// estar fuera de la raíz (el worktree de un hijo con rama, `~/worktrees/<repo>-<rama>`, o un repo aparte): el
+// backend la deja leer porque es de un hilo que conoce, y el visor la recorre sin salir de ella. La de un hilo de
+// otra máquina va como «máquina:ruta», y el backend se la pide a esa máquina por el bus (`/api/archivos?ruta=…`): con
+// su raíz, que no es la de aquí, así que la carpeta va relativa a esa raíz (la de un worktree, con `../` delante:
+// allá se resuelve, y allá se decide si es la carpeta de un hilo). Una dirección web (`https://…`) se abre
 // en una pestaña nueva de este navegador, que es el de la persona, viva donde viva el hilo. La dirección de un objeto
 // de telar (`tarea:T366`, `hilo:Telar`, la de un tipo de un módulo) la abre la página donde se ve ese objeto. Un código
 // del hilo (`PEN-07`, `H3`: solo los que conoce la hoja de códigos, web/codigos.ts) se abre en esa hoja, en la barra
@@ -15,7 +18,8 @@ import * as cli from '../cli';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
 import * as codigos from './codigos';
-import { buscar, hallar, RUTA, usarTipos } from './enlaces';
+import { ofrecer } from './candidatos';
+import { buscar, carpetasAntes, carpetasDe, hallar, RUTA, usarTipos } from './enlaces';
 import * as lado from './lado';
 import * as ui from './ui';
 import type { RutasVista } from './vistas-hilo';
@@ -23,15 +27,26 @@ import type { RutasVista } from './vistas-hilo';
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** Los tipos de dirección que sabe esta máquina (los de sus módulos también): se piden una vez, y mientras no
- *  llegan valen los de telar. */
+ *  llegan valen los de telar. Lo que se enlazó antes de que llegaran (`porEnlazar`: la primera vista de un objeto se
+ *  dibuja antes) se vuelve a enlazar cuando llegan, y así la dirección de un tipo de un módulo (`decision:…`) es enlace
+ *  también ahí. Volver a enlazar no repite nada: lo que ya es enlace se salta. */
 let tiposPedidos = false;
+let tiposListos = false;
+const porEnlazar = new Map<HTMLElement, { rutas: boolean; hilo: string }>();
 function pedirTipos(): void {
     if (tiposPedidos) return;
     tiposPedidos = true;
     void fetch('/api/objetos/tipos', { cache: 'no-store' })
         .then(r => (r.ok ? r.json() as Promise<{ tipos?: { tipo: string }[] }> : undefined))
-        .then(j => { if (j?.tipos) usarTipos(j.tipos.map(t => t.tipo)); })
-        .catch(() => undefined);
+        .then(j => j?.tipos?.map(t => t.tipo) ?? [], () => [])
+        .then(tipos => {
+            tiposListos = true;
+            const antes = [...porEnlazar];
+            porEnlazar.clear();
+            if (!tipos.length) return;
+            usarTipos(tipos);
+            for (const [raiz, { rutas, hilo }] of antes) if (raiz.isConnected) enlazar(raiz, rutas, hilo);
+        });
 }
 
 /** Un hipervínculo que llegó a la terminal por OSC 8 (el texto va aparte de la dirección): una web, en una pestaña
@@ -44,7 +59,7 @@ export function abrirHipervinculo(uri: string, vista: RutasVista): void {
 }
 
 /** La máquina donde corre el agente de un hilo: '' si es esta. Un hilo de otra máquina (rem:), o uno de la lista
- *  cuyo agente vive en otra (Gestión, en el servidor). Se pregunta al usarla, no al dibujar: la lista de hilos
+ *  cuyo agente vive en otra (Secretaría, en el servidor). Se pregunta al usarla, no al dibujar: la lista de hilos
  *  puede no haber llegado. */
 export function maquinaDe({ hilo, maquina }: RutasVista): string {
     if (maquina) return maquina;
@@ -53,7 +68,8 @@ export function maquinaDe({ hilo, maquina }: RutasVista): string {
 }
 
 /** Dónde vive lo que escribe un hilo: su máquina ('' esta) y su carpeta (aquí, absoluta; en otra máquina,
- *  relativa a su raíz). Se averigua al abrir, no al dibujar: la lista de hilos puede no haber llegado. */
+ *  relativa a su raíz, con `../` si está fuera de ella). Se averigua al abrir, no al dibujar: la lista de hilos puede
+ *  no haber llegado. */
 async function lugarDe(vista: RutasVista): Promise<{ maquina: string; carpeta: string }> {
     const { hilo } = vista;
     const alla = maquinaDe(vista);
@@ -64,19 +80,42 @@ async function lugarDe(vista: RutasVista): Promise<{ maquina: string; carpeta: s
     return { maquina: alla, carpeta: x?.relativa ?? '' };
 }
 
-/** Abre en el visor una ruta que escribió el agente de un hilo. Una relativa, desde la carpeta del hilo si ahí
- *  existe y si no desde la raíz: en ese orden porque un nombre corto (`README.md`) existe también en la raíz, y una
- *  ruta larga desde la raíz casi nunca existe además bajo la carpeta del hilo. Si no está en ninguna, la del hilo,
- *  para que el visor diga que no está. */
-export async function abrirRuta(ruta: string, vista: RutasVista): Promise<void> {
+/** Abre en el visor una ruta que escribió el agente de un hilo. Una absoluta o con `~`, tal cual. Una relativa la
+ *  busca el backend en la máquina del hilo (`/api/archivos/resolver`, telar.servicios.resolver), con la carpeta del
+ *  hilo y las que el mensaje nombró antes (`nombradas`, la más cercana primero): un nombre suelto (`original.md`)
+ *  debajo de «En `personal/referencia/artículos/x/`:» es de esa carpeta, no de la raíz; si no está ahí ni en la carpeta
+ *  del hilo ni en la raíz, se busca por nombre. Uno se abre; si hay varios, el visor los ofrece para elegir
+ *  (web/candidatos.ts, que lee web/carpeta.ts). Si no hay ninguno, o el backend de esa máquina es de antes y no sabe buscar, como
+ *  antes: desde la carpeta del hilo si ahí existe, si no desde la raíz, y si no, la del hilo, para que el visor diga
+ *  que no está. */
+export async function abrirRuta(ruta: string, vista: RutasVista, nombradas: string[] = []): Promise<void> {
     const limpia = ruta.replace(/(?::\d+){1,2}$/, '');
     const { maquina, carpeta } = await lugarDe(vista);
     const en = (r: string): string => (maquina ? `${maquina}:${r}` : r);
+    const r = await resolver(limpia, carpeta, nombradas, maquina);
+    if (r?.ruta) { await ui.abrirArchivo(en(r.ruta)); return; }
+    if (r && r.candidatos.length > 1) {
+        ofrecer(en(limpia), r.candidatos.map(en), r.mas);
+        await ui.abrirArchivo(en(limpia));
+        return;
+    }
     if (limpia.startsWith('/') || limpia.startsWith('~')) { await ui.abrirArchivo(en(limpia)); return; }
     const candidatas = [...new Set([rutas.unir(carpeta, limpia), limpia])].map(en);
     let elegida = candidatas[0];
-    for (const c of candidatas) if (await existe(c)) { elegida = c; break; }
+    if (!r) for (const c of candidatas) if (await existe(c)) { elegida = c; break; }
     await ui.abrirArchivo(elegida);
+}
+
+/** Dónde está una ruta que escribió un agente, según el backend de la máquina de su hilo; undefined si no respondió. */
+async function resolver(ruta: string, carpeta: string, nombradas: string[], maquina: string)
+    : Promise<{ ruta: string; candidatos: string[]; mas: boolean } | undefined> {
+    const q = new URLSearchParams({ ruta, carpeta });
+    for (const c of nombradas) q.append('nombradas', c);
+    if (maquina) q.set('maquina', maquina);
+    try {
+        const r = await fetch(`/api/archivos/resolver?${q}`, { cache: 'no-store' });
+        return r.ok ? await r.json() as { ruta: string; candidatos: string[]; mas: boolean } : undefined;
+    } catch { return undefined; }
 }
 
 /** Si el backend encuentra el archivo (aquí, o en la máquina de «máquina:ruta»). */
@@ -93,6 +132,10 @@ async function existe(ruta: string): Promise<boolean> {
  *  también pasa a ser de la ruta. */
 export function enlazar(raiz: HTMLElement, rutas = true, hilo = ''): void {
     pedirTipos();
+    if (!tiposListos) {
+        const antes = porEnlazar.get(raiz);
+        porEnlazar.set(raiz, { rutas: rutas || !!antes?.rutas, hilo: hilo || antes?.hilo || '' });
+    }
     if (rutas) for (const a of raiz.querySelectorAll<HTMLAnchorElement>('a[href^="http://"]')) {
         const t = a.textContent ?? '';
         if (a.getAttribute('href') === `http://${t}` && new RegExp(`^${RUTA.source}$`, 'u').test(t)) {
@@ -108,7 +151,11 @@ export function enlazar(raiz: HTMLElement, rutas = true, hilo = ''): void {
     for (const nodo of nodos) {
         const texto = nodo.data;
         // las webs de un texto ya las hizo enlaces el markdown
-        const hallados = buscar(texto, conocidos).filter(h => h.tipo === 'direccion' || h.tipo === 'codigo' || (rutas && h.tipo === 'ruta'));
+        // las webs de un texto ya las hizo enlaces el markdown, salvo las que el agente escribió entre comillas de código
+        // (`https://…`): ahí no hay enlace, y se ven como texto que no se puede tocar
+        const enCodigo = !!nodo.parentElement?.closest('code, pre');
+        const hallados = buscar(texto, conocidos).filter(h => h.tipo === 'direccion' || h.tipo === 'codigo' || (rutas && h.tipo === 'ruta')
+            || (enCodigo && h.tipo === 'web'));
         if (!hallados.length) continue;
         const trozos = document.createDocumentFragment();
         let desde = 0;
@@ -119,7 +166,8 @@ export function enlazar(raiz: HTMLElement, rutas = true, hilo = ''): void {
             if (h.tipo === 'codigo') {
                 const que = codigos.queEs(h.texto);
                 a.classList.add('codigo'); a.dataset.codigo = h.texto; a.title = que ? `${h.texto}: ${que}` : `qué es ${h.texto}`;
-            } else if (h.tipo === 'direccion') a.dataset.direccion = h.texto;
+            } else if (h.tipo === 'web') { a.href = h.texto; a.title = `abrir ${h.texto}`; }
+            else if (h.tipo === 'direccion') a.dataset.direccion = h.texto;
             else a.dataset.ruta = h.texto;
             trozos.append(a);
             desde = h.j;
@@ -150,8 +198,25 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
         const ruta = a.dataset.ruta ?? (href && !href.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(href) ? decodeURIComponent(href.split('#')[0]) : '');
         if (!ruta) return;
         e.preventDefault();
-        void abrirRuta(ruta, vista);
+        void abrirRuta(ruta, vista, nombradasAntes(a, raiz));
     });
+}
+
+/** Las carpetas que nombra el mensaje donde está el enlace `a` (un turno de la conversación, la respuesta de la
+ *  lectura; si no, todo `raiz`): las de antes de él, la más cercana primero, y después las de su misma línea
+ *  («`original.md` en `x/`») (enlaces.ts, `carpetasDe`). Cada nodo de texto por separado: pegados, el fin de un
+ *  párrafo («…/x/») y el comienzo del siguiente harían una carpeta que no hay. */
+function nombradasAntes(a: HTMLElement, raiz: HTMLElement): string[] {
+    const caja = a.closest<HTMLElement>('.msj, .respuesta') ?? raiz;
+    const linea = a.closest('li, p, td') ?? a.parentElement;
+    const antes: string[] = [], despues: string[] = [];
+    const caminante = document.createTreeWalker(caja, NodeFilter.SHOW_TEXT);
+    for (let n = caminante.nextNode(); n; n = caminante.nextNode()) {
+        if (a.contains(n)) continue;
+        if (a.compareDocumentPosition(n) & Node.DOCUMENT_POSITION_PRECEDING) antes.push((n as Text).data);
+        else if (linea?.contains(n)) despues.push((n as Text).data);
+    }
+    return [...new Set([...carpetasDe(antes.join('\n')), ...carpetasDe(despues.join('\n')).reverse()])];
 }
 
 /** Las rutas, las direcciones web y las de objetos de la terminal de un hilo, y sus códigos, como enlaces de xterm
@@ -159,9 +224,10 @@ export function atenderClics(raiz: HTMLElement, vista: RutasVista): void {
  *  entera (enlaces.ts). */
 export function enlazarTerminal(term: Terminal, vista: RutasVista): IDisposable {
     pedirTipos();
-    const abrir = (h: { tipo: string; texto: string }) => (h.tipo === 'web' ? ui.abrirExterno(h.texto)
+    const abrir = (h: { tipo: string; texto: string; desde: { y: number } }) => (h.tipo === 'web' ? ui.abrirExterno(h.texto)
         : h.tipo === 'codigo' ? lado.abrirCodigo(h.texto)
-            : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto) : abrirRuta(h.texto, vista));
+            : h.tipo === 'direccion' ? ui.abrirDireccion(h.texto)
+                : abrirRuta(h.texto, vista, carpetasAntes(term.buffer.active, term.cols, h.desde.y)));
     // al pasar sobre un código, qué es y cómo abrirlo (en el título de la terminal, que el navegador muestra)
     const decir = (texto: string) => { if (term.element) term.element.title = texto; };
     return term.registerLinkProvider({

@@ -40,6 +40,8 @@ class Fila(BaseModel):
     cuando: str | None = None
     clase: str = ""
     area: str = ""
+    #: a qué parte de la vida pertenece (telar.mundos, `[mundos]`); "" si no calza en ninguna o no se declaran
+    mundo: str = ""
 
 
 class HiloEnAtencion(BaseModel):
@@ -113,7 +115,11 @@ def hoy(ctx, dia: dt.date | None = None, local: bool = False) -> Hoy:
 
         agenda = sorted((e for e in externos if es_evento(e)), key=lambda e: e["cuando"] or "")
         filas += [e for e in externos if not es_evento(e)]
+    orden_pendientes.con_mundo(ctx.config, filas)
     orden_pendientes.con_area(filas)
+    # los eventos también dicen su mundo: el de su área (la del evento, o la que declara su proveedor)
+    if agenda:
+        orden_pendientes.con_mundo(ctx.config, agenda)
 
     tiempos = {h.nombre: round(h.tiempo, 1) for h in tel.hilos if h.tiempo}
     return Hoy(

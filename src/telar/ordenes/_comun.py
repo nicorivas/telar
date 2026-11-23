@@ -26,7 +26,6 @@ from pathlib import Path
 
 from telar import estado as mod_estado
 from telar import lectura
-from telar import objetos
 from telar import salida as mod_salida
 from telar.modelo import Atencion, Ficha, Hilo, Item, Pendiente, Prioridad
 from telar.mux import ErrorDeMux, Multiplexor
@@ -216,6 +215,11 @@ class Telar:
     de_agente: dict[str, tuple[str, str]] = field(default_factory=dict)
     #: hilo → {por, agente, icono, cuando}: quién lo abrió, si no fue la persona
     abierto_por: dict[str, dict] = field(default_factory=dict)
+    #: los hilos soltados a mano (`telar hilo padre ninguno`): no cuelgan ni del que los abrió
+    sueltos: frozenset[str] = frozenset()
+    #: hilo → lo anotado al dormirlo (telar.dormir): los de aquí, y los de otra máquina cuya ventana está aquí y que
+    #: duermen allá (lo publica su dueño)
+    dormidos: dict[str, dict] = field(default_factory=dict)
 
     def por_nombre(self, nombre: str) -> Hilo | None:
         return next((h for h in self.hilos if h.nombre == nombre), None)
@@ -238,6 +242,32 @@ def _mux(ctx) -> tuple[Multiplexor | None, str]:
         return None, str(e)
     return mux, ""
 
+
+
+def vistos_de_otras(config, vistos: dict) -> dict:
+    """Lo que se vio en otra máquina de un hilo que vive en esta: su foto lo trae, con esta como su «remoto», y su
+    «visto» (la persona lo abrió allá, en la página o en su terminal). Se junta con lo de aquí: gana lo más nuevo. Así
+    un hilo que se miró desde el laptop deja de estar «sin ver» también en la página del servidor y en el teléfono.
+    Sin bus o sin fotos, lo de aquí tal cual."""
+    try:
+        from telar import bus as mod_bus
+        from telar import espejo as mod_espejo
+
+        aqui = mod_bus.maquina(config)
+        fotos = mod_espejo.leer_todos(config)
+    except Exception:  # noqa: BLE001 - sin poder leer las fotos, lo visto de aquí
+        return vistos
+    salida = dict(vistos)
+    for f in fotos:
+        for h in f.get("hilos") or []:
+            if not isinstance(h, dict) or h.get("remoto") != aqui or not isinstance(h.get("nombre"), str):
+                continue
+            try:
+                visto = datetime.fromisoformat(str(h.get("visto") or ""))
+            except ValueError:
+                continue
+            salida[h["nombre"]] = mod_estado.mas_nuevo(salida.get(h["nombre"]), visto)
+    return salida
 
 def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
     """Arma el telar: multiplexor + estado + documentos.
@@ -273,6 +303,7 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
     # una sola lectura y bajo candado: si no, se dibuja media lista de antes y media de
     # después mientras otra sesión escribe. Para eso existe `Estado.foto`.
     foto = est.foto(tope=config.intervalos.foco_maximo)
+    foto["vistos"] = vistos_de_otras(config, foto["vistos"])
     vinculos = foto["vinculos"]
     archivados = foto["archivados"]
 
@@ -300,6 +331,18 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
                        for h, r in (est.abiertos_por() if est is not None else {}).items()}
     except Exception:  # noqa: BLE001 - sin poder leerlo, nadie abrió nada
         abierto_por = {}
+    try:
+        sueltos = frozenset(est.sueltos()) if est is not None else frozenset()
+    except Exception:  # noqa: BLE001 - sin poder leerlo, ninguno se soltó
+        sueltos = frozenset()
+    try:
+        dormidos = dict(est.dormidos())
+        # los de otra máquina cuya ventana está aquí: si duermen allá lo publica su dueño
+        for nombre, ajeno in est.ajenos().items():
+            if ajeno.get("dormido") is True and nombre in foto["remotos"]:
+                dormidos.setdefault(nombre, {"desde": "", "maquina": ajeno.get("maquina", "")})
+    except Exception:  # noqa: BLE001 - sin poder leerlo, nadie duerme
+        dormidos = {}
     hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
@@ -321,6 +364,8 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         unidades=unidades,
         de_agente=de_agente,
         abierto_por=abierto_por,
+        sueltos=sueltos,
+        dormidos=dormidos,
     )
 
 
@@ -408,7 +453,7 @@ def ficha_suelta(ruta: Path) -> Ficha | None:
         texto = documento.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    titulo = next((l[2:].strip() for l in texto.splitlines() if l.startswith("# ")), "")
+    titulo = lectura.sin_escapes(next((l[2:].strip() for l in texto.splitlines() if l.startswith("# ")), ""))
     return Ficha(documento=documento, titulo=titulo,
                  nota="fuera del perfil: solo su README, sin estado ni pendientes")
 
@@ -497,6 +542,56 @@ def hilo_o_nombre(tel: Telar, referencia: str) -> tuple[Hilo | None, str]:
     return Hilo(id=referencia, nombre=referencia), f"«{referencia}» no estaba en la lista"
 
 
+@dataclass(frozen=True, slots=True)
+class Conocido:
+    """Un nombre de hilo que esta máquina conoce (`nombres_conocidos`): dónde está, para decirlo («vivo, en esta
+    máquina», «archivado, en servidor», «el agente secretaria»), y si está archivado."""
+
+    donde: str
+    archivado: bool = False
+
+
+def nombres_conocidos(ctx, tel: Telar | None = None, *, preguntar_al_bus: bool = True) -> dict[str, Conocido]:
+    """Los nombres de hilo que esta máquina conoce, con dónde está cada uno: los de aquí (vivos, archivados, los que
+    el estado recuerda), los agentes, y los de las otras máquinas según el bus: lo que el nodo deja en `ajenos.json`,
+    aunque esté viejo (un nombre no caduca). Si el nodo no lo está refrescando y `preguntar_al_bus`, se le pregunta al
+    bus (`telar.bus.estados`), sin que una falla estorbe. Para decir con quién choca un nombre (telar.casilla.choque)
+    y a qué hilo exacto va un mensaje."""
+    from telar import agentes as mod_agentes
+    from telar import bus as mod_bus
+
+    tel = tel if tel is not None else tejer(ctx, con_ficha=False)
+    salida: dict[str, Conocido] = {}
+    for h in tel.hilos:
+        if h.remoto:
+            salida.setdefault(h.nombre, Conocido(f"en {h.remoto}" if h.remoto != "?" else "en otra máquina",
+                                                 bool(h.archivado)))
+        elif h.archivado:
+            salida.setdefault(h.nombre, Conocido("archivado, en esta máquina", True))
+        else:
+            salida.setdefault(h.nombre, Conocido("vivo, en esta máquina" if tel.vivo(h) else "en esta máquina"))
+    try:
+        for a in mod_agentes.descubrir(ctx.config):
+            salida.setdefault(a.nombre, Conocido(f"el agente {a.clave}"))
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, los demás nombres igual sirven
+        pass
+    est = tel.estado if tel.estado is not None else mod_estado.abrir(ctx.config)
+    ajenos = est.ajenos()
+    if not ajenos:
+        ajenos = est.ajenos(viejos=True)
+        if preguntar_al_bus and mod_bus.hay_bus(ctx.config):
+            try:
+                ajenos = {**ajenos, **mod_bus.estados(ctx.config)}
+            except Exception:  # noqa: BLE001 - sin bus, lo último que se supo
+                pass
+    for nombre, d in ajenos.items():
+        if isinstance(nombre, str) and nombre and isinstance(d, dict):
+            donde = f"en {d.get('maquina') or 'otra máquina'}"
+            archivado = d.get("archivado") is True
+            salida.setdefault(nombre, Conocido(f"archivado, {donde}" if archivado else donde, archivado))
+    return salida
+
+
 def resolver(tel: Telar, referencia: str) -> tuple[Hilo | None, str]:
     """El hilo que nombra `referencia`: su id, su nombre exacto, o un prefijo único."""
     if not referencia:
@@ -579,12 +674,14 @@ def json_pendiente(p: Pendiente, *, ref: str = "", hilo: str = "") -> dict:
 
 
 def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
+    from telar.direcciones import direccion_de
+
     desde = tel.estado.atenciones().get(hilo.nombre, (None, None))[1] if tel.estado else None
     cuerpo = {
         "id": hilo.id,
         "nombre": hilo.nombre,
         # su dirección de objeto (telar.objetos), con `@máquina` si vive en otra: `telar objeto` la abre
-        "direccion": objetos.direccion_de("hilo", hilo.nombre, hilo.remoto if hilo.remoto and hilo.remoto != "?" else ""),
+        "direccion": direccion_de("hilo", hilo.nombre, hilo.remoto if hilo.remoto and hilo.remoto != "?" else ""),
         "vivo": tel.vivo(hilo),
         "activo": hilo.activo,
         "archivado": hilo.archivado,
@@ -592,8 +689,9 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "publico": hilo.publico,
         # sus etiquetas («trabajo», «personal»): los modos de la página filtran la lista por ellas
         "etiquetas": list(hilo.etiquetas),
-        # del que cuelga: el que se le puso (`telar hilo padre`) o, si no, el que lo abrió; "" si de ninguno
-        "padre": hilo.padre or ((tel.abierto_por.get(hilo.nombre) or {}).get("por") or ""),
+        # del que cuelga: el que se le puso (`telar hilo padre`) o, si no, el que lo abrió, salvo que se haya soltado
+        # (`telar hilo padre ninguno`); "" si de ninguno. La página no vuelve a mirar `abierto_por` para esto
+        "padre": hilo.padre or ("" if hilo.nombre in tel.sueltos else (tel.abierto_por.get(hilo.nombre) or {}).get("por") or ""),
         # el agente residente del que es (su carpeta) y su ícono; "" si no es de ninguno
         "agente": tel.de_agente.get(hilo.nombre, ("", ""))[0],
         "icono": tel.de_agente.get(hilo.nombre, ("", ""))[1],
@@ -617,10 +715,41 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "tiempo": round(hilo.tiempo, 1),
         "sesiones": list(hilo.sesiones),
         "remoto": hilo.remoto,
+        # su rama propia, si es un hijo que trabaja en su worktree (telar.ramas): {rama, base, ruta}; null si no
+        "rama": _rama(tel, hilo.nombre),
+        # si espera a la persona, qué pide y de qué clase («permiso», «pregunta», «confiar»: telar.confiar), si se
+        # sabe; null si no espera o no se sabe
+        "espera": _espera(tel, hilo),
+        # si duerme (telar.dormir): su agente se cerró por inactivo y su ventana espera, en su lugar; abrirlo o
+        # escribirle lo despierta. {desde, conversacion}; null si no duerme
+        "dormido": _dormido(tel, hilo),
     }
     if con_ficha:
         cuerpo["ficha"] = json_ficha(hilo.ficha, tel.raiz)
     return cuerpo
+
+
+def _espera(tel: Telar, hilo: Hilo) -> dict | None:
+    if hilo.atencion.value != "espera" or not tel.estado:
+        return None
+    try:
+        e = tel.estado.espera(hilo.nombre) or {}
+    except Exception:  # noqa: BLE001 - sin poder leerla, se sabe que espera, no qué
+        return None
+    return {"clase": e["clase"], "pide": e.get("pide", "")} if e.get("clase") else None
+
+
+def _dormido(tel: Telar, hilo: Hilo) -> dict | None:
+    if not tel.vivo(hilo):
+        return None
+    from telar import dormir
+
+    return dormir.json_dormido(getattr(tel, "dormidos", {}).get(hilo.nombre))
+
+
+def _rama(tel: Telar, hilo: str) -> dict | None:
+    lugar = tel.estado.ramas().get(hilo) if tel.estado else None
+    return {k: lugar.get(k, "") for k in ("rama", "base", "ruta")} if lugar else None
 
 
 def json_item(item: Item) -> dict:

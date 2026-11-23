@@ -8,14 +8,14 @@ Corre dos cosas hasta ⌃C:
 
 - `npm run navegador:watch` (en pagina/): esbuild rehace src/telar/web/app.js y marco.css con cada cambio
   en el TypeScript o el CSS, en menos de un segundo;
-- un `telar serve --web --dev` aparte, en su propio puerto y su propio socket (el `serve` de siempre, con el
-  bus y el nodo, no se toca), que se reinicia cuando cambia un .py de src/telar.
+- un `telar serve --web --dev` aparte, en su propio puerto y su propio socket, uno por puerto (el `serve` de
+  siempre, con el bus y el nodo, no se toca), que se reinicia cuando cambia un .py de src/telar.
 
 La página (con --dev) se recarga sola cuando cambian sus archivos y cuando el servidor vuelve de reiniciarse.
 Usa la configuración y los datos de verdad: lo que se aprieta ahí, pasa. Solo cambia el código.
 
-Necesita telar instalado en modo editable (`uv tool install --editable .`): así `telar` corre el código del
-repositorio. Para llevarlo al servidor cuando esté listo: servidor/desplegar.sh.
+Necesita telar instalado (`uv tool install --editable .`), y corre el código de esta copia aunque la instalación
+apunte a otra (un worktree). Si hay más de uno a la vez, cada uno en su --puerto. Para llevarlo a las máquinas cuando esté listo y en main: telar desplegar.
 """
 
 from __future__ import annotations
@@ -41,8 +41,11 @@ def firma() -> dict[Path, int]:
 
 def arrancar(puerto: int, socket: Path) -> subprocess.Popen:
     telar = shutil.which("telar") or "telar"
+    # el código de esta copia, no el de la instalación: desde un worktree (un hijo con rama propia), el `telar`
+    # instalado editable apunta a la carpeta principal, y serviría su página y su Python
+    entorno = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [str(RAIZ / "src"), os.environ.get("PYTHONPATH", "")]))}
     return subprocess.Popen([telar, "serve", "--socket", str(socket), "--web", "--web-puerto", str(puerto), "--dev"],
-                            start_new_session=True)
+                            start_new_session=True, env=entorno)
 
 
 def parar(p: subprocess.Popen | None) -> None:
@@ -65,8 +68,9 @@ def main() -> int:
     if not shutil.which("npm"):
         print("dev: falta npm (Node), para empaquetar la página", file=sys.stderr)
         return 1
-    # en una carpeta propia: `telar serve` la deja solo para su dueño
-    socket = Path(tempfile.gettempdir()) / f"telar-dev-{os.getuid()}" / "telar.sock"
+    # en una carpeta propia (`telar serve` la deja solo para su dueño) y uno por puerto: dos worktrees con su dev.py a la
+    # vez, cada uno en su --puerto, no se pisan el socket
+    socket = Path(tempfile.gettempdir()) / f"telar-dev-{os.getuid()}" / f"telar-{o.puerto}.sock"
 
     # ⌃C, cerrar la terminal o un kill: igual se apagan los dos (corren en su propio grupo, no se enteran solos)
     def salir(*_):

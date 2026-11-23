@@ -37,10 +37,10 @@ class LaCasilla(Prueba):
 
     def test_stop_no_deja_parar_y_entrega_entero(self):
         largo = "comienzo " + "x" * 5000 + " final"
-        m.dejar(self.config, "Faro", {"id": "a1", "de": "Gestión", "texto": largo, "tipo": "encargo"})
+        m.dejar(self.config, "Faro", {"id": "a1", "de": "Secretaría", "texto": largo, "tipo": "encargo"})
         salida = json.loads(m.para_gancho(self.config, "Faro", "Stop"))
         self.assertEqual(salida["decision"], "block")
-        self.assertIn("[encargo de Gestión", salida["reason"])
+        self.assertIn("[encargo de Secretaría", salida["reason"])
         self.assertIn("comienzo", salida["reason"])
         self.assertIn(" final", salida["reason"])
         self.assertEqual(m.para_gancho(self.config, "Faro", "Stop"), "")  # ya entró
@@ -69,7 +69,7 @@ class LaCadena(Prueba):
         self.config = SimpleNamespace(estado=Path(self.tmp.name))
 
     def test_entregar_anota_los_saltos_y_hablar_la_persona_la_corta(self):
-        m.dejar(self.config, "Faro", {"id": "a", "de": "Gestión", "texto": "x", "saltos": 3, "persona": "ana"})
+        m.dejar(self.config, "Faro", {"id": "a", "de": "Secretaría", "texto": "x", "saltos": 3, "persona": "ana"})
         m.para_gancho(self.config, "Faro", "Stop", persona="ana")
         self.assertEqual(m.cadena(self.config, "Faro"), 3)
         m.para_gancho(self.config, "Faro", "UserPromptSubmit", prompt="sigue con lo tuyo", persona="ana")
@@ -81,7 +81,7 @@ class LaCadena(Prueba):
         self.assertEqual(m.cadena(self.config, "Faro"), 2)
 
     def test_un_colega_se_atiende_y_otra_persona_no(self):
-        texto, _ = m.como_texto([{"id": "a", "de": "Gestión", "texto": "x", "persona": "ana"}], "ana")
+        texto, _ = m.como_texto([{"id": "a", "de": "Secretaría", "texto": "x", "persona": "ana"}], "ana")
         self.assertIn("colega", texto)
         self.assertNotIn("otra persona:", texto)
         texto, _ = m.como_texto([{"id": "b", "de": "Faro", "texto": "x", "persona": "berta"}], "ana")

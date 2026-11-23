@@ -454,6 +454,38 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class DeYFecha(Prueba):
+    """`prioridad`, `de` y `fecha`: en la fila o dentro de `campos` (lo de la fila manda); sin `fecha`, la de su id. Con
+    ellos la página ordena una pestaña de lectura (pagina/src/vistas/dashboard/dia.ts, `ordenLectura`)."""
+
+    def test_en_la_fila_o_en_campos(self):
+        from telar.proveedores.tareas import _tarea_de_json
+
+        t = _tarea_de_json({"id": "x", "texto": "x", "prioridad": "alta", "de": "ana", "fecha": "2026-11-18T09:00"}, "cmd", 0)
+        self.assertEqual((t.prioridad, t.de, t.fecha), (Prioridad.ALTA, "ana", "2026-11-18"))
+        t = _tarea_de_json({"id": "x", "texto": "x", "campos": {"prioridad": "baja", "de": "correo", "fecha": "2026-11-01"}}, "cmd", 0)
+        self.assertEqual((t.prioridad, t.de, t.fecha), (Prioridad.BAJA, "correo", "2026-11-01"))
+        datos = t.item(proveedor="lecturas").datos
+        self.assertEqual((datos["nivel"], datos["de"], datos["fecha"]), (3, "correo", "2026-11-01"))
+        # lo de la fila manda sobre `campos`
+        t = _tarea_de_json({"id": "x", "texto": "x", "de": "ana", "campos": {"de": "correo", "prioridad": "media"}}, "cmd", 0)
+        self.assertEqual((t.de, t.prioridad), ("ana", Prioridad.MEDIA))
+
+    def test_sin_fecha_la_de_su_id_y_sin_prioridad(self):
+        from telar.proveedores.tareas import _tarea_de_json
+
+        self.assertEqual(_tarea_de_json({"id": "2026-11-09-importai-480", "texto": "x"}, "cmd", 0).fecha, "2026-11-09")
+        self.assertEqual(_tarea_de_json({"id": "T84", "texto": "x"}, "cmd", 0).fecha, "")
+        self.assertEqual(_tarea_de_json({"id": "2026-13-40-mal", "texto": "x"}, "cmd", 0).fecha, "")
+        for sin in ("sin", "", None):
+            t = _tarea_de_json({"id": "x", "texto": "x", "campos": {"prioridad": sin}}, "cmd", 0)
+            self.assertIsNone(t.prioridad)
+            self.assertIsNone(t.item().datos["nivel"])
+        # una fila sin nada de eso, como hasta ahora
+        t = _tarea_de_json({"id": "x", "texto": "x"}, "cmd", 0)
+        self.assertEqual((t.prioridad, t.de, t.fecha), (None, "", ""))
+
+
 class DestacadaYEstrella(Prueba):
     def test_el_proveedor_dice_cual_va_siempre_en_la_vista_corta(self):
         from telar.proveedores.tareas import ErrorDeProveedor, _tarea_de_json

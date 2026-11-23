@@ -11,12 +11,16 @@ conexión saliente (`telar nodo`). Tres cosas viajan por ahí:
                                        cuándo, conversación. Cada máquina publica los suyos y se
                                        entera de los demás al instante, sin sondear.
     rpc.<persona>.<maquina>.<verbo>    pedidos con respuesta a una máquina (leer un hilo, ping).
-    registro.<persona>                 copia de cada mensaje (y de los retenidos), para ver quién le
-                                       dijo qué a quién: no se consume, dura dos semanas.
+    registro.<persona>                 copia de cada mensaje (y de los retenidos, y otra si se
+                                       soltó o se descartó), para ver quién le dijo qué a quién: no
+                                       se consume, dura dos semanas.
 
-El hilo va en los temas con su nombre como extensión (`telar.casilla.extension`: «Gestión» →
-`gestion`), porque un tema no admite espacios ni puntos. Las direcciones no dependen de la máquina:
-mudar un hilo cambia su estado, no su casilla.
+El hilo va en los temas con su nombre como extensión (`telar.casilla.extension`: «Secretaría» →
+`secretaria`), porque un tema no admite espacios ni puntos. Las direcciones no dependen de la máquina:
+mudar un hilo cambia su estado, no su casilla. Dos hilos cuyos nombres solo difieren en mayúsculas,
+tildes o espacios darían la misma extensión: uno se queda con ella y los demás se apartan (`telar.casilla.apartar`,
+`faro_3f9a1c`), su tema y su clave de estado llevan esa ficha, y quien le escribe la encuentra por su
+nombre exacto en el estado (`ficha_para`).
 
 Sin `[bus] url` no hay bus y nada de esto corre: telar sigue trabajando con una sola máquina.
 """
@@ -62,19 +66,82 @@ def maquina(config) -> str:
     return espejo.nombre_de_esta_maquina() or socket.gethostname().split(".")[0]
 
 
-def ficha(hilo: str) -> str:
-    """El hilo como parte de un tema o de una clave: «Gestión» → `gestion`."""
+def ficha(hilo: str, config=None) -> str:
+    """El hilo como parte de un tema o de una clave: «Secretaría» → `secretaria`. Con `config`, la ficha de su casilla
+    en esta máquina (telar.casilla.ficha): la apartada, si su nombre choca con el de otro hilo de aquí."""
     from telar import casilla
 
-    return casilla.nombre_de_carpeta(hilo)
+    return casilla.ficha(config, hilo) if config is not None else casilla.nombre_de_carpeta(hilo)
 
 
-def tema_casilla(config, hilo: str, quien: str = "") -> str:
-    return f"casilla.{quien or persona(config)}.{ficha(hilo)}"
+def _ficha_de(config, hilo: str, quien: str) -> str:
+    """La ficha de un hilo propio según esta máquina; la de un hilo de otra persona, la forma de siempre (las fichas
+    apartadas de otra persona no se ven desde aquí)."""
+    propio = not quien or quien == persona(config)
+    return ficha(hilo, config if propio else None)
 
 
-def clave_estado(config, hilo: str, quien: str = "") -> str:
-    return f"{quien or persona(config)}.{ficha(hilo)}"
+def tema_casilla(config, hilo: str, quien: str = "", ficha_: str = "") -> str:
+    return f"casilla.{quien or persona(config)}.{ficha_ or _ficha_de(config, hilo, quien)}"
+
+
+def clave_estado(config, hilo: str, quien: str = "", ficha_: str = "") -> str:
+    return f"{quien or persona(config)}.{ficha_ or _ficha_de(config, hilo, quien)}"
+
+
+async def ficha_para(config, hilo: str, quien: str = "", *, js=None, kv=None, estricto: bool = False) -> str:
+    """La ficha a la que se le escribe a `hilo`, viva donde viva: la de su casilla si es de esta máquina y está
+    apartada; si no, la apartada si el nodo de otra máquina publica su estado con ella (la clave
+    `<persona>.<apartada>` con ese nombre exacto); si no, la de siempre. Si el estado tiene las dos con ese nombre
+    exacto (una quedó de antes: se apartó, o dejó de estarlo), vale la que se actualizó último. `kv`, el almacén del
+    estado si ya se tiene; si no, se pide a `js`.
+
+    Que la clave no esté es lo normal (sin choques no hay apartadas). Si el estado no responde: con `estricto`, el
+    error, para que quien publica reintente en vez de dejarlo en la de siempre (y que el reintento, con el mismo id,
+    no se descarte por repetido en otro tema); sin él, la de siempre, como antes de que hubiera fichas apartadas."""
+    from telar import casilla
+
+    llana = _ficha_de(config, hilo, quien)
+    if llana != casilla.nombre_de_carpeta(hilo) or (quien and quien != persona(config)):
+        return llana
+    apartada = casilla.apartada(hilo)
+    try:
+        kv = kv if kv is not None else await js.key_value(ESTADO)
+        suya = await _leer_clave(kv, clave_estado(config, hilo, quien, apartada))
+        if suya is None or not casilla.mismo_nombre(suya.get("nombre"), hilo):
+            return llana
+        comun = await _leer_clave(kv, clave_estado(config, hilo, quien, llana))
+    except Exception:  # noqa: BLE001 - el estado no responde
+        if estricto:
+            raise
+        return llana
+    if comun is not None and casilla.mismo_nombre(comun.get("nombre"), hilo) and \
+            _cuando(comun.get("actualizado")) > _cuando(suya.get("actualizado")):
+        return llana
+    return apartada
+
+
+async def _leer_clave(kv, clave: str) -> dict | None:
+    """Lo que dice una clave del estado; None si no está o se borró. Otra falla (el bus no responde), tal cual."""
+    try:
+        e = await kv.get(clave)
+    except Exception as error:  # noqa: BLE001 - se distingue por el nombre: nats-py no está en todas partes
+        if type(error).__name__ in ("KeyNotFoundError", "KeyDeletedError", "NotFoundError"):
+            return None
+        raise
+    try:
+        d = json.loads(e.value or b"{}")
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _cuando(valor) -> float:
+    """Un `actualizado` del estado como instante (cada máquina lo escribe con su zona horaria); 0 si no se lee."""
+    try:
+        return datetime.fromisoformat(str(valor)).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def tema_rpc(config, quien_maquina: str, verbo: str, quien: str = "") -> str:
@@ -299,7 +366,8 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
     """Publica un mensaje para el hilo `para` (de esta persona, o de `quien`). Devuelve el mensaje.
 
     Con `retener` (el motivo) no va a la casilla: queda solo en el registro, retenido, hasta que la
-    persona lo suelte (`telar mensaje --soltar`). `modo` y `extra`, como en `mensaje`."""
+    persona lo suelte (`telar mensaje --soltar`) o lo descarte (`--descartar`, `anotar`). `modo` y `extra`, como en
+    `mensaje`."""
     if not hay_bus(config):
         raise ErrorDeBus("no hay bus: [bus] url en la configuración")
     m = mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona=persona(config), saltos=saltos, modo=modo,
@@ -315,8 +383,10 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
             copia = {**m, "estado": "retenido", "motivo": retener} if retener else {**m, "estado": "enviado"}
             ack = None
             if not retener:
+                # la casilla de ese hilo exacto: si su nombre choca con el de otro, la suya apartada (`ficha_para`)
+                tema = tema_casilla(config, para, quien, await ficha_para(config, para, quien, js=js, estricto=True))
                 publicaciones.append(1)
-                ack = await js.publish(tema_casilla(config, para, quien), json.dumps(m, ensure_ascii=False).encode(),
+                ack = await js.publish(tema, json.dumps(m, ensure_ascii=False).encode(),
                                        headers={"Nats-Msg-Id": m["id"]}, timeout=ESPERA)
             # con id también la copia, para que un reintento no la deje dos veces; con su estado, porque soltar
             # un retenido publica otra copia del mismo mensaje («enviado»), que no es repetida
@@ -340,6 +410,31 @@ def enviar(config, para: str, texto: str, *, de: str, tipo: str = "mensaje", qui
     duplicado = bool(getattr(ack, "duplicate", False)) and len(publicaciones) == 1
     return {**m, "secuencia": getattr(ack, "seq", None), "duplicado": duplicado,
             **({"estado": "retenido", "motivo": retener} if retener else {})}
+
+
+def anotar(config, copia: dict) -> None:
+    """Otra copia de un mensaje en el registro, con su `estado`, sin pasar por ninguna casilla: `descartado`, un retenido
+    que la persona decidió que no sale (`telar mensaje --descartar`). Con id `<id>.<estado>`, como la copia de `enviar`:
+    un reintento no la deja dos veces."""
+    if not hay_bus(config):
+        raise ErrorDeBus("no hay bus: [bus] url en la configuración")
+
+    async def _anotar():
+        nc = await conectar(config)
+        try:
+            js = nc.jetstream()
+            await asegurar(js)
+            await js.publish(f"registro.{persona(config)}", json.dumps(copia, ensure_ascii=False).encode(),
+                             headers={"Nats-Msg-Id": f"{copia['id']}.{copia['estado']}"}, timeout=ESPERA)
+        finally:
+            await nc.close()
+
+    try:
+        _con_reintento(_anotar, ESPERA + 5)
+    except ErrorDeBus:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise ErrorDeBus(f"el bus no anotó el mensaje: {e}") from e
 
 
 def escribir_a(config, persona_destino: str, hilo: str, texto: str, *, de: str, asunto: str = "") -> dict:
@@ -384,32 +479,7 @@ def registro(config, n: int = 100) -> list[dict]:
             # las últimas n*4 secuencias, y de ellas los últimos n de esta persona. De una vez, con un
             # consumidor efímero que filtra por su tema: pedirlas de a una era un viaje por mensaje
             # (17 s por 60 desde el laptop; 200 no alcanzaban a llegar antes del plazo)
-            desde = max(primero, 1, ultimo - n * 4 + 1)
-            from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
-
-            sub = await js.pull_subscribe(
-                f"registro.{persona(config)}", stream=REGISTRO,
-                config=ConsumerConfig(deliver_policy=DeliverPolicy.BY_START_SEQUENCE, opt_start_seq=desde,
-                                      ack_policy=AckPolicy.NONE, inactive_threshold=30.0, mem_storage=True))
-            salida: list[dict] = []
-            try:
-                while True:
-                    try:
-                        lote = await sub.fetch(batch=256, timeout=2)
-                    except asyncio.TimeoutError:
-                        break  # no queda nada en la ventana
-                    for r in lote:
-                        try:
-                            salida.append(json.loads(r.data))
-                        except ValueError:
-                            pass
-                    if not lote or lote[-1].metadata.num_pending == 0:
-                        break
-            finally:
-                try:
-                    await sub.unsubscribe()
-                except Exception:  # noqa: BLE001 - el consumidor efímero se borra solo
-                    pass
+            salida = [m for _, m in await _leer_registro(js, config, _inicio_registro(primero, ultimo, n))]
             return salida[-n:] if n else salida
         finally:
             await nc.close()
@@ -422,6 +492,122 @@ def registro(config, n: int = 100) -> list[dict]:
         raise ErrorDeBus(f"no pude leer el registro del bus: {e or type(e).__name__}") from e
 
 
+def _inicio_registro(primero: int, ultimo: int, n: int) -> int:
+    """Desde qué secuencia del stream se miran los últimos `n` de una persona: las últimas n*4 (el stream es de todas)."""
+    return max(primero, 1, ultimo - n * 4 + 1)
+
+
+async def _leer_registro(js, config, desde: int) -> list[tuple[int, dict]]:
+    """Los mensajes de esta persona desde la secuencia `desde` hasta el final, con su secuencia: de una vez, con un
+    consumidor efímero que filtra por su tema."""
+    from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+
+    sub = await js.pull_subscribe(
+        f"registro.{persona(config)}", stream=REGISTRO,
+        config=ConsumerConfig(deliver_policy=DeliverPolicy.BY_START_SEQUENCE, opt_start_seq=desde,
+                              ack_policy=AckPolicy.NONE, inactive_threshold=30.0, mem_storage=True))
+    salida: list[tuple[int, dict]] = []
+    try:
+        while True:
+            try:
+                lote = await sub.fetch(batch=256, timeout=2)
+            except asyncio.TimeoutError:
+                break  # no queda nada en la ventana
+            for r in lote:
+                # la secuencia sirve para leer por partes (registro_al_dia); sin ella, el mensaje vale igual
+                secuencia = getattr(getattr(r.metadata, "sequence", None), "stream", 0)
+                try:
+                    salida.append((int(secuencia or 0), json.loads(r.data)))
+                except (ValueError, TypeError):
+                    pass
+            if not lote or lote[-1].metadata.num_pending == 0:
+                break
+    finally:
+        try:
+            await sub.unsubscribe()
+        except Exception:  # noqa: BLE001 - el consumidor efímero se borra solo
+            pass
+    return salida
+
+
+class _YaLeido:
+    """Lo que este proceso ya leyó del registro de una persona (`registro_al_dia`): (secuencia, mensaje), del más viejo
+    al más nuevo; desde qué secuencia está completo (`cubre`) y la última del stream que se miró (`hasta`)."""
+
+    #: cuántas secuencias del stream se guardan, a lo más: las que mira la ventana más grande que se pide (500 × 4)
+    TOPE = 2000
+
+    def __init__(self) -> None:
+        import threading
+
+        self.leidos: list[tuple[int, dict]] = []
+        self.cubre = 0
+        self.hasta = 0
+        self.candado = threading.Lock()
+
+    def desde(self, primero: int, ultimo: int, n: int) -> int:
+        """Desde qué secuencia pedir: lo que llegó después de la última vista, si lo guardado alcanza para la ventana
+        de `n`; si no (la primera vez, una ventana más grande, un stream que volvió atrás), la ventana entera."""
+        inicio = _inicio_registro(primero, ultimo, n)
+        if self.hasta and self.cubre <= inicio and self.hasta <= ultimo:
+            return self.hasta + 1
+        self.leidos, self.cubre, self.hasta = [], inicio, 0
+        return inicio
+
+    def sumar(self, nuevos: list[tuple[int, dict]], primero: int, ultimo: int, n: int) -> list[dict]:
+        """Junta lo nuevo con lo guardado, suelta lo que el bus ya borró y lo que ninguna ventana pide, y da los últimos
+        `n` de la ventana, como `registro`."""
+        visto = self.leidos[-1][0] if self.leidos else 0
+        self.leidos += [x for x in nuevos if x[0] > visto]
+        piso = max(primero, ultimo - self.TOPE + 1)
+        if self.leidos and self.leidos[0][0] < piso:
+            self.leidos = [x for x in self.leidos if x[0] >= piso]
+        self.cubre, self.hasta = max(self.cubre, piso), ultimo
+        inicio = _inicio_registro(primero, ultimo, n)
+        salida = [m for s, m in self.leidos if s >= inicio]
+        return salida[-n:] if n else salida
+
+
+#: lo leído del registro en este proceso, por bus y persona (`registro_al_dia`)
+_YA_LEIDO: dict[tuple[str, str], _YaLeido] = {}
+
+
+def registro_al_dia(config, n: int = 100) -> list[dict]:
+    """Lo mismo que `registro`, leído por partes: el proceso recuerda lo que ya leyó y al bus le pide solo lo que llegó
+    después (un mensaje del registro no cambia: soltar uno retenido es uno nuevo con el mismo id). Para quien pregunta
+    seguido desde un proceso que se queda (`telar serve`: la bandeja, `telar esperas`): la primera vez lee la ventana
+    entera y las siguientes, si no llegó nada, solo miran hasta dónde va el stream. No crea los streams (`asegurar`):
+    si el registro no existe todavía, no hay mensajes."""
+    guardado = _YA_LEIDO.setdefault((str(config.bus.url), persona(config)), _YaLeido())
+
+    async def _leer():
+        nc = await conectar(config)  # sin nats-py, ErrorDeBus: lo que sigue ya lo tiene
+        try:
+            from nats.js.errors import NotFoundError
+
+            js = nc.jetstream()
+            try:
+                info = await js.stream_info(REGISTRO)
+            except NotFoundError:
+                return None
+            ultimo, primero = info.state.last_seq, info.state.first_seq
+            if not ultimo:
+                return [], primero, ultimo
+            desde = guardado.desde(primero, ultimo, n)
+            return (await _leer_registro(js, config, desde) if desde <= ultimo else []), primero, ultimo
+        finally:
+            await nc.close()
+
+    with guardado.candado:  # dos a la vez: la segunda espera y pide solo lo que la primera no trajo
+        try:
+            r = _con_reintento(_leer, ESPERA + 10)
+        except ErrorDeBus:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise ErrorDeBus(f"no pude leer el registro del bus: {e or type(e).__name__}") from e
+        return [] if r is None else guardado.sumar(*r, n)
+
+
 def maquina_de(config, hilo: str) -> str:
     """En qué máquina vive un hilo, según el estado que publica su nodo; "" si el bus no lo sabe."""
     return str(estado_de(config, hilo).get("maquina") or "")
@@ -429,13 +615,13 @@ def maquina_de(config, hilo: str) -> str:
 
 def estado_de(config, hilo: str) -> dict:
     """El estado que publica el nodo de la máquina donde vive un hilo (maquina, vivo, archivado…); {} si el bus no
-    lo sabe."""
+    lo sabe. El de ese hilo exacto si está apartado (su nombre choca con el de otro: `ficha_para`)."""
     async def _leer():
         nc = await conectar(config)
         try:
             kv = await nc.jetstream().key_value(ESTADO)
             try:
-                e = await kv.get(clave_estado(config, hilo))
+                e = await kv.get(clave_estado(config, hilo, "", await ficha_para(config, hilo, kv=kv)))
             except Exception:  # noqa: BLE001 - no está, o fue borrado
                 return {}
             d = json.loads(e.value or b"{}")
@@ -556,6 +742,50 @@ def _conexion_viva():
     return nc, bucle
 
 
+#: Cuánto se espera para repetir un pedido que nadie escuchó (un nodo que se está reiniciando vuelve en un par de segundos).
+REINTENTO_SIN_SERVICIO = 2.0
+
+#: Lo que se deja libre, del tamaño que acepta el servidor de nats, para los encabezados de una respuesta.
+HOLGURA_ENCABEZADOS = 4096
+
+
+def empacar(respuesta, maximo: int) -> bytes:
+    """Una respuesta a un pedido, como viaja por el bus. La que pasa de `maximo` (lo que acepta el servidor de nats,
+    `max_payload`: 1 MB si no se cambió) va comprimida con gzip, que `desempacar` reconoce; la que ni así cabe, como
+    un error que lo dice. Sin esto no salía, y el que la pidió esperaba hasta su plazo (`telar tipo tarea lista
+    --todas` de una máquina con cientos de tareas)."""
+    import gzip
+
+    datos = json.dumps(respuesta, ensure_ascii=False).encode()
+    cabe = max(1024, maximo - HOLGURA_ENCABEZADOS)
+    if len(datos) <= cabe:
+        return datos
+    comprimidos = gzip.compress(datos, compresslevel=6)
+    if len(comprimidos) <= cabe:
+        return comprimidos
+
+    def mb(n: int) -> str:
+        return f"{n / 1_048_576:.1f}".replace(".", ",") + " MB"
+
+    return json.dumps({"ok": False, "error": f"la respuesta pesa {mb(len(datos))} ({mb(len(comprimidos))} comprimida), "
+                                             f"más de lo que lleva el bus ({mb(maximo)})"}, ensure_ascii=False).encode()
+
+
+def desempacar(datos: bytes):
+    """Lo que llegó como respuesta a un pedido (`empacar`): JSON, o JSON comprimido con gzip."""
+    if datos[:2] == b"\x1f\x8b":
+        import gzip
+
+        datos = gzip.decompress(datos)
+    return json.loads(datos)
+
+
+def maximo_de(m) -> int:
+    """Lo que acepta el servidor de nats en un mensaje, según la conexión por la que llegó `m` (1 MB si no se sabe)."""
+    maximo = getattr(getattr(m, "_client", None), "max_payload", None)
+    return maximo if isinstance(maximo, int) and maximo > 0 else 1_048_576
+
+
 def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30) -> dict:
     """Un pedido con respuesta al nodo de otra máquina (`rpc.<persona>.<maquina>.<verbo>`). Siempre
     devuelve un dict con `ok`; si nadie responde a tiempo, `ok: False` con el motivo."""
@@ -565,7 +795,7 @@ def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30
 
     async def _por(nc):
         r = await nc.request(tema, cuerpo, timeout=espera)
-        return json.loads(r.data)
+        return desempacar(r.data)
 
     async def _pedir():
         nc = await conectar(config)
@@ -574,19 +804,53 @@ def pedir(config, a_maquina: str, verbo: str, datos: dict, *, espera: float = 30
         finally:
             await nc.close()
 
+    for intento in range(2):
+        try:
+            viva = _conexion_viva()
+            if viva is not None:
+                nc, bucle = viva
+                return asyncio.run_coroutine_threadsafe(asyncio.wait_for(_por(nc), espera + 5), bucle).result(espera + 10)
+            return asyncio.run(asyncio.wait_for(_pedir(), espera + 5))
+        except ErrorDeBus as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:  # noqa: BLE001 - sin respuesta a tiempo, o una que no es JSON
+            nombre = type(e).__name__
+            if "NoResponders" in nombre:
+                if intento == 0:
+                    # nadie escucha ahora: un nodo que se reinicia (telar-serve) tarda un par de segundos en volver, y
+                    # eso no es estar caído. El pedido no le llegó a nadie, así que repetirlo no duplica nada: una vez
+                    # más, al rato
+                    time.sleep(REINTENTO_SIN_SERVICIO)
+                    continue
+                # nadie escucha ese tema: o la máquina no tiene su nodo, o su telar no conoce ese pedido
+                return _sin_respuesta(config, a_maquina, verbo, {
+                    "ok": False, "sin_servicio": True,
+                    "error": f"{a_maquina} no atiende «{verbo}» (¿sin su nodo, o con un telar más viejo?)"})
+            if "Timeout" in nombre:
+                return _sin_respuesta(config, a_maquina, verbo, {
+                    "ok": False, "error": f"{a_maquina} no respondió a tiempo (¿está apagada o sin su nodo?)"})
+            return {"ok": False, "error": f"{a_maquina} {nombre}: {e}"[:300]}
+    return {"ok": False, "error": f"{a_maquina}: sin respuesta"}  # no se llega
+
+
+def _sin_respuesta(config, a_maquina: str, verbo: str, r: dict) -> dict:
+    """Un pedido sin respuesta, dicho con lo que se sabe de esa máquina (telar.alcance): si su foto dice que está fuera
+    de línea, desde cuándo (`fuera_de_linea`, `desde`); si está en línea y nadie atiende el verbo, que su telar es más
+    viejo que este (`viejo`, `version`). Sin saberlo (sin foto, o el nodo de aquí sin noticias del bus), lo de siempre."""
     try:
-        viva = _conexion_viva()
-        if viva is not None:
-            nc, bucle = viva
-            return asyncio.run_coroutine_threadsafe(asyncio.wait_for(_por(nc), espera + 5), bucle).result(espera + 10)
-        return asyncio.run(asyncio.wait_for(_pedir(), espera + 5))
-    except ErrorDeBus as e:
-        return {"ok": False, "error": str(e)}
-    except Exception as e:  # noqa: BLE001 - sin respuesta a tiempo, o una que no es JSON
-        nombre = type(e).__name__
-        if "NoResponders" in nombre:
-            # nadie escucha ese tema: o la máquina no tiene su nodo, o su telar no conoce ese pedido
-            return {"ok": False, "sin_servicio": True,
-                    "error": f"{a_maquina} no atiende «{verbo}» (¿sin su nodo, o con un telar más viejo?)"}
-        motivo = "no respondió a tiempo (¿está apagada o sin su nodo?)" if "Timeout" in nombre else f"{nombre}: {e}"
-        return {"ok": False, "error": f"{a_maquina} {motivo}"[:300]}
+        from telar import alcance
+
+        a = alcance.de(config, a_maquina)
+    except Exception:  # noqa: BLE001 - sin poder leer las fotos, lo de siempre
+        return r
+    if a.fuera:
+        return {**r, "fuera_de_linea": True, "desde": a.desde_iso(),
+                "error": f"{a.frase()}: «{verbo}» tiene que esperar a que vuelva"}
+    if a.conocida and r.get("sin_servicio"):
+        from telar import __version__
+
+        suya = f" (corre telar {a.telar}; aquí, {__version__})" if a.telar else ""
+        return {**r, "viejo": True, "version": a.telar,
+                "error": f"{a_maquina} está en línea pero su telar no atiende «{verbo}»: es más viejo que este{suya}; "
+                         f"actualízalo (telar desplegar)"}
+    return r

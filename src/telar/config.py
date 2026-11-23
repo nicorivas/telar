@@ -23,10 +23,13 @@ import tomllib
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from telar.horario import Tramo
+
 __all__ = [
     "Intervalos",
     "Proveedor",
     "Config",
+    "Mundo",
     "ruta_config",
     "cargar",
     "ErrorDeConfig",
@@ -68,6 +71,34 @@ class Proveedor:
     opciones: dict[str, object] = field(default_factory=dict)
 
 
+_DURACION = re.compile(r"(\d+(?:\.\d+)?)\s*(min|h|m|s)\s*")
+
+
+def duracion(valor: object) -> float:
+    """Una duración de la configuración, en segundos: «30m», «1h», «1h30m», «90s», o un número suelto (minutos). 0 (o
+    «0») es nada. Lo que no se entiende levanta ValueError, con lo que llegó."""
+    if isinstance(valor, bool):
+        raise ValueError(f"se esperaba una duración como «30m», llegó {valor!r}")
+    if isinstance(valor, (int, float)):
+        if valor < 0:
+            raise ValueError(f"una duración no es negativa, llegó {valor!r}")
+        return float(valor) * 60
+    texto = str(valor).strip().lower()
+    if texto in ("", "0", "nunca", "no"):
+        return 0.0
+    if re.fullmatch(r"\d+(?:\.\d+)?", texto):
+        return float(texto) * 60
+    total, pos = 0.0, 0
+    for m in _DURACION.finditer(texto):
+        if m.start() != pos:
+            break
+        total += float(m.group(1)) * {"h": 3600, "m": 60, "min": 60, "s": 1}[m.group(2)]
+        pos = m.end()
+    if pos != len(texto) or pos == 0:
+        raise ValueError(f"se esperaba una duración como «30m», «1h» o «90s» (0, nunca), llegó {valor!r}")
+    return total
+
+
 @dataclass(frozen=True, slots=True)
 class Hilos:
     """De qué carpetas salen los hilos que abre `tejer`, y cuántos.
@@ -80,6 +111,9 @@ class Hilos:
 
     directorios: tuple[str, ...] = ()
     tope: int = 8
+    #: segundos sin actividad tras los que el nodo duerme a un hilo: cierra su agente y deja su ventana, que lo retoma
+    #: al abrirla o al llegarle algo (telar.dormir). 0 es nunca. Se escribe «30m», «1h», «90s» o minutos sueltos
+    dormir_tras: float = 30 * 60.0
 
 
 #: lo que flow le decía a Claude al pinchar una reunión, y el punto de partida de telar.
@@ -137,11 +171,11 @@ class Agente:
     sordina: bool = True
 
 
-#: teclas que el dashboard ya usa (pagina/src/vistas/dashboard/panel.ts, teclasDePestanas): n (ahora), v (tareas),
-#: p (proyectos), r (recargar), o (periódicos), d (el plan), a (la agenda), c (el correo), / (buscar). Un
+#: teclas que el dashboard ya usa (pagina/src/vistas/dashboard/panel.ts, teclasDePestanas): n (ahora), t (te esperan),
+#: v (tareas), p (proyectos), r (recargar), o (periódicos), a (la agenda), c (el correo), / (buscar). Un
 #: atajo con una de ellas no es un error: la pestaña le gana y el atajo queda con un clic. `telar doctor`
 #: lo avisa. Las de las pestañas de bloques y proveedores se suman en cada configuración.
-TECLAS_RESERVADAS = frozenset("nvprodac/")
+TECLAS_RESERVADAS = frozenset("ntvproac/")
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,18 +218,17 @@ class Atajo:
 @dataclass(frozen=True, slots=True)
 class Bloque:
     """Una sección del dashboard que llena un comando (`[bloques.<clave>]`): los correos de hoy,
-    la retro del día. El comando imprime el mismo JSON que una página de sección
-    (docs/contratos.md); telar lo pide con el ritmo de la red. Cada bloque es su propia pestaña,
-    salvo que `en` lo ponga arriba de otra («plan») o `dentro` lo haga una subpestaña de una de las
-    fijas (el Gantt, dentro de «proyectos»)."""
+    el Gantt. El comando imprime el mismo JSON que una página de sección (docs/contratos.md); telar lo
+    pide con el ritmo de la red. Cada bloque es su propia pestaña, salvo que `dentro` lo haga una
+    subpestaña de una de las fijas (el Gantt, dentro de «proyectos»). `en = "plan"` (arriba de la pestaña
+    del plan) se retiró con esa pestaña, y lo mismo `en` o `dentro` = "estrategia": un bloque que lo dice se
+    deja fuera (`Config.retirados`)."""
 
     clave: str
     nombre: str
     comando: tuple[str, ...]
     #: el color de la sección: azul, amarillo, verde, rojo, magenta, cian, violeta
     color: str = "cian"
-    #: "" es una pestaña propia; «plan», arriba de la pestaña del plan (y solo si trae algo)
-    en: str = ""
     #: la tecla de su pestaña en el dashboard, si tiene una
     tecla: str = ""
     #: "" es una pestaña propia; una de `DENTRO_DE`, una subpestaña de esa: se ve al lado de su nombre, arriba
@@ -203,7 +236,16 @@ class Bloque:
 
 
 #: las pestañas fijas del dashboard que aceptan subpestañas (`[bloques.x] dentro`)
-DENTRO_DE = ("ahora", "tareas", "proyectos", "plan", "calendario")
+DENTRO_DE = ("ahora", "tareas", "proyectos", "calendario")
+
+#: lo que un bloque decía para ir en la pestaña del plan, que se sacó del dashboard (18-nov-2026): `en = "plan"`,
+#: `dentro = "plan"` o una `[vistas.x]` con `aparece = "plan"`. Un bloque así no rompe la configuración: se deja
+#: fuera, y `telar doctor` lo dice (`Config.retirados`).
+PESTANA_RETIRADA = "plan"
+#: las pestañas fijas que se sacaron del dashboard, con cómo se nombran al avisar: el plan (18-nov-2026) y estrategia
+#: (19-nov-2026; el modo estrategia sigue, y abre en proyectos). Lo que todavía las nombre (un bloque con `en` o
+#: `dentro`, `[dashboard] orden` u `ocultas`, `filas` de un modo) no rompe nada: no cuenta, y `telar doctor` lo avisa.
+PESTANAS_RETIRADAS = {"plan": "la pestaña del plan", "estrategia": "la pantalla estrategia"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,7 +315,8 @@ class Bus:
 @dataclass(frozen=True, slots=True)
 class Resultado:
     """Lo que una skill deja por día y se quiere ver en el dashboard (`[resultados.<clave>]`, ver
-    telar.resultados): un `AAAA-MM-DD.json` (o `.md`) por día en una carpeta."""
+    telar.resultados): un `AAAA-MM-DD.json` (o `.md`) por día en una carpeta, o `<prefijo>AAAA-MM-DD…` si declara
+    uno (dos resultados en la misma carpeta: el plan del día y el resumen de la semana)."""
 
     clave: str
     #: la carpeta en la máquina donde vive. Con `en`, es la de respaldo si esa máquina no responde.
@@ -282,9 +325,28 @@ class Resultado:
     en: str = ""
     #: cómo se llama en el dashboard; por defecto, la clave.
     nombre: str = ""
+    #: lo que va antes de la fecha en el nombre de cada archivo (`estrategia-` lee `estrategia-AAAA-MM-DD.md`);
+    #: vacío, el archivo es solo la fecha
+    prefijo: str = ""
     #: el comando que atiende un comentario sobre un día (lista de palabras; el texto le llega por la
     #: entrada estándar). Se declara en la máquina donde vive el resultado; vacío, no recibe comentarios.
     comentar: tuple[str, ...] = ()
+    #: si cada día es una lista de pasadas (una skill que corre varias veces al día, telar.pasadas), el esquema de cada
+    #: una: «pulso» o «libre»; vacío, el día es lo que la skill escriba, entero.
+    pasadas: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class AvisoArchivo:
+    """Un aviso que viene de un archivo (`[avisos.<clave>]`, telar.avisos): un programa deja en un JSON cómo está algo
+    (`{"nivel": "ok|aviso|mal", "linea", "fecha", "informe", "sugerencias"}`) y la franja de avisos de la página lo
+    dice cuando no está bien."""
+
+    clave: str
+    #: el JSON, en la máquina donde vive (con `~`, el de quien corre telar allá)
+    archivo: str
+    #: la máquina del bus donde vive el archivo; "" es esta
+    en: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,6 +435,58 @@ class AgenteExtra:
 TRANSPORTES = ("mosh", "ssh")
 
 
+#: el valor de un filtro por mundo que pide lo que no calza en ninguno (`telar esperas --mundo sin-clasificar`): un
+#: mundo no puede llamarse así
+SIN_CLASIFICAR = "sin-clasificar"
+#: las tintas de la página que puede llevar un mundo (las de cada tema: pagina/media/css/tokens.css)
+TINTAS_MUNDO = ("azul", "amarillo", "verde", "rojo", "magenta", "cian", "violeta")
+
+
+@dataclass(frozen=True, slots=True)
+class Mundo:
+    """Una parte de la vida de la persona (`[mundos.<nombre>]`): trabajo, personal. Lo que espera a la persona y sus
+    tareas dicen a cuál pertenecen, derivado de lo que se declara aquí (telar.mundos), nunca del título: el `area` de
+    una tarea, o la carpeta de su proyecto, documento o hilo. El orden de las tablas es el orden en que se muestran."""
+
+    nombre: str
+    #: los valores del campo `area` de una tarea que son de este mundo
+    areas: tuple[str, ...] = ()
+    #: prefijos de la carpeta de un documento, un proyecto o un hilo: relativos a la raíz, o absolutos (con `~`)
+    rutas: tuple[str, ...] = ()
+    #: las etiquetas de un hilo (`telar hilo etiquetas`) que lo hacen de este mundo, aunque su carpeta diga otra cosa
+    etiquetas: tuple[str, ...] = ()
+    #: cuándo rige (telar.horario): la página lo pone sola en esas horas; vacío, solo a mano
+    horario: tuple[Tramo, ...] = ()
+    #: su tinta, una de las del tema (TINTAS_MUNDO); vacío, la que le toca por orden (telar.mundos.colores)
+    color: str = ""
+    #: los colores de la página mientras rige (uno de telar.modos.TEMAS, o uno propio de `[temas]`); vacío, los del modo
+    #: puesto
+    tema: str = ""
+    #: los modos de la página que tiene (sus claves, telar.modos): la banda muestra solo esos mientras rige, y al entrar
+    #: la página pasa al primero si el puesto no es uno de ellos; vacío, todos
+    modos: tuple[str, ...] = ()
+    #: el dibujo animado de su tarjeta en la ventana de mundos (la clave de un arte: uno de fábrica de la página, o un
+    #: `<raiz>/.telar/arte/<clave>.txt`, telar.arte); vacío, el que le toca (el que se llama como el mundo, uno de
+    #: fábrica que lo sugiere, o la órbita)
+    arte: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class Iniciativas:
+    """`[iniciativas]`: el vocabulario de estados de las iniciativas (las unidades que un modo llama así) y cómo se
+    nombra cada fuente externa (telar.iniciativas). Sin `estados`, se muestra lo que diga cada ficha y no se cambia
+    desde telar. De dónde sale el estado lo dice cada ficha (`estado_fuente`), no la configuración."""
+
+    #: el vocabulario cerrado, en su orden (el de la página: el menú para cambiarlo, las cuentas)
+    estados: tuple[str, ...] = ()
+    #: (lo escrito, el estado del vocabulario al que vale): «activo» → «en curso»
+    sinonimos: tuple[tuple[str, str], ...] = ()
+    #: (estado, clase): cómo se dibuja uno cuya clase no se deduce de su nombre (telar.iniciativas.CLASES)
+    clases: tuple[tuple[str, str], ...] = ()
+    #: (lo que dice `estado_fuente` en una ficha, cómo se muestra): «sheet» → «Sheet»
+    fuentes: tuple[tuple[str, str], ...] = ()
+
+
 @dataclass(frozen=True, slots=True)
 class Repo:
     """Un repositorio de trabajo (`[repos.<nombre>]`): su carpeta y, si no está en ella, su perfil.
@@ -445,6 +559,9 @@ class Config:
     agentes_en: str = ""
     #: el agente que recibe los pendientes sin proyecto (`[agentes] sin_proyecto`); "" abre un hilo nuevo.
     agentes_sin_proyecto: str = ""
+    #: a quién va, de entrada, lo que la pestaña de un módulo manda con la ventana «instrucción» sin decir a quién
+    #: (`[instruccion] destino`): «agente:<nombre>» o «hilo:<nombre>»; "" la abre sin destino elegido.
+    instruccion_destino: str = ""
     #: cómo se abre aquí el hilo de un agente: «sesion» (una sesión tmux propia, como en un servidor) o
     #: «tab» (un hilo más de la lista, como en el laptop).
     agentes_abrir: str = "sesion"
@@ -457,6 +574,8 @@ class Config:
     catalogos_fuentes: tuple[str, ...] = ()
     #: lo que dejan las skills por día, para verlo en el dashboard (`[resultados.<clave>]`).
     resultados: tuple[Resultado, ...] = ()
+    #: los avisos que vienen de un archivo (`[avisos.<clave>]`, telar.avisos): la franja de la página los dice
+    avisos: tuple[AvisoArchivo, ...] = ()
     #: dónde viven los objetos de cada tipo (`[tipos.<clave>]`): las tareas, por ejemplo.
     tipos: tuple[Tipo, ...] = ()
     #: las notas de los eventos del día (`[notas]`).
@@ -467,6 +586,19 @@ class Config:
     modos: dict = field(default_factory=dict)
     #: los estilos de los glifos de la página (`[glifos.<n>]`, telar.glifos): estilo → sus valores
     glifos: dict = field(default_factory=dict)
+    #: los colores propios de cada tema y los temas propios (`[temas.<tema>]`, telar.temas): tema → {tinta: #rrggbb} (y
+    #: `base`, de uno propio). Juntos los de la raíz (`<raiz>/.telar/temas.toml`, valen en todas las máquinas) y los de esta
+    #: configuración, que pisan color por color
+    temas: dict = field(default_factory=dict)
+    #: de dónde sale cada cosa de `temas`: tema → {"raiz": claves, "maquina": claves} (telar.temas.donde)
+    temas_donde: dict = field(default_factory=dict)
+    #: el archivo de los temas de la raíz, `<raiz>/.telar/temas.toml`; None si la configuración no dice `raiz`
+    temas_archivo: Path | None = None
+    #: por qué ese archivo no se pudo leer ("" si se leyó, o no está): se sigue sin él, y doctor lo dice
+    temas_error: str = ""
+    #: los temas que un modo o un mundo nombra y no hay (uno propio que se borró en otra máquina): al cargar se toleran
+    #: (la página pone el del modo) y doctor lo dice; al escribir, no se deja nombrar uno nuevo que no hay
+    temas_faltan: tuple[str, ...] = ()
     #: dónde escribir el estado (vínculos, prioridades, semáforo, foco). Nunca en `raiz`.
     #: Las fichas no se guardan: se leen del documento cada vez (ver docs/estado.md).
     estado: Path = field(default_factory=lambda: _estado_por_defecto())
@@ -490,6 +622,9 @@ class Config:
     disparadores: tuple = ()
     #: secciones del día llenadas por un comando (`[bloques.<clave>]`), en el orden del archivo.
     bloques: tuple[Bloque, ...] = ()
+    #: lo declarado para una pestaña que ya no está (la del plan, `PESTANA_RETIRADA`), como (dónde, qué decía): se
+    #: deja fuera sin que la configuración falle, y `telar doctor` lo avisa.
+    retirados: tuple[tuple[str, str], ...] = ()
     #: qué abre cada tipo de evento de la agenda (`[agenda.<clave>]`), en el orden del archivo.
     agenda: tuple[ReglaAgenda, ...] = ()
     #: grupos propios en la lista de hilos (`[secciones.x]`), en el orden del archivo.
@@ -514,11 +649,27 @@ class Config:
     dashboard_orden: tuple[str, ...] = ()
     dashboard_ocultas: tuple[str, ...] = ()
     #: máquinas donde pueden vivir hilos. Sin ninguna, no hay hilos remotos.
+    #: las partes de la vida (`[mundos]`), en el orden en que se declaran; vacío, nada dice mundo
+    mundos: tuple[Mundo, ...] = ()
+    #: el mundo que rige fuera de todo horario (`[mundos] fuera`); vacío, ambos (no filtra)
+    mundos_fuera: str = ""
+    #: el archivo de la raíz con el horario de cada mundo y `fuera` (`<raiz>/.telar/mundos.toml`, telar.mundos_raiz): vale en
+    #: todas las máquinas; None sin `raiz` (todo queda en la de la máquina)
+    mundos_archivo: Path | None = None
+    #: por qué ese archivo no se lee ("" si se lee o no está): sus horarios no se aplican, y doctor lo dice
+    mundos_error: str = ""
+    #: de dónde sale el horario de cada mundo y `fuera`: {"horario": {mundo: "raiz" | "maquina"}, "fuera": "raiz" |
+    #: "maquina" | ""}
+    mundos_donde: dict = field(default_factory=dict)
+    #: lo de la raíz que esta máquina no aplica (el horario de un mundo que no declara, un `fuera` que no es de los suyos)
+    mundos_sobran: tuple[str, ...] = ()
     remotos: tuple[Remoto, ...] = ()
     #: los repositorios de trabajo, cada uno con su perfil (`[repos.<nombre>]`). Sin ninguno, solo `raiz`.
     repos: tuple[Repo, ...] = ()
     #: lo que queda de `[enlace]` (la puerta se retiró): `entrada` y `no_leer`
     puerta: Puerta = field(default_factory=Puerta)
+    #: el vocabulario de estados de las iniciativas (`[iniciativas]`)
+    iniciativas: Iniciativas = field(default_factory=Iniciativas)
     #: de qué archivo salió esta configuración; None si son puros valores por defecto.
     origen: Path | None = None
 
@@ -552,6 +703,12 @@ def ruta_config() -> Path:
     if env:
         return Path(env).expanduser()
     return _hogar_config() / "config.toml"
+
+
+def socket_serve() -> Path:
+    """El socket donde escucha `telar serve` por defecto (su API, sin llave: la carpeta es solo de su dueño)."""
+    base = os.environ.get("XDG_STATE_HOME")
+    return (Path(base) if base else Path.home() / ".local" / "state") / "telar" / "serve" / "telar.sock"
 
 
 def _ruta(valor: object, contexto: str) -> Path:
@@ -665,6 +822,9 @@ TABLAS_DE_ANTES = ("bloques", "apps", "secciones", "resultados")
 #: dónde puede aparecer una vista (`aparece`) y a qué tabla de antes se traduce
 LUGARES_DE_VISTA = {"pestana": "bloques", "plan": "bloques", "apps": "apps", "hilos": "secciones",
                     "dia": "resultados"}
+#: los lugares que se pueden pedir hoy: «plan» se sigue leyendo (se traduce a un bloque `en = "plan"`, que se deja
+#: fuera y `telar doctor` avisa), pero la pestaña ya no está
+LUGARES_VIGENTES = tuple(x for x in LUGARES_DE_VISTA if x != PESTANA_RETIRADA)
 
 #: las claves que acepta una vista en cada lugar, además de `aparece` y `nombre`
 _CLAVES_DE_VISTA = {
@@ -672,13 +832,14 @@ _CLAVES_DE_VISTA = {
     "plan": {"comando", "color", "tecla"},
     "apps": {"comando", "archivo", "url", "memoria", "descripcion"},
     "hilos": {"hilos", "comando"},
-    "dia": {"carpeta", "en", "comentar"},
+    "dia": {"carpeta", "en", "comentar", "prefijo", "pasadas"},
 }
 
 #: las claves que dejan un solo lugar posible: con una de ellas, `aparece` se puede callar. `comando` no está
 #: porque sirve en cuatro lugares (docs/propuestas/vistas.md, decisión 2), ni `color` y `tecla`, que sirven en dos.
 _LUGAR_POR_FUENTE = {"archivo": "apps", "url": "apps", "memoria": "apps", "descripcion": "apps",
-                     "hilos": "hilos", "carpeta": "dia", "en": "dia", "comentar": "dia"}
+                     "hilos": "hilos", "carpeta": "dia", "en": "dia", "comentar": "dia", "prefijo": "dia",
+                     "pasadas": "dia"}
 
 
 def _lugar_de_vista(clave: str, cuerpo: dict) -> str:
@@ -686,7 +847,8 @@ def _lugar_de_vista(clave: str, cuerpo: dict) -> str:
     if "aparece" in cuerpo:
         aparece = cuerpo["aparece"]
         if not isinstance(aparece, str) or aparece not in LUGARES_DE_VISTA:
-            raise ErrorDeConfig(f"vistas.{clave}.aparece: pestana, plan, apps, hilos o dia; llegó {aparece!r}")
+            raise ErrorDeConfig(f"vistas.{clave}.aparece: {', '.join(LUGARES_VIGENTES[:-1])} o {LUGARES_VIGENTES[-1]};"
+                                f" llegó {aparece!r}")
         return aparece
     # sin `aparece`, `en` la haría un resultado por día y el error culparía a la fuente (decisión 8)
     fuente = next((f for f in ("comando", "archivo", "url") if f in cuerpo), None)
@@ -700,7 +862,7 @@ def _lugar_de_vista(clave: str, cuerpo: dict) -> str:
         raise ErrorDeConfig(f"vistas.{clave}: sus claves son de lugares distintos ({' y '.join(lugares)}): "
                             "di cuál con aparece")
     if "comando" in cuerpo:
-        raise ErrorDeConfig(f"vistas.{clave}.aparece: con comando, di dónde aparece: pestana, plan, apps o hilos")
+        raise ErrorDeConfig(f"vistas.{clave}.aparece: con comando, di dónde aparece: pestana, apps o hilos")
     raise ErrorDeConfig(f"vistas.{clave}: falta qué muestra (comando, archivo, url, hilos o carpeta)")
 
 
@@ -802,7 +964,7 @@ def como_vista(tabla: str, cosa) -> dict:
     `telar doctor` sugiere. Solo trae lo que no es el valor por defecto; leída de vuelta, da lo mismo."""
     d: dict = {}
     if tabla == "bloques":
-        d["aparece"] = "plan" if cosa.en == "plan" else "pestana"
+        d["aparece"] = "pestana"
         d["comando"] = list(cosa.comando)
         if cosa.color != "cian":
             d["color"] = cosa.color
@@ -827,7 +989,7 @@ def como_vista(tabla: str, cosa) -> dict:
             d["comando"] = list(cosa.home)
     elif tabla == "resultados":
         d["aparece"] = "dia"
-        for campo in ("carpeta", "en"):
+        for campo in ("carpeta", "en", "prefijo", "pasadas"):
             if getattr(cosa, campo):
                 d[campo] = getattr(cosa, campo)
         if cosa.comentar:
@@ -858,9 +1020,12 @@ def clave_toml(clave: str) -> str:
     return clave if re.fullmatch(r"[A-Za-z0-9_-]+", clave) else _cadena_toml(clave)
 
 
-def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None) -> Config:
+def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = None,
+               tolerar_temas: bool = False) -> Config:
     """Arma una `Config` desde el TOML ya parseado, validando lo que llegó. Con `rotos`, un módulo que no se
-    puede leer se deja fuera y se anota en `modulos_rotos` en vez de ser un error (ver `cargar`)."""
+    puede leer se deja fuera y se anota en `modulos_rotos` en vez de ser un error (ver `cargar`). Con `tolerar_temas`, un
+    modo o un mundo que nombra un tema propio que no hay no es un error: queda anotado en `temas_faltan` (así carga
+    `cargar`; al escribir, no se tolera)."""
     base = Config()
     rotos = None if rotos is None else list(rotos)
     de_antes = tuple((t, k) for t in TABLAS_DE_ANTES if isinstance(datos.get(t), dict) for k in datos[t])
@@ -965,9 +1130,13 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
 
     if "hilos" in datos:
         tabla = _tabla(datos["hilos"], "hilos")
-        sobra = set(tabla) - {"directorios", "tope"}
+        sobra = set(tabla) - {"directorios", "tope", "dormir_tras"}
         if sobra:
             raise ErrorDeConfig(f"hilos.{sorted(sobra)[0]}: no existe")
+        try:
+            dormir_tras = duracion(tabla["dormir_tras"]) if "dormir_tras" in tabla else Hilos().dormir_tras
+        except ValueError as e:
+            raise ErrorDeConfig(f"hilos.dormir_tras: {e}") from e
         dirs = tabla.get("directorios", [])
         if not isinstance(dirs, list) or not all(isinstance(d, str) and d.strip() for d in dirs):
             raise ErrorDeConfig(f"hilos.directorios: se esperaba una lista de carpetas, llegó {dirs!r}")
@@ -977,7 +1146,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         tope = tabla.get("tope", 8)
         if not isinstance(tope, int) or isinstance(tope, bool) or tope < 0:
             raise ErrorDeConfig(f"hilos.tope: se esperaba un número entero, llegó {tope!r}")
-        cambios["hilos"] = Hilos(directorios=tuple(d.strip().strip("/") for d in dirs), tope=tope)
+        cambios["hilos"] = Hilos(directorios=tuple(d.strip().strip("/") for d in dirs), tope=tope, dormir_tras=dormir_tras)
 
     if "atajos" in datos:
         tabla = _tabla(datos["atajos"], "atajos")
@@ -1004,7 +1173,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
 
     if "bloques" in datos:
         tabla = _tabla(datos["bloques"], "bloques")
-        bloques = []
+        bloques, retirados = [], []
         for clave, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"bloques.{clave}")
             sobra = set(cuerpo) - {"nombre", "comando", "color", "en", "tecla", "dentro"}
@@ -1020,19 +1189,25 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             if not isinstance(nombre, str) or not nombre.strip():
                 raise ErrorDeConfig(f"bloques.{clave}.nombre: se esperaba un texto")
             en = cuerpo.get("en", "")
-            if en not in ("", "plan"):
-                raise ErrorDeConfig(f"bloques.{clave}.en: «plan», o nada para una pestaña propia; llegó {en!r}")
+            if en not in ("", *PESTANAS_RETIRADAS):
+                raise ErrorDeConfig(f"bloques.{clave}.en: ya no existe (iba arriba de la pestaña del plan, que se sacó);"
+                                    f" llegó {en!r}")
             tecla = cuerpo.get("tecla", "")
             if not isinstance(tecla, str) or len(tecla) > 1:
                 raise ErrorDeConfig(f"bloques.{clave}.tecla: se esperaba una letra, llegó {tecla!r}")
             dentro = cuerpo.get("dentro", "")
-            if dentro not in ("", *DENTRO_DE):
+            if dentro not in ("", *PESTANAS_RETIRADAS, *DENTRO_DE):
                 raise ErrorDeConfig(f"bloques.{clave}.dentro: {', '.join(DENTRO_DE[:-1])} o {DENTRO_DE[-1]}; llegó {dentro!r}")
-            if dentro and en:
-                raise ErrorDeConfig(f"bloques.{clave}: en o dentro, no los dos (arriba de una pestaña, o una subpestaña)")
+            # lo que iba en una pestaña que se sacó (el plan, estrategia): fuera, sin romper nada (telar doctor lo dice)
+            if en in PESTANAS_RETIRADAS or dentro in PESTANAS_RETIRADAS:
+                que = f'en = "{en}"' if en else f'dentro = "{dentro}"'
+                retirados.append((f"vistas.{clave}", 'aparece = "plan"' if en == PESTANA_RETIRADA else que) if clave in vistas
+                                 else (f"bloques.{clave}", que))
+                continue
             bloques.append(Bloque(clave=clave, nombre=nombre.strip(), comando=tuple(comando), color=color,
-                                  en=en, tecla=tecla, dentro=dentro))
+                                  tecla=tecla, dentro=dentro))
         cambios["bloques"] = tuple(bloques)
+        cambios["retirados"] = tuple(retirados)
 
     if "agenda" in datos:
         tabla = _tabla(datos["agenda"], "agenda")
@@ -1274,6 +1449,16 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             raise ErrorDeConfig(f"periodicos.en: se esperaba el nombre de un remoto, llegó {en!r}")
         cambios["periodicos_en"] = en.strip()
 
+    if "instruccion" in datos:
+        cuerpo = _tabla(datos["instruccion"], "instruccion")
+        sobra = set(cuerpo) - {"destino"}
+        if sobra:
+            raise ErrorDeConfig(f"instruccion.{sorted(sobra)[0]}: no existe")
+        destino = cuerpo.get("destino", "")
+        if not isinstance(destino, str) or (destino.strip() and not re.fullmatch(r"(agente|hilo):\S.*", destino.strip())):
+            raise ErrorDeConfig(f"instruccion.destino: «agente:<nombre>» o «hilo:<nombre>», llegó {destino!r}")
+        cambios["instruccion_destino"] = destino.strip()
+
     if "dashboard" in datos:
         cuerpo = _tabla(datos["dashboard"], "dashboard")
         sobra = set(cuerpo) - {"orden", "ocultas"}
@@ -1290,7 +1475,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         lista = []
         for clave, cuerpo in tabla.items():
             cuerpo = _tabla(cuerpo, f"resultados.{clave}")
-            sobra = set(cuerpo) - {"carpeta", "en", "nombre", "comentar"}
+            sobra = set(cuerpo) - {"carpeta", "en", "nombre", "comentar", "prefijo", "pasadas"}
             if sobra:
                 raise ErrorDeConfig(f"resultados.{clave}.{sorted(sobra)[0]}: no existe")
             valores: dict = {}
@@ -1298,17 +1483,45 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             if not isinstance(comentar, list) or not all(isinstance(x, str) and x.strip() for x in comentar):
                 raise ErrorDeConfig(f"resultados.{clave}.comentar: se esperaba una lista de palabras, llegó {comentar!r}")
             valores["comentar"] = tuple(comentar)
-            for campo in ("carpeta", "en", "nombre"):
+            for campo in ("carpeta", "en", "nombre", "prefijo", "pasadas"):
                 v = cuerpo.get(campo, "")
                 if not isinstance(v, str):
                     raise ErrorDeConfig(f"resultados.{clave}.{campo}: se esperaba un texto, llegó {v!r}")
                 valores[campo] = v.strip()
+            if valores["pasadas"]:
+                from telar.pasadas import ESQUEMAS
+
+                if valores["pasadas"] not in ESQUEMAS:
+                    raise ErrorDeConfig(f"resultados.{clave}.pasadas: {' o '.join(ESQUEMAS)}; llegó {valores['pasadas']!r}")
+            if valores["prefijo"] and not re.fullmatch(r"[\w.-]+", valores["prefijo"]):
+                raise ErrorDeConfig(f"resultados.{clave}.prefijo: letras, números, «-», «_» o «.», sin «/»; llegó {valores['prefijo']!r}")
             if not valores["carpeta"] and not valores["en"]:
                 raise ErrorDeConfig(f"resultados.{clave}: falta carpeta o en")
             if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", clave):
                 raise ErrorDeConfig(f"resultados.{clave}: la clave va en minúsculas, sin espacios")
             lista.append(Resultado(clave=clave, **valores))
         cambios["resultados"] = tuple(lista)
+
+    if "avisos" in datos:
+        tabla = _tabla(datos["avisos"], "avisos")
+        lista_avisos = []
+        for clave, cuerpo in tabla.items():
+            cuerpo = _tabla(cuerpo, f"avisos.{clave}")
+            sobra = set(cuerpo) - {"archivo", "en"}
+            if sobra:
+                raise ErrorDeConfig(f"avisos.{clave}.{sorted(sobra)[0]}: no existe")
+            valores = {}
+            for campo in ("archivo", "en"):
+                v = cuerpo.get(campo, "")
+                if not isinstance(v, str):
+                    raise ErrorDeConfig(f"avisos.{clave}.{campo}: se esperaba un texto, llegó {v!r}")
+                valores[campo] = v.strip()
+            if not valores["archivo"]:
+                raise ErrorDeConfig(f"avisos.{clave}: falta archivo (el JSON que deja el programa)")
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", clave):
+                raise ErrorDeConfig(f"avisos.{clave}: la clave va en minúsculas, sin espacios")
+            lista_avisos.append(AvisoArchivo(clave=clave, **valores))
+        cambios["avisos"] = tuple(lista_avisos)
 
     if "tipos" in datos:
         tabla = _tabla(datos["tipos"], "tipos")
@@ -1358,6 +1571,41 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         from telar import glifos as mod_glifos
 
         cambios["glifos"] = {k: mod_glifos.validar(k, v) for k, v in _tabla(datos["glifos"], "glifos").items()}
+    # los temas: los de la raíz (`<raiz>/.telar/temas.toml`) y, encima, los de este archivo
+    from telar import temas as mod_temas
+
+    archivo_temas = mod_temas.archivo_de(datos, origen)
+    de_raiz, cambios["temas_error"] = mod_temas.leer_raiz(archivo_temas)
+    cambios["temas_archivo"] = archivo_temas
+    de_aqui = _tabla(datos["temas"], "temas") if "temas" in datos else {}
+    if de_raiz or de_aqui:
+        cambios["temas"] = mod_temas.validar(mod_temas.juntar(de_raiz, de_aqui))
+        cambios["temas_donde"] = mod_temas.donde(de_raiz, de_aqui)
+    # los temas que se pueden poner: los de fábrica y los propios de `[temas]`
+    from telar.modos import TEMAS
+
+    hay_temas = (*TEMAS, *(t for t in cambios.get("temas", base.temas) if t not in TEMAS))
+    if tolerar_temas:
+        faltan = tuple(t for t in dict.fromkeys(_temas_nombrados(datos))
+                       if t not in hay_temas and mod_temas.NOMBRE.fullmatch(t))
+        cambios["temas_faltan"] = faltan
+        hay_temas = (*hay_temas, *faltan)
+
+    # el horario de cada mundo y `fuera`: los de la raíz (`<raiz>/.telar/mundos.toml`) y, encima, los de este archivo
+    from telar import mundos_raiz
+
+    archivo_mundos = mundos_raiz.archivo_de(datos, origen)
+    de_raiz_mundos, cambios["mundos_error"] = mundos_raiz.leer_raiz(archivo_mundos)
+    cambios["mundos_archivo"] = archivo_mundos
+    if "mundos" in datos:
+        tabla_mundos, cambios["mundos_donde"], cambios["mundos_sobran"] = mundos_raiz.juntar(
+            _tabla(datos["mundos"], "mundos"), de_raiz_mundos)
+        cambios["mundos"], cambios["mundos_fuera"] = _mundos(tabla_mundos, temas=hay_temas)
+        _modos_de_mundos(cambios["mundos"], cambios.get("modos", base.modos))
+    if "modos" in datos or "temas" in cambios:
+        _temas_de_modos(cambios.get("modos", base.modos), hay_temas)
+    if "iniciativas" in datos:
+        cambios["iniciativas"] = _iniciativas(_tabla(datos["iniciativas"], "iniciativas"))
 
     desconocidas = set(datos) - {
         "multiplexor", "sesion", "raiz", "estado", "perfil", "intervalos", "proveedores",
@@ -1365,13 +1613,200 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
         "enlaces", "enlace", "periodicos", "agentes", "bus", "resultados", "notas", "equipo",  # `equipo`: lo lee telar.equipo
         "tipos", "repos", "vistas",  # `vistas`: ya traducidas por _con_vistas
         "disparadores",  # leídos por _con_disparadores
-        "terminal", "modos", "glifos",
+        "terminal", "modos", "glifos", "temas", "instruccion", "mundos", "iniciativas", "avisos",
     }
     if desconocidas:
         sobra = ", ".join(sorted(desconocidas))
         raise ErrorDeConfig(f"claves que telar no conoce: {sobra}")
 
     return replace(base, **cambios)  # type: ignore[arg-type]
+
+
+def _modos_de_mundos(mundos, propios: dict) -> None:
+    """Que los `modos` de cada mundo existan: los de fábrica y los de `[modos]`. ErrorDeConfig con los que hay."""
+    from telar import modos as mod_modos
+
+    hay = [*mod_modos.DE_FABRICA, *(k for k in mod_modos.con_alias(propios or {}) if k not in mod_modos.DE_FABRICA)]
+    for m in mundos:
+        raro = next((x for x in m.modos if x not in hay), "")
+        if raro:
+            raise ErrorDeConfig(f"mundos.{m.nombre}.modos: «{raro}» no es un modo ({', '.join(hay)})")
+
+
+def _modos_del_mundo(nombre: str, valor) -> tuple[str, ...]:
+    """`[mundos.<nombre>] modos`: una lista de claves de modos, con al menos una (sin la línea, todos). Los nombres de
+    antes pasan a los de ahora (`estandar` es `tactica`); sin repetir, en su orden: el primero es al que entra."""
+    from telar import modos as mod_modos
+
+    if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
+        raise ErrorDeConfig(f"mundos.{nombre}.modos: se esperaba una lista de modos (\"todo\", \"foco\"…), llegó {valor!r}")
+    if not valor:
+        raise ErrorDeConfig(f"mundos.{nombre}.modos: al menos uno; sin la línea, el mundo tiene todos")
+    claves = []
+    for x in valor:
+        clave = mod_modos.ALIAS.get(x.strip(), x.strip())
+        if not mod_modos.CLAVE.match(clave):
+            raise ErrorDeConfig(f"mundos.{nombre}.modos: «{x}» no es la clave de un modo (minúsculas, números y guiones)")
+        claves.append(clave)
+    return tuple(dict.fromkeys(claves))
+
+
+def _temas_nombrados(datos: dict) -> list[str]:
+    """Los temas que nombran los modos y los mundos de ese TOML (`[modos.<m>] tema`, `[mundos.<n>] tema`), sin revisar."""
+    salida = []
+    for clave in ("modos", "mundos"):
+        tabla = datos.get(clave)
+        for cuerpo in (tabla.values() if isinstance(tabla, dict) else ()):
+            tema = cuerpo.get("tema") if isinstance(cuerpo, dict) else None
+            if isinstance(tema, str) and tema:
+                salida.append(tema)
+    return salida
+
+
+def _temas_de_modos(modos: dict, temas: tuple[str, ...]) -> None:
+    """El tema de cada modo, uno que se puede poner: de fábrica o propio (`[temas.<nombre>] base`). ErrorDeConfig si no."""
+    for clave, modo in (modos or {}).items():
+        tema = (modo.get("valores") or {}).get("tema") if isinstance(modo, dict) else None
+        if tema and tema not in temas:
+            raise ErrorDeConfig(f"modos.{clave}.tema: uno de {', '.join(temas)}; llegó {tema!r}")
+
+
+def _mundos(tabla: dict, *, temas: tuple[str, ...] | None = None) -> tuple[tuple[Mundo, ...], str]:
+    """`[mundos.<nombre>]` con `areas`, `rutas`, `etiquetas`, `horario`, `color`, `tema`, `modos` y `arte`, en su orden, y `[mundos] fuera`
+    (el que rige fuera de todo horario). Un área, una ruta o una etiqueta en dos mundos es un error: no se sabría a cuál
+    pertenece lo que la tiene (una ruta dentro de otra sí vale: gana la más larga). `temas`, los que puede llevar uno (de
+    fábrica y propios); sin ellos, los de fábrica."""
+    from telar import horario as mod_horario
+    from telar.modos import TEMAS
+
+    validos = temas or TEMAS
+
+    mundos, de_area, de_ruta, de_etiqueta = [], {}, {}, {}
+    ajustes = {k: v for k, v in tabla.items() if not isinstance(v, dict)}
+    sobra = set(ajustes) - {"fuera"}
+    if sobra:
+        raise ErrorDeConfig(f"mundos.{sorted(sobra)[0]}: no existe (fuera, o una tabla [mundos.<nombre>])")
+    for nombre, cuerpo in tabla.items():
+        if nombre in ajustes:
+            continue
+        cuerpo = _tabla(cuerpo, f"mundos.{nombre}")
+        if not re.fullmatch(r"[^\s,:/]+", nombre) or nombre == SIN_CLASIFICAR:
+            raise ErrorDeConfig(f"mundos.{nombre}: un mundo se llama con una palabra, sin espacios, «,», «:» ni «/», "
+                                f"y no «{SIN_CLASIFICAR}» (es lo que no calza en ninguno)")
+        sobra = set(cuerpo) - {"areas", "rutas", "etiquetas", "horario", "color", "tema", "modos", "arte"}
+        if sobra:
+            raise ErrorDeConfig(f"mundos.{nombre}.{sorted(sobra)[0]}: no existe (areas, rutas, etiquetas, horario, color, "
+                                "tema, modos o arte)")
+        listas = {}
+        for campo in ("areas", "rutas", "etiquetas"):
+            valor = cuerpo.get(campo, [])
+            if not isinstance(valor, list) or not all(isinstance(x, str) and x.strip() for x in valor):
+                raise ErrorDeConfig(f"mundos.{nombre}.{campo}: se esperaba una lista de textos, llegó {valor!r}")
+            listas[campo] = tuple(dict.fromkeys(x.strip() for x in valor))
+        for area in listas["areas"]:
+            if de_area.setdefault(area, nombre) != nombre:
+                raise ErrorDeConfig(f"mundos.{nombre}.areas: «{area}» ya es de «{de_area[area]}»")
+        for ruta in listas["rutas"]:
+            if ".." in Path(ruta).parts:
+                raise ErrorDeConfig(f"mundos.{nombre}.rutas: «{ruta}» no puede subir con «..»: relativa a la raíz, o absoluta")
+            if de_ruta.setdefault(ruta.rstrip("/") + "/", nombre) != nombre:
+                raise ErrorDeConfig(f"mundos.{nombre}.rutas: «{ruta}» ya es de «{de_ruta[ruta.rstrip('/') + '/']}»")
+        for etiqueta in listas["etiquetas"]:
+            if de_etiqueta.setdefault(etiqueta, nombre) != nombre:
+                raise ErrorDeConfig(f"mundos.{nombre}.etiquetas: «{etiqueta}» ya es de «{de_etiqueta[etiqueta]}»")
+        try:
+            tramos = mod_horario.leer_horario(cuerpo.get("horario"))
+        except ValueError as e:
+            raise ErrorDeConfig(f"mundos.{nombre}.horario: {e}") from None
+        color = cuerpo.get("color", "")
+        if color and color not in TINTAS_MUNDO:
+            raise ErrorDeConfig(f"mundos.{nombre}.color: una de {', '.join(TINTAS_MUNDO)}; llegó {color!r}")
+        tema = cuerpo.get("tema", "")
+        if tema and tema not in validos:
+            raise ErrorDeConfig(f"mundos.{nombre}.tema: uno de {', '.join(validos)}; llegó {tema!r}")
+        modos = _modos_del_mundo(nombre, cuerpo["modos"]) if "modos" in cuerpo else ()
+        # el arte: solo su clave (que exista lo sabe la página, que tiene los de fábrica: uno que no hay lleva el que le toca)
+        arte = cuerpo.get("arte", "")
+        if not isinstance(arte, str) or (arte and not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", arte)):
+            raise ErrorDeConfig(f"mundos.{nombre}.arte: la clave de un arte (minúsculas, números y guiones: «telar», "
+                                f"«cielo», o el nombre de un <raiz>/.telar/arte/<clave>.txt); llegó {arte!r}")
+        mundos.append(Mundo(nombre=nombre, areas=listas["areas"], rutas=listas["rutas"], etiquetas=listas["etiquetas"],
+                            horario=tramos, color=color, tema=tema, modos=modos, arte=arte))
+    fuera = ajustes.get("fuera", "")
+    if not isinstance(fuera, str) or (fuera and fuera not in [m.nombre for m in mundos]):
+        raise ErrorDeConfig(f"mundos.fuera: el nombre de uno de los mundos declarados "
+                            f"({', '.join(m.nombre for m in mundos) or 'no hay'}); llegó {fuera!r}")
+    return tuple(mundos), fuera
+
+
+def _iniciativas(tabla: dict) -> Iniciativas:
+    """`[iniciativas]`: `estados` (el vocabulario, una lista), `sinonimos` (lo escrito → un estado), `clases` (un estado →
+    su clase, telar.iniciativas.CLASES) y `fuentes` (lo que dice `estado_fuente` en una ficha → cómo se muestra). Dos
+    estados que solo cambian en tildes o mayúsculas son el mismo, y es un error; un sinónimo que también es estado,
+    también."""
+    from telar import iniciativas as ini
+
+    sobra = set(tabla) - {"estados", "sinonimos", "clases", "fuentes"}
+    if sobra:
+        raise ErrorDeConfig(f"iniciativas.{sorted(sobra)[0]}: no existe (estados, sinonimos, clases o fuentes)")
+
+    def texto(v: object, donde: str, largo: int = 40) -> str:
+        if not isinstance(v, str) or not v.strip() or "\n" in v or len(v.strip()) > largo:
+            raise ErrorDeConfig(f"{donde}: se esperaba un texto de una línea, de hasta {largo} letras; llegó {v!r}")
+        return " ".join(v.split())
+
+    crudos = tabla.get("estados", [])
+    if not isinstance(crudos, list):
+        raise ErrorDeConfig(f"iniciativas.estados: se esperaba una lista de estados, llegó {crudos!r}")
+    estados: list[str] = []
+    for v in crudos:
+        e = texto(v, "iniciativas.estados")
+        if any(ini.normalizar(x) == ini.normalizar(e) for x in estados):
+            raise ErrorDeConfig(f"iniciativas.estados: «{e}» está dos veces")
+        estados.append(e)
+    por_norma = {ini.normalizar(e): e for e in estados}
+
+    def del_vocabulario(v: object, donde: str) -> str:
+        e = por_norma.get(ini.normalizar(texto(v, donde)))
+        if e is None:
+            raise ErrorDeConfig(f"{donde}: «{v}» no es uno de iniciativas.estados ({', '.join(estados) or 'no hay'})")
+        return e
+
+    crudos_s = tabla.get("sinonimos", {})
+    if not isinstance(crudos_s, dict):
+        raise ErrorDeConfig(f"iniciativas.sinonimos: se esperaba una tabla, «lo escrito» = «estado»; llegó {crudos_s!r}")
+    sinonimos: list[tuple[str, str]] = []
+    for de, a in crudos_s.items():
+        de = texto(de, "iniciativas.sinonimos")
+        if ini.normalizar(de) in por_norma:
+            raise ErrorDeConfig(f"iniciativas.sinonimos.{de}: ya es un estado; un sinónimo es lo que vale como otro")
+        if any(ini.normalizar(x) == ini.normalizar(de) for x, _ in sinonimos):
+            raise ErrorDeConfig(f"iniciativas.sinonimos: «{de}» está dos veces")
+        sinonimos.append((de, del_vocabulario(a, f"iniciativas.sinonimos.{de}")))
+
+    crudas_c = tabla.get("clases", {})
+    if not isinstance(crudas_c, dict):
+        raise ErrorDeConfig(f"iniciativas.clases: se esperaba una tabla, «estado» = «clase»; llegó {crudas_c!r}")
+    clases: list[tuple[str, str]] = []
+    for e, c in crudas_c.items():
+        e = del_vocabulario(e, "iniciativas.clases")
+        if c not in ini.CLASES:
+            raise ErrorDeConfig(f"iniciativas.clases.{e}: una de {', '.join(ini.CLASES)}; llegó {c!r}")
+        clases.append((e, c))
+
+    crudas_f = tabla.get("fuentes", {})
+    if not isinstance(crudas_f, dict):
+        raise ErrorDeConfig(f"iniciativas.fuentes: se esperaba una tabla, «lo que dice estado_fuente» = «cómo se muestra»; "
+                            f"llegó {crudas_f!r}")
+    fuentes: list[tuple[str, str]] = []
+    for de, nombre in crudas_f.items():
+        de = texto(de, "iniciativas.fuentes")
+        if any(ini.normalizar(x) == ini.normalizar(de) for x, _ in fuentes):
+            raise ErrorDeConfig(f"iniciativas.fuentes: «{de}» está dos veces")
+        fuentes.append((de, texto(nombre, f"iniciativas.fuentes.{de}")))
+    if (sinonimos or clases) and not estados:
+        raise ErrorDeConfig("iniciativas: sinonimos y clases son de los estados de iniciativas.estados, que no hay")
+    return Iniciativas(estados=tuple(estados), sinonimos=tuple(sinonimos), clases=tuple(clases), fuentes=tuple(fuentes))
 
 
 def _entorno(cfg: Config) -> Config:
@@ -1420,7 +1855,7 @@ def cargar(ruta: Path | None = None, *, tolerar_modulos: bool = False) -> Config
 
     rotos: list | None = [] if tolerar_modulos else None
     datos = _con_instalados(datos, destino, rotos)
-    return _entorno(desde_dict(datos, origen=destino, rotos=rotos))
+    return _entorno(desde_dict(datos, origen=destino, rotos=rotos, tolerar_temas=True))
 
 
 def _con_instalados(datos: dict, destino: Path, rotos: list | None = None) -> dict:
@@ -1543,14 +1978,15 @@ def _cadena_toml(valor: str) -> str:
     return json.dumps(valor, ensure_ascii=False)
 
 
-def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = None) -> Path:
+def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = None, *, revisar=None) -> Path:
     """Pone `clave = valor` en `[tabla]`, o la quita si `valor` es None.
 
     `valor` es un texto, un número o una lista de textos.
 
     Toca solo esa línea: el resto del archivo, comentarios incluidos, queda como estaba.
     Si la tabla no existe se agrega al final. Igual que con el calendario, antes de
-    escribir se comprueba que el resultado se siga leyendo.
+    escribir se comprueba que el resultado se siga leyendo: como configuración o, con `revisar(antes, nuevo, destino)`,
+    como lo diga quien escribe (un archivo de la raíz que no es una configuración, telar.mundos_raiz).
     """
     destino = Path(ruta).expanduser() if ruta is not None else ruta_config()
     texto = destino.read_text(encoding="utf-8") if destino.exists() else ""
@@ -1583,10 +2019,7 @@ def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = No
             renglones.insert(ultimo + 1, nueva)
     nuevo = "\n".join(renglones) + "\n"
 
-    try:
-        desde_dict(tomllib.loads(nuevo), origen=destino)
-    except (tomllib.TOMLDecodeError, ErrorDeConfig) as e:
-        raise ErrorDeConfig(f"no escribí nada: el resultado no se podría leer ({e})") from e
+    (revisar or revisar_antes_de_escribir)(texto, nuevo, destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     temporal = destino.with_name(destino.name + ".nuevo")
     temporal.write_text(nuevo, encoding="utf-8")
@@ -1594,6 +2027,25 @@ def escribir_clave(tabla: str, clave: str, valor: object, ruta: Path | None = No
         os.chmod(temporal, destino.stat().st_mode & 0o777)
     os.replace(temporal, destino)
     return destino
+
+
+def revisar_antes_de_escribir(antes: str, nuevo: str, destino: Path) -> None:
+    """Que lo que se va a escribir en `destino` se siga leyendo. Un modo o un mundo que ya nombraba un tema que no hay (uno
+    propio que se borró en la raíz desde otra máquina) no impide escribir otra cosa; nombrar uno nuevo que no hay, sí.
+    ErrorDeConfig («no escribí nada: …») si no."""
+    try:
+        desde_dict(tomllib.loads(nuevo), origen=destino)
+        return
+    except (tomllib.TOMLDecodeError, ErrorDeConfig) as e:
+        error = e
+    try:
+        ya_faltaban = set(desde_dict(tomllib.loads(antes), origen=destino, tolerar_temas=True).temas_faltan) if antes else set()
+        faltan = set(desde_dict(tomllib.loads(nuevo), origen=destino, tolerar_temas=True).temas_faltan)
+    except (tomllib.TOMLDecodeError, ErrorDeConfig):
+        faltan, ya_faltaban = {""}, set()
+    if faltan and faltan <= ya_faltaban:
+        return
+    raise ErrorDeConfig(f"no escribí nada: el resultado no se podría leer ({error})") from error
 
 
 def _valor_toml(valor: object) -> str:

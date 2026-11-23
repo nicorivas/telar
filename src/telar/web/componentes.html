@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1e1e2e">
+<title>telar · componentes</title>
+<link rel="stylesheet" href="/estatico/marco.css"></head><body class="catalogo">
+<div id="catalogo"></div>
+<script>
+// El catálogo de componentes de la página (pagina/src/componentes/catalogo.ts): cada uno en sus estados y con cada
+// tema al lado. Con `telar serve --web --dev` (scripts/dev.py) se recarga sola al cambiar el código o los estilos
+try {
+  const dev = new EventSource('/dev/cambios');
+  let caido = false;
+  dev.onmessage = () => location.reload();
+  dev.onopen = () => { if (caido) location.reload(); };
+  dev.onerror = () => { if (dev.readyState === EventSource.CLOSED) dev.close(); else caido = true; };
+} catch (e) { /* sin EventSource */ }
+</script>
+<script src="/estatico/componentes.js"></script>
+</body></html>

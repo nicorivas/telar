@@ -89,10 +89,10 @@ proveedor, o lo trae un módulo en su `modulo.toml`:
 tipo  = "markdown"
 rutas = ["equipo/calendario-cursos.md"]     # además de los documentos de las unidades
 
-[proveedores.gestion]
+[proveedores.hitos]
 como    = "fechas"
 tipo    = "comando"
-comando = ["bin/fechas-de-la-gestion"]
+comando = ["bin/fechas-de-los-hitos"]
 ```
 
 ### Lo que telar ya tiene con día
@@ -146,7 +146,7 @@ como `telar pendientes` junta las tareas:
 
 ```json
 { "fechas": [ { "id": "…", "titulo": "…", "inicio": "…", "clase": "…", "proyecto": "…", "fuente": "…" } ],
-  "fallas": ["gestion: no contestó en 10 s"] }
+  "fallas": ["hitos: no contestó en 10 s"] }
 ```
 
 Una fuente que falla se dice en `fallas` y las demás llegan igual. Lo usan:

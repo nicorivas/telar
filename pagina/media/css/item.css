@@ -1,0 +1,254 @@
+/* El ítem de una lista (src/componentes/item.ts): una fila en tres secciones, inicio · texto · fin. Sin @scope y en la
+   capa base: lo usa la barra de hilos y lo puede usar cualquier vista. Todo sale de los tokens --item-… (tokens.css),
+   que un tema puede cambiar (temas.css) en sus colores y una densidad (densidades.css) en sus medidas; /componentes
+   lo muestra en cada estado, tema y densidad, y su anatomía en una lámina.
+
+   ┌ .item-inicio ─┬ .item-texto ──────────────────┬ .item-fin ───────────────────────────────────┐
+   │ ranura ranura │ prefijo  título  sufijo       │ aviso  meta  fijas  [.item-acciones: │ … ⋯]  │
+   └───────────────┴───────────────────────────────┴──────────────────────────────────────────────┘ */
+
+/* el alto de la fila es su interlineado (--item-alto, de la densidad): sin relleno arriba ni abajo, todo queda al
+   medio y cada pieza ocupa el alto entero (una acción se aprieta en toda la fila, no solo en su letra) */
+.item {
+  display: flex;
+  position: relative;
+  padding: 0 var(--item-pad-x);
+  line-height: var(--item-alto);
+  color: var(--item-color);
+  white-space: pre;
+  cursor: pointer;
+
+  &:hover,
+  &.hover { background: var(--item-fondo-hover); }
+
+  &.activa {
+    background: var(--item-fondo-activa);
+    box-shadow: var(--item-marca-activa);
+  }
+
+  /* arrastrar uno para soltarlo en otro: el que se arrastra, tenue; donde caería, marcado */
+  &.arrastrando { opacity: .4; }
+
+  &.destino {
+    background: color-mix(in srgb, var(--item-destino) 12%, transparent);
+    box-shadow: inset 0 0 0 1px var(--item-destino);
+  }
+
+  /* uno que se está yendo (cerrándose, archivándose): el título apagado, sin clic */
+  &.saliendo { cursor: default; }
+}
+
+/* inicio: ranuras de ancho fijo, una por ícono, aunque estén vacías: los títulos de una lista empiezan en la misma
+   columna. El ícono va adentro en su letra (`.i`) */
+.item-inicio {
+  display: flex;
+  flex: none;
+}
+
+.item-ranura {
+  flex: none;
+  width: var(--item-ranura);
+  overflow: hidden;
+  text-align: center;
+
+  /* una ranura con texto (el nombre de una máquina): tan ancha como diga la fila */
+  &.ancha {
+    margin: 0 .5ch;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* texto: el prefijo, el título y el sufijo; se corta con «…» antes de pisar el final */
+.item-texto {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-left: var(--item-texto-sangria);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item.hondo1 .item-texto { padding-left: calc(var(--item-texto-sangria) + var(--item-hondo)); }
+.item.hondo2 .item-texto { padding-left: calc(var(--item-texto-sangria) + 2 * var(--item-hondo)); }
+.item.hondo3 .item-texto { padding-left: calc(var(--item-texto-sangria) + 3 * var(--item-hondo)); }
+
+/* fin: pegado a la derecha */
+.item-fin {
+  display: flex;
+  flex: none;
+  gap: 0 var(--item-hueco);
+  margin-left: auto;
+  padding-left: var(--item-hueco);
+}
+
+.item-meta { color: var(--item-meta); }
+
+/* algo que se hace desde el ítem: un ícono o una palabra */
+/* la grilla (la gramática visual): las letras van en su celda, la de la fuente; los íconos, los símbolos y los espacios
+   entre grupos, en celdas cuadradas del alto de la fila (la densidad). Un botón de solo un ícono ocupa una, con el
+   ícono al medio, todos iguales. Con palabra («home»), mide lo que la palabra más su aire.
+   Entre dos íconos seguidos, siempre un espacio cuadrado: el vacío entre uno y otro mide el alto de la fila, también
+   dentro de un grupo. Dos celdas seguidas se apartan en --entre-celdas (el ancho de un ícono: con el aire que su celda
+   deja a cada lado, suma el cuadrado); dos íconos sueltos, sin celda, en --entre-iconos (tokens.css). Lo mismo los
+   botones de una pantalla (pantalla.css) y los del orden (orden.css) */
+.item-accion.cuadrada {
+  display: inline-block;
+  inline-size: calc(var(--item-alto) * 1em);
+  padding-inline: 0;
+  text-align: center;
+}
+
+.item-accion.cuadrada + .item-accion.cuadrada { margin-inline-start: var(--entre-celdas); }
+/* en el fin, las piezas ya se apartan en --item-hueco: lo que falta para el cuadrado */
+.item-fin > .item-accion.cuadrada + .item-accion.cuadrada { margin-inline-start: calc(var(--entre-celdas) - var(--item-hueco)); }
+
+.item-accion {
+  padding-inline: var(--item-accion-pad);
+  color: var(--item-accion);
+  font-variant-emoji: text;
+  cursor: pointer;
+
+  &:hover { color: var(--item-accion-hover); }
+  &.peligro:hover { color: var(--peligro); }
+}
+
+/* las que aparecen al pasar el mouse: flotan sobre el final sin correrlo (si ocuparan lugar, la columna de la meta
+   saltaría según cuántas hay), con el fondo de la fila debajo. El ⋯ va al último, en el borde. Se despliegan desde la
+   derecha (el recorte se abre hacia la izquierda y cada una llega un poco después de la de su derecha), y una raya
+   tenue las aparta de lo que queda tapado a su izquierda, con un hueco a cada lado. Escondidas, no se aprietan
+   (visibility): la raya y el fondo tampoco están */
+.item-acciones {
+  display: flex;
+  position: absolute;
+  top: 0;
+  right: var(--item-pad-x);
+  bottom: 0;
+  /* cada una en su celda cuadrada, con un cuadrado vacío entre íconos (la grilla, arriba); el corte que las aparta de
+     lo que tapan, al medio de la suya */
+  padding-left: calc(var(--item-alto) * 1em);
+  background: linear-gradient(var(--item-fondo-hover), var(--item-fondo-hover)), var(--item-fondo);
+  visibility: hidden;
+  clip-path: inset(0 0 0 100%);
+  transition: clip-path var(--item-despliegue) var(--item-curva), visibility var(--item-despliegue);
+
+  &::before {
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    left: calc(var(--item-alto) * .5em);
+    border-left: 1px solid var(--item-separador);
+    content: "";
+  }
+
+  & > .item-accion {
+    opacity: 0;
+    translate: .75ch 0;
+    transition: opacity var(--item-despliegue) var(--item-curva), translate var(--item-despliegue) var(--item-curva);
+  }
+}
+
+.item:hover .item-acciones,
+.item.hover .item-acciones {
+  visibility: visible;
+  clip-path: inset(0);
+
+  & > .item-accion { opacity: 1; translate: 0 0; }
+  /* de derecha a izquierda: el ⋯ primero, cada una un poco después (solo al llegar: al irse, todas juntas) */
+  & > .item-accion:nth-last-child(2) { transition-delay: 25ms; }
+  & > .item-accion:nth-last-child(3) { transition-delay: 50ms; }
+  & > .item-accion:nth-last-child(n + 4) { transition-delay: 75ms; }
+}
+
+.item.activa .item-acciones { background: linear-gradient(var(--item-fondo-activa), var(--item-fondo-activa)), var(--item-fondo); }
+
+@media (prefers-reduced-motion: reduce) {
+  .item-acciones,
+  .item-acciones > .item-accion { transition: none; }
+}
+
+/* en un celular (body.angosto) no hay mouse: el ⋯ se ve siempre, en su lugar (al último), y lo demás queda dentro de
+   su menú */
+.angosto .item-acciones {
+  position: static;
+  padding-left: 0;
+  background: none;
+  visibility: visible;
+  clip-path: none;
+
+  &::before { display: none; }
+  & > .item-accion { opacity: 1; translate: none; }
+  & .item-accion:not(.item-menu) { display: none; }
+  & .item-menu { padding-inline: max(1ch, var(--item-accion-pad)); }
+}
+
+/* el ⋯ solo, sin las de antes (escondidas): sin el espacio de entre íconos (también el de una tarjeta, tarjeta.css) */
+.angosto :is(.item-acciones, .tarjeta-acciones) > .item-accion.item-menu { margin-inline-start: 0; }
+
+/* variantes: qué es la fila */
+.item.enlace .item-texto { color: var(--item-enlace); }
+.item.agente .item-texto { color: var(--item-agente); }
+.item.apagada .item-texto { color: var(--texto-tenue); }
+.item.agente.apagada .item-texto { color: color-mix(in srgb, var(--item-agente) 55%, var(--item-fondo)); }
+.item.saliendo .item-texto { color: var(--texto-apagado); }
+
+.item.cabecera {
+  color: var(--item-cabecera);
+  font-weight: var(--item-cabecera-peso);
+
+  /* entre el ícono de plegar y el título, la misma sangría que en las demás filas: el título cae en la columna de las
+     filas de una sola ranura (las pestañas bajo DASHBOARD) */
+  & .item-titulo { text-transform: var(--item-cabecera-letras); }
+  & .item-sufijo,
+  & .item-fin { font-weight: normal; }
+}
+
+/* un submenú: una sección dentro de otra, con su cabecera como una fila más (componentes/item.ts, Variante). La flecha
+   va en la última ranura, pegada al nombre aunque esa ranura sea ancha (la de las máquinas); el nombre, en la tinta de
+   las cabeceras, con la letra de las filas */
+.item.submenu {
+  & .item-texto { color: var(--item-submenu); }
+  & .item-ranura.ancha { text-align: right; }
+}
+
+/* el color de una pieza, por lo que significa (componentes/item.ts, Tono) */
+.tono-tenue { color: var(--texto-tenue); }
+.tono-apagado { color: var(--texto-apagado); }
+.tono-acento { color: var(--acento); }
+.tono-titulo { color: var(--titulo); }
+.tono-exito { color: var(--exito); }
+.tono-atencion { color: var(--atencion); }
+.tono-peligro { color: var(--peligro); }
+.tono-remoto { color: var(--remoto); }
+.tono-agente { color: var(--agente); }
+.tono-trabajando { color: var(--estado-trabajando); }
+.tono-espera { color: var(--estado-espera); }
+.tono-termino { color: var(--estado-termino); }
+.tono-p0,
+.tono-p3 { color: var(--prioridad-baja); }
+.tono-p1 { color: var(--prioridad-alta); }
+.tono-p2 { color: var(--prioridad-media); }
+
+/* lo que está en curso (cerrándose, viajando) no se anima aquí: lo dice un círculo que se mueve en su ranura
+   (componentes/circulo.ts), y el texto queda quieto */
+
+/* un corte: la línea corta que aparta dos grupos de una fila, al medio de su propia celda cuadrada (entre dos grupos,
+   el espacio es una celda cuadrada: vacía, o con su corte). Su color, el del grupo que aparta si tiene tipo
+   (--corte), o apenas visible */
+.corte {
+  display: inline-block;
+  position: relative;
+  flex: none;
+  inline-size: calc(var(--item-alto) * 1em);
+  block-size: calc(var(--item-alto) * 1em);
+  vertical-align: middle;
+
+  &::before {
+    position: absolute;
+    top: 25%;
+    bottom: 25%;
+    left: 50%;
+    border-left: 1px solid var(--corte, var(--item-separador));
+    content: "";
+  }
+}

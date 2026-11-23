@@ -32,7 +32,7 @@ Tres reglas que están en el código y no se negocian:
   archivo: reescribir `trabajando` sobre `trabajando` la despierta para nada.
 * **Al `cierra` no se borra la conversación.** Se apaga el semáforo y se deja anotada:
   es exactamente la que se va a querer retomar mañana. Quien quiera olvidarla del todo
-  lo pide (`telar agente aviso --olvidar`).
+  lo pide (`telar agente evento --olvidar`).
 
 ## El camino corto: un comando por evento
 
@@ -40,13 +40,17 @@ Un agente que sepa correr un comando ya puede integrarse, sin escribir una líne
 Python y en cualquier lenguaje:
 
 ```sh
-telar agente aviso --evento abre --sesion "$ID_DE_LA_CONVERSACION"
-telar agente aviso --evento empieza
-telar agente aviso --evento espera
-telar agente aviso --evento sigue
-telar agente aviso --evento termina
-telar agente aviso --evento cierra --sesion "$ID_DE_LA_CONVERSACION"
+telar agente evento --evento abre --sesion "$ID_DE_LA_CONVERSACION"
+telar agente evento --evento empieza
+telar agente evento --evento espera
+telar agente evento --evento sigue
+telar agente evento --evento termina
+telar agente evento --evento cierra --sesion "$ID_DE_LA_CONVERSACION"
 ```
+
+Antes se llamaba `telar agente aviso`, y así sigue andando, callado como siempre: es lo
+que corren los ganchos ya escritos en cada máquina hasta que se reinstalan. Lo nuevo usa
+`evento`.
 
 Para los cuatro del medio, `telar atencion set trabajando|espera|termino|ninguna` hace
 lo mismo y se lee mejor. `abre` es el que de verdad conviene mandar: es lo que después
@@ -55,7 +59,7 @@ permite `telar agente retomar`.
 Con `espera` conviene decir además qué le pide el agente a la persona, en una línea:
 
 ```sh
-telar agente aviso --evento espera --pide "¿Puedo borrar la carpeta borradores/?"
+telar agente evento --evento espera --pide "¿Puedo borrar la carpeta borradores/?"
 ```
 
 Eso llena el objeto `permiso:<hilo>` (`telar objeto permiso:Faro`): desde cuándo espera
@@ -97,7 +101,7 @@ evento necesita preguntarle nada a nadie.
 
 ### Las reglas del gancho
 
-Quien enganche `telar agente aviso` en su agente hereda tres cuidados que ya están
+Quien enganche `telar agente evento` en su agente hereda tres cuidados que ya están
 resueltos de este lado, pero conviene saber por qué:
 
 * **callado**: no imprime nada salvo que se le pida `--json`. Hay agentes que meten la
@@ -188,16 +192,18 @@ Es el único que viene de fábrica. Traduce así:
 | `SessionEnd` | `cierra` |
 
 Con **el mod de telar** cargado (`src/telar/mod/`, lo pone `telar agente instalar`), cuatro de esos
-eventos los avisa el mod desde adentro de Claude Code, con `telar agente aviso --evento …`: `empieza`
+eventos los avisa el mod desde adentro de Claude Code, con `telar agente evento --evento …`: `empieza`
 y `termina` con cada turno (`turn.start`, `turn.complete`, que llega también cuando la persona
 interrumpe con Esc o el turno cae por un error de la API), `espera` cuando aparece un diálogo de
 permiso (`PermissionRequest`), un pedido de un servidor MCP o una pregunta (`AskUserQuestion`), y
 `sigue` cuando se contesta. Mientras el mod vive (su señal en la casilla, de menos de 30 s), los
-ganchos clásicos de esos cuatro no avisan nada; `abre` y `cierra` siguen siendo suyos.
+ganchos clásicos de esos cuatro no avisan nada; `abre` y `cierra` siguen siendo suyos. La pregunta,
+además, se puede contestar desde la página: el mod la deja en la casilla y le entrega al diálogo la
+respuesta que telar le deje ([arquitectura.md](arquitectura.md), «Lo que un hilo espera»).
 
-Son siete ganchos de aviso: los seis momentos de arriba más `StopFailure` (el turno que cae por un
+Son siete ganchos de eventos: los seis momentos de arriba más `StopFailure` (el turno que cae por un
 error de la API también termina). `SubagentStop` se entiende si llega, pero no se engancha —un
-subagente que termina no cambia en qué está la conversación—. Los siete apuntan al **mismo** comando —`telar agente aviso
+subagente que termina no cambia en qué está la conversación—. Los siete apuntan al **mismo** comando —`telar agente evento
 claude-code`— y cuál fue viene en el JSON que Claude Code le manda por la entrada
 estándar (`hook_event_name`). Una sola línea que mantener.
 
@@ -213,15 +219,18 @@ Además de los seis, `instalar` pone un **segundo `SessionStart`** que llama a `
 contexto claude-code`. Su salida entra al contexto del agente al empezar (y tras `/clear` y
 al retomar): unas pocas líneas sobre quién es, cómo le escriben, cómo escribirles a los otros
 hilos y cómo se nombran las cosas (cada objeto tiene una dirección `tipo:id`, como `tarea:T84`,
-que `telar objeto` abre), más lo que pida cada módulo instalado. El aviso no puede hacer
-eso porque su regla es no imprimir nada. Sin `$TELAR_HILO` no dice nada, y se apaga con
+que `telar objeto` abre), más lo que pida cada módulo instalado. El de los eventos no puede
+hacer eso porque su regla es no imprimir nada. Sin `$TELAR_HILO` no dice nada, y se apaga con
 `[agente] contexto = false`. Y deja la skill **`/hilos`** en `~/.claude/skills/hilos/`, lo
 largo de lo mismo, que el agente abre cuando le hace falta: ahí están también las
 direcciones, con sus ejemplos y la excepción de `telar directorio` (su `direccion` es un
-correo). Una `/hilos` que no sea de telar no se toca. `desinstalar` quita las dos cosas.
+correo). Una `/hilos` que no sea de telar no se toca. `desinstalar` quita las dos cosas. Junto a ella van `/relevo`
+(limpiar la conversación sin perder el hilo), `/modulos` y `/ramas`: el método de los hijos con rama propia, para el
+padre que reparte, revisa y fusiona y para el hijo que trabaja en su worktree.
 
 El instalador **se mete en casa ajena y se porta como tal**: mezcla con los ganchos que
-ya estaban y solo reemplaza los suyos (se reconocen por su comando), deja un respaldo
+ya estaban y solo reemplaza los suyos (se reconocen por su comando, también los de antes
+que llaman a `telar agente aviso`: se cambian por `evento` sin quedar dos), deja un respaldo
 `settings.json.telar.bak` antes de tocar nada, escribe a un temporal que después
 renombra, y ante un JSON que no entiende se niega a escribir en vez de pisarlo. Los
 ganchos recién puestos los lee Claude Code al arrancar de nuevo.
@@ -231,6 +240,15 @@ el `desinstalar` que viene después—, el nuevo sale fechado
 (`settings.json.telar.20260919-142530.bak`). Así el retrato del archivo *antes* de telar
 sobrevive justo a la orden que deshace telar. Y la copia hereda los permisos del
 original: una configuración que era privada sigue siéndolo.
+
+**Antes de los ganchos, la pregunta de confiar.** Desde la 2.1.326, Claude Code pregunta antes de arrancar si confía en
+una carpeta que no conoce: la que se le suma con `--add-dir` (el worktree de un hijo con rama: «Adding a new directory: …
+Yes, add it») y la carpeta donde arranca («Accessing workspace: … Yes, I trust this folder»). Mientras está en pantalla
+no corre ningún gancho, así que el hilo no avisaba nada y se quedaba parado. El nodo mira cada 30 s el panel de cada
+hilo de su máquina (`telar.confiar`): si la pregunta está a la vista, lo deja como que espera a la persona, con la clase
+`confiar` y lo que pide (la barra lo pone en «te espera», «te esperan» lo lista y la página lo dice en la franja de
+avisos, con el hilo y qué hacer). Cuando deja de estar, lo quita, si los ganchos no lo cambiaron antes. telar no la
+contesta ni marca nada como confiado en `~/.claude.json`: esa decisión es de la persona.
 
 Dos detalles de Claude Code que se pagan si no se saben: la carpeta de configuración es
 `~/.claude` salvo que `$CLAUDE_CONFIG_DIR` diga otra, y las conversaciones se guardan en

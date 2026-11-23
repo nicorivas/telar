@@ -2,7 +2,7 @@
 
 Ramiro (u otra persona) mira el estado de las tareas que marcaste para el equipo y puede hacer
 dos cosas: **sugerir** subir una prioridad, o **pedirte** algo nuevo («Ana tiene que hacer la
-sesión 5 de GOA»). Nada más: no escribe en tus archivos ni habla con tus agentes. Ambas quedan
+sesión 5 de ARCO»). Nada más: no escribe en tus archivos ni habla con tus agentes. Ambas quedan
 en una bandeja (un JSONL) que tú decides: aceptar una sugerencia cambia la prioridad con el CLI
 de tareas; aceptar un pedido lo agrega como tarea tuya; rechazar cierra la entrada con una nota
 para quien la hizo.
@@ -495,7 +495,7 @@ def pedir(eq: Equipo, persona: str, titulo: str, contexto: str = "", vence: str 
 
 
 def marcar_revision(eq: Equipo, ident: str, quien: str = "gestion") -> tuple[dict | None, str]:
-    """Anota que alguien (Gestión) está revisando una entrada: sigue pendiente, pero su lista lo muestra."""
+    """Anota que alguien (el agente que la revisa) está revisando una entrada: sigue pendiente, pero su lista lo muestra."""
     registros = leer_bandeja(eq)
     r = next((x for x in registros if x["id"] == ident and x["estado"] == "pendiente"), None)
     if r is None:

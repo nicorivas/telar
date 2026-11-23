@@ -255,21 +255,34 @@ class LoQueImprimeUnPrograma(Prueba):
     def test_una_lista_un_objeto_o_una_por_linea(self):
         una = {"titulo": "Cierre", "inicio": "2026-12-01", "fuente": "proyectos/faro/x.md:3"}
         for salida in (json.dumps([una]), json.dumps({"fechas": [una]}), json.dumps(una) + "\n"):
-            leidas = prov.leer_salida(salida, "gestion", {"proyectos/faro"})
+            leidas = prov.leer_salida(salida, "hitos", {"proyectos/faro"})
             self.assertEqual([(f.titulo, f.clase, f.proyecto) for f in leidas.fechas], [("Cierre", "evento", "proyectos/faro")])
 
     def test_la_que_no_se_entiende_se_dice_y_las_demas_llegan(self):
         salida = json.dumps([{"titulo": "Bien", "inicio": "2026-12-01", "fin": "2026-12-09", "estado": "✅"},
                              {"titulo": "Mal", "inicio": "mañana"}, {"inicio": "2026-01-01"},
                              {"titulo": "Clase rara", "inicio": "2026-01-01", "clase": "fiesta"}])
-        leidas = prov.leer_salida(salida, "gestion", set())
+        leidas = prov.leer_salida(salida, "hitos", set())
         self.assertEqual([(f.titulo, f.clase, f.estado) for f in leidas.fechas], [("Bien", "actividad", "hecho")])
         self.assertEqual(len(leidas.saltadas), 3)
         with self.assertRaises(ErrorDeProveedor):
-            prov.leer_salida("esto no es json", "gestion", set())
+            prov.leer_salida("esto no es json", "hitos", set())
+
+    def test_un_plazo_dice_su_etapa_cuanto_avanzo_y_lo_que_no_cuadra(self):
+        salida = json.dumps([{"titulo": "PMO #9", "inicio": "2026-07-01", "fin": "2026-10-22", "clase": "plazo",
+                              "estado": "en-curso", "etapa": "cierre", "avance": 0.75, "aviso": "venció el 22-oct"},
+                             {"titulo": "Sin avance", "inicio": "2026-07-01", "clase": "plazo"},
+                             {"titulo": "Avance raro", "inicio": "2026-07-01", "avance": 3},
+                             {"titulo": "Avance en texto", "inicio": "2026-07-01", "avance": "mitad"}])
+        leidas = prov.leer_salida(salida, "pmo", set())
+        self.assertEqual([(f.titulo, f.etapa, f.avance, f.aviso) for f in leidas.fechas],
+                         [("PMO #9", "cierre", 0.75, "venció el 22-oct"), ("Sin avance", "", None, "")])
+        self.assertEqual(len(leidas.saltadas), 2)
+        j = leidas.fechas[0].a_json()
+        self.assertEqual((j["etapa"], j["avance"], j["aviso"]), ("cierre", 0.75, "venció el 22-oct"))
 
     def test_un_comando_que_falla_es_un_error_del_proveedor(self):
-        cfg = Proveedor(nombre="gestion", activo=True, opciones={"como": "fechas", "tipo": "comando", "comando": ["false"]})
+        cfg = Proveedor(nombre="hitos", activo=True, opciones={"como": "fechas", "tipo": "comando", "comando": ["false"]})
         with self.assertRaises(ErrorDeProveedor):
             prov.construir(cfg).leer(Path("."), {})
 
@@ -330,9 +343,9 @@ class LaOrden(Prueba):
         self.assertEqual([f["titulo"] for f in d["fechas"]], ["Giro", "Taller"])
 
     def test_un_proveedor_caido_se_dice_y_lo_demas_llega(self):
-        d = self.correr("--json", config='[proveedores.gestion]\ncomo = "fechas"\ntipo = "comando"\ncomando = ["false"]\n')
+        d = self.correr("--json", config='[proveedores.hitos]\ncomo = "fechas"\ntipo = "comando"\ncomando = ["false"]\n')
         self.assertEqual([f["titulo"] for f in d["fechas"]], ["Giro"])
-        self.assertTrue(d["fallas"][0].startswith("gestion: "))
+        self.assertTrue(d["fallas"][0].startswith("hitos: "))
 
     def test_un_mapa_del_repositorio_lee_un_calendario_compartido(self):
         (self.raiz / ".telar" / "fechas.yaml").write_text(
@@ -352,6 +365,30 @@ class LaOrden(Prueba):
         d = self.correr("--json")
         self.assertEqual([f["titulo"] for f in d["fechas"]], ["Giro"])
         self.assertIn(".telar/fechas.yaml", d["fallas"][0])
+
+    def test_cada_unidad_trae_su_plazo_en_telar_proyectos(self):
+        # el plazo de una unidad es su fecha de clase plazo (aquí, la de un proveedor): `telar proyectos` lo pone en
+        # cada una, con su etapa, su avance y su aviso; la que no tiene, null
+        plazo = Path(self.tmp.name) / "plazo.json"
+        plazo.write_text(json.dumps({"titulo": "PMO #1", "inicio": "2026-07-01", "fin": "2026-10-22", "clase": "plazo",
+                                     "estado": "en-curso", "proyecto": "proyectos/faro", "etapa": "cierre",
+                                     "avance": 0.75, "aviso": "venció el 22-oct"}))
+        guion = Path(self.tmp.name) / "plazos"
+        guion.write_text(f"#!/bin/sh\ncat '{plazo}'\n")
+        guion.chmod(0o755)
+        self.correr("--json", config=f'[proveedores.pmo]\ncomo = "fechas"\ntipo = "comando"\ncomando = ["{guion}"]\n')
+        from telar import cli
+
+        salida = io.StringIO()
+        with redirect_stdout(salida):
+            self.assertEqual(cli.main(["proyectos", "--json"]), 0)
+        d = json.loads(salida.getvalue())
+        de = {u["ruta"]: u["plazo"] for u in d["proyectos"]}
+        self.assertEqual(de["proyectos/faro"], {"inicio": "2026-07-01", "fin": "2026-10-22", "estado": "en-curso",
+                                                "etapa": "cierre", "avance": 0.75, "aviso": "venció el 22-oct",
+                                                "fuente": "pmo:0", "enlace": ""})
+        self.assertIsNone(de["proyectos/molino"])
+        self.assertEqual(d["fallas"], [])
 
     def test_un_modulo_trae_su_fuente_de_fechas_y_corre_en_su_carpeta(self):
         modulo = Path(self.tmp.name) / "hitos"
@@ -392,6 +429,13 @@ class LaOrden(Prueba):
         self.assertEqual((e.exception.codigo, e.exception.datos["permiso"]["modulo"]), (403, "g"))
         with self.assertRaises(ErrorDeServicio):
             lienzos.pedir(ctx, "bloque:otro", "fecha", pedido)   # no es de un módulo
+        # lo que solo muestra (el menú, abrir una dirección) lo atiende la página: aquí se dice, sin pedir permiso
+        for orden in ("menu", "abrir"):
+            with self.assertRaises(ErrorDeServicio) as e:
+                lienzos.pedir(ctx, "bloque:g", orden, {"direccion": "tarea:T1"})
+            self.assertEqual(e.exception.codigo, 400)
+            self.assertIn("lo atiende la página", str(e.exception))
+            self.assertNotIn("permiso", e.exception.datos)
         lienzos.conceder(ctx, "g", "fecha", "concedido")
         self.assertEqual(lienzos.pedir(ctx, "bloque:g", "fecha", pedido)["datos"]["inicio"], "2026-10-14")
         lienzos.conceder(ctx, "g", "fecha", "olvidar")

@@ -42,7 +42,6 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-import tempfile
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -68,7 +67,7 @@ __all__ = [
     "resolver_hilo",
     "panel_del_entorno",
     "hilo_del_panel",
-    "comando_aviso",
+    "comando_evento",
     "ejecutable_telar",
     "ruta_inestable",
     "VARIABLE_PANEL",
@@ -378,21 +377,31 @@ def ejecutable_telar() -> list[str]:
 
 
 #: por aquí se reconoce un gancho de telar dentro de la configuración de otro programa.
+MARCA_EVENTO = "agente evento"
+
+#: …y por aquí los de antes, cuando la orden se llamaba `telar agente aviso`: siguen en la
+#: configuración de cada máquina hasta que se reinstala, y son de telar igual (para reemplazarlos,
+#: sacarlos y revisarlos, no para dejarlos al lado de los nuevos). La orden vieja sigue andando.
 MARCA_AVISO = "agente aviso"
 
+#: las dos, la de hoy primero.
+MARCAS_EVENTO = (MARCA_EVENTO, MARCA_AVISO)
 
-def comando_aviso(agente: str, *, ejecutable: Sequence[str] | None = None) -> list[str]:
-    """El comando que un gancho tiene que correr para avisarle a telar.
+
+def comando_evento(agente: str, *, ejecutable: Sequence[str] | None = None) -> list[str]:
+    """El comando que un gancho tiene que correr para contarle a telar un evento del agente.
 
     Un solo comando para todos los eventos: cuál fue viene en el JSON que el agente le
     manda por la entrada estándar, y el adaptador sabe leerlo.
     """
     base = list(ejecutable) if ejecutable else ejecutable_telar()
-    return [*base, "agente", "aviso", agente]
+    return [*base, "agente", "evento", agente]
 
 
 def _carpetas_temporales() -> tuple[Path, ...]:
     """Las carpetas de esta máquina cuyo contenido no está prometido para mañana."""
+    import tempfile
+
     carpetas: list[Path] = []
     for cruda in (tempfile.gettempdir(), "/tmp", "/var/tmp"):
         try:
@@ -500,6 +509,13 @@ class AgenteBase(ABC):
         """
         return None
 
+    def carga(self):
+        """Un lector de lo que carga el contexto de una conversación (telar.agente.carga): un objeto con
+        `registro(d)` (cada línea de su archivo, ya leída como JSON, en orden), `saltar(linea)` (las que ni vale
+        la pena leer) y `resumen()`. Lo usa `telar.conversacion.carga`, que lee el archivo de a poco. None si el
+        agente no guarda sus conversaciones en un archivo de una línea JSON por registro, o no se sabe leerlo."""
+        return None
+
     # ── lo que cada agente sabe de sí mismo ─────────────────────────────────────
 
     @abstractmethod
@@ -527,6 +543,17 @@ class AgenteBase(ABC):
     def con_modelo(self, modelo: str) -> list[str]:
         """Las palabras que eligen el modelo de la sesión (`modelo` de un agente.toml), para ir después
         del prompt. El agente que no sepa elegirlo devuelve [] y el modelo se ignora."""
+        return []
+
+    def con_esfuerzo(self, esfuerzo: str) -> list[str]:
+        """Las palabras que eligen el esfuerzo de la sesión (`telar hilo hijo --esfuerzo`: low, medium, high, xhigh),
+        para ir después del prompt. El agente que no sepa elegirlo devuelve [] y corre con el de siempre."""
+        return []
+
+    def con_carpetas(self, carpetas) -> list[str]:
+        """Las palabras que le suman carpetas de trabajo a la sesión (el worktree de un hijo con rama, que vive fuera
+        de donde arranca el agente), para ir al final del comando. El agente que no sepa devuelve [] y trabaja ahí
+        igual, pidiendo permiso para cada archivo."""
         return []
 
     def con_mensaje(self, mensaje: str) -> list[str]:
@@ -570,7 +597,7 @@ class AgenteBase(ABC):
         """Deja los ganchos escritos en la configuración del agente."""
         raise ErrorDeAgente(
             f"{self.nombre}: no se instala solo; hay que enganchar a mano"
-            " `telar agente aviso` (ver docs/agentes.md)"
+            " `telar agente evento` (ver docs/agentes.md)"
         )
 
     def desinstalar(self, *, ruta: Path | None = None, seco: bool = False) -> Instalacion:

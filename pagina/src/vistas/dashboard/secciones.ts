@@ -6,7 +6,8 @@ import * as cli from '../../cli';
 import { esc } from '../../estilo';
 import { modelo } from '../../modelo';
 import { mdSimple } from './pagina';
-import type { Accion, Pantalla, Tablero } from './pantalla';
+import type { Accion, EnBarra, Pantalla, Tablero } from './pantalla';
+import type { AccionDePantalla } from '../../componentes/pantalla';
 import { I } from '../../web/iconos';
 
 /** Una hora ISO en la hora local, HH:MM. */
@@ -64,13 +65,13 @@ export class PantallaSecciones implements Pantalla {
         // «app:<clave>» es una app (`telar app`); lo demás, una sección o un agente (`telar seccion`)
         const app = clave.startsWith('app:') ? clave.slice(4) : '';
         const nombre = (app ? modelo.apps.find(a => a.clave === app)?.nombre : modelo.secciones.find(s => s.clave === clave)?.nombre) ?? clave;
-        if (!this.pagina) this.t.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`, '<div class="fila dim">leyendo…</div>']);
+        if (!this.pagina) this.t.pintar(['<div class="fila dim">leyendo…</div>'], { nombre, color: app ? 'cian' : 'violeta', sinReleer: true });
         const r = app ? await cli.app(app) : await cli.seccion(clave);
         await this.t.paginas.precargar(r.datos?.bloques);
         if (this.t.pantalla !== 'seccion' || this.clave !== clave) return;
         if (!r.datos) {
-            this.t.pintar([`<div class="subcab"><b>${esc(nombre)}</b></div>`,
-                `<div class="fila falla">${esc(r.error ?? 'el home no contestó')}</div>`]);
+            this.t.pintar([`<div class="fila falla">${esc(r.error ?? 'el home no contestó')}</div>`],
+                { nombre, color: app ? 'cian' : 'violeta', acciones: [this.recargar()], sinReleer: true });
             return;
         }
         this.pagina = r.datos;
@@ -80,37 +81,43 @@ export class PantallaSecciones implements Pantalla {
     private pintarSeccion(): void {
         const p = this.pagina;
         if (!p) return;
-        const h: string[] = [`<div class="subcab"><b>${esc(p.titulo)}</b>${p.subtitulo ? `<span class="dim">${esc(p.subtitulo)}</span>` : ''}`
-            + '<span class="der">' + this.t.atajosEn(`seccion:${this.clave}`)
-            // los enlaces de la página (una app servida: abrirla en el navegador) van junto al ↻
-            + (p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace)
-                .map(a => `<a class="atajo" data-accion="abrir-enlace" data-valor="${esc(a.enlace!)}" title="${esc(a.enlace!)}"><span>${I.externo}</span> ${esc(a.nombre)}</a>`).join('')
-            + `<a class="atajo" data-accion="recargar-seccion" title="volver a pedir la página"><span>${I.releer}</span></a>`
-            + '</span></div>'];
-        h.push(...this.t.paginas.html(p.bloques, this.clave.startsWith('app:') ? this.clave : ''));
-        this.t.pintar(h);
+        // la barra: su nombre y su subtítulo; los atajos que van en ella, los enlaces de la página (una app servida:
+        // abrirla en el navegador) y ↻, que vuelve a pedir la página
+        const barra: EnBarra = {
+            nombre: p.titulo, color: this.clave.startsWith('app:') ? 'cian' : 'violeta', resumen: p.subtitulo ?? '', sinReleer: true,
+            acciones: [...this.t.atajosEnBarra(`seccion:${this.clave}`),
+                ...(p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace).map(a =>
+                    ({ accion: 'abrir-enlace', valor: a.enlace!, icono: I.externo, tono: 'azul', ayuda: `${a.nombre}: ${a.enlace}` })),
+                this.recargar()],
+        };
+        this.t.pintar(this.t.paginas.html(p.bloques, this.clave.startsWith('app:') ? this.clave : ''), barra);
     }
+
+    /** ↻ de una sección o una app: volver a pedir su página (no el día: el ↻ del núcleo relee el día). */
+    private recargar(): AccionDePantalla { return { accion: 'recargar-seccion', icono: I.releer, ayuda: 'volver a pedir la página (r)' }; }
 
     /** Una conversación entera: lo que se dijo, y una línea por herramienta. */
     private async abrirConversacion(id: string): Promise<void> {
         this.t.ir('conversacion');
-        this.t.pintar(['<div class="fila dim">leyendo la conversación…</div>']);
+        this.t.pintar(['<div class="fila dim">leyendo la conversación…</div>'], { nombre: 'conversación', color: 'violeta', sinReleer: true });
         const r = await cli.conversacion(id);
         if (this.t.pantalla !== 'conversacion') return;
         if (!r.datos) {
-            this.t.pintar([`<div class="fila falla">${esc(r.error ?? 'no pude leerla')}</div>`,
-                '<div class="fila"><a data-accion="volver-seccion">← volver</a></div>']);
+            this.t.pintar([`<div class="fila falla">${esc(r.error ?? 'no pude leerla')}</div>`],
+                { volver: { accion: 'volver-seccion', icono: I.atras, ayuda: 'volver' }, nombre: 'conversación', color: 'violeta', sinReleer: true });
             return;
         }
         this.charla = r.datos;
         const c = r.datos;
         const hilo = c.hilo && modelo.porNombre(c.hilo);
-        const h: string[] = [`<div class="subcab"><b>Conversación</b><span class="dim">${esc(c.conversacion.slice(0, 8))}`
-            + `${c.hilo ? ` · ${esc(c.hilo)}` : ''} · ${c.mensajes.length} mensajes</span>`
-            + '<span class="der dim">'
-            + (hilo ? `<a data-accion="retomar-charla" title="volver a esta conversación en su hilo">${I.retomar} retomar</a> · ` : '')
-            + (this.clave ? '<a data-accion="volver-seccion">← ' + esc(modelo.secciones.find(x => x.clave === this.clave)?.nombre ?? 'volver') + '</a>' : '')
-            + '</span></div>'];
+        const h: string[] = [];
+        const de = this.clave ? modelo.secciones.find(x => x.clave === this.clave)?.nombre ?? 'volver' : '';
+        const barra: EnBarra = {
+            volver: this.clave ? { accion: 'volver-seccion', icono: I.atras, ayuda: `volver a ${de}` } : undefined,
+            nombre: 'conversación', color: 'violeta', sinReleer: true,
+            resumen: `${c.conversacion.slice(0, 8)}${c.hilo ? ` · ${c.hilo}` : ''} · ${c.mensajes.length} mensajes`,
+            acciones: hilo ? [{ accion: 'retomar-charla', icono: I.retomar, tono: 'violeta', ayuda: 'retomar: volver a esta conversación en su hilo' }] : [],
+        };
         for (const m of c.mensajes) {
             const hora = m.hora ? horaLocal(m.hora) : '';
             if (m.quien === 'herramienta') {
@@ -120,6 +127,6 @@ export class PantallaSecciones implements Pantalla {
                     + `<span class="dim"> ${esc(hora)}</span></div><div class="md-pag">${mdSimple(m.texto)}</div></div>`);
             }
         }
-        this.t.pintar(h);
+        this.t.pintar(h, barra);
     }
 }

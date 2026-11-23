@@ -9,10 +9,34 @@
 /** Las extensiones que se reconocen: las de los archivos de texto que el visor muestra. */
 const EXTENSIONES = 'md|markdown|txt|toml|ya?ml|json|py|ts|js|mjs|sh|css|html|csv';
 
-/** Una ruta a un archivo de texto: `/…`, `~/…` o relativa, con letras con tilde (`métodos/`), y quizás con
- *  `:línea` o `:línea:columna` detrás (se ignoran). No la de una dirección (`https://…/x.md`): lo de antes no puede
- *  ser parte de una ruta ni `:`. */
-export const RUTA = new RegExp(String.raw`(?<![\p{L}\p{N}_/.~:@+-])(?:~?\/)?(?:[\p{L}\p{N}_.@+-]+\/)*[\p{L}\p{N}_@+-][\p{L}\p{N}_.@+-]*\.(?:${EXTENSIONES})(?::\d+){0,2}(?![\p{L}\p{N}_/-])`, 'gu');
+/** Una ruta a un archivo de texto: `/…`, `~/…` o relativa, con letras con tilde (`métodos/`, `artículos/`, también
+ *  con la tilde aparte, NFD: la letra y su marca, `\p{M}`), y quizás con `:línea` o `:línea:columna` detrás (se
+ *  ignoran). No la de una dirección (`https://…/x.md`): lo de antes no puede ser parte de una ruta ni `:`. */
+export const RUTA = new RegExp(String.raw`(?<![\p{L}\p{M}\p{N}_/.~:@+-])(?:~?\/)?(?:[\p{L}\p{M}\p{N}_.@+-]+\/)*[\p{L}\p{N}_@+-][\p{L}\p{M}\p{N}_.@+-]*\.(?:${EXTENSIONES})(?::\d+){0,2}(?![\p{L}\p{M}\p{N}_/-])`, 'gu');
+
+/** Algo con forma de carpeta: tramos con al menos una `/` (`personal/referencia/artículos/x/`, `~/worktrees/y`, o la
+ *  carpeta de una ruta a un archivo). No es enlace: es lo que un mensaje nombra antes de un nombre suelto
+ *  (`carpetasDe`). Lo que no es carpeta («y/o») no estorba: el backend solo usa las que tienen el archivo. */
+const CARPETA = /(?<![\p{L}\p{M}\p{N}_/.~:@+-])(?:~?\/)?(?:[\p{L}\p{M}\p{N}_.@+-]+\/)+[\p{L}\p{M}\p{N}_.@+-]*/gu;
+
+/** Cuántas carpetas de un mensaje se mandan como contexto de un nombre suelto. */
+const TOPE_CARPETAS = 24;
+
+/** Las carpetas que nombra un texto, de la última a la primera (la más cercana a lo que sigue, primero), sin repetir:
+ *  las escritas como carpeta (`a/b/`, `a/b`) y la de cada ruta a un archivo (`a/b/x.md` → `a/b`). Una dirección web
+ *  no (`https://x/y`: lo de antes de su `/` es `:` o `/`). */
+export function carpetasDe(texto: string): string[] {
+    const salida: string[] = [];
+    const archivo = new RegExp(`^${RUTA.source}$`, 'u');
+    for (const m of [...texto.matchAll(CARPETA)].reverse()) {
+        // sin el punto que cierra la frase
+        let c = m[0].replace(/\.+$/, '');
+        if (archivo.test(c)) c = c.slice(0, c.lastIndexOf('/') + 1);
+        c = c.replace(/^\.\//, '').replace(/(.)\/+$/, '$1');
+        if (c && c !== '/' && c !== '~' && !salida.includes(c)) salida.push(c);
+    }
+    return salida;
+}
 
 /** Una dirección web escrita como texto. Lo que la cierra en una frase no es suyo: lo quita `sinCola`. */
 const WEB = /\bhttps?:\/\/[^\s<>"'`]+/g;
@@ -155,4 +179,34 @@ export function hallar(pantalla: Pantalla, cols: number, y: number, codigos?: Re
     const pisa = (a: Hallazgo, b: Hallazgo) => orden(a.desde) <= orden(b.hasta) && orden(b.desde) <= orden(a.hasta);
     const sueltos = buscar(linea.texto, codigos).map(h => celdas(linea, h)).filter(h => !juntados.some(j => pisa(h, j)));
     return [...juntados, ...sueltos].filter(h => h.desde && h.hasta && h.desde.y <= y && h.hasta.y >= y);
+}
+
+/** Dónde empieza un mensaje en la terminal de Claude Code: su viñeta («⏺», «●» en Linux) en la primera columna. Lo que
+ *  empieza ahí con «>» (lo que escribió la persona) o con una línea de caja (la de escribir, un diálogo) es de antes. */
+const VINETA = /^[⏺●]/u;
+const ANTES = /^(?:>|[─━╭╰│])/u;
+
+/** Hasta cuántas filas arriba se busca el comienzo del mensaje. */
+const ALCANCE_MENSAJE = 400;
+
+/** Las carpetas nombradas en el mensaje de la terminal donde está la fila `y` (desde 1), hasta esa fila: de la más
+ *  cercana a la más lejana (en la fila misma, las de antes y después de un enlace también). Para un nombre suelto
+ *  (`original.md`) debajo de «En `personal/referencia/artículos/x/`:». El mensaje empieza en la fila de su viñeta. Una
+ *  carpeta que el programa partió en dos filas se lee juntando las filas como `hallar`, y también cada fila sola. */
+export function carpetasAntes(pantalla: Pantalla, cols: number, y: number): string[] {
+    const salida: string[] = [];
+    const sumar = (cs: string[]) => { for (const c of cs) if (!salida.includes(c) && salida.length < TOPE_CARPETAS) salida.push(c); };
+    let abajo: (Tira & { partida: boolean }) | undefined;
+    for (let i = y - 1; i >= 0 && i > y - 1 - ALCANCE_MENSAJE && salida.length < TOPE_CARPETAS; i--) {
+        const f = fila(pantalla, i);
+        if (!f) break;
+        if (i < y - 1 && ANTES.test(f.texto)) break;
+        // esta fila sola y, si la de abajo la sigue (la partió la terminal o el programa), las dos juntas
+        const j = abajo && (abajo.partida ? { fin: f.texto.length, ini: 0 } : junta(f, abajo, cols));
+        if (j && abajo) sumar(carpetasDe(f.texto.slice(0, j.fin) + abajo.texto.slice(j.ini)));
+        sumar(carpetasDe(f.texto));
+        if (VINETA.test(f.texto)) break;
+        abajo = f;
+    }
+    return salida;
 }

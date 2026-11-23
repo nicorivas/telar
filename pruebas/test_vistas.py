@@ -19,7 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from comun import Prueba  # noqa: E402  (pone src/ en el camino)
+from comun import Prueba, matar_tmux  # noqa: E402  (pone src/ en el camino)
 
 from telar import config as mod_config
 from telar import estado as mod_estado
@@ -83,7 +83,7 @@ class ContraTmuxAparte(unittest.TestCase):
         previo = {k: os.environ.get(k) for k in ("TMUX_TMPDIR", "TMUX", "TERM", "TELAR_HILO")}
 
         def devolver():
-            subprocess.run(["tmux", "kill-server"], capture_output=True)
+            matar_tmux(self.tmp.name)
             for k, v in previo.items():
                 if v is None:
                     os.environ.pop(k, None)
@@ -226,12 +226,12 @@ class SeguirAlDueno(Prueba):
         self.assertEqual(self.traidos, [("@5/aa", "faro")])
 
     def test_el_mismo_hilo_en_otra_direccion_se_sigue_sin_duplicarlo(self):
-        self.est.anotar_remoto("Gestión", "srv", "telar-5e6f7a8b")
-        self.vivos.add("Gestión")
-        self.correr({"nombre": "Gestión", "maquina": "srv", "vivo": True, "ventana": "@7/bb", "sesion_tmux": ""})
-        self.assertEqual(self.traidos, [("@7/bb", "Gestión")])
-        self.mux.cerrar.assert_called_once_with("@Gestión")
-        self.assertEqual(self.est.remotos()["Gestión"]["sesion"], "@7/bb")
+        self.est.anotar_remoto("Secretaría", "srv", "telar-5e6f7a8b")
+        self.vivos.add("Secretaría")
+        self.correr({"nombre": "Secretaría", "maquina": "srv", "vivo": True, "ventana": "@7/bb", "sesion_tmux": ""})
+        self.assertEqual(self.traidos, [("@7/bb", "Secretaría")])
+        self.mux.cerrar.assert_called_once_with("@Secretaría")
+        self.assertEqual(self.est.remotos()["Secretaría"]["sesion"], "@7/bb")
 
     def test_si_su_sesion_alla_termino_se_cierra_la_ventana_de_aqui(self):
         # lo que hacía `telar remotos traer` con las ventanas fantasma: ahora lo dice el estado del bus

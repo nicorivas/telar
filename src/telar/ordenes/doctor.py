@@ -29,6 +29,10 @@ from telar.proveedores import REGISTRO
 AYUDA = "Revisar multiplexor, sesión, perfil, proveedores y ganchos."
 
 OK, AVISO, FALLA = "ok", "aviso", "falla"
+
+#: cómo puede verse la ficha de una pestaña de proveedor (`vista`), además de como la de una tarea: `lectura`, para leerla
+#: con calma (pagina/src/vistas/dashboard/leer.ts)
+VISTAS_DE_FICHA = ("lectura",)
 MARCA = {OK: "✓", AVISO: "·", FALLA: "✗"}
 
 
@@ -48,8 +52,12 @@ def main(argv: list[str], ctx) -> int:
     revisiones += _carpeta_telar(ctx)
     revisiones += _repos(ctx)
     revisiones += _modulos(ctx)
+    revisiones += _temas(ctx)
+    revisiones += _horarios(ctx)
     revisiones += _vistas(ctx)
+    revisiones += _retirados(ctx)
     revisiones += _agentes(ctx)
+    revisiones += _agentes_de_otras(ctx)
     revisiones += _disparadores(ctx)
     revisiones += _deseado(ctx)
     revisiones += _estado(ctx)
@@ -260,6 +268,88 @@ def _raiz(ctx) -> list[dict]:
     if not raiz.is_dir():
         return [_r("raíz", FALLA, f"{raiz} no es una carpeta", "corrige `raiz`")]
     return [_r("raíz", OK, str(raiz))]
+
+
+def _temas(ctx) -> list[dict]:
+    """Los temas de la raíz (`<raiz>/.telar/temas.toml`, telar.temas): que se lean, que estén commiteados (si no, las otras
+    máquinas no los ven), los que un modo o un mundo nombra y no hay, y los que solo están en esta máquina."""
+    import subprocess
+
+    from telar import git, temas
+
+    cfg = ctx.config
+    archivo_raiz = getattr(cfg, "temas_archivo", None)
+    n = temas.nombre_raiz(archivo_raiz)
+    salida = []
+    if getattr(cfg, "temas_error", ""):
+        salida.append(_r("temas", FALLA, f"los de {n} no se leen, y no se aplican: {cfg.temas_error}",
+                         "arréglalo a mano (si es un choque de git, deja una versión) o vuelve a la de git: "
+                         f"git checkout -- {archivo_raiz}"))
+    faltan = getattr(cfg, "temas_faltan", ())
+    if faltan:
+        salida.append(_r("temas", AVISO, f"un modo o un mundo nombra un tema que no hay: {', '.join(faltan)} (la página "
+                         "pone el del modo)", "créalo en ⚙ temas, o cámbiale el tema en ⚙ mundos / ⚙ modos"))
+    if archivo_raiz is not None and archivo_raiz.exists():
+        repo = git.repositorio(archivo_raiz)
+        if repo is not None:
+            r = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--", str(archivo_raiz)],
+                               capture_output=True, text=True)
+            if r.stdout.strip():
+                salida.append(_r("temas", AVISO, f"{archivo_raiz} tiene cambios sin commitear: las otras máquinas no los ven",
+                                 "telar temas subir"))
+    solo_aqui = [t for t, d in (getattr(cfg, "temas_donde", {}) or {}).items() if d.get("maquina") and not d.get("raiz")]
+    if archivo_raiz is not None and solo_aqui:
+        salida.append(_r("temas", AVISO, f"solo en esta máquina: {', '.join(solo_aqui)}",
+                         "telar temas migrar --ver (y sin --ver, para que valgan en todas)"))
+    if not salida and archivo_raiz is not None:
+        salida.append(_r("temas", OK, f"en {n}: {archivo_raiz}" if archivo_raiz.exists()
+                                     else f"en {n}: todavía sin temas ({archivo_raiz})"))
+    return salida
+
+
+def _horarios(ctx) -> list[dict]:
+    """El horario de los mundos (`[mundos]`, y su parte en la raíz: `<raiz>/.telar/mundos.toml`, telar.mundos_raiz): que se
+    lea y esté commiteado, lo de la raíz que esta máquina no aplica, lo que solo está en esta máquina, y dos horarios que
+    se pisan (a esa hora no rige ninguno de los dos)."""
+    import subprocess
+
+    from telar import git, mundos_raiz, temas
+    from telar import horario as mod_horario
+
+    cfg = ctx.config
+    if not getattr(cfg, "mundos", ()):
+        return []
+    archivo_raiz = getattr(cfg, "mundos_archivo", None)
+    n = temas.nombre_raiz(archivo_raiz)
+    salida = []
+    if getattr(cfg, "mundos_error", ""):
+        salida.append(_r("horarios", FALLA, f"los de {n} no se leen, y no se aplican: {cfg.mundos_error}",
+                         "arréglalo a mano (si es un choque de git, deja una versión) o vuelve a la de git: "
+                         f"git checkout -- {archivo_raiz}"))
+    for c in mundos_raiz.choques_de(cfg):
+        salida.append(_r("horarios", AVISO, f"{mod_horario.decir_choque(c)}: a esa hora no rige ninguno de los dos, sino "
+                         f"el de fuera ({cfg.mundos_fuera or 'ambos'})", "acorta uno en ⚙ mundos › horario"))
+    for s in getattr(cfg, "mundos_sobran", ()):
+        salida.append(_r("horarios", AVISO, f"en {n} y no en esta máquina, no se aplica: {s}",
+                         f"declara ese mundo aquí, o quítalo de {n} en ⚙ mundos de la máquina que lo declara"))
+    if archivo_raiz is not None and archivo_raiz.exists():
+        repo = git.repositorio(archivo_raiz)
+        if repo is not None:
+            r = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--", str(archivo_raiz)],
+                               capture_output=True, text=True)
+            if r.stdout.strip():
+                salida.append(_r("horarios", AVISO, f"{archivo_raiz} tiene cambios sin commitear: las otras máquinas no los ven",
+                                 "telar mundos subir"))
+    donde = getattr(cfg, "mundos_donde", {}) or {}
+    solo_aqui = [f"el horario de {m}" for m, d in (donde.get("horario") or {}).items() if d == "maquina"]
+    solo_aqui += ["fuera"] if donde.get("fuera") == "maquina" else []
+    if archivo_raiz is not None and solo_aqui:
+        salida.append(_r("horarios", AVISO, f"solo en esta máquina: {', '.join(solo_aqui)} (las otras pueden regir distinto)",
+                         "telar mundos migrar --ver (y sin --ver, para que valgan en todas)"))
+    if not salida:
+        salida.append(_r("horarios", OK, f"en {n}: {archivo_raiz}" if archivo_raiz is not None
+                                     else "en esta máquina (la configuración no dice raiz)"))
+    return salida
 
 
 def _multiplexor(ctx) -> list[dict]:
@@ -519,6 +609,36 @@ def _vistas(ctx) -> list[dict]:
     return salida
 
 
+def _retirados(ctx) -> list[dict]:
+    """Lo que la configuración todavía dice de las pestañas que se sacaron del dashboard (`PESTANAS_RETIRADAS`: la del
+    plan, 18-nov-2026; la pantalla estrategia, 19-nov-2026): un bloque para ir en una (`en`, `dentro`, `aparece =
+    "plan"`), que se deja fuera, y `[dashboard] orden` u `ocultas` o las `filas` de un modo que la nombran, que no
+    cuentan. Nada se rompe: se avisa para que se borre. El plan como dato (`[resultados.plan]`) sigue, lo usan táctica y
+    el calendario; y el modo estrategia sigue, abre en proyectos."""
+    import re
+
+    from telar.config import PESTANAS_RETIRADAS
+
+    cfg = ctx.config
+    nombre = lambda que: PESTANAS_RETIRADAS.get((re.search(r'"([^"]+)"', que) or [None, ""])[1], "la pestaña")
+    salida = [_r("vistas", AVISO, f"[{donde}] dice {que}: {nombre(que)} ya no está, y se deja fuera",
+                 "bórralo de la configuración, o dale su propia pestaña (sin en ni dentro, o con aparece = \"pestana\")")
+              for donde, que in tuple(getattr(cfg, "retirados", ()) or ())]
+    for campo in ("orden", "ocultas"):
+        nombradas = tuple(getattr(cfg, f"dashboard_{campo}", ()) or ())
+        for clave, cual in PESTANAS_RETIRADAS.items():
+            if clave in nombradas:
+                salida.append(_r("vistas", AVISO, f"[dashboard] {campo} nombra «{clave}», {cual}, que ya no está:"
+                                 " no cuenta", f"sácala de {campo}"))
+    for modo, cuerpo in (getattr(cfg, "modos", None) or {}).items():
+        filas = str((cuerpo or {}).get("valores", {}).get("filas", "") or "")
+        for clave in (x.strip() for x in filas.split(",")):
+            if clave in PESTANAS_RETIRADAS:
+                salida.append(_r("vistas", AVISO, f"[modos.{modo}] filas nombra «{clave}», {PESTANAS_RETIRADAS[clave]}, que"
+                                 " ya no está: no cuenta", f"sácala de filas (o quita la línea: lo de fábrica ya no la tiene)"))
+    return salida
+
+
 def _tapados(ctx, leidos) -> list[dict]:
     """Lo de un módulo que telar tapa sin decirlo: un módulo que se llama como una orden de telar (`telar
     <nombre>` es la orden, no él) y un `[objetos.<tipo>]` de un tipo que ya trae telar (gana el de fábrica).
@@ -583,7 +703,7 @@ def _agentes(ctx) -> list[dict]:
                              f"cierra la ventana vieja y telar hilo adoptar {shlex.quote(a.nombre_de_antes)}"
                              f" --hilo {shlex.quote(a.nombre)}"))
         if renombrado and (esperan := len(casilla.pendientes(ctx.config, a.nombre_de_antes))) \
-                and casilla.nombre_de_carpeta(a.nombre_de_antes) != casilla.nombre_de_carpeta(a.nombre):
+                and casilla.ficha(ctx.config, a.nombre_de_antes) != casilla.ficha(ctx.config, a.nombre):
             salida.append(_r("agentes", AVISO,
                              f"{a.clave}: {esperan} mensaje(s) esperan en la casilla de «{a.nombre_de_antes}», su nombre"
                              " de antes",
@@ -606,6 +726,54 @@ def _agentes(ctx) -> list[dict]:
         salida.append(_r("agentes", OK, ", ".join(a.nombre for a in todos)
                          + (f" ({con} con agente.toml)" if con else "")))
     return salida
+
+
+def atrasado(carpeta: Path) -> tuple[Path, int] | None:
+    """El repositorio de esa carpeta y cuántos commits de su rama de arriba le faltan, según lo último que se bajó (sin
+    ir a la red: `git fetch` lo pone al día); None si no es un repositorio o no sigue a ninguna."""
+    import subprocess
+
+    try:
+        r = subprocess.run(["git", "-C", str(carpeta), "rev-parse", "--show-toplevel", "HEAD..@{u}"],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            return None
+        repo = Path(r.stdout.splitlines()[0])
+        c = subprocess.run(["git", "-C", str(repo), "rev-list", "--count", "HEAD..@{u}"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return None
+    return (repo, int(c.stdout.strip())) if c.returncode == 0 and c.stdout.strip().isdigit() else None
+
+
+def _agentes_de_otras(ctx) -> list[dict]:
+    """Los agentes que las fotos de las otras máquinas traen (telar.espejo) y cuya carpeta no está aquí: casi siempre,
+    la carpeta de los agentes atrasada (un `git pull` que falta). Salen igual en la página, con su mundo, por la foto
+    de su máquina; esto dice por qué y cómo ponerse al día. Sin fotos que traigan agentes, nada."""
+    from telar import agentes as mod_agentes
+    from telar import mundos
+
+    de_otras = mundos.agentes_de_otras(ctx.config)
+    if not de_otras:
+        return []
+    try:
+        aqui = {a.clave for a in mod_agentes.descubrir(ctx.config)}
+    except OSError:
+        aqui = set()
+    faltan: dict[str, list[str]] = {}
+    for maquina, a in de_otras:
+        if a["clave"] not in aqui:
+            faltan.setdefault(maquina, []).append(a["clave"])
+    if not faltan:
+        return [_r("agentes", OK, "los de las otras máquinas también están aquí")]
+    base = mod_agentes.base(ctx.config)
+    git = atrasado(base) if base is not None else None
+    lista = "; ".join(f"{', '.join(sorted(set(c)))} (de {m})" for m, c in sorted(faltan.items()))
+    atraso = f"{git[0].name} atrasado {_comun.plural(git[1], 'commit')}: " if git and git[1] else ""
+    arreglo = (f"git -C {shlex.quote(str(git[0] if git else base))} pull" if base is not None
+               else "trae la carpeta de los agentes al día")
+    return [_r("agentes", AVISO, f"{atraso}hay agentes que esta máquina no tiene: {lista}. Se ven en la página por la "
+               "foto de su máquina, sin su casa", arreglo)]
 
 
 def _disparadores(ctx) -> list[dict]:
@@ -895,6 +1063,16 @@ def _proveedores(ctx) -> list[dict]:
         if tecla and (len(tecla) != 1 or tecla in TECLAS_RESERVADAS or tecla in de_atajos):
             return [_r("proveedores", FALLA, f"{p.nombre}: la tecla «{tecla}» ya la usa el dashboard o un atajo",
                        "elige otra en [proveedores.%s] tecla" % p.nombre)]
+    # cómo se ve la ficha de una pestaña de proveedor: la de una tarea (sin `vista`) o `lectura`
+    avisos = []
+    for p in activos:
+        vista = str(p.opciones.get("vista") or "")
+        if vista and vista not in VISTAS_DE_FICHA:
+            return [_r("proveedores", FALLA, f"{p.nombre}: no hay una vista «{vista}» para su ficha",
+                       f"en [proveedores.{p.nombre}] vista: {', '.join(VISTAS_DE_FICHA)}, o ninguna (la de una tarea)")]
+        if vista and not p.opciones.get("pestana"):
+            avisos.append(_r("proveedores", AVISO, f"{p.nombre}: vista = «{vista}» sin pestana: sus ítems son pendientes y su "
+                             "ficha se ve como la de una tarea", f"dale una pestana en [proveedores.{p.nombre}], o quítale la vista"))
     # el alcance es lo que cada proveedor promete tocar: se lee aquí, antes de confiar
     lineas = []
     for pr in activos:
@@ -903,7 +1081,7 @@ def _proveedores(ctx) -> list[dict]:
         except Exception:  # noqa: BLE001 - un proveedor roto se reporta, no revienta doctor
             alcance = "no supo decir qué toca"
         lineas.append(_r("proveedor", OK, f"{pr.nombre}: {alcance}"))
-    return [*_atajos(ctx), *lineas]
+    return [*_atajos(ctx), *avisos, *lineas]
 
 
 def _tareas_del_tipo(ctx) -> list[dict]:

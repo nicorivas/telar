@@ -9,6 +9,13 @@ Un hilo de otra máquina se reenvía (`reenviar`): la página de aquí se une a 
 `telar mirar`. El protocolo es el que usaba el panel en Node: del servidor salen los bytes de la terminal
 como texto; de la página llega JSON, `{"d": "…"}` para teclear y `{"r": [columnas, filas]}` para cambiar el
 tamaño.
+
+El tamaño nuevo se le pone al PTY (TIOCSWINSZ), y el núcleo se lo avisa con SIGWINCH al grupo de primer plano de la
+terminal de control: el cliente de tmux lo lee entonces y la ventana del hilo cambia. Por eso el hijo toma el PTY como
+su terminal de control (`con_terminal`) antes de ser `mirar`: con `start_new_session` solo, abre una sesión sin
+terminal (el PTY le llega heredado, y heredarlo no lo hace la suya), y el aviso no le llegaba a nadie. La ventana
+quedaba del tamaño con que se abrió, y arrastrar el borde de la terminal o achicar la ventana del navegador no le
+cambiaba nada a tmux hasta reconectar.
 """
 
 from __future__ import annotations
@@ -63,6 +70,17 @@ def _tamano(fd: int, columnas: int, filas: int) -> None:
         fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", filas, columnas, 0, 0))
 
 
+#: lo que corre el hijo antes de la orden: el PTY (su entrada) pasa a ser su terminal de control, y él es la orden
+_TOMAR_TERMINAL = ("import fcntl, os, sys, termios; fcntl.ioctl(0, termios.TIOCSCTTY, 0); "
+                   "os.execvp(sys.argv[1], sys.argv[1:])")
+
+
+def con_terminal(orden: list[str]) -> list[str]:
+    """`orden`, que al correr con el PTY de entrada y en una sesión nueva (`start_new_session`) lo toma como su terminal
+    de control: los cambios de tamaño le llegan (SIGWINCH). Sin preexec_fn, que no es seguro con hilos."""
+    return [sys.executable, "-c", _TOMAR_TERMINAL, *orden]
+
+
 def _entorno() -> dict[str, str]:
     from telar.mux import tmux
 
@@ -79,7 +97,8 @@ async def abrir(hilo: str, columnas: int, filas: int):
     vista = f"ver-web-{secrets.token_hex(3)}"
     try:
         proceso = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "telar", "mirar", hilo, "--vista", vista,
+            # --enlaces: xterm.js entiende los hipervínculos (OSC 8) y la página los abre (web/rutas-agente.ts)
+            *con_terminal([sys.executable, "-m", "telar", "mirar", hilo, "--vista", vista, "--enlaces"]),
             stdin=secundario, stdout=secundario, stderr=secundario,
             start_new_session=True, cwd=os.path.expanduser("~"), env=_entorno())
     except BaseException:

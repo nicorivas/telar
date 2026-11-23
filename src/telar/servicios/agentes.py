@@ -77,8 +77,9 @@ def del_hilo(ctx, hilo: str, *, maquina: str = "") -> FichaAgente:
 
 
 class Agentes(BaseModel):
-    """`agentes`: [{agente, maquina, aqui, vivo, atencion, conversacion, rotacion, relevo, encargos}], y `problemas`
-    (una máquina que no respondió)."""
+    """`agentes`: [{agente, maquina, aqui, vivo, atencion, conversacion, rotacion, relevo, encargos, mundo}], y
+    `problemas` (una máquina que no respondió). `mundo`, con `[mundos]`: el de la carpeta del agente ("" sin
+    clasificar); sin `[mundos]`, no viene."""
 
     model_config = ConfigDict(extra="allow")
 
@@ -128,23 +129,38 @@ def lista(ctx) -> Agentes:
     vistos = {x["agente"]["clave"] for x in salida}
     otros = [a for a in mod_agentes.descubrir(ctx.config) if a.clave not in vistos]
     maquinas = sorted({a.en or ctx.config.agentes_en for a in otros} - {"", "aqui"})
+    respondieron = set()
     for maquina in maquinas:
         r = mod_bus.pedir(ctx.config, maquina, "agentes", {}) if mod_bus.hay_bus(ctx.config) else \
             {"ok": False, "error": "sin bus"}
         if r.get("ok"):
+            respondieron.add(maquina)
             for x in r.get("agentes") or []:
                 if x["agente"]["clave"] not in vistos:
                     vistos.add(x["agente"]["clave"])
                     salida.append({**x, "maquina": maquina, "aqui": False})
         else:
             problemas.append(f"{maquina}: {r.get('error', 'no respondió')}")
-    # los que no aparecen en ninguna (su máquina no respondió): con lo que dice su definición
+    # los que no aparecen en ninguna, con lo que dice su definición: o su máquina no respondió (sin noticias), o
+    # respondió sin él entre los suyos: su carpeta está solo aquí (`solo_aqui`, qué pasa y qué hacer)
     for a in otros:
         if a.clave not in vistos:
-            salida.append({"agente": mod_agentes.como_json(a), "maquina": a.en or ctx.config.agentes_en, "aqui": False,
-                           "vivo": False, "atencion": "ninguna", "conversacion": None, "rotacion": "", "relevo": None,
-                           "encargos": [], "sin_noticias": True})
+            maquina = a.en or ctx.config.agentes_en
+            x = {"agente": mod_agentes.como_json(a), "maquina": maquina, "aqui": False, "vivo": False,
+                 "atencion": "ninguna", "conversacion": None, "rotacion": "", "relevo": None, "encargos": []}
+            if maquina in respondieron:
+                x["solo_aqui"] = solo_aqui(ctx, a.clave, maquina)
+            else:
+                x["sin_noticias"] = True
+            salida.append(x)
     salida.sort(key=lambda x: x["agente"]["nombre"].casefold())
+    # su mundo (`[mundos]`), el de su carpeta leída desde aquí, viva donde viva, para quien filtre por mundo
+    # (lo usaba la pantalla estrategia, que se sacó el 19-nov-2026; hoy la página no lo lee)
+    from telar import mundos
+
+    if mundos.declarados(ctx.config):
+        for x in salida:
+            x["mundo"] = mundos.de_agente(ctx.config, x["agente"]["clave"])
     return Agentes(agentes=salida, problemas=problemas)
 
 
@@ -180,6 +196,34 @@ def rotar(ctx, hilo: str, maquina: str = "") -> dict:
     if not r.get("ok"):
         raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
     return r
+
+
+def solo_aqui(ctx, agente: str, maquina: str) -> str:
+    """Un agente con su carpeta en esta máquina que vive en `maquina` (su `en`, o `[agentes] en`), donde no está: qué
+    pasa y las dos salidas, para el error de abrirlo o eliminarlo y para la vista de agentes. "" si aquí tampoco está
+    (no existe: el «no hay un agente» de allá es lo que corresponde)."""
+    from telar import agentes as mod_agentes
+
+    a = mod_agentes.buscar(ctx.config, agente)
+    if a is None:
+        return ""
+    carpeta = str(a.carpeta).replace(str(Path.home()), "~", 1)
+    porque = (f"su configuración dice que vive en {maquina} ([agentes.{a.clave}] en, o lugar en su agente.toml)" if a.en
+              else f"los agentes viven en {maquina} ([agentes] en)")
+    return (f"{a.nombre} está solo en esta máquina: su carpeta ({carpeta}) está aquí, pero {porque} y allá no está. "
+            f"Para que viva en {maquina}, su carpeta tiene que llegar allá (commitéala y súbela al repositorio que "
+            f"comparten); para que viva aquí, ponle [agentes.{a.clave}] en = \"aqui\" en la configuración de esta "
+            "máquina.")
+
+
+def _de_alla(ctx, r: dict, agente: str, maquina: str) -> ErrorDeServicio:
+    """El error de lo que se le pidió a `maquina` por el bus. Si allá no hay tal agente pero aquí está su carpeta, lo
+    dice así (solo_aqui) en vez del «no hay un agente» de allá, que no explica nada."""
+    error, codigo = str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502)
+    if codigo == 404 or "no hay un agente" in error:
+        if texto := solo_aqui(ctx, agente, maquina):
+            return ErrorDeServicio(texto, 409)
+    return ErrorDeServicio(error, codigo)
 
 
 def abrir_aqui(ctx, agente: str) -> dict:
@@ -241,16 +285,20 @@ def abrir(ctx, agente: str, maquina: str = "") -> dict:
         return abrir_aqui(ctx, agente)
     r = mod_bus.pedir(ctx.config, maquina, "agentes", {"abrir": agente}, espera=60)
     if not r.get("ok"):
-        raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
+        raise _de_alla(ctx, r, agente, maquina)
     return r
 
 
 def eliminar_aqui(ctx, agente: str) -> dict:
-    """Eliminar a un agente de aquí (`telar agentes eliminar`): sus hilos al archivo, su carpeta a `_eliminados`."""
+    """Eliminar a un agente de aquí (`telar agentes eliminar`): sus hilos al archivo, su carpeta a `_eliminados`. 404
+    si aquí no está, como abrir_aqui."""
     import json
 
+    from telar import agentes as mod_agentes
     from telar.servicios import en_proceso
 
+    if mod_agentes.buscar(ctx.config, agente) is None:
+        raise ErrorDeServicio(f"no hay un agente «{agente}»", 404)
     c = en_proceso.correr(ctx, "agentes", ["eliminar", agente, "--si", "--json"])
     if c.codigo != 0:
         raise ErrorDeServicio((c.error or c.salida).strip().splitlines()[-1] if (c.error or c.salida).strip() else "no se pudo", 409)
@@ -266,7 +314,7 @@ def eliminar(ctx, agente: str, maquina: str = "") -> dict:
         return eliminar_aqui(ctx, agente)
     r = mod_bus.pedir(ctx.config, maquina, "agentes", {"eliminar": agente}, espera=90)
     if not r.get("ok"):
-        raise ErrorDeServicio(str(r.get("error") or f"{maquina} no respondió"), int(r.get("codigo") or 502))
+        raise _de_alla(ctx, r, agente, maquina)
     return r
 
 

@@ -69,11 +69,13 @@ source distribution and the clone.)
 telar init                 # write the config, find the multiplexer, prepare the state
 telar tejer                # raise the session
 telar vincular proyectos/faro      # this thread is that folder
-telar hilos                # everything open, with the state each folder reports
+telar hilos                # everything open here, with the state each folder reports (--red: every machine)
 telar ficha faro           # what that folder says about itself
 telar pendientes           # what is left to do, across threads
 telar pendiente faro:2     # take that one to the thread where the work lives
 telar hoy                  # the day in one screen
+telar esperas              # what waits for your decision (permissions, proposals, held messages), oldest first
+telar buscar faro          # search threads, tasks, projects, waits and dashboard tabs at once
 telar atajo m              # a dashboard shortcut: a new thread with the agent doing it
 telar proyectos            # every unit of work; `abrir <ruta>` opens one with the agent
 ```
@@ -82,6 +84,17 @@ Two of them are meant to be called by other programs, not by you:
 `telar tiempo marcar` from the multiplexer whenever the focused tab changes, and
 `telar atencion set espera` from the agent when it needs you. `telar doctor` checks
 whether either is wired.
+
+## The page
+
+`telar serve --web` (the service `telar instalar` sets up) is where most of it happens, on a laptop or a phone: the
+threads in a sidebar, each one's terminal and conversation, and a dashboard. The page is arranged by **modes** —
+táctica (what to do now, and what the agents are waiting for you to decide), estrategia, foco and todo — and by
+**worlds**: which part of your life something belongs to (work, personal), each ruling on its own schedule, so a
+shared screen shows only what belongs to the one in force. ⌘K finds any thread, task, project or document. Idle
+threads **sleep**: their agent closes and their window stays, and opening one or writing to it wakes it, on this
+machine or on another. Themes and each world's schedule can live in your working root (`.telar/temas.toml`,
+`.telar/mundos.toml`), so every machine shows the same.
 
 ## Wiring the agent
 
@@ -110,6 +123,7 @@ from a temporary virtualenv, say. The six events are in
 |---|---|---|
 | Configuration — multiplexer, session, working root, providers | yours, per machine | `~/.config/telar/config.toml` ([docs](docs/configuracion.md)) |
 | Profile — what a unit of work is, and what can be read from it | the work repository's, versioned with it | `.telar/perfil.yaml` ([docs](docs/perfil.md)) |
+| Shared settings — themes, each world's schedule | the working root's, versioned, the same on every machine | `.telar/temas.toml`, `.telar/mundos.toml` ([docs](docs/configuracion.md)) |
 | Threads, fichas, attention | derived, disposable | `~/.local/state/telar` |
 
 ## What it will not do
@@ -118,7 +132,8 @@ from a temporary virtualenv, say. The six events are in
 - **No network** beyond what a provider declares — and no provider exists until
   your configuration names it.
 - **No writing to your work repository** unless you ask. Derived state lives
-  elsewhere and can be deleted without losing anything.
+  elsewhere and can be deleted without losing anything. Changing a theme or a
+  world's schedule from the page is asking: it commits and pushes only that file.
 - **No silent writes anywhere else, either.** One command edits another program's
   configuration — `telar agente instalar` — and it shows the path and the diff and
   waits for a yes. `--si` is how you say it in a script.
@@ -141,7 +156,9 @@ Docs are in Spanish, the language this is written in.
 - [`docs/publicar.md`](docs/publicar.md) — how a version gets out: what to set up
   once, and the runbook per release.
 - [`docs/desarrollar.md`](docs/desarrollar.md) — seeing a change at once while working
-  (`scripts/dev.py`), and deploying it to your machines (`servidor/desplegar.sh`).
+  (`scripts/dev.py`), and deploying it to your machines (`telar desplegar`).
+- [`docs/arte.md`](docs/arte.md) — the animated letter art on each world's card (⌘M), and how
+  to add your own: a text file in your root, or a small module.
 - [`ejemplo/`](ejemplo/) — a small invented workspace.
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, version by version.
 

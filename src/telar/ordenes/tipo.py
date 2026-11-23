@@ -1,6 +1,7 @@
 """`telar tipo` — los objetos de un tipo (las tareas): leerlos, crearlos y aplicarles sus acciones.
 
     telar tipo tarea lista [--todas] [--json]           las abiertas (con --todas, también las cerradas)
+    telar tipo tarea lista --mundo trabajo              solo las de un mundo de [mundos] (se repite; sin-clasificar)
     telar tipo tarea ver T84 [--json]                   una, con su versión
     telar tipo tarea crear --params '{"titulo": "Llamar a Ana", "vence": "2026-10-30"}'
     telar tipo tarea completar T84 [--params '{"nota": "listo"}'] [--version V]
@@ -38,6 +39,8 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--params", default="{}", help="los parámetros, en JSON")
     p.add_argument("--version", default=None, help="la versión que se leyó: si cambió, no se hace")
     p.add_argument("--todas", action="store_true", help="en lista: también las cerradas")
+    p.add_argument("--mundo", action="append", default=[], metavar="MUNDO",
+                   help="en lista: solo las de ese mundo de [mundos] (sin-clasificar: las que no calzan); se repite")
     p.add_argument("--json", action="store_true", help="el resultado, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
@@ -50,7 +53,7 @@ def main(argv: list[str], ctx) -> int:
         if not isinstance(params, dict):
             raise ErrorDeServicio("--params: se esperaba un objeto JSON", 422)
         if o.verbo == "lista":
-            r = servicio.lista(ctx, o.tipo, todas=o.todas)
+            r = servicio.lista(ctx, o.tipo, todas=o.todas, mundos=tuple(o.mundo))
         elif o.verbo == "crear":
             r = servicio.crear(ctx, params, clave=o.tipo)
         elif not o.id:

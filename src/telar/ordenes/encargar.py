@@ -1,10 +1,10 @@
 """`telar encargar` — pedirle algo a un agente residente, en su hilo de siempre.
 
-    telar encargar gestion "/avanzar T84"    un encargo (`encargo:e-…`) en su casilla: se entera si está libre,
+    telar encargar secretaria "/avanzar T84" un encargo (`encargo:e-…`) en su casilla: se entera si está libre,
                                              se lo entrega su gancho si trabaja, o se abre su sesión
     telar encargar --liberar                 cerrar sesiones ociosas hasta caber bajo [agente] max_vivos
 
-El agente es la carpeta de `[agentes] carpeta` (gestion) o su nombre (Gestión). Con `[agentes] en`
+El agente es la carpeta de `[agentes] carpeta` (secretaria) o su nombre (Secretaría). Con `[agentes] en`
 (o `--en <remoto>`) se encarga en esa máquina, por ssh: los agentes suelen vivir en el servidor.
 Ver `telar.encargos`.
 """

@@ -1,0 +1,88 @@
+/* El día en una línea (componentes/jornada.ts): una barra fina que es la jornada entera y una línea de texto, «libre
+   1h 20 → 11:30 Daily · 13:00 Comité». Es un contenedor: lo que se ve lo decide el ancho que le dan, de más a menos
+   (abajo). Sin esquinas; lo que se distingue, por color: la reunión en su azul (la que no ha respondido, solo su borde,
+   como la cita sin aceptar del calendario), lo propio tenue, lo libre que viene en la pista, lo que ya pasó lleno y
+   tenue (como una barra de carga), ahora en el color del texto. Sus tokens, --jornada-… (tokens.css). */
+
+.jornada {
+  min-width: 0;
+  white-space: nowrap;
+  container: jornada / inline-size;
+}
+
+.jornada-fila {
+  display: flex;
+  gap: var(--h-1);
+  align-items: center;
+  min-width: 0;
+}
+
+/* la barra: la pista es lo libre que viene; lo que ya pasó se llena; cada tramo en su color; ahora, una raya del alto
+   de la línea */
+.jornada-barra {
+  position: relative;
+  flex: none;
+  inline-size: var(--jornada-barra);
+  block-size: var(--jornada-alto);
+  background: var(--jornada-libre);
+
+  & :is(.j-hecho, .j-tramo, .j-ahora) { position: absolute; inset-block: 0; }
+  & .j-hecho { inset-inline-start: 0; background: var(--jornada-hecho); }
+  & .j-tramo { min-inline-size: 1px; }
+  & .j-tramo.reunion { background: var(--jornada-reunion); }
+  & .j-tramo:is(.bloque, .rutina) { background: var(--jornada-bloque); }
+  & .j-tramo.reunion.pasado { background: color-mix(in srgb, var(--jornada-reunion) 40%, transparent); }
+  /* la que no ha respondido, hueca: lo que tiene debajo (la pista, lo ya pasado, otra reunión) se ve adentro */
+  & .j-tramo.reunion.sin-responder { background: transparent; box-shadow: inset 0 0 0 1px var(--jornada-reunion); }
+  & .j-tramo.reunion.sin-responder.pasado { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--jornada-reunion) 40%, transparent); }
+  & .j-tramo:is(.bloque, .rutina).pasado { background: transparent; }
+
+  & .j-ahora {
+    inset-block: calc(-.5lh + var(--jornada-alto) / 2);
+    inline-size: 2px;
+    margin-inline-start: -1px;
+    background: var(--jornada-ahora);
+  }
+}
+
+/* las palabras que unen, tenues; las horas y los nombres, en el texto; cuánto dura, en el color de lo que es */
+.jornada-texto {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--texto-tenue);
+  text-overflow: ellipsis;
+
+  & .j-hora,
+  & .j-luego { color: var(--texto); }
+  & .j-mas,
+  & .j-mas .j-hora,
+  & .j-sin { color: var(--texto-tenue); }
+  & .libre { color: var(--jornada-libre-texto); }
+  & .reunion { color: var(--jornada-reunion); }
+  & .poco { color: var(--jornada-poco); }
+}
+
+/* de más a menos ancho: primero se va lo que viene más tarde y la barra se angosta; después el nombre de lo que sigue
+   y las palabras («1h 20 → 11:30»); después la barra; después hasta cuándo («1h 20»); y al final todo */
+@container jornada (width < 72ch) {
+  .jornada-fila { --jornada-barra: 16ch; }
+  .j-mas { display: none; }
+}
+
+@container jornada (width < 46ch) {
+  .jornada-fila { --jornada-barra: 10ch; }
+  .jornada-texto :is(.j-que, .j-luego) { display: none; }
+}
+
+@container jornada (width < 25ch) {
+  .jornada-barra { display: none; }
+}
+
+@container jornada (width < 14ch) {
+  .j-hasta { display: none; }
+}
+
+@container jornada (width < 5ch) {
+  .jornada-fila { visibility: hidden; }
+}

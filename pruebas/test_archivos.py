@@ -120,6 +120,69 @@ class LosArchivos(Prueba):
         self.assertEqual((r["ok"], r["codigo"]), (False, 403))
 
 
+class LaCarpetaDeUnHilo(Prueba):
+    """La carpeta de un hilo de aquí se lee aunque esté fuera de la raíz (el worktree de un hijo con rama, un repo
+    aparte): es de la lista cerrada. Una ruta cualquiera, no; un enlace que sale de ella, tampoco."""
+
+    def setUp(self):
+        super().setUp()
+        from telar import estado as mod_estado
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name).resolve()
+        self.raiz = base / "vida"
+        self.raiz.mkdir()
+        self.worktree = base / "worktrees" / "faro-calendario"
+        (self.worktree / "docs").mkdir(parents=True)
+        (self.worktree / "docs" / "oauth.md").write_text("# OAuth\n")
+        self.aparte = base / "aparte"
+        self.aparte.mkdir()
+        (self.aparte / "nota.md").write_text("aparte")
+        self.ajeno = base / "ajeno"
+        self.ajeno.mkdir()
+        (self.ajeno / "nota.md").write_text("de otra máquina")
+        self.afuera = base / "secreto.txt"
+        self.afuera.write_text("no")
+        os.symlink(self.afuera, self.worktree / "atajo.txt")
+        self.ctx = SimpleNamespace(config=SimpleNamespace(raiz=self.raiz, apps=(), estado=base / "estado"))
+        est = mod_estado.abrir(self.ctx.config)
+        est.anotar_rama("Calendario", {"rama": "calendario", "base": "main", "ruta": str(self.worktree)})
+        est.vincular("Aparte", str(self.aparte))
+        # uno de otra máquina se llama igual que una carpeta de aquí: esa ruta es de allá
+        est.vincular("Lejano", str(self.ajeno))
+        est.anotar_remoto("Lejano", "servidor", "telar")
+        # uno vinculado a la carpeta personal abarca demasiado
+        est.vincular("Casa", str(Path.home()))
+
+    def test_absoluta_y_relativa_desde_la_raiz(self):
+        self.assertEqual(archivos.leer(self.ctx, str(self.worktree / "docs" / "oauth.md")).texto, "# OAuth\n")
+        # la que manda la página para un hilo de otra máquina: relativa a la raíz de allá, con ../ delante
+        self.assertEqual(archivos.leer(self.ctx, "../worktrees/faro-calendario/docs/oauth.md").texto, "# OAuth\n")
+        self.assertEqual(archivos.leer(self.ctx, str(self.aparte / "nota.md")).texto, "aparte")
+        self.assertEqual(archivos.base_de(self.ctx, self.worktree / "docs" / "oauth.md"), self.worktree)
+
+    def test_lo_de_afuera_no(self):
+        for ruta in (str(self.afuera), "../secreto.txt", str(self.worktree / "atajo.txt"), "../worktrees/faro-calendario/atajo.txt",
+                     str(self.ajeno / "nota.md"), str(Path.home() / ".ssh" / "id_ed25519")):
+            with self.assertRaises(ErrorDeServicio) as e:
+                archivos.leer(self.ctx, ruta)
+            self.assertEqual(e.exception.codigo, 403, ruta)
+            with self.assertRaises(ErrorDeServicio):
+                archivos.para_bajar(self.ctx, ruta)
+
+    def test_se_lee_y_no_se_escribe(self):
+        self.assertEqual(archivos.para_bajar(self.ctx, str(self.worktree / "docs" / "oauth.md")).name, "oauth.md")
+        with self.assertRaises(ErrorDeServicio) as e:
+            archivos.escribir(self.ctx, str(self.worktree / "x.json"), "{}")
+        self.assertEqual(e.exception.codigo, 403)
+
+    def test_lo_que_responde_el_nodo_con_documento(self):
+        r = archivos.leer_para_otra(self.ctx, {"ruta": "../worktrees/faro-calendario/docs/oauth.md", "documento": True})
+        self.assertTrue(r["ok"])
+        self.assertEqual((r["documento"]["markdown"], r["documento"]["subir"]), ("# OAuth\n", str(self.worktree)))
+
+
 class LaEntrada(Prueba):
     """Lo que se arrastra a un hilo y queda en la carpeta de entrada de su máquina: aquí se escribe; a otra máquina
     se copia con `imagen.subir`, que en las pruebas es un doble (nada de ssh)."""

@@ -59,6 +59,27 @@ def validar(datos: object) -> str:
         problema = _acciones(datos["acciones"])
         if problema:
             return f"acciones: {problema}"
+    # los de la ficha de una lectura (una pestaña con `vista = "lectura"`): textos, y los temas, nombres o {nombre, nota}
+    for campo in ("fuente", "fecha", "estado", "procesando"):
+        if not isinstance(datos.get(campo) or "", str):
+            return f"{campo}: se esperaba un texto"
+    temas = datos.get("temas", [])
+    if not isinstance(temas, list) or not all(
+            isinstance(t, str) or (isinstance(t, dict) and isinstance(t.get("nombre"), str) and isinstance(t.get("nota", ""), str))
+            for t in temas):
+        return 'temas: se esperaba una lista de nombres, o de {"nombre": …, "nota": ruta}'
+    # las relaciones que propone para el grafo, y el vocabulario de sus tipos
+    conexiones = datos.get("conexiones", [])
+    if not isinstance(conexiones, list) or not all(
+            isinstance(c, dict) and isinstance(c.get("nota"), str) and isinstance(c.get("tipo"), str)
+            and all(isinstance(c.get(k) or "", str) for k in ("titulo", "porque", "ancla")) and c.get("elegida") in (None, True, False)
+            for c in conexiones):
+        return 'conexiones: se esperaba una lista de {"nota", "tipo", "titulo", "porque", "ancla", "elegida": true|false|null}'
+    tipos = datos.get("tipos", [])
+    if not isinstance(tipos, list) or not all(isinstance(t, dict) and isinstance(t.get("tipo"), str) for t in tipos):
+        return 'tipos: se esperaba una lista de {"tipo", "que", "distingue", "grupo", "color"}'
+    if any(t.get("color", "azul") not in COLORES for t in tipos):
+        return f"tipos: color: {', '.join(COLORES)}"
     return ""
 
 
@@ -135,10 +156,11 @@ def _marco(m: object) -> str:
     return _alto(m.get("alto", 240))
 
 
-def correr(comando, que: str) -> tuple[dict | None, str]:
-    """Corre un comando que imprime una página y la valida. (datos, error o "")."""
+def correr(comando, que: str, entorno: dict | None = None) -> tuple[dict | None, str]:
+    """Corre un comando que imprime una página y la valida. (datos, error o ""). `entorno`, el de un módulo
+    (`modulos.entorno`) si la página es suya; sin él, el de telar."""
     try:
-        r = subprocess.run(list(comando), capture_output=True, text=True, timeout=ESPERA * 2)
+        r = subprocess.run(list(comando), capture_output=True, text=True, timeout=ESPERA * 2, env=entorno)
     except (OSError, subprocess.TimeoutExpired) as e:
         return None, f"{que} no corrió: {e}"
     if r.returncode != 0:

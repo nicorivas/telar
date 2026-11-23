@@ -18,7 +18,10 @@
   /* el texto de un aviso con botones respeta sus saltos de línea (un detalle, una lista) */
   & p { white-space: pre-wrap; }
 
-  & input {
+  /* el filtro de un menú es la barra de un buscador (componentes/buscador.ts): de borde a borde de la caja */
+  & > .buscador-barra { margin-inline: calc(-1 * var(--h-2)); --buscador-margen: var(--h-2); }
+
+  & input:not(.buscar) {
     box-sizing: border-box;
     width: 100%;
     padding: .2lh 0;
@@ -61,15 +64,6 @@
     &:focus { border-color: var(--azul); }
   }
 
-  & .botones {
-    display: flex;
-    gap: var(--h-2);
-    justify-content: flex-end;
-    margin-top: .6lh;
-
-    & a { color: var(--azul); cursor: pointer; }
-    & a:focus-visible { outline: 1px solid var(--azul); outline-offset: 2px; }
-  }
 }
 
 /* el menú: un filtro arriba y las opciones, con la elegida marcada */
@@ -81,63 +75,91 @@
   padding: 0 var(--h-1);
   cursor: pointer;
 
-  & .d { color: var(--dim); }
+  /* una línea por opción: lo largo (la descripción de una skill) se corta con «…» */
+  white-space: nowrap;
+
+  & .d { min-width: 0; overflow: hidden; color: var(--dim); text-overflow: ellipsis; }
   &.sel, &:hover { background: var(--sel); }
 }
 
 .web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); }
 
+/* la opción marcada, entera, bajo la lista (cuando las opciones traen `detail`): qué es y en qué se distingue */
+.web-detalle {
+  min-height: 4lh;
+  margin-top: .4lh;
+  padding: .4lh var(--h-1) 0;
+  box-shadow: inset 0 1px 0 var(--linea);
+  white-space: normal;
+
+  & .l { color: var(--c, var(--fg)); font-weight: bold; }
+  & .x { margin-top: .2lh; color: var(--dim); }
+}
+
 /* una opción con ícono y color (las de un menú de una entidad, web/entidades.ts): todo del mismo tamaño; lo que
    distingue es el color de lo que hace (`--c`) y el ícono */
 .web-op .ico { width: 2ch; flex: none; text-align: center; color: var(--c, var(--dim)); font-family: iconos, var(--letra), monospace; }
 .web-op .ico:empty { display: none; }
-.web-op .l { color: var(--c, var(--fg)); }
+.web-op .l { flex: none; color: var(--c, var(--fg)); }
 .web-lista:has(.ico:not(:empty)) .web-sep { padding-left: calc(var(--h-1) + 2ch + var(--h-2)); }
 
-/* el menú junto al puntero (clic derecho o ⋯ sobre una entidad): sin fondo detrás, con la sombra de una ventana de
-   terminal como el globo del Gantt */
-dialog.web-menu {
-  position: fixed;
-  z-index: 50;
-  inset: auto;
-  min-width: 28ch;
-  max-width: min(60ch, calc(100vw - 2ch));
-  margin: 0;
-  padding: .3lh 0;
-  color: var(--fg);
-  background: var(--bg-barra);
-  border: var(--borde);
-  box-shadow: 1ch .6lh 0 rgb(0 0 0 / 55%);
+/* la instrucción (web/instruccion.ts): de qué se habla, a quién y la skill lado a lado, la instrucción y lo que le
+   llega. Todo del mismo tamaño; los títulos de sección, apagados; el ícono de la cabecera, en el violeta del agente */
+dialog.web-instruccion {
+  width: min(100ch, calc(100vw - 4ch));
 
-  & .titulo { padding: 0 var(--h-1) .2lh; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  & .filtro { display: block; width: calc(100% - 2 * var(--h-1)); margin: 0 var(--h-1) .2lh; padding: 0; color: var(--fg);
-    background: transparent; border: 0; border-bottom: var(--borde); font: inherit; outline: none; }
-  & .web-lista { max-height: 60vh; margin: 0; }
-  /* todo del mismo tamaño: lo que distingue es el color (el de lo que hace, `--c`) y el ícono */
-  & .web-op { white-space: nowrap; }
-  & .web-op .d { overflow: hidden; text-overflow: ellipsis; }
-}
-
-/* «Acción…» (web/actuar.ts): tres secciones, todas del mismo tamaño; los títulos de sección, apagados */
-dialog.web-actuar {
-  width: min(80ch, calc(100vw - 4ch));
-
-  & section { margin-top: .6lh; }
+  & h3 { display: flex; gap: var(--h-2); align-items: baseline; }
+  & h3 .ico { color: var(--violeta); font-family: iconos, var(--letra), monospace; font-weight: normal; }
+  /* de qué se habla: el título se corta con «…» antes que la dirección */
+  & .de { padding: 0; cursor: default; }
+  & .de:hover { background: none; }
+  & .web-op.de .l { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .web-op.de .d { flex: none; }
+  /* un contexto libre (un chat que manda la pestaña de un módulo): un clic en su fila lo muestra entero, tal cual le
+     llega, en la misma letra */
+  & .de.libre { cursor: pointer; }
+  & .de.libre:hover { background: var(--sel); }
+  /* su nombre (el chat) va antes que cuántas líneas trae y de dónde: se corta lo de después */
+  & .web-op.de.libre .l { flex: none; max-width: 60%; }
+  & .web-op.de.libre .d { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  & .web-op.de.libre .ico:last-child { margin-left: auto; }
+  & .texto-libre { max-height: 12lh; margin: .3lh 0 0; padding: var(--e-1) var(--h-1); overflow: auto; color: var(--dim);
+    white-space: pre-wrap; overflow-wrap: anywhere; border: var(--borde); font: inherit; }
+  & .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--h-2); }
+  /* a un solo destino (encargarle a un agente): la skill, a todo el ancho */
+  & .dos.uno { grid-template-columns: 1fr; }
+  & section { min-width: 0; margin-top: .6lh; }
   & h4 { margin: 0 0 .2lh; color: var(--dim); font-size: inherit; font-weight: normal; }
-  & .campos { padding-left: calc(2ch + var(--h-2) + var(--h-1)); color: var(--dim); }
-  & textarea { box-sizing: border-box; width: 100%; margin-top: .3lh; padding: var(--e-1) var(--h-1); color: var(--fg);
-    background: var(--bg); border: var(--borde); font: inherit; resize: vertical; }
-  & input:not([type]) { box-sizing: border-box; width: 100%; padding: 0 var(--h-1); color: var(--fg); background: transparent;
-    border: 0; border-bottom: var(--borde); font: inherit; outline: none; }
-  & .web-lista { max-height: 22vh; }
+  & textarea { box-sizing: border-box; width: 100%; min-height: 4lh; margin-top: .3lh; padding: var(--e-1) var(--h-1);
+    color: var(--fg); background: var(--bg); border: var(--borde); font: inherit; resize: vertical; }
+  /* el filtro de cada lista (a quién, la skill): la barra de un buscador, sobre su lista */
+  & section .buscador-barra { --buscador-margen: 0; }
+  & .web-lista { height: 10lh; max-height: none; }
   /* una línea por opción: lo que no cabe se corta, y entero se lee al pasar el puntero */
   & .web-op { white-space: nowrap; }
   & .web-op .l { flex: none; }
   & .web-op .d { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   & .web-op.sel { background: var(--sel); }
-  & .botones { align-items: center; }
-  & .botones .solo { display: flex; flex: 1; align-items: center; gap: 1ch; white-space: nowrap; color: var(--dim); cursor: pointer; }
-  & .botones .solo input { margin: 0; accent-color: var(--azul); }
+  /* la fila que pliega los archivados, al final de a quién: como ARCHIVO en la barra, un respiro antes */
+  & .web-op.aparte { margin-top: .3lh; }
+  /* lo que le va a llegar al agente, tal cual: una línea, entera al pasar el puntero */
+  & .llega { margin-top: .3lh; overflow: hidden; color: var(--dim); white-space: nowrap; text-overflow: ellipsis; }
+  /* el pie: la banda de botones (boton.css), de borde a borde de la caja y hasta su borde de abajo; a la izquierda,
+     dejarla escrita */
+  & > .botonera { margin: var(--boton-pie-aire) calc(-1 * var(--h-2)) calc(-1 * var(--e-3)); }
+  & .botonera .solo { display: flex; flex: 1; align-items: center; gap: 1ch; white-space: nowrap; color: var(--dim); cursor: pointer; }
+  & .botonera .solo[hidden] { display: flex; visibility: hidden; }
+  & .botonera .solo input { width: auto; margin: 0; accent-color: var(--azul); }
+}
+
+/* en un celular, a quién y la skill, uno sobre otro; cada opción sigue en una línea (lo que no cabe se corta: el
+   filtro encuentra también por lo que no se ve) */
+@media (width <= 700px) {
+  dialog.web-instruccion .dos { grid-template-columns: 1fr; }
+  dialog.web-instruccion .web-lista { height: 6lh; }
+  dialog.web-instruccion .web-op { flex-direction: row; gap: var(--h-2); padding-block: 0; }
+  /* dejarla escrita, si no se puede, no ocupa su fila */
+  dialog.web-instruccion .botonera-izq:has(> .solo[hidden]) { display: none; }
 }
 
 /* la mudanza de un hilo a otra máquina (web/mudanza.ts): el nombre de la máquina en letras grandes de █, una barra de
@@ -175,20 +197,11 @@ dialog.mudanza {
   & .paso.ahora.falla { color: var(--rojo); }
   & .paso.ahora.pregunta { color: var(--amarillo); }
   & .linea { min-height: 1lh; margin-top: .6lh; color: var(--dim); white-space: pre-wrap; }
-  & .botones { display: flex; gap: 3ch; justify-content: flex-end; margin-top: .6lh; }
-  & .botones a { cursor: pointer; }
-  & .botones a:hover { text-decoration: underline; }
+  /* sus botones: la banda de boton.css, de borde a borde y hasta el borde de abajo (sin el aire de abajo del panel) */
+  & > .botonera { margin: var(--boton-pie-aire) -3ch -1lh; }
+  & > .botonera[hidden] { display: none; }
 }
 
-/* la fila de un hilo que está ocupado (viajando, archivándose, descartándose): su ícono quieto, cambiando de color */
-.fila .viaja { display: inline-block; color: var(--cian); animation: viaja 1.6s linear infinite; }
-.fila .doble { color: var(--amarillo); margin-left: 0.5ch; }
-
-@keyframes viaja {
-  0%, 100% { color: var(--cian); }
-  33% { color: var(--azul); }
-  66% { color: var(--violeta); }
-}
 
 /* en un celular, cada opción en dos renglones: el nombre, y debajo para qué sirve */
 @media (width <= 700px) {

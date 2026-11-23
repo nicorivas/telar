@@ -437,6 +437,17 @@ def soltado(config, eid: str) -> None:
         _escribir(_ruta(config, "enviados", eid), nota)
 
 
+def descartado(config, eid: str, quien: str = "") -> None:
+    """El mensaje retenido de un encargo se descartó: no sale nunca, y el encargo no se crea. Su nota, si está aquí,
+    deja de decir retenido y dice quién lo descartó y cuándo (`telar objeto encargo:<id>` lo muestra cancelado)."""
+    nota = enviado(config, eid)
+    if nota is None:
+        return
+    nota.pop("retenido", None)
+    nota.update({"descartado": _ahora(), "descartado_por": quien})
+    _escribir(_ruta(config, "enviados", eid), nota)
+
+
 def enviado(config, eid: str) -> dict | None:
     try:
         return _leer(_ruta(config, "enviados", eid))

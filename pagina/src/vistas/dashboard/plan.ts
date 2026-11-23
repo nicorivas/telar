@@ -1,17 +1,18 @@
-// El plan del día y el calendario del dashboard: lo que deja una skill de planificación
-// (`telar resultado plan`) y la agenda con las notas de cada evento (`telar evento`). El calendario tiene dos
-// vistas, el día y la semana (semana.ts), con el mismo dibujo: una cita va llena, un bloque propio rayado y del
-// color de su clase (clases.ts).
-// Arriba se dibuja; abajo, PantallaPlan, el estado y las acciones de las dos pestañas.
+// El calendario del dashboard: la agenda con las notas de cada evento (`telar evento`) y los bloques del plan del día
+// que deja una skill de planificación (`telar resultado plan`; el plan como texto no tiene pestaña: lo usan táctica y
+// «ahora»). Tiene dos vistas, el día y la semana (semana.ts), con el mismo dibujo: una cita va llena, un bloque propio
+// rayado y del color de su clase (clases.ts).
+// Arriba se dibuja; abajo, PantallaCalendario, el estado y las acciones de la pestaña, y el plan leído.
 
 import * as cli from '../../cli';
 import { esc } from '../../estilo';
 import * as ui from '../../web/ui';
 import { NOMBRE, cruces, queEs, vistos } from './clases';
-import { Dia, diaDe, miNombre, seccion } from './dia';
+import { Dia, cuerpo, diaDe, miNombre, seccion } from './dia';
 import { type EventoCal, carriles, eventosDelDia, notasDe } from './eventos';
-import type { Accion, Pantalla, Tablero } from './pantalla';
-import { type DiaSemana, diasDe, htmlNavSemana, htmlSemana, isoDe, lunesDe } from './semana';
+import type { Accion, EnBarra, Pantalla, Tablero } from './pantalla';
+import type { AccionDePantalla, VistaDePantalla } from '../../componentes/pantalla';
+import { type DiaSemana, corto, diasDe, htmlSemana, isoDe, lunesDe } from './semana';
 import { I } from '../../web/iconos';
 
 /** El plan, tal como lo escribe la skill: telar no fija su forma, se dibuja lo que trae. */
@@ -26,149 +27,50 @@ function t(s: unknown): string {
     return esc(String(s ?? '')).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 }
 
-function fila(k: unknown, v: string, clase = ''): string {
-    return `<div class="plan-fila${clase ? ' ' + clase : ''}"><span class="k">${t(k)}</span><span class="v">${v}</span></div>`;
-}
-
-/** La pestaña del plan: lo que dejó la skill ese día, con flechas para ir a otros días. */
-export function htmlPlan(r: cli.JsonResultado | undefined, error: string, cargando: boolean): string[] {
-    const h: string[] = [];
-    if (!r) {
-        h.push(seccion('plan del día', 'amarillo'));
-        h.push(`<div class="vacio${error ? ' falla' : ''}">${esc(error || (cargando ? 'leyendo el plan…' : 'sin plan'))}</div></section>`);
-        return h;
-    }
-    const dias = [...(r.dias ?? [])].sort();
-    const i = dias.indexOf(r.dia);
-    const antes = i > 0 ? dias[i - 1] : (i < 0 ? dias.filter(x => x < r.dia).pop() : undefined);
-    const despues = i >= 0 && i < dias.length - 1 ? dias[i + 1] : (i < 0 ? dias.find(x => x > r.dia) : undefined);
-    const nav = `<div class="plan-nav">`
-        + (antes ? `<a data-accion="plan-dia" data-valor="${esc(antes)}">‹ ${esc(antes)}</a>` : '<span></span>')
-        + `<b>${esc(r.dia)}</b>`
-        + (despues ? `<a data-accion="plan-dia" data-valor="${esc(despues)}">${esc(despues)} ›</a>` : '')
-        + `<a data-accion="plan-dia" data-valor="">hoy</a>`
-        + `<span>${r.desde && r.desde !== 'aquí' ? `leído de ${esc(r.desde)}` : 'leído aquí'}</span></div>`;
-    h.push(seccion(r.nombre || 'plan del día', 'amarillo', '', ''));
-    h.push(nav);
-    if (r.aviso) h.push(`<div class="vacio falla">${esc(r.aviso)}</div>`);
-    if (r.contenido === null || r.contenido === undefined) {
-        h.push(`<div class="vacio">no hay plan del ${esc(r.dia)}</div></section>`);
-        return h;
-    }
-    if (r.formato === 'md') {
-        h.push(`<div class="plan-txt"><p style="white-space:pre-wrap">${esc(String(r.contenido))}</p></div>${htmlComentar(r)}</section>`);
-        return h;
-    }
-    const p = r.contenido as Plan;
-    const re = p.resumen ?? {};
-    if (re.texto || re.riesgo) {
-        const carga = re.carga ? `${re.carga.reuniones_h ?? '?'} h de reuniones, ${re.carga.enfocado_min ?? '?'} min enfocados (tope ${re.carga.tope_min ?? '?'})` : '';
-        h.push(`<div class="plan-txt"><p>${t(re.texto)}</p>${re.riesgo ? `<p class="plan-riesgo">${t(re.riesgo)}</p>` : ''}`
-            + `${carga ? `<p class="dim">${esc(carga)}</p>` : ''}${p.borrador ? '<p class="dim">borrador: las prioridades de la semana no están aprobadas</p>' : ''}</div>`);
-    }
-    h.push('</section>');
-    const fo = p.foco ?? {};
-    if (fo.paso || fo.prioridad) {
-        h.push(seccion('foco estratégico', 'magenta', fo.bloque ?? ''));
-        if (fo.prioridad) h.push(fila('prioridad', t(fo.prioridad)));
-        if (fo.paso) h.push(fila('el paso', t(fo.paso)));
-        if (fo.terminado) h.push(fila('terminado si', t(fo.terminado)));
-        h.push('</section>');
-    }
-    const res: Plan[] = p.resultados ?? [];
-    if (res.length) {
-        h.push(seccion('resultados', 'verde', String(res.length)));
-        res.forEach((x, k) => {
-            const estado = p.retrospectiva?.resultados?.[k];
-            h.push(fila(x.tipo, `${t(x.texto)}${x.logrado_si ? `<span class="sub">logrado si: ${t(x.logrado_si)}</span>` : ''}`
-                + `${estado ? `<span class="sub">retro: ${t(estado)}</span>` : ''}`));
-        });
-        h.push('</section>');
-    }
-    const ag: Plan[] = p.agenda ?? [];
-    if (ag.length) {
-        h.push(seccion('agenda', 'azul', String(ag.length), '<a data-accion="calendario">ver en el calendario</a>'));
-        for (const x of ag) {
-            h.push(fila(`${x.inicio ?? ''}${x.fin ? '–' + x.fin : ''}`,
-                `${t(x.titulo)}${x.nota ? `<span class="sub">${t(x.nota)}</span>` : ''}${x.ficha?.decision ? `<span class="sub">decidir: ${t(x.ficha.decision)}</span>` : ''}`,
-                x.estrategico ? 'estrategico' : ''));
-        }
-        h.push('</section>');
-    }
-    const tac = p.tacticos ?? {};
-    const hoy: Plan[] = tac.hoy ?? [];
-    if (hoy.length || (tac.no_hoy ?? []).length) {
-        h.push(seccion('tácticos', 'cian', String(hoy.length)));
-        for (const x of hoy) h.push(fila(x.ref ?? '', `${t(x.texto)}${x.donde ? `<span class="sub">${t(x.donde)}</span>` : ''}`));
-        for (const x of (tac.no_hoy ?? []) as Plan[]) h.push(fila(`no hoy ${x.ref ?? ''}`, `<span class="dim">${t(x.texto ?? x)}</span>`));
-        h.push('</section>');
-    }
-    const listas: [string, string, Plan[], (x: Plan) => [string, string]][] = [
-        ['personas', 'violeta', p.personas ?? [], x => [x.quien, t(x.para)]],
-        ['personal', 'verde', p.personal ?? [], x => [x.ref ?? '', t(x.texto)]],
-        ['los próximos días', 'azul', p.proximos ?? [], x => [x.dia, t(x.texto)]],
-    ];
-    for (const [nombre, color, lista, par] of listas) {
-        if (!lista.length) continue;
-        h.push(seccion(nombre, color, String(lista.length)));
-        for (const x of lista) { const [k, v] = par(x); h.push(fila(k, v)); }
-        h.push('</section>');
-    }
-    const rt = p.retrospectiva;
-    if (rt) {
-        h.push(seccion('retrospectiva', 'dim'));
-        if (rt.imprevistos) h.push(fila('imprevistos', t(rt.imprevistos)));
-        if (rt.energia !== undefined) h.push(fila('energía', t(rt.energia)));
-        if (rt.nota) h.push(fila('nota', t(rt.nota)));
-        h.push('</section>');
-    }
-    const huecos: unknown[] = p.huecos ?? [];
-    if (huecos.length) {
-        h.push(seccion('lo que la skill no pudo ver', 'dim', String(huecos.length)));
-        huecos.forEach((x, k) => h.push(fila(String(k + 1), `<span class="dim">${t(x)}</span>`)));
-        h.push('</section>');
-    }
-    if (r.comentable) h.push(`<section>${htmlComentar(r)}</section>`);
-    return h;
-}
-
-/** Un comentario sobre el plan de ese día (contexto que falta, algo que corregir): lo atiende la
- *  máquina donde vive el plan (`[resultados.plan] comentar`), que suele abrir un hilo con un agente. */
-function htmlComentar(r: cli.JsonResultado): string {
-    if (!r.comentable) return '';
-    return `<div class="cal-escribir"><textarea id="plan-texto" rows="3" spellcheck="false"`
-        + ` placeholder="Un comentario sobre este plan: contexto que falta, algo que corregir… (⌘⏎ envía)"></textarea>`
-        + `<a id="plan-enviar" data-accion="plan-comentar" data-campo="plan-texto" data-valor="${esc(r.dia)}">enviar comentario</a></div>`;
-}
-
 /** El calendario en dos columnas: a la izquierda el día con todos sus eventos, a la derecha el
  *  detalle y las notas del que se eligió. */
 const DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 /** Las dos vistas del calendario, como pestañas: el día y la semana (la tecla del calendario cambia de una a otra). */
-function htmlVistas(vista: VistaCal): string {
-    const una = (v: VistaCal, nombre: string) => `<a data-accion="cal-vista" data-valor="${v}"${v === vista ? ' class="on"' : ''}`
-        + ` title="${v === vista ? 'la vista que se ve' : `ver ${v === 'dia' ? 'el día' : 'la semana, de lunes a viernes'}`} (a: cambiar)">${nombre}</a>`;
-    return `<span class="cal-vistas">${una('dia', 'día')}${una('semana', 'semana')}</span>`;
+/** Las vistas del calendario, en su barra: el día y la semana (a: cambiar). */
+function vistasCal(vista: VistaCal): VistaDePantalla[] {
+    return [
+        { accion: 'cal-vista', valor: 'dia', icono: I.dia, nombre: 'el día', ayuda: 'a: cambiar', si: vista === 'dia' },
+        { accion: 'cal-vista', valor: 'semana', icono: I.semana, nombre: 'la semana, de lunes a viernes', ayuda: 'a: cambiar', si: vista === 'semana' },
+    ];
 }
 
-/** «‹ mié 8 oct ›» sobre la columna del día, y «hoy» para volver cuando se está en otro. */
-function htmlNavDia(fecha: string, hoyIso: string, cargando: boolean): string {
+/** La barra del calendario en el día: sus vistas, qué día es («mié 8 oct»), y moverse (‹ ›, hoy). */
+export function barraDia(fecha: string, hoyIso: string, cargando: boolean): EnBarra {
     const f = new Date(`${fecha}T12:00:00`);
     const legible = isNaN(f.getTime()) ? fecha : `${DIAS_CORTOS[f.getDay()]} ${f.getDate()} ${MESES_CORTOS[f.getMonth()]}`;
-    return `<div id="cal-nav" class="cal-nav">${htmlVistas('dia')}<a data-accion="cal-dia" data-valor="-1" title="día anterior ([)">‹</a>`
-        + `<span class="cal-fecha">${esc(legible)}${cargando ? ' …' : ''}</span>`
-        + `<a data-accion="cal-dia" data-valor="1" title="día siguiente (])">›</a>`
-        + (fecha !== hoyIso ? '<a data-accion="cal-dia" data-valor="hoy">hoy</a>' : '') + '</div>';
+    const acciones: AccionDePantalla[] = [
+        { accion: 'cal-dia', valor: '-1', icono: I.atras, ayuda: 'el día anterior ([ o ←)' },
+        { accion: 'cal-dia', valor: '1', icono: I.siguiente, ayuda: 'el día siguiente (] o →)' },
+    ];
+    if (fecha !== hoyIso) acciones.push({ accion: 'cal-dia', valor: 'hoy', icono: I.casa, ayuda: 'hoy' });
+    return { vistas: vistasCal('dia'), resumen: `${legible}${cargando ? ' …' : ''}`, acciones };
+}
+
+/** La barra del calendario en la semana: sus vistas, qué semana es, y moverse (‹ ›, esta semana). */
+function barraSemana(lunes: string, estaSemana: string, cargando: boolean): EnBarra {
+    const [ini, , , , fin] = diasDe(lunes);
+    const mismoMes = ini.slice(5, 7) === fin.slice(5, 7);
+    const acciones: AccionDePantalla[] = [
+        { accion: 'cal-semana', valor: '-1', icono: I.atras, ayuda: 'la semana anterior ([)' },
+        { accion: 'cal-semana', valor: '1', icono: I.siguiente, ayuda: 'la semana siguiente (])' },
+    ];
+    if (lunes !== estaSemana) acciones.push({ accion: 'cal-semana', valor: 'hoy', icono: I.casa, ayuda: 'esta semana' });
+    return { vistas: vistasCal('semana'), resumen: `semana ${numeroSemana(lunes)} · ${corto(ini, !mismoMes)} – ${corto(fin)}${cargando ? ' …' : ''}`, acciones };
 }
 
 export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string,
     general = '', hoyIso = d.fecha, cargando = false): string[] {
-    const h: string[] = [seccion('calendario', 'azul', d.fecha, `<a data-accion="plan-dia" data-valor="${esc(d.fecha)}">plan del día</a>`)];
+    // el cuerpo del día; su id le dice a la página que ← y → cambian de día (dashboard/vista.ts)
+    const h: string[] = ['<section class="bloque" id="cal-dia" style="--c: var(--azul)">'];
     if (aviso) h.push(`<div class="vacio falla">${esc(aviso)}</div>`);
     if (d.error) h.push(`<div class="vacio falla">${esc(d.error)}</div>`);
-    h.push(htmlNavDia(d.fecha, hoyIso, cargando));
     const completos = (d.agenda ?? []).filter(e => e.todo_el_dia);
     for (const e of completos) h.push(`<div class="cal-dia-completo">todo el día: ${esc(e.texto)}</div>`);
     if (!evs.length) {
@@ -213,9 +115,9 @@ export function columnaCalendario(d: Dia, evs: EventoCal[], sel: string, ahora: 
             continue;
         }
         const pisa = pis.get(e.id) ?? [];
-        const clases = ['cal-ev', `t-${q.tipo}`, `c-${q.clase}`, q.pendiente ? 'pendiente' : '', e.fin <= t0 ? 'pasado' : '', e === elegido ? 'sel' : '',
+        const clases = ['cal-ev', `t-${q.tipo}`, `c-${q.clase}`, q.pendiente ? 'pendiente' : '', q.rechazada ? 'rechazada' : '', e.fin <= t0 ? 'pasado' : '', e === elegido ? 'sel' : '',
             alto < 40 ? 'corto' : '', pisa.length ? 'pisado' : ''].filter(Boolean).join(' ');
-        const que = `${q.tipo === 'cita' ? 'cita' : NOMBRE[q.clase]}${q.pendiente ? ', sin aceptar' : ''}${q.organiza ? ', la organizas tú: la puedes mover' : ''}`;
+        const que = `${q.tipo === 'cita' ? 'cita' : NOMBRE[q.clase]}${q.pendiente ? ', sin aceptar' : ''}${q.rechazada ? ', rechazada: no cuenta' : ''}${q.organiza ? ', la organizas tú: la puedes mover' : ''}`;
         col.push(`<div class="${clases}" data-accion="${accion}" data-valor="${esc(e.id)}" title="${esc(`${que}\n${e.titulo}${pisa.length ? `\nse cruza con: ${pisa.join(', ')}` : ''}`)}"`
             + ` style="top:${y(e.inicio)}px;height:${alto}px;left:calc(${(100 * k) / n}% + 2px);width:calc(${100 / n}% - 4px)">`
             + `<span class="h">${esc(hm)}${tieneNotas ? ` <span class="marca-nota">${I.editar}</span>` : ''}</span><span class="t">${q.organiza ? `${I.persona} ` : ''}${esc(e.titulo)}</span></div>`);
@@ -296,15 +198,13 @@ function numeroSemana(iso: string): number {
     return 1 + Math.round(((f.getTime() - enero.getTime()) / 86400000 - 3 + ((enero.getDay() + 6) % 7)) / 7);
 }
 
-/** Las pestañas del plan y del calendario: el plan leído (lo usa también «ahora»), las notas de los eventos,
- *  el día al que se navegó y la semana que se mira. */
-export class PantallaPlan implements Pantalla {
-    readonly pantallas = ['plan', 'calendario'] as const;
-    readonly conReloj = ['plan', 'calendario'] as const;
-    /** el plan del día que se está mirando (`telar resultado plan`), y el error si no llegó */
+/** La pestaña del calendario: el plan leído (lo usan también táctica y «ahora»), las notas de los eventos, el día al
+ *  que se navegó y la semana que se mira. */
+export class PantallaCalendario implements Pantalla {
+    readonly pantallas = ['calendario'] as const;
+    readonly conReloj = ['calendario'] as const;
+    /** el último plan de un día que se leyó (`telar resultado plan`) */
     plan?: cli.JsonResultado;
-    private planError = '';
-    private planCargando = false;
     /** las notas de los eventos del día del calendario, y el evento elegido */
     private notas?: cli.JsonNotas;
     private notasAviso = '';
@@ -332,20 +232,16 @@ export class PantallaPlan implements Pantalla {
         'cal-ver-dia': v => { if (v) { this.guardarVista('dia'); this.eventoSel = ''; return this.abrirDia(v); } },
         'sem-evento': v => { if (v) { this.semSel = v === this.semSel ? '' : v; this.pintarCalendario(); } },
         'sem-cerrar': () => { this.semSel = ''; this.pintarCalendario(); },
-        'plan': () => this.abrirPlan(''),
-        'plan-dia': v => this.abrirPlan(v),
         'evento-sel': v => { if (v) { this.eventoSel = v; this.pintarCalendario(); } },
         'cal-dia': v => v && this.moverDiaCal(v),
         'nota-evento': v => v && this.notaEvento(v),
         'ev-escribir': (v, m) => v && this.escribirSobreEvento(v, m.datos ?? ''),
-        'plan-comentar': (v, m) => v && m.datos?.trim() && this.comentarPlan(v, m.datos),
     };
 
     constructor(private readonly t: Tablero) {}
 
     pintar(): void {
-        if (this.t.pantalla === 'plan') this.pintarPlan();
-        else this.pintarCalendario();
+        this.pintarCalendario();
     }
 
     /** El plan de un día, si es el que está leído o uno que leyó la semana, y viene en JSON (el que entiende el
@@ -353,26 +249,6 @@ export class PantallaPlan implements Pantalla {
     planDe(fecha: string): Plan | undefined {
         if (this.plan?.dia === fecha) return this.plan.formato === 'json' ? this.plan.contenido as Plan : undefined;
         return this.planes.get(fecha)?.plan ?? undefined;
-    }
-
-    /** El plan de un día (vacío es hoy), leído de la máquina donde lo escribe la skill. */
-    async abrirPlan(diaPedido: string): Promise<void> {
-        this.t.montar();
-        this.t.ir('plan');
-        this.planCargando = true;
-        this.pintarPlan();
-        const r = await cli.resultado('plan', diaPedido);
-        this.planCargando = false;
-        this.plan = r.datos?.ok ? r.datos : undefined;
-        this.planError = r.datos?.ok ? '' : (r.datos?.error ?? r.error ?? 'no contestó');
-        if (this.t.pantalla === 'plan') this.pintarPlan();
-    }
-
-    private pintarPlan(): void {
-        this.t.teclas.clear();
-        // arriba, los bloques que van en el plan (la retro de la tarde), si traen algo
-        this.t.pintar([...this.t.bloquesEn('plan'),
-            ...htmlPlan(this.plan, this.planError, this.planCargando)]);
     }
 
     /** El día que muestra el calendario: hoy, u otro al que se navegó (`calFecha`). */
@@ -511,12 +387,11 @@ export class PantallaPlan implements Pantalla {
         const general = this.t.general()?.nombre ?? '';
         const detalle = elegido ? htmlDetalle(elegido.e, elegido.d.notas, elegido.d.fecha) + htmlEscribir(elegido.e, general) : '';
         const fallas = [...new Set(dias.map(d => d.dia?.error ?? '').filter(Boolean))];
-        this.t.pintar([seccion('calendario', 'azul', `semana ${numeroSemana(lunes)}`, ''),
+        this.t.pintar([cuerpo('azul'),
             ...fallas.map(f => `<div class="vacio falla">${esc(f)}</div>`),
-            `<div id="cal-nav" class="cal-nav">${htmlVistas('semana')}${htmlNavSemana(lunes, lunesDe(hoy), this.semCargando)}</div>`,
             this.semCargando && !this.semana ? '<div class="vacio">leyendo la semana…</div>' : '',
             htmlSemana(dias, { hoy, ahora, sel: this.semMostrado, detalle }),
-            '</section>']);
+            '</section>'], barraSemana(lunes, lunesDe(hoy), this.semCargando));
     }
 
     private pintarCalendario(): void {
@@ -529,16 +404,8 @@ export class PantallaPlan implements Pantalla {
         this.t.teclas.set('a', () => this.cambiarVista('semana'));
         const plan = this.planDe(d.fecha);
         this.t.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso,
-            this.t.general()?.nombre ?? '', this.t.dia()?.fecha ?? d.fecha, this.calCargando));
-    }
-
-    /** Un comentario sobre el plan de un día: lo atiende la máquina donde vive el plan, que abre un hilo
-     *  con un agente; ese agente actualiza el plan, y la pestaña lo relee en un rato. */
-    private async comentarPlan(dia: string, texto: string): Promise<void> {
-        const r = await ui.progreso({ titulo: 'telar: mandando el comentario sobre el plan…' }, () => cli.comentarResultado('plan', dia, texto));
-        if (!r.ok) { void ui.falla(`telar: el comentario no llegó: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui.info(r.abrio ? `telar: se abrió «${r.abrio}» para atender el comentario` : 'telar: comentario recibido');
-        setTimeout(() => { this.plan = undefined; void this.t.actualizar(true); }, 30000);
+            this.t.general()?.nombre ?? '', this.t.dia()?.fecha ?? d.fecha, this.calCargando),
+            barraDia(d.fecha, this.t.dia()?.fecha ?? d.fecha, this.calCargando));
     }
 
     /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el

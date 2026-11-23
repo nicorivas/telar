@@ -34,6 +34,7 @@ encontrar los paneles que telar mismo tituló, no para reconocer lo que corre ad
 
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import shlex
@@ -42,6 +43,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from telar import entorno as mod_entorno
 from telar.config import Config
 from telar.mux.base import (
     Direccion,
@@ -57,11 +59,20 @@ from telar.mux.base import (
 
 __all__ = ["Tmux", "construir"]
 
+#: un nombre de buffer distinto para cada texto que se pega: dos pegados a la vez no se pisan
+_BUFFERS = itertools.count(1)
+
 PROGRAMA = "tmux"
 
 #: Ninguna consulta a tmux debería demorar esto; si demora, es que el servidor se colgó
 #: y más vale un error que una barra de estado congelada.
 TIEMPO_LIMITE = 5.0
+
+#: Lo más largo que tmux acepta en una orden, en bytes. El cliente le pasa la orden al servidor en mensajes de 16 KB, y
+#: una más larga (un texto que se teclea, un primer mensaje con un contexto largo en la línea del comando) sale con
+#: «command too long». Lo que pasa de esto va por otro lado: un texto, por la entrada de `load-buffer`; un comando, en
+#: un guion (`_corta`). Con margen para el resto de la orden.
+LARGO_ORDEN = 12_000
 
 #: Separador de campos: el byte 0x1f de ASCII, que no aparece en un nombre de ventana
 #: ni en una ruta. Con un tabulador o un espacio, un nombre con espacios rompe el parseo.
@@ -109,19 +120,34 @@ BANDERAS = {
 }
 
 
-#: Variables que dicen «estás dentro de otro multiplexor». Heredadas en un panel de
-#: tmux, mienten: el proceso las lee y cree estar en un lugar donde no está.
-AJENAS = ("ZELLIJ", "ZELLIJ_PANE_ID", "ZELLIJ_SESSION_NAME", "ZELLIJ_TAB_NAME")
-
-
 def entorno_limpio() -> dict[str, str]:
-    """El entorno de este proceso sin las variables de otro multiplexor."""
-    return {k: v for k, v in os.environ.items() if k not in AJENAS}
+    """El entorno de este proceso sin lo que un panel no hereda: las variables de otro multiplexor y las marcas de la
+    sesión de Claude Code que pidió abrirlo (`telar.entorno`)."""
+    return mod_entorno.sin_marcas(os.environ)
 
 
-#: las órdenes de tmux que arrancan un proceso: el panel nuevo hereda el entorno de quien la corre
-#: (no el del servidor tmux), así que esas van con el de la persona (`entorno_para_abrir`)
+#: las órdenes de tmux que arrancan un proceso. El panel nuevo recibe el entorno global del servidor de tmux (el de quien
+#: lo levantó, que por eso se limpia al tejer: `Tmux.limpiar_entorno`), salvo el PATH, que tmux toma de quien corre la
+#: orden: esas van con el de la persona (`entorno_para_abrir`). Y la que levanta el servidor le da su entorno entero.
 ABREN = ("new-session", "new-window", "split-window")
+
+#: Los ganchos con que tmux le cuenta a telar que la persona cambió de tab (`Tmux.ganchos`): la ventana de la sesión
+#: cambió, o un cliente llegó a ella. Son de la sesión del telar, no globales: las vistas (`ver-…`, agrupadas con ella)
+#: y las sesiones de prueba no los tienen.
+GANCHOS_FOCO = ("session-window-changed", "client-session-changed", "client-attached")
+
+#: Una ruta que se puede poner entre comillas simples en la orden de un gancho sin citarla de nuevo.
+RUTA_CITABLE = re.compile(r"[A-Za-z0-9_./~+-]+")
+
+
+def ejecutable_telar() -> str:
+    """La ruta del `telar` que corre esto (el de su mismo entorno), o el del PATH; "" si no hay."""
+    import sys
+
+    junto = Path(sys.executable).with_name("telar")
+    if junto.is_file() and os.access(junto, os.X_OK):
+        return str(junto)
+    return shutil.which("telar") or ""
 
 _path_de_la_persona: str | None = None
 
@@ -196,6 +222,24 @@ def _linea(comando: Sequence[str] | None) -> str:
     return shlex.join(palabras)
 
 
+def _corta(linea: str) -> str:
+    """La línea de un comando, que tmux acepte: tal cual si cabe en una orden (`LARGO_ORDEN`); si no, la misma línea en
+    un guion de shell que se borra al empezar a correr, y la orden es correrlo (`sh <guion>`). Así un agente puede
+    arrancar con un primer mensaje largo (un contexto de muchas líneas) sin que tmux lo rechace."""
+    if len(linea.encode()) <= LARGO_ORDEN:
+        return linea
+    import tempfile
+
+    primera = shlex.split(linea)[0] if linea.strip() else ""
+    # `exec` deja al comando en el lugar del guion (el panel corre lo mismo que con la línea corta); con una
+    # asignación delante (`X=1 programa`), exec la tomaría por el programa
+    correr = linea if "=" in primera else f"exec {linea}"
+    fd, ruta = tempfile.mkstemp(prefix="telar-orden-", suffix=".sh")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(f'rm -f -- "$0"\n{correr}\n')
+    return shlex.join(["sh", ruta])
+
+
 def _banderas(direccion: Direccion) -> tuple[str, ...]:
     return BANDERAS[comprobar_direccion(direccion)]
 
@@ -239,8 +283,9 @@ class Tmux(MultiplexorBase):
 
     # ── hablarle al programa ─────────────────────────────────────────────────────
 
-    def _tmux(self, *args: str, tolerante: bool = False, entorno: dict | None = None) -> str:
-        """Corre `tmux <args>` y devuelve su salida. El error trae qué se pidió y qué dijo."""
+    def _tmux(self, *args: str, tolerante: bool = False, entorno: dict | None = None, entrada: str | None = None) -> str:
+        """Corre `tmux <args>` y devuelve su salida. El error trae qué se pidió y qué dijo. `entrada`: lo que lee de su
+        entrada estándar (`load-buffer -`), que no tiene el tope de largo de una orden."""
         if entorno is None and args and args[0] in ABREN:
             entorno = entorno_para_abrir()
         try:
@@ -248,8 +293,11 @@ class Tmux(MultiplexorBase):
                 [PROGRAMA, *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # lo que capturan los paneles es de otros programas: un byte suelto no la tumba
                 timeout=TIEMPO_LIMITE,
                 env=entorno,
+                input=entrada,
             )
         except FileNotFoundError as e:
             raise SinPrograma("tmux no está instalado, o no está en el PATH") from e
@@ -290,6 +338,8 @@ class Tmux(MultiplexorBase):
                 [PROGRAMA, *args],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",  # lo que capturan los paneles es de otros programas: un byte suelto no la tumba
                 timeout=TIEMPO_LIMITE,
             )
         except (OSError, subprocess.SubprocessError):
@@ -408,17 +458,45 @@ class Tmux(MultiplexorBase):
     def tejer(self) -> None:
         if not self.disponible():
             raise SinPrograma("tmux no está instalado, o no está en el PATH")
-        if self.viva():
-            return
-        # Quien teje suele estar dentro de otro multiplexor, y el servidor de tmux hereda
-        # su entorno entero y se lo pasa a cada panel. Un agente que arranque ahí creería
-        # estar en un panel de Zellij que no es suyo, y los ganchos de ese otro sistema lo
-        # anotarían en el lugar equivocado. Se levanta limpio, y por si el servidor ya
-        # existía de antes, se borran también de su entorno global.
+        if not self.viva():
+            self._levantar()
+        self.limpiar_entorno()
+        self.ganchos()
+
+    def _levantar(self) -> None:
+        # Quien teje suele estar dentro de otra cosa (otro multiplexor, la Bash de un Claude Code), y el servidor de tmux
+        # que nace aquí hereda su entorno entero y se lo pasa a cada panel. Se levanta limpio.
         self._tmux("new-session", "-d", "-s", self.sesion, *_carpeta(self.raiz),
                    entorno=entorno_limpio())
-        for variable in AJENAS:
-            self._tmux("set-environment", "-g", "-u", variable, tolerante=True)
+
+    def limpiar_entorno(self) -> list[str]:
+        """Borra del entorno global del servidor de tmux lo que un panel no hereda (`telar.entorno`), y devuelve lo que
+        borró. Es el entorno de quien levantó el servidor, que puede no haber sido telar: un `tmux` corrido desde la Bash
+        de un Claude Code le dejaba a cada hilo que se abría después las marcas de esa sesión. Va cada vez que se teje,
+        aunque el servidor y la sesión ya estuvieran: una lectura, y una orden más solo si hay algo que borrar."""
+        sobran = []
+        for renglon in self._tmux("show-environment", "-g", tolerante=True).splitlines():
+            nombre, igual, valor = renglon.partition("=")
+            if igual and not mod_entorno.heredable(nombre, valor):  # sin «=»: «-NOMBRE», ya marcada para quitar
+                sobran.append(nombre)
+        if sobran:
+            orden: list[str] = []
+            for nombre in sobran:
+                orden += [";", "set-environment", "-g", "-u", nombre]
+            self._tmux(*orden[1:], tolerante=True)  # todas en una llamada: «;» separa órdenes de tmux
+        return sobran
+
+    def ganchos(self) -> None:
+        """Que tmux le cuente a telar cuando la persona cambia de tab: con alguien mirando la sesión (un cliente
+        enganchado), `telar tiempo marcar` con el nombre del tab. Es lo que dice qué hilo se vio (lo que terminó deja
+        de estar «sin ver») y cuánto tiempo se le dedicó. Sin esto, solo lo anotaban `telar ir` y la página. Se ponen
+        cada vez que se teje (son idempotentes); si no se encuentra telar, o su ruta no se puede citar, no se ponen."""
+        telar = ejecutable_telar()
+        if not telar or not RUTA_CITABLE.fullmatch(telar):
+            return
+        orden = f"if-shell -F '#{{session_attached}}' \"run-shell -b '{telar} tiempo marcar -- #{{q:window_name}}'\""
+        for gancho in GANCHOS_FOCO:
+            self._tmux("set-hook", "-t", self._objetivo_sesion, gancho, orden, tolerante=True)
 
     # ── tabs ─────────────────────────────────────────────────────────────────────
 
@@ -438,8 +516,8 @@ class Tmux(MultiplexorBase):
         """Quien corre el comando es un agente (`$TELAR_HILO`), no una persona.
 
         El foco es de la persona: dentro de tmux, `switch-client` mueve al cliente que mira el panel
-        del agente, que es la terminal de la persona en el hilo de ese agente. Gestión delegando un pendiente
-        le cambiaba esa terminal por la del hilo nuevo, y Gestión parecía muerta."""
+        del agente, que es la terminal de la persona en el hilo de ese agente. Un agente delegando un pendiente
+        le cambiaba esa terminal por la del hilo nuevo, y el agente parecía muerto."""
         return bool(os.environ.get("TELAR_HILO", "").strip())
 
     def ir_a_tab(self, tab: str) -> None:
@@ -492,7 +570,7 @@ class Tmux(MultiplexorBase):
         comando: Sequence[str] | None = None,
         foco: bool = True,
     ) -> Tab:
-        linea = _linea(comando)
+        linea = _corta(_linea(comando))
         carpeta = _carpeta(ruta)
 
         if not self.viva():
@@ -500,6 +578,7 @@ class Tmux(MultiplexorBase):
             # sesión nace directamente con el tab que se pidió.
             if not self.disponible():
                 raise SinPrograma("tmux no está instalado, o no está en el PATH")
+            self.limpiar_entorno()  # si el servidor ya estaba, el tab nace con su entorno global
             args = ["new-session", "-d", "-s", self.sesion, "-P", "-F", FORMATO_TAB]
             if nombre:
                 args += ["-n", nombre]
@@ -564,11 +643,13 @@ class Tmux(MultiplexorBase):
                     "escribir sin enviar no admite saltos de línea: el salto ES el ↩. "
                     "Con enviar=True el texto se manda entero."
                 )
-            if "\n" in texto or "\r" in texto:
+            if "\n" in texto or "\r" in texto or len(texto.encode()) > LARGO_ORDEN:
                 # varias líneas: pegadas de una vez (bracketed paste, -p), para que cada salto no sea un ↩
-                # que manda la primera línea sola; el ↩ de enviar va después, una vez
-                buffer = f"telar-{os.getpid()}"
-                self._tmux("set-buffer", "-b", buffer, "--", texto)
+                # que manda la primera línea sola; el ↩ de enviar va después, una vez. El texto entra al
+                # buffer por la entrada de tmux, no en la orden: así no tiene el tope de una orden (un
+                # contexto largo, un chat entero)
+                buffer = f"telar-{os.getpid()}-{next(_BUFFERS)}"
+                self._tmux("load-buffer", "-b", buffer, "-", entrada=texto)
                 self._tmux("paste-buffer", "-p", "-d", "-b", buffer, "-t", objetivo)
             else:
                 # `-l` manda el texto tal cual, sin buscarle nombres de tecla: un texto con la
@@ -580,6 +661,12 @@ class Tmux(MultiplexorBase):
     def capturar_pane(self, pane: str, lineas: int = 300) -> str | None:
         # -J junta las líneas que tmux partió por el ancho; -S desde cuántas atrás
         return self._tmux("capture-pane", "-p", "-J", "-S", f"-{max(1, int(lineas))}",
+                          "-t", self._objetivo_pane(pane))
+
+    def capturar_pane_con_escapes(self, pane: str, lineas: int = 60) -> str | None:
+        """Lo de abajo de la pantalla, con sus colores y atributos (`-e`): lo tenue (la sugerencia de Claude Code en su
+        caja) se distingue de lo escrito (telar.dormir)."""
+        return self._tmux("capture-pane", "-p", "-e", "-J", "-S", f"-{max(1, int(lineas))}",
                           "-t", self._objetivo_pane(pane))
 
     def abrir_pane(
@@ -598,7 +685,7 @@ class Tmux(MultiplexorBase):
             raise ErrorDeMux(
                 "abrir_pane: o se abre junto_a un panel, o se reemplaza uno; las dos cosas no"
             )
-        linea = _linea(comando)
+        linea = _corta(_linea(comando))
         carpeta = _carpeta(ruta)
 
         if reemplaza:

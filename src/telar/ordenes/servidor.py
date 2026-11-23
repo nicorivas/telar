@@ -120,7 +120,7 @@ def _agregados(ctx, o) -> int:
     try:
         if o.verbo == "agregar":
             if not o.persona:
-                return _comun.queja("¿qué dirección? telar servidor agregar 100.66.75.117 (o su nombre, o su https://…)")
+                return _comun.queja("¿qué dirección? telar servidor agregar 100.64.0.10 (o su nombre, o su https://…)")
             s = servidores.agregar(ctx.config, o.persona)
             if o.json:
                 return _comun.escribir_json(s)

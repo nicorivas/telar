@@ -28,6 +28,17 @@ from telar import salida
 from telar.ordenes import nodo as mod_nodo
 
 
+class KeyNotFoundError(Exception):
+    """La de nats-py cuando una clave del estado no está (aquí sin nats-py instalado)."""
+
+
+class EstadoVacio:
+    """El almacén del estado sin ninguna clave: quien publica busca ahí la ficha apartada del hilo (bus.ficha_para)."""
+
+    async def get(self, clave):
+        raise KeyNotFoundError(clave)
+
+
 class FalsoTimeoutError(Exception):
     """Como `nats.errors.TimeoutError`: lo que levanta un pedido al bus que no volvió a tiempo."""
 
@@ -337,6 +348,9 @@ class ElEnvioSeRepiteSinDuplicar(Prueba):
         publicados = []
 
         class Js:
+            async def key_value(self, nombre):
+                return EstadoVacio()
+
             async def publish(self, tema, datos, headers=None, timeout=None):
                 publicados.append((tema, json.loads(datos), dict(headers or {})))
                 if len(publicados) <= fallas:
@@ -543,10 +557,12 @@ class LasSuscripcionesDelNodo(Prueba):
     def test_los_mismos_temas_que_antes(self):
         _, suscritas = self.suscritas()
         verbos = {t.rsplit(".", 1)[-1] for t in suscritas if t.startswith("rpc.ana.laptop.")}
-        self.assertEqual(verbos, {"ping", "leer", "resultado", "resultado-comentar", "proveedor", "tarea", "tipo",
+        self.assertEqual(verbos, {"ping", "leer", "responder", "resultado", "resultado-comentar", "resultado-agregar",
+                                  "resultado-visto", "resultado-sin-ver", "proveedor", "tarea", "tipo",
                                   "periodicos", "hilo", "equipo", "aviso", "archivo", "archivo-leer", "modulo",
                                   "notas", "nota", "serie", "serie-recordar", "encargo", "agentes", "hilo-llegar", "hilo-traer",
-                                  "hilo-revisar", "hilo-hijo", "hilo-despertar", "codigos"})
+                                  "hilo-revisar", "hilo-hijo", "hilo-despertar", "codigos", "contexto", "avisos-archivo",
+                                  "avisos-visto"})
         self.assertIn("cambio.ana.*", suscritas)
         from telar import cuentas
 
@@ -577,7 +593,7 @@ class LasSuscripcionesDelNodo(Prueba):
         for verbo in mod_nodo.SOLO_LEEN:
             self.assertIsNone(fila(f"rpc.ana.laptop.{verbo}"), verbo)
         for verbo in ("hilo", "tarea", "tipo", "periodicos", "equipo", "nota", "serie-recordar", "resultado-comentar",
-                      "archivo", "modulo", "aviso"):
+                      "resultado-agregar", "resultado-visto", "archivo", "modulo", "aviso"):
             self.assertIsInstance(fila(f"rpc.ana.laptop.{verbo}"), asyncio.Lock, verbo)
         # una fila por verbo, no una para todos
         self.assertIsNot(fila("rpc.ana.laptop.hilo"), fila("rpc.ana.laptop.tarea"))
@@ -857,6 +873,9 @@ class UnDuplicadoDeVerdad(Prueba):
         asegurados = []
 
         class Js:
+            async def key_value(self, nombre):
+                return EstadoVacio()
+
             async def publish(self, tema, datos, headers=None, timeout=None):
                 return SimpleNamespace(seq=7, duplicate=True)
 

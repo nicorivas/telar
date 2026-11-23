@@ -164,10 +164,12 @@ def main(argv: list[str], ctx) -> int:
         return _comun.queja(tel.aviso or "no hay multiplexor con el que hablar")
 
     ya_estaba = tel.viva
-    if not ya_estaba:
-        try:
-            tel.mux.tejer()
-        except ErrorDeMux as e:
+    # con la sesión viva no levanta nada, pero le limpia al servidor el entorno que reparte a los paneles (las marcas de
+    # una sesión de Claude Code, si lo levantó una) y le pone sus ganchos
+    try:
+        tel.mux.tejer()
+    except ErrorDeMux as e:
+        if not ya_estaba:
             return _comun.queja(f"no pude levantar la sesión: {e}")
 
     try:

@@ -1,0 +1,78 @@
+/* El botón con texto (componentes/boton.ts): «la tecla en el pie», la forma elegida el 22-nov-2026. El pie de una
+   ventana es una banda, tras un espacio que la aparta del contenido (--boton-pie-aire) y una línea de borde a borde,
+   partida en celdas, una por botón, con una línea entre una y otra que baja hasta el borde de la ventana; cada celda dice
+   la tecla y la palabra, y se aprieta entera. En el teléfono las celdas se reparten el ancho y la tecla se calla. Fuera de
+   una banda (un botón suelto en una fila de la página), la celda sola, sin líneas. Reglas: sin esquinas redondeadas, el
+   estado se dice con color y nunca con el tamaño de la letra, en minúscula. El foco se marca con `:focus` (en una ventana
+   dice qué hace ⏎ y tiene que verse aunque se haya abierto con un clic); `.es-hover` y `.es-foco` son los mismos estados
+   puestos a mano, para mostrarlos quietos en el catálogo. Los tokens, --boton-… en tokens.css. */
+
+.boton {
+  --c: var(--boton-accion);
+  --c-foco: var(--c);
+  display: inline-flex;
+  flex: none;
+  gap: 1ch;
+  align-items: baseline;
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--boton-celda-y) var(--boton-celda-x);
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--c);
+  font: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &.tono-peligro { --c: var(--boton-peligro); }
+  &.tono-callado { --c: var(--boton-callado); --c-foco: var(--boton-foco-callado); }
+  &:not(:disabled):hover, &.es-hover { background: var(--boton-hover); }
+  &:not(:disabled):focus, &.es-foco { background: color-mix(in srgb, var(--c-foco) var(--boton-foco), transparent); }
+  &:disabled { color: var(--boton-apagado); cursor: default; }
+}
+.boton-tecla { color: var(--boton-tecla); }
+.boton:disabled .boton-tecla:not(.boton-gira) { color: var(--boton-apagado); }
+/* sin tecla, el ícono de lo que hace en su lugar, en el color del botón (un botón de la página, sin atajo) */
+.boton-tecla.boton-icono { display: inline-block; color: inherit; }
+/* mientras se hace, el círculo que gira en el lugar de la tecla, en el color del botón */
+.boton-gira { color: var(--c); }
+
+/* la banda: el espacio que la aparta de lo de arriba, su línea, y las celdas a la derecha (lo que hace, y cancelar al
+   último, en el borde), cada una con su línea a la izquierda; lo que va antes de las celdas (`izq`), a la izquierda */
+.botonera {
+  display: flex;
+  flex: none;
+  gap: 0;
+  align-items: stretch;
+  justify-content: flex-end;
+  margin-top: var(--boton-pie-aire);
+  padding: 0;
+  border-top: var(--borde);
+
+  & > .boton { border-left: var(--borde); }
+}
+.botonera-izq {
+  display: flex;
+  flex: 1;
+  gap: var(--h-2);
+  align-items: baseline;
+  min-width: 0;
+  padding: var(--boton-celda-y) var(--boton-celda-x);
+}
+
+/* en el teléfono no hay teclas: las celdas se reparten el ancho en una sola fila, para el pulgar (una palabra larga baja
+   dentro de su celda), y la tecla se calla (el ícono que hace de tecla, no); lo de la izquierda va arriba, en su fila */
+.angosto .botonera {
+  flex-wrap: wrap;
+
+  & > .boton { flex: 1 1 0; align-items: center; justify-content: center; min-width: 0; white-space: normal; text-align: center; }
+  & > .boton:first-of-type { border-left: 0; }
+  & > .botonera-izq { flex-basis: 100%; border-bottom: var(--borde); }
+}
+.angosto .boton > .boton-tecla:not(.boton-icono, .boton-gira) { display: none; }
+
+/* una ventana con la banda abajo: sin aire bajo ella, para que las líneas entre celdas lleguen al borde de la ventana */
+.ventana:has(> .botonera) { padding-bottom: 0; }

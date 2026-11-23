@@ -34,8 +34,9 @@ bus = ["nats-py>=2.6", "bcrypt>=4"]
 # para recibir lo que se arrastra a un hilo (POST /archivos/entrada); httpx, para que la puerta de un servidor con
 # alojados (telar.puerta) le pase cada pedido al telar de su persona
 serve = ["fastapi>=0.110", "uvicorn>=0.29", "websockets>=13", "python-multipart>=0.0.9", "httpx>=0.25"]
-# lo que piden las pruebas, además de lo de arriba: el cliente de pruebas de la API (starlette.testclient)
-pruebas = ["httpx>=0.25"]
+# lo que piden las pruebas, además de lo de arriba: el cliente de pruebas de la API (starlette.testclient), y pytest
+# con pytest-xdist, que reparte la suite completa en 4 procesos (pruebas/conftest.py; el CI las corre con unittest)
+pruebas = ["httpx>=0.25", "pytest>=7.4", "pytest-xdist>=3.5"]
 
 [project.urls]
 Homepage = "https://github.com/nicorivas/telar"

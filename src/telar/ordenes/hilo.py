@@ -11,9 +11,18 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            anida debajo, hereda sus etiquetas, y el padre sabe de él
     telar hilo hijo «Mobile» [--carpeta R] [--texto "…"|-]   abrir un hilo hijo de este, con su agente y un
                                            encargo; sin --carpeta, la de este hilo
+    telar hilo hijo «Mobile» --rama [NOMBRE] …   el hijo trabaja en su propia rama, en un worktree
+                                           (~/worktrees/<repo>-<rama>) que sale de la rama de este hilo
+    telar hilo hijo «Mobile» --esfuerzo low|medium|high|xhigh …   su agente arranca con ese esfuerzo (también
+                                           al retomarlo); sin la opción, el de siempre
+    telar hilo fusionar «Mobile» [--seguir] [--mensaje "…"]   fusionar la rama de ese hijo en la de este hilo
+                                           (prueba antes, sin tocar nada) y cerrarlo, archivarlo y borrar su
+                                           worktree; con --seguir, fusiona lo commiteado y lo deja trabajando
+    telar hilo descartar «Mobile» [--forzar]   cerrar ese hijo y borrar su worktree y su rama sin fusionar
+                                           (se niega si hay trabajo sin fusionar; --forzar lo pierde)
     telar hilo etiquetas "trabajo, cliente"|ninguna   sus etiquetas (todas: reemplazan a las de antes); los
                                            modos de la página filtran la lista por ellas
-    telar hilo mudar «Agrosur»               llevarse este panel (y su conversación) a ese hilo
+    telar hilo mudar «Arrayán»               llevarse este panel (y su conversación) a ese hilo
     telar hilo cerrar                      cerrar su tab (y lo que corra adentro) y
                                            olvidarlo: sale de la lista. Para guardarlo
                                            está `archivar`
@@ -25,6 +34,14 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
                                            la conversación que tenía
     telar hilo olvidar                     borrar lo que telar sabía de él
+    telar hilo dormir [--seco]             cerrar su agente y dejar su ventana esperando, en su lugar de la lista
+                                           (el nodo lo hace solo tras `[hilos] dormir_tras` sin actividad: telar.dormir);
+                                           con --seco, por qué cada hilo de aquí se dormiría o no
+    telar hilo despertar [--texto "…"] [--maquina M]   retomar su agente con ese primer mensaje: el de uno dormido,
+                                           en su ventana (abrirlo, o que le llegue algo, también lo despierta); el de
+                                           uno cerrado o archivado, con su conversación. El de otra máquina (--maquina,
+                                           o la que dice el bus), por el bus a su nodo; si esa máquina está fuera de
+                                           línea, queda en cola y se hace cuando vuelva (telar.alcance)
     telar hilo caidos [--horas N] [--seco] reabrir de una vez, con su conversación, los hilos que
                                            estaban vivos en esta máquina y ya no tienen ventana
                                            (tmux se cayó, la máquina se reinició). Los cuenta el
@@ -37,6 +54,9 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
     telar hilo leer [«Faro»] [--ultimos N] [--maquina M]   lo último que pasó en ese hilo (de esa máquina, por el bus): lo que se le pidió y
                                            lo que respondió su agente (5 turnos si no se dice)
+    telar hilo contexto [«Faro»] [--maquina M]   lo que carga el contexto de su conversación: cuánto pesa, desde
+                                           cuándo, y qué es (los CLAUDE.md, la memoria, los hooks, las skills, los
+                                           MCP, lo que leyó, lo que se repite, lo de otros hilos), con sus tamaños
 
 `adoptar` es la salida del único agujero que tiene guardar el estado por nombre:
 renombrar un tab desde el multiplexor (`prefix + ,`) deja el vínculo, la prioridad y
@@ -52,6 +72,7 @@ arriba» le toca al hilo equivocado más seguido de lo que parece.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -78,6 +99,8 @@ VERBOS = (
     "etiquetas",
     "padre",
     "hijo",
+    "fusionar",
+    "descartar",
     "mudar",
     "cerrar",
     "archivar",
@@ -86,8 +109,11 @@ VERBOS = (
     "privar",
     "retomar",
     "olvidar",
+    "dormir",
+    "despertar",
     "llevar",
     "leer",
+    "contexto",
     "caidos",
 )
 
@@ -95,10 +121,15 @@ VERBOS = (
 #: los verbos que cambian el registro de un hilo: sobre uno que vive en otra máquina, se le piden a su
 #: dueño por el bus (docs/propuestas/un-dueno-por-hilo.md), que los aplica y los vuelve a publicar
 AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "etiquetas", "padre", "archivar", "desarchivar", "publicar", "privar",
-            "cerrar", "olvidar")
+            "cerrar", "olvidar", "dormir", "despertar")
 
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
-SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar")
+SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar",
+             "fusionar", "descartar", "dormir", "despertar")
+
+
+#: los esfuerzos que se le pueden dar al agente de un hijo (`--esfuerzo`; Claude Code: `--effort`)
+ESFUERZOS = ("low", "medium", "high", "xhigh")
 
 
 def main(argv: list[str], ctx) -> int:
@@ -117,22 +148,47 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--sesion", default="",
                    help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
     p.add_argument("--ultimos", type=int, default=0, metavar="N", help="con leer: cuántos turnos")
-    p.add_argument("--maquina", default="", metavar="NOMBRE", help="con leer: un hilo de otra máquina, por el bus")
+    p.add_argument("--maquina", default="", metavar="NOMBRE",
+                   help="con leer, contexto y despertar: un hilo de otra máquina, por el bus")
     p.add_argument("--json", action="store_true", help="el hilo resultante, en una línea")
     p.add_argument("--horas", type=float, default=6, help="con caidos: vistos vivos en estas últimas horas")
-    p.add_argument("--seco", action="store_true", help="con caidos: solo decir cuáles reabriría")
+    p.add_argument("--seco", action="store_true",
+                   help="con caidos: solo decir cuáles reabriría; con dormir: por qué cada hilo de aquí se dormiría o no")
+    p.add_argument("--aqui", action="store_true",
+                   help="con despertar: lo que corre el ⏎ en la ventana de un hilo dormido (despierta aunque no esté anotado)")
     p.add_argument("--ruta", action="store_true", help="con relevo: solo decir dónde va el relevo de este hilo")
     p.add_argument("--con-hijos", action="store_true", help="con archivar: también sus hilos hijos")
     p.add_argument("--sin-avisar", action="store_true", help="con archivar: sin avisarle a su padre")
     p.add_argument("--carpeta", default="", help="con hijo: la carpeta del hijo (por defecto, la de este hilo)")
-    p.add_argument("--texto", default="", help="con hijo: lo que se le encarga al abrirlo (o «-»: por la entrada)")
+    p.add_argument("--texto", default="",
+                   help="con hijo: lo que se le encarga al abrirlo (o «-»: por la entrada); con despertar y retomar: su "
+                        "primer mensaje")
+    p.add_argument("--rama", nargs="?", const="-", default="", metavar="NOMBRE",
+                   help="con hijo: que trabaje en su propia rama y su worktree (sin nombre, el del hijo)")
+    p.add_argument("--esfuerzo", choices=ESFUERZOS, default="",
+                   help="con hijo: el esfuerzo con que arranca su agente (sin la opción, el de siempre)")
+    p.add_argument("--seguir", action="store_true", help="con fusionar: fusionar lo commiteado y dejar al hijo trabajando")
+    p.add_argument("--mensaje", default="", help="con fusionar: el mensaje del commit de fusión")
+    p.add_argument("--forzar", action="store_true", help="con descartar: aunque pierda trabajo sin fusionar")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
     if o.verbo == "leer":
         return _leer(ctx, o)
+    if o.verbo == "contexto":
+        return _contexto(ctx, o)
     if o.verbo == "caidos":
         return _caidos(ctx, o)
+    if o.verbo == "despertar" and o.aqui:
+        # el ⏎ en la ventana de un hilo dormido: lo despierta reemplazando ese panel (y con él, este proceso)
+        from telar import dormir
+
+        nombre = o.hilo or o.valor or os.environ.get("TELAR_HILO", "").strip()
+        if not nombre:
+            return _comun.queja("¿cuál? --hilo, o $TELAR_HILO")
+        return dormir.despertar_aqui(ctx.config, nombre, o.texto)
+    if o.verbo == "dormir" and o.seco:
+        return _dormir_seco(ctx, o)
     if o.valor and o.verbo in SIN_VALOR:
         # `telar hilo olvidar X` actuaba sobre el hilo actual e ignoraba X: lo suelto es el hilo
         if o.hilo:
@@ -154,6 +210,21 @@ def main(argv: list[str], ctx) -> int:
 
     est = tel.estado
     salida = 0
+    if o.verbo == "despertar":
+        # donde viva, aunque aquí no se lo conozca: aquí, por el bus a su nodo, o a la cola de su máquina si está fuera
+        # de línea (telar.alcance). No va por el pedido «hilo» de siempre: ese corre `despertar` allá, que antes solo
+        # despertaba a los dormidos
+        salida, despierto = _despertar(ctx, tel, hilo, o)
+        if o.json:
+            tel = _comun.tejer(ctx)
+            actual = tel.por_nombre(hilo.nombre) or Hilo(id=hilo.id or hilo.nombre, nombre=hilo.nombre)
+            return _comun.escribir_json({"hilo": _comun.json_hilo(actual, tel), "codigo": salida, "despertar": despierto})
+        return salida
+    if o.verbo == "renombrar" and o.valor.strip():
+        # antes de pedírselo al dueño: un nombre que choca con el de otro hilo no se acepta en ninguna máquina
+        problema = _choca(ctx, tel, o.valor.strip(), hilo.nombre)
+        if problema:
+            return _comun.queja(problema)
     # si es un hilo remoto, lo que le pase cambia lo que su máquina publica en el directorio
     remoto_antes = est.remotos().get(hilo.nombre, {}).get("remoto", "")
     # un hilo de otra máquina: el cambio lo hace su dueño, y su registro (vínculo, archivo) lo guarda él:
@@ -192,7 +263,7 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "renombrar":
         if not o.valor:
             return _comun.queja("telar hilo renombrar <nombre nuevo>")
-        salida = _renombrar(tel, hilo, o.valor)
+        salida = _renombrar(tel, hilo, o.valor, ctx.config)
         if salida == 0:
             # un hilo remoto lleva su nombre también en su ventana de allá: se renombra con él
             anotado = tel.estado.remotos().get(o.valor.strip())
@@ -224,6 +295,7 @@ def main(argv: list[str], ctx) -> int:
         elif salida == 0:
             est.olvidar(hilo.nombre)
             print(f"cerrado y olvidado «{hilo.nombre}»")
+        _queda_la_rama(est, hilo.nombre)
     elif o.verbo == "padre":
         valor = o.valor.strip()
         if not valor:
@@ -235,6 +307,10 @@ def main(argv: list[str], ctx) -> int:
         print(f"«{hilo.nombre}» cuelga de «{valor}»" if valor not in ("ninguno", "ninguna") else f"«{hilo.nombre}» suelto")
     elif o.verbo == "hijo":
         return _hijo(ctx, tel, hilo, o)
+    elif o.verbo == "fusionar":
+        return _fusionar(ctx, tel, hilo, o)
+    elif o.verbo == "descartar":
+        return _descartar(ctx, tel, hilo, o)
     elif o.verbo == "archivar":
         # sus hijos primero (los que siguen en la lista), con lo mismo que se le pidió a él y sin avisarle a él
         if o.con_hijos:
@@ -270,7 +346,11 @@ def main(argv: list[str], ctx) -> int:
         est.privar(hilo.nombre)
         print(f"«{hilo.nombre}» es privado: sale del directorio de las otras personas")
     elif o.verbo == "retomar":
-        salida = _retomar(ctx, tel, hilo)
+        salida = _retomar(ctx, tel, hilo, o.texto)
+    elif o.verbo == "dormir" and dueno:
+        pass  # lo hizo su dueño, allá
+    elif o.verbo == "dormir":
+        salida = _dormir(ctx, tel, hilo)
     elif o.verbo == "llevar":
         salida = _llevar(ctx, tel, hilo, o.valor, o.si, o.sesion)
     elif o.verbo == "relevo":
@@ -293,6 +373,7 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "olvidar":
         est.olvidar(hilo.nombre)
         print(f"telar olvidó «{hilo.nombre}» (el registro de foco queda: es historia)")
+        _queda_la_rama(est, hilo.nombre)
 
     if remoto_antes and salida == 0 and o.verbo in ("renombrar", "cerrar", "archivar", "desarchivar", "retomar", "olvidar"):
         from telar import directorio as mod_directorio
@@ -358,7 +439,7 @@ def _prioridad(est, hilo, valor: str) -> int:
     return 0
 
 
-def _renombrar(tel: _comun.Telar, hilo, nuevo: str) -> int:
+def _renombrar(tel: _comun.Telar, hilo, nuevo: str, config=None) -> int:
     """Renombra en el multiplexor y mueve el estado. Si algo falla, se dice cuál quedó."""
     ocupa = tel.por_nombre(nuevo)
     if ocupa is not None:
@@ -380,6 +461,8 @@ def _renombrar(tel: _comun.Telar, hilo, nuevo: str) -> int:
         except ErrorDeMux as e:
             return _comun.queja(f"el multiplexor no lo renombró: {e}")
     tel.estado.renombrar(hilo.nombre, nuevo)
+    if config is not None:
+        _mudar_casilla(config, hilo.nombre, nuevo)
     print(f"«{hilo.nombre}» → «{nuevo}»")
     if not movido:
         print(_comun.tenue("  (solo en telar: el hilo no está vivo en el multiplexor)"))
@@ -390,6 +473,38 @@ def _renombrar(tel: _comun.Telar, hilo, nuevo: str) -> int:
         )
     )
     return 0
+
+
+def _choca(ctx, tel: _comun.Telar, nombre: str, propio: str = "") -> str:
+    """Por qué no se puede llamar así un hilo: su nombre choca con el de otro (vivo o archivado, de esta máquina o de
+    otra según el bus) que solo difiere en mayúsculas, tildes o espacios, y sus casillas serían la misma
+    (telar.casilla). Dice con cuál, y propone otro. "" si no choca. `propio`: el hilo que se renombra, que no choca
+    consigo mismo (cambiarle solo las mayúsculas se puede)."""
+    from telar import casilla
+
+    conocidos = _comun.nombres_conocidos(ctx, tel)
+    otros = [n for n in conocidos if not (propio and casilla.mismo_nombre(n, propio))]
+    otro = casilla.choque(nombre, otros)
+    if not otro:
+        return ""
+    conocido = conocidos.get(otro) or next((v for k, v in conocidos.items() if casilla.mismo_nombre(k, otro)), None)
+    donde = conocido.donde if conocido is not None else ""
+    return (f"«{nombre}» choca con «{otro}»{f' ({donde})' if donde else ''}: solo difieren en mayúsculas, tildes o "
+            f"espacios, y los mensajes de uno le llegarían al otro. Ponle otro nombre, por ejemplo "
+            f"«{casilla.otro_nombre(nombre, [*conocidos, propio])}»")
+
+
+def _mudar_casilla(config, viejo: str, nuevo: str) -> None:
+    """Lo que esperaba en la casilla del nombre viejo pasa a la del nuevo (sus ganchos ya leen la del nuevo: el
+    alias del estado), y la ficha apartada del viejo, si tenía, se suelta."""
+    from telar import casilla
+
+    try:
+        if pasados := casilla.mudar(config, viejo, nuevo):
+            print(_comun.tenue(f"  {pasados} mensaje(s) que esperaban en su casilla pasan a la del nombre nuevo"))
+        casilla.soltar_ficha(config, viejo)
+    except OSError as e:
+        print(_comun.tenue(f"  su casilla no se movió ({e}): lo que esperaba sigue en la del nombre viejo"))
 
 
 def _adoptar(tel: _comun.Telar, hilo, viejo: str) -> int:
@@ -466,8 +581,8 @@ def _misma_carpeta(tel: _comun.Telar, hilo) -> list:
 
 
 def padre_de(est, hilo: str) -> str:
-    """Del que cuelga un hilo: el que se le puso o, si no, el que lo abrió."""
-    return est.padres().get(hilo) or (est.abiertos_por().get(hilo) or {}).get("por") or ""
+    """Del que cuelga un hilo: el que se le puso o, si no, el que lo abrió (salvo que se haya soltado)."""
+    return est.padre(hilo)
 
 
 def _avisar_al_padre(ctx, est, hilo: str, que: str) -> None:
@@ -495,6 +610,8 @@ def _hijo(ctx, tel, padre, o) -> int:
         return _comun.queja("¿cómo se llama? telar hilo hijo «Mobile» --texto \"…\"")
     if any(h.nombre == nombre and tel.vivo(h) for h in tel.hilos):
         return _comun.queja(f"ya hay un hilo «{nombre}» abierto: colgarlo es `telar hilo padre {padre.nombre} --hilo {nombre}`")
+    if problema := _choca(ctx, tel, nombre):
+        return _comun.queja(problema)
     if tel.mux is None or not tel.viva:
         return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
     est = tel.estado
@@ -511,8 +628,31 @@ def _hijo(ctx, tel, padre, o) -> int:
         carpeta = Path(relativa) if Path(relativa).is_absolute() else Path(ctx.config.raiz) / relativa
         if not carpeta.is_dir():
             return _comun.queja(f"no existe la carpeta {carpeta}")
+    lugar, sin_commitear = None, []
+    if o.rama:
+        # su propia rama: un worktree que sale de la rama de la carpeta del padre (telar.ramas)
+        from telar import ramas as mod_ramas
+
+        if carpeta is None:
+            return _comun.queja("un hijo con rama necesita una carpeta en un repositorio: --carpeta, o vincula este hilo")
+        sin_commitear = mod_ramas.sucios(carpeta, solo_aqui=True)
+        try:
+            lugar = mod_ramas.crear(carpeta, nombre, "" if o.rama == "-" else o.rama)
+        except mod_ramas.ErrorDeRama as e:
+            return _comun.queja(str(e))
+        carpeta = Path(lugar["carpeta"])
+        relativa, _ = _ruta_en_raiz(str(carpeta), ctx.config.raiz)
+        relativa = relativa or str(carpeta)
+        # antes de lanzar: el lanzamiento suma el worktree como carpeta de trabajo del agente
+        est.anotar_rama(nombre, lugar)
+    # también antes: el lanzamiento (y cada vez que se retome) lo lee de ahí. Sin --esfuerzo, el de siempre, aunque un
+    # hilo de antes con su nombre tuviera otro
+    esfuerzo = getattr(o, "esfuerzo", "") or ""
+    est.anotar_esfuerzo(nombre, esfuerzo)
     encargo = texto.strip() and (f"Eres un hilo hijo de «{padre.nombre}», que te encarga esto. Cuando termines, o si "
                                  f"necesitas que decida algo, escríbele con `telar mensaje \"{padre.nombre}\" \"…\"`.\n\n"
+                                 + (f"Trabajas en tu propia rama, {lugar['rama']}, en {carpeta}: tu contexto y la skill "
+                                    f"/ramas dicen cómo.\n\n" if lugar else "")
                                  + texto.strip())
     lanz = lanzar.para_hilo(ctx.config, nombre, carpeta, encargo or "")
     try:
@@ -521,6 +661,15 @@ def _hijo(ctx, tel, padre, o) -> int:
         else:
             tel.mux.crear_tab(nombre, ruta=lanz.carpeta, comando=lanz.comando, foco=False)
     except ErrorDeMux as e:
+        est.anotar_esfuerzo(nombre, "")
+        if lugar:
+            from telar import ramas as mod_ramas
+
+            est.olvidar_rama(nombre)
+            try:
+                mod_ramas.borrar(lugar, forzar=True)
+            except mod_ramas.ErrorDeRama:
+                pass
         return _comun.queja(f"no pude abrir «{nombre}»: {e}")
     est.desarchivar(nombre)
     if relativa:
@@ -534,10 +683,122 @@ def _hijo(ctx, tel, padre, o) -> int:
         est.etiquetar(nombre, list(heredadas))
     if o.json:
         return _comun.escribir_json({"hilo": nombre, "padre": padre.nombre, "carpeta": relativa,
-                                     "agente": bool(lanz), "encargo": bool(encargo)})
+                                     "agente": bool(lanz), "encargo": bool(encargo), "rama": lugar,
+                                     "esfuerzo": esfuerzo})
     print(f"«{nombre}», hijo de «{padre.nombre}»" + (f" · {relativa}" if relativa else "")
+          + (f" (rama {lugar['rama']}, desde {lugar['base']})" if lugar else "")
+          + (f" · esfuerzo {esfuerzo}" if esfuerzo else "")
           + ("" if lanz else _comun.tenue("  (sin motor de agentes: quedó una shell)")))
+    if lugar and lugar.get("enlazados"):
+        print(_comun.tenue(f"  enlazado desde tu carpeta: {', '.join(lugar['enlazados'])}"))
+    if sin_commitear:
+        print(_comun.tenue(f"  ojo: {len(sin_commitear)} archivo(s) sin commitear en tu carpeta no llegaron a su worktree "
+                           f"({', '.join(sin_commitear[:3])}{'…' if len(sin_commitear) > 3 else ''})"))
     return 0
+
+
+def _queja_rama(e) -> int:
+    """El error de una rama (telar.ramas), con los archivos que vienen al caso."""
+    if e.archivos:
+        print("  " + "\n  ".join(e.archivos[:20]) + (f"\n  … y {len(e.archivos) - 20} más" if len(e.archivos) > 20 else ""),
+              file=sys.stderr)
+    return _comun.queja(str(e))
+
+
+def _queda_la_rama(est, hilo: str) -> None:
+    lugar = est.ramas().get(hilo)
+    if lugar:
+        print(_comun.tenue(f"  su worktree ({lugar['ruta']}) y su rama {lugar['rama']} quedan: "
+                           f"telar hilo fusionar «{hilo}» o telar hilo descartar «{hilo}»"))
+
+
+def _fusionar(ctx, tel, hijo, o) -> int:
+    """`telar hilo fusionar «Mobile»`: la rama de ese hijo, a la de su padre (telar.ramas.fusionar). Si sale bien y no
+    sigue (`--seguir`), se cierra, se archiva y se borran su worktree y su rama."""
+    from telar import ramas as mod_ramas
+
+    est = tel.estado
+    lugar = est.ramas().get(hijo.nombre)
+    if not lugar:
+        return _comun.queja(f"«{hijo.nombre}» no trabaja en una rama propia: no hay nada que fusionar")
+    try:
+        r = mod_ramas.fusionar(lugar, mensaje=o.mensaje, con_cambios=o.seguir)
+    except mod_ramas.ErrorDeRama as e:
+        return _queja_rama(e)
+    salida = {"hilo": hijo.nombre, **r, "cerrado": False, "borrado": False}
+    hecho = (f"fusionados {r['commits']} commit(s) de {r['rama']} en {r['base']} ({r['destino']}, {r['commit']})"
+             if r["commits"] else f"nada que fusionar: {r['base']} ya tiene todo lo de {r['rama']}")
+    if r.get("regenerados"):
+        hecho += f"\n  lo compilado, vuelto a generar en la fusión: {', '.join(r['regenerados'])}"
+    cl = r.get("changelog")
+    if cl and cl["fragmentos"]:
+        hecho += (f"\n  el CHANGELOG: {', '.join(cl['fragmentos'])} pasó a {cl['archivo']} ([Unreleased], "
+                  f"{', '.join(cl['secciones'])}), en el commit de la fusión")
+    elif cl and r["commits"]:
+        hecho += (f"\n  sin entrada del CHANGELOG: la rama no trae fragmento en {cl['carpeta']}/ (si hace falta, "
+                  f"escríbela tú en {cl['archivo']})")
+    if o.seguir:
+        if r["commits"]:
+            _avisar(ctx, est, hijo.nombre, f"tu rama {r['rama']} se fusionó en {r['base']} hasta aquí ({r['commit']}); sigue en ella")
+        return _comun.escribir_json(salida) if o.json else (print(hecho) or 0)
+    if not o.json:
+        print(hecho)
+    if _cerrar(ctx, tel, hijo, aparte=o.json) != 0:
+        return _comun.queja(f"fusionado, pero no pude cerrar «{hijo.nombre}»: su worktree queda ({lugar['ruta']})")
+    est.archivar(hijo.nombre)
+    salida["cerrado"] = True
+    try:
+        borrado = mod_ramas.borrar(lugar)
+    except mod_ramas.ErrorDeRama as e:
+        return _queja_rama(mod_ramas.ErrorDeRama(f"fusionado y archivado, pero no pude borrar su worktree: {e}", e.archivos))
+    est.olvidar_rama(hijo.nombre)
+    salida["borrado"] = True
+    if o.json:
+        return _comun.escribir_json(salida)
+    print(f"archivado «{hijo.nombre}»; {borrado}")
+    return 0
+
+
+def _descartar(ctx, tel, hijo, o) -> int:
+    """`telar hilo descartar «Mobile»`: cerrar ese hijo y borrar su worktree y su rama, sin fusionar."""
+    from telar import ramas as mod_ramas
+
+    est = tel.estado
+    lugar = est.ramas().get(hijo.nombre)
+    if not lugar:
+        return _comun.queja(f"«{hijo.nombre}» no trabaja en una rama propia: no hay nada que descartar")
+    if not o.forzar:
+        # antes de cerrar nada: si se va a negar, que el hijo siga como estaba
+        try:
+            mod_ramas.comprobar_borrar(lugar)
+        except mod_ramas.ErrorDeRama as e:
+            return _queja_rama(e)
+    if _cerrar(ctx, tel, hijo, aparte=o.json) != 0:
+        return _comun.queja(f"no pude cerrar «{hijo.nombre}»: su worktree queda ({lugar['ruta']})")
+    est.archivar(hijo.nombre)
+    try:
+        borrado = mod_ramas.borrar(lugar, forzar=o.forzar)
+    except mod_ramas.ErrorDeRama as e:
+        return _queja_rama(e)
+    est.olvidar_rama(hijo.nombre)
+    if o.json:
+        return _comun.escribir_json({"hilo": hijo.nombre, "rama": lugar["rama"], "cerrado": True, "borrado": True})
+    print(f"archivado «{hijo.nombre}»; {borrado}")
+    return 0
+
+
+def _avisar(ctx, est, hilo: str, que: str) -> None:
+    """Un aviso (no lo despierta) a `hilo`, de parte de su padre, si hay bus; si falla, nada: es un extra."""
+    from telar import bus as mod_bus
+
+    if not mod_bus.hay_bus(ctx.config):
+        return
+    try:
+        from telar.ordenes import mensaje
+
+        mensaje.enviar(ctx, hilo, que, modo="aviso", de=padre_de(est, hilo) or "telar")
+    except Exception:  # noqa: BLE001 - avisar es un extra: la fusión ya está hecha
+        pass
 
 
 def _resolver_ruta(ruta: Path | None) -> Path | None:
@@ -587,7 +848,8 @@ def _al_dueno(ctx, dueno: str, o, nombre: str) -> str:
     """Pide el verbo a la máquina dueña del hilo y muestra lo que dijo. "" si salió bien; si no, el problema."""
     from telar import bus as mod_bus
 
-    argv = [o.verbo, *([o.valor] if o.valor else []), "--hilo", nombre, *(["--cerrar"] if o.cerrar else [])]
+    argv = [o.verbo, *([o.valor] if o.valor else []), "--hilo", nombre, *(["--cerrar"] if o.cerrar else []),
+            *(["--texto", o.texto] if o.verbo == "despertar" and getattr(o, "texto", "") else [])]
     r = mod_bus.pedir(ctx.config, dueno, "hilo", {"argv": argv}, espera=60)
     if not r.get("ok"):
         return f"«{nombre}» vive en {dueno}, y no respondió: {r.get('error', '')}"
@@ -599,18 +861,21 @@ def _al_dueno(ctx, dueno: str, o, nombre: str) -> str:
     return ""
 
 
-def _cerrar(ctx, tel: _comun.Telar, hilo) -> int:
+def _cerrar(ctx, tel: _comun.Telar, hilo, aparte: bool = False) -> int:
+    """Cierra la ventana del hilo (y la de la otra máquina, si es remoto). Con `aparte` (lo pide una orden con
+    --json) lo que va contando sale por stderr: en stdout va solo el JSON, que así se lee limpio."""
     # un hilo remoto tiene además su ventana en la otra máquina, que sigue viva aunque la
     # ventana local ya no esté: se cierra igual, o el agente quedaría corriendo allá
-    _matar_remoto(ctx, tel, hilo)
+    _matar_remoto(ctx, tel, hilo, aparte=aparte)
+    flujo = sys.stderr if aparte else sys.stdout
     if tel.mux is None or not tel.vivo(hilo):
-        print(_comun.tenue("  no está vivo: no hay nada que cerrar"))
+        print(_comun.tenue("  no está vivo: no hay nada que cerrar"), file=flujo)
         return 0
     try:
         tel.mux.cerrar(hilo.id)
     except ErrorDeMux as e:
         return _comun.queja(f"no pude cerrarlo: {e}")
-    print("  cerrado en el multiplexor")
+    print("  cerrado en el multiplexor", file=flujo)
     return 0
 
 
@@ -700,7 +965,7 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
         return _comun.queja(f"no encuentro en disco la conversación {sesion}")
     if archivo is None:
         # Claude escribe la conversación recién con el primer mensaje: un hilo sin mensajes no tiene qué llevar,
-        # y allá se abre con una nueva (lo que le pasó a Pablo con un hilo «prueba» recién abierto)
+        # y allá se abre con una nueva (lo que pasó con un hilo «prueba» recién abierto)
         print(_comun.tenue("  su conversación está vacía (sin mensajes): allá se abre con una nueva"))
 
     # lo que la otra máquina no va a tener
@@ -851,16 +1116,17 @@ def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, arc
     return 0
 
 
-def _matar_remoto(ctx, tel: _comun.Telar, hilo) -> None:
+def _matar_remoto(ctx, tel: _comun.Telar, hilo, aparte: bool = False) -> None:
     anotado = tel.estado.remotos().get(hilo.nombre)
     remoto = _remoto_de(ctx, anotado["remoto"]) if anotado else None
     if remoto is None or not anotado.get("sesion"):
         return
     problema = mod_remoto.matar(remoto, anotado["sesion"])
+    flujo = sys.stderr if aparte else sys.stdout
     if problema:
-        print(_comun.tenue(f"  su ventana en {remoto.destino} no se pudo cerrar: {problema}"))
+        print(_comun.tenue(f"  su ventana en {remoto.destino} no se pudo cerrar: {problema}"), file=flujo)
     else:
-        print(_comun.tenue(f"  cerrada su ventana en {remoto.destino}"))
+        print(_comun.tenue(f"  cerrada su ventana en {remoto.destino}"), file=flujo)
 
 
 def _remoto_de(ctx, nombre: str):
@@ -892,6 +1158,60 @@ def _leer(ctx, o) -> int:
         return _comun.escribir_json(datos)
     print(historia.como_texto(datos))
     return 0
+
+
+def _contexto(ctx, o) -> int:
+    """Lo que carga el contexto de un hilo, sin moverle nada (telar.servicios.carga)."""
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import carga
+
+    referencia = o.hilo or o.valor
+    try:
+        r = carga.de_hilo(ctx, referencia, maquina=o.maquina)
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
+    datos = r.model_dump(mode="json")
+    if o.json:
+        return _comun.escribir_json(datos)
+    print(como_texto_carga(datos))
+    return 0
+
+
+def _k(t: int) -> str:
+    return f"{t / 1000:.1f} k".replace(".", ",") if t >= 1000 else str(t)
+
+
+def como_texto_carga(d: dict) -> str:
+    """El resumen de `telar hilo contexto`, para leerlo en la terminal: el total, desde cuándo, una línea por grupo y
+    lo que más pesa de cada uno."""
+    desde = d.get("desde") or {}
+    cuando = str(desde.get("hora", ""))[:16].replace("T", " ")
+    que = {"compactacion": "la compactación", "clear": "el /clear", "retomada": "que se retomó"}.get(desde.get("que", ""), "que empezó")
+    total = d.get("total") or 0
+    lineas = [f"{d.get('hilo', '')}: {'' if d.get('medido') else '≈ '}{_k(total)} tokens, desde {que} ({cuando} UTC)"
+              + (f" · {d['compactaciones']} compactaciones" if d.get("compactaciones") else "")]
+    if d.get("al_empezar"):
+        lineas.append(f"  al empezar pesaba {_k(d['al_empezar'])}")
+    casa, carpeta = d.get("casa") or "", d.get("carpeta") or ""
+
+    def corta(ruta: str) -> str:
+        if carpeta and ruta.startswith(carpeta.rstrip("/") + "/"):
+            return ruta[len(carpeta.rstrip("/")) + 1:]
+        if casa and ruta.startswith(casa.rstrip("/") + "/"):
+            return "~/" + ruta[len(casa.rstrip("/")) + 1:]
+        return ruta
+
+    for g in d.get("grupos") or []:
+        if not g.get("tokens"):
+            continue
+        pct = round(100 * g["tokens"] / total) if total else 0
+        lineas.append(f"\n{g['nombre']:<22} {_k(g['tokens']):>8}  {pct:>3}%  ({g['cuantos']})")
+        for it in [x for x in d.get("items") or [] if x.get("grupo") == g["clave"] and x.get("veces")][:8]:
+            veces = f" ×{it['veces']}" if it.get("veces", 1) > 1 else ""
+            lineas.append(f"  {corta(it.get('nombre', ''))[:70]:<70} {_k(it['tokens']):>8}{veces}")
+    lineas.append(_comun.tenue(f"\n(cada cosa, estimada a {str(d.get('caracteres_por_token', '')).replace('.', ',')} caracteres por token;"
+                               f" el total, {'medido por el modelo' if d.get('medido') else 'estimado también'})"))
+    return "\n".join(lineas)
 
 
 def caidos(tel: _comun.Telar, horas: float, ahora=None) -> list:
@@ -926,7 +1246,66 @@ def _caidos(ctx, o) -> int:
     return 1 if fallas else 0
 
 
-def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
+def _dormir(ctx, tel: _comun.Telar, hilo) -> int:
+    """`telar hilo dormir`: dormirlo ya, aunque no lleve `dormir_tras` quieto ni importe que se lo mire (lo pide la
+    persona); lo demás que lo protege (trabajando, te espera, texto sin enviar, algo en segundo plano) vale igual."""
+    from telar import dormir
+
+    if not tel.vivo(hilo):
+        return _comun.queja(f"«{hilo.nombre}» no tiene ventana aquí: no hay agente que dormir")
+    try:
+        print(dormir.dormir_uno(ctx.config, tel, hilo.nombre, forzar=True))
+    except RuntimeError as e:
+        return _comun.queja(str(e))
+    return 0
+
+
+def _despertar(ctx, tel: _comun.Telar, hilo, o) -> tuple[int, dict]:
+    """`telar hilo despertar`: donde viva (telar.alcance.despertar). La máquina: la de `--maquina`, la de su ventana de
+    aquí si solo lo mira, o la que dice el bus si aquí no se lo conoce. Devuelve (código, lo que pasó)."""
+    from telar import alcance
+    from telar import bus as mod_bus
+
+    maquina = o.maquina or _dueno(ctx, hilo)
+    if not maquina and mod_bus.hay_bus(ctx.config) and not any(h.nombre == hilo.nombre for h in tel.hilos):
+        # un nombre que aquí no está (no tiene ventana ni registro): el de otra máquina, si el bus lo conoce
+        alla = mod_bus.maquina_de(ctx.config, hilo.nombre)
+        maquina = "" if alla == mod_bus.maquina(ctx.config) else alla
+    try:
+        r = alcance.despertar(ctx, hilo.nombre, maquina, o.texto, por="telar hilo despertar",
+                              por_hilo=os.environ.get("TELAR_HILO", "").strip())
+    except RuntimeError as e:
+        return _comun.queja(str(e)), {}
+    if not o.json:
+        print(r.get("hecho") or f"«{hilo.nombre}» no estaba dormido")
+        if r.get("en_cola"):
+            print(_comun.tenue("  `telar hilos --red` dice lo que espera en cola; al hacerse queda anotado"
+                               + (" y te llega un aviso" if os.environ.get("TELAR_HILO") else "")))
+        if r.get("aviso"):
+            print(_comun.tenue(f"  ({r['aviso']})"))
+    return 0, r
+
+
+def _dormir_seco(ctx, o) -> int:
+    """Por qué cada hilo de aquí se dormiría ahora o no (las reglas de telar.dormir, la primera que no se cumple)."""
+    from telar import dormir
+
+    tel = _comun.tejer(ctx, con_ficha=False)
+    tras = ctx.config.hilos.dormir_tras
+    filas = []
+    for ob in dormir.observar(ctx.config, tel, completo=True):
+        motivo = dormir.por_que_no(ob, tras)
+        filas.append({"hilo": ob.nombre, "dormiria": not motivo, "motivo": motivo,
+                      "pid": ob.agente.pid if ob.agente else None})
+    if o.json:
+        return _comun.escribir_json({"dormir_tras": tras, "hilos": filas})
+    print(_comun.tenue(f"dormir_tras = {tras / 60:g} min" if tras else "dormir_tras = 0: nunca"))
+    for f in filas:
+        print(f"{'◌' if f['dormiria'] else '·'} {f['hilo']}: {'se dormiría' if f['dormiria'] else f['motivo']}")
+    return 0
+
+
+def _retomar(ctx, tel: _comun.Telar, hilo, mensaje: str = "") -> int:
     """Sacarlo del archivo y reabrirlo tal como estaba: su carpeta, su agente, su conversación.
 
     Es la otra mitad de archivar con --cerrar. El tab se cerró y la conversación quedó en
@@ -949,8 +1328,15 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
         return _comun.queja(tel.aviso or "la sesión no está viva: primero telar tejer")
     try:
         if hilo.nombre in tel.vivos:
+            # uno que duerme (telar.dormir) se despierta en su ventana, aquí o donde viva
+            try:
+                from telar import dormir
+
+                despierto = dormir.despertar_hilo(ctx, tel, hilo)
+            except RuntimeError as e:
+                return _comun.queja(str(e))
             tel.mux.ir(hilo.id)
-            print(f"«{hilo.nombre}» ya estaba abierto")
+            print(despierto or f"«{hilo.nombre}» ya estaba abierto")
             return 0
         relativa = est.vinculos().get(hilo.nombre, "")
         anotado = est.remotos().get(hilo.nombre)
@@ -978,7 +1364,7 @@ def _retomar(ctx, tel: _comun.Telar, hilo) -> int:
         if carpeta is not None and not carpeta.is_dir():
             carpeta = None
         try:
-            lanz = lanzar.para_hilo(ctx.config, hilo.nombre, carpeta)
+            lanz = lanzar.para_hilo(ctx.config, hilo.nombre, carpeta, mensaje)
         except ErrorDeAgente as e:
             print(_comun.tenue(f"  sin agente: {e}"))
             lanz = None

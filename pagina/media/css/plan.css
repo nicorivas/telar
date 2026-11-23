@@ -1,15 +1,8 @@
-/* El plan del día y el calendario (vistas/dashboard/plan.ts). scripts/navegador.mjs
+/* El calendario, con los bloques del plan del día (vistas/dashboard/plan.ts). scripts/navegador.mjs
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {
-  .plan-nav { display: flex; gap: 2ch; align-items: baseline; padding: 0 1ch .5lh; color: var(--dim); }
-  .plan-nav a { color: var(--azul); }
-  .plan-txt { padding: .2lh 1ch; } .plan-txt p { margin: .2lh 0; }
   .plan-riesgo { color: var(--rojo); }
-  .plan-fila { display: grid; grid-template-columns: 12ch minmax(0, 1fr); gap: 1ch; padding: .15lh 1ch; }
-  .plan-fila .k { color: var(--dim); }
-  .plan-fila .sub { color: var(--dim); display: block; }
-  .plan-fila.estrategico .v { font-weight: bold; }
   .cal-nav { display: flex; gap: 1.5ch; align-items: baseline; margin: .5lh 0 0 6ch; }
   .cal-nav a { color: var(--dim); }
   .cal-nav a:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
@@ -36,12 +29,15 @@
   .c-libre { --c: var(--linea); }
 
   /* Un evento: la cita va llena (no se mueve sola); el bloque propio, rayado (es tiempo reservado, se puede mover);
-     la rutina, una línea; la cita sin aceptar, solo su borde. Pisado: una cita le quitó ese tiempo. */
+     la rutina, una línea; la cita sin aceptar, solo su borde; la rechazada, tenue y tachada (no le ocupa el tiempo).
+     Pisado: una cita le quitó ese tiempo. */
   .cal-ev { position: absolute; box-sizing: border-box; padding: 2px 6px; overflow: hidden; cursor: pointer;
             color: var(--fg); border-left: 3px solid var(--c); }
   .cal-ev.t-cita { background: color-mix(in srgb, var(--c) 26%, var(--bg)); }
   .cal-ev.t-cita:hover { background: color-mix(in srgb, var(--c) 38%, var(--bg)); }
   .cal-ev.t-cita.pendiente { background: var(--bg); border: 1px dashed var(--c); border-left: 3px dashed var(--c); color: var(--blanco-claro); }
+  .cal-ev.t-cita.rechazada { background: var(--bg); border-left: 1px solid color-mix(in srgb, var(--c) 40%, transparent); color: var(--dim); }
+  .cal-ev.rechazada .t, .sem-fila.rechazada .t { text-decoration: line-through; }
   .cal-ev.t-bloque { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--c) 20%, var(--bg)) 0 5px, var(--bg) 5px 10px);
                    border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); border-left: 3px solid var(--c); }
   .cal-ev.t-bloque:hover { background: color-mix(in srgb, var(--c) 24%, var(--bg)); }
@@ -71,6 +67,10 @@
   .seg.t-rutina, .ley.t-rutina i, .sem-fila.t-rutina i { background: color-mix(in srgb, var(--dim) 55%, var(--bg)); }
   .seg.t-libre, .ley.t-libre i { background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 30%, transparent); }
   .sem-fila.pendiente i { background: transparent; box-shadow: inset 0 0 0 1px var(--c); }
+  .sem-fila.rechazada { color: var(--dim); }
+  .sem-fila.rechazada i, .b-clave i.rechazada {
+    background: linear-gradient(transparent calc(50% - .5px), var(--dim) calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px));
+    box-shadow: inset 1px 0 0 color-mix(in srgb, var(--c) 40%, transparent); }
   .leyenda { display: flex; flex-wrap: wrap; gap: .15lh 2.5ch; color: var(--dim); }
   .ley i { display: inline-block; width: 2ch; height: .9em; margin-right: .8ch; vertical-align: -.1em; }
   .ley b { font-weight: normal; color: var(--fg); }

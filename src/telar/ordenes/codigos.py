@@ -44,7 +44,8 @@ def main(argv: list[str], ctx) -> int:
     if o.codigo:
         return _detalle(getattr(r, "detalle", {}) or {})
 
-    print(f"{r.hilo}" + (f" · {r.carpeta} ({r.archivos} documentos)" if r.carpeta else ""))
+    print(f"{r.hilo}" + (f" · {r.carpeta} ({r.archivos} documentos)" if r.carpeta else "")
+          + (f" · con las ramas {', '.join(r.ramas)}" if r.ramas else ""))
     if r.aviso:
         print(f"  {r.aviso}")
     if r.conversacion:

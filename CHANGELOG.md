@@ -8,6 +8,1308 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-23
+
+The page is now arranged by **modes** (táctica, estrategia, foco, todo) and **worlds** (which part of your life
+something belongs to, each ruling on its own schedule). What agents ask of you gathers in «te esperan» and Táctica, and
+is answered in one window, «Contestar». **⌘K** and the «todo» view search threads, tasks, projects and documents at
+once. **Idle threads sleep** and wake when opened or written to, also from another machine or the phone, and a machine
+that is offline is said so. Themes are yours to change, and they and each world's schedule live in the root
+repository, the same on every machine. A child thread can work **on its own branch** and its parent merges it, and
+`telar desplegar` takes main to every machine.
+
+**Upgrading from 0.13.** What breaks, and what to do:
+
+- **The default mode shows only two dashboard tabs.** The starting mode, `tactica`, has `filas = "tactica,
+  calendario"`, and every custom mode is built on it, so «ahora», «revisar», «proyectos», the block and module tabs
+  leave its view. Add `[modos.tactica] filas = "*"` (or name the tabs you want), or switch to the «todo» mode (⌥⇧4).
+- **`estandar` is now `tactica`, and `tactica`, `estrategia` and `todo` are built-in modes too.** `[modos.estandar]`
+  is still read, as `[modos.tactica]`, and writing it from the page renames the table; `GET /modos` gives `tactica`.
+  A custom mode with one of those names now sits on the built-in one and can't take a `base`: rename it.
+- **The «plan» tab is gone.** A block or module tab with `en`/`dentro = "plan"`, a `[vistas.x]` with `aparece =
+  "plan"`, and `plan` in `[dashboard] orden`/`ocultas` are left out, and `telar doctor` lists each one: delete those
+  lines, or give the block its own tab. `[resultados.plan]` and `telar resultado plan` are unchanged. `bloques[].en` is
+  gone from `telar config --json` and `GET /config`.
+- **The key `t` opens «te esperan»** (and `d` is free again). An `[atajos.t]` becomes click-only and a provider with
+  `tecla = "t"` makes `telar doctor` fail: give them another letter.
+- **Idle threads go to sleep after 30 minutes.** Their agent closes and a placeholder waits in their window, so
+  anything that types into the tmux pane directly reaches the placeholder (a ⏎ there wakes the thread, with what
+  was typed as its first message). `[hilos] dormir_tras = 0` keeps the old behaviour on that machine.
+- **Command providers are checked.** A task's `prioridad`, `de` and `fecha` (in the row or in `campos`) and an event's
+  `respuesta` are validated; a value outside what they take makes the provider fail (it shows in `fallas`).
+- **`servidor/desplegar.sh` calls `telar desplegar`.** `--solo-servidor` exits 2 (use `--maquina <name>`),
+  `TELAR_SERVIDOR` and `TELAR_REPO_REMOTO` are ignored, it deploys to this machine and every `[remotos]`, and it needs
+  `.telar/despliegue.yaml`.
+- **Upgrade every machine on the bus together.** Threads whose names differ only in case or accents get separate
+  mailboxes, which an older telar doesn't know; and a reply over the bus's `max_payload` now goes gzipped, which an
+  older telar can't read.
+- **`telar commit` can exit 3** (`apartado`): set-aside changes couldn't be put back, and nothing was pushed.
+- **Run `telar agente instalar` once.** It replaces the hooks (`telar agente aviso` is now `evento`; the old name keeps
+  working), gives the mailbox hooks 30 s, and allows `telar agente casilla --leer`.
+
+### Added
+
+- **Modes and worlds, in a band under the header.** The page is now arranged on two axes
+  (`docs/propuestas/orden-por-modos.md`). The header keeps the logo, the machine and what you're looking at, the day
+  line and the right-hand buttons; the band below holds the modes on the left and the world on the right.
+  - **The mode** is a way of looking: táctica (the starting view), estrategia (projects, with the board and the
+    decisions of their modules beside them), foco and todo. Each is its icon and name, the current one in violet.
+    Keys: ⌥⇧1–4, ⌥⇧F, ⌥⇧0. A right click lists your own modes and «editar los modos…»; the old ◧ button is gone.
+  - `[modos]` gains the four built-ins with their base. `estandar` is an alias of `tactica` in the config and in
+    what the browser had stored. A custom mode says its `base`, its DASHBOARD rows (`filas`) and the world it sets
+    (`mundo`). An old mode with `etiquetas` still filters as before.
+  - **The world** sits on the right in its color, after a planet icon, by its name (when it changes next is in its
+    tooltip). A click on it opens the window to change worlds (below), and ⌥⇧M switches it. One chosen by hand lasts
+    until the schedule next changes.
+  - It filters the whole page: threads, agents and other machines in the bar, what waits and its number, táctica,
+    tasks, foco, calendar, projects and the day line. What it leaves out is counted in a folded «de <mundo> N» row at
+    the end of HILOS. Unclassified items show in every world.
+  - On a phone the band is one line: the mode icons with the current one in words, and the world. A thread's
+    terminal loses one row at most.
+  - `telar hoy` events and `telar proyectos` units carry their world, and `GET /agentes` each agent's.
+    `[proveedores.<n>] area` sets the area of items that don't bring one.
+- **A window to change worlds, one card per world with its own animated letter art.** ⌘M (Ctrl+M off the Mac; again, it
+  closes), a click on the world in the band, or «cambiar de mundo» in ⌘K open it: each world of `[mundos]` and «ambos»
+  as a card with its art, its name in its colour, its schedule in a line and, on the current one, why it rules and until
+  when (the next one says from when). A click, its number or ⏎ puts it, like the band did; ← → ↑ ↓ move the focus, which
+  follows the mouse; «volver al horario» (h) drops a choice made by hand; «editar» (e) goes to ⚙ mundos. Hovering lights
+  the card up in its colour, the art speeds up and tilts slightly towards the pointer, and a sweep crosses it; the lines
+  run edge to edge and nothing is rounded. With «reduce motion» the art stays still, and nothing animates while the
+  window is closed or the tab hidden (one `requestAnimationFrame` for all cards, only while open). On the phone, the
+  cards stack and a tap chooses. It replaces the world menu of the band.
+- **Each world's art is its own module, easy to mod.** `[mundos.<n>] arte = "<key>"` (or ⚙ mundos › arte) chooses it;
+  without it, the one named like the world, a factory one that suggests itself for it, or the orbit. Four ship: `telar`
+  (a loom weaving a kilim), `cielo` (night sky, moon and shooting stars), `orbita` (a ringed planet and its moon) and
+  `binaria` (two worlds orbiting each other, for «ambos»). A new one is a text file, `<raiz>/.telar/arte/<key>.txt`,
+  with its frames separated by `---` (and an optional header and hover scene), that telar serves (`GET /arte`) and the
+  page picks up on its own; or a function of time in `pagina/src/componentes/arte/` (`registrarArte`).
+  /componentes#mundos shows the window in every theme, every art animated, and a place to write one and watch it live.
+  How to: `docs/arte.md`.
+- **Worlds: which part of life something belongs to.** `[mundos.X]` in the configuration lists `areas` (a task's
+  `area`) and `rutas` (path prefixes relative to the root; the longest match wins; `./` is the whole root). The order
+  of the tables is the order of the worlds. Without `[mundos]` nothing changes.
+  - Every wait, every task (its JSON and the `tarea:` object) and the rows of `telar pendientes` and `telar hoy`
+    carry `mundo`. It comes from what is declared, never from the title: a task's area, then its project's path; a
+    document's path; a thread's folder, then its resident agent's, then its parent thread's; for a held message, the
+    thread it was going to. Empty means unclassified.
+  - `--mundo X` (repeatable, also `sin-clasificar`) and `?mundo=` filter `telar esperas`, `telar tipo tarea lista`
+    and `telar pendientes`. `telar esperas` prints in batches by world. `telar esperas --json` and `telar config
+    --json` list the declared worlds.
+  - The mirror snapshot now carries each thread's agent, so the other machine can classify it.
+  - A world can declare `horario` (a text or a list: «lun-vie 9:00-19:00», «sáb-dom», spans past midnight), `color`
+    (a theme ink; the first free one if left out) and `etiquetas` (a thread's tags, which win over its folder).
+    `[mundos] fuera` names the world that rules outside every schedule. Errors name the key: a span it can't read,
+    a color the theme doesn't have, a tag in two worlds, an unknown key.
+  - `telar config --json` and `GET /config` give each world with its tags, resolved color and schedule, plus
+    `mundos_fuera`. `telar hilos --json`, `GET /hilos` and `GET /espejos` give each thread's world.
+- **Each world says which modes it has.** `[mundos.<n>] modos = ["todo", "foco"]` (the keys of factory or own modes, at
+  least one; without the line, all of them). While that world rules, the mode band shows only those (with «ambos», the
+  union of every world's), and only those can be put: a click, ⌥⇧1–4 or ⌥⇧F on another does nothing, and ⌥⇧M cycles
+  through the world's own. Entering a world (by its schedule or by hand) whose modes don't include the current one, the
+  page switches to the last mode it had there or, failing that, the first of its list; going back to the other world
+  brings back the mode it had there. A mode the person chose stays if the other world has it too. On the dashboard, the
+  page goes to the new mode's view; looking at a thread, it stays there. ⚙ mundos has a «modos» row in each world to
+  pick them with clicks (a click adds one at the end or removes it; the last one can't be removed; «todos» drops the
+  line). `PATCH /mundos/<n>` takes `modos` (422 with the reason for a mode that doesn't exist); `GET /mundos` lists the
+  modes a world can have; `telar config --json` and `GET /config` give each world's `modos` (`[]`: all). Deleting an own
+  mode that a world has is refused, saying which world.
+- **A world can have its own theme, and three warm themes for the night.** `[mundos.<n>] tema` (any of the page
+  themes) colors the page while that world rules: the page puts it on when it enters the world, by its schedule or by
+  hand, and takes it off when it leaves (with «ambos», or in a world without a theme, the mode's). It wins over the
+  mode's theme; a theme chosen by hand in ⚙ modos holds in the world where it was chosen, until the mode changes or the
+  page enters another world with a theme. ⚙ mundos picks it with a click, from a row of the themes painted in their own
+  colors (`PATCH /mundos/<n>` takes `tema`; `GET /mundos` lists `temas`; `telar config --json` and `GET /config` give
+  each world's `tema`). Reopening the page starts with the theme the world put last time, so the colors don't jump
+  while the worlds load. The new themes, `brasa` (the suggested one), `rescoldo` (softer) and `ambar` (the warmest), are
+  dark with warm backgrounds and text, muted cyans and, for the accent (`azul`: the links, the tabs, the active row, a
+  thread at work, meetings), an earthy gray green instead of a blue, like warm terminal palettes: every text color and
+  tint reads at 4.5:1 or more on the page, the bars and the active row, the meaningful tints stay apart from each other
+  (red, the danger color, the most), and the background and text give off less blue light than the default. `npm run
+  prueba:temas` measures all of that from the CSS (also that the night accent isn't blue and isn't mistaken for the dim
+  text, and that every palette color of ⚙ temas reads well), and checks the world's theme on the page with a fake
+  clock; /componentes › tokens › contraste shows the same numbers for every theme.
+- **⚙ → mundos, shaped like ⚙ → modos.** Each world (and both) says whether it is on and until when, with «poner»,
+  «volver al horario», «borrar» (confirmed, focus on cancel) and «nuevo mundo…». Its settings (schedule, color,
+  thread tags, areas, paths, and which one rules outside every schedule) change with a click and are written line by
+  line in the configuration (`GET`/`PUT`/`PATCH`/`DELETE /mundos`). What already belongs to another world isn't
+  written, and the window says whose it is. A grid shows which world each resident agent belongs to and why (its
+  folder's path or its thread's tag). In ⚙ → modos the agents grid gets each agent's world as a colored mark and a
+  world picker that dims what that world leaves out; agents are still chosen per mode. The sidebar now places an
+  agent with no open thread by the world of its folder, as the grids do.
+- **⚙ mundos edits each world's schedule with clicks.** A new «horario» part shows the week (one strip per day, each
+  world in its color, overlaps hatched in red, gaps in the color of the world that rules outside every schedule, a line
+  at the current time) and, per world, its time ranges: the days as toggles (mon…sun) and from–to in 15-minute steps
+  (to before from crosses midnight). Edits are a draft the week shows at once; the footer says what will be written or
+  why it can't, with the house buttons («guardar», «deshacer»). Saving changes the band at once if the ruling world
+  changes. A schedule that overlaps another world's is not written: `PATCH /mundos/<n>` answers 422 saying where
+  («trabajo» and «personal» overlap on Monday from 18:00 to 19:00), since at that hour neither would rule. Test:
+  `npm run prueba:horario`.
+- **The schedule rules the same on every machine.** Each world's `horario` and `[mundos] fuera` also live in the root
+  repository, `<raiz>/.telar/mundos.toml`, read under the machine's configuration (no schedule < the root's file < the
+  machine's `[mundos]`, per world). ⚙ mundos writes there, removes what would shadow it from the machine, and commits
+  and pushes only that file a few seconds later. `telar mundos` says where each schedule lives and whether two overlap;
+  `telar mundos migrar` (`--ver`, `--local`) moves a machine's schedules to the root's file with a backup, without
+  changing what rules; `telar mundos subir` pushes now. `telar doctor` warns about overlaps, what is only on this
+  machine, what the root's file has that this machine doesn't declare, and a root file that can't be read. `GET
+  /mundos` adds `horario_vive`, `fuera_vive`, `raiz`, `error_raiz`, `sobran_raiz` and `choques`.
+- **An agent can declare its world: `mundo = "personal"` in its `agente.toml`.** It beats the route of its folder and
+  the tags of its thread, travels with the folder and holds on every machine that declares that world. Everything of
+  the agent belongs to it: its thread, the threads hanging from it and what lives in its folder (its memory, its
+  records). With another world set, the agent is not shown in the sidebar, in ⌘K, among the destinations of an
+  instruction or in the agents view (which says how many are left out, without naming them); in the `todo` mode, what
+  its `fuera_de_su_mundo` says (above). ⚙ worlds says why
+  (`por: "agente.toml"`); its section in `telar config` carries its `mundo` and `presencia`, so the page hides it from
+  the first paint; `telar agentes --json` shows the declared `mundo`.
+- **Each agent chooses what happens to it outside its world: `fuera_de_su_mundo` in its `agente.toml`.** `al-final`
+  (the default, as before: the sidebar hides it; in the `todo` mode it shows last in ⌘K, the agents view and the
+  instruction's destinations), `esconder` (with another world on it shows nowhere, not even in `todo`: neither it,
+  its threads and the ones hanging from them, what waits on it, nor what lives in its folder; not in ⌘K, Todo's search,
+  «te esperan», Táctica, the agents view, the instruction's destinations or the warnings strip; only ⚙ modos and
+  ⚙ mundos name it) or `ver` (it shows in every world, like an unclassified one). ⚙ mundos sets it per agent, in the
+  agents grid: `PUT /mundos/agentes/<clave>` writes that one line and commits and pushes only that file a few seconds
+  later. It travels in `telar config`'s sections, `GET /mundos`, `telar agentes --json` and each machine's snapshot.
+- **`agente` in `telar esperas --json` and `telar buscar --json`.** The resident agent a thing belongs to: the one of
+  its thread (or of the thread it hangs from), the one asking (`agente:<clave>` among its links) or the one whose
+  folder holds it, if its `agente.toml` declares its world (`mundos.agente_de_ruta`). The page uses it to hide what
+  belongs to an agent that asks to hide.
+- **Choose which agents each mode shows, with clicks.** ⚙ modos has a grid: one row per resident agent, one column
+  per mode, a ✓ or · in each cell. A click saves it in that mode right away (`agentes` in `[modos.<n>]`: the agents'
+  folders, comma-separated; empty shows them all, «-» none) and the sidebar follows if that mode is on. `agentes` is not
+  inherited: each mode says its own. On a phone the grid becomes a mode picker with that mode's agents below. New
+  `PATCH /modos/<n>` writes only the settings it gets, leaving the rest of the table and what the mode inherits.
+- **⚙ modos chooses the DASHBOARD tabs of each mode with clicks.** A «pestañas» row per mode, like the «modos» row of
+  ⚙ mundos: every tab with its icon and ✓, «todas» at the end. A click writes `[modos.<n>] filas` at once
+  (`PATCH /modos/<n>`) and, on the active mode, the bar changes without reloading. The row says whether the tabs come
+  from the factory, from the mode's base or from the mode itself, and «volver a las de fábrica» removes the line; a
+  choice equal to the inherited one removes it too. The API refuses a key that is not a dashboard tab today (422), but
+  keeps one the mode already named (an uninstalled module's).
+- **⚙ mundos shows which tabs each world ends up with.** Under its modes, read-only: the union of its modes' tabs,
+  without the ones ⚙ pestañas hides.
+- **`GET /modos` says what each mode declares and what it would inherit.** `propios` (the settings in its table) and
+  `heredados` (what each of those would be without its line).
+- **`window.telar.ponerMundo(clave)`** sets a world by hand from the console, to walk the page in each world.
+- **Táctica: a tab that answers «what do I do now?»** It is the first tab in DASHBOARD and the view the táctica mode
+  opens on (`docs/propuestas/orden-por-modos.md`).
+  - **Ahora**: the meeting in progress with its card, the plan block and its step, or the free time and what fits in
+    it.
+  - What waits for you splits into three lanes, by what the agent asks: **decidir** (its options, with the
+    recommended one marked), **aprobar** (what it left done, with enviar, editar…, descartar) and **cerrar** (how,
+    with its proof and «confirmar»). Keys 1–3 walk each lane in «Contestar».
+  - A single **Hacer** (4) holds your own work. First what an agent needs you to do, then today's plan and what's
+    due, each with its size. The meeting takes a place there only if there's something to prepare.
+  - Within a lane, items are grouped by account (the project's client) and sorted by weight. The weight is the row's
+    circle, with its reason in the tooltip. Color is kept for what really presses: a person waiting today, a hard
+    external date, a stopped thread. Retained messages between threads move to the footer.
+  - The lane is what the agent declares, never guessed. It writes it at the start of its progress line:
+    `<marca>: pide=decidir|aprobar|hacer-tu|cerrar · peso=alto|medio|bajo (<porqué>) · opciones=a | b* ·
+    artefacto=<ruta> · …`. A proposed close and a module question with options place themselves. Anything else
+    waits under «sin clasificar».
+  - «Contestar» gains «para el agente»: a note for this task (for the next review, or «hazte cargo ya») and «cómo
+    trabajar esto». Each one is a `[respuesta]` line marked `instrucción:`, `prompt:` or `meta:`. A `prompt:` also
+    notifies the agent that proposed it, or the `[agentes] sin_proyecto` one. If sending fails halfway, the window
+    keeps the text, and sending again does only what was missing.
+  - `telar esperas` gains `aplique`: what the agent did with your answer, its last «apliqué: …» note after it.
+  - Debt (overdue for more than 30 days) enters only if starred, if someone waits, if its weight is high or if its
+    date is hard.
+  - `window.telar.ensayoTactica('<estado>')` shows a made-up day without answering anything. The catalog has its
+    page in `/componentes#tactica`.
+- **«te esperan»: one place for what is waiting on your decision.** An inbox that gathers what already
+  exists, each source left where it lives.
+  - The sources: threads waiting on a permission, a thread's live question with its options, the proposals agents
+    leave on tasks (`avance`: question, close, prepared, conflict), and held messages nobody released.
+  - Every object type can say which of its objects wait on the person (`esperando(ctx)`), and a module type can too,
+    with `[objetos.X] esperando = "<orden>"`. A source that fails goes to `fallas` and doesn't take the others down.
+  - `telar esperas [--tipo X] [--json]` and `GET /esperas` list them oldest first.
+  - In the page there is a «te esperan» tab in DASHBOARD. It is grouped by kind, with threads waiting right now
+    always on top, and has a search box with its count, per-group filters and foldable groups. A click opens the
+    task, the thread or the object.
+  - Its row in the bar counts only what asks you something (waiting threads plus questions on tasks).
+  - New read-only type `mensaje:<id>`. `permiso:<hilo>` now carries the live question and its options when there is
+    one.
+- **Answer what waits for you from «te esperan», in one window.** A click on a row opens it. It shows the summary,
+  a foldable detail, the options as buttons with what each one does, «Otra cosa…» for free text, and «Conversarlo»,
+  which opens the instruction with the wait as context. On a phone it sits at the bottom.
+  - It takes two clicks: one picks, the other does it. By kind:
+    - a task's proposal: `responder`, or close it as proposed;
+    - a held message: read it whole and `soltar`;
+    - a thread's live question: its options, through `POST /hilos/responder`;
+    - a module's question (class `decide`): `responder` with an option or text, on the version it read.
+  - A 409 rereads and says so.
+  - A permission dialog isn't answered here: the window offers to go to the thread.
+  - `abrirVentana(props, …)` (`web/ventana.ts`) is the DOM layer every window will share: the `<dialog>`, modal or
+    not by place, focus, ⎋, click outside, and a promise with the choice. `ventana()` stays pure.
+- **Contestar shows the whole card, to decide without opening anything else.** The window for a task or a module's
+  question was too terse to remember what it was about. Its card, on the left, now answers four questions:
+  - **What it's about:** the full context, or «sin contexto escrito».
+  - **How we got here:** the history with when, who and what. The creation and the last four show, and the middle
+    folds with its count. Who is told by icon and color: you, the agent, what it applied, a meeting.
+  - **What's at stake:** weight and why, who waits, the date and whether it's hard, priority, size, and what it
+    blocks or depends on.
+  - **What's related:** what was left done, where it came from and where it's worked, the project with its status
+    line, its other open tasks, and the tags. Links open in place.
+  - What's asked stays on the right, with the options in full. The keys and the button stay in the footer. On a
+    laptop the window grows to two columns; under 100ch, and on a phone, it's one column that scrolls.
+- **Contestar carries the task's bar, and a task's date moves from wherever you are.**
+  - The header of a task's Contestar window has the same bar as its card in the tareas view, from shared code
+    (`barra-tarea.ts`, `correrAccion`): date, priority, who does it, size, wait for, done and discard, with the star
+    and share before the title. Same icons, colors and tooltips, and no keys, so they don't clash with the window's.
+  - Each action runs without closing the window: the task is read again, the card and the bar update, and an answer
+    goes on the new version. Waiting for someone, done and discard answer the proposal, so the window closes.
+  - What Contestar already does another way is left out: done and discard when the lane is cerrar or hacer-tu,
+    the instruction («conversarlo») and the note («para el agente»). A hard date says it doesn't move.
+  - Táctica's task rows, in the lanes and in Hacer, get the date icon from the task list. The row stays in its lane.
+  - Rescheduling a task no longer clears the agent's proposal: moving says when, it doesn't answer what was asked.
+    Closing, waiting, reopening, «algún día» and answering still clear it.
+- **Táctica shows what you answered and waits on the agent.** A task with an answer after the agent's last mark
+  ([avance], [nota], [cierre], [secuela]) and no new proposal goes into the group «contestadas · N esperando al
+  agente», read from the task's history, so it survives a reload. It replaces the five «respondido» rows that lived
+  only in the page. The group's header says when the next pass runs (from the `avanzar` periodic), and each row has
+  «revisar ya», which hands the task to the agent that writes the proposals now, the same way «hazte cargo ya» does;
+  a row already handed over says when and can't be handed over twice in a row. `GET /esperas` brings them as
+  `contestadas`, and `telar esperas` lists them in a line at the end.
+- **What module questions needed from the core.**
+  - A module query that exits 1 with `{"error", "codigo"}` and a 4xx code now returns that code, through the API,
+    the bus and a type's action, instead of 502.
+  - Class `decide` counts in the bar's number and has its own group, «decisiones que te piden».
+  - Modules get `TELAR_PERSONA`.
+  - A module's scheduled jobs run with the module's environment.
+  - Waits carry what answering needs, additively: a live question's `pregunta`, a task's `texto` and `version`, a
+    held message's whole `texto`.
+- **Passes: a result filled several times a day, and what you haven't seen of it.** A view can declare `pasadas`
+  (a schema; the first is `pulso`, an agent's hourly pass over every inbox). `telar resultado <clave> --agregar`
+  takes one pass as JSON on stdin, validates it, and appends it atomically to that day's file on the machine where
+  it lives; `--desde archivo.jsonl` imports, idempotent by id. `--sin-ver` and `--visto` read and move how far the
+  person has seen, kept on that machine so it holds on every device. The page shows the latest unseen pass in one
+  line under the notice strip («pulso 15:00 · 4 nuevas · 17 te esperan · +1»); a click opens every unseen pass,
+  newest first, with each task linked and the overdue tasks without a proposal apart, and closing it marks them
+  seen. Táctica takes its next pass from `pulso`, falling back to `avanzar`.
+- **Each thing in a pass has its world, and the report shows only what changed.** A task with an address takes
+  its world from the task itself; otherwise the agent's `mundo` counts, else it is unclassified. The line and the
+  window show only the world on screen (and the unclassified), with the agent's `resumenes` per world, and what is
+  seen is kept per world (`--visto --mundo`), so the personal part of a pass waits for the personal world. The
+  window lists only new, advanced and closed tasks and drafts, each with its cause (`por`, required; `fuente` and
+  `enlace` optional); `te_esperan` and `vencidas_sin_propuesta` are accepted but not shown. A pass with no changes
+  is one line («sin cambios» and what arrived from each source) and doesn't count.
+- **A result can be a series of files with a prefix, and the day «ultimo» is the most recent one.**
+  `[resultados.<clave>]` (and `[vistas]` with `aparece = "dia"`) take a `prefijo`: its files are
+  `<prefijo>AAAA-MM-DD.md`, in a folder it can share with other results. Asking for the day «ultimo» gives the most
+  recent file there is, so a weekly summary dated on its Monday is found without writing a path in code.
+- **Todo: see and search everything.** `telar buscar <texto>` and `GET /buscar?q=` search waits, tasks, checkboxes,
+  threads (archived too), projects and every `[bloques.<clave>]` page together. They ignore accents and need every
+  word. Titles rank first, then what is current, then what is newest.
+  - Each hit carries its address and world. A source that fails says so and the rest still answer.
+  - The «todo» tab is the todo mode. Without a query it lists every tab whole, with counts per world. With one, it
+    groups hits by source, with the current world first and the others under «en otros mundos». A click opens the
+    thing where it lives.
+  - ⌘K gains a last row, «buscar … en todo».
+  - A search answers within 1.5 s: each source is read in its own thread and kept in `telar serve` for 30 s (a
+    block's page, 120 s, and blocks keep their last page, so search uses it without running the command). What hasn't
+    arrived comes marked `tarde` with `leida`, and a slow source with something kept answers at once with that.
+    `POST /buscar/preparar` warms the index when Todo opens; `GET /buscar` takes `tope` and `releer`. `telar buscar`
+    asks the local `telar serve` through its socket, or searches by itself with `--tope` (5 s) and `--aqui`. Todo
+    says «sigue leyéndose…» and asks again.
+- **⌘K also finds projects, tasks and the documents of the graph.** Each comes in its own group after what is on the
+  page (projects, then tasks, then documents, up to eight each), with its title and a short detail (a task's number,
+  project and due date, or its state if it is done; a project's or a document's path). The three share one `GET
+  /buscar` per query (the current world as `primero`), not one each; a source that came back late is asked for again
+  alone. While a world is set, what belongs to another world is left out (the screen may be shared); with both
+  worlds, or in the todo mode, it shows last with its world's name, and Todo always finds it, last and labelled.
+  Opening one is what Todo does: the viewer with its connections for a document; both use the same `abrirHallado`
+  (`pagina/src/web/hallados.ts`, which also holds each source's icon and colour). `cli.buscar` takes the sources to
+  ask for. A tab is found by its visible name and by its key.
+- **A ⌘K source can be remote.** `Fuente.resultados(q)` now receives what was typed, and a source marked `remota` is
+  asked with it (two letters or more) 200 ms after the last key; an answer to something typed earlier is dropped, and
+  what it showed stays on screen until the new answer arrives (its group says «…»), so the window neither empties nor
+  jumps. The selected row stays selected when the remote rows arrive. `preparar` lets a source start reading when the
+  window opens. Tested in `npm run prueba:buscador`.
+- **`GET /buscar` takes `si_hay=true`.** A requested `fuente` this machine does not have (no tasks, no module that
+  lists documents) is left out instead of failing the whole search with a 404.
+- **The objects of a module that lists them are one more source of the search.** Each object type a module declares
+  with `listar` (`[objetos.<tipo>]`) is a source of `telar buscar`, `GET /buscar` and the «todo» view's search:
+  `objeto:<tipo>`, named by the type's new optional `plural` (or the type itself). An object matches by its title, its
+  id and its summary (searched, not shown); `campos.ruta` says where it lives and its `estado` goes at the end of its
+  row («12 conexiones»). An object that lives in a file lands in that file's world: `campos.ruta_abs` (absolute, since a
+  nested repository's paths are relative to it) or `campos.archivo` (an `archivo:` address). With `ruta_abs` the object
+  is that document: it comes in `datos.ruta_abs` and a click in «todo» opens it in the document viewer. Each source
+  runs a module query, so it is kept for two minutes like a block, `preparar` starts it, and a slow one (a large
+  knowledge graph without its cache) comes `tarde` and the next search brings it. A `listar` that brings nothing and
+  says why is the source's `falla`.
+- **Filtering «todo» to one source shows all it found.** Not just the first four. It is how a source with no tab of
+  its own (the objects of a module) is seen whole: a click on its header or on its «+N más» filters to it.
+- **The search can put one world's things first before cutting to the limit.** `GET /buscar?primero=<mundo>` and
+  `telar buscar --primero <mundo>`: within each source, what belongs to that world (and what has no world) goes before
+  the rest, and only then is the source cut to `limite`. It hides nothing and doesn't change `total`: it only decides
+  what makes the cut, so that a source with much more of another world (the documents of a large work repository)
+  doesn't crowd out the matches of the world that rules. «todo» passes its world (none with «ambos») and asks again if
+  the world changes while it is open. The answer says which one ruled (`primero`); an undeclared world orders nothing.
+- **Idle threads go to sleep: their agent closes and their window stays, in its place in the list.** After
+  `[hilos] dormir_tras` without activity (`"30m"` by default; `0` turns it off, per machine) the node closes a
+  thread's agent and leaves a one-line waiting program in its window (`telar.dormir`): a Claude Code at rest weighs
+  about 300 MB, and most threads rest most of the day. Its conversation stays on disk, and opening the thread resumes
+  it in the same window in a few seconds (`claude --resume`, with the same effort and `--add-dir`): a click in the
+  list or ⌘K, its terminal (`telar mirar`, the page, another machine, the phone), `telar ir`, `telar hilo retomar` or
+  the new `telar hilo despertar [--texto "…"]`, a ⏎ in its window (what was typed before arrives as its first
+  message), and also a bus message, an errand or what another thread types to it (the node wakes it with
+  «↯ mensaje nuevo», and the hook delivers its mailbox). Only what is certainly idle sleeps: never a thread working or
+  waiting for you (its attention or its screen), with unsent text in its prompt, a question on screen, something in
+  the background (a Bash task or a Monitor, a `/loop`, a session cron or a pending ScheduleWakeup), messages to
+  deliver, a `residente = "siempre"` agent, or one in view (a terminal attached to its window, what an open page
+  shows, or what another machine shows). `telar hilo dormir --seco` says why each thread here would sleep or not;
+  `telar hilo dormir` puts one to sleep now. Sleeping threads don't count towards `[agente] max_vivos`.
+- **A sleeping thread has its own mark: a faint ring.** In HILOS, AGENTES, the phone and the threads of other
+  machines, the attention slot shows a ring in the faint tone (like a paused project: stopped, not running); if it
+  finished and you haven't seen it, its target, faint. Its tooltip says since when and that opening it wakes it.
+  `telar hilos` shows `◌` and «dormido», and `--json` brings `dormido: {desde, conversacion}` (`null` awake; in
+  `--red`, `dormido` for the other machines' threads).
+- **The page says what it shows.** `POST /mirando` (when it changes and every 30 s while visible): what a page shows
+  is not put to sleep, and the terminals it keeps mounted for recently viewed threads, hidden, don't count as viewed.
+  The machine photo carries `mirando` and `vista`, so a thread viewed from another machine isn't put to sleep either.
+  `POST /despertar` wakes the one the page opens asleep (a mounted terminal doesn't ask telar for anything).
+- **Waking a thread on another machine, from the server, the laptop or the phone.** `telar hilo despertar <hilo>
+  --maquina M` (or the machine the bus says, when the thread isn't known here), the page's «despertar» in the ⋯ of a
+  thread of another machine, and `POST /despertar` with `cola` ask that machine's node (`hilo-despertar`): a sleeping
+  thread wakes in its window, a closed or archived one resumes its conversation, an awake one is left alone (and so is
+  the focus there). `--texto` is its first message, also for `telar hilo retomar`. An old node is told apart (it
+  answers `{ok}` without `hecho`) and the answer says so.
+- **A machine that is offline is said so, and what is asked of it waits.** When a machine's snapshot is older than
+  120 s and this node is up to date with the bus (`<estado>/espejos/.al-dia`), the strip, the thread bar, the phone
+  and `telar hilos --red` say «laptop fuera de línea desde 14:02» and mark its threads unreachable (`alcanzable:
+  false`, `fuera_de_linea_desde`) instead of alive or asleep from a stale state. Waking one queues it
+  (`<estado>/cola/<máquina>.json`, one per thread, the text added up) and this node does it when the machine's
+  snapshot arrives again, up to three tries; what was done stays a day (`hechos`), the strip says it and the thread
+  that asked gets an aviso. A message to such a thread waits in the bus as always, now said at once instead of after
+  the bus's 60 s timeout, and resuming it is queued if it wasn't open. The terminal of such a thread shows the offline
+  box with «despertar al volver», «escribirle» and «reintentar» (the house buttons), its conversation (the phone's
+  view) shows «despertar al volver» above the box, and opening one that slept there queues nothing
+  (`npm run prueba:alcance`, `pruebas/test_alcance.py`).
+- **Writing to a closed resident agent opens it.** The conversation of an agent that is `siempre` or `a-pedido` and
+  closed (or archived) keeps its text box: what is written goes as a message over the bus, and its node opens it with
+  its conversation and delivers it. From the phone, an agent is written to without "retomar" first.
+- **An agent that lives on another machine shows up even if its folder hasn't reached this one.** Each machine's
+  snapshot (`telar espejo`) now carries its resident agents (`agentes`: folder, name and the world its `agente.toml`
+  declares). `telar config` lists the ones missing here among its sections, with `maquina` and `home: false`; the
+  sidebar shows them with their thread over there, without a home, and opens them on their machine. Their world comes
+  from that declaration, so their threads are classified right even with this repository behind.
+- **`telar doctor` says when agents from other machines are missing here.** «casa atrasado 140 commits: hay agentes
+  que esta máquina no tiene: diario (de servidor)», with the `git pull` that fixes it (the count is from the last
+  fetch: it doesn't go to the network).
+- **A proposal for continuing a thread on another machine while its own is off.** In
+  `docs/propuestas/seguir-sin-su-maquina.md`: a per-turn incremental backup of each conversation to the server,
+  «seguir aquí» from it, and what the laptop does when it comes back. Not built: what gets copied to the server is
+  the person's decision.
+- **What a thread's context is made of: the «contexto» sheet.** The right sidebar has a third sheet, next to the
+  agent card and the codes, and now appears on every thread. On top: how many tokens the context holds now (measured
+  by the model on the last request), since when (the start, the last /clear or the last compaction, with what it held
+  before), and a strip with the share of each part. Below, seven folding groups: Claude Code itself (system and tools,
+  deduced), what loads at startup (each CLAUDE.md, the memory index, startup hooks, the skills list, each MCP server's
+  instructions and tool names, git status), what loads on entering a folder, what the thread read (Read, read-only
+  Bash, searches, skills, what's re-attached after compacting), what repeats on every message (per-prompt hooks), what
+  came from other threads, and the conversation. Opening a group lists each thing with its short path, its size and
+  how many times it came in; a click on a file opens it in the viewer, and what a compaction already summarized is
+  set apart. Sizes are estimated from characters; it never shows a file's contents. The conversation is read
+  incrementally (`telar.conversacion.carga`: where it left off, then only what's new), so a 180 MB transcript costs
+  about 2 s once and nothing after. `telar hilo contexto [hilo] [--maquina M] [--json]`, `GET /contexto` and the bus
+  verb `contexto` (read-only, honors `[bus] no_leer`). A thread from an agent that doesn't say what it loads shows
+  that instead. New component «partes» (a proportional strip), with its catalog page.
+- **Answering the agent's questions from the conversation view.** When the agent asks with options
+  (`AskUserQuestion`), the conversation view (the phone's, and on desktop) shows the questions where the input box
+  goes, one at a time, with «1 de 2» and ← →. Each option comes with its description, plus «otra respuesta» for your
+  own text. In a single-choice question, a tap moves to the next one, and on the last one, with everything answered,
+  it sends. With several options or typed text, «responder» sends. The answer goes straight to the agent's dialog:
+  the Claude Code mod races it against the terminal, the first answer wins, and the dialog closes as if it had been
+  picked there. The conversation keeps a «te pregunta: contesta abajo» line while it waits, then what was asked and
+  what you answered.
+  - Works for a thread on another machine too, through the new bus request `responder` (it honors `[bus] no_leer`).
+    If that machine runs an older telar, the view shows the question and says to answer it in that thread's
+    terminal.
+  - New: `POST /hilos/responder`, a `pregunta` field in `/hilos/leer` and `telar hilo leer --json`, and «→ answer»
+    in `telar hilo leer`.
+  - The reading view only says that the agent is asking something and links to the conversation. Permission dialogs
+    are not covered yet.
+- **Hands-free voice in a thread's conversation view.** A «voz» button, shown when the browser can both dictate and
+  speak, lets you talk to the agent: the browser dictates in Spanish, sends after a pause, and reads the answer aloud
+  when the turn ends, without code, links or markdown and cut to about 450 characters. Speaking while it reads
+  interrupts it. While voice is on, the page keeps the screen awake and doesn't reload itself after a deploy.
+- **A thread stuck on Claude Code's trust question waits on you.** Since Claude Code 2.1.326 a child launched with
+  `--add-dir` stops before starting on «Adding a new directory… Yes, add it», and no hook runs. The node reads each
+  local thread's pane every 30 s (`telar.confiar`): with the question on screen the thread is marked as waiting
+  (class `confiar`, with the folder it asks about) and the notice strip says which thread and what to do. telar
+  never answers it nor touches `~/.claude.json`.
+- **The codes sidebar also reads the project's branches.** A code defined in a deliverable that still lives on a branch
+  (a `git worktree` of the same repository, one not yet merged to main) used to be unknown. Now `telar codigos`
+  reads, from every worktree that's on a branch, the `.md` that branch changed or added in the thread's folder (commits
+  and what isn't committed). The folder wins: a document only the branch has comes in whole; one the folder also has
+  adds, as `README.md@branch`, only the codes the folder doesn't define and the mentions its version doesn't make. The
+  detail says «· rama entrega-2» and opens the branch's file; the footer counts the branches. New fields `ramas` and
+  `de_rama` in `telar codigos --json`.
+- **Child threads on their own branch, merged by their parent.** For several agents working at once on different
+  features of the same codebase: `telar hilo hijo «Calendario» --rama [name]` opens the child in a git worktree
+  (`~/worktrees/<repo>-<branch>`, a new branch off the one the parent's folder has checked out, in the same
+  subfolder), and Claude Code gets it as an extra working folder (`--add-dir`). `telar hilo fusionar «Calendario»`
+  is the parent's: it refuses if the child has uncommitted work, tries the merge without touching anything
+  (`git merge-tree`) and, if it conflicts, names the files and leaves the parent's folder as it was; otherwise it
+  merges with `--no-ff` where the base branch is checked out, then closes and archives the child and removes its
+  worktree and branch (`--seguir` merges what's committed and keeps the child working). `telar hilo descartar` drops
+  them without merging (it refuses to lose work unless `--forzar`). Nothing is pushed. The parent and the child know
+  it from their startup context, derived from what they have, not declared: the child, its branch and that it
+  doesn't merge; the parent, how many commits each child has unmerged and that merging is its job. The method is a
+  new skill, `/ramas`, installed with the others. The sidebar marks such a child with a branch icon; `rama`
+  (`{rama, base, ruta}`) is new in a thread's JSON. `scripts/dev.py` now serves the code of its own checkout, so a
+  child can try the page from its worktree on its own `--puerto`.
+- **A child is born ready.** `telar hilo hijo --rama` links in the worktree every `node_modules` the parent's folder
+  has next to a tracked `package.json`. The `/ramas` skill tells the child to run only the affected tests while
+  iterating, the full suite once before «listo» with the commit it passed on, and not to ask the parent anything over
+  compiled-only conflicts; the parent doesn't rerun the suite if the branch is still on that commit.
+- **`telar hilo hijo --esfuerzo low|medium|high|xhigh`** (and `esfuerzo` in `POST /hilo/hijo`): the child's agent
+  starts with that effort and keeps it when resumed; without it, the usual one.
+- **Each child writes its own CHANGELOG entry, and `telar hilo fusionar` files it.** A repository that declares
+  `.telar/changelog.yaml` (`archivo`, `carpeta`, and optionally `ancho`, `negrita`, `secciones`) takes its entries as
+  fragments: the child writes `changelog.d/<branch>.md`, a piece of the CHANGELOG with one or more `### Section`
+  headings, and merging moves each entry to the top of its section under [Unreleased] (creating the section, in Keep a
+  Changelog order, or [Unreleased] itself if missing) and deletes the fragment, in the merge commit itself. Two
+  branches never collide in the CHANGELOG any more. A malformed fragment is refused before anything is touched, with
+  file and line of each problem; a branch without one merges anyway and says so (`changelog` in `--json`). Without the
+  declaration nothing changes. The `/ramas` skill tells the child to write the fragment and the parent not to paste
+  it; telar's own repository declares it.
+- **`telar hilo fusionar` regenerates compiled files instead of refusing.** A repository marks generated files with
+  `merge=telar-compilado` in `.gitattributes` and says in `.telar/compilados.yaml` how to rebuild them and what they
+  are built from (`fuentes`, globs like `si_cambia`). When a child's branch touches them or their sources, the merge
+  happens in a temporary worktree (with the parent's `node_modules` linked): either version is taken, the commands run,
+  and the merge is committed with what they generated (`regenerados` in `--json`); the parent's folder only moves at
+  the end, fast-forward. A branch that touches neither is merged as before, without building, and a conflict in
+  anything else is refused as before. `telar hilo hijo --rama` defines the `telar-compilado` git driver for the
+  repository's worktrees only, so a `git merge` of the base inside a child doesn't stop on them. telar's own
+  repository declares `app.js`, `componentes.js` and `marco.css`, built from `pagina/`.
+- **`telar desplegar` leaves what is on main running on every machine where the repository lives.** That is this
+  machine and each `[remotos]`. Where the repository lives on each one is found without new config: the same path
+  relative to `raiz` or home, `[remotos] repos`, or what that machine's telar says (its root, `[repos]` and module
+  folders), and it must share its first commits with the one here. The commit goes over ssh, never through GitHub and
+  never force-pushed: to a ref of its own, then a `git merge --ff-only` there. Then each machine, the others first,
+  runs what the repository declares in `.telar/despliegue.yaml`: commands to prepare, the services to restart (systemd
+  or launchd, only where installed), commands for after and the checks (a route of telar's page with that machine's
+  own key, which never leaves it, a field that must match on every machine, or a command). What runs is recorded in
+  `refs/telar/desplegado`, so `si_cambia` compares against the last deploy and a machine already up to date is not
+  restarted again. It refuses without touching anything if you are not on main, tracked files are dirty here or
+  there, another machine has commits missing here, or one does not answer. If a step fails it stops there and says
+  which one, and what each machine has and runs. `--ver` shows the plan, `--maquina` limits it, `--todo` runs every
+  step and `--json` is the contract (docs/contratos.md). Telar's own declaration reinstalls on a `pyproject.toml`
+  change, restarts `telar-serve`, runs `telar agente instalar --si` when the skills change, and checks that
+  `/pagina.json` has the same `firma` everywhere and that `/api/salud` answers.
+- **`telar desplegar` warns when the compiled files in the commit don't match their sources.** If what is being
+  deployed touches the sources or the compiled files, it rebuilds them in a temporary worktree of that commit (a few
+  seconds) and says which ones came out different (`compilados` in `--json`). It warns and deploys anyway.
+- **An open page catches up after a deploy.** Deploying telar from the repository (`git pull` and a restart) left an
+  open page running the code it had loaded, sometimes for days, as on a phone. The service now fingerprints the page
+  it serves (`indice.html`, `app.js` and `marco.css`) when it starts. The fingerprint is written into `indice.html`
+  (`<meta name="telar-pagina">`) and served at `GET /pagina.json`. It is taken at startup, not when the files change,
+  so a page never loads new JavaScript against the old API. The page compares it when it is looked at again, when
+  the event stream reconnects, and every 30 s.
+  - A hidden page reloads right away, or within 5 s of coming back if the phone had frozen it.
+  - A page in view shows «↻ página nueva» in the version notice (just the icon on a narrow screen), and one tap
+    reloads.
+  - A page in use only shows the notice. That means an open dialog, a focused field with text, or a conversation
+    with something on its way or a question half answered.
+  - A reload keeps what you had typed: the conversation box, the box under the terminal and the instruction drafts
+    are kept in `sessionStorage`, and so is a question's «otra respuesta». It also goes back to the same thread and
+    view, and to the dashboard tab or the phone's list. F5 now does the same.
+  - Pages opened before this version need one last manual reload.
+- **`scripts/medir.py` checks the page in a real browser, fast and without hanging.** It starts the page with
+  `scripts/dev.py` on a free port of its own, logs in with the key (through stdin, never printed), opens one named
+  agent-browser session and walks the screens asked for by name: the modes, each dashboard tab, config and its
+  sections, a thread in a given view, a file, an object, or `todas` for all of them. It waits just enough (the screen
+  is there and the DOM and fetches have settled, never a fixed sleep), and on each screen returns the bounding rect and
+  computed styles of the given selectors and/or a PNG, as short text or `--json`, at laptop size, `--ventana WxH` or
+  `--telefono`. Each step and the whole run have time limits, no eval ever returns a promise (`--js` leaves its result
+  in `window`), and it always closes the browser and stops the page, cleaning up what a killed run left behind.
+  Measuring `.pantalla-barra` and `.franja` on all 19 screens takes about 40 s. Documented in `docs/desarrollar.md`
+  («Comprobar en el navegador»), with the page's navigation API (`window.telar.mostrar`, modes, tabs, thread views).
+- **Themes.** The page's colors come in three layers of tokens: a theme's primitives (background, text, inks), what
+  each color is for (`--texto-tenue`, `--acento`, `--estado-espera`…) and each component's own (`--item-…`). A
+  theme says its primitives and, if it wants, any other token. Four: «telar» (catppuccin mocha, as before), «latte»
+  (light), «riso» (fluorescent risograph inks on black; the active row gets a pink stripe) and «papel» (the same inks
+  on light paper). A mode's `tema` picks one (⚙ modes); open terminals take the new colors without closing.
+- **⚙ temas changes a theme's colors and makes themes of your own.** `[temas.<tema>]` sets, as `#rrggbb`, any of the
+  four colors that give a theme its face — the background (`bg`), the bars and windows (`bg-barra`), the lines
+  (`linea`) and the selection (`sel`) — and any of its text tints: the text, the dim text, the titles (`amarillo`), the
+  accent (`azul`), the agents (`violeta`), success, remote, `magenta` and danger. The rest (the hover, the active row,
+  the surface) is derived from them, and what it doesn't say stays as shipped. The page lays them over the theme's CSS
+  with a sheet of its own, so everything that uses a color follows (the active row, the links, the terminal), and
+  remembers them in the browser so a reload starts with them. A theme of your own is `[temas.<name>] base = "<shipped
+  theme>"` plus the colors it changes: the whole base theme (its CSS rules, copied under the new name) with those on
+  top, and its "shipped" colors are the base's.
+  - ⚙ temas (after mundos) shows the themes in their own colors (an eye on the one in view, a pencil on those with
+    custom colors) and lists your own with the shipped ones, also in ⚙ mundos, ⚙ modos and the theme bar of
+    /componentes. «nuevo tema…» creates one (a name, fixed up to lowercase and hyphens, never a shipped one or one that
+    exists, and the theme it starts from; from another custom one, its colors are copied too); it can be deleted
+    unless a mode or a world has it on.
+  - Every color row shows its name in its color, what it paints, the shipped value next to the current one and
+    «volver»; «todo de fábrica» resets the whole theme (for a custom one, its colors only). To change one: a short
+    palette that matches the theme (the shipped color first, then named hues at the tint's own lightness, muted for
+    the night themes), the browser's color picker and a field for any `#rrggbb`. A palette click writes at once; the
+    picker and the field preview it on the whole page and write it on release or ⏎. A live preview (a bar, rows with
+    their lines, the active and the selected row, every tint) stays at the top while you scroll.
+  - Low contrast is flagged as it's picked and when written, never refused: text that drops below 4.5:1 on the page,
+    the bars or the active row, a tint too close to another meaningful one, text on the selection, a line you can
+    barely see. «colores…» next to a world's theme in ⚙ mundos and next to a mode's in ⚙ modos goes there.
+  - **They live in the root repository, for every machine.** `[temas.<tema>]` is read from `<raiz>/.telar/temas.toml`
+    and from the machine's own config: factory < the root's file < the machine, which overrides color by color, only
+    there. ⚙ temas writes to the root's file (and drops from the machine config whatever would hide it), commits only
+    that file a few seconds after the last change and pushes it like `telar commit`, so the other machines see it on
+    their next integration. Each theme says where it lives (next to each color, and in words under its name). Without
+    `raiz` everything stays in the machine config.
+  - `telar temas` says where each theme lives; `telar temas migrar` moves a machine's `[temas.*]` to the root's file
+    without changing what is seen (what the file already says the same leaves the machine; what it says differently
+    stays, listed), with a backup of the config next to it (`config.toml.antes-de-temas-en-raiz-<fecha>`), then commits
+    and pushes that file (`--ver` only says what it would do, `--local` does not push); it refuses if this machine's
+    copy of the file is behind upstream. `telar temas subir` commits and pushes the file now. `telar doctor` reports an
+    unreadable file, uncommitted changes to it, missing themes and themes only on this machine.
+  - A mode or a world naming a custom theme that no longer exists (deleted on another machine) doesn't break the
+    config on load: it is listed in `temas_faltan`, the page falls back to the mode's theme and `telar doctor` says so.
+    Writing a new reference to a theme that doesn't exist is refused; an old missing one doesn't block writing
+    anything else.
+  - `GET /temas` gives each theme's colors, its `base`, `de_fabrica` and where it lives (`vive`, `en_raiz`,
+    `en_maquina`, `raiz`), and the colors that can change (`fondos`, `tintas`); `PUT /temas/<name>` creates one,
+    `PATCH /temas/<tema>` (`{"valores": {color: "#rrggbb" or null}}`) changes some colors, `DELETE /temas/<name>`
+    deletes it (409 while in use). `telar config --json` and `GET /config` give `temas`.
+- **Densities.** How much air each row gets, apart from the theme, so any theme goes with any density: «compacta»
+  (one line per row, as before), «cómoda» and «amplia» (for a finger: rows about 40px tall, wider actions). A row's
+  height is its line height, so everything sits in the middle and an action can be tapped anywhere in the row's
+  height. A mode's `densidad` picks one, or «auto» (the default): amplia on a touch screen, compacta with a mouse.
+- **A visual grammar, and states said only with circles.** The catalog's foundations describe what the design is
+  made of: circles say how something is, rectangles where it goes, letter icons what you do to it, text its name.
+  Each visual variable answers one question (fill: how much there is; size: rank; relation: what it relates to;
+  motion: whether it is changing; color: of what kind; tone: whether it still holds) and each value has one concept.
+  The thread bar follows it: working is a full circle, waiting for you an empty ring, finished a ring with a full
+  circle inside (dimmed once seen), the priority a small circle beside the state, another machine a ring with a dot
+  outside it (which circles while travelling), public two crossing rings, something new a dot. No more check mark,
+  bell, arrows or diamond for a state. It also says how a rectangle is split into parts, each marked one way only:
+  columns and sections by a line; a band of another kind inside a section (a list's tools) by nothing of its own (its
+  field and icons say it); a group by a short line at each side, in its type's color (`--orden-linea` for sorting).
+  In a list, only the selection gets a background.
+- **The component catalog, `/componentes`.** A developer page with every state of each component side by side in
+  every theme, at the bar's width or a phone's, with each state's props a click away and the outline of each section
+  on request; the real thread bar built from made-up threads; and every theme's tokens with their resolved values.
+  With `scripts/dev.py` it reloads on every change. Nothing pressed there does anything: it says what it would do.
+  It also shows any mode as a full page with made-up data, at `#<modo>/ver/…`.
+- **The item's anatomy in the catalog.** A plate with the item drawn large, a bracket over each of its three
+  sections and a leader from each piece to its name, the `item()` prop that sets it and what it is for; under it,
+  the question each section answers. A test fails if the item gains a piece the plate doesn't name.
+- **The notice strip.** Above the threads bar, the same height as the screen's bar and aligned with it, one place
+  says the state of the system and the threads.
+  - Quiet, it reads «al día · 18:42», the last good read.
+  - With notices, the worst shows in its color with its icon, and «+N» the rest. Red is only for «sin conexión». A
+    click opens the list: since when, what happened, what to do, its buttons (reintentar, reconectar ahora,
+    recargar, instalar, tejerla, leerlo de nuevo) and where it leads. Whoever raises a notice clears it, so what
+    fixes itself goes away by itself. Without a connection, whatever depends on it stays quiet.
+  - It gathers ten notices that were spread around: no connection to telar, an error reading the threads, a session
+    not woven, a thread open on two machines, a cut terminal (after 4 s), a provider down, a failing «te esperan»
+    source, an unread dashboard block, a new page, version or rollback, and another machine without news.
+  - Toasts that answer a click stay where they are. What waits for you stays in «te esperan» and Táctica, and
+    Táctica drops its own failure lines.
+  - Folded, the strip keeps just the icon. On a phone it shows only with a notice. Viewing a thread or in focus, a dot
+    in the notice's color marks the way back.
+  - `window.telar.ensayoAvisos(…)` and `/componentes#avisos` simulate each one.
+- **Notices from a file.** `[avisos.<clave>]` declares a JSON a program keeps up to date (`archivo`, and `en` if it
+  lives on another machine): `{"nivel": "ok|aviso|mal", "linea", "fecha", "informe", "sugerencias"}`. While it says
+  `aviso` or `mal` and is less than an hour old, the notice strip shows its line and when it was measured, in the
+  caution color or in red (a new strip level, «problema», which doesn't silence the others); a click opens the report
+  in the document viewer, on its machine. `GET /avisos` lists them.
+- **A notice from a file can be marked seen.** Opening its report from the notice strip, or its ✓, silences it on
+  every machine (kept where the file lives, `POST /avisos/visto`) until it changes: a new id in its `problemas`
+  list, a higher level, or a return after saying ok. Without `problemas`, only the level counts. `GET /avisos` says
+  which are seen.
+- **Held messages show in the notice strip.** Messages the chain brake held in the last 24 h appear there, linking
+  to «te esperan»: whoever sent them believes they arrived.
+- **Held messages can be discarded.** `telar mensaje --descartar <id>` (`POST /mensajes/{id}/descartar`) drops a
+  message the chain brake held: it is never delivered, the bus log keeps it as `descartado` with who and when, and
+  the sender gets a notice that doesn't wake it (its message to X was not delivered: the person discarded it). In «te
+  esperan» each held message offers release and discard (red, asks first with focus on cancel) and the group offers
+  discarding them all; the Contestar window has «Descartarlo» next to «Soltarlo».
+- **The day in one line, in the page's header.** How much free time is left until the next meeting, and what comes
+  after: «libre 1h 20 → 11:30 Revisión de diseño · 15:00 Comité», or during one, «en Revisión de diseño 45min → 12:30
+  libre 2h 30 → 15:00 Comité».
+  - A thin bar beside it is the whole working day (8:30 to 18:00, stretched to fit a meeting outside it). What has
+    passed is filled, meetings are blue and now is a line. Free time is green, yellow under 10 minutes.
+  - Only meetings with other people cut free time. Your own blocks and routines show faintly in the bar but don't
+    count as busy.
+  - It reads today's agenda from the calendar the page already uses (`telar hoy`, with its five-minute cache) and
+    redraws every minute and when you come back to the page. A click opens the calendar. With no calendar declared,
+    no meetings, or the day over, nothing shows.
+  - It is the first thing to give way when the header narrows, down to «1h 20 → 11:30» on a phone. The buttons on
+    the right never do.
+  - Units sit next to the number: «1h 20», «45min». The component is `componentes/jornada.ts`, with its page in
+    `/componentes`.
+- **Your answer to each invitation counts.** Every event in `telar hoy --json` now says how you answered it:
+  `respuesta` is `aceptada`, `rechazada`, `tentativa`, `sin_responder`, or empty when there is nothing to answer.
+  Empty covers your own events, and one you organize counts as accepted. It comes from the calendar provider: the
+  attendee's `PARTSTAT` in an iCal feed (the owner is the feed's `X-WR-CALNAME`), `responseStatus` in gws, or an
+  optional field in a `comando` provider.
+  - The day line leaves declined events out entirely. An unanswered one still cuts your free time, since it hasn't
+    been looked at yet, but is drawn hollow and named «(sin responder)» when it's the current or next one.
+  - The dashboard's day and week show a declined event faded and struck through. It no longer overlaps others or adds
+    to the day's meeting hours. An unanswered one is marked «sin aceptar» even if the plan doesn't say so.
+  - «ahora» no longer takes a declined event as the block in progress.
+- **The thread bar and the thread's side panel can be resized by dragging their line.** A 6 px grab strip sits on each
+  line (invisible: the line stays one pixel), with the `col-resize` cursor; dragging changes the width live and marks
+  the line with the accent, and a double click goes back to the default width. Limits: the bar from 200 px, the side
+  panel from 240 px, each up to 45% of the window, and the center never below 480 px. The chosen width is remembered in
+  this browser per screen size (a laptop's screen and an external monitor each keep theirs) and comes back when a
+  folded bar or panel is unfolded. The terminal is measured once on release, not on every pixel (one resize to tmux).
+  No strips on the phone (`web/anchos.ts`, `npm run prueba:anchos`).
+- **The width of a thread's terminal can be changed by dragging its edge.** The same 6 px grab strip as the thread bar
+  and the side panel sits on the terminal's right edge (its left edge when the terminal sits on the right), reusing
+  `web/anchos.ts`: `col-resize` cursor, the frame follows the pointer column by column with its line in the accent
+  (centered, it grows on both sides), and the terminal measures itself and resizes the tmux window only once, on
+  release. Limits: 80 columns (or what fits) up to the whole center, where it is remembered as "all". A double click
+  goes back to `[terminal] columnas` (⚙ terminal), which stays the default: the dragged width overrides it in that
+  browser and per screen, next to the bar and side panel widths, and changing the width in ⚙ terminal forgets it
+  (⚙ terminal also says when a dragged width is in effect). No strip on the phone (`npm run prueba:anchos`).
+- **`window.telar.ensayoConfirmar()` and `ensayoMudanza(máquina, 'pregunta')`.** Real confirmations with sample texts
+  (`borrar`, `archivar`, `descartar`, `traer`, `permiso`) and the move in its question, to look at and measure without
+  touching anything.
+- **`prueba:confirmar` covers every confirmation.** Each way to confirm with its keys, each confirmation of the page
+  against the catalog's list (one that says a destroying verb must ask for it, and a file with an unlisted confirmation
+  fails), and the ones that don't go through `preguntar`.
+- **The projects screen says where things stand.** Projects are a table with their effective state (in progress,
+  about to start, closing, paused, finished, closed): the one set by hand in their document, else the one their plazo
+  (`telar fechas`, class `plazo`) gives, else the one their document's Estado row says; hovering it says which. A
+  project whose plazo is in its closing phase (`etapa` «cierre») goes under «en cierre», below the two that ask for
+  direct attention. Each comes with its phase as a circle filled by quarters, its end date («venció 22-oct» once it
+  is past), how many pending items it has and, in the warning color, what its source says does not add up. Clicking a
+  column's name sorts by it, as in «tareas» (the one sorting, in blue; again, back to the usual order); sorted by
+  state, the usual order, the table goes in sections. The stage is an icon for the kind of work in it (prepare, start,
+  develop, close, closed), with the word on hover. The ↔ button shows the table extended: full width without the
+  detail, every name whole, the stage in words, and the start date, area and what does not add up as columns of their
+  own; choosing a project goes back. Between two columns there is one square cell of space, the width of an icon. The
+  detail keeps the name, how it is going (phase, start → end, warning, a link to the source), the way to its thread
+  and its ⋯ on top, and goes in three tabs:
+  «resumen», what asks for attention before what explains (the README's own status sections, the next three pending
+  items, what waits on others, what it is, the facts of its card, each cut to six whole lines with «más»), «pendientes»
+  and «documento», the README folded by sections, each with a glimpse of what it holds, that open with a click; the
+  sections with only the template's hint go last, dimmed. The remembered tab stays when choosing another project.
+  What counts as a project and what as a deal is up to the mode (`proyectos`, `negocios`: archetype names,
+  ⚙ modes); of the deals it only says how many are in negotiation or with a proposal. The filter rows (folders,
+  types, with a thread, with pending items) are gone; search, area and «cerrados» remain. A date can carry `etapa`,
+  `avance` (0 to 1) and `aviso`; `telar proyectos --json` brings each unit's `plazo` and the date sources that did
+  not answer (`fallas`).
+- **Initiatives: your own work, apart from client projects.** The projects screen gains an «iniciativas» section
+  under the projects, from the archetypes in `[modos.<m>] iniciativas`, grouped by `agrupar_iniciativas` (for
+  example `{frontmatter:programa}`).
+  - The initiative whose folder is named after the program heads its group, with its own data. One without
+    program or children goes to «sin programa».
+  - Each row has the weight circle, owner, state, next decision and tasks.
+  - A click on the header shows them alone, and Todo opens them.
+  - In Táctica, an initiative's items go under its own name, not «Interno · …». A folder inside a unit belongs to
+    that unit.
+  - `telar proyectos --json` carries each unit's `frontmatter`. A move between two archetypes doesn't break
+    anything while both folders exist.
+- **Initiatives show their state and change it from the list.** With a closed vocabulary in `[iniciativas]
+  estados`, each initiative shows its `estado:` with its circle and color in the projects tab. A click opens the
+  vocabulary and writes `estado:` and `estado_desde:` (today) in the file's frontmatter, only those two lines and
+  without committing; also from the detail, with `telar proyectos estado <ruta> <estado>` and `POST /proyectos/estado`.
+  `sinonimos` count as their target without rewriting the file, a value outside the vocabulary is marked, and an
+  initiative whose file names another source (`estado_fuente`, labelled through `fuentes`) shows «fuente: …» and
+  can't be changed here (the server answers 409). `estado_nota` goes in the tooltip.
+- **Periodic processes in a calendar.** ⚙ › periódicos shows them in a day or a week: each process is a row with
+  its line, grouped by who gets each run (an agent, a new thread each time, or a command), and each run a circle
+  at its time: what already ran, filled and faint (red if it failed; in the warning color if it was due and left no
+  trace); what is coming, a ring (in the warning color when it reaches its agent's inbox less than 15 minutes after
+  another, so it waits its turn). An agent's header line gathers everything that reaches it, so you see where it
+  piles up. Picking a process draws its dependencies with right-angle lines, from the run it uses to the run that
+  uses it, and says what it is, when it runs, what it uses and who uses it. The list is still there. `telar
+  periodicos calendario [--desde] [--dias]` gives the same; each finished run is kept in
+  `<estado>/periodicos/<name>.historial.jsonl`, and runs from before that are read from the log.
+- **Dependencies between periodic processes.** `despues = ["retro"]` (`--despues`, `--sin-despues`) names the
+  processes whose result this one uses; it is for seeing them, cron does not wait. The other kind is deduced:
+  processes that go to the same agent share its inbox, and a command that hands work to an agent (`telar encargar
+  <agent>`, in its line or in the script it runs) counts as that agent's.
+- **A periodic process can open its threads as children of another.** `padre = "Calendario"` (`--padre`, and «cuelga
+  de» in the form) hangs each thread it opens under that one in the bar, as `telar hilo hijo` does: it inherits its
+  tags, and the parent gets the notice each time the child finishes a turn. Before, they hung from the process
+  itself («periódico <name>»), which is not a thread.
+- **Creating a periodic process: a skill, a text, an agent.** The form asks for a skill (optional, from the folder
+  of whoever does it) and what goes after it (optional; one of the two is required), and shows what the agent will
+  get; who does it (a resident agent, in its usual session, or a new thread each time, with its name, folder and
+  arguments); when; and which other processes it uses. `telar periodicos ver --json` brings the machine's agents.
+- **A module's tab can hand what it shows to an agent.** `window.lienzo.pedir("instruccion", {contexto, destino?,
+  texto?})` opens the instruction window with that context: a chat, a record, anything the tab shows.
+  - The page handles it alone, and nothing leaves until you press send. The context shows as one row (its name, how
+    many lines, which tab it came from) that unfolds whole.
+  - The message is optional. Left empty, the agent gets a fixed line asking it to process the context.
+  - A default destination for these comes from `[instruccion] destino = "agente:<nombre>"` (or `hilo:<nombre>`); a
+    request that names its own destination wins.
+  - The context reaches the agent whole, up to 400,000 characters, between two marks that say it is data, not
+    instructions.
+  - On the server side: `POST /actuar` takes `{contexto: {texto, titulo, origen}}` and
+    `telar actuar --contexto - --titulo --origen`, both additive.
+- **Three things a module could not do.**
+  - **Open an address from its tab.** `window.lienzo.pedir("abrir", {direccion})` opens it in the page, as a click
+    on a link would: a task's card, a thread, an object's view. The page handles it alone, without asking permission,
+    like «menu». The server answers 400 if it gets one of those two.
+  - **Its tab gets its environment.** The command behind a module's `[pestana]`, its `[app]` page and its
+    `[configurar]` now receives `TELAR_RAIZ`, `TELAR_REPOS`, `TELAR_MAQUINA` and `TELAR_MODULO`, as its commands
+    already did.
+  - **A module type can list its objects.** `[objetos.X] listar = "<consulta>"` gets `{"tipo": "X"}` and returns
+    `{"objetos": [...]}`. You can list them with `telar objeto <tipo> --listar [--json]` and `GET /objetos/<tipo>`.
+    Among the built-in types, tarea, hilo, proyecto and agente list theirs; the others say they don't.
+    `telar objeto --tipos` says which can.
+- **A module's own settings screen.** `[configurar]` in `modulo.toml` is a command that prints a page, like a tab's
+  (usually a canvas). It opens from ⚙ modules (its «configurar») and from a ⚙ in its tab's title; its canvas
+  changes the module's settings through the module's own queries, without asking permission. `GET /configurar/<m>`.
+- **A dashboard tab as its own app on the phone.** `/pestana/<name>/` is the page with only that tab, without the
+  header or the thread list, and with its own manifest: Chrome installs it next to telar, named as the tab shows and
+  with the icon of the tab's module (`icono = "icono.png"` in `modulo.toml`, a square PNG; telar's if it has none).
+  `<name>` can be the module's name or its tab's (`[pestana] nombre`), so a module that renames its tab keeps the
+  installed app's address. On a phone the module's page gets the whole screen, and «back» stays in it.
+- **A dot on a dashboard tab with something new.** A block's page can bring `aviso`, a short text («3 chats sin
+  leer»): its row in the bar gets a dot, with the text on hover. A block that brings the field is re-read in the
+  background every two minutes, whether the dashboard is showing or not; while its tab shows, its canvas keeps the
+  dot current with `window.lienzo.aviso(text)`.
+- **`?abrir=pestana:<name>` opens a dashboard tab** when the page loads (`pestana:calendario`, or a module's tab by its
+  name), and so does `window.telar.mostrar("obj:pestana:<name>")` on a page already open: a phone's home screen can
+  have an icon that goes straight to one tab.
+- **A reading feed reads calmly: `vista = "lectura"`.** A provider whose tab is a feed of things to read can set
+  `vista = "lectura"`, and its card stops looking like a task.
+  - The text is serif, about 60 characters per line, while telar's own labels stay in the terminal face and size.
+    On top there is only the lane, the topics, the source and date, and «leer el original». The «1/8» counter and
+    the numbered keys are gone.
+  - Next to the text goes «conexiones» (below it, on a phone). It is described in the next entry.
+  - At the end, «tu lectura» is a box for the why. An action that asks for text takes what you wrote there (its
+    tooltip says which), and the draft survives a reload. Answering doesn't jump to the next item: the card stays,
+    with what you answered, and «sigue» leads on.
+  - New optional card fields: `temas` (names, or `{nombre, nota}` so that a topic opens its note), `fuente`,
+    `fecha` and `estado`. Without them, the view works them out from the subtitle. `telar doctor` checks the view
+    name.
+  - Fixed on the way: while typing in a field of the card, ⏎ and ← → are no longer taken as shortcuts.
+- **Choosing what a reading adds to the graph.** A card can propose graph relations (`conexiones`: note, type, why
+  and an anchor phrase). The reading view shows «conexiones», with one card for each proposed relation and one for
+  each other note the text names (paths written as code).
+  - Each card is titled with the note it would connect to: its frontmatter `titulo`, its `#` heading, the graph's
+    title, or else its file name. Closed, it shows up to three lines of what the note says, in its own words: the
+    `>` line under its title, or its first real paragraph (skipping frontmatter, headings, tables, code, images and
+    `**Key**: value` metadata lines). The text comes from the document, not from the graph's lede. A proposed
+    relation follows on one line, with the type in its color and the why dimmed. At the foot, one dot per
+    connection the note already has (up to 30, then «+N»), so a hub shows as one.
+  - A click opens the card in place, one at a time, and the others stay in view below. First comes the note to read:
+    its path (opens in the viewer), about 180 words of its opening in the reading face, and «seguir leyendo». Then
+    five of its connections, plus «las otras N». At the end comes the relation: the type, the why, where it sits in
+    the text, and «conectar».
+    - The type picker starts at the current type and shows what each type is and what sets it apart, from the card's
+      `tipos`, with an optional `color`.
+    - The why is a field inside the card, pre-filled for a proposed relation. ⏎ there connects.
+    - «conectar» needs a type and a why, and says which is missing. Once connected, the card reads «conectada ·
+      quitar».
+  - None goes in unless chosen, with «conectar» or the circle (filled in its type's color), and «entran N de M» keeps
+    count.
+  - A note that can't be read can't be connected, and its card says why. That is a path that isn't in the
+    repository (shown in yellow, in the text too), or a folder with no document. A folder's document is its
+    README.md, else its index.md, else its only .md.
+  - Hovering a relation lights up, in the text, the phrase it rests on, and nothing in the margin moves. A click on
+    «en el texto», or a tap on a phone, goes to that phrase. An anchor that isn't in the text is quoted instead.
+  - «guardar en la biblioteca · con N relaciones» sends the chosen ones in place of the action's `{conexiones}`
+    placeholder, as `[{nota, tipo, porque, titulo}]`, or `[]`. The server checks each one against what the card
+    proposed or the notes its text names (worked out the same way as the page, folders by the same rule), and that the
+    note exists in the repository. A named one needs a type from the vocabulary and a why, and a folder must be sent
+    as its document. Anything else gets a 422. From the CLI:
+    `telar tarea <id> --accion N --conexiones '[…]'`.
+  - An action can be icon-only in the card's bar (`icono` + `solo_icono`, with `ayuda`). With `procesando`, the card
+    says «volviendo a procesar desde las HH:MM» with the spinning circle, and re-reads itself every 10 s until done.
+  - The page's common picker (`interfaz.elegir`) gained an `inicial` option, and options can carry a `detail` shown
+    in full under the list.
+- **Reading tabs in priority order, uncapped.** A `vista = "lectura"` tab lists everything its provider returns,
+  ordered by what the person sent themselves (`de`), then priority (high, medium, low, none), newest first (`fecha`,
+  or the date its id starts with); each provider row may carry `prioridad`, `de` and `fecha` at its top level or
+  inside `campos`. Without `de` or `prioridad` the provider's order stays. The row and the reading card show the
+  priority (the task's circle, in its color) and «tuya».
+
+### Changed
+
+- **The starting mode shows only its own tabs, and every custom mode inherits them.** `tactica` (what `estandar` was)
+  has `filas = "tactica, calendario"`, and a custom mode is built on it unless it says its `base`, so a 0.13 setup
+  loses «ahora», «revisar», «proyectos» and the block and module tabs from its default view. `[modos.tactica] filas =
+  "*"` brings them all back, or name the ones you want; the «todo» mode (⌥⇧4) shows every tab. `tactica`,
+  `estrategia` and `todo` are now built-in names: a custom table with one of them sits on the built-in mode and can't
+  take a `base`.
+- **Command providers' fields are checked.** A task provider's `prioridad`, `de` and `fecha` (read from the row or
+  from `campos`) and a calendar's `respuesta` are validated: a value outside what they take (a non-ISO date, a
+  priority like «urgente») makes the provider fail, and it shows in `fallas`. 0.13 ignored them.
+- **Every confirmation and window footer uses one button: "the key in the footer".** The footer of a window is a band,
+  one empty line below the content (also when the content scrolls) and behind an edge-to-edge line, split into cells;
+  each cell shows the key that presses it and the word, and the whole cell is the button (`componentes/boton.ts`,
+  `media/css/boton.css`, tokens `--boton-…`). On the phone the cells share the width and the key is hidden. It is in
+  `preguntar` (every `ui.aviso` with buttons), `pieVentana`, `escribir`, contestar, the instruction, the move to
+  another machine, the drop strip in the terminal, removing someone's account, the terminal that won't open and
+  ⚙ themes. The catalog (`/componentes#botones`) shows it with its states, the rules of focus and ⏎, the other three
+  forms that were weighed and why they lost, and an inventory of every confirmation in the page with file:line.
+- **What destroys has its own chord, ⌘⌫, never ⏎ alone, and opens with the focus on "cancel".** Deleting a style, a
+  mode, a world, a periodic process or a theme; removing a module or an account; discarding held messages or a thread;
+  removing an agent; cancelling an errand; and a task or object action whose verb destroys. They are in the danger red
+  (the agents' "eliminar" is red now, it looked blue); "cancel" is one: ⎋, in the text color. The full list, with why,
+  is in the catalog ("las que destruyen"); "llevar igual" in a move is no longer next to a red "no llevarlo".
+- **The key of each cell presses it; ⏎ presses the focused one; a held key presses nothing.** Handled for every window
+  by `web/botonera.ts`, which `abrirVentana` installs. The focus is marked with `:focus`, so it shows even when the
+  window was opened with a click.
+- **One search box and one row of tools in the sidebar: HILOS's, which also searches the archive.** Typing filters the
+  live threads and the archived ones: if any archived thread matches, ARCHIVO shows open with only those (and their
+  count), and none hides it; folding it while typing lasts as long as the text, and clearing the text puts it back as
+  the person left it. ARCHIVO's own search box and sort order are gone (the sort order was the same three options as
+  HILOS's, which now applies to both), and so is the submenu variant of the section tools (`enSubmenu`, `.en-submenu`).
+  Covered by a new case in `npm run prueba:barra`.
+- **Group headers go in normal weight, not bold.** The sidebar's group headers (DASHBOARD, AGENTES, HILOS, EQUIPO) and
+  the headers that share their token (`--item-cabecera-peso`: a screen's name, táctica, the day) are told
+  apart by their colour and icon, not by weight.
+- **⚙ pestañas and ⚙ modos say how they combine.** ⚙ pestañas is the order and what no mode shows; each mode shows the
+  ones it names, in the order it names them, and a mode with all of them uses the ⚙ pestañas order. The «filas de
+  DASHBOARD» setting left the list of manual changes of the active mode: its row above replaces it.
+- **The instruction icon on a reading's card (the «leer» tab) opens a thread with that reading.** It used to send the
+  reading as a pending task (to the tasks agent, with `/tarea` and only its title). Now the same instruction window
+  comes with «a new thread» chosen, named after the reading, and the card's content as free context: title, original
+  link, source and date, topics, each block (summary, why it matters, where it came from), what was answered and what
+  is written in «tu lectura» without answering. Its help says so. Tested by `npm run prueba:leer-hilo`.
+- **Every search field on the page is now one component, with one rule.** The magnifier goes first and says "search
+  here", one character before the first typed one (`--buscador-lupa-hueco`, the grid's space); no placeholder text
+  inside: what a field searches («hilos», «tareas») goes to its `aria-label` and to the start of the tooltip, with its
+  fields and keys. At the end: the count of what the filter left, the key that focuses it (only while empty and
+  unfocused, no longer as "/ buscar" in the placeholder) and, once something is typed, an ✕ that clears it
+  (`web/buscadores.ts` handles it for the whole page and fires an `input`, so each view filters with what it already
+  listens to). States are told by color only: focused or filtering, the magnifier takes the accent.
+  `componentes/buscador.ts`, `media/css/buscador.css`, tokens `--buscador-…`.
+  - A search field that is a row of its own is a bar (`barraBuscar()`): the standard bar height
+    (`--pantalla-barra-alto`), the screen's padding and a bottom line from edge to edge that separates it from the
+    list and takes the accent while typing; what comes with the search (sort, show machines, a button) sits on the
+    right, in its square cells. The field itself has no border: four options were compared side by side in the
+    catalog (`/componentes#buscador/bordes`) and the bar's line won.
+  - Every search field uses it: HILOS in the thread bar, tasks, what waits for you, projects, the inbox, Todo,
+    ⚙ modules, the skill filter of a periodic job, ⌘K, the filter of `elegir` and of the ⋯ menu, the two lists of the
+    instruction, the palette window, the codes sheet of a thread and the share page. The catalog page shows its
+    states, the four borders, its parts and where each one lives. `npm run prueba:buscador` checks the component and
+    that every field in that inventory uses it.
+- **The folder in a thread's screen bar is dim until hovered.** Word buttons in a screen bar (`.pantalla-boton.palabra`:
+  a thread's folder, a view without an icon) go in the bar's dim button color and take their tone, or the hover color,
+  only on hover, like the icon buttons; the folder no longer sits in blue.
+- **`GET /salud` says where the page is served (`web`).** Checks reach the page on its real port instead of guessing.
+- **Parent and child talk outside the hop limit.** A message between a thread and its direct child carries
+  `saltos: 0` and its own count, which restarts with a commit in the child's folder, when the person speaks to
+  either, or when it's released. The «listo → git merge main → listo» pattern no longer hits the 6-hop limit; the
+  limit still stops two agents answering each other without doing anything, and the hourly cap still applies.
+- **Lines and icons follow one grammar.**
+  - Every line is the same color, the one under the mode band too (the world shows by its name in the band). Foco
+    has no line on top.
+  - The sidebar's separators run edge to edge: the line is now the top edge of the next section header, on its own
+    background, and a folded section no longer leaves two lines with a gap.
+  - Between two icons in a row there is always a square space (`--entre-celdas`, `--entre-iconos` in tokens.css): a
+    screen's views and actions, a header's fixed actions, hover and card actions, the HILOS band, star and share.
+    The rule is written in item.css and gramatica.ts. On a phone, the HILOS band keeps its icons together for now.
+  - The ‹ that folds the sidebar moves from DASHBOARD to the right end of the notice strip.
+  - The right column (the side panel) gets its own bar with a line, level with the sidebar's and the center's.
+- **Asking for a text is a window like the others.** The prompts for a line, a longer text or a question (`campo`,
+  `escribir`, `preguntar` in web/interfaz.ts) now open on `abrirVentana`, with its frame, its footer and its keys,
+  64ch wide.
+- **Choosing from a list is a window too.** `elegir` (which machine to move a thread to, and every other list
+  chosen with ↑ ↓ ⏎) opens on `abrirVentana`, 64ch wide, with the shared search box as its filter, rows aligned
+  with the title and the selected option's full detail below a line. The old `<dialog>` box (`caja()`) is gone.
+- **⌘K is a window too.** The search window opens near the top on `abrirVentana`, 80ch wide with a fixed 16-line
+  list, its rows drawn with `item()`; ↑ ↓ ⏎ ⎋, remote sources and ✕ work as before. It no longer snaps to the
+  background's character grid.
+- **The ⋯ menu is a window too.** `menu()` (right click on a thread, the ⋯ of a row) opens on `abrirVentana` next to
+  what opened it, rows drawn with `item()`, with its filter, ↑ ↓ ⏎ ⎋ and a click outside to close; when it doesn't fit
+  below, it opens above.
+- **The header writes what you see as its address: «laptop:Telar»,** colon and no chevron. Another machine's
+  thread still reads «laptop ⇢ servidor:Telar».
+
+- **A first pruning of the dashboard** (step 1 of `docs/propuestas/orden-por-modos.md`).
+  - «te esperan» gets the key t and sits right after «ahora». A built-in tab that `[dashboard] orden` doesn't name
+    now goes next to its usual neighbor instead of after the modules. The bar and ⚙ pestañas share that rule.
+  - Apps (games, viewers) leave the thread bar for a menu in the header, shown only when there are apps.
+  - What has been overdue for more than 30 days is debt. Tasks and checkboxes alike leave «esta semana», the
+    «si sobra» of «ahora» and the top of foco, and get their own «deuda» filter, with its count. They stay in
+    «todas» and «vencidas». A starred task stays in «esta semana».
+  - Each row of «te esperan» shows the priority and due date it already carried, as task rows do.
+
+- **The page's header fits its width, and its right-hand buttons are always there.** Only CSS, with a container query
+  on the header measured in characters, so it follows the page's font size. As it narrows, what goes first is:
+  - the running version, shown only from 120 characters on (still in the logo's tooltip and in ⚙);
+  - in the middle, the machine name before what you're looking at; when you're looking at something and space is
+    short, only its name stays;
+  - under 64 characters (phones), «telar» becomes «T», the new-version notice keeps only its icon and «‹ hilos»
+    becomes «‹».
+
+  The buttons on the right keep their column at every width, and now respond across the header's full height, not
+  only on the icon.
+
+- **What destroys something asks with the focus on «cancelar», and discarding a live thread asks first.** A
+  distracted ⏎ now means «don't».
+  - With the focus on «cancelar»: discarding an archived thread, removing a module, deleting a scheduled job, a style
+    or a mode (or resetting it), cancelling an errand, an object's actions, a task action that asks to confirm, and
+    the permission a module asks for («Permitir siempre» used to be first, and the box can pop up while you type).
+    Taking someone's account away starts on «no».
+  - Discarding a live thread, by the ✕ on its row or by ⋯, used to happen without a question. Now it asks, says that
+    it is alive (and where, and whether it is working), and what is lost: the thread ends, skips ARCHIVO and can't be
+    resumed with a click. Its conversation stays on disk. To keep it, archive it.
+
+- **Every thread says which machine it lives on, and `telar hilos` says the list is only this machine's.** Without
+  `--red`, `telar hilos` lists only this machine's threads, and nothing said so. An agent on the server looking for a
+  laptop thread found 98 threads with an empty `remoto` and concluded it didn't exist, though it was in
+  `otras_maquinas` of `--red`.
+  - In `telar hilos --json` and `GET /hilos`, there is a new top-level `maquina` (this machine, by its bus name), and
+    every thread, here or in `otras_maquinas`, carries its own `maquina`. One command tells where any thread is.
+  - The text header names the machine. With a bus and without `--red`, a last line says the other machines need
+    `--red`.
+  - The agent's start-up context and the threads skill point to `telar hilos --red --json` when there is a bus, and
+    explain the two lists. `docs/contratos.md` says what `remoto` is and isn't, and that a name repeated across
+    machines can appear in both lists.
+
+- **Two more components: the list section's tools and the window frame.** The thread bar's separator, its tool band
+  (search, sort and the machines) and its «nada calza» row now come from `componentes/seccion.ts` instead of being
+  written by hand; the bar looks the same. The module search in ⚙ uses the shared search box. `componentes/ventana.ts`
+  is the frame of what opens on top of the page: header, field, body and footer, centred, at the top (like ⌘K) or
+  next to the click (like the ⋯ menu), with `paleta` for a window with a filterable list. The catalog shows them.
+
+- **Cards are a component, and foco uses it.** A card is an item that doesn't get cut: a header (its circles, the
+  whole title over several lines, and its actions top right in their own column, shown on hover and on the selected
+  card; on a phone just ⋯), an optional body, and a footer with its data and, on the right, a mark and a meta value.
+  No frame or background of its own: cards are separated by space, the selected one gets the selection background,
+  and what's wrong is said by the pieces (an overdue date in red), never by a colored border. It has its own tokens
+  (`--tarjeta-…`), a page and an anatomy plate in the catalog. Foco's cards are built with it, with the same pieces as
+  a task row (priority and state circles, star, new date, the instruction, done, ⋯); concentration uses the roomy
+  variant.
+- **Task lists follow the design system.** Every list of tasks (the «tareas» tab, an email's tasks, a project's
+  detail, «ahora», a provider's tab) uses one row, built on the item like a thread in the sidebar: priority and state
+  as circles (in progress filled, waiting for your decision a ring, P0 filled in red), code and project in aligned
+  slots, the text on one line (whole on hover) with what the agent left and the owner when it isn't you, the star
+  (a ring with a dot) and the date at the end, and on hover star, new date, share, the instruction and done, with ⋯
+  for the rest. «tareas» is no longer a table: no column header or colored frame; it gets the sidebar's tools (search
+  with its count, and the sort group: date, priority, star, project, owner, code, alphabetical) above its filters.
+  Changing a task's priority moved from clicking its icon to ⋯.
+- **One way to send something to a thread: the instruction.** Foco's «con Claude» and «empezar ahora», «Acción…» in
+  every entity's menu, «encargar» on an agent, «escribirle a <agente> sobre este proyecto…» and the two «Llevarla…»
+  items of a README checkbox are now one window, «instrucción», with one icon everywhere: what it is about (the
+  entity, sent as context), to whom (its thread, a new one, an agent or any thread), the skill (the recipient's; foco
+  and a task's file suggest /tarea) and what you ask, with the exact line it will get at the bottom. A task's file has
+  it in its bar. Which thread is «its thread» is telar's call, for any entity: a task's or a checkbox's goes where
+  `telar pendiente` takes it (its project's thread, here or on another machine, or the pending-tasks agent), a thread
+  is itself, an agent gets an assignment, anything else follows the project or thread it links. `telar actuar` gains
+  `--nuevo`, `--donde` (where it would go, sending nothing; `POST /actuar/adonde`) and works without an entity (just
+  `--a`). A new thread for a task that has none opens in its project's folder, not the root. Resuming a thread has
+  its own icon now; the instruction took the old one (docs/propuestas/instruccion.md).
+- **A task's file: its actions are icons, and «escribirle a…» is the instruction.** The provider's actions whose
+  role is known (done, discard, «esperar a…» as a pause, «tamaño…» as a wristwatch, and date, priority and owner when
+  the subtitle doesn't show them) are icons in the file's bar, each with its tooltip and key number; the rest keep
+  their key and word. A task's ⋯ uses the same icons, and its «instrucción…». The file's «escribirle a Claude» button
+  and its own draft are gone: the instruction icon does it. The instruction keeps what you wrote and didn't send, per
+  entity, with its recipient and skill: opening it again from anywhere (the file, foco, the row) brings it back; it
+  goes away when sent. «Procesarlo en un hilo» on a block's item (an email) opens the instruction with the module's
+  message written and «un hilo nuevo» picked, instead of opening the thread outright.
+- **Delegating can go to an archived thread.** In the instruction window's «a quién», after the open threads and the
+  closed ones come the archived ones, folded under an «archivo · N» row (a click opens it; searching finds them
+  without opening it). Picking one says what will happen: resumed with its conversation, opened fresh because its
+  conversation is gone, or resumed on the machine where it lives. Sending something to a closed or archived thread of
+  this machine now takes it out of the archive and resumes it with its conversation, the request as its first
+  message, without stealing the focus («retomado»); before, it failed with «can't find window». For a thread on
+  another machine the request goes to its inbox and that machine resumes it.
+- **What is sent about a task stays in its history.** `telar actuar` (and `POST /actuar`) notes on the task
+  «instrucción a «X»: …» (what was asked, without the context); if the note fails, the instruction still went out and
+  the new `aviso` field says why. `telar actuar --nuevo --nombre` without an entity opens a new thread in the agent's
+  folder (`nombre` in `POST /actuar`).
+- **Foco's actions are a band of icons above the cards.** The dotted boxes with words on the right are gone: each
+  action is an icon in the color of what it does, its name in the tooltip, in groups separated by a short rule and in
+  the same order in both modes (see · done · date and size · hand it on · first step and merge · discard). Shortcuts sit
+  in words beside their action: «hoy» (when overdue, replacing «va hoy») and +1/vie/lun beside «nueva fecha»;
+  «rápida»/«larga» beside the size clock; beside the instruction, «trabajarla» (the file's «trabajar en un hilo»: to the
+  task's thread with «Veamos T84» typed, unsent, and it takes you there; on the phone an icon with no tooltip didn't say
+  so) and, in concentration, «bloquear tiempo». While dragging a card, every action shows its name and the one
+  underneath is marked (and unmarked when the drag leaves them). On the phone the band goes below the cards. A new
+  component, `casillas` (`componentes/casillas.ts`, `casillas.css`), with its page in the catalog; a new icon for «es
+  la misma que…».
+- **The filters of «tareas» fit in one row.** What to look at (this week, to review, overdue…) stays in sight, each
+  option with its count; area and owner are folded: they show what's chosen (or their name) and a ⌄, and a click opens
+  a menu with their options and counts. «todas» is gone from area and owner: a second click on the chosen option
+  releases it, as in sorting; a remembered area or owner that no longer has tasks is released by itself. On a narrow
+  screen the row breaks by groups. A new component, `filtros` (`componentes/filtros.ts`, `filtros.css`), with its page
+  in the catalog.
+- **The archive is a submenu at the end of HILOS.** Archived threads are threads too: ARCHIVO is no longer a
+  section of its own but a folded row at the end of HILOS, «› archivo N», its arrow right before the names and its name
+  in their column. Open, its rows sit in the same grid as the threads above; folding HILOS folds it too, and whatever
+  jumps to the archive opens HILOS first. The submenu is a new variant of the list item (`variante: 'submenu'`, token
+  `--item-submenu`), with its page in the catalog.
+- **The sidebar remembers which sections you left open.** Every header (DASHBOARD, AGENTES, HILOS, EQUIPO, APPS and
+  the ARCHIVO submenu) stays open or folded as you left it, also after reloading the page. Only what differs from how a
+  header starts is kept, in the browser's storage, and the sidebar works the same without it.
+- **An agent's home is an icon on hover.** In AGENTES the word «home» no longer sits on every agent's row: a house
+  icon appears with the row's other actions when the mouse is over it, and on the phone it is in the row's ⋯. An agent
+  with no open thread now has a ⋯ too (its home, open or resume its thread, and what the server offers, like
+  «encargar», and last, in red, deleting it with the usual confirmation): a page-registered entity type can now also ask
+  for the server's actions (`registrar(…, { conServidor: true })`) and put some after them (`alFinal`). In the menu of
+  an agent's thread, what belongs to the agent (its home, open it, delete it) now sits apart, at the end, under «su
+  agente», so the thread's red «descartar» and the agent's red «eliminar» no longer touch. Deleting an agent asks with
+  the focus on «cancelar» (`ui.aviso(…, { foco: 'cancelar' })`).
+- **Each section header in the sidebar leaves room between its fold arrow and its title.** The title now starts in
+  the same column as the rows below it, the half cell every row keeps between its icon and its text; the search band
+  under a section moves with it.
+- **«Bloquear tiempo» is an instruction.** Still one click, it now goes through `telar actuar` (to the task's
+  thread, with /tarea and the fixed ask), so it stays in the task's history.
+- **Icon buttons are square.** A button with only an icon takes a square cell, the row's height on each side, the
+  same for every one; words and odd-width signs no longer stand in for icons (the sort options `!` and `a-z` are now
+  icons, the bar's fold `‹` too). A button with a word («home») is a word button and sizes to it.
+- **New is a plus.** Creating something in a section is the `+` icon alone, without the word, always the last action
+  of its section's header (the right edge, the same column in every header); only the bar's own fold `‹` goes after.
+- **Things in progress move only their icon.** A thread closing, archiving or travelling to another machine, a task
+  being marked done, a version installing, a message sending, a periodic job running: each shows a circle that moves
+  in place, a quarter at a time, while the words beside it stay still. It empties for what is leaving, fills for what
+  is completing or arriving, and turns, half full, for what is on its way. The circle (`componentes/circulo.ts`) comes
+  in three sizes and any fill, matching the priority icons; the catalog shows the family. Before, «cerrando…» grew its
+  dots and shifted the text, and a travelling thread's icon cycled colors.
+- **A row's actions unfold from the right on hover**, quick and easing out, each a moment after the one on its
+  right, behind a faint rule that sets them apart from the text they cover. The «⋯» (more actions) is always the
+  last one, at the edge, here and on the phone.
+- **The rows of the thread bar are items** (`pagina/src/componentes/item.ts`): a leading section of fixed-width icon
+  slots (priority, attention, where it lives), the text (prefix, title, suffix) and a trailing section (a notice, the
+  meta text, fixed actions, and the ones that appear on hover, ⋯ last). Same look as before; a dashboard tab's dot
+  moved to the end of its row, and group headers are written in lowercase and uppercased by the theme.
+
+### Deprecated
+
+- **`telar mensaje --modo consulta`.** It wasn't a message: it read a thread's card and last turns, as `telar ficha`
+  and `telar hilo leer` do; use those. It still works, with a one-line notice on stderr, but help no longer offers it.
+  `GET /mensajes/consulta` still answers but leaves the schema.
+- **`telar agente aviso` is now `telar agente evento`**, so «aviso» names one thing less. The old name stays as a
+  silent alias, because installed hooks call it. `telar agente instalar` writes `evento` and recognizes the old hooks
+  as its own, so it replaces them instead of adding a second set; run it once after upgrading. The mod calls `evento`
+  too. From now on, every new mechanism says what it replaces, or why it replaces nothing (`docs/propuestas/README.md`,
+  `docs/desarrollar.md`).
+- **`servidor/desplegar.sh` is retired in favour of `telar desplegar`.** It warns and calls `telar desplegar`;
+  `--solo-servidor` is now `--maquina <name>`.
+- **The `estandar` mode is now called `tactica`.** `estandar` stays as an alias, in the config and in what the browser
+  had stored.
+
+### Removed
+
+- **The «plan» tab of the dashboard is gone.** Its drawing of the day's plan as text (summary, risk, priority,
+  people, gaps, the draft notice, the comment box) and its key `d` (free again for `[atajos]`) went with it, as did
+  the «the plan of that day» button in the calendar's bar. The plan stays as data: the planning skill still writes
+  it (`[resultados.plan]`), Táctica still crosses it with the agenda and the calendar still draws its blocks. «sin
+  plan de hoy» in Táctica is now just a line: it no longer opens the tab. The page's `PantallaPlan` is now
+  `PantallaCalendario`.
+- **Blocks that went on top of the plan tab (`en = "plan"`) are retired.** A `[bloques.x]` with `en = "plan"` or
+  `dentro = "plan"`, or a `[vistas.x]` with `aparece = "plan"`, no longer breaks the configuration: it is left out
+  (`Config.retirados`) and `telar doctor` warns about it, as it does for `plan` in `[dashboard] orden` or `ocultas`
+  (ignored too): delete those lines, or give the block its own tab. `telar config --json` and `GET /config` no longer
+  send a block's `en`.
+
+### Fixed
+
+- **A request to a machine that doesn't answer says why.** `telar.bus.pedir`, with nobody answering, uses the
+  machine's snapshot: «laptop fuera de línea desde 14:02» (`fuera_de_linea`, `desde`), or that it is online and its
+  telar is older and doesn't serve that verb (`viejo`, `version`). `telar hilo leer --maquina laptop` with the laptop
+  off used to say the laptop «no atiende «leer»».
+- **A thread's terminal in the page now resizes its tmux window live.** Dragging the terminal's edge (or resizing the
+  browser) changed xterm.js and sent the new size, but the tmux window kept the size the view was opened with until
+  the page reconnected: `telar mirar` ran in a new session (`start_new_session`) with the PTY only inherited, so the
+  PTY was not its controlling terminal and the kernel's SIGWINCH reached nobody. The child now takes the PTY as its
+  controlling terminal (`TIOCSCTTY`) before becoming `mirar` (`telar.terminal.con_terminal`).
+- **⎋ in a move's question closed the panel and left the move waiting forever.** Now it is "no llevarlo".
+- **Reading `ps` and tmux no longer crashes on a line cut mid-character.** `ps` truncates long arguments by bytes,
+  so a line could end in half a UTF-8 character and `telar hilo dormir` (and the node, every 30 s) died with
+  `UnicodeDecodeError`. The process list and everything telar reads from tmux (captured panes included)
+  are now decoded with replacement characters instead.
+- **A bare file name an agent writes under a folder it just named opens that folder's file.** An agent writes «In
+  `notas/artículos/x/`:» and below it «`original.md` — the full text»; a click on `original.md` (in a
+  thread's terminal, conversation or reading) used to resolve it against the root and the viewer said «no existe».
+  The page now sends the backend of the thread's machine (`GET /api/archivos/resolver`, `telar.servicios.resolver`;
+  another machine's node answers it by the bus, as `archivo-leer` with `resolver`) the path as written, the thread's
+  folder and the folders named earlier in the same message, nearest first (in the terminal, up to the message's
+  bullet). A bare name is looked for under those folders first, then in the thread's folder and the root; a path with
+  folders, as written first. If it is still missing, it is searched by name under the root (and the thread's folder,
+  if outside it): one opens, several are offered in the viewer to choose from, the closest to the message first,
+  instead of «no existe». Accents don't get in the way: a path with `í` composed or decomposed (NFD) is one link,
+  whole, and finds the file either way. An older node that doesn't know how to search falls back to the old lookup.
+- **`telar commit` no longer reports «subido» while other people's uncommitted changes sit in a stash.** To rebase
+  onto what arrived, git's `--autostash` set aside the dirty files of other threads; when it could not put them back
+  (enough that another process held `index.lock` at that instant, as any `git status` does), git stored them in the
+  stash list, said so only on stderr and exited 0, so the files stayed out of the working tree with no warning. Now
+  telar sets them aside in a stash of its own and puts them back with `git stash apply`, retrying while the lock is
+  taken. If someone wrote one of those files meanwhile, or they still can't go back, it does not push: the state is
+  `apartado`, the exit code 3, and the message names the stash, its files and the commands that restore them
+  (`--json` adds `stash` and `apartados`). A rebase that fails and cannot be aborted is no longer reported as «left
+  as it was», and the set-aside changes are not put back on top of it, where the later `git rebase --abort` would
+  wipe them.
+- **`telar periodicos` writes the crontab from the node too.** The node runs with `NoNewPrivileges`, which voids the
+  setgid bit `crontab` needs on Linux: a change asked through the bus or the page wrote `periodicos.toml`, failed with
+  «crontabs/<user>/: fopen: Permission denied» and left cron running the old block (a paused process kept running).
+  There `crontab` now runs as a transient unit of the user's systemd (`systemd-run --user`), which does not inherit
+  the restriction. If the crontab still cannot be written, the order says the file changed but cron did not.
+- **Tests can't reach the live tmux, thread or telar state of whoever runs them, and run faster.**
+  `pruebas/conftest.py` (`comun.aislar_sesion`) removes `TMUX`, `TMUX_PANE`, `TELAR_*` and the Claude Code session
+  markers, and points `HOME`, `XDG_*` and `TMUX_TMPDIR` at a per-session temp folder; before, the suite wrote to the
+  real `commits.log`, `concesiones.json`, the gws cache and the shell history, and a run from a thread could close
+  that thread's window. The full suite runs in 4 processes with pytest-xdist (`--dist loadscope`, 70 s → 21 s) when
+  it is installed (the `pruebas` extra), and at most two full suites run at once per machine (a `flock` turn that
+  says whom it waits for). `prueba:contestar` skips its fake pauses (34 s → 0.5 s), `prueba:eco` runs on a fake
+  clock, and `scripts/senuelo.py` runs the suite against decoys and fails if any of them changed.
+- **Threads no longer inherit the Claude Code session that opened them.** A tmux server started from a Claude Code
+  shell kept that session's markers (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, its session id and messaging socket)
+  in its global environment and handed them to every new pane, so new threads started with transcript saving off.
+  telar now starts its tmux server without them, clears them from an existing server on `telar tejer`, and strips
+  them from agents, windows opened by periodics and errands, and periodic commands; also the requester's
+  `TELAR_HILO`, `ZELLIJ_*`, and Claude Code's `GIT_EDITOR=true`. User settings such as `CLAUDE_CODE_USE_BEDROCK` or
+  `ANTHROPIC_API_KEY` still pass. The tests that start tmux use their own socket.
+- **A markdown link in a thread's answer opens with a click.** Inside tmux 3.4 or newer, Claude Code writes
+  `[Doc](https://…)` as an OSC 8 hyperlink that shows only «Doc», and tmux passes the address only to a terminal that
+  says it understands hyperlinks. The page's terminal didn't say so, so «Doc» arrived without its address. The page
+  now attaches with `tmux -T hyperlinks` (`telar mirar --enlaces`), on the laptop and the phone.
+- **A task marked done stays gone.** In Táctica it vanished for a second and came back until the page was reloaded:
+  the dashboard repainted with the day read before closing it, and the reread after it was skipped if another was
+  already on its way, so the old read stayed cached for five minutes. Each read now knows which change it started
+  after, and one from before a change is dropped. What the provider already closed stays out of every list while the
+  day is reread. If closing fails, the row comes back and says why. The ✓ also strikes Táctica's rows at once.
+- **Titles lose markdown escapes.** «# 01\. Reconocimiento» reads «01. Reconocimiento» in every view
+  (`lectura.sin_escapes`); backslashes inside code and those that escape nothing stay. An escaped `*` or `_` no longer
+  opens an italic.
+- **⏎ in a picker no longer reaches the page** behind it.
+- **A screen's bar is always its height.** An icon in it stretched the line height by a pixel, so its line sat
+  one pixel below the sidebar's.
+- **The page no longer gets two 404s on load.** It asked for `/dev/cambios` even without `--dev` (now `<meta
+  name="telar-dev">` says when), and for a canvas memory that didn't exist yet (now `GET /archivos?si_hay=true`
+  answers 204).
+- **Bus replies over 1 MB arrive.** NATS carries 1 MB per message, so a node whose answer was bigger (the task list
+  from the other machine weighed 1.46 MB) couldn't send it (`MaxPayloadError`) and the asker waited out its timeout. A
+  reply larger than `max_payload` now goes gzipped, and if it still doesn't fit, an error comes back at once. Every
+  machine on the bus needs this version.
+
+- **Two threads whose names differ only in case or accents no longer share a mailbox.** A mailbox folder, its bus
+  subject and its state key all came from the name lowercased and without accents. So «Estrategia» and «estrategia»
+  were one mailbox: a message for one reached the other, even when sent by id.
+  - Now, when names clash, one keeps the usual mailbox and the others move to `<forma>_<6 hex of the exact name>`,
+    the same on every machine, noted in `<estado>/casillas/fichas.json`. The one kept is the one that reads it: alive
+    or an agent, never an archived one over a live one. Whatever was pending moves to its exact owner, and nothing
+    delivered is lost.
+  - By id or address (`@2`, `hilo:X`) a message goes to exactly that thread.
+  - A name goes to the live thread, whatever the case. Between two live ones, the exact name wins, and a spelling
+    that matches neither is refused, naming both.
+  - `telar hilo hijo` and `telar hilo renombrar` refuse a name that clashes with another thread (alive, archived,
+    an agent, or on another machine) and suggest another. Renaming carries the pending mail along.
+  - Every machine on the bus should run this version at once. An older telar still sends to the shared mailbox.
+
+- **Long text reaches a thread.** tmux refuses any command over about 16 KB («command too long»). That broke sending a
+  long text to a thread and opening or resuming a thread with a long first message. Text now goes in through
+  `load-buffer -` (stdin), and a command over 12,000 bytes runs from a small script that deletes itself.
+
+- **A module's addresses are links from the first object view.** The page linked addresses with the built-in types
+  only until it learned the module types, and didn't go back. So `decision:x/D-001` showed as plain text in the first
+  object view after loading. Now what was drawn early is linked again when the types arrive.
+
+- **`telar serve --socket` is more careful.**
+  - A path longer than a Unix socket allows (103 bytes on macOS, 107 on Linux) fails in one line before starting,
+    instead of with a traceback.
+  - Only the default folder, or one it creates, gets closed to 0700. An existing folder (such as `/tmp`) is left
+    alone, with a warning if other users can get in.
+  - It used to delete whatever was at the path. Now it replaces only a stale socket; anything else is reported and
+    left alone.
+
+  `scripts/dev.py` uses one socket per port, so two development servers no longer step on each other.
+
+- **`telar mensaje --retenidos` shows every held message.** It looked at the last 200 messages while `--soltar`
+  looked at 500, so it said 1 where there were 14. Both, and the inbox, now use the same window. `telar serve`
+  reads the bus log incrementally (only what's new since its last read), so `GET /esperas` takes about a second
+  after the first call instead of five every time.
+
+- **⏎ does something in a box with buttons.** Its buttons are links without an address, and the browser doesn't press
+  those with ⏎, so the focus decided nothing. Now ⏎ presses the focused button, ⇥ reaches every button, and the ⏎
+  stops there instead of reaching the dashboard behind, which would take it as its own once the box closes. Boxes
+  that don't destroy anything (installing, archiving, marking done) can now be confirmed with ⏎.
+
+- **A web address between code quotes can be clicked in the conversation view.** Markdown only links bare
+  addresses, so one the agent wrote inside inline code (`` `https://…` ``) or a code block showed as text you couldn't
+  open. It now opens in another tab, like any other link.
+
+- **A thread that died while its node was down no longer stays alive on the bus.** Nor does its window blink on the
+  other machine any more. The node only published as dead a thread it had published alive in the same run, and that
+  memory started empty. A thread that died with the machine (a forced server reset) or while `telar serve`
+  restarted stayed `vivo: true` in `TELAR_HILOS` for good. The laptop kept reopening its window every ~55 s, the
+  window died in ~7 s because it no longer existed over there, and the bar showed it open and closed.
+  - On startup the node reads what the bus says is alive on this machine and starts from that, so the usual rule
+    (missing two rounds in a row) publishes as dead whatever isn't here. Entries that name another machine are left
+    alone. The log says «el bus lo daba vivo aquí desde antes de que arrancara el nodo y aquí no está: lo publico
+    muerto». If the bus doesn't answer then, it says so and tries again every 30 s.
+  - A thread that another machine already publishes (it moved there) is no longer published as dead from here,
+    which used to overwrite its state.
+  - On the watching side, a remote thread's window that closes by itself is reopened at most three times in five
+    minutes. After that the log says «allá no contesta: no la reabro más» once and stops. The count resets when
+    the thread's address changes or it publishes anything new.
+- **The viewer opens what a child thread on its own branch names.** A child with `--rama` works in a worktree outside
+  the repository root (`~/worktrees/<repo>-<branch>`). A file its agent named, relative or absolute, opened as «ese
+  archivo está fuera de la raíz del repositorio». What the page may read is still a closed list, and it now includes
+  the folders of this machine's threads: each thread's link and each child's worktree (`telar.ramas`). A thread
+  linked to the home folder or above doesn't count, and neither does a symlink that leads out. Writing is still
+  only under the root.
+  - The viewer without a thread (`arch:`) walks the folder that holds the file (the root, a repo or a thread's
+    folder) without leaving it. Paths outside the root come back whole, with `~`.
+  - From another machine, the viewer asks that machine's node for the document (`archivo-leer` with `documento`),
+    so its folder can be walked there. A node from before answers with the file alone, as before.
+  - Fixed on the way: a relative link in a document from another machine lost the machine when the document sat at
+    that machine's root.
+- **A message between threads is no longer lost, or announced over and over, on a loaded machine.** With the
+  machine busy, the mailbox hooks took 4 to 11 s and Claude Code cut them at 5 s. The agent then saw only the
+  «↯ mensaje nuevo» line, cut to 70 characters. A message whose hook was cut after marking it delivered never
+  arrived at all, and the Claude Code mod queued the same notice every 2 s until the turn started (five or six copies
+  in a row).
+  - A message now counts as delivered only once the conversation shows it came in. The hook leaves it in
+    `<mailbox>/camino/` with the transcript and how far it went. The next hook run (or the mod's poll) looks for its
+    header (`id <mid>`) in what was written since: if it's there, the message is delivered. If it isn't, and the hook
+    that carried it is gone, it goes back to wait and comes in again, marked «otra vez», so the agent doesn't redo it.
+    It may now arrive twice, never zero times; after 5 tries it is delivered anyway, marked `sin_confirmar`.
+  - The hooks import only what they use: no pydantic, asyncio, the bus or the services. The address helpers moved to
+    `telar.direcciones`, and `telar.objetos` re-exports them. Importing the hook path went from about 1 s to about
+    0.1 s. The mailbox and context hooks get 30 s instead of 5 (`casilla.PLAZO_GANCHO`); `telar agente instalar`
+    applies it.
+  - The mod doesn't send a notice while the previous one (or a prompt from the person) is still waiting for its turn.
+    After 120 s it gives up waiting.
+  - `telar agente casilla --leer [--hilo H] [--json]` shows what is waiting, in full, and marks it delivered: for an
+    agent that got only the notice line. The session context names it, and the installer allows it.
+- **Opening an agent's thread from the sidebar works again.** The ▷ of an agent with no open thread sent its address
+  (`agente:x`) where the folder was expected, and the server answered that there was no such agent.
+- **Releasing a thread releases it from the one that opened it, too.** `telar hilo padre ninguno` (and «soltar» on
+  the page) only removed a parent that had been set by hand; a thread opened by another one kept hanging from it in
+  the sidebar, in its children and in the turn-end notice. Now it is marked as released (an empty parent in
+  `padres.json`), and who opened it is still known; hanging it again works as before.
+- **An agent whose folder is only on this machine says so.** When agents live on another machine (`[agentes] en`)
+  and that machine doesn't have this one, opening or deleting it answered «no hay un agente». Now it answers 409 with
+  what is going on and the two ways out (get its folder there, or `[agentes.<folder>] en = "aqui"` here), and the
+  agents view marks it «solo en esta máquina» instead of «sin noticias» (`solo_aqui` in `GET /agentes`).
+- **An action in a task's file that hit «changed since it was read» (409)** dropped the cached file under the wrong
+  key, so the next try failed again; now it reads the task again.
+- **Restarting telar no longer wipes the thread list.** While the page's API didn't answer (every install restarts
+  `telar serve` for a few seconds), the whole sidebar turned into the error. Now the list stays (it's the last thing
+  known); only after 15 s without an answer does one line on top say since when, with «reintentar». It retries every
+  2 s and right when `/eventos` reconnects, and the other machines' threads no longer vanish while it's down. With no
+  list ever read, the error still fills the sidebar.
+- **A struck-through Estado no longer shows as the state.** `telar proyectos` skips what the Estado row strikes
+  through (`~~…~~`, what no longer holds) and a note's leading date («16-oct: activo, …»): «~~Activo, sin
+  empezar~~ **16-oct: activo**» is «Activo», not «~~Activo»; `estado_completo` comes without the struck part.
+- **A restart no longer shows as «down».** A bus request that nobody hears (`NoResponders`, as while a machine's node
+  restarts) is tried once more after 2 s before saying «doesn't serve it»; it never reached anyone, so repeating it
+  duplicates nothing.
+- **Threads stayed «finished, unseen» for good.** Seen only counted switching tabs in the multiplexor, and nothing
+  told telar when the page showed a thread, so almost every finished thread kept its mark. Now showing a thread in
+  the page (opening its terminal, and leaving it) counts as seeing it, the thread on screen counts as seen, and a
+  thread from another machine takes the newer of both machines' times. Once seen, a finished thread shows nothing:
+  there is nothing left to say.
+- **What you do in the page shows at once.** Seeing a thread (opening it, or leaving it for another) and changing a
+  priority show in the bar right away instead of at the next poll; the page keeps that on top of what it reads until
+  the server says the same, for up to a minute (if the change fails, it goes back at once).
+- **The server tells the page when something changes.** `/eventos` (server-sent events) says «hilos» as soon as
+  telar's state changes (a thread's attention, seen, a priority, an archive, the focus) and «espejos» when another
+  machine's snapshot arrives; the page rereads at once instead of at its next poll. Polling stays as a fallback,
+  slower while the events arrive (every 10 s instead of 3), for what doesn't go through the state.
+- **Seen crosses machines, and tmux tells it too.** A thread seen from the laptop counts as seen on the machine it
+  lives on (its snapshot carries it back), threads listed from another machine's snapshot show whether they were
+  seen (the snapshot now carries `sin_ver` and `atencion_desde`), and switching tabs in a tmux terminal counts again:
+  weaving the session sets hooks that run `telar tiempo marcar` when its window changes with someone attached.
+- **A child thread doesn't show its own priority.** It hangs from its parent and takes the parent's; its priority
+  slot stays empty, so the column still lines up.
+- **A thread's row in the bar shows its tooltip again** (its folder, state, today's time and the first pending
+  items); since 0.11 the attribute was broken.
+
 ## [0.13.0] — 2026-11-09
 
 ### Added
@@ -70,7 +1372,7 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   changes all of it, the mode's part and the style's, with a live preview. Nothing fades: colours change at once and
   things appear by size, with a bounce. It animates only what shows, at 30 fps at most, stops with the tab hidden and
   holds still with reduced motion. The engine is in separate modules under `pagina/src/web/glifos/`.
-- **`?abrir=<dirección>` opens something when the page loads** (`/?abrir=hilo:Gestión`, `tarea:T84`), instead of
+- **`?abrir=<dirección>` opens something when the page loads** (`/?abrir=hilo:Faro`, `tarea:T84`), instead of
   the dashboard or, on a phone, the list: a thread on a phone opens in its conversation (with the box to write), and
   «◀ hilos» goes back to the list. A sleeping or archived thread is shown, not resumed. For a phone's home screen.
 
@@ -184,7 +1486,7 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 ### Added
 
 - **Child threads of an agent.** A task with no project taken to Claude no longer queues in the agent's one thread
-  (where they all mixed): it opens its own, «Gestión › T454 Hacer el test Hogan», in the agent's folder (its
+  (where they all mixed): it opens its own, «Agenda › T454 Revisar el contrato», in the agent's folder (its
   instructions and memory), with a fresh conversation, on the machine where the agent lives (over the bus, verb
   `hilo-hijo`). If that task already has a live child, it writes there. In the sidebar the children hang from their
   agent, named without its prefix (↳ T454 …), from this machine or the agent's; they no longer repeat in HILOS. Picking
@@ -1157,7 +2459,7 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 ### Changed
 
 - In a task's card, «↩ escribirle a Claude» opens a box of several lines (⏎ is a new line, ⌘⏎ sends) with the
-  thread it goes to on top: the general agent (Gestión) by default, the task's thread, or any thread in the list,
+  thread it goes to on top: the general agent by default, the task's thread, or any thread in the list,
   also one on another machine (`hilo` in `POST /tareas/{id}/accion`). What was written stays as the task's draft
   until it is sent, so ⎋ or a click outside doesn't lose it, and a send that failed is retried to the same thread.
 - A task's actions: «esperar a…» has role `espera` and offers people (`none` stops waiting); a new «prioridad…»
@@ -1362,7 +2664,7 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   bus token (the secret a person's machines share), for that machine only, valid once and for a minute
   (`/entrar`). The «progreso» page is gone.
 - The browser page's header says, in the middle, which machine serves it and what you are looking at:
-  `telar › Gestión` for a thread of that machine, `telar ⇢ laptop:Telar` for one of another (forwarded). A
+  `telar › Faro` for a thread of that machine, `telar ⇢ laptop:Telar` for one of another (forwarded). A
   thread of another machine is named `máquina:hilo`, like `scp máquina:ruta` (with the person it would be
   `ana@laptop:Faro`). The machine is its name on the bus, or its hostname without one, from `/salud` (which
   now also returns `maquina` and `host`): every machine serves its own page, so with any number of them you
@@ -1639,9 +2941,9 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
   page in an iframe; the panel only frames the declared apps' origins) and `alto: "lleno"`. A section
   with only a `home` and no threads is an app: move it to `[apps]` with `pagina`.
 - VS Code: what the team asks of you is now an **EQUIPO section in the sidebar** (not a dashboard tab): one row per request or
-  priority suggestion; clicking one opens its actions — «preguntarle a Gestión» (hands it the request: it checks whether it already
+  priority suggestion; clicking one opens its actions — «preguntarle a <agente>» (hands it the request: it checks whether it already
   exists and decides new task / update an existing one / not applicable, using `telar equipo aceptar|existe|rechazar`, and answers in
-  one line; the row shows «Gestión» while it works), «agregar como tarea», «es T123: contestarle su estado» and «descartar». New
+  one line; the row shows the agent's name while it works), «agregar como tarea», «es T123: contestarle su estado» and «descartar». New
   `telar equipo revisando ID`. The dashboard keeps only the ○/◉ share toggle in the task list.
 - `telar equipo`: «does this request already exist?» now also compares **meaning**, not just words. A small model (`[equipo] semantica`,
   default `haiku`; `""` turns it off) reads the title and short description of the tasks with activity in the last 14 days

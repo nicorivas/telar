@@ -4,6 +4,7 @@
 
 import type * as cli from '../../../cli';
 import type { Dia } from '../dia';
+import type { Paginas } from '../pagina';
 import type { MensajeDia } from '../vista';
 
 /** Lo que la configuración le da a cada sección. */
@@ -16,6 +17,8 @@ export interface Contexto {
     readonly teclas: Map<string, () => unknown>;
     /** si es la que se ve: una lectura que vuelve tarde no pinta encima de otra */
     seVe(clave: string): boolean;
+    /** cómo se dibuja una página (la de configuración de un módulo, con su lienzo) */
+    readonly paginas: Paginas;
     /** la configuración resuelta (`/config`), leída al entrar a ⚙; y releerla, después de cambiar algo */
     config(): cli.JsonConfig | undefined;
     releerConfig(): Promise<void>;
@@ -41,8 +44,9 @@ export interface Seccion {
     readonly ayuda: string;
     /** si va en el menú (los mensajes entre hilos, solo con más de una máquina) */
     visible?(): boolean;
-    /** al entrar: lee lo que le falte y se dibuja */
-    abrir(): Promise<void>;
+    /** al entrar: lee lo que le falte y se dibuja. `sub`, lo de adentro que se pide (`modulos:whatsapp`: su
+     *  configuración) */
+    abrir(sub?: string): Promise<void>;
     /** se dibuja con lo que ya tiene (el refresco de cada minuto, al volver a ella) */
     pintar(): void;
     /** una acción de su página (`data-accion`): true si era suya */

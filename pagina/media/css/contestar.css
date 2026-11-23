@@ -1,0 +1,387 @@
+/* Contestar lo que te espera (componentes/contestar.ts, web/contestar.ts): la ventana que se abre desde «te esperan». Arriba
+   el resumen (con la palabra de su clase en su color), lo plegado, las opciones como filas que se eligen (el círculo: aro,
+   o con un punto al medio si está elegida, en el acento), «Otra cosa…» con su campo, el aviso y, abajo, conversarlo o ir
+   al hilo, cancelar y el botón que hace lo elegido. Sin marcos adentro: lo único con marco es la ventana. Lo que distingue
+   es el color y el ícono, nunca el tamaño de la letra. */
+
+/* el <dialog> que pone abrirVentana (web/ventana.ts): sin marco ni fondo propios (los dibuja .ventana), y lo de atrás,
+   oscurecido. La ventana no pasa del alto de la pantalla: lo que no cabe se desplaza en su cuerpo, y el pie queda */
+dialog.ventana-dialogo {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: calc(100vw - 2 * var(--ventana-margen));
+  max-height: calc(100dvh - 2 * var(--ventana-margen));
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+  color: var(--texto);
+
+  &::backdrop { background: var(--ventana-atras); }
+  &.centrada { margin: 10vh auto auto; }
+  &.arriba { margin: 8vh auto auto; }
+
+  & > .ventana { max-height: calc(100dvh - 10vh - 2 * var(--ventana-margen)); }
+  /* el foco de entrada es la ventana misma (Tab sigue adentro): su marco ya la marca */
+  & > .ventana:focus { outline: none; }
+}
+
+.ventana.contestar {
+  width: min(var(--contestar-ancho), 100vw - 2 * var(--ventana-margen));
+
+  & .ventana-cabecera { padding-block: var(--e-2) var(--e-1); }
+
+  /* de una tarea, su barra (vistas/dashboard/barra-tarea.ts): la estrella y compartir delante del título, como en su
+     ficha (dia.css, .icono-t), y lo demás al final, con los botones de una barra de pantalla (pantalla.css). Mientras
+     una corre, la barra espera, con el círculo que gira */
+  & .contestar-iconos { display: flex; gap: var(--entre-iconos); }
+  & .icono-t {
+    color: var(--texto-tenue);
+    cursor: pointer;
+
+    &.estrella.on, &.estrella:hover { color: var(--amarillo); }
+    &.equipo.on, &.equipo:hover { color: var(--cian); }
+  }
+  & .contestar-barra { display: flex; align-items: baseline; }
+  & .haciendo .pantalla-boton, & .haciendo .icono-t { opacity: .5; pointer-events: none; }
+  & .contestar-haciendo { padding-inline: var(--h-1); color: var(--texto-tenue); }
+  & .ventana-cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-2);
+    padding-block: var(--e-1);
+  }
+
+  & p { margin: 0 0 var(--e-1); }
+  & p:last-child { margin-bottom: 0; }
+  & code { color: var(--acento); }
+
+  /* un enlace en lo que pide (componentes/en-linea.ts): en el color de lo que lleva a otra parte, como los de la ficha;
+     una dirección larga se parte antes de salirse */
+  & .contestar-enlace { color: var(--acento); cursor: pointer; overflow-wrap: anywhere; }
+  & .contestar-enlace:hover { text-decoration: underline; }
+}
+
+/* el resumen: la palabra de su clase, en su color, y el texto */
+.contestar-resumen {
+  padding-inline: var(--item-pad-x);
+
+  & .contestar-marca-clase { display: block; color: var(--atencion); }
+  &.clase-retenido .contestar-marca-clase { color: var(--remoto); }
+  &.clase-en-vivo .contestar-marca-clase,
+  &.clase-permiso .contestar-marca-clase { color: var(--estado-espera); }
+}
+
+/* un mensaje, tal cual: con sus saltos, sobre la superficie de las listas (es un documento, no la ventana) */
+.contestar-literal {
+  max-block-size: 40vh;
+  padding: var(--e-1) var(--h-1);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--superficie);
+}
+
+/* lo plegado: una fila que se abre (▸ ▾), y cada parte con su título. «para el agente» se pliega igual, con a quién le
+   llega a la derecha */
+.contestar-detalle,
+.contestar-agente {
+  padding-inline: var(--item-pad-x);
+  color: var(--texto-tenue);
+
+  & summary {
+    list-style: none;
+    cursor: pointer;
+
+    &::-webkit-details-marker { display: none; }
+    &:hover { color: var(--texto); }
+  }
+
+  & .abierto { display: none; }
+  &[open] .abierto { display: inline; }
+  &[open] .plegado { display: none; }
+  & .contestar-parte { margin-top: var(--e-1); color: var(--texto); }
+  & .contestar-parte-titulo { color: var(--titulo); }
+}
+
+/* para el agente: cuándo la atiende, en dos que se eligen, y sus dos campos, subrayados como «Otra cosa…» */
+.contestar-agente {
+  margin-top: var(--e-1);
+
+  & .contestar-a { margin: 0; }
+  & .contestar-cuandos { display: flex; flex-wrap: wrap; gap: 0 var(--h-2); }
+
+  & .contestar-cuando {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--texto-tenue);
+    font: inherit;
+    cursor: pointer;
+
+    &.si,
+    &:hover { color: var(--texto); }
+  }
+
+  & .contestar-agente-campo {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    min-block-size: 2lh;
+    padding: 0;
+    border: 0;
+    outline: none;
+    overflow: hidden;
+    background: transparent;
+    box-shadow: 0 1px 0 var(--linea);
+    color: var(--texto);
+    font: inherit;
+    line-height: inherit;
+    resize: none;
+
+    &:focus { box-shadow: 0 1px 0 var(--acento); }
+  }
+}
+
+/* un bloque de opciones (una pregunta): sin marco */
+.contestar-bloque {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  & legend {
+    padding: 0 var(--item-pad-x) var(--e-1);
+  }
+
+  & .contestar-encabezado { color: var(--titulo); }
+  & .contestar-como { color: var(--texto-tenue); }
+}
+
+/* una opción: toda la fila se aprieta. El círculo en su ranura, a la altura de la primera línea; debajo del nombre, lo
+   que hará, tenue (con el ícono de acción, en la tinta de la atención, si además de contestar corre algo) */
+.contestar-op {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr);
+  column-gap: var(--h-1);
+  align-items: start;
+  width: 100%;
+  min-block-size: var(--item-alto, 1lh);
+  padding: var(--e-1) var(--item-pad-x);
+  border: 0;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: var(--hover); }
+  &:focus-visible { outline: 1px solid var(--acento); outline-offset: -1px; }
+  &:disabled { cursor: default; }
+  &.si .contestar-marca { color: var(--acento); }
+}
+
+.contestar-marca {
+  display: flex;
+  justify-content: center;
+  min-block-size: 1lh;
+  color: var(--texto-tenue);
+
+  & .circulo { margin-top: calc((1lh - var(--circulo-d, 1em)) / 2); }
+}
+
+.contestar-txt { display: flex; flex-direction: column; min-width: 0; }
+.contestar-nombre { display: flex; flex-wrap: wrap; gap: 0 var(--h-2); }
+.contestar-nota { color: var(--texto-tenue); }
+.contestar-nota .efecto { color: var(--atencion); }
+.contestar-rec { color: var(--texto-tenue); }
+.contestar-rec .i { color: var(--atencion); }
+
+/* el ícono de lo que hace una opción (soltar, descartar un retenido), en el color de lo que hace (web/iconos.ts, C) */
+.contestar-icono { color: var(--texto-tenue); }
+.contestar-icono.tono-verde { color: var(--verde); }
+.contestar-icono.tono-rojo { color: var(--rojo); }
+.contestar-icono.tono-amarillo { color: var(--amarillo); }
+.contestar-icono.tono-azul { color: var(--azul); }
+.contestar-icono.tono-violeta { color: var(--violeta); }
+.contestar-icono.tono-cian { color: var(--cian); }
+
+/* «Otra cosa…»: la fila y, abierta, su campo subrayado, alineado con el texto de las opciones */
+.contestar-otra {
+  & .contestar-campo {
+    box-sizing: border-box;
+    display: block;
+    width: calc(100% - 2 * var(--item-pad-x) - 3ch);
+    min-block-size: 2lh;
+    margin: 0 var(--item-pad-x) var(--e-1) calc(var(--item-pad-x) + 3ch);
+    padding: 0;
+    border: 0;
+    outline: none;
+    overflow: hidden;
+    background: transparent;
+    box-shadow: 0 1px 0 var(--linea);
+    color: var(--texto);
+    font: inherit;
+    line-height: inherit;
+    resize: none;
+
+    &:focus { box-shadow: 0 1px 0 var(--acento); }
+  }
+}
+
+/* lo que pasó al mandar (una falla, o que cambió mientras la mirabas), o lo que no se contesta aquí */
+.contestar-aviso {
+  margin: 0;
+  padding-inline: var(--item-pad-x);
+
+  &.info { color: var(--texto-tenue); }
+  &.falla { color: var(--peligro); }
+}
+
+/* el pie: la banda de botones (boton.css), con conversarlo o ir al hilo a la izquierda, en el acento, sin cortarse */
+.contestar-pie .botonera-izq a { white-space: nowrap; }
+
+.ventana.contestar.enviando .contestar-op { opacity: .7; }
+
+/* con ficha (una tarea, una pregunta de un módulo): más ancha y más alta, la ficha a la izquierda y lo que se pide a la
+   derecha, cada una con su desplazamiento, y el pie siempre abajo. La ficha: cada pregunta con su título en la tinta de
+   los títulos; la historia en tres columnas (cuándo, quién, qué), donde quién se distingue por su ícono y su color (tú en
+   el acento, el agente en el suyo, lo que aplicó en el de lo hecho, una reunión en el de lo remoto, lo demás tenue) */
+dialog.ventana-dialogo.con-ficha.centrada { margin-top: 4vh; }
+dialog.ventana-dialogo.con-ficha > .ventana { max-height: calc(100dvh - 4vh - 2 * var(--ventana-margen)); }
+
+.ventana.contestar.con-ficha {
+  width: min(var(--contestar-ancho-ficha), 100vw - 2 * var(--ventana-margen));
+  /* en una columna o en dos, según el ancho de la ventana misma (el teléfono, o una celda del catálogo) */
+  container: contestar / inline-size;
+
+  & .ventana-cuerpo { overflow: hidden; padding-block: 0; }
+}
+
+.contestar-dos {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+
+  & > .contestar-ficha,
+  & > .contestar-pedido {
+    min-height: 0;
+    padding-block: var(--e-1) var(--e-2);
+    overflow: auto;
+  }
+
+  & > .contestar-pedido {
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-2);
+    border-left: 1px solid var(--linea);
+  }
+}
+
+.contestar-ficha {
+  display: flex;
+  flex-direction: column;
+  gap: var(--e-2);
+  padding-inline: var(--item-pad-x);
+
+  & p { margin: 0 0 var(--e-1); }
+  & p:last-child { margin-bottom: 0; }
+  & ul, & ol { margin: 0; padding: 0; list-style: none; }
+  & .i { color: var(--texto-tenue); }
+
+  & .ficha-titulo { color: var(--titulo); }
+  & .ficha-nota { color: var(--texto-tenue); }
+  & .ficha-falla { color: var(--peligro); }
+  & .ficha-parte-titulo { color: var(--texto-tenue); }
+  & .ficha-enlace { color: var(--acento); cursor: pointer; overflow-wrap: anywhere; }
+  & .ficha-enlace:hover { text-decoration: underline; }
+
+  & .ficha-hito {
+    display: grid;
+    grid-template-columns: 12ch 10ch minmax(0, 1fr);
+    column-gap: var(--h-1);
+    padding-block: .1lh;
+  }
+
+  & .ficha-cuando,
+  & .ficha-quien { color: var(--texto-tenue); white-space: nowrap; }
+
+  & .quien-persona .ficha-quien,
+  & .quien-persona .i { color: var(--acento); }
+  & .quien-agente .ficha-quien,
+  & .quien-agente .i { color: var(--agente); }
+  & .quien-aplico .ficha-quien,
+  & .quien-aplico .i { color: var(--exito); }
+  & .quien-reunion .ficha-quien,
+  & .quien-reunion .i { color: var(--remoto); }
+  & .quien-cambio .ficha-texto,
+  & .quien-creada .ficha-texto,
+  & .ficha-que { color: var(--texto-tenue); }
+
+  & .ficha-mas summary {
+    list-style: none;
+    color: var(--texto-tenue);
+    cursor: pointer;
+
+    &::-webkit-details-marker { display: none; }
+    &:hover { color: var(--texto); }
+  }
+
+  & .ficha-mas .abierto { display: none; }
+  & .ficha-mas[open] .abierto { display: inline; }
+  & .ficha-mas[open] .plegado { display: none; }
+
+  & .ficha-dato {
+    display: grid;
+    grid-template-columns: 2ch minmax(0, 1fr);
+    column-gap: var(--h-1);
+    padding-block: .1lh;
+  }
+
+  & .ficha-dato.atencion,
+  & .ficha-dato.atencion .i { color: var(--atencion); }
+  & .ficha-dato-txt { display: flex; flex-direction: column; min-width: 0; }
+  & .ficha-parrafo { color: var(--texto); }
+  & .ficha-lista li { padding-left: 1ch; }
+}
+
+/* en una ventana angosta (el teléfono): una sola columna que se desplaza entera (la ficha, después lo que se pide); la
+   historia, con quién y cuándo en una línea y lo que dice debajo */
+@container contestar (width <= 100ch) {
+  .ventana-cuerpo { overflow: auto; }
+
+  .contestar-dos {
+    display: block;
+
+    & > .contestar-ficha,
+    & > .contestar-pedido { overflow: visible; }
+    & > .contestar-pedido { border-top: 1px solid var(--linea); border-left: 0; }
+  }
+
+  .contestar-ficha .ficha-hito {
+    grid-template-columns: auto minmax(0, 1fr);
+
+    & .ficha-texto { grid-column: 1 / -1; }
+  }
+}
+
+/* en el teléfono: abajo, de lado a lado, con el pie donde llega el pulgar */
+@media (width <= 600px) {
+  dialog.contestar-dialogo.centrada {
+    width: calc(100vw - 2 * var(--ventana-margen));
+    margin: auto var(--ventana-margen) var(--ventana-margen);
+  }
+
+  dialog.contestar-dialogo > .ventana { max-height: calc(100dvh - 2 * var(--ventana-margen)); }
+
+  /* con ficha, una pantalla: de arriba abajo, con el pie abajo */
+  dialog.contestar-dialogo.con-ficha.centrada { margin: var(--ventana-margen); }
+  dialog.contestar-dialogo.con-ficha > .ventana {
+    height: calc(100dvh - 2 * var(--ventana-margen));
+    max-height: calc(100dvh - 2 * var(--ventana-margen));
+  }
+}

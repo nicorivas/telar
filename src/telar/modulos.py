@@ -11,6 +11,7 @@ nombra la carpeta:
 El manifiesto (`<carpeta>/modulo.toml`):
 
     descripcion = "la temperatura del mar en Niño 3.4"
+    icono = "icono.png"            # opcional: PNG cuadrado (512 px), el de su pestaña instalada como app (abajo)
 
     [pestana]                      # una pestaña del dashboard: un bloque (`[bloques]`)
     nombre = "niño 3.4"
@@ -19,6 +20,9 @@ El manifiesto (`<carpeta>/modulo.toml`):
 
     [app]                          # algo que se abre en el panel (`[apps]`): pagina, archivo o url
     archivo = "dist/app.html"
+
+    [configurar]                   # su pantalla de configuración, en ⚙ módulos: un comando que imprime una página
+    comando = ["bin/nino34", "configurar"]
 
     [periodicos.bajar]             # corre donde viven los periódicos (`telar periodicos`)
     cuando = "30 7,15 * * *"
@@ -48,6 +52,10 @@ El manifiesto (`<carpeta>/modulo.toml`):
     [objetos.medicion]             # un tipo de objeto (telar.objetos): medicion:<id>, con sus consultas
     ver = "medir"                  # recibe {"id": …} y da el objeto
     acciones = []                  # otras consultas: reciben {"id": …, …parámetros}
+    esperando = "alertas"          # opcional: recibe {} y da las suyas que esperan a la persona (telar esperas)
+    listar = "mediciones"          # opcional: recibe {"tipo": …} y da todas las suyas (telar objeto medicion --listar,
+                                   # y son una fuente de telar buscar)
+    plural = "mediciones"          # opcional: cómo se llaman juntas, en una lista (la fuente de telar buscar)
 
     [permisos]                     # lo que pide fuera de su carpeta: se muestra antes de instalarlo
     leer = ["~/datos/oceano"]      # rutas que lee
@@ -67,7 +75,20 @@ Una con `consulta = true` también se pide sin terminal (`consultar`, la API `GE
 el bus): recibe los parámetros como un objeto JSON por la entrada, corre en la carpeta del módulo y
 devuelve un objeto JSON por la salida. Las dos reciben en el entorno lo que el módulo necesita saber de
 telar: `TELAR_RAIZ`, `TELAR_REPOS` (los repos de `[repos]`, en JSON: nombre, ruta y perfil),
-`TELAR_MAQUINA` y `TELAR_MODULO` (su carpeta). Un módulo es un programa aparte: si se cae, telar sigue.
+`TELAR_MAQUINA`, `TELAR_MODULO` (su carpeta) y `TELAR_PERSONA` (la del entorno, `[bus] persona` o el usuario). Lo mismo los
+comandos que imprimen sus páginas (el de su pestaña, también con `--item`, el de su app y el de su configuración:
+`entorno_de`) y sus periódicos. Una consulta que no se puede hacer sale con 1 y `{"error", "codigo"}`: un 4xx
+llega tal cual a quien la pidió (409: cambió desde que se leyó); lo demás es una falla del módulo (502). Un módulo es
+un programa aparte: si se cae, telar sigue.
+
+**Su configuración.** `[configurar]` es un comando que imprime una página, como el de `[pestana]` (casi siempre un
+lienzo): telar la muestra en ⚙ módulos (su «configurar») y desde el ⚙ del título de su pestaña. Su lienzo cambia lo
+del módulo con sus propias consultas (`window.lienzo.pedir("consulta")`, sin pedir permiso): lo que se configura
+vive donde el módulo lo guarde, no en la configuración de telar.
+
+**Su pestaña, como app.** `/pestana/<nombre>/` es la página con solo esa pestaña, y con su propio manifiesto: en el
+teléfono se instala aparte de telar, con el nombre de la pestaña y el `icono` del módulo (si no trae, el de telar).
+El ícono va entero en el cuadrado, con el dibujo en el 80% del centro: Android lo recorta con la forma que use.
 
 **Permisos.** `[permisos]` dice lo que el módulo pide fuera de su carpeta: rutas que lee y que escribe, la
 red y las órdenes de telar que corre. `telar modulos instalar` lo muestra antes de preguntar, y `actualizar`
@@ -89,7 +110,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -98,7 +118,7 @@ from telar.salida import visible
 
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
-_RAIZ = {"nombre", "descripcion", "pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
+_RAIZ = {"nombre", "descripcion", "icono", "pestana", "configurar", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
          "requiere", "objetos", "permisos", "fondo", "fechas"}
 #: lo que entiende `[permisos]`; una clave que no está aquí se muestra como no entendida, no se calla
 PERMISOS = ("leer", "escribir", "red", "ordenes")
@@ -108,6 +128,33 @@ ESPERA_CONSULTA = 30
 
 class ErrorDeModulo(ValueError):
     """El manifiesto no está, o dice algo que telar no entiende."""
+
+
+class ErrorDeConsulta(ErrorDeModulo):
+    """Una consulta que el módulo rechazó con un código suyo (`{"error", "codigo"}` en la salida, y sale con 1): 404
+    no está, 409 cambió, 403 no te toca, 422 el pedido no sirve. Solo un 4xx: lo demás es una falla del módulo."""
+
+    def __init__(self, texto: str, codigo: int):
+        super().__init__(texto)
+        self.codigo = codigo
+
+
+def _rechazo(salida: str) -> tuple[str, int] | None:
+    """(el error, su código) si lo que el módulo imprimió al salir con error es `{"error", "codigo"}` con un 4xx."""
+    j = None
+    # la salida entera, o su última línea (si antes imprimió otra cosa)
+    for texto in dict.fromkeys((salida.strip(), (salida.strip().splitlines() or [""])[-1])):
+        try:
+            j = json.loads(texto)
+            break
+        except ValueError:
+            continue
+    if not isinstance(j, dict) or not isinstance(j.get("error"), str) or not j["error"].strip():
+        return None
+    codigo = j.get("codigo")
+    if isinstance(codigo, bool) or not isinstance(codigo, int) or not 400 <= codigo < 500:
+        return None
+    return j["error"].strip()[:500], codigo
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +175,7 @@ class Modulo:
     contexto: str = ""
     #: los programas que tiene que haber en el PATH (`[requiere] programas`)
     requiere: tuple = ()
-    #: los tipos de objeto que trae (`[objetos.<tipo>]`): tipo → {ver, acciones, descripcion}
+    #: los tipos de objeto que trae (`[objetos.<tipo>]`): tipo → {ver, acciones, descripcion, esperando?, listar?, plural?}
     objetos: dict = field(default_factory=dict)
     #: lo que pide (`[permisos]`): leer, escribir y ordenes son tuplas, red es una tupla de sitios o un
     #: bool, y `otros` lo que esta versión no entiende. None si el manifiesto no lo dice. No se hace cumplir
@@ -139,6 +186,11 @@ class Modulo:
     #: una fuente de fechas (`[fechas] comando`): un programa que las imprime en JSON, como un proveedor `fechas` de
     #: tipo `comando` (telar.proveedores.fechas). {comando, tiempo_maximo}; vacío si no trae
     fechas: dict = field(default_factory=dict)
+    #: su ícono (`icono`, un PNG de su carpeta): el de su pestaña instalada como app (`/pestana/<nombre>/`); None si no trae
+    icono: Path | None = None
+    #: su pantalla de configuración (`[configurar] comando`): imprime una página, como la de su pestaña. {comando}; vacío
+    #: si no trae
+    configurar: dict = field(default_factory=dict)
 
     def faltan(self) -> list[str]:
         """Los programas de `[requiere]` que esta máquina no tiene."""
@@ -149,7 +201,8 @@ class Modulo:
     @property
     def aporta(self) -> list[str]:
         """Lo que trae, en palabras: «pestaña», «app», «periódico nino34», «resultado», «orden medir»."""
-        return ([*(["pestaña"] if self.pestana else []), *(["app"] if self.app else []),
+        return ([*(["pestaña"] if self.pestana else []), *(["configuración"] if self.configurar else []),
+                 *(["app"] if self.app else []),
                  *[f"periódico {n}" for n in self.periodicos], *(["resultado"] if self.resultado else []),
                  *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
                  *[f"objetos {t}:" for t in self.objetos],
@@ -252,7 +305,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     sobra = set(datos) - _RAIZ
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
-    for clave in ("pestana", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos",
+    for clave in ("pestana", "configurar", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos",
                   "permisos", "fondo", "fechas"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
@@ -319,14 +372,35 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
         acciones = cuerpo.get("acciones", [])
         if not isinstance(acciones, list) or not all(isinstance(a, str) for a in acciones):
             raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}] acciones: una lista de órdenes del módulo")
-        for verbo in [cuerpo.get("ver"), *acciones]:
+        # `esperando`, opcional: la consulta que da los suyos que esperan a la persona (telar.objetos, «Lo que espera»);
+        # `listar`, opcional: la que da todos los suyos (telar objeto <tipo> --listar)
+        esperando, listar = cuerpo.get("esperando"), cuerpo.get("listar")
+        for verbo in [cuerpo.get("ver"), *acciones, *(v for v in (esperando, listar) if v is not None)]:
             if not isinstance(verbo, str) or verbo not in ordenes or not ordenes[verbo]["consulta"]:
                 raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}]: «{verbo}» tiene que ser una de sus [ordenes] con consulta = true")
-        objetos[tipo] = {"ver": cuerpo["ver"], "acciones": tuple(acciones), "descripcion": str(cuerpo.get("descripcion", ""))}
+        # `plural`, opcional: cómo se llaman los suyos juntos en una lista (su fuente en telar buscar); sin él, el tipo
+        plural = cuerpo.get("plural", "")
+        if not isinstance(plural, str):
+            raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}] plural: se esperaba un texto")
+        objetos[tipo] = {"ver": cuerpo["ver"], "acciones": tuple(acciones), "descripcion": str(cuerpo.get("descripcion", "")),
+                         **({"esperando": esperando} if esperando else {}), **({"listar": listar} if listar else {}),
+                         **({"plural": " ".join(plural.split())} if plural.strip() else {})}
 
     descripcion = datos.get("descripcion", "")
     if not isinstance(descripcion, str):
         raise ErrorDeModulo(f"{nombre}: descripcion: se esperaba un texto")
+    icono = datos.get("icono")
+    if icono is not None and (not isinstance(icono, str) or not icono.lower().endswith(".png")):
+        raise ErrorDeModulo(f"{nombre}: icono: un .png de su carpeta")
+    configurar = dict(datos.get("configurar", {}))
+    if configurar:
+        sobra = set(configurar) - {"comando"}
+        if sobra:
+            raise ErrorDeModulo(f"{nombre}: [configurar] no conoce «{sorted(sobra)[0]}»")
+        if not isinstance(configurar.get("comando"), list) or not configurar["comando"] \
+                or not all(isinstance(w, str) and w for w in configurar["comando"]):
+            raise ErrorDeModulo(f"{nombre}: [configurar] comando: se esperaba una lista de palabras")
+        configurar = {"comando": _comando(carpeta, configurar["comando"])}
     fondo = dict(datos.get("fondo", {}))
     if fondo:
         sobra = set(fondo) - {"archivo", "nombre"}
@@ -355,7 +429,8 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
                   instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
                   requiere=tuple(x.strip() for x in requiere), objetos=objetos,
-                  permisos=_permisos(nombre, datos.get("permisos")), fechas=fechas)
+                  permisos=_permisos(nombre, datos.get("permisos")), fechas=fechas,
+                  icono=Path(_ruta(carpeta, icono)) if icono else None, configurar=configurar)
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────
@@ -371,11 +446,31 @@ def entorno(config, m: Modulo) -> dict:
              for r in getattr(config, "repos", ()) or ()]
     maquina = mod_bus.maquina(config) if getattr(config, "bus", None) is not None else ""
     return {**os.environ, "TELAR_RAIZ": str(Path(config.raiz).expanduser()), "TELAR_REPOS": json.dumps(repos),
-            "TELAR_MAQUINA": maquina, "TELAR_MODULO": str(m.carpeta)}
+            "TELAR_MAQUINA": maquina, "TELAR_MODULO": str(m.carpeta), "TELAR_PERSONA": persona(config)}
+
+
+def persona(config) -> str:
+    """Quién es la persona de esta máquina para un módulo: `TELAR_PERSONA` si ya viene en el entorno (como
+    `TELAR_RAIZ` le gana a `raiz`: una prueba la fija así), si no la de `[bus] persona`, o el usuario del sistema."""
+    import getpass
+
+    try:
+        return (os.environ.get("TELAR_PERSONA", "").strip()
+                or str(getattr(getattr(config, "bus", None), "persona", "") or "").strip() or getpass.getuser())
+    except (KeyError, OSError):  # sin usuario en el sistema (un contenedor): que el módulo decida
+        return ""
 
 
 def buscar(config, nombre: str) -> Modulo | None:
     return next((m for m in getattr(config, "modulos", ()) if m.nombre == nombre), None)
+
+
+def entorno_de(config, nombre: str, parte: str) -> dict | None:
+    """El entorno con que corre la página que aporta un módulo: su pestaña (`parte` «pestana», el bloque que lleva su
+    nombre) o su app («app»). None si esa pestaña o esa app no es de un módulo (se declaró a mano): corre con el de telar.
+    Un nombre declarado a mano y por un módulo a la vez es un error de la configuración, así que el nombre basta."""
+    m = buscar(config, nombre)
+    return entorno(config, m) if m is not None and getattr(m, parte, None) else None
 
 
 def correr_orden(config, m: Modulo, argv: list[str]) -> int:
@@ -388,6 +483,8 @@ def correr_orden(config, m: Modulo, argv: list[str]) -> int:
     o = m.ordenes.get(argv[0])
     if o is None:
         raise ErrorDeModulo(f"{m.nombre} no tiene la orden «{argv[0]}»: tiene {', '.join(m.ordenes) or 'ninguna'}")
+    import subprocess
+
     try:
         return subprocess.run([*o["comando"], *argv[1:]], env=entorno(config, m)).returncode
     except OSError as e:
@@ -402,6 +499,8 @@ def consultar(config, nombre: str, verbo: str, params: dict) -> dict:
     o = m.ordenes.get(verbo)
     if o is None or not o["consulta"]:
         raise ErrorDeModulo(f"{nombre} no tiene la consulta «{verbo}»")
+    import subprocess  # aquí y no arriba: la configuración carga este módulo en cada orden, y los ganchos corren seguido
+
     try:
         r = subprocess.run(o["comando"], input=json.dumps(params, ensure_ascii=False), capture_output=True, text=True,
                            cwd=m.carpeta, env={**entorno(config, m), "TELAR_CONSULTA": "1"}, timeout=ESPERA_CONSULTA)
@@ -410,6 +509,10 @@ def consultar(config, nombre: str, verbo: str, params: dict) -> dict:
     except OSError as e:
         raise ErrorDeModulo(f"{nombre} {verbo}: {e}") from None
     if r.returncode != 0:
+        # lo que el módulo rechaza con su código (409: cambió desde que se leyó) llega con ese código, no como falla
+        rechazo = _rechazo(r.stdout)
+        if rechazo:
+            raise ErrorDeConsulta(*rechazo)
         raise ErrorDeModulo(f"{nombre} {verbo}: " + ((r.stderr or r.stdout).strip().splitlines() or ["falló"])[-1][:300])
     try:
         salida = json.loads(r.stdout)
@@ -507,6 +610,8 @@ def _escribir_instalados(ruta: Path, instalados: dict) -> None:
 
 
 def _git(carpeta: Path | None, *args: str) -> subprocess.CompletedProcess:
+    import subprocess
+
     return subprocess.run(["git", *(["-C", str(carpeta)] if carpeta else []), *args], capture_output=True, text=True)
 
 
@@ -586,6 +691,8 @@ def _correr_instalar(m: Modulo, carpeta: Path) -> None:
         return
     comando = [str(carpeta / Path(w).relative_to(m.carpeta)) if Path(w).is_absolute() and Path(w).is_relative_to(m.carpeta)
                else w for w in m.instalar]
+    import subprocess
+
     r = subprocess.run(comando, cwd=carpeta, capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
         raise ErrorDeModulo(f"{m.nombre}: [instalar] falló: " + ((r.stderr or r.stdout).strip().splitlines() or [""])[-1][:300])

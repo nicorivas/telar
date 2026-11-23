@@ -199,3 +199,39 @@ class MarcasDeUnaViñeta(unittest.TestCase):
         p = _casillas(["- [ ] Mandar la propuesta @deadline(2026-10-14) @owner(Ana Pérez)", "- [ ] sin nadie"], 0, "pendientes")
         self.assertEqual([(x.texto, x.dueno, x.vence) for x in p],
                          [("Mandar la propuesta", "Ana Pérez", "2026-10-14"), ("sin nadie", "", "")])
+
+
+class TituloSinEscapes(unittest.TestCase):
+    """Un título escrito con escapes de markdown (`# 01\\. …`, para que el número no abra una lista) se lee como se ve:
+    sin las barras, en la ficha y en el nombre de todas las vistas."""
+
+    def test_el_titulo_de_la_ficha_sale_sin_las_barras(self):
+        arquetipo = PERFIL_MINIMO.arquetipo("proyecto")
+        ficha = lectura.parsear("# 01\\. Reconocimiento del barrio\n\nEn marcha.\n", arquetipo)
+        self.assertEqual(ficha.titulo, "01. Reconocimiento del barrio")
+        self.assertEqual(lectura.etiqueta("{titulo}", ficha), "01. Reconocimiento del barrio")
+        self.assertEqual(lectura.etiqueta("", ficha), "01. Reconocimiento del barrio")
+
+    def test_un_asterisco_o_un_guion_bajo_escapado_es_el_signo(self):
+        arquetipo = PERFIL_MINIMO.arquetipo("proyecto")
+        ficha = lectura.parsear("# Vitrina \\_otoño\\_ v2\\*\n", arquetipo)
+        self.assertEqual(ficha.titulo, "Vitrina _otoño_ v2*")
+        # sin barra, siguen siendo el adorno que se saca
+        self.assertEqual(lectura.parsear("# Vitrina _otoño_ **v2**\n", arquetipo).titulo, "Vitrina otoño v2")
+
+    def test_que_barras_se_van_y_cuales_se_quedan(self):
+        s = lectura.sin_escapes
+        self.assertEqual(s("\\#3 de \\[la lista\\] \\- fase 1"), "#3 de [la lista] - fase 1")
+        self.assertEqual(s("dos \\\\ barras"), "dos \\ barras")
+        self.assertEqual(s("C:\\Usuarios\\ana"), "C:\\Usuarios\\ana", "una barra que no escapa nada se queda")
+        self.assertEqual(s("el `a\\.b` y c\\.d"), "el `a\\.b` y c.d", "dentro de un código, la barra es texto")
+        self.assertEqual(s(""), "")
+
+    def test_una_carpeta_fuera_del_perfil_tambien(self):
+        import tempfile
+
+        from telar.ordenes._comun import ficha_suelta
+
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "README.md").write_text("# 02\\. Inventario de la bodega\n", encoding="utf-8")
+            self.assertEqual(ficha_suelta(Path(d)).titulo, "02. Inventario de la bodega")

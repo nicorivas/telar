@@ -26,6 +26,7 @@ Lo mismo, en la página: ⚙ → módulos (instalados y disponibles).
 ```toml
 nombre = "saludo"                       # el de su orden: `telar saludo …` (si no, el del repositorio sin telar-)
 descripcion = "Saluda, para probar."    # una frase: es lo que se lee en el catálogo
+icono = "icono.png"                     # opcional: PNG cuadrado (512 px), el de su pestaña instalada como app
 
 [ordenes.hola]                          # `telar saludo hola [args…]`, con la terminal
 descripcion = "un saludo"
@@ -35,7 +36,10 @@ consulta = true                         # también sin terminal: un objeto JSON 
 [pestana]                               # una pestaña del dashboard: un comando que imprime una página
 nombre = "saludo"
 comando = ["bin/saludo", "pagina"]
-# dentro = "proyectos"                  # o una subpestaña de una fija: ahora, tareas, proyectos, plan, calendario
+# dentro = "proyectos"                  # o una subpestaña de una fija: ahora, tareas, proyectos, calendario
+
+[configurar]                            # su pantalla de configuración, en ⚙ módulos y en el ⚙ del título de su pestaña:
+comando = ["bin/saludo", "configurar"]  # imprime una página, como [pestana]; su lienzo cambia lo suyo con sus consultas
 
 [fechas]                                # una fuente de fechas (telar fechas): imprime fechas en JSON, corre aquí
 comando = ["bin/saludo", "fechas"]
@@ -66,6 +70,12 @@ programas = ["uv"]
 
 [objetos.saludo]                        # un tipo de objeto: saludo:<id>, con sus consultas
 ver = "hola"
+# esperando = "pendientes"              # opcional: una consulta suya que da los suyos que esperan a la persona
+                                        # (telar esperas; la forma, en configuracion.md, «tipos de objeto»)
+# listar = "todos"                      # opcional: una consulta suya que da todos los suyos
+                                        # (telar objeto saludo --listar, GET /objetos/saludo; y son
+                                        # una fuente de telar buscar y de Todo)
+# plural = "saludos"                    # opcional: cómo se llaman juntos en una lista
 
 [permisos]                              # lo que pide fuera de su carpeta (obligatorio para un catálogo)
 leer = ["~/datos"]                      # rutas que lee (o una frase: "los repositorios de [repos]")
@@ -75,10 +85,26 @@ ordenes = ["mensaje"]                   # las órdenes de telar que corre
 ```
 
 Todo es opcional salvo `descripcion`. Las rutas relativas son de su carpeta. Las órdenes reciben en el entorno
-`TELAR_RAIZ`, `TELAR_REPOS` (los repos de `[repos]`, en JSON), `TELAR_MAQUINA` y `TELAR_MODULO` (su carpeta).
+`TELAR_RAIZ`, `TELAR_REPOS` (los repos de `[repos]`, en JSON), `TELAR_MAQUINA`, `TELAR_MODULO` (su carpeta) y
+`TELAR_PERSONA` (la del entorno, `[bus] persona` o el usuario), y también los comandos de su `[pestana]`, su `[app]`, su
+`[configurar]` y sus periódicos: la página sabe dónde está la raíz y los repositorios sin preguntárselo a `telar
+config`. Una consulta que no se puede hacer sale con 1 e imprime `{"error", "codigo"}`: un 4xx (409: cambió desde que
+se leyó) le llega así a quien la pidió; otra cosa es una falla del módulo (502).
 `[permisos]` es una promesa: telar todavía no la hace cumplir, la muestra antes de instalarlo y dice si cambió al
 actualizar. Sin la tabla, el módulo «no dice qué pide», que no es lo mismo que la tabla vacía («nada fuera de su
 carpeta»).
+
+**Su página.** La de su pestaña, su app o su configuración es casi siempre un lienzo: un HTML aislado y sin red
+([contratos.md](contratos.md), «telar seccion»). Desde ahí le pide a telar con `window.lienzo.pedir(orden, datos)`:
+sus propias consultas (`consulta`), el menú de una entidad (`menu`), abrirla en la página (`abrir`, con
+`{direccion: "tarea:T84"}`: lo mismo que un clic en un enlace a esa dirección) o la ventana de la instrucción con lo
+que muestra como contexto (`instruccion`, con `{contexto, destino?, texto?}`: un chat, para que un agente lo procese),
+sin pedir permiso; lo que cambia tus documentos (`fecha`, `idea`), con el permiso de la persona.
+
+**Su pestaña, como app.** `/pestana/<nombre>/` (en la página de telar) es la página con solo esa pestaña, sin la
+cabecera ni la lista de hilos, y con un manifiesto propio: en el teléfono, Chrome la instala aparte de telar
+(⋮ › «Instalar app»), con el nombre de la pestaña y el `icono` del módulo. El ícono se usa entero y recortado
+(maskable): el dibujo, en el 80% del centro, sobre un fondo que llene el cuadrado. Sin `icono`, el de telar.
 
 ## `.telar/catalogo.toml`
 
@@ -125,7 +151,7 @@ otros), y se dice. Un módulo suelto (`telar modulos instalar <url>`) también e
 ## Publicar en un catálogo
 
 `telar modulos publicar` revisa el módulo, etiqueta la versión (si no lo está) y la sube, arma su entrada y abre un
-PR al repositorio del catálogo con `gh`: el oficial, o el de un repo de `[repos]` (`--catalogo brinca`). Si el
+PR al repositorio del catálogo con `gh`: el oficial, o el de un repo de `[repos]` (`--catalogo faro`). Si el
 módulo ya estaba, la entrada se reemplaza y el PR muestra la de antes. En el oficial, la revisión del PR baja el
 módulo en esa versión y comprueba su manifiesto (`telar modulos revisar --catalogo .telar/catalogo.toml
 --resolver`); después lo lee quien mantiene telar y lo mergea, o no.

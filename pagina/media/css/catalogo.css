@@ -1,0 +1,376 @@
+/* El catálogo de componentes (/componentes, src/componentes/catalogo.ts): una página aparte, sin la barra ni el
+   dashboard. Cada celda (.muestra) lleva su tema (data-tema): adentro, los tokens son los de ese tema. */
+
+body.catalogo {
+  display: block;
+  height: auto;
+  min-height: 100%;
+}
+
+@scope (body.catalogo) {
+  .cat-cabecera {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1) var(--h-2);
+    align-items: baseline;
+    justify-content: space-between;
+    padding: var(--e-2) var(--h-2);
+    border-bottom: var(--borde);
+    background: var(--bg);
+  }
+
+  .cat-controles { display: flex; flex-wrap: wrap; gap: 0 var(--h-1); align-items: baseline; }
+  .cat-controles > .dim:not(:first-child) { margin-left: var(--h-1); }
+  .chip { padding: 0 var(--h-1); color: var(--texto-tenue); border: var(--borde); }
+  .chip:hover { color: var(--texto); text-decoration: none; }
+  .chip.si { color: var(--bg); background: var(--acento); border-color: var(--acento); }
+
+  /* la lista de componentes a la izquierda, en orden jerárquico, y la página del que se eligió */
+  .cat-cuerpo { display: flex; align-items: flex-start; }
+  .cat-lista {
+    position: sticky;
+    top: 2.2lh; /* bajo la cabecera, que también se queda */
+    flex: none;
+    box-sizing: border-box;
+    width: 26ch;
+    max-height: calc(100vh - 2.2lh);
+    padding: var(--e-2) 0 var(--e-3);
+    overflow-y: auto;
+    border-right: var(--borde);
+  }
+  .cat-lista-grupo { margin-top: var(--e-2); padding: 0 var(--h-2); color: var(--titulo); cursor: default; }
+  .cat-lista a { display: block; padding: 0 var(--h-2) 0 calc(var(--h-2) + 2ch); color: var(--texto); }
+  .cat-lista a:hover { color: var(--acento); text-decoration: none; }
+  .cat-lista a.si { color: var(--bg); background: var(--acento); }
+  .cat-lista a.falta { color: var(--texto-apagado); }
+  .cat-lista a.falta.si { color: var(--bg); }
+  .cat-lista a.n2 { padding-left: calc(var(--h-2) + 4ch); }
+  .cat-cuerpo > main { flex: 1 1 auto; min-width: 0; }
+
+  /* las pestañas de un componente: estados, anatomía; la elegida subrayada con el acento, la que falta apagada */
+  .cat-pestanas { display: flex; gap: var(--h-2); margin: 0 0 var(--e-2); border-bottom: var(--borde); }
+  .cat-pestanas > * { padding: 0 0 var(--e-1); color: var(--texto-tenue); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .cat-pestanas a:hover { color: var(--texto); text-decoration: none; }
+  .cat-pestanas a.si { color: var(--acento); border-bottom-color: var(--acento); }
+  .cat-pestanas .falta { color: var(--texto-apagado); cursor: default; }
+
+  main { padding: 0 var(--h-2) 3lh; }
+  h2 { margin: var(--e-3) 0 var(--e-1); font-size: 1em; color: var(--titulo); }
+  section > p { max-width: 100ch; margin: 0 0 var(--e-2); }
+  code { color: var(--cian); }
+
+  /* centradas: con varias densidades, cada celda mide lo que su ítem (una fila de la grilla mide lo que la más alta) */
+  .cat-grilla { display: grid; gap: 0 var(--h-2); align-items: center; overflow-x: auto; }
+  .cat-tema { padding: var(--e-1) 0; color: var(--texto-tenue); }
+  .cat-grupo { grid-column: 1 / -1; margin-top: var(--e-2); padding-top: var(--e-1); border-top: var(--borde); color: var(--titulo); }
+  .cat-nombre { padding-right: var(--h-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .cat-nombre:hover { color: var(--acento); }
+  /* contestar: cada ventana arriba de su celda, del ancho de la celda; «abrir» la abre de verdad */
+  .cat-contestar .cat-grilla { align-items: start; row-gap: var(--e-2); }
+  .cat-contestar .ventana.contestar { width: 100%; }
+  /* la ventana de mundos (catalogo-mundos.ts): cada estado, con una ventana por tema, lado a lado si caben; los artes y
+     «probar uno», del tema de la primera columna */
+  .cat-mundos-estado { margin: var(--e-3) 0 var(--e-1); font-size: inherit; font-weight: normal; }
+  .cat-mundos-fila { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--h-2); align-items: start; }
+  .cat-mundos .muestra { padding: 0; }
+  .cat-mundos .muestra > .ventana-mundos { max-width: 100%; }
+  .cat-probar-fila { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--h-2); align-items: start; }
+  .cat-probar-texto {
+    box-sizing: border-box;
+    width: min(60ch, 100%);
+    padding: var(--e-1) var(--h-1);
+    border: var(--borde);
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+    line-height: var(--mundos-arte-alto);
+    white-space: pre;
+    resize: vertical;
+    &:focus { border-color: var(--acento); }
+  }
+  .cat-probar-lado { display: flex; flex-direction: column; gap: var(--e-1); }
+  .cat-probar-ventana { width: calc(var(--mundos-tarjeta-ancho) + 2px); }
+  /* los botones (catalogo-botones.ts): cada ventana del ancho de su celda; cada forma, con su juicio y «probar» */
+  .cat-botones .cat-grilla { align-items: start; row-gap: var(--e-1); }
+  .cat-botones .cat-nombre { padding-top: .5lh; white-space: normal; cursor: default; }
+  .cat-botones .muestra > .ventana { width: 100%; }
+  /* los estados, sueltos en la celda: la banda sin el aire que la apartaría de un contenido que no hay */
+  .cat-botones .muestra > .botonera { margin-top: 0; }
+  /* el contenido largo: la ventana con un alto, para que su cuerpo se desplace como en la página */
+  .cat-botones .ventana.cat-largo { max-height: 16lh; }
+  .cat-botones .cat-tabla + p { margin-top: var(--e-2); }
+  .cat-botones h3 { margin: var(--e-3) 0 0; font-size: 1em; font-weight: normal; color: var(--titulo); }
+  .cat-abrir { color: var(--acento); }
+  .cat-circulos { display: flex; gap: 2ch; align-items: center; min-height: 1lh; padding: 0 var(--h-1); }
+  .cat-props { grid-column: 1 / -1; margin: 0 0 var(--e-2); padding: var(--e-1) var(--h-1); color: var(--texto-tenue); border-left: 2px solid var(--linea); white-space: pre-wrap; }
+
+  /* una celda: el fondo y el texto de su tema */
+  .muestra { min-width: 0; color: var(--texto); background: var(--superficie); }
+  .muestra > .ventana { margin: .5lh 0; }
+  .muestra.barra-completa { align-self: start; max-height: 80vh; overflow: auto; border: var(--borde); }
+  /* una pantalla de mentira (componentes/pantalla.ts): su barra y un cuerpo cuyas líneas llegan a los bordes */
+  .cat-pantalla { border: var(--borde); }
+  .cat-pantalla-cuerpo { padding: var(--e-1) var(--pantalla-margen); }
+  .cat-pantalla-cuerpo .fila { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cat-pantalla-cuerpo .dim { color: var(--texto-tenue); }
+  .cat-pantalla-sec { margin: var(--e-1) calc(-1 * var(--pantalla-margen)) 0; padding: var(--e-1) var(--pantalla-margen) 0;
+                      border-top: var(--borde); color: var(--titulo); }
+  .muestra.token { display: flex; gap: var(--h-1); align-items: center; padding: 0 var(--h-1); }
+  .muestra.token .color { flex: none; width: 3ch; height: 1lh; border: var(--borde); }
+  .muestra.token .valor { overflow: hidden; color: var(--texto-tenue); text-overflow: ellipsis; white-space: nowrap; }
+
+  /* la anatomía: los bordes de cada sección del ítem, con los colores de la explicación de arriba */
+  .sec-inicio { color: var(--cian); }
+  .sec-texto { color: var(--magenta); }
+  .sec-fin { color: var(--amarillo); }
+  /* las de la tarjeta: cabecera, cuerpo y pie */
+  .sec-cabecera { color: var(--cian); }
+  .sec-cuerpo { color: var(--magenta); }
+  .sec-pie { color: var(--amarillo); }
+  .ver-anatomia .tarjeta-titulo { outline: 1px dashed color-mix(in srgb, var(--cian) 60%, transparent); outline-offset: -1px; }
+  .ver-anatomia .tarjeta-acciones { outline: 1px dotted var(--cian); outline-offset: -1px; }
+  .ver-anatomia .tarjeta-cuerpo { outline: 1px dashed var(--magenta); outline-offset: -1px; }
+  .ver-anatomia .tarjeta-pie { outline: 1px dashed var(--amarillo); outline-offset: -1px; }
+  .ver-anatomia .item-inicio { outline: 1px dashed var(--cian); outline-offset: -1px; }
+  .ver-anatomia .item-ranura { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cian) 35%, transparent); }
+  .ver-anatomia .item-texto { outline: 1px dashed var(--magenta); outline-offset: -1px; }
+  .ver-anatomia .item-fin { outline: 1px dashed var(--amarillo); outline-offset: -1px; }
+  .ver-anatomia .item-acciones { outline: 1px dotted var(--amarillo); outline-offset: -1px; }
+
+  /* la lámina (catalogo.ts, trazar): el ítem grande, con un corchete sobre cada sección y, abajo, una guía de cada
+     pieza a su rótulo. Las acciones que flotan al pasar el mouse aquí van en fila, al lado, para verlas */
+  .lamina-marco { overflow-x: auto; }
+  .lamina { position: relative; width: fit-content; padding: 2.2lh 3ch 0; }
+  .lamina-dibujo { width: 52ch; font-size: 1.5em; }
+  /* el borde del ítem entero: dónde termina la fila */
+  .lamina .item { cursor: default; box-shadow: 0 0 0 1px var(--linea); }
+  .lamina .item-acciones { position: relative; right: auto; background: none; visibility: visible; clip-path: none; }
+  .lamina .item-acciones > .item-accion { opacity: 1; translate: none; }
+  .lamina .tarjeta-acciones { visibility: visible; opacity: 1; }
+  .lamina-traza { position: absolute; }
+  .lamina-seccion { border: 1px solid currentcolor; border-bottom: 0; }
+  .lamina-seccion > span { position: absolute; bottom: 100%; left: -1px; font-weight: bold; white-space: nowrap; }
+  /* secciones apiladas (la tarjeta): un corchete a la izquierda, con el nombre a su lado */
+  .lamina-seccion.apilada { border: 1px solid currentcolor; border-right: 0; }
+  .lamina-seccion.apilada > span { inset: -1px calc(100% + 1ch) auto auto; }
+  .lamina-guia { width: 1ch; border-bottom: 1px solid currentcolor; border-left: 1px solid currentcolor; }
+  .lamina-rotulo { white-space: nowrap; }
+  .lamina-rotulo code { color: var(--texto-tenue); }
+  .lamina-leyenda { display: grid; grid-template-columns: repeat(auto-fit, minmax(32ch, 1fr)); gap: var(--e-2) var(--h-2); max-width: 150ch; margin-top: var(--e-2); }
+  .lamina-leyenda p { margin: var(--e-1) 0 0; }
+
+  /* la gramática visual (fundamentos, componentes/gramatica.ts): cada concepto en una ficha, un rectángulo con su
+     dibujo grande arriba; las muestras de lo recto y de dónde va un círculo en ello; y lo que telar deriva */
+  .gr { max-width: 160ch; }
+  .gr h3 { margin: var(--e-3) 0 var(--e-1); font-size: 1em; color: var(--titulo); }
+  .gr h3 + p { max-width: 100ch; margin: 0 0 var(--e-1); color: var(--texto-tenue); }
+  .gr-intro { max-width: 100ch; margin: 0 0 var(--e-2); }
+  .gr-dice { color: var(--acento); }
+  .gr-dice::before { content: "«"; }
+  .gr-dice::after { content: "»"; }
+  .gr-pregunta { color: var(--texto-tenue); font-weight: normal; }
+  .muestra.gr-hoja { padding: var(--e-2) var(--h-2); }
+  .gr-fichas { display: grid; grid-template-columns: repeat(auto-fill, minmax(34ch, 1fr)); gap: var(--h-2); }
+  .gr-ficha { padding: var(--e-1) var(--h-2) var(--e-2); border: 1px solid var(--linea); }
+  .gr-ficha p { margin: var(--e-1) 0 0; }
+  .gr-sirve { margin: var(--e-1) 0 0; padding-left: 2ch; color: var(--texto-tenue); }
+  .gr-trazo { display: inline-flex; align-items: center; }
+  .gr-dibujo { display: flex; gap: 1.2ch; align-items: center; padding: .25em 0; font-size: 2em; line-height: 1.4; }
+  .gr-par { display: grid; grid-template-columns: repeat(auto-fit, minmax(40ch, 1fr)); gap: var(--e-2) 4ch; }
+  .gr-tres { display: flex; gap: 4ch; align-items: center; font-size: 2em; line-height: 1.6; }
+  .gr-tam { display: inline-flex; gap: 1ch; align-items: center; }
+  .gr-tam > .dim { font-size: .5em; }
+  .muestra.gr-juego { width: 40ch; }
+  .gr-reglas { max-width: 100ch; margin: 0; padding-left: 3ch; }
+  .gr-reglas li { margin-bottom: .2lh; }
+
+  /* lo recto y lo redondo juntos: cada muestra, en grande, con sus líneas de un píxel */
+  .gr-demo { display: flex; gap: 1ch; align-items: center; min-height: 2.6lh; font-size: 1.5em; }
+  .gr-r { box-sizing: border-box; width: 12ch; padding: 0 1ch; line-height: 1.8; }
+  .gr-r-corta { position: relative; }
+  .gr-r-corta::after { position: absolute; top: 25%; right: 2ch; bottom: 25%; border-left: 1px solid var(--orden-linea); content: ""; }
+  .gr-r-seleccion { background: var(--item-fondo-activa); }
+  .gr-r-marco { border: 1px solid var(--texto-tenue); }
+  .gr-r-abajo { border-bottom: 1px solid var(--texto-tenue); }
+  .gr-r-arriba { border-top: 1px solid var(--texto-tenue); }
+  .gr-r-izquierda { border-left: 1px solid var(--texto-tenue); }
+  .gr-r-derecha { border-right: 1px solid var(--texto-tenue); }
+  .gr-r-ranura { width: var(--item-ranura); height: 1.8lh; padding: 0; outline: 1px dashed var(--texto-apagado); outline-offset: -1px; }
+  /* un círculo puesto sobre un punto (una esquina, una línea): su centro, justo ahí */
+  .gr-sobre { position: absolute; display: inline-flex; translate: -50% -50%; }
+  .gr-esquina { position: relative; padding: 0 1ch; border: 1px solid var(--texto-tenue); }
+  .gr-esquina > .gr-sobre { top: 0; left: 100%; }
+  .gr-linea { margin-left: 1ch; border-left: 1px solid var(--texto-tenue); line-height: 1.6; }
+  .gr-linea > div { position: relative; padding-left: 1.5ch; }
+  .gr-linea .gr-sobre { top: 50%; left: -.5px; }
+  .gr-riel { display: inline-flex; align-items: center; box-sizing: border-box; width: 2.2em; height: 1em; padding: 0 .2em; border: 1px solid var(--texto-tenue); }
+  .gr-riel.si { justify-content: flex-end; }
+
+  /* cómo se parte: una sección armada con las reglas, en cada tema */
+  .gr-partes td:nth-child(3) { color: var(--texto); }
+  .gr-partida { margin: var(--e-2) 0; }
+  .muestra.pt-celda { align-self: start; border: var(--borde); }
+  .pt-seccion + .pt-seccion { border-top: 1px solid var(--linea); }
+  /* la banda empieza donde el título de su cabecera, como en la barra (.herram, hilos.css) */
+  .pt-banda { display: flex; align-items: center; padding: 0 var(--item-pad-x) 0 calc(var(--item-pad-x) + var(--item-ranura) + var(--item-texto-sangria));
+              line-height: var(--item-alto); }
+  .pt-campo { flex: 1; color: var(--texto-tenue); border-bottom: 1px solid var(--linea); }
+  .pt-grupo { display: inline-flex; color: var(--texto); }
+  .pt-celda-c { display: inline-block; inline-size: calc(var(--item-alto) * 1em); text-align: center; }
+  /* con «bordes», la grilla: cada celda cuadrada (un botón de ícono, un corte, un ícono de la banda), punteada */
+  .ver-anatomia .item-accion.cuadrada,
+  .ver-anatomia .corte,
+  .ver-anatomia .ord,
+  .ver-anatomia .orden-padre,
+  .ver-anatomia .pt-celda-c { outline: 1px dotted var(--texto-apagado); outline-offset: -1px; }
+  .pt-padre { color: var(--texto-tenue); }
+  .pt-banda > .i { color: var(--texto-tenue); }
+
+  /* las derivadas: una tabla, con la forma en su tema */
+  .gr-tabla { border-collapse: collapse; }
+  .gr-tabla th { font-weight: normal; color: var(--titulo); text-align: left; border-bottom: 1px solid var(--linea); }
+  .gr-tabla th,
+  .gr-tabla td { padding: .15lh 2ch .15lh 0; vertical-align: middle; }
+  .gr-tabla tr.explorar td { color: var(--texto-apagado); }
+
+  /* el buscador (catalogo-buscador.ts): las tablas de sus partes y de dónde está, arriba alineadas; la barra grande de su
+     anatomía; y el nombre de cada tema sobre su grilla de «bordes» */
+  .cat-tabla { margin-top: var(--e-2); }
+  .cat-tabla td { vertical-align: top; }
+  .cat-buscador-grande { width: 60ch; font-size: 1.5em; border: var(--borde); }
+  .cat-bordes-tema { margin: var(--e-3) 0 var(--e-1); }
+  .cat-bordes-estado { grid-column: 1 / -1; margin-top: var(--e-1); }
+  .cat-elegida { color: var(--acento); }
+
+  /* las tres maneras del campo dentro de su barra que no se eligieron (componentes/buscador.ts, BORDES), para verlas al lado
+     de la elegida («la línea con el foco»: buscador.css). Cada una deja la línea de la barra como está con el foco */
+  .borde-linea .buscador-barra:has(.buscador:is(:focus-within, .enfocado)),
+  .borde-fondo .buscador-barra:has(.buscador:is(:focus-within, .enfocado)),
+  .borde-desnudo .buscador-barra:has(.buscador:is(:focus-within, .enfocado)) { border-bottom-color: var(--buscador-linea); }
+  /* su línea: la del campo, de la lupa al ✕, y en el acento con el foco */
+  .borde-linea .buscador { border-bottom: 1px solid var(--linea); }
+  .borde-linea .buscador:is(:focus-within, .enfocado) { border-bottom-color: var(--acento); }
+  /* otro fondo: el campo, del alto de la barra, un poco más claro; con el foco, más */
+  .borde-fondo .buscador {
+    align-self: stretch;
+    margin-block: calc(-1 * var(--e-1));
+    padding-block: var(--e-1);
+    background: color-mix(in srgb, var(--texto) 6%, transparent);
+  }
+  .borde-fondo .buscador:is(:focus-within, .enfocado) { background: color-mix(in srgb, var(--texto) 11%, transparent); }
+  .gr-tabla th[colspan] { padding-top: var(--e-2); color: var(--titulo); border-bottom: 0; }
+  .gr-variables td:first-child,
+  .gr-signos td:first-child { white-space: nowrap; }
+  .gr-variables td,
+  .gr-signos td { vertical-align: top; }
+  .muestra.gr-celda { display: inline-block; padding: 0 1ch; }
+  .gr-celda .gr-dibujo { padding: 0; font-size: 1.3em; }
+
+  /* las casillas en un foco de mentira: la banda arriba de las tarjetas; en un teléfono, abajo, tras una línea */
+  .cat-foco { display: flex; flex-direction: column; gap: .5lh; padding: var(--e-2) var(--item-pad-x); }
+  .angosto .cat-foco > .casillas { order: 1; padding-top: .5lh; border-top: var(--borde); }
+
+  #cat-aviso {
+    position: fixed;
+    right: var(--h-2);
+    bottom: var(--e-3);
+    padding: var(--e-1) var(--h-2);
+    color: var(--texto);
+    background: var(--bg-barra);
+    border: var(--borde);
+  }
+
+  /* los filtros (componentes/filtros.ts) en la lista de «tareas» de mentira, en tres anchos */
+  /* el día en una línea: la cabecera de la página a un ancho dado (lo de un teléfono viendo un hilo, con su clase), y
+     la jornada sola en una celda */
+  .cat-cabs { display: flex; flex-direction: column; gap: var(--e-1); align-items: flex-start; margin-bottom: var(--e-3); overflow-x: auto; }
+  .cat-cab-marco { flex: none; border: var(--borde); }
+  .cat-cab.en-detalle .cab-volver { display: block; }
+  .cat-cab.en-detalle .logo { display: none; }
+  .muestra.cat-jornada { padding: var(--e-1) var(--h-1); background: var(--bg-barra); }
+
+  .cat-anchos { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--h-2); align-items: flex-start; }
+  .cat-lista-tareas { box-sizing: border-box; padding: var(--e-1) 0; border: var(--borde); }
+  .cat-filtros { margin-top: .5lh; padding-inline: var(--pantalla-margen); }
+  .cat-tarea { padding-inline: var(--pantalla-margen); overflow: hidden; color: var(--texto); text-overflow: ellipsis; white-space: nowrap; }
+  .cat-tarea:first-of-type { margin-top: .5lh; }
+
+  /* el submenú (#seccion/submenu): HILOS con ARCHIVO adentro, en tres anchos */
+  .sub-muestra { align-self: start; padding: .5lh 0; border: var(--borde); }
+  .submenu-pagina ul { max-width: 100ch; margin: 0 0 var(--e-2); padding-left: 2ch; }
+  .submenu-pagina > p { max-width: 100ch; }
+
+  /* táctica (prototipo, #tactica): cada disposición y cada estado en un laptop y un teléfono, uno al lado del otro si
+     caben; la tabla de la urgencia; y la página entera (#tactica/ver/…), a lo ancho de la ventana, para las capturas */
+  .cat-tactica > p { max-width: 110ch; }
+  .cat-tac-h { margin: var(--e-3) 0 var(--e-1); font-size: 1em; color: var(--titulo); }
+  .cat-tac-reco { color: var(--exito); font-weight: normal; }
+  .cat-tac-chips { display: flex; flex-wrap: wrap; gap: 0 var(--h-1); align-items: baseline; }
+  .cat-tac-par { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--h-2); align-items: flex-start; }
+  .cat-tac-fig { margin: 0; }
+  .cat-tac-fig > figcaption { padding-bottom: var(--e-1); }
+  .cat-tac-fig > figcaption a { color: var(--acento); }
+  .cat-tac-marco { flex: none; padding-bottom: var(--e-2); border: var(--borde); }
+  .cat-tac-tabla { display: grid; grid-template-columns: minmax(28ch, 3fr) repeat(8, auto) minmax(16ch, 1fr); gap: 0 var(--h-2); max-width: 170ch; }
+  .cat-tac-tabla > b { color: var(--titulo); font-weight: normal; }
+  .cat-tac-pagina { display: flex; flex-direction: column; min-height: 100vh; }
+  .cat-tac-cuerpo { display: grid; flex: 1; grid-template-columns: minmax(240px, 22vw) minmax(0, 1fr); }
+  .cat-tac-pagina.angosto .cat-tac-cuerpo { grid-template-columns: minmax(0, 1fr); }
+  .cat-tac-barra { min-width: 0; border-right: var(--borde); }
+  .cat-tac-columna { min-width: 0; padding-bottom: 3lh; }
+
+  /* la franja de avisos (#avisos, catalogo-avisos.ts): arriba de unas filas de la barra; la lista abierta pide su alto; las
+     plegadas, cada una del ancho de una barra plegada; el «‹ hilos» del teléfono, a la vista. A pantalla completa, la barra
+     plegada mide lo suyo */
+  .muestra.cat-franja { align-self: start; margin-bottom: var(--e-3); border: var(--borde); }
+  .muestra.cat-franja-alta { align-self: start; min-height: 52lh; margin-bottom: var(--e-3); border: var(--borde); }
+  .muestra.cat-franja-alta .franja-lista { width: 100%; max-height: none; }
+  .cat-franja-filas { padding-top: .5em; }
+  .cat-franja-plegadas { display: flex; gap: var(--h-2); padding: var(--e-1) var(--h-1); }
+  .cat-franja-plegadas > div { width: 5ch; border: var(--borde); }
+  .cat-franja-cab { padding: var(--e-1) var(--h-1); background: var(--bg-barra); }
+  .cat-franja-cab .cab-volver { display: inline-block; margin: 0; padding: 0 var(--h-1); }
+  .cat-franja-tabla { grid-template-columns: minmax(24ch, 2fr) auto minmax(30ch, 3fr) auto minmax(24ch, 2fr); }
+  .cat-tac-pagina.con-plegada .cat-tac-cuerpo { grid-template-columns: auto minmax(0, 1fr); }
+
+  /* modos y mundos (prototipo, #modos-mundos): cada variante en un laptop y un teléfono (la cabecera y lo que la acompaña), las
+     tablas, la configuración; y la página entera (#modos-mundos/ver/…), a lo ancho de la ventana, para las capturas */
+  .cat-modos > p { max-width: 110ch; }
+  .modos-figs { display: flex; flex-wrap: wrap; gap: var(--e-2) var(--h-2); align-items: flex-start; }
+  .modos-fig { margin: 0; }
+  .modos-fig > figcaption { padding-bottom: var(--e-1); }
+  .modos-fig > figcaption a,
+  .cat-modos p a { color: var(--acento); cursor: pointer; }
+  .modos-marco,
+  .modos-marco-todo { flex: none; border: var(--borde); }
+  .modos-marco-todo { padding-bottom: var(--e-2); }
+  .modos-marco .modos-c-muestra { inline-size: min(300px, 100%); background: var(--bg-barra); border-right: var(--borde); }
+  .modos-marco.angosto .modos-c-muestra { inline-size: 100%; border-right: 0; }
+  .modos-tabla { display: grid; gap: var(--e-1) var(--h-2); max-width: 170ch; margin-block: var(--e-2); }
+  .modos-tabla.dos { grid-template-columns: minmax(18ch, max-content) minmax(0, 1fr); }
+  .modos-tabla.cinco { grid-template-columns: minmax(14ch, max-content) repeat(4, minmax(0, 1fr)); }
+  .modos-tabla > b { color: var(--titulo); font-weight: normal; }
+  .modos-tabla kbd { font: inherit; color: var(--texto); }
+  .modos-config { margin: var(--e-1) 0; padding: var(--e-1) var(--h-2); color: var(--texto-tenue); background: var(--bg-barra); border-left: 2px solid var(--linea); white-space: pre; }
+  .modos-pagina { display: flex; flex-direction: column; min-height: 100vh; }
+  .modos-cuerpo { display: grid; flex: 1; grid-template-columns: minmax(240px, 22vw) minmax(0, 1fr); }
+  .modos-cuerpo.uno { grid-template-columns: minmax(0, 1fr); }
+  .modos-barra,
+  .modos-con-barra { min-width: 0; border-right: var(--borde); }
+  .modos-con-barra > .modos-barra { border-right: 0; }
+  .modos-cuerpo.uno :is(.modos-barra, .modos-con-barra) { border-right: 0; }
+  .modos-columna { min-width: 0; padding-bottom: 3lh; }
+  .modos-foco { align-items: center; padding: 3lh var(--h-2) 0; }
+  .modos-salir { position: fixed; top: var(--e-1); right: var(--h-1); padding: 0 var(--h-1); color: var(--pantalla-vista-si); cursor: pointer; }
+  .modos-salir:hover { text-decoration: none; }
+  .modos-terminal { inline-size: 110ch; max-inline-size: 100%; white-space: pre-wrap; }
+  .modos-terminal .dim { color: var(--texto-tenue); }
+  .modos-terminal .cursor span { color: var(--cursor); }
+}
+
+body.catalogo.cat-entera { min-height: 100vh; }

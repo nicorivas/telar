@@ -1,6 +1,6 @@
 """`telar reunion` — preparar una reunión: un hilo nuevo con el agente ya trabajando en ella.
 
-    telar reunion "Coordinación interna AGROSUR" 12:00
+    telar reunion "Coordinación interna ARRAYAN" 12:00
     telar reunion "Comité" 15:30 --enlace https://meet.google.com/…
     telar reunion "Comité" 15:30 --donde     solo dice qué haría, sin abrir nada
 
@@ -10,7 +10,7 @@ diga `[agente] reunion`; de fábrica, la skill de flow:
     /preparar-reunion {titulo} (hoy {hora}) · proyecto: {proyecto}
 
 El proyecto se busca entre las unidades del perfil: la que comparta palabras con el título
-(«AGROSUR» encuentra la carpeta de Agrosur). Si lo encuentra, el hilo queda vinculado a esa
+(«ARRAYAN» encuentra la carpeta de Arrayán). Si lo encuentra, el hilo queda vinculado a esa
 carpeta y su ficha es la del proyecto; si no, la cola «· proyecto:» se quita del mensaje.
 
 Si el tab de esa reunión ya existe, se va a él en vez de abrir otro: dos Claude
@@ -64,7 +64,7 @@ def proyecto_para(titulo: str, unidades: list[str], vivos: set[str] = frozenset(
     """La unidad del perfil de la que parece tratar la reunión, o "" si ninguna.
 
     Cuenta las palabras del título que aparecen en el nombre de la carpeta, pesando cada
-    una por lo rara que es: «agrosur» en cinco carpetas vale menos que «cordillera» en una.
+    una por lo rara que es: «arrayan» en cinco carpetas vale menos que «cordillera» en una.
     Entre empates gana la que tiene un hilo vivo y después la que va primero en `unidades`,
     que viene en el orden del perfil.
     """
@@ -120,7 +120,7 @@ def plantilla(config, titulo: str, despues: bool) -> tuple[str, str]:
 
 
 def nombre_del_tab(titulo: str, hora: str, marca: str = MARCA) -> str:
-    """«◷ HH:MM» y lo que distingue a la reunión: «Coordinación interna AGROSUR» es «AGROSUR».
+    """«◷ HH:MM» y lo que distingue a la reunión: «Coordinación interna ARRAYAN» es «ARRAYAN».
 
     Cortar el título por largo dejaba justo la parte que se repite en todas las reuniones
     («Coordinación interna …») y se comía la que dice cuál es.
@@ -216,7 +216,7 @@ def main(argv: list[str], ctx) -> int:
                  f"su README y su lugar en el índice) y trabaja ahí lo que sigue. {texto}")
         resultado["mensaje"] = texto
 
-    # el agente que recibe lo sin proyecto (`[agentes] sin_proyecto`, Gestión): se le encarga
+    # el agente que recibe lo sin proyecto (`[agentes] sin_proyecto`): se le encarga
     if general is not None and (destino in ("gestion", "") or destino.startswith("nuevo:")):
         resultado.update(hilo=general.nombre, agente=general.clave)
         if o.donde:
@@ -285,7 +285,9 @@ def _al_proyecto(ctx, tel, fila: dict, texto: str, resultado: dict, o) -> int:
     try:
         tel.mux.ir(hilo.id)
         if not (creado and ctx.config.agente.nombre):
-            tel.mux.escribir(hilo.id, texto, enviar=True)
+            from telar import dormir
+
+            dormir.escribir(getattr(ctx, "config", None), tel, hilo, texto, enviar=True)  # dormido, se despierta con esto
     except ErrorDeMux as e:
         return _comun.queja(f"llegué al hilo pero no pude escribirle: {e}")
     resultado.update(hilo=hilo.nombre, hecho="abierto en su proyecto" if creado else "escrito en su proyecto")

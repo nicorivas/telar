@@ -19,14 +19,15 @@ from pathlib import Path
 
 from comun import EJEMPLO, Prueba  # noqa: E402  (pone src/ en el camino)
 
-from telar import cli
+from telar import cli, modos
 from telar.cli import Contexto
 from telar.config import ErrorDeConfig, como_vista, desde_dict, vista_en_toml
 from telar.ordenes import doctor
 
 #: cada forma de antes, con su vista equivalente. Cubren lo que hacen hoy las cuatro tablas: una página que
-#: imprime un comando (en una pestaña, en el plan, en la barra o como página de un grupo), un lienzo, una url,
-#: un grupo de hilos sin página y un resultado por día.
+#: imprime un comando (en una pestaña, en la barra o como página de un grupo), un lienzo, una url, un grupo de
+#: hilos sin página y un resultado por día. Lo que iba arriba de la pestaña del plan, que se sacó, en
+#: `LaPestanaDelPlanSeSaco`.
 PARES = {
     "pestaña con color y tecla": (
         '[bloques.correo]\nnombre = "el correo"\ncomando = ["mi-correo", "--json"]\ncolor = "rojo"\ntecla = "e"\n',
@@ -35,9 +36,6 @@ PARES = {
     "pestaña mínima": (
         '[bloques.mareas]\ncomando = ["mareas"]\n',
         '[vistas.mareas]\naparece = "pestana"\ncomando = ["mareas"]\n'),
-    "arriba del plan": (
-        '[bloques.retro]\ncomando = ["mi-retro"]\nen = "plan"\n',
-        '[vistas.retro]\naparece = "plan"\ncomando = ["mi-retro"]\n'),
     "app de un comando": (
         '[apps.juego]\ndescripcion = "un juego"\npagina = ["/ruta/juego/casa"]\n',
         '[vistas.juego]\naparece = "apps"\ndescripcion = "un juego"\ncomando = ["/ruta/juego/casa"]\n'),
@@ -109,7 +107,7 @@ class ElLugar(Prueba):
             leer('[vistas.a]\ncomando = ["a"]\n')
 
     def test_un_lugar_que_no_existe(self):
-        with self.assertRaisesRegex(ErrorDeConfig, r"vistas\.a\.aparece: pestana, plan, apps, hilos o dia"):
+        with self.assertRaisesRegex(ErrorDeConfig, r"vistas\.a\.aparece: pestana, apps, hilos o dia"):
             leer('[vistas.a]\naparece = "barra"\ncomando = ["a"]\n')
 
     def test_claves_de_dos_lugares(self):
@@ -121,7 +119,7 @@ class ElLugar(Prueba):
             leer('[vistas.a]\naparece = "pestana"\ncomando = ["a"]\nhilos = ["a"]\n')
 
     def test_en_ya_no_es_el_lugar(self):
-        # `en` es la máquina, como en las demás tablas: el plan se dice con aparece
+        # `en` es la máquina, como en las demás tablas
         with self.assertRaisesRegex(ErrorDeConfig, r'vistas\.a\.en: no va con aparece = "pestana"'):
             leer('[vistas.a]\naparece = "pestana"\ncomando = ["a"]\nen = "plan"\n')
 
@@ -161,7 +159,7 @@ class LosErrores(Prueba):
     def test_aparece_que_no_es_un_texto(self):
         for valor in ('["apps"]', '{ a = 1 }', "3"):
             with self.subTest(valor):
-                with self.assertRaisesRegex(ErrorDeConfig, r"^vistas\.x\.aparece: pestana, plan, apps, hilos o dia"):
+                with self.assertRaisesRegex(ErrorDeConfig, r"^vistas\.x\.aparece: pestana, apps, hilos o dia"):
                     leer(f'[vistas.x]\naparece = {valor}\nurl = "https://a.org"\n')
 
     def test_en_con_una_fuente_que_no_corre_en_otra_maquina(self):
@@ -184,6 +182,86 @@ class LosErrores(Prueba):
             with self.subTest(tabla):
                 with self.assertRaisesRegex(ErrorDeConfig, rf"vistas\.a: también está declarada como \[{tabla}\.a\]"):
                     leer(f'[{tabla}.a]\n{cuerpo}\n[vistas.a]\nurl = "https://b.org"\n')
+
+
+class LaPestanaDelPlanSeSaco(Prueba):
+    """La pestaña del plan se sacó del dashboard (18-nov-2026): lo que iba en ella (`en = "plan"`, `dentro = "plan"`,
+    `aparece = "plan"`) se deja fuera sin romper la configuración, y `telar doctor` lo dice. El plan como dato
+    (`[resultados.plan]`) sigue."""
+
+    CORREO = '[bloques.correo]\ncomando = ["mi-correo"]\n'
+
+    def test_lo_que_iba_en_ella_se_deja_fuera(self):
+        for caso, texto, donde in (
+                ("en", '[bloques.retro]\ncomando = ["mi-retro"]\nen = "plan"\n', ("bloques.retro", 'en = "plan"')),
+                ("dentro", '[bloques.retro]\ncomando = ["mi-retro"]\ndentro = "plan"\n', ("bloques.retro", 'dentro = "plan"')),
+                ("aparece", '[vistas.retro]\naparece = "plan"\ncomando = ["mi-retro"]\n', ("vistas.retro", 'aparece = "plan"'))):
+            with self.subTest(caso):
+                cfg = leer(self.CORREO + texto)
+                self.assertEqual([b.clave for b in cfg.bloques], ["correo"])
+                self.assertEqual(cfg.retirados, (donde,))
+
+    def test_otro_en_sigue_siendo_un_error(self):
+        with self.assertRaisesRegex(ErrorDeConfig, r"bloques\.r\.en: ya no existe"):
+            leer('[bloques.r]\ncomando = ["r"]\nen = "hoy"\n')
+
+    def test_el_plan_como_dato_sigue(self):
+        cfg = leer('[resultados.plan]\ncarpeta = "/ruta/planes"\n[vistas.estrategia]\ncarpeta = "/ruta/planes"\n'
+                   'prefijo = "estrategia-"\n')
+        self.assertEqual([r.clave for r in cfg.resultados], ["plan", "estrategia"])
+        self.assertEqual(cfg.retirados, ())
+
+    def test_doctor_lo_dice(self):
+        cfg = replace(leer(self.CORREO + '[vistas.retro]\naparece = "plan"\ncomando = ["mi-retro"]\n'),
+                      dashboard_orden=("ahora", "plan"), dashboard_ocultas=("plan",))
+        revisiones = doctor._retirados(Contexto(config=cfg))
+        self.assertEqual([r["estado"] for r in revisiones], [doctor.AVISO] * 3)
+        self.assertIn('[vistas.retro] dice aparece = "plan"', revisiones[0]["dice"])
+        self.assertIn("[dashboard] orden nombra «plan»", revisiones[1]["dice"])
+        self.assertIn("[dashboard] ocultas nombra «plan»", revisiones[2]["dice"])
+        self.assertEqual(doctor._retirados(Contexto(config=leer(self.CORREO))), [])
+        self.assertIn("revisiones += _retirados(ctx)", Path(doctor.__file__).read_text(encoding="utf-8"))
+
+
+class LaPantallaEstrategiaSeSaco(Prueba):
+    """La pantalla estrategia se sacó del dashboard (19-nov-2026); el modo estrategia sigue y abre en proyectos. Una
+    configuración de antes que la nombra (un bloque con `en` o `dentro` = "estrategia", `[dashboard] orden` u `ocultas`,
+    las `filas` de un modo) no se rompe: no cuenta, y `telar doctor` lo dice. El resumen del agente
+    (`[resultados.estrategia]`) sigue siendo un resultado."""
+
+    CORREO = '[bloques.correo]\ncomando = ["mi-correo"]\n'
+
+    def test_un_bloque_que_iba_en_ella_se_deja_fuera(self):
+        for caso, texto, donde in (
+                ("en", '[bloques.x]\ncomando = ["x"]\nen = "estrategia"\n', ("bloques.x", 'en = "estrategia"')),
+                ("dentro", '[bloques.x]\ncomando = ["x"]\ndentro = "estrategia"\n', ("bloques.x", 'dentro = "estrategia"')),
+                ("vista", '[vistas.x]\naparece = "pestana"\ncomando = ["x"]\ndentro = "estrategia"\n', ("vistas.x", 'dentro = "estrategia"'))):
+            with self.subTest(caso):
+                cfg = leer(self.CORREO + texto)
+                self.assertEqual([b.clave for b in cfg.bloques], ["correo"])
+                self.assertEqual(cfg.retirados, (donde,))
+
+    def test_el_resumen_del_agente_sigue_siendo_un_resultado(self):
+        cfg = leer('[resultados.estrategia]\ncarpeta = "/ruta/planes"\nprefijo = "estrategia-"\n')
+        self.assertEqual([r.clave for r in cfg.resultados], ["estrategia"])
+        self.assertEqual(cfg.retirados, ())
+
+    def test_el_modo_estrategia_ya_no_la_nombra(self):
+        m = {x["clave"]: x for x in modos.todos(leer(""))}
+        self.assertNotIn("estrategia", m["estrategia"]["valores"]["filas"])
+        self.assertEqual(m["estrategia"]["valores"]["filas"].split(", ")[0], "proyectos", "abre en proyectos")
+        self.assertNotIn("estrategia", modos.pestanas_que_hay(leer("")))
+
+    def test_doctor_lo_dice(self):
+        cfg = replace(leer(self.CORREO + '[bloques.x]\ncomando = ["x"]\nen = "estrategia"\n'
+                           '[modos.estrategia]\nfilas = "estrategia, proyectos"\n[modos.casa]\nfilas = "calendario"\n'),
+                      dashboard_orden=("estrategia", "ahora"), dashboard_ocultas=("estrategia",))
+        dice = [r["dice"] for r in doctor._retirados(Contexto(config=cfg))]
+        self.assertEqual(len(dice), 4, dice)
+        self.assertIn('[bloques.x] dice en = "estrategia": la pantalla estrategia ya no está', dice[0])
+        self.assertIn("[dashboard] orden nombra «estrategia», la pantalla estrategia", dice[1])
+        self.assertIn("[dashboard] ocultas nombra «estrategia»", dice[2])
+        self.assertIn("[modos.estrategia] filas nombra «estrategia»", dice[3])
 
 
 class ElOrden(Prueba):

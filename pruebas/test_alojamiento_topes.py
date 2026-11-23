@@ -19,24 +19,24 @@ class LosTopes(base.EnLaMaquinaDelBus):
         self.aprobar(ayuda=self.ayuda())
         crear = self.pedidos_al_ayudante[-1]
         self.assertEqual((crear["memoria"], crear["cpu"]), ("1500M", "50%"))
-        a = alojamiento.leer()["pablo"]
+        a = alojamiento.leer()["bruno"]
         self.assertEqual((a["memoria"], a["cpu"]), ("1500M", "50%"))
 
     def test_los_de_un_alojado_van_al_ayudante_y_quedan_anotados(self):
         self.pedir()
         self.aprobar(ayuda=self.ayuda())
-        r = self.topes(persona="pablo", memoria="4G", cpu="200%")
-        self.assertEqual(self.pedidos_al_ayudante[-1], {"accion": "topes", "nombre": "pablo", "memoria": "4G", "cpu": "200%"})
+        r = self.topes(persona="bruno", memoria="4G", cpu="200%")
+        self.assertEqual(self.pedidos_al_ayudante[-1], {"accion": "topes", "nombre": "bruno", "memoria": "4G", "cpu": "200%"})
         self.assertIn("desde ya", r["hecho"])
-        self.assertEqual(alojamiento.leer()["pablo"]["memoria"], "4G")
+        self.assertEqual(alojamiento.leer()["bruno"]["memoria"], "4G")
 
     def test_solo_quien_administra_y_solo_a_un_activo(self):
         self.pedir()
         with self.assertRaises(alojamiento.ErrorDeAlojamiento) as e:
-            self.topes(por="pablo", memoria="4G", cpu="100%")
+            self.topes(por="bruno", memoria="4G", cpu="100%")
         self.assertEqual(e.exception.codigo, 403)
         with self.assertRaises(alojamiento.ErrorDeAlojamiento) as e:
-            self.topes(persona="pablo", memoria="4G", cpu="100%")  # todavía pendiente
+            self.topes(persona="bruno", memoria="4G", cpu="100%")  # todavía pendiente
         self.assertEqual(e.exception.codigo, 409)
 
     def test_topes_que_no_sirven(self):
@@ -51,7 +51,7 @@ class ElAyudanteCambiaTopes(Prueba):
         self.m = base._cargar_ayudante()
 
     def test_reescribe_su_slice_y_los_aplica_ya(self):
-        p = self.m.validar({"accion": "topes", "nombre": "pablo", "memoria": "4G", "cpu": "200%"})
+        p = self.m.validar({"accion": "topes", "nombre": "bruno", "memoria": "4G", "cpu": "200%"})
         pasos = self.m.plan(p)
         self.assertIn("MemoryMax=4G", pasos[0].archivo[1])
         self.assertEqual(pasos[-1].argv[:4], ["systemctl", "set-property", "--runtime", "user-{uid}.slice"])
@@ -60,7 +60,7 @@ class ElAyudanteCambiaTopes(Prueba):
     def test_valida_los_topes(self):
         for malo in ({"memoria": "4G; reboot"}, {"cpu": "200"}, {"memoria": None}):
             with self.assertRaises(self.m.Rechazo, msg=str(malo)):
-                self.m.validar({"accion": "topes", "nombre": "pablo", "memoria": "4G", "cpu": "200%", **malo})
+                self.m.validar({"accion": "topes", "nombre": "bruno", "memoria": "4G", "cpu": "200%", **malo})
 
 
 class Actualizar(base.EnLaMaquinaDelBus):
@@ -73,29 +73,29 @@ class Actualizar(base.EnLaMaquinaDelBus):
 
         self.pedir()
         self.aprobar(ayuda=self.ayuda({"ok": True, "version": "0.0.9"}))
-        self.assertEqual(alojamiento.leer()["pablo"]["version"], "0.0.9")
-        r = self.actualizar(persona="pablo", resultado={"ok": True, "version": __version__})
-        self.assertEqual(self.pedidos_al_ayudante[-1], {"accion": "actualizar", "nombre": "pablo", "version": __version__})
-        a = alojamiento.leer()["pablo"]
+        self.assertEqual(alojamiento.leer()["bruno"]["version"], "0.0.9")
+        r = self.actualizar(persona="bruno", resultado={"ok": True, "version": __version__})
+        self.assertEqual(self.pedidos_al_ayudante[-1], {"accion": "actualizar", "nombre": "bruno", "version": __version__})
+        a = alojamiento.leer()["bruno"]
         self.assertEqual((a["version"], a.get("actualizando")), (__version__, None))
         self.assertEqual(r["telar"], __version__)
 
     def test_si_falla_queda_el_error(self):
         self.pedir()
         self.aprobar(ayuda=self.ayuda())
-        self.actualizar(persona="pablo", version="9.9.9", resultado={"ok": False, "error": "no hay esa etiqueta"})
-        self.assertIn("no hay esa etiqueta", alojamiento.leer()["pablo"]["error"])
+        self.actualizar(persona="bruno", version="9.9.9", resultado={"ok": False, "error": "no hay esa etiqueta"})
+        self.assertIn("no hay esa etiqueta", alojamiento.leer()["bruno"]["error"])
 
     def test_solo_quien_administra_a_un_activo_y_una_version(self):
         self.pedir()
         with self.assertRaises(alojamiento.ErrorDeAlojamiento) as e:
-            self.actualizar(por="pablo", persona="pablo")
+            self.actualizar(por="bruno", persona="bruno")
         self.assertEqual(e.exception.codigo, 403)
         with self.assertRaises(alojamiento.ErrorDeAlojamiento):
-            self.actualizar(persona="pablo")  # todavía pendiente
+            self.actualizar(persona="bruno")  # todavía pendiente
         self.aprobar(ayuda=self.ayuda())
         with self.assertRaises(alojamiento.ErrorDeAlojamiento):
-            self.actualizar(persona="pablo", version="main; reboot")
+            self.actualizar(persona="bruno", version="main; reboot")
 
 
 class ElAyudanteActualiza(Prueba):
@@ -104,8 +104,8 @@ class ElAyudanteActualiza(Prueba):
         self.m = base._cargar_ayudante()
 
     def test_instala_de_la_etiqueta_y_reinicia_sin_reescribir_el_servicio(self):
-        [paso] = self.m.plan(self.m.validar({"accion": "actualizar", "nombre": "pablo", "version": "0.7.5"}))
-        self.assertEqual(paso.argv[:4], ["runuser", "-u", "pablo", "--"])
+        [paso] = self.m.plan(self.m.validar({"accion": "actualizar", "nombre": "bruno", "version": "0.7.5"}))
+        self.assertEqual(paso.argv[:4], ["runuser", "-u", "bruno", "--"])
         self.assertIn("@ git+https://github.com/nicorivas/telar@v0.7.5'", paso.stdin)
         self.assertIn("systemctl --user restart telar-serve", paso.stdin)
         self.assertNotIn("telar instalar", paso.stdin)
@@ -113,4 +113,4 @@ class ElAyudanteActualiza(Prueba):
     def test_valida_la_version(self):
         for mala in ("main", "0.7", "0.7.5; reboot", None):
             with self.assertRaises(self.m.Rechazo, msg=str(mala)):
-                self.m.validar({"accion": "actualizar", "nombre": "pablo", "version": mala})
+                self.m.validar({"accion": "actualizar", "nombre": "bruno", "version": mala})

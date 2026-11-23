@@ -1,7 +1,7 @@
 """`telar agente` — el agente que trabaja dentro de un hilo: sus ganchos y sus conversaciones.
 
     telar agente ver                 qué agente hay, qué sabe telar de este hilo
-    telar agente aviso [nombre]      lo que corren los ganchos: lee el JSON por stdin
+    telar agente evento [nombre]     lo que corren los ganchos: lee el JSON por stdin
     telar agente instalar [nombre]   deja los ganchos escritos en la config del agente
     telar agente desinstalar         los saca
     telar agente retomar             el comando que vuelve a abrir la conversación de aquí
@@ -12,6 +12,8 @@
                                      correo y cómo hablar con los otros (lo corre un gancho)
     telar agente skills [--hilo H]   las skills que tiene a mano el agente de ese hilo, con su
                                      descripción, y cuántas veces usó cada una en su conversación
+    telar agente casilla --leer      los mensajes que esperan en la casilla de este hilo, enteros,
+                                     y dados por entregados (sin --leer, es el gancho: lee stdin)
 
 `instalar` es lo único que telar escribe fuera de su propio estado, y encima en la
 configuración de otro programa (`~/.claude/settings.json`, para Claude Code). Por eso
@@ -25,14 +27,17 @@ muestra la ruta y la diferencia y **pregunta** antes de tocarla:
 Un gancho vive meses, así que se planta antes de dejar escrito un telar que se va a
 borrar —un venv temporal, un arenero— por más que la orden se llame «instalar».
 
-`aviso` tiene dos entradas. Con un agente que telar conoce, se le pasa su carga por la
+`evento` tiene dos entradas. Con un agente que telar conoce, se le pasa su carga por la
 entrada estándar y su adaptador la traduce. Con cualquier otro, se dice el evento a
 mano y no hace falta adaptador ninguno:
 
-    telar agente aviso --evento abre --sesion 4f21     arrancó esta conversación aquí
-    telar agente aviso --evento espera                 hay algo que decidir
-    telar agente aviso --evento espera --pide "¿borro la rama vieja?"
-                                                       …y qué (lo muestra `telar objeto permiso:<hilo>`)
+    telar agente evento --evento abre --sesion 4f21     arrancó esta conversación aquí
+    telar agente evento --evento espera                 hay algo que decidir
+    telar agente evento --evento espera --pide "¿borro la rama vieja?"
+                                                        …y qué (lo muestra `telar objeto permiso:<hilo>`)
+
+Antes se llamaba `telar agente aviso`, y así sigue andando: es lo que corren los ganchos
+que ya están escritos en cada máquina, hasta que se reinstalan.
 
 Es el único verbo que corre seguido —cada vez que el agente arranca, pide permiso o
 termina— y por eso tiene tres reglas propias:
@@ -49,7 +54,6 @@ es de quien tenga el foco puesto ahí.
 
 from __future__ import annotations
 
-import difflib
 import json
 import os
 import shlex
@@ -81,20 +85,31 @@ from telar.ordenes import _comun
 
 AYUDA = "El agente que corre en un hilo: sus ganchos, sus conversaciones."
 
-VERBOS = ("ver", "aviso", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto", "skills", "casilla", "mod")
+VERBOS = ("ver", "evento", "instalar", "desinstalar", "retomar", "nuevo", "abrir", "conversacion", "contexto", "skills", "casilla", "mod")
+
+#: el nombre de antes de `evento`, que todavía corren los ganchos instalados: se acepta y no se ofrece
+RENOMBRADOS = {"aviso": "evento"}
+
+
+class _Verbos(tuple):
+    """Los verbos que se ofrecen (la ayuda y el error de uno que no existe los recorren) y, además, los nombres
+    de antes, que se aceptan."""
+
+    def __contains__(self, verbo) -> bool:
+        return tuple.__contains__(self, verbo) or verbo in RENOMBRADOS
 
 
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("agente", AYUDA)
     p.epilog = __doc__
-    p.add_argument("verbo", nargs="?", choices=VERBOS, default="ver", help="qué hacer")
+    p.add_argument("verbo", nargs="?", choices=_Verbos(VERBOS), default="ver", help="qué hacer")
     p.add_argument("agente", nargs="?", default="", help="cuál (por defecto, el único que haya)")
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--evento", default="", choices=("", *(e.value for e in Evento)),
-                   help="con aviso: decir el evento en vez de leerlo de la carga")
-    p.add_argument("--sesion", default="", help="con aviso: el id de la conversación")
-    p.add_argument("--panel", default="", help="con aviso: el panel donde corre el agente")
-    p.add_argument("--pide", default="", help="con aviso --evento espera: qué le pide a la persona, en una línea "
+                   help="con evento: decirlo en vez de leerlo de la carga")
+    p.add_argument("--sesion", default="", help="con evento: el id de la conversación")
+    p.add_argument("--panel", default="", help="con evento: el panel donde corre el agente")
+    p.add_argument("--pide", default="", help="con evento --evento espera: qué le pide a la persona, en una línea "
                    "(lo muestra `telar objeto permiso:<hilo>`)")
     p.add_argument("--ajustes", default="", help="el archivo de configuración del agente")
     p.add_argument("--ejecutable", default="", help="con qué comando llamar a telar desde el gancho")
@@ -102,16 +117,21 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--si", action="store_true",
                    help="con instalar: escribir sin preguntar (--json también salta la pregunta)")
     p.add_argument("--olvidar", action="store_true",
-                   help="con aviso: al cerrar, olvidar además la conversación")
+                   help="con evento: al cerrar, olvidar además la conversación")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     p.add_argument("--todos", action="store_true",
                    help="con abrir: en cada hilo de la sesión que no tenga el agente corriendo")
+    p.add_argument("--leer", action="store_true",
+                   help="con casilla: mostrar los mensajes que esperan y darlos por entregados (no es el gancho)")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
 
-    if o.verbo == "aviso":
-        return _aviso(o, ctx)
+    # `aviso` es el nombre de antes, y no dice nada al usarlo: lo corren los ganchos ya instalados, y lo que imprime
+    # un gancho le habla al agente
+    o.verbo = RENOMBRADOS.get(o.verbo, o.verbo)
+    if o.verbo == "evento":
+        return _evento(o, ctx)
     if o.verbo == "abrir":
         return _abrir(o, ctx)
     if o.verbo == "contexto":
@@ -124,7 +144,7 @@ def main(argv: list[str], ctx) -> int:
             print(texto)
         return 0
     if o.verbo == "casilla":
-        return _casilla(ctx)
+        return _leer_casilla(o, ctx) if o.leer else _casilla(ctx)
     if o.verbo == "mod":
         return _mod(o, ctx)
     if o.verbo == "conversacion":
@@ -186,22 +206,56 @@ def _como_agente(ctx, hilo: str) -> list[str]:
 
 
 def _familia(est, hilo: str) -> list[str]:
-    """Una línea si cuelga de otro hilo, y una si tiene hijos, con en qué está cada uno."""
-    from telar.ordenes.hilo import padre_de
+    """Una línea si cuelga de otro hilo, y una si tiene hijos, con en qué está cada uno. Con ramas propias (telar.ramas),
+    el hijo sabe dónde trabaja y que no fusiona, y el padre, qué le falta fusionar de cada uno y que eso es suyo."""
+    from telar import ramas as mod_ramas
 
     lineas = []
-    padre = padre_de(est, hilo)
+    # lo mismo que telar.ordenes.hilo.padre_de, sin cargar esa orden: esto corre al empezar cada sesión
+    padre = est.padre(hilo)
+    ramas = est.ramas()
     if padre:
         lineas.append(f"Cuelgas de «{padre}», el hilo que te encarga: cuando termines lo suyo, o si necesitas que decida "
                       f"algo, escríbele (`telar mensaje \"{padre}\" \"…\"`). Al terminar cada turno le llega un aviso.")
+    propia = ramas.get(hilo)
+    if propia:
+        lineas.append(f"Trabajas en tu propia rama, {propia['rama']} (salió de {propia['base']}), en el worktree "
+                      f"{propia['carpeta']}: edita, prueba y commitea solo ahí (`telar commit --local -m \"…\" -- rutas`). "
+                      f"{propia.get('desde') or 'La carpeta de la rama principal'} es de {propia['base']}: no la toques. No "
+                      f"fusiones, no subas ni cambies de rama: cuando esté lista (todo commiteado, la suite completa pasando), "
+                      f"avísale a «{padre or 'quien te abrió'}», con el commit en que pasó, y la fusiona él. Mientras "
+                      f"iteras, solo las pruebas afectadas. El método: /ramas.")
+        # el CHANGELOG por fragmentos (telar.changelog): solo si su repositorio lo declara; si no, ni se importa
+        if (Path(propia.get("ruta") or "") / ".telar" / "changelog.yaml").is_file():
+            from telar import changelog
+
+            decl = changelog.de_la_carpeta(propia["ruta"])
+            if decl:
+                lineas.append(f"Este repositorio junta el CHANGELOG por fragmentos: tu entrada va en "
+                              f"{decl['carpeta']}/{propia['rama'].replace('/', '-')}.md (cómo es uno, en "
+                              f"{decl['carpeta']}/README.md), commiteada en tu rama; no toques {decl['archivo']} ni la "
+                              f"mandes en el mensaje: al fusionar, telar la pasa a [Unreleased].")
     hijos = est.hijos(hilo)
     if hijos:
         archivados = est.archivados()
         atenciones = {h: a for h, (a, _) in est.atenciones().items()}
-        estado = lambda h: "archivado" if h in archivados else getattr(atenciones.get(h), "value", "") or "quieto"
+
+        def estado(h: str) -> str:
+            texto = "archivado" if h in archivados else getattr(atenciones.get(h), "value", "") or "quieto"
+            if h in ramas:
+                n = mod_ramas.pendientes(ramas[h])
+                texto += f" · rama {ramas[h]['rama']}" + (f", {n} commit(s) sin fusionar" if n > 0 else
+                                                          ", nada sin fusionar" if n == 0 else "")
+            return texto
+
         lineas.append("Tus hilos hijos: " + ", ".join(f"«{h}» ({estado(h)})" for h in hijos)
-                      + ". Te avisan al terminar un turno; abrir otro: `telar hilo hijo «Nombre» --texto \"…\"`; "
-                      "lo último de uno: `telar hilo leer <hijo>`.")
+                      + ". Te avisan al terminar un turno; abrir otro: `telar hilo hijo «Nombre» --texto \"…\"` (con "
+                      "`--rama`, en su propio worktree); lo último de uno: `telar hilo leer <hijo>`.")
+        if any(h in ramas for h in hijos):
+            lineas.append("Los hijos con rama los fusionas tú, no ellos: `telar hilo fusionar «Nombre»` cuando te avisen "
+                          "que está lista (`--seguir` si sigue trabajando), o `telar hilo descartar «Nombre»`. Antes, "
+                          "revisa lo suyo y que las pruebas pasen; lo que integrar pide en este repositorio (compilar, "
+                          "CHANGELOG si no va por fragmentos, subir) es tuyo. El método: /ramas.")
     return lineas
 
 
@@ -245,12 +299,11 @@ def contexto(ctx) -> str:
             lineas.append("Antes de trabajar en lo de este hilo, lee " + " y ".join(str(x) for x in leer)
                           + (": el HANDOFF dice en qué iba la conversación anterior" if leer[-1].name == "HANDOFF.md" else "") + ".")
 
-    from telar import bus as mod_bus
-
-    con_bus = mod_bus.hay_bus(ctx.config)
+    con_bus = _hay_bus(ctx.config)
     if con_bus:
         lineas.append("Tienes casilla en el bus: lo que te escriban otros hilos, de esta máquina o de otra, "
-                      "te llega entero al terminar el turno o con «↯ mensaje nuevo».")
+                      "te llega entero al terminar el turno o con «↯ mensaje nuevo». Si te llega solo esa línea, sin "
+                      "el mensaje, léelo con `telar agente casilla --leer`.")
     elif cartero:
         ext = mod_correo.extension(hilo)
         direccion = f"{getpass.getuser()}+{ext}@{servidor}" if ext else ""
@@ -259,8 +312,11 @@ def contexto(ctx) -> str:
     else:
         lineas.append("Este hilo no tiene casilla: solo le llegan mensajes nativos (SendMessage) de sesiones de esta máquina.")
     directorio = any(r.directorio for r in ctx.config.remotos)
-    lineas.append("Otros hilos: `telar hilos --json`; en esta máquina también ListAgents"
-                  + ("; los de otras personas: `telar directorio`" if directorio else "")
+    # con bus, sin `--red` la lista es solo de esta máquina: quien busca ahí un hilo de la otra concluye que no existe
+    otros = ("Otros hilos, en todas tus máquinas: `telar hilos --red --json` (`hilos`, los de aquí; `otras_maquinas`, "
+             "los de las demás; cada uno con su `maquina`); en esta máquina también ListAgents" if con_bus else
+             "Otros hilos: `telar hilos --json`; en esta máquina también ListAgents")
+    lineas.append(otros + ("; los de otras personas: `telar directorio`" if directorio else "")
                   + ". De qué trata uno: `telar ficha <hilo> --json`.")
     if con_bus:
         escribir = ("Escribir a otro hilo o agente tuyo, en cualquier máquina: `telar mensaje <hilo> \"…\"` "
@@ -279,7 +335,7 @@ def contexto(ctx) -> str:
                   + _agentes_en_contexto(ctx))
     # las direcciones (telar.objetos): con una forma, un mensaje nombra algo y quien lo lee sabe abrirlo
     # el proyecto, con el de este hilo si tiene: la ruta es la carpeta relativa a la raíz, la misma del vínculo
-    from telar.objetos import direccion_de
+    from telar.direcciones import direccion_de
 
     proyecto = direccion_de("proyecto", vinculo) if vinculo else "proyecto:<carpeta relativa a la raíz>"
     lineas.append(f"Cada cosa tiene dirección, `tipo:id` (`tarea:T84`, `hilo:Faro`, `{proyecto}`): "
@@ -298,12 +354,30 @@ def contexto(ctx) -> str:
     return "\n".join(lineas)
 
 
+def _hay_bus(config) -> bool:
+    """telar.bus.hay_bus, sin importar el bus (trae asyncio): los ganchos lo preguntan en cada turno."""
+    return bool(getattr(getattr(config, "bus", None), "url", ""))
+
+
+def _persona_del_bus(config) -> str:
+    """telar.bus.persona si hay bus, "" si no; sin importar el bus, como `_hay_bus`."""
+    if not _hay_bus(config):
+        return ""
+    import getpass
+
+    return config.bus.persona or getpass.getuser()
+
+
 def _casilla(ctx) -> int:
     """El gancho de la casilla: si el hilo tiene mensajes pendientes, los hace entrar. Silencioso y 0.
 
     Lo llaman Stop (el agente terminó un turno: no lo deja parar y le pasa los mensajes) y
     UserPromptSubmit (llegó un mensaje, el «↯» u otro: se los agrega como contexto). Sin hilo, en un
-    agente no interactivo o con la casilla vacía, no imprime nada: el turno sigue como si nada."""
+    agente no interactivo o con la casilla vacía, no imprime nada: el turno sigue como si nada.
+
+    Lo que imprime queda en camino hasta verse en la conversación (`transcript_path`, telar.casilla.revisar): si
+    Claude Code lo mata por pasarse del plazo, descarta la salida, y el mensaje vuelve en la corrida siguiente.
+    Corre en cada turno de cada hilo: lo que importa, adentro de lo que lo necesita."""
     try:
         datos = json.loads(sys.stdin.read() or "{}")
         if _no_interactivo():
@@ -314,15 +388,10 @@ def _casilla(ctx) -> int:
         hilo = _hilo_de_casilla(ctx, datos)
         if not hilo:
             return 0
-        if evento == "Stop" and datos.get("stop_hook_active"):
-            # ya está siguiendo por un Stop anterior: solo entrega si llegó algo más (sin bucle vacío)
-            pass
         from telar import casilla
 
-        from telar import bus as mod_bus
-
-        persona = mod_bus.persona(ctx.config) if mod_bus.hay_bus(ctx.config) else ""
-        salida = casilla.para_gancho(ctx.config, hilo, evento, str(datos.get("prompt") or ""), persona)
+        salida = casilla.para_gancho(ctx.config, hilo, evento, str(datos.get("prompt") or ""),
+                                     _persona_del_bus(ctx.config), str(datos.get("transcript_path") or ""))
         if not salida and evento == "Stop":
             # sin nada en la casilla: un encargo que corre y no cerró, se le recuerda (una vez)
             from telar import encargo
@@ -345,6 +414,22 @@ def _casilla(ctx) -> int:
     return 0
 
 
+def _leer_casilla(o, ctx) -> int:
+    """`telar agente casilla --leer`: lo que espera en la casilla de este hilo, entero, y dado por entregado. Para el
+    agente al que solo le llegó la línea del aviso («↯ mensaje nuevo · …») sin el contenido: lo que muestra esta
+    orden lo vio en su salida."""
+    hilo = o.hilo or _hilo_de_casilla(ctx, {})
+    if not hilo:
+        return _comun.queja("no sé de qué hilo es esta casilla: corre esto dentro de un hilo, o di cuál con --hilo")
+    from telar import casilla
+
+    texto = casilla.leer(ctx.config, hilo, _persona_del_bus(ctx.config))
+    if o.json:
+        return _comun.escribir_json({"hilo": hilo, "texto": texto})
+    print(texto or f"No hay mensajes esperando en la casilla de «{hilo}».")
+    return 0
+
+
 def _mod(o, ctx) -> int:
     """Lo que pregunta el mod de Claude Code (telar/mod/): en qué hilo está su sesión, dónde está su
     casilla y, si hay mensajes, la línea de aviso que manda. Siempre JSON y 0: sin hilo, `hilo` vacío y el
@@ -358,6 +443,8 @@ def _mod(o, ctx) -> int:
             d = casilla.carpeta(ctx.config, hilo)
             d.mkdir(parents=True, exist_ok=True)
             salida.update(hilo=hilo, casilla=str(d))
+            # lo que un gancho imprimió y la conversación no muestra (lo mataron): vuelve a esperar, y el aviso sale
+            casilla.revisar(ctx.config, hilo)
             # un aviso (modo «aviso») no despierta: espera al próximo turno sin que el mod lo mande
             if casilla.despiertan(ctx.config, hilo):
                 salida["aviso"] = casilla.aviso(ctx.config, hilo)
@@ -393,7 +480,7 @@ def _hilo_de_casilla(ctx, datos: dict) -> str:
 
 
 def _agentes_en_contexto(ctx) -> str:
-    """« Agentes residentes (Gestión, Faro): encárgales con …», o nada si no hay."""
+    """« Agentes residentes (Secretaría, Faro): encárgales con …», o nada si no hay."""
     try:
         from telar import agentes as mod_agentes
 
@@ -467,7 +554,7 @@ def _construir(nombre: str, config):
     return mod_agente.obtener(elegido, config)
 
 
-# ── aviso: lo que corren los ganchos ────────────────────────────────────────────
+# ── evento: lo que corren los ganchos ────────────────────────────────────────────
 
 
 def _no_interactivo() -> bool:
@@ -480,7 +567,7 @@ def _no_interactivo() -> bool:
 DEL_MOD = frozenset({Evento.EMPIEZA, Evento.ESPERA, Evento.SIGUE, Evento.TERMINA})
 
 
-def _aviso(o, ctx) -> int:
+def _evento(o, ctx) -> int:
     """Aplica un evento del agente. Silencioso, y siempre 0.
 
     Todo lo que podría salir mal —una carga que no es JSON, un agente desconocido, un
@@ -700,6 +787,8 @@ def _diferencia(hecho) -> list[str]:
     tener cien líneas que telar no toca, y esconder seis cambios entre ellas es otra
     forma de no avisar.
     """
+    import difflib
+
     lineas = difflib.unified_diff(
         hecho.antes.splitlines(),
         hecho.texto.splitlines(),

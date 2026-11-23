@@ -1,0 +1,92 @@
+/* La línea del pulso y su ventana (componentes/pulso.ts; en la página, web/pulso.ts). La línea va justo debajo de la franja
+   de avisos, quieta como ella, del alto de una fila, con su línea abajo de borde a borde: el ícono del pulso en el color
+   de los agentes (tenue, si la pasada fue en seco), lo que cambió en el del texto, lo que falló en el de cuidado y «+N»
+   tenue a la derecha. Sin pasadas con cambios sin ver, no está. */
+
+.pulso-lugar { flex: none; }
+.pulso-lugar:empty { display: none; }
+
+.pulso-linea {
+  display: flex;
+  gap: var(--item-texto-sangria);
+  align-items: baseline;
+  box-sizing: border-box;
+  padding: 0 var(--pantalla-margen);
+  overflow: hidden;
+  border-bottom: var(--borde);
+  color: var(--texto);
+  line-height: var(--item-alto);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover { background: var(--item-fondo-hover); }
+}
+
+/* el ícono, en la ranura de los de la barra (el texto empieza en la columna de los nombres de abajo, como en la franja) */
+.pulso-icono { flex: none; display: inline-block; width: var(--item-ranura); color: var(--agente); text-align: center; }
+.pulso-linea.seco .pulso-icono,
+.pulso-pasada.seco .pulso-icono { color: var(--texto-tenue); }
+.pulso-texto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pulso-marca { color: var(--texto-tenue); }
+.pulso-falla { color: var(--atencion); }
+.pulso-mas { flex: none; margin-left: auto; color: var(--texto-tenue); }
+
+/* la ventana: las pasadas una debajo de otra, la más nueva arriba, cada una con su línea arriba de borde a borde. El ancho, por
+   la pantalla y no por «100%»: el <dialog> se mide por lo de adentro (fit-content), y con un porcentaje quedaba del ancho
+   de la página y la ventana pegada a la izquierda */
+.ventana.pulso { width: min(var(--ventana-ancho-ancha), 100vw - 2 * var(--ventana-margen)); }
+.ventana.pulso .ventana-cuerpo { margin-top: var(--e-1); border-top: var(--borde); }
+
+.pulso-pasada {
+  padding: var(--e-1) var(--item-pad-x);
+
+  & + & { border-top: var(--borde); }
+}
+
+/* cuándo y sus marcas, en una línea, con el ícono en su ranura; lo de abajo, en la columna del texto */
+.pulso-cab { display: flex; gap: var(--item-texto-sangria); align-items: baseline; }
+.pulso-cuando { color: var(--titulo); }
+.pulso-cab .pulso-marca + .pulso-marca::before { content: "· "; }
+.pulso-cab .pulso-cuando + .pulso-marca::before { content: "· "; }
+.pulso-resumen,
+.pulso-grupo { margin-left: calc(var(--item-ranura) + var(--item-texto-sangria)); }
+.pulso-resumen { margin-bottom: var(--e-1); white-space: pre-wrap; }
+/* con ambos mundos puestos, el resumen de un mundo empieza con su nombre en su color (--mundo-c, que pone quien lo dibuja) */
+.pulso-mundo { color: var(--mundo-c, var(--texto-tenue)); }
+
+/* cada grupo: su nombre tenue en una columna, y sus cambios al lado */
+.pulso-grupo { display: grid; grid-template-columns: 11ch 1fr; gap: 0 var(--h-1); }
+.pulso-grupo-nombre { color: var(--texto-tenue); }
+.pulso-grupo-filas { min-width: 0; }
+.pulso-fila { overflow-wrap: anywhere; }
+.pulso-tenue,
+.pulso-id { color: var(--texto-tenue); }
+
+/* un cambio y, debajo, lo que lo causó: tenue, con el ícono de su fuente; entre un cambio y el siguiente, aire */
+.pulso-cambio + .pulso-cambio { margin-top: var(--e-1); }
+.pulso-causa { color: var(--texto-tenue); overflow-wrap: anywhere; }
+
+/* lo que falló de una fuente, en la columna del texto: su nombre en el color de cuidado y por qué, tenue */
+.pulso-fallo {
+  margin: 0 0 var(--e-1) calc(var(--item-ranura) + var(--item-texto-sangria));
+  overflow-wrap: anywhere;
+}
+
+/* la pasada que no cambió nada: su cabecera sola, con «sin cambios» y lo que llegó de cada fuente */
+.pulso-pasada.sin-cambios .pulso-cuando { color: var(--texto-tenue); }
+.pulso-sin { color: var(--texto-tenue); }
+.pulso-cab .pulso-sin::before,
+.pulso-cab .pulso-sin + .pulso-tenue::before,
+.pulso-cab .pulso-sin ~ .pulso-falla::before { content: "· "; }
+
+.pulso-dir {
+  color: var(--acento);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; }
+}
+
+/* en el teléfono, el nombre del grupo arriba de sus filas: no hay ancho para dos columnas */
+.angosto .pulso-grupo { grid-template-columns: 1fr; }

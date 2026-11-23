@@ -14,6 +14,9 @@ Aparte, `consulta`: el lienzo le pregunta a **su propio módulo** una de sus con
 módulo que ya dibujó la página, que lee o cambia lo suyo (su estado, no tus documentos: eso son las órdenes de telar de
 `ORDENES`, que sí lo piden). Así una página carga lo que no cabía al dibujarla (los mensajes de un chat, una
 búsqueda) o guarda lo que se elige en ella (la etiqueta de un chat).
+
+Lo que solo muestra no llega aquí: `menu` (el menú de una entidad) y `abrir` (abrirla en la página, como un clic en un
+enlace a su dirección) los atiende la página sola, sin permiso (pagina/src/vistas/dashboard/pedidos-locales.ts).
 """
 
 from __future__ import annotations
@@ -69,12 +72,17 @@ ORDENES = {
                     "y abrir tareas desde ellas (telar productos)"),
 }
 
+#: lo que un lienzo pide y atiende la página, sin el servidor ni permiso (solo muestra)
+DE_LA_PAGINA = ("menu", "abrir")
+
 
 def modulo_de(ctx, origen: str):
-    """El módulo que dibujó ese lienzo: el que trae ese bloque (su pestaña) o esa app. None si no es de un módulo."""
+    """El módulo que dibujó ese lienzo: el que trae ese bloque (su pestaña), esa app o esa pantalla de configuración
+    («config:<módulo>»). None si no es de un módulo."""
     tipo, _, clave = origen.partition(":")
     for m in getattr(ctx.config, "modulos", ()):
-        if m.nombre == clave and ((tipo == "bloque" and m.pestana) or (tipo == "app" and m.app)):
+        if m.nombre == clave and ((tipo == "bloque" and m.pestana) or (tipo == "app" and m.app)
+                                  or (tipo == "config" and m.configurar)):
             return m
     return None
 
@@ -103,6 +111,8 @@ def pedir(ctx, origen: str, orden: str, datos: dict) -> dict:
         if m is None:
             raise ErrorDeServicio(f"{origen}: no es la página de un módulo; solo un módulo consulta lo suyo", 403)
         return {"orden": orden, "datos": _consulta(ctx, m, datos)}
+    if orden in DE_LA_PAGINA:
+        raise ErrorDeServicio(f"«{orden}» lo atiende la página, no telar: window.lienzo.pedir(\"{orden}\", {{direccion}})", 400)
     if orden not in ORDENES:
         raise ErrorDeServicio(f"un lienzo no puede pedir «{orden}» (puede: {', '.join(sorted(ORDENES))})", 400)
     m = modulo_de(ctx, origen)

@@ -1,0 +1,50 @@
+/* Los filtros (componentes/filtros.ts): grupos de opciones en palabras, cada una con su cuenta, la que rige en el
+   acento. En una fila tras el ícono padre (en su celda cuadrada, como el del orden, dentro del primer grupo), los grupos
+   apartados por más aire que sus opciones; si no cabe, el grupo que no cabe baja entero, y uno más ancho que la fila se
+   parte adentro. Un grupo plegado muestra solo lo que rige (o su nombre) y un ⌄. */
+
+/* el padre cuelga a la izquierda: si la fila se parte, cada renglón empieza donde empieza el primero, después de él */
+.filtros {
+  --filtros-padre: calc(var(--item-alto) * 1em);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4ch;
+  min-width: 0;
+  padding-inline-start: calc(var(--filtros-padre) + 1ch);
+}
+
+.filtros-padre {
+  flex: none;
+  inline-size: var(--filtros-padre);
+  margin-inline: calc(-1 * var(--filtros-padre) - 1ch) -1ch; /* del aire del grupo: la celda ya trae lo suyo */
+  color: var(--texto-tenue);
+  text-align: center;
+  cursor: default;
+}
+
+.filtros-grupo { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; align-items: baseline; gap: 0 2ch; min-width: 0; }
+
+.filtros-op {
+  padding: 0;
+  font: inherit;
+  color: var(--texto-tenue);
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.filtros-op:hover { color: var(--texto); }
+.filtros-op.cero { color: var(--texto-apagado); }
+.filtros-op.si { color: var(--acento); }
+
+/* plegado: lo que rige, o el nombre del grupo si no rige ninguna, y el ⌄; sus opciones esperan en el menú. El clic y
+   el globo son del grupo entero (abre el menú), no de la opción que se ve */
+.filtros-grupo.plegado { gap: 0 1ch; cursor: pointer; }
+.plegado > .filtros-op { pointer-events: none; }
+.plegado > .filtros-op:not(.si) { display: none; }
+.plegado:has(> .filtros-op.si) > .filtros-nombre { display: none; }
+.filtros-nombre,
+.filtros-abrir { color: var(--texto-tenue); }
+.plegado:hover > .filtros-nombre,
+.plegado:hover > .filtros-abrir { color: var(--texto); }

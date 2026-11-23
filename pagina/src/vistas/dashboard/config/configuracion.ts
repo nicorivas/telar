@@ -12,6 +12,8 @@ import { carpetas } from './carpetas';
 import { modulos } from './modulos';
 import { glifosSeccion } from './glifos';
 import { modosSeccion } from './modos';
+import { mundosSeccion } from './mundos';
+import { temasSeccion } from './temas';
 import { periodicos } from './periodicos';
 import { personas } from './personas';
 import { servidor } from './servidor';
@@ -21,10 +23,10 @@ import { pestanas } from './pestanas';
 import type { Contexto, FabricaSeccion, Seccion } from './seccion';
 
 /** Las secciones, en el orden del menú. */
-const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, modosSeccion, glifosSeccion, terminal, agente, periodicos, agentes, modulos, personas, servidor, versionSeccion];
+const SECCIONES: FabricaSeccion[] = [pestanas, calendario, carpetas, modosSeccion, mundosSeccion, temasSeccion, glifosSeccion, terminal, agente, periodicos, agentes, modulos, personas, servidor, versionSeccion];
 
 /** Lo que la configuración necesita del dashboard: dónde dibujar y lo que sus secciones miran. */
-export type Base = Pick<Contexto, 'parcial' | 'teclas' | 'dashboard'> & { pintar(h: string[]): void };
+export type Base = Pick<Contexto, 'parcial' | 'teclas' | 'dashboard' | 'paginas'> & { pintar(h: string[]): void };
 
 export class Configuracion {
     private readonly secciones: Seccion[];
@@ -41,6 +43,7 @@ export class Configuracion {
             config: () => this.leida,
             releerConfig: () => this.releer(),
             dashboard: base.dashboard,
+            paginas: base.paginas,
         };
         this.secciones = SECCIONES.map(f => f(ctx));
     }
@@ -52,15 +55,18 @@ export class Configuracion {
     }
     private seccion(): Seccion | undefined { return this.visibles().find(s => s.clave === this.actual); }
 
-    /** Entrar a ⚙: a `clave`, si se da (y existe); si no, a la última que se miró, o a la primera. */
+    /** Entrar a ⚙: a `clave`, si se da (y existe); si no, a la última que se miró, o a la primera. `clave:sub` entra
+     *  a algo de adentro de la sección (`modulos:whatsapp`, la configuración de ese módulo). */
     async abrir(clave = ''): Promise<void> {
+        const [cual, sub] = [clave.split(':')[0], clave.includes(':') ? clave.slice(clave.indexOf(':') + 1) : undefined];
+        clave = cual;
         const visibles = this.visibles();
         const nueva = visibles.find(s => s.clave === clave)?.clave
             ?? (visibles.some(s => s.clave === this.actual) ? this.actual : visibles[0]?.clave ?? '');
         if (nueva !== this.actual) this.base.teclas.clear();
         this.actual = nueva;
         if (!this.leida) await this.releer();
-        await this.seccion()?.abrir();
+        await this.seccion()?.abrir(sub);
     }
 
     /** Redibujar lo que se ve (el refresco de cada minuto). */
@@ -87,7 +93,7 @@ export class Configuracion {
         if (!s) return;
         const menu = this.visibles().map(x => `<a class="config-op${x.clave === s.clave ? ' activa' : ''}" data-accion="config" data-valor="${esc(x.clave)}"`
             + ` title="${esc(x.ayuda)}">${esc(x.nombre)}</a>`).join('');
-        this.base.pintar([`<div class="config"><nav class="config-menu"><div class="config-titulo">configuración</div>${menu}</nav>`,
+        this.base.pintar([`<div class="config"><nav class="config-menu">${menu}</nav>`,
             `<div class="config-cuerpo"><div class="config-cab"><b>${esc(s.nombre)}</b><span class="dim">${esc(s.ayuda)}</span></div>`,
             ...(this.error ? [`<div class="fila falla">${esc(this.error)}</div>`] : []),
             ...cuerpo, '</div></div>']);

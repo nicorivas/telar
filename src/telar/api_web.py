@@ -3,11 +3,16 @@
 Es una app aparte de la API del socket (telar.api), que monta adentro bajo `/api`, y escucha en la IP de
 Tailscale. Como el panel: se entra con la llave de `~/.config/telar/panel.llave` (`?k=…` la primera vez;
 después queda en una cookie HttpOnly, la misma del panel, así que entrar a uno entra a los dos), y lo que
-escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio ajeno no puede fingir el
+escribe (POST, PUT, PATCH, DELETE) tiene que venir de una página de aquí: un sitio ajeno no puede fingir el
 `Origin`. Sin `Origin` (curl, la CLI) manda la llave.
 
     GET  /                  la página (se arma pantalla por pantalla: docs/arquitectura.md)
     GET  /compartir         la misma página, abierta en «compartir» (lo que el teléfono le comparte a la app)
+    GET  /pestana/<nombre>/ la misma página con solo esa pestaña del dashboard: una app aparte para instalar en el
+                            teléfono, con su manifiesto y su ícono (`…/manifest.webmanifest`, `…/icono.png`, sin llave:
+                            el del módulo de la pestaña, o el de telar)
+    GET  /componentes       el catálogo de componentes de la página: cada uno en sus estados, con cada tema al lado
+                            (la vista de desarrollo; con la llave, como la página)
     GET  /maquinas          la página madre: tus máquinas, para elegir en cuál abrir la página
     GET  /maquinas.json     esta máquina y las del bus que sirven su página, cada una con su enlace para entrar
     GET  /alojamiento.json  los servidores tipo mainframe del bus y cómo va mi pedido de un lugar (y, si administro,
@@ -20,6 +25,8 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
                             por hora; no da acceso: queda pendiente hasta `telar bus aprobar`
     GET  /unirse/<id>       en qué va ese pedido, solo para la máquina que lo hizo
     GET  /estatico/…        sus archivos (src/telar/web; xterm.js en estatico/xterm)
+    GET  /pagina.json       la firma de la página que sirve este proceso (`firma_pagina`): una página abierta la compara
+                            con la que trae escrita y, si es otra, se pone al día (pagina/src/web/recarga.ts)
     WS   /pty?hilo=…        la terminal de un hilo de esta máquina (telar.terminal), con la llave y desde aquí;
                             &maquina=… la de un hilo de otra máquina: se reenvía al /pty de su página (la
                             dirección viene en su foto del bus), presentándose con el token del bus. Ese
@@ -30,14 +37,16 @@ escribe (POST, PUT, DELETE) tiene que venir de una página de aquí: un sitio aj
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import re
 import secrets
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 #: la cookie de la llave: el mismo nombre que usaba el panel en Node, para que una app ya instalada siga entrando
@@ -52,6 +61,8 @@ APP = {
     "/icono-maskable-192.png": "image/png", "/icono-maskable-512.png": "image/png",
 }
 LIBRES = (*APP, "/entrar")
+#: lo de una pestaña instalada como app que el navegador pide sin la cookie: su manifiesto y su ícono
+PESTANA_LIBRE = re.compile(r"/pestana/[^/]+/(manifest\.webmanifest|icono\.png)")
 
 #: cuánto vale un boleto para entrar a otra máquina (ver `boleto`)
 BOLETO_SEGUNDOS = 60
@@ -97,6 +108,19 @@ def llave() -> str:
     return nueva
 
 
+def _lado_png(ruta: Path) -> int:
+    """El lado de un PNG cuadrado (su cabecera IHDR), o 0 si no lo es: el manifiesto dice el tamaño de cada ícono."""
+    try:
+        with ruta.open("rb") as f:
+            cabeza = f.read(24)
+    except OSError:
+        return 0
+    if cabeza[:8] != b"\x89PNG\r\n\x1a\n" or cabeza[12:16] != b"IHDR":
+        return 0
+    ancho, alto = int.from_bytes(cabeza[16:20], "big"), int.from_bytes(cabeza[20:24], "big")
+    return ancho if ancho == alto else 0
+
+
 def _mismo_origen(request: Request) -> bool:
     origen = request.headers.get("origin")
     if not origen:
@@ -117,7 +141,23 @@ def _cache(ruta: str) -> str:
 
 
 #: lo que, al cambiar, recarga la página en modo desarrollo (lo rehace `npm run navegador:watch`)
-VIGILADOS = ("app.js", "marco.css", "indice.html")
+VIGILADOS = ("app.js", "marco.css", "indice.html", "componentes.js", "componentes.html")
+
+#: lo que carga la página (indice.html y lo que pide): si cambia, una página que ya estaba abierta es de antes
+PAGINA = ("indice.html", "app.js", "marco.css")
+
+
+def firma_pagina(carpeta: Path = CARPETA) -> str:
+    """Una firma de la página: el contenido de `PAGINA`, resumido. Desplegar es traer el código y reiniciar el servicio, y la
+    versión de telar no cambia entre commits: esto sí. Por el contenido y no por la hora del archivo, que un checkout
+    cambia aunque el archivo quede igual."""
+    import hashlib
+
+    h = hashlib.sha256()
+    for nombre in PAGINA:
+        ruta = carpeta / nombre
+        h.update(nombre.encode() + b"\0" + (ruta.read_bytes() if ruta.is_file() else b"") + b"\0")
+    return h.hexdigest()[:16]
 
 
 async def _cambios():
@@ -141,6 +181,53 @@ async def _cambios():
             yield ": latido\n\n"
 
 
+#: Lo que no cuenta como cambio para la página: lo que el nodo reescribe cada tanto aunque nada cambie (los vivos, lo de
+#: otras personas, el directorio del bus). Los candados (`*.lock`, `.candado`, y todo lo oculto) y los registros tampoco,
+#: salvo el del foco.
+QUIETOS = frozenset({"vivos", "ajenos.json", "deseado.json", "directorio-bus.json"})
+
+
+def _firma_carpeta(carpeta: Path) -> tuple:
+    """Los archivos de una carpeta del estado que le importan a la página, con su hora de escritura."""
+    try:
+        with os.scandir(carpeta) as entradas:
+            return tuple(sorted(
+                (e.name, e.stat().st_mtime_ns) for e in entradas
+                if e.is_file() and e.name not in QUIETOS and not e.name.startswith(".") and not e.name.endswith(".lock")
+                and (not e.name.endswith(".log") or e.name == "foco.log")))
+    except OSError:
+        return ()
+
+
+async def _eventos(config):
+    """Lo que la página tiene que volver a leer, apenas cambia: «hilos» (el estado de telar: la atención de un hilo,
+    lo visto, una prioridad, un archivado, el foco) o «espejos» (llegó la foto de otra máquina, o cambió lo que espera
+    en cola para una que está fuera de línea: telar.alcance). Así la barra se pone al
+    día al tiro, sin esperar su sondeo, que queda de respaldo para lo que no pasa por el estado (una ventana de tmux
+    que se cae sola). Se mira cada medio segundo: es leer la hora de unos cuantos archivos. Un latido cada 15 s."""
+    import asyncio
+
+    estado = Path(config.estado)
+    espejos, cola = estado / "espejos", estado / "cola"
+    antes = (_firma_carpeta(estado), _firma_carpeta(espejos) + _firma_carpeta(cola))
+    quieto = 0.0
+    yield "retry: 3000\n\n"
+    while True:
+        await asyncio.sleep(0.5)
+        quieto += 0.5
+        ahora = (_firma_carpeta(estado), _firma_carpeta(espejos) + _firma_carpeta(cola))
+        if ahora[0] != antes[0]:
+            quieto = 0.0
+            yield "data: hilos\n\n"
+        if ahora[1] != antes[1]:
+            quieto = 0.0
+            yield "data: espejos\n\n"
+        antes = ahora
+        if quieto >= 15:
+            quieto = 0.0
+            yield ": latido\n\n"
+
+
 def _token_del_bus(config) -> str:
     """El secreto que comparten las máquinas de una persona (`[bus] token`); "" sin bus."""
     if config is None:
@@ -153,6 +240,23 @@ def _token_del_bus(config) -> str:
         return ""
 
 
+async def _anotar_visto(config, hilo: str) -> None:
+    """Que el hilo está a la vista en la página (estado.anotar_visto); si no se puede, la terminal sigue igual."""
+    if config is None or not hilo:
+        return
+    import asyncio
+
+    from telar import estado as mod_estado
+
+    def anotar() -> None:
+        est = mod_estado.abrir(config)
+        est.anotar_visto(hilo)
+
+    try:
+        await asyncio.to_thread(anotar)
+    except Exception:  # noqa: BLE001 - anotar lo visto nunca corta una terminal
+        pass
+
 def crear(api_app, clave: str | None = None, dev: bool = False, config=None, puerta: bool = False) -> FastAPI:
     """La página. `config` (la de `telar serve`) da el token del bus y las fotos de las otras máquinas: sin
     ella, las terminales son solo de esta. `puerta`: la que se sirve detrás de la puerta del servidor
@@ -160,6 +264,11 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
     llegan la puerta y la persona misma (lo cuida su carpeta). Lo demás (el origen al escribir) se mira igual."""
     clave = clave or llave()
     token = _token_del_bus(config)
+    # la de cuando arrancó: un despliegue trae el código y reinicia, y una página está al día si es la que este proceso
+    # empezó sirviendo. Entre el pull y el reinicio los archivos ya cambiaron, pero el Python que contesta es el de
+    # antes: avisar entonces llevaría a una página nueva contra una API vieja. Lo que cambia sin reiniciar (`--dev`,
+    # npm run navegador:watch) lo recarga /dev/cambios
+    firma = firma_pagina()
     def nombre_aqui() -> str:
         """El nombre de esta máquina (en el bus, o su hostname); "" sin configuración."""
         if config is None:
@@ -181,7 +290,8 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
     @app.middleware("http")
     async def con_llave(request: Request, siguiente):
         ruta = request.url.path
-        if ruta in LIBRES or ruta == "/unirse" or ruta.startswith("/unirse/") or ruta.startswith("/api/terminal/fondo/"):
+        if ruta in LIBRES or ruta == "/unirse" or ruta.startswith("/unirse/") or ruta.startswith("/api/terminal/fondo/") \
+                or PESTANA_LIBRE.fullmatch(ruta):
             # (el fondo de la terminal que es un módulo: sus archivos, pedidos desde un iframe aislado, sin cookie)
             # la puerta para pedir entrar al bus (telar.unirse) no lleva llave: se cuida sola
             return await siguiente(request)
@@ -419,11 +529,72 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
             return JSONResponse({"detail": str(e)}, status_code=e.codigo)
         return r
 
+    def indice(base: str = "") -> HTMLResponse:
+        """indice.html con la firma de la página escrita (`<meta name="telar-pagina">`, la lee web/recarga.ts) y, con
+        --dev, `<meta name="telar-dev">`; con `base`, la de una pestaña sola: su manifiesto y su ícono."""
+        html = (CARPETA / "indice.html").read_text(encoding="utf-8")
+        html = html.replace('<meta name="telar-pagina" content="">', f'<meta name="telar-pagina" content="{firma}">', 1)
+        # con --dev, la página escucha /dev/cambios para recargarse sola; sin él no lo pide (sería un 404 en cada carga)
+        if dev:
+            html = html.replace('<meta name="telar-dev" content="">', '<meta name="telar-dev" content="si">', 1)
+        if base:
+            html = html.replace('href="/manifest.webmanifest"', f'href="{base}manifest.webmanifest"', 1)
+            html = html.replace('href="/apple-touch-icon.png"', f'href="{base}icono.png"', 1)
+        return HTMLResponse(html)
+
     @app.get("/")
     @app.get("/compartir")
     def pagina():
         # /compartir es la misma página: app.js mira la dirección y abre «compartir» con lo que llegó
-        return FileResponse(CARPETA / "indice.html", media_type="text/html; charset=utf-8")
+        return indice()
+
+    @app.get("/pagina.json")
+    def pagina_json():
+        return {"firma": firma}
+
+    @app.get("/componentes")
+    def componentes():
+        # el catálogo de componentes (pagina/src/componentes/catalogo.ts): cada uno en sus estados, con cada tema al lado
+        return FileResponse(CARPETA / "componentes.html", media_type="text/html; charset=utf-8")
+
+    # una pestaña del dashboard como app aparte: la misma página, que al ver la dirección se queda en esa pestaña (sin
+    # la cabecera ni la lista de hilos), con un manifiesto propio. En el teléfono se instala junto a telar, con el
+    # nombre de la pestaña y el ícono de su módulo. La dirección vale con el nombre del módulo o con el de su pestaña
+    # (/pestana/registro/ y /pestana/decisiones/), y la app se llama como la pestaña se ve
+    def _modulo_de(nombre: str):
+        return next((m for m in getattr(config, "modulos", ()) or ()
+                     if m.pestana and nombre in (m.nombre, m.pestana.get("nombre"))), None)
+
+    def _icono_de(nombre: str) -> Path | None:
+        m = _modulo_de(nombre)
+        return Path(m.icono) if m and m.icono and Path(m.icono).is_file() else None
+
+    @app.get("/pestana/{nombre}")
+    def pestana_sin_barra(nombre: str):
+        return RedirectResponse(f"/pestana/{quote(nombre)}/", status_code=302)
+
+    @app.get("/pestana/{nombre}/")
+    def pagina_de_pestana(nombre: str):
+        return indice(f"/pestana/{quote(nombre)}/")
+
+    @app.get("/pestana/{nombre}/manifest.webmanifest")
+    def manifiesto_de_pestana(nombre: str):
+        base = f"/pestana/{quote(nombre)}/"
+        propio = _icono_de(nombre)
+        lado = _lado_png(propio) if propio else 0
+        m = _modulo_de(nombre)
+        visible = (m.pestana.get("nombre") or nombre) if m else nombre
+        iconos = ([{"src": f"{base}icono.png", "sizes": f"{lado}x{lado}", "type": "image/png", "purpose": "any"},
+                   {"src": f"{base}icono.png", "sizes": f"{lado}x{lado}", "type": "image/png", "purpose": "maskable"}]
+                  if lado else json.loads((CARPETA / "app" / "manifest.webmanifest").read_text(encoding="utf-8"))["icons"])
+        return JSONResponse({
+            "id": base, "name": visible, "short_name": visible, "start_url": base, "scope": base, "display": "standalone",
+            "background_color": "#1e1e2e", "theme_color": "#1e1e2e", "icons": iconos,
+        }, media_type="application/manifest+json")
+
+    @app.get("/pestana/{nombre}/icono.png")
+    def icono_de_pestana(nombre: str):
+        return FileResponse(_icono_de(nombre) or CARPETA / "app" / "icono-512.png", media_type="image/png")
 
     def _de_la_app(ruta: str, tipo: str):
         return lambda: FileResponse(CARPETA / "app" / ruta.lstrip("/"), media_type=tipo)
@@ -460,10 +631,34 @@ def crear(api_app, clave: str | None = None, dev: bool = False, config=None, pue
 
             await ws.accept()
             web = espejo.web_de(config, maquina) if config is not None else ""
+            if not web and config is not None:
+                # fuera de línea (telar.alcance): no es su servicio, es que no está; lo que sí se puede, dicho
+                from telar import alcance
+
+                a = alcance.de(config, maquina)
+                if a.fuera:
+                    with contextlib.suppress(RuntimeError):
+                        await ws.close(code=mod_terminal.NO_SE_PUDO, reason=mod_terminal.motivo(
+                            f"{a.frase()}: su terminal vuelve con ella; despertarlo o escribirle queda en cola"))
+                    return
             await mod_terminal.reenviar(ws, web, hilo, maquina, cols, rows, token)
             return
         await ws.accept()
-        await mod_terminal.puente(ws, hilo, cols, rows)
+        # tenerlo en la página es verlo: lo que terminó deja de estar «sin ver», al abrirlo y al dejarlo (lo que
+        # termine mientras se mira, también)
+        await _anotar_visto(config, hilo)
+        try:
+            await mod_terminal.puente(ws, hilo, cols, rows)
+        finally:
+            await _anotar_visto(config, hilo)
+
+    @app.get("/eventos")
+    def eventos():
+        """Avisos a la página de que algo cambió en telar (`_eventos`); sin configuración, nada que mirar."""
+        if config is None:
+            return PlainTextResponse("telar: sin configuración no hay qué avisar", status_code=404)
+        return StreamingResponse(_eventos(config), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     if dev:
         @app.get("/dev/cambios")

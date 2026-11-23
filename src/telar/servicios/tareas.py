@@ -12,7 +12,10 @@ lo da siempre el proveedor, nunca quien pide; `mensaje`, `al_hilo`) están en te
 from __future__ import annotations
 
 import json
+import os
+import re
 import subprocess
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -127,8 +130,113 @@ def _ficha(ctx, id: str, proveedor: str) -> Pagina:
     return Pagina(**pagina)
 
 
+#: una ruta escrita como código en el texto de una ficha de lectura (`docs/x.md`, `obra/y/`): con al menos una barra y
+#: sin espacios. La misma que la página (pagina/src/vistas/dashboard/leer.ts, `ES_RUTA`)
+_ES_RUTA = re.compile(r"~?/?(?:[\w.@+-]+/)+(?:[\w.@+-]+)?")
+_CODIGO = re.compile(r"`([^`]+)`")
+_ITEM = re.compile(r"\s*[-*] ")
+
+
+def _tramos(texto: str):
+    """Los tramos del texto de un bloque donde puede ir un `código`, partidos como los parte la página (`mdSimple`,
+    pagina/src/vistas/dashboard/pagina.ts): cada línea de un párrafo, y cada ítem de una lista con las líneas que lo
+    siguen sangradas."""
+    for parrafo in re.split(r"\n\s*\n", texto.strip()):
+        items: list[str] = []
+        for linea in parrafo.split("\n"):
+            if _ITEM.match(linea):
+                items.append(_ITEM.sub("", linea, count=1))
+            elif items and re.match(r"\s+\S", linea):
+                items[-1] += " " + linea.strip()
+            else:
+                yield from items
+                items = []
+                yield linea
+        yield from items
+
+
+def documento_de(ruta: str, raiz: Path) -> str | None:
+    """El documento de una nota que nombra una ficha (como la escribe, desde `raiz`), el que puede ser destino de una
+    arista: un archivo es él mismo; una carpeta (con su barra), su README.md, si no su index.md, y si no el único .md que
+    tenga (sin contar los ocultos ni lo de sus subcarpetas). Una carpeta que no está, o sin ninguno de ellos (dos .md y
+    ningún README), no tiene documento: None. La misma regla que la página (pagina/src/vistas/dashboard/relaciones.ts,
+    `documentoDeCarpeta`)."""
+    if not ruta.endswith("/"):
+        return ruta
+    try:
+        mds = sorted(e.name for e in os.scandir(raiz / ruta)
+                     if not e.name.startswith(".") and e.name.lower().endswith(".md") and e.is_file())
+    except OSError:
+        return None
+    for nombre in ("readme.md", "index.md"):
+        if elegido := next((m for m in mds if m.lower() == nombre), None):
+            return ruta + elegido
+    return ruta + mds[0] if len(mds) == 1 else None
+
+
+def notas_nombradas(pagina: dict) -> list[str]:
+    """Las notas que nombra una ficha de lectura (docs/contratos.md), en el orden en que aparecen y como las escribe:
+    las rutas escritas como código en el texto de sus bloques (`` `docs/x.md` ``, `` `obra/y/` ``) y la `nota` de sus
+    temas. Solo las que van desde la raíz: una absoluta (`/x/y`, `~/x`) no es parte de ningún grafo. Las calcula igual
+    que la página (leer.ts), para que lo que se conecta desde ahí se pueda revisar aquí sin creerle a quien lo manda."""
+    salida: list[str] = []
+    for b in pagina.get("bloques") or []:
+        texto = b.get("texto") if isinstance(b, dict) else None
+        if not isinstance(texto, str):
+            continue
+        for tramo in _tramos(texto):
+            for m in _CODIGO.finditer(tramo):
+                if _ES_RUTA.fullmatch(m.group(1)) and m.group(1) not in salida:
+                    salida.append(m.group(1))
+    for t in pagina.get("temas") or []:
+        nota = t.get("nota") if isinstance(t, dict) else None
+        if isinstance(nota, str) and nota and nota not in salida:
+            salida.append(nota)
+    return [r for r in salida if not r.startswith(("/", "~"))]
+
+
+def _conexiones(pagina: dict, a: dict, elegidas: list | None, raiz: Path) -> str:
+    """Las relaciones elegidas para `{conexiones}` (la ficha de una lectura, docs/contratos.md), en JSON: una lista de
+    `{nota, tipo, porque, titulo}`. Cada una es de las que la ficha propone (`conexiones`; sin tipo o sin porqué, los
+    propuestos), o el documento de una nota que nombra su texto (`notas_nombradas`, `documento_de`), y entonces con
+    tipo y porqué; y en los dos casos, una nota que está en el repositorio (`raiz`). El tipo, de su vocabulario (`tipos`,
+    si lo trae). Sin elegidas, `[]`: no conectar ninguna también es una respuesta."""
+    propuestas = {c.get("nota"): c for c in pagina.get("conexiones") or [] if isinstance(c, dict)}
+    nombradas = notas_nombradas(pagina)
+    documentos = {d for n in nombradas if (d := documento_de(n, raiz))}
+    vocabulario = {t.get("tipo") for t in pagina.get("tipos") or [] if isinstance(t, dict)}
+    salida: list[dict] = []
+    for c in elegidas or []:
+        nota = c.get("nota") if isinstance(c, dict) else None
+        if not isinstance(nota, str) or (nota not in propuestas and nota not in documentos):
+            if isinstance(nota, str) and nota in nombradas:
+                doc = documento_de(nota, raiz)
+                raise ErrorDeServicio(f"«{a['nombre']}»: {nota} es una carpeta; su documento es {doc}" if doc else
+                                      f"«{a['nombre']}»: {nota} no tiene un documento (README.md, index.md o un solo .md)", 422)
+            raise ErrorDeServicio(f"«{a['nombre']}»: {nota if isinstance(nota, str) else c!r} no es una de las conexiones que propone la ficha ni una nota que nombre su texto", 422)
+        if not (raiz / nota).exists():
+            raise ErrorDeServicio(f"«{a['nombre']}»: {nota} no está en el repositorio", 422)
+        if any(x["nota"] == nota for x in salida):
+            continue
+        propuesta = propuestas.get(nota) or {}
+        tipo = c.get("tipo") or propuesta.get("tipo", "")
+        porque = c.get("porque") or propuesta.get("porque", "")
+        titulo = propuesta.get("titulo") or c.get("titulo") or ""
+        if not tipo:
+            raise ErrorDeServicio(f"«{a['nombre']}»: {nota} no la propone la ficha: conectarla pide un tipo", 422)
+        if not isinstance(tipo, str) or (vocabulario and tipo not in vocabulario):
+            raise ErrorDeServicio(f"«{a['nombre']}»: el tipo «{tipo}» no está en el vocabulario de la ficha", 422)
+        if not isinstance(porque, str) or not isinstance(titulo, str):
+            raise ErrorDeServicio(f"«{a['nombre']}»: el porqué y el título de {nota} van como texto", 422)
+        porque = " ".join(porque.split())
+        if not propuesta and not porque:
+            raise ErrorDeServicio(f"«{a['nombre']}»: {nota} no la propone la ficha: conectarla pide un porqué", 422)
+        salida.append({"nota": nota, "tipo": tipo, "porque": porque, **({"titulo": " ".join(titulo.split())} if titulo.strip() else {})})
+    return json.dumps(salida, ensure_ascii=False)
+
+
 def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol: str = "", texto: str = "",
-           version: str | None = None, hilo: str = "") -> AccionHecha:
+           version: str | None = None, hilo: str = "", conexiones: list | None = None) -> AccionHecha:
     """Corre una acción de la ficha, por su número (`n`) o por su `rol`. El comando sale de la ficha que
     vuelve a dar el proveedor, nunca de quien pide. Con `hilo`, el mensaje de una acción que lo lleva a un
     hilo va a ese (por su nombre, de aquí o de otra máquina, o un agente) y no al de la tarea: se comprueba
@@ -142,7 +250,8 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     if en:
         argv = [id, "--proveedor", proveedor, *(["--rol", rol] if rol else ["--accion", str(n)]),
                 *(["--texto", texto] if texto else []), *(["--version", version] if version else []),
-                *(["--hilo", hilo] if hilo else [])]
+                *(["--hilo", hilo] if hilo else []),
+                *(["--conexiones", __import__("json").dumps(conexiones, ensure_ascii=False)] if conexiones is not None else [])]
         return AccionHecha(**_pedir_alla(ctx, en, argv))
     pagina = ficha(ctx, id, proveedor).model_dump()
     acciones = pagina.get("acciones") or []
@@ -167,6 +276,11 @@ def accion(ctx, id: str, proveedor: str = "tareas", *, n: int | None = None, rol
     if a.get("pide") and not texto and any("{texto}" in w for w in [*a["comando"], a.get("mensaje", "")]):
         raise ErrorDeServicio(f"«{a['nombre']}» pide texto")
     palabras = [w.replace("{texto}", texto) for w in a["comando"]]
+    # las relaciones que la persona eligió para el grafo (la ficha de una lectura); se revisan contra lo propuesto y lo
+    # que nombra el texto de la ficha
+    if any("{conexiones}" in w for w in palabras):
+        elegidas = _conexiones(pagina, a, conexiones, Path(ctx.config.raiz).expanduser())
+        palabras = [w.replace("{conexiones}", elegidas) for w in palabras]
     fila = None
     if a.get("mensaje") and a.get("al_hilo"):
         # adónde va el mensaje se busca ANTES del comando: si el comando cierra la tarea («✓ hecha y

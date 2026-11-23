@@ -184,8 +184,13 @@ def vista(direccion: str) -> str:
     from telar import movil
 
     ventana, _ = movil.partir_direccion(direccion)
-    aqui = re.sub(r"[^a-z0-9-]", "", platform.node().split(".")[0].lower())[:20] or "aqui"
-    return f"{movil.PREFIJO_VER}{ventana.lstrip('@')}-{aqui}"
+    return f"{movil.PREFIJO_VER}{ventana.lstrip('@')}-{sufijo_vista()}"
+
+
+def sufijo_vista() -> str:
+    """Cómo se llama esta máquina en las sesiones con que mira las ventanas de otra (`ver-<ventana>-<esto>`): la otra
+    lo lee en la foto de esta (`vista`) para saber quién la mira (telar.dormir)."""
+    return re.sub(r"[^a-z0-9-]", "", platform.node().split(".")[0].lower())[:20] or "aqui"
 
 
 def guion_ver(direccion: str, nombre: str) -> str:

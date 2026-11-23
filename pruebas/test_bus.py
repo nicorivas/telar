@@ -55,8 +55,8 @@ class ContraUnServidor(Prueba):
                                                            persona="ana", maquina="servidor"))
 
     def test_lo_publicado_espera_y_llega_en_orden_sin_duplicar(self):
-        a = m.enviar(self.config, "Faro", "uno: canción", de="Gestión")
-        m.enviar(self.config, "Faro", "dos", de="Gestión")
+        a = m.enviar(self.config, "Faro", "uno: canción", de="Secretaría")
+        m.enviar(self.config, "Faro", "dos", de="Secretaría")
         self.assertFalse(a["duplicado"])
 
         async def recoger():
@@ -72,17 +72,44 @@ class ContraUnServidor(Prueba):
 
         self.assertEqual(asyncio.run(recoger()), ["uno: canción", "dos"])
 
+    def test_una_respuesta_mas_grande_que_lo_que_lleva_el_bus_llega_comprimida(self):
+        import threading
+
+        grande = {"ok": True, "salida": "la vitrina de la feria " * 70_000}  # 1,6 MB: más que el max_payload de 1 MB
+
+        async def escuchar():
+            nc = await m.conectar(self.config)
+
+            async def atender(msg):
+                await msg.respond(m.empacar(grande, m.maximo_de(msg)))
+
+            await nc.subscribe(m.tema_rpc(self.config, "servidor", "tipo"), cb=atender)
+            return nc
+
+        bucle = asyncio.new_event_loop()
+        hilo = threading.Thread(target=bucle.run_forever, daemon=True)
+        hilo.start()
+        nc = asyncio.run_coroutine_threadsafe(escuchar(), bucle).result(5)
+        try:
+            r = m.pedir(self.config, "servidor", "tipo", {}, espera=10)
+        finally:
+            asyncio.run_coroutine_threadsafe(nc.close(), bucle).result(5)
+            bucle.call_soon_threadsafe(bucle.stop)
+            hilo.join(2)
+            bucle.close()
+        self.assertEqual(r, grande)
+
     def test_el_estado_se_lee_por_hilo(self):
         async def publicar():
             nc = await m.conectar(self.config)
             js = nc.jetstream()
             await m.asegurar(js)
             kv = await js.key_value(m.ESTADO)
-            await kv.put(m.clave_estado(self.config, "Gestión"), json.dumps({"nombre": "Gestión", "atencion": "espera"}).encode())
+            await kv.put(m.clave_estado(self.config, "Secretaría"), json.dumps({"nombre": "Secretaría", "atencion": "espera"}).encode())
             await nc.close()
 
         asyncio.run(publicar())
-        self.assertEqual(m.estados(self.config)["Gestión"]["atencion"], "espera")
+        self.assertEqual(m.estados(self.config)["Secretaría"]["atencion"], "espera")
 
     def test_una_cadena_larga_se_retiene_y_la_persona_la_suelta(self):
         from unittest import mock
@@ -93,7 +120,7 @@ class ContraUnServidor(Prueba):
         ctx = SimpleNamespace(config=self.config)
         casilla.anotar_cadena(self.config, "Faro", casilla.TOPE_SALTOS)  # Faro ya está al final de una cadena
         with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
-            r = mensaje.enviar(ctx, "Gestión", "¿seguimos?")
+            r = mensaje.enviar(ctx, "Secretaría", "¿seguimos?")
         self.assertEqual(r["estado"], "retenido")
         self.assertEqual(r["saltos"], casilla.TOPE_SALTOS + 1)
         retenidos = mensaje.retenidos(m.registro(self.config))
@@ -104,7 +131,7 @@ class ContraUnServidor(Prueba):
         async def recoger():
             nc = await m.conectar(self.config)
             js = nc.jetstream()
-            sub = await js.pull_subscribe(m.tema_casilla(self.config, "Gestión"), durable="c-ana-gestion", stream=m.STREAM)
+            sub = await js.pull_subscribe(m.tema_casilla(self.config, "Secretaría"), durable="c-ana-secretaria", stream=m.STREAM)
             msgs = await sub.fetch(5, timeout=2)
             await nc.close()
             return [json.loads(x.data) for x in msgs]
@@ -120,7 +147,7 @@ class ContraUnServidor(Prueba):
 
         casilla.anotar_cadena(self.config, "Faro", 2)
         with mock.patch.dict(os.environ, {"TELAR_HILO": "Faro"}):
-            r = mensaje.enviar(SimpleNamespace(config=self.config), "Gestión", "hola")
+            r = mensaje.enviar(SimpleNamespace(config=self.config), "Secretaría", "hola")
         self.assertEqual((r["saltos"], r.get("estado")), (3, None))
         self.assertEqual(m.registro(self.config)[-1]["estado"], "enviado")
 
@@ -135,9 +162,51 @@ class ContraUnServidor(Prueba):
         with mock.patch.object(mensaje._comun, "tejer", return_value=tel):
             self.assertEqual(mensaje._por_nombre(ctx, "@144"), "Bebidas RRHH")
             self.assertEqual(mensaje._por_nombre(ctx, "144"), "Bebidas RRHH")
-            self.assertEqual(mensaje._por_nombre(ctx, "Gestión"), "Gestión")  # un nombre no se toca
+            self.assertEqual(mensaje._por_nombre(ctx, "Secretaría"), "Secretaría")  # un nombre no se toca
             with self.assertRaises(m.ErrorDeBus):
                 mensaje._por_nombre(ctx, "@999")
+
+    def test_al_apartado_se_le_publica_en_su_tema_y_su_estado_se_lee_de_su_clave(self):
+        """Un hilo cuyo nombre choca con otro (telar.casilla.apartar) publica su estado con su ficha apartada: quien le
+        escribe por su nombre exacto la encuentra ahí, y lo que no está en el estado (la clave que no existe, como la
+        dice nats de verdad) va a la de siempre."""
+        from telar import casilla
+
+        apartada = casilla.apartada("Faro")
+
+        async def publicar():
+            nc = await m.conectar(self.config)
+            js = nc.jetstream()
+            await m.asegurar(js)
+            kv = await js.key_value(m.ESTADO)
+            await kv.put(f"ana.{apartada}", json.dumps({"nombre": "Faro", "maquina": "laptop"}).encode())
+            await kv.put("ana.faro", json.dumps({"nombre": "faro", "maquina": "servidor"}).encode())
+            await nc.close()
+
+        asyncio.run(publicar())
+        m.enviar(self.config, "Faro", "para Faro", de="Telar")
+        m.enviar(self.config, "faro", "para faro", de="Telar")
+        m.enviar(self.config, "Molino", "para Molino", de="Telar")
+        self.assertEqual(m.estado_de(self.config, "Faro")["maquina"], "laptop")
+        self.assertEqual(m.estado_de(self.config, "faro")["maquina"], "servidor")
+        self.assertEqual(m.estado_de(self.config, "Molino"), {})
+
+        async def recoger(ficha):
+            nc = await m.conectar(self.config)
+            js = nc.jetstream()
+            sub = await js.pull_subscribe(f"casilla.ana.{ficha}", durable=f"c-ana-{ficha}", stream=m.STREAM)
+            try:
+                msgs = await sub.fetch(10, timeout=2)
+            except Exception:  # noqa: BLE001 - nada que recoger: nats-py termina por tiempo
+                msgs = []
+            for x in msgs:
+                await x.ack()
+            await nc.close()
+            return [json.loads(x.data)["texto"] for x in msgs]
+
+        self.assertEqual(asyncio.run(recoger(apartada)), ["para Faro"])
+        self.assertEqual(asyncio.run(recoger("faro")), ["para faro"])
+        self.assertEqual(asyncio.run(recoger("molino")), ["para Molino"])
 
     def test_sin_servidor_el_error_se_entiende(self):
         cfg = mod_config.Config(bus=mod_config.Bus(url="nats://127.0.0.1:1"))
@@ -174,3 +243,122 @@ class LaConexionDelNodo(unittest.TestCase):
             bucle.call_soon_threadsafe(bucle.stop)
             hilo.join(2)
             bucle.close()
+
+
+class LaRespuestaGrande(unittest.TestCase):
+    """Una respuesta que pasa de lo que lleva el servidor de nats (`max_payload`) va comprimida, y el que pidió la abre;
+    la que ni así cabe es un error que lo dice. Antes no salía, y el que la pidió esperaba hasta su plazo."""
+
+    GRANDE = {"ok": True, "salida": json.dumps({"tareas": [{"id": f"T{i}", "contexto": "la vitrina de la feria " * 20}
+                                                           for i in range(400)]})}
+
+    def test_la_chica_va_tal_cual_y_la_grande_comprimida(self):
+        self.assertEqual(m.empacar({"ok": True}, 1_048_576), json.dumps({"ok": True}).encode())
+        datos = m.empacar(self.GRANDE, 20_000)
+        self.assertLess(len(json.dumps(self.GRANDE).encode()), 1_048_576)
+        self.assertGreater(len(json.dumps(self.GRANDE).encode()), 20_000)
+        self.assertEqual(datos[:2], b"\x1f\x8b")
+        self.assertLessEqual(len(datos), 20_000 - m.HOLGURA_ENCABEZADOS)
+        self.assertEqual(m.desempacar(datos), self.GRANDE)
+        self.assertEqual(m.desempacar(json.dumps({"ok": True}).encode()), {"ok": True})
+
+    def test_la_que_no_cabe_ni_comprimida_es_un_error(self):
+        import base64
+        import os
+
+        r = json.loads(m.empacar({"ok": True, "salida": base64.b64encode(os.urandom(60_000)).decode()}, 20_000))
+        self.assertFalse(r["ok"])
+        self.assertIn("más de lo que lleva el bus", r["error"])
+
+    def test_pedir_abre_la_comprimida(self):
+        import asyncio
+        import threading
+
+        grande = self.GRANDE
+
+        class Falsa:
+            is_connected = True
+
+            async def request(self, tema, cuerpo, timeout):
+                return type("R", (), {"data": m.empacar(grande, 20_000)})()
+
+        bucle = asyncio.new_event_loop()
+        hilo = threading.Thread(target=bucle.run_forever, daemon=True)
+        hilo.start()
+        try:
+            m.registrar_conexion(Falsa(), bucle)
+            config = type("C", (), {"bus": type("B", (), {"url": "nats://x", "persona": "ana", "maquina": "laptop", "token": ""})()})()
+            self.assertEqual(m.pedir(config, "servidor", "tipo", {}), grande)
+        finally:
+            m.registrar_conexion(None, None)
+            bucle.call_soon_threadsafe(bucle.stop)
+            hilo.join(2)
+            bucle.close()
+
+    def test_el_nodo_contesta_comprimido_lo_que_no_cabe(self):
+        import asyncio
+        from types import SimpleNamespace
+
+        from telar.ordenes import nodo as mod_nodo
+
+        n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
+        contestado = []
+
+        async def respond(datos):
+            contestado.append(datos)
+
+        pedido = SimpleNamespace(data=b"{}", _client=SimpleNamespace(max_payload=20_000), respond=respond)
+        asyncio.run(n._responder(pedido, lambda p: self.GRANDE))
+        self.assertEqual(contestado[0][:2], b"\x1f\x8b")
+        self.assertEqual(m.desempacar(contestado[0]), self.GRANDE)
+        self.assertEqual(m.maximo_de(SimpleNamespace(_client=mock.MagicMock())), 1_048_576, "lo que no se sabe: 1 MB")
+
+
+class NadieEscucha(unittest.TestCase):
+    """Si nadie escucha un pedido (NoResponders), puede ser un nodo que se está reiniciando: se repite una vez, al rato,
+    y recién después se dice «no atiende». Repetirlo no duplica nada: el primero no le llegó a nadie."""
+
+    def _con(self, respuestas):
+        import asyncio
+        import threading
+
+        class NoRespondersError(Exception):
+            pass
+
+        pedidos = []
+
+        class Falsa:
+            is_connected = True
+
+            async def request(self, tema, cuerpo, timeout):
+                pedidos.append(tema)
+                r = respuestas.pop(0)
+                if r is None:
+                    raise NoRespondersError()
+                return type("R", (), {"data": json.dumps(r).encode()})()
+
+        bucle = asyncio.new_event_loop()
+        hilo = threading.Thread(target=bucle.run_forever, daemon=True)
+        hilo.start()
+        m.registrar_conexion(Falsa(), bucle)
+        config = type("C", (), {"bus": type("B", (), {"url": "nats://x", "persona": "ana", "maquina": "laptop", "token": ""})()})()
+        try:
+            with mock.patch.object(m, "REINTENTO_SIN_SERVICIO", 0.01):
+                return m.pedir(config, "servidor", "proveedor", {}), pedidos
+        finally:
+            m.registrar_conexion(None, None)
+            bucle.call_soon_threadsafe(bucle.stop)
+            hilo.join(2)
+            bucle.close()
+
+    def test_un_nodo_que_vuelve_responde_al_segundo_intento(self):
+        r, pedidos = self._con([None, {"ok": True, "items": 91}])
+        self.assertEqual(r, {"ok": True, "items": 91})
+        self.assertEqual(len(pedidos), 2)
+
+    def test_si_sigue_sin_nadie_dice_que_no_atiende(self):
+        r, pedidos = self._con([None, None])
+        self.assertFalse(r["ok"])
+        self.assertTrue(r["sin_servicio"])
+        self.assertIn("no atiende «proveedor»", r["error"])
+        self.assertEqual(len(pedidos), 2)

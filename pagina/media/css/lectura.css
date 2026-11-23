@@ -9,8 +9,6 @@
   }
 
   .lectura {
-    --serifa: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
-
     max-width: 68ch;
     margin: 0 auto;
     padding: 3rem 2rem 6rem;
@@ -103,5 +101,13 @@
   .nada {
     color: var(--dim);
     font-family: var(--letra), iconos, monospace;
+  }
+
+  /* el agente espera que contestes algo: una línea, en la tinta de la espera; se contesta en la conversación */
+  .te-pregunta {
+    margin-top: 2rem;
+    color: var(--estado-espera);
+    font-family: var(--letra), iconos, monospace;
+    font-size: var(--t-chica);
   }
 }

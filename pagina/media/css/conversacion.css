@@ -28,15 +28,52 @@
   /* todo con la misma letra: lo secundario se distingue por color, nunca por tamaño */
   .nada { color: var(--dim); }
 
+  /* un hilo de una máquina fuera de línea (web/alcance.ts): desde cuándo, lo que le espera en cola y «despertar al
+     volver», en el color de lo que vive en otra parte; la banda de botones, de borde a borde del cuadro */
+  .fuera-de-linea { margin-block: var(--e-2); padding: var(--e-2) var(--h-2) 0; border: 1px solid var(--remoto); }
+  .fuera-de-linea .titulo { color: var(--remoto); }
+  .fuera-de-linea .motivo { margin-top: var(--e-1); }
+  .fuera-de-linea .motivo.cola { color: var(--dim); }
+  .fuera-de-linea .botonera { margin: var(--boton-pie-aire) calc(-1 * var(--h-2)) 0; }
+
   .turno {
     padding: var(--e-2) 0;
     border-bottom: var(--borde);
   }
 
+  /* un mensaje: a la izquierda, en su ranura, un círculo leve que dice de quién es; a la derecha, lo que dijo. Todo el
+     texto, del mismo color: quién lo dijo lo dice el círculo */
   .msj {
+    display: grid;
+    grid-template-columns: 2ch minmax(0, 1fr);
+    column-gap: var(--h-1);
     margin: var(--e-1) 0;
 
-    & .quien { color: var(--dim); }
+    /* la ranura es de la altura del mensaje: arriba el círculo, a la altura de la primera línea, y de él hacia abajo una
+       línea fina del mismo color, más tenue, hasta donde termina lo que dijo */
+    & .marca {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-block-size: 1lh;
+      color: var(--texto-tenue);
+
+      & .circulo { flex: none; margin-top: calc((1lh - var(--circulo-d)) / 2); }
+
+      &::after {
+        flex: 1;
+        inline-size: 1px;
+        margin-top: .3lh;
+        background: color-mix(in srgb, currentcolor 28%, transparent);
+        content: "";
+      }
+    }
+
+    &.usuario .marca { color: var(--titulo); }
+    &.agente .marca,
+    &.bus .marca { color: var(--agente); }
+    /* lo que dice la persona, con un amarillo muy leve en el texto: se distingue del agente sin gritar */
+    &.usuario .cuerpo { color: color-mix(in srgb, var(--titulo) 40%, var(--fg)); }
 
     & .cuerpo {
       white-space: pre-wrap;
@@ -69,22 +106,165 @@
       & blockquote { padding-left: 1ch; border-left: 2px solid var(--dim); color: var(--dim); }
     }
 
-    &.usuario .quien,
-    &.usuario .cuerpo { color: var(--azul); }
-
-    /* lo que entró por el bus (otro hilo, un agente, un periódico): no lo escribió la persona */
-    &.bus .quien,
-    &.bus .cuerpo { color: var(--violeta); }
-
     /* lo enviado que todavía no aparece en la conversación: tenue, hasta que llega */
     &.pendiente { opacity: .55; }
 
+    /* lo que hace el agente ahora: una línea gris, cortada con «…» si no cabe; en la ranura, un punto */
     &.herramienta {
-      margin: 0;
-      color: var(--dim);
+      color: var(--texto-tenue);
 
-      & .cuerpo::before { content: "· "; }
+      & .marca { justify-content: center; }
+      & .marca::after { display: none; }
+
+      & .cuerpo {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
     }
+  }
+
+  /* lo que el agente pregunta con opciones (web/pregunta.ts). Mientras espera, en la conversación una línea con un
+     aro en la tinta de la espera (te toca), y en el pie, en el lugar de la caja, la pregunta: el encabezado en la tinta
+     de los títulos; cada opción, un círculo (aro, o con un punto al medio si está elegida, en el acento), su nombre y,
+     debajo, su descripción tenue. Sin marcos */
+  .msj .marca.espera { color: var(--estado-espera); }
+
+  .pregunta-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--e-2);
+
+    & fieldset {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    & .cabeza {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 var(--h-2);
+    }
+
+    & .encabezado { color: var(--titulo); }
+    & .como,
+    & .cuantas { color: var(--texto-tenue); }
+    & .cuantas { margin-left: auto; }
+    & .enunciado { margin: 0 0 var(--e-1); }
+
+    & .opciones {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* una opción: toda la fila se aprieta. El círculo en su ranura, a la altura de la primera línea */
+    & .opcion {
+      display: grid;
+      grid-template-columns: 2ch minmax(0, 1fr);
+      column-gap: var(--h-1);
+      align-items: start;
+      padding: var(--e-1) 0;
+      border: 0;
+      background: transparent;
+      color: var(--texto);
+      text-align: left;
+      cursor: pointer;
+
+      &:hover:not(:disabled) { background: var(--hover); }
+      &:disabled { cursor: default; }
+      &[aria-pressed="true"] .marca-op,
+      &.si .marca-op { color: var(--acento); }
+    }
+
+    & .marca-op {
+      display: flex;
+      justify-content: center;
+      min-block-size: 1lh;
+      color: var(--texto-tenue);
+
+      & .circulo { margin-top: calc((1lh - var(--circulo-d)) / 2); }
+    }
+
+    & .txt {
+      display: flex;
+      flex-direction: column;
+    }
+
+    & .descripcion { color: var(--texto-tenue); }
+
+    /* otra respuesta: un campo subrayado, como la caja de abajo */
+    & .opcion.otra {
+      cursor: text;
+
+      &:hover { background: transparent; }
+
+      & textarea {
+        box-sizing: border-box;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        outline: none;
+        background: transparent;
+        box-shadow: 0 1px 0 var(--linea);
+        color: var(--texto);
+        font: inherit;
+        line-height: inherit;
+        resize: none;
+        overflow: hidden;
+
+        &:focus { box-shadow: 0 1px 0 var(--acento); }
+      }
+    }
+
+    /* abajo: lo que falta, a la izquierda; ir y venir y responder, a la derecha. Responder, en el acento cuando
+       se puede */
+    & .responder {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 var(--h-2);
+      align-items: center;
+      justify-content: flex-end;
+
+      & .falta {
+        flex: 1;
+        color: var(--texto-tenue);
+      }
+
+      & button {
+        display: inline-flex;
+        gap: .5ch;
+        align-items: center;
+        min-block-size: var(--celda, 1.5lh);
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--item-accion);
+
+        &:hover:not(:disabled) { color: var(--item-accion-hover); }
+        &:disabled { opacity: .45; cursor: default; }
+      }
+
+      & button.enviar:not(:disabled) { color: var(--acento); }
+      & .i { font-size: var(--t-chica); }
+    }
+
+    &.ocupado { opacity: .7; }
+  }
+
+  /* contestada, en el historial: lo preguntado, tenue (el encabezado en su tinta); lo respondido, como lo que dice la
+     persona */
+  .msj.pregunta.hecha .cuerpo { color: var(--texto-tenue); }
+  .msj.pregunta .encabezado { color: var(--titulo); }
+  .msj.respuesta.cancelada .cuerpo,
+  .msj.respuesta .encabezado { color: var(--texto-tenue); }
+
+  /* en el pie: la pregunta en el lugar de la caja, con su alto acotado (lo que no cabe se desplaza) */
+  footer.preguntando .pregunta-form {
+    max-block-size: 60vh;
+    overflow-y: auto;
+    padding-bottom: var(--e-1);
   }
 
   .panel {
@@ -97,7 +277,9 @@
   /* abajo, la caja para escribirle: sobre el fondo de las barras, con una línea arriba; las teclas, la caja y el
      botón, y debajo en qué va lo enviado */
   footer {
-    padding: var(--e-2) max(var(--h-2), env(safe-area-inset-right)) calc(var(--e-1) + env(safe-area-inset-bottom))
+    --celda: 1.5lh;
+
+    padding: var(--e-1) max(var(--h-2), env(safe-area-inset-right)) calc(var(--e-1) + env(safe-area-inset-bottom))
       max(var(--h-2), env(safe-area-inset-left));
     border-top: var(--borde);
     background: var(--bg-barra);
@@ -111,73 +293,88 @@
     cursor: pointer;
   }
 
-  /* las teclas: sin caja, tenues; se iluminan al pasar o al tocarlas */
+  /* Todo lo que no es texto en el pie (las teclas, el estado, enviar) vive en una celda cuadrada, `--celda`, de
+     una línea y media: el ícono al medio, con aire. El campo mide lo mismo con una línea de texto, así que el
+     ícono queda a la altura de la línea; si la caja crece, las celdas se quedan al pie, en la última línea. */
+  /* las teclas: acciones, como las de un ítem: un ícono de la letra (o el número), tenue, que se enciende al pasar.
+     Sin caja */
   .teclas {
     display: flex;
-    gap: 0;
-    margin-bottom: var(--e-1);
-
-    & button {
-      min-width: 4ch;
-      padding: .15lh 1ch;
-      border: 0;
-      background: transparent;
-      color: var(--dim);
-
-      &:hover { color: var(--fg); background: var(--hover); }
-      &:active { background: var(--sel); }
-    }
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 
+  .teclas button,
+  .escribir button.enviar,
+  .dijo {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    inline-size: var(--celda);
+    block-size: var(--celda);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--item-accion);
+    font-variant-emoji: text;
+    line-height: inherit;
+  }
+
+  /* las skills: al otro extremo de la fila, aparte de las teclas */
+  .teclas button.skills { margin-left: auto; }
+
+  /* manos libres: la palabra «voz», tenue; encendida en el acento, y mientras el agente habla, llena */
+  .teclas button.voz { inline-size: auto; padding: 0 1ch; }
+  .teclas button.voz.activa { color: var(--acento); }
+  .teclas button.voz.habla { background: color-mix(in srgb, var(--acento) 18%, transparent); }
+
+  .teclas button:hover,
+  .escribir button.enviar:hover { color: var(--item-accion-hover); }
+
+  /* el glifo, en la escala chica: la celda ya deja su aire */
+  .teclas .i,
+  .escribir .i { font-size: var(--t-chica); }
+
+  /* el campo: subrayado como el buscador, pero solo bajo el texto (la raya no pasa por debajo de las celdas); toma el
+     acento mientras se escribe. Su misma letra. El subrayado es una sombra: no suma alto a la caja, que `crecer`
+     mide */
   .escribir {
     display: flex;
-    align-items: stretch;
+    align-items: flex-end;
 
-    /* un campo de verdad: fondo de la página, un borde fino y cuadrado, azul mientras se escribe */
     & textarea {
       flex: 1;
       min-width: 0;
       box-sizing: border-box;
-      padding: .3lh 1ch;
-      border: 1px solid var(--linea);
-      border-right: 0;
+      padding: .25lh 0;
+      border: 0;
       outline: none;
-      background: var(--bg);
-      color: var(--fg);
+      background: transparent;
+      box-shadow: 0 1px 0 var(--linea);
+      color: var(--texto);
       font: inherit;
       line-height: inherit;
       resize: none;
       overflow-y: auto;
+      /* sigue desplazándose al pasar las ocho líneas, pero sin dibujar la barra */
+      scrollbar-width: none;
 
-      &:focus { border-color: var(--azul); }
-      &::placeholder { color: var(--dim); }
+      &::-webkit-scrollbar { display: none; }
+      &:focus { box-shadow: 0 1px 0 var(--acento); }
     }
 
-    /* enviar: pegado a la caja, del mismo alto; azul cuando hay algo que mandar */
-    & button.enviar {
-      flex: none;
-      width: 5ch;
-      padding: 0;
-      border: 1px solid var(--linea);
-      background: var(--bg);
-      color: var(--dim);
-
-      &.listo { color: var(--azul); background: color-mix(in srgb, var(--azul) 14%, var(--bg)); border-color: var(--azul); }
-      &:active { background: var(--sel); }
-    }
-
-    & textarea:focus + button.enviar { border-color: var(--azul); }
+    /* enviar: cuando hay algo que mandar, en el acento */
+    & button.enviar.listo { color: var(--acento); }
   }
 
-  /* en qué va lo último enviado */
+  /* en qué va lo último enviado: un círculo en su celda, a la izquierda de la caja; su color es el del estado.
+     La celda está siempre, aunque no diga nada: así la caja no se corre */
   .dijo {
-    min-height: 1lh;
-    margin: var(--e-1) 0 0;
-    color: var(--dim);
-
-    &.enviando { color: var(--amarillo); }
-    &.llego { color: var(--verde); }
-    &.cola { color: var(--azul); }
-    &.error { color: var(--rojo); }
+    &.enviando { color: var(--atencion); }
+    &.llego { color: var(--exito); }
+    &.cola { color: var(--acento); }
+    &.error { color: var(--peligro); }
   }
 }

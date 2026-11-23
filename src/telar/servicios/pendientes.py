@@ -31,17 +31,21 @@ class Pendientes(BaseModel):
 
 
 def pendientes(ctx, *, repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
-               limite: int = 0) -> Pendientes:
+               limite: int = 0, mundos: tuple[str, ...] = ()) -> Pendientes:
+    from telar import mundos as mod_mundos
     from telar.ordenes import _comun
-    from telar.ordenes.pendientes import con_area, de_proveedores, juntar
+    from telar.ordenes.pendientes import con_area, con_mundo, de_proveedores, juntar
 
+    filtro = mod_mundos.pedidos(ctx.config, mundos)
     tel = _comun.tejer(ctx)
     filas = juntar(ctx, tel, repo=repo, hechos=hechos)
     fallas: list[str] = []
     if proveedores:
         externos, fallas = de_proveedores(ctx, tel, dt.date.today())
         filas += externos
+    con_mundo(ctx.config, filas)
     con_area(filas)
+    filas = [f for f in filas if mod_mundos.calza(f["mundo"], filtro)]
     if hilo:
         encontrado, problema = _comun.resolver(tel, hilo)
         if encontrado is None:

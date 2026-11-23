@@ -9,6 +9,12 @@ cual y quien lo muestra decide cómo.
     en = "telar"           # la máquina que corre la skill; "" es esta
     comentar = ["~/bin/plan-comentario"]   # opcional, donde vive: atiende un comentario sobre un día
 
+    [resultados.estrategia]
+    carpeta = "~/notas/planes"
+    prefijo = "estrategia-"   # sus archivos son estrategia-AAAA-MM-DD.md, en la misma carpeta que el plan
+
+El día «ultimo» es el más reciente que hay (el resumen de la semana lleva la fecha de su lunes: no hay uno por día).
+
 Con `en` y bus, se le pide a esa máquina (su nodo lee su propia carpeta): la sincronización entre
 máquinas es frágil, y el resultado vive donde se escribió. Si esa máquina no responde, o no hay
 bus, se lee la carpeta de aquí, y se dice.
@@ -27,6 +33,8 @@ from datetime import date
 from pathlib import Path
 
 DIA = re.compile(r"\d{4}-\d{2}-\d{2}")
+#: el día que pide el más reciente que hay
+ULTIMO = "ultimo"
 #: cuántos días hacia atrás se listan para navegar
 DIAS_LISTADOS = 60
 
@@ -44,20 +52,23 @@ def local(config, clave: str, dia: str = "") -> dict:
         return {"ok": False, "error": f"«{clave}» no tiene carpeta en esta máquina"}
     carpeta = Path(r.carpeta).expanduser()
     dia = dia or date.today().isoformat()
-    if not DIA.fullmatch(dia):
-        return {"ok": False, "error": f"«{dia[:12]}» no es un día (AAAA-MM-DD)"}
-    dias = sorted({f.stem for f in carpeta.glob("*") if DIA.fullmatch(f.stem) and f.suffix in (".json", ".md")},
-                  reverse=True)[:DIAS_LISTADOS] if carpeta.is_dir() else []
+    if dia != ULTIMO and not DIA.fullmatch(dia):
+        return {"ok": False, "error": f"«{dia[:12]}» no es un día (AAAA-MM-DD) ni «{ULTIMO}»"}
+    pre = r.prefijo
+    dias = sorted({f.stem[len(pre):] for f in carpeta.glob(f"{pre}*") if f.stem.startswith(pre) and DIA.fullmatch(f.stem[len(pre):])
+                   and f.suffix in (".json", ".md")}, reverse=True)[:DIAS_LISTADOS] if carpeta.is_dir() else []
+    if dia == ULTIMO:
+        dia = dias[0] if dias else date.today().isoformat()
     base = {"clave": clave, "nombre": r.nombre or clave, "dia": dia, "dias": dias, "comentable": bool(r.comentar)}
     for ext in (".json", ".md"):
-        f = carpeta / f"{dia}{ext}"
+        f = carpeta / f"{pre}{dia}{ext}"
         if not f.is_file():
             continue
         texto = f.read_text(encoding="utf-8")
         if ext == ".md":
-            return {"ok": True, **base, "formato": "md", "contenido": texto}
+            return {"ok": True, **base, "formato": "md", "contenido": texto, "archivo": f.name}
         try:
-            return {"ok": True, **base, "formato": "json", "contenido": json.loads(texto)}
+            return {"ok": True, **base, "formato": "json", "contenido": json.loads(texto), "archivo": f.name}
         except ValueError as e:
             return {"ok": False, **base, "error": f"{f.name} no es JSON válido: {e}"}
     return {"ok": True, **base, "formato": "", "contenido": None}
@@ -101,7 +112,7 @@ def comentar_local(config, clave: str, dia: str, texto: str) -> dict:
     if len(texto) > MAX_COMENTARIO:
         return {"ok": False, "error": f"el comentario pasa de {MAX_COMENTARIO} caracteres"}
     carpeta = Path(r.carpeta).expanduser() if r.carpeta else Path()
-    if r.carpeta and not any((carpeta / f"{dia}{ext}").is_file() for ext in (".json", ".md")):
+    if r.carpeta and not any((carpeta / f"{r.prefijo}{dia}{ext}").is_file() for ext in (".json", ".md")):
         return {"ok": False, "error": f"no hay {r.nombre or clave} del {dia}"}
     comando = [os.path.expanduser(r.comentar[0]), *r.comentar[1:]]
     entorno = {**os.environ, "TELAR_RESULTADO_DIA": dia, "TELAR_RESULTADO_CARPETA": str(carpeta)}

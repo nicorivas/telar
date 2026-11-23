@@ -42,8 +42,10 @@ if os.environ.get("TELAR_CONSULTA"):
     p = json.load(sys.stdin)
     if p.get("fallar"):
         print("se cayó a propósito", file=sys.stderr); sys.exit(3)
+    if p.get("rechazar"):  # como lo dice un módulo: {"error", "codigo"} y sale con 1
+        print(json.dumps({"error": "cambió desde que la leíste", "codigo": p["rechazar"]})); sys.exit(1)
     print(json.dumps({"dijo": p.get("texto", ""), "raiz": os.environ["TELAR_RAIZ"],
-                      "repos": json.loads(os.environ["TELAR_REPOS"])}))
+                      "repos": json.loads(os.environ["TELAR_REPOS"]), "persona": os.environ.get("TELAR_PERSONA")}))
 else:
     print("eco:", " ".join(sys.argv[1:]))
 """
@@ -107,6 +109,58 @@ class LosModulosComoPlugins(Prueba):
         with self.assertRaises(modulos.ErrorDeModulo):  # una orden sin consulta no se pregunta
             modulos.consultar(self.config(), "eco", "solo", {})
 
+    def test_la_persona_es_la_del_bus_o_el_usuario(self):
+        import getpass
+
+        self.instalar()
+        os.environ.pop("TELAR_PERSONA", None)  # (mock.patch.dict del setUp lo devuelve como estaba)
+        self.assertEqual(modulos.consultar(self.config(), "eco", "decir", {})["persona"], getpass.getuser())
+        (self.conf / "config.toml").write_text((self.conf / "config.toml").read_text() + '\n[bus]\npersona = "ana"\n')
+        self.assertEqual(modulos.consultar(self.config(), "eco", "decir", {})["persona"], "ana")
+        # la del entorno le gana (como TELAR_RAIZ a raiz): una prueba la fija así
+        with mock.patch.dict(os.environ, {"TELAR_PERSONA": "berta"}):
+            self.assertEqual(modulos.consultar(self.config(), "eco", "decir", {})["persona"], "berta")
+
+    def test_lo_que_el_modulo_rechaza_llega_con_su_codigo(self):
+        from telar.servicios import ErrorDeServicio
+        from telar.servicios import modulos as servicio
+
+        self.instalar()
+        with self.assertRaises(modulos.ErrorDeConsulta) as e:
+            modulos.consultar(self.config(), "eco", "decir", {"rechazar": 409})
+        self.assertEqual((e.exception.codigo, str(e.exception)), (409, "cambió desde que la leíste"))
+        ctx = SimpleNamespace(config=self.config())
+        with self.assertRaises(ErrorDeServicio) as e:
+            servicio.consultar(ctx, "eco", "decir", {"rechazar": 409})
+        self.assertEqual((e.exception.codigo, str(e.exception)), (409, "cambió desde que la leíste"))
+        # por el bus, a la otra máquina, con el mismo código
+        r = servicio.para_otra(ctx, {"modulo": "eco", "verbo": "decir", "params": {"rechazar": 403}})
+        self.assertEqual((r["ok"], r["codigo"]), (False, 403))
+        # un código que no es 4xx es una falla del módulo, como una salida sin JSON
+        for raro in (500, "409", True):
+            with self.assertRaises(ErrorDeServicio) as e:
+                servicio.consultar(ctx, "eco", "decir", {"rechazar": raro})
+            self.assertEqual(e.exception.codigo, 502, raro)
+        with self.assertRaises(ErrorDeServicio) as e:
+            servicio.consultar(ctx, "eco", "decir", {"fallar": True})
+        self.assertEqual(e.exception.codigo, 502)
+
+    def test_su_periodico_corre_con_lo_que_sabe_de_telar(self):
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[periodicos.medir]\ncuando = "0 7 * * *"\n'
+                                               'comando = "echo modulo=$TELAR_MODULO persona=$TELAR_PERSONA raiz=$TELAR_RAIZ"\n')
+        git(self.repo, "commit", "-qam", "periodico")
+        carpeta = self.instalar()
+        from telar import periodicos as mod_periodicos
+
+        config = self.config()
+        p = mod_periodicos.con_modulos(mod_periodicos.Archivo(), config).por_nombre("eco-medir")
+        r = mod_periodicos.correr(SimpleNamespace(config=config), p)
+        self.assertEqual(r["codigo"], 0)
+        log = mod_periodicos.log(config, "eco-medir")
+        self.assertIn(f"modulo={carpeta.resolve()}", log)
+        self.assertIn(f"raiz={Path(self.tmp.name)}", log)
+        self.assertRegex(log, r"persona=\S+")
+
     def test_su_orden_se_llama_como_una_de_telar(self):
         self.instalar()
         from telar import cli
@@ -138,6 +192,24 @@ class LosModulosComoPlugins(Prueba):
         (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[contexto]\ntexto = """Hay un grafo:\n  úsalo."""\n')
         self.assertEqual(modulos.leer("eco", self.repo).contexto, "Hay un grafo: úsalo.")
         (self.repo / "modulo.toml").write_text(MANIFIESTO + f'\n[contexto]\ntexto = "{"x" * 700}"\n')
+        with self.assertRaises(modulos.ErrorDeModulo):
+            modulos.leer("eco", self.repo)
+
+    def test_su_icono_es_un_png_de_su_carpeta(self):
+        (self.repo / "modulo.toml").write_text('icono = "icono.png"\n' + MANIFIESTO)
+        self.assertEqual(modulos.leer("eco", self.repo).icono, self.repo.resolve() / "icono.png")
+        (self.repo / "modulo.toml").write_text('icono = "icono.svg"\n' + MANIFIESTO)
+        with self.assertRaises(modulos.ErrorDeModulo):
+            modulos.leer("eco", self.repo)
+        (self.repo / "modulo.toml").write_text(MANIFIESTO)
+        self.assertIsNone(modulos.leer("eco", self.repo).icono)
+
+    def test_su_configuracion_es_un_comando_de_su_carpeta(self):
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[configurar]\ncomando = ["bin/eco", "configurar"]\n')
+        m = modulos.leer("eco", self.repo)
+        self.assertEqual(m.configurar["comando"][0], str(self.repo.resolve() / "bin" / "eco"))
+        self.assertIn("configuración", m.aporta)
+        (self.repo / "modulo.toml").write_text(MANIFIESTO + '\n[configurar]\ncomando = "bin/eco"\n')
         with self.assertRaises(modulos.ErrorDeModulo):
             modulos.leer("eco", self.repo)
 
@@ -210,6 +282,79 @@ class LosModulosComoPlugins(Prueba):
             self.assertEqual(servicio.consultar(ctx, "eco", "decir", {"texto": "x"}, "telar"), {"dijo": "lejos"})
             self.assertEqual(pedir.call_args.args[1:4], ("telar", "modulo", {"modulo": "eco", "verbo": "decir", "params": {"texto": "x"}}))
 
+
+
+# imprime una página que dice lo que sabe de telar (su pestaña, su app y su configuración), o el detalle de un ítem
+PAGINA = """#!/usr/bin/env python3
+import json, os, sys
+sabe = {k: os.environ.get(k, "") for k in ("TELAR_RAIZ", "TELAR_REPOS", "TELAR_MAQUINA", "TELAR_MODULO")}
+if "--item" in sys.argv:
+    print(json.dumps({"texto": json.dumps(sabe)}))
+else:
+    print(json.dumps({"titulo": sys.argv[1], "bloques": [{"texto": json.dumps(sabe)}]}))
+"""
+
+
+class LasPaginasDeUnModulo(Prueba):
+    """Su pestaña, su app y su configuración corren con el entorno de sus órdenes (TELAR_RAIZ, TELAR_REPOS…); una
+    pestaña o una app declarada a mano, con el de telar."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.modulo = base / "telar-mira"
+        (self.modulo / "bin").mkdir(parents=True)
+        guion = self.modulo / "bin" / "pagina"
+        guion.write_text(PAGINA)
+        guion.chmod(guion.stat().st_mode | stat.S_IEXEC)
+        (self.modulo / "modulo.toml").write_text(
+            'nombre = "mira"\ndescripcion = "dice lo que sabe"\n'
+            '[pestana]\nnombre = "mira"\ncomando = ["bin/pagina", "pestana"]\n'
+            '[app]\npagina = ["bin/pagina", "app"]\n'
+            '[configurar]\ncomando = ["bin/pagina", "configurar"]\n')
+        (base / "repo").mkdir()
+        self.ruta = base / "config.toml"
+        self.ruta.write_text(f'raiz = "{base}"\nestado = "{base / "estado"}"\n'
+                             f'[repos.equipo]\nruta = "{base / "repo"}"\n'
+                             f'[modulos.mira]\ncarpeta = "{self.modulo}"\n'
+                             f'[bloques.amano]\ncomando = ["{guion}", "a mano"]\n'
+                             f'[apps.otra]\npagina = ["{guion}", "otra"]\n')
+        from telar.cli import Contexto
+
+        self.ctx = Contexto(config=cfg.cargar(self.ruta))
+
+    def sabe(self, pagina) -> dict:
+        return json.loads(pagina.bloques[0]["texto"])
+
+    def test_su_pestana_su_app_y_su_configuracion_saben_de_telar(self):
+        from telar.servicios import bloques, paginas
+        from telar.servicios import modulos as servicio_modulos
+
+        base = Path(self.tmp.name)
+        for pagina in (bloques.pagina(self.ctx, "mira"), paginas.app(self.ctx, "mira"),
+                       servicio_modulos.configuracion(self.ctx, "mira")):
+            sabe = self.sabe(pagina)
+            self.assertEqual(sabe["TELAR_RAIZ"], str(base), pagina.titulo)
+            self.assertEqual(sabe["TELAR_MODULO"], str(self.modulo.resolve()), pagina.titulo)
+            self.assertEqual([(r["nombre"], r["ruta"]) for r in json.loads(sabe["TELAR_REPOS"])],
+                             [("equipo", str(base / "repo"))], pagina.titulo)
+        self.assertEqual([p.titulo for p in (bloques.pagina(self.ctx, "mira"), paginas.app(self.ctx, "mira"))],
+                         ["pestana", "app"])
+        # el detalle de un ítem de su pestaña, también
+        detalle = json.loads(bloques.item(self.ctx, "mira", "uno").texto)
+        self.assertEqual(detalle["TELAR_MODULO"], str(self.modulo.resolve()))
+
+    def test_lo_declarado_a_mano_corre_con_el_entorno_de_telar(self):
+        from telar.servicios import bloques, paginas
+
+        for pagina in (bloques.pagina(self.ctx, "amano"), paginas.app(self.ctx, "otra")):
+            self.assertEqual(self.sabe(pagina), {"TELAR_RAIZ": "", "TELAR_REPOS": "", "TELAR_MAQUINA": "", "TELAR_MODULO": ""},
+                             pagina.titulo)
+        self.assertIsNone(modulos.entorno_de(self.ctx.config, "amano", "pestana"))
+        self.assertIsNone(modulos.entorno_de(self.ctx.config, "mira", "fondo"))  # no trae fondo
+        self.assertEqual(modulos.entorno_de(self.ctx.config, "mira", "app")["TELAR_MODULO"], str(self.modulo.resolve()))
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,7 +15,7 @@ from comun import Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import mudanza, servidores
 
-FICHA = {"telar": "0.7.3", "servidor": "telar", "bus": "nats://100.66.75.117:4222", "administra": "nico",
+FICHA = {"telar": "0.7.3", "servidor": "telar", "bus": "nats://100.64.0.10:4222", "administra": "ana",
          "aloja": True, "puerta": "https://telar.x.ts.net"}
 
 
@@ -47,7 +47,7 @@ class LosServidoresAgregados(_ConCarpeta):
         return p
 
     def test_normalizar(self):
-        self.assertEqual(servidores.normalizar("100.66.75.117"), "http://100.66.75.117:8780")
+        self.assertEqual(servidores.normalizar("100.64.0.10"), "http://100.64.0.10:8780")
         self.assertEqual(servidores.normalizar(" telar "), "http://telar:8780")
         self.assertEqual(servidores.normalizar("https://telar.x.ts.net/maquinas"), "https://telar.x.ts.net")
         self.assertEqual(servidores.normalizar("http://telar:9000"), "http://telar:9000")
@@ -57,11 +57,11 @@ class LosServidoresAgregados(_ConCarpeta):
 
     def test_agregar_le_pregunta_quien_es_y_lo_anota(self):
         p = self.pedir({"/unirse/servidor": (200, FICHA)})
-        s = servidores.agregar(None, "100.66.75.117", pedir=p)
-        self.assertEqual(p.visto, ["http://100.66.75.117:8780/unirse/servidor"])
-        self.assertEqual((s["nombre"], s["administra"], s["aloja"]), ("telar", "nico", True))
+        s = servidores.agregar(None, "100.64.0.10", pedir=p)
+        self.assertEqual(p.visto, ["http://100.64.0.10:8780/unirse/servidor"])
+        self.assertEqual((s["nombre"], s["administra"], s["aloja"]), ("telar", "ana", True))
         eq = servidores.equipo_de(s["url"])
-        self.assertEqual((eq.bus, eq.administra, eq.url_puerta), (FICHA["bus"], "nico", s["url"]))
+        self.assertEqual((eq.bus, eq.administra, eq.url_puerta), (FICHA["bus"], "ana", s["url"]))
 
     def test_lo_que_no_es_un_servidor_de_telar(self):
         for r, palabra in (((404, {"detail": "no"}), "no es la máquina del bus"), ((200, {"ok": True}), "no contestó como"),
@@ -77,7 +77,7 @@ class LosServidoresAgregados(_ConCarpeta):
         url = servidores.agregar(None, "telar", pedir=p)["url"]
         sin_bus = SimpleNamespace(bus=SimpleNamespace(url=""))
         self.assertEqual(servidores.lista(sin_bus, pedir=p)[0]["estado"], "sin-pedir")
-        servidores.anotar_pedido(url, pedido="abc", persona="pablo", estado="pendiente")
+        servidores.anotar_pedido(url, pedido="abc", persona="bruno", estado="pendiente")
         su_bus = SimpleNamespace(bus=SimpleNamespace(url=FICHA["bus"]))  # instalar ya escribió [bus]
         self.assertEqual(servidores.lista(su_bus, pedir=p, ahora=10**10)[0]["estado"], "pendiente")
         p2 = self.pedir({"/unirse/abc": (200, {"estado": "aprobado"})})
@@ -89,9 +89,9 @@ class LosServidoresAgregados(_ConCarpeta):
         url = servidores.agregar(None, "telar", pedir=self.pedir({"/unirse/servidor": (200, FICHA)}))["url"]
         otro = SimpleNamespace(bus=SimpleNamespace(url="nats://otro:4222"), estado=str(self.dir))
         with self.assertRaisesRegex(servidores.ErrorDeServidores, "otro bus"):
-            servidores.entrar(otro, url, "pablo")
+            servidores.entrar(otro, url, "bruno")
         with self.assertRaises(servidores.ErrorDeServidores):
-            servidores.entrar(otro, url, "Pablo Ferreiro")  # un nombre que no sirve en el bus
+            servidores.entrar(otro, url, "Bruno Soto")  # un nombre que no sirve en el bus
 
 
 class LaMudanzaAlLlegar(_ConCarpeta):
@@ -190,10 +190,10 @@ class Traer(LaMudanzaAlLlegar):
         from types import SimpleNamespace as NS
 
         with mock.patch("subprocess.run", return_value=NS(returncode=0, stdout="«Faro» sigue en laptop", stderr="")) as run:
-            r = mudanza.traer_aqui(self.ctx, {"hilo": "Faro", "a": "nicolss-macbook-air", "si": True})
+            r = mudanza.traer_aqui(self.ctx, {"hilo": "Faro", "a": "macbook-de-ana", "si": True})
         self.assertEqual((r["ok"], r["codigo"]), (True, 0))
         argv = run.call_args.args[0]
-        self.assertEqual(argv[-6:], ["hilo", "llevar", "nicolss-macbook-air", "--hilo", "Faro", "--si"])
+        self.assertEqual(argv[-6:], ["hilo", "llevar", "macbook-de-ana", "--hilo", "Faro", "--si"])
 
     def test_sin_sesion_la_levanta_y_el_hilo_es_el_primero(self):
         from telar.ordenes import _comun

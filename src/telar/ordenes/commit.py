@@ -8,11 +8,14 @@
 El repositorio es el de la primera ruta (o el de aquí, con `--subir`). Commitea solo esas rutas
 aunque el índice tenga otras cosas; nunca hace `git add -A` sin rutas, ni toca las marcadas
 `skip-worktree`. Para subir, trae lo de arriba y rebasa encima, salvo que lo que llega toque un
-archivo sin commitear de aquí: entonces no integra, lo dice y el commit queda local. Un push que
-pierde la carrera con otro se reintenta con espera. Cada intento queda en `<estado>/commits.log`.
+archivo sin commitear de aquí: entonces no integra, lo dice y el commit queda local. Lo sin
+commitear de otros se aparta a un stash mientras se rebasa y se devuelve; si no puede volver, no
+sube y dice qué stash, qué archivos y cómo devolverlos. Un push que pierde la carrera con otro se
+reintenta con espera. Cada intento queda en `<estado>/commits.log`.
 
 Sale con 0 si quedó commiteado (y subido, si se pidió), con 1 si quedó local por un choque o una
-falla de red, y con 2 si no se pudo commitear.
+falla de red, con 2 si no se pudo commitear, y con 3 si lo sin commitear de otros quedó fuera del
+árbol, en un stash (el commit queda local).
 """
 
 from __future__ import annotations
@@ -58,7 +61,7 @@ def main(argv: list[str], ctx) -> int:
     git.anotar(Path(ctx.config.estado), res, o.mensaje or "(subir)")
     # pedido subir: bien solo si quedó arriba; sin subir: bien si quedó commiteado (o no había nada)
     bien = res.subido if not o.local else res.estado in ("commiteado", "nada")
-    return _decir(res, o.json, 0 if bien else 1)
+    return _decir(res, o.json, 0 if bien else 3 if res.estado == "apartado" else 1)
 
 
 def _decir(res: git.Resultado, como_json: bool, codigo: int) -> int:
@@ -70,6 +73,7 @@ def _decir(res: git.Resultado, como_json: bool, codigo: int) -> int:
         "commiteado": f"{res.commit} en {res.rama}, sin subir" + (f": {res.detalle}" if res.detalle else ""),
         "nada": res.detalle or "nada que commitear",
         "choque": f"{res.commit + ' queda local: ' if res.commit else 'no subí: '}{res.detalle}",
+        "apartado": f"{res.commit + ' queda local, sin subir: ' if res.commit else 'no subí: '}{res.detalle}",
         "fallo": res.detalle,
     }
     print(lineas.get(res.estado, res.detalle), file=sys.stdout if codigo == 0 else sys.stderr)

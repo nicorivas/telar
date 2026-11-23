@@ -2,13 +2,17 @@
 
 Lo demás de tmux se prueba con un doble en `test_mux_tmux.py`, que mira la forma exacta
 de cada orden. Esto es la otra mitad: que esas órdenes hagan lo que dicen contra el tmux
-instalado, que es lo único que nota un cambio de versión. Nunca toca otra sesión.
+instalado, que es lo único que nota un cambio de versión. Nunca toca otra sesión, ni el
+servidor de la persona: corre en uno propio (`TMUX_TMPDIR` en una carpeta nueva, sin
+`TMUX`), porque tejer también le limpia el entorno global al servidor.
 """
+import os
 import shutil
+import tempfile
 import time
 import unittest
 
-from pruebas import comun  # noqa: F401  (pone src/ en el path)
+from pruebas import comun  # pone src/ en el path
 
 from telar.config import Config
 from telar.mux import ErrorDeMux
@@ -23,23 +27,43 @@ def _mux(sesion=SESION):
 
 
 @unittest.skipUnless(HAY_TMUX, "sin tmux instalado")
-class ContraTmuxDeVerdad(unittest.TestCase):
-    """Una sesión propia, creada y cerrada aquí."""
+class ContraTmuxDeVerdad(comun.Prueba):
+    """Una sesión propia, creada y cerrada aquí. Sin `TELAR_*` (`comun.Prueba`): corridas desde un hilo, con su
+    `TELAR_HILO`, telar se cree un agente y no mueve el foco, y las pruebas de ir a un tab fallaban."""
 
     @classmethod
     def setUpClass(cls):
+        cls.socket = tempfile.mkdtemp(prefix="telar-mux-real-")
+        cls.entorno = {clave: os.environ.get(clave) for clave in ("TMUX_TMPDIR", "TMUX")}
+        os.environ["TMUX_TMPDIR"] = cls.socket
+        os.environ.pop("TMUX", None)  # dentro de tmux, apuntaría al servidor de la persona
         cls.mux = _mux()
-        cls.mux._tmux("kill-session", "-t", SESION, tolerante=True)
         cls.mux.tejer()
 
     @classmethod
     def tearDownClass(cls):
-        cls.mux._tmux("kill-session", "-t", SESION, tolerante=True)
+        comun.matar_tmux(cls.socket)
+        for clave, valor in cls.entorno.items():
+            if valor is None:
+                os.environ.pop(clave, None)
+            else:
+                os.environ[clave] = valor
+        shutil.rmtree(cls.socket, ignore_errors=True)
 
     def test_la_sesion_esta_viva_y_tiene_un_tab(self):
         self.assertTrue(self.mux.disponible())
         self.assertTrue(self.mux.viva())
         self.assertGreaterEqual(len(self.mux.tabs()), 1)
+
+    def test_la_sesion_tiene_los_ganchos_del_foco(self):
+        from telar.mux.tmux import GANCHOS_FOCO, ejecutable_telar
+
+        if not ejecutable_telar():
+            self.skipTest("sin telar en el PATH: no hay a quién avisarle")
+        ganchos = self.mux._tmux("show-hooks", "-t", f"={SESION}:")
+        for gancho in GANCHOS_FOCO:
+            self.assertIn(gancho, ganchos)
+        self.assertIn("tiempo marcar", ganchos)
 
     def test_crear_renombrar_y_cerrar_un_tab(self):
         tab = self.mux.crear_tab(nombre="telar-uno")

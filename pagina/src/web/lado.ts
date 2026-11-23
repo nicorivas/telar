@@ -1,10 +1,14 @@
-// La barra de la derecha (#lado), al ver un hilo. Tiene dos hojas: la **ficha** del hilo de un agente residente (quién
+// La barra de la derecha (#lado), al ver un hilo. Tiene tres hojas: la **ficha** del hilo de un agente residente (quién
 // es: para, modelo, si es residente, dónde vive; cuánto pesa su conversación contra el tope de rotación, su último
-// relevo y su CLAUDE.md, para leer) y los **códigos** que nombra el hilo (web/codigos.ts: `H3`, `PEN-07`, `T84`, con
-// lo que es cada uno). Aparece si el hilo tiene alguna de las dos; con las dos, se elige arriba. Se pliega con sus
-// flechas (un cambio en el modo puesto, web/modos.ts); el modo también la oculta. En el celular no está.
+// relevo y su CLAUDE.md, para leer), los **códigos** que nombra el hilo (web/codigos.ts: `H3`, `PEN-07`, `T84`, con
+// lo que es cada uno) y lo que carga su **contexto** (web/carga.ts: los archivos generales, lo que leyó, lo que se
+// repite, con lo que pesa cada cosa). Aparece en todo hilo (el contexto vale para cualquiera); con más de una hoja, se
+// elige arriba. Arriba va su barra (`.lado-barra`: las pestañas, o el nombre de la hoja, y la flecha de plegar), del
+// alto de la de la pantalla de al lado y con su línea abajo a la misma altura. Se pliega con sus flechas (un cambio en el
+// modo puesto, web/modos.ts); el modo también la oculta. En el celular no está.
 
 import * as cli from '../cli';
+import * as carga from './carga';
 import * as codigos from './codigos';
 import { esc, fechaCorta } from '../estilo';
 import * as glifos from './glifos';
@@ -21,8 +25,10 @@ let actual = '';
 let maquinaActual = '';
 let ficha: cli.JsonFichaAgente | undefined;
 let leida = 0;
-/** la hoja elegida cuando hay las dos (la ficha y los códigos) */
-let hoja: 'ficha' | 'codigos' = 'ficha';
+type Hoja = 'ficha' | 'codigos' | 'contexto';
+/** la hoja elegida, cuando hay más de una (si la elegida no está en el hilo que se ve, la primera que haya) */
+let hoja: Hoja = 'ficha';
+const HOJAS: Hoja[] = ['ficha', 'codigos', 'contexto'];
 
 const lado = () => document.getElementById('lado') as HTMLElement | null;
 
@@ -37,30 +43,45 @@ const mb = (b: number) => `${(b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 
 
 const PLEGAR = `<a class="lado-pliegue i" data-lado="plegar" title="plegar la barra">${I.plegado}</a>`;
 
+/** Las hojas que tiene el hilo que se ve, en orden. */
+function hojasDelHilo(): Hoja[] {
+    return HOJAS.filter(h => h === 'ficha' ? !!ficha : h === 'codigos' ? codigos.hay() : carga.hay());
+}
+
+/** Cada hoja en su pestaña: su ícono, su nombre y, tenue, lo que cuenta (cuántos códigos). Las tres caben en el ancho
+ *  de la barra sin partirse; el peso del contexto lo dice su hoja, arriba. */
+const PESTANA: Record<Hoja, () => string> = {
+    ficha: () => `${I.ficha} ficha`,
+    codigos: () => `${I.codigos} códigos <span class="dim">${codigos.cuantos()}</span>`,
+    contexto: () => `${I.carga} contexto`,
+};
+
 function pintar(): void {
     const el = lado();
     if (!el) return;
-    const hayFicha = !!ficha, hayCodigos = codigos.hay();
-    if ((!hayFicha && !hayCodigos) || modos.valor('lado') === 'oculto') { el.hidden = true; return; }
+    const hay = hojasDelHilo();
+    if (!hay.length || modos.valor('lado') === 'oculto') { el.hidden = true; return; }
     el.hidden = false;
     const p = plegado();
     el.classList.toggle('plegado', p);
-    const cual = hayFicha && hayCodigos ? hoja : hayFicha ? 'ficha' : 'codigos';
+    const cual = hay.includes(hoja) ? hoja : hay[0];
     if (p) {
-        const rotulo = cual === 'ficha' && ficha ? ficha.agente.nombre : 'códigos';
-        el.innerHTML = `<a class="lado-pliegue i" data-lado="abrir" title="mostrar la barra">${I.atras}</a>`
+        const rotulo = cual === 'ficha' && ficha ? ficha.agente.nombre : cual === 'codigos' ? 'códigos' : 'contexto';
+        el.innerHTML = `<div class="lado-barra"><a class="lado-pliegue i" data-lado="abrir" title="mostrar la barra">${I.atras}</a></div>`
             + `<div class="lado-vertical" data-lado="abrir">${esc(rotulo)}</div>`;
         return;
     }
     // la caja de buscar de los códigos no pierde el foco ni lo escrito cuando la hoja se redibuja (se relee sola)
     const caja = document.activeElement instanceof HTMLInputElement && el.contains(document.activeElement)
         ? { desde: document.activeElement.selectionStart, hasta: document.activeElement.selectionEnd } : undefined;
-    const hojas = hayFicha && hayCodigos
-        ? `<div class="lado-hojas"><a data-lado="hoja" data-hoja="ficha"${cual === 'ficha' ? ' class="sel"' : ''}>${I.ficha} ficha</a>`
-            + `<a data-lado="hoja" data-hoja="codigos"${cual === 'codigos' ? ' class="sel"' : ''}>${I.codigos} códigos <span class="dim">${codigos.cuantos()}</span></a>${PLEGAR}</div>`
+    const hojas = hay.length > 1
+        ? '<div class="lado-hojas lado-barra">' + hay.map(h => `<a data-lado="hoja" data-hoja="${h}"${cual === h ? ' class="sel"' : ''}>${PESTANA[h]()}</a>`).join('')
+            + `${PLEGAR}</div>`
         : '';
     if (cual === 'codigos') {
-        el.innerHTML = (hojas || `<div class="lado-cab"><b>${I.codigos} códigos</b>${PLEGAR}</div>`) + codigos.html();
+        el.innerHTML = (hojas || `<div class="lado-cab lado-barra"><b>${I.codigos} códigos</b>${PLEGAR}</div>`) + codigos.html();
+    } else if (cual === 'contexto') {
+        el.innerHTML = (hojas || `<div class="lado-cab lado-barra"><b>${I.carga} contexto</b>${PLEGAR}</div>`) + `<div class="carga">${carga.html()}</div>`;
     } else {
         el.innerHTML = htmlFicha(!hojas, hojas);
         glifos.pintarEn(el);
@@ -72,7 +93,8 @@ function pintar(): void {
     }
 }
 
-/** La ficha del agente; `conPliegue`, si su cabecera lleva la flecha de plegar (sin las pestañas de las hojas). */
+/** La ficha del agente; `conPliegue`, si su cabecera lleva la flecha de plegar (sin las pestañas de las hojas): entonces
+ *  ella es la barra de arriba, y el sello va debajo. */
 function htmlFicha(conPliegue: boolean, hojas: string): string {
     if (!ficha) return '';
     const a = ficha.agente;
@@ -81,8 +103,9 @@ function htmlFicha(conPliegue: boolean, hojas: string): string {
     const at = modelo.porNombre(nombre)?.atencion ?? 'ninguna';
     const sello = glifos.prendidos() && nombre
         ? `<div class="lado-sello">${glifos.htmlSello(nombre, at === 'termino' || at === 'trabajando' || at === 'espera' ? at : 'ninguna')}</div>` : '';
-    const h: string[] = [`${hojas}${sello}<div class="lado-cab"><b>${esc(a.nombre)}</b><span class="dim"> · agente:${esc(a.clave)}</span>`
-        + (conPliegue ? PLEGAR : '') + '</div>'];
+    const cab = `<div class="lado-cab${conPliegue ? ' lado-barra' : ''}"><b>${esc(a.nombre)}</b><span class="dim"> · agente:${esc(a.clave)}</span>`
+        + (conPliegue ? PLEGAR : '') + '</div>';
+    const h: string[] = [conPliegue ? `${cab}${sello}` : `${hojas}${sello}${cab}`];
     if (a.para) h.push(`<p class="lado-para">${esc(a.para)}</p>`);
     const datos: [string, string][] = [
         ['residente', { siempre: 'siempre: el nodo lo mantiene abierto', 'a-pedido': 'a pedido: se abre cuando le llega algo',
@@ -134,29 +157,40 @@ function htmlFicha(conPliegue: boolean, hojas: string): string {
     return h.join('');
 }
 
-/** Lo que se ve cambió: `que` es la clave de la página («Faro», «rem:telar:Gestión», «dashboard», «doc:…»). La
- *  barra aparece si es el hilo de un agente o si su hilo nombra códigos, y se va si no. `deFondo`: la relectura de
- *  cada tanto, que redibuja solo si algo cambió (así no se cierra lo que se abrió ni se pierde lo escrito). */
+/** El nombre del hilo en una clave de la página («Faro», o «rem:telar:Secretaría» para uno de otra máquina). */
+const nombreDe = (que: string): string => {
+    if (!que.startsWith('rem:')) return que;
+    const resto = que.slice(4);
+    return resto.slice(resto.indexOf(':') + 1);
+};
+
+/** Lo que se ve cambió: `que` es la clave de la página («Faro», «rem:telar:Secretaría», «dashboard», «doc:…»). La
+ *  barra aparece en todo hilo (su contexto) y se va si no es un hilo. `deFondo`: la relectura de cada tanto, que
+ *  redibuja solo si algo cambió (así no se cierra lo que se abrió ni se pierde lo escrito). */
 export async function mostrar(que: string, esHilo: boolean, deFondo = false): Promise<void> {
-    if (!esHilo) { actual = ''; ficha = undefined; void codigos.cargar('', '', ''); pintar(); return; }
+    // el que se deja y el que se abre ya se vieron: la barra lo dice al tiro, sin esperar a que el servidor lo cuente
+    if (actual && que !== actual) modelo.ver(nombreDe(actual));
+    if (!esHilo) { actual = ''; ficha = undefined; void codigos.cargar('', '', ''); void carga.cargar('', '', ''); pintar(); return; }
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
     const i = remoto.indexOf(':');
     const hilo = remoto ? remoto.slice(i + 1) : que, maquina = remoto ? remoto.slice(0, i) : '';
     maquinaActual = maquina;
     const nuevo = que !== actual;
-    if (nuevo) ficha = undefined;
+    if (nuevo) { ficha = undefined; modelo.ver(hilo); }
     actual = que;
-    // los códigos, a la par de la ficha: cada uno redibuja al llegar (y cargar olvida al instante los del hilo de antes)
+    // los códigos y el contexto, a la par de la ficha: cada uno redibuja al llegar (y cargar olvida al instante los del
+    // hilo de antes)
     const deCodigos = codigos.cargar(que, hilo, maquina).then(cambio => { if (actual === que && cambio) pintar(); });
+    const deCarga = carga.cargar(que, hilo, maquina).then(cambio => { if (actual === que && cambio) pintar(); });
     if (!deFondo) pintar();
-    if (!nuevo && Date.now() - leida < CADA) { await deCodigos; return; }
+    if (!nuevo && Date.now() - leida < CADA) { await Promise.all([deCodigos, deCarga]); return; }
     const r = await cli.fichaAgente(hilo, maquina);
     if (actual !== que) return;  // ya se fue a otro
     leida = Date.now();
     const antes = JSON.stringify(ficha ?? null);
     ficha = r.datos ?? undefined;
     if (!deFondo || JSON.stringify(ficha ?? null) !== antes) pintar();
-    await deCodigos;
+    await Promise.all([deCodigos, deCarga]);
 }
 
 /** Un código del hilo que se ve, desde su enlace en la terminal o la conversación (web/rutas-agente.ts): la barra se
@@ -169,15 +203,12 @@ export function abrirCodigo(codigo: string): void {
     requestAnimationFrame(() => document.querySelector('#lado .cod-fila.sel')?.scrollIntoView({ block: 'nearest' }));
 }
 
+/** Encargarle algo al agente del hilo que se ve: la ventana de la instrucción (web/instruccion.ts), solo a él, con
+ *  sus skills. Queda como encargo:e-…, y el resultado llega. */
 async function encargar(): Promise<void> {
     if (!ficha) return;
-    const a = ficha.agente;
-    const escrito = await ui.escribir({ titulo: `encargarle a ${a.nombre}`, placeholder: '¿qué le encargas?',
-        ayuda: `${a.para || 'un encargo'} · queda como encargo:e-…; el resultado te llega. ⌘⏎ envía.` });
-    if (!escrito?.texto.trim()) return;
-    const r = await cli.encargar(a.clave, escrito.texto);
-    if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
-    void ui.estado(`telar: encargado a ${a.nombre}`, 4000);
+    const { abrir } = await import('./instruccion');
+    if (!await abrir({ a: ficha.agente.nombre, solo: true })) return;
     leida = 0;
     await mostrar(actual, true);
 }
@@ -194,7 +225,7 @@ async function rotar(): Promise<void> {
 }
 
 async function cancelar(direccion: string): Promise<void> {
-    if (await ui.aviso(`¿Cancelar ${direccion}?`, 'Cancelar el encargo') !== 'Cancelar el encargo') return;
+    if (await ui.aviso(`¿Cancelar ${direccion}?`, 'Cancelar el encargo', { destruye: true }) !== 'Cancelar el encargo') return;
     const r = await cli.accionObjeto(direccion, 'cancelar', { motivo: 'lo canceló su persona desde la página' });
     if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
     leida = 0;
@@ -210,16 +241,16 @@ export function montar(): void {
     el?.addEventListener('keydown', e => { codigos.atender(e); });
     el?.addEventListener('toggle', e => { codigos.atender(e); }, true);
     el?.addEventListener('click', e => {
-        if (codigos.atender(e)) return;
+        if (codigos.atender(e) || carga.atender(e)) return;
         const a = (e.target as HTMLElement).closest<HTMLElement>('[data-lado]');
         if (!a) return;
         const que = a.dataset.lado;
         if (que === 'plegar' || que === 'abrir') plegar(que === 'plegar');
-        else if (que === 'hoja' && (a.dataset.hoja === 'ficha' || a.dataset.hoja === 'codigos')) { hoja = a.dataset.hoja; pintar(); }
+        else if (que === 'hoja' && HOJAS.includes(a.dataset.hoja as Hoja)) { hoja = a.dataset.hoja as Hoja; pintar(); }
         else if (que === 'encargar') void encargar();
         else if (que === 'rotar') void rotar();
         else if (que === 'cancelar' && a.dataset.dir) void cancelar(a.dataset.dir);
     });
-    // mientras se ve el mismo hilo, la ficha se mantiene al día (el peso de la conversación, la rotación)
+    // mientras se ve el mismo hilo, la ficha se mantiene al día (el peso de la conversación, la rotación), y su contexto
     setInterval(() => { if (actual && !document.hidden) void mostrar(actual, true, true); }, CADA);
 }

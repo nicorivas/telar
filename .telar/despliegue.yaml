@@ -1,0 +1,26 @@
+# Cómo se despliega telar en cada máquina donde vive (`telar desplegar`; docs/perfil.md, «El despliegue», y
+# docs/desarrollar.md). Lo de cada máquina (dónde está el repositorio allá, si usa systemd o launchd) no va aquí: sale
+# de la configuración de quien despliega y de la máquina misma.
+
+# antes de reiniciar: una dependencia nueva pide reinstalar (telar corre editable desde el repositorio, con uv)
+preparar:
+  - comando: uv tool install -q --force --editable '.[serve,bus]'
+    si_cambia: [pyproject.toml]
+
+# lo que corre este código: la API, la página y el nodo del bus de cada máquina. La página viaja compilada
+# (src/telar/web): nadie compila nada al desplegar
+servicios:
+  - systemd: telar-serve
+    launchd: com.telar.serve
+
+# con el código nuevo: las skills, los ganchos y los permisos que telar le deja al agente se escriben de nuevo
+despues:
+  - comando: telar agente instalar --si
+    si_cambia: [src/telar/agente/, src/telar/servicios/skills.py]
+
+comprobar:
+  # la página que sirve cada máquina, en su puerto y con su llave: la misma en todas
+  - pagina: /pagina.json
+    igual: firma
+  # la API detrás de la página (con /api)
+  - pagina: /api/salud

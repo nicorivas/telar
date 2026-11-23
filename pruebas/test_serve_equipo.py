@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import comun  # noqa: F401  (aísla la sesión de lo vivo de quien la corre; pone src/ en el camino)
 from telar import equipo as mod_equipo
 from telar.ordenes import serve
 

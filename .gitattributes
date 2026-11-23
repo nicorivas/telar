@@ -1,0 +1,6 @@
+# Lo compilado de la página: sale de `npm run navegador` en pagina/ y no se resuelve a mano al fusionar. Con
+# merge=telar-compilado, `telar hilo fusionar` lo vuelve a generar solo (.telar/compilados.yaml dice cómo), y en los
+# worktrees de los hijos un `git merge` no se detiene en ellos (docs/desarrollar.md, «Lo compilado»).
+src/telar/web/app.js          merge=telar-compilado
+src/telar/web/componentes.js  merge=telar-compilado
+src/telar/web/marco.css       merge=telar-compilado

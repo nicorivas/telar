@@ -46,7 +46,8 @@ def instalados(ctx, *, con_catalogo: bool = False) -> Instalados:
         p = mod_modulos.procedencia(d or None)
         e = entradas.get(m.nombre)
         salida.append({"nombre": m.nombre, "activo": True, "carpeta": str(m.carpeta), "descripcion": m.descripcion,
-                       "aporta": m.aporta, "fuente": p["fuente"], "version": p["version"], "ref": str(d.get("ref") or ""),
+                       "aporta": m.aporta, "configurar": bool(m.configurar),
+                       "fuente": p["fuente"], "version": p["version"], "ref": str(d.get("ref") or ""),
                        "catalogo": str(d.get("catalogo") or ""), "enlazado": p["enlazado"],
                        "instalado": str(d.get("instalado") or ""), "a_mano": not d,
                        "permisos": mod_modulos.permisos_json(m.permisos), "pide": m.pide,
@@ -129,6 +130,25 @@ def hacer(ctx, accion: str, nombre: str) -> Hecho:
 
 # ── preguntarle algo a un módulo ───────────────────────────────────────────────
 
+def configuracion(ctx, modulo: str):
+    """La pantalla de configuración de un módulo (`[configurar]`): la página que imprime su comando, validada como la de
+    un bloque, con el entorno del módulo (el de sus órdenes). Su lienzo es de «config:<módulo>»: pide sus consultas sin
+    permiso (telar.servicios.lienzos)."""
+    from telar import modulos as mod_modulos
+    from telar.ordenes.seccion import correr
+    from telar.servicios import Pagina
+
+    m = next((x for x in ctx.config.modulos if x.nombre == modulo), None)
+    if m is None:
+        raise ErrorDeServicio(f"no hay un módulo «{modulo}» activo", 404)
+    if not m.configurar:
+        raise ErrorDeServicio(f"el módulo «{modulo}» no trae configuración ([configurar] en su modulo.toml)", 404)
+    datos, problema = correr(m.configurar["comando"], f"la configuración de «{modulo}»", mod_modulos.entorno(ctx.config, m))
+    if problema:
+        raise ErrorDeServicio(problema, 502)
+    return Pagina(**datos)
+
+
 def consultar(ctx, modulo: str, verbo: str, params: dict, maquina: str = "") -> dict:
     from telar import bus as mod_bus
     from telar import modulos as mod_modulos
@@ -151,6 +171,8 @@ def consultar(ctx, modulo: str, verbo: str, params: dict, maquina: str = "") -> 
             pass
     try:
         return mod_modulos.consultar(config, modulo, verbo, params)
+    except mod_modulos.ErrorDeConsulta as e:
+        raise ErrorDeServicio(str(e), e.codigo) from None
     except mod_modulos.ErrorDeModulo as e:
         texto = str(e)
         raise ErrorDeServicio(texto, 404 if texto.startswith("aquí no está") or "no tiene la consulta" in texto else 502) from None

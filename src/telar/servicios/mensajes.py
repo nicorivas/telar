@@ -1,7 +1,7 @@
 """Los mensajes entre hilos que pasaron por el bus, de todas las máquinas (telar.bus.registro).
 
-Lo usan `telar mensaje` (enviar, `--registro`, `--soltar`) y `GET /mensajes`, `POST /mensajes`,
-`POST /mensajes/{id}/soltar`.
+Lo usan `telar mensaje` (enviar, `--registro`, `--soltar`, `--descartar`) y `GET /mensajes`, `POST /mensajes`,
+`POST /mensajes/{id}/soltar`, `POST /mensajes/{id}/descartar`.
 """
 
 from __future__ import annotations
@@ -17,10 +17,12 @@ class Mensajes(BaseModel):
 
 def registro(ctx, n: int = 40, *, retenidos: bool = False) -> Mensajes:
     from telar import bus as mod_bus
+    from telar.ordenes.mensaje import VENTANA_RETENIDOS
     from telar.ordenes.mensaje import retenidos as solo_retenidos
 
     try:
-        lista = mod_bus.registro(ctx.config, max(n, 200 if retenidos else 0))
+        # los retenidos, en la misma ventana que `--soltar` y la bandeja (telar esperas)
+        lista = mod_bus.registro(ctx.config, max(n, VENTANA_RETENIDOS if retenidos else 0))
     except mod_bus.ErrorDeBus as e:
         raise ErrorDeServicio(str(e), 502) from e
     return Mensajes(mensajes=solo_retenidos(lista) if retenidos else lista)
@@ -35,8 +37,7 @@ class Enviado(BaseModel):
 def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", modo: str = "pedido",
            plazo: str = "") -> Enviado:
     """Un mensaje para un hilo o un agente, por el bus. `de` vacío: el hilo de quien escribe o la persona.
-    `modo`: aviso, pedido (el de siempre) o encargo, que trae `encargo` y su `direccion`; la consulta no se
-    manda (`consultar`)."""
+    `modo`: aviso, pedido (el de siempre) o encargo, que trae `encargo` y su `direccion`."""
     from telar import bus as mod_bus
     from telar import casilla
     from telar import encargo
@@ -45,13 +46,13 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
     if not para.strip():
         raise ErrorDeServicio("¿para quién? telar mensaje <hilo> \"texto\"", 422)
     if modo == "consulta":
-        raise ErrorDeServicio("una consulta no se manda: se lee (telar mensaje <hilo> --modo consulta, "
-                              "GET /mensajes/consulta?para=…)", 422)
+        raise ErrorDeServicio("una consulta no se manda: en qué anda un hilo lo dicen telar ficha <hilo> y "
+                              "telar hilo leer <hilo> (GET /ficha?hilo=…, GET /hilos/leer?hilo=…)", 422)
     if not texto.strip():
         raise ErrorDeServicio("¿qué le digo? el texto está vacío", 422)
     # el modo y el plazo se validan aquí: lo que pide quien manda es un 422; un ValueError de más adentro, un 500
     if modo not in casilla.MODOS:
-        raise ErrorDeServicio(f"el modo «{modo}» no se manda: {', '.join(casilla.MODOS)} (la consulta no viaja)", 422)
+        raise ErrorDeServicio(f"el modo «{modo}» no se manda: {', '.join(casilla.MODOS)}", 422)
     if plazo and modo != "encargo":
         raise ErrorDeServicio("el plazo es de un encargo: --modo encargo --plazo …", 422)
     try:
@@ -63,14 +64,16 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
         con_modo = {k: v for k, v in (("modo", modo), ("plazo", plazo)) if v and v != "pedido"}
         return Enviado(**mandar(ctx, para, texto, tipo=tipo, de=de, **con_modo))
     except mod_bus.ErrorDeBus as e:
-        from telar.ordenes.mensaje import NoHayHilo
+        from telar.ordenes.mensaje import Ambiguo, NoHayHilo
 
-        raise ErrorDeServicio(str(e), 404 if isinstance(e, NoHayHilo) else 502) from e
+        codigo = 404 if isinstance(e, NoHayHilo) else 409 if isinstance(e, Ambiguo) else 502
+        raise ErrorDeServicio(str(e), codigo) from e
 
 
 class Consulta(BaseModel):
-    """`--modo consulta`: el hilo como objeto (`hilo:<nombre>`, telar.objetos) y lo último de su conversación
-    (`telar hilo leer`), o `problema` si eso no se pudo leer. No le llega nada al hilo."""
+    """`--modo consulta`, retirado: el hilo como objeto (`hilo:<nombre>`, telar.objetos) y lo último de su
+    conversación (`telar hilo leer`), o `problema` si eso no se pudo leer. No le llega nada al hilo. Responde lo
+    mismo que antes para quien ya lo llama; lo nuevo usa `telar ficha` y `telar hilo leer`."""
 
     modo: str = "consulta"
     para: str
@@ -85,7 +88,8 @@ TURNOS_CONSULTA = 3
 
 def consultar(ctx, para: str) -> Consulta:
     """En qué anda un hilo (o el de un agente, por su carpeta o su nombre), sin entrar a su conversación: lo que
-    hacen `telar ficha` y `telar hilo leer`, juntos."""
+    hacen `telar ficha` y `telar hilo leer`, juntos. Retirado (`--modo consulta`, `GET /mensajes/consulta`): queda
+    para quien ya lo llama."""
     from telar import agentes as mod_agentes
     from telar import bus as mod_bus
     from telar import objetos
@@ -116,5 +120,18 @@ def soltar(ctx, mid: str) -> Enviado:
 
     try:
         return Enviado(**mandar(ctx, mid))
+    except mod_bus.ErrorDeBus as e:
+        raise ErrorDeServicio(str(e), 404 if "no hay un mensaje retenido" in str(e) else 502) from e
+
+
+def descartar(ctx, mid: str, quien: str = "") -> Enviado:
+    """Que un mensaje retenido no salga: lo decidió la persona. Queda en el registro como descartado (quién y cuándo),
+    y a quien lo mandó le llega un aviso (`aviso`, su id; o `sin_aviso`, por qué no salió). 404 si no hay un retenido
+    con ese id (no está, o ya se soltó o se descartó); 502 si el bus no responde."""
+    from telar import bus as mod_bus
+    from telar.ordenes.mensaje import descartar as quitar
+
+    try:
+        return Enviado(**quitar(ctx, mid, quien=quien))
     except mod_bus.ErrorDeBus as e:
         raise ErrorDeServicio(str(e), 404 if "no hay un mensaje retenido" in str(e) else 502) from e

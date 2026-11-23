@@ -2,18 +2,26 @@
 // la estrella, compartirla— que usa el dashboard. Lo que piden a la interfaz va a la página (web/ui.ts).
 // Abajo, PantallaTareas: la pestaña «tareas», la ficha de una tarea y las pestañas de proveedor.
 
-import { C, I, PRIO_I } from '../../web/iconos';
+import { barraBuscar } from '../../componentes/buscador';
+import { filtros, type GrupoFiltro, type OpcionFiltro } from '../../componentes/filtros';
+import { orden, type OpcionOrden } from '../../componentes/orden';
+import type { AccionDePantalla } from '../../componentes/pantalla';
+import { C, I } from '../../web/iconos';
 import * as ui from '../../web/ui';
 import type { Opcion } from '../../web/ui';
 import * as cli from '../../cli';
-import { esc, limpiarMd, normalizar, recuadro, volver } from '../../estilo';
+import { esc, limpiarMd } from '../../estilo';
+import { DESTRUYE } from '../../componentes/boton';
 import { modelo } from '../../modelo';
-import { Dia, datosDueno, filtroAreas, filtroDuenos, leidoProveedores, olvidarDia, pendientes, pista, plazo, seccion, yo } from './dia';
-import { type Accion, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
+import { DEUDA_DIAS, Dia, esDeuda, grupoAreas, grupoDuenos, leidoProveedores, olvidarDia, ordenLectura, pendientes, salio, yo, type Pendiente } from './dia';
+import { ICONOS, ROL_ICONO, deBarra, deTitulo, esEscribir, iconoDeTitulo } from './barra-tarea';
+import { fechasDeSiempre, filaTarea, iso } from './fila-tarea';
+import * as leer from './leer';
+import { nombreCorto } from './unidad';
+import { type Accion, BARRA_DE, type EnBarra, type Pantalla, type Tablero, abrirEnlace } from './pantalla';
 
-/** Las acciones de la ficha que siempre se hacen donde se ve lo que cambian, como íconos junto al título; las del
- *  subtítulo salen de la lista solo si `subtituloFicha` las pudo poner ahí (ver `pintarFicha`). */
-const ICONOS = ['estrella', 'equipo'];
+// La barra de la ficha (las acciones con un rol conocido como íconos, la estrella y compartir junto al título) es la
+// misma de Contestar: barra-tarea.ts. Las del subtítulo salen de ella solo si `subtituloFicha` las pudo poner ahí.
 
 /** Cómo se nombra una tarea en lo que se le pregunta a la persona: el título de su ficha ya empieza con el id
  *  («T309 · …»); si no, el id va delante. */
@@ -38,25 +46,18 @@ export async function llevarPendiente(ref: string, nuevo: boolean, proveedor = '
     return (r.datos as { destino?: string }).destino || ref;
 }
 
-/** El ✓ de la lista: corre la acción que el proveedor declara con `rol: "hecha"`, sin abrir
- *  la ficha ni preguntar (se deshace reabriéndola). Si el proveedor no declara una, lo dice. */
 /** Una fecha nueva para una tarea: las de siempre a un clic, u otra escrita a mano. Devuelve
  *  AAAA-MM-DD (o +Nd, que el proveedor cuenta desde su fecha), o undefined si se cancela. */
 export async function elegirFecha(titulo: string, o: { conHoy?: boolean } = {}): Promise<string | undefined> {
-    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const desde = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
     const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-    const hoy = new Date();
-    const lunes = desde(((8 - hoy.getDay()) % 7) || 7);
-    const finDeMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    const f = fechasDeSiempre();
+    const hoy = f.hoy;
+    const con = (label: string, d: Date, conDia = true) => ({ label, description: `${conDia ? `${dias[d.getDay()]} ` : ''}${iso(d)}`, valor: iso(d) });
     const opciones: (Opcion & { valor: string })[] = [
         // «hoy»: en foco, una vencida que sí va hoy (si no, una fecha de verdad)
-        ...(o.conHoy ? [{ label: 'hoy', description: `${dias[hoy.getDay()]} ${iso(hoy)}`, valor: iso(hoy) }] : []),
-        { label: 'mañana', description: `${dias[desde(1).getDay()]} ${iso(desde(1))}`, valor: iso(desde(1)) },
-        { label: 'pasado mañana', description: `${dias[desde(2).getDay()]} ${iso(desde(2))}`, valor: iso(desde(2)) },
-        { label: 'el próximo lunes', description: iso(lunes), valor: iso(lunes) },
-        { label: 'en una semana', description: `${dias[desde(7).getDay()]} ${iso(desde(7))}`, valor: iso(desde(7)) },
-        { label: 'fin de mes', description: `${dias[finDeMes.getDay()]} ${iso(finDeMes)}`, valor: iso(finDeMes) },
+        ...(o.conHoy ? [con('hoy', hoy)] : []),
+        con('mañana', f.manana), con('pasado mañana', f.pasado), con('el próximo lunes', f.lunes, false),
+        con('en una semana', f.semana), con('fin de mes', f.finDeMes),
         { label: 'otra fecha…', description: 'AAAA-MM-DD, 15-10, 15-oct o +10d', valor: '' },
     ];
     const elegida = await ui.elegir(opciones, { titulo: `Nueva fecha · ${titulo}`, placeholder: 'para cuándo queda' });
@@ -104,22 +105,77 @@ async function elegirPorRol(a: cli.JsonAccionPagina, titulo: string, subtitulo: 
     }
 }
 
-/** Reagendar una tarea desde la lista: la acción con rol «fecha» de su proveedor, con la fecha elegida. */
-export async function reagendar(valor: string): Promise<boolean> {
-    const [proveedor, id] = JSON.parse(valor) as string[];
+/** La acción de una tarea por su `rol`, en un viaje. Un telar de antes (el de otra máquina sin actualizar) no conoce
+ *  --rol: entonces, como siempre, la ficha primero para saber su número. */
+async function porRol(id: string, proveedor: string, rol: string, texto: string): Promise<cli.Respuesta<unknown>> {
+    const r = await cli.accionPorRol(id, proveedor, rol, texto);
+    if (r.datos || !/--rol|unrecognized|argumentos/i.test(r.error ?? '')) return r;
     const ficha = await cli.tarea(id, proveedor);
-    const k = ficha.datos?.acciones?.findIndex(a => a.rol === 'fecha') ?? -1;
-    if (k < 0) {
-        void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar la fecha`}`);
-        return false;
+    const k = ficha.datos?.acciones?.findIndex(a => a.rol === rol) ?? -1;
+    return k < 0 ? { error: ficha.error ?? `${id}: su proveedor no ofrece eso` } : cli.accionTarea(id, proveedor, k, texto);
+}
+
+/** Mover la fecha de una tarea: la acción con rol «fecha» de su proveedor, que deja «vence X → Y» en su historia. Con la
+ *  fecha dada (un botón de los de siempre) o con la que se elija aquí (elegirFecha; sin `titulo`, se lee su ficha, que lo
+ *  da y dice antes si su proveedor no ofrece cambiarla). La misma en la lista de tareas, foco y las filas de Táctica (en
+ *  Contestar, la fecha es la de la barra de la tarea: `correrAccion`, como en su ficha).
+ *  Devuelve la fecha puesta, o undefined si se canceló o no se pudo (y lo dice). */
+export async function reagendar(valor: string, o: { fecha?: string; titulo?: string; conHoy?: boolean } = {}): Promise<string | undefined> {
+    const [proveedor, id] = JSON.parse(valor) as string[];
+    let fecha = o.fecha;
+    if (!fecha) {
+        let titulo = o.titulo;
+        if (titulo === undefined) {
+            const ficha = await cli.tarea(id, proveedor);
+            if (!ficha.datos?.acciones?.some(a => a.rol === 'fecha')) {
+                void ui.aviso(`telar: ${ficha.error ?? `${id}: su proveedor no ofrece cambiar la fecha`}`);
+                return undefined;
+            }
+            titulo = ficha.datos.titulo;
+        }
+        fecha = await elegirFecha(nombreTarea(id, titulo), { conHoy: o.conHoy });
+        if (!fecha) return undefined;
     }
-    const fecha = await elegirFecha(nombreTarea(id, ficha.datos?.titulo));
-    if (!fecha) return false;
-    const r = await cli.accionTarea(id, proveedor, k, fecha);
+    const r = await porRol(id, proveedor, 'fecha', fecha);
     olvidarDia();
-    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude mover ${id}`}`); return false; }
+    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude mover ${id}`}`); return undefined; }
     ui.estado(`${id} → ${fecha}`, 5000);
-    return true;
+    return fecha;
+}
+
+/** Correr la acción `k` de la ficha de una tarea (`p`, la que se mira), como en su ficha: con su selector si su rol lo
+ *  tiene (la fecha en elegirFecha, quién la hace, a quién espera, la prioridad), lo que pide escrito (o `escrito`, si ya
+ *  se escribió), y su confirmación; sobre la versión de esa ficha (si la tarea cambió desde entonces, no se hace).
+ *  undefined si se canceló; si no, lo que contestó y lo que se le dio. La usan la ficha (PantallaTareas) y la barra de la
+ *  tarea en Contestar (web/contestar.ts). Una que va a un hilo (`tipo: hilo`) o se abre (`abrir`), no: eso es de quien la
+ *  pone. */
+export async function correrAccion(id: string, proveedor: string, p: cli.JsonPagina, k: number, o: { escrito?: string; conexiones?: string } = {}) {
+    const a = p.acciones?.[k];
+    if (!a) return undefined;
+    let texto = '';
+    // la fecha, quién la hace, a quién espera, la prioridad: con su selector, no un campo de texto
+    const elegido = await elegirPorRol(a, nombreTarea(id, p.titulo), p.subtitulo ?? '');
+    if (elegido === undefined) return undefined;
+    if (elegido !== null) {
+        texto = elegido;
+    } else if (a.pide && o.escrito !== undefined) {
+        texto = o.escrito;
+    } else if (a.pide) {
+        const escrito = await ui.campo({ ayuda: `${id} · ${a.nombre}`, placeholder: a.pide });
+        if (escrito === undefined) return undefined;
+        texto = escrito;
+    }
+    if (a.confirmar) {
+        // el botón dice la acción (descartar, posponer…); si su verbo destruye, en el de peligro con ⌘⌫
+        const si = await ui.aviso(`¿${a.nombre}? ${p.titulo ?? id}`, a.nombre, { foco: 'cancelar', destruye: DESTRUYE.test(a.nombre) });
+        if (si !== a.nombre) return undefined;
+    }
+    // una acción que lleva un mensaje a un hilo (el de la tarea, o el de un agente) toma unos segundos: se avisa
+    const version = p.version ?? '';
+    const r = a.mensaje
+        ? await ui.progreso({ titulo: `telar: ${a.nombre} · ${id}…` }, () => cli.accionTarea(id, proveedor, k, texto, version, o.conexiones))
+        : await cli.accionTarea(id, proveedor, k, texto, version, o.conexiones);
+    return { r, texto };
 }
 
 /** Elegir quién hace una tarea: la persona (que es lo de siempre, sin asignar), ella misma asignada a
@@ -209,32 +265,6 @@ async function alternarPorRol(valor: string, rol: string, queEs: string): Promis
     return true;
 }
 
-/** La prioridad de una tarea en su fila, con los íconos de la prioridad de los hilos (● alta, ◐ media, ○ baja; P0, la
- *  urgente, es ● en rojo). Con ficha es un botón: el clic la baja un nivel (● → ◐ → ○ → ●); P0 se pone desde ⋯. */
-export function iconoPrioridad(fila: cli.JsonFila, ref: string, ficha: boolean): string {
-    const n = fila.prioridad ?? null;
-    const icono = n === null ? PRIO_I[0] : n === 0 ? PRIO_I[1] : PRIO_I[n] ?? PRIO_I[0];
-    const nombre = n === null ? 'sin prioridad' : `P${n} · ${['urgente', 'alta', 'media', 'baja'][n]}`;
-    if (!ficha) return `<span class="pri pt${n ?? ''}"${n === null ? '' : ` title="${esc(nombre)}"`}>${n === null ? '' : icono}</span>`;
-    const valor = esc(JSON.stringify([fila.proveedor, fila.id || ref, n ?? '']));
-    return `<span class="pri pt${n ?? ''} clic" data-accion="prioridad-tarea" data-valor="${valor}"`
-        + ` title="${esc(`${nombre}\nclic: ${n === null ? 'P1 alta' : `P${siguientePrioridad(n)} ${['', 'alta', 'media', 'baja'][siguientePrioridad(n)]}`}${n === 0 ? '' : '\nP0 (urgente): desde ⋯'}`)}">${icono}</span>`;
-}
-
-/** El clic sobre la prioridad: un nivel más abajo, y de la más baja vuelve a la alta. P0 baja a P1. */
-const siguientePrioridad = (n: number | null): number => n === null || n >= 3 ? 1 : n + 1;
-
-/** Cambiar la prioridad desde la fila: la acción del proveedor con `rol: prioridad`, en un viaje. */
-export async function cambiarPrioridad(valor: string): Promise<number | null> {
-    const [proveedor, id, actual] = JSON.parse(valor) as [string, string, number | ''];
-    const nueva = siguientePrioridad(actual === '' ? null : actual);
-    const r = await cli.accionPorRol(id, proveedor, 'prioridad', `P${nueva}`);
-    olvidarDia();
-    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude cambiar la prioridad de ${id}`}`); return null; }
-    ui.estado(`${id} → P${nueva} ${['', 'alta', 'media', 'baja'][nueva]}`, 3000);
-    return nueva;
-}
-
 /** Poner o quitar la estrella de una tarea: la acción del proveedor con `rol: estrella`. */
 export const alternarEstrella = (valor: string) => alternarPorRol(valor, 'estrella', 'la estrella');
 
@@ -251,6 +281,13 @@ export async function alternarEquipo(valor: string): Promise<boolean> {
     return true;
 }
 
+/** Las acciones de una tarea que la sacan de lo pendiente, por su rol (las del proveedor `tareas`: completar, y cerrar
+ *  como descartada): hechas, la tarea sale del día que se ve (dia.ts, `salio`) sin esperar la relectura. */
+const CIERRAN: ReadonlySet<string> = new Set(['hecha', 'descartar']);
+
+/** El ✓ de la lista: corre la acción que el proveedor declara con `rol: "hecha"`, sin abrir
+ *  la ficha ni preguntar (se deshace reabriéndola). Si el proveedor no declara una, lo dice. Hecha, sale del día que
+ *  se ve en todas las vistas al tiro (dia.ts, `salio`), sin esperar la relectura; si no, queda y se dice por qué. */
 export async function marcarHecha(valor: string): Promise<boolean> {
     const [proveedor, id] = JSON.parse(valor) as string[];
     // un viaje: la acción por su rol. Un telar de antes (el de otra máquina sin actualizar) no
@@ -258,7 +295,7 @@ export async function marcarHecha(valor: string): Promise<boolean> {
     const directo = await ui.progreso({ discreto: true, titulo: `${I.hecha} ${id}…` },
         () => cli.accionPorRol(id, proveedor, 'hecha'));
     if (directo.datos) {
-        olvidarDia();
+        salio(proveedor, id);
         ui.estado(`${I.hecha} ${id} hecha`, 5000);
         return true;
     }
@@ -275,8 +312,8 @@ export async function marcarHecha(valor: string): Promise<boolean> {
         return false;
     }
     const r = await cli.accionTarea(id, proveedor, k);
-    olvidarDia();
-    if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
+    if (!r.datos) { olvidarDia(); void ui.aviso(`telar: ${r.error ?? `no pude marcar ${id}`}`); return false; }
+    salio(proveedor, id);
     ui.estado(`${I.hecha} ${id} hecha`, 5000);
     return true;
 }
@@ -295,6 +332,16 @@ export class PantallaTareas implements Pantalla {
     private fuera: { nombre: string; ir: () => void } | null = null;
     /** la pestaña de proveedor abierta (`pestana` del proveedor: «leer») */
     private pestana = '';
+    /** en una pestaña de lectura: lo que se respondió a cada ítem en esta pasada («✓ me interesa: …»), mientras su
+     *  ficha no lo diga (`estado`), y la fila de cada ítem que se leyó (respondido, puede salir de la lista) */
+    private readonly anotadas = new Map<string, string>();
+    private readonly filasLeidas = new Map<string, cli.JsonFila>();
+    /** lo que dibuja la ficha de lectura abierta (leer.Contexto): la instrucción lo manda como contexto */
+    private lectura: leer.Contexto | null = null;
+    /** la próxima relectura de una ficha que se está volviendo a procesar */
+    private releerProcesando = 0;
+    /** lo que la lista pone en su barra (cuántas y cuándo se leyeron): lo arma tablaTareas */
+    private barraLista: EnBarra = {};
     /** fichas ya pedidas: una pestaña de proveedor puede estar lejos (el feed se pide por ssh
      *  a otro continente, ~0,5 s cada una), así que se piden antes de que se abran */
     private readonly fichas = new Map<string, { pagina: cli.JsonPagina; hora: number }>();
@@ -303,9 +350,6 @@ export class PantallaTareas implements Pantalla {
     /** las propuestas ya decididas en esta pasada: ← → las saltan aunque el día no se haya releído (los bloques
      *  tampoco las muestran vivas) */
     readonly decididas = new Set<string>();
-    /** lo que se le estaba escribiendo a Claude sobre cada tarea y no se mandó, y a quién si ya se intentó (ver
-     *  `escribirA`) */
-    private readonly borradores = new Map<string, { texto: string; destino?: string }>();
 
     readonly acciones: Record<string, Accion> = {
         'revisar': () => this.abrirRevisar(),
@@ -317,6 +361,8 @@ export class PantallaTareas implements Pantalla {
             return this.abrirTarea(v);
         },
         'volver-ficha': () => this.volver(),
+        // la instrucción: mandársela a su hilo, a uno nuevo, a otro o a un agente (web/instruccion.ts)
+        'instruccion-ficha': () => this.instruccionFicha(),
         'accion-tarea': v => v && this.accionTarea(Number(v)),
         'tarea-principal': () => {
             const i = (this.ficha?.pagina?.acciones ?? []).findIndex(a => a.principal);
@@ -325,45 +371,44 @@ export class PantallaTareas implements Pantalla {
         'tarea-siguiente': () => this.otraPropuesta(1),
         'tarea-anterior': () => this.otraPropuesta(-1),
         'menu-tarea': (v, m) => v && this.menuTarea(v, m.donde),
+        // la instrucción desde una fila de cualquier lista de tareas (fila-tarea.ts): la misma ventana que la ficha
+        'instruccion-fila': v => {
+            if (!v) return;
+            const [proveedor, id, ref] = JSON.parse(v) as string[];
+            return this.instruccionFila(proveedor, id, ref);
+        },
         // las de una fila, sin abrir la ficha
         'pendiente': (v, m) => v && llevarPendiente(v, !!m.nuevo),
-        'hilo-fila': v => {
-            if (!v) return;
-            const [proveedor, ref, id] = JSON.parse(v) as string[];
-            return llevarPendiente(ref, false, proveedor, id ? `/tarea ${id}` : '', !!id);
-        },
-        'hecha-fila': async v => {
-            if (!v) return;
-            // la fila ya está tachada (lo hace la vista al clic); hecha, sale de la lista al tiro y
-            // la lista se relee por detrás (son ~6 s que no hay por qué esperar)
-            if (await marcarHecha(v)) this.decididas.add((JSON.parse(v) as string[])[1]);
-            this.t.render();
-            void this.t.actualizar(true);
-        },
+        // el ✓ de una fila de tarea, en cualquier lista (tareas, Táctica, los bloques, proyectos): la fila ya está tachada (lo
+        // hace la vista al clic); hecha, sale del día que se ve (marcarHecha) y se redibuja sin ella al tiro, y el día se
+        // relee por detrás (con red, ~10 s que no hay por qué esperar). Si no se pudo, se redibuja con ella y se dice
+        'hecha-fila': v => this.hecha(v),
+        'hecha': v => this.hecha(v),
+        // el de una viñeta de un documento (sin proveedor): [ ] → [x] en su archivo, y lo mismo
         'hecha-vineta': async v => {
             if (!v) return;
             const [ref, texto] = JSON.parse(v) as string[];
             const r = await cli.vineta(ref, texto, ['--hecho']);
             if (!r.datos) void ui.aviso(`telar: ${r.error ?? 'no pude marcarla'}`);
-            else { ui.estado(`${I.hecha} ${texto.slice(0, 60)}`, 5000); olvidarDia(); void this.t.actualizar(true); }
-        },
-        'hecha': async v => {
-            if (!v) return;
-            await marcarHecha(v);
-            void this.t.actualizar(true);
+            else { ui.estado(`${I.hecha} ${texto.slice(0, 60)}`, 5000); salio('', ref); }
+            this.t.render();
+            if (r.datos) void this.t.actualizar(true);
         },
         'reagendar': async v => { if (v && await reagendar(v)) await this.releer(); },
         'equipo-tarea': async v => { if (v && await alternarEquipo(v)) await this.releer(); },
         'estrella-tarea': async v => { if (v && await alternarEstrella(v)) await this.releer(); },
-        'prioridad-tarea': async v => { if (v && await cambiarPrioridad(v) !== null) await this.releer(); },
-        'dueno-tarea': async v => {
-            if (!v) return;
-            const [proveedor, id, ref, actual] = JSON.parse(v) as string[];
-            if (await asignar(JSON.stringify([proveedor, id, ref]), actual ?? '', yo.persona)) await this.releer();
-        },
     };
 
     constructor(private readonly t: Tablero) {}
+
+    /** El ✓ de una fila de tarea (`[proveedor, id, ref]`). */
+    private async hecha(v: string): Promise<void> {
+        if (!v) return;
+        await marcarHecha(v);
+        this.t.render();
+        // también si no se pudo: lo que diga el proveedor ahora es lo que se ve
+        void this.t.actualizar(true);
+    }
 
     pintar(): void {
         if (this.t.pantalla === 'revisar') this.pintarLista();
@@ -382,6 +427,64 @@ export class PantallaTareas implements Pantalla {
     private async releer(): Promise<void> {
         await this.t.actualizar(true);
         if (this.t.pantalla === 'revisar') this.pintarLista();
+    }
+
+    /** La instrucción sobre la tarea de la ficha: la ventana (web/instruccion.ts) con /tarea sugerida y lo que haya
+     *  quedado escrito sin mandar. Lo mandado queda en su historia: la ficha se relee para mostrarlo. */
+    private async instruccionFicha(): Promise<void> {
+        const f = this.ficha;
+        if (!f) return;
+        if (this.esLectura()) { await this.instruccionLectura(); return; }
+        const d = this.t.dia();
+        const fila = d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id)?.fila : undefined;
+        const { abrir } = await import('../../web/instruccion');
+        const r = await abrir({ direccion: fila?.direccion || f.pagina?.direccion || '',
+            fila: fila ?? { ref: f.ref, id: f.id, proveedor: f.proveedor, texto: f.pagina?.titulo ?? f.id },
+            titulo: nombreTarea(f.id, f.pagina?.titulo), skill: 'tarea' });
+        if (r) await this.releerFicha(f.proveedor, f.id);
+    }
+
+    /** La instrucción sobre la lectura de la ficha: la misma ventana, con «un hilo nuevo» elegido y llamado como ella,
+     *  y lo que la ficha tiene (el enlace, de dónde viene, el resumen, el porqué, lo respondido y lo escrito en «tu
+     *  lectura») como contexto libre (leer.paraUnHilo). Si se abrió un hilo, se va a él, como al procesar un ítem de un
+     *  bloque. */
+    private async instruccionLectura(): Promise<void> {
+        const f = this.ficha, c = this.lectura;
+        // la de la ficha que se ve: mientras se lee otra, la anterior no va
+        if (!f || !c || c.clave !== `leer:${f.proveedor}:${f.id}`) { ui.estado('la lectura todavía se está leyendo', 3000); return; }
+        const escrito = (document.getElementById('leer-porque') as HTMLTextAreaElement | null)?.value ?? '';
+        const nombre = this.t.nombrePestana(this.fichaDesde) || this.pestana;
+        const { abrir, NUEVO } = await import('../../web/instruccion');
+        const r = await abrir({ ...leer.paraUnHilo(c, escrito, nombre), a: NUEVO });
+        if (r?.como === 'abierto') await ui.mostrarTerminal();
+    }
+
+    /** La instrucción desde la fila de una tarea (su ícono, o «instrucción…» en su ⋯), en cualquier lista. */
+    private async instruccionFila(proveedor: string, id: string, ref: string): Promise<void> {
+        const d = this.t.dia();
+        const p = d ? pendientes(d).find(q => q.ref === ref) : undefined;
+        const { abrir } = await import('../../web/instruccion');
+        const r = await abrir({ direccion: p?.fila.direccion ?? '', fila: p?.fila ?? { ref, id, proveedor, texto: id },
+            titulo: `${p?.fila.proveedor ? `${ref} · ` : ''}${limpiarMd(p?.texto ?? id)}`, skill: p?.fila.ficha ? 'tarea' : undefined });
+        if (r) this.fichas.delete(`${proveedor}:${id}`);  // su historia cambió
+    }
+
+    /** Se le mandó una instrucción a una tarea desde otra pantalla (foco): su historia cambió y la ficha guardada ya no
+     *  vale (apretar una acción en ella daría un 409). */
+    olvidarFicha(proveedor: string, id: string): void { void this.releerFicha(proveedor, id); }
+
+    /** La tarea cambió por fuera de sus botones (una instrucción, que queda en su historia): la ficha guardada ya no
+     *  vale, y si es la que se ve, se relee. */
+    private async releerFicha(proveedor: string, id: string): Promise<void> {
+        this.fichas.delete(`${proveedor}:${id}`);
+        if (this.t.pantalla !== 'tarea' || this.ficha?.id !== id) return;
+        const r = await cli.tarea(id, proveedor);
+        if (!r.datos) return;
+        this.fichas.set(`${proveedor}:${id}`, { pagina: r.datos, hora: Date.now() });
+        if (this.t.pantalla === 'tarea' && this.ficha?.id === id) {
+            this.ficha.pagina = r.datos;
+            this.pintarFicha();
+        }
     }
 
     /** ⎋ en la ficha: a la lista, el feed o el ítem de donde se abrió, o a la vista de afuera; si no, a «ahora». */
@@ -419,7 +522,7 @@ export class PantallaTareas implements Pantalla {
             void this.precargar();
             return;
         }
-        this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(id)}</b></div>`, '<div class="fila dim">leyendo…</div>']));
+        this.t.pintar(...this.marcoFicha([`<div class="subcab"><b>${esc(id)}</b></div>`, '<div class="fila dim">leyendo…</div>']));
         const r = await cli.tarea(id, proveedor);
         if (r.datos) this.fichas.set(`${proveedor}:${id}`, { pagina: r.datos, hora: Date.now() });
         if (this.t.pantalla !== 'tarea' || this.ficha?.id !== id) return;
@@ -461,71 +564,17 @@ export class PantallaTareas implements Pantalla {
         const d = this.t.dia();
         if (!d) return;
         this.t.teclas.clear();
-        this.t.pintar(this.tablaTareas(d));
+        this.t.pintar(this.tablaTareas(d), this.barraLista);
     }
 
-    /** Una fila de tarea, la misma en «tareas» y donde se muestren tareas sueltas (un correo y las
-     *  suyas): código, estrella, proyecto, responsable, texto, fecha, ✓ ◉ ▶ y ⋯. `rev`: espera una
-     *  decisión; `semana`: va en «esta semana». */
+    /** Una fila de tarea en «tareas» y donde se muestren tareas sueltas (un correo y las suyas), con la columna de su
+     *  proyecto (fila-tarea.ts). `rev`: espera una decisión; `semana`: va en «esta semana». */
     filaTarea(p: ReturnType<typeof pendientes>[number], rev: boolean, semana: boolean): string {
-        const esRev = (_p: unknown) => rev;
-        const deLaSemana = (_p: unknown) => semana;
-        const [todo] = (p.fila.avance ?? '').split(' ');
-        const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
-        const ficha = !!p.fila.ficha;
         const proy = this.t.proyectos.deFila(p.fila);
         // el proyecto en pocas letras: su cliente, o su nombre; entero en el globo. Un cliente que es la casa
         // misma (`internos` del perfil: el servidor lo marca `interno`) no dice nada: ahí va el nombre sin él
-        const interno = !proy?.cliente || (proy.interno ?? false);
-        const proyCorto = !proy ? '' : !interno ? proy.cliente!
-            : proy.cliente && proy.nombre.startsWith(proy.cliente) ? proy.nombre.slice(proy.cliente.length).replace(/^\s*·\s*/, '') : proy.nombre;
-        const buscable = normalizar([p.ref, p.texto, p.hilo, p.fila.ruta ?? '', p.fila.proyecto ?? '', proy?.nombre ?? '', p.fila.avance ?? '', p.fila.dueno ?? ''].join(' '));
-        const accion = ficha ? `data-accion="tarea" data-valor="${valor}" title="clic: leerla y decidir"`
-            : `data-accion="pendiente" data-valor="${esc(p.ref)}" title="clic: ${p.hilo ? `llevarlo a «${esc(p.hilo)}»` : 'abrir un hilo donde trabajarlo'}"`;
-        const dueno = p.fila.dueno ?? '';
-        const persona = yo.persona ? yo.persona[0].toUpperCase() + yo.persona.slice(1) : 'tú';
-        // el responsable: el dueño, o la persona en gris (es suya porque nadie la tomó); con ficha, un clic lo cambia
-        // una viñeta de un documento: su responsable si lo dice (@owner(…) o «@Nombre:»), sin cambiarlo desde aquí
-        const resp = !ficha ? (dueno ? `<span class="resp fijo" title="${esc(`responsable: ${dueno}\n(lo dice el documento)`)}">${esc(dueno)}</span>`
-                : '<span class="resp dim" title="la viñeta no dice quién la hace">sin responsable</span>')
-            : `<span class="resp${dueno ? '' : ' defecto'}" data-accion="dueno-tarea" data-valor="${esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref, dueno]))}"`
-                + ` title="${esc(dueno ? `responsable: ${dueno}\nclic: cambiarlo` : `sin asignar: es tuya por defecto\nclic: asignarla`)}">${esc(dueno || persona)}</span>`;
-        return `<div class="tarea${p.enCurso ? ' encurso' : ''}" ${accion} data-area="${esc(p.fila.area ?? '')}"${datosDueno(dueno, ficha || !!p.fila.proveedor)}`
-            + ` data-rev="${esRev(p) ? 1 : 0}" data-dias="${p.dias ?? ''}" data-encurso="${p.enCurso ? 1 : 0}" data-texto="${esc(buscable)}"`
-            + ` data-pri="${p.fila.prioridad ?? ''}" data-sem="${deLaSemana(p) ? 1 : 0}" data-estrella="${p.fila.estrella ? 1 : 0}" data-est="${p.fila.estrella ? 'a' : ''}"`
-            + ` data-orden="${p.urgencia}" data-ref="${esc(p.ref)}" data-alfa="${esc(normalizar(limpiarMd(p.texto)))}"`
-            + ` data-proy="${esc(normalizar(proyCorto))}" data-resp="${esc(normalizar(dueno || (ficha ? persona : '')))}">`
-            + `<span class="id">${esc(ficha || p.fila.proveedor ? p.ref : '·')}</span>`
-            // la estrella: con ficha, un clic la pone o la quita (la guarda el proveedor, en la tarea)
-            + (ficha ? `<span class="estr${p.fila.estrella ? ' on' : ''}" data-accion="estrella-tarea" data-valor="${valor}" title="${p.fila.estrella ? 'quitar la estrella' : 'marcar con estrella: va siempre en «esta semana»'}">${p.fila.estrella ? I.estrella : I.sinEstrella}</span>` : '<span></span>')
-            + iconoPrioridad(p.fila, p.ref, ficha)
-            + (proy ? `<span class="proy-t" data-accion="proy-ir" data-valor="${esc(proy.ruta)}" title="${esc(`${proy.nombre}\nclic: verlo en proyectos`)}">${esc(proyCorto)}</span>`
-                : '<span class="proy-t dim">—</span>') + resp
-            + `<span class="desc">${esRev(p) ? `<span class="av av-${esc(p.avance)}">${esc(todo.replace(':', ' '))}</span>` : ''}`
-            + `${esc(limpiarMd(p.texto))}</span>`
-            // el atraso es un botón: reagendar lo que venció sin abrir la ficha
-            + `<span class="meta">${ficha ? `<span class="plazo-clic" data-accion="reagendar" data-valor="${valor}" title="clic: nueva fecha">${p.dias === null ? '<span class="dim">fecha</span>' : plazo(p.dias)}</span>` : plazo(p.dias)}`
-            // las acciones de la tarea sin abrir la ficha: cerrar, nota, esperar… directo, sin la IA
-            + `<span class="destino"></span>${this.rapidas(p.fila, p.ref, p.texto, valor, ficha)}${ficha ? `<span class="menu-fila" data-accion="menu-tarea" data-valor="${valor}" title="acciones de esta tarea">${I.menu}</span>`
-                : `<span class="menu-fila" data-accion="menu-vineta" data-valor="${esc(JSON.stringify([p.ref, p.texto, p.hilo, dueno]))}" title="acciones de este pendiente">${I.menu}</span>`}</span></div>`;
-    }
-
-    /** Las acciones de todos los días, a un clic, antes del ⋯: ✓ marcarla hecha, ◉/○ compartirla con
-     *  el equipo (solo una tarea con ficha, y si hay equipo) y ▶ llevarla a un hilo. En una viñeta de
-     *  un README, ✓ marca su casilla. */
-    private rapidas(fila: cli.JsonFila, ref: string, texto: string, valor: string, ficha: boolean): string {
-        const compartida = !!fila.etiquetas?.includes('equipo');
-        const hecha = ficha ? `<span class="rap ok" data-accion="hecha-fila" data-valor="${valor}" title="marcarla hecha">${I.hecha}</span>`
-            : !fila.proveedor ? `<span class="rap ok" data-accion="hecha-vineta" data-valor="${esc(JSON.stringify([ref, texto]))}" title="marcarla hecha: [ ] → [x] en su documento">${I.hecha}</span>`
-            : '<span class="rap"></span>';
-        const eq = ficha && modelo.equipoRemoto
-            ? `<span class="rap eq${compartida ? ' on' : ''}" data-accion="equipo-tarea" data-valor="${valor}" title="${compartida ? 'compartida con el equipo: clic para dejar de compartirla' : 'compartirla con el equipo (verán título, estado y prioridad; pueden sugerir subirla)'}">${compartida ? I.compartir : PRIO_I[3]}</span>`
-            : '<span class="rap"></span>';
-        // una tarea con ficha va a su hilo (el de su proyecto, o el agente general) con /tarea <id>,
-        // enviado: el agente la empieza con su contexto cargado. Una casilla de un README, escrita
-        const hilo = `<span class="rap ir" data-accion="hilo-fila" data-valor="${esc(JSON.stringify([fila.proveedor, ref, ficha ? fila.id || ref : '']))}"`
-            + ` title="${ficha ? `trabajarla: /tarea ${esc(fila.id || ref)} en ${fila.hilo ? `«${esc(fila.hilo)}»` : 'su hilo'}` : fila.hilo ? `llevarla a «${esc(fila.hilo)}»` : 'abrirla en un hilo'}">${I.correr}</span>`;
-        return `<span class="rapidas">${hecha}${eq}${hilo}</span>`;
+        const corto = proy ? nombreCorto(proy) : '';
+        return filaTarea(p, { proyecto: proy ? { nombre: proy.nombre, corto, ruta: proy.ruta } : null, rev, semana });
     }
 
     /** La tabla de tareas: la de la pestaña «tareas» y la de «hoy» son la misma (filtros, columnas,
@@ -536,36 +585,54 @@ export class PantallaTareas implements Pantalla {
         const cuenta = (f: (p: (typeof lista)[number]) => boolean) => lista.filter(f).length;
         // cada filtro con su cuenta: lo que decide qué mirar es cuánto hay
         // «esta semana», lo que se ve de entrada: lo vencido o que vence en 7 días, lo destacado (P0 o con
-        // estrella) y lo que espera una decisión con fecha en 14 días. Lo demás, detrás de «ver todas»
-        const deLaSemana = (p: (typeof lista)[number]) => (p.dias !== null && p.dias <= 7) || !!p.fila.destacada
-            || (esRev(p) && p.dias !== null && p.dias <= 14);
-        const modos: [string, string, number][] = [
-            ['semana', 'esta semana', cuenta(deLaSemana)], ['todas', 'todas', lista.length], ['revisar', 'por revisar', cuenta(esRev)],
-            ['vencidas', 'vencidas', cuenta(p => p.dias !== null && p.dias < 0)],
-            ['estrella', I.estrella, cuenta(p => !!p.fila.estrella)],
-            ['encurso', 'en curso', cuenta(p => p.enCurso)], ['sinfecha', 'sin fecha', cuenta(p => p.dias === null)],
+        // estrella) y lo que espera una decisión con fecha en 14 días. Lo demás, detrás de «ver todas». La deuda (lo
+        // vencido hace más de 30 días, dia.ts) no: va en su filtro; salvo con estrella, que la pone la persona y dice
+        // «siempre en esta semana»
+        const deLaSemana = (p: (typeof lista)[number]) => (!esDeuda(p.dias) || !!p.fila.estrella)
+            && ((p.dias !== null && p.dias <= 7) || !!p.fila.destacada || (esRev(p) && p.dias !== null && p.dias <= 14));
+        const modos: OpcionFiltro[] = [
+            { clave: 'semana', nombre: 'esta semana', cuenta: cuenta(deLaSemana),
+                ayuda: 'esta semana: lo vencido o que vence en 7 días, lo destacado y lo que espera una decisión en 14' },
+            { clave: 'todas', nombre: 'todas', cuenta: lista.length, ayuda: 'todas las pendientes' },
+            { clave: 'revisar', nombre: 'por revisar', cuenta: cuenta(esRev), ayuda: 'por revisar: un agente las dejó listas para decidir' },
+            { clave: 'vencidas', nombre: 'vencidas', cuenta: cuenta(p => p.dias !== null && p.dias < 0) },
+            { clave: 'deuda', nombre: 'deuda', cuenta: cuenta(p => esDeuda(p.dias)),
+                ayuda: `deuda: lo vencido hace más de ${DEUDA_DIAS} días, tareas y casillas. No va en «esta semana» ni en lo urgente del día; sigue en «todas» y en «vencidas»` },
+            { clave: 'estrella', nombre: I.estrella, cuenta: cuenta(p => !!p.fila.estrella), ayuda: 'con estrella' },
+            { clave: 'encurso', nombre: 'en curso', cuenta: cuenta(p => p.enCurso), ayuda: 'en curso: un hilo la está trabajando' },
+            { clave: 'sinfecha', nombre: 'sin fecha', cuenta: cuenta(p => p.dias === null) },
         ];
+        // los filtros (componentes/filtros.ts), en una fila: el modo a la vista, porque se cambia seguido; el área y el
+        // responsable plegados (lo que rige y un ⌄, el resto en un menú), porque se eligen una vez y se dejan. Lo que
+        // rige lo pone la vista con lo recordado (vista.ts, `aplicarTareas`)
+        const plegar = (g: GrupoFiltro | null): GrupoFiltro[] => g ? [{ ...g, plegado: true }] : [];
+        const grupos: GrupoFiltro[] = [{ clave: 'modo', nombre: 'qué mirar', opciones: modos, activa: 'semana', siempre: 'semana' },
+            ...plegar(grupoAreas(lista.map(p => p.fila.area ?? ''))),
+            ...plegar(grupoDuenos(lista.map(p => [p.fila.dueno ?? '', !!p.fila.proveedor] as [string, boolean])))];
         // cuándo se leyeron: el proveedor se consulta solo cada 5 minutos, y «actualizar» lo fuerza ya
         const leido = leidoProveedores();
         const hace = leido ? Math.round((Date.now() - leido) / 60000) : -1;
-        const actualizar = `<a data-accion="refrescar" title="volver a leer las tareas ahora (también r)">${I.releer} actualizar</a>`
-            + `<span class="dim"> · ${hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min`}</span>`;
-        const h = ['<div id="revisar">', seccion('tareas', 'cian', String(lista.length), actualizar),
-            '<div class="titulo-tareas"><span class="modos">'
-            + modos.map(([k, n, c]) => `<button data-modo-t="${k}"${c ? '' : ' class="vacio-m"'}>${esc(n)} ${c}</button>`).join('')
-            + `<input id="buscar-t" type="text" placeholder="/ buscar" spellcheck="false" autocomplete="off"><span id="tareas-t-cuenta"></span></span></div>`,
-            filtroAreas(lista.map(p => p.fila.area ?? '')), filtroDuenos(lista.map(p => [p.fila.dueno ?? '', !!p.fila.proveedor] as [string, boolean]))];
+        this.barraLista = { resumen: `${lista.length} · ${hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min`}` };
+        // arriba, las herramientas de la lista (buscar y ordenar, como en la barra de hilos); debajo, los filtros, cada
+        // opción con su cuenta. Las filas son ítems (fila-tarea.ts): ya no hay columnas con nombre, el orden va en su grupo
+        const ordenes: OpcionOrden[] = [
+            { clave: 'dias', icono: I.fecha, ayuda: 'fecha límite: lo más vencido arriba, lo sin fecha al final' },
+            { clave: 'pri', icono: I.urgencia, ayuda: 'prioridad, la más alta arriba' },
+            { clave: 'est', icono: I.estrella, ayuda: 'estrella: las señaladas arriba' },
+            { clave: 'proy', icono: I.carpeta, ayuda: 'proyecto' },
+            { clave: 'resp', icono: I.persona, ayuda: 'responsable' },
+            { clave: 'ref', icono: I.etiqueta, ayuda: 'código, lo más nuevo arriba' },
+            { clave: 'alfa', icono: I.alfabetico, ayuda: 'el texto, alfabético' },
+        ];
+        const h = ['<div id="revisar" class="lista-tareas">',
+            barraBuscar({ id: 'buscar-t', placeholder: 'tareas', atajo: '/', cuenta: { id: 'tareas-t-cuenta' }, claseBarra: 'herram',
+                ayuda: 'buscar en el código, el texto, el proyecto y el responsable · ⏎ abre la primera · ⎋ borra',
+                herramientas: orden({ grupo: 'tareas', opciones: ordenes, activa: '' }) }),
+            filtros({ grupos })];
         if (!lista.length) h.push('<div class="vacio">nada pendiente</div>');
-        // el nombre de cada columna: el clic ordena por ella (la que ordena, en azul), otro clic vuelve al orden de
-        // siempre (urgencia). La fecha va sobre las fechas: la cabecera repite la grilla de lo que hay a la derecha
-        const col = (k: string, nombre: string, por: string) =>
-            `<span data-orden-c="${k}" title="${esc(`ordenar por ${por} (otra vez: por urgencia)`)}">${nombre}</span>`;
-        h.push(`<div class="tareas-cab">${col('ref', 'código', 'código, lo más nuevo arriba')}${col('est', I.estrella, 'estrella')}${col('pri', PRIO_I[1], 'prioridad, la más alta arriba')}`
-            + `${col('proy', 'proyecto', 'proyecto')}${col('resp', 'responsable', 'responsable')}${col('alfa', 'tarea', 'el texto, alfabético')}`
-            + `<span class="meta">${col('dias', 'fecha', 'fecha límite: lo más vencido arriba, lo sin fecha al final')}<span></span><span></span><span></span></span></div>`);
         h.push('<div id="tareas-t">');
         for (const p of lista) h.push(this.filaTarea(p, esRev(p), deLaSemana(p)));
-        h.push('<div id="tareas-t-vacio" class="vacio" hidden></div><div id="tareas-t-mas" class="vacio clic" hidden></div></div></section></div>');
+        h.push('<div id="tareas-t-vacio" class="vacio" hidden></div><div id="tareas-t-mas" class="vacio clic" hidden></div></div></div>');
         return h;
     }
 
@@ -580,7 +647,7 @@ export class PantallaTareas implements Pantalla {
         void this.precargar();   // todas las de la pestaña, mientras se abre la primera
         // la pestaña no es una lista: entra directo al primer ítem; la lista queda para cuando
         // no hay nada (o para el arnés)
-        const primero = pendientes(d, nombre).find(p => p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
+        const primero = this.dePestana(d, nombre).find(p => p.fila.ficha && !this.decididas.has(p.fila.id || p.ref));
         if (primero) { await this.abrirTarea(JSON.stringify([primero.fila.proveedor, primero.fila.id || primero.ref, primero.ref])); return; }
         this.pintarPestana();
     }
@@ -589,19 +656,15 @@ export class PantallaTareas implements Pantalla {
         const d = this.t.dia();
         if (!d) return;
         this.t.teclas.clear();
-        const lista = pendientes(d, this.pestana).filter(p => !this.decididas.has(p.fila.id || p.ref));
-        const h = ['<div id="revisar">', seccion(this.pestana, 'magenta', lista.length ? String(lista.length) : '', lista.length ? pista('⏎', 'el primero') : '')];
+        // todo lo que entrega el proveedor, sin tope ni «ver más»: en una de lectura, en su orden (ordenLectura)
+        const lista = this.dePestana(d, this.pestana).filter(p => !this.decididas.has(p.fila.id || p.ref));
+        // la prioridad y «tuya», en su ranura, si alguna fila las dice (si no, la fila de siempre)
+        const marcas = lista.some(p => !!p.fila.de?.trim() || (p.fila.prioridad !== undefined && p.fila.prioridad !== null));
+        const h = ['<div id="revisar" class="lista-tareas">'];
         if (!lista.length) h.push('<div class="vacio">nada por ahora</div>');
-        for (const p of lista) {
-            const [palabra] = (p.fila.avance ?? '').split(' ');
-            const valor = esc(JSON.stringify([p.fila.proveedor, p.fila.id || p.ref, p.ref]));
-            h.push(`<div class="tarea" data-accion="tarea" data-valor="${valor}" title="clic: leerlo">`
-                + `<span class="id"></span><span class="pri"></span>`
-                + `<span class="desc">${palabra ? `<span class="av"${p.fila.color ? ` style="color: var(--${esc(p.fila.color)})"` : ''}>${esc(palabra)}</span>` : ''}${esc(p.texto)}</span>`
-                + `<span class="meta">${plazo(p.dias)}<span class="destino"></span></span></div>`);
-        }
-        h.push('</section></div>');
-        this.t.pintar(h);
+        for (const p of lista) h.push(filaTarea(p, { lectura: true, marcas, rev: !!p.fila.avance, color: p.fila.color }));
+        h.push('</div>');
+        this.t.pintar(h, { nombre: this.pestana, color: 'magenta', resumen: lista.length ? `${lista.length} · ⏎ el primero` : '' });
     }
 
     /** Las tareas con propuesta, en el orden del día, sin las ya decididas (salvo la abierta).
@@ -609,7 +672,7 @@ export class PantallaTareas implements Pantalla {
     private propuestas(desde = this.fichaDesde.startsWith('pestana:') ? this.fichaDesde.slice(8) : ''): { proveedor: string; id: string; ref: string }[] {
         const d = this.t.dia();
         if (!d) return [];
-        return pendientes(d, desde)
+        return (desde ? this.dePestana(d, desde) : pendientes(d))
             .filter(p => (desde || p.avance) && p.fila.ficha && (!this.decididas.has(p.fila.id || p.ref) || (p.fila.id || p.ref) === this.ficha?.id))
             .map(p => ({ proveedor: p.fila.proveedor, id: p.fila.id || p.ref, ref: p.ref }));
     }
@@ -628,53 +691,130 @@ export class PantallaTareas implements Pantalla {
         if (!f) return;
         const p = f.pagina;
         if (!p) {
-            this.t.pintar(this.marcoFicha([`<div class="subcab"><b>${esc(f.id)}</b></div>`, `<div class="fila falla">${esc(f.aviso ?? '')}</div>`]));
+            this.t.pintar(...this.marcoFicha([`<div class="subcab"><b>${esc(f.id)}</b></div>`, `<div class="fila falla">${esc(f.aviso ?? '')}</div>`]));
             return;
         }
+        if (this.esLectura()) { this.pintarLectura(p); return; }
         const lista = this.propuestas();
         const i = lista.findIndex(x => x.id === f.id);
-        // «← 1/3 →»: cuál de las propuestas es y cómo pasar a otra (también con las flechas)
-        const donde = i >= 0 && lista.length > 1
-            ? `<span class="pasar"><a data-accion="tarea-anterior" title="la anterior (←)">←</a>`
-              + `<span class="dim">${i + 1}/${lista.length}</span><a data-accion="tarea-siguiente" title="la siguiente (→)">→</a></span>` : '';
+        // «1/3», con ← y →: cuál de las propuestas es y cómo pasar a otra (también con las flechas), en la barra
+        const donde = i >= 0 && lista.length > 1 ? { i, n: lista.length } : undefined;
         // lo que se cambia donde se ve no va en la lista: la prioridad, la fecha, a quién espera y quién la hace se
         // pinchan en el subtítulo (si lo dice), y la estrella y compartir son íconos junto al título, como en la lista
-        // de tareas. ⏎ es la principal; las demás van numeradas en orden, y el número es su tecla
+        // de tareas. Las demás con un rol conocido (hecha, descartar, esperar a…, tamaño…) son íconos en la barra, con
+        // su globo; «escribirle a Claude» es el ícono de la instrucción. ⏎ es la principal; las demás van numeradas en
+        // orden (primero las de palabra, después las de ícono), y el número es su tecla
         const puestas = new Set(ICONOS);
         const subtitulo = p.subtitulo ? this.subtituloFicha(p, puestas) : '';
         this.t.teclas.clear();
         let n = 0;
         const acciones = (p.acciones ?? []).map((a, k) => ({ a, k }));
-        const botones = acciones.filter(({ a }) => !puestas.has(a.rol ?? '')).map(({ a, k }) => {
+        const sueltas = acciones.filter(({ a }) => !puestas.has(a.rol ?? '') && !esEscribir(a));
+        const conIcono = deBarra(p.acciones ?? [], puestas);
+        const botones = sueltas.filter(({ k }) => !conIcono.some(x => x.k === k)).map(({ a, k }) => {
             const tecla = a.principal ? '⏎' : String(++n);
             if (!a.principal) this.t.teclas.set(tecla, () => this.accionTarea(k));
             return `<a class="atajo${a.principal ? ' principal' : ''}" data-accion="accion-tarea" data-valor="${k}"`
                 + ` title="${esc(a.pide ? `${a.nombre}: pide ${a.pide}` : a.nombre)}"><kbd>${tecla}</kbd><span>${esc(a.nombre)}</span></a>`;
         });
-        // el ícono es el estado de ahora (★ con estrella, ◉ compartida), que el proveedor pone al comienzo del nombre
-        // de la acción que la cambia («★ quitar la estrella»); lo que sigue es lo que hace un clic
-        const iconos = acciones.filter(({ a }) => a.rol === 'estrella' || a.rol === 'equipo').map(({ a, k }) => {
-            const [glifo, ...resto] = a.nombre.split(' ');
-            const on = glifo === '★' || glifo === '◉';
-            // en la página, los íconos de la letra de íconos; el proveedor los dice con sus símbolos
-            const icono = { '★': I.estrella, '☆': I.sinEstrella, '◉': I.compartir, '○': PRIO_I[3] }[glifo] ?? glifo;
-            return `<a class="icono-t ${a.rol}${on ? ' on' : ''}" data-accion="accion-tarea" data-valor="${k}" title="${esc(resto.join(' '))}">${esc(icono)}</a>`;
+        const enBarra: AccionDePantalla[] = conIcono.map(({ k, icono, tono, ayuda }) => {
+            const tecla = String(++n);
+            this.t.teclas.set(tecla, () => this.accionTarea(k));
+            return { accion: 'accion-tarea', valor: String(k), icono, tono, ayuda: `${ayuda} (${tecla})` };
         });
+        // la estrella y compartir, junto al título: su ícono es el estado de ahora
+        const iconos = deTitulo(p.acciones ?? []).map(x => iconoDeTitulo(x, 'data-accion="accion-tarea"'));
         // la ficha toma el color de la propuesta (cian cerrar, verde preparado…): botón principal incluido
         const color = p.bloques.find(b => b.destacado)?.color;
-        this.t.pintar(this.marcoFicha([`<div class="subcab">${iconos.length ? `<span class="iconos-t">${iconos.join('')}</span>` : ''}<b>${esc(p.titulo)}</b></div>`,
+        this.t.pintar(...this.marcoFicha([`<div class="subcab">${iconos.length ? `<span class="iconos-t">${iconos.join('')}</span>` : ''}<b>${esc(p.titulo)}</b></div>`,
             subtitulo ? `<div class="sub-ficha dim">${subtitulo}</div>` : '',
             botones.length ? `<div class="acciones-t">${botones.join('')}</div>` : '',
-            ...this.t.paginas.html(p.bloques)], color, donde));
+            ...this.t.paginas.html(p.bloques)], color, donde, enBarra));
     }
 
-    /** La ficha en su marco: arriba, volver a la lista de donde se abrió (lo mismo que ⎋) y pasar a otra propuesta;
-     *  abajo, en un recuadro, todo lo de la tarea. Igual mientras se lee y si no se pudo leer. */
-    private marcoFicha(cuerpo: string[], color = '', donde = ''): string[] {
+    /** Si la ficha abierta es de una pestaña de lectura (un proveedor con `vista = "lectura"`): se dibuja para leerla
+     *  (vistas/dashboard/leer.ts), no como una tarea. */
+    private esLectura(): boolean {
+        return this.fichaDesde.startsWith('pestana:') && this.pestanaDeLectura(this.fichaDesde.slice(8));
+    }
+
+    private pestanaDeLectura(nombre: string): boolean {
+        return this.t.config()?.pestanas?.find(x => x.nombre === nombre)?.vista === 'lectura';
+    }
+
+    /** Lo de la pestaña `nombre` de un proveedor, entero (sin tope): en una de lectura, lo que se mandó la persona
+     *  primero, después por prioridad y lo más nuevo arriba (dia.ts, `ordenLectura`); en las demás, el orden del
+     *  proveedor. La lista, la ficha, ← → y «sigue» van en este orden. */
+    private dePestana(d: Dia, nombre: string): Pendiente[] {
+        const lista = pendientes(d, nombre);
+        return this.pestanaDeLectura(nombre) ? ordenLectura(lista) : lista;
+    }
+
+    /** La ficha de una lectura (vistas/dashboard/leer.ts): el texto para leerlo con calma, al lado lo que puede ir al grafo, la
+     *  respuesta al final y lo que sigue. En la barra no va «1/8»: no es una cola por despachar; ← → siguen pasando de
+     *  una a otra. La fila del ítem se guarda al pintarla: respondido, puede salir de la lista del proveedor y su ficha
+     *  sigue a la vista. */
+    private pintarLectura(p: cli.JsonPagina): void {
+        const f = this.ficha!;
+        const d = this.t.dia();
+        const lista = this.propuestas();
+        const i = lista.findIndex(x => x.id === f.id);
+        const filaDe = (id: string) => (d ? pendientes(d, this.pestana).find(q => (q.fila.id || q.ref) === id) : undefined);
+        const fila = filaDe(f.id)?.fila ?? this.filasLeidas.get(f.id);
+        if (fila) this.filasLeidas.set(f.id, fila);
+        // la que sigue: la de después en la lista, o si esta ya salió de ella (respondida), la primera que queda
+        const sig = i >= 0 ? lista[i + 1] : lista.find(x => x.id !== f.id), ant = i > 0 ? lista[i - 1] : undefined;
+        const ctx: leer.Contexto = {
+            pagina: p, fila,
+            siguiente: sig ? { titulo: filaDe(sig.id)?.texto ?? sig.id } : undefined,
+            anterior: ant ? { titulo: filaDe(ant.id)?.texto ?? ant.id } : undefined,
+            anotado: this.anotadas.get(f.id),
+            clave: `leer:${f.proveedor}:${f.id}`,
+        };
+        this.lectura = ctx;
+        this.t.teclas.clear();
+        // las acciones de solo ícono (volver a procesar), en la barra, con su ayuda; mientras corre, tenue
+        const iconos: AccionDePantalla[] = (p.acciones ?? []).map((a, k) => ({ a, k })).filter(({ a }) => a.solo_icono).map(({ a, k }) => ({
+            accion: 'accion-tarea', valor: String(k), icono: (I as Record<string, string>)[a.icono ?? ''] ?? I.accion, tono: 'violeta', si: !!p.procesando,
+            ayuda: p.procesando ? `${a.nombre}: ya va, desde las ${p.procesando}` : (a.ayuda || a.nombre) }));
+        const [cuerpo, barra] = this.marcoFicha([leer.html(ctx)], '', i >= 0 && lista.length > 1 ? { i, n: lista.length } : undefined, iconos);
+        barra.resumen = '';
+        this.t.pintar(cuerpo, barra);
+        const raiz = document.getElementById('ficha-tarea');
+        if (raiz) leer.montar(raiz, ctx, (k, texto, conexiones) => void this.accionTarea(k, texto, conexiones));
+        // volviendo a procesar (un agente rehace la ficha, y tarda minutos): se relee sola hasta que termina
+        clearTimeout(this.releerProcesando);
+        if (p.procesando) this.releerProcesando = window.setTimeout(() => void this.releerFicha(f.proveedor, f.id), 10000);
+    }
+
+    /** La ficha en su marco: arriba, volver a la lista de donde se abrió (lo mismo que ⎋), las acciones de la tarea que
+     *  son íconos (`iconos`, y la instrucción) y pasar a otra propuesta; abajo, todo lo de la tarea. Igual mientras se
+     *  lee y si no se pudo leer. */
+    private marcoFicha(cuerpo: string[], color = '', donde?: { i: number; n: number }, iconos: AccionDePantalla[] = []): [string[], EnBarra] {
         const origen = this.fichaDesde === 'fuera' && this.fuera ? this.fuera.nombre
             : this.t.nombrePestana(this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1'));
-        return [`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`,
-            volver('volver-ficha', origen, donde, `volver a ${origen} (⎋)`), recuadro(cuerpo.join('\n')), '</div>'];
+        // la tinta de la pestaña de donde se abrió: la de un feed (leer), la de un bloque (el correo), la de tareas
+        const bloque = this.fichaDesde.startsWith('bloque:') ? this.fichaDesde.split(':')[1] : '';
+        const tinta = this.fichaDesde.startsWith('pestana:') ? 'magenta'
+            : bloque ? this.t.config()?.bloques?.find(b => b.clave === bloque)?.color ?? '' : this.fichaDesde === 'fuera' ? '' : BARRA_DE.revisar?.[1] ?? '';
+        const barra: EnBarra = {
+            volver: { accion: 'volver-ficha', icono: I.atras, ayuda: `volver a ${origen} (⎋)` },
+            nombre: origen, color: tinta,
+            resumen: donde ? `${donde.i + 1}/${donde.n}` : '',
+            acciones: [
+                ...iconos,
+                // en una lectura no hay «su hilo»: abre uno nuevo con ella (o se la manda a otro), con lo que dice la ficha
+                ...(this.ficha ? [{ accion: 'instruccion-ficha', icono: I.instruccion, tono: 'violeta' as const,
+                    ayuda: this.esLectura() ? 'instrucción: abrir un hilo con esta lectura (o mandársela a otro o a un agente), con una skill o lo que le pidas'
+                        : 'instrucción: mandársela a su hilo, a uno nuevo, a otro o a un agente, con una skill o lo que le pidas' }] : []),
+                ...(donde ? [
+                    { accion: 'tarea-anterior', icono: I.anterior, ayuda: 'la anterior (←)' },
+                    { accion: 'tarea-siguiente', icono: I.adelante, ayuda: 'la siguiente (→)' },
+                ] : []),
+            ],
+        };
+        // sin recuadro: la ficha no se abre aparte, es la pantalla (la gramática visual: un marco es para una ventana)
+        return [[`<div id="ficha-tarea"${color ? ` style="--c: var(--${esc(color)})"` : ''}>`, ...cuerpo, '</div>'], barra];
     }
 
     /** El subtítulo de la ficha, con lo que se cambia ahí mismo como botón si el proveedor deja cambiarlo (sus acciones
@@ -706,73 +846,28 @@ export class PantallaTareas implements Pantalla {
         return texto;
     }
 
-    /** Lo que se le escribe a Claude sobre la tarea abierta, en varias líneas, y a qué hilo: de entrada el agente
-     *  general (Gestión); también el hilo de la tarea y cualquiera de la lista. Lo escrito queda como borrador de
-     *  la tarea hasta que se manda, y si un envío falló, también a quién iba: se reintenta al mismo. */
-    private async escribirA(a: cli.JsonAccionPagina): Promise<{ texto: string; destino: string } | undefined> {
-        const f = this.ficha;
-        if (!f) return undefined;
-        const d = this.t.dia();
-        const suyo = (d ? pendientes(d).find(q => q.fila.proveedor === f.proveedor && (q.fila.id || q.ref) === f.id) : undefined)?.hilo ?? '';
-        const general = this.t.general();
-        const destinos: { valor: string; nombre: string }[] = [];
-        const sumar = (valor: string, nombre: string) => { if (valor && !destinos.some(x => x.valor === valor)) destinos.push({ valor, nombre }); };
-        if (general) sumar(general.nombre, `${general.nombre} · el agente general`);
-        if (suyo) sumar(suyo, `${suyo} · el hilo de la tarea`);
-        for (const h of modelo.enLista) sumar(h.nombre, h.remoto ? `${h.nombre} · en ${h.remoto}` : h.nombre);
-        const b = this.borradores.get(f.id);
-        const escrito = await ui.escribir({
-            titulo: `${a.nombre} · ${nombreTarea(f.id, f.pagina?.titulo)}`, ayuda: a.pide,
-            destinos, destino: destinos.some(x => x.valor === b?.destino) ? b?.destino : destinos[0]?.valor,
-            valor: b?.texto ?? '', borrador: texto => this.borradores.set(f.id, { ...this.borradores.get(f.id), texto }),
-        });
-        if (escrito) this.borradores.set(f.id, escrito);
-        return escrito;
-    }
-
-    private async accionTarea(k: number): Promise<void> {
+    /** Corre la acción `k` de la ficha abierta. `escrito`: lo que ya se escribió para ella (el porqué de una lectura,
+     *  aunque sea nada), y entonces no se pide. */
+    private async accionTarea(k: number, escrito?: string, conexiones?: string): Promise<void> {
         const f = this.ficha;
         const a = f?.pagina?.acciones?.[k];
         if (!f || !a) return;
         const tipo = a.tipo ?? 'comando';
         if (tipo === 'hilo') { await llevarPendiente(f.ref, false, f.proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
-        let texto = '';
-        let hilo = '';
-        // la fecha, quién la hace, a quién espera, la prioridad: con su selector, no un campo de texto
-        const elegido = await elegirPorRol(a, nombreTarea(f.id, f.pagina?.titulo), f.pagina?.subtitulo ?? '');
-        if (elegido === undefined) return;
-        if (elegido !== null) {
-            texto = elegido;
-        } else if (a.pide && a.mensaje && a.al_hilo) {
-            // un mensaje a un hilo («escribirle a Claude»): puede ser largo, y se elige a quién
-            const escrito = await this.escribirA(a);
-            if (!escrito) return;
-            texto = escrito.texto;
-            hilo = escrito.destino;
-        } else if (a.pide) {
-            const escrito = await ui.campo({ ayuda: `${f.id} · ${a.nombre}`, placeholder: a.pide });
-            if (escrito === undefined) return;
-            texto = escrito;
-        }
-        if (a.confirmar) {
-            const si = await ui.aviso(`¿${a.nombre}? ${f.pagina?.titulo ?? f.id}`, 'Sí');
-            if (si !== 'Sí') return;
-        }
-        // una acción que lleva un mensaje a un hilo (el de la tarea, Gestión) toma unos segundos: se avisa
+        if (esEscribir(a)) { await this.instruccionFicha(); return; }
         // con la versión de la ficha que se está mirando: si la tarea cambió desde entonces, no se hace
-        const version = f.pagina?.version ?? '';
-        const r = a.mensaje
-            ? await ui.progreso({ titulo: `telar: ${a.nombre} · ${f.id}…` },
-                () => cli.accionTarea(f.id, f.proveedor, k, texto, version, hilo))
-            : await cli.accionTarea(f.id, f.proveedor, k, texto, version, hilo);
-        if (r.datos && hilo) this.borradores.delete(f.id);
+        const hecho = await correrAccion(f.id, f.proveedor, f.pagina!, k, { escrito, conexiones });
+        if (!hecho) return;
+        const { r, texto } = hecho;
         if (!r.datos) {
-            // la tarea cambió mientras se miraba: la ficha guardada ya no sirve, y se vuelve a leer
-            if (/cambió desde que se leyó/.test(r.error ?? '')) this.fichas.delete(f.id);
+            // la tarea cambió mientras se miraba (una instrucción desde foco, que quedó en su historia): la ficha
+            // guardada ya no sirve, y se vuelve a leer para decidir sobre lo de ahora
+            if (/cambió desde que se leyó/.test(r.error ?? '')) void this.releerFicha(f.proveedor, f.id);
             void ui.aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`);
             return;
         }
+        if (CIERRAN.has(a.rol ?? '')) salio(f.proveedor, f.id);
         // abrió un hilo (hecha y procesar ahora): se va a él, que es donde sigue el trabajo
         if (r.datos.hilo) {
             this.decididas.add(f.id);
@@ -788,6 +883,22 @@ export class PantallaTareas implements Pantalla {
         this.fichas.delete(`${f.proveedor}:${f.id}`);
         const releida = await cli.tarea(f.id, f.proveedor);
         if (releida.datos) this.fichas.set(`${f.proveedor}:${f.id}`, { pagina: releida.datos, hora: Date.now() });
+        // una lectura respondida no se va: queda a la vista con lo anotado, y abajo, lo que sigue (sin apuro). Una de solo
+        // ícono (volver a procesar) no es una respuesta: la ficha se relee y nada más
+        if (this.esLectura()) {
+            if (!a.solo_icono) {
+                this.anotadas.set(f.id, `${a.nombre}${texto ? `: ${texto}` : ''}`);
+                this.decididas.add(f.id);
+                leer.olvidarBorrador(`leer:${f.proveedor}:${f.id}`);
+            }
+            olvidarDia();
+            void this.t.actualizar(true);
+            if (this.t.pantalla === 'tarea' && this.ficha?.id === f.id) {
+                this.ficha.pagina = releida.datos ?? this.ficha.pagina;
+                this.pintarFicha();
+            }
+            return;
+        }
         // en un feed, correr una acción es decidir sobre el ítem: pasa al siguiente
         const sigueViva = !this.fichaDesde.startsWith('pestana:') && !!releida.datos?.bloques.some(b => b.destacado);
         olvidarDia();
@@ -814,19 +925,23 @@ export class PantallaTareas implements Pantalla {
         const pagina = guardada?.pagina ?? (await ui.progreso({ discreto: true, titulo: `telar: ${id}` }, () => cli.tarea(id, proveedor))).datos;
         const acciones = pagina?.acciones ?? [];
         if (!acciones.length) { void ui.aviso(`telar: ${id} no tiene acciones`); return; }
-        // el ícono y el color, por lo que hace: su rol (hecha, fecha, dueño) o su tipo (un hilo, un enlace)
-        const iconoDe = (a: typeof acciones[number]): [string, string] => a.rol === 'hecha' ? [I.hecha, C.hecho]
-            : a.rol === 'fecha' ? [I.fecha, C.cambiar] : a.rol === 'dueno' ? [I.persona, C.cambiar]
+        // el ícono y el color, por lo que hace: su rol (los mismos de la barra de la ficha) o su tipo (un hilo, un enlace)
+        const iconoDe = (a: typeof acciones[number]): [string, string] => ROL_ICONO[a.rol ?? '']
+            ? [ROL_ICONO[a.rol ?? ''].icono, ROL_ICONO[a.rol ?? ''].tono]
             : a.tipo === 'hilo' ? [I.agente, C.agente] : a.tipo === 'abrir' ? [I.enlace, C.ir]
             : a.mensaje ? [I.escribir, C.agente] : a.confirmar ? [I.cerrar, C.quitar] : [I.abrir, C.otro];
-        const items = acciones.map((a, k) => ({
-            label: a.nombre, k, icono: iconoDe(a)[0], color: iconoDe(a)[1],
-            description: [a.rol === 'fecha' ? 'elige la fecha' : a.opciones?.length ? 'elige de una lista' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
-                a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
-        }));
+        // «escribirle a Claude» es la instrucción: su ventana, con su nombre y su ícono
+        const items = acciones.map((a, k) => esEscribir(a)
+            ? { label: 'instrucción…', k, icono: I.instruccion, color: C.agente, description: 'mandársela a su hilo, a uno nuevo, a otro o a un agente' }
+            : {
+                label: a.nombre, k, icono: iconoDe(a)[0], color: iconoDe(a)[1],
+                description: [a.rol === 'fecha' ? 'elige la fecha' : a.opciones?.length ? 'elige de una lista' : a.pide ? `pide ${a.pide}` : '', a.confirmar ? 'pide confirmación' : '',
+                    a.tipo === 'hilo' ? 'abre su hilo' : a.mensaje ? 'le escribe a Claude' : ''].filter(Boolean).join(' · '),
+            });
         const elegida = await ui.menu(items, donde, nombreTarea(id, pagina?.titulo));
         if (!elegida) return;
         const a = acciones[elegida.k];
+        if (esEscribir(a)) { await this.instruccionFila(proveedor, id, ref); return; }
         const tipo = a.tipo ?? 'comando';
         if (tipo === 'hilo') { await llevarPendiente(ref, false, proveedor); return; }
         if (tipo === 'abrir') { if (a.enlace) await abrirEnlace(a.enlace); return; }
@@ -841,14 +956,15 @@ export class PantallaTareas implements Pantalla {
             texto = escrito;
         }
         if (a.confirmar) {
-            const si = await ui.aviso(`¿${a.nombre}? ${pagina?.titulo ?? id}`, 'Sí');
-            if (si !== 'Sí') return;
+            const si = await ui.aviso(`¿${a.nombre}? ${pagina?.titulo ?? id}`, a.nombre, { foco: 'cancelar', destruye: DESTRUYE.test(a.nombre) });
+            if (si !== a.nombre) return;
         }
         const r = await ui.progreso({ titulo: `telar: ${a.nombre} · ${id}…` },
             () => cli.accionTarea(id, proveedor, elegida.k, texto));
         if (!r.datos) { void ui.aviso(`telar: ${r.error ?? `no pude: ${a.nombre}`}`); return; }
         this.fichas.delete(`${proveedor}:${id}`);
-        olvidarDia();
+        // la cerró: sale de lo que se ve al tiro, en la lista de donde se abrió el menú (Táctica, un bloque…)
+        if (CIERRAN.has(a.rol ?? '')) { salio(proveedor, id); this.t.render(); } else olvidarDia();
         if (r.datos.hilo) {
             this.decididas.add(id);
             void this.t.actualizar(true);

@@ -83,6 +83,19 @@ class LoQueDeclara(ConAgentes):
         self.assertEqual(faro.sin_uso, {"instrucciones": "CLAUDE.md", "capacidades": {"web": True}})
         self.assertEqual(faro.problemas, ())
 
+    def test_su_mundo(self):
+        self.definir("faro", 'mundo = "personal"\n')
+        faro = self.agente("faro")
+        self.assertEqual((faro.mundo, faro.problemas), ("personal", ()))
+        self.assertEqual(m.como_json(faro)["mundo"], "personal")
+        self.assertEqual(self.agente("cronista").mundo, "", "sin declararlo, ninguno: va por su carpeta")
+        self.assertEqual(m.como_json(self.agente("cronista"))["mundo"], "")
+        for mal in ('mundo = "dos palabras"', "mundo = 3", 'mundo = ""'):
+            self.definir("faro", mal + "\n")
+            faro = self.agente("faro")
+            self.assertEqual(faro.mundo, "", mal)
+            self.assertTrue(any(x.startswith("mundo:") for x in faro.problemas), mal)
+
     def test_un_toml_que_no_se_lee_se_ignora_entero_y_el_agente_sigue(self):
         self.definir("faro", 'nombre = "Lámpara"\nmodelo = \n')
         faro = self.agente("faro")

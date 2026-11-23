@@ -4,6 +4,9 @@
     telar proyectos --json
     telar proyectos abrir operacion/faro   un hilo vinculado a esa unidad, con el agente
                                            ya cargándola; si ya tiene hilo abierto, va a él
+    telar proyectos estado operacion/club "en pausa"
+                                           el estado de una iniciativa, en su ficha: uno del
+                                           vocabulario de [iniciativas] (telar.iniciativas)
 
 La lista de hilos muestra lo que está abierto; esta muestra de dónde se puede abrir algo.
 Es la pantalla «proyectos» del dashboard.
@@ -58,23 +61,58 @@ def mensaje(plantilla: str, **valores: str) -> str:
     return re.sub(r"\{(\w+)\}", lambda m: valores.get(m.group(1), m.group(0)), plantilla).strip()
 
 
-def area_de(documento: Path) -> str:
-    """El `area:` del frontmatter del documento («area: PIA»), o "" si no la declara. Solo se lee el
-    comienzo: el frontmatter va arriba, y un documento largo no tiene por qué leerse entero aquí."""
+#: una línea `clave: valor` del frontmatter (la misma regla que telar.tipos.registro)
+_CAMPO_FM = re.compile(r"^([A-Za-z_][\w-]*)[ \t]*:[ \t]?(.*)$")
+#: el valor más largo que se lleva de un campo: lo que pasa de eso es un texto, no un dato para mostrar en una fila
+LARGO_FM = 300
+
+
+def frontmatter_de(documento: Path) -> dict[str, str]:
+    """Los campos sueltos del frontmatter del documento, `clave: valor`, como texto, en su orden: sin comillas ni el
+    comentario del final, y sin los vacíos ni los que pasan de LARGO_FM. Una lista o un mapa (lo que sigue en las
+    líneas de abajo) no entra. {} si no tiene frontmatter. Solo se lee el comienzo: el frontmatter va arriba, y un
+    documento largo no tiene por qué leerse entero aquí."""
     try:
         with open(documento, encoding="utf-8", errors="ignore") as f:
             cabeza = f.read(4096)
     except OSError:
-        return ""
-    m = re.match(r"---\n(.*?)\n---", cabeza, re.S)
-    area = re.search(r"^area:\s*[\"']?([^\"'#\n]+?)[\"']?\s*(?:#.*)?$", m.group(1), re.M) if m else None
-    return area.group(1).strip() if area else ""
+        return {}
+    m = re.match(r"\ufeff?---\r?\n(.*?)\r?\n---", cabeza, re.S)
+    if not m:
+        return {}
+    campos: dict[str, str] = {}
+    for linea in m.group(1).splitlines():
+        c = _CAMPO_FM.match(linea)
+        if not c or c.group(1) in campos:
+            continue
+        v = c.group(2).strip()
+        entre = re.match(r"^([\"'])(.*?)\1\s*(?:#.*)?$", v)
+        v = entre.group(2).strip() if entre else re.sub(r"\s+#.*$", "", v)
+        if v and len(v) <= LARGO_FM and not v.startswith(("[", "{", "|", ">")):
+            campos[c.group(1)] = v
+    return campos
+
+
+def area_de(documento: Path) -> str:
+    """El `area:` del frontmatter del documento («area: Norte»), o "" si no la declara."""
+    return frontmatter_de(documento).get("area", "")
+
+
+def vigente(estado: str) -> str:
+    """El Estado sin lo tachado: «~~Activo, sin empezar~~ **16-oct: activo**» → «**16-oct: activo**». Lo tachado
+    es lo que ya no vale; quien lo tachó dejó al lado lo que sí."""
+    return re.sub(r"\s+", " ", re.sub(r"~~.*?~~", "", estado)).strip()
 
 
 def corto(estado: str, largo: int = 24) -> str:
     """«En pausa por el cliente desde el 9-sep. Ver Notas» → «En pausa por el cliente…»: lo de antes
-    del primer punto, coma, dos puntos o paréntesis, y no más de `largo` letras."""
-    texto = re.split(r"[.,;:(]|\s[—–-]\s", estado.replace("**", ""), maxsplit=1)[0].strip()
+    del primer punto, coma, dos puntos, paréntesis o punto medio («Activo · PMO: pista» → «Activo»), y no más de
+    `largo` letras. Sin lo tachado y sin la fecha de adelante de una nota («16-oct: activo, en la semana 2» →
+    «Activo»)."""
+    texto = vigente(estado).replace("**", "")
+    texto = re.sub(r"^\d{1,2}-[a-zé]{3,4}\.?(-\d{2,4})?\s*:\s*", "", texto, flags=re.I)
+    texto = re.split(r"[.,;:(·]|\s[—–-]\s", texto, maxsplit=1)[0].strip()
+    texto = texto[:1].upper() + texto[1:]
     return texto if len(texto) <= largo else texto[: largo - 1].rstrip() + "…"
 
 
@@ -94,6 +132,7 @@ def listar(ctx, tel) -> list[dict]:
         mtime = reciente(raiz / relativa)
         hilo = hilo_de.get(relativa, "")
         cliente = lectura.etiqueta("{campo:Cliente}", ficha) if "{campo:Cliente}" in (arquetipo.etiqueta or "") else ""
+        fm = frontmatter_de(documento)
         salida.append({
             "ruta": relativa,
             # su dirección de objeto (telar.objetos): `telar objeto proyecto:<ruta>`
@@ -105,9 +144,12 @@ def listar(ctx, tel) -> list[dict]:
             "interno": not cliente or cliente.casefold() in internos,
             # el Estado (o la Etapa, en un deal) de su tabla de campos: corto, y entero aparte
             "estado": corto(estado),
-            "estado_completo": estado,
+            "estado_completo": vigente(estado),
             # el área que declara el frontmatter del documento («area: PIA»); "" si no la tiene
-            "area": area_de(documento),
+            "area": fm.get("area", ""),
+            # los campos sueltos de su frontmatter, como texto (`{frontmatter:<clave>}`): con qué se agrupan y se
+            # describen las iniciativas en el dashboard (`agrupar_iniciativas` de un modo)
+            "frontmatter": fm,
             "arquetipo": arquetipo.nombre,
             "modificado": datetime.fromtimestamp(mtime, timezone.utc).isoformat() if mtime else None,
             "hilo": hilo,
@@ -117,10 +159,10 @@ def listar(ctx, tel) -> list[dict]:
     return salida
 
 
-def abrir(ctx, tel, relativa: str, *, texto: str = "") -> dict:
+def abrir(ctx, tel, relativa: str, *, texto: str = "", nuevo: bool = False) -> dict:
     """Ir al hilo de esa unidad o abrirle uno. Devuelve {hilo, ruta, mensaje, hecho}. Con `texto`, un hilo nuevo
     arranca con eso en vez del mensaje de `[agente] proyecto` (telar actuar: lo que se le pide sobre la unidad); a
-    uno que ya estaba no se le escribe aquí."""
+    uno que ya estaba no se le escribe aquí. Con `nuevo`, uno nuevo aunque ya tenga el suyo abierto (se numera)."""
     raiz = Path(ctx.config.raiz)
     unidades = lectura.indice(ctx.perfil, raiz)
     relativa = relativa.strip().strip("/")
@@ -132,7 +174,7 @@ def abrir(ctx, tel, relativa: str, *, texto: str = "") -> dict:
 
     # ya tiene un hilo abierto: se va a él, no se abre otro Claude sobre lo mismo
     for hilo, ruta in vinculos.items():
-        if ruta == relativa and hilo in tel.vivos:
+        if ruta == relativa and hilo in tel.vivos and not nuevo:
             _ir(tel, hilo)
             return {"hilo": hilo, "ruta": relativa, "mensaje": "", "hecho": "ya estaba"}
 
@@ -186,16 +228,42 @@ def _agente(ctx):
     return mod_agente.obtener(ctx.config.agente.nombre, ctx.config)
 
 
+def _estado(ctx, o) -> int:
+    """`telar proyectos estado <ruta> <estado>`: sin estado, dice el vocabulario."""
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import proyectos as servicio
+
+    if not o.ruta or not o.estado:
+        estados = ctx.config.iniciativas.estados
+        return _comun.queja("telar proyectos estado <ruta> <estado>"
+                            + (f"; el estado, uno de: {', '.join(estados)}" if estados else "; no hay [iniciativas] estados"))
+    try:
+        r = servicio.cambiar_estado(ctx, o.ruta, o.estado).model_dump(mode="json")
+    except ErrorDeServicio as e:
+        return _comun.queja(str(e))
+    if o.json:
+        return _comun.escribir_json(r)
+    if r["cambio"]:
+        print(f"{r['archivo']} · estado: {r['antes'] or '—'} → {r['estado']} (desde {r['estado_desde']}; sin commitear)")
+    else:
+        print(f"{r['archivo']} · ya estaba en «{r['estado']}» ({r['antes']}): no lo toqué")
+    return 0
+
+
 def main(argv: list[str], ctx) -> int:
     p = _comun.analizador("proyectos", AYUDA)
-    p.add_argument("verbo", nargs="?", choices=("abrir",), help="abrir: un hilo cargando esa unidad")
-    p.add_argument("ruta", nargs="?", default="", help="con abrir: la unidad, relativa a la raíz")
+    p.add_argument("verbo", nargs="?", choices=("abrir", "estado"),
+                   help="abrir: un hilo cargando esa unidad; estado: cambiar el de una iniciativa")
+    p.add_argument("ruta", nargs="?", default="", help="con abrir o estado: la unidad, relativa a la raíz")
+    p.add_argument("estado", nargs="?", default="", help="con estado: uno del vocabulario de [iniciativas]")
     p.add_argument("--json", action="store_true", help="los datos, en una línea")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
     if o.verbo == "abrir" and not o.ruta:
         return _comun.queja("¿cuál? telar proyectos abrir <ruta relativa a la raíz>")
+    if o.verbo == "estado":
+        return _estado(ctx, o)
 
     if o.verbo != "abrir":
         from telar.servicios import proyectos as servicio

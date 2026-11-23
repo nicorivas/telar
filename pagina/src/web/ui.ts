@@ -15,6 +15,8 @@ export interface Opcion {
     /** en un menú junto al puntero: su ícono (web/iconos.ts) y el color de lo que hace (web/iconos.ts, `C`) */
     icono?: string;
     color?: string;
+    /** en lugar del ícono, una señal: el HTML de un círculo (componentes/senales.ts, `enLinea`), de confianza */
+    senal?: string;
     detail?: string;
     separador?: boolean;
 }
@@ -30,16 +32,21 @@ export interface PedidoCampo {
     validar?: (texto: string) => string | undefined;
 }
 
-/** Un aviso con botones: `detalle`, lo que va debajo del texto. */
-export interface OpcionesAviso { detalle?: string }
+/** Un aviso con botones: `detalle`, lo que va debajo del texto. `destruye`: el primer botón destruye (borrar, quitar,
+ *  descartar…): va en el de peligro con su acorde, ⌘⌫, y el foco parte en «cancelar», así que un ⏎ distraído no hace nada.
+ *  `foco: 'cancelar'`, para lo que no destruye pero tampoco se hace sin mirar (conceder un permiso para siempre, una acción
+ *  que viene de afuera): el foco en «cancelar» y la acción con ⌘⏎. pruebas/confirmar.mjs revisa que cada confirmación que
+ *  destruye lo diga. */
+export interface OpcionesAviso { detalle?: string; foco?: 'cancelar'; destruye?: boolean }
 
 function avisoCon(nivel: interfaz.Nivel) {
     /** Un aviso que se va solo; con botones, una caja que espera y devuelve el elegido (undefined si se cerró). */
     return async (texto: string, ...botones: (string | OpcionesAviso)[]): Promise<string | undefined> => {
         const nombres = botones.filter((b): b is string => typeof b === 'string');
-        const detalle = botones.find((b): b is OpcionesAviso => typeof b === 'object')?.detalle;
+        const opciones = botones.find((b): b is OpcionesAviso => typeof b === 'object');
+        const detalle = opciones?.detalle;
         if (!nombres.length) { interfaz.avisar(detalle ? `${texto}\n${detalle}` : texto, nivel); return undefined; }
-        return interfaz.preguntar(detalle ? `${texto}\n\n${detalle}` : texto, nombres);
+        return interfaz.preguntar(detalle ? `${texto}\n\n${detalle}` : texto, nombres, { foco: opciones?.foco, destruye: opciones?.destruye });
     };
 }
 export const aviso = avisoCon('aviso');
@@ -80,7 +87,7 @@ export async function menu<T extends Opcion>(opciones: T[], donde?: { x: number;
 }
 
 /** Un menú para elegir uno: el ítem elegido, o undefined. */
-export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: string; placeholder?: string } = {}): Promise<T | undefined> {
+export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: string; placeholder?: string; inicial?: number } = {}): Promise<T | undefined> {
     const i = await interfaz.elegir(opciones, menu);
     return i === undefined ? undefined : opciones[i];
 }
@@ -96,6 +103,8 @@ export async function copiar(texto: string): Promise<void> {
 const md = new MarkdownIt({ html: false, linkify: true });
 /** Markdown a HTML (sin el HTML que traiga: se escapa). */
 export const markdown = (texto: string): string => md.render(texto);
+/** Markdown de una línea (el valor de un dato), sin párrafo alrededor. */
+export const markdownLinea = (texto: string): string => md.renderInline(texto);
 
 // ── mostrar algo a la derecha: lo sabe la página (src/navegador/app.ts) ──
 

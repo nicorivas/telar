@@ -14,9 +14,12 @@ Cada dos segundos:
    contenido); a uno que trabaja, nada (el gancho Stop se lo entrega al terminar el turno); a un agente
    residente sin sesión, se le abre con ese aviso como primer mensaje.
 3. **Su estado**: publica de cada uno la máquina, la atención, desde cuándo, su conversación, su vínculo
-   y si está archivado, solo si cambió. Y escucha el de los demás: lo que publica el dueño de un hilo
-   que vive en otra máquina queda aquí en `ajenos.json` (telar.estado, «hilos ajenos»), de donde lo leen
-   la lista y la página, y su atención se anota aquí al instante, sin sondeo.
+   y si está archivado, solo si cambió. Un hilo que falta dos vueltas seguidas se publica muerto, también
+   el que murió con el nodo apagado: al arrancar, el nodo parte de lo que el bus da vivo en esta máquina.
+   Y escucha el de los demás: lo que publica el dueño de un hilo que vive en otra máquina queda aquí en
+   `ajenos.json` (telar.estado, «hilos ajenos»), de donde lo leen la lista y la página, y su atención se
+   anota aquí al instante, sin sondeo. Su ventana aquí se trae, se cierra o se reabre según lo que publica;
+   reabierta tres veces en cinco minutos sin que allá cambie nada, no se reabre más.
 
 Y lo que oye de las demás: un `telar cambio <tema>` se anota aquí para que el dashboard relea, y si un
 `[disparadores.x] al = "cambio:<tema>"` lo espera (en la máquina de los periódicos), se corre con freno
@@ -33,6 +36,7 @@ import asyncio
 import contextlib
 import json
 import sys
+import time
 
 from telar import bus as mod_bus
 from telar import estado as mod_estado
@@ -57,7 +61,8 @@ CASILLA_ESPERA = 1.0
 #: los pedidos que solo leen: varios del mismo verbo a la vez. Los demás escriben algo aquí (el registro de un
 #: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
 #: el mismo archivo a la vez podrían perder uno de los cambios
-SOLO_LEEN = ("leer", "resultado", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar", "codigos")
+SOLO_LEEN = ("leer", "resultado", "resultado-sin-ver", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar", "codigos",
+             "contexto", "avisos-archivo")
 #: lo que puede esperar en cada suscripción antes de que nats-py descarte (y avise «slow consumer»): el
 #: de fábrica es medio millón de mensajes o 128 MB, que es memoria sin tope si una se queda pegada
 PENDIENTES_MSGS = 2_000
@@ -68,7 +73,12 @@ ESPERA_JS = 10
 #: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
 #: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
 #: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
-CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas", "padre")
+CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas", "padre", "ficha")
+#: la ventana aquí de un hilo de otra máquina que se reabrió REABRIR_TOPE veces en REABRIR_EN segundos y se
+#: volvió a cerrar no se reabre más, hasta que cambie su dirección o el hilo publique otra cosa: allá no
+#: contesta, aunque el bus lo siga dando por vivo (ver `Nodo.puede_reabrir`)
+REABRIR_TOPE = 3
+REABRIR_EN = 5 * 60
 
 
 def registro_de(nombre: str, vinculos, archivados, publicos=(), etiquetas=None, padres=None) -> dict:
@@ -145,7 +155,16 @@ class Nodo:
         self.yo = mod_bus.maquina(self.config)
         self.persona = mod_bus.persona(self.config)
         self.subs: dict[str, object] = {}
+        #: lo último que se publicó de cada hilo de aquí, por su clave del bus, sin `actualizado`. Al arrancar se
+        #: siembra con lo que el bus dice vivo en esta máquina (`sembrar`): sin eso, un hilo que murió con el
+        #: nodo apagado quedaría vivo en el bus para siempre
         self.publicado: dict[str, str] = {}
+        #: si ya se sembró `publicado` con lo del bus (se reintenta cada 30 s si al arrancar no se pudo)
+        self.sembrado = False
+        #: los hilos que se sembraron y todavía no aparecen aquí: si se publican muertos, se dice por qué
+        self.sembrados: set[str] = set()
+        #: las reaperturas recientes de la ventana de cada hilo de otra máquina (ver `puede_reabrir`)
+        self.reabiertas: dict[str, dict] = {}
         self.vueltas = 0
         #: cuántas vueltas seguidas falta un hilo que estaba vivo (se anuncia muerto a la segunda)
         self.ausentes: dict[str, int] = {}
@@ -183,6 +202,7 @@ class Nodo:
         sesiones = est.sesiones()
         vinculos, archivados = est.vinculos(), est.archivados()
         from telar import agentes as mod_agentes
+        from telar import casilla
 
         publicos = est.publicos() | mod_agentes.publicos(self.config, vinculos)
         etiquetas, padres = est.etiquetas(), est.padres()
@@ -198,33 +218,82 @@ class Nodo:
         except Exception:  # noqa: BLE001 - sin tmux no hay ventanas que mirar desde afuera
             direcciones = {}
 
+        try:
+            dormidos = est.dormidos()
+        except Exception:  # noqa: BLE001 - sin poder leerlo, nadie duerme
+            dormidos = {}
+
         def ficha_de(nombre: str, vivo: bool, residente: str = "", ventana: str = "") -> dict:
             atencion, desde = atenciones.get(nombre, (None, None))
             return {"nombre": nombre, "maquina": self.yo, "vivo": vivo, "residente": residente,
+                    # si duerme (telar.dormir): su ventana sigue, sin agente; abrirlo o escribirle lo despierta
+                    "dormido": vivo and nombre in dormidos,
                     "atencion": atencion.value if atencion else "ninguna",
                     "desde": desde.isoformat(timespec="seconds") if desde else "",
                     "conversacion": (sesiones.get(nombre) or ("",))[0],
                     # el registro del hilo, que las otras máquinas leen de aquí en vez de copiarlo
                     **registro_de(nombre, vinculos, archivados, publicos, etiquetas, padres),
                     # dónde mirarlo desde otra máquina: su ventana en la sesión del telar
-                    "ventana": ventana}
+                    "ventana": ventana,
+                    # la palabra de su casilla y de su clave (telar.casilla.ficha): la apartada, si su nombre choca
+                    "ficha": casilla.ficha(self.config, nombre)}
 
+        agentes = self._agentes_de_aqui()
+        # antes de publicar y suscribir con sus fichas: que dos hilos cuyos nombres solo difieren en mayúsculas,
+        # tildes o espacios no compartan casilla
+        de_aqui = [h for h in tel.hilos if h.nombre not in remotos and not getattr(h, "remoto", "")]
+        self.separar([h.nombre for h in de_aqui] + [a.nombre for a in agentes],
+                     leen=[h.nombre for h in de_aqui if tel.vivo(h)] + [a.nombre for a in agentes])
         for h in tel.hilos:
             if h.nombre in remotos:
                 continue  # su ventana está aquí, pero vive en otra máquina: lo publica esa
             if tel.vivo(h):
                 salida[h.nombre] = ficha_de(h.nombre, True, ventana=direcciones.get(h.id, ""))
         renombrados = {}
-        for a in self._agentes_de_aqui():
+        for a in agentes:
             actual = salida.get(a.nombre) or ficha_de(a.nombre, False)
             # `residente = false` en su agente.toml: no se le abre la sesión sola cuando le llega algo (avisar)
             actual["residente"] = a.clave if a.residente else ""
             salida[a.nombre] = actual
-            if a.nombre_de_antes not in (a.nombre, "") and mod_bus.ficha(a.nombre_de_antes) != mod_bus.ficha(a.nombre):
+            if a.nombre_de_antes not in (a.nombre, "") and \
+                    mod_bus.ficha(a.nombre_de_antes, self.config) != mod_bus.ficha(a.nombre, self.config):
                 renombrados[a.nombre_de_antes] = a.nombre
         # un hilo vivo con el nombre de antes (su ventana vieja) sigue teniendo su casilla: esa no se le quita
         self.renombrados = {viejo: nuevo for viejo, nuevo in renombrados.items() if viejo not in salida}
         return salida
+
+    def separar(self, nombres, leen=()) -> list[str]:
+        """Aparta la casilla de los hilos de aquí cuyo nombre choca con el de otro (telar.casilla.separar): con los
+        de aquí, y con lo que el bus dice que tienen las otras máquinas (lo que vio el vigía, `vistos`). `leen`: los
+        que el nodo suscribe (vivos y agentes), que se quedan con la forma normalizada antes que un archivado.
+        Devuelve los que apartó."""
+        from telar import casilla
+
+        prefijo = f"{getattr(self, 'persona', '')}."
+        # lo de las otras máquinas, como quedó la última vez (al arrancar, antes de que el vigía traiga lo del bus): un
+        # nombre de allá cuenta como dueño de su forma normalizada. Si allá estaba apartado, apartar al de aquí no
+        # estorba: igual queda cada uno con la suya
+        ocupadas = {}
+        try:
+            for nombre, d in mod_estado.abrir(self.config).ajenos(viejos=True).items():
+                # con la ficha que publicó su nodo (uno apartado allá no ocupa la forma normalizada); sin ella (un
+                # telar de antes, que no aparta a nadie), la forma normalizada
+                ocupadas.setdefault(str(d.get("ficha") or casilla.nombre_de_carpeta(nombre)), nombre)
+        except Exception:  # noqa: BLE001 - sin el archivo, lo que diga el vigía
+            pass
+        # y lo que el vigía vio en el bus, que manda (una copia: el vigía lo cambia mientras esto corre en otro hilo)
+        vistos = dict(getattr(self, "vistos", None) or {})
+        ocupadas.update({k[len(prefijo):]: d["nombre"] for k, d in vistos.items()
+                         if k.startswith(prefijo) and isinstance(d, dict) and isinstance(d.get("nombre"), str)})
+        try:
+            apartados = casilla.separar(self.config, nombres, ocupadas, leen)
+        except OSError as e:
+            self.anotar(f"apartar las casillas que chocan: {type(e).__name__}: {e}")
+            return []
+        for n in apartados:
+            self.anotar(f"«{n}» chocaba con otro hilo de nombre casi igual: su casilla es ahora "
+                        f"{casilla.ficha(self.config, n)}")
+        return apartados
 
     def _agentes_de_aqui(self) -> list:
         from telar import agentes as mod_agentes
@@ -241,6 +310,20 @@ class Nodo:
         from telar.modelo import Atencion
 
         est = mod_estado.abrir(self.config)
+        # uno dormido (telar.dormir) se despierta en su ventana, con el aviso de primer mensaje: el gancho le entrega
+        # lo de su casilla
+        from telar import dormir
+
+        if dormir.dormido(self.config, nombre):
+            try:
+                hecho = dormir.despertar(self.config, nombre, mensaje=casilla.aviso(self.config, nombre))
+            except RuntimeError as e:
+                self.anotar(str(e))
+                return "en su casilla: no se pudo despertar"
+            if hecho:
+                est.anotar_atencion(nombre, Atencion.TRABAJANDO)
+                self.anotar(hecho)
+                return "despertado"
         escribir = encargos._donde(self.ctx, nombre)
         if escribir is not None:
             if est.atencion(nombre) == Atencion.TRABAJANDO and not self.atencion_vieja(est, nombre):
@@ -356,6 +439,8 @@ class Nodo:
         self.espejo = await js.key_value(mod_bus.ESPEJO)
         self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
         self.nc = nc
+        # lo que el bus dice vivo aquí, antes de la primera vuelta y del vigía: lo que murió con el nodo apagado
+        await self.sembrar(kv)
         await self.suscribirse(nc)
         vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
         vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
@@ -367,6 +452,49 @@ class Nodo:
                     t.cancel()
             mod_bus.registrar_conexion(None, None)
             await nc.close()
+
+    async def sembrar(self, kv) -> bool:
+        """`publicado` con lo que el bus dice vivo en esta máquina, como lo deja `_vuelta`: el valor guardado sin
+        `actualizado`. Así un hilo que murió mientras el nodo no corría (la máquina se cayó, o `telar serve` se
+        reinició justo cuando se cerró su ventana) lo publica muerto la lógica de siempre, a la segunda vuelta sin
+        estar aquí. Solo lo que dice esta máquina: el que se mudó a otra es de aquella. Un hilo que ya se
+        publicó en este arranque no se toca. Si el bus no contesta, se dice y se intenta en otra vuelta.
+        Devuelve si se pudo leer."""
+        try:
+            en_el_bus = await asyncio.wait_for(self._lo_del_bus(kv), ESPERA_JS)
+        except Exception as e:  # noqa: BLE001 - sin sembrar, el nodo funciona como antes
+            self.anotar(f"no pude leer del bus qué hilos daba vivos aquí ({type(e).__name__}: {e}): lo intento de nuevo")
+            return False
+        for clave, d in en_el_bus.items():
+            nombre = d.get("nombre")
+            if d.get("maquina") != self.yo or not d.get("vivo") or not isinstance(nombre, str) or not nombre:
+                continue
+            if clave in self.publicado:
+                continue
+            valor = {k: v for k, v in d.items() if k != "actualizado"}
+            self.publicado[clave] = json.dumps(valor, ensure_ascii=False, sort_keys=True)
+            self.sembrados.add(nombre)
+        self.sembrado = True
+        return True
+
+    async def _lo_del_bus(self, kv) -> dict[str, dict]:
+        """El último estado de cada hilo de esta persona en el bus, por su clave: lo que había al empezar a mirar."""
+        vigia = await kv.watch(f"{self.persona}.>", ignore_deletes=True)
+        salida: dict[str, dict] = {}
+        try:
+            async for e in vigia:
+                if e is None:
+                    break  # lo que había ya llegó entero
+                try:
+                    d = json.loads(e.value)
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(d, dict):
+                    salida[e.key] = d
+        finally:
+            with contextlib.suppress(Exception):
+                await vigia.stop()
+        return salida
 
     async def _girar(self, js, kv, *, una_vez: bool = False) -> None:
         """Las vueltas del nodo, cada VUELTA segundos. Una que falla no tumba el nodo, y su falla va al
@@ -414,8 +542,10 @@ class Nodo:
             await self._suscribir(nc, cuentas.ADMIN.format(self.persona), self._admin, en_fila=True)
             # y el alojamiento (telar.alojamiento): cualquier persona del bus pide un lugar en este servidor
             await self._suscribir(nc, cuentas.ALOJAR.format(self.persona), self._alojar, en_fila=True)
-        for verbo, cb in (("leer", self._leer), ("resultado", self._resultado),
-                          ("resultado-comentar", self._resultado_comentar), ("proveedor", self._proveedor),
+        for verbo, cb in (("leer", self._leer), ("responder", self._responder_pregunta), ("resultado", self._resultado),
+                          ("resultado-comentar", self._resultado_comentar), ("resultado-agregar", self._resultado_agregar),
+                          ("resultado-visto", self._resultado_visto), ("resultado-sin-ver", self._resultado_sin_ver),
+                          ("proveedor", self._proveedor),
                           ("tarea", self._tarea), ("tipo", self._tipo), ("periodicos", self._periodicos),
                           ("hilo", self._hilo), ("equipo", self._equipo), ("aviso", self._aviso),
                           ("archivo", self._archivo), ("archivo-leer", self._archivo_leer), ("modulo", self._modulo),
@@ -423,7 +553,8 @@ class Nodo:
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
                           ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo), ("hilo-despertar", self._hilo_despertar),
-                          ("hilo-traer", self._hilo_traer), ("codigos", self._codigos)):
+                          ("hilo-traer", self._hilo_traer), ("codigos", self._codigos), ("contexto", self._contexto),
+                          ("avisos-archivo", self._avisos_archivo), ("avisos-visto", self._avisos_visto)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     def releer_config(self) -> bool:
@@ -481,27 +612,42 @@ class Nodo:
         # renombrado (lo que le mandó una máquina que todavía no tiene su agente.toml nuevo)
         renombrados = getattr(self, "renombrados", {})
         for nombre in [*locales, *renombrados]:
-            f = mod_bus.ficha(nombre)
+            f = mod_bus.ficha(nombre, self.config)
             if f not in self.subs:
-                self.subs[f] = await js.pull_subscribe(mod_bus.tema_casilla(self.config, nombre),
+                self.subs[f] = await js.pull_subscribe(mod_bus.tema_casilla(self.config, nombre, ficha_=f),
                                                        durable=f"c-{self.persona}-{f}", stream=mod_bus.STREAM)
-        for f in [f for f in self.subs if f not in {mod_bus.ficha(n) for n in [*locales, *renombrados]}]:
+        for f in [f for f in self.subs if f not in {mod_bus.ficha(n, self.config) for n in [*locales, *renombrados]}]:
             del self.subs[f]  # se fue a otra máquina: que lo recoja aquella
         await self._recoger(locales)
+        # lo que el bus daba vivo aquí al arrancar, si entonces no se pudo leer
+        if not getattr(self, "sembrado", True) and self.vueltas % ESPEJO_CADA == 0:
+            await self.sembrar(kv)
         # estado: solo lo que cambió, y que dejó de estar vivo lo que ya no está aquí
         from datetime import datetime
 
         actuales = dict(locales)
+        sembrados = getattr(self, "sembrados", set())
+        await self._soltar_claves_movidas(kv, actuales)
         for clave, valor in list(self.publicado.items()):
             previo = json.loads(valor)
             if previo["nombre"] not in actuales and previo.get("vivo"):
+                if clave in self.vistos:
+                    # ya lo publica otra máquina (se mudó): no es de aquí, y publicarlo muerto le pisaría su estado
+                    del self.publicado[clave]
+                    self.ausentes.pop(previo["nombre"], None)
+                    sembrados.discard(previo["nombre"])
+                    continue
                 # muerto solo si falta dos vueltas seguidas: una lectura de tmux que falla una vez
                 # no tiene por qué anunciarle a la otra máquina que el hilo se fue
                 self.ausentes[previo["nombre"]] = self.ausentes.get(previo["nombre"], 0) + 1
                 if self.ausentes[previo["nombre"]] < 2:
                     actuales[previo["nombre"]] = previo
                     continue
-                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "ventana": ""}
+                actuales[previo["nombre"]] = {**previo, "vivo": False, "atencion": "ninguna", "ventana": "", "dormido": False}
+                if previo["nombre"] in sembrados:
+                    sembrados.discard(previo["nombre"])
+                    self.anotar(f"«{previo['nombre']}»: el bus lo daba vivo aquí desde antes de que arrancara el nodo "
+                                f"y aquí no está: lo publico muerto")
             elif previo["nombre"] not in actuales:
                 # ya publicado como muerto: si aquí se archivó o se vinculó después (lo pidió otra
                 # máquina), se vuelve a publicar con lo nuevo. Salvo que ya lo publique otra máquina
@@ -514,6 +660,7 @@ class Nodo:
                     actuales[previo["nombre"]] = nuevo
         for nombre in locales:
             self.ausentes.pop(nombre, None)
+            sembrados.discard(nombre)
         # cada 6 s, los residentes que rotan su conversación con relevo (telar.rotacion): el /clear y el aviso
         if self.vueltas % 3 == 0:
             try:
@@ -534,10 +681,42 @@ class Nodo:
                 await asyncio.to_thread(self.mirar_deseado, locales)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"el estado deseado: {type(e).__name__}: {e}")
+            # y quién quedó detenido en la pregunta de confiar en una carpeta, que no avisa sola (telar.confiar)
+            try:
+                await asyncio.to_thread(self.mirar_confiar)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"la pregunta de confiar: {type(e).__name__}: {e}")
+            # y los hilos quietos se duermen: su agente se cierra y su ventana espera (telar.dormir)
+            try:
+                await asyncio.to_thread(self.mirar_dormir)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"dormir a los quietos: {type(e).__name__}: {e}")
+            # y lo visto de los avisos de archivo que ya dicen ok se olvida: si vuelve a estar mal, sale (telar.avisos)
+            try:
+                from telar import avisos
+
+                await asyncio.to_thread(avisos.olvidar_los_ok, self.config)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"lo visto de los avisos: {type(e).__name__}: {e}")
             # y lo de los hilos ajenos sigue valiendo mientras se vigila el bus: sin esto, caduca
             vigia = getattr(self, "vigia", None)
             if vigia is not None and not vigia.done() and getattr(self, "ajenos_listos", False):
                 await asyncio.to_thread(lambda: mod_estado.abrir(self.config).refrescar_ajenos())
+            # y que las fotos de las otras máquinas dicen algo: con el nodo de aquí conectado, la que envejece es la de
+            # una máquina que se fue (telar.alcance); sin esta marca, se supone que contestan
+            if getattr(getattr(self, "nc", None), "is_connected", False):
+                from telar import alcance
+
+                await asyncio.to_thread(alcance.marcar_al_dia, self.config)
+        # cada 6 s, lo que espera en cola para una máquina que estaba fuera de línea y volvió (telar.alcance): aparte,
+        # porque cada pedido puede esperar hasta su plazo, y la vuelta no debe esperarlo
+        if self.vueltas % 3 == 0:
+            tarea = getattr(self, "tarea_cola", None)
+            if tarea is None or tarea.done():
+                from telar import alcance
+
+                if alcance.cola(self.config):
+                    self.tarea_cola = asyncio.create_task(asyncio.to_thread(self.atender_cola))
         for nombre, info in actuales.items():
             valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
             clave = mod_bus.clave_estado(self.config, nombre)
@@ -548,7 +727,15 @@ class Nodo:
         # la foto del espejo, cada tanto: la que muestra el panel en la otra máquina. Y al tiro si cambió qué hilos
         # hay o cuáles están vivos (uno se cerró, se archivó, nació): la otra máquina lo ve en segundos, no en 30
         self.vueltas += 1
-        firma = sorted((n, bool(i.get("vivo"))) for n, i in locales.items())
+        firma = sorted((n, bool(i.get("vivo")), bool(i.get("dormido"))) for n, i in locales.items())
+        # y lo que muestran las páginas de aquí: la máquina de un hilo que se empieza a mirar desde aquí no lo duerme
+        # (telar.dormir, `mirando` en la foto)
+        try:
+            from telar import dormir
+
+            firma = (firma, sorted((p["maquina"], p["hilo"]) for p in dormir.paginas(self.config)))
+        except Exception:  # noqa: BLE001 - sin poder leerlas, la firma de los hilos
+            pass
         if self.vueltas % ESPEJO_CADA == 1 or firma != getattr(self, "firma_foto", None):
             self.firma_foto = firma
             foto = await asyncio.to_thread(self.foto)
@@ -558,13 +745,58 @@ class Nodo:
                 from telar import cuentas, entre_personas
 
                 await self.nc.publish(cuentas.DIRECTORIO.format(self.persona), json.dumps(
-                    entre_personas.directorio(foto, self.persona), ensure_ascii=False).encode())
+                    entre_personas.directorio(foto, self.persona, self.config), ensure_ascii=False).encode())
             # y las ventanas de los hilos de las otras máquinas, contra lo que dice el bus: un evento perdido,
             # o una ventana cerrada aquí sin cambio allá, se corrige aquí (un dueño por hilo, paso 2)
             try:
                 await asyncio.to_thread(self.conciliar)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"conciliar las ventanas: {type(e).__name__}: {e}")
+
+    async def _soltar_claves_movidas(self, kv, actuales: dict) -> list[str]:
+        """Un hilo de aquí que se apartó (telar.casilla.separar) publicaba su estado con la forma normalizada de su
+        nombre, que ahora es solo del otro: esa clave se suelta (se borra del estado, salvo que la publique otro
+        hilo de aquí), para que quien busque al otro no lo encuentre a él. Lo mismo la clave apartada de uno que ya
+        no lo está (se renombró): quien le escriba a un hilo nuevo con ese nombre no debe ir a parar a ella
+        (telar.bus.ficha_para). Devuelve las claves que soltó."""
+        from telar import casilla
+
+        nuevas = {mod_bus.clave_estado(self.config, n) for n in actuales}
+        sueltas = []
+        for clave, valor in list(self.publicado.items()):
+            try:
+                nombre = json.loads(valor).get("nombre")
+            except (ValueError, AttributeError):
+                continue
+            if not isinstance(nombre, str) or clave == mod_bus.clave_estado(self.config, nombre):
+                continue
+            if nombre not in actuales and not casilla.es_apartada(clave.partition(".")[2]):
+                continue  # uno que se fue (se mudó, se cerró) con su clave de siempre: eso lo ve la vuelta
+            del self.publicado[clave]
+            sueltas.append(clave)
+            if clave in nuevas:
+                continue  # la publica el otro hilo de aquí en esta misma vuelta
+            try:
+                # solo si lo que está ahí sigue siendo suyo: el dueño de la forma, en otra máquina, también publicaba
+                # ahí (se pisaban), y borrarle su estado lo dejaría fuera del bus hasta que cambie algo suyo
+                actual = json.loads((await kv.get(clave)).value or b"{}")
+                if isinstance(actual, dict) and actual.get("nombre") == nombre:
+                    await kv.delete(clave)
+            except Exception as e:  # noqa: BLE001 - ya no está, o no se pudo: lo pisa el otro al publicar
+                if type(e).__name__ not in ("KeyNotFoundError", "KeyDeletedError"):
+                    self.anotar(f"«{nombre}»: no pude soltar su clave de antes ({clave}): {type(e).__name__}: {e}")
+        return sueltas
+
+    def atender_cola(self) -> list[str]:
+        """Lo que espera en cola para las máquinas que volvieron (telar.alcance.atender); una falla se dice y se
+        intenta en otra vuelta."""
+        from telar import alcance
+
+        try:
+            return alcance.atender(self.ctx, anotar=self.anotar)
+        except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+            self.anotar(f"lo que espera en cola: {type(e).__name__}: {e}")
+            return []
 
     def recortar_registro(self) -> bool:
         from telar import salida
@@ -582,7 +814,7 @@ class Nodo:
 
         async def pedir(nombre):
             try:
-                return await self.subs[mod_bus.ficha(nombre)].fetch(20, timeout=CASILLA_ESPERA)
+                return await self.subs[mod_bus.ficha(nombre, self.config)].fetch(20, timeout=CASILLA_ESPERA)
             except Exception:  # noqa: BLE001 - sin mensajes, fetch termina por tiempo
                 return []
 
@@ -597,10 +829,14 @@ class Nodo:
         nuevos: dict[str, int] = {}
         callados: dict[str, int] = {}
         encargos: set[str] = set()
-        for (fuente, nombre), msgs in zip(caminos, await asyncio.gather(*(pedir(f) for f, _ in caminos))):
+        for (fuente, dueno), msgs in zip(caminos, await asyncio.gather(*(pedir(f) for f, _ in caminos))):
             for m in msgs:
+                nombre = dueno
                 try:
                     datos = json.loads(m.data)
+                    # lo que llegó por la casilla compartida para un hilo vivo de aquí que se apartó (de un telar
+                    # que todavía no sabe de fichas apartadas): a ese, no al dueño de la forma normalizada
+                    nombre = casilla.destinatario(self.config, dueno, datos, locales) if isinstance(datos, dict) else dueno
                     if await asyncio.to_thread(casilla.dejar, self.config, nombre, datos):
                         if isinstance(datos, dict) and not casilla.despierta(datos):
                             # un aviso: queda en su casilla, sin despertarlo ni abrir su sesión
@@ -617,7 +853,7 @@ class Nodo:
         for nombre, cuantos in callados.items():
             self.anotar(f"«{nombre}»: {cuantos} aviso(s) en su casilla, sin despertarlo")
         for nombre, cuantos in nuevos.items():
-            dicho = await asyncio.to_thread(self.avisar, nombre, locales[nombre], nombre in encargos)
+            dicho = await asyncio.to_thread(self.avisar, nombre, locales.get(nombre, {}), nombre in encargos)
             self.anotar(f"«{nombre}»: {cuantos} mensaje(s) · {dicho}")
 
     async def _vigilar(self, kv) -> None:
@@ -789,6 +1025,8 @@ class Nodo:
                 local = tel.por_nombre(aqui) if aqui else None
                 if not aqui or (local is not None and tel.vivo(local)) or aqui in tel.estado.archivados():
                     return
+                if not self.puede_reabrir(d, aqui):
+                    return
                 mod_remoto.traer(tel, remoto, sesion, aqui)
                 self.anotar(f"«{aqui}»: su ventana se había cerrado y la sesión sigue en {remoto.nombre}: la reabrí")
                 return
@@ -814,6 +1052,29 @@ class Nodo:
             if anotado.get("remoto") == remoto.nombre:
                 tel.mux.cerrar(hilo.id)
                 self.anotar(f"«{nombre}»: su sesión en {remoto.nombre} terminó; cerré la ventana (▶ la retoma)")
+
+    def puede_reabrir(self, d: dict, aqui: str = "", ahora: float | None = None) -> bool:
+        """Si se puede reabrir otra vez la ventana de un hilo de otra máquina, y si sí, la cuenta. Con un estado
+        viejo en el bus (el hilo murió allá sin que su nodo lo publicara) la ventana que se trae muere en segundos,
+        porque allá ya no existe, y sin tope se reabriría en cada vuelta: la barra lo mostraría abierto y cerrado.
+        Reabierta REABRIR_TOPE veces en REABRIR_EN segundos, no se reabre más, y se dice una vez. La cuenta vuelve
+        a cero cuando cambia su dirección o cuando el hilo publica otra cosa (lo que llega del bus es distinto)."""
+        ahora = time.monotonic() if ahora is None else ahora
+        nombre, sesion = d.get("nombre", ""), d.get("ventana", "")
+        huella = json.dumps(d, ensure_ascii=False, sort_keys=True, default=str)
+        r = self.reabiertas.get(nombre)
+        if r is None or r["sesion"] != sesion or r["huella"] != huella:
+            r = self.reabiertas[nombre] = {"sesion": sesion, "huella": huella, "veces": [], "parada": False}
+        if r["parada"]:
+            return False
+        r["veces"] = [t for t in r["veces"] if ahora - t < REABRIR_EN]
+        if len(r["veces"]) >= REABRIR_TOPE:
+            r["parada"] = True
+            self.anotar(f"«{aqui or nombre}»: reabrí su ventana {len(r['veces'])} veces en {REABRIR_EN // 60} min "
+                        f"y se vuelve a cerrar; allá no contesta: no la reabro más (hasta que publique algo nuevo)")
+            return False
+        r["veces"].append(ahora)
+        return True
 
     def _revivir(self, tel, aqui: str, d: dict, donde: str) -> None:
         """Un hilo archivado aquí, cuyo agente vuelve a trabajar allá, se desarchiva: igual que aquí un
@@ -846,7 +1107,16 @@ class Nodo:
 
         try:
             tel = _comun.tejer(self.ctx)
-            return espejo.foto(tel, maquina=self.yo, version_telar=__version__, web=self.web)
+            from telar import dormir
+
+            # lo que se mira aquí, para que la máquina de cada hilo no lo duerma (telar.dormir)
+            try:
+                mirando = dormir.mirando_de_aqui(self.config, tel)
+            except Exception as e:  # noqa: BLE001 - sin eso, la foto de siempre (allá cuentan como mirados)
+                self.anotar(f"lo que se mira aquí: {type(e).__name__}: {e}")
+                mirando = None
+            return espejo.foto(tel, maquina=self.yo, version_telar=__version__, web=self.web, mirando=mirando,
+                               vista=dormir.sufijo_vista(), agentes=espejo.agentes_de(self.config))
         except Exception as e:  # noqa: BLE001
             self.anotar(f"la foto del espejo no salió: {type(e).__name__}: {e}")
             return None
@@ -909,7 +1179,8 @@ class Nodo:
             if await self._hilo_existe(c["para"]) is False:
                 raise entre_personas.CorreoInvalido(f"{self.persona} no tiene un hilo «{c['para']}»")
             msg = mod_bus.mensaje(c["texto"], de=c["de"], para=c["para"], tipo="correo", persona=c["persona"])
-            await self.js.publish(mod_bus.tema_casilla(self.config, c["para"]),
+            # `para` ya es la palabra de su casilla (la del directorio): se usa tal cual
+            await self.js.publish(mod_bus.tema_casilla(self.config, c["para"], ficha_=c["para"]),
                                   json.dumps(msg, ensure_ascii=False).encode(), headers={"Nats-Msg-Id": msg["id"]})
             # con id, como la de `telar mensaje` (telar.bus.enviar): si se repite, el bus la descarta
             await self.js.publish(f"registro.{self.persona}", json.dumps({**msg, "estado": "enviado"},
@@ -988,8 +1259,26 @@ class Nodo:
             r = await asyncio.to_thread(leer)
         except Exception as e:  # noqa: BLE001
             r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
-        await m.respond(json.dumps(r, ensure_ascii=False).encode())
+        await m.respond(mod_bus.empacar(r, mod_bus.maximo_de(m)))
 
+
+    async def _responder_pregunta(self, m) -> None:
+        """Contestar la pregunta abierta de un hilo de aquí (telar.historia.responder), desde la página de otra máquina.
+        Lo que no se puede leer desde otra (`[bus] no_leer`) tampoco se contesta."""
+        from telar import historia
+
+        def responder(pedido: dict) -> dict:
+            tel = _comun.tejer(self.ctx, con_ficha=False)
+            hilo = tel.por_nombre(str(pedido.get("hilo", "")))
+            if hilo is None or historia.vetado(historia.no_leer(self.config), hilo.nombre,
+                                               tel.estado.vinculos().get(hilo.nombre, "")):
+                return {"ok": False, "codigo": 404, "error": f"aquí no hay un hilo «{pedido.get('hilo', '')}» que se pueda contestar"}
+            try:
+                return historia.responder(self.config, hilo.nombre, str(pedido.get("id", "")), pedido.get("respuestas") or {})
+            except historia.ErrorDeRespuesta as e:
+                return {"ok": False, "codigo": e.codigo, "error": str(e)}
+
+        await self._responder(m, responder)
 
     async def _responder(self, m, hacer) -> None:
         try:
@@ -997,13 +1286,20 @@ class Nodo:
             r = await asyncio.to_thread(hacer, pedido)
         except Exception as e:  # noqa: BLE001 - un pedido roto se responde con su error
             r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
-        await m.respond(json.dumps(r, ensure_ascii=False).encode())
+        # la grande (todas las tareas, con su texto) va comprimida: sin eso no salía, y el otro esperaba hasta su plazo
+        await m.respond(mod_bus.empacar(r, mod_bus.maximo_de(m)))
 
     async def _codigos(self, m) -> None:
         """Los códigos de un hilo de aquí (telar.servicios.codigos), para la página de otra máquina."""
         from telar.servicios import codigos
 
         await self._responder(m, lambda p: codigos.para_otra(self.ctx, p))
+
+    async def _contexto(self, m) -> None:
+        """Lo que carga el contexto de un hilo de aquí (telar.servicios.carga), para la página de otra máquina."""
+        from telar.servicios import carga
+
+        await self._responder(m, lambda p: carga.para_otra(self.ctx, p))
 
     async def _resultado(self, m) -> None:
         from telar import resultados
@@ -1015,6 +1311,26 @@ class Nodo:
 
         await self._responder(m, lambda p: resultados.comentar_local(
             self.config, str(p.get("clave", "")), str(p.get("dia", "")), str(p.get("texto", ""))))
+
+    async def _resultado_agregar(self, m) -> None:
+        """Pasadas de un resultado que vive aquí (telar.pasadas), mandadas desde otra máquina: se agregan aquí."""
+        from telar import pasadas
+
+        await self._responder(m, lambda p: pasadas.agregar_local(
+            self.config, str(p.get("clave", "")), p.get("pasadas"), saltar_repetidas=bool(p.get("saltar_repetidas")),
+            nombres=p.get("nombres")))
+
+    async def _resultado_visto(self, m) -> None:
+        from telar import pasadas
+
+        await self._responder(m, lambda p: pasadas.marcar_visto_local(self.config, str(p.get("clave", "")), str(p.get("id", "")),
+                                                                     str(p.get("mundo", "") or "")))
+
+    async def _resultado_sin_ver(self, m) -> None:
+        from telar import pasadas
+
+        # clasificadas aquí, con la configuración y las tareas de aquí
+        await self._responder(m, lambda p: pasadas.sin_ver_local(self.config, str(p.get("clave", "")), ctx=self.ctx))
 
     async def _cambio(self, m) -> None:
         """Algo cambió en alguna máquina (`telar cambio`): se anota aquí para que el dashboard lo relea, y salen
@@ -1119,6 +1435,26 @@ class Nodo:
             return ""
         texto = next((str(m.get("texto") or "") for m in reversed(mensajes) if m.get("quien") == "agente"), "").strip()
         return texto if len(texto) <= tope else texto[:tope].rstrip() + "…"
+
+    def mirar_confiar(self) -> list[str]:
+        """Los hilos de aquí detenidos en la pregunta de Claude Code de confiar en una carpeta (telar.confiar): quedan
+        esperando a la persona, y lo que cambió va al registro. Nunca la contesta. Devuelve lo que cambió."""
+        from telar import confiar
+
+        cambios = confiar.mirar(self.config, _comun.tejer(self.ctx, con_ficha=False))
+        for linea in cambios:
+            self.anotar(linea)
+        return cambios
+
+    def mirar_dormir(self) -> list[str]:
+        """Los hilos de aquí que llevan `[hilos] dormir_tras` quietos se duermen (telar.dormir); lo que pasó va al
+        registro. Devuelve lo que cambió."""
+        from telar import dormir
+
+        cambios = dormir.mirar(self.config, _comun.tejer(self.ctx, con_ficha=False))
+        for linea in cambios:
+            self.anotar(linea)
+        return cambios
 
     def mirar_deseado(self, locales: dict) -> None:
         """Los residentes de aquí sin sesión: una línea al registro cuando cambia, y `deseado.json` para doctor."""
@@ -1278,11 +1614,14 @@ class Nodo:
         await self._responder(m, abrir)
 
     async def _hilo_despertar(self, m) -> None:
-        """A un hilo dormido o archivado de aquí le llegó un mensaje desde otra máquina: se retoma para que lo lea
-        (telar.ordenes.mensaje.despertar)."""
-        from telar.ordenes import mensaje
+        """Otra máquina pide despertar a un hilo de aquí (telar.alcance): uno dormido, en su ventana; uno cerrado o
+        archivado, retomado con su conversación (le llegó un mensaje, o lo pidió la persona desde allá); uno despierto
+        queda como está. `texto`, su primer mensaje. Responde {ok, hecho, estaba}: un telar de antes respondía {ok}
+        solo, y así lo reconoce quien pide."""
+        from telar import alcance
 
-        await self._responder(m, lambda p: mensaje.despertar_aqui(self.ctx, str(p.get("hilo") or "")))
+        await self._responder(m, lambda p: alcance.despertar_aqui(self.ctx, str(p.get("hilo") or ""),
+                                                                 str(p.get("texto") or "")))
 
     async def _hilo_traer(self, m) -> None:
         """Otra máquina de esta persona pide para sí un hilo que vive aquí («traer a esta máquina»): se le lleva con
@@ -1305,6 +1644,20 @@ class Nodo:
             return alla.tarea_aqui(argv, "equipo")
 
         await self._responder(m, correr)
+
+    async def _avisos_archivo(self, m) -> None:
+        """Los avisos que vienen de un archivo de esta máquina (telar.avisos), para la página de otra: solo los que la
+        configuración de aquí declara como suyos."""
+        from telar import avisos
+
+        await self._responder(m, lambda p: avisos.para_otra(self.config, p))
+
+    async def _avisos_visto(self, m) -> None:
+        """Dar por visto un aviso de un archivo de esta máquina, que pide la página de otra (telar.avisos): solo uno que
+        la configuración de aquí declara."""
+        from telar import avisos
+
+        await self._responder(m, lambda p: avisos.visto_para_otra(self.config, p))
 
     async def _aviso(self, m) -> None:
         """Un aviso en la pantalla de esta máquina, que manda otra (telar.entrega)."""

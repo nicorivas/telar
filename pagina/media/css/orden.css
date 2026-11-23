@@ -1,0 +1,18 @@
+/* El orden (componentes/orden.ts): el grupo de la banda de herramientas que ordena una lista. Su ícono padre y sus
+   opciones, cada uno en su celda cuadrada del alto de la fila (como los botones de un ítem, item.css), con un cuadrado
+   vacío entre ícono e ícono, entre dos cortes en el púrpura del orden. La banda que lo contiene (.herram) es de la lista que lo usa. La máquina de la barra
+   (`.ord.i` suelto en HILOS) comparte la celda y el color: es otra acción de la banda, no del grupo. */
+
+.orden { display: inline-flex; flex: none; align-items: center; }
+.corte.de-orden { --corte: var(--orden-linea); }
+.ord,
+.orden-padre { display: inline-block; flex: none; inline-size: calc(var(--item-alto) * 1em); text-align: center; }
+/* entre dos íconos seguidos, un espacio cuadrado (la grilla, item.css); junto a un corte, no: el corte ya es su celda.
+   En el teléfono, todavía no: con las celdas para el dedo, el buscador de la banda quedaría en cinco letras (falta
+   decidir qué cede ahí) */
+:is(.ord, .orden-padre) + .ord { margin-inline-start: var(--entre-celdas); }
+.angosto :is(.ord, .orden-padre) + .ord { margin-inline-start: 0; }
+.orden-padre { color: var(--texto-tenue); cursor: default; }
+.ord { color: var(--texto-tenue); cursor: pointer; }
+.ord:hover { color: var(--texto); }
+.ord.si { color: var(--titulo); }

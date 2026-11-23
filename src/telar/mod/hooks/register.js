@@ -6,32 +6,45 @@
 // 1. La casilla. Cuando llegan mensajes y la sesión está ociosa, manda la línea de aviso («↯ mensaje
 //    nuevo · …») como un mensaje, y el gancho UserPromptSubmit de siempre le agrega el contenido. Antes ese
 //    aviso lo tecleaba el nodo en la terminal, y podía caer sobre lo que la persona estaba escribiendo. Si
-//    la sesión trabaja, nada: el gancho Stop entrega los mensajes al terminar el turno.
-// 2. El semáforo. Dice en qué anda la sesión (`telar agente aviso --evento …`) desde sus propios eventos:
+//    la sesión trabaja, nada: el gancho Stop entrega los mensajes al terminar el turno. Un aviso mandado no
+//    se repite mientras no haya tenido su turno: `$.prompt.submit` resuelve al encolarlo, y el turno empieza
+//    recién cuando terminan los ganchos de UserPromptSubmit (con la máquina cargada, segundos). Lo que un
+//    gancho imprimió y la conversación todavía no muestra (casilla/camino/) también lo hace preguntar: si
+//    al gancho lo mataron, `telar agente mod` lo devuelve a la casilla y el aviso sale de nuevo.
+// 2. El semáforo. Dice en qué anda la sesión (`telar agente evento --evento …`) desde sus propios eventos:
 //    empieza y termina con el turno (también uno interrumpido con Esc, que el gancho Stop no ve), espera
 //    cuando aparece un diálogo de permiso o una pregunta, y sigue cuando se contesta. Con el mod vivo, los
-//    ganchos clásicos de esos cuatro eventos no avisan (telar agente aviso los descarta), para no avisar dos
+//    ganchos clásicos de esos cuatro eventos no avisan (telar agente evento los descarta), para no avisar dos
 //    veces.
 // 3. La conversación. Mientras la sesión avanza, deja sus últimos mensajes ya estructurados en la casilla
 //    (mod/conversacion.json, aparte de los mensajes pendientes): lo que escribió la persona, lo que
 //    contestó el agente y cada herramienta con lo que la distingue. Con eso telar lee el hilo (el modo
 //    lectura de la página, `telar hilo leer`) sin descifrar el registro de Claude Code, que cambia de forma
-//    sin avisar.
+//    sin avisar. De una pregunta del agente (AskUserQuestion) guarda además las preguntas, sus opciones y lo
+//    respondido.
+// 4. Las preguntas, desde afuera. Mientras el diálogo de una pregunta está abierto en la terminal, la deja en
+//    mod/pregunta.json y mira mod/respuesta.json, donde telar deja lo que la persona contestó en la página
+//    (`POST /hilos/responder`, también desde otra máquina por el bus). Lo que llegue primero gana: la
+//    respuesta de afuera cierra el diálogo y el agente la recibe como si la hubiera elegido ahí; si contestan
+//    en la terminal, sigue como siempre. Al cerrarse, mod/pregunta.json dice que se cerró y por dónde.
 
 const CADA_MS = 2000        // cada cuánto mira la casilla
 const VIDA_MS = 10_000      // cada cuánto toca la señal de vida (el nodo la da por muerta a los 30 s)
 const RESOLVER_MS = 60_000  // cada cuánto vuelve a preguntar el hilo (pudo cambiar de nombre)
+const TURNO_MS = 120_000    // cuánto espera un aviso mandado a que empiece su turno; después se da por perdido
 
 let hilo = ''          // el hilo de esta sesión; '' si no es de telar
 let casilla = ''       // su carpeta de mensajes
 let trabajando = false
 let enviando = false
+let avisado = null     // cuándo salió un prompt (el aviso, o uno de la persona) que todavía no tuvo su turno
 let vida = 0
 let resuelto = 0
 let guardando = false  // ya hay una escritura de la conversación en camino
 const MENSAJES = 300   // cuántos mensajes de la conversación se guardan, los últimos
 const TEXTO = 8000     // caracteres por mensaje
 const DETALLE = ['description', 'command', 'file_path', 'pattern', 'url', 'query', 'prompt']
+const PREGUNTA_MS = 500 // cada cuánto mira si llegó la respuesta de afuera, mientras hay una pregunta abierta
 let semaforo = ''      // el último evento avisado: no se repite el mismo
 let cola = Promise.resolve()  // los avisos salen de a uno y en orden
 
@@ -55,7 +68,7 @@ function avisar($, evento) {
 
 async function correrAviso($, evento) {
   const telar = await ejecutable($)
-  const argv = [...telar, 'agente', 'aviso', 'claude-code', '--evento', evento, '--hilo', hilo, '--sesion', await $.session.id()]
+  const argv = [...telar, 'agente', 'evento', 'claude-code', '--evento', evento, '--hilo', hilo, '--sesion', await $.session.id()]
   await $.process.run(argv, { timeoutMs: 15_000 })
 }
 
@@ -102,17 +115,94 @@ async function guardar($) {
         const v = u.input ? u.input[k] : undefined
         if (typeof v === 'string' && v.trim()) input[k] = v.slice(0, 300)
       }
-      return { tool: u.tool, input }
+      return u.tool === 'AskUserQuestion' ? { tool: u.tool, input, pregunta: resumenPregunta(u) } : { tool: u.tool, input }
     }),
   }))
   const datos = { sesion: await $.session.id(), hora: await $.clock.now(), total: todos.length, mensajes }
   await $.fs.write(casilla + '/mod/conversacion.json', JSON.stringify(datos))
 }
 
+const corto = (v, n) => (typeof v === 'string' ? v.slice(0, n) : '')
+
+// una pregunta del agente: lo preguntado (sin las vistas previas), lo respondido y en qué está. `pendiente`
+// mientras corre (Claude Code todavía no guarda su resultado); `cancelada` si se cerró sin respuesta
+function resumenPregunta(u) {
+  const qs = u.input && Array.isArray(u.input.questions) ? u.input.questions : []
+  const questions = qs.slice(0, 8).map((q) => ({
+    question: corto(q && q.question, 1000),
+    header: corto(q && q.header, 60),
+    multiSelect: !!(q && q.multiSelect),
+    options: (q && Array.isArray(q.options) ? q.options : []).slice(0, 8)
+      .map((o) => ({ label: corto(o && o.label, 200), description: corto(o && o.description, 500) })),
+  }))
+  const r = u.result && typeof u.result === 'object' ? u.result : null
+  const answers = r && r.answers && typeof r.answers === 'object' ? r.answers : null
+  const estado = u.text === undefined ? 'pendiente' : u.isError || !answers ? 'cancelada' : 'respondida'
+  return { id: u.tool_use_id, questions, estado, ...(answers ? { answers } : {}) }
+}
+
+async function escribirPregunta($, datos) {
+  try {
+    await $.fs.write(casilla + '/mod/pregunta.json', JSON.stringify(datos))
+  } catch {
+    // sin la casilla, la pregunta se contesta solo en la terminal
+  }
+}
+
+// lo que la persona contestó afuera (mod/respuesta.json, lo deja telar): solo si es de esta pregunta
+async function respuestaDeAfuera($, id) {
+  try {
+    const ruta = casilla + '/mod/respuesta.json'
+    if (!(await $.fs.exists(ruta))) return null
+    const d = JSON.parse(await $.fs.read(ruta))
+    if (d && d.id === id && d.respuestas && typeof d.respuestas === 'object') return d.respuestas
+  } catch {
+    // a medio escribir, o roto: en la próxima vuelta
+  }
+  return null
+}
+
+// el diálogo de la terminal y la respuesta de afuera, a la vez: gana la primera. La de afuera se devuelve como el
+// resultado de la herramienta (el diálogo, abandonado, se cierra solo)
+async function abrirPregunta($, e, next) {
+  const id = e.tool_use_id
+  await escribirPregunta($, { id, estado: 'abierta', desde: await $.clock.now(), preguntas: e.questions })
+  let reloj = null
+  const deAfuera = new Promise((resolver) => {
+    reloj = $.clock.every(PREGUNTA_MS, async () => {
+      const r = await respuestaDeAfuera($, id)
+      if (r) resolver(r)
+    })
+  })
+  const dialogo = next(e)
+  let por = 'terminal'
+  try {
+    const gano = await Promise.race([dialogo.then((r) => ({ r })), deAfuera.then((respuestas) => ({ respuestas }))])
+    if (!gano.respuestas) return gano.r
+    por = 'afuera'
+    dialogo.catch(() => {})
+    return { result: { questions: e.questions, answers: gano.respuestas } }
+  } finally {
+    // nada de aquí puede fallar hacia afuera: el .catch del gancho volvería a correr la herramienta (otro diálogo)
+    try {
+      if (reloj) reloj.cancel()
+      await escribirPregunta($, { id, estado: 'cerrada', por, hora: await $.clock.now() })
+      guardarPronto($)
+    } catch {
+      // la pregunta queda «abierta» en la casilla; telar la da por cerrada cuando la conversación muestra su resultado
+    }
+  }
+}
+
+const esMensaje = (f) => f.kind === 'file' && f.name.endsWith('.json')
+
 async function hayMensajes($) {
   try {
     const entradas = await $.fs.list(casilla)
-    return entradas.some((f) => f.kind === 'file' && f.name.endsWith('.json'))
+    if (entradas.some(esMensaje)) return true
+    // lo que un gancho imprimió y la conversación todavía no muestra: `telar agente mod` lo revisa
+    if (!entradas.some((f) => f.kind === 'dir' && f.name === 'camino')) return false
+    return (await $.fs.list(casilla + '/camino')).some(esMensaje)
   } catch {
     return false
   }
@@ -126,16 +216,22 @@ async function vuelta($) {
     vida = ahora
     await $.fs.write(casilla + '/.mod', String(ahora))
   }
-  if (trabajando || enviando || !(await hayMensajes($))) return
+  if (trabajando || enviando) return
+  // el aviso anterior espera su turno (los ganchos de UserPromptSubmit corren antes): otro sería el mismo aviso
+  // encolado dos veces, y el gancho del primero ya entrega todo lo que haya. Si nunca empieza, se da por perdido
+  if (avisado !== null && ahora - avisado < TURNO_MS) return
+  if (!(await hayMensajes($))) return
   const d = await preguntar($, await $.session.id())
   if (!d.aviso) return
   enviando = true
+  avisado = await $.clock.now()
   try {
     // asUser: el gancho UserPromptSubmit reconoce el aviso por su comienzo («↯») y agrega los mensajes; con
     // otro remitente delante no lo reconocería y cortaría la cadena de mensajes entre hilos
     await $.prompt.submit({ text: d.aviso, asUser: true })
   } catch {
-    // la persona interrumpió o la cola lo soltó: en la próxima vuelta se intenta de nuevo
+    // la persona interrumpió o la cola lo soltó: no espera turno, en la próxima vuelta se intenta de nuevo
+    avisado = null
   } finally {
     enviando = false
   }
@@ -153,10 +249,19 @@ export function register(on) {
   on('turn.start', async ($, e, next) => {
     if (!e.agentId) {
       trabajando = true
+      avisado = null  // el prompt que esperaba (si había) ya tiene su turno
       avisar($, 'empieza')
     }
     return next(e)
   })
+
+  // un prompt de la persona (o el aviso mismo) que espera su turno: sus ganchos de UserPromptSubmit van a entregar lo
+  // que haya en la casilla, así que un aviso ahora sería otro turno de más. Un comando (/clear) no trae turno, y uno
+  // escrito mientras el turno corre (turnId) puede entrar en ese mismo turno sin abrir otro: esos no cuentan
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.command && !e.turnId) avisado = await $.clock.now()
+    return next(e)
+  }).catch(async ($, e, next) => next(e))
 
   // también al interrumpirlo con Esc o al caer por un error de la API
   on('turn.complete', async ($, e, next) => {
@@ -187,11 +292,12 @@ export function register(on) {
     return next(e)
   }).catch(async ($, e, next) => next(e))
 
-  // una pregunta del agente espera respuesta mientras corre; cualquier herramienta que termina de correr
-  // después de una espera quiere decir que la persona contestó
+  // una pregunta del agente espera respuesta mientras corre, en la terminal o desde afuera (abrirPregunta); cualquier
+  // herramienta que termina de correr después de una espera quiere decir que la persona contestó
   on('tool.call', async ($, e, next) => {
-    if (e.tool === 'AskUserQuestion') avisar($, 'espera')
-    const r = await next(e)
+    const pregunta = e.tool === 'AskUserQuestion'
+    if (pregunta) avisar($, 'espera')
+    const r = pregunta && hilo && casilla && e.tool_use_id ? await abrirPregunta($, e, next) : await next(e)
     if (semaforo === 'espera' && trabajando) avisar($, 'sigue')
     return r
   }).catch(async ($, e, next) => next(e)) // si este gancho falla, la herramienta corre igual

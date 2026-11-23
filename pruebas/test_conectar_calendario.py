@@ -138,6 +138,19 @@ class LeerDeGws(Prueba):
         self.assertEqual(comite.inicio.isoformat(), "2026-09-22T11:00:00-03:00")
         self.assertTrue(eventos[0].todo_el_dia)
 
+    def test_cada_uno_dice_lo_que_respondio_la_persona(self):
+        from telar.proveedores.calendario import eventos_de_gws
+        hora = '"start": {"dateTime": "2026-09-22T11:00:00-03:00"}, "end": {"dateTime": "2026-09-22T12:00:00-03:00"}'
+        salida = ('{"items": ['
+                  f'{{"id": "a", "summary": "Acepto", {hora}, "attendees": [{{"self": true, "responseStatus": "accepted"}}]}},'
+                  f'{{"id": "b", "summary": "Quizas", {hora}, "attendees": [{{"self": true, "responseStatus": "tentative"}}]}},'
+                  f'{{"id": "c", "summary": "Nada", {hora}, "attendees": [{{"email": "a@y.cl"}}, {{"self": true, "responseStatus": "needsAction"}}]}},'
+                  f'{{"id": "d", "summary": "Organiza", {hora}, "organizer": {{"self": true}}, '
+                  '"attendees": [{"self": true, "organizer": true, "responseStatus": "accepted"}, {"email": "a@y.cl"}]},'
+                  f'{{"id": "e", "summary": "Propio", {hora}}}]}}')
+        self.assertEqual({e.titulo: e.respuesta for e in eventos_de_gws(salida)},
+                         {"Acepto": "aceptada", "Quizas": "tentativa", "Nada": "sin_responder", "Organiza": "", "Propio": ""})
+
     def test_sin_json_es_un_error_que_se_dice(self):
         from telar.proveedores import ErrorDeProveedor
         from telar.proveedores.calendario import eventos_de_gws

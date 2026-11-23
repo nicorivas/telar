@@ -9,6 +9,8 @@ import * as cli from '../cli';
 import { modelo } from '../modelo';
 import { C, I } from './iconos';
 import { grande } from './letras';
+import { boton as botonHtml, cancelar, type Boton } from '../componentes/boton';
+import { teclasDeBotones } from './botonera';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, clase = '', texto?: string): HTMLElementTagNameMap[K] {
     const e = document.createElement(tag);
@@ -36,9 +38,14 @@ function panel(hilo: string, maquina: string) {
     const barra = el('pre', 'barra');
     const pasos = el('div', 'pasos');
     const linea = el('div', 'linea');
-    const botones = el('div', 'botones');
+    // sus botones: la banda de componentes/boton.ts, vacía mientras viaja
+    const botones = el('div', 'ventana-pie botonera');
+    botones.hidden = true;
     c.append(arriba, letras, barra, pasos, linea, botones);
     document.body.appendChild(c);
+    // las teclas de sus botones; ⎋ aprieta el de ⎋ (no llevarlo, cerrar), y mientras viaja no hace nada
+    teclasDeBotones(c);
+    c.addEventListener('cancel', e => { e.preventDefault(); botones.querySelector<HTMLElement>('[data-tecla="⎋"]')?.click(); });
     c.showModal();
 
     let valor = 0, meta = 0.02, paso = 'revisar', estado: 'va' | 'listo' | 'falla' | 'pregunta' = 'va', vuelta = 0;
@@ -85,24 +92,26 @@ function panel(hilo: string, maquina: string) {
             estado = 'falla'; meta = valor;
             letras.dataset.estado = 'falla';
             linea.textContent = texto;
-            boton('cerrar', C.quitar, () => cerrar());
+            poner([{ ...cancelar('cerrar', null) }], [() => cerrar()]);
         },
         /** lo que allá llegaría a medias: llevar igual, o no */
         preguntar(texto: string): Promise<boolean> {
             estado = 'pregunta';
             linea.textContent = texto;
+            // llevarlo igual no destruye nada (lo que falta sigue aquí): el foco parte en él, con ⏎; no llevarlo es cancelar
             return new Promise(si => {
-                boton('llevar igual', C.hecho, () => { botones.replaceChildren(); estado = 'va'; si(true); });
-                boton('no llevarlo', C.quitar, () => { cerrar(); si(false); });
+                poner([{ texto: 'llevar igual', color: C.hecho, tecla: '⏎', ayuda: 'lo que falta allá sigue aquí' }, cancelar('no llevarlo', null)],
+                    [() => { botones.replaceChildren(); botones.hidden = true; estado = 'va'; si(true); }, () => { cerrar(); si(false); }]);
             });
         },
         cerrar,
     };
-    function boton(nombre: string, color: string, hacer: () => void): void {
-        const a = el('a', '', nombre);
-        a.style.color = `var(--${color})`;
-        a.addEventListener('click', hacer);
-        botones.appendChild(a);
+    /** Los botones de la banda, cada uno con lo que hace; el foco, en el primero. */
+    function poner(bs: Boton[], hacer: (() => void)[]): void {
+        botones.innerHTML = bs.map(botonHtml).join('');
+        botones.hidden = false;
+        [...botones.querySelectorAll<HTMLButtonElement>('button')].forEach((b, i) => b.addEventListener('click', hacer[i]));
+        botones.querySelector<HTMLButtonElement>('button')?.focus();
     }
     function cerrar(): void { clearInterval(reloj); if (c.open) c.close(); c.remove(); }
 }
@@ -171,12 +180,17 @@ export async function llevar(hilo: string, maquina: string, alLlegar: () => Prom
     }
 }
 
-/** La transición sin mudar nada, con tiempos inventados: para mirarla y afinarla (`window.telar.ensayoMudanza()`). */
-export async function ensayo(maquina = 'telar', falla = false): Promise<void> {
+/** La transición sin mudar nada, con tiempos inventados: para mirarla y afinarla (`window.telar.ensayoMudanza()`). Con
+ *  `falla`, termina en una falla; con `'pregunta'`, se queda en lo que allá llegaría a medias (llevar igual, o no). */
+export async function ensayo(maquina = 'telar', falla: boolean | 'pregunta' = false): Promise<void> {
     const p = panel('prueba', maquina);
     const espera = (ms: number) => new Promise(r => setTimeout(r, ms));
     p.paso('revisar', `preguntándole a ${maquina} si lo puede recibir…`); await espera(900);
     p.paso('cerrar', 'cerrándolo aquí, para que no siga en dos máquinas a la vez…'); await espera(700);
+    if (falla === 'pregunta') {
+        const si = await p.preguntar('· personal/proyectos/telar: 3 commits sin subir\n· personal/proyectos/telar: 2 archivos sin commitear');
+        if (!si) return;
+    }
     p.paso('copiar', 'copiando 2,3 MB…'); await espera(3200);
     if (falla) { p.falla(`${maquina} recibió la conversación pero no abrió el hilo: no pude abrir el hilo: claude no está en el PATH. Se volvió a abrir aquí, con su conversación.`); return; }
     p.paso('abrir', `abriéndolo en ${maquina}, retomando su conversación…`); await espera(1400);

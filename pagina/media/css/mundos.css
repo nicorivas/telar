@@ -1,0 +1,152 @@
+/* La ventana de mundos (src/componentes/mundos-ventana.ts; lo vivo, src/web/mundos-ventana.ts): una tarjeta por mundo, en una
+   grilla partida por líneas de borde a borde (las de entre tarjetas van de la cabecera al pie; la que aparta el arte del texto
+   cruza la ventana entera). Las líneas son el fondo de la grilla que se ve entre tarjetas (gap de 1px), así que siempre son
+   del color de las demás. Sin esquinas redondeadas ni otro tamaño de letra: lo que distingue cada tarjeta es el color de su
+   mundo (--mundo-c) y su arte.
+   · Quieta, el arte va tenue en su color (--mundos-tenue), salvo el del mundo de ahora, entero.
+   · Con el mouse o el foco encima (el foco sigue al mouse: ⏎ pone la que se ilumina) se ilumina en su color, el arte se
+     enciende con un halo, se inclina apenas hacia el puntero (--px, --py, que pone web/mundos-ventana.ts) y se acelera
+     (web/arte-vivo.ts), y un barrido de su color la cruza una vez. Solo transform y opacity se animan: el compositor.
+   · Con «reducir movimiento», nada se mueve: el color cambia y ya.
+   · En el teléfono, o si la ventana no alcanza el ancho de todas, una bajo otra.
+   Los tokens, --mundos-… en tokens.css. `.es-hover` y `.es-foco` son los mismos estados puestos a mano (el catálogo). */
+
+.ventana.ventana-mundos {
+  --mt-n: 3;
+  width: min(calc(var(--mt-n) * var(--mundos-tarjeta-ancho) + var(--mt-n) * 1px), 100vw - 2 * var(--ventana-margen));
+  container: mundos / inline-size;
+
+  &:has(.mt-grilla.cols-1) { --mt-n: 1; }
+  &:has(.mt-grilla.cols-2) { --mt-n: 2; }
+  &:has(.mt-grilla.cols-4) { --mt-n: 4; }
+  & .ventana-cabecera { padding-bottom: var(--e-2); }
+  & .ventana-iconos { color: var(--texto-tenue); }
+  /* la grilla termina en la línea del pie: las de entre tarjetas llegan a ella */
+  & .botonera { margin-top: 0; }
+  & .mt-teclas { color: var(--texto-tenue); }
+}
+
+.mt-grilla {
+  display: grid;
+  grid-template-columns: repeat(var(--mt-cols, 1), minmax(0, 1fr));
+  gap: 1px;
+  border-top: var(--borde);
+  background: var(--linea);
+
+  /* la última de una fila corta se estira hasta el borde */
+  & > .mt-tarjeta.span-2 { grid-column: span 2; }
+  & > .mt-tarjeta.span-3 { grid-column: span 3; }
+}
+
+/* si no caben todas a lo ancho (un arte mide 30 letras, y su aire), una bajo otra, sin estirar ninguna */
+@container mundos (width < 64ch) {
+  .mt-grilla.cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .mt-grilla.cols-2 > .mt-tarjeta:is(.span-2, .span-3) { grid-column: auto; }
+}
+
+@container mundos (width < 96ch) {
+  .mt-grilla.cols-3 { grid-template-columns: minmax(0, 1fr); }
+  .mt-grilla.cols-3 > .mt-tarjeta:is(.span-2, .span-3) { grid-column: auto; }
+}
+
+@container mundos (width < 128ch) {
+  .mt-grilla.cols-4 { grid-template-columns: minmax(0, 1fr); }
+  .mt-grilla.cols-4 > .mt-tarjeta:is(.span-2, .span-3) { grid-column: auto; }
+}
+
+.mt-tarjeta {
+  --c: var(--mundo-c, var(--texto));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: var(--ventana-fondo);
+  color: var(--texto);
+  font: inherit;
+  line-height: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--mundos-luz-dura) ease;
+}
+
+/* el lienzo: el arte al medio, con una línea de aire arriba y abajo, y la línea que lo aparta del texto */
+.mt-lienzo {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: var(--mundos-lienzo-aire) var(--h-1);
+  overflow: hidden;
+  border-bottom: var(--borde);
+  perspective: 40ch;
+}
+
+.mt-arte {
+  display: block;
+  color: color-mix(in srgb, var(--c) var(--mundos-tenue), var(--ventana-fondo));
+  line-height: var(--mundos-arte-alto);
+  white-space: pre;
+  transform: rotateX(calc(var(--py, 0) * -1 * var(--mundos-inclina))) rotateY(calc(var(--px, 0) * var(--mundos-inclina))) scale(var(--mt-escala, 1));
+  transition: color var(--mundos-luz-dura) ease, text-shadow var(--mundos-luz-dura) ease, transform 180ms var(--item-curva);
+}
+.mt-tarjeta.puesto .mt-arte { color: var(--c); }
+
+/* el barrido: una franja de su color que cruza la tarjeta una vez, al entrar el mouse o el foco */
+.mt-barrido {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) var(--mundos-barrido-luz), transparent), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-110%);
+}
+
+.mt-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--e-1) var(--h-1) var(--e-2);
+}
+.mt-linea { display: flex; gap: 0 1ch; align-items: baseline; min-width: 0; }
+.mt-tecla { color: var(--texto-tenue); transition: color var(--mundos-luz-dura) ease; }
+.mt-nombre { overflow: hidden; color: var(--c); text-overflow: ellipsis; white-space: nowrap; }
+.mt-ahora { display: inline-flex; flex: none; gap: .5ch; align-items: baseline; margin-inline-start: auto; color: var(--c); }
+.mt-horario,
+.mt-estado { overflow: hidden; color: var(--texto-tenue); text-overflow: ellipsis; white-space: nowrap; }
+.mt-tarjeta.puesto .mt-estado { color: var(--texto); }
+
+/* encima: se ilumina en su color */
+.mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) {
+  --mt-escala: var(--mundos-escala);
+  background: color-mix(in srgb, var(--c) var(--mundos-luz), var(--ventana-fondo));
+
+  & .mt-arte { color: var(--c); text-shadow: 0 0 var(--mundos-halo) color-mix(in srgb, var(--c) var(--mundos-halo-luz), transparent); }
+  & .mt-tecla { color: var(--c); }
+  & .mt-barrido { animation: mt-barrer var(--mundos-barrido-dura) var(--item-curva) 1 both; }
+}
+
+@keyframes mt-barrer {
+  from { opacity: 1; transform: translateX(-110%); }
+  to { opacity: 1; transform: translateX(260%); }
+}
+
+/* en el teléfono: una bajo otra, menos aire, sin teclas (se toca) */
+.angosto .mt-grilla { grid-template-columns: minmax(0, 1fr); }
+.angosto .mt-grilla > .mt-tarjeta:is(.span-2, .span-3) { grid-column: auto; }
+.angosto .mt-lienzo { padding-block: var(--e-2); }
+.angosto .ventana-mundos :is(.mt-tecla, .mt-teclas) { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-tarjeta,
+  .mt-arte,
+  .mt-tecla { transition: none; }
+  .mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) { --mt-escala: 1; }
+  .mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) .mt-barrido { animation: none; }
+  .mt-arte { transform: none; }
+}

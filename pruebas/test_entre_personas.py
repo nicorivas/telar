@@ -19,7 +19,7 @@ class ElDirectorio(Prueba):
              "atencion": "espera", "tiempo": 99, "publico": True},
             {"nombre": "De otra máquina", "remoto": "laptop", "publico": True},
             # privado (lo de siempre, si nadie lo hizo público): no sale
-            {"nombre": "Privado", "vivo": True, "relativa": "nico/diario"},
+            {"nombre": "Privado", "vivo": True, "relativa": "personal/diario"},
             {"nombre": "Privado explícito", "vivo": True, "publico": False},
         ]}
         d = ep.directorio(foto, "ana")
@@ -39,9 +39,9 @@ class ElDirectorio(Prueba):
 
 class ElCorreoQueLlega(Prueba):
     def test_de_quien_lo_dice_el_bus_no_el_mensaje(self):
-        pedido = {"para": "Faro Norte", "texto": " hola ", "de": "Gestión", "asunto": "una duda", "persona": "otro"}
+        pedido = {"para": "Faro Norte", "texto": " hola ", "de": "Secretaría", "asunto": "una duda", "persona": "otro"}
         c = ep.correo(pedido, "ramiro")
-        self.assertEqual((c["para"], c["de"], c["persona"]), ("faro-norte", "ramiro:Gestión", "ramiro"))
+        self.assertEqual((c["para"], c["de"], c["persona"]), ("faro-norte", "ramiro:Secretaría", "ramiro"))
         self.assertEqual(c["texto"], "Asunto: una duda" + chr(10) * 2 + "hola")
 
     def test_lo_que_no_se_acepta(self):

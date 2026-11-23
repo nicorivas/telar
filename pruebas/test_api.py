@@ -149,8 +149,9 @@ class EspejosProyectosPendientes(Prueba):
         from telar.servicios import pendientes as sp
 
         with mock.patch.object(sp, "pendientes", return_value=sp.Pendientes(dia="d", raiz="/r")) as p:
-            TestClient(api.app).get("/pendientes", params={"repo": "true", "limite": 3})
-        self.assertEqual(p.call_args.kwargs, {"repo": True, "hechos": False, "proveedores": False, "hilo": "", "limite": 3})
+            TestClient(api.app).get("/pendientes", params={"repo": "true", "limite": 3, "mundo": ["trabajo", "sin-clasificar"]})
+        self.assertEqual(p.call_args.kwargs, {"repo": True, "hechos": False, "proveedores": False, "hilo": "", "limite": 3,
+                                              "mundos": ("trabajo", "sin-clasificar")})
 
 
 @unittest.skipIf(api is None, "sin fastapi")
@@ -201,12 +202,12 @@ class LoQueEscribe(Prueba):
 
     def test_un_mensaje_va_con_quien_lo_manda_y_sin_texto_no(self):
         from telar.ordenes import mensaje
-        enviado = {"id": "m1", "para": "Gestión", "estado": "enviado"}
+        enviado = {"id": "m1", "para": "Secretaría", "estado": "enviado"}
         with mock.patch.object(mensaje, "enviar", return_value=enviado) as env:
-            r = self.c.post("/mensajes", json={"para": "Gestión", "texto": "hola", "tipo": "persona", "de": "el panel"})
+            r = self.c.post("/mensajes", json={"para": "Secretaría", "texto": "hola", "tipo": "persona", "de": "el panel"})
         self.assertEqual(r.json(), enviado)
         self.assertEqual(env.call_args.kwargs, {"tipo": "persona", "de": "el panel"})
-        self.assertEqual(self.c.post("/mensajes", json={"para": "Gestión", "texto": " "}).status_code, 422)
+        self.assertEqual(self.c.post("/mensajes", json={"para": "Secretaría", "texto": " "}).status_code, 422)
 
     def test_soltar_uno_que_no_esta_es_404_y_el_bus_caido_502(self):
         from telar import bus as mod_bus
@@ -317,9 +318,35 @@ class TareasBloquesResultados(Prueba):
         with mock.patch.object(api.servicio_tareas, "accion", return_value=hecha) as accion:
             r = self.c.post("/tareas/T7/accion", json={"rol": "hecha"})
             self.c.post("/tareas/T7/accion", json={"n": 2, "texto": "sigue viva", "proveedor": "tareas"})
+            self.c.post("/tareas/T7/accion", json={"n": 3, "conexiones": [{"nota": "a.md", "tipo": "informa", "porque": "x"}]})
         self.assertEqual(r.json()["hecho"], "✓ hecha")
-        self.assertEqual(accion.call_args_list[0].kwargs, {"n": None, "rol": "hecha", "texto": "", "version": None, "hilo": ""})
-        self.assertEqual(accion.call_args_list[1].kwargs, {"n": 2, "rol": "", "texto": "sigue viva", "version": None, "hilo": ""})
+        self.assertEqual(accion.call_args_list[0].kwargs, {"n": None, "rol": "hecha", "texto": "", "version": None, "hilo": "", "conexiones": None})
+        self.assertEqual(accion.call_args_list[1].kwargs, {"n": 2, "rol": "", "texto": "sigue viva", "version": None, "hilo": "", "conexiones": None})
+        # las relaciones elegidas para `{conexiones}` (la ficha de una lectura) llegan tal cual
+        self.assertEqual(accion.call_args_list[2].kwargs["conexiones"], [{"nota": "a.md", "tipo": "informa", "porque": "x"}])
+
+    def test_una_instruccion_llega_entera_con_el_nombre_de_su_hilo_nuevo(self):
+        from telar.servicios import actuar as sa
+
+        hecho = sa.Actuado(destino="✉ el informe", como="abierto", prompt="/correo 1a")
+        with mock.patch.object(api.servicio_actuar, "actuar", return_value=hecho) as actuar:
+            r = self.c.post("/actuar", json={"nuevo": True, "nota": "/correo 1a", "nombre": "✉ el informe"})
+        self.assertEqual(r.json(), {"destino": "✉ el informe", "como": "abierto", "prompt": "/correo 1a", "maquina": "", "aviso": ""})
+        self.assertEqual(actuar.call_args.args[1], "")
+        self.assertEqual(actuar.call_args.kwargs, {"a": "", "nuevo": True, "skill": "", "nota": "/correo 1a", "escribir": False,
+                                                   "fila": None, "nombre": "✉ el informe", "contexto": None})
+
+    def test_una_instruccion_con_un_contexto_libre_lo_lleva_entero(self):
+        from telar.servicios import actuar as sa
+
+        texto = "\n".join(f"mensaje {i}" for i in range(80))
+        hecho = sa.Actuado(destino="Vigía", como="encargado", prompt="…")
+        with mock.patch.object(api.servicio_actuar, "actuar", return_value=hecho) as actuar:
+            r = self.c.post("/actuar", json={"a": "Vigía", "contexto": {"texto": texto, "titulo": "Chat", "origen": "la pestaña «chats»"}})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(actuar.call_args.kwargs["contexto"], sa.ContextoLibre(texto=texto, titulo="Chat", origen="la pestaña «chats»"))
+        # sin texto, el contexto no es tal: 422
+        self.assertEqual(self.c.post("/actuar", json={"a": "Vigía", "contexto": {"titulo": "Chat"}}).status_code, 422)
 
     def test_la_cli_y_la_api_dan_la_misma_pagina_de_un_bloque(self):
         from telar.ordenes import bloque as orden
@@ -459,6 +486,26 @@ class LaEntrada(Prueba):
             r = self.c.post("/archivos/entrada", data={"hilo": "Faro"}, files={"archivo": ("a.txt", b"a", "text/plain")})
         self.assertEqual(r.status_code, 501)
         self.assertIn("python-multipart", r.json()["detail"])
+
+
+@unittest.skipIf(api is None, "sin fastapi")
+class LeerSiHay(Prueba):
+    """`GET /archivos?si_hay=true`: lo que no está (la memoria de un lienzo que todavía no guarda nada) no es un error."""
+
+    def test_lo_que_no_esta_es_un_204_y_no_un_404(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            raiz = Path(tmp)
+            (raiz / "memoria.json").write_text("{}")
+            api.app.dependency_overrides[api.contexto] = lambda: SimpleNamespace(config=SimpleNamespace(raiz=raiz, apps=()))
+            self.addCleanup(api.app.dependency_overrides.clear)
+            c = TestClient(api.app)
+            self.assertEqual(c.get("/archivos", params={"ruta": "falta.json"}).status_code, 404)
+            r = c.get("/archivos", params={"ruta": "falta.json", "si_hay": "true"})
+            self.assertEqual((r.status_code, r.content), (204, b""))
+            r = c.get("/archivos", params={"ruta": "memoria.json", "si_hay": "true"})
+            self.assertEqual((r.status_code, r.json()["texto"]), (200, "{}"))
+            # lo que no se puede leer sigue siendo un error
+            self.assertEqual(c.get("/archivos", params={"ruta": "/etc/hosts", "si_hay": "true"}).status_code, 403)
 
 
 @unittest.skipIf(api is None, "sin fastapi")

@@ -12,6 +12,8 @@ const SIN_FIN = 30;
 /** Un evento del calendario: del calendario de la persona, o un bloque que propuso el plan. */
 export interface EventoCal {
     id: string; titulo: string; inicio: number; fin: number; lugar: string; url: string; asistentes: string[];
+    /** lo que la persona respondió a la invitación (el `respuesta` de `telar hoy`); vacío si no aplica o no se sabe */
+    respuesta?: cli.RespuestaInvitacion;
     /** lo que el plan dice de este evento, o el bloque mismo si no está en el calendario */
     plan?: Plan;
     /** un bloque del plan que no está en el calendario */
@@ -40,7 +42,7 @@ export function eventosDelDia(d: Dia, plan?: Plan): EventoCal[] {
         const ini = Date.parse(e.cuando ?? '');
         const fin = e.fin ? Date.parse(e.fin) : NaN;
         return { id: e.id || `${e.cuando}:${e.texto}`, titulo: e.texto, inicio: ini, fin: Number.isNaN(fin) ? ini + SIN_FIN * 60000 : fin,
-            lugar: e.lugar ?? '', url: e.url ?? '', asistentes: e.asistentes ?? [], soloPlan: false };
+            lugar: e.lugar ?? '', url: e.url ?? '', asistentes: e.asistentes ?? [], respuesta: e.respuesta ?? '', soloPlan: false };
     });
     for (const x of (plan?.agenda ?? []) as Plan[]) {
         if (!x.inicio) continue;

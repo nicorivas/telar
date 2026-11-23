@@ -3,17 +3,21 @@
 // encargos (los abiertos, con cancelar; los últimos cerrados, con su resultado). Desde aquí se le encarga algo, se
 // rota su conversación con relevo o se va a su hilo. Los de otra máquina se le piden a esa (GET /agentes).
 
-import { ATENCION_I, I } from '../../web/iconos';
+import { I } from '../../web/iconos';
+import * as S from '../../componentes/senales';
+import { boton } from '../../componentes/boton';
 import * as ui from '../../web/ui';
 import * as cli from '../../cli';
+import * as mundo from '../../web/mundo';
 import { esc, fechaCorta } from '../../estilo';
 import type { Accion, Pantalla, Tablero } from './pantalla';
 
 const PRESENCIA: Record<string, string> = {
     siempre: 'siempre abierto', 'a-pedido': 'se abre cuando le llega algo', no: 'lo abres tú',
 };
-const ATENCION: Record<string, string> = { trabajando: `${ATENCION_I.trabajando} trabajando`, espera: `${ATENCION_I.espera} te espera`,
-    termino: `${ATENCION_I.termino} terminó`, ninguna: 'quieto' };
+/** El estado de un agente, en HTML: la señal de su atención (componentes/senales.ts) y en palabras. */
+const ATENCION: Record<string, string> = { trabajando: `${S.enLinea(S.atencion('trabajando'))} trabajando`, espera: `${S.enLinea(S.atencion('espera'))} te espera`,
+    termino: `${S.enLinea(S.atencion('termino'))} terminó`, ninguna: 'quieto' };
 const mb = (b: number) => `${(b / (1024 * 1024)).toFixed(b < 10 * 1024 * 1024 ? 1 : 0).replace('.', ',')} MB`;
 
 export class PantallaAgentes implements Pantalla {
@@ -67,17 +71,13 @@ export class PantallaAgentes implements Pantalla {
 
     private de(clave: string) { return this.lista?.find(x => x.agente.clave === clave); }
 
+    /** Encargarle algo: la ventana de la instrucción (web/instruccion.ts), solo a él, con sus skills. Queda como
+     *  encargo:e-…, con su estado, y el resultado llega. */
     private async encargar(clave: string): Promise<void> {
         const x = this.de(clave);
         if (!x) return;
-        const escrito = await ui.escribir({ titulo: `encargarle a ${x.agente.nombre}`,
-            ayuda: `${x.agente.para || 'un encargo'} · queda como encargo:e-…, con su estado; el resultado te llega. ⌘⏎ envía.`,
-            placeholder: '¿qué le encargas?' });
-        if (!escrito?.texto.trim()) return;
-        const r = await cli.encargar(x.agente.clave, escrito.texto);
-        if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
-        void ui.estado(`telar: encargado a ${x.agente.nombre}`, 4000);
-        await this.leer();
+        const { abrir } = await import('../../web/instruccion');
+        if (await abrir({ a: x.agente.nombre, solo: true })) await this.leer();
     }
 
     private async rotar(clave: string): Promise<void> {
@@ -118,7 +118,7 @@ export class PantallaAgentes implements Pantalla {
 
     private async cancelar(valor: string): Promise<void> {
         const [direccion, texto] = valor.split('|');
-        const si = await ui.aviso(`¿Cancelar ${direccion}? «${(texto ?? '').slice(0, 120)}»`, 'Cancelar el encargo');
+        const si = await ui.aviso(`¿Cancelar ${direccion}? «${(texto ?? '').slice(0, 120)}»`, 'Cancelar el encargo', { destruye: true });
         if (si !== 'Cancelar el encargo') return;
         const r = await cli.accionObjeto(direccion, 'cancelar', { motivo: 'lo canceló su persona desde la página' });
         if (!r.datos) { void ui.falla(`telar: no se pudo: ${r.error ?? 'sin respuesta'}`); return; }
@@ -152,15 +152,21 @@ export class PantallaAgentes implements Pantalla {
         if (this.error) h.push(`<div class="fila falla">${esc(this.error)}</div>`);
         for (const p of this.problemas) h.push(`<div class="fila dim">${esc(p)}</div>`);
         if (!this.lista) h.push('<div class="fila dim">leyendo…</div>');
-        for (const x of this.lista ?? []) {
+        // los del mundo puesto (web/mundo.ts, `seVeAgente`: lo suyo y lo sin clasificar; con ambos o en todo, todos, salvo
+        // uno que pide esconderse fuera de su mundo; y uno que pide verse, siempre): los de otro no se nombran, solo se
+        // cuentan, como en la barra
+        const visibles = (this.lista ?? []).filter(x => mundo.seVeAgente({ clave: x.agente.clave, mundo: x.mundo }));
+        for (const x of visibles) {
             const a = x.agente;
-            const estado = x.sin_noticias ? 'sin noticias de su máquina' : x.vivo ? (ATENCION[x.atencion] ?? x.atencion) : 'sin sesión';
+            const estado = x.solo_aqui ? '<span style="color: var(--amarillo)">solo en esta máquina</span>'
+                : x.sin_noticias ? 'sin noticias de su máquina' : x.vivo ? (ATENCION[x.atencion] ?? esc(x.atencion)) : 'sin sesión';
             const c = x.conversacion;
             const pct = c?.tope ? Math.min(100, Math.round((c.peso / c.tope) * 100)) : 0;
             h.push('<div class="item-pag">'
                 + `<div class="fila"><b>${esc(a.icono ?? '')} ${esc(a.nombre)}</b><span class="dim"> · ${esc(PRESENCIA[a.presencia ?? 'a-pedido'] ?? '')}`
-                + `${x.maquina ? ` · en ${esc(x.maquina)}` : ''}${a.publico ? ` · ${I.publico} público` : ''}</span>`
-                + `<span class="der">${esc(estado)}</span></div>`
+                + `${x.maquina ? ` · en ${esc(x.maquina)}` : ''}${a.publico ? ` · ${S.enLinea(S.publico())} público` : ''}</span>`
+                + `<span class="der">${estado}</span></div>`
+                + (x.solo_aqui ? `<div class="fila" style="color: var(--amarillo)">${esc(x.solo_aqui)}</div>` : '')
                 + (a.para ? `<div class="fila dim">${esc(a.para)}</div>` : '')
                 + (c && c.peso ? `<div class="fila dim">conversación ${esc(mb(c.peso))}${c.tope ? ` de ${esc(mb(c.tope))} (${pct} %)` : ''}`
                     + `${x.rotacion ? ` · <span style="color: var(--amarillo)">${I.releer} rotando (${esc(x.rotacion)})</span>` : ''}`
@@ -168,13 +174,17 @@ export class PantallaAgentes implements Pantalla {
                 + `<div class="fila"><a data-accion="agente-encargar" data-valor="${esc(a.clave)}">encargar</a>`
                 + ` · <a data-accion="agente-ir" data-valor="${esc(a.clave)}">ir a su hilo</a>`
                 + (x.vivo ? ` · <a data-accion="agente-rotar" data-valor="${esc(a.clave)}" title="que escriba su relevo y empiece otra conversación">rotar con relevo</a>` : '')
-                + `<span class="der"><a class="rojo" data-accion="agente-eliminar" data-valor="${esc(a.clave)}" title="sus hilos al archivo y su carpeta aparte; no se borra nada">${I.descartar} eliminar</a></span>`
+                // lo que destruye, en el de peligro de verdad: el botón con texto (componentes/boton.ts), una celda sola
+                + `<span class="der">${boton({ texto: 'eliminar', accion: 'agente-eliminar', valor: a.clave, tono: 'peligro', icono: I.descartar,
+                    ayuda: 'sus hilos al archivo y su carpeta aparte; no se borra nada' })}</span>`
                 + '</div>'
                 + this.abiertos(x)
                 + x.encargos.map(e => this.encargo(x, e)).join('')
                 + '</div>');
         }
         if (this.lista && !this.lista.length) h.push('<div class="fila dim">no hay agentes: [agentes] carpeta en la configuración</div>');
+        const fuera = (this.lista?.length ?? 0) - visibles.length;
+        if (fuera) h.push(`<div class="fila dim">${fuera === 1 ? 'uno más, de otro mundo' : `${fuera} más, de otros mundos`}: se ven con ese mundo puesto</div>`);
         if (this.eliminados.length) {
             h.push('<div class="subcab"><b>Eliminados</b><span class="dim"> · su carpeta, aparte; sus hilos, en el archivo</span></div>');
             for (const e of this.eliminados) {

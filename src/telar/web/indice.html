@@ -1,15 +1,20 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1e1e2e">
+<meta name="telar-pagina" content="">
+<!-- la firma de esta página: la escribe telar.api_web al servirla (vacía, servida de otro modo: no se pone al día sola) -->
+<meta name="telar-dev" content="">
+<!-- «si» con `telar serve --web --dev` (lo escribe telar.api_web): solo entonces escucha /dev/cambios -->
 <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>telar</title>
 <link rel="stylesheet" href="/estatico/marco.css"></head><body class="en-lista">
-<header>
-  <div class="izq"><span class="logo">telar</span><span class="dim" id="corre" title="la versión de telar que corre"></span><a id="version" hidden></a><a id="volver"><span class="i">&#xeab5;</span> hilos</a></div>
-  <div id="donde"><b id="aqui" title="la máquina que sirve esta página">telar</b><span id="icono" hidden></span><span id="visto"></span></div>
-  <div class="der"><a id="modos-sel" class="config i" title="el modo de la página (⌥⇧F foco, ⌥⇧M el siguiente)"></a><a href="/maquinas" id="ir-maquinas" class="config i" title="máquinas: elegir en cuál abrir la página"></a><a data-p="config" id="ir-config" class="config i" title="configuración: de dónde sale la agenda, qué pestañas se ven…"></a></div>
-</header>
+<header class="cabecera"><div class="cab-fila">
+  <div class="cab-izq"><span class="logo" title="telar"><span class="logo-t">t</span><span class="logo-resto">elar</span></span><span class="dim cab-corre" id="corre" title="la versión de telar que corre"></span><a id="volver" class="cab-volver" title="volver a la lista de hilos"><span class="i">&#xeab5;</span><span class="txt"> hilos</span></a></div>
+  <div id="donde" class="cab-donde"><b id="aqui" class="cab-aqui" title="la máquina que sirve esta página">telar</b><span id="icono" class="cab-icono" hidden></span><span id="visto" class="cab-visto"></span></div>
+  <div id="jornada" class="cab-jornada" hidden title="el día: un clic abre el calendario"></div>
+  <div class="cab-der"><a id="apps-sel" class="config i" hidden title="apps: los juegos y los visores (lo que se abre en el panel y no es trabajo)"></a><a href="/maquinas" id="ir-maquinas" class="config i" title="máquinas: elegir en cuál abrir la página"></a><a data-p="config" id="ir-config" class="config i" title="configuración: de dónde sale la agenda, qué pestañas se ven…"></a></div>
+</div><div id="banda" class="cab-banda"><nav id="modos-fila" class="modos-fila banda-modos" title="el modo: clic derecho, los propios y editarlos"></nav><span id="mundo-sel" class="banda-mundo" hidden></span></div></header>
 <aside id="barra"></aside>
 <div id="marcos"><nav id="acciones" hidden></nav><div id="vistas"></div><aside id="lado" hidden></aside></div>
 <script>
@@ -23,7 +28,11 @@ document.querySelector('header').addEventListener('click', (e) => {
   const p = e.target.dataset?.p;
   if (p && window.telar.mostrar) window.telar.mostrar(p);
 });
-const aLista = () => { document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); };
+// una pestaña sola, instalada como su propia app (/pestana/<nombre>/, api_web): sin la cabecera ni la lista de hilos,
+// y «atrás» no lleva a una lista que no está
+const solo = /^\/pestana\/[^/]+\/?$/.test(location.pathname);
+if (solo) document.body.classList.add('solo');
+const aLista = () => { if (solo) return; document.body.classList.remove('en-detalle'); document.body.classList.add('en-lista'); };
 // el «atrás» de Android: en un celular, entrar a un hilo (o a lo que sea del detalle) es un paso del historial,
 // y volver lo deshace —a la lista—, en vez de sacar de la app
 let enHistorial = false;
@@ -31,36 +40,39 @@ $('#volver').addEventListener('click', () => { if (enHistorial) history.back(); 
 window.addEventListener('popstate', () => { enHistorial = false; if (document.body.classList.contains('angosto')) aLista(); });
 new MutationObserver(() => {
   const b = document.body;
-  if (b.classList.contains('angosto') && b.classList.contains('en-detalle') && !enHistorial) {
+  if (b.classList.contains('angosto') && b.classList.contains('en-detalle') && !enHistorial && !solo) {
     try { history.pushState({ telar: 'detalle' }, ''); enHistorial = true; } catch { /* sin historial */ }
   } else if (b.classList.contains('en-lista') && enHistorial) enHistorial = false;
 }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 const angosto = window.matchMedia('(max-width: 700px)');
 const ajustar = () => document.body.classList.toggle('angosto', angosto.matches);
 angosto.addEventListener('change', ajustar); ajustar();
-// al centro de la cabecera: la máquina que sirve esta página y lo que se ve. Un hilo de esta máquina, «› hilo»;
-// uno de otra, «⇢ máquina:hilo» (llega reenviado por esta). Lo llama app.js al cambiar lo que se ve
+// al centro de la cabecera: la máquina que sirve esta página y lo que se ve, como se escribe su dirección. Un hilo de
+// esta máquina, «laptop:hilo» (los dos puntos, pegados); uno de otra, «laptop ⇢ servidor:hilo» (llega reenviado por
+// esta). Lo llama app.js al cambiar lo que se ve
 let aqui = '';
 window.telar.donde = (lo) => {
   const icono = $('#icono'), visto = $('#visto');
   icono.hidden = !lo; visto.textContent = lo ? lo.texto : '';
   if (!lo) return;
-  icono.textContent = lo.otraMaquina ? '\uea9c' : '\ueab6';  // arrow_right · chevron_right (web/iconos.ts: adelante, plegado)
-  icono.className = lo.otraMaquina ? 'otra' : '';
+  icono.textContent = lo.otraMaquina ? '\uea9c' : ':';  // arrow_right (web/iconos.ts: adelante)
+  icono.classList.toggle('otra', !!lo.otraMaquina);
   icono.title = lo.otraMaquina ? `de otra máquina: llega reenviado por ${aqui || 'esta'}` : `de esta máquina${aqui ? ` (${aqui})` : ''}`;
 };
 json('/api/salud').then((s) => {
   aqui = s.maquina || s.host || location.hostname;
   $('#corre').textContent = s.version;
+  // con poco ancho la versión no se ve (marco.css): queda en el globo de la marca
+  $('.logo').title = `telar ${s.version}`;
   $('#aqui').textContent = aqui;
   $('#aqui').title = `esta página la sirve ${aqui}${s.host && s.host !== aqui ? ` (${s.host})` : ''} · ${location.host}`;
 }).catch(() => { $('#corre').textContent = 'sin API'; });
 // instalable como app (y destino de «compartir» en el teléfono): el service worker no guarda nada
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 // modo desarrollo (`telar serve --web --dev`, scripts/dev.py): recargar cuando cambian los archivos de la
-// página, y cuando el servidor vuelve después de reiniciarse (cambió el Python). Sin --dev, la ruta no existe
-// (un 404) y el navegador deja de intentar
-try {
+// página, y cuando el servidor vuelve después de reiniciarse (cambió el Python). Sin --dev no se pide: la ruta no
+// existe, y antes era un 404 en cada carga
+if (document.querySelector('meta[name="telar-dev"]')?.content) try {
   const dev = new EventSource('/dev/cambios');
   let caido = false;
   dev.onmessage = () => location.reload();

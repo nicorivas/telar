@@ -58,7 +58,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from collections import defaultdict
 from collections.abc import Container, Iterable, Iterator, Mapping, Sequence
 from datetime import date, datetime, timedelta
@@ -114,6 +113,15 @@ ARCHIVOS = {
     "paneles": "paneles.json",
     "ids": "ids.json",
     "remotos": "remotos.json",
+    #: hilo → su rama propia, si es un hijo que trabaja en su worktree (telar.ramas): ruta, carpeta, rama, base, repo
+    "ramas": "ramas.json",
+    #: hilo → el esfuerzo con que arranca su agente (`telar hilo hijo --esfuerzo`), al abrirlo y al retomarlo
+    "esfuerzos": "esfuerzos.json",
+    #: hilo → {desde, panel, conversacion, atencion, atencion_desde}: los que duermen (telar.dormir): su ventana sigue,
+    #: sin su agente, hasta que algo los despierte
+    "dormidos": "dormidos.json",
+    #: página → {hilo, maquina, cuando}: lo que cada página abierta muestra ahora (telar.dormir: lo que se mira no duerme)
+    "mirando": "mirando.json",
     #: hilo de otra máquina → lo último que su dueño publicó de él en el bus (lo escribe el nodo, entero)
     "ajenos": "ajenos.json",
     #: nombre viejo → nombre nuevo, de cada renombre: un agente que ya corría sigue diciendo el viejo
@@ -136,7 +144,7 @@ AJENOS_CADUCA = 120
 
 #: los archivos que solo traen un dato de más: si están rotos (o no se leen) cuentan como vacíos y la siguiente
 #: escritura los rehace, en vez de tumbar lo que los toca de paso (renombrar, olvidar)
-DE_MAS = frozenset({"esperas"})
+DE_MAS = frozenset({"esperas", "mirando"})
 
 #: lo que se guarda del texto con que un agente pide algo (`anotar_espera`): es una línea, no un documento
 TOPE_PIDE = 400
@@ -342,7 +350,8 @@ def vestir(
                 padre=(padres or {}).get(nombre, hilo.padre),
                 prioridad=(prioridades or {}).get(nombre, hilo.prioridad),
                 atencion=(atenciones or {}).get(nombre, hilo.atencion),
-                visto=(vistos or {}).get(nombre, hilo.visto),
+                # lo más nuevo entre lo de aquí y lo que trae el hilo (de su máquina, si es de otra)
+                visto=mas_nuevo((vistos or {}).get(nombre), hilo.visto),
                 tiempo=(tiempos or {}).get(nombre, hilo.tiempo),
                 ficha=hilo.ficha,
                 sesiones=tuple((sesiones or {}).get(nombre, hilo.sesiones)),
@@ -456,6 +465,8 @@ class Estado:
         ruta = self.ruta(nombre)
         self.preparar()
         texto = json.dumps(datos, ensure_ascii=False, indent=2) + "\n"
+        import tempfile  # aquí y no arriba: los ganchos leen el estado en cada turno, y escribir es lo raro
+
         try:
             # a un temporal y luego `replace`: nadie lee un archivo a medio escribir
             fd, tmp = tempfile.mkstemp(dir=str(ruta.parent), prefix=ruta.name, suffix=".tmp")
@@ -502,6 +513,14 @@ class Estado:
                 salida.pop(hilo, None)
         return salida
 
+    def vinculos_de_aqui(self) -> dict[str, str]:
+        """hilo → ruta, solo de los hilos cuyo agente vive en esta máquina: sin los de otra (`remotos`), cuya
+        carpeta es de allá aunque se llame igual que una de aquí. Las carpetas que el visor de la página deja leer
+        (telar.servicios.archivos)."""
+        d = self._leer("vinculos", {})
+        ajenos = self.remotos()
+        return {k: str(v) for k, v in d.items() if not k.startswith("_") and isinstance(v, str) and v and k not in ajenos}
+
     def vinculo(self, hilo: str) -> str:
         return self.vinculos().get(hilo, "")
 
@@ -543,15 +562,16 @@ class Estado:
     # la sigue escribiendo cuando el dueño acepta un cambio: es el respaldo para esos casos y para cuando
     # el hilo vuelve a esta máquina, y no estorba mientras el dueño publica.
 
-    def ajenos(self) -> dict[str, dict]:
+    def ajenos(self, *, viejos: bool = False) -> dict[str, dict]:
         """hilo → lo último que publicó su dueño (máquina, vínculo, archivado, conversación), como lo
         dejó el nodo. Solo hilos de otras máquinas; vacío sin bus, sin nodo o si el nodo dejó de
-        refrescarlo hace más de `AJENOS_CADUCA`."""
+        refrescarlo hace más de `AJENOS_CADUCA`. Con `viejos`, aunque el nodo haya dejado de refrescarlo:
+        para saber qué nombres hay allá, que no caducan como su atención o su vínculo."""
         import time
 
         salida = {}
         try:
-            if time.time() - self.ruta("ajenos").stat().st_mtime > AJENOS_CADUCA:
+            if time.time() - self.ruta("ajenos").stat().st_mtime > AJENOS_CADUCA and not viejos:
                 return {}  # el nodo no lo refresca: es una foto vieja, no lo que publica el dueño
             datos = self._leer("ajenos", {})
         except FileNotFoundError:
@@ -734,11 +754,24 @@ class Estado:
                     salida.pop(hilo, None)
         return salida
 
+    def sueltos(self) -> set[str]:
+        """Los hilos que se soltaron a mano (`telar hilo padre ninguno`): no cuelgan ni del que los abrió."""
+        return {h for h, p in self._leer("padres", {}).items() if isinstance(h, str) and p == ""}
+
+    def padre(self, hilo: str) -> str:
+        """Del que cuelga `hilo`: el que se le puso o, si no, el que lo abrió (abiertos_por), salvo que se haya
+        soltado. "" si de ninguno."""
+        if p := self.padres().get(hilo):
+            return p
+        return "" if hilo in self.sueltos() else str((self.abiertos_por().get(hilo) or {}).get("por") or "")
+
     def colgar(self, hilo: str, padre: str) -> None:
-        """`hilo` pasa a colgar de `padre`; vacío lo suelta. ValueError si haría un ciclo (padre de su propio padre)."""
+        """`hilo` pasa a colgar de `padre`. Vacío lo suelta, también del que lo abrió: queda anotado como suelto (un
+        "" en padres.json), y quién lo abrió se sigue sabiendo. ValueError si haría un ciclo (padre de su propio
+        padre)."""
         padre = padre.strip()
         if not padre:
-            self._actualizar("padres", lambda d: d.pop(hilo, None), {})
+            self._actualizar("padres", lambda d: d.__setitem__(hilo, ""), {})
             return
         if padre == hilo:
             raise ValueError("un hilo no cuelga de sí mismo")
@@ -751,10 +784,51 @@ class Estado:
         self._actualizar("padres", lambda d: d.__setitem__(hilo, padre), {})
 
     def hijos(self, padre: str) -> list[str]:
-        """Los hilos que cuelgan de `padre` (los que se colgaron y los que abrió), en orden."""
-        explicitos = self.padres()
-        abiertos = {h for h, r in self.abiertos_por().items() if r.get("por") == padre and h not in explicitos}
+        """Los hilos que cuelgan de `padre` (los que se colgaron y los que abrió, menos los que se soltaron), en orden."""
+        explicitos, sueltos = self.padres(), self.sueltos()
+        abiertos = {h for h, r in self.abiertos_por().items()
+                    if r.get("por") == padre and h not in explicitos and h not in sueltos}
         return sorted({h for h, p in explicitos.items() if p == padre} | abiertos)
+
+    # ── la rama propia de un hijo (telar.ramas) ─────────────────────────────────
+
+    def ramas(self) -> dict[str, dict]:
+        """hilo → su lugar: los hijos que trabajan en su worktree. Olvidar o archivar un hilo no lo borra: su rama
+        puede tener trabajo sin fusionar (`telar hilo fusionar` o `descartar` lo borran)."""
+        return {h: v for h, v in self._leer("ramas", {}).items() if isinstance(h, str) and isinstance(v, dict) and v.get("rama")}
+
+    def anotar_rama(self, hilo: str, lugar: dict) -> None:
+        self._actualizar("ramas", lambda d: d.__setitem__(hilo, dict(lugar)), {})
+
+    def olvidar_rama(self, hilo: str) -> None:
+        self._actualizar("ramas", lambda d: d.pop(hilo, None), {})
+
+    # ── con qué esfuerzo arranca su agente ─────────────────────────────────────
+
+    def esfuerzos(self) -> dict[str, str]:
+        """hilo → el esfuerzo de su agente (`telar hilo hijo --esfuerzo`): lo usa cada lanzamiento, al abrirlo y al
+        retomarlo. Sin esfuerzo anotado, el de siempre (el de la configuración del agente)."""
+        return {h: v for h, v in self._leer("esfuerzos", {}).items() if isinstance(h, str) and isinstance(v, str) and v}
+
+    def anotar_esfuerzo(self, hilo: str, esfuerzo: str) -> None:
+        """El esfuerzo de su agente; "" lo olvida (vuelve al de siempre)."""
+        self._actualizar("esfuerzos", lambda d: d.__setitem__(hilo, esfuerzo) if esfuerzo else d.pop(hilo, None), {})
+
+    # ── los que duermen (telar.dormir) ──────────────────────────────────────────
+
+    def dormidos(self) -> dict[str, dict]:
+        """hilo → lo que se anotó al dormirlo (`desde`, `panel`, `conversacion`, la `atencion` que tenía y desde
+        cuándo): los hilos de esta máquina cuyo agente se cerró por inactivo y cuya ventana sigue, esperando."""
+        return {h: v for h, v in self._leer("dormidos", {}).items() if isinstance(h, str) and isinstance(v, dict)}
+
+    def anotar_dormido(self, hilo: str, datos: dict) -> None:
+        self._actualizar("dormidos", lambda d: d.__setitem__(hilo, dict(datos)), {})
+
+    def olvidar_dormido(self, hilo: str) -> bool:
+        """Lo saca de los que duermen. Devuelve si estaba."""
+        estaba = []
+        self._actualizar("dormidos", lambda d: estaba.append(d.pop(hilo, None) is not None), {})
+        return bool(estaba and estaba[0])
 
     # ── de qué agente es un hilo ────────────────────────────────────────────────
 
@@ -1070,8 +1144,22 @@ class Estado:
         return self.tiempos(dia, dia, tope)[0]
 
     def vistos(self) -> dict[str, datetime]:
-        """Última vez que cada hilo tuvo el foco."""
-        return ultimo_foco(self.marcas())
+        """Última vez que cada hilo estuvo a la vista: con el foco en el multiplexor (las marcas de `telar tiempo
+        marcar`), o abierto en la página (`anotar_visto`, al abrir y al cerrar su terminal). Lo más nuevo de los dos."""
+        return self._vistos(self.marcas())
+
+    def _vistos(self, marcas: Sequence[Marca]) -> dict[str, datetime]:
+        visto = ultimo_foco(marcas)
+        for hilo, valor in self._leer("vistos", {}).items():
+            if (f := _fecha(valor)) and mas_nuevo(visto.get(hilo), f) is f:
+                visto[hilo] = f
+        return visto
+
+    def anotar_visto(self, hilo: str, cuando: datetime | None = None) -> None:
+        """Anota que la persona tiene `hilo` a la vista ahora (la página lo muestra). No es una marca de foco: no
+        cuenta tiempo, solo dice desde cuándo lo que terminó ya se vio."""
+        marca = (cuando or datetime.now()).isoformat(timespec="seconds")
+        self._actualizar("vistos", lambda d: d.update({hilo: marca}), {})
 
     # ── el orden de la lista ───────────────────────────────────────────────────
 
@@ -1125,7 +1213,7 @@ class Estado:
                 "tiempos": tiempo_por_hilo(
                     marcas, tope, desde=dia or date.today(), hasta=dia or date.today()
                 ),
-                "vistos": ultimo_foco(marcas),
+                "vistos": self._vistos(marcas),
                 "remotos": self.remotos(),
             }
 
@@ -1226,7 +1314,7 @@ class Estado:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente",
-                           "abierto_por", "etiquetas"):
+                           "abierto_por", "etiquetas", "ramas", "esfuerzos", "dormidos"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             # el padre: su propia entrada, y la de sus hijos, que lo nombran
@@ -1273,10 +1361,18 @@ class Estado:
         """
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "sesiones", "remotos", "de_agente",
-                           "abierto_por", "etiquetas", "padres"):
+                           "abierto_por", "etiquetas", "padres", "esfuerzos", "dormidos"):
                 self._actualizar(nombre, lambda d: d.pop(hilo, None), {})
             self.desarchivar(hilo)
             self.privar(hilo)
+
+
+def mas_nuevo(a: datetime | None, b: datetime | None) -> datetime | None:
+    """La más nueva de dos fechas (una puede faltar); con y sin zona, se comparan como hora local."""
+    if a is None or b is None:
+        return a or b
+    sin = lambda d: d.astimezone().replace(tzinfo=None) if d.tzinfo else d  # noqa: E731
+    return a if sin(a) >= sin(b) else b
 
 
 def _fecha(valor: object) -> datetime | None:

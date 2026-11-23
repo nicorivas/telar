@@ -19,14 +19,6 @@
     border-right: var(--borde);
   }
 
-  .config-titulo {
-    margin-bottom: var(--e-1);
-    padding: 0 var(--h-1);
-    color: var(--amarillo);
-    font-weight: bold;
-    text-transform: uppercase;
-  }
-
   .config-op {
     padding: 0 var(--h-1);
     color: var(--fg);
@@ -62,15 +54,12 @@
       border-right: 0;
       border-bottom: var(--borde);
     }
-
-    .config-titulo { width: 100%; }
   }
 }
 
 /* ⚙ módulos: las dos pestañas (instalados, disponibles) */
 .modos-mod a { cursor: pointer; color: var(--dim); }
 .modos-mod a.si { color: var(--violeta); }
-#buscar-mod { width: 100%; }
 
 /* ⚙ glifos (vistas/dashboard/config/glifos.ts): el campo por pantalla, la vista previa y los parámetros del estilo */
 @scope (.v-dia) {
@@ -113,4 +102,503 @@
     & > .fila { padding: 0 2ch var(--e-1); }
     & #gl-muestra { font: inherit; color: var(--fg); background: transparent; border: 0; border-bottom: 1px solid var(--linea); width: 24ch; }
   }
+}
+
+/* ⚙ modos, qué agentes salen en cada modo (vistas/dashboard/config/modos.ts): una grilla con un agente por fila y un
+   modo por columna; cada marca, un ícono en su celda cuadrada, bajo el ícono de su modo. Cada fila llega de borde a
+   borde (la columna del último modo se lleva lo que sobra: `--fijas` son las de los otros) y se marca al pasar el
+   mouse. En el teléfono no cabe: se elige el modo arriba y debajo van sus agentes, uno por fila, toda la fila para el
+   dedo. */
+@scope (.v-dia) {
+  .ma-grilla {
+    display: grid;
+    grid-template-columns: max-content repeat(var(--fijas), max-content) minmax(max-content, 1fr);
+    gap: 0 var(--h-2);
+    margin: var(--e-1) 0;
+    overflow-x: auto;
+  }
+
+  .ma-fila {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: baseline;
+    padding: 0 var(--h-1);
+
+    &:not(.ma-cab):hover { background: var(--hover); }
+  }
+
+  .ma-modo { color: var(--texto-tenue); white-space: nowrap; }
+  .ma-modo.si { color: var(--pantalla-vista-si); }
+  .ma-agente { white-space: nowrap; }
+
+  :is(.ma-modo, .ma-celda, .ma-modos a, .ma-linea) > .i { display: inline-block; inline-size: 2ch; text-align: center; }
+  :is(.ma-modo, .ma-modos a) > .i { margin-inline-end: .5ch; }
+  .ma-celda { justify-self: start; color: var(--acento); cursor: pointer; }
+  :is(.ma-celda, .ma-linea).no { color: var(--texto-tenue); }
+
+  .ma-telefono { display: none; }
+
+  @container (max-width: 620px) {
+    .ma-grilla { display: none; }
+    .ma-telefono { display: block; margin: var(--e-1) 0; }
+
+    .ma-modos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0 var(--h-2);
+      padding: 0 var(--h-1) var(--e-1);
+
+      & a { color: var(--texto-tenue); cursor: pointer; white-space: nowrap; }
+      & a.si { color: var(--pantalla-vista-si); }
+    }
+
+    .ma-linea { color: var(--texto); cursor: pointer; }
+    .ma-linea > .i { color: var(--acento); }
+    .ma-linea.no > .i { color: var(--texto-tenue); }
+  }
+}
+
+/* ⚙ mundos (vistas/dashboard/config/mundos.ts) y el cruce con los mundos en la grilla de ⚙ modos. El mundo de una cosa
+   es la raya de su color en una celda cuadrada, como la de un ícono (vacía si no tiene mundo), con el aire de un ícono
+   hasta el nombre. Arriba de una grilla, los mundos para elegir con cuál se lee: el elegido en su color (ambos, en el
+   del texto), los demás tenues, cada uno con su raya. Lo que el mundo elegido deja afuera, apagado: está, pero con ese
+   mundo no sale. En la grilla de ⚙ mundos (solo se mira), una columna por mundo con su nombre en su color; la marca de un
+   agente en el color de su mundo, la de uno sin clasificar (sale en todos) en el del texto, y a lo ancho, tenue, por
+   qué: la ruta (su carpeta) o la etiqueta (su hilo) que lo pone ahí. */
+@scope (.v-dia) {
+  /* las celdas de la raya y del ícono de por qué: un cuadrado del alto de la fila */
+  .mu-ranura {
+    display: inline-block;
+    flex: none;
+    inline-size: calc(var(--item-alto) * 1em);
+    margin-inline-end: .5ch;
+    text-align: center;
+  }
+
+  .mu-elegir {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--h-2);
+    margin-top: var(--e-1);
+    padding: 0 var(--h-1);
+
+    & a { color: var(--texto-tenue); cursor: pointer; white-space: nowrap; }
+    & a.si { color: var(--mundo-c, var(--texto)); }
+  }
+
+  :is(.ma-agente, .ma-celda, .ma-linea).fuera,
+  .ma-linea.fuera > .i { color: var(--texto-apagado); }
+
+  .mu-mundo { color: var(--mundo-c); }
+  .mu-grilla .ma-celda { cursor: default; color: var(--texto); }
+  .mu-grilla .ma-celda.no { color: var(--texto-tenue); }
+  .ma-celda.suyo,
+  .mu-marca.suyo > .i { color: var(--mundo-c); }
+
+  /* la grilla de ⚙ mundos lleva una columna más al final: qué pasa con el agente fuera de su mundo */
+  .mu-grilla { grid-template-columns: max-content repeat(var(--fijas), max-content) minmax(max-content, 1fr) max-content; }
+
+  /* qué pasa con un agente fuera de su mundo: las tres, la elegida con su ✓ y en el color del texto, las otras tenues */
+  .mu-fuera {
+    display: inline-flex;
+    gap: 0 var(--h-2);
+    white-space: nowrap;
+
+    & a { color: var(--texto-tenue); cursor: pointer; }
+    & a.si { color: var(--texto); }
+    & a > .i { display: inline-block; inline-size: 2ch; color: var(--acento); text-align: center; }
+  }
+  .mu-linea > .mu-fuera { margin-inline-start: auto; padding-inline-start: var(--h-2); }
+
+  .mu-por {
+    overflow: hidden;
+    color: var(--texto-tenue);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+
+    & > .i { display: inline-block; inline-size: calc(var(--item-alto) * 1em); margin-inline-end: .5ch; text-align: center; }
+  }
+
+  .mu-linea { cursor: default; }
+  .mu-linea > .mu-por { margin-inline-start: auto; padding-inline-start: var(--h-2); }
+  .mu-marca { color: var(--texto); white-space: nowrap; }
+  .mu-marca.no { color: var(--texto-tenue); }
+
+  .mu-marca > .i {
+    display: inline-block;
+    inline-size: 2ch;
+    margin-inline-end: .5ch;
+    text-align: center;
+  }
+}
+
+/* El tema de un mundo (⚙ mundos, `selectorTemas`): cada tema es un rectángulo con su propio fondo, su texto y sus tintas
+   (lleva `data-tema`, así que dentro rigen sus tokens), para verlo antes de elegirlo; el elegido lleva ✓ en su ranura.
+   «el del modo», sin `data-tema`, en los colores de ahora. En una grilla de anchos iguales, que baja si no caben. */
+@scope (.v-dia) {
+  .mu-temas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(22ch, 1fr));
+    gap: var(--e-1) var(--h-1);
+    padding: var(--e-1) var(--h-1) var(--e-2) calc(var(--h-2) + var(--h-1));
+  }
+
+  .mu-tema {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 0 var(--h-1) 0 0;
+    color: var(--fg);
+    white-space: nowrap;
+    cursor: pointer;
+    background: var(--bg);
+    border: var(--borde);
+
+    &:hover { text-decoration: none; border-color: var(--fg); }
+
+    & > .i {
+      display: inline-block;
+      inline-size: calc(var(--item-alto) * 1em);
+      color: var(--acento);
+      text-align: center;
+    }
+  }
+
+  .mu-tintas {
+    margin-inline-start: auto;
+    padding-inline-start: var(--h-1);
+    letter-spacing: .1ch;
+  }
+}
+
+/* ⚙ temas (vistas/dashboard/config/temas.ts): los colores principales de un tema. Los fondos y las tintas van en cajas
+   con el fondo y el texto de ese tema (llevan `data-tema`, así que dentro rigen sus tokens, con los colores propios y lo
+   que se prueba). Cada color: su nombre (una tinta, en su color), lo que pinta, cómo se lee y el de fábrica al lado (su
+   cuadrado y su número); debajo, el de fábrica y la paleta (cuadrados del alto de la letra, con un cuadrado de aire entre
+   uno y otro; el que está puesto, con un marco del color del texto), y el campo para escribir otro; y lo que se lee mal,
+   en una línea por aviso, con su ícono. Sin esquinas redondeadas, ni en el selector. */
+@scope (.v-dia) {
+  .te-caja {
+    margin: var(--e-1) 0 var(--e-2);
+    color: var(--fg);
+    background: var(--bg);
+    border-block: var(--borde);
+  }
+
+  .te-tinta {
+    padding: var(--e-1) var(--h-1);
+    border-bottom: var(--borde);
+
+    &:last-child { border-bottom: 0; }
+    & > .fila { gap: 0 var(--h-1); align-items: baseline; }
+  }
+
+  .te-nombre { flex: none; min-inline-size: 9ch; }
+
+  .te-para {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--dim);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .te-razon { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .te-razon.mal { color: var(--rojo); }
+
+  /* la muestra es el selector de color del navegador: un cuadrado del alto de la letra */
+  .te-selector {
+    flex: none;
+    inline-size: 1em;
+    block-size: 1em;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    appearance: none;
+
+    &::-webkit-color-swatch-wrapper { padding: 0; }
+    &::-webkit-color-swatch { border: 0; border-radius: 0; }
+    &::-moz-color-swatch { border: 0; border-radius: 0; }
+  }
+
+  .te-opciones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1) 1em;
+    align-items: center;
+    margin-top: var(--e-1);
+    padding-inline-start: calc(1em + var(--h-1));
+  }
+
+  .te-op {
+    flex: none;
+    inline-size: 1em;
+    block-size: 1em;
+    cursor: pointer;
+    background: var(--c);
+
+    &:hover { outline: 1px solid var(--dim); outline-offset: 2px; }
+    &.si { outline: 1px solid var(--fg); outline-offset: 2px; }
+    /* la de fábrica, primero y apartada de las otras por un cuadrado más */
+    &.fabrica { margin-inline-end: 1em; }
+  }
+
+  .te-libre {
+    inline-size: 9ch;
+    margin-inline-start: auto;
+    padding: 0;
+    font: inherit;
+    color: var(--fg);
+    background: none;
+    border: 0;
+    border-bottom: var(--borde);
+    border-radius: 0;
+
+    &:focus { outline: none; border-bottom-color: var(--acento); }
+    &.mal { color: var(--rojo); }
+  }
+
+  .te-aviso {
+    margin-top: var(--e-1);
+    padding-inline-start: calc(1em + var(--h-1));
+    color: var(--amarillo);
+
+    &.contraste { color: var(--rojo); }
+    & > .i { margin-inline-end: 1ch; }
+  }
+
+  /* en la grilla de temas: el que se ve, y el que tiene colores propios */
+  .te-marca { margin-inline-start: 1ch; color: var(--dim); }
+
+  /* el de fábrica, al lado del que está: su cuadrado y su número, tenues; si el que está es propio, el lápiz */
+  .te-fab { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .te-propio { margin-inline-end: 1ch; color: var(--dim); }
+  /* dónde vive un color propio: en la raíz (todas las máquinas), o solo en esta, que pisa lo de la raíz */
+  .te-donde { margin-inline-end: 1ch; color: var(--dim); }
+  .te-donde.solo { color: var(--amarillo); }
+
+  /* un fondo sobre su fondo no se vería: sus cuadrados llevan un borde fino del texto, por dentro */
+  .te-fondo .te-op,
+  .te-fab-muestra { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 40%, transparent); }
+  .te-fondo .te-selector::-webkit-color-swatch { border: 1px solid color-mix(in srgb, var(--fg) 40%, transparent); }
+  .te-fondo .te-selector::-moz-color-swatch { border: 1px solid color-mix(in srgb, var(--fg) 40%, transparent); }
+
+  .te-fab-muestra {
+    display: inline-block;
+    inline-size: 1em;
+    block-size: 1em;
+    margin-inline-end: 1ch;
+    vertical-align: -.15em;
+    background: var(--c);
+  }
+
+  /* la vista previa (`vistaPrevia`): lo que más se ve de la página, en pequeño y con los colores del tema (lleva
+     `data-tema`): una barra, filas partidas por sus líneas de borde a borde, la activa y la seleccionada, y cada tinta.
+     Queda pegada arriba (bajo la barra de la pantalla, que también se queda) mientras se bajan los colores, para ver al
+     tiro lo que se cambia */
+  .te-previa {
+    position: sticky;
+    top: var(--pantalla-barra-alto);
+    z-index: 1;
+    margin: var(--e-1) 0 var(--e-2);
+    color: var(--fg);
+    background: var(--bg);
+    border-block: var(--borde);
+  }
+
+  .te-p-barra,
+  .te-p-fila {
+    display: flex;
+    gap: var(--h-1);
+    justify-content: space-between;
+    padding: 0 var(--h-1);
+    white-space: nowrap;
+    border-bottom: var(--borde);
+  }
+
+  .te-p-barra { background: var(--bg-barra); }
+  .te-p-fila:last-child { border-bottom: 0; }
+  .te-p-fila.activa { background: var(--item-fondo-activa); box-shadow: var(--item-marca-activa); }
+  .te-p-fila.sel { background: var(--sel); }
+  .te-p-fila > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .te-p-titulo { color: var(--titulo); text-transform: var(--item-cabecera-letras); }
+  .te-p-meta { flex: none; color: var(--dim); }
+  .te-p-acento { color: var(--acento); }
+}
+
+/* Los modos de un mundo (⚙ mundos, `selectorModos`): cada modo con su ícono, los que tiene con ✓; «todos» al final. Como
+   los temas, en una grilla de anchos iguales que baja si no caben; el que no tiene, tenue. */
+@scope (.v-dia) {
+  .mu-modos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16ch, 1fr));
+    gap: var(--e-1) var(--h-1);
+    padding: var(--e-1) var(--h-1) var(--e-2) calc(var(--h-2) + var(--h-1));
+  }
+
+  .mu-modo {
+    display: inline-flex;
+    align-items: baseline;
+    padding: 0 var(--h-1) 0 0;
+    color: var(--dim);
+    white-space: nowrap;
+    cursor: pointer;
+    border: var(--borde);
+
+    &.si { color: var(--fg); }
+    &:hover { text-decoration: none; border-color: var(--fg); }
+
+    & > .i {
+      display: inline-block;
+      inline-size: calc(var(--item-alto) * 1em);
+      text-align: center;
+    }
+    & > .i:first-child { color: var(--acento); }
+  }
+}
+
+/* Las pestañas de cada modo (⚙ modos, `pestanasDeModos`): la misma fila que los modos de un mundo. La que oculta
+   ⚙ pestañas no se ve en ningún modo: apagada, con su ✓ si el modo la nombra. */
+@scope (.v-dia) {
+  .mu-modo.oculta,
+  .mu-modo.oculta > .i:first-child { color: var(--texto-apagado); }
+}
+
+/* El horario de los mundos (⚙ mundos › horario, componentes/horario-editor.ts). La semana: un renglón por día, con su
+   nombre y su franja de 0 a 24 h, partida por líneas a las 6, 12 y 18 (del color de las líneas, de arriba abajo); cada
+   pedazo, en la tinta de su mundo; el hueco (rige el de fuera), esa tinta apagada; el choque, rayado en el de peligro; la
+   hora de ahora, una línea del color del texto. Debajo, la escala y la leyenda. El editor de cada mundo: sus tramos (los
+   días, una celda cada uno con su borde; el prendido, en la tinta del mundo), sus horas en un selector sin esquinas, y el
+   pie de botones de la casa. Nada se distingue por tamaño de letra: por color. */
+@scope (.v-dia) {
+  .hs-semana {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: var(--e-1) 0;
+    padding: 0 var(--h-1);
+  }
+
+  .hs-dia {
+    display: grid;
+    grid-template-columns: 4ch minmax(0, 1fr);
+    align-items: center;
+
+    &.hoy > .hs-nombre { color: var(--fg); }
+  }
+
+  .hs-nombre { color: var(--dim); }
+
+  .hs-franja {
+    position: relative;
+    block-size: 1.2em;
+    background:
+      linear-gradient(var(--linea), var(--linea)) 25% 0 / 1px 100% no-repeat,
+      linear-gradient(var(--linea), var(--linea)) 50% 0 / 1px 100% no-repeat,
+      linear-gradient(var(--linea), var(--linea)) 75% 0 / 1px 100% no-repeat;
+  }
+
+  .hs-pedazo {
+    position: absolute;
+    inset-block: 0;
+  }
+
+  .hs-mundo { background: var(--mundo-c); }
+  .hs-hueco { background: color-mix(in srgb, var(--mundo-c, var(--linea)) 22%, transparent); }
+  .hs-choque { background: repeating-linear-gradient(135deg, var(--rojo) 0 3px, transparent 3px 6px); }
+
+  .hs-ahora {
+    position: absolute;
+    inset-block: -2px;
+    inline-size: 2px;
+    margin-inline-start: -1px;
+    background: var(--fg);
+  }
+
+  .hs-escala .hs-franja { background: none; }
+
+  .hs-hora {
+    position: absolute;
+    color: var(--dim);
+    transform: translateX(-50%);
+
+    &:first-child { transform: none; }
+    &:last-child { transform: translateX(-100%); }
+  }
+
+  .hs-leyenda {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--h-2);
+    padding: 0 var(--h-1) var(--e-1) calc(4ch + var(--h-1));
+    color: var(--dim);
+
+    & > span { white-space: nowrap; }
+  }
+
+  .hs-muestra {
+    display: inline-block;
+    inline-size: 2ch;
+    block-size: .8em;
+    margin-inline-end: .5ch;
+  }
+
+  .hs-error { color: var(--rojo); }
+  /* lo que se dice en una fila (un choque, lo de la raíz) baja si no cabe: en el teléfono no se corta */
+  .fila:is(.hs-error, .hs-aviso, .hs-envuelve) { white-space: normal; }
+  .hs-aviso { color: var(--amarillo); }
+  :is(.hs-error, .hs-aviso) > .i { display: inline-block; inline-size: 2ch; margin-inline-end: .5ch; text-align: center; }
+
+  /* los tramos van corridos bajo el nombre del mundo; el pie no, para que su línea vaya de borde a borde */
+  .hs-editor { margin: 0 0 var(--e-2); }
+  .hs-editor > :not(.botonera) { padding-inline-start: calc(var(--h-2) + var(--h-1)); }
+
+  .hs-tramo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--e-1) var(--h-2);
+    align-items: center;
+    padding: var(--e-1) 0;
+  }
+
+  .hs-dias { display: inline-flex; }
+
+  .hs-dia-op {
+    padding: 0 .5ch;
+    color: var(--texto-tenue);
+    cursor: pointer;
+    border: var(--borde);
+
+    & + & { border-left: 0; }
+    &:hover { text-decoration: none; background: var(--hover); }
+    &.si { color: var(--mundo-c, var(--fg)); background: color-mix(in srgb, var(--mundo-c, var(--fg)) 16%, transparent); }
+  }
+
+  .hs-horas {
+    display: inline-flex;
+    gap: .5ch;
+    align-items: center;
+
+    & select {
+      font: inherit;
+      color: var(--fg);
+      background: var(--bg);
+      border: var(--borde);
+      border-radius: 0;
+      padding: 0 .5ch;
+    }
+  }
+
+  .hs-quitar {
+    color: var(--texto-tenue);
+    cursor: pointer;
+
+    &:hover { color: var(--rojo); text-decoration: none; }
+  }
+
+  .hs-nota { color: var(--dim); }
+  .hs-nota.mal { color: var(--rojo); }
+  .hs-pie code { color: var(--fg); }
 }

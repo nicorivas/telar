@@ -48,7 +48,7 @@ def palabras(texto: str) -> set[str]:
 
 
 def serie(titulo: str) -> str:
-    """El título sin fechas ni números: «Weekly KO Andina 7-oct» y la del 14 son la misma serie."""
+    """El título sin fechas ni números: «Weekly KO Faro 7-oct» y la del 14 son la misma serie."""
     t = re.sub(r"\d+", " ", _plano(titulo))
     return " ".join(w for w in re.split(r"[^a-z]+", t) if w and w not in MESES)
 

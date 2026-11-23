@@ -44,7 +44,7 @@ Hace falta un título concreto (5 a 150 caracteres); el contexto (por qué, para
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $EQUIPO_LLAVE" -H "Content-Type: application/json" \
-  -d '{"titulo":"Hacer la sesión 5 de GOA","contexto":"la pide el cliente para el jueves","vence":"2026-10-22"}' \
+  -d '{"titulo":"Hacer la sesión 5 de ARCO","contexto":"la pide el cliente para el jueves","vence":"2026-10-22"}' \
   http://100.64.0.10:8766/api/pedir
 ```
 

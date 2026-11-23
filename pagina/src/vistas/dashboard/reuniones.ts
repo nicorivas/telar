@@ -52,7 +52,7 @@ async function elegirProyecto(titulo: string, hora: string, r: cli.JsonReunion):
     }
     const elegido = await ui.elegir(items, {
         titulo: `¿De qué proyecto es «${titulo}» (${hora})?`,
-        placeholder: 'escribe para buscar un proyecto; la elección se recuerda para esta reunión',
+        placeholder: 'proyectos · la elección se recuerda para esta reunión',
     });
     if (!elegido?.valor) return undefined;
     if (elegido.valor !== 'nuevo') return elegido.valor;
