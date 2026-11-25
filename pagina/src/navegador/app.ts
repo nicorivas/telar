@@ -17,7 +17,8 @@ import * as glifos from '../web/glifos';
 import { BarraHilos, type Guardado } from '../vistas/hilos';
 import { crearOrdenes } from '../web/ordenes';
 import { Dashboard } from '../vistas/dashboard/panel';
-import { montar as montarCarpeta, type Vuelta } from '../web/carpeta';
+import * as visor from '../web/carpeta';
+import type { Vuelta } from '../web/carpeta';
 import { montar as montarCompartir } from '../web/compartir';
 import { montar as montarObjeto, partir as partirDireccion } from '../web/objeto';
 import * as ui from '../web/ui';
@@ -25,10 +26,13 @@ import * as version from '../web/version';
 import * as jornadaCab from '../web/jornada';
 import * as recarga from '../web/recarga';
 import * as lado from '../web/lado';
+import * as borradores from '../web/borradores';
 import * as anchos from '../web/anchos';
 import * as modos from '../web/modos';
 import * as buscador from '../web/buscador';
 import * as buscadores from '../web/buscadores';
+import * as mensajes from '../web/mensaje';
+import * as pestanasWeb from '../web/pestanas';
 import * as buscadorHilos from '../web/buscador-hilos';
 import * as hallados from '../web/hallados';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
@@ -41,6 +45,8 @@ import * as pulso from '../web/pulso';
 import * as vigia from '../web/vigia';
 import * as avisosArchivos from '../web/avisos-archivos';
 import * as dormidos from '../web/dormidos';
+import { Vigia as VigiaVentanas, montarSilencio } from '../web/ventanas';
+import { dondeVive, partirVista, Seguidor } from '../web/donde-vive';
 
 
 // ── la bandeja del equipo: la del servidor que sirve la página («aqui») o la de la máquina que diga /config ──
@@ -87,10 +93,15 @@ const guardado: Guardado = {
 const modo: Record<string, string> = {};
 const angosto = () => document.body.classList.contains('angosto');
 const esHilo = (que: string) => !(que === 'dashboard' || que === 'compartir' || que.startsWith('doc:') || que.startsWith('arch:') || que.startsWith('obj:'));
+/** Un archivo (`arch:<ruta>`) o la carpeta de un hilo y su documento (`doc:<hilo>`): no es una vista sino el visor, una
+ *  ventana encima de lo que se mira (web/carpeta.ts). */
+const esVisor = (que: string) => que.startsWith('doc:') || que.startsWith('arch:');
 function forma(que: string): string {
     if (!esHilo(que)) return '';
     // uno archivado o cerrado no tiene terminal: se ve su conversación, con «retomar» (web/conversacion.ts)
     if (!que.startsWith('rem:') && modelo.hilos.some(h => h.nombre === que && (!h.vivo || h.archivado))) return 'conv';
+    // y uno archivado en otra máquina (de su foto): allá tampoco tiene terminal
+    if (que.startsWith('rem:') && barra.archivadoAlla(que.slice(4))) return 'conv';
     return modo[que] ?? (angosto() ? 'conv' : 'term');
 }
 /** las terminales que se miraron hace poco: cada una es una vista de tmux abierta, y se cierran las viejas */
@@ -111,12 +122,12 @@ function cerrarVista(llave: string): void {
     vistas().find(x => x.dataset.p === llave)?.remove();
 }
 
-/** De dónde se vino al visor de un archivo, a la carpeta de un hilo o a la vista de un objeto: lo que se veía antes
- *  (un hilo, en la vista que tenía; el dashboard), adonde vuelve su «‹ …». Pasar de un archivo a otro no la cambia. */
+/** De dónde se vino a la vista de un objeto: lo que se veía antes (un hilo, en la vista que tenía; el dashboard), adonde
+ *  vuelve su «‹ …». Pasar de un objeto a otro no la cambia. */
 let origen = '';
-const esDocumento = (que: string) => que.startsWith('doc:') || que.startsWith('arch:') || que.startsWith('obj:');
+const esDocumento = (que: string) => que.startsWith('obj:');
 
-/** La vuelta del visor (web/carpeta.ts) y de la vista de un objeto: «‹ Telar · conversación», «‹ dashboard». */
+/** La vuelta de la vista de un objeto: «‹ Telar · conversación», «‹ dashboard». */
 const vuelta = (): Vuelta | null => vueltaA(origen);
 function vueltaA(o: string): Vuelta | null {
     if (!o || esDocumento(o)) return null;
@@ -151,6 +162,15 @@ function abrirDireccion(direccion: string): boolean {
  *  que el teléfono le compartió a la app: la página se abrió en /compartir). */
 function mostrar(que: string): void {
     if (!que) return;
+    // un archivo, en el visor: encima de lo que se mira, que no cambia (ni el foco, al cerrarlo)
+    if (esVisor(que)) {
+        if (que.startsWith('arch:')) visor.abrir('', que.slice(5), ui.markdown);
+        else visor.abrir(que.slice(4), '', ui.markdown);
+        return;
+    }
+    // ir a otra parte cierra el visor, si estaba abierto (sin devolverle el foco a lo de antes: lo pone lo que se abre); la
+    // dirección de un archivo o un proyecto no, que se abre en él
+    if (!(que.startsWith('obj:') && ['archivo', 'proyecto'].includes(partirDireccion(que.slice(4)).tipo))) visor.cerrar(false);
     // el ⚙ de la cabecera: la configuración, en el dashboard
     if (que === 'config') { void hoy.irAPestana('config'); return; }
     if (que.startsWith('obj:') && abrirDireccion(que.slice(4))) return;
@@ -168,9 +188,7 @@ function mostrar(que: string): void {
         if (esDocumento(que) || que === 'compartir') {
             f ??= nuevaVista(llave);
             if (que === 'compartir') montarCompartir(f, location.search);
-            else if (que.startsWith('obj:')) void montarObjeto(f, que.slice(4), ui.markdown, vuelta());
-            else if (que.startsWith('arch:')) void montarCarpeta(f, '', que.slice(5), ui.markdown, vuelta());
-            else void montarCarpeta(f, que.slice(4), '', ui.markdown, vuelta());
+            else void montarObjeto(f, que.slice(4), ui.markdown, vuelta());
         } else if (!f) {
             const remoto = que.startsWith('rem:') ? que.slice(4) : '';
             const i = remoto.indexOf(':');
@@ -194,9 +212,7 @@ function mostrar(que: string): void {
     // lo que se ve, como se nombra un hilo: «hilo» si es de esta máquina, «máquina:hilo» si es de otra (como
     // `scp máquina:ruta`; con la persona sería «ana@laptop:Faro»). Lo muestra la cabecera (indice.html)
     const remoto = que.startsWith('rem:') ? que.slice(4) : '';
-    const nombre = remoto ? remoto
-        : que.startsWith('doc:') ? `${que.slice(4)} · carpeta`
-        : que.startsWith('arch:') ? relativa(que.slice(5)) : que.startsWith('obj:') ? que.slice(4) : que;
+    const nombre = remoto ? remoto : que.startsWith('obj:') ? que.slice(4) : que;
     window.telar?.donde?.(que === 'dashboard' ? null : { texto: nombre, otraMaquina: !!remoto });
     document.title = que === 'dashboard' ? 'telar' : `${nombre} · telar`;
     document.body.classList.remove('en-lista');
@@ -293,6 +309,13 @@ buscador.registrar({
         })),
     ],
 });
+// las notas del hilo que se ve (web/borradores.ts): ir a su caja, como ⌥B
+buscador.registrar({
+    clave: 'borradores', nombre: 'este hilo', orden: 2, color: 'violeta',
+    resultados: () => borradores.deHilo() ? [{ titulo: `notas de «${borradores.deHilo()}»`, icono: I.borrador,
+        detalle: `${borradores.cuantos() || 'ninguna'} guardada${borradores.cuantos() === 1 ? '' : 's'} · ⌥B`,
+        claves: 'borrador borradores prompt guardar scratch notas siguiente', peso: 30, abrir: () => borradores.enfocar() }] : [],
+});
 buscador.registrar({
     clave: 'modos', nombre: 'modos', orden: 4, color: 'amarillo',
     resultados: () => modos.permitidos().map(m => ({
@@ -307,6 +330,10 @@ buscador.registrar({
         { titulo: 'agente nuevo', icono: I.nuevo, detalle: 'un agente residente: su carpeta', claves: 'nuevo crear', abrir: () => ui.orden('telar.agenteNuevo') },
         { titulo: 'máquinas', icono: I.maquinas, detalle: 'tus máquinas y los servidores', claves: 'servidores maquinas', abrir: () => { location.href = '/maquinas'; } },
         { titulo: 'actualizar la lista', icono: I.releer, detalle: 'volver a leer los hilos', claves: 'refrescar', abrir: () => ui.orden('telar.actualizar') },
+        // con módulos que piden ventanas (un chat de foco): no molestar, en esta máquina (también el ícono de la banda)
+        ...ventanas.hay ? [{ titulo: ventanas.silencio.a_mano ? 'que vuelvan a salir las ventanas' : 'no molestar', icono: I.silencio,
+            detalle: ventanas.silencio.a_mano ? 'ahora en silencio: las de los módulos esperan' : 'que no salga ninguna ventana de un módulo',
+            claves: 'silencio no molestar ventanas foco', abrir: () => ventanas.silenciar() }] : [],
         // con mundos declarados: la ventana de mundos (también ⌘M y un clic en el mundo de la banda)
         ...mundo.declarados().length ? [{ titulo: 'cambiar de mundo', icono: I.planeta, detalle: `ahora ${mundo.mundo()?.nombre ?? 'ambos'} · ⌘M`,
             claves: `mundo mundos ${mundo.declarados().map(m => m.nombre).join(' ')} ambos`, abrir: () => mundosVentana.abrir(opcionesMundos) }] : [],
@@ -315,6 +342,15 @@ buscador.registrar({
 // los proyectos, las tareas y los documentos del grafo: los pide a telar mientras se escribe, en un solo pedido (la misma
 // búsqueda de Todo, con el mundo puesto primero), y abrirlos es lo mismo que en Todo (web/hallados.ts)
 for (const f of hallados.fuentesDeTelar()) buscador.registrar(f);
+// los tipos de objeto de los módulos que piden salir en ⌘K (`[objetos.<tipo>] buscador`: los chats de whatsapp, con sus
+// acciones, como marcar uno de foco), cuando llega la configuración
+let buscablesPuestos = '';
+modelo.cambio.event(() => {
+    const firma = JSON.stringify(modelo.buscables);
+    if (firma === buscablesPuestos) return;
+    buscablesPuestos = firma;
+    modelo.buscables.forEach((b, i) => buscador.registrar(hallados.fuenteDeObjetos(b.tipo, b.plural, 9 + i)));
+});
 // la última fila, con lo escrito: buscarlo en todo junto (el modo todo, vistas/dashboard/todo.ts), más allá de lo que
 // está a mano aquí
 buscador.alFinal('en todo', 'cian', q => ({ titulo: `buscar «${q}» en todo`, icono: I.lista,
@@ -322,6 +358,10 @@ buscador.alFinal('en todo', 'cian', q => ({ titulo: `buscar «${q}» en todo`, i
 buscador.montar();
 // el ✕ de cualquier buscador de la página (componentes/buscador.ts): lo borra y avisa a su vista
 buscadores.atender();
+// las pestañas (componentes/pestanas.ts: ← → y cuando no caben) y la barra de mensaje (componentes/mensaje.ts: escribir,
+// elegir a quién, enviar), dondequiera que estén
+pestanasWeb.atender();
+mensajes.atender();
 
 // los íconos de la cabecera (la página es estática: la letra de íconos se recorta con lo que nombra web/iconos.ts)
 for (const [id, icono] of [['ir-maquinas', I.maquinas], ['ir-config', I.config]]) {
@@ -357,7 +397,40 @@ function pintarMundo(): void {
 pintarModos();
 pintarMundo();
 modos.alCambiar(pintarModos);
-mundo.alCambiar(() => { pintarMundo(); pintarModos(); barra.refrescar(true); hoy.repintar(); });
+mundo.alCambiar(() => { pintarMundo(); pintarModos(); barra.refrescar(true); hoy.repintar(); ventanas.alCambiarMundo(); });
+// las ventanas que piden los módulos (web/ventanas.ts, `[ventanas]`): un mensaje a un chat de foco abre la suya en cualquier
+// pantalla, para responder o aplazar. Con el mundo puesto (lo de otro no llega), en silencio a mano (el ícono de la banda)
+// o durante una reunión del calendario (web/jornada.ts), y sin quitarle el teclado a quien escribe
+let enReunion = false;
+const mirarReunion = () => { void jornadaCab.hayReunion().then(si => { if (si !== enReunion) { enReunion = si; void ventanas.revisar(); } }); };
+const lugarSilencio = document.getElementById('no-molestar');
+let pintarSilencio = () => {};
+const ventanas = new VigiaVentanas({
+    pedir: (m, solo) => cli.ventanas(m, solo),
+    accion: (modulo, verbo, params) => cli.accionDeVentana(modulo, verbo, params),
+    silenciar: si => cli.silenciar(si),
+    mundo: () => (mundo.declarados().length ? mundo.puesto().mundo : ''),
+    reunion: () => (enReunion ? 'en reunión' : ''),
+    abrir: (direccion, item) => {
+        if (direccion.startsWith('pestana:') && item) { mostrar('dashboard'); void hoy.irAPestanaNombrada(direccion.slice(8), false, item); }
+        else void ui.abrirDireccion(direccion);
+    },
+    instruccion: async (contexto, desde) => {
+        const { abrir } = await import('../web/instruccion');
+        const a = modelo.instruccionA;
+        const r = await abrir({ contexto: { ...contexto, origen: desde }, titulo: contexto.titulo, nombre: contexto.titulo, ...(a ? { a } : {}) });
+        return !!r;
+    },
+    ahora: () => Date.now(),
+    visible: () => !document.hidden,
+    alCambiar: () => pintarSilencio(),
+});
+if (lugarSilencio) pintarSilencio = montarSilencio(lugarSilencio, ventanas);
+ventanas.montar();
+mirarReunion();
+setInterval(mirarReunion, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) mirarReunion(); });
+
 // poner un modo lleva a su vista: la pestaña de su primera fila en DASHBOARD (táctica; proyectos, en estrategia; todo); foco, al último
 // hilo que se miró si se estaba en el dashboard. El que pone un mundo al entrar a él no saca de un hilo
 modos.alPoner((_, o) => {
@@ -432,14 +505,42 @@ const otras = async () => {
     // fuera de línea (telar.alcance): su foto envejeció con el nodo de aquí al día; con lo que le espera en cola
     const nuevas = (r?.datos?.espejos ?? []).filter(e => !e.error)
         .map(e => ({ nombre: e.nombre, en_linea: e.en_linea, edad: e.edad, fuera: !e.en_linea && !!r.datos?.al_dia,
-            cola: e.cola ?? [], hechos: e.hechos ?? [], hilos: e.hilos.filter(h => !h.remoto) }));
+            cola: e.cola ?? [], hechos: e.hechos ?? [], hilos: e.hilos.filter(h => !h.remoto), archivados: e.archivados ?? [] }));
     vigia.espejos(nuevas);
     // la edad cambia en cada lectura: lo que se compara para redibujar es lo demás (fuera o no, y desde cuándo lo dice su
     // ayuda, que se rehace al redibujar por otra cosa)
     const firma = (l: typeof barra.otras) => JSON.stringify(l.map(m => ({ ...m, edad: m.en_linea ? 0 : Math.round((m.edad ?? 0) / 600) })));
     if (firma(nuevas) !== firma(barra.otras)) { barra.otras = nuevas; barra.refrescar(true); }
     else barra.otras = nuevas;
+    void seguirLoQueSeMira();
 };
+
+// lo que se mira se sigue a donde vive (web/donde-vive.ts): un hilo que se llevó a otra máquina (o volvió) se va a
+// mirar allá, en la página de donde salió, en la de la que llegó y en el teléfono, en la vista que se tenía (la
+// terminal o la conversación). Solo si se lo vio abierto donde se lo miraba y se fue de ahí: uno archivado que se abrió
+// para leerlo no se mueve
+const seguidor = new Seguidor();
+let siguiendo = false;
+async function seguirLoQueSeMira(): Promise<void> {
+    const que = actual;
+    if (siguiendo || !esHilo(que) || que === 'dashboard' || que === 'compartir' || !modelo.aqui) return;
+    const { hilo, maquina } = partirVista(que);
+    const donde = (registro?: cli.JsonRegistro) => dondeVive(hilo, { aqui: modelo.aqui, local: modelo.porNombre(hilo),
+        otras: barra.otras, registro, mirando: maquina });
+    let ir = seguidor.mirar(que, donde());
+    // se fue de donde se lo miraba: adónde lo dice su registro en el bus, su dueño (las fotos solas no distinguen otro
+    // que se llame igual)
+    if (!ir && seguidor.sefue(que)) {
+        siguiendo = true;
+        try { ir = seguidor.mirar(que, donde((await cli.registro(hilo).catch(() => undefined))?.datos)); } finally { siguiendo = false; }
+    }
+    if (!ir || actual !== que) return;
+    const alla = partirVista(ir).maquina;
+    ui.estado(`«${hilo}» ${alla ? `vive en ${alla}` : 'vive aquí'}: lo sigo`, 5000);
+    if (modo[que]) modo[ir] = modo[que];
+    mostrar(ir);
+}
+modelo.cambio.event(() => void seguirLoQueSeMira());
 void otras();
 // el servidor avisa cuando cambia algo de telar (`/eventos`): la lista y las fotos de las otras máquinas se releen al
 // tiro. Los sondeos de abajo quedan de respaldo, más espaciados mientras los avisos llegan (lo que no pasa por el
@@ -455,6 +556,8 @@ let avisos = false;
     es.onerror = () => { avisos = false; };
     es.onmessage = e => {
         if (e.data === 'espejos') { void otras(); return; }
+        // un botón de una ventana de un módulo, o el silencio, en otra pestaña de esta máquina: que esta se entere ya
+        if (e.data === 'ventanas') { void ventanas.revisar(); return; }
         // juntar los que llegan seguidos (una orden escribe varios archivos): una sola lectura
         if (e.data === 'hilos' && !pendiente) {
             pendiente = window.setTimeout(() => { pendiente = 0; if (!document.hidden) void modelo.sondear().catch(() => undefined); }, 120);
@@ -484,9 +587,13 @@ function pintarAcciones(que: string): void {
     const ruta = h?.relativa && h.relativa !== '.' ? h.relativa : h?.ruta ? relativa(h.ruta) : '';
     barraH.innerHTML = barraPantalla({
         vistas: VISTAS.map(v => ({ accion: 'vista', valor: v.clave, icono: v.icono, nombre: `${v.nombre} (${v.atajo})`, ayuda: v.ayuda, si: v.clave === como })),
-        // su carpeta, como ruta (relativa a la raíz si está adentro); sin vínculo, la raíz
-        acciones: local ? [{ accion: 'carpeta', icono: I.carpeta, texto: ruta || '~', tono: 'azul',
-            ayuda: `${ruta || 'la raíz'}\nclic: la carpeta del hilo y su documento` }] : [],
+        // sus notas (web/borradores.ts: en el teléfono, en una ventana; en el laptop, la pestaña «notas» de la barra) y su
+        // carpeta, como ruta (relativa a la raíz si está adentro); sin vínculo, la raíz
+        acciones: [{ accion: 'borradores', icono: I.borrador, texto: borradores.cuantos() ? String(borradores.cuantos()) : '',
+            tono: borradores.recordando() ? 'verde' : undefined, si: borradores.recordando(),
+            ayuda: 'sus notas: los próximos prompts que le guardas, para mandárselos cuando termine (⌥B)' },
+            ...local ? [{ accion: 'carpeta', icono: I.carpeta, texto: ruta || '~', tono: 'azul',
+                ayuda: `${ruta || 'la raíz'}\nclic: la carpeta del hilo y su documento` }] : []],
     });
 }
 
@@ -497,10 +604,19 @@ function cambiarVista(clave: string): void {
     mostrar(actual);
 }
 
+// la cuenta de borradores en la barra del hilo, al cambiar
+let borradoresVistos = '';
+window.addEventListener('telar:borradores', e => {
+    const d = JSON.stringify((e as CustomEvent).detail);
+    if (d === borradoresVistos) return;
+    borradoresVistos = d;
+    if (forma(actual)) pintarAcciones(actual);
+});
 document.getElementById('acciones')!.addEventListener('click', e => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-accion]');
     if (!a) return;
     if (a.dataset.accion === 'vista' && a.dataset.valor) cambiarVista(a.dataset.valor);
+    else if (a.dataset.accion === 'borradores') borradores.enfocar();
     else if (a.dataset.accion === 'carpeta') {
         // en el celular la ruta está escondida: el clic en el ícono la muestra y, con ella a la vista, un clic en ella abre la carpeta
         const celular = document.body.classList.contains('angosto');
@@ -522,13 +638,16 @@ declare global {
             mostrar?: (que: string) => void;
             /** poner un mundo a mano ("" ambos; web/mundo.ts), como la ventana de mundos: para recorrer la página en cada uno */
             ponerMundo?: (clave: string) => void;
+            /** las ventanas de los módulos (web/ventanas.ts): preguntar ya, el silencio, y cuál está abierta (para medir) */
+            ventanas?: { revisar: () => Promise<void>; silenciar: (si?: boolean) => Promise<void>; abierta: () => string };
             /** abrir la ventana de mundos (o cerrarla, si está abierta), como ⌘M; devuelve lo elegido (web/mundos-ventana.ts) */
             mundos?: () => Promise<string | undefined>;
             /** cambiar la vista del hilo que se ve (`term`, `lectura`, `conv`): lo que hace su barra de arriba */
             vista?: (clave: string) => void;
             donde?: (lo: { texto: string; otraMaquina: boolean } | null) => void;
             /** la transición de una mudanza, sin mudar nada: para mirarla y afinarla (web/mudanza.ts, `ensayo`) */
-            ensayoMudanza?: (maquina?: string, falla?: boolean | 'pregunta') => Promise<void>;
+            ensayoMudanza?: (maquina?: string, falla?: boolean | 'pregunta' | 'subir') => Promise<void>;
+            ensayoSeguir?: (aqui?: string, falla?: boolean) => Promise<void>;
             /** una confirmación de verdad (`ui.aviso` con botones) con textos de muestra: `borrar`, `archivar`, `descartar`,
              *  `traer` (con contenido largo, que se desplaza) y `permiso` (tres botones); dice qué se apretó y no lo hace
              *  (web/ensayo-confirmar.ts) */
@@ -547,11 +666,16 @@ declare global {
             /** la línea del pulso con pasadas de mentira (componentes/muestras-pulso.ts) y, con `abrir` (de fábrica), su
              *  ventana, sin leer ni marcar nada (web/pulso.ts) */
             ensayoPulso?: (abrir?: boolean) => Promise<string>;
+            /** la barra de mensaje de una cosa, en HTML (web/mensaje.ts, `barra`): para ponerla donde sea desde la consola y
+             *  probarla de verdad (lo que se envía, sale: a un hilo de juguete) */
+            barraMensaje?: (c: mensajes.ContextoMensaje) => string;
         };
     }
 }
-window.telar = { ...(window.telar ?? {}), mostrar, ponerMundo: mundo.poner, mundos: () => mundosVentana.abrir(opcionesMundos), vista: cambiarVista, ensayoAvisos: franja.ensayo, ensayoPulso: pulso.ensayo,
+window.telar = { ...(window.telar ?? {}), mostrar, ponerMundo: mundo.poner, barraMensaje: mensajes.barra,
+    ventanas: { revisar: () => ventanas.revisar(), silenciar: si => ventanas.silenciar(si), abierta: () => ventanas.abierta?.v.titulo ?? '' }, mundos: () => mundosVentana.abrir(opcionesMundos), vista: cambiarVista, ensayoAvisos: franja.ensayo, ensayoPulso: pulso.ensayo,
     ensayoMudanza: async (maquina, falla) => { const { ensayo } = await import('../web/mudanza'); await ensayo(maquina, falla); },
+    ensayoSeguir: async (aqui, falla) => { const { ensayoSeguir } = await import('../web/mudanza'); await ensayoSeguir(aqui, falla); },
     ensayoConfirmar: async cual => { const { ensayo } = await import('../web/ensayo-confirmar'); return ensayo(cual); },
     ensayoContestar: async (clase = 'decide', cambio = false) => {
         const [{ abrirContestar, hacerDeEnsayo }, { esperasDeMuestra }] = await Promise.all([import('../web/contestar'), import('../componentes/muestras-contestar')]);

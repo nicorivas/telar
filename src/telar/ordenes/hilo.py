@@ -32,7 +32,13 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            defecto, un hilo es privado: no sale)
     telar hilo privar                      volver a privado
     telar hilo retomar                     desarchivarlo y reabrirlo, con su agente retomando
-                                           la conversación que tenía
+                                           la conversación que tenía. Uno archivado aquí que el bus
+                                           dice de otra máquina se retoma allá (si está apagada,
+                                           dice si se puede seguir aquí)
+    telar hilo seguir [--si]               seguir aquí uno cuya máquina está apagada, desde la copia de
+                                           su conversación que quedó aquí (telar.seguir): sin --si, dice
+                                           de cuándo es la copia y cuánto falta; con --si, lo toma y lo
+                                           abre. Cuando aquella vuelva, cede sola
     telar hilo olvidar                     borrar lo que telar sabía de él
     telar hilo dormir [--seco]             cerrar su agente y dejar su ventana esperando, en su lugar de la lista
                                            (el nodo lo hace solo tras `[hilos] dormir_tras` sin actividad: telar.dormir);
@@ -48,12 +54,20 @@ Todo lo que se le hace a un hilo suelto vive aquí, con un verbo por operación:
                                            nodo cada 30 s; --horas, qué tan reciente (6)
     telar hilo llevar [máquina] [--sesion ID]  pasar su conversación a otra máquina: una de [remotos]
                                            (por ssh) o una tuya del bus, como tu lugar en un
-                                           servidor (por el bus, telar.mudanza). Se cierra aquí y
-                                           sigue allá, retomada. Con --sesion, esa conversación
-                                           aunque telar no la tenga anotada
+                                           servidor (por el bus, telar.mudanza). Sigue allá,
+                                           retomada; aquí se cierra recién cuando allá lo abrió (si
+                                           no llega, aquí sigue como estaba). Pedido por el agente
+                                           del hilo, se va cuando termina su turno. Con --sesion, esa
+                                           conversación aunque telar no la tenga anotada
     telar hilo ver                         lo mismo que `telar hilos` para uno solo
     telar hilo leer [«Faro»] [--ultimos N] [--maquina M]   lo último que pasó en ese hilo (de esa máquina, por el bus): lo que se le pidió y
                                            lo que respondió su agente (5 turnos si no se dice)
+    telar hilo borradores [«Faro»] [--maquina M]   los próximos prompts que le guardaste, en orden (telar.borradores)
+    telar hilo borradores --agregar "…"|-   uno más, al final (con «-», por la entrada)
+    telar hilo borradores --mandar N|ID [--enviar] [--esperar]   escribirlo en su entrada sin ⏎ (con --enviar, y ⏎);
+                                           sale de la lista. Si su agente trabaja, se niega; con --esperar, sale
+                                           solo cuando termine su turno
+    telar hilo borradores --borrar N|ID    sacarlo de la lista
     telar hilo contexto [«Faro»] [--maquina M]   lo que carga el contexto de su conversación: cuánto pesa, desde
                                            cuándo, y qué es (los CLAUDE.md, la memoria, los hooks, las skills, los
                                            MCP, lo que leyó, lo que se repite, lo de otros hilos), con sus tamaños
@@ -112,8 +126,10 @@ VERBOS = (
     "dormir",
     "despertar",
     "llevar",
+    "seguir",
     "leer",
     "contexto",
+    "borradores",
     "caidos",
 )
 
@@ -125,7 +141,7 @@ AL_DUENO = ("vincular", "desvincular", "renombrar", "prioridad", "etiquetas", "p
 
 #: los verbos que no llevan valor: el nombre suelto que se les dé es el hilo sobre el que actúan
 SIN_VALOR = ("ver", "desvincular", "cerrar", "archivar", "desarchivar", "publicar", "privar", "retomar", "olvidar",
-             "fusionar", "descartar", "dormir", "despertar")
+             "fusionar", "descartar", "dormir", "despertar", "seguir")
 
 
 #: los esfuerzos que se le pueden dar al agente de un hijo (`--esfuerzo`; Claude Code: `--effort`)
@@ -144,7 +160,10 @@ def main(argv: list[str], ctx) -> int:
     )
     p.add_argument("--hilo", default="", help="sobre cuál actuar (por defecto, este)")
     p.add_argument("--cerrar", action="store_true", help="al archivar, cerrar además el hilo")
-    p.add_argument("--si", action="store_true", help="con llevar: seguir aunque haya trabajo sin subir")
+    p.add_argument("--si", action="store_true", help="con llevar: seguir aunque haya trabajo sin subir; con seguir: "
+                                                     "tomarlo y abrirlo aquí (sin --si, solo dice lo que falta)")
+    p.add_argument("--subir", action="store_true", help="con llevar: commitear lo suyo sin commitear (solo eso) y "
+                                                        "subirlo antes de llevarlo")
     p.add_argument("--sesion", default="",
                    help="con llevar: el id de la conversación, si telar no la tiene anotada (salida de emergencia)")
     p.add_argument("--ultimos", type=int, default=0, metavar="N", help="con leer: cuántos turnos")
@@ -170,6 +189,15 @@ def main(argv: list[str], ctx) -> int:
     p.add_argument("--seguir", action="store_true", help="con fusionar: fusionar lo commiteado y dejar al hijo trabajando")
     p.add_argument("--mensaje", default="", help="con fusionar: el mensaje del commit de fusión")
     p.add_argument("--forzar", action="store_true", help="con descartar: aunque pierda trabajo sin fusionar")
+    p.add_argument("--agregar", default=None, metavar="TEXTO", help="con borradores: uno más, al final (o «-»: por la entrada)")
+    p.add_argument("--mandar", default="", metavar="N|ID",
+                   help="con borradores: escribirlo en la entrada de su hilo, sin ⏎ (sale de la lista)")
+    p.add_argument("--enviar", action="store_true", help="con borradores --mandar: y apretar ⏎")
+    p.add_argument("--esperar", action="store_true",
+                   help="con borradores --mandar: si su agente está trabajando, que salga cuando termine su turno")
+    p.add_argument("--borrar", default="", metavar="N|ID", help="con borradores: sacarlo de la lista")
+    p.add_argument("--soltar", action="store_true",
+                   help="con borradores: lo que corre el fin de un turno, aparte: el primero en espera, si el agente quedó quieto")
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
@@ -177,6 +205,8 @@ def main(argv: list[str], ctx) -> int:
         return _leer(ctx, o)
     if o.verbo == "contexto":
         return _contexto(ctx, o)
+    if o.verbo == "borradores":
+        return _borradores(ctx, o)
     if o.verbo == "caidos":
         return _caidos(ctx, o)
     if o.verbo == "despertar" and o.aqui:
@@ -194,6 +224,9 @@ def main(argv: list[str], ctx) -> int:
         if o.hilo:
             return _comun.queja(f"«{o.verbo}» no lleva valor: «{o.valor}» sobra (el hilo ya es «{o.hilo}»)")
         o.hilo = o.valor
+    if o.verbo == "seguir":
+        # un hilo de otra máquina, que aquí puede no estar en la lista: por su nombre
+        return _seguir(ctx, o)
 
     tel = _comun.tejer(ctx, con_ficha=o.verbo in ("ver", "vincular"))
     if o.hilo:
@@ -352,7 +385,7 @@ def main(argv: list[str], ctx) -> int:
     elif o.verbo == "dormir":
         salida = _dormir(ctx, tel, hilo)
     elif o.verbo == "llevar":
-        salida = _llevar(ctx, tel, hilo, o.valor, o.si, o.sesion)
+        salida = _llevar(ctx, tel, hilo, o.valor, o.si, o.sesion, subir=o.subir)
     elif o.verbo == "relevo":
         # /relevo: dónde va el relevo de este hilo; sin --ruta, además, que al terminar el turno se limpie la
         # conversación y la nueva lo lea (telar.rotacion: el nodo teclea /clear y después el aviso)
@@ -890,29 +923,6 @@ def _cerrar_vista(tel: _comun.Telar, hilo) -> int:
     return 0
 
 
-def _sin_subir(ruta: Path) -> str:
-    """Lo que el repositorio de esa carpeta tiene y la otra máquina no: sin commitear, sin subir.
-    "" si nada, o si no es un repositorio git."""
-    import subprocess
-
-    def git(*args):
-        r = subprocess.run(["git", "-C", str(ruta), *args], capture_output=True, text=True, timeout=20)
-        return r.stdout.strip() if r.returncode == 0 else None
-
-    raiz = git("rev-parse", "--show-toplevel")
-    if not raiz:
-        return ""
-    # lo de otros repositorios no cuenta: un submódulo con cambios adentro (su puntero no
-    # cambió) o un repo anidado sin rastrear (`?? empresa/`) se sincronizan por su cuenta
-    lineas = (git("status", "--porcelain", "--ignore-submodules=dirty") or "").splitlines()
-    sucios = len([l for l in lineas if l.strip()
-                  and not (l.startswith("?? ") and l.rstrip().endswith("/") and (Path(raiz) / l[3:].strip() / ".git").exists())])
-    adelante = git("rev-list", "--count", "@{u}..HEAD")
-    partes = ([f"{sucios} archivo{'s' if sucios != 1 else ''} sin commitear"] if sucios else []) + (
-        [f"{adelante} commit{'s' if adelante != '1' else ''} sin subir"] if adelante and adelante != "0" else [])
-    return f"{raiz}: {', '.join(partes)}" if partes else ""
-
-
 def _falta_alla(remoto, ruta: str) -> str:
     """La carpeta como se llamaría allá (`~/Code/x`), si NO existe allá; "" si existe o no se sabe."""
     import shlex
@@ -931,13 +941,76 @@ def _falta_alla(remoto, ruta: str) -> str:
     return alla if r.returncode == 1 else ""
 
 
-def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = "") -> int:
+#: la marca en el entorno de la mudanza que sigue aparte (`_seguir_aparte`): ya no corre en la ventana que cierra
+APARTE = "TELAR_LLEVAR_APARTE"
+
+
+def _dentro_de(ctx, tel: _comun.Telar, hilo) -> bool:
+    """Si este proceso corre en la ventana del hilo: el agente del hilo pidió llevarse a sí mismo. Cerrar esa ventana
+    al final de la mudanza lo terminaría a la mitad, así que la mudanza sigue aparte (`_seguir_aparte`)."""
+    if os.environ.get(APARTE) or tel.mux is None or not tel.vivo(hilo):
+        return False
+    panel = panel_del_entorno(ctx.config.multiplexor)
+    if panel:
+        try:
+            return any(str(getattr(p, "id", "")) == panel for p in tel.mux.panes(hilo.id))
+        except Exception:  # noqa: BLE001 - sin poder preguntarle al multiplexor, lo que exportó al abrirlo
+            pass
+    return os.environ.get("TELAR_HILO", "").strip() == hilo.nombre
+
+
+def _seguir_aparte(ctx, hilo, maquina: str, sesion: str, subir: bool = False) -> int:
+    """La mudanza de un hilo pedida desde su propia ventana, en un proceso aparte (su propia sesión, fuera del árbol
+    del agente): espera a que el agente termine su turno, la copia, la abre allá y recién entonces cierra la ventana.
+    Lo que ya se decidió aquí (las preguntas, `--si`) no se vuelve a preguntar. Su salida, en
+    `<estado>/llevar/<hilo>.log`; su avance, en el progreso de la mudanza; si falla, el hilo sigue aquí y su agente
+    recibe un mensaje que dice por qué."""
+    import subprocess
+
+    from telar import mudanza
+
+    registro = mudanza.ruta_progreso(ctx.config, hilo.nombre).with_suffix(".log")
+    # lo decidido, tal cual: subir lo suyo antes, o llevarlo igual
+    argv = [sys.executable, "-m", "telar", "hilo", "llevar", maquina, "--hilo", hilo.nombre,
+            "--subir" if subir else "--si", *(["--sesion", sesion] if sesion else [])]
+    try:
+        with registro.open("w", encoding="utf-8") as salida:
+            subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=salida, stderr=subprocess.STDOUT,
+                             start_new_session=True, env={**os.environ, APARTE: "1"})
+    except OSError as e:
+        return _comun.queja(f"no pude seguir la mudanza aparte: {e}. No se movió nada")
+    print(f"«{hilo.nombre}» se va a {maquina} apenas termine este turno: la mudanza sigue aparte, porque corre en la"
+          " ventana que va a cerrar.")
+    print(_comun.tenue("  termina el turno sin más herramientas: tu conversación se copia cuando terminas, allá se abre"
+                       " retomándola y recién entonces se cierra esta ventana. Si algo falla, sigues aquí y te llega"
+                       f" un mensaje con el porqué. Su avance: {registro}"))
+    return 0
+
+
+def _avisar_al_hilo(ctx, hilo: str, texto: str) -> None:
+    """Lo que tiene que saber el agente de un hilo de su propia mudanza (que falló, y que sigue aquí): un mensaje en
+    su casilla. Solo cuando la mudanza siguió aparte: si no, quien la pidió ya lo leyó en su salida."""
+    if not os.environ.get(APARTE):
+        return
+    try:
+        from telar import bus as mod_bus
+        from telar import casilla
+
+        casilla.dejar(ctx.config, hilo, mod_bus.mensaje(f"telar hilo llevar no te llevó: {texto}", de="telar", para=hilo))
+    except Exception:  # noqa: BLE001 - el progreso y el registro lo dicen igual
+        pass
+
+
+def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = "", *, subir: bool = False) -> int:
     """Pasar la conversación de un hilo local a otra máquina, y seguirla allá.
 
-    La conversación viaja; los archivos no. Lo que el repositorio de aquí tenga sin commitear
-    o sin subir, el agente de allá no lo va a ver aunque lo recuerde: se dice antes, y hay que
-    confirmar. El agente de aquí se cierra antes de copiar: la misma conversación viva en dos
-    máquinas se bifurca.
+    La conversación viaja; los archivos no. Lo que el hilo tiene sin subir en sus repositorios (telar.sin_subir: lo
+    sin commitear que escribió su conversación, lo de su carpeta, los commits sin subir) se muestra antes, y se elige:
+    `subir` lo commitea (solo lo suyo) y lo sube antes de copiar, `si` lo lleva igual. Allá, el repositorio se pone al
+    día antes de abrir. Un hijo con rama no se muda. Aquí no se cierra ni se archiva nada hasta que allá confirma que
+    lo abrió: si la copia no llega o allá no abre, aquí sigue como estaba. Cerrar la ventana de aquí es lo último (la
+    misma conversación viva en dos máquinas se bifurca); si este proceso corre en esa ventana (el agente del hilo pidió
+    llevarse a sí mismo), la mudanza sigue aparte (`_seguir_aparte`).
     """
     from telar import agente as mod_agente
 
@@ -947,11 +1020,25 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
 
     remotos = ctx.config.remotos
     remoto = next((r for r in remotos if r.nombre == valor), None) if valor else (remotos[0] if len(remotos) == 1 else None)
-    # una máquina del bus (otra tuya, como tu lugar en un servidor): la conversación va por el bus (telar.mudanza)
-    del_bus = mudanza.maquinas_del_bus(ctx.config) if remoto is None else []
+    # una máquina del bus (otra tuya, como tu lugar en un servidor): la conversación va por el bus (telar.mudanza). Una
+    # de [remotos] que también está en el bus, igual: por ssh ya no se mudan hilos si hay bus (sin él no hay dueño que
+    # compartir, y queda el camino de antes)
+    del_bus = mudanza.maquinas_del_bus(ctx.config)
+    if remoto is not None and remoto.nombre in _conocidas_del_bus(ctx.config):
+        valor, remoto = remoto.nombre, None
     if remoto is None and valor not in del_bus:
+        fuera = _fuera_de_linea(ctx, valor) if valor else ""
+        if fuera:
+            return _comun.queja(f"{fuera}: no tiene dónde recibirlo. No se movió nada")
         nombres = ", ".join([*(r.nombre for r in remotos), *del_bus]) or "ninguna: ni en [remotos] ni en el bus"
         return _comun.queja(f"¿a qué máquina? telar hilo llevar <máquina> ({nombres})")
+    # un hijo con rama no se muda: su rama y su worktree existen solo aquí, y allá se abriría en la carpeta principal
+    lugar = tel.estado.ramas().get(hilo.nombre)
+    if lugar:
+        return _comun.queja(f"«{hilo.nombre}» es un hijo con rama: su rama ({lugar.get('rama') or '?'}) y su worktree "
+                            f"({lugar.get('ruta') or lugar.get('carpeta') or '?'}) existen solo aquí, y allá trabajaría "
+                            "en la carpeta principal. Fusiónalo o descártalo antes (telar hilo fusionar / descartar). "
+                            "No se movió nada")
     # con --sesion, esa y no las anotadas: para cuando los ganchos no la dejaron escrita
     sesiones = (sesion,) if sesion else tuple(hilo.sesiones)
     if not ctx.config.agente.nombre or not sesiones:
@@ -968,152 +1055,388 @@ def _llevar(ctx, tel: _comun.Telar, hilo, valor: str, si: bool, sesion: str = ""
         # y allá se abre con una nueva (lo que pasó con un hilo «prueba» recién abierto)
         print(_comun.tenue("  su conversación está vacía (sin mensajes): allá se abre con una nueva"))
 
-    # lo que la otra máquina no va a tener
-    # la carpeta del agente, la del hilo y la raíz de trabajo: en la raíz está casi todo lo
-    # que se hace, aunque el agente arranque en otra parte y el hilo no esté vinculado
-    carpetas = {lanzar.carpeta(ctx.config, hilo.ruta), Path(ctx.config.raiz)} | ({hilo.ruta} if hilo.ruta else set())
-    if remoto is not None:
-        carpetas |= {Path(x).expanduser() for x in remoto.repos}  # los que viven en las dos máquinas
-    avisos = sorted({a for c in carpetas if c for a in [_sin_subir(Path(c))] if a})
-    if avisos:
-        print("la conversación viaja, los archivos no. Aquí hay trabajo que allá no va a estar:")
-        for a in avisos:
-            print(f"  · {a}")
-        print(_comun.tenue("  (sincroniza primero, o sigue sabiendo que el agente de allá no lo verá)"))
-        if not si:
-            if not sys.stdin.isatty():
-                return _comun.queja("hay trabajo sin subir; --si para llevarla igual")
-            if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
-                print("no se movió nada")
-                return 1
-
     relativa = tel.estado.vinculos().get(hilo.nombre, "")
+    aparte = _dentro_de(ctx, tel, hilo)
     if remoto is None:
-        return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa, si=si)
-    from telar import mudanza
+        return _llevar_por_el_bus(ctx, tel, hilo, valor, sid, archivo, relativa, si=si, aparte=aparte, sesion=sesion,
+                                  subir=subir)
 
-    # los pasos, para la página (telar.mudanza.progreso), como por el bus; aquí no hay revisión allá
+    # sin bus (la otra máquina no está en él): por ssh, como antes de que hubiera un dueño por hilo. Los pasos, para la
+    # página (telar.mudanza.progreso), como por el bus
     mudanza.progreso(ctx.config, hilo.nombre, "revisar", maquina=remoto.nombre,
                      bytes=Path(archivo).stat().st_size if archivo is not None else 0, error="", avisos=[])
 
     def falla(texto: str) -> int:
         mudanza.progreso(ctx.config, hilo.nombre, "falla", error=texto)
+        _avisar_al_hilo(ctx, hilo.nombre, texto)
         return _comun.queja(texto)
 
     carpeta = mod_remoto.carpeta_remota(ctx.config, remoto, relativa)
+    pendiente, avisos = _lo_de_aqui(ctx, tel, hilo, relativa, archivo, sid)
     if relativa.startswith("/"):
         # vinculado fuera de la raíz: allá no hay traducción de esa carpeta. Si no existe en
         # la misma ruta del hogar, el agente de allá sigue la conversación sin sus archivos.
         faltante = _falta_alla(remoto, relativa)
         if faltante:
-            print(f"su carpeta, {faltante}, no existe en {remoto.destino}: el agente de allá recordará "
-                  "la conversación pero no tendrá esos archivos (clónalos allá primero)")
-            if not si:
-                if not sys.stdin.isatty():
-                    return falla(f"{faltante} no existe en {remoto.destino}; --si para llevarla igual")
-                if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
-                    print("no se movió nada")
-                    return 1
-    # 1. cerrar aquí: desde ahora la conversación sigue solo allá
-    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
-    if tel.mux is not None and tel.vivo(hilo):
-        try:
-            tel.mux.cerrar(hilo.id)
-        except ErrorDeMux as e:
-            return falla(f"no pude cerrar el hilo aquí: {e}")
-    mudanza.progreso(ctx.config, hilo.nombre, "copiar")
-    # 2. llevar la conversación (si tiene: una vacía no se copia, y allá se abre una nueva)
+            avisos.append(f"su carpeta, {faltante}, no existe en {remoto.destino}: el agente de allá recordará la "
+                          "conversación pero no tendrá esos archivos (clónalos allá primero)")
+    codigo, subir = _antes_de_llevar(ctx, hilo, remoto.nombre, pendiente, avisos, [], si, subir)
+    if codigo is not None:
+        return codigo
+    if aparte:
+        return _seguir_aparte(ctx, hilo, remoto.nombre, sesion, subir)
+    estaba_vivo = tel.mux is not None and tel.vivo(hilo)
+    problema = _esperar_su_turno(ctx, hilo, archivo, estaba_vivo)
+    if problema:
+        return falla(problema)
+    if subir:
+        problema, pendiente = _subir_lo_suyo(ctx, tel, hilo, remoto.nombre, relativa, archivo, sid)
+        if problema:
+            return falla(problema)
+    pesa = Path(archivo).stat().st_size if archivo is not None else 0
+    # 1. llevar la conversación (si tiene: una vacía no se copia, y allá se abre una nueva). Aquí no se toca nada
+    mudanza.progreso(ctx.config, hilo.nombre, "copiar", bytes=pesa)
     destino, problema = mod_remoto.copiar_conversacion(remoto, archivo, sid, carpeta) if archivo is not None else ("", "")
     if problema:
-        return falla(f"no se llevó la conversación: {problema}. Aquí quedó cerrada; "
-                     f"`telar hilo retomar` la reabre en esta máquina.")
-    # 3. abrirla allá, retomándola
+        return falla(f"no se llevó la conversación: {problema}. Aquí sigue como estaba.")
+    # 2. abrirla allá, retomándola (con su ventana aquí, que la mira); aquí sigue abierta hasta que allá esté
     mudanza.progreso(ctx.config, hilo.nombre, "abrir")
     try:
         mod_remoto.abrir(ctx, tel, hilo.nombre, remoto, relativa=relativa, conversacion=sid if archivo is not None else "")
     except (ErrorDeMux, ErrorDeAgente) as e:
-        return falla(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir "
-                     f"el hilo: {e}. `telar hilo retomar` lo intenta de nuevo.")
-    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=str(carpeta))
+        return falla(f"la conversación ya está en {remoto.destino} ({destino}), pero no pude abrir el hilo allá: {e}."
+                     " Aquí sigue como estaba.")
+    # 3. allá ya está: lo de aquí se cierra, lo último (si este proceso vive en esa ventana, cerrarla lo termina)
+    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
     tel.estado.desarchivar(hilo.nombre)
+    _desarchivar_alla(ctx, remoto.nombre, hilo.nombre)
     from telar import directorio as mod_directorio
 
     mod_directorio.publicar_callado(ctx, tel, remoto.nombre)
+    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=str(carpeta))
     if archivo is None:
         print(f"«{hilo.nombre}» sigue en {remoto.destino}, con una conversación nueva")
     else:
         print(f"«{hilo.nombre}» sigue en {remoto.destino}, retomando la conversación {sid[:8]}")
-        print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"))
+        print(_comun.tenue(f"  allá: {destino}; aquí queda la copia de como estaba al irse"), flush=True)
+    return _cerrar_lo_de_aqui(ctx, tel, hilo, remoto.nombre, archivo, pesa, estaba_vivo)
+
+
+def _conocidas_del_bus(config) -> set[str]:
+    """Las máquinas que el bus conoce (las que publicaron su foto alguna vez, en línea o no): a una de [remotos] que está
+    ahí se la lleva por el bus aunque haya ssh, y si no contesta, no se lleva (allá nadie lo tomaría)."""
+    from telar import bus as mod_bus
+    from telar import espejo
+
+    if not mod_bus.hay_bus(config):
+        return set()
+    try:
+        return {e["nombre"] for e in espejo.leer_todos(config) if e.get("nombre")}
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _carpeta_del_hilo(ctx, relativa: str) -> Path | None:
+    """La carpeta de un hilo, de su vínculo (relativo a la raíz, o absoluto); None si no tiene."""
+    if not relativa:
+        return None
+    return Path(relativa).expanduser() if relativa.startswith(("/", "~")) else Path(ctx.config.raiz).expanduser() / relativa
+
+
+def _lo_de_aqui(ctx, tel: _comun.Telar, hilo, relativa: str, archivo, sid: str) -> tuple[dict, list[str]]:
+    """Antes de llevarlo: lo que tiene sin subir en sus repositorios (telar.sin_subir) y lo que quedaría atrás (sus
+    hijos con rama, que no se mudan: se lleva solo al padre)."""
+    from telar import sin_subir
+
+    pendiente = sin_subir.revisar(ctx.config, _carpeta_del_hilo(ctx, relativa), archivo, sid)
+    ramas = tel.estado.ramas()
+    hijos = [h for h in tel.estado.hijos(hilo.nombre) if h in ramas]
+    avisos = ([f"sus hijos con rama ({', '.join(hijos)}) se quedan aquí, con su rama y su worktree: se lleva solo a "
+               f"«{hilo.nombre}», y fusionarlos se hace desde aquí"] if hijos else [])
+    return pendiente, avisos
+
+
+def _repos_para(pendiente: dict) -> list[dict]:
+    """Lo que la otra máquina necesita de cada repositorio del hilo para ver si va atrás: dónde está bajo la raíz y
+    el último commit de aquí (el de ahora: después de subir es otro)."""
+    from telar import git
+
+    salida = []
+    for r in pendiente.get("repos") or []:
+        if not r.get("relativa"):
+            continue
+        commit = git._git(Path(r["repo"]), "rev-parse", "HEAD").stdout.strip() or r.get("commit", "")
+        salida.append({"relativa": r["relativa"], "commit": commit, "nombre": r["nombre"]})
+    return salida
+
+
+def _revisar_alla(ctx, maquina: str, hilo, sid: str, relativa: str, pendiente: dict) -> dict:
+    """Le pregunta a la otra máquina, sin mover nada (`hilo-revisar`), si puede recibirlo y si tiene el último commit
+    de cada repositorio del hilo. {} si no contesta (un telar de antes: se sigue como antes)."""
+    from telar import bus as mod_bus
+    from telar import mudanza
+
+    pedido = {"hilo": hilo.nombre, "sesion": sid, "relativa": relativa, "repos": _repos_para(pendiente)}
+    r = mod_bus.pedir(ctx.config, maquina, mudanza.VERBO_REVISAR, pedido, espera=15)
+    return r if r.get("ok") else {}
+
+
+def _antes_de_llevar(ctx, hilo, maquina: str, pendiente: dict, avisos: list[str], destino: list, si: bool,
+                     subir: bool) -> tuple[int | None, bool]:
+    """Lo que hay que ver antes de llevarlo: lo sin subir (telar.sin_subir) y lo que llegaría a medias (`avisos`).
+    Queda en el progreso de la mudanza (`pendiente`, `destino`, `avisos`) para que la página lo muestre entero. Si no
+    hay nada, ni se pregunta. Si hay, `subir` o `si` ya lo deciden; si no, en una terminal se pregunta, y si no, falla
+    diciendo qué elegir. (None si se sigue, o el código de salida; si se sube)."""
+    from telar import mudanza, sin_subir
+
+    mudanza.progreso(ctx.config, hilo.nombre, "revisar", avisos=avisos, pendiente=pendiente, destino=destino)
+    lineas = sin_subir.lineas(pendiente, destino, maquina)
+    if not sin_subir.hay_algo(pendiente) and not avisos:
+        for x in lineas:  # allá va atrás: al llegar se pone al día, no hay nada que elegir
+            print(_comun.tenue(f"  {x.removeprefix('· ')}"))
+        return None, False
+    puede = sin_subir.hay_algo(pendiente) and sin_subir.se_puede_subir(pendiente)
+    if subir and not puede:
+        print(_comun.tenue("  no hay nada suyo que se pueda subir: se lleva igual"))
+        subir = False
+    if si or subir or os.environ.get(APARTE):
+        return None, subir
+    print(f"antes de llevar «{hilo.nombre}» a {maquina}:")
+    for x in [*lineas, *(f"· {a}" for a in avisos)]:
+        print(f"  {x}")
+    sys.stdout.flush()  # antes de la queja, que va por stderr: en el registro de la página, en su orden
+    if not sys.stdin.isatty():
+        if puede:
+            return _comun.queja("hay trabajo sin subir: --subir para subir lo suyo y llevarla, --si para llevarla "
+                                "igual"), False
+        if sin_subir.hay_algo(pendiente):
+            return _comun.queja("hay trabajo sin subir que no se puede subir desde aquí (no sé si es suyo, o su rama no "
+                                "tiene una de arriba): --si para llevarla igual"), False
+        return _comun.queja(f"en {maquina} llegaría a medias: --si para llevarla igual"), False
+    pregunta = "¿[s]ubir lo suyo y llevarla, llevarla [i]gual o [n]o? " if puede else "¿llevarla [i]gual o [n]o? "
+    r = input(pregunta).strip().lower()
+    if puede and r in ("s", "si", "sí", "subir"):
+        return None, True
+    if r in ("i", "igual", "y", "yes") or (not puede and r in ("s", "si", "sí")):
+        return None, False
+    print("no se movió nada")
+    return 1, False
+
+
+def _subir_lo_suyo(ctx, tel: _comun.Telar, hilo, maquina: str, relativa: str, archivo, sid: str) -> tuple[str, dict]:
+    """«Subir y llevar», después de su turno (lo que escribió al final también es suyo): commitea solo lo del hilo en
+    cada repositorio y sube (telar.sin_subir.subir). ("", lo que hay ahora) si subió; si no, por qué, y no se lleva."""
+    from telar import mudanza, sin_subir
+
+    mudanza.progreso(ctx.config, hilo.nombre, "subir")
+    pendiente, _ = _lo_de_aqui(ctx, tel, hilo, relativa, archivo, sid)
+    ok, texto = sin_subir.subir(ctx.config, pendiente, hilo.nombre, maquina)
+    if not ok:
+        return f"no pude subir lo suyo: {texto}. No se movió nada", pendiente
+    if texto:
+        print(_comun.tenue(f"  subido: {texto}"), flush=True)
+        mudanza.progreso(ctx.config, hilo.nombre, "subir", subido=texto)
+    return "", pendiente
+
+
+def _esperar_su_turno(ctx, hilo, archivo, vivo: bool) -> str:
+    """Antes de copiar: que el agente del hilo termine su turno (telar.mudanza.esperar_turno), venga de donde venga la
+    orden. Mientras espera, el progreso de la mudanza lo dice (`esperar`). Un hilo sin ventana no tiene agente que
+    esperar. "" si se puede copiar; si no, por qué."""
+    from telar import mudanza
+
+    if not vivo:
+        return ""
+
+    def avisar() -> None:
+        mudanza.progreso(ctx.config, hilo.nombre, "esperar")
+        print(_comun.tenue(f"  esperando que «{hilo.nombre}» termine su turno…"), flush=True)
+
+    return mudanza.esperar_turno(ctx.config, hilo.nombre, Path(archivo) if archivo is not None else None,
+                                 al_esperar=avisar)
+
+
+def _lo_copiado(r: dict) -> str:
+    """Lo que viajó de una conversación copiada de a pedazos (telar.replica.mandar), en una línea."""
+    from telar import replica
+
+    total, mandados = int(r.get("bytes") or 0), int(r.get("mandados") or 0)
+    if mandados >= total:
+        return f"copiada entera: {replica.mb(total)}" + (f", {replica.mb(r['red'])} por la red" if r.get("red") else "")
+    return (f"copiados {replica.mb(mandados)} de {replica.mb(total)}: lo demás ya estaba allá"
+            + (f" ({r.get('archivos')} archivos con su carpeta)" if int(r.get("archivos") or 1) > 1 else ""))
+
+
+def _desarchivar_alla(ctx, maquina: str, hilo: str) -> None:
+    """Un hilo que vuelve por ssh a la máquina de donde se fue quedó archivado allá (al irse, por el bus): ahora vive
+    allá, y su dueño es quien dice si está archivado (lo publica, y aquí se lee de eso). Se le pide desarchivarlo, si
+    está en el bus; si no contesta, se dice y sigue."""
+    from telar import bus as mod_bus
+
+    if not mod_bus.hay_bus(ctx.config):
+        return
+    o = SimpleNamespace(verbo="desarchivar", valor="", cerrar=False, json=True)
+    problema = _al_dueno(ctx, maquina, o, hilo)
+    if problema:
+        print(_comun.tenue(f"  allá puede seguir figurando archivado: {problema}"))
+
+
+def _fuera_de_linea(ctx, maquina: str) -> str:
+    """«laptop fuera de línea desde 14:02» si se sabe que esa máquina del bus no contesta; "" si contesta o no se
+    sabe (telar.alcance)."""
+    try:
+        from telar import alcance
+
+        a = alcance.de(ctx.config, maquina)
+    except Exception:  # noqa: BLE001
+        return ""
+    return a.frase() if a.fuera else ""
+
+
+def _cerrar_lo_de_aqui(ctx, tel: _comun.Telar, hilo, maquina: str, archivo, mandados: int, estaba_vivo: bool) -> int:
+    """El último paso de una mudanza por ssh que ya llegó: cerrar la ventana de aquí (la que corría el agente; la que
+    mira el hilo allá, si la hay, queda)."""
+    from telar import mudanza
+
+    if estaba_vivo and tel.mux is not None:
+        try:
+            tel.mux.cerrar(hilo.id)
+        except ErrorDeMux as e:
+            texto = (f"«{hilo.nombre}» ya está abierto en {maquina}, pero aquí no pude cerrarlo: {e}. Ciérralo aquí a"
+                     " mano (telar hilo cerrar): la misma conversación viva en dos máquinas se bifurca")
+            mudanza.progreso(ctx.config, hilo.nombre, "listo", aviso=texto)
+            return _comun.queja(texto)
     return 0
 
 
 def _llevar_por_el_bus(ctx, tel: _comun.Telar, hilo, maquina: str, sid: str, archivo, relativa: str, *,
-                       si: bool = False) -> int:
-    """Lo de `_llevar` hacia una máquina del bus (telar.mudanza). Antes de tocar nada, se le pregunta a la de allá si
-    puede recibirlo (`hilo-revisar`): lo grave no se lleva, y lo que llegaría a medias (su carpeta sin clonar) se
-    pregunta. Después se cierra aquí (la misma conversación viva en dos máquinas se bifurca), viaja por el bus y allá
-    se abre retomándola. Si allá no se abre, se vuelve a abrir aquí: el hilo no queda cerrado en ninguna parte. Cada
-    paso queda en el progreso de la mudanza (telar.mudanza.progreso), que la página dibuja."""
+                       si: bool = False, aparte: bool = False, sesion: str = "", subir: bool = False) -> int:
+    """Lo de `_llevar` hacia una máquina del bus (telar.mudanza), con un dueño por hilo (telar.dueno).
+
+    Antes de tocar nada, se le pregunta a la de allá si puede recibirlo y si tiene el último commit de sus
+    repositorios (`hilo-revisar`): lo grave no se lleva, y lo que llegaría a medias o lo sin subir de aquí se pregunta
+    (`_antes_de_llevar`). Después se espera su turno, se sube lo suyo si se eligió, y se **cede**: el registro del bus
+    dice que se va a `maquina`, y su agente se detiene (su ventana espera, y no despierta mientras viaja). La
+    conversación viaja (la final: ya nadie la escribe), y allá lo **toman** con la época que se cedió y lo abren, con
+    sus repositorios al día, su registro y su casilla. Si algo falla antes de que lo tomen, aquí se echa atrás y su
+    agente despierta: no se movió nada. Si ya lo tomaron, vive allá. Con la confirmación, su ventana de aquí se cierra;
+    no se archiva: aquí se lo ve como de allá. Cada paso queda en el progreso de la mudanza (telar.mudanza.progreso),
+    que la página dibuja, y en el registro del bus, que ve cualquier página. `aparte`: corre en la ventana que se
+    detendría (el agente pidió llevarse a sí mismo): después de revisar, sigue en un proceso aparte (`_seguir_aparte`)."""
     from telar import bus as mod_bus
-    from telar import mudanza
+    from telar import casilla, dueno, mudanza
 
     pesa = Path(archivo).stat().st_size if archivo is not None else 0
     mudanza.progreso(ctx.config, hilo.nombre, "revisar", maquina=maquina, bytes=pesa, error="", avisos=[])
 
     def falla(texto: str) -> int:
         mudanza.progreso(ctx.config, hilo.nombre, "falla", error=texto)
+        _avisar_al_hilo(ctx, hilo.nombre, texto)
         return _comun.queja(texto)
 
-    try:
-        revision = mod_bus.pedir(ctx.config, maquina, mudanza.VERBO_REVISAR,
-                                 {"hilo": hilo.nombre, "sesion": sid if archivo is not None else "", "relativa": relativa},
-                                 espera=15)
-    except mod_bus.ErrorDeBus:
-        revision = {}  # un telar de antes allá no sabe revisar: se sigue como antes
+    pendiente, avisos = _lo_de_aqui(ctx, tel, hilo, relativa, archivo, sid)
+    revision = _revisar_alla(ctx, maquina, hilo, sid if archivo is not None else "", relativa, pendiente)
     if revision.get("graves"):
         return falla(f"en {maquina} no se puede recibir: " + "; ".join(revision["graves"]) + ". No se movió nada.")
-    if revision.get("avisos"):
-        mudanza.progreso(ctx.config, hilo.nombre, "revisar", avisos=revision["avisos"])
-        print(f"en {maquina}, el hilo llegaría a medias:")
-        for a in revision["avisos"]:
-            print(f"  · {a}")
-        if not si:
-            if not sys.stdin.isatty():
-                return falla(f"en {maquina}, " + "; ".join(revision["avisos"]) + " (--si para llevarla igual)")
-            if input("¿la llevo igual? [s/N] ").strip().lower() not in ("s", "si", "sí", "y", "yes"):
-                print("no se movió nada")
-                mudanza.progreso(ctx.config, hilo.nombre, "falla", error="no se movió nada")
-                return 1
-
-    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
+    avisos = [*(revision.get("avisos") or []), *avisos]
+    codigo, subir = _antes_de_llevar(ctx, hilo, maquina, pendiente, avisos, revision.get("repos") or [], si, subir)
+    if codigo is not None:
+        return codigo
+    if aparte:
+        return _seguir_aparte(ctx, hilo, maquina, sesion, subir)
     estaba_vivo = tel.mux is not None and tel.vivo(hilo)
-    if estaba_vivo:
-        try:
-            tel.mux.cerrar(hilo.id)
-        except ErrorDeMux as e:
-            return falla(f"no pude cerrar el hilo aquí: {e}")
-    mudanza.progreso(ctx.config, hilo.nombre, "copiar")
+    problema = _esperar_su_turno(ctx, hilo, archivo, estaba_vivo)
+    if problema:
+        return falla(problema)
+    if subir:
+        problema, pendiente = _subir_lo_suyo(ctx, tel, hilo, maquina, relativa, archivo, sid)
+        if problema:
+            return falla(problema)
+
+    # 1. cederlo: el registro dice que se va, y su agente se detiene. Desde aquí su conversación no cambia
+    yo, clave = mod_bus.maquina(ctx.config), dueno.clave(ctx.config, hilo.nombre)
     try:
-        r = mudanza.enviar(ctx, hilo.nombre, maquina, sid if archivo is not None else "",
-                           Path(archivo) if archivo is not None else None, relativa,
-                           al_abrir=lambda: mudanza.progreso(ctx.config, hilo.nombre, "abrir"))
+        epoca = dueno.con_almacen(ctx.config, lambda kv: dueno.ceder(kv, clave, hilo=hilo.nombre, yo=yo, a=maquina))
+    except dueno.ErrorDeDueno as e:
+        return falla(f"{e}. No se movió nada.")
+    except Exception as e:  # noqa: BLE001 - sin el registro del bus no se cede
+        return falla(f"no pude escribir en el registro del bus ({type(e).__name__}: {e}). No se movió nada.")
+
+    def atras(texto: str) -> int:
+        """Algo falló antes de que allá lo tomaran: aquí se echa atrás y su agente despierta. Si allá ya lo tomó,
+        vive allá (lo abre su nodo si no alcanzó)."""
+        try:
+            sigue = dueno.con_almacen(ctx.config, lambda kv: dueno.abortar(kv, clave, yo=yo, epoca_=epoca))
+        except Exception as e:  # noqa: BLE001 - sin el registro, el nodo se echa atrás cuando vea que nadie conduce
+            return falla(f"{texto}. Y no pude echarme atrás en el registro del bus ({e}): su nodo lo hará")
+        if not sigue:
+            mudanza.soltar(ctx.config, tel, hilo.nombre)
+            mudanza.progreso(ctx.config, hilo.nombre, "listo", aviso=f"{texto}; pero {maquina} ya lo había tomado: "
+                             "vive allá (si no alcanzó a abrirlo, lo abre su nodo)")
+            print(f"«{hilo.nombre}» vive en {maquina}: {texto}, pero allá ya lo había tomado")
+            return 0
+        despierto = mudanza.reanudar(ctx.config, hilo.nombre) if estaba_vivo else ""
+        return falla(f"{texto}. Aquí sigue como estaba" + (f" ({despierto})" if despierto else "") + ".")
+
+    if estaba_vivo:
+        mudanza.progreso(ctx.config, hilo.nombre, "detener")
+        problema = mudanza.detener(ctx.config, tel, hilo.nombre, maquina)
+        if problema:
+            return atras(problema)
+    pesa = Path(archivo).stat().st_size if archivo is not None else 0
+
+    # 2. la conversación, allá (solo lo que falta): aquí no se toca nada
+    mudanza.progreso(ctx.config, hilo.nombre, "copiar", bytes=pesa)
+    _paso_en_el_registro(ctx, clave, yo, "copiar")
+    try:
+        mandada = mudanza.mandar(ctx, maquina, sid, Path(archivo) if archivo is not None else None, relativa,
+                                 hilo=hilo.nombre)
     except mudanza.ErrorDeMudanza as e:
-        # allá no se abrió: aquí se vuelve a abrir, retomando la misma conversación, como si no se hubiera ido
-        vuelta = ""
-        if estaba_vivo:
-            nuevo = _comun.tejer(ctx)
-            de_nuevo = next((h for h in nuevo.hilos if h.nombre == hilo.nombre), None)
-            if de_nuevo is not None and _retomar(ctx, nuevo, de_nuevo) == 0:
-                vuelta = " Se volvió a abrir aquí, con su conversación."
-        return falla(f"{e}.{vuelta or ' Aquí quedó cerrada; `telar hilo retomar` la reabre en esta máquina.'}")
-    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=r.get("carpeta", ""), aviso=r.get("aviso", ""))
-    tel.estado.archivar(hilo.nombre)
+        return atras(str(e))
+    if mandada.get("replica"):
+        print(_comun.tenue(f"  {_lo_copiado(mandada)}"), flush=True)
+    # 3. que allá lo tome con esta época y lo abra retomándola, con sus repositorios al día, su registro y lo que esperaba
+    # en su casilla
+    mudanza.progreso(ctx.config, hilo.nombre, "abrir")
+    _paso_en_el_registro(ctx, clave, yo, "abrir")
+    mensajes, quedan = mudanza.casilla_de(ctx.config, hilo.nombre)
+    extra = {"repos": _repos_para(pendiente), "registro": mudanza.registro_de(tel.estado, hilo.nombre),
+             "casilla": mensajes, "dueno": {"clave": clave, "de": yo, "epoca": epoca}}
+    try:
+        r = mudanza.abrir_alla(ctx, hilo.nombre, maquina, sid if archivo is not None else "", mandada, relativa,
+                               extra=extra)
+    except mudanza.ErrorDeMudanza as e:
+        return atras(str(e))
+    # lo de su casilla ya está allá (si allá lo tomó sin contestar, lo de aquí se queda: no se pierde)
+    if "casilla" in r:
+        casilla.sacar(ctx.config, hilo.nombre, [m.get("id") for m in mensajes])
+    # sus borradores también (telar.borradores): allá dijo que los tiene; un telar de allá más viejo no lo dice, y aquí se
+    # quedan, para no perder lo que escribió la persona
+    if "borradores" in r:
+        tel.estado.poner_borradores(hilo.nombre, [])
+    # 4. vive allá: su ventana de aquí, la que esperaba, se cierra. No se archiva: aquí se lo ve como de allá
+    mudanza.progreso(ctx.config, hilo.nombre, "cerrar")
+    mudanza.soltar(ctx.config, tel, hilo.nombre)
+    aviso = "; ".join(x for x in (mandada.get("aviso", ""), r.get("aviso", ""),
+                                  f"{quedan} mensajes de su casilla quedaron aquí: no cupieron" if quedan else "") if x)
+    mudanza.progreso(ctx.config, hilo.nombre, "listo", carpeta=r.get("carpeta", ""), aviso=aviso)
     print(f"«{hilo.nombre}» sigue en {maquina}, " + (f"retomando la conversación {sid[:8]}" if archivo is not None
                                                        else "con una conversación nueva"))
-    if r.get("aviso"):
-        print(_comun.tenue(f"  {r['aviso']}"))
-    print(_comun.tenue(f"  allá: {r.get('carpeta', '?')}; aquí queda archivado, con la copia de como estaba al irse"))
+    if aviso:
+        print(_comun.tenue(f"  {aviso}"))
+    print(_comun.tenue(f"  allá: {r.get('carpeta') or '?'}; aquí queda su copia, y el hilo se ve como de {maquina}"),
+          flush=True)
     return 0
+
+
+def _paso_en_el_registro(ctx, clave: str, yo: str, paso: str) -> None:
+    """En qué va el traspaso, en el registro del bus (lo ve cualquier página). Si no se pudo, no detiene nada."""
+    from telar import dueno
+
+    try:
+        dueno.con_almacen(ctx.config, lambda kv: dueno.paso(kv, clave, yo=yo, paso_=paso))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _matar_remoto(ctx, tel: _comun.Telar, hilo, aparte: bool = False) -> None:
@@ -1158,6 +1481,84 @@ def _leer(ctx, o) -> int:
         return _comun.escribir_json(datos)
     print(historia.como_texto(datos))
     return 0
+
+
+def _borradores(ctx, o) -> int:
+    """Los borradores de un hilo: verlos, agregar uno, mandarlo o borrarlo (telar.servicios.borradores)."""
+    from telar import borradores as mod
+    from telar.servicios import ErrorDeServicio
+    from telar.servicios import borradores
+
+    nombre = o.hilo or o.valor or os.environ.get(_comun.VARIABLE_HILO, "").strip()
+    if not nombre:
+        return _comun.queja("¿de qué hilo? «telar hilo borradores Faro», --hilo, o desde adentro de uno")
+    if o.soltar:
+        # lo lanza el fin de un turno (telar.borradores.al_terminar), sin nadie mirando: callado y siempre 0
+        try:
+            mod.soltar(ctx.config, _comun.tejer(ctx, con_ficha=False), nombre)
+        except Exception:  # noqa: BLE001 - el nodo lo intenta de nuevo en su vuelta
+            pass
+        return 0
+    try:
+        if o.agregar is not None:
+            texto = sys.stdin.read() if o.agregar == "-" else o.agregar
+            b = borradores.guardar(ctx, nombre, texto.rstrip("\n"), maquina=o.maquina)
+            if o.json:
+                return _comun.escribir_json(b.model_dump(mode="json"))
+            print(f"«{nombre}»: guardado ({b.id})")
+            return 0
+        if o.mandar or o.borrar:
+            id = _id_de_borrador(borradores.de_hilo(ctx, nombre, maquina=o.maquina), o.mandar or o.borrar)
+            if o.borrar:
+                b = borradores.borrar(ctx, nombre, id, maquina=o.maquina)
+                if o.json:
+                    return _comun.escribir_json(b.model_dump(mode="json"))
+                print(f"«{nombre}»: borrado ({b.id})")
+                return 0
+            r = borradores.mandar(ctx, nombre, id, enviar=o.enviar, esperar=o.esperar, maquina=o.maquina)
+            if o.json:
+                return _comun.escribir_json(r.model_dump(mode="json"))
+            print(f"«{nombre}»: " + {"escrito": "quedó escrito en su entrada, sin ⏎", "enviado": "enviado",
+                                     "en espera": "sale cuando su agente termine el turno"}.get(r.como, r.como))
+            return 0
+        datos = borradores.de_hilo(ctx, nombre, maquina=o.maquina)
+    except ErrorDeServicio as e:
+        if o.json:
+            _comun.escribir_json({"error": str(e), "codigo": e.codigo, **e.datos})
+            return 1
+        return _comun.queja(str(e) + ("; con --esperar, sale cuando termine" if e.datos.get("ocupado") else ""))
+    if o.json:
+        return _comun.escribir_json(datos.model_dump(mode="json"))
+    print(como_texto_borradores(datos.model_dump(mode="json")))
+    return 0
+
+
+def _id_de_borrador(datos, ref: str) -> str:
+    """El id de un borrador por su id o por su número en la lista (desde 1)."""
+    from telar.servicios import ErrorDeServicio
+
+    lista = datos.borradores
+    if any(b.id == ref for b in lista):
+        return ref
+    if ref.isdigit() and 1 <= int(ref) <= len(lista):
+        return lista[int(ref) - 1].id
+    raise ErrorDeServicio(f"«{datos.hilo}» no tiene el borrador «{ref}»: tiene {len(lista)}", 404)
+
+
+def como_texto_borradores(d: dict) -> str:
+    """`telar hilo borradores`, para leerlo en la terminal: uno por línea, con su número, su id y su primera línea."""
+    lista = d.get("borradores") or []
+    ocupado = {"trabajando": " · su agente está trabajando", "espera": " · su agente te está preguntando algo"}.get(
+        d.get("ocupado") or "", "")
+    if not lista:
+        return f"«{d.get('hilo', '')}»: sin borradores{ocupado}"
+    lineas = [f"«{d.get('hilo', '')}»: {len(lista)} borrador{'es' if len(lista) != 1 else ''}{ocupado}"]
+    for i, b in enumerate(lista, 1):
+        texto = " ".join(str(b.get("texto") or "").split())
+        espera = {"escribir": "  (sale al terminar su turno)", "enviar": "  (sale al terminar su turno, con ⏎)"}.get(
+            b.get("al_terminar") or "", "")
+        lineas.append(f"  {i}  {b.get('id', '')}  {texto[:90] + ('…' if len(texto) > 90 else '') or _comun.tenue('(vacío)')}{espera}")
+    return "\n".join(lineas)
 
 
 def _contexto(ctx, o) -> int:
@@ -1305,6 +1706,60 @@ def _dormir_seco(ctx, o) -> int:
     return 0
 
 
+def _seguir(ctx, o) -> int:
+    """`telar hilo seguir`: seguir aquí un hilo cuya máquina está apagada, desde la copia de aquí (telar.seguir). Sin
+    --si, dice de cuándo es la copia y cuánto falta, y no toca nada."""
+    from telar import seguir
+
+    nombre = o.hilo or os.environ.get("TELAR_HILO", "").strip()
+    if not nombre:
+        return _comun.queja("¿cuál? telar hilo seguir «Faro»")
+    if not o.si:
+        r = seguir.revisar(ctx, nombre)
+        if o.json:
+            return _comun.escribir_json(r)
+        if not r["puede"]:
+            return _comun.queja(r["por_que_no"])
+        print(r["aviso"])
+        print(_comun.tenue(f"  para seguirlo aquí: telar hilo seguir «{nombre}» --si"))
+        return 0
+    r = seguir.seguir(ctx, nombre)
+    if o.json:
+        _comun.escribir_json(r)
+        return 0 if r.get("ok") else 1
+    if not r.get("ok"):
+        return _comun.queja(str(r.get("error")))
+    print(r["hecho"])
+    return 0
+
+
+def _retomar_alla(ctx, est, hilo, maquina: str, mensaje: str = "") -> int:
+    """Retomar un hilo archivado aquí que es de `maquina` (su conversación vive allá): allá, por su nodo, que lo
+    desarchiva y lo abre; aquí sale del archivo (es de allá, y se ve en su foto). Con `maquina` apagada no se abre la
+    copia de aquí: se dice si se puede seguir aquí (telar.seguir) o que vuelve cuando vuelva."""
+    from telar import alcance, seguir
+    from telar import bus as mod_bus
+
+    a = alcance.de(ctx.config, maquina)
+    if a.fuera:
+        r = seguir.revisar(ctx, hilo.nombre, preguntar=False)
+        if r.get("aqui"):
+            return _comun.queja(f"«{hilo.nombre}» es de {a.frase()}: «telar hilo seguir «{hilo.nombre}»» dice de cuándo "
+                                f"es la copia de aquí y cuánto falta, y con --si lo sigue aquí")
+        return _comun.queja(f"«{hilo.nombre}» es de {a.frase()}, y aquí no hay copia de su conversación: vuelve cuando "
+                            f"vuelva {maquina}")
+    argv = ["retomar", "--hilo", hilo.nombre, *(["--texto", mensaje] if mensaje else [])]
+    r = mod_bus.pedir(ctx.config, maquina, "hilo", {"argv": argv}, espera=60)
+    if not r.get("ok"):
+        return _comun.queja(f"«{hilo.nombre}» vive en {maquina}, y no respondió: {r.get('error', '')}")
+    if int(r.get("codigo", 1)) != 0:
+        ultima = (r.get("error_salida", "").strip().splitlines() or ["falló"])[-1].removeprefix("telar: ")
+        return _comun.queja(f"en {maquina}: {ultima}")
+    est.desarchivar(hilo.nombre)
+    print(f"retomado «{hilo.nombre}» en {maquina}, donde vive su conversación")
+    return 0
+
+
 def _retomar(ctx, tel: _comun.Telar, hilo, mensaje: str = "") -> int:
     """Sacarlo del archivo y reabrirlo tal como estaba: su carpeta, su agente, su conversación.
 
@@ -1313,6 +1768,10 @@ def _retomar(ctx, tel: _comun.Telar, hilo, mensaje: str = "") -> int:
     de pedirle a nadie que busque el id y lo escriba. Si el hilo sigue vivo, solo se va a él.
     """
     est = tel.estado
+    # uno archivado aquí que el bus dice de otra máquina (con su conversación): se retoma allá, no la copia de aquí
+    de_otra = getattr(tel, "de_otra", {}).get(hilo.nombre, "")
+    if de_otra and hilo.nombre not in tel.vivos:
+        return _retomar_alla(ctx, est, hilo, de_otra, mensaje)
     # el de otra máquina lo desarchiva su dueño (telar.estado, «hilos ajenos»), y aquí la copia, que es
     # lo que vale si el dueño no publica su archivo (un telar de antes allá)
     dueno = _dueno(ctx, hilo) if est.es_ajeno(hilo.nombre) else ""

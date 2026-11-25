@@ -294,13 +294,20 @@ export class Dashboard implements Tablero {
      *  la dirección `pestana:<nombre>` (`?abrir=pestana:gantt`, para que un ícono del teléfono abra una pestaña). Las de
      *  los módulos salen de la configuración y las de los proveedores, del día: se espera a leerlos. `callado`: si no
      *  está, nada (retomar la que se miraba al recargar: web/recarga.ts). */
-    async irAPestanaNombrada(nombre: string, callado = false): Promise<void> {
+    async irAPestanaNombrada(nombre: string, callado = false, item = ''): Promise<void> {
         this.montar();
         const buscar = () => this.pestanas().find(x => x.nombre === nombre || x.clave === nombre || (!!x.valor && x.valor === nombre));
         await this.configLeida;
         if (!buscar() && !this.datos) await this.actualizar();
-        const p = buscar();
+        let p: { accion: string; valor: string } | undefined = buscar();
+        if (!p && item) {
+            // abrirla en un ítem suyo (el chat de una ventana de foco) vale aunque el modo puesto no la muestre: se pidió esa
+            const t = this.todasLasPestanas().find(x => x[3] === nombre || x[0] === nombre || (!!x[2] && x[2] === nombre));
+            if (t) p = { accion: t[1], valor: t[2] };
+        }
         if (!p) { if (!callado) ui.estado(`telar: no hay una pestaña «${nombre}» en el dashboard`, 6000); return; }
+        // abrirla en un ítem suyo (el chat de una ventana de foco): su lienzo lo recibe (Paginas.darItem)
+        if (item && p.accion === 'bloque') this.paginas.darItem(`bloque:${p.valor}`, item);
         await this.irAPestana(p.accion, p.valor);
     }
 

@@ -116,15 +116,21 @@ class Llevar(Prueba):
         self.assertEqual(carpeta(str(Path.home() / "notas")), "~/notas")  # el hogar de aquí es el de allá
 
     def test_lo_que_no_esta_subido_se_dice(self):
+        # lo de antes (el repositorio entero, siempre) lo reemplaza telar.sin_subir: solo lo del hilo (test_sin_subir)
         import subprocess
+        from types import SimpleNamespace
 
-        from telar.ordenes.hilo import _sin_subir
+        from telar import sin_subir
 
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(_sin_subir(Path(tmp)), "")  # no es un repositorio: nada que decir
-            subprocess.run(["git", "init", "-q", tmp], check=True)
-            (Path(tmp) / "a.txt").write_text("x", encoding="utf-8")
-            self.assertIn("1 archivo sin commitear", _sin_subir(Path(tmp)))
+            raiz = Path(tmp) / "raiz"
+            (raiz / "proyecto").mkdir(parents=True)
+            config = SimpleNamespace(raiz=str(raiz))
+            self.assertEqual(sin_subir.revisar(config, raiz / "proyecto", None), {"repos": []})  # no es un repositorio
+            subprocess.run(["git", "init", "-q", str(raiz / "proyecto")], check=True)
+            (raiz / "proyecto" / "a.txt").write_text("x", encoding="utf-8")
+            p = sin_subir.revisar(config, raiz / "proyecto", None)
+            self.assertIn("1 sin commitear en su carpeta", sin_subir.lineas(p)[0])
 
 
 class SesionesQueNacieronAlla(unittest.TestCase):
@@ -222,7 +228,7 @@ class TraerNoDuplica(Prueba):
 
     def test_llevar_no_abre_otra_si_el_nodo_ya_la_trajo(self):
         # al llevar un hilo, nace allá y el nodo de aquí se entera por el bus y trae su ventana antes de que
-        # `abrir` cree la suya: quedaban dos «Wharton» iguales en la lista
+        # `abrir` cree la suya: quedaban dos «Faro» iguales en la lista
         from types import SimpleNamespace
         from unittest import mock
 

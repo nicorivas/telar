@@ -241,12 +241,14 @@ class MultiplexorBase(ABC):
         """Pone el foco en un panel, y de paso en el tab donde vive."""
 
     @abstractmethod
-    def escribir_pane(self, pane: str, texto: str, *, enviar: bool = False) -> None:
+    def escribir_pane(self, pane: str, texto: str, *, enviar: bool = False, pegar: bool = False) -> None:
         """Escribe `texto` en la entrada de un panel.
 
         Con `enviar=False` el texto queda puesto y sin ejecutar. Un salto de línea es
         un ↩: escribir sin enviar no admite saltos, y quien lo intente recibe un error
-        en vez de una sorpresa.
+        en vez de una sorpresa. Salvo con `pegar`: quien llama sabe que lo de allá
+        entiende el pegado entre corchetes (Claude Code), y el texto va pegado, con
+        sus saltos como saltos y sin ↩.
         """
 
     def capturar_pane(self, pane: str, lineas: int = 300) -> str | None:
@@ -413,11 +415,14 @@ class MultiplexorBase(ABC):
     def cerrar(self, hilo: str) -> None:
         self.cerrar_tab(hilo)
 
-    def escribir(self, hilo: str, texto: str, *, enviar: bool = False) -> None:
+    def escribir(self, hilo: str, texto: str, *, enviar: bool = False, pegar: bool = False) -> None:
         pane = self.pane_de(hilo)
         if pane is None:
             raise NoExiste(f"el hilo {hilo!r} no tiene ningún panel donde escribir")
-        self.escribir_pane(pane.id, texto, enviar=enviar)
+        if pegar:
+            self.escribir_pane(pane.id, texto, enviar=enviar, pegar=True)
+        else:
+            self.escribir_pane(pane.id, texto, enviar=enviar)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"{type(self).__name__}({self.nombre!r})"

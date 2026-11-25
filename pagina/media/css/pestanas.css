@@ -1,0 +1,112 @@
+/* Las pestañas (componentes/pestanas.ts): una fila del alto de las barras (--pestanas-alto, el de la barra de una
+   pantalla), con su línea abajo de borde a borde y el aire de una pantalla a los lados. La abierta, con la superficie de
+   la selección (la del ítem activo y su marca, que pone el tema) y el texto en su color; las demás, tenues, y al pasar el
+   mouse, el fondo del hover. Cada pestaña ocupa el alto entero de la fila: se aprieta en toda ella.
+   Si no caben (web/pestanas.ts, `acomodar`, que mide con un ResizeObserver): las que no caben llevan `.fuera` y no se
+   ven, y el «⋯» (`.pestanas-mas`) aparece justo después de la última que se ve, con su menú. Nunca corre de lado. Lo del
+   extremo (`.pestanas-fin`) queda al otro lado, quieto. */
+
+.pestanas {
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  height: var(--pestanas-alto);
+  min-width: 0;
+  border-bottom: var(--borde);
+  background: var(--pestanas-fondo);
+  line-height: 1lh;
+  white-space: nowrap;
+
+  & a { text-decoration: none; }
+}
+
+.pestanas-lista {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* (el «⋯» de las que no caben se ve como una más) */
+.pestana,
+.pestanas-mas {
+  display: flex;
+  flex: none;
+  position: relative;
+  align-items: center;
+  gap: 0 var(--h-1);
+  box-sizing: border-box;
+  padding: 0 var(--pestana-pad-x);
+  color: var(--pestana-color);
+  cursor: pointer;
+  outline: none;
+
+  /* (`.es-hover` y `.es-foco`: los mismos, puestos a mano en el catálogo) */
+  &:hover,
+  &.es-hover { background: var(--pestana-fondo-hover); color: var(--pestana-color-hover); }
+
+  /* la abierta: la superficie de la selección (como el ítem activo), y el texto en su color */
+  &.si {
+    background: var(--pestana-fondo-si);
+    box-shadow: var(--pestana-marca-si);
+    color: var(--pestana-color-si);
+  }
+
+  /* con el teclado: el foco se ve en su línea de abajo, en el acento (no hay otra cosa que lo diga) */
+  &:focus-visible,
+  &.es-foco { box-shadow: inset 0 -2px 0 var(--acento); }
+
+  /* por hacer, o sin permiso: se ve, apagada, y no se aprieta */
+  &.apagada {
+    color: var(--pestana-color-apagada);
+    cursor: default;
+
+    &:hover { background: none; }
+  }
+}
+
+/* su ícono, en su tinta (style="--pestana-c"); sin ella, la del texto */
+.pestana-icono { color: var(--pestana-c, inherit); }
+.pestana.apagada .pestana-icono { color: inherit; }
+
+.pestana-cuenta {
+  color: var(--pestana-cuenta);
+
+  &.atencion { color: var(--atencion); }
+}
+
+/* algo nuevo: un punto (el círculo de la casa, componentes/circulo.ts) en la esquina de arriba a la derecha (la gramática:
+   «en la esquina, le pasó algo»), en su tono */
+.pestana-nuevo {
+  position: absolute;
+  inset-block-start: var(--e-1);
+  inset-inline-end: calc(var(--pestana-pad-x) / 3);
+  display: flex;
+  color: var(--acento);
+
+  &.tono-exito { color: var(--exito); }
+  &.tono-atencion { color: var(--atencion); }
+  &.tono-peligro { color: var(--peligro); }
+  &.tono-termino { color: var(--estado-termino); }
+}
+
+/* las que no caben: fuera de la fila (van en el menú del «⋯») */
+.pestana.fuera { display: none; }
+
+/* el «⋯»: una pestaña más, después de la última que se ve; escondido mientras todas caben. Si una de las que lleva tiene
+   algo nuevo, su punto (el mismo de la pestaña); si una pide atención con su cuenta, el «⋯» en el de cuidado */
+.pestanas-mas {
+  &[hidden] { display: none; }
+  &.atencion .pestana-icono { color: var(--atencion); }
+}
+
+/* lo del otro extremo (↻, un filtro), al otro lado: quieto */
+.pestanas-fin {
+  display: flex;
+  flex: none;
+  margin-inline-start: auto;
+  align-items: center;
+  padding-inline-end: var(--pestanas-margen);
+  color: var(--pestana-color);
+}

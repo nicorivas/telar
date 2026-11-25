@@ -16,8 +16,10 @@
 //
 // El lienzo mide siempre ANCHO × ALTO letras: un cuadro más chico se centra (todos sus cuadros juntos, para que no salten),
 // uno más grande se recorta. El color es el del mundo (lo pone el CSS); el arte es solo el dibujo. Al pasar el mouse (o
-// con el foco) el arte se acelera (`alHover.fps`, o el triple) o cambia de escena (`alHover.cuadros`). Con «reducir
-// movimiento», el primer cuadro, quieto.
+// con el foco) el arte se acelera (`alHover.fps`, o el triple) o cambia de escena (`alHover.cuadros`), y una ola de
+// letras lo cruza una vez: un **efecto** de hover (`registrarEfecto`), que el módulo pone sobre cualquier arte sin que
+// el arte lo programe. Un arte que declara el suyo (`alHover.efecto`, o su escena de hover) usa el suyo. Con «reducir
+// movimiento», el primer cuadro, quieto, y ningún efecto.
 //
 // Qué arte lleva un mundo (`arteDeMundo`): el que dice su `arte`, si existe; si no, el que se llama como el mundo; si
 // no, uno de fábrica que lo sugiere (`para`: el telar para «trabajo», el cielo para «personal»); si no, la órbita.
@@ -48,8 +50,10 @@ export interface DefArte {
     cuadros: Cuadros;
     /** cuántos cuadros por segundo (de fábrica, FPS); una función se dibuja a ese ritmo */
     fps?: number;
-    /** al pasar el mouse: otro ritmo (`fps`; de fábrica, ACELERA veces el suyo) u otra escena (`cuadros`) */
-    alHover?: { fps?: number; cuadros?: Cuadros };
+    /** al pasar el mouse: otro ritmo (`fps`; de fábrica, ACELERA veces el suyo) u otra escena (`cuadros`), y el efecto
+     *  que lo cruza al entrar (`efecto`: la clave de uno registrado, uno propio, o 'ninguno'; de fábrica, la ola, salvo
+     *  que tenga escena propia) */
+    alHover?: { fps?: number; cuadros?: Cuadros; efecto?: string | Efecto };
     /** los mundos que lo llevan sin decir `arte` (por su nombre): «trabajo», «personal» */
     para?: readonly string[];
     /** de dónde viene: de fábrica (este código) o de un archivo de la raíz */
@@ -60,7 +64,7 @@ export interface Arte extends Required<Pick<DefArte, 'fps' | 'cuadros'>> {
     clave: string;
     nombre: string;
     que: string;
-    alHover: { fps: number; cuadros?: Cuadros };
+    alHover: { fps: number; cuadros?: Cuadros; efecto?: string | Efecto };
     para: readonly string[];
     origen: 'fabrica' | 'archivo';
 }
@@ -80,7 +84,7 @@ export function registrarArte(clave: string, def: DefArte): Arte {
     const fps = acotar(def.fps ?? FPS);
     const arte: Arte = {
         clave, nombre: def.nombre ?? clave, que: def.que ?? '', cuadros: def.cuadros, fps,
-        alHover: { fps: acotar(def.alHover?.fps ?? fps * ACELERA), cuadros: def.alHover?.cuadros },
+        alHover: { fps: acotar(def.alHover?.fps ?? fps * ACELERA), cuadros: def.alHover?.cuadros, efecto: def.alHover?.efecto },
         para: def.para ?? [], origen: def.origen ?? 'fabrica',
     };
     const antes = registro.get(clave);
@@ -126,8 +130,19 @@ const VACIO: Arte = { clave: '', nombre: '', que: '', cuadros: ['·'], fps: FPS,
 // ── un cuadro ──
 
 /** El cuadro de un arte en el instante `t` (segundos de su reloj), del tamaño del lienzo: cada línea de `ancho` letras,
- *  `alto` líneas. Una lista de cuadros: el que toca a su ritmo; una función: lo que dibuje. */
-export function cuadro(a: Arte, t: number, o: { hover?: boolean; ancho?: number; alto?: number } = {}): string {
+ *  `alto` líneas. Una lista de cuadros: el que toca a su ritmo; una función: lo que dibuje. Con `efecto` (los segundos
+ *  desde que entró el mouse, mientras dura su pasada), el efecto de hover que le toca, encima. */
+export function cuadro(a: Arte, t: number, o: { hover?: boolean; ancho?: number; alto?: number; efecto?: number } = {}): string {
+    const base = cuadroSolo(a, t, o);
+    const ef = o.efecto === undefined ? undefined : efectoDe(a);
+    if (!ef || !(o.efecto! >= 0 && o.efecto! < ef.dura)) return base;
+    const ancho = o.ancho ?? ANCHO, alto = o.alto ?? ALTO;
+    let texto = base;
+    try { texto = ef.aplicar(base, o.efecto!, ancho, alto); } catch { return base; }
+    return ajustar(String(texto ?? '').split('\n'), ancho, alto);
+}
+
+function cuadroSolo(a: Arte, t: number, o: { hover?: boolean; ancho?: number; alto?: number }): string {
     const ancho = o.ancho ?? ANCHO, alto = o.alto ?? ALTO;
     const hover = !!o.hover;
     const cs = hover && a.alHover.cuadros ? a.alHover.cuadros : a.cuadros;
@@ -173,16 +188,67 @@ export function encuadrar(cs: readonly string[], ancho = ANCHO, alto = ALTO): st
     return listos;
 }
 
+// ── los efectos de hover: lo que cruza el arte cuando entra el mouse o el foco ──
+
+/** Un efecto de hover: lo que le pasa al cuadro cuando el mouse (o el foco) entra en su tarjeta. Pasa una vez, en `dura`
+ *  segundos, y deja el cuadro como estaba. `aplicar` recibe el cuadro del arte (ya del lienzo) y los segundos desde que
+ *  entró (los de la pared, no el reloj del arte, que se acelera), y da el cuadro con el efecto encima; tiene que ser
+ *  pura, como un arte: el mismo cuadro y el mismo instante dan lo mismo. Se redibuja a `fps` mientras pasa. */
+export interface Efecto {
+    nombre?: string;
+    que?: string;
+    /** cuánto dura una pasada, en segundos */
+    dura: number;
+    /** a qué ritmo se redibuja mientras pasa (de fábrica, 30) */
+    fps?: number;
+    aplicar: (cuadro: string, t: number, ancho: number, alto: number) => string;
+}
+
+const efectos = new Map<string, Efecto>();
+
+/** El efecto de un arte que no dice otro (y no tiene escena de hover propia). */
+export const EFECTO = 'ola';
+/** Lo que dice un arte que no quiere ninguno. */
+export const SIN_EFECTO = 'ninguno';
+
+/** Registrar un efecto de hover (o reemplazar el que tenía esa clave). */
+export function registrarEfecto(clave: string, def: Efecto): Efecto {
+    if (!CLAVE.test(clave) || clave === SIN_EFECTO) throw new Error(`«${clave}»: la clave de un efecto va en minúsculas, números y guiones`);
+    if (!(def.dura > 0)) throw new Error(`«${clave}»: un efecto dura algo`);
+    const e: Efecto = { ...def, nombre: def.nombre ?? clave, fps: acotarEfecto(def.fps ?? 30) };
+    efectos.set(clave, e);
+    for (const f of oyentes) f();
+    return e;
+}
+
+const acotarEfecto = (fps: number) => (Number.isFinite(fps) ? Math.max(1, Math.min(60, fps)) : 30);
+
+/** Un efecto por su clave. */
+export const efecto = (clave: string): Efecto | undefined => efectos.get(clave);
+
+/** El efecto de hover de un arte: el que dice (`alHover.efecto`: uno registrado, uno propio, o ninguno); si no dice y
+ *  tiene escena de hover propia, ninguno (manda su escena); si no, la ola. Una clave que no hay: la ola. */
+export function efectoDe(a: Arte): Efecto | undefined {
+    const e = a.alHover.efecto;
+    if (e === SIN_EFECTO) return undefined;
+    if (e && typeof e === 'object') return e.dura > 0 ? e : undefined;
+    if (e) return efectos.get(e) ?? efectos.get(EFECTO);
+    return a.alHover.cuadros ? undefined : efectos.get(EFECTO);
+}
+
+/** El número de cuadro del efecto a los `t` segundos (para saber si redibujar), o -1 si ya pasó. */
+export const indiceEfecto = (ef: Efecto, t: number): number => (t >= 0 && t < ef.dura ? Math.floor(t * (ef.fps ?? 30)) : -1);
+
 // ── un arte escrito en un archivo (`<raiz>/.telar/arte/<clave>.txt`) ──
 
 /** Lo que se lee de un archivo de arte: sus cuadros y lo que dice arriba. */
 export interface ArteTexto { def: DefArte; avisos: string[] }
 
-const AJUSTE = /^\s*(fps|hover|nombre|que|para)\s*[:=]\s*(.*?)\s*$/i;
+const AJUSTE = /^\s*(fps|hover|nombre|que|para|efecto)\s*[:=]\s*(.*?)\s*$/i;
 
 /** Lee un arte escrito como texto: los cuadros separados por una línea que dice solo `---`; desde una que dice
  *  `--- hover`, los que siguen son la escena de cuando el mouse está encima. Si la primera parte son solo líneas
- *  `clave: valor` (fps, hover, nombre, que, para), es la cabecera. Error si no queda ningún cuadro; lo que no se
+ *  `clave: valor` (fps, hover, nombre, que, para, efecto), es la cabecera. Error si no queda ningún cuadro; lo que no se
  *  entiende de la cabecera, en `avisos`. */
 export function leerArteTexto(texto: string): ArteTexto {
     const lineas = texto.replace(/\r\n?/g, '\n').replace(/^﻿/, '').split('\n');
@@ -208,6 +274,10 @@ export function leerArteTexto(texto: string): ArteTexto {
                 const n = Number(v.replace(',', '.'));
                 if (!Number.isFinite(n) || n <= 0) { avisos.push(`«${l.trim()}»: se esperaba un número de cuadros por segundo`); continue; }
                 if (clave === 'fps') def.fps = n; else def.alHover = { ...def.alHover, fps: n };
+            } else if (clave === 'efecto') {
+                const k = v.toLowerCase();
+                if (k !== SIN_EFECTO && !CLAVE.test(k)) { avisos.push(`«${l.trim()}»: un efecto es «${EFECTO}», «${SIN_EFECTO}» u otra clave`); continue; }
+                def.alHover = { ...def.alHover, efecto: k };
             } else if (clave === 'nombre') def.nombre = v;
             else if (clave === 'que') def.que = v;
             else def.para = v.split(',').map(x => x.trim()).filter(Boolean);

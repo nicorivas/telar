@@ -77,16 +77,11 @@ export function escribir(o: PedidoEscrito): Promise<{ texto: string; destino: st
 export interface OpcionMenu { label: string; description?: string; detail?: string; separador?: boolean;
     /** un ícono de la letra de la página (web/iconos.ts) y el color que distingue lo que hace (azul, verde…) */
     icono?: string; color?: string;
+    /** se ve, apagada, y no se elige (ni con un clic ni con ⏎): su `description` dice por qué */
+    apagada?: boolean;
     /** en un menú junto al puntero, en lugar del ícono: una señal, el HTML de un círculo (componentes/senales.ts), que
      *  arma la página y no trae nada escrito por otro */
     senal?: string }
-
-/** El ícono de una opción: el de la letra, o su señal (un círculo, HTML de la página). */
-function icono(op: OpcionMenu): HTMLElement {
-    const ico = el('span', 'i ico', op.senal ? undefined : op.icono ?? '');
-    if (op.senal) ico.innerHTML = op.senal;
-    return ico;
-}
 
 const norm = (t: string | undefined) => (t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -99,18 +94,19 @@ export function elegir(opciones: OpcionMenu[], o: { titulo?: string; placeholder
     return abrirVentana<number>({
         titulo: o.titulo,
         campo: barraBuscar({ placeholder: o.placeholder || 'opciones', ayuda: '↑ ↓ elegir · ⏎ esa · ⎋ cancelar' }),
-        cuerpo: `<div class="web-lista"></div>${conDetalle ? '<div class="web-detalle"></div>' : ''}`,
+        cuerpo: `<div class="ventana-lista e-lista"></div>${conDetalle ? '<div class="e-detalle"></div>' : ''}`,
         clase: 'ventana-elegir',
     }, {
         foco: 'input.buscar',
         montar: (d, responder) => {
             const filtro = d.querySelector<HTMLInputElement>('input.buscar')!;
-            const lista = d.querySelector<HTMLElement>('.web-lista')!;
-            const detalle = d.querySelector<HTMLElement>('.web-detalle');
-            let vis: [HTMLElement, number][] = [], sel = 0;
+            const lista = d.querySelector<HTMLElement>('.e-lista')!;
+            const detalle = d.querySelector<HTMLElement>('.e-detalle');
+            let vis: number[] = [], sel = 0;
             const marcar = (alaVista = false) => {
-                vis.forEach(([f], k) => f.classList.toggle('sel', k === sel));
-                const op = vis[sel] ? opciones[vis[sel][1]] : undefined;
+                let k = 0;
+                for (const f of lista.querySelectorAll('.item')) f.classList.toggle('activa', k++ === sel);
+                const op = vis[sel] !== undefined ? opciones[vis[sel]] : undefined;
                 if (detalle) {
                     detalle.replaceChildren();
                     if (op?.color) detalle.style.setProperty('--c', `var(--${op.color})`); else detalle.style.removeProperty('--c');
@@ -120,36 +116,40 @@ export function elegir(opciones: OpcionMenu[], o: { titulo?: string; placeholder
                         if (op.detail) detalle.append(el('div', 'x', op.detail));
                     }
                 }
-                if (alaVista) vis[sel]?.[0].scrollIntoView({ block: 'nearest' });
+                if (alaVista) lista.querySelector('.activa')?.scrollIntoView({ block: 'nearest' });
             };
             const pintar = () => {
-                lista.replaceChildren(); vis = [];
+                vis = [];
                 const q = norm(filtro.value);
+                let html = '';
                 opciones.forEach((op, i) => {
-                    if (op.separador) { if (!q) lista.appendChild(el('div', 'web-sep', op.label)); return; }
+                    if (op.separador) { if (!q) html += `<div class="e-sep">${esc(op.label)}</div>`; return; }
                     if (q && !norm(`${op.label} ${op.description ?? ''} ${op.detail ?? ''}`).includes(q)) return;
-                    const f = el('div', 'web-op');
-                    if (op.color) f.style.setProperty('--c', `var(--${op.color})`);
-                    f.appendChild(icono(op));
-                    f.appendChild(el('span', 'l', op.label));
-                    if (op.description) f.appendChild(el('span', 'd', op.description));
-                    f.addEventListener('click', () => responder(i));
                     const k = vis.length;
-                    if (detalle) f.addEventListener('mouseenter', () => { sel = k; marcar(); });
-                    vis.push([f, i]); lista.appendChild(f);
+                    vis.push(i);
+                    const ranura = op.senal ? { html: op.senal } : op.icono ? { icono: op.icono } : null;
+                    html += `<div class="e-fila"${op.color ? ` style="--c: var(--${esc(op.color)})"` : ''}>` + item({
+                        titulo: op.label, inicio: ranura ? [ranura] : undefined,
+                        sufijo: op.description ? [{ texto: op.description }] : undefined,
+                        activa: k === sel, apagada: op.apagada, datos: { k: String(k) },
+                    }) + '</div>';
                 });
                 sel = Math.min(sel, Math.max(0, vis.length - 1));
+                lista.innerHTML = html || '<div class="ventana-vacia">nada calza</div>';
                 marcar(true);
             };
             filtro.addEventListener('input', () => { sel = 0; pintar(); });
             filtro.addEventListener('keydown', e => {
                 if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, vis.length - 1); marcar(true); }
                 if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); marcar(true); }
-                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (vis[sel]) responder(vis[sel][1]); }
+                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (vis[sel] !== undefined && !opciones[vis[sel]].apagada) responder(vis[sel]); }
             });
+            const fila = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>('.item[data-k]');
+            lista.addEventListener('click', e => { const f = fila(e); if (f && !opciones[vis[Number(f.dataset.k)]]?.apagada) responder(vis[Number(f.dataset.k)]); });
+            lista.addEventListener('mousemove', e => { const f = fila(e); if (f && Number(f.dataset.k) !== sel) { sel = Number(f.dataset.k); marcar(); } });
             pintar();
             if (o.inicial !== undefined) {
-                const k = vis.findIndex(([, i]) => i === o.inicial);
+                const k = vis.findIndex(i => i === o.inicial);
                 if (k >= 0) sel = k;
             }
             marcar(true);
@@ -163,7 +163,7 @@ export function elegir(opciones: OpcionMenu[], o: { titulo?: string; placeholder
  *  `item()`: el ícono (o la señal) en la ranura, la descripción como sufijo tenue; el color de lo que hace (`--c`) tiñe
  *  ranura y título. Se cierra al elegir, con ⎋, con un clic afuera o si la página pierde el foco. El índice de la
  *  opción elegida, o undefined. */
-export function menu(opciones: OpcionMenu[], donde: { x: number; y: number }, o: { titulo?: string } = {}): Promise<number | undefined> {
+export function menu(opciones: OpcionMenu[], donde: { x: number; y: number } | Element, o: { titulo?: string } = {}): Promise<number | undefined> {
     return abrirVentana<number>({
         lugar: 'junto', titulo: o.titulo, clase: 'ventana-menu',
         campo: barraBuscar({ placeholder: 'acciones', ayuda: '↑ ↓ elegir · ⏎ esa · ⎋ cerrar' }),
@@ -192,7 +192,9 @@ export function menu(opciones: OpcionMenu[], donde: { x: number; y: number }, o:
                     html += `<div class="m-fila"${op.color ? ` style="--c: var(--${esc(op.color)})"` : ''}>` + item({
                         titulo: op.label, inicio: ranura ? [ranura] : undefined,
                         sufijo: op.description ? [{ texto: op.description }] : undefined,
-                        activa: k === sel, datos: { k: String(k) },
+                        activa: k === sel, apagada: op.apagada, datos: { k: String(k) },
+                        // la apagada dice por qué al pasar el mouse, entera (en la fila se corta)
+                        ...(op.apagada && op.description ? { ayuda: op.description } : {}),
                     }) + '</div>';
                 });
                 sel = Math.min(sel, Math.max(0, vis.length - 1));
@@ -204,12 +206,12 @@ export function menu(opciones: OpcionMenu[], donde: { x: number; y: number }, o:
             filtro.addEventListener('keydown', e => {
                 if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, vis.length - 1); marcar(true); }
                 if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); marcar(true); }
-                if (e.key === 'Enter') { e.preventDefault(); if (vis[sel] !== undefined) responder(vis[sel]); }
+                if (e.key === 'Enter') { e.preventDefault(); if (vis[sel] !== undefined && !opciones[vis[sel]].apagada) responder(vis[sel]); }
                 if (e.key === 'Escape') { e.preventDefault(); responder(undefined); }
                 e.stopPropagation();
             });
             const fila = (e: Event) => (e.target as HTMLElement).closest<HTMLElement>('.item[data-k]');
-            lista.addEventListener('click', e => { const f = fila(e); if (f) responder(vis[Number(f.dataset.k)]); });
+            lista.addEventListener('click', e => { const f = fila(e); if (f && !opciones[vis[Number(f.dataset.k)]]?.apagada) responder(vis[Number(f.dataset.k)]); });
             lista.addEventListener('mousemove', e => { const f = fila(e); if (f && Number(f.dataset.k) !== sel) { sel = Number(f.dataset.k); marcar(); } });
             // si la página pierde el foco (otra ventana, otra pestaña), se cierra
             const alPerderElFoco = () => responder(undefined);
@@ -225,6 +227,10 @@ export interface OpcionesPreguntar {
     foco?: 'primero' | 'cancelar';
     /** el primer botón destruye: va en el de peligro, con su acorde (⌘⌫, nunca ⏎), y el foco parte en «cancelar» */
     destruye?: boolean;
+    /** corre dentro del evento del botón apretado (el clic, o la tecla que lo aprieta), antes de cerrarse: lo que el
+     *  navegador solo deja hacer en un gesto (copiar al portapapeles en Safari, web/portapapeles.ts) va aquí, no después
+     *  del `await` */
+    enElClic?: (boton: string) => void;
 }
 
 /** Los botones de un aviso, con la tecla de cada uno: lo que destruye, ⌘⌫; si hay una sola acción, ⏎ (o ⌘⏎, si el foco
@@ -248,5 +254,12 @@ export function preguntar(texto: string, botones: string[], o: OpcionesPreguntar
     const enCancelar = !!o.destruye || o.foco === 'cancelar' || !botones.length;
     return abrirVentana<string>({ cuerpo: `<p>${esc(texto)}</p>`, pie: pieBotones(botonesDeAviso(botones, o)), clase: 'ventana-texto' }, {
         foco: enCancelar ? '[data-accion="no"]' : '[data-accion="b0"]',
+        montar: o.enElClic ? d => {
+            // en captura: antes de que la ventana lo atienda y se cierre (web/ventana.ts)
+            d.addEventListener('click', e => {
+                const a = (e.target as HTMLElement).closest<HTMLElement>('[data-accion^="b"]');
+                if (a && d.contains(a)) o.enElClic!(botones[Number(a.dataset.accion!.slice(1))]);
+            }, true);
+        } : undefined,
     }).then(r => (r && r !== 'no' ? botones[Number(r.slice(1))] : undefined));
 }

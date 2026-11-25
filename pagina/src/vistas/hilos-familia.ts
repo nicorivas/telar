@@ -99,3 +99,27 @@ export function anidar<T>(filas: readonly T[], nombreDe: (f: T) => string, padre
     for (const f of filas) poner(f, 1);
     return salida;
 }
+
+/** Las filas que cuelgan de `raiz` (un agente, que no es una fila de la lista): las que la tienen de padre y, bajo ellas,
+ *  sus descendientes, todos de entre `filas` y en su orden. Así un hilo cuyo padre es un agente se dibuja bajo él, en
+ *  AGENTES, con sus hijos debajo; y sale de HILOS. */
+export function colgadosDe<T>(filas: readonly T[], nombreDe: (f: T) => string, padreDe: (f: T) => string | undefined, raiz: string): T[] {
+    const dentro = new Set<string>([raiz]);
+    // hasta que no entre nadie más: así no importa el orden (un hijo antes que su padre)
+    for (let crecio = true; crecio;) {
+        crecio = false;
+        for (const f of filas) {
+            const n = nombreDe(f), p = padreDe(f) || '';
+            if (!dentro.has(n) && p && p !== n && dentro.has(p)) { dentro.add(n); crecio = true; }
+        }
+    }
+    return filas.filter(f => nombreDe(f) !== raiz && dentro.has(nombreDe(f)));
+}
+
+/** Los títulos que se repiten entre `visibles`: dos hilos con el mismo título (el de la ficha de su carpeta, «Tienda
+ *  del Puerto · …») se confunden, y cada uno va con su propio nombre. */
+export function repetidos(visibles: readonly string[]): Set<string> {
+    const vistos = new Set<string>(), dobles = new Set<string>();
+    for (const v of visibles) (vistos.has(v) ? dobles : vistos).add(v);
+    return dobles;
+}

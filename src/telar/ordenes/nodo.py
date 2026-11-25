@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import sys
 import time
 
@@ -62,7 +63,7 @@ CASILLA_ESPERA = 1.0
 #: hilo, una tarea, una nota) y se atienden de a uno por verbo, en orden, como antes: dos que leen y reescriben
 #: el mismo archivo a la vez podrían perder uno de los cambios
 SOLO_LEEN = ("leer", "resultado", "resultado-sin-ver", "proveedor", "notas", "serie", "archivo-leer", "hilo-revisar", "codigos",
-             "contexto", "avisos-archivo")
+             "contexto", "avisos-archivo", "replica-estado", "mudanza-progreso")
 #: lo que puede esperar en cada suscripción antes de que nats-py descarte (y avise «slow consumer»): el
 #: de fábrica es medio millón de mensajes o 128 MB, que es memoria sin tope si una se queda pegada
 PENDIENTES_MSGS = 2_000
@@ -73,7 +74,8 @@ ESPERA_JS = 10
 #: lo que se guarda en `ajenos.json` de cada hilo de otra máquina: lo que se lee de él aquí (telar.estado,
 #: «hilos ajenos»). Lo demás —su ventana, su atención, cuándo se publicó— lo usa el nodo de lo que tiene
 #: en memoria, y guardarlo reescribiría el archivo con cada cambio de atención
-CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas", "padre", "ficha")
+CAMPOS_AJENOS = ("maquina", "conversacion", "vinculo", "archivado", "publico", "etiquetas", "padre", "ficha", "dueno", "borradores",
+                 "cede", "mudanza")
 #: la ventana aquí de un hilo de otra máquina que se reabrió REABRIR_TOPE veces en REABRIR_EN segundos y se
 #: volvió a cerrar no se reabre más, hasta que cambie su dirección o el hilo publique otra cosa: allá no
 #: contesta, aunque el bus lo siga dando por vivo (ver `Nodo.puede_reabrir`)
@@ -114,6 +116,17 @@ def _en_hilo_suelto(funcion, *args, nombre: str = "") -> asyncio.Future:
 
     threading.Thread(target=correr, name=nombre or None, daemon=True).start()
     return futuro
+
+
+def _vive(pid) -> bool:
+    """Si el proceso `pid` (de esta máquina) sigue corriendo."""
+    try:
+        os.kill(int(pid), 0)
+    except (TypeError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def main(argv: list[str], ctx) -> int:
@@ -163,6 +176,9 @@ class Nodo:
         self.sembrado = False
         #: los hilos que se sembraron y todavía no aparecen aquí: si se publican muertos, se dice por qué
         self.sembrados: set[str] = set()
+        #: las claves sembradas que escribió un nodo de antes, sin dueño ni época (telar.dueno): se vuelven a escribir una
+        #: vez aunque aquí nada cambie, para que el registro diga de quién son
+        self.sin_dueno: set[str] = set()
         #: las reaperturas recientes de la ventana de cada hilo de otra máquina (ver `puede_reabrir`)
         self.reabiertas: dict[str, dict] = {}
         self.vueltas = 0
@@ -205,8 +221,14 @@ class Nodo:
         from telar import casilla
 
         publicos = est.publicos() | mod_agentes.publicos(self.config, vinculos)
-        etiquetas, padres = est.etiquetas(), est.padres()
+        # el padre de cada uno como lo ve aquí (el puesto, o el que lo abrió): las ventanas de otra máquina, igual
+        etiquetas, padres = est.etiquetas(), est.padres_efectivos()
         self.registro = (vinculos, archivados, remotos, publicos, etiquetas, padres)
+        try:
+            # cuántos borradores le guardó la persona (telar.borradores): la fila de otra máquina lo dice, tenue
+            cuantos = {h: len(v) for h, v in est.todos_los_borradores().items()}
+        except Exception:  # noqa: BLE001 - sin poder leerlo, ninguno
+            cuantos = {}
         salida: dict[str, dict] = {}
 
         from telar import movil
@@ -236,7 +258,8 @@ class Nodo:
                     # dónde mirarlo desde otra máquina: su ventana en la sesión del telar
                     "ventana": ventana,
                     # la palabra de su casilla y de su clave (telar.casilla.ficha): la apartada, si su nombre choca
-                    "ficha": casilla.ficha(self.config, nombre)}
+                    "ficha": casilla.ficha(self.config, nombre),
+                    "borradores": cuantos.get(nombre, 0)}
 
         agentes = self._agentes_de_aqui()
         # antes de publicar y suscribir con sus fichas: que dos hilos cuyos nombres solo difieren en mayúsculas,
@@ -460,6 +483,8 @@ class Nodo:
         estar aquí. Solo lo que dice esta máquina: el que se mudó a otra es de aquella. Un hilo que ya se
         publicó en este arranque no se toca. Si el bus no contesta, se dice y se intenta en otra vuelta.
         Devuelve si se pudo leer."""
+        from telar import dueno as mod_dueno
+
         try:
             en_el_bus = await asyncio.wait_for(self._lo_del_bus(kv), ESPERA_JS)
         except Exception as e:  # noqa: BLE001 - sin sembrar, el nodo funciona como antes
@@ -471,9 +496,14 @@ class Nodo:
                 continue
             if clave in self.publicado:
                 continue
-            valor = {k: v for k, v in d.items() if k != "actualizado"}
+            # lo que la vuelta compara es lo que sabe del hilo, sin lo que agrega el registro (su dueño, su época, el
+            # traspaso): telar.dueno lo pone al publicar
+            valor = {k: v for k, v in d.items()
+                     if k not in ("actualizado", "dueno", "epoca", *mod_dueno.PROTOCOLO, *mod_dueno.SEGUIDO)}
             self.publicado[clave] = json.dumps(valor, ensure_ascii=False, sort_keys=True)
             self.sembrados.add(nombre)
+            if not d.get("dueno") or "epoca" not in d:
+                self.__dict__.setdefault("sin_dueno", set()).add(clave)
         self.sembrado = True
         return True
 
@@ -553,8 +583,12 @@ class Nodo:
                           ("serie-recordar", self._serie_recordar), ("encargo", self._encargo),
                           ("agentes", self._agentes), ("hilo-llegar", self._hilo_llegar),
                           ("hilo-revisar", self._hilo_revisar), ("hilo-hijo", self._hilo_hijo), ("hilo-despertar", self._hilo_despertar),
-                          ("hilo-traer", self._hilo_traer), ("codigos", self._codigos), ("contexto", self._contexto),
-                          ("avisos-archivo", self._avisos_archivo), ("avisos-visto", self._avisos_visto)):
+                          ("hilo-traer", self._hilo_traer), ("mudanza-progreso", self._mudanza_progreso),
+                          ("replica-estado", self._replica_estado), ("replica-escribir", self._replica_escribir),
+                          ("replica-cerrar", self._replica_cerrar),
+                          ("codigos", self._codigos), ("contexto", self._contexto),
+                          ("avisos-archivo", self._avisos_archivo), ("avisos-visto", self._avisos_visto),
+                          ("comentarios", self._comentarios), ("borradores", self._borradores)):
             await self._suscribir(nc, rpc(verbo), cb, en_fila=verbo not in SOLO_LEEN)
 
     def releer_config(self) -> bool:
@@ -623,8 +657,6 @@ class Nodo:
         if not getattr(self, "sembrado", True) and self.vueltas % ESPEJO_CADA == 0:
             await self.sembrar(kv)
         # estado: solo lo que cambió, y que dejó de estar vivo lo que ya no está aquí
-        from datetime import datetime
-
         actuales = dict(locales)
         sembrados = getattr(self, "sembrados", set())
         await self._soltar_claves_movidas(kv, actuales)
@@ -686,6 +718,11 @@ class Nodo:
                 await asyncio.to_thread(self.mirar_confiar)
             except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
                 self.anotar(f"la pregunta de confiar: {type(e).__name__}: {e}")
+            # y los borradores en espera de un hilo que terminó sin que el evento los soltara (telar.borradores)
+            try:
+                await asyncio.to_thread(self.soltar_borradores, locales)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"soltar borradores: {type(e).__name__}: {e}")
             # y los hilos quietos se duermen: su agente se cierra y su ventana espera (telar.dormir)
             try:
                 await asyncio.to_thread(self.mirar_dormir)
@@ -717,13 +754,27 @@ class Nodo:
 
                 if alcance.cola(self.config):
                     self.tarea_cola = asyncio.create_task(asyncio.to_thread(self.atender_cola))
-        for nombre, info in actuales.items():
-            valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
-            clave = mod_bus.clave_estado(self.config, nombre)
-            if self.publicado.get(clave) != valor:
-                await kv.put(clave, json.dumps({**info, "actualizado": datetime.now().astimezone().isoformat(timespec="seconds")},
-                                               ensure_ascii=False).encode())
-                self.publicado[clave] = valor
+        await self.publicar_estado(kv, actuales, aqui=locales)
+        # un hilo abierto aquí que el bus dice de otra máquina, con su misma conversación: lo siguieron allá mientras
+        # esta no estaba (telar.seguir). Cede sola, en la primera vuelta después de volver
+        try:
+            await self.ceder_seguidos(locales)
+        except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+            self.anotar(f"ceder lo que se siguió en otra: {type(e).__name__}: {e}")
+        # cada 30 s, los traspasos que quedaron a medias (telar.dueno): uno que esta máquina cedía y nadie conduce ya,
+        # uno que tomó y no alcanzó a abrir, una ventana que esperaba a un hilo que ya es de otra. Y el aviso de lo que
+        # se cedió al volver, al día
+        if self.vueltas % ESPEJO_CADA == 0:
+            try:
+                await self.mudanzas_colgadas(kv)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"las mudanzas a medias: {type(e).__name__}: {e}")
+            try:
+                from telar import seguir
+
+                await asyncio.to_thread(seguir.refrescar_aviso, self.config)
+            except Exception as e:  # noqa: BLE001 - la vuelta siguiente lo intenta de nuevo
+                self.anotar(f"el aviso de lo que se cedió al volver: {type(e).__name__}: {e}")
         # la foto del espejo, cada tanto: la que muestra el panel en la otra máquina. Y al tiro si cambió qué hilos
         # hay o cuáles están vivos (uno se cerró, se archivó, nació): la otra máquina lo ve en segundos, no en 30
         self.vueltas += 1
@@ -786,6 +837,126 @@ class Nodo:
                 if type(e).__name__ not in ("KeyNotFoundError", "KeyDeletedError"):
                     self.anotar(f"«{nombre}»: no pude soltar su clave de antes ({clave}): {type(e).__name__}: {e}")
         return sueltas
+
+    def _registro(self, kv):
+        """Lo que publica el nodo en el registro del bus, condicionado (telar.dueno.Registro)."""
+        from telar import dueno
+
+        r = getattr(self, "registro_bus", None)
+        if r is None or r.kv is not kv:
+            simple = getattr(getattr(self.config, "bus", None), "publicar", "condicionado") == "simple"
+            r = self.registro_bus = dueno.Registro(kv, self.yo, simple=simple, anotar=self.anotar)
+        return r
+
+    async def publicar_estado(self, kv, actuales: dict, aqui=()) -> None:
+        """Lo que cambió de cada hilo de aquí, en el registro del bus: solo si es de esta máquina (telar.dueno), con su
+        época y lo de un traspaso en curso. El de un hilo que es de otra (se fue, o allá vive otro con su nombre) no se
+        publica, y se vuelve a mirar cada 30 s: antes se pisaban, y un hilo que se fue podía volver a figurar aquí. Uno
+        abierto aquí (`aqui`) que el bus tenía como lo dejó un nodo de antes, sin dueño ni época, se escribe una vez
+        aunque no haya cambiado."""
+        registro = self._registro(kv)
+        ajenas = getattr(self, "ajenas_hasta", None)
+        if ajenas is None:
+            ajenas = self.ajenas_hasta = {}
+        ahora = time.monotonic()
+        sin_dueno = getattr(self, "sin_dueno", set())
+        for nombre, info in actuales.items():
+            valor = json.dumps(info, ensure_ascii=False, sort_keys=True)
+            clave = mod_bus.clave_estado(self.config, nombre)
+            de_antes = clave in sin_dueno and nombre in aqui
+            if (self.publicado.get(clave) == valor and not de_antes) or ajenas.get(clave, 0) > ahora:
+                continue
+            if await registro.publicar(clave, info):
+                self.publicado[clave] = valor
+                ajenas.pop(clave, None)
+                sin_dueno.discard(clave)
+            else:
+                self.publicado.pop(clave, None)
+                ajenas[clave] = ahora + 30
+
+    async def ceder_seguidos(self, locales: dict) -> list[str]:
+        """Los hilos abiertos aquí que el registro del bus (lo que trajo el vigía) dice de otra máquina, con la misma
+        conversación que tienen aquí: se siguieron allá mientras esta máquina no estaba (la etapa 4, telar.seguir), o
+        quedaron abiertos aquí por otra razón. Dos agentes con una conversación no pueden seguir: el de aquí cede solo
+        (decisión 3 del 24-nov), deja aparte lo que escribió después de la copia con que se siguió, y se avisa. No toca
+        a los que están en un traspaso (los atiende `mudanzas_colgadas`) ni a uno que se llama igual con otra
+        conversación (es otro hilo). Devuelve lo que hizo, una línea por hilo."""
+        from telar import dueno, seguir
+        from telar import estado as mod_estado
+
+        hechos, est = [], None
+        ya = self.__dict__.setdefault("cedidos_ya", set())
+        for nombre, info in locales.items():
+            conv = str(info.get("conversacion") or "")
+            if not info.get("vivo") or not conv:
+                continue
+            clave = mod_bus.clave_estado(self.config, nombre)
+            reg = self.vistos.get(clave)
+            if not isinstance(reg, dict) or dueno.de(reg) in ("", self.yo) or reg.get("conversacion") != conv:
+                continue
+            if reg.get("cede") == self.yo or (reg.get("mudanza") or {}).get("a") == self.yo:
+                continue  # viene hacia aquí: lo conduce la mudanza
+            est = est or mod_estado.abrir(self.config)
+            if (est.dormidos().get(nombre) or {}).get("cede"):
+                continue  # se iba de aquí: lo atiende `mudanzas_colgadas`
+            marca = (clave, dueno.epoca(reg))
+            if marca in ya:
+                continue
+            ya.add(marca)
+            hechos.append(await asyncio.to_thread(seguir.ceder_aqui, self.ctx, nombre, conv, reg))
+        for h in hechos:
+            self.anotar(h)
+        return hechos
+
+    async def mudanzas_colgadas(self, kv) -> list[str]:
+        """Los traspasos que quedaron a medias (telar.dueno, telar.mudanza), con lo que dice el registro del bus:
+
+        - uno que esta máquina cedía y cuyo proceso ya no corre (se cayó, la tapa del laptop): se echa atrás, y su agente
+          despierta; si la otra ya lo había tomado, su ventana de aquí se cierra;
+        - uno que esta máquina tomó y no alcanzó a abrir (el nodo se reinició, abrir falló): se abre;
+        - la ventana que esperaba a un hilo que ya es de otra: se cierra.
+
+        Devuelve lo que hizo, una línea por hilo."""
+        from telar import dueno, mudanza
+        from telar import estado as mod_estado
+
+        hechos = []
+        est = mod_estado.abrir(self.config)
+        cedidos = {h: r for h, r in est.dormidos().items() if r.get("cede")}
+        tel = None
+        for nombre, d in list(cedidos.items()):
+            rev, reg = await dueno.leer(kv, mod_bus.clave_estado(self.config, nombre))
+            if dueno.de(reg) not in ("", self.yo):
+                # ya es de otra: la ventana que esperaba se cierra
+                tel = tel or await asyncio.to_thread(_comun.tejer, self.ctx, con_ficha=False)
+                await asyncio.to_thread(mudanza.soltar, self.config, tel, nombre)
+                hechos.append(f"«{nombre}» ya vive en {dueno.de(reg)}: cerré la ventana que esperaba aquí")
+                continue
+            m = (reg or {}).get("mudanza") or {}
+            if reg and reg.get("cede") and not _vive(m.get("pid")) and time.time() - float(m.get("hora") or 0) > 60:
+                sigue = await dueno.abortar(kv, mod_bus.clave_estado(self.config, nombre), yo=self.yo,
+                                            epoca_=dueno.epoca(reg))
+                if sigue:
+                    texto = await asyncio.to_thread(mudanza.reanudar, self.config, nombre)
+                    hechos.append(f"«{nombre}» se iba a {reg.get('cede')} y nadie lo llevaba ya: me eché atrás ({texto})")
+            elif not (reg or {}).get("cede") and dueno.de(reg) in ("", self.yo):
+                # cedido aquí sin traspaso en el registro (se echó atrás sin alcanzar a despertarlo)
+                texto = await asyncio.to_thread(mudanza.reanudar, self.config, nombre)
+                hechos.append(f"«{nombre}» esperaba un traspaso que ya no está: {texto}")
+        for reg in list(getattr(self, "propios", {}).values()):
+            m = reg.get("mudanza") or {}
+            if dueno.de(reg) != self.yo or m.get("paso") != "abrir" or m.get("a") != self.yo \
+                    or not isinstance(reg.get("nombre"), str):
+                continue
+            # lo está abriendo la llegada (en este proceso, hace poco): se la deja terminar
+            if _vive(m.get("pid")) and time.time() - float(m.get("hora") or 0) < 120:
+                continue
+            ok, texto = await asyncio.to_thread(mudanza.abrir_tomado, self.ctx, reg["nombre"], reg)
+            hechos.append(f"«{reg['nombre']}» lo tomó esta máquina y su traspaso no había terminado: "
+                          + (texto if ok else f"no pude abrirlo ({texto})"))
+        for h in hechos:
+            self.anotar(h)
+        return hechos
 
     def atender_cola(self) -> list[str]:
         """Lo que espera en cola para las máquinas que volvieron (telar.alcance.atender); una falla se dice y se
@@ -885,11 +1056,19 @@ class Nodo:
                     d = json.loads(e.value)
                 except ValueError:
                     continue
-                if d.get("maquina") == self.yo:
+                registro = getattr(self, "registro_bus", None)
+                if registro is not None and registro.vistas.get(e.key, (None,))[0] != getattr(e, "revision", None):
+                    registro.olvidar(e.key)  # alguien más lo escribió (el traspaso): se lee antes de publicar
+                propios = getattr(self, "propios", None)
+                if propios is None:
+                    propios = self.propios = {}
+                if (d.get("dueno") or d.get("maquina")) == self.yo:
+                    propios[e.key] = d
                     self.vistos.pop(e.key, None)
                     self.por_atender.pop(e.key, None)
                     await self._espejar()
                     continue
+                propios.pop(e.key, None)
                 self.vistos[e.key] = d
                 await self._espejar()
                 self.por_atender.pop(e.key, None)  # al final de la fila: el orden es el de los cambios
@@ -1041,6 +1220,11 @@ class Nodo:
                     return
                 mod_remoto.traer(tel, remoto, sesion, nombre)
                 self.anotar(f"«{nombre}» cambió de lugar en {remoto.nombre} ({previo['sesion']} → {sesion}): lo sigo")
+                return
+            # uno que su dueño archivó no nace: es el que se fue de allá (telar.mudanza: se archiva al llegar aquí, un
+            # momento antes de cerrar su ventana) o uno que se guardó. Traerlo dejaba aquí una ventana «· 2» que miraba
+            # lo que se estaba cerrando
+            if d.get("archivado") is True:
                 return
             dormidos = {h.nombre for h in tel.hilos if not tel.vivo(h) and h.nombre not in anotados}
             nombres = ({h.nombre for h in tel.hilos} | set(anotados)) - dormidos
@@ -1579,8 +1763,9 @@ class Nodo:
             argv = p.get("argv")
             if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
                 return {"ok": False, "error": "argv: se esperaba una lista de textos"}
-            if not argv or argv[0] not in AL_DUENO:
-                return {"ok": False, "error": f"hilo: solo {', '.join(AL_DUENO)}"}
+            # y retomar: uno archivado en otra máquina que es de esta se retoma aquí (telar.seguir, «retomar» de allá)
+            if not argv or argv[0] not in (*AL_DUENO, "retomar"):
+                return {"ok": False, "error": f"hilo: solo {', '.join(AL_DUENO)} y retomar"}
             return alla.tarea_aqui(argv, "hilo")
 
         await self._responder(m, correr)
@@ -1630,6 +1815,43 @@ class Nodo:
 
         await self._responder(m, lambda p: mudanza.traer_aqui(self.ctx, p))
 
+    async def _mudanza_progreso(self, m) -> None:
+        """Otra máquina que pidió traer un hilo de aquí sigue su mudanza: en qué va (telar.mudanza.progreso_de)."""
+        from telar import mudanza
+
+        await self._responder(m, lambda p: {"ok": True, "progreso": mudanza.progreso_de(self.config,
+                                                                                         str(p.get("hilo") or ""))})
+
+    async def _replica_estado(self, m) -> None:
+        """Otra máquina va a mandar una conversación aquí: qué hay de cada archivo suyo (telar.replica.estado)."""
+        from telar import replica
+
+        await self._responder(m, lambda p: replica.estado(self.ctx, p))
+
+    async def _replica_escribir(self, m) -> None:
+        """Un pedazo de una conversación que llega (telar.replica.escribir): bytes crudos detrás de una línea JSON, no
+        un pedido JSON. De a uno y en orden (`en_fila`): cada uno va al final del anterior."""
+        from telar import replica
+
+        def escribir() -> dict:
+            try:
+                meta, datos = replica.recibir(m.data or b"")
+            except ValueError as e:
+                return {"ok": False, "error": f"un pedazo sin cabecera: {e}"}
+            return replica.escribir(self.config, meta, datos)
+
+        try:
+            r = await asyncio.to_thread(escribir)
+        except Exception as e:  # noqa: BLE001 - un pedazo que falla se responde con su error
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300]}
+        await m.respond(mod_bus.empacar(r, mod_bus.maximo_de(m)))
+
+    async def _replica_cerrar(self, m) -> None:
+        """Una conversación que terminó de llegar: verificarla y dejarla donde Claude la busca (telar.replica.cerrar)."""
+        from telar import replica
+
+        await self._responder(m, lambda p: replica.cerrar(self.ctx, p))
+
     async def _equipo(self, m) -> None:
         """`telar equipo …` corrido aquí, para otra máquina: la bandeja del equipo vive donde están las tareas.
         Nunca `servir` ni `token`: solo leer la bandeja y decidirla."""
@@ -1676,6 +1898,35 @@ class Nodo:
         from telar.servicios import archivos
 
         await self._responder(m, lambda p: archivos.leer_para_otra(self.ctx, p))
+
+    async def _borradores(self, m) -> None:
+        """Los borradores de un hilo de aquí (telar.servicios.borradores), que pide la página de otra máquina: verlos,
+        escribirlos, borrarlos o mandárselos a su hilo, que vive aquí."""
+        from telar.servicios import borradores
+
+        await self._responder(m, lambda p: borradores.para_otra(self.ctx, p))
+
+    def soltar_borradores(self, locales: dict) -> list[str]:
+        """Los hilos de aquí con un borrador en espera cuyo agente ya terminó (telar.borradores): el evento de fin de
+        turno lo suelta al tiro; esto es el respaldo, por si un turno terminó sin evento. Devuelve a cuáles les escribió."""
+        from telar import borradores
+
+        hechos = []
+        for nombre in borradores.pendientes(self.config):
+            if nombre not in locales or str(locales[nombre].get("atencion") or "") in ("trabajando", "espera"):
+                continue
+            como = borradores.soltar(self.config, _comun.tejer(self.ctx, con_ficha=False), nombre, pausa=0)
+            if como:
+                hechos.append(nombre)
+                self.anotar(f"«{nombre}»: terminó su turno y le dejé su borrador en espera ({como})")
+        return hechos
+
+    async def _comentarios(self, m) -> None:
+        """Los comentarios de un archivo de aquí (telar.servicios.comentarios), que pide la página de otra máquina o un
+        agente de allá: leerlos o cambiarlos, con los límites de aquí. El archivo de al lado se commitea al rato, aquí."""
+        from telar.servicios import comentarios
+
+        await self._responder(m, lambda p: comentarios.para_otra(self.ctx, p))
 
     async def _modulo(self, m) -> None:
         """Una consulta a un módulo instalado aquí, que pide otra máquina (telar.servicios.modulos)."""

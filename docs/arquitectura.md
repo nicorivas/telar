@@ -189,6 +189,16 @@ lo vuelve a publicar. La copia de allá (`vinculos.json`, `archivados.json`, `se
 escribiendo cuando el dueño acepta un cambio, pero solo se lee mientras el dueño no publique ese campo
 (sin bus, con el nodo apagado, o un telar de antes allá).
 
+**El dueño está escrito, con su época** (telar.dueno). El registro de cada hilo en `TELAR_HILOS` dice `dueno` (la
+máquina) y `epoca` (sube con cada traspaso), y el nodo lo escribe condicionado a la revisión que leyó: si otro escribió
+entre medio, lee de nuevo y decide otra vez. Un nodo no publica un hilo cuyo registro es de otra máquina (antes se
+pisaban, y un hilo que se fue podía volver a figurar aquí); solo toma el de un hilo muerto allá si aquí se abrió otro
+con su nombre (otra conversación). El traspaso son tres escrituras condicionadas: el dueño lo cede (`cede`), la que
+recibe lo toma (`dueno`, `epoca + 1`), o el dueño se echa atrás (`epoca + 1`). Una de las dos gana siempre: nunca dos
+dueños, aunque una máquina vuelva de dormir sin saber nada. La lista de una máquina no muestra como un cerrado suyo a
+un hilo que el bus dice de otra (`ajenos.json`): no se retoma por error con su copia vieja. La página sigue al dueño
+(`GET /hilo/registro`), también un traspaso en curso, desde cualquier máquina y el teléfono.
+
 **Cómo llega un mensaje.** El nodo de la máquina del hilo lo deja en su casilla local
 (`telar.casilla`). Los ganchos `Stop` y `UserPromptSubmit` del agente (`telar agente casilla`) se lo
 entregan entero al terminar el turno. Si el agente está ocioso, hay que despertarlo con una línea de
@@ -316,8 +326,76 @@ plazo del bus:
 Con la máquina en línea, despertar va al nodo del dueño (`hilo-despertar`), que despierta al dormido en su ventana,
 retoma al cerrado con su conversación y deja como está al despierto (y su foco, también). Un pedido sin respuesta dice
 lo que se sabe por la foto: fuera de línea desde cuándo, o que está en línea y su telar es más viejo y no atiende ese
-verbo (`telar.bus.pedir`). Seguir un hilo en otra máquina mientras la suya está apagada no se puede todavía: su
-conversación vive allá ([propuesta](propuestas/seguir-sin-su-maquina.md)).
+verbo (`telar.bus.pedir`).
+
+**Seguir aquí con la dueña apagada** (telar.seguir; la etapa 4 de [mudanza-de-hilos](propuestas/mudanza-de-hilos.md)).
+Sin réplica continua, con la máquina de un hilo apagada no hay una copia al día de su conversación en ninguna parte:
+solo la que quedó en cada máquina la última vez que el hilo vivió en ella. «Seguir aquí» la retoma, y antes dice lo que
+falta. Se ofrece solo donde hay copia y solo con la dueña apagada (su foto vencida y su nodo sin contestar); con ella
+en línea es «traer». Para decir cuánto falta sin copiar nada, la foto de cada máquina lleva el largo de la
+conversación de cada hilo suyo y cuándo creció (`conv_bytes`, `conv_crecio`). Lo toma con la época que leyó
+(`tomado_de`, `hasta` en el registro) y lo abre. Cuando la dueña vuelve, cede sola, en la primera vuelta de su nodo:
+cierra a su agente, deja aparte su copia si creció después de la con que se siguió (`<sid>.de-<máquina>-<fecha>.jsonl.bak`:
+se puede leer, no seguir) y lo avisa en la franja de su página, con un informe. Entre que su agente despierta y que su
+nodo ve el registro (unos segundos, lo que tarda en reconectarse) hay dos agentes con la misma conversación; lo que el
+de la que vuelve alcance a escribir queda en lo apartado.
+
+**Los archivados de otra máquina.** Uno archivado aquí que el registro dice de otra (aquí sin conversación, o con la
+misma) se ve en el archivo de aquí como de allá (`dueno` en `telar hilos --json`; en la página, con su máquina), y
+retomarlo lo abre allá, por su nodo, no la copia de aquí. Con esa máquina apagada, dice si se puede seguir aquí. Uno
+que aquí tiene otra conversación es otro hilo con el mismo nombre, y es de aquí.
+
+**Llevar un hilo a otra máquina** (`telar hilo llevar`, telar.mudanza; «traer aquí» se lo pide a su dueño). Por el
+bus, también hacia una de `[remotos]` que esté en él: por ssh solo se muda sin bus (no hay dueño que compartir). Antes
+de copiar se espera siempre a que el agente termine su turno (su atención deja de ser «trabajando» y su conversación
+lleva 4 s sin crecer), la pida quien la pida: la página, «traer», la CLI desde otra ventana o el agente mismo, que
+sigue en un proceso aparte. Después **se detiene primero y se pasa después**: el registro dice que se cede, su agente se
+detiene (su panel espera como el de uno dormido, y no despierta mientras viaja), y lo que viaja es la conversación final.
+Allá lo toman con la época que se cedió y lo abren; aquí su ventana se cierra, y nada se archiva. Si algo falla antes
+de que lo tomen, aquí se echa atrás y su agente despierta; si ya lo tomaron, vive allá (y si no alcanzaron a abrirlo,
+lo abre su nodo). Si el proceso de la mudanza muere a mitad (la tapa del laptop), el nodo de aquí se echa atrás solo,
+al minuto. La conversación viaja de a pedazos por el bus (telar.replica), en las dos direcciones y sin ssh:
+
+- **Solo lo que allá falta.** Una conversación de Claude Code solo crece al final, y junto a ella vive su carpeta
+  `<sid>/` (`tool-results/`, `subagents/`, `workflows/`), que viaja con ella. Allá se dice, de cada archivo, su largo
+  y la huella (sha256 de los 64 KB anteriores) de cada lugar donde su copia podría cortarse para ser un comienzo de la
+  de aquí: su largo entero y, en una conversación, antes de lo que Claude anota al cerrarse. Donde una calza, se manda
+  desde ahí; si ninguna, entera, y al llegar la de allá queda aparte (`<sid>.antes-<fecha>.jsonl.bak`).
+- **Sin tope y retomable.** Pedazos de bytes crudos de hasta 896 KB (una línea JSON con lo que identifica al pedazo,
+  y sus bytes, comprimidos con zlib si eso los achica), seis en camino a la vez por una sola conexión, leídos del
+  disco de a poco. Allá se juntan en `<estado>/llegadas/<sid>/`, cada uno al final del anterior: repetido no duplica,
+  y si la copia se corta (la red, la tapa del laptop, el proceso), el siguiente intento sigue desde lo juntado. Lo
+  juntado y abandonado se borra a los tres días.
+- **Verificada antes de tocar nada.** Al final se compara el largo y el sha256 de cada archivo; recién entonces pasa
+  a la carpeta de proyecto donde lo busca el agente que arranca allá (telar.rutas calcula esa carpeta en un solo
+  lugar: `/Users/ana/vida` es `-Users-ana-vida`, `/home/ana/vida`, `-home-ana-vida`). Lo de allá que aquí no está no se
+  borra.
+
+Lo que no es la conversación (telar.sin_subir; telar.mudanza, `registro_de` y `casilla_de`):
+
+- **Lo sin subir, solo lo del hilo.** Se mira el repositorio de su carpeta (el de la raíz, si no tiene) y los
+  repositorios donde escribió su conversación: lo sin commitear que su conversación escribió (Edit, Write, MultiEdit,
+  NotebookEdit, también sus subagentes) es suyo; lo demás sin commitear de su carpeta puede ser de otro y no se sube;
+  los commits sin subir de la rama, sí. El resto del repositorio no se mira (antes el aviso sonaba siempre). Si hay
+  algo, el panel de la mudanza lo muestra por repositorio y se elige: «subir y llevar» (después de su turno, commitea
+  solo lo suyo, por sus rutas, y sube con telar.git) o «llevar igual». Si nada dice que algo es suyo, no se ofrece
+  subir. Sin nada pendiente, ni se ve.
+- **Allá, al día.** La otra máquina dice si tiene el último commit de cada repositorio del hilo; al llegar, el que va
+  atrás se pone al día con su rama de arriba antes de abrir (fetch y rebase, apartando lo sin commitear de allá y
+  devolviéndolo). Si lo que llega toca algo sin commitear de allá, no se toca y se dice; si aquí quedaron commits sin
+  subir, también.
+- **Los hijos con rama no se mudan**: su rama y su worktree existen solo aquí. Su padre se lleva solo, con el aviso de
+  que sus hijos se fusionan desde aquí.
+- **Su registro y su casilla viajan con él**: del que cuelga, sus etiquetas, su prioridad, el esfuerzo de su agente y
+  si es público quedan allá como estaban aquí; lo que esperaba en su casilla local se deja allá cuando abrió, y sale de
+  aquí.
+
+Medido entre un laptop y su servidor por Tailscale (24-nov-2026, `scripts/probar_mudanza.py transporte`): 115 MB la
+primera vez, 19 s del laptop al servidor y 10 s de vuelta; con 1 MB más, 3 s y 1 s; igual, un segundo. Una máquina que
+no atiende `replica-estado` (su nodo no está, o un telar de antes) no recibe hilos. El progreso de la mudanza queda en
+la máquina que la corre (`<estado>/llevar/<hilo>.json`); la que pidió traer un hilo lo lee de allá
+(`mudanza-progreso`), y su página muestra los mismos pasos; el paso grueso (cediendo, copiando, abriendo) está también
+en el registro del bus.
 
 Lo que no se puede arreglar desde aquí sin probar contra el bus real:
 
@@ -626,7 +704,13 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   sin la página (`vistas/hilos-familia.ts`): lo que el modo y el mundo puestos dejan ver, y lo que el mundo deja afuera
   en una fila plegada al final de HILOS («de personal»), cada hijo bajo su padre en las dos. El hilo que se mira se ve
   siempre, con su familia: sus padres (para quedar anidado) y sus descendientes, de esta máquina y de las otras; si es
-  el hijo de un agente, el agente.
+  el hijo de un agente, el agente. Un hilo va sangrado y con «↳» solo bajo su padre, y solo si el padre se ve en la
+  misma sección; si el padre es un agente, va bajo el agente, en AGENTES, con los suyos debajo. Si el padre no se ve
+  (archivado, de otro mundo, en otra máquina sin ventana aquí), va suelto, y de quién cuelga lo dice su ayuda. Dos con
+  el mismo título (el de la ficha de su carpeta) van cada uno con su nombre.
+  ARCHIVO, al final de HILOS, lista los archivados de esta máquina y, después, los de las otras, de su foto
+  (`archivados`), con su máquina en la columna de dónde vive: un clic muestra su conversación, y «retomar en M» lo
+  abre allá. Uno de allá que aquí ya está, o que vive en alguna máquina, no se repite; el mundo los filtra como a todos.
 - **El dashboard**: las pestañas del día (tareas, agenda, correo, lo que traigan los proveedores y
   los módulos), que son las filas del grupo DASHBOARD de la barra. La configuración es el ⚙ de la cabecera:
   un menú vertical de secciones (pestañas, calendario, hilos, modos, mundos, temas, glifos, agente, periódicos, agentes, módulos), cada una
@@ -644,11 +728,16 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   semana dice además en qué se va su jornada: las horas por clase, lo libre y lo estratégico bloque por bloque.
 - **Un hilo** tiene vistas, en un registro (`pagina/src/web/vistas-hilo.ts`): la terminal (⌥T), la lectura (⌥L,
   solo la respuesta final del agente, con un renderizador por fuente; la conversación la deja el mod de telar en
-  la casilla, y sin él se lee del registro del agente) y la conversación (⌥C). Una vista nueva es una entrada del
+  la casilla, y sin él se lee del registro del agente) y la conversación (⌥C). A su derecha, su barra (`web/lado.ts`), con
+  una pestaña por hoja: la ficha de su agente, sus notas (`web/borradores.ts`, ⌥B: los próximos prompts, que guarda
+  telar), sus códigos y su contexto. Una vista nueva es una entrada del
   registro, con su `montar`: se dibuja en un elemento de la página y se cierra cuando ya no hace falta (de las
-  terminales quedan abiertas las ocho últimas). La carpeta de un hilo y «compartir» se dibujan igual
-  (`web/carpeta.ts`, `web/compartir.ts`). En las tres vistas, las rutas de archivo que escribe el agente son
-  enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina del hilo. Una relativa es de donde arrancó
+  terminales quedan abiertas las ocho últimas). «Compartir» se dibuja igual (`web/compartir.ts`). En las tres vistas,
+  las rutas de archivo que escribe el agente son enlaces al visor de documentos (`web/rutas-agente.ts`), en la máquina
+  del hilo. El visor (`web/carpeta.ts`) no es una vista: es una ventana (`abrirVentana`) encima de lo que se mira,
+  que se cierra con su ✕ o ⎋ y deja todo como estaba, con el foco donde estaba; `navegador/app.ts` abre ahí `arch:<ruta>`
+  y `doc:<hilo>` (la carpeta del hilo y su documento), y venga de donde venga (un enlace, ⌘K, Todo, un aviso, una
+  dirección, un nombre suelto que tiene varios candidatos) es el mismo. Una relativa es de donde arrancó
   el agente, que según `[agente] carpeta` es la carpeta del hilo o la raíz: se prueba primero la del hilo y
   después la raíz, y se abre la que existe. El visor lee una lista cerrada (`telar.servicios.archivos`): la raíz,
   `[repos]`, lo que declaran las apps y la carpeta de un hilo de esa máquina aunque esté fuera de la raíz (su
@@ -665,11 +754,22 @@ los lienzos y las apps del dashboard, que son páginas de afuera (aisladas con `
   archivo o un proyecto en el visor y un hilo como la barra, y cualquier otra en la vista del objeto
   (`web/objeto.ts`: `/api/objetos/<dirección>`, con sus enlaces y sus acciones). Un `.html` el visor lo muestra
   dibujado, en un iframe aislado (`/api/archivos/ver`, con `sandbox`: sus scripts no ven la llave ni la API de la
-  página), con su código a un clic. Al lado del archivo, sus conexiones en el grafo (`/api/modulos/grafo/vecinos`,
+  página), con su código a un clic. Al final del archivo, sus conexiones en el grafo (`/api/modulos/grafo/vecinos`,
   si la máquina del archivo tiene el módulo): se piden después de mostrarlo, porque el grafo lee el repositorio
-  entero. Lo que muestra el visor va en el recuadro de `componentes.css`, y arriba «‹ …» vuelve al documento
-  anterior (el visor anota por cuáles pasó) y del primero a donde se apretó el enlace, «‹ hilo · vista» o ⎋:
-  `navegador/app.ts` recuerda de dónde se vino. Un archivo arrastrado a la terminal deja su ruta en el chat: en la
+  entero, y la barra dice cuántas hay. La primera fila del visor es la barra de una pantalla con el nombre del
+  archivo; un enlace a otro archivo lo abre ahí mismo, y «‹» delante del nombre (o ⌫) vuelve al anterior. Un .md o un
+  texto se **comenta**: se selecciona texto y la tecla c (o el botón que aparece) abre la barra de la derecha con la caja para escribir; el
+  comentario va al archivo de al lado, `.<nombre>.marginalia.json` (`/api/comentarios`, telar.comentarios; el formato,
+  en docs/contratos.md), anclado a la cita de la fuente (`web/fuente.ts` lleva lo seleccionado sobre el markdown
+  dibujado al texto fuente: las líneas de cada bloque, que markdown-it da, acotan la búsqueda, y la búsqueda por letras
+  y números calza la cita a través de los `**` y los enlaces). Los comentarios que hay se marcan sobre el texto apenas,
+  con su número al final del tramo, y van en la **barra de la derecha** del visor (`web/documento-lado.ts`, plegable y
+  de ancho arrastrable como las de la página): una pestaña para los comentarios, en el orden del documento y con el mismo
+  número (estado, lo respondido, responder, resolver, editar, borrar: `web/comentarios.ts`), y otra para las conexiones
+  del grafo; en el teléfono, una hoja que sube desde abajo. Su
+  **modo lectura** (el modo revisión: de entrada en el modo foco, o con su ícono o la tecla l) dibuja el .md en la
+  prosa (`media/css/prosa.css`: la letra con serifa, el ancho de lectura y los estilos del markdown, los mismos de la
+  lectura de un hilo, que los comparte), en una columna al medio de una ventana más grande, con la barra a la derecha sin correrla si cabe. Un archivo arrastrado a la terminal deja su ruta en el chat: en la
   caja de abajo, donde está el cursor; sobre la terminal, pegada sin ⏎. Si el arrastre trae la ruta (VS Code, una
   terminal, Safari con el Finder), se usa; si trae solo el archivo (Chrome con el Finder, Windows), la página
   pregunta y lo sube. Para un hilo de otra máquina, o para lo subido, el archivo va antes a la carpeta de entrada

@@ -63,8 +63,12 @@ el primer paso sin hacer de la primera propuesta.
    el modo: Táctica (decidir y hacer), Estrategia (mirar con calma), Foco y Todo (ver y buscar todo). El otro es el
    mundo (trabajo, personal). Decidido en lo grande; se construye por pasos.
 14. **[seguir-sin-su-maquina.md](seguir-sin-su-maquina.md)**: seguir un hilo en el servidor cuando su máquina está
-   apagada, desde un respaldo de su conversación que cada nodo manda por turno; y qué hace el laptop al volver. Sin
-   construir: falta que la persona decida qué conversaciones se copian al servidor.
+   apagada. Se funde en la 15: su respaldo continuo no se hace (la persona dijo que no) y su «seguir aquí» es la etapa
+   4 de aquella, desde la última copia (hecha).
+15. **[mudanza-de-hilos.md](mudanza-de-hilos.md)**: diagnóstico de la mudanza de un hilo a otra máquina (18 fallas
+   medidas: el tope de 25 MB del bus, copiar antes de detener, dos caminos, copias viejas, lo que no viaja) y su
+   rediseño: la conversación copiada por pedazos (solo lo que falta, al mudarse) y un dueño explícito por hilo, en
+   cuatro etapas. Absorbe la 14. Decidida el 24-nov; hechas las cuatro etapas.
 
 ## Cómo se escribe una propuesta
 

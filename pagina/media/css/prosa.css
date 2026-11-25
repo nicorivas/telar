@@ -1,0 +1,73 @@
+/* La prosa: un texto para leer con calma. Letra con serifa y más grande, renglones holgados, un ancho de lectura y
+   centrada; el markdown bien dibujado, con los colores de los tokens. La comparten la lectura de un hilo (web/lectura.ts,
+   lectura.css: la respuesta del agente) y el visor de documentos en modo lectura (web/carpeta.ts: el documento, con sus
+   comentarios; en el modo foco, de entrada): un cambio aquí cambia los dos. `.prosa` es el bloque (la letra, el ancho);
+   `.prosa-md`, lo que hay adentro cuando es markdown. Medidas en tokens.css (--prosa-…). scripts/navegador.mjs la junta en
+   src/telar/web/marco.css. */
+
+.prosa {
+  max-width: var(--prosa-ancho);
+  margin-inline: auto;
+  color: var(--fg);
+  font-family: var(--serifa);
+  font-size: var(--prosa-tam);
+  line-height: var(--prosa-alto);
+}
+
+.prosa-md {
+  & p { margin: 0 0 1.1em; }
+  & h1,
+  & h2,
+  & h3,
+  & h4 { margin: 1.8em 0 .6em; color: var(--violeta); font-weight: 600; line-height: 1.3; }
+  & > h1:first-child,
+  & > h2:first-child,
+  & > h3:first-child { margin-top: 0; }
+  & h1 { font-size: 1.5em; }
+  & h2 { font-size: 1.3em; }
+  & h3 { font-size: 1.1em; }
+  & strong { color: var(--fg); font-weight: 700; }
+  & em { font-style: italic; }
+  & a { color: var(--azul); }
+  & ul,
+  & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
+  & li { margin: .3em 0; }
+  & blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid var(--violeta); color: var(--dim); }
+  /* en una cita, la negrita pesa pero no se enciende: en el tenue de la cita, no en el del texto */
+  & blockquote strong { color: inherit; }
+  & hr { margin: 2em 0; border: 0; border-top: var(--borde); }
+
+  & code {
+    padding: 0 .25em;
+    background: var(--bg-barra);
+    color: var(--cian);
+    font-family: var(--letra), iconos, monospace;
+    font-size: .82em;
+  }
+
+  & pre {
+    overflow-x: auto;
+    margin: 0 0 1.1em;
+    padding: .8em 1em;
+    background: var(--bg-barra);
+    line-height: 1.5;
+
+    & code { padding: 0; background: none; }
+  }
+
+  & table {
+    margin: 0 0 1.1em;
+    border-collapse: collapse;
+    font-size: .9em;
+  }
+
+  & th,
+  & td {
+    padding: .3em .7em;
+    border: var(--borde);
+    text-align: left;
+  }
+
+  & th { color: var(--violeta); font-weight: 600; }
+  & img { max-width: 100%; }
+}

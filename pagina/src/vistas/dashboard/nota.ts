@@ -3,6 +3,8 @@
 // carpeta, con la misma regla que el servidor. Sin nada de la página (ni DOM ni almacén): lo prueba
 // pruebas/nota.mjs en Node.
 
+import * as frontmatter from '../../web/frontmatter';
+
 /** Un texto en markdown cortado a `n` letras, en el último espacio y sin dejar un `código` o una **negrita** abiertos. */
 function corto(t: string, n: number): string {
     if (t.length <= n) return t;
@@ -43,17 +45,17 @@ const llanoMd = (t: string) => t
     .replace(/<\/?[a-z][^>]*>/gi, '')
     .replace(/^>\s?/gm, '');
 
-/** Lo que dice una nota, de su markdown: su título (el `titulo:` de su frontmatter o su primer `#`), su resumen (la
+/** Lo que dice una nota, de su markdown: su título (el `titulo:` de su frontmatter, YAML o TOML, o su primer `#`), su resumen (la
  *  línea `>` bajo el título, o su primer párrafo de verdad) y su comienzo (sus primeros párrafos, hasta `PALABRAS`). Sin
  *  el frontmatter, los comentarios, el código, las tablas, las imágenes ni los párrafos de metadatos; un título de
  *  sección va como una línea en negrita, y las secciones del grafo cierran el comienzo. */
 export function deLaNota(md: string): { titulo: string; resumen: string; comienzo: string; sigue: boolean } {
     let texto = md.replace(/\r\n?/g, '\n');
     let titulo = '';
-    const fm = /^---\n([\s\S]*?)\n---[ \t]*(?:\n|$)/.exec(texto);
+    const fm = frontmatter.leer(texto);
     if (fm) {
-        titulo = /^(?:titulo|title):\s*(.+)$/m.exec(fm[1])?.[1].trim().replace(/^(["'])(.*)\1$/, '$2') ?? '';
-        texto = texto.slice(fm[0].length);
+        titulo = fm.datos.find(([k]) => /^(titulo|title)$/i.test(k))?.[1].split('\n')[0] ?? '';
+        texto = texto.slice(fm.largo);
     }
     // fuera los comentarios, el código y las rayas; cada título, en un bloque propio (una lista pegada a su título es
     // texto, no parte del título)

@@ -635,15 +635,15 @@ class Tmux(MultiplexorBase):
         if ventana:
             self.ir_a_tab(ventana)
 
-    def escribir_pane(self, pane: str, texto: str, *, enviar: bool = False) -> None:
+    def escribir_pane(self, pane: str, texto: str, *, enviar: bool = False, pegar: bool = False) -> None:
         objetivo = self._objetivo_pane(pane)
         if texto:
-            if not enviar and ("\n" in texto or "\r" in texto):
+            if not enviar and not pegar and ("\n" in texto or "\r" in texto):
                 raise ErrorDeMux(
                     "escribir sin enviar no admite saltos de línea: el salto ES el ↩. "
                     "Con enviar=True el texto se manda entero."
                 )
-            if "\n" in texto or "\r" in texto or len(texto.encode()) > LARGO_ORDEN:
+            if pegar or "\n" in texto or "\r" in texto or len(texto.encode()) > LARGO_ORDEN:
                 # varias líneas: pegadas de una vez (bracketed paste, -p), para que cada salto no sea un ↩
                 # que manda la primera línea sola; el ↩ de enviar va después, una vez. El texto entra al
                 # buffer por la entrada de tmux, no en la orden: así no tiene el tope de una orden (un

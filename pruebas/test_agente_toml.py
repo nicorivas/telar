@@ -227,7 +227,7 @@ class Residente(ConAgentes):
         n = mod_nodo.Nodo.__new__(mod_nodo.Nodo)
         n.ctx, n.config, n.yo = SimpleNamespace(config=self.config), self.config, "laptop"
         estado = SimpleNamespace(remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {},
-                                 vinculos=lambda: {}, archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {})
+                                 vinculos=lambda: {}, archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {}, padres_efectivos=lambda: {})
         tel = SimpleNamespace(estado=estado, hilos=[])
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
                 mock.patch("telar.movil.ventanas", return_value=[]):
@@ -296,7 +296,7 @@ class Residente(ConAgentes):
         n = self._nodo()
         with mock.patch("telar.ordenes._comun.tejer", return_value=SimpleNamespace(estado=SimpleNamespace(
                 remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {}, vinculos=lambda: {},
-                archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {}), hilos=[])), \
+                archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {}, padres_efectivos=lambda: {}), hilos=[])), \
                 mock.patch("telar.movil.ventanas", return_value=[]):
             locales = n.locales()
         self.assertEqual(n.renombrados, {"Faro": "Lámpara"})
@@ -314,7 +314,7 @@ class Residente(ConAgentes):
         n = self._nodo()
         hilo = SimpleNamespace(nombre="Faro", id="@1")
         tel = SimpleNamespace(estado=SimpleNamespace(remotos=lambda: {}, atenciones=lambda: {}, sesiones=lambda: {},
-                                                     vinculos=lambda: {}, archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {}),
+                                                     vinculos=lambda: {}, archivados=lambda: set(), publicos=lambda: set(), etiquetas=lambda: {}, padres=lambda: {}, padres_efectivos=lambda: {}),
                               hilos=[hilo], vivo=lambda h: True)
         with mock.patch("telar.ordenes._comun.tejer", return_value=tel), \
                 mock.patch("telar.movil.ventanas", return_value=[]):

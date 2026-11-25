@@ -21,6 +21,8 @@ export interface PropsVentana {
     ayuda?: string;
     /** HTML ya armado: junto al título, delante (el estado de lo que muestra: la estrella de una tarea) */
     iconos?: string;
+    /** HTML ya armado: pegado al título, después (lo que dice cuánto: los nuevos de un chat, cuántas más esperan) */
+    junto?: string;
     /** HTML ya armado: lo que se le hace a lo que muestra, a la derecha del título (la barra de una tarea, en Contestar) */
     herramientas?: string;
     /** HTML ya armado: el campo, de borde a borde bajo la cabecera (la barra de un buscador: `barraBuscar()`) */
@@ -41,8 +43,9 @@ export function ventana(p: PropsVentana): string {
     const parte = (clase: string, html: string | undefined) => html ? `<div class="ventana-${clase}">${html}</div>` : '';
     const titulo = p.titulo ? `<div class="ventana-titulo">${esc(p.titulo)}</div>` : '';
     // con íconos o herramientas, el título va en una línea con ellos: los íconos delante, las herramientas al final
-    const linea = p.iconos || p.herramientas
+    const linea = p.iconos || p.herramientas || p.junto
         ? `<div class="ventana-linea">${p.iconos ? `<span class="ventana-iconos">${p.iconos}</span>` : ''}${titulo || '<span class="ventana-titulo"></span>'}`
+            + `${p.junto !== undefined ? `<span class="ventana-junto">${p.junto}</span>` : ''}`
             + `${p.herramientas ? `<span class="ventana-herramientas">${p.herramientas}</span>` : ''}</div>`
         : titulo;
     const cab = linea || p.ayuda

@@ -1,0 +1,95 @@
+/* La ventana que pide un módulo (componentes/ventana-modulo.ts, web/ventanas.ts): lo que llegó a un chat de foco, para
+   responder o aplazar. Es la ventana de la casa (ventana.css, contestar.css): aquí, sus líneas, la caja de responder y su
+   estado quieto. Lo que distingue es el color: lo de antes, tenue; lo nuevo, en el del texto, bajo una raya; lo mío, verde.
+   Nunca otro tamaño de letra, ni esquinas redondeadas. */
+
+/* quieta: salió mientras se escribía en otra parte (abrirVentana con `quieta`: `show()`, sin fondo ni foco). Como no está
+   en la capa de arriba, lleva su lugar y su z-index; su marco, en el color del acento, dice que espera un clic */
+dialog.ventana-dialogo.ventana-modulo-dialogo.quieta {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  & > .ventana { border-color: var(--acento); }
+}
+
+.ventana.ventana-modulo {
+  width: min(var(--ventana-ancho), 100vw - 2 * var(--ventana-margen));
+
+  & .ventana-cabecera { padding-block: var(--e-2) var(--e-1); }
+  & .vm-icono { color: var(--acento); }
+  & .vm-tipo { color: var(--texto-tenue); margin-left: var(--h-1); }
+  /* pegado al título, cuánto: los nuevos (el punto de no leídos, en verde como en la pestaña), cuántas más esperan, y el
+     teclado tachado si salió quieta (en el acento, como su marco) */
+  & .vm-nuevos { color: var(--verde); white-space: nowrap; }
+  & .vm-cola { color: var(--texto-tenue); white-space: nowrap; }
+  & .vm-quieta { color: var(--acento); }
+  /* lo que lleva a otra parte, a la derecha del título: abrir el chat, mandarlo a un agente, quitar el foco. Con ícono,
+     un espacio cuadrado (1lh) entre uno y otro; en palabras, el de siempre */
+  & .vm-herramientas { display: flex; gap: var(--h-2); }
+  & .vm-herramientas:has(.con-icono) { gap: 1lh; }
+  & .vm-herr { color: var(--texto-tenue); cursor: pointer; white-space: nowrap; }
+  & .vm-herr:hover { color: var(--acento); }
+  & .vm-herr.quitar:hover { color: var(--peligro); }
+  & .vm-herr[aria-disabled="true"] { opacity: .5; cursor: default; }
+
+  & .ventana-cuerpo { display: flex; flex-direction: column; min-height: 0; }
+  & .vm-lineas { flex: 1; min-height: 0; max-height: 18lh; overflow: auto; padding: 0 var(--item-pad-x) var(--e-1); }
+  & .vm-linea { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 0 1ch; color: var(--texto-tenue); }
+  & .vm-linea .vm-hora { color: var(--texto-tenue); white-space: nowrap; }
+  & .vm-linea .vm-texto { white-space: pre-wrap; overflow-wrap: anywhere; }
+  & .vm-linea.nueva { color: var(--texto); }
+  & .vm-linea.nueva .vm-de { color: var(--azul); }
+  & .vm-linea.mia .vm-de { color: var(--verde); }
+  & .vm-marca { color: var(--amarillo); }
+  /* donde empieza lo nuevo: una línea de lado a lado con el punto de no leídos (verde, como en la pestaña) al medio */
+  & .vm-raya { display: flex; align-items: center; color: var(--verde); }
+  & .vm-raya::before, & .vm-raya::after { content: ""; flex: 1; border-top: var(--borde); }
+  & .vm-envio { color: var(--texto); }
+  & .vm-envio .vm-estado { color: var(--texto-tenue); }
+  & .vm-envio.hecho .vm-hora, & .vm-envio.hecho .vm-estado { color: var(--verde); }
+  & .vm-envio.falla .vm-estado { color: var(--peligro); }
+
+  /* lo que va bajo el chat (los borradores, la caja de responder) empieza con una línea de borde a borde, como las demás
+     de la casa, que lo aparta de los mensajes; con su aire arriba y abajo (el de las líneas, el de la caja) */
+  & .vm-lineas ~ .vm-borradores, & .vm-lineas ~ .vm-responder { border-top: var(--borde); }
+  /* la caja de responder: de borde a borde, con su línea abajo en el acento al tener el foco */
+  & .vm-responder { padding: var(--e-1) var(--item-pad-x) 0; }
+  & .vm-caja {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 2lh;
+    max-height: 8lh;
+    padding: .2lh 0;
+    border: 0;
+    border-bottom: 1px solid var(--linea);
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+    resize: vertical;
+    &:focus { border-bottom-color: var(--acento); }
+  }
+  /* los borradores que esperan aprobarse (el de un agente para este chat): su ícono y quién, en amarillo, como «por
+     enviar» en la pestaña; el texto, editable; enviar o descartar */
+  & .vm-borradores { padding: 0 var(--item-pad-x); }
+  & .vm-borrador { margin-top: var(--e-1); padding-left: 1ch; border-left: 2px solid var(--amarillo); }
+  & .vm-bcab { color: var(--amarillo); }
+  & .vm-bmotivo { color: var(--texto-tenue); }
+  & .vm-btexto {
+    box-sizing: border-box; display: block; width: 100%; padding: .2lh 0; border: 0; border-bottom: 1px solid var(--linea);
+    border-radius: 0; outline: none; background: transparent; color: var(--texto); font: inherit; resize: vertical;
+    white-space: pre-wrap;
+    &:focus { border-bottom-color: var(--acento); }
+  }
+  & .vm-bacc { display: flex; justify-content: flex-end; gap: 0; }
+  & .vm-falla { padding: var(--e-1) var(--item-pad-x) 0; color: var(--peligro); }
+  & .vm-falla[hidden] { display: none; }
+}
+
+/* en el teléfono, lo que lleva a otra parte baja a su propia línea, bajo el título (no cabe al lado) */
+.angosto .ventana.ventana-modulo {
+  & .ventana-linea { flex-wrap: wrap; }
+  & .ventana-herramientas { flex-basis: 100%; }
+  & .vm-herramientas { flex-wrap: wrap; gap: 0 var(--h-2); }
+}

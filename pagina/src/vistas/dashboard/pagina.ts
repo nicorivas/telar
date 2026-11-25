@@ -79,6 +79,18 @@ export class Paginas {
     private readonly memorias = new Map<string, string>();
     /** de dónde es cada lienzo pintado («bloque:gantt», «app:x»), por su llave: lo que pide lo pide en nombre de eso */
     private readonly origenes = new Map<string, string>();
+    /** el ítem en que se pidió abrir un lienzo (el chat de una ventana de foco: `darItem`), por su origen, y hasta cuándo
+     *  vale: el lienzo que se pinte antes lo recibe en `window.lienzo.item` */
+    private readonly items = new Map<string, { item: string; hasta: number }>();
+
+    /** Que el lienzo de ese origen («bloque:whatsapp») se abra en un ítem suyo: el que ya está pintado lo recibe al tiro
+     *  (el evento `lienzo-item` en su `window`), y el que se pinte en los próximos segundos, en `window.lienzo.item`. */
+    darItem(origen: string, item: string, doc: Document = document): void {
+        this.items.set(origen, { item, hasta: Date.now() + 15000 });
+        for (const f of doc.querySelectorAll<HTMLIFrameElement>('iframe.lienzo[data-origen]')) {
+            if (f.dataset.origen === origen) f.contentWindow?.postMessage({ lienzo: 'item', item }, '*');
+        }
+    }
 
     /** La página y la memoria de los lienzos de una página, leídas del disco (o de la API, en el navegador)
      *  antes de dibujarla: el HTML se arma sin esperar. */
@@ -127,6 +139,8 @@ export class Paginas {
         if (doc === undefined) return `<div class="fila falla">no pude leer ${esc(l.archivo)}</div>`;
         const params: Record<string, string> = {};
         for (const [k, v] of Object.entries(l.params ?? {})) params[k] = String(v);
+        const pedido = origen ? this.items.get(origen) : undefined;
+        if (pedido) { this.items.delete(origen); if (pedido.hasta > Date.now()) params.item = pedido.item; }
         const datos = JSON.stringify(params).replace(/</g, '\\u003c');
         // con `memoria`, el lienzo recibe lo que guardó la vez anterior y una función para guardar:
         // el iframe no tiene almacenamiento propio (sandbox sin allow-same-origin)
@@ -142,7 +156,12 @@ export class Paginas {
             + `window.lienzo.pedir=function(orden,datos){return new Promise(function(si,no){var id=String(++n);esperan[id]=[si,no];`
             + `parent.postMessage({lienzo:'pedir',llave:${JSON.stringify(llave)},id:id,orden:orden,datos:datos},'*')})};`
             // `aviso(texto)`: lo nuevo que muestra («3 chats sin leer»), al día mientras se ve: el punto de su fila
-            + `window.lienzo.aviso=function(t){parent.postMessage({lienzo:'aviso',llave:${JSON.stringify(llave)},datos:String(t||'')},'*')};`;
+            + `window.lienzo.aviso=function(t){parent.postMessage({lienzo:'aviso',llave:${JSON.stringify(llave)},datos:String(t||'')},'*')};`
+            // `item`: en qué abrirse (un chat), si lo pidió la página (la ventana de un módulo: «abrir el chat»); el que llega
+            // con el lienzo ya pintado, como el evento `lienzo-item`
+            + `window.lienzo.item=p.item||'';window.addEventListener('message',function(e){var d=e.data;`
+            + `if(e.source!==parent||!d||d.lienzo!=='item')return;window.lienzo.item=String(d.item||'');`
+            + `window.dispatchEvent(new CustomEvent('lienzo-item',{detail:window.lienzo.item}))});`;
         if (l.memoria) {
             this.memorias.set(llave, l.memoria);
             let leida = 'null';
@@ -154,7 +173,7 @@ export class Paginas {
             + `var q=new URLSearchParams(p).toString();`
             + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
         doc = previo + doc;
-        return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts" srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
+        return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts"${origen ? ` data-origen="${esc(origen)}"` : ''} srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
     }
 
     /** De dónde es un lienzo pintado («bloque:gantt»), por su llave; "" si no se sabe. */

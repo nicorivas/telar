@@ -21,6 +21,9 @@
 .ventana-linea { display: flex; align-items: baseline; gap: 0 var(--h-1); min-width: 0; }
 .ventana-linea .ventana-titulo { flex: 1; min-width: 0; }
 .ventana-iconos, .ventana-herramientas { display: flex; flex: none; align-items: baseline; }
+/* lo que va pegado al título (cuánto: los nuevos de un chat): el título toma lo que necesita y esto, el resto */
+.ventana-linea .ventana-titulo:has(+ .ventana-junto) { flex: 0 1 auto; }
+.ventana-junto { display: flex; flex: 1; gap: 0 1lh; align-items: baseline; min-width: 0; }
 .ventana-ayuda { color: var(--texto-tenue); white-space: pre-wrap; }
 /* el campo: la barra de un buscador (buscador.css), de borde a borde, con su línea abajo que lo aparta de la lista */
 .ventana-campo { --buscador-margen: var(--item-pad-x); }
@@ -78,17 +81,33 @@
   }
 }
 
-/* La ventana de elegir (web/interfaz.ts: `elegir`): título, el filtro de un buscador y las opciones (`.web-op`, de web.css), con la
-   marcada a la vista y, si las opciones traen detalle, la entera abajo. */
+/* La ventana de elegir (web/interfaz.ts: `elegir`): título, el filtro de un buscador y las opciones, filas `item()` como las del menú ⋯
+   (ícono o señal en la ranura, la descripción de sufijo tenue, `--c` tiñe ranura y título), con la marcada a la vista y, si las
+   opciones traen detalle, la entera abajo. */
 .ventana.ventana-elegir {
   width: min(var(--ventana-ancho), 100vw - 2 * var(--ventana-margen));
   padding-bottom: .3em;
   & .ventana-cabecera { padding-bottom: var(--e-1); }
   & .ventana-cuerpo { display: flex; flex-direction: column; }
-  & .web-lista { flex: 1; min-height: 0; max-height: 50vh; margin-top: .4lh; }
-  /* filas y detalle alineados con el título y el campo */
-  & .web-op, & .web-sep { padding-inline: var(--item-pad-x); }
-  & .web-detalle { padding-inline: var(--item-pad-x); border-top: var(--borde); box-shadow: none; }
+  & .e-lista { flex: 1; min-height: 0; max-height: 50vh; padding-top: var(--e-1); }
+  & .e-sep { padding: var(--e-1) var(--item-pad-x) 0; color: var(--texto-tenue); }
+  & .e-fila .item-ranura, & .e-fila .item-titulo { color: var(--c, inherit); }
+  & .e-fila .item-sufijo { color: var(--texto-tenue); }
+
+  /* una que no se puede ahora: se ve, tenue, y su sufijo dice por qué */
+  & .e-fila .item.apagada { cursor: default; }
+  & .e-fila .item.apagada .item-ranura, & .e-fila .item.apagada .item-titulo { color: var(--texto-tenue); }
+
+  /* la marcada, entera: alineada con el título y el campo */
+  & .e-detalle {
+    min-height: 4lh;
+    margin-top: var(--e-1);
+    padding: .4lh var(--item-pad-x) 0;
+    border-top: var(--borde);
+    & .l { color: var(--c, var(--texto)); font-weight: bold; }
+    & .d, & .x { color: var(--texto-tenue); }
+    & .x { margin-top: .2lh; }
+  }
 }
 
 /* La ventana de ⌘K (web/buscador.ts): una `arriba`, con la trama ░ de la página de atrás en vez del oscurecido liso (un carácter por
@@ -121,6 +140,8 @@ dialog.ventana-dialogo.ventana-menu {
   min-width: 28ch;
   max-width: min(60ch, calc(100vw - 2ch));
 }
+/* junto a algo de una ventana modal (web/ventana.ts): modal también, pero sin oscurecer lo de atrás */
+dialog.ventana-dialogo.sobre-modal::backdrop { background: none; }
 .ventana.ventana-menu {
   width: auto;
   padding-bottom: .3em;
@@ -130,4 +151,8 @@ dialog.ventana-dialogo.ventana-menu {
   & .m-sep { padding: var(--e-1) var(--item-pad-x) 0; color: var(--texto-tenue); }
   & .m-fila .item-ranura, & .m-fila .item-titulo { color: var(--c, inherit); }
   & .m-fila .item-sufijo { color: var(--texto-tenue); }
+
+  /* una que no se puede ahora (una máquina fuera de línea): se ve, tenue, y su sufijo dice por qué */
+  & .m-fila .item.apagada { cursor: default; }
+  & .m-fila .item.apagada .item-ranura, & .m-fila .item.apagada .item-titulo { color: var(--texto-tenue); }
 }

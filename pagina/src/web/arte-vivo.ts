@@ -9,10 +9,14 @@
 // · Cada arte lleva su reloj. Corre al ritmo de siempre y, con el mouse o el foco encima de su caja (`[data-arte-caja]`,
 //   o la tarjeta que lo contiene), acelera de a poco hasta su ritmo de hover (y frena igual al salir): sin saltos. Un arte
 //   con escena de hover la cambia al entrar.
-// · El DOM se toca solo cuando cambia el cuadro (a los fps del arte, no a 60): el resto lo hace el CSS en el compositor.
-// · Con «reducir movimiento» (o `reducido`), el primer cuadro, quieto: ningún requestAnimationFrame.
+// · Al entrar el mouse o el foco, su efecto de hover (componentes/arte.ts, `efectoDe`: la ola, si el arte no dice otro)
+//   lo cruza una vez, con el reloj de la pared: termina su pasada aunque el mouse salga antes.
+// · Solo anima lo que se ve: un IntersectionObserver dice qué artes están a la vista (dentro de la ventana y de lo que se
+//   desplaza), y los demás ni avanzan ni se dibujan. Si ninguno se ve, ningún requestAnimationFrame.
+// · El DOM se toca solo cuando cambia el cuadro (a los fps del arte o del efecto, no a 60): el resto lo hace el CSS.
+// · Con «reducir movimiento» (o `reducido`), el primer cuadro, quieto, sin efecto: ningún requestAnimationFrame.
 
-import { aceleracion, alRegistrar, arte, cuadro, indice, type Arte } from '../componentes/arte';
+import { aceleracion, alRegistrar, arte, cuadro, efectoDe, indice, indiceEfecto, type Arte } from '../componentes/arte';
 
 export interface Vivo {
     /** deja de animar y suelta todo lo que escuchaba */
@@ -21,11 +25,18 @@ export interface Vivo {
     corriendo(): boolean;
     /** vuelve a buscar los artes adentro (si se repintó lo de adentro) */
     releer(): void;
-    /** cómo va cada uno: su arte, su reloj, su ritmo y si tiene el mouse o el foco encima (para las pruebas) */
-    estado(): { arte: string; reloj: number; vel: number; hover: boolean }[];
+    /** cómo va cada uno: su arte, su reloj, su ritmo, si tiene el mouse o el foco encima, si se ve y cuánto lleva su
+     *  efecto de hover (-1: ninguno pasando) (para las pruebas) */
+    estado(): { arte: string; reloj: number; vel: number; hover: boolean; visible: boolean; efecto: number }[];
 }
 
-interface Estado { el: HTMLElement; arte: Arte; reloj: number; vel: number; ultimo: string; dibujado: string; hover: boolean }
+interface Estado {
+    el: HTMLElement; arte: Arte; reloj: number; vel: number; ultimo: string; dibujado: string; hover: boolean;
+    /** si está a la vista (sin IntersectionObserver, siempre) */
+    visible: boolean;
+    /** los segundos desde que empezó a pasar su efecto de hover, o -1 */
+    efecto: number;
+}
 
 /** Si la persona pidió menos movimiento. */
 export const pideQuieto = (): boolean => {
@@ -40,6 +51,16 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
     const caja = o.caja ?? '[data-arte-caja], .mt-tarjeta';
     let estados: Estado[] = [];
     let pedido = 0, antes = 0, parado = false;
+    // qué se ve: sin IntersectionObserver (las pruebas, un navegador viejo), todo
+    const IO = (globalThis as { IntersectionObserver?: typeof IntersectionObserver }).IntersectionObserver;
+    const vista = IO ? new IO(entradas => {
+        let alguno = false;
+        for (const en of entradas) for (const e of estados) if (e.el === en.target) {
+            e.visible = en.isIntersecting;
+            if (e.visible) { alguno = true; dibujar(e, true); }
+        }
+        if (alguno) pedir();
+    }) : undefined;
 
     const leer = () => {
         const previos = new Map(estados.map(e => [e.el, e]));
@@ -48,15 +69,20 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
             if (!a) return [];
             const ya = previos.get(el);
             if (ya && ya.arte === a) return [ya];
-            return [{ el, arte: a, reloj: 0, vel: 1, ultimo: '', dibujado: el.textContent ?? '', hover: !!ya?.hover }];
+            if (!ya) vista?.observe(el);
+            return [{ el, arte: a, reloj: 0, vel: 1, ultimo: '', dibujado: el.textContent ?? '', hover: !!ya?.hover,
+                visible: ya ? ya.visible : !vista, efecto: -1 }];
         });
+        for (const el of previos.keys()) if (!estados.some(e => e.el === el)) vista?.unobserve(el);
         for (const e of estados) dibujar(e, true);
     };
     const dibujar = (e: Estado, siempre = false) => {
-        const clave = `${e.hover && e.arte.alHover.cuadros ? 'h' : ''}${indice(e.arte, e.reloj, e.hover)}`;
+        const ef = e.efecto >= 0 ? efectoDe(e.arte) : undefined;
+        const paso = ef ? indiceEfecto(ef, e.efecto) : -1;
+        const clave = `${e.hover && e.arte.alHover.cuadros ? 'h' : ''}${indice(e.arte, e.reloj, e.hover)}${paso >= 0 ? `~${paso}` : ''}`;
         if (!siempre && clave === e.ultimo) return;
         e.ultimo = clave;
-        const texto = cuadro(e.arte, reducido ? 0 : e.reloj, { hover: e.hover && !reducido });
+        const texto = cuadro(e.arte, reducido ? 0 : e.reloj, { hover: e.hover && !reducido, efecto: paso >= 0 ? e.efecto : undefined });
         if (texto !== e.dibujado) { e.el.textContent = texto; e.dibujado = texto; }
     };
     const paso = (ahora: number) => {
@@ -66,15 +92,21 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
         antes = ahora;
         const k = 1 - Math.exp(-dt * 3 / ACELERAR);
         for (const e of estados) {
+            if (!e.visible) continue;
             const objetivo = e.hover ? aceleracion(e.arte) : 1;
             e.vel += (objetivo - e.vel) * k;
             e.reloj += dt * e.vel;
+            if (e.efecto >= 0) {
+                e.efecto += dt;
+                const ef = efectoDe(e.arte);
+                if (!ef || e.efecto >= ef.dura) e.efecto = -1;
+            }
             dibujar(e);
         }
         pedir();
     };
     const pedir = () => {
-        if (parado || reducido || pedido || !estados.length) return;
+        if (parado || reducido || pedido || !estados.some(e => e.visible)) return;
         if (globalThis.document?.visibilityState === 'hidden') return;
         if (!raiz.isConnected && raiz.isConnected !== undefined) { parar(); return; }
         pedido = requestAnimationFrame(paso);
@@ -91,7 +123,9 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
         for (const e of estados) if (c.contains(e.el)) {
             if (e.hover === si) continue;
             e.hover = si;
-            if (e.arte.alHover.cuadros || reducido) dibujar(e, true);
+            // al entrar, su efecto pasa una vez (desde el principio si estaba pasando)
+            if (si && !reducido && efectoDe(e.arte)) e.efecto = 0;
+            if (e.arte.alHover.cuadros || reducido || e.efecto === 0) dibujar(e, true);
         }
     };
     const entra = (ev: Event) => marcar(ev.target, true);
@@ -114,6 +148,7 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
         raiz.removeEventListener('focusin', entra);
         raiz.removeEventListener('focusout', sale);
         document.removeEventListener('visibilitychange', visible);
+        vista?.disconnect();
         soltarRegistro();
     };
 
@@ -127,5 +162,5 @@ export function animar(raiz: HTMLElement, o: { reducido?: boolean; caja?: string
     leer();
     pedir();
     return { parar, corriendo: () => !!pedido, releer: () => { leer(); pedir(); },
-        estado: () => estados.map(e => ({ arte: e.arte.clave, reloj: e.reloj, vel: e.vel, hover: e.hover })) };
+        estado: () => estados.map(e => ({ arte: e.arte.clave, reloj: e.reloj, vel: e.vel, hover: e.hover, visible: e.visible, efecto: e.efecto })) };
 }

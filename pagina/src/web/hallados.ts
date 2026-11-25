@@ -140,6 +140,33 @@ class Pedido {
  *  una, se vuelve a preguntar por ella unas veces; una respuesta que no sirve (falla) es un error, y el buscador no
  *  muestra nada de ella. Una fuente que esa máquina no tiene (sin tareas, o sin módulo que liste documentos) no
  *  muestra nada. */
+/** La de un tipo de objeto de un módulo que pide salir en ⌘K (`[objetos.<tipo>] buscador`: los chats de whatsapp), en su
+ *  grupo, después de las de telar: un pedido propio por cada cosa escrita, con el mundo puesto primero; lo de otro mundo
+ *  (el que dice el objeto, `campos.mundo`) no sale, como en las demás. Abrirlo es abrir su objeto: su vista, con sus
+ *  acciones (marcar un chat de foco). */
+export function fuenteDeObjetos(tipo: string, plural: string, orden: number, o: Partial<DeHallados> = {}): Fuente {
+    const d: DeHallados = {
+        buscar: cli.buscar, primero: () => mundo.puesto().mundo, preparar: () => undefined,
+        nombreMundo: c => mundo.declarados().find(m => m.clave === c)?.nombre ?? c, ve: mundo.seVe, ajeno: mundo.deAgenteAjeno, reintentos: 3, pausa: 1000, ...o,
+    };
+    const fuente = `objeto:${tipo}`;
+    return {
+        clave: fuente, nombre: plural, orden, color: deFuente(fuente)[1], remota: true,
+        resultados: async (q: string) => {
+            for (let vez = 0; ; vez++) {
+                const primero = d.primero();
+                const r = await d.buscar(q, POR_PEDIDO, false, primero, [fuente], true);
+                if (!r.datos) throw new Error(r.error ?? 'no se pudo buscar');
+                const f = r.datos.fuentes.find(x => x.clave === fuente);
+                if (!f) return [];
+                if (f.tarde && !f.hallados.length && vez < d.reintentos) { await new Promise(ok => setTimeout(ok, d.pausa)); continue; }
+                if (f.falla && !f.hallados.length) throw new Error(f.falla);
+                return f.hallados.filter(h => d.ve(h.mundo) && !d.ajeno(h)).map(h => resultadoDe(h, primero, d.nombreMundo));
+            }
+        },
+    };
+}
+
 export function fuentesDeTelar(o: Partial<DeHallados> = {}): Fuente[] {
     const d: DeHallados = {
         buscar: cli.buscar, primero: () => mundo.puesto().mundo, preparar: () => cli.prepararBusqueda(),

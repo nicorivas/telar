@@ -2,9 +2,9 @@
 // resumen, sus campos, sus enlaces (otras direcciones, que se abren igual) y sus acciones, que se corren aquí mismo
 // pidiendo lo que necesitan (POST /api/objetos/<dirección>/acciones/<acción>). Es la vista de los tipos que no tienen
 // una propia, como los de un módulo; una tarea, un archivo, un proyecto o un hilo se abren en la suya
-// (navegador/app.ts, `abrirDireccion`). Va en un recuadro con «‹ …» arriba, que vuelve a la vista de donde se vino,
-// como el visor de documentos. Se dibuja en un elemento de la página; sus estilos, en media/css/objeto.css (con
-// @scope, en `.v-objeto`).
+// (navegador/app.ts, `abrirDireccion`; un archivo o un proyecto, en el visor de documentos, web/carpeta.ts). Va en un
+// recuadro con «‹ …» arriba, que vuelve a la vista de donde se vino. Se dibuja en un elemento de la página; sus estilos,
+// en media/css/objeto.css (con @scope, en `.v-objeto`).
 
 import * as cli from '../cli';
 import { esc, recuadro, volver } from '../estilo';

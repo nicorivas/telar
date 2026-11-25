@@ -109,22 +109,22 @@ globalThis.requestAnimationFrame = fn => setTimeout(fn, 0);
 
 // ── la API de mentira: la ficha de la lectura y la de una tarea, las skills, y lo que se manda a /actuar ──
 const LECTURA = {
-    titulo: 'Kutcher (McKinsey): 11 millones cambiarían de ocupación a 2035',
+    titulo: 'Rojas (Instituto del Puerto): 11 millones cambiarían de ocupación a 2035',
     subtitulo: 'núcleo · empleo y economía de la IA · Publicación en LinkedIn · 2026-11-18',
     bloques: [
         { titulo: 'resumen', texto: 'EE. UU. podría tener más empleos en 2035.\nAlrededor de 11 millones cambiarían de ocupación.' },
         { titulo: 'relevancia · núcleo', texto: 'Tema 4, con `personal/obra/ia-empleo/`: el mapa ya tiene el informe.', destacado: true, color: 'verde' },
         { titulo: 'de dónde salió', items: [
-            { titulo: 'el original: https://ejemplo.com/kutcher', enlace: 'https://ejemplo.com/kutcher' },
-            { titulo: 'el ítem: personal/referencia/flujo/feed/kutcher.md', enlace: '/raiz/personal/referencia/flujo/feed/kutcher.md' },
+            { titulo: 'el original: https://ejemplo.com/rojas', enlace: 'https://ejemplo.com/rojas' },
+            { titulo: 'el ítem: personal/referencia/flujo/feed/rojas.md', enlace: '/raiz/personal/referencia/flujo/feed/rojas.md' },
         ] },
     ],
     acciones: [
-        { nombre: 'abrir el original', tipo: 'abrir', enlace: 'https://ejemplo.com/kutcher', principal: true },
+        { nombre: 'abrir el original', tipo: 'abrir', enlace: 'https://ejemplo.com/rojas', principal: true },
         { nombre: '✓ me interesa', pide: 'por qué', comando: ['lecturas', 'marcar', 'k', 'interesa', '{texto}'] },
     ],
     temas: [{ nombre: 'empleo y economía de la IA', nota: 'personal/obra/ia-empleo/' }],
-    fuente: 'Publicación de Eric Kutcher en LinkedIn', fecha: '2026-11-18', estado: '✓ me interesa: el contrapunto optimista',
+    fuente: 'Publicación de Ana Rojas en LinkedIn', fecha: '2026-11-18', estado: '✓ me interesa: el contrapunto optimista',
     conexiones: [], tipos: [],
 };
 const TAREA = { titulo: 'Pedir las bolsas', direccion: 'tarea:T84', bloques: [{ titulo: 'contexto', texto: 'Pedir 500.' }], acciones: [] };
@@ -159,7 +159,7 @@ const L = require(salida);
 const fila = (id, proveedor, extra = {}) => ({ texto: id, hecho: false, en_curso: false, id, ref: id, origen: proveedor, proveedor, ficha: true,
     cuando: null, url: '', hilo: '', ruta: '', ...extra });
 const DIA = { ahora: '2026-11-18T10:00:00', fecha: '2026-11-18', nombreDia: 'miércoles', semana: 47, agenda: [], declarados: ['lecturas', 'tareas'], fallas: [],
-    pendientes: [fila('k', 'lecturas', { pestana: 'leer', etiquetas: ['nucleo'], avance: 'núcleo 2026-11-18', color: 'verde', url: 'https://ejemplo.com/kutcher' }),
+    pendientes: [fila('k', 'lecturas', { pestana: 'leer', etiquetas: ['nucleo'], avance: 'núcleo 2026-11-18', color: 'verde', url: 'https://ejemplo.com/rojas' }),
         fila('T84', 'tareas', { direccion: 'tarea:T84' })] };
 let pintado = null;
 const tablero = {
@@ -185,14 +185,14 @@ const instruccion = barra => barra.acciones.find(a => a.accion === 'instruccion-
     assert.equal(r.contexto.titulo, LECTURA.titulo);
     assert.equal(r.contexto.origen, 'la pestaña «leer»');
     const t = r.contexto.texto;
-    assert.match(t, /^lectura: Kutcher \(McKinsey\): 11 millones/);
-    assert.match(t, /^original: https:\/\/ejemplo\.com\/kutcher$/m);
-    assert.match(t, /^de dónde viene: Publicación de Eric Kutcher en LinkedIn · 2026-11-18$/m);
+    assert.match(t, /^lectura: Rojas \(Instituto del Puerto\): 11 millones/);
+    assert.match(t, /^original: https:\/\/ejemplo\.com\/rojas$/m);
+    assert.match(t, /^de dónde viene: Publicación de Ana Rojas en LinkedIn · 2026-11-18$/m);
     assert.match(t, /^temas: empleo y economía de la IA \(personal\/obra\/ia-empleo\/\)$/m);
     assert.match(t, /^id en el feed: k$/m);
     assert.match(t, /^resumen:\nEE\. UU\. podría tener más empleos en 2035\.\nAlrededor de 11 millones/m, 'el resumen, con sus líneas');
     assert.match(t, /^relevancia · núcleo:\nTema 4/m, 'el porqué');
-    assert.match(t, /^de dónde salió:\n- el original: https:\/\/ejemplo\.com\/kutcher\n- el ítem: personal\/referencia\/flujo\/feed\/kutcher\.md \(\/raiz\/personal/m,
+    assert.match(t, /^de dónde salió:\n- el original: https:\/\/ejemplo\.com\/rojas\n- el ítem: personal\/referencia\/flujo\/feed\/rojas\.md \(\/raiz\/personal/m,
         'los enlaces, sin repetir el que ya dice su título');
     assert.match(t, /^lo que respondí: ✓ me interesa: el contrapunto optimista$/m);
     assert.match(t, /^lo que escribí en «tu lectura», sin responder:\nme hace pensar en el mapa$/m);
@@ -235,16 +235,16 @@ const instruccion = barra => barra.acciones.find(a => a.accion === 'instruccion-
         'sin entidad: no hay fila de «de qué se habla» con dirección');
     const libre = c.todos().find(n => n.classList.contains('libre'));
     assert.ok(libre, 'la lectura, como contexto libre');
-    assert.match(libre.textContent, /Kutcher \(McKinsey\)/);
+    assert.match(libre.textContent, /Rojas \(Instituto del Puerto\)/);
     assert.match(libre.textContent, /desde la pestaña «leer»/);
     const elegida = c.todos().find(n => n.classList.contains('web-op') && n.classList.contains('sel') && /un hilo nuevo/.test(n.textContent));
     assert.ok(elegida, '«un hilo nuevo» viene elegido');
-    assert.match(elegida.textContent, /«Kutcher \(McKinsey\): 11 millones[^»]*», en la raíz/, 'llamado como la lectura');
+    assert.match(elegida.textContent, /«Rojas \(Instituto del Puerto\): 11 millones[^»]*», en la raíz/, 'llamado como la lectura');
     assert.ok(!pedidos.some(p => p.ruta === '/api/actuar/adonde'), 'no busca «su hilo»: una lectura no tiene');
     const nota = c.querySelector('textarea');
     nota.value = 'conversemos si cambia el mapa';
     disparar(nota, { type: 'input' });
-    assert.match(c.querySelector('.llega').textContent, /^le llega: conversemos si cambia el mapa \[contexto: «Kutcher/);
+    assert.match(c.querySelector('.llega').textContent, /^le llega: conversemos si cambia el mapa \[contexto: «Rojas/);
     c.todos().find(n => n.tagName === 'BUTTON' && n.dataset.mandar !== undefined && n.textContent === '⌘⏎mandar').click();
     await hecho;
     const mandado = pedidos.find(p => p.ruta === '/api/actuar');
@@ -255,7 +255,7 @@ const instruccion = barra => barra.acciones.find(a => a.accion === 'instruccion-
         'un hilo nuevo con su nombre, sin fila ni dirección');
     assert.equal(contexto.titulo, LECTURA.titulo);
     assert.equal(contexto.origen, 'la pestaña «leer»');
-    assert.match(contexto.texto, /^original: https:\/\/ejemplo\.com\/kutcher$/m);
+    assert.match(contexto.texto, /^original: https:\/\/ejemplo\.com\/rojas$/m);
     assert.match(contexto.texto, /^relevancia · núcleo:\nTema 4/m);
     assert.match(contexto.texto, /^lo que respondí: ✓ me interesa/m);
     assert.match(contexto.texto, /^lo que escribí en «tu lectura», sin responder:\nme hace pensar en el mapa$/m, 'lo escrito sin responder también');

@@ -171,3 +171,22 @@
   .todo-cosa .item-sufijo,
   .todo-fuente .item-sufijo .tono-tenue { display: none; }
 }
+
+/* «no molestar» en la banda (web/ventanas.ts, montarSilencio): la campana tenue; tachada, con por qué y cuántas esperan,
+   en el color de atención. Va justo antes del mundo, a la derecha */
+.banda-silencio {
+  flex: none;
+  margin-inline-start: auto;
+  padding-block: var(--e-1);
+  margin-block: calc(-1 * var(--e-1));
+  color: var(--texto-tenue);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &[hidden] { display: none; }
+  &:hover { color: var(--texto); }
+  &.si { color: var(--atencion); }
+  & > .i { display: inline-block; inline-size: 2ch; text-align: center; }
+}
+.banda-silencio:not([hidden]) + .banda-mundo { margin-inline-start: 0; }
+.angosto .banda-silencio { padding-block: .15lh; margin-block: -.15lh; }

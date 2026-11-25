@@ -1,7 +1,7 @@
 """Las skills que telar le deja al agente: `/hilos` (cómo encontrar, leer y escribirle a otros hilos), `/modulos`
 (cómo escribir, probar, publicar y mantener un módulo de telar), `/relevo` (limpiar la conversación sin perder el
-hilo: el relevo escrito, `/clear` y la conversación nueva que lo lee) y `/ramas` (hijos que trabajan en su propia
-rama y el padre que los fusiona).
+hilo: el relevo escrito, `/clear` y la conversación nueva que lo lee), `/ramas` (hijos que trabajan en su propia
+rama y el padre que los fusiona) y `/comentarios` (atender lo que la persona comentó sobre un archivo: telar.comentarios).
 
 El contexto de inicio (`telar agente contexto`) son unas pocas líneas que se cargan siempre. Esto
 es lo largo, y el agente lo abre solo cuando le hace falta: la descripción es lo único que
@@ -334,7 +334,51 @@ pisen mientras trabajan; los choques no desaparecen, se juntan al fusionar. Lo d
   padre: qué hiciste, cómo se prueba, en qué commit pasó la suite y qué quedó afuera.
 """
 
-SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS, "relevo": SKILL_RELEVO, "ramas": SKILL_RAMAS}
+SKILL_COMENTARIOS = f"""---
+name: comentarios
+description: Atender los comentarios que la persona dejó sobre un archivo — seleccionó texto en el visor de la página y escribió qué hay que hacer ahí; quedan al lado del archivo (.<nombre>.marginalia.json). Encontrar los abiertos (de un archivo, una carpeta o un repositorio, en esta máquina o en otra), leerlos con dónde están hoy, aplicarlos, responder y resolver. Úsala cuando la persona diga "comenté el documento", "dejé comentarios", "revisa mis comentarios", "aplica los comentarios", cuando entregues un documento y quieras saber si volvió con marcas, o cuando aparezca una dirección comentario:….
+---
+
+{MARCA}
+
+# Comentarios sobre un archivo (`/comentarios`)
+
+La persona lee un documento en el visor de la página, selecciona texto y escribe lo que hay que hacer ahí. Cada
+comentario abre un **hilo** (h1, h2…) anclado a la **cita**, no a la línea: si el documento cambia, telar lo vuelve a
+encontrar y dice cómo. Los comentarios son para ti: el documento no se toca, y lo que respondes lo lee la persona en
+la página, junto al texto.
+
+1. **Encontrarlos:** `telar comentarios listar [ruta]` (una carpeta, un repositorio o un archivo; sin ruta, desde
+   donde estás) da los abiertos de cada archivo; `--todos`, también los resueltos; `--json`, para leerlos de una.
+   `telar comentarios ver <archivo>` da todos los de uno. En otra máquina: `servidor:docs/x.md` (por el bus).
+2. **Leer el documento entero antes de tocar nada.** Un comentario suelto no dice qué está bien; el documento sí.
+3. **Mirar el ancla antes de creerle.** Cada hilo dice en qué línea está hoy, qué se comentó y, si ya no es lo mismo,
+   qué dice hoy ese lugar:
+   - sin nota: está donde se comentó;
+   - «reanclado tras el reflujo de líneas»: el párrafo se re-envolvió; fiable;
+   - «reanclado por parecido (N%)»: el texto cambió; confirma que el comentario sigue valiendo antes de actuar;
+   - «la cita ya no existe; anclado por lo que la rodeaba»: lo comentado se reescribió; casi siempre ya se atendió:
+     verifícalo y resuelve, no lo vuelvas a editar;
+   - «⚠ sin ancla»: perdió su lugar. No adivines: pregúntale a la persona a qué se refería.
+4. **Aplicar, hilo por hilo** (del final hacia el principio si los cambios son grandes). Tres desenlaces, y los
+   tres son trabajo bien hecho: lo aplicas; preguntas (el comentario admite dos lecturas: respondes y lo dejas
+   abierto); o disientes (crees que empeora el documento: lo dices con el motivo y lo dejas abierto).
+5. **Contestar y cerrar:**
+   `telar comentarios resolver <archivo>#h3 "Corregido: la cifra es 58%, cita el anexo B."` ·
+   `telar comentarios responder <archivo>#h7 "¿Corto el párrafo entero o solo la cifra?"` ·
+   `telar comentarios reabrir <archivo>#h3`. Firman con el nombre de tu hilo (o `--autor`). También
+   `telar objeto comentario:<archivo>#h3 resolver --params '{{"texto": "…"}}'`.
+   - **Resolver es «está hecho»:** resuelve solo lo que aplicaste. Resolver lo que no tocaste corrompe la revisión.
+   - **Siempre responde antes de resolver** (el texto de `resolver` es esa respuesta): la persona tiene que poder
+     saber qué pasó con su comentario sin abrir el diff.
+   - Lo que dejas abierto es lo que queda pendiente entre ustedes.
+6. **Que llegue:** `telar comentarios` commitea y sube el archivo de los comentarios al tiro, solo él. Tus cambios al
+   documento los commiteas tú, como siempre.
+7. **Reporta** a la persona: cuántos aplicaste, cuáles quedaron abiertos y por qué, y los que quedaron sin ancla.
+   Cierra con `telar comentarios listar`, para que lo que dices sea lo que hay.
+"""
+
+SKILLS = {"hilos": SKILL, "modulos": SKILL_MODULOS, "relevo": SKILL_RELEVO, "ramas": SKILL_RAMAS, "comentarios": SKILL_COMENTARIOS}
 
 
 def ruta(carpeta_config: Path, nombre: str = "hilos") -> Path:

@@ -24,7 +24,10 @@ except ImportError:
 class LaTabla(Prueba):
     def test_de_fabrica(self):
         t = config.desde_dict({}).terminal
-        self.assertEqual((t.columnas, t.posicion, t.fondo), (130, "centro", "telar"))
+        self.assertEqual((t.columnas, t.posicion, t.fondo), (130, "centro", "ninguno"))
+
+    def test_el_telar_de_antes_se_lee_como_ninguno(self):
+        self.assertEqual(config.desde_dict({"terminal": {"fondo": "telar"}}).terminal.fondo, "ninguno")
 
     def test_valores_que_sirven_y_que_no(self):
         t = config.desde_dict({"terminal": {"columnas": "todo", "posicion": "Derecha", "fondo": "#1e1e2e"}}).terminal
@@ -78,8 +81,8 @@ class LaApi(Prueba):
 
     def test_los_fondos_que_se_pueden_elegir(self):
         d = TestClient(api.app).get("/terminal/fondos").json()
-        self.assertEqual([f["valor"] for f in d["fondos"]], ["telar", "ninguno", "estrellas"])
-        self.assertEqual(d["actual"], {"columnas": 130, "posicion": "centro", "fondo": "telar"})
+        self.assertEqual([f["valor"] for f in d["fondos"]], ["ninguno", "estrellas"])
+        self.assertEqual(d["actual"], {"columnas": 130, "posicion": "centro", "fondo": "ninguno"})
 
     def test_escribir_un_ajuste(self):
         c = TestClient(api.app)
@@ -101,7 +104,7 @@ class LaApi(Prueba):
         self.assertIn("sandbox", r.headers["content-security-policy"])
         self.assertEqual(c.get("/terminal/fondo/cielo.js").status_code, 200)
         self.assertEqual(c.get("/terminal/fondo/../../secreto.txt").status_code, 404)
-        self.poner(fondo="telar")
+        self.poner(fondo="ninguno")
         self.assertEqual(c.get("/terminal/fondo/").status_code, 404)
 
     def test_una_imagen_de_la_maquina(self):

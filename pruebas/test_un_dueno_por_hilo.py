@@ -219,16 +219,31 @@ class ElNodoEspeja(ConEstado):
                          {"vinculo": "", "archivado": False, "publico": False, "etiquetas": [], "padre": ""})
         self.assertEqual(mod_nodo.registro_de("Faro", {}, set(), set(), {"Faro": ("trabajo",)})["etiquetas"], ["trabajo"])
 
+    def test_el_padre_que_publica_es_el_que_ve_aqui(self):
+        """El 24-nov, «Cartas» colgaba en el servidor de «Archivista › T532…» (lo abrió ese hilo) y su ventana en el
+        laptop no colgaba de nadie: el registro publicaba solo el padre puesto a mano. Ahora, el que lo abrió también;
+        uno soltado a mano, ninguno."""
+        self.est.anotar_abierto_por("Cartas", "Archivista › T532 Cartas")
+        self.est.anotar_abierto_por("Puesto", "Quien lo abrió")
+        self.est.colgar("Puesto", "Otro")
+        self.est.anotar_abierto_por("Suelto", "Quien lo abrió")
+        self.est.colgar("Suelto", "")
+        self.assertEqual(self.est.padres_efectivos(), {"Cartas": "Archivista › T532 Cartas", "Puesto": "Otro"})
+        self.assertEqual({n: self.est.padre(n) for n in ("Cartas", "Puesto", "Suelto")},
+                         {"Cartas": "Archivista › T532 Cartas", "Puesto": "Otro", "Suelto": ""}, "lo mismo que dice `padre`")
+        self.assertEqual(mod_nodo.registro_de("Cartas", {}, set(), padres=self.est.padres_efectivos())["padre"], "Archivista › T532 Cartas")
+
     def vuelta(self, n, previo, registro):
         clave = "ana.faro"
         n.publicado = {clave: json.dumps(previo, ensure_ascii=False, sort_keys=True)}
         n.registro = registro
         n.locales = lambda: {}
-        puestos = []
-        kv = SimpleNamespace(put=lambda k, v: _async(puestos.append((k, json.loads(v)))))
+        from comun import KvDeMentira
+
+        kv = KvDeMentira({clave: {**previo, "dueno": "laptop"}})
         with mock.patch("telar.bus.persona", return_value="ana"), mock.patch("telar.bus.ficha", return_value="faro"):
             asyncio.run(n._vuelta(js=None, kv=kv))
-        return puestos
+        return kv.puestos
 
     def test_un_hilo_muerto_que_se_archivo_despues_se_vuelve_a_publicar(self):
         n = self.nodo()

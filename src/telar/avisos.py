@@ -165,8 +165,24 @@ def es_el_mismo(visto: dict | None, aviso: dict) -> bool:
     return isinstance(vistos, list) and set(actuales) <= set(vistos)
 
 
+def _fuentes(config) -> list:
+    """Las fuentes declaradas (`[avisos.<clave>]`), y las de telar mismo que esta máquina tiene: lo que se cedió al
+    volver (telar.seguir), que no se declara."""
+    fuentes = list(getattr(config, "avisos", ()))
+    try:
+        from telar import seguir
+        from telar.config import AvisoArchivo
+
+        propio = seguir.aviso_archivo(config)
+        if propio.is_file() and not any(f.clave == "seguidos" for f in fuentes):
+            fuentes.append(AvisoArchivo(clave="seguidos", archivo=str(propio)))
+    except Exception:  # noqa: BLE001 - sin carpeta de estado, solo las declaradas
+        pass
+    return fuentes
+
+
 def _locales_declarados(config):
-    return [f for f in getattr(config, "avisos", ()) if _de_aqui(config, f)]
+    return [f for f in _fuentes(config) if _de_aqui(config, f)]
 
 
 def _declarado_aqui(config, archivo: str):
@@ -217,7 +233,7 @@ def marcar_visto(config, clave: str, nivel: str = "", problemas: list | None = N
     """Dar por visto el aviso de la fuente `clave`, en la máquina donde vive su archivo (por el bus si es otra)."""
     from telar import bus as mod_bus
 
-    fuente = next((f for f in getattr(config, "avisos", ()) if f.clave == clave), None)
+    fuente = next((f for f in _fuentes(config) if f.clave == clave), None)
     if fuente is None:
         return {"ok": False, "error": f"no hay un aviso «{clave[:40]}» en la configuración ([avisos.<clave>])"}
     if _de_aqui(config, fuente):
@@ -262,7 +278,7 @@ def de_todas(config) -> dict:
     from telar import bus as mod_bus
 
     avisos, fallas = [], {}
-    fuentes = list(getattr(config, "avisos", ()))
+    fuentes = _fuentes(config)
     aqui = {a["archivo"]: a for a in locales(config)}
     otras: dict[str, list] = {}
     for f in fuentes:

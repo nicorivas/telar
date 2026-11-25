@@ -4,3 +4,5 @@ import './telar';
 import './cielo';
 import './orbita';
 import './binaria';
+// y los efectos de hover de fábrica: la ola, el que lleva todo arte que no dice otro
+import './ola';

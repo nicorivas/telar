@@ -4,8 +4,12 @@
 // · las tarjetas salen de los mundos de la configuración (web/mundo.ts) y del que está puesto, a la hora de abrirla;
 // · elegir una (un clic, un toque, su número o ⏎ con el foco en ella) la pone como la banda (`mundo.poner`); «volver al
 //   horario» (h) suelta lo elegido a mano; «editar» (e) lleva a ⚙ mundos; ⎋ o un clic afuera la cierran sin cambiar nada;
-// · ← → ↑ ↓ mueven el foco entre tarjetas (arriba y abajo, de a una fila; en una sola fila o columna, de a una), y el
-//   foco sigue al mouse: lo que se ilumina es lo que pone ⏎;
+// · los números: hasta nueve tarjetas, cada cifra elige al tiro. Con diez o más, una cifra que puede empezar otro número
+//   (el 1 de 10, 11…) espera un momento la segunda (`numero`), con el foco ya en la suya: 1 y 1 es la 11, 1 sola es la 1;
+// · son muchas: van en filas hacia abajo y la ventana se desplaza. ← → ↑ ↓ mueven el foco entre tarjetas (arriba y
+//   abajo, de a una fila; en una sola fila o columna, de a una), y la que recibe el foco queda siempre a la vista (se
+//   desplaza suave, o de golpe con «reducir movimiento»). Al abrir, a la vista la del mundo de ahora. El foco sigue al
+//   mouse (sin desplazar nada): lo que se ilumina es lo que pone ⏎;
 // · el arte se anima solo mientras está abierta y la pestaña se ve (web/arte-vivo.ts): cerrada, ningún cuadro más. Con
 //   «reducir movimiento», quieto;
 // · los artes de la raíz (`<raiz>/.telar/arte/*.txt`, `GET /arte`) se leen cada vez que se abre, sin esperarlos: si llegan
@@ -63,6 +67,22 @@ export function vecina(i: number, tecla: string, n: number, cols: number): numbe
     return j;
 }
 
+/** Lo que hace una cifra, con `n` tarjetas y `antes` la cifra que espera (o ""): elegir la tarjeta `elegir` (1…n), o
+ *  esperar la segunda con `espera` (la que se elige si no llega), o nada. Hasta nueve, cada cifra elige al tiro; con diez
+ *  o más, una que puede empezar otro número espera. */
+export function numero(antes: string, cifra: string, n: number): { elegir?: number; espera?: string } {
+    if (antes) {
+        const dos = Number(antes + cifra);
+        if (dos >= 1 && dos <= n) return { elegir: dos };
+    }
+    const k = Number(cifra);
+    if (!(k >= 1 && k <= n)) return {};
+    return k * 10 <= n ? { espera: cifra } : { elegir: k };
+}
+
+/** cuánto espera la segunda cifra de un número (10, 11…), en ms */
+export const ESPERA_CIFRA = 600;
+
 /** Cuántas columnas tiene la grilla como se ve: las tarjetas que caen en la fila de la primera. */
 function columnasVistas(tarjetas: HTMLElement[]): number {
     const arriba = tarjetas[0]?.offsetTop;
@@ -103,6 +123,14 @@ export async function abrir(o: OpcionesMundos = {}): Promise<string | undefined>
             abierta = mia = { d, cerrar: () => cerrar(undefined) };
             const tarjetas = () => [...d.querySelectorAll<HTMLElement>('.mt-tarjeta')];
             const elegir = (t: HTMLElement | null | undefined) => { if (t) cerrar(`mundo:${t.dataset.mundo ?? ''}`); };
+            // la que recibe el foco por teclado queda a la vista: suave, o de golpe con «reducir movimiento»
+            const aLaVista = (t: HTMLElement | undefined, suave = !reducido) => t?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: suave ? 'smooth' : 'auto' });
+            const enfocar = (t: HTMLElement | undefined) => { if (!t) return; t.focus({ preventScroll: true }); aLaVista(t); };
+            // la cifra que espera la segunda (10, 11…) y su reloj
+            let cifra = '', reloj: ReturnType<typeof setTimeout> | undefined;
+            const soltarCifra = () => { if (reloj) clearTimeout(reloj); reloj = undefined; cifra = ''; };
+            // al abrir, la del mundo de ahora a la vista (abrirVentana le da el foco sin desplazar)
+            const alAbrir = setTimeout(() => aLaVista(tarjetas().find(t => t.classList.contains('puesto')), false), 0);
             d.addEventListener('click', e => {
                 const t = (e.target as HTMLElement).closest<HTMLElement>('.mt-tarjeta');
                 if (!t || !d.contains(t)) return;
@@ -118,7 +146,8 @@ export async function abrir(o: OpcionesMundos = {}): Promise<string | undefined>
                     // sin foco en ninguna (en el pie), la flecha lleva a la de ahora
                     const ahora = ts.findIndex(t => t === document.activeElement);
                     const j = ahora < 0 ? Math.max(0, ts.findIndex(t => t.classList.contains('puesto'))) : vecina(ahora, e.key, ts.length, columnasVistas(ts));
-                    ts[j]?.focus();
+                    soltarCifra();
+                    enfocar(ts[j]);
                     return;
                 }
                 // ⏎ en una tarjeta la pone (el pie lo atiende web/botonera.ts: aquí no llega nada suyo); sostenido, no
@@ -129,28 +158,25 @@ export async function abrir(o: OpcionesMundos = {}): Promise<string | undefined>
                     if (!e.repeat) elegir(enfocada);
                     return;
                 }
-                const n = /^[1-9]$/.test(e.key) ? Number(e.key) : 0;
-                if (n && n <= ts.length) {
+                if (/^[0-9]$/.test(e.key)) {
+                    const r = numero(cifra, e.key, ts.length);
+                    if (r.elegir === undefined && r.espera === undefined) return;
                     e.preventDefault();
                     e.stopPropagation();
-                    if (!e.repeat) elegir(ts[n - 1]);
+                    if (e.repeat) return;
+                    soltarCifra();
+                    if (r.elegir !== undefined) { elegir(ts[r.elegir - 1]); return; }
+                    // espera la segunda cifra, con el foco ya en la de la primera; si no llega, esa
+                    cifra = r.espera!;
+                    const k = Number(cifra);
+                    enfocar(ts[k - 1]);
+                    reloj = setTimeout(() => { soltarCifra(); elegir(ts[k - 1]); }, ESPERA_CIFRA);
                 }
             });
-            // el foco sigue al mouse: lo que se ilumina es lo que pone ⏎. Y el arte se inclina apenas hacia el puntero
+            // el foco sigue al mouse (sin desplazar nada): lo que se ilumina es lo que pone ⏎
             d.addEventListener('pointermove', e => {
                 const t = (e.target as HTMLElement).closest<HTMLElement>('.mt-tarjeta');
-                if (!t) return;
-                if (document.activeElement !== t && e.pointerType === 'mouse') t.focus({ preventScroll: true });
-                if (reducido) return;
-                const r = t.getBoundingClientRect();
-                t.style.setProperty('--px', (((e.clientX - r.left) / Math.max(1, r.width)) * 2 - 1).toFixed(3));
-                t.style.setProperty('--py', (((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1).toFixed(3));
-            });
-            d.addEventListener('pointerout', e => {
-                const t = (e.target as HTMLElement).closest<HTMLElement>('.mt-tarjeta');
-                if (!t || t.contains(e.relatedTarget as Node | null)) return;
-                t.style.setProperty('--px', '0');
-                t.style.setProperty('--py', '0');
+                if (t && document.activeElement !== t && e.pointerType === 'mouse') t.focus({ preventScroll: true });
             });
             vivo = vivoActual = animar(d, { reducido });
             // un arte de la raíz que llega con la ventana abierta: cada tarjeta toma el que le toca ahora
@@ -163,7 +189,7 @@ export async function abrir(o: OpcionesMundos = {}): Promise<string | undefined>
                 }
                 vivo?.releer();
             });
-            return () => { soltar(); vivo?.parar(); if (vivoActual === vivo) vivoActual = undefined; vivo = undefined; if (abierta === mia) abierta = null; };
+            return () => { clearTimeout(alAbrir); soltarCifra(); soltar(); vivo?.parar(); if (vivoActual === vivo) vivoActual = undefined; vivo = undefined; if (abierta === mia) abierta = null; };
         },
     });
     if (abierta === mia) abierta = null;

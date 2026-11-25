@@ -30,16 +30,19 @@ from __future__ import annotations
 import asyncio
 import getpass
 import json
+import os
 import socket
 import time
 from datetime import datetime
 from pathlib import Path
 
-#: el stream de las casillas y el almacén del estado, en el servidor del bus
+#: el stream de las casillas y el almacén del estado, en el servidor del bus. `TELAR_BUS_HILOS` pone el estado en otro
+#: almacén: para probar el registro de los hilos entre dos máquinas sin tocar el de la persona (scripts/probar_mudanza.py)
 STREAM = "TELAR_CASILLAS"
-ESTADO = "TELAR_HILOS"
-#: la foto de los hilos de cada máquina (la de telar.espejo), clave <persona>.<maquina>
-ESPEJO = "TELAR_ESPEJO"
+ESTADO = os.environ.get("TELAR_BUS_HILOS") or "TELAR_HILOS"
+#: la foto de los hilos de cada máquina (la de telar.espejo), clave <persona>.<maquina>; con `TELAR_BUS_ESPEJO`, otro almacén
+#: (scripts/probar_mudanza.py: las fotos de la prueba no se mezclan con las de la persona)
+ESPEJO = os.environ.get("TELAR_BUS_ESPEJO") or "TELAR_ESPEJO"
 #: copia de cada mensaje entre hilos, para verlos después (`registro.<persona>`, dos semanas)
 REGISTRO = "TELAR_REGISTRO"
 #: lo que se espera al bus para una orden de una sola vez (enviar, ver): más es que no está

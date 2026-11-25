@@ -255,7 +255,7 @@ Las reglas valen para todas:
   "arquetipo": "proyecto", "prioridad": 2, "atencion": "espera",
   "visto": "2026-09-18T09:12:44", "tiempo": 4320.0,
   "sesiones": ["a1b2c3d4"], "remoto": "", "rama": null, "espera": { "clase": "permiso", "pide": "Claude needs your permission to use Bash" },
-  "dormido": null,
+  "dormido": null, "borradores": 0,
   "ficha": { … }
 }
 ```
@@ -270,6 +270,11 @@ que todavía no se levanta, aparece con `vivo: false` en vez de desaparecer.
 `null` (con `--sin-ficha`) o faltar. `remoto` dice dónde vive el agente del hilo: `""`
 es aquí, un nombre es una máquina de `[remotos]`, y `"?"` es una ventana que corre mosh,
 ssh o et sin que telar la haya armado (se sabe que es remota, no adónde).
+`dueno` dice, de uno archivado aquí, si el bus dice que es de otra máquina (telar.dueno): cuál, cuando aquí no tiene
+conversación o tiene la misma que dice el registro; `""` si es de aquí. Retomarlo (`telar hilo retomar`) lo abre allá,
+por su nodo (el pedido `hilo` con `retomar`), y aquí sale del archivo; con esa máquina apagada no se abre la copia de
+aquí: dice si se puede seguir aquí (`telar hilo seguir`). Los cerrados de otra máquina no se listan aquí: están en su
+foto.
 `publico` dice si las otras personas del bus lo ven en su directorio (`telar hilo publicar`, `privar`; en la
 página, ⋯ → hacer público). Por defecto es `false`: un hilo es privado, no sale en el directorio de nadie y no le
 llega correo de otra persona (se le contesta como a uno que no existe). El de un hilo de otra máquina lo dice su
@@ -278,7 +283,8 @@ no, el que lo abrió (`abierto_por`); `""` si de ninguno, o si se soltó (`telar
 del que lo abrió: `abierto_por` lo sigue diciendo, pero ya no cuelga de él). La barra lo anida debajo, hereda sus etiquetas si no tiene, y el
 padre recibe un aviso cada vez que el hijo termina un turno. `etiquetas` son las suyas, en minúsculas (`telar hilo etiquetas "trabajo, cliente"`,
 `ninguna` las quita; en la página, ⋯ → etiquetas…): los modos de la página filtran la lista por ellas. Las de un hilo de
-otra máquina las dice su dueño. `agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
+otra máquina las dice su dueño, y su `padre` también: el mismo que ve allá, el puesto o el que lo abrió.
+`agente` es la carpeta del agente residente del que es el hilo (`""` si no es de ninguno) e
 `icono`, el suyo: la barra lo pone junto al nombre.
 `abierto_por` es quién lo abrió, si no fue la persona: `{"por", "agente", "icono", "cuando"}`, con `por` el hilo que
 corrió la orden (`$TELAR_HILO`) o el periódico (`"periódico <nombre>"`) y `agente` la carpeta del agente si ese hilo
@@ -295,6 +301,8 @@ despertar`) o escribirle (un mensaje, un encargo) lo despierta, retomando su con
 con `desde` la hora local (ISO) en que se durmió; el de otra máquina cuya ventana está aquí y duerme allá (lo publica
 su dueño) trae `desde` vacío. `null` si no duerme o no tiene ventana. Un hilo dormido sigue `vivo: true`, y su
 `atencion` es la que tenía al dormirse (la lista sigue diciendo «terminó, sin ver»).
+`borradores` es cuántos próximos prompts le guardó la persona (`telar hilo borradores`); el de un hilo de otra máquina lo
+publica su dueño (y la foto de su espejo lo trae).
 
 ### `ficha`
 
@@ -880,6 +888,10 @@ El lienzo recibe lo último guardado en `window.lienzo.memoria` (`null` la prime
 archivo no es JSON) y guarda con `window.lienzo.guardar(objeto)`, que reemplaza el archivo
 entero. El lienzo nunca nombra la ruta: el panel le da una llave al pintarlo y escribe solo el
 archivo que declaró la página, hasta 4 MB.
+
+Un lienzo de un módulo recibe además `window.lienzo.item`: el ítem en que la página pidió abrirlo (un chat, desde la
+ventana de un chat de foco: «abrir el chat»), o `""`; si la pestaña ya estaba pintada, le llega como el evento
+`lienzo-item` en su `window` (el ítem, en `detail`). El iframe lleva `data-origen` («bloque:whatsapp»).
 
 La página de un **módulo** (la de su pestaña o su app) puede además pedirle a telar que haga algo por ella:
 `window.lienzo.pedir(orden, datos)` devuelve una promesa con lo que quedó, o falla con el porqué. telar lo hace solo
@@ -1869,12 +1881,18 @@ La foto (versión 1):
 }
 ```
 
-Los archivados no viajan. No viajan tampoco la ruta absoluta, las sesiones ni el estado del
+Los archivados no van en `hilos`: van aparte, en `archivados`, con poco de cada uno: `nombre` y, si los tiene,
+`relativa`, `etiquetas`, `padre`, `agente`, `prioridad`, `visto` y `actividad` (lo más reciente primero, hasta 2000).
+Son los suyos: no los que esa máquina archivó siendo de otra (su `dueno`) ni las ventanas que miran a otra. Con eso
+la página de otra máquina los lista en su ARCHIVO, marcados con la máquina, y retomarlo lo abre allá. Una foto sin
+`archivados` (un telar de antes) no trae ninguno. No viajan la ruta absoluta, las sesiones ni el estado del
 proyecto: lo que se lee desde afuera es lo que sirve para mirar. `resumen` es el título del
 documento del hilo. Viajan además, si los tiene, `publico`, `etiquetas`, `padre`, `sin_ver`, `atencion_desde` y
 `agente` (la carpeta del agente residente del que es: con ella, otra máquina sabe su mundo aunque el hilo no esté en
-ningún proyecto), y `dormido` (true si duerme: telar.dormir). Una foto de otra versión, sin lista de hilos o con más
-de 2 MB se rechaza.
+ningún proyecto), y `dormido` (true si duerme: telar.dormir). De su conversación, solo `conv_bytes` (cuánto pesa, un
+entero) y `conv_crecio` (cuándo creció por última vez, ISO), o `null` si no tiene o no está: con eso otra máquina con
+una copia vieja dice cuánto le falta antes de seguirlo con esta apagada (telar.seguir). Una foto de otra versión, sin
+lista de hilos o con más de 2 MB se rechaza.
 
 La foto lleva además, afuera de los hilos, `mirando` y `vista`, para que cada máquina sepa si un hilo suyo se está
 mirando desde otra y no lo duerma (telar.dormir): `mirando` es `[{"maquina", "hilo"}]`, lo que se mira en la máquina
@@ -1902,7 +1920,8 @@ se queda afuera.
 ```
 
 `en_linea` es `edad < vigente`. Un archivo que no se puede leer aparece con `error`, no se esconde. Con `[mundos]`,
-cada hilo de cada foto trae además `mundo`, derivado con la configuración de esta máquina (no viaja en la foto). Cada
+cada hilo de cada foto, y cada uno de sus `archivados`, trae además `mundo`, derivado con la configuración de esta
+máquina (no viaja en la foto). Cada
 foto trae además `cola` y `hechos` de su máquina (lo de `telar hilos --red`, telar.alcance), y afuera, `al_dia`: si el
 nodo de aquí está conectado al bus (la marca `<estado>/espejos/.al-dia`, que deja cada 30 s y vale 120). Sin eso, que
 una foto sea vieja no dice que su máquina se fue: la que no tiene noticias es esta.
@@ -1927,34 +1946,136 @@ actualízalo (telar desplegar)"}`. Sin saberlo (sin su foto, o con el nodo de aq
 
 ## `/mudanza` y `hilo-revisar` — llevar un hilo a otra máquina, paso a paso
 
-`telar hilo llevar <hilo> <máquina>` (por el bus) deja en `<estado>/llevar/<hilo>.json` en qué va:
-`{"paso", "hilo", "hora", "maquina", "bytes", "avisos", "error", "carpeta", "aviso"}`, con `paso` uno de `revisar`,
-`cerrar`, `copiar`, `abrir`, `listo` o `falla`. Cada mudanza empieza de nuevo en `revisar`; `hora` (segundos
-Unix) separa la de ahora de una vieja. `GET /mudanza?hilo=<hilo>` lo da tal cual (`{}` si no hay); la página lo
-lee mientras dura para dibujar la transición.
+`telar hilo llevar <hilo> <máquina>` (por el bus: también hacia una de `[remotos]` que esté en él; por ssh, solo si
+no) deja en `<estado>/llevar/<hilo>.json` en qué va: `{"paso", "hilo", "hora", "maquina", "bytes", "avisos",
+"error", "carpeta", "aviso", "total", "por_mandar", "mandados", "pendiente", "destino", "subido"}`, con `paso` uno de
+`revisar`, `esperar`, `subir`, `detener`, `copiar`, `abrir`, `cerrar`, `listo` o `falla`, en ese orden. `esperar`
+aparece solo si el agente estaba en medio de un turno, `subir` solo si se eligió subir lo suyo (`subido` dice qué se
+subió) y `detener` si su agente estaba abierto. Al copiar de a pedazos, `total` es lo que pesan la
+conversación y su carpeta, `por_mandar` lo que faltaba allá y `mandados` lo que ya llegó (con un telar de antes allá,
+solo `bytes`). Cada mudanza empieza de nuevo en `revisar`; `hora` (segundos Unix) separa la de ahora de una vieja.
+`GET /mudanza?hilo=<hilo>` lo da tal cual (`{}` si no hay); con `&maquina=<otra>`, el de la mudanza que corre en esa
+otra máquina, pedido por el bus (`mudanza-progreso` `{hilo}` → `{"ok": true, "progreso": {…}}`): así la página que
+pidió traer un hilo sigue sus pasos. La página lo lee mientras dura para dibujar la transición.
 
-Antes de cerrar nada, se le pregunta a la máquina de allá con el pedido `hilo-revisar` (`{hilo, sesion,
-relativa}`), que solo lee: contesta `{"ok": true, "graves": [...], "avisos": [...]}`. Lo grave (sin agente de
-Claude, sin `claude` en el PATH del servicio, un hilo con ese nombre ya abierto, la conversación ya llegada) no se
-lleva; lo que llegaría a medias (su carpeta sin clonar) pide `--si`. Un telar anterior que no conoce el verbo se
-salta la revisión. Si allá no se abre, el hilo se vuelve a abrir aquí, con su conversación; solo al llegar queda
-archivado aquí.
+Un hijo con rama (`ramas.json`) no se lleva: su rama y su worktree existen solo en su máquina. Antes de mover nada,
+se mira lo que el hilo tiene sin subir (telar.sin_subir) y se le pregunta a la máquina de allá con el pedido
+`hilo-revisar` (`{hilo, sesion, relativa, repos: [{relativa, commit, nombre}]}`), que solo lee:
+contesta `{"ok": true, "graves": [...], "avisos": [...], "repos": [{relativa, existe, tiene}]}` (`tiene`: si su
+rama ya contiene ese commit). Lo grave (sin agente de Claude, sin `claude` en el PATH del servicio, un hilo con ese
+nombre ya abierto) no se lleva. Un telar anterior que no conoce el verbo se salta la revisión.
+
+Lo que hay que elegir queda en el progreso, en `revisar`, aunque se termine ahí: `pendiente` (`{repos: [{repo,
+nombre, relativa, rama, arriba, commit, del_hilo, n_del_hilo, en_su_carpeta, n_en_su_carpeta, commits, n_commits,
+puede_subir, por_que_no, pendiente}]}`: por repositorio, lo sin commitear que escribió su conversación, lo demás sin
+commitear de su carpeta, los commits sin subir, si se puede subir y por qué no; las listas, hasta 40), `destino`
+(lo que contestó allá de cada uno) y `avisos` (lo que llegaría a medias: su carpeta sin clonar allá, sus hijos con
+rama, que se quedan). Si hay algo pendiente o algún aviso, sin `--subir` ni `--si` (y sin terminal) falla con «hay
+trabajo sin subir: --subir para subir lo suyo y llevarla, --si para llevarla igual» (o «…: --si para llevarla igual»
+si no hay nada suyo que se pueda subir), y la página lo muestra entero. `--subir` (`POST /hilo/llevar` con `subir`,
+`hilo-traer` con `subir`), después de su turno, commitea en cada repositorio solo `del_hilo` (con el mensaje «<hilo>:
+lo suyo sin commitear, antes de llevarlo a <máquina>» y la lista) y sube la rama (telar.git: integra sin pisar lo
+ajeno); si algo no sube, `falla` y no se movió nada. `--si` lo lleva sin tocar nada.
+
+Después se espera a que el agente termine su turno (hasta 10 minutos; si no, `falla` y no se movió nada), venga de
+donde venga la orden, y se **cede** (más abajo, «El registro de un hilo»): el registro dice que se va (`cede`), y su
+agente se detiene (`detener`: su panel espera como el de uno dormido, y no despierta mientras viaja). La conversación
+viaja (`copiar`), la final. Allá lo **toman** con la época que se cedió y lo abren retomándola (`hilo-llegar`,
+`abrir`); con su `ok`, su ventana de aquí se cierra (`cerrar`), lo último. **Nada se archiva aquí**: el hilo es de allá,
+y aquí se lo ve como de allá (la lista de aquí no lo muestra como un cerrado de aquí). Si la copia no llega, o allá no
+lo toma, aquí se echa atrás (la época sube) y su agente despierta: el paso es `falla` y su `error` termina en «Aquí
+sigue como estaba». Si allá ya lo había tomado, aunque no contestara, vive allá: el registro lo dice, y la mudanza
+termina en `listo` con un `aviso` (si no alcanzó a abrirlo, lo abre su nodo).
+
+**La copia, de a pedazos** (telar.replica; [arquitectura](arquitectura.md), «Llevar un hilo a otra máquina»). Tres
+pedidos a la máquina de allá, con el destino como `{"relativa": "<carpeta del hilo>"}` (por el bus) o `{"carpeta":
+"~/vida"}` (por ssh, donde arranca el agente allá):
+
+- `replica-estado` `{sesion, rutas: [<sid>.jsonl, <sid>/…], …destino}`, solo lee (de a 400 rutas): `{"ok": true,
+  "base": "<carpeta de proyecto de la copia de allá>", "trozo": 917504, "archivos": {"<ruta>": {"parte": [largo,
+  huella], "vivo": [[corte, huella], …]}}}`. `parte` es lo juntado de una llegada anterior; `vivo`, la copia en su
+  lugar, con su largo primero. La huella es el sha256 (hex) de los 64 KB antes de ese byte.
+- `replica-escribir`, de a uno y en orden: el cuerpo es una línea JSON `{sesion, ruta, desde, nuevo?, base?, z?}` y
+  después los bytes del pedazo (`z`: comprimidos con zlib). `nuevo` empieza el archivo de nuevo (con los `desde`
+  primeros bytes de la copia de allá en `base`); sin él, va al final de lo juntado si llega justo ahí. Contesta
+  `{"ok": true, "bytes": <lo juntado>}` (y `repetido` si ya estaba), o `{"ok": false, "bytes", "error"}` si no calza.
+- `replica-cerrar` `{sesion, base, archivos: {"<ruta>": [largo, sha256]}, …destino}`: verifica cada archivo con lo
+  juntado o con la copia de allá y, si todos calzan, los deja donde Claude los busca: `{"ok": true, "conversacion",
+  "carpeta", "aparte": [...], "aviso"}`. Si no, no mueve nada: `{"ok": false, "problemas": {"<ruta>": "incompleto" |
+  "distinto" | "falta"}, "error"}` (lo distinto se borra, y se manda de nuevo entero).
+
+Después, `hilo-llegar` lleva `replica: true` y la conversación ya está en su lugar; `dueno` (`{clave, de, epoca}`:
+la clave del registro, la máquina que lo cede y la época con que lo cedió; sin él, «llegó sin su dueño ni su época: el
+telar de allá es de antes»), y además `repos` (como en
+`hilo-revisar`: allá, cada repositorio que no tiene ese commit se pone al día con su rama de arriba antes de abrir,
+con telar.git, y lo que no se pudo va en su `aviso`), `registro` (`{padre, etiquetas, prioridad, esfuerzo,
+publico}`, que queda como el de allá, entero) y `casilla` (lo que esperaba en la casilla local del hilo, hasta 600 KB;
+allá se deja cuando el hilo ya abrió, y contesta cuántos, `casilla`, con lo que aquí se saca de la suya). Si no lo
+toma (allá se echaron atrás): `{"ok": false, "error": "la mudanza ya no vale: …"}` y no abre. Si lo tomó y no pudo
+abrirlo: `{"ok": false, "tomado": true, "error"}`. Si allá nadie atiende `replica-estado` (su nodo no está, o un telar
+de antes), no se lleva.
+
+**El registro de un hilo** (telar.dueno; `GET /hilo/registro?hilo=<hilo>` lo da tal cual, `{}` si el bus no lo sabe).
+Lo que publica el nodo de su dueño en `TELAR_HILOS` (clave `<persona>.<ficha>`) lleva, además de lo de siempre,
+`dueno` (la máquina; en uno de antes, su `maquina`) y `epoca` (sube con cada traspaso), y mientras dura un traspaso
+`cede` (a qué máquina) y `mudanza` (`{a, de, paso, pid, maquina, hora}`). Se escribe condicionado a la revisión que se
+leyó (`[bus] publicar = "simple"`, sin condición, si lo nuevo falla); un nodo no publica un hilo que el registro dice de
+otra máquina, salvo que allá esté muerto y aquí se abrió otro que se llama igual (otra conversación): entonces lo toma
+con la época siguiente. El traspaso, en tres escrituras condicionadas: ceder (el dueño: `cede = B`), tomar (B, solo
+si sigue cedido a B con esa época: `dueno = B`, `epoca + 1`, `mudanza.paso = "abrir"` hasta abrirlo) y echarse atrás
+(el dueño, si B no lo tomó: `epoca + 1`, sin `cede`). Con el dueño apagado, seguir (B, solo si sigue siendo de A con la
+época que leyó y sin traspaso: `dueno = B`, `epoca + 1`, `tomado_de = A`, `hasta`, `seguido`; más abajo). Cada 30 s, el nodo arregla lo que quedó a medias: uno que cedía y
+cuyo proceso ya no corre se echa atrás y despierta; uno que tomó y no abrió, lo abre; la ventana que esperaba a uno
+que ya es de otra, la cierra.
+
+**Traer** (`POST /hilo/traer`, `hilo-traer` `{hilo, a, si, subir}`): la dueña corre `telar hilo llevar <a> --hilo
+<hilo>` aparte, en su propia sesión, y contesta en unos 20 s `{"ok": true, "codigo", "salida", "en_curso"}`: lo que
+pide elegir (algo sin subir) ya falló con su queja, y su detalle se lee del progreso de allá; si sigue, `en_curso`, y
+el progreso se lee de allá.
+
+**Seguir aquí, con la dueña apagada** (telar.seguir; `telar hilo seguir <hilo> [--si]`). `GET /hilo/seguir?hilo=` (y
+`telar hilo seguir --json`, sin `--si`) solo lee: `{"ok": true, "hilo", "puede", "por_que_no", "aviso", "dueno",
+"epoca", "conversacion", "aqui": {"bytes", "fecha"} | null, "alla": {"visto", "en_linea", "bytes", "crecio",
+"en_la_foto"} | null}`. `puede` solo si la conversación del registro tiene una copia en esta máquina, su dueña está
+fuera de línea (su foto vencida, con el nodo de aquí al día: telar.alcance) y su nodo no contesta `mudanza-progreso`
+en unos segundos; si no, `por_que_no` (en línea: «traer aquí»; sin copia: «vuelve cuando vuelva»). `aviso` dice de
+cuándo es la copia de aquí y cuánto pesaba la de allá la última vez que se la vio (`conv_bytes` de su foto). `POST
+/hilo/seguir` `{hilo}` (y `--si`) revisa de nuevo, deja la copia donde la busca el agente que arranca aquí (si está en
+otra carpeta de proyecto, la copia, con su `<sid>/`), escribe en el registro, condicionado a la época que leyó,
+`{dueno: aquí, epoca + 1, tomado_de, hasta: <largo de la copia>, seguido: <hora>}` y lo abre: `{"ok": true, …, "de",
+"epoca", "hasta", "hecho"}`, o 409 con el porqué (si el registro cambió, nada se abrió).
+
+Cuando la dueña vuelve, su nodo ve, en la primera vuelta, que un hilo abierto allí con su misma conversación es de otra
+máquina: cierra a su agente y, si el registro dice `tomado_de` ella y su copia no tiene el largo `hasta`, la deja aparte
+como `<sid>.de-<máquina>-<AAAA-MM-DD-HHMM>.jsonl.bak`. Lo anota en `<estado>/seguidos.json` y lo avisa en la franja de la
+página: un aviso de archivo que no se declara (`<estado>/avisos/seguidos.json`, clave `seguidos`, con su informe
+`seguidos.md` y un id por cesión en `problemas`), mientras haya alguna de la última semana y no se haya dado por vista.
+`tomado_de`, `hasta` y `seguido` quedan en el registro hasta el traspaso siguiente.
+
+Si quien corre `telar hilo llevar` vive en la ventana del hilo (su agente pidió llevarse a sí mismo), revisa y
+pregunta como siempre, y lo demás sigue en un proceso aparte (con `TELAR_LLEVAR_APARTE=1`, su salida en
+`<estado>/llevar/<hilo>.log`), que espera a que el agente termine su turno antes de copiar; si falla, el agente
+recibe un mensaje en su casilla con el `error`.
 
 ## `telar commit --json` — commitear solo unas rutas y subirlas
 
 ```json
 {"repo": "/home/x/casa", "rama": "main", "rutas": ["memory/x.md"], "commit": "a1b2c3d",
- "subido": true, "intentos": 1, "estado": "subido", "detalle": "", "stash": "", "apartados": []}
+ "subido": true, "subidos": 1, "intentos": 1, "estado": "subido", "detalle": "", "stash": "", "apartados": []}
 ```
 
 `estado` es `subido` (quedó arriba), `commiteado` (quedó local: se pidió `--local`, o la rama no tiene una
-de arriba), `nada` (esas rutas no tenían cambios), `choque` (lo que llega toca algo sin commitear de aquí,
+de arriba), `nada` (esas rutas no tenían cambios: no hubo commit nuevo, aunque `subido` puede ser true si subieron
+commits que ya estaban pendientes, y `detalle` lo dice), `choque` (lo que llega toca algo sin commitear de aquí,
 o el rebase no pasó: el commit queda local y `detalle` dice con qué), `apartado` (lo sin commitear de otros,
 que se saca del árbol mientras se rebasa, no pudo volver: el commit queda local, `stash` es el hash del
 stash donde quedó, `apartados` sus archivos, y `detalle` dice cómo devolverlo) o `fallo` (no se pudo
-commitear, o el push falló por algo que no es una carrera, como la red o la llave). `intentos` cuenta los
-push: más de uno es que otro subió en el mismo momento. `rutas` van relativas al repositorio. Sale con 0
-si quedó como se pidió, 1 si quedó local, 2 si no se pudo commitear y 3 si quedó `apartado`. Cada corrida
+commitear, como una ruta que no existe ni está en el repositorio, o el push falló por algo que no es una
+carrera, como la red o la llave). Las rutas que se dan son relativas a donde se corre, como en git;
+`rutas` las devuelve relativas al repositorio. `subidos` cuenta los commits que llegaron arriba en esta
+corrida (0: ya estaba al día). `intentos` cuenta los push: más de uno es que otro subió en el mismo
+momento. Sale con 0 si quedó como se pidió, 1 si quedó local, 2 si no se pudo commitear, 3 si quedó
+`apartado` y 4 si fue `nada`. Cada corrida
 deja una línea con estos mismos campos, más `fecha` y `mensaje`, en `<estado>/commits.log`.
 
 ## `telar desplegar --json` — llevar main a cada máquina
@@ -2126,6 +2247,38 @@ entiende), o `null` si no trae la tabla.
 contesta 403 y se instala desde la terminal), `actualizar`, `activar`, `desactivar`, `quitar`. Devuelve
 `{"accion", "nombre", "salida", "codigo"}`; 409 si no se pudo, con la última línea de lo que dijo.
 
+`telar config --json` y `GET /config` dicen, de cada módulo, `buscables`: sus tipos de objeto que también se buscan en
+⌘K (`[objetos.<tipo>] buscador`), `[{"tipo", "plural"}]`.
+
+## `/ventanas` — las ventanas que piden los módulos
+
+`GET /ventanas?mundo=trabajo[&solo_cuantas=true]`: las ventanas que los módulos con `[ventanas]` quieren abrir ahora en
+la página, con ese mundo puesto (`""`, ambos), la que espera hace más primero; y el «no molestar» de esta máquina:
+
+```json
+{"ventanas": [{"modulo": "whatsapp", "id": "…", "version": "…", "mundo": "trabajo", "titulo": "Ana Rojas", "ayuda": "…",
+   "icono": "persona", "desde": "2026-11-23T10:42:00-03:00",
+   "lineas": [{"de": "Ana Rojas", "ts": "…", "texto": "…", "marca": "", "nueva": true, "mia": false}],
+   "responder": {"verbo": "salida", "params": {"…": "…"}, "campo": "texto", "placeholder": "…", "largo": 4000,
+                 "despues": {"verbo": "foco", "params": {"…": "…"}}},
+   "acciones": [{"texto": "15 min", "tecla": "", "en": "pie", "despues": null, "verbo": "foco", "params": {"…": "…"}},
+                {"texto": "abrir el chat", "tecla": "", "en": "cabecera", "despues": null, "abrir": "pestana:whatsapp", "item": "…"}],
+   "escape": 0}],
+ "cuantas": 1, "fallas": [{"modulo": "…", "error": "…"}], "modulos": ["whatsapp"],
+ "silencio": {"a_mano": false, "desde": ""}}
+```
+
+Lo que da cada módulo, revisado: recortado a sus topes (200 letras un título, 4000 una línea, 80 líneas, 12 botones),
+sin lo de otro mundo que el pedido (lo que dice `mundo` "" sale en todos), y sin las ventanas cuyos botones corren una
+consulta que el módulo no declaró en `[ventanas]` (van a `fallas`). `cuantas` es cuántas esperan del mundo pedido.
+`solo_cuantas` (o el «no molestar» puesto) da solo cuántas, sin `ventanas`. Lo leído vale 3 s: varias pestañas a la vez
+corren una sola consulta por módulo. La forma que da el módulo, en [modulos.md](modulos.md), «Sus ventanas».
+
+`POST /ventanas/accion` (`{"modulo", "verbo", "params"}`): corre lo de un botón, una consulta del módulo de las de su
+`[ventanas]` (403 si no lo es, 404 si el módulo no pide ventanas), y devuelve lo que da. `POST /ventanas/silencio`
+(`{"si": bool}`): el «no molestar» de esta máquina; devuelve `{"a_mano", "desde"}`. Los dos tocan `<estado>/ventanas/`, y
+`/eventos` lo dice como `ventanas`: las otras pestañas de la máquina vuelven a preguntar al tiro.
+
 ## `telar disparadores --json` — lo que corre o manda algo solo
 
 ```json
@@ -2246,6 +2399,38 @@ no dice qué carga. Con `maquina` de otra, lo calcula su nodo (pedido `contexto`
 con `maquina`; si ese hilo está en `[bus] no_leer`, 403. Lo lee `telar.conversacion.carga` de a poco: si el archivo no
 cambió, lo de antes; si creció, solo lo nuevo (una conversación de 180 MB se lee entera en unos 2 s, y después en
 milisegundos).
+
+## `telar hilo borradores --json` y `/hilos/borradores` — los próximos prompts de un hilo
+
+Lo que la persona escribe mientras el agente de un hilo trabaja, para mandárselo cuando le toque (`telar.borradores`; en
+la página, la pestaña «notas» de la barra de la derecha, `web/borradores.ts`). Viven en el estado de la máquina del hilo
+(`borradores.json`), no en el navegador, y viajan con él en la mudanza (`registro.borradores`).
+
+`telar hilo borradores [hilo] [--maquina servidor] --json`, o `GET /hilos/borradores?hilo=Faro[&maquina=servidor]`:
+
+```json
+{"hilo": "Faro", "maquina": "", "ocupado": "trabajando",
+ "borradores": [{"id": "b1a2b3c", "texto": "revisa el plan\ny dime qué falta", "creado": "2026-11-25T11:50:40",
+                 "cambiado": "2026-11-25T11:52:10", "al_terminar": ""}]}
+```
+
+En orden: lo que viene primero, arriba. `ocupado` es `trabajando` (su agente está en un turno), `espera` (le pregunta
+algo a la persona) o `""`. `al_terminar` es `escribir` o `enviar` si sale solo cuando su agente termine el turno.
+
+- `POST /hilos/borradores {hilo, texto, id?, maquina?}` (`telar hilo borradores --agregar "…"|-`): sin `id`, uno nuevo
+  al final; con él, el mismo con su texto nuevo (404 si ya no está: se mandó o se borró en otra parte). Devuelve el
+  borrador. Hasta 50 por hilo y 100 000 caracteres cada uno (422).
+- `DELETE /hilos/borradores?hilo=…&id=…` (`--borrar N|ID`): lo saca; 404 si ya no estaba.
+- `POST /hilos/borradores/mandar {hilo, id, enviar?, esperar?, no_esperar?, maquina?}` (`--mandar N|ID [--enviar]
+  [--esperar]`): lo escribe en la entrada del agente de su hilo, por tmux (pegado entre corchetes si tiene varias
+  líneas), sin ⏎ o, con `enviar`, enviado; sale de la lista: `{"hilo", "id", "como": "escrito"|"enviado"}`. Si su
+  agente está ocupado, 409 con `"ocupado"`; con `esperar`, queda en espera (`"como": "en espera"`, `"al_terminar"`) y
+  sale solo cuando termine el turno: lo suelta el evento de fin de turno (`telar agente evento`, aparte: `telar hilo
+  borradores --soltar`) y, de respaldo, el nodo cada 30 s. Sale uno por turno, el primero en espera. `no_esperar` le
+  quita la espera. Un hilo cerrado: 409 con `"cerrado": true`; si no se pudo escribir, 502 y vuelve a su lugar.
+
+Con `maquina` de otra, lo hace su nodo (pedido `borradores` por el bus, con `accion`: `ver`, `guardar`, `borrar`,
+`mandar`, `no-esperar`), con la misma respuesta y el mismo error (`codigo` y `datos`, como `ocupado`).
 
 ## `telar resultado <clave> [día] --json` — lo que una skill dejó un día
 
@@ -2422,3 +2607,102 @@ telar evento notas [AAAA-MM-DD] --json
 El id es el del evento en el calendario (el `id` de la agenda de `telar hoy --json`). El título y la
 hora van al lado para mostrar la nota aunque el id cambie. Con `en`, escribir en otra máquina que no
 responde falla (`ok: false`) en vez de dejar la nota aquí, donde nadie la vería.
+
+## Los comentarios de un archivo — `.<nombre>.marginalia.json`, `telar comentarios --json` y `/comentarios`
+
+Lo que la persona marca sobre el texto de un archivo para que un agente lo lea y trabaje en ello (telar.comentarios; en
+la página, el visor de documentos: seleccionar texto y la tecla c). El archivo **nunca se toca**: los comentarios de
+`docs/informe.md` viven al lado, en `docs/.informe.md.marginalia.json`, texto plano y versionable. La forma es la de la
+extensión de editor que la inventó, tal cual (su CLI lee lo que se comenta desde la página, y la página lo que se
+comenta en el editor); quien la escriba cumple esto:
+
+```json
+{
+  "version": 1,
+  "archivo": "informe.md",
+  "hilos": [
+    {
+      "id": "h1",
+      "estado": "abierto",
+      "ancla": { "cita": "**62%** de los encuestados", "antes": "…", "despues": "…", "inicio": 26, "fin": 52 },
+      "creado": "2026-11-23T09:00:00-03:00",
+      "comentarios": [
+        { "id": "c1", "autor": "…", "cuerpo": "Esta cifra no cuadra.", "fecha": "2026-11-23T09:00:00-03:00" }
+      ]
+    }
+  ]
+}
+```
+
+- **Un hilo** es un comentario sobre un tramo y sus respuestas, en orden. `estado`: `abierto` o `resuelto`, y resolver
+  quiere decir «está hecho». Los ids son cortos y crecen (`h1`, `h2`…; `c1`, `c2`… dentro de cada hilo), uno más que el
+  mayor: no se reusan.
+- **El ancla es la cita, no la línea**: el texto comentado tal como está en la fuente (con su formato: `**`, enlaces),
+  hasta 48 caracteres de contexto a cada lado (`antes`, `despues`) y las posiciones de cuando se ancló (`inicio`, `fin`,
+  en unidades UTF-16, como las cuenta JavaScript), que son una pista y no una verdad: solo desempatan.
+- **Volver a encontrarla** (telar.anclaje, el mismo algoritmo que la extensión): exacto (la cita aparece una vez) →
+  contexto (aparece varias: la del mismo vecindario) → normalizado (con los espacios colapsados: un párrafo
+  re-envuelto) → aproximado (el prefijo y el sufijo que sobreviven, con un parecido de bigramas de al menos 0,6) →
+  vecindario (la cita se reescribió pero lo de los lados sigue: el hueco entre ellos; con un solo lado, una marca sin
+  ancho y confianza 0,3). Si nada calza, el hilo queda **sin ancla** y se dice: no se inventa un lugar.
+- Las fechas, ISO 8601 con el desfase local, sin fracciones. Se escribe de una vez (temporal y rename), con dos
+  espacios y sin escapar lo que no es ASCII, y lo que el archivo traiga que no está aquí se conserva. Un archivo que
+  se queda sin hilos se borra. Los permisos, los de un archivo cualquiera (0644).
+
+**`telar comentarios listar [ruta] [--todos] --json`** (los abiertos bajo una carpeta, un repositorio o un archivo;
+con `--todos`, también los resueltos; con «máquina:» delante, en esa máquina por el bus):
+
+```json
+{"ruta": "docs", "maquina": "", "errores": [], "archivos": [{"ruta": "/…/docs/informe.md", "archivo": "/…/docs/informe.md",
+  "lateral": "/…/docs/.informe.md.marginalia.json", "maquina": "", "autor": "", "hecho": "", "hilos": [ … ]}]}
+```
+
+**`telar comentarios ver <archivo> --json`** y **`GET /comentarios?ruta=`** dan los de un archivo (todos):
+
+```json
+{"ruta": "docs/informe.md", "archivo": "/…/docs/informe.md", "lateral": "/…/docs/.informe.md.marginalia.json",
+ "maquina": "", "autor": "<user.name de git del repositorio del archivo>", "hecho": "",
+ "hilos": [{"id": "h1", "estado": "abierto", "cita": "**62%** de los encuestados", "antes": "…", "despues": "…",
+   "creado": "…", "anclado": true, "metodo": "exacto", "confianza": 1.0, "linea": 3, "linea_fin": 3,
+   "inicio": 26, "fin": 52, "actual": null,
+   "comentarios": [{"id": "c1", "autor": "…", "cuerpo": "…", "fecha": "…"}]}]}
+```
+
+Cada hilo va ubicado en el texto de hoy, en el orden del documento (los sin ancla al final): `metodo` (uno de los cinco),
+`confianza` (0 a 1), `linea` y `linea_fin` (desde 1), `inicio` y `fin` (UTF-16, en el texto de hoy) y `actual`, lo que
+dice hoy ese lugar si ya no es la cita. Sin ancla, `anclado: false` y todo eso en `null`.
+
+**`telar comentarios responder|resolver|reabrir <archivo>#h1 [texto] --json`** y **`POST /comentarios`** cambian; los
+dos devuelven cómo quedaron los comentarios del archivo (lo de arriba), con `hecho`, el hilo que se creó o cambió. El
+pedido de `POST` (y el de la orden, por dentro):
+
+```json
+{"ruta": "docs/informe.md", "accion": "comentar", "texto": "Esta cifra no cuadra.",
+ "inicio": 26, "fin": 52, "cita": "**62%** de los encuestados", "antes": "…", "despues": "…"}
+{"ruta": "docs/informe.md", "accion": "responder", "hilo": "h1", "texto": "Corregido."}
+{"ruta": "docs/informe.md", "accion": "resolver", "hilo": "h1", "texto": "Hecho: cita el anexo B."}
+{"ruta": "docs/informe.md", "accion": "editar", "hilo": "h1", "comentario": "c1", "texto": "…"}
+{"ruta": "docs/informe.md", "accion": "borrar", "hilo": "h1", "comentario": "c2"}
+```
+
+`accion`: `comentar` (un hilo nuevo sobre el tramo [`inicio`, `fin`) del texto de hoy, en UTF-16; con `cita`, lo que se
+vio ahí al seleccionar: si el archivo cambió desde entonces se la busca con `antes` y `despues`, y si ya no está, 409),
+`responder`, `resolver` y `reabrir` (el `texto`, si va, como respuesta), `editar` (el `cuerpo` de un comentario) y
+`borrar` (un comentario; sin `comentario`, o si era el único, el hilo entero). `autor`, quién firma; sin él, el
+`user.name` de git del repositorio del archivo (desde la orden, el hilo: `TELAR_HILO`, o `--autor`). Errores: 403 (fuera
+de lo que la página recorre: la raíz, `[repos]`, la carpeta de un hilo), 404 (no hay ese archivo, ese hilo o ese
+comentario), 409 (el texto cambió, o el archivo de al lado no se entiende y no se pisa), 413 (más de 2 MB), 422 (el
+pedido no sirve: sin texto, sin hilo, una acción que no existe).
+
+- **De otra máquina**: con «máquina:» delante (`servidor:docs/x.md`), lo hace el nodo de esa máquina, por el bus
+  (`comentarios`: `{"ruta"}` lee, `{"pedido": {…}}` cambia, `{"listar", "todos"}` lista; responde `{"ok", "comentarios"}`,
+  `{"ok", "listado"}` o `{"ok": false, "error", "codigo"}`), con sus propios límites, y el archivo de al lado queda allá.
+  Un nodo con un telar de antes no lo atiende, y se dice así.
+- **Que llegue a la otra máquina**: el archivo de al lado se commitea y se sube solo, y **solo él** (nunca otro, aunque
+  el árbol tenga cambios ajenos; como ⚙ temas, telar.temas.subir): desde la página y desde el nodo, 15 segundos después
+  del último cambio (varios comentarios seguidos, un commit); desde `telar comentarios`, al tiro (`--sin-subir`, no).
+  El mensaje: `comentarios: <archivo> (<máquina>)`. Fuera de git, o con una rama sin una de arriba, queda donde está.
+- **Su dirección**: `comentario:<archivo>#h1` (con la máquina como en un archivo: `comentario:servidor:docs/x.md#h1`).
+  `telar objeto` lo abre (lo comentado, dónde está hoy, lo respondido) y le aplica `responder`, `resolver` o `reabrir`
+  (`{"texto": …}`).
+- La skill `/comentarios` (la instala `telar agente instalar`) le dice a un agente cómo atenderlos.

@@ -55,9 +55,45 @@ class Vigia:
         self.parado = True
 
 
+class KeyNotFoundError(Exception):
+    pass
+
+
+class KeyWrongLastSequenceError(Exception):
+    pass
+
+
 class Kv:
+    """El almacén del estado, en memoria: lo que vigila el vigía (`entradas`, lo del arranque), y lo que se lee y se
+    escribe condicionado a la revisión (telar.dueno), con cada escritura en `puestos`."""
+
     def __init__(self, entradas: dict[str, dict] | None = None, falla: Exception | None = None):
         self.entradas, self.falla, self.puestos, self.vigias = dict(entradas or {}), falla, [], []
+        self.actual = {k: (1, d) for k, d in self.entradas.items()}
+        self.n = 1
+
+    async def get(self, k):
+        if k not in self.actual:
+            raise KeyNotFoundError(k)
+        rev, d = self.actual[k]
+        return SimpleNamespace(key=k, value=json.dumps(d, ensure_ascii=False).encode(), revision=rev)
+
+    async def create(self, k, v):
+        if k in self.actual:
+            raise KeyWrongLastSequenceError(k)
+        return self._poner(k, v)
+
+    async def update(self, k, v, last):
+        if self.actual.get(k, (0, None))[0] != last:
+            raise KeyWrongLastSequenceError(k)
+        return self._poner(k, v)
+
+    def _poner(self, k, v) -> int:
+        self.n += 1
+        d = json.loads(v)
+        self.actual[k] = (self.n, d)
+        self.puestos.append((k, d))
+        return self.n
 
     async def watch(self, claves, **opciones):
         if self.falla:
@@ -68,7 +104,7 @@ class Kv:
         return v
 
     async def put(self, k, v):
-        self.puestos.append((k, json.loads(v)))
+        return self._poner(k, v)
 
 
 class Js:
@@ -143,12 +179,22 @@ class AlArrancarSeSiembraLoDelBus(Prueba):
         self.assertEqual(n.publicado, {})
 
     def test_un_hilo_vivo_aqui_no_se_publica_muerto(self):
+        kv = Kv({clave(SOLAS): entrada(SOLAS, dueno="servidor", epoca=3)})
+        n = nodo({SOLAS: sin_actualizado(entrada(SOLAS))})
+        asyncio.run(n.sembrar(kv))
+        # igual a lo que ya dice el bus (con su dueño y su época, que pone el registro): no hace falta volver a ponerlo
+        self.assertEqual(vueltas(n, kv, 3), [[], [], []])
+        self.assertEqual(n.lineas, [])
+
+    def test_lo_que_escribio_un_nodo_de_antes_se_vuelve_a_escribir_una_vez_con_su_dueno(self):
+        # el bus lo tiene como lo dejó un telar de antes, sin dueño ni época: aunque aquí nada cambie, el registro tiene
+        # que decir de quién es (después del despliegue del 24-nov, 19 de 21 hilos vivos seguían sin ellos)
         kv = Kv({clave(SOLAS): entrada(SOLAS)})
         n = nodo({SOLAS: sin_actualizado(entrada(SOLAS))})
         asyncio.run(n.sembrar(kv))
-        # igual a lo que ya dice el bus: no hace falta volver a ponerlo
-        self.assertEqual(vueltas(n, kv, 3), [[], [], []])
-        self.assertEqual(n.lineas, [])
+        ((k, d),), segunda, tercera = vueltas(n, kv, 3)
+        self.assertEqual((k, d["dueno"], d["epoca"], d["vivo"]), (clave(SOLAS), "servidor", 0, True))
+        self.assertEqual((segunda, tercera), ([], []))
 
     def test_un_hilo_vivo_aqui_con_otra_ventana_se_publica_vivo(self):
         kv = Kv({clave(SOLAS): entrada(SOLAS)})

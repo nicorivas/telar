@@ -220,6 +220,12 @@ class Telar:
     #: hilo → lo anotado al dormirlo (telar.dormir): los de aquí, y los de otra máquina cuya ventana está aquí y que
     #: duermen allá (lo publica su dueño)
     dormidos: dict[str, dict] = field(default_factory=dict)
+    #: los hilos archivados aquí que el bus dice de otra máquina, con cuál (`_de_otra`): se ven en el archivo de aquí
+    #: como de allá, y retomarlos va allá (los cerrados de otra no se listan aquí: están en su foto)
+    de_otra: dict[str, str] = field(default_factory=dict)
+    #: hilo → cuántos borradores le guardó la persona (telar.borradores): los de aquí, y de uno de otra máquina los que
+    #: publica su dueño
+    borradores: dict[str, int] = field(default_factory=dict)
 
     def por_nombre(self, nombre: str) -> Hilo | None:
         return next((h for h in self.hilos if h.nombre == nombre), None)
@@ -269,6 +275,31 @@ def vistos_de_otras(config, vistos: dict) -> dict:
             salida[h["nombre"]] = mod_estado.mas_nuevo(salida.get(h["nombre"]), visto)
     return salida
 
+def _de_otra(config, est, sesiones: dict | None = None) -> dict[str, str]:
+    """Los hilos que el bus dice que son de otra máquina (su dueño, telar.dueno), de lo que dejó el nodo en
+    `ajenos.json`, con cuál: los que aquí no tienen conversación, o tienen la misma que dice el registro. Uno que aquí
+    tiene otra conversación es otro hilo con el mismo nombre, y es de aquí. Vacío sin bus o sin nodo."""
+    try:
+        from telar import bus as mod_bus
+
+        if not mod_bus.hay_bus(config):
+            return {}
+        yo = mod_bus.maquina(config)
+        sesiones = est.sesiones() if sesiones is None else sesiones
+        salida = {}
+        for h, d in est.ajenos().items():
+            maquina = d.get("dueno") or d.get("maquina")
+            if maquina in ("", yo) or not isinstance(maquina, str):
+                continue
+            aqui = list(sesiones.get(h) or ())
+            if aqui and (d.get("conversacion") or "") not in aqui:
+                continue
+            salida[h] = maquina
+        return salida
+    except Exception:  # noqa: BLE001 - sin poder leerlo, la lista de siempre
+        return {}
+
+
 def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
     """Arma el telar: multiplexor + estado + documentos.
 
@@ -300,6 +331,7 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
             aviso = aviso or f"«{viejo}» ahora se llama «{nuevo}»: moví su vínculo y su estado"
 
     vivos = frozenset(h.nombre for h in crudos)
+    de_otra: dict[str, str] = {}
     # una sola lectura y bajo candado: si no, se dibuja media lista de antes y media de
     # después mientras otra sesión escribe. Para eso existe `Estado.foto`.
     foto = est.foto(tope=config.intervalos.foco_maximo)
@@ -311,7 +343,13 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         # un hilo que telar conoce es el que tiene carpeta, el archivado y también el que
         # tiene una conversación anotada: si no, una conversación traída de otra parte
         # queda guardada y sin forma de verla ni de retomarla desde la lista
-        conocidos = sorted((set(vinculos) | set(archivados) | set(foto["sesiones"])) - vivos)
+        conocidos = (set(vinculos) | set(archivados) | set(foto["sesiones"])) - vivos
+        # uno que se fue a otra máquina (telar.dueno: el bus dice que es de allá, con su conversación) no es un hilo
+        # cerrado de aquí: se lo ve como de allá (en su foto), y retomarlo aquí lo bifurcaría. Uno archivado sigue en el
+        # archivo de aquí (la foto de allá no trae archivados), marcado como de allá: retomarlo va allá
+        de_otra = {h: m for h, m in _de_otra(config, est, foto["sesiones"]).items() if h in conocidos}
+        conocidos = sorted(conocidos - (set(de_otra) - set(archivados)))
+        de_otra = {h: m for h, m in de_otra.items() if h in archivados}
         # sin multiplexor, el id es el nombre: es la única llave que hay
         crudos += [Hilo(id=nombre, nombre=nombre) for nombre in conocidos]
 
@@ -343,6 +381,10 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
                 dormidos.setdefault(nombre, {"desde": "", "maquina": ajeno.get("maquina", "")})
     except Exception:  # noqa: BLE001 - sin poder leerlo, nadie duerme
         dormidos = {}
+    try:
+        borradores = est.cuentas_borradores()
+    except Exception:  # noqa: BLE001 - sin poder leerlos, la fila no los dice
+        borradores = {}
     hilos = mod_estado.vestir(crudos, raiz=config.raiz, **foto)
 
     unidades: dict[str, tuple[Arquetipo, Path]] = {}
@@ -366,6 +408,8 @@ def tejer(ctx, *, con_ficha: bool = True, todos: bool = True) -> Telar:
         abierto_por=abierto_por,
         sueltos=sueltos,
         dormidos=dormidos,
+        de_otra=de_otra,
+        borradores=borradores,
     )
 
 
@@ -537,7 +581,7 @@ def hilo_o_nombre(tel: Telar, referencia: str) -> tuple[Hilo | None, str]:
         return exacto, ""
     # a propósito NO se busca por prefijo ni por subcadena: esto lo usan las órdenes que
     # escriben, y un nombre nuevo que resulta ser parte de otro le cambiaría la carpeta al
-    # hilo equivocado («Gobernanza» calzaba con «banco-gobernanza-ia»). Para navegar
+    # hilo equivocado («Vitrina» calzaba con «tienda-vitrina-nueva»). Para navegar
     # —`ir`, `ficha`— sí vale aproximar: ahí no se anota nada.
     return Hilo(id=referencia, nombre=referencia), f"«{referencia}» no estaba en la lista"
 
@@ -715,6 +759,9 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "tiempo": round(hilo.tiempo, 1),
         "sesiones": list(hilo.sesiones),
         "remoto": hilo.remoto,
+        # uno archivado aquí que el bus dice de otra máquina (su conversación vive allá): cuál. Retomarlo lo abre allá, o
+        # con ella apagada lo sigue aquí desde la copia de aquí (telar.seguir); "" si es de aquí
+        "dueno": getattr(tel, "de_otra", {}).get(hilo.nombre, ""),
         # su rama propia, si es un hijo que trabaja en su worktree (telar.ramas): {rama, base, ruta}; null si no
         "rama": _rama(tel, hilo.nombre),
         # si espera a la persona, qué pide y de qué clase («permiso», «pregunta», «confiar»: telar.confiar), si se
@@ -723,6 +770,8 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         # si duerme (telar.dormir): su agente se cerró por inactivo y su ventana espera, en su lugar; abrirlo o
         # escribirle lo despierta. {desde, conversacion}; null si no duerme
         "dormido": _dormido(tel, hilo),
+        # cuántos próximos prompts le guardó la persona (telar.borradores): la fila lo dice, tenue
+        "borradores": getattr(tel, "borradores", {}).get(hilo.nombre, 0),
     }
     if con_ficha:
         cuerpo["ficha"] = json_ficha(hilo.ficha, tel.raiz)

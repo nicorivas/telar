@@ -50,12 +50,9 @@ body.catalogo {
   .cat-lista a.n2 { padding-left: calc(var(--h-2) + 4ch); }
   .cat-cuerpo > main { flex: 1 1 auto; min-width: 0; }
 
-  /* las pestañas de un componente: estados, anatomía; la elegida subrayada con el acento, la que falta apagada */
-  .cat-pestanas { display: flex; gap: var(--h-2); margin: 0 0 var(--e-2); border-bottom: var(--borde); }
-  .cat-pestanas > * { padding: 0 0 var(--e-1); color: var(--texto-tenue); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .cat-pestanas a:hover { color: var(--texto); text-decoration: none; }
-  .cat-pestanas a.si { color: var(--acento); border-bottom-color: var(--acento); }
-  .cat-pestanas .falta { color: var(--texto-apagado); cursor: default; }
+  /* las pestañas de un componente (estados, anatomía): las de la página (componentes/pestanas.ts), con el aire de abajo */
+  .cat-pestanas { margin: 0 calc(-1 * var(--h-2)) var(--e-2); --pestanas-margen: var(--h-2); }
+  .cat-pestanas a:hover { text-decoration: none; }
 
   main { padding: 0 var(--h-2) 3lh; }
   h2 { margin: var(--e-3) 0 var(--e-1); font-size: 1em; color: var(--titulo); }

@@ -12,7 +12,9 @@ del otro. (Antes se empujaba por ssh, `telar espejo publicar`; el bus lo reempla
 
 La foto lleva lo que sirve para *mirar* —nombre, semáforo, carpeta, prioridad, tiempo y el
 título del documento del hilo— y nada de lo que hay dentro: ni conversaciones ni el estado del
-proyecto (que suele traer lo que no se cuenta afuera). Es de solo lectura: ver un hilo del
+proyecto (que suele traer lo que no se cuenta afuera). De la conversación de cada hilo, solo
+cuánto pesa y cuándo creció por última vez (`conv_bytes`, `conv_crecio`): con eso otra máquina
+que tiene una copia vieja dice cuánto le falta antes de seguirlo con esta apagada (telar.seguir). Es de solo lectura: ver un hilo del
 laptop no lo toca, y entrar a su terminal no es posible desde aquí (su agente vive allá).
 
 Una foto es **vigente** mientras tenga menos de `VIGENTE` segundos; pasado eso el laptop se
@@ -40,8 +42,32 @@ NOMBRE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 
 #: qué campos de cada hilo viajan (el resto —ruta absoluta, sesiones, conversaciones— se queda allá)
 CAMPOS = ("nombre", "atencion", "vivo", "activo", "prioridad", "tiempo", "visto", "relativa", "arquetipo", "remoto",
-          "publico", "etiquetas", "padre", "sin_ver", "atencion_desde", "agente", "dormido")
+          "publico", "etiquetas", "padre", "sin_ver", "atencion_desde", "agente", "dormido", "conv_bytes", "conv_crecio",
+          "borradores")
 
+
+def _conversacion(sesiones) -> dict:
+    """Cuánto pesa la conversación principal de un hilo aquí y cuándo creció por última vez, sin nada de lo que dice:
+    {conv_bytes, conv_crecio}. {} si no tiene, o no está en esta máquina."""
+    from telar import rutas
+
+    sid = sesiones[0] if isinstance(sesiones, (list, tuple)) and sesiones and isinstance(sesiones[0], str) else ""
+    ruta = rutas.conversacion(sid) if sid else None
+    try:
+        st = ruta.stat() if ruta is not None else None
+    except OSError:
+        st = None
+    if st is None:
+        return {}
+    return {"conv_bytes": int(st.st_size),
+            "conv_crecio": datetime.fromtimestamp(st.st_mtime).astimezone().isoformat(timespec="seconds")}
+
+
+#: de cada archivado, lo que viaja (`archivados`, aparte de `hilos`): lo que la barra de otra máquina necesita para
+#: listarlo en su ARCHIVO, con su mundo, y retomarlo allá. Ni su conversación ni su ruta
+CAMPOS_ARCHIVADO = ("nombre", "relativa", "etiquetas", "padre", "agente", "prioridad", "visto", "actividad")
+#: lo más que viaja de archivados (los más recientes primero): un telar con años de archivo no hace crecer sin fin la foto
+MAX_ARCHIVADOS = 2000
 
 #: un agente residente en la foto: su carpeta (`secretaria`), su nombre y el mundo que declara su agente.toml ("" ninguno).
 #: Viaja para que las otras máquinas lo vean, con su mundo, aunque su carpeta todavía no les llegue (una raíz atrasada)
@@ -88,20 +114,26 @@ def agentes_de(config) -> list[dict]:
 
 def foto(tel, *, maquina: str, version_telar: str = "", web: str = "", mirando: list[dict] | None = None,
          vista: str = "", agentes: list[dict] | None = None) -> dict:
-    """La foto de los hilos de este telar, lista para viajar. Sin los archivados. `web`: la dirección de su
+    """La foto de los hilos de este telar, lista para viajar. Los archivados, aparte (`archivados`), con poco: los suyos,
+    no los que aquí se archivaron siendo de otra máquina (`dueno`) ni las ventanas que miran a otra. `web`: la dirección de su
     página, si la sirve (las otras máquinas le reenvían por ahí las terminales de sus hilos). `mirando`: lo que se mira
     aquí, [{maquina, hilo}] (telar.dormir: la máquina de cada uno no lo duerme); None, que no se sabe (no va). `vista`:
     cómo se llama esta máquina en las sesiones con que mira las ventanas de otra (`ver-<n>-<vista>`). `agentes`: sus
     agentes residentes (`agentes_de`); None, no van."""
     from telar.ordenes import _comun
 
-    hilos = []
+    hilos, archivados = [], []
     for h in tel.hilos:
         if h.archivado:
+            crudo = _comun.json_hilo(h, tel, con_ficha=False)
+            if not crudo.get("remoto") and not crudo.get("dueno"):
+                archivados.append({k: crudo[k] for k in CAMPOS_ARCHIVADO if crudo.get(k) or k == "nombre"})
             continue
         crudo = _comun.json_hilo(h, tel, con_ficha=True)
         hilo = {k: crudo.get(k) for k in CAMPOS}
         hilo["dormido"] = bool(crudo.get("dormido"))
+        # de su conversación, solo el largo y cuándo creció (otra máquina con una copia dice cuánto le falta)
+        hilo.update({"conv_bytes": None, "conv_crecio": None, **_conversacion(crudo.get("sesiones"))})
         ficha = crudo.get("ficha") or {}
         hilo["resumen"] = ficha.get("etiqueta") or ficha.get("titulo") or ""
         hilos.append(hilo)
@@ -109,6 +141,7 @@ def foto(tel, *, maquina: str, version_telar: str = "", web: str = "", mirando: 
         "version": VERSION, "maquina": maquina, "telar": version_telar,
         "publicado": datetime.now().astimezone().isoformat(timespec="seconds"),
         "sesion": getattr(tel, "sesion", ""), "web": web, "hilos": hilos,
+        "archivados": sorted(archivados, key=lambda a: str(a.get("actividad") or a.get("visto") or ""), reverse=True)[:MAX_ARCHIVADOS],
     }
     if mirando is not None:
         salida["mirando"] = [{"maquina": str(m["maquina"]), "hilo": str(m["hilo"])} for m in mirando]
@@ -117,6 +150,19 @@ def foto(tel, *, maquina: str, version_telar: str = "", web: str = "", mirando: 
     if agentes is not None:
         salida["agentes"] = agentes
     return salida
+
+
+def _archivado_limpio(a: dict) -> dict:
+    """Un archivado de una foto, con solo lo que se sabe leer: textos, etiquetas de texto y una prioridad entera."""
+    limpio: dict = {"nombre": a["nombre"][:200]}
+    for k in ("relativa", "padre", "agente", "visto", "actividad"):
+        if isinstance(a.get(k), str):
+            limpio[k] = a[k][:400]
+    if isinstance(a.get("etiquetas"), list):
+        limpio["etiquetas"] = [x for x in a["etiquetas"] if isinstance(x, str)][:20]
+    if isinstance(a.get("prioridad"), int) and not isinstance(a.get("prioridad"), bool):
+        limpio["prioridad"] = a["prioridad"]
+    return limpio
 
 
 def validar(datos: object, de: str) -> dict:
@@ -136,12 +182,18 @@ def validar(datos: object, de: str) -> dict:
             raise ErrorDeEspejo("un hilo de la foto no tiene nombre")
         limpio = {k: h.get(k) for k in (*CAMPOS, "resumen") if k in h}
         for k in ("nombre", "atencion", "relativa", "arquetipo", "remoto", "resumen", "visto", "padre", "atencion_desde",
-                  "agente"):
+                  "agente", "conv_crecio"):
             if limpio.get(k) is not None and not isinstance(limpio[k], str):
                 raise ErrorDeEspejo(f"el campo «{k}» de «{h['nombre']}» no es texto")
         for k in ("sin_ver", "dormido"):
             if k in limpio and not isinstance(limpio[k], bool):
                 del limpio[k]
+        if "borradores" in limpio and (isinstance(limpio["borradores"], bool) or not isinstance(limpio["borradores"], int)
+                                       or not 0 <= limpio["borradores"] <= 1000):
+            del limpio["borradores"]
+        if "conv_bytes" in limpio and (isinstance(limpio["conv_bytes"], bool) or not isinstance(limpio["conv_bytes"], int)
+                                       or limpio["conv_bytes"] < 0):
+            limpio["conv_bytes"] = None
         if "etiquetas" in limpio:
             e = limpio["etiquetas"]
             limpio["etiquetas"] = [x for x in e if isinstance(x, str)][:20] if isinstance(e, list) else []
@@ -151,6 +203,10 @@ def validar(datos: object, de: str) -> dict:
         "publicado": str(datos.get("publicado", ""))[:40], "sesion": str(datos.get("sesion", ""))[:60],
         "web": datos["web"] if isinstance(datos.get("web"), str) and WEB.match(datos["web"]) else "", "hilos": hilos,
     }
+    # sus archivados (lo poco que viaja de cada uno); una foto de un telar de antes no los trae
+    if isinstance(datos.get("archivados"), list):
+        limpia["archivados"] = [_archivado_limpio(a) for a in datos["archivados"][:MAX_ARCHIVADOS]
+                                if isinstance(a, dict) and isinstance(a.get("nombre"), str) and a["nombre"]]
     # lo que se mira allá (telar.dormir): solo pares de textos; una foto de un telar de antes no lo trae
     if isinstance(datos.get("mirando"), list):
         limpia["mirando"] = [{"maquina": m["maquina"][:64], "hilo": m["hilo"][:200]} for m in datos["mirando"][:500]
@@ -221,7 +277,7 @@ def leer_todos(config, ahora: float | None = None) -> list[dict]:
             "recibido": recibido, "publicado": datos.get("publicado", ""), "telar": datos.get("telar", ""),
             "sesion": datos.get("sesion", ""), "web": datos.get("web", ""), "hilos": datos.get("hilos", []),
             # lo que se mira allá y cómo se llama en las sesiones con que mira (telar.dormir); sin ellas, no vienen
-            **{k: datos[k] for k in ("mirando", "vista", "agentes") if k in datos},
+            **{k: datos[k] for k in ("mirando", "vista", "agentes", "archivados") if k in datos},
         })
     return salida
 

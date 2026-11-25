@@ -21,6 +21,8 @@ Cada cosa en su archivo, casi todos JSON de una sola forma (`hilo` → valor):
     esperas.json      hilo → {"pide": …, "clase": …, "cuando": ISO}: lo que su agente dijo al pedir algo
                       (un dato de más: roto, cuenta como vacío; ver DE_MAS)
     sesiones.json     hilo → [id de conversación, …], la principal primero
+    borradores.json   hilo → [{id, texto, creado, cambiado, al_terminar}]: los próximos prompts que la persona guarda
+                      para mandarle después (telar.borradores)
     ajenos.json       hilo de otra máquina → lo último que su dueño publicó en el bus
     paneles.json      panel del multiplexor → conversación que corre ahí ahora
     orden             una palabra: cómo se ordena la lista de hilos
@@ -113,6 +115,9 @@ ARCHIVOS = {
     "paneles": "paneles.json",
     "ids": "ids.json",
     "remotos": "remotos.json",
+    #: hilo → los próximos prompts que la persona le guarda, en orden (telar.borradores): [{id, texto, creado, cambiado,
+    #: al_terminar}]. Lo escribió ella, así que olvidar el hilo no los borra; viajan con él en la mudanza
+    "borradores": "borradores.json",
     #: hilo → su rama propia, si es un hijo que trabaja en su worktree (telar.ramas): ruta, carpeta, rama, base, repo
     "ramas": "ramas.json",
     #: hilo → el esfuerzo con que arranca su agente (`telar hilo hijo --esfuerzo`), al abrirlo y al retomarlo
@@ -754,6 +759,16 @@ class Estado:
                     salida.pop(hilo, None)
         return salida
 
+    def padres_efectivos(self) -> dict[str, str]:
+        """hilo → del que cuelga, como lo dice `padre`: el que se le puso o, si no, el que lo abrió (abiertos_por),
+        salvo los soltados. Es lo que publica el dueño en el registro: así la ventana de otra máquina que lo mira cuelga
+        del mismo padre que aquí (antes viajaba solo el puesto a mano, y la del laptop quedaba sin padre)."""
+        salida, sueltos = dict(self.padres()), self.sueltos()
+        for hilo, r in self.abiertos_por().items():
+            if hilo not in salida and hilo not in sueltos:
+                salida[hilo] = str(r["por"])
+        return salida
+
     def sueltos(self) -> set[str]:
         """Los hilos que se soltaron a mano (`telar hilo padre ninguno`): no cuelgan ni del que los abrió."""
         return {h for h, p in self._leer("padres", {}).items() if isinstance(h, str) and p == ""}
@@ -789,6 +804,126 @@ class Estado:
         abiertos = {h for h, r in self.abiertos_por().items()
                     if r.get("por") == padre and h not in explicitos and h not in sueltos}
         return sorted({h for h, p in explicitos.items() if p == padre} | abiertos)
+
+    # ── los borradores: los próximos prompts de la persona (telar.borradores) ─────
+
+    def borradores(self, hilo: str) -> list[dict]:
+        """Los borradores de un hilo, en orden: [{id, texto, creado, cambiado, al_terminar}]. Los que no tienen esa forma
+        (un archivo escrito a mano) no se ven."""
+        lista = self._leer("borradores", {}).get(hilo)
+        return [dict(b) for b in lista if _es_borrador(b)] if isinstance(lista, list) else []
+
+    def todos_los_borradores(self) -> dict[str, list[dict]]:
+        """hilo → sus borradores, solo los que tienen alguno."""
+        salida = {}
+        for hilo, lista in self._leer("borradores", {}).items():
+            if isinstance(hilo, str) and isinstance(lista, list) and (buenos := [dict(b) for b in lista if _es_borrador(b)]):
+                salida[hilo] = buenos
+        return salida
+
+    def cuentas_borradores(self) -> dict[str, int]:
+        """hilo → cuántos borradores tiene: los de aquí y, de un hilo de otra máquina, los que publica su dueño (vale lo
+        de allá: lo de aquí de uno que se llevó es una copia vieja)."""
+        salida = {h: len(v) for h, v in self.todos_los_borradores().items()}
+        for hilo, r in self.ajenos().items():
+            n = r.get("borradores")
+            if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+                salida[hilo] = n
+            else:
+                salida.pop(hilo, None)
+        return salida
+
+    def guardar_borrador(self, hilo: str, texto: str, id: str = "", *, cuando: datetime | None = None) -> dict:
+        """Escribe un borrador: con `id`, el que ya estaba (su texto, en su lugar); sin él, uno nuevo al final. Devuelve
+        el borrador como quedó. KeyError si el `id` no es de ese hilo (se mandó o se borró en otra parte)."""
+        import secrets
+
+        marca = (cuando or datetime.now()).isoformat(timespec="seconds")
+        hecho: list[dict] = []
+
+        def cambio(d):
+            lista = [b for b in d.get(hilo, []) if _es_borrador(b)] if isinstance(d.get(hilo), list) else []
+            if id:
+                b = next((x for x in lista if x["id"] == id), None)
+                if b is None:
+                    raise KeyError(id)
+                b.update(texto=texto, cambiado=marca)
+            else:
+                usados = {x["id"] for x in lista}
+                nuevo = f"b{secrets.token_hex(3)}"
+                while nuevo in usados:
+                    nuevo = f"b{secrets.token_hex(3)}"
+                b = {"id": nuevo, "texto": texto, "creado": marca, "cambiado": marca}
+                lista.append(b)
+            d[hilo] = lista
+            hecho.append(dict(b))
+
+        self._actualizar("borradores", cambio, {})
+        return hecho[0]
+
+    def quitar_borrador(self, hilo: str, id: str) -> dict | None:
+        """Saca un borrador de la lista (se mandó o se borró). Devuelve el que era, o None si ya no estaba."""
+        quitado: list[dict] = []
+
+        def cambio(d):
+            lista = d.get(hilo)
+            if not isinstance(lista, list):
+                return
+            for b in list(lista):
+                if _es_borrador(b) and b["id"] == id:
+                    lista.remove(b)
+                    quitado.append(dict(b))
+            if not lista:
+                d.pop(hilo, None)
+
+        self._actualizar("borradores", cambio, {})
+        return quitado[0] if quitado else None
+
+    def esperar_borrador(self, hilo: str, id: str, como: str) -> dict:
+        """Marca un borrador para que salga cuando el agente termine su turno: `como` es `escribir` (dejarlo en su entrada)
+        o `enviar` (y apretar ⏎); "" le quita la espera. Devuelve el borrador. KeyError si no está."""
+        hecho: list[dict] = []
+
+        def cambio(d):
+            lista = d.get(hilo) if isinstance(d.get(hilo), list) else []
+            b = next((x for x in lista if _es_borrador(x) and x["id"] == id), None)
+            if b is None:
+                raise KeyError(id)
+            if como:
+                b["al_terminar"] = como
+            else:
+                b.pop("al_terminar", None)
+            hecho.append(dict(b))
+
+        self._actualizar("borradores", cambio, {})
+        return hecho[0]
+
+    def tomar_borrador_en_espera(self, hilo: str) -> dict | None:
+        """Saca de la lista el primer borrador que espera el fin del turno, y lo devuelve (None si no hay). Es lo que se
+        hace bajo el candado antes de escribirlo: dos que lo intentan a la vez no lo escriben dos veces."""
+        tomado: list[dict] = []
+
+        def cambio(d):
+            lista = d.get(hilo)
+            if not isinstance(lista, list):
+                return
+            b = next((x for x in lista if _es_borrador(x) and x.get("al_terminar")), None)
+            if b is None:
+                return
+            lista.remove(b)
+            tomado.append(dict(b))
+            if not lista:
+                d.pop(hilo, None)
+
+        self._actualizar("borradores", cambio, {})
+        return tomado[0] if tomado else None
+
+    def poner_borradores(self, hilo: str, lista: Iterable[Mapping]) -> list[dict]:
+        """Reemplaza los borradores de un hilo por estos (los que trae en la mudanza); vacío los quita. Los que no tienen
+        la forma de un borrador se descartan. Devuelve los que quedaron."""
+        buenos = [dict(b) for b in lista if _es_borrador(b)]
+        self._actualizar("borradores", lambda d: d.__setitem__(hilo, buenos) if buenos else d.pop(hilo, None), {})
+        return buenos
 
     # ── la rama propia de un hijo (telar.ramas) ─────────────────────────────────
 
@@ -1314,7 +1449,7 @@ class Estado:
         # está indexado por panel, no por hilo, así que un renombre no lo alcanza.
         with self.bajo_candado():
             for nombre in ("vinculos", "prioridades", "atencion", "esperas", "actividad", "vivos", "remotos", "de_agente",
-                           "abierto_por", "etiquetas", "ramas", "esfuerzos", "dormidos"):
+                           "abierto_por", "etiquetas", "ramas", "esfuerzos", "dormidos", "borradores"):
                 self._actualizar(nombre, mover, {})
             self._actualizar("sesiones", mover_sesiones, {})
             # el padre: su propia entrada, y la de sus hijos, que lo nombran
@@ -1382,6 +1517,11 @@ def _fecha(valor: object) -> datetime | None:
         return datetime.fromisoformat(valor)
     except ValueError:
         return None
+
+
+def _es_borrador(b: object) -> bool:
+    """Si tiene la forma de un borrador: un id y un texto."""
+    return isinstance(b, Mapping) and isinstance(b.get("id"), str) and bool(b["id"]) and isinstance(b.get("texto"), str)
 
 
 def _ids(valor: object) -> tuple[str, ...]:

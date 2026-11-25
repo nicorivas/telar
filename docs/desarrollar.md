@@ -33,6 +33,15 @@ Las rutas y direcciones que se vuelven enlaces en la terminal, también: `npm ru
 Un nombre suelto en la terminal (`original.md` debajo de «En `personal/…/x/`:»): las carpetas que nombra su mensaje, lo
 que se le pide al backend (`/api/archivos/resolver`), los candidatos que ofrece el visor y una ruta con tilde,
 `npm run prueba:nombre-suelto`; dónde lo busca el backend, `pruebas/test_resolver.py`.
+El visor de documentos (la ventana que abre un archivo, `web/carpeta.ts`: la primera fila con el nombre y la ✕, una
+carpeta como su lista, un .html con «código», uno de otra máquina) y cómo se ancla un comentario (`web/fuente.ts`: de lo
+seleccionado sobre el markdown dibujado al texto fuente y de vuelta, con un .md lleno de negritas, enlaces, listas, una
+tabla, código y una frase repetida), y con un DOM (happy-dom) la barra de la derecha del visor (`web/documento-lado.ts`:
+plegar y desplegar, las pestañas, el número de cada comentario en el texto y en la barra, el clic en los dos sentidos,
+comentar desde la selección, con qué abre, el modo foco y el teléfono): `npm run prueba:documento`. Del lado de telar (el ancla y sus cinco caminos, el
+archivo de al lado byte a byte, la API, los límites, la otra máquina por el bus, el commit de solo ese archivo, `telar
+comentarios` y, si su CLI está instalado, que la extensión de editor lea lo mismo): `pruebas/test_comentarios.py`. En
+la página, `python3 scripts/medir.py arch:<ruta> --captura` lo fotografía abierto.
 Y en lo que ya se dibujó (una respuesta, la vista de un objeto), que se vuelve a enlazar cuando llegan los tipos de los
 módulos: `npm run prueba:enlazar`. El ítem:
 `npm run prueba:componentes` (también que la lámina nombre todas sus piezas, y la densidad «auto»; y las iniciativas: su
@@ -47,10 +56,22 @@ para que se vea lo que está en curso); y en la página, con datos inventados y 
 ficha, `decision`, `aprobar` y `sin-contexto`, que leen su tarea de mentira al abrirse, con la barra de la tarea en el
 encabezado: su fecha abre la lista de siempre y queda en la tarea de mentira, y lo demás dice qué haría; con `true` de
 segundo argumento, el primer envío responde que cambió mientras se miraba).
+Las notas del hilo que se ve (`web/borradores.ts`, la pestaña «notas» de su barra, `web/lado.ts`; en el teléfono, en una
+ventana): la pestaña con su ícono y su cuenta junto a las otras hojas (la barra en todo hilo), ⌥B que la abre desde otra
+hoja o con la barra plegada y pone el foco en la caja, la pestaña en el «⋯» cuando no cabe y elegida desde su menú, la
+lista en orden con sus acciones, lo escrito que se guarda solo (también con el servidor lento, «nuevo» mientras se crea el
+de antes, y al cambiar de hilo), ⌥⏎ sin ⏎ y ⌘⏎ enviado, el agente ocupado que pregunta si esperar, borrar con ⌘⌫, las
+teclas que no salen de la caja, el punto en su pestaña (y en el «⋯») cuando terminó y la ventana del teléfono, con una API
+de mentira:
+`npm run prueba:borradores`; el ícono y la cuenta en la fila del hilo, en `npm run prueba:barra`. Del lado de telar (el
+estado, mandar sin ⏎, con ⏎ y en espera del fin del turno, la API, la otra máquina por el bus, la CLI y la mudanza):
+`pruebas/test_borradores.py`.
 El orden de las pestañas del dashboard (lo que `[dashboard] orden` no nombra, dónde va): `npm run prueba:pestanas`.
 Quién se ve en la barra de hilos (`vistas/hilos-familia.ts`, y la barra de verdad dibujada en Node con hilos de mentira):
 que el hilo que se mira suba con su familia (sus padres y sus descendientes, de aquí y de otras máquinas; el agente de un
-hijo suyo) aunque el mundo o el modo lo dejen afuera, que en «de personal» cada hijo vaya bajo su padre, y que un agente
+hijo suyo) aunque el mundo o el modo lo dejen afuera, que en «de personal» cada hijo vaya bajo su padre, que el «↳» y la
+sangría vayan solo bajo un padre a la vista (bajo su agente, en AGENTES, si es un agente; suelto si su padre está
+archivado, es de otro mundo o de otra máquina sin ventana aquí), y que un agente
 sin hilo abierto vaya por el mundo de su carpeta; y que el único buscador, el de HILOS, filtre también el archivo (se
 abre con solo lo que calza y vuelve a como estaba al borrar): `npm run prueba:barra`.
 Qué agentes residentes se ven en un modo (`agentes`: vacío, todos; «-», ninguno) y lo que deja un clic en la grilla de
@@ -75,9 +96,12 @@ respaldo, el commit de solo ese archivo y que otra máquina rija igual), `prueba
 La ventana de mundos (componentes/mundos-ventana.ts, web/mundos-ventana.ts) y su arte (componentes/arte.ts; lo vivo,
 web/arte-vivo.ts): el contrato del arte y cada uno de fábrica (el lienzo exacto, el mismo cuadro en el mismo instante, más
 rápido encima), un arte escrito como archivo, los de la raíz que tapan a uno de fábrica, qué arte lleva cada mundo, lo que
-dicen las tarjetas, las teclas (flechas, números, ⏎, h, e, ⎋, ⌘M que abre y cierra), elegir y volver al horario, «reducir
-movimiento» sin ningún cuadro pedido, ningún `requestAnimationFrame` con la ventana cerrada o la pestaña escondida, y un arte
-que llega con la ventana abierta, con un DOM y un `requestAnimationFrame` de mentira: `npm run prueba:mundos-ventana`. Lo que
+dicen las tarjetas, las filas (hasta cuatro en una; más, de a tres hacia abajo), las teclas (flechas, números también desde
+el 10, ⏎, h, e, ⎋, ⌘M que abre y cierra), la tarjeta del foco siempre a la vista, elegir y volver al horario, el efecto de
+hover (la ola, sobre cualquier arte, y el propio de uno que lo declara), «reducir movimiento» sin ningún cuadro pedido ni
+ola, ningún `requestAnimationFrame` con la ventana cerrada, la pestaña escondida o ningún arte a la vista, y un arte
+que llega con la ventana abierta, con un DOM, un `requestAnimationFrame` y un `IntersectionObserver` de mentira:
+`npm run prueba:mundos-ventana`. Lo que
 entrega telar (`[mundos.<n>] arte`, `GET /arte`), `pruebas/test_arte.py`. En la página, `window.telar.mundos()` la abre (o la
 cierra) como ⌘M; cómo hacer un arte, [arte.md](arte.md).
 Que una tarea marcada hecha no vuelva (el día que se ve y sus relecturas, `vistas/dashboard/dia.ts`): lo leído antes de
@@ -91,8 +115,58 @@ pida (`{ destruye: true }` en `ui.aviso`) y esté en el catastro del catálogo (
 sin tocar nada, `window.telar.ensayoConfirmar('borrar')` en la consola (también `archivar`, `descartar`, `traer`, con
 contenido largo, y `permiso`, con tres botones) abre una de verdad y dice qué se apretó; `ensayoMudanza('servidor',
 'pregunta')`, la mudanza en su pregunta.
+El portapapeles (`web/portapapeles.ts`, todo lo que la página copia): que el botón del aviso copie en su mismo clic o ⏎
+(`enElClic` de `preguntar`) y no después del `await`, el texto exacto, el foco de vuelta, y la escritura armada en el gesto
+(un ClipboardItem con promesa) que escribe lo que llega después o nada, con un navegador de mentira que hace lo que Safari:
+`npm run prueba:portapapeles`. Lo mismo en WebKit, Chrome y Firefox de verdad (Playwright), por http y por https, con un
+WebSocket real que devuelve lo seleccionado como el OSC 52: `npm run prueba:copiar-webkit` (necesita
+`npx playwright-core install webkit chromium-headless-shell firefox`; sin ellos se salta, y no corre en CI). En macOS
+guarda el portapapeles y lo devuelve al terminar. El WebSocket de mentira de Playwright (`routeWebSocket`) no sirve para
+esto: sus mensajes llegan como un gesto, y en WebKit copia lo que Safari no. `playwright-core` va fijo en la 1.58.0: el WebKit de la
+1.65 se cae al abrir en macOS 26.0.
+Llevar un hilo a otra máquina desde su menú (`web/llevar-destinos.ts`): una fila por máquina, de `[remotos]` y del bus,
+con su nombre; la que no contesta, apagada y con su porqué; un hilo de otra máquina, traerlo aquí o que la suya lo lleve a
+una tercera; y en el menú (happy-dom) que una fila apagada no se elija ni con un clic ni con ⏎ y que se encuentre
+escribiendo la máquina o «pasar»; y adónde sigue la página a un hilo que se fue (`web/donde-vive.ts`: abierto aquí, en
+otra máquina, en camino, o su ventana de aquí reabriéndose, sin decir «retómalo» de uno abierto en otra parte; y que solo
+siga al que se vio abierto donde se lo miraba; y lo que dice el panel de la mudanza en cada paso, `web/mudanza-texto.ts`):
+`npm run prueba:llevar`. Del lado de telar (que aquí no se cierre ni se archive nada hasta que allá lo abrió, el
+destino caído o sin respuesta, esperar el turno del agente venga de donde venga la orden, el agente que se lleva a sí
+mismo, traer aparte con su progreso por el bus), `pruebas/test_servidores_y_mudanza.py`; la copia de a pedazos (solo
+lo que falta, su carpeta `<sid>/`, un corte que se retoma, la copia de allá que se siguió por su lado, lo que allá no
+acepta), `pruebas/test_replica.py`, con las dos máquinas en un proceso; lo que no es la conversación (lo sin subir que
+es del hilo y lo que no, subir solo eso, el repositorio de allá al día, su registro y su casilla), `pruebas/test_sin_subir.py`,
+con repositorios de git de verdad; el dueño de cada hilo y su época (lo que publica el nodo, condicionado; ceder,
+tomar y echarse atrás, también a la vez; lo que el nodo arregla de un traspaso a medias), `pruebas/test_dueno.py`, con un
+almacén del bus en memoria que tiene revisiones (`comun.KvDeMentira`). Seguir aquí con la dueña apagada (la copia, el aviso de lo que falta,
+tomarlo con la época, la que vuelve y cede sola, el aviso de la franja) y los archivados de otra máquina (se ven como de
+allá, retomarlos va allá), `pruebas/test_seguir.py`; en la página, la fila «seguir aquí» en `prueba:llevar` y su panel
+en `prueba:mudanza` (`window.telar.ensayoSeguir()` lo muestra sin tocar nada). El panel cuando hay algo que elegir (lo que muestra, «subir y llevar», «llevar
+igual», no llevarlo, traer con el progreso de allá), con un DOM y un telar de mentira: `npm run prueba:mudanza`; en la
+página, sin mover nada, `window.telar.ensayoMudanza('servidor', 'subir')`. Entre dos máquinas de verdad, sin tocar los
+hilos de nadie ni desplegar, `scripts/probar_mudanza.py`: un telar aparte en cada una (su carpeta, su tmux, su carpeta
+de Claude y un `claude` de mentira) que contesta solo los pedidos de la mudanza con un nombre de máquina propio; su
+docstring dice los pasos, y `transporte` mide solo la copia en las dos direcciones. Para lo que no es la conversación
+tiene `escribio` (que su conversación escribió un archivo), `registro`, `mensaje` (en su casilla local) y `rama` (un
+hijo con rama de mentira); el repositorio de juguete se arma a mano, con un origen desnudo en una de las dos. `atender`
+corre el nodo de verdad a medias (sus vueltas, su vigía y los pedidos de la mudanza, nada de lo que tocaría a la persona)
+con el registro en un almacén aparte (`TELAR_BUS_HILOS`, que pone `entorno.sh`; `borrar-almacen` al terminar); con
+`E1_PARAR=tomado` o `abierto` se muere en ese paso de una llegada, para ver que nunca quedan dos agentes vivos
+(`vivos`, en cada máquina, y `registro-bus`). Las fotos de las dos van a otro almacén (`TELAR_BUS_ESPEJO`), así que
+la etapa 4 se prueba entera: se mata el `atender` de una y se congela a su agente (SIGSTOP al proceso del panel primero y
+después al del agente: el `sh` que lo lanzó le manda SIGCONT a un hijo detenido; el sandbox de Claude Code no deja
+mandar señales a procesos que no lanzó), y a los dos minutos la otra lo puede seguir (`telar hilo seguir juguete --si`).
 Lo que el lienzo de un módulo pide y la página atiende sola, sin el servidor ni permiso (`menu`, `abrir`,
 `instruccion`): `npm run prueba:lienzo`.
+Las ventanas que piden los módulos (`componentes/ventana-modulo.ts`, `web/ventanas.ts`; la de un chat de foco): lo que
+lleva (todo escapado, la raya de lo nuevo, el pie con teclas, y lo obvio como ícono: cada botón de ícono con su nombre en
+el title y el aria-label, en el pie su tecla delante, y la palabra si el módulo no declara un ícono que la página conozca), y con un DOM y un telar de mentira, que llegue una y salga,
+varias juntas en una, responder con ⌘⏎ por la consulta que dice la ventana y verlo salir (o no, con lo escrito de vuelta
+en la caja), aplazar y que vuelva, ⎋ que aplaza y nunca da por visto, otro mundo sin pedirlo ni dejarlo abierto, el
+silencio (a mano y en una reunión), no robar teclas (quieta mientras se escribe en otra parte; un clic la toma) y que se
+cierre sola si la atendieron en otra pestaña: `npm run prueba:ventanas`. Del lado de telar (`[ventanas]` del manifiesto,
+lo de otro mundo que no llega, lo no declarado que no corre, el silencio, la API, `buscador` de un tipo de objeto):
+`pruebas/test_ventanas.py`. En la página, `window.telar.ventanas` (`revisar()`, `silenciar()`, `abierta()`).
 La franja de avisos (arriba de la barra de hilos: el estado del sistema y de los hilos; el componente, `componentes/franja.ts`;
 lo que se avisa, `web/avisos.ts`; lo que mira la conexión, la sesión y las otras máquinas, `web/vigia.ts`): su orden, lo que
 dice tranquila, el «+N», la lista, el punto, lo que se va solo, lo que quedó detenido sin que nada lo diga (un mensaje
@@ -132,6 +206,20 @@ con un DOM que hace la disposición de la página: `npm run prueba:anchos`.
 Abrir un hilo con una lectura (el ícono de la instrucción en la barra de su ficha, con su tono y su ayuda, y lo que manda
 la ventana: un hilo nuevo llamado como ella, con lo que la ficha tiene como contexto libre, sin fila ni dirección), con
 un DOM y un fetch de mentira: `npm run prueba:leer-hilo`.
+Las pestañas y la barra de mensaje, y la ficha de una tarea en foco que las usa, con un DOM (happy-dom), un modelo de
+mentira y un fetch que anota lo que se pide: las teclas de las pestañas (← → Inicio Fin, solo con el foco en una, sin que
+sigan a los atajos), la que la vista marca sin repintar y las que no caben (`web/pestanas.ts`, `acomodar`, con anchos de
+mentira: al «⋯», la abierta siempre a la vista, lo nuevo y la cuenta que pide de una escondida en el «⋯», las flechas
+que llegan al «⋯» sin abrir nada, su menú con ⏎ y ⎋, y al ensancharse todas de nuevo); de la barra de mensaje (`web/mensaje.ts`), el destino de fábrica
+(su hilo, «buscando» mientras telar lo dice; sin hilo propio, el primer agente; sin cosa, `[instruccion] destino` o uno
+nuevo; recién abierta la página, espera a los hilos en vez de caer en otro), lo que manda (`POST /actuar`, como la
+instrucción), ⏎ y ⌘⏎ envían y ⇧⏎ no, ⎋ suelta el campo, lo que dice después y si falla, el borrador compartido con la
+ventana de la instrucción, que no toma el foco sola ni les pasa las letras a los atajos, que repintar deje lo escrito y el
+foco, y el mundo en el selector (solo lo del puesto, también en el modo todo, donde ⌘K muestra lo demás); y la ficha en
+foco de arriba abajo (pestañas, tarjetas, acciones, mensaje): `npm run prueba:mensaje`. Su HTML, su CSS (sin esquinas
+ni otra letra, solo tokens) y que el catastro de pestañas del catálogo diga la verdad, en `npm run prueba:componentes`.
+En la página, `window.telar.barraMensaje({ contexto, a })` da el HTML de una barra para ponerla donde sea y probarla de
+verdad: lo que se envía, sale (a un hilo de juguete, nunca a uno de verdad).
 
 Las pruebas de Python se corren como el CI: con telar instalado con `pip install -e '.[serve,bus,pruebas]'`
 (sin los extras, las de la API y el bus se saltan), `python -m unittest discover -s pruebas` (escritas como
@@ -323,6 +411,16 @@ páginas que hay:
   que hace cada tecla y dónde parte el foco; en «las que destruyen», cada confirmación de la página con su clase y por qué, y
   las tres formas descartadas. «probar» abre una de verdad (`preguntar`) con el tema de la primera columna, y dice qué se
   apretó. Sus pruebas, en `npm run prueba:componentes` y `npm run prueba:confirmar`.
+- **pestañas** (`componentes/pestanas.ts`, `media/css/pestanas.css`; lo que hacen, `web/pestanas.ts`; lo del catálogo en
+  `componentes/catalogo-pestanas.ts`): la barra horizontal para elegir qué se ve debajo, una fila del alto de las barras con
+  su línea abajo; en «estados», con ícono y cuenta, sin ícono, con lo del extremo, con algo nuevo, al pasar y con el foco, y
+  cuando no caben (en su ícono, o corriendo de lado); en «dónde está», cada fila de pestañas de la página: las que ya son
+  el componente, las que faltan y las que se parecen y no lo son (docs/propuestas/componentes.md, «Las pestañas»).
+- **barra de mensaje** (`componentes/mensaje.ts`, `media/css/mensaje.css`; lo que hace, `web/mensaje.ts`; lo del catálogo en
+  `componentes/catalogo-mensaje.ts`): escribirle a un hilo o a un agente sobre lo que se mira, al pie de una pantalla; en
+  «estados», su hilo, buscando, con algo escrito, a un agente, a uno nuevo, enviando, enviado, no se envió y varias
+  líneas; en «la lista», la de a quién; en «dónde va», dónde se propone en vez de la ventana de la instrucción. Enviar y
+  elegir dicen qué harían.
 - **tokens**: los colores de cada tema, por lo que significan, y las medidas de cada densidad, con el valor que
   resuelve cada columna.
 - **táctica (prototipo)** (`componentes/tactica.ts`, `media/css/tactica.css`, sus días de mentira en
@@ -354,8 +452,9 @@ páginas que hay:
   un mundo tiene su prueba en `npm run prueba:componentes`.
 - **ventana de mundos** (`componentes/mundos-ventana.ts`, `media/css/mundos.css`; lo del catálogo en
   `componentes/catalogo-mundos.ts`): la ventana para cambiar de mundo, una tarjeta por mundo con su arte animado. En
-  «estados», quieta, con el mouse encima de una, ambos a mano y con más mundos, en cada tema (las tarjetas animadas;
-  «probar» la abre de verdad con mundos de mentira y dice qué haría); en «los artes», cada arte registrado (los de fábrica
+  «estados», quieta, con el mouse encima de una (la ola a medio camino), ambos a mano, con cuatro mundos y con diez, en
+  cada tema (las tarjetas animadas; «probar» y «probar con diez» la abren de verdad con mundos de mentira y dicen qué
+  harían); en «los artes», cada arte registrado (los de fábrica
   y los de la raíz) en su tarjeta, animado; en «probar uno», un arte escrito como un archivo de la raíz y al lado su
   tarjeta, animada mientras se escribe ([arte.md](arte.md)).
 

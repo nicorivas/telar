@@ -201,27 +201,35 @@ def _firma_carpeta(carpeta: Path) -> tuple:
 
 async def _eventos(config):
     """Lo que la página tiene que volver a leer, apenas cambia: «hilos» (el estado de telar: la atención de un hilo,
-    lo visto, una prioridad, un archivado, el foco) o «espejos» (llegó la foto de otra máquina, o cambió lo que espera
-    en cola para una que está fuera de línea: telar.alcance). Así la barra se pone al
-    día al tiro, sin esperar su sondeo, que queda de respaldo para lo que no pasa por el estado (una ventana de tmux
-    que se cae sola). Se mira cada medio segundo: es leer la hora de unos cuantos archivos. Un latido cada 15 s."""
+    lo visto, una prioridad, un archivado, el foco), «espejos» (llegó la foto de otra máquina, o cambió lo que espera
+    en cola para una que está fuera de línea: telar.alcance) o «ventanas» (un botón de la ventana de un módulo, o el «no
+    molestar»: telar.servicios.ventanas; las otras pestañas vuelven a preguntar qué ventanas esperan). Así la barra se
+    pone al día al tiro, sin esperar su sondeo, que queda de respaldo para lo que no pasa por el estado (una ventana de
+    tmux que se cae sola). Se mira cada medio segundo: es leer la hora de unos cuantos archivos. Un latido cada 15 s."""
     import asyncio
 
     estado = Path(config.estado)
-    espejos, cola = estado / "espejos", estado / "cola"
-    antes = (_firma_carpeta(estado), _firma_carpeta(espejos) + _firma_carpeta(cola))
+    espejos, cola, ventanas = estado / "espejos", estado / "cola", estado / "ventanas"
+
+    def firma() -> tuple:
+        return (_firma_carpeta(estado), _firma_carpeta(espejos) + _firma_carpeta(cola), _firma_carpeta(ventanas))
+
+    antes = firma()
     quieto = 0.0
     yield "retry: 3000\n\n"
     while True:
         await asyncio.sleep(0.5)
         quieto += 0.5
-        ahora = (_firma_carpeta(estado), _firma_carpeta(espejos) + _firma_carpeta(cola))
+        ahora = firma()
         if ahora[0] != antes[0]:
             quieto = 0.0
             yield "data: hilos\n\n"
         if ahora[1] != antes[1]:
             quieto = 0.0
             yield "data: espejos\n\n"
+        if ahora[2] != antes[2]:
+            quieto = 0.0
+            yield "data: ventanas\n\n"
         antes = ahora
         if quieto >= 15:
             quieto = 0.0

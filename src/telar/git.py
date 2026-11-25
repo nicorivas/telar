@@ -7,7 +7,8 @@ con cosas a medio hacer. Lo que aquí se hace parte de eso:
   deja fuera los archivos nuevos; después `commit -- rutas`, que commitea solo esas aunque el índice
   tenga otras cosas. Nunca `git add -A` sin rutas, y las rutas marcadas `skip-worktree` no se tocan:
   un `add` sobre ellas las borra del repositorio si no existen en el disco (pasa en un sistema de
-  archivos que no acepta sus nombres).
+  archivos que no acepta sus nombres). Las rutas relativas lo son a donde se está, como en git; una que no está en
+  el disco, ni en el índice, ni en HEAD es un `fallo` que lo dice, no «nada que commitear».
 - **Integrar sin pisar lo ajeno.** Si lo que llega del remoto toca un archivo sin commitear de aquí
   (de otro), no se integra y se dice. Si no lo toca, se rebasa: lo sin commitear se aparta antes a un
   stash con una marca propia y se devuelve después, y no puede chocar, porque nada de lo apartado
@@ -39,7 +40,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-__all__ = ["Resultado", "commitear", "subir", "repositorio", "anotar"]
+__all__ = ["Resultado", "commitear", "subir", "al_dia", "repositorio", "anotar"]
 
 #: lo que dice git cuando el push perdió una carrera (otro subió antes): se reintenta
 CARRERA = ("fetch first", "non-fast-forward", "but expected", "stale info", "cannot lock ref",
@@ -57,7 +58,8 @@ class Resultado:
     rama: str = ""
     rutas: list[str] = field(default_factory=list)
     commit: str = ""          # el hash nuevo, o vacío si no había nada que commitear
-    subido: bool = False
+    subido: bool = False      # la rama quedó arriba (puede ser sin un commit nuevo: ver `subidos`)
+    subidos: int = 0          # cuántos commits llegaron arriba en esta pasada (0: ya estaba al día)
     intentos: int = 0
     estado: str = ""          # commiteado | subido | nada | choque | apartado | fallo
     detalle: str = ""
@@ -155,6 +157,23 @@ def _relativas(repo: Path, rutas: list[Path]) -> list[str]:
     return salida
 
 
+def _no_existen(repo: Path, perdidas: list[tuple[Path, str]]) -> str:
+    """Por qué no se commitea nada: esas rutas no existen. Si alguna era relativa a la raíz y no a donde se está
+    (como las toma git), dice cómo se escribe desde aquí."""
+    aqui = Path.cwd()
+    texto = "no existen ni están en el repositorio, no commiteé nada: " + ", ".join(str(o) for o, _ in perdidas)
+    pistas = []
+    for original, _ in perdidas:
+        desde_raiz = repo / original
+        if not original.is_absolute() and (desde_raiz.exists() or desde_raiz.is_symlink()):
+            pistas.append(f"{original} → {os.path.relpath(desde_raiz, aqui)}")
+    if pistas:
+        donde = os.path.relpath(aqui.resolve(), repo.resolve())
+        texto += (f". Las rutas son relativas a donde estás ({donde}), como en git; desde aquí se escriben: "
+                  + ", ".join(pistas))
+    return texto
+
+
 @contextmanager
 def _de_a_uno(repo: Path):
     """El candado del repositorio: commitear y subir, de a uno. Dos cambios seguidos (dos acciones sobre
@@ -190,8 +209,20 @@ def _commitear(rutas: list[Path], mensaje: str, repo: Path | None) -> Resultado:
     # lo ya borrado del índice (`git rm`) no existe ni en el disco ni en el índice: `add` no lo
     # encuentra y falla, pero el commit sí lo lleva (está en HEAD)
     en_indice = set(_git(repo, "ls-files", "--", *rel).stdout.splitlines())
-    para_add = [r for r in rel if (repo / r).exists() or (repo / r).is_symlink()
-                or r in en_indice or any(i.startswith(r.rstrip("/") + "/") for i in en_indice)]
+
+    def en(r: str, nombres: set[str]) -> bool:
+        return r in nombres or any(i.startswith(r.rstrip("/") + "/") for i in nombres)
+
+    para_add = [r for r in rel if (repo / r).exists() or (repo / r).is_symlink() or en(r, en_indice)]
+    # una ruta que no está en el disco, ni en el índice, ni en HEAD no es de este repositorio: git dice «pathspec did
+    # not match any files». Callarla dejaba «nada que commitear» (y un `telar commit` decía «subido») cuando quien
+    # llamó desde una subcarpeta daba las rutas relativas a la raíz
+    if len(para_add) < len(rel):
+        en_head = set(_git(repo, "ls-tree", "-r", "--name-only", "HEAD", "--", *rel).stdout.splitlines())
+        perdidas = [(o, r) for o, r in zip(rutas, rel) if r not in para_add and not en(r, en_head)]
+        if perdidas:
+            res.estado, res.detalle = "fallo", _no_existen(repo, perdidas)
+            return res
     r = _git(repo, "add", "-A", "--", *para_add, *excluir) if para_add else subprocess.CompletedProcess([], 0, "", "")
     if r.returncode != 0:
         res.estado, res.detalle = "fallo", (r.stderr or r.stdout).strip()[-300:]
@@ -358,12 +389,13 @@ def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
             if not ok:
                 res.estado, res.detalle = "choque", motivo
                 return res
-            if _git(repo, "rev-list", "--count", f"{arriba}..HEAD").stdout.strip() in ("", "0"):
-                res.subido, res.estado = True, "subido"
+            pendientes = _git(repo, "rev-list", "--count", f"{arriba}..HEAD").stdout.strip()
+            if pendientes in ("", "0"):
+                res.subido, res.estado, res.subidos = True, "subido", 0
                 return res
             p = _git(repo, "push", "-q", remoto, f"HEAD:{rama_arriba}", timeout=60)
             if p.returncode == 0:
-                res.subido, res.estado, res.detalle = True, "subido", ""
+                res.subido, res.estado, res.detalle, res.subidos = True, "subido", "", int(pendientes)
                 if res.commit:  # el rebase le cambia el hash: el que vale es el que quedó arriba
                     res.commit = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
                 return res
@@ -376,6 +408,33 @@ def subir(res: Resultado, *, esperas: tuple[float, ...] = ESPERAS) -> Resultado:
                 time.sleep(esperas[i])
     res.estado = "fallo"
     res.detalle = f"no pude subir en {res.intentos} intentos ({res.detalle})"
+    return res
+
+
+def al_dia(repo: Path) -> Resultado:
+    """Trae la rama de arriba y rebasa encima, sin tocar lo ajeno y sin subir nada: lo de `subir`, sin el push. Para
+    la máquina adonde llega un hilo, antes de abrirlo (telar.sin_subir). `estado`: `al-dia` (ya lo estaba),
+    `integrado` (`intentos` dice cuántos commits llegaron), `sin-arriba`, `choque` o `apartado` (con `detalle`)."""
+    res = Resultado(repo=str(repo))
+    arriba = _git(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
+    res.rama = _git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    if not arriba or res.rama == "HEAD":
+        res.estado, res.detalle = "sin-arriba", "la rama no tiene una de arriba: no hay de dónde traer"
+        return res
+    antes = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    with _de_a_uno(repo):
+        ok, motivo, apartado = _integrar(repo, arriba)
+    res.commit = _git(repo, "rev-parse", "--short", "HEAD").stdout.strip()
+    if apartado is not None:
+        res.estado, res.stash, res.apartados = "apartado", apartado.oid, apartado.archivos
+        res.detalle = (motivo + "; " if motivo else "") + _como_devolver(repo, apartado)
+    elif not ok:
+        res.estado, res.detalle = "choque", motivo
+    else:
+        despues = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        llegaron = _git(repo, "rev-list", "--count", f"{antes}..{despues}").stdout.strip() if despues != antes else "0"
+        res.estado = "al-dia" if despues == antes else "integrado"
+        res.intentos = int(llegaron or 0)
     return res
 
 

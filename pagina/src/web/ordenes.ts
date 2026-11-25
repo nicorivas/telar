@@ -12,6 +12,7 @@ import * as modos from './modos';
 import { avisar } from './interfaz';
 import { elegirEntrada } from '../vistas/dashboard/equipo';
 import { fueraDe, fueraDeLinea } from './alcance';
+import { filasLlevar, type FilaLlevar } from './llevar-destinos';
 import type { BarraHilos } from '../vistas/hilos';
 import type { Dashboard } from '../vistas/dashboard/panel';
 
@@ -149,9 +150,20 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
                 modelo.cambiarLocal(hilo, { prioridad: Number(n) || null });
                 if (!await sobreHilo(hilo, 'prioridad', [], n)) modelo.olvidarLocal(hilo);
             } });
+        // uno archivado aquí que es de otra máquina (su conversación vive allá): retomarlo va allá; con ella apagada, se
+        // pregunta si se puede seguir aquí desde la copia de aquí (telar.seguir), y eso se ofrece en su lugar
+        const deOtra = h.dueno || '';
+        const deOtraFuera = deOtra ? fueraDe(deOtra, c.barra.otras) : undefined;
+        const seguir = deOtraFuera ? (await cli.seguirRevisar(hilo)).datos : undefined;
         const filas: Fila[] = [
-            { label: h.archivado || !h.vivo ? 'retomar' : 'ver', icono: h.archivado || !h.vivo ? I.retomar : I.ver, color: C.ir, description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
-                hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) c.mostrar(hilo); } else c.mostrar(hilo); } },
+            ...(deOtra ? [{ label: `retomar en ${deOtra}`, icono: I.retomar, color: C.ir, apagada: !!deOtraFuera,
+                description: deOtraFuera ? `${fueraDeLinea(deOtraFuera)}: su conversación vive allá` : `su conversación vive en ${deOtra}: se abre allá`,
+                hacer: async () => { if (await sobreHilo(hilo, 'retomar')) c.mostrar(`rem:${deOtra}:${hilo}`); } }]
+                : [{ label: h.archivado || !h.vivo ? 'retomar' : 'ver', icono: h.archivado || !h.vivo ? I.retomar : I.ver, color: C.ir, description: h.archivado || !h.vivo ? 'reabre su tab con su conversación' : '',
+                    hacer: async () => { if (h.archivado || !h.vivo) { if (await sobreHilo(hilo, 'retomar')) c.mostrar(hilo); } else c.mostrar(hilo); } }]),
+            // llevarlo a otra máquina: arriba, una fila por máquina con su nombre (la que no contesta, apagada y con su
+            // porqué). Al final del menú, como «llevar a otra máquina», quedaba bajo el pliegue y no se veía
+            ...filasLlevarHilo(hilo, deOtra || h.remoto || '', seguir),
             { label: 'renombrar', icono: I.renombrar, color: C.cambiar, description: 'se mueve con él lo que telar sabía', hacer: async () => {
                 const nombre = await ui.campo({ titulo: `Nombre nuevo para «${hilo}»`, valor: hilo });
                 if (nombre && nombre !== hilo) await sobreHilo(hilo, 'renombrar', [], nombre);
@@ -185,8 +197,6 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             h.vivo && !h.archivado
                 ? { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'lo termina y lo saca de la lista, sin guardarlo', hacer: () => descartar(hilo) }
                 : { label: 'descartar', icono: I.descartar, color: C.quitar, description: 'sale del archivo: telar olvida su carpeta, su prioridad y su atención', hacer: () => descartar(hilo) },
-            ...(!h.remoto ? [{ label: 'llevar a otra máquina', icono: I.llevar, color: C.otro, description: 'su conversación viaja; los archivos no', hacer: () => llevarWeb(hilo) }]
-                : [{ label: 'traer a esta máquina', icono: I.traer, color: C.otro, description: `vive en ${h.remoto}: su conversación viaja aquí; los archivos no`, hacer: () => traerWeb(hilo, h.remoto ?? '') }]),
             // lo de su agente, aparte de lo del hilo: su casa, abrirlo y, al final, eliminarlo
             ...(h.agente ? agenteDelHilo(h) : []),
         ];
@@ -240,42 +250,49 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
         if (ruta) await sobreHilo(hilo, 'vincular', [], ruta);
     }
 
-    /** Llevar un hilo a otra máquina de [remotos]: si aquí hay trabajo sin subir, se pregunta antes. */
-    /** Traer a esta máquina un hilo que vive en otra tuya: aquella lo lleva por el bus (telar.mudanza). Con trabajo
-     *  sin subir allá, se pregunta, como al llevar. */
-    async function traerWeb(hilo: string, maquina: string): Promise<void> {
-        if (!hilo || !maquina) return;
-        avisar(`trayendo «${hilo}» desde ${maquina}… (una conversación larga tarda)`, 'info', 6000);
-        let r = await cli.traer(hilo, maquina);
-        if (r.error && /sin subir/.test(r.error)) {
-            const salida = String(r.cuerpo?.salida ?? '');
-            const lista = salida.split('\n').filter(l => l.trim().startsWith('·')).map(l => l.trim()).join('\n');
-            const si = await ui.aviso(`La conversación de «${hilo}» viaja, los archivos no. En ${maquina} hay trabajo que aquí no va a estar:\n${lista}`, 'Traer igual');
-            if (si !== 'Traer igual') return;
-            r = await cli.traer(hilo, maquina, true);
-        }
-        if (r.error) { avisar(`telar: ${r.error}`, 'falla'); return; }
-        avisar(`«${hilo}» ya está aquí`, 'info', 5000);
-        modelo.invalidar();
-        await modelo.sondear();
+    /** Las filas para llevar un hilo a otra máquina (web/llevar-destinos.ts), con lo que hace cada una: una por
+     *  máquina, de [remotos] y del bus, la que no contesta apagada con su porqué. `vive`: dónde vive ("" aquí). */
+    function filasLlevarHilo(hilo: string, vive: string, seguir?: cli.JsonSeguir): entidades.AccionEntidad[] {
+        const filas = filasLlevar({ aqui: modelo.aqui || c.barra.aqui, vive, remotos: modelo.remotos, otras: c.barra.otras, seguir });
+        return filas.map(f => ({ label: f.label, description: f.description, apagada: !!f.apagado,
+            icono: f.modo === 'traer' || f.modo === 'seguir' ? I.traer : I.llevar, color: C.otro,
+            // lo que se escribe para encontrarla: «pasar», «mover», «mudar», «seguir», la máquina
+            detail: f.modo === 'seguir' ? `seguir aquí «${hilo}», con ${f.desde} apagada: ${f.description}`
+                : `pasar, mover o mudar «${hilo}» a ${f.a}: ${f.apagado || 'su conversación viaja y allá se retoma; los archivos no'}`,
+            hacer: () => llevarA(hilo, f, seguir) }));
     }
 
-    async function llevarWeb(hilo: string): Promise<void> {
-        // las de [remotos] (por ssh) y las otras tuyas que se ven en el bus, en línea (por el bus: telar.mudanza)
-        const remotos = ((await cli.config()).datos?.remotos ?? []).map(x => ({ nombre: x.nombre, destino: `${x.destino} · por ssh` }));
-        const delBus = ((await cli.espejos()).datos?.espejos ?? [])
-            .filter(e => e.en_linea && !e.error && !remotos.some(r => r.nombre === e.nombre))
-            .map(e => ({ nombre: e.nombre, destino: 'tuya, por el bus' }));
-        const destinos = [...remotos, ...delBus];
-        if (!destinos.length) { avisar('telar: no hay otra máquina: ni en [remotos] ni en línea en el bus', 'aviso'); return; }
-        const elegida = destinos.length === 1 ? destinos[0]
-            : (await ui.elegir(destinos.map(x => ({ label: x.nombre, description: x.destino, x })), { titulo: `¿A qué máquina llevo «${hilo}»?` }))?.x;
-        if (!elegida) return;
-        // la transición a la vista (web/mudanza.ts): letras grandes, barra, pasos; al llegar, a su terminal allá
+    /** Hacer lo que dice una fila de llevar: llevarlo de aquí (con su transición), traerlo, o pedirle a su máquina que lo
+     *  lleve a otra. */
+    async function llevarA(hilo: string, f: FilaLlevar, seguir?: cli.JsonSeguir): Promise<void> {
+        if (f.apagado) { avisar(`telar: ${f.apagado}`, 'aviso'); return; }
+        if (f.modo === 'llevar') { await llevarWeb(hilo, f.a, f.por); return; }
+        if (f.modo === 'seguir') {
+            const { seguirAqui } = await import('./mudanza');
+            await seguirAqui(hilo, f.desde, modelo.aqui || c.barra.aqui, () => { c.mostrar(hilo); }, seguir);
+            void c.releerOtras();
+            return;
+        }
+        await traerWeb(hilo, f.desde, f.modo === 'llevar-desde' ? f.a : '');
+    }
+
+    /** Traer a esta máquina un hilo que vive en otra tuya: aquella lo lleva por el bus (telar.mudanza), con la misma
+     *  transición que llevar (web/mudanza.ts), leyendo su progreso de allá. Con `a`, que lo lleve a esa otra. Lo que
+     *  pide confirmar (trabajo sin subir allá) se pregunta en el panel, como al llevar. */
+    async function traerWeb(hilo: string, maquina: string, a = ''): Promise<void> {
+        if (!hilo || !maquina) return;
+        const { llevar } = await import('./mudanza');
+        const adonde = a || modelo.aqui || c.barra.aqui || 'aquí';
+        await llevar(hilo, adonde, () => { c.mostrar(a ? `rem:${a}:${hilo}` : hilo); }, { desde: maquina, a });
+        void c.releerOtras();
+    }
+
+    /** Llevar un hilo de aquí a `maquina` (una de [remotos], por ssh, o del bus), con su transición a la vista
+     *  (web/mudanza.ts): letras grandes, barra, pasos; si falla, el panel dice por qué y el hilo sigue aquí. */
+    async function llevarWeb(hilo: string, maquina: string, por: 'ssh' | 'bus'): Promise<void> {
         const { llevar } = await import('./mudanza');
         // al llegar: el hilo de una máquina del bus se mira desde aquí (su terminal allá); uno de [remotos] sigue en su tab
-        const porElBus = delBus.some(x => x.nombre === elegida.nombre);
-        await llevar(hilo, elegida.nombre, () => { c.mostrar(porElBus ? `rem:${elegida.nombre}:${hilo}` : hilo); });
+        await llevar(hilo, maquina, () => { c.mostrar(por === 'bus' ? `rem:${maquina}:${hilo}` : hilo); });
     }
 
 
@@ -287,15 +304,19 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
             const [maq, ...resto] = String(id ?? '').split('|');
             const hilo = resto.join('|');
             if (!maq || !hilo) return;
-            // su máquina fuera de línea (telar.alcance): despertarlo queda en cola, y traerlo necesita que esté
+            // su máquina fuera de línea (telar.alcance): despertarlo queda en cola, y traerlo necesita que esté; si aquí
+            // hay una copia de su conversación, se puede seguir aquí desde ella (telar.seguir)
             const fuera = fueraDe(maq, c.barra.otras);
+            const seguir = fuera ? (await cli.seguirRevisar(hilo)).datos : undefined;
+            // traerlo aquí, o que su máquina lo lleve a otra: una fila por máquina, la que no contesta apagada
+            const llevarlo = filasLlevarHilo(hilo, maq, seguir).map(f => ({ ...f, id: 'llevar' }));
             const e = await ui.elegir([
                 { label: 'ver', description: 'su conversación, y escribirle por el bus', id: 'ver' },
                 fuera ? { label: 'despertar al volver', description: `${fueraDeLinea(fuera)}: queda en cola y se despierta cuando vuelva`, id: 'despertar' }
                     : { label: 'despertar', description: `retomar su agente en ${maq}: el dormido en su ventana, el cerrado con su conversación`, id: 'despertar' },
-                { label: 'traer a esta máquina', description: fuera ? `necesita a ${maq} en línea: su conversación vive allá`
-                    : `vive en ${maq}: su conversación viaja aquí; los archivos no`, id: 'traer' },
+                ...llevarlo,
             ], { titulo: `${hilo} · en ${maq}` });
+            if (e?.id === 'llevar') { await (e as entidades.AccionEntidad).hacer?.(); return; }
             if (e?.id === 'ver') c.mostrar(`rem:${maq}:${hilo}`);
             else if (e?.id === 'despertar') {
                 const d = await cli.despertar(hilo, maq, { cola: true });
@@ -303,7 +324,18 @@ export function crearOrdenes(c: Casa): Record<string, (...args: any[]) => unknow
                 else void ui.falla(`telar: ${d.error ?? 'sin respuesta'}`);
                 void c.releerOtras();
             }
-            else if (e?.id === 'traer') await traerWeb(hilo, maq);
+        },
+        // retomar en su máquina uno archivado allá (ARCHIVO, de su foto): allá se desarchiva y se abre con su conversación;
+        // con ella fuera de línea, queda en cola para cuando vuelva
+        'telar.retomarRemoto': async (id?: string) => {
+            const [maq, ...resto] = String(id ?? '').split('|');
+            const hilo = resto.join('|');
+            if (!maq || !hilo) return;
+            const d = await cli.despertar(hilo, maq, { cola: true });
+            if (!d.datos) { void ui.falla(`telar: ${d.error ?? 'sin respuesta'}`); return; }
+            void ui.estado(`telar: ${d.datos.hecho || `«${hilo}» retomado en ${maq}`}${d.datos.aviso ? ` (${d.datos.aviso})` : ''}`, 8000);
+            await c.releerOtras();
+            if (!d.datos.en_cola) c.mostrar(`rem:${maq}:${hilo}`);
         },
         'telar.irRemoto': (id?: string) => { const [maq, ...resto] = String(id ?? '').split('|'); if (maq && resto.length) c.mostrar(`rem:${maq}:${resto.join('|')}`); },
         // en la web, ir a un hilo es mostrar su terminal a la derecha (no mover la ventana de tmux de nadie)

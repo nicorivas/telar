@@ -562,7 +562,8 @@ class LasSuscripcionesDelNodo(Prueba):
                                   "periodicos", "hilo", "equipo", "aviso", "archivo", "archivo-leer", "modulo",
                                   "notas", "nota", "serie", "serie-recordar", "encargo", "agentes", "hilo-llegar", "hilo-traer",
                                   "hilo-revisar", "hilo-hijo", "hilo-despertar", "codigos", "contexto", "avisos-archivo",
-                                  "avisos-visto"})
+                                  "avisos-visto", "comentarios", "mudanza-progreso", "replica-estado", "replica-escribir",
+                                  "replica-cerrar", "borradores"})
         self.assertIn("cambio.ana.*", suscritas)
         from telar import cuentas
 
@@ -593,7 +594,9 @@ class LasSuscripcionesDelNodo(Prueba):
         for verbo in mod_nodo.SOLO_LEEN:
             self.assertIsNone(fila(f"rpc.ana.laptop.{verbo}"), verbo)
         for verbo in ("hilo", "tarea", "tipo", "periodicos", "equipo", "nota", "serie-recordar", "resultado-comentar",
-                      "resultado-agregar", "resultado-visto", "archivo", "modulo", "aviso"):
+                      "resultado-agregar", "resultado-visto", "archivo", "modulo", "aviso",
+                      # cada pedazo de una conversación va al final del anterior: en orden
+                      "replica-escribir", "replica-cerrar"):
             self.assertIsInstance(fila(f"rpc.ana.laptop.{verbo}"), asyncio.Lock, verbo)
         # una fila por verbo, no una para todos
         self.assertIsNot(fila("rpc.ana.laptop.hilo"), fila("rpc.ana.laptop.tarea"))

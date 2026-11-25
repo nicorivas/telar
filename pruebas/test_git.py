@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import io
+import json
 import shutil
 import subprocess
 import tempfile
@@ -264,6 +265,132 @@ class Commit(Prueba):
         afuera.write_text("x")
         self.assertEqual(git.commitear([afuera], "m", repo=self.a).estado, "fallo")
 
+
+    # ── la orden, desde una subcarpeta: las rutas son relativas a donde se está, como en git ──
+
+    def _subcarpeta(self) -> Path:
+        sub = self.a / "docs" / "sub"
+        sub.mkdir(parents=True)
+        (sub / "viejo.md").write_text("viejo\n")
+        sh(self.a, "add", "."), sh(self.a, "commit", "-qm", "sub"), sh(self.a, "push", "-q")
+        return sub
+
+    def orden(self, argv: list[str], en: Path) -> tuple[int, str, str]:
+        ctx = SimpleNamespace(config=SimpleNamespace(estado=str(self.base / "estado")))
+        salida, errores = io.StringIO(), io.StringIO()
+        with contextlib.chdir(en), contextlib.redirect_stdout(salida), contextlib.redirect_stderr(errores):
+            codigo = orden_commit.main(argv, ctx)
+        return codigo, salida.getvalue(), errores.getvalue()
+
+    def head(self) -> str:
+        return sh(self.a, "rev-parse", "HEAD").strip()
+
+    def arriba(self) -> str:
+        return sh(self.a, "rev-parse", "origin/main").strip()
+
+    def test_desde_una_subcarpeta_las_rutas_relativas_a_ella_se_commitean(self):
+        sub = self._subcarpeta()
+        for local in (False, True):
+            for caso in ("nuevo", "modificado"):
+                with self.subTest(local=local, caso=caso):
+                    nombre = f"{caso}-{local}.md" if caso == "nuevo" else "viejo.md"
+                    with open(sub / nombre, "a") as f:
+                        f.write(f"{caso} {local}\n")
+                    codigo, salida, errores = self.orden(
+                        ["-m", "m", *(["--local"] if local else []), "--", nombre], en=sub)
+                    self.assertEqual((codigo, errores), (0, ""))
+                    self.assertEqual(sh(self.a, "show", "--name-only", "--format=", "HEAD").split(), [f"docs/sub/{nombre}"])
+                    self.assertIn("sin subir" if local else "subido", salida)
+                    self.assertEqual(self.head() == self.arriba(), not local)
+                    sh(self.a, "push", "-q")
+
+    def test_desde_una_subcarpeta_las_rutas_relativas_a_la_raiz_no_commitean_ni_dicen_subido(self):
+        # lo que pasó: un agente en una subcarpeta dio las rutas desde la raíz; telar no commiteó nada y dijo «subido»
+        sub = self._subcarpeta()
+        for local in (False, True):
+            for caso in ("nuevo", "modificado"):
+                with self.subTest(local=local, caso=caso):
+                    nombre = "nuevo.md" if caso == "nuevo" else "viejo.md"
+                    with open(sub / nombre, "a") as f:
+                        f.write(f"{caso} {local}\n")
+                    antes = self.head()
+                    codigo, salida, errores = self.orden(
+                        ["-m", "m", *(["--local"] if local else []), "--", f"docs/sub/{nombre}"], en=sub)
+                    self.assertEqual((codigo, salida), (2, ""))
+                    self.assertNotIn("subido", errores)
+                    self.assertIn("no commiteé nada", errores)
+                    self.assertIn(f"docs/sub/{nombre} → {nombre}", errores)  # cómo se escribe desde aquí
+                    self.assertEqual(self.head(), antes)
+                    self.assertIn(nombre, sh(self.a, "status", "--porcelain"))
+        self.assertIn('"estado": "fallo"', (self.base / "estado" / "commits.log").read_text())
+
+    def test_una_ruta_que_no_existe_entre_otras_no_commitea_ninguna(self):
+        sub = self._subcarpeta()
+        (sub / "viejo.md").write_text("cambio\n")
+        antes = self.head()
+        codigo, _, errores = self.orden(["-m", "m", "--", "viejo.md", "docs/sub/viejo.md"], en=sub)
+        self.assertEqual(codigo, 2)
+        self.assertIn("docs/sub/viejo.md → viejo.md", errores)
+        self.assertEqual(self.head(), antes)
+
+    def test_el_json_de_una_ruta_que_no_existe(self):
+        sub = self._subcarpeta()
+        codigo, salida, _ = self.orden(["-m", "m", "--json", "--", "docs/sub/viejo.md"], en=sub)
+        res = json.loads(salida)
+        self.assertEqual(codigo, 2)
+        self.assertEqual((res["estado"], res["subido"], res["commit"], res["subidos"]), ("fallo", False, "", 0))
+
+    def test_nada_que_commitear_en_esas_rutas_sale_con_4_y_no_dice_subido(self):
+        sub = self._subcarpeta()
+        for local in (False, True):
+            with self.subTest(local=local):
+                codigo, salida, errores = self.orden(["-m", "m", *(["--local"] if local else []), "--", "viejo.md"],
+                                                     en=sub)
+                self.assertEqual((codigo, salida), (4, ""))
+                self.assertIn("no commiteé nada", errores)
+                self.assertNotIn("subí", errores)
+                self.assertNotIn("subido", errores)
+
+    def test_nada_que_commitear_pero_habia_commits_pendientes_dice_que_subio_esos(self):
+        sub = self._subcarpeta()
+        (self.a / "uno.md").write_text("pendiente\n")
+        sh(self.a, "commit", "-qam", "pendiente")
+        codigo, salida, errores = self.orden(["-m", "m", "--", "viejo.md"], en=sub)
+        self.assertEqual((codigo, salida), (4, ""))
+        self.assertIn("no commiteé nada; subí 1 commit que ya estaba pendiente en main", errores)
+        self.assertEqual(self.head(), self.arriba())
+        # y en JSON: estado «nada», sin commit, pero la rama quedó arriba con un commit de antes
+        (self.a / "uno.md").write_text("otro pendiente\n")
+        sh(self.a, "commit", "-qam", "otro pendiente")
+        codigo, salida, _ = self.orden(["-m", "m", "--json", "--", "viejo.md"], en=sub)
+        res = json.loads(salida)
+        self.assertEqual(codigo, 4)
+        self.assertEqual((res["estado"], res["commit"], res["subido"], res["subidos"]), ("nada", "", True, 1))
+
+    def test_el_json_de_un_commit_subido_cuenta_los_pendientes(self):
+        sub = self._subcarpeta()
+        (self.a / "uno.md").write_text("pendiente\n")
+        sh(self.a, "commit", "-qam", "pendiente")
+        (sub / "viejo.md").write_text("cambio\n")
+        codigo, salida, _ = self.orden(["-m", "m", "--json", "--", "viejo.md"], en=sub)
+        res = json.loads(salida)
+        self.assertEqual(codigo, 0)
+        self.assertEqual((res["estado"], res["subido"], res["subidos"]), ("subido", True, 2))
+        self.assertEqual(res["rutas"], ["docs/sub/viejo.md"])
+
+    def test_subir_sin_nada_pendiente_dice_que_estaba_al_dia(self):
+        codigo, salida, _ = self.orden(["--subir"], en=self.a)
+        self.assertEqual(codigo, 0)
+        self.assertIn("ya estaba al día arriba", salida)
+        (self.a / "uno.md").write_text("pendiente\n")
+        sh(self.a, "commit", "-qam", "pendiente")
+        codigo, salida, _ = self.orden(["--subir"], en=self.a)
+        self.assertEqual((codigo, salida.strip()), (0, "subí 1 commit a main"))
+
+    def test_una_ruta_que_no_existe_no_es_nada_que_commitear(self):
+        res = git.commitear([self.a / "no-esta.md"], "m")
+        self.assertEqual(res.estado, "fallo")
+        self.assertIn("no-esta.md", res.detalle)
 
 if __name__ == "__main__":
     unittest.main()

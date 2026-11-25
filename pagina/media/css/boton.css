@@ -37,6 +37,9 @@
 .boton:disabled .boton-tecla:not(.boton-gira) { color: var(--boton-apagado); }
 /* sin tecla, el ícono de lo que hace en su lugar, en el color del botón (un botón de la página, sin atajo) */
 .boton-tecla.boton-icono { display: inline-block; color: inherit; }
+/* el ícono en lugar de la palabra (`simbolo`: enviar, el basurero) y lo poco que dice a su lado (`corto`: el plazo,
+   «15m»), los dos en el color del botón */
+.boton-simbolo { display: inline-flex; align-items: baseline; }
 /* mientras se hace, el círculo que gira en el lugar de la tecla, en el color del botón */
 .boton-gira { color: var(--c); }
 

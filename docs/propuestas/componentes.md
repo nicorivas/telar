@@ -231,7 +231,8 @@ elegida encima de las acciones (ya se ve en su tarjeta), y los íconos repetidos
 **Falta, pantalla por pantalla** (palabras que un ícono puede decir, marcos que no se abren aparte):
 
 - *tareas · foco*: hecho el 13-nov: las tarjetas son el componente («La tarjeta») y las acciones, una banda de íconos
-  arriba de ellas («Las casillas»). Queda la cabecera de los modos (gestión, concentración), un chip lleno de azul.
+  arriba de ellas («Las casillas»). El 24-nov la cabecera de los modos pasó a ser pestañas y la banda bajó al pie («Las
+  pestañas y la barra de mensaje»).
 - *la ficha de una tarea*: hecho el 13-nov (decidido con la persona): las acciones del proveedor con `rol` conocido
   son íconos en la barra de la ficha, con su globo y su número de tecla (esperar a… la pausa, tamaño… el reloj, hecha,
   descartar, y la fecha, la prioridad y el responsable cuando el subtítulo no los muestra), los mismos que en el ⋯; las
@@ -242,6 +243,57 @@ elegida encima de las acciones (ya se ve en su tarjeta), y los íconos repetidos
   del lienzo: falta que un módulo pueda declarar sus vistas (y el ícono de su pestaña, que hoy va con su nombre: «gantt»).
 - *fuera del dashboard*: la vista de un objeto (`web/objeto.ts`) y la de una carpeta (`web/carpeta.ts`) siguen con
   «‹ volver» y recuadro.
+
+## Las pestañas y la barra de mensaje (pedido el 24-nov-2026)
+
+Lo pidió la persona, mirando la ficha de una tarea en foco: «La fila de tabs (gestión, concentración) debería ser del alto
+standard de filas, con borde abajo. Este componente de tabs ya debería existir pues lo usamos en varios lugares. La barra
+de acciones debería estar abajo, también una fila propia de alto standard. Abajo de ella debería haber un input que
+permita enviar un mensaje a un hilo existente o uno nuevo [...] con la capacidad de elegir un destino (hilo nuevo, hilo
+existente, o agente); debería también ser standard, pues la vamos a comenzar a utilizar más (en vez del modal que hoy
+existe para enviar un mensaje a un agente del contexto actual)».
+
+**Las pestañas** (`componentes/pestanas.ts`, `pestanas.css`, `web/pestanas.ts`; página «pestañas» en el catálogo, con
+«dónde está»): no existían; había nueve filas hechas cada una a su manera, sin dos iguales (subrayado de acento, violeta,
+un chip azul lleno, el fondo de la selección) y ninguna con teclado. Ahora:
+
+- **Una fila del alto de las barras** (`--pantalla-barra-alto`), con su línea abajo de borde a borde: debajo de la barra
+  de una pantalla se lee como una segunda barra. Cada pestaña ocupa el alto entero.
+- **La abierta, con la superficie de la selección** (la del ítem activo, con la marca de su tema: la gramática ya decía
+  «la fila donde estás, la pestaña abierta»); las demás, tenues, y al pasar el mouse el fondo del hover. Ni otra letra ni
+  otro peso.
+- **Cada una**: un ícono opcional (en su tinta, si la trae), su nombre, su cuenta (tenue, o en el de cuidado si pide), un
+  punto en la esquina si hay algo nuevo; apagada si está por hacer. Al otro extremo de la fila, lo suyo (plegar, ↻).
+- **El teclado**: un `tablist` de ARIA. ⇥ llega a la abierta; ← → pasan a la de al lado y la abren, Inicio y Fin a la
+  primera y la última; solo con el foco en una, así que no le quitan nada a la terminal ni a los atajos.
+- **Si no caben**: primero las de ícono quedan en su ícono y su cuenta (el nombre, en el globo), salvo la abierta; si
+  aún no, la fila corre de lado sin barra a la vista y la abierta se trae a la vista.
+- **Migradas**: foco, las páginas del catálogo, las hojas de un hilo (ficha, códigos, contexto), el detalle de un
+  proyecto y el lado del visor abierto. **Faltan**: ⚙ modos en el teléfono y el selector de mundo de ⚙ (cada opción con
+  el color de su mundo). **No lo son**: las vistas de una pantalla (íconos en su barra, ya son su componente), la banda de
+  modos, el menú de ⚙, día/semana de los periódicos (van a la barra de su pantalla) y los filtros.
+
+**La barra de mensaje** (`componentes/mensaje.ts`, `mensaje.css`, `web/mensaje.ts`; página «barra de mensaje» en el
+catálogo, con «la lista» y «dónde va»): la instrucción ([instruccion.md](instruccion.md)) en otra forma, una fila al pie
+de una pantalla. Lo que manda es lo mismo (`telar actuar`: la dirección o la fila de la cosa, más lo escrito) y al mismo
+destino de fábrica; cambia la forma: sin skill ni «dejarla escrita» (lo escrito llega tal cual; un «/tarea …» empieza con
+la skill). El destino es un chip compacto en la misma fila, en la tinta de lo que es (un hilo azul, uno nuevo verde, un
+agente violeta); un clic abre `ui.menu` junto a él: su hilo, uno nuevo, y los hilos y los agentes en el orden y con los
+íconos de ⌘K (`web/buscador-hilos.ts`, que ⌘K y la barra comparten), solo los del mundo puesto, también en el modo todo, y
+nunca los de un agente que pide esconderse. ⏎ envía y ⇧⏎ es una línea nueva, como la caja de la terminal (la regla de una
+caja en una fila; ⌘⏎ también envía); ⎋ suelta el campo. No toma el foco sola, y las letras escritas en ella no llegan a los
+atajos del dashboard (⌘K sí). Después de enviar, arriba del campo, a quién fue (su nombre abre su hilo) y cómo; si falla,
+por qué, y lo escrito vuelve. Lo escrito es el borrador de la cosa, el mismo de la ventana de la instrucción. Recién
+abierta la página, o si el destino pedido no aparece, espera en vez de caer en otro (un hilo nuevo, por ejemplo).
+
+**La ficha en foco**, de arriba abajo: la barra de la pantalla, las pestañas (gestión, concentración), las tarjetas que
+corren, las acciones de la elegida en su fila (las casillas, ya no arriba) y la barra de mensaje con la elegida como
+contexto. Igual en el laptop y en el teléfono.
+
+**Dónde más va la barra** (propuesto; la ventana de la instrucción no se quita todavía): la ficha de una tarea, el
+detalle de un proyecto, la ventana de un chat de foco (bajo la caja de responder, con el chat como contexto libre), la
+pestaña de un módulo (`window.lienzo.pedir("instruccion")`), una espera en «te esperan» y Táctica, el visor de un
+documento y la hoja de un agente («encargar», con el destino fijo). La lista con el porqué de cada uno, en el catálogo.
 
 ## Los submenús (decidido el 13-nov-2026)
 
@@ -350,7 +402,17 @@ en el catálogo.
   ↑ ↓ ⏎ ⎋, escribir filtra, ninguna tecla sigue a la página, un clic fuera o perder el foco de la página la cierra. Cambia: `abrirVentana`
   ahora, si una `junto` no cabe debajo, la pone **encima** del punto (antes la desplazaba sobre él; el menú ya lo hacía a mano), y el
   menú lleva el borde, la sombra y el fondo de una ventana en vez de los suyos.
-- **Falta**: `elegir` aún pinta sus filas a mano con `.web-op` (pasarlas a `item()` la vuelve `paleta()` de verdad); la instrucción
+- **El visor de documentos** (23-nov, a pedido de la persona: «es confuso volver al hilo desde donde lo abriste») es una
+  ventana sobre `abrirVentana` (`clase: 'ventana-documento'`, en `documento.css`): ancha para leer (`--documento-ancho`,
+  100ch) y del alto de la pantalla, en el teléfono la pantalla entera. Su primera fila es la barra de una pantalla
+  (`barra()` de `componentes/pantalla.ts`) con el nombre del archivo en el tenue de su resumen, «‹» en su `volver` y la ✕
+  como acción; sus botones (los de la tarjeta de un comentario) son `pieBotones` con `datos` en vez de `accion`, para que
+  un clic no cierre la ventana. Un arrastre que empieza adentro y se suelta afuera (seleccionar para comentar) no es un
+  clic fuera (`puedeCerrar`). **La prosa** (`media/css/prosa.css`, en la capa base, con `--prosa-…` en `tokens.css`): la
+  letra y el markdown para leer con calma, sacados de la lectura de un hilo para que los use también el visor en su
+  modo lectura (`.prosa`, el bloque; `.prosa-md`, su markdown).
+- **24-nov**: `elegir` arma sus filas con `item()` (como el menú ⋯; `.e-lista`, `.e-fila`, `.e-detalle` en `ventana.css`).
+- **Falta**: la instrucción
   (`web/instruccion.ts`, última y de día con Telar). `caja()` ya no existe, pero la instrucción aún usa la clase `.web-caja`: cuando se
   vaya, se borra lo de `.web-caja`, `.web-op`, `.web-lista` y `dialog.buscador`.
 

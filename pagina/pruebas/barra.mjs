@@ -91,7 +91,7 @@ globalThis.localStorage = { getItem: k => almacen.get(k) ?? null, setItem: (k, v
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {} });
 const P = await armar('pagina', `export { BarraHilos } from './src/vistas/hilos'; export { modelo } from './src/modelo';
     export * as mundo from './src/web/mundo'; export * as buscadorHilos from './src/web/buscador-hilos';
-    export { PantallaAgentes } from './src/vistas/dashboard/agentes';`);
+    export { PantallaAgentes } from './src/vistas/dashboard/agentes'; export { I } from './src/web/iconos';`);
 const { modelo, mundo } = P;
 
 const hilo = (nombre, o = {}) => ({ id: `@${nombre.length}`, nombre, vivo: true, activo: false, archivado: false, vinculado: true,
@@ -308,6 +308,232 @@ assert.deepEqual(desde(barra('Rama', servidor), '[__hilos]'),
     modelo.secciones = secciones;
 }
 
+// ── 4b. el «↳» y la sangría, solo bajo el padre de verdad, y visible en la misma sección ──
+// El 24-nov, en la página del servidor, «Vitrina flujo» (padre: un agente) se veía «↳» justo bajo «Vitrina»
+// (otro hilo, del laptop), y tres hilos sueltos con «↳» bajo otro hilo: el «↳» de quién lo abrió, puesto
+// aunque su padre no estuviera a la vista, parecía colgarlos del de arriba. Ahora: bajo su padre si se ve; bajo su agente,
+// en AGENTES, si el padre es un agente; si no, suelto y sin «↳» (quién lo abrió y de quién cuelga, en la ayuda)
+{
+    const secciones = modelo.secciones, hilos = modelo.hilos;
+    modelo.secciones = [...secciones, { clave: 'agente:cartero', nombre: 'Cartero', hilos: ['Cartero'], grupo: 'agentes', mundo: 'trabajo' }];
+    const abrio = (por, o = {}) => ({ padre: por, abierto_por: { por, agente: '', cuando: '2026-11-24T21:00:00', icono: '', ...o } });
+    const ficha = { etiqueta: 'Tienda · Vitrina nueva' };
+    modelo.hilos = [...hilos,
+        hilo('Cartero', { mundo: 'trabajo', agente: 'cartero', icono: '◆' }),
+        // padre agente, con un hijo suyo debajo (tres niveles: Cartero › flujo › Momentos)
+        hilo('Vitrina', { mundo: 'trabajo', ficha }),
+        hilo('Vitrina flujo', { mundo: 'trabajo', ficha, ...abrio('Cartero') }),
+        hilo('Momentos', { mundo: 'trabajo', ...abrio('Vitrina flujo') }),
+        // padre archivado
+        hilo('Archivista › T458 Aspas', { mundo: 'trabajo', vivo: false, archivado: true }),
+        hilo('Aspas', { mundo: 'trabajo', ...abrio('Archivista › T458 Aspas') }),
+        // lo abrió un agente (su letra) desde un hijo suyo que ya no está
+        hilo('Cartas', { mundo: 'trabajo', ...abrio('Archivista › T532 Cartas', { agente: 'archivista', icono: 'A' }) }),
+        // padre de otro mundo (Telar, personal, sin mirarlo)
+        hilo('Cruce', { mundo: 'trabajo', padre: 'Telar' }),
+        // tres niveles reales en HILOS
+        hilo('F1', { mundo: 'trabajo', padre: 'Faro' }),
+        hilo('F2', { mundo: 'trabajo', ...abrio('F1') }),
+    ];
+    // en otra máquina: uno cuyo padre no tiene ventana aquí, y uno bajo «Vitrina flujo», que va con él bajo Cartero
+    const servidor = [{ nombre: 'servidor', en_linea: true, edad: 0, hilos: [
+        { nombre: 'Lejos', vivo: true, mundo: 'trabajo', padre: 'Nadie de aquí' },
+        { nombre: 'Bajo flujo', vivo: true, mundo: 'trabajo', padre: 'Vitrina flujo' }] }];
+    const b = new P.BarraHilos();
+    b.estado = { get: () => undefined, update: async () => {} };
+    b.mostrado = 'Faro'; b.otras = servidor;
+    const html = b.html();
+    const filas = [];
+    for (const m of html.matchAll(/<div class="item([^"]*)"([^>]*)>/g)) {
+        const a = Object.fromEntries([...m[2].matchAll(/data-([a-z]+)="([^"]*)"/g)].map(x => [x[1], x[2]]));
+        const nombre = a.hilo ?? (a.accion === 'ir-remoto' ? a.id.replace('|', ':') : a.accion === 'seccion' ? `[${a.id}]` : '');
+        const fin = html.indexOf('<div class="item', m.index + 1);
+        const suyo = html.slice(m.index, fin < 0 ? undefined : fin);
+        if (nombre) filas.push({ nombre, hondo: Number(/hondo(\d)/.exec(m[1])?.[1] ?? 0), html: suyo,
+            titulo: /<span class="item-titulo">([^<]*)</.exec(suyo)?.[1] ?? '' });
+    }
+    const de = n => { const f = filas.find(x => x.nombre === n); assert.ok(f, `está ${n}`); return f; };
+    const linea = filas.map(f => `${'·'.repeat(f.hondo)}${f.nombre}`);
+    const agentes = linea.slice(linea.indexOf('[__agentes]'), linea.indexOf('[__hilos]'));
+    const enHilos = linea.slice(linea.indexOf('[__hilos]'));
+    // padre agente: bajo él, en AGENTES, con los suyos debajo (también el de otra máquina), y no en HILOS
+    const g = agentes.indexOf('Cartero');
+    assert.deepEqual(agentes.slice(g, g + 4), ['Cartero', '·Vitrina flujo', '··Momentos', '··servidor:Bajo flujo'], 'bajo su agente, tres niveles');
+    assert.ok(!enHilos.some(x => /Vitrina flujo|Momentos|Bajo flujo/.test(x)), 'y no se repiten en HILOS');
+    const cuenta = Number(/data-id="__hilos"[^]*?item-sufijo[^>]*>(\d+)</.exec(html)?.[1]);
+    assert.equal(cuenta, enHilos.slice(1).findIndex(x => x.startsWith('[')), 'la cuenta de HILOS, sin los que van bajo su agente');
+    // tres niveles reales en HILOS
+    const f = enHilos.indexOf('Faro');
+    assert.deepEqual(enHilos.slice(f, f + 3), ['Faro', '·F1', '··F2'], 'abuelo, padre e hijo, cada uno visible');
+    // padre archivado, de otro mundo, en otra máquina sin ventana aquí, o un hijo de agente que ya no está: sueltos
+    for (const n of ['Aspas', 'Cartas', 'Cruce', 'servidor:Lejos', 'Vitrina']) {
+        assert.equal(de(n).hondo, 0, `${n}: sin sangría`);
+        assert.ok(!de(n).html.includes(P.I.hijo), `${n}: sin «↳»`);
+    }
+    assert.match(de('Aspas').html, /lo abrió «Archivista › T458 Aspas»/, 'quién lo abrió, en la ayuda');
+    assert.match(de('Cruce').html, /cuelga de «Telar»/, 'de quién cuelga, en la ayuda');
+    assert.match(de('servidor:Lejos').html, /cuelga de «Nadie de aquí»/, 'también el de otra máquina');
+    assert.match(de('Cartas').html, /item-prefijo[^>]*>A</, 'el que abrió un agente lleva su letra, no un «↳»');
+    // los que sí cuelgan, con su «↳»
+    for (const n of ['Vitrina flujo', 'Momentos', 'F1', 'F2']) assert.ok(de(n).html.includes(P.I.hijo), `${n}: con «↳»`);
+    // dos con el mismo título (el de la ficha de su carpeta): cada uno con su nombre, para no confundirlos
+    assert.equal(de('Vitrina').titulo, 'Vitrina');
+    assert.equal(de('Vitrina flujo').titulo, 'Vitrina flujo');
+    // el agente plegado o escondido: su hijo vuelve a HILOS, suelto
+    {
+        const b2 = new P.BarraHilos();
+        b2.estado = { get: k => k === 'telar.cabeceras' ? { __agentes: false } : undefined, update: async () => {} };
+        b2.mostrado = 'Faro'; b2.otras = servidor;
+        const h2 = b2.html();
+        assert.match(h2, /<div class="item(?![^"]*hondo)[^"]*"[^>]*data-hilo="Vitrina flujo"/, 'AGENTES plegado: suelto en HILOS');
+        assert.match(h2, /<div class="item[^"]*hondo1[^"]*"[^>]*data-hilo="Momentos"/, 'y su hijo, bajo él');
+    }
+    modelo.secciones = secciones; modelo.hilos = hilos;
+}
+
+// ── 4c. ARCHIVO: los de esta máquina y los de las otras, de su foto, marcados con su máquina ──
+// El 24-nov, la página del servidor decía «archivo 36»: solo los suyos. Los del laptop (215) no viajaban en su foto.
+// Ahora viajan (`archivados`) y van aquí, con su máquina y «retomar en M»; con el filtro de mundo de siempre
+{
+    const hilos = modelo.hilos;
+    modelo.hilos = [...hilos,
+        hilo('Propio', { mundo: 'trabajo', vivo: false, archivado: true }),
+        hilo('Propio personal', { mundo: 'personal', vivo: false, archivado: true }),
+        // archivado aquí siendo del laptop (su conversación vive allá): sale una vez, el de aquí, con «retomar en laptop»
+        hilo('Mudado', { mundo: 'trabajo', vivo: false, archivado: true, dueno: 'laptop' })];
+    const laptop = [{ nombre: 'laptop', en_linea: true, edad: 0, hilos: [{ nombre: 'Vivo allá', vivo: true, mundo: 'trabajo' }],
+        archivados: [
+            { nombre: 'Del laptop', relativa: 'empresa/x', mundo: 'trabajo', actividad: '2026-11-20T10:00:00' },
+            { nombre: 'Del laptop personal', mundo: 'personal' },
+            { nombre: 'Sin mundo', mundo: '' },
+            { nombre: 'Mudado', mundo: 'trabajo' },
+            { nombre: 'Vivo allá', mundo: 'trabajo' },
+            { nombre: 'Faro', mundo: 'trabajo' }] }];
+    const b = new P.BarraHilos();
+    b.estado = { get: k => k === 'telar.cabeceras' ? { __archivo: true, __otros_mundos: true } : undefined, update: async () => {} };
+    b.mostrado = 'Faro'; b.otras = laptop;
+    const html = b.html();
+    const enArchivo = html.slice(html.indexOf('data-id="__archivo"'), html.indexOf('data-id="__otros_mundos"'));
+    const ids = [...enArchivo.matchAll(/<div class="item[^"]*"[^>]*?(?:data-hilo="([^"]*)"|data-id="([^"]*)")/g)].map(m => m[1] ?? m[2]);
+    for (const n of ['Propio', 'Mudado', 'laptop|Del laptop', 'laptop|Sin mundo']) assert.ok(ids.includes(n), `en ARCHIVO: ${n}`);
+    for (const n of ['Propio personal', 'laptop|Del laptop personal']) assert.ok(!ids.includes(n), `de otro mundo, no: ${n}`);
+    assert.ok(!ids.includes('laptop|Mudado'), 'el que aquí ya está (archivado aquí siendo de allá) no se repite');
+    assert.ok(!ids.includes('laptop|Vivo allá'), 'uno que vive allá no va al archivo');
+    assert.ok(!ids.includes('laptop|Faro'), 'uno con el mismo nombre que uno de aquí, tampoco');
+    const cuenta = Number(/data-id="__archivo"[^]*?item-sufijo[^>]*>(\d+)</.exec(html)?.[1]);
+    assert.equal(cuenta, ids.length, 'la cuenta, con los de allá');
+    const fila = id => { const i = enArchivo.indexOf(`data-id="${id}"`); return enArchivo.slice(enArchivo.lastIndexOf('<div class="item', i), enArchivo.indexOf('<div class="item', i + 1)); };
+    assert.match(fila('laptop|Del laptop'), /data-accion="retomar-remoto"[^>]*data-id="laptop\|Del laptop"[^>]*title="retomar en laptop/, '«retomar en laptop»');
+    assert.match(fila('laptop|Del laptop'), /class="item[^"]*apagada/, 'tenue, como los archivados de aquí');
+    assert.match(fila('laptop|Del laptop'), /archivado en laptop/, 'su máquina, en la ayuda y en su columna');
+    assert.ok(b.archivadoAlla('laptop:Del laptop') && !b.archivadoAlla('laptop:Vivo allá'), 'se mira en su conversación, no en una terminal');
+    // el buscador de HILOS los filtra también
+    almacen.set('telar.barra.buscado', JSON.stringify({ hilos: 'empresa/x' }));
+    const b2 = new P.BarraHilos();
+    b2.estado = b.estado; b2.mostrado = 'Faro'; b2.otras = laptop;
+    const h2 = b2.html();
+    assert.ok(h2.includes('data-id="laptop|Del laptop"') && !h2.includes('data-id="laptop|Sin mundo"'), 'lo buscado, también en los de allá');
+    almacen.delete('telar.barra.buscado');
+    modelo.hilos = hilos;
+}
+
+// ── 4d. la fila elegida: la que se mira lleva el fondo de selección (.activa), y ninguna otra ──
+// El 25-nov la barra dejó de marcar la fila del hilo que se miraba. La página llama lo que se mira por su clave
+// (navegador/app.ts, `mostrar`): el nombre a secas si vive aquí, «rem:<máquina>:<hilo>» si se mira en otra; y desde la
+// mudanza la página sigue al hilo a donde vive (web/donde-vive.ts), así que uno llevado al servidor se mira como
+// «rem:servidor:X» y su fila es la de la foto. La barra comparaba el nombre a secas, y solo en las filas de aquí: las de
+// otra máquina, los hijos de un agente de allá y los archivados de allá nunca quedaban marcados. Aquí, con las claves
+// de verdad, en cada sección
+{
+    const hilos = modelo.hilos;
+    modelo.hilos = [...hilos,
+        // una ventana de aquí que mira un hilo del servidor
+        hilo('Ventana', { mundo: 'trabajo', remoto: 'servidor' }),
+        // archivado aquí siendo del laptop
+        hilo('Mudado', { mundo: 'trabajo', vivo: false, archivado: true, dueno: 'laptop' })];
+    const otras = [
+        { nombre: 'servidor', en_linea: true, edad: 0, hilos: [
+            { nombre: 'Llevado', vivo: true, mundo: 'trabajo' },
+            { nombre: 'Rama', vivo: true, padre: 'Telar', mundo: 'personal' },
+            { nombre: 'Secretaría › T9 lejos', vivo: true, mundo: 'personal', agente: 'secretaria' },
+            // el mismo nombre que uno de aquí: mirar el de aquí no marca este
+            { nombre: 'Molino', vivo: true, mundo: 'personal' }] },
+        { nombre: 'laptop', en_linea: true, edad: 0, hilos: [], archivados: [{ nombre: 'Del laptop', mundo: 'trabajo' }] }];
+    const activas = (mostrado, dashboard = false) => {
+        const b = new P.BarraHilos();
+        b.estado = { get: k => k === 'telar.cabeceras' ? { __archivo: true, __otros_mundos: true } : undefined, update: async () => {} };
+        b.aqui = 'laptop2'; b.mostrado = mostrado; b.otras = otras; b.dashboardActivo = dashboard;
+        return [...b.html().matchAll(/<div class="item([^"]*)"([^>]*)>/g)].filter(([, c]) => /\bactiva\b/.test(c))
+            .map(([, , a]) => /data-hilo="([^"]*)"/.exec(a)?.[1] ?? /data-id="([^"]*)"/.exec(a)?.[1]);
+    };
+    assert.deepEqual(activas('Faro'), ['Faro'], 'uno de aquí: su fila');
+    assert.deepEqual(activas('Links'), ['Links'], 'un hijo de aquí, bajo su padre');
+    assert.deepEqual(activas('Secretaría'), ['Secretaría'], 'un agente, en AGENTES');
+    assert.deepEqual(activas('Secretaría › T454 el test'), ['Secretaría › T454 el test'], 'el hijo de un agente, bajo él');
+    assert.deepEqual(activas('rem:servidor:Llevado'), ['servidor|Llevado'], 'uno de otra máquina (llevado allá): su fila de la foto');
+    assert.deepEqual(activas('rem:servidor:Rama'), ['servidor|Rama'], 'uno de allá que cuelga de uno de aquí');
+    assert.deepEqual(activas('rem:servidor:Secretaría › T9 lejos'), ['servidor|Secretaría › T9 lejos'], 'el hijo de un agente, de allá, bajo él');
+    assert.deepEqual(activas('rem:laptop:Del laptop'), ['laptop|Del laptop'], 'un archivado de otra máquina, abierto');
+    assert.deepEqual(activas('Ventana'), ['Ventana'], 'una ventana de aquí que mira allá, por su nombre');
+    assert.deepEqual(activas('rem:servidor:Ventana'), ['Ventana'], 'y por la clave de allá');
+    assert.deepEqual(activas('rem:laptop:Mudado'), ['Mudado'], 'uno archivado aquí siendo de allá, por la clave de allá');
+    assert.deepEqual(activas('Molino'), ['Molino'], 'el de aquí, no el de allá con el mismo nombre');
+    assert.deepEqual(activas('rem:laptop2:Faro'), ['Faro'], 'la clave de otra máquina que es esta: el de aquí');
+    assert.deepEqual(activas('Faro', true), [], 'en el dashboard, ninguna');
+    // mirar uno de allá con su clave de verdad trae a su familia, como uno de aquí: Rama sube a HILOS bajo Telar
+    {
+        const b = new P.BarraHilos();
+        b.estado = { get: k => k === 'telar.cabeceras' ? { __otros_mundos: true } : undefined, update: async () => {} };
+        b.mostrado = 'rem:servidor:Rama'; b.otras = otras;
+        const html = b.html();
+        const hilosA = html.slice(html.indexOf('data-id="__hilos"'), html.indexOf('data-id="__otros_mundos"'));
+        assert.ok(hilosA.includes('data-id="servidor|Rama"') && hilosA.includes('data-hilo="Telar"'), 'Rama y Telar, en HILOS');
+    }
+    modelo.hilos = hilos;
+}
+
+// ── 4e. dónde vive: el satélite solo si vive en otra máquina, y al pasar el mouse, en cuál ──
+// El 25-nov la persona vio «Bitácora» marcado como si viviera en el servidor. En la página del laptop no lo lleva; en la del
+// servidor sí, porque allá vive en otra máquina (el laptop), y lo dice al pasar el mouse. Las dos páginas, aquí: la del
+// laptop con ventanas que miran al servidor, y la del servidor con los del laptop en su foto
+{
+    const hilos = modelo.hilos;
+    const lugar = (html, clave) => {
+        const i = html.indexOf(clave);
+        assert.ok(i >= 0, `está: ${clave}`);
+        const fila = html.slice(html.lastIndexOf('<div class="item', i), html.indexOf('<div class="item', i + 1));
+        const ranuras = fila.slice(fila.indexOf('item-inicio')).split('item-ranura').slice(1, 4);
+        const ultima = ranuras[2] ?? '';
+        return /tono-remoto/.test(ultima) ? (/title="([^"]*)"/.exec(ultima)?.[1] ?? 'sin ayuda') : '';
+    };
+    const pagina = (aqui, locales, otras) => {
+        modelo.hilos = locales;
+        const b = new P.BarraHilos();
+        b.estado = { get: k => k === 'telar.cabeceras' ? { __otros_mundos: true } : undefined, update: async () => {} };
+        b.aqui = aqui; b.mostrado = 'Faro'; b.otras = otras;
+        return b.html();
+    };
+    // la del laptop: Bitácora y Aspas viven aquí; Cartero es una ventana que mira al servidor
+    const enLaptop = pagina('laptop', [
+        hilo('Faro', { mundo: 'trabajo', maquina: 'laptop' }),
+        hilo('Bitácora', { mundo: 'trabajo', maquina: 'laptop' }),
+        hilo('Aspas', { mundo: 'trabajo', maquina: 'laptop', padre: 'Cartero' }),
+        hilo('Cartero', { mundo: 'trabajo', maquina: 'servidor', remoto: 'servidor' })],
+    [{ nombre: 'servidor', en_linea: true, edad: 0, hilos: [{ nombre: 'Cartero', vivo: true, mundo: 'trabajo' }] }]);
+    assert.equal(lugar(enLaptop, 'data-hilo="Bitácora"'), '', 'en el laptop, Bitácora vive aquí: sin satélite');
+    assert.equal(lugar(enLaptop, 'data-hilo="Aspas"'), '', 'Aspas, tampoco');
+    assert.equal(lugar(enLaptop, 'data-hilo="Cartero"'), 'vive en servidor', 'la ventana que mira al servidor: con satélite, y dice cuál');
+    // la del servidor: Cartero vive aquí; Bitácora y Aspas, en el laptop (de su foto)
+    const enServidor = pagina('servidor', [hilo('Cartero', { mundo: 'trabajo', maquina: 'servidor' })],
+        [{ nombre: 'laptop', en_linea: true, edad: 0, hilos: [
+            { nombre: 'Faro', vivo: true, mundo: 'trabajo' }, { nombre: 'Bitácora', vivo: true, mundo: 'trabajo' },
+            { nombre: 'Aspas', vivo: true, mundo: 'trabajo', padre: 'Cartero' }] }]);
+    assert.equal(lugar(enServidor, 'data-hilo="Cartero"'), '', 'en el servidor, Cartero vive aquí: sin satélite');
+    assert.equal(lugar(enServidor, 'data-id="laptop|Bitácora"'), 'vive en laptop', 'Bitácora vive en el laptop: con satélite, y dice cuál');
+    assert.equal(lugar(enServidor, 'data-id="laptop|Aspas"'), 'vive en laptop', 'Aspas, igual');
+    modelo.hilos = hilos;
+}
+
 // ── 5. un solo buscador, el de HILOS: filtra los vivos y los archivados ──
 // Escribir abre ARCHIVO con solo los archivados que calzan (y su número), sin tocar lo que la persona dejó recordado;
 // plegarlo mientras se busca dura lo que dura lo escrito; al borrar, vuelve a como estaba. ARCHIVO ya no tiene buscador
@@ -420,10 +646,16 @@ assert.deepEqual(desde(barra('Rama', servidor), '[__hilos]'),
 
 // una máquina fuera de línea (telar.alcance): sus hilos, inalcanzables. Ni el aro de dormido ni la atención de antes: el
 // aro chico de «sin noticias», y en la ayuda desde cuándo y lo que hacía cuando se fue. Lo mismo la ventana de aquí de
-// uno suyo (la lista dice `alcanzable: false`)
-{
+// uno suyo (la lista dice `alcanzable: false`). Con el reloj fijo (Date.now, que es lo que la barra lee): se fue hace dos
+// horas; a las 15:00 eso es «desde 13:00», y a la 1:01 de la madrugada, del día anterior: «desde ayer 23:01»
+const conReloj = (ahora, f) => {
+    const real = Date.now;
+    Date.now = () => ahora;
+    try { return f(); } finally { Date.now = real; }
+};
+for (const [ahora, esperado] of [[new Date(2026, 10, 24, 15, 0).getTime(), '13:00'], [new Date(2026, 10, 24, 1, 1).getTime(), 'ayer 23:01']]) conReloj(ahora, () => {
     modelo.hilos = [hilo('Molino', { mundo: 'trabajo' }),
-        hilo('Vista', { mundo: 'trabajo', remoto: 'laptop', alcanzable: false, atencion: 'trabajando', fuera_de_linea_desde: new Date(Date.now() - 7200e3).toISOString() })];
+        hilo('Vista', { mundo: 'trabajo', remoto: 'laptop', alcanzable: false, atencion: 'trabajando', fuera_de_linea_desde: new Date(ahora - 7200e3).toISOString() })];
     const b = new P.BarraHilos();
     b.estado = { get: () => undefined, update: async () => {} };
     b.mostrado = 'Molino';
@@ -439,12 +671,28 @@ assert.deepEqual(desde(barra('Rama', servidor), '[__hilos]'),
     const chico = /tono-tenue[^"]*"[^>]*><span class="circulo tam-chico" style="--lleno: 0%"/;
     for (const id of ['data-id="laptop|Catedral"', 'data-id="laptop|Nave"', 'data-hilo="Vista"']) {
         assert.match(fila(id), chico, `${id}: inalcanzable`);
-        assert.match(fila(id), /laptop fuera de línea desde \d\d:\d\d: inalcanzable/, `${id}: desde cuándo`);
+        assert.ok(fila(id).includes(`laptop fuera de línea desde ${esperado}: inalcanzable`), `${id}: desde cuándo (${esperado})`);
         assert.doesNotMatch(fila(id), /circulo tam-grande[^"]*" style="--lleno: 0%"|trabajando/, `${id}: ni dormido ni trabajando`);
     }
     assert.match(fila('data-id="laptop|Catedral"'), /cuando se fue, dormía/);
     assert.match(fila('data-id="laptop|Nave"'), /cuando se fue, trabajaba/);
     assert.match(fila('data-id="laptop|Nave"'), /class="item[^"]*apagada/, 'apagada, como antes');
+});
+
+// las notas (los próximos prompts) que le guardó la persona (web/borradores.ts): al final de su fila, tenues, el ícono y cuántos; también
+// el de otra máquina, de su foto
+{
+    const antes = modelo.hilos;
+    modelo.hilos = antes.map(h => h.nombre === 'Molino' ? { ...h, borradores: 2 } : h);
+    const b = new P.BarraHilos();
+    b.estado = { get: () => undefined, update: async () => {} }; b.mostrado = 'Vista';
+    b.otras = [{ nombre: 'servidor', en_linea: true, fuera: false, edad: 0, hilos: [{ nombre: 'Nave', atencion: 'termino', vivo: true, borradores: 1 }] }];
+    const html = b.html();
+    const filaDe = re => html.split('<div class="item').find(f => re.test(f)) ?? '';
+    assert.match(filaDe(/data-hilo="Molino"/), /<span class="item-aviso tono-tenue" title="2 notas: prompts guardados para mandarle[^"]*"><span class="i">\u{eb26}<\/span>2<\/span>/u);
+    assert.doesNotMatch(filaDe(/data-hilo="Vista"/), /\u{eb26}/u, 'sin guardados, nada');
+    assert.match(filaDe(/data-id="servidor\|Nave"/), /title="1 nota: un prompt guardado[^"]*"><span class="i">\u{eb26}<\/span>1</u);
+    modelo.hilos = antes;
 }
 
 console.log('prueba:barra ok');

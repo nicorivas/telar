@@ -1,67 +1,118 @@
-/* La carpeta de un hilo y su documento (web/carpeta.ts): los archivos arriba, como una lista corta, y el
-   elegido abajo, con sus conexiones del grafo al lado (o debajo, si no caben). scripts/navegador.mjs la junta en
+/* El visor de un documento (web/carpeta.ts): una ventana encima de lo que se mira, ancha para leer y del alto de la
+   pantalla (no cambia de tamaño al pasar de un archivo a otro); en el teléfono, la pantalla entera. Adentro, la barra de
+   una pantalla (el nombre del archivo en gris, lo que se le hace y la ✕); abajo, el contenido, que se desplaza solo, y a su
+   derecha la barra del documento (web/documento-lado.ts): sus comentarios, sus conexiones y sus datos, cada uno en su
+   pestaña, plegable y de ancho arrastrable. La ventana crece con la barra: el texto no se angosta por ella. En el texto, los
+   comentarios (web/comentarios.ts) son solo una marca tenue y su número. scripts/navegador.mjs la junta en
    src/telar/web/marco.css. */
+
+dialog.ventana-dialogo.ventana-documento {
+  margin: 4vh auto auto;
+
+  & > .ventana { height: calc(100dvh - 8vh); max-height: none; }
+}
+
+/* lo que ocupa la barra de la derecha (web/documento-lado.ts pone las clases y --doc-lado-ancho en el visor y en su
+   ventana): su ancho, la franja si está plegada, nada si no hay; en el teléfono no ocupa (es una hoja que sube) */
+.ventana-documento,
+.v-documento {
+  --doc-lado-ocupa: 0px;
+
+  &.con-lado { --doc-lado-ocupa: var(--doc-lado-ancho, 320px); }
+  &.con-lado.lado-plegado { --doc-lado-ocupa: var(--doc-lado-plegada); }
+}
+
+.angosto :is(.ventana-documento, .v-documento) { --doc-lado-ocupa: 0px; }
+
+.ventana.ventana-documento {
+  width: min(var(--documento-ancho) + var(--doc-lado-ocupa), 100vw - 2 * var(--ventana-margen));
+
+  & .ventana-cuerpo { display: flex; flex-direction: column; overflow: hidden; }
+}
+
+/* en modo lectura (la prosa: de entrada en el modo foco, o con la tecla l), la ventana más ancha y más alta, y el documento
+   en una columna al medio: es el modo revisión, leer cómodo y comentar */
+dialog.ventana-dialogo.ventana-documento.lectura {
+  margin-top: 2vh;
+
+  & > .ventana { height: calc(100dvh - 4vh); }
+}
+
+.ventana.ventana-documento.lectura { width: min(var(--documento-ancho-lectura) + var(--doc-lado-ocupa), 100vw - 2 * var(--ventana-margen)); }
+
+/* en el teléfono, la pantalla entera: sin margen, sin marco (no hay de qué apartarlo) */
+.angosto dialog.ventana-dialogo.ventana-documento {
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+
+  & > .ventana { width: 100vw; height: 100dvh; border: 0; box-shadow: none; }
+}
 
 @scope (.v-documento) {
   :scope {
-    padding: var(--e-2) var(--h-2) var(--e-3);
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
     container-type: inline-size;
   }
 
-  h1 {
-    margin: 0 0 var(--e-2);
-    font-size: var(--t-mayor);
-  }
+  .doc-barra { flex: none; }
+  .doc-nombre { color: var(--texto-tenue); }
 
-  .donde {
-    color: var(--dim);
-    font-size: var(--t-menor);
-  }
-
-  .nada { color: var(--dim); }
-
-  .carpeta {
+  /* debajo de la primera fila: el contenido y la barra, uno al lado del otro */
+  .doc-medio {
+    position: relative;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0 var(--h-2);
-    padding-bottom: var(--e-2);
-    border-bottom: var(--borde);
-
-    & .donde { flex-basis: 100%; }
-    & a { color: var(--fg); }
-    & a.dir { color: var(--azul); }
-    & a.sel { color: var(--amarillo); }
+    flex: 1;
+    min-height: 0;
   }
 
-  /* los archivos que se llaman como uno que nombró un agente: uno por línea, la carpeta tenue */
+  /* lo que se desplaza; el botón de comentar flota adentro, junto a la selección */
+  .doc-cuerpo {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--e-2) var(--pantalla-margen) var(--e-3);
+    overflow: auto;
+    outline: none;
+  }
+
+  .nada { color: var(--texto-tenue); }
+
+  /* una carpeta, y los archivos que se llaman como uno que nombró un agente: uno por línea, la carpeta tenue */
+  .carpeta,
   .candidatos {
     display: flex;
     flex-direction: column;
     gap: var(--e-1);
 
     & .nada { margin: 0 0 var(--e-1); }
-    & a { color: var(--fg); overflow-wrap: anywhere; }
-    & .dir { color: var(--dim); }
+    & a { color: var(--texto); overflow-wrap: anywhere; cursor: pointer; }
+    & a.dir { color: var(--azul); }
+    & .dir { color: var(--texto-tenue); }
   }
 
   article {
-    padding-top: var(--e-2);
-
     & pre {
+      margin: 0;
       overflow-x: auto;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       font: inherit;
     }
 
-    & .alternar { margin-left: var(--h-2); }
-
-    /* un .html dibujado: sobre blanco, como en una pestaña del navegador, porque el suyo puede no tener fondo */
+    /* un .html dibujado: sobre blanco, como en una pestaña del navegador, porque el suyo puede no tener fondo; llena lo que
+       queda de la ventana */
     & iframe {
       display: block;
       width: 100%;
-      height: 75vh;
-      margin-top: var(--e-1);
+      height: 100%;
+      min-height: 50vh;
       border: var(--borde);
       background: #fff;
     }
@@ -69,67 +120,25 @@
     & iframe[hidden] { display: none; }
   }
 
-  /* el archivo y sus conexiones: lado a lado si hay ancho; si no, las conexiones abajo */
-  .cuerpo:has(> .conexiones:not([hidden])) {
-    display: grid;
-    gap: 0 var(--h-2);
+  .doc-cuerpo:has(> article.con-iframe) { display: flex; flex-direction: column; }
+  article.con-iframe { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+
+  /* el markdown de siempre, en la letra de la página; en modo lectura lo dibuja la prosa (prosa.css, `.prosa-md`) */
+  .md { overflow-wrap: anywhere; }
+  .md.prosa { padding-block: var(--e-3) var(--e-3); }
+
+  /* en modo lectura, la columna centrada en la ventana entera, como si la barra no estuviera; si no cabe sin taparse con
+     ella, corrida a la izquierda lo justo (100cqw es el ancho del visor) */
+  .doc-cuerpo > article > .md.prosa {
+    margin-left: max(0px, min((100cqw - var(--prosa-ancho)) / 2 - var(--pantalla-margen),
+      100cqw - var(--doc-lado-ocupa) - 2 * var(--pantalla-margen) - var(--prosa-ancho)));
+    margin-right: auto;
   }
 
-  .conexiones {
-    margin-top: var(--e-3);
-    padding-top: var(--e-2);
-    border-top: var(--borde);
-    font-size: var(--t-menor);
-
-    & h2 {
-      margin: 0 0 var(--e-1);
-      color: var(--amarillo);
-      font-size: var(--t-normal);
-    }
-
-    & h3 {
-      margin: var(--e-2) 0 var(--e-1);
-      color: var(--dim);
-      font-size: inherit;
-      font-weight: inherit;
-    }
-
-    & ul {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    & li { margin-bottom: var(--e-2); }
-    & .arista { margin-top: var(--e-1); }
-    & code { color: var(--cian); font: inherit; }
-    & .locus,
-    & .porque,
-    & .n { color: var(--dim); }
-    & .porque p { margin: 0; }
-    & .roto { color: var(--rojo); text-decoration: line-through; }
-  }
-
-  @container (min-width: 120ch) {
-    .cuerpo:has(> .conexiones:not([hidden])) { grid-template-columns: minmax(0, 1fr) minmax(32ch, 42ch); }
-
-    /* al lado, con su línea a la izquierda; al bajar por un documento largo, siguen a la vista */
-    .conexiones {
-      position: sticky;
-      top: 0;
-      align-self: start;
-      max-height: 100vh;
-      margin-top: 0;
-      padding-left: var(--h-2);
-      overflow-y: auto;
-      border-top: 0;
-      border-left: var(--borde);
-    }
-  }
-
-  .md {
+  .md:not(.prosa-md) {
     max-width: 90ch;
-    overflow-wrap: anywhere;
+
+    & > :first-child { margin-top: 0; }
 
     & h1,
     & h2,
@@ -163,5 +172,350 @@
     }
 
     & img { max-width: 100%; }
+  }
+
+  /* ── los comentarios, en el texto ── */
+
+  /* lo comentado: un fondo apenas, en la tinta de los comentarios (más, y una cita tenue se leería peor; un subrayado
+     raya cada línea de un párrafo entero); el texto no cambia de color ni de peso. Lo resuelto,
+     sin fondo (solo su número); el que está bajo el mouse o abierto en la barra, más fuerte; lo que se está por comentar,
+     en el acento; sin ancho («era por aquí»), una raya */
+  mark.coment {
+    background: none;
+    color: inherit;
+    cursor: pointer;
+
+    &.abierto { background: color-mix(in srgb, var(--coment-abierto) 8%, transparent); }
+    &.abierto:is(.encendida, .activa) { background: color-mix(in srgb, var(--coment-abierto) 20%, transparent); }
+    &.resuelto:is(.encendida, .activa) { background: color-mix(in srgb, var(--coment-resuelto) 18%, transparent); }
+    &.nuevo { background: color-mix(in srgb, var(--coment-nuevo) 26%, transparent); }
+
+    &.vacia {
+      display: inline-block;
+      width: 2px;
+      height: 1lh;
+      vertical-align: bottom;
+      background: var(--coment-abierto);
+    }
+
+    &.vacia.resuelto { background: var(--coment-resuelto); }
+  }
+
+  /* su número, al final del tramo: chico, arriba, en la letra de la página y en la tinta del comentario; encendido, al
+     revés (el fondo en la tinta) */
+  sup.coment-n {
+    margin-left: .05em;
+    padding: 0 .15em;
+    color: var(--coment-abierto);
+    font-family: var(--letra), iconos, monospace;
+    font-size: .62em;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 0;
+    vertical-align: super;
+    cursor: pointer;
+    user-select: none;
+
+    &.resuelto { color: var(--coment-resuelto); }
+    &.abierto:is(.encendida, .activa) { background: var(--coment-abierto); color: var(--bg); }
+    &.resuelto:is(.encendida, .activa) { background: var(--coment-resuelto); color: var(--bg); }
+  }
+
+  /* el botón de comentar, junto a lo seleccionado: una celda sola, con el fondo de la ventana y su sombra dura */
+  .coment-flota {
+    position: absolute;
+    z-index: 2;
+    border: var(--borde);
+    background: var(--ventana-fondo);
+    box-shadow: var(--ventana-sombra-junto);
+  }
+
+  /* ── la barra de la derecha (web/documento-lado.ts) ── */
+
+  /* como la ficha de un hilo (#lado, marco.css): el fondo de las barras, su línea a la izquierda; las pestañas arriba,
+     con la flecha de plegar al final; lo de cada hoja se desplaza solo */
+  .doc-lado {
+    position: relative;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: var(--doc-lado-ancho, 320px);
+    min-height: 0;
+    container: doc-lado / inline-size;
+    border-left: var(--borde);
+    background: var(--bg-barra);
+    font-family: var(--letra), iconos, monospace;
+    font-size: var(--tam);
+    line-height: var(--alto);
+
+    &[hidden] { display: none; }
+    &.plegada { width: var(--doc-lado-plegada); }
+  }
+
+  /* su franja de agarre (la de las barras de la página: marco.css, .tirador), sobre su línea */
+  .doc-tirador { position: absolute; top: 0; bottom: 0; left: -3px; }
+  .doc-lado.plegada .doc-tirador { display: none; }
+
+  .doc-lado-barra {
+    box-sizing: border-box;
+    display: flex;
+    flex: none;
+    gap: var(--h-2);
+    align-items: baseline;
+    height: var(--pantalla-barra-alto);
+    padding: var(--e-1) var(--h-2);
+    overflow: hidden;
+    border-bottom: var(--borde);
+    white-space: nowrap;
+
+    /* abierta, la fila son las pestañas de la casa (componentes/pestanas.ts, pestanas.css): ellas llevan el alto y la línea;
+       con menos aire por pestaña (la barra es angosta). Las que no caben, al «⋯» (web/pestanas.ts, `acomodar`) */
+    &.con-pestanas { display: block; height: auto; padding: 0; border-bottom: 0; }
+  }
+
+  .doc-lado-pestanas {
+    --pestanas-margen: var(--h-2);
+    --pestana-pad-x: var(--h-1);
+  }
+
+  .doc-lado-n { color: var(--dim); }
+  .doc-lado-n.tinta { color: var(--coment-abierto); }
+  .doc-lado-pliegue { margin-left: auto; color: var(--dim); cursor: pointer; text-decoration: none; }
+  .doc-lado-pliegue:hover { color: var(--fg); }
+
+  /* plegada: una franja con ‹ arriba (en la fila de las pestañas) y el nombre de cada hoja en vertical, con su cuenta */
+  .doc-lado.plegada .doc-lado-barra {
+    flex: 1;
+    flex-direction: column;
+    gap: var(--e-3);
+    align-items: center;
+    height: auto;
+    padding: 0;
+    border-bottom: 0;
+
+    & > .doc-lado-pliegue {
+      box-sizing: border-box;
+      width: 100%;
+      height: var(--pantalla-barra-alto);
+      margin: 0;
+      padding: var(--e-1) 0;
+      border-bottom: var(--borde);
+      text-align: center;
+    }
+  }
+
+  .doc-lado-vertical {
+    display: flex;
+    gap: var(--e-1);
+    align-items: center;
+    color: var(--dim);
+    cursor: pointer;
+    text-decoration: none;
+
+    &.v { writing-mode: vertical-rl; }
+    &:hover { color: var(--fg); }
+  }
+
+  .doc-lado-hoja {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+
+    &[hidden] { display: none; }
+    & > .nada { margin: var(--e-2) var(--h-2); }
+  }
+
+  /* ── los comentarios, en la barra ── */
+
+  /* uno por fila, de borde a borde, con su línea abajo: su número en la tinta del comentario, su estado, la cita tenue y
+     lo que dice. El abierto, con la raya de su tinta a la izquierda y todo lo suyo debajo */
+  .coment-fila {
+    padding: var(--e-1) 0;
+    border-bottom: var(--borde);
+    border-left: 2px solid transparent;
+    cursor: pointer;
+
+    & > * { margin-inline: calc(var(--h-2) - 2px) var(--h-2); }
+    &:hover,
+    &.encendida { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+
+    &.activa {
+      padding-bottom: 0;
+      border-left-color: var(--coment-abierto);
+      background: var(--superficie);
+      cursor: default;
+    }
+
+    &.activa.resuelto { border-left-color: var(--coment-resuelto); }
+    &.activa.suelto { border-left-color: var(--peligro); }
+    &.resuelto:not(.activa) :is(.coment-cita, .coment-texto) { color: var(--texto-tenue); }
+  }
+
+  .coment-fila-cab {
+    display: flex;
+    gap: var(--h-1);
+    align-items: baseline;
+  }
+
+  .coment-num { color: var(--coment-abierto); }
+  .resuelto .coment-num { color: var(--coment-resuelto); }
+  .suelto .coment-num { color: var(--peligro); }
+  .coment-linea { color: var(--texto-tenue); }
+  .coment-resp { margin-left: auto; color: var(--texto-tenue); }
+
+  .coment-texto {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--texto);
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+  }
+
+  .coment-grupo {
+    padding: var(--e-2) var(--h-2) var(--e-1);
+    border-bottom: var(--borde);
+    color: var(--texto-tenue);
+
+    & .n { color: var(--peligro); }
+  }
+
+  /* lo de un hilo abierto (o la caja de uno nuevo, arriba de la lista): lo respondido, el campo y los botones del pie, de
+     borde a borde */
+  .coment-tarjeta {
+    --boton-pie-aire: var(--e-2);
+    margin-inline: 0;
+    color: var(--texto);
+
+    & > :not(.botonera) { margin-inline: calc(var(--h-2) - 2px) var(--h-2); }
+    & p { margin: 0; }
+  }
+
+  .coment-tarjeta.nuevo {
+    padding-top: var(--e-1);
+    border-bottom: var(--borde);
+    border-left: 2px solid var(--coment-nuevo);
+    background: var(--superficie);
+  }
+
+  .coment-cabeza { color: var(--texto-tenue); }
+  .coment-estado.abierto { color: var(--coment-abierto); }
+  .coment-estado.resuelto { color: var(--exito); }
+  .coment-estado.suelto { color: var(--peligro); }
+  .coment-estado.nuevo { color: var(--coment-nuevo); }
+  .coment-nota { margin-top: var(--e-1); color: var(--atencion); }
+  .coment-cita { margin-top: var(--e-1); color: var(--texto-tenue); overflow-wrap: anywhere; }
+  .coment-uno { margin-top: var(--e-2); }
+  .coment-quien { display: flex; gap: var(--h-1); align-items: baseline; }
+  .coment-autor { color: var(--titulo); }
+  .coment-fecha { flex: 1; color: var(--texto-tenue); }
+  .coment-iconos { display: flex; gap: var(--entre-celdas); }
+
+  .coment-icono {
+    color: var(--texto-tenue);
+    cursor: pointer;
+
+    &:hover { color: var(--texto); }
+    &.peligro:hover { color: var(--peligro); }
+  }
+
+  .coment-cuerpo {
+    overflow-wrap: anywhere;
+
+    & p { margin: 0 0 var(--e-1); }
+    & p:last-child { margin-bottom: 0; }
+    & code { color: var(--cian); font: inherit; }
+  }
+
+  .coment-campo {
+    box-sizing: border-box;
+    display: block;
+    width: calc(100% - 2 * var(--h-2) + 2px);
+    margin-top: var(--e-2);
+    padding: .3lh 1ch;
+    border: 1px solid var(--linea);
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--texto);
+    font: inherit;
+    resize: vertical;
+
+    &:focus { border-color: var(--acento); }
+  }
+
+  .coment-problema { min-height: 1lh; margin-top: var(--e-1); color: var(--rojo); }
+
+  /* ── las conexiones, en la barra ── */
+
+  .conexiones {
+    padding: 0 var(--h-2) var(--e-2);
+    overflow-wrap: anywhere;
+
+    & h3 {
+      margin: var(--e-2) 0 var(--e-1);
+      color: var(--texto-tenue);
+      font-size: inherit;
+      font-weight: inherit;
+    }
+
+    & ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    & li { margin-bottom: var(--e-2); }
+    & a { cursor: pointer; }
+    & .arista { margin-top: var(--e-1); }
+    & code { color: var(--cian); font: inherit; }
+    & .locus,
+    & .porque { color: var(--texto-tenue); }
+    & .porque p { margin: 0; }
+    & .roto { color: var(--rojo); text-decoration: line-through; }
+  }
+
+  /* ── los datos del frontmatter, en la barra: cada clave en gris y su valor debajo, como está escrito ── */
+
+  .doc-datos {
+    margin: 0;
+    padding: var(--e-2) var(--h-2);
+    overflow-wrap: anywhere;
+
+    & dt { color: var(--texto-tenue); }
+    & dd { margin: 0 0 var(--e-2); white-space: pre-wrap; }
+  }
+}
+
+/* en el teléfono no hay columna al lado: la barra es una hoja que sube desde abajo. Plegada, una franja abajo con las dos
+   pestañas en fila; abierta, un poco más de la mitad de la pantalla, encima del texto */
+.angosto .v-documento {
+  & .doc-cuerpo { padding-bottom: calc(var(--pantalla-barra-alto) + var(--e-3)); }
+
+  & .doc-lado {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 3;
+    width: auto;
+    height: 62dvh;
+    border-top: var(--borde);
+    border-left: 0;
+    box-shadow: var(--ventana-sombra-junto);
+  }
+
+  & .doc-lado.plegada { width: auto; height: auto; box-shadow: none; }
+
+  & .doc-lado.plegada .doc-lado-barra {
+    box-sizing: border-box;
+    flex-direction: row;
+    gap: var(--h-2);
+    align-items: baseline;
+    height: var(--pantalla-barra-alto);
+    padding: var(--e-1) var(--h-2);
+
+    & > .doc-lado-pliegue { width: auto; height: auto; margin-left: auto; padding: 0; border-bottom: 0; }
   }
 }

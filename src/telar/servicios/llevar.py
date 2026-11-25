@@ -42,11 +42,13 @@ def _registro(config, hilo: str) -> Path:
     return d / f"{casilla.ficha(config, hilo)}.log"
 
 
-def llevar(ctx, hilo: str, maquina: str = "", si: bool = False, espera: float = ESPERA) -> Llevado:
+def llevar(ctx, hilo: str, maquina: str = "", si: bool = False, espera: float = ESPERA, subir: bool = False) -> Llevado:
+    """`si`: llevarlo aunque haya algo sin subir; `subir`: subir antes lo suyo (telar.sin_subir). Sin ninguno, si hay
+    algo, falla con 409 y el detalle queda en el progreso de la mudanza (`pendiente`), para mostrarlo."""
     if not hilo.strip():
         raise ErrorDeServicio("¿qué hilo?", 422)
     argv = [sys.executable, "-m", "telar", "hilo", "llevar", *([maquina] if maquina else []), "--hilo", hilo,
-            *(["--si"] if si else [])]
+            *(["--si"] if si else []), *(["--subir"] if subir else [])]
     registro = _registro(ctx.config, hilo)
     with registro.open("w", encoding="utf-8") as salida:
         # sin terminal: lo que pediría confirmar sale con su queja («--si para llevarla igual»)
@@ -67,9 +69,16 @@ def llevar(ctx, hilo: str, maquina: str = "", si: bool = False, espera: float = 
     return Llevado(codigo=0, salida=texto, registro=str(registro))
 
 
-def traer(ctx, hilo: str, maquina: str, si: bool = False) -> Llevado:
+#: cuánto se espera a la dueña al pedirle traer un hilo: ella lo corre aparte y contesta en unos 20 s (ESPERA), lo
+#: que tarde en fallar lo que pide confirmar
+ESPERA_TRAER = 90.0
+
+
+def traer(ctx, hilo: str, maquina: str, si: bool = False, *, a: str = "", subir: bool = False) -> Llevado:
     """«Traer a esta máquina» un hilo que vive en `maquina`, otra de la persona: se le pide por el bus que lo lleve
-    aquí (telar.mudanza.traer_aqui). Espera hasta que termine: la conversación viaja comprimida por el bus."""
+    aquí (telar.mudanza.traer_aqui). Con `a`, que lo lleve a esa otra máquina (ni esta ni la suya). Allá corre aparte:
+    si termina pronto se devuelve lo que dijo (y, si falló, su queja); si no, `en_curso`, y su progreso se lee de allá
+    (`progreso`, GET /mudanza?maquina=)."""
     from telar import bus as mod_bus
 
     if not hilo.strip() or not maquina.strip():
@@ -77,7 +86,10 @@ def traer(ctx, hilo: str, maquina: str, si: bool = False) -> Llevado:
     if not mod_bus.hay_bus(ctx.config):
         raise ErrorDeServicio("sin bus no se trae un hilo de otra máquina", 409)
     aqui = mod_bus.maquina(ctx.config)
-    r = mod_bus.pedir(ctx.config, maquina, "hilo-traer", {"hilo": hilo, "a": aqui, "si": si}, espera=600)
+    if a and a == maquina:
+        raise ErrorDeServicio(f"«{hilo}» ya vive en {maquina}", 422)
+    r = mod_bus.pedir(ctx.config, maquina, "hilo-traer", {"hilo": hilo, "a": a or aqui, "si": si,
+                                                         **({"subir": True} if subir else {})}, espera=ESPERA_TRAER)
     if not r.get("ok"):
         raise ErrorDeServicio(f"{maquina}: {r.get('error', 'no respondió')}", 502)
     texto = str(r.get("salida") or "")
@@ -85,4 +97,18 @@ def traer(ctx, hilo: str, maquina: str, si: bool = False) -> Llevado:
         lineas = texto.strip().splitlines()
         queja = next((l for l in reversed(lineas) if l.startswith("telar: ")), lineas[-1] if lineas else "no se trajo")
         raise ErrorDeServicio(queja.removeprefix("telar: "), 409, {"salida": texto, "codigo": r.get("codigo")})
-    return Llevado(codigo=0, salida=texto)
+    return Llevado(codigo=0, salida=texto, en_curso=bool(r.get("en_curso")))
+
+
+def progreso(ctx, hilo: str, maquina: str = "") -> dict:
+    """En qué va la mudanza de `hilo` (telar.mudanza.progreso): la que corre aquí o, con `maquina` (otra de la
+    persona), la que corre allá, pedida por el bus: así quien pidió traer un hilo ve sus pasos. {} si no hay ninguna o
+    allá no contesta."""
+    from telar import bus as mod_bus
+    from telar import mudanza
+
+    if not maquina or not mod_bus.hay_bus(ctx.config) or maquina == mod_bus.maquina(ctx.config):
+        return mudanza.progreso_de(ctx.config, hilo)
+    r = mod_bus.pedir(ctx.config, maquina, mudanza.VERBO_PROGRESO, {"hilo": hilo}, espera=8)
+    d = r.get("progreso") if r.get("ok") else None
+    return d if isinstance(d, dict) else {}

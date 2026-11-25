@@ -670,7 +670,7 @@ destino = "usuario@servidor"   # lo que va después de mosh/ssh; puede ser un al
 transporte = "mosh"            # mosh (por defecto) · ssh
 raiz = "~/repo"                # la carpeta del repositorio EN esa máquina
 directorio = ""                # opcional: la carpeta común donde cada persona publica sus hilos
-repos = ["~/repo", "~/repo/otro"]  # opcional: repositorios que viven en las dos máquinas
+repos = ["~/repo", "~/repo/otro"]  # opcional: repositorios que viven en las dos máquinas (telar desplegar)
 sesion = ""                    # opcional: la sesión del telar EN esa máquina; "" es la misma que aquí
 ```
 
@@ -921,7 +921,7 @@ sigue saliendo.
 [terminal]
 columnas = 130          # hasta cuántas columnas de ancho (40 a 400), o 0: todo lo que quepa
 posicion = "centro"     # izquierda, centro o derecha, si sobra espacio
-fondo = "telar"         # telar (el de siempre), ninguno, un color "#11111b", "imagen:~/fondos/a.jpg" o "imagen:https://…",
+fondo = "ninguno"       # ninguno (el fondo del tema), un color "#11111b", "imagen:~/fondos/a.jpg" o "imagen:https://…",
                         # o el nombre de un módulo que trae [fondo] (docs/modulos.md)
 ```
 
@@ -1561,7 +1561,12 @@ token = "~/.config/telar/bus.token"   # tu secreto: el mismo archivo en todas tu
 persona = "ana"                        # tu cuenta en el bus (por defecto, tu usuario del sistema)
 maquina = "laptop"                     # cómo se llama esta en el bus (por defecto, su nombre de red)
 administra = "ana"                     # quién corre el bus, si no eres tú (lo escribe `telar instalar --unirse`)
+publicar = "condicionado"              # cómo publica el nodo sus hilos: condicionado (de fábrica) o simple
 ```
+
+`publicar`: el nodo escribe el registro de sus hilos en el bus condicionado a la revisión que vio (telar.dueno), así
+nunca hay dos máquinas dueñas del mismo hilo; `"simple"` es la escritura de antes, sin condición, por si la nueva falla
+(igual no publica un hilo que el registro dice de otra máquina).
 
 Con `[bus]`, cada máquina corre `telar nodo` (`servidor/telar-nodo.service` en Linux,
 `servidor/telar-nodo.plist` en macOS) y la que no se apaga corre además el bus

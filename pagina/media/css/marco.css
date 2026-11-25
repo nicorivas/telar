@@ -193,20 +193,39 @@ body[data-cabecera="oculta"] #salir-modo {
   min-height: 0;
 }
 
-/* a la derecha de un hilo de agente: su ficha (pagina/src/web/lado.ts), plegable */
+/* a la derecha de un hilo: su ficha, sus notas, sus códigos o su contexto (pagina/src/web/lado.ts), plegable; arriba las
+   pestañas, y debajo la hoja abierta, que se desplaza (la de las notas, web/borradores.ts, aparte: no se redibuja) */
 #lado {
+  display: flex;
+  flex-direction: column;
   grid-column: 2;
   grid-row: 1 / -1;
   /* la de fábrica, o la que se eligió arrastrando su línea (web/anchos.ts pone --lado-ancho) */
   width: var(--lado-ancho, min(46ch, 40vw));
   min-height: 0;
-  overflow: auto;
-  padding: var(--e-1) var(--h-2);
+  overflow: hidden;
   border-left: var(--borde);
   background: var(--bg-barra);
 
   &[hidden] { display: none; }
-  &.plegado { width: auto; padding: var(--e-1) var(--h-1); overflow: hidden; }
+  &.plegado { width: auto; }
+
+  & > .lado-cabeza { flex: none; }
+  & > [hidden] { display: none; }
+
+  & > .lado-hoja {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--e-1) var(--h-2);
+  }
+
+  &.plegado > .lado-hoja { padding: var(--e-1) var(--h-1); overflow: hidden; }
+  /* plegada, cuántos borradores tiene, bajo la flecha; en el color de lo que terminó si terminó su turno con guardados */
+  & .lado-bor { display: block; color: var(--texto-tenue); cursor: pointer; text-decoration: none; text-align: center; margin-top: var(--e-1); }
+  & .lado-bor .i { display: block; }
+  & .lado-bor:hover { color: var(--texto); }
+  & .lado-bor.recuerda { color: var(--estado-termino); }
 
   & .lado-cab { display: flex; gap: var(--h-1); align-items: baseline; }
   /* su barra, arriba: del alto de la de la pantalla de al lado y de la franja de avisos (--pantalla-barra-alto), con su
@@ -241,11 +260,17 @@ body[data-cabecera="oculta"] #salir-modo {
   & .lado-sec > summary { cursor: pointer; color: var(--violeta); }
   & pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
-  /* las hojas (la ficha de un agente, los códigos, el contexto), cuando hay más de una: cada pestaña en una línea */
-  & .lado-hojas { display: flex; gap: var(--h-2); align-items: baseline; }
-  & .lado-hojas > a[data-hoja] { color: var(--dim); cursor: pointer; text-decoration: none; white-space: nowrap; }
-  & .lado-hojas > a[data-hoja]:hover { color: var(--fg); }
-  & .lado-hojas > a.sel { color: var(--violeta); }
+  /* las hojas (la ficha de un agente, las notas, los códigos, el contexto): sus pestañas (componentes/pestanas.ts),
+     arriba y de borde a borde como la barra de al lado, con menos aire por pestaña (la barra es angosta: las que no
+     caben van al «⋯») */
+  & .pestanas.lado-hojas {
+    --pestanas-margen: var(--h-2);
+    --pestana-pad-x: var(--h-1);
+  }
+
+  /* la hoja de las notas (web/borradores.ts): ocupa la hoja entera; la lista se desplaza, la caja y su pie debajo */
+  & > .lado-notas { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  & > .lado-notas .bor-pie { border-bottom: var(--borde); }
 
   /* la hoja de códigos (web/codigos.ts): la caja de buscar, y una fila por código, con su detalle debajo */
   & .cod-buscar { margin: 0 calc(-1 * var(--h-2)) var(--e-1); --buscador-margen: var(--h-2); }
@@ -279,6 +304,52 @@ body[data-cabecera="oculta"] #salir-modo {
 }
 
 body.angosto #lado { display: none; }
+
+/* las notas del hilo (web/borradores.ts): la hoja «notas» de #lado, o su ventana en el teléfono. La lista en ítems del
+   alto de siempre, la caja y su pie de botones */
+.borradores {
+  display: flex;
+  flex-direction: column;
+
+  &[hidden] { display: none; }
+
+  /* sobre la caja: si su agente terminó su turno (en el color de lo que terminó) o trabaja */
+  & .bor-turno { padding: var(--e-1) var(--h-2) 0; color: var(--texto-tenue); }
+  & .bor-turno[hidden] { display: none; }
+  & .bor-recuerda { color: var(--estado-termino); }
+
+  & .bor-cuerpo { display: flex; flex-direction: column; min-height: 0; }
+  & .bor-lista { flex: 0 1 auto; min-height: 0; overflow: auto; }
+  & .bor-nota { margin: var(--e-1) var(--h-2); }
+  /* la caja con el mismo aire arriba y abajo (de lo de arriba y de la línea del pie), y a los lados el de la hoja */
+  & .bor-caja { padding: var(--e-2) var(--h-2); }
+
+  & .bor-campo {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    resize: none;
+    padding: var(--e-1) var(--h-1);
+    border: var(--borde);
+    border-radius: 0;
+    background: var(--superficie);
+    color: var(--texto);
+    font: inherit;
+    line-height: var(--alto);
+    /* dos líneas, aunque todavía no se haya medido lo escrito */
+    min-height: calc(2lh + 2 * var(--e-1) + 2px);
+  }
+  & .bor-campo:focus { outline: none; border-color: var(--acento); }
+  & .bor-campo::placeholder { color: var(--texto-tenue); }
+
+  /* el pie: una banda de botones (componentes/boton.ts), con lo que dice si se guardó a la izquierda, pegada a la caja
+     (el aire lo pone la caja). En la barra no hay un borde de ventana bajo ella: lleva su línea abajo, de borde a borde,
+     que cierra la banda y las líneas entre sus celdas; en la ventana del teléfono, la cierra el borde de la ventana */
+  & .bor-pie { margin-top: 0; }
+  /* en el teléfono lo de la izquierda va en su fila (boton.css): vacía, sería una franja hueca entre la caja y los botones */
+  &:is(.angosto *) .bor-estado:empty { display: none; }
+  & .bor-estado { overflow: hidden; color: var(--texto-tenue); text-overflow: ellipsis; white-space: nowrap; }
+}
 
 /* la franja de agarre de cada línea (web/anchos.ts): 6 px invisibles a caballo de la línea, que sigue siendo la de un
    píxel; al pasar, el cursor de cambiar el ancho, y mientras se arrastra, la línea con el acento (y ese cursor en toda

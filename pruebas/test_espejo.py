@@ -163,10 +163,10 @@ class Leer(ConCarpeta):
 
 
 class LaFoto(Prueba):
-    def test_no_viajan_los_archivados_ni_lo_que_se_queda_alla(self):
+    def test_no_viaja_lo_que_se_queda_alla(self):
         cuerpos = {"A": {**hilo("A"), "ruta": "/home/x/secreto", "sesiones": ["uuid"], "archivado": False,
                          "ficha": {"etiqueta": "Cliente · A", "estado": "Estado: confidencial"}},
-                   "B": {**hilo("B"), "archivado": True}}
+                   "B": {**hilo("B"), "archivado": True, "ruta": "/home/x/secreto", "sesiones": ["uuid"]}}
         tel = SimpleNamespace(sesion="faro", hilos=[SimpleNamespace(archivado=c["archivado"], nombre=n) for n, c in cuerpos.items()])
         with mock.patch("telar.ordenes._comun.json_hilo", side_effect=lambda h, t, **k: cuerpos[h.nombre]):
             f = m.foto(tel, maquina="laptop", version_telar="0.1.9")
@@ -176,6 +176,31 @@ class LaFoto(Prueba):
             self.assertNotIn(prohibido, texto)
         self.assertEqual(f["hilos"][0]["resumen"], "Cliente · A")
         m.validar(f, "laptop")  # lo que sale, entra
+
+    def test_los_archivados_viajan_aparte_y_con_poco(self):
+        """Para que el ARCHIVO de la página de otra máquina los liste (el 24-nov, la del servidor mostraba 36 de los
+        cientos que tiene el laptop): los suyos, con lo justo; no los que aquí son de otra máquina ni las ventanas."""
+        cuerpos = {"Vivo": {**hilo("Vivo"), "archivado": False},
+                   "Viejo": {**hilo("Viejo", etiquetas=["trabajo"], padre="Vivo", actividad="2026-11-20T10:00:00", prioridad=None),
+                             "archivado": True, "ruta": "/home/x/secreto", "sesiones": ["uuid"], "dueno": ""},
+                   "Reciente": {**hilo("Reciente", actividad="2026-11-24T10:00:00"), "archivado": True, "dueno": ""},
+                   "De allá": {**hilo("De allá"), "archivado": True, "dueno": "servidor"},
+                   "Ventana": {**hilo("Ventana", remoto="servidor"), "archivado": True, "dueno": ""}}
+        tel = SimpleNamespace(sesion="faro", hilos=[SimpleNamespace(archivado=c["archivado"], nombre=n) for n, c in cuerpos.items()])
+        with mock.patch("telar.ordenes._comun.json_hilo", side_effect=lambda h, t, **k: cuerpos[h.nombre]):
+            f = m.foto(tel, maquina="laptop")
+        self.assertEqual([h["nombre"] for h in f["hilos"]], ["Vivo"], "los archivados no van entre los hilos")
+        self.assertEqual([a["nombre"] for a in f["archivados"]], ["Reciente", "Viejo"], "los suyos, lo más reciente primero")
+        self.assertEqual(f["archivados"][1], {"nombre": "Viejo", "relativa": "proyectos/faro", "etiquetas": ["trabajo"],
+                                              "padre": "Vivo", "actividad": "2026-11-20T10:00:00"})
+        self.assertNotIn("secreto", json.dumps(f["archivados"]))
+        limpia = m.validar(f, "laptop")
+        self.assertEqual([a["nombre"] for a in limpia["archivados"]], ["Reciente", "Viejo"])
+        # lo que llega se limpia: textos, etiquetas de texto, una prioridad entera; uno sin nombre no entra
+        sucia = m.validar(foto(archivados=[{"nombre": "X", "relativa": 3, "etiquetas": ["a", 1], "prioridad": True,
+                                            "sesiones": ["uuid"]}, {"relativa": "sin nombre"}, "basura"]), "servidor")
+        self.assertEqual(sucia["archivados"], [{"nombre": "X", "etiquetas": ["a"]}])
+        self.assertNotIn("archivados", m.validar(foto(), "servidor"), "una foto de un telar de antes no los trae")
 
 
 class SusAgentes(ConCarpeta):

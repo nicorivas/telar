@@ -34,6 +34,7 @@ import { elegirDueno } from './tareas';
 import { filaTarea } from './fila-tarea';
 import * as readme from './readme';
 import { sinCasa, unidadDe } from './unidad';
+import { pestanas } from '../../componentes/pestanas';
 import { type Vocabulario, SIN_VOCABULARIO, claseDe, comoVaIniciativa, estadoDe, htmlIniciativas, programas, agrupar, vocabularioDe } from './iniciativas';
 import { type Seccion, NOMBRE_SECCION as NOMBRE, SECCIONES, aManoDesde, cuandoDe, diaCorto, efectivo, enCierre, esCerrado, hoyIso, ordenarSeccion, porQue,
     seccionDe, senalFase } from './plazo-proyecto';
@@ -386,7 +387,9 @@ export function htmlDetalleProyecto(d: DetalleProyecto | undefined, que = 'un pr
         + `<a class="det-ir" data-accion="proyecto" data-valor="${esc(p.ruta)}" title="${esc(ayudaIr)}">${ir}</a>`
         + `<span class="menu-fila" data-accion="proy-menu" data-valor="${esc(p.ruta)}" title="acciones de este proyecto">${I.menu}</span></div>`
         + va
-        + `<div class="subpest det-pest">${PESTANAS.map(k => `<a data-pest="${k}">${k}${k === 'pendientes' && n ? ` <span class="n">${n}</span>` : ''}</a>`).join('')}</div></div>`
+        // sus pestañas (componentes/pestanas.ts): la abierta la marca la página (vista.ts, `aplicarDetalle`), sin repintar
+        + pestanas({ nombre: 'proyecto', activa: '', clases: ['det-pest'],
+            pestanas: PESTANAS.map(k => ({ valor: k, nombre: k, datos: { pest: k }, ...(k === 'pendientes' && n ? { cuenta: n } : {}) })) }) + '</div>'
         + htmlResumen(d) + htmlPendientes(d) + htmlDocumento(d);
 }
 
@@ -687,8 +690,7 @@ export class PantallaProyectos implements Pantalla {
             );
         }
         items.push({ label: 'Copiar la ruta', icono: I.copiar, color: C.otro, description: ruta, hacer: async () => {
-            await ui.copiar(ruta);
-            void ui.estado(`telar: copiado ${ruta}`, 3000);
+            await ui.copiar(ruta, `telar: copiado ${ruta}`);
         } });
         if (p.hilo) {
             items.push({ label: 'Archivar su hilo', icono: I.archivar, color: C.quitar, description: `cierra «${p.hilo}» y lo guarda; ${I.retomar} lo retoma`, hacer: async () => {

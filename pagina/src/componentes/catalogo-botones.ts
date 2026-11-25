@@ -85,6 +85,9 @@ export function filasEstados(): { nombre: string; nota: string; html: string }[]
         { nombre: 'mientras se hace', nota: 'apagado, y el círculo que gira en el lugar de la tecla', html: pieBotones([{ ...ARCHIVAR, enCurso: circulo({ mov: 'gira' }) }, CANCELAR]) },
         { nombre: 'sin tecla', nota: 'un botón de la página, sin atajo: su ícono en el lugar de la tecla (⚙ temas, la terminal que no abre)', html: pieBotones([
             { texto: 'reintentar', icono: I.retomar, color: C.ir }, { texto: 'borrar tema', icono: I.descartar, tono: 'peligro' }]) },
+        { nombre: 'tecla + ícono', nota: 'lo obvio por su ícono, en vez de la palabra, que pasa al title y al aria-label; a su lado, lo poco que el ícono no dice (la ventana de un chat de foco)', html: pieBotones([
+            { texto: 'enviar', simbolo: I.enviar, tecla: '⌘⏎', color: C.hecho }, { texto: 'aplazar 15 min', simbolo: I.aplazar, corto: '15m', tecla: '⎋' },
+            { texto: 'aplazar 1 h', simbolo: I.aplazar, corto: '1h', tecla: '1' }]) },
     ];
 }
 
@@ -133,12 +136,15 @@ export const CONFIRMACIONES: { archivo: string; que: string; botones: string; cl
     { archivo: 'web/ordenes.ts', que: 'descartar un hilo (vivo o archivado)', botones: '⌘⌫ descartar', clase: 'destruye', por: 'ya no se retoma con un clic y telar lo olvida' },
     { archivo: 'web/ordenes.ts', que: 'eliminar un agente', botones: '⌘⌫ eliminar', clase: 'destruye', por: 'se recupera a mano, pero lo encargado queda sin hacer' },
     { archivo: 'vistas/dashboard/agentes.ts', que: 'cancelar un encargo', botones: '⌘⌫ cancelar el encargo', clase: 'destruye', por: 'lo pedido no se hace' },
+    { archivo: 'web/comentarios.ts', que: 'borrar un comentario de un archivo (el primero de un hilo: el hilo entero, con sus respuestas)', botones: '⌘⌫ borrar', clase: 'destruye', por: 'se va del archivo de al lado: queda solo en la historia de git, si ya se subió' },
     { archivo: 'web/lado.ts', que: 'cancelar un encargo, desde la hoja de un agente', botones: '⌘⌫ cancelar el encargo', clase: 'destruye', por: 'lo pedido no se hace' },
     { archivo: 'vistas/dashboard/tareas.ts', que: 'una acción de tarea que pide confirmar (`confirmar` en su proveedor)', botones: '⌘⌫ <verbo> si destruye; si no, ⌘⏎ <verbo>', clase: 'destruye', por: 'viene de afuera: el botón dice su nombre, y es de peligro si su verbo destruye (`DESTRUYE`, boton.ts); si no, pide mirar' },
     { archivo: 'web/objeto.ts', que: 'una acción de un objeto, sin parámetros', botones: '⌘⌫ <verbo> si destruye; si no, ⌘⏎ <verbo>', clase: 'mira', por: 'lo mismo: de afuera, con el foco en cancelar; en rojo solo si su verbo destruye (retirar, descartar…)' },
     { archivo: 'vistas/dashboard/pagina.ts', que: 'el permiso que pide un módulo', botones: '1 permitir siempre · 2 solo esta vez · 3 no', clase: 'mira', por: 'concede para siempre, y la caja sale sola, a veces mientras se escribe' },
     { archivo: 'vistas/dashboard/agentes.ts', que: 'rotar la conversación de un agente', botones: '⏎ rotar', clase: 'hace', por: 'su conversación queda en disco y la siguiente empieza leyendo su relevo' },
     { archivo: 'web/lado.ts', que: 'rotar, desde la hoja de un agente', botones: '⏎ rotar', clase: 'hace', por: 'lo mismo' },
+    { archivo: 'web/borradores.ts', que: 'borrar un borrador (un próximo prompt guardado)', botones: '⌘⌫ borrar', clase: 'destruye', por: 'lo escrito se pierde (uno vacío se va sin preguntar)' },
+    { archivo: 'web/borradores.ts', que: 'mandar un borrador a un hilo que trabaja: esperar a que termine', botones: '⏎ esperar a que termine', clase: 'hace', por: 'sale solo al terminar su turno; se le quita la espera con un clic en su reloj' },
     { archivo: 'vistas/dashboard/agentes.ts', que: 'archivar los hilos que abrió un agente', botones: '⏎ archivar', clase: 'hace', por: 'se retoman desde ARCHIVO' },
     { archivo: 'vistas/dashboard/proyectos.ts', que: 'archivar un hilo; marcar hecha una casilla del README; consolidar', botones: '⏎ archivar · ⏎ marcar hecha · ⏎ consolidar', clase: 'hace', por: 'se retoma; se desmarca; solo propone' },
     { archivo: 'web/ordenes.ts', que: 'archivar con sus hijos o solo él; traer igual; usar Claude Code', botones: '1 con sus hijos · 2 solo él · ⏎ traer igual · ⏎ usar claude code', clase: 'hace', por: 'nada se pierde: lo que no viaja sigue en la otra máquina' },

@@ -11,6 +11,7 @@
 
 import { esAbsoluta, unir } from './rutas';
 import type { Hecho, Pendiente } from './web/alcance';
+import type { RepoAlla, RepoPendiente } from './web/mudanza-texto';
 
 /** Lo que devuelve una orden que no tiene JSON propio: si salió bien, y su salida o su error. */
 export interface Salida { ok: boolean; codigo: number; out: string; err: string }
@@ -90,6 +91,9 @@ export interface JsonHilo {
     sesiones: string[]; ficha?: JsonFicha | null;
     /** dónde vive su agente: "" aquí, el nombre de un [remotos], o "?" si es remoto sin saber adónde */
     remoto?: string;
+    /** uno archivado aquí que el bus dice de otra máquina (su conversación vive allá): cuál. Retomarlo va allá, o con
+     *  ella apagada se sigue aquí desde la copia de aquí (telar.seguir); "" si es de aquí */
+    dueno?: string;
     /** su rama propia, si es un hijo que trabaja en su worktree (`telar hilo hijo --rama`): la fusiona su padre */
     rama?: { rama: string; base: string; ruta: string } | null;
     /** si espera a la persona, qué pide y de qué clase (`permiso`, `pregunta`, `confiar`: detenido en la pregunta de
@@ -103,6 +107,8 @@ export interface JsonHilo {
     alcanzable?: boolean;
     /** desde cuándo está fuera de línea su máquina (ISO), con `alcanzable: false` */
     fuera_de_linea_desde?: string;
+    /** cuántos próximos prompts le guardó la persona (telar.borradores, web/borradores.ts): la fila lo dice, tenue */
+    borradores?: number;
     /** la parte de la vida a la que pertenece (`[mundos]`): por sus etiquetas, su carpeta, su agente o su padre; "" sin
      *  clasificar. Sin `[mundos]` no viene */
     mundo?: string;
@@ -257,7 +263,11 @@ export const escribirComoPersona = async (hilo: string, texto: string, de: strin
 /** Las fotos de los hilos de otras máquinas que llegaron aquí (`telar espejo ver`), con lo que espera en cola para cada
  *  una y lo que se hizo de esa cola (telar.alcance). `al_dia`: el nodo de aquí está al día con el bus, así que una foto
  *  vieja quiere decir que su máquina se fue. */
-export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string; mundo?: string }[]; cola?: Pendiente[]; hechos?: Hecho[] }
+export interface JsonEspejo { nombre: string; en_linea: boolean; edad: number | null; error?: string; hilos: { nombre: string; atencion?: string; vivo?: boolean; relativa?: string; prioridad?: number | null; resumen?: string; remoto?: string; mundo?: string }[];
+    /** sus archivados, con lo poco que viaja de cada uno (un telar de antes no los manda) */
+    archivados?: { nombre: string; relativa?: string; etiquetas?: string[]; padre?: string; agente?: string; prioridad?: number | null;
+        visto?: string; actividad?: string; mundo?: string }[];
+    cola?: Pendiente[]; hechos?: Hecho[] }
 export const espejos = async () => await deServe<{ espejos: JsonEspejo[]; al_dia?: boolean }>('/espejos', 15000);
 
 /** Una nota sobre un evento del día (`telar evento`). */
@@ -400,6 +410,61 @@ export async function lienzoPedir(origen: string, orden: string, datos: unknown)
     return await aServe<{ orden: string; datos: unknown }>('POST', '/lienzo/pedir', 60000, { origen, orden, datos });
 }
 
+// ── las ventanas que piden los módulos (`[ventanas]`, telar.servicios.ventanas; web/ventanas.ts las abre) ──
+
+/** Una consulta del módulo que pidió la ventana: lo que corre un botón. */
+export interface JsonLlamada { verbo: string; params: Record<string, unknown> }
+/** Una línea de una ventana: quién, cuándo y qué (un mensaje), con su marca («nota de voz 0:42») y si es nueva o mía. */
+export interface JsonLineaVentana { de: string; ts: string; texto: string; marca: string; nueva: boolean; mia: boolean }
+/** Un botón: corre una consulta (`verbo`), abre una dirección (`abrir`, con su `item`) o la instrucción con el contexto que
+ *  da una consulta (`instruccion`); `despues`, lo que corre si salió. En el pie (con su tecla) o en la cabecera. Con
+ *  `icono` (un nombre de web/iconos.ts), se ve el ícono y `texto` pasa a su nombre (title, aria-label); `corto`, lo poco
+ *  que va a su lado. */
+export interface JsonAccionVentana extends Partial<JsonLlamada> {
+    texto: string; tecla: string; en: 'pie' | 'cabecera'; despues: JsonLlamada | null;
+    icono?: string; corto?: string;
+    abrir?: string; item?: string; instruccion?: JsonLlamada;
+}
+/** Lo que alguien dejó para responder y espera que la persona lo apruebe (el borrador de un agente): quién lo pidió, el
+ *  texto (editable), por qué, a qué hora sale si se aprueba ahora («» ya), y las consultas de aprobarlo y descartarlo. */
+export interface JsonBorradorVentana {
+    id: string; de: string; texto: string; motivo: string; sale: string; editable: boolean;
+    aprobar: (JsonLlamada & { campo: string; despues: JsonLlamada | null }) | null;
+    descartar: JsonLlamada | null;
+}
+export interface JsonVentana {
+    modulo: string; id: string; version: string; mundo: string; titulo: string; ayuda: string; icono: string; desde: string;
+    /** cuántos nuevos (puede ser más que las líneas `nueva`): junto al título, con el punto de no leídos; 0, no se dice */
+    nuevos?: number;
+    lineas: JsonLineaVentana[];
+    borradores?: JsonBorradorVentana[];
+    responder: (JsonLlamada & { campo: string; placeholder: string; largo: number; despues: JsonLlamada | null }) | null;
+    acciones: JsonAccionVentana[];
+    /** el botón que hace ⎋ (o un clic fuera); null: ninguno, ⎋ solo la cierra */
+    escape: number | null;
+}
+export interface JsonSilencio { a_mano: boolean; desde: string }
+export interface JsonVentanas {
+    ventanas: JsonVentana[]; cuantas: number; fallas: { modulo: string; error: string }[]; silencio: JsonSilencio;
+    /** los módulos que piden ventanas (sin ninguno, la banda no muestra el silencio) */
+    modulos?: string[];
+}
+
+/** Las ventanas que esperan con el mundo puesto ("" ambos); `soloCuantas`, cuántas sin su contenido (en silencio). */
+export async function ventanas(mundo: string, soloCuantas = false): Promise<Respuesta<JsonVentanas>> {
+    return await deServe<JsonVentanas>(`/ventanas?mundo=${encodeURIComponent(mundo)}${soloCuantas ? '&solo_cuantas=true' : ''}`, 30000);
+}
+
+/** Lo que corre un botón de una ventana (una consulta del módulo que la pidió). */
+export async function accionDeVentana(modulo: string, verbo: string, params: Record<string, unknown>): Promise<Respuesta<Record<string, unknown>>> {
+    return await aServe<Record<string, unknown>>('POST', '/ventanas/accion', 60000, { modulo, verbo, params });
+}
+
+/** «No molestar» en esta máquina. */
+export async function silenciar(si: boolean): Promise<Respuesta<JsonSilencio>> {
+    return await aServe<JsonSilencio>('POST', '/ventanas/silencio', 15000, { si });
+}
+
 /** Anotar lo que la persona decidió sobre lo que pide un módulo (telar.concesiones). */
 export async function conceder(modulo: string, orden: string, decision: 'concedido' | 'negado' | 'olvidar'): Promise<Respuesta<unknown>> {
     return await aServe<unknown>('POST', '/permisos', 15000, { modulo, orden, decision });
@@ -426,7 +491,9 @@ export type JsonConfig = {
     /** las pestañas del dashboard: su orden y las que no se muestran (`[dashboard]`) */
     dashboard?: { orden: string[]; ocultas: string[] };
     /** los módulos instalados (`[modulos]`) y lo que aporta cada uno */
-    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[]; configurar?: boolean }[]; remotos?: JsonRemoto[];
+    modulos?: { nombre: string; carpeta: string; descripcion: string; aporta: string[]; configurar?: boolean;
+        /** sus tipos de objeto que también se buscan en ⌘K (`[objetos.<tipo>] buscador`) */
+        buscables?: { tipo: string; plural: string }[] }[]; remotos?: JsonRemoto[];
     /** el bus de esta persona: url, persona y máquina; vacío sin bus */
     bus?: { url?: string; persona?: string; maquina?: string }; bloques?: JsonBloque[];
     pestanas?: JsonPestana[];
@@ -1045,6 +1112,24 @@ export interface JsonFichaAgente {
 export const fichaAgente = async (hilo: string, maquina = '') =>
     await deServe<JsonFichaAgente>(`/agentes/del-hilo?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`, 15000);
 
+/** Un borrador: un próximo prompt que la persona le guardó a un hilo (`GET /hilos/borradores`, docs/contratos.md «telar hilo
+ *  borradores»). `al_terminar`: «escribir» o «enviar» si sale solo cuando su agente termine el turno. */
+export interface JsonBorrador { id: string; texto: string; creado?: string; cambiado?: string; al_terminar?: string }
+/** Los de un hilo, en orden, y si su agente está en lo suyo ahora («trabajando», «espera» o ""). */
+export interface JsonBorradores { hilo: string; maquina?: string; borradores: JsonBorrador[]; ocupado?: string }
+/** Lo que pasó al mandarlo: «escrito», «enviado» o «en espera». */
+export interface JsonMandado { hilo: string; id: string; como: string; al_terminar?: string; maquina?: string }
+
+const conMaquina = (maquina: string) => maquina ? `&maquina=${encodeURIComponent(maquina)}` : '';
+export const borradores = (hilo: string, maquina = '') =>
+    deServe<JsonBorradores>(`/hilos/borradores?hilo=${encodeURIComponent(hilo)}${conMaquina(maquina)}`, 30000);
+export const guardarBorrador = (hilo: string, maquina: string, texto: string, id = '') =>
+    aServe<JsonBorrador>('POST', '/hilos/borradores', 30000, { hilo, maquina, texto, id });
+export const borrarBorrador = (hilo: string, maquina: string, id: string) =>
+    aServe<JsonBorrador>('DELETE', `/hilos/borradores?hilo=${encodeURIComponent(hilo)}&id=${encodeURIComponent(id)}${conMaquina(maquina)}`, 30000);
+export const mandarBorrador = (hilo: string, maquina: string, id: string, o: { enviar?: boolean; esperar?: boolean; no_esperar?: boolean }) =>
+    aServe<JsonMandado & JsonBorrador>('POST', '/hilos/borradores/mandar', 60000, { hilo, maquina, id, ...o });
+
 /** Los códigos que nombra un hilo (`GET /codigos`, docs/contratos.md «telar codigos»): los que define su carpeta y
  *  salen de su archivo (`codigos`, por clase), y los que nombra su conversación (`conversacion`, el último primero). */
 export interface JsonCodigo {
@@ -1344,15 +1429,34 @@ export interface JsonLlevado { codigo: number; salida: string; error: string; en
 /** Llevar un hilo a otra máquina de `[remotos]` (`telar hilo llevar`). Copia la conversación por ssh y abre el
  *  hilo allá: con una conversación grande tarda minutos, así que la API responde a los 20 s que sigue en curso.
  *  Con trabajo sin subir aquí, falla (409, con la lista en `cuerpo.salida`) hasta que `si`. */
-export const llevar = (hilo: string, maquina: string, si = false) =>
-    aServe<JsonLlevado>('POST', '/hilo/llevar', 60000, { hilo, maquina, si });
-/** En qué va la mudanza de un hilo (telar.mudanza.progreso): {} si no hay ninguna. */
+export const llevar = (hilo: string, maquina: string, si = false, subir = false) =>
+    aServe<JsonLlevado>('POST', '/hilo/llevar', 60000, { hilo, maquina, si, ...(subir ? { subir } : {}) });
+/** En qué va la mudanza de un hilo (telar.mudanza.progreso): {} si no hay ninguna. Al copiar de a pedazos
+ *  (telar.replica), `total` (la conversación y su carpeta), `por_mandar` (lo que faltaba allá) y `mandados`. */
 export interface JsonMudanza { hilo?: string; paso?: string; maquina?: string; bytes?: number; error?: string;
-    avisos?: string[]; aviso?: string; carpeta?: string; hora?: number }
-export const mudanza = (hilo: string) => deServe<JsonMudanza>(`/mudanza?hilo=${encodeURIComponent(hilo)}`, 5000);
-/** Traer a esta máquina un hilo que vive en `maquina` (otra tuya): esa lo lleva aquí por el bus. Espera a que termine. */
-export const traer = (hilo: string, maquina: string, si = false) =>
-    aServe<JsonLlevado>('POST', '/hilo/traer', 620000, { hilo, maquina, si });
+    avisos?: string[]; aviso?: string; carpeta?: string; hora?: number; total?: number; por_mandar?: number; mandados?: number;
+    /** antes de llevarlo (telar.sin_subir): lo que tiene sin subir en sus repositorios, y lo que la otra máquina tiene */
+    pendiente?: { repos?: RepoPendiente[] }; destino?: RepoAlla[]; subido?: string }
+/** Con `maquina`, la que corre en esa otra (un hilo que se pidió traer de ella), leída por el bus. */
+/** El registro de un hilo en el bus (telar.dueno): de qué máquina es, si vive, y el traspaso en curso. {} si no se sabe. */
+export interface JsonRegistro { nombre?: string; dueno?: string; maquina?: string; epoca?: number; vivo?: boolean;
+    cede?: string; mudanza?: { a?: string; de?: string; paso?: string; hora?: number } }
+export const registro = (hilo: string) => deServe<JsonRegistro>(`/hilo/registro?hilo=${encodeURIComponent(hilo)}`, 8000);
+/** Si un hilo cuya máquina está apagada se puede seguir aquí, desde la copia de su conversación que quedó aquí
+ *  (telar.seguir, `GET /hilo/seguir`): de cuándo es la copia y cuánto pesaba la de allá la última vez que se la vio. */
+export interface JsonSeguir { puede: boolean; por_que_no: string; aviso: string; dueno: string; epoca: number; conversacion: string;
+    aqui: { bytes: number; fecha: string } | null;
+    alla: { visto: string; en_linea: boolean; bytes: number | null; crecio: string; en_la_foto: boolean } | null;
+    ok?: boolean; hecho?: string; error?: string }
+export const seguirRevisar = (hilo: string) => deServe<JsonSeguir>(`/hilo/seguir?hilo=${encodeURIComponent(hilo)}`, 20000);
+/** Seguirlo aquí: lo toma con la época que leyó y lo abre. 409 con el porqué si ya no se puede. */
+export const seguir = (hilo: string) => aServe<JsonSeguir>('POST', '/hilo/seguir', 60000, { hilo });
+export const mudanza = (hilo: string, maquina = '') =>
+    deServe<JsonMudanza>(`/mudanza?hilo=${encodeURIComponent(hilo)}${maquina ? `&maquina=${encodeURIComponent(maquina)}` : ''}`, 10000);
+/** Traer a esta máquina un hilo que vive en `maquina` (otra tuya): esa lo lleva aquí por el bus (o a otra, `a`), aparte.
+ *  Responde en segundos: `en_curso` si sigue, y su progreso se lee con `mudanza(hilo, maquina)`. */
+export const traer = (hilo: string, maquina: string, si = false, a = '', subir = false) =>
+    aServe<JsonLlevado>('POST', '/hilo/traer', 120000, { hilo, maquina, si, ...(a ? { a } : {}), ...(subir ? { subir } : {}) });
 
 /** Lleva un pendiente al hilo donde se trabaja y se lo deja escrito al agente, sin enviar:
  *  apretar Enter le toca a la persona, y esa decisión no se automatiza desde una barra. */

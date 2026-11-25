@@ -25,10 +25,12 @@ import { coloresTerminal } from '../componentes/temas';
 import * as guardado from './guardado';
 import * as avisos from './avisos';
 import * as ui from './ui';
+import * as portapapeles from './portapapeles';
 import * as anchos from './anchos';
 import type { RutasVista, Vista } from './vistas-hilo';
 import { boton, cancelar } from '../componentes/boton';
 import { fueraDe, panelFuera, type MaquinaAlcance } from './alcance';
+import { dondeVive, type Donde } from './donde-vive';
 import { teclasDeBotones } from './botonera';
 
 declare global {
@@ -104,27 +106,6 @@ export function textoOsc52(datos: string): string | undefined {
     try { return new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); } catch { return undefined; }
 }
 
-/** Escribe en el portapapeles de la persona. La página suele servirse por http (no es un «contexto seguro»), y ahí
- *  el navegador no da `navigator.clipboard`: se copia como lo haría ⌘C, desde un campo escondido, lo que el
- *  navegador permite solo poco después de un clic o una tecla de la persona. */
-async function alPortapapeles(texto: string): Promise<boolean> {
-    if (window.isSecureContext && navigator.clipboard) {
-        try { await navigator.clipboard.writeText(texto); return true; } catch { /* sigue con el campo */ }
-    }
-    const antes = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const campo = document.createElement('textarea');
-    campo.value = texto;
-    campo.setAttribute('readonly', '');
-    campo.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
-    document.body.appendChild(campo);
-    campo.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch { ok = false; }
-    campo.remove();
-    antes?.focus();
-    return ok;
-}
-
 /** La terminal ya con xterm cargado: su tamaño, su conexión, la caja de abajo y el fondo. Devuelve lo que hay
  *  que deshacer al cerrarla. */
 function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: ReturnType<typeof conEco>; deshacer: (() => void)[] } {
@@ -155,27 +136,42 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const enlaces = enlazarTerminal(term, rutas);
     deshacer.push(() => enlaces.dispose());
 
-    // lo que copia el programa de la terminal, al portapapeles de la persona. En un hilo de otra máquina el mouse lo
-    // tiene el tmux de allá (o Claude Code, que selecciona él): lo que se selecciona arrastrando queda allá, y vuelve
-    // con OSC 52. Si el navegador no deja copiarlo (por http, solo unos segundos después del clic que empezó a
-    // arrastrar, y un párrafo largo más el viaje al servidor tarda más), se pregunta con un botón: apretarlo es un
-    // clic nuevo, y entonces sí. Mientras, también vale ⌘C en la terminal
-    let porCopiar = '', preguntando = false;
+    // lo que copia el programa de la terminal, al portapapeles de la persona (web/portapapeles.ts). En un hilo de otra
+    // máquina el mouse lo tiene el tmux de allá (o Claude Code, que selecciona él): lo que se selecciona arrastrando queda
+    // allá, y vuelve con OSC 52, en un mensaje del WebSocket. Eso ya no es el gesto de la persona: Chrome lo deja copiar
+    // unos segundos después del clic; Safari no. Por eso, al soltar el mouse después de arrastrar (o en un doble o triple
+    // clic, que en tmux copian la palabra o la línea), se arma una escritura que espera lo que llegue (en contexto seguro:
+    // https; Safari la acepta). Si nada de eso alcanza (Safari por http, un arrastre de más de unos segundos en Chrome),
+    // un aviso con un botón que copia en su mismo clic. Mientras, también vale ⌘C en la terminal
+    let porCopiar = '', preguntando = false, armada: portapapeles.Armada | undefined, desde: { x: number; y: number } | undefined;
     const copiado = (texto: string) => ui.estado(`copiado: ${texto.length} ${texto.length === 1 ? 'carácter' : 'caracteres'}`, 2500);
+    const alBajar = (e: MouseEvent) => { desde = e.button === 0 && !e.altKey ? { x: e.clientX, y: e.clientY } : undefined; };
+    const alSoltar = (e: MouseEvent) => {
+        const d = desde;
+        desde = undefined;
+        if (!d || e.button !== 0) return;
+        const arrastro = Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 3;
+        if (!arrastro && e.detail < 2) return;
+        armada?.soltar();
+        armada = portapapeles.armar();
+    };
+    marco.addEventListener('mousedown', alBajar, true);
+    document.addEventListener('mouseup', alSoltar, true);
+    deshacer.push(() => { marco.removeEventListener('mousedown', alBajar, true); document.removeEventListener('mouseup', alSoltar, true); armada?.soltar(); });
     const preguntar = async () => {
         if (preguntando) return;
         preguntando = true;
-        const muestra = porCopiar.replace(/\s+/g, ' ').trim();
-        const r = await ui.info(`Lo que seleccionaste (${porCopiar.length} caracteres) no pasó solo al portapapeles: el navegador`
-            + ` solo deja copiar justo después de un clic.\n«${muestra.length > 70 ? `${muestra.slice(0, 70)}…` : muestra}»`, 'Copiar');
+        await ui.pedirCopiar(porCopiar, `Lo que seleccionaste (${porCopiar.length} caracteres) volvió del servidor y falta pasarlo al`
+            + ' portapapeles: aprieta Copiar (o ⏎).', () => { copiado(porCopiar); porCopiar = ''; return true; });
         preguntando = false;
-        if (r === 'Copiar' && porCopiar && await alPortapapeles(porCopiar)) { copiado(porCopiar); porCopiar = ''; }
         term.focus();
     };
     const osc52 = term.parser.registerOscHandler(52, datos => {
         const texto = textoOsc52(datos);
         if (!texto) return true;
-        void alPortapapeles(texto).then(ok => {
+        const a = armada;
+        armada = undefined;
+        void portapapeles.copiarLoQueLlega(texto, a).then(ok => {
             if (ok) { porCopiar = ''; copiado(texto); return; }
             porCopiar = texto;
             void preguntar();
@@ -247,8 +243,8 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     escuchar(document, 'visibilitychange', () => { if (!document.hidden) asentar(); });
     escuchar(document, 'fullscreenchange', asentar);
     ajustar();
-    // la posición y el fondo, de `[terminal]`; cuando ⚙ terminal los cambia, se vuelven a aplicar aquí mismo
-    let pararFondo: (() => void) | undefined;
+    // la posición y el fondo, de `[terminal]`; cuando ⚙ terminal los cambia, se vuelven a aplicar aquí mismo. Sin
+    // fondo propio («ninguno»), lo de alrededor es el fondo del tema (terminal.css)
     let dibujado = '';
     const aplicar = () => {
         const a = aspecto();
@@ -258,15 +254,9 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         const clave = `${f.tipo}|${f.valor}`;
         if (clave !== dibujado) {
             dibujado = clave;
-            pararFondo?.(); pararFondo = undefined;
             caja.querySelector('.fondo')?.remove();
             caja.style.background = '';
-            if (f.tipo === 'telar') {
-                const lienzo = document.createElement('canvas');
-                lienzo.className = 'fondo'; lienzo.setAttribute('aria-hidden', 'true');
-                caja.prepend(lienzo);
-                pararFondo = fondo(raiz, lienzo, t);
-            } else if (f.tipo === 'color') {
+            if (f.tipo === 'color') {
                 caja.style.background = f.valor;
             } else if (f.tipo === 'imagen') {
                 caja.style.background = `center / cover no-repeat url("${f.valor.replace(/"/g, '%22')}")`;
@@ -288,7 +278,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
         const nuevos = coloresTerminal();
         if (JSON.stringify(nuevos) !== colores) { colores = JSON.stringify(nuevos); term.options.theme = nuevos; }
         aplicar(); asentar();
-    }), () => pararFondo?.());
+    }));
     void leer();
 
     // cada conexión abre una vista nueva del hilo, con el tamaño de ahora
@@ -302,7 +292,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     // ventana…), reconectar no lo arregla: se dice en un cuadro, una vez, en vez de que el error aparezca y se
     // borre cada segundo. Un telar de antes no manda el código: dos cierres seguidos al poco de abrir
     // cuentan igual (lo último que escribió es el motivo)
-    let abierta = 0, rapidas = 0, cola = '', esperandoVentana = 0;
+    let abierta = 0, rapidas = 0, cola = '', esperandoVentana = 0, reintentosAqui = 0;
     // cortada y reconectándose: lo dice la franja de avisos (web/avisos.ts), si no volvió en unos segundos (un reinicio de
     // telar, que dura menos, no se dice), y se va sola al volver. Sin conexión con telar no se dice: lo dice el de la
     // conexión
@@ -322,23 +312,49 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
     const yaVolvio = () => { clearTimeout(porAvisar); avisos.quitar(claveAviso); };
     let aviso: HTMLElement | undefined;
     const quitarAviso = () => { aviso?.remove(); aviso = undefined; };
+    /** Dónde vive ahora (web/donde-vive.ts): la lista de aquí, su registro en el bus (su dueño) y, sin él, las fotos de
+     *  las otras máquinas. */
+    const dondeAhora = async (): Promise<Donde> => {
+        await modelo.sondear(true).catch(() => undefined);
+        const [e, r] = await Promise.all([cli.espejos().catch(() => undefined), cli.registro(hilo).catch(() => undefined)]);
+        return dondeVive(hilo, { aqui: modelo.aqui, local: modelo.porNombre(hilo), otras: e?.datos?.espejos ?? [],
+            registro: r?.datos, mirando: maquina });
+    };
+    /** Un aviso tenue en la terminal mientras se espera, y otro intento en `ms`. */
+    const esperar = (texto: string, ms = 3000) => {
+        esperandoVentana++;
+        term.reset(); eco.reiniciar();
+        term.write(`\x1b[2m[${texto}]\x1b[0m`);
+        rapidas = 0;
+        pendiente = window.setTimeout(conectar, ms);
+    };
     const mostrarFalla = async (motivo: string) => {
-        // archivarlo (o cerrarlo) mientras se mira, también desde adentro («archívate»), es lo de siempre, no una
-        // falla: se pasa a su conversación, que es como se ve un hilo archivado (con «retomar»)
-        if (!maquina) {
-            await modelo.sondear(true).catch(() => undefined);
-            const h = modelo.porNombre(hilo);
+        // antes de dar por fallado, dónde vive ahora: se llevó a otra máquina (o volvió), y la página lo sigue sola; su
+        // ventana de aquí se está reabriendo, o va en camino, y se espera. Lo de antes («vive en telar», «retómalo»)
+        // venía de la lista de aquí sola: tras llevarlo, recordaba la máquina de donde salió
+        if (esperandoVentana < 30) {
+            const d = await dondeAhora();
+            if (cerrada) return;
+            // abierto aquí con su ventana (recién llegó, o fue un tropiezo): la de aquí; si se miraba en otra, se pasa a esta
+            if (d.a === 'aqui' && maquina) { cerrada = true; void ui.orden('telar.ir', hilo); return; }
+            // (unas pocas veces: si sigue sin abrir, la falla es otra y se dice abajo)
+            if (d.a === 'aqui' && reintentosAqui < 3) { reintentosAqui++; esperar(`«${hilo}» está abierto aquí: conectándose…`, 1200); return; }
+            // vive en otra máquina: allá (si es la que se miraba, la falla es de allá: se dice abajo)
+            if (d.a === 'alla' && d.maquina !== maquina) { cerrada = true; void ui.orden('telar.irRemoto', `${d.maquina}|${hilo}`); return; }
             // un hilo de otra máquina sin su ventana de aquí (la que corre la conexión con allá): se cayó y el nodo la
-            // reabre en su vuelta. Se espera a que vuelva, en vez de dar por fallado algo que se arregla solo
-            if (h?.remoto && h.remoto !== '?' && !h.archivado && esperandoVentana < 30) {
-                esperandoVentana++;
-                term.reset(); eco.reiniciar();
-                term.write(`\x1b[2m[«${hilo}» vive en ${h.remoto} y su ventana de aquí se está reabriendo: esperándola…]\x1b[0m`);
-                rapidas = 0;
-                pendiente = window.setTimeout(conectar, 3000);
-                return;
+            // reabre en su vuelta; allá todavía lo tiene. Se espera, en vez de dar por fallado algo que se arregla solo
+            if (d.a === 'espejo' && !maquina) { esperar(`«${hilo}» vive en ${d.maquina} y su ventana de aquí se está reabriendo: esperándola…`); return; }
+            if (d.a === 'viajando') { esperar(`«${hilo}» va en camino a ${d.maquina}: esperándolo…`); return; }
+            // archivarlo (o cerrarlo) mientras se mira, también desde adentro («archívate»), es lo de siempre, no una
+            // falla: se pasa a su conversación, que es como se ve un hilo archivado (con «retomar»)
+            if (d.a === 'cerrado' && !maquina) {
+                // sin archivar, puede estar abriéndose (uno que llega de otra máquina queda anotado un momento antes de
+                // tener su ventana): un par de veces se espera
+                if (!modelo.porNombre(hilo)?.archivado && reintentosAqui < 2) {
+                    reintentosAqui++; esperar(`«${hilo}» no tiene ventana aquí: esperando un momento, por si se está abriendo…`, 2000); return;
+                }
+                cerrada = true; void ui.orden('telar.ir', hilo); return;
             }
-            if (h && (h.archivado || !h.vivo)) { cerrada = true; void ui.orden('telar.ir', hilo); return; }
         }
         quitarAviso();
         term.reset(); eco.reiniciar();
@@ -406,7 +422,7 @@ function arrancar(raiz: HTMLElement, rutas: RutasVista): { term: Terminal; eco: 
             intento = 0; conectada = true; abierta = Date.now(); cola = '';
             yaVolvio();
             // abrió de verdad (no se cerró al tiro): la espera de su ventana, si la hubo, terminó
-            window.setTimeout(() => { if (conectada && ws === nuevo) esperandoVentana = 0; }, 3000);
+            window.setTimeout(() => { if (conectada && ws === nuevo) esperandoVentana = reintentosAqui = 0; }, 3000);
         };
         nuevo.onmessage = e => {
             const d = e.data as string;
@@ -563,50 +579,4 @@ function recibirArrastres(raiz: HTMLElement, rutas: RutasVista, a: { caja(s: str
     raiz.addEventListener('dragover', sobre);
     raiz.addEventListener('drop', soltar);
     return () => { raiz.removeEventListener('dragover', sobre); raiz.removeEventListener('drop', soltar); soltarTeclas(); };
-}
-
-/** Alrededor de la terminal, un telar muy tenue: la urdimbre quieta y, de vez en cuando, un hilo de trama que
- *  cruza despacio y se apaga. Quieto si quien mira pidió menos movimiento, y sin dibujar mientras no se ve.
- *  Devuelve cómo pararlo. */
-function fondo(raiz: HTMLElement, lienzo: HTMLCanvasElement, t: (nombre: string) => string): () => void {
-    const ctx = lienzo.getContext('2d')!;
-    const muestra = document.createElement('i'); raiz.appendChild(muestra);
-    const color = (n: string) => { muestra.style.color = `var(--${n})`; return getComputedStyle(muestra).color; };
-    const URDIMBRE = color('linea'), PALETA = ['violeta', 'azul', 'cian', 'verde', 'amarillo', 'magenta'].map(color);
-    muestra.remove();
-    let cw = 8, ch = 16, cols = 0, filas = 0;
-    let tramas: { y: number; dir: number; x: number; vida: number; color: string }[] = [];
-    const medir = () => {
-        const dpr = window.devicePixelRatio || 1;
-        lienzo.width = lienzo.clientWidth * dpr; lienzo.height = lienzo.clientHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.font = `${t('tam') || '13px'} ${t('letra') || 'monospace'}`; ctx.textBaseline = 'top';
-        cw = Math.ceil(ctx.measureText('─').width); ch = Math.ceil(cw * 1.9);
-        cols = Math.ceil(lienzo.clientWidth / cw); filas = Math.ceil(lienzo.clientHeight / ch);
-    };
-    const dibujar = () => {
-        ctx.clearRect(0, 0, lienzo.clientWidth, lienzo.clientHeight);
-        ctx.globalAlpha = 0.45; ctx.fillStyle = URDIMBRE;
-        for (let y = 0; y < filas; y++) for (let c = 0; c < cols; c += 2) ctx.fillText('│', c * cw, y * ch);
-        for (const h of tramas) {
-            ctx.globalAlpha = Math.max(0, 0.5 - h.vida / 160); ctx.fillStyle = h.color;
-            const desde = h.dir > 0 ? 0 : h.x, hasta = h.dir > 0 ? h.x : cols;
-            for (let c = desde; c < hasta; c++) ctx.fillText(c % 2 ? '─' : '┼', c * cw, h.y * ch);
-        }
-        ctx.globalAlpha = 1;
-    };
-    const paso = () => {
-        if (raiz.hidden || document.hidden) return;
-        if (Math.random() < 0.02 && tramas.length < 3) {
-            const dir = Math.random() < 0.5 ? 1 : -1;
-            tramas.push({ y: Math.floor(Math.random() * filas), dir, x: dir > 0 ? 0 : cols, vida: 0, color: PALETA[Math.floor(Math.random() * PALETA.length)] });
-        }
-        for (const h of tramas) { h.x += h.dir; h.vida++; }
-        tramas = tramas.filter(h => h.vida < 160);   // cruza mientras se apaga
-        dibujar();
-    };
-    const observador = new ResizeObserver(() => { medir(); dibujar(); });
-    observador.observe(lienzo);
-    medir(); dibujar();
-    const reloj = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : window.setInterval(paso, 90);
-    return () => { clearInterval(reloj); observador.disconnect(); };
 }

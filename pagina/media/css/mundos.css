@@ -4,9 +4,12 @@
    del color de las demás. Sin esquinas redondeadas ni otro tamaño de letra: lo que distingue cada tarjeta es el color de su
    mundo (--mundo-c) y su arte.
    · Quieta, el arte va tenue en su color (--mundos-tenue), salvo el del mundo de ahora, entero.
-   · Con el mouse o el foco encima (el foco sigue al mouse: ⏎ pone la que se ilumina) se ilumina en su color, el arte se
-     enciende con un halo, se inclina apenas hacia el puntero (--px, --py, que pone web/mundos-ventana.ts) y se acelera
-     (web/arte-vivo.ts), y un barrido de su color la cruza una vez. Solo transform y opacity se animan: el compositor.
+   · Con el mouse o el foco encima (el foco sigue al mouse: ⏎ pone la que se ilumina) el fondo toma su color y el arte se
+     enciende entero. Lo que se mueve es todo de letras, en la misma grilla del dibujo (web/arte-vivo.ts): una ola de
+     letras lo cruza una vez (el efecto de hover de componentes/arte.ts) y el arte se acelera. Aquí solo cambian colores:
+     nada se inclina, crece ni brilla borroso, para que la grilla de letras quede nítida.
+   · Hasta cuatro, en una fila; más, de a tres, en filas hacia abajo, y la ventana se desplaza entre la línea de la
+     cabecera y la del pie.
    · Con «reducir movimiento», nada se mueve: el color cambia y ya.
    · En el teléfono, o si la ventana no alcanza el ancho de todas, una bajo otra.
    Los tokens, --mundos-… en tokens.css. `.es-hover` y `.es-foco` son los mismos estados puestos a mano (el catálogo). */
@@ -20,6 +23,13 @@
   &:has(.mt-grilla.cols-2) { --mt-n: 2; }
   &:has(.mt-grilla.cols-4) { --mt-n: 4; }
   & .ventana-cabecera { padding-bottom: var(--e-2); }
+  /* muchos mundos: las filas siguen hacia abajo y se desplazan aquí, entre la línea de la cabecera y la del pie */
+  & .ventana-cuerpo {
+    max-height: var(--mundos-alto);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    border-top: var(--borde);
+  }
   & .ventana-iconos { color: var(--texto-tenue); }
   /* la grilla termina en la línea del pie: las de entre tarjetas llegan a ella */
   & .botonera { margin-top: 0; }
@@ -30,7 +40,6 @@
   display: grid;
   grid-template-columns: repeat(var(--mt-cols, 1), minmax(0, 1fr));
   gap: 1px;
-  border-top: var(--borde);
   background: var(--linea);
 
   /* la última de una fila corta se estira hasta el borde */
@@ -77,13 +86,11 @@
 
 /* el lienzo: el arte al medio, con una línea de aire arriba y abajo, y la línea que lo aparta del texto */
 .mt-lienzo {
-  position: relative;
   display: flex;
   justify-content: center;
   padding: var(--mundos-lienzo-aire) var(--h-1);
   overflow: hidden;
   border-bottom: var(--borde);
-  perspective: 40ch;
 }
 
 .mt-arte {
@@ -91,21 +98,9 @@
   color: color-mix(in srgb, var(--c) var(--mundos-tenue), var(--ventana-fondo));
   line-height: var(--mundos-arte-alto);
   white-space: pre;
-  transform: rotateX(calc(var(--py, 0) * -1 * var(--mundos-inclina))) rotateY(calc(var(--px, 0) * var(--mundos-inclina))) scale(var(--mt-escala, 1));
-  transition: color var(--mundos-luz-dura) ease, text-shadow var(--mundos-luz-dura) ease, transform 180ms var(--item-curva);
+  transition: color var(--mundos-luz-dura) ease;
 }
 .mt-tarjeta.puesto .mt-arte { color: var(--c); }
-
-/* el barrido: una franja de su color que cruza la tarjeta una vez, al entrar el mouse o el foco */
-.mt-barrido {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 40%;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--c) var(--mundos-barrido-luz), transparent), transparent);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-110%);
-}
 
 .mt-texto {
   display: flex;
@@ -123,17 +118,10 @@
 
 /* encima: se ilumina en su color */
 .mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) {
-  --mt-escala: var(--mundos-escala);
   background: color-mix(in srgb, var(--c) var(--mundos-luz), var(--ventana-fondo));
 
-  & .mt-arte { color: var(--c); text-shadow: 0 0 var(--mundos-halo) color-mix(in srgb, var(--c) var(--mundos-halo-luz), transparent); }
+  & .mt-arte { color: var(--c); }
   & .mt-tecla { color: var(--c); }
-  & .mt-barrido { animation: mt-barrer var(--mundos-barrido-dura) var(--item-curva) 1 both; }
-}
-
-@keyframes mt-barrer {
-  from { opacity: 1; transform: translateX(-110%); }
-  to { opacity: 1; transform: translateX(260%); }
 }
 
 /* en el teléfono: una bajo otra, menos aire, sin teclas (se toca) */
@@ -146,7 +134,4 @@
   .mt-tarjeta,
   .mt-arte,
   .mt-tecla { transition: none; }
-  .mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) { --mt-escala: 1; }
-  .mt-tarjeta:is(:hover, :focus, .es-hover, .es-foco) .mt-barrido { animation: none; }
-  .mt-arte { transform: none; }
 }

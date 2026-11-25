@@ -1,6 +1,7 @@
 // El modo lectura de un hilo: la respuesta del agente, para leerla con calma (letra con serifa, el markdown
-// bien dibujado, un ancho de lectura). Una de las vistas de un hilo (web/vistas-hilo.ts): se dibuja en un
-// elemento de la página; sus estilos, en media/css/lectura.css (con @scope, en `.v-lectura`).
+// bien dibujado, un ancho de lectura: la prosa, media/css/prosa.css, la misma del visor de documentos en modo lectura).
+// Una de las vistas de un hilo (web/vistas-hilo.ts): se dibuja en un elemento de la página; sus estilos, en
+// media/css/lectura.css (con @scope, en `.v-lectura`).
 //
 // Lee la conversación de `/api/hilos/leer` (la misma de la vista conversación) y la dibuja con el renderizador
 // de su fuente: cada asistente entrega su conversación a su manera, y cada forma tiene el suyo
@@ -44,20 +45,20 @@ const RENDERIZADORES: Record<string, Renderizador> = {
             // si después de la última herramienta no escribió nada (todavía trabaja), lo último que dijo
             if (!final.length) final = turno.filter(m => m.quien === 'agente' && m.texto).slice(-1);
             const respuesta = final.map(m => md.render(m.texto ?? '')).join('\n');
-            return (pregunta ? `<div class="pregunta">${esc(pregunta)}</div>` : '') + `<div class="respuesta">${respuesta}</div>`;
+            return (pregunta ? `<div class="pregunta">${esc(pregunta)}</div>` : '') + `<div class="respuesta prosa-md">${respuesta}</div>`;
         },
     },
     // solo la pantalla del agente (uno que no deja su conversación): el texto tal cual, en una sola «respuesta»
     panel: {
         cuantas: d => (d.texto ? 1 : 0),
-        dibujar: d => `<div class="respuesta"><pre>${esc(d.texto ?? '')}</pre></div>`,
+        dibujar: d => `<div class="respuesta prosa-md"><pre>${esc(d.texto ?? '')}</pre></div>`,
     },
 };
 
 /** `raiz`: el elemento de la vista (el que se desplaza). `volver`: ⎋, a la terminal. */
 export function montar(raiz: HTMLElement, rutas: { hilo: string; maquina?: string }, volver: () => void): Vista {
     raiz.classList.add('v-lectura');
-    raiz.innerHTML = '<main class="lectura"><p class="nada">leyendo…</p></main>';
+    raiz.innerHTML = '<main class="lectura prosa"><p class="nada">leyendo…</p></main>';
     const caja = raiz.querySelector<HTMLElement>('.lectura')!;
     let datos: Lectura = {};
     let indice = -1;          // la respuesta que se mira; -1: la última

@@ -621,6 +621,15 @@ class Escribir(Prueba):
         self.assertEqual(m.ordenes("send-keys"), [], "sin enviar, no va el ↩, y el texto no se teclea")
         self.assertEqual(len(m.ordenes("paste-buffer")), 1)
 
+    def test_con_pegar_varias_lineas_quedan_puestas_sin_el_retorno(self):
+        # los borradores (telar.borradores): lo de allá es Claude Code, que entiende el pegado entre corchetes; cada salto
+        # queda como salto y nada sale hasta que la persona lo mande
+        m = TmuxFalso()
+        m.escribir_pane("%7", "dos\nlineas", pegar=True)
+        self.assertEqual(m.entradas, ["dos\nlineas"])
+        self.assertIn("-p", m.una("paste-buffer"))
+        self.assertEqual(m.ordenes("send-keys"), [], "sin enviar: ningún ↩")
+
     def test_dos_pegados_no_comparten_el_buffer(self):
         m = TmuxFalso()
         m.escribir_pane("%7", "uno\ndos", enviar=True)

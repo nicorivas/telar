@@ -1,5 +1,5 @@
 // Cómo se ve la terminal de cada hilo (`[terminal]`): su ancho en columnas, dónde va (izquierda, centro, derecha) y
-// su fondo (el telar tenue de siempre, nada, un color, una imagen o un módulo que trae `[fondo]`). Cada cambio se
+// su fondo (nada, que es el del tema, un color, una imagen o un módulo que trae `[fondo]`). Cada cambio se
 // escribe en la configuración de esta máquina y se ve al tiro en las terminales abiertas (web/aspecto-terminal.ts).
 
 import * as cli from '../../../cli';

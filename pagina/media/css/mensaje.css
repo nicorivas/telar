@@ -1,0 +1,118 @@
+/* La barra de mensaje (componentes/mensaje.ts): una fila al pie de una pantalla, con su línea arriba de borde a borde y el
+   fondo de las barras. Con una línea escrita mide lo que una barra (--mensaje-alto); el campo crece hasta ocho líneas
+   (--mensaje-lineas) y el destino y enviar se quedan abajo, en la última. Lo último que se mandó va en una línea arriba
+   del campo, tenue, con el círculo de su estado. */
+
+.mensaje {
+  box-sizing: border-box;
+  border-top: var(--borde);
+  background: var(--mensaje-fondo);
+
+  & a { text-decoration: none; }
+}
+
+.mensaje-fila {
+  display: flex;
+  align-items: flex-end;
+  gap: 0 var(--h-1);
+  box-sizing: border-box;
+  min-height: calc(var(--mensaje-alto) - 1px);
+  padding: var(--e-1) var(--mensaje-margen);
+}
+
+/* el destino: su ícono y su nombre en su tinta (style="--mensaje-c"), y la flecha tenue; al pasar, el fondo del hover */
+/* (el destino y enviar, de una línea de alto y con lo suyo al medio: un ícono de la letra `iconos` trae otro interlineado
+   y estiraba la fila un píxel) */
+.mensaje-destino {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  height: 1lh;
+  overflow: hidden;
+  gap: 0 .5ch;
+  min-width: 0;
+  max-width: 28ch;
+  padding-inline: .5ch;
+  margin-inline-start: -.5ch;
+  color: var(--mensaje-c, var(--acento));
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+
+  &:hover,
+  &:focus-visible { background: var(--item-fondo-hover); }
+}
+
+.mensaje-destino-icono,
+.mensaje-destino-mas { flex: none; }
+.mensaje-destino-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mensaje-destino-mas { color: var(--mensaje-boton); }
+
+/* el campo: sin caja, con la línea de abajo (una sombra: no suma alto) que toma el acento mientras se escribe */
+.mensaje-campo {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(var(--mensaje-lineas) * 1lh);
+  box-sizing: content-box;
+  height: 1lh;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  box-shadow: 0 1px 0 var(--mensaje-campo-linea);
+  color: var(--mensaje-campo);
+  font: inherit;
+  line-height: inherit;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+  &::placeholder { color: var(--texto-tenue); }
+  &:focus { box-shadow: 0 1px 0 var(--mensaje-campo-foco); }
+}
+
+/* enviar: un ícono en su celda cuadrada, tenue; con algo escrito, en el acento */
+.mensaje-enviar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 1lh;
+  overflow: hidden;
+  inline-size: calc(var(--item-alto) * 1em);
+  color: var(--mensaje-boton);
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+
+  &:hover,
+  &:focus-visible { color: var(--texto); }
+  &.listo { color: var(--mensaje-boton-listo); }
+}
+
+/* buscando su hilo (lo dice telar): el destino, tenue, mientras llega */
+.mensaje.buscando .mensaje-destino { color: var(--mensaje-boton); }
+
+/* mandando: no se escribe ni se envía otra vez encima */
+.mensaje.ocupada :is(.mensaje-campo, .mensaje-enviar, .mensaje-destino) { pointer-events: none; opacity: .5; }
+
+/* lo último que se mandó: una línea tenue arriba del campo, con el círculo en el color de su estado */
+.mensaje-dijo {
+  display: flex;
+  align-items: baseline;
+  gap: 0 1ch;
+  padding: var(--e-1) var(--mensaje-margen) 0;
+  overflow: hidden;
+  color: var(--mensaje-dijo);
+  white-space: nowrap;
+
+  & .mensaje-a { color: var(--acento); cursor: pointer; }
+  & .mensaje-a:hover { text-decoration: underline; }
+}
+
+.mensaje-dijo-circulo { flex: none; }
+.mensaje-dijo-como { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.mensaje-dijo.estado-enviando .mensaje-dijo-circulo { color: var(--acento); }
+.mensaje-dijo.estado-llego .mensaje-dijo-circulo { color: var(--exito); }
+.mensaje-dijo.estado-error { color: var(--peligro); }

@@ -7,6 +7,7 @@ import MarkdownIt from 'markdown-it';
 import * as cli from '../cli';
 import { modelo } from '../modelo';
 import * as interfaz from './interfaz';
+import * as portapapeles from './portapapeles';
 
 /** Un ítem de un menú para elegir. `separador`: un título de grupo, no se elige. */
 export interface Opcion {
@@ -19,6 +20,8 @@ export interface Opcion {
     senal?: string;
     detail?: string;
     separador?: boolean;
+    /** se ve, apagada, y no se elige: su `description` dice por qué (una máquina fuera de línea, por ejemplo) */
+    apagada?: boolean;
 }
 
 export interface PedidoCampo {
@@ -37,7 +40,11 @@ export interface PedidoCampo {
  *  `foco: 'cancelar'`, para lo que no destruye pero tampoco se hace sin mirar (conceder un permiso para siempre, una acción
  *  que viene de afuera): el foco en «cancelar» y la acción con ⌘⏎. pruebas/confirmar.mjs revisa que cada confirmación que
  *  destruye lo diga. */
-export interface OpcionesAviso { detalle?: string; foco?: 'cancelar'; destruye?: boolean }
+export interface OpcionesAviso {
+    detalle?: string; foco?: 'cancelar'; destruye?: boolean;
+    /** corre dentro del evento del botón apretado: lo que solo se puede en un gesto (interfaz.ts, `preguntar`) */
+    enElClic?: (boton: string) => void;
+}
 
 function avisoCon(nivel: interfaz.Nivel) {
     /** Un aviso que se va solo; con botones, una caja que espera y devuelve el elegido (undefined si se cerró). */
@@ -46,7 +53,7 @@ function avisoCon(nivel: interfaz.Nivel) {
         const opciones = botones.find((b): b is OpcionesAviso => typeof b === 'object');
         const detalle = opciones?.detalle;
         if (!nombres.length) { interfaz.avisar(detalle ? `${texto}\n${detalle}` : texto, nivel); return undefined; }
-        return interfaz.preguntar(detalle ? `${texto}\n\n${detalle}` : texto, nombres, { foco: opciones?.foco, destruye: opciones?.destruye });
+        return interfaz.preguntar(detalle ? `${texto}\n\n${detalle}` : texto, nombres, { foco: opciones?.foco, destruye: opciones?.destruye, enElClic: opciones?.enElClic });
     };
 }
 export const aviso = avisoCon('aviso');
@@ -78,9 +85,10 @@ export async function campo(o: PedidoCampo): Promise<string | undefined> {
 /** Un texto largo y a quién mandarlo (web/interfaz.ts, `escribir`): lo escrito y el destino, o undefined. */
 export const escribir = (o: interfaz.PedidoEscrito): Promise<{ texto: string; destino: string } | undefined> => interfaz.escribir(o);
 
-/** El menú de una entidad junto a donde se hizo clic (web/interfaz.ts, `menu`); sin `donde` (una tecla, un comando),
+/** El menú de una entidad junto a donde se hizo clic (web/interfaz.ts, `menu`), o junto a un elemento (debajo; si no
+ *  cabe, encima de él); sin `donde` (una tecla, un comando),
  *  el menú con buscador en el centro, como siempre. El ítem elegido, o undefined. */
-export async function menu<T extends Opcion>(opciones: T[], donde?: { x: number; y: number }, titulo = ''): Promise<T | undefined> {
+export async function menu<T extends Opcion>(opciones: T[], donde?: { x: number; y: number } | Element, titulo = ''): Promise<T | undefined> {
     if (!donde) return elegir(opciones, { titulo });
     const i = await interfaz.menu(opciones, donde, { titulo });
     return i === undefined ? undefined : opciones[i];
@@ -96,8 +104,26 @@ export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: s
  *  puede traer la llave (`noreferrer`). */
 export async function abrirExterno(url: string): Promise<void> { window.open(url, '_blank', 'noopener,noreferrer'); }
 
-export async function copiar(texto: string): Promise<void> {
-    try { await navigator.clipboard.writeText(texto); } catch { /* sin permiso */ }
+/** Copia `texto` al portapapeles (web/portapapeles.ts) y lo dice abajo con `dice` (o «copiado: …»). Si el navegador
+ *  no lo deja (por http, Safari ya fuera del clic que lo pidió), un aviso con el texto y un botón que copia en su mismo
+ *  clic. True si quedó copiado. */
+export async function copiar(texto: string, dice = ''): Promise<boolean> {
+    const listo = () => { estado(dice || `copiado: ${texto.length > 60 ? `${texto.slice(0, 60)}…` : texto}`, 3000); return true; };
+    if (await portapapeles.copiar(texto)) return listo();
+    return pedirCopiar(texto, 'Para copiarlo, aprieta Copiar (o ⏎).', listo);
+}
+
+/** El aviso que copia en el clic de su botón: `texto` es lo que se copia, `pide` lo que se le dice a la persona (se le
+ *  agrega el texto, cortado en `largo`). Si tampoco así (no debería), queda dicho que lo seleccione y lo copie a mano. */
+export async function pedirCopiar(texto: string, pide: string, listo: () => boolean, largo = 70): Promise<boolean> {
+    let copiado: Promise<boolean> = Promise.resolve(false);
+    const muestra = texto.replace(/\s+/g, ' ').trim();
+    const r = await info(`${pide}\n«${muestra.length > largo ? `${muestra.slice(0, largo)}…` : muestra}»`, 'Copiar',
+        { enElClic: b => { if (b === 'Copiar') copiado = portapapeles.copiarEnElGesto(texto); } });
+    if (r !== 'Copiar') return false;
+    if (await copiado) return listo();
+    void falla(`No quedó copiado. Selecciónalo y cópialo con ⌘C:\n${texto}`);
+    return false;
 }
 
 const md = new MarkdownIt({ html: false, linkify: true });

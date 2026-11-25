@@ -534,6 +534,21 @@ def mudar(config, viejo: str, nuevo: str) -> int:
     return pasados
 
 
+def sacar(config, hilo: str, ids) -> int:
+    """Saca de la casilla de aquí unos mensajes pendientes o en camino (los que se llevó el hilo a otra máquina, que
+    allá los entrega): aquí ya no esperan a nadie. Cuántos sacó."""
+    d, n = carpeta(config, hilo), 0
+    for mid in ids:
+        mid = re.sub(r"[^\w.-]+", "_", str(mid))
+        for f in (d / f"{mid}.json", d / AVISOS / f"{mid}.json", d / CAMINO / f"{mid}.json"):
+            try:
+                f.unlink()
+                n += 1
+            except OSError:
+                pass
+    return n
+
+
 def marcar_entregados(config, hilo: str, ids: list[str]) -> None:
     """Da por entregados unos pendientes sin esperar a verlos en la conversación: lo que muestra una orden (su salida
     ya la vio quien la corrió) o un gancho que no trae conversación donde mirar."""

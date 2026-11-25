@@ -31,6 +31,26 @@ export function tramosDe(d: Dia, medianoche: number): Tramo[] {
     }));
 }
 
+/** Si hay una reunión en curso ahora (una cita con otras personas que no se rechazó), de cualquier mundo: la que silencia
+ *  las ventanas de los módulos (web/ventanas.ts), para no reventar una reunión con la pantalla compartida. Lo de día
+ *  completo y los bloques propios no cuentan. */
+export function reunionEnCurso(d: Dia, ahora: number): boolean {
+    if (!d.agenda) return false;
+    const medianoche = new Date(new Date(ahora).getFullYear(), new Date(ahora).getMonth(), new Date(ahora).getDate()).getTime();
+    const m = minutos(ahora, medianoche);
+    return eventosDelDia(d).filter(e => !e.soloPlan).some(e => {
+        const t: Tramo = { inicio: minutos(e.inicio, medianoche), fin: minutos(e.fin, medianoche), titulo: e.titulo,
+            clase: CLASE[queEs(e).tipo] ?? 'bloque', respuesta: e.respuesta ?? '' };
+        return ocupa(t) && t.inicio <= m && m < t.fin;
+    });
+}
+
+/** Lo mismo con el día que la página ya lee (con su caché): false si no se pudo leer. */
+export async function hayReunion(ahora = Date.now()): Promise<boolean> {
+    const d = await dia().catch(() => undefined);
+    return !!d && reunionEnCurso(d, ahora);
+}
+
 /** La jornada que abarca la barra: la de la semana del calendario (8:30 a 18:00), estirada a la media hora si una
  *  reunión que ocupa el tiempo (una que no se rechazó) empieza antes o termina después. */
 export function abarca(tramos: Tramo[]): { desde: number; hasta: number } {

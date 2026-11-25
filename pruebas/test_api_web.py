@@ -437,6 +437,10 @@ class LosAvisos(Prueba):
             os.utime(self.estado / "vivos", None) if (self.estado / "vivos").exists() else None
             (self.estado / "espejos" / "otra.json").write_text("{}")
             self.assertEqual(await g.__anext__(), "data: espejos\n\n")
+            # un botón de la ventana de un módulo, o el «no molestar» (telar.servicios.ventanas): solo «ventanas»
+            (self.estado / "ventanas").mkdir()
+            (self.estado / "ventanas" / "cambio").write_text("1")
+            self.assertEqual(await g.__anext__(), "data: ventanas\n\n")
             await g.aclose()
 
         asyncio.run(asyncio.wait_for(leer(), 5))

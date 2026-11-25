@@ -225,6 +225,11 @@ class SeguirAlDueno(Prueba):
         self.correr({"nombre": "faro", "maquina": "srv", "vivo": True, "ventana": "@5/aa"})
         self.assertEqual(self.traidos, [("@5/aa", "faro")])
 
+    def test_uno_que_su_dueno_archivo_no_nace_aqui(self):
+        # el que se llevó de allá a aquí: allá se archiva un momento antes de cerrar su ventana, y aquí ya vive
+        self.correr({"nombre": "faro", "maquina": "srv", "vivo": True, "archivado": True, "ventana": "@5/aa"})
+        self.assertEqual(self.traidos, [])
+
     def test_el_mismo_hilo_en_otra_direccion_se_sigue_sin_duplicarlo(self):
         self.est.anotar_remoto("Secretaría", "srv", "telar-5e6f7a8b")
         self.vivos.add("Secretaría")

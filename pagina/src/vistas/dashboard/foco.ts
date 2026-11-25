@@ -1,14 +1,23 @@
-// «foco»: lo más urgente e importante, de a pocas tarjetas, para decidir una por una. Un clic en una tarjeta la elige
-// (la primera viene elegida) y arriba de las tarjetas, en una banda de íconos (componentes/casillas.ts), están sus
+// «foco»: lo más urgente e importante, de a pocas tarjetas, para decidir una por una. De arriba abajo, en la altura de la
+// pantalla:
+//
+//   ┌ pestañas: gestión 50 · concentración 16 ─────────────────── (componentes/pestanas.ts) ┐
+//   │ las tarjetas (corren solas)                                                           │
+//   ├ las acciones de la elegida ───────────────────────────────── (componentes/casillas.ts) ┤
+//   ├ la barra de mensaje: escribirle a su hilo, a otro o a un agente ── (web/mensaje.ts) ───┤
+//   └───────────────────────────────────────────────────────────────────────────────────────┘
+//
+// Un clic en una tarjeta la elige (la primera viene elegida) y abajo, en una fila propia del alto de las barras, están sus
 // acciones, las que le corresponden a esa tarea: junto a «nueva fecha», hoy si venció y los aplazamientos de siempre;
 // junto al tamaño, «rápida» o «larga»; junto a la instrucción, «trabajarla» (a su hilo, a trabajarla ahí) y, en
-// concentración, «bloquear tiempo». También se puede
-// arrastrar la tarjeta a una acción. La tarjeta se va y entra la siguiente, ya elegida. Una tarea vencida va primero y no
-// se queda vencida: o se le da una fecha real (hoy, mañana…), o se suelta.
+// concentración, «bloquear tiempo». También se puede arrastrar la tarjeta a una acción. La tarjeta se va y entra la
+// siguiente, ya elegida. Una tarea vencida va primero y no se queda vencida: o se le da una fecha real (hoy, mañana…), o
+// se suelta. Debajo de todo, la barra de mensaje: lo que se escribe ahí le llega a su hilo (el de su proyecto, de
+// entrada) con la tarea como contexto, lo mismo que manda la ventana de la instrucción, sin abrirla.
 //
 // Dos modos, porque no se trabajan igual: **gestión** (lo rápido, media hora o menos: hasta cinco, para despachar
 // en una sesión) y **concentración** (lo largo, horas o días: dos a lo más, cada una necesita un bloque propio). Una
-// tarea sin tamaño va en gestión, y sus acciones traen «es rápida» y «es larga».
+// tarea sin tamaño va en gestión, y sus acciones traen «es rápida» y «es larga». Son las pestañas de arriba.
 //
 // Solo lo que es de la persona (sin dueño, o ella) y tiene ficha (una tarea, no la casilla de un documento). El orden:
 // las vencidas, las de hoy, y después la urgencia de «tareas» (la prioridad manda; la fecha desempata). La deuda (lo
@@ -19,6 +28,8 @@ import { esc } from '../../estilo';
 import { C, I } from '../../web/iconos';
 import { casillas, type Casilla, type Rapida } from '../../componentes/casillas';
 import { circulo } from '../../componentes/circulo';
+import { pestanas } from '../../componentes/pestanas';
+import { barra as barraMensaje } from '../../web/mensaje';
 import type { Pieza } from '../../componentes/item';
 import { tarjeta } from '../../componentes/tarjeta';
 import * as ui from '../../web/ui';
@@ -171,16 +182,11 @@ export class PantallaFoco implements Pantalla {
             ['concentracion', I.consolidar, 'concentración', 'lo largo (horas o días): una o dos, cada una con su bloque'],
         ];
         const h: string[] = ['<div id="foco">'];
-        h.push('<div class="foco-cab">' + modos.map(([m, ic, nombre, ayuda]) => {
-            const n = m === this.modo ? cola.length : this.cola(m).length;
-            return `<a class="modo${m === this.modo ? ' si' : ''}" data-accion="foco-modo" data-valor="${m}" title="${esc(ayuda)}"><span class="i">${ic}</span> ${nombre} <span class="n">${n}</span></a>`;
-        }).join('')
-            + '</div>');
-        // la banda de sus acciones, arriba de las tarjetas: las de la elegida (mientras una va a telar, lo dice)
-        h.push(`<div class="foco-cuerpo ${this.modo}">`);
-        if (elegida) h.push(casillas({ grupos: this.gruposDe(elegida), accion: 'foco-soltar', ocupadas: !!this.haciendo,
-            haciendo: this.haciendo ? `${circulo({ mov: 'gira' })} ${esc(this.haciendo)}` : '' }));
-        h.push('<div class="tarjetas lista-tarjetas">');
+        // arriba, los dos modos: las pestañas de la casa, con cuántas hay en cada uno
+        h.push(pestanas({ nombre: 'foco', accion: 'foco-modo', activa: this.modo, clases: ['foco-modos'],
+            pestanas: modos.map(([m, icono, nombre, ayuda]) => ({ valor: m, icono, nombre, ayuda,
+                cuenta: m === this.modo ? cola.length : this.cola(m).length })) }));
+        h.push(`<div class="foco-cuerpo ${this.modo}"><div class="tarjetas lista-tarjetas">`);
         if (!vista.length) {
             const quedan = this.cola(otro).length;
             h.push(`<div class="vacio"><span class="i">${I.hecha}</span> ${this.modo === 'gestion' ? 'nada rápido pendiente' : 'nada largo pendiente'}.`
@@ -188,7 +194,17 @@ export class PantallaFoco implements Pantalla {
         }
         for (const p of vista) h.push(this.tarjeta(p));
         if (cola.length > vista.length) h.push(`<div class="dim">${cola.length - vista.length} más esperan su turno</div>`);
-        h.push('</div></div></div>');
+        h.push('</div></div>');
+        // abajo, en filas propias: las acciones de la elegida (mientras una va a telar, lo dice) y la barra de mensaje, con
+        // ella como contexto
+        if (elegida) {
+            h.push(`<div class="foco-acciones">${casillas({ grupos: this.gruposDe(elegida), accion: 'foco-soltar', ocupadas: !!this.haciendo,
+                haciendo: this.haciendo ? `${circulo({ mov: 'gira' })} ${esc(this.haciendo)}` : '' })}</div>`);
+            const id = elegida.fila.id || elegida.ref;
+            h.push(barraMensaje({ direccion: elegida.fila.direccion ?? '', fila: elegida.fila, sobre: id,
+                alEnviar: () => this.t.tareas.olvidarFicha(elegida.fila.proveedor ?? '', id) }));
+        }
+        h.push('</div>');
         // su ↻ relee las tareas y lo dice mientras (el del núcleo releería el día entero, sin decir nada)
         this.t.pintar(h, { sinReleer: true, acciones: [{ accion: 'foco-releer', icono: I.releer,
             ayuda: 'volver a leer las tareas ahora (se releen solas cada minuto y cuando algo cambia)' }] });

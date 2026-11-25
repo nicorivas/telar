@@ -38,6 +38,11 @@ Lo que se manda es una línea: `/skill lo escrito [contexto: título · direcci�
 tarea queda en su historia, como una nota («instrucción a «Faro»: /tarea revisa el índice»; decidido el 13-nov con la
 persona: lo hacía «escribirle a Claude», y ahora vale para toda instrucción sobre una tarea, venga de donde venga).
 
+**La barra de mensaje** (24-nov): la misma instrucción en una fila al pie de una pantalla, sin abrir la ventana
+(`componentes/mensaje.ts`, `web/mensaje.ts`): manda lo mismo, al mismo destino de fábrica, y comparte el borrador de la
+cosa; no tiene skill ni «dejarla escrita». Hoy está en foco; dónde más va, en
+[componentes.md](componentes.md), «Las pestañas y la barra de mensaje».
+
 ## Su hilo, según la entidad
 
 Lo decide telar (`telar actuar <dirección> --donde`, `POST /actuar/adonde`), no la página:

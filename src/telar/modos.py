@@ -60,7 +60,7 @@ CATALOGO: tuple[Ajuste, ...] = (
     Ajuste("pantalla_completa", "disposición", "pantalla completa", ("no", "si")),
     Ajuste("columnas", "terminal", "ancho", (), "columnas de 40 a 400, o 0: todo"),
     Ajuste("posicion", "terminal", "posición", ("izquierda", "centro", "derecha")),
-    Ajuste("fondo", "terminal", "fondo", (), "telar, ninguno, #rrggbb, imagen:… o un módulo"),
+    Ajuste("fondo", "terminal", "fondo", (), "ninguno (el fondo del tema), #rrggbb, imagen:… o un módulo"),
     Ajuste("etiquetas", "hilos", "solo con las etiquetas", (),
            "los hilos con alguna de estas etiquetas (trabajo, personal…); vacío: todos"),
     Ajuste("sin_etiqueta", "hilos", "los sin etiqueta", ("se-ven", "no-se-ven"), "con un filtro de etiquetas puesto"),

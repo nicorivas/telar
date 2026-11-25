@@ -15,6 +15,9 @@
 // no se mide: un resize a tmux por movimiento), y al soltar (o con el doble clic) la ventana recibe una sola vez
 // `EVENTO` (web/terminal.ts lo escucha).
 //
+// La barra de la derecha del visor de un documento (web/documento-lado.ts) usa el mismo agarre (`agarre`) y guarda su ancho
+// aquí mismo, por pantalla (`documento`).
+//
 // La terminal del centro (web/terminal.ts) se arrastra igual, por su borde (`montarTerminal`): el derecho, o el izquierdo
 // si va a la derecha (`[terminal] posicion`). Su ancho se cuenta en columnas: el de fábrica es el de ⚙ terminal (`[terminal]
 // columnas`, o el del modo puesto), y arrastrar lo pisa en este navegador y en esta pantalla. Mientras se arrastra el
@@ -24,8 +27,8 @@
 // (`olvidarTerminal`): lo último que se eligió es lo que se ve.
 
 export type Cual = 'barra' | 'lado';
-/** lo que se arrastra: la barra, la ficha o la terminal */
-type Arrastrable = Cual | 'terminal';
+/** lo que se arrastra: la barra, la ficha, la terminal o la barra de un documento (web/documento-lado.ts) */
+export type Arrastrable = Cual | 'terminal' | 'documento';
 export interface Topes { min: number; max: number }
 /** lo recordado: por pantalla, el ancho de la barra y de la ficha en px, y el de la terminal en columnas (0: todo) */
 export type Recordados = Record<string, Partial<Record<Arrastrable, number>>>;
@@ -67,7 +70,7 @@ function guardar(almacen: Pick<Storage, 'setItem'> | null, r: Recordados): void 
 }
 
 /** Recordar (o, sin valor, olvidar) el ancho de una en una pantalla; la pantalla sin nada se va de lo recordado. */
-function recordar(almacen: Pick<Storage, 'getItem' | 'setItem'> | null, pantalla: string, cual: Arrastrable, valor: number | undefined): void {
+export function recordar(almacen: Pick<Storage, 'getItem' | 'setItem'> | null, pantalla: string, cual: Arrastrable, valor: number | undefined): void {
     const todo = leer(almacen);
     const suyos = { ...(todo[pantalla] ?? {}) };
     if (valor === undefined) delete suyos[cual]; else suyos[cual] = valor;
@@ -80,7 +83,7 @@ let enCurso: Arrastrable | null = null;
 export const arrastrando = (): boolean => enCurso !== null;
 
 /** Lo que hace una franja al arrastrarla; lo común (el puntero, la captura, la línea marcada) lo pone `agarre`. */
-interface Manejo {
+export interface Manejo {
     /** si ahora se puede (se ve, no está plegada, no es el teléfono) */
     puede(): boolean;
     empezar(): void;
@@ -94,7 +97,7 @@ interface Manejo {
 
 /** Lo que tienen en común las franjas: el pointerdown (sin seleccionar texto, con la captura del puntero), el arrastre
  *  con su umbral de un píxel, el soltar una sola vez (pointerup, pointercancel o la captura perdida) y el doble clic. */
-function agarre(f: HTMLElement, cual: Arrastrable, body: HTMLElement, m: Manejo): void {
+export function agarre(f: HTMLElement, cual: Arrastrable, body: HTMLElement, m: Manejo): void {
     f.setAttribute('role', 'separator');
     f.setAttribute('aria-orientation', 'vertical');
     let desde = 0, movida = false, puntero = -1;

@@ -4,7 +4,7 @@
     r = espejos.ver(ctx)            # una foto por máquina, con su edad y si sigue en línea
 
 Lo usan `telar espejo ver` y `GET /espejos`; el panel lo pide cada 30 s para el grupo de cada máquina. Con `[mundos]`,
-cada hilo trae su `mundo`, como los de aquí.
+cada hilo trae su `mundo`, como los de aquí, y también cada archivado (`archivados`: los de su ARCHIVO).
 """
 
 from __future__ import annotations
@@ -40,9 +40,11 @@ def ver(ctx) -> Espejos:
     if mundos.declarados(ctx.config):
         for f in fotos:
             f["hilos"] = [dict(j) for j in f.get("hilos") or [] if isinstance(j, dict)]
+            f["archivados"] = [dict(j) for j in f.get("archivados") or [] if isinstance(j, dict)]
+        # (los archivados, después: un nombre que está vivo y archivado en la misma máquina vale por el vivo)
         k = mundos.Clasificador(ctx, hilos={(str(j.get("nombre") or ""), str(f.get("nombre") or "")): j
-                                            for f in fotos for j in f["hilos"] if j.get("nombre")})
+                                            for f in fotos for j in [*f["archivados"], *f["hilos"]] if j.get("nombre")})
         for f in fotos:
-            for j in f["hilos"]:
+            for j in [*f["hilos"], *f["archivados"]]:
                 j["mundo"] = k.de_hilo(str(j.get("nombre") or ""), str(f.get("nombre") or ""))
     return Espejos(espejos=fotos, vigente=mod.VIGENTE, al_dia=alcance.al_dia(ctx.config))

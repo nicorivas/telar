@@ -1274,6 +1274,14 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.match(boton({ texto: 'archivar', accion: 'a', color: 'amarillo' }), /style="--c: var\(--amarillo\)"/, 'el color de su clase');
     assert.match(boton({ texto: 'x', datos: { contestar: 'hacer' } }), /^<button type="button" class="boton tono-accion" data-contestar="hacer">/, 'otros data-*, sin data-accion');
     assert.match(boton({ texto: '<b>', accion: '"x"' }), /data-accion="&quot;x&quot;".*&lt;b&gt;/, 'lo escrito se escapa');
+    // lo obvio por su ícono: tecla + ícono en vez de tecla + palabra; la palabra, su nombre (aria-label y, sin ayuda, title)
+    assert.equal(boton({ texto: 'Enviar', simbolo: 'E', tecla: '⌘⏎', accion: 'e' }),
+        '<button type="button" class="boton tono-accion" data-accion="e" data-tecla="⌘⏎" aria-keyshortcuts="Meta+Enter" aria-label="enviar" title="enviar">'
+        + '<span class="boton-tecla">⌘⏎</span><span class="boton-texto boton-simbolo"><span class="i">E</span></span></button>', 'tecla + ícono, con su nombre');
+    assert.match(boton({ texto: 'aplazar 15 min', simbolo: 'Z', corto: '15m', ayuda: 'vuelve en 15' }),
+        /aria-label="aplazar 15 min" title="vuelve en 15"><span class="boton-texto boton-simbolo"><span class="i">Z<\/span><span class="boton-corto">15m<\/span>/,
+        'lo poco que el ícono no dice, a su lado; la ayuda manda en el title');
+    assert.ok(!boton({ texto: 'x', simbolo: 'S', icono: 'I' }).includes('boton-icono'), 'con símbolo, el ícono no se repite en el lugar de la tecla');
     assert.equal(minuscula('Sí'), 'sí'); assert.equal(minuscula('Cancelar el encargo'), 'cancelar el encargo');
     assert.equal(minuscula('T84'), 'T84', 'una sigla queda'); assert.equal(minuscula('OK'), 'OK');
     assert.match(pieBotones([B]), /^<div class="ventana-pie botonera"><button /, 'el pie de una ventana: la banda');
@@ -1305,6 +1313,71 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.ok(!/:focus-visible/.test(css), 'el foco se marca con :focus: tiene que verse aunque se haya abierto con el mouse');
     assert.ok(css.includes('.es-hover') && css.includes(':focus, &.es-foco'), 'al pasar y con el foco, de verdad y puestos a mano');
     assert.ok(!/forma-(palabra|borde|icono|tecla)/.test(css), 'una sola forma: las descartadas no quedan');
+}
+
+// ── las pestañas (componentes/pestanas.ts) y la barra de mensaje (componentes/mensaje.ts): su HTML, su CSS y su lugar en el
+// catálogo. Lo que hacen (el teclado, enviar, el mundo en el selector, la ficha en foco), en npm run prueba:mensaje ──
+{
+    const { readFileSync } = await import('node:fs');
+    const { pestanas } = await armar('pestanas');
+    const { barraMensaje } = await armar('mensaje');
+    const CP = await armar('catalogo-pestanas');
+    const CMS = await armar('catalogo-mensaje');
+    const sinComentarios = f => readFileSync(path.join(aqui, '..', 'media', 'css', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const f of ['pestanas.css', 'mensaje.css']) {
+        const css = sinComentarios(f);
+        assert.ok(!/border-radius/.test(css), `${f}: sin esquinas redondeadas`);
+        assert.ok(!/font-size|font-weight/.test(css), `${f}: nunca otro tamaño ni otro peso de letra`);
+        assert.ok(!/#[0-9a-f]{3,8}\b|rgb\(/i.test(css), `${f}: solo tokens, ningún color a mano`);
+    }
+    assert.match(sinComentarios('pestanas.css'), /height: var\(--pestanas-alto\)[\s\S]*border-bottom: var\(--borde\)/, 'las pestañas: el alto de las barras y su línea abajo');
+    assert.match(sinComentarios('mensaje.css'), /border-top: var\(--borde\)/, 'la barra de mensaje: su línea arriba');
+    const tokens = readFileSync(path.join(aqui, '..', 'media', 'css', 'tokens.css'), 'utf8');
+    assert.ok(/--pestanas-alto: var\(--pantalla-barra-alto\)/.test(tokens) && /--mensaje-alto: var\(--pantalla-barra-alto\)/.test(tokens), 'del alto de las barras');
+    const nav = readFileSync(path.join(aqui, '..', 'scripts', 'navegador.mjs'), 'utf8');
+    assert.ok(/'pestanas', 'mensaje'/.test(nav), 'sus hojas, en la capa base de marco.css');
+
+    // la abierta se distingue por su superficie y su color, nunca por la letra; escapado
+    const h = pestanas({ nombre: 'n', activa: 'a', accion: 'x', pestanas: [{ valor: 'a', nombre: '<a>' }, { valor: 'b', nombre: 'b', cuenta: 2 }] });
+    assert.ok(h.includes('&lt;a&gt;') && !h.includes('<a>'), 'el nombre, escapado');
+    assert.ok(!/<b>|<strong>/.test(h), 'sin negrita');
+    // las que no caben: el «⋯» va en la fila, escondido, después de la lista y antes de lo del extremo (web/pestanas.ts lo
+    // muestra al medir); nunca corre de lado
+    assert.match(pestanas({ nombre: 'n', activa: 'a', fin: '<i>f</i>', pestanas: [{ valor: 'a', nombre: 'a' }] }),
+        /<\/span><a class="pestanas-mas" role="button" aria-haspopup="menu" tabindex="-1" hidden[^>]*>.*<\/a><span class="pestanas-fin">/, 'el «⋯», escondido, tras la lista');
+    assert.match(pestanas({ nombre: 'n', activa: 'a', pestanas: [{ valor: 'a', nombre: 'a', icono: 'A', color: 'azul' }] }), /data-color="azul"/, 'su tinta, para el menú');
+    const cssPestanas = sinComentarios('pestanas.css');
+    assert.ok(!/overflow-x: auto|scroll/.test(cssPestanas), 'sin desplazamiento lateral');
+    assert.match(cssPestanas, /\.pestana\.fuera \{ display: none; \}/, 'las que no caben, fuera');
+    assert.match(cssPestanas, /\.pestanas-mas \{[^}]*&\[hidden\] \{ display: none; \}/, 'el «⋯», escondido mientras caben');
+    assert.ok(!/apretadas/.test(cssPestanas), 'ya no quedan en su ícono');
+    const escenasDesborde = CP.escenas().filter(([n]) => n.startsWith('no caben'));
+    assert.ok(escenasDesborde.length >= 3 && escenasDesborde.every(([, , html]) => /style="width: /.test(html)), 'el catálogo: angosta, la abierta escondida y algo nuevo escondido');
+    assert.ok(escenasDesborde.some(([, , html]) => /class="pestana si con-icono" [^>]*data-valor="historia"/.test(html)), 'una con la abierta al final');
+
+    // la barra de mensaje: el destino en su tinta, lo escrito escapado, enviar encendido con algo escrito, lo último que pasó
+    const m = barraMensaje({ llave: 'tarea:T84', destino: { valor: '', nombre: 'Faro', icono: 'F', color: 'azul', detalle: 'su hilo' },
+        texto: '<b>hola</b>', placeholder: 'escríbele a Faro', dijo: { estado: 'llego', destino: 'Faro', direccion: 'hilo:Faro', texto: 'por el bus' } });
+    assert.match(m, /^<div class="mensaje" data-mensaje="tarea:T84"><div class="mensaje-dijo estado-llego" role="status">/, 'su llave, y arriba lo último');
+    assert.match(m, /data-mensaje-abrir="hilo:Faro"[^>]*>«Faro»<\/a>/, 'a quién, con enlace');
+    assert.match(m, /style="--mensaje-c: var\(--azul\)"><span class="i mensaje-destino-icono">F<\/span><span class="mensaje-destino-nombre">Faro<\/span>/);
+    assert.match(m, /<textarea class="mensaje-campo" rows="1" aria-label="escríbele a Faro" placeholder="escríbele a Faro">&lt;b&gt;hola&lt;\/b&gt;<\/textarea>/, 'una línea, escapada');
+    assert.match(m, /class="mensaje-enviar listo"/, 'con algo escrito, enviar encendido');
+    assert.ok(!barraMensaje({ llave: 'x', destino: { valor: '', nombre: 'su hilo', icono: 'F', color: 'azul' }, placeholder: 'p', buscando: true }).includes('listo'), 'vacía, apagado');
+    assert.match(barraMensaje({ llave: 'x', destino: { valor: '', nombre: 'su hilo', icono: 'F', color: 'azul' }, placeholder: 'p', buscando: true }), /^<div class="mensaje buscando"/);
+    assert.match(barraMensaje({ llave: 'x', destino: { valor: '', nombre: 'F', icono: 'F', color: 'azul' }, placeholder: 'p', dijo: { estado: 'error', destino: 'F', texto: 'no contesta' } }),
+        /estado-error[^]*no se envió a «F»[^]*· no contesta/, 'si falló, por qué');
+
+    // el catálogo: sus escenas, y el catastro dice la verdad (lo que dice migrado usa el componente)
+    assert.ok(CP.escenas().length >= 6 && CMS.escenas().length >= 8, 'sus estados');
+    assert.ok(CP.escenas().every(([, , html]) => html.includes('class="pestanas')) && CMS.escenas().every(([, , html]) => html.includes('class="mensaje')));
+    for (const l of CP.LUGARES) {
+        const fuente = readFileSync(path.join(aqui, '..', 'src', l.archivo), 'utf8');
+        if (l.estado === 'migrada') assert.ok(/componentes\/pestanas'|'\.\/pestanas'/.test(fuente) && /pestanas\(|filaPestanas\(/.test(fuente), `${l.archivo}: dice que usa las pestañas`);
+    }
+    assert.ok(CMS.DONDE.every(d => readFileSync(path.join(aqui, '..', 'src', d.archivo), 'utf8').length > 0), 'dónde va: archivos que existen');
+    const catalogo = readFileSync(path.join(aqui, '..', 'src', 'componentes', 'catalogo.ts'), 'utf8');
+    assert.ok(/clave: 'pestanas', nombre: 'pestañas'/.test(catalogo) && /clave: 'mensaje', nombre: 'barra de mensaje'/.test(catalogo), 'sus páginas en el catálogo');
 }
 
 console.log('componentes: ok');

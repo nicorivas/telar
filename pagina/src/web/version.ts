@@ -10,6 +10,7 @@ import { I } from './iconos';
 import * as avisos from './avisos';
 import * as recarga from './recarga';
 import * as ui from './ui';
+import * as portapapeles from './portapapeles';
 
 /** cada cuánto la página pregunta (el servicio le pregunta a PyPI a lo más una vez por hora) */
 const CADA = 20 * 60 * 1000;
@@ -60,9 +61,10 @@ export async function actualizar(): Promise<void> {
     const v = ultima ?? await revisar();
     if (!v?.hay_nueva && v?.puerta?.atras) {
         const orden = v.puerta.actualizar ?? 'sudo sh servidor/telar-puerta-instalar …';
-        try { await navigator.clipboard.writeText(orden); } catch { /* sin portapapeles: se lee en el aviso */ }
-        void ui.info(`La puerta del servidor va en la ${v.puerta.version || '?'}; telar, en la ${v.puerta.telar}. Se actualiza `
-            + `con root, en el servidor, desde la carpeta del repositorio de telar (quedó copiada): ${orden}`);
+        const dice = `La puerta del servidor va en la ${v.puerta.version || '?'}; telar, en la ${v.puerta.telar}. Se actualiza `
+            + 'con root, en el servidor, desde la carpeta del repositorio de telar';
+        if (await portapapeles.copiar(orden)) { void ui.info(`${dice} (quedó copiada): ${orden}`); return; }
+        void ui.pedirCopiar(orden, `${dice}. Para copiar la orden, aprieta Copiar (o ⏎):`, () => { ui.estado('copiada', 2500); return true; }, 400);
         return;
     }
     if (!v?.hay_nueva) { void ui.info('telar: ya corre la última versión'); return; }

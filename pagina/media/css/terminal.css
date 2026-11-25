@@ -10,7 +10,7 @@
   }
 
   /* la terminal del ancho de sus columnas, a la izquierda, al centro o a la derecha (`[terminal]`: lo pone la
-     página); alrededor, el fondo: un telar tenue, nada, un color, una imagen o la página de un módulo */
+     página); alrededor, el fondo: el del tema, quieto (o un color, una imagen o la página de un módulo, que lo tapan) */
   .caja {
     position: relative;
     display: flex;
@@ -18,6 +18,7 @@
     justify-content: center;
     min-height: 0;
     overflow: hidden;
+    background: var(--bg);
   }
 
   /* la terminal que no se pudo abrir: el motivo, una vez y quieto, con lo que suele arreglarlo */

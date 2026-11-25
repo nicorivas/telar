@@ -774,7 +774,7 @@ def dormido(config, hilo: str) -> bool:
 
 
 def programa(hilo: str, *, desde: datetime | None = None, conversacion: str = "", tras: float = 0,
-             pedido: bool = False) -> list[str]:
+             pedido: bool = False, motivo: str = "") -> list[str]:
     """Lo que corre el panel de un hilo dormido: dice que duerme y espera un ⏎. Con él, `telar hilo despertar --aqui`
     pone al agente en su lugar (reemplaza este panel), con lo escrito antes de primer mensaje; si no puede, lo dice y se
     vuelve a esperar: el panel no se cierra (la ventana perdería su lugar). Ignora ⌃C, y lo que se teclee nunca llega a
@@ -789,6 +789,12 @@ def programa(hilo: str, *, desde: datetime | None = None, conversacion: str = ""
         f"  Su conversación sigue en disco{f' ({conversacion[:8]})' if conversacion else ''} y se retoma tal cual.",
         "",
         "  ⏎ lo despierta. Lo que escribas antes le llega como primer mensaje.",
+    ] if not motivo else [
+        # se está yendo a otra máquina (telar.mudanza.detener): no se despierta aquí mientras viaja
+        f"◌ «{hilo}» {motivo} ({hora}).",
+        f"  Su agente se detuvo para que su conversación{f' ({conversacion[:8]})' if conversacion else ''} viaje entera.",
+        "",
+        "  Si el traspaso falla, despierta aquí solo; si llega, esta ventana se cierra.",
     ]
     despertar = [*ejecutable_telar(), "hilo", "despertar", "--aqui", "--hilo", hilo, "--texto"]
     linea = (f"{linea_unset()}; export TELAR_HILO={shlex.quote(hilo)}; trap '' INT QUIT TSTP; "
@@ -857,10 +863,12 @@ def dormir_uno(config, tel, hilo: str, *, forzar: bool = False, tabla=None, vist
     return f"«{hilo}» se durmió{hace}: su agente se cerró y su ventana espera (conversación {o.conversacion[:8]})"
 
 
-def despertar(config, hilo: str, *, mensaje: str = "", mux=None) -> str:
+def despertar(config, hilo: str, *, mensaje: str = "", mux=None, cesion: bool = False) -> str:
     """Retoma el agente de un hilo dormido en su misma ventana, con `mensaje` de primer mensaje si lo hay. Devuelve lo
     que hizo, en una línea; "" si no dormía (o su ventana ya no está: entonces se olvida que dormía, y abrirlo es
-    retomarlo como a cualquiera sin ventana). Levanta RuntimeError si dormía y no se pudo."""
+    retomarlo como a cualquiera sin ventana). Levanta RuntimeError si dormía y no se pudo. Uno que se detuvo para irse
+    a otra máquina (`cede` en su registro, telar.mudanza.detener) no despierta, salvo que la mudanza se eche atrás
+    (`cesion`): si despertara aquí mientras viaja, seguiría en dos máquinas."""
     from telar import estado as mod_estado
     from telar.agente import ErrorDeAgente, lanzar
 
@@ -869,6 +877,8 @@ def despertar(config, hilo: str, *, mensaje: str = "", mux=None) -> str:
         registro = est.dormidos().get(hilo)
         if registro is None:
             return ""
+        if registro.get("cede") and not cesion:
+            raise RuntimeError(f"«{hilo}» se está yendo a {registro['cede']}: no despierta aquí mientras viaja")
         if mux is None:
             from telar.mux import obtener as obtener_mux
 
@@ -985,10 +995,11 @@ def despertar_aqui(config, hilo: str, texto: str = "") -> int:
     return 0
 
 
-def escribir(config, tel, hilo, texto: str, *, enviar: bool = False, espera: float = 45.0) -> None:
+def escribir(config, tel, hilo, texto: str, *, enviar: bool = False, espera: float = 45.0, pegar: bool = False) -> None:
     """Teclearle a la ventana de un hilo, que puede estar dormido. Dormido y con `enviar`, se le despierta con lo
     escrito de primer mensaje; sin `enviar` (dejarlo escrito para que la persona lo mande), se le despierta y se espera
-    a que su caja de escribir aparezca (hasta `espera` segundos). Despierto, como siempre (`mux.escribir`)."""
+    a que su caja de escribir aparezca (hasta `espera` segundos). Despierto, como siempre (`mux.escribir`). `pegar`: el
+    texto tiene varias líneas y va sin ⏎, pegado entre corchetes (lo de allá es Claude Code, que lo entiende)."""
     if dormido(config, hilo.nombre):
         if enviar:
             if despertar(config, hilo.nombre, mensaje=texto, mux=tel.mux):
@@ -1005,7 +1016,10 @@ def escribir(config, tel, hilo, texto: str, *, enviar: bool = False, espera: flo
                             break
                     except Exception:  # noqa: BLE001 - se sigue esperando
                         continue
-    tel.mux.escribir(hilo.id, texto, enviar=enviar)
+    if pegar:
+        tel.mux.escribir(hilo.id, texto, enviar=enviar, pegar=True)
+    else:
+        tel.mux.escribir(hilo.id, texto, enviar=enviar)
 
 
 def _capturar(mux, panel: str) -> str | None:

@@ -1,0 +1,35 @@
+#!/bin/sh
+# telar es público y su historial de trabajo no: a GitHub sube un solo commit por versión (git commit-tree con el
+# árbol de main y de padre origin/main), nunca la rama main local. Este gancho lo cuida: vive en scripts/pre-push y
+# scripts/publicar.sh lo copia a .git/hooks/pre-push si falta (los ganchos no viajan con el repositorio).
+# Saltárselo: git push --no-verify (solo si se sabe por qué).
+remoto="$1"
+url="$2"
+case "$url" in
+  *github.com*) ;;
+  *) exit 0 ;;
+esac
+cero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$cero" ] && { echo "pre-push: no se borra nada en GitHub desde aquí" >&2; exit 1; }
+  case "$remote_ref" in
+    refs/heads/main)
+      if [ "$remote_sha" = "$cero" ]; then echo "pre-push: main no existe allá; no subo" >&2; exit 1; fi
+      n=$(git rev-list --count "$remote_sha..$local_sha" 2>/dev/null || echo x)
+      padre=$(git rev-parse "$local_sha^" 2>/dev/null)
+      if [ "$n" != "1" ] || [ "$padre" != "$remote_sha" ]; then
+        echo "pre-push: a GitHub sube un solo commit por versión encima de origin/main ($n commits); ver docs/publicar.md" >&2
+        exit 1
+      fi ;;
+    refs/tags/*)
+      c=$(git rev-parse "$local_sha^{commit}")
+      if ! git merge-base --is-ancestor "$c" "refs/remotes/$remoto/main" 2>/dev/null; then
+        echo "pre-push: la etiqueta apunta a un commit que no está en $remoto/main; primero sube el commit de la versión" >&2
+        exit 1
+      fi ;;
+    *)
+      echo "pre-push: a GitHub solo van main (un commit por versión) y las etiquetas, no $remote_ref" >&2
+      exit 1 ;;
+  esac
+done
+exit 0

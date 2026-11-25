@@ -310,6 +310,9 @@ class Bus:
     #: quién administra el bus (su nombre en él): a esa persona van los pedidos de gestión de personas
     #: (telar.personas); vacío, esta misma persona
     administra: str = ""
+    #: cómo publica el nodo sus hilos en el bus (telar.dueno): "condicionado" (de fábrica: a la revisión que vio, así
+    #: nunca hay dos dueños) o "simple" (sin condición, como antes, por si lo nuevo falla)
+    publicar: str = "condicionado"
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,12 +374,12 @@ class Terminal:
     """Cómo se ve la terminal de un hilo en la página (`[terminal]`).
 
     `columnas`: hasta cuántas columnas de ancho (0: todo lo que quepa); `posicion`: izquierda, centro o derecha;
-    `fondo`: lo que va alrededor: «telar» (el de siempre, un telar tenue), «ninguno», un color («#1e1e2e»), una
+    `fondo`: lo que va alrededor: «ninguno» (el fondo del tema), un color («#1e1e2e»), una
     imagen («imagen:~/fondos/a.jpg» o «imagen:https://…») o el nombre de un módulo que trae un `[fondo]`."""
 
     columnas: int = 130
     posicion: str = "centro"
-    fondo: str = "telar"
+    fondo: str = "ninguno"
 
 
 def validar_terminal(clave: str, valor: object) -> object:
@@ -398,7 +401,9 @@ def validar_terminal(clave: str, valor: object) -> object:
     if clave == "fondo":
         v = str(valor or "").strip()
         if not v or re.search(r"[\x00-\x1f]", v):
-            raise ErrorDeConfig(f"terminal.fondo: telar, ninguno, un color #rrggbb, imagen:… o un módulo; llegó {valor!r}")
+            raise ErrorDeConfig(f"terminal.fondo: ninguno, un color #rrggbb, imagen:… o un módulo; llegó {valor!r}")
+        if v == "telar":   # el telar tenue que tejía alrededor se sacó (24-nov-2026): se lee como «ninguno»
+            return "ninguno"
         if v.startswith("#") and not re.fullmatch(r"#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?", v):
             raise ErrorDeConfig(f"terminal.fondo: un color va como #rgb o #rrggbb; llegó {v!r}")
         return v
@@ -523,8 +528,8 @@ class Remoto:
     #: la carpeta común donde cada persona publica sus hilos de esa máquina (`telar
     #: directorio`); sin ella, no se publica ni se lee nada.
     directorio: str = ""
-    #: los repositorios que viven en las dos máquinas (`~/repo/empresa`): antes de llevar un
-    #: hilo allá se revisa que no tengan trabajo sin subir, además de la raíz.
+    #: los repositorios que viven en las dos máquinas (`~/repo/empresa`): `telar desplegar` busca
+    #: ahí el suyo. Llevar un hilo ya no los revisa enteros: mira lo del hilo (telar.sin_subir).
     repos: tuple[str, ...] = ()
     #: la sesión del telar EN la otra máquina, donde nacen sus hilos; "" es la misma que aquí.
     sesion: str = ""
@@ -1404,7 +1409,7 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
 
     if "bus" in datos:
         cuerpo = _tabla(datos["bus"], "bus")
-        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "administra", "no_leer", "entrada"}
+        sobra = set(cuerpo) - {"url", "token", "persona", "maquina", "administra", "no_leer", "entrada", "publicar"}
         if sobra:
             raise ErrorDeConfig(f"bus.{sorted(sobra)[0]}: no existe")
         valores = {}
@@ -1423,6 +1428,10 @@ def desde_dict(datos: dict, *, origen: Path | None = None, rotos: list | None = 
             valores[clave] = v.strip()
         if valores["url"] and not valores["url"].startswith(("nats://", "tls://")):
             raise ErrorDeConfig(f"bus.url: se esperaba nats://host:puerto, llegó {valores['url']!r}")
+        publicar = cuerpo.get("publicar", "condicionado")
+        if publicar not in ("condicionado", "simple"):
+            raise ErrorDeConfig(f"bus.publicar: «condicionado» o «simple», llegó {publicar!r}")
+        valores["publicar"] = publicar
         cambios["bus"] = Bus(**valores)
 
     if "catalogos" in datos:

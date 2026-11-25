@@ -57,6 +57,7 @@ ORDENES: dict[str, str] = {
     "bloque": "Lo que muestra un bloque del día: corre su comando y devuelve su página.",
     "mirar": "Engancharse a la ventana de un hilo en esta terminal, sin tocar lo que ven los demás.",
     "objeto": "Cualquier objeto por su dirección (tarea:T366, hilo:Telar…): verlo y aplicarle una acción.",
+    "comentarios": "Los comentarios sobre un archivo: encontrarlos, leerlos con su ancla, responder y resolver.",
     "esperas": "Lo que espera una decisión tuya: permisos y preguntas de los hilos, propuestas en tareas, retenidos.",
     "buscar": "Buscar en todo junto: lo que espera, las tareas, las casillas, los hilos, los proyectos, los objetos de los "
               "módulos y los bloques.",

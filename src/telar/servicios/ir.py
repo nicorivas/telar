@@ -38,7 +38,7 @@ def ir(ctx, hilo: str, *, crear: bool = False, remoto: str = "") -> Ido:
         raise ErrorDeServicio(tel.aviso or "no hay multiplexor con el que hablar", 409)
     h, problema = _comun.resolver(tel, hilo)
     if crear and h is not None and hilo not in (h.id, h.nombre):
-        # con crear manda el nombre exacto: «Cap» abre «Cap», no va a «Capacity» por ser un prefijo
+        # con crear manda el nombre exacto: «Cap» abre «Cap», no va a «Capítulos» por ser un prefijo
         h, problema = None, ""
     if h is not None and tel.vivo(h):
         # uno dormido (telar.dormir) se despierta en su ventana: ir a él es abrirlo

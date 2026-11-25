@@ -21,6 +21,14 @@ const MUNDOS: Mundo[] = [
 const MAS: Mundo[] = [...MUNDOS,
     { clave: 'estudio', nombre: 'estudio', color: 'amarillo', horario: [T([6], 9, 13)] },
     { clave: 'huerta', nombre: 'huerta', color: 'verde', horario: [T([0], 8, 12)] }];
+/** diez mundos: los cuatro y seis más, para ver muchos (las filas hacia abajo, el desplazamiento) */
+const DIEZ: Mundo[] = [...MAS,
+    { clave: 'taller', nombre: 'taller', color: 'cian', horario: [T([6], 15, 19)] },
+    { clave: 'familia', nombre: 'familia', color: 'rojo', horario: [] },
+    { clave: 'lectura', nombre: 'lectura', color: 'azul', horario: [T([0, 1, 2, 3, 4, 5, 6], 21, 23)] },
+    { clave: 'deporte', nombre: 'deporte', color: 'verde', horario: [T([1, 3, 5], 7, 8)] },
+    { clave: 'viaje', nombre: 'viaje', color: 'violeta', horario: [] },
+    { clave: 'musica', nombre: 'música', color: 'magenta', horario: [] }];
 const AHORA = new Date(2026, 10, 23, 10, 0);
 const HASTA = new Date(2026, 10, 23, 19, 0);
 
@@ -28,14 +36,17 @@ const ESTADOS: { nombre: string; nota: string; html: () => string }[] = [
     { nombre: 'quieta', nota: 'trabajo rige por su horario: su arte entero, los demás tenues; el foco en la de ahora (⏎ la deja)',
         html: () => ventanaMundos(tarjetasDeMundos({ mundo: 'trabajo', por: 'horario', hasta: HASTA, luego: 'personal' }, MUNDOS, AHORA, 'personal'),
             { aMano: false, estados: { 0: 'foco' } }) },
-    { nombre: 'encima de personal', nota: 'el mouse (o el foco) encima: se ilumina en su color, el arte se enciende, se acelera y se inclina; un barrido la cruza',
+    { nombre: 'encima de personal', nota: 'el mouse (o el foco) encima: se ilumina en su color, el arte se enciende y se acelera, y una ola de letras lo cruza una vez (aquí, a medio camino)',
         html: () => ventanaMundos(tarjetasDeMundos({ mundo: 'trabajo', por: 'horario', hasta: HASTA, luego: 'personal' }, MUNDOS, AHORA, 'personal'),
             { aMano: false, estados: { 1: 'hover' } }) },
     { nombre: 'ambos, a mano', nota: 'elegido a mano: dura hasta el próximo cambio del horario; «volver al horario» (h) lo suelta',
         html: () => ventanaMundos(tarjetasDeMundos({ mundo: '', por: 'a-mano', hasta: HASTA, luego: 'personal' }, MUNDOS, AHORA, 'personal'),
             { aMano: true }) },
-    { nombre: 'cuatro mundos', nota: 'más de cuatro tarjetas: en filas parejas, y la última de una fila corta se estira hasta el borde',
+    { nombre: 'cuatro mundos', nota: 'más de cuatro tarjetas: de a tres, en filas hacia abajo, y la última de una fila corta se estira hasta el borde',
         html: () => ventanaMundos(tarjetasDeMundos({ mundo: 'estudio', por: 'a-mano', hasta: HASTA, luego: 'trabajo' } as MundoPuesto, MAS, AHORA, 'personal'),
+            { aMano: true }) },
+    { nombre: 'diez mundos', nota: 'muchos: de a tres hacia abajo, y la ventana se desplaza entre la cabecera y el pie (al abrirla, a la vista el de ahora)',
+        html: () => ventanaMundos(tarjetasDeMundos({ mundo: 'lectura', por: 'a-mano', hasta: HASTA, luego: 'trabajo' } as MundoPuesto, DIEZ, AHORA, 'personal'),
             { aMano: true }) },
 ];
 
@@ -47,7 +58,8 @@ export function seccionEstados<C>(columnas: C[], celda: Celda<C>, nombreColumna:
         + 'ambos al final: arriba su arte (<a href="#mundos/artes">los artes</a>), abajo su nombre en su color, su horario y si es el de ahora. '
         + 'Las líneas van de borde a borde; ninguna esquina redondeada; lo que distingue cada una es su color y su dibujo. Teclas: ← → ↑ ↓, 1…n, '
         + '⏎, h (volver al horario), e (editar), ⎋. Con «reducir movimiento», el arte quieto. En el teléfono, una bajo otra.</p>',
-        '<p><a data-probar-mundos>probar</a><span class="dim"> · la abre de verdad con estos mundos de mentira: no pone ninguno, dice qué haría</span></p>'];
+        '<p><a data-probar-mundos>probar</a><span class="dim"> · </span><a data-probar-mundos="diez">probar con diez</a>'
+        + '<span class="dim"> · la abre de verdad con estos mundos de mentira: no pone ninguno, dice qué haría</span></p>'];
     for (const e of ESTADOS) {
         h.push(`<h3 class="cat-mundos-estado">${esc(e.nombre)}<span class="dim"> · ${esc(e.nota)}</span></h3><div class="cat-mundos-fila">`);
         for (const c of columnas) h.push(`<div class="cat-mundos-celda"><div class="cat-tema">${esc(nombreColumna(c))}</div>${celda(c, e.html())}</div>`);
@@ -157,8 +169,9 @@ export function despuesDePintar(raiz: HTMLElement): void {
 /** Un clic en el catálogo que es de esta página: una tarjeta o un botón de una ventana de muestra dicen qué harían;
  *  «probar» la abre de verdad. Devuelve si lo atendió. */
 export function atender(t: HTMLElement, avisar: (texto: string) => void): boolean {
-    if (t.closest('[data-probar-mundos]')) {
-        void probar(avisar);
+    const p = t.closest<HTMLElement>('[data-probar-mundos]');
+    if (p) {
+        void probar(avisar, p.dataset.probarMundos === 'diez');
         return true;
     }
     const tarjeta = t.closest<HTMLElement>('.mt-tarjeta');
@@ -175,10 +188,11 @@ export function atender(t: HTMLElement, avisar: (texto: string) => void): boolea
     return false;
 }
 
-/** La ventana de verdad (web/mundos-ventana.ts) con los mundos de mentira: dice qué se eligió y no lo pone. */
-async function probar(avisar: (texto: string) => void): Promise<void> {
+/** La ventana de verdad (web/mundos-ventana.ts) con los mundos de mentira (dos, o diez): dice qué se eligió y no lo pone. */
+async function probar(avisar: (texto: string) => void, diez = false): Promise<void> {
     const W = await import('../web/mundos-ventana');
-    const r = await W.abrir({ fuente: () => ({ puesto: { mundo: 'trabajo', por: 'horario', hasta: HASTA, luego: 'personal' }, mundos: MUNDOS, fuera: 'personal', ahora: AHORA }),
+    const puesto: MundoPuesto = diez ? { mundo: 'lectura', por: 'a-mano', hasta: HASTA, luego: 'trabajo' } : { mundo: 'trabajo', por: 'horario', hasta: HASTA, luego: 'personal' };
+    const r = await W.abrir({ fuente: () => ({ puesto, mundos: diez ? DIEZ : MUNDOS, fuera: 'personal', ahora: AHORA }),
         elegir: x => avisar(x.horario ? 'volvería al horario' : `pondría ${x.mundo || 'ambos'}`), editar: () => avisar('iría a ⚙ mundos') });
     if (!r) avisar('se cerró sin elegir');
 }

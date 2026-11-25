@@ -1,15 +1,21 @@
 // Prueba de la ventana de mundos (⌘M, el clic en el mundo de la banda, «cambiar de mundo» en ⌘K) y del arte de sus tarjetas:
 // 1. El contrato del arte (componentes/arte.ts): registrar uno, el lienzo de cada cuadro (siempre ANCHO × ALTO, el mismo
 //    instante da el mismo cuadro), los de fábrica, un arte escrito en un archivo (`leerArteTexto`: la cabecera, los cuadros,
-//    la escena de hover, lo que no se entiende), los de la raíz que tapan a uno de fábrica y lo devuelven al irse, y qué
-//    arte lleva cada mundo (`arteDeMundo`).
+//    la escena de hover, lo que no se entiende), los de la raíz que tapan a uno de fábrica y lo devuelven al irse, qué
+//    arte lleva cada mundo (`arteDeMundo`) y el efecto de hover (la ola: sobre cualquier arte, salvo el que declara el
+//    suyo).
 // 2. Lo que dicen las tarjetas (componentes/mundos-ventana.ts): el horario, la de ahora y por qué, la que viene, ambos, las
-//    teclas, la grilla y sus columnas, el pie; y el planeta delante del nombre en la banda.
+//    teclas (también 10, 11…), la grilla y sus columnas (hasta cuatro en una fila; más, de a tres hacia abajo), el pie; y
+//    el planeta delante del nombre en la banda.
 // 3. La ventana viva (web/mundos-ventana.ts), con un DOM mínimo hecho aquí: abre con el foco en la de ahora, las flechas, los
 //    números, ⏎, «volver al horario» (h, apagado si ya rige), ⎋, ⌘M que abre y cierra; elegir pone ese mundo (web/mundo.ts).
+//    Con diez mundos: al abrir, la de ahora a la vista; la del foco siempre a la vista (suave, o de golpe con «reducir
+//    movimiento»); 1 y 1 es la 11, y 1 sola, la 1.
 // 4. El arte vivo (web/arte-vivo.ts), con un requestAnimationFrame de mentira: anima solo con la ventana abierta y la
 //    pestaña a la vista (cerrada, ningún cuadro pedido), acelera con el mouse o el foco encima, con «reducir movimiento» no
 //    pide ninguno y deja el primer cuadro, y un arte que llega con la ventana abierta (uno nuevo de la raíz) se toma al tiro.
+//    La ola pasa una vez al entrar y deja el cuadro como estaba; con un IntersectionObserver de mentira, solo anima lo que
+//    se ve (y nada si no se ve ninguno).
 // 5. El CSS (media/css/mundos.css): sin colores fijos ni esquinas redondeadas, sus tokens en tokens.css, «reducir
 //    movimiento» sin animación, y en el marco de la página (scripts/navegador.mjs).
 // Corre en Node: npm run prueba:mundos-ventana
@@ -54,6 +60,7 @@ class Nodo {
     addEventListener(tipo, fn) { (this.oyentes[tipo] ??= []).push(fn); }
     removeEventListener(tipo, fn) { this.oyentes[tipo] = (this.oyentes[tipo] ?? []).filter(f => f !== fn); }
     getBoundingClientRect() { return { left: 0, right: 100, top: 0, bottom: 100, width: 100, height: 100 }; }
+    scrollIntoView(o) { aLaVista.push({ el: this, ...o }); }
     showModal() { this.open = true; }
     show() { this.open = true; }
     close() { this.open = false; }
@@ -110,6 +117,8 @@ function calza(n, sel) {
     }
     return true;
 }
+/** cada scrollIntoView que se pidió: qué tarjeta y cómo */
+const aLaVista = [];
 const ventana = new Nodo('#window');
 const documento = new Nodo('#document');
 documento.body = new Nodo('body');
@@ -250,6 +259,59 @@ const { A, MV, W, mundo, mundoBoton, I } = require(salida);
     A.olvidarArte('estudio');
 }
 
+// el efecto de hover: la ola, sobre cualquier arte (de fábrica, registrado o de un archivo), salvo el que declara el suyo
+{
+    const ola = A.efecto('ola');
+    assert.ok(ola && ola.dura > 0 && ola.fps > 0, 'la ola, de fábrica');
+    const deArchivo = A.registrarArte('faro-ola', { ...A.leerArteTexto('fps: 2\n---\n /\\\n/__\\\n').def });
+    for (const a of [...A.artes()]) {
+        assert.equal(A.efectoDe(a), ola, `${a.clave}: sin decir nada, la ola`);
+        const base = A.cuadro(a, 1.3);
+        const vistos = new Set();
+        for (const u of [.1, .3, .5, .7, .9]) {
+            const c = A.cuadro(a, 1.3, { efecto: u * ola.dura });
+            assert.equal(c.split('\n').length, A.ALTO, `${a.clave} con la ola: ${A.ALTO} líneas`);
+            for (const l of c.split('\n')) assert.equal([...l].length, A.ANCHO, `${a.clave} con la ola: cada línea de ${A.ANCHO}`);
+            assert.equal(A.cuadro(a, 1.3, { efecto: u * ola.dura }), c, `${a.clave}: la ola es pura`);
+            assert.notEqual(c, base, `${a.clave}: a los ${u} de su pasada, la ola se ve`);
+            assert.match(c, /[▓▒░]/, `${a.clave}: la ola es de letras`);
+            vistos.add(c);
+        }
+        assert.ok(vistos.size >= 4, `${a.clave}: la ola avanza`);
+        assert.equal(A.cuadro(a, 1.3, { efecto: ola.dura }), base, `${a.clave}: pasada la ola, el cuadro como estaba`);
+        assert.equal(A.cuadro(a, 1.3, { efecto: undefined }), base);
+    }
+    // la ola cruza de izquierda a derecha: al principio a la izquierda, al final a la derecha
+    const columnaDeLaOla = c => { const xs = c.split('\n').flatMap(l => [...l].map((ch, x) => (/[▓]/.test(ch) ? x : -1)).filter(x => x >= 0)); return xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length); };
+    const orb = A.arte('orbita');
+    assert.ok(columnaDeLaOla(A.cuadro(orb, 0, { efecto: .2 * ola.dura })) < columnaDeLaOla(A.cuadro(orb, 0, { efecto: .7 * ola.dura })), 'de izquierda a derecha');
+    // uno que declara el suyo: gana el suyo
+    const propio = { dura: .5, aplicar: c => c.replace(/\S/g, '#') };
+    const conPropio = A.registrarArte('con-propio', { cuadros: ['xy'], alHover: { efecto: propio } });
+    assert.equal(A.efectoDe(conPropio), propio);
+    assert.match(A.cuadro(conPropio, 0, { efecto: .1 }), /##/, 'el suyo, no la ola');
+    assert.equal(A.cuadro(conPropio, 0, { efecto: .6 }), A.cuadro(conPropio, 0), 'y dura lo que dice');
+    assert.equal(A.efectoDe(A.registrarArte('sin-ola', { cuadros: ['x'], alHover: { efecto: 'ninguno' } })), undefined, 'ninguno');
+    assert.equal(A.efectoDe(A.registrarArte('con-escena', { cuadros: ['x'], alHover: { cuadros: ['y'] } })), undefined,
+        'con escena de hover propia: manda su escena, sin ola');
+    assert.equal(A.efectoDe(A.registrarArte('escena-y-ola', { cuadros: ['x'], alHover: { cuadros: ['y'], efecto: 'ola' } })), ola, 'salvo que pida la ola');
+    // uno registrado por su clave; una clave que no hay, la ola
+    const brillo = A.registrarEfecto('brillo', { dura: .3, aplicar: c => c.toUpperCase() });
+    assert.equal(A.efectoDe(A.registrarArte('con-brillo', { cuadros: ['x'], alHover: { efecto: 'brillo' } })), brillo);
+    assert.equal(A.efectoDe(A.registrarArte('con-otro', { cuadros: ['x'], alHover: { efecto: 'no-hay' } })), ola, 'uno que no hay: la ola');
+    assert.throws(() => A.registrarEfecto('ninguno', { dura: 1, aplicar: c => c }), /clave/);
+    assert.throws(() => A.registrarEfecto('nada', { dura: 0, aplicar: c => c }), /dura/);
+    // un efecto que falla no rompe el cuadro
+    const roto = A.registrarArte('roto-ola', { cuadros: ['x'], alHover: { efecto: { dura: 1, aplicar: () => { throw new Error('no'); } } } });
+    assert.equal(A.cuadro(roto, 0, { efecto: .5 }), A.cuadro(roto, 0));
+    // en un archivo: `efecto: ninguno` (u otra clave) en la cabecera; lo que no es una clave, un aviso
+    assert.equal(A.leerArteTexto('efecto: ninguno\n---\nx\n').def.alHover.efecto, 'ninguno');
+    assert.equal(A.leerArteTexto('efecto: Brillo\n---\nx\n').def.alHover.efecto, 'brillo');
+    assert.match(A.leerArteTexto('efecto: ¿?\n---\nx\n').avisos[0], /un efecto es «ola», «ninguno» u otra clave/);
+    for (const k of ['faro-ola', 'con-propio', 'sin-ola', 'con-escena', 'escena-y-ola', 'con-brillo', 'con-otro', 'roto-ola']) A.olvidarArte(k);
+    void deArchivo;
+}
+
 // ── 2. lo que dicen las tarjetas ──
 const T = (dias, desde, hasta) => ({ dias, desde: desde * 60, hasta: hasta * 60 });
 const MUNDOS = [
@@ -283,10 +345,24 @@ const lunes10 = new Date(2026, 10, 23, 10, 0);
     assert.match(h, /data-accion="editar"[^>]*data-tecla="e"/);
     assert.match(h, /data-accion="no"[^>]*data-tecla="⎋"/, 'cerrar, con ⎋, al último');
     assert.match(h, /1–3 elegir/);
-    // columnas: hasta cuatro en una fila; más, en filas parejas, y la última de una fila corta se estira
-    assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => MV.columnas(n)), [1, 2, 3, 4, 3, 3, 4, 4]);
+    // columnas: hasta cuatro en una fila; más, de a tres hacia abajo, y la última de una fila corta se estira
+    assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 11, 30].map(n => MV.columnas(n)), [1, 2, 3, 4, 3, 3, 3, 3, 3, 3]);
     const cinco = MV.grillaMundos(Array.from({ length: 5 }, (_, i) => ({ ...ts[0], clave: `m${i}`, puesto: false })));
     assert.equal((cinco.match(/span-2/g) ?? []).length, 1, 'cinco en tres columnas: la última ocupa dos');
+    assert.match(h, /← → recorrer · 1–3 elegir/, 'en una fila, ← →');
+    // diez mundos: cada uno con su número (también 10 y 11), de a tres hacia abajo, y ↑ ↓ en el pie
+    const diez = MV.tarjetasDeMundos({ mundo: 'm7', por: 'a-mano' },
+        Array.from({ length: 10 }, (_, i) => ({ clave: `m${i}`, nombre: `m${i}`, color: 'cian', horario: [] })), lunes10, '');
+    assert.deepEqual(diez.map(t => t.tecla), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']);
+    const hd = MV.ventanaMundos(diez, { aMano: true });
+    assert.match(hd, /<div class="mt-grilla cols-3" style="--mt-cols: 3"/);
+    assert.match(hd, /← → ↑ ↓ recorrer · 1–11 elegir/);
+    assert.match(hd, /<span class="mt-tecla">11<\/span><span class="mt-nombre">ambos/);
+    // una sin estado lleva su línea igual (en blanco): todas las de una fila miden lo mismo, y todas las filas también
+    assert.match(hd, /<span class="mt-estado">\u00a0<\/span>/);
+    // encima, en el catálogo: la ola a medio camino
+    assert.match(MV.tarjetaMundo(diez[0], { estado: 'hover' }), /[▓▒░]/, 'encima, la ola');
+    assert.doesNotMatch(MV.tarjetaMundo(diez[0], {}), /[▓]/);
 }
 // el planeta en la banda, delante del nombre, como el ícono de cada modo
 {
@@ -307,6 +383,20 @@ const lunes10 = new Date(2026, 10, 23, 10, 0);
     assert.equal(W.vecina(1, 'ArrowDown', 5, 3), 4, 'de a una fila');
     assert.equal(W.vecina(2, 'ArrowDown', 5, 3), 2, 'la fila de abajo es corta: a la misma columna de arriba');
     assert.equal(W.vecina(1, 'ArrowUp', 5, 3), 4, 'por arriba, a la de abajo');
+}
+
+// los números: hasta nueve, al tiro; con diez o más, una cifra que puede empezar otro espera la segunda
+{
+    assert.deepEqual(W.numero('', '3', 3), { elegir: 3 });
+    assert.deepEqual(W.numero('', '4', 3), {}, 'no hay cuarta');
+    assert.deepEqual(W.numero('', '1', 9), { elegir: 1 }, 'hasta nueve, el 1 elige al tiro');
+    assert.deepEqual(W.numero('', '0', 11), {}, 'el 0 solo, nada');
+    assert.deepEqual(W.numero('', '1', 11), { espera: '1' }, 'con once, el 1 espera');
+    assert.deepEqual(W.numero('', '2', 11), { elegir: 2 }, 'el 2 no empieza ninguno: al tiro');
+    assert.deepEqual(W.numero('1', '1', 11), { elegir: 11 });
+    assert.deepEqual(W.numero('1', '0', 11), { elegir: 10 });
+    assert.deepEqual(W.numero('1', '5', 11), { elegir: 5 }, 'el 15 no existe: el 5 solo');
+    assert.deepEqual(W.numero('', '2', 25), { espera: '2' });
 }
 
 // ── 3 y 4. la ventana viva y su arte ──
@@ -492,20 +582,145 @@ mundo.recibir({ mundos: [
     assert.equal(pedidos.size, 0);
 }
 
+{
+    // diez mundos: abre con la de ahora a la vista; la del foco, siempre a la vista; 1 y 1 es la 11
+    const lista = Array.from({ length: 10 }, (_, i) => ({ clave: `m${i}`, nombre: `m${i}`, color: 'cian', horario: [] }));
+    const fuente = () => ({ puesto: { mundo: 'm8', por: 'a-mano' }, mundos: lista, fuera: '', ahora: lunes10 });
+    aLaVista.length = 0;
+    let r = W.abrir({ ...o, fuente });
+    let ts = abierta().querySelectorAll('.mt-tarjeta');
+    assert.equal(ts.length, 11);
+    assert.equal(documento.activeElement, ts[8], 'el foco en la de ahora');
+    await new Promise(ok => setTimeout(ok, 5));
+    assert.deepEqual(aLaVista.map(x => [x.el, x.block, x.behavior]), [[ts[8], 'nearest', 'auto']], 'al abrir, la de ahora a la vista, de golpe');
+    tecla('ArrowDown');
+    assert.equal(documento.activeElement, ts[9], 'abajo, de a una (este DOM no tiene filas: una columna)');
+    assert.deepEqual([aLaVista.at(-1).el, aLaVista.at(-1).behavior], [ts[9], 'smooth'], 'la del foco, a la vista, suave');
+    // 1 y 1: la 11 (ambos)
+    tecla('1');
+    assert.ok(abierta(), 'con once, el 1 espera la segunda');
+    assert.equal(documento.activeElement, ts[0], 'con el foco ya en la 1');
+    assert.equal(aLaVista.at(-1).el, ts[0], 'y a la vista');
+    tecla('1');
+    assert.equal(await contesta(r), 'mundo:');
+    assert.deepEqual(elegidos.pop(), { mundo: '' });
+    // 1 sola: la 1, pasado un momento
+    r = W.abrir({ ...o, fuente });
+    tecla('1');
+    assert.equal(await Promise.race([r, new Promise(ok => setTimeout(() => ok('esperando'), W.ESPERA_CIFRA / 2))]), 'esperando');
+    assert.equal(await Promise.race([r, new Promise((_, no) => setTimeout(() => no(new Error('no eligió')), W.ESPERA_CIFRA + 300))]), 'mundo:m0');
+    assert.deepEqual(elegidos.pop(), { mundo: 'm0' });
+    // 3: al tiro (no empieza ninguno)
+    r = W.abrir({ ...o, fuente });
+    tecla('3');
+    assert.equal(await contesta(r), 'mundo:m2');
+    elegidos.pop();
+    // con «reducir movimiento», a la vista de golpe
+    quieto = true;
+    aLaVista.length = 0;
+    r = W.abrir({ ...o, fuente });
+    ts = abierta().querySelectorAll('.mt-tarjeta');
+    tecla('ArrowUp');
+    assert.deepEqual([aLaVista.at(-1).el, aLaVista.at(-1).behavior], [ts[7], 'auto']);
+    tecla('Escape');
+    await contesta(r);
+    quieto = false;
+    assert.equal(pedidos.size, 0);
+}
+{
+    // la ola: al entrar el foco (o el mouse), pasa una vez con el reloj de la pared, y deja el cuadro como estaba
+    const r = W.abrir(o);
+    const ts = abierta().querySelectorAll('.mt-tarjeta');
+    const ola = A.efecto('ola');
+    const el = ts[1].querySelector('[data-arte]');
+    ts[0].focus();
+    cuadros(3);
+    ts[1].focus();
+    assert.equal(W.vivoAbierto().estado()[1].efecto, 0, 'al entrar, la ola empieza');
+    const sinOla = () => A.cuadro(A.arte('cielo'), W.vivoAbierto().estado()[1].reloj, { hover: true });
+    const vistos = new Set();
+    let conOla = 0;
+    for (let i = 0; i < 40; i++) { cuadros(1, 16); vistos.add(el.textContent); if (el.textContent !== sinOla()) conOla++; }
+    assert.ok(conOla > 30, `la ola se ve mientras pasa (${conOla} de 40 cuadros)`);
+    assert.ok(vistos.size > 15, `y avanza (${vistos.size} cuadros distintos)`);
+    cuadros(Math.ceil(ola.dura * 1000 / 16));
+    assert.equal(W.vivoAbierto().estado()[1].efecto, -1, 'pasó');
+    assert.equal(el.textContent, sinOla(), 'y el cuadro queda como estaba');
+    // salir a media pasada: la ola termina su pasada igual
+    ts[2].focus();
+    cuadros(5);
+    ts[1].focus();
+    cuadros(5);
+    ts[0].focus();
+    assert.ok(W.vivoAbierto().estado()[1].efecto > 0, 'sigue pasando aunque salió');
+    cuadros(Math.ceil(ola.dura * 1000 / 16));
+    assert.equal(W.vivoAbierto().estado()[1].efecto, -1);
+    tecla('Escape');
+    await contesta(r);
+}
+{
+    // con «reducir movimiento», ninguna ola
+    quieto = true;
+    const r = W.abrir(o);
+    const ts = abierta().querySelectorAll('.mt-tarjeta');
+    ts[1].focus();
+    assert.equal(W.vivoAbierto().estado()[1].efecto, -1, 'quieto: sin ola');
+    assert.equal(ts[1].querySelector('[data-arte]').textContent, A.cuadro(A.arte('cielo'), 0), 'el primer cuadro, sin ola');
+    assert.ok(!W.vivoAbierto().corriendo());
+    tecla('Escape');
+    await contesta(r);
+    quieto = false;
+}
+{
+    // solo anima lo que se ve: un IntersectionObserver de mentira dice cuáles están a la vista
+    const observados = new Set();
+    let avisar;
+    globalThis.IntersectionObserver = class {
+        constructor(f) { avisar = (els, si) => f(els.map(target => ({ target, isIntersecting: si }))); }
+        observe(el) { observados.add(el); }
+        unobserve(el) { observados.delete(el); }
+        disconnect() { observados.clear(); }
+    };
+    const r = W.abrir(o);
+    const artes = abierta().querySelectorAll('[data-arte]');
+    assert.equal(observados.size, 3, 'mira cada arte');
+    assert.ok(!W.vivoAbierto().corriendo(), 'hasta saber qué se ve, ningún cuadro');
+    avisar([artes[0]], true);
+    assert.ok(W.vivoAbierto().corriendo(), 'uno a la vista: anima');
+    const antes = W.vivoAbierto().estado().map(e => e.reloj);
+    const textos = [...artes].map(a => a.textContent);
+    cuadros(60);
+    const despues = W.vivoAbierto().estado();
+    assert.ok(despues[0].reloj > antes[0], 'el que se ve, avanza');
+    assert.deepEqual([despues[1].reloj, despues[2].reloj], [antes[1], antes[2]], 'los que no se ven, ni avanzan');
+    assert.deepEqual([artes[1].textContent, artes[2].textContent], [textos[1], textos[2]], 'ni se dibujan');
+    avisar([artes[0]], false);
+    cuadros(2);
+    assert.equal(pedidos.size, 0, 'ninguno a la vista: ningún requestAnimationFrame');
+    avisar([artes[2]], true);
+    assert.ok(W.vivoAbierto().corriendo(), 'vuelve uno a la vista: sigue');
+    tecla('Escape');
+    await contesta(r);
+    assert.equal(observados.size, 0, 'cerrada, deja de mirar');
+    assert.equal(pedidos.size, 0);
+    delete globalThis.IntersectionObserver;
+}
+
 // ── 5. el CSS ──
 {
     const c = css('mundos');
     assert.doesNotMatch(c, /#[0-9a-f]{3,8}\b|rgb\(/i, 'sin colores fijos: los del tema y los del mundo');
     assert.doesNotMatch(c.replace(/border-radius: 0;/g, ''), /border-radius/, 'sin esquinas redondeadas');
-    assert.match(c, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.mt-barrido \{ animation: none; \}[\s\S]*\.mt-arte \{ transform: none; \}/,
-        'con «reducir movimiento», ni el barrido ni la inclinación');
+    assert.match(c, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.mt-arte,[\s\S]*transition: none;/, 'con «reducir movimiento», sin transiciones');
+    // lo que se mueve es de letras: nada se inclina, crece, brilla borroso ni barre por CSS
+    assert.doesNotMatch(c, /transform|text-shadow|@keyframes|mt-barrido/, 'nada de CSS que se mueva: la ola es de letras');
+    // muchos: se desplazan entre la línea de la cabecera y la del pie, con alto máximo
+    assert.match(c, /& \.ventana-cuerpo \{[^}]*max-height: var\(--mundos-alto\);[^}]*overflow: hidden auto;[^}]*border-top: var\(--borde\);/);
     assert.match(c, /\.mt-grilla \{[^}]*gap: 1px;[^}]*background: var\(--linea\);/, 'las líneas entre tarjetas: las de siempre');
     assert.match(c, /\.angosto \.mt-grilla \{ grid-template-columns: minmax\(0, 1fr\); \}/, 'en el teléfono, una bajo otra');
     const tokens = css('tokens');
     for (const t of new Set(c.match(/--mundos-[a-z-]+/g))) assert.ok(tokens.includes(`${t}:`), `${t}, en tokens.css`);
     assert.match(readFileSync(path.join(aqui, '..', 'scripts', 'navegador.mjs'), 'utf8'), /'boton', 'mundos',/, 'en el marco de la página');
-    // las animaciones son de transform y opacity (el compositor), nunca del alto o el ancho
-    for (const k of c.matchAll(/@keyframes [\w-]+ \{([\s\S]*?)\n\}/g)) assert.doesNotMatch(k[1], /width|height|left|top|margin/, 'se anima solo transform y opacity');
 }
 
 console.log('prueba:mundos-ventana ok');

@@ -658,6 +658,18 @@ class LaListaDeHilosYLasFotos(Prueba):
         self.assertNotIn("mundo", sin.model_dump()["espejos"][0]["hilos"][0])
         self.assertNotIn("mundo", fotos[0]["hilos"][0], "lo leído no se toca")
 
+    def test_los_archivados_de_las_otras_maquinas_tambien_traen_su_mundo(self):
+        """El ARCHIVO de la página lista también los de las otras máquinas, con el filtro de mundo de siempre."""
+        from telar import espejo
+        from telar.servicios import espejos as servicio
+
+        fotos = [{"nombre": "laptop", "hilos": [{"nombre": "Riego", "relativa": "casa/riego"}],
+                  "archivados": [{"nombre": "Viejo", "relativa": "empresa/x"}, {"nombre": "Hijo viejo", "padre": "Riego"}]}]
+        with mock.patch.object(espejo, "leer_todos", return_value=fotos):
+            r = servicio.ver(SimpleNamespace(config=config(CON_HORARIO))).model_dump()["espejos"][0]
+        self.assertEqual([a["mundo"] for a in r["archivados"]], ["trabajo", "personal"], "por su carpeta, o por su padre")
+        self.assertNotIn("mundo", fotos[0]["archivados"][0], "lo leído no se toca")
+
 
 @unittest.skipUnless(HAY_FASTAPI, "sin el extra «serve»")
 class LaApi(Prueba):

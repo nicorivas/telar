@@ -68,21 +68,39 @@ def carpeta_remota(config, remoto: Remoto, relativa: str = "") -> str:
 
 
 #: lo que corre allá para dejar una conversación donde Claude Code la busca: la carpeta de
-#: proyecto que corresponde al directorio donde va a arrancar (la ruta con todo lo que no es
-#: letra o número hecho «-»). `--resume <id>` la encuentra igual desde otra carpeta, pero así
-#: queda donde Claude mismo la habría puesto. No pisa una que ya esté.
+#: proyecto que corresponde al directorio donde va a arrancar (telar.rutas.proyecto, que aquí no
+#: se puede importar: la misma receta, con la ruta real y $CLAUDE_CONFIG_DIR). `--resume <id>` la
+#: encuentra igual desde otra carpeta, pero así queda donde Claude mismo la habría puesto. Si ya
+#: hay una con ese id (la copia de cuando el hilo se fue de allá, y vuelve), se reemplaza si la
+#: que llega la continúa; si allá se siguió por su lado, la de allá queda aparte, con su fecha, y
+#: se dice en stderr: nada se pierde. Solo cuando la otra máquina no está en el bus o corre un
+#: telar de antes: si no, la conversación va de a pedazos por el bus (telar.replica).
 _DEJAR = r"""
-import gzip, os, re, sys
+import gzip, json, os, re, sys, time
 carpeta, sid, esperado = sys.argv[1], sys.argv[2], int(sys.argv[3])
-base = os.path.abspath(os.path.expanduser(carpeta))
-destino = os.path.join(os.path.expanduser("~/.claude/projects"), re.sub(r"[^A-Za-z0-9]", "-", base))
+base = os.path.realpath(os.path.expanduser(carpeta))
+claude = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
+destino = os.path.join(claude, "projects", re.sub(r"[^A-Za-z0-9]", "-", base))
 os.makedirs(destino, exist_ok=True)
 ruta = os.path.join(destino, sid + ".jsonl")
-if os.path.exists(ruta):
-    sys.exit("ya hay una conversación con ese id allá: " + ruta)
 datos = gzip.decompress(sys.stdin.buffer.read())
 if len(datos) != esperado:
     sys.exit(f"llegaron {len(datos)} de {esperado} bytes: no la guardo (una conversación cortada no se retoma)")
+def mensaje(l):
+    try:
+        d = json.loads(l)
+    except ValueError:
+        return True
+    return not isinstance(d, dict) or d.get("type") in ("user", "assistant")
+if os.path.exists(ruta):
+    antes = open(ruta, "rb").read()
+    lineas = antes.splitlines(keepends=True)
+    while lineas and not mensaje(lineas[-1]):
+        lineas.pop()
+    if not (datos.startswith(antes) or datos.startswith(b"".join(lineas))):
+        aparte = os.path.join(destino, sid + time.strftime(".antes-%Y%m%d-%H%M%S") + ".jsonl.bak")
+        os.rename(ruta, aparte)
+        sys.stderr.write("la conversación de allá se había seguido por su lado: quedó en " + os.path.basename(aparte) + "\n")
 with open(ruta + ".tmp", "wb") as f:
     f.write(datos)
 os.chmod(ruta + ".tmp", 0o600)
@@ -132,7 +150,8 @@ def conversacion_alla(remoto: Remoto, hilo: str, candidatas) -> tuple[str | None
 
 #: lo que corre allá para saber en qué anda cada hilo: el semáforo que anotan sus ganchos.
 def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tuple[str, str]:
-    """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o "")."""
+    """Lleva el `.jsonl` de una conversación a la otra máquina. (ruta allá, error o ""). Si allá había una con ese id
+    que se siguió por su lado, quedó aparte: la ruta lo dice entre paréntesis."""
     try:
         datos = open(archivo, "rb").read()
     except OSError as e:
@@ -153,7 +172,8 @@ def copiar_conversacion(remoto: Remoto, archivo, sid: str, carpeta: str) -> tupl
         return "", f"{remoto.destino} no responde: {e}"
     if r.returncode != 0:
         return "", (r.stderr.decode(errors="replace").strip() or f"ssh salió con {r.returncode}")[-300:]
-    return r.stdout.decode().strip(), ""
+    aparte = next((l for l in r.stderr.decode(errors="replace").splitlines() if "quedó en" in l), "")
+    return r.stdout.decode().strip() + (f" ({aparte})" if aparte else ""), ""
 
 
 def _cd(ruta: str) -> str:

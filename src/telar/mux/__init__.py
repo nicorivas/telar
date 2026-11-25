@@ -75,11 +75,12 @@ class Multiplexor(Protocol):
 
     def cerrar(self, hilo: str) -> None: ...
 
-    def escribir(self, hilo: str, texto: str, *, enviar: bool = False) -> None:
+    def escribir(self, hilo: str, texto: str, *, enviar: bool = False, pegar: bool = False) -> None:
         """Deja `texto` escrito en el panel del hilo.
 
         Con `enviar=False` queda puesto y sin ejecutar: la persona decide. Es el
-        modo por defecto porque telar le escribe a agentes, no por ellos.
+        modo por defecto porque telar le escribe a agentes, no por ellos. Con
+        `pegar`, varias líneas sin ↩, pegadas entre corchetes (ver `escribir_pane`).
         """
         ...
 

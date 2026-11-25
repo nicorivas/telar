@@ -36,7 +36,8 @@ Un tipo de objeto de un módulo que declara `listar` (telar.objetos, «Los de un
 con su `plural` de nombre y la vigencia de un bloque (corre una consulta del módulo). Cada objeto calza por su título,
 su id y su resumen, y dice dónde vive con `campos.ruta`. Si vive en un archivo, su mundo es el de esa ruta:
 `campos.ruta_abs` (absoluta: la de un repositorio anidado es relativa a él, no a la raíz) o `campos.archivo` (una
-dirección `archivo:<ruta>`). Con `ruta_abs`, el objeto es ese documento: va en `datos` y Todo lo abre en el visor.
+dirección `archivo:<ruta>`). Con `ruta_abs`, el objeto es ese documento: va en `datos` y Todo lo abre en el visor. Uno
+que no vive en un archivo (un chat) puede decir su mundo en `campos.mundo`, si es uno de los declarados.
 """
 
 from __future__ import annotations
@@ -239,9 +240,12 @@ def _objetos(ctx, tipo: str) -> list[Candidato]:
         ruta_abs = _texto(campos.get("ruta_abs"))
         ruta_abs = ruta_abs if os.path.isabs(ruta_abs) else ""
         lugar = ruta_abs or _de_archivo(campos.get("archivo"))
+        # sin archivo, el mundo que dice el módulo (un chat de trabajo), si es uno de los declarados
+        dice = _texto(campos.get("mundo"))
+        dice = dice if dice in {m.nombre for m in getattr(ctx.config, "mundos", ()) or ()} else ""
         salida.append((Hallado(fuente=f"objeto:{tipo}", direccion=o.direccion, id=o.id, titulo=o.titulo or o.id,
                                donde=_texto(campos.get("ruta")), estado=o.estado,
-                               mundo=mundos.de_ruta(ctx.config, lugar) if lugar else "",
+                               mundo=mundos.de_ruta(ctx.config, lugar) if lugar else dice,
                                agente=mundos.agente_de_ruta(ctx.config, lugar) if lugar else "",
                                datos={"ruta_abs": ruta_abs} if ruta_abs else {}),
                        f"{o.id} {o.resumen}"))

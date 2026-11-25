@@ -16,7 +16,8 @@ Cada tipo sabe **ver** un objeto (lo que es, en campos) y le ofrece **acciones**
 fábrica son tarea (telar.tipos.tarea, sobre sus archivos), hilo, proyecto (las unidades del perfil), archivo,
 pendiente (una casilla de un documento, telar.vinetas), agente (un residente, con lo que declara su agente.toml),
 encargo (un pedido con estado y resultado, telar.encargo), permiso (lo que un hilo espera de la persona, solo
-lectura), idea (de un producto) y mensaje (uno entre hilos, del registro del bus, solo lectura).
+lectura), idea (de un producto), mensaje (uno entre hilos, del registro del bus, solo lectura) y comentario (un hilo de
+comentarios sobre un archivo, telar.comentarios: `comentario:docs/x.md#h1`).
 Un módulo agrega los suyos en su `modulo.toml`:
 
     [objetos.correo]
@@ -1141,7 +1142,67 @@ class Encargo(Tipo):
         return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(ctx, r["encargo"], maquina))
 
 
-DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo(), Permiso(), Idea(), Mensaje())
+class Comentario(Tipo):
+    """Un hilo de comentarios sobre un archivo (telar.comentarios): `comentario:docs/x.md#h1`, con la máquina como en un
+    archivo (`comentario:servidor:docs/x.md#h1`, o `@servidor`). Lo comentado, dónde está hoy y lo que se respondió;
+    responder, resolver y reabrir, como `telar comentarios`."""
+
+    nombre = "comentario"
+    descripcion = "un hilo de comentarios sobre un archivo (archivo#h1): lo comentado, dónde está hoy y lo respondido"
+
+    @staticmethod
+    def _partir(d: Direccion) -> tuple[str, str]:
+        ruta, _, hilo = d.id.rpartition("#")
+        if not ruta or not hilo:
+            raise ErrorDeServicio(f"«{d}» no nombra un hilo: comentario:<archivo>#h1", 422)
+        return (f"{d.maquina}:{ruta}" if d.maquina else ruta), hilo
+
+    def _objeto(self, d: Direccion, c, hilo: str) -> Objeto:
+        h = next((x for x in c.hilos if x.id == hilo), None)
+        if h is None:
+            raise ErrorDeServicio(f"{c.ruta} no tiene un hilo {hilo}", 404)
+        donde = "sin ancla" if h.linea is None else f"línea {h.linea}" if h.linea_fin == h.linea else f"líneas {h.linea}–{h.linea_fin}"
+        ultimo = h.comentarios[-1] if h.comentarios else None
+        campos = {k: v for k, v in (("archivo", c.ruta), ("donde", donde), ("metodo", h.metodo or ""), ("cita", h.cita),
+                                     ("hoy_dice", h.actual or ""),
+                                     ("comentarios", [f"{x.autor}: {x.cuerpo}" for x in h.comentarios])) if v}
+        acciones = [Accion(nombre="responder", descripcion="una respuesta en el hilo", params={"texto": ""})]
+        acciones.append(Accion(nombre="resolver", descripcion="está hecho: la respuesta (si va) y el hilo resuelto",
+                               params={"texto": ""}) if h.estado == "abierto"
+                        else Accion(nombre="reabrir", descripcion="volver a abrirlo", params={"texto": ""}))
+        maquina, ruta = c.maquina, c.ruta.split(":", 1)[1] if c.maquina else c.ruta
+        return Objeto(direccion=str(d), tipo="comentario", id=d.id, titulo=" ".join(h.cita.split())[:120],
+                      estado=h.estado + ("" if h.anclado else " · sin ancla"),
+                      resumen=f"{ultimo.autor}: {ultimo.cuerpo}"[:400] if ultimo else "", campos=campos,
+                      enlaces=[direccion_de("archivo", ruta, maquina)], acciones=acciones, maquina=maquina,
+                      version=f"{h.estado}:{len(h.comentarios)}")
+
+    def ver(self, ctx, d):
+        from telar.servicios import comentarios
+
+        ruta, hilo = self._partir(d)
+        return self._objeto(d, comentarios.ver_en(ctx, ruta), hilo)
+
+    def hacer(self, ctx, d, accion, params, version=""):
+        import os
+
+        from telar.servicios import comentarios
+
+        if accion not in ("responder", "resolver", "reabrir"):
+            raise ErrorDeServicio(f"un comentario no tiene la acción «{accion}»: responder, resolver o reabrir", 404)
+        ruta, hilo = self._partir(d)
+        if version and version != self.ver(ctx, d).version:
+            raise ErrorDeServicio(f"«{d}» cambió desde que se leyó: vuelve a mirarlo", 409)
+        texto = str(params.get("texto") or "")
+        if accion == "responder" and not texto.strip():
+            raise ErrorDeServicio("responder: ¿qué? params {\"texto\": …}", 422)
+        pedido = comentarios.Pedido(ruta=ruta, accion=accion, hilo=hilo, texto=texto, autor=os.environ.get("TELAR_HILO", ""))
+        c = comentarios.hacer_en(ctx, pedido)
+        return Hecho(direccion=str(d), accion=accion, objeto=self._objeto(d, c, hilo))
+
+
+DE_FABRICA = (Tarea(), Hilo(), Proyecto(), Archivo(), Pendiente(), Agente(), Encargo(), Permiso(), Idea(), Mensaje(),
+              Comentario())
 
 
 def tipos(ctx) -> dict[str, Tipo]:

@@ -481,6 +481,25 @@ class ConMux(Prueba):
         # despertar al que no duerme no hace nada
         self.assertEqual(dormir.despertar(self.config, "Molino", mux=self.mux), "")
 
+    def test_el_que_se_detuvo_para_irse_no_despierta_mientras_viaja(self):
+        # telar.mudanza.detener: su panel espera como el de uno dormido, con `cede`; ni un ⏎ ni un mensaje lo despiertan,
+        # salvo que la mudanza se eche atrás (`cesion`)
+        from telar import mudanza
+
+        self.assertEqual(mudanza.detener(self.config, self.tel, "Faro", "servidor"), "")
+        panel, comando = self.mux.abiertos[-1]
+        self.assertEqual(panel, "%1")
+        self.assertIn("se está yendo a servidor", comando[-1])
+        self.assertIn(dormir.MARCA, comando[-1], "lo que corre es el que espera: el nodo no lo vuelve a dormir")
+        self.assertEqual(self.est.dormidos()["Faro"]["cede"], "servidor")
+        with self.assertRaisesRegex(RuntimeError, "se está yendo a servidor"):
+            dormir.despertar(self.config, "Faro", mux=self.mux)
+        hecho = dormir.despertar(self.config, "Faro", mux=self.mux, cesion=True)
+        self.assertIn("«Faro» despertó (conversación s-faro", hecho)
+        self.assertNotIn("Faro", self.est.dormidos())
+        # un hilo sin ventana aquí no tiene agente que detener
+        self.assertEqual(mudanza.detener(self.config, self.tel, "Otro", "servidor"), "")
+
     def test_escribirle_al_dormido_lo_despierta_con_eso(self):
         self.mirar()
         h = self.tel.por_nombre("Faro")

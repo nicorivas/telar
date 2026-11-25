@@ -274,3 +274,59 @@ def matar_tmux(carpeta) -> None:
     (`-S`), no por el entorno. Un `tmux kill-server` a secas sigue a `TMUX` antes que a `TMUX_TMPDIR`, y con `TMUX`
     puesto (las pruebas corridas desde un hilo) mata el servidor de la persona con todos sus hilos (18-nov-2026)."""
     subprocess.run(["tmux", "-S", socket_tmux(carpeta), "kill-server"], capture_output=True)
+
+
+class KvDeMentira:
+    """El almacén del estado del bus, en memoria, con revisiones: lo que lee y escribe condicionado telar.dueno
+    (`get`, `create`, `update`, `put`, `delete`). Cada escritura queda en `puestos`."""
+
+    class KeyNotFoundError(Exception):
+        pass
+
+    class KeyWrongLastSequenceError(Exception):
+        pass
+
+    def __init__(self, entradas: dict | None = None):
+        import json as _json
+
+        self._json = _json
+        self.n = 0
+        self.actual: dict = {}
+        self.puestos: list = []
+        for k, d in (entradas or {}).items():
+            self.n += 1
+            self.actual[k] = (self.n, d)
+
+    async def get(self, k):
+        from types import SimpleNamespace
+
+        if k not in self.actual:
+            raise self.KeyNotFoundError(k)
+        rev, d = self.actual[k]
+        return SimpleNamespace(key=k, value=self._json.dumps(d, ensure_ascii=False).encode(), revision=rev)
+
+    async def create(self, k, v):
+        if k in self.actual:
+            raise self.KeyWrongLastSequenceError(k)
+        return self._poner(k, v)
+
+    async def update(self, k, v, last):
+        if self.actual.get(k, (0, None))[0] != last:
+            raise self.KeyWrongLastSequenceError(k)
+        return self._poner(k, v)
+
+    async def put(self, k, v):
+        return self._poner(k, v)
+
+    async def delete(self, k):
+        self.actual.pop(k, None)
+
+    def _poner(self, k, v) -> int:
+        self.n += 1
+        d = self._json.loads(v)
+        self.actual[k] = (self.n, d)
+        self.puestos.append((k, d))
+        return self.n
+
+    def valor(self, k) -> dict | None:
+        return self.actual.get(k, (0, None))[1]

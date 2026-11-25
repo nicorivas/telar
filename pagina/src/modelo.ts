@@ -61,10 +61,14 @@ export class Modelo {
     secciones: cli.JsonSeccion[] = [];
     /** las apps de la configuración (`[apps]`), en su orden */
     apps: cli.JsonApp[] = [];
+    /** los tipos de objeto de los módulos que también se buscan en ⌘K (`[objetos.<tipo>] buscador`: los chats de whatsapp) */
+    buscables: { tipo: string; plural: string }[] = [];
     /** lo que el equipo sugiere y la persona no ha decidido (`telar equipo`); vacío si la función está apagada */
     sugerencias: cli.JsonSugerencia[] = [];
     private sugerenciasVistas: Set<string> | undefined;
     hayRemotos = false;
+    /** las máquinas de `[remotos]` (por ssh): a dónde se puede llevar un hilo, además de las del bus */
+    remotos: { nombre: string; destino: string }[] = [];
     /** si esta persona está en un bus (`[bus]`): lo que cruza entre máquinas y personas (los colegas, el
      *  registro de mensajes, la gestión de personas) depende de esto, no de `[remotos]` */
     hayBus = false;
@@ -182,7 +186,9 @@ export class Modelo {
                 if (c.datos) {
                     this.secciones = c.datos.secciones ?? [];
                     this.apps = c.datos.apps ?? [];
-                    this.hayRemotos = (c.datos.remotos ?? []).length > 0;
+                    this.buscables = (c.datos.modulos ?? []).flatMap(m => m.buscables ?? []);
+                    this.remotos = (c.datos.remotos ?? []).map(r => ({ nombre: r.nombre, destino: r.destino }));
+                    this.hayRemotos = this.remotos.length > 0;
                     this.hayBus = !!c.datos.bus?.url;
                     this.instruccionA = c.datos.instruccion?.a ?? '';
                     this.procesar = c.datos.instruccion?.procesar ?? '';

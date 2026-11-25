@@ -99,6 +99,8 @@ jobs:
         working-directory: pagina
       - run: npm run prueba:confirmar
         working-directory: pagina
+      - run: npm run prueba:portapapeles
+        working-directory: pagina
       - run: npm run prueba:lienzo
         working-directory: pagina
       - run: npm run prueba:avisos
@@ -130,6 +132,10 @@ jobs:
       - run: npm run prueba:leer-hilo
         working-directory: pagina
       - run: npm run prueba:temas
+        working-directory: pagina
+      - run: npm run prueba:ventanas
+        working-directory: pagina
+      - run: npm run prueba:borradores
         working-directory: pagina
 
   mod:

@@ -7,6 +7,10 @@
 //       montar: (d, cerrar) => { … d.querySelector('input')… cerrar(valor) },
 //   });
 //
+// `quieta`: una ventana que sale sola (la que pide un módulo cuando llega algo, web/ventanas.ts) y no puede quitarle el
+// teclado a quien escribe en otra parte: se abre sin `show()` (con el atributo `open`), sin fondo ni foco, y pasa a modal (fondo, foco adentro) con un
+// clic en ella o cuando quien la abrió lo pide (`tomar-foco`, un evento en el <dialog>).
+//
 // Un clic en un `[data-accion]` de adentro (los botones de `pieVentana`) la cierra con esa acción, si `montar` no lo
 // atendió antes (con `preventDefault`). Las teclas de esos botones (la de cada celda, y ⏎ el del foco) las atiende
 // web/botonera.ts. Es la pieza decidida para todas las ventanas (docs/propuestas/componentes.md, «Las
@@ -27,6 +31,9 @@ export interface OpcionesVentana<T> {
     montar?: (d: HTMLDialogElement, cerrar: (valor?: T) => void) => void | (() => void);
     /** antes de cerrarse por ⎋ o por un clic fuera: false la deja abierta (algo se está mandando) */
     puedeCerrar?: () => boolean;
+    /** sin quitar el foco de donde está: abierta sin modal (sin fondo; la página sigue recibiendo lo que se escribe)
+     *  hasta un clic en ella o un evento `tomar-foco` en el <dialog>, que la vuelven modal con el foco adentro */
+    quieta?: boolean;
 }
 
 /** Abre la ventana y espera lo elegido. */
@@ -49,6 +56,11 @@ export function abrirVentana<T = string>(props: PropsVentana, o: OpcionesVentana
             }
         };
         const intentar = () => { if (!o.puedeCerrar || o.puedeCerrar()) cerrar(undefined); };
+        // cerrada por el navegador sin pasar por aquí (un ⎋ cuyo `cancel` no se deja cancelar, sin un gesto antes en la
+        // página): que no quede un <dialog> cerrado esperando. Pasar de quieta a modal la cierra y la abre al tiro: ahí sigue
+        // abierta cuando llega el evento
+        let pasando = false;
+        d.addEventListener('close', () => { if (!pasando) setTimeout(() => { if (!d.open) cerrar(undefined); }); });
         // ⎋: el navegador manda `cancel` (con showModal) o nada (con show): se atiende igual en los dos
         d.addEventListener('cancel', e => { e.preventDefault(); intentar(); });
         d.addEventListener('keydown', e => {
@@ -69,20 +81,42 @@ export function abrirVentana<T = string>(props: PropsVentana, o: OpcionesVentana
         // las teclas de los botones del pie (⌘⌫, ⌘⏎, 1 2…; ⏎ el del foco, nunca uno sostenido): antes que las de `montar`
         teclasDeBotones(d);
         alCerrar = o.montar?.(d, cerrar);
+        const enfocar = () => {
+            const foco = (o.foco ? d.querySelector<HTMLElement>(o.foco) : null)
+                ?? d.querySelector<HTMLElement>('input, textarea, select') ?? d.querySelector<HTMLElement>('.ventana');
+            if (foco) {
+                if (!foco.matches('input, textarea, select, button, a[href], [tabindex]')) foco.tabIndex = -1;
+                foco.focus({ preventScroll: true });
+            }
+        };
         if (lugar === 'junto') {
-            d.show();
+            // junto a algo de una ventana modal (el «⋯» de las pestañas del visor): modal también, sin fondo, o quedaría
+            // debajo de ella (la capa de arriba es solo de las modales)
+            const sobreModal = o.junto instanceof Element && !!o.junto.closest('dialog')?.matches(':modal');
+            if (sobreModal) { d.classList.add('sobre-modal'); d.showModal(); } else d.show();
             colocar(d, o.junto);
             // el clic que la abrió no la cierra: se escucha desde el próximo
             setTimeout(() => document.addEventListener('pointerdown', fuera, true));
+        } else if (o.quieta) {
+            // sin fondo y sin el foco: lo que se escribe sigue yendo adonde iba. Un clic en ella, o `tomar-foco`, la vuelve
+            // modal: el fondo, y el foco adentro
+            d.classList.add('quieta');
+            // el atributo, no `show()`: `show()` corre los pasos de foco del <dialog> y se llevaría el teclado a su caja
+            d.setAttribute('open', '');
+            const tomar = () => {
+                if (hecho || !d.classList.contains('quieta')) return;
+                d.classList.remove('quieta');
+                pasando = true;
+                try { if (d.open) d.close(); d.showModal(); } finally { pasando = false; }
+                enfocar();
+            };
+            d.addEventListener('pointerdown', tomar, true);
+            d.addEventListener('tomar-foco', tomar);
+            return;
         } else {
             d.showModal();
         }
-        const foco = (o.foco ? d.querySelector<HTMLElement>(o.foco) : null)
-            ?? d.querySelector<HTMLElement>('input, textarea, select') ?? d.querySelector<HTMLElement>('.ventana');
-        if (foco) {
-            if (!foco.matches('input, textarea, select, button, a[href], [tabindex]')) foco.tabIndex = -1;
-            foco.focus({ preventScroll: true });
-        }
+        enfocar();
     });
 }
 

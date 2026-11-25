@@ -8,6 +8,223 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-11-25
+
+**Moving a thread to another machine was rebuilt in four stages**: the conversation travels over the bus in chunks
+(only what is missing, resumable, with no size limit), the move looks only at the thread's own unpushed work and offers
+to upload it, every thread has one owner with an epoch written in the bus, and a thread whose machine is off can be
+continued from the copy left on another. Files get **comments** an agent can work on, in a **document viewer** that
+opens as a window over what you were looking at. Modules can open **windows** on the page (a WhatsApp focus chat, to
+reply without leaving what you're doing). **Tabs** and a **message bar** are house components, and tabs that don't fit
+go to a «⋯» menu. A thread keeps its next prompts in a **notes** tab until it's their turn.
+
+**Upgrading from 0.14.** What breaks, and what to do:
+
+- **Update every machine on the bus together before moving threads.** A move now copies the conversation with new
+  node requests (`replica-estado`, `replica-escribir`, `replica-cerrar`) and hands the thread over with its owner and
+  epoch (`hilo-llegar` carries `dueno`). A machine on 0.14 can neither receive a thread from 0.15 nor send one to it
+  («el telar de allá es de antes»). Update with `telar desplegar`. Over ssh (`[remotos]`), threads now move only to a
+  machine that is not on the bus.
+- **A thread's record in the bus has an owner and an epoch.** Records in `TELAR_HILOS` carry `dueno` and `epoca` (and
+  `cede` and `mudanza` while a move is under way), written conditioned on the revision the node read, and a node no
+  longer publishes a thread whose record belongs to another machine. Records written by 0.14 are rewritten once, on
+  the node's first round after the update. Anything reading `TELAR_HILOS` should take the owner from `dueno` (`maquina`
+  in an older record). If the conditioned write misbehaves, `[bus] publicar = "simple"` brings back the old one.
+- **`telar commit` takes paths relative to where it runs, like git, and exits 4 when it committed nothing.** A path that
+  neither exists nor is in the repository commits nothing and exits 2 (it used to be dropped silently, with «subido»
+  and exit 0). Nothing to commit in the given paths exits 4 with `estado: "nada"`. The JSON gains `subidos`. Scripts
+  that pass root-relative paths from a subfolder, or that took exit 0 for «nothing to do», need adjusting.
+- **Moving a thread no longer archives it on the source machine, and its progress has new steps.** In
+  `<estado>/llevar/<hilo>.json` and `GET /mudanza`, `paso` is one of `revisar`, `esperar`, `subir`, `detener`,
+  `copiar`, `abrir`, `cerrar`, `listo` or `falla`, in that order (`cerrar` went from second to last), with new fields
+  `total`, `por_mandar`, `mandados`, `pendiente`, `destino` and `subido`. Without a terminal, `telar hilo llevar` now
+  fails when the thread has unpushed work, unless given `--subir` or `--si`.
+- **`[terminal] fondo = "telar"` now reads as `"ninguno"`.** The animated loom around the terminal is gone, and
+  `ninguno` (the theme's background) is the new default. A color, an image or a module's `[fondo]` work as before.
+- **New keys in `modulo.toml`.** `[ventanas]` (`consulta`, `acciones`) and `buscador` in `[objetos.<tipo>]` need telar
+  0.15; an older telar ignores them. `telar config --json` and `GET /config` give each module's `buscables`, and a
+  module's commands receive `TELAR_MUNDOS`.
+- **Additions, nothing to do.** `telar hilos --json` gains `borradores` and, for archived threads, `dueno`; a machine's
+  photo gains `archivados`, `conv_bytes` and `conv_crecio`. New HTTP routes: `/ventanas`, `/hilo/registro`,
+  `/hilo/seguir`, `/hilos/borradores` and `/comentarios`. Run `telar agente instalar` once to get the `/comentarios`
+  skill.
+
+### Added
+
+- **Notes: a thread's next prompts, kept until it's their turn.** A «notas» tab in a thread's right column (next to
+  ficha, códigos and contexto) keeps an ordered short list of what you want to tell its agent next, each one to send,
+  edit, copy or delete. What you write saves itself. Sending one leaves it typed in Claude Code's input without ⏎, for
+  you to review (⌥⏎); ⌘⏎ sends it. If the agent is in the middle of a turn, the page offers to wait, and the note goes
+  out by itself when the turn ends, even with the page closed. The thread's row shows a faint icon and count, and the
+  tab shows a dot when the thread finished with notes waiting. ⌥B opens the tab with the focus in the box; on the
+  phone it opens in a window. Notes live in the state of the thread's machine, so they survive a reload, show on the
+  phone and travel with the thread. `telar hilo borradores [--agregar|--mandar N [--enviar] [--esperar]|--borrar N]
+  [--json]`, `GET|POST|DELETE /hilos/borradores` and `POST /hilos/borradores/mandar`.
+- **Comments on a file, for an agent to work on.** In the document viewer, select text and press c (or the button by
+  the selection) to write what has to happen there. Comments live next to the file, in `.<name>.marginalia.json`, in
+  the format of the editor extension that introduced it (each reads what the other writes), and the file itself is
+  never touched. The anchor is the quote, not the line: the commented source text plus 48 characters of context on
+  each side, found again by five paths (exact, context, normalized whitespace, approximate by bigram similarity,
+  neighbourhood), and «sin ancla» when none fits. A selection on the rendered markdown is mapped back to the source,
+  through `**`, links, list markers, tables and code. Plain text files work too; .html does not.
+- **`telar comentarios listar|ver|responder|resolver|reabrir [--json]`.** An agent finds the open comments of a file,
+  a folder or a repository, reads them with their anchor resolved (line, method, confidence, and what the place says
+  today if it changed), replies and resolves; with `máquina:` in front, on that machine through the bus (node request
+  `comentarios`). `GET` and `POST /comentarios` do the same for the page, and `comentario:<file>#h1` is its address in
+  `telar objeto`. The comments file is committed and pushed alone: from the page and the node 15 seconds after the
+  last change, from the command right away. The `/comentarios` skill tells an agent how to attend them. Format and
+  contracts in docs/contratos.md, «Los comentarios de un archivo».
+- **Continue a thread here while its machine is off, from the copy left here** (`telar hilo seguir <thread> [--si]`,
+  `GET`/`POST /hilo/seguir`). It is offered only on a machine that has a copy of the conversation and only while the
+  owner is off (its photo expired and its node does not answer); with the owner online it is «traer aquí». Before
+  taking it, it says how old the local copy is and how much the owner's weighed when last seen (each photo now carries
+  the size of each thread's conversation and when it last grew, nothing of its content). On the page, the menu of a
+  thread whose machine is off shows «seguir aquí», with a panel that says what is missing.
+- **The returning owner cedes on its own.** On its first round back, a node that finds one of its open threads owned
+  by another machine closes its agent, sets its copy aside if it grew after the copy the other continued from
+  (`<sid>.de-<machine>-<date>.jsonl.bak`), and says so in the page's notice strip with a short report, until it is
+  marked as seen.
+- **Archived threads of the other machines, in ARCHIVO.** A machine's photo carries its archived threads apart
+  (`archivados`, a few fields each, no conversation or path), and the sidebar lists them after this machine's, with
+  their machine and «retomar en M», which opens them there through its node, never from the copy here. A thread
+  archived here that the bus says belongs to another machine shows that machine (`dueno` in `telar hilos --json`).
+- **Windows a module asks to open on the page (`[ventanas]` in `modulo.toml`).** A module declares a query that says
+  which windows it wants open now, and the queries its buttons may run (`POST /ventanas/accion` runs nothing else).
+  The first one: a message that arrives in a WhatsApp focus chat, to reply or snooze without going to its tab. The
+  page asks `GET /ventanas` every 10 s while visible (3 s with one open, at once when another tab acts), and the window
+  shows the last lines, a reply box (⌘⏎, with «enviando…», «enviado» or why not), buttons that run a query, open an
+  item of the module's tab (`window.lienzo.item`, the `lienzo-item` event) or open the instruction window, and drafts
+  waiting for approval (edit, approve, discard). An action can show an icon (`icono`, `corto`) instead of its word.
+  Acting in one page closes the window in the others. Format in docs/modulos.md, «Sus ventanas».
+- **Windows stay in their world and don't steal keys.** A module window only shows what belongs to the world on the
+  page, and changing worlds closes one of the other. If you are typing, or the focus is in a field, it comes out quiet
+  (no backdrop, no focus) until you click it or pause.
+- **«No molestar».** A bell in the header band (and in ⌘K) silences module windows on this machine; a meeting in
+  progress on the calendar does the same on its own. Meanwhile only the count is shown, and when it ends, what arrived
+  comes out.
+- **Objects of a module in ⌘K.** `[objetos.<tipo>] buscador = true` (with `listar`) adds its objects to ⌘K in their
+  own group, the world on first; WhatsApp chats use it, with an action to mark one as a focus chat. Modules' commands
+  get the declared worlds in `TELAR_MUNDOS`, to classify their own things.
+- **Tabs are a house component, and the ones that don't fit go to a «⋯» menu.** `componentes/pestanas.ts` draws a tab
+  bar one standard row high, with its line edge to edge: the open tab on the selection surface, an icon, a count, a
+  dot for something new, disabled tabs. A bar shows the tabs that fit whole and puts the rest in a «⋯» that opens the
+  house menu; the open tab is always shown, and a dot or count on a hidden tab shows on the «⋯». ← → Home End move
+  between tabs (an ARIA `tablist`). Bars re-fit live as a column is resized. It is used by the thread's right column,
+  the document viewer, a project's detail, foco and the /componentes pages.
+- **The message bar.** `componentes/mensaje.ts`: a row to write to a thread or an agent about what you're looking at,
+  without opening a window. It sends what the instruction window sends (`telar actuar`), to the same default
+  destination; a compact chip opens the list of threads and agents, in ⌘K's order and only of the world in place.
+  ⏎ sends, ⇧⏎ is a new line, and it never takes the focus by itself. After sending it says to whom (a link to its
+  thread), and on failure why, with the text back in the field. Its page is in /componentes.
+- **Buttons can show an icon instead of their word.** `boton()` takes `simbolo` (and `corto`): key + icon, with the word
+  as the button's name.
+- **`scripts/publicar.sh` publishes a version as one commit on GitHub.** It takes main's tree as a single commit on top
+  of `origin/main` and pushes it and its tag, after checking a clean tree on main, `__version__`, the CHANGELOG section,
+  that the tag is new and that `origin/main` came from main; a dry run unless `--de-verdad`. The `pre-push` hook that
+  guards it is versioned in `scripts/pre-push`. docs/publicar.md, «Cada versión».
+- **`scripts/probar_mudanza.py` tests a move between two real machines without deploying.** It sets up a separate telar
+  on each machine (its own folder, tmux, Claude folder and a fake `claude`) that answers only the move's requests, with
+  the record and the photos in separate stores (`TELAR_BUS_HILOS`, `TELAR_BUS_ESPEJO`); it can kill the node at a
+  given step (`E1_PARAR`), measure the copy alone (`transporte`) and clean up. Page test: `npm run prueba:mudanza`.
+
+### Changed
+
+- **Moving a thread copies only what is missing, over the bus, with no size limit.** The conversation and its `<sid>/`
+  folder (tool results, subagents) travel in chunks of up to 896 KB, zlib when it helps, six in flight, read from disk
+  bit by bit (`telar.replica`). The destination says what it already has, the source sends from there, and the chunks
+  only reach the place Claude reads from once every file's length and sha256 match, so a move cut halfway (network, a
+  closed lid, a killed process) resumes from what arrived. Between a laptop and its server: 115 MB the first time in
+  19 s up and 10 s down (it used to take 60 s for 25 MB, and refused anything larger); 1 MB more in 3 s and 1 s.
+- **Moving a thread stops it first and passes it after.** It always waits for the agent to finish its turn, whoever
+  asks. Then the owner cedes it in the bus, its agent stops, the final conversation travels, and the receiving machine
+  takes it with the epoch it was ceded with and opens it; only then does the window here close. If anything fails
+  before it is taken, the owner backs off, its agent wakes up, and the thread here is exactly as it was («Aquí sigue
+  como estaba»). Every 30 s the node fixes what was left halfway: a cession whose process died is undone, a taken
+  thread that was not opened is opened, and a waiting window of a thread now owned elsewhere is closed.
+- **Moving a thread looks only at what is the thread's, and offers «subir y llevar».** It looks at the repository of the
+  thread's folder and the ones its conversation wrote to (`telar.sin_subir`): uncommitted files its conversation wrote
+  are its own; other uncommitted files in its folder are shown but never committed; unpushed commits are listed. If
+  there is something, the move's panel shows it per repository and offers to commit only the thread's paths and push
+  (`telar hilo llevar --subir`, `subir` in `POST /hilo/llevar` and `/hilo/traer`), to move anyway, or to cancel.
+- **The thread arrives with its repository up to date and everything that was its own.** The destination fetches and
+  rebases the thread's repositories that are behind (setting aside and restoring what is uncommitted there), or says
+  why not. Its parent, labels, priority, effort, public flag, notes and pending messages travel with it. A child with
+  its own branch is not moved (its worktree exists only on its machine): its parent moves alone, with a notice.
+- **«Traer aquí» runs apart on the owner, and its progress is visible from the machine that asked** (`GET
+  /mudanza?hilo=&maquina=`, node request `mudanza-progreso`), in the same panel as a move, with how much is being
+  copied and how much was already there. The panel hides the steps that did not happen.
+- **A thread's menu offers one row per machine to carry it to, near the top.** «llevar a laptop», «traer a laptop (esta
+  máquina)»: every other machine of the person, from `[remotos]` and from the bus, by name. One that does not answer
+  stays dimmed, saying why. A thread on another machine can be brought here or sent by its machine to a third one
+  (`POST /hilo/traer` takes `a`).
+- **The page follows a thread's owner.** `GET /hilo/registro?hilo=` gives the thread's record in the bus, and the page
+  uses it to know where a thread lives or that it is travelling, from any machine and the phone. What you were looking
+  at, terminal or conversation, follows the thread when it leaves.
+- **The document viewer is a window over what you were looking at.** Every place that opens a file (a link, ⌘K, Todo, a
+  bare name, an address, a thread's folder) opens it in a window; ✕ or ⎋ closes it and leaves everything as it was. A
+  link to another file opens in the same window, and «‹» (or ⌫) goes back. On a phone it takes the whole screen.
+- **The document viewer has a sidebar with tabs: comments, connections and data.** A commented passage keeps its type,
+  with a faint background and its number; the comments tab lists them in document order, where you reply, resolve,
+  reopen, edit and delete, and hovering or clicking links passage and row both ways. The graph connections have their
+  own tab, and «datos» shows a `.md`'s frontmatter, key by key. The sidebar folds and resizes like a thread's sheet and
+  remembers both; on a phone it is a sheet that rises from the bottom.
+- **A reading mode for documents.** In the `foco` mode the viewer opens a .md centered, at reading width, with the same
+  serif type as a thread's reading view; elsewhere its icon (or the l key) switches, and each side remembers the last
+  choice. The styles are shared (`media/css/prosa.css`). Bold inside a quote keeps the quote's muted color.
+- **The task card in foco: tabs on top, actions and the message bar at the bottom.** «gestión» and «concentración» are
+  tabs under the screen's own bar; the cards scroll in the middle; the chosen card's actions sit in a row at the
+  bottom, with the message bar under them. The same on the laptop and the phone.
+- **A thread whose parent is a resident agent hangs under that agent in AGENTES,** with its own children, from this
+  machine or another; it no longer shows in HILOS. If the agent is folded or hidden, it goes back to HILOS.
+- **The worlds window grows downward for many worlds.** Up to four cards in a row; more go three per row, with the
+  window scrolling and the current card in view. With ten or more, a digit that can start another number waits a moment
+  for the second. Only the arts in view animate.
+- **Hovering a world card sends a wave of characters across its art,** drawn in the art's own character grid, instead
+  of the CSS sweep, tilt and glow. It is a generic hover effect of the art module (`registrarEfecto`), so it works on
+  any art, built-in or from a `.txt`; an art can declare its own. No wave with reduced motion.
+- **The WhatsApp focus window uses icons for what is obvious** (send, postpone, open the chat, hand to an agent, remove
+  the focus, a draft's send and discard), with a line edge to edge between the chat and what comes below it.
+- **Choosing from a list draws its rows like the ⋯ menu** (`ui.elegir` with `item()`): icon slot, faint description,
+  color, disabled rows and the marked row on the active background.
+
+### Removed
+
+- **The animated loom around a thread's terminal.** When the terminal is smaller than its view, the space around it is
+  the theme's background, still: no canvas, no timer. ⚙ terminal no longer offers it.
+
+### Fixed
+
+- **`telar commit` no longer says «subido» without a new commit.** Run from a subfolder with paths written from the
+  repository root, it committed nothing (the paths did not exist relative to where it ran and were dropped without a
+  word) and still said «subido» with exit 0. Now paths are taken like git, relative to where it runs: one that neither
+  exists nor is in the repository commits nothing, exits 2 and says how to write it from there. With nothing to
+  commit it says so and exits 4; if it pushed commits that were already pending, it says how many.
+- **A thread's agent can carry itself to another machine.** When `telar hilo llevar` runs inside the window it is about
+  to close, it checks and asks as usual and then continues in a separate process (its output in
+  `<estado>/llevar/<hilo>.log`) that waits for the agent's turn to end, so its last words travel too. Before, closing
+  the window killed the command halfway, leaving the thread closed here and never opened there.
+- **A thread can go back by ssh to the machine it came from.** The copy from when it left was still there and the ssh
+  copy refused it. Now the copy is replaced when the arriving conversation continues it, and set aside with its date
+  when it went on separately there; the thread is also unarchived there.
+- **Arriving, the window that watched the thread from here closes after the new one opens,** not before, so the page
+  never takes it for one that lives elsewhere. A thread its owner archived is no longer brought here as a new window.
+- **A window that looks at a thread on another machine hangs from the same parent as there.** The owner published only
+  the parent set by hand; now the record carries the parent the owner sees, including whoever opened it.
+- **The sidebar marks the thread you are looking at again, wherever it lives.** A thread from another machine is shown
+  as `rem:<machine>:<thread>`, and the sidebar only compared bare names: windows that watch a server thread, rows from
+  another machine's photo and archived ones from there lost the selection background.
+- **The sidebar draws «↳» and indentation only under a visible parent.** A thread whose parent was archived, of another
+  world or on a machine with no window here looked as if it hung from the row above. Now it goes loose, with who opened
+  it and what it hangs from in its tooltip. Two threads with the same visible title each show their own name.
+- **Copying a selection from a thread on another machine works in Safari.** The text comes back by OSC 52 after the
+  mouse is released, and WebKit only copies inside the event itself; now the release starts a clipboard write with a
+  pending ClipboardItem, filled when the text arrives (Safari, Chrome and Firefox over https). Over http, the notice's
+  Copy button copies inside its own click. «copiar su dirección» and «Copiar la ruta» fall back the same way.
+- **The document viewer no longer draws a Markdown file's frontmatter as text.** YAML between `---` or TOML between
+  `+++`, only on the first line, is taken out before drawing; a `---` further down is still a rule. Line numbers stay
+  those of the whole file, so comments anchor against the full text.
+- **A menu opened next to something inside a modal window shows above it,** instead of falling under the window.
+
 ## [0.14.0] — 2026-11-23
 
 The page is now arranged by **modes** (táctica, estrategia, foco, todo) and **worlds** (which part of your life

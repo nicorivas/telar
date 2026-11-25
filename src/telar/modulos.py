@@ -56,6 +56,11 @@ El manifiesto (`<carpeta>/modulo.toml`):
     listar = "mediciones"          # opcional: recibe {"tipo": …} y da todas las suyas (telar objeto medicion --listar,
                                    # y son una fuente de telar buscar)
     plural = "mediciones"          # opcional: cómo se llaman juntas, en una lista (la fuente de telar buscar)
+    buscador = true                # opcional, con `listar`: también se buscan en ⌘K de la página, en su grupo
+
+    [ventanas]                     # ventanas que pide abrir en la página cuando ocurre algo (telar.servicios.ventanas)
+    consulta = "alertas-abiertas"  # una de sus consultas: recibe {mundo, solo_cuantas?}, da {"ventanas": […]}
+    acciones = ["alerta"]          # las consultas que pueden correr sus botones
 
     [permisos]                     # lo que pide fuera de su carpeta: se muestra antes de instalarlo
     leer = ["~/datos/oceano"]      # rutas que lee
@@ -75,7 +80,8 @@ Una con `consulta = true` también se pide sin terminal (`consultar`, la API `GE
 el bus): recibe los parámetros como un objeto JSON por la entrada, corre en la carpeta del módulo y
 devuelve un objeto JSON por la salida. Las dos reciben en el entorno lo que el módulo necesita saber de
 telar: `TELAR_RAIZ`, `TELAR_REPOS` (los repos de `[repos]`, en JSON: nombre, ruta y perfil),
-`TELAR_MAQUINA`, `TELAR_MODULO` (su carpeta) y `TELAR_PERSONA` (la del entorno, `[bus] persona` o el usuario). Lo mismo los
+`TELAR_MAQUINA`, `TELAR_MODULO` (su carpeta), `TELAR_PERSONA` (la del entorno, `[bus] persona` o el usuario) y
+`TELAR_MUNDOS` (los de `[mundos]`, en JSON: nombre y etiquetas, para que clasifique lo suyo por mundo). Lo mismo los
 comandos que imprimen sus páginas (el de su pestaña, también con `--item`, el de su app y el de su configuración:
 `entorno_de`) y sus periódicos. Una consulta que no se puede hacer sale con 1 y `{"error", "codigo"}`: un 4xx
 llega tal cual a quien la pidió (409: cambió desde que se leyó); lo demás es una falla del módulo (502). Un módulo es
@@ -89,6 +95,11 @@ vive donde el módulo lo guarde, no en la configuración de telar.
 **Su pestaña, como app.** `/pestana/<nombre>/` es la página con solo esa pestaña, y con su propio manifiesto: en el
 teléfono se instala aparte de telar, con el nombre de la pestaña y el `icono` del módulo (si no trae, el de telar).
 El ícono va entero en el cuadrado, con el dibujo en el 80% del centro: Android lo recorta con la forma que use.
+
+**Sus ventanas.** `[ventanas]` es una consulta suya que dice qué ventanas quiere abrir ahora en la página (un mensaje
+que llegó a un chat de foco, para responder o aplazar), y las consultas que pueden correr sus botones (`acciones`). La
+página le pregunta mientras está a la vista, con el mundo puesto; abrirla, el foco y las teclas son de la página
+(telar.servicios.ventanas, docs/modulos.md).
 
 **Permisos.** `[permisos]` dice lo que el módulo pide fuera de su carpeta: rutas que lee y que escribe, la
 red y las órdenes de telar que corre. `telar modulos instalar` lo muestra antes de preguntar, y `actualizar`
@@ -119,7 +130,7 @@ from telar.salida import visible
 MANIFIESTO = "modulo.toml"
 NOMBRE = re.compile(r"[a-z0-9][a-z0-9_-]*")
 _RAIZ = {"nombre", "descripcion", "icono", "pestana", "configurar", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto",
-         "requiere", "objetos", "permisos", "fondo", "fechas"}
+         "requiere", "objetos", "permisos", "fondo", "fechas", "ventanas"}
 #: lo que entiende `[permisos]`; una clave que no está aquí se muestra como no entendida, no se calla
 PERMISOS = ("leer", "escribir", "red", "ordenes")
 TOPE_CONTEXTO = 600  # caracteres: entra en cada sesión de cada hilo
@@ -191,6 +202,9 @@ class Modulo:
     #: su pantalla de configuración (`[configurar] comando`): imprime una página, como la de su pestaña. {comando}; vacío
     #: si no trae
     configurar: dict = field(default_factory=dict)
+    #: las ventanas que pide abrir en la página (`[ventanas]`, telar.servicios.ventanas): {consulta, acciones}, la consulta
+    #: que las da y las que pueden correr sus botones; vacío si no trae
+    ventanas: dict = field(default_factory=dict)
 
     def faltan(self) -> list[str]:
         """Los programas de `[requiere]` que esta máquina no tiene."""
@@ -207,7 +221,7 @@ class Modulo:
                  *[f"orden {v}" + (" (consulta)" if o.get("consulta") else "") for v, o in self.ordenes.items()],
                  *[f"objetos {t}:" for t in self.objetos],
                  *(["contexto del agente"] if self.contexto else []), *(["fondo de la terminal"] if self.fondo else []),
-                 *(["fechas"] if self.fechas else [])])
+                 *(["fechas"] if self.fechas else []), *(["ventanas"] if self.ventanas else [])])
 
     @property
     def pide(self) -> list[str]:
@@ -306,7 +320,7 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
     if sobra:
         raise ErrorDeModulo(f"{nombre}: {MANIFIESTO} no conoce «{sorted(sobra)[0]}»")
     for clave in ("pestana", "configurar", "app", "periodicos", "resultado", "ordenes", "instalar", "contexto", "requiere", "objetos",
-                  "permisos", "fondo", "fechas"):
+                  "permisos", "fondo", "fechas", "ventanas"):
         if not isinstance(datos.get(clave, {}), dict):
             raise ErrorDeModulo(f"{nombre}: [{clave}] tiene que ser una tabla")
 
@@ -382,9 +396,14 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
         plural = cuerpo.get("plural", "")
         if not isinstance(plural, str):
             raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}] plural: se esperaba un texto")
+        # `buscador`, opcional: los suyos también se buscan en ⌘K (no solo en Todo); necesita `listar`
+        buscador = cuerpo.get("buscador", False)
+        if not isinstance(buscador, bool) or (buscador and not listar):
+            raise ErrorDeModulo(f"{nombre}: [objetos.{tipo}] buscador: true o false, y solo con listar")
         objetos[tipo] = {"ver": cuerpo["ver"], "acciones": tuple(acciones), "descripcion": str(cuerpo.get("descripcion", "")),
                          **({"esperando": esperando} if esperando else {}), **({"listar": listar} if listar else {}),
-                         **({"plural": " ".join(plural.split())} if plural.strip() else {})}
+                         **({"plural": " ".join(plural.split())} if plural.strip() else {}),
+                         **({"buscador": True} if buscador else {})}
 
     descripcion = datos.get("descripcion", "")
     if not isinstance(descripcion, str):
@@ -425,12 +444,25 @@ def leer(nombre: str, carpeta: Path) -> Modulo:
                 raise ErrorDeModulo(f"{nombre}: [fechas] escribir: se esperaba una lista de palabras")
             fechas["escribir"] = _comando(carpeta, fechas["escribir"])
 
+    ventanas = dict(datos.get("ventanas", {}))
+    if ventanas:
+        sobra = set(ventanas) - {"consulta", "acciones"}
+        if sobra:
+            raise ErrorDeModulo(f"{nombre}: [ventanas] no conoce «{sorted(sobra)[0]}»")
+        acciones = ventanas.get("acciones", [])
+        if not isinstance(acciones, list) or not all(isinstance(a, str) for a in acciones):
+            raise ErrorDeModulo(f"{nombre}: [ventanas] acciones: una lista de consultas del módulo")
+        for verbo in [ventanas.get("consulta"), *acciones]:
+            if not isinstance(verbo, str) or verbo not in ordenes or not ordenes[verbo]["consulta"]:
+                raise ErrorDeModulo(f"{nombre}: [ventanas]: «{verbo}» tiene que ser una de sus [ordenes] con consulta = true")
+        ventanas = {"consulta": ventanas["consulta"], "acciones": tuple(dict.fromkeys(acciones))}
+
     return Modulo(nombre=nombre, carpeta=carpeta, descripcion=descripcion.strip(), pestana=pestana, app=app, fondo=fondo,
                   periodicos=periodicos, resultado=resultado, ordenes=ordenes,
                   instalar=tuple(_comando(carpeta, instalar["comando"])) if instalar else (), contexto=contexto,
                   requiere=tuple(x.strip() for x in requiere), objetos=objetos,
                   permisos=_permisos(nombre, datos.get("permisos")), fechas=fechas,
-                  icono=Path(_ruta(carpeta, icono)) if icono else None, configurar=configurar)
+                  icono=Path(_ruta(carpeta, icono)) if icono else None, configurar=configurar, ventanas=ventanas)
 
 
 # ── correr sus órdenes ─────────────────────────────────────────────────────────────
@@ -445,8 +477,11 @@ def entorno(config, m: Modulo) -> dict:
     repos = [{"nombre": r.nombre, "ruta": str(ruta_de_repo(config, r)), "perfil": str(r.perfil or "")}
              for r in getattr(config, "repos", ()) or ()]
     maquina = mod_bus.maquina(config) if getattr(config, "bus", None) is not None else ""
+    # los mundos, para que el módulo clasifique lo suyo (un chat de trabajo es de trabajo): su nombre y sus etiquetas
+    mundos = [{"nombre": x.nombre, "etiquetas": list(x.etiquetas)} for x in getattr(config, "mundos", ()) or ()]
     return {**os.environ, "TELAR_RAIZ": str(Path(config.raiz).expanduser()), "TELAR_REPOS": json.dumps(repos),
-            "TELAR_MAQUINA": maquina, "TELAR_MODULO": str(m.carpeta), "TELAR_PERSONA": persona(config)}
+            "TELAR_MAQUINA": maquina, "TELAR_MODULO": str(m.carpeta), "TELAR_PERSONA": persona(config),
+            "TELAR_MUNDOS": json.dumps(mundos, ensure_ascii=False)}
 
 
 def persona(config) -> str:

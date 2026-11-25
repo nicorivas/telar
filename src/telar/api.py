@@ -285,6 +285,41 @@ def post_lienzo_pedir(pedido: servicio_lienzos.Pedido, ctx: Contexto = Depends(c
     return servicio_lienzos.pedir(ctx, pedido.origen, pedido.orden, pedido.datos)
 
 
+@app.get("/ventanas")
+def get_ventanas(mundo: str = "", solo_cuantas: bool = False, ctx: Contexto = Depends(contexto)):
+    """Las ventanas que los módulos piden abrir ahora en la página (`[ventanas]`), con el mundo puesto ("" ambos), y el
+    «no molestar» de esta máquina (telar.servicios.ventanas). `solo_cuantas`: cuántas, sin su contenido."""
+    from telar.servicios import ventanas as servicio_ventanas
+
+    return servicio_ventanas.listar(ctx, mundo, solo_cuantas)
+
+
+class PedidoVentana(BaseModel):
+    modulo: str
+    verbo: str
+    params: dict = {}
+
+
+@app.post("/ventanas/accion")
+def post_ventana_accion(pedido: PedidoVentana, ctx: Contexto = Depends(contexto)):
+    """Lo que corre un botón de una ventana: una consulta del módulo que la pidió, de las de su `[ventanas] acciones`."""
+    from telar.servicios import ventanas as servicio_ventanas
+
+    return servicio_ventanas.accion(ctx, pedido.modulo, pedido.verbo, pedido.params)
+
+
+class PedidoSilencio(BaseModel):
+    si: bool
+
+
+@app.post("/ventanas/silencio")
+def post_ventanas_silencio(pedido: PedidoSilencio, ctx: Contexto = Depends(contexto)):
+    """«No molestar» en esta máquina: ninguna ventana se abre hasta que se apague (lo que llegó, sale después)."""
+    from telar.servicios import ventanas as servicio_ventanas
+
+    return servicio_ventanas.silenciar(ctx, pedido.si)
+
+
 @app.get("/permisos")
 def get_permisos(ctx: Contexto = Depends(contexto)):
     """Lo que la persona le concedió o negó a cada módulo (telar.concesiones)."""
@@ -641,6 +676,10 @@ class PedidoLlevarHilo(BaseModel):
     maquina: str = ""
     #: seguir aunque aquí haya trabajo sin subir (la primera vez sin esto, la queja lo dice)
     si: bool = False
+    #: subir antes lo suyo sin subir (telar.sin_subir) y llevarlo
+    subir: bool = False
+    #: con /hilo/traer: a qué máquina lo lleva la suya (vacío, a esta)
+    a: str = ""
 
 
 from telar.servicios import llevar as servicio_llevar  # noqa: E402
@@ -649,30 +688,60 @@ from telar.servicios import llevar as servicio_llevar  # noqa: E402
 @app.post("/hilo/llevar", response_model=servicio_llevar.Llevado)
 def post_hilo_llevar(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)):
     """Llevar un hilo a otra máquina (`telar hilo llevar`). Tarda minutos con una conversación grande: si no
-    termina en unos segundos, responde `en_curso` y sigue solo. Con trabajo sin subir, 409 hasta que `si`."""
-    return servicio_llevar.llevar(ctx, pedido.hilo, pedido.maquina, pedido.si)
+    termina en unos segundos, responde `en_curso` y sigue solo. Con algo suyo sin subir, 409 (el detalle, en GET
+    /mudanza: `pendiente`) hasta que `si` (llevarlo igual) o `subir` (subirlo y llevarlo)."""
+    return servicio_llevar.llevar(ctx, pedido.hilo, pedido.maquina, pedido.si, subir=pedido.subir)
 
 
 @app.get("/mudanza")
-def get_mudanza(hilo: str, ctx: Contexto = Depends(contexto)):
-    """En qué va la mudanza de un hilo a otra máquina (telar.mudanza.progreso): su paso, a dónde, cuánto pesa, y lo
-    que haya que decir. {} si no hay ninguna."""
-    import json
+def get_mudanza(hilo: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """En qué va la mudanza de un hilo a otra máquina (telar.mudanza.progreso): su paso, a dónde, cuánto pesa, cuánto
+    va copiado y lo que haya que decir. Con `maquina`, la que corre allá (un hilo que se pidió traer de ella). {} si no
+    hay ninguna."""
+    return servicio_llevar.progreso(ctx, hilo, maquina)
 
-    from telar import mudanza
 
-    ruta = mudanza.ruta_progreso(ctx.config, hilo)
-    try:
-        return json.loads(ruta.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+@app.get("/hilo/registro")
+def get_hilo_registro(hilo: str, ctx: Contexto = Depends(contexto)):
+    """El registro de un hilo en el bus (telar.dueno): de qué máquina es (`dueno`, su `epoca`), si vive, y el traspaso
+    en curso (`cede`, `mudanza`). La página sigue al dueño con esto. {} si el bus no lo sabe."""
+    from telar import dueno
+
+    return dueno.registro(ctx.config, hilo)
+
+
+class PedidoSeguir(BaseModel):
+    hilo: str
+
+
+@app.get("/hilo/seguir")
+def get_hilo_seguir(hilo: str, ctx: Contexto = Depends(contexto)):
+    """Si un hilo cuya máquina está apagada se puede seguir aquí desde la copia de aquí (telar.seguir), solo leyendo:
+    {puede, por_que_no, aviso, dueno, epoca, conversacion, aqui: {bytes, fecha}, alla: {visto, en_linea, bytes, crecio,
+    en_la_foto}}. Tarda unos segundos si su máquina parece apagada: le pregunta a su nodo."""
+    from telar import seguir
+
+    return seguir.revisar(ctx, hilo)
+
+
+@app.post("/hilo/seguir")
+def post_hilo_seguir(pedido: PedidoSeguir, ctx: Contexto = Depends(contexto)):
+    """Seguir aquí un hilo cuya máquina está apagada, desde la copia de aquí: lo toma con la época que leyó y lo abre
+    (telar.seguir). 409 con el porqué si no se puede (su máquina volvió, aquí no hay copia, otra lo tomó antes)."""
+    from telar import seguir
+
+    r = seguir.seguir(ctx, pedido.hilo)
+    if not r.get("ok"):
+        raise HTTPException(status_code=409, detail=str(r.get("error") or "no se pudo"))
+    return r
 
 
 @app.post("/hilo/traer", response_model=servicio_llevar.Llevado)
 def post_hilo_traer(pedido: PedidoLlevarHilo, ctx: Contexto = Depends(contexto)):
-    """Traer a esta máquina un hilo que vive en otra de la persona (`maquina`): esa lo lleva aquí por el bus. Con
+    """Traer a esta máquina un hilo que vive en otra de la persona (`maquina`): esa lo lleva aquí por el bus (o a
+    otra, `a`), aparte. Responde en unos segundos: `en_curso` si sigue (su progreso, GET /mudanza?maquina=). Con
     trabajo sin subir allá, 409 hasta que `si`."""
-    return servicio_llevar.traer(ctx, pedido.hilo, pedido.maquina, pedido.si)
+    return servicio_llevar.traer(ctx, pedido.hilo, pedido.maquina, pedido.si, a=pedido.a, subir=pedido.subir)
 
 
 @app.post("/hilo/{verbo}", response_model=en_proceso.Corrida)
@@ -805,7 +874,7 @@ def put_ajuste(ajuste: str, pedido: PedidoAjuste, ctx: Contexto = Depends(contex
 # ── la terminal de los hilos: su ancho, su posición y su fondo (`[terminal]`) ───────────────
 
 #: los fondos de siempre, además de un color, una imagen o un módulo
-FONDOS = (("telar", "telar", "el de siempre: un telar tenue que teje"), ("ninguno", "ninguno", "nada: el fondo de la página"))
+FONDOS = (("ninguno", "ninguno", "nada: el fondo del tema"),)
 IMAGENES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
             ".svg": "image/svg+xml"}
 
@@ -832,14 +901,14 @@ class PedidoTerminal(BaseModel):
 @app.put("/config/terminal/{clave}")
 def put_terminal(clave: str, pedido: PedidoTerminal, ctx: Contexto = Depends(contexto)) -> dict:
     """Cambiar cómo se ve la terminal: `columnas` (40–400, o 0: todo el ancho), `posicion` (izquierda, centro,
-    derecha) o `fondo` (telar, ninguno, #rrggbb, imagen:…, o un módulo con `[fondo]`). Se escribe en `[terminal]`."""
+    derecha) o `fondo` (ninguno, #rrggbb, imagen:…, o un módulo con `[fondo]`). Se escribe en `[terminal]`."""
     from telar import config as mod_config
 
     try:
         valor = mod_config.validar_terminal(clave, pedido.valor)
-        if clave == "fondo" and isinstance(valor, str) and valor not in ("telar", "ninguno") \
+        if clave == "fondo" and isinstance(valor, str) and valor != "ninguno" \
                 and not valor.startswith(("#", "imagen:")) and _modulo_fondo(ctx, valor) is None:
-            raise mod_config.ErrorDeConfig(f"no hay un módulo «{valor}» con [fondo]: telar, ninguno, #rrggbb, imagen:… "
+            raise mod_config.ErrorDeConfig(f"no hay un módulo «{valor}» con [fondo]: ninguno, #rrggbb, imagen:… "
                                            f"o uno de GET /terminal/fondos")
         if clave == "fondo" and isinstance(valor, str) and valor.startswith("imagen:") and "://" not in valor:
             ruta = Path(valor[len("imagen:"):]).expanduser()
@@ -1266,6 +1335,58 @@ def post_responder(pedido: PedidoResponder, ctx: Contexto = Depends(contexto)):
     return servicio_historias.responder(ctx, pedido.hilo, pedido.id, pedido.respuestas, maquina=pedido.maquina)
 
 
+from telar.servicios import borradores as servicio_borradores
+
+
+@app.get("/hilos/borradores", response_model=servicio_borradores.Borradores)
+def get_borradores(hilo: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Los próximos prompts que la persona le guardó a un hilo, en orden, y si su agente está ocupado (`telar hilo
+    borradores --json`). Viven en la máquina del hilo: de otra, por el bus."""
+    return servicio_borradores.de_hilo(ctx, hilo, maquina=maquina)
+
+
+class PedidoBorrador(BaseModel):
+    hilo: str
+    texto: str = ""
+    #: el que se reescribe; sin él, uno nuevo al final
+    id: str = ""
+    maquina: str = ""
+
+
+@app.post("/hilos/borradores", response_model=servicio_borradores.Borrador)
+def post_borrador(pedido: PedidoBorrador, ctx: Contexto = Depends(contexto)):
+    """Escribir un borrador: nuevo (sin `id`) o el mismo con su texto (lo que la página guarda mientras se escribe)."""
+    return servicio_borradores.guardar(ctx, pedido.hilo, pedido.texto, id=pedido.id, maquina=pedido.maquina)
+
+
+@app.delete("/hilos/borradores", response_model=servicio_borradores.Borrador)
+def delete_borrador(hilo: str, id: str, maquina: str = "", ctx: Contexto = Depends(contexto)):
+    """Borrar un borrador (404 si ya no estaba)."""
+    return servicio_borradores.borrar(ctx, hilo, id, maquina=maquina)
+
+
+class PedidoMandarBorrador(BaseModel):
+    hilo: str
+    id: str
+    #: además de dejarlo en su entrada, apretar ⏎
+    enviar: bool = False
+    #: si su agente está ocupado, que salga cuando termine su turno
+    esperar: bool = False
+    #: quitarle la espera (ya no sale solo)
+    no_esperar: bool = False
+    maquina: str = ""
+
+
+@app.post("/hilos/borradores/mandar")
+def post_mandar_borrador(pedido: PedidoMandarBorrador, ctx: Contexto = Depends(contexto)):
+    """Mandárselo a su hilo: escrito en su entrada sin ⏎ (o con `enviar`, enviado), y sale de la lista. Si su agente
+    trabaja o pregunta algo, 409 con `ocupado`; con `esperar`, queda en espera y sale solo al terminar su turno."""
+    if pedido.no_esperar:
+        return servicio_borradores.no_esperar(ctx, pedido.hilo, pedido.id, maquina=pedido.maquina).model_dump()
+    return servicio_borradores.mandar(ctx, pedido.hilo, pedido.id, enviar=pedido.enviar, esperar=pedido.esperar,
+                                      maquina=pedido.maquina).model_dump()
+
+
 from telar.servicios import documentos as servicio_documentos
 
 
@@ -1274,6 +1395,23 @@ def get_documento(hilo: str = "", archivo: str = "", ctx: Contexto = Depends(con
     """La carpeta de un hilo y uno de sus archivos (su documento, si no se pide otro), para leerlos. Sin hilo,
     un archivo o una carpeta de la raíz del repositorio."""
     return servicio_documentos.documento(ctx, hilo, archivo)
+
+
+from telar.servicios import comentarios as servicio_comentarios
+
+
+@app.get("/comentarios", response_model=servicio_comentarios.Comentarios)
+def get_comentarios(ruta: str, ctx: Contexto = Depends(contexto)):
+    """Los comentarios de un archivo (el de al lado, `.<nombre>.marginalia.json`), cada hilo ubicado en el texto de hoy
+    (docs/contratos.md, «Los comentarios de un archivo»). Con «máquina:» delante, los de otra máquina, por el bus."""
+    return servicio_comentarios.ver_en(ctx, ruta)
+
+
+@app.post("/comentarios", response_model=servicio_comentarios.Comentarios)
+def post_comentarios(pedido: servicio_comentarios.Pedido, ctx: Contexto = Depends(contexto)):
+    """Comentar un tramo de un archivo, o responder, resolver, reabrir, editar o borrar un hilo; devuelve cómo quedaron
+    sus comentarios. El archivo de al lado se commitea y se sube solo, al rato (telar.servicios.comentarios)."""
+    return servicio_comentarios.hacer_en(ctx, pedido)
 
 
 @app.get("/skills", response_model=servicio_skills.Skills)

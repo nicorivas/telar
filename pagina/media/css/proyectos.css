@@ -126,10 +126,10 @@
   .det-va { padding-left: calc(2 * var(--celda-cuadrada)); color: var(--dim); }
   .det-va b { color: var(--fg); }
   .det-va .tono-atencion { color: var(--atencion); }
-  .det-pest { margin: .5lh 0 0; padding-bottom: .2lh; display: flex; column-gap: 2ch; }
-  .det-pest a { color: var(--dim); cursor: pointer; }
-  .det-pest a.sel { color: var(--acento); }
-  .det-pest .n, .det-pane > h4 .n { color: var(--texto-tenue); text-transform: none; }
+  /* sus pestañas (componentes/pestanas.ts): al pie de la cabecera, de borde a borde de la columna (el margen deshace el
+     relleno del detalle), con su aire */
+  .pestanas.det-pest { margin: .5lh -1ch 0; --pestana-pad-x: 1ch; }
+  .det-pane > h4 .n { color: var(--texto-tenue); text-transform: none; }
   .det-pane { display: none; }
   #proy-det:not([data-ver]) [data-pane="resumen"], #proy-det[data-ver="resumen"] [data-pane="resumen"],
   #proy-det[data-ver="pendientes"] [data-pane="pendientes"], #proy-det[data-ver="documento"] [data-pane="documento"] { display: block; }

@@ -12,6 +12,8 @@ import { I } from '../../web/iconos';
 import { circulo } from '../../componentes/circulo';
 import { contarFiltro, leerGrupo, marcarFiltros } from '../../componentes/filtros';
 import * as ui from '../../web/ui';
+import * as mensajes from '../../web/mensaje';
+import { marcar, acomodarTodas } from '../../web/pestanas';
 import { armarPrompt } from './config/periodicos';
 import { esDeuda } from './dia';
 
@@ -344,7 +346,8 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         const det = $('proy-det'); if (!det) return;
         const pest = estado.pd === 'pendientes' || estado.pd === 'documento' ? estado.pd : 'resumen';
         det.dataset.ver = pest;
-        for (const a of det.querySelectorAll<HTMLElement>('.det-pest [data-pest]')) a.classList.toggle('sel', a.dataset.pest === pest);
+        const fila = det.querySelector('.pestanas.det-pest');
+        if (fila) marcar(fila, pest);
         for (const r of det.querySelectorAll<HTMLElement>(`.det-pane[data-pane="${pest}"] .recorte:not(.entero)`)) {
             const mas = r.nextElementSibling;
             const corto = cortar(r);
@@ -724,7 +727,12 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             // lo que se está escribiendo sobre una reunión sobrevive al repintado de cada minuto
             const ta = $<HTMLTextAreaElement>('ev-texto');
             const previo = ta ? { ev: ta.dataset.evento, v: ta.value, foco: (activo as Element | null) === ta, s: ta.selectionStart } : null;
+            // lo que se escribe en una barra de mensaje (web/mensaje.ts) sale igual al repintar; el foco y el cursor, también
+            const enMensaje = mensajes.foco(dia);
             dia.innerHTML = html;
+            mensajes.alPintar(dia, enMensaje);
+            // pestañas que no caben: al «⋯», y la abierta a la vista (web/pestanas.ts)
+            acomodarTodas(dia);
             const nt = $<HTMLTextAreaElement>('ev-texto');
             if (previo && nt && nt.dataset.evento === previo.ev) { nt.value = previo.v; if (previo.foco) { nt.focus(); nt.setSelectionRange(previo.s, previo.s); } }
             const nb = $<HTMLInputElement>('buscar');

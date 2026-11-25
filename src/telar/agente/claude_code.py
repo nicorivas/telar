@@ -146,9 +146,10 @@ TOPE_RESPALDOS = 100
 
 
 def carpeta_config() -> Path:
-    """Dónde guarda Claude Code lo suyo en esta máquina."""
-    base = os.environ.get("CLAUDE_CONFIG_DIR")
-    return Path(base).expanduser() if base else Path.home() / ".claude"
+    """Dónde guarda Claude Code lo suyo en esta máquina (telar.rutas.claude)."""
+    from telar import rutas
+
+    return rutas.claude()
 
 
 def ruta_ajustes() -> Path:
@@ -170,14 +171,10 @@ class ClaudeCode(AgenteBase):
         Se busca por nombre y no se arma la ruta: la carpeta que Claude Code le da a
         cada proyecto sale de aplanar el `cwd`, y esa receta es suya, no nuestra.
         """
+        from telar import rutas
+
         sid = conversacion if isinstance(conversacion, str) else conversacion.id
-        if not sid:
-            return None
-        proyectos = carpeta_config() / "projects"
-        try:
-            return next(proyectos.glob(f"*/{sid}.jsonl"), None)
-        except OSError:
-            return None
+        return rutas.conversacion(sid) if sid else None
 
     def mensajes(self, conversacion: Conversacion | str) -> list[dict] | None:
         """Lee el `.jsonl`: lo que escribió la persona, lo que contestó el agente, y una

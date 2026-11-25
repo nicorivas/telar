@@ -22,6 +22,8 @@ export const I = {
     adelante: '\u{ea9c}', marca: '\u{eb2b}', hijo: '\u{f060d}', rama: '\u{f062c}',
     terminal: '\u{ea85}', lectura: '\u{eb2f}', conversacion: '\u{eac7}',
     codigos: '\u{ea90}', buscar: '\u{ea6d}', irArchivo: '\u{ea94}', ficha: '\u{ea74}',
+    // los próximos prompts de un hilo (web/borradores.ts): la nota
+    borrador: '\u{eb26}',
     etapa: '\u{eb20}', ancho: '\u{ea99}',
     // las apps (juegos, visores): el de las extensiones, cuatro cuadrados, el mismo de una skill
     apps: '\u{eae6}',
@@ -36,6 +38,11 @@ export const I = {
     carga: '\u{ebe4}', claude: '\u{eb08}', capas: '\u{ebd2}', repite: '\u{ebc0}', correo: '\u{eb1c}',
     markdown: '\u{eb1d}', memoria: '\u{eb9c}', gancho: '\u{ea86}', listado: '\u{eb17}', skill: '\u{eae6}', mcp: '\u{eb2d}',
     herramientas: '\u{eb6d}', subagentes: '\u{ea7e}', git: '\u{ea68}', campana: '\u{eaa2}', archivo: '\u{ea7b}',
+    // no molestar (web/ventanas.ts): la campana tachada
+    silencio: '\u{ec08}',
+    // las ventanas de los módulos (web/ventanas.ts): aplazar (la campana dormida, de Material Design: Codicons no tiene),
+    // quitar el foco (la mira tachada) y «no te quita el teclado» (el teclado tachado)
+    aplazar: '\u{f00a0}', sinFoco: '\u{f0f45}', sinTeclado: '\u{f0310}',
     imagen: '\u{eaea}', sesion: '\u{eaad}', salida: '\u{eb9d}', llamada: '\u{ea8c}', resumen: '\u{eac5}', razonamiento: '\u{ea61}',
     // una pasada de pulso (lo que un agente revisó en las fuentes y avanzó en las tareas, cada hora): el pulso
     pulso: '\u{eb31}',

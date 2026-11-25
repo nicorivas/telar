@@ -31,6 +31,10 @@ mensajes esperan en la casilla. Lo que tiene que seguir corriendo va en el servi
 No resuelve los archivos: un vínculo a una carpeta que la otra máquina todavía no tiene sigue sin ficha
 hasta el próximo pull. El registro puede decirlo («la carpeta no está aquí») en vez de fallar.
 
+Lo que faltaba (el traspaso seguía siendo «archivar aquí, abrir allá», y dos máquinas podían publicar el mismo hilo) lo
+cierra la etapa 3 de [mudanza-de-hilos.md](mudanza-de-hilos.md): el dueño escrito, con época, y la escritura
+condicionada (telar.dueno; [arquitectura](../arquitectura.md), «El dueño está escrito»).
+
 ## Los pasos que faltan
 
 Hechos: los cambios a un hilo ajeno los aplica su dueño (`telar hilo` se los pide por el bus, pedido `hilo`

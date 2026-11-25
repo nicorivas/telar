@@ -42,7 +42,15 @@
     "prueba:nombre-suelto": "node pruebas/nombre-suelto.mjs",
     "prueba:dormidos": "node pruebas/dormidos.mjs",
     "prueba:alcance": "node pruebas/alcance.mjs",
-    "prueba:anchos": "node pruebas/anchos.mjs"
+    "prueba:anchos": "node pruebas/anchos.mjs",
+    "prueba:documento": "node pruebas/documento.mjs",
+    "prueba:llevar": "node pruebas/llevar.mjs",
+    "prueba:mudanza": "node pruebas/mudanza.mjs",
+    "prueba:ventanas": "node pruebas/ventanas.mjs",
+    "prueba:mensaje": "node pruebas/mensaje.mjs",
+    "prueba:borradores": "node pruebas/borradores.mjs",
+    "prueba:portapapeles": "node pruebas/portapapeles.mjs",
+    "prueba:copiar-webkit": "node pruebas/copiar-webkit.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
@@ -50,7 +58,9 @@
     "@xterm/headless": "^6.0.0",
     "@xterm/xterm": "^6.0.0",
     "esbuild": "^0.25.12",
+    "happy-dom": "^21.0.4",
     "markdown-it": "^15.0.3",
+    "playwright-core": "1.58.0",
     "stylelint": "^17.16.0",
     "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.5.0"

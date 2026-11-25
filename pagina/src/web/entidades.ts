@@ -86,7 +86,7 @@ export async function menuDe(direccion: string, donde?: { x: number; y: number }
           hacer: async () => { const { abrir } = await import('./instruccion'); await abrir({ direccion, titulo: propias?.titulo }); } },
         ...(propias?.acciones ?? []),
         { label: 'esta entidad', separador: true },
-        { label: 'copiar su dirección', icono: I.direccion, color: C.otro, description: direccion, hacer: async () => { await ui.copiar(direccion); ui.estado(`copiado ${direccion}`, 3000); } },
+        { label: 'copiar su dirección', icono: I.direccion, color: C.otro, description: direccion, hacer: async () => { await ui.copiar(direccion, `copiado ${direccion}`); } },
     ];
     const elegida = await ui.menu(acciones, donde, propias?.titulo ?? direccion);
     await elegida?.hacer?.();

@@ -80,6 +80,10 @@
 
   & .d { min-width: 0; overflow: hidden; color: var(--dim); text-overflow: ellipsis; }
   &.sel, &:hover { background: var(--sel); }
+
+  /* una que no se puede ahora: se ve, tenue, y su descripción dice por qué */
+  &.apagada { cursor: default; }
+  &.apagada .l, &.apagada .ico { color: var(--dim); }
 }
 
 .web-sep { padding: .3lh var(--h-1) 0; color: var(--dim); }
@@ -197,6 +201,15 @@ dialog.mudanza {
   & .paso.ahora.falla { color: var(--rojo); }
   & .paso.ahora.pregunta { color: var(--amarillo); }
   & .linea { min-height: 1lh; margin-top: .6lh; color: var(--dim); white-space: pre-wrap; }
+  /* lo que tiene sin subir, antes de llevarlo (solo si hay algo): por repositorio, cada sección con su ícono y su color
+     (lo que se sube, verde; lo que se queda, amarillo; lo de allá, cian), y su lista tenue debajo */
+  & .pendiente { max-height: 45vh; margin-top: .8lh; overflow-y: auto; }
+  & .pendiente[hidden] { display: none; }
+  & .pendiente > * + * { margin-top: .5lh; }
+  & .pendiente .nombre { color: var(--fg); }
+  & .seccion .titulo { color: var(--tono, var(--fg)); }
+  & .seccion .ico { margin-right: 1ch; font-family: iconos, var(--letra), monospace; }
+  & .seccion ul { margin: 0; padding-left: 3ch; color: var(--dim); list-style: none; }
   /* sus botones: la banda de boton.css, de borde a borde y hasta el borde de abajo (sin el aire de abajo del panel) */
   & > .botonera { margin: var(--boton-pie-aire) -3ch -1lh; }
   & > .botonera[hidden] { display: none; }

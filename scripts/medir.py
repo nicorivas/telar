@@ -23,7 +23,7 @@ Las pantallas, por su nombre (sin tildes ni mayúsculas que importen):
     config, config:<sección>         la configuración (el ⚙), en una sección (pestanas, modos, mundos…)
     hilo:<nombre>[/term|lectura|conv]  un hilo; sin vista, la conversación: la terminal se engancha a la ventana
                                      de tmux del hilo y le cambia el tamaño, así que solo si se pide
-    arch:<ruta>                      un archivo en el visor
+    arch:<ruta>                      un archivo en el visor (la ventana encima de lo que se mira)
     obj:<dirección>                  un objeto (tarea:T84, proyecto:…)
     dashboard                        volver al dashboard
     todas                            los modos, cada pestaña, config, un archivo (el README) y, si corre en un
@@ -485,6 +485,7 @@ const seccion = p => [...document.querySelectorAll('#vistas > [data-p]')].find(x
 const aLaVista = p => { const s = seccion(p); return !!s && !s.hidden; };
 const modoBoton = m => document.querySelector(`#modos-fila [data-accion="modos-modo"][data-id="${m}"]`);
 const hiloALaVista = h => [...document.querySelectorAll('#vistas > [data-p]')].some(x => !x.hidden && x.dataset.p.endsWith(':' + h));
+const visorListo = () => !!document.querySelector('dialog.ventana-documento[open] .v-documento[data-listo]');
 """
 
 
@@ -555,9 +556,11 @@ def pasos(p: Pantalla, telefono: bool, ventana: tuple[int, int]) -> list[tuple]:
                 ("js", clic, ver)]
     if p.tipo in ("arch", "obj"):
         d = j(f"{p.tipo}:{p.valor}")
-        # un objeto puede abrirse en su vista, en el dashboard (una tarea, una pestaña) o en un hilo: se espera la calma
-        return [("js", f"window.telar.mostrar({d});", f"aLaVista({d})" if p.tipo == "arch" else "true")]
+        # un archivo se abre en el visor, una ventana encima de lo que se mira (web/carpeta.ts); un objeto puede abrirse en
+        # su vista, en el dashboard (una tarea, una pestaña), en un hilo o en el visor: se espera la calma
+        return [("js", f"window.telar.mostrar({d});", "visorListo()" if p.tipo == "arch" else "true")]
     if p.tipo == "dashboard":
+        # (y cierra el visor, si quedó abierto)
         return [("js", "window.telar.mostrar('dashboard');", DASH_A_LA_VISTA)]
     raise ValueError(p.tipo)
 
@@ -696,8 +699,10 @@ class Corrida:
         nav.orden("open", f"{self.url}/")
         try:
             # solo que esté: la calma la espera cada pantalla antes de medir. El botón de un modo cualquiera: un mundo
-            # puede no tener táctica (`[mundos.<n>] modos`)
-            nav.esperar(condicion("!!document.querySelector('#modos-fila [data-accion=\"modos-modo\"]') && filas().length > 0", tope=0))
+            # puede no tener táctica (`[mundos.<n>] modos`). Las filas del dashboard, o «sin hilos» en la barra: una
+            # máquina sin su sesión de tmux (una configuración de prueba) no las tiene, y la página igual cargó
+            nav.esperar(condicion("!!document.querySelector('#modos-fila [data-accion=\"modos-modo\"]')"
+                                  " && (filas().length > 0 || !!document.querySelector('#barra .nota'))", tope=0))
         except FallaPantalla as e:
             try:
                 texto = nav.js("document.body.innerText.slice(0, 200)")

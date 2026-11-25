@@ -43,6 +43,12 @@ export interface Boton {
     /** el ícono de la letra (web/iconos.ts) de lo que hace: en el lugar de la tecla, si no tiene (un botón de la página,
      *  sin atajo) */
     icono?: string;
+    /** el ícono (web/iconos.ts) que va **en lugar de la palabra**, cuando lo que hace es obvio por su ícono (enviar, el
+     *  basurero): la palabra pasa al `title` y al `aria-label`, y la tecla sigue delante. «Tecla + ícono» en vez de
+     *  «tecla + palabra» */
+    simbolo?: string;
+    /** con `simbolo`: lo poco que se ve a su lado, lo que el ícono no dice (el plazo de aplazar: «15m») */
+    corto?: string;
     /** HTML de la página (el círculo que gira) en el lugar de la tecla, mientras se hace: el botón va apagado */
     enCurso?: string;
     /** lo que explica, al pasar el mouse */
@@ -67,11 +73,18 @@ export function boton(b: Boton): string {
     const datos = Object.entries(b.datos ?? {}).map(([k, v]) => ` data-${esc(k)}="${esc(v)}"`).join('');
     const ranura = b.enCurso ? `<span class="boton-tecla boton-gira">${b.enCurso}</span>`
         : tecla ? `<span class="boton-tecla">${esc(tecla)}</span>`
-        : b.icono ? `<span class="boton-tecla boton-icono i">${esc(b.icono)}</span>` : '';
+        : b.icono && !b.simbolo ? `<span class="boton-tecla boton-icono i">${esc(b.icono)}</span>` : '';
+    // con símbolo, la palabra es su nombre (al pasar el mouse y para un lector de pantalla), no lo que se ve
+    const nombre = esc(minuscula(b.texto));
+    const ayuda = b.ayuda ?? (b.simbolo ? minuscula(b.texto) : '');
+    const texto = b.simbolo
+        ? `<span class="boton-texto boton-simbolo"><span class="i">${esc(b.simbolo)}</span>${b.corto ? `<span class="boton-corto">${esc(b.corto)}</span>` : ''}</span>`
+        : `<span class="boton-texto">${nombre}</span>`;
     return `<button type="button" class="boton tono-${tono}${estado}"${b.accion !== undefined ? ` data-accion="${esc(b.accion)}"` : ''}`
         + `${b.valor !== undefined ? ` data-valor="${esc(b.valor)}"` : ''}${datos}${color}`
-        + `${tecla ? ` data-tecla="${esc(tecla)}" aria-keyshortcuts="${esc(atajo(tecla))}"` : ''}${b.ayuda ? ` title="${esc(b.ayuda)}"` : ''}${apagado ? ' disabled' : ''}>`
-        + `${ranura}<span class="boton-texto">${esc(minuscula(b.texto))}</span></button>`;
+        + `${tecla ? ` data-tecla="${esc(tecla)}" aria-keyshortcuts="${esc(atajo(tecla))}"` : ''}${b.simbolo ? ` aria-label="${nombre}"` : ''}`
+        + `${ayuda ? ` title="${esc(ayuda)}"` : ''}${apagado ? ' disabled' : ''}>`
+        + `${ranura}${texto}</button>`;
 }
 
 /** Una banda de botones: el pie de una ventana (lo que hace primero, cancelar al último, a la derecha), o una fila de la

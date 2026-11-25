@@ -1,9 +1,13 @@
 # Seguir un hilo en otra máquina cuando la suya está apagada
 
-Estado: **propuesta, sin construir**. Lo que ya existe y en qué se apoya: despertar o escribirle a un hilo de una
-máquina fuera de línea queda en cola y se hace al volver (telar.alcance, [arquitectura](../arquitectura.md), «Una
-máquina fuera de línea»); llevar un hilo a otra máquina por el bus (`telar hilo llevar`, telar.mudanza) necesita que
-la de origen esté en línea, porque su conversación vive allá.
+Estado: **se funde en [mudanza-de-hilos.md](mudanza-de-hilos.md)**, que reemplaza sus tres decisiones (24-nov-2026):
+el respaldo continuo de su paso 1 no se hace (la persona dijo que no), y «seguir aquí» y la vuelta son la etapa 4 de
+aquella, desde la última copia que quedó en cada máquina, **hecha** (telar.seguir; [arquitectura](../arquitectura.md),
+«Seguir aquí con la dueña apagada»). Lo de abajo queda como el porqué y el caso. Lo que ya existe
+y en qué se apoya: despertar o escribirle a un hilo de una máquina fuera de línea queda en cola y se hace al volver
+(telar.alcance, [arquitectura](../arquitectura.md), «Una máquina fuera de línea»); llevar un hilo a otra máquina por
+el bus (`telar hilo llevar`, telar.mudanza) necesita que la de origen esté en línea, porque su conversación vive
+allá.
 
 ## Por qué
 

@@ -57,7 +57,7 @@ class LaEtiqueta(Prueba):
                          "Faro · Faro de IA — Diagnóstico")
 
     def test_sin_cliente_queda_el_titulo_sin_separador_colgando(self):
-        self.assertEqual(etiqueta(PLANTILLA, ficha("Club de IA")), "Club de IA")
+        self.assertEqual(etiqueta(PLANTILLA, ficha("Club de lectura")), "Club de lectura")
 
     def test_sin_plantilla_el_titulo(self):
         self.assertEqual(etiqueta("", ficha("Faro")), "Faro")

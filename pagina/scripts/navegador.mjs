@@ -18,7 +18,7 @@ const hora = () => new Date().toTimeString().slice(0, 8);
 
 // los estilos de la página (indice.html), en un archivo que carga antes que app.js: en la capa «base», los tokens (y
 // los temas y las densidades, después: lo suyo gana) y los componentes; en «vistas», el marco y cada pantalla (cada una con su @scope)
-const BASE = ['tokens', 'temas', 'densidades', 'iconos', 'base', 'componentes', 'circulo', 'item', 'tarjeta', 'casillas', 'orden', 'buscador', 'seccion', 'filtros', 'ventana', 'boton', 'mundos', 'contestar', 'pantalla', 'franja', 'pulso', 'partes', 'jornada', 'tactica'];
+const BASE = ['tokens', 'temas', 'densidades', 'iconos', 'base', 'componentes', 'prosa', 'circulo', 'item', 'tarjeta', 'casillas', 'orden', 'buscador', 'seccion', 'filtros', 'ventana', 'boton', 'mundos', 'contestar', 'ventanas', 'pantalla', 'pestanas', 'mensaje', 'franja', 'pulso', 'partes', 'jornada', 'tactica'];
 const VISTAS = ['marco', 'web', 'hilos', 'dia', 'plan', 'proyectos', 'ahora', 'configuracion', 'periodicos', 'documento', 'objeto', 'compartir', 'lectura', 'leer', 'conversacion', 'terminal', 'catalogo', 'modos'];
 function marco() {
     const css = n => readFileSync(path.join(carpetaCss, `${n}.css`), 'utf8');

@@ -27,7 +27,8 @@ const MENTIRAS = {
     [path.join(src, 'cli.ts')]: 'export async function espejos() { return { datos: { espejos: [] } }; }',
     [path.join(src, 'web', 'ui.ts')]: `export const abiertos = [];
         export async function abrirArchivo(r) { abiertos.push(r); }
-        export async function abrirExterno() {} export async function abrirDireccion() {}`,
+        export async function abrirExterno() {} export async function abrirDireccion() {}
+        export async function aviso() {} export function estado() {}`,
     [path.join(src, 'web', 'lado.ts')]: 'export function abrirCodigo() {}',
     [path.join(src, 'web', 'codigos.ts')]: 'export const conocidos = () => new Set(); export const queEs = () => "";',
     [path.join(src, 'web', 'vistas-hilo.ts')]: 'export const teclaParaLaVista = () => true;',

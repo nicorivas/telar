@@ -11,6 +11,8 @@
      como las demás líneas: sale del aire de la pantalla. La que va primero, pegada bajo la de la pantalla, como una
      segunda barra */
   .pantalla-barra { box-sizing: border-box; }
+  /* las pestañas y la barra de mensaje miden lo mismo que la barra (pestanas.css, mensaje.css): con su línea adentro */
+  .pestanas, .pestana, .mensaje, .mensaje-fila { box-sizing: border-box; }
   .buscador-barra { box-sizing: border-box; margin-inline: calc(-1 * var(--pantalla-margen)); }
   #dia > :first-child > .buscador-barra:first-child,
   #dia > :first-child > :first-child > .buscador-barra:first-child { margin-top: calc(-1 * var(--e-1)); }
@@ -248,28 +250,19 @@
   .proy .cuando-p { flex: none; width: 4ch; text-align: right; }
   .proy.primera { background: var(--hover); }
 
-  /* «foco» (foco.ts): arriba, la banda con las acciones de la elegida (componentes/casillas.ts, casillas.css); debajo,
-     hasta cinco tarjetas */
-  #foco .foco-cab { display: flex; gap: 3ch; align-items: baseline; margin-bottom: 1lh; }
-  #foco .foco-cab .releer { margin-left: auto; color: var(--dim); cursor: pointer; }
-  #foco .foco-cab .releer:hover { color: var(--fg); }
-  #foco .modo { color: var(--dim); cursor: pointer; padding: 0 1ch; } #foco .modo:hover { color: var(--fg); }
-  #foco .modo.si { color: var(--bg); background: var(--azul); } #foco .modo .n { opacity: .7; }
-  .foco-cuerpo { display: flex; flex-direction: column; gap: .5lh; }
+  /* «foco» (foco.ts): la altura entera bajo la barra de la pantalla, en una columna. Arriba, sus pestañas (gestión y
+     concentración: componentes/pestanas.ts), una segunda barra de borde a borde; al medio, las tarjetas, que corren solas;
+     abajo, en filas propias del alto de las barras y con su línea arriba de borde a borde, las acciones de la elegida
+     (componentes/casillas.ts) y la barra de mensaje (componentes/mensaje.ts). Las de abajo quedan siempre a la vista: son
+     de la tarjeta elegida, la primera si no se eligió otra */
+  #dia:has(> #foco) { padding-block: 0; }
+  #foco { display: flex; flex-direction: column; height: calc(100cqh - var(--pantalla-barra-alto)); }
+  #foco > .pestanas { flex: none; margin-inline: calc(-1 * var(--pantalla-margen)); }
+  .foco-cuerpo { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-block: .5lh; }
+  #foco .foco-acciones,
+  #foco > .mensaje { flex: none; margin-inline: calc(-1 * var(--pantalla-margen)); }
+  #foco .foco-acciones { box-sizing: border-box; min-height: var(--pantalla-barra-alto); padding: var(--e-1) var(--pantalla-margen);
+    border-top: var(--borde); }
   /* la banda, con el aire de las tarjetas: su primer ícono, sobre sus círculos */
   #foco .casillas { padding-inline: var(--item-pad-x); }
-
-  /* foco en un celular: las tarjetas corren solas y la banda queda abajo, siempre a la vista, tras una línea de borde a
-     borde (se tocan: son de la tarjeta elegida, la primera si no se eligió otra); la cabecera pasa a dos líneas */
-  @container (max-width: 620px) {
-    #foco .foco-cab .modo { flex: none; white-space: nowrap; }
-    /* el foco ocupa lo que queda bajo la barra */
-    #dia:has(#foco) { padding-block: 0; }
-    #foco { display: flex; flex-direction: column; height: calc(100cqh - var(--pantalla-barra-alto)); }
-    #foco .foco-cab { flex: none; flex-wrap: wrap; gap: 0 2ch; margin: var(--e-1) 0; }
-    .foco-cuerpo { flex: 1; min-height: 0; }
-    .tarjetas { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-    #foco .casillas { order: 1; flex: none; margin-inline: calc(-1 * var(--pantalla-margen)); padding: .5lh var(--pantalla-margen) var(--e-1);
-                      border-top: 1px solid var(--linea); }
-  }
 }

@@ -1,6 +1,6 @@
 // Cómo se ve la terminal de un hilo (`[terminal]` de la configuración): hasta cuántas columnas de ancho (0: todo lo
-// que quepa), dónde va dentro de su vista (izquierda, centro, derecha) y qué hay alrededor (el telar tenue de
-// siempre, nada, un color, una imagen o un módulo con `[fondo]`). Se lee una vez de la configuración; ⚙ terminal lo
+// que quepa), dónde va dentro de su vista (izquierda, centro, derecha) y qué hay alrededor (nada, que es el fondo
+// del tema, un color, una imagen o un módulo con `[fondo]`). Se lee una vez de la configuración; ⚙ terminal lo
 // cambia y avisa, y cada terminal abierta lo vuelve a aplicar sin cerrarse.
 
 import * as cli from '../cli';
@@ -8,7 +8,7 @@ import * as modos from './modos';
 
 export interface Aspecto { columnas: number; posicion: 'izquierda' | 'centro' | 'derecha'; fondo: string }
 
-const DE_FABRICA: Aspecto = { columnas: 130, posicion: 'centro', fondo: 'telar' };
+const DE_FABRICA: Aspecto = { columnas: 130, posicion: 'centro', fondo: 'ninguno' };
 let actual: Aspecto = { ...DE_FABRICA };
 let leido: Promise<void> | undefined;
 const oyentes = new Set<() => void>();
@@ -50,9 +50,10 @@ export function alCambiar(f: () => void): () => void {
 }
 
 /** El fondo, en piezas que la terminal sabe dibujar. */
-export function fondoDe(a: Aspecto): { tipo: 'telar' | 'ninguno' | 'color' | 'imagen' | 'modulo'; valor: string } {
-    const f = a.fondo || 'telar';
-    if (f === 'telar' || f === 'ninguno') return { tipo: f, valor: '' };
+export function fondoDe(a: Aspecto): { tipo: 'ninguno' | 'color' | 'imagen' | 'modulo'; valor: string } {
+    const f = a.fondo || 'ninguno';
+    // «telar», el telar tenue que tejía alrededor, se sacó (24-nov-2026): quien lo tenga puesto ve el fondo del tema
+    if (f === 'ninguno' || f === 'telar') return { tipo: 'ninguno', valor: '' };
     if (f.startsWith('#')) return { tipo: 'color', valor: f };
     if (f.startsWith('imagen:')) {
         const v = f.slice('imagen:'.length);

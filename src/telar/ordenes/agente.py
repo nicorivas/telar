@@ -610,6 +610,14 @@ def _evento(o, ctx) -> int:
                     _comun.escribir_json(salida)
                 return 0
         efecto = aplicar(est, aviso, hilo=hilo, panel=panel, olvidar_al_cerrar=o.olvidar)
+        if efecto.atencion is Atencion.TERMINO and efecto.hilo:
+            # terminó su turno: el borrador que la persona dejó en espera sale ahora, aparte (telar.borradores)
+            from telar import borradores
+
+            try:
+                borradores.al_terminar(ctx.config, efecto.hilo)
+            except Exception:  # noqa: BLE001 - un borrador que no salió no tumba el aviso: el nodo lo suelta después
+                pass
         salida = {
             "aplicado": not efecto.vacio,
             "evento": aviso.evento.value,

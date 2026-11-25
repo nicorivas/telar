@@ -33,6 +33,7 @@ import { APROBAR, contestable, estadoInicial, ventanaContestar, type EstadoConte
 import { detallesDeMuestra, esperasDeMuestra } from './muestras-contestar';
 import { filtros, type GrupoFiltro } from './filtros';
 import { barra as barraPantalla } from './pantalla';
+import { pestanas as filaPestanas } from './pestanas';
 import { listaTarjetas, tarjeta, type Tarjeta } from './tarjeta';
 import { casillas, type Casilla } from './casillas';
 import { partes, type Parte as ParteDeTotal } from './partes';
@@ -44,6 +45,10 @@ import * as MM from './catalogo-modos';
 import * as AV from './catalogo-avisos';
 import * as BT from './catalogo-botones';
 import * as CM from './catalogo-mundos';
+import * as CP from './catalogo-pestanas';
+import * as CMS from './catalogo-mensaje';
+import { alPintar as mensajesAlPintar } from '../web/mensaje';
+import { atender as atenderPestanas, acomodarTodas } from '../web/pestanas';
 
 interface Opciones { temas: string[]; densidades: string[]; ancho: 'barra' | 'telefono'; anatomia: boolean }
 const CLAVE = 'telar.catalogo';
@@ -463,6 +468,8 @@ function seccionVentana(): string {
 
 /** Las columnas de los botones: más anchas que la barra, para que quepa una ventana de confirmar. */
 const ANCHO_BOTONES = () => (op.ancho === 'telefono' ? ANCHOS.telefono : 420);
+/** Las columnas de lo que va de borde a borde de una pantalla (las pestañas, la barra de mensaje): más anchas que la barra. */
+const anchas = () => `grid-template-columns: minmax(18ch, 24ch) repeat(${columnasElegidas().length}, ${op.ancho === 'telefono' ? ANCHOS.telefono : 640}px)`;
 const columnasBotones = () => `grid-template-columns: minmax(18ch, 24ch) repeat(${columnasElegidas().length}, ${ANCHO_BOTONES()}px)`;
 const probarBoton = (cual: string, texto = 'probar') =>
     `<a class="cat-abrir" data-probar-boton="${esc(cual)}" title="abrirla de verdad, con el tema de la primera columna: ⏎, ⇥, ⎋, su tecla y el mouse; no hace nada">${esc(texto)}</a>`;
@@ -1448,6 +1455,11 @@ const PAGINAS: Pagina[] = [
         { clave: 'bordes', nombre: 'bordes', dibujar: seccionBordesBuscador }, anatomia(seccionAnatomiaBuscador),
         { clave: 'donde', nombre: 'dónde está', dibujar: seccionDondeBuscador }] },
     { clave: 'casillas', nombre: 'casillas', grupo: 'compuestos', pestanas: [estados(seccionCasillas)] },
+    { clave: 'pestanas', nombre: 'pestañas', grupo: 'compuestos', pestanas: [estados(() => CP.seccionEstados(columnasElegidas(), celda, titulos(), anchas())),
+        { clave: 'donde', nombre: 'dónde está', dibujar: CP.seccionDonde }, anatomia(undefined, 'la fila, cada pestaña (ícono, nombre, cuenta, lo nuevo) y su extremo')] },
+    { clave: 'mensaje', nombre: 'barra de mensaje', grupo: 'compuestos', pestanas: [estados(() => CMS.seccionEstados(columnasElegidas(), celda, titulos(), anchas())),
+        { clave: 'lista', nombre: 'la lista', dibujar: () => CMS.seccionLista(columnasElegidas(), celda, titulos(), anchas()) },
+        { clave: 'donde', nombre: 'dónde va', dibujar: CMS.seccionDonde }, anatomia(undefined, 'el destino, el campo, enviar y lo último que pasó')] },
     { clave: 'orden', nombre: 'orden', grupo: 'compuestos', pestanas: [estados(seccionOrden), anatomia(undefined, 'el ícono padre, las opciones y los dos cortes')] },
     { clave: 'filtros', nombre: 'filtros', grupo: 'compuestos', pestanas: [estados(seccionFiltros),
         { clave: 'tareas', nombre: 'en «tareas»', dibujar: seccionFiltrosEnTareas }, anatomia(undefined, 'el ícono padre, los grupos y sus opciones')] },
@@ -1496,12 +1508,13 @@ function lista(actual: Pagina): string {
     ).join('') + '</nav>';
 }
 
-/** Las pestañas de un componente, si tiene más de una; las por hacer, apagadas. */
+/** Las pestañas de un componente, si tiene más de una (componentes/pestanas.ts, la de la página); las por hacer,
+ *  apagadas. */
 function pestanas(pag: Pagina, actual: Pestana): string {
     if ((pag.pestanas?.length ?? 0) < 2) return '';
-    return '<nav class="cat-pestanas">' + pag.pestanas!.map(p => p.dibujar
-        ? `<a href="#${pag.clave}/${p.clave}"${p === actual ? ' class="si"' : ''}>${esc(p.nombre)}</a>`
-        : `<span class="falta" title="${esc(`por hacer${p.falta ? `: ${p.falta}` : ''}`)}">${esc(p.nombre)}</span>`).join('') + '</nav>';
+    return filaPestanas({ nombre: `pestañas de ${pag.nombre}`, activa: actual.clave, clases: ['cat-pestanas'],
+        pestanas: pag.pestanas!.map(p => ({ valor: p.clave, nombre: p.nombre, href: `#${pag.clave}/${p.clave}`,
+            ...(p.dibujar ? {} : { apagada: true, ayuda: `por hacer${p.falta ? `: ${p.falta}` : ''}` }) })) });
 }
 
 /** La página de un componente: su nombre, sus pestañas y la elegida; o, si falta, lo que se sabe de él. */
@@ -1555,6 +1568,9 @@ function pintar(): void {
         barras.push(b);
     }
     window.scrollTo(0, y);
+    // las pestañas que no caben (las de la página y las de muestra que no las fuerzan) y el alto de cada barra de mensaje
+    acomodarTodas(raiz);
+    mensajesAlPintar(raiz);
     // la lámina se traza con el ítem ya dibujado, y de nuevo cuando llega la letra de los íconos (cambia los anchos)
     trazarLaminas();
     void document.fonts?.ready.then(trazarLaminas);
@@ -1639,6 +1655,9 @@ document.addEventListener('click', e => {
     }
     // la ventana de mundos: una tarjeta o un botón de muestra dicen qué harían; «probar» la abre de verdad
     if (CM.atender(t, avisar)) { e.stopPropagation(); e.preventDefault(); return; }
+    // una barra de mensaje de muestra: enviar, elegir a quién y abrir a quién fue dicen qué harían
+    const ms = CMS.dice(t);
+    if (ms) { e.stopPropagation(); e.preventDefault(); avisar(ms); return; }
     const tac = t.closest<HTMLElement>('[data-accion^="tactica-"]');
     if (tac?.closest('.muestra')) { e.stopPropagation(); e.preventDefault(); atenderTactica(tac); return; }
     const mm = t.closest<HTMLElement>('[data-accion^="modos-"],[data-accion^="todo-"]');
@@ -1670,6 +1689,8 @@ for (const ev of ['contextmenu', 'dragstart', 'input', 'keydown']) {
 // llegan de la configuración (o cambian), la barra de temas y las columnas se rehacen
 colores.alCambiar(() => pintar());
 colores.montar({ soloPropios: true });
+// las pestañas de cada componente, con ← → (web/pestanas.ts, el mismo de la página)
+atenderPestanas();
 pintar();
 window.addEventListener('hashchange', () => { pintar(); window.scrollTo(0, 0); });
 // un modo a pantalla completa: el laptop o el teléfono los decide el ancho de la ventana

@@ -181,25 +181,36 @@
   --boton-celda-x: var(--item-pad-x);
 
   /* la ventana de mundos (componentes/mundos-ventana.ts, mundos.css): lo que mide cada tarjeta (un arte de 30 letras y su
-     aire), cuánto del color de su mundo lleva el arte quieto, y lo de encima: el fondo de su color, el halo, la inclinación
-     hacia el puntero, cuánto crece y el barrido. El interlineado del arte deja que los bloques (█ ▀ ▄) se toquen */
+     aire), cuánto del color de su mundo lleva el arte quieto, lo de encima (el fondo de su color) y el alto máximo de las
+     filas antes de desplazarse. El interlineado del arte deja que los bloques (█ ▀ ▄) se toquen */
   --mundos-tarjeta-ancho: 33ch;
   --mundos-arte-alto: 1.17;
   --mundos-lienzo-aire: var(--e-3);
   --mundos-tenue: 55%;
   --mundos-luz: 12%;
   --mundos-luz-dura: 220ms;
-  --mundos-halo: .55em;
-  --mundos-halo-luz: 55%;
-  --mundos-inclina: 9deg;
-  --mundos-escala: 1.04;
-  --mundos-barrido-luz: 26%;
-  --mundos-barrido-dura: 750ms;
+  --mundos-alto: min(70dvh, 46lh);
 
   /* contestar lo que te espera (componentes/contestar.ts, contestar.css): un poco más ancha que una ventana de un campo */
   --contestar-ancho: 72ch;
   /* con su ficha (de qué se trata, la historia, lo que está en juego, lo relacionado): dos columnas, en el laptop */
   --contestar-ancho-ficha: 144ch;
+
+  /* el visor de un documento (web/carpeta.ts, documento.css): ancho para leer un .md (90ch) con su aire; y sus comentarios
+     (web/comentarios.ts): lo abierto, en el amarillo de lo que espera algo; lo resuelto, tenue; lo que se está por comentar,
+     en el acento */
+  --documento-ancho: 100ch;
+  /* la prosa (prosa.css): leer con calma, en la lectura de un hilo y en el visor en modo lectura. El ancho, en caracteres
+     de su letra (con serifa, más grande); y el visor, en ese modo, más ancho y alto: la columna va al medio */
+  --prosa-ancho: 68ch;
+  --prosa-tam: 18px;
+  --prosa-alto: 1.7;
+  --documento-ancho-lectura: 140ch;
+  --coment-abierto: var(--amarillo);
+  --coment-resuelto: var(--texto-tenue);
+  --coment-nuevo: var(--acento);
+  /* la barra de la derecha del visor (web/documento-lado.ts) plegada: una franja del ancho de un ícono con su aire */
+  --doc-lado-plegada: calc(2ch + 2 * var(--h-1));
 
   /* la pantalla (componentes/pantalla.ts, pantalla.css): la barra de arriba de un hilo o de una app, sus botones (la
      vista que se ve, en violeta, como en el hilo) y lo que resume; el nombre de una app va en su tinta, o en este */
@@ -209,6 +220,29 @@
   --pantalla-boton-hover: var(--texto);
   --pantalla-vista-si: var(--violeta);
   --pantalla-resumen: var(--texto-tenue);
+
+  /* las pestañas (componentes/pestanas.ts, pestanas.css): las demás, tenues (como los botones de una barra); la abierta,
+     con la superficie de la selección del ítem activo y su marca (la del tema), y el texto en su color; la cuenta, tenue */
+  --pestanas-fondo: transparent;
+  --pestana-color: var(--texto-tenue);
+  --pestana-color-hover: var(--texto);
+  --pestana-fondo-hover: var(--item-fondo-hover);
+  --pestana-color-si: var(--texto);
+  --pestana-fondo-si: var(--item-fondo-activa);
+  --pestana-marca-si: var(--item-marca-activa);
+  --pestana-color-apagada: var(--texto-apagado);
+  --pestana-cuenta: var(--texto-tenue);
+
+  /* la barra de mensaje (componentes/mensaje.ts, mensaje.css): el destino en la tinta de lo que es (un hilo, uno nuevo, un
+     agente); el campo, sin caja, con su línea abajo que toma el acento mientras se escribe (como el buscador); y lo que
+     pasó con lo último que se mandó, en el color de su estado */
+  --mensaje-fondo: var(--pantalla-barra-fondo);
+  --mensaje-campo: var(--texto);
+  --mensaje-campo-linea: var(--linea);
+  --mensaje-campo-foco: var(--acento);
+  --mensaje-boton: var(--texto-tenue);
+  --mensaje-boton-listo: var(--acento);
+  --mensaje-dijo: var(--texto-tenue);
 
   /* lo que carga el contexto de un hilo (web/carga.ts, la hoja «contexto»): el color de cada grupo, en sus partes
      (componentes/partes.ts) y en su ícono. Lo general que se puede recortar, en tintas cálidas; lo que leyó y lo de
@@ -271,6 +305,15 @@
   /* el aire a los lados de la barra de un buscador: el de una pantalla, salvo donde la caja que lo lleva tiene otro (una
      ventana, el lado de un hilo: lo cambian ahí) */
   --buscador-margen: var(--pantalla-margen);
+  /* las pestañas: del alto de las barras; a cada lado de una, el aire de una pantalla (el texto de la primera arranca
+     donde el de las filas de abajo), y lo mismo al otro extremo de la fila */
+  --pestanas-alto: var(--pantalla-barra-alto);
+  --pestanas-margen: var(--pantalla-margen);
+  --pestana-pad-x: var(--pantalla-margen);
+  /* la barra de mensaje: la fila del alto de las barras cuando el campo tiene una línea, y hasta ocho al crecer */
+  --mensaje-alto: var(--pantalla-barra-alto);
+  --mensaje-margen: var(--pantalla-margen);
+  --mensaje-lineas: 8;
   /* entre la lupa de un buscador y el primer carácter: un carácter, el espacio de la grilla; igual en todos */
   --buscador-lupa-hueco: 1ch;
   /* el alto de la franja de las partes (componentes/partes.ts) */

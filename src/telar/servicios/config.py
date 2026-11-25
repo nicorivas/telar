@@ -198,8 +198,11 @@ def _modulos(cfg) -> list[dict]:
         # `telar serve` andando: aquí solo falta el detalle
         instalados = {}
     # la fuente sale sin credenciales: esto también lo entrega `GET /config`, más allá de esta máquina
+    # `buscables`: sus tipos de objeto que también se buscan en ⌘K (`[objetos.<tipo>] buscador`), con su plural
     return [{"nombre": m.nombre, "carpeta": str(m.carpeta), "descripcion": m.descripcion, "aporta": m.aporta,
-             "configurar": bool(m.configurar), **mod_modulos.procedencia(instalados.get(m.nombre))} for m in cfg.modulos]
+             "configurar": bool(m.configurar), **mod_modulos.procedencia(instalados.get(m.nombre)),
+             "buscables": [{"tipo": t, "plural": o.get("plural") or t} for t, o in m.objetos.items() if o.get("buscador")]}
+            for m in cfg.modulos]
 
 
 def _equipo(cfg) -> str:

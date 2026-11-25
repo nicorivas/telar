@@ -27,27 +27,71 @@ const recencia = (iso?: string | null) => {
     return Number.isNaN(t) ? 0 : Math.max(0, 100 - (Date.now() - t) / 3600000);   // 100 recién, 0 hace 4 días o más
 };
 
+/** Un hilo o un agente como lo nombra ⌘K: su nombre, su ícono, lo que dice al lado y su peso (sin nada escrito, el
+ *  orden: más alto, primero). Lo usan ⌘K y el selector de la barra de mensaje (web/mensaje.ts): el mismo orden y los
+ *  mismos íconos en los dos. */
+export interface Nombrado { nombre: string; titulo: string; icono: string; detalle: string; peso: number }
+export type HiloNombrado = Nombrado & { hilo: cli.JsonHilo };
+export type AgenteNombrado = Nombrado & { seccion: cli.JsonSeccion; suyo?: cli.JsonHilo };
+
+/** Con qué se mira el mundo: `todo`, como ⌘K (en el modo todo, también lo de otro mundo, al final; nunca lo de un
+ *  agente que pide esconderse); `puesto`, solo lo del mundo puesto, en todos los modos (la barra de mensaje: a quién se le
+ *  manda algo no se elige entre lo que no se ve). */
+export type Alcance = 'todo' | 'puesto';
+const mirada = (a: Alcance) => (a === 'puesto' ? mundo.enElPuesto : mundo.seVe);
+
+const legible = (r?: string) => (r && !r.startsWith('..') ? r : '');
+
+/** Los hilos de esta máquina (y los de otra que el modelo ya trae), sin los de un agente (van en los agentes), sin uno de
+ *  un agente de otro mundo y, con `puesto`, sin ninguno de otro mundo. `otras`: los de las fotos de las otras máquinas,
+ *  para encontrar a los padres de uno. */
+export function hilosNombrados(alcance: Alcance = 'todo', otras: readonly HiloDeFoto[] = []): HiloNombrado[] {
+    // (sin los de un agente, que van en «agentes», y sin una carpeta que desde aquí se ve como «../..»; ni los
+    // otros de un agente que pide esconderse fuera de su mundo, ni sus hijos)
+    const deAgentes = new Set(modelo.secciones.filter(x => x.grupo === 'agentes').map(x => x.nombre));
+    const todos = [...modelo.hilos, ...otras];
+    const ve = mirada(alcance);
+    return modelo.hilos.filter(h => !deAgentes.has(h.nombre) && (!h.agente || cli.nombreVisible(h) !== h.agente) && !ajeno(h, todos, ve)
+        && (alcance === 'todo' || ve(h.mundo))).map(h => ({
+        hilo: h, nombre: h.nombre, titulo: cli.nombreVisible(h), icono: h.archivado ? I.archivar : h.vivo ? I.lleno : I.vacio,
+        detalle: [legible(h.relativa), h.remoto ? `en ${h.remoto}` : h.dueno ? `de ${h.dueno}` : '', h.archivado ? 'archivado' : !h.vivo ? 'sin ventana' : ''].filter(Boolean).join(' · '),
+        peso: (h.archivado ? 0 : h.vivo ? 50 : 20) + recencia(h.actividad || h.atencion_desde) / 2,
+    }));
+}
+
+/** (uno de un agente de otro mundo, fuera de todo, como siempre; y en todo, el de uno que pide esconderse) */
+const ajeno = (h: { nombre: string; agente?: string; padre?: string; mundo?: string }, todos: readonly { nombre: string; agente?: string; padre?: string }[],
+    ve: (m: string | undefined) => boolean) =>
+    (!!h.agente && mundo.fueraDe(h.agente) !== 'ver' && !ve(h.mundo)) || mundo.hiloDeAgenteAjeno(h, todos);
+
+/** Los agentes residentes que se nombran con el mundo puesto (web/mundo.ts, `agentesQueSeVen`; con `puesto`, como los ve
+ *  la barra de hilos: nunca los de otro mundo). */
+export function agentesNombrados(alcance: Alcance = 'todo'): AgenteNombrado[] {
+    const secciones = modelo.secciones.filter(s => s.grupo === 'agentes');
+    const vistos = alcance === 'todo' ? mundo.agentesQueSeVen(secciones, modelo.hilos)
+        : secciones.filter(a => mundo.seVeAgente(a, modelo.hilos.filter(h => h.nombre === a.nombre && h.vivo && !h.archivado).map(h => h.mundo), mundo.enElPuesto));
+    return vistos.map(s => {
+        const suyo = modelo.hilos.find(h => h.nombre === s.nombre);
+        return { seccion: s, suyo, nombre: s.nombre, titulo: s.nombre, icono: I.agente, detalle: suyo?.vivo ? 'su hilo, abierto' : 'su casa', peso: suyo?.vivo ? 60 : 30 };
+    });
+}
+
+/** El orden de ⌘K sin nada escrito: el peso, más alto primero. */
+export const porPeso = <T extends { peso: number }>(xs: T[]): T[] => [...xs].sort((a, b) => b.peso - a.peso);
+
 export function fuentes(d: DeLaPagina): Fuente[] {
     return [{
         clave: 'hilos', nombre: 'hilos', orden: 1, color: 'azul',
         resultados: () => {
-            // (sin los de un agente, que van en «agentes», y sin una carpeta que desde aquí se ve como «../..»; ni los
-            // otros de un agente que pide esconderse fuera de su mundo, ni sus hijos)
             const deAgentes = new Set(modelo.secciones.filter(x => x.grupo === 'agentes').map(x => x.nombre));
-            const legible = (r?: string) => (r && !r.startsWith('..') ? r : '');
             const todos = [...modelo.hilos, ...d.otras().flatMap(m => m.hilos)];
-            // (uno de un agente de otro mundo, fuera de todo, como siempre; y en todo, el de uno que pide esconderse)
-            const ajeno = (h: { nombre: string; agente?: string; padre?: string; mundo?: string }) =>
-                (!!h.agente && mundo.fueraDe(h.agente) !== 'ver' && !mundo.seVe(h.mundo)) || mundo.hiloDeAgenteAjeno(h, todos);
-            const aqui = modelo.hilos.filter(h => !deAgentes.has(h.nombre) && (!h.agente || cli.nombreVisible(h) !== h.agente) && !ajeno(h)).map(h => ({
-                titulo: cli.nombreVisible(h), icono: h.archivado ? I.archivar : h.vivo ? I.lleno : I.vacio,
-                detalle: [legible(h.relativa), h.remoto ? `en ${h.remoto}` : '', h.archivado ? 'archivado' : !h.vivo ? 'sin ventana' : ''].filter(Boolean).join(' · '),
-                claves: h.nombre, peso: (h.archivado ? 0 : h.vivo ? 50 : 20) + recencia(h.actividad || h.atencion_desde) / 2,
+            const aqui = hilosNombrados('todo', d.otras().flatMap(m => m.hilos)).map(({ hilo: h, titulo, icono, detalle, peso }) => ({
+                titulo, icono, detalle, claves: h.nombre, peso,
                 abrir: () => (h.archivado || !h.vivo ? d.orden('telar.retomar', { hilo: h.nombre }) : d.mostrar(h.nombre)),
             }));
             // los de las otras máquinas, de su foto: se leen y se les escribe por el bus
             const ya = new Set(modelo.hilos.map(h => `${h.remoto ?? ''}|${h.nombre}`));
-            const otras = d.otras().flatMap(m => m.hilos.filter(x => x.vivo && !ya.has(`${m.nombre}|${x.nombre}`) && !deAgentes.has(x.nombre) && !ajeno(x)).map(x => ({
+            const otras = d.otras().flatMap(m => m.hilos.filter(x => x.vivo && !ya.has(`${m.nombre}|${x.nombre}`) && !deAgentes.has(x.nombre) && !ajeno(x, todos, mundo.seVe)).map(x => ({
                 titulo: x.nombre, icono: I.remoto, detalle: [legible(x.relativa), `en ${m.nombre}`].filter(Boolean).join(' · '), peso: 35,
                 abrir: () => d.orden('telar.irRemoto', `${m.nombre}|${x.nombre}`),
             })));
@@ -56,12 +100,9 @@ export function fuentes(d: DeLaPagina): Fuente[] {
     }, {
         clave: 'agentes', nombre: 'agentes', orden: 2, color: 'violeta',
         // los del mundo puesto (web/mundo.ts, `agentesQueSeVen`); en todo, también los otros, salvo los que piden esconderse
-        resultados: () => mundo.agentesQueSeVen(modelo.secciones.filter(s => s.grupo === 'agentes'), modelo.hilos).map(s => {
-            const suyo = modelo.hilos.find(h => h.nombre === s.nombre);
-            return {
-                titulo: s.nombre, icono: I.agente, detalle: suyo?.vivo ? 'su hilo, abierto' : 'su casa', peso: suyo?.vivo ? 60 : 30,
-                abrir: () => (suyo?.vivo ? d.mostrar(s.nombre) : d.orden('telar.seccion', s.clave)),
-            };
-        }),
+        resultados: () => agentesNombrados('todo').map(({ seccion: s, suyo, titulo, icono, detalle, peso }) => ({
+            titulo, icono, detalle, peso,
+            abrir: () => (suyo?.vivo ? d.mostrar(s.nombre) : d.orden('telar.seccion', s.clave)),
+        })),
     }];
 }
