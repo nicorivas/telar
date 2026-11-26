@@ -189,9 +189,12 @@ def linea(ruta: str, palabras: list[str] | None, hilo: str) -> str:
     """Lo que corre el hilo: ir a la carpeta, el agente, y una shell al salir.
 
     La shell del final es para que el hilo no muera si el agente termina: se vuelve a ella y
-    sigue ahí.
+    sigue ahí. El agente lleva lo suyo (`telar.entorno.DEL_AGENTE`): a este se lo mira por mosh, que bota los
+    hipervínculos.
     """
-    partes = [f"{_cd(ruta)} 2>/dev/null", f"export TELAR_HILO={shlex.quote(hilo)}"]
+    from telar.entorno import linea_del_agente
+
+    partes = [f"{_cd(ruta)} 2>/dev/null", linea_del_agente(), f"export TELAR_HILO={shlex.quote(hilo)}"]
     if palabras:
         partes.append(shlex.join(palabras))
     partes.append("exec bash -l")

@@ -55,6 +55,13 @@ el primer paso sin hacer de la primera propuesta.
 11. **[componentes.md](componentes.md)**: la librería de componentes de la página (buscador, orden, nuevo, sección,
    ventana), con su jerarquía y el catálogo navegable por ella; se trabaja de noche, en una rama que se revisa de
    día. Hechos el ítem, el círculo, los temas, las densidades y el catálogo.
+   **[auditoria-proyectos.md](auditoria-proyectos.md)**: la pestaña «proyectos» medida contra esos principios (26-nov):
+   seis faltas graves (el nombre que se pierde, nada de borde a borde, filas y cabeceras a mano, el detalle sin barra,
+   el detalle en una columna, el divisor corto), las menores y el orden para arreglarlas. Nada decidido.
+   **[equipo.md](equipo.md)**: el prototipo de la vista de las personas del equipo (26-nov), en el catálogo con datos
+   inventados: la lista, la ficha (1:1, compromisos en las dos direcciones, capacidad, proyectos) y las apreciaciones de
+   los 1:1 en una pestaña aparte, con sus reglas de privacidad como requisitos. Extiende la pantalla «equipo» de hoy;
+   quedan nueve decisiones para la persona.
 12. **[lo-que-espera-a-la-persona.md](lo-que-espera-a-la-persona.md)**: una sola bandeja para lo que un agente le
    pide decidir a la persona (permisos, preguntas en vivo, propuestas en tareas, retenidos) y la pregunta que vive
    como archivo en el repositorio; qué está duplicado entre los avisos de hoy. Hecho el paso 1 (la bandeja de solo
@@ -69,6 +76,10 @@ el primer paso sin hacer de la primera propuesta.
    medidas: el tope de 25 MB del bus, copiar antes de detener, dos caminos, copias viejas, lo que no viaja) y su
    rediseño: la conversación copiada por pedazos (solo lo que falta, al mudarse) y un dueño explícito por hilo, en
    cuatro etapas. Absorbe la 14. Decidida el 24-nov; hechas las cuatro etapas.
+16. **[rutinas.md](rutinas.md)**: lo que se repite (el plan del día, los 1:1, la revisión del tablero), con la prueba de
+   que se hizo: un archivo por rutina, comprobadores por clase de prueba y una vista que calcula atrasada, toca hoy,
+   esta semana, al día y sin prueba definida; a mano solo lo que no tiene prueba. Prototipo en `/componentes#rutinas`;
+   nada construido.
 
 ## Cómo se escribe una propuesta
 

@@ -162,8 +162,9 @@
   & .tac-ver-todo { color: var(--acento); }
 }
 
-/* el único número de la página, en la barra de la pantalla: su color lo pone su tono (te espera) */
-.tac-numero { font-weight: normal; }
+/* un ensayo (window.telar.ensayo…): lo dice la primera línea de la pantalla, en el color de cuidado; la barra no lleva
+   estados (componentes/pantalla.ts) */
+.tac-ensayo { color: var(--atencion); }
 
 /* en un ancho chico (el teléfono), el título necesita el lugar: se van cuánto lleva esperando y dónde vive (siguen en
    el globo y al abrirla) */

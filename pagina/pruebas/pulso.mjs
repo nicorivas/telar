@@ -7,7 +7,7 @@
 // mundo. Corre en Node, sin página: npm run prueba:pulso
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -330,6 +330,33 @@ const texto = l => l.replace(/^.*?<span class="pulso-texto">/s, '').replace(/<\/
     responder = () => ({ ...M, pasadas: M.pasadas.map(x => ({ ...x, sin_ver_en: x.sin_ver_en.filter(k => k === 'personal') })) });
     assert.equal(await p.leer(), true);
     assert.equal(p.linea(HOY), '');
+}
+
+// el alto de la línea: el estándar de las filas con línea (--pantalla-barra-alto, el de la franja de arriba y las cabeceras
+// de abajo), con su línea abajo y el texto al medio (un cuarto de línea arriba y abajo: lo que el token suma a 1lh), en el
+// laptop y en el teléfono (la franja también). Medido en la página: scripts/medir.py dashboard --js "window.telar.ensayoPulso(false)" -s .pulso-linea
+{
+    const css = n => readFileSync(path.join(aqui, '..', 'media', 'css', n), 'utf8');
+    const regla = (texto, sel) => {
+        const i = texto.search(new RegExp(`^${sel.replace(/[.]/g, '\\.')} \\{`, 'm'));
+        assert.ok(i >= 0, `la regla ${sel}`);
+        return texto.slice(i, texto.indexOf('\n}', i));
+    };
+    const tokens = css('tokens.css'), pulso = css('pulso.css');
+    assert.match(tokens, /--pantalla-barra-alto: calc\(1lh \+ 2 \* var\(--e-1\) \+ 1px\);/, 'el token: una línea, un cuarto arriba y abajo, y su línea');
+    const linea = regla(pulso, '.pulso-linea'), franja = regla(css('franja.css'), '.franja');
+    for (const [nombre, r] of [['la línea del pulso', linea], ['la franja, su vecina', franja]]) {
+        assert.match(r, /^\s*height: var\(--pantalla-barra-alto\);/m, `${nombre}: del alto del token`);
+        assert.match(r, /^\s*box-sizing: border-box;/m, `${nombre}: el alto incluye el relleno y la línea`);
+        assert.match(r, /^\s*padding: var\(--e-1\) /m, `${nombre}: un cuarto de línea arriba y abajo, el texto al medio`);
+        assert.match(r, /^\s*border-bottom: var\(--borde\);/m, `${nombre}: con su línea abajo`);
+    }
+    assert.doesNotMatch(linea, /line-height/, 'la línea del pulso no cambia su interlineado: 1lh del token es el suyo');
+    assert.doesNotMatch(pulso, /\.angosto[^{]*\.pulso-linea[^{]*\{[^}]*(height|padding|line-height)/, 'en el teléfono, el mismo alto');
+    const franjaCss = css('franja.css').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(franjaCss, /\.angosto[^{]*\.franja\s*\{[^}]*(height|padding|line-height)/, 'la franja, en el teléfono, también el token');
+    assert.match(pulso, /^\.pulso-icono \.i \{ line-height: 1; \}/m, 'el ícono del pulso no alarga la línea');
+    assert.match(franjaCss, /^\.franja-icono \.i \{ line-height: 1; \}/m, 'el de la franja, tampoco');
 }
 
 console.log('pulso: la línea, la ventana, lo visto y los mundos, bien');

@@ -618,11 +618,23 @@ def padre_de(est, hilo: str) -> str:
     return est.padre(hilo)
 
 
+#: cómo anota un periódico que abrió un hilo (telar.periodicos, `por=`): quien lo abrió, pero no un hilo
+POR_PERIODICO = "periódico "
+
+
+def padre_que_lee(est, hilo: str) -> str:
+    """El padre de `hilo` al que se le puede avisar: el de `padre_de`, salvo que sea el periódico que lo abrió
+    («periódico a-solas»). Ese no es un hilo y nadie lee su casilla: los avisos de cada turno quedaban ahí, huérfanos.
+    Si el periódico declara un padre (`padre` en su definición), el hilo cuelga de ese y el aviso le llega."""
+    padre = padre_de(est, hilo)
+    return "" if padre.startswith(POR_PERIODICO) else padre
+
+
 def _avisar_al_padre(ctx, est, hilo: str, que: str) -> None:
     """Un aviso (no lo despierta: lo lee en su próximo turno) al padre de `hilo`, si tiene y hay bus."""
     from telar import bus as mod_bus
 
-    padre = padre_de(est, hilo)
+    padre = padre_que_lee(est, hilo)
     if not padre or not mod_bus.hay_bus(ctx.config):
         return
     try:

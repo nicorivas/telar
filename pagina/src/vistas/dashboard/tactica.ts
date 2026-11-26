@@ -604,12 +604,19 @@ export class PantallaTactica implements Pantalla {
         this.muestra = undefined;
         this.t.montar();
         this.t.ir('tactica');
+        // recargada (un despliegue): los proyectos de antes, mientras llegan los de ahora (y se piden igual)
+        const deAntes = this.proyectos ? undefined : cli.proyectosRecordados()?.proyectos;
+        if (deAntes) this.proyectos = deAntes;
+        if (!this.lista) {
+            const esperas = cli.recordado<cli.JsonEsperas>('esperas')?.valor;
+            if (esperas) { this.lista = esperas.esperas; this.contestadas = esperas.contestadas ?? []; }
+        }
         this.pintar();
         const d = await this.t.diaLeido();
         // el plan de hoy (como «ahora»), y lo que espera
         const [plan, proyectos] = await Promise.all([
             this.t.planes.plan?.dia === d.fecha ? Promise.resolve(undefined) : cli.resultado('plan', ''),
-            this.proyectos ? Promise.resolve(undefined) : cli.proyectos(),
+            this.proyectos && !deAntes ? Promise.resolve(undefined) : cli.proyectos(),
             this.leer(),
             this.agente ? Promise.resolve() : import('../../web/contestar').then(m => m.HACER.agenteGeneral?.()).then(a => { this.agente = a ?? ''; }, () => undefined),
         ]);
@@ -642,6 +649,7 @@ export class PantallaTactica implements Pantalla {
         this.leyendo ??= (async () => {
             const r = await cli.esperas();
             if (r.datos) {
+                cli.recordar('esperas', r.datos);
                 this.lista = r.datos.esperas;
                 this.contestadas = r.datos.contestadas ?? [];
             }
@@ -665,7 +673,7 @@ export class PantallaTactica implements Pantalla {
         const esperas = m?.esperas ?? this.lista?.filter(e => mundo.seVe(e.mundo) && !mundo.deAgenteAjeno(e));
         if (!d || !esperas) {
             this.t.pintar(['<div class="vacio">leyendo lo de hoy y lo que te espera…</div>'],
-                { nombre: 'táctica', color: 'amarillo', resumen: 'leyendo…', sinReleer: true });
+                { nombre: 'táctica', color: 'amarillo', sinReleer: true });
             return;
         }
         const { tactica: t, grupos } = armar({ dia: d, plan: m ? m.plan : this.t.planes.planDe(d.fecha), esperas, ahora: m?.ahora ?? Date.now(),
@@ -679,11 +687,11 @@ export class PantallaTactica implements Pantalla {
         // pone dashboard/esperas.ts, que lee lo mismo
         const h: string[] = [];
         // en un ensayo, lo que no atiende Táctica (hecha, la instrucción, el ⋯…) no sale a la API: solo se dice
+        // en un ensayo, lo dice la primera línea de la pantalla (y ↻ vuelve a lo de verdad): la barra no lleva estados
+        if (m) h.push('<div class="fila atencion tac-ensayo">ensayo: un día de mentira, nada se contesta · ↻ vuelve a lo de verdad</div>');
         h.push(tactica(m ? deEnsayo(t) : t));
         const b = barraTactica(t);
-        // en un ensayo, la barra lo dice (y ↻ vuelve a lo de verdad)
-        const resumenHtml = m ? `${b.resumenHtml ?? ''} · ensayo: un día de mentira, nada se contesta` : b.resumenHtml;
-        this.t.pintar(h, { nombre: b.nombre, color: b.color, resumenHtml, acciones: b.acciones, sinReleer: true });
+        this.t.pintar(h, { nombre: b.nombre, color: b.color, ayuda: b.ayuda, acciones: b.acciones, sinReleer: true });
     }
 
     /** Otra fecha para una tarea, desde su fila (tareas.ts, `reagendar`): se relee lo de hoy y lo que espera (su fecha,

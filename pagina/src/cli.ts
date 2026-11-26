@@ -27,6 +27,42 @@ export interface Respuesta<T> { datos?: T; error?: string; cuerpo?: Record<strin
  *  un error: no hay otro camino por el que pedirlo. El cuerpo va como JSON; un FormData, como multipart (el
  *  navegador pone el tipo, con su separador). */
 async function aServe<T>(metodo: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T>> {
+    if (metodo !== 'GET') cambios++;
+    if (metodo !== 'GET' || !esPesada(ruta)) return await pedir<T>(metodo, ruta, timeout, cuerpo);
+    // con lugar, sale ahora mismo (sin esperar ni una vuelta): solo espera si ya van PESADAS
+    if (pesadasEnCurso < PESADAS) pesadasEnCurso++;
+    else await new Promise<void>(resolver => esperanTurno.push(resolver));
+    try {
+        return await pedir<T>(metodo, ruta, timeout, cuerpo);
+    } finally {
+        // el lugar pasa al siguiente que espera, o queda libre
+        const siguiente = esperanTurno.shift();
+        if (siguiente) siguiente();
+        else pesadasEnCurso--;
+    }
+}
+
+// ── lo pesado no tapa lo esencial ──
+//
+// El navegador abre como mucho seis conexiones a la página (HTTP/1.1), y una ya es de los avisos (`/eventos`). Al
+// abrirla salían juntos el día, las esperas, los bloques, los proyectos…, que tardan segundos cada uno: la lista de
+// hilos y la configuración esperaban en la cola del navegador detrás de ellos, y la barra decía «leyendo los hilos…»
+// (26-nov-2026: 2,4 s en la cola para un pedido que el servidor contestaba en 0,4). Lo pesado va de a PESADAS a la vez
+// (los demás esperan su turno, en orden): siempre quedan conexiones para lo que la página necesita para dibujarse.
+
+/** cuántos pedidos pesados van a la vez: con los avisos, quedan dos conexiones libres para lo demás */
+export const PESADAS = 3;
+/** las rutas que tardan (consultan proveedores, otras máquinas o leen el repositorio entero): la ruta sin lo de después
+ *  de «?». Lo que se pide con un clic (el detalle de un ítem, la ficha de una tarea) no entra: va al tiro */
+const PESADA = /^\/(hoy|proyectos|pendientes|esperas|periodicos|fechas|ventanas|agentes|tipos\/tarea|personas|alojamiento|notas|modulos\/catalogo|bloques\/[^/]+|resultados\/[^/]+(\/visto)?|secciones\/[^/]+|apps\/[^/]+|configurar\/[^/]+|equipo\/bandeja)$/;
+export const esPesada = (ruta: string): boolean => PESADA.test(ruta.split('?')[0]);
+let pesadasEnCurso = 0;
+const esperanTurno: (() => void)[] = [];
+
+/** cuántos pedidos que cambian algo salieron desde que cargó la página: lo que se compartía antes ya no sirve */
+let cambios = 0;
+
+async function pedir<T>(metodo: string, ruta: string, timeout: number, cuerpo?: unknown): Promise<Respuesta<T>> {
     let r: Response;
     const formulario = cuerpo instanceof FormData;
     try {
@@ -179,6 +215,12 @@ export interface JsonFila {
     de?: string;
     /** de un proveedor: de cuándo es (AAAA-MM-DD); en una pestaña de lectura, lo más nuevo arriba */
     fecha?: string;
+    /** a quién espera (sin la @), si está esperando a alguien: «tareas › esperando» la agrupa por esa persona */
+    espera?: string;
+    /** desde cuándo la tiene otro (AAAA-MM-DD[ HH:MM]): cuando se puso a esperar o le dieron dueño; solo en esas */
+    desde?: string;
+    /** lo último que le pasó, de su historia (sin las ediciones de campos sueltos); solo en las que tiene otro */
+    ultimo?: { fecha: string; tipo: string; texto: string };
 }
 
 /** Lo que dejó una skill un día (`telar resultado <clave> [día]`), leído de la máquina donde vive. */
@@ -363,8 +405,14 @@ export interface JsonVocabulario {
 
 /** Las unidades, y `areas`: el orden en que se muestran las áreas (`areas` del perfil); `fallas`, las fuentes de
  *  fechas que no contestaron al buscar los plazos; `iniciativas`, el vocabulario de sus estados. */
-export const proyectos = async () =>
-    await deServe<{ raiz: string; proyectos: JsonProyecto[]; areas?: string[]; fallas?: string[]; iniciativas?: JsonVocabulario }>('/proyectos', 30000);
+export type JsonProyectos = { raiz: string; proyectos: JsonProyecto[]; areas?: string[]; fallas?: string[]; iniciativas?: JsonVocabulario };
+export async function proyectos(): Promise<Respuesta<JsonProyectos>> {
+    const r = await deServe<JsonProyectos>('/proyectos', 30000);
+    if (r.datos) recordar('proyectos', r.datos);
+    return r;
+}
+/** Los proyectos que se leyeron antes de recargar esta pestaña (`recordar`), para mostrarlos mientras se leen de nuevo. */
+export const proyectosRecordados = (): JsonProyectos | undefined => recordado<JsonProyectos>('proyectos')?.valor;
 
 /** `telar proyectos estado`: el estado de una iniciativa, en su ficha (`estado:` y `estado_desde:`), sin commitear.
  *  `cambio`: false si ya estaba en ese estado (contando sus sinónimos), y no se escribió. */
@@ -525,8 +573,39 @@ export interface JsonMundo {
     /** el dibujo animado de su tarjeta en la ventana de mundos (componentes/arte.ts); "" o sin él, el que le toca */
     arte?: string;
 }
+/** La configuración resuelta. Al cargar, la pedían a la vez la barra, el dashboard, el mundo, la terminal… (seis
+ *  `/config` en el primer segundo): quien la pide mientras otra va se suma a esa, con su propia copia. Una que salió
+ *  antes de un cambio (un POST, un PATCH…) no se comparte: puede traer lo de antes. */
+let configEnCurso: { promesa: Promise<string>; cambios: number } | undefined;
 export async function config(): Promise<Respuesta<JsonConfig>> {
-    return await deServe<JsonConfig>('/config', 20000);
+    if (!configEnCurso || configEnCurso.cambios !== cambios) {
+        const esta = { cambios, promesa: deServe<JsonConfig>('/config', 20000).then(r => JSON.stringify(r)) };
+        configEnCurso = esta;
+        void esta.promesa.finally(() => { if (configEnCurso === esta) configEnCurso = undefined; });
+    }
+    return JSON.parse(await configEnCurso.promesa) as Respuesta<JsonConfig>;
+}
+
+// ── lo último que se leyó, para la página que recarga ──
+//
+// Cada despliegue reinicia el servicio y la página recarga (web/recarga.ts): perdía todo lo que sabía y quedaba en
+// blanco («leyendo los hilos…», «sin resultados») hasta que contestaba de nuevo, que bajo carga eran decenas de segundos.
+// Lo último que se leyó de lo que se ve al abrirla (los hilos, el día, los proyectos) queda en el almacén de la pestaña
+// (sessionStorage: sobrevive a la recarga, no a cerrarla), y al cargar se muestra eso mientras se pide de nuevo.
+
+const RECORDADO = 'telar.recordado.';
+
+/** Guardar lo leído de `clave` para la próxima carga de esta pestaña. Sin almacén, o lleno, nada. */
+export function recordar(clave: string, valor: unknown): void {
+    try { sessionStorage.setItem(RECORDADO + clave, JSON.stringify({ en: Date.now(), valor })); } catch { /* sin almacén */ }
+}
+
+/** Lo último que se leyó de `clave` en esta pestaña antes de recargarla (y cuándo), si lo hay. */
+export function recordado<T>(clave: string): { en: number; valor: T } | undefined {
+    try {
+        const texto = sessionStorage.getItem(RECORDADO + clave);
+        return texto ? JSON.parse(texto) as { en: number; valor: T } : undefined;
+    } catch { return undefined; }
 }
 
 /** `telar encargar <agente> "…"`: pedirle algo a un agente residente, viva donde viva. */
@@ -625,7 +704,9 @@ export interface JsonPagina {
 export interface JsonTipoArista { tipo: string; que?: string; distingue?: string; grupo?: string; color?: string }
 
 /** Una página HTML local que la sección muestra en un iframe: animaciones, dibujos. */
-export interface JsonLienzo { archivo: string; alto?: number | 'lleno'; params?: Record<string, string | number>; memoria?: string }
+export interface JsonLienzo { archivo: string; alto?: number | 'lleno'; params?: Record<string, string | number>; memoria?: string;
+    /** recibir los componentes de la página (`window.lienzo.componentes`: src/lienzo/componentes.ts) */
+    componentes?: boolean }
 /** Una página servida (http o https) en un iframe del panel: lo que muestra una app con `url`. */
 export interface JsonMarco { url: string; alto?: number | 'lleno' }
 

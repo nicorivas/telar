@@ -16,29 +16,31 @@ import type { MensajeDia, VistaDia } from './vista';
 
 /** Qué se ve en el dashboard. */
 export type NombrePantalla = 'ahora' | 'bloque' | 'config' | 'proyectos' | 'seccion' | 'conversacion' | 'equipo' | 'agentes' | 'tarea' | 'esperas'
-    | 'revisar' | 'pestana' | 'calendario' | 'foco' | 'tactica' | 'todo';
+    | 'revisar' | 'pestana' | 'calendario' | 'foco' | 'tactica' | 'todo' | 'esperando';
 
 /** De qué pestaña fija (`dentro` de un bloque, config.DENTRO_DE) es cada pantalla, y con qué acción se vuelve a ella. */
 export const SECCION_DE_PANTALLA: Partial<Record<NombrePantalla, string>> = {
-    ahora: 'ahora', revisar: 'tareas', foco: 'tareas', proyectos: 'proyectos', calendario: 'calendario',
+    ahora: 'ahora', revisar: 'tareas', foco: 'tareas', esperando: 'tareas', proyectos: 'proyectos', calendario: 'calendario',
 };
 /** Las subpestañas de fábrica de una sección, antes de las de los bloques (`dentro`): [acción que la abre, nombre,
- *  pantalla]. «tareas» abre en foco (decidir de a una), y «lista» es la lista entera. */
+ *  pantalla]. «tareas» abre en foco (decidir de a una), «lista» es la lista entera y «esperando», lo que otros le deben
+ *  a la persona (esperando.ts). */
 export const SUBPESTANAS: Record<string, [string, string, NombrePantalla][]> = {
-    tareas: [['foco', 'foco', 'foco'], ['revisar', 'lista', 'revisar']],
+    tareas: [['foco', 'foco', 'foco'], ['revisar', 'lista', 'revisar'], ['esperando', 'esperando', 'esperando']],
 };
 /** El ícono de cada vista de fábrica en la barra de su pantalla (por su nombre), y lo que dice su globo. La de un
  *  módulo (`dentro`) no trae ícono: va con su nombre. */
 export const ICONO_VISTA: Record<string, [string, string]> = {
     foco: [I.foco, 'de a cinco, para decidir cada una'],
     lista: [I.lista, 'todas, con sus filtros'],
+    esperando: [I.reloj, 'lo que otros te deben, por persona: lo que espera a alguien y lo delegado'],
     proyectos: [I.tabla, 'la lista de los proyectos, con su estado y su plazo'],
 };
 
 /** La barra de cada pantalla (componentes/pantalla.ts): su nombre y su tinta, cuando no los dice la pestaña que se ve
  *  (un bloque, la pestaña de un proveedor, una sección: esos los ponen ellos). */
 export const BARRA_DE: Partial<Record<NombrePantalla, [string, string]>> = {
-    ahora: ['ahora', 'amarillo'], foco: ['tareas', 'cian'], revisar: ['tareas', 'cian'], tarea: ['tareas', 'cian'],
+    ahora: ['ahora', 'amarillo'], foco: ['tareas', 'cian'], revisar: ['tareas', 'cian'], esperando: ['tareas', 'cian'], tarea: ['tareas', 'cian'],
     proyectos: ['proyectos', 'verde'], calendario: ['calendario', 'azul'],
     config: ['configuración', 'dim'], agentes: ['agentes', 'violeta'], equipo: ['equipo', 'cian'],
 };
@@ -52,10 +54,11 @@ export interface EnBarra {
     volver?: AccionDePantalla;
     /** sus propias vistas (el calendario: el día y la semana), si no son subpestañas del núcleo */
     vistas?: VistaDePantalla[];
-    /** lo que resume, tenue: una cuenta, la fecha */
-    resumen?: string;
-    /** lo mismo, ya armado (HTML de confianza): un número en su color (el de «táctica») */
-    resumenHtml?: string;
+    /** el globo del título: lo que resume la pantalla (una cuenta, un subtítulo), para quien lo busque. La barra no
+     *  lleva resumen a la vista (componentes/pantalla.ts): lo que la persona necesita ver va en la pantalla */
+    ayuda?: string;
+    /** lo que se suma al globo de ↻: cuándo se leyó («leídas hace 3 min») */
+    leido?: string;
     /** sus acciones, antes de ↻ */
     acciones?: AccionDePantalla[];
     /** sin ↻: lo que se ve no se relee (la configuración) */

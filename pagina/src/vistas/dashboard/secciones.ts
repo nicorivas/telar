@@ -81,10 +81,10 @@ export class PantallaSecciones implements Pantalla {
     private pintarSeccion(): void {
         const p = this.pagina;
         if (!p) return;
-        // la barra: su nombre y su subtítulo; los atajos que van en ella, los enlaces de la página (una app servida:
+        // la barra: su nombre (su subtítulo, en el globo); los atajos que van en ella, los enlaces de la página (una app servida:
         // abrirla en el navegador) y ↻, que vuelve a pedir la página
         const barra: EnBarra = {
-            nombre: p.titulo, color: this.clave.startsWith('app:') ? 'cian' : 'violeta', resumen: p.subtitulo ?? '', sinReleer: true,
+            nombre: p.titulo, color: this.clave.startsWith('app:') ? 'cian' : 'violeta', ayuda: p.subtitulo || undefined, sinReleer: true,
             acciones: [...this.t.atajosEnBarra(`seccion:${this.clave}`),
                 ...(p.acciones ?? []).filter(a => a.tipo === 'abrir' && a.enlace).map(a =>
                     ({ accion: 'abrir-enlace', valor: a.enlace!, icono: I.externo, tono: 'azul', ayuda: `${a.nombre}: ${a.enlace}` })),
@@ -115,7 +115,7 @@ export class PantallaSecciones implements Pantalla {
         const barra: EnBarra = {
             volver: this.clave ? { accion: 'volver-seccion', icono: I.atras, ayuda: `volver a ${de}` } : undefined,
             nombre: 'conversación', color: 'violeta', sinReleer: true,
-            resumen: `${c.conversacion.slice(0, 8)}${c.hilo ? ` · ${c.hilo}` : ''} · ${c.mensajes.length} mensajes`,
+            ayuda: `${c.conversacion.slice(0, 8)}${c.hilo ? ` · ${c.hilo}` : ''} · ${c.mensajes.length} mensajes`,
             acciones: hilo ? [{ accion: 'retomar-charla', icono: I.retomar, tono: 'violeta', ayuda: 'retomar: volver a esta conversación en su hilo' }] : [],
         };
         for (const m of c.mensajes) {

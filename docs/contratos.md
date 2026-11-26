@@ -873,8 +873,10 @@ de una fila con la densidad que se ve (`--item-alto`: un interlineado, mayor en 
 (`--item-fondo-hover`, `--item-fondo-activa`), y `--pantalla-vista-si`, el color de la vista que se ve. Van en una
 regla `:root:root`, que gana a la que traiga el lienzo en su `:root`: una página que declara su paleta con esos nombres
 (para verse igual fuera de telar) toma la del tema sin hacer nada. Una pestaña o una app ocupa el cuerpo de su pantalla
-de borde a borde, bajo la barra que pone telar con su nombre, su subtítulo y su ↻: la página no repite su título, y
-arranca su primera fila con `--pantalla-margen` de aire, como las de telar.
+de borde a borde, bajo la barra que pone telar con su nombre y su ↻ (su subtítulo va en el globo del nombre: la barra no
+lleva cuentas ni estados a la vista): la página no repite su título, lo que la persona necesita ver (la semana que se
+mira, cuántas faltan) lo dice ella en su cuerpo, y arranca su primera fila con `--pantalla-margen` de aire, como las de
+telar.
 
 El sandbox deja al lienzo sin almacenamiento propio (`localStorage` lanza un error). Si lo
 necesita —un juego que recuerda, un dibujo que se sigue—, la página declara `memoria`, la ruta
@@ -893,6 +895,22 @@ Un lienzo de un módulo recibe además `window.lienzo.item`: el ítem en que la 
 ventana de un chat de foco: «abrir el chat»), o `""`; si la pestaña ya estaba pintada, le llega como el evento
 `lienzo-item` en su `window` (el ítem, en `detail`). El iframe lleva `data-origen` («bloque:whatsapp»).
 
+Un lienzo puede pedir los **componentes** de la página con `"componentes": true`:
+
+```json
+{ "lienzo": { "archivo": "/ruta/pagina.html", "alto": "lleno", "componentes": true } }
+```
+
+Los recibe en línea, antes de su HTML: la hoja de las pestañas, el buscador y los filtros (con la letra de íconos de la
+página, como `telar-iconos`), los tokens que usa con el valor del tema que se ve, y `window.lienzo.componentes`, que arma
+su HTML con las mismas props que en la página (`pestanas`, `barraBuscar`, `buscador`, `filtros`; `marcarFiltros`,
+`contarFiltro`, `marcar`, `acomodar`, `elegir`, `iconos`, `version`). Lo que hacen solos: las pestañas que no caben van a un
+«⋯» al dibujarse y al cambiar el ancho, con su teclado; el ✕ del buscador lo borra (y avisa con un `input`); el «⋯» y un
+grupo de filtros plegado abren el menú de la página (`opciones`, abajo). Lo que abre una pestaña o filtra un filtro es
+del lienzo: le llegan los clics con `data-accion` y `data-valor` (una pestaña) o `data-id` (`grupo:clave`, un filtro). Un
+telar que no los tiene ignora el campo y no define `window.lienzo.componentes`: el lienzo que lo mira dibuja lo suyo. Cómo
+usarlos, en [modulos.md](modulos.md), «Las pestañas y los filtros de telar».
+
 La página de un **módulo** (la de su pestaña o su app) puede además pedirle a telar que haga algo por ella:
 `window.lienzo.pedir(orden, datos)` devuelve una promesa con lo que quedó, o falla con el porqué. telar lo hace solo
 si el módulo declaró la orden en su `[permisos] ordenes` y la persona se la concedió: la primera vez la página le
@@ -906,12 +924,19 @@ un enlace a esa dirección (la ficha de una tarea, el hilo, la vista del objeto)
 `tarea:T84`); `destino`, a quién viene elegido (`agente:<nombre>`, `hilo:<nombre>`; sin él, el de `[instruccion]
 destino`, [configuracion.md](configuracion.md)); `texto`, lo que viene escrito. La persona puede cambiar a quién y qué,
 y la instrucción es opcional: vacía, le llega el contexto con una línea que le pide procesarlo. El texto va entero, con
-sus líneas (`telar actuar`, abajo), y de dónde viene («la pestaña «chats»») lo pone la página, no el lienzo. `menu`,
-`abrir` e `instruccion` no piden permiso ni llegan al servidor, porque solo muestran: lo que se elige en el menú, se
+sus líneas (`telar actuar`, abajo), y de dónde viene («la pestaña «chats»») lo pone la página, no el lienzo. `prosa`
+(`{markdown}`) lo da dibujado como en el visor de documentos (`{html}`: sin el frontmatter ni HTML propio), para leerlo en
+la prosa de telar (`C.prosa` de los componentes, [modulos.md](modulos.md)). `menu`,
+`abrir`, `instruccion`, `opciones` y `prosa` no piden permiso ni llegan al servidor, porque solo muestran: lo que se elige en el menú, se
 elige en la página, y lo que se manda en la instrucción, lo manda la persona. La promesa de `menu` y `abrir` se cumple
 (sin datos) en cuanto la página las recibe, y falla si no traen una dirección (`abrir` la pide con la forma `tipo:id`);
 la de `instruccion`, al cerrarse la ventana: con `{destino, como, maquina}` (a quién llegó y cómo, lo de `telar
-actuar`) si se mandó, o con `null` si se canceló; falla si el contexto no sirve o si no se pudo mandar. Y `consulta` (`{verbo, params}`): una de las consultas del módulo mismo (`[ordenes.<verbo>]` con
+actuar`) si se mandó, o con `null` si se canceló; falla si el contexto no sirve o si no se pudo mandar. `opciones`
+(`{opciones: [{nombre, ayuda?, icono?, color?, apagada?}], titulo?, x, y}`) abre el menú de la página con esas opciones,
+junto al punto, y se cumple al elegir con `{indice}`, o con `null` si se cerró sin elegir: lo usan los componentes (el
+«⋯», un filtro plegado, abajo) y el lienzo para lo que quiera elegir así. `icono` es un carácter de la letra de íconos y
+`color`, una tinta de la página (`azul`… `violeta`, `acento`, `exito`, `atencion`, `peligro`, `texto`, `texto-tenue`);
+todo se escapa. Y `consulta` (`{verbo, params}`): una de las consultas del módulo mismo (`[ordenes.<verbo>]` con
 `consulta = true`), con lo que devuelve; tampoco pide permiso, porque es el código del módulo que ya dibujó la página y lee o cambia lo suyo, no tus
 documentos (así carga lo que no cupo al dibujarla, o guarda lo que se elige en ella). Por la API es `POST
 /lienzo/pedir` (`{origen: "bloque:<clave>" | "app:<clave>", orden, datos}`): sin la concesión, un 403 con

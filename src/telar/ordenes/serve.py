@@ -140,8 +140,8 @@ def main(argv: list[str], ctx) -> int:
         nodo = Nodo(ctx, web=url_web)
         print("telar serve: con el nodo del bus", flush=True)
     if o.puerto:
-        _correr(uvicorn, uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning"), equipo, nodo)
-        return 0
+        principal = uvicorn.Config(api.app, host="127.0.0.1", port=o.puerto, log_level="warning")
+        return _correr(uvicorn, principal, equipo, nodo) or 0
     # solo su dueño entra a la carpeta del socket: uvicorn le pone al socket mismo permisos para todos
     # (0666), así que lo que protege es la carpeta, no el archivo. Se la cierra si es de telar: la de siempre, o una
     # que crea ahora. A una que ya estaba (/tmp, la de otro) no se le cambian los permisos: se avisa si otros entran
@@ -156,8 +156,8 @@ def main(argv: list[str], ctx) -> int:
     if sock.is_socket():
         sock.unlink()  # uno que quedó de una vuelta anterior
     print(f"telar serve: {sock}", flush=True)
-    _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo, nodo)
-    return 0
+    # 1 si un pedazo se cayó (y lo dijo en el registro): el servicio lo levanta de nuevo
+    return _correr(uvicorn, uvicorn.Config(api.app, uds=str(sock), log_level="warning"), equipo, nodo) or 0
 
 
 def _largo_maximo() -> int:
@@ -176,27 +176,125 @@ def _demasiado_largo(sock: Path) -> str:
     return f"la ruta es demasiado larga ({largo} bytes; un socket Unix admite hasta {maximo}): usa una más corta"
 
 
-def _correr(uvicorn, principal, equipo, nodo=None) -> None:
+#: cuánto espera un servidor, al apagarse, a que terminen las conexiones abiertas (segundos). Sin tope, uvicorn espera
+#: para siempre: la página tiene siempre una abierta (los eventos, la terminal), y un servicio que se apagaba a medias
+#: quedaba vivo y sordo (26-nov-2026)
+PLAZO_APAGAR = 5.0
+
+#: lo que sale del proceso si, caído un pedazo, no alcanzó a apagarse solo en este tiempo (segundos)
+PLAZO_SALIR = 20.0
+
+#: cómo sale el proceso cuando no alcanzó a apagarse (una prueba lo cambia)
+_salir = os._exit
+
+#: la guardia que lo hace salir, si un pedazo se cayó: sigue después de `_correr`, porque Python, al salir, todavía
+#: espera a sus hilos (una prueba la cancela)
+guardia: "threading.Timer | None" = None
+
+
+def _nombre(config) -> str:
+    """Cómo se llama en el registro el servidor de esa configuración de uvicorn."""
+    if getattr(config, "uds", None):
+        return f"el servidor en {config.uds}"
+    return f"el servidor en {config.host}:{config.port}"
+
+
+def _anotar(texto: str) -> None:
+    from datetime import datetime
+
+    print(f"{datetime.now():%Y-%m-%d %H:%M:%S} telar serve: {texto}", file=sys.stderr, flush=True)
+
+
+def _apagando(si: bool) -> None:
+    """Que los avisos a la página (`/eventos`, telar.api_web) terminen solos: si no, el servidor espera a la página."""
+    if (web := sys.modules.get("telar.api_web")) is not None:
+        web.APAGANDO = si
+
+
+def _correr(uvicorn, principal, equipo, nodo=None) -> int:
     """La API y, si se pidieron, la página del equipo y el nodo del bus: todo en el mismo bucle. Si uno se
-    cae, se cae el proceso entero (y el servicio lo levanta): uno a medias no sirve."""
+    cae, se cae el proceso entero (y el servicio lo levanta): uno a medias no sirve. Lo que se cayó y por qué va al
+    registro, y el proceso sale con 1; si no alcanza a apagarse en PLAZO_SALIR, sale igual. Devuelve 0 si se apagó porque
+    se lo pidieron (una señal)."""
     import asyncio
+    import threading
+    import traceback
 
     # `equipo`: los servidores de más (la página del equipo, la página de telar), cada uno en su puerto
     extra = equipo if isinstance(equipo, list) else ([equipo] if equipo else [])
-    servidores = [uvicorn.Server(principal), *(uvicorn.Server(c) for c in extra)]
+    configs = [principal, *extra]
+    for c in configs:
+        # sin tope, un servidor que se apaga espera para siempre a la página, que nunca cierra sus eventos
+        if getattr(c, "timeout_graceful_shutdown", None) is None:
+            c.timeout_graceful_shutdown = PLAZO_APAGAR
+    servidores = [uvicorn.Server(c) for c in configs]
+    caida: list[str] = []
+
+    def salir_igual() -> None:
+        _anotar(f"no alcanzó a apagarse en {PLAZO_SALIR:g} s: sale igual")
+        _salir(1)
+
+    async def mirar_apagado():
+        # uno que se apaga (por una señal, a uno solo le llega) apaga los avisos a la página al tiro
+        while not any(s.should_exit is True for s in servidores):
+            await asyncio.sleep(0.2)
+        _apagando(True)
 
     async def todos():
+        mirador = asyncio.create_task(mirar_apagado())
         tareas = [asyncio.create_task(s.serve()) for s in servidores]
+        nombres = [_nombre(c) for c in configs]
         if nodo is not None:
             tareas.append(asyncio.create_task(nodo.correr()))
+            nombres.append("el nodo del bus")
         hecho, _ = await asyncio.wait(tareas, return_when=asyncio.FIRST_COMPLETED)
+        # lo que terminó sin que nadie lo pidiera (una señal) es una caída: se dice qué y por qué, antes de apagar el
+        # resto, que puede no terminar nunca
+        for t in hecho:
+            i = tareas.index(t)
+            pedido = i < len(servidores) and bool(getattr(servidores[i], "_captured_signals", None))
+            if pedido:
+                continue
+            if t.cancelled():
+                caida.append(f"{nombres[i]} se canceló")
+            elif (e := t.exception()) is not None:
+                caida.append(f"{nombres[i]} se cayó: {type(e).__name__}: {e}\n"
+                             + "".join(traceback.format_exception(e)).rstrip())
+            else:
+                caida.append(f"{nombres[i]} terminó sin que nadie se lo pidiera")
+        if caida:
+            for linea in caida:
+                _anotar(linea)
+            _anotar("apago lo demás y salgo (el servicio me levanta de nuevo)")
+            global guardia
+            guardia = threading.Timer(PLAZO_SALIR, salir_igual)
+            guardia.daemon = True
+            guardia.start()
+        _apagando(True)
         for s in servidores:
             s.should_exit = True
         if nodo is not None:
             tareas[-1].cancel()  # el nodo no mira should_exit: se le cancela
-        await asyncio.gather(*tareas, return_exceptions=True)
-        for t in hecho:
-            if not t.cancelled():
-                t.result()
+        _, quedan = await asyncio.wait(tareas, timeout=PLAZO_APAGAR + 2)
+        for s in servidores:
+            s.force_exit = True  # lo que sigue esperando conexiones, que no espere más
+        for t in quedan:
+            t.cancel()
+        mirador.cancel()
+        await asyncio.gather(*tareas, mirador, return_exceptions=True)
 
-    asyncio.run(todos())
+    # mientras corre el servicio (y solo entonces: no la CLI ni quien llame a esto en una prueba), lo que dan los
+    # proveedores sirve unos segundos a todos los que lo piden (telar.alla, MEMORIA), y lo pesado que solo lee (los
+    # proyectos, los pendientes de todo el repositorio) va a un proceso aparte (telar.aparte)
+    from telar import alla, aparte
+
+    antes = (alla.MEMORIA, aparte.ACTIVO)
+    alla.MEMORIA, aparte.ACTIVO = alla.MEMORIA_SERVE, True
+    _apagando(False)
+    try:
+        asyncio.run(todos())
+    finally:
+        aparte.apagar()
+        alla.MEMORIA, aparte.ACTIVO = antes
+        _apagando(False)
+    return 1 if caida else 0

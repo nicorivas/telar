@@ -1,8 +1,9 @@
 # La librería de componentes
 
 Estado: decidido el rumbo (lo de abajo); hecho el ítem, el círculo, temas, densidades, el catálogo con su lista
-jerárquica a la izquierda, la revisión (el inventario), el «+» de nuevo y el componente de orden y el de buscador en la barra; lo demás,
-por hacer, de noche (siguiente: el grupo entero de la sección de lista, paso 6; el buscador ya está en todas partes).
+jerárquica a la izquierda, la revisión (el inventario), el «+» de nuevo y el componente de orden y el de buscador en la barra; y la
+sección de lista entera, con la que se arma la barra (26-nov). El buscador ya está en todas partes. Del orden de trabajo queda, de las
+ventanas, la instrucción (de día), la mudanza y la franja de soltar; y la cabecera de tabla.
 
 La página de telar se arma con piezas que hoy están hechas una vez por cada vista: un buscador en la barra de hilos,
 otro en el dashboard, otro en ⌘K; los íconos para ordenar, cada grupo a su manera; «+ nuevo» escrito a mano en cada
@@ -24,7 +25,8 @@ Se trabaja de noche, sin nadie mirando (§ «La noche», abajo), y de día se re
   último). Toda la barra de hilos se arma con él. Su anatomía, con la intención de cada pieza, en
   `componentes/anatomia.ts`.
 - **Orden** (`componentes/orden.ts`, `orden.css`): el grupo de ordenar (ícono padre + opciones entre dos cortes en su púrpura);
-  la barra de hilos lo usa y tiene su página en el catálogo. Las columnas del dashboard (proyectos, tareas) siguen a su manera.
+  la barra de hilos lo usa y tiene su página en el catálogo. En el dashboard, «tareas» y la lista de proyectos lo llevan en la
+  barra de su buscador; la tabla extendida de proyectos ordena todavía por los nombres de sus columnas.
 - **Buscador** (`componentes/buscador.ts`, `buscador.css`, tokens `--buscador-…`; 18-nov, a pedido: «no somos consistentes en los
   inputs para buscar… debería ser un componente definido»): uno solo para toda la página, y todos los buscadores lo usan (el inventario,
   con cómo era cada uno, en el catálogo: «buscador › dónde está»). **Una regla**: la lupa delante («aquí se busca»), y el texto de ayuda
@@ -39,10 +41,16 @@ Se trabaja de noche, sin nadie mirando (§ «La noche», abajo), y de día se re
   línea de la barra tome el acento mientras se escribe. Reemplaza los campos hechos a mano (⌘K, elegir, el menú ⋯, la instrucción,
   compartir, los códigos del lado, la skill de un periódico) y el `«/ buscar»` del placeholder. Quedan fuera las pestañas de los
   módulos (whatsapp…), que viven en sus repositorios.
-- **Sección de lista** (`componentes/seccion.ts`, `seccion.css`; 16-nov, primera pieza del paso 6): `herramientas({ grupo, ayuda, orden?, extra?,
-  estilo?, vacia? })` arma la banda (buscador + orden + lo extra) con su fila oculta «nada calza», y `separador()` la línea entre
-  grupos; la barra de hilos los usa y el catálogo tiene su página («sección de lista › herramientas»). **Falta** `seccion({ cabecera,
-  herramientas, filas })`, el grupo entero con su plegado (hoy en `hilos.ts` el closure `cabecera`/`submenu`), y los bloques del dashboard.
+- **Sección de lista** (`componentes/seccion.ts`, `seccion.css`; paso 6: la banda el 16-nov, el grupo entero el 26-nov): un
+  grupo de una lista. `seccion({ clave, titulo, cuenta?, ayuda, abierta, acciones?, nuevo?, herramientas?, filas, vacia? })`
+  da la cabecera (el «+» al último) y, abierta, la banda (`herramientas()`: buscador + orden + lo extra, con su fila oculta
+  «nada calza») y las filas o la que dice que no hay; `submenu({ …, ancho? })`, la sección dentro de otra; `secciones([…])`
+  las junta con el `separador()`. **`filas` es una función**: plegada, no se arma (y en HILOS la cuenta de la cabecera
+  depende de lo que AGENTES dibujó antes). Da **HTML plano**, sin un elemento que envuelva el grupo: el CSS del separador y el
+  arrastre necesitan que sean hermanos. El **plegado** es `Plegado` (sin DOM: dónde guardar y con qué llave): recuerda solo
+  las cabeceras que están al revés de como empiezan. La barra de hilos arma así todas sus secciones, con el mismo HTML de
+  antes. En el catálogo, «sección de lista»: el grupo, anatomía, submenú, herramientas. **Fuera**: los grupos de «te esperan»
+  (`vistas/dashboard/esperas.ts`, con su plegado propio en `telar.esperas.plegados`) y los bloques del dashboard.
 - **Filtros** (`componentes/filtros.ts`, `filtros.css`): los grupos de opciones con su cuenta, en una fila, a la vista o
   plegados en un menú; los usa «tareas» (13-nov, ver «Los filtros»).
 - **Círculo** (`componentes/circulo.ts`): la firma de los estados (tamaño y llenado) y de lo que está en curso (se
@@ -112,7 +120,7 @@ de un proyecto, «ahora» y la pestaña de un proveedor) usan una sola fila, `vi
 La pestaña «tareas» deja de ser una tabla: sin cabecera de columnas, ni recuadro de color a la izquierda. Arriba, sus
 herramientas como en la barra de hilos (el buscador con su cuenta y el grupo de ordenar: fecha, prioridad, estrella,
 proyecto, responsable, código, alfabético; otra vez en el que rige, la urgencia), y debajo los filtros, en una fila (ver
-«Los filtros»). La «cabecera de tabla» queda para proyectos.
+«Los filtros»). La «cabecera de tabla» queda para la tabla extendida de proyectos (la lista ya es de ítems, como «tareas»).
 
 ## Los filtros (decidido el 13-nov-2026)
 
@@ -140,8 +148,9 @@ El componente (`componentes/filtros.ts`, `media/css/filtros.css`, página «filt
   quedaría filtrada sin que se vea por qué, y sin «todas» no habría cómo soltarlo.
 
 En «tareas», el modo va a la vista y el área y el responsable plegados: una fila en el computador; en media pantalla y en
-el teléfono se parte por grupos. Lo elegido se recuerda como antes. Queda el filtro de proyectos (`proyectos.ts`,
-`filtro()`: área, tipo, con hilo, con pendientes), que sigue con sus palabras y su «todas»: puede pasar al componente.
+el teléfono se parte por grupos. Lo elegido se recuerda como antes. El de proyectos pasó el 26-nov (`proyectos.ts`,
+`filtrosProyectos`): el área plegada, como en «tareas», con «todas» a la vista cuando no rige ninguna y primera en su menú,
+y «cerrados N» a su lado.
 
 ## La tarjeta (propuesta, 13-nov-2026)
 
@@ -238,7 +247,8 @@ elegida encima de las acciones (ya se ve en su tarjeta), y los íconos repetidos
   descartar, y la fecha, la prioridad y el responsable cuando el subtítulo no los muestra), los mismos que en el ⋯; las
   demás siguen con tecla y palabra. «escribirle a Claude» es el ícono de la instrucción.
 - *calendario*: «preparar o minuta», «+ nota», «enviar a Secretaría». *ahora*: «procesar la minuta», «entrar ↗», «abrir».
-- *proyectos*: «cerrados 34» y ↔ son de la lista; decidir si suben a la barra.
+- *proyectos*: «cerrados N» quedó en la fila de filtros; ↔ (la tabla extendida) es una vista de la barra, junto a «gantt»
+  (26-nov, la etapa 4 de [la auditoría](auditoria-proyectos.md)).
 - *productos*: «+ idea» es el + de crear (sin la palabra); servicios · backlog · tablero son sus vistas, pero viven dentro
   del lienzo: falta que un módulo pueda declarar sus vistas (y el ícono de su pestaña, que hoy va con su nombre: «gantt»).
 - *fuera del dashboard*: la vista de un objeto (`web/objeto.ts`) y la de una carpeta (`web/carpeta.ts`) siguen con
@@ -624,7 +634,7 @@ ayuda })`, un «+» con su ayuda; los enlaces de texto de configuración pasan a
 
 ### Sección de lista (paso 6)
 
-Solo existe en la barra (`hilos.ts`: `cabecera(...)` + `.herram` + filas + `.sep`, y `hilos.css:15-23`). En el dashboard
+Hecha para la barra (arriba, «Lo que ya está»); lo de abajo es como era el 11-nov. Solo existe en la barra (`hilos.ts`: `cabecera(...)` + `.herram` + filas + `.sep`, y `hilos.css:15-23`). En el dashboard
 los bloques (`bloques.ts`, `vista.ts`) repiten la idea con otras clases (`.sep-pag`, `dia.css:77`; `.tareas-cab`,
 `.proy-cab`). **Componente**: `seccion({ cabecera, herramientas, filas, vacia })`; `herramientas` = buscador + orden +
 nuevo en una fila.

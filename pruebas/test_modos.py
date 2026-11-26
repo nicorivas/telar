@@ -21,6 +21,15 @@ except ImportError:
 
 
 class LosModos(Prueba):
+    def test_un_propio_dice_su_icono_en_la_banda_y_sin_decirlo_es_el_de_su_base(self):
+        c = config.desde_dict({"modos": {"entradas": {"nombre": "entradas", "icono": "bandeja", "filas": "pestana:leer"},
+                                         "otro": {"base": "estrategia"}}})
+        m = {x["clave"]: x for x in modos.todos(c)}
+        self.assertEqual(m["entradas"]["valores"]["icono"], "bandeja")
+        self.assertEqual(m["otro"]["valores"]["icono"], "", "sin decirlo: vacío, la página pone el de su base")
+        with self.assertRaises(config.ErrorDeConfig):
+            modos.validar("malo", {"icono": "no es un nombre"})
+
     def test_de_fabrica_las_cuatro_actitudes_y_tactica_toma_la_terminal_de_su_tabla(self):
         c = config.desde_dict({"terminal": {"columnas": 120, "fondo": "#112233"}})
         m = {x["clave"]: x for x in modos.todos(c)}
@@ -105,7 +114,10 @@ class LosModos(Prueba):
             self.assertEqual(modos.validar("equipo", {"agrupar_iniciativas": escrito})["valores"]["agrupar_iniciativas"],
                              "{frontmatter:programa}", escrito)
         self.assertEqual(modos.validar("equipo", {"agrupar_iniciativas": ""})["valores"], {"agrupar_iniciativas": ""})
-        for malo in ("{campo:Cliente}", "{programa", "dos palabras", "frontmatter:"):
+        # varios, en orden de preferencia: la pantalla agrupa por el primero que alguna ficha tenga
+        self.assertEqual(modos.validar("equipo", {"agrupar_iniciativas": "funcion, {frontmatter:programa}, funcion"})["valores"]
+                         ["agrupar_iniciativas"], "{frontmatter:funcion}, {frontmatter:programa}")
+        for malo in ("{campo:Cliente}", "{programa", "dos palabras", "frontmatter:", "funcion, {campo:Cliente}", "funcion,"):
             with self.assertRaises(config.ErrorDeConfig, msg=malo):
                 modos.validar("equipo", {"agrupar_iniciativas": malo})
         # de fábrica, sin sección de iniciativas; un modo propio las toma de táctica

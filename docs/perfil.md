@@ -290,6 +290,7 @@ despues:                          # con el código nuevo ya corriendo
 comprobar:                        # que quedó: en cada máquina, también en las que ya estaban al día
   - pagina: /pagina.json          # GET en la página de telar de esa máquina, con su llave
     igual: firma                  # este campo de su JSON, el mismo en todas las máquinas
+    sigue: 15                     # y a 15 s de contestar, que conteste de nuevo (0 por defecto: no se pide otra vez)
   - comando: bin/estado           # o un comando, que salga con 0
     plazo: 10                     # segundos para que conteste (30 por defecto): el servicio puede estar arrancando
 ```
@@ -304,7 +305,9 @@ nombres.
 
 `pagina` le pide la ruta a la página que sirve el `telar serve` de esa máquina, en su puerto de verdad (lo que dice su
 `/salud`, `web`) y con su llave (`~/.config/telar/panel.llave`), que no sale de ella: `/pagina.json` dice qué página
-sirve; `/api/…`, la API detrás de la página. El de telar mismo está en su `.telar/despliegue.yaml`.
+sirve; `/api/…`, la API detrás de la página. Con `sigue`, se pide otra vez a esos segundos de la primera respuesta, y
+si ya no contesta, el despliegue falla: un servicio que arranca y se cae a los pocos segundos pasaba la primera. El de
+telar mismo está en su `.telar/despliegue.yaml`.
 ## El CHANGELOG por fragmentos: `.telar/changelog.yaml`
 
 Dos ramas que escriben en el CHANGELOG chocan siempre: las dos agregan arriba, en `[Unreleased]`. Un repositorio que

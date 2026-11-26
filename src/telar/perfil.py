@@ -522,17 +522,22 @@ def carpeta_de_repo(config, repo) -> Path:
     return ruta.resolve()
 
 
-def repo_de(config, ruta: str | Path) -> str:
+def carpetas_de_repos(config) -> list[tuple[str, Path]]:
+    """(nombre, carpeta resuelta) de cada repo de `[repos]`: para quien pregunta `repo_de` por muchas carpetas
+    seguidas, que así no resuelve las mismas en cada una."""
+    return [(repo.nombre, carpeta_de_repo(config, repo)) for repo in getattr(config, "repos", ()) or ()]
+
+
+def repo_de(config, ruta: str | Path, carpetas: list[tuple[str, Path]] | None = None) -> str:
     """De qué repositorio de `[repos]` es una carpeta (relativa a la raíz o absoluta): el más profundo que la
-    contiene. "" si de ninguno declarado (es de la raíz)."""
+    contiene. "" si de ninguno declarado (es de la raíz). `carpetas`: las de `carpetas_de_repos`, ya resueltas."""
     raiz = Path(config.raiz).expanduser()
     camino = Path(ruta).expanduser()
     camino = (camino if camino.is_absolute() else raiz / camino).resolve()
     mejor, largo = "", -1
-    for repo in getattr(config, "repos", ()) or ():
-        base = carpeta_de_repo(config, repo)
+    for nombre, base in carpetas_de_repos(config) if carpetas is None else carpetas:
         if camino == base or base in camino.parents:
             if len(base.parts) > largo:
-                mejor, largo = repo.nombre, len(base.parts)
+                mejor, largo = nombre, len(base.parts)
     return mejor
 

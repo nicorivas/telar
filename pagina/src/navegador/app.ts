@@ -36,8 +36,8 @@ import * as pestanasWeb from '../web/pestanas';
 import * as buscadorHilos from '../web/buscador-hilos';
 import * as hallados from '../web/hallados';
 import { type Vista, vista, VISTAS } from '../web/vistas-hilo';
-import { barra as barraPantalla } from '../componentes/pantalla';
-import { modosAdentro, mundoBoton, type ClaveModo } from '../componentes/modos-mundos';
+import { barra as barraPantalla, fueraDeLaBarra } from '../componentes/pantalla';
+import { iconoDeModo, modosAdentro, mundoBoton, type ClaveModo } from '../componentes/modos-mundos';
 import * as mundo from '../web/mundo';
 import * as mundosVentana from '../web/mundos-ventana';
 import * as franja from '../web/franja';
@@ -371,7 +371,8 @@ for (const [id, icono] of [['ir-maquinas', I.maquinas], ['ir-config', I.config]]
 
 // los modos y el mundo (docs/propuestas/orden-por-modos.md, paso 2), a la vista en la banda, el segundo nivel de la
 // cabecera (indice.html, modos.css): a la izquierda las cuatro actitudes (táctica, estrategia, foco, todo; la puesta en
-// violeta, y táctica con el único número de la página cuando no es la que se ve), y a la derecha el mundo, su nombre en
+// violeta, y táctica con el único número de la página cuando no es la que se ve) y los modos propios que el mundo puesto
+// nombra en su `modos`, cada uno con su botón (su ícono, el de su ajuste `icono`), y a la derecha el mundo, su nombre en
 // su color y hasta cuándo (la línea de abajo de la cabecera, que es la de la banda, es la de siempre). Un clic en un modo lo
 // pone y lleva a su vista; en el mundo, la ventana de mundos. Clic derecho en los modos: los propios y editarlos. Teclas:
 // ⌥⇧1–4, ⌥⇧F foco y vuelta, ⌥⇧M el siguiente, ⌥⇧0 el mundo (web/modos.ts); ⌘M, la ventana de mundos
@@ -384,9 +385,17 @@ function pintarModos(): void {
     const fila = document.getElementById('modos-fila');
     if (!fila) return;
     const m = modos.puesto();
-    // solo los que tiene el mundo puesto: sus actitudes y aquellas sobre las que se arma uno propio suyo
-    const solo = modos.delMundo() && [...new Set(modos.permitidos().map(x => modos.base(x)))];
-    const html = modosAdentro(modos.base() as ClaveModo, { propio: m.de_fabrica ? '' : m.nombre, solo });
+    // solo los que tiene el mundo puesto: sus actitudes, y los propios que nombra, cada uno con su botón (tras la actitud
+    // que lo precede en su lista); sin `modos` en el mundo, las cuatro, y el propio puesto junto a su base
+    const delMundo = modos.delMundo();
+    const permitidos = modos.permitidos();
+    const solo = delMundo && permitidos.filter(x => x.de_fabrica).map(x => x.clave);
+    const propios = delMundo ? permitidos.filter(x => !x.de_fabrica).map(x => {
+        const b = modos.base(x);
+        return { clave: x.clave, nombre: x.nombre, icono: iconoDeModo(String(x.valores.icono ?? ''), b),
+            que: `sobre ${modos.lista().find(y => y.clave === b)?.nombre ?? 'táctica'}` };
+    }) : [];
+    const html = modosAdentro(modos.base() as ClaveModo, { propio: m.de_fabrica ? '' : m.nombre, solo, activo: m.clave, propios, orden: delMundo });
     if (fila.innerHTML !== html) fila.innerHTML = html;
 }
 function pintarMundo(): void {
@@ -444,12 +453,13 @@ filaModos?.addEventListener('click', e => {
     const a = (e.target as HTMLElement).closest<HTMLElement>('[data-accion="modos-modo"]');
     if (!a?.dataset.id) return;
     e.preventDefault();
-    // un modo propio puesto sobre esa actitud: volver a su vista, sin cambiarlo; una que el mundo no tiene pero sí uno
-    // propio sobre ella: ese
+    // un modo propio puesto sobre esa actitud, sin botón suyo: volver a su vista, sin cambiarlo (con botón, la actitud es
+    // otra cosa); una que el mundo no tiene pero sí uno propio sobre ella: ese
     const m = modos.puesto();
     const id = a.dataset.id;
+    const conBoton = !m.de_fabrica && !!modos.delMundo()?.includes(m.clave);
     const propio = modos.permitido(id) ? undefined : modos.permitidos().find(x => !x.de_fabrica && modos.base(x) === id);
-    modos.cambiar(!m.de_fabrica && modos.base(m) === id ? m.clave : propio?.clave ?? id);
+    modos.cambiar(!m.de_fabrica && !conBoton && modos.base(m) === id ? m.clave : propio?.clave ?? id);
 });
 filaModos?.addEventListener('contextmenu', async e => {
     e.preventDefault();
@@ -669,10 +679,20 @@ declare global {
             /** la barra de mensaje de una cosa, en HTML (web/mensaje.ts, `barra`): para ponerla donde sea desde la consola y
              *  probarla de verdad (lo que se envía, sale: a un hilo de juguete) */
             barraMensaje?: (c: mensajes.ContextoMensaje) => string;
+            /** la barra de la pantalla que se ve: su título, su globo y lo que lleva fuera del título y los botones (debe
+             *  ser nada: componentes/pantalla.ts, `fueraDeLaBarra`). Para medir.py: `--js "window.telar.revisarBarra()"` */
+            revisarBarra?: () => { titulo: string; ayuda: string; fuera: string[] } | null;
         };
     }
 }
-window.telar = { ...(window.telar ?? {}), mostrar, ponerMundo: mundo.poner, barraMensaje: mensajes.barra,
+/** La barra de la pantalla que se ve (la primera a la vista): su título, su globo y lo que lleva de más. */
+function revisarBarra(): { titulo: string; ayuda: string; fuera: string[] } | null {
+    const nav = [...document.querySelectorAll<HTMLElement>('nav.pantalla-barra')].find(e => e.offsetParent !== null);
+    if (!nav) return null;
+    const t = nav.querySelector<HTMLElement>('.pantalla-nombre');
+    return { titulo: t?.textContent ?? '', ayuda: t?.title ?? '', fuera: fueraDeLaBarra(nav) };
+}
+window.telar = { ...(window.telar ?? {}), mostrar, ponerMundo: mundo.poner, barraMensaje: mensajes.barra, revisarBarra,
     ventanas: { revisar: () => ventanas.revisar(), silenciar: si => ventanas.silenciar(si), abierta: () => ventanas.abierta?.v.titulo ?? '' }, mundos: () => mundosVentana.abrir(opcionesMundos), vista: cambiarVista, ensayoAvisos: franja.ensayo, ensayoPulso: pulso.ensayo,
     ensayoMudanza: async (maquina, falla) => { const { ensayo } = await import('../web/mudanza'); await ensayo(maquina, falla); },
     ensayoSeguir: async (aqui, falla) => { const { ensayoSeguir } = await import('../web/mudanza'); await ensayoSeguir(aqui, falla); },
@@ -730,7 +750,10 @@ const sondear = async () => {
 };
 // la pestaña sola no espera a los hilos: se abre ya, sin pasar por «ahora»
 if (soloPestana) void hoy.irAPestanaNombrada(decodeURIComponent(soloPestana));
-void modelo.sondear(true).catch(() => undefined).then(() => {
+// recargada (un despliegue): la lista de antes, mientras llega la de ahora (cli.recordar)
+modelo.desdeRecordado();
+// primero sin los documentos de cada hilo (la barra al tiro), y enseguida con ellos
+void modelo.sondear(false, true).catch(() => undefined).then(() => {
     // recargada viendo un hilo (o un archivo, un objeto): ese, en la vista que tenía
     if (retomar) {
         const q = retomar.que;
@@ -749,4 +772,4 @@ void modelo.sondear(true).catch(() => undefined).then(() => {
     if (dormido && (!dormido.vivo || dormido.archivado)) { mostrar(id); return; }
     // un hilo que la lista no tiene (o algo que no es de los de siempre): la vista del objeto, que dice si existe
     if (!abrirDireccion(abrirAlCargar)) mostrar(`obj:${abrirAlCargar}`);
-}).then(sondear);
+}).then(() => modelo.sondear(true).catch(() => undefined)).then(sondear);

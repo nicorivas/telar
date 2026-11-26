@@ -41,20 +41,26 @@ function vistasCal(vista: VistaCal): VistaDePantalla[] {
     ];
 }
 
-/** La barra del calendario en el día: sus vistas, qué día es («mié 8 oct»), y moverse (‹ ›, hoy). */
-export function barraDia(fecha: string, hoyIso: string, cargando: boolean): EnBarra {
+/** Un día como se lee: «mié 8 oct». */
+export function diaLegible(fecha: string): string {
     const f = new Date(`${fecha}T12:00:00`);
-    const legible = isNaN(f.getTime()) ? fecha : `${DIAS_CORTOS[f.getDay()]} ${f.getDate()} ${MESES_CORTOS[f.getMonth()]}`;
+    return isNaN(f.getTime()) ? fecha : `${DIAS_CORTOS[f.getDay()]} ${f.getDate()} ${MESES_CORTOS[f.getMonth()]}`;
+}
+
+/** La barra del calendario en el día: sus vistas y moverse (‹ ›, hoy). Qué día se mira lo dice el globo del título y,
+ *  si no es hoy, la primera línea del día (htmlCalendario): la barra no lleva la fecha. */
+export function barraDia(fecha: string, hoyIso: string): EnBarra {
     const acciones: AccionDePantalla[] = [
         { accion: 'cal-dia', valor: '-1', icono: I.atras, ayuda: 'el día anterior ([ o ←)' },
         { accion: 'cal-dia', valor: '1', icono: I.siguiente, ayuda: 'el día siguiente (] o →)' },
     ];
     if (fecha !== hoyIso) acciones.push({ accion: 'cal-dia', valor: 'hoy', icono: I.casa, ayuda: 'hoy' });
-    return { vistas: vistasCal('dia'), resumen: `${legible}${cargando ? ' …' : ''}`, acciones };
+    return { vistas: vistasCal('dia'), ayuda: diaLegible(fecha), acciones };
 }
 
-/** La barra del calendario en la semana: sus vistas, qué semana es, y moverse (‹ ›, esta semana). */
-function barraSemana(lunes: string, estaSemana: string, cargando: boolean): EnBarra {
+/** La barra del calendario en la semana: sus vistas y moverse (‹ ›, esta semana). Qué semana es, en el globo del título
+ *  (sus días ya van en la cabeza de cada columna). */
+function barraSemana(lunes: string, estaSemana: string): EnBarra {
     const [ini, , , , fin] = diasDe(lunes);
     const mismoMes = ini.slice(5, 7) === fin.slice(5, 7);
     const acciones: AccionDePantalla[] = [
@@ -62,13 +68,15 @@ function barraSemana(lunes: string, estaSemana: string, cargando: boolean): EnBa
         { accion: 'cal-semana', valor: '1', icono: I.siguiente, ayuda: 'la semana siguiente (])' },
     ];
     if (lunes !== estaSemana) acciones.push({ accion: 'cal-semana', valor: 'hoy', icono: I.casa, ayuda: 'esta semana' });
-    return { vistas: vistasCal('semana'), resumen: `semana ${numeroSemana(lunes)} · ${corto(ini, !mismoMes)} – ${corto(fin)}${cargando ? ' …' : ''}`, acciones };
+    return { vistas: vistasCal('semana'), ayuda: `semana ${numeroSemana(lunes)} · ${corto(ini, !mismoMes)} – ${corto(fin)}`, acciones };
 }
 
 export function htmlCalendario(d: Dia, evs: EventoCal[], notas: cli.JsonNotas | undefined, sel: string, ahora: Date, aviso: string,
     general = '', hoyIso = d.fecha, cargando = false): string[] {
     // el cuerpo del día; su id le dice a la página que ← y → cambian de día (dashboard/vista.ts)
     const h: string[] = ['<section class="bloque" id="cal-dia" style="--c: var(--azul)">'];
+    // otro día que hoy: lo dice su primera línea (la barra no lleva la fecha); hoy no hace falta
+    if (d.fecha !== hoyIso) h.push(`<div class="cal-dia-fecha">${esc(diaLegible(d.fecha))}</div>`);
     if (aviso) h.push(`<div class="vacio falla">${esc(aviso)}</div>`);
     if (d.error) h.push(`<div class="vacio falla">${esc(d.error)}</div>`);
     const completos = (d.agenda ?? []).filter(e => e.todo_el_dia);
@@ -391,7 +399,7 @@ export class PantallaCalendario implements Pantalla {
             ...fallas.map(f => `<div class="vacio falla">${esc(f)}</div>`),
             this.semCargando && !this.semana ? '<div class="vacio">leyendo la semana…</div>' : '',
             htmlSemana(dias, { hoy, ahora, sel: this.semMostrado, detalle }),
-            '</section>'], barraSemana(lunes, lunesDe(hoy), this.semCargando));
+            '</section>'], barraSemana(lunes, lunesDe(hoy)));
     }
 
     private pintarCalendario(): void {
@@ -405,7 +413,7 @@ export class PantallaCalendario implements Pantalla {
         const plan = this.planDe(d.fecha);
         this.t.pintar(htmlCalendario(d, eventosDelDia(d, plan), this.notas, this.eventoSel, new Date(), this.notasAviso,
             this.t.general()?.nombre ?? '', this.t.dia()?.fecha ?? d.fecha, this.calCargando),
-            barraDia(d.fecha, this.t.dia()?.fecha ?? d.fecha, this.calCargando));
+            barraDia(d.fecha, this.t.dia()?.fecha ?? d.fecha));
     }
 
     /** Lo que la persona le escribe al agente general sobre una reunión, con todo el contexto que el

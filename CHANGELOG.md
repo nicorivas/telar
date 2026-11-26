@@ -8,6 +8,216 @@ disagree. Up to 0.1.13 the VS Code extension shared the version number.
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-11-26
+
+**The projects screen was rebuilt** with the house pieces: rows and sections from edge to edge, a detail with its own
+bar that reads the README in telar's prose, a screen of its own in one column, and three subviews (clients, commercial
+and internal) when the mode declares deals or initiatives. **«tareas › esperando»** lists what others owe you, person by
+person. **`telar serve` is faster and no longer stays alive and deaf**: `GET /hoy` went from 14 s to 3.7 s, the heavy
+reads run in a process of their own, and a part that falls takes the service down so that its supervisor starts it
+again. The **bar of every screen holds only its title and its buttons**. **Module canvases can use the page's
+components**: tabs, search bar, filters, its menu and telar's prose. **`telar mensaje name@machine`** reaches that
+thread on that machine, and a name nobody reads is refused. The component catalog has prototypes of a **team** view and
+of **routines**, for review before building them.
+
+**Upgrading from 0.15.** What changes, and what to do:
+
+- **A message to a name that is no thread or agent of yours is refused.** `telar mensaje`, `POST /mensajes` and
+  everything that sends through them check the name against the threads every machine knows of (live, asleep or
+  archived) and the bus state; an unknown one is refused (a 404 over HTTP) with the names that look alike. It used to
+  be left in a mailbox nobody reads and reported as delivered. `name@machine` now means `hilo:name@machine` (it used to
+  be the mailbox of `name-machine`). Scripts that wrote to made-up mailbox names must write to a real thread or agent.
+  When the threads cannot be read, it sends as before.
+- **`telar serve` exits with 1 when one of its parts ends without being asked.** Run it as the service `telar instalar`
+  sets up (launchd on macOS, systemd on Linux), which starts it again; a `telar serve` started by hand in a terminal
+  now ends instead of staying up without answering.
+- **What the service returns can be up to 30 s old.** `telar serve` keeps what the providers return for 30 s. A change
+  made through its API forgets it at once; one made elsewhere (the CLI, a file edited by hand) shows within 30 s. The
+  CLI always reads fresh.
+- **The bar of a module's tab no longer shows its subtitle.** It carries only the name and ↻; the subtitle goes in the
+  name's tooltip. A module that showed a count or a state there should show it in its own body (docs/contratos.md).
+- **`telar pendientes` lists a project's items once.** With several threads linked to the same folder, its items came
+  once per thread; now they come once, with the live thread if there is one. `--hilo` still lists them for every thread
+  in that folder.
+- **Additions, nothing to do.** The `tarea` provider, and each row of `telar pendientes` that carries `espera`, gain
+  `desde` and `ultimo`. New settings: `icono` in `[modos.<n>]`, a custom mode's place from `[mundos.<n>] modos`, several
+  fields in `agrupar_iniciativas`, and `sigue` in a `comprobar` check of `.telar/despliegue.yaml`. A canvas gains
+  `"componentes": true`, `window.lienzo.pedir("opciones")` and `window.lienzo.pedir("prosa")`. Agents telar starts run
+  with `FORCE_HYPERLINK=0`, unless the person set it.
+
+### Added
+
+- **Projects has three subviews: clients, commercial and internal.** When the mode declares deals or initiatives and
+  the world that is set has some, the projects screen gets tabs in its bar (before the modules inside it, like gantt):
+  **clients** is the projects list; **commercial** lists the deals in sections by how they are going according to their
+  document (negotiation, proposal, diagnosis, prospects, paused, lost, won), with a circle filled by how far each got
+  and when its folder was last touched; and **internal** lists the initiatives. Each initiative says my role from its
+  owner («lo llevo», who leads it, or «sin definir») and its next step: its next decision, else its most urgent open
+  task, else its most urgent pending item or the first open checkbox in its README, else «sin próximo paso», marked.
+  Each group is a section, its ideas go last in a folded submenu, and finished and discarded ones are left out; the
+  filters «me toca» and «sin próximo paso» sit under the search bar. The set world counts even in the «todo» mode, so
+  in a world without deals or initiatives projects stays a single list.
+- **`agrupar_iniciativas` takes several fields, in order of preference.** With
+  `{frontmatter:funcion}, {frontmatter:programa}` it groups by function when the files say it, and by programme
+  otherwise.
+- **«tareas › esperando»: what others owe you, by person.** A third view of the tasks tab, after focus and list, with
+  the standard bar, search bar and filters (`vistas/dashboard/esperando.ts`). It lists the tasks someone else holds:
+  those waiting on a person (grouped by who they wait on, with a clock) and those delegated to someone else (grouped
+  by their owner, with a person icon in the colour of what belongs to others); the person's own tasks stay out. Each
+  person is a folding section, oldest debt first; each row says the deadline and how long the other person has had it,
+  and under it, dimmed, the last thing that happened. A click opens the task's card, and ⎋ comes back. Filters:
+  waiting, delegated, overdue. It reads the same tasks as the other views: no second store of commitments.
+- **The task provider tells since when someone else holds a task, and what happened last.** For tasks that wait on
+  someone or have an owner, the `tarea` type provider adds `desde` (the history line that put it on hold or gave it an
+  owner, or its creation) and `ultimo` (the last history line that isn't a bare field edit, cut at 240 characters), and
+  each row of `telar pendientes` carries them with `espera`. Other rows don't grow. A page talking to an older telar
+  shows only the deadline.
+- **A module's canvas can use the page's components.** With `"componentes": true` in its `lienzo`, the page inlines the
+  components' stylesheet (with the page's icon font as `telar-iconos` and the theme's tokens) and
+  `window.lienzo.componentes`, which builds their HTML with the same props as the page (`pestanas`, `barraBuscar`,
+  `filtros`…). Tabs that don't fit go to a «⋯» on their own, the search bar's ✕ clears it, and the «⋯» and a folded
+  filter group open the page's menu. `await C.prosa(markdown, { ruta })` gives a document's HTML in telar's prose, the
+  same as the document viewer in reading mode: the page draws the markdown, so markdown-it stays out of every canvas,
+  and its links work by themselves (a relative one opens that file in the viewer, `#…` scrolls to that heading, an
+  outside one is not followed). A telar without it ignores the field and the canvas draws what it drew before
+  (docs/modulos.md, «Las pestañas y los filtros de telar»).
+- **`window.lienzo.pedir("opciones")` and `pedir("prosa")`.** A module's canvas can open the page's menu with its own
+  options (`{opciones: [{nombre, ayuda?, icono?, color?, apagada?}], titulo?, x, y}`) and gets back `{indice}`, or
+  `null`; and it can have a markdown drawn as the viewer draws it (`{markdown}` → `{html}`). Neither needs permission,
+  since they only show.
+- **A custom mode can have its own button in the mode band.** When the current world lists it in `[mundos.<n>] modos`,
+  it gets a button after the attitude that precedes it in that list (`["tactica", "estrategia", "entradas", "foco",
+  "todo"]` puts it between strategy and focus), with the icon of its new `icono` setting (a page icon by name, such as
+  `bandeja`; empty, its base's). Without `modos` in the world, the band keeps the four attitudes, as before.
+- **`sigue` in a `comprobar` page check of `.telar/despliegue.yaml`.** After the first good answer, the page is asked
+  again that many seconds later and must still answer, or the deploy fails («contestó, pero a los N s ya no»). telar's
+  own declaration waits 15 s on `/pagina.json`: a service that started and fell 8 s later used to pass.
+- **Prototypes of a team view and of «tareas › rutinas», for review before building them.** In the component catalog,
+  with made-up data. **Team** (`/componentes#equipo`): one row per person (weekly load, open commitments, an overdue dot
+  and the next 1:1) and, when opened, their card, with the 1:1 notes in a tab of their own, fetched only with a click.
+  **Routines** (`/componentes#rutinas`): what repeats (a daily plan, one-on-ones, a weekly review…) and whether it was
+  done, computed from the proof each routine declares, in one section per state, with a ✓ by hand only where there is
+  no proof. `#…/ver/…` shows each as the whole page, for screenshots. The proposals, with where each piece of data would
+  come from and the decisions left, are in `docs/propuestas/equipo.md` and `docs/propuestas/rutinas.md`; nothing of
+  them is built.
+- **An audit of the projects tab against the design system** (`docs/propuestas/auditoria-proyectos.md`). Measured with
+  `scripts/medir.py` at four widths and on a phone: the serious and minor gaps, what already complied and a proposed
+  order. The rebuild of the projects screen in this version follows it.
+
+### Changed
+
+- **The projects list is built with the house pieces, edge to edge.** Each row is an `item()` and each state a
+  `seccion()`, the same as the thread bar: the header at the bars' height, in the headers' ink, with its count and its
+  line; it folds, is remembered, and opens what matches while searching. Rows and lines go from the screen's edge to
+  the detail, at the standard row height. The state column is gone (the section header says it); the client leads,
+  the name takes what is left, and the due date and the pending count go at the end and give way first, by the list's
+  own width, so the name is never lost: at 1024 px it went from one letter to over twenty. The sort moved to the search
+  bar (`orden()`, as in tasks), the area and «closed N» to the standard filter row (the area folded, with «all»), and
+  the ⋯ only shows on hover. Initiatives too: peso and state in their slots, the next decision after the name, each
+  programme a submenu. The wide table (↔) is a view in the projects bar, next to gantt, no longer a button in the
+  search bar.
+- **The project detail starts with a screen bar, and a full-height line divides it from the list.** The bar is the
+  same as every screen's: the project's name as written, on one line and cut with «…» (whole in its tooltip), and on
+  the right only icons, each with its tooltip: go to or resume its thread, consolidate its pending items, open its
+  README and ⋯. How it is going (state, stage, dates, its source) is the first row of the body, on one line. The
+  divider between list and detail is its own line, the whole height of the screen.
+- **The project detail reads its README in the shared prose, and its summary uses screen sections.** The document tab
+  shows the whole README, without its frontmatter, in the prose of the viewer and of a thread's reading, instead of
+  hand-made folding sections. The summary's titles are the sections of a screen, with a line from edge to edge and the
+  count dim. The screen's spacing and colours are the design tokens.
+- **In one column the project detail is a screen of its own.** On half a screen and on the phone, choosing a project
+  shows only its detail, with «‹» in its bar (or ⎋) to go back to the list where it was; it used to sit under the
+  whole list, with a scroll of its own. One column now starts earlier, so at 1024 px the list has the whole width.
+- **The first row of every screen holds only its title and its buttons.** The bar of each dashboard screen (todo,
+  táctica, ahora, te esperan, tareas, correo, calendario, leer, proyectos, the module tabs, a section, a conversation)
+  no longer shows a summary or a state next to the title: the title goes on the left, and the views and actions on the
+  right. What the summary said goes in the title's tooltip; when to reload, in the ↻ tooltip; which one of how many, in
+  the ← → tooltips. What still matters moved into the screen: the day the calendar shows, when it is not today, opens
+  the day; a simulated «ahora» and a táctica rehearsal say so in their body; «te esperan» ends with how many wait in
+  the other worlds. `npm run prueba:pantalla` checks that no bar carries anything else.
+- **The thread bar's groups are built from one list-section component.** `seccion()`, `submenu()` and `secciones()`
+  (`componentes/seccion.ts`) draw every group of the thread list (agents, threads, archive, other worlds) with the same
+  header, tools, rows, empty row, fold and counts; the bar looks the same as before. The component catalog
+  (`/componentes`) shows the group and its anatomy.
+- **The service keeps what the providers return for 30 s.** The page, the phone and the service's own refresh asking
+  for the day at once share one query (concurrent ones wait for it instead of repeating it); any API request that
+  changes something forgets it, and a query with failures is not kept. The CLI always asks.
+
+### Fixed
+
+- **`telar serve` no longer stays alive and deaf when one of its parts falls.** On 26-nov-2026, right after a deploy,
+  the bus connection was reset just after connecting, the node's JetStream setup timed out and the node task ended;
+  `telar serve` then stopped the other servers, and the page server, which had already closed its listening socket,
+  waited forever for the page's `/eventos` stream to close, with nothing in the log. Now whatever ends without being
+  asked (an exception or a plain return) is logged with its traceback, the rest is stopped with a bounded wait (5 s per
+  server; `/eventos` and `/dev/cambios` end by themselves on shutdown) and the process exits with 1 so launchd or
+  systemd starts it again; a guard exits it anyway if it has not managed to in 20 s. The worker process for heavy
+  reads is terminated with it, instead of being left orphaned.
+- **The bus node retries its JetStream setup instead of falling.** A cut right after connecting (the streams and
+  key-value stores not answering) is written in one line and retried with growing waits; `--una-vez` still fails
+  fast, and the connection is closed when it does.
+- **`telar serve` no longer takes ten times longer than the CLI under load.** Routing the day's tasks resolved every
+  thread's folder tens of thousands of times per request (16 of the 21 s of `GET /hoy`); each path is now resolved
+  once per request, and so are the agents' links and the repos' folders. `GET /hoy` goes from 14 s to 3.7 s on page
+  open, and its CPU from 11.8 s to 0.3 s. Frontmatters are cached by their text, so `GET /proyectos` drops from 4.4 s
+  to 0.7 s of CPU.
+- **The thread list and the config answer while the heavy reads compute.** In the service, the project list and the
+  repository-wide pending items run in a separate process (`telar.aparte`), so their CPU doesn't hold the GIL the
+  other requests need. With six heavy requests at once, `/api/hilos` answers in 0.3 s (median, was 0.95 s) and
+  `/api/config` in 0.08 s (was 0.43 s).
+- **The page asks for what it needs to draw first.** At most three heavy requests (the day, waits, blocks,
+  projects…) go out at once, so the thread list never queues behind them in the browser's six connections; the
+  first thread read goes without documents, the config is fetched alongside it instead of after it, and the
+  `/config` the page asked for six times on load goes out once.
+- **A deploy no longer leaves the page blank.** What the page last read (threads, the day, projects, waits) stays in
+  the tab's session storage, and after a reload it is shown at once while everything is read again: the sidebar has
+  its threads in 50 ms instead of waiting for the restarted service.
+- **`telar mensaje Telar@laptop` reaches the thread «Telar» on laptop.** Only the address `hilo:name@machine` split
+  off the machine; a bare `name@machine` went to the mailbox of its normalized form (`telar-laptop`), which nobody
+  reads, and the command still answered «en su casilla». Now `name@machine` means the same as `hilo:name@machine` (an
+  agent is found by its name with or without a machine, also in `telar encargar`), and a machine that does not exist
+  or does not have that thread is refused with the threads that look alike, or where that one lives.
+- **A message to a name that is no thread or agent of yours is refused instead of left in an orphan mailbox.** `telar
+  mensaje`, `POST /mensajes` and everything that sends through them check the name against the threads every machine
+  knows of and the bus state; an unknown one is a 404 with the similar names, and `persona@machine` (the sender of what
+  the person types in a terminal) says it has no mailbox. The confirmation names the thread it reached when it was
+  written another way.
+- **A thread opened by a periodic no longer reports each turn to «periódico <name>».** The periodic that opened it
+  counted as its parent, so the node left a notice per turn in a mailbox nobody reads; now only a real parent (the one
+  the periodic declares) is told.
+- **A project's pending items show once, not once per thread.** When several threads were linked to the same folder
+  (the project's own and those of a meeting or a topic), `telar pendientes` read its document once per thread: the
+  projects view showed every item four times (96 rows for 24), and an item with an id answered 409 as if it had been
+  copied. Now each document's items go once, with the live thread if there is one, and `--hilo` still lists them for
+  every thread in that folder.
+- **A markdown link in the terminal of a thread from another machine opens with a click.** Claude Code writes
+  `[Doc](https://…)` as an OSC 8 hyperlink that shows only «Doc», and mosh drops OSC 8 entirely, so a server thread
+  watched from the laptop or the phone showed «Doc» with no address behind it. Every agent telar starts now runs with
+  `FORCE_HYPERLINK=0` (unless the person set it), so Claude Code writes «Doc (https://…)» and the page finds the
+  address however it arrives. Agents already running get it the next time they start.
+- **A link the browser refuses to open no longer fails in silence.** Every outside address the page opens in a new tab
+  (links in a thread's terminal, OSC 8 hyperlinks and bare URLs, links in the page and in the file viewer) now goes
+  through one place that opens it right in the click, and that can tell whether it opened. Before, opening with
+  `noopener` made `window.open` return nothing either way. If the browser blocks it (Safari blocks a tab opened after a
+  network wait, or when its pop-up setting for the site says so), a notice says so and offers an Open button that opens
+  it in its own click. The new tab still gets no `opener` and no `Referer`. On the dashboard, a link no longer waits
+  for the settings screen before opening. Tests: `npm run prueba:abrir` (a fake Safari), `prueba:abrir-webkit` (WebKit,
+  Chrome and Firefox with xterm.js) and `prueba:abrir-safari` (macOS: Safari's own engine with its pop-up blocker).
+- **A long address in the reading view fits on a phone.** It ran off the right edge, and its end could not be tapped;
+  links in prose and the question above the answer now break anywhere.
+- **The bar headers, the alert strip and the pulse line are the standard row height.** The section headers of the
+  thread bar (DASHBOARD, AGENTS, THREADS…), the alert strip on the phone and the pulse line now measure
+  `--pantalla-barra-alto` (26.3 px; one pixel more when a header also carries the line above), with the pulse's text in
+  the middle, instead of one item line (18.9 px). An extra pixel came from the icon font: its taller line box stretched
+  every row with an icon (16.9 px rows became 17.9 px); icons in rows, the strip and the pulse now use their own line
+  height. `npm run prueba:barra` and `prueba:pulso` check the rules against the token.
+- **A sleeping thread is recognized on Linux again.** `telar.dormir` reads the process table with `ps -ww`: without
+  it, the procps-ng `ps` sometimes cut the command lines at 80 columns even with its output going to a pipe, depending
+  on the process environment, and the mark of a sleeping pane (at the end of its `sh -c`) was lost.
+- **The test suite no longer reads the machine it runs on.** The tests point `/etc/telar/puerta.toml`, the hosted
+  and people registries, `/run/telar` and the root helper's spool at a session folder that does not exist: on a
+  machine where the gate is installed, 38 hosting tests failed asking for a Tailscale account.
+
 ## [0.15.0] — 2026-11-25
 
 **Moving a thread to another machine was rebuilt in four stages**: the conversation travels over the bus in chunks

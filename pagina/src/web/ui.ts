@@ -6,6 +6,7 @@ import MarkdownIt from 'markdown-it';
 
 import * as cli from '../cli';
 import { modelo } from '../modelo';
+import { abrir as abrirPestana } from './abrir';
 import * as interfaz from './interfaz';
 import * as portapapeles from './portapapeles';
 
@@ -100,9 +101,10 @@ export async function elegir<T extends Opcion>(opciones: T[], menu: { titulo?: s
     return i === undefined ? undefined : opciones[i];
 }
 
-/** Una dirección de afuera, en una pestaña nueva: sin acceso a esta página (`noopener`) ni la dirección de esta, que
- *  puede traer la llave (`noreferrer`). */
-export async function abrirExterno(url: string): Promise<void> { window.open(url, '_blank', 'noopener,noreferrer'); }
+/** Una dirección de afuera, en una pestaña nueva, sin acceso a esta página ni la dirección de esta, que puede traer la
+ *  llave (web/abrir.ts). Abre sin esperar nada: llamarla en el evento del clic, no después de un `await` (Safari solo
+ *  abre en el gesto). Si el navegador no deja, un aviso con un botón que la abre. True si quedó abierta. */
+export const abrirExterno = (url: string): Promise<boolean> => abrirPestana(url);
 
 /** Copia `texto` al portapapeles (web/portapapeles.ts) y lo dice abajo con `dice` (o «copiado: …»). Si el navegador
  *  no lo deja (por http, Safari ya fuera del clic que lo pidió), un aviso con el texto y un botón que copia en su mismo

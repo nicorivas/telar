@@ -1,7 +1,9 @@
 /* La línea del pulso y su ventana (componentes/pulso.ts; en la página, web/pulso.ts). La línea va justo debajo de la franja
-   de avisos, quieta como ella, del alto de una fila, con su línea abajo de borde a borde: el ícono del pulso en el color
-   de los agentes (tenue, si la pasada fue en seco), lo que cambió en el del texto, lo que falló en el de cuidado y «+N»
-   tenue a la derecha. Sin pasadas con cambios sin ver, no está. */
+   de avisos, quieta como ella, del alto estándar de las filas con línea (--pantalla-barra-alto: el de la franja, las
+   cabeceras de la barra y la barra de cada pantalla; también en el teléfono), con su línea abajo de borde a borde y el
+   texto al medio, como en ellas: el ícono del pulso en el color de los agentes (tenue, si la pasada fue en seco), lo que
+   cambió en el del texto, lo que falló en el de cuidado y «+N» tenue a la derecha. Sin pasadas con cambios sin ver, no
+   está. */
 
 .pulso-lugar { flex: none; }
 .pulso-lugar:empty { display: none; }
@@ -11,11 +13,11 @@
   gap: var(--item-texto-sangria);
   align-items: baseline;
   box-sizing: border-box;
-  padding: 0 var(--pantalla-margen);
+  height: var(--pantalla-barra-alto);
+  padding: var(--e-1) var(--pantalla-margen);
   overflow: hidden;
   border-bottom: var(--borde);
   color: var(--texto);
-  line-height: var(--item-alto);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -25,6 +27,8 @@
 
 /* el ícono, en la ranura de los de la barra (el texto empieza en la columna de los nombres de abajo, como en la franja) */
 .pulso-icono { flex: none; display: inline-block; width: var(--item-ranura); color: var(--agente); text-align: center; }
+/* sin alargar la línea: su letra, con su propio interlineado (franja.css) */
+.pulso-icono .i { line-height: 1; }
 .pulso-linea.seco .pulso-icono,
 .pulso-pasada.seco .pulso-icono { color: var(--texto-tenue); }
 .pulso-texto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

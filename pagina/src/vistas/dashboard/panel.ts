@@ -15,7 +15,7 @@ import * as cli from '../../cli';
 import { hace } from '../../estilo';
 import { modelo } from '../../modelo';
 import * as rutas from '../../rutas';
-import { Dia, conLoSalido, dia, olvidarDia, seccion, yo } from './dia';
+import { Dia, conLoSalido, dia, diaGuardado, olvidarDia, seccion, yo } from './dia';
 import { PantallaCalendario } from './plan';
 import { PantallaProyectos } from './proyectos';
 import { PantallaFoco } from './foco';
@@ -33,6 +33,7 @@ import { PantallaTareas } from './tareas';
 import { PantallaBloques } from './bloques';
 import { PantallaSecciones } from './secciones';
 import { PantallaEsperas } from './esperas';
+import { PantallaEsperando } from './esperando';
 import { PantallaTactica } from './tactica';
 import { PantallaTodo } from './todo';
 import { delModo, ordenarPestanas } from './orden-pestanas';
@@ -86,12 +87,14 @@ export class Dashboard implements Tablero {
     private readonly foco = new PantallaFoco(this);
     /** «te esperan»: lo que espera una decisión de la persona, junto (esperas.ts); su fila en la barra lleva el número */
     private readonly esperas = new PantallaEsperas(this);
+    /** «tareas › esperando»: lo que otros le deben a la persona, por persona (esperando.ts) */
+    private readonly esperando = new PantallaEsperando(this);
     /** «táctica»: la vista de partida del orden por modos (tactica.ts), por ahora una pestaña más; el pie nombra las
      *  pestañas de las fuentes */
     private readonly tactica = new PantallaTactica(this, () => this.pestanas());
     /** «todo»: ver y buscar todo, la vista del modo todo (todo.ts): cada pestaña entera, y el buscador sobre todo junto */
     private readonly todoVista = new PantallaTodo(this, () => this.pestanas(), () => this.esperas.todas());
-    private get modulos(): Pantalla[] { return [this.ahora, this.foco, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo, this.agentesVista, this.esperas, this.tactica, this.todoVista]; }
+    private get modulos(): Pantalla[] { return [this.ahora, this.foco, this.tareas, this.bloques, this.proyectos, this.planes, this.secciones, this.equipo, this.agentesVista, this.esperas, this.esperando, this.tactica, this.todoVista]; }
     private tablaAcciones?: Record<string, Accion>;
     /** las acciones de todas, por nombre: cada nombre es de una sola (si dos lo reclaman, falla al tiro) */
     private acciones(): Record<string, Accion> {
@@ -173,6 +176,8 @@ export class Dashboard implements Tablero {
     async actualizar(conRed = false): Promise<void> {
         if (!this.panel) return;
         if (conRed) olvidarDia();
+        // al abrir (o al recargar con un despliegue), lo que ya se sabe del día mientras llega la lectura
+        if (!this.datos && (this.datos = diaGuardado())) this.render();
         this.datos = await dia(conRed ? 0 : 45000, conRed);
         this.render();
         void this.bloques.leer(conRed);
@@ -382,7 +387,7 @@ export class Dashboard implements Tablero {
      *  todo, entero. Así lo filtran todas las pantallas que lo leen (tareas, foco, táctica, el calendario). Y con
      *  lo que salió de lo pendiente después de leerlo (dia.ts, `salio`): una tarea marcada hecha no vuelve mientras se relee. */
     dia(): Dia | undefined { return this.delMundo(this.datos && conLoSalido(this.datos)); }
-    async diaLeido(): Promise<Dia> { return this.delMundo(conLoSalido(this.datos ??= await dia()))!; }
+    async diaLeido(): Promise<Dia> { return this.delMundo(conLoSalido(this.datos ??= diaGuardado() ?? await dia()))!; }
     private filtrado?: { de: Dia; mundo: string; dia: Dia };
     private delMundo(d: Dia | undefined): Dia | undefined {
         if (!d) return d;
@@ -411,22 +416,22 @@ export class Dashboard implements Tablero {
     config(): cli.JsonConfig | undefined { return this.cfg; }
 
     /** Dibuja la pantalla que se ve: su barra (componentes/pantalla.ts) y su cuerpo. La barra lleva el nombre y la tinta
-     *  de la pestaña (o lo que diga la pantalla: la ficha de una tarea, un bloque), sus vistas (las subpestañas), lo que
-     *  la pantalla resume y sus acciones, y ↻. */
+     *  de la pestaña (o lo que diga la pantalla: la ficha de una tarea, un bloque), y a la derecha sus vistas (las
+     *  subpestañas), sus acciones y ↻. Nada más: lo que la pantalla resume va en el globo del título. */
     pintar(h: string[], b: EnBarra = {}): void {
         // la pestaña de un módulo dentro de una fija («gantt» en proyectos) es una vista de esa: la barra es la de ella
         const dentro = this.actual === 'bloque' ? this.bloques.dentroDelAbierto() : '';
         const deFija = dentro ? BARRA_DE[PESTANA_DE_SECCION[dentro] as NombrePantalla] ?? [dentro, ''] : undefined;
         const [nombre, color] = deFija ?? [b.nombre ?? BARRA_DE[this.actual]?.[0] ?? '', b.color ?? BARRA_DE[this.actual]?.[1] ?? ''];
         // la configuración no se relee: lo que se ve es lo que se escribe
-        const releer = b.sinReleer || this.actual === 'config' ? [] : [{ accion: 'refrescar', icono: I.releer, ayuda: 'volver a leer lo que se ve (r)' }];
+        const releer = b.sinReleer || this.actual === 'config' ? []
+            : [{ accion: 'refrescar', icono: I.releer, ayuda: `volver a leer lo que se ve (r)${b.leido ? `\n${b.leido}` : ''}` }];
         const html = barraPantalla({
             volver: b.volver,
             nombre,
             color,
             vistas: b.vistas ?? this.vistasDeBarra(),
-            resumen: b.resumen,
-            resumenHtml: b.resumenHtml,
+            ayuda: b.ayuda,
             acciones: [...(b.acciones ?? []), ...releer],
         });
         // un proveedor caído ya no va arriba de cada pantalla: lo dice la franja de avisos (dashboard/dia.ts)
@@ -441,14 +446,16 @@ export class Dashboard implements Tablero {
         const seccion = this.actual === 'bloque' ? this.bloques.dentroDelAbierto() : SECCION_DE_PANTALLA[this.actual] ?? '';
         const suyos = seccion ? this.bloques.declarados.filter(b => b.dentro === seccion) : [];
         const propias = SUBPESTANAS[seccion] ?? [];
-        if (!suyos.length && !propias.length) return [];
+        if (!suyos.length && !propias.length && seccion !== 'proyectos') return [];
         const fija = PESTANA_DE_SECCION[seccion];
         const abierto = this.actual === 'bloque' ? this.bloques.abierto().split(':')[0] : '';
         const vista = (accion: string, valor: string, nombre: string, si: boolean): VistaDePantalla =>
             ({ accion, valor, nombre, si, icono: ICONO_VISTA[nombre]?.[0], ayuda: ICONO_VISTA[nombre]?.[1] });
-        // las de fábrica de la sección (tareas: foco y lista), o la fija con el nombre de la sección
-        const primeras = propias.length ? propias.map(([accion, nombre, p]) => vista(accion, '', nombre, !abierto && this.actual === p))
-            : [vista(fija, '', seccion, !abierto)];
+        // las de fábrica de la sección (tareas: foco y lista), las de proyectos (clientes, comercial, interno: las que hay en
+        // el modo y el mundo puestos; y la tabla extendida), o la fija con el nombre de la sección
+        const deProyectos = seccion === 'proyectos' ? this.proyectos.subvistas(!abierto && this.actual === 'proyectos') : null;
+        const primeras = deProyectos ?? (propias.length ? propias.map(([accion, nombre, p]) => vista(accion, '', nombre, !abierto && this.actual === p))
+            : [vista(fija, '', seccion, !abierto)]);
         return [...primeras, ...suyos.map(b => vista('bloque', b.clave, b.nombre, b.clave === abierto))];
     }
 
@@ -497,13 +504,17 @@ export class Dashboard implements Tablero {
             // lo que se elige en el menú o se manda en la instrucción, se elige y se manda aquí (pedidos-locales.ts)
             const local = atenderLocal(m.accion ?? '', datos, m.donde,
                 { menu: (d, donde) => entidades.menuDe(d, donde), abrir: d => ui.abrirDireccion(d),
-                    instruccion: p => this.instruccionDeLienzo(p, m.valor ?? '') },
+                    instruccion: p => this.instruccionDeLienzo(p, m.valor ?? ''),
+                    // el menú de la casa con lo que trae el lienzo (sus pestañas que no caben, un filtro plegado): el índice
+                    opciones: async (p, donde) => (await ui.menu(p.opciones.map((o, i) => ({ ...o, i })), donde, p.titulo))?.i },
                 r => this.panel?.responderLienzo(id, r));
             if (local) { await local; return; }
             const respuesta = await this.paginas.pedir(m.valor ?? '', m.accion ?? '', datos);
             this.panel?.responderLienzo(id, respuesta);
             return;
         }
+        // un enlace, antes que nada que espere: Safari abre la pestaña solo en el gesto del clic (web/abrir.ts)
+        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui.abrirExterno(m.url); return; }
         // lo de una sección de ⚙ (sus acciones, sus formularios) lo atiende ella
         if (this.pantalla === 'config' && m.tipo !== 'tecla' && m.tipo !== 'listo' && await this.configuracion.atender(m)) return;
         if (m.tipo === 'listo') {
@@ -515,7 +526,6 @@ export class Dashboard implements Tablero {
             else if (this.pantalla === 'ahora') void this.ahora.abrir();
             this.render(); void this.actualizar(); return;
         }
-        if (m.tipo === 'url' && m.url && /^https:\/\//.test(m.url)) { await ui.abrirExterno(m.url); return; }
         if (m.tipo === 'tecla' && m.k) {
             // las de la pantalla primero; después las de las pestañas, que valen en todas; y al final los atajos de
             // [atajos]: uno con la tecla de una pestaña no la pisa (ir a «ahora» con la n no puede lanzar /sincronizar)

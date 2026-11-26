@@ -19,7 +19,7 @@ import { ATENCION_I, C, I, PRIO_I } from '../web/iconos';
 import { MINIMO, TEMAS, TEXTOS, medir, todos as todosLosTemas, type Tema } from './temas';
 import * as colores from '../web/colores';
 import { DENSIDADES, type Densidad } from './densidades';
-import { EJEMPLO, EJEMPLO_TARJETA, SECCIONES, SECCIONES_TARJETA, type Parte, type Seccion } from './anatomia';
+import { EJEMPLO, EJEMPLO_LISTA, EJEMPLO_TARJETA, SECCIONES, SECCIONES_LISTA, SECCIONES_TARJETA, type Parte, type Seccion } from './anatomia';
 import { circulo, FIGURAS, MOVIMIENTOS, TAMANOS, type Circulo } from './circulo';
 import { DERIVADAS, PARTES, RECTO, REDONDO, REGLAS, REGLAS_PARTIR, SIGNOS, type Trazo, type Valor, type Variable } from './gramatica';
 import * as S from './senales';
@@ -27,7 +27,7 @@ import * as A from './acciones';
 import { orden, type OpcionOrden } from './orden';
 import { BORDES, barraBuscar } from './buscador';
 import * as BU from './catalogo-buscador';
-import { herramientas, separador } from './seccion';
+import { cabecera as cabeceraDeSeccion, herramientas, seccion, secciones, separador, submenu } from './seccion';
 import { ventana, paleta, pieVentana } from './ventana';
 import { APROBAR, contestable, estadoInicial, ventanaContestar, type EstadoContestar } from './contestar';
 import { detallesDeMuestra, esperasDeMuestra } from './muestras-contestar';
@@ -47,6 +47,8 @@ import * as BT from './catalogo-botones';
 import * as CM from './catalogo-mundos';
 import * as CP from './catalogo-pestanas';
 import * as CMS from './catalogo-mensaje';
+import * as RU from './catalogo-rutinas';
+import * as EQ from './catalogo-equipo';
 import { alPintar as mensajesAlPintar } from '../web/mensaje';
 import { atender as atenderPestanas, acomodarTodas } from '../web/pestanas';
 
@@ -130,6 +132,11 @@ const LAMINAS: Record<string, { dibujo: () => string; secciones: Seccion[]; func
     item: { dibujo: () => item(EJEMPLO), secciones: SECCIONES, funcion: 'item()' },
     // las de la tarjeta van una debajo de otra: su corchete, a la izquierda
     tarjeta: { dibujo: () => tarjeta(EJEMPLO_TARJETA), secciones: SECCIONES_TARJETA, funcion: 'tarjeta()', apiladas: true },
+    // la sección no es un elemento sino varios hermanos: `lamina-entero` los junta, y es el contorno del que salen las guías
+    seccion: { dibujo: () => `<div class="lamina-entero">${seccion({ ...EJEMPLO_LISTA,
+        filas: () => item({ inicio: [S.prioridad(1), S.atencion('trabajando'), null], titulo: 'faro', meta: { texto: '3m' } })
+            + submenu({ clave: 'archivo', titulo: 'archivo', cuenta: 4, ayuda: 'los archivados', abierta: false, filas: () => '' }) })}</div>`,
+        secciones: SECCIONES_LISTA, funcion: 'seccion()', apiladas: true },
 };
 
 function seccionAnatomia(de = 'item'): string {
@@ -164,12 +171,13 @@ function trazar(lamina: HTMLElement): void {
     lamina.style.paddingBottom = '';
     lamina.style.width = '';
     const dibujo = lamina.querySelector<HTMLElement>('.lamina-dibujo');
-    const fila = dibujo?.querySelector<HTMLElement>('.item');
+    const fila = dibujo?.querySelector<HTMLElement>('.lamina-entero') ?? dibujo?.querySelector<HTMLElement>('.item');
     if (!dibujo || !fila) return;
     const l = LAMINAS[lamina.dataset.de ?? 'item'] ?? LAMINAS.item;
     const lh = parseFloat(getComputedStyle(lamina).lineHeight) || 17;
     // secciones una debajo de otra: el corchete a la izquierda, con su nombre al lado (hace falta lugar)
-    lamina.style.paddingLeft = l.apiladas ? `${6 * lh}px` : '';
+    const largo = Math.max(...l.secciones.map(s => s.nombre.length));
+    lamina.style.paddingLeft = l.apiladas ? `max(${6 * lh}px, ${largo + 4}ch)` : '';
     const base = lamina.getBoundingClientRect();
     const trazos: string[] = [];
     const secciones = l.secciones;
@@ -967,27 +975,54 @@ function seccionCasillas(): string {
 function listaSubmenu(abierto: boolean): string {
     const ordenes: OpcionOrden[] = [{ clave: 'urgencia', icono: I.urgencia, ayuda: 'urgencia' },
         { clave: 'nombre', icono: I.alfabetico, ayuda: 'nombre' }, { clave: 'reciente', icono: I.reloj, ayuda: 'reciente' }];
-    const banda = herramientas({ grupo: 'hilos', placeholder: 'hilos', ayuda: 'buscar, también en el archivo',
-        orden: { opciones: ordenes, activa: '' } }).replace(/<div class="vacia.*$/, '');
     const menu = (id: string): Accion => ({ accion: 'menu', id, icono: I.menu, ayuda: 'más' });
     const hilo = (titulo: string, inicio: (Pieza | null)[], meta: string, o: Partial<Parameters<typeof item>[0]> = {}) =>
         item({ inicio, titulo, meta: { texto: meta }, menu: menu(titulo), ...o });
-    const archivados = !abierto ? '' : hilo('puente', [S.prioridad(1, true), null, null], '2d', { apagada: true })
+    const archivados = () => hilo('puente', [S.prioridad(1, true), null, null], '2d', { apagada: true })
         + hilo('huerto', [S.prioridad(0, true), null, S.remoto('vive en servidor')], '5d', { apagada: true })
         + hilo('ensayo', [S.prioridad(2, true), null, null], '3sem', { apagada: true })
         + hilo('riego', [S.prioridad(0, true), null, null], '2m', { apagada: true });
-    return item({ variante: 'cabecera', inicio: [{ icono: I.abierto }], titulo: 'hilos', sufijo: [{ texto: '4', tono: 'tenue' }],
-        fijas: [A.nuevo({ accion: 'nuevo' }, 'hilo nuevo')] })
-        + banda
-        + hilo('faro', [S.prioridad(1), S.atencion('trabajando'), null], '3m')
-        + hilo('molino', [S.prioridad(2), S.atencion('espera'), null], '1h', { activa: true })
-        + hilo('bitácora', [null, S.atencion('termino'), null], '25m', { hondo: 1, prefijo: [{ icono: I.hijo }] })
-        + hilo('cosecha', [S.prioridad(0), null, S.remoto('vive en servidor')], '1d')
-        + item({ variante: 'submenu', ayuda: 'los hilos archivados: abrir o cerrar', inicio: [null, null, { icono: abierto ? I.abierto : I.plegado }],
-            titulo: 'archivo', sufijo: [{ texto: '4', tono: 'tenue' }] })
-        + archivados
-        + separador()
-        + item({ variante: 'cabecera', inicio: [{ icono: I.plegado }], titulo: 'equipo' });
+    return secciones([seccion({ clave: '__hilos', titulo: 'hilos', cuenta: 4, ayuda: 'los hilos abiertos', abierta: true,
+        nuevo: A.nuevo({ accion: 'nuevo' }, 'hilo nuevo'),
+        herramientas: { grupo: 'hilos', placeholder: 'hilos', ayuda: 'buscar, también en el archivo', orden: { opciones: ordenes, activa: '' } },
+        filas: () => hilo('faro', [S.prioridad(1), S.atencion('trabajando'), null], '3m')
+            + hilo('molino', [S.prioridad(2), S.atencion('espera'), null], '1h', { activa: true })
+            + hilo('bitácora', [null, S.atencion('termino'), null], '25m', { hondo: 1, prefijo: [{ icono: I.hijo }] })
+            + hilo('cosecha', [S.prioridad(0), null, S.remoto('vive en servidor')], '1d')
+            + submenu({ clave: '__archivo', titulo: 'archivo', cuenta: 4, ayuda: 'los hilos archivados', abierta: abierto, filas: archivados }) }),
+    cabeceraDeSeccion({ clave: '__equipo', titulo: 'equipo', ayuda: 'las otras personas', abierta: false })]);
+}
+
+// ── el grupo entero: seccion() en cada estado ──
+
+function seccionGrupo(): string {
+    const c = columnasElegidas()[0];
+    const nuevo = A.nuevo({ accion: 'nuevo' }, 'agente nuevo');
+    const base = { clave: 'muestra', titulo: 'agentes', ayuda: 'los agentes', nuevo };
+    const filas = () => item({ variante: 'agente', inicio: [null, S.atencion('trabajando'), null], titulo: 'Archivista', meta: { texto: '3m' } })
+        + item({ variante: 'agente', apagada: true, inicio: [null, null, null], titulo: 'Cartero' });
+    const vacia: Item = { apagada: true, inicio: [null], titulo: 'no tienes agentes residentes' };
+    const conBanda = { grupo: 'muestra', placeholder: 'agentes', ayuda: 'buscar por nombre' };
+    const muestras: [string, string, string][] = [
+        ['abierta', 'la cabecera y sus filas', seccion({ ...base, cuenta: 2, abierta: true, filas })],
+        ['plegada', 'solo la cabecera: las filas ni se arman', seccion({ ...base, cuenta: 2, abierta: false, filas })],
+        ['con herramientas', 'la banda del buscador entre la cabecera y las filas', seccion({ ...base, cuenta: 2, abierta: true, herramientas: conBanda, filas })],
+        ['vacía', 'sin filas, la fila que lo dice; sin cuenta', seccion({ ...base, abierta: true, filas: () => '', vacia })],
+        ['dos seguidas', 'secciones(): el separador entre ellas; tras una plegada, nada de aire',
+            secciones([seccion({ ...base, cuenta: 2, abierta: true, filas }), seccion({ ...base, titulo: 'equipo', nuevo: undefined, abierta: false, filas }),
+                seccion({ ...base, titulo: 'pedidos', nuevo: undefined, abierta: true, filas: () => '', vacia: { ...vacia, titulo: 'nada esperando' } })])],
+    ];
+    const h = ['<section>',
+        '<p class="dim">Un grupo de una lista, entero (<code>componentes/seccion.ts</code>): <code>seccion({ clave, titulo, cuenta?, ayuda, abierta, '
+        + 'acciones?, nuevo?, herramientas?, filas, vacia? })</code>. Cómo dejó la persona cada cabecera lo lleva <code>Plegado</code> '
+        + '(<code>plegado.abierta(clave, comoEmpieza)</code>, <code>plegado.alternar(clave)</code>), que recuerda solo las que están al revés de como '
+        + 'empiezan. Da HTML plano, sin un elemento que envuelva el grupo. La barra de hilos arma así todas sus secciones. Aquí no se pliegan.</p><div class="cat-anchos">'];
+    for (const [nombre, nota, html] of muestras) {
+        h.push(`<div><div class="cat-tema">${esc(nombre)} · ${esc(nota)}</div>`
+            + `<div class="muestra barra-de-muestra" style="width:${ANCHOS.barra}px" data-tema="${c.tema.clave}" data-densidad="${c.densidad.clave}">${html}</div></div>`);
+    }
+    h.push('</div></section>');
+    return h.join('');
 }
 
 function seccionHerramientas(): string {
@@ -1080,18 +1115,21 @@ function seccionPantalla(): string {
         + '<div class="cat-pantalla-sec"><b>otra sección</b> <span class="dim">3</span></div>'
         + '<div class="fila">su línea llega a los bordes</div></div>';
     const filas: [string, string, string][] = [
-        ['una app', 'su nombre en su tinta, sus vistas (la que se ve, en violeta), lo que resume y sus acciones', barraPantalla({
-            nombre: 'tareas', color: 'cian', resumen: '56 · leídas recién',
+        ['una app', 'su nombre en su tinta a la izquierda; a la derecha sus vistas (la que se ve, en violeta) y sus acciones', barraPantalla({
+            nombre: 'tareas', color: 'cian', ayuda: '56 tareas',
             vistas: [{ accion: 'x', icono: I.foco, nombre: 'foco', si: true }, { accion: 'x', icono: I.lista, nombre: 'lista' }],
             acciones: [{ accion: 'x', icono: I.filtro, ayuda: 'un filtro', tono: 'amarillo' }, { accion: 'x', icono: I.config, ayuda: 'configurar' },
                 { accion: 'x', icono: I.releer, ayuda: 'releer (r)' }] })],
         ['la de un módulo', 'una vista sin ícono propio va con su nombre; un atajo, con su tecla', barraPantalla({
-            nombre: 'proyectos', color: 'verde', resumen: '86 proyectos',
+            nombre: 'proyectos', color: 'verde', ayuda: '86 proyectos',
             vistas: [{ accion: 'x', icono: I.tabla, nombre: 'proyectos' }, { accion: 'x', nombre: 'gantt', si: true }],
             acciones: [{ accion: 'x', tecla: 'm', ayuda: 'un atajo: lanza un agente', tono: 'violeta' }, { accion: 'x', icono: I.releer, ayuda: 'releer (r)' }] })],
-        ['una ficha', '«‹» vuelve a de donde se vino; ← → pasan a otra', barraPantalla({
-            volver: { accion: 'x', icono: I.atras, ayuda: 'volver a leer (⎋)' }, nombre: 'leer', color: 'magenta', resumen: '1/10',
-            acciones: [{ accion: 'x', icono: I.anterior, ayuda: 'la anterior (←)' }, { accion: 'x', icono: I.adelante, ayuda: 'la siguiente (→)' }] })],
+        ['una ficha', '«‹» vuelve a de donde se vino; ← → pasan a otra (cuál de cuántas, en su globo)', barraPantalla({
+            volver: { accion: 'x', icono: I.atras, ayuda: 'volver a leer (⎋)' }, nombre: 'leer', color: 'magenta',
+            acciones: [{ accion: 'x', icono: I.anterior, ayuda: 'la anterior (←) · 1 de 10' }, { accion: 'x', icono: I.adelante, ayuda: 'la siguiente (→) · 1 de 10' }] })],
+        ['un archivo', 'el visor: su nombre tal cual, tenue (la ruta, en su globo)', barraPantalla({
+            nombre: 'README.md', literal: true, ayuda: 'casa/vitrina/README.md',
+            acciones: [{ accion: 'x', icono: I.lectura, tono: 'violeta', ayuda: 'leer cómodo (l)' }, { accion: 'x', icono: I.cerrar, ayuda: 'cerrar (⎋)' }] })],
         ['un hilo', 'sin nombre (lo dice la cabecera de la página): sus vistas y su carpeta, que es una ruta', barraPantalla({
             vistas: [{ accion: 'x', icono: I.terminal, nombre: 'terminal', si: true }, { accion: 'x', icono: I.lectura, nombre: 'lectura' },
                 { accion: 'x', icono: I.conversacion, nombre: 'conversación' }],
@@ -1100,8 +1138,9 @@ function seccionPantalla(): string {
     const h = ['<section>',
         '<p class="dim">Lo que llena la columna de la derecha, sea un hilo o una app del dashboard (<code>componentes/pantalla.ts</code>, '
         + '<code>pantalla.css</code>): siempre una barra arriba y su cuerpo abajo. La barra, de borde a borde con el fondo de barra y una '
-        + 'línea abajo, lleva el nombre de la app en su tinta, sus vistas, lo que resume y sus acciones; todo con íconos en su celda '
-        + 'cuadrada, y una palabra solo donde un ícono no alcanza (una ruta). El cuerpo no tiene margen propio: el aire va dentro de cada '
+        + 'línea abajo, lleva a la izquierda solo el nombre de la app en su tinta, y a la derecha sus vistas y sus acciones, con íconos en '
+        + 'su celda cuadrada y una palabra solo donde un ícono no alcanza (una ruta). Nada más: ni una cuenta, ni la fecha, ni un estado '
+        + '(lo que resume va en el globo del título; lo que se necesita ver, en la pantalla). El cuerpo no tiene margen propio: el aire va dentro de cada '
         + 'fila (<code>--pantalla-margen</code>, el mismo de la barra de hilos) y las líneas llegan a los bordes. La página de un módulo '
         + 'va en el cuerpo, de borde a borde, y recibe los tokens del tema (<code>docs/contratos.md</code>).</p>',
         `<div class="cat-grilla" style="${columnas()}">${titulos()}`];
@@ -1118,7 +1157,7 @@ const TOKENS: [string, string[]][] = [
     ['semánticos', ['superficie', 'texto', 'texto-tenue', 'texto-apagado', 'acento', 'titulo', 'exito', 'atencion', 'peligro', 'remoto', 'agente',
         'estado-trabajando', 'estado-espera', 'estado-termino', 'prioridad-alta', 'prioridad-media', 'prioridad-baja', 'linea', 'hover', 'sel', 'seleccion']],
     ['ítem', ['item-fondo', 'item-fondo-hover', 'item-fondo-activa', 'item-enlace', 'item-agente', 'item-meta', 'item-accion', 'item-cabecera', 'item-submenu', 'item-destino']],
-    ['pantalla', ['pantalla-barra-fondo', 'pantalla-nombre', 'pantalla-boton', 'pantalla-boton-hover', 'pantalla-vista-si', 'pantalla-resumen']],
+    ['pantalla', ['pantalla-barra-fondo', 'pantalla-nombre', 'pantalla-boton', 'pantalla-boton-hover', 'pantalla-vista-si', 'pantalla-literal']],
     ['medidas (la densidad)', ['item-alto', 'item-pad-x', 'item-ranura', 'item-texto-sangria', 'item-hondo', 'item-hueco', 'item-accion-pad', 'pantalla-margen']],
 ];
 const MEDIDAS = new Set(TOKENS[TOKENS.length - 1][1]);
@@ -1352,6 +1391,27 @@ MODOS_ENTEROS.avisos = ([clave, extra = '']) => {
         plegada: extra === 'plegada', lista: extra !== 'hilo' };
 };
 
+// #rutinas/ver/vista: «tareas › rutinas» (prototipo, catalogo-rutinas.ts) como la página entera, el jueves inventado a las
+// 10:30: en un laptop con la barra de hilos, en un teléfono la pantalla sola
+MODOS_ENTEROS.rutinas = () => ({ nombre: 'tareas', ahora: RU.AHORA_MIN, pantalla: `<div class="cat-rut-pantalla">${RU.pantalla()}</div>`,
+    titulo: 'tareas · rutinas (prototipo)', pestanas: BARRA.pestanas, activa: 'tareas' });
+
+/** «tareas › rutinas» en un marco (catalogo-rutinas.ts), como Táctica: el primer tema elegido; en el teléfono, la densidad
+ *  amplia. */
+function marcoRutinas(html: string, px: number): string {
+    const c = columnasElegidas()[0];
+    const tel = px <= 700;
+    return `<div class="muestra cat-tac-marco cat-rut-pantalla${tel ? ' angosto' : ''}" style="width: ${px}px" data-tema="${c.tema.clave}" data-densidad="${tel ? 'amplia' : 'compacta'}">${html}</div>`;
+}
+
+// #equipo/ver/<persona|lista>/<ficha|apreciaciones>[/traidas]: el prototipo de la vista «equipo» (catalogo-equipo.ts), con
+// su pestaña en DASHBOARD
+const PESTANA_EQUIPO: PestanaDashboard = { clave: 'equipo', accion: 'pantalla', valor: 'equipo', nombre: 'equipo', tecla: '' };
+MODOS_ENTEROS.equipo = resto => {
+    const e = conEquipo(() => EQ.entera(resto, window.innerWidth <= 700));
+    return e ? { nombre: 'equipo', ahora: 11 * 60 + 40, pantalla: e.pantalla, titulo: e.titulo, pestanas: [...BARRA.pestanas, PESTANA_EQUIPO], activa: 'equipo' } : null;
+};
+
 /** Lo que pide la dirección para la página entera de un modo: #<modo>/ver/…. */
 function modoEntero(): ModoEntero | null {
     const m = /^#([a-z]+)\/ver\/(.*)$/.exec(decodeURIComponent(location.hash));
@@ -1463,12 +1523,12 @@ const PAGINAS: Pagina[] = [
     { clave: 'orden', nombre: 'orden', grupo: 'compuestos', pestanas: [estados(seccionOrden), anatomia(undefined, 'el ícono padre, las opciones y los dos cortes')] },
     { clave: 'filtros', nombre: 'filtros', grupo: 'compuestos', pestanas: [estados(seccionFiltros),
         { clave: 'tareas', nombre: 'en «tareas»', dibujar: seccionFiltrosEnTareas }, anatomia(undefined, 'el ícono padre, los grupos y sus opciones')] },
-    { clave: 'seccion', nombre: 'sección de lista', grupo: 'secciones', paso: 6, hoy: 'la barra la arma con `seccion.ts` (herramientas, «nada calza», separador); falta el grupo entero (`seccion({ cabecera, herramientas, filas })`); los bloques del dashboard repiten la idea',
-        pestanas: [{ clave: 'submenu', nombre: 'submenú', dibujar: seccionSubmenu },
-            { clave: 'herramientas', nombre: 'herramientas', dibujar: seccionHerramientas }] },
+    { clave: 'seccion', nombre: 'sección de lista', grupo: 'secciones', pestanas: [{ clave: 'grupo', nombre: 'el grupo', dibujar: seccionGrupo },
+        anatomia(() => seccionAnatomia('seccion')), { clave: 'submenu', nombre: 'submenú', dibujar: seccionSubmenu },
+        { clave: 'herramientas', nombre: 'herramientas', dibujar: seccionHerramientas }] },
     { clave: 'avisos', nombre: 'franja de avisos', grupo: 'secciones', pestanas: [estados(seccionAvisos),
         { clave: 'pagina', nombre: 'en la página', dibujar: AV.seccionPagina }, { clave: 'fuentes', nombre: 'de dónde sale', dibujar: AV.seccionFuentes }] },
-    { clave: 'barra', nombre: 'barra de hilos', grupo: 'contenedores', pestanas: [estados(seccionBarra), anatomia(undefined, 'sus secciones: cabecera, herramientas, filas, separador (paso 6)')] },
+    { clave: 'barra', nombre: 'barra de hilos', grupo: 'contenedores', pestanas: [estados(seccionBarra), anatomia(undefined, 'sus secciones, una tras otra (cada una, en «sección de lista»)')] },
     { clave: 'pantalla', nombre: 'pantalla', grupo: 'contenedores', pestanas: [estados(seccionPantalla)] },
     { clave: 'ventana', nombre: 'ventana (modal)', grupo: 'contenedores', pestanas: [estados(seccionVentana), anatomia(undefined, 'cabecera, campo, cuerpo y pie; los tres lugares')] },
     { clave: 'mundos', nombre: 'ventana de mundos', grupo: 'contenedores', padre: 'ventana', pestanas: [
@@ -1478,6 +1538,16 @@ const PAGINAS: Pagina[] = [
     { clave: 'contestar', nombre: 'contestar', grupo: 'contenedores', padre: 'ventana', pestanas: [estados(seccionContestar), anatomia(undefined, 'resumen, lo plegado, las opciones, «Otra cosa…» y el pie')] },
     { clave: 'tactica', nombre: 'táctica (prototipo)', grupo: 'contenedores', pestanas: [{ clave: 'disposiciones', nombre: 'disposiciones', dibujar: seccionTactica },
         estados(seccionTacticaEstados), { clave: 'urgencia', nombre: 'la urgencia', dibujar: seccionTacticaUrgencia }] },
+    { clave: 'rutinas', nombre: 'rutinas (prototipo)', grupo: 'contenedores', pestanas: [
+        { clave: 'vista', nombre: 'la vista', dibujar: () => RU.seccionVista(marcoRutinas) },
+        { clave: 'calculo', nombre: 'cómo se calcula', dibujar: RU.seccionCalculo },
+        { clave: 'archivo', nombre: 'el archivo', dibujar: RU.seccionArchivo }] },
+    { clave: 'equipo', nombre: 'equipo (prototipo)', grupo: 'contenedores', pestanas: [
+        { clave: 'vista', nombre: 'la vista', dibujar: () => conEquipo(EQ.seccionVista) },
+        estados(() => conEquipo(EQ.seccionEstados)),
+        { clave: 'privacidad', nombre: 'privacidad', dibujar: () => conEquipo(EQ.seccionPrivacidad) },
+        { clave: 'fuentes', nombre: 'de dónde sale', dibujar: () => conEquipo(EQ.seccionFuentes) },
+        { clave: 'donde', nombre: 'dónde vive', dibujar: () => conEquipo(EQ.seccionDonde) }] },
     { clave: 'modos-mundos', nombre: 'modos y mundos (prototipo)', grupo: 'contenedores', pestanas: [
         { clave: 'controles', nombre: 'dónde se cambian', dibujar: () => conModos(MM.seccionControles) },
         { clave: 'cambia', nombre: 'qué cambia cada modo', dibujar: () => conModos(MM.seccionCambia) },
@@ -1658,8 +1728,12 @@ document.addEventListener('click', e => {
     // una barra de mensaje de muestra: enviar, elegir a quién y abrir a quién fue dicen qué harían
     const ms = CMS.dice(t);
     if (ms) { e.stopPropagation(); e.preventDefault(); avisar(ms); return; }
+    const eq = t.closest<HTMLElement>('[data-accion^="eq-"]');
+    if (eq?.closest('.muestra') && conEquipo(() => EQ.atender(eq))) { e.stopPropagation(); e.preventDefault(); return; }
     const tac = t.closest<HTMLElement>('[data-accion^="tactica-"]');
     if (tac?.closest('.muestra')) { e.stopPropagation(); e.preventDefault(); atenderTactica(tac); return; }
+    // las rutinas (prototipo): una sección se pliega y el filtro rige; lo demás dice qué haría
+    if (t.closest('.muestra') && RU.atender(t, avisar, pintar)) { e.stopPropagation(); e.preventDefault(); return; }
     const mm = t.closest<HTMLElement>('[data-accion^="modos-"],[data-accion^="todo-"]');
     if (mm && conModos(() => MM.atender(mm))) { e.stopPropagation(); e.preventDefault(); return; }
     const muestra = t.closest('.muestra');
@@ -1700,6 +1774,13 @@ window.addEventListener('resize', () => {
     anchoAntes = window.innerWidth;
     if (cruzo && modoEntero()) pintar();
 });
+
+// ── equipo (prototipo, catalogo-equipo.ts): lo suyo, con el tema elegido, el aviso y cómo repintar ──
+
+function conEquipo<T>(hacer: () => T): T {
+    EQ.usar({ tema: () => columnasElegidas()[0].tema.clave, avisar, pintar });
+    return hacer();
+}
 
 // ── modos y mundos (prototipo, catalogo-modos.ts): lo suyo, con el tema elegido y el aviso del catálogo ──
 

@@ -140,7 +140,7 @@ function cuerpoEstrategia(v: Vista): string {
         ['decisiones', 'la del módulo registro: las decisiones y las hipótesis por revisar'],
     ];
     const mu = MUNDOS.find(x => x.clave === v.puesto.mundo);
-    return barraPantalla({ nombre: 'proyectos', color: 'verde', resumen: `${mu ? `${mu.nombre} · ` : ''}lo que se gestiona`,
+    return barraPantalla({ nombre: 'proyectos', color: 'verde', ayuda: `${mu ? `${mu.nombre} · ` : ''}lo que se gestiona`,
         acciones: [{ accion: 'modos-nada', icono: I.releer, ayuda: 'volver a leer (r)' }] })
         + '<div>' + secciones.map(([n, que]) => `<section class="tac-bloque"><div class="tac-cab"><span class="tac-nombre">${esc(n)}</span></div>`
             + item({ apagada: true, inicio: [null], titulo: que, sufijo: [{ texto: '· su pestaña, la de siempre', tono: 'apagado' }] }) + '</section>').join('')

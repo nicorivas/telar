@@ -455,19 +455,17 @@ class Nodo:
         nc = await mod_bus.conectar(self.config, para_siempre=not una_vez)
         # los pedidos al bus de este proceso (la API, en `telar serve --nodo`) van por esta conexión
         mod_bus.registrar_conexion(nc, asyncio.get_running_loop())
-        js = nc.jetstream(timeout=ESPERA_JS)
-        await mod_bus.asegurar(js)
-        kv = await js.key_value(mod_bus.ESTADO)
-        self.kv, self.js = kv, js
-        self.espejo = await js.key_value(mod_bus.ESPEJO)
-        self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
-        self.nc = nc
-        # lo que el bus dice vivo aquí, antes de la primera vuelta y del vigía: lo que murió con el nodo apagado
-        await self.sembrar(kv)
-        await self.suscribirse(nc)
-        vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
-        vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
+        vigia = vigia_espejo = None
         try:
+            js, kv, self.espejo = await self._preparar(nc, una_vez=una_vez)
+            self.kv, self.js = kv, js
+            self.anotar(f"en el bus como {self.persona}@{self.yo} ({self.config.bus.url})")
+            self.nc = nc
+            # lo que el bus dice vivo aquí, antes de la primera vuelta y del vigía: lo que murió con el nodo apagado
+            await self.sembrar(kv)
+            await self.suscribirse(nc)
+            vigia = self.vigia = None if una_vez else asyncio.create_task(self._vigilar(kv))
+            vigia_espejo = None if una_vez else asyncio.create_task(self._vigilar_espejo())
             await self._girar(js, kv, una_vez=una_vez)
         finally:
             for t in (vigia, vigia_espejo):
@@ -475,6 +473,26 @@ class Nodo:
                     t.cancel()
             mod_bus.registrar_conexion(None, None)
             await nc.close()
+
+    async def _preparar(self, nc, *, una_vez: bool = False):
+        """(js, el almacén del estado, el del espejo), con el stream y los almacenes creados si faltan. Con la conexión
+        recién abierta, un corte justo ahí (26-nov-2026, al desplegar: `ConnectionResetError` a los pocos segundos de
+        conectar) dejaba estos pedidos sin respuesta: el nodo se caía y, en `telar serve --nodo`, se llevaba la página.
+        El demonio lo intenta de nuevo (nats-py reconecta solo), con esperas que crecen (`ESPERAS_PRIMERA`) y la falla en
+        una línea, hasta que el bus conteste; con `una_vez`, falla al tiro."""
+        fallas = mod_bus.Avisador(self.anotar, prefijo="preparar el bus")
+        intento = 0
+        while True:
+            try:
+                js = nc.jetstream(timeout=ESPERA_JS)
+                await mod_bus.asegurar(js)
+                return js, await js.key_value(mod_bus.ESTADO), await js.key_value(mod_bus.ESPEJO)
+            except Exception as e:  # noqa: BLE001 - el bus volverá: el nodo no se cae por esto
+                if una_vez:
+                    raise
+                fallas.anotar(e)
+                await asyncio.sleep(mod_bus.ESPERAS_PRIMERA[min(intento, len(mod_bus.ESPERAS_PRIMERA) - 1)])
+                intento += 1
 
     async def sembrar(self, kv) -> bool:
         """`publicado` con lo que el bus dice vivo en esta máquina, como lo deja `_vuelta`: el valor guardado sin
@@ -1594,7 +1612,8 @@ class Nodo:
         for nombre, at in self.atencion_antes.items():
             if antes.get(nombre) != "trabajando" or at not in ("termino", "espera"):
                 continue
-            padre = orden_hilo.padre_de(est, nombre)
+            # el periódico que lo abrió no es un hilo: no se le avisa (orden_hilo.padre_que_lee)
+            padre = orden_hilo.padre_que_lee(est, nombre)
             if not padre or padre == nombre or ahora - self.avisados_padre.get(nombre, 0) < self.AVISO_PADRE_CADA:
                 continue
             self.avisados_padre[nombre] = ahora

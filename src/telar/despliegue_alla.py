@@ -7,7 +7,7 @@ que su telar se ponga al día (y aunque esté roto). La orden y lo que se decide
 
     {"accion": "mirar", "candidatas": [...], "raices": [...], "servicios": [...], "buscar_en_config": true}
     {"accion": "reiniciar", "servicio": "telar-serve", "sistema": "systemd", "plazo": 20}
-    {"accion": "comprobar", "pagina": "/pagina.json", "plazo": 30}
+    {"accion": "comprobar", "pagina": "/pagina.json", "plazo": 30, "sigue": 15}
 """
 
 from __future__ import annotations
@@ -229,8 +229,11 @@ def _pagina(ruta):
 
 def comprobar(p):
     """Que la página de telar de aquí conteste `pagina` con 200, hasta `plazo` segundos (el servicio puede estar
-    arrancando). Devuelve lo que contestó, si es JSON, para comparar entre máquinas. La llave nunca sale de aquí."""
+    arrancando), y con `sigue`, que a esos segundos de contestar conteste de nuevo: uno que arranca y se cae a los pocos
+    segundos pasaba la primera. Devuelve lo que contestó, si es JSON, para comparar entre máquinas. La llave nunca sale
+    de aquí."""
     ruta, plazo = p["pagina"], _plazo(p, 30)
+    sigue = float(p.get("sigue") or 0)
     limite = time.monotonic() + plazo
     while True:
         estado, cuerpo, problema = _pagina(ruta)
@@ -239,6 +242,13 @@ def comprobar(p):
                 valor = json.loads(cuerpo)
             except ValueError:
                 valor = None
+            if sigue > 0:
+                time.sleep(sigue)
+                estado, _, problema = _pagina(ruta)
+                if estado != 200:
+                    problema = problema or f"{ruta} contestó {estado}"
+                    return {"ok": False, "valor": None,
+                            "detalle": f"contestó, pero a los {sigue:g} s ya no: {problema}"}
             return {"ok": True, "valor": valor, "detalle": ""}
         if not problema:
             problema = f"{ruta} contestó {estado}" + (" (no aceptó la llave de aquí)" if estado == 403 else "")

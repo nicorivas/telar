@@ -28,9 +28,27 @@ class BusCaido(ErrorDeServicio):
     """El bus no recibió el encargo: quien llama decide si va por otro camino."""
 
 
+def sin_maquina(ctx, nombre: str) -> str:
+    """`Gerencia@telar` → `Gerencia`, si lo de antes de la arroba es un agente: su casilla es la del agente, viva
+    donde viva (como en `telar mensaje`). Cualquier otro nombre, tal cual."""
+    from telar import agentes as residentes
+    from telar.ordenes.mensaje import _con_maquina
+
+    m = _con_maquina(nombre or "")
+    if m is None:
+        return nombre
+    corto = m.group("nombre").strip()
+    try:
+        hay = residentes.descubrir(ctx.config)
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, tal cual
+        return nombre
+    return corto if any(corto in (x.clave, x.nombre) for x in hay) else nombre
+
+
 def _agente(ctx, nombre: str):
     from telar import agentes as residentes
 
+    nombre = sin_maquina(ctx, nombre)
     hay = residentes.descubrir(ctx.config)
     a = next((x for x in hay if nombre in (x.clave, x.nombre)), None)
     if a is None:
@@ -46,7 +64,7 @@ def por_el_bus(ctx, agente: str, texto: str) -> Encargo:
 
     _agente(ctx, agente)
     try:
-        r = mensaje.enviar(ctx, agente, texto, tipo="encargo", modo="encargo")
+        r = mensaje.enviar(ctx, sin_maquina(ctx, agente), texto, tipo="encargo", modo="encargo")
     except mod_bus.ErrorDeBus as e:
         raise BusCaido(f"el bus no recibió el encargo ({e})", 502) from e
     if r.get("estado") == "retenido":

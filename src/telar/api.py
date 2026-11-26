@@ -29,9 +29,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from telar import __version__
+from telar import aparte
+from telar.aparte import ContextoDelServicio
 from telar.cli import Contexto
-from telar.config import cargar as cargar_config
-from telar.config import ruta_config
 from telar.servicios import archivos as servicio_archivos
 from telar.servicios import ErrorDeServicio, Pagina
 from telar.servicios import bloques as servicio_bloques
@@ -51,29 +51,8 @@ log = logging.getLogger("telar.api")
 REFRESCO = 240.0
 
 
-class _Contexto:
-    """La configuración de esta máquina, leída una vez y de nuevo cuando el archivo (o `modulos.toml`) cambia."""
-
-    def __init__(self) -> None:
-        self._config = None
-        self._marca: list | None = None
-
-    def __call__(self) -> Contexto:
-        ruta = ruta_config()
-        # la configuración y los módulos instalados (`modulos.toml`, al lado): instalar, activar o quitar uno desde la
-        # página cambia el segundo, y la configuración se relee igual
-        marca = []
-        # y los de la raíz (`<raiz>/.telar/temas.toml`, telar.temas; `mundos.toml`, telar.mundos_raiz): los que llegan de
-        # otra máquina con un pull
-        de_la_raiz = [getattr(self._config, a, None) for a in ("temas_archivo", "mundos_archivo")] if self._config is not None else []
-        for archivo in (ruta, ruta.parent / "modulos.toml", *(x for x in de_la_raiz if x)):
-            try:
-                marca.append(archivo.stat().st_mtime)
-            except OSError:
-                marca.append(None)
-        if self._config is None or marca != self._marca:
-            self._config, self._marca = cargar_config(), marca
-        return Contexto(config=self._config)
+#: la configuración de esta máquina, leída de nuevo cuando cambia (vive en telar.aparte: el proceso aparte la lee igual)
+_Contexto = ContextoDelServicio
 
 
 contexto = _Contexto()
@@ -100,6 +79,22 @@ async def _vida(_app: FastAPI):
 
 app = FastAPI(title="telar", version=__version__, lifespan=_vida,
               description="Los datos de telar: los mismos contratos que `telar <orden> --json`.")
+
+
+@app.middleware("http")
+async def _olvidar_al_cambiar(request: Request, siguiente):
+    """Un pedido que cambia algo (marcar una tarea hecha, mover una fecha…) deja sin valor lo que se guardó de los
+    proveedores (telar.alla, MEMORIA): antes, por si alguien pregunta mientras, y después, por lo que se haya
+    consultado durante el cambio."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return await siguiente(request)
+    from telar import alla
+
+    alla.olvidar()
+    try:
+        return await siguiente(request)
+    finally:
+        alla.olvidar()
 
 
 @app.get("/hoy", response_model=servicio_hoy.Hoy, response_model_exclude_unset=True)
@@ -273,9 +268,10 @@ def get_espejos(ctx: Contexto = Depends(contexto)):
 
 
 @app.get("/proyectos", response_model=servicio_proyectos.Proyectos)
-def get_proyectos(ctx: Contexto = Depends(contexto)):
-    """Las unidades del repositorio y si tienen hilo (`telar proyectos --json`)."""
-    return servicio_proyectos.lista(ctx)
+async def get_proyectos(ctx: Contexto = Depends(contexto)):
+    """Las unidades del repositorio y si tienen hilo (`telar proyectos --json`). En el servicio, en el proceso aparte
+    (telar.aparte): lee cientos de documentos y no le quita turno a lo demás."""
+    return await aparte.correr("proyectos", ctx)
 
 
 @app.post("/lienzo/pedir")
@@ -398,12 +394,15 @@ def get_productos(ctx: Contexto = Depends(contexto)):
 
 
 @app.get("/pendientes", response_model=servicio_pendientes.Pendientes)
-def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
-                   limite: int = 0, mundo: list[str] | None = Query(None), ctx: Contexto = Depends(contexto)):
+async def get_pendientes(repo: bool = False, hechos: bool = False, proveedores: bool = False, hilo: str = "",
+                         limite: int = 0, mundo: list[str] | None = Query(None), ctx: Contexto = Depends(contexto)):
     """Lo pendiente en los documentos (con `repo`, de todas las unidades) y, con `proveedores`, de las
-    fuentes declaradas (`telar pendientes --json`). `mundo` (se repite): solo los de esos mundos de `[mundos]`."""
-    return servicio_pendientes.pendientes(ctx, repo=repo, hechos=hechos, proveedores=proveedores, hilo=hilo,
-                                          limite=limite, mundos=tuple(mundo or ()))
+    fuentes declaradas (`telar pendientes --json`). `mundo` (se repite): solo los de esos mundos de `[mundos]`. Lo de
+    todas las unidades sin proveedores, en el servicio, en el proceso aparte (telar.aparte)."""
+    opciones = dict(repo=repo, hechos=hechos, proveedores=proveedores, hilo=hilo, limite=limite, mundos=tuple(mundo or ()))
+    if repo and not proveedores:
+        return await aparte.correr("pendientes", ctx, **opciones)
+    return await asyncio.to_thread(servicio_pendientes.pendientes, ctx, **opciones)
 
 
 # ── páginas, la ficha de un hilo y las notas del día ─────────────────────────

@@ -153,7 +153,7 @@ class LoQueDeclaraLaPagina(comun.Prueba):
         self.assertIn('id="modos-fila"', indice)
         self.assertIn('id="vistas"', indice)
         self.assertIn('id="acciones"', indice)
-        self.assertIn('data-accion="modos-modo" data-id="${m.clave}"', leer(PAGINA / "componentes" / "modos-mundos.ts"))
+        self.assertIn('data-accion="modos-modo" data-id="${esc(clave)}"', leer(PAGINA / "componentes" / "modos-mundos.ts"))
         self.assertIn("accion: 'dash', id: JSON.stringify([p.accion, p.valor])", leer(PAGINA / "vistas" / "hilos.ts"))
         self.assertIn("accion: 'vista', valor: v.clave", app)
         self.assertIn("window.telar = { ...(window.telar ?? {}), mostrar,", app)

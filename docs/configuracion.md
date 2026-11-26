@@ -986,13 +986,14 @@ tema = "telar"             # los colores: telar (catppuccin mocha), latte (claro
                            # (los de la noche), o uno propio de [temas]; /componentes los muestra. El de un mundo le
                            # gana ([mundos.<n>] tema), y los colores de un tema se cambian en [temas.<tema>]
 densidad = "auto"          # el alto de las filas: compacta, comoda, amplia (para el dedo) o auto (amplia en pantalla táctil)
+icono = "bandeja"          # el de su botón en la banda (un ícono de la página por su nombre); vacío, el de su base
 etiquetas = ""             # solo los hilos con alguna de estas etiquetas, separadas por coma; "" todos
 sin_etiqueta = "se-ven"    # con etiquetas puestas, los hilos sin ninguna: se-ven o no-se-ven
 agentes = "vigia, cartero" # los agentes residentes de AGENTES, por su carpeta; "" todos, "-" ninguno (no se hereda)
 proyectos = ""             # qué tipos de unidad (arquetipos) lista la pantalla de proyectos; "" todas
-negocios = ""              # qué tipos de unidad son negocios: la pantalla de proyectos cuenta los por cerrar; "" ninguno
-iniciativas = ""           # qué tipos de unidad son iniciativas internas: su sección, aparte de los proyectos; "" no hay
-agrupar_iniciativas = ""   # con qué campo del frontmatter se agrupan, {frontmatter:<clave>}; "" sin agrupar
+negocios = ""              # qué tipos de unidad son negocios: la subvista «comercial» de proyectos; "" ninguno
+iniciativas = ""           # qué tipos de unidad son iniciativas internas: la subvista «interno»; "" no hay
+agrupar_iniciativas = ""   # con qué campo del frontmatter se agrupan, {frontmatter:<clave>} (o varios, en orden); "" sin agrupar
 area = ""                  # sin uso desde que se sacó la pantalla estrategia (19-nov-2026): se lee, no hace nada
 ```
 
@@ -1040,24 +1041,31 @@ se elige con qué mundo se lee (de entrada, el puesto; o ambos): lo que ese mund
 todo, donde el mundo no esconde nada. Los agentes se siguen eligiendo por modo; su mundo lo dice su carpeta (⚙ mundos).
 
 La pantalla de proyectos del dashboard también es de cada modo: `proyectos` dice qué tipos de unidad son proyectos (los
-nombres de los arquetipos del perfil, separados por coma) y `negocios`, cuáles son negocios por cerrar. Los proyectos
-van por su estado efectivo (en ejecución, por partir, en cierre, pausados, terminados, cerrados): el que dice la fila
-Estado de su documento («Activo», «Por partir», «En cierre», «Pausado», «Terminado», «Cerrado»…) o, si no dice uno de
-esos, el de su plazo (`telar fechas`, clase `plazo`). La columna estado dice a qué poner atención: en ejecución y por
-partir; uno cuyo plazo está en su fase de cierre (la etapa «cierre») va aparte, en «en cierre». Cada uno lleva su fase
-en un círculo; de los negocios dice solo cuántos hay en negociación y con propuesta.
+nombres de los arquetipos del perfil, separados por coma), `negocios` cuáles son negocios por cerrar e `iniciativas`
+cuáles son el trabajo propio, sin cliente. Si el modo declara negocios o iniciativas y el mundo puesto tiene alguno, la
+pantalla tiene subvistas, las pestañas de su barra (junto a las de los módulos que van dentro, como gantt): **clientes**
+(los proyectos), **comercial** (los negocios) e **interno** (las iniciativas); si no, es una sola lista. Cuenta el mundo
+puesto aunque el modo sea todo: en el mundo personal, proyectos es una lista. La tabla extendida (↔: los proyectos a lo
+ancho, sin el detalle, con todas sus columnas en palabras) es otra vista de la barra. En media pantalla y en el teléfono,
+una columna: elegir uno abre su detalle como una pantalla propia, y «‹» (o ⎋) vuelve a la lista donde estaba. Los proyectos van en secciones por su
+estado efectivo (en ejecución, por partir, en cierre, pausados, terminados, cerrados): el que dice la fila Estado de su
+documento («Activo», «Por partir», «En cierre», «Pausado», «Terminado», «Cerrado»…) o, si no dice uno de esos, el de su
+plazo (`telar fechas`, clase `plazo`); uno cuyo plazo está en su fase de cierre (la etapa «cierre») va aparte, en «en
+cierre». Cada uno lleva su fase en un círculo, la etapa en un ícono, el plazo y cuántos pendientes tiene. Los negocios
+van en secciones por lo que dice el Estado (o la Etapa) de su documento: en negociación, con propuesta, en diagnóstico
+(un POC), prospectos, en pausa, perdidos, ganados; el círculo se llena con lo que avanzaron, y al final de cada uno,
+cuándo se tocó su carpeta y cuántos pendientes tiene. En el globo del título, cuántos hay en negociación y con propuesta.
 
-Al elegir uno, la derecha muestra su detalle: arriba, el nombre, cómo va (su estado, la etapa, de cuándo a cuándo, lo
-que no cuadra), ir a su hilo y sus acciones (⋯); abajo, tres pestañas, y la elegida se queda al pasar a otro proyecto.
+Al elegir uno, la derecha muestra su detalle: arriba, su barra (el nombre, y como íconos ir a su hilo, consolidar sus
+pendientes, abrir su README y sus acciones, ⋯) y cómo va en una línea (su estado, la etapa, de cuándo a cuándo, lo que no
+cuadra); abajo, tres pestañas, y la elegida se queda al pasar a otro proyecto.
 **resumen** pone lo que pide atención antes que lo que explica, y lo saca de los títulos de su README: las secciones que
 dicen cómo va (las que empiezan por «Estado», «Foco», «Ahora», «Situación» o «Al» y una fecha, si no las escribe una
 máquina), sus tres próximos pendientes, lo que espera de otros («Esperando», «Bloqueos», «Preguntas abiertas», «Por
 resolver», «Qué falta», «Próximos pasos»), qué es (lo que va entre el título y la primera sección) y los datos de su
 ficha (la primera tabla de dos columnas de «Info general», «Información general», «Ficha» o «Datos», sin los valores
 vacíos). Cada texto va cortado a seis líneas enteras, con «más». **pendientes** los muestra todos. **documento** es el
-README plegado por secciones, cada una con lo primero que trae al lado (su primera línea, sus casillas abiertas y
-hechas, los primeros datos de su tabla); un clic la abre, con las suyas también plegadas. Las que solo traen la ayuda de
-una plantilla (una cita, una tabla sin filas) van al final, apagadas.
+README entero, sin su frontmatter, con la prosa del visor y de la lectura de un hilo, para leerlo de corrido.
 
 ```toml
 [modos.trabajo]
@@ -1066,21 +1074,28 @@ negocios = "deal"
 ```
 
 Las **iniciativas** son el trabajo propio, sin cliente: lo que la casa hace para sí. `iniciativas` dice qué tipos de
-unidad lo son (como `proyectos`, los arquetipos del perfil) y la pantalla de proyectos las pone en su sección, debajo de
-los proyectos y fuera de su tabla (aunque `proyectos` también las nombre, o esté vacío). `agrupar_iniciativas` dice con
+unidad lo son (como `proyectos`, los arquetipos del perfil) y la pantalla de proyectos las pone en su subvista,
+«interno», aparte de los proyectos (aunque `proyectos` también las nombre, o esté vacío). `agrupar_iniciativas` dice con
 qué campo del frontmatter de cada una se agrupan, con el selector de `productos.yaml`: `{frontmatter:programa}` (vale
-también `frontmatter:programa` o solo `programa`). De cada iniciativa se lee su frontmatter: quién la lleva (`dueno`),
-cómo va (`estado`; sin el vocabulario de abajo, si no lo dice, el Estado de su tabla de campos), lo próximo por decidir
-(`proxima_decision`) y cuánto importa (`peso`: alto, medio o bajo, el círculo de Táctica: lleno, a medias o un aro). La
-fila dice esos cuatro.
+también `frontmatter:programa` o solo `programa`); con varios, separados por coma, se agrupa por el primero que alguna
+tenga (`{frontmatter:funcion}, {frontmatter:programa}`: por función cuando las fichas la dicen, y si no, por programa).
+De cada iniciativa se lee su frontmatter: quién la lleva (`dueno`), cómo va (`estado`; sin el vocabulario de abajo, si
+no lo dice, el Estado de su tabla de campos), lo próximo por decidir (`proxima_decision`) y cuánto importa (`peso`:
+alto, medio o bajo, el círculo de Táctica: lleno, a medias o un aro).
+
+La fila dice su peso y su estado (cada uno un círculo), su nombre, su próximo paso (lo próximo por decidir; si no lo
+dice, su tarea abierta más urgente; si no tiene, su casilla pendiente más urgente o la primera abierta de su README; si
+no tiene ninguno, «sin próximo paso», en el color de cuidado), mi papel (de su dueño: «lo llevo» si es la persona, quién
+la lleva si es otro, «sin definir» si no dice) y cuántos pendientes tiene. Cada grupo es una sección que se pliega y se
+recuerda; sus ideas van al final, en un submenú que empieza plegado; las terminadas y las descartadas no van (el globo
+del título las cuenta). Arriba, el buscador y los filtros «me toca» (las que lleva la persona) y «sin próximo paso».
 
 Cada grupo lo encabeza la iniciativa cuya carpeta se llama como el valor al que apuntan las otras (`programa: club-lectura`
 agrupa bajo `…/club-lectura/`), con sus propios datos; ella no lleva programa. Un programa sin la suya va con su nombre. Las
 que no dicen programa ni encabezan uno van al final, en «sin programa». Sin `agrupar_iniciativas`, van todas juntas.
 
-Un clic en la cabecera de la sección la deja sola (la barra dice «iniciativas» y ‹ vuelve); también se llega así desde
-todo (una fila más, tras proyectos). Elegir una muestra su README a la derecha, como un proyecto, con su estado, su dueño,
-lo próximo por decidir y su programa arriba.
+Desde todo se llega a ellas con una fila más, tras proyectos. Elegir una muestra su README a la derecha, como un
+proyecto, con su estado, su dueño, lo próximo por decidir y su programa arriba.
 
 En Táctica, lo que espera de una iniciativa va en su cuenta, con su nombre («Club de lectura · 2»): una unidad sin
 cliente, o con el de la casa (`internos` del perfil), se cuenta por su nombre.
@@ -1160,7 +1175,8 @@ las vistas de un hilo, `conversacion` y `lectura`; `*` vale para las que no se n
 sistema, se pintan una vez y no se mueven.
 
 Cuál está puesto es de cada navegador. En la página, los cuatro están a la vista en la cabecera, junto a la marca: el
-puesto en violeta (con el nombre del propio que esté puesto, junto a su base); ninguno lleva número. Un clic pone uno y lleva a su vista (la pestaña de su primera fila de DASHBOARD;
+puesto en violeta (con el nombre del propio que esté puesto, junto a su base; o en su botón, si el mundo puesto lo
+nombra en su `modos`); ninguno lleva número. Un clic pone uno y lleva a su vista (la pestaña de su primera fila de DASHBOARD;
 foco, a la terminal del último hilo); clic derecho, los propios y «editar los modos…». Teclas: ⌥⇧1–4 (los cuatro, en
 su orden), ⌥⇧F (foco y vuelta), ⌥⇧M (el siguiente) y ⌥⇧0 (el mundo siguiente). En ⚙ → modos, un clic cambia un ajuste
 a mano en el modo puesto y «guardar en este modo» lo escribe aquí; los agentes de cada modo, en su grilla, se escriben
@@ -1244,7 +1260,10 @@ arte = "cielo"                                # el dibujo de su tarjeta en la ve
   `[temas]` (abajo).
 - **`modos`**: los modos de la página que tiene el mundo (sus claves: `tactica`, `estrategia`, `foco`, `todo` o uno
   propio de `[modos]`), al menos uno; sin la línea, todos. Mientras rige, la banda de modos muestra solo esos (con
-  ambos, los de todos los mundos juntos) y solo esos se ponen: un clic, ⌥⇧1–4, ⌥⇧F o ⌥⇧M con otro no hace nada, y el
+  ambos, los de todos los mundos juntos), y cada propio que nombra lleva su botón, con el ícono de su `icono`, tras la
+  actitud que lo precede en la lista (`modos = ["tactica", "estrategia", "entradas", "foco", "todo"]` pone entradas
+  entre estrategia y foco; las actitudes siguen en su orden de siempre). Sin la línea, la banda lleva las cuatro y un
+  propio puesto va junto a su base. Solo esos se ponen: un clic, ⌥⇧1–4, ⌥⇧F o ⌥⇧M con otro no hace nada, y el
   siguiente (⌥⇧M) pasa solo por los suyos. Al entrar al mundo (a su hora o a mano) con un modo que no tiene, la página
   pasa al último que se tuvo ahí o, si no, al primero de la lista; y al volver al otro mundo, al que se tenía ahí (o,
   si no se sabe, al que estaba antes). Lo que la persona eligió, si el otro mundo también lo tiene, se queda. En el

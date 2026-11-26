@@ -57,6 +57,10 @@ class ConBusFalso(ConEstado):
         p = mock.patch.object(mod_bus, "enviar", side_effect=enviar)
         p.start()
         self.addCleanup(p.stop)
+        # los hilos de juguete no están en ningún estado: que el destino exista lo prueba test_mensaje_arroba
+        p = mock.patch("telar.ordenes.mensaje._alguien_lee")
+        p.start()
+        self.addCleanup(p.stop)
         # sin multiplexor: el nombre del hilo es el que se escribe
         p = mock.patch.object(mensaje, "_por_nombre", side_effect=lambda ctx, para: para)
         p.start()

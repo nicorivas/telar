@@ -1,11 +1,12 @@
-// La anatomía del ítem (componentes/item.ts) y de la tarjeta (componentes/tarjeta.ts), para las láminas del catálogo
-// (/componentes): sus tres secciones y cada pieza, con su nombre, la prop que la pone y para qué está. La lámina dibuja
+// La anatomía del ítem (componentes/item.ts), de la tarjeta (componentes/tarjeta.ts) y de la sección de lista
+// (componentes/seccion.ts), para las láminas del catálogo (/componentes): sus tres secciones y cada pieza, con su nombre, la prop que la pone y para qué está. La lámina dibuja
 // el ejemplo, separa sus piezas y las nombra con esto; la prueba (pruebas/componentes.mjs) revisa que nombre todas las
 // que dibuja el componente y que el ejemplo las tenga todas: si gana una pieza, la lámina la pide.
 
 import { I } from '../web/iconos';
 import * as S from './senales';
 import type { Accion, Item } from './item';
+import type { PropsSeccion } from './seccion';
 import type { Tarjeta } from './tarjeta';
 
 export interface Parte {
@@ -123,4 +124,50 @@ export const EJEMPLO_TARJETA: Tarjeta = {
     cuerpo: 'Propone la segunda: cuesta menos en un año y soporte ya la conoce.',
     datos: [{ texto: 'T457' }, { texto: 'faro', tono: 'acento' }, { texto: 'sin tamaño', tono: 'atencion' }],
     aviso: S.estrella('con estrella'), meta: { texto: '-2d', tono: 'peligro' },
+};
+
+// ── la sección de lista (componentes/seccion.ts) ──
+
+export const SECCIONES_LISTA: Seccion[] = [
+    {
+        clave: 'cabecera', selector: '.item.cabecera', nombre: 'cabecera', pregunta: '¿qué grupo es y qué le hago?',
+        intencion: 'Un ítem en la tinta de las cabeceras. Un clic en toda la fila abre o pliega la sección, y así queda: se recuerda como la '
+            + 'dejó la persona, también al recargar. Plegada, es lo único que se ve del grupo.',
+        partes: [
+            { selector: '.item.cabecera .item-ranura', nombre: 'flecha', prop: 'abierta', intencion: 'si está abierta o plegada' },
+            { selector: '.item.cabecera .item-titulo', nombre: 'título', prop: 'titulo', intencion: 'como se escribe: las mayúsculas las pone el tema' },
+            { selector: '.item.cabecera .item-sufijo', nombre: 'cuenta', prop: 'cuenta', intencion: 'cuántas cosas tiene, tenue; en cero, nada' },
+            { selector: '.item.cabecera .item-accion', n: 0, nombre: 'acciones', prop: 'acciones', intencion: 'lo que se hace con el grupo, siempre a la vista' },
+            { selector: '.item.cabecera .item-accion', n: 1, nombre: 'nuevo', prop: 'nuevo', intencion: 'el «+», al último: en la misma columna en todas' },
+        ],
+    },
+    {
+        clave: 'herramientas', selector: '.herram', nombre: 'herramientas', pregunta: '¿cómo encuentro una?',
+        intencion: 'La barra del buscador, con su línea abajo de borde a borde. Es opcional: un grupo corto no la lleva. Con ella viene la fila '
+            + '«nada calza», oculta hasta que el filtro no deja nada.',
+        partes: [
+            { selector: '.herram .buscador', nombre: 'buscador', prop: 'herramientas.placeholder', intencion: 'filtra las filas del grupo, también las de sus submenús' },
+            { selector: '.herram .orden', nombre: 'orden', prop: 'herramientas.orden', intencion: 'también el de sus submenús' },
+            { selector: '.herram .extra-de-muestra', nombre: 'extra', prop: 'herramientas.extra', intencion: 'lo que sume la lista' },
+        ],
+    },
+    {
+        clave: 'filas', selector: '.item:not(.cabecera)', todas: true, nombre: 'filas', pregunta: '¿qué hay?',
+        intencion: 'Ítems, en una sola grilla; al final puede venir un submenú, que es una fila más. Sin ninguna, la fila que lo dice. Solo se '
+            + 'arman si la sección está abierta.',
+        partes: [
+            { selector: '.item:not(.cabecera)', n: 0, nombre: 'fila', prop: 'filas()', intencion: 'un ítem; si no hay ninguna, el de `vacia`' },
+            { selector: '.item.submenu', nombre: 'submenú', prop: 'submenu()', intencion: 'una sección adentro, con su propio plegado' },
+        ],
+    },
+];
+
+/** El ejemplo de la lámina: con todo lo que puede tener. Las filas son de mentira. */
+export const EJEMPLO_LISTA: Omit<PropsSeccion, 'filas'> = {
+    clave: 'ejemplo', titulo: 'hilos', cuenta: 2, ayuda: 'los hilos abiertos', abierta: true,
+    acciones: [{ accion: 'cmd', id: 'lista', icono: I.lista, ayuda: 'verlos todos' }],
+    nuevo: { accion: 'cmd', id: 'nuevo', icono: I.nuevo, ayuda: 'hilo nuevo' },
+    herramientas: { grupo: 'muestra', placeholder: 'hilos', ayuda: 'buscar por nombre',
+        orden: { activa: 'nombre', opciones: [{ clave: 'nombre', icono: I.alfabetico, ayuda: 'nombre' }, { clave: 'reciente', icono: I.reloj, ayuda: 'reciente' }] },
+        extra: `<span class="ord i extra-de-muestra">${I.maquinas}</span>` },
 };

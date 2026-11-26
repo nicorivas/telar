@@ -313,6 +313,24 @@ class Pendientes(Orden):
         # los hechos no se muestran salvo que se pidan
         self.assertNotIn("faro:1", refs)
 
+    def test_varios_hilos_en_la_misma_carpeta_dan_cada_casilla_una_vez(self):
+        """La vista de proyectos mostraba cada pendiente cuatro veces: el proyecto tenía cuatro hilos en su carpeta
+        y `juntar` leía su documento una vez por hilo. Las filas son las casillas abiertas del README, ni una más."""
+        readme = (EJEMPLO / "proyectos" / "faro" / "README.md").read_text(encoding="utf-8")
+        abiertas = sum(1 for linea in readme.splitlines() if linea.startswith(("- [ ]", "- [>]")))
+        self.assertGreater(abiertas, 1)
+        for hilo in ("faro", "faro minuta", "faro tema"):
+            codigo, _, error = self.correr("vincular", "proyectos/faro", "--hilo", hilo)
+            self.assertEqual(codigo, 0, error)
+        for argv in (["--json"], ["--json", "--repo"]):
+            filas = [p for p in self.json_de("pendientes", *argv)["pendientes"] if p["ruta"] == "proyectos/faro"]
+            self.assertEqual(len(filas), abiertas, argv)
+            self.assertEqual(len({p["texto"] for p in filas}), abiertas, argv)
+        # cada hilo de la carpeta sigue viendo los de su documento, aunque vayan con otro
+        for hilo in ("faro", "faro minuta", "faro tema"):
+            filas = self.json_de("pendientes", "--json", "--hilo", hilo)["pendientes"]
+            self.assertEqual(len(filas), abiertas, hilo)
+
     def test_repo_alcanza_las_unidades_sin_hilo(self):
         datos = self.json_de("pendientes", "--json", "--repo")
         rutas = {p["ruta"] for p in datos["pendientes"]}

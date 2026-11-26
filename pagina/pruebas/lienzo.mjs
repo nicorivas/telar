@@ -1,6 +1,7 @@
 // Prueba de lo que el lienzo de un módulo pide y la página atiende sola (src/vistas/dashboard/pedidos-locales.ts):
-// `abrir` abre la dirección en la página (lo mismo que un clic en un enlace a ella), `menu` abre su menú e `instruccion`
-// abre la ventana de la instrucción con un contexto, sin llegar al servidor ni pedir permiso; lo demás (fecha, idea,
+// `abrir` abre la dirección en la página (lo mismo que un clic en un enlace a ella), `menu` abre su menú, `instruccion`
+// abre la ventana de la instrucción con un contexto y `opciones` abre el menú de la casa con las opciones del lienzo (y le
+// dice cuál se eligió), sin llegar al servidor ni pedir permiso; lo demás (fecha, idea,
 // consulta) sigue al servidor. Y que el panel lo use, con `ui.abrirDireccion` para abrir. Corre en Node:
 // npm run prueba:lienzo
 import { build } from 'esbuild';
@@ -21,12 +22,13 @@ const { LOCALES, atender, direccionDe, nombreDeDestino, pedidoDeInstruccion } = 
 
 /** Lo que pasa con un pedido: lo que la página hizo y lo que le contestó al lienzo (undefined: fue al servidor).
  *  `ventana`: lo que hace la ventana de la instrucción con lo que recibe (lo que devuelve es lo que pasó al cerrarse). */
-async function pedir(orden, datos, donde, ventana = async () => ({ destino: 'Vigía', como: 'encargado', maquina: '' })) {
+async function pedir(orden, datos, donde, ventana = async () => ({ destino: 'Vigía', como: 'encargado', maquina: '' }), elige = async () => undefined) {
     const hecho = [], respuestas = [];
     const p = atender(orden, datos, donde, {
         menu: async (d, donde) => { hecho.push(['menu', d, donde]); },
         abrir: async d => { hecho.push(['abrir', d]); },
         instruccion: async p => { hecho.push(['instruccion', p]); return await ventana(p); },
+        opciones: async (p, donde) => { hecho.push(['opciones', p, donde]); return await elige(p); },
     }, r => respuestas.push(r));
     if (p === undefined) return { alServidor: true, hecho, respuestas };
     await p;
@@ -81,7 +83,7 @@ async function pedir(orden, datos, donde, ventana = async () => ({ destino: 'Vig
         assert.deepEqual(r.hecho, []);
         assert.deepEqual(r.respuestas, []);
     }
-    assert.deepEqual([...LOCALES], ['menu', 'abrir', 'instruccion']);
+    assert.deepEqual([...LOCALES], ['menu', 'abrir', 'instruccion', 'opciones', 'prosa']);
     assert.equal(direccionDe({ direccion: ' x:y ' }), 'x:y');
 }
 
@@ -135,6 +137,65 @@ async function pedir(orden, datos, donde, ventana = async () => ({ destino: 'Vig
     assert.equal(nombreDeDestino(' Faro ', agentes), 'Faro');
 }
 
+// 6b. opciones: el menú de la casa con lo que trae el lienzo (sus pestañas que no caben, un filtro plegado), junto al punto;
+//     el lienzo recibe el índice de la elegida, o null si se cerró sin elegir. El lienzo no pone HTML: solo textos, un
+//     ícono (un carácter) y una tinta de la página
+{
+    const ops = [{ nombre: 'ideas', ayuda: '3', icono: '\u{eb17}', color: 'azul' }, { nombre: 'tablero' }, { nombre: 'viejo', apagada: true, ayuda: 'no se puede' }];
+    const r = await pedir('opciones', { opciones: ops, titulo: 'vistas', x: 5, y: 6 }, { x: 105, y: 206 }, undefined, async () => 1);
+    assert.equal(r.alServidor, false, 'no va al servidor ni pide permiso: solo muestra');
+    assert.deepEqual(r.hecho, [['opciones', { titulo: 'vistas', opciones: [
+        { label: 'ideas', description: '3', icono: '\u{eb17}', color: 'azul' }, { label: 'tablero' },
+        { label: 'viejo', description: 'no se puede', apagada: true }] }, { x: 105, y: 206 }]], 'como las del menú de la casa, junto al punto');
+    assert.deepEqual(r.respuestas, [{ ok: true, datos: { indice: 1 } }], 'el índice de la elegida');
+    // sin elegir (⎋, un clic afuera), o un índice que no es de ellas: null
+    for (const elige of [async () => undefined, async () => 7, async () => -1]) {
+        assert.deepEqual((await pedir('opciones', { opciones: ops }, undefined, undefined, elige)).respuestas, [{ ok: true, datos: null }]);
+    }
+    // si el menú falla, el lienzo sabe por qué
+    const falla = await pedir('opciones', { opciones: ops }, undefined, undefined, async () => { throw new Error('sin página'); });
+    assert.deepEqual(falla.respuestas, [{ ok: false, error: 'sin página' }]);
+    // lo que no sirve no abre nada
+    for (const [datos, motivo] of [
+        [undefined, /faltan las opciones/], [{ opciones: 'x' }, /faltan las opciones/], [{ opciones: [] }, /vacías/],
+        [{ opciones: [{}] }, /opción 1 no trae su nombre/], [{ opciones: [{ nombre: ' ' }] }, /no trae su nombre/],
+        [{ opciones: [{ nombre: 'a', icono: '<b>x</b>' }] }, /un carácter/],
+        [{ opciones: [{ nombre: 'a', color: 'red;background:url(x)' }] }, /tinta/], [{ opciones: [{ nombre: 'a', ayuda: 3 }] }, /es un texto/],
+        [{ opciones: [{ nombre: 'a' }], titulo: 4 }, /título es un texto/],
+        [{ opciones: Array.from({ length: 501 }, (_, i) => ({ nombre: String(i) })) }, /demasiadas/],
+    ]) {
+        const x = await pedir('opciones', datos);
+        assert.deepEqual(x.hecho, [], `${JSON.stringify(datos)?.slice(0, 60)}: no abre el menú`);
+        assert.equal(x.respuestas[0].ok, false);
+        assert.match(x.respuestas[0].error, motivo);
+    }
+    // lo largo se corta: un menú no es un documento
+    const largo = await pedir('opciones', { opciones: [{ nombre: 'x'.repeat(1000) }] });
+    assert.equal(largo.hecho[0][1].opciones[0].label.length, 300);
+    // una página que no sabe abrir menús lo dice (no se cuelga)
+    const sinMenu = [];
+    await atender('opciones', { opciones: ops }, undefined, { menu() {}, abrir() {}, instruccion() {} }, r => sinMenu.push(r));
+    assert.deepEqual(sinMenu, [{ ok: false, error: 'esta página no abre menús de opciones' }]);
+}
+
+// 6b. prosa: el markdown dibujado como en el visor (sin su frontmatter, sin HTML propio), sin hacer nada en la página
+{
+    const r = await pedir('prosa', { markdown: '---\nvigencia: vigente\n---\n# Cursos\n\n**hola** <b>x</b> [otro](../b/README.md)\n' });
+    assert.deepEqual(r.hecho, [], 'no hace nada en la página');
+    assert.equal(r.respuestas.length, 1);
+    const { ok, datos } = r.respuestas[0];
+    assert.ok(ok);
+    assert.match(datos.html, /<h1[^>]*>Cursos<\/h1>/);
+    assert.match(datos.html, /<strong>hola<\/strong>/);
+    assert.ok(!datos.html.includes('<b>') && datos.html.includes('&lt;b&gt;'), 'el HTML del documento, escapado');
+    assert.ok(!datos.html.includes('vigencia'), 'sin el frontmatter');
+    assert.match(datos.html, /<a href="\.\.\/b\/README\.md">otro<\/a>/, 'los enlaces, como vienen: los sigue el lienzo');
+    assert.deepEqual((await pedir('prosa', {})).respuestas, [{ ok: false, error: 'falta el markdown: {markdown}' }]);
+    const largo = (await pedir('prosa', { markdown: 'x'.repeat(2_000_001) })).respuestas[0];
+    assert.equal(largo.ok, false);
+    assert.match(largo.error, /demasiado largo/);
+}
+
 // 7. el panel lo usa: lo local antes de ir al servidor, y abrir es lo que abre un enlace a una dirección
 {
     const panel = readFileSync(path.join(dashboard, 'panel.ts'), 'utf8');
@@ -146,6 +207,8 @@ async function pedir(orden, datos, donde, ventana = async () => ({ destino: 'Vig
     assert.match(panel, /instruccion:\s*p\s*=>\s*this\.instruccionDeLienzo\(p,/);
     assert.match(panel, /modelo\.instruccionA/);
     assert.match(panel, /origenDe\(llave\)/);
+    // opciones: el menú de la casa, y lo que vuelve es el índice
+    assert.match(panel, /opciones:\s*async \(p, donde\) => \(await ui\.menu\(p\.opciones\.map\(\(o, i\) => \(\{ \.\.\.o, i \}\)\), donde, p\.titulo\)\)\?\.i/);
 }
 
-console.log('lienzo: abrir, menu e instruccion se atienden en la página, sin permiso; lo demás va al servidor');
+console.log('lienzo: abrir, menu, instruccion, opciones y prosa se atienden en la página, sin permiso; lo demás va al servidor');

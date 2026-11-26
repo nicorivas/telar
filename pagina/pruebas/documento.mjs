@@ -269,7 +269,7 @@ function seleccionar(trozo, n = 0) {
             markdown: '# Faro\n\nUn **faro** [ver](docs/a.md).\n', texto: '' } } : { status: 404, cuerpo: {} });
     const el = nuevoEl();
     await carpeta.montar(el, '', 'proyectos/faro/README.md', t => t, { cerrar() {} });
-    assert.match(el.innerHTML, /<span class="doc-nombre" title="proyectos\/faro\/README\.md">README\.md<\/span>/, 'el nombre, con su ruta al pasar el mouse');
+    assert.match(el.innerHTML, /<span class="pantalla-nombre literal" title="proyectos\/faro\/README\.md">README\.md<\/span>/, 'el nombre es el título, tal cual, con su ruta al pasar el mouse');
     assert.match(el.innerHTML, /data-accion="doc-cerrar"/, 'la ✕');
     assert.doesNotMatch(el.innerHTML, /data-accion="doc-atras"/, 'nada a qué volver');
     assert.doesNotMatch(el.innerHTML, /class="carpeta"|>docs\/</, 'sin la lista de la carpeta');
@@ -282,7 +282,7 @@ function seleccionar(trozo, n = 0) {
         : { status: 404, cuerpo: {} });
     const c = nuevoEl();
     await carpeta.montar(c, '', 'proyectos/faro', t => t, {});
-    assert.match(c.innerHTML, /<span class="doc-nombre"[^>]*>faro\/<\/span>/);
+    assert.match(c.innerHTML, /<span class="pantalla-nombre literal"[^>]*>faro\/<\/span>/);
     assert.match(c.innerHTML, /<nav class="carpeta"><a class="dir" data-hilo="" data-archivo="proyectos">\.\.\/<\/a><a class="dir"[^>]*>docs\/<\/a><a class=""[^>]*>README\.md<\/a><\/nav>/);
     // un .html: dibujado en su iframe aislado, y «código» en la barra
     contestar = u => (u.pathname === '/api/hilos/documento'
@@ -299,7 +299,7 @@ function seleccionar(trozo, n = 0) {
         : { status: 404, cuerpo: {} });
     const o = nuevoEl();
     await carpeta.montar(o, '', 'servidor:docs/x.md', t => t, {});
-    assert.match(o.innerHTML, /<span class="doc-nombre"[^>]*>servidor:x\.md<\/span>/);
+    assert.match(o.innerHTML, /<span class="pantalla-nombre literal"[^>]*>servidor:x\.md<\/span>/);
     // un texto: tal cual, en un <pre> con sus líneas (también se comenta)
     contestar = u => (u.pathname === '/api/hilos/documento'
         ? { status: 200, cuerpo: { hilo: 'Faro', titulo: 'Faro', carpeta: '.', archivo: 'notas.txt', archivos: [], markdown: '', texto: 'a\nb\n' } }

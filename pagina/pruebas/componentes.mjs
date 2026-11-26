@@ -21,7 +21,7 @@ const armar = async (nombre) => {
     return require(outfile);
 };
 const { item } = await armar('item');
-const { SECCIONES, EJEMPLO, SECCIONES_TARJETA, EJEMPLO_TARJETA } = await armar('anatomia');
+const { SECCIONES, EJEMPLO, SECCIONES_TARJETA, EJEMPLO_TARJETA, SECCIONES_LISTA, EJEMPLO_LISTA } = await armar('anatomia');
 const { tarjeta } = await armar('tarjeta');
 const { partes } = await armar('partes');
 
@@ -106,6 +106,13 @@ const nombradasTj = new Set(SECCIONES_TARJETA.flatMap(x => [x.selector, ...x.par
 assert.deepEqual([...clasesTj].sort(), [...nombradasTj].sort(), 'las piezas de la tarjeta de ejemplo y las de su lámina');
 for (const p of SECCIONES_TARJETA.flatMap(x => x.partes)) assert.ok(p.nombre && p.prop && p.intencion, `${p.selector}: nombre, prop e intención`);
 assert.deepEqual(SECCIONES_TARJETA.map(x => x.clave), ['cabecera', 'cuerpo', 'pie'], 'las tres partes de la tarjeta, en orden');
+
+// 5c. la lámina de la sección de lista: cada parte con su selector, nombre, prop e intención, y su ejemplo tiene todo lo
+// que la lámina nombra (las props opcionales de la cabecera y las tres cosas de las herramientas)
+assert.deepEqual(SECCIONES_LISTA.map(x => x.clave), ['cabecera', 'herramientas', 'filas'], 'las tres partes de la sección, en orden');
+for (const p of SECCIONES_LISTA.flatMap(x => x.partes)) assert.ok(p.selector && p.nombre && p.prop && p.intencion, `${p.nombre}: selector, nombre, prop e intención`);
+for (const k of ['titulo', 'cuenta', 'abierta', 'acciones', 'nuevo', 'herramientas']) assert.ok(EJEMPLO_LISTA[k] !== undefined, `el ejemplo trae ${k}`);
+for (const k of ['placeholder', 'orden', 'extra']) assert.ok(EJEMPLO_LISTA.herramientas[k] !== undefined, `y en sus herramientas ${k}`);
 
 // 6. la densidad «auto»: amplia si se apunta con el dedo, compacta con mouse; una que no se conoce, la de fábrica
 let tactil = false;
@@ -199,6 +206,54 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.ok(sub.indexOf('class="buscador-herramientas"') > sub.indexOf('</label>'), 'el orden y lo extra, a la derecha, en sus herramientas');
     assert.ok(sub.includes('class="vacia" style="--lugar: 3ch" data-grupo="g" hidden>nada<'), 'la fila, igual');
     assert.ok(sub.indexOf('data-id="g:x"') > sub.indexOf('class="buscar"') && sub.indexOf('<i></i>') > sub.indexOf('data-id="g:x"'), 'buscador, orden y lo extra, en ese orden');
+}
+
+// 10b. el grupo entero: la cabecera, y abierta las herramientas y las filas o la que dice que no hay; el submenú, el
+// separador entre secciones y el plegado que se recuerda
+{
+    const { cabecera, herramientas, seccion, submenu, secciones, separador, Plegado } = await armar('seccion');
+    const mas = { accion: 'nuevo', icono: '+', ayuda: 'nuevo' }, ver = { accion: 'ver', icono: 'v', ayuda: 'ver' };
+    const base = { clave: 'c', titulo: 'hilos', ayuda: 'los hilos', nuevo: mas, acciones: [ver] };
+    const cab = cabecera({ ...base, cuenta: 3, abierta: true, ancla: 'a' });
+    assert.match(cab, /^<div class="item cabecera" id="a" data-accion="seccion" data-id="c" title="los hilos: abrir o cerrar">/);
+    assert.ok(cab.includes('tono-tenue">3<') && !cabecera({ ...base, cuenta: 0, abierta: true }).includes('item-sufijo'), 'la cuenta; en cero, nada');
+    assert.ok(cab.indexOf('data-accion="ver"') < cab.indexOf('data-accion="nuevo"'), 'el «+», al último');
+
+    let armadas = 0;
+    const filas = () => { armadas++; return '<f></f>'; };
+    const vacia = { titulo: 'nada' };
+    assert.equal(seccion({ ...base, abierta: false, filas, vacia, herramientas: { grupo: 'g', placeholder: 'p', ayuda: 'a' } }),
+        cabecera({ ...base, abierta: false }), 'plegada: solo la cabecera');
+    assert.equal(armadas, 0, 'plegada, las filas ni se arman');
+    const banda = herramientas({ grupo: 'g', placeholder: 'p', ayuda: 'a' });
+    assert.equal(seccion({ ...base, abierta: true, filas, vacia, herramientas: { grupo: 'g', placeholder: 'p', ayuda: 'a' } }),
+        cabecera({ ...base, abierta: true }) + banda + '<f></f>', 'abierta: cabecera, herramientas, filas, sin la vacía');
+    assert.ok(seccion({ ...base, abierta: true, filas: () => '', vacia }).includes('>nada<'), 'sin filas, la que lo dice');
+    assert.equal(seccion({ ...base, abierta: true, filas: () => '' }), cabecera({ ...base, abierta: true }), 'sin filas ni vacía, nada');
+
+    const sm = submenu({ clave: 's', titulo: 'archivo', cuenta: 2, ayuda: 'x', abierta: true, ancho: 7, filas: () => '<f></f>' });
+    assert.match(sm, /^<div class="item submenu" data-accion="seccion" data-id="s"/);
+    assert.match(sm, /<span class="item-inicio"><span class="item-ranura"><\/span><span class="item-ranura"><\/span><span class="item-ranura ancha" style="width: 7ch">/,
+        'la flecha en la tercera ranura, con su ancho');
+    assert.ok(sm.endsWith('</div><f></f>'), 'abierto, sus filas debajo');
+    assert.ok(!submenu({ clave: 's', titulo: 'a', ayuda: 'x', abierta: false, filas }).includes('<f>'), 'plegado, no');
+
+    assert.equal(secciones(['a', '', 'b', 'c']), `a${separador()}b${separador()}c`, 'el separador entre ellas; las vacías no cuentan');
+    assert.equal(secciones([]), '');
+
+    // el plegado: se guarda solo lo que está al revés de como empieza; sin dónde guardar, dura lo que la lista
+    const guardado = { k: { vieja: false } };
+    let veces = 0;
+    const memoria = { get: x => guardado[x], update: async (x, v) => { veces++; guardado[x] = { ...v }; } };
+    const p = new Plegado(() => memoria, 'k');
+    assert.ok(!p.abierta('vieja', true), 'lo recordado manda');
+    assert.ok(p.abierta('a', true) && !p.abierta('b', false), 'sin recordar, como empieza');
+    p.alternar('b'); assert.ok(p.abierta('b', false)); assert.deepEqual(guardado.k, { vieja: false, b: true });
+    p.alternar('b'); assert.deepEqual(guardado.k, { vieja: false }, 'de vuelta a como empieza, se olvida');
+    assert.equal(veces, 2);
+    p.alternar('nunca-preguntada'); assert.ok(!p.abierta('nunca-preguntada', true), 'una que no se ha dibujado empieza abierta');
+    const suelto = new Plegado(() => undefined, 'k');
+    suelto.alternar('a'); assert.ok(!suelto.abierta('a', true));
 }
 
 // 11. la ventana (componentes/ventana.ts): cabecera, campo, cuerpo y pie en ese orden, solo lo que se pide; la paleta
@@ -581,8 +636,10 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.match(todas, /data-valor="contestadas".*>menos</s);
     // el único número: todo lo de todas las vías y los hilos detenidos
     assert.equal(porDecidir(vias([cu(1, 3)], { cerrar: [cu(2)], [SIN_CLASIFICAR]: [cu(3, 2)] }), [d(1)]), 7, 'lo que pide hacer no cuenta: no se decide');
-    assert.match(barraTactica(base).resumenHtml, /<span class="tac-numero tono-espera"[^>]*>3<\/span> por decidir/);
-    assert.equal(barraTactica({ ...base, vias: vias() }).resumenHtml, 'nada por decidir', 'sin nada, sin número');
+    // en el globo del título, no a la vista: la barra lleva solo el título y los botones (prueba:pantalla)
+    assert.match(barraTactica(base).ayuda, /^3 por decidir: /);
+    assert.equal(barraTactica({ ...base, vias: vias() }).ayuda, 'nada por decidir', 'sin nada, sin número');
+    assert.ok(!('resumenHtml' in barraTactica(base)), 'sin resumen');
     assert.match(tactica({ ...base, vias: vias() }), /tac-nada.*nada por decidir/s, 'lo dice en una fila');
     // Hacer: una reunión con su hora y lo que pide; una tarea con su tamaño delante (no se corta con el título)
     const reunion = filaQuehacer({ tipo: 'reunion', id: 'evento:15:00', titulo: 'Comité', hora: '15:00', nota: 'prepararla' });
@@ -1022,9 +1079,10 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
         cosas: [{ ...c('tareas', 1), pasada: true }, c('tareas', 2)] } });
     assert.ok(entera.indexOf('tareas:2') < entera.indexOf('hechas y descartadas') && entera.indexOf('hechas y descartadas') < entera.indexOf('tareas:1'));
     assert.match(entera, /… y 10 más/);
-    assert.equal(barraTodo({ fuentes, mundos, puesto: 'trabajo' }).resumen, '15 en trabajo · y 5 en los otros');
+    // las cuentas, en el globo del título: a la vista, la barra lleva solo el título y los botones
+    assert.equal(barraTodo({ fuentes, mundos, puesto: 'trabajo' }).ayuda, '15 en trabajo · y 5 en los otros');
     const bt = barraTodo({ fuentes, mundos, puesto: 'trabajo', abierta: { fuente: 'tareas', total: 12, cosas: [] } });
-    assert.deepEqual([bt.nombre, bt.volver?.accion, bt.resumen], ['tareas', 'todo-volver', '12 · todas, sin filtros · trabajo']);
+    assert.deepEqual([bt.nombre, bt.volver?.accion, bt.ayuda], ['tareas', 'todo-volver', '12 · todas, sin filtros · trabajo']);
     // filtrado a una fuente, todo lo suyo, sin «+N más» (una sin pestaña, como los objetos de un módulo, se ve entera así)
     const filtrado = todo({ fuentes, mundos, puesto: 'trabajo', buscado: 'vitrina', halladas, filtro: 'tareas' });
     assert.equal((filtrado.match(/data-valor="tareas:\d"/g) ?? []).length, 7, 'las seis del mundo y la del otro');
@@ -1120,22 +1178,60 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     // la que encabeza no va dentro de su grupo aunque diga ser de él
     const propia = u('club-lectura', 'Club', { programa: 'club-lectura' });
     assert.deepEqual(N.agrupar([propia, canales], 'programa').map(g => [g.cabeza?.nombre, g.hijas.map(x => x.nombre)]), [['Club', ['Canales']]]);
-    // la sección: su cabecera (un clic la deja sola), las columnas, la que encabeza con cuántas tiene, las suyas corridas
+    // su vista (proyectos › interno), con las piezas de la casa (componentes/seccion.ts): cada grupo una sección, con su
+    // separador y cuántas tiene; dentro, cada fila un ítem, la que lo encabeza primera
     const h = N.htmlIniciativas(todas, 'programa', { sel: canales.ruta, cuentas: new Map([[canales.ruta, 3]]) });
-    assert.match(h, /^<div id="iniciativas" style="--ini-estado: 11ch"><div class="fila proy-sec-cab ini-sec-cab clic" data-accion="proy-iniciativas"/,
-        'el ancho del estado, el de lo más largo que muestra («sin estado»)');
-    assert.match(h, /iniciativas <span class="proy-sec-n">7<\/span> <span class="ini-programas">· 2 programas<\/span>/);
-    assert.match(h, /class="fila clic proy ini ini-cabeza" data-accion="proy-sel" data-valor="casa\/iniciativas\/club-lectura" data-grupo="club-lectura"/);
-    assert.match(h, /Club de lectura<\/span><span class="ini-n" title="3 en este programa">3<\/span>/);
-    assert.match(h, /class="fila clic proy ini sel ini-hija" data-accion="proy-sel" data-valor="casa\/iniciativas\/canales"[^>]*data-pend="3"/, 'la elegida, con sus pendientes');
-    assert.match(h, /<div class="fila ini-grupo" data-grupo="gestion"/, 'un programa sin la suya: su nombre');
-    assert.match(h, /<div class="fila ini-grupo ini-sueltas" data-grupo=""[^>]*><span class="at"><\/span><span class="que"><span class="ini-nombre">sin programa<\/span><span class="ini-n">2<\/span>/);
-    assert.ok(h.indexOf('ini-cabeza') < h.indexOf('data-grupo="gestion"') && h.indexOf('data-grupo="gestion"') < h.indexOf('ini-sueltas'), 'en su orden');
+    assert.match(h, /^<div id="iniciativas"><div class="sep"><\/div><div class="item cabecera ini-grupo" data-accion="proy-seccion" data-id="ini:club-lectura" data-grupo="club-lectura" data-sec="ini:club-lectura"/,
+        'cada grupo, una sección con su separador (la línea de arriba), que se pliega en la página');
+    assert.match(h, /<span class="item-titulo">Club de lectura<\/span> <span class="item-sufijo tono-tenue">4<\/span>/, 'el grupo, con cuántas tiene (la que lo encabeza, también)');
+    assert.ok(h.indexOf('data-id="ini:club-lectura"') < h.indexOf('ini-cabeza') && h.indexOf('ini-cabeza') < h.indexOf('casa/iniciativas/encuentros'), 'la que lo encabeza, primera en él');
+    assert.match(h, /<div class="item activa proy ini" data-accion="proy-sel" data-valor="casa\/iniciativas\/canales" data-grupo="club-lectura"[^>]*data-pend="3"/, 'la elegida, con sus pendientes');
+    assert.match(h, /data-id="ini:gestion"[^>]*title="programa «gestion»: ninguna iniciativa se llama así/, 'un programa sin la suya: su nombre');
+    assert.match(h, /data-id="ini:"[^>]*><span class="item-inicio">.*?<span class="item-titulo">sin programa<\/span> <span class="item-sufijo tono-tenue">2<\/span>/);
+    assert.ok(h.indexOf('ini-cabeza') < h.indexOf('data-id="ini:gestion"') && h.indexOf('data-id="ini:gestion"') < h.indexOf('data-id="ini:"'), 'en su orden');
     assert.ok(h.includes('&lt;el&gt;') && !h.includes('<el>'), 'lo escrito se escapa');
-    assert.match(h, /<span class="senal" title="peso medio"><span class="circulo tam-chico" style="--lleno: 50%"><\/span><\/span>/, 'el peso, el círculo de Táctica');
-    const sola = N.htmlIniciativas(todas, 'programa', { solo: true });
-    assert.ok(!sola.includes('ini-sec-cab') && sola.includes('ini-cols'), 'sola, sin su cabecera: la dice la barra');
+    const filaDe = (html, slug) => { const i = html.indexOf(`data-valor="casa/iniciativas/${slug}"`); return html.slice(html.lastIndexOf('<div class="item', i), html.indexOf('</div>', i)); };
+    assert.match(filaDe(h, 'canales'), /<span class="item-ranura" title="peso medio"><span class="circulo tam-chico" style="--lleno: 50%"><\/span><\/span>/, 'el peso, el círculo de Táctica, en su ranura');
+    assert.match(filaDe(h, 'canales'), /<span class="item-titulo">Canales<\/span> <span class="item-sufijo tono-tenue" title="próximo paso \(lo próximo por decidir\): ¿Abrimos &lt;el&gt; canal\?">¿Abrimos &lt;el&gt; canal\?<\/span>/,
+        'lo próximo por decidir, tras el nombre y tenue: se corta antes que él');
+    assert.match(filaDe(h, 'canales'), /<span class="item-meta"><span class="dueno-i" title="dueño: Ana">Ana<\/span><span class="tareas-p"[^>]*>3<\/span><\/span>/, 'al final, quién la lleva y cuántos pendientes');
+    assert.match(filaDe(h, 'canales'), /<span class="item-acciones"><span class="item-accion item-menu cuadrada" data-accion="proy-menu" data-valor="casa\/iniciativas\/canales"/, 'su ⋯, el menú del ítem');
+    assert.ok(!h.includes('class="fila'), 'ninguna fila hecha a mano');
     assert.equal(N.htmlIniciativas([], 'programa'), '', 'sin iniciativas, nada');
+    assert.ok(!N.htmlIniciativas(todas, '').includes('data-id="ini:club'), 'sin agrupar, una sola sección');
+    // lo de interno (la sección A del encargo): mi papel, el próximo paso, las ideas plegadas, sin las
+    // terminadas ni las descartadas, y los filtros «me toca» y «sin próximo paso»
+    {
+        const VOCI = N.vocabularioDe({ estados: ['idea', 'en curso', 'terminada', 'descartada'] });
+        const yoMismo = d => d === 'Yo Mismo';
+        const mia = u('mia', 'La mía', { programa: 'club-lectura', dueno: 'Yo Mismo', estado: 'en curso' });
+        const ajena = u('ajena', 'La ajena', { programa: 'club-lectura', dueno: 'Otra Persona', estado: 'en curso' });
+        const huerfana = u('huerfana', 'La huérfana', { programa: 'club-lectura', estado: 'en curso' });
+        const idea = u('idea', 'Una idea', { programa: 'club-lectura', estado: 'idea' });
+        const fin = u('fin', 'Ya terminó', { programa: 'club-lectura', estado: 'terminada' });
+        const no = u('no', 'Descartada', { programa: 'club-lectura', estado: 'descartada' });
+        const xs = [mia, ajena, huerfana, idea, fin, no];
+        const prox = new Map([['casa/iniciativas/mia', { texto: 'T12 · llamar al proveedor', de: 'tarea' }], ['casa/iniciativas/ajena', { texto: '', de: '' }]]);
+        const o = { voc: VOCI, esMia: yoMismo, proximos: prox };
+        const hi = N.htmlIniciativas(xs, 'programa', o);
+        assert.ok(!hi.includes('casa/iniciativas/fin') && !hi.includes('casa/iniciativas/no'), 'sin las terminadas ni las descartadas');
+        assert.match(filaDe(hi, 'mia'), /<span class="dueno-i" title="mi papel: la llevo \(dueño: Yo Mismo\)">lo llevo<\/span>/, 'mi papel: la llevo');
+        assert.match(filaDe(hi, 'ajena'), /<span class="dueno-i tono-tenue" title="mi papel: la sigo; la lleva Otra Persona">Otra Persona<\/span>/, 'la sigo: quién la lleva');
+        assert.match(filaDe(hi, 'huerfana'), /<span class="dueno-i tono-apagado" title="mi papel: sin definir[^"]*">sin definir<\/span>/, 'sin dueño: sin definir');
+        assert.match(filaDe(hi, 'mia'), /data-papel="llevo"/);
+        assert.match(filaDe(hi, 'mia'), /<span class="item-sufijo tono-tenue" title="próximo paso \(su tarea más urgente\): T12 · llamar al proveedor">/, 'el próximo paso: su tarea');
+        assert.match(filaDe(hi, 'ajena'), /data-proximo="sin"[\s\S]*<span class="item-sufijo tono-atencion"[^>]*>sin próximo paso<\/span>/, 'sin ninguno: marcado');
+        assert.ok(!filaDe(hi, 'huerfana').includes('item-sufijo'), 'lo que todavía no se sabe (sin leer sus tareas), sin decir');
+        assert.match(hi, /<div class="item submenu ini-ideas" data-accion="proy-seccion" data-id="ideas:club-lectura" data-grupo="club-lectura" data-sec="ideas:club-lectura" data-plegada="1"/,
+            'las ideas, al final de su grupo, en un submenú que empieza plegado');
+        assert.ok(hi.indexOf('data-id="ideas:club-lectura"') < hi.indexOf('casa/iniciativas/idea"') && hi.indexOf('casa/iniciativas/huerfana') < hi.indexOf('data-id="ideas:club-lectura"'), 'después de las vivas');
+        assert.match(filaDe(hi, 'idea'), /data-idea="1"/);
+        const fi = N.filtrosIniciativas(xs, 'programa', o);
+        assert.match(fi, /data-id="papel:llevo"[^>]*><span class="filtros-op-nombre">me toca<\/span> <span class="filtros-cuenta">1<\/span>/, '«me toca»: las que llevo');
+        assert.match(fi, /data-id="proximo:sin"[^>]*><span class="filtros-op-nombre">sin próximo paso<\/span> <span class="filtros-cuenta">1<\/span>/, '«sin próximo paso»');
+        assert.equal(N.filtrosIniciativas(xs, 'programa', { voc: VOCI }), '', 'sin saber quién es la persona ni el próximo paso, sin filtros');
+        assert.equal(N.agrupar([u('x', 'X', { funcion: 'ofertas' }), u('y', 'Y')], 'funcion').at(-1).nombre, 'sin función', 'agrupadas por función: «sin función»');
+    }
     // cómo va, para el detalle
     assert.deepEqual(N.comoVaIniciativa(canales, 'programa').partes, ['<span class="ini-estado" title="sin estado"><span class="ini-e-txt dim">sin estado</span></span>',
         'Ana', 'próxima decisión: ¿Abrimos &lt;el&gt; canal?', 'peso medio', 'programa club-lectura']);
@@ -1170,25 +1266,20 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.deepEqual([N.estadoDe(boletin).valor, N.estadoDe(boletin).cambia, N.estadoDe(piloto).fuera, N.estadoDe(p01).fuente], ['Activo', false, false, 'sheet'],
         'sin vocabulario: lo escrito (o el de su tabla), nada está fuera y no se cambia aquí; la fuente, como la dice');
     const hv = N.htmlIniciativas([club, boletin, piloto, plan, activa, p01, p02, sinEstado], 'programa', { voc: VOC });
-    const fila = ruta => hv.slice(hv.indexOf(`data-valor="casa/iniciativas/${ruta}"`), hv.indexOf('</div>', hv.indexOf(`data-valor="casa/iniciativas/${ruta}"`)));
-    const celda = ruta => /<span class="estado-p ini-estado[^"]*"[^>]*>.*?<\/span><span class="ini-fuente"[^>]*>[^<]*<\/span>/s.exec(fila(ruta))?.[0] ?? '';
-    assert.match(hv, /^<div id="iniciativas" class="con-fuente" style="--ini-estado: 11ch; --ini-fuente: 14ch">/,
-        'con alguna de fuente externa, su columna, del ancho de «fuente: Sheet»; el estado, del de «○ piloto ⚠»');
-    assert.match(celda('club-lectura'), /^<span class="estado-p ini-estado cambia" data-accion="ini-estado" data-valor="casa\/iniciativas\/club-lectura" data-estado="en curso" data-clase="curso" title="estado: en curso\nclic: cambiarlo">/,
-        'del vocabulario: el clic lo cambia (no elige la fila)');
-    assert.match(celda('club-lectura'), /<span class="senal tono-trabajando"><span class="circulo tam-chico" style="--lleno: 50%"><\/span><\/span><span class="ini-e-txt">en curso<\/span>/,
-        'su círculo, en el color de su clase');
-    assert.match(celda('activa'), /data-estado="en curso" data-clase="curso" title="estado: en curso\nsu ficha dice «Activa», que vale como «en curso»/, 'el sinónimo, como el suyo');
-    assert.match(celda('piloto'), /class="estado-p ini-estado cambia fuera" data-accion="ini-estado"[^>]*title="estado: piloto\nespera &lt;la&gt; reunión\nfuera del vocabulario/,
-        'fuera del vocabulario: marcado, y se cambia; su nota, al pasar');
-    assert.match(celda('piloto'), /<span class="senal tono-atencion"><span class="circulo tam-chico" style="--lleno: 0%"><\/span><\/span><span class="ini-e-txt tono-atencion">piloto<\/span><span class="i ini-fuera tono-atencion" title="fuera del vocabulario: idea, diseño, en curso, en pausa, terminada, descartada">/);
-    assert.ok(!celda('p01-encuesta').includes('data-accion'), 'la de fuente externa no tiene el clic que lo cambia');
-    assert.match(celda('p01-encuesta'), /title="estado: idea\nla sincroniza la planilla\nfuente: Sheet: se cambia allá, no aquí">.*<span class="ini-fuente" title="su estado lo manda Sheet: se cambia allá">fuente: Sheet<\/span>$/s);
-    assert.match(celda('p02-base'), /data-clase="curso"[\s\S]*fuente: pmo/);
-    assert.match(celda('suelta'), /data-accion="ini-estado"[\s\S]*<span class="ini-e-txt dim">sin estado<\/span>/, 'sin estado: se elige uno');
-    assert.match(celda('boletin'), /data-accion="ini-estado"[\s\S]*<span class="ini-e-txt dim">sin estado<\/span>/, 'solo en su tabla: sin estado');
-    assert.match(celda('plan-anual'), /data-accion="ini-estado"[\s\S]*<span class="ini-fuente" title="">/, 'la que encabeza, sin fuente');
-    assert.ok(!N.htmlIniciativas([club, piloto], 'programa', { voc: VOC }).includes('con-fuente'), 'sin ninguna de fuente externa, sin su columna');
+    const ranura = slug => /<span class="item-ranura[^"]*"[^>]*>(?:(?!<span class="item-ranura).)*?<\/span><\/span><\/span><span class="item-texto">/s.exec(filaDe(hv, slug))?.[0] ?? '';
+    assert.match(ranura('club-lectura'), /^<span class="item-ranura tono-trabajando" title="estado: en curso\nclic: cambiarlo"><span class="ini-estado cambia" data-accion="ini-estado" data-valor="casa\/iniciativas\/club-lectura" data-estado="en curso" data-clase="curso"><span class="circulo tam-chico" style="--lleno: 50%"><\/span><\/span>/,
+        'del vocabulario: su círculo en el color de su clase, y el clic lo cambia (no elige la fila)');
+    assert.match(ranura('activa'), /title="estado: en curso\nsu ficha dice «Activa», que vale como «en curso»/, 'el sinónimo, como el suyo');
+    assert.match(ranura('piloto'), /^<span class="item-ranura tono-atencion" title="estado: piloto\nespera &lt;la&gt; reunión\nfuera del vocabulario[^"]*"><span class="ini-estado cambia" data-accion="ini-estado"/,
+        'fuera del vocabulario: en el color de cuidado, y se cambia; su nota, al pasar');
+    assert.match(filaDe(hv, 'piloto'), /<span class="item-aviso tono-atencion" title="fuera del vocabulario: idea, diseño, en curso, en pausa, terminada, descartada">/, 'y marcado al final');
+    assert.ok(!filaDe(hv, 'p01-encuesta').includes('data-accion="ini-estado"'), 'la de fuente externa no tiene el clic que lo cambia');
+    assert.match(ranura('p01-encuesta'), /title="estado: idea\nla sincroniza la planilla\nfuente: Sheet: se cambia allá, no aquí"/);
+    assert.match(filaDe(hv, 'p01-encuesta'), /<span class="item-aviso tono-tenue" title="su estado lo manda Sheet: se cambia allá">/, 'la manda otra fuente: su marca al final');
+    assert.match(filaDe(hv, 'p02-base'), /title="estado: en curso[\s\S]*fuente: pmo/);
+    assert.match(filaDe(hv, 'suelta'), /data-accion="ini-estado"[\s\S]*title="sin estado|title="sin estado[\s\S]*data-accion="ini-estado"/, 'sin estado: se elige uno');
+    assert.match(filaDe(hv, 'boletin'), /title="sin estado\nclic: elegir uno"/, 'solo en su tabla: sin estado');
+    assert.ok(!filaDe(hv, 'plan-anual').includes('item-aviso'), 'la que encabeza, sin fuente');
     assert.ok(!N.htmlIniciativas([club], 'programa').includes('data-accion="ini-estado"'), 'sin vocabulario, no se cambia aquí');
     // el detalle: el estado (un clic lo cambia), desde cuándo, su nota y la fuente
     const conDesde = u('club-lectura', 'Club', { estado: 'activa', estado_desde: '2026-11-02', estado_nota: 'abrió la <segunda> cohorte' });
@@ -1246,7 +1337,7 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
         for (const m of css.matchAll(/([^{};\n]+)\{([^{}]*?height:\s*var\(--pantalla-barra-alto\)[^{}]*)/g)) conAlto.push([f, m[1].trim(), m[2]]);
     }
     const selectores = conAlto.map(([, sel]) => sel);
-    for (const quien of ['.pantalla-barra', '.franja', '& .lado-barra', '.buscador-barra']) assert.ok(selectores.includes(quien), `${quien} mide --pantalla-barra-alto`);
+    for (const quien of ['.pantalla-barra', '.franja', '& .lado-barra', '.buscador-barra', '.pulso-linea', '.item.cabecera']) assert.ok(selectores.includes(quien), `${quien} mide --pantalla-barra-alto`);
     for (const [f, sel, cuerpo] of conAlto) assert.match(cuerpo, /box-sizing:\s*border-box/, `${f} ${sel}: el alto cuenta el relleno y la línea (border-box)`);
     for (const [f, css] of Object.entries(hojas)) {
         if (!/\*\s*\{\s*box-sizing:\s*content-box;?\s*\}/.test(css)) continue;
@@ -1378,6 +1469,85 @@ assert.ok(esIcono('\u{eb73}') && !esIcono('a') && !esIcono('ab'), 'un ícono es 
     assert.ok(CMS.DONDE.every(d => readFileSync(path.join(aqui, '..', 'src', d.archivo), 'utf8').length > 0), 'dónde va: archivos que existen');
     const catalogo = readFileSync(path.join(aqui, '..', 'src', 'componentes', 'catalogo.ts'), 'utf8');
     assert.ok(/clave: 'pestanas', nombre: 'pestañas'/.test(catalogo) && /clave: 'mensaje', nombre: 'barra de mensaje'/.test(catalogo), 'sus páginas en el catálogo');
+}
+
+// 22. Equipo (componentes/equipo.ts, el prototipo; docs/propuestas/equipo.md): la lista (una fila por persona, con su carga,
+// los compromisos abiertos, el punto de lo vencido y el próximo 1:1), la ficha (1:1, compromisos en las dos direcciones con
+// lo delegado distinto, capacidad y proyectos) y las apreciaciones: fuera de `Persona`, en su pestaña, sin número, y en
+// la página solo después del clic; el teléfono, una cosa a la vez; y su página en el catálogo
+{
+    const { readFileSync } = await import('node:fs');
+    const E = await armar('equipo');
+    const { PERSONAS, AHORA, apreciacionesDeMuestra } = await armar('muestras-equipo');
+    const EQ = await armar('catalogo-equipo');
+    const base = { personas: PERSONAS, ahora: AHORA, elegida: 'ana', pestana: 'ficha', apreciaciones: E.SIN_TRAER };
+    const textos = PERSONAS.flatMap(x => apreciacionesDeMuestra(x.clave).map(a => a.texto));
+    assert.ok(textos.length >= 4, 'hay apreciaciones de muestra');
+    // las apreciaciones no son parte de una persona: no viajan con el modelo
+    const modelo = JSON.stringify(PERSONAS);
+    assert.ok(textos.every(t => !modelo.includes(t)) && !/apreciac/i.test(modelo), 'Persona no lleva apreciaciones');
+
+    // la lista: una fila por persona, la abierta marcada en el laptop
+    const lista = E.listaEquipo(base);
+    assert.equal((lista.match(/data-accion="eq-persona"/g) ?? []).length, PERSONAS.length);
+    assert.match(lista, /class="item activa" data-accion="eq-persona" data-id="ana"/);
+    assert.ok(!E.listaEquipo({ ...base, angosto: true }).includes('item activa'), 'en el teléfono no se marca');
+    const fila = clave => E.filaPersona(PERSONAS.find(x => x.clave === clave), base);
+    // Bruno: sin 1:1 agendado (en el de cuidado), algo vencido (el punto), sobre sus horas (en peligro)
+    assert.match(fila('bruno'), /item-aviso tono-atencion/);
+    assert.match(fila('bruno'), /item-meta tono-atencion[^>]*>sin 1:1 agendado</);
+    assert.match(fila('bruno'), /item-ranura tono-peligro/);
+    // Eva: sin horas cargadas (un aro tenue), el primer 1:1 agendado; Carla, hoy
+    assert.match(fila('eva'), /item-ranura tono-tenue" title="sin horas cargadas/);
+    assert.match(fila('eva'), />1:1 vie 27-nov</);
+    assert.match(fila('carla'), />1:1 hoy 16:00</);
+    assert.ok(!fila('ana').includes('tono-atencion') && !fila('ana').includes('tono-peligro'), 'Ana, al día');
+
+    // lo que se calcula: solo se cuenta
+    assert.equal(E.entre('2026-11-20', '2026-11-26'), 6);
+    assert.equal(E.plazo({ id: 'x', titulo: 'x', clase: 'espera', desde: '2026-11-06', vence: '2026-11-20' }, AHORA).texto, 'venció hace 6 d');
+    assert.equal(E.plazo({ id: 'x', titulo: 'x', clase: 'tuya', desde: '2026-11-19', vence: '2026-11-26' }, AHORA).texto, 'vence hoy');
+    assert.equal(E.plazo({ id: 'x', titulo: 'x', clase: 'tuya', desde: '2026-10-29' }, AHORA).texto, 'desde 29-oct');
+    assert.equal(E.estadoUnoAUno({ serie: 's', cadencia: 'semanal', dias: 7 }, AHORA).corto, 'sin 1:1');
+
+    // la ficha: sus cuatro secciones, en orden; te debe, le debes y te pide; lo delegado con su ícono
+    const ficha = E.fichaPersona(base);
+    const orden = ['1:1', 'compromisos', 'capacidad', 'proyectos'].map(t => ficha.indexOf(`<span class="item-titulo">${t}</span>`));
+    assert.ok(orden.every(i => i > 0) && orden.every((i, k) => !k || i > orden[k - 1]), `las secciones, en orden: ${orden}`);
+    assert.ok(['te debe', 'le debes', 'te pide'].every(t => ficha.includes(`<span class="item-titulo">${t}</span>`)));
+    assert.match(ficha, /data-id="T902"[^>]*title="T902 · delegada/);
+    assert.match(ficha, /data-id="T901"[^>]*title="T901 · en espera/);
+    assert.match(ficha, /class="partes"/, 'la capacidad, en partes');
+    // sin traer, ninguna apreciación en la página: ni en la ficha, ni en su pestaña, ni un número en la pestaña
+    const sinTraer = E.fichaPersona({ ...base, pestana: 'apreciaciones' });
+    for (const html of [ficha, sinTraer, E.equipo(base), E.equipo({ ...base, pestana: 'apreciaciones' })]) {
+        assert.ok(textos.every(t => !html.includes(t)), 'sin traer, nada de ellas');
+    }
+    assert.match(sinTraer, /data-privado="apreciaciones"/);
+    assert.match(sinTraer, /data-accion="eq-traer" data-valor="ana"/);
+    assert.ok(!/data-valor="apreciaciones"[^>]*>(?:(?!<\/a>).)*pestana-cuenta/s.test(sinTraer), 'la pestaña, sin número');
+    // traídas: solo en su pestaña, con «olvidar ahora»
+    const traidas = { estado: 'traidas', lista: apreciacionesDeMuestra('ana'), a: AHORA };
+    const conEllas = E.fichaPersona({ ...base, pestana: 'apreciaciones', apreciaciones: traidas });
+    assert.ok(apreciacionesDeMuestra('ana').every(a => conEllas.includes(a.texto)));
+    assert.match(conEllas, /data-accion="eq-olvidar"/);
+    assert.ok(textos.every(t => !E.fichaPersona({ ...base, apreciaciones: traidas }).includes(t)), 'en la pestaña ficha, no');
+
+    // el teléfono: la lista, o la ficha con ‹ a la lista
+    assert.ok(E.equipo({ ...base, elegida: '', angosto: true }).includes('eq-lista') && !E.equipo({ ...base, elegida: '', angosto: true }).includes('eq-ficha'));
+    assert.ok(!E.equipo({ ...base, angosto: true }).includes('class="eq-lista"'));
+    assert.equal(E.barraEquipo({ ...base, angosto: true }).volver?.accion, 'eq-lista');
+    assert.equal(E.barraEquipo(base).volver, undefined);
+
+    // el catálogo: sus pestañas, las cinco reglas, de dónde sale cada dato, y la página entera
+    assert.equal(EQ.REGLAS.length, 5);
+    assert.ok(EQ.FUENTES.some(f => f.dato === 'apreciaciones') && EQ.FUENTES.some(f => /esperando/.test(f.fuente)));
+    assert.equal(EQ.entera(['nadie', 'ficha'], false), null);
+    assert.ok(EQ.entera(['lista', 'ficha'], true).pantalla.includes('eq-lista'));
+    assert.ok(apreciacionesDeMuestra('ana').every(a => EQ.entera(['ana', 'apreciaciones', 'traidas'], false).pantalla.includes(a.texto)));
+    const catalogo = readFileSync(path.join(aqui, '..', 'src', 'componentes', 'catalogo.ts'), 'utf8');
+    assert.match(catalogo, /clave: 'equipo', nombre: 'equipo \(prototipo\)'/);
+    assert.match(readFileSync(path.join(aqui, '..', 'scripts', 'navegador.mjs'), 'utf8'), /'tactica', 'equipo'\]/, 'su hoja, en marco.css');
 }
 
 console.log('componentes: ok');

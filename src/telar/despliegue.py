@@ -96,6 +96,9 @@ class Comprobacion:
     igual: str = ""
     #: cuánto esperar a que conteste (segundos): el servicio puede estar arrancando
     plazo: float = 30
+    #: con `pagina`: a cuántos segundos de contestar se pide de nuevo, una vez, y tiene que seguir contestando (0: no se
+    #: pide de nuevo). Un servicio que arranca y se cae a los pocos segundos pasaba la primera (26-nov-2026)
+    sigue: float = 0
 
     @property
     def que(self) -> str:
@@ -173,10 +176,15 @@ def interpretar(datos) -> Declaracion:
             raise ErrorDeDespliegue(f"{DECLARACION}: comprobar {i}: `igual` va con `pagina` (un campo de su JSON)")
         try:
             plazo = float(c.get("plazo", 30))
+            sigue = float(c.get("sigue", 0))
         except (TypeError, ValueError):
-            raise ErrorDeDespliegue(f"{DECLARACION}: comprobar {i}: `plazo` son segundos") from None
+            raise ErrorDeDespliegue(f"{DECLARACION}: comprobar {i}: `plazo` y `sigue` son segundos") from None
+        if sigue and not pagina:
+            raise ErrorDeDespliegue(f"{DECLARACION}: comprobar {i}: `sigue` va con `pagina`")
+        if sigue < 0:
+            raise ErrorDeDespliegue(f"{DECLARACION}: comprobar {i}: `sigue` son segundos, 0 o más")
         comprobar.append(Comprobacion(pagina, str(c.get("comando") or "").strip(), str(c.get("igual") or "").strip(),
-                                      plazo))
+                                      plazo, sigue))
     rama = str(datos.get("rama") or "main").strip()
     return Declaracion(rama, preparar, tuple(servicios), despues, tuple(comprobar))
 
@@ -651,7 +659,8 @@ def _hacer(d: Despliegue, m: Maquina, p: Hecho) -> tuple[bool, str]:
     if p.fase == "comprobar":
         c = d.decl.comprobar[p.indice]
         if c.pagina:
-            r = m.ayudante({"accion": "comprobar", "pagina": c.pagina, "plazo": c.plazo}, timeout=c.plazo + 60)
+            r = m.ayudante({"accion": "comprobar", "pagina": c.pagina, "plazo": c.plazo, "sigue": c.sigue},
+                           timeout=c.plazo + c.sigue + 60)
             if not r.get("ok"):
                 return False, r.get("detalle") or r.get("error") or ""
             valor = m.valores[p.indice] = r.get("valor")

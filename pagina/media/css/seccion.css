@@ -1,15 +1,21 @@
 /* La sección de lista (componentes/seccion.ts): lo que lleva un grupo de la barra entre su cabecera y sus filas. Con @scope,
-   como hilos.css: la barra y su muestra del catálogo; las listas del dashboard llevan la misma barra del buscador
-   (buscador.css), de borde a borde de su pantalla (dia.css). scripts/navegador.mjs la junta en src/telar/web/marco.css. */
+   como hilos.css: la barra, su muestra del catálogo y la lista de proyectos del dashboard (proyectos.css), que arma sus
+   secciones con las mismas piezas; las demás listas del dashboard llevan la misma barra del buscador (buscador.css), de
+   borde a borde de su pantalla (dia.css). scripts/navegador.mjs la junta en src/telar/web/marco.css. */
 
-@scope (#barra, .barra-de-muestra) {
+@scope (#barra, .barra-de-muestra, .proy-lista) {
   /* entre un grupo y el siguiente: el aire, bajo las filas del de arriba, y la línea de arriba de la cabecera que sigue,
      de borde a borde y en el borde de su fondo (como la de abajo, sobre el mismo fondo: del mismo color). Tras una
      sección plegada, nada: la línea de abajo de su cabecera ya la aparta */
   .sep { margin-top: .4em; }
+  /* la cabecera: del alto estándar de las filas con línea (--pantalla-barra-alto, como la franja y el pulso de arriba y
+     la barra de la pantalla de al lado), un cuarto de línea arriba y abajo y su línea abajo; la que lleva además la de
+     arriba, un píxel más, para que entre línea y línea quede lo mismo */
+  .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); padding-block: var(--e-1); border-bottom: var(--borde); }
+  .sep + .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); }
   .sep + .item.cabecera { border-top: var(--borde); }
   .item.cabecera + .sep { display: none; }
-  .item.cabecera + .sep + .item.cabecera { border-top: 0; }
+  .item.cabecera + .sep + .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
   /* las herramientas de un grupo (HILOS, ARCHIVO), bajo su cabecera: la barra del buscador (buscador.css), del alto de
      las barras y con su línea abajo de borde a borde, que la aparta de las filas. La lupa, en la columna del ícono de
      plegar de la cabecera, y lo escrito donde su título (la sangría de las filas: item.css), como «nada calza». A la

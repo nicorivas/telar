@@ -61,6 +61,11 @@
 }
 
 /* texto: el prefijo, el título y el sufijo; se corta con «…» antes de pisar el final */
+/* un ícono no alarga la fila: la letra de íconos tiene otra altura que la de la página, y con el interlineado de la fila
+   su caja pasaba un píxel de la línea (unas filas de 16,9 y otras de 17,9, las cabeceras de 27,3). Con el de su letra
+   queda dentro, en el mismo lugar */
+.item .i { line-height: 1; }
+
 .item-texto {
   flex: 0 1 auto;
   min-width: 0;

@@ -226,6 +226,27 @@ class Telar:
     #: hilo → cuántos borradores le guardó la persona (telar.borradores): los de aquí, y de uno de otra máquina los que
     #: publica su dueño
     borradores: dict[str, int] = field(default_factory=dict)
+    #: ruta → su relativa a la raíz (`relativa`): resolverla cuesta varios lstat, y enrutar los pendientes del día la
+    #: pedía decenas de miles de veces por cada hilo (26-nov-2026: 16 de los 21 s de `GET /hoy`). Vive lo que vive este
+    #: telar, que se arma de nuevo en cada pedido: un enlace que cambia se ve en el siguiente
+    _relativas: dict = field(default_factory=dict, repr=False, compare=False)
+    #: relativa → la expresión que la encuentra escrita en un texto (`enrutar`), armada una vez por pedido
+    _patrones: dict = field(default_factory=dict, repr=False, compare=False)
+
+    def relativa(self, ruta: Path | None) -> str:
+        """`ruta_relativa(ruta, self.raiz)`, calculada una vez por ruta."""
+        if ruta is None:
+            return ""
+        clave = str(ruta)
+        if clave not in self._relativas:
+            self._relativas[clave] = ruta_relativa(ruta, self.raiz)
+        return self._relativas[clave]
+
+    def patron(self, relativa: str) -> re.Pattern:
+        """La carpeta `relativa` escrita en un texto, entera (`proyectos/faro`, no `proyectos/faro-norte`)."""
+        if relativa not in self._patrones:
+            self._patrones[relativa] = re.compile(rf"(?<![\w/.-]){re.escape(relativa)}(?=[/\s)\],]|$)")
+        return self._patrones[relativa]
 
     def por_nombre(self, nombre: str) -> Hilo | None:
         return next((h for h in self.hilos if h.nombre == nombre), None)
@@ -743,7 +764,7 @@ def json_hilo(hilo: Hilo, tel: Telar, *, con_ficha: bool = True) -> dict:
         "abierto_por": tel.abierto_por.get(hilo.nombre),
         "vinculado": hilo.vinculado,
         "ruta": str(hilo.ruta) if hilo.ruta else "",
-        "relativa": ruta_relativa(hilo.ruta, tel.raiz),
+        "relativa": tel.relativa(hilo.ruta),
         "arquetipo": hilo.arquetipo,
         "prioridad": int(hilo.prioridad) if hilo.prioridad else None,
         "atencion": hilo.atencion.value,
@@ -865,9 +886,9 @@ def enrutar(tel: Telar, texto: str, *, hilo: str = "", limite_etiqueta: int = 3)
     candidatos: list[tuple[int, int, bool, datetime, Hilo]] = []
     calces: dict[str, int] = {}
     for h in tel.hilos:
-        relativa = ruta_relativa(h.ruta, tel.raiz)
+        relativa = tel.relativa(h.ruta)
         peso_ruta = 0
-        if relativa and re.search(rf"(?<![\w/.-]){re.escape(relativa)}(?=[/\s)\],]|$)", texto):
+        if relativa and relativa in texto and tel.patron(relativa).search(texto):
             peso_ruta = len(relativa)
         peso_tag = max((_calza_etiqueta(t, h.nombre, relativa) for t in etiquetas), default=0)
         if peso_tag:
@@ -888,6 +909,6 @@ def enrutar(tel: Telar, texto: str, *, hilo: str = "", limite_etiqueta: int = 3)
 
 
 def _solo_genericas(hilo: Hilo, tel: Telar, etiquetas: list[str], genericas: set[str]) -> bool:
-    relativa = ruta_relativa(hilo.ruta, tel.raiz)
+    relativa = tel.relativa(hilo.ruta)
     utiles = [t for t in etiquetas if t not in genericas and _calza_etiqueta(t, hilo.nombre, relativa)]
     return not utiles

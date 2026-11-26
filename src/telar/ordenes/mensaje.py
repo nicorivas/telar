@@ -4,6 +4,7 @@
     telar mensaje secretaria -           el texto por la entrada estándar (sin tope de largo práctico)
     telar mensaje Faro "…" --tipo encargo
     telar mensaje Faro - --tipo persona --de "el panel"   lo escribe la persona, desde otra parte
+    telar mensaje Faro@servidor "…"           el hilo Faro de esa máquina (lo mismo que hilo:Faro@servidor)
     telar mensaje Faro "…" --modo aviso      para que lo sepa: espera en su casilla y no lo despierta
     telar mensaje Faro "…" --modo encargo [--plazo 2026-10-24]
                                          un Encargo (`encargo:e-…`) que Faro acepta y cierra con un resultado
@@ -15,7 +16,8 @@
 
 El mensaje espera en la casilla del hilo hasta que la máquina donde vive lo recoja (`telar nodo`) y
 entra a la conversación por sus ganchos, entero, sin teclearlo. Un agente se nombra por su carpeta o
-su nombre; cualquier otro nombre es un hilo, viva donde viva. Necesita `[bus] url`.
+su nombre; cualquier otro nombre es un hilo, viva donde viva. Necesita `[bus] url`. Un nombre que no es de ningún
+hilo ni agente, en ninguna máquina, se rechaza con los parecidos: su casilla no la leería nadie.
 
 Entre hilos de una misma persona los mensajes corren sin pedirle permiso, con dos frenos en su lugar:
 cada mensaje lleva cuántos saltos lleva su cadena sin que la persona hablara (`telar.casilla`), y
@@ -135,7 +137,10 @@ def main(argv: list[str], ctx) -> int:
               file=sys.stderr)
         return 3
     como = {"aviso": " (un aviso: no lo despierta)"}.get(o.modo, "")
-    print(f"«{r['para']}»: en su casilla{como}" + (" (ya estaba: no se duplicó)" if r.get("duplicado") else "")
+    # la casilla en que quedó es la de `r['para']`, el hilo o agente que se resolvió: si se escribió de otra forma
+    # (`Telar@laptop`, `@144`, «telar»), se dice a quién llegó
+    a_quien = f"«{r['para']}»" + (f" ({o.para.strip()})" if o.para.strip() != r["para"] else "")
+    print(f"{a_quien}: en su casilla{como}" + (" (ya estaba: no se duplicó)" if r.get("duplicado") else "")
           + f" · id {r['id']}")
     if r.get("despertado"):
         print(f"  estaba {r['despertado']}: lo retomé con su conversación, y lo lee ahora")
@@ -211,6 +216,8 @@ def _por_nombre(ctx, para: str) -> str:
     rechaza: el hilo de otra máquina se nombra, no se numera."""
     if para.strip().startswith("hilo:"):
         return _por_direccion(ctx, para.strip())
+    if _con_maquina(para):
+        return _por_arroba(ctx, para.strip())
     if not _ID_DE_HILO.match(para.strip()):
         return para
     ref = "@" + para.strip().lstrip("@")
@@ -219,6 +226,54 @@ def _por_nombre(ctx, para: str) -> str:
     if hilo is None:
         raise mod_bus.ErrorDeBus(f"no hay ningún hilo con id {ref} en esta máquina: escribe su nombre")
     return hilo.nombre
+
+
+#: `nombre@máquina`, como en la dirección `hilo:nombre@máquina` (telar.objetos.leer): el hilo nombre en esa máquina
+_CON_MAQUINA = re.compile(r"^(?P<nombre>[^@\s][^@]*?)@(?P<maquina>[a-z0-9][\w-]*)$")
+
+
+def _con_maquina(para: str):
+    """El match de `nombre@máquina` (sin `hilo:`), o None. `Telar@laptop` es el hilo «Telar» en laptop."""
+    return _CON_MAQUINA.match(para.strip())
+
+
+def _por_arroba(ctx, para: str) -> str:
+    """`nombre@máquina` sin `hilo:`: lo mismo que `hilo:nombre@máquina`, salvo que un agente se nombra igual con su
+    máquina (`Gerencia@telar`: su casilla es la del agente, viva donde viva).
+
+    Antes iba tal cual a la casilla «nombre@máquina» (`telar-laptop`), que no es de nadie, y salía como entregado."""
+    from telar import agentes as mod_agentes
+
+    m = _con_maquina(para)
+    nombre = m.group("nombre").strip()
+    try:
+        agente = next((a for a in mod_agentes.descubrir(ctx.config) if nombre in (a.clave, a.nombre)), None)
+    except Exception:  # noqa: BLE001 - sin poder leer los agentes, como un hilo
+        agente = None
+    if agente is not None:
+        return agente.nombre
+    return _por_direccion(ctx, f"hilo:{nombre}@{m.group('maquina')}")
+
+
+def _parecidos(nombre: str, nombres, n: int = 4) -> list[str]:
+    """Los nombres que se parecen a `nombre` (para sugerirlos): los que lo contienen o empiezan igual, sin mirar
+    mayúsculas ni tildes, y los que difflib encuentra cerca."""
+    import difflib
+
+    from telar import casilla
+
+    nombres = sorted({x for x in nombres if x})
+    llano = casilla.nombre_de_carpeta(nombre)
+    por_forma = {casilla.nombre_de_carpeta(x): x for x in nombres}
+    salida = [x for x in nombres if llano and (casilla.nombre_de_carpeta(x) in llano or
+                                                llano in casilla.nombre_de_carpeta(x))]
+    salida += [por_forma[x] for x in difflib.get_close_matches(llano, list(por_forma), n=n, cutoff=0.6)]
+    vistos, unicos = set(), []
+    for x in salida:
+        if x not in vistos:
+            vistos.add(x)
+            unicos.append(x)
+    return unicos[:n]
 
 
 class NoHayHilo(mod_bus.ErrorDeBus):
@@ -265,6 +320,38 @@ def _exacto(ctx, para: str) -> str:
                   f"nombre exacto o por su id (telar hilos)")
 
 
+class NadieLee(NoHayHilo):
+    """El nombre no es de ningún hilo ni agente de esta persona, en ninguna de sus máquinas: su casilla no la leería
+    nadie. Un 404, como NoHayHilo."""
+
+
+def _alguien_lee(ctx, nombre: str) -> None:
+    """NadieLee si `nombre` no es de un hilo (vivo, dormido o archivado, aquí o en otra máquina) ni de un agente: lo
+    que se le mandara quedaría en una casilla huérfana y saldría como entregado. Los nombres que conoce esta máquina
+    (`_comun.nombres_conocidos`) y, si no está entre ellos, el estado del bus (un hilo recién abierto en otra máquina).
+    Si no se puede saber qué hilos hay, no se rechaza: como antes."""
+    from telar import casilla
+
+    if casilla.es_apartada(nombre):
+        return
+    try:
+        conocidos = _comun.nombres_conocidos(ctx, preguntar_al_bus=True)
+    except Exception:  # noqa: BLE001 - sin saber qué hilos hay, como siempre
+        return
+    if nombre in conocidos or any(casilla.mismo_nombre(n, nombre) for n in conocidos):
+        return
+    if mod_bus.hay_bus(ctx.config) and mod_bus.estado_de(ctx.config, nombre):
+        return
+    if nombre == _persona(ctx):
+        raise NadieLee(f"«{nombre}» es tu persona, no un hilo: no tiene casilla. Lo que es para ella, díselo en tu "
+                       "respuesta")
+    parecidos = _parecidos(nombre, conocidos)
+    cuales = (" ¿Quisiste decir " + " o ".join(f"«{n}» ({conocidos[n].donde})" for n in parecidos) + "?"
+              if parecidos else " Los hilos de cada máquina: telar hilos --red; los agentes: telar agentes.")
+    raise NadieLee(f"«{nombre}» no es un hilo ni un agente tuyo, en ninguna de tus máquinas: no le mandé nada, "
+                   f"porque su casilla no la leería nadie.{cuales}")
+
+
 def _por_direccion(ctx, para: str) -> str:
     """El nombre del hilo de una dirección (`hilo:Faro`, `hilo:Faro@servidor`). Con `@máquina`, esa máquina
     tiene que tener un hilo así (aquí, o según la foto que publicó en el bus): la casilla es del nombre, y un
@@ -280,11 +367,48 @@ def _por_direccion(ctx, para: str) -> str:
         return d.id
     if d.maquina == mod_bus.maquina(ctx.config):
         tel = _comun.tejer(ctx, con_ficha=False)
-        if not any(h.nombre == d.id and not h.remoto for h in tel.hilos):
-            raise NoHayHilo(f"{d.maquina} (esta máquina) no tiene un hilo «{d.id}»")
+        alla = [h.nombre for h in tel.hilos if not h.remoto]
+        if d.id not in alla:
+            raise NoHayHilo(f"{d.maquina} (esta máquina) no tiene un hilo «{d.id}»" + _sugerir(ctx, d, alla))
     elif objetos._hilo_remoto(ctx, d.id, d.maquina) is None:
-        raise NoHayHilo(f"{d.maquina} no tiene un hilo «{d.id}» (según lo último que publicó en el bus)")
+        from telar import espejo
+
+        fotos = [f for f in espejo.leer_todos(ctx.config) if f.get("nombre")]
+        foto = next((f for f in fotos if f["nombre"] == d.maquina), None)
+        if foto is None:
+            maquinas = sorted({mod_bus.maquina(ctx.config), *(f["nombre"] for f in fotos)})
+            raise NoHayHilo(f"no conozco la máquina «{d.maquina}» (las tuyas: {', '.join(maquinas)})"
+                            + _sugerir(ctx, d, []))
+        alla = [h.get("nombre", "") for h in foto.get("hilos", []) if not h.get("remoto")]
+        raise NoHayHilo(f"{d.maquina} no tiene un hilo «{d.id}» (según lo último que publicó en el bus)"
+                        + _sugerir(ctx, d, alla))
     return d.id
+
+
+def _persona(ctx) -> str:
+    """La persona del bus, o "" si no se sabe."""
+    try:
+        return mod_bus.persona(ctx.config)
+    except Exception:  # noqa: BLE001 - una configuración a medias
+        return ""
+
+
+def _sugerir(ctx, d, alla: list[str]) -> str:
+    """Lo que se le dice a quien nombró un hilo que no está en esa máquina: si es la persona escribiendo desde un
+    terminal (`nico@laptop`, el remitente de lo que ella manda), que no tiene casilla; si no, los parecidos de allá."""
+    if d.id == _persona(ctx):
+        return (f". «{d.id}@{d.maquina}» es tu persona escribiendo desde un terminal: no tiene casilla. Lo que es para "
+                "ella, díselo en tu respuesta")
+    try:
+        conocido = _comun.nombres_conocidos(ctx, preguntar_al_bus=False).get(d.id)
+    except Exception:  # noqa: BLE001 - sin saber dónde está, los parecidos de allá
+        conocido = None
+    if conocido is not None:
+        return f". «{d.id}» está {conocido.donde}: escríbele por su nombre solo, sin máquina"
+    parecidos = _parecidos(d.id, alla)
+    if parecidos:
+        return ". ¿Quisiste decir " + " o ".join(f"«{x}@{d.maquina}»" for x in parecidos) + "?"
+    return ". Los hilos de cada máquina: telar hilos --red"
 
 
 #: los modos de `--modo`: los que viajan (telar.casilla.MODOS)
@@ -324,13 +448,20 @@ def enviar(ctx, para: str, texto: str, *, tipo: str = "mensaje", de: str = "", m
         raise ValueError("el plazo es de un encargo: --modo encargo --plazo …")
     plazo = mod_encargo.plazo_valido(plazo)
     # por id (`@144`) o por dirección (`hilo:Faro`) ya es un hilo exacto; un nombre suelto se busca (`_exacto`)
-    explicito = para.strip().startswith("hilo:") or bool(_ID_DE_HILO.match(para.strip()))
+    # y `nombre@máquina` (`Telar@laptop`), como `hilo:nombre@máquina`: el hilo de esa máquina, que tiene que estar allá
+    explicito = para.strip().startswith("hilo:") or bool(_ID_DE_HILO.match(para.strip())) or bool(_con_maquina(para))
+    # por id o con su máquina ya se miró que el hilo esté; lo demás se mira abajo (`_alguien_lee`)
+    visto = bool(_ID_DE_HILO.match(para.strip()) or _con_maquina(para) or
+                 (para.strip().startswith("hilo:") and "@" in para.strip()[5:]))
     para = _por_nombre(ctx, para)
     agentes = mod_agentes.descubrir(ctx.config)
     agente = next((a for a in agentes if para in (a.clave, a.nombre)), None)
     # el nombre exacto: dos hilos que solo difieren en mayúsculas, tildes o espacios tienen casillas distintas
     nombre = agente.nombre if agente is not None else para if explicito else _exacto(ctx, para)
     agente = agente or next((a for a in agentes if a.nombre == nombre), None)
+    if agente is None and not visto:
+        # a un nombre que no es de ningún hilo ni agente, nadie le leería la casilla: se rechaza, con los parecidos
+        _alguien_lee(ctx, nombre)
     hilo = _hilo_propio(ctx)
     saltos, retener, familia = 0, "", None
     if hilo:

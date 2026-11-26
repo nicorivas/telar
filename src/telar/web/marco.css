@@ -1,4 +1,4 @@
-/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (tokens, temas, densidades, iconos, base, componentes, prosa, circulo, item, tarjeta, casillas, orden, buscador, seccion, filtros, ventana, boton, mundos, contestar, ventanas, pantalla, pestanas, mensaje, franja, pulso, partes, jornada, tactica, marco, web, hilos, dia, plan, proyectos, ahora, configuracion, periodicos, documento, objeto, compartir, lectura, leer, conversacion, terminal, catalogo, modos): no editar aquí. */
+/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (tokens, temas, densidades, iconos, base, componentes, prosa, circulo, item, tarjeta, casillas, orden, buscador, seccion, filtros, ventana, boton, mundos, contestar, ventanas, pantalla, pestanas, mensaje, franja, pulso, partes, jornada, tactica, equipo, marco, web, hilos, dia, plan, proyectos, ahora, configuracion, periodicos, documento, objeto, compartir, lectura, leer, conversacion, terminal, catalogo, modos): no editar aquí. */
 @layer base, vistas;
 @layer base {
 /* Los tokens: todo lo que decide cómo se ve la página, en tres capas.
@@ -222,7 +222,7 @@
   --pantalla-boton: var(--texto-tenue);
   --pantalla-boton-hover: var(--texto);
   --pantalla-vista-si: var(--violeta);
-  --pantalla-resumen: var(--texto-tenue);
+  --pantalla-literal: var(--texto-tenue);
 
   /* las pestañas (componentes/pestanas.ts, pestanas.css): las demás, tenues (como los botones de una barra); la abierta,
      con la superficie de la selección del ítem activo y su marca (la del tema), y el texto en su color; la cuenta, tenue */
@@ -624,7 +624,8 @@ a.codigo { text-decoration: underline dotted; text-underline-offset: 3px; }
   & h3 { font-size: 1.1em; }
   & strong { color: var(--fg); font-weight: 700; }
   & em { font-style: italic; }
-  & a { color: var(--azul); }
+  /* una dirección larga se parte donde sea: entera no cabe en un teléfono, y lo que queda fuera no se puede tocar */
+  & a { color: var(--azul); overflow-wrap: anywhere; }
   & ul,
   & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
   & li { margin: .3em 0; }
@@ -858,6 +859,11 @@ a.codigo { text-decoration: underline dotted; text-underline-offset: 3px; }
 }
 
 /* texto: el prefijo, el título y el sufijo; se corta con «…» antes de pisar el final */
+/* un ícono no alarga la fila: la letra de íconos tiene otra altura que la de la página, y con el interlineado de la fila
+   su caja pasaba un píxel de la línea (unas filas de 16,9 y otras de 17,9, las cabeceras de 27,3). Con el de su letra
+   queda dentro, en el mismo lugar */
+.item .i { line-height: 1; }
+
 .item-texto {
   flex: 0 1 auto;
   min-width: 0;
@@ -1358,17 +1364,23 @@ body:has([data-arrastra].arrastrando) .casillas .casilla-nombre { display: inlin
 }
 
 /* La sección de lista (componentes/seccion.ts): lo que lleva un grupo de la barra entre su cabecera y sus filas. Con @scope,
-   como hilos.css: la barra y su muestra del catálogo; las listas del dashboard llevan la misma barra del buscador
-   (buscador.css), de borde a borde de su pantalla (dia.css). scripts/navegador.mjs la junta en src/telar/web/marco.css. */
+   como hilos.css: la barra, su muestra del catálogo y la lista de proyectos del dashboard (proyectos.css), que arma sus
+   secciones con las mismas piezas; las demás listas del dashboard llevan la misma barra del buscador (buscador.css), de
+   borde a borde de su pantalla (dia.css). scripts/navegador.mjs la junta en src/telar/web/marco.css. */
 
-@scope (#barra, .barra-de-muestra) {
+@scope (#barra, .barra-de-muestra, .proy-lista) {
   /* entre un grupo y el siguiente: el aire, bajo las filas del de arriba, y la línea de arriba de la cabecera que sigue,
      de borde a borde y en el borde de su fondo (como la de abajo, sobre el mismo fondo: del mismo color). Tras una
      sección plegada, nada: la línea de abajo de su cabecera ya la aparta */
   .sep { margin-top: .4em; }
+  /* la cabecera: del alto estándar de las filas con línea (--pantalla-barra-alto, como la franja y el pulso de arriba y
+     la barra de la pantalla de al lado), un cuarto de línea arriba y abajo y su línea abajo; la que lleva además la de
+     arriba, un píxel más, para que entre línea y línea quede lo mismo */
+  .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); padding-block: var(--e-1); border-bottom: var(--borde); }
+  .sep + .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); }
   .sep + .item.cabecera { border-top: var(--borde); }
   .item.cabecera + .sep { display: none; }
-  .item.cabecera + .sep + .item.cabecera { border-top: 0; }
+  .item.cabecera + .sep + .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
   /* las herramientas de un grupo (HILOS, ARCHIVO), bajo su cabecera: la barra del buscador (buscador.css), del alto de
      las barras y con su línea abajo de borde a borde, que la aparta de las filas. La lupa, en la columna del ícono de
      plegar de la cabecera, y lo escrito donde su título (la sangría de las filas: item.css), como «nada calza». A la
@@ -2329,11 +2341,16 @@ dialog.ventana-dialogo.ventana-modulo-dialogo.quieta {
 .pantalla-vistas { display: flex; flex: none; align-items: baseline; }
 .pantalla-acciones { display: flex; flex: 0 1 auto; min-width: 0; align-items: baseline; }
 
-.pantalla-resumen {
+/* el nombre tal cual se escribe (un archivo, en el visor): tenue, sin las letras de una cabecera, y cortado con «…»
+   si no cabe (su ruta entera, en el globo) */
+.pantalla-nombre.literal {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--pantalla-resumen);
+  color: var(--pantalla-literal);
+  font-weight: normal;
+  text-transform: none;
 }
 
 .pantalla-lleno { flex: 1; }
@@ -2637,12 +2654,15 @@ dialog.ventana-dialogo.ventana-modulo-dialogo.quieta {
   &.plegada { justify-content: center; padding-inline: var(--h-1); }
 }
 
-/* en el teléfono no hay pantalla al lado con la que calzar: del alto de una fila, para el dedo; y sin avisos, no está */
-.angosto .franja { height: auto; padding-block: 0; line-height: var(--item-alto); }
+/* en el teléfono, el mismo alto: el de las filas con línea de allá (la barra de la pantalla, las cabeceras de la barra
+   y el pulso de abajo); y sin avisos, no está */
 .angosto .franja-lugar:has(> .franja.calma) { display: none; }
 
 /* el ícono, en la ranura de los de la barra (así el texto empieza en la columna de los nombres de abajo) */
 .franja-icono { flex: none; display: inline-block; width: var(--item-ranura); color: var(--franja-c); text-align: center; }
+/* la letra de íconos tiene otra altura que la de la página: con el interlineado de la fila, su caja la alargaría un
+   píxel; con el de su letra no pasa de la línea y el ícono queda donde estaba (lo mismo en item.css y pulso.css) */
+.franja-icono .i { line-height: 1; }
 .franja-texto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .franja-mas { flex: none; margin-left: auto; color: var(--texto-tenue); }
 
@@ -2719,9 +2739,11 @@ a.franja-aviso-tit:hover .franja-aviso-texto { text-decoration: underline; }
 .franja-punto:empty { display: none; }
 
 /* La línea del pulso y su ventana (componentes/pulso.ts; en la página, web/pulso.ts). La línea va justo debajo de la franja
-   de avisos, quieta como ella, del alto de una fila, con su línea abajo de borde a borde: el ícono del pulso en el color
-   de los agentes (tenue, si la pasada fue en seco), lo que cambió en el del texto, lo que falló en el de cuidado y «+N»
-   tenue a la derecha. Sin pasadas con cambios sin ver, no está. */
+   de avisos, quieta como ella, del alto estándar de las filas con línea (--pantalla-barra-alto: el de la franja, las
+   cabeceras de la barra y la barra de cada pantalla; también en el teléfono), con su línea abajo de borde a borde y el
+   texto al medio, como en ellas: el ícono del pulso en el color de los agentes (tenue, si la pasada fue en seco), lo que
+   cambió en el del texto, lo que falló en el de cuidado y «+N» tenue a la derecha. Sin pasadas con cambios sin ver, no
+   está. */
 
 .pulso-lugar { flex: none; }
 .pulso-lugar:empty { display: none; }
@@ -2731,11 +2753,11 @@ a.franja-aviso-tit:hover .franja-aviso-texto { text-decoration: underline; }
   gap: var(--item-texto-sangria);
   align-items: baseline;
   box-sizing: border-box;
-  padding: 0 var(--pantalla-margen);
+  height: var(--pantalla-barra-alto);
+  padding: var(--e-1) var(--pantalla-margen);
   overflow: hidden;
   border-bottom: var(--borde);
   color: var(--texto);
-  line-height: var(--item-alto);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -2745,6 +2767,8 @@ a.franja-aviso-tit:hover .franja-aviso-texto { text-decoration: underline; }
 
 /* el ícono, en la ranura de los de la barra (el texto empieza en la columna de los nombres de abajo, como en la franja) */
 .pulso-icono { flex: none; display: inline-block; width: var(--item-ranura); color: var(--agente); text-align: center; }
+/* sin alargar la línea: su letra, con su propio interlineado (franja.css) */
+.pulso-icono .i { line-height: 1; }
 .pulso-linea.seco .pulso-icono,
 .pulso-pasada.seco .pulso-icono { color: var(--texto-tenue); }
 .pulso-texto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -3088,8 +3112,9 @@ a.franja-aviso-tit:hover .franja-aviso-texto { text-decoration: underline; }
   & .tac-ver-todo { color: var(--acento); }
 }
 
-/* el único número de la página, en la barra de la pantalla: su color lo pone su tono (te espera) */
-.tac-numero { font-weight: normal; }
+/* un ensayo (window.telar.ensayo…): lo dice la primera línea de la pantalla, en el color de cuidado; la barra no lleva
+   estados (componentes/pantalla.ts) */
+.tac-ensayo { color: var(--atencion); }
 
 /* en un ancho chico (el teléfono), el título necesita el lugar: se van cuánto lleva esperando y dónde vive (siguen en
    el globo y al abrirla) */
@@ -3111,6 +3136,59 @@ a.franja-aviso-tit:hover .franja-aviso-texto { text-decoration: underline; }
     border-left: var(--borde);
   }
 }
+
+/* Equipo (prototipo, src/componentes/equipo.ts): la lista de las personas y la ficha de la elegida. En el laptop, lado a
+   lado, con una línea entre las dos; en el teléfono (.angosto), una cosa a la vez. Las filas son ítems, las secciones de
+   la ficha son las de la barra de hilos (seccion.ts: cabecera del alto de las barras, con su línea) y las pestañas son las
+   de la casa: aquí solo cómo se reparten. Sin @scope: por ahora la dibuja solo el catálogo (/componentes#equipo). */
+
+.equipo { min-width: 0; }
+.eq-dos {
+  display: grid;
+  grid-template-columns: minmax(26ch, 32ch) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 100%;
+}
+.eq-dos > .eq-lista { min-width: 0; border-right: var(--borde); }
+.eq-lista { padding-top: var(--e-1); }
+.eq-ficha { min-width: 0; }
+
+/* quién es: una fila del alto de las barras, su nombre en la tinta de los títulos y lo demás tenue */
+.eq-cab {
+  box-sizing: border-box;
+  height: var(--pantalla-barra-alto);
+  padding: var(--e-1) var(--item-pad-x);
+  overflow: hidden;
+  color: var(--titulo);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: var(--item-alto);
+}
+.eq-quien { color: var(--texto-tenue); }
+
+/* las secciones de la ficha, como las de la barra (seccion.css): la cabecera del alto de las barras con su línea abajo;
+   entre una y otra, el aire y la línea de arriba de la que sigue */
+.eq-secciones {
+  padding-top: var(--e-1);
+
+  & .sep { margin-top: .4em; }
+  & .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); padding-block: var(--e-1); border-bottom: var(--borde); }
+  & .sep + .item.cabecera { height: calc(var(--pantalla-barra-alto) + 1px); border-top: var(--borde); }
+  & > .item.cabecera:first-child { border-top: 0; }
+}
+
+/* la franja de la capacidad, donde empiezan los títulos de las filas */
+.eq-partes { padding: 0 var(--item-pad-x) 0 calc(var(--item-pad-x) + var(--item-ranura) + var(--item-texto-sangria)); }
+/* el color de cada proyecto, en su ranura: un cuadrado, sin esquinas */
+.eq-tinta { display: inline-block; width: .7em; height: .7em; background: var(--parte); }
+
+/* las apreciaciones: lo que dice qué son y cómo se olvidan, tenue; el botón, solo */
+.eq-privado { padding-top: var(--e-2); }
+.eq-explica { max-width: 72ch; margin: 0 0 var(--e-2); padding-inline: var(--item-pad-x); color: var(--texto-tenue); }
+.eq-explica a { color: var(--acento); cursor: pointer; }
+.eq-traer { margin-bottom: var(--e-2); padding-inline: var(--item-pad-x); }
+.eq-tarjetas { margin-bottom: var(--e-2); }
+.eq-nada { padding: var(--e-2) var(--item-pad-x); color: var(--texto-tenue); }
 
 }
 @layer vistas {
@@ -4055,16 +4133,25 @@ dialog.mudanza {
   #tareas-t-mas { margin-top: .5lh; color: var(--acento); }
   /* en una columna angosta, el código y el proyecto se van (están en su ficha y en el globo) */
   @container (max-width: 620px) {
-    .tarea.item .item-ranura.ancha { display: none; }
+    .tarea.item .item-ranura.ancha, .compromiso-ultimo.item .item-ranura.ancha { display: none; }
   }
   #tareas-t-cuenta { color: var(--dim); }
+  /* «tareas › esperando» (esperando.ts): la lista entera de borde a borde, sin el aire de la pantalla (cada fila trae el
+     suyo, --item-pad-x), y una sección por persona como las de la barra de hilos (seccion.css): su cabecera del alto de
+     las filas con línea, en su tinta, con su línea arriba y abajo de borde a borde; entre una persona y la siguiente, el
+     aire bajo las filas de arriba. Tras una plegada, sin aire ni línea arriba: la de abajo de la plegada ya la aparta */
+  #esperando { margin-inline: calc(-1 * var(--pantalla-margen)); }
+  #esperando > .buscador-barra { margin-inline: 0; }
+  #esperando-cuenta { color: var(--dim); }
+  .grupo-esperando > .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); padding-block: var(--e-1);
+    border-block: var(--borde); }
+  .grupo-esperando + .grupo-esperando { margin-top: .4em; }
+  .grupo-esperando:has(> .item.cabecera:last-child) + .grupo-esperando { margin-top: 0; }
+  .grupo-esperando:has(> .item.cabecera:last-child) + .grupo-esperando > .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
+  .lista-esperando > .filtros { margin-bottom: .5lh; }
   /* el buscador de la bandeja (un bloque con muchas filas): su barra, bajo el título */
   .buscar-c-caja { margin-bottom: .5lh; }
-  /* el de proyectos, con sus botones a la derecha (los cerrados, la tabla extendida) en la misma barra */
-  .proy-herr .modos { flex-wrap: nowrap; margin-left: var(--h-2); }
-  .proy .que { flex: 1; }
-  .proy .tipo { flex: none; width: 9ch; overflow: hidden; text-overflow: ellipsis; }
-  .proy .cuando-p { flex: none; width: 4ch; text-align: right; }
+  /* en proyectos, buscando, la fila que abre ⏎ */
   .proy.primera { background: var(--hover); }
 
   /* «foco» (foco.ts): la altura entera bajo la barra de la pantalla, en una columna. Arriba, sus pestañas (gestión y
@@ -4223,6 +4310,8 @@ dialog.mudanza {
     .sem-det-lista { margin-top: 1lh; padding-top: .5lh; border-top: 1px solid var(--linea); }
   }
   .cal-dia-completo { padding: .2lh 1ch; color: var(--dim); }
+  /* otro día que hoy: su fecha, en la primera línea (la barra de la pantalla no la lleva) */
+  .cal-dia-fecha { padding: .2lh 1ch; color: var(--azul); }
   .cal-det { position: sticky; top: 4lh; padding: .5lh 1ch; border-left: 1px solid var(--linea); text-align: left; }
   .cal-det h3 { margin: 0 0 .3lh; }
   .cal-det .cal-meta { color: var(--dim); margin-bottom: .5lh; }
@@ -4239,178 +4328,175 @@ dialog.mudanza {
    lo junta en src/telar/web/marco.css, con @scope en el dashboard (`.v-dia`). */
 
 @scope (.v-dia) {
-  /* la lista se lleva más que el detalle: lo que se lee ahí es el nombre */
-  .proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) minmax(40ch, 1fr); gap: 1.5ch; align-items: start;
-    /* la grilla (la gramática visual): las letras en su celda, la de la fuente; los íconos, los símbolos y el espacio
-       entre dos columnas, en una celda cuadrada del alto de la fila */
-    --celda-cuadrada: 1lh; }
-  #dia:has(.proy-dos) { max-width: none; }
-  .proy-lista .fila { column-gap: var(--celda-cuadrada); }
-  .proy-lista { min-width: 0; }
-  /* la fila donde estás: el fondo de la selección, con el matiz del acento (la gramática visual) */
-  .proy.sel { background: var(--item-fondo-activa); }
-  .proy .que, .proy-cab .que { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .proy .cliente { color: var(--azul); }
-  .proy .cliente + .resto { color: var(--dim); }
-  /* las columnas: la fase (un círculo en su ranura), el nombre, el estado efectivo, la etapa, el plazo, cuántos
-     pendientes, el ⋯ */
-  .proy .at, .proy-cab .at, .proy-sec-cab .at { flex: none; width: var(--celda-cuadrada); text-align: center; }
-  .proy .estado-p, .proy-cab .estado-p { flex: none; width: 12ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-  /* un estado que nadie confirma (sin plazo ni uno que se entienda): más apagado */
-  .proy .estado-p.tenue { color: var(--texto-tenue); }
-  /* la etapa: un ícono en su celda (qué clase de trabajo), con la palabra al pasar */
-  .proy .etapa, .proy-cab .etapa { flex: none; width: var(--celda-cuadrada); text-align: center; overflow: hidden; color: var(--dim); }
-  .proy .cuando-p, .proy-cab .cuando-p { flex: none; width: 13ch; color: var(--dim); }
-  .proy .cuando-p.tono-atencion { color: var(--atencion); }
-  .proy .tareas-p, .proy-cab .tareas-p { flex: none; width: 6ch; text-align: right; color: var(--dim); }
-  .proy .menu-col, .proy-cab .menu-col { flex: none; width: var(--celda-cuadrada); }
-  .proy.cerrado, .proy.cerrado .cliente { color: var(--dim); }
-  /* lo que solo va en la tabla extendida */
-  .proy-lista .solo-x { display: none; }
-  /* los nombres de las columnas: el clic ordena por esa, y la que ordena va en azul (como en «tareas») */
-  .proy-cab { color: var(--texto-tenue); }
-  .proy-cab [data-orden-p] { cursor: pointer; }
-  .proy-cab [data-orden-p]:hover { color: var(--fg); }
-  .proy-cab .activo { color: var(--azul); }
-  /* cada sección, en el orden de siempre: una línea arriba y su nombre */
-  .proy-sec-cab { border-top: 1px solid var(--linea); color: var(--dim); text-transform: uppercase; margin-top: .6lh; }
-  .proy-cols + .proy-sec-cab { margin-top: 0; }
-  .proy-sec-cab .que { flex: 1; }
-  .proy-sec-n { color: var(--texto-tenue); }
-  .subcab .negocios-p { margin-left: auto; }
-  /* las iniciativas (iniciativas.ts), aparte de los proyectos: su cabecera deja la sección sola (un clic); sus columnas,
-     el peso (el círculo de Táctica), el nombre, el dueño, el estado, la próxima decisión, los pendientes y el ⋯. La que
-     encabeza un programa, en la tinta del cliente de un proyecto (para quién es); las suyas, corridas una celda */
-  .ini-sec-cab { cursor: pointer; }
-  .ini-sec-cab:hover { color: var(--fg); }
-  .ini-sec-cab > .i { flex: none; width: var(--celda-cuadrada); text-align: center; color: var(--texto-tenue); }
-  :is(.ini, .ini-cols, .ini-grupo) .que { flex: 1.6; display: flex; column-gap: 1ch; }
-  .ini-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  :is(.ini, .ini-cols) .dueno-i { flex: none; width: 8ch; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-  /* el estado: su círculo (componentes/senales.ts, `estadoIniciativa`) y su palabra; uno fuera del vocabulario, en el
-     color de cuidado y con su ícono. Si se cambia aquí, un clic abre el vocabulario: la palabra se subraya al pasar */
-  :is(.ini, .ini-cols) .estado-p { width: var(--ini-estado, 12ch); white-space: nowrap; }
-  .ini .estado-p { color: var(--fg); }
-  .ini-cols .estado-p { color: inherit; }
-  .ini-estado .senal { margin-right: .6ch; }
-  .ini-estado .ini-fuera { margin-left: .4ch; }
-  .ini-estado.cambia { cursor: pointer; }
-  .ini-estado.cambia:hover .ini-e-txt { text-decoration: underline dotted; text-underline-offset: .2em; }
-  /* de quién es el estado, si lo manda otra fuente: una columna que solo está si alguna lo es */
-  :is(.ini, .ini-cols) .ini-fuente { display: none; flex: none; width: var(--ini-fuente, 14ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--texto-tenue); }
-  .con-fuente :is(.ini, .ini-cols) .ini-fuente { display: block; }
-  :is(.ini, .ini-cols) .prox-i { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-  .ini-cabeza, .ini-grupo { margin-top: .3lh; }
-  .ini-cabeza .ini-nombre { color: var(--azul); }
-  .ini-grupo .que { color: var(--dim); }
-  .ini-hija .ini-nombre { margin-left: var(--celda-cuadrada); }
-  .ini-n { flex: none; color: var(--texto-tenue); }
-  /* solas, la lista se lleva más: lo que se lee ahí es el nombre y lo próximo por decidir */
-  .proy-dos.ini-solas { grid-template-columns: minmax(56ch, 1.6fr) minmax(44ch, 1fr); }
-  .ini-salto { display: none; }
-  /* en una columna angosta (el teléfono), una columna: la lista y, debajo, el elegido. Una iniciativa, en dos líneas: el
-     peso, el nombre y cómo va arriba; quién la lleva y lo próximo por decidir debajo, bajo el nombre */
-  @container (max-width: 620px) {
-    .proy-dos, .proy-dos.ini-solas { grid-template-columns: minmax(0, 1fr); }
-    #proy-det { position: static; max-height: none; border-left: 0; border-top: 1px solid var(--linea); padding: 0; }
-    .ini { flex-wrap: wrap; row-gap: 0; }
-    .ini-salto { display: block; order: 7; flex-basis: 100%; height: 0; }
-    .ini .dueno-i { order: 8; width: auto; max-width: 12ch; margin-left: calc(2 * var(--celda-cuadrada)); }
-    .ini-hija .dueno-i { margin-left: calc(3 * var(--celda-cuadrada)); }
-    .ini .prox-i { order: 9; }
-    .con-fuente .ini .ini-fuente { order: 8; width: auto; }
-    /* sin dueño, la fuente abre la segunda línea: va bajo el nombre, como iría el dueño */
-    .ini .dueno-i:empty ~ .ini-fuente { margin-left: calc(2 * var(--celda-cuadrada)); }
-    .ini-hija .dueno-i:empty ~ .ini-fuente { margin-left: calc(3 * var(--celda-cuadrada)); }
-    .ini :is(.dueno-i, .prox-i, .ini-fuente):empty { display: none; }
-    .ini-cols :is(.dueno-i, .prox-i, .ini-fuente) { display: none; }
-    /* un proyecto: su estado ya lo dice la cabecera de su sección, y el nombre necesita el lugar */
-    :is(.proy:not(.ini), .proy-cols) .estado-p { display: none; }
+  /* dos columnas, la lista y el detalle, de borde a borde de la pantalla: salen del aire de #dia, como la barra del
+     buscador, y sin hueco entre ellas (las aparta la línea del detalle). La lista se lleva más: lo que se lee ahí es el
+     nombre */
+  .proy-dos { display: grid; grid-template-columns: minmax(44ch, 1.25fr) 1px minmax(40ch, 1fr); align-items: start;
+    min-height: calc(100cqh - var(--pantalla-barra-alto) - var(--e-1)); margin-inline: calc(-1 * var(--pantalla-margen)); }
+  #dia:has(.proy-dos) { max-width: none; padding-bottom: 0; }
+  /* el divisor entre la lista y el detalle: una línea propia, de alto completo (la pantalla entera, aunque la lista o el
+     detalle sean cortos); arriba, pegada a la línea de la barra de la pantalla, como la del buscador */
+  .proy-divisor { align-self: stretch; background: var(--linea); }
+  #dia > .proy-dos:first-child > :is(.proy-divisor, #proy-det) { margin-top: calc(-1 * var(--e-1)); }
+  /* la lista es un contenedor: sus columnas ceden por su propio ancho, no por el de la pantalla (abajo) */
+  .proy-lista { min-width: 0; container: proy-lista / inline-size; }
+  /* la barra del buscador ya está fuera del aire de la pantalla: va de borde a borde de su columna */
+  .proy-lista > .buscador-barra { margin-inline: 0; }
+  /* los filtros (componentes/filtros.ts), en su fila bajo el buscador, con el aire de las filas y el mismo arriba que
+     abajo (como en «tareas»): el primer separador no suma el suyo */
+  .proy-filtros { margin: var(--e-2) var(--pantalla-margen); }
+  :is(#proyectos, #iniciativas) > .sep:first-child { margin-top: 0; }
+  /* sin filtros (los negocios), la primera cabecera va pegada a la barra del buscador: la línea de ella la aparta */
+  .proy-lista > .buscador-barra + :is(#proyectos, #iniciativas) > .sep:first-child + .item.cabecera {
+    box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
+  .proy-lista > .vacio { padding-inline: var(--pantalla-margen); }
+  /* cada fila es un ítem (componentes/item.ts) y cada sección una seccion() (seccion.css, el mismo de la barra de hilos):
+     la cabecera del alto de las barras, en su tinta, con su línea. Al final de una fila, en columnas de ancho fijo que
+     calzan de una fila a otra, el plazo y cuántos pendientes (de una iniciativa, quién la lleva y cuántos) */
+  .proy-lista .item-meta { display: flex; gap: 0 var(--item-hueco); }
+  .proy-lista .item .cuando-p { width: 13ch; }
+  .proy-lista .item .cuando-p.tono-atencion { color: var(--atencion); }
+  .proy-lista .item .tareas-p { width: 3ch; text-align: right; }
+  .proy-lista .item .dueno-i { width: 12ch; overflow: hidden; text-overflow: ellipsis; }
+  /* una sección plegada en la página (vista.ts) deja sus filas escondidas: el separador que sigue se va y la cabecera
+     de abajo usa la línea de la de arriba, como en la barra (seccion.css) */
+  .proy-lista .sep[hidden] + .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
+  /* su alto, con su relleno y su línea adentro, como la barra (dia.css): esta capa le gana a la de seccion.css */
+  .proy-lista .item.cabecera { box-sizing: border-box; }
+  /* el ⋯ de una fila aparece al pasar el mouse (item.css) y también en la elegida: es la que se está mirando */
+  .proy-lista .item.activa .item-acciones { visibility: visible; clip-path: inset(0); }
+  .proy-lista .item.activa .item-acciones > .item-accion { opacity: 1; translate: 0 0; }
+  /* el estado de una iniciativa se cambia con un clic en su círculo */
+  .ini-estado.cambia { display: inline-block; inline-size: 100%; cursor: pointer; }
+  /* lo primero que cede, cuando la lista se angosta: cuántos pendientes y quién la lleva, y en la barra del buscador el
+     orden y la tabla extendida (lo buscado necesita su lugar, y la tabla no cabe); después, el plazo. El nombre nunca */
+  @container proy-lista (max-width: 52ch) {
+    .proy-lista .item :is(.tareas-p, .dueno-i) { display: none; }
+    .proy-herr :is(.orden, .corte.de-orden) { display: none; }
   }
-  /* la tabla extendida (el botón ↔): a lo ancho, sin el detalle, con todas las columnas y en palabras. Una grilla que
-     cada fila comparte (subgrid): cada columna mide lo que su texto más largo; el nombre se lleva lo que sobra y, si
-     no le alcanza, sigue en otra línea (el aviso, desde las 28 letras). Si ni así cabe, se corre de lado */
+
+  @container proy-lista (max-width: 40ch) {
+    .proy-lista .item .cuando-p { display: none; }
+  }
+  /* las iniciativas (interno) se llevan más: lo que se lee ahí es el nombre y su próximo paso */
+  .proy-dos[data-vista="interno"] { grid-template-columns: minmax(56ch, 1.6fr) 1px minmax(44ch, 1fr); }
+  /* la tabla extendida (el ↔): a lo ancho, sin el detalle, con todas las columnas y en palabras (proyectos.ts,
+     `filaTabla`). Una grilla que cada fila comparte (subgrid): cada columna mide lo que su texto más largo; el nombre se
+     lleva lo que sobra y, si no le alcanza, sigue en otra línea (el aviso, desde las 28 letras). Si ni así cabe, se
+     corre de lado. La primera y la última columna llevan además el aire de la fila; entre dos, una celda cuadrada. Las
+     cabeceras de sección van de lado a lado */
   .proy-dos.extendida { grid-template-columns: minmax(0, 1fr); }
-  .proy-dos.extendida #proy-det { display: none; }
+  .proy-dos.extendida :is(#proy-det, .proy-divisor) { display: none; }
   .proy-dos.extendida .proy-lista { overflow-x: auto; }
-  /* la primera y la última columna llevan además el margen de la fila (su 1ch a cada lado): sin él, el círculo se
-     come la mitad del espacio que lo aparta del nombre */
-  .proy-dos.extendida #proyectos { display: grid; column-gap: var(--celda-cuadrada);
-    grid-template-columns: calc(1ch + var(--celda-cuadrada)) minmax(24ch, max-content) max-content max-content max-content
-      max-content max-content fit-content(28ch) 6ch calc(var(--celda-cuadrada) + 1ch); }
-  .proy-dos.extendida #proyectos > .fila { grid-column: 1 / -1; }
-  .proy-dos.extendida #proyectos > .proy, .proy-dos.extendida #proyectos > .proy-cols { display: grid; grid-template-columns: subgrid; align-items: start; }
-  .proy-dos.extendida .solo-c { display: none; }
-  .proy-dos.extendida .solo-x { display: inline; }
-  .proy-dos.extendida :is(.que, .estado-p, .etapa, .cuando-p) { width: auto; overflow: visible; text-overflow: clip; text-align: left; white-space: nowrap; }
+  .proy-dos.extendida #proyectos { display: grid; column-gap: var(--entre-celdas);
+    grid-template-columns: calc(var(--item-pad-x) + var(--item-ranura)) minmax(24ch, max-content) max-content max-content max-content
+      max-content max-content fit-content(28ch) max-content calc(var(--item-ranura) + var(--item-pad-x)); }
+  .proy-dos.extendida #proyectos > :not(.proy, .proy-cols) { grid-column: 1 / -1; }
+  .proy-dos.extendida #proyectos > :is(.proy, .proy-cols) { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+    align-items: start; padding: 0; }
+  .proy-dos.extendida :is(.proy, .proy-cols) .at { padding-left: var(--item-pad-x); text-align: center; }
+  .proy-dos.extendida :is(.proy, .proy-cols) .menu-col { padding-right: var(--item-pad-x); text-align: center; }
+  .proy-dos.extendida .proy.activa { background: var(--item-fondo-activa); }
+  /* su ⋯, como en la lista: al pasar el mouse o en la elegida */
+  .proy-dos.extendida .proy .menu-fila { visibility: hidden; }
+  .proy-dos.extendida .proy:is(:hover, .activa) .menu-fila { visibility: visible; }
   .proy-dos.extendida :is(.proy, .proy-cols) :is(.que, .aviso-p) { white-space: normal; }
-  .proy-dos.extendida :is(.inicio-p, .area-p) { color: var(--dim); white-space: nowrap; }
-  .proy-dos.extendida .proy-cab :is(.inicio-p, .area-p, .aviso-p) { color: inherit; }
-  .proy .aviso-p.tono-atencion { color: var(--atencion); }
-  /* el detalle del elegido: arriba, quedándose al bajar, el círculo y el nombre (como en la lista), cómo va, ir a su
-     hilo, sus acciones (⋯) y las pestañas; abajo, la que se ve (vista.ts, `data-ver`): el resumen, los pendientes o el
-     documento plegado por secciones */
-  #proy-det { position: sticky; top: 1lh; max-height: calc(100cqh - 3lh); overflow-y: auto; padding: 0 1ch .5lh;
-    border-left: 1px solid var(--linea); min-width: 0; white-space: normal; }
-  .det-cab { position: sticky; top: 0; z-index: 1; padding-top: .5lh; background: var(--bg); }
-  .det-titulo { display: flex; align-items: baseline; column-gap: var(--celda-cuadrada); }
-  .det-titulo h3 { flex: 1; min-width: 0; margin: 0; }
-  .det-titulo .cliente { color: var(--azul); }
-  .det-titulo .at, .det-titulo .menu-fila { flex: none; width: var(--celda-cuadrada); text-align: center; }
-  .det-titulo .menu-fila { color: var(--dim); cursor: pointer; }
-  .det-titulo .menu-fila:hover { color: var(--fg); }
-  .det-ir { flex: none; white-space: nowrap; }
-  .det-va { padding-left: calc(2 * var(--celda-cuadrada)); color: var(--dim); }
-  .det-va b { color: var(--fg); }
+  .proy-dos.extendida .proy :is(.estado-p, .etapa, .inicio-p, .cuando-p, .area-p, .tareas-p) { color: var(--texto-tenue); white-space: nowrap; }
+  .proy-dos.extendida .proy .estado-p.tenue { color: var(--texto-apagado); }
+  .proy-dos.extendida .proy .cuando-p.tono-atencion, .proy-dos.extendida .proy .aviso-p { color: var(--atencion); }
+  .proy-dos.extendida .proy .tareas-p { text-align: right; }
+  .proy-dos.extendida .proy .resto { color: var(--texto-tenue); }
+  .proy-dos.extendida .proy.cerrado { color: var(--texto-tenue); }
+  /* los nombres de las columnas: el clic ordena por esa, y la que ordena va en la tinta del orden elegido */
+  .proy-cols { color: var(--texto-tenue); }
+  .proy-cols [data-orden-p] { cursor: pointer; }
+  .proy-cols [data-orden-p]:hover { color: var(--texto); }
+  .proy-cols .activo { color: var(--titulo); }
+  /* el detalle del elegido, a la derecha del divisor: quieto mientras la lista corre, bajo la barra de la pantalla, con
+     su propio scroll si no cabe. Arriba su cabecera y abajo la pestaña que se ve (vista.ts, `data-ver`): el resumen, los
+     pendientes o el documento */
+  #proy-det { position: sticky; top: var(--pantalla-barra-alto); max-height: calc(100cqh - var(--pantalla-barra-alto));
+    overflow-y: auto; min-width: 0; white-space: normal; }
+  .det-vacio { padding: var(--e-1) var(--pantalla-margen); }
+  /* arriba, quedándose al bajar: su barra (componentes/pantalla.ts, la de cada pantalla: el nombre tal cual, cortado, y
+     sus íconos), cómo va y las pestañas, cada una de borde a borde de la columna */
+  .det-cab { position: sticky; top: 0; z-index: 1; background: var(--superficie); }
+  /* lo que cede en su barra, si no cabe, es el nombre (entero en su globo): los íconos se ven siempre. «‹» (volver a la
+     lista) es de una columna, donde el detalle es una pantalla propia (abajo) */
+  #proy-det .pantalla-acciones { flex: none; }
+  #proy-det .pantalla-barra > [data-accion="proy-volver"] { display: none; }
+  /* cómo va: una fila del alto de las demás, con el círculo en su ranura (la de la lista) y el texto en una línea,
+     cortado con «…» (entero en su globo) */
+  .det-va { display: flex; align-items: baseline; padding: var(--e-1) var(--item-pad-x); line-height: var(--item-alto); white-space: nowrap;
+    color: var(--texto-tenue); }
+  .det-va-marca { flex: none; width: var(--item-ranura); text-align: center; }
+  .det-va-marca .i { line-height: 1; }
+  .det-va-texto { min-width: 0; padding-left: var(--item-texto-sangria); overflow: hidden; text-overflow: ellipsis; }
+  .det-va b { color: var(--texto); font-weight: normal; }
   .det-va .tono-atencion { color: var(--atencion); }
-  /* sus pestañas (componentes/pestanas.ts): al pie de la cabecera, de borde a borde de la columna (el margen deshace el
-     relleno del detalle), con su aire */
-  .pestanas.det-pest { margin: .5lh -1ch 0; --pestana-pad-x: 1ch; }
-  .det-pane > h4 .n { color: var(--texto-tenue); text-transform: none; }
-  .det-pane { display: none; }
+  /* sus pestañas (componentes/pestanas.ts): al pie de la cabecera, de borde a borde de la columna, con el aire de las
+     filas */
+  .pestanas.det-pest { --pestana-pad-x: var(--item-pad-x); }
+  /* el cuerpo: el aire de la pantalla adentro; las filas (las tareas, ítems) van de borde a borde, con el suyo */
+  .det-pane { display: none; padding: 0 var(--pantalla-margen) var(--e-3); }
   #proy-det:not([data-ver]) [data-pane="resumen"], #proy-det[data-ver="resumen"] [data-pane="resumen"],
   #proy-det[data-ver="pendientes"] [data-pane="pendientes"], #proy-det[data-ver="documento"] [data-pane="documento"] { display: block; }
-  .det-pane > h4 { margin: 1lh 0 .3lh; font-size: 1em; text-transform: uppercase; color: var(--dim); font-weight: normal; }
-  .det-pane > h4:first-child { margin-top: .6lh; }
-  #proy-det .tarea { padding: 0; }
-  .det-pane > .tarea:first-child { margin-top: .6lh; }
+  :is(.det-pane, .det-r) > .item { margin-inline: calc(-1 * var(--pantalla-margen)); }
+  :is(.det-pane, .det-r) > .vacio { padding: var(--e-1) 0; box-shadow: none; }
+  /* las secciones del resumen (proyectos.ts, `seccionResumen`): las de una pantalla (dia.css, `h2.sec`, como las de la
+     barra de hilos), con su línea arriba de borde a borde y el título en la tinta de las cabeceras, la cuenta tenue; la
+     primera usa la línea de las pestañas */
+  .det-r { --c: var(--item-cabecera); margin-top: var(--e-3); }
+  .det-r > h2.sec { margin-bottom: var(--e-1); }
+  .det-pane > .det-r:first-child { margin-top: 0; border-top: 0; }
   /* en el resumen, un texto largo se corta a seis líneas, sin partir ninguna (vista.ts, `cortar`); «más» lo muestra
      entero */
   .recorte:not(.entero) { max-height: 6lh; overflow: hidden; }
-  .mas, .det-ver { display: block; cursor: pointer; }
+  .mas { display: block; color: var(--acento); cursor: pointer; }
   /* los datos de su ficha: el campo apagado, el valor al lado */
-  .det-datos { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--celda-cuadrada); margin: 0; }
-  .det-datos dt { color: var(--dim); }
+  .det-datos { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--h-2); margin: 0; }
+  .det-datos dt { color: var(--texto-tenue); }
   .det-datos dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .det-mas > summary { color: var(--dim); cursor: pointer; list-style: none; }
-  /* una sección del documento, plegada: el chevrón en su celda, el título y lo que se lee de ella; abierta, su texto
-     corrido una celda, con las suyas también plegadas. Las vacías (la plantilla sin llenar), apagadas */
-  .det-sec > summary { display: flex; align-items: baseline; list-style: none; cursor: pointer; white-space: nowrap; }
-  .det-sec > summary::-webkit-details-marker, .det-mas > summary::-webkit-details-marker { display: none; }
-  .det-sec > summary:hover { background: var(--hover); }
-  .det-sec > summary .i { flex: none; width: var(--celda-cuadrada); text-align: center; color: var(--dim); }
-  .det-sec > summary .abierto, .det-sec[open] > summary .plegado { display: none; }
-  .det-sec[open] > summary .abierto { display: inline-block; }
-  .det-sec > summary .tit { flex: none; max-width: 70%; overflow: hidden; text-overflow: ellipsis; }
-  .det-sec[open] > summary .tit { flex: 1; max-width: none; font-weight: bold; white-space: normal; }
-  .det-sec > summary .vistazo { flex: 1; min-width: 0; margin-left: var(--celda-cuadrada); overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
-  .det-sec[open] > summary .vistazo { display: none; }
-  .det-sec.vacia > summary, .det-sec.vacia > summary .vistazo { color: var(--texto-tenue); }
-  .det-sec-cuerpo { padding: .2lh 0 .6lh var(--celda-cuadrada); }
-  .det-pie { margin-top: 1lh; color: var(--dim); }
-  .det-md { line-height: 1.45; }
+  .det-mas > summary { color: var(--texto-tenue); cursor: pointer; list-style: none; }
+  .det-mas > summary::-webkit-details-marker { display: none; }
+  .det-pie { margin-top: var(--e-3); color: var(--texto-tenue); }
+  /* el documento, con la prosa compartida (prosa.css: la del visor y la lectura de un hilo), entero y de corrido: otro
+     registro, con su letra y su tamaño, como la ficha de una lectura (leer.css). El dashboard le pone un solo tamaño a todo
+     lo suyo (dia.css); aquí se le devuelve el de la prosa, y su código va en el de telar */
+  #proy-det .det-doc { padding-block: var(--e-3); font-size: var(--prosa-tam) !important; }
+  #proy-det .det-doc code { font-family: var(--letra), iconos, monospace; font-size: var(--tam) !important; }
+  /* sus títulos, los de la prosa: el dashboard pone a los suyos en mayúsculas, con su margen (dia.css, `h2`), y esta capa
+     le gana a la de prosa.css */
+  #proy-det .det-doc :is(h1, h2, h3, h4) { margin: 1.8em 0 .6em; font-weight: 600; text-transform: none; }
+  #proy-det .det-doc > :first-child { margin-top: 0; }
+  /* lo que el resumen trae del README (sus textos) y la ficha de «ahora»: el markdown en la grilla del dashboard, con su
+     interlineado, líneas de un píxel y lo que importa por color, no por peso ni tamaño */
+  .proy-readme { white-space: normal; padding-top: var(--e-1); border-top: var(--borde); }
   .det-md table { display: block; overflow-x: auto; }
-  .det-md h5 { font-size: 1em; margin: .5lh 0 .2lh; color: var(--dim); }
-  .proy-readme { white-space: normal; line-height: 1.45; border-top: 1px solid var(--linea); padding-top: .4lh; }
-  :is(.proy-readme, .det-md) h1 { font-size: var(--t-mayor); margin: .6lh 0 .3lh; }
-  :is(.proy-readme, .det-md) h2 { font-size: 1.05em; text-transform: none; margin: .9lh 0 .3lh; }
-  :is(.proy-readme, .det-md) :is(h3, h4) { font-size: 1em; margin: .7lh 0 .2lh; }
-  :is(.proy-readme, .det-md) table { border-collapse: collapse; margin: .3lh 0; }
-  :is(.proy-readme, .det-md) :is(td, th) { border: 1px solid var(--linea); padding: 0 1ch; vertical-align: top; }
+  .det-md h5 { margin: var(--e-2) 0 0; color: var(--texto-tenue); font-weight: normal; }
+  :is(.proy-readme, .det-md) :is(h1, h2, h3, h4) { margin: var(--e-2) 0 0; color: var(--texto); font-weight: normal; text-transform: none; }
+  :is(.proy-readme, .det-md) :is(p, ul, ol, table, pre, blockquote) { margin: 0 0 var(--e-1); }
+  :is(.proy-readme, .det-md) :is(b, strong) { color: var(--texto); font-weight: normal; }
+  :is(.proy-readme, .det-md) table { border-collapse: collapse; }
+  :is(.proy-readme, .det-md) :is(td, th) { padding: 0 var(--h-1); border: var(--borde); vertical-align: top; }
   :is(.proy-readme, .det-md) pre { white-space: pre-wrap; }
   :is(.proy-readme, .det-md) img { max-width: 100%; }
-  :is(.proy-readme, .det-md) blockquote { margin: .3lh 0; padding-left: 1ch; border-left: 2px solid var(--linea); color: var(--dim); }
-  :is(.proy-readme, .det-md) :is(ul, ol) { padding-left: 3ch; margin: .2lh 0; }
+  :is(.proy-readme, .det-md) blockquote { padding-left: var(--h-1); border-left: var(--borde); color: var(--texto-tenue); }
+  :is(.proy-readme, .det-md) :is(ul, ol) { padding-left: var(--h-2); }
+  /* en una pantalla angosta (media pantalla, el teléfono), una columna, y el detalle es una pantalla propia: elegir uno
+     muestra solo su detalle, con «‹» en su barra para volver a la lista (vista.ts, `viendo-detalle`); sin elegido, solo la
+     lista. Va antes que en el teléfono: a 1024 la lista quedaba en unas letras por nombre. Va al final: con la misma
+     especificidad gana la regla que va después (arriba, la de #proy-det le ganaba y el detalle seguía pegado, con su
+     alto máximo y su scroll propio). Es la de la pantalla (#dia), no la de la lista: lo que se parte en dos es la
+     pantalla */
+  @container (max-width: 780px) {
+    .proy-dos, .proy-dos[data-vista] { grid-template-columns: minmax(0, 1fr); }
+    .proy-divisor, .proy-dos:not(.viendo-detalle) #proy-det, #proy-det:not(:has(.det-cab)),
+    .proy-dos.viendo-detalle:has(#proy-det .det-cab) .proy-lista { display: none; }
+    #proy-det { position: static; max-height: none; overflow: visible; }
+    .det-cab { top: var(--pantalla-barra-alto); }
+    #proy-det .pantalla-barra > [data-accion="proy-volver"] { display: inline-block; }
+  }
 }
 
 /* «ahora»: el bloque del momento (vistas/dashboard/ahora.ts). scripts/navegador.mjs
@@ -5239,7 +5325,6 @@ dialog.ventana-dialogo.ventana-documento.lectura {
   }
 
   .doc-barra { flex: none; }
-  .doc-nombre { color: var(--texto-tenue); }
 
   /* debajo de la primera fila: el contenido y la barra, uno al lado del otro */
   .doc-medio {
@@ -5854,6 +5939,7 @@ dialog.ventana-dialogo.ventana-documento.lectura {
     color: var(--dim);
     font-size: .85em;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .herramientas {
@@ -7061,11 +7147,33 @@ body.catalogo {
   .cat-tac-marco { flex: none; padding-bottom: var(--e-2); border: var(--borde); }
   .cat-tac-tabla { display: grid; grid-template-columns: minmax(28ch, 3fr) repeat(8, auto) minmax(16ch, 1fr); gap: 0 var(--h-2); max-width: 170ch; }
   .cat-tac-tabla > b { color: var(--titulo); font-weight: normal; }
+  /* «tareas › rutinas» (prototipo, catalogo-rutinas.ts): una sección por estado, como las de «esperando» (dia.css) y la
+     barra de hilos: su cabecera del alto de las filas con línea, con su línea arriba y abajo de borde a borde; tras una
+     plegada, sin aire ni línea arriba */
+  .cat-rut > .filtros { margin: .5lh var(--pantalla-margen); }
+  .grupo-rutinas > .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); padding-block: var(--e-1);
+    border-block: var(--borde); }
+  .grupo-rutinas + .grupo-rutinas { margin-top: .4em; }
+  .grupo-rutinas:has(> .item.cabecera:last-child) + .grupo-rutinas { margin-top: 0; }
+  .grupo-rutinas:has(> .item.cabecera:last-child) + .grupo-rutinas > .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto);
+    border-top: 0; }
+  .cat-rut-tabla { display: grid; grid-template-columns: minmax(28ch, 2fr) minmax(16ch, 2fr) minmax(30ch, 3fr) repeat(3, auto); gap: 0 var(--h-2); max-width: 170ch; }
+  .cat-rut-tabla > b { color: var(--titulo); font-weight: normal; }
+  .cat-rut-pre { margin: 0; padding: var(--e-1) var(--h-1); border: var(--borde); white-space: pre; }
+  /* en el teléfono, el nombre antes que cada cuánto (está en su globo) */
+  .angosto .rutina .item-sufijo { display: none; }
   .cat-tac-pagina { display: flex; flex-direction: column; min-height: 100vh; }
   .cat-tac-cuerpo { display: grid; flex: 1; grid-template-columns: minmax(240px, 22vw) minmax(0, 1fr); }
   .cat-tac-pagina.angosto .cat-tac-cuerpo { grid-template-columns: minmax(0, 1fr); }
   .cat-tac-barra { min-width: 0; border-right: var(--borde); }
   .cat-tac-columna { min-width: 0; padding-bottom: 3lh; }
+
+  /* equipo (prototipo, #equipo, catalogo-equipo.ts): el marco, del alto de lo que lleva; las reglas de privacidad y de
+     dónde sale cada dato, en dos y tres columnas */
+  .cat-eq-marco { padding-bottom: 0; }
+  .cat-eq-reglas { display: grid; grid-template-columns: minmax(30ch, 1fr) minmax(40ch, 2fr); gap: var(--e-1) var(--h-2); max-width: 150ch; }
+  .cat-eq-tabla { display: grid; grid-template-columns: minmax(18ch, auto) minmax(24ch, 1fr) minmax(36ch, 2fr); gap: var(--e-1) var(--h-2); max-width: 150ch; }
+  .cat-eq-tabla > b { color: var(--titulo); font-weight: normal; }
 
   /* la franja de avisos (#avisos, catalogo-avisos.ts): arriba de unas filas de la barra; la lista abierta pide su alto; las
      plegadas, cada una del ancho de una barra plegada; el «‹ hilos» del teléfono, a la vista. A pantalla completa, la barra

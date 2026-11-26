@@ -28,7 +28,8 @@
   & h3 { font-size: 1.1em; }
   & strong { color: var(--fg); font-weight: 700; }
   & em { font-style: italic; }
-  & a { color: var(--azul); }
+  /* una dirección larga se parte donde sea: entera no cabe en un teléfono, y lo que queda fuera no se puede tocar */
+  & a { color: var(--azul); overflow-wrap: anywhere; }
   & ul,
   & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
   & li { margin: .3em 0; }

@@ -142,8 +142,9 @@ export class PantallaBloques implements Pantalla {
         await this.leer();
     }
 
-    /** Lo que un bloque pone en la barra de su pestaña (componentes/pantalla.ts): su nombre y su tinta, lo que resume (su
-     *  subtítulo) y sus acciones, íconos: los atajos que van en él, el filtro «solo con tareas pendientes» y su ⚙. */
+    /** Lo que un bloque pone en la barra de su pestaña (componentes/pantalla.ts): su nombre y su tinta, y sus acciones,
+     *  íconos: los atajos que van en él, el filtro «solo con tareas pendientes» y su ⚙. Su subtítulo (lo que resume),
+     *  en el globo del título: la barra no lo lleva a la vista. */
     barraDe(b: cli.JsonBloque): EnBarra {
         const leido = this.leidos.get(b.clave);
         const conTareas = (leido?.pagina?.bloques ?? []).flatMap(x => x.items ?? []).some(x => Array.isArray(x.tareas));
@@ -154,7 +155,7 @@ export class PantallaBloques implements Pantalla {
         // el ⚙ de un bloque que es la pestaña de un módulo con pantalla de configuración: a ella (⚙ módulos)
         if (this.t.config()?.modulos?.some(m => m.nombre === b.clave && m.configurar))
             acciones.push({ accion: 'config', valor: `modulos:${b.clave}`, icono: I.config, ayuda: `configurar ${b.nombre}` });
-        return { nombre: b.nombre, color: b.color, resumen: leido?.pagina?.subtitulo ?? '', acciones };
+        return { nombre: b.nombre, color: b.color, ayuda: leido?.pagina?.subtitulo || undefined, acciones };
     }
 
     /** Un bloque en su pestaña: su cabecera va en la barra (barraDe), y aquí sus filas. */

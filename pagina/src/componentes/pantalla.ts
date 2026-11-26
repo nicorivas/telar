@@ -2,17 +2,21 @@
 // pestaña de un módulo). Tiene siempre dos partes, una encima de la otra:
 //
 //   ┌ barra ────────────────────────────────────────────────────────────────────────────┐
-//   │ ‹ NOMBRE  [vistas: ◎ ≡]  resumen                              [acciones: ↻ ⚙ ⧉]   │
+//   │ ‹ NOMBRE                                        [vistas: ◎ ≡]  [acciones: ↻ ⚙ ⧉]   │
 //   ├ cuerpo ───────────────────────────────────────────────────────────────────────────┤
 //   │ lo de la app, pegado a los bordes: sus líneas llegan a la línea de la columna     │
 //   └───────────────────────────────────────────────────────────────────────────────────┘
 //
-// · la barra: una fila, con el fondo de barra de borde a borde y una línea abajo. Adelante, «‹» si se vino de otra
-//   pantalla (la ficha de una tarea vuelve a su lista); el nombre de la app en su
-//   color (en un hilo no va: lo dice la cabecera de la página); después, sus vistas, las formas de mirar lo mismo
-//   (foco y lista, el día y la semana, la terminal y la lectura), cada una un ícono en su celda cuadrada, la que se ve
-//   en violeta; después, lo que resume (una cuenta, la fecha), tenue; y a la derecha sus acciones, también íconos. Una
-//   palabra va solo donde un ícono no alcanza (la carpeta de un hilo, que es una ruta).
+// · la barra: una fila, con el fondo de barra de borde a borde y una línea abajo. A la izquierda, solo el título: «‹»
+//   si se vino de otra pantalla (la ficha de una tarea vuelve a su lista) y el nombre de la app en su color, con su
+//   ícono si lo tiene (en un hilo no va: lo dice la cabecera de la página). A la derecha, los botones: sus vistas, las
+//   formas de mirar lo mismo (foco y lista, el día y la semana, la terminal y la lectura), la que se ve en violeta, y
+//   sus acciones; cada uno un ícono en su celda cuadrada. Una palabra va solo donde un ícono no alcanza (la carpeta de
+//   un hilo, que es una ruta).
+//   Nada más: ni una cuenta, ni la fecha, ni «leyendo…», ni un estado. La barra no los acepta (no hay dónde ponerlos:
+//   `Barra` no tiene resumen). Lo que la persona necesita va en la pantalla misma (una línea en la lista, su pie) o,
+//   si es para quien lo busque, en el globo del título (`ayuda`) o en el de un botón (el ↻ dice cuándo se leyó). La
+//   prueba de la página (prueba:pantalla) revisa que no lleve otro texto; en la página, `window.telar.revisarBarra()`.
 // · el cuerpo: sin margen propio. Lo que trae va de borde a borde: un separador, la cabecera de una tabla o la línea
 //   de una sección tocan la línea de la columna de la izquierda. El aire está dentro de cada fila (--pantalla-margen),
 //   no alrededor.
@@ -57,13 +61,16 @@ export interface Barra {
     volver?: AccionDePantalla;
     /** el nombre de la app; en un hilo, nada */
     nombre?: string;
+    /** su ícono (web/iconos.ts), antes del nombre */
+    icono?: string;
     /** su tinta (`amarillo`, `cian`): la del nombre; sin ella, la de los títulos */
     color?: string;
+    /** el globo del título: lo que la pantalla resume, para quien lo busque («31 servicios · 3 ideas», la ruta de un
+     *  archivo). Nunca a la vista: la barra lleva solo el título y los botones */
+    ayuda?: string;
+    /** el nombre tal cual se escribe (el de un archivo), tenue y sin las letras de una cabecera */
+    literal?: boolean;
     vistas?: VistaDePantalla[];
-    /** lo que resume la pantalla, tenue: «28 servicios · 3 ideas», la fecha */
-    resumen?: string;
-    /** lo mismo, ya armado (HTML de confianza, nunca un dato): un número en su color. Gana sobre `resumen` */
-    resumenHtml?: string;
     acciones?: AccionDePantalla[];
 }
 
@@ -90,16 +97,38 @@ export function accionDePantalla(a: AccionDePantalla, dato = 'accion'): string {
     return boton('pantalla-accion', a.accion, a.valor, a.ayuda, dentro, [forma, a.tono ? `tono-${a.tono}` : '', a.si ? 'si' : ''], dato);
 }
 
-/** La barra de una pantalla, en HTML. */
+/** La barra de una pantalla, en HTML: a la izquierda el título, a la derecha los botones. Lee solo lo que `Barra`
+ *  declara: lo que traiga además (un `resumen` de antes, pasado sin tipo) no se dibuja. */
 export function barra(b: Barra): string {
     const vistas = b.vistas?.length ? `<span class="pantalla-vistas">${b.vistas.map(vistaDePantalla).join('')}</span>` : '';
     const acciones = b.acciones?.length ? `<span class="pantalla-acciones">${b.acciones.map(a => accionDePantalla(a)).join('')}</span>` : '';
+    const titulo = b.nombre ? `<span class="pantalla-nombre${b.literal ? ' literal' : ''}"${atributo('title', b.ayuda)}>`
+        + (b.icono ? `<span class="i">${b.icono}</span> ` : '') + `${esc(b.nombre)}</span>` : '';
     return `<nav class="pantalla-barra"${b.color ? ` style="--pantalla-c: var(--${esc(b.color)})"` : ''}>`
         + (b.volver ? accionDePantalla(b.volver) : '')
-        + (b.nombre ? `<span class="pantalla-nombre">${esc(b.nombre)}</span>` : '')
-        + vistas
-        + (b.resumenHtml || b.resumen ? `<span class="pantalla-resumen">${b.resumenHtml ?? esc(b.resumen ?? '')}</span>` : '')
+        + titulo
         + '<span class="pantalla-lleno"></span>'
+        + vistas
         + acciones
         + '</nav>';
+}
+
+/** Lo que una barra ya dibujada lleva fuera de su título y sus botones (el texto suelto, o un elemento que no es
+ *  ninguno de los dos): lo que la regla de la barra prohíbe. Vacío si está bien. Lo usan la prueba de la página y
+ *  medir (`--js`), sobre la barra de cada pantalla. */
+export function fueraDeLaBarra(nav: Element): string[] {
+    const fuera: string[] = [];
+    const permitido = (el: Element): boolean => el.classList.contains('pantalla-nombre') || el.classList.contains('pantalla-lleno')
+        || el.classList.contains('pantalla-boton')
+        || ((el.classList.contains('pantalla-vistas') || el.classList.contains('pantalla-acciones'))
+            && [...el.children].every(h => h.classList.contains('pantalla-boton'))
+            && [...el.childNodes].every(n => n.nodeType !== 3 || !(n.textContent ?? '').trim()));
+    for (const n of nav.childNodes) {
+        if (n.nodeType === 3) { if ((n.textContent ?? '').trim()) fuera.push((n.textContent ?? '').trim()); continue; }
+        if (n.nodeType !== 1) continue;
+        const el = n as Element;
+        if (!permitido(el)) fuera.push(`${el.className || el.tagName.toLowerCase()}: ${(el.textContent ?? '').trim()}`);
+    }
+    if (nav.querySelectorAll('.pantalla-nombre').length > 1) fuera.push('más de un título');
+    return fuera;
 }

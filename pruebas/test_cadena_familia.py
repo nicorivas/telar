@@ -48,6 +48,10 @@ class _Familia(Prueba):
         est.anotar_rama("Ritmo", {"rama": "ritmo", "base": "main", "ruta": str(self.worktree)})
         self.enviados: list[dict] = []
         self.registro: list[dict] = []
+        # los hilos de juguete no están en ningún estado: que el destino exista lo prueba test_mensaje_arroba
+        p = mock.patch("telar.ordenes.mensaje._alguien_lee")
+        p.start()
+        self.addCleanup(p.stop)
 
         def enviar(config, para, texto, *, de, tipo="mensaje", quien="", saltos=0, mid="", retener="", **kw):
             m = mod_bus.mensaje(texto, de=de, para=para, tipo=tipo, mid=mid, persona="ana", saltos=saltos, **kw)

@@ -1,0 +1,486 @@
+/* Generado por pagina/scripts/navegador.mjs desde pagina/media/css (la letra de iconos, circulo, pestanas, buscador, filtros, prosa, lienzo): no editar aquí. */
+@font-face { font-family: telar-iconos; src: url("data:font/woff2;base64,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") format('woff2'); }
+/* El círculo (src/componentes/circulo.ts): la firma de telar para decir cómo está algo, por su tamaño y cuánto está
+   lleno; en curso, se mueve en su lugar (se vacía, se llena o gira) de a cuartos, sin correr nada. Un aro del color de
+   su pieza, y dentro un relleno en abanico desde abajo (conic-gradient: a medias, la mitad izquierda, como ◐) hasta
+   --lleno. Sus medidas y su ritmo son tokens (tokens.css: --circulo-…), que un tema puede cambiar. Sin @scope y en la
+   capa base: lo usa cualquier vista. */
+
+/* registrado, para que un movimiento lo pueda animar (sin registrar, una variable salta de un valor al otro) */
+@property --lleno {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+
+.circulo {
+  display: inline-block;
+  width: var(--circulo-d);
+  height: var(--circulo-d);
+  border-radius: 50%;
+  background: conic-gradient(from 180deg, currentcolor var(--lleno), transparent 0);
+  box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  vertical-align: var(--circulo-alto);
+
+  &.tam-punto { --circulo-d: var(--circulo-punto); }
+  &.tam-chico { --circulo-d: var(--circulo-chico); }
+  &.tam-grande { --circulo-d: var(--circulo-grande); }
+
+  /* cinco cuadros al vaciarse o llenarse (lleno, tres cuartos, medio, un cuarto, aro) y cuatro al girar */
+  &.mov-vacia { animation: circulo-vacia calc(5 * var(--circulo-cuadro)) steps(5, jump-none) infinite; }
+  &.mov-llena { animation: circulo-llena calc(5 * var(--circulo-cuadro)) steps(5, jump-none) infinite; }
+  &.mov-gira { animation: circulo-gira calc(4 * var(--circulo-cuadro)) steps(4) infinite; }
+}
+
+/* las figuras (en prueba): varios círculos de los tres tamaños, en el lugar de uno grande. El de afuera es el elemento;
+   los otros, ::before y ::after. Al girar, gira la figura entera alrededor de su centro */
+.circulo[class*="fig-"] {
+  position: relative;
+
+  &::before,
+  &::after {
+    position: absolute;
+    border-radius: 50%;
+  }
+}
+
+/* centro, diana, doble: un aro grande y, al medio, otro más chico */
+.circulo.fig-centro,
+.circulo.fig-diana,
+.circulo.fig-doble {
+  --lleno: 0%;
+
+  &::after {
+    --adentro: var(--circulo-chico);
+
+    content: "";
+    inset: calc((var(--circulo-d) - var(--adentro)) / 2);
+  }
+}
+
+.circulo.fig-centro::after { --adentro: var(--circulo-punto); background: currentcolor; }
+.circulo.fig-diana::after { background: currentcolor; }
+.circulo.fig-doble::after { box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor; }
+
+/* satélite: un aro chico al medio y un punto afuera, arriba a la derecha (se asoma un poco del cuadro, para que no lo
+   toque); al girar, el punto da la vuelta alrededor del aro */
+.circulo.fig-satelite,
+.circulo.fig-enlace {
+  background: none;
+  box-shadow: none;
+}
+
+.circulo.fig-satelite {
+  &::before {
+    content: "";
+    inset: calc((var(--circulo-d) - var(--circulo-chico)) / 2);
+    box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  }
+
+  &::after {
+    content: "";
+    top: -.1em;
+    right: -.1em;
+    width: var(--circulo-punto);
+    height: var(--circulo-punto);
+    background: currentcolor;
+  }
+}
+
+/* enlace: dos aros chicos que se cruzan, uno a cada lado */
+.circulo.fig-enlace {
+  &::before,
+  &::after {
+    content: "";
+    top: calc((var(--circulo-d) - var(--circulo-chico)) / 2);
+    width: var(--circulo-chico);
+    height: var(--circulo-chico);
+    box-shadow: inset 0 0 0 var(--circulo-trazo) currentcolor;
+  }
+
+  &::before { left: 0; }
+  &::after { right: 0; }
+}
+
+@keyframes circulo-vacia {
+  from { --lleno: 100%; }
+  to { --lleno: 0%; }
+}
+
+@keyframes circulo-llena {
+  from { --lleno: 0%; }
+  to { --lleno: 100%; }
+}
+
+@keyframes circulo-gira {
+  to { rotate: 1turn; }
+}
+
+/* sin movimiento, a medio llenar: sigue diciendo «en curso» */
+@media (prefers-reduced-motion: reduce) {
+  .circulo.mov-vacia,
+  .circulo.mov-llena,
+  .circulo.mov-gira {
+    --lleno: 50%;
+
+    animation: none;
+  }
+}
+
+/* Las pestañas (componentes/pestanas.ts): una fila del alto de las barras (--pestanas-alto, el de la barra de una
+   pantalla), con su línea abajo de borde a borde y el aire de una pantalla a los lados. La abierta, con la superficie de
+   la selección (la del ítem activo y su marca, que pone el tema) y el texto en su color; las demás, tenues, y al pasar el
+   mouse, el fondo del hover. Cada pestaña ocupa el alto entero de la fila: se aprieta en toda ella.
+   Si no caben (web/pestanas.ts, `acomodar`, que mide con un ResizeObserver): las que no caben llevan `.fuera` y no se
+   ven, y el «⋯» (`.pestanas-mas`) aparece justo después de la última que se ve, con su menú. Nunca corre de lado. Lo del
+   extremo (`.pestanas-fin`) queda al otro lado, quieto. */
+
+.pestanas {
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  height: var(--pestanas-alto);
+  min-width: 0;
+  border-bottom: var(--borde);
+  background: var(--pestanas-fondo);
+  line-height: 1lh;
+  white-space: nowrap;
+
+  & a { text-decoration: none; }
+}
+
+.pestanas-lista {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* (el «⋯» de las que no caben se ve como una más) */
+.pestana,
+.pestanas-mas {
+  display: flex;
+  flex: none;
+  position: relative;
+  align-items: center;
+  gap: 0 var(--h-1);
+  box-sizing: border-box;
+  padding: 0 var(--pestana-pad-x);
+  color: var(--pestana-color);
+  cursor: pointer;
+  outline: none;
+
+  /* (`.es-hover` y `.es-foco`: los mismos, puestos a mano en el catálogo) */
+  &:hover,
+  &.es-hover { background: var(--pestana-fondo-hover); color: var(--pestana-color-hover); }
+
+  /* la abierta: la superficie de la selección (como el ítem activo), y el texto en su color */
+  &.si {
+    background: var(--pestana-fondo-si);
+    box-shadow: var(--pestana-marca-si);
+    color: var(--pestana-color-si);
+  }
+
+  /* con el teclado: el foco se ve en su línea de abajo, en el acento (no hay otra cosa que lo diga) */
+  &:focus-visible,
+  &.es-foco { box-shadow: inset 0 -2px 0 var(--acento); }
+
+  /* por hacer, o sin permiso: se ve, apagada, y no se aprieta */
+  &.apagada {
+    color: var(--pestana-color-apagada);
+    cursor: default;
+
+    &:hover { background: none; }
+  }
+}
+
+/* su ícono, en su tinta (style="--pestana-c"); sin ella, la del texto */
+.pestana-icono { color: var(--pestana-c, inherit); }
+.pestana.apagada .pestana-icono { color: inherit; }
+
+.pestana-cuenta {
+  color: var(--pestana-cuenta);
+
+  &.atencion { color: var(--atencion); }
+}
+
+/* algo nuevo: un punto (el círculo de la casa, componentes/circulo.ts) en la esquina de arriba a la derecha (la gramática:
+   «en la esquina, le pasó algo»), en su tono */
+.pestana-nuevo {
+  position: absolute;
+  inset-block-start: var(--e-1);
+  inset-inline-end: calc(var(--pestana-pad-x) / 3);
+  display: flex;
+  color: var(--acento);
+
+  &.tono-exito { color: var(--exito); }
+  &.tono-atencion { color: var(--atencion); }
+  &.tono-peligro { color: var(--peligro); }
+  &.tono-termino { color: var(--estado-termino); }
+}
+
+/* las que no caben: fuera de la fila (van en el menú del «⋯») */
+.pestana.fuera { display: none; }
+
+/* el «⋯»: una pestaña más, después de la última que se ve; escondido mientras todas caben. Si una de las que lleva tiene
+   algo nuevo, su punto (el mismo de la pestaña); si una pide atención con su cuenta, el «⋯» en el de cuidado */
+.pestanas-mas {
+  &[hidden] { display: none; }
+  &.atencion .pestana-icono { color: var(--atencion); }
+}
+
+/* lo del otro extremo (↻, un filtro), al otro lado: quieto */
+.pestanas-fin {
+  display: flex;
+  flex: none;
+  margin-inline-start: auto;
+  align-items: center;
+  padding-inline-end: var(--pestanas-margen);
+  color: var(--pestana-color);
+}
+
+/* El buscador (componentes/buscador.ts): la lupa, el campo sin borde, y al final la cuenta, la tecla que lo enfoca y el ✕.
+   Sin texto de ayuda adentro: su placeholder es un espacio, que no se ve y deja `:placeholder-shown`. Entre la lupa y el
+   primer carácter, --buscador-lupa-hueco (1ch). Sus estados, solo con color: vacío, la lupa tenue (y la tecla); con el foco, la lupa en el acento; con algo
+   escrito (escribiendo, o el filtro puesto sin el foco), lo escrito en el color del texto, la lupa en el acento y el ✕.
+   `.enfocado` es el foco quieto del catálogo. Todo sale de los tokens --buscador-… (tokens.css).
+
+   Como fila propia, en su barra (`.buscador-barra`): del alto de las demás (--pantalla-barra-alto, con su relleno y su
+   línea), con el aire de una pantalla (--buscador-margen, que es --pantalla-margen salvo donde la caja tiene otro: una
+   ventana) y su línea abajo de borde a borde, que toma el acento mientras se escribe. En el teléfono, del alto de una fila,
+   para el dedo. Lo que la acompaña (`.buscador-herramientas`: el orden, un botón) va a la derecha, en sus celdas. */
+
+.buscador {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: baseline;
+  min-width: 0;
+  cursor: text;
+}
+
+/* la lupa, en la columna de una ranura; lo escrito, a un carácter de ella */
+.buscador-lupa {
+  flex: none;
+  inline-size: var(--item-ranura);
+  color: var(--buscador-lupa);
+  text-align: center;
+}
+
+.buscador > input.buscar {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 0 var(--buscador-lupa-hueco);
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: var(--buscador-texto);
+  font: inherit;
+  line-height: inherit;
+  text-overflow: ellipsis;
+}
+
+.buscador-cuenta {
+  flex: none;
+  padding-inline: var(--h-1);
+  color: var(--buscador-cuenta);
+
+  &:empty { display: none; }
+}
+
+/* la tecla y el ✕, cada uno en su celda cuadrada, como los botones de una fila */
+.buscador-atajo,
+.buscador-borrar {
+  flex: none;
+  inline-size: calc(var(--item-alto) * 1em);
+  text-align: center;
+}
+
+.buscador-atajo { color: var(--buscador-ayuda); }
+
+.buscador-borrar {
+  color: var(--buscador-borrar);
+  cursor: pointer;
+
+  &:hover { color: var(--buscador-borrar-hover); }
+}
+
+/* sin nada escrito, no hay qué borrar; con el foco o con algo escrito, la tecla ya no hace falta */
+.buscador:has(> input.buscar:placeholder-shown) > .buscador-borrar { display: none; }
+.buscador:is(:focus-within, .enfocado, :has(> input.buscar:not(:placeholder-shown))) > .buscador-atajo { display: none; }
+.buscador:is(:focus-within, .enfocado, :has(> input.buscar:not(:placeholder-shown))) > .buscador-lupa { color: var(--buscador-activo); }
+
+/* la barra: la fila propia de un buscador. Lo de adentro, al medio y no por la línea de base: un corte (item.css) es una
+   celda vacía, y por la base quedaba arriba */
+.buscador-barra {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--pantalla-barra-alto);
+  min-width: 0;
+  padding: var(--e-1) var(--buscador-margen);
+  overflow: hidden;
+  border-bottom: 1px solid var(--buscador-linea);
+  background: var(--buscador-barra-fondo);
+  white-space: nowrap;
+
+  &:has(.buscador:is(:focus-within, .enfocado)) { border-bottom-color: var(--buscador-linea-foco); }
+}
+
+.buscador-herramientas {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+.angosto .buscador-barra {
+  height: auto;
+  padding-block: 0;
+  line-height: var(--item-alto);
+}
+
+/* Los filtros (componentes/filtros.ts): grupos de opciones en palabras, cada una con su cuenta, la que rige en el
+   acento. En una fila tras el ícono padre (en su celda cuadrada, como el del orden, dentro del primer grupo), los grupos
+   apartados por más aire que sus opciones; si no cabe, el grupo que no cabe baja entero, y uno más ancho que la fila se
+   parte adentro. Un grupo plegado muestra solo lo que rige (o su nombre) y un ⌄. */
+
+/* el padre cuelga a la izquierda: si la fila se parte, cada renglón empieza donde empieza el primero, después de él */
+.filtros {
+  --filtros-padre: calc(var(--item-alto) * 1em);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4ch;
+  min-width: 0;
+  padding-inline-start: calc(var(--filtros-padre) + 1ch);
+}
+
+.filtros-padre {
+  flex: none;
+  inline-size: var(--filtros-padre);
+  margin-inline: calc(-1 * var(--filtros-padre) - 1ch) -1ch; /* del aire del grupo: la celda ya trae lo suyo */
+  color: var(--texto-tenue);
+  text-align: center;
+  cursor: default;
+}
+
+.filtros-grupo { display: inline-flex; flex: 0 1 auto; flex-wrap: wrap; align-items: baseline; gap: 0 2ch; min-width: 0; }
+
+.filtros-op {
+  padding: 0;
+  font: inherit;
+  color: var(--texto-tenue);
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.filtros-op:hover { color: var(--texto); }
+.filtros-op.cero { color: var(--texto-apagado); }
+.filtros-op.si { color: var(--acento); }
+
+/* plegado: lo que rige, o el nombre del grupo si no rige ninguna, y el ⌄; sus opciones esperan en el menú. El clic y
+   el globo son del grupo entero (abre el menú), no de la opción que se ve */
+.filtros-grupo.plegado { gap: 0 1ch; cursor: pointer; }
+.plegado > .filtros-op { pointer-events: none; }
+.plegado > .filtros-op:not(.si) { display: none; }
+.plegado:has(> .filtros-op.si) > .filtros-nombre { display: none; }
+.filtros-nombre,
+.filtros-abrir { color: var(--texto-tenue); }
+.plegado:hover > .filtros-nombre,
+.plegado:hover > .filtros-abrir { color: var(--texto); }
+
+/* La prosa: un texto para leer con calma. Letra con serifa y más grande, renglones holgados, un ancho de lectura y
+   centrada; el markdown bien dibujado, con los colores de los tokens. La comparten la lectura de un hilo (web/lectura.ts,
+   lectura.css: la respuesta del agente) y el visor de documentos en modo lectura (web/carpeta.ts: el documento, con sus
+   comentarios; en el modo foco, de entrada): un cambio aquí cambia los dos. `.prosa` es el bloque (la letra, el ancho);
+   `.prosa-md`, lo que hay adentro cuando es markdown. Medidas en tokens.css (--prosa-…). scripts/navegador.mjs la junta en
+   src/telar/web/marco.css. */
+
+.prosa {
+  max-width: var(--prosa-ancho);
+  margin-inline: auto;
+  color: var(--fg);
+  font-family: var(--serifa);
+  font-size: var(--prosa-tam);
+  line-height: var(--prosa-alto);
+}
+
+.prosa-md {
+  & p { margin: 0 0 1.1em; }
+  & h1,
+  & h2,
+  & h3,
+  & h4 { margin: 1.8em 0 .6em; color: var(--violeta); font-weight: 600; line-height: 1.3; }
+  & > h1:first-child,
+  & > h2:first-child,
+  & > h3:first-child { margin-top: 0; }
+  & h1 { font-size: 1.5em; }
+  & h2 { font-size: 1.3em; }
+  & h3 { font-size: 1.1em; }
+  & strong { color: var(--fg); font-weight: 700; }
+  & em { font-style: italic; }
+  /* una dirección larga se parte donde sea: entera no cabe en un teléfono, y lo que queda fuera no se puede tocar */
+  & a { color: var(--azul); overflow-wrap: anywhere; }
+  & ul,
+  & ol { margin: 0 0 1.1em; padding-left: 1.4em; }
+  & li { margin: .3em 0; }
+  & blockquote { margin: 1em 0; padding-left: 1em; border-left: 2px solid var(--violeta); color: var(--dim); }
+  /* en una cita, la negrita pesa pero no se enciende: en el tenue de la cita, no en el del texto */
+  & blockquote strong { color: inherit; }
+  & hr { margin: 2em 0; border: 0; border-top: var(--borde); }
+
+  & code {
+    padding: 0 .25em;
+    background: var(--bg-barra);
+    color: var(--cian);
+    font-family: var(--letra), iconos, monospace;
+    font-size: .82em;
+  }
+
+  & pre {
+    overflow-x: auto;
+    margin: 0 0 1.1em;
+    padding: .8em 1em;
+    background: var(--bg-barra);
+    line-height: 1.5;
+
+    & code { padding: 0; background: none; }
+  }
+
+  & table {
+    margin: 0 0 1.1em;
+    border-collapse: collapse;
+    font-size: .9em;
+  }
+
+  & th,
+  & td {
+    padding: .3em .7em;
+    border: var(--borde);
+    text-align: left;
+  }
+
+  & th { color: var(--violeta); font-weight: 600; }
+  & img { max-width: 100%; }
+}
+
+/* Lo que el lienzo de un módulo recibe con los componentes (src/lienzo/componentes.ts), además de sus hojas (circulo,
+   pestanas, buscador, filtros): no va en marco.css, sino en src/telar/web/lienzo-componentes.css, que arma
+   scripts/navegador.mjs junto con la letra de íconos de la página, con el nombre `telar-iconos` (la del lienzo puede
+   llamarse `iconos`, y una no tapa a la otra). Entra antes que el estilo del lienzo y sin capa: lo suyo gana si pesa
+   igual o más.
+
+   Los íconos de los componentes van en la letra de la página y, si un ícono no está en ella (el de una pestaña, que
+   pone el lienzo), en la del lienzo. Con un selector de dos clases, para que el `.i` del lienzo no se los cambie. */
+
+.i {
+  font-family: telar-iconos, iconos, monospace;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.pestanas, .buscador-barra, .buscador, .filtros) .i { font-family: telar-iconos, iconos, monospace; }
+

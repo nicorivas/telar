@@ -43,6 +43,9 @@ export interface OpcionesFila {
     /** en un feed: la lista dice prioridad o quién dejó algo (`de`), y cada fila lleva sus dos ranuras: la prioridad (el
      *  círculo de siempre, en su color) y «tuya» (lo que se mandó la persona, el ícono de persona en el acento) */
     marcas?: boolean;
+    /** sin la ranura del código: ninguna fila de la lista lo tiene (las casillas de un documento, en el detalle de un
+     *  proyecto), y su lugar vacío corría el texto */
+    sinCodigo?: boolean;
 }
 
 const tonoAvance: Record<string, Tono> = { preparado: 'exito', cerrar: 'acento', pregunta: 'atencion', choca: 'peligro' };
@@ -164,7 +167,7 @@ export function filaTarea(p: Pendiente, o: OpcionesFila = {}): string {
     const ayudaClic = o.lectura ? 'clic: leerlo' : ficha ? 'clic: leerla y decidir' : p.hilo ? `clic: llevarla a «${p.hilo}»` : 'clic: abrir un hilo donde trabajarla';
 
     const codigo: Pieza = { texto: ficha || f.proveedor ? p.ref : '', ancho: 5, tono: 'tenue' };
-    const inicio: (Pieza | null)[] = [prioridad, estado, codigo];
+    const inicio: (Pieza | null)[] = [prioridad, estado, ...o.sinCodigo ? [] : [codigo]];
     if (o.proyecto !== undefined) {
         const pr = o.proyecto;
         inicio.push(pr ? { html: `<span data-accion="proy-ir" data-valor="${esc(pr.ruta)}">${esc(pr.corto)}</span>`, ancho: 14, tono: 'acento',

@@ -241,7 +241,10 @@ class ElNodoEspeja(ConEstado):
         from comun import KvDeMentira
 
         kv = KvDeMentira({clave: {**previo, "dueno": "laptop"}})
-        with mock.patch("telar.bus.persona", return_value="ana"), mock.patch("telar.bus.ficha", return_value="faro"):
+        # la foto del espejo y conciliar las ventanas necesitan el contexto que este nodo a medias no tiene (sin
+        # parchar, la vuelta los intentaba y dejaba en el log «'Nodo' object has no attribute 'ctx'»): aquí no van
+        with mock.patch("telar.bus.persona", return_value="ana"), mock.patch("telar.bus.ficha", return_value="faro"), \
+                mock.patch.object(n, "foto", return_value=None), mock.patch.object(n, "conciliar", return_value=[]):
             asyncio.run(n._vuelta(js=None, kv=kv))
         return kv.puestos
 

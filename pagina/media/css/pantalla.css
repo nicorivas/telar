@@ -35,11 +35,16 @@
 .pantalla-vistas { display: flex; flex: none; align-items: baseline; }
 .pantalla-acciones { display: flex; flex: 0 1 auto; min-width: 0; align-items: baseline; }
 
-.pantalla-resumen {
+/* el nombre tal cual se escribe (un archivo, en el visor): tenue, sin las letras de una cabecera, y cortado con «…»
+   si no cabe (su ruta entera, en el globo) */
+.pantalla-nombre.literal {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--pantalla-resumen);
+  color: var(--pantalla-literal);
+  font-weight: normal;
+  text-transform: none;
 }
 
 .pantalla-lleno { flex: 1; }

@@ -181,7 +181,7 @@ export class PantallaTodo implements Pantalla {
         }
         h.push(todo(props));
         const b = barraTodo(props);
-        this.t.pintar(h, { nombre: b.nombre, color: b.color, resumen: this.q ? `«${this.q}»` : b.resumen, acciones: b.acciones, sinReleer: true });
+        this.t.pintar(h, { nombre: b.nombre, color: b.color, ayuda: b.ayuda, acciones: b.acciones, sinReleer: true });
         this.montar(cursor);
     }
 

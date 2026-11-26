@@ -1,0 +1,16 @@
+/* Lo que el lienzo de un módulo recibe con los componentes (src/lienzo/componentes.ts), además de sus hojas (circulo,
+   pestanas, buscador, filtros): no va en marco.css, sino en src/telar/web/lienzo-componentes.css, que arma
+   scripts/navegador.mjs junto con la letra de íconos de la página, con el nombre `telar-iconos` (la del lienzo puede
+   llamarse `iconos`, y una no tapa a la otra). Entra antes que el estilo del lienzo y sin capa: lo suyo gana si pesa
+   igual o más.
+
+   Los íconos de los componentes van en la letra de la página y, si un ícono no está en ella (el de una pestaña, que
+   pone el lienzo), en la del lienzo. Con un selector de dos clases, para que el `.i` del lienzo no se los cambie. */
+
+.i {
+  font-family: telar-iconos, iconos, monospace;
+  font-style: normal;
+  font-weight: normal;
+}
+
+:is(.pestanas, .buscador-barra, .buscador, .filtros) .i { font-family: telar-iconos, iconos, monospace; }

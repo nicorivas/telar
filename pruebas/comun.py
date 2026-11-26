@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -115,7 +116,29 @@ def aislar_sesion() -> Path:
     from telar import entorno
     for clave in [k for k in os.environ if k in entorno.QUITAR or entorno.ID_DE_SESION.fullmatch(k)]:
         del os.environ[clave]
+    aislar_maquina()
     return SESION
+
+
+def maquina() -> Path:
+    """Dónde la sesión pone lo que telar lee de la máquina fuera del hogar (`/etc/telar`, `/run/telar`,
+    `/opt/telar-puerta`, `/var/spool/telar-alojar`): una carpeta que no existe. Lo que la prueba quiera tener ahí lo
+    crea ella, o parcha encima."""
+    return (SESION or aislar_sesion()) / "maquina"
+
+
+def aislar_maquina() -> None:
+    """Lo de la máquina que telar lee por una ruta fija, apuntado a `maquina()`: en el servidor existen (la puerta en
+    `/etc/telar/puerta.toml`, los alojados, las personas) y las pruebas que suponían una máquina sin puerta fallaban
+    allá y no en el laptop (39, el 26-nov-2026). Así corren igual en las dos."""
+    from telar import persona, puerta
+
+    m = maquina()
+    puerta.CONFIG = m / "etc" / "puerta.toml"
+    puerta.INSTALADA = m / "opt" / "telar-puerta"
+    puerta.ALOJADOS = m / "etc" / "alojados.d"
+    puerta.SOCKETS = m / "run"
+    persona.DIRECTORIO = m / "etc" / "personas.d"
 
 
 def _identidad_git() -> str:
@@ -249,6 +272,13 @@ class Prueba(unittest.TestCase):
         # Se vuelve con `addCleanup`, no en `tearDown`: corre aunque la prueba se salte o falle en su `setUp` (sin eso,
         # `XDG_CONFIG_HOME` quedaba en `no-existe` para las que venían después), y en orden si `setUp` corre dos veces.
         self.addCleanup(self._volver, entorno, hogar)
+        # Crear o cambiar una tarea commitea su archivo en un proceso aparte que sobrevive a quien llamó
+        # (telar.servicios.tipos.subir): en una prueba, ese `telar commit` seguía escribiendo `<estado>/commits.log`
+        # en su carpeta temporal mientras se borraba, y la limpieza fallaba con «Directory not empty» (CI de la
+        # 0.15.0, 25-nov-2026). Aquí no se lanza; la prueba que quiera mirarlo lo parcha por encima.
+        sube = mock.patch("telar.servicios.tipos.subir")
+        sube.start()
+        self.addCleanup(sube.stop)
 
     @staticmethod
     def _volver(entorno: dict[str, str], hogar: str | None) -> None:

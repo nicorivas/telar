@@ -540,12 +540,13 @@ export function tactica(t: Tactica): string {
     return `<div class="tactica disp-${d}">${ahora}<div class="tac-par">${vias(t)}${hacer(t)}</div>${pie(t.resto)}</div>`;
 }
 
-/** La barra de su pantalla: su nombre y el único número de la página (cuántas decisiones esperan), y sus acciones. */
+/** La barra de su pantalla: su nombre y sus acciones. Cuántas decisiones esperan, en el globo del título: a la vista,
+ *  cada vía dice las suyas. */
 export function barraTactica(t: Tactica): Barra {
     const n = porDecidir(t.vias, t.vivo);
     return {
         nombre: 'táctica', color: 'amarillo',
-        resumenHtml: n ? `<span class="tac-numero tono-espera" title="lo que espera que decidas: lo de las tres vías, lo sin clasificar y los hilos detenidos">${n}</span> por decidir` : 'nada por decidir',
+        ayuda: n ? `${n} por decidir: lo de las tres vías, lo sin clasificar y los hilos detenidos` : 'nada por decidir',
         acciones: [{ accion: 'tactica-todo', valor: '', icono: I.lista, ayuda: 'ver todo: sin filtros ni topes' },
             { accion: 'tactica-releer', icono: I.releer, ayuda: 'volver a leer (r)' }],
     };

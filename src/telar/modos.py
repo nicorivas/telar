@@ -52,6 +52,9 @@ CATALOGO: tuple[Ajuste, ...] = (
     Ajuste("tema", "aspecto", "tema", TEMAS, "los colores de la página; /componentes los muestra lado a lado"),
     Ajuste("densidad", "aspecto", "densidad", DENSIDADES,
            "cuánto aire lleva cada fila: amplia es para el dedo; auto, amplia en una pantalla táctil y compacta con mouse"),
+    Ajuste("icono", "aspecto", "ícono en la banda", (),
+           "el de su botón en la banda de modos, por su nombre en la página (bandeja, libro, correo…); vacío o uno que no "
+           "hay: el de su base. Un modo propio tiene botón cuando el mundo puesto lo nombra en su `modos`"),
     Ajuste("barra", "disposición", "barra de hilos", ("abierta", "plegada", "oculta")),
     Ajuste("lado", "disposición", "ficha de un agente", ("abierto", "plegado", "oculto"), "a la derecha de un hilo de agente"),
     Ajuste("cabecera", "disposición", "cabecera", ("visible", "oculta"), "oculta, un ◧ arriba a la derecha vuelve"),
@@ -78,7 +81,7 @@ CATALOGO: tuple[Ajuste, ...] = (
            "las pone en su sección, aparte de los proyectos; vacío: no hay sección"),
     Ajuste("agrupar_iniciativas", "proyectos", "iniciativas por", (),
            "el campo del frontmatter con que se agrupan las iniciativas, {frontmatter:<clave>} (el programa al que "
-           "pertenecen); vacío: sin agrupar"),
+           "pertenecen); varios, separados por coma, en orden: el primero que alguna tenga; vacío: sin agrupar"),
     Ajuste("area", "proyectos", "área de entrada", (),
            "el área (o las áreas, separadas por coma) con que abría filtrada la tabla de proyectos e iniciativas de la "
            "pantalla estrategia, que se sacó (19-nov-2026): hoy ninguna pantalla lo usa. Se lee igual, para no romper "
@@ -108,7 +111,7 @@ DE_FABRICA: dict[str, dict] = {
         "pantalla_completa": "no", "etiquetas": "", "sin_etiqueta": "se-ven", "agentes": "", "proyectos": "", "negocios": "", "iniciativas": "", "agrupar_iniciativas": "", "area": "",
         "glifos": "no", "estilo": "base", "iconos": "simbolos", "campo": "",
         "filas": "tactica, calendario", "mundo": "", "avisos": "todos",
-        "aviso_version": "visible", "tema": "telar", "densidad": "auto"}},
+        "aviso_version": "visible", "tema": "telar", "densidad": "auto", "icono": ""}},
     "estrategia": {"nombre": "estrategia", "valores": {"filas": "proyectos, bloque:tablero, bloque:registro", "avisos": "urgentes"}},
     "foco": {"nombre": "foco", "valores": {
         "barra": "oculta", "lado": "oculto", "cabecera": "oculta", "acciones": "oculta", "escribir": "oculta",
@@ -163,6 +166,11 @@ def validar(clave: str, cuerpo: dict) -> dict:
             valores[k] = v
         elif k == "campo":
             valores[k] = _campo(clave, v)
+        elif k == "icono":
+            v = str(v or "").strip()
+            if v and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", v):
+                raise ErrorDeConfig(f"modos.{clave}.icono: el nombre de un ícono de la página (bandeja, libro…); llegó {v!r}")
+            valores[k] = v
         elif k == "filas":
             valores[k] = _filas(clave, v)
         elif k == "mundo":
@@ -286,16 +294,23 @@ SELECTOR = re.compile(r"^(?:\{?\s*frontmatter\s*:\s*)?([A-Za-z_][\w-]*)(?:\s*\})
 
 def _selector(clave: str, k: str, v) -> str:
     """`agrupar_iniciativas`: un campo del frontmatter, `{frontmatter:<clave>}` (sin las llaves también vale; y solo la
-    clave). Normalizado con las llaves; vacío, sin agrupar."""
+    clave), o varios separados por coma, en orden de preferencia (la pantalla agrupa por el primero que alguna tenga:
+    `{frontmatter:funcion}, {frontmatter:programa}` agrupa por función cuando las fichas la dicen, y si no, por
+    programa). Normalizado con las llaves; vacío, sin agrupar."""
     from telar.config import ErrorDeConfig
 
     crudo = str(v or "").strip()
     if not crudo:
         return ""
-    m = SELECTOR.match(crudo)
-    if not m or crudo.startswith("{") != crudo.endswith("}"):
-        raise ErrorDeConfig(f"modos.{clave}.{k}: un campo del frontmatter, {{frontmatter:<clave>}}; llegó {crudo!r}")
-    return "{frontmatter:" + m.group(1) + "}"
+    campos = []
+    for parte in crudo.split(","):
+        parte = parte.strip()
+        m = SELECTOR.match(parte)
+        if not m or parte.startswith("{") != parte.endswith("}"):
+            raise ErrorDeConfig(f"modos.{clave}.{k}: un campo del frontmatter, {{frontmatter:<clave>}} (o varios, separados "
+                                f"por coma); llegó {crudo!r}")
+        campos.append("{frontmatter:" + m.group(1) + "}")
+    return ", ".join(dict.fromkeys(campos))
 
 
 CAMPO = re.compile(r"^([^=\s]+)\s*=\s*(banda|fondo|nada)(?:\s+(\d*\.?\d+))?$")

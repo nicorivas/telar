@@ -77,6 +77,20 @@ el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos local
 
 - **La API** escucha en un socket Unix (`~/.local/state/telar/serve/telar.sock`, en una carpeta solo
   para su dueño). La CLI, si la encuentra, le pide a ella; si no, hace el trabajo sola.
+- **Lo pesado que solo lee** (la lista de proyectos, los pendientes de todo el repositorio) se calcula en un proceso
+  aparte, uno solo, que el servicio levanta la primera vez (`telar.aparte`): la API atiende cada pedido en un hilo del
+  mismo proceso y Python corre uno a la vez (el GIL), así que unos pocos pedidos pesados tapaban la lista de hilos y la
+  configuración. Lo que dan los proveedores (el calendario, las tareas, que pueden vivir en otra máquina) se guarda 30 s
+  para todos los que lo piden a la vez, y cualquier pedido a la API que cambia algo lo olvida (`telar.alla`, `MEMORIA`).
+  El proceso aparte sale solo cuando el servicio ya no está (uno que se apaga por una señal no alcanza a terminarlo).
+- **Si un pedazo se cae, sale el proceso entero**: la API, la página, la del equipo y el nodo corren en el mismo bucle,
+  y uno que termina sin que se lo pidan (un error, o uno que vuelve sin más) va al registro con su traza, apaga los
+  demás y el proceso sale con 1, para que el servicio lo levante. Cada servidor espera a lo más `PLAZO_APAGAR` (5 s) a
+  las conexiones abiertas, los avisos a la página (`/eventos`) terminan solos al apagarse, y si con todo no alcanzó a
+  salir en `PLAZO_SALIR` (20 s), sale igual (`telar.ordenes.serve`). El 26-nov-2026 el nodo se cayó al preparar el bus
+  (un corte justo después de conectar) y la página, que ya no escuchaba, esperaba para siempre a que se cerraran sus
+  eventos: el proceso quedó vivo y sordo, sin una línea en el registro. El nodo ya no se cae por eso: lo intenta de
+  nuevo hasta que el bus conteste.
 - **La página** (`--web`) se sirve en la dirección de Tailscale de la máquina (puerto 8780; en el
   servidor, `tailscale serve` le pone HTTPS). Se entra con una llave por máquina
   (`~/.config/telar/panel.llave`), que deja una cookie; además, cada pedido tiene que venir del mismo
@@ -86,7 +100,10 @@ el laptop, sus hilos y lo que solo él puede hacer (un navegador, archivos local
   con el secreto del bus de la persona. `--enlaces` engancha el cliente de tmux con `-T hyperlinks`: dentro de un
   tmux 3.4 o más nuevo, Claude Code escribe un enlace de markdown (`[Doc](https://…)`) como un hipervínculo OSC 8,
   con solo «Doc» a la vista, y tmux se lo pasa a una terminal solo si ella declara entenderlos; la de la página se
-  presenta como xterm-256color, que no lo declara, y sin esto llegaba «Doc» sin su dirección. El PTY es la terminal
+  presenta como xterm-256color, que no lo declara, y sin esto llegaba «Doc» sin su dirección. Eso no alcanza para un
+  hilo de otra máquina mirado por su ventana de aquí: mosh bota los OSC 8 enteros, y el tmux de allá no se los pasa a
+  mosh-server. Por eso cada agente que telar arranca lleva `FORCE_HYPERLINK=0` (`telar.entorno.DEL_AGENTE`): Claude
+  Code escribe «Doc (https://…)», con la dirección a la vista, y la página la encuentra por donde llegue. El PTY es la terminal
   de control de `mirar` (`terminal.con_terminal`, TIOCSCTTY): el tamaño que manda la página se le pone al PTY y el
   núcleo se lo avisa al cliente de tmux con SIGWINCH; sin eso, la ventana del hilo quedaba del tamaño con que se abrió.
 - **Las máquinas**: `/maquinas` lista las del bus que sirven su página; se pasa a otra con un boleto

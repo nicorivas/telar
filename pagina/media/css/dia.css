@@ -238,16 +238,25 @@
   #tareas-t-mas { margin-top: .5lh; color: var(--acento); }
   /* en una columna angosta, el código y el proyecto se van (están en su ficha y en el globo) */
   @container (max-width: 620px) {
-    .tarea.item .item-ranura.ancha { display: none; }
+    .tarea.item .item-ranura.ancha, .compromiso-ultimo.item .item-ranura.ancha { display: none; }
   }
   #tareas-t-cuenta { color: var(--dim); }
+  /* «tareas › esperando» (esperando.ts): la lista entera de borde a borde, sin el aire de la pantalla (cada fila trae el
+     suyo, --item-pad-x), y una sección por persona como las de la barra de hilos (seccion.css): su cabecera del alto de
+     las filas con línea, en su tinta, con su línea arriba y abajo de borde a borde; entre una persona y la siguiente, el
+     aire bajo las filas de arriba. Tras una plegada, sin aire ni línea arriba: la de abajo de la plegada ya la aparta */
+  #esperando { margin-inline: calc(-1 * var(--pantalla-margen)); }
+  #esperando > .buscador-barra { margin-inline: 0; }
+  #esperando-cuenta { color: var(--dim); }
+  .grupo-esperando > .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); padding-block: var(--e-1);
+    border-block: var(--borde); }
+  .grupo-esperando + .grupo-esperando { margin-top: .4em; }
+  .grupo-esperando:has(> .item.cabecera:last-child) + .grupo-esperando { margin-top: 0; }
+  .grupo-esperando:has(> .item.cabecera:last-child) + .grupo-esperando > .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); border-top: 0; }
+  .lista-esperando > .filtros { margin-bottom: .5lh; }
   /* el buscador de la bandeja (un bloque con muchas filas): su barra, bajo el título */
   .buscar-c-caja { margin-bottom: .5lh; }
-  /* el de proyectos, con sus botones a la derecha (los cerrados, la tabla extendida) en la misma barra */
-  .proy-herr .modos { flex-wrap: nowrap; margin-left: var(--h-2); }
-  .proy .que { flex: 1; }
-  .proy .tipo { flex: none; width: 9ch; overflow: hidden; text-overflow: ellipsis; }
-  .proy .cuando-p { flex: none; width: 4ch; text-align: right; }
+  /* en proyectos, buscando, la fila que abre ⏎ */
   .proy.primera { background: var(--hover); }
 
   /* «foco» (foco.ts): la altura entera bajo la barra de la pantalla, en una columna. Arriba, sus pestañas (gestión y

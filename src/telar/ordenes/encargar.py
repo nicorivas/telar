@@ -31,6 +31,11 @@ def main(argv: list[str], ctx) -> int:
     o, codigo = _comun.parsear(p, argv)
     if o is None:
         return codigo
+    if o.agente:
+        # `Gerencia@telar`: el agente, viva donde viva (como en telar mensaje)
+        from telar.servicios.encargos import sin_maquina
+
+        o.agente = sin_maquina(ctx, o.agente)
     # con bus, el encargo va a la casilla del agente y lo recoge su máquina, esté donde esté. Si el
     # bus no responde, por el camino de siempre (y se dice)
     if o.en is None and not o.liberar and o.agente and o.texto:

@@ -492,6 +492,8 @@ class LaDeclaracion(unittest.TestCase):
         self.assertEqual(d.rama, "main")
         self.assertEqual([s.nombres for s in d.servicios], [("telar-serve", "com.telar.serve")])
         self.assertEqual([(c.pagina, c.igual) for c in d.comprobar], [("/pagina.json", "firma"), ("/api/salud", "")])
+        # que la página siga arriba unos segundos después de contestar la primera vez
+        self.assertGreaterEqual(d.comprobar[0].sigue, 10)
         self.assertTrue(D.toca(d.despues[0].si_cambia, ["src/telar/agente/skill.py"]))
         self.assertFalse(D.toca(d.despues[0].si_cambia, ["src/telar/api.py"]))
         self.assertTrue(D.toca(d.preparar[0].si_cambia, ["pyproject.toml"]))
@@ -507,6 +509,9 @@ class LaDeclaracion(unittest.TestCase):
             ({"comprobar": [{"pagina": "/a", "comando": "b"}]}, "uno de los dos"),
             ({"comprobar": [{"pagina": "a"}]}, "empieza con /"),
             ({"comprobar": [{"comando": "a", "igual": "firma"}]}, "`igual` va con `pagina`"),
+            ({"comprobar": [{"comando": "a", "sigue": 5}]}, "`sigue` va con `pagina`"),
+            ({"comprobar": [{"pagina": "/a", "sigue": "pronto"}]}, "son segundos"),
+            ({"comprobar": [{"pagina": "/a", "sigue": -1}]}, "0 o más"),
         ]
         for datos, dice in malas:
             with self.subTest(datos=datos), self.assertRaises(D.ErrorDeDespliegue) as e:
@@ -526,6 +531,8 @@ class LaDeclaracion(unittest.TestCase):
 class _Pagina(http.server.BaseHTTPRequestHandler):
     llave = ""
     firma = "f1"
+    #: lo que hace el servidor después de contestar (una prueba lo apaga)
+    al_contestar = None
 
     def do_GET(self):
         if self.headers.get("Cookie") != f"telar_panel={self.llave}":
@@ -537,6 +544,8 @@ class _Pagina(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(cuerpo)
+        if type(self).al_contestar:
+            type(self).al_contestar(self.server)
 
     def log_message(self, *a):
         pass
@@ -595,6 +604,19 @@ class LaPagina(Prueba):
         r = self.aqui.ayudante({"accion": "comprobar", "pagina": "/pagina.json", "plazo": 0})
         self.assertEqual(r, {"ok": True, "valor": {"firma": "f1"}, "detalle": ""})
         self.assertEqual(self.aqui.ayudante({"accion": "comprobar", "pagina": "/api/salud", "plazo": 0})["ok"], True)
+
+    def test_con_sigue_la_pide_de_nuevo_y_tiene_que_seguir_ahi(self):
+        r = self.aqui.ayudante({"accion": "comprobar", "pagina": "/pagina.json", "plazo": 0, "sigue": 0.2})
+        self.assertEqual(r, {"ok": True, "valor": {"firma": "f1"}, "detalle": ""})
+
+    def test_una_pagina_que_contesta_y_se_cae_falla(self):
+        """26-nov-2026: el servicio arrancó, la página contestó y a los 8 s ya no escuchaba: con `sigue`, se nota."""
+        _Pagina.al_contestar = lambda servidor: threading.Thread(
+            target=lambda: (servidor.shutdown(), servidor.server_close()), daemon=True).start()
+        self.addCleanup(setattr, _Pagina, "al_contestar", None)
+        r = self.aqui.ayudante({"accion": "comprobar", "pagina": "/pagina.json", "plazo": 0, "sigue": 0.5})
+        self.assertFalse(r["ok"])
+        self.assertIn("contestó, pero a los 0.5 s ya no", r["detalle"])
 
     def test_otra_llave_no_entra(self):
         _Pagina.llave = "otra"

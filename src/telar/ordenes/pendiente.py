@@ -248,11 +248,11 @@ def _destino(tel: _comun.Telar, fila: dict) -> Hilo | None:
     ruta = fila.get("ruta", "")
     if ruta:
         porruta = next(
-            (h for h in tel.hilos if _comun.ruta_relativa(h.ruta, tel.raiz) == ruta), None
+            (h for h in tel.hilos if tel.relativa(h.ruta) == ruta), None
         )
         if porruta is not None:
             return porruta
-    por_enlace = _por_enlace([(h, _comun.ruta_relativa(h.ruta, tel.raiz), tel.vivo(h)) for h in tel.hilos], fila.get("url", ""))
+    por_enlace = _por_enlace([(h, tel.relativa(h.ruta), tel.vivo(h)) for h in tel.hilos], fila.get("url", ""))
     if por_enlace is not None:
         return por_enlace
     return _comun.enrutar(tel, f"{fila['texto']} {ruta}")

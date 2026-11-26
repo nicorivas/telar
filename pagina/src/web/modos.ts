@@ -56,7 +56,7 @@ const EN_BODY = ['barra', 'lado', 'cabecera', 'acciones', 'escribir', 'avisos', 
 let modos: Modo[] = [
     { clave: 'tactica', nombre: 'táctica', base: 'tactica', de_fabrica: true, cambiado: false, valores: {
         barra: 'abierta', lado: 'abierto', cabecera: 'visible', acciones: 'visible', escribir: 'oculta',
-        pantalla_completa: 'no', etiquetas: '', sin_etiqueta: 'se-ven', agentes: '', proyectos: '', negocios: '', iniciativas: '', agrupar_iniciativas: '', area: '', glifos: 'no', iconos: 'simbolos', campo: '',
+        pantalla_completa: 'no', etiquetas: '', sin_etiqueta: 'se-ven', agentes: '', proyectos: '', negocios: '', iniciativas: '', agrupar_iniciativas: '', area: '', glifos: 'no', iconos: 'simbolos', campo: '', icono: '',
         filas: 'tactica, calendario', mundo: '', avisos: 'todos', aviso_version: 'visible', tema: 'telar', densidad: 'auto' } },
     { clave: 'estrategia', nombre: 'estrategia', base: 'estrategia', de_fabrica: true, cambiado: false, valores: {
         filas: 'proyectos, bloque:tablero, bloque:registro', avisos: 'urgentes' } },
@@ -162,9 +162,19 @@ export const filtro = (): string[] => String(valor('etiquetas') ?? '').split(','
 export const tipos = (clave: 'proyectos' | 'negocios' | 'iniciativas'): string[] =>
     String(valor(clave) ?? '').split(',').map(t => t.trim()).filter(Boolean);
 
-/** El campo del frontmatter con que se agrupan las iniciativas (`agrupar_iniciativas`: «{frontmatter:programa}» es
- *  «programa»); "" si no se agrupan. */
-export const campoIniciativas = (): string => /^\{?\s*(?:frontmatter\s*:\s*)?([\w-]+)\s*\}?$/.exec(String(valor('agrupar_iniciativas') ?? '').trim())?.[1] ?? '';
+/** Los campos del frontmatter con que se agrupan las iniciativas (`agrupar_iniciativas`: «{frontmatter:programa}» es
+ *  «programa»), en orden de preferencia: se agrupa por el primero que alguna tenga (`campoIniciativas`). Vacío: no se
+ *  agrupan. */
+export const camposIniciativas = (): string[] => String(valor('agrupar_iniciativas') ?? '').split(',')
+    .map(c => /^\{?\s*(?:frontmatter\s*:\s*)?([\w-]+)\s*\}?$/.exec(c.trim())?.[1] ?? '').filter(Boolean);
+
+/** El campo con que se agrupan estas iniciativas: el primero de `agrupar_iniciativas` que alguna dice en su frontmatter
+ *  (`{frontmatter:funcion}, {frontmatter:programa}`: por función cuando las fichas la tienen, y si no, por programa); sin
+ *  iniciativas, o si ninguna dice ninguno, el primero; "" si no se agrupan. */
+export function campoIniciativas(inis: readonly { frontmatter?: Record<string, string> }[] = []): string {
+    const cs = camposIniciativas();
+    return cs.find(c => inis.some(p => String(p.frontmatter?.[c] ?? '').trim())) ?? cs[0] ?? '';
+}
 
 /** Si un hilo con estas etiquetas se ve en la lista con el modo puesto: sin filtro, todos; con uno, los que tienen
  *  alguna de sus etiquetas, y los sin ninguna si `sin_etiqueta` es «se-ven». */

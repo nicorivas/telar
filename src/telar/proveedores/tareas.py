@@ -113,6 +113,12 @@ class Tarea:
     de: str = ""
     #: de cuándo es (AAAA-MM-DD), si el proveedor lo dice: en una pestaña de lectura, lo más nuevo arriba
     fecha: str = ""
+    #: desde cuándo la tiene otro (AAAA-MM-DD[ HH:MM]): la línea de su historia que la puso a esperar o le dio dueño, o
+    #: su creación. Solo en las que esperan a alguien o tienen dueño (la vista «esperando»); "" en las demás
+    desde: str = ""
+    #: lo último que le pasó, de su historia: (fecha, clase, texto), sin las ediciones de campos sueltos («proyecto,
+    #: tamano»). Solo en las que esperan a alguien o tienen dueño; () en las demás
+    ultimo: tuple[str, str, str] = ()
 
     @property
     def activa(self) -> bool:
@@ -150,6 +156,9 @@ class Tarea:
                 "estrella": self.estrella,
                 "de": self.de,
                 "fecha": self.fecha,
+                "desde": self.desde,
+                "ultimo": ({"fecha": self.ultimo[0], "tipo": self.ultimo[1], "texto": self.ultimo[2]}
+                           if self.ultimo else None),
             },
         )
 
@@ -956,8 +965,39 @@ class DeTipo(_Base):
                 avance=t.avance, area=t.area, dueno=t.dueno, tamano=t.tamano,
                 estrella="estrella" in etiquetas,
                 destacada=t.prioridad == 0 or "estrella" in etiquetas,
+                **(de_otro(t) if t.estado == "espera" or t.dueno.strip() else {}),
             ))
         return salida
+
+
+#: una línea `[edita]` que solo nombra los campos que cambió («proyecto, tamano»): no es algo que pasó
+_SOLO_CAMPOS = re.compile(r"^[\w\s,ñ]+$")
+#: lo más largo que viaja de lo último que pasó: la vista lo corta en una línea y lo entero está en la ficha
+ULTIMO_MAX = 240
+
+
+def _cuando(c) -> str:
+    return f"{c.fecha} {c.hora}".strip()
+
+
+def de_otro(t) -> dict:
+    """Lo que la vista «esperando» dice de una tarea que tiene otro (una del tipo `tarea`, con su historia): desde
+    cuándo (`desde`: la última línea que la puso a esperar, si espera; si no, la que le dio su dueño; sin ninguna, su
+    creación) y lo último que pasó (`ultimo`: la última línea de la historia que no sea una edición de campos sueltos)."""
+    historia = list(t.historia)
+    marca = None
+    if t.estado == "espera":
+        marca = next((c for c in reversed(historia) if c.tipo == "espera" and c.texto.startswith("espera a")), None)
+    if marca is None and t.dueno.strip():
+        marca = next((c for c in reversed(historia) if c.tipo == "edita" and c.texto.startswith("dueño ")), None)
+    desde = _cuando(marca) if marca else (t.creada or "")
+    def cuenta(c) -> bool:
+        return bool(c.texto.strip()) and not (c.tipo == "edita" and _SOLO_CAMPOS.match(c.texto) and not c.texto.startswith("dueño "))
+    ultimo = next((c for c in reversed(historia) if cuenta(c)), None)
+    texto = ultimo.texto.strip() if ultimo else ""
+    if len(texto) > ULTIMO_MAX:
+        texto = texto[:ULTIMO_MAX - 1].rstrip() + "…"
+    return {"desde": desde, "ultimo": (_cuando(ultimo), ultimo.tipo, texto) if ultimo else ()}
 
 
 def _propuesta(t) -> dict | None:

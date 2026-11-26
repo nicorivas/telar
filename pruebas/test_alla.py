@@ -95,3 +95,104 @@ class EnOtraMaquina(Prueba):
         self.assertEqual(pedir.call_args[0][1:3], ("servidor", "tarea"))
         self.assertEqual(pedir.call_args[0][3]["argv"], ["T7", "--proveedor", "tareas", "--accion", "1", "--json"])
         self.assertEqual(json.loads(salida.getvalue())["hecho"], "✓ hecha")
+
+
+class LoConsultadoPorUnRato(Prueba):
+    """`telar serve` guarda lo que dan los proveedores unos segundos (alla.MEMORIA): la página, el teléfono y el refresco
+    del servicio piden el día a la vez, y cada consulta eran segundos de red (26-nov-2026). Un cambio por la API lo
+    olvida; una consulta con fallas no se guarda; fuera del servicio no se guarda nada."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.prov = mod_config.Proveedor(nombre="tareas", opciones={"tipo": "comando", "comando": ["x"]})
+        self.cfg = mod_config.Config(raiz=Path(self.tmp.name), estado=Path(self.tmp.name) / "e",
+                                     proveedores={"tareas": self.prov})
+        alla.olvidar()
+        self.addCleanup(alla.olvidar)
+        memoria = alla.MEMORIA
+        self.addCleanup(setattr, alla, "MEMORIA", memoria)
+        self.veces = 0
+        self.fallas: list[str] = []
+
+        def consultar(ps, d):
+            self.veces += 1
+            return [Item(proveedor="tareas", id=f"T{self.veces}", titulo="x")], list(self.fallas)
+
+        parche = mock.patch("telar.proveedores.consultar", side_effect=consultar)
+        parche.start()
+        self.addCleanup(parche.stop)
+
+    def ids(self, dia=date(2026, 11, 26)):
+        return [i.id for i in alla.consultar(self.cfg, [self.prov], dia)[0]]
+
+    def test_fuera_del_servicio_se_consulta_siempre(self):
+        alla.MEMORIA = 0
+        self.assertEqual((self.ids(), self.ids()), (["T1"], ["T2"]))
+
+    def test_en_el_servicio_sirve_un_rato_y_se_olvida_con_un_cambio(self):
+        alla.MEMORIA = 30
+        self.assertEqual((self.ids(), self.ids()), (["T1"], ["T1"]))
+        self.assertEqual(self.ids(date(2026, 11, 27)), ["T2"])            # otro día es otra consulta
+        alla.olvidar()
+        self.assertEqual(self.ids(), ["T3"])
+        with mock.patch("time.monotonic", return_value=10 ** 9):          # pasado el rato
+            self.assertEqual(self.ids(), ["T4"])
+
+    def test_lo_que_falla_no_se_guarda(self):
+        alla.MEMORIA = 30
+        self.fallas = ["calendario: no contestó"]
+        self.assertEqual((self.ids(), self.ids()), (["T1"], ["T2"]))
+
+    def test_quien_llega_mientras_otro_consulta_espera_esa(self):
+        import threading
+
+        alla.MEMORIA = 30
+        empezo, seguir = threading.Event(), threading.Event()
+
+        def lenta(ps, d):
+            self.veces += 1
+            empezo.set()
+            seguir.wait(5)
+            return [Item(proveedor="tareas", id=f"T{self.veces}", titulo="x")], []
+
+        resultados = []
+        with mock.patch("telar.proveedores.consultar", side_effect=lenta):
+            hilos = [threading.Thread(target=lambda: resultados.append(self.ids())) for _ in range(3)]
+            hilos[0].start()
+            empezo.wait(5)
+            for h in hilos[1:]:
+                h.start()
+            seguir.set()
+            for h in hilos:
+                h.join(5)
+        self.assertEqual((self.veces, resultados), (1, [["T1"]] * 3))
+
+    def test_lo_consultado_durante_un_cambio_no_se_guarda(self):
+        alla.MEMORIA = 30
+
+        def con_cambio(ps, d):
+            self.veces += 1
+            alla.olvidar()                                                 # un POST mientras se consultaba
+            return [Item(proveedor="tareas", id=f"T{self.veces}", titulo="x")], []
+
+        with mock.patch("telar.proveedores.consultar", side_effect=con_cambio):
+            self.assertEqual((self.ids(), self.ids()), (["T1"], ["T2"]))
+
+    def test_un_pedido_que_cambia_algo_por_la_api_lo_olvida(self):
+        try:
+            from fastapi.testclient import TestClient
+        except ImportError:  # pragma: no cover - sin el extra serve
+            self.skipTest("sin fastapi")
+        from telar import api
+
+        alla.MEMORIA = 30
+        self.ids()
+        with mock.patch.object(alla, "olvidar", wraps=alla.olvidar) as olvidar:
+            cliente = TestClient(api.app)
+            cliente.get("/salud")
+            self.assertEqual(olvidar.call_count, 0)                        # leer no olvida
+            cliente.post("/ruta-que-no-existe", json={})
+            self.assertEqual(olvidar.call_count, 2)                        # antes y después del cambio
+        self.assertEqual(self.ids(), ["T2"])

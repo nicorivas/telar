@@ -35,11 +35,17 @@ def juntar(ctx, tel: _comun.Telar, *, repo: bool = False, hechos: bool = False) 
     salida: list[dict] = []
     vistos: set[str] = set()
 
-    for hilo in tel.hilos:
+    # varios hilos pueden estar en la misma carpeta (el del proyecto y los de una minuta, un tema, un hijo): su
+    # documento es uno, así que sus casillas van una vez, con uno de ellos. Antes iban una vez por hilo, y un
+    # proyecto con cuatro hilos mostraba cada pendiente cuatro veces (y una casilla con id daba el 409 de «el id
+    # se copió con la línea»). Va con el que está vivo, si hay uno: es donde se trabaja
+    for hilo in sorted(tel.hilos, key=lambda h: h.nombre not in tel.vivos):
         ficha = hilo.ficha
         if ficha is None or not ficha.pendientes:
             continue
-        relativa = _comun.ruta_relativa(hilo.ruta, tel.raiz)
+        relativa = tel.relativa(hilo.ruta)
+        if relativa in vistos:
+            continue
         vistos.add(relativa)
         for i, pendiente in enumerate(ficha.pendientes, 1):
             if pendiente.hecho and not hechos:
@@ -128,6 +134,21 @@ def _carpeta_de(origen: str) -> str:
     return origen.strip("/")
 
 
+def _de_otro(datos: dict) -> dict:
+    """A quién espera una tarea (`espera`, sin la @), desde cuándo la tiene otro (`desde`) y lo último que le pasó
+    (`ultimo`: fecha, clase y texto), lo que el proveedor diga; nada de lo que no diga, para no engordar cada fila."""
+    salida: dict = {}
+    espera = str(datos.get("espera") or "").strip().lstrip("@")
+    if espera:
+        salida["espera"] = espera
+    if datos.get("desde"):
+        salida["desde"] = str(datos["desde"])
+    u = datos.get("ultimo")
+    if isinstance(u, dict) and u.get("texto"):
+        salida["ultimo"] = {"fecha": str(u.get("fecha") or ""), "tipo": str(u.get("tipo") or ""), "texto": str(u["texto"])}
+    return salida
+
+
 def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...] | None = None) -> tuple[list[dict], list[str]]:
     """Lo que aportan las fuentes declaradas, ya enrutado al hilo que le toca.
 
@@ -161,7 +182,7 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 "ref": item.id or f"{item.proveedor}:{item.titulo[:24]}",
                 "direccion": objetos.direccion_de("tarea", item.id) if item.proveedor in del_tipo and item.id else "",
                 "hilo": destino.nombre if destino else "",
-                "ruta": _comun.ruta_relativa(destino.ruta, tel.raiz) if destino else "",
+                "ruta": tel.relativa(destino.ruta) if destino else "",
                 # la carpeta que la tarea dice que es su proyecto, haya o no un hilo ahí (la vista de proyectos)
                 "proyecto": _carpeta_de(str((item.datos or {}).get("origen") or "")),
                 "proveedor": item.proveedor,
@@ -187,6 +208,9 @@ def de_proveedores(ctx, tel: _comun.Telar, dia: dt.date, *, solo: tuple[str, ...
                 # con ellos (lo que se mandó la persona primero, lo más nuevo arriba)
                 "de": str((item.datos or {}).get("de") or ""),
                 "fecha": str((item.datos or {}).get("fecha") or ""),
+                # a quién espera, desde cuándo la tiene otro y lo último que pasó (la vista «esperando»: lo que otros le
+                # deben a la persona); solo si el proveedor lo dice
+                **_de_otro(item.datos or {}),
                 # un evento: cuándo termina y dónde, para dibujarlo en su alto (el calendario del dashboard), y lo que
                 # la persona respondió a la invitación («aceptada», «rechazada», «tentativa», «sin_responder»; "" si no aplica)
                 **({"fin": str((item.datos or {}).get("fin") or ""), "lugar": str((item.datos or {}).get("lugar") or ""),

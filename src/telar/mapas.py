@@ -24,6 +24,8 @@ documento (`fechas: <mapa>`):
 
 from __future__ import annotations
 
+import copy
+import functools
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -239,8 +241,17 @@ def frontmatter(texto: str) -> dict:
     m = _FRONT.match(texto)
     if not m:
         return {}
+    # una copia: lo guardado no lo cambia quien lo recibe
+    return copy.deepcopy(_yaml(m.group(1)))
+
+
+@functools.lru_cache(maxsize=4096)
+def _yaml(bloque: str) -> dict:
+    """El YAML de un frontmatter, guardado por su texto: la lista de proyectos lee los mismos cientos de documentos en
+    cada pedido, y leer el YAML era lo más caro (26-nov-2026: 680, ~1 s de CPU con el GIL tomado). Por el texto y no por
+    el archivo: un documento que cambió trae otro texto, y nunca se sirve el de antes."""
     try:
-        datos = yaml.safe_load(m.group(1))
+        datos = yaml.safe_load(bloque)
     except yaml.YAMLError:
         return {}
     return datos if isinstance(datos, dict) else {}

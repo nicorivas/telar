@@ -123,7 +123,8 @@ const leer = p => readFileSync(p, 'utf8');
     assert.ok(archivos.length >= 14, 'el inventario nombra los buscadores de la página');
     for (const a of archivos) {
         const t = leer(path.join(src, a));
-        assert.match(t, /\b(barraBuscar|barraDeBuscar|herramientas as herramientasLista)\b/, `${a}: usa el buscador (componentes/buscador.ts)`);
+        // (o le pasa sus `PropsHerramientas` a una sección, componentes/seccion.ts, que pone la barra: la de HILOS)
+        assert.match(t, /\b(barraBuscar|barraDeBuscar|PropsHerramientas)\b/, `${a}: usa el buscador (componentes/buscador.ts)`);
     }
     // y ningún archivo arma uno a mano: ni un <input> de tipo search, ni un campo cuyo texto de ayuda diga buscar o filtrar,
     // ni un `el('input')` / `createElement('input')` que no sea una casilla
@@ -141,8 +142,10 @@ const leer = p => readFileSync(p, 'utf8');
 }
 // los que se dibujan sin la página salen en su barra: la sección de lista (HILOS), la paleta, Todo y lo que te espera
 {
-    const { herramientas } = await armar('componentes/seccion');
+    const { herramientas, seccion } = await armar('componentes/seccion');
     assert.match(herramientas({ grupo: 'hilos', placeholder: 'hilos', ayuda: 'a' }), /^<div class="buscador-barra herram">/);
+    assert.match(seccion({ clave: 'c', titulo: 'hilos', ayuda: 'a', abierta: true, filas: () => '',
+        herramientas: { grupo: 'hilos', placeholder: 'hilos', ayuda: 'a' } }), /<\/div><div class="buscador-barra herram">/, 'y una sección la pone bajo su cabecera');
     const { paleta } = await armar('componentes/ventana');
     assert.match(paleta({ filas: [] }), /<div class="ventana-campo"><div class="buscador-barra">.*aria-label="opciones"/, 'la paleta, sin decir en qué: «opciones»');
     const { cuerpo } = await armar('vistas/dashboard/esperas');

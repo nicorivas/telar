@@ -164,12 +164,18 @@ export class Modelo {
     /** El orden lo aplica telar: el del multiplexor (cada grupo de la barra se ordena aparte, ahí). */
     readonly orden = 'mux';
 
-    async sondear(conFicha = false): Promise<void> {
+    /** Lee los hilos. `conFicha`: con los documentos de cada uno (y la configuración), aunque no toque todavía.
+     *  `ligero`: sin los documentos aunque toque, con la configuración si todavía no se leyó nada: la primera lectura al
+     *  abrir la página, para que la barra se dibuje al tiro (con los documentos tarda el doble, y más mientras el
+     *  servidor calcula el día); los documentos llegan con la siguiente. */
+    async sondear(conFicha = false, ligero = false): Promise<void> {
         if (this.enCurso) { this.otraVez = true; return; }
         this.enCurso = true;
         try {
-            const toca = conFicha || Date.now() - this.ultimaFicha > INTERVALO_FICHA;
-            const r = await cli.hilos(toca, this.orden);
+            const toca = !ligero && (conFicha || Date.now() - this.ultimaFicha > INTERVALO_FICHA);
+            // la configuración va a la par, no después: es otro pedido, y esperarla alargaba cada lectura con ficha
+            const [r, c] = await Promise.all([cli.hilos(toca, this.orden),
+                toca || (ligero && !this.leido) ? cli.config() : Promise.resolve(undefined)]);
             if (!r.datos) {
                 this.error = r.error ?? '';
                 this.errorEstado = r.estado ?? 0;
@@ -181,18 +187,17 @@ export class Modelo {
             const d = r.datos;
             this.sesion = d.sesion; this.multiplexor = d.multiplexor; this.raiz = d.raiz;
             this.viva = d.viva; this.aviso = d.aviso; this.clientes = d.clientes ?? [];
+            if (c?.datos) {
+                this.secciones = c.datos.secciones ?? [];
+                this.apps = c.datos.apps ?? [];
+                this.buscables = (c.datos.modulos ?? []).flatMap(m => m.buscables ?? []);
+                this.remotos = (c.datos.remotos ?? []).map(r => ({ nombre: r.nombre, destino: r.destino }));
+                this.hayRemotos = this.remotos.length > 0;
+                this.hayBus = !!c.datos.bus?.url;
+                this.instruccionA = c.datos.instruccion?.a ?? '';
+                this.procesar = c.datos.instruccion?.procesar ?? '';
+            }
             if (toca) {
-                const c = await cli.config();
-                if (c.datos) {
-                    this.secciones = c.datos.secciones ?? [];
-                    this.apps = c.datos.apps ?? [];
-                    this.buscables = (c.datos.modulos ?? []).flatMap(m => m.buscables ?? []);
-                    this.remotos = (c.datos.remotos ?? []).map(r => ({ nombre: r.nombre, destino: r.destino }));
-                    this.hayRemotos = this.remotos.length > 0;
-                    this.hayBus = !!c.datos.bus?.url;
-                    this.instruccionA = c.datos.instruccion?.a ?? '';
-                    this.procesar = c.datos.instruccion?.procesar ?? '';
-                }
                 void this.leerEquipo();
                 void this.leerColegas();
                 this.ultimaFicha = Date.now();
@@ -200,8 +205,9 @@ export class Modelo {
             }
             this.hilos = d.hilos.map(h => cli.conRutasAbsolutas(
                 { ...h, ficha: h.ficha ?? this.fichas.get(h.nombre) ?? null }, d.raiz));
+            this.recordadoHasta = 0;
             this.aplicarLocal();
-            this.anunciar(['ok', d.sesion, d.viva, d.aviso, this.hilos, this.secciones]);
+            if (this.anunciar(['ok', d.sesion, d.viva, d.aviso, this.hilos, this.secciones])) this.recordar();
         } finally {
             this.enCurso = false;
         }
@@ -212,12 +218,47 @@ export class Modelo {
      *  la página se queda unos segundos sin API, y eso no se dice. Sin ninguna lectura buena, desde la primera falla. */
     caido(): boolean { return !!this.fallaDesde && (!this.leido || Date.now() - this.fallaDesde >= CAIDO_MS); }
 
-    /** Redibujar solo si algo cambió: si no, la lista parpadea cada segundo. */
-    private anunciar(estado: unknown[]): void {
+    /** Redibujar solo si algo cambió: si no, la lista parpadea cada segundo. true si cambió. */
+    private anunciar(estado: unknown[]): boolean {
         const firma = JSON.stringify(estado);
-        if (firma === this.firma) return;
+        if (firma === this.firma) return false;
         this.firma = firma;
         this.cambio.fire();
+        return true;
+    }
+
+    // ── lo último que se leyó, para cuando la página recarga (cli.recordar) ──
+
+    /** Si lo que se ve es lo recordado de antes de recargar (cuándo se leyó), y no todavía una lectura de ahora: 0 si no */
+    recordadoHasta = 0;
+
+    private recordar(): void {
+        cli.recordar('hilos', {
+            sesion: this.sesion, multiplexor: this.multiplexor, raiz: this.raiz, viva: this.viva, aviso: this.aviso,
+            clientes: this.clientes, hilos: this.hilos, secciones: this.secciones, apps: this.apps, buscables: this.buscables,
+            remotos: this.remotos, hayBus: this.hayBus, instruccionA: this.instruccionA, procesar: this.procesar,
+        });
+    }
+
+    /** Al cargar, antes de la primera lectura: la lista que se veía antes de recargar esta pestaña (un despliegue reinicia
+     *  el servicio y la página recarga sola), para que la barra no quede en «leyendo los hilos…» mientras el servicio,
+     *  recién levantado, contesta. La primera lectura buena la reemplaza; sin nada recordado, nada. */
+    desdeRecordado(): boolean {
+        const r = cli.recordado<Partial<Pick<Modelo, 'sesion' | 'multiplexor' | 'raiz' | 'viva' | 'aviso' | 'clientes' | 'hilos'
+            | 'secciones' | 'apps' | 'buscables' | 'remotos' | 'hayBus' | 'instruccionA' | 'procesar'>>>('hilos');
+        if (!r || this.leido || !Array.isArray(r.valor.hilos)) return false;
+        const v = r.valor;
+        this.sesion = v.sesion ?? ''; this.multiplexor = v.multiplexor ?? ''; this.raiz = v.raiz ?? '';
+        this.viva = !!v.viva; this.aviso = v.aviso ?? ''; this.clientes = v.clientes ?? [];
+        this.hilos = v.hilos ?? [];
+        this.secciones = v.secciones ?? []; this.apps = v.apps ?? []; this.buscables = v.buscables ?? [];
+        this.remotos = v.remotos ?? []; this.hayRemotos = this.remotos.length > 0; this.hayBus = !!v.hayBus;
+        this.instruccionA = v.instruccionA ?? ''; this.procesar = v.procesar ?? '';
+        this.fichas = new Map(this.hilos.map(h => [h.nombre, h.ficha ?? null]));
+        this.recordadoHasta = r.en;
+        this.firma = '';
+        this.cambio.fire();
+        return true;
     }
 
     /** Fuerza el próximo sondeo a releer los documentos (después de actuar sobre un hilo). */

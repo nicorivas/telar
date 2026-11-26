@@ -54,6 +54,12 @@ npm run lint:css
   como una banda de celdas, cada una con su tecla y su palabra, a una línea del contenido (sus teclas las atiende
   `web/botonera.ts`; en el catálogo, `catalogo-botones.ts`, con qué confirmaciones destruyen); `catalogo.ts` y `muestras.ts`, el
   catálogo (empaquetado aparte, en `componentes.js`) y lo que muestra.
+- `src/lienzo/` — lo de la página que va en el lienzo de un módulo: `componentes.ts`, las pestañas, el buscador y los
+  filtros para el lienzo que los pide (`"componentes": true`), empaquetados aparte en `lienzo-componentes.js` y su hoja,
+  `lienzo-componentes.css` (de `media/css`: circulo, pestanas, buscador, filtros y `lienzo.css`, con la letra de íconos
+  como `telar-iconos`), que `vistas/dashboard/pagina.ts` mete en línea. Lo que hacen las pestañas está en
+  `web/pestanas-fila.ts`, sin la página (el menú del «⋯» lo pone quien la usa: `web/pestanas.ts`, ui.menu; en el lienzo,
+  el de la página pedido con `opciones`).
 - `src/web/` — las vistas de un hilo, su carpeta, «compartir», la interfaz (`ui.ts`, `interfaz.ts`) y las órdenes.
   `rutas-agente.ts` vuelve enlaces al visor las rutas de archivo que escribe un agente (en la terminal, la
   lectura y la conversación), en la máquina de su hilo, y abre en una pestaña nueva las direcciones web.

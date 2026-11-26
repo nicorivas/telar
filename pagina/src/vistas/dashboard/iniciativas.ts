@@ -4,15 +4,19 @@
 // (`telar proyectos --json`, su `frontmatter`): quién la lleva (`dueno`), cómo va (`estado`), lo próximo que hay que
 // decidir (`proxima_decision`) y cuánto importa (`peso`: alto, medio o bajo, el círculo de Táctica).
 //
-//   INICIATIVAS 6                                   ← su sección; un clic la deja sola (y la barra vuelve)
-//      iniciativa              dueño   estado       próxima decisión
-//   ●  Club de lectura  2      Ana     ◑ en curso   ¿abrimos en marzo?         ← la del programa: encabeza su grupo
-//   ◐    Canales del club      Ana     ○ piloto     ¿el de novedades?          ← fuera del vocabulario: marcado
-//   ○    Boletín                       • idea         fuente: Sheet  ← la manda otra fuente: no se cambia
-//      otro-programa                                                           ← un programa sin la suya: su nombre
-//   ◐    …
-//      sin programa  1                                                         ← sin programa ni hijas, al final
-//   ◐    Inventario anual      Bruno   ◔ diseño
+//   ▽ me toca 2   sin próximo paso 5                          ← los filtros (proyectos › interno)
+//   ⌄ CLUB DE LECTURA  4                                       ← cada grupo, una sección (seccion())
+//   ●  ◑ Club de lectura  ¿abrimos en marzo?     lo llevo  2   ← la que lo encabeza, primera; mi papel
+//   ◐  ○ Canales del club  sin próximo paso  ⚠   Ana           ← fuera del vocabulario: marcado
+//   ○  • Boletín  T12 · llamar al proveedor  ↗   sin definir   ← la manda otra fuente: no se cambia aquí
+//      › ideas 2                                               ← sus ideas, en un submenú que empieza plegado
+//   ⌄ SIN PROGRAMA  1
+//   ◐  ◔ Inventario anual  P-03 · el presupuesto     Bruno
+//
+// Es la subvista «interno» de proyectos (proyectos.ts): cada fila es un ítem (componentes/item.ts): el peso y el estado
+// en sus ranuras, el nombre con su próximo paso detrás (tenue: se corta antes que él; «sin próximo paso», en el color de
+// cuidado) y al final mi papel (de su dueño: «lo llevo», quién la lleva, «sin definir») y cuántos pendientes tiene, que
+// ceden antes que el nombre cuando la lista se angosta (proyectos.css). Las terminadas y las descartadas no van.
 //
 // El estado de cada una se ve con su círculo y su color (componentes/senales.ts, `estadoIniciativa`), y se cambia con un
 // clic en él: un menú con el vocabulario cerrado de `[iniciativas] estados` (en `GET /proyectos`, `iniciativas`), que
@@ -21,7 +25,7 @@
 // cual, marcado, y al cambiarlo se ofrece el vocabulario. Con vocabulario, el estado es el de su frontmatter y nada más
 // (una ficha sin `estado:` está sin estado, y se le pone uno; ni el Estado de su tabla ni el de su programa cuentan). La
 // ficha dice si su estado lo manda otra fuente (`estado_fuente: sheet`; `fuentes` dice cómo se nombra cada una): esas
-// dicen «fuente: Sheet» y no tienen el menú. Por qué está en su estado (`estado_nota:`) va al pasar el mouse y en el
+// llevan ↗ y «fuente: Sheet» al pasar, y no tienen el menú. Por qué está en su estado (`estado_nota:`) va al pasar el mouse y en el
 // detalle. Sin vocabulario, el estado se ve como lo escribe cada ficha (o su tabla) y no se cambia aquí.
 //
 // La que encabeza un grupo es la iniciativa cuya carpeta se llama como el valor con que se agrupan las otras (el slug al
@@ -31,6 +35,9 @@
 
 import type * as cli from '../../cli';
 import { circulo } from '../../componentes/circulo';
+import { item, type Pieza } from '../../componentes/item';
+import { filtros, type GrupoFiltro } from '../../componentes/filtros';
+import { seccion, separador, submenu } from '../../componentes/seccion';
 import { type ClaseEstado, CLASES_ESTADO, enLinea, estadoIniciativa } from '../../componentes/senales';
 import { LLENO_PESO } from '../../componentes/tactica';
 import { esc, normalizar } from '../../estilo';
@@ -208,7 +215,7 @@ export function agrupar(lista: readonly cli.JsonProyecto[], campo: string): Grup
     return [
         ...conCabeza.sort((a, b) => orden(a.cabeza!, b.cabeza!)),
         ...sin.sort((a, b) => a.nombre.localeCompare(b.nombre)),
-        ...sueltas.length ? [{ clave: '', nombre: 'sin programa', hijas: [...sueltas].sort(orden) }] : [],
+        ...sueltas.length ? [{ clave: '', nombre: `sin ${campo === 'funcion' ? 'función' : campo}`, hijas: [...sueltas].sort(orden) }] : [],
     ];
 }
 
@@ -220,69 +227,142 @@ export function marcaPeso(peso?: Peso): string {
     return peso ? `<span class="senal" title="${esc(`peso ${peso}`)}">${circulo({ tam: 'chico', lleno: LLENO_PESO[peso] })}</span>` : '';
 }
 
-/** Una fila: el peso, el nombre, quién la lleva, cómo va, lo próximo por decidir, cuántos pendientes y su ⋯. La que
- *  encabeza su grupo lleva además cuántas tiene; las de un grupo van corridas una celda. Lleva lo de las filas de los
- *  proyectos (`proy`, `proy-sel`, `data-valor`), así que se elige, se abre y cuenta sus pendientes igual. */
+/** El peso, como pieza de su ranura: alto lleno, medio a medias, bajo un aro; sin peso, nada. */
+const piezaPeso = (peso?: Peso): Pieza | null => peso ? { circulo: { tam: 'chico', lleno: LLENO_PESO[peso] }, ayuda: `peso ${peso}` } : null;
+
+/** El estado, como pieza de su ranura: su círculo en el color de su clase y, al pasar, la palabra, su nota y su fuente.
+ *  Con vocabulario y sin otra fuente, un clic en él lo cambia (`ini-estado`, en vez de elegir la fila). */
+function piezaEstado(p: cli.JsonProyecto, e: EstadoVisto, voc: Vocabulario): Pieza {
+    const senal = estadoIniciativa(e.clase, e.fuera);
+    const ayuda = ayudaEstado(e, voc);
+    if (!e.cambia) return { ...senal, ayuda };
+    return { html: `<span class="ini-estado cambia" data-accion="ini-estado" data-valor="${esc(p.ruta)}" data-estado="${esc(e.valor)}"`
+        + `${e.clase ? ` data-clase="${e.clase}"` : ''}>${senal.circulo ? circulo(senal.circulo) : ''}</span>`, tono: senal.tono, ayuda };
+}
+
+/** El próximo paso de una iniciativa: lo próximo por decidir (`proxima_decision`); si no lo dice, su tarea abierta más
+ *  urgente; si no tiene, su casilla pendiente más urgente (las de su documento). Texto vacío: no tiene ninguno («sin
+ *  próximo paso»). Lo arma la pantalla (proyectos.ts), que tiene las tareas y las casillas. */
+export interface Proximo { texto: string; de: 'decisión' | 'tarea' | 'casilla' | '' }
+
+/** Mi papel en una iniciativa, de su dueño (`dueno`): la llevo (es de la persona), la sigo (es de otro) o sin definir
+ *  (no tiene). «La dirijo» no sale de ningún campo. */
+export type Papel = 'llevo' | 'sigo' | 'sin';
+export const papelDe = (dueno: string, esMia: (d: string) => boolean): Papel => !dueno ? 'sin' : esMia(dueno) ? 'llevo' : 'sigo';
+
+/** Lo que dice la columna del papel: «lo llevo», quién la lleva (la sigo) o «sin definir». */
+function piezaPapel(papel: Papel, dueno: string): string {
+    const [texto, ayuda, tono] = papel === 'llevo' ? ['lo llevo', `mi papel: la llevo (dueño: ${dueno})`, '']
+        : papel === 'sigo' ? [dueno, `mi papel: la sigo; la lleva ${dueno}`, ' tono-tenue'] : ['sin definir', 'mi papel: sin definir (no dice dueño)', ' tono-apagado'];
+    return `<span class="dueno-i${tono}" title="${esc(ayuda)}">${esc(texto)}</span>`;
+}
+
+/** Una fila, un ítem (componentes/item.ts): el peso y el estado en sus ranuras, el nombre y, tras él y tenue, su próximo
+ *  paso (se corta antes que el nombre; «sin próximo paso», en el color de cuidado); al final, lo que no cuadra (un estado
+ *  fuera del vocabulario, uno que manda otra fuente), mi papel (o quién la lleva) y cuántos pendientes tiene (ceden antes
+ *  que el nombre: proyectos.css), y su ⋯. Lleva lo de las filas de los proyectos (`proy`, `proy-sel`, `data-valor`), así
+ *  que se elige, se abre y cuenta sus pendientes igual. La que encabeza su grupo va primera en él (`ini-cabeza`). Sin
+ *  `proximo` (todavía se leen las tareas), lo próximo por decidir si lo dice; sin `papel`, quién la lleva. */
 export function filaIniciativa(p: cli.JsonProyecto, campo: string,
-    o: { sel?: string; pend?: number; grupo: string; cabeza?: number; hija?: boolean; voc?: Vocabulario }): string {
+    o: { sel?: string; pend?: number; grupo: string; cabeza?: boolean; voc?: Vocabulario; proximo?: Proximo; papel?: Papel; idea?: boolean }): string {
     const voc = o.voc ?? SIN_VOCABULARIO;
     const d = deIniciativa(p, campo, voc);
     const e = d.visto;
-    // el estado: con vocabulario y sin otra fuente, un clic lo cambia (`ini-estado`, en vez de elegir la fila)
-    const estado = `<span class="estado-p ini-estado${e.cambia ? ' cambia' : ''}${e.fuera ? ' fuera' : ''}"`
-        + (e.cambia ? ` data-accion="ini-estado" data-valor="${esc(p.ruta)}"` : '')
-        + ` data-estado="${esc(e.valor)}"${e.clase ? ` data-clase="${e.clase}"` : ''} title="${esc(ayudaEstado(e, voc))}">${htmlEstado(e, voc)}</span>`;
-    const fuente = `<span class="ini-fuente" title="${esc(e.fuente ? `su estado lo manda ${e.fuente}: se cambia allá` : '')}">${e.fuente ? `fuente: ${esc(e.fuente)}` : ''}</span>`;
-    const texto = normalizar(`${p.nombre} ${p.ruta} ${d.dueno} ${d.estado} ${e.escrito} ${e.fuente} ${d.proxima} ${d.grupo} ${p.area ?? ''}`);
-    const clases = ['fila', 'clic', 'proy', 'ini', ...p.ruta === o.sel ? ['sel'] : [], ...o.cabeza !== undefined ? ['ini-cabeza'] : [], ...o.hija ? ['ini-hija'] : []];
-    const n = o.cabeza ? `<span class="ini-n" title="${o.cabeza} en este programa">${o.cabeza}</span>` : '';
-    return `<div class="${clases.join(' ')}" data-accion="proy-sel" data-valor="${esc(p.ruta)}" data-grupo="${esc(o.grupo)}"`
-        + ` data-unidad="${esc(p.area || 'sin área')}" data-pend="${o.pend || ''}" data-texto="${esc(texto)}"`
-        + ` title="${esc(`${p.ruta}${d.programa && o.cabeza === undefined ? `\nprograma: ${d.programa}` : ''}${p.hilo ? `\nhilo: ${p.hilo}${p.vivo ? '' : ' (dormido)'}` : ''}`)}">`
-        + `<span class="at">${marcaPeso(d.peso)}</span><span class="que"><span class="ini-nombre">${esc(p.nombre)}</span>${n}</span>`
-        // en el teléfono, lo que sigue al salto va en una segunda línea (proyectos.css)
-        + '<span class="ini-salto"></span>'
-        + `<span class="dueno-i" title="${esc(d.dueno ? `dueño: ${d.dueno}` : 'sin dueño')}">${esc(d.dueno)}</span>`
-        + estado + fuente
-        + `<span class="prox-i" title="${esc(d.proxima ? `próxima decisión: ${d.proxima}` : 'sin próxima decisión')}">${esc(d.proxima)}</span>`
-        + `<span class="tareas-p" title="pendientes: sus tareas y las casillas de su documento">${o.pend || ''}</span>`
-        + `<span class="menu-fila menu-col" data-accion="proy-menu" data-valor="${esc(p.ruta)}" title="acciones de esta iniciativa">${I.menu}</span></div>`;
+    const prox = o.proximo ?? (d.proxima ? { texto: d.proxima, de: 'decisión' as const } : undefined);
+    const texto = normalizar(`${p.nombre} ${p.ruta} ${d.dueno} ${d.estado} ${e.escrito} ${e.fuente} ${prox?.texto ?? ''} ${d.grupo} ${p.area ?? ''}`);
+    const aviso: Pieza | undefined = e.fuera ? { icono: I.alerta, tono: 'atencion', ayuda: `fuera del vocabulario: ${voc.estados.join(', ')}` }
+        : e.fuente ? { icono: I.externo, tono: 'tenue', ayuda: `su estado lo manda ${e.fuente}: se cambia allá` } : undefined;
+    const pend = o.pend || 0;
+    const sufijo: Pieza[] = !prox ? []
+        : prox.texto ? [{ texto: prox.texto, tono: 'tenue', ayuda: `próximo paso (${prox.de === 'decisión' ? 'lo próximo por decidir' : `su ${prox.de} más urgente`}): ${prox.texto}` }]
+        : [{ texto: 'sin próximo paso', tono: 'atencion', ayuda: 'ni próxima decisión, ni una tarea abierta, ni una casilla pendiente' }];
+    const quien = o.papel ? piezaPapel(o.papel, d.dueno)
+        : `<span class="dueno-i" title="${esc(d.dueno ? `dueño: ${d.dueno}` : 'sin dueño')}">${esc(d.dueno)}</span>`;
+    return item({
+        clases: ['proy', 'ini', ...o.cabeza ? ['ini-cabeza'] : []],
+        accion: 'proy-sel',
+        datos: { valor: p.ruta, grupo: o.grupo, unidad: p.area || 'sin área', pend: pend ? String(pend) : '', texto,
+            ...o.papel ? { papel: o.papel } : {}, ...prox && !prox.texto ? { proximo: 'sin' } : {}, ...o.idea ? { idea: '1' } : {} },
+        activa: p.ruta === o.sel,
+        ayuda: `${p.ruta}${d.programa && !o.cabeza ? `\n${campo}: ${d.programa}` : ''}${p.hilo ? `\nhilo: ${p.hilo}${p.vivo ? '' : ' (dormido)'}` : ''}`,
+        inicio: [piezaPeso(d.peso), piezaEstado(p, e, voc)],
+        titulo: p.nombre,
+        sufijo,
+        aviso,
+        meta: { html: quien + `<span class="tareas-p" title="pendientes: sus tareas y las casillas de su documento">${pend || ''}</span>` },
+        menu: { accion: 'proy-menu', icono: I.menu, datos: { valor: p.ruta }, ayuda: 'acciones de esta iniciativa' },
+    });
 }
 
-/** La sección entera: su cabecera (en la lista con los proyectos; un clic la deja sola), los nombres de sus columnas y
- *  cada grupo: la que lo encabeza (o su nombre, si no hay una) y las suyas. `solo`: es lo único que se ve (sin su
- *  cabecera: la barra dice «iniciativas»). */
-export function htmlIniciativas(lista: readonly cli.JsonProyecto[], campo: string,
-    o: { sel?: string; cuentas?: ReadonlyMap<string, number>; solo?: boolean; voc?: Vocabulario } = {}): string {
-    if (!lista.length) return '';
+/** Lo que pide la vista de las iniciativas (proyectos › interno): la elegida, cuántos pendientes tiene cada una, el
+ *  vocabulario de su estado, el próximo paso de cada una (si ya se leyeron sus tareas) y quién es la persona (su papel). */
+export interface OpcionesIniciativas {
+    sel?: string;
+    cuentas?: ReadonlyMap<string, number>;
+    voc?: Vocabulario;
+    proximos?: ReadonlyMap<string, Proximo>;
+    esMia?: (dueno: string) => boolean;
+}
+
+/** Si una iniciativa ya no está viva: terminada o descartada (no van en la vista). */
+export const cerradaIniciativa = (p: cli.JsonProyecto, voc: Vocabulario = SIN_VOCABULARIO): boolean => {
+    const c = estadoDe(p, voc).clase;
+    return c === 'terminada' || c === 'descartada';
+};
+
+/** Las filas de un grupo: la que lo encabeza, primero, y las suyas, sin las ideas (`ideas`: solo las ideas). */
+function filasGrupo(g: Grupo, campo: string, o: OpcionesIniciativas, ideas = false): string {
     const voc = o.voc ?? SIN_VOCABULARIO;
-    const gs = agrupar(lista, campo);
-    // el ancho del estado y de la fuente, el de lo más largo que muestran (con su círculo y su marca), para que la columna
-    // calce en todas las filas sin quitarle al nombre más de lo que hace falta; la de la fuente, solo si alguna la tiene
-    const vistos = lista.map(p => estadoDe(p, voc));
-    const anchoEstado = Math.min(18, Math.max(8, ...vistos.map(e => (e.valor || 'sin estado').length + (e.valor ? 2 : 0) + (e.fuera ? 2 : 0))));
-    const anchoFuente = Math.min(20, Math.max(0, ...vistos.map(e => (e.fuente ? `fuente: ${e.fuente}`.length : 0))));
-    const h: string[] = [`<div id="iniciativas"${anchoFuente ? ' class="con-fuente"' : ''} style="--ini-estado: ${anchoEstado + 1}ch${anchoFuente ? `; --ini-fuente: ${anchoFuente + 1}ch` : ''}">`];
-    if (!o.solo) {
-        const ps = programas(gs);
-        h.push(`<div class="fila proy-sec-cab ini-sec-cab clic" data-accion="proy-iniciativas" title="verlas solas, por ${campo ? 'programa' : 'nombre'}">`
-            + `<span class="at"></span><span class="que">iniciativas <span class="proy-sec-n">${lista.length}</span>`
-            + `${ps ? ` <span class="ini-programas">· ${ps} programa${ps === 1 ? '' : 's'}</span>` : ''}</span><span class="i">${I.adelante}</span></div>`);
+    const esIdea = (p: cli.JsonProyecto) => estadoDe(p, voc).clase === 'idea';
+    const fila = (p: cli.JsonProyecto, cabeza = false) => filaIniciativa(p, campo, { sel: o.sel, pend: o.cuentas?.get(p.ruta), grupo: g.clave, cabeza, voc,
+        ...o.proximos ? { proximo: o.proximos.get(p.ruta) } : {}, ...o.esMia ? { papel: papelDe(deIniciativa(p, campo, voc).dueno, o.esMia) } : {}, idea: ideas });
+    const xs = (g.cabeza ? [g.cabeza] : []).concat(g.hijas).filter(p => esIdea(p) === ideas);
+    return xs.map(p => fila(p, p === g.cabeza)).join('');
+}
+
+/** Lo que dice un grupo al pasar el mouse. */
+const ayudaGrupo = (g: Grupo, campo: string): string => !g.clave ? `sin ${campo || 'grupo'}`
+    : g.cabeza ? `${campo} «${g.nombre}»: la primera es la que lo encabeza` : `${campo} «${g.clave}»: ninguna iniciativa se llama así`;
+
+/** Las iniciativas, su propia vista (proyectos › interno), con las piezas de la casa (componentes/seccion.ts): cada grupo
+ *  (su función o su programa: `agrupar_iniciativas`) una sección, del alto de las barras y en la tinta de las cabeceras,
+ *  con cuántas tiene, y con su separador; dentro, las vivas y, al final, sus ideas en un submenú que empieza plegado. Las
+ *  terminadas y las descartadas no van. Abrir o plegar cada una lo hace la página (vista.ts, `proy-seccion`): se
+ *  recuerda, y buscando o filtrando se abre lo que calza. */
+export function htmlIniciativas(lista: readonly cli.JsonProyecto[], campo: string, o: OpcionesIniciativas = {}): string {
+    const voc = o.voc ?? SIN_VOCABULARIO;
+    const vivas = lista.filter(p => !cerradaIniciativa(p, voc));
+    if (!vivas.length) return '';
+    const esIdea = (p: cli.JsonProyecto) => estadoDe(p, voc).clase === 'idea';
+    const grupos = agrupar(vivas, campo).map(g => {
+        const todas = (g.cabeza ? [g.cabeza] : []).concat(g.hijas);
+        const ideas = todas.filter(esIdea).length;
+        const sec = `ini:${g.clave}`;
+        return separador() + seccion({ abierta: true, accion: 'proy-seccion', clave: sec, titulo: g.nombre || 'iniciativas', cuenta: todas.length,
+            ayuda: ayudaGrupo(g, campo), clases: ['ini-grupo'], datos: { grupo: g.clave, sec },
+            filas: () => filasGrupo(g, campo, o) + (ideas ? submenu({ abierta: true, accion: 'proy-seccion', clave: `ideas:${g.clave}`, titulo: 'ideas',
+                cuenta: ideas, ayuda: 'sus ideas: empiezan plegadas', ranuras: 2, clases: ['ini-ideas'],
+                datos: { grupo: g.clave, sec: `ideas:${g.clave}`, plegada: '1' }, filas: () => filasGrupo(g, campo, o, true) }) : '') });
+    });
+    return `<div id="iniciativas">${grupos.join('')}</div>`;
+}
+
+/** Los filtros de las iniciativas (componentes/filtros.ts), bajo el buscador: «me toca» (las que llevo) y «sin próximo
+ *  paso». Cada uno se prende y se apaga; qué rige y cuántas deja lo pone la página (vista.ts). */
+export function filtrosIniciativas(lista: readonly cli.JsonProyecto[], campo: string, o: OpcionesIniciativas): string {
+    const voc = o.voc ?? SIN_VOCABULARIO;
+    const vivas = lista.filter(p => !cerradaIniciativa(p, voc));
+    const grupos: GrupoFiltro[] = [];
+    if (o.esMia) {
+        const mias = vivas.filter(p => papelDe(deIniciativa(p, campo, voc).dueno, o.esMia!) === 'llevo').length;
+        grupos.push({ clave: 'papel', nombre: 'mi papel', activa: '', opciones: [{ clave: 'llevo', nombre: 'me toca', cuenta: mias, ayuda: 'las que llevo: su dueño soy yo' }] });
     }
-    h.push('<div class="fila proy-cab ini-cols"><span class="at"></span><span class="que">iniciativa</span><span class="dueno-i">dueño</span>'
-        + `<span class="estado-p" title="${esc(voc.estados.length ? `estado: ${voc.estados.join(', ')}. Clic en uno: cambiarlo` : 'estado: el de su ficha')}">estado</span>`
-        + '<span class="ini-fuente"></span><span class="prox-i">próxima decisión</span><span class="tareas-p">tareas</span><span class="menu-col"></span></div>');
-    for (const g of gs) {
-        if (g.cabeza) h.push(filaIniciativa(g.cabeza, campo, { sel: o.sel, pend: o.cuentas?.get(g.cabeza.ruta), grupo: g.clave, cabeza: g.hijas.length, voc }));
-        else if (g.nombre) {
-            h.push(`<div class="fila ini-grupo${g.clave ? '' : ' ini-sueltas'}" data-grupo="${esc(g.clave)}"`
-                + ` title="${esc(g.clave ? `programa «${g.clave}»: ninguna iniciativa se llama así` : 'sin programa ni iniciativas que dependan de ellas')}">`
-                + `<span class="at"></span><span class="que"><span class="ini-nombre">${esc(g.nombre)}</span><span class="ini-n">${g.hijas.length}</span></span></div>`);
-        }
-        for (const p of g.hijas) h.push(filaIniciativa(p, campo, { sel: o.sel, pend: o.cuentas?.get(p.ruta), grupo: g.clave, hija: !!g.clave, voc }));
+    if (o.proximos) {
+        const sin = vivas.filter(p => o.proximos!.get(p.ruta)?.texto === '').length;
+        grupos.push({ clave: 'proximo', nombre: 'próximo paso', activa: '', opciones: [{ clave: 'sin', nombre: 'sin próximo paso', cuenta: sin,
+            ayuda: 'las que no tienen ni próxima decisión, ni una tarea abierta, ni una casilla pendiente' }] });
     }
-    h.push('</div>');
-    return h.join('');
+    return filtros({ accion: 'proy-filtro', clase: 'proy-filtros', grupos });
 }
 
 /** Cómo va una iniciativa, para el detalle: su estado, quién la lleva, lo próximo por decidir, su peso y su programa. */

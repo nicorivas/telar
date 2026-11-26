@@ -141,7 +141,8 @@ def _cache(ruta: str) -> str:
 
 
 #: lo que, al cambiar, recarga la página en modo desarrollo (lo rehace `npm run navegador:watch`)
-VIGILADOS = ("app.js", "marco.css", "indice.html", "componentes.js", "componentes.html")
+VIGILADOS = ("app.js", "marco.css", "indice.html", "componentes.js", "componentes.html", "lienzo-componentes.js",
+             "lienzo-componentes.css")
 
 #: lo que carga la página (indice.html y lo que pide): si cambia, una página que ya estaba abierta es de antes
 PAGINA = ("indice.html", "app.js", "marco.css")
@@ -160,6 +161,11 @@ def firma_pagina(carpeta: Path = CARPETA) -> str:
     return h.hexdigest()[:16]
 
 
+#: `telar serve` se está apagando (lo pone telar.ordenes.serve): los avisos a la página terminan, para que el servidor no
+#: tenga que cortarlos a la fuerza (sin esto, esperaba para siempre a que la página los cerrara)
+APAGANDO = False
+
+
 async def _cambios():
     """Un evento cada vez que cambia un archivo de la página; un latido cada 15 s para que nadie corte."""
     import asyncio
@@ -169,7 +175,7 @@ async def _cambios():
 
     antes, quieto = firma(), 0.0
     yield ": hola\n\n"
-    while True:
+    while not APAGANDO:
         await asyncio.sleep(0.3)
         quieto += 0.3
         ahora = firma()
@@ -217,7 +223,7 @@ async def _eventos(config):
     antes = firma()
     quieto = 0.0
     yield "retry: 3000\n\n"
-    while True:
+    while not APAGANDO:
         await asyncio.sleep(0.5)
         quieto += 0.5
         ahora = firma()

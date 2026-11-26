@@ -19,6 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import comun
 from comun import RAIZ, Prueba  # noqa: E402  (pone src/ en el camino)
 
 from telar import alojamiento, cuentas, instalacion, personas, unirse
@@ -347,6 +348,12 @@ def _cargar_ayudante():
     spec = importlib.util.spec_from_loader("telar_alojar", cargador)
     mod = importlib.util.module_from_spec(spec)
     cargador.exec_module(mod)
+    # lo de la máquina, en la de la sesión (que no existe): en el servidor, /etc/telar/puerta.toml está, y el
+    # ayudante pedía la cuenta de Tailscale en todos los pedidos de estas pruebas
+    m = comun.maquina()
+    mod.PUERTA = m / "etc" / "puerta.toml"
+    mod.REGISTRO = m / "etc" / "alojados.d"
+    mod.SPOOL = m / "spool" / "telar-alojar"
     return mod
 
 

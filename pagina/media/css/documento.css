@@ -61,7 +61,6 @@ dialog.ventana-dialogo.ventana-documento.lectura {
   }
 
   .doc-barra { flex: none; }
-  .doc-nombre { color: var(--texto-tenue); }
 
   /* debajo de la primera fila: el contenido y la barra, uno al lado del otro */
   .doc-medio {

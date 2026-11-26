@@ -5,7 +5,7 @@
 // hilo sea de otro mundo. Corre en Node, sin página: npm run prueba:barra
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -693,6 +693,32 @@ for (const [ahora, esperado] of [[new Date(2026, 10, 24, 15, 0).getTime(), '13:0
     assert.doesNotMatch(filaDe(/data-hilo="Vista"/), /\u{eb26}/u, 'sin guardados, nada');
     assert.match(filaDe(/data-id="servidor\|Nave"/), /title="1 nota: un prompt guardado[^"]*"><span class="i">\u{eb26}<\/span>1</u);
     modelo.hilos = antes;
+}
+
+// ── el alto de las cabeceras (DASHBOARD, AGENTES, HILOS…): el estándar de las filas con línea (--pantalla-barra-alto, el
+//    de la franja y el pulso de arriba y la barra de la pantalla de al lado), con un cuarto de línea arriba y abajo y su
+//    línea abajo; la que lleva también la de arriba (tras el aire de un grupo), un píxel más. Y un ícono no alarga ninguna
+//    fila: su letra va con su propio interlineado. Medido en la página (16,9 las filas, 26,3 y 27,3 las cabeceras):
+//    scripts/medir.py dashboard --todos -s '#barra .item.cabecera' -s '#barra .item:not(.cabecera)' ──
+{
+    const css = n => readFileSync(path.join(aqui, '..', 'media', 'css', n), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const tokens = css('tokens.css'), seccion = css('seccion.css'), item = css('item.css');
+    assert.match(tokens, /--pantalla-barra-alto: calc\(1lh \+ 2 \* var\(--e-1\) \+ 1px\);/, 'el token: una línea, un cuarto arriba y abajo, y su línea');
+    const regla = sel => {
+        const m = seccion.match(new RegExp(`^\\s*${sel.replace(/[.+]/g, c => `\\${c}`)} \\{([^}]*)\\}`, 'm'));
+        assert.ok(m, `seccion.css: ${sel}`);
+        return m[1];
+    };
+    const cab = regla('.item.cabecera');
+    assert.match(cab, /box-sizing: border-box;/, 'la cabecera: el alto incluye el relleno y la línea');
+    assert.match(cab, /height: var\(--pantalla-barra-alto\);/, 'la cabecera: del alto del token');
+    assert.match(cab, /padding-block: var\(--e-1\);/, 'la cabecera: un cuarto de línea arriba y abajo, el texto al medio');
+    assert.match(cab, /border-bottom: var\(--borde\);/, 'la cabecera: con su línea abajo');
+    assert.match(regla('.sep + .item.cabecera'), /height: calc\(var\(--pantalla-barra-alto\) \+ 1px\);/, 'con la línea de arriba, un píxel más');
+    const sinArriba = regla('.item.cabecera + .sep + .item.cabecera');
+    assert.match(sinArriba, /border-top: 0;/);
+    assert.match(sinArriba, /height: var\(--pantalla-barra-alto\);/, 'tras una plegada, sin la de arriba: el token');
+    assert.match(item, /^\.item \.i \{ line-height: 1; \}/m, 'un ícono no alarga la fila');
 }
 
 console.log('prueba:barra ok');

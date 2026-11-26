@@ -183,6 +183,10 @@ export function resumen(lista: cli.JsonEspera[], ahora = Date.now()): string {
     return `${lista.length} · ${n} ${n === 1 ? 'pregunta' : 'preguntan'}${vieja ? ` · la más vieja, hace ${e}` : ''}`;
 }
 
+/** El pie de la lista: cuántas esperan en los otros mundos (se ven con ese mundo puesto, o con ambos). */
+export const pieDeOtros = (fuera: number): string =>
+    `<div class="fila dim esperas-otros">${fuera === 1 ? 'una más, de otro mundo' : `${fuera} más, de otros mundos`}: se ven con ese mundo puesto</div>`;
+
 /** El cuerpo de la pestaña: las herramientas (buscar, filtrar por grupo) y los grupos con sus filas. */
 export function cuerpo(lista: cli.JsonEspera[], plegados: Set<string>, ahora = Date.now()): string[] {
     const de = (g: Grupo) => lista.filter(e => grupoDe(e.clase) === g.clave);
@@ -316,14 +320,14 @@ export class PantallaEsperas implements Pantalla {
         const enBuscador = document.activeElement?.id === 'buscar-e' ? (document.activeElement as HTMLInputElement).selectionStart ?? 0 : -1;
         const lista = this.visibles();
         const fuera = (this.lista?.length ?? 0) - (lista?.length ?? 0);
-        const barra = { nombre: 'te esperan', color: 'magenta',
-            resumen: lista ? `${resumen(lista)}${fuera ? ` · y ${fuera} en otros mundos` : ''}` : 'leyendo…',
+        // la barra, solo el título y ↻: cuántas y la más vieja, en el globo del título; las de otros mundos, al pie de la lista
+        const barra = { nombre: 'te esperan', color: 'magenta', ayuda: lista ? resumen(lista) : undefined,
             acciones: [{ accion: 'esperas-releer', icono: I.releer, ayuda: 'volver a leer lo que te espera' }], sinReleer: true };
         if (!lista) {
             this.t.pintar(['<div class="vacio">leyendo lo que te espera…</div>'], barra);
             return;
         }
-        this.t.pintar(cuerpo(lista, this.plegados), barra);
+        this.t.pintar([...cuerpo(lista, this.plegados), ...fuera ? [pieDeOtros(fuera)] : []], barra);
         this.montar(enBuscador);
     }
 

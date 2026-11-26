@@ -35,6 +35,7 @@ import { esc } from '../estilo';
 import { modelo } from '../modelo';
 import * as rutas from '../rutas';
 import { barra as barraPantalla } from '../componentes/pantalla';
+import { abrir as abrirPestana } from './abrir';
 import { ofrecidosPara } from './candidatos';
 import { Capa } from './comentarios';
 import { Lado } from './documento-lado';
@@ -198,13 +199,13 @@ function poner(el: HTMLElement, barra: string, cuerpo: string): void {
     }
 }
 
-/** La primera fila: «‹» si hay a qué volver, el nombre del archivo (gris, con su ruta entera al pasar el mouse) y, a la
- *  derecha, lo que se le hace y la ✕. */
+/** La primera fila: «‹» si hay a qué volver, el nombre del archivo como título (tal cual, gris, con su ruta entera al
+ *  pasar el mouse) y, a la derecha, lo que se le hace y la ✕. */
 function barra(nombre: string, ruta: string, previo: { hilo: string; archivo: string } | undefined, o: { html?: boolean; md?: boolean } = {}): string {
     const volver = previo ? { accion: 'doc-atras', icono: I.atras, ayuda: `volver a ${nombreDe(previo.archivo) || previo.hilo || 'lo anterior'} (⌫)` } : undefined;
     return barraPantalla({
         volver,
-        resumenHtml: `<span class="doc-nombre" title="${esc(ruta || nombre)}">${esc(nombre)}</span>`,
+        nombre, literal: true, ayuda: ruta || nombre,
         acciones: [
             ...(o.html ? [{ accion: 'doc-codigo', texto: 'código', ayuda: 'ver el código del .html, o de vuelta dibujado' }] : []),
             ...(o.md ? [{ accion: 'doc-lectura', icono: I.lectura, tono: 'violeta', si: lecturaPuesta(),
@@ -383,7 +384,7 @@ function atender(el: HTMLElement): void {
         if (origen !== undefined) {
             const href = a.getAttribute('href') ?? '';
             e.preventDefault();
-            if (/^https?:\/\//i.test(href)) window.open(href, '_blank', 'noopener,noreferrer');
+            if (/^https?:\/\//i.test(href)) void abrirPestana(href);
             else if (href && !href.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(href)) {
                 const maquina = MAQUINA.exec(origen)?.[0] ?? '', sin = origen.slice(maquina.length);
                 const dest = decodeURIComponent(href.split('#')[0]);
@@ -402,7 +403,7 @@ function atender(el: HTMLElement): void {
         if (!a.closest('.md, .coment-cuerpo') || !href || a.hasAttribute('download')) return;
         e.preventDefault();
         if (href.startsWith('#')) return;
-        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { window.open(href, '_blank', 'noopener'); return; }
+        if (/^[a-z][a-z0-9+.-]*:/i.test(href)) { void abrirPestana(href); return; }
         const destino = decodeURIComponent(href.split('#')[0]);
         // en un documento de otra máquina, lo relativo y lo absoluto también son de allá
         const actual = el.dataset.archivo ?? '';

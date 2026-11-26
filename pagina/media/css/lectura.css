@@ -30,6 +30,7 @@
     color: var(--dim);
     font-size: .85em;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .herramientas {

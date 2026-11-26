@@ -145,6 +145,21 @@ class ElAgente(Prueba):
     def test_un_editor_de_git_de_la_persona_queda(self):
         self.assertIn("GIT_EDITOR", self._correr({"GIT_EDITOR": "nvim"}))
 
+    def _valor(self, nombre: str, entorno_de_afuera: dict) -> str | None:
+        comando = lanzar.envolver(["env"], "faro")
+        linea = comando[2].replace('exec "${SHELL:-/bin/sh}" -l', "true")
+        afuera = {k: v for k, v in os.environ.items() if k != nombre}
+        hecho = subprocess.run(["sh", "-c", linea], capture_output=True, text=True, timeout=5,
+                               env={**afuera, **entorno_de_afuera})
+        return next((l.split("=", 1)[1] for l in hecho.stdout.splitlines() if l.startswith(f"{nombre}=")), None)
+
+    def test_el_agente_escribe_los_enlaces_con_la_direccion_a_la_vista(self):
+        # sin esto, Claude Code esconde la dirección de un enlace en un OSC 8, que mosh bota (entorno.DEL_AGENTE)
+        self.assertEqual(self._valor("FORCE_HYPERLINK", {}), "0")
+
+    def test_si_la_persona_puso_los_hipervinculos_manda_la_suya(self):
+        self.assertEqual(self._valor("FORCE_HYPERLINK", {"FORCE_HYPERLINK": "1"}), "1")
+
 
 class _TmuxQueAnota(tmux.Tmux):
     """Un tmux de mentira con un entorno global enlatado: anota lo que se le pide."""

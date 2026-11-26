@@ -219,7 +219,7 @@
   --pantalla-boton: var(--texto-tenue);
   --pantalla-boton-hover: var(--texto);
   --pantalla-vista-si: var(--violeta);
-  --pantalla-resumen: var(--texto-tenue);
+  --pantalla-literal: var(--texto-tenue);
 
   /* las pestañas (componentes/pestanas.ts, pestanas.css): las demás, tenues (como los botones de una barra); la abierta,
      con la superficie de la selección del ítem activo y su marca (la del tema), y el texto en su color; la cuenta, tenue */

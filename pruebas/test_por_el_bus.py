@@ -37,6 +37,10 @@ class PorElBus(Prueba):
         p = mock.patch.object(mod_bus, "enviar", side_effect=enviar)
         p.start()
         self.addCleanup(p.stop)
+        # los hilos de juguete no están en ningún estado: que el destino exista lo prueba test_mensaje_arroba
+        p = mock.patch("telar.ordenes.mensaje._alguien_lee")
+        p.start()
+        self.addCleanup(p.stop)
 
     def test_el_correo_a_un_hilo_propio_va_por_el_bus(self):
         from telar.ordenes import correo

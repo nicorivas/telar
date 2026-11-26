@@ -49,6 +49,8 @@ export const I = {
     // un mundo (`[mundos]`: trabajo, personal, ambos): el planeta con anillo, delante de su nombre en la banda y en la
     // ventana de mundos (de Font Awesome Extension, en Nerd Fonts: Codicons no tiene planeta)
     planeta: '\u{e22e}',
+    // lo que llega (el modo de las entradas: el WhatsApp, las lecturas): la bandeja, el mismo glifo de desarchivar
+    bandeja: '\u{eb09}',
 } as const;
 
 /** La etapa de un plazo (la fase que dice su fuente) como la clase de trabajo que hay en ella: preparar (la lista),

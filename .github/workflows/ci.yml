@@ -87,9 +87,15 @@ jobs:
         working-directory: pagina
       - run: npm run prueba:readme
         working-directory: pagina
+      - run: npm run prueba:proyectos
+        working-directory: pagina
       - run: npm run prueba:nota
         working-directory: pagina
       - run: npm run prueba:esperas
+        working-directory: pagina
+      - run: npm run prueba:esperando
+        working-directory: pagina
+      - run: npm run prueba:rutinas
         working-directory: pagina
       - run: npm run prueba:contestar
         working-directory: pagina
@@ -101,7 +107,11 @@ jobs:
         working-directory: pagina
       - run: npm run prueba:portapapeles
         working-directory: pagina
+      - run: npm run prueba:abrir
+        working-directory: pagina
       - run: npm run prueba:lienzo
+        working-directory: pagina
+      - run: npm run prueba:lienzo-componentes
         working-directory: pagina
       - run: npm run prueba:avisos
         working-directory: pagina
@@ -114,6 +124,8 @@ jobs:
       - run: npm run prueba:modos-mundo
         working-directory: pagina
       - run: npm run prueba:barra
+        working-directory: pagina
+      - run: npm run prueba:pantalla
         working-directory: pagina
       - run: npm run prueba:dormidos
         working-directory: pagina

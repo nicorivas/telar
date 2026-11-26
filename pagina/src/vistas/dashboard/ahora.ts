@@ -88,22 +88,30 @@ function proyecto(c: Contexto | undefined, cargando: boolean): string {
 }
 
 /** La pantalla entera: la barra para moverse entre bloques, y el bloque con lo suyo. */
-/** La barra de «ahora» (componentes/pantalla.ts): qué bloque se mira (n de m) y cuándo, si es otro momento; moverse
- *  entre los bloques, fijar el que se ve o volver a lo que toca, y elegir otro momento en el calendario. */
+/** La barra de «ahora» (componentes/pantalla.ts): moverse entre los bloques (cuál de cuántos, en su globo), fijar el
+ *  que se ve o volver a lo que toca, y elegir otro momento en el calendario. Si es otro momento, lo dice la pantalla
+ *  (`textoSimulado`). */
 export function barraAhora(o: { evs: EventoCal[]; i: number; ahora: number; fijo: boolean; simulado?: boolean; cargandoDia?: boolean; elegir?: string }): EnBarra {
-    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-    const fecha = new Date(o.ahora);
     const hay = !o.cargandoDia && !!o.evs[o.i];
+    // cuál de cuántos, en el globo de las flechas: la barra no lleva cuentas
+    const cual = hay ? ` · este es el ${o.i + 1} de ${o.evs.length}` : '';
     const acciones: AccionDePantalla[] = hay ? [
-        { accion: 'ahora-mover', valor: '-1', icono: I.atras, ayuda: 'el bloque anterior' },
-        { accion: 'ahora-mover', valor: '1', icono: I.siguiente, ayuda: 'el bloque siguiente' },
+        { accion: 'ahora-mover', valor: '-1', icono: I.atras, ayuda: `el bloque anterior${cual}` },
+        { accion: 'ahora-mover', valor: '1', icono: I.siguiente, ayuda: `el bloque siguiente${cual}` },
     ] : [];
     if (o.fijo || o.simulado) acciones.push({ accion: 'ahora-soltar', icono: I.deshacer, tono: 'amarillo', ayuda: 'volver a lo que toca ahora: la vista sigue al reloj' });
     else if (hay) acciones.push({ accion: 'ahora-fijar', icono: I.marca, tono: 'amarillo', ayuda: 'fijar: que la vista no cambie sola al pasar al bloque siguiente' });
     acciones.push({ accion: 'ahora-elegir', icono: I.reloj, tono: 'azul', si: o.elegir !== undefined,
         ayuda: 'elegir en el calendario otro momento: qué mostraría entonces' });
-    const cuando = o.simulado ? `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(o.ahora)}` : '';
-    return { resumen: [cuando, hay ? `${o.i + 1} de ${o.evs.length}` : ''].filter(Boolean).join(' · '), acciones };
+    return { acciones };
+}
+
+/** Lo que se mira cuando «ahora» no es el reloj («simulando mié 25 · 15:00»): la primera línea de la pantalla, no la
+ *  barra. */
+export function textoSimulado(ahora: number): string {
+    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const fecha = new Date(ahora);
+    return `simulando ${dias[fecha.getDay()]} ${fecha.getDate()} · ${hm(ahora)}`;
 }
 
 export function htmlAhora(o: {
@@ -116,6 +124,8 @@ export function htmlAhora(o: {
 }): string[] {
     const h: string[] = [cuerpo('amarillo')];
     if (o.aviso) h.push(`<div class="vacio falla">${esc(o.aviso)}</div>`);
+    // otro momento que el reloj: lo dice arriba (antes iba en la barra, que ya no lleva estados); ↶ en la barra vuelve
+    if (o.simulado) h.push(`<div class="fila dim ahora-simulado">${esc(textoSimulado(o.ahora))} · ${I.deshacer} vuelve a lo que toca ahora</div>`);
     // el calendario del día, desplegado bajo la barra: un clic en un bloque mueve «ahora» a ese momento
     const desplegable = o.elegir === undefined ? '' : '<div class="ahora-elegir">'
         + `<div class="cal-nav"><a data-accion="ahora-dia" data-valor="-1" title="día anterior">‹</a>`

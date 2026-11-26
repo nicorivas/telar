@@ -50,7 +50,10 @@ def pendientes(ctx, *, repo: bool = False, hechos: bool = False, proveedores: bo
         encontrado, problema = _comun.resolver(tel, hilo)
         if encontrado is None:
             raise ErrorDeServicio(problema, 404)
-        filas = [f for f in filas if f["hilo"] == encontrado.nombre]
+        # los suyos, y los del documento de su carpeta aunque vayan con otro hilo de la misma (juntar los da una vez)
+        carpeta = _comun.ruta_relativa(encontrado.ruta, tel.raiz) if encontrado.ruta else ""
+        filas = [f for f in filas if f["hilo"] == encontrado.nombre
+                 or (carpeta and not f.get("proveedor") and f.get("ruta") == carpeta)]
     filas.sort(key=lambda f: (not f["en_curso"], f["hilo"] or "~", f["ref"]))
     if limite:
         filas = filas[:limite]

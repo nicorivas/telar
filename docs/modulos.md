@@ -105,11 +105,56 @@ carpeta»).
 sus propias consultas (`consulta`), el menú de una entidad (`menu`), abrirla en la página (`abrir`, con
 `{direccion: "tarea:T84"}`: lo mismo que un clic en un enlace a esa dirección) o la ventana de la instrucción con lo
 que muestra como contexto (`instruccion`, con `{contexto, destino?, texto?}`: un chat, para que un agente lo procese),
-sin pedir permiso; lo que cambia tus documentos (`fecha`, `idea`), con el permiso de la persona.
+sin pedir permiso; el menú de la página con sus opciones (`opciones`), también; lo que cambia tus documentos (`fecha`,
+`idea`), con el permiso de la persona.
 
 Un lienzo de pestaña puede abrirse en un ítem suyo cuando la página lo pide (la ventana de un chat de foco: «abrir el
 chat»): lo recibe en `window.lienzo.item` si se pinta entonces, o como el evento `lienzo-item` (con el ítem en
 `detail`) si ya estaba pintado. La dirección `pestana:<nombre>` abre la pestaña; el ítem lo pasa la página.
+
+**Las pestañas y los filtros de telar.** Para que su página se vea y se maneje como las de telar sin copiar nada, un
+lienzo pide los componentes de la página con `"componentes": true` ([contratos.md](contratos.md), «telar seccion»), y
+arma con ellos sus filas: en la primera, sus vistas como pestañas; en la segunda, el buscador con sus filtros a la
+derecha. Cada una del alto de una barra de telar, con su línea abajo de borde a borde:
+
+```js
+const C = window.lienzo.componentes;                 // undefined en un telar que no los tiene: dibujar lo de antes
+if (C) cabecera.innerHTML =
+    C.pestanas({ nombre: 'vistas', accion: 'vista', activa: vista,
+        pestanas: [{ valor: 'lista', nombre: 'lista', icono: C.iconos.lista, cuenta: 12 },
+                   { valor: 'tablero', nombre: 'tablero', icono: C.iconos.tabla }],
+        fin: '<a class="pestana" data-accion="nueva">+ nueva</a>' })
+  + C.barraBuscar({ placeholder: 'ideas', valor: texto, cuenta: { texto: '4 de 12' },
+        herramientas: C.filtros({ accion: 'filtro', grupos: [
+            { clave: 'area', nombre: 'área', plegado: true, activa: area || 'todas', siempre: 'todas',
+              opciones: [{ clave: 'todas', nombre: 'todas' }, { clave: 'norte', nombre: 'norte', cuenta: 3 }] }] }) });
+cabecera.addEventListener('click', e => {
+    const t = e.target.closest('[data-accion]');
+    if (t?.dataset.accion === 'vista') { vista = t.dataset.valor; pintar(); }
+    if (t?.dataset.accion === 'filtro') { const [grupo, clave] = t.dataset.id.split(':'); /* filtrar */ }
+});
+```
+
+Las props son las de la página (`pagina/src/componentes/pestanas.ts`, `buscador.ts` y `filtros.ts`, y su página en
+/componentes). Lo que hacen solos, sin que el lienzo lo repita: las pestañas que no caben van a un «⋯» al dibujarse y al
+cambiar el ancho (repintar la cabecera entera está bien: la fila nueva se acomoda sola), con su teclado (← → Inicio Fin
+⏎); el ✕ del buscador lo borra y avisa con un `input`; el «⋯» y un grupo de filtros plegado abren el menú de la página
+(`window.lienzo.pedir("opciones")`, que el lienzo también puede usar con `C.elegir(opciones, ancla, titulo)`), y lo elegido
+le llega como el clic en esa pestaña o esa opción. Los íconos de los componentes van en la letra de la página
+(`telar-iconos`); si el lienzo tiene su propia letra con su `.i`, que ponga `telar-iconos` de respaldo para usar
+`C.iconos`. La hoja de los componentes entra antes que la del lienzo y sin capa: un estilo suyo para `input` o `a` le
+gana a uno de los componentes si pesa igual, así que conviene acotarlo (`#cuerpo input`).
+
+**La prosa de telar.** Un documento (el README de lo que muestra el lienzo) se lee en la misma prosa que el visor en
+modo lectura y la lectura de un hilo (`media/css/prosa.css`): `await C.prosa(markdown, { ruta })` da su HTML, dentro de
+un `.prosa.prosa-md`. El markdown lo dibuja la página como el visor (`window.lienzo.pedir("prosa", {markdown})`, sin
+permiso: no cambia nada), así que markdown-it no va en cada lienzo; sin el frontmatter y sin HTML propio. `ruta` es la
+del archivo, relativa a la raíz: sus enlaces relativos abren ese archivo en el visor de la página (uno a una carpeta, su
+README), uno a un título (`#…`) baja hasta él, y uno de afuera no se sigue (el lienzo no tiene red). Con `version` 2 o
+más; un telar que no lo dibuja da el texto tal cual, en la misma prosa.
+
+Desplegar en este orden: primero telar, después el módulo. Un telar sin componentes ignora el campo, y el lienzo que
+mira `window.lienzo.componentes` antes de usarlos dibuja lo de antes; un módulo viejo no los pide y queda igual.
 
 **Sus ventanas.** Un módulo puede pedir que salga una ventana en la página cuando ocurre algo, esté donde esté la persona:
 la de WhatsApp sale cuando llega un mensaje a un chat de foco, para responder o aplazar sin ir a su pestaña. `[ventanas]

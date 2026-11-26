@@ -22,5 +22,8 @@ comprobar:
   # la página que sirve cada máquina, en su puerto y con su llave: la misma en todas
   - pagina: /pagina.json
     igual: firma
+    # y que siga contestando unos segundos después: el 26-nov-2026 arrancó, pasó la comprobación y a los 8 s ya no
+    # escuchaba (el nodo se cayó al preparar el bus y el servicio quedó vivo y sordo)
+    sigue: 15
   # la API detrás de la página (con /api)
   - pagina: /api/salud

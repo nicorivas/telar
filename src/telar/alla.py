@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
+import time
 from datetime import date, datetime
 
 from telar.modelo import Item
@@ -60,8 +62,60 @@ def consultar_aqui(config, nombre: str, dia: str) -> dict:
     return {"ok": True, "items": [item_a_dict(i) for i in items], "fallas": fallas}
 
 
+# ── lo consultado, por un rato (en `telar serve`) ──
+#
+# El día (`GET /hoy`) pregunta a los proveedores (el calendario, las tareas, que pueden vivir en otra máquina): segundos
+# de espera cada vez. En el servicio lo piden a la vez la página, el teléfono y su propio refresco: con MEMORIA, lo
+# consultado sirve unos segundos a todos, y quien llega mientras otro consulta lo mismo espera esa consulta en vez de
+# hacer otra. Cualquier pedido a la API que cambia algo lo olvida (`olvidar`, telar.api): marcar una tarea hecha y
+# volver a pedir el día trae la lista nueva. Lo que cambie por otro lado (un agente que cierra una tarea con la CLI) se
+# ve a lo más MEMORIA segundos después. Una consulta con fallas no se guarda: la próxima vuelve a preguntar. Fuera del
+# servicio (la CLI) MEMORIA es 0 y se consulta siempre.
+
+#: cuántos segundos sirve lo consultado (0: nada se guarda). `telar serve` lo pone en MEMORIA_SERVE
+MEMORIA = 0.0
+MEMORIA_SERVE = 30.0
+_guardado: dict[tuple, tuple[float, list[Item], list[str]]] = {}
+_candados: dict[tuple, threading.Lock] = {}
+_candado = threading.Lock()
+#: cuántas veces se olvidó: una consulta que empezó antes de un olvido no se guarda (puede traer lo de antes)
+_olvidos = 0
+
+
+def olvidar() -> None:
+    """Lo consultado ya no sirve (algo cambió): la próxima vez se pregunta de nuevo."""
+    global _olvidos
+    with _candado:
+        _olvidos += 1
+        _guardado.clear()
+
+
+def _clave(proveedores: list, dia: date) -> tuple:
+    return (dia.isoformat(), tuple((p.nombre, repr(sorted((getattr(p, "opciones", {}) or {}).items()))) for p in proveedores))
+
+
 def consultar(config, proveedores: list, dia: date) -> tuple[list[Item], list[str]]:
-    """Como `proveedores.consultar`, pero los que viven en otra máquina se le piden a ella."""
+    """Como `proveedores.consultar`, pero los que viven en otra máquina se le piden a ella. Con MEMORIA, lo de hace menos
+    de MEMORIA segundos, si no se olvidó desde entonces."""
+    if MEMORIA <= 0:
+        return _consultar(config, proveedores, dia)
+    clave = _clave(proveedores, dia)
+    with _candado:
+        uno = _candados.setdefault(clave, threading.Lock())
+    with uno:
+        with _candado:
+            hay = _guardado.get(clave)
+            desde = _olvidos
+        if hay is not None and time.monotonic() - hay[0] < MEMORIA:
+            return list(hay[1]), list(hay[2])
+        items, fallas = _consultar(config, proveedores, dia)
+        with _candado:
+            if not fallas and desde == _olvidos:
+                _guardado[clave] = (time.monotonic(), list(items), list(fallas))
+        return items, fallas
+
+
+def _consultar(config, proveedores: list, dia: date) -> tuple[list[Item], list[str]]:
     from telar import bus as mod_bus
     from telar import proveedores as mod_prov
 

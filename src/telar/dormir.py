@@ -204,8 +204,11 @@ def _edad(etime: str) -> float:
 def procesos() -> dict[int, Proceso]:
     """Los procesos de la máquina, por pid. Vacío si no se pudo preguntar."""
     try:
-        # `errors="replace"`: ps corta los args largos por bytes, a veces a mitad de un carácter UTF-8
-        r = subprocess.run(["ps", "-axo", "pid=,ppid=,etime=,args="], capture_output=True, text=True,
+        # `errors="replace"`: ps corta los args largos por bytes, a veces a mitad de un carácter UTF-8. `-ww`: los
+        # args enteros, sin cortar al ancho de una pantalla. Sin él, el ps de Linux (procps-ng 4.0.4, el del
+        # servidor) a veces los cortaba a 80 columnas aunque la salida no fuera una terminal, según el entorno del
+        # proceso, y el panel de un dormido no se reconocía: la marca va al final de su `sh -c` (26-nov-2026)
+        r = subprocess.run(["ps", "-ww", "-axo", "pid=,ppid=,etime=,args="], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=10)
     except (OSError, subprocess.SubprocessError):
         return {}

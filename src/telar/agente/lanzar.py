@@ -33,7 +33,7 @@ from pathlib import Path
 
 from telar import agente as mod_agente
 from telar.agente import ErrorDeAgente
-from telar.entorno import linea_unset
+from telar.entorno import linea_del_agente, linea_unset
 
 #: los procesos que, si son lo único que corre en un panel, significan «aquí no hay nadie».
 SHELLS = frozenset({"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "-zsh", "-bash"})
@@ -219,12 +219,13 @@ def _programa(nombre: str) -> str:
 
 
 def envolver(palabras: list[str], hilo: str) -> list[str]:
-    """El agente dentro de un `sh -c` que borra lo que no hereda (`telar.entorno`), exporta el hilo y deja una shell
-    al salir."""
+    """El agente dentro de un `sh -c` que borra lo que no hereda (`telar.entorno`), le pone lo suyo (los enlaces con la
+    dirección a la vista, `telar.entorno.DEL_AGENTE`), exporta el hilo y deja una shell al salir."""
     if palabras:
         palabras = [_programa(palabras[0]), *palabras[1:]]
     linea = (
         f"{linea_unset()}; "
+        f"{linea_del_agente()}; "
         f"export TELAR_HILO={shlex.quote(hilo)}; "
         f"{shlex.join(palabras)}; "
         'exec "${SHELL:-/bin/sh}" -l'

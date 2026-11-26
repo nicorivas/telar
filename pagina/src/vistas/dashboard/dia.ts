@@ -157,7 +157,27 @@ async function leer(tocaRed: boolean, desde: number): Promise<Dia> {
         generacion: desde,
     };
     cache = { dia: d, hora: Date.now() };
+    cli.recordar('dia', { cache, agenda, deProveedores });
     return d;
+}
+
+/** Lo que se sabía del día antes de recargar esta pestaña (cli.recordar: un despliegue la recarga), si es de hoy: el
+ *  día, la agenda y las tareas de los proveedores, con la hora en que se leyeron. Así, lo que se ve al volver es lo de
+ *  antes, y lo que toca releer se relee igual que sin recargar (lo de disco al rato; la red, a los cinco minutos). */
+function retomarRecordado(): void {
+    const r = cli.recordado<{ cache?: { dia: Dia; hora: number }; agenda?: typeof agenda; deProveedores?: cli.JsonFila[] }>('dia');
+    const v = r?.valor;
+    if (!v?.cache?.dia || v.cache.dia.fecha !== hoyAqui()) return;
+    cache = { dia: { ...v.cache.dia, generacion: generacion }, hora: v.cache.hora };
+    if (v.agenda && v.agenda.fecha === hoyAqui()) agenda = v.agenda;
+    deProveedores = v.deProveedores ?? [];
+}
+retomarRecordado();
+
+/** El día que ya se tiene, sin leer nada (el de antes de recargar, o el último leído), si es de hoy: para dibujar algo
+ *  mientras llega la lectura. */
+export function diaGuardado(): Dia | undefined {
+    return cache?.dia.fecha === hoyAqui() ? cache.dia : undefined;
 }
 
 /** Los proveedores que no contestaron (el calendario, el correo…), en la franja de avisos (web/avisos.ts): una fuente que

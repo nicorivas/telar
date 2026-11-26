@@ -210,8 +210,8 @@ export function todo(p: PropsTodo): string {
     return h.join('');
 }
 
-/** La barra de su pantalla: «todo», cuántas cosas hay en el mundo puesto y en los otros; con una fuente abierta, «‹» y su
- *  nombre. Sin número que pida atención: las cuentas de Todo son tenues. */
+/** La barra de su pantalla: «todo»; con una fuente abierta, «‹» y su nombre. Cuántas cosas hay en el mundo puesto y en
+ *  los otros, en el globo del título: a la vista ya lo dice cada fuente («+N en otros mundos») y el buscador. */
 export function barraTodo(p: PropsTodo): Barra {
     const total = p.fuentes.reduce((n, f) => n + cuantas(f, p.puesto), 0);
     const otros = p.fuentes.reduce((n, f) => n + enOtros(f, p.puesto), 0);
@@ -221,7 +221,7 @@ export function barraTodo(p: PropsTodo): Barra {
         : `${total}${mundo ? ` en ${mundo.nombre}` : ' en todos los mundos'}${otros ? ` · y ${otros} en los otros` : ''}`;
     return {
         volver: f ? { accion: 'todo-volver', icono: I.atras, ayuda: 'volver a todo (⎋)' } : undefined,
-        nombre: f ? f.nombre : 'todo', color: f ? f.color : 'cian', resumen,
+        nombre: f ? f.nombre : 'todo', color: f ? f.color : 'cian', ayuda: resumen,
         acciones: [{ accion: 'todo-releer', icono: I.releer, ayuda: 'volver a leer (r)' }],
     };
 }

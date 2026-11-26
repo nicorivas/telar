@@ -77,6 +77,21 @@ def sin_marcas(entorno: Mapping[str, str]) -> dict[str, str]:
     return {k: v for k, v in entorno.items() if heredable(k, v)}
 
 
+#: Lo que se le pone a cada agente que telar arranca (`linea_del_agente`). `FORCE_HYPERLINK=0`: que un enlace se escriba
+#: con su dirección a la vista. Claude Code, dentro de tmux, escribe `[Doc](https://…)` como un hipervínculo OSC 8: a la
+#: vista solo «Doc», y la dirección escondida en la secuencia. El OSC 8 no sobrevive a mosh (lo bota entero; medido con
+#: mosh 1.4.0) ni a un tmux que no se lo pasa a quien mira (el de la otra máquina, enganchado por mosh-server): en la
+#: terminal de un hilo del servidor mirado desde el laptop o el teléfono llegaba «Doc» sin dirección, y el clic no hacía
+#: nada. Con esto escribe «Doc (https://…)», y la página encuentra la dirección por donde llegue (web/enlaces.ts). Si la
+#: persona ya la tiene puesta, manda la suya.
+DEL_AGENTE = {"FORCE_HYPERLINK": "0"}
+
+
+def linea_del_agente() -> str:
+    """Lo que pone `DEL_AGENTE` en una shell, antes de arrancar al agente, sin pisar lo que la persona ya puso."""
+    return "; ".join(f': "${{{k}={v}}}"; export {k}' for k, v in DEL_AGENTE.items())
+
+
 def linea_unset() -> str:
     """Lo que borra esas variables en una shell, antes de arrancar algo: el último resguardo, por si llegaron igual
     (un servidor de tmux con el entorno sucio)."""

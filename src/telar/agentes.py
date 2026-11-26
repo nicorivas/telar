@@ -282,6 +282,14 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
                 if d.is_dir() and not d.name.startswith(("_", ".")) and (d / "CLAUDE.md").is_file()]
     de_siempre = {d.name: _nombre(d) for d in carpetas}
     anotados = _anotados(config)
+    # cada vínculo resuelto una vez, no una por agente: resolver cuesta varios lstat, y con cientos de hilos y una
+    # decena de agentes eran miles por cada lista de hilos
+    destinos: list[tuple[str, Path]] = []
+    for hilo, rel in (vinculos or {}).items():
+        try:
+            destinos.append((hilo, (raiz / rel).resolve()))
+        except OSError:
+            continue
     for d in carpetas:
         de_antes = de_siempre[d.name]
         definido, problemas = leer_definicion(d)
@@ -298,11 +306,7 @@ def descubrir(config, vinculos: dict[str, str] | None = None) -> list[Agente]:
         hilos = [nombre, *definido.get("hilos", ()), *(extra.hilos if extra else ()),
                  *(h for h, c in anotados.items() if c == d.name)]
         real = d.resolve()
-        for hilo, rel in (vinculos or {}).items():
-            try:
-                destino = (raiz / rel).resolve()
-            except OSError:
-                continue
+        for hilo, destino in destinos:
             # solo el vínculo a su casa: un proyecto que vive en una subcarpeta suya no es él
             if destino == real and hilo not in hilos:
                 hilos.append(hilo)

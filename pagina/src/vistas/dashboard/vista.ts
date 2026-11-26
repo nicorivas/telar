@@ -40,7 +40,7 @@ export interface VistaDia {
 
 interface Estado {
     modo: string; q: string; todas: boolean; pq: string; po: string; to: string; area: string; dueno: string;
-    pc: boolean; pf: Record<string, string>; px?: boolean; pd?: string; ordenP?: string; ordenC?: string; tm?: string; tq?: string; cq?: Record<string, string>; tmv?: number; pfv?: number;
+    pc: boolean; pf: Record<string, string>; pl?: string[]; pa?: string[]; pd?: string; ordenP?: string; ordenC?: string; tm?: string; tq?: string; cq?: Record<string, string>; tmv?: number; pfv?: number;
 }
 
 const LLAVE = 'telar.dashboard.estado';
@@ -235,12 +235,23 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             // las demás, con la celda del ícono en blanco: si no, la que rige queda corrida de las otras
             icono: o.si ? I.hecha : '\u00a0', color: o.si ? 'acento' : undefined,
         })), donde, nombre);
-        if (elegida) elegirFiltro(elegida.id);
+        // el de proyectos tiene su estado (vista.ts, `elegirFiltroProy`); los demás son de «tareas»
+        if (elegida) (g.querySelector('.filtros-op[data-accion="proy-filtro"]') ? elegirFiltroProy : elegirFiltro)(elegida.id);
     }
-    // la pantalla de proyectos: las filas llegan en su orden de siempre (`data-orden`), por estado, con la cabecera de
-    // cada sección (en ejecución, por partir…) entre ellas. Aquí se filtran por todas las palabras y por el área, los
-    // cerrados se esconden salvo que se pidan o se busquen, y se ordenan por la columna elegida: entonces van sin
-    // secciones, y lo vacío siempre al final; empatadas, en su orden de siempre
+    // un filtro de proyectos: el área elige una («todas» las suelta, y otro clic en la que rige, también) y «cerrados»
+    // se prende y apaga
+    function elegirFiltroProy(id: string): void {
+        const i = id.indexOf(':'), g = id.slice(0, i), v = id.slice(i + 1);
+        if (g === 'cerrados') estado.pc = !estado.pc;
+        else if (g === 'area' || g === 'papel' || g === 'proximo') { const pf = { ...(estado.pf || {}) }; pf[g] = pf[g] === v ? '' : v; estado.pf = pf; }
+        else return;
+        guardar(); aplicarProyectos();
+    }
+    // la pantalla de proyectos: las filas llegan en su orden de siempre (`data-orden`), por estado, cada sección con su
+    // cabecera (seccion(): en ejecución, por partir…) y su separador. Aquí se filtran por todas las palabras y por el
+    // área, los cerrados se esconden salvo que se pidan o se busquen, las secciones plegadas esconden sus filas (salvo
+    // buscando: ahí se abre lo que calza), y se ordenan por la opción elegida: entonces van sin secciones, y lo vacío
+    // siempre al final; empatadas, en su orden de siempre
     const proyectosVisibles = () => todos('#proyectos .proy, #iniciativas .proy').filter(f => !f.hidden);
     const COLS_P = ['nombre', 'fase', 'plazo', 'pend'];
     const compararProy = (k: string) => (a: HTMLElement, b: HTMLElement) => {
@@ -253,63 +264,132 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         if (k === 'fase') return Number(x) - Number(y);
         return x.localeCompare(y);
     };
-    // las iniciativas (proyectos.ts, iniciativas.ts): lo buscado, como en los proyectos; un grupo se ve si le queda alguna,
-    // y la que lo encabeza se ve con él aunque no calce (dice de qué programa son). Devuelve [las que se ven, todas]
+    // una sección se pliega y se recuerda: las que empiezan abiertas, en `pl` si se plegaron; las que empiezan plegadas
+    // (`data-plegada`: las ideas de las iniciativas), en `pa` si se abrieron. Solo se guarda lo que cambió la persona
+    const plegada = (clave: string, porDefecto = false) => porDefecto ? !(estado.pa ?? []).includes(clave) : (estado.pl ?? []).includes(clave);
+    // la flecha de una cabecera (la primera ranura de una sección, la última de un submenú): abierta o plegada
+    const flecha = (cab: HTMLElement, abierta: boolean) => {
+        const r = cab.querySelectorAll<HTMLElement>('.item-ranura .i');
+        const i = cab.classList.contains('submenu') ? r[r.length - 1] : r[0];
+        if (i) i.textContent = abierta ? I.abierto : I.plegado;
+    };
+    // el separador antes de una cabecera se va si ella no se ve, o si la sección de arriba no muestra filas (plegada o
+    // vacía): la línea de abajo de esa cabecera ya las aparta (proyectos.css, como seccion.css en la barra)
+    // (`arriba`: si lo de antes, en otra lista, termina con filas). Devuelve si esta termina con filas
+    const separadores = (c: HTMLElement | null, arriba = true): boolean => {
+        let filasArriba = arriba;
+        for (const el of c?.children ?? []) {
+            if (!(el instanceof HTMLElement)) continue;
+            if (el.classList.contains('sep')) {
+                const cab = el.nextElementSibling as HTMLElement | null;
+                el.hidden = !cab || cab.hidden || !filasArriba;
+            } else if (el.classList.contains('cabecera')) { if (!el.hidden) filasArriba = false; }
+            else if (!el.hidden && (el.classList.contains('proy') || el.classList.contains('submenu'))) filasArriba = true;
+        }
+        return filasArriba;
+    };
+    // las iniciativas (proyectos › interno: iniciativas.ts): lo buscado y los filtros («me toca», «sin próximo paso»),
+    // como en los proyectos; un grupo se ve si le queda alguna, y la que lo encabeza se ve con él aunque no calce (dice
+    // de qué grupo son). Sus ideas, en su submenú, empiezan plegadas. Buscando o filtrando, se abre lo que calza.
+    // Devuelve [las que se ven, todas]
     const aplicarIniciativas = (partes: string[]): [number, number] => {
         const c = $('iniciativas'); if (!c) return [0, 0];
+        const lista = c.closest('.proy-lista') ?? raiz;
+        const pf = estado.pf || {};
+        const hay = (g: string) => !!lista.querySelector(`.filtros-grupo[data-grupo="${g}"]`);
+        const papel = hay('papel') ? pf.papel || '' : '', proximo = hay('proximo') ? pf.proximo || '' : '';
+        const texto = conTodas(partes);
+        const pasa = (f: HTMLElement, p = papel, x = proximo) => texto(f) && (!p || f.dataset.papel === p) && (!x || f.dataset.proximo === x);
         const filas = [...c.querySelectorAll<HTMLElement>('.ini')];
-        const calza = conTodas(partes);
-        const conAlguna = new Set(filas.filter(f => !f.classList.contains('ini-cabeza') && calza(f)).map(f => f.dataset.grupo ?? ''));
+        const abrir = partes.length > 0 || !!papel || !!proximo;
+        const conAlguna = new Set(filas.filter(f => !f.classList.contains('ini-cabeza') && pasa(f)).map(f => f.dataset.grupo ?? ''));
+        const ideasCon = new Set(filas.filter(f => f.dataset.idea === '1' && pasa(f)).map(f => f.dataset.grupo ?? ''));
         let n = 0;
         for (const f of filas) {
-            const cabeza = f.classList.contains('ini-cabeza');
-            f.hidden = !calza(f) && !(cabeza && conAlguna.has(f.dataset.grupo ?? ''));
-            if (!f.hidden && (calza(f) || !partes.length)) n += 1;
+            const g = f.dataset.grupo ?? '';
+            const ve = pasa(f) || (f.classList.contains('ini-cabeza') && conAlguna.has(g));
+            f.hidden = !ve || (!abrir && (plegada(`ini:${g}`) || (f.dataset.idea === '1' && plegada(`ideas:${g}`, true))));
+            if (pasa(f)) n += 1;
         }
-        for (const g of c.querySelectorAll<HTMLElement>('.ini-grupo')) g.hidden = !conAlguna.has(g.dataset.grupo ?? '');
-        const cols = c.querySelector<HTMLElement>('.ini-cols'); if (cols) cols.hidden = n === 0;
-        const cab = c.querySelector<HTMLElement>('.ini-sec-cab .proy-sec-n'); if (cab) cab.textContent = String(n);
+        for (const cab of c.querySelectorAll<HTMLElement>('.ini-grupo')) {
+            const g = cab.dataset.grupo ?? '';
+            cab.hidden = !conAlguna.has(g) && ![...filas].some(f => f.dataset.grupo === g && !f.hidden);
+            flecha(cab, abrir || !plegada(`ini:${g}`));
+        }
+        for (const sub of c.querySelectorAll<HTMLElement>('.ini-ideas')) {
+            const g = sub.dataset.grupo ?? '';
+            sub.hidden = !ideasCon.has(g) || (!abrir && plegada(`ini:${g}`));
+            flecha(sub, abrir || !plegada(`ideas:${g}`, true));
+        }
+        // los filtros: el que rige y cuántas deja cada uno, con lo demás que está filtrado
+        marcarFiltros(lista, 'papel', papel);
+        marcarFiltros(lista, 'proximo', proximo);
+        for (const b of lista.querySelectorAll<HTMLElement>('.filtros-op[data-accion="proy-filtro"]')) {
+            const id = b.dataset.id ?? '', i = id.indexOf(':'), g = id.slice(0, i), v = id.slice(i + 1);
+            if (g === 'papel') contarFiltro(b, filas.filter(f => pasa(f, v, proximo)).length);
+            else if (g === 'proximo') contarFiltro(b, filas.filter(f => pasa(f, papel, v)).length);
+        }
         return [n, filas.length];
     };
     function aplicarProyectos(): void {
         const partes = norm(estado.pq).split(/\s+/).filter(Boolean);
+        const buscando = partes.length > 0;
         const [ni, totalI] = aplicarIniciativas(partes);
         const c = $('proyectos');
         if (!c) {
-            // solo las iniciativas: lo buscado se cuenta igual
-            const cuenta = $('proyectos-cuenta'); if (cuenta) cuenta.textContent = partes.length ? `${ni} de ${totalI}` : '';
+            // las iniciativas (interno): lo buscado se cuenta igual
+            separadores($('iniciativas'));
+            const cuenta = $('proyectos-cuenta'); if (cuenta) cuenta.textContent = buscando ? `${ni} de ${totalI}` : '';
             return;
         }
-        const area = (estado.pf || {}).area || '';
-        const k = COLS_P.includes(estado.ordenP ?? '') ? estado.ordenP! : '';
-        const filas = [...c.querySelectorAll<HTMLElement>('.proy, .proy-sec-cab')].sort(compararProy(k));
+        // el área y el orden rigen si la lista los ofrece (los negocios no filtran por área ni ordenan por fase): lo
+        // elegido queda recordado para la lista que sí
+        const lista = c.closest('.proy-lista') ?? raiz;
+        const area = lista.querySelector('.filtros-grupo[data-grupo="area"]') ? (estado.pf || {}).area || '' : '';
+        const k = COLS_P.includes(estado.ordenP ?? '') && lista.querySelector(`.ord[data-id="proyectos:${estado.ordenP}"]`) ? estado.ordenP! : '';
+        const filas = [...c.querySelectorAll<HTMLElement>(':scope > :is(.proy, .proy-sec-cab, .sep)')].sort(compararProy(k));
         const vacio = $('proyectos-vacio');
         for (const f of filas) c.insertBefore(f, vacio);
         for (const s of todos('.proy-cols [data-orden-p]')) s.classList.toggle('activo', s.dataset.ordenP === (k || 'estado'));
-        let n = 0, total = 0;
-        const porSec = new Map<string, number>();
-        for (const f of filas) {
-            if (!f.classList.contains('proy')) continue;
-            total += 1;
-            f.hidden = !conTodas(partes)(f) || (!!area && f.dataset.unidad !== area) || (f.dataset.sec === 'cerrado' && !estado.pc && !partes.length);
-            f.classList.toggle('primera', !f.hidden && n === 0 && partes.length > 0);
-            if (!f.hidden) { n += 1; porSec.set(f.dataset.sec ?? '', (porSec.get(f.dataset.sec ?? '') ?? 0) + 1); }
+        for (const s of todos<HTMLElement>('.orden [data-accion="proy-orden"]')) {
+            const si = (s.dataset.id ?? '').slice('proyectos:'.length) === k;
+            s.classList.toggle('si', si);
+            s.title = s.title.replace(/ \(clic: volver.*\)$/, '') + (si ? ' (clic: volver al orden de siempre)' : '');
         }
-        // la cabecera de una sección: solo en el orden de siempre, y si le queda alguna fila
-        for (const cab of filas) {
-            if (cab.classList.contains('proy')) continue;
+        const proys = filas.filter(f => f.classList.contains('proy'));
+        // lo que deja pasar cada filtro (componentes/filtros.ts): la búsqueda, el área y los cerrados
+        const pasaArea = (f: HTMLElement, a: string) => !a || f.dataset.unidad === a;
+        const pasaCerrado = (f: HTMLElement, si: boolean) => f.dataset.sec !== 'cerrado' || si || buscando;
+        let n = 0;
+        const porSec = new Map<string, number>();
+        for (const f of proys) {
+            const pasa = conTodas(partes)(f) && pasaArea(f, area) && pasaCerrado(f, !!estado.pc);
+            if (pasa) porSec.set(f.dataset.sec ?? '', (porSec.get(f.dataset.sec ?? '') ?? 0) + 1);
+            f.hidden = !pasa || (!k && !buscando && plegada(f.dataset.sec ?? ''));
+            f.classList.toggle('primera', !f.hidden && n === 0 && buscando);
+            if (pasa) n += 1;
+        }
+        // la cabecera de una sección: solo en el orden de siempre, y si le queda alguna fila; su cuenta, las que calzan
+        for (const cab of filas.filter(f => f.classList.contains('proy-sec-cab'))) {
             const kk = porSec.get(cab.dataset.sec ?? '') ?? 0;
             cab.hidden = !!k || kk === 0;
-            const cuenta = cab.querySelector('.proy-sec-n'); if (cuenta) cuenta.textContent = String(kk);
+            flecha(cab, buscando || !plegada(cab.dataset.sec ?? ''));
+            const cuenta = cab.querySelector('.item-sufijo'); if (cuenta) cuenta.textContent = String(kk);
         }
+        if (k) for (const sep of filas.filter(f => f.classList.contains('sep'))) sep.hidden = true;
+        separadores($('iniciativas'), k ? n > 0 : separadores(c));
         if (vacio) { vacio.hidden = n > 0 || ni > 0; vacio.textContent = 'sin resultados'; }
         const cuenta = $('proyectos-cuenta');
-        if (cuenta) cuenta.textContent = partes.length ? `${n + ni} de ${total + totalI}` : '';
-        $('ver-cerrados')?.classList.toggle('activo', !!estado.pc);
-        // la tabla extendida: a lo ancho, sin el detalle, todas las columnas en palabras (proyectos.css)
-        c.closest('.proy-dos')?.classList.toggle('extendida', !!estado.px);
-        $('ver-extendida')?.classList.toggle('activo', !!estado.px);
-        for (const b of todos('[data-pf]')) b.classList.toggle('activo', ((estado.pf || {})[b.dataset.pf ?? ''] || '') === b.dataset.pv);
+        if (cuenta) cuenta.textContent = buscando ? `${n + ni} de ${proys.length + totalI}` : '';
+        // los filtros: el que rige y cuántas deja cada opción, con lo demás que está filtrado
+        marcarFiltros(lista, 'area', area);
+        marcarFiltros(lista, 'cerrados', estado.pc ? 'si' : '');
+        const texto = conTodas(partes);
+        for (const b of lista.querySelectorAll<HTMLElement>('.filtros-op[data-accion="proy-filtro"]')) {
+            const id = b.dataset.id ?? '', i = id.indexOf(':'), g = id.slice(0, i), v = id.slice(i + 1);
+            contarFiltro(b, proys.filter(f => texto(f) && (g === 'area' ? pasaArea(f, v) && pasaCerrado(f, !!estado.pc)
+                : pasaArea(f, area) && f.dataset.sec === 'cerrado')).length);
+        }
     }
     // un texto del resumen de un proyecto, cortado a seis líneas sin partir ninguna: al final del último bloque que
     // cabe, o en la última línea entera del que no cabe (un párrafo, un ítem); una tabla que no cabe queda para «más».
@@ -354,17 +434,33 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
             if (mas instanceof HTMLElement && mas.classList.contains('mas')) mas.hidden = !corto;
         }
     };
+    // en una columna (media pantalla, el teléfono) el detalle es una pantalla propia (proyectos.css): elegir uno lo abre
+    // (`viendo-detalle`) arriba de todo, y «‹» o ⎋ vuelven a la lista donde estaba. Se pone de nuevo en cada repintado;
+    // si no hay un detalle que ver (otra subvista), se ve la lista igual
+    let detalleAbierto = false, listaEn = 0;
+    const unaColumna = () => { const l = raiz.querySelector<HTMLElement>('.proy-lista'); return !!l && getComputedStyle(l.parentElement!).gridTemplateColumns.split(' ').length < 2; };
+    const marcarDetalle = () => raiz.querySelector<HTMLElement>('.proy-dos')?.classList.toggle('viendo-detalle', detalleAbierto);
+    const abrirDetalle = () => {
+        if (!detalleAbierto) listaEn = raiz.scrollTop;
+        detalleAbierto = true; marcarDetalle();
+        if (unaColumna()) raiz.scrollTop = 0;
+    };
+    const volverALista = () => {
+        detalleAbierto = false; marcarDetalle();
+        raiz.scrollTop = listaEn;
+    };
     // elegir un proyecto: se marca al tiro y se pide su detalle (la derecha la cambia el Dashboard)
     const elegirProy = (f: HTMLElement | undefined) => {
         if (!f) return;
-        for (const x of todos('.proy.sel')) x.classList.remove('sel');
-        f.classList.add('sel');
+        abrirDetalle();
+        for (const x of todos('.proy.activa')) x.classList.remove('activa');
+        f.classList.add('activa');
         f.scrollIntoView({ block: 'nearest' });
         enviar({ tipo: 'accion', accion: 'proy-sel', valor: f.dataset.valor });
     };
     const moverProy = (paso: number) => {
         const vis = proyectosVisibles(); if (!vis.length) return;
-        const i = vis.findIndex(f => f.classList.contains('sel'));
+        const i = vis.findIndex(f => f.classList.contains('activa'));
         elegirProy(vis[i < 0 ? 0 : Math.max(0, Math.min(vis.length - 1, i + paso))]);
     };
 
@@ -553,8 +649,21 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         if (fa) { void abrirFiltro(fa, entidades.dondeDe(e, fa)); return; }
         const fo = t.closest<HTMLElement>('.filtros [data-accion="filtro"]');
         if (fo) { elegirFiltro(fo.dataset.id ?? ''); return; }
-        if (t.closest('#ver-cerrados')) { estado.pc = !estado.pc; guardar(); aplicarProyectos(); return; }
-        if (t.closest('#ver-extendida')) { estado.px = !estado.px; guardar(); aplicarProyectos(); return; }
+        const pfo = t.closest<HTMLElement>('.filtros [data-accion="proy-filtro"]');
+        if (pfo) { elegirFiltroProy(pfo.dataset.id ?? ''); return; }
+        // el orden de proyectos (componentes/orden.ts): la opción que rige, otra vez, vuelve al orden de siempre
+        const po = t.closest<HTMLElement>('.orden [data-accion="proy-orden"]');
+        if (po) { const k = (po.dataset.id ?? '').slice('proyectos:'.length); estado.ordenP = estado.ordenP === k ? '' : k; guardar(); aplicarProyectos(); return; }
+        // una sección de proyectos (o de iniciativas, o un programa): se abre o se pliega aquí, sin ir y volver, y se
+        // recuerda; una acción de su cabecera (el → de las iniciativas) es suya
+        const ps = t.closest<HTMLElement>('.proy-lista .item[data-accion="proy-seccion"]');
+        if (ps && !t.closest('.item-accion')) {
+            const k = ps.dataset.sec ?? ps.dataset.id ?? '';
+            const cual = ps.dataset.plegada === '1' ? 'pa' : 'pl';
+            const xs = new Set(estado[cual] ?? []);
+            if (xs.has(k)) xs.delete(k); else xs.add(k);
+            estado[cual] = [...xs]; guardar(); aplicarProyectos(); return;
+        }
         // una pestaña del detalle de un proyecto (o «los N pendientes» del resumen): se cambia aquí, sin ir y volver
         const pd = t.closest<HTMLElement>('#proy-det [data-pest]');
         if (pd) { estado.pd = pd.dataset.pest; guardar(); aplicarDetalle(); const det = $('proy-det'); if (det) det.scrollTop = 0; return; }
@@ -567,21 +676,15 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         // el nombre de una columna de proyectos: ordena por ella; otra vez, o «estado», vuelve al orden de siempre
         const op = t.closest<HTMLElement>('[data-orden-p]');
         if (op) { const k = op.dataset.ordenP ?? ''; estado.ordenP = k === 'estado' || estado.ordenP === k ? '' : k; guardar(); aplicarProyectos(); return; }
-        // un filtro de la lista de proyectos: área y tipo eligen uno; «con hilo» y «con pendientes» se prenden y apagan
-        const bf = t.closest<HTMLElement>('[data-pf]');
-        if (bf) {
-            const pf = { ...(estado.pf || {}) }, k = bf.dataset.pf ?? '';
-            pf[k] = pf[k] === bf.dataset.pv && (k === 'hilo' || k === 'pend') ? '' : bf.dataset.pv ?? '';
-            estado.pf = pf; guardar(); aplicarProyectos(); return;
-        }
+        if (t.closest('#proy-det [data-accion="proy-volver"]')) { volverALista(); return; }
         const fp = t.closest<HTMLElement>('.proy[data-accion="proy-sel"]');
         // el ⋯ de una fila, o el estado de una iniciativa que se cambia aquí: la elige y abre su menú (las acciones, o el
         // vocabulario de estados: lo manda el manejador general)
-        if (fp && t.closest('.menu-fila, .ini-estado[data-accion]')) elegirProy(fp);
-        // en la tabla extendida no se ve el detalle: elegir uno vuelve a la tabla de siempre, con su detalle al lado
-        else if (fp) { e.preventDefault(); if (estado.px) { estado.px = false; guardar(); aplicarProyectos(); } elegirProy(fp); return; }
+        if (fp && t.closest('.menu-fila, .item-menu, .ini-estado[data-accion]')) elegirProy(fp);
+        // elegir uno (en la tabla extendida, que no muestra el detalle, vuelve a la lista: proyectos.ts)
+        else if (fp) { e.preventDefault(); elegirProy(fp); return; }
         // un enlace del README: lo abre el Dashboard (un archivo del repositorio o una pestaña)
-        const ln = t.closest<HTMLAnchorElement>(':is(.proy-readme, .det-md, .det-datos) a[href]');
+        const ln = t.closest<HTMLAnchorElement>(':is(.proy-readme, .det-md, .det-datos, .det-doc) a[href]');
         if (ln) {
             e.preventDefault();
             const base = ln.closest<HTMLElement>('[data-base]')?.dataset.base || '';
@@ -643,12 +746,13 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
         const bp = $<HTMLInputElement>('buscar-p');
         if (bp && activo === bp) {         // en proyectos: ⏎ abre el primero que calza
             if (e.key === 'Escape') { e.preventDefault(); if (bp.value) { bp.value = ''; estado.pq = ''; guardar(); aplicarProyectos(); } else enviar({ tipo: 'accion', accion: 'dia' }); }
-            else if (e.key === 'Enter') { e.preventDefault(); const vis = proyectosVisibles(); const f = vis.find(x => x.classList.contains('sel')) || vis[0]; if (f) enviar({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); }
+            else if (e.key === 'Enter') { e.preventDefault(); const vis = proyectosVisibles(); const f = vis.find(x => x.classList.contains('activa')) || vis[0]; if (f) enviar({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); }
             else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moverProy(e.key === 'ArrowDown' ? 1 : -1); }
             return;
         }
         if (bp && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'j' || e.key === 'k')) { e.preventDefault(); moverProy(e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1); return; }
-        if (bp && e.key === 'Enter') { const f = raiz.querySelector<HTMLElement>('.proy.sel'); if (f && !f.hidden) { e.preventDefault(); enviar({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); return; } }
+        if (bp && e.key === 'Enter') { const f = raiz.querySelector<HTMLElement>('.proy.activa'); if (f && !f.hidden) { e.preventDefault(); enviar({ tipo: 'accion', accion: 'proyecto', valor: f.dataset.valor }); return; } }
+        if (bp && e.key === 'Escape' && detalleAbierto && unaColumna()) { e.preventDefault(); volverALista(); return; }
         if (bp && e.key === 'Escape') { e.preventDefault(); enviar({ tipo: 'accion', accion: 'dia' }); return; }
         if (bp && e.key === '/') { e.preventDefault(); bp.focus(); return; }
         const b = $<HTMLInputElement>('buscar');
@@ -747,7 +851,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
                 i.value = estado.cq?.[i.dataset.bloque ?? ''] ?? '';
                 if (enCorreo !== undefined && i.dataset.bloque === enCorreo) { i.focus(); i.setSelectionRange(pos, pos); }
             }
-            aplicar(); aplicarProyectos(); aplicarCorreo(); aplicarDetalle();
+            aplicar(); aplicarProyectos(); aplicarCorreo(); aplicarDetalle(); marcarDetalle();
         },
         parcial(id, html) {
             const el = $(id);
@@ -765,7 +869,7 @@ export function montarDia(raiz: HTMLElement, enviar: (m: MensajeDia) => void): V
                 }
                 el.scrollTop = arriba;
             } else el.scrollTop = 0;
-            if (id === 'proy-det') aplicarDetalle();
+            if (id === 'proy-det') { aplicarDetalle(); marcarDetalle(); }
         },
         filtrarTareas(modo) {
             estado.tm = modo;

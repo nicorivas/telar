@@ -47,8 +47,25 @@ módulos: `npm run prueba:enlazar`. El ítem:
 `npm run prueba:componentes` (también que la lámina nombre todas sus piezas, y la densidad «auto»; y las iniciativas: su
 estado con el vocabulario de `[iniciativas]`, un sinónimo, uno fuera del vocabulario y uno de fuente externa, sin el clic
 que lo cambia). Lo que escribe en la ficha, `pruebas/test_iniciativas_estado.py`.
+La pantalla de proyectos (`vistas/dashboard/proyectos.ts`, `media/css/proyectos.css`), lo que arregló su auditoría
+(`docs/propuestas/auditoria-proyectos.md`): que en una columna el detalle se suelte (la regla del `@container` va después
+de la de `#proy-det`); que la lista sea de ítems y secciones de la casa, de borde a borde, sin la columna del estado, con
+el orden en el buscador, el área y los cerrados en la fila de filtros y lo que cede antes que el nombre (un contenedor en
+la lista); y en la página, con un DOM (happy-dom), plegar una sección (se recuerda, y buscando se abre lo que calza), los
+separadores, los cerrados, ordenar y el ⋯. Y sus subvistas: los negocios (comercial: la etapa de cada uno, sus secciones
+y su fila) y las iniciativas (interno: el próximo paso que sale de su README; las ideas, plegadas de entrada; «me toca» y
+«sin próximo paso»), y la barra del detalle (la de cada pantalla: el nombre tal cual con su globo, solo íconos a la
+derecha, cómo va en una línea) y el divisor de alto completo; en una columna, el detalle como pantalla propia (elegir uno
+lo abre, un repintado lo deja y su «‹» vuelve a la lista); y su cuerpo (las secciones del resumen como las de una
+pantalla, el README entero con la prosa compartida y sin su frontmatter, las casillas sin la ranura del código, el CSS
+en tokens y colores semánticos): `npm run prueba:proyectos`. Lo demás de interno (mi papel, el próximo paso en la fila, sin las
+terminadas ni las descartadas), en `npm run prueba:componentes`. Que cada casilla de un documento salga una vez aunque varios hilos
+estén en su carpeta, en `pruebas/test_ordenes.py`.
 Lo que se lee de un archivo arrastrado a la terminal (sus rutas, cómo se citan): `npm run prueba:arrastre`.
 La pestaña «te esperan» (sus grupos, sus filas, el número de la barra, soltar y descartar un retenido desde su fila y descartarlos todos desde su grupo): `npm run prueba:esperas`.
+La subpestaña «tareas › esperando» (lo que otros le deben a la persona: qué tareas entran, cómo se juntan las personas, su
+orden, el plazo y la antigüedad, lo último que pasó y las secciones por persona): `npm run prueba:esperando`; lo que pone el
+proveedor (`desde` y `ultimo`) y lleva la fila de `telar pendientes`, `pruebas/test_tareas_esperando.py`.
 La ventana de contestar lo que te espera (cada clase, lo que se manda y adónde, con un fetch de mentira):
 `npm run prueba:contestar`, con el ensayo sin sus pausas (`hacerDeEnsayo({ pausa: 0 })`; en la página son de 300 a 900 ms,
 para que se vea lo que está en curso); y en la página, con datos inventados y sin tocar nada,
@@ -67,13 +84,20 @@ de mentira:
 estado, mandar sin ⏎, con ⏎ y en espera del fin del turno, la API, la otra máquina por el bus, la CLI y la mudanza):
 `pruebas/test_borradores.py`.
 El orden de las pestañas del dashboard (lo que `[dashboard] orden` no nombra, dónde va): `npm run prueba:pestanas`.
+La primera fila de cada pantalla (la barra, `componentes/pantalla.ts`): a la izquierda solo el título, a la derecha solo
+los botones (vistas y acciones), sin cuentas, fechas ni estados (lo que resume va en el globo del título); que
+`fueraDeLaBarra` lo detecte, la barra de las pantallas que se arman sin página (todo, táctica, ahora, el calendario) y
+que nadie arme una barra a mano: `npm run prueba:pantalla`. En la página, todas las pantallas:
+`python3 scripts/medir.py todas pestanas --js "window.telar.revisarBarra()"` (su título, su globo y lo que lleva de más,
+que debe ser `[]`).
 Quién se ve en la barra de hilos (`vistas/hilos-familia.ts`, y la barra de verdad dibujada en Node con hilos de mentira):
 que el hilo que se mira suba con su familia (sus padres y sus descendientes, de aquí y de otras máquinas; el agente de un
 hijo suyo) aunque el mundo o el modo lo dejen afuera, que en «de personal» cada hijo vaya bajo su padre, que el «↳» y la
 sangría vayan solo bajo un padre a la vista (bajo su agente, en AGENTES, si es un agente; suelto si su padre está
 archivado, es de otro mundo o de otra máquina sin ventana aquí), y que un agente
 sin hilo abierto vaya por el mundo de su carpeta; y que el único buscador, el de HILOS, filtre también el archivo (se
-abre con solo lo que calza y vuelve a como estaba al borrar): `npm run prueba:barra`.
+abre con solo lo que calza y vuelve a como estaba al borrar), y que sus cabeceras midan `--pantalla-barra-alto` y
+ningún ícono alargue una fila: `npm run prueba:barra`.
 Qué agentes residentes se ven en un modo (`agentes`: vacío, todos; «-», ninguno) y lo que deja un clic en la grilla de
 ⚙ modos; y qué pestañas ve (`filas`, `web/modos-pestanas.ts`): lo que deja un clic en su fila de ⚙ modos (dónde entra la
 que se agrega, cuándo vuelve a lo heredado, nunca ninguna) y las que quedan en un mundo, la unión de las de sus modos:
@@ -107,6 +131,12 @@ cierra) como ⌘M; cómo hacer un arte, [arte.md](arte.md).
 Que una tarea marcada hecha no vuelva (el día que se ve y sus relecturas, `vistas/dashboard/dia.ts`): lo leído antes de
 marcarla no la trae, la relectura de después no se pierde tras una que iba desde antes, y si el cierre falla queda y se
 dice por qué, con un fetch de mentira que la prueba contesta cuando quiere: `npm run prueba:dia`.
+Cómo pide la página al abrirse (`cli.ts`): que lo pesado (el día, las esperas, los bloques, los proyectos) vaya de a
+`PESADAS` a la vez y la lista de hilos salga igual, que la configuración que piden varios a la vez salga una sola vez
+(y de nuevo después de un cambio), y que lo último leído vuelva al recargar la pestaña (un despliegue) y no lo de otro
+día: `npm run prueba:pesadas`. Del lado de telar, lo que hacía lento al servicio (resolver la misma ruta miles de veces
+por pedido, el YAML de los mismos frontmatters, el proceso aparte de `telar.aparte` y lo que guarda `telar.alla` de los
+proveedores, que un cambio por la API olvida): `pruebas/test_serve_lento.py` y `pruebas/test_alla.py`.
 Las confirmaciones (los botones de `componentes/boton.ts`, «la tecla en el pie», y sus teclas, `web/botonera.ts`): que lo
 que destruye vaya en el de peligro con ⌘⌫ y abra con el foco en «cancelar», que ⏎ haga el botón que tiene el foco y la tecla
 de cada celda la suya, que una sostenida no haga nada, que cada confirmación de la página que dice un verbo que destruye lo
@@ -124,6 +154,19 @@ WebSocket real que devuelve lo seleccionado como el OSC 52: `npm run prueba:copi
 guarda el portapapeles y lo devuelve al terminar. El WebSocket de mentira de Playwright (`routeWebSocket`) no sirve para
 esto: sus mensajes llegan como un gesto, y en WebKit copia lo que Safari no. `playwright-core` va fijo en la 1.58.0: el WebKit de la
 1.65 se cae al abrir en macOS 26.0.
+Abrir una dirección de afuera en una pestaña nueva (`web/abrir.ts`: los enlaces de la terminal, `ui.abrirExterno` y
+el visor): Safari la abre solo en el gesto que la pide. Vale el `mouseup` en que xterm activa un enlace, sus
+microtareas y un `setTimeout` de 0; no vale después de un fetch ni de un `setTimeout` de 1,5 s. Para la pestaña,
+entonces, el fetch no hereda el gesto, al revés que para el portapapeles. Y con `noopener`, `window.open` da null
+abra o no, así que nadie se entera. Por eso se abre vacía, sin `noopener`, con el `opener` cortado y la dirección
+cargada desde ella con un enlace `noreferrer`; si no abre, un aviso con un botón que abre en su clic. La prueba con un
+navegador de mentira que hace lo que Safari: `npm run prueba:abrir`. En WebKit, Chrome y Firefox de verdad, por http
+y por https, con xterm.js y el mouse de la terminal puesto y sin él, que un clic en un hipervínculo OSC 8 y en una
+dirección suelta abra en el `mouseup`, a la dirección exacta, sin `opener` y sin `Referer`:
+`npm run prueba:abrir-webkit`. Los navegadores de Playwright abren todo, aun sin gesto, así que el bloqueo de Safari lo
+mide `npm run prueba:abrir-safari`: un WKWebView con el motor de Safari de la Mac y su bloqueo puesto
+(`pruebas/safari/ventana.swift`, con swiftc), con clics de verdad. Su ventana queda fuera de la pantalla y no toma el
+foco (los clics van directo al WKWebView). No corre en CI ni en la suite, y fuera de macOS se salta.
 Llevar un hilo a otra máquina desde su menú (`web/llevar-destinos.ts`): una fila por máquina, de `[remotos]` y del bus,
 con su nombre; la que no contesta, apagada y con su porqué; un hilo de otra máquina, traerlo aquí o que la suya lo lleve a
 una tercera; y en el menú (happy-dom) que una fila apagada no se elija ni con un clic ni con ⏎ y que se encuentre
@@ -157,7 +200,10 @@ la etapa 4 se prueba entera: se mata el `atender` de una y se congela a su agent
 después al del agente: el `sh` que lo lanzó le manda SIGCONT a un hijo detenido; el sandbox de Claude Code no deja
 mandar señales a procesos que no lanzó), y a los dos minutos la otra lo puede seguir (`telar hilo seguir juguete --si`).
 Lo que el lienzo de un módulo pide y la página atiende sola, sin el servidor ni permiso (`menu`, `abrir`,
-`instruccion`): `npm run prueba:lienzo`.
+`instruccion`, `opciones`): `npm run prueba:lienzo`. Los componentes que recibe un lienzo que los pide
+(`src/lienzo/componentes.ts`, `"componentes": true`): lo que va en línea y en qué orden, que se lean una vez y que sin
+ellos el lienzo quede como antes, y ya en el lienzo, con un DOM, las pestañas que no caben en el «⋯» y su menú pedido a la
+página, un filtro plegado y el ✕ del buscador: `npm run prueba:lienzo-componentes`.
 Las ventanas que piden los módulos (`componentes/ventana-modulo.ts`, `web/ventanas.ts`; la de un chat de foco): lo que
 lleva (todo escapado, la raya de lo nuevo, el pie con teclas, y lo obvio como ícono: cada botón de ícono con su nombre en
 el title y el aria-label, en el pie su tecla delante, y la palabra si el módulo no declara un ícono que la página conozca), y con un DOM y un telar de mentira, que llegue una y salga,
@@ -178,7 +224,7 @@ La línea del pulso, debajo de la franja (la última pasada sin ver de un result
 `componentes/pulso.ts`; lo que lee y marca visto, `web/pulso.ts`): lo que dice la línea, lo que lleva la ventana y lo que
 pide a la API, con un fetch de mentira (lo que cambió y su causa, la pasada sin cambios), y lo mismo con cada mundo puesto
 (trabajo, personal, ambos: lo que se ve, las cuentas, el resumen de las de antes y lo visto por mundo),
-`npm run prueba:pulso`; y en la página, con pasadas de mentira de los dos mundos, vistas con el mundo puesto, y sin marcar
+`npm run prueba:pulso` (también que la línea mida `--pantalla-barra-alto`, como la franja, en el teléfono también); y en la página, con pasadas de mentira de los dos mundos, vistas con el mundo puesto, y sin marcar
 nada, `window.telar.ensayoPulso()` en la consola (`false`, solo la línea). El mundo de cada cosa y lo visto por mundo, del lado de telar: `pruebas/test_pasadas.py`.
 El orden de una pestaña de lectura (lo de la persona, la prioridad, lo más nuevo arriba; sin tope; sin esos campos, el
 del proveedor) y cómo se ve la prioridad en su fila y en su ficha: `npm run prueba:leer`. Lo que lee telar de cada fila
@@ -243,7 +289,11 @@ Antes de importar una sola prueba (`pruebas/conftest.py` con pytest; con `unitte
 bus), las de la sesión de Claude Code y de otro multiplexor (`telar.entorno`), `CLAUDE_CONFIG_DIR`, `HISTFILE` y
 `ZDOTDIR`; y deja `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME` y `TMUX_TMPDIR` en una
 carpeta temporal de la sesión, que se borra al salir junto con el servidor de tmux que alguna prueba haya dejado ahí.
-El hogar de la sesión lleva solo el nombre y el correo de git de quien las corre. Sin esto, la suite escribía en el
+El hogar de la sesión lleva solo el nombre y el correo de git de quien las corre. Lo que telar lee de la máquina por
+una ruta fija (la puerta en `/etc/telar/puerta.toml`, `/etc/telar/alojados.d`, `/etc/telar/personas.d`, `/run/telar`,
+`/opt/telar-puerta`) apunta a `comun.maquina()`, una carpeta de la sesión que no existe (`comun.aislar_maquina`); el
+ayudante de root que cargan las pruebas de alojamiento, también: en el servidor, con la puerta instalada, 38 pruebas
+pedían la cuenta de Tailscale de su persona de mentira (26-nov-2026). Sin esto, la suite escribía en el
 `commits.log` y el `concesiones.json` de verdad, en la caché de gws y en la historia de bash de la persona. Es una red,
 no un permiso: la prueba que usa tmux sigue en su servidor propio (`comun.socket_tmux`) y lo mata con
 `comun.matar_tmux`, con `-S`; nunca un `kill-server` a secas. Cada archivo de pruebas importa `comun`, para que correr
@@ -450,6 +500,12 @@ páginas que hay:
   la muestra como la página entera, con la barra de verdad (las filas de DASHBOARD del modo, los hilos del mundo), al
   ancho de la ventana: ahí un clic en un modo o en el mundo los cambia, y también ⌥⇧1–4, ⌥⇧F, ⌥⇧M y ⌥⇧0. El horario de
   un mundo tiene su prueba en `npm run prueba:componentes`.
+- **rutinas (prototipo)** (`componentes/catalogo-rutinas.ts`, lo suyo en `media/css/catalogo.css`; la propuesta, en
+  [propuestas/rutinas.md](propuestas/rutinas.md)): «tareas › rutinas», lo que se repite con la prueba de que se hizo,
+  con rutinas inventadas un jueves a las 10:30. En «la vista», la pantalla en un laptop y un teléfono (las secciones se
+  pliegan y el filtro rige; lo demás dice qué haría); «cómo se calcula», cada rutina con su última prueba, cuándo toca y
+  su estado; «el archivo», cómo sería una rutina escrita. `#rutinas/ver/vista` la muestra como la página entera, al ancho
+  de la ventana (así se sacan las capturas). El cálculo del estado, en `npm run prueba:rutinas`.
 - **ventana de mundos** (`componentes/mundos-ventana.ts`, `media/css/mundos.css`; lo del catálogo en
   `componentes/catalogo-mundos.ts`): la ventana para cambiar de mundo, una tarjeta por mundo con su arte animado. En
   «estados», quieta, con el mouse encima de una (la ola a medio camino), ambos a mano, con cuatro mundos y con diez, en

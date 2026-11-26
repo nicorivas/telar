@@ -51,12 +51,38 @@ const TOKENS_LIENZO = [
     '--item-alto', '--item-pad-x', '--item-fondo-hover', '--item-fondo-activa', '--pantalla-vista-si',
 ];
 
-/** Los tokens, como una regla que gana a la que traiga el lienzo (`:root:root` pesa más que su `:root`). */
-function tokensLienzo(): string {
+/** Los tokens, como una regla que gana a la que traiga el lienzo (`:root:root` pesa más que su `:root`); con `mas`, también
+ *  esos (los que usa la hoja de los componentes). */
+function tokensLienzo(mas: readonly string[] = []): string {
     const cs = getComputedStyle(document.documentElement);
-    const decl = TOKENS_LIENZO.map(k => [k, cs.getPropertyValue(k).trim()]).filter(([, v]) => v && !/[<>{};]/.test(v))
+    const decl = [...new Set([...TOKENS_LIENZO, ...mas])].map(k => [k, cs.getPropertyValue(k).trim()]).filter(([, v]) => v && !/[<>{};]/.test(v))
         .map(([k, v]) => `${k}:${v}`).join(';');
     return `<style>:root:root{${decl}}</style>`;
+}
+
+/** Los componentes de la página para un lienzo que los pide (`"componentes": true`: src/lienzo/componentes.ts): su
+ *  código, su hoja y los tokens que usa su hoja (los que se le pasan, con el valor del tema que se ve). */
+export interface KitLienzo { js: string; css: string; tokens: string[] }
+
+/** Cómo se leen: lo que empaquetó scripts/navegador.mjs, servido con la página. Las pruebas lo cambian. */
+export const kitLienzo = {
+    async leer(): Promise<KitLienzo | undefined> {
+        try {
+            const [js, css] = await Promise.all(['js', 'css'].map(async x => {
+                const r = await fetch(`/estatico/lienzo-componentes.${x}`);
+                if (!r.ok) throw new Error(`lienzo-componentes.${x}: ${r.status}`);
+                return await r.text();
+            }));
+            return armarKit(js, css);
+        } catch { return undefined; }
+    },
+};
+
+/** El juego, listo para ir en línea: sin nada que cierre su `<script>` o su `<style>` antes de tiempo, y con los tokens
+ *  que nombra su hoja. */
+export function armarKit(js: string, css: string): KitLienzo {
+    const tokens = [...new Set([...css.matchAll(/var\((--[a-z0-9-]+)/gi)].map(m => m[1]))];
+    return { js: js.replace(/<\/(script)/gi, '<\\/$1'), css: css.replace(/<\/(style)/gi, '<\\/$1'), tokens };
 }
 
 /** El alto de un lienzo o un marco: píxeles, o «lleno» (lo que queda del panel, por la clase). */
@@ -82,6 +108,9 @@ export class Paginas {
     /** el ítem en que se pidió abrir un lienzo (el chat de una ventana de foco: `darItem`), por su origen, y hasta cuándo
      *  vale: el lienzo que se pinte antes lo recibe en `window.lienzo.item` */
     private readonly items = new Map<string, { item: string; hasta: number }>();
+    /** los componentes para los lienzos que los piden: se leen la primera vez que uno los pide, y quedan */
+    private kit?: Promise<KitLienzo | undefined>;
+    private kitLeido?: KitLienzo;
 
     /** Que el lienzo de ese origen («bloque:whatsapp») se abra en un ítem suyo: el que ya está pintado lo recibe al tiro
      *  (el evento `lienzo-item` en su `window`), y el que se pinte en los próximos segundos, en `window.lienzo.item`. */
@@ -97,10 +126,13 @@ export class Paginas {
     async precargar(bloques: cli.JsonPagina['bloques'] | undefined): Promise<void> {
         // la memoria puede no estar todavía (el lienzo no ha guardado nada): se pregunta si hay, sin que falte sea un error
         const rutas = (bloques ?? []).flatMap(b => b.lienzo ? [[b.lienzo.archivo, false], ...(b.lienzo.memoria ? [[b.lienzo.memoria, true]] : [])] as [string, boolean][] : []);
-        await Promise.all(rutas.map(async ([r, siHay]) => {
+        // los componentes, si un lienzo los pide: una vez (si no se pudieron leer, se vuelve a probar con la próxima página)
+        const conKit = (bloques ?? []).some(b => b.lienzo?.componentes === true) && !this.kitLeido;
+        if (conKit) this.kit ??= kitLienzo.leer();
+        await Promise.all([...rutas.map(async ([r, siHay]) => {
             const t = await (siHay ? disco().leerSiHay(r) : disco().leer(r));
             if (t !== undefined) this.lienzos.set(r, t); else this.lienzos.delete(r);
-        }));
+        }), conKit ? this.kit!.then(k => { this.kitLeido = k; if (!k) this.kit = undefined; }) : undefined]);
     }
 
     /** Los bloques de una página, en HTML. */
@@ -132,7 +164,8 @@ export class Paginas {
     /** Un lienzo va como `srcdoc`: su página la lee la API (es un archivo del repositorio), no se sirve. Como
      *  srcdoc no tiene query string, un script previo deja los params en la URL (`about:srcdoc?…`) y en
      *  `window.lienzo`. El sandbox sin allow-same-origin deja correr sus scripts sin alcanzar la página, y su
-     *  política de contenido (POLITICA_LIENZO), sin red: lo que promete docs/contratos.md. */
+     *  política de contenido (POLITICA_LIENZO), sin red: lo que promete docs/contratos.md. Con `componentes`, además, los
+     *  de la página (KitLienzo), en línea. */
     lienzo(l: cli.JsonLienzo, origen = ''): string {
         // lo que necesita (su página y su memoria) se leyó antes, al llegar la página (precargar)
         let doc = this.lienzos.get(l.archivo);
@@ -169,9 +202,16 @@ export class Paginas {
             memoria = `window.lienzo.memoria=${leida.replace(/</g, '\\u003c')};window.lienzo.guardar=function(d){`
                 + `parent.postMessage({lienzo:'guardar',llave:${JSON.stringify(llave)},datos:JSON.stringify(d)},'*')};`;
         }
-        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}">${tokensLienzo()}<script>(function(){var p=${datos};window.lienzo={params:p};${memoria}${pedir}`
+        // con `componentes`, los de la página (src/lienzo/componentes.ts): su hoja antes que la del lienzo, los tokens que usa,
+        // y su código después de `window.lienzo`, que lo deja en `window.lienzo.componentes`. Si no se pudieron leer, el
+        // lienzo no los recibe y dibuja lo suyo, como en un telar sin esto
+        const kit = l.componentes === true ? this.kitLeido : undefined;
+        const previo = `<meta http-equiv="Content-Security-Policy" content="${POLITICA_LIENZO}">${tokensLienzo(kit?.tokens)}`
+            + (kit ? `<style>${kit.css}</style>` : '')
+            + `<script>(function(){var p=${datos};window.lienzo={params:p};${memoria}${pedir}`
             + `var q=new URLSearchParams(p).toString();`
-            + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`;
+            + `if(q){try{history.replaceState(null,'','about:srcdoc?'+q)}catch(e){}}})()</script>`
+            + (kit ? `<script>${kit.js}</script>` : '');
         doc = previo + doc;
         return `<iframe class="lienzo${l.alto === 'lleno' ? ' lleno' : ''}" sandbox="allow-scripts"${origen ? ` data-origen="${esc(origen)}"` : ''} srcdoc="${esc(doc)}"${estiloAlto(l.alto)}></iframe>`;
     }

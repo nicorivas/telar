@@ -2,7 +2,8 @@
 
 - **Aislada.** pytest lee este archivo antes de juntar las pruebas, e importar `comun` basta: al importarse quita
   `TMUX`, `TMUX_PANE`, `TELAR_HILO` y las demás marcas, y deja el hogar, la configuración, el estado y el servidor de
-  tmux en una carpeta temporal de la sesión (`comun.aislar_sesion`). Con `unittest`, lo mismo pasa cuando la primera
+  tmux en una carpeta temporal de la sesión (`comun.aislar_sesion`), y lo que telar lee de la máquina (`/etc/telar`,
+  `/run/telar`), en una carpeta de ella que no existe (`comun.aislar_maquina`). Con `unittest`, lo mismo pasa cuando la primera
   prueba importa `comun`. Con pytest-xdist, cada proceso que corre pruebas lo lee también, y tiene su carpeta.
 - **En paralelo.** La suite completa (`pytest pruebas`, o sin nada desde la raíz) corre en `PROCESOS` procesos con
   `--dist loadscope` si está pytest-xdist (el extra `pruebas`): cada archivo o clase entero en un proceso, que las de

@@ -418,7 +418,8 @@ export class PantallaTareas implements Pantalla {
 
     /** Con la ficha abierta se marca la pestaña de donde se abrió; con un feed, el suyo. */
     pestanaMarcada(): string {
-        if (this.t.pantalla === 'tarea') return this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1');
+        // abierta desde «esperando», una subpestaña de tareas: se marca la fila de tareas
+        if (this.t.pantalla === 'tarea') return this.fichaDesde === 'esperando' ? 'revisar' : this.fichaDesde.replace(/^(bloque:[^:]*):.*$/, '$1');
         if (this.t.pantalla === 'pestana') return `pestana:${this.pestana}`;
         return this.t.pantalla;
     }
@@ -491,6 +492,7 @@ export class PantallaTareas implements Pantalla {
     private async volver(): Promise<void> {
         if (this.fichaDesde === 'fuera' && this.fuera) this.fuera.ir();
         else if (this.fichaDesde === 'revisar') await this.abrirRevisar();
+        else if (this.fichaDesde === 'esperando') await this.t.accion('esperando');
         else if (this.fichaDesde.startsWith('pestana:')) await this.abrirPestana(this.fichaDesde.slice(8));
         else if (this.fichaDesde.startsWith('bloque:')) {
             const [, clave, item] = this.fichaDesde.split(':');
@@ -509,6 +511,7 @@ export class PantallaTareas implements Pantalla {
         // en su columna y sin recargar (abrir() la movería a la activa y pediría el día de nuevo)
         this.t.alFrente();
         if (this.t.pantalla === 'revisar') this.fichaDesde = 'revisar';
+        if (this.t.pantalla === 'esperando') this.fichaDesde = 'esperando';
         // desde un ítem de un bloque (un correo): al cerrar la ficha se vuelve a ese ítem
         if (this.t.pantalla === 'bloque') this.fichaDesde = `bloque:${this.t.bloqueAbierto()}`;
         if (this.t.pantalla === 'pestana' || this.fichaDesde.startsWith('pestana:')) this.fichaDesde = `pestana:${this.pestana}`;
@@ -612,7 +615,8 @@ export class PantallaTareas implements Pantalla {
         // cuándo se leyeron: el proveedor se consulta solo cada 5 minutos, y «actualizar» lo fuerza ya
         const leido = leidoProveedores();
         const hace = leido ? Math.round((Date.now() - leido) / 60000) : -1;
-        this.barraLista = { resumen: `${lista.length} · ${hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min`}` };
+        // en la barra, nada de eso a la vista: cuántas, en el globo del título (el buscador las cuenta); cuándo, en el de ↻
+        this.barraLista = { ayuda: `${lista.length} tareas`, leido: hace < 0 ? 'sin leer' : hace === 0 ? 'leídas recién' : `leídas hace ${hace} min` };
         // arriba, las herramientas de la lista (buscar y ordenar, como en la barra de hilos); debajo, los filtros, cada
         // opción con su cuenta. Las filas son ítems (fila-tarea.ts): ya no hay columnas con nombre, el orden va en su grupo
         const ordenes: OpcionOrden[] = [
@@ -664,7 +668,7 @@ export class PantallaTareas implements Pantalla {
         if (!lista.length) h.push('<div class="vacio">nada por ahora</div>');
         for (const p of lista) h.push(filaTarea(p, { lectura: true, marcas, rev: !!p.fila.avance, color: p.fila.color }));
         h.push('</div>');
-        this.t.pintar(h, { nombre: this.pestana, color: 'magenta', resumen: lista.length ? `${lista.length} · ⏎ el primero` : '' });
+        this.t.pintar(h, { nombre: this.pestana, color: 'magenta', ayuda: lista.length ? `${lista.length} · ⏎ abre la primera` : undefined });
     }
 
     /** Las tareas con propuesta, en el orden del día, sin las ya decididas (salvo la abierta).
@@ -778,7 +782,6 @@ export class PantallaTareas implements Pantalla {
             accion: 'accion-tarea', valor: String(k), icono: (I as Record<string, string>)[a.icono ?? ''] ?? I.accion, tono: 'violeta', si: !!p.procesando,
             ayuda: p.procesando ? `${a.nombre}: ya va, desde las ${p.procesando}` : (a.ayuda || a.nombre) }));
         const [cuerpo, barra] = this.marcoFicha([leer.html(ctx)], '', i >= 0 && lista.length > 1 ? { i, n: lista.length } : undefined, iconos);
-        barra.resumen = '';
         this.t.pintar(cuerpo, barra);
         const raiz = document.getElementById('ficha-tarea');
         if (raiz) leer.montar(raiz, ctx, (k, texto, conexiones) => void this.accionTarea(k, texto, conexiones));
@@ -799,8 +802,8 @@ export class PantallaTareas implements Pantalla {
             : bloque ? this.t.config()?.bloques?.find(b => b.clave === bloque)?.color ?? '' : this.fichaDesde === 'fuera' ? '' : BARRA_DE.revisar?.[1] ?? '';
         const barra: EnBarra = {
             volver: { accion: 'volver-ficha', icono: I.atras, ayuda: `volver a ${origen} (⎋)` },
-            nombre: origen, color: tinta,
-            resumen: donde ? `${donde.i + 1}/${donde.n}` : '',
+            // desde una subpestaña de tareas (esperando), el nombre es el de la app: tareas
+            nombre: this.fichaDesde === 'esperando' ? 'tareas' : origen, color: tinta,
             acciones: [
                 ...iconos,
                 // en una lectura no hay «su hilo»: abre uno nuevo con ella (o se la manda a otro), con lo que dice la ficha
@@ -808,8 +811,9 @@ export class PantallaTareas implements Pantalla {
                     ayuda: this.esLectura() ? 'instrucción: abrir un hilo con esta lectura (o mandársela a otro o a un agente), con una skill o lo que le pidas'
                         : 'instrucción: mandársela a su hilo, a uno nuevo, a otro o a un agente, con una skill o lo que le pidas' }] : []),
                 ...(donde ? [
-                    { accion: 'tarea-anterior', icono: I.anterior, ayuda: 'la anterior (←)' },
-                    { accion: 'tarea-siguiente', icono: I.adelante, ayuda: 'la siguiente (→)' },
+                    // cuál de cuántas, en su globo: la barra no lleva cuentas
+                    { accion: 'tarea-anterior', icono: I.anterior, ayuda: `la anterior (←) · esta es la ${donde.i + 1} de ${donde.n}` },
+                    { accion: 'tarea-siguiente', icono: I.adelante, ayuda: `la siguiente (→) · esta es la ${donde.i + 1} de ${donde.n}` },
                 ] : []),
             ],
         };

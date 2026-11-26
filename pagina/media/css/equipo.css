@@ -1,0 +1,52 @@
+/* Equipo (prototipo, src/componentes/equipo.ts): la lista de las personas y la ficha de la elegida. En el laptop, lado a
+   lado, con una línea entre las dos; en el teléfono (.angosto), una cosa a la vez. Las filas son ítems, las secciones de
+   la ficha son las de la barra de hilos (seccion.ts: cabecera del alto de las barras, con su línea) y las pestañas son las
+   de la casa: aquí solo cómo se reparten. Sin @scope: por ahora la dibuja solo el catálogo (/componentes#equipo). */
+
+.equipo { min-width: 0; }
+.eq-dos {
+  display: grid;
+  grid-template-columns: minmax(26ch, 32ch) minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 100%;
+}
+.eq-dos > .eq-lista { min-width: 0; border-right: var(--borde); }
+.eq-lista { padding-top: var(--e-1); }
+.eq-ficha { min-width: 0; }
+
+/* quién es: una fila del alto de las barras, su nombre en la tinta de los títulos y lo demás tenue */
+.eq-cab {
+  box-sizing: border-box;
+  height: var(--pantalla-barra-alto);
+  padding: var(--e-1) var(--item-pad-x);
+  overflow: hidden;
+  color: var(--titulo);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: var(--item-alto);
+}
+.eq-quien { color: var(--texto-tenue); }
+
+/* las secciones de la ficha, como las de la barra (seccion.css): la cabecera del alto de las barras con su línea abajo;
+   entre una y otra, el aire y la línea de arriba de la que sigue */
+.eq-secciones {
+  padding-top: var(--e-1);
+
+  & .sep { margin-top: .4em; }
+  & .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto); padding-block: var(--e-1); border-bottom: var(--borde); }
+  & .sep + .item.cabecera { height: calc(var(--pantalla-barra-alto) + 1px); border-top: var(--borde); }
+  & > .item.cabecera:first-child { border-top: 0; }
+}
+
+/* la franja de la capacidad, donde empiezan los títulos de las filas */
+.eq-partes { padding: 0 var(--item-pad-x) 0 calc(var(--item-pad-x) + var(--item-ranura) + var(--item-texto-sangria)); }
+/* el color de cada proyecto, en su ranura: un cuadrado, sin esquinas */
+.eq-tinta { display: inline-block; width: .7em; height: .7em; background: var(--parte); }
+
+/* las apreciaciones: lo que dice qué son y cómo se olvidan, tenue; el botón, solo */
+.eq-privado { padding-top: var(--e-2); }
+.eq-explica { max-width: 72ch; margin: 0 0 var(--e-2); padding-inline: var(--item-pad-x); color: var(--texto-tenue); }
+.eq-explica a { color: var(--acento); cursor: pointer; }
+.eq-traer { margin-bottom: var(--e-2); padding-inline: var(--item-pad-x); }
+.eq-tarjetas { margin-bottom: var(--e-2); }
+.eq-nada { padding: var(--e-2) var(--item-pad-x); color: var(--texto-tenue); }

@@ -4,3 +4,5 @@
 src/telar/web/app.js          merge=telar-compilado
 src/telar/web/componentes.js  merge=telar-compilado
 src/telar/web/marco.css       merge=telar-compilado
+src/telar/web/lienzo-componentes.js   merge=telar-compilado
+src/telar/web/lienzo-componentes.css  merge=telar-compilado

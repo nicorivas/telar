@@ -36,12 +36,15 @@
   &.plegada { justify-content: center; padding-inline: var(--h-1); }
 }
 
-/* en el teléfono no hay pantalla al lado con la que calzar: del alto de una fila, para el dedo; y sin avisos, no está */
-.angosto .franja { height: auto; padding-block: 0; line-height: var(--item-alto); }
+/* en el teléfono, el mismo alto: el de las filas con línea de allá (la barra de la pantalla, las cabeceras de la barra
+   y el pulso de abajo); y sin avisos, no está */
 .angosto .franja-lugar:has(> .franja.calma) { display: none; }
 
 /* el ícono, en la ranura de los de la barra (así el texto empieza en la columna de los nombres de abajo) */
 .franja-icono { flex: none; display: inline-block; width: var(--item-ranura); color: var(--franja-c); text-align: center; }
+/* la letra de íconos tiene otra altura que la de la página: con el interlineado de la fila, su caja la alargaría un
+   píxel; con el de su letra no pasa de la línea y el ícono queda donde estaba (lo mismo en item.css y pulso.css) */
+.franja-icono .i { line-height: 1; }
 .franja-texto { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .franja-mas { flex: none; margin-left: auto; color: var(--texto-tenue); }
 

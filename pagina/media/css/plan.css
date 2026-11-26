@@ -137,6 +137,8 @@
     .sem-det-lista { margin-top: 1lh; padding-top: .5lh; border-top: 1px solid var(--linea); }
   }
   .cal-dia-completo { padding: .2lh 1ch; color: var(--dim); }
+  /* otro día que hoy: su fecha, en la primera línea (la barra de la pantalla no la lleva) */
+  .cal-dia-fecha { padding: .2lh 1ch; color: var(--azul); }
   .cal-det { position: sticky; top: 4lh; padding: .5lh 1ch; border-left: 1px solid var(--linea); text-align: left; }
   .cal-det h3 { margin: 0 0 .3lh; }
   .cal-det .cal-meta { color: var(--dim); margin-bottom: .5lh; }

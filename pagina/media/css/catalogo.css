@@ -315,11 +315,33 @@ body.catalogo {
   .cat-tac-marco { flex: none; padding-bottom: var(--e-2); border: var(--borde); }
   .cat-tac-tabla { display: grid; grid-template-columns: minmax(28ch, 3fr) repeat(8, auto) minmax(16ch, 1fr); gap: 0 var(--h-2); max-width: 170ch; }
   .cat-tac-tabla > b { color: var(--titulo); font-weight: normal; }
+  /* «tareas › rutinas» (prototipo, catalogo-rutinas.ts): una sección por estado, como las de «esperando» (dia.css) y la
+     barra de hilos: su cabecera del alto de las filas con línea, con su línea arriba y abajo de borde a borde; tras una
+     plegada, sin aire ni línea arriba */
+  .cat-rut > .filtros { margin: .5lh var(--pantalla-margen); }
+  .grupo-rutinas > .item.cabecera { box-sizing: border-box; height: calc(var(--pantalla-barra-alto) + 1px); padding-block: var(--e-1);
+    border-block: var(--borde); }
+  .grupo-rutinas + .grupo-rutinas { margin-top: .4em; }
+  .grupo-rutinas:has(> .item.cabecera:last-child) + .grupo-rutinas { margin-top: 0; }
+  .grupo-rutinas:has(> .item.cabecera:last-child) + .grupo-rutinas > .item.cabecera { box-sizing: border-box; height: var(--pantalla-barra-alto);
+    border-top: 0; }
+  .cat-rut-tabla { display: grid; grid-template-columns: minmax(28ch, 2fr) minmax(16ch, 2fr) minmax(30ch, 3fr) repeat(3, auto); gap: 0 var(--h-2); max-width: 170ch; }
+  .cat-rut-tabla > b { color: var(--titulo); font-weight: normal; }
+  .cat-rut-pre { margin: 0; padding: var(--e-1) var(--h-1); border: var(--borde); white-space: pre; }
+  /* en el teléfono, el nombre antes que cada cuánto (está en su globo) */
+  .angosto .rutina .item-sufijo { display: none; }
   .cat-tac-pagina { display: flex; flex-direction: column; min-height: 100vh; }
   .cat-tac-cuerpo { display: grid; flex: 1; grid-template-columns: minmax(240px, 22vw) minmax(0, 1fr); }
   .cat-tac-pagina.angosto .cat-tac-cuerpo { grid-template-columns: minmax(0, 1fr); }
   .cat-tac-barra { min-width: 0; border-right: var(--borde); }
   .cat-tac-columna { min-width: 0; padding-bottom: 3lh; }
+
+  /* equipo (prototipo, #equipo, catalogo-equipo.ts): el marco, del alto de lo que lleva; las reglas de privacidad y de
+     dónde sale cada dato, en dos y tres columnas */
+  .cat-eq-marco { padding-bottom: 0; }
+  .cat-eq-reglas { display: grid; grid-template-columns: minmax(30ch, 1fr) minmax(40ch, 2fr); gap: var(--e-1) var(--h-2); max-width: 150ch; }
+  .cat-eq-tabla { display: grid; grid-template-columns: minmax(18ch, auto) minmax(24ch, 1fr) minmax(36ch, 2fr); gap: var(--e-1) var(--h-2); max-width: 150ch; }
+  .cat-eq-tabla > b { color: var(--titulo); font-weight: normal; }
 
   /* la franja de avisos (#avisos, catalogo-avisos.ts): arriba de unas filas de la barra; la lista abierta pide su alto; las
      plegadas, cada una del ancho de una barra plegada; el «‹ hilos» del teléfono, a la vista. A pantalla completa, la barra

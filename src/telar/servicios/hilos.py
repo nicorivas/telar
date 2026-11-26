@@ -139,12 +139,14 @@ def hilos(ctx, *, vivos: bool = False, red: bool = False, con_ficha: bool = True
     que el multiplexor muestra ahora. `red`: además, los de las otras máquinas, del registro del bus."""
     from telar import bus as mod_bus
     from telar import estado as mod_estado
+    from telar import perfil
     from telar.ordenes import _comun
 
     orden = orden or mod_estado.Orden.MUX.value
     tel = _comun.tejer(ctx, con_ficha=con_ficha, todos=not vivos)
     lista = mod_estado.ordenar(tel.hilos, orden)
     aqui = mod_bus.maquina(ctx.config)
+    repos = perfil.carpetas_de_repos(ctx.config)
     datos: dict = {
         "sesion": tel.sesion,
         "maquina": aqui,
@@ -154,7 +156,7 @@ def hilos(ctx, *, vivos: bool = False, red: bool = False, con_ficha: bool = True
         "aviso": tel.aviso,
         "orden": orden,
         "clientes": _clientes(tel),
-        "hilos": [_con_maquina(_con_repo(_comun.json_hilo(h, tel, con_ficha=con_ficha), h, ctx.config), aqui)
+        "hilos": [_con_maquina(_con_repo(_comun.json_hilo(h, tel, con_ficha=con_ficha), h, ctx.config, repos), aqui)
                   for h in lista],
     }
     _con_mundo(datos["hilos"], ctx)
@@ -192,13 +194,13 @@ def _con_alcance(hilos: list[dict], ctx) -> None:
             h["alcanzable"], h["fuera_de_linea_desde"] = False, a.desde_iso()
 
 
-def _con_repo(cuerpo: dict, hilo, config) -> dict:
+def _con_repo(cuerpo: dict, hilo, config, carpetas=None) -> dict:
     """Le suma al hilo el nombre del repo de `[repos]` donde vive su carpeta. Va aquí y no en
     `json_hilo`: es lo que se ve en la lista, y las demás salidas del hilo quedan como estaban. Un
     hilo sin carpeta no es de ningún repo, aunque la raíz misma esté declarada en `[repos]`."""
     from telar import perfil
 
-    cuerpo["repo"] = perfil.repo_de(config, hilo.ruta) if hilo.ruta else ""
+    cuerpo["repo"] = perfil.repo_de(config, hilo.ruta, carpetas) if hilo.ruta else ""
     return cuerpo
 
 

@@ -120,6 +120,19 @@ const { mm } = P;
     assert.deepEqual(ids(mm.modosAdentro('tactica', { solo: ['todo', 'foco'] })), ['tactica', 'foco', 'todo'], 'el puesto, siempre');
     assert.deepEqual(ids(mm.modosAdentro('tactica', { solo: null })), ['tactica', 'estrategia', 'foco', 'todo']);
     assert.deepEqual(ids(mm.modosAdentro('tactica')), ['tactica', 'estrategia', 'foco', 'todo']);
+    // los propios que el mundo nombra, con su botón: tras la actitud que los precede en su lista, y el puesto, el suyo
+    const entradas = { clave: 'entradas', nombre: 'entradas', icono: mm.iconoDeModo('bandeja', 'tactica'), que: 'sobre táctica' };
+    const orden = ['tactica', 'estrategia', 'entradas', 'foco', 'todo'];
+    const fila = mm.modosAdentro('tactica', { solo: ['tactica', 'estrategia', 'foco', 'todo'], propios: [entradas], orden });
+    assert.deepEqual(ids(fila), ['tactica', 'estrategia', 'entradas', 'foco', 'todo'], 'entre estrategia y foco');
+    const puesta = mm.modosAdentro('tactica', { solo: orden.filter(k => k !== 'entradas'), propios: [entradas], orden,
+        activo: 'entradas', propio: 'entradas' });
+    assert.deepEqual([...puesta.matchAll(/class="modos-modo si"[^>]*data-id="([^"]+)"/g)].map(x => x[1]), ['entradas'], 'el puesto, en su botón');
+    assert.ok(!puesta.includes('modos-propio'), 'y no junto a su base');
+    assert.deepEqual(ids(mm.modosAdentro('todo', { solo: ['todo'], propios: [entradas], orden: ['entradas', 'todo'] })), ['entradas', 'todo'],
+        'sin actitud antes: al principio');
+    assert.equal(mm.iconoDeModo('', 'estrategia'), mm.modo('estrategia').icono, 'sin ícono: el de su base');
+    assert.equal(mm.iconoDeModo('no-hay', 'tactica'), mm.modo('tactica').icono, 'uno que no hay: el de su base');
 }
 
 // ── 2. en la página ──

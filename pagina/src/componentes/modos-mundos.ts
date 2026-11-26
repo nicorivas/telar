@@ -261,16 +261,50 @@ export function modosEnFila(puesto: ClaveModo, o: { clase?: string; propio?: str
     return `<nav class="modos-fila${o.clase ? ` ${o.clase}` : ''}">${modosAdentro(puesto, o)}</nav>`;
 }
 
-/** Lo de adentro de la fila (la cabecera de la página lo pone en su `<nav>`). `propio`: el nombre del modo propio que
- *  está puesto, armado sobre `puesto`: va junto a su base. `solo`: los que tiene el mundo puesto (`modosDelMundo`; null,
- *  todos): los demás no van, salvo el puesto. */
-export function modosAdentro(puesto: ClaveModo, o: { propio?: string; solo?: readonly string[] | null } = {}): string {
-    return MODOS.filter(m => m.clave === puesto || tieneModo(o.solo ?? null, m.clave)).map(m => {
-        const si = m.clave === puesto;
-        const propio = si && o.propio ? `<span class="modos-propio"> · ${esc(o.propio)}</span>` : '';
-        return `<a class="modos-modo${si ? ' si' : ''}" data-accion="modos-modo" data-id="${m.clave}" title="${esc(`${m.nombre}: ${m.que} (⌥⇧${m.tecla})`)}">`
-            + `<span class="i">${m.icono}</span><span class="txt">${esc(m.nombre)}</span>${propio}</a>`;
-    }).join('');
+/** Un modo propio con su botón en la banda: uno que el mundo puesto nombra en su `modos` (`[mundos.<n>] modos`). Su
+ *  ícono, el de su ajuste `icono` (`iconoDeModo`); `que`, su ayuda. */
+export interface PropioEnBanda { clave: string; nombre: string; icono: string; que: string }
+
+/** El ícono de un modo: el de su ajuste `icono` (el nombre de uno de la página: `bandeja`, `libro`…), o el de su base. */
+export function iconoDeModo(nombre: string | undefined, base: string): string {
+    const n = String(nombre ?? '').trim();
+    return (n && Object.prototype.hasOwnProperty.call(I, n) ? (I as Record<string, string>)[n] : '') || modo(base).icono;
+}
+
+/** Lo de adentro de la fila (la cabecera de la página lo pone en su `<nav>`). `puesto`: la actitud del modo puesto (la
+ *  suya, o su base si es uno propio); `activo`, su clave (si no se dice, la actitud). `propio`: el nombre del propio que
+ *  está puesto, armado sobre `puesto`: va junto a su base cuando no tiene botón propio. `solo`: las actitudes que tiene
+ *  el mundo puesto (`modosDelMundo`; null, todas): las demás no van, salvo la del puesto. `propios`: los modos propios
+ *  que el mundo nombra, cada uno con su botón; van tras la actitud que los precede en `orden` (los `modos` del mundo,
+ *  en su orden), y si ninguna los precede, al principio. Así un mundo con «tactica, estrategia, entradas, foco, todo»
+ *  muestra entradas entre estrategia y foco, y las actitudes siguen en su orden de siempre. */
+export function modosAdentro(puesto: ClaveModo, o: { propio?: string; solo?: readonly string[] | null; activo?: string;
+    propios?: readonly PropioEnBanda[]; orden?: readonly string[] | null } = {}): string {
+    const activo = o.activo ?? puesto;
+    const actitudes = MODOS.filter(m => m.clave === puesto || tieneModo(o.solo ?? null, m.clave));
+    const propios = o.propios ?? [];
+    const conBoton = propios.some(p => p.clave === activo);
+    // cada propio, tras la actitud más cercana que lo precede en el orden del mundo (la que está en la fila)
+    const tras = new Map<string, PropioEnBanda[]>();
+    for (const p of propios) {
+        const orden = o.orden ?? [];
+        const i = orden.indexOf(p.clave);
+        const antes = (i < 0 ? [] : orden.slice(0, i)).reverse().find(k => actitudes.some(a => a.clave === k)) ?? '';
+        tras.set(antes, [...tras.get(antes) ?? [], p]);
+    }
+    const boton = (clave: string, nombre: string, icono: string, ayuda: string, si: boolean, extra = '') =>
+        `<a class="modos-modo${si ? ' si' : ''}" data-accion="modos-modo" data-id="${esc(clave)}" title="${esc(ayuda)}">`
+        + `<span class="i">${icono}</span><span class="txt">${esc(nombre)}</span>${extra}</a>`;
+    const dePropio = (p: PropioEnBanda) => boton(p.clave, p.nombre, p.icono, `${p.nombre}: ${p.que}`, p.clave === activo);
+    return [
+        ...(tras.get('') ?? []).map(dePropio),
+        ...actitudes.flatMap(m => {
+            const si = !conBoton && m.clave === puesto;
+            const propio = si && o.propio ? `<span class="modos-propio"> · ${esc(o.propio)}</span>` : '';
+            return [boton(m.clave, m.nombre, m.icono, `${m.nombre}: ${m.que} (⌥⇧${m.tecla})`, si, propio),
+                ...(tras.get(m.clave) ?? []).map(dePropio)];
+        }),
+    ].join('');
 }
 
 /** Lo que dice el mundo puesto, en una línea: su nombre en su color y, tenue, hasta cuándo (y si fue a mano). */

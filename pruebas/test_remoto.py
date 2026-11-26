@@ -6,7 +6,9 @@ de verdad. Aquí va lo que decide qué se le dice.
 
 from __future__ import annotations
 
+import os
 import shlex
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +65,13 @@ class Comando(Prueba):
         self.assertIn("export TELAR_HILO=faro", l)
         self.assertIn("claude --session-id x", l)
         self.assertTrue(l.endswith("exec bash -l"))
+
+    def test_el_agente_de_alla_escribe_los_enlaces_a_la_vista(self):
+        # se lo mira por mosh, que bota los hipervínculos OSC 8: la dirección tiene que ir en el texto
+        l = r.linea("~/repo", ["env"], "faro").replace("exec bash -l", "true")
+        hecho = subprocess.run(["bash", "-c", l], capture_output=True, text=True, timeout=5,
+                               env={k: v for k, v in os.environ.items() if k != "FORCE_HYPERLINK"})
+        self.assertIn("FORCE_HYPERLINK=0", hecho.stdout.splitlines())
 
 
 class Reconocer(Prueba):
